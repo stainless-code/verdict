@@ -14,14 +14,14 @@ Iterate on the one rung you touched, then climb the whole ladder before
 claiming done. Each rung is a command CI runs.
 
 1. **Build** — `make build` writes `bin/verdict`, the binary the evals invoke.
-2. **Vet** — `make vet` (`go vet ./...`, then `go mod verify`), and `make cross`
-   for every `GOOS/GOARCH` the release ships (`release/contract.json`).
+2. **Vet** — `make vet` (`go vet ./...`, then `go mod verify`), `make cross` for
+   every shipped `GOOS/GOARCH` (`release/contract.json`), and `make size`: the
+   byte ratchet (`scripts/size-baseline.txt`) moves with the growth.
 3. **Unit** — `go test ./internal/<pkg>/...` while iterating; `make test-race`
    (`go test -race -shuffle=on -count=1 ./...`) before done.
 4. **Goldens** — files under `testdata/` are the contract. Regenerate with
    `go test ./<pkg>/ -update` (`internal/golden` and `internal/core/verify`
-   register the flag), then read the diff: a golden you cannot explain is a
-   red flag, not a green gate.
+   register the flag), then read the diff: an unexplained golden is a red flag.
 5. **Evals** — `make evals` builds `bin/verdict` and runs `evals/run.sh`;
    `./evals/one.sh <case>` grades one case.
 6. **Schemas** — `make schemas-check` (`cmd/schemagen` drift; part of

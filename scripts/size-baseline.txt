@@ -72,10 +72,20 @@
 # Truthful public surfaces adds the SDK flag plumbing and one refusal hint.
 # Release builds measured linux/amd64 11853984 and windows/arm64 10960384;
 # those two ceilings move to the next 10 kB above their measurement.
+# Multi-host publish (STA-290 series) is the largest step so far: diff-coverage
+# attestation, the GitLab submit path, the capability envelope with one reason
+# code per gap, `run --agent` with its watchdog and freshness check, mention
+# neutralization, the three-host conformance suite, and the lint pass that took
+# golangci-lint from 192 findings to 0. Every shipped target grew 120-187 kB and
+# every ceiling crossed. Measured here (darwin/amd64 agrees byte-for-byte with
+# the CI gate): darwin/amd64 12257216, darwin/arm64 11238082, linux/amd64
+# 12042400, linux/arm64 11010208, windows/amd64 12375040, windows/arm64
+# 11126784. Ceilings round up to the next 10 kB at least 5 kB above the
+# measurement, because a previous local-vs-CI drift of ~1 KB cost a red run.
 deps 0
-darwin/amd64 12070000
-darwin/arm64 11080000
-linux/amd64 11860000
-linux/arm64 10890000
-windows/amd64 12190000
-windows/arm64 10970000
+darwin/amd64 12270000
+darwin/arm64 11250000
+linux/amd64 12050000
+linux/arm64 11020000
+windows/amd64 12390000
+windows/arm64 11140000
