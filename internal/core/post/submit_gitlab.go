@@ -39,6 +39,17 @@ const (
 	flagRawField = "-f"
 	// approveSHAField names the version an approval covers.
 	approveSHAField = "sha="
+	// flagHeader adds one explicit request header to a call.
+	flagHeader = "--header"
+	// gitlabContentType is the content type a `--input` write must carry.
+	// glab marks a body as JSON only for a `--field` request (`bodyIsJSON` is
+	// set in the `map[string]any` case of `httpRequest` and nowhere on the
+	// `io.Reader` path `--input` takes), so without it the body goes out with
+	// no content type and GitLab refuses it with 415. glab's own fix for the
+	// same gap carries the comment "GitLab rejects a body with no Content-Type
+	// with HTTP 415"; an explicit header is added before that default and is
+	// never overridden.
+	gitlabContentType = "Content-Type: application/json"
 )
 
 // errGitLabMRShape refuses a merge-request read that is not one JSON object:
@@ -132,9 +143,13 @@ func gitlabReadArgv(repo, pr, suffix string) []string {
 }
 
 // gitlabWriteArgv is one project-scoped REST write: the JSON body arrives on
-// stdin exactly like the GitHub review POST.
+// stdin exactly like the GitHub review POST, with the content type pinned on
+// the argv so the wire shape does not depend on the glab version.
 func gitlabWriteArgv(repo, pr, suffix string) []string {
-	return []string{toolGlab, cmdAPI, gitlabEndpoint(repo, pr, suffix), flagMethod, methodPost, flagInput, "-"}
+	return []string{
+		toolGlab, cmdAPI, gitlabEndpoint(repo, pr, suffix),
+		flagMethod, methodPost, flagHeader, gitlabContentType, flagInput, "-",
+	}
 }
 
 // gitlabMRRead reads the live merge request once and hands the response back

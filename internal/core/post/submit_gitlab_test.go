@@ -34,11 +34,14 @@ const gitlabTestRenameDiff = "diff --git a/old.go b/new.go\nsimilarity index 90%
 	"--- a/old.go\n+++ b/new.go\n@@ -1,2 +1,2 @@\n top\n-gone\n+added\n"
 
 // The exact argv a GitLab post fires. Every one is asserted, never assumed:
-// the endpoint, the method, and the stdin body are the contract.
+// the endpoint, the method, the content type, and the stdin body are the
+// contract. The `--header` is not decoration: glab marks a `--input` body as
+// JSON nowhere, so a header-less write is refused with 415 by GitLab.
 const (
 	gitlabPRArgv          = "glab\x00api\x00projects/acme%2Fapp/merge_requests/7"
-	gitlabDiscussionsArgv = gitlabPRArgv + "/discussions\x00--method\x00POST\x00--input\x00-"
-	gitlabNotesArgv       = gitlabPRArgv + "/notes\x00--method\x00POST\x00--input\x00-"
+	gitlabJSONHeader      = "--header\x00Content-Type: application/json"
+	gitlabDiscussionsArgv = gitlabPRArgv + "/discussions\x00--method\x00POST\x00" + gitlabJSONHeader + "\x00--input\x00-"
+	gitlabNotesArgv       = gitlabPRArgv + "/notes\x00--method\x00POST\x00" + gitlabJSONHeader + "\x00--input\x00-"
 	gitlabApproveArgv     = gitlabPRArgv + "/approve\x00--method\x00POST\x00-f\x00sha=" + gitlabHead
 	gitlabRecheckArgv     = gitlabPRArgv + "/discussions?per_page=100\x00--paginate"
 	gitlabUserArgv        = "glab\x00api\x00user"
