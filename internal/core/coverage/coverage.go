@@ -41,7 +41,6 @@ const (
 	hunksFile    = "/hunks.tsv"
 	fullDiffFile = "/full.diff"
 	chunksDir    = "/chunks"
-	chunkSuffix  = ".diff"
 	manifestFile = "/manifest.json"
 )
 
@@ -313,18 +312,27 @@ func loadRows(dir string) ([]hunks.Hunk, *core.RefusalError) {
 }
 
 // chunked reports whether the bundle carries a chunk manifest, and how many
-// chunk diffs it names.
+// chunk diffs that manifest names. The manifest is the authority, the same one
+// `record` reads: counting `*.diff` files in the directory let a stray or
+// missing file move the count while the attestation it describes stayed put.
+// A manifest that will not parse still marks the bundle chunked with no count;
+// `record` refuses such a bundle before this reading is reached.
 func chunked(dir string) (int, bool) {
-	if _, err := os.Stat(dir + chunksDir + manifestFile); err != nil {
+	raw, err := os.ReadFile(dir + chunksDir + manifestFile)
+	if err != nil {
 		return 0, false
 	}
-	entries, err := os.ReadDir(dir + chunksDir)
-	if err != nil {
+	doc, derr := jq.Decode(raw)
+	if derr != nil {
+		return 0, true
+	}
+	man, ok := jq.AsMap(doc)
+	if !ok {
 		return 0, true
 	}
 	n := 0
-	for _, e := range entries {
-		if strings.HasSuffix(e.Name(), chunkSuffix) {
+	for _, item := range jq.Elements(man["chunks"]) {
+		if _, isMap := jq.AsMap(item); isMap {
 			n++
 		}
 	}

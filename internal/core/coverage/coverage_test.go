@@ -250,10 +250,57 @@ func TestChunkedSkips(t *testing.T) {
 	if err := mkdirAll(dir + "/chunks"); err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, dir+"/chunks/manifest.json", `{"chunks":[]}`)
+	writeFile(t, dir+"/chunks/manifest.json", `{"schema_version":"1","chunk_count":1,"chunks":[{"name":"chunks/01.diff"}]}`)
 	writeFile(t, dir+"/chunks/01.diff", "diff")
 	assertChunkedSkipped(t, dir)
 }
+
+// TestChunkedCountsTheManifest proves the count comes from the manifest and not
+// from the files beside it: an extra diff and a missing one leave the count
+// alone, which is the number a receipt reports.
+func TestChunkedCountsTheManifest(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []chunkCountCase{
+		{name: "stray-diff", files: []string{"01.diff", "02.diff", "99.diff"}},
+		{name: "missing-diff", files: []string{"01.diff"}},
+		{name: "no-diffs", files: nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assertManifestChunkCount(t, tc)
+		})
+	}
+}
+
+type chunkCountCase struct {
+	name  string
+	files []string
+}
+
+// assertManifestChunkCount builds a two-chunk bundle whose directory holds
+// exactly tc.files, then pins the reported count to the manifest's two.
+func assertManifestChunkCount(t *testing.T, tc chunkCountCase) {
+	t.Helper()
+	dir := writeBundle(t, fixtureRows())
+	if err := mkdirAll(dir + "/chunks"); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, dir+"/chunks/manifest.json", twoChunksManifest)
+	for _, f := range tc.files {
+		writeFile(t, dir+"/chunks/"+f, "diff")
+	}
+	got, _, ref := Evaluate(dir, mustReview(t, `{"coverage":[]}`), notGenerated)
+	if ref != nil {
+		t.Fatalf("Evaluate refused: %v", ref)
+	}
+	if !got.Chunked || got.Chunks != 2 {
+		t.Fatalf("chunked/chunks = %v/%d, want true/2 from the manifest", got.Chunked, got.Chunks)
+	}
+}
+
+// twoChunksManifest names two chunk diffs; the files beside it are not the
+// authority.
+const twoChunksManifest = `{"schema_version":"1","chunk_count":2,"chunks":[{"name":"chunks/01.diff"},{"name":"chunks/02.diff"}]}`
 
 // assertChunkedSkipped pins the chunked reading: the chunk count is reported,
 // nothing is evaluated, and no warning is raised for a legacy bundle.
