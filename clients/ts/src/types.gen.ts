@@ -758,8 +758,7 @@ export interface FetchData {
   omitted: unknown[];
   diff_bytes: number;
   panel: FetchPanel;
-  /** The provider capability summary when the bundle recorded one; shape owned by the fetch writer. */
-  capabilities?: unknown;
+  capabilities?: FetchCapabilities;
   /** The review controls the run read from controls.json; shape owned by the controls document. */
   controls?: unknown;
   /** Bundle file paths by name (PR.json, full.diff, toc.txt, roles.txt, reviews.json, inline.json, threads.json, sensitive.txt, incremental.diff, plus kb.txt and kb-recall.json when present); files the run did not write read null. */
@@ -790,8 +789,7 @@ export interface FetchLocalData {
   omitted: unknown[];
   diff_bytes: number;
   panel: FetchPanel;
-  /** The provider capability summary when the bundle recorded one; shape owned by the fetch writer. */
-  capabilities?: unknown;
+  capabilities?: FetchCapabilities;
   /** The review controls the run read from controls.json; shape owned by the controls document. */
   controls?: unknown;
   /** Bundle file paths by name (PR.json, full.diff, toc.txt, roles.txt, reviews.json, inline.json, threads.json, sensitive.txt, incremental.diff, plus kb.txt and kb-recall.json when present); files the run did not write read null. */
@@ -805,6 +803,22 @@ export interface FetchLocalData {
   chunk?: unknown;
   /** Where the staged prompt was written; absent unless a dump was requested. */
   prompt_dump?: string | null;
+  [key: string]: unknown;
+}
+
+/** What verdict can do through one host's own CLI or API: the boolean table an agent plans with, the compatibility sum review_verdicts, and one machine-readable reason per absent capability. */
+export interface FetchCapabilities {
+  provider: string;
+  fetch: boolean;
+  post: boolean;
+  inline_anchors: boolean;
+  approve: boolean;
+  request_changes: boolean;
+  thread_resolution: boolean;
+  /** approve && request_changes, kept so a consumer written before the split reads the same truth; new readers branch on approve and request_changes. */
+  review_verdicts: boolean;
+  /** One machine-readable reason code per absent capability, keyed by capability name. Only an absent capability appears; a host that carries everything carries an empty object. */
+  unsupported: Record<string, string>;
   [key: string]: unknown;
 }
 

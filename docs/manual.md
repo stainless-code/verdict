@@ -1956,9 +1956,28 @@ bundle offline. The refusal names the gap rather than an impossibility: Forgejo
 can author inline comments through its API even though its CLI cannot, but each
 remaining host still needs its own submit path with the comments → summary body
 → verdict-last ordering laid out below. `fetch --json` publishes the facts in
-`data.capabilities`: `provider`, `fetch`, `post`, `inline_anchors`,
-`thread_resolution`, and `review_verdicts`, so an agent can plan before it
-writes a review.
+`data.capabilities`: `provider`, `fetch`, `post`, `inline_anchors`, `approve`,
+`request_changes`, `thread_resolution`, `review_verdicts`, and `unsupported`,
+so an agent can plan before it writes a review. `approve` and
+`request_changes` split the binding verdicts because hosts differ: GitHub
+carries both, while GitLab approves a merge request but has no request-changes
+review event, so a bound request-changes posts the discussions plus the summary
+note and warns that the verdict did not bind. `review_verdicts` stays as the
+compatibility sum `approve && request_changes` for consumers written before the
+split, and carries no reason of its own — the two flags explain it; new readers
+branch on those two flags. `thread_resolution` is false on every host: verdict
+ships no resolve call, so resolution stays a host-CLI step the prompts hand
+back to the agent. `unsupported` carries one machine-readable code per absent
+capability, keyed by capability name:
+
+| Code                       | Meaning                                                                         |
+| -------------------------- | ------------------------------------------------------------------------------- |
+| `fetch-only`               | no submit path for the host, so no post, anchors, or binding verdicts           |
+| `no-request-changes-event` | the host has no request-changes review event; the post degrades, with a warning |
+| `no-approve-verdict`       | the host posts but cannot record an approval                                    |
+| `no-inline-anchors`        | the host takes a body but no anchored comment                                   |
+| `no-resolve-mutation`      | verdict has no thread-resolve call on any host                                  |
+| `unknown-host`             | the provider is not one verdict reads                                           |
 
 | Provider    | Fetch reads                                                                                               | Auth                                                             | Gaps (v1)                                                                                                     |
 | ----------- | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
@@ -1984,10 +2003,10 @@ neither replays a payload whose first write landed: a mid-way failure refuses
 typed `post-failed`, names what landed in the envelope `warnings`, and writes
 the host's own stderr to `.post.err`.
 
-| Provider | Submit writes, in order                                                                                                                                                                                                                                                                            | Gaps                                                                                                                                                                     |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `github` | one `repos/<owner>/<repo>/pulls/<n>/reviews` POST carrying `body`, `event`, and every inline comment (`gh api … --method POST --input -`)                                                                                                                                                          | —                                                                                                                                                                        |
-| `gitlab` | one MR discussion per finding — a `position` with the MR's `base_sha`/`start_sha`/`head_sha`, both paths, `new_line` for an added line, both numbers for an unchanged one, `old_line` for a deletion — then one summary note, then `approve` (pinned by `sha`) only when the review is an approval | approve-only (GitLab has no `request-changes` event — the comments still post, with a warning); a multi-line anchor lands on its end line; `review_verdicts` stays false |
+| Provider | Submit writes, in order                                                                                                                                                                                                                                                                            | Gaps                                                                                                                                                                                          |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `github` | one `repos/<owner>/<repo>/pulls/<n>/reviews` POST carrying `body`, `event`, and every inline comment (`gh api … --method POST --input -`)                                                                                                                                                          | —                                                                                                                                                                                             |
+| `gitlab` | one MR discussion per finding — a `position` with the MR's `base_sha`/`start_sha`/`head_sha`, both paths, `new_line` for an added line, both numbers for an unchanged one, `old_line` for a deletion — then one summary note, then `approve` (pinned by `sha`) only when the review is an approval | approve-only (GitLab has no `request-changes` event — the comments still post, with a warning); a multi-line anchor lands on its end line; `request_changes` and `review_verdicts` stay false |
 
 The repeat guard is the same on both hosts: the body's
 `<!-- verdict-review payload=… -->` marker is read from the fetched

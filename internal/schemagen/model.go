@@ -582,54 +582,69 @@ type FetchGroupPersonal struct { //nolint:govet // field order is the published 
 	KnownSubtotalUSD *float64 `json:"known_subtotal_usd" optional:"true"`
 }
 
+// FetchCapabilities is the fetch envelope's provider capability summary: the
+// boolean table an agent plans with, the compatibility sum a pre-split consumer
+// still reads, and one machine-readable reason per absent capability.
+type FetchCapabilities struct { //nolint:govet // field order is the published property order
+	Provider         string            `json:"provider"`
+	Fetch            bool              `json:"fetch"`
+	Post             bool              `json:"post"`
+	InlineAnchors    bool              `json:"inline_anchors"`
+	Approve          bool              `json:"approve"`
+	RequestChanges   bool              `json:"request_changes"`
+	ThreadResolution bool              `json:"thread_resolution"`
+	ReviewVerdicts   bool              `json:"review_verdicts"`
+	Unsupported      map[string]string `json:"unsupported"`
+}
+
 // FetchData is the fetch verb's --json data profile: the bundle location, the
 // diff statistics the toc counted, and the conditional summaries the run
 // armed (estimate and budget, cap, chunk, prompt dump).
 type FetchData struct { //nolint:govet // field order is the published property order
-	Dir             string        `json:"dir"`
-	HeadSHA         string        `json:"head_sha"`
-	BaseSHA         string        `json:"base_sha"`
-	Files           int           `json:"files"            min:"0"`
-	Additions       int           `json:"additions"        min:"0"`
-	Deletions       int           `json:"deletions"        min:"0"`
-	Hunks           int           `json:"hunks"            min:"0"`
-	Omitted         []any         `json:"omitted"`
-	DiffBytes       int64         `json:"diff_bytes"       min:"0"`
-	Panel           FetchPanel    `json:"panel"`
-	Capabilities    any           `json:"capabilities"     optional:"true"`
-	Controls        any           `json:"controls"         optional:"true"`
-	Artifacts       any           `json:"artifacts"`
-	IncrementalBase *string       `json:"incremental_base"`
-	Estimate        FetchEstimate `json:"estimate"         optional:"true"`
-	Budget          any           `json:"budget"           optional:"true"`
-	Cap             any           `json:"cap"              optional:"true"`
-	Chunk           any           `json:"chunk"            optional:"true"`
-	PromptDump      *string       `json:"prompt_dump"      optional:"true"`
+	Dir             string            `json:"dir"`
+	HeadSHA         string            `json:"head_sha"`
+	BaseSHA         string            `json:"base_sha"`
+	Files           int               `json:"files"            min:"0"`
+	Additions       int               `json:"additions"        min:"0"`
+	Deletions       int               `json:"deletions"        min:"0"`
+	Hunks           int               `json:"hunks"            min:"0"`
+	Omitted         []any             `json:"omitted"`
+	DiffBytes       int64             `json:"diff_bytes"       min:"0"`
+	Panel           FetchPanel        `json:"panel"`
+	Capabilities    FetchCapabilities `json:"capabilities"     optional:"true"`
+	Controls        any               `json:"controls"         optional:"true"`
+	Artifacts       any               `json:"artifacts"`
+	IncrementalBase *string           `json:"incremental_base"`
+	Estimate        FetchEstimate     `json:"estimate"         optional:"true"`
+	Budget          any               `json:"budget"           optional:"true"`
+	Cap             any               `json:"cap"              optional:"true"`
+	Chunk           any               `json:"chunk"            optional:"true"`
+	PromptDump      *string           `json:"prompt_dump"      optional:"true"`
 }
 
 // FetchLocalData is the fetch-local verb's --json data profile: the same
 // statistics without a remote base, plus the worktree kind and no
 // incremental base.
 type FetchLocalData struct { //nolint:govet // field order is the published property order
-	Dir          string        `json:"dir"`
-	Kind         string        `json:"kind"`
-	HeadSHA      string        `json:"head_sha"`
-	BaseSHA      string        `json:"base_sha"`
-	Files        int           `json:"files"        min:"0"`
-	Additions    int           `json:"additions"    min:"0"`
-	Deletions    int           `json:"deletions"    min:"0"`
-	Hunks        int           `json:"hunks"        min:"0"`
-	Omitted      []any         `json:"omitted"`
-	DiffBytes    int64         `json:"diff_bytes"   min:"0"`
-	Panel        FetchPanel    `json:"panel"`
-	Capabilities any           `json:"capabilities" optional:"true"`
-	Controls     any           `json:"controls"     optional:"true"`
-	Artifacts    any           `json:"artifacts"`
-	Estimate     FetchEstimate `json:"estimate"     optional:"true"`
-	Budget       any           `json:"budget"       optional:"true"`
-	Cap          any           `json:"cap"          optional:"true"`
-	Chunk        any           `json:"chunk"        optional:"true"`
-	PromptDump   *string       `json:"prompt_dump"  optional:"true"`
+	Dir          string            `json:"dir"`
+	Kind         string            `json:"kind"`
+	HeadSHA      string            `json:"head_sha"`
+	BaseSHA      string            `json:"base_sha"`
+	Files        int               `json:"files"        min:"0"`
+	Additions    int               `json:"additions"    min:"0"`
+	Deletions    int               `json:"deletions"    min:"0"`
+	Hunks        int               `json:"hunks"        min:"0"`
+	Omitted      []any             `json:"omitted"`
+	DiffBytes    int64             `json:"diff_bytes"   min:"0"`
+	Panel        FetchPanel        `json:"panel"`
+	Capabilities FetchCapabilities `json:"capabilities" optional:"true"`
+	Controls     any               `json:"controls"     optional:"true"`
+	Artifacts    any               `json:"artifacts"`
+	Estimate     FetchEstimate     `json:"estimate"     optional:"true"`
+	Budget       any               `json:"budget"       optional:"true"`
+	Cap          any               `json:"cap"          optional:"true"`
+	Chunk        any               `json:"chunk"        optional:"true"`
+	PromptDump   *string           `json:"prompt_dump"  optional:"true"`
 }
 
 // FetchPanel is the panel source and member list written into the bundle.

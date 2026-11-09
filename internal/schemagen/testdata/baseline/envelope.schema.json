@@ -173,6 +173,19 @@
       "required": ["tool_version", "prompts_hash", "model"],
       "additionalProperties": true
     },
+    "coverageSummary": {
+      "type": "object",
+      "properties": {
+        "percent": { "type": ["integer", "null"] },
+        "attested": { "type": "integer", "minimum": 0 },
+        "total": { "type": "integer", "minimum": 0 },
+        "files": { "type": "integer", "minimum": 0 },
+        "exempt": { "type": "integer", "minimum": 0 },
+        "gaps": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["percent", "attested", "total", "files", "exempt", "gaps"],
+      "additionalProperties": true
+    },
     "reportData": {
       "description": "report --json data: ranked read over the store. cost appears only with --cost, completeness only with --completeness, gate only when a gating flag (--max-severity, --require-head, --live) is set, receipt keys only when budget.json parses.",
       "type": "object",
@@ -485,7 +498,10 @@
           "type": "object",
           "additionalProperties": true
         },
-        "provenance": { "$ref": "#/$defs/provenance" }
+        "provenance": { "$ref": "#/$defs/provenance" },
+        "coverage": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/coverageSummary" }]
+        }
       },
       "required": [
         "dry_run",
@@ -536,6 +552,9 @@
         "check": {
           "description": "Present only on a clean dry run: the review-input summary.",
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/checkSummary" }]
+        },
+        "coverage": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/coverageSummary" }]
         },
         "normalized": {
           "description": "Present on record --dry-run: the exact review object the checker read after safe repairs, as an object.",
@@ -1463,9 +1482,7 @@
         },
         "diff_bytes": { "type": "integer", "minimum": 0 },
         "panel": { "$ref": "#/$defs/fetchPanel" },
-        "capabilities": {
-          "description": "The provider capability summary when the bundle recorded one; shape owned by the fetch writer."
-        },
+        "capabilities": { "$ref": "#/$defs/fetchCapabilities" },
         "controls": {
           "description": "The review controls the run read from controls.json; shape owned by the controls document."
         },
@@ -1521,9 +1538,7 @@
         },
         "diff_bytes": { "type": "integer", "minimum": 0 },
         "panel": { "$ref": "#/$defs/fetchPanel" },
-        "capabilities": {
-          "description": "The provider capability summary when the bundle recorded one; shape owned by the fetch writer."
-        },
+        "capabilities": { "$ref": "#/$defs/fetchCapabilities" },
         "controls": {
           "description": "The review controls the run read from controls.json; shape owned by the controls document."
         },
@@ -1558,6 +1573,40 @@
         "diff_bytes",
         "panel",
         "artifacts"
+      ],
+      "additionalProperties": true
+    },
+    "fetchCapabilities": {
+      "description": "What verdict can do through one host's own CLI or API: the boolean table an agent plans with, the compatibility sum review_verdicts, and one machine-readable reason per absent capability.",
+      "type": "object",
+      "properties": {
+        "provider": { "type": "string" },
+        "fetch": { "type": "boolean" },
+        "post": { "type": "boolean" },
+        "inline_anchors": { "type": "boolean" },
+        "approve": { "type": "boolean" },
+        "request_changes": { "type": "boolean" },
+        "thread_resolution": { "type": "boolean" },
+        "review_verdicts": {
+          "description": "approve && request_changes, kept so a consumer written before the split reads the same truth; new readers branch on approve and request_changes.",
+          "type": "boolean"
+        },
+        "unsupported": {
+          "description": "One machine-readable reason code per absent capability, keyed by capability name. Only an absent capability appears; a host that carries everything carries an empty object.",
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      },
+      "required": [
+        "provider",
+        "fetch",
+        "post",
+        "inline_anchors",
+        "approve",
+        "request_changes",
+        "thread_resolution",
+        "review_verdicts",
+        "unsupported"
       ],
       "additionalProperties": true
     },

@@ -10,22 +10,23 @@ import (
 
 // tagModel exercises every mapping convention the generator supports.
 type tagModel struct { //nolint:govet // field order is the expected property order
-	Required         string           `json:"required"`
-	Optional         string           `json:"optional,omitempty"`
-	Nullable         *string          `json:"nullable"`
-	OptionalNullable *string          `json:"optional_nullable,omitempty"`
-	Enum             string           `enum:"a|b|null"                    json:"enum"`
-	Const            string           `const:"1"                          json:"const"`
-	Bounded          int              `json:"bounded"                     max:"9"                    min:"0"`
-	When             string           `format:"date-time"                 json:"when"`
-	List             []string         `json:"list"`
-	OpenList         []any            `json:"open_list"`
-	Ref              tagRef           `json:"ref"`
-	Inline           tagInline        `inline:"true"                      json:"inline"`
-	OpenMap          map[string]any   `json:"open_map"`
-	Anything         any              `json:"anything"`
-	Union            any              `json:"union"                       type:"integer|string|null"`
-	Nested           []map[string]any `json:"nested"`
+	Required         string            `json:"required"`
+	Optional         string            `json:"optional,omitempty"`
+	Nullable         *string           `json:"nullable"`
+	OptionalNullable *string           `json:"optional_nullable,omitempty"`
+	Enum             string            `enum:"a|b|null"                    json:"enum"`
+	Const            string            `const:"1"                          json:"const"`
+	Bounded          int               `json:"bounded"                     max:"9"                    min:"0"`
+	When             string            `format:"date-time"                 json:"when"`
+	List             []string          `json:"list"`
+	OpenList         []any             `json:"open_list"`
+	Ref              tagRef            `json:"ref"`
+	Inline           tagInline         `inline:"true"                      json:"inline"`
+	OpenMap          map[string]any    `json:"open_map"`
+	StringMap        map[string]string `json:"string_map"`
+	Anything         any               `json:"anything"`
+	Union            any               `json:"union"                       type:"integer|string|null"`
+	Nested           []map[string]any  `json:"nested"`
 }
 
 // tagRef is a registered $defs target.
@@ -88,7 +89,7 @@ func assertRequired(t *testing.T, root map[string]any) {
 	if !ok {
 		t.Fatalf("required is %T, want array", root["required"])
 	}
-	want := []string{"required", "nullable", "enum", "const", "bounded", "when", "list", "open_list", "ref", "inline", "open_map", "anything", "union", "nested"}
+	want := []string{"required", "nullable", "enum", "const", "bounded", "when", "list", "open_list", "ref", "inline", "open_map", "string_map", "anything", "union", "nested"}
 	if len(required) != len(want) {
 		t.Fatalf("required = %v, want %v", required, want)
 	}
@@ -190,6 +191,10 @@ func assertOpen(t *testing.T, props map[string]any) {
 	openMap := objectAt(t, props, "open_map")
 	if openMap["type"] != "object" || openMap["additionalProperties"] != true {
 		t.Errorf("open_map = %v", openMap)
+	}
+	stringMap := objectAt(t, props, "string_map")
+	if stringMap["type"] != "object" || !reflect.DeepEqual(stringMap["additionalProperties"], map[string]any{"type": "string"}) {
+		t.Errorf("string_map = %v", stringMap)
 	}
 	anything := objectAt(t, props, "anything")
 	if len(anything) != 0 {

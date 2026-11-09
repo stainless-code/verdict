@@ -15,7 +15,9 @@ const (
 	msgGitLabNoDiffRefs = "gitlab merge request read carries no diff refs — a diff discussion needs the " +
 		"base, start, and head SHAs to anchor to (re-fetch and retry)"
 
-	msgGitLabChangesEvent = "gitlab has no request-changes review event — posting the discussions and summary note only"
+	msgNoChangesEvent = "%s has no request-changes review event — posting the discussions and summary note only"
+
+	msgNoApproveEvent = "%s has no approve review event — posting as COMMENT instead"
 
 	msgMissingDiffPost = "missing %s/full.diff (run fetch first — anchors validate against it)"
 

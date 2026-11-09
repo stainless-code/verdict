@@ -114,7 +114,13 @@ var publishedSemantics = map[string]string{
 	// Plan identity: verify.planGroup now requires id and label, and
 	// verify.checks requires head, so a verified envelope names the group it
 	// resolved rather than an anonymous profile/depth pair.
-	"envelope.schema.json": "9c7974504659b786993851ff95f37748d4262828524096be39651360eb5b952c",
+	// honest capabilities: fetchData/fetchLocalData.capabilities stops being an
+	// untyped placeholder and becomes $defs/fetchCapabilities — the booleans,
+	// the derived review_verdicts sum, and the unsupported reason map (whose
+	// values are typed strings). Deliberate pre-v1 narrowing: the writer always
+	// emitted the object, the schema now says so. No other property, required
+	// key, enum, or type changed.
+	"envelope.schema.json": "1ef106c2d9a202c86a912af17e7f2366f252dea074b2d51755443e5f0e43b06f",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
