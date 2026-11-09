@@ -5,8 +5,7 @@ verdict conventions. Repo-specific rules live here, where any agent working in
 this checkout reads them.
 
 **Budget:** 70 lines, hard ceiling. Anything longer than a rule belongs in
-`docs/` — Go code rules in `docs/go-rules.md`, the operator contract in
-`docs/manual.md`.
+`docs/`: Go rules in `docs/go-rules.md`, the operator contract in `docs/manual.md`.
 
 ## Verification ladder
 
@@ -38,8 +37,9 @@ skip-token ban and test determinism. Read both before writing or reviewing Go.
 
 - **Never run a real `post`.** It submits to GitHub or GitLab, so stub that
   host's CLI (`gh`, or `glab` for GitLab) and use `post --dry-run`.
-- **No network.** Unit tests and evals must pass offline; the eval suite runs
-  a network-dead `gh` stub and proves zero real calls (`evals/README.md`).
+- **No network.** Unit tests and evals must pass offline. The eval suite is
+  GitHub-only: it stubs `gh` network-dead and proves zero real calls
+  (`evals/README.md`). A GitLab `post --dry-run` is manual — stub `glab` by hand.
 - **No `/tmp` test dirs.** Use `t.TempDir()` for files and `internal/testenv`
   for child processes; a hardcoded path leaks across parallel runs.
 - **Exactly four skill files are hashed into goldens.** `skills/verdict/SKILL.md`,
