@@ -397,7 +397,8 @@ func (st *state) recordOutcome(rec *launcher, dir string, ended, started time.Ti
 		rec.Exit = &res.ExitCode
 		rec.TimedOut = &res.TimedOut
 	}
-	rec.DurationMS = int(ended.Sub(started).Milliseconds())
+	ms := int(ended.Sub(started).Milliseconds())
+	rec.DurationMS = &ms
 	rec.EndedAt = core.NowUTC(ended)
 	rec.ArtifactFresh = &art.fresh
 	if art.exists && art.regular {
@@ -434,7 +435,7 @@ func (st *state) response(args *launchArgs, rec *launcher, res *core.Result, art
 			Artifact:   rec.Artifact,
 			StartedAt:  rec.StartedAt,
 			EndedAt:    rec.EndedAt,
-			DurationMS: rec.DurationMS,
+			DurationMS: durationMS(rec.DurationMS),
 			Exit:       res.ExitCode,
 			TimedOut:   res.TimedOut,
 			Timeout:    rec.Timeout,
@@ -443,6 +444,16 @@ func (st *state) response(args *launchArgs, rec *launcher, res *core.Result, art
 		},
 		Next: st.next(args.dir),
 	}
+}
+
+// durationMS reads the recorded duration for the response. The response is only
+// built after the process exited, so an outcome write always set it; the nil
+// guard keeps that ordering assumption from becoming a panic.
+func durationMS(ms *int) int {
+	if ms == nil {
+		return 0
+	}
+	return *ms
 }
 
 // display renders a path for operator-facing output: repository-relative

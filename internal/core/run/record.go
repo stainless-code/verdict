@@ -43,7 +43,7 @@ type launcher struct { //nolint:govet // field order is the published property o
 	Artifact      string   `json:"artifact"`
 	StartedAt     string   `json:"started_at"`
 	Timeout       int      `json:"timeout"`
-	DurationMS    int      `json:"duration_ms,omitempty"`
+	DurationMS    *int     `json:"duration_ms,omitempty"`
 	EndedAt       string   `json:"ended_at,omitempty"`
 	Exit          *int     `json:"exit,omitempty"`
 	TimedOut      *bool    `json:"timed_out,omitempty"`

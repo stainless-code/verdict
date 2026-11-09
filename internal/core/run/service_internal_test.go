@@ -352,3 +352,32 @@ func assertArgvPrefix(t *testing.T, got, want []string) {
 		}
 	}
 }
+
+// TestLauncherRecordsZeroDuration pins the sub-millisecond outcome: a process
+// that exits inside the first millisecond still records duration_ms, with the
+// value 0. An int field with omitempty dropped the key on fast machines, which
+// failed CI while passing locally, so the field is a pointer like its
+// neighbors and this case names the reason.
+func TestLauncherRecordsZeroDuration(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	zero := 0
+	exit := 0
+	rec := &launcher{
+		SchemaVersion: "1", Agent: "claude", Binary: "/opt/agents/claude",
+		Argv: []string{"-p"}, Bundle: dir, Artifact: filepath.Join(dir, "review.json"),
+		StartedAt: "2026-11-09T00:00:00Z", Timeout: 60,
+		DurationMS: &zero, EndedAt: "2026-11-09T00:00:00Z", Exit: &exit,
+	}
+	if _, ref := writeLauncher(filepath.Join(dir, launcherFile), rec); ref != nil {
+		t.Fatalf("writeLauncher refused: %v", ref)
+	}
+	got := readLauncher(t, dir)
+	ms, ok := got["duration_ms"]
+	if !ok {
+		t.Fatal("launcher.json has no duration_ms for a sub-millisecond run")
+	}
+	if n, _ := jq.IntOf(ms); n != 0 {
+		t.Fatalf("duration_ms = %v, want 0", ms)
+	}
+}
