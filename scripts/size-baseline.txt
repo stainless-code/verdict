@@ -90,9 +90,16 @@
 # 12050000 line the previous wave set — the same 8192-byte segment step that
 # wave described (12042400 to 12050592) — so its line moves to the next 10 kB
 # above the measurement; the other five stay put.
+# Scrubbing overlapping credentials now takes one left-to-right pass instead
+# of a ReplaceAll chain, which grows __TEXT by 1460 bytes of content and lands
+# it in a fresh 16 KiB block. Measured here: darwin/amd64 12269568, darwin/arm64
+# 11254658, linux/amd64 12058784, linux/arm64 11010208, windows/amd64 12388352,
+# windows/arm64 11138560. Only darwin/arm64 crosses, by 4658 over its 11250000
+# line, so its ceiling moves to the next 10 kB above its measurement; the other
+# five stay put.
 deps 0
 darwin/amd64 12270000
-darwin/arm64 11250000
+darwin/arm64 11260000
 linux/amd64 12060000
 linux/arm64 11020000
 windows/amd64 12390000
