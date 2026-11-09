@@ -33,6 +33,7 @@ import (
 	"github.com/stainless-code/verdict/internal/ready"
 	"github.com/stainless-code/verdict/internal/record"
 	"github.com/stainless-code/verdict/internal/report"
+	runverb "github.com/stainless-code/verdict/internal/run"
 	"github.com/stainless-code/verdict/internal/scaffold"
 	"github.com/stainless-code/verdict/internal/schemacheck"
 	"github.com/stainless-code/verdict/internal/threads"
@@ -53,7 +54,7 @@ const (
 	verbDoctor = "doctor"
 )
 
-const verbsHint = "fetch|fetch-local|record|adopt|fix|post|triage|report|next|show|" +
+const verbsHint = "fetch|fetch-local|run|record|adopt|fix|post|triage|report|next|show|" +
 	"check-tree|verify|doctor|calibrate|ready|gate|threads|trend|learn|init|skill|upgrade|uninstall|mcp|config"
 
 func main() {
@@ -240,6 +241,12 @@ func dispatchMutating(
 		return code, true
 	}
 	switch cmd {
+	case "run":
+		// The verb name matches main's own run() entry point, so the adapter import
+		// is aliased rather than renaming either one.
+		return runverb.Run(ctx, r, rest, runverb.Request{
+			Env: env, Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot,
+		}), true
 	case "record":
 		return record.Run(ctx, r, rest, &record.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env, Forces: forces}), true
 	case "post":

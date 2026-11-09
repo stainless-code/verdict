@@ -251,7 +251,7 @@ Use the issue templates (bug reports name the verb and paste the
 `--json` envelope; features name the surface they touch) and fill in
 the PR template checklist. Verbs are: `fetch`, `post`, `triage`,
 `report`, `next`, `show`, `verify`, `doctor`, `calibrate`,
-`fetch-local`, `record`, `adopt`, `fix`, `check-tree`, `ready`,
+`fetch-local`, `run`, `record`, `adopt`, `fix`, `check-tree`, `ready`,
 `trend`, `learn`, `init`, `threads`, `skill`, `upgrade`, `uninstall`
 — plus the hidden `mcp` stdio transport. If your change adds or
 renames one, the templates, the manual, and `cmd/verdict/usage.go`

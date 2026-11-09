@@ -34,6 +34,7 @@ body:
         - doctor
         - calibrate
         - fetch-local
+        - run
         - record
         - adopt
         - fix
