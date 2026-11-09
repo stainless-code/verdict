@@ -212,23 +212,7 @@ func TestCoverageRefusalKeepsThePriorStore(t *testing.T) {
 		{"dry-run", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			coverageBundle(t, coverageDiff, partialCoverage())
-			prior := "[]\n"
-			writeFile(t, ".verdict/state/"+coverageSlug+"/findings.json", prior)
-			ref := runCoverage(t, true, tc.dryRun)
-			if ref == nil || ref.Code != codeCoverageIncomplete {
-				t.Fatalf("refusal = %v, want %q", ref, codeCoverageIncomplete)
-			}
-			after, err := os.ReadFile(".verdict/state/" + coverageSlug + "/findings.json")
-			if err != nil {
-				t.Fatalf("read prior findings: %v", err)
-			}
-			if string(after) != prior {
-				t.Errorf("prior findings.json changed:\n%s", after)
-			}
-			if _, err := os.Stat(".verdict/state/" + coverageSlug + "/record.json"); !os.IsNotExist(err) {
-				t.Error("a refused run wrote record.json")
-			}
+			assertRefusalKeepsPriorStore(t, tc.dryRun)
 		})
 	}
 }
@@ -297,11 +281,11 @@ func TestMergeCoverageAbsentChangesNothing(t *testing.T) {
 // an exempt-only bundle stores `percent: null`, never 0.
 func TestCoverageReceiptStoredOnlyWhenAttested(t *testing.T) {
 	cases := []struct {
+		coverage map[string]any
 		name     string
 		diff     string
 		review   string
 		wantKey  bool
-		coverage map[string]any
 	}{
 		{
 			name:    "legacy-absent",
@@ -335,22 +319,7 @@ func TestCoverageReceiptStoredOnlyWhenAttested(t *testing.T) {
 				t.Fatalf("record refused: %v", ref)
 			}
 			record := decodeObject(t, ".verdict/state/"+coverageSlug+"/record.json")
-			cov, present := record["coverage"]
-			if present != tc.wantKey {
-				t.Fatalf("record.json coverage present = %v, want %v: %v", present, tc.wantKey, record)
-			}
-			if !tc.wantKey {
-				return
-			}
-			got, ok := cov.(map[string]any)
-			if !ok {
-				t.Fatalf("coverage = %T, want an object", cov)
-			}
-			for key, want := range tc.coverage {
-				if got[key] != want {
-					t.Errorf("coverage.%s = %v (%T), want %v", key, got[key], got[key], want)
-				}
-			}
+			assertStoredCoverage(t, record, tc.wantKey, tc.coverage)
 		})
 	}
 }
@@ -460,21 +429,53 @@ func TestPostReceiptCarriesCoverageOnlyWhenAttested(t *testing.T) {
 			if ref != nil {
 				t.Fatalf("post refused: %v", ref)
 			}
-			receipt := decodeObject(t, ".verdict/state/7/post.json")
-			cov, present := receipt["coverage"]
-			if present != tc.wantKey {
-				t.Fatalf("post.json coverage present = %v, want %v: %v", present, tc.wantKey, receipt)
-			}
-			if !tc.wantKey {
-				return
-			}
-			got, ok := cov.(map[string]any)
-			if !ok {
-				t.Fatalf("coverage = %T, want an object", cov)
-			}
-			if got["percent"] != 66.0 || got["attested"] != 2.0 || got["total"] != 3.0 {
-				t.Errorf("coverage = %v, want percent 66 (2/3)", got)
-			}
+			assertStoredCoverage(t, decodeObject(t, ".verdict/state/7/post.json"), tc.wantKey,
+				map[string]any{"percent": 66.0, "attested": 2.0, "total": 3.0})
 		})
+	}
+}
+
+// assertRefusalKeepsPriorStore runs one refused coverage gate and proves the
+// store was not touched: the prior findings.json survives byte for byte and no
+// record.json appears.
+func assertRefusalKeepsPriorStore(t *testing.T, dryRun bool) {
+	t.Helper()
+	coverageBundle(t, coverageDiff, partialCoverage())
+	prior := "[]\n"
+	writeFile(t, ".verdict/state/"+coverageSlug+"/findings.json", prior)
+	if ref := runCoverage(t, true, dryRun); ref == nil || ref.Code != codeCoverageIncomplete {
+		t.Fatalf("refusal = %v, want %q", ref, codeCoverageIncomplete)
+	}
+	after, err := os.ReadFile(".verdict/state/" + coverageSlug + "/findings.json")
+	if err != nil {
+		t.Fatalf("read prior findings: %v", err)
+	}
+	if string(after) != prior {
+		t.Errorf("prior findings.json changed:\n%s", after)
+	}
+	if _, err := os.Stat(".verdict/state/" + coverageSlug + "/record.json"); !os.IsNotExist(err) {
+		t.Error("a refused run wrote record.json")
+	}
+}
+
+// assertStoredCoverage checks the stored coverage object for presence and, when
+// present, every expected field. want == nil accepts the object as stored.
+func assertStoredCoverage(t *testing.T, stored map[string]any, wantKey bool, want map[string]any) {
+	t.Helper()
+	cov, present := stored["coverage"]
+	if present != wantKey {
+		t.Fatalf("coverage present = %v, want %v: %v", present, wantKey, stored)
+	}
+	if !wantKey {
+		return
+	}
+	got, ok := cov.(map[string]any)
+	if !ok {
+		t.Fatalf("coverage = %T, want an object", cov)
+	}
+	for key, value := range want {
+		if got[key] != value {
+			t.Errorf("coverage.%s = %v (%T), want %v", key, got[key], got[key], value)
+		}
 	}
 }

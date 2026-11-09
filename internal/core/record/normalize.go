@@ -626,9 +626,9 @@ var (
 	commentAliases = map[string]string{
 		"inBounds": fieldInBoundsInput,
 		"rung":     fieldRigor,
-		"file":     fieldPath,
+		fieldFile:  fieldPath,
 	}
-	siteAliases = map[string]string{"file": fieldPath}
+	siteAliases = map[string]string{fieldFile: fieldPath}
 
 	topOptionalKeys = map[string]bool{
 		fieldResolved: true, fieldTriage: true, fieldSections: true,

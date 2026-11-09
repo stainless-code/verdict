@@ -11,6 +11,8 @@ const (
 	fieldInBounds   = "inBounds"
 	fieldKB         = "kb"
 	fieldLastSeen   = "lastSeen"
+	fieldFile       = "file"
+	fieldRanges     = "ranges"
 	fieldLine       = "line"
 	fieldPath       = "path"
 	fieldRigor      = "rigor"

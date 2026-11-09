@@ -145,3 +145,88 @@ func TestRecordNeutralizesBodyMentions(t *testing.T) {
 		t.Errorf("findings.json still carries a live mention:\n%s", stored)
 	}
 }
+
+// mentionCommentBody is the inline finding under test: a mention in prose, an
+// address that is not a mention, and a suggestion whose bytes are code.
+const mentionCommentBody = "Ping @bob-abc about the retry loop; write to user@example.com.\n"
+
+// mentionSuggestion is a code replacement: the escape must never enter it,
+// because a zero-width space inside code is a silent edit to the patch.
+const mentionSuggestion = "notify(@dave)\n"
+
+// mergeMentionEntry runs the merge over a review carrying one inline finding
+// and returns its entries blob.
+func mergeMentionEntry(t *testing.T, slug, commentBody string) string {
+	t.Helper()
+	dir := mentionBundle(t, slug, "prose only")
+	writeFile(t, dir+"/review.json", jq.NewObj(
+		"schema_version", "1",
+		"body", "prose only",
+		"approved", false,
+		"comments", []any{jq.NewObj(
+			"path", "notes.txt",
+			"heading", "top",
+			"line", 3,
+			"side", "RIGHT",
+			"body", commentBody,
+			"suggestion", mentionSuggestion,
+		)},
+	).MarshalPretty())
+	review, err := recordcore.LoadReview(dir + "/review.json")
+	if err != nil {
+		t.Fatalf("load review: %v", err)
+	}
+	snap, ref := controls.Gate(dir, recordcore.BundleBase(dir, nil))
+	if ref != nil {
+		t.Fatalf("controls gate: %v", ref)
+	}
+	res, merr := recordcore.Merge(testRuntime(&collector{}), &recordcore.MergeParams{
+		Dir: dir, Prov: "local", HeadFull: mentionHead, Review: review,
+		ReviewFile: dir + "/review.json", Root: ".", RepoRoot: ".",
+		Body: "prose only", FindingsFile: dir + "/findings.json", DryRun: true,
+		Effective: core.Defaults(), Repo: "acme/app", Pr: slug,
+		Cmd: "record", Controls: snap, InputChecked: true,
+	})
+	if merr != nil {
+		t.Fatalf("Merge: %v", merr)
+	}
+	return jq.NewObj("entries", res.Entries).MarshalPretty()
+}
+
+// TestRecordNeutralizesFindingBodies proves a mention inside a finding body is
+// escaped at construction. That body is published as its own inline comment and
+// never passes through the review prose, so an escape applied only to the prose
+// leaves a live notification. The suggestion is code and must stay verbatim.
+func TestRecordNeutralizesFindingBodies(t *testing.T) {
+	blob := mergeMentionEntry(t, "local-mention-finding", mentionCommentBody)
+	if strings.Contains(blob, "@bob-abc") {
+		t.Errorf("finding body still carries a live mention:\n%s", blob)
+	}
+	if !strings.Contains(blob, "Ping @"+mentionZWSP+"bob-abc about the retry loop") {
+		t.Errorf("finding body misses the escaped mention:\n%s", blob)
+	}
+	if !strings.Contains(blob, "user@example.com") {
+		t.Errorf("finding body lost the address that is not a mention:\n%s", blob)
+	}
+	if !strings.Contains(blob, "notify(@dave)") || strings.Contains(blob, "notify(@\u200bdave)") {
+		t.Errorf("suggestion bytes changed; a suggestion is code:\n%s", blob)
+	}
+}
+
+// TestRecordFindingSignatureCoversTheEscape proves the escape happens before
+// the entry is signed. Merging a body that still carries the mention and one
+// that arrives already escaped must produce byte-identical entries: the
+// signature is computed over the escaped bytes either way. A signature taken
+// before the escape would hash the raw body for the first input and the escaped
+// body for the second, so the two would drift.
+func TestRecordFindingSignatureCoversTheEscape(t *testing.T) {
+	raw := mergeMentionEntry(t, "local-mention-sig-raw", mentionCommentBody)
+	escaped := mergeMentionEntry(t, "local-mention-sig-esc",
+		"Ping @"+mentionZWSP+"bob-abc about the retry loop; write to user@example.com.\n")
+	if raw != escaped {
+		t.Errorf("raw and pre-escaped input diverge, so the signature does not cover the escape:\nraw:\n%s\nescaped:\n%s", raw, escaped)
+	}
+	if again := recordcore.NeutralizeMentions(mentionCommentBody); again != "Ping @"+mentionZWSP+"bob-abc about the retry loop; write to user@example.com.\n" {
+		t.Errorf("second pass changed the body: %q", again)
+	}
+}

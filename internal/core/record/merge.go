@@ -592,7 +592,7 @@ func buildInline(st *state, m *jq.Obj) freshEntry {
 	rigor, _ := m.Get(fieldRigor)
 	sev, _ := m.Get(fieldSeverity)
 	cat, hasCat := m.Get(fieldCategory)
-	body := jq.StrOf(jq.Alt(bd, ""))
+	body := NeutralizeMentions(jq.StrOf(jq.Alt(bd, "")))
 	rigorValue, rigorSource := pickRigor(rigor)
 	category := pickCategory(st, m, cat, hasCat)
 	entry := &core.FindingEntry{

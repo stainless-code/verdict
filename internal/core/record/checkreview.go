@@ -70,7 +70,7 @@ var (
 	}
 	knownTriageKeys   = []string{fieldSig, fieldStatus, problemRationale}
 	knownSectionKeys  = []string{"heading", fieldSeverity}
-	knownCoverageKeys = []string{"file", "ranges"}
+	knownCoverageKeys = []string{fieldFile, fieldRanges}
 	reviewKeys        = []string{"critical", exampleImportant, "informational"}
 	rigorKeys         = []string{rungSaid, rungPointed, rungWalked, rungRan, rungReproduced}
 	triageStatuses    = []string{"open", "addressed", exampleWontFix, exampleFalsePositive, "deferred"}
@@ -758,7 +758,7 @@ func (c *checker) checkCoverage(v any) {
 	if !ok {
 		c.wrongType("$.coverage", "coverage must be an array of {file, ranges}",
 			"write [{\"file\": \"src/db.ts\", \"ranges\": \"1-240\"}]",
-			[]any{map[string]any{"file": "src/db.ts", "ranges": "all"}})
+			[]any{map[string]any{"file": "src/db.ts", fieldRanges: "all"}})
 		return
 	}
 	for i, item := range items {
@@ -771,21 +771,21 @@ func (c *checker) checkCoverageClaim(i int, item any) {
 	m, ok := item.(*jq.Obj)
 	if !ok {
 		c.wrongType(base, "coverage entry must be an object", "use {file, ranges}",
-			map[string]any{"file": "src/db.ts", "ranges": "all"})
+			map[string]any{"file": "src/db.ts", fieldRanges: "all"})
 		return
 	}
 	for _, key := range m.Keys {
 		v, _ := m.Get(key)
 		switch key {
-		case "file":
+		case fieldFile:
 			c.checkString(base+".file", v, true, "use a repo-relative path with hunks in the bundle")
-		case "ranges":
+		case fieldRanges:
 			c.checkString(base+".ranges", v, false, `use "1-240,300-320", "all", or omit it`)
 		default:
 			c.unknown(base, key, knownCoverageKeys)
 		}
 	}
-	if _, ok := m.Get("file"); !ok {
+	if _, ok := m.Get(fieldFile); !ok {
 		c.missing(base+".file", "missing file", "use a repo-relative path with hunks in the bundle", "src/db.ts")
 	}
 }

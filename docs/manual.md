@@ -1613,7 +1613,7 @@ line; the agent's posted line covers its own review — on a re-review with carr
 findings the two legitimately differ, and validation compares the posted line
 against the review's own comments.
 
-## Mentions in the review body
+## Mentions in the published text
 
 A review body is written by an agent and published verbatim, so an `@handle`
 in its prose would notify that person the moment the review is submitted. The
@@ -1639,9 +1639,16 @@ line, and the footer: the escape runs before any of them is appended. A mention
 needs the `@` at line start or after a space or tab and the handle to be
 `[A-Za-z0-9-]+`, so `user@example.com` is an address and stays as written. Two
 residuals stay prose and are not escaped: an indented (four-space) code block
-with no fence, and an `@` glued to a blockquote marker (`>@handle`). This
-covers the review body; a finding's inline comment `body` passes through
-unchanged.
+with no fence, and an `@` glued to a blockquote marker (`>@handle`).
+
+Every agent-written string that reaches a reader is covered, not just the review
+body: a finding's inline comment `body` is escaped where the entry is built,
+before its signature is stamped, so a bundle merged twice keeps one signature.
+Re-merging a bundle that predates this change is safe (the rewrite is a fixed
+point) but re-keys those entries once, because their stored signatures were
+computed over the raw bytes. A `suggestion` is a code replacement and is never
+touched — a zero-width space inside a patch would be a silent edit to it. A
+comment's machine `brief` is record-only, not published, and stays verbatim.
 
 ## Permalink evidence links
 
