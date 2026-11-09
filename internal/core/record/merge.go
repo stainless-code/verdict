@@ -97,6 +97,11 @@ func (st *state) human(line string) {
 }
 
 func (st *state) validateAndMerge(body string) (string, diagram.Status, error) {
+	// The body is constructed here, once, for both verbs: a mention the agent
+	// wrote is neutralized before any bytes are stored or hashed, and before
+	// the basis line, diagram, and footer are appended, so nothing downstream
+	// has to scan or rewrite them.
+	body = NeutralizeMentions(body)
 	st.kb = kb.New(st.warn)
 	st.kb.Root = st.repoRoot
 	st.kb.ReadFile = st.controls.ReadFile

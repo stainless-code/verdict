@@ -1613,6 +1613,36 @@ line; the agent's posted line covers its own review — on a re-review with carr
 findings the two legitimately differ, and validation compares the posted line
 against the review's own comments.
 
+## Mentions in the review body
+
+A review body is written by an agent and published verbatim, so an `@handle`
+in its prose would notify that person the moment the review is submitted. The
+escape happens once, in the merge that constructs the body into the recorded
+bytes — the same call `post` makes for its payload — so the recorded body, the
+`post --dry-run` output, and the payload digest carry the same bytes by
+construction. Never at submit time: escaping there would make the posted bytes
+diverge from the record, the preview, and the digest.
+
+The escape is U+200B ZERO WIDTH SPACE between the `@` and the handle. It is
+invisible in rendered Markdown, keeps the body plain text, and no host resolves
+a mention across it; a code span would change the rendering, so it is not the
+form. The rewrite is idempotent (`@` followed by the space no longer starts a
+handle), adds bytes and never removes them, and is not opt-in — there is no
+flag or verb for it.
+
+Non-interference is part of the contract. Fenced code blocks (three
+backticks or three tildes) and inline code spans are left byte-identical,
+because a `@handle` in a sample is not a mention and rewriting it would corrupt
+the text. HTML comments — the `<!-- verdict-finding … -->` markers included —
+are left untouched, as are the basis line, the diagram block, the coverage
+line, and the footer: the escape runs before any of them is appended. A mention
+needs the `@` at line start or after a space or tab and the handle to be
+`[A-Za-z0-9-]+`, so `user@example.com` is an address and stays as written. Two
+residuals stay prose and are not escaped: an indented (four-space) code block
+with no fence, and an `@` glued to a blockquote marker (`>@handle`). This
+covers the review body; a finding's inline comment `body` passes through
+unchanged.
+
 ## Permalink evidence links
 
 Findings link to code instead of pasting it: bodies reference each site as a reference-style `blob/<reviewed-SHA>/<path>#Lx` link (line ranges as `#Lx-Ly`), pinned to the reviewed commit — never live HEAD — so links survive later pushes; code quotes stay at most 3 lines and live only inside collapsed `<details>` blocks, with the visible body link-first. Non-GitHub and local bundles render plain `` `path:line` `` text instead (a blob URL there would 404), and the same degradation applies to `record`/`report` outputs. Link shape is garnish like the basis line: `post`/`record` warn on a wrong-SHA link or a long visible quote and keep the body — reviews never fail over it.
