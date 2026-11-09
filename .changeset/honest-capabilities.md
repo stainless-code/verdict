@@ -14,5 +14,6 @@ resolve mutation, and the new `unsupported` object carries one machine-readable
 reason code per absent capability (`fetch-only`, `no-request-changes-event`,
 `no-approve-verdict`, `no-inline-anchors`, `no-resolve-mutation`,
 `unknown-host`). The published envelope schema types `capabilities` instead of
-leaving it open, so a pre-split five-key capability object no longer validates;
-the writer emits the full object on every fetch.
+leaving it open; only `provider` and `fetch` stay required, so an envelope
+written before the split still validates while every new fetch emits the full
+object.

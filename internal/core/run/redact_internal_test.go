@@ -22,6 +22,19 @@ func TestArgvShapeRedactsSecrets(t *testing.T) {
 	}
 }
 
+// TestArgvShapeStackedSecretFlags proves a secret-shaped flag with no operand
+// does not swallow the next flag's operand: `--token --api-key VALUE` has an
+// empty operand for --token, so the value belongs to --api-key and is redacted
+// there rather than surviving verbatim.
+func TestArgvShapeStackedSecretFlags(t *testing.T) {
+	argv := []string{"claude", "-p", "--token", "--api-key", "plain-value"}
+	got := argvShape(argv, "", nil)
+	want := []string{"claude", "-p", "--token", "--api-key", redactedValue}
+	if !slices.Equal(got, want) {
+		t.Fatalf("argvShape = %q, want %q", got, want)
+	}
+}
+
 // TestArgvShapeKeepsOrdinaryFlags proves the redactor does not swallow the
 // launcher's own shape: a model name and a turn cap stay readable, and the agent's
 // own flags keep their operands.

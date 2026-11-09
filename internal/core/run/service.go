@@ -471,9 +471,12 @@ type artifactState struct {
 
 // inspectArtifact stats the contract path and compares its modification time
 // with the launch record's. Both stamps come from the same filesystem, so the
-// comparison is not sensitive to clock skew or to a filesystem's timestamp
-// granularity: a file written during the run is never older than the record that
-// started it, and a file left by an earlier run is.
+// comparison is not sensitive to clock skew. It is a second-granularity
+// comparison on filesystems that store whole seconds: a leftover artifact
+// stamped in the same second as the launch record reads as fresh. The failure
+// direction is deliberate - it fails open, so a same-tick leftover is reviewed
+// rather than silently refused - but the guarantee is "older than the launch",
+// not "written by this agent".
 func inspectArtifact(path string, launched time.Time) artifactState {
 	art := artifactState{launched: launched}
 	info, err := os.Stat(path)

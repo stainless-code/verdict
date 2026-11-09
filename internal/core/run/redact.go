@@ -31,9 +31,12 @@ func argvShape(argv []string, prompt string, environ []string) []string {
 	// which is the credential itself; it is cleared before the next flag so a
 	// redacted operand cannot cascade into the argument after it.
 	operandOfSecretFlag := false
-	for _, arg := range argv {
+	for i, arg := range argv {
 		redactedSeparate := operandOfSecretFlag
-		operandOfSecretFlag = !operandOfSecretFlag && namesSecret(arg)
+		// The next argument is the operand only when it is not itself a flag:
+		// `--token --api-key VALUE` has an empty operand for --token, and
+		// consuming --api-key as its value would leak VALUE verbatim.
+		operandOfSecretFlag = !operandOfSecretFlag && namesSecret(arg) && nextIsOperand(argv, i)
 		switch {
 		case arg == prompt:
 			shape = append(shape, promptPlaceholder)
@@ -44,6 +47,13 @@ func argvShape(argv []string, prompt string, environ []string) []string {
 		}
 	}
 	return shape
+}
+
+// nextIsOperand reports whether argv has an argument after i that is not
+// itself a flag, so a secret-shaped flag followed by another flag redacts
+// nothing rather than swallowing the next flag's operand.
+func nextIsOperand(argv []string, i int) bool {
+	return i+1 < len(argv) && !strings.HasPrefix(argv[i+1], "-")
 }
 
 // namesSecret reports whether an argument is a flag whose operand is a

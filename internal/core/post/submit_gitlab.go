@@ -397,7 +397,10 @@ func gitlabLineMap(lines []string, start, end int) map[int]gitlabDiffLine {
 			cur++
 		case strings.HasPrefix(ln, "-"):
 			old++
-		case ln != "":
+		default:
+			// Everything else is a context line, including an empty one: git
+			// renders a blank context line as an empty string with no leading
+			// space, and skipping it would desync every line number after it.
 			out[cur] = gitlabDiffLine{old: old}
 			old++
 			cur++

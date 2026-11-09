@@ -22,6 +22,12 @@ const (
 const gitlabTestDiff = "diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n" +
 	"--- a/notes.txt\n+++ b/notes.txt\n@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n"
 
+// gitlabBlankContextDiff has a truly empty context line: git renders a blank
+// context line as an empty string with no leading space, so a line map that
+// skips it shifts every new-side number after it by one.
+const gitlabBlankContextDiff = "diff --git a/blank.txt b/blank.txt\nindex 1111111..2222222 100644\n" +
+	"--- a/blank.txt\n+++ b/blank.txt\n@@ -1,4 +1,4 @@\n top\n\n-old line\n+new line\n tail\n"
+
 // gitlabTestRenameDiff is the renamed-file hunk: GitLab wants the pre-change path
 // beside the post-change one.
 const gitlabTestRenameDiff = "diff --git a/old.go b/new.go\nsimilarity index 90%\nrename from old.go\nrename to new.go\n" +
@@ -157,6 +163,19 @@ func TestGitLabPositionMapping(t *testing.T) {
 			name: "removed line is old-side only", diff: gitlabTestDiff,
 			comment: jq.NewObj("path", "notes.txt", "line", 2, "side", "LEFT", "body", "B"),
 			oldPath: "notes.txt", oldLine: float64(2), newLine: nil,
+		},
+		{
+			// The blank context line is new 2 / old 2. Skipping it in the line
+			// map makes new 2 read as the added line (no old_line) and pushes
+			// every number after it one down, so this row fails on the bug.
+			name: "blank context line keeps its old number", diff: gitlabBlankContextDiff,
+			comment: jq.NewObj("path", "blank.txt", "line", 2, "side", "RIGHT", "body", "B"),
+			oldPath: "blank.txt", oldLine: float64(2), newLine: float64(2), bodyPath: "blank.txt",
+		},
+		{
+			name: "line after a blank context line keeps its old number", diff: gitlabBlankContextDiff,
+			comment: jq.NewObj("path", "blank.txt", "line", 4, "side", "RIGHT", "body", "B"),
+			oldPath: "blank.txt", oldLine: float64(4), newLine: float64(4), bodyPath: "blank.txt",
 		},
 		{
 			name: "rename keeps both paths", diff: gitlabTestRenameDiff,

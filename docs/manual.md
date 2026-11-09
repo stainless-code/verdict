@@ -1191,6 +1191,11 @@ agent's own failure visible to CI:
 | `unknown-agent`         | the name is not in the agent table                              | 1           |
 | `agent-record-failed`   | the launcher could not write its provenance record              | 1           |
 
+An agent exiting `1`, `2`, or `3` is indistinguishable on the exit code alone
+from verdict's own refusal, usage, and canceled codes; `--json` disambiguates
+them through `error.code`, and the envelope's `data.exit` records what the agent
+itself returned.
+
 Plus the shared codes: `missing-bundle` (fetch first), `bad-flags` (no
 `--agent`), `bad-timeout`, `canceled` (exit 3), and usage errors (exit 2).
 There is no retry, no re-prompt, and no repair pass: fix the invocation and
@@ -2092,7 +2097,10 @@ GitHub takes one atomic review; GitLab has no such call, so its submit replays
 three primitives in that order. Both hosts post the summary body last and
 neither replays a payload whose first write landed: a mid-way failure refuses
 typed `post-failed`, names what landed in the envelope `warnings`, and writes
-the host's own stderr to `.post.err`.
+the host's own stderr to `.post.err`. The guarantee covers positioned
+discussions. A review with no comments posts only the summary note, and a
+summary write whose response was lost can be retried because nothing landed to
+observe; that case is the same lost-response shape GitHub documents.
 
 | Provider | Submit writes, in order                                                                                                                                                                                                                                                                            | Gaps                                                                                                                                                                                          |
 | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
