@@ -259,25 +259,26 @@ func (st *svc) merge(dir, prov, headFull string, review *jq.Obj) (MergeResult, *
 	req := st.req
 	rt := st.runtime()
 	res, err := Merge(&rt, &MergeParams{
-		Dir:          dir,
-		Prov:         prov,
-		HeadFull:     headFull,
-		Review:       review,
-		ReviewFile:   dir + reviewSuffix,
-		Root:         req.RootPath(),
-		RepoRoot:     req.RepoRootPath(),
-		Body:         reviewBodyOf(review),
-		FindingsFile: dir + "/findings.json",
-		Effective:    req.Effective,
-		Forces:       req.Forces,
-		Repo:         req.Repo,
-		Pr:           req.Pr,
-		Cmd:          "record",
-		DryRun:       st.req.DryRun,
-		Controls:     st.controls,
-		Run:          st.run,
-		HunkRows:     st.hunkRows,
-		InputChecked: true,
+		Dir:             dir,
+		Prov:            prov,
+		HeadFull:        headFull,
+		Review:          review,
+		ReviewFile:      dir + reviewSuffix,
+		Root:            req.RootPath(),
+		RepoRoot:        req.RepoRootPath(),
+		Body:            reviewBodyOf(review),
+		FindingsFile:    dir + "/findings.json",
+		Effective:       req.Effective,
+		Forces:          req.Forces,
+		Repo:            req.Repo,
+		Pr:              req.Pr,
+		Cmd:             "record",
+		DryRun:          st.req.DryRun,
+		Controls:        st.controls,
+		Run:             st.run,
+		HunkRows:        st.hunkRows,
+		InputChecked:    true,
+		RequireCoverage: st.req.Flags.RequireCoverage,
 	})
 	if err != nil {
 		return MergeResult{}, refusalOrFailed(err)
@@ -394,6 +395,7 @@ func (st *svc) finalize(ctx context.Context, dir, prov, headFull, now string, re
 		PromptsHash:     promptsHash,
 		Model:           modelOrNil(model),
 		Repairs:         repairList(st.repairs),
+		Coverage:        res.Coverage.Receipt(),
 	}
 	if ident, ok := identity.Verify(ctx, st.identityCommander(), dir, identityHead(dir, prov, st.store), BundleBase(dir, st.store)); ok {
 		record.PatchID, record.PatchIDKind = ident.PatchID, ident.PatchIDKind

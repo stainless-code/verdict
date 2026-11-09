@@ -44,6 +44,8 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req *Request) int {
 	rc.DryRun = f.dryRun
 	rc.Strict = f.strict
 	rc.Flags.CostNames = f.costNames
+	rc.Flags.RequireCoverage = f.requireCoverage
+	rc.Flags.RequireCoverage = f.requireCoverage
 	rc.Flags.CostPanel = f.costPanel
 	resp, ref := recordcore.Run(ctx, rc)
 	if ref != nil {
@@ -82,10 +84,11 @@ func setupRunner(r *cli.Runner, req *Request) {
 }
 
 type recordFlags struct {
-	costPanel []string
-	dryRun    bool
-	strict    bool
-	costNames bool
+	costPanel       []string
+	dryRun          bool
+	strict          bool
+	costNames       bool
+	requireCoverage bool
 }
 
 // parseRecordFlags strips record's verb-local flags, reporting unknown ones.
@@ -99,6 +102,8 @@ func parseRecordFlags(r *cli.Runner, args []string) (recordFlags, int, bool) {
 			f.strict = true
 		case arg == "--cost-names":
 			f.costNames = true
+		case arg == "--require-coverage":
+			f.requireCoverage = true
 		case strings.HasPrefix(arg, "--cost-names="):
 			f.costNames = true
 			panel, ok := splitPanel(strings.TrimPrefix(arg, "--cost-names="))
@@ -110,7 +115,7 @@ func parseRecordFlags(r *cli.Runner, args []string) (recordFlags, int, bool) {
 			f.costPanel = panel
 		default:
 			return f, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
-				"unknown flag '%s' for record (want --dry-run, --strict, --cost-names, --json)", arg)}), true
+				"unknown flag '%s' for record (want --dry-run, --strict, --cost-names, --require-coverage, --json)", arg)}), true
 		}
 	}
 	return f, 0, false

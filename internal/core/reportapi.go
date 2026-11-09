@@ -58,7 +58,10 @@ type ReportResponse struct { //nolint:govet // field grouping documents the resp
 // run unchanged).
 type NextRequest struct {
 	ReadRequest
-	Status    string `enum:"all|open|addressed|wont-fix|false-positive|deferred"`
+	Status string `enum:"all|open|addressed|wont-fix|false-positive|deferred"`
+	// Coverage selects the diff-coverage read mode: it answers "how much of
+	// the changed diff did the agent attest?" and never reads findings.json.
+	Coverage  bool
 	Effective Effective
 	Warnings  []string
 }
@@ -75,7 +78,26 @@ type NextResponse struct { //nolint:govet // field grouping documents the respon
 	Item            *FindingItem
 	StoreUnreadable bool
 	ReportRefusal   *RefusalError
+	Coverage        *CoverageReport
 	Human           string
+}
+
+// CoverageGap is one file's unattested changed-line ranges.
+type CoverageGap struct {
+	File   string `json:"file"`
+	Ranges string `json:"ranges"`
+}
+
+// CoverageReport is `next --coverage`'s data: the evaluator summary plus the
+// full gap list. Percent is null when nothing was measured.
+type CoverageReport struct {
+	Percent    *int          `json:"percent"    anyOf:"null"`
+	Attested   int           `json:"attested"   min:"0"`
+	Total      int           `json:"total"      min:"0"`
+	Files      int           `json:"files"      min:"0"`
+	Exempt     int           `json:"exempt"     min:"0"`
+	Chunked    bool          `json:"chunked"`
+	Unattested []CoverageGap `json:"unattested"`
 }
 
 // ShowRequest is the show service invocation.

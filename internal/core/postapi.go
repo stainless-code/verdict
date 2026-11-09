@@ -13,6 +13,9 @@ type PostFlags struct {
 	Bind           bool
 	Force          bool
 	DryRun         bool
+	// RequireCoverage refuses an absent or partial diff-coverage
+	// attestation; --force never bypasses it.
+	RequireCoverage bool
 }
 
 // PostRequest is the post service invocation: the read runtime and
@@ -44,21 +47,22 @@ type PostResponse struct { //nolint:govet // field grouping documents the respon
 // the dry-run findings carry the file while the real findings carry the
 // accepted review. Review rides before provenance on the real-post wire.
 type PostData struct { //nolint:govet // field order is the published property order
-	DryRun          bool           `json:"dry_run"`
-	Event           string         `json:"event"`
-	CommitID        string         `json:"commit_id"`
-	Body            PostBody       `inline:"true"           json:"body"`
-	Anchors         AnchorsSummary `json:"anchors"`
-	Suggestions     Suggestions    `inline:"true"           json:"suggestions"`
-	Findings        PostFindings   `inline:"true"           json:"findings"`
-	Items           []FindingItem  `json:"items"`
-	Confidence      *int           `json:"confidence"       max:"5"            min:"1"`
-	SecuritySummary *string        `json:"security_summary"`
-	PayloadHash     string         `json:"payload_hash"`
-	Review          map[string]any `json:"review,omitempty"`
-	Provenance      Provenance     `json:"provenance"       optional:"true"`
-	ItemsRaw        []any          `json:"-"`
-	ReviewRaw       any            `json:"-"`
+	DryRun          bool             `json:"dry_run"`
+	Event           string           `json:"event"`
+	CommitID        string           `json:"commit_id"`
+	Body            PostBody         `inline:"true"           json:"body"`
+	Anchors         AnchorsSummary   `json:"anchors"`
+	Suggestions     Suggestions      `inline:"true"           json:"suggestions"`
+	Findings        PostFindings     `inline:"true"           json:"findings"`
+	Items           []FindingItem    `json:"items"`
+	Confidence      *int             `json:"confidence"       max:"5"            min:"1"`
+	SecuritySummary *string          `json:"security_summary"`
+	PayloadHash     string           `json:"payload_hash"`
+	Review          map[string]any   `json:"review,omitempty"`
+	Provenance      Provenance       `json:"provenance"       optional:"true"`
+	Coverage        *CoverageSummary `anyOf:"null"              json:"coverage,omitempty" optional:"true"`
+	ItemsRaw        []any            `json:"-"`
+	ReviewRaw       any              `json:"-"`
 }
 
 // PostBody is the rendered post body summary.
@@ -98,10 +102,11 @@ type Post struct { //nolint:govet // field order is the published property order
 	// PostMinSeverity is the global posting floor. PostFloorScoped records
 	// different path-specific floors that withheld findings, and
 	// BelowFloorExcluded counts all withheld findings.
-	PostMinSeverity    *string      `enum:"critical|important|informational" json:"post_min_severity,omitempty"`
-	BelowFloorExcluded int          `json:"below_floor_excluded,omitempty"   min:"0"`
-	PostFloorScoped    []FloorScope `json:"post_floor_scoped,omitempty"`
-	ReviewRaw          any          `json:"-"`
+	PostMinSeverity    *string          `enum:"critical|important|informational" json:"post_min_severity,omitempty"`
+	BelowFloorExcluded int              `json:"below_floor_excluded,omitempty"   min:"0"`
+	PostFloorScoped    []FloorScope     `json:"post_floor_scoped,omitempty"`
+	Coverage           *CoverageSummary `anyOf:"null"              json:"coverage,omitempty" optional:"true"`
+	ReviewRaw          any              `json:"-"`
 }
 
 // FloorScope is one path-scoped severity floor that actually withheld a
@@ -221,6 +226,9 @@ func (p *Post) Wire() *jq.Obj {
 		o.Set("forced", p.Forced)
 	}
 	setPostFloorWire(o, p)
+	if p.Coverage != nil {
+		o.Set("coverage", p.Coverage)
+	}
 	return o
 }
 

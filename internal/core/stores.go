@@ -21,16 +21,25 @@ const (
 
 // Review is schemas/review.schema.json: the agent-written review input.
 type Review struct { //nolint:govet // field order is the published property order
-	SchemaVersion   string        `const:"1"                         json:"schema_version,omitempty"`
-	Body            string        `json:"body"`
-	Approved        bool          `json:"approved,omitempty"`
-	Comments        []Comment     `json:"comments"`
-	Resolved        []string      `json:"resolved,omitempty"`
-	Triage          []TriageClaim `json:"triage,omitempty"`
-	Sections        []SectionTag  `json:"sections,omitempty"`
-	Confidence      *int          `json:"confidence,omitempty"       max:"5"                         min:"1"`
-	SecuritySummary *string       `json:"security_summary,omitempty"`
-	Chunks          []string      `json:"chunks,omitempty"`
+	SchemaVersion   string          `const:"1"                         json:"schema_version,omitempty"`
+	Body            string          `json:"body"`
+	Approved        bool            `json:"approved,omitempty"`
+	Comments        []Comment       `json:"comments"`
+	Resolved        []string        `json:"resolved,omitempty"`
+	Triage          []TriageClaim   `json:"triage,omitempty"`
+	Sections        []SectionTag    `json:"sections,omitempty"`
+	Confidence      *int            `json:"confidence,omitempty"       max:"5"                         min:"1"`
+	SecuritySummary *string         `json:"security_summary,omitempty"`
+	Chunks          []string        `json:"chunks,omitempty"`
+	Coverage        []CoverageClaim `json:"coverage,omitempty"`
+}
+
+// CoverageClaim is one diff-coverage attestation entry: the file and the
+// changed-line ranges the agent says it read. Absent or "all" ranges attest the
+// whole file.
+type CoverageClaim struct {
+	File   string `json:"file"`
+	Ranges string `json:"ranges,omitempty"`
 }
 
 // Comment is one inline finding in review.json input.
@@ -141,18 +150,19 @@ type Repair struct {
 // shell passes through raw) re-emits byte-identically; ItemsRaw wins over
 // the typed items so the envelope re-emits the ordered summaries verbatim.
 type RecordData struct { //nolint:govet // field order is the published property order
-	Dir             string         `json:"dir"`
-	Anchors         AnchorsSummary `json:"anchors"`
-	Findings        RecordFindings `inline:"true"               json:"findings"`
-	Confidence      *int           `json:"confidence"           max:"5"                min:"1"`
-	SecuritySummary *string        `json:"security_summary"`
-	Items           []FindingItem  `json:"items"`
-	DryRun          bool           `json:"dry_run,omitempty"`
-	Check           *CheckSummary  `anyOf:"null"                json:"check,omitempty"`
-	Normalized      any            `json:"normalized,omitempty" type:"object"`
-	Repairs         []Repair       `json:"repairs,omitempty"`
-	ConfidenceRaw   any            `json:"-"`
-	ItemsRaw        []any          `json:"-"`
+	Dir             string           `json:"dir"`
+	Anchors         AnchorsSummary   `json:"anchors"`
+	Findings        RecordFindings   `inline:"true"               json:"findings"`
+	Confidence      *int             `json:"confidence"           max:"5"                min:"1"`
+	SecuritySummary *string          `json:"security_summary"`
+	Items           []FindingItem    `json:"items"`
+	DryRun          bool             `json:"dry_run,omitempty"`
+	Check           *CheckSummary    `anyOf:"null"                json:"check,omitempty"`
+	Coverage        *CoverageSummary `anyOf:"null"              json:"coverage,omitempty" optional:"true"`
+	Normalized      any              `json:"normalized,omitempty" type:"object"`
+	Repairs         []Repair         `json:"repairs,omitempty"`
+	ConfidenceRaw   any              `json:"-"`
+	ItemsRaw        []any            `json:"-"`
 }
 
 // RecordFindings counts the findings a record run merged.
@@ -163,25 +173,38 @@ type RecordFindings struct { //nolint:govet // field order is the published prop
 	File      string `json:"file"`
 }
 
+// CoverageSummary is D29's stored read receipt: the measured share of changed
+// lines the agent attested. Percent is null when nothing was measured, never 0
+// — a zero denominator is unmeasured.
+type CoverageSummary struct {
+	Percent  *int `json:"percent"`
+	Attested int  `json:"attested" min:"0"`
+	Total    int  `json:"total"    min:"0"`
+	Files    int  `json:"files"    min:"0"`
+	Exempt   int  `json:"exempt"   min:"0"`
+	Gaps     int  `json:"gaps"     min:"0"`
+}
+
 // Record is schemas/record.schema.json: the completed-record artifact.
 // ConfidenceRaw wins over the typed confidence like RecordData does.
 type Record struct { //nolint:govet // field order is the published property order
-	SchemaVersion   string   `const:"1"                         json:"schema_version"`
-	Status          string   `json:"status"`
-	Head            string   `json:"head"`
-	DiffSHA256      string   `json:"diff_sha256"`
-	RecordedAt      string   `format:"date-time"                json:"recorded_at"`
-	Findings        int      `json:"findings"                   min:"0"`
-	Open            int      `json:"open"                       min:"0"`
-	Confidence      *int     `json:"confidence,omitempty"       max:"5"               min:"1"`
-	SecuritySummary *string  `json:"security_summary,omitempty"`
-	ToolVersion     string   `json:"tool_version,omitempty"`
-	PromptsHash     string   `json:"prompts_hash,omitempty"`
-	Model           *string  `json:"model,omitempty"`
-	PatchID         *string  `json:"patch_id,omitempty"`
-	PatchIDKind     string   `json:"patch_id_kind,omitempty"`
-	Repairs         []Repair `json:"repairs,omitempty"`
-	ConfidenceRaw   any      `json:"-"`
+	SchemaVersion   string           `const:"1"                         json:"schema_version"`
+	Status          string           `json:"status"`
+	Head            string           `json:"head"`
+	DiffSHA256      string           `json:"diff_sha256"`
+	RecordedAt      string           `format:"date-time"                json:"recorded_at"`
+	Findings        int              `json:"findings"                   min:"0"`
+	Open            int              `json:"open"                       min:"0"`
+	Confidence      *int             `json:"confidence,omitempty"       max:"5"               min:"1"`
+	SecuritySummary *string          `json:"security_summary,omitempty"`
+	ToolVersion     string           `json:"tool_version,omitempty"`
+	PromptsHash     string           `json:"prompts_hash,omitempty"`
+	Model           *string          `json:"model,omitempty"`
+	PatchID         *string          `json:"patch_id,omitempty"`
+	PatchIDKind     string           `json:"patch_id_kind,omitempty"`
+	Repairs         []Repair         `json:"repairs,omitempty"`
+	Coverage        *CoverageSummary `anyOf:"null"              json:"coverage,omitempty" optional:"true"`
+	ConfidenceRaw   any              `json:"-"`
 }
 
 // Wire renders one finding entry in wire order: the fixed construction order
@@ -416,6 +439,9 @@ func (r *Record) Wire() *jq.Obj {
 	}
 	if len(r.Repairs) > 0 {
 		o.Set("repairs", r.Repairs)
+	}
+	if r.Coverage != nil {
+		o.Set("coverage", r.Coverage)
 	}
 	return o
 }

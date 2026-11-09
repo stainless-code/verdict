@@ -229,6 +229,7 @@ func decodeNext(req *core.NextRequest, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.str(argPr, &req.Pr)
 	a.str(argStatus, &req.Status)
+	a.boolean("coverage", &req.Coverage)
 }
 
 func wireNext(ctx context.Context, b *bindings, req *core.NextRequest) error {
@@ -250,6 +251,7 @@ func decodePost(req *core.PostRequest, a *args) {
 		f.boolean("bind", &req.Flags.Bind)
 		f.boolean("force", &req.Flags.Force)
 		f.boolean("dryRun", &req.Flags.DryRun)
+		f.boolean("requireCoverage", &req.Flags.RequireCoverage)
 	})
 }
 
@@ -281,6 +283,9 @@ func decodeRecord(req *core.RecordRequest, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.str(argPr, &req.Pr)
 	a.boolean("dry_run", &req.DryRun)
+	a.flags(func(f *args) {
+		f.boolean("requireCoverage", &req.Flags.RequireCoverage)
+	})
 }
 
 func wireRecord(ctx context.Context, b *bindings, req *core.RecordRequest) error {

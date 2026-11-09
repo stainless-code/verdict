@@ -348,6 +348,7 @@ func (st *state) merge() *core.RefusalError {
 		PreFooter: st.splitPreFooter,
 		Effective: st.req.Effective, Forces: st.req.Forces,
 		Repo: st.req.Repo, Pr: st.req.Pr, Cmd: "post", Controls: st.controls,
+		RequireCoverage: st.flags.RequireCoverage,
 	})
 	if err != nil {
 		return refusalOrFailed(err)

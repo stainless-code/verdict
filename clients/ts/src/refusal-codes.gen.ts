@@ -65,6 +65,7 @@ export type RefusalCode =
   | "cost-models-not-array"
   | "cost-panel-unresolved"
   | "cost-unreadable"
+  | "coverage-incomplete"
   | "degenerate-body"
   | "diff-failed"
   | "diff-too-large"

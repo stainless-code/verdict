@@ -105,6 +105,12 @@ type GroupCost = core.GroupCost
 // FloorScope is core's per-path posting floor entry on a post record.
 type FloorScope = core.FloorScope
 
+// CoverageSummary is core's stored diff-coverage receipt on post and record.
+type CoverageSummary = core.CoverageSummary
+
+// CoverageClaim is core's review.json coverage[] entry.
+type CoverageClaim = core.CoverageClaim
+
 // ModelSpend is core's one-model token record inside a cost record.
 type ModelSpend = core.ModelSpend
 

@@ -114,7 +114,7 @@ var publishedSemantics = map[string]string{
 	// Plan identity: verify.planGroup now requires id and label, and
 	// verify.checks requires head, so a verified envelope names the group it
 	// resolved rather than an anonymous profile/depth pair.
-	"envelope.schema.json": "4428b98a022211d0f14cbdcddaa42ca0b662af3b711cf6c28370ec62d71ef627",
+	"envelope.schema.json": "9c7974504659b786993851ff95f37748d4262828524096be39651360eb5b952c",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -127,7 +127,7 @@ var publishedSemantics = map[string]string{
 	// post_floor_scoped: additive optional per-path posting floor list with its
 	// $defs/floorScope entry (required path, enum floor). No existing
 	// property, required key, or type changed.
-	"post.schema.json": "7a40a685ebf050858a07a6e4e319590fc49c0bad501de19c398e91a500097dd2",
+	"post.schema.json": "aabfab3310c8c89c9aa8959375aca7a95dc58bd66bdcc9ee749364f53b9abada",
 	// patch identity: additive $defs/identity root (new bundle document) —
 	// no existing property, required key, or type changed.
 	"identity.schema.json": "efe9a7b331e41715bc55b8824e95154add584c2d63f670811ef03c350d2e5bdb",
@@ -138,7 +138,7 @@ var publishedSemantics = map[string]string{
 	// existing property, required key, or type changed.
 	// patch identity: additive optional patch_id/patch_id_kind. No existing
 	// property, required key, or type changed.
-	"record.schema.json": "1b4dd1183dafdb938513fb5765b0f0f5f64dd82c2e38083135dd25902b7a2d65",
+	"record.schema.json": "010490b84f34be41f837b468db8b42442a6c25d2a601c77e20b8983b0e9a24c7",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable comment.brief
 	// (optional; no existing property, required key, or type changed). The
 	// descriptions now state the checker's exact error/warning split; shape
@@ -150,7 +150,7 @@ var publishedSemantics = map[string]string{
 	// checker warns (never refuses) on unknown or non-string values and the
 	// normalizer lowercases case variants. No existing property, required key,
 	// or type changed.
-	"review.schema.json": "5da600e4619e2943b061bc35a686d1a14fdb96709ff1b05d23713018efd2ed1b",
+	"review.schema.json": "25d13e382b0aac5cfb146909f388603895506aa4491dbc39b22608621d715a6f",
 	// additive threads.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed). The PR-conversation
 	// contract extends the first cut with the thread's host id, PR/head/time

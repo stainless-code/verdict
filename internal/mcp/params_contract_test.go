@@ -133,9 +133,9 @@ func TestInvalidParamsContract(t *testing.T) {
 			want: `unknown argument "pr"`,
 		},
 		{
-			name: "record has no flags object",
-			line: `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"record","arguments":{"repo":"a/b","pr":"1","flags":{}}}}`,
-			want: `unknown argument "flags"`,
+			name: "record rejects an unknown flag",
+			line: `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"record","arguments":{"repo":"a/b","pr":"1","flags":{"bogus":true}}}}`,
+			want: `unknown argument "flags.bogus"`,
 		},
 		{
 			name: "omitted repo on learn",

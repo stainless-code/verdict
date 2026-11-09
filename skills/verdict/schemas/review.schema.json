@@ -51,6 +51,10 @@
       "description": "Coverage attestation on chunked bundles: every manifest chunk name the synthesis covers. Missing warns; non-array/non-string entries and attested-but-partial coverage refuse.",
       "type": "array",
       "items": { "type": "string" }
+    },
+    "coverage": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/coverageClaim" }
     }
   },
   "required": ["body", "comments"],
@@ -182,6 +186,15 @@
         "severity": { "enum": ["critical", "important", "informational", null] }
       },
       "required": ["heading"],
+      "additionalProperties": true
+    },
+    "coverageClaim": {
+      "type": "object",
+      "properties": {
+        "file": { "type": "string" },
+        "ranges": { "type": "string" }
+      },
+      "required": ["file"],
       "additionalProperties": true
     }
   }

@@ -11,6 +11,9 @@ package core
 type RecordFlags struct {
 	CostPanel []string `json:"-"`
 	CostNames bool     `json:"-"`
+	// RequireCoverage refuses an absent or partial diff-coverage
+	// attestation; --force never bypasses it.
+	RequireCoverage bool
 }
 
 // RecordRequest is the record service invocation: the read runtime and

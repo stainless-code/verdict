@@ -223,6 +223,7 @@ func documents() []document {
 			defs: []definition{
 				{typ: reflect.TypeFor[ForcedPost](), name: "forcedPost"},
 				{typ: reflect.TypeFor[FloorScope](), name: "floorScope"},
+				{typ: reflect.TypeFor[CoverageSummary](), name: "coverageSummary"},
 			},
 			additionalProperties: true,
 		},
@@ -232,6 +233,7 @@ func documents() []document {
 			root:  reflect.TypeFor[Record](),
 			defs: []definition{
 				{typ: reflect.TypeFor[Repair](), name: "repair"},
+				{typ: reflect.TypeFor[CoverageSummary](), name: "coverageSummary"},
 			},
 			additionalProperties: true,
 		},
@@ -275,6 +277,7 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[FindingsCounts](), name: "findingsCounts"},
 		{typ: reflect.TypeFor[FindingItem](), name: "findingItem"},
 		{typ: reflect.TypeFor[Provenance](), name: "provenance"},
+		{typ: reflect.TypeFor[CoverageSummary](), name: "coverageSummary"},
 		{typ: reflect.TypeFor[ReportData](), name: "reportData"},
 		{typ: reflect.TypeFor[ReportHead](), name: "reportHead"},
 		{typ: reflect.TypeFor[ReportVerdict](), name: "reportVerdict"},
@@ -351,6 +354,7 @@ func reviewDefs() []definition {
 		{typ: reflect.TypeFor[BriefSite](), name: defsBriefSite},
 		{typ: reflect.TypeFor[TriageClaim](), name: "triageClaim"},
 		{typ: reflect.TypeFor[SectionTag](), name: "sectionTag"},
+		{typ: reflect.TypeFor[CoverageClaim](), name: "coverageClaim"},
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/core/coverage"
 	"github.com/stainless-code/verdict/internal/diagram"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -22,42 +23,44 @@ import (
 )
 
 type state struct { //nolint:govet // field grouping documents the merge dimensions; alignment is irrelevant here
-	confidence   any
-	security     any
-	review       *jq.Obj
-	controls     *controls.Snapshot
-	run          *config.RunState
-	kb           *kb.Ctx
-	forces       *core.GlobalForces
-	preFooter    func(string) string
-	progress     core.Progress
-	effective    core.Effective
-	cmd          string
-	repo         string
-	pr           string
-	env          map[string]string
-	now          string
-	findingsFile string
-	marker       string
-	dir          string
-	reviewFile   string
-	root         string
-	repoRoot     string
-	anchorHunks  string
-	headShort    string
-	prov         string
-	headFull     string
-	kept         []any
-	keptSigs     []string
-	hunkRows     []hunks.Hunk
-	moved        []any
-	entries      []any
-	hunkN        int
-	nKept        int
-	nMoved       int
-	dryRun       bool
-	inputChecked bool
-	warnings     []string
+	confidence      any
+	security        any
+	review          *jq.Obj
+	coverage        *coverage.Summary
+	controls        *controls.Snapshot
+	run             *config.RunState
+	kb              *kb.Ctx
+	forces          *core.GlobalForces
+	preFooter       func(string) string
+	progress        core.Progress
+	effective       core.Effective
+	cmd             string
+	repo            string
+	pr              string
+	env             map[string]string
+	now             string
+	findingsFile    string
+	marker          string
+	dir             string
+	reviewFile      string
+	root            string
+	repoRoot        string
+	anchorHunks     string
+	headShort       string
+	prov            string
+	headFull        string
+	kept            []any
+	keptSigs        []string
+	hunkRows        []hunks.Hunk
+	moved           []any
+	entries         []any
+	hunkN           int
+	nKept           int
+	nMoved          int
+	dryRun          bool
+	inputChecked    bool
+	requireCoverage bool
+	warnings        []string
 }
 
 // kbThresholds reads the retirement policy the run resolved: the
@@ -106,6 +109,9 @@ func (st *state) validateAndMerge(body string) (string, diagram.Status, error) {
 		return "", diagram.Status{}, err
 	}
 	if err := st.validateInputs(); err != nil {
+		return "", diagram.Status{}, err
+	}
+	if err := st.evaluateCoverage(); err != nil {
 		return "", diagram.Status{}, err
 	}
 	anchorHunks, err := st.validateChunkMerge()
@@ -204,6 +210,8 @@ func (st *state) garnishChecks(body string) (string, diagram.Status, error) {
 		//nolint:wrapcheck // the typed bad-override refusal passes through unchanged; the edge renders Code/Message
 		return "", dr.Status, ref
 	}
+	body = st.applyCoverageLine(body)
+	st.reportCoverage()
 	body = st.applyFooter(body)
 	st.setMarker(body)
 	return body, dr.Status, nil

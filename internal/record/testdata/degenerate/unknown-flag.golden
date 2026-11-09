@@ -2,5 +2,5 @@ exit: 2
 --- stdout ---
 
 --- stderr ---
-unknown flag '--bogus' for record (want --dry-run, --strict, --cost-names, --json)
+unknown flag '--bogus' for record (want --dry-run, --strict, --cost-names, --require-coverage, --json)
 --- files ---

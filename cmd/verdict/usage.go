@@ -43,7 +43,8 @@ func usageText() string {
 		"    --preview resolves a proposed file (or the trusted inventory, else the no-policy layers)\n" +
 		"    with current personal settings and environment — no live calls, no writes, and\n" +
 		"    never an approval. One git rev-parse root probe runs outside the caller commander.\n" +
-		"  record <owner/repo> <local-slug> [--dry-run] [--strict] [--cost-names[=<names>]] [--json]\n" +
+		"  record <owner/repo> <local-slug> [--dry-run] [--strict] [--cost-names[=<names>]]\n" +
+		"         [--require-coverage] [--json]\n" +
 		"    validate + merge a local review.json into findings.json + record.json. No GitHub, no post.\n" +
 		"    --dry-run runs every check and writes nothing; --strict promotes warnings to errors.\n" +
 		"    --cost-names names the cost record's models[] entries from the panel, in order, and\n" +
@@ -57,7 +58,8 @@ func usageText() string {
 		"    instructions. Max 3 passes per sig (ledger .verdict/state/<bundle>/fix.json);\n" +
 		"    touching files outside the anchor stops the loop (scope-escape).\n" +
 		"  post  <owner/repo> <pr> [--approve=true|false] [--request-changes] [--bind] [--force]\n" +
-		"        [--review-file .verdict/state/<pr>/review.json] [--dry-run] [--json]\n" +
+		"        [--review-file .verdict/state/<pr>/review.json] [--dry-run] [--require-coverage]\n" +
+		"        [--json]\n" +
 		"    validate anchors (partitioned, keep-biased), embed suggestions, merge findings.json,\n" +
 		"    guard stale-SHA + duplicates, post exactly one review.\n" +
 		"    Binding APPROVE/REQUEST_CHANGES needs --bind (else downgraded to COMMENT);\n" +
@@ -107,7 +109,7 @@ func usageText() string {
 		"    with a check: line naming the re-fetch command; tool errors keep exit 3.\n" +
 		"    Without a gate flag output and exits are byte-identical to today\n" +
 		"    (--live is only consulted on gate runs).\n" +
-		"  next <owner/repo> <pr> [--status open] [--json]\n" +
+		"  next <owner/repo> <pr> [--status open|--coverage] [--json]\n" +
 		"    top-ranked actionable finding + the command to act on it. Pure read.\n" +
 		"  show <owner/repo> <pr> --sig <sig> [--json]\n" +
 		"    one full finding record. Pure read.\n" +
