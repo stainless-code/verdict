@@ -33,6 +33,7 @@ import (
 	"github.com/stainless-code/verdict/internal/ready"
 	"github.com/stainless-code/verdict/internal/record"
 	"github.com/stainless-code/verdict/internal/report"
+	runverb "github.com/stainless-code/verdict/internal/run"
 	"github.com/stainless-code/verdict/internal/scaffold"
 	"github.com/stainless-code/verdict/internal/schemacheck"
 	"github.com/stainless-code/verdict/internal/threads"
@@ -53,7 +54,7 @@ const (
 	verbDoctor = "doctor"
 )
 
-const verbsHint = "fetch|fetch-local|record|adopt|fix|post|triage|report|next|show|" +
+const verbsHint = "fetch|fetch-local|run|record|adopt|fix|post|triage|report|next|show|" +
 	"check-tree|verify|doctor|calibrate|ready|gate|threads|trend|learn|init|skill|upgrade|uninstall|mcp|config"
 
 func main() {
@@ -239,7 +240,16 @@ func dispatchMutating(
 	if code, ok := dispatchFetch(ctx, cmd, r, repo, pr, root, repoRoot, env, rest); ok {
 		return code, true
 	}
+	if code, ok := dispatchLocal(ctx, cmd, r, env, root, repoRoot, rest); ok {
+		return code, true
+	}
 	switch cmd {
+	case "run":
+		// The verb name matches main's own run() entry point, so the adapter import
+		// is aliased rather than renaming either one.
+		return runverb.Run(ctx, r, rest, runverb.Request{
+			Env: env, Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot,
+		}), true
 	case "record":
 		return record.Run(ctx, r, rest, &record.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env, Forces: forces}), true
 	case "post":
@@ -254,12 +264,24 @@ func dispatchMutating(
 		return fix.Run(ctx, r, rest, fix.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}), true
 	case "learn":
 		return learn.Run(ctx, r, rest, repoRoot), true
+	case "verify":
+		return verify.Run(ctx, r, rest, verify.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}), true
+	default:
+		return 0, false
+	}
+}
+
+// dispatchLocal serves the verbs that need no repository or pull request: the
+// scaffold writer and the skill distributor. They share dispatchMutating's
+// "handled" contract so one switch can stay small enough to read.
+func dispatchLocal(
+	ctx context.Context, cmd string, r *cli.Runner, env map[string]string, root, repoRoot string, rest []string,
+) (int, bool) {
+	switch cmd {
 	case "init":
 		return scaffold.Run(ctx, r, rest, scaffold.Request{Env: env, RepoRoot: repoRoot}), true
 	case verbSkill:
 		return runSkill(ctx, r, rest, env, root), true
-	case "verify":
-		return verify.Run(ctx, r, rest, verify.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}), true
 	default:
 		return 0, false
 	}

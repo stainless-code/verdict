@@ -27,6 +27,14 @@ func PathRole(path string) string {
 	}
 }
 
+// Generated reports whether the shared role heuristic classifies path as
+// generated: lockfiles, build output, vendored trees, minified assets. The
+// review manifest, the report overview, and the coverage exemption all read
+// this one predicate instead of owning a second list.
+func Generated(path string) bool {
+	return PathRole(path) == "generated"
+}
+
 // role patterns, mirroring roles_for_paths.
 var (
 	roleTestRe       = regexp.MustCompile(`(^|/)(test|tests|__tests__|e2e|spec)(s)?/`)

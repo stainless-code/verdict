@@ -48,6 +48,7 @@ var forbiddenDeps = []string{
 	"internal/doctor",
 	"internal/checktree",
 	"internal/scaffold",
+	"internal/run",
 }
 
 // facadeAllowedDeps is the exact facade dependency set: the core domain
@@ -65,6 +66,7 @@ var facadeAllowedDeps = map[string]bool{
 	"internal/core/calibrate": true,
 	"internal/core/checktree": true,
 	"internal/core/corpus":    true,
+	"internal/core/coverage":  true,
 	"internal/core/doctor":    true,
 	"internal/core/exec":      true,
 	"internal/core/fetch":     true,
@@ -97,8 +99,8 @@ var facadeAllowedDeps = map[string]bool{
 // must be added here deliberately, so the core boundary is never widened
 // unnoticed.
 var coreSubpackages = []string{
-	"adopt", "calibrate", "checktree", "corpus", "doctor", "exec", "fetch", "fix",
-	"init", "learn", "post", "ready", "record", "report", "skill", "threads",
+	"adopt", "calibrate", "checktree", "corpus", "coverage", "doctor", "exec", "fetch", "fix",
+	"init", "learn", "post", "ready", "record", "report", "run", "skill", "threads",
 	"trend", "triage", "upgrade", "verify",
 }
 

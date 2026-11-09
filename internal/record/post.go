@@ -88,9 +88,11 @@ func parsePostFlags(r *cli.Runner, args []string, dir string) (core.PostFlags, i
 			f.Force = true
 		case a == "--dry-run":
 			f.DryRun = true
+		case a == "--require-coverage":
+			f.RequireCoverage = true
 		default:
 			msg := fmt.Sprintf("unknown flag '%s' for post (want --approve[=bool], --request-changes, "+
-				"--bind, --force, --review-file <path>, --dry-run, --json)", a)
+				"--bind, --force, --review-file <path>, --dry-run, --require-coverage, --json)", a)
 			return f, r.ReportUsage(&cli.UsageError{Message: msg}), true
 		}
 	}

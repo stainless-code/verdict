@@ -29,8 +29,13 @@ exit: 0
       "fetch": true,
       "post": true,
       "inline_anchors": true,
-      "thread_resolution": true,
-      "review_verdicts": true
+      "approve": true,
+      "request_changes": true,
+      "thread_resolution": false,
+      "review_verdicts": true,
+      "unsupported": {
+        "thread_resolution": "no-resolve-mutation"
+      }
     },
     "controls": {
       "policy": "base",

@@ -59,6 +59,9 @@
       "description": "Safe review.json rewrites applied before the merge, in document order; absent when the review was already clean.",
       "type": "array",
       "items": { "$ref": "#/$defs/repair" }
+    },
+    "coverage": {
+      "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/coverageSummary" }]
     }
   },
   "required": [
@@ -88,6 +91,19 @@
         "path": { "type": "string" }
       },
       "required": ["code", "path"],
+      "additionalProperties": true
+    },
+    "coverageSummary": {
+      "type": "object",
+      "properties": {
+        "percent": { "type": ["integer", "null"] },
+        "attested": { "type": "integer", "minimum": 0 },
+        "total": { "type": "integer", "minimum": 0 },
+        "files": { "type": "integer", "minimum": 0 },
+        "exempt": { "type": "integer", "minimum": 0 },
+        "gaps": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["percent", "attested", "total", "files", "exempt", "gaps"],
       "additionalProperties": true
     }
   }

@@ -120,6 +120,10 @@ var interfaceType = reflect.TypeFor[any]()
 
 const defsRecord = "record"
 
+// coverageSummaryType is the $defs name the coverage payload is published
+// under; three documents reference it, so one constant keeps them in step.
+const coverageSummaryType = "coverageSummary"
+
 // keyScopeDefaults is the scope property carrying inline defaults; the scope
 // presence rules name it more than once.
 const keyScopeDefaults = "defaults"
@@ -223,6 +227,8 @@ func documents() []document {
 			defs: []definition{
 				{typ: reflect.TypeFor[ForcedPost](), name: "forcedPost"},
 				{typ: reflect.TypeFor[FloorScope](), name: "floorScope"},
+				{typ: reflect.TypeFor[WithheldCapability](), name: "withheldCapability"},
+				{typ: reflect.TypeFor[CoverageSummary](), name: coverageSummaryType},
 			},
 			additionalProperties: true,
 		},
@@ -232,6 +238,7 @@ func documents() []document {
 			root:  reflect.TypeFor[Record](),
 			defs: []definition{
 				{typ: reflect.TypeFor[Repair](), name: "repair"},
+				{typ: reflect.TypeFor[CoverageSummary](), name: coverageSummaryType},
 			},
 			additionalProperties: true,
 		},
@@ -275,6 +282,7 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[FindingsCounts](), name: "findingsCounts"},
 		{typ: reflect.TypeFor[FindingItem](), name: "findingItem"},
 		{typ: reflect.TypeFor[Provenance](), name: "provenance"},
+		{typ: reflect.TypeFor[CoverageSummary](), name: coverageSummaryType},
 		{typ: reflect.TypeFor[ReportData](), name: "reportData"},
 		{typ: reflect.TypeFor[ReportHead](), name: "reportHead"},
 		{typ: reflect.TypeFor[ReportVerdict](), name: "reportVerdict"},
@@ -340,6 +348,7 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[CalibrateJudgment](), name: "calibrateJudgment"},
 		{typ: reflect.TypeFor[FetchData](), name: "fetchData"},
 		{typ: reflect.TypeFor[FetchLocalData](), name: "fetchLocalData"},
+		{typ: reflect.TypeFor[FetchCapabilities](), name: "fetchCapabilities"},
 		{typ: reflect.TypeFor[FetchPanel](), name: "fetchPanel"},
 	}
 }
@@ -351,6 +360,7 @@ func reviewDefs() []definition {
 		{typ: reflect.TypeFor[BriefSite](), name: defsBriefSite},
 		{typ: reflect.TypeFor[TriageClaim](), name: "triageClaim"},
 		{typ: reflect.TypeFor[SectionTag](), name: "sectionTag"},
+		{typ: reflect.TypeFor[CoverageClaim](), name: "coverageClaim"},
 	}
 }
 
@@ -718,10 +728,13 @@ func (b *builder) mapNode(typ reflect.Type) (*node, error) {
 }
 
 // valueRef resolves a typed map value: a named struct with a $defs
-// registration validates through that reference. Every other element type
-// keeps the legacy open object, so previously published schemas do not
-// move.
+// registration validates through that reference, and a string value pins the
+// reason codes inside an open object. Every other element type keeps the
+// legacy open object, so previously published schemas do not move.
 func (b *builder) valueRef(elem reflect.Type) (*node, bool, error) {
+	if elem.Kind() == reflect.String {
+		return object(false, member{keyType, stringNode(typeString)}), true, nil
+	}
 	if elem.Kind() != reflect.Struct || elem.Name() == "" {
 		return nil, false, nil
 	}

@@ -47,11 +47,19 @@
       "type": "array",
       "items": { "$ref": "#/$defs/forcedPost" }
     },
+    "withheld": {
+      "description": "One entry per capability the host could not carry, in the order the run discovered it: a GitLab REQUEST_CHANGES recorded as a comment lands here while review.state reads commented. Absent when every capability the run asked for landed.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/withheldCapability" }
+    },
     "post_min_severity": { "enum": ["critical", "important", "informational"] },
     "below_floor_excluded": { "type": "integer", "minimum": 0 },
     "post_floor_scoped": {
       "type": "array",
       "items": { "$ref": "#/$defs/floorScope" }
+    },
+    "coverage": {
+      "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/coverageSummary" }]
     }
   },
   "required": ["schema_version", "review", "head", "posted_at"],
@@ -88,6 +96,39 @@
         "floor": { "enum": ["critical", "important", "informational"] }
       },
       "required": ["path", "floor"],
+      "additionalProperties": true
+    },
+    "withheldCapability": {
+      "description": "One capability a host withheld from the post that landed, with the reason code data.capabilities publishes for it.",
+      "type": "object",
+      "properties": {
+        "capability": {
+          "description": "Published capability name (post, inline_anchors, approve, request_changes, thread_resolution) — the same string data.capabilities.unsupported keys.",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Published reason code for the gap (fetch-only, no-request-changes-event, no-approve-verdict, no-inline-anchors, no-resolve-mutation, unknown-host); docs/manual.md § Providers maps each code to its sentence.",
+          "type": "string"
+        },
+        "requested_event": {
+          "description": "Binding verdict the run asked for, spelled as the envelope's event (APPROVE, REQUEST_CHANGES); absent for a capability with no event of its own, whose loss the anchors tally counts.",
+          "type": "string"
+        }
+      },
+      "required": ["capability", "reason"],
+      "additionalProperties": true
+    },
+    "coverageSummary": {
+      "type": "object",
+      "properties": {
+        "percent": { "type": ["integer", "null"] },
+        "attested": { "type": "integer", "minimum": 0 },
+        "total": { "type": "integer", "minimum": 0 },
+        "files": { "type": "integer", "minimum": 0 },
+        "exempt": { "type": "integer", "minimum": 0 },
+        "gaps": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["percent", "attested", "total", "files", "exempt", "gaps"],
       "additionalProperties": true
     }
   }

@@ -93,6 +93,9 @@ var hintRules = []HintRule{
 	{codes: []string{"controls-unavailable"}, hint: "try: check out the PR base (actions/checkout fetch-depth: 0, " +
 		"or git fetch --depth=1 origin <base>), then re-fetch; fetch --allow-head-controls is the explicit opt-out"},
 	{codes: []string{"controls-stale"}, hint: "try: re-fetch the bundle (controls changed under it), then re-run"},
+	{codes: []string{"coverage-incomplete"}, hint: "try: stamp review.json " +
+		"\"coverage\": [{\"file\": \"...\", \"ranges\": \"1-240\"}] for every changed file, " +
+		"or re-run next --coverage to see the gaps, then post again"},
 	{codes: []string{"controls-too-large"}, hint: "try: trim the named control file under its cap, commit it at base, then re-fetch"},
 	{codes: []string{"bad-review-input"}, hint: "try: fix the malformed agent input named above " +
 		"(review.json wants {body, approved, comments[]}; claims want string sigs), then re-run"},
@@ -105,6 +108,21 @@ var hintRules = []HintRule{
 	{codes: []string{"verify-credential-read"}, hint: "try: rewrite verifyCmd without reading credential paths " +
 		"or piping env into the network, then re-run"},
 	{codes: []string{"verify-repo-escape"}, hint: "try: rewrite verifyCmd with repo-relative paths (/tmp for scratch), then re-run"},
+	{codes: []string{"agent-missing"}, hint: "try: install the agent CLI (or put it on PATH), or re-run with " +
+		"--agent <name> for one you have"},
+	{codes: []string{"agent-spawn-failed"}, hint: "try: check the binary runs from your shell " +
+		"(permissions, shebang), then re-run"},
+	{codes: []string{"agent-timeout"}, hint: "try: re-run with a larger --timeout, " +
+		"or pass the agent's faster flags after '--'"},
+	{codes: []string{"agent-failed"}, hint: "try: read the recorded tail in launcher.json, " +
+		"fix the invocation (the agent's own flags go after '--'), then re-run"},
+	{codes: []string{"agent-record-failed"}, hint: "try: make the bundle directory writable " +
+		"(or re-fetch the bundle), then re-run"},
+	{codes: []string{"no-review-artifact"}, hint: "try: run the printed command yourself " +
+		"(--print) to see why no review.json appeared, then re-run"},
+	{codes: []string{"stale-review-artifact"}, hint: "try: delete the stale review.json " +
+		"(or let the agent overwrite it), then re-run"},
+	{codes: []string{"unknown-agent"}, hint: "try: re-run with one of the known agent names listed above"},
 	{codes: []string{"id-taken"}, hint: "try: pass a different --id"},
 	{codes: []string{"cost-panel-unresolved"}, hint: "try: pass the panel that ran, in order: " +
 		"--cost-names=<lead>,<lens-1>,<lens-2>"},

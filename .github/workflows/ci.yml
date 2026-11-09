@@ -477,6 +477,20 @@ jobs:
         # (stub gh first on PATH, fixtures in a temp sandbox, tree-clean
         # assertion).
 
+      - name: Prove the run --agent recipe case ran
+        shell: bash
+        run: |
+          # docs/ci-and-tests.md ships the agent-launch recipe, and one
+          # offline case grades it: the "agent" is a committed stub, so this
+          # lane needs no model, no secret, and no network. `make evals`
+          # already ran the case; re-reading the summary fails the lane when
+          # the case was deleted, renamed, or skipped, instead of leaving CI
+          # green about a recipe nobody exercised.
+          test -f evals/fixtures/run-agent/agent-stub.sh
+          jq -e '[.cases[] | select(.name == "run-agent" and .status == "PASS")] | length == 1' \
+            evals/results/summary.json
+          echo "evals: run-agent PASS (stub agent, advisory gh stub, no model)"
+
       - name: Upload the eval summary (kept on a failed run)
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -528,6 +542,20 @@ jobs:
         # (stub gh first on PATH, fixtures in a temp sandbox, tree-clean
         # assertion). macOS runners shell out with bash 3.2, which doubles
         # as the suite's 3.2-compat bar.
+
+      - name: Prove the run --agent recipe case ran
+        shell: bash
+        run: |
+          # docs/ci-and-tests.md ships the agent-launch recipe, and one
+          # offline case grades it: the "agent" is a committed stub, so this
+          # lane needs no model, no secret, and no network. `make evals`
+          # already ran the case; re-reading the summary fails the lane when
+          # the case was deleted, renamed, or skipped, instead of leaving CI
+          # green about a recipe nobody exercised.
+          test -f evals/fixtures/run-agent/agent-stub.sh
+          jq -e '[.cases[] | select(.name == "run-agent" and .status == "PASS")] | length == 1' \
+            evals/results/summary.json
+          echo "evals: run-agent PASS (stub agent, advisory gh stub, no model)"
 
       - name: Upload the eval summary (kept on a failed run)
         if: ${{ !cancelled() }}

@@ -13,6 +13,9 @@ type PostFlags struct {
 	Bind           bool
 	Force          bool
 	DryRun         bool
+	// RequireCoverage refuses an absent or partial diff-coverage
+	// attestation; --force never bypasses it.
+	RequireCoverage bool
 }
 
 // PostRequest is the post service invocation: the read runtime and
@@ -44,21 +47,22 @@ type PostResponse struct { //nolint:govet // field grouping documents the respon
 // the dry-run findings carry the file while the real findings carry the
 // accepted review. Review rides before provenance on the real-post wire.
 type PostData struct { //nolint:govet // field order is the published property order
-	DryRun          bool           `json:"dry_run"`
-	Event           string         `json:"event"`
-	CommitID        string         `json:"commit_id"`
-	Body            PostBody       `inline:"true"           json:"body"`
-	Anchors         AnchorsSummary `json:"anchors"`
-	Suggestions     Suggestions    `inline:"true"           json:"suggestions"`
-	Findings        PostFindings   `inline:"true"           json:"findings"`
-	Items           []FindingItem  `json:"items"`
-	Confidence      *int           `json:"confidence"       max:"5"            min:"1"`
-	SecuritySummary *string        `json:"security_summary"`
-	PayloadHash     string         `json:"payload_hash"`
-	Review          map[string]any `json:"review,omitempty"`
-	Provenance      Provenance     `json:"provenance"       optional:"true"`
-	ItemsRaw        []any          `json:"-"`
-	ReviewRaw       any            `json:"-"`
+	DryRun          bool             `json:"dry_run"`
+	Event           string           `json:"event"`
+	CommitID        string           `json:"commit_id"`
+	Body            PostBody         `inline:"true"           json:"body"`
+	Anchors         AnchorsSummary   `json:"anchors"`
+	Suggestions     Suggestions      `inline:"true"           json:"suggestions"`
+	Findings        PostFindings     `inline:"true"           json:"findings"`
+	Items           []FindingItem    `json:"items"`
+	Confidence      *int             `json:"confidence"       max:"5"                   min:"1"`
+	SecuritySummary *string          `json:"security_summary"`
+	PayloadHash     string           `json:"payload_hash"`
+	Review          map[string]any   `json:"review,omitempty"`
+	Provenance      Provenance       `json:"provenance"       optional:"true"`
+	Coverage        *CoverageSummary `anyOf:"null"            json:"coverage,omitempty" optional:"true"`
+	ItemsRaw        []any            `json:"-"`
+	ReviewRaw       any              `json:"-"`
 }
 
 // PostBody is the rendered post body summary.
@@ -95,13 +99,21 @@ type Post struct { //nolint:govet // field order is the published property order
 	PatchID         *string        `json:"patch_id,omitempty"`
 	PatchIDKind     string         `json:"patch_id_kind,omitempty"`
 	Forced          []ForcedPost   `json:"forced,omitempty"`
+	// Withheld names each capability the host could not carry for this post,
+	// in the order the run discovered it, so a degraded write is legible after
+	// the envelope is gone: a GitLab post whose requested REQUEST_CHANGES
+	// landed as a comment records the pair here while review.state reads
+	// commented. Absent when every capability the run asked for landed, so an
+	// undegraded receipt keeps its bytes.
+	Withheld []WithheldCapability `json:"withheld,omitempty"`
 	// PostMinSeverity is the global posting floor. PostFloorScoped records
 	// different path-specific floors that withheld findings, and
 	// BelowFloorExcluded counts all withheld findings.
-	PostMinSeverity    *string      `enum:"critical|important|informational" json:"post_min_severity,omitempty"`
-	BelowFloorExcluded int          `json:"below_floor_excluded,omitempty"   min:"0"`
-	PostFloorScoped    []FloorScope `json:"post_floor_scoped,omitempty"`
-	ReviewRaw          any          `json:"-"`
+	PostMinSeverity    *string          `enum:"critical|important|informational" json:"post_min_severity,omitempty"`
+	BelowFloorExcluded int              `json:"below_floor_excluded,omitempty"   min:"0"`
+	PostFloorScoped    []FloorScope     `json:"post_floor_scoped,omitempty"`
+	Coverage           *CoverageSummary `anyOf:"null"                            json:"coverage,omitempty"          optional:"true"`
+	ReviewRaw          any              `json:"-"`
 }
 
 // FloorScope is one path-scoped severity floor that actually withheld a
@@ -120,6 +132,19 @@ type ForcedPost struct { //nolint:govet // field order is the published property
 	PatchID        *string `json:"patch_id,omitempty"`
 	PreviousBundle *string `json:"previous_bundle,omitempty"`
 	PreviousHead   *string `json:"previous_head,omitempty"`
+}
+
+// WithheldCapability is one capability the host could not carry for the post
+// that landed. Capability and Reason reuse the published capability vocabulary
+// — the same name and code data.capabilities.unsupported carries — so a reader
+// that already branches on a code learns no second one. RequestedEvent is the
+// binding verdict the run asked for, spelled as the envelope's event, and is
+// absent for a capability with no event of its own (inline_anchors), whose loss
+// the anchors tally already counts.
+type WithheldCapability struct {
+	Capability     string `json:"capability"`
+	Reason         string `json:"reason"`
+	RequestedEvent string `json:"requested_event,omitempty"`
 }
 
 // Wire renders the post data object in wire order. The dry-run wire swaps
@@ -142,34 +167,40 @@ func (d *PostData) Wire() *jq.Obj {
 	body := d.Body.Wire(d.DryRun)
 	provenance := Wire(&d.Provenance)
 	if d.DryRun {
-		return jq.NewObj(
+		pairs := []any{
 			"dry_run", d.DryRun,
 			"event", d.Event,
 			"commit_id", d.CommitID,
-			"body", body,
+			keyBody, body,
 			"anchors", jq.NewObj("kept", d.Anchors.Kept, "moved", d.Anchors.Moved),
 			"suggestions", jq.NewObj("embedded", d.Suggestions.Embedded),
 			"findings", d.Findings.Wire(),
+		}
+		pairs = appendCoverageWire(pairs, d.Coverage)
+		return jq.NewObj(append(pairs,
 			"confidence", Wire(d.Confidence),
 			"security_summary", Wire(d.SecuritySummary),
 			"items", items,
 			"payload_hash", d.PayloadHash,
 			"provenance", provenance,
-		)
+		)...)
 	}
-	o := jq.NewObj(
+	pairs := []any{
 		"dry_run", d.DryRun,
 		"event", d.Event,
 		"commit_id", d.CommitID,
-		"body", body,
+		keyBody, body,
 		"anchors", jq.NewObj("kept", d.Anchors.Kept, "moved", d.Anchors.Moved),
 		"suggestions", jq.NewObj("embedded", d.Suggestions.Embedded),
 		"findings", d.Findings.Wire(),
+	}
+	pairs = appendCoverageWire(pairs, d.Coverage)
+	o := jq.NewObj(append(pairs,
 		"items", items,
 		"confidence", Wire(d.Confidence),
 		"security_summary", Wire(d.SecuritySummary),
 		"payload_hash", d.PayloadHash,
-	)
+	)...)
 	if review != nil {
 		o.Set("review", review)
 	}
@@ -198,8 +229,9 @@ func (f *PostFindings) Wire() *jq.Obj {
 
 // Wire renders the post receipt in wire order: the reviewed head, the
 // timestamps, the normalized confidence, the provenance triple, then the
-// patch identity and the explicit --force audit. Review wins from the raw
-// ordered object so GitHub's field order survives.
+// patch identity, the explicit --force audit, and the withheld-capability
+// audit. Review wins from the raw ordered object so GitHub's field order
+// survives.
 func (p *Post) Wire() *jq.Obj {
 	review := p.ReviewRaw
 	if review == nil && p.Review != nil {
@@ -220,8 +252,21 @@ func (p *Post) Wire() *jq.Obj {
 	if p.Forced != nil {
 		o.Set("forced", p.Forced)
 	}
+	setPostWithheldWire(o, p)
 	setPostFloorWire(o, p)
+	if p.Coverage != nil {
+		o.Set("coverage", p.Coverage)
+	}
 	return o
+}
+
+// setPostWithheldWire appends the withheld-capability audit after the --force
+// audit: only a degraded post carries it, so a receipt that lost nothing keeps
+// its published bytes.
+func setPostWithheldWire(o *jq.Obj, p *Post) {
+	if p.Withheld != nil {
+		o.Set("withheld", p.Withheld)
+	}
 }
 
 // setPostFloorWire appends the payload-floor accounting last: the global
@@ -263,4 +308,14 @@ func findingSummariesWire(items []FindingItem) []any {
 		))
 	}
 	return out
+}
+
+// appendCoverageWire inserts the optional coverage receipt after findings and
+// before items: the published property order, and an absent key when nothing
+// was evaluated so a legacy envelope stays byte-identical.
+func appendCoverageWire(pairs []any, c *CoverageSummary) []any {
+	if c == nil {
+		return pairs
+	}
+	return append(pairs, "coverage", c)
 }

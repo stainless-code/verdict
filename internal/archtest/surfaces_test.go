@@ -19,24 +19,33 @@ import (
 // transport entry point itself: an MCP tool named `mcp` would recurse instead
 // of reviewing. `gate` is omitted because it exists to hand a CI job an exit
 // code: an agent calling it as a tool would read a local verdict as authority
-// to act, when the merge stays the human's.
+// to act, when the merge stays the human's. `run` is omitted because it spawns
+// the operator's own agent: an MCP tool that launches a local agent process
+// would make every tool call a recursive launcher of unpriced work, which
+// is the boundary the run guardrail draws — the operator asks for one
+// process, from their own terminal or CI, not from inside a model's turn.
 var mcpOmittedVerbs = map[string]string{
 	"mcp":       "the MCP transport entry point itself",
 	"skill":     "distribution surface (pkg/verdict/doc.go)",
 	"uninstall": "distribution surface (pkg/verdict/doc.go)",
 	"upgrade":   "distribution surface (pkg/verdict/doc.go)",
 	"gate":      "a CI exit code, not a tool an agent should act on",
+	"run":       "spawns the operator's agent; a tool that launches an agent recurses",
 }
 
 // sdkOmittedVerbs are CLI verbs with no Go facade method or TypeScript client
 // method, and why: the distribution lifecycle stays CLI-only. `gate` is not
 // here — a program honoring an exit code may compose the same verdict — while
-// it stays out of the MCP surface above.
+// it stays out of the MCP surface above. `run` is here for the same reason
+// it is out of MCP: the facade and the TS client drive review data, while a
+// process launcher belongs to the operator's CLI (a program that wants it can
+// run the same argv the --print output renders).
 var sdkOmittedVerbs = map[string]string{
 	"mcp":       "the MCP transport entry point itself",
 	"skill":     "distribution surface (pkg/verdict/doc.go)",
 	"uninstall": "distribution surface (pkg/verdict/doc.go)",
 	"upgrade":   "distribution surface (pkg/verdict/doc.go)",
+	"run":       "a process launcher, not review data: the CLI owns it (see --print)",
 }
 
 // sdkGaps are review verbs one public surface is still missing. Closing a gap

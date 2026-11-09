@@ -2,12 +2,14 @@ package main
 
 func usageText() string {
 	return "usage: verdict fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
-		"fetch-local|record|adopt|fix|check-tree|ready|gate|threads|trend|learn|init|skill|upgrade|uninstall|mcp|config [opts]\n" +
+		"fetch-local|run|record|adopt|fix|check-tree|ready|gate|threads|trend|learn|init|skill|upgrade|uninstall|mcp|config [opts]\n" +
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
 		"[--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
 		"    write .verdict/state/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
 		"(PR.json normalized for non-github providers)\n" +
-		"    Provider scope: record/report/triage/show/next run on any provider bundle; post/calibrate (live join)/adopt/ready\n" +
+		"    Provider scope: record/report/triage/show/next run on any provider bundle; post submits to GitHub and\n" +
+		"    GitLab, which takes an approval but has no request-changes event — a bound request-changes posts as a\n" +
+		"    comment; post.json records the withheld capability in withheld[]; calibrate (live join)/adopt/ready\n" +
 		"    need a GitHub bundle and refuse the rest typed (provider-unimplemented; a local bundle has its own\n" +
 		"    code — post/ready no-pr-target, calibrate no-threads, adopt bad-target). calibrate --probe is offline\n" +
 		"    and runs on any bundle. Incremental re-review\n" +
@@ -37,13 +39,28 @@ func usageText() string {
 		"    kb.txt/sensitive.txt/panel when present (one fence per file, in that order) —\n" +
 		"    to stdout (human; progress moves to stderr) or data.prompt_dump (--json).\n" +
 		"    No agent runs, no network beyond the fetch, no store writes beyond the bundle.\n" +
+		"  run <owner/repo> <pr|local-name> --agent <claude|codex|cursor|opencode>\n" +
+		"      [--timeout <secs, default 300>] [--print] [-- <agent args>...] [--json]\n" +
+		"    launch YOUR agent against an existing bundle: one process, one bundle, one shot.\n" +
+		"    It requires exactly one fresh review.json (absent refuses no-review-artifact, older\n" +
+		"    than the launch refuses stale-review-artifact), names the next command, and never\n" +
+		"    reads the agent's prose, retries, repairs, or posts. The agent inherits your\n" +
+		"    environment (your key) and may use the network; verdict itself makes no calls.\n" +
+		"    A non-zero agent exit is the process exit code (agent-failed); the watchdog\n" +
+		"    timeout (agent-timeout), a missing binary (agent-missing), and a spawn failure\n" +
+		"    (agent-spawn-failed) refuse typed with a hint. Provenance lands in\n" +
+		"    .verdict/state/<bundle>/launcher.json (agent, binary, argv shape, timings, exit)\n" +
+		"    and the full child output in .run.out. --print renders the exact command and\n" +
+		"    exits 0 without spawning; everything after '--' goes to the agent unchanged.\n" +
+		"    run passes a short tool-generated directive, never bundle bytes.\n" +
 		"  config <owner/repo> <pr> (--explain | --preview [--file <path>]) [--json]\n" +
 		"    read-only policy surface: --explain renders the stored effective policy of a fetched run\n" +
 		"    (values with origins, requirements, pending plan, spend, privacy, observed checks);\n" +
 		"    --preview resolves a proposed file (or the trusted inventory, else the no-policy layers)\n" +
 		"    with current personal settings and environment — no live calls, no writes, and\n" +
 		"    never an approval. One git rev-parse root probe runs outside the caller commander.\n" +
-		"  record <owner/repo> <local-slug> [--dry-run] [--strict] [--cost-names[=<names>]] [--json]\n" +
+		"  record <owner/repo> <local-slug> [--dry-run] [--strict] [--cost-names[=<names>]]\n" +
+		"         [--require-coverage] [--json]\n" +
 		"    validate + merge a local review.json into findings.json + record.json. No GitHub, no post.\n" +
 		"    --dry-run runs every check and writes nothing; --strict promotes warnings to errors.\n" +
 		"    --cost-names names the cost record's models[] entries from the panel, in order, and\n" +
@@ -57,7 +74,8 @@ func usageText() string {
 		"    instructions. Max 3 passes per sig (ledger .verdict/state/<bundle>/fix.json);\n" +
 		"    touching files outside the anchor stops the loop (scope-escape).\n" +
 		"  post  <owner/repo> <pr> [--approve=true|false] [--request-changes] [--bind] [--force]\n" +
-		"        [--review-file .verdict/state/<pr>/review.json] [--dry-run] [--json]\n" +
+		"        [--review-file .verdict/state/<pr>/review.json] [--dry-run] [--require-coverage]\n" +
+		"        [--json]\n" +
 		"    validate anchors (partitioned, keep-biased), embed suggestions, merge findings.json,\n" +
 		"    guard stale-SHA + duplicates, post exactly one review.\n" +
 		"    Binding APPROVE/REQUEST_CHANGES needs --bind (else downgraded to COMMENT);\n" +
@@ -107,7 +125,7 @@ func usageText() string {
 		"    with a check: line naming the re-fetch command; tool errors keep exit 3.\n" +
 		"    Without a gate flag output and exits are byte-identical to today\n" +
 		"    (--live is only consulted on gate runs).\n" +
-		"  next <owner/repo> <pr> [--status open] [--json]\n" +
+		"  next <owner/repo> <pr> [--status open|--coverage] [--json]\n" +
 		"    top-ranked actionable finding + the command to act on it. Pure read.\n" +
 		"  show <owner/repo> <pr> --sig <sig> [--json]\n" +
 		"    one full finding record. Pure read.\n" +
@@ -259,10 +277,10 @@ func usageText() string {
 		"  overview + diagrams) namespaces\n" +
 		"  (~/.config/verdict/settings.json, $XDG_CONFIG_HOME respected).\n" +
 		"  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/" +
-		"fetch-local/record/adopt/fix/check-tree/ready/gate/trend/learn/init/skill/upgrade/uninstall/config: " +
+		"fetch-local/run/record/adopt/fix/check-tree/ready/gate/trend/learn/init/skill/upgrade/uninstall/config: " +
 		"stdout is exactly one JSON envelope (schema_version 1);\n" +
 		"  all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.\n" +
-		"  Glossary: https://github.com/stainless-code/verdict/blob/main/docs/glossary.md\n"
+		"  Glossary: https://stainless-code.com/verdict/glossary\n"
 }
 
 var bareVerbs = map[string]bool{

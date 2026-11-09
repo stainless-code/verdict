@@ -72,10 +72,39 @@
 # Truthful public surfaces adds the SDK flag plumbing and one refusal hint.
 # Release builds measured linux/amd64 11853984 and windows/arm64 10960384;
 # those two ceilings move to the next 10 kB above their measurement.
+# Multi-host publish (STA-290 series) is the largest step so far: diff-coverage
+# attestation, the GitLab submit path, the capability envelope with one reason
+# code per gap, `run --agent` with its watchdog and freshness check, mention
+# neutralization, the three-host conformance suite, and the lint pass that took
+# golangci-lint from 192 findings to 0. Every shipped target grew 120-187 kB and
+# every ceiling crossed. Measured here (darwin/amd64 agrees byte-for-byte with
+# the CI gate): darwin/amd64 12257216, darwin/arm64 11238082, linux/amd64
+# 12042400, linux/arm64 11010208, windows/amd64 12375040, windows/arm64
+# 11126784. Ceilings round up to the next 10 kB at least 5 kB above the
+# measurement, because a previous local-vs-CI drift of ~1 KB cost a red run.
+# Withheld capabilities (STA-298) add the post receipt's withheld[] field, the
+# published reason lookup, and the inline_anchors merge gate. Measured on the
+# stacked tree: darwin/amd64 12265504, darwin/arm64 11238178, linux/amd64
+# 12050592, linux/arm64 11010208, windows/amd64 12381184, windows/arm64
+# 11132928. Only linux/amd64 crosses its ceiling, by 592 bytes over the
+# 12050000 line the previous wave set — the same 8192-byte segment step that
+# wave described (12042400 to 12050592) — so its line moves to the next 10 kB
+# above the measurement; the other five stay put.
+# Scrubbing overlapping credentials now takes one left-to-right pass instead
+# of a ReplaceAll chain. It lands in a fresh 16 KiB segment on most targets:
+# measured deltas are linux/arm64 0, darwin/amd64 +4064, windows/arm64 +5632,
+# windows/amd64 +7168, linux/amd64 +8192. Measured here: darwin/amd64 12269568, darwin/arm64
+# 11254658, linux/amd64 12058784, linux/arm64 11010208, windows/amd64 12388352,
+# windows/arm64 11138560. Only darwin/arm64 crosses, by 4658 over its 11250000
+# line, so its ceiling moves to the next 10 kB above its measurement; the other
+# five stay put.
+# Collapsing the launcher's scrub and verify's into the one in
+# internal/envsecret leaves five of those measurements byte-identical and moves
+# windows/arm64 to 11139584, still inside its 11140000 ceiling.
 deps 0
-darwin/amd64 12070000
-darwin/arm64 11080000
-linux/amd64 11860000
-linux/arm64 10890000
-windows/amd64 12190000
-windows/arm64 10970000
+darwin/amd64 12270000
+darwin/arm64 11260000
+linux/amd64 12060000
+linux/arm64 11020000
+windows/amd64 12390000
+windows/arm64 11140000

@@ -271,6 +271,7 @@ func (st *state) dryRunResponse() (*core.PostResponse, *core.RefusalError) {
 			Open: nOpen, Deferred: nDeferred, Addressed: nAddressed, File: st.findingsFile,
 		},
 		Items:           typedPostItems(payload),
+		Coverage:        st.merged.Coverage.Receipt(),
 		Confidence:      intOrNilPost(st.merged.Confidence),
 		SecuritySummary: strOrNilPost(st.merged.Security),
 		PayloadHash:     payloadHash,

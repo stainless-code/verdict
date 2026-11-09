@@ -16,6 +16,7 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/core/coverage"
 	"github.com/stainless-code/verdict/internal/diagram"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -48,6 +49,14 @@ type MergeParams struct { //nolint:govet // field grouping documents the merge c
 	Run          *config.RunState
 	HunkRows     []hunks.Hunk
 	InputChecked bool
+	// RequireCoverage is the opt-in gate: absent or partial diff coverage
+	// refuses coverage-incomplete. --force never bypasses it.
+	RequireCoverage bool
+	// BodyOnlyAnchors sends every finding to the body instead of an inline
+	// anchor: the provider advertises inline_anchors=false, so an anchor would
+	// be refused or silently dropped. Keep-biased: the finding survives, only
+	// the inline position is lost.
+	BodyOnlyAnchors bool
 }
 
 // MergeResult carries the shared merge outputs both verbs need.
@@ -65,6 +74,7 @@ type MergeResult struct { //nolint:govet // field grouping documents the merge c
 	FindingsFile string
 	Confidence   any
 	Security     any
+	Coverage     *coverage.Summary
 	Warnings     []string
 }
 
@@ -85,29 +95,31 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 		return MergeResult{}, &core.RefusalError{Code: controls.CodeUnavailable, Message: "merge needs a controls snapshot"}
 	}
 	st := &state{
-		review:       in.Review,
-		forces:       in.Forces,
-		preFooter:    in.PreFooter,
-		progress:     rt.Progress,
-		effective:    in.Effective,
-		cmd:          in.Cmd,
-		repo:         in.Repo,
-		pr:           in.Pr,
-		env:          rt.Env,
-		now:          rt.TimeUTC(),
-		findingsFile: in.FindingsFile,
-		dir:          in.Dir,
-		reviewFile:   in.ReviewFile,
-		root:         in.Root,
-		repoRoot:     in.repoRootPath(),
-		headFull:     in.HeadFull,
-		headShort:    readcommon.ShortSHA(in.HeadFull),
-		prov:         in.Prov,
-		dryRun:       in.DryRun,
-		controls:     in.Controls,
-		run:          in.Run,
-		hunkRows:     in.HunkRows,
-		inputChecked: in.InputChecked,
+		review:          in.Review,
+		forces:          in.Forces,
+		preFooter:       in.PreFooter,
+		progress:        rt.Progress,
+		effective:       in.Effective,
+		cmd:             in.Cmd,
+		repo:            in.Repo,
+		pr:              in.Pr,
+		env:             rt.Env,
+		now:             rt.TimeUTC(),
+		findingsFile:    in.FindingsFile,
+		dir:             in.Dir,
+		reviewFile:      in.ReviewFile,
+		root:            in.Root,
+		repoRoot:        in.repoRootPath(),
+		headFull:        in.HeadFull,
+		headShort:       readcommon.ShortSHA(in.HeadFull),
+		prov:            in.Prov,
+		dryRun:          in.DryRun,
+		controls:        in.Controls,
+		run:             in.Run,
+		hunkRows:        in.HunkRows,
+		inputChecked:    in.InputChecked,
+		requireCoverage: in.RequireCoverage,
+		bodyOnlyAnchors: in.BodyOnlyAnchors,
 	}
 	curated, dstat, err := st.validateAndMerge(in.Body)
 	if err != nil {
@@ -137,6 +149,7 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 		FindingsFile: st.findingsFile,
 		Confidence:   st.confidence,
 		Security:     st.security,
+		Coverage:     st.coverage,
 		Warnings:     st.warnings,
 	}, nil
 }

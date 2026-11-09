@@ -128,9 +128,10 @@ knowledge-base rules. It then runs `check-tree` to validate them. Presets are
 
 `fetch --provider` also reads GitLab, GitCafe, Forgejo, Bitbucket, and Azure
 DevOps (`gitlab|gitcafe|forgejo|bitbucket|azure`). `record`, `report`,
-`triage`, `show`, and `next` work on those bundles. `post` and the live
-`calibrate` join need a GitHub bundle; `calibrate --probe` runs offline on any
-bundle. Each host's auth and gaps are in the
+`triage`, `show`, and `next` work on those bundles. `post` submits to GitHub and
+to GitLab, which has no request-changes event, so that verdict posts as a
+comment; the live `calibrate` join needs a GitHub bundle, while `calibrate
+--probe` runs offline on any bundle. Each host's auth and gaps are in the
 [manual](/manual#providers-non-github-hosts).
 
 <CardGroup cols={3}>

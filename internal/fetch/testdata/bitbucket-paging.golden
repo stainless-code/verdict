@@ -27,8 +27,17 @@ exit: 0
       "fetch": true,
       "post": false,
       "inline_anchors": false,
+      "approve": false,
+      "request_changes": false,
       "thread_resolution": false,
-      "review_verdicts": false
+      "review_verdicts": false,
+      "unsupported": {
+        "post": "fetch-only",
+        "inline_anchors": "fetch-only",
+        "approve": "fetch-only",
+        "request_changes": "fetch-only",
+        "thread_resolution": "no-resolve-mutation"
+      }
     },
     "controls": {
       "policy": "base",

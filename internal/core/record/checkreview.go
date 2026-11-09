@@ -61,18 +61,19 @@ var (
 	//nolint:goconst // published schema literals
 	knownReviewKeys = []string{
 		"schema_version", fieldBody, problemApproved, fieldComments,
-		fieldResolved, fieldTriage, fieldSections, fieldChunks, fieldConfidence, fieldSecuritySummary,
+		fieldResolved, fieldTriage, fieldSections, fieldChunks, fieldCoverage, fieldConfidence, fieldSecuritySummary,
 	}
 	//nolint:goconst // schema keys are published literals
 	knownCommentKeys = []string{
 		fieldPath, fieldLine, "start_line", fieldSide, "body",
 		"suggestion", fieldBrief, fieldRigor, fieldSeverity, fieldCategory, fieldInBoundsInput, "kb",
 	}
-	knownTriageKeys  = []string{fieldSig, fieldStatus, problemRationale}
-	knownSectionKeys = []string{"heading", fieldSeverity}
-	reviewKeys       = []string{"critical", exampleImportant, "informational"}
-	rigorKeys        = []string{rungSaid, rungPointed, rungWalked, rungRan, rungReproduced}
-	triageStatuses   = []string{"open", "addressed", exampleWontFix, exampleFalsePositive, "deferred"}
+	knownTriageKeys   = []string{fieldSig, fieldStatus, problemRationale}
+	knownSectionKeys  = []string{"heading", fieldSeverity}
+	knownCoverageKeys = []string{fieldFile, fieldRanges}
+	reviewKeys        = []string{"critical", exampleImportant, "informational"}
+	rigorKeys         = []string{rungSaid, rungPointed, rungWalked, rungRan, rungReproduced}
+	triageStatuses    = []string{"open", "addressed", exampleWontFix, exampleFalsePositive, "deferred"}
 )
 
 // CheckReview validates a review.json against a unified diff. It is pure: it
@@ -220,6 +221,8 @@ func (c *checker) checkReview(obj *jq.Obj) {
 			c.checkSecuritySummary(v)
 		case fieldChunks:
 			c.checkChunks(v)
+		case fieldCoverage:
+			c.checkCoverage(v)
 		default:
 			c.unknown("$", key, knownReviewKeys)
 		}
@@ -741,6 +744,49 @@ func (c *checker) checkTriageStatus(path string, v any) {
 	if !slices.Contains(triageStatuses, s) {
 		c.badEnum(path, fmt.Sprintf("unknown triage status %q", s),
 			"use open|addressed|wont-fix|false-positive|deferred", exampleWontFix)
+	}
+}
+
+// checkCoverage validates the diff-coverage attestation's shape. Range syntax
+// and claim-versus-hunk matching stay with internal/core/coverage: a malformed
+// range is a warning there, never a schema error here.
+func (c *checker) checkCoverage(v any) {
+	if v == nil || v == false {
+		return
+	}
+	items, ok := v.([]any)
+	if !ok {
+		c.wrongType("$.coverage", "coverage must be an array of {file, ranges}",
+			"write [{\"file\": \"src/db.ts\", \"ranges\": \"1-240\"}]",
+			[]any{map[string]any{"file": "src/db.ts", fieldRanges: "all"}})
+		return
+	}
+	for i, item := range items {
+		c.checkCoverageClaim(i, item)
+	}
+}
+
+func (c *checker) checkCoverageClaim(i int, item any) {
+	base := fmt.Sprintf("$.coverage[%d]", i)
+	m, ok := item.(*jq.Obj)
+	if !ok {
+		c.wrongType(base, "coverage entry must be an object", "use {file, ranges}",
+			map[string]any{"file": "src/db.ts", fieldRanges: "all"})
+		return
+	}
+	for _, key := range m.Keys {
+		v, _ := m.Get(key)
+		switch key {
+		case fieldFile:
+			c.checkString(base+".file", v, true, "use a repo-relative path with hunks in the bundle")
+		case fieldRanges:
+			c.checkString(base+".ranges", v, false, `use "1-240,300-320", "all", or omit it`)
+		default:
+			c.unknown(base, key, knownCoverageKeys)
+		}
+	}
+	if _, ok := m.Get(fieldFile); !ok {
+		c.missing(base+".file", "missing file", "use a repo-relative path with hunks in the bundle", "src/db.ts")
 	}
 }
 

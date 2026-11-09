@@ -25,10 +25,16 @@ exit: 0
     "capabilities": {
       "provider": "gitlab",
       "fetch": true,
-      "post": false,
-      "inline_anchors": false,
+      "post": true,
+      "inline_anchors": true,
+      "approve": true,
+      "request_changes": false,
       "thread_resolution": false,
-      "review_verdicts": false
+      "review_verdicts": false,
+      "unsupported": {
+        "request_changes": "no-request-changes-event",
+        "thread_resolution": "no-resolve-mutation"
+      }
     },
     "controls": {
       "policy": "base",

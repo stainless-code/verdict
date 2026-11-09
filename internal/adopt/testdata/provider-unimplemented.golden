@@ -11,7 +11,7 @@ exit: 1
   "data": null,
   "error": {
     "code": "provider-unimplemented",
-    "message": "adopt needs a GitHub PR target (only GitHub posts exist to publish into)\ntry: use the verb named above for this bundle kind"
+    "message": "adopt targets a GitHub PR bundle (adopting into another host's bundle is not implemented)\ntry: use the verb named above for this bundle kind"
   }
 }
 --- stderr ---

@@ -599,10 +599,64 @@ the vocabulary cannot place them. `post.json` records what the floor did:
 the withheld count, and `post_floor_scoped` for each path-scoped floor that
 actually withheld a finding (`[{"path": "vendor/lib.go", "floor":
 "critical"}]`). Omitted keys mean no floor applied and nothing was withheld.
+`post.json` also records what the _host_ withheld — see § Providers below.
+
+### Diff coverage (agent attestation)
+
+A non-chunked bundle has no built-in evidence that the agent read the diff it
+reviewed. `review.json` may carry an attestation, and verdict checks it against
+the bundle's own hunk snapshot:
+
+```json
+"coverage": [
+  {"file": "src/db.ts", "ranges": "1-240,300-320"},
+  {"file": "src/app.ts", "ranges": "all"},
+  {"file": "cmd/verdict/main.go"}
+]
+```
+
+`file` is a repo-relative path that must name a changed file with hunks.
+`ranges` is optional; absent or `"all"` attests the whole file. Otherwise it is
+a comma-separated list of 1-based inclusive source-line intervals, and it is
+side-agnostic — the evaluator unions the file's `OLD` and `NEW` hunk intervals,
+so one interval covers a hunk on either side. Duplicate `file` entries union
+rather than count twice. A malformed range warns and makes that entry count as
+unattested; it never silently attests the file.
+
+Coverage is computed from `hunks.tsv`, the snapshot `fetch` already writes —
+never from a second diff parse and never from `toc.txt` line counts. Paths the
+shared role heuristic classifies as generated or vendored are exempt
+automatically; no sentinel is required. `percent` is `null`, never `0`, when no
+changed line was measured.
+
+The default posture is a warning plus one machine-built body line on a partial
+attestation. A partial one warns once and adds one machine-built body line;
+`coverage: []` ("I attest nothing") stays distinguishable from "no attestation
+was written", and a review that never stamped the key gets neither the warning
+nor the line, so its rendered body is unchanged.
+
+`--require-coverage` on `post` and `record` turns absence or a gap into a
+`coverage-incomplete` refusal that names the unattested ranges. `--force` does
+not bypass it: this is a read receipt, not a security boundary, but a require
+flag a force flag can ignore is not a contract. The refusal is raised before
+any store write, so a refused run leaves the prior `findings.json` untouched —
+including `post --dry-run`, which refuses identically and writes no dry-run
+store. `next <owner/repo> <pr> --coverage` reads the same numbers with no
+`findings.json`, so the gaps are visible before recording; it exits `0` on a
+partial attestation because it is a nudge, not the gate.
+
+`post.json` and `record.json` carry the measured summary when an attestation was
+present: `{"percent": 82, "attested": 18, "total": 22, "files": 3, "exempt": 1,
+"gaps": 2}`, where `gaps` counts unattested ranges (not lines).
+
+A chunked bundle is not evaluated: `chunks[]` is its attestation and the
+existing `missing-chunk-coverage` refusal is its gate. `coverage[]` on a
+chunked review is ignored with one warning. Do not translate chunks into
+ranges or the reverse.
 
 ## Machine surface
 
-`fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`threads`/`trend`/`learn`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
+`fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`run`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`threads`/`trend`/`learn`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
 non-zero. `mcp config` also takes `--json`. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `threads` refreshes only `.verdict/state/<pr>/threads.json` from the host (all six
@@ -859,7 +913,8 @@ the arguments. Closed vocabularies and numeric bounds the structs declare
 (`status`, `kind`, check tier, `preset`, `rigor`, `approve`, provider names)
 become schema `enum`/`minimum`/`maximum` keywords, so a bad value is a schema
 error the model sees before calling instead of a runtime refusal. `post` writes
-a review and calls GitHub, so it is not exposed under `--read-only`.
+a review and sends it to the host (GitHub or GitLab), so it is not exposed
+under `--read-only`.
 
 `--read-only` exposes eight read tools (`report`, `next`, `show`, `trend`,
 `ready`, `doctor`, `check-tree`, `config`) plus `record` limited to its `dry_run: true`
@@ -1071,6 +1126,104 @@ secret-adjacent paths with the matched reason, `fetch --json` publishes its
 path under `data.artifacts.sensitive.txt` (null when absent), and the prompt
 dump fences it when present. Nothing withholds or blocks on it, and its header
 asks reviewers to name the path, never quote a flagged value.
+
+## Your agent, launched (`run --agent`)
+
+`fetch` ends with a bundle and a prompt nobody ran. `run` closes that gap
+without becoming an orchestrator: it launches **your** agent against an
+existing bundle, one process, one shot, and hands the result back to the verbs
+that already exist.
+
+```bash
+verdict fetch-local acme/app work              # writes .verdict/state/local-work/
+verdict run acme/app local-work --agent claude # launch your agent; it writes review.json
+verdict record acme/app local-work             # the existing validation path, unchanged
+```
+
+For a PR bundle the middle step is `verdict run acme/app 123 --agent claude`
+and the handoff is `verdict post acme/app 123`. `run` never records, posts,
+merges, pushes, or repeats a step: `next` in its envelope names the command it
+did not run.
+
+`run` invokes your agent only when you ask: one process, one bundle. No
+daemon, no queue, no scheduler, no webhook, no model selection, and it never
+reads or interprets what the model wrote.
+
+### What `run` asserts
+
+The contract is the artifact, not the output. After the process exits, `run`
+requires exactly one fresh `.verdict/state/<bundle>/review.json` — present, a
+regular file, and not older than the launch record it wrote first — then
+stops. `record`/`post` validate that file unchanged, so a review `run` accepts
+is a review they accept.
+
+The freshness stamp has one-second granularity, so the guarantee is "not older
+than the launch", not "written by this agent". A `review.json` left by an
+earlier run in the same second the launch record was stamped reads as fresh by
+design: refusing it would fail an agent whose write landed inside that second.
+`run` records whether the artifact was fresh and how large it was, and a refusal
+names both timestamps, so the limit is visible after the fact rather than hidden.
+
+The directive handed to the agent is short and tool-generated: the subject,
+the bundle path, the single review file to write, and the boundary. `run` does
+not re-render the diff — `fetch --show-prompts` is that (fetch-time, with your
+privacy exclusions applied); the agent reads the bundle with its own tools.
+
+### Agents, arguments, and `--print`
+
+Agent definitions are data: a name, a binary, and the non-interactive argument
+shape (`claude -p`, `codex exec`, `cursor-agent -p`, `opencode run`). Adding an
+agent is a new table row, not a new code path; the launcher branches on none of
+it. The argv it builds is
+`<binary> <agent flags> [<your arguments>...] <directive>`.
+
+| Piece              | Meaning                                                                                                                                                         |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--agent <name>`   | Required. An unknown name refuses `unknown-agent` and lists the known ones.                                                                                     |
+| `--timeout <secs>` | Watchdog budget, default `300` (the same default `verify` uses).                                                                                                |
+| `-- <args>`        | Everything after the bare `--` goes to the agent unchanged: its own model, cost, and turn flags are yours.                                                      |
+| `--print`          | Renders the exact command (POSIX-quoted) and exits `0` without resolving, spawning, or writing. The escape hatch for harnesses that build their own invocation. |
+
+### Refusals, exit codes, and provenance
+
+Every way `run` can fail is typed, carries a `try:` hint, and leaves the
+agent's own failure visible to CI:
+
+| Code                    | When                                                            | Exit        |
+| ----------------------- | --------------------------------------------------------------- | ----------- |
+| `agent-missing`         | the binary is not on `PATH`                                     | 1           |
+| `agent-spawn-failed`    | the binary resolved but could not be started                    | 1           |
+| `agent-timeout`         | the watchdog killed it after `--timeout` seconds                | 1           |
+| `agent-failed`          | it exited non-zero — **its exit code is the process exit code** | the agent's |
+| `no-review-artifact`    | it exited `0` and wrote no `review.json` (or a non-file)        | 1           |
+| `stale-review-artifact` | `review.json` is older than this launch (an earlier run's)      | 1           |
+| `unknown-agent`         | the name is not in the agent table                              | 1           |
+| `agent-record-failed`   | the launcher could not write its provenance record              | 1           |
+
+An agent exiting `1`, `2`, or `3` is indistinguishable on the exit code alone
+from verdict's own refusal, usage, and canceled codes; `--json` disambiguates
+them through `error.code`, and the envelope's `data.exit` records what the agent
+itself returned.
+
+Plus the shared codes: `missing-bundle` (fetch first), `bad-flags` (no
+`--agent`), `bad-timeout`, `canceled` (exit 3), and usage errors (exit 2).
+There is no retry, no re-prompt, and no repair pass: fix the invocation and
+run again.
+
+The launch is recorded in `.verdict/state/<bundle>/launcher.json`: agent name,
+resolved binary path, the argv shape (directive replaced by `<prompt>`,
+secret-shaped operands and secret-named environment values redacted), start
+and end timestamps, duration, exit code, timeout flag, artifact freshness and
+size, and a redacted output tail. The child's full combined output stays in
+`.verdict/state/<bundle>/.run.out`. Both are evidence, not gates.
+
+### Network
+
+Verdict itself makes no network calls in `run` — spawning is local. Your agent
+is a program with your credentials: it may call whatever provider you
+configured, and the diff goes wherever your agent sends it. That is your
+agent's contract, not verdict's; run in CI with a key scoped the way you scope
+any other model call.
 
 ## Model wiring
 
@@ -1469,6 +1622,43 @@ line; the agent's posted line covers its own review — on a re-review with carr
 findings the two legitimately differ, and validation compares the posted line
 against the review's own comments.
 
+## Mentions in the published text
+
+A review body is written by an agent and published verbatim, so an `@handle`
+in its prose would notify that person the moment the review is submitted. The
+escape happens once, in the merge that constructs the body into the recorded
+bytes — the same call `post` makes for its payload — so the recorded body, the
+`post --dry-run` output, and the payload digest carry the same bytes by
+construction. Never at submit time: escaping there would make the posted bytes
+diverge from the record, the preview, and the digest.
+
+The escape is U+200B ZERO WIDTH SPACE between the `@` and the handle. It is
+invisible in rendered Markdown, keeps the body plain text, and no host resolves
+a mention across it; a code span would change the rendering, so it is not the
+form. The rewrite is idempotent (`@` followed by the space no longer starts a
+handle), adds bytes and never removes them, and is not opt-in — there is no
+flag or verb for it.
+
+Non-interference is part of the contract. Fenced code blocks (three
+backticks or three tildes) and inline code spans are left byte-identical,
+because a `@handle` in a sample is not a mention and rewriting it would corrupt
+the text. HTML comments — the `<!-- verdict-finding … -->` markers included —
+are left untouched, as are the basis line, the diagram block, the coverage
+line, and the footer: the escape runs before any of them is appended. A mention
+needs the `@` at line start or after a space or tab and the handle to be
+`[A-Za-z0-9-]+`, so `user@example.com` is an address and stays as written. Two
+residuals stay prose and are not escaped: an indented (four-space) code block
+with no fence, and an `@` glued to a blockquote marker (`>@handle`).
+
+Every agent-written string that reaches a reader is covered, not just the review
+body: a finding's inline comment `body` is escaped where the entry is built,
+before its signature is stamped, so a bundle merged twice keeps one signature.
+Re-merging a bundle that predates this change is safe (the rewrite is a fixed
+point) but re-keys those entries once, because their stored signatures were
+computed over the raw bytes. A `suggestion` is a code replacement and is never
+touched — a zero-width space inside a patch would be a silent edit to it. A
+comment's machine `brief` is record-only, not published, and stays verbatim.
+
 ## Permalink evidence links
 
 Findings link to code instead of pasting it: bodies reference each site as a reference-style `blob/<reviewed-SHA>/<path>#Lx` link (line ranges as `#Lx-Ly`), pinned to the reviewed commit — never live HEAD — so links survive later pushes; code quotes stay at most 3 lines and live only inside collapsed `<details>` blocks, with the visible body link-first. Non-GitHub and local bundles render plain `` `path:line` `` text instead (a blob URL there would 404), and the same degradation applies to `record`/`report` outputs. Link shape is garnish like the basis line: `post`/`record` warn on a wrong-SHA link or a long visible quote and keep the body — reviews never fail over it.
@@ -1822,6 +2012,15 @@ environment, and the split is deliberate (the security rationale is in
   environment — the ordered snapshot the CLI hands `verify`, not a silent
   inheritance. The same snapshot is the redaction list for the recorded tail,
   so a token you exported is scrubbed from `.verify.out` and `patch.json`.
+- The **agent `run` launches** inherits your environment for the same reason
+  `gh` and `git` do: it authenticates with your key, on your machine. `--json`
+  adds `NO_COLOR=1`. The recorded tail in `launcher.json` scrubs the values of
+  your secret-named variables and the argument secrets the argv redaction
+  hides, so the argv and the tail agree about what a credential is. `.run.out`
+  is the child's raw stream — it may hold a credential the child printed — so
+  it is written `0600` on Unix, the way `.verify.out` keeps its raw stream.
+  Windows has no mode bits for Go to set, so there it takes the directory's
+  inherited ACL and the owner-only guarantee does not apply.
 
 In tests the counterpart is `internal/testenv`: every harness that spawns
 `git`, `gh`, or `verdict` builds a fixed, secret-free child environment
@@ -1896,27 +2095,43 @@ shape from another host (`PR.json` normalized to one schema: `provider`,
 `state` as open|closed|merged, `draft`, per-file `additions/deletions`).
 `write_toc_roles` and the whole validate+merge path run unchanged — anchors
 validate against `full.diff` hunks regardless of host. `record`, `report`,
-`triage`, `show`, `next` work on provider bundles as-is. `post`, plain
-`calibrate`, and `adopt`-into refuse non-GitHub bundles; `calibrate --probe`
-grades any bundle offline. The refusal is deliberate, not a
-claim that submit is impossible elsewhere: GitLab accepts per-comment
-discussion POSTs plus one summary note and an approve call, and Forgejo can
-author inline comments through its API even though its CLIs cannot. What those
-hosts lack is GitHub's single atomic review submit, so a submit path needs the
-comments → summary body → verdict-last ordering and the partial-post receipt
-that already exists here. Until that per-host replay lands, submit stays a
-follow-up rather than unverified code. `fetch --json` publishes the facts in
-`data.capabilities`: `provider`, `fetch`, `post`, `inline_anchors`,
-`thread_resolution`, and `review_verdicts`, so an agent can plan before it
-writes a review.
+`triage`, `show`, `next` work on provider bundles as-is. `post` submits to
+GitHub and GitLab; `post` on the other hosts, plain `calibrate`, and
+`adopt`-into refuse non-GitHub bundles, and `calibrate --probe` grades any
+bundle offline. The refusal names the gap rather than an impossibility: Forgejo
+can author inline comments through its API even though its CLI cannot, but each
+remaining host still needs its own submit path with the comments → summary body
+→ verdict-last ordering laid out below. `fetch --json` publishes the facts in
+`data.capabilities`: `provider`, `fetch`, `post`, `inline_anchors`, `approve`,
+`request_changes`, `thread_resolution`, `review_verdicts`, and `unsupported`,
+so an agent can plan before it writes a review. `approve` and
+`request_changes` split the binding verdicts because hosts differ: GitHub
+carries both, while GitLab approves a merge request but has no request-changes
+review event, so a bound request-changes posts the discussions plus the summary
+note and warns that the verdict did not bind. `review_verdicts` stays as the
+compatibility sum `approve && request_changes` for consumers written before the
+split, and carries no reason of its own — the two flags explain it; new readers
+branch on those two flags. `thread_resolution` is false on every host: verdict
+ships no resolve call, so resolution stays a host-CLI step the prompts hand
+back to the agent. `unsupported` carries one machine-readable code per absent
+capability, keyed by capability name:
 
-| Provider    | Fetch reads                                                                                               | Auth                                                             | Gaps (v1)                                                                                          |
-| ----------- | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `gitlab`    | `glab mr view/diff/note list/discussions` + changes API                                                   | `glab auth login` (or `GITLAB_TOKEN`)                            | experimental note commands; no incremental (`--base-sha` refused)                                  |
-| `gitcafe`   | `cafe pr view/diff/reviews/comments`                                                                      | `cafe auth login` (or `CAFE_TOKEN`)                              | reads `.data.*` envelope; threads paged via `--cursor`; hunks render only when `.patch` text ships |
-| `forgejo`   | REST `curl` (`$FORGEJO_HOST/api/v1`, `$FORGEJO_TOKEN`) — neither `fj` nor `tea` exposes JSON review reads | token env                                                        | inline threads aggregated per review id                                                            |
-| `bitbucket` | REST `curl` (`$BITBUCKET_TOKEN` Bearer or user+password Basic)                                            | token env                                                        | diffstat/comments paginated server-side; no grouped submit                                         |
-| `azure`     | `az repos pr show` + `az rest` threads/iterations; diff via temp-clone `git fetch` of the two SHAs        | `az login` / `AZURE_DEVOPS_EXT_PAT`, `AZURE_DEVOPS_ORG` required | needs git reachability to the repo remote; no org/project auto-detect                              |
+| Code                       | Meaning                                                                         |
+| -------------------------- | ------------------------------------------------------------------------------- |
+| `fetch-only`               | no submit path for the host, so no post, anchors, or binding verdicts           |
+| `no-request-changes-event` | the host has no request-changes review event; the post degrades, with a warning |
+| `no-approve-verdict`       | the host posts but cannot record an approval                                    |
+| `no-inline-anchors`        | the host takes a body but no anchored comment                                   |
+| `no-resolve-mutation`      | verdict has no thread-resolve call on any host                                  |
+| `unknown-host`             | the provider is not one verdict reads                                           |
+
+| Provider    | Fetch reads                                                                                               | Auth                                                             | Gaps (v1)                                                                                                     |
+| ----------- | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `gitlab`    | `glab mr view/diff/note list/discussions` + changes API                                                   | `glab auth login` (or `GITLAB_TOKEN`)                            | experimental note commands; no incremental (`--base-sha` refused); `post` approves but cannot request changes |
+| `gitcafe`   | `cafe pr view/diff/reviews/comments`                                                                      | `cafe auth login` (or `CAFE_TOKEN`)                              | reads `.data.*` envelope; threads paged via `--cursor`; hunks render only when `.patch` text ships            |
+| `forgejo`   | REST `curl` (`$FORGEJO_HOST/api/v1`, `$FORGEJO_TOKEN`) — neither `fj` nor `tea` exposes JSON review reads | token env                                                        | inline threads aggregated per review id                                                                       |
+| `bitbucket` | REST `curl` (`$BITBUCKET_TOKEN` Bearer or user+password Basic)                                            | token env                                                        | diffstat/comments paginated server-side; no grouped submit                                                    |
+| `azure`     | `az repos pr show` + `az rest` threads/iterations; diff via temp-clone `git fetch` of the two SHAs        | `az login` / `AZURE_DEVOPS_EXT_PAT`, `AZURE_DEVOPS_ORG` required | needs git reachability to the repo remote; no org/project auto-detect                                         |
 
 State maps to open|closed|merged at fetch (`opened`→open, `active`→open,
 `ABANDONED`→closed, `SUPERSEDED`→closed, `completed`/`merged`→merged;
@@ -1925,6 +2140,52 @@ refused earlier anyway). File +/- stats come from the host API where it
 provides them (GitCafe, Forgejo, Bitbucket); otherwise they are derived
 from the reviewed diff itself (`git apply --numstat`), so the coverage
 manifest always describes the fetched object.
+
+A host that advertises `inline_anchors: false` is sent no anchored comment at
+all: `post` hands that answer to the merge, which keeps every finding and posts
+it in the body instead of a position the host would refuse, warns which host
+did it, and counts the findings in `anchors.moved`.
+
+`post.json` records the same gaps for the post that actually landed, because
+the envelope is not kept beside the bundle. `withheld` carries one entry per
+capability the host could not carry, using the capability names and reason
+codes above:
+
+```json
+"withheld": [
+  { "capability": "request_changes", "reason": "no-request-changes-event", "requested_event": "REQUEST_CHANGES" }
+]
+```
+
+That entry is what separates the two GitLab receipts that otherwise look
+alike: a bound request-changes the host cannot record leaves `review.state`
+reading `commented`, exactly as a plain comment does, and only `withheld` says
+which one posted. The key is absent when the host carried everything the run
+asked for, so an undegraded receipt keeps its bytes; `requested_event` is
+absent for a capability with no event of its own (`inline_anchors`, whose loss
+the `anchors` tally counts).
+
+### Submit (`post`) per host
+
+GitHub takes one atomic review; GitLab has no such call, so its submit replays
+three primitives in that order. Both hosts post the summary body last and
+neither replays a payload whose first write landed: a mid-way failure refuses
+typed `post-failed`, names what landed in the envelope `warnings`, and writes
+the host's own stderr to `.post.err`. The guarantee covers positioned
+discussions. A review with no comments posts only the summary note, and a
+summary write whose response was lost can be retried because nothing landed to
+observe; that case is the same lost-response shape GitHub documents.
+
+| Provider | Submit writes, in order                                                                                                                                                                                                                                                                            | Gaps                                                                                                                                                                                          |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `github` | one `repos/<owner>/<repo>/pulls/<n>/reviews` POST carrying `body`, `event`, and every inline comment (`gh api … --method POST --input -`)                                                                                                                                                          | —                                                                                                                                                                                             |
+| `gitlab` | one MR discussion per finding — a `position` with the MR's `base_sha`/`start_sha`/`head_sha`, both paths, `new_line` for an added line, both numbers for an unchanged one, `old_line` for a deletion — then one summary note, then `approve` (pinned by `sha`) only when the review is an approval | approve-only (GitLab has no `request-changes` event — the comments still post, with a warning); a multi-line anchor lands on its end line; `request_changes` and `review_verdicts` stay false |
+
+The repeat guard is the same on both hosts: the body's
+`<!-- verdict-review payload=… -->` marker is read from the fetched
+`reviews.json`, so a re-fetch restores it after a post, and the marker keys on
+the exact payload — body, anchors, and reviewed head — never on a diff
+position, which shifts as the branch gains commits.
 
 ## Calibration (predictions vs ground truth)
 

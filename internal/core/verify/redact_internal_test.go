@@ -5,6 +5,70 @@ import (
 	"testing"
 )
 
+// TestRedactSecretsHidesOverlappingValues proves two secret-named environment
+// values that overlap are hidden in one pass. The redactor used to chain a
+// `strings.ReplaceAll` per secret, so replacing the shorter value consumed the
+// bytes the longer one needed to match and left its tail — here five bytes of
+// URL_TOKEN's `valueEXTRA` — in the recorded tail, which lands in patch.json.
+// The matching now comes from envsecret.ScrubValues, shared with the launcher's
+// tail scrub, so the overlap cannot be fixed in one copy and missed in the
+// other.
+func TestRedactSecretsHidesOverlappingValues(t *testing.T) {
+	t.Parallel()
+	environ := []string{
+		"PATH=/bin",
+		"API_KEY=secretvalue",
+		"URL_TOKEN=valueEXTRA",
+	}
+	got := redactSecrets("token=secretvalueEXTRA exit=0", environ)
+	if got != "token="+redacted+" exit=0" {
+		t.Fatalf("redactSecrets = %q, want only the credential hidden", got)
+	}
+	for _, leaked := range []string{"secret", "value", "EXTRA"} {
+		if strings.Contains(got, leaked) {
+			t.Errorf("redactSecrets leaked %q: %q", leaked, got)
+		}
+	}
+}
+
+// TestRedactSecretsKeepsItsOwnPolicy proves the redactor kept the two rules
+// that are policy rather than matching now that the algorithm is shared: only
+// environment variables are collected (an argument secret is the launcher's
+// business) and a value below the 8-character floor is left alone.
+func TestRedactSecretsKeepsItsOwnPolicy(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		want    string
+		environ []string
+	}{
+		{
+			name:    "eight-byte-value-redacted",
+			environ: []string{"EIGHT_TOKEN=abcd1234"},
+			want:    "a=" + redacted + " b=abcd123",
+		},
+		{
+			name:    "seven-byte-value-kept",
+			environ: []string{"SEVEN_TOKEN=abcd123"},
+			want:    "a=abcd1234 b=abcd123",
+		},
+		{
+			name:    "non-secret-name-kept",
+			environ: []string{"PATH=/usr/bin/gh"},
+			want:    "a=abcd1234 b=abcd123",
+		},
+	}
+	const in = "a=abcd1234 b=abcd123"
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := redactSecrets(in, tc.environ); got != tc.want {
+				t.Errorf("redactSecrets(%q) = %q, want %q", in, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestRedactShapes pins shape-based redaction: the recorded tail drops a
 // leaked credential even when no environment value names it.
 func TestRedactShapes(t *testing.T) {

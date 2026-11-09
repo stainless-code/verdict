@@ -144,7 +144,7 @@ func allTools(readOnly, operator bool) []*tool {
 			name: "fetch",
 			description: "Fetch a PR into .verdict/state/<pr> (diff, metadata, threads, prompt input). " +
 				"Call first for any PR review; an over-cap diff refuses, so re-run with chunk=true. " +
-				"Writes the bundle and calls GitHub.",
+				"Writes the bundle and calls the PR's host.",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Fetch pull request", idempotent: true, openWorld: true},
 		}, toolDeps{commander: fetchRunner}, decodeFetch, wireFetch, invokeFetch),
@@ -190,9 +190,10 @@ func allTools(readOnly, operator bool) []*tool {
 		}, toolDeps{}, decodeNext, wireNext, invokeNext),
 		dataTool(&toolSpec{
 			name: "post",
-			description: "Post exactly one review to GitHub, or preview with dryRun. Call once " +
-				"after review.json is final; never write a review note. Writes post.json and " +
-				"sends to GitHub.",
+			description: "Post exactly one review to GitHub or GitLab, or preview with dryRun. " +
+				"Call once after review.json is final; never write a review note. Writes post.json " +
+				"and sends to the host. GitLab has no request-changes event, so a bound " +
+				"request-changes posts as a comment and post.json records it in withheld[].",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Post review", destructive: true, idempotent: true, openWorld: true},
 		}, toolDeps{commander: fetchRunner}, decodePost, wirePost, postcore.Run,
@@ -403,9 +404,21 @@ func invokeReport(ctx context.Context, req *core.ReportRequest) (*jq.Obj, *core.
 }
 
 func invokeNext(ctx context.Context, req *core.NextRequest) (*jq.Obj, *core.RefusalError) {
-	resp, ref := reportcore.RunNext(ctx, req)
+	// coverage is a read mode, not a decoration: dispatching it to RunNext
+	// would return the findings item and silently ignore the request.
+	var resp *core.NextResponse
+	var ref *core.RefusalError
+	if req.Coverage {
+		resp, ref = reportcore.RunNextCoverage(req)
+	} else {
+		resp, ref = reportcore.RunNext(ctx, req)
+	}
 	if ref != nil {
 		return nil, ref
+	}
+	if req.Coverage {
+		return jq.NewObj("coverage", resp.Coverage, "human", resp.Human,
+			"warnings", resp.Warnings), nil
 	}
 	var item any
 	if resp.Item != nil {

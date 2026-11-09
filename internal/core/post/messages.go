@@ -10,6 +10,17 @@ const (
 
 	msgProviderUnimplemented = "post to %s is not implemented yet — fetch, record, report and triage work on it; the manual lists the gaps"
 
+	msgGitLabPayload = "gitlab post payload unreadable"
+
+	msgGitLabNoDiffRefs = "gitlab merge request read carries no diff refs — a diff discussion needs the " +
+		"base, start, and head SHAs to anchor to (re-fetch and retry)"
+
+	msgNoChangesEvent = "%s has no request-changes review event — posting the discussions and summary note only"
+
+	msgNoApproveEvent = "%s has no approve review event — posting as COMMENT instead"
+
+	msgNoInlineAnchors = "%s takes no inline anchors (no-inline-anchors) — %d finding(s) posted in the body instead"
+
 	msgMissingDiffPost = "missing %s/full.diff (run fetch first — anchors validate against it)"
 
 	msgMissingBundlePost = "missing %s (run fetch %s %s first)"
@@ -52,22 +63,24 @@ const (
 )
 
 const (
-	fieldPath         = "path"
-	fieldLine         = "line"
-	fieldStartLine    = "start_line"
-	fieldBody         = "body"
-	fieldSuggestion   = "suggestion"
-	statusOpen        = "open"
-	localPrefix       = "local-"
-	newline           = "\n"
-	unknownTime       = "unknown time"
-	prSuffix          = "/PR.json"
-	codePostFailed    = "post-failed"
-	codeMissingDiff   = "missing-diff"
-	codeMissingBundle = "missing-bundle"
-	eventComment      = "COMMENT"
-	approveTrue       = "true"
-	approveFalse      = "false"
+	fieldPath           = "path"
+	fieldLine           = "line"
+	fieldStartLine      = "start_line"
+	fieldBody           = "body"
+	fieldComments       = "comments"
+	fieldSuggestion     = "suggestion"
+	statusOpen          = "open"
+	localPrefix         = "local-"
+	newline             = "\n"
+	unknownTime         = "unknown time"
+	prSuffix            = "/PR.json"
+	codePostFailed      = "post-failed"
+	codeMissingDiff     = "missing-diff"
+	codeMissingBundle   = "missing-bundle"
+	eventComment        = "COMMENT"
+	eventRequestChanges = "REQUEST_CHANGES"
+	approveTrue         = "true"
+	approveFalse        = "false"
 )
 
 const msgReviewMissing = "missing %s (agent must write {body, approved, comments[]})"

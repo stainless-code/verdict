@@ -172,7 +172,10 @@ func parseFlags(r *cli.Runner, args []string) (reportcore.Flags, int, bool) {
 }
 
 // flagStatus names the --status filter shared by report and next.
-const flagStatus = "--status"
+const (
+	flagStatus   = "--status"
+	flagCoverage = "--coverage"
+)
 
 // reportValueWants names each report value flag's operand for the
 // missing-value usage error.

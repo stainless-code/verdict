@@ -117,6 +117,9 @@ type state struct { //nolint:govet // field grouping documents the post run stat
 	liveLoaded   bool
 	identity     *identity.Identity
 	forced       []core.ForcedPost
+	// withheld is what the capability table denied this post, in discovery
+	// order; post.json carries it so a degraded write stays legible.
+	withheld []core.WithheldCapability
 	// policy is the typed run bundle when the fetch wrote one; nil on
 	// legacy bundles, which degrade to no repository requirements.
 	policy *runPolicy
@@ -299,7 +302,7 @@ func (st *state) loadReview() *core.RefusalError {
 
 func (st *state) checkDrift(ctx context.Context) {
 	st.fetchedSHA = st.store().Head()
-	live, err := ghLiveSHA(ctx, st.commanderOrNil(), st.req.Repo, st.req.Pr)
+	live, err := st.readLiveSHA(ctx)
 	if err != nil {
 		live = ""
 	}
@@ -315,6 +318,8 @@ func (st *state) checkDrift(ctx context.Context) {
 	}
 }
 
+// commanderOrNil returns the injected command runner, or nil when the
+// runtime carries none.
 func (st *state) commanderOrNil() Commander {
 	var rt *core.Runtime
 	if st.req != nil {
@@ -330,6 +335,41 @@ func (st *state) commanderOrNil() Commander {
 	return cmdr
 }
 
+// readLiveSHA reads the host's live head for the bundle's PR, so the drift
+// check runs the same read on every host that can post.
+func (st *state) readLiveSHA(ctx context.Context) (string, error) {
+	if st.provider() != providerGitLab {
+		return ghLiveSHA(ctx, st.commanderOrNil(), st.req.Repo, st.req.Pr)
+	}
+	cmdr := st.commanderOrNil()
+	if cmdr == nil {
+		return "", errNoCommander
+	}
+	mr, _, err := gitlabMRRead(ctx, cmdr, st.req.Repo, st.req.Pr)
+	if err != nil {
+		return "", err
+	}
+	return mr.headSHA(), nil
+}
+
+// selfLogin reads the authenticated login the authorship gate compares the
+// bundle author against: GitHub's user read, or GitLab's own whoami read.
+func (st *state) selfLogin(ctx context.Context) (string, error) {
+	if st.provider() != providerGitLab {
+		return ghSelfLogin(ctx, st.commanderOrNil())
+	}
+	return gitlabSelfLogin(ctx, st.commanderOrNil())
+}
+
+// recheck counts the live unresolved threads the approval guard compares
+// against the store: GitHub's reviewThreads read, or GitLab's discussions.
+func (st *state) recheck(ctx context.Context) (int, string, error) {
+	if st.provider() == providerGitLab {
+		return gitlabRecheck(ctx, st.commanderOrNil(), st.req.Repo, st.req.Pr, st.dir)
+	}
+	return postRecheck(ctx, st.commanderOrNil(), st.req.Repo, st.req.Pr, st.dir)
+}
+
 func (st *state) applyApprovedFlag() {
 	approvedRaw, _ := st.review.Get("approved")
 	if st.flags.Approve == approveFalse && jq.R(jq.Alt(approvedRaw, false)) == approveTrue {
@@ -338,9 +378,10 @@ func (st *state) applyApprovedFlag() {
 }
 
 func (st *state) merge() *core.RefusalError {
+	caps := core.CapabilitiesFor(st.provider())
 	rt := st.mergeRuntime()
 	res, err := recordcore.Merge(&rt, &recordcore.MergeParams{
-		Dir: st.dir, Prov: providerGitHub,
+		Dir: st.dir, Prov: st.provider(),
 		HeadFull: st.commitID,
 		Review:   st.review, ReviewFile: st.flags.ReviewFile,
 		Root: st.req.RootPath(), RepoRoot: st.req.RepoRootPath(), Body: st.body,
@@ -348,11 +389,16 @@ func (st *state) merge() *core.RefusalError {
 		PreFooter: st.splitPreFooter,
 		Effective: st.req.Effective, Forces: st.req.Forces,
 		Repo: st.req.Repo, Pr: st.req.Pr, Cmd: "post", Controls: st.controls,
+		RequireCoverage: st.flags.RequireCoverage,
+		// A host that advertises no inline anchors sends none: the merge keeps
+		// every finding in the body instead of an anchor the host would refuse.
+		BodyOnlyAnchors: !caps.InlineAnchors,
 	})
 	if err != nil {
 		return refusalOrFailed(err)
 	}
 	st.merged, st.body, st.diagram = res, res.Body, res.Diagram
+	st.recordAnchorGap(caps, res.NMoved)
 	return nil
 }
 
@@ -361,7 +407,7 @@ func (st *state) bindGate(ctx context.Context) *core.RefusalError {
 		return nil
 	}
 	if st.flags.RequestChanges {
-		st.event = "REQUEST_CHANGES"
+		st.event = st.applyVerdictGap(eventRequestChanges)
 	} else if st.flags.Approve == approveTrue {
 		if ref := st.approveGate(); ref != nil {
 			return ref
@@ -373,6 +419,83 @@ func (st *state) bindGate(ctx context.Context) *core.RefusalError {
 	return st.authorGate(ctx)
 }
 
+// verdictLoss is what one requested binding verdict loses on a host that
+// cannot carry it: the capability row a receipt records, the operator sentence
+// the envelope warns with, and the event to post instead. A host that carries
+// the verdict answers with the event alone, so capability and message stay
+// empty and nothing is recorded.
+type verdictLoss struct {
+	capability string
+	message    string
+	posted     string
+}
+
+// verdictGap states what a requested binding verdict loses on this host: a host
+// with no approve event cannot claim one, so the review posts COMMENT, while a
+// host with no request-changes event still posts the request as its findings
+// and summary note — the payload event is verdict's own record of the request,
+// not a host write. The capability table decides, so a host that gains either
+// event stops degrading. Pure: a test flips one capability and watches both
+// answers move.
+func verdictGap(caps core.HostCapabilities, event string) verdictLoss {
+	switch event {
+	case eventRequestChanges:
+		if !caps.RequestChanges {
+			return verdictLoss{capability: core.CapabilityRequestChanges, message: msgNoChangesEvent, posted: eventRequestChanges}
+		}
+	case eventApprove:
+		if !caps.Approve {
+			return verdictLoss{capability: core.CapabilityApprove, message: msgNoApproveEvent, posted: eventComment}
+		}
+	}
+	return verdictLoss{posted: event}
+}
+
+// applyVerdictGap warns about a verdict this host cannot carry, records the
+// withheld capability for the receipt, and returns the event to post for it.
+func (st *state) applyVerdictGap(event string) string {
+	caps := core.CapabilitiesFor(st.provider())
+	loss := verdictGap(caps, event)
+	if loss.capability == "" {
+		return loss.posted
+	}
+	st.warn(fmt.Sprintf(loss.message, hostLabel(st.provider())))
+	st.withhold(caps, loss.capability, event)
+	return loss.posted
+}
+
+// withhold records one capability this host could not carry, with the reason
+// code the capability table publishes for it and the binding event the run
+// asked for. A capability the host carries is never recorded, so the receipt
+// cannot name a loss the run did not take, and a capability is recorded once
+// however often a gate revisits it.
+func (st *state) withhold(caps core.HostCapabilities, capability, requestedEvent string) {
+	reason := caps.ReasonFor(capability)
+	if reason == "" {
+		return
+	}
+	for _, recorded := range st.withheld {
+		if recorded.Capability == capability {
+			return
+		}
+	}
+	st.withheld = append(st.withheld, core.WithheldCapability{
+		Capability: capability, Reason: reason, RequestedEvent: requestedEvent,
+	})
+}
+
+// recordAnchorGap records the inline-anchor loss when the provider takes no
+// anchored comment: every finding the body-only merge moved is one the host
+// could not carry inline, so the receipt names the capability and the count
+// rides the anchors tally and the operator warning.
+func (st *state) recordAnchorGap(caps core.HostCapabilities, moved int) {
+	if caps.InlineAnchors || moved == 0 {
+		return
+	}
+	st.warn(fmt.Sprintf(msgNoInlineAnchors, hostLabel(st.provider()), moved))
+	st.withhold(caps, core.CapabilityInlineAnchors, "")
+}
+
 func (st *state) unbound() bool {
 	wantBind := st.flags.Approve == approveTrue || st.flags.RequestChanges
 	if wantBind && !st.flags.Bind {
@@ -382,37 +505,51 @@ func (st *state) unbound() bool {
 }
 
 func (st *state) approveGate() *core.RefusalError {
+	if st.applyVerdictGap(eventApprove) == eventComment {
+		return nil
+	}
 	nOpen := recordcore.CountStatus(st.merged.Entries, statusOpen)
 	nDeferred := recordcore.CountStatus(st.merged.Entries, "deferred")
 	if nOpen+nDeferred > 0 && !st.flags.Force {
 		return &core.RefusalError{Code: "approve-blocked", Message: fmt.Sprintf(msgApproveBlocked, nOpen, nDeferred)}
 	}
-	if ref := st.privacyConflictGate(); ref != nil {
-		return ref
-	}
-	if ref := st.deepValidationGate(); ref != nil {
-		return ref
-	}
-	if ref := st.lensApprovalGate(); ref != nil {
-		return ref
-	}
-	if ref := st.headGate(); ref != nil {
+	if ref := st.approvalBlockers(); ref != nil {
 		return ref
 	}
 	if !st.driftStale {
 		st.event = eventApprove
 		return nil
 	}
+	st.downgradeStale()
+	return nil
+}
+
+// approvalBlockers runs the four gates an approval must clear after the status
+// count: privacy, deep validation, lens coverage, and head freshness. Each
+// returns a typed refusal or nil, and the first refusal wins.
+func (st *state) approvalBlockers() *core.RefusalError {
+	for _, gate := range []func() *core.RefusalError{
+		st.privacyConflictGate, st.deepValidationGate, st.lensApprovalGate, st.headGate,
+	} {
+		if ref := gate(); ref != nil {
+			return ref
+		}
+	}
+	return nil
+}
+
+// downgradeStale turns a stale approval into a comment: the body says which
+// commit the review read, so the reader knows the verdict predates the head.
+func (st *state) downgradeStale() {
 	st.warn(fmt.Sprintf(msgStaleDowngrade, readcommon.ShortSHA(st.fetchedSHA), readcommon.ShortSHA(st.liveSHA),
 		st.req.Repo, st.req.Pr, readcommon.ShortSHA(st.fetchedSHA)))
 	st.body = fmt.Sprintf(msgStaleNote, st.req.Repo, st.req.Pr, readcommon.ShortSHA(st.fetchedSHA)) + "\n\n" + st.body
 	st.event = eventComment
-	return nil
 }
 
 func (st *state) authorGate(ctx context.Context) *core.RefusalError {
 	author := st.store().Author()
-	me, rerr := ghSelfLogin(ctx, st.commanderOrNil())
+	me, rerr := st.selfLogin(ctx)
 	if rerr != nil {
 		me = ""
 	}
@@ -421,7 +558,7 @@ func (st *state) authorGate(ctx context.Context) *core.RefusalError {
 		st.warn("self-authored PR — binding verdict downgraded to COMMENT")
 		st.event = eventComment
 	case me == "":
-		st.warn("could not verify PR authorship — proceeding, GitHub may refuse a self-verdict")
+		st.warn(fmt.Sprintf("could not verify PR authorship — proceeding, %s may refuse a self-verdict", hostLabel(st.provider())))
 	}
 	return nil
 }
@@ -450,7 +587,7 @@ func (st *state) liveThreadsGate(ctx context.Context) *core.RefusalError {
 // liveThreads reads the live unresolved-thread count once, without touching
 // the review body or the bind decision.
 func (st *state) liveThreads(ctx context.Context) (int, string, bool) {
-	count, reason, err := postRecheck(ctx, st.commanderOrNil(), st.req.Repo, st.req.Pr, st.dir)
+	count, reason, err := st.recheck(ctx)
 	if err != nil {
 		if reason == "" {
 			reason = err.Error()
@@ -482,7 +619,7 @@ func (st *state) legacyRecheckGate(ctx context.Context) *core.RefusalError {
 }
 
 func (st *state) probeRecheck(ctx context.Context) (int, bool) {
-	liveOpen, reason, err := postRecheck(ctx, st.commanderOrNil(), st.req.Repo, st.req.Pr, st.dir)
+	liveOpen, reason, err := st.recheck(ctx)
 	if err == nil {
 		return liveOpen, false
 	}

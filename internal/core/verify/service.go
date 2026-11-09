@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -305,39 +304,36 @@ func lastBytes(s string, n int) string {
 	return s
 }
 
-// its value — when 8+ chars — replaced literally. The full .verify.out
+// redactSecrets returns the recorded tail with every secret-named environment
+// variable's value — when 8+ chars — replaced literally. The full .verify.out
 // keeps raw output for operator debugging; only the tail is filtered.
+//
+// The matching is [envsecret.ScrubValues], shared with the launcher's tail
+// scrub so two overlapping credentials are hidden in one pass rather than
+// leaking whichever tail survived the first replacement. What lives here is
+// only the policy: environment values under a secret-shaped name, and the
+// 8-character floor that keeps a short value from shredding the tail.
 func redactSecrets(tail string, environ []string) string {
-	for _, name := range secretNames(environ) {
-		for _, kv := range environ {
-			if k, v, ok := strings.Cut(kv, "="); ok && k == name && len(v) >= secretMinLen {
-				tail = strings.ReplaceAll(tail, v, redacted)
-				break
-			}
-		}
-	}
-	return tail
+	return envsecret.ScrubValues(tail, secretValues(environ))
 }
 
-func secretNames(environ []string) []string {
-	var out []string
+// secretValues collects the environment values the redactor hides: the value
+// of every secret-shaped variable that is long enough to be a credential.
+func secretValues(environ []string) []string {
+	var values []string
 	for _, kv := range environ {
-		name, _, _ := strings.Cut(kv, "=")
-		if isSecretName(name) {
-			out = append(out, name)
+		name, value, ok := strings.Cut(kv, "=")
+		if !ok || len(value) < secretMinLen || !envsecret.IsSecret(name) {
+			continue
 		}
+		values = append(values, value)
 	}
-	slices.Sort(out)
-	return out
-}
-
-func isSecretName(name string) bool {
-	return envsecret.IsSecret(name)
+	return values
 }
 
 const secretMinLen = 8
 
-const redacted = "***REDACTED***"
+const redacted = envsecret.Redacted
 
 // tailCap is the recorded tail size (tail -c 4000).
 const tailCap = 4000

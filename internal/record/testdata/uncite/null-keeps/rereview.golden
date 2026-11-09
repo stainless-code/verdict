@@ -56,7 +56,7 @@ recorded: .verdict/state/local-kb/findings.json (1 open) + .verdict/state/local-
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "5337104e90f2c4073211f45b9bcb04ea062fe248844b53111237de58944e966e",
+  "prompts_hash": "648f2080aeecf5952419db4a1f90d951895a41cc8498028a6fd5fd41d1eb6508",
   "model": null,
   "repairs": [{"code":"normalized-trivia","path":"$.comments[0].kb"}]
 }

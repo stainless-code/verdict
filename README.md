@@ -9,6 +9,7 @@ Verdict splits code review into steps your agent runs on your machine: fetch, re
 - **Evidence-graded findings.** Every finding carries an evidence rung, from `said` to `reproduced`, plus a severity. Unproven claims are labeled, never posted as fact.
 - **Guarded posting.** Anchors are validated before posting. One bad anchor never fails a post. Stale-SHA and duplicate-post guards refuse to post over a moved head or a repeat.
 - **Any model, any agent.** The agent you run is the review model. Verdict pins no models.
+- **Your agent runs only when you ask.** `verdict run --agent <name>` launches one process against one bundle: no daemon, queue, scheduler, webhook, or model selection, and verdict never interprets what the model wrote.
 - **Machine-readable.** Review verbs print one `--json` envelope. `report` also exports SARIF for scanners and CI.
 - **No PR needed.** `fetch-local` reviews your working tree and never posts.
 
@@ -68,18 +69,24 @@ is non-empty. To target one agent, run `verdict skill install --agent claude`. T
 You need [`gh`](https://cli.github.com) signed in with `repo` scope, and `git`. Run `verdict doctor` to check.
 
 ```bash
-verdict fetch owner/repo 123            # writes .verdict/state/123/ (diff, metadata, threads)
-# ask your agent to review PR 123; it reads .verdict/state/123/
-verdict post owner/repo 123 --dry-run   # validate anchors, post nothing
-verdict post owner/repo 123             # post exactly one review
+verdict fetch owner/repo 123                # writes .verdict/state/123/ (diff, metadata, threads)
+verdict run owner/repo 123 --agent claude   # launch your agent on the bundle; it writes review.json
+verdict post owner/repo 123 --dry-run       # validate anchors, post nothing
+verdict post owner/repo 123                 # post exactly one review
 ```
+
+`run` knows `claude`, `codex`, `cursor`, and `opencode`. For any other agent CLI,
+`--print` renders the exact command to run yourself, and everything after `--` is
+passed to the agent unchanged (`verdict run owner/repo 123 --agent claude -- --model opus`).
+The agent authenticates with your key on your machine; verdict makes no network
+calls itself and posts nothing.
 
 No PR yet? Review your working tree instead. This never posts.
 
 ```bash
-verdict fetch-local owner/repo work     # writes .verdict/state/local-work/
-# ask your agent to review local-work
-verdict record owner/repo local-work    # validate anchors, save the findings
+verdict fetch-local owner/repo work                # writes .verdict/state/local-work/
+verdict run owner/repo local-work --agent claude   # launch your agent on the local bundle
+verdict record owner/repo local-work               # validate anchors, save the findings
 ```
 
 ## Install
@@ -127,18 +134,20 @@ Inputs are `version` (default `latest`) and `require-signature` (default `true`)
 
 ## Hosts
 
-`fetch` works on all six hosts. Posting works on GitHub only.
+`fetch` works on all six hosts. `post` submits to GitHub and GitLab.
 
 | Host      | `--provider` | Fetch uses                                                 | Post | Incremental re-review (`--base-sha`) |
 | --------- | ------------ | ---------------------------------------------------------- | ---- | ------------------------------------ |
 | GitHub    | `github`     | `gh`                                                       | yes  | yes                                  |
-| GitLab    | `gitlab`     | `glab` (or `GITLAB_TOKEN`)                                 | no   | no                                   |
+| GitLab    | `gitlab`     | `glab` (or `GITLAB_TOKEN`)                                 | yes  | no                                   |
 | GitCafe   | `gitcafe`    | `cafe` (or `CAFE_TOKEN`)                                   | no   | no                                   |
 | Forgejo   | `forgejo`    | `curl` with `FORGEJO_HOST` and `FORGEJO_TOKEN`             | no   | no                                   |
 | Bitbucket | `bitbucket`  | `curl` with `BITBUCKET_TOKEN`                              | no   | no                                   |
 | Azure     | `azure`      | `az` (login or `AZURE_DEVOPS_EXT_PAT`, `AZURE_DEVOPS_ORG`) | no   | no                                   |
 
-On the other five hosts, `record`, `report`, `show`, `next`, `triage`, and `threads` work on the fetched bundle. `post`, live `calibrate`, `ready`, and `adopt` refuse with a typed error; `calibrate --probe` runs offline on any bundle. Details and per-host gaps are in the [manual](docs/manual.md#providers-non-github-hosts).
+A GitLab post is not a GitHub post: GitLab has no `REQUEST_CHANGES` review event, so a `--bind --request-changes` run posts its discussions and summary as a comment, and `post.json` records the withheld capability in `withheld[]` (`request_changes`, `no-request-changes-event`). An approval is a real MR approval.
+
+On the other four hosts, `record`, `report`, `show`, `next`, `triage`, and `threads` work on the fetched bundle. `post`, live `calibrate`, `ready`, and `adopt` refuse with a typed error; `calibrate --probe` runs offline on any bundle. `adopt`, `ready`, and live `calibrate` are GitHub-only — they refuse on a GitLab bundle too. Details and per-host gaps are in the [manual](docs/manual.md#providers-non-github-hosts).
 
 ## Security
 
