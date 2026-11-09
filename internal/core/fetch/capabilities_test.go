@@ -12,8 +12,14 @@ func allProviders() []string {
 	return []string{providerGitHub, "gitlab", "gitcafe", "forgejo", "bitbucket", "azure"}
 }
 
+// postsTo lists the hosts whose submit path is implemented: GitHub's single
+// atomic review POST and GitLab's discussion-per-finding replay.
+func postsTo(provider string) bool {
+	return provider == providerGitHub || provider == providerGitLab
+}
+
 // TestCapabilityWire proves every declared host surfaces the same additive
-// object and that only GitHub advertises the post-side capabilities.
+// object and that only the hosts with a submit path advertise post.
 func TestCapabilityWire(t *testing.T) {
 	t.Parallel()
 	for _, provider := range allProviders() {
@@ -35,7 +41,7 @@ func checkCapabilityWire(t *testing.T, provider string) {
 	}
 	checkCapabilityValue(t, obj, "provider", provider)
 	checkCapabilityValue(t, obj, "fetch", true)
-	checkCapabilityValue(t, obj, "post", provider == providerGitHub)
+	checkCapabilityValue(t, obj, "post", postsTo(provider))
 }
 
 // checkCapabilityValue compares one rendered capability field.
@@ -51,7 +57,7 @@ func checkCapabilityValue(t *testing.T, obj *jq.Obj, key string, want any) {
 func TestCapabilitiesMatchPostGate(t *testing.T) {
 	t.Parallel()
 	for _, provider := range allProviders() {
-		if got, want := core.CapabilitiesFor(provider).Post, provider == providerGitHub; got != want {
+		if got, want := core.CapabilitiesFor(provider).Post, postsTo(provider); got != want {
 			t.Errorf("CapabilitiesFor(%s).Post = %v, want %v", provider, got, want)
 		}
 	}

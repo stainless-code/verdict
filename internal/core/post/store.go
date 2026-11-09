@@ -10,6 +10,10 @@ import (
 
 const providerGitHub = "github"
 
+// providerGitLab is the second host with a submit path: GitLab carries a
+// review as one discussion per finding, one summary note, and an approve.
+const providerGitLab = "gitlab"
+
 func typedPostItems(entries []any) []core.FindingItem {
 	items := make([]core.FindingItem, 0, len(entries))
 	for _, e := range entries {

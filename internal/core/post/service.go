@@ -299,7 +299,7 @@ func (st *state) loadReview() *core.RefusalError {
 
 func (st *state) checkDrift(ctx context.Context) {
 	st.fetchedSHA = st.store().Head()
-	live, err := ghLiveSHA(ctx, st.commanderOrNil(), st.req.Repo, st.req.Pr)
+	live, err := st.readLiveSHA(ctx)
 	if err != nil {
 		live = ""
 	}
@@ -315,6 +315,8 @@ func (st *state) checkDrift(ctx context.Context) {
 	}
 }
 
+// commanderOrNil returns the injected command runner, or nil when the
+// runtime carries none.
 func (st *state) commanderOrNil() Commander {
 	var rt *core.Runtime
 	if st.req != nil {
@@ -330,6 +332,41 @@ func (st *state) commanderOrNil() Commander {
 	return cmdr
 }
 
+// readLiveSHA reads the host's live head for the bundle's PR, so the drift check
+// runs the same read on every host that can post.
+func (st *state) readLiveSHA(ctx context.Context) (string, error) {
+	if st.provider() != providerGitLab {
+		return ghLiveSHA(ctx, st.commanderOrNil(), st.req.Repo, st.req.Pr)
+	}
+	cmdr := st.commanderOrNil()
+	if cmdr == nil {
+		return "", errNoCommander
+	}
+	mr, _, err := gitlabMRRead(ctx, cmdr, st.req.Repo, st.req.Pr)
+	if err != nil {
+		return "", err
+	}
+	return mr.headSHA(), nil
+}
+
+// selfLogin reads the authenticated login the authorship gate compares the
+// bundle author against: GitHub's user read, or GitLab's own whoami read.
+func (st *state) selfLogin(ctx context.Context) (string, error) {
+	if st.provider() != providerGitLab {
+		return ghSelfLogin(ctx, st.commanderOrNil())
+	}
+	return gitlabSelfLogin(ctx, st.commanderOrNil())
+}
+
+// recheck counts the live unresolved threads the approval guard compares
+// against the store: GitHub's reviewThreads read, or GitLab's discussions.
+func (st *state) recheck(ctx context.Context) (int, string, error) {
+	if st.provider() == providerGitLab {
+		return gitlabRecheck(ctx, st.commanderOrNil(), st.req.Repo, st.req.Pr, st.dir)
+	}
+	return postRecheck(ctx, st.commanderOrNil(), st.req.Repo, st.req.Pr, st.dir)
+}
+
 func (st *state) applyApprovedFlag() {
 	approvedRaw, _ := st.review.Get("approved")
 	if st.flags.Approve == approveFalse && jq.R(jq.Alt(approvedRaw, false)) == approveTrue {
@@ -340,7 +377,7 @@ func (st *state) applyApprovedFlag() {
 func (st *state) merge() *core.RefusalError {
 	rt := st.mergeRuntime()
 	res, err := recordcore.Merge(&rt, &recordcore.MergeParams{
-		Dir: st.dir, Prov: providerGitHub,
+		Dir: st.dir, Prov: st.provider(),
 		HeadFull: st.commitID,
 		Review:   st.review, ReviewFile: st.flags.ReviewFile,
 		Root: st.req.RootPath(), RepoRoot: st.req.RepoRootPath(), Body: st.body,
@@ -362,7 +399,7 @@ func (st *state) bindGate(ctx context.Context) *core.RefusalError {
 		return nil
 	}
 	if st.flags.RequestChanges {
-		st.event = "REQUEST_CHANGES"
+		st.event = eventRequestChanges
 	} else if st.flags.Approve == approveTrue {
 		if ref := st.approveGate(); ref != nil {
 			return ref
@@ -413,7 +450,7 @@ func (st *state) approveGate() *core.RefusalError {
 
 func (st *state) authorGate(ctx context.Context) *core.RefusalError {
 	author := st.store().Author()
-	me, rerr := ghSelfLogin(ctx, st.commanderOrNil())
+	me, rerr := st.selfLogin(ctx)
 	if rerr != nil {
 		me = ""
 	}
@@ -422,7 +459,7 @@ func (st *state) authorGate(ctx context.Context) *core.RefusalError {
 		st.warn("self-authored PR — binding verdict downgraded to COMMENT")
 		st.event = eventComment
 	case me == "":
-		st.warn("could not verify PR authorship — proceeding, GitHub may refuse a self-verdict")
+		st.warn(fmt.Sprintf("could not verify PR authorship — proceeding, %s may refuse a self-verdict", hostLabel(st.provider())))
 	}
 	return nil
 }
@@ -451,7 +488,7 @@ func (st *state) liveThreadsGate(ctx context.Context) *core.RefusalError {
 // liveThreads reads the live unresolved-thread count once, without touching
 // the review body or the bind decision.
 func (st *state) liveThreads(ctx context.Context) (int, string, bool) {
-	count, reason, err := postRecheck(ctx, st.commanderOrNil(), st.req.Repo, st.req.Pr, st.dir)
+	count, reason, err := st.recheck(ctx)
 	if err != nil {
 		if reason == "" {
 			reason = err.Error()
@@ -483,7 +520,7 @@ func (st *state) legacyRecheckGate(ctx context.Context) *core.RefusalError {
 }
 
 func (st *state) probeRecheck(ctx context.Context) (int, bool) {
-	liveOpen, reason, err := postRecheck(ctx, st.commanderOrNil(), st.req.Repo, st.req.Pr, st.dir)
+	liveOpen, reason, err := st.recheck(ctx)
 	if err == nil {
 		return liveOpen, false
 	}
