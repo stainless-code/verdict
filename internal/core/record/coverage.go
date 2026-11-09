@@ -41,6 +41,11 @@ func (st *state) evaluateCoverage() error {
 	if sum.Chunked || !st.requireCoverage {
 		return nil
 	}
+	if sum.Total == 0 {
+		// Every changed file is exempt (generated or vendored) or there is
+		// nothing to measure: nothing to attest, so nothing to require.
+		return nil
+	}
 	if !sum.Present {
 		return &core.RefusalError{Code: coverage.CodeIncomplete, Message: msgCoverageAbsent}
 	}
@@ -82,7 +87,7 @@ func gapList(sum coverage.Summary, limit int) string {
 // review stays byte-identical and a full one stays clean.
 func (st *state) applyCoverageLine(body string) string {
 	sum := st.coverage
-	if sum == nil || sum.Chunked || !sum.Present || sum.Complete() {
+	if sum == nil || sum.Chunked || !sum.Present || sum.Complete() || !sum.Measured() {
 		return body
 	}
 	percent := 0
@@ -97,12 +102,12 @@ func (st *state) applyCoverageLine(body string) string {
 // body line and the stored receipt carry.
 func (st *state) reportCoverage() {
 	sum := st.coverage
-	if sum == nil || sum.Chunked || !sum.Present || sum.Complete() {
+	if sum == nil || sum.Chunked || !sum.Present || sum.Complete() || !sum.Measured() {
 		return
 	}
 	percent := 0
 	if sum.Percent != nil {
 		percent = *sum.Percent
 	}
-	st.warn(fmt.Sprintf(msgCoverageWarn, percent, sum.Attested, sum.Total, sum.Gaps))
+	st.warn(fmt.Sprintf(msgCoverageWarn, percent, sum.Attested, sum.Total, len(sum.Unattested)))
 }

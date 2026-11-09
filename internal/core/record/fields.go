@@ -29,6 +29,7 @@ const (
 	fieldComments   = "comments"
 	fieldResolved   = "resolved"
 	fieldChunks     = "chunks"
+	fieldCoverage   = "coverage"
 	fieldSections   = "sections"
 	fieldTriage     = "triage"
 	fieldSide       = "side"

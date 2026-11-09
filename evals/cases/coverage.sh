@@ -236,7 +236,7 @@ assert_eq "the partial body carries exactly one coverage line" 1 "$lines"
 assert_file_grep "the body line names the percentage and both gap ranges" \
   "$EVAL_SANDBOX/body-6101.txt" \
   '^> ⚠️ coverage: 54% of changed lines attested (unattested: src/db.ts:16-20,46-50)'
-assert_json_field "post.json counts the one file with gaps" 1 '.coverage.gaps' \
+assert_json_field "post.json counts the two gap ranges" 2 '.coverage.gaps' \
   "$EVAL_SANDBOX/.verdict/state/$PR/post.json"
 assert_json_field "post.json counts the attested and total lines" 12 '.coverage.attested' \
   "$EVAL_SANDBOX/.verdict/state/$PR/post.json"

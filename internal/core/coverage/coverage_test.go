@@ -110,8 +110,9 @@ func TestPartialOldAndNew(t *testing.T) {
 	if gaps["src/app.ts"] != "90-100" {
 		t.Fatalf("app gaps = %q, want 90-100", gaps["src/app.ts"])
 	}
-	if got.Gaps != 2 {
-		t.Fatalf("gaps = %d, want 2", got.Gaps)
+	// db.ts has two gap ranges (16-20, 46-50); app.ts one (90-100).
+	if got.Gaps != 3 {
+		t.Fatalf("gaps = %d, want 3 ranges", got.Gaps)
 	}
 }
 
@@ -155,8 +156,8 @@ func TestMalformedRangesCountAsUnattested(t *testing.T) {
 	if len(warns) == 0 || !strings.Contains(warns[0], "malformed ranges") {
 		t.Fatalf("warnings = %v, want the malformed-range warning", warns)
 	}
-	if got.Attested != 0 || got.Gaps != 2 {
-		t.Fatalf("attested/gaps = %d/%d, want 0/2", got.Attested, got.Gaps)
+	if got.Attested != 0 || got.Gaps != 3 {
+		t.Fatalf("attested/gaps = %d/%d, want 0/3 ranges", got.Attested, got.Gaps)
 	}
 }
 

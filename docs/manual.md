@@ -629,9 +629,10 @@ automatically; no sentinel is required. `percent` is `null`, never `0`, when no
 changed line was measured.
 
 The default posture is a warning plus one machine-built body line on a partial
-attestation. An absent `coverage` key warns nothing and adds no line, so a
-legacy review renders byte-identically and `coverage: []` ("I attest nothing")
-stays distinguishable from "no attestation was written".
+attestation. A partial one warns once and adds one machine-built body line;
+`coverage: []` ("I attest nothing") stays distinguishable from "no attestation
+was written", and a review that never stamped the key gets neither the warning
+nor the line, so its rendered body is unchanged.
 
 `--require-coverage` on `post` and `record` turns absence or a gap into a
 `coverage-incomplete` refusal that names the unattested ranges. `--force` does

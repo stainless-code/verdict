@@ -73,11 +73,13 @@ type Gap struct {
 // line is rendered from. Keys are absent from a stored receipt when nothing was
 // evaluated, so a legacy store stays byte-identical.
 type Summary struct {
-	Percent    *int  `json:"percent"`
-	Attested   int   `json:"attested"`
-	Total      int   `json:"total"`
-	Files      int   `json:"files"`
-	Exempt     int   `json:"exempt"`
+	Percent  *int `json:"percent"`
+	Attested int  `json:"attested"`
+	Total    int  `json:"total"`
+	Files    int  `json:"files"`
+	Exempt   int  `json:"exempt"`
+	// Gaps counts unattested ranges across every file: not lines, and not
+	// files-with-gaps, which is what the warning line reports.
 	Gaps       int   `json:"gaps"`
 	Unattested []Gap `json:"unattested,omitempty"`
 	Chunked    bool  `json:"chunked,omitempty"`
@@ -101,6 +103,11 @@ func (s *Summary) Receipt() *core.CoverageSummary {
 		Gaps:     s.Gaps,
 	}
 }
+
+// Measured reports whether the bundle had any non-exempt changed line. A
+// bundle where every file is exempt has nothing to attest and nothing to
+// report: it is neither complete nor partial.
+func (s Summary) Measured() bool { return s.Total > 0 }
 
 // Complete reports a fully attested non-chunked run.
 func (s Summary) Complete() bool { return s.Percent != nil && *s.Percent == 100 }
@@ -186,9 +193,9 @@ func summarize(files map[string][]Range, claims []claim, generated func(string) 
 		sum.Attested += span(read)
 		if rest := subtract(all, read); len(rest) > 0 {
 			sum.Unattested = append(sum.Unattested, Gap{File: f, Ranges: Format(rest)})
+			sum.Gaps += len(rest)
 		}
 	}
-	sum.Gaps = len(sum.Unattested)
 	if sum.Total > 0 {
 		percent := sum.Attested * 100 / sum.Total
 		sum.Percent = &percent
