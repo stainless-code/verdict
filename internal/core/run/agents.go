@@ -44,8 +44,8 @@ func lookupAgent(name string) (agentDef, bool) {
 	return agentDef{}, false
 }
 
-// AgentNames returns the known agent names in table order, for the unknown-agent
-// refusal and the usage block.
+// AgentNames returns the known agent names in table order, for the
+// unknown-agent refusal and the usage block.
 func AgentNames() []string {
 	names := make([]string, 0, len(agentDefs))
 	for _, def := range agentDefs {

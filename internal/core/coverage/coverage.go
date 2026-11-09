@@ -10,8 +10,9 @@ package coverage
 
 import (
 	"fmt"
+	"maps"
 	"os"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -73,17 +74,17 @@ type Gap struct {
 // line is rendered from. Keys are absent from a stored receipt when nothing was
 // evaluated, so a legacy store stays byte-identical.
 type Summary struct {
-	Percent  *int `json:"percent"`
-	Attested int  `json:"attested"`
-	Total    int  `json:"total"`
-	Files    int  `json:"files"`
-	Exempt   int  `json:"exempt"`
-	// Gaps counts unattested ranges across every file: not lines, and not
-	// files-with-gaps, which is what the warning line reports.
-	Gaps       int   `json:"gaps"`
+	Percent *int `json:"percent"`
+	// Unattested is the per-file gap list the body line and the --json payload
+	// render; Gaps counts the same ranges, which is what the warning reports.
 	Unattested []Gap `json:"unattested,omitempty"`
-	Chunked    bool  `json:"chunked,omitempty"`
+	Attested   int   `json:"attested"`
+	Total      int   `json:"total"`
+	Files      int   `json:"files"`
+	Exempt     int   `json:"exempt"`
+	Gaps       int   `json:"gaps"`
 	Chunks     int   `json:"chunks,omitempty"`
+	Chunked    bool  `json:"chunked,omitempty"`
 	Present    bool  `json:"-"`
 }
 
@@ -104,13 +105,16 @@ func (s *Summary) Receipt() *core.CoverageSummary {
 	}
 }
 
+// percentTotal is the denominator a coverage percentage is taken over.
+const percentTotal = 100
+
 // Measured reports whether the bundle had any non-exempt changed line. A
 // bundle where every file is exempt has nothing to attest and nothing to
 // report: it is neither complete nor partial.
-func (s Summary) Measured() bool { return s.Total > 0 }
+func (s *Summary) Measured() bool { return s.Total > 0 }
 
 // Complete reports a fully attested non-chunked run.
-func (s Summary) Complete() bool { return s.Percent != nil && *s.Percent == 100 }
+func (s *Summary) Complete() bool { return s.Percent != nil && *s.Percent == percentTotal }
 
 // claim is one parsed coverage[] entry.
 type claim struct {
@@ -159,26 +163,9 @@ func unknownClaims(claims []claim, files map[string][]Range) []string {
 
 // summarize is the pure part: intervals in, summary out.
 func summarize(files map[string][]Range, claims []claim, generated func(string) bool) Summary {
-	order := make([]string, 0, len(files))
-	for f := range files {
-		order = append(order, f)
-	}
-	sort.Strings(order)
+	order := slices.Sorted(maps.Keys(files))
 
-	attested := map[string][]Range{}
-	for _, c := range claims {
-		if c.bad {
-			continue
-		}
-		switch {
-		case c.whole:
-			// A whole-file attestation is the common case: expand it to the
-			// file's own intervals so a partial hunk set still counts exactly.
-			attested[c.file] = merge(append(attested[c.file], files[c.file]...))
-		case len(c.ranges) > 0:
-			attested[c.file] = merge(append(attested[c.file], c.ranges...))
-		}
-	}
+	attested := attestation(files, claims)
 
 	var sum Summary
 	for _, f := range order {
@@ -197,10 +184,29 @@ func summarize(files map[string][]Range, claims []claim, generated func(string) 
 		}
 	}
 	if sum.Total > 0 {
-		percent := sum.Attested * 100 / sum.Total
+		percent := sum.Attested * percentTotal / sum.Total
 		sum.Percent = &percent
 	}
 	return sum
+}
+
+// attestation unions the valid claims per file. A whole-file claim expands to
+// the file's own intervals so a partial hunk set still counts exactly; a claim
+// with no usable range attests nothing and is skipped.
+func attestation(files map[string][]Range, claims []claim) map[string][]Range {
+	attested := map[string][]Range{}
+	for _, c := range claims {
+		if c.bad {
+			continue
+		}
+		switch {
+		case c.whole:
+			attested[c.file] = merge(append(attested[c.file], files[c.file]...))
+		case len(c.ranges) > 0:
+			attested[c.file] = merge(append(attested[c.file], c.ranges...))
+		}
+	}
+	return attested
 }
 
 // parseClaims reads coverage[] and reports whether the key was present. Every
@@ -220,36 +226,49 @@ func parseClaims(review *jq.Obj, warns *[]string) ([]claim, bool) {
 	}
 	out := make([]claim, 0, len(items))
 	for i, item := range items {
-		obj, okObj := item.(*jq.Obj)
-		if !okObj || obj == nil {
-			*warns = append(*warns, fmt.Sprintf(msgEntryNotObject, i))
-			continue
+		if c, ok := claimAt(item, i, warns); ok {
+			out = append(out, c)
 		}
-		file := strings.TrimSpace(jq.Str(fieldOf(obj, FieldFile)))
-		if file == "" {
-			*warns = append(*warns, fmt.Sprintf(msgEntryNoFile, i))
-			continue
-		}
-		c := claim{file: file}
-		ranges, okRanges := rangeField(obj)
-		switch {
-		case !okRanges:
-			*warns = append(*warns, fmt.Sprintf(msgBadRanges, file, jq.Str(mustField(obj, FieldRanges))))
-			c.bad = true
-		case ranges == "" || ranges == RangesAll:
-			c.whole = true
-		default:
-			parsed, err := ParseRanges(ranges)
-			if err != nil {
-				*warns = append(*warns, fmt.Sprintf(msgBadRanges, file, ranges))
-				c.bad = true
-			} else {
-				c.ranges = parsed
-			}
-		}
-		out = append(out, c)
 	}
 	return out, true
+}
+
+// claimAt reads one coverage[] entry, warning and reporting false for an entry
+// that cannot name a file. A malformed range still yields a claim, marked bad,
+// so the merge warns about it and never counts it as attested.
+func claimAt(item any, i int, warns *[]string) (claim, bool) {
+	obj, isObj := item.(*jq.Obj)
+	if !isObj || obj == nil {
+		*warns = append(*warns, fmt.Sprintf(msgEntryNotObject, i))
+		return claim{}, false
+	}
+	file := strings.TrimSpace(jq.Str(fieldOf(obj, FieldFile)))
+	if file == "" {
+		*warns = append(*warns, fmt.Sprintf(msgEntryNoFile, i))
+		return claim{}, false
+	}
+	ranges, whole, bad := claimRanges(obj, file, warns)
+	return claim{file: file, ranges: ranges, whole: whole, bad: bad}, true
+}
+
+// claimRanges resolves one entry's ranges field: a whole-file claim, a parsed
+// range list, or a claim marked bad when the field is present but unreadable.
+func claimRanges(obj *jq.Obj, file string, warns *[]string) ([]Range, bool, bool) {
+	ranges, ok := rangeField(obj)
+	switch {
+	case !ok:
+		*warns = append(*warns, fmt.Sprintf(msgBadRanges, file, jq.Str(mustField(obj, FieldRanges))))
+		return nil, false, true
+	case ranges == "" || ranges == RangesAll:
+		return nil, true, false
+	default:
+		parsed, err := ParseRanges(ranges)
+		if err != nil {
+			*warns = append(*warns, fmt.Sprintf(msgBadRanges, file, ranges))
+			return nil, false, true
+		}
+		return parsed, false, false
+	}
 }
 
 // fieldOf reads one key off a decoded object.
@@ -287,10 +306,10 @@ func loadRows(dir string) ([]hunks.Hunk, *core.RefusalError) {
 		return rows, nil
 	}
 	raw, rerr := os.ReadFile(dir + fullDiffFile)
-	if rerr != nil {
-		return nil, nil
+	if rerr == nil {
+		return hunks.Parse(string(raw)), nil
 	}
-	return hunks.Parse(string(raw)), nil
+	return nil, nil
 }
 
 // chunked reports whether the bundle carries a chunk manifest, and how many
@@ -341,25 +360,34 @@ func Present(review *jq.Obj) bool {
 func ParseRanges(s string) ([]Range, error) {
 	var out []Range
 	for tok := range strings.SplitSeq(s, ",") {
-		tok = strings.TrimSpace(tok)
-		if tok == "" {
-			return nil, jq.NewErr("empty range")
+		r, err := parseRange(strings.TrimSpace(tok))
+		if err != nil {
+			return nil, err
 		}
-		lo, hi, ok := cutRange(tok)
-		if !ok {
-			return nil, jq.NewErrf("malformed range %q", tok)
-		}
-		start, errS := strconv.Atoi(lo)
-		end, errE := strconv.Atoi(hi)
-		if errS != nil || errE != nil {
-			return nil, jq.NewErrf("malformed range %q", tok)
-		}
-		if start < 1 || end < start {
-			return nil, jq.NewErrf("malformed range %q", tok)
-		}
-		out = append(out, Range{Start: start, End: end})
+		out = append(out, r)
 	}
 	return merge(out), nil
+}
+
+// parseRange reads one "a" or "a-b" token. A zero, a reversed range, a
+// non-numeric token, and an empty token are all errors.
+func parseRange(tok string) (Range, error) {
+	if tok == "" {
+		return Range{}, jq.NewErr("empty range")
+	}
+	lo, hi, ok := cutRange(tok)
+	if !ok {
+		return Range{}, jq.NewErrf("malformed range %q", tok)
+	}
+	start, errS := strconv.Atoi(lo)
+	end, errE := strconv.Atoi(hi)
+	if errS != nil || errE != nil {
+		return Range{}, jq.NewErrf("malformed range %q", tok)
+	}
+	if start < 1 || end < start {
+		return Range{}, jq.NewErrf("malformed range %q", tok)
+	}
+	return Range{Start: start, End: end}, nil
 }
 
 // cutRange splits "42" into "42","42" and "42-48" into its bounds. More than
@@ -405,7 +433,7 @@ func merge(rs []Range) []Range {
 	}
 	sorted := make([]Range, len(rs))
 	copy(sorted, rs)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Start < sorted[j].Start })
+	slices.SortFunc(sorted, func(a, b Range) int { return a.Start - b.Start })
 	out := []Range{sorted[0]}
 	for _, r := range sorted[1:] {
 		last := &out[len(out)-1]
@@ -450,18 +478,26 @@ func subtract(a, b []Range) []Range {
 	for _, cut := range b {
 		var next []Range
 		for _, r := range out {
-			if cut.End < r.Start || cut.Start > r.End {
-				next = append(next, r)
-				continue
-			}
-			if cut.Start > r.Start {
-				next = append(next, Range{Start: r.Start, End: cut.Start - 1})
-			}
-			if cut.End < r.End {
-				next = append(next, Range{Start: cut.End + 1, End: r.End})
-			}
+			next = append(next, cutOne(r, cut)...)
 		}
 		out = next
+	}
+	return out
+}
+
+// cutOne returns the parts of r that survive one cut: the whole interval when
+// they do not overlap, one fragment when the cut takes an end, two when it
+// splits the middle, and none when it swallows the interval.
+func cutOne(r, cut Range) []Range {
+	if cut.End < r.Start || cut.Start > r.End {
+		return []Range{r}
+	}
+	var out []Range
+	if cut.Start > r.Start {
+		out = append(out, Range{Start: r.Start, End: cut.Start - 1})
+	}
+	if cut.End < r.End {
+		out = append(out, Range{Start: cut.End + 1, End: r.End})
 	}
 	return out
 }

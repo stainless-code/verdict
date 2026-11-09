@@ -1,6 +1,7 @@
 package run
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/envsecret"
@@ -16,14 +17,16 @@ const (
 	// secretMinLen is the value length below which an environment match is not a
 	// credential worth scrubbing (the verify tail redactor uses the same bound).
 	secretMinLen = 8
+	// envSeparator is the key/value separator in one environ entry.
+	envSeparator = "="
 )
 
-// argvShape records the argv the launcher spawned without the prompt body and
-// without secrets: the directive becomes [promptPlaceholder], the operand after
-// a secret-shaped flag is replaced (both `--flag value` and `--flag=value`), and
-// so is any argument that equals a value the operator's environment holds under
-// a secret name. Over-redaction is acceptable in a provenance record; a leaked
-// model key is not.
+// argvShape records the argv the launcher spawned without the prompt body
+// and without secrets: the directive becomes [promptPlaceholder], the
+// operand after a secret-shaped flag is replaced (both `--flag value` and
+// `--flag=value`), and so is any argument that equals a value the operator's
+// environment holds under a secret name. Over-redaction is acceptable in a
+// provenance record; a leaked model key is not.
 func argvShape(argv []string, prompt string, environ []string) []string {
 	secrets := secretValues(environ)
 	shape := make([]string, 0, len(argv))
@@ -80,7 +83,7 @@ func redactFlagValue(arg string) string {
 func secretValues(environ []string) []string {
 	var values []string
 	for _, kv := range environ {
-		name, value, ok := strings.Cut(kv, "=")
+		name, value, ok := strings.Cut(kv, envSeparator)
 		if !ok || len(value) < secretMinLen || !envsecret.IsSecret(name) {
 			continue
 		}
@@ -91,10 +94,5 @@ func secretValues(environ []string) []string {
 
 // isSecretValue reports whether arg is one of the collected secret values.
 func isSecretValue(arg string, secrets []string) bool {
-	for _, value := range secrets {
-		if arg == value {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(secrets, arg)
 }

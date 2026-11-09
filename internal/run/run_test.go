@@ -23,14 +23,14 @@ func testRunner(cmd string, jsonMode bool) (*cli.Runner, *strings.Builder, *stri
 	return r, &out, &diag
 }
 
-// TestRenderCommandQuotesForShell pins the --print rendering: safe arguments stay
-// bare, everything else is single-quoted, and an embedded single quote is closed,
-// escaped, and reopened so the line stays copy-pasteable.
+// TestRenderCommandQuotesForShell pins the --print rendering: safe arguments
+// stay bare, everything else is single-quoted, and an embedded single quote
+// is closed, escaped, and reopened so the line stays copy-pasteable.
 func TestRenderCommandQuotesForShell(t *testing.T) {
 	tests := []struct {
 		name string
-		argv []string
 		want string
+		argv []string
 	}{
 		{
 			name: "flags and paths stay bare",
@@ -67,12 +67,14 @@ func TestRenderCommandQuotesForShell(t *testing.T) {
 	}
 }
 
-// TestParseFlagsPassThrough proves everything after a bare `--` reaches the agent
-// unchanged, including tokens the verb would otherwise own.
+// TestParseFlagsPassThrough proves everything after a bare `--` reaches the
+// agent unchanged, including tokens the verb would otherwise own.
 func TestParseFlagsPassThrough(t *testing.T) {
 	r, _, _ := testRunner("run", false)
-	flags, code, done := parseFlags(r, []string{"--agent", "claude", "--timeout", "42", "--print",
-		"--", "--json", "--agent", "not-ours", "--", "trailing"})
+	flags, code, done := parseFlags(r, []string{
+		"--agent", "claude", "--timeout", "42", "--print",
+		"--", "--json", "--agent", "not-ours", "--", "trailing",
+	})
 	if done {
 		t.Fatalf("parse failed with exit %d", code)
 	}
@@ -111,8 +113,8 @@ func TestParseFlagsUnknownFlagIsUsage(t *testing.T) {
 	}
 }
 
-// TestParseFlagsMissingValueIsUsage proves a value flag without its operand is a
-// usage error rather than an empty agent name.
+// TestParseFlagsMissingValueIsUsage proves a value flag without its operand
+// is a usage error rather than an empty agent name.
 func TestParseFlagsMissingValueIsUsage(t *testing.T) {
 	r, _, diag := testRunner("run", false)
 	_, code, done := parseFlags(r, []string{"--agent"})
@@ -124,8 +126,8 @@ func TestParseFlagsMissingValueIsUsage(t *testing.T) {
 	}
 }
 
-// TestRentryRebuildsTheCommand pins the re-run line: the identity it names is the
-// one the operator ran, minus the unquotable pass-through tail.
+// TestRentryRebuildsTheCommand pins the re-run line: the identity it names
+// is the one the operator ran, minus the unquotable pass-through tail.
 func TestRentryRebuildsTheCommand(t *testing.T) {
 	req := Request{Repo: "acme/app", Pr: "42"}
 	got := rentry(req, flags{agent: "claude", timeout: "42", print: true}, true)

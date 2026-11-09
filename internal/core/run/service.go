@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -85,9 +86,9 @@ func Run(ctx context.Context, req *core.RunRequest) (resp *core.RunResponse, ref
 	args.prompt = directive(st.req.Repo, st.req.Pr, args.bundle, args.artifact, readcommon.IsLocalBundleDir(dir))
 	args.argv = argvFor(def, st.req.PassThrough, args.prompt)
 	if st.req.Print {
-		return st.printed(args), nil
+		return st.printed(&args), nil
 	}
-	return st.launch(ctx, args)
+	return st.launch(ctx, &args)
 }
 
 // state carries the accumulated warnings plus the request every step reads.
@@ -197,7 +198,7 @@ func digits(s string) bool {
 
 // printed builds the print-only response: the exact command this run would
 // spawn, rendered by the adapter, with nothing resolved, spawned, or written.
-func (st *state) printed(args launchArgs) *core.RunResponse {
+func (st *state) printed(args *launchArgs) *core.RunResponse {
 	return &core.RunResponse{
 		Repo: st.req.Repo,
 		Pr:   st.req.Pr,
@@ -217,7 +218,7 @@ func (st *state) printed(args launchArgs) *core.RunResponse {
 
 // launch runs the one process: resolve, record the launch, spawn with the
 // watchdog, then assert the artifact and hand off.
-func (st *state) launch(ctx context.Context, args launchArgs) (*core.RunResponse, *core.RefusalError) {
+func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunResponse, *core.RefusalError) {
 	bin, ref := st.resolve(args.def)
 	if ref != nil {
 		return nil, ref
@@ -258,10 +259,10 @@ func (st *state) resolve(def agentDef) (string, *core.RefusalError) {
 	return bin, nil
 }
 
-// spawn runs the agent under the watchdog: its own process group, a tree kill on
-// the budget, and a combined bounded capture. The agent inherits the operator's
-// environment (that is how it authenticates), minus color when the run is
-// machine-only.
+// spawn runs the agent under the watchdog: its own process group, a tree
+// kill on the budget, and a combined bounded capture. The agent inherits the
+// operator's environment (that is how it authenticates), minus color when
+// the run is machine-only.
 func (st *state) spawn(ctx context.Context, argv []string, timeout int) (*core.Result, error) {
 	commander := st.commander()
 	if commander == nil {
@@ -281,8 +282,8 @@ func (st *state) spawn(ctx context.Context, argv []string, timeout int) (*core.R
 	return &res, nil
 }
 
-// errNoCommander is the launcher's own wiring failure: no scripted or production
-// commander reached the service.
+// errNoCommander is the launcher's own wiring failure: no scripted or
+// production commander reached the service.
 var errNoCommander = jq.NewErr("no commander in runtime")
 
 func (st *state) commander() core.Commander {
@@ -310,7 +311,7 @@ func (st *state) childEnv() []string {
 // finish writes the outcome record and turns the observations into the run's
 // answer: the cancel, the agent's failure, the watchdog, then the artifact
 // assertion. res is nil when no process ever started.
-func (st *state) finish(ctx context.Context, args launchArgs, rec *launcher, launched, started time.Time,
+func (st *state) finish(ctx context.Context, args *launchArgs, rec *launcher, launched, started time.Time,
 	res *core.Result, spawnErr error,
 ) (*core.RunResponse, *core.RefusalError) {
 	art := inspectArtifact(args.abs, launched)
@@ -342,7 +343,7 @@ func (st *state) refused(ref *core.RefusalError, res *core.Result, ended time.Ti
 // verdict picks the refusal the run reports, in the order the operator can act
 // on: a cancel outranks everything (the command never finished), then a spawn
 // failure, the watchdog, the non-zero exit, and finally the artifact assertion.
-func (st *state) verdict(ctx context.Context, args launchArgs, res *core.Result, spawnErr error,
+func (st *state) verdict(ctx context.Context, args *launchArgs, res *core.Result, spawnErr error,
 	art artifactState,
 ) *core.RefusalError {
 	switch {
@@ -363,16 +364,15 @@ func (st *state) verdict(ctx context.Context, args launchArgs, res *core.Result,
 	return st.artifactRefusal(args, art)
 }
 
-// artifactRefusal is the artifact contract: exactly one fresh review file, at the
-// bundle's review path, written after the launch record.
-func (st *state) artifactRefusal(args launchArgs, art artifactState) *core.RefusalError {
+// artifactRefusal is the artifact contract: exactly one fresh review file,
+// at the bundle's review path, written after the launch record.
+func (st *state) artifactRefusal(args *launchArgs, art artifactState) *core.RefusalError {
 	switch {
 	case !art.exists:
 		return st.refuse(codeNoArtifact, fmt.Sprintf(
 			"%s exited 0 but wrote no %s", args.def.Name, args.artifact))
 	case !art.regular:
-		return st.refuse(codeNoArtifact, fmt.Sprintf(
-			"%s is not a regular file — the review artifact must be one JSON file", args.artifact))
+		return st.refuse(codeNoArtifact, args.artifact+" is not a regular file — the review artifact must be one JSON file")
 	case !art.fresh:
 		return st.refuse(codeStaleArtifact, fmt.Sprintf(
 			"%s predates this run (written %s, launched %s): the agent did not write it",
@@ -381,15 +381,16 @@ func (st *state) artifactRefusal(args launchArgs, art artifactState) *core.Refus
 	return nil
 }
 
-// recordOutcome writes the log, then the completed provenance record. The record
-// carries the agent name, the resolved binary, the redacted argv shape, the
-// timings, and the exit code; the full stream stays in .run.out for the operator.
+// recordOutcome writes the log, then the completed provenance record. The
+// record carries the agent name, the resolved binary, the redacted argv
+// shape, the timings, and the exit code; the full stream stays in .run.out
+// for the operator.
 func (st *state) recordOutcome(rec *launcher, dir string, ended, started time.Time,
 	res *core.Result, art artifactState,
 ) *core.RefusalError {
 	if res != nil {
 		output := res.Stdout + res.Stderr
-		if err := writeRunOutput(dir+"/"+runOutputFile, output); err != nil {
+		if err := writeRunOutput(filepath.Join(dir, runOutputFile), output); err != nil {
 			st.warn(err.Error())
 		}
 		rec.OutputTail = st.tail(output)
@@ -402,7 +403,7 @@ func (st *state) recordOutcome(rec *launcher, dir string, ended, started time.Ti
 	if art.exists && art.regular {
 		rec.ArtifactBytes = &art.size
 	}
-	_, ref := writeLauncher(dir+"/"+launcherFile, rec)
+	_, ref := writeLauncher(filepath.Join(dir, launcherFile), rec)
 	return ref
 }
 
@@ -414,13 +415,13 @@ func (st *state) tail(output string) string {
 }
 
 // response is the successful run's envelope data plus the handoff line.
-func (st *state) response(args launchArgs, rec *launcher, res *core.Result, art artifactState,
+func (st *state) response(args *launchArgs, rec *launcher, res *core.Result, art artifactState,
 	started, ended time.Time,
 ) *core.RunResponse {
 	st.human(fmt.Sprintf("» exit=%d timed_out=%s duration=%s",
 		res.ExitCode, strconv.FormatBool(res.TimedOut), ended.Sub(started).Round(time.Millisecond)))
 	st.human(fmt.Sprintf("» wrote %s (fresh, %d bytes)", args.artifact, art.size))
-	st.human(fmt.Sprintf("» recorded %s", st.display(rec.path(args.dir))))
+	st.human("» recorded " + st.display(rec.path(args.dir)))
 	return &core.RunResponse{
 		Repo: st.req.Repo,
 		Pr:   st.req.Pr,
@@ -444,8 +445,8 @@ func (st *state) response(args launchArgs, rec *launcher, res *core.Result, art 
 	}
 }
 
-// display renders a path for operator-facing output: repository-relative when it
-// lives under the reviewed root.
+// display renders a path for operator-facing output: repository-relative
+// when it lives under the reviewed root.
 func (st *state) display(path string) string {
 	return readcommon.DisplayPath(st.req.RepoRootPath(), path)
 }

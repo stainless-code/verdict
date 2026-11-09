@@ -22,6 +22,8 @@ func mustReview(t *testing.T, body string) *jq.Obj {
 	return obj
 }
 
+// TestParseRanges pins the range grammar: a list normalizes to minimal,
+// sorted intervals, and every malformed token is refused rather than widened.
 func TestParseRanges(t *testing.T) {
 	good := map[string]string{
 		"42":          "42",
@@ -35,20 +37,25 @@ func TestParseRanges(t *testing.T) {
 		"1-1,2-2,4-4": "1-2,4",
 	}
 	for in, want := range good {
-		got, err := ParseRanges(in)
-		if err != nil {
-			t.Errorf("ParseRanges(%q) error: %v", in, err)
-			continue
-		}
-		if Format(got) != want {
-			t.Errorf("ParseRanges(%q) = %q, want %q", in, Format(got), want)
-		}
+		assertRangeFormat(t, in, want)
 	}
-	bad := []string{"", " ", "0", "0-5", "9-3", "a-b", "1-", "-5", "1,,2", "1-2-3", "1-2,"}
-	for _, in := range bad {
+	for _, in := range []string{"", " ", "0", "0-5", "9-3", "a-b", "1-", "-5", "1,,2", "1-2-3", "1-2,"} {
 		if _, err := ParseRanges(in); err == nil {
 			t.Errorf("ParseRanges(%q) accepted a malformed range", in)
 		}
+	}
+}
+
+// assertRangeFormat pins one accepted token and its minimal rendering.
+func assertRangeFormat(t *testing.T, in, want string) {
+	t.Helper()
+	got, err := ParseRanges(in)
+	if err != nil {
+		t.Errorf("ParseRanges(%q) error: %v", in, err)
+		return
+	}
+	if Format(got) != want {
+		t.Errorf("ParseRanges(%q) = %q, want %q", in, Format(got), want)
 	}
 }
 
@@ -67,29 +74,38 @@ func notGenerated(string) bool { return false }
 
 var generatedMin = func(p string) bool { return strings.Contains(p, ".min.") }
 
+// TestWholeFile proves 'ranges:"all"' and an absent ranges key both attest the
+// file's whole hunk set, with no warning.
 func TestWholeFile(t *testing.T) {
 	for _, body := range []string{
 		`{"coverage":[{"file":"src/db.ts","ranges":"all"}]}`,
 		`{"coverage":[{"file":"src/db.ts"}]}`,
 	} {
-		review := mustReview(t, body)
-		got, warns, ref := Evaluate(writeBundle(t, fixtureRows()), review, generatedMin)
-		if ref != nil {
-			t.Fatalf("Evaluate refused: %v", ref)
-		}
-		if len(warns) != 0 {
-			t.Fatalf("warnings = %v, want none", warns)
-		}
-		// db.ts is whole; app.ts is untouched, so 22 of 33 lines.
-		if got.Attested != 22 || got.Total != 33 {
-			t.Fatalf("attested/total = %d/%d, want 22/33", got.Attested, got.Total)
-		}
-		if pct(got) != "66" {
-			t.Fatalf("percent = %v, want 66", pct(got))
-		}
+		assertWholeFile(t, body)
 	}
 }
 
+// assertWholeFile pins one whole-file claim: no warning, 22 of 33 lines, 66%.
+func assertWholeFile(t *testing.T, body string) {
+	t.Helper()
+	got, warns, ref := Evaluate(writeBundle(t, fixtureRows()), mustReview(t, body), generatedMin)
+	if ref != nil {
+		t.Fatalf("Evaluate refused: %v", ref)
+	}
+	if len(warns) != 0 {
+		t.Fatalf("warnings = %v, want none", warns)
+	}
+	// db.ts is whole; app.ts is untouched, so 22 of 33 lines.
+	if got.Attested != 22 || got.Total != 33 {
+		t.Fatalf("attested/total = %d/%d, want 22/33", got.Attested, got.Total)
+	}
+	if pct(&got) != "66" {
+		t.Fatalf("percent = %v, want 66", pct(&got))
+	}
+}
+
+// TestPartialOldAndNew pins the worked example: old-side and new-side hunks
+// both count, the percentage rounds down, and each file reports its own gaps.
 func TestPartialOldAndNew(t *testing.T) {
 	review := mustReview(t, `{"coverage":[{"file":"src/db.ts","ranges":"10-15,40-45"}]}`)
 	got, _, ref := Evaluate(writeBundle(t, fixtureRows()), review, generatedMin)
@@ -100,10 +116,10 @@ func TestPartialOldAndNew(t *testing.T) {
 	if got.Attested != 12 || got.Total != 33 {
 		t.Fatalf("attested/total = %d/%d, want 12/33", got.Attested, got.Total)
 	}
-	if pct(got) != "36" {
-		t.Fatalf("percent = %v, want 36", pct(got))
+	if pct(&got) != "36" {
+		t.Fatalf("percent = %v, want 36", pct(&got))
 	}
-	gaps := gapMap(got)
+	gaps := gapMap(&got)
 	if gaps["src/db.ts"] != "16-20,46-50" {
 		t.Fatalf("db gaps = %q, want 16-20,46-50", gaps["src/db.ts"])
 	}
@@ -116,6 +132,8 @@ func TestPartialOldAndNew(t *testing.T) {
 	}
 }
 
+// TestGeneratedExempt proves a generated file is exempt rather than
+// unattested: it leaves the denominator and never becomes a gap.
 func TestGeneratedExempt(t *testing.T) {
 	review := mustReview(t, `{"coverage":[{"file":"src/db.ts","ranges":"all"},{"file":"src/app.ts","ranges":"all"},{"file":"dist/app.min.js"}]}`)
 	got, warns, ref := Evaluate(writeBundle(t, fixtureRows()), review, generatedMin)
@@ -133,6 +151,8 @@ func TestGeneratedExempt(t *testing.T) {
 	}
 }
 
+// TestUnknownFileWarns proves a claim naming a file the diff does not touch
+// warns and attests nothing: an unrecognized path can never inflate a count.
 func TestUnknownFileWarns(t *testing.T) {
 	review := mustReview(t, `{"coverage":[{"file":"nope.txt","ranges":"all"}]}`)
 	got, warns, ref := Evaluate(writeBundle(t, fixtureRows()), review, notGenerated)
@@ -147,6 +167,8 @@ func TestUnknownFileWarns(t *testing.T) {
 	}
 }
 
+// TestMalformedRangesCountAsUnattested proves a reversed range warns and
+// attests nothing, so a typo narrows the claim instead of widening it.
 func TestMalformedRangesCountAsUnattested(t *testing.T) {
 	review := mustReview(t, `{"coverage":[{"file":"src/db.ts","ranges":"9-3"}]}`)
 	got, warns, ref := Evaluate(writeBundle(t, fixtureRows()), review, generatedMin)
@@ -161,6 +183,8 @@ func TestMalformedRangesCountAsUnattested(t *testing.T) {
 	}
 }
 
+// TestDuplicateFileUnions proves two claims for one file union instead of
+// double-counting the overlap.
 func TestDuplicateFileUnions(t *testing.T) {
 	review := mustReview(t, `{"coverage":[{"file":"src/db.ts","ranges":"10-15"},{"file":"src/db.ts","ranges":"16-20"}]}`)
 	got, _, ref := Evaluate(writeBundle(t, fixtureRows()), review, notGenerated)
@@ -172,6 +196,8 @@ func TestDuplicateFileUnions(t *testing.T) {
 	}
 }
 
+// TestAbsentVersusEmpty separates a legacy review with no coverage key from an
+// explicit empty list: absent reads unmeasured, empty reads 0% and present.
 func TestAbsentVersusEmpty(t *testing.T) {
 	dir := writeBundle(t, fixtureRows())
 
@@ -196,11 +222,13 @@ func TestAbsentVersusEmpty(t *testing.T) {
 	if !empty.Present {
 		t.Fatal("coverage: [] read as absent")
 	}
-	if pct(empty) != "0" {
-		t.Fatalf("percent = %v, want 0", pct(empty))
+	if pct(&empty) != "0" {
+		t.Fatalf("percent = %v, want 0", pct(&empty))
 	}
 }
 
+// TestNoHunksMeansUnmeasured proves a bundle with no changed lines reports a
+// null percentage while still counting the attestation as present.
 func TestNoHunksMeansUnmeasured(t *testing.T) {
 	dir := writeBundle(t, nil)
 	got, _, ref := Evaluate(dir, mustReview(t, `{"coverage":[]}`), notGenerated)
@@ -215,6 +243,8 @@ func TestNoHunksMeansUnmeasured(t *testing.T) {
 	}
 }
 
+// TestChunkedSkips proves a chunked bundle is not evaluated line by line: it
+// reports the chunk count and stays quiet, because the notice is the caller's.
 func TestChunkedSkips(t *testing.T) {
 	dir := writeBundle(t, fixtureRows())
 	if err := mkdirAll(dir + "/chunks"); err != nil {
@@ -222,6 +252,13 @@ func TestChunkedSkips(t *testing.T) {
 	}
 	writeFile(t, dir+"/chunks/manifest.json", `{"chunks":[]}`)
 	writeFile(t, dir+"/chunks/01.diff", "diff")
+	assertChunkedSkipped(t, dir)
+}
+
+// assertChunkedSkipped pins the chunked reading: the chunk count is reported,
+// nothing is evaluated, and no warning is raised for a legacy bundle.
+func assertChunkedSkipped(t *testing.T, dir string) {
+	t.Helper()
 	got, warns, ref := Evaluate(dir, mustReview(t, `{"coverage":[{"file":"src/db.ts","ranges":"all"}]}`), notGenerated)
 	if ref != nil {
 		t.Fatalf("Evaluate refused: %v", ref)
@@ -240,6 +277,8 @@ func TestChunkedSkips(t *testing.T) {
 	}
 }
 
+// TestNonArrayCoverage proves a coverage key that is not an array warns once
+// instead of decoding as an empty attestation.
 func TestNonArrayCoverage(t *testing.T) {
 	_, warns, ref := Evaluate(writeBundle(t, fixtureRows()), mustReview(t, `{"coverage":"all"}`), notGenerated)
 	if ref != nil {
@@ -250,7 +289,7 @@ func TestNonArrayCoverage(t *testing.T) {
 	}
 }
 
-func gapMap(s Summary) map[string]string {
+func gapMap(s *Summary) map[string]string {
 	out := make(map[string]string, len(s.Unattested))
 	for _, g := range s.Unattested {
 		out[g.File] = g.Ranges
@@ -260,7 +299,7 @@ func gapMap(s Summary) map[string]string {
 
 // pct renders a nullable percent for a failure message: a pointer printed with
 // %v is an address, which hides the value that actually failed.
-func pct(s Summary) string {
+func pct(s *Summary) string {
 	if s.Percent == nil {
 		return "null"
 	}

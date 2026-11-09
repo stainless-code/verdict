@@ -55,11 +55,12 @@ type launcher struct { //nolint:govet // field order is the published property o
 // path is the record's location beside the bundle's other receipts.
 func (r *launcher) path(dir string) string { return dir + "/" + launcherFile }
 
-// writeLauncher writes the record atomically and returns the modification time
-// the file got. That stamp is the freshness baseline every artifact assertion
-// measures against: record and artifact live on the same filesystem, so the same
-// clock and the same timestamp granularity apply to both, and a review written
-// during the run can never read as older than the launch that caused it.
+// writeLauncher writes the record atomically and returns the modification
+// time the file got. That stamp is the freshness baseline every artifact
+// assertion measures against: record and artifact live on the same
+// filesystem, so the same clock and the same timestamp granularity apply to
+// both, and a review written during the run can never read as older than the
+// launch that caused it.
 func writeLauncher(path string, rec *launcher) (time.Time, *core.RefusalError) {
 	data := []byte(jq.PrettyOrdered(core.Wire(rec)))
 	if err := atomic.WriteFile(path, data); err != nil {
@@ -78,12 +79,12 @@ func writeLauncher(path string, rec *launcher) (time.Time, *core.RefusalError) {
 	return info.ModTime(), nil
 }
 
-// writeRunOutput keeps the child's full combined output for debugging. A failure
-// is a warning, never a refusal: the review file is the contract, the log is
-// evidence.
+// writeRunOutput keeps the child's full combined output for debugging. A
+// failure is a warning, never a refusal: the review file is the contract,
+// the log is evidence.
 func writeRunOutput(path, output string) error {
 	if err := atomic.WriteFile(path, []byte(output)); err != nil {
-		return fmt.Errorf("could not write %s: %w", path, err)
+		return jq.Sealed("write run output "+path, err)
 	}
 	return nil
 }
@@ -96,11 +97,11 @@ func tailOf(s string, n int) string {
 	return s
 }
 
-// scrubSecrets replaces every secret-named environment value in text. It is the
-// narrow scrub the launcher's recorded tail gets: the operator's own credentials
-// never land in launcher.json, while .run.out keeps the raw stream the way
-// verify keeps .verify.out (the fuller token-shape scrub belongs to verify's
-// proof record, not to a launcher's log line).
+// scrubSecrets replaces every secret-named environment value in text. It is
+// the narrow scrub the launcher's recorded tail gets: the operator's own
+// credentials never land in launcher.json, while .run.out keeps the raw
+// stream the way verify keeps .verify.out (the fuller token-shape scrub
+// belongs to verify's proof record, not to a launcher's log line).
 func scrubSecrets(text string, environ []string) string {
 	for _, value := range secretValues(environ) {
 		text = strings.ReplaceAll(text, value, redactedValue)

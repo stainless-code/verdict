@@ -4,12 +4,13 @@
 // agent table, the watchdog spawn, the artifact assertion, and the provenance
 // record — lives in internal/core/run.
 //
-// `run` is CLI-only on purpose: it is not an MCP tool, a Go facade method, or a
-// TypeScript client method. A tool that spawns another agent turns every MCP
-// client into a recursive launcher of an unpriced local process, which is the
-// opposite of the boundary the guardrail sentence draws (no daemon, no queue, no
-// model selection); the code path that starts a process belongs to the operator's
-// own terminal and CI, not to a tool call from inside a model's turn.
+// `run` is CLI-only on purpose: it is not an MCP tool, a Go facade method,
+// or a TypeScript client method. A tool that spawns another agent turns
+// every MCP client into a recursive launcher of an unpriced local process,
+// which is the opposite of the boundary the guardrail sentence draws (no
+// daemon, no queue, no model selection); the code path that starts a process
+// belongs to the operator's own terminal and CI, not to a tool call from
+// inside a model's turn.
 package run
 
 import (
@@ -42,11 +43,10 @@ const defaultTimeoutS = "300"
 // verbsWanted is the flag list the unknown-flag usage error names.
 const verbsWanted = "--agent <name>, --timeout <secs>, --print, -- <agent args>, --json"
 
-// Run executes
-// `run <owner/repo> <pr|local-name> --agent <name> [--timeout <secs>] [--print]
-// [-- <agent args>...] [--json]`, returning the process exit code. A non-zero
-// agent exit is preserved as this process's exit code after the typed refusal is
-// rendered, so CI surfaces the real failure.
+// Run executes `run <owner/repo> <pr|local-name> --agent <name> [--timeout
+// <secs>] [--print] [-- <agent args>...] [--json]`, returning the process
+// exit code. A non-zero agent exit is preserved as this process's exit code
+// after the typed refusal is rendered, so CI surfaces the real failure.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
 	flags, code, done := parseFlags(r, args)
@@ -89,13 +89,11 @@ func refuse(r *cli.Runner, resp *core.RunResponse, ref *core.RefusalError) int {
 func runRequest(r *cli.Runner, req Request, flags flags) *core.RunRequest {
 	root := req.Root
 	return &core.RunRequest{
-		ReadRequest: core.ReadRequest{
-			Runtime: &core.Runtime{
-				Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r},
-				Commander: coreexec.Watchdog{},
-			},
-			Repo: req.Repo, Pr: req.Pr, Root: &root, RepoRoot: req.RepoRoot,
+		Runtime: &core.Runtime{
+			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r},
+			Commander: coreexec.Watchdog{},
 		},
+		Repo: req.Repo, Pr: req.Pr, Root: &root, RepoRoot: req.RepoRoot,
 		LookPath:    exec.LookPath,
 		PassThrough: flags.pass,
 		Environ:     os.Environ(),
@@ -164,8 +162,9 @@ func parseToken(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) 
 	}
 }
 
-// rentry rebuilds the exact re-run command after flag parsing. The pass-through
-// tail is not reproduced: its quoting belongs to whatever shell the operator used.
+// rentry rebuilds the exact re-run command after flag parsing. The
+// pass-through tail is not reproduced: its quoting belongs to whatever shell
+// the operator used.
 func rentry(req Request, f flags, jsonMode bool) string {
 	s := "verdict run " + req.Repo + " " + req.Pr
 	if f.agent != "" {

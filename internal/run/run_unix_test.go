@@ -30,8 +30,8 @@ import (
 // fakeModeEnv switches the test binary into the fake agent's role.
 const fakeModeEnv = "VERDICT_TEST_FAKE_AGENT"
 
-// TestMain runs the fake agent instead of the suite when the launcher spawned this
-// binary in fake mode.
+// TestMain runs the fake agent instead of the suite when the launcher
+// spawned this binary in fake mode.
 func TestMain(m *testing.M) {
 	if mode := os.Getenv(fakeModeEnv); mode != "" {
 		os.Exit(fakeAgent(mode))
@@ -43,28 +43,19 @@ func TestMain(m *testing.M) {
 // NUL-separated (so the test can compare --print with the real invocation) and
 // then behaves as the case asked.
 func fakeAgent(mode string) int {
-	if path := os.Getenv("FAKE_ARGV"); path != "" {
-		if err := os.WriteFile(path, argvBytes(os.Args), 0o644); err != nil {
-			fmt.Fprintln(os.Stderr, "fake agent: write argv:", err)
-			return 90
-		}
+	if code := recordArgv(); code != 0 {
+		return code
 	}
 	switch mode {
 	case "write":
-		src := os.Getenv("FAKE_REVIEW_SRC")
-		body, err := os.ReadFile(src)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "fake agent: read review:", err)
-			return 91
-		}
-		if err := os.WriteFile(os.Getenv("FAKE_ARTIFACT"), body, 0o644); err != nil {
-			fmt.Fprintln(os.Stderr, "fake agent: write review:", err)
-			return 92
-		}
-		return 0
+		return copyReview()
 	case "exit":
 		fmt.Fprintln(os.Stderr, "fake agent: the model refused the request")
-		code, _ := strconv.Atoi(os.Getenv("FAKE_EXIT"))
+		code, err := strconv.Atoi(os.Getenv("FAKE_EXIT"))
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "fake agent: bad FAKE_EXIT:", err)
+			return 93
+		}
 		return code
 	case "sleep":
 		time.Sleep(30 * time.Second)
@@ -74,14 +65,14 @@ func fakeAgent(mode string) int {
 	}
 }
 
-// argvBytes renders argv NUL-separated so an argument holding a newline or a space
-// survives the round trip.
+// argvBytes renders argv NUL-separated so an argument holding a newline or a
+// space survives the round trip.
 func argvBytes(argv []string) []byte {
 	return []byte(strings.Join(argv, "\x00") + "\x00")
 }
 
-// fixture is one run fixture: a local bundle and the PATH directory the fake agent
-// lives in.
+// fixture is one run fixture: a local bundle and the PATH directory the fake
+// agent lives in.
 type fixture struct {
 	root string // the reviewed repository root
 	dir  string // the bundle directory
@@ -98,8 +89,8 @@ const bundleSlug = "local-work"
 const validReview = `{"schema_version":"1","body":"> ✅ no findings\n\n### Nothing to flag\n\n` +
 	`Reviewed the diff and found nothing worth flagging.","approved":false,"comments":[]}`
 
-// fixtureDiff is the bundle's diff: one small change, so the review has a patch to
-// attest against.
+// fixtureDiff is the bundle's diff: one small change, so the review has a
+// patch to attest against.
 const fixtureDiff = "diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n" +
 	"--- a/notes.txt\n+++ b/notes.txt\n@@ -1,3 +1,3 @@\n top\n-old\n+new\n bottom\n"
 
@@ -113,16 +104,17 @@ func newFixture(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(dir, "source.json"),
-		`{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`, 0o644)
-	writeFile(t, filepath.Join(dir, "full.diff"), fixtureDiff, 0o644)
+		`{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`)
+	writeFile(t, filepath.Join(dir, "full.diff"), fixtureDiff)
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	return &fixture{root: root, dir: dir, bin: t.TempDir(), slug: bundleSlug}
 }
 
-// plant symlinks this test binary into the fixture's PATH directory as the agent
-// binary and puts that directory first on PATH, so the run resolves the fake and
-// never a real agent CLI. It returns the file the child records its argv into.
+// plant symlinks this test binary into the fixture's PATH directory as the
+// agent binary and puts that directory first on PATH, so the run resolves
+// the fake and never a real agent CLI. It returns the file the child records
+// its argv into.
 func (f *fixture) plant(t *testing.T, mode string) string {
 	t.Helper()
 	exe, err := os.Executable()
@@ -140,8 +132,8 @@ func (f *fixture) plant(t *testing.T, mode string) string {
 	return argvFile
 }
 
-// plantUnrunnable writes an executable file that cannot be executed at all, so the
-// spawn (not the resolution) is what fails.
+// plantUnrunnable writes an executable file that cannot be executed at all,
+// so the spawn (not the resolution) is what fails.
 func (f *fixture) plantUnrunnable(t *testing.T) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(f.bin, "claude"), []byte("#!/nonexistent/interpreter\nexit 0\n"), 0o755); err != nil {
@@ -157,25 +149,54 @@ func (f *fixture) pathless(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 }
 
+// recordArgv writes this child's argv NUL-separated, so a test can compare
+// --print with the real invocation. It returns a non-zero exit code on failure.
+func recordArgv() int {
+	path := os.Getenv("FAKE_ARGV")
+	if path == "" {
+		return 0
+	}
+	if err := os.WriteFile(path, argvBytes(os.Args), 0o644); err != nil {
+		fmt.Fprintln(os.Stderr, "fake agent: write argv:", err)
+		return 90
+	}
+	return 0
+}
+
+// copyReview is the "write" mode: the fake agent copies the planted review into
+// the bundle path the launcher watches.
+func copyReview() int {
+	body, err := os.ReadFile(os.Getenv("FAKE_REVIEW_SRC"))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "fake agent: read review:", err)
+		return 91
+	}
+	if err := os.WriteFile(os.Getenv("FAKE_ARTIFACT"), body, 0o644); err != nil {
+		fmt.Fprintln(os.Stderr, "fake agent: write review:", err)
+		return 92
+	}
+	return 0
+}
+
 // writeReviewSrc plants the review the fake agent copies into the bundle.
 func (f *fixture) writeReviewSrc(t *testing.T) {
 	t.Helper()
 	path := filepath.Join(f.dir, "..", "review-src.json")
-	writeFile(t, path, validReview, 0o644)
+	writeFile(t, path, validReview)
 	t.Setenv("FAKE_REVIEW_SRC", path)
 }
 
-// writeFile plants one fixture file.
-func writeFile(t *testing.T, path, content string, mode os.FileMode) {
+// writeFile plants one fixture file with the default mode.
+func writeFile(t *testing.T, path, content string) {
 	t.Helper()
-	if err := os.WriteFile(path, []byte(content), mode); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
 
-// runVerb runs the real adapter against the fixture. The global --json toggle is
-// the adapter's caller's job (main strips it before dispatch), so it is peeled here
-// and applied to the runner instead.
+// runVerb runs the real adapter against the fixture. The global --json
+// toggle is the adapter's caller's job (main strips it before dispatch), so
+// it is peeled here and applied to the runner instead.
 func runVerb(t *testing.T, f *fixture, args ...string) (int, string, string) {
 	t.Helper()
 	jsonMode := false
@@ -231,8 +252,8 @@ func launcherRecord(t *testing.T, dir string) map[string]any {
 	return m
 }
 
-// asInt renders one decoded JSON scalar as an int, so the assertions do not depend
-// on how the decoder represents numbers.
+// asInt renders one decoded JSON scalar as an int, so the assertions do not
+// depend on how the decoder represents numbers.
 func asInt(t *testing.T, v any) int {
 	t.Helper()
 	text := fmt.Sprint(v)
@@ -255,8 +276,10 @@ func TestRunLaunchesAndHandsOff(t *testing.T) {
 	if code != cli.ExitOK {
 		t.Fatalf("exit = %d\nstdout: %s\nstderr: %s", code, out, errOut)
 	}
-	for _, want := range []string{"» run: claude -p <prompt>", "» wrote .verdict/state/local-work/review.json",
-		"» recorded .verdict/state/local-work/launcher.json"} {
+	for _, want := range []string{
+		"» run: claude -p <prompt>", "» wrote .verdict/state/local-work/review.json",
+		"» recorded .verdict/state/local-work/launcher.json",
+	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("stdout does not carry %q:\n%s", want, out)
 		}
@@ -265,21 +288,8 @@ func TestRunLaunchesAndHandsOff(t *testing.T) {
 		t.Errorf("the child's output log is missing: %v", err)
 	}
 	rec := launcherRecord(t, f.dir)
-	if asInt(t, rec["exit"]) != 0 || rec["artifact_fresh"] != true {
-		t.Errorf("launcher.json exit/fresh = %v/%v", rec["exit"], rec["artifact_fresh"])
-	}
-	if rec["agent"] != "claude" || rec["binary"] != filepath.Join(f.bin, "claude") {
-		t.Errorf("launcher.json agent/binary = %v/%v", rec["agent"], rec["binary"])
-	}
-	shape, _ := rec["argv"].([]any)
-	if len(shape) == 0 || shape[len(shape)-1] != "<prompt>" {
-		t.Errorf("launcher.json argv = %v, want the directive placeholder last", shape)
-	}
-	for _, key := range []string{"started_at", "ended_at"} {
-		if rec[key] == nil || rec[key] == "" {
-			t.Errorf("launcher.json has no %s", key)
-		}
-	}
+	assertHandoffRecord(t, rec, f.bin)
+	assertTimestamps(t, rec)
 
 	// The existing record path accepts the produced review unchanged. A fetched
 	// bundle carries the controls snapshot and typed capture this seeds; record
@@ -300,9 +310,10 @@ func TestRunLaunchesAndHandsOff(t *testing.T) {
 	}
 }
 
-// seedControls snapshots the fixture's controls and typed capture the way fetch
-// does (the head opt-out stands in for the base-commit read), so the record handoff
-// reaches the review validation instead of refusing a bundle no fetch built.
+// seedControls snapshots the fixture's controls and typed capture the way
+// fetch does (the head opt-out stands in for the base-commit read), so the
+// record handoff reaches the review validation instead of refusing a bundle
+// no fetch built.
 func seedControls(t *testing.T, f *fixture) {
 	t.Helper()
 	base := recordcore.BundleBase(f.dir, nil)
@@ -343,56 +354,32 @@ func TestRunPrintMatchesTheRealInvocation(t *testing.T) {
 	f.writeReviewSrc(t)
 	args := []string{"--agent", "claude", "--", "--model", "opus"}
 
-	code, printed, _ := runVerb(t, f, append([]string{"--print"}, args...)...)
-	if code != cli.ExitOK {
-		t.Fatalf("--print exit = %d", code)
-	}
-	if _, err := os.Stat(filepath.Join(f.dir, "launcher.json")); err == nil {
-		t.Fatal("--print wrote launcher.json; it must touch nothing")
-	}
-
+	printed := assertPrintTouchesNothing(t, f, args)
 	code, _, errOut := runVerb(t, f, args...)
 	if code != cli.ExitOK {
 		t.Fatalf("run exit = %d: %s", code, errOut)
 	}
 	argv := readArgv(t, argvFile)
-	if got := RenderCommand(argv) + "\n"; got != printed {
-		t.Fatalf("--print differs from the real invocation:\nprinted: %q\nspawned: %q", printed, got)
-	}
-	want := []string{"claude", "-p", "--model", "opus"}
-	if len(argv) != len(want)+1 {
-		t.Fatalf("argv = %q, want %q plus the directive", argv, want)
-	}
-	for i := range want {
-		if argv[i] != want[i] {
-			t.Errorf("argv[%d] = %q, want %q", i, argv[i], want[i])
-		}
-	}
+	assertPrintedMatchesSpawned(t, printed, argv)
+	assertArgvPrefix(t, argv, []string{"claude", "-p", "--model", "opus"})
 }
 
-// TestRunRefusalsWithFakeBinaries covers the six failure modes with a real fake
-// binary: each refuses typed (asserted through the --json envelope) and carries a
-// hint. The agent's own non-zero exit is also the process exit code.
+// TestRunRefusalsWithFakeBinaries covers the six failure modes with a real
+// fake binary: each refuses typed (asserted through the --json envelope) and
+// carries a hint. The agent's own non-zero exit is also the process exit
+// code.
 func TestRunRefusalsWithFakeBinaries(t *testing.T) {
-	cases := []struct {
-		name    string
-		mode    string
-		before  func(t *testing.T, f *fixture)
-		args    []string
-		want    string
-		wantMsg string
-		wantOut int
-	}{
+	cases := []refusalCase{
 		{
 			name:    "binary not on PATH",
-			before:  func(t *testing.T, f *fixture) { f.pathless(t) },
+			before:  func(t *testing.T, f *fixture) { t.Helper(); f.pathless(t) },
 			want:    "agent-missing",
 			wantMsg: "is not installed",
 			wantOut: 1,
 		},
 		{
 			name:    "spawn failure",
-			before:  func(t *testing.T, f *fixture) { f.plantUnrunnable(t) },
+			before:  func(t *testing.T, f *fixture) { t.Helper(); f.plantUnrunnable(t) },
 			want:    "agent-spawn-failed",
 			wantMsg: "could not start agent",
 			wantOut: 1,
@@ -409,7 +396,7 @@ func TestRunRefusalsWithFakeBinaries(t *testing.T) {
 		{
 			name:    "agent non-zero exit",
 			mode:    "exit",
-			before:  func(t *testing.T, _ *fixture) { t.Setenv("FAKE_EXIT", "7") },
+			before:  func(t *testing.T, _ *fixture) { t.Helper(); t.Setenv("FAKE_EXIT", "7") },
 			want:    "agent-failed",
 			wantMsg: "exited 7",
 			wantOut: 7,
@@ -428,8 +415,9 @@ func TestRunRefusalsWithFakeBinaries(t *testing.T) {
 			want:    "stale-review-artifact",
 			wantMsg: "predates this run",
 			before: func(t *testing.T, f *fixture) {
+				t.Helper()
 				stale := filepath.Join(f.dir, "review.json")
-				writeFile(t, stale, validReview, 0o644)
+				writeFile(t, stale, validReview)
 				old := time.Now().Add(-time.Hour)
 				if err := os.Chtimes(stale, old, old); err != nil {
 					t.Fatal(err)
@@ -438,45 +426,17 @@ func TestRunRefusalsWithFakeBinaries(t *testing.T) {
 			wantOut: 1,
 		},
 	}
-	for _, tc := range cases {
+	for i := range cases {
+		tc := &cases[i]
 		t.Run(tc.name, func(t *testing.T) {
-			f := newFixture(t)
-			if tc.before != nil {
-				tc.before(t, f)
-			}
-			if tc.mode != "" {
-				f.plant(t, tc.mode)
-			}
-			args := append([]string{"--agent", "claude", "--json"}, tc.args...)
-			code, out, errOut := runVerb(t, f, args...)
-			if code != tc.wantOut {
-				t.Fatalf("exit = %d, want %d\nstdout: %s\nstderr: %s", code, tc.wantOut, out, errOut)
-			}
-			doc, err := jq.Decode([]byte(out))
-			if err != nil {
-				t.Fatalf("stdout is not one envelope: %v\n%s", err, out)
-			}
-			env, _ := jq.AsMap(doc)
-			errObj, _ := jq.AsMap(env["error"])
-			if errObj["code"] != tc.want {
-				t.Fatalf("error.code = %v, want %q (message: %v)", errObj["code"], tc.want, errObj["message"])
-			}
-			msg := jq.StrOf(errObj["message"])
-			if !strings.Contains(msg, tc.wantMsg) {
-				t.Errorf("message = %q, want it to name %q", msg, tc.wantMsg)
-			}
-			if !strings.Contains(msg, "try: ") {
-				t.Errorf("message carries no hint: %q", msg)
-			}
-			if env["data"] != nil {
-				t.Errorf("refusal envelope data = %v, want null", env["data"])
-			}
+			assertFakeBinaryRefusal(t, tc)
 		})
 	}
 }
 
-// TestRunUnknownAgentListsKnownNames proves an unknown name refuses typed and names
-// the table, which is the only place an operator learns it can grow.
+// TestRunUnknownAgentListsKnownNames proves an unknown name refuses typed
+// and names the table, which is the only place an operator learns it can
+// grow.
 func TestRunUnknownAgentListsKnownNames(t *testing.T) {
 	f := newFixture(t)
 	code, out, _ := runVerb(t, f, "--agent", "gpt", "--json")
@@ -493,8 +453,8 @@ func TestRunUnknownAgentListsKnownNames(t *testing.T) {
 	}
 }
 
-// TestRunJSONSuccessEnvelope proves the machine contract: one envelope, the verb
-// and repo identity, and the provenance in data.
+// TestRunJSONSuccessEnvelope proves the machine contract: one envelope, the
+// verb and repo identity, and the provenance in data.
 func TestRunJSONSuccessEnvelope(t *testing.T) {
 	f := newFixture(t)
 	f.plant(t, "write")
@@ -503,6 +463,119 @@ func TestRunJSONSuccessEnvelope(t *testing.T) {
 	if code != cli.ExitOK {
 		t.Fatalf("exit = %d: %s", code, errOut)
 	}
+	assertRunSuccessEnvelope(t, out)
+}
+
+// refusalCase is one fake-binary failure mode: the fixture mutation, the agent
+// mode, the expected exit, and the typed code with its message fragment.
+type refusalCase struct {
+	before  func(t *testing.T, f *fixture)
+	name    string
+	mode    string
+	want    string
+	wantMsg string
+	args    []string
+	wantOut int
+}
+
+// assertHandoffRecord pins the provenance a successful handoff leaves: a zero
+// exit, a fresh artifact, the resolved agent identity, and the directive
+// reduced to its placeholder.
+func assertHandoffRecord(t *testing.T, rec map[string]any, bin string) {
+	t.Helper()
+	if asInt(t, rec["exit"]) != 0 || rec["artifact_fresh"] != true {
+		t.Errorf("launcher.json exit/fresh = %v/%v", rec["exit"], rec["artifact_fresh"])
+	}
+	if rec["agent"] != "claude" || rec["binary"] != filepath.Join(bin, "claude") {
+		t.Errorf("launcher.json agent/binary = %v/%v", rec["agent"], rec["binary"])
+	}
+	shape, isShape := rec["argv"].([]any)
+	if !isShape || len(shape) == 0 || shape[len(shape)-1] != "<prompt>" {
+		t.Errorf("launcher.json argv = %v, want the directive placeholder last", shape)
+	}
+}
+
+// assertFakeBinaryRefusal drives one failure mode against a real fake binary:
+// the exit code, then the envelope it answers with.
+func assertFakeBinaryRefusal(t *testing.T, tc *refusalCase) {
+	t.Helper()
+	f := newFixture(t)
+	if tc.before != nil {
+		tc.before(t, f)
+	}
+	if tc.mode != "" {
+		f.plant(t, tc.mode)
+	}
+	args := append([]string{"--agent", "claude", "--json"}, tc.args...)
+	code, out, errOut := runVerb(t, f, args...)
+	if code != tc.wantOut {
+		t.Fatalf("exit = %d, want %d\nstdout: %s\nstderr: %s", code, tc.wantOut, out, errOut)
+	}
+	assertRefusalEnvelope(t, out, tc.want, tc.wantMsg)
+}
+
+// assertRefusalEnvelope pins one refused envelope: the typed code, a message
+// naming the cause with a hint, and no data.
+func assertRefusalEnvelope(t *testing.T, out, wantCode, wantMsg string) {
+	t.Helper()
+	doc, err := jq.Decode([]byte(out))
+	if err != nil {
+		t.Fatalf("stdout is not one envelope: %v\n%s", err, out)
+	}
+	env, _ := jq.AsMap(doc)
+	errObj, _ := jq.AsMap(env["error"])
+	if errObj["code"] != wantCode {
+		t.Fatalf("error.code = %v, want %q (message: %v)", errObj["code"], wantCode, errObj["message"])
+	}
+	msg := jq.StrOf(errObj["message"])
+	if !strings.Contains(msg, wantMsg) {
+		t.Errorf("message = %q, want it to name %q", msg, wantMsg)
+	}
+	if !strings.Contains(msg, "try: ") {
+		t.Errorf("message carries no hint: %q", msg)
+	}
+	if env["data"] != nil {
+		t.Errorf("refusal envelope data = %v, want null", env["data"])
+	}
+}
+
+// assertTimestamps proves the record carries both ends of the run.
+func assertTimestamps(t *testing.T, rec map[string]any) {
+	t.Helper()
+	for _, key := range []string{"started_at", "ended_at"} {
+		if rec[key] == nil || rec[key] == "" {
+			t.Errorf("launcher.json has no %s", key)
+		}
+	}
+}
+
+// assertPrintTouchesNothing runs --print and returns its output, proving the
+// print-only path writes no provenance record.
+func assertPrintTouchesNothing(t *testing.T, f *fixture, args []string) string {
+	t.Helper()
+	code, printed, _ := runVerb(t, f, append([]string{"--print"}, args...)...)
+	if code != cli.ExitOK {
+		t.Fatalf("--print exit = %d", code)
+	}
+	if _, err := os.Stat(filepath.Join(f.dir, "launcher.json")); err == nil {
+		t.Fatal("--print wrote launcher.json; it must touch nothing")
+	}
+	return printed
+}
+
+// assertPrintedMatchesSpawned proves --print is the real invocation, not a
+// description of one: the recorded argv renders to the same line.
+func assertPrintedMatchesSpawned(t *testing.T, printed string, argv []string) {
+	t.Helper()
+	if got := RenderCommand(argv) + "\n"; got != printed {
+		t.Fatalf("--print differs from the real invocation:\nprinted: %q\nspawned: %q", printed, got)
+	}
+}
+
+// assertRunSuccessEnvelope pins the machine contract: one envelope, the verb
+// and repo identity, no local PR number, the provenance in data, the handoff.
+func assertRunSuccessEnvelope(t *testing.T, out string) {
+	t.Helper()
 	doc, err := jq.Decode([]byte(out))
 	if err != nil {
 		t.Fatalf("stdout is not one envelope: %v\n%s", err, out)
@@ -520,5 +593,19 @@ func TestRunJSONSuccessEnvelope(t *testing.T) {
 	}
 	if !strings.HasPrefix(jq.StrOf(env["next"]), "record the review with verdict record acme/app") {
 		t.Errorf("next = %v, want the local-bundle handoff", env["next"])
+	}
+}
+
+// assertArgvPrefix proves the spawned argv starts with want and carries exactly
+// one more element: the directive.
+func assertArgvPrefix(t *testing.T, got, want []string) {
+	t.Helper()
+	if len(got) != len(want)+1 {
+		t.Fatalf("argv = %q, want %q plus the directive", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("argv[%d] = %q, want %q", i, got[i], want[i])
+		}
 	}
 }

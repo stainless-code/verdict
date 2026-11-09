@@ -19,12 +19,16 @@ func directive(repo, pr, bundle, artifact string, local bool) string {
 		subject = fmt.Sprintf("%s local change %s", repo, pr)
 		meta = "source.json"
 	}
-	return fmt.Sprintf(`Review %s and write exactly one review file.
-
-Read the installed verdict review skill first, then the bundle at %s: %s, roles.txt, and toc.txt indexing full.diff, plus kb.txt, sensitive.txt, and panel when the run carries them.
-
-Write %s with {"schema_version": "1", "body": ..., "approved": ..., "comments": [...]} (optional "resolved" and "triage"). Write nothing else in the bundle.
-
-verdict launched this one process and validates that file; it does not read your prose, retry you, or post. Do not post, merge, or push: publishing is an explicit verdict post.
-`, subject, bundle, meta, artifact)
+	read := "Read the installed verdict review skill first, then the bundle at "
+	read += "%s: %s, roles.txt, and toc.txt indexing full.diff, plus kb.txt, "
+	read += "sensitive.txt, and panel when the run carries them."
+	write := "Write %s with {\"schema_version\": \"1\", \"body\": ..., "
+	write += "\"approved\": ..., \"comments\": [...]} (optional \"resolved\" and "
+	write += "\"triage\"). Write nothing else in the bundle."
+	boundary := "verdict launched this one process and validates that file; it does "
+	boundary += "not read your prose, retry you, or post. Do not post, merge, or "
+	boundary += "push: publishing is an explicit verdict post."
+	return fmt.Sprintf("Review %s and write exactly one review file.\n\n"+
+		read+"\n\n"+write+"\n\n"+boundary+"\n",
+		subject, bundle, meta, artifact)
 }

@@ -6,17 +6,22 @@ import (
 	"testing"
 )
 
-// TestArgvShapeRedactsSecrets pins the provenance rule: the directive becomes a
-// placeholder, a secret-shaped flag's operand is replaced (both spellings), and a
-// bare argument that equals a secret-named environment value is replaced too.
+// TestArgvShapeRedactsSecrets pins the provenance rule: the directive
+// becomes a placeholder, a secret-shaped flag's operand is replaced (both
+// spellings), and a bare argument that equals a secret-named environment
+// value is replaced too.
 func TestArgvShapeRedactsSecrets(t *testing.T) {
 	const prompt = "review the bundle"
 	environ := []string{"ANTHROPIC_API_KEY=sk-ant-0123456789", "PATH=/usr/bin"}
-	argv := []string{"claude", "-p", "--model", "opus", "--api-key", "plain-value",
-		"--token=inline-value", "sk-ant-0123456789", prompt}
+	argv := []string{
+		"claude", "-p", "--model", "opus", "--api-key", "plain-value",
+		"--token=inline-value", "sk-ant-0123456789", prompt,
+	}
 	got := argvShape(argv, prompt, environ)
-	want := []string{"claude", "-p", "--model", "opus", "--api-key", redactedValue,
-		"--token=" + redactedValue, redactedValue, promptPlaceholder}
+	want := []string{
+		"claude", "-p", "--model", "opus", "--api-key", redactedValue,
+		"--token=" + redactedValue, redactedValue, promptPlaceholder,
+	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("argvShape = %q, want %q", got, want)
 	}
@@ -36,8 +41,8 @@ func TestArgvShapeStackedSecretFlags(t *testing.T) {
 }
 
 // TestArgvShapeKeepsOrdinaryFlags proves the redactor does not swallow the
-// launcher's own shape: a model name and a turn cap stay readable, and the agent's
-// own flags keep their operands.
+// launcher's own shape: a model name and a turn cap stay readable, and the
+// agent's own flags keep their operands.
 func TestArgvShapeKeepsOrdinaryFlags(t *testing.T) {
 	const prompt = "review the bundle"
 	argv := []string{"codex", "exec", "--model", "o3", "--max-turns", "12", prompt}
@@ -65,8 +70,10 @@ func TestScrubSecrets(t *testing.T) {
 // source.json instead of PR.json.
 func TestDirectiveNamesTheArtifact(t *testing.T) {
 	pr := directive("acme/app", "42", ".verdict/state/42", ".verdict/state/42/review.json", false)
-	for _, want := range []string{"acme/app PR 42", ".verdict/state/42", "review.json", "PR.json",
-		"schema_version", "does not read your prose"} {
+	for _, want := range []string{
+		"acme/app PR 42", ".verdict/state/42", "review.json", "PR.json",
+		"schema_version", "does not read your prose",
+	} {
 		if !strings.Contains(strings.ToLower(pr), strings.ToLower(want)) {
 			t.Errorf("directive does not name %q:\n%s", want, pr)
 		}

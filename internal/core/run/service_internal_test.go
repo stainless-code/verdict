@@ -17,15 +17,10 @@ import (
 // performs the child's side effect (writing the review file), and returns the
 // scripted wait status. No process is spawned.
 type scripted struct {
-	// write is the child's side effect, run before the result is returned.
+	err   error
 	write func()
-	// err is the seam error a spawn failure returns.
-	err error
-	// res is the completed process the seam reports.
-	res core.Result
-	// cmd is the command the service handed the commander.
-	cmd *core.Command
-	// calls counts the spawns, so a print-only run can prove it spawned nothing.
+	cmd   *core.Command
+	res   core.Result
 	calls int
 }
 
@@ -39,13 +34,16 @@ func (s *scripted) Run(_ context.Context, cmd *core.Command) (core.Result, error
 	return s.res, s.err
 }
 
-// fixtureRoot builds a bundle with the given directory name and returns the
-// reviewed repository root. pr.json is written so the bundle resolves as a PR
-// bundle rather than a local one.
-func fixtureRoot(t *testing.T, name string) string {
+// prNumber is the bundle directory and PR number every run fixture uses.
+const prNumber = "42"
+
+// fixtureRoot builds the fixture bundle and returns the reviewed repository
+// root. PR.json is written so the bundle resolves as a PR bundle, not a local
+// one.
+func fixtureRoot(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
-	dir := filepath.Join(root, ".verdict", "state", name)
+	dir := filepath.Join(root, ".verdict", "state", prNumber)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -56,8 +54,8 @@ func fixtureRoot(t *testing.T, name string) string {
 }
 
 // bundleDir is the fixture bundle path under root.
-func bundleDir(root, name string) string {
-	return filepath.Join(root, ".verdict", "state", name)
+func bundleDir(root string) string {
+	return filepath.Join(root, ".verdict", "state", prNumber)
 }
 
 // reviewDoc is a minimal review the shared record path accepts unchanged.
@@ -78,15 +76,12 @@ func missingLookPath(string) (string, error) {
 	return "", errors.New("executable file not found in $PATH")
 }
 
-// request builds a service request whose PATH probe answers from found.
-func request(root string, cmdr *scripted, found bool) *core.RunRequest {
+// request builds a service request whose PATH probe resolves the agent.
+func request(root string, cmdr *scripted) *core.RunRequest {
 	rt := &core.Runtime{Env: map[string]string{}, Now: time.Now, Commander: cmdr}
 	return &core.RunRequest{
-		ReadRequest: core.ReadRequest{Runtime: rt, Repo: "acme/app", Pr: "42", RepoRoot: root},
+		Runtime: rt, Repo: "acme/app", Pr: "42", RepoRoot: root,
 		LookPath: func(string) (string, error) {
-			if !found {
-				return "", errors.New("executable file not found in $PATH")
-			}
 			return "/opt/agents/claude", nil
 		},
 		Environ:    []string{"ANTHROPIC_API_KEY=sk-ant-0123456789abcdef"},
@@ -98,10 +93,10 @@ func request(root string, cmdr *scripted, found bool) *core.RunRequest {
 // TestRunSuccess proves a successful launch asserts the fresh artifact, records
 // the provenance, and hands off without recording or posting anything itself.
 func TestRunSuccess(t *testing.T) {
-	root := fixtureRoot(t, "42")
-	dir := bundleDir(root, "42")
+	root := fixtureRoot(t)
+	dir := bundleDir(root)
 	cmdr := &scripted{write: func() { writeReview(t, dir, reviewDoc) }}
-	resp, ref := Run(t.Context(), request(root, cmdr, true))
+	resp, ref := Run(t.Context(), request(root, cmdr))
 	if ref != nil {
 		t.Fatalf("Run refused: %v", ref)
 	}
@@ -111,74 +106,38 @@ func TestRunSuccess(t *testing.T) {
 	if cmdr.calls != 1 {
 		t.Errorf("spawns = %d, want 1", cmdr.calls)
 	}
-	// The provenance record carries the launcher: agent, binary, argv shape,
-	// timings, and exit code.
-	rec := readLauncher(t, dir)
-	for _, key := range []string{"agent", "binary", "argv", "started_at", "ended_at", "exit", "duration_ms", "artifact_fresh"} {
-		if _, ok := rec[key]; !ok {
-			t.Errorf("launcher.json has no %q", key)
-		}
-	}
-	if rec["agent"] != "claude" || rec["binary"] != "/opt/agents/claude" {
-		t.Errorf("launcher.json agent/binary = %v/%v", rec["agent"], rec["binary"])
-	}
-	if _, ok := rec["output_tail"]; ok {
-		t.Error("launcher.json recorded an empty output tail")
-	}
-	// The launcher writes nothing else into the store it does not own.
-	for _, name := range []string{"findings.json", "record.json", "post.json"} {
-		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
-			t.Errorf("run wrote %s; recording and posting stay the operator's next step", name)
-		}
-	}
+	assertLauncherRecord(t, dir)
 	if !strings.Contains(resp.Next, "verdict post acme/app 42") {
 		t.Errorf("next = %q, want the post handoff", resp.Next)
 	}
 }
 
-// TestRunPassThroughArgv proves the operator's arguments after -- reach the agent
-// unchanged and land in the recorded argv between the agent's flags and the
-// directive.
+// TestRunPassThroughArgv proves the operator's arguments after -- reach the
+// agent unchanged and land in the recorded argv between the agent's flags
+// and the directive.
 func TestRunPassThroughArgv(t *testing.T) {
-	root := fixtureRoot(t, "42")
-	dir := bundleDir(root, "42")
+	root := fixtureRoot(t)
+	dir := bundleDir(root)
 	cmdr := &scripted{write: func() { writeReview(t, dir, reviewDoc) }}
-	req := request(root, cmdr, true)
+	req := request(root, cmdr)
 	req.PassThrough = []string{"--model", "opus", "--max-turns", "12"}
 	if _, ref := Run(t.Context(), req); ref != nil {
 		t.Fatalf("Run refused: %v", ref)
 	}
-	want := []string{"claude", "-p", "--model", "opus", "--max-turns", "12"}
-	got := cmdr.cmd.Argv
-	if len(got) != len(want)+1 {
-		t.Fatalf("argv = %q, want %q plus the directive", got, want)
+	shape, ok := readLauncher(t, dir)["argv"].([]any)
+	if !ok {
+		t.Fatal("launcher.json argv is not an array")
 	}
-	for i, part := range want {
-		if got[i] != part {
-			t.Errorf("argv[%d] = %q, want %q", i, got[i], part)
-		}
-	}
-	if !strings.Contains(got[len(got)-1], ".verdict/state/42") {
-		t.Errorf("last argv element %q does not carry the bundle directive", got[len(got)-1])
-	}
-	// The record keeps the shape: the directive is a placeholder, the operator's
-	// flags survive.
-	shape := readLauncher(t, dir)["argv"].([]any)
-	if shape[len(shape)-1] != promptPlaceholder {
-		t.Errorf("recorded argv tail = %v, want %q", shape[len(shape)-1], promptPlaceholder)
-	}
-	if shape[2] != "--model" || shape[3] != "opus" {
-		t.Errorf("recorded argv = %v, want the pass-through flags verbatim", shape)
-	}
+	assertPassThroughArgv(t, cmdr.cmd.Argv, shape)
 }
 
 // TestRunPrintSpawnsNothing proves --print renders the exact argv and touches
 // neither the store nor the agent.
 func TestRunPrintSpawnsNothing(t *testing.T) {
-	root := fixtureRoot(t, "42")
-	dir := bundleDir(root, "42")
+	root := fixtureRoot(t)
+	dir := bundleDir(root)
 	cmdr := &scripted{}
-	req := request(root, cmdr, true)
+	req := request(root, cmdr)
 	req.Print = true
 	req.PassThrough = []string{"--model", "opus"}
 	resp, ref := Run(t.Context(), req)
@@ -199,12 +158,7 @@ func TestRunPrintSpawnsNothing(t *testing.T) {
 // TestRunRefusals pins the six failure modes plus the two pre-flight refusals:
 // code, message fragment, and a non-empty hint for every one.
 func TestRunRefusals(t *testing.T) {
-	cases := []struct {
-		name   string
-		mutate func(t *testing.T, root string, req *core.RunRequest, cmdr *scripted)
-		code   string
-		want   string
-	}{
+	cases := []refusalCase{
 		{
 			name:   "agent missing from PATH",
 			mutate: func(_ *testing.T, _ string, req *core.RunRequest, _ *scripted) { req.LookPath = missingLookPath },
@@ -242,7 +196,8 @@ func TestRunRefusals(t *testing.T) {
 		{
 			name: "artifact older than the run",
 			mutate: func(t *testing.T, root string, _ *core.RunRequest, _ *scripted) {
-				stale := writeReview(t, bundleDir(root, "42"), reviewDoc)
+				t.Helper()
+				stale := writeReview(t, bundleDir(root), reviewDoc)
 				old := time.Now().Add(-time.Hour)
 				if err := os.Chtimes(stale, old, old); err != nil {
 					t.Fatal(err)
@@ -266,32 +221,7 @@ func TestRunRefusals(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			root := fixtureRoot(t, "42")
-			if tc.code == codeMissingBundle {
-				root = t.TempDir()
-			}
-			cmdr := &scripted{}
-			req := request(root, cmdr, true)
-			tc.mutate(t, root, req, cmdr)
-			resp, ref := Run(t.Context(), req)
-			if ref == nil {
-				t.Fatalf("Run = %+v, want the %s refusal", resp, tc.code)
-			}
-			if ref.Code != tc.code {
-				t.Fatalf("code = %q, want %q (%s)", ref.Code, tc.code, ref.Message)
-			}
-			if !strings.Contains(ref.Message, tc.want) {
-				t.Errorf("message = %q, want it to name %q", ref.Message, tc.want)
-			}
-			if core.HintFor(ref.Code) == "" {
-				t.Errorf("refusal %q has no hint", ref.Code)
-			}
-			if resp != nil && ref.Code == codeAgentFailed && resp.Exit != 9 {
-				t.Errorf("non-zero exit = %d, want the agent's 9", resp.Exit)
-			}
-			if resp != nil && ref.Code != codeAgentFailed && resp.Exit != 0 {
-				t.Errorf("exit = %d, want 0: only the agent's own failure propagates", resp.Exit)
-			}
+			assertRunRefusal(t, tc)
 		})
 	}
 }
@@ -312,4 +242,113 @@ func readLauncher(t *testing.T, dir string) map[string]any {
 		t.Fatalf("launcher.json is not an object: %s", raw)
 	}
 	return m
+}
+
+// refusalCase is one failure mode and the code, message fragment, and exit the
+// run must produce for it.
+type refusalCase struct {
+	mutate func(t *testing.T, root string, req *core.RunRequest, cmdr *scripted)
+	name   string
+	code   string
+	want   string
+}
+
+// assertRunRefusal drives one failure mode through Run and pins the typed
+// refusal: its code, a message naming the cause, and a non-empty hint.
+func assertRunRefusal(t *testing.T, tc refusalCase) {
+	t.Helper()
+	root := fixtureRoot(t)
+	if tc.code == codeMissingBundle {
+		root = t.TempDir()
+	}
+	cmdr := &scripted{}
+	req := request(root, cmdr)
+	tc.mutate(t, root, req, cmdr)
+	resp, ref := Run(t.Context(), req)
+	if ref == nil {
+		t.Fatalf("Run = %+v, want the %s refusal", resp, tc.code)
+	}
+	if ref.Code != tc.code {
+		t.Fatalf("code = %q, want %q (%s)", ref.Code, tc.code, ref.Message)
+	}
+	if !strings.Contains(ref.Message, tc.want) {
+		t.Errorf("message = %q, want it to name %q", ref.Message, tc.want)
+	}
+	if core.HintFor(ref.Code) == "" {
+		t.Errorf("refusal %q has no hint", ref.Code)
+	}
+	assertRefusalExit(t, resp, ref.Code)
+}
+
+// assertRefusalExit proves only the agent's own failure propagates its exit.
+func assertRefusalExit(t *testing.T, resp *core.RunResponse, code string) {
+	t.Helper()
+	if resp == nil {
+		return
+	}
+	if code == codeAgentFailed && resp.Exit != 9 {
+		t.Errorf("non-zero exit = %d, want the agent's 9", resp.Exit)
+	}
+	if code != codeAgentFailed && resp.Exit != 0 {
+		t.Errorf("exit = %d, want 0: only the agent's own failure propagates", resp.Exit)
+	}
+}
+
+// assertLauncherRecord pins the provenance record a launch writes: its
+// required fields, the agent identity, and the store it must not touch.
+func assertLauncherRecord(t *testing.T, dir string) {
+	t.Helper()
+	rec := readLauncher(t, dir)
+	assertLauncherKeys(t, rec)
+	if rec["agent"] != "claude" || rec["binary"] != "/opt/agents/claude" {
+		t.Errorf("launcher.json agent/binary = %v/%v", rec["agent"], rec["binary"])
+	}
+	if _, ok := rec["output_tail"]; ok {
+		t.Error("launcher.json recorded an empty output tail")
+	}
+	for _, name := range []string{"findings.json", "record.json", "post.json"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+			t.Errorf("run wrote %s; recording and posting stay the operator's next step", name)
+		}
+	}
+}
+
+// assertLauncherKeys pins the provenance fields every launch records.
+func assertLauncherKeys(t *testing.T, rec map[string]any) {
+	t.Helper()
+	for _, key := range []string{"agent", "binary", "argv", "started_at", "ended_at", "exit", "duration_ms", "artifact_fresh"} {
+		if _, ok := rec[key]; !ok {
+			t.Errorf("launcher.json has no %q", key)
+		}
+	}
+}
+
+// assertPassThroughArgv proves the operator's flags reach the spawn unchanged
+// and land in the record verbatim, with the directive reduced to a placeholder.
+func assertPassThroughArgv(t *testing.T, got []string, shape []any) {
+	t.Helper()
+	assertArgvPrefix(t, got, []string{"claude", "-p", "--model", "opus", "--max-turns", "12"})
+	if !strings.Contains(got[len(got)-1], ".verdict/state/42") {
+		t.Errorf("last argv element %q does not carry the bundle directive", got[len(got)-1])
+	}
+	if shape[len(shape)-1] != promptPlaceholder {
+		t.Errorf("recorded argv tail = %v, want %q", shape[len(shape)-1], promptPlaceholder)
+	}
+	if shape[2] != "--model" || shape[3] != "opus" {
+		t.Errorf("recorded argv = %v, want the pass-through flags verbatim", shape)
+	}
+}
+
+// assertArgvPrefix proves the spawned argv starts with want and carries exactly
+// one more element: the directive.
+func assertArgvPrefix(t *testing.T, got, want []string) {
+	t.Helper()
+	if len(got) != len(want)+1 {
+		t.Fatalf("argv = %q, want %q plus the directive", got, want)
+	}
+	for i, part := range want {
+		if got[i] != part {
+			t.Errorf("argv[%d] = %q, want %q", i, got[i], part)
+		}
+	}
 }
