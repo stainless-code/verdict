@@ -2,6 +2,7 @@ package fetchcore
 
 import (
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -73,11 +74,21 @@ func TestPackChunksNextFit(t *testing.T) {
 	if len(plan[0].members) != 2 || plan[0].members[0].path != "a" {
 		t.Fatalf("first chunk = %+v, want [a b]", plan[0].members)
 	}
-	// Deterministic: same bytes always yield the same map.
+	// A second pack over the same input must be identical, not merely the same
+	// total: three equal 60-byte slices give any two-member chunk estSize 120,
+	// so comparing estSize alone would pass a packer whose member order came
+	// from map iteration. Compare the members themselves.
 	again := packChunks(table, 120)
-	if len(again) != len(plan) || again[0].estSize != plan[0].estSize {
-		t.Fatal("repack differs")
+	if !slices.EqualFunc(plan, again, sameChunk) {
+		t.Fatalf("repack differs:\nfirst %+v\nagain %+v", plan, again)
 	}
+}
+
+// sameChunk reports whether two planned chunks hold the same name, bytes, and
+// members in the same order. Any nondeterministic packer fails it on the first
+// reorder, which is the property TestPackChunksNextFit pins.
+func sameChunk(a, b chunkEntry) bool {
+	return a.name == b.name && a.estSize == b.estSize && slices.Equal(a.members, b.members)
 }
 
 // TestSuggestSplits exercises the fetch helper.
