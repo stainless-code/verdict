@@ -144,17 +144,24 @@ func TestEnsureStateIgnoreRefusesDeepStateNegation(t *testing.T) {
 // TestLayoutPaths pins the state inventory: the configuration, knowledge
 // corpus, learnings, and overrides live beside the ignored state dir.
 func TestLayoutPaths(t *testing.T) {
-	// Literal paths, not filepath.Join over the constants the getters use: an
-	// expectation rebuilt from those constants moves with them, so a renamed
-	// ConfigPath would ship while this test stayed green.
-	layout := NewLayout("/repo")
-	if got := layout.ConfigFile(); got != "/repo/.verdict/config.json" {
-		t.Fatalf("config = %q", got)
-	}
-	if got := layout.StateDir(); got != "/repo/.verdict/state" {
-		t.Fatalf("state = %q", got)
-	}
-	if got := layout.GitignoreFile(); got != "/repo/.verdict/.gitignore" {
-		t.Fatalf("ignore = %q", got)
+	// Literal segments, not filepath.Join over the constants the getters use:
+	// an expectation rebuilt from those constants moves with them, so a renamed
+	// ConfigPath would ship while this test stayed green. Joining the literals
+	// keeps the expectation native on Windows, where the getters return
+	// backslashes.
+	root := filepath.Join("/repo", "") // native separator without a second segment
+	layout := NewLayout(root)
+	for _, tc := range []struct {
+		name string
+		got  string
+		want string
+	}{
+		{"config", layout.ConfigFile(), filepath.Join("/repo", ".verdict", "config.json")},
+		{"state", layout.StateDir(), filepath.Join("/repo", ".verdict", "state")},
+		{"ignore", layout.GitignoreFile(), filepath.Join("/repo", ".verdict", ".gitignore")},
+	} {
+		if tc.got != tc.want {
+			t.Fatalf("%s = %q, want %q", tc.name, tc.got, tc.want)
+		}
 	}
 }
