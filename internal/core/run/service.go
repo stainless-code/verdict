@@ -12,7 +12,6 @@ package run
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -22,6 +21,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
+	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -283,7 +283,7 @@ func (st *state) spawn(ctx context.Context, argv []string, timeout int) (*core.R
 
 // errNoCommander is the launcher's own wiring failure: no scripted or production
 // commander reached the service.
-var errNoCommander = errors.New("no commander in runtime")
+var errNoCommander = jq.NewErr("no commander in runtime")
 
 func (st *state) commander() core.Commander {
 	if st.req.Runtime == nil {

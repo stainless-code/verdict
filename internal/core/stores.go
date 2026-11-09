@@ -11,12 +11,13 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// keyAnchored, keyStatus, and keyCategory are the FindingEntry wire keys
-// touched in multiple render and decode paths.
+// keyAnchored, keyStatus, keyCategory, and keyBody are the FindingEntry and
+// payload wire keys touched in multiple render and decode paths.
 const (
 	keyAnchored = "anchored"
 	keyStatus   = "status"
 	keyCategory = "category"
+	keyBody     = "body"
 )
 
 // Review is schemas/review.schema.json: the agent-written review input.
@@ -153,12 +154,12 @@ type RecordData struct { //nolint:govet // field order is the published property
 	Dir             string           `json:"dir"`
 	Anchors         AnchorsSummary   `json:"anchors"`
 	Findings        RecordFindings   `inline:"true"               json:"findings"`
-	Confidence      *int             `json:"confidence"           max:"5"                min:"1"`
+	Confidence      *int             `json:"confidence"           max:"5"                   min:"1"`
 	SecuritySummary *string          `json:"security_summary"`
 	Items           []FindingItem    `json:"items"`
 	DryRun          bool             `json:"dry_run,omitempty"`
 	Check           *CheckSummary    `anyOf:"null"                json:"check,omitempty"`
-	Coverage        *CoverageSummary `anyOf:"null"              json:"coverage,omitempty" optional:"true"`
+	Coverage        *CoverageSummary `anyOf:"null"                json:"coverage,omitempty" optional:"true"`
 	Normalized      any              `json:"normalized,omitempty" type:"object"`
 	Repairs         []Repair         `json:"repairs,omitempty"`
 	ConfidenceRaw   any              `json:"-"`
@@ -195,7 +196,7 @@ type Record struct { //nolint:govet // field order is the published property ord
 	RecordedAt      string           `format:"date-time"                json:"recorded_at"`
 	Findings        int              `json:"findings"                   min:"0"`
 	Open            int              `json:"open"                       min:"0"`
-	Confidence      *int             `json:"confidence,omitempty"       max:"5"               min:"1"`
+	Confidence      *int             `json:"confidence,omitempty"       max:"5"                   min:"1"`
 	SecuritySummary *string          `json:"security_summary,omitempty"`
 	ToolVersion     string           `json:"tool_version,omitempty"`
 	PromptsHash     string           `json:"prompts_hash,omitempty"`
@@ -203,7 +204,7 @@ type Record struct { //nolint:govet // field order is the published property ord
 	PatchID         *string          `json:"patch_id,omitempty"`
 	PatchIDKind     string           `json:"patch_id_kind,omitempty"`
 	Repairs         []Repair         `json:"repairs,omitempty"`
-	Coverage        *CoverageSummary `anyOf:"null"              json:"coverage,omitempty" optional:"true"`
+	Coverage        *CoverageSummary `anyOf:"null"                      json:"coverage,omitempty" optional:"true"`
 	ConfidenceRaw   any              `json:"-"`
 }
 
@@ -493,7 +494,7 @@ func kbCreditWire(credits []KBCredit) []any {
 var findingKeys = map[string]bool{
 	"sig": true, "sig_version": true, "kind": true, "path": true,
 	"heading": true, "line": true, "side": true, keyAnchored: true,
-	"body": true, "suggestion": true, "kb": true, "inBounds": true,
+	keyBody: true, "suggestion": true, "kb": true, "inBounds": true,
 	"rigor": true, "rigor_source": true, "severity": true, keyCategory: true, keyStatus: true, "firstSeen": true,
 	"lastSeen": true, "rationale": true, "triagedAt": true, "triagedBy": true,
 	"history": true,

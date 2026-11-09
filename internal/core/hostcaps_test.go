@@ -82,30 +82,48 @@ func TestUnsupportedGapsAreDerived(t *testing.T) {
 	t.Parallel()
 	for _, provider := range []string{"github", "gitlab", "gitcafe", "forgejo", "bitbucket", "azure", "codeberg"} {
 		caps := CapabilitiesFor(provider)
-		unsupported := map[string]bool{}
-		for _, gap := range caps.Unsupported() {
-			if gap.Reason == "" {
-				t.Errorf("%s: gap %q carries no reason", provider, gap.Capability)
-			}
-			if unsupported[gap.Capability] {
-				t.Errorf("%s: gap %q reported twice", provider, gap.Capability)
-			}
-			unsupported[gap.Capability] = true
-		}
-		for _, field := range []struct {
-			name string
-			on   bool
-		}{
-			{name: capabilityFetch, on: caps.Fetch},
-			{name: capabilityPost, on: caps.Post},
-			{name: capabilityInlineAnchors, on: caps.InlineAnchors},
-			{name: capabilityApprove, on: caps.Approve},
-			{name: capabilityRequestChanges, on: caps.RequestChanges},
-			{name: capabilityThreadResolution, on: caps.ThreadResolution},
-		} {
+		unsupported := reasonsByCapability(t, provider, caps)
+		for _, field := range capabilityFlags(caps) {
 			if want, has := !field.on, unsupported[field.name]; want != has {
 				t.Errorf("%s: %s absent=%v, reason reported=%v", provider, field.name, want, has)
 			}
 		}
+	}
+}
+
+// reasonsByCapability collects one host's published reason map, failing on a
+// gap that carries no reason and on a capability reported twice.
+func reasonsByCapability(t *testing.T, provider string, caps HostCapabilities) map[string]bool {
+	t.Helper()
+	unsupported := map[string]bool{}
+	for _, gap := range caps.Unsupported() {
+		if gap.Reason == "" {
+			t.Errorf("%s: gap %q carries no reason", provider, gap.Capability)
+		}
+		if unsupported[gap.Capability] {
+			t.Errorf("%s: gap %q reported twice", provider, gap.Capability)
+		}
+		unsupported[gap.Capability] = true
+	}
+	return unsupported
+}
+
+// capabilityFlag pairs a published capability name with the host's value for
+// it, so the reason map can be checked once per name without a hand-written
+// list in each test.
+func capabilityFlags(caps HostCapabilities) []struct {
+	name string
+	on   bool
+} {
+	return []struct {
+		name string
+		on   bool
+	}{
+		{name: capabilityFetch, on: caps.Fetch},
+		{name: capabilityPost, on: caps.Post},
+		{name: capabilityInlineAnchors, on: caps.InlineAnchors},
+		{name: capabilityApprove, on: caps.Approve},
+		{name: capabilityRequestChanges, on: caps.RequestChanges},
+		{name: capabilityThreadResolution, on: caps.ThreadResolution},
 	}
 }

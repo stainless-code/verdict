@@ -56,7 +56,7 @@ type ReportResponse struct { //nolint:govet // field grouping documents the resp
 // positionals, the status filter, the render configuration, and the
 // warnings the adapter already accumulated (prefs, carried into the report
 // run unchanged).
-type NextRequest struct {
+type NextRequest struct { //nolint:govet // field order is the published property order
 	ReadRequest
 	Status string `enum:"all|open|addressed|wont-fix|false-positive|deferred"`
 	// Coverage selects the diff-coverage read mode: it answers "how much of
@@ -90,8 +90,8 @@ type CoverageGap struct {
 
 // CoverageReport is `next --coverage`'s data: the evaluator summary plus the
 // full gap list. Percent is null when nothing was measured.
-type CoverageReport struct {
-	Percent    *int          `json:"percent"    anyOf:"null"`
+type CoverageReport struct { //nolint:govet // field order is the published property order
+	Percent    *int          `anyOf:"null"      json:"percent"`
 	Attested   int           `json:"attested"   min:"0"`
 	Total      int           `json:"total"      min:"0"`
 	Files      int           `json:"files"      min:"0"`

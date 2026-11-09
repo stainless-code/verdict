@@ -240,6 +240,9 @@ func dispatchMutating(
 	if code, ok := dispatchFetch(ctx, cmd, r, repo, pr, root, repoRoot, env, rest); ok {
 		return code, true
 	}
+	if code, ok := dispatchLocal(ctx, cmd, r, env, root, repoRoot, rest); ok {
+		return code, true
+	}
 	switch cmd {
 	case "run":
 		// The verb name matches main's own run() entry point, so the adapter import
@@ -261,12 +264,22 @@ func dispatchMutating(
 		return fix.Run(ctx, r, rest, fix.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}), true
 	case "learn":
 		return learn.Run(ctx, r, rest, repoRoot), true
+	case "verify":
+		return verify.Run(ctx, r, rest, verify.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}), true
+	default:
+		return 0, false
+	}
+}
+
+// dispatchLocal serves the verbs that need no repository or pull request: the
+// scaffold writer and the skill distributor. They share dispatchMutating's
+// "handled" contract so one switch can stay small enough to read.
+func dispatchLocal(ctx context.Context, cmd string, r *cli.Runner, env map[string]string, root, repoRoot string, rest []string) (int, bool) {
+	switch cmd {
 	case "init":
 		return scaffold.Run(ctx, r, rest, scaffold.Request{Env: env, RepoRoot: repoRoot}), true
 	case verbSkill:
 		return runSkill(ctx, r, rest, env, root), true
-	case "verify":
-		return verify.Run(ctx, r, rest, verify.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}), true
 	default:
 		return 0, false
 	}

@@ -10,6 +10,14 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
+// next envelope one-liners and the complete-coverage percentage, named so the
+// two render paths cannot drift from the prose a caller reads.
+const (
+	nextNone        = "none — nothing to act on"
+	nextAddress     = "address via address-reviews mode, then post"
+	percentComplete = 100
+)
+
 // RunNext executes `next <owner/repo> <pr> [--status, --json]`: the
 // top-ranked actionable finding plus the command to act on it. The service
 // is called directly: the adapter resolved prefs once, so the report run
@@ -22,20 +30,7 @@ func RunNext(ctx context.Context, r *cli.Runner, args []string, req Request) int
 	if code, done := r.Canceled(ctx, "next"); done {
 		return code
 	}
-	call := &core.NextRequest{
-		ReadRequest: readRequest(r, req),
-		Status:      statusF,
-		Coverage:    covMode,
-		Effective:   r.Effective,
-		Warnings:    append([]string{}, r.Warnings...),
-	}
-	var resp *core.NextResponse
-	var ref *core.RefusalError
-	if covMode {
-		resp, ref = reportcore.RunNextCoverage(call)
-	} else {
-		resp, ref = reportcore.RunNext(ctx, call)
-	}
+	resp, ref := callNext(ctx, r, req, statusF, covMode)
 	if ref != nil {
 		r.Warnings = ref.Warnings
 		return r.Refuse(ref)
@@ -47,16 +42,37 @@ func RunNext(ctx context.Context, r *cli.Runner, args []string, req Request) int
 	if !r.JSONMode {
 		return cli.ExitOK
 	}
+	return renderNextJSON(r, req, resp, covMode)
+}
+
+// callNext dispatches to the finding or the coverage mode. Coverage has its own
+// entry point, so the two modes never share a path that could drift.
+func callNext(ctx context.Context, r *cli.Runner, req Request, statusF string, covMode bool) (*core.NextResponse, *core.RefusalError) {
+	call := &core.NextRequest{
+		ReadRequest: readRequest(r, req),
+		Status:      statusF,
+		Coverage:    covMode,
+		Effective:   r.Effective,
+		Warnings:    append([]string{}, r.Warnings...),
+	}
+	if covMode {
+		return reportcore.RunNextCoverage(call)
+	}
+	return reportcore.RunNext(ctx, call)
+}
+
+// renderNextJSON writes the machine envelope for either mode.
+func renderNextJSON(r *cli.Runner, req Request, resp *core.NextResponse, covMode bool) int {
 	if covMode {
 		env := core.RenderEnvelope("next", req.Repo, req.Pr, resp.At, coverageNextLine(resp.Coverage),
 			resp.Warnings, jq.NewObj("coverage", resp.Coverage), nil)
 		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
 		return cli.ExitOK
 	}
-	next := "none — nothing to act on"
+	next := nextNone
 	var item any
 	if resp.Item != nil {
-		next = "address via address-reviews mode, then post"
+		next = nextAddress
 		item = resp.Item.Wire()
 	}
 	env := core.RenderEnvelope("next", req.Repo, req.Pr, resp.At, next,
@@ -65,37 +81,50 @@ func RunNext(ctx context.Context, r *cli.Runner, args []string, req Request) int
 	return cli.ExitOK
 }
 
+// nextFlags is one parse of the next arguments: the status filter, whether the
+// caller set it, and whether coverage mode was selected.
+type nextFlags struct {
+	status    string
+	statusSet bool
+	coverage  bool
+}
+
 // parseNextFlags parses the next flags: --status takes any value (report
 // validates it), --coverage selects the read mode, --json flips machine mode.
 // --coverage and --status are mutually exclusive: one picks a finding mode, the
 // other a coverage mode, so combining them is a usage error rather than a
 // silent precedence rule.
 func parseNextFlags(r *cli.Runner, args []string) (string, bool, int, bool) {
-	statusF := statusOpen
-	statusSet, covMode := false, false
-	i := 0
-	for i < len(args) {
+	flags, code, done := parseNextArgs(r, args)
+	if done {
+		return "", false, code, true
+	}
+	if flags.coverage && flags.statusSet {
+		return "", false, r.ReportUsage(&cli.UsageError{Message: "--coverage and --status are mutually exclusive"}), true
+	}
+	return flags.status, flags.coverage, 0, false
+}
+
+// parseNextArgs walks the arguments once and reports the flags it understood.
+func parseNextArgs(r *cli.Runner, args []string) (nextFlags, int, bool) {
+	flags := nextFlags{status: statusOpen}
+	for i := 0; i < len(args); {
 		a := args[i]
 		switch a {
 		case flagStatus:
 			v, next, u := cli.FlagValue(args, i, a, "<status>")
 			if u != nil {
-				return "", false, r.ReportUsage(u), true
+				return nextFlags{}, r.ReportUsage(u), true
 			}
-			statusF = v
-			statusSet = true
-			i = next + 1
+			flags.status, flags.statusSet, i = v, true, next+1
 		case flagCoverage:
-			covMode = true
-			i++
+			flags.coverage, i = true, i+1
 		default:
-			return "", false, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf("unknown flag '%s' for next (want --status, --coverage, --json)", a)}), true
+			return nextFlags{}, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+				"unknown flag '%s' for next (want --status, --coverage, --json)", a)}), true
 		}
 	}
-	if covMode && statusSet {
-		return "", false, r.ReportUsage(&cli.UsageError{Message: "--coverage and --status are mutually exclusive"}), true
-	}
-	return statusF, covMode, 0, false
+	return flags, 0, false
 }
 
 // coverageNextLine is the envelope's one-line next action for the coverage
@@ -106,7 +135,7 @@ func coverageNextLine(rep *core.CoverageReport) string {
 		return "none — nothing to act on"
 	case rep.Chunked:
 		return "chunks[] is the attestation for this bundle"
-	case rep.Percent != nil && *rep.Percent == 100:
+	case rep.Percent != nil && *rep.Percent == percentComplete:
 		return "coverage complete"
 	default:
 		return "stamp review.json coverage[] for every changed file, then re-run"

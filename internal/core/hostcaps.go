@@ -36,6 +36,11 @@ const (
 	capabilityThreadResolution = "thread_resolution"
 )
 
+// capabilityTotal is how many capability names the table publishes. Unsupported
+// sizes its gap slice with it so appending every gap never reallocates, and a
+// new capability name extends this count in the same edit.
+const capabilityTotal = 5
+
 // Capability reasons are machine-readable codes, not prose: an agent branches
 // on the exact string, and docs/manual.md § Providers maps each code to the
 // operator sentence. Codes are stable; a new gap adds a code.
@@ -119,7 +124,7 @@ func (c HostCapabilities) Unsupported() []CapabilityGap {
 			{Capability: capabilityThreadResolution, Reason: reasonUnknownHost},
 		}
 	}
-	gaps := make([]CapabilityGap, 0, 5)
+	gaps := make([]CapabilityGap, 0, capabilityTotal)
 	if !c.Post {
 		gaps = append(gaps, CapabilityGap{Capability: capabilityPost, Reason: reasonFetchOnly})
 	}

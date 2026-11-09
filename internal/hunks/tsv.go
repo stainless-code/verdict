@@ -4,6 +4,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // TSV columns, in the order fetch writes them.
@@ -23,24 +25,33 @@ const (
 func ParseTSV(text string) []Hunk {
 	var out []Hunk
 	for line := range strings.SplitSeq(strings.TrimSuffix(text, "\n"), "\n") {
-		if line == "" {
-			continue
+		if h, ok := parseRow(line); ok {
+			out = append(out, h)
 		}
-		cols := strings.Split(line, "\t")
-		if len(cols) != numCols {
-			continue
-		}
-		start, errS := strconv.Atoi(cols[colStart])
-		end, errE := strconv.Atoi(cols[colEnd])
-		if errS != nil || errE != nil || start < 1 || end < start {
-			continue
-		}
-		if cols[colSide] != "OLD" && cols[colSide] != "NEW" {
-			continue
-		}
-		out = append(out, Hunk{File: cols[colFile], Side: cols[colSide], Start: start, End: end})
 	}
 	return out
+}
+
+// parseRow accepts exactly one well-formed row: a blank line, a wrong column
+// count, an unknown side, or a non-numeric or reversed range reports false
+// instead of being guessed at.
+func parseRow(line string) (Hunk, bool) {
+	if line == "" {
+		return Hunk{}, false
+	}
+	cols := strings.Split(line, "\t")
+	if len(cols) != numCols {
+		return Hunk{}, false
+	}
+	start, errS := strconv.Atoi(cols[colStart])
+	end, errE := strconv.Atoi(cols[colEnd])
+	if errS != nil || errE != nil || start < 1 || end < start {
+		return Hunk{}, false
+	}
+	if cols[colSide] != "OLD" && cols[colSide] != "NEW" {
+		return Hunk{}, false
+	}
+	return Hunk{File: cols[colFile], Side: cols[colSide], Start: start, End: end}, true
 }
 
 // Load reads dir/hunks.tsv. A missing file is not an error: a bundle built by
@@ -51,7 +62,7 @@ func Load(dir string) ([]Hunk, error) {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
-		return nil, err
+		return nil, jq.Sealed("read "+dir+"/hunks.tsv", err)
 	}
 	return ParseTSV(string(raw)), nil
 }

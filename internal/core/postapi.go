@@ -55,12 +55,12 @@ type PostData struct { //nolint:govet // field order is the published property o
 	Suggestions     Suggestions      `inline:"true"           json:"suggestions"`
 	Findings        PostFindings     `inline:"true"           json:"findings"`
 	Items           []FindingItem    `json:"items"`
-	Confidence      *int             `json:"confidence"       max:"5"            min:"1"`
+	Confidence      *int             `json:"confidence"       max:"5"                   min:"1"`
 	SecuritySummary *string          `json:"security_summary"`
 	PayloadHash     string           `json:"payload_hash"`
 	Review          map[string]any   `json:"review,omitempty"`
 	Provenance      Provenance       `json:"provenance"       optional:"true"`
-	Coverage        *CoverageSummary `anyOf:"null"              json:"coverage,omitempty" optional:"true"`
+	Coverage        *CoverageSummary `anyOf:"null"            json:"coverage,omitempty" optional:"true"`
 	ItemsRaw        []any            `json:"-"`
 	ReviewRaw       any              `json:"-"`
 }
@@ -105,7 +105,7 @@ type Post struct { //nolint:govet // field order is the published property order
 	PostMinSeverity    *string          `enum:"critical|important|informational" json:"post_min_severity,omitempty"`
 	BelowFloorExcluded int              `json:"below_floor_excluded,omitempty"   min:"0"`
 	PostFloorScoped    []FloorScope     `json:"post_floor_scoped,omitempty"`
-	Coverage           *CoverageSummary `anyOf:"null"              json:"coverage,omitempty" optional:"true"`
+	Coverage           *CoverageSummary `anyOf:"null"                            json:"coverage,omitempty"          optional:"true"`
 	ReviewRaw          any              `json:"-"`
 }
 
@@ -151,7 +151,7 @@ func (d *PostData) Wire() *jq.Obj {
 			"dry_run", d.DryRun,
 			"event", d.Event,
 			"commit_id", d.CommitID,
-			"body", body,
+			keyBody, body,
 			"anchors", jq.NewObj("kept", d.Anchors.Kept, "moved", d.Anchors.Moved),
 			"suggestions", jq.NewObj("embedded", d.Suggestions.Embedded),
 			"findings", d.Findings.Wire(),
@@ -169,7 +169,7 @@ func (d *PostData) Wire() *jq.Obj {
 		"dry_run", d.DryRun,
 		"event", d.Event,
 		"commit_id", d.CommitID,
-		"body", body,
+		keyBody, body,
 		"anchors", jq.NewObj("kept", d.Anchors.Kept, "moved", d.Anchors.Moved),
 		"suggestions", jq.NewObj("embedded", d.Suggestions.Embedded),
 		"findings", d.Findings.Wire(),

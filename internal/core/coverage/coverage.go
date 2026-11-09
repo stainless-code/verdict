@@ -343,19 +343,19 @@ func ParseRanges(s string) ([]Range, error) {
 	for tok := range strings.SplitSeq(s, ",") {
 		tok = strings.TrimSpace(tok)
 		if tok == "" {
-			return nil, fmt.Errorf("empty range")
+			return nil, jq.NewErr("empty range")
 		}
 		lo, hi, ok := cutRange(tok)
 		if !ok {
-			return nil, fmt.Errorf("malformed range %q", tok)
+			return nil, jq.NewErrf("malformed range %q", tok)
 		}
 		start, errS := strconv.Atoi(lo)
 		end, errE := strconv.Atoi(hi)
 		if errS != nil || errE != nil {
-			return nil, fmt.Errorf("malformed range %q", tok)
+			return nil, jq.NewErrf("malformed range %q", tok)
 		}
 		if start < 1 || end < start {
-			return nil, fmt.Errorf("malformed range %q", tok)
+			return nil, jq.NewErrf("malformed range %q", tok)
 		}
 		out = append(out, Range{Start: start, End: end})
 	}
