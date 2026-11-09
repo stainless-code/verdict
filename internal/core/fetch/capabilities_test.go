@@ -1,7 +1,6 @@
 package fetchcore
 
 import (
-	"maps"
 	"slices"
 	"testing"
 
@@ -10,10 +9,13 @@ import (
 )
 
 // capabilityKeys is the published key order of data.capabilities: identity,
-// the booleans, the compatibility sum, then the reasons.
+// the booleans, the compatibility sum, then the reasons. It is the one thing
+// this file still spells by hand — the wire order a pre-split consumer reads —
+// and it is a property of the renderer, not a copy of the capability matrix.
 var capabilityKeys = []string{
-	"provider", "fetch", "post", "inline_anchors", "approve",
-	"request_changes", "thread_resolution", "review_verdicts", "unsupported",
+	"provider", core.CapabilityFetch, core.CapabilityPost, core.CapabilityInlineAnchors,
+	core.CapabilityApprove, core.CapabilityRequestChanges, core.CapabilityThreadResolution,
+	"review_verdicts", "unsupported",
 }
 
 // allProviders lists every host the fetch verb accepts.
@@ -22,130 +24,97 @@ func allProviders() []string {
 }
 
 // postsTo lists the hosts whose submit path is implemented: GitHub's single
-// atomic review POST and GitLab's discussion-per-finding replay.
+// atomic review POST and GitLab's discussion-per-finding replay. It is the
+// independent half of TestCapabilitiesMatchPostGate: an advertised bit, not a
+// table this file restates.
 func postsTo(provider string) bool {
 	return provider == providerGitHub || provider == providerGitLab
 }
 
-// capabilityRow pins one host's whole capability answer. Flipping a bit in
-// core/hostCapabilities — on or off — fails this table, and so does a reason
-// that stops matching its flag.
-type capabilityRow struct {
-	reasons          map[string]string
-	provider         string
-	fetch            bool
-	post             bool
-	inlineAnchors    bool
-	approve          bool
-	requestChanges   bool
-	threadResolution bool
-}
-
-// submitGaps are the reasons every fetch-only host carries: no submit path, so
-// no anchors and no binding verdicts, while thread resolution is absent on
-// every host for its own reason.
-var submitGaps = map[string]string{
-	"post":              "fetch-only",
-	"inline_anchors":    "fetch-only",
-	"approve":           "fetch-only",
-	"request_changes":   "fetch-only",
-	"thread_resolution": "no-resolve-mutation",
-}
-
-// capabilityRows is the pinned per-host table the envelope must publish.
-func capabilityRows() []capabilityRow {
-	return []capabilityRow{
-		{
-			provider: providerGitHub, fetch: true, post: true, inlineAnchors: true,
-			approve: true, requestChanges: true,
-			reasons: map[string]string{"thread_resolution": "no-resolve-mutation"},
-		},
-		{
-			provider: providerGitLab, fetch: true, post: true, inlineAnchors: true,
-			approve: true,
-			reasons: map[string]string{
-				"request_changes":   "no-request-changes-event",
-				"thread_resolution": "no-resolve-mutation",
-			},
-		},
-		{provider: "gitcafe", fetch: true, reasons: submitGaps},
-		{provider: "forgejo", fetch: true, reasons: submitGaps},
-		{provider: "bitbucket", fetch: true, reasons: submitGaps},
-		{provider: "azure", fetch: true, reasons: submitGaps},
-	}
-}
-
-// TestCapabilityWire proves every declared host surfaces the same additive
-// object with its pinned booleans, the derived verdict sum, and one reason per
-// absent capability.
+// TestCapabilityWire proves the envelope's capability object is the capability
+// table rendered, for every host verdict reads and for one it does not: the
+// published key order, every boolean the table declares, the derived verdict
+// sum, and exactly the reason codes CapabilitiesFor reports for the absent
+// ones.
+//
+// This file used to carry a hand-copied per-host table. That copy was the drift
+// shape STA-298 exists to kill: two places to edit, one of them wrong. The
+// matrix is pinned where it lives (internal/core/hostcaps_test.go), and what
+// each host actually does is pinned by the post conformance suite, which
+// flips a declared bit and watches the submit path move. What is left here is
+// the renderer: the ordering and the cross-check that a rendered boolean never
+// contradicts the reason map beside it, which is what catches a field the
+// renderer wired to the wrong flag.
 func TestCapabilityWire(t *testing.T) {
 	t.Parallel()
-	for _, row := range capabilityRows() {
-		t.Run(row.provider, func(t *testing.T) {
+	for _, provider := range append(allProviders(), "codeberg") {
+		t.Run(provider, func(t *testing.T) {
 			t.Parallel()
-			checkCapabilityWire(t, row)
+			checkCapabilityWire(t, provider)
 		})
 	}
-	t.Run("unknown host", func(t *testing.T) {
-		t.Parallel()
-		checkCapabilityWire(t, capabilityRow{
-			provider: "codeberg",
-			reasons: map[string]string{
-				"fetch":             "unknown-host",
-				"post":              "unknown-host",
-				"inline_anchors":    "unknown-host",
-				"approve":           "unknown-host",
-				"request_changes":   "unknown-host",
-				"thread_resolution": "unknown-host",
-			},
-		})
-	})
 }
 
-// checkCapabilityWire asserts one host's capability object.
-func checkCapabilityWire(t *testing.T, row capabilityRow) {
+// checkCapabilityWire asserts one host's rendered capability object against
+// the table it must render.
+func checkCapabilityWire(t *testing.T, provider string) {
 	t.Helper()
-	obj := capabilityWire(row.provider)
+	caps := core.CapabilitiesFor(provider)
+	obj := capabilityWire(provider)
 	if !slices.Equal(obj.Keys, capabilityKeys) {
 		t.Fatalf("keys = %v, want %v", obj.Keys, capabilityKeys)
 	}
+	checkCapabilityValue(t, obj, "provider", caps.Provider)
 	for _, field := range []struct {
-		got  any
 		key  string
 		want bool
 	}{
-		{key: "fetch", want: row.fetch},
-		{key: "post", want: row.post},
-		{key: "inline_anchors", want: row.inlineAnchors},
-		{key: "approve", want: row.approve},
-		{key: "request_changes", want: row.requestChanges},
-		{key: "thread_resolution", want: row.threadResolution},
+		{key: core.CapabilityFetch, want: caps.Fetch},
+		{key: core.CapabilityPost, want: caps.Post},
+		{key: core.CapabilityInlineAnchors, want: caps.InlineAnchors},
+		{key: core.CapabilityApprove, want: caps.Approve},
+		{key: core.CapabilityRequestChanges, want: caps.RequestChanges},
+		{key: core.CapabilityThreadResolution, want: caps.ThreadResolution},
+		{key: "review_verdicts", want: caps.Approve && caps.RequestChanges},
 	} {
 		checkCapabilityValue(t, obj, field.key, field.want)
 	}
-	checkCapabilityValue(t, obj, "provider", row.provider)
-	checkCapabilityValue(t, obj, "review_verdicts", row.approve && row.requestChanges)
-	checkUnsupported(t, obj, row.reasons)
+	checkUnsupported(t, obj, caps)
 }
 
-// checkUnsupported asserts the reason map holds exactly the absent
-// capabilities, keyed in capability order: a false flag without a reason, a
-// reason on a true flag, and a stale code all fail.
-func checkUnsupported(t *testing.T, obj *jq.Obj, want map[string]string) {
+// checkUnsupported asserts the reason map holds exactly the capabilities the
+// table reports absent, keyed in capability order: a false flag without a
+// reason, a reason on a true flag, and a stale code all fail. It is also the
+// guard against a renderer field wired to the wrong flag, because a swap moves
+// a rendered boolean away from the reason the table publishes for it.
+func checkUnsupported(t *testing.T, obj *jq.Obj, caps core.HostCapabilities) {
 	t.Helper()
 	raw, ok := obj.Get("unsupported")
 	unsupported, isObj := raw.(*jq.Obj)
 	if !ok || !isObj || unsupported == nil {
 		t.Fatalf("unsupported = %v, want an object", raw)
 	}
-	wantKeys := sortedKeys(want)
+	want := map[string]string{}
+	for _, gap := range caps.Unsupported() {
+		want[gap.Capability] = gap.Reason
+	}
 	gotKeys := slices.Sorted(slices.Values(unsupported.Keys))
+	wantKeys := slices.Sorted(slices.Values(mapKeys(want)))
 	if !slices.Equal(gotKeys, wantKeys) {
 		t.Fatalf("unsupported keys = %v, want %v", unsupported.Keys, wantKeys)
 	}
 	for _, key := range wantKeys {
 		checkAbsentCapability(t, obj, unsupported, key, want[key])
 	}
+}
+
+// mapKeys lists a map's keys so the comparison pattern stays one shape.
+func mapKeys[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for key := range m {
+		out = append(out, key)
+	}
+	return out
 }
 
 // checkCapabilityValue compares one rendered capability field.
@@ -165,12 +134,6 @@ func TestCapabilitiesMatchPostGate(t *testing.T) {
 			t.Errorf("CapabilitiesFor(%s).Post = %v, want %v", provider, got, want)
 		}
 	}
-}
-
-// sortedKeys returns a map's keys in one stable order, so a reason map that
-// gained or lost a capability reads as a diff instead of a reordering.
-func sortedKeys[V any](m map[string]V) []string {
-	return slices.Sorted(maps.Keys(m))
 }
 
 // checkAbsentCapability asserts one reason names the right cause and sits

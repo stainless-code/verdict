@@ -60,6 +60,7 @@ type state struct { //nolint:govet // field grouping documents the merge dimensi
 	dryRun          bool
 	inputChecked    bool
 	requireCoverage bool
+	bodyOnlyAnchors bool
 	warnings        []string
 }
 
@@ -322,6 +323,10 @@ func (st *state) validateAnchors(body string) string {
 	if c, ok := st.review.Get(fieldComments); ok {
 		comments = jq.Elements(c)
 	}
+	if st.bodyOnlyAnchors {
+		st.moveEveryAnchor(comments)
+		return body
+	}
 	hs := st.hunkRows
 	if hs == nil {
 		hs = loadHunkRows(st.anchorHunks)
@@ -335,6 +340,22 @@ func (st *state) validateAnchors(body string) string {
 		st.classifyComment(m, hs)
 	}
 	return body
+}
+
+// moveEveryAnchor sends every finding to the body instead of an inline anchor:
+// the provider advertises inline_anchors=false, so the position it would refuse
+// is dropped and the finding kept (keep-biased). The drop reason names the
+// published code, so the body explains its own shape.
+func (st *state) moveEveryAnchor(comments []any) {
+	for _, c := range comments {
+		m, ok := c.(*jq.Obj)
+		if !ok {
+			continue
+		}
+		moved := m.Clone()
+		moved.Set(fieldDropReason, "provider takes no inline anchors (no-inline-anchors) — posted in the body instead")
+		st.moved = append(st.moved, moved)
+	}
 }
 
 func (st *state) classifyComment(m *jq.Obj, hs []hunks.Hunk) {

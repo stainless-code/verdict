@@ -14,12 +14,12 @@ func capabilityWire(provider string) *jq.Obj {
 	caps := core.CapabilitiesFor(provider)
 	obj := jq.NewObj(
 		keyProvider, caps.Provider,
-		"fetch", caps.Fetch,
-		"post", caps.Post,
-		"inline_anchors", caps.InlineAnchors,
-		"approve", caps.Approve,
-		"request_changes", caps.RequestChanges,
-		"thread_resolution", caps.ThreadResolution,
+		core.CapabilityFetch, caps.Fetch,
+		core.CapabilityPost, caps.Post,
+		core.CapabilityInlineAnchors, caps.InlineAnchors,
+		core.CapabilityApprove, caps.Approve,
+		core.CapabilityRequestChanges, caps.RequestChanges,
+		core.CapabilityThreadResolution, caps.ThreadResolution,
 		"review_verdicts", caps.ReviewVerdicts,
 	)
 	unsupported := jq.NewObj()

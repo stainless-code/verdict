@@ -227,6 +227,7 @@ func documents() []document {
 			defs: []definition{
 				{typ: reflect.TypeFor[ForcedPost](), name: "forcedPost"},
 				{typ: reflect.TypeFor[FloorScope](), name: "floorScope"},
+				{typ: reflect.TypeFor[WithheldCapability](), name: "withheldCapability"},
 				{typ: reflect.TypeFor[CoverageSummary](), name: coverageSummaryType},
 			},
 			additionalProperties: true,

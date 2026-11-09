@@ -2,6 +2,7 @@ package recordcore
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/hunks"
@@ -69,6 +70,35 @@ type anchorCase struct {
 	line string
 	side string
 	kept bool
+}
+
+// TestBodyOnlyAnchorsMoveEveryFinding proves the inline_anchors gate: a
+// provider that advertises no anchored comment keeps every finding in the body
+// and sends none inline, whether or not the anchor would have validated, and
+// the drop reason names the published reason code so the body explains itself.
+// The keep-biased doctrine holds: nothing is dropped, only the position is.
+func TestBodyOnlyAnchorsMoveEveryFinding(t *testing.T) {
+	t.Parallel()
+	st := anchorTestState()
+	st.bodyOnlyAnchors = true
+	st.review = jq.NewObj(fieldComments, []any{
+		anchorComment("notes.txt", "2", "", "RIGHT"),
+		anchorComment("missing.txt", "99", "", "RIGHT"),
+	})
+	st.validateAnchors("body")
+	if len(st.kept) != 0 || len(st.moved) != 2 {
+		t.Fatalf("body-only anchors: kept=%d moved=%d, want kept=0 moved=2", len(st.kept), len(st.moved))
+	}
+	for _, c := range st.moved {
+		m, ok := c.(*jq.Obj)
+		if !ok {
+			t.Fatalf("moved finding = %T, want an object", c)
+		}
+		reason, _ := m.Get(fieldDropReason)
+		if got := jq.StrOf(reason); !strings.Contains(got, "no-inline-anchors") {
+			t.Errorf("drop reason = %q, want the published no-inline-anchors code", got)
+		}
+	}
 }
 
 // TestAnchorSwappedSpan proves inverted spans normalize before the hunk

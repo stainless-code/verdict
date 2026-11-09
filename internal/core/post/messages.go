@@ -19,6 +19,8 @@ const (
 
 	msgNoApproveEvent = "%s has no approve review event — posting as COMMENT instead"
 
+	msgNoInlineAnchors = "%s takes no inline anchors (no-inline-anchors) — %d finding(s) posted in the body instead"
+
 	msgMissingDiffPost = "missing %s/full.diff (run fetch first — anchors validate against it)"
 
 	msgMissingBundlePost = "missing %s (run fetch %s %s first)"

@@ -232,6 +232,10 @@ type Post = core.Post
 // ForcedPost is one explicit --force bypass recorded in post.json.
 type ForcedPost = core.ForcedPost
 
+// WithheldCapability is one capability a host withheld from a post, with the
+// published reason code recorded in post.json.
+type WithheldCapability = core.WithheldCapability
+
 // Identity is schemas/identity.schema.json: the bundle's stable patch id.
 type Identity = identity.Identity
 

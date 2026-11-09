@@ -119,11 +119,11 @@ func capabilityFlags(caps HostCapabilities) []struct {
 		name string
 		on   bool
 	}{
-		{name: capabilityFetch, on: caps.Fetch},
-		{name: capabilityPost, on: caps.Post},
-		{name: capabilityInlineAnchors, on: caps.InlineAnchors},
-		{name: capabilityApprove, on: caps.Approve},
-		{name: capabilityRequestChanges, on: caps.RequestChanges},
-		{name: capabilityThreadResolution, on: caps.ThreadResolution},
+		{name: CapabilityFetch, on: caps.Fetch},
+		{name: CapabilityPost, on: caps.Post},
+		{name: CapabilityInlineAnchors, on: caps.InlineAnchors},
+		{name: CapabilityApprove, on: caps.Approve},
+		{name: CapabilityRequestChanges, on: caps.RequestChanges},
+		{name: CapabilityThreadResolution, on: caps.ThreadResolution},
 	}
 }

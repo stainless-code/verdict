@@ -99,6 +99,13 @@ type Post struct { //nolint:govet // field order is the published property order
 	PatchID         *string        `json:"patch_id,omitempty"`
 	PatchIDKind     string         `json:"patch_id_kind,omitempty"`
 	Forced          []ForcedPost   `json:"forced,omitempty"`
+	// Withheld names each capability the host could not carry for this post,
+	// in the order the run discovered it, so a degraded write is legible after
+	// the envelope is gone: a GitLab post whose requested REQUEST_CHANGES
+	// landed as a comment records the pair here while review.state reads
+	// commented. Absent when every capability the run asked for landed, so an
+	// undegraded receipt keeps its bytes.
+	Withheld []WithheldCapability `json:"withheld,omitempty"`
 	// PostMinSeverity is the global posting floor. PostFloorScoped records
 	// different path-specific floors that withheld findings, and
 	// BelowFloorExcluded counts all withheld findings.
@@ -125,6 +132,19 @@ type ForcedPost struct { //nolint:govet // field order is the published property
 	PatchID        *string `json:"patch_id,omitempty"`
 	PreviousBundle *string `json:"previous_bundle,omitempty"`
 	PreviousHead   *string `json:"previous_head,omitempty"`
+}
+
+// WithheldCapability is one capability the host could not carry for the post
+// that landed. Capability and Reason reuse the published capability vocabulary
+// — the same name and code data.capabilities.unsupported carries — so a reader
+// that already branches on a code learns no second one. RequestedEvent is the
+// binding verdict the run asked for, spelled as the envelope's event, and is
+// absent for a capability with no event of its own (inline_anchors), whose loss
+// the anchors tally already counts.
+type WithheldCapability struct {
+	Capability     string `json:"capability"`
+	Reason         string `json:"reason"`
+	RequestedEvent string `json:"requested_event,omitempty"`
 }
 
 // Wire renders the post data object in wire order. The dry-run wire swaps
@@ -209,8 +229,9 @@ func (f *PostFindings) Wire() *jq.Obj {
 
 // Wire renders the post receipt in wire order: the reviewed head, the
 // timestamps, the normalized confidence, the provenance triple, then the
-// patch identity and the explicit --force audit. Review wins from the raw
-// ordered object so GitHub's field order survives.
+// patch identity, the explicit --force audit, and the withheld-capability
+// audit. Review wins from the raw ordered object so GitHub's field order
+// survives.
 func (p *Post) Wire() *jq.Obj {
 	review := p.ReviewRaw
 	if review == nil && p.Review != nil {
@@ -231,11 +252,21 @@ func (p *Post) Wire() *jq.Obj {
 	if p.Forced != nil {
 		o.Set("forced", p.Forced)
 	}
+	setPostWithheldWire(o, p)
 	setPostFloorWire(o, p)
 	if p.Coverage != nil {
 		o.Set("coverage", p.Coverage)
 	}
 	return o
+}
+
+// setPostWithheldWire appends the withheld-capability audit after the --force
+// audit: only a degraded post carries it, so a receipt that lost nothing keeps
+// its published bytes.
+func setPostWithheldWire(o *jq.Obj, p *Post) {
+	if p.Withheld != nil {
+		o.Set("withheld", p.Withheld)
+	}
 }
 
 // setPostFloorWire appends the payload-floor accounting last: the global

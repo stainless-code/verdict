@@ -599,6 +599,7 @@ the vocabulary cannot place them. `post.json` records what the floor did:
 the withheld count, and `post_floor_scoped` for each path-scoped floor that
 actually withheld a finding (`[{"path": "vendor/lib.go", "floor":
 "critical"}]`). Omitted keys mean no floor applied and nothing was withheld.
+`post.json` also records what the _host_ withheld — see § Providers below.
 
 ### Diff coverage (agent attestation)
 
@@ -2134,6 +2135,30 @@ refused earlier anyway). File +/- stats come from the host API where it
 provides them (GitCafe, Forgejo, Bitbucket); otherwise they are derived
 from the reviewed diff itself (`git apply --numstat`), so the coverage
 manifest always describes the fetched object.
+
+A host that advertises `inline_anchors: false` is sent no anchored comment at
+all: `post` hands that answer to the merge, which keeps every finding and posts
+it in the body instead of a position the host would refuse, warns which host
+did it, and counts the findings in `anchors.moved`.
+
+`post.json` records the same gaps for the post that actually landed, because
+the envelope is not kept beside the bundle. `withheld` carries one entry per
+capability the host could not carry, using the capability names and reason
+codes above:
+
+```json
+"withheld": [
+  { "capability": "request_changes", "reason": "no-request-changes-event", "requested_event": "REQUEST_CHANGES" }
+]
+```
+
+That entry is what separates the two GitLab receipts that otherwise look
+alike: a bound request-changes the host cannot record leaves `review.state`
+reading `commented`, exactly as a plain comment does, and only `withheld` says
+which one posted. The key is absent when the host carried everything the run
+asked for, so an undegraded receipt keeps its bytes; `requested_event` is
+absent for a capability with no event of its own (`inline_anchors`, whose loss
+the `anchors` tally counts).
 
 ### Submit (`post`) per host
 

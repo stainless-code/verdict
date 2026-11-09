@@ -1134,9 +1134,9 @@ func conformanceCheckContains(t *testing.T, provider, surface, got, want string)
 
 // TestConformanceReceiptRecord proves a degraded post is visible in the record
 // it leaves: post.json carries the state the host accepted, while the envelope
-// carries the event verdict asked for, so the pair shows the loss. The receipt
-// does not name the degraded capability yet, and the skip below holds that
-// finding open rather than asserting around it.
+// carries the event verdict asked for, so the pair shows the loss — and the
+// receipt's withheld entry names the capability and the published reason code,
+// so the loss does not depend on an envelope a later reader no longer has.
 func TestConformanceReceiptRecord(t *testing.T) {
 	t.Parallel()
 	row := conformanceRow(t, providerGitLab)
@@ -1152,13 +1152,63 @@ func TestConformanceReceiptRecord(t *testing.T) {
 	if got := jq.StrOf(review["state"]); got != "commented" {
 		t.Errorf("receipt review.state = %q, want the state the host accepted (commented)", got)
 	}
-	if !strings.Contains(raw, conformanceRequestChanges) {
-		t.Skipf("finding (STA-297): post.json records review.state=commented only, so a later reader cannot tell a "+
-			"degraded %s from a plain comment; the envelope warnings and --dry-run bytes carry it, the receipt does not",
-			eventRequestChanges)
-	}
 	for _, want := range []string{conformanceRequestChanges, "no-request-changes-event"} {
 		conformanceCheckContains(t, row.provider, "post.json", raw, want)
+	}
+}
+
+// TestConformanceReceiptWithheld separates the two receipts a GitLab post can
+// leave. A bound request-changes the host cannot carry records the withheld
+// capability, its published reason code, and the event the run asked for beside
+// review.state=commented — where a plain comment leaves review.state=commented
+// with no withheld key at all. Without the field the two receipts differ
+// nowhere a later reader looks; an undegraded post carries no noise.
+func TestConformanceReceiptWithheld(t *testing.T) {
+	t.Parallel()
+	row := conformanceRow(t, providerGitLab)
+	degraded := runConformance(t, row, conformanceScenario{name: "request-changes", approve: approveFalse, changes: true, bind: true})
+	if degraded.refusal != nil {
+		t.Fatalf("Run refusal: %s: %s", degraded.refusal.Code, degraded.refusal.Message)
+	}
+	_, degradedReceipt := conformanceReceipt(t, degraded.root)
+	conformanceCheckWithheld(t, degradedReceipt, eventRequestChanges)
+	if got := conformanceMap(degradedReceipt["review"])["state"]; jq.StrOf(got) != "commented" {
+		t.Fatalf("degraded review.state = %v, want the state the host accepted (commented)", got)
+	}
+
+	plain := runConformance(t, row, conformanceScenario{name: conformanceCommentScenario, approve: approveFalse})
+	if plain.refusal != nil {
+		t.Fatalf("Run refusal: %s: %s", plain.refusal.Code, plain.refusal.Message)
+	}
+	raw, plainReceipt := conformanceReceipt(t, plain.root)
+	if _, present := plainReceipt["withheld"]; present {
+		t.Errorf("%s: a plain comment records withheld: %s", row.provider, raw)
+	}
+	if got := conformanceMap(plainReceipt["review"])["state"]; jq.StrOf(got) != "commented" {
+		t.Fatalf("plain review.state = %v, want commented", got)
+	}
+}
+
+// conformanceCheckWithheld asserts one withheld entry: the capability row the
+// table publishes, its reason code, and the binding event the run asked for.
+func conformanceCheckWithheld(t *testing.T, receipt map[string]any, requested string) {
+	t.Helper()
+	entries := jq.Elements(receipt["withheld"])
+	if len(entries) != 1 {
+		t.Fatalf("withheld = %v, want the one capability this host withheld", receipt["withheld"])
+	}
+	entry := conformanceMap(entries[0])
+	for _, field := range []struct {
+		key  string
+		want string
+	}{
+		{key: "capability", want: conformanceRequestChanges},
+		{key: "reason", want: "no-request-changes-event"},
+		{key: "requested_event", want: requested},
+	} {
+		if got := jq.StrOf(entry[field.key]); got != field.want {
+			t.Errorf("withheld %s = %q, want %q", field.key, got, field.want)
+		}
 	}
 }
 

@@ -7,10 +7,10 @@ package core
 // instead of by refusal.
 //
 // A capability that reads true has code behind it and a test that fails when
-// it flips: post and inline_anchors are the submit paths, approve is the
-// host's own approval write, and request_changes is the review event a host
-// accepts. thread_resolution has no code on any host, so it reads false
-// everywhere and its reason says why.
+// it flips: post is the submit path, inline_anchors is the merge's inline- or
+// body-only partition, approve is the host's own approval write, and
+// request_changes is the review event a host accepts. thread_resolution has no
+// code on any host, so it reads false everywhere and its reason says why.
 type HostCapabilities struct {
 	Provider         string
 	Fetch            bool
@@ -26,14 +26,17 @@ type HostCapabilities struct {
 }
 
 // Capability names as published in data.capabilities, in wire order. The
-// reason map keys these same names.
+// reason map keys these same names, and a receipt that names a withheld
+// capability uses them too, so one vocabulary spans every surface that
+// reports what a host can do. Exported because the post service records them
+// in post.json instead of spelling the strings a second time.
 const (
-	capabilityFetch            = "fetch"
-	capabilityPost             = "post"
-	capabilityInlineAnchors    = "inline_anchors"
-	capabilityApprove          = "approve"
-	capabilityRequestChanges   = "request_changes"
-	capabilityThreadResolution = "thread_resolution"
+	CapabilityFetch            = "fetch"
+	CapabilityPost             = "post"
+	CapabilityInlineAnchors    = "inline_anchors"
+	CapabilityApprove          = "approve"
+	CapabilityRequestChanges   = "request_changes"
+	CapabilityThreadResolution = "thread_resolution"
 )
 
 // capabilityTotal is how many capability names the table publishes. Unsupported
@@ -116,31 +119,44 @@ func (c HostCapabilities) Unsupported() []CapabilityGap {
 		// Only an unregistered provider is fetch-less, so one cause explains
 		// the whole row.
 		return []CapabilityGap{
-			{Capability: capabilityFetch, Reason: reasonUnknownHost},
-			{Capability: capabilityPost, Reason: reasonUnknownHost},
-			{Capability: capabilityInlineAnchors, Reason: reasonUnknownHost},
-			{Capability: capabilityApprove, Reason: reasonUnknownHost},
-			{Capability: capabilityRequestChanges, Reason: reasonUnknownHost},
-			{Capability: capabilityThreadResolution, Reason: reasonUnknownHost},
+			{Capability: CapabilityFetch, Reason: reasonUnknownHost},
+			{Capability: CapabilityPost, Reason: reasonUnknownHost},
+			{Capability: CapabilityInlineAnchors, Reason: reasonUnknownHost},
+			{Capability: CapabilityApprove, Reason: reasonUnknownHost},
+			{Capability: CapabilityRequestChanges, Reason: reasonUnknownHost},
+			{Capability: CapabilityThreadResolution, Reason: reasonUnknownHost},
 		}
 	}
 	gaps := make([]CapabilityGap, 0, capabilityTotal)
 	if !c.Post {
-		gaps = append(gaps, CapabilityGap{Capability: capabilityPost, Reason: reasonFetchOnly})
+		gaps = append(gaps, CapabilityGap{Capability: CapabilityPost, Reason: reasonFetchOnly})
 	}
 	if !c.InlineAnchors {
-		gaps = append(gaps, CapabilityGap{Capability: capabilityInlineAnchors, Reason: c.submitReason(reasonNoInlineAnchors)})
+		gaps = append(gaps, CapabilityGap{Capability: CapabilityInlineAnchors, Reason: c.submitReason(reasonNoInlineAnchors)})
 	}
 	if !c.Approve {
-		gaps = append(gaps, CapabilityGap{Capability: capabilityApprove, Reason: c.submitReason(reasonNoApproveVerdict)})
+		gaps = append(gaps, CapabilityGap{Capability: CapabilityApprove, Reason: c.submitReason(reasonNoApproveVerdict)})
 	}
 	if !c.RequestChanges {
-		gaps = append(gaps, CapabilityGap{Capability: capabilityRequestChanges, Reason: c.submitReason(reasonNoChangesEvent)})
+		gaps = append(gaps, CapabilityGap{Capability: CapabilityRequestChanges, Reason: c.submitReason(reasonNoChangesEvent)})
 	}
 	if !c.ThreadResolution {
-		gaps = append(gaps, CapabilityGap{Capability: capabilityThreadResolution, Reason: reasonNoResolveMutation})
+		gaps = append(gaps, CapabilityGap{Capability: CapabilityThreadResolution, Reason: reasonNoResolveMutation})
 	}
 	return gaps
+}
+
+// ReasonFor returns the published code for one absent capability, or "" when
+// the host carries it. A caller that has to record why a write was withheld
+// reads this instead of re-deriving a code from a flag, so the receipt and the
+// envelope cannot disagree about the cause.
+func (c HostCapabilities) ReasonFor(capability string) string {
+	for _, gap := range c.Unsupported() {
+		if gap.Capability == capability {
+			return gap.Reason
+		}
+	}
+	return ""
 }
 
 // submitReason names why one submit-side capability is absent: the host has no

@@ -134,7 +134,12 @@ var publishedSemantics = map[string]string{
 	// post_floor_scoped: additive optional per-path posting floor list with its
 	// $defs/floorScope entry (required path, enum floor). No existing
 	// property, required key, or type changed.
-	"post.schema.json": "aabfab3310c8c89c9aa8959375aca7a95dc58bd66bdcc9ee749364f53b9abada",
+	// withheld capability: additive optional withheld[] with its
+	// $defs/withheldCapability entry (required capability and reason, optional
+	// requested_event), so a degraded post stays legible in the receipt after
+	// the envelope is gone. No existing property, required key, enum, or type
+	// changed.
+	"post.schema.json": "31d0c39f3d2dbce82a4e9d3d66852abe31f958eaec5b2b7ced77d245047ff33e",
 	// patch identity: additive $defs/identity root (new bundle document) —
 	// no existing property, required key, or type changed.
 	"identity.schema.json": "efe9a7b331e41715bc55b8824e95154add584c2d63f670811ef03c350d2e5bdb",

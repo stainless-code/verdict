@@ -52,6 +52,11 @@ type MergeParams struct { //nolint:govet // field grouping documents the merge c
 	// RequireCoverage is the opt-in gate: absent or partial diff coverage
 	// refuses coverage-incomplete. --force never bypasses it.
 	RequireCoverage bool
+	// BodyOnlyAnchors sends every finding to the body instead of an inline
+	// anchor: the provider advertises inline_anchors=false, so an anchor would
+	// be refused or silently dropped. Keep-biased: the finding survives, only
+	// the inline position is lost.
+	BodyOnlyAnchors bool
 }
 
 // MergeResult carries the shared merge outputs both verbs need.
@@ -114,6 +119,7 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 		hunkRows:        in.HunkRows,
 		inputChecked:    in.InputChecked,
 		requireCoverage: in.RequireCoverage,
+		bodyOnlyAnchors: in.BodyOnlyAnchors,
 	}
 	curated, dstat, err := st.validateAndMerge(in.Body)
 	if err != nil {

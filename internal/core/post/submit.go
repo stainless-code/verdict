@@ -507,6 +507,9 @@ func writePostReceipt(st *state, obj *jq.Obj) error {
 	if st.forced != nil {
 		receipt.Forced = st.forced
 	}
+	if st.withheld != nil {
+		receipt.Withheld = st.withheld
+	}
 	if err := stampProvenance(st, receipt); err != nil {
 		return err
 	}

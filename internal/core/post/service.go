@@ -117,6 +117,9 @@ type state struct { //nolint:govet // field grouping documents the post run stat
 	liveLoaded   bool
 	identity     *identity.Identity
 	forced       []core.ForcedPost
+	// withheld is what the capability table denied this post, in discovery
+	// order; post.json carries it so a degraded write stays legible.
+	withheld []core.WithheldCapability
 	// policy is the typed run bundle when the fetch wrote one; nil on
 	// legacy bundles, which degrade to no repository requirements.
 	policy *runPolicy
@@ -375,6 +378,7 @@ func (st *state) applyApprovedFlag() {
 }
 
 func (st *state) merge() *core.RefusalError {
+	caps := core.CapabilitiesFor(st.provider())
 	rt := st.mergeRuntime()
 	res, err := recordcore.Merge(&rt, &recordcore.MergeParams{
 		Dir: st.dir, Prov: st.provider(),
@@ -386,11 +390,15 @@ func (st *state) merge() *core.RefusalError {
 		Effective: st.req.Effective, Forces: st.req.Forces,
 		Repo: st.req.Repo, Pr: st.req.Pr, Cmd: "post", Controls: st.controls,
 		RequireCoverage: st.flags.RequireCoverage,
+		// A host that advertises no inline anchors sends none: the merge keeps
+		// every finding in the body instead of an anchor the host would refuse.
+		BodyOnlyAnchors: !caps.InlineAnchors,
 	})
 	if err != nil {
 		return refusalOrFailed(err)
 	}
 	st.merged, st.body, st.diagram = res, res.Body, res.Diagram
+	st.recordAnchorGap(caps, res.NMoved)
 	return nil
 }
 
@@ -411,36 +419,81 @@ func (st *state) bindGate(ctx context.Context) *core.RefusalError {
 	return st.authorGate(ctx)
 }
 
-// verdictGap states what a requested binding verdict loses on this host, and
-// the event to post instead: a host with no approve event cannot claim one, so
-// the review posts COMMENT, while a host with no request-changes event still
-// posts the request as its findings and summary note — the payload event is
-// verdict's own record of the request, not a host write. The capability table
-// decides, so a host that gains either event stops degrading. Pure: a test
-// flips one capability and watches both answers move.
-func verdictGap(caps core.HostCapabilities, event string) (gap, posted string) {
+// verdictLoss is what one requested binding verdict loses on a host that
+// cannot carry it: the capability row a receipt records, the operator sentence
+// the envelope warns with, and the event to post instead. A host that carries
+// the verdict answers with the event alone, so capability and message stay
+// empty and nothing is recorded.
+type verdictLoss struct {
+	capability string
+	message    string
+	posted     string
+}
+
+// verdictGap states what a requested binding verdict loses on this host: a host
+// with no approve event cannot claim one, so the review posts COMMENT, while a
+// host with no request-changes event still posts the request as its findings
+// and summary note — the payload event is verdict's own record of the request,
+// not a host write. The capability table decides, so a host that gains either
+// event stops degrading. Pure: a test flips one capability and watches both
+// answers move.
+func verdictGap(caps core.HostCapabilities, event string) verdictLoss {
 	switch event {
 	case eventRequestChanges:
 		if !caps.RequestChanges {
-			return msgNoChangesEvent, eventRequestChanges
+			return verdictLoss{capability: core.CapabilityRequestChanges, message: msgNoChangesEvent, posted: eventRequestChanges}
 		}
 	case eventApprove:
 		if !caps.Approve {
-			return msgNoApproveEvent, eventComment
+			return verdictLoss{capability: core.CapabilityApprove, message: msgNoApproveEvent, posted: eventComment}
 		}
 	}
-	return "", event
+	return verdictLoss{posted: event}
 }
 
-// applyVerdictGap warns about a verdict this host cannot carry and returns the
-// event to post for it.
+// applyVerdictGap warns about a verdict this host cannot carry, records the
+// withheld capability for the receipt, and returns the event to post for it.
 func (st *state) applyVerdictGap(event string) string {
-	gap, posted := verdictGap(core.CapabilitiesFor(st.provider()), event)
-	if gap == "" {
-		return posted
+	caps := core.CapabilitiesFor(st.provider())
+	loss := verdictGap(caps, event)
+	if loss.capability == "" {
+		return loss.posted
 	}
-	st.warn(fmt.Sprintf(gap, hostLabel(st.provider())))
-	return posted
+	st.warn(fmt.Sprintf(loss.message, hostLabel(st.provider())))
+	st.withhold(caps, loss.capability, event)
+	return loss.posted
+}
+
+// withhold records one capability this host could not carry, with the reason
+// code the capability table publishes for it and the binding event the run
+// asked for. A capability the host carries is never recorded, so the receipt
+// cannot name a loss the run did not take, and a capability is recorded once
+// however often a gate revisits it.
+func (st *state) withhold(caps core.HostCapabilities, capability, requestedEvent string) {
+	reason := caps.ReasonFor(capability)
+	if reason == "" {
+		return
+	}
+	for _, recorded := range st.withheld {
+		if recorded.Capability == capability {
+			return
+		}
+	}
+	st.withheld = append(st.withheld, core.WithheldCapability{
+		Capability: capability, Reason: reason, RequestedEvent: requestedEvent,
+	})
+}
+
+// recordAnchorGap records the inline-anchor loss when the provider takes no
+// anchored comment: every finding the body-only merge moved is one the host
+// could not carry inline, so the receipt names the capability and the count
+// rides the anchors tally and the operator warning.
+func (st *state) recordAnchorGap(caps core.HostCapabilities, moved int) {
+	if caps.InlineAnchors || moved == 0 {
+		return
+	}
+	st.warn(fmt.Sprintf(msgNoInlineAnchors, hostLabel(st.provider()), moved))
+	st.withhold(caps, core.CapabilityInlineAnchors, "")
 }
 
 func (st *state) unbound() bool {

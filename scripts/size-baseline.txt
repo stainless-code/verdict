@@ -82,10 +82,18 @@
 # 12042400, linux/arm64 11010208, windows/amd64 12375040, windows/arm64
 # 11126784. Ceilings round up to the next 10 kB at least 5 kB above the
 # measurement, because a previous local-vs-CI drift of ~1 KB cost a red run.
+# Withheld capabilities (STA-298) add the post receipt's withheld[] field, the
+# published reason lookup, and the inline_anchors merge gate. Measured on the
+# stacked tree: darwin/amd64 12265504, darwin/arm64 11238178, linux/amd64
+# 12050592, linux/arm64 11010208, windows/amd64 12381184, windows/arm64
+# 11132928. Only linux/amd64 crosses its ceiling, by 592 bytes over the
+# 12050000 line the previous wave set — the same 8192-byte segment step that
+# wave described (12042400 to 12050592) — so its line moves to the next 10 kB
+# above the measurement; the other five stay put.
 deps 0
 darwin/amd64 12270000
 darwin/arm64 11250000
-linux/amd64 12050000
+linux/amd64 12060000
 linux/arm64 11020000
 windows/amd64 12390000
 windows/arm64 11140000

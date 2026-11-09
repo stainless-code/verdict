@@ -2,6 +2,7 @@ package postcore
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -21,6 +22,7 @@ func TestVerdictGap(t *testing.T) {
 		name     string
 		event    string
 		wantGap  string
+		wantCap  string
 		wantPost string
 		caps     core.HostCapabilities
 	}{
@@ -29,20 +31,41 @@ func TestVerdictGap(t *testing.T) {
 		{name: "comment is untouched", caps: core.HostCapabilities{}, event: eventComment, wantPost: eventComment},
 		{
 			name: "no approve posts comment", caps: changesOnly, event: eventApprove,
-			wantGap: msgNoApproveEvent, wantPost: eventComment,
+			wantGap: msgNoApproveEvent, wantCap: core.CapabilityApprove, wantPost: eventComment,
 		},
 		{
 			name: "no changes keeps the request", caps: approveOnly, event: eventRequestChanges,
-			wantGap: msgNoChangesEvent, wantPost: eventRequestChanges,
+			wantGap: msgNoChangesEvent, wantCap: core.CapabilityRequestChanges, wantPost: eventRequestChanges,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			gap, posted := verdictGap(tc.caps, tc.event)
-			if gap != tc.wantGap || posted != tc.wantPost {
-				t.Errorf("verdictGap = (%q, %q), want (%q, %q)", gap, posted, tc.wantGap, tc.wantPost)
+			gap := verdictGap(tc.caps, tc.event)
+			if gap.message != tc.wantGap || gap.posted != tc.wantPost || gap.capability != tc.wantCap {
+				t.Errorf("verdictGap = (%q, %q, %q), want (%q, %q, %q)",
+					gap.capability, gap.message, gap.posted, tc.wantCap, tc.wantGap, tc.wantPost)
 			}
 		})
+	}
+}
+
+// TestWithholdRecordsThePublishedReason proves the receipt records the cause
+// the capability table publishes, not a second vocabulary: a withheld
+// capability lands with its published code and the event the run asked for,
+// one entry per capability however often a gate revisits it, and nothing at all
+// for a capability the host carries.
+func TestWithholdRecordsThePublishedReason(t *testing.T) {
+	t.Parallel()
+	caps := core.HostCapabilities{Provider: "approve-only", Fetch: true, Post: true, Approve: true, InlineAnchors: true}
+	st := &state{}
+	st.withhold(caps, core.CapabilityRequestChanges, eventRequestChanges)
+	st.withhold(caps, core.CapabilityRequestChanges, eventRequestChanges)
+	st.withhold(caps, core.CapabilityApprove, eventApprove)
+	want := []core.WithheldCapability{
+		{Capability: core.CapabilityRequestChanges, Reason: "no-request-changes-event", RequestedEvent: eventRequestChanges},
+	}
+	if !slices.Equal(st.withheld, want) {
+		t.Errorf("withheld = %+v, want %+v", st.withheld, want)
 	}
 }
 
