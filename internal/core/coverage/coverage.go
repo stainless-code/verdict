@@ -316,7 +316,7 @@ func loadRows(dir string) ([]hunks.Hunk, *core.RefusalError) {
 // `record` reads: counting `*.diff` files in the directory let a stray or
 // missing file move the count while the attestation it describes stayed put.
 // A manifest that will not parse still marks the bundle chunked with no count;
-// `record` refuses such a bundle before this reading is reached.
+// `record` refuses such a bundle, and the count never surfaces.
 func chunked(dir string) (int, bool) {
 	raw, err := os.ReadFile(dir + chunksDir + manifestFile)
 	if err != nil {
