@@ -130,6 +130,99 @@ func TestScrubSecretsIgnoresEmptyValues(t *testing.T) {
 	}
 }
 
+// TestScrubSecretsOverlaps proves two credentials that overlap without being
+// prefixes are redacted as one region. Sorting longest first settles only the
+// prefix case: `API_KEY=secretvalue` with `--token valueEXTRA` still records
+// `***REDACTED***EXTRA`, because replacing `secretvalue` consumed the bytes the
+// second secret needed to match. The mirror case leaks the head instead. One
+// left-to-right pass that takes the longest match at each position, and extends
+// a match over every credential starting inside it, hides both in full.
+func TestScrubSecretsOverlaps(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		text    string
+		want    string
+		environ []string
+		args    []string
+	}{
+		{
+			// The shorter secret's tail is the longer one's head.
+			name:    "overlap-tail-into-head",
+			text:    "token=secretvalueEXTRA",
+			environ: []string{"API_KEY=secretvalue"},
+			args:    []string{"valueEXTRA"},
+			want:    "token=" + redactedValue,
+		},
+		{
+			// The mirror: the longer secret starts inside the shorter one and
+			// reaches past its end, so replacing the longer one first would
+			// leave the shorter one's head in the clear.
+			name:    "overlap-head-into-tail",
+			text:    "token=a1b2c3d4e5f6",
+			environ: []string{"API_KEY=a1b2c3d4"},
+			args:    []string{"b2c3d4e5f6"},
+			want:    "token=" + redactedValue,
+		},
+		{
+			name:    "prefix",
+			text:    "token=secretvalueEXTRA",
+			environ: []string{"API_KEY=secretvalue"},
+			args:    []string{"secretvalueEXTRA"},
+			want:    "token=" + redactedValue,
+		},
+		{
+			name:    "prefix-reverse-order",
+			text:    "token=secretvalueEXTRA",
+			environ: nil,
+			args:    []string{"valueEXTRA", "secretvalue", "secretvalueEXTRA"},
+			want:    "token=" + redactedValue,
+		},
+		{
+			// Three credentials each overlapping the next: one region, one
+			// marker, and no four-byte tail left readable.
+			name:    "three-deep-chain",
+			text:    "token=abcdefghijkl",
+			environ: []string{"API_KEY=abcdefgh"},
+			args:    []string{"cdefghij", "efghijkl"},
+			want:    "token=" + redactedValue,
+		},
+		{
+			name:    "same-value-twice",
+			text:    "a=secretvalue b=secretvalue",
+			environ: []string{"API_KEY=secretvalue"},
+			args:    []string{"secretvalue"},
+			want:    "a=" + redactedValue + " b=" + redactedValue,
+		},
+		{
+			// A one-byte argument secret still hides itself everywhere it
+			// stands alone, and the longer credential beside it is taken whole
+			// rather than as a prefix.
+			name:    "single-byte-against-longer",
+			text:    "a=ab b=a",
+			environ: nil,
+			args:    []string{"a", "ab"},
+			want:    redactedValue + "=" + redactedValue + " b=" + redactedValue,
+		},
+		{
+			name:    "empty-secret",
+			text:    "exit=0",
+			environ: []string{"API_KEY="},
+			args:    []string{""},
+			want:    "exit=0",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := scrubSecrets(tc.text, tc.environ, tc.args)
+			if got != tc.want {
+				t.Errorf("scrubSecrets(%q) = %q, want %q", tc.text, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestDirectiveNamesTheArtifact pins the prompt's contract: the subject, the
 // bundle, the exact review file, and the boundary. The local variant names
 // source.json instead of PR.json.

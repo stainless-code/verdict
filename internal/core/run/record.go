@@ -83,19 +83,6 @@ func writeLauncher(path string, rec *launcher) (time.Time, *core.RefusalError) {
 	return info.ModTime(), nil
 }
 
-// sortLongestFirst orders the credential values longest first, so a secret that
-// is a prefix of another cannot consume that longer secret's head and publish
-// its tail: `API_KEY=secretvalue` plus `--token secretvalueEXTRA` must reach
-// `***REDACTED***`, never `***REDACTED***EXTRA`. A handful of values, so the
-// insertion sort costs nothing and pulls in no generic sort machinery.
-func sortLongestFirst(values []string) {
-	for i := 1; i < len(values); i++ {
-		for j := i; j > 0 && len(values[j]) > len(values[j-1]); j-- {
-			values[j], values[j-1] = values[j-1], values[j]
-		}
-	}
-}
-
 // writeRunOutput keeps the child's full combined output for debugging, at
 // 0600: the bytes are raw, so they can carry a secret the child printed. A
 // failure is a warning, never a refusal: the review file is the contract,
@@ -126,17 +113,88 @@ func tailOf(s string, n int) string {
 // launcher.json, while .run.out keeps the raw stream the way verify keeps
 // .verify.out (the fuller token-shape scrub belongs to verify's proof record,
 // not to a launcher's log line).
+//
+// One left-to-right pass, taking the longest credential that starts at each
+// position, so a position is consumed once and no replacement can begin inside
+// bytes a previous one hid. Nor can two credentials share a region by halves:
+// `API_KEY=secretvalue` with `--token valueEXTRA` makes
+// `secretvalueEXTRA` one credential region, not `***REDACTED***EXTRA`. Sorting
+// the values cannot do that — only a prefix is settled by order — and chaining
+// [strings.ReplaceAll] can only shrink the text each round, so the overlap is
+// resolved here, against the original bytes.
 func scrubSecrets(text string, environ, argSecrets []string) string {
 	values := secretValues(environ)
 	values = append(values, argSecrets...)
-	sortLongestFirst(values)
-	for _, value := range values {
-		// An empty operand (`--api-key ""`) hides nothing, and replacing the
-		// empty string would shred the tail between every rune.
-		if value == "" {
+	values = dropEmptyValues(values)
+	if !anyValueIn(text, values) {
+		return text
+	}
+	var out strings.Builder
+	out.Grow(len(text))
+	last := 0
+	for i := 0; i < len(text); {
+		n := longestMatchAt(text[i:], values)
+		if n == 0 {
+			i++
 			continue
 		}
-		text = strings.ReplaceAll(text, value, redactedValue)
+		end := coveredEnd(text, i, i+n, values)
+		out.WriteString(text[last:i])
+		out.WriteString(redactedValue)
+		i, last = end, end
 	}
-	return text
+	out.WriteString(text[last:])
+	return out.String()
+}
+
+// dropEmptyValues removes the values that hide nothing: an empty operand
+// (`--api-key ""`) is no credential, and matching the empty string everywhere
+// would shred the tail between every rune.
+func dropEmptyValues(values []string) []string {
+	kept := values[:0]
+	for _, value := range values {
+		if value != "" {
+			kept = append(kept, value)
+		}
+	}
+	return kept
+}
+
+// anyValueIn reports whether text holds any credential value at all, so the
+// common case — a tail with nothing to hide — costs no allocation.
+func anyValueIn(text string, values []string) bool {
+	for _, value := range values {
+		if strings.Contains(text, value) {
+			return true
+		}
+	}
+	return false
+}
+
+// longestMatchAt returns the length of the longest credential that begins s,
+// or 0 when none does. Longest wins so a prefix of a credential cannot be
+// taken as the whole one.
+func longestMatchAt(s string, values []string) int {
+	best := 0
+	for _, value := range values {
+		if len(value) > best && strings.HasPrefix(s, value) {
+			best = len(value)
+		}
+	}
+	return best
+}
+
+// coveredEnd extends a matched region — start to end, the credential that
+// begins it - over every credential that starts inside the region and reaches
+// past its end. Two credentials that overlap without being prefixes are one
+// region: the bytes between them belong to a credential, so leaving them
+// visible would publish the head or the tail of one. The walk stops at the
+// region's end, so it never crosses text that is already accounted for.
+func coveredEnd(text string, start, end int, values []string) int {
+	for j := start + 1; j < end; j++ {
+		if n := longestMatchAt(text[j:], values); j+n > end {
+			end = j + n
+		}
+	}
+	return end
 }

@@ -108,6 +108,26 @@ func TestNeutralizeMentions(t *testing.T) {
 			want: "~~@" + zwsp + "alice~~ shipped it.\n",
 		},
 		{
+			// A single `~` is a local-part byte, so `~@example.com` is an
+			// address: escaping it would insert a zero-width space into it.
+			name: "tilde-single-address",
+			in:   "Mail ~@example.com about it.\n",
+			want: "Mail ~@example.com about it.\n",
+		},
+		{
+			name: "tilde-double",
+			in:   "Ship it ~~@alice~~.\n",
+			want: "Ship it ~~@" + zwsp + "alice~~.\n",
+		},
+		{
+			// A run of three tildes is not GFM strikethrough, but a host still
+			// notifies on the handle inside it, so the run counts as markup and
+			// the mention is escaped.
+			name: "tilde-triple-prose",
+			in:   "So ~~~@alice~~~ here.\n",
+			want: "So ~~~@" + zwsp + "alice~~~ here.\n",
+		},
+		{
 			name: "punctuated-sentence-close",
 			in:   "Thanks, @alice.\n",
 			want: "Thanks, @" + zwsp + "alice.\n",

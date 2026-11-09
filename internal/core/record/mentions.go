@@ -45,7 +45,7 @@ const (
 //
 // A mention opens at line start or after anything that is not a local-part
 // byte, so `(@alice)`, `**@alice**`, `_@alice_`, and `~~@alice~~` are mentions
-// while `user@example.com` stays an address.
+// while `user@example.com` and `~@example.com` stay addresses.
 func NeutralizeMentions(body string) string {
 	if !strings.Contains(body, "@") {
 		return body
@@ -195,6 +195,13 @@ func opensMention(line string, i int) bool {
 	for j > 0 && isEmphasisMarkup(line[j-1]) {
 		j--
 	}
+	if i-j == 1 && line[i-1] == '~' {
+		// A lone `~` is a local-part byte, not strikethrough markup:
+		// `~@example.com` is a valid address, so an escape there would insert
+		// a zero-width space into it. Strikethrough is always a run of two or
+		// more, which the walk above still collects.
+		return false
+	}
 	if j < i {
 		// Emphasis markup right before the `@` is markup, not the tail of an
 		// address. A local part that genuinely ends in `_`, `*`, or `~`
@@ -208,7 +215,8 @@ func opensMention(line string, i int) bool {
 // isEmphasisMarkup reports whether c can sit in a run of emphasis or
 // strikethrough markup that ends right before a `@`. `~` belongs here because
 // `~~@alice~~` renders as a strikethrough mention, and `~` is also a valid
-// local-part byte, so the run is the only thing that tells the two apart.
+// local-part byte, so the run is the only thing that tells the two apart: a
+// run of two or more is markup, a single one is the tail of an address.
 func isEmphasisMarkup(c byte) bool {
 	return c == '*' || c == '_' || c == '~'
 }
