@@ -227,17 +227,43 @@ func assertDoctorRows(t *testing.T, rows []any) {
 		"api-reachable":    {"warn", "cannot reach api.github.com with this token", false},
 		"storage-writable": {"fail", "cwd writable — .verdict/state/ created on first fetch", true},
 	}
+	seen := make(map[string]bool, len(want))
 	for _, raw := range rows {
-		row := asMap(t, raw, "check row")
-		name, ok := row["name"].(string)
-		expect, tracked := want[name]
-		if !ok || !tracked {
-			continue
+		checkDoctorRow(t, asMap(t, raw, "check row"), want, seen)
+	}
+	for _, name := range doctorRowOrder {
+		if !seen[name] {
+			t.Errorf("doctor rows are missing %q; the preflight claim is unproven", name)
 		}
-		if row["ok"] != expect.ok || row["severity"] != expect.severity || row["detail"] != expect.detail {
-			t.Errorf("row %s = %v, want ok=%v severity=%s detail=%q",
-				name, row, expect.ok, expect.severity, expect.detail)
-		}
+	}
+}
+
+// doctorRowOrder fixes the order the missing-row report names rows in.
+var doctorRowOrder = []string{"gh-cli", "gh-auth", "api-reachable", "storage-writable"}
+
+// checkDoctorRow compares one response row with its expectation and records
+// that the name appeared. The recording is what makes a renamed row visible:
+// without it, an untracked name asserts nothing and the test reads green on no
+// evidence.
+func checkDoctorRow(t *testing.T, row map[string]any, want map[string]struct {
+	severity, detail string
+	ok               bool
+}, seen map[string]bool,
+) {
+	t.Helper()
+	name, named := row["name"].(string)
+	if !named {
+		t.Errorf("check row has no name: %v", row)
+		return
+	}
+	expect, tracked := want[name]
+	if !tracked {
+		return
+	}
+	seen[name] = true
+	if row["ok"] != expect.ok || row["severity"] != expect.severity || row["detail"] != expect.detail {
+		t.Errorf("row %s = %v, want ok=%v severity=%s detail=%q",
+			name, row, expect.ok, expect.severity, expect.detail)
 	}
 }
 

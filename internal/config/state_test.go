@@ -144,14 +144,17 @@ func TestEnsureStateIgnoreRefusesDeepStateNegation(t *testing.T) {
 // TestLayoutPaths pins the state inventory: the configuration, knowledge
 // corpus, learnings, and overrides live beside the ignored state dir.
 func TestLayoutPaths(t *testing.T) {
+	// Literal paths, not filepath.Join over the constants the getters use: an
+	// expectation rebuilt from those constants moves with them, so a renamed
+	// ConfigPath would ship while this test stayed green.
 	layout := NewLayout("/repo")
-	if layout.ConfigFile() != filepath.Join("/repo", ConfigPath) {
-		t.Fatalf("config = %q", layout.ConfigFile())
+	if got := layout.ConfigFile(); got != "/repo/.verdict/config.json" {
+		t.Fatalf("config = %q", got)
 	}
-	if layout.StateDir() != filepath.Join("/repo", VerdictDir, StateDirName) {
-		t.Fatalf("state = %q", layout.StateDir())
+	if got := layout.StateDir(); got != "/repo/.verdict/state" {
+		t.Fatalf("state = %q", got)
 	}
-	if layout.GitignoreFile() != filepath.Join("/repo", GitignorePath) {
-		t.Fatalf("ignore = %q", layout.GitignoreFile())
+	if got := layout.GitignoreFile(); got != "/repo/.verdict/.gitignore" {
+		t.Fatalf("ignore = %q", got)
 	}
 }

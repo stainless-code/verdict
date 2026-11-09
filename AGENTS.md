@@ -4,7 +4,7 @@ The shipped prompts stay repo-agnostic so reviews of other projects carry no
 verdict conventions. Repo-specific rules live here, where any agent working in
 this checkout reads them.
 
-**Budget:** 70 lines, hard ceiling. Anything longer than a rule belongs in
+**Budget:** 85 lines, hard ceiling. Anything longer than a rule belongs in
 `docs/`: Go rules in `docs/go-rules.md`, the operator contract in `docs/manual.md`.
 
 ## Verification ladder
@@ -53,6 +53,21 @@ skip-token ban and test determinism. Read both before writing or reviewing Go.
   `staging`); work on `agent/<issue>-<kebab>`.
 - Never add `Co-authored-by` trailers.
 - One commit per change; leave unrelated files untouched.
+
+## Tests
+
+- A test that cannot fail is worse than no test: it costs a reader's trust and
+  passes forever. Delete it, or compare against a literal, then prove the
+  assertion fires by mutating the code under it — observed failing, not argued.
+- An expectation rebuilt from the code under test is not an expectation.
+  `Files()` plus flatten to check `Parse`, `filepath.Join` over the same
+  constants to check a path getter, a `want` from the same call as the `got`:
+  a defect reproduces on both sides.
+- Prefer a literal for anything a user or another tool consumes — paths, row
+  text, argv — over deriving it from the constants the implementation reads.
+- A guard on a count or flag that no reachable path can move is decoration. If
+  the property is structural (a function takes no executor, a getter has one
+  body), the signature is the guard; say so in prose instead of asserting it.
 
 ## Formatting
 
