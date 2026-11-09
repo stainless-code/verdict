@@ -696,11 +696,20 @@ func TestRunDryRunAnchorsReachJSONPayload(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
-	env := core.RenderEnvelope("post", resp.Repo, resp.Pr, resp.At, resp.Next, resp.Warnings, resp.Data.Wire(), nil)
-	payload := jq.PrettyOrdered(env)
-	want := "\"anchors\": {\n      \"kept\": 2,\n      \"moved\": 1\n    },"
-	if !strings.Contains(payload, want) {
-		t.Fatalf("--dry-run JSON payload misses the anchor tally %q:\n%s", want, payload)
+	payload := jq.PrettyOrdered(RenderPostEnvelope(resp))
+	var decoded struct {
+		Data struct {
+			Anchors struct {
+				Kept  int `json:"kept"`
+				Moved int `json:"moved"`
+			} `json:"anchors"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(payload), &decoded); err != nil {
+		t.Fatalf("--dry-run payload is not JSON: %v\n%s", err, payload)
+	}
+	if got := decoded.Data.Anchors; got.Kept != 2 || got.Moved != 1 {
+		t.Fatalf("data.anchors = %+v, want 2 kept and 1 moved; payload:\n%s", got, payload)
 	}
 	if got := strings.Join(human, "\n"); !strings.Contains(got, "anchors: 2 inline, 1 moved") {
 		t.Errorf("human preflight disagrees with the payload:\n%s", got)

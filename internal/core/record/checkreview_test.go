@@ -388,11 +388,12 @@ func TestCheckReviewLongUnknownKey(t *testing.T) {
 }
 
 // TestCheckReviewGeneratedFileAnchorStaysInline proves generated paths are
-// exempt from coverage, not from anchoring: a comment on a generated file is
-// validated against the diff like any other path, so the run keeps it inline
-// and the finding survives instead of the exemption silently dropping it. The
-// coverage receipt proves the path really sat on the exempt side, so the
-// anchor assertion is about a generated file and not just any file.
+// exempt from coverage, not from anchoring: a comment inside a hunk keeps its
+// inline anchor and the finding survives instead of the exemption silently
+// dropping it. The coverage receipt proves the path really sat on the exempt
+// side, so the anchor assertion is about a generated file and not any file.
+// That validation still runs on generated paths is proved by the outside-hunk
+// case below.
 func TestCheckReviewGeneratedFileAnchorStaysInline(t *testing.T) {
 	coverageBundle(t, generatedDiff, coverageReview("dist/app.min.js",
 		`"coverage":[{"file":"dist/app.min.js","ranges":"all"}],`))
@@ -404,27 +405,52 @@ func TestCheckReviewGeneratedFileAnchorStaysInline(t *testing.T) {
 	if got := resp.Data.Anchors; got.Kept != 1 || got.Moved != 0 {
 		t.Errorf("anchors = %+v, want 1 kept and 0 moved", got)
 	}
-	for _, w := range resp.Warnings {
-		if strings.Contains(w, "anchor") {
-			t.Errorf("warning downgrades the generated-file anchor: %q", w)
-		}
-	}
-	checkGeneratedFileExempt(t, coverageSlug)
+	checkGeneratedFileExempt(t)
 }
 
-// checkGeneratedFileExempt asserts the same path the anchor test used was
-// measured exempt from coverage and its finding stored inline, so the
-// exemption did not drop it.
-func checkGeneratedFileExempt(t *testing.T, slug string) {
+// TestCheckReviewGeneratedFileAnchorOutsideHunkMoves proves the exemption is
+// about coverage only: an anchor outside every hunk moves to the body on a
+// generated path exactly as it does on a hand-written one, so validation is not
+// skipped for generated files.
+func TestCheckReviewGeneratedFileAnchorOutsideHunkMoves(t *testing.T) {
+	coverageBundle(t, generatedDiff, `{"schema_version":"1","body":"> [!IMPORTANT]\n> Gate fixture body with enough length to pass.","approved":false,`+
+		`"coverage":[{"file":"dist/app.min.js","ranges":"all"}],`+
+		`"comments":[{"path":"dist/app.min.js","line":99,"side":"RIGHT",`+
+		`"body":"Cited finding here with enough substance.","rigor":"walked","severity":"important"}]}`)
+	resp, ref := recordcore.Run(context.Background(), recordRequest(t, &collector{}, coverageSlug))
+	if ref != nil {
+		t.Fatalf("generated-file anchor refused: %s: %s", ref.Code, ref.Message)
+	}
+	if got := resp.Data.Anchors; got.Kept != 0 || got.Moved != 1 {
+		t.Errorf("anchors = %+v, want 0 kept and 1 moved", got)
+	}
+	if !warnedAbout("outside every reviewed hunk", resp.Warnings) {
+		t.Errorf("no warning moved the out-of-hunk anchor: %v", resp.Warnings)
+	}
+}
+
+// warnedAbout reports whether any warning carries the phrase.
+func warnedAbout(phrase string, warnings []string) bool {
+	for _, w := range warnings {
+		if strings.Contains(w, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
+// checkGeneratedFileExempt asserts the generated path was measured exempt from
+// coverage and its finding stored inline, so the exemption did not drop it.
+func checkGeneratedFileExempt(t *testing.T) {
 	t.Helper()
 	wantCoverage := map[string]any{
 		"percent": nil, "attested": float64(0), "total": float64(0),
 		"files": float64(0), "exempt": float64(1), "gaps": float64(0),
 	}
-	if got := decodeObject(t, ".verdict/state/"+slug+"/record.json")["coverage"]; !reflect.DeepEqual(got, wantCoverage) {
+	if got := decodeObject(t, ".verdict/state/"+coverageSlug+"/record.json")["coverage"]; !reflect.DeepEqual(got, wantCoverage) {
 		t.Errorf("record coverage = %v, want %v", got, wantCoverage)
 	}
-	entries := storeEntries(t, slug)
+	entries := storeEntries(t, coverageSlug)
 	if len(entries) != 1 {
 		t.Fatalf("findings = %d, want the generated-file finding kept: %v", len(entries), entries)
 	}
