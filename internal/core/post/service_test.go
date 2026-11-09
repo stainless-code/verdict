@@ -669,6 +669,44 @@ func TestRunDryRun(t *testing.T) {
 	}
 }
 
+// dryRunSplitReview anchors two comments inside the diff hunk and one outside
+// it, so a dry run reports a tally whose two counts differ — a swap cannot pass
+// as the right number.
+const dryRunSplitReview = `{"schema_version":"1","body":"> ✅ Looks good — minor notes below.","approved":false,` +
+	`"comments":[{"path":"notes.txt","line":1,"side":"RIGHT","body":"Consider clarifying this line.",` +
+	`"rigor":"pointed","severity":"informational"},` +
+	`{"path":"notes.txt","line":3,"side":"RIGHT","body":"And this bottom line too.",` +
+	`"rigor":"pointed","severity":"informational"},` +
+	`{"path":"notes.txt","line":99,"side":"RIGHT","body":"This anchor sits outside every hunk.",` +
+	`"rigor":"pointed","severity":"informational"}]}`
+
+// TestRunDryRunAnchorsReachJSONPayload proves the anchor tally reaches the
+// --dry-run JSON payload, not only the human preflight line: two kept and one
+// moved anchor render as data.anchors 2/1 in the bytes a `post --dry-run
+// --json` prints. The counts differ, so a swapped, dropped, or hard-coded
+// tally fails instead of reading as a clean run.
+func TestRunDryRunAnchorsReachJSONPayload(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	postBundle(t, dryRunSplitReview)
+	cmdr := postCommander(t)
+	var warnings, human []string
+	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json", DryRun: true}, &warnings, &human)
+	resp, ref := Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	env := core.RenderEnvelope("post", resp.Repo, resp.Pr, resp.At, resp.Next, resp.Warnings, resp.Data.Wire(), nil)
+	payload := jq.PrettyOrdered(env)
+	want := "\"anchors\": {\n      \"kept\": 2,\n      \"moved\": 1\n    },"
+	if !strings.Contains(payload, want) {
+		t.Fatalf("--dry-run JSON payload misses the anchor tally %q:\n%s", want, payload)
+	}
+	if got := strings.Join(human, "\n"); !strings.Contains(got, "anchors: 2 inline, 1 moved") {
+		t.Errorf("human preflight disagrees with the payload:\n%s", got)
+	}
+}
+
 // TestRunSubmit proves the submit path POSTs the payload with one trailing
 // newline on stdin and the review's body, event, commit, and comments: the
 // exact reviews argv fires, the marker and receipt land, and the typed data

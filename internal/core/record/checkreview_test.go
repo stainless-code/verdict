@@ -1,7 +1,9 @@
 package recordcore_test
 
 import (
+	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -382,6 +384,56 @@ func TestCheckReviewLongUnknownKey(t *testing.T) {
 	checkProblems(t, res, 1)
 	if got := res.Problems[0].Fix; got != "remove it" {
 		t.Errorf("fix = %q, want remove it for the long key", got)
+	}
+}
+
+// TestCheckReviewGeneratedFileAnchorStaysInline proves generated paths are
+// exempt from coverage, not from anchoring: a comment on a generated file is
+// validated against the diff like any other path, so the run keeps it inline
+// and the finding survives instead of the exemption silently dropping it. The
+// coverage receipt proves the path really sat on the exempt side, so the
+// anchor assertion is about a generated file and not just any file.
+func TestCheckReviewGeneratedFileAnchorStaysInline(t *testing.T) {
+	coverageBundle(t, generatedDiff, coverageReview("dist/app.min.js",
+		`"coverage":[{"file":"dist/app.min.js","ranges":"all"}],`))
+	c := &collector{}
+	resp, ref := recordcore.Run(context.Background(), recordRequest(t, c, coverageSlug))
+	if ref != nil {
+		t.Fatalf("generated-file anchor refused: %s: %s", ref.Code, ref.Message)
+	}
+	if got := resp.Data.Anchors; got.Kept != 1 || got.Moved != 0 {
+		t.Errorf("anchors = %+v, want 1 kept and 0 moved", got)
+	}
+	for _, w := range resp.Warnings {
+		if strings.Contains(w, "anchor") {
+			t.Errorf("warning downgrades the generated-file anchor: %q", w)
+		}
+	}
+	checkGeneratedFileExempt(t, coverageSlug)
+}
+
+// checkGeneratedFileExempt asserts the same path the anchor test used was
+// measured exempt from coverage and its finding stored inline, so the
+// exemption did not drop it.
+func checkGeneratedFileExempt(t *testing.T, slug string) {
+	t.Helper()
+	wantCoverage := map[string]any{
+		"percent": nil, "attested": float64(0), "total": float64(0),
+		"files": float64(0), "exempt": float64(1), "gaps": float64(0),
+	}
+	if got := decodeObject(t, ".verdict/state/"+slug+"/record.json")["coverage"]; !reflect.DeepEqual(got, wantCoverage) {
+		t.Errorf("record coverage = %v, want %v", got, wantCoverage)
+	}
+	entries := storeEntries(t, slug)
+	if len(entries) != 1 {
+		t.Fatalf("findings = %d, want the generated-file finding kept: %v", len(entries), entries)
+	}
+	for key, want := range map[string]any{
+		"path": "dist/app.min.js", "line": float64(2), "side": "RIGHT", "kind": "inline", "status": "open",
+	} {
+		if got := entries[0][key]; got != want {
+			t.Errorf("findings[0].%s = %v, want %v", key, got, want)
+		}
 	}
 }
 
