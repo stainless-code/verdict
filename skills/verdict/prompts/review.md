@@ -13,8 +13,13 @@
    and do not nudge.
    Non-GitHub host: add `--provider gitlab|gitcafe|forgejo|bitbucket|azure`
    (same bundle shape, `PR.json` normalized; `record`, `report`, `triage`,
-   `show` and `next` work on provider bundles; `post`, `calibrate`, `adopt`
-   and `ready` refuse them (`provider-unimplemented`)).
+   `show` and `next` work on provider bundles, and `post` submits to GitLab —
+   one discussion per finding, then the summary note, then `approve` when the
+   review is an approval. GitLab has no `REQUEST_CHANGES` event, so a bound
+   request-changes posts as a comment and `post.json` records the withheld
+   capability in `withheld[]`. `post` refuses the other four hosts; live
+   `calibrate`, `ready`, and `adopt`-into a non-GitHub bundle refuse
+   (`provider-unimplemented`)).
    Local variant: `fetch-local owner/repo <name>` writes `.verdict/state/local-<name>/`
    with `source.json` instead of `PR.json` — no `reviews.json`/`inline.json`
    exist, so skip thread-context reads entirely. Absence of threads is not signal.
@@ -280,8 +285,9 @@ definitions collected in one block after the last finding:
   inside `<details>` blocks, at most 3 lines each; anything longer moves
   inside the details or is cut — the link already points at the lines.
 - Non-GitHub and local bundles: plain `` `path:line` `` text, never
-  `github.com/.../blob/...` URLs (they would 404 — `post` is GitHub-only,
-  so links are moot there and `record`/`report` degrade gracefully).
+  `github.com/.../blob/...` URLs (they would 404 on another host — GitLab
+  `post` anchors findings as MR discussions instead, and the other four hosts
+  have no submit path, so `record`/`report` degrade gracefully).
 - The script checks blob SHAs against the reviewed commit and warns on drift
   or long visible quotes, keeping the body — pin SHAs honestly and never
   reshape findings to fit the check.
