@@ -101,9 +101,19 @@
 # Collapsing the launcher's scrub and verify's into the one in
 # internal/envsecret leaves five of those measurements byte-identical and moves
 # windows/arm64 to 11139584, still inside its 11140000 ceiling.
+# Pinning the cosign workflow trigger (contract `cosign.trigger`, the
+# --certificate-github-workflow-trigger argument in both installers and the
+# verifier, and the embedded contract text) is under 200 bytes of new data, but
+# darwin/arm64 lands in a fresh 16 KiB segment: measured deltas are
+# darwin/amd64 -4064, darwin/arm64 +16544, linux/amd64 -4064, linux/arm64 0,
+# windows/amd64 -3072, windows/arm64 -3584. Measured here: darwin/amd64
+# 12265504, darwin/arm64 11271202, linux/amd64 12054688, linux/arm64 11010208,
+# windows/amd64 12385280, windows/arm64 11136000. Only darwin/arm64 crosses, so
+# its ceiling moves to the next 10 kB above its measurement; the other five
+# stay put.
 deps 0
 darwin/amd64 12270000
-darwin/arm64 11260000
+darwin/arm64 11280000
 linux/amd64 12060000
 linux/arm64 11020000
 windows/amd64 12390000

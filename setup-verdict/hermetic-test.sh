@@ -5,8 +5,8 @@
 #
 # Grades (mirrors evals/cases/installer-binary.sh B1/B3/B7, plus the action):
 #   A1  pinned install verifies (fake cosign invoked with the contract
-#       identity/issuer and the release's published build commit), installs
-#       verdict, writes a versioned receipt.
+#       identity/issuer, the push-trigger pin, and the release's published
+#       build commit), installs verdict, writes a versioned receipt.
 #   A2  `verdict --version` runs; the install dir is the action's
 #       RUNNER_TOOL_CACHE layout and PATH-ready (no rc files touched).
 #   A3  second invocation with the same version reuses the binary: the
@@ -71,6 +71,9 @@ grep -q 'certificate-identity-regexp' "$FAKE_COSIGN_LOG" \
 grep -q "certificate-github-workflow-sha $RELEASE_COMMIT" "$FAKE_COSIGN_LOG" \
   && good "fake cosign got the build-commit pin" \
   || bad "fake cosign argv lacks the build-commit pin"
+grep -q 'certificate-github-workflow-trigger push' "$FAKE_COSIGN_LOG" \
+  && good "fake cosign got the push-trigger pin" \
+  || bad "fake cosign argv lacks the push-trigger pin"
 grep -q "$GOOD" "$FAKE_CURL_LOG" && good "fetched the pinned archive" || bad "no fetch logged"
 
 # --- A2: smoke + PATH-readiness, no rc files ---

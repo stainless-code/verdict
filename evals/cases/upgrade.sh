@@ -58,13 +58,20 @@ exit "${FAKE_NPM_STATUS:-0}"
 EOF
 cat > "$FAKEBIN/cosign" <<'EOF'
 #!/bin/sh
-sha=''; prev=''
+sha=''; trigger=''; prev=''
 for a in "$@"; do
   printf '%s ' "$a" >> "${FAKE_COSIGN_LOG:-/dev/null}"
   if [ "$prev" = '--certificate-github-workflow-sha' ]; then sha="$a"; fi
+  if [ "$prev" = '--certificate-github-workflow-trigger' ]; then trigger="$a"; fi
   prev="$a"
 done
 printf '\n' >> "${FAKE_COSIGN_LOG:-/dev/null}"
+# Mirrors cosign: a claim only matches when the pinned value is passed, so a
+# dropped --certificate-github-workflow-trigger fails every leg here.
+if [ "$trigger" != "${FAKE_CERT_TRIGGER:-push}" ]; then
+  echo "Error: no matching CertificateIdentity found, reason: certificate's workflow trigger claim does not match" >&2
+  exit 1
+fi
 if [ -n "${FAKE_CERT_SHA:-}" ] && [ "$sha" != "$FAKE_CERT_SHA" ]; then
   echo "Error: no matching CertificateIdentity found, reason: certificate's workflow sha claim does not match" >&2
   exit 1
@@ -142,6 +149,7 @@ run_cli() {
       FAKE_NPM_LOG="$NPM_LOG" FAKE_NPM_STATUS="${FAKE_NPM_STATUS:-0}" \
       FAKE_COSIGN_LOG="$COSIGN_LOG" FAKE_COSIGN_STATUS="${FAKE_COSIGN_STATUS:-0}" \
       FAKE_CERT_SHA="${FAKE_CERT_SHA:-$RELEASE_SHA}" \
+      FAKE_CERT_TRIGGER="${FAKE_CERT_TRIGGER:-}" \
       "$bin" "$@" </dev/null >"$EVAL_OUT" 2>"$EVAL_ERR"
   )
   EVAL_STATUS=$?
@@ -192,6 +200,11 @@ if [ -n "$PORT" ]; then
   else
     bad "U1 cosign argv lacks the build-commit pin: $(cat "$COSIGN_LOG")"
   fi
+  if grep -Fq -- '--certificate-github-workflow-trigger push' "$COSIGN_LOG"; then
+    good "U1 cosign pins the signature to a push-triggered run"
+  else
+    bad "U1 cosign argv lacks the push-trigger pin: $(cat "$COSIGN_LOG")"
+  fi
   if find "$INSTALL_DIR" \( -name '.verdict-stage-*' -o -name 'previous-*' \) | matches .; then
     bad "U1 self-replace left staging artifacts"
   else
@@ -226,6 +239,19 @@ if [ -n "$PORT" ]; then
     good "U1 a signature minted for another build of the same workflow refuses typed"
   else
     bad "U1 cross-build signature exit $EVAL_STATUS code $(envelope_code)"
+  fi
+
+  fresh_install
+  cp "$INSTALL_DIR/verdict" "$CASE/old-verdict"
+  FAKE_CERT_TRIGGER=workflow_dispatch
+  run_cli "$INSTALL_DIR/verdict" "$BASE_URL" upgrade --version "$VERSION" --json
+  FAKE_CERT_TRIGGER=''
+  if [ "$EVAL_STATUS" -eq 1 ] && [ "$(envelope_code)" = "verify-failed" ] \
+    && jq -r '.error.message' "$EVAL_OUT" | matches -F 'signature verification failed' \
+    && cmp -s "$CASE/old-verdict" "$INSTALL_DIR/verdict"; then
+    good "U1 a signature minted by a workflow_dispatch run refuses typed"
+  else
+    bad "U1 workflow_dispatch signature exit $EVAL_STATUS code $(envelope_code)"
   fi
 
   fresh_install

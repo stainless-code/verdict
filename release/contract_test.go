@@ -67,11 +67,13 @@ type contractDoc struct {
 }
 
 // cosignPolicy is the contract's signing policy: the tag-wildcard identity
-// GoReleaser signs with, its installer-facing regexp form, and the OIDC issuer.
+// GoReleaser signs with, its installer-facing regexp form, the OIDC issuer, and
+// the workflow trigger a release run carries.
 type cosignPolicy struct {
 	Identity       string `json:"identity"`
 	IdentityRegexp string `json:"identityRegexp"`
 	Issuer         string `json:"issuer"`
+	Trigger        string `json:"trigger"`
 }
 
 // loadContract reads release/contract.json (the test cwd is the package dir).
@@ -996,10 +998,10 @@ func requireLiterals(t *testing.T, name, body string, literals []string) {
 }
 
 // TestInstallersMatchContract pins the policy the shipped installers carry a
-// second copy of: the cosign identity/issuer, the build-commit pin, the
+// second copy of: the cosign identity/issuer/trigger, the build-commit pin, the
 // archive-member allowlist, and the checksum/bundle/commit names.
-// contract.json is the source; a repo rename, a workflow rename, or a new
-// archive member must fail here instead of at install time.
+// contract.json is the source; a repo rename, a workflow rename, a new trigger,
+// or a new archive member must fail here instead of at install time.
 func TestInstallersMatchContract(t *testing.T) {
 	doc := loadContract(t)
 	unix := platformRow(t, &doc, "darwin", "amd64")
@@ -1010,18 +1012,22 @@ func TestInstallersMatchContract(t *testing.T) {
 		"COSIGN_IDENTITY='" + doc.Cosign.Identity + "'",
 		"COSIGN_IDENTITY_RE='" + doc.Cosign.IdentityRegexp + "'",
 		"COSIGN_ISSUER='" + doc.Cosign.Issuer + "'",
+		"COSIGN_TRIGGER='" + doc.Cosign.Trigger + "'",
 		"CHECKSUMS='" + doc.Checksums + "'",
 		"BUNDLE='" + doc.SignatureBundle + "'",
 		"COMMIT='" + doc.Commit + "'",
+		"--certificate-github-workflow-trigger",
 		"--certificate-github-workflow-sha",
 		"grep -Ev '" + membersPattern(unix.Members) + "'",
 	})
 	requireLiterals(t, "install.ps1", ps1, []string{
 		"$IdentityRegexp = '" + doc.Cosign.IdentityRegexp + "'",
 		"$Issuer = '" + doc.Cosign.Issuer + "'",
+		"$WorkflowTrigger = '" + doc.Cosign.Trigger + "'",
 		"$ChecksumsName = '" + doc.Checksums + "'",
 		"$BundleName = '" + doc.SignatureBundle + "'",
 		"$CommitName = '" + doc.Commit + "'",
+		"--certificate-github-workflow-trigger",
 		"--certificate-github-workflow-sha",
 		"$allowed = " + membersArray(windows.Members),
 	})
@@ -1037,6 +1043,7 @@ func TestInstallersMatchContract(t *testing.T) {
 	requireLiterals(t, "CONTRIBUTING.md", repoFile(t, "CONTRIBUTING.md"), []string{
 		"--certificate-identity-regexp '" + doc.Cosign.IdentityRegexp + "'",
 		"--certificate-oidc-issuer " + doc.Cosign.Issuer,
+		"--certificate-github-workflow-trigger " + doc.Cosign.Trigger,
 		"--certificate-github-workflow-sha",
 	})
 }

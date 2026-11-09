@@ -34,13 +34,20 @@ esac
 EOF
 cat > "$FAKEBIN/cosign" <<'EOF'
 #!/bin/sh
-sha=''; prev=''
+sha=''; trigger=''; prev=''
 for a in "$@"; do
   printf '%s ' "$a" >> "${FAKE_COSIGN_LOG:-/dev/null}"
   if [ "$prev" = '--certificate-github-workflow-sha' ]; then sha="$a"; fi
+  if [ "$prev" = '--certificate-github-workflow-trigger' ]; then trigger="$a"; fi
   prev="$a"
 done
 printf '\n' >> "${FAKE_COSIGN_LOG:-/dev/null}"
+# Mirrors cosign: a claim only matches when the pinned value is passed, so a
+# dropped --certificate-github-workflow-trigger fails every leg here.
+if [ "$trigger" != "${FAKE_CERT_TRIGGER:-push}" ]; then
+  echo "Error: no matching CertificateIdentity found, reason: certificate's workflow trigger claim does not match" >&2
+  exit 1
+fi
 if [ -n "${FAKE_CERT_SHA:-}" ] && [ "$sha" != "$FAKE_CERT_SHA" ]; then
   echo "Error: no matching CertificateIdentity found, reason: certificate's workflow sha claim does not match" >&2
   exit 1
@@ -97,12 +104,14 @@ if grep -Fq "CHECKSUMS='$(jq -r .checksums "$contract")'" "$EVAL_ROOT/install.sh
   && grep -Fq "COMMIT='$(jq -r .commit "$contract")'" "$EVAL_ROOT/install.sh" \
   && grep -Fq "COSIGN_ISSUER='$(jq -r .cosign.issuer "$contract")'" "$EVAL_ROOT/install.sh" \
   && grep -Fq "COSIGN_IDENTITY_RE='$(jq -r .cosign.identityRegexp "$contract")'" "$EVAL_ROOT/install.sh" \
+  && grep -Fq "COSIGN_TRIGGER='$(jq -r .cosign.trigger "$contract")'" "$EVAL_ROOT/install.sh" \
+  && grep -Fq -- '--certificate-github-workflow-trigger' "$EVAL_ROOT/install.sh" \
   && grep -Fq -- '--certificate-github-workflow-sha' "$EVAL_ROOT/install.sh" \
   && grep -Fq 'https://github.com/stainless-code/verdict/releases/latest' "$EVAL_ROOT/install.sh" \
   && grep -Fq 'verdict_${VERSION}_${os}_${arch}.tar.gz' "$EVAL_ROOT/install.sh"; then
-  good "install.sh names the contract checksums, bundle, commit, archive shape, and issuer"
+  good "install.sh names the contract checksums, bundle, commit, archive shape, issuer, and trigger"
 else
-  bad "install.sh drifted from release/contract.json (checksums/bundle/commit/archive/issuer)"
+  bad "install.sh drifted from release/contract.json (checksums/bundle/commit/archive/issuer/trigger)"
 fi
 
 INSTALL_DIR="$CASE/install"
@@ -126,6 +135,7 @@ run_install() {
       VERDICT_COSIGN="${COSIGN_OVERRIDE:-$FAKEBIN/cosign}" \
       FAKE_COSIGN_LOG="$COSIGN_LOG" FAKE_COSIGN_STATUS="${FAKE_COSIGN_STATUS:-0}" \
       FAKE_CERT_SHA="${FAKE_CERT_SHA:-$RELEASE_SHA}" \
+      FAKE_CERT_TRIGGER="${FAKE_CERT_TRIGGER:-}" \
       FAKE_CURL_LOG="$CURL_LOG" FAKE_EFFECTIVE_URL="$EFFECTIVE_URL" \
       FAKE_UNAME_S="$uname_s" FAKE_UNAME_M="$PLAT_ARCH" \
       FAKE_PROC_TRANSLATED="$ROSETTA" \
@@ -172,6 +182,11 @@ for leg in "linux amd64 0 linux amd64" "linux arm64 0 linux arm64" \
     good "$want_os/$want_arch pins the signature to the published build commit"
   else
     bad "$want_os/$want_arch cosign argv lacks the build-commit pin: $(cat "$COSIGN_LOG")"
+  fi
+  if grep -Fq -- '--certificate-github-workflow-trigger push' "$COSIGN_LOG"; then
+    good "$want_os/$want_arch pins the signature to a push-triggered run"
+  else
+    bad "$want_os/$want_arch cosign argv lacks the push-trigger pin: $(cat "$COSIGN_LOG")"
   fi
   if [ "$ROSETTA" = 1 ]; then
     if grep -q "Rosetta 2" "$EVAL_ERR"; then good "Rosetta note is printed"; else bad "Rosetta note missing"; fi
@@ -240,6 +255,15 @@ else
   bad "cross-build signature exit $EVAL_STATUS"
 fi
 FAKE_CERT_SHA=''
+fresh
+PIN=1.2.3; FAKE_CERT_TRIGGER=workflow_dispatch; run_install
+if [ "$EVAL_STATUS" -ne 0 ] && grep -q "signature verification failed" "$EVAL_ERR" \
+  && [ ! -e "$INSTALL_DIR/verdict" ]; then
+  good "a signature minted by a workflow_dispatch run is refused"
+else
+  bad "workflow_dispatch signature exit $EVAL_STATUS"
+fi
+FAKE_CERT_TRIGGER=''
 fresh
 run_install "$REL/v5.0.0/verdict_5.0.0_linux_amd64.tar.gz"
 if [ "$EVAL_STATUS" -ne 0 ] && grep -q "missing commit.txt beside the archive" "$EVAL_ERR"; then

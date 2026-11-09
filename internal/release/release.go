@@ -101,6 +101,7 @@ type contractDoc struct { //nolint:govet // contract order documents the artifac
 	Cosign struct {
 		IdentityRegexp string `json:"identityRegexp"`
 		Issuer         string `json:"issuer"`
+		Trigger        string `json:"trigger"`
 	} `json:"cosign"`
 }
 
@@ -124,6 +125,12 @@ var loadContract = sync.OnceValues(func() (contractDoc, error) {
 	}
 	if doc.Cosign.IdentityRegexp == "" || doc.Cosign.Issuer == "" {
 		return contractDoc{}, jq.NewErr("release contract: cosign identity/issuer missing")
+	}
+	// The trigger is the pin that separates a push-triggered release run from
+	// any other run of the same workflow: an empty value would silently drop
+	// the argument and accept a dispatch-minted certificate.
+	if doc.Cosign.Trigger == "" {
+		return contractDoc{}, jq.NewErr("release contract: cosign workflow trigger missing")
 	}
 	if doc.Commit == "" {
 		return contractDoc{}, jq.NewErr("release contract: build-commit asset missing")
@@ -357,8 +364,9 @@ func check(ctx context.Context, req *Request, doc *contractDoc, src *source) (Re
 
 // verifySignature applies the installer policy: the release build commit is
 // required, cosign present means the bundle is mandatory and pinned to that
-// commit so another run of the same workflow cannot sign for this release,
-// and absent cosign warns loudly unless VERDICT_REQUIRE_SIGNATURE=1.
+// commit and to a push-triggered run so another run of the same workflow (a
+// workflow_dispatch, say) cannot sign for this release, and absent cosign
+// warns loudly unless VERDICT_REQUIRE_SIGNATURE=1.
 func verifySignature(ctx context.Context, req *Request, doc *contractDoc, src *source) (string, *core.RefusalError) {
 	commit, err := buildCommit(src)
 	if err != nil {
@@ -375,6 +383,7 @@ func verifySignature(ctx context.Context, req *Request, doc *contractDoc, src *s
 		"verify-blob", "--bundle", src.Bundle,
 		"--certificate-identity-regexp", doc.Cosign.IdentityRegexp,
 		"--certificate-oidc-issuer", doc.Cosign.Issuer,
+		"--certificate-github-workflow-trigger", doc.Cosign.Trigger,
 		"--certificate-github-workflow-sha", commit, src.Checksums,
 	}
 	out, err := runCosign(ctx, req, cosign, args)

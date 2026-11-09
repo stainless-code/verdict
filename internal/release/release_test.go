@@ -241,9 +241,10 @@ func TestFetchVerifySignature(t *testing.T) {
 	}
 	policy := contractCosign(t)
 	exact := "--certificate-identity-regexp " + policy.IdentityRegexp + " --certificate-oidc-issuer " + policy.Issuer
+	trigger := "--certificate-github-workflow-trigger " + policy.Trigger
 	pinned := "--certificate-github-workflow-sha " + releaseCommitSHA
 	joined := strings.Join(argv, " ")
-	for _, want := range []string{"verify-blob", "--bundle", "checksums.txt", exact, pinned} {
+	for _, want := range []string{"verify-blob", "--bundle", "checksums.txt", exact, trigger, pinned} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("cosign argv %q misses %q", joined, want)
 		}
