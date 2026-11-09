@@ -223,7 +223,7 @@ func TestNextAdapterCoverageMissingReview(t *testing.T) {
 	if out.Status != 0 {
 		t.Fatalf("exit = %d, want 0\nstderr:\n%s", out.Status, out.Stderr)
 	}
-	want := "coverage: 0% — no review.json yet"
+	want := "coverage: 0% of full hunk spans, both sides and context — no review.json yet"
 	if !strings.Contains(out.Stdout, want) {
 		t.Errorf("stdout misses %q:\n%s", want, out.Stdout)
 	}
@@ -268,7 +268,9 @@ func assertCoverageHuman(t *testing.T, review string) {
 	if human.Status != 0 {
 		t.Fatalf("exit = %d, want 0\nstderr:\n%s", human.Status, human.Stderr)
 	}
-	for _, want := range []string{"coverage: 66% (2/3 changed lines, 1 files)", "unattested:", "- notes.txt:3"} {
+	// The basis is graded here too: a reader who takes the number as a share of
+	// changed lines under-reports the hunks they actually attested.
+	for _, want := range []string{"coverage: 66% of full hunk spans, both sides and context (2/3 lines, 1 files)", "unattested:", "- notes.txt:3"} {
 		if !strings.Contains(human.Stdout, want) {
 			t.Errorf("stdout misses %q:\n%s", want, human.Stdout)
 		}

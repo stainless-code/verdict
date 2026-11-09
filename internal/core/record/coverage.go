@@ -15,8 +15,12 @@ const (
 	msgCoverageWarn   = "coverage: %d%% of changed lines attested (%d/%d; %d file(s) with gaps)"
 	msgCoverageLine   = "> ⚠️ coverage: %d%% of changed lines attested (unattested: %s)"
 	msgCoverageAbsent = "coverage-incomplete: no coverage[] attestation in review.json on a non-chunked bundle"
-	msgCoverageGap    = "coverage-incomplete: %d%% of changed lines attested (%d/%d); unattested: %s"
-	msgCoverageMore   = " +%d more"
+	msgCoverageGap    = "coverage-incomplete: %d%% of " + msgCoverageBasis + " attested (%d/%d); unattested: %s"
+	// msgCoverageBasis names what that percentage counts: the evaluator scores
+	// each hunk span on both sides, context included, so "changed lines" would
+	// understate the coverage a reader actually attested.
+	msgCoverageBasis = "full hunk spans, both sides and context"
+	msgCoverageMore  = " +%d more"
 	// lineGapCap is how many files the body line names before it summarizes.
 	lineGapCap = 3
 	// msgGapCap is how many files a refusal names before it summarizes.

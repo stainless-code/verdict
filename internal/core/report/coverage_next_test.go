@@ -95,7 +95,7 @@ func TestRunNextCoverageMissingReview(t *testing.T) {
 	if resp.Coverage.Attested != 0 || resp.Coverage.Total != 3 {
 		t.Errorf("attested/total = %d/%d, want 0/3", resp.Coverage.Attested, resp.Coverage.Total)
 	}
-	want := "coverage: 0% — no review.json yet\nunattested:\n- notes.txt:1-3"
+	want := "coverage: 0% of full hunk spans, both sides and context — no review.json yet\nunattested:\n- notes.txt:1-3"
 	if resp.Human != want {
 		t.Errorf("human = %q, want %q", resp.Human, want)
 	}
@@ -174,7 +174,7 @@ func TestRunNextCoverageCompleteNamesTheEmptyGapList(t *testing.T) {
 	if got := percentOf(resp.Coverage); got != "100" {
 		t.Errorf("percent = %s, want 100", got)
 	}
-	want := "coverage: 100% (3/3 changed lines, 1 files)\nunattested: (none)"
+	want := "coverage: 100% of full hunk spans, both sides and context (3/3 lines, 1 files)\nunattested: (none)"
 	if resp.Human != want {
 		t.Errorf("human = %q, want %q", resp.Human, want)
 	}
@@ -197,7 +197,7 @@ func assertPartialCoverage(t *testing.T, resp *core.NextResponse) {
 	if len(rep.Unattested) != 1 || rep.Unattested[0].File != "notes.txt" || rep.Unattested[0].Ranges != "3" {
 		t.Errorf("unattested = %v, want one notes.txt:3 gap", rep.Unattested)
 	}
-	want := "coverage: 66% (2/3 changed lines, 1 files)\nunattested:\n- notes.txt:3"
+	want := "coverage: 66% of full hunk spans, both sides and context (2/3 lines, 1 files)\nunattested:\n- notes.txt:3"
 	if resp.Human != want {
 		t.Errorf("human = %q, want %q", resp.Human, want)
 	}

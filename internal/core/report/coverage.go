@@ -14,8 +14,12 @@ import (
 // Messages for the coverage read mode.
 const (
 	msgCoverageChunked = "coverage: chunked bundle (%d chunks) — use the chunks[] attestation"
-	msgCoverageNoStore = "coverage: %d%% — no review.json yet"
-	msgCoverageHuman   = "coverage: %d%% (%d/%d changed lines, %d files%s)"
+	// msgCoverageBasis names what the percentage is a percentage of, beside
+	// the number itself: the evaluator scores every hunk span, so a reader who
+	// assumes "changed lines" under-reports their own coverage.
+	msgCoverageBasis   = "full hunk spans, both sides and context"
+	msgCoverageNoStore = "coverage: %d%% of " + msgCoverageBasis + " — no review.json yet"
+	msgCoverageHuman   = "coverage: %d%% of " + msgCoverageBasis + " (%d/%d lines, %d files%s)"
 	msgCoverageExempt  = ", %d generated exempt"
 	msgCoverageUnread  = "unattested:"
 	msgCoverageNone    = "unattested: (none)"

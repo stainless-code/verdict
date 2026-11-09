@@ -192,10 +192,11 @@ func TestMergeCoverageGateRefusesPartialAttestation(t *testing.T) {
 		`"coverage":[{"file":"notes.txt","ranges":"1-2"},{"file":"notes.txt","ranges":"2"}],`))
 	_, _, err := mergeCoverage(t, true)
 	ref := coverageRefusal(t, err)
-	for _, want := range []string{"66%", "2/3", "unattested: notes.txt:3"} {
-		if !strings.Contains(ref.Message, want) {
-			t.Errorf("message = %q, want it to carry %q", ref.Message, want)
-		}
+	// Literal, not a re-render of the message: the basis names what the number
+	// counts, so a shorter "changed lines" phrasing must fail this case.
+	want := "coverage-incomplete: 66% of full hunk spans, both sides and context attested (2/3); unattested: notes.txt:3"
+	if ref.Message != want {
+		t.Errorf("message = %q, want %q", ref.Message, want)
 	}
 }
 
