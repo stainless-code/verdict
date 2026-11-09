@@ -246,9 +246,9 @@ const recheckReasonBytes = 120
 // in part, so replaying the whole payload would duplicate it. warnings are
 // the progress notes the refusal carries back to the operator.
 type postAttempt struct {
-	warnings []string
 	posted   string
 	errText  string
+	warnings []string
 	partial  bool
 	ok       bool
 }

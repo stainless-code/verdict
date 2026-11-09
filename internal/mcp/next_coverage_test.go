@@ -28,16 +28,7 @@ func TestNextToolDispatchesCoverageRead(t *testing.T) {
 		`"comments":[{"path":"notes.txt","line":2,"side":"RIGHT",`+
 		`"body":"Cited finding here with enough substance.","rigor":"walked","severity":"important"}]}`)
 
-	var registered *tool
-	for _, candidate := range allTools(false, false) {
-		if candidate.name == "next" {
-			registered = candidate
-			break
-		}
-	}
-	if registered == nil {
-		t.Fatal("next tool is not registered")
-	}
+	registered := findTool(t, "next")
 	req := &core.NextRequest{Coverage: true}
 	req.ReadRequest = core.ReadRequest{Repo: "acme/app", Pr: "local-cov"}
 	data, ref := registered.invoke(context.Background(), req)

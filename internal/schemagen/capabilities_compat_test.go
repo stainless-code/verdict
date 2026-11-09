@@ -8,6 +8,25 @@ import "testing"
 // every stored fetch artifact becomes unreadable by the current schema. New
 // writers always emit every key, so the absent case is legacy-only.
 func TestCapabilitiesSchemaAcceptsPreSplitEnvelopes(t *testing.T) {
+	doc, def, cases := capabilityCases(t)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assertCapabilityCase(t, doc, def, tc)
+		})
+	}
+}
+
+// capabilityCase is one envelope value and whether the schema must accept it.
+type capabilityCase struct {
+	value map[string]any
+	name  string
+	ok    bool
+}
+
+// capabilityCases loads the published capabilities definition and the
+// pre-split/current envelope values the schema must keep accepting.
+func capabilityCases(t *testing.T) (map[string]any, map[string]any, []capabilityCase) {
+	t.Helper()
 	doc := loadSchemaDocument(t, "envelope.schema.json")
 	defs, ok := doc["$defs"].(map[string]any)
 	if !ok {
@@ -17,11 +36,7 @@ func TestCapabilitiesSchemaAcceptsPreSplitEnvelopes(t *testing.T) {
 	if !ok {
 		t.Fatal("envelope schema has no fetchCapabilities definition")
 	}
-	cases := []struct {
-		name  string
-		value map[string]any
-		ok    bool
-	}{
+	cases := []capabilityCase{
 		{
 			name: "pre-split github",
 			value: map[string]any{
@@ -64,15 +79,18 @@ func TestCapabilitiesSchemaAcceptsPreSplitEnvelopes(t *testing.T) {
 			ok: false,
 		},
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			err := validationError(doc, def, tc.value)
-			if tc.ok && err != nil {
-				t.Fatalf("expected valid, got %v", err)
-			}
-			if !tc.ok && err == nil {
-				t.Fatal("expected a validation error, got nil")
-			}
-		})
+	return doc, def, cases
+}
+
+// assertCapabilityCase pins one envelope value against the published schema:
+// an accepted value must validate clean and a rejected one must not.
+func assertCapabilityCase(t *testing.T, doc, def map[string]any, tc capabilityCase) {
+	t.Helper()
+	err := validationError(doc, def, tc.value)
+	if tc.ok && err != nil {
+		t.Fatalf("expected valid, got %v", err)
+	}
+	if !tc.ok && err == nil {
+		t.Fatal("expected a validation error, got nil")
 	}
 }

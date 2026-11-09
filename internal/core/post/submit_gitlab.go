@@ -64,7 +64,7 @@ type gitlabMR struct {
 
 // headSHA is the commit the merge request currently points at: the diff refs
 // when GitLab filled them, the top-level sha otherwise.
-func (mr gitlabMR) headSHA() string {
+func (mr *gitlabMR) headSHA() string {
 	if mr.DiffRefs.HeadSHA != "" {
 		return mr.DiffRefs.HeadSHA
 	}
@@ -73,7 +73,7 @@ func (mr gitlabMR) headSHA() string {
 
 // diffRefsComplete reports whether the three SHAs a text position needs are
 // all present.
-func (mr gitlabMR) diffRefsComplete() bool {
+func (mr *gitlabMR) diffRefsComplete() bool {
 	return mr.DiffRefs.BaseSHA != "" && mr.DiffRefs.StartSHA != "" && mr.headSHA() != ""
 }
 
@@ -220,13 +220,21 @@ func countGitLabOpen(stdout string) (int, error) {
 		if !ok {
 			return 0, errRecheckShape
 		}
-		for _, discussion := range page {
-			if gitlabDiscussionOpen(discussion) {
-				n++
-			}
-		}
+		n += countOpenInPage(page)
 	}
 	return n, nil
+}
+
+// countOpenInPage counts the open discussions in one page of the slurped
+// payload.
+func countOpenInPage(page []any) int {
+	n := 0
+	for _, discussion := range page {
+		if gitlabDiscussionOpen(discussion) {
+			n++
+		}
+	}
+	return n
 }
 
 // gitlabDiscussionOpen reports whether one discussion is a resolvable thread
@@ -261,35 +269,63 @@ func gitlabPost(ctx context.Context, cmdr Commander, caps core.HostCapabilities,
 	if err != nil {
 		return postFailure(dir, failureReason(res, err), false, nil)
 	}
-	warnings := gitlabPostWarnings(part)
+	warnings := gitlabPostWarnings(&part)
 	if len(part.comments) > 0 && !mr.diffRefsComplete() {
 		return postFailure(dir, msgGitLabNoDiffRefs, false, warnings)
 	}
-	posted, attempt, ok := gitlabDiscussions(ctx, cmdr, repo, pr, mr, gitlabDiffIndex(dir), part, dir, warnings)
+	posted, attempt, ok := gitlabDiscussions(ctx, cmdr, repo, pr, &mr, gitlabDiffIndex(dir), &part, dir, warnings)
 	if !ok {
 		return attempt
 	}
-	res, err = gitlabCall(ctx, cmdr, gitlabWriteArgv(repo, pr, "/notes"), jq.NewObj(fieldBody, part.body).MarshalPretty())
+	note, attempt, ok := gitlabSummaryNote(ctx, cmdr, repo, pr, &part, posted, dir, warnings)
+	if !ok {
+		return attempt
+	}
+	approved, attempt, ok := gitlabApproveLeg(ctx, cmdr, caps, repo, pr, &part, dir, warnings)
+	if !ok {
+		return attempt
+	}
+	return postAccepted(dir, gitlabReceiptObject(&mr, note, approved), "", warnings)
+}
+
+// gitlabSummaryNote posts the summary note that carries the review body, after
+// the discussions landed. The progress prefix keeps a partial run readable.
+func gitlabSummaryNote(
+	ctx context.Context, cmdr Commander, repo, pr string, part *gitlabPostPayload,
+	posted int, dir string, warnings []string,
+) (gitlabNoteReceipt, postAttempt, bool) {
+	res, err := gitlabCall(ctx, cmdr, gitlabWriteArgv(repo, pr, "/notes"), jq.NewObj(fieldBody, part.body).MarshalPretty())
 	if err != nil || res.ExitCode != 0 {
-		return postFailure(dir, failureReason(res, err), posted > 0, append(warnings, gitlabProgress(posted, len(part.comments))...))
+		reason := failureReason(res, err)
+		return gitlabNoteReceipt{}, postFailure(dir, reason, posted > 0,
+			append(warnings, gitlabProgress(posted, len(part.comments))...)), false
 	}
-	note := decodeGitLabNote(res.Stdout)
-	approved := false
-	if part.event == eventApprove && caps.Approve {
-		if ares, aerr := gitlabApprove(ctx, cmdr, repo, pr, part.commitID); aerr != nil || ares.ExitCode != 0 {
-			return postFailure(dir, failureReason(ares, aerr), true, warnings)
-		}
-		approved = true
+	return decodeGitLabNote(res.Stdout), postAttempt{}, true
+}
+
+// gitlabApproveLeg performs the approval a bound APPROVE payload carries, and
+// only on a host whose capability advertises it: a host that cannot approve has
+// already warned that the verdict did not bind.
+func gitlabApproveLeg(
+	ctx context.Context, cmdr Commander, caps core.HostCapabilities,
+	repo, pr string, part *gitlabPostPayload, dir string, warnings []string,
+) (bool, postAttempt, bool) {
+	if part.event != eventApprove || !caps.Approve {
+		return false, postAttempt{}, true
 	}
-	return postAccepted(dir, gitlabReceiptObject(mr, note, approved), "", warnings)
+	ares, err := gitlabApprove(ctx, cmdr, repo, pr, part.commitID)
+	if err != nil || ares.ExitCode != 0 {
+		return false, postFailure(dir, failureReason(ares, err), true, warnings), false
+	}
+	return true, postAttempt{}, true
 }
 
 // gitlabDiscussions posts one MR discussion per inline finding in payload
 // order and stops at the first failure; the caller's retry policy reads the
 // landed count instead of replaying it.
 func gitlabDiscussions(
-	ctx context.Context, cmdr Commander, repo, pr string, mr gitlabMR,
-	diff map[string]gitlabDiff, part gitlabPostPayload, dir string, warnings []string,
+	ctx context.Context, cmdr Commander, repo, pr string, mr *gitlabMR,
+	diff map[string]gitlabDiff, part *gitlabPostPayload, dir string, warnings []string,
 ) (int, postAttempt, bool) {
 	for k, c := range part.comments {
 		body := jq.NewObj(fieldBody, c.body, "position", gitlabPosition(mr, diff[c.path], c)).MarshalPretty()
@@ -331,7 +367,7 @@ func gitlabCall(ctx context.Context, cmdr Commander, argv []string, body string)
 // both paths and needs the MR's three diff SHAs; a line the diff already
 // carried keeps its old-side number too, because GitLab resolves a context
 // anchor only with both numbers.
-func gitlabPosition(mr gitlabMR, file gitlabDiff, c gitlabPostComment) *jq.Obj {
+func gitlabPosition(mr *gitlabMR, file gitlabDiff, c gitlabPostComment) *jq.Obj {
 	oldPath := file.oldPath
 	if oldPath == "" {
 		oldPath = c.path
@@ -390,30 +426,20 @@ func gitlabLineMap(lines []string, start, end int) map[int]gitlabDiffLine {
 		if !body {
 			continue
 		}
-		switch {
-		case strings.HasPrefix(ln, `\`):
-		case strings.HasPrefix(ln, "+"):
-			out[cur] = gitlabDiffLine{added: true}
-			cur++
-		case strings.HasPrefix(ln, "-"):
-			old++
-		default:
-			// Everything else is a context line, including an empty one: git
-			// renders a blank context line as an empty string with no leading
-			// space, and skipping it would desync every line number after it.
-			out[cur] = gitlabDiffLine{old: old}
-			old++
-			cur++
-		}
+		old, cur = recordLine(out, ln, old, cur)
 	}
 	return out
 }
+
+// hunkHeaderFields is how many fields a hunk header needs before its ranges are
+// readable: the `@@` marker, the old range, and the new range.
+const hunkHeaderFields = 3
 
 // hunkNumbers reads the old and new start line out of one `@@ -a,b +c,d @@`
 // header; the new counter is what a new-side line number counts from.
 func hunkNumbers(header string) (old, cur int, ok bool) {
 	fields := strings.Fields(header)
-	if len(fields) < 3 || !strings.HasPrefix(fields[1], "-") || !strings.HasPrefix(fields[2], "+") {
+	if len(fields) < hunkHeaderFields || !strings.HasPrefix(fields[1], "-") || !strings.HasPrefix(fields[2], "+") {
 		return 0, 0, false
 	}
 	return rangeStart(fields[1]), rangeStart(fields[2]), true
@@ -492,7 +518,7 @@ func orderedInt(obj *jq.Obj, key string) int {
 // anchors the position flattens, and findings that never became a discussion.
 // Verdict gaps — a request-changes event, an approval — come from the
 // capability table in the service, so one place decides what a host carries.
-func gitlabPostWarnings(part gitlabPostPayload) []string {
+func gitlabPostWarnings(part *gitlabPostPayload) []string {
 	var warnings []string
 	if n := countGitLabMultiLine(part.comments); n > 0 {
 		warnings = append(warnings, fmt.Sprintf(
@@ -529,7 +555,7 @@ func gitlabProgress(landed, total int) []string {
 // gitlabReceiptObject is the accepted review in the receipt shape the
 // envelope and post.json carry: the summary note id (or the MR iid when the
 // note read was unreadable), the verdict state, and the merge request page.
-func gitlabReceiptObject(mr gitlabMR, note gitlabNoteReceipt, approved bool) string {
+func gitlabReceiptObject(mr *gitlabMR, note gitlabNoteReceipt, approved bool) string {
 	state := "commented"
 	if approved {
 		state = "approved"
@@ -551,11 +577,30 @@ func gitlabReceiptObject(mr gitlabMR, note gitlabNoteReceipt, approved bool) str
 // unreadable receipt leaves the MR iid as the recorded id.
 func decodeGitLabNote(raw string) gitlabNoteReceipt {
 	var note struct {
-		ID        int    `json:"id"`
 		CreatedAt string `json:"created_at"`
+		ID        int    `json:"id"`
 	}
 	if err := json.Unmarshal([]byte(raw), &note); err != nil {
 		return gitlabNoteReceipt{}
 	}
 	return gitlabNoteReceipt{id: note.ID, createdAt: note.CreatedAt}
+}
+
+// recordLine maps one hunk body line onto the new-side numbers and returns the
+// advanced counters. A blank context line is a context line: git renders it as
+// an empty string with no leading space, and skipping it would desync every
+// line number after it.
+func recordLine(out map[int]gitlabDiffLine, ln string, old, cur int) (int, int) {
+	switch {
+	case strings.HasPrefix(ln, `\`):
+		return old, cur
+	case strings.HasPrefix(ln, "+"):
+		out[cur] = gitlabDiffLine{added: true}
+		return old, cur + 1
+	case strings.HasPrefix(ln, "-"):
+		return old + 1, cur
+	default:
+		out[cur] = gitlabDiffLine{old: old}
+		return old + 1, cur + 1
+	}
 }

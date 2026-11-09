@@ -19,10 +19,10 @@ func TestVerdictGap(t *testing.T) {
 	changesOnly := core.HostCapabilities{Provider: "changes-only", Fetch: true, Post: true, RequestChanges: true}
 	for _, tc := range []struct {
 		name     string
-		caps     core.HostCapabilities
 		event    string
 		wantGap  string
 		wantPost string
+		caps     core.HostCapabilities
 	}{
 		{name: "both verdicts carry", caps: both, event: eventApprove, wantPost: eventApprove},
 		{name: "both request changes", caps: both, event: eventRequestChanges, wantPost: eventRequestChanges},

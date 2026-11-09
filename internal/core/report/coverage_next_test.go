@@ -38,6 +38,7 @@ func coverageNextRequest(t *testing.T, files map[string]string) *core.NextReques
 		writeFile(t, ".verdict/state/5101/"+rel, content)
 	}
 	return &core.NextRequest{
+		//nolint:modernize // a struct field literal cannot elide its type (Go spec)
 		ReadRequest: core.ReadRequest{Runtime: fixedRuntime(), Repo: "acme/app", Pr: "5101"},
 	}
 }
@@ -77,23 +78,7 @@ func TestRunNextCoverageBeforeRecord(t *testing.T) {
 	if _, err := os.Stat(".verdict/state/5101/findings.json"); !os.IsNotExist(err) {
 		t.Fatal("the fixture has a findings.json; the pre-record leg proves nothing")
 	}
-	rep := resp.Coverage
-	if rep == nil {
-		t.Fatal("coverage report is nil")
-	}
-	if got := percentOf(rep); got != "66" {
-		t.Errorf("percent = %s, want 66", got)
-	}
-	if rep.Attested != 2 || rep.Total != 3 || rep.Files != 1 {
-		t.Errorf("attested/total/files = %d/%d/%d, want 2/3/1", rep.Attested, rep.Total, rep.Files)
-	}
-	if len(rep.Unattested) != 1 || rep.Unattested[0].File != "notes.txt" || rep.Unattested[0].Ranges != "3" {
-		t.Errorf("unattested = %v, want one notes.txt:3 gap", rep.Unattested)
-	}
-	want := "coverage: 66% (2/3 changed lines, 1 files)\nunattested:\n- notes.txt:3"
-	if resp.Human != want {
-		t.Errorf("human = %q, want %q", resp.Human, want)
-	}
+	assertPartialCoverage(t, resp)
 }
 
 // TestRunNextCoverageMissingReview pins criterion 9's pre-review leg: an
@@ -190,6 +175,29 @@ func TestRunNextCoverageCompleteNamesTheEmptyGapList(t *testing.T) {
 		t.Errorf("percent = %s, want 100", got)
 	}
 	want := "coverage: 100% (3/3 changed lines, 1 files)\nunattested: (none)"
+	if resp.Human != want {
+		t.Errorf("human = %q, want %q", resp.Human, want)
+	}
+}
+
+// assertPartialCoverage pins the measured reading for the 2-of-3 fixture: the
+// percentage, the counts, the single gap, and the rendered human block.
+func assertPartialCoverage(t *testing.T, resp *core.NextResponse) {
+	t.Helper()
+	rep := resp.Coverage
+	if rep == nil {
+		t.Fatal("coverage report is nil")
+	}
+	if got := percentOf(rep); got != "66" {
+		t.Errorf("percent = %s, want 66", got)
+	}
+	if rep.Attested != 2 || rep.Total != 3 || rep.Files != 1 {
+		t.Errorf("attested/total/files = %d/%d/%d, want 2/3/1", rep.Attested, rep.Total, rep.Files)
+	}
+	if len(rep.Unattested) != 1 || rep.Unattested[0].File != "notes.txt" || rep.Unattested[0].Ranges != "3" {
+		t.Errorf("unattested = %v, want one notes.txt:3 gap", rep.Unattested)
+	}
+	want := "coverage: 66% (2/3 changed lines, 1 files)\nunattested:\n- notes.txt:3"
 	if resp.Human != want {
 		t.Errorf("human = %q, want %q", resp.Human, want)
 	}

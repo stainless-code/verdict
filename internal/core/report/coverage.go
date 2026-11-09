@@ -47,8 +47,8 @@ func RunNextCoverage(req *core.NextRequest) (*core.NextResponse, *core.RefusalEr
 	if ref != nil {
 		return resp, ref
 	}
-	resp.Coverage = coverageReport(sum)
-	resp.Human = coverageHuman(sum, review == nil)
+	resp.Coverage = coverageReport(&sum)
+	resp.Human = coverageHuman(&sum, review == nil)
 	return resp, nil
 }
 
@@ -74,7 +74,7 @@ func loadCoverageReview(dir string) (*jq.Obj, *core.RefusalError) {
 }
 
 // coverageReport converts the evaluator summary into the wire payload.
-func coverageReport(sum coverage.Summary) *core.CoverageReport {
+func coverageReport(sum *coverage.Summary) *core.CoverageReport {
 	out := &core.CoverageReport{
 		Percent:  sum.Percent,
 		Attested: sum.Attested,
@@ -94,7 +94,7 @@ func coverageReport(sum coverage.Summary) *core.CoverageReport {
 
 // coverageHuman renders the two blocks: the summary line, then the gaps. A
 // chunked bundle names its chunk count and stops — chunks[] is its attestation.
-func coverageHuman(sum coverage.Summary, noReview bool) string {
+func coverageHuman(sum *coverage.Summary, noReview bool) string {
 	var b strings.Builder
 	switch {
 	case sum.Chunked:
@@ -102,13 +102,13 @@ func coverageHuman(sum coverage.Summary, noReview bool) string {
 	case sum.Percent == nil:
 		return msgCoverageNA
 	case noReview:
-		b.WriteString(fmt.Sprintf(msgCoverageNoStore, *sum.Percent))
+		fmt.Fprintf(&b, msgCoverageNoStore, *sum.Percent)
 	default:
 		exempt := ""
 		if sum.Exempt > 0 {
 			exempt = fmt.Sprintf(msgCoverageExempt, sum.Exempt)
 		}
-		b.WriteString(fmt.Sprintf(msgCoverageHuman, *sum.Percent, sum.Attested, sum.Total, sum.Files, exempt))
+		fmt.Fprintf(&b, msgCoverageHuman, *sum.Percent, sum.Attested, sum.Total, sum.Files, exempt)
 	}
 	if len(sum.Unattested) == 0 {
 		b.WriteString("\n" + msgCoverageNone)

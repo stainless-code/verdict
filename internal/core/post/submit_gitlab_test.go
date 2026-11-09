@@ -28,8 +28,8 @@ const gitlabTestDiff = "diff --git a/notes.txt b/notes.txt\nindex 1111111..22222
 const gitlabBlankContextDiff = "diff --git a/blank.txt b/blank.txt\nindex 1111111..2222222 100644\n" +
 	"--- a/blank.txt\n+++ b/blank.txt\n@@ -1,4 +1,4 @@\n top\n\n-old line\n+new line\n tail\n"
 
-// gitlabTestRenameDiff is the renamed-file hunk: GitLab wants the pre-change path
-// beside the post-change one.
+// gitlabTestRenameDiff is the renamed-file hunk: GitLab wants the pre-change
+// path beside the post-change one.
 const gitlabTestRenameDiff = "diff --git a/old.go b/new.go\nsimilarity index 90%\nrename from old.go\nrename to new.go\n" +
 	"--- a/old.go\n+++ b/new.go\n@@ -1,2 +1,2 @@\n top\n-gone\n+added\n"
 
@@ -117,20 +117,40 @@ func gitlabStdinDoc(t *testing.T, cmdr *scriptCommander, i int) map[string]any {
 func gitlabPostedNote(t *testing.T, cmdr *scriptCommander) string {
 	t.Helper()
 	for _, raw := range cmdr.stdin {
-		if raw == "" {
-			continue
-		}
-		var doc map[string]any
-		if err := json.Unmarshal([]byte(raw), &doc); err != nil {
-			continue
-		}
-		body, _ := doc[fieldBody].(string)
-		if strings.Contains(body, "<!-- verdict-review payload=") {
+		if body, ok := markedReviewBody(raw); ok {
 			return body
 		}
 	}
 	t.Fatalf("no posted body carries the review marker: %q", callKeys(cmdr))
 	return ""
+}
+
+// markedReviewBody returns the review body a posted stdin document carries,
+// when it carries the payload marker.
+func markedReviewBody(raw string) (string, bool) {
+	if raw == "" {
+		return "", false
+	}
+	var doc map[string]any
+	if err := json.Unmarshal([]byte(raw), &doc); err != nil {
+		return "", false
+	}
+	body, isBody := doc[fieldBody].(string)
+	if !isBody || !strings.Contains(body, "<!-- verdict-review payload=") {
+		return "", false
+	}
+	return body, true
+}
+
+// gitlabPositionCase is one anchor and the position fields it must produce.
+type gitlabPositionCase struct {
+	comment  *jq.Obj
+	name     string
+	diff     string
+	oldPath  string
+	oldLine  any
+	newLine  any
+	bodyPath string
 }
 
 // TestGitLabPositionMapping proves the payload's anchors become the position
@@ -140,15 +160,7 @@ func gitlabPostedNote(t *testing.T, cmdr *scriptCommander) string {
 // removed line.
 func TestGitLabPositionMapping(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
-		name     string
-		diff     string
-		comment  *jq.Obj
-		oldPath  string
-		oldLine  any
-		newLine  any
-		bodyPath string
-	}{
+	cases := []gitlabPositionCase{
 		{
 			name: "added line", diff: gitlabTestDiff,
 			comment: jq.NewObj("path", "notes.txt", "line", 2, "side", "RIGHT", "body", "B"),
@@ -183,53 +195,14 @@ func TestGitLabPositionMapping(t *testing.T) {
 			oldPath: "old.go", oldLine: nil, newLine: float64(2), bodyPath: "new.go",
 		},
 	}
-	for _, tc := range cases {
+	for i := range cases {
+		tc := &cases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			if tc.bodyPath == "" {
 				tc.bodyPath = "notes.txt"
 			}
-			cmdr := gitlabCommander(t)
-			payload := postPayload("review body", eventComment, gitlabHead, []any{tc.comment})
-			attempt := gitlabPost(context.Background(), cmdr, core.CapabilitiesFor(providerGitLab), "acme/app", "7", gitlabBundleDir(t, tc.diff), payload)
-			if !attempt.ok {
-				t.Fatalf("gitlabPost = %+v, want the accepted attempt", attempt)
-			}
-			if got := callKeys(cmdr); len(got) != 3 || got[0] != strings.Join(strings.Split(gitlabPRArgv, "\x00"), " ") {
-				t.Fatalf("calls = %q, want the MR read, one discussion, and the summary note", got)
-			}
-			if countCalls(cmdr, gitlabDiscussionsArgv) != 1 || countCalls(cmdr, gitlabNotesArgv) != 1 {
-				t.Fatalf("calls = %q, want exactly one discussion and one note", callKeys(cmdr))
-			}
-			posted := gitlabStdinDoc(t, cmdr, 1)
-			if posted[fieldBody] != "B" {
-				t.Errorf("discussion body = %v, want the finding body", posted[fieldBody])
-			}
-			pos, ok := posted["position"].(map[string]any)
-			if !ok {
-				t.Fatalf("discussion carries no position: %v", posted)
-			}
-			want := map[string]any{
-				"position_type": "text",
-				"base_sha":      gitlabBase,
-				"start_sha":     gitlabStart,
-				"head_sha":      gitlabHead,
-				"old_path":      tc.oldPath,
-				"new_path":      tc.bodyPath,
-				"old_line":      tc.oldLine,
-				"new_line":      tc.newLine,
-			}
-			for key, value := range want {
-				if got, want := pos[key], value; got != want {
-					t.Errorf("position.%s = %v, want %v (position %v)", key, got, want, pos)
-				}
-			}
-			if _, has := pos["old_line"]; has != (tc.oldLine != nil) {
-				t.Errorf("position carries old_line = %v, want %v", pos["old_line"], tc.oldLine)
-			}
-			if _, has := pos["new_line"]; has != (tc.newLine != nil) {
-				t.Errorf("position carries new_line = %v, want %v", pos["new_line"], tc.newLine)
-			}
+			assertGitLabPosition(t, tc)
 		})
 	}
 }
@@ -239,13 +212,7 @@ func TestGitLabPositionMapping(t *testing.T) {
 // and a host whose capability carries no approve writes no approval at all.
 func TestGitLabPostApprovesOnlyOnApproval(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct {
-		name     string
-		event    string
-		caps     core.HostCapabilities
-		state    string
-		approves bool
-	}{
+	cases := []approveLegCase{
 		{name: "approval approves last", event: eventApprove, state: "approved", approves: true},
 		{name: "comment never approves", event: eventComment, state: "commented", approves: false},
 		{
@@ -253,43 +220,80 @@ func TestGitLabPostApprovesOnlyOnApproval(t *testing.T) {
 			caps:  core.HostCapabilities{Provider: providerGitLab, Fetch: true, Post: true, InlineAnchors: true},
 			state: "commented", approves: false,
 		},
-	} {
+	}
+	for i := range cases {
+		tc := &cases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			cmdr := gitlabCommander(t)
-			caps := tc.caps
-			if caps.Provider == "" {
-				caps = core.CapabilitiesFor(providerGitLab)
-			}
-			payload := postPayload("review body", tc.event, gitlabHead, []any{
-				jq.NewObj("path", "notes.txt", "line", 2, "side", "RIGHT", "body", "B"),
-			})
-			attempt := gitlabPost(context.Background(), cmdr, caps, "acme/app", "7", gitlabBundleDir(t, gitlabTestDiff), payload)
-			if !attempt.ok {
-				t.Fatalf("gitlabPost = %+v, want the accepted attempt", attempt)
-			}
-			if got := countCalls(cmdr, gitlabApproveArgv); got != map[bool]int{true: 1}[tc.approves] {
-				t.Fatalf("approve calls = %d, want %v (%q)", got, tc.approves, callKeys(cmdr))
-			}
-			if tc.approves {
-				last := strings.Join(cmdr.calls[len(cmdr.calls)-1], "\x00")
-				if last != gitlabApproveArgv {
-					t.Errorf("last call = %q, want the approval", last)
-				}
-			}
-			receipt := decodePostedPayload(t, attempt.posted)
-			if receipt["state"] != tc.state {
-				t.Errorf("receipt state = %v, want %v", receipt["state"], tc.state)
-			}
-			for key, want := range map[string]any{
-				"id": float64(4242), "html_url": "https://gl.example/acme/app/-/merge_requests/7",
-				"submitted_at": "2026-11-02T12:00:00Z",
-			} {
-				if got := receipt[key]; got != want {
-					t.Errorf("receipt %s = %v, want %v", key, got, want)
-				}
-			}
+			assertApproveLeg(t, tc)
 		})
+	}
+}
+
+// approveLegCase is one verdict event, the capability table it runs against,
+// and the receipt state it must produce.
+type approveLegCase struct {
+	name     string
+	event    string
+	state    string
+	caps     core.HostCapabilities
+	approves bool
+}
+
+// assertApproveLeg posts one verdict and pins the approval write: exactly one
+// approve call as the last write when the host advertises it, none otherwise.
+func assertApproveLeg(t *testing.T, tc *approveLegCase) {
+	t.Helper()
+	cmdr := gitlabCommander(t)
+	caps := tc.caps
+	if caps.Provider == "" {
+		caps = core.CapabilitiesFor(providerGitLab)
+	}
+	payload := postPayload("review body", tc.event, gitlabHead, []any{
+		jq.NewObj("path", "notes.txt", "line", 2, "side", "RIGHT", "body", "B"),
+	})
+	attempt := gitlabPost(context.Background(), cmdr, caps, "acme/app", "7", gitlabBundleDir(t, gitlabTestDiff), payload)
+	if !attempt.ok {
+		t.Fatalf("gitlabPost = %+v, want the accepted attempt", attempt)
+	}
+	assertApproveCalls(t, cmdr, tc.approves)
+	assertGitLabReceipt(t, attempt.posted, tc.state)
+}
+
+// assertApproveCalls pins the approval write count and, when one fired, that it
+// was the last write the run made.
+func assertApproveCalls(t *testing.T, cmdr *scriptCommander, approves bool) {
+	t.Helper()
+	want := 0
+	if approves {
+		want = 1
+	}
+	if got := countCalls(cmdr, gitlabApproveArgv); got != want {
+		t.Fatalf("approve calls = %d, want %d (%q)", got, want, callKeys(cmdr))
+	}
+	if !approves {
+		return
+	}
+	if last := strings.Join(cmdr.calls[len(cmdr.calls)-1], "\x00"); last != gitlabApproveArgv {
+		t.Errorf("last call = %q, want the approval", last)
+	}
+}
+
+// assertGitLabReceipt pins the accepted receipt: the verdict state and the note
+// identity the envelope publishes.
+func assertGitLabReceipt(t *testing.T, posted, state string) {
+	t.Helper()
+	receipt := decodePostedPayload(t, posted)
+	if receipt["state"] != state {
+		t.Errorf("receipt state = %v, want %v", receipt["state"], state)
+	}
+	for key, want := range map[string]any{
+		"id": float64(4242), "html_url": "https://gl.example/acme/app/-/merge_requests/7",
+		"submitted_at": "2026-11-02T12:00:00Z",
+	} {
+		if got := receipt[key]; got != want {
+			t.Errorf("receipt %s = %v, want %v", key, got, want)
+		}
 	}
 }
 
@@ -467,19 +471,7 @@ func TestGitLabRecheckCountsResolvableOpen(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := countGitLabOpen(tc.raw)
-			if tc.bad {
-				if err == nil {
-					t.Fatalf("countGitLabOpen(%s) = %d, want an unreadable-page error", tc.raw, got)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("countGitLabOpen(%s): %v", tc.raw, err)
-			}
-			if got != tc.want {
-				t.Errorf("countGitLabOpen(%s) = %d, want %d", tc.raw, got, tc.want)
-			}
+			assertOpenCount(t, tc.raw, tc.want, tc.bad)
 		})
 	}
 }
@@ -516,32 +508,8 @@ func TestRunPostGitLabSubmits(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
-	if resp.Data.Event != eventComment || resp.Data.CommitID != gitlabHead {
-		t.Errorf("data = %+v, want a COMMENT review of %s", resp.Data, gitlabHead)
-	}
-	for _, call := range cmdr.calls {
-		if call[0] != "glab" {
-			t.Fatalf("a GitLab run spawned %q, want glab only", strings.Join(call, " "))
-		}
-	}
-	if got := countCalls(cmdr, gitlabDiscussionsArgv); got != 1 {
-		t.Errorf("discussions = %d, want 1 (%q)", got, callKeys(cmdr))
-	}
-	if got := countCalls(cmdr, gitlabApproveArgv); got != 0 {
-		t.Errorf("a comment review approved (%q)", callKeys(cmdr))
-	}
-	if id, ok := resp.Data.Review["id"].(float64); !ok || id != 4242 {
-		t.Errorf("envelope review id = %v, want the summary note id 4242", resp.Data.Review["id"])
-	}
-	if got := resp.Data.Review["state"]; got != "commented" {
-		t.Errorf("envelope review state = %v, want commented", got)
-	}
-	if !exists(".verdict/state/7/post.json") {
-		t.Error("the accepted post wrote no receipt")
-	}
-	if matches := globMarkers(t); len(matches) != 1 {
-		t.Errorf("duplicate markers = %v, want exactly one", matches)
-	}
+	assertGitLabRunData(t, resp)
+	assertGitLabRunWrites(t, cmdr)
 }
 
 // TestRunPostGitLabApprovesWhenBound proves a bound approval reaches GitLab's
@@ -562,19 +530,10 @@ func TestRunPostGitLabApprovesWhenBound(t *testing.T) {
 	if resp.Data.Event != eventApprove {
 		t.Errorf("event = %q, want APPROVE", resp.Data.Event)
 	}
-	for _, key := range []string{gitlabRecheckArgv, gitlabUserArgv, gitlabApproveArgv} {
-		if got := countCalls(cmdr, key); got != 1 {
-			t.Errorf("%q fired %d times, want 1 (%q)", key, got, callKeys(cmdr))
-		}
-	}
 	if got := resp.Data.Review["state"]; got != "approved" {
 		t.Errorf("envelope review state = %v, want approved", got)
 	}
-	for _, call := range cmdr.calls {
-		if call[0] != "glab" {
-			t.Fatalf("a GitLab approval spawned %q, want glab only", strings.Join(call, " "))
-		}
-	}
+	assertGitLabApprovalCalls(t, cmdr)
 }
 
 // TestRunPostGitLabRefusesRepostFromFetchedMarker proves the repeat guard the
@@ -596,33 +555,8 @@ func TestRunPostGitLabRefusesRepostFromFetchedMarker(t *testing.T) {
 	if !strings.Contains(note, "<!-- verdict-review payload=") {
 		t.Fatalf("posted note carries no review marker: %q", note)
 	}
-	// The fetched note list is what a re-fetch records; the local receipt and
-	// marker are gone, so only the live record can hold the repeat guard.
-	record, err := json.Marshal(map[string]any{fieldBody: note, "created_at": "2026-11-02T12:00:00Z"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := writeTestFile(".verdict/state/7/reviews.json", "["+string(record)+"]"); err != nil {
-		t.Fatal(err)
-	}
-	for _, marker := range globMarkers(t) {
-		if err := os.Remove(marker); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := os.Remove(".verdict/state/7/post.json"); err != nil {
-		t.Fatal(err)
-	}
-	second := gitlabCommander(t)
-	req = postTestReq(second, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
-	_, ref := Run(context.Background(), req)
-	if ref == nil || ref.Code != codeAlreadyPosted {
+	if ref := refetchThenRepost(t, note, &warnings, &human); ref == nil || ref.Code != codeAlreadyPosted {
 		t.Fatalf("second Run ref = %v, want already-posted", ref)
-	}
-	for _, key := range []string{gitlabDiscussionsArgv, gitlabNotesArgv, gitlabApproveArgv} {
-		if got := countCalls(second, key); got != 0 {
-			t.Errorf("a refused repost fired %q %d times: %q", key, got, callKeys(second))
-		}
 	}
 }
 
@@ -644,4 +578,172 @@ func TestRunPostRefusesHostWithoutSubmit(t *testing.T) {
 	if len(cmdr.calls) != 0 {
 		t.Errorf("calls fired for a refused host: %q", callKeys(cmdr))
 	}
+}
+
+// assertGitLabPosition posts one anchor and pins the position GitLab receives:
+// both paths from the diff, the MR's three SHAs, and the old/new line pair.
+func assertGitLabPosition(t *testing.T, tc *gitlabPositionCase) {
+	t.Helper()
+	cmdr := gitlabCommander(t)
+	payload := postPayload("review body", eventComment, gitlabHead, []any{tc.comment})
+	attempt := gitlabPost(context.Background(), cmdr, core.CapabilitiesFor(providerGitLab), "acme/app", "7", gitlabBundleDir(t, tc.diff), payload)
+	if !attempt.ok {
+		t.Fatalf("gitlabPost = %+v, want the accepted attempt", attempt)
+	}
+	assertGitLabWriteOrder(t, cmdr)
+	posted := gitlabStdinDoc(t, cmdr, 1)
+	if posted[fieldBody] != "B" {
+		t.Errorf("discussion body = %v, want the finding body", posted[fieldBody])
+	}
+	pos, ok := posted["position"].(map[string]any)
+	if !ok {
+		t.Fatalf("discussion carries no position: %v", posted)
+	}
+	assertPositionFields(t, pos, tc)
+}
+
+// assertGitLabWriteOrder pins the three writes one positioned payload makes and
+// the order they land in: the MR read, the discussion, then the summary note.
+func assertGitLabWriteOrder(t *testing.T, cmdr *scriptCommander) {
+	t.Helper()
+	if got := callKeys(cmdr); len(got) != 3 || got[0] != strings.Join(strings.Split(gitlabPRArgv, "\x00"), " ") {
+		t.Fatalf("calls = %q, want the MR read, one discussion, and the summary note", got)
+	}
+	if countCalls(cmdr, gitlabDiscussionsArgv) != 1 || countCalls(cmdr, gitlabNotesArgv) != 1 {
+		t.Fatalf("calls = %q, want exactly one discussion and one note", callKeys(cmdr))
+	}
+}
+
+// assertPositionFields pins the thirteen position fields GitLab validates.
+func assertPositionFields(t *testing.T, pos map[string]any, tc *gitlabPositionCase) {
+	t.Helper()
+	want := map[string]any{
+		"position_type": "text",
+		"base_sha":      gitlabBase,
+		"start_sha":     gitlabStart,
+		"head_sha":      gitlabHead,
+		"old_path":      tc.oldPath,
+		"new_path":      tc.bodyPath,
+		"old_line":      tc.oldLine,
+		"new_line":      tc.newLine,
+	}
+	for key, value := range want {
+		if got, want := pos[key], value; got != want {
+			t.Errorf("position.%s = %v, want %v (position %v)", key, got, want, pos)
+		}
+	}
+	if _, has := pos["old_line"]; has != (tc.oldLine != nil) {
+		t.Errorf("position carries old_line = %v, want %v", pos["old_line"], tc.oldLine)
+	}
+	if _, has := pos["new_line"]; has != (tc.newLine != nil) {
+		t.Errorf("position carries new_line = %v, want %v", pos["new_line"], tc.newLine)
+	}
+}
+
+// assertOpenCount pins one recheck payload: a readable page counts, an
+// unreadable one errors instead of counting zero.
+func assertOpenCount(t *testing.T, raw string, want int, bad bool) {
+	t.Helper()
+	got, err := countGitLabOpen(raw)
+	if bad {
+		if err == nil {
+			t.Fatalf("countGitLabOpen(%s) = %d, want an unreadable-page error", raw, got)
+		}
+		return
+	}
+	if err != nil {
+		t.Fatalf("countGitLabOpen(%s): %v", raw, err)
+	}
+	if got != want {
+		t.Errorf("countGitLabOpen(%s) = %d, want %d", raw, got, want)
+	}
+}
+
+// assertGitLabRunData pins the envelope a posted comment review returns.
+func assertGitLabRunData(t *testing.T, resp *core.PostResponse) {
+	t.Helper()
+	if resp.Data.Event != eventComment || resp.Data.CommitID != gitlabHead {
+		t.Errorf("data = %+v, want a COMMENT review of %s", resp.Data, gitlabHead)
+	}
+	if id, ok := resp.Data.Review["id"].(float64); !ok || id != 4242 {
+		t.Errorf("envelope review id = %v, want the summary note id 4242", resp.Data.Review["id"])
+	}
+	if got := resp.Data.Review["state"]; got != "commented" {
+		t.Errorf("envelope review state = %v, want commented", got)
+	}
+}
+
+// assertGitLabRunWrites pins the writes a comment review makes: one discussion,
+// no approval, one receipt, and exactly one marker on disk.
+func assertGitLabRunWrites(t *testing.T, cmdr *scriptCommander) {
+	t.Helper()
+	for _, call := range cmdr.calls {
+		if call[0] != "glab" {
+			t.Fatalf("a GitLab run spawned %q, want glab only", strings.Join(call, " "))
+		}
+	}
+	if got := countCalls(cmdr, gitlabDiscussionsArgv); got != 1 {
+		t.Errorf("discussions = %d, want 1 (%q)", got, callKeys(cmdr))
+	}
+	if got := countCalls(cmdr, gitlabApproveArgv); got != 0 {
+		t.Errorf("a comment review approved (%q)", callKeys(cmdr))
+	}
+	if !exists(".verdict/state/7/post.json") {
+		t.Error("the accepted post wrote no receipt")
+	}
+	if matches := globMarkers(t); len(matches) != 1 {
+		t.Errorf("duplicate markers = %v, want exactly one", matches)
+	}
+}
+
+// assertGitLabApprovalCalls pins the three reads and writes a bound approval
+// makes, once each, all of them on glab.
+func assertGitLabApprovalCalls(t *testing.T, cmdr *scriptCommander) {
+	t.Helper()
+	for _, key := range []string{gitlabRecheckArgv, gitlabUserArgv, gitlabApproveArgv} {
+		if got := countCalls(cmdr, key); got != 1 {
+			t.Errorf("%q fired %d times, want 1 (%q)", key, got, callKeys(cmdr))
+		}
+	}
+	for _, call := range cmdr.calls {
+		if call[0] != "glab" {
+			t.Fatalf("a GitLab approval spawned %q, want glab only", strings.Join(call, " "))
+		}
+	}
+}
+
+// refetchThenRepost turns the landed note into the fetched record, drops the
+// local receipt and markers, and runs the verb again: the repeat guard must
+// hold on the live record alone.
+func dropLocalRecord(t *testing.T) {
+	t.Helper()
+	for _, marker := range globMarkers(t) {
+		if err := os.Remove(marker); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Remove(".verdict/state/7/post.json"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func refetchThenRepost(t *testing.T, note string, warnings, human *[]string) *core.RefusalError {
+	t.Helper()
+	record, err := json.Marshal(map[string]any{fieldBody: note, "created_at": "2026-11-02T12:00:00Z"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if werr := writeTestFile(".verdict/state/7/reviews.json", "["+string(record)+"]"); werr != nil {
+		t.Fatal(werr)
+	}
+	dropLocalRecord(t)
+	second := gitlabCommander(t)
+	req := postTestReq(second, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, warnings, human)
+	_, ref := Run(context.Background(), req)
+	for _, key := range []string{gitlabDiscussionsArgv, gitlabNotesArgv, gitlabApproveArgv} {
+		if got := countCalls(second, key); got != 0 {
+			t.Errorf("a refused repost fired %q %d times: %q", key, got, callKeys(second))
+		}
+	}
+	return ref
 }

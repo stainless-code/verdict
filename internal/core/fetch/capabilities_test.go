@@ -1,6 +1,7 @@
 package fetchcore
 
 import (
+	"maps"
 	"slices"
 	"testing"
 
@@ -30,6 +31,7 @@ func postsTo(provider string) bool {
 // core/hostCapabilities — on or off — fails this table, and so does a reason
 // that stops matching its flag.
 type capabilityRow struct {
+	reasons          map[string]string
 	provider         string
 	fetch            bool
 	post             bool
@@ -37,7 +39,6 @@ type capabilityRow struct {
 	approve          bool
 	requestChanges   bool
 	threadResolution bool
-	reasons          map[string]string
 }
 
 // submitGaps are the reasons every fetch-only host carries: no submit path, so
@@ -109,9 +110,9 @@ func checkCapabilityWire(t *testing.T, row capabilityRow) {
 		t.Fatalf("keys = %v, want %v", obj.Keys, capabilityKeys)
 	}
 	for _, field := range []struct {
+		got  any
 		key  string
 		want bool
-		got  any
 	}{
 		{key: "fetch", want: row.fetch},
 		{key: "post", want: row.post},
@@ -137,23 +138,13 @@ func checkUnsupported(t *testing.T, obj *jq.Obj, want map[string]string) {
 	if !ok || !isObj || unsupported == nil {
 		t.Fatalf("unsupported = %v, want an object", raw)
 	}
-	wantKeys := make([]string, 0, len(want))
-	for key := range want {
-		wantKeys = append(wantKeys, key)
-	}
-	slices.Sort(wantKeys)
-	gotKeys := slices.Clone(unsupported.Keys)
-	slices.Sort(gotKeys)
+	wantKeys := sortedKeys(want)
+	gotKeys := slices.Sorted(slices.Values(unsupported.Keys))
 	if !slices.Equal(gotKeys, wantKeys) {
 		t.Fatalf("unsupported keys = %v, want %v", unsupported.Keys, wantKeys)
 	}
 	for _, key := range wantKeys {
-		if got, _ := unsupported.Get(key); got != want[key] {
-			t.Errorf("unsupported[%q] = %v, want %q", key, got, want[key])
-		}
-		if got, _ := obj.Get(key); got != false {
-			t.Errorf("unsupported names %q while the capability reads %v", key, got)
-		}
+		checkAbsentCapability(t, obj, unsupported, key, want[key])
 	}
 }
 
@@ -173,5 +164,24 @@ func TestCapabilitiesMatchPostGate(t *testing.T) {
 		if got, want := core.CapabilitiesFor(provider).Post, postsTo(provider); got != want {
 			t.Errorf("CapabilitiesFor(%s).Post = %v, want %v", provider, got, want)
 		}
+	}
+}
+
+// sortedKeys returns a map's keys in one stable order, so a reason map that
+// gained or lost a capability reads as a diff instead of a reordering.
+func sortedKeys[V any](m map[string]V) []string {
+	return slices.Sorted(maps.Keys(m))
+}
+
+// checkAbsentCapability asserts one reason names the right cause and sits
+// beside a capability that really reads false: a reason on a working
+// capability is a stale code, not a gap.
+func checkAbsentCapability(t *testing.T, obj, unsupported *jq.Obj, key, reason string) {
+	t.Helper()
+	if got, _ := unsupported.Get(key); got != reason {
+		t.Errorf("unsupported[%q] = %v, want %q", key, got, reason)
+	}
+	if got, _ := obj.Get(key); got != false {
+		t.Errorf("unsupported names %q while the capability reads %v", key, got)
 	}
 }

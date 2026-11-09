@@ -274,7 +274,9 @@ func dispatchMutating(
 // dispatchLocal serves the verbs that need no repository or pull request: the
 // scaffold writer and the skill distributor. They share dispatchMutating's
 // "handled" contract so one switch can stay small enough to read.
-func dispatchLocal(ctx context.Context, cmd string, r *cli.Runner, env map[string]string, root, repoRoot string, rest []string) (int, bool) {
+func dispatchLocal(
+	ctx context.Context, cmd string, r *cli.Runner, env map[string]string, root, repoRoot string, rest []string,
+) (int, bool) {
 	switch cmd {
 	case "init":
 		return scaffold.Run(ctx, r, rest, scaffold.Request{Env: env, RepoRoot: repoRoot}), true

@@ -332,8 +332,8 @@ func (st *state) commanderOrNil() Commander {
 	return cmdr
 }
 
-// readLiveSHA reads the host's live head for the bundle's PR, so the drift check
-// runs the same read on every host that can post.
+// readLiveSHA reads the host's live head for the bundle's PR, so the drift
+// check runs the same read on every host that can post.
 func (st *state) readLiveSHA(ctx context.Context) (string, error) {
 	if st.provider() != providerGitLab {
 		return ghLiveSHA(ctx, st.commanderOrNil(), st.req.Repo, st.req.Pr)
@@ -460,27 +460,38 @@ func (st *state) approveGate() *core.RefusalError {
 	if nOpen+nDeferred > 0 && !st.flags.Force {
 		return &core.RefusalError{Code: "approve-blocked", Message: fmt.Sprintf(msgApproveBlocked, nOpen, nDeferred)}
 	}
-	if ref := st.privacyConflictGate(); ref != nil {
-		return ref
-	}
-	if ref := st.deepValidationGate(); ref != nil {
-		return ref
-	}
-	if ref := st.lensApprovalGate(); ref != nil {
-		return ref
-	}
-	if ref := st.headGate(); ref != nil {
+	if ref := st.approvalBlockers(); ref != nil {
 		return ref
 	}
 	if !st.driftStale {
 		st.event = eventApprove
 		return nil
 	}
+	st.downgradeStale()
+	return nil
+}
+
+// approvalBlockers runs the four gates an approval must clear after the status
+// count: privacy, deep validation, lens coverage, and head freshness. Each
+// returns a typed refusal or nil, and the first refusal wins.
+func (st *state) approvalBlockers() *core.RefusalError {
+	for _, gate := range []func() *core.RefusalError{
+		st.privacyConflictGate, st.deepValidationGate, st.lensApprovalGate, st.headGate,
+	} {
+		if ref := gate(); ref != nil {
+			return ref
+		}
+	}
+	return nil
+}
+
+// downgradeStale turns a stale approval into a comment: the body says which
+// commit the review read, so the reader knows the verdict predates the head.
+func (st *state) downgradeStale() {
 	st.warn(fmt.Sprintf(msgStaleDowngrade, readcommon.ShortSHA(st.fetchedSHA), readcommon.ShortSHA(st.liveSHA),
 		st.req.Repo, st.req.Pr, readcommon.ShortSHA(st.fetchedSHA)))
 	st.body = fmt.Sprintf(msgStaleNote, st.req.Repo, st.req.Pr, readcommon.ShortSHA(st.fetchedSHA)) + "\n\n" + st.body
 	st.event = eventComment
-	return nil
 }
 
 func (st *state) authorGate(ctx context.Context) *core.RefusalError {

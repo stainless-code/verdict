@@ -37,9 +37,9 @@ var mcpOmittedVerbs = map[string]string{
 // method, and why: the distribution lifecycle stays CLI-only. `gate` is not
 // here — a program honoring an exit code may compose the same verdict — while
 // it stays out of the MCP surface above. `run` is here for the same reason
-// it is out of MCP: the facade and the TS client drive review data, and a process
-// launcher belongs to the operator's CLI (a program that wants it can run the
-// same argv the --print output renders).
+// it is out of MCP: the facade and the TS client drive review data, while a
+// process launcher belongs to the operator's CLI (a program that wants it can
+// run the same argv the --print output renders).
 var sdkOmittedVerbs = map[string]string{
 	"mcp":       "the MCP transport entry point itself",
 	"skill":     "distribution surface (pkg/verdict/doc.go)",

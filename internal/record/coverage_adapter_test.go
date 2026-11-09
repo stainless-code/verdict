@@ -64,14 +64,20 @@ func runCoverage(t *testing.T, review, prior string, args ...string) golden.Outp
 // coverageEnvelope is the subset of a --json envelope the adapter cases grade:
 // the refusal, the coverage payload next carries, and the warnings.
 type coverageEnvelope struct {
-	Warnings []string `json:"warnings"`
-	Data     struct {
-		Coverage *coverageReceipt `json:"coverage"`
-	} `json:"data"`
-	Error *struct {
-		Code    string `json:"code"`
-		Message string `json:"message"`
-	} `json:"error"`
+	Error    *coverageEnvelopeError `json:"error"`
+	Data     coverageEnvelopeData   `json:"data"`
+	Warnings []string               `json:"warnings"`
+}
+
+// coverageEnvelopeError is the typed refusal an envelope carries.
+type coverageEnvelopeError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+// coverageEnvelopeData is the payload the covered verb returns.
+type coverageEnvelopeData struct {
+	Coverage *coverageReceipt `json:"coverage"`
 }
 
 // coverageReceipt is the stored or returned coverage summary.
@@ -127,22 +133,7 @@ func TestRecordAdapterRefusesCoverageIncomplete(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			out := runCoverage(t, tc.review, "", "record", "acme/app", coverageSlug, "--require-coverage", "--json")
-			if out.Status != 1 {
-				t.Fatalf("exit = %d, want 1\nstderr:\n%s", out.Status, out.Stderr)
-			}
-			env := decodeEnvelope(t, out.Stdout)
-			if env.Error == nil || env.Error.Code != "coverage-incomplete" {
-				t.Fatalf("error = %+v, want coverage-incomplete\n%s", env.Error, out.Stdout)
-			}
-			if !strings.Contains(env.Error.Message, tc.wantMsg) {
-				t.Errorf("message = %q, want it to carry %q", env.Error.Message, tc.wantMsg)
-			}
-			for _, path := range []string{coverageBundleDir + "/findings.json", coverageBundleDir + "/record.json"} {
-				if _, ok := writtenFile(t, out, path); ok {
-					t.Errorf("a refused run wrote %s", path)
-				}
-			}
+			assertCoverageRefusal(t, tc.review, tc.wantMsg)
 		})
 	}
 }
@@ -221,32 +212,8 @@ func storedReceipt(t *testing.T, out golden.Outputs) coverageReceipt {
 // both human and JSON mode.
 func TestNextAdapterCoverageReadsBeforeRecord(t *testing.T) {
 	review := coverageReview(`"coverage":[{"file":"notes.txt","ranges":"1-2"}],`)
-	human := runCoverage(t, review, "", "next", "acme/app", coverageSlug, "--coverage")
-	if human.Status != 0 {
-		t.Fatalf("exit = %d, want 0\nstderr:\n%s", human.Status, human.Stderr)
-	}
-	for _, want := range []string{"coverage: 66% (2/3 changed lines, 1 files)", "unattested:", "- notes.txt:3"} {
-		if !strings.Contains(human.Stdout, want) {
-			t.Errorf("stdout misses %q:\n%s", want, human.Stdout)
-		}
-	}
-	for path := range human.Files {
-		if strings.HasSuffix(path, "/findings.json") {
-			t.Errorf("the read mode wrote or needed a findings store: %s", path)
-		}
-	}
-
-	machine := runCoverage(t, review, "", "next", "acme/app", coverageSlug, "--coverage", "--json")
-	if machine.Status != 0 {
-		t.Fatalf("exit = %d, want 0\nstderr:\n%s", machine.Status, machine.Stderr)
-	}
-	rep := decodeEnvelope(t, machine.Stdout).Data.Coverage
-	if rep == nil || rep.Percent == nil || *rep.Percent != 66 {
-		t.Fatalf("data.coverage = %+v, want percent 66", rep)
-	}
-	if rep.Attested != 2 || rep.Total != 3 {
-		t.Errorf("attested/total = %d/%d, want 2/3", rep.Attested, rep.Total)
-	}
+	assertCoverageHuman(t, review)
+	assertCoverageMachine(t, review)
 }
 
 // TestNextAdapterCoverageMissingReview pins criterion 9's pre-review leg: with
@@ -290,5 +257,63 @@ func TestCoverageAdapterFixturePinsHunkRows(t *testing.T) {
 	want := "notes.txt\tOLD\t1\t3\nnotes.txt\tNEW\t1\t3\n"
 	if string(raw) != want {
 		t.Errorf("fixture hunks = %q, want %q", raw, want)
+	}
+}
+
+// assertCoverageHuman pins the human leg of the pre-record read: the measured
+// line and its gap, and no findings store touched on the way.
+func assertCoverageHuman(t *testing.T, review string) {
+	t.Helper()
+	human := runCoverage(t, review, "", "next", "acme/app", coverageSlug, "--coverage")
+	if human.Status != 0 {
+		t.Fatalf("exit = %d, want 0\nstderr:\n%s", human.Status, human.Stderr)
+	}
+	for _, want := range []string{"coverage: 66% (2/3 changed lines, 1 files)", "unattested:", "- notes.txt:3"} {
+		if !strings.Contains(human.Stdout, want) {
+			t.Errorf("stdout misses %q:\n%s", want, human.Stdout)
+		}
+	}
+	for path := range human.Files {
+		if strings.HasSuffix(path, "/findings.json") {
+			t.Errorf("the read mode wrote or needed a findings store: %s", path)
+		}
+	}
+}
+
+// assertCoverageMachine pins the same read as a --json envelope.
+func assertCoverageMachine(t *testing.T, review string) {
+	t.Helper()
+	machine := runCoverage(t, review, "", "next", "acme/app", coverageSlug, "--coverage", "--json")
+	if machine.Status != 0 {
+		t.Fatalf("exit = %d, want 0\nstderr:\n%s", machine.Status, machine.Stderr)
+	}
+	rep := decodeEnvelope(t, machine.Stdout).Data.Coverage
+	if rep == nil || rep.Percent == nil || *rep.Percent != 66 {
+		t.Fatalf("data.coverage = %+v, want percent 66", rep)
+	}
+	if rep.Attested != 2 || rep.Total != 3 {
+		t.Errorf("attested/total = %d/%d, want 2/3", rep.Attested, rep.Total)
+	}
+}
+
+// assertCoverageRefusal pins one refused gate: exit 1, the typed code, a
+// message naming the gap, and no store written on the way out.
+func assertCoverageRefusal(t *testing.T, review, wantMsg string) {
+	t.Helper()
+	out := runCoverage(t, review, "", "record", "acme/app", coverageSlug, "--require-coverage", "--json")
+	if out.Status != 1 {
+		t.Fatalf("exit = %d, want 1\nstderr:\n%s", out.Status, out.Stderr)
+	}
+	env := decodeEnvelope(t, out.Stdout)
+	if env.Error == nil || env.Error.Code != "coverage-incomplete" {
+		t.Fatalf("error = %+v, want coverage-incomplete\n%s", env.Error, out.Stdout)
+	}
+	if !strings.Contains(env.Error.Message, wantMsg) {
+		t.Errorf("message = %q, want it to carry %q", env.Error.Message, wantMsg)
+	}
+	for _, path := range []string{coverageBundleDir + "/findings.json", coverageBundleDir + "/record.json"} {
+		if _, ok := writtenFile(t, out, path); ok {
+			t.Errorf("a refused run wrote %s", path)
+		}
 	}
 }

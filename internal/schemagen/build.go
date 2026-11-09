@@ -120,6 +120,10 @@ var interfaceType = reflect.TypeFor[any]()
 
 const defsRecord = "record"
 
+// coverageSummaryType is the $defs name the coverage payload is published
+// under; three documents reference it, so one constant keeps them in step.
+const coverageSummaryType = "coverageSummary"
+
 // keyScopeDefaults is the scope property carrying inline defaults; the scope
 // presence rules name it more than once.
 const keyScopeDefaults = "defaults"
@@ -223,7 +227,7 @@ func documents() []document {
 			defs: []definition{
 				{typ: reflect.TypeFor[ForcedPost](), name: "forcedPost"},
 				{typ: reflect.TypeFor[FloorScope](), name: "floorScope"},
-				{typ: reflect.TypeFor[CoverageSummary](), name: "coverageSummary"},
+				{typ: reflect.TypeFor[CoverageSummary](), name: coverageSummaryType},
 			},
 			additionalProperties: true,
 		},
@@ -233,7 +237,7 @@ func documents() []document {
 			root:  reflect.TypeFor[Record](),
 			defs: []definition{
 				{typ: reflect.TypeFor[Repair](), name: "repair"},
-				{typ: reflect.TypeFor[CoverageSummary](), name: "coverageSummary"},
+				{typ: reflect.TypeFor[CoverageSummary](), name: coverageSummaryType},
 			},
 			additionalProperties: true,
 		},
@@ -277,7 +281,7 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[FindingsCounts](), name: "findingsCounts"},
 		{typ: reflect.TypeFor[FindingItem](), name: "findingItem"},
 		{typ: reflect.TypeFor[Provenance](), name: "provenance"},
-		{typ: reflect.TypeFor[CoverageSummary](), name: "coverageSummary"},
+		{typ: reflect.TypeFor[CoverageSummary](), name: coverageSummaryType},
 		{typ: reflect.TypeFor[ReportData](), name: "reportData"},
 		{typ: reflect.TypeFor[ReportHead](), name: "reportHead"},
 		{typ: reflect.TypeFor[ReportVerdict](), name: "reportVerdict"},
