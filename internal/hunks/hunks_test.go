@@ -1,6 +1,7 @@
 package hunks_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/hunks"
@@ -114,34 +115,17 @@ func checkPartition(t *testing.T, hs []hunks.Hunk, tt partitionCase) {
 	}
 }
 
-// TestFormatRoundTrip checks hunk formatting survives a parse cycle.
+// TestFormatRoundTrip checks Format and ParseTSV are inverses. Counting rows
+// alone — the earlier version — could not see a swapped side, a duplicated
+// start, or a dropped field, all of which keep one row per hunk.
 func TestFormatRoundTrip(t *testing.T) {
 	hs := hunks.Parse(twoFileDiff)
-	tsv := hunks.Format(hs)
-	rows := 0
-	for _, ln := range splitLines(tsv) {
-		if ln != "" {
-			rows++
-		}
-	}
-	if rows != 3 {
-		t.Errorf("Format() has %d rows; want 3", rows)
+	if back := hunks.ParseTSV(hunks.Format(hs)); !slices.Equal(back, hs) {
+		t.Errorf("ParseTSV(Format(Parse(diff))) = %v; want %v", back, hs)
 	}
 	if got := hunks.Format(nil); got != "" {
 		t.Errorf("Format(nil) = %q; want empty", got)
 	}
-}
-
-func splitLines(s string) []string {
-	var out []string
-	start := 0
-	for i := range len(s) {
-		if s[i] == '\n' {
-			out = append(out, s[start:i])
-			start = i + 1
-		}
-	}
-	return append(out, s[start:])
 }
 
 // TestParseHostilePathsCannotForgeTSVRows pins that a path git C-quotes

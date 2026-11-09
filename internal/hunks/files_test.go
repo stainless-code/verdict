@@ -116,26 +116,14 @@ func TestFilesUnterminatedLine(t *testing.T) {
 	}
 }
 
-// TestParseMatchesFiles proves Parse is the flattened Files index, not a
-// second scanner that could drift.
-func TestParseMatchesFiles(t *testing.T) {
+// TestParseFlattensTheFileIndex pins Parse's rows on the two-file fixture as
+// literal text. An earlier version rebuilt the expectation by calling Files and
+// flattening it — which is Parse's own body — so a scanner defect reproduced on
+// both sides and the comparison could not fail.
+func TestParseFlattensTheFileIndex(t *testing.T) {
 	t.Parallel()
-	files := hunks.Files(twoFileDiff)
-	var want []hunks.Hunk
-	for i := range files {
-		want = append(want, files[i].Hunks...)
+	const want = "notes.txt\tOLD\t1\t3\nnotes.txt\tNEW\t1\t3\ngone.txt\tOLD\t1\t2\n"
+	if got := hunks.Format(hunks.Parse(twoFileDiff)); got != want {
+		t.Errorf("Parse(twoFileDiff) = %q, want %q", got, want)
 	}
-	got := hunks.Parse(twoFileDiff)
-	if strings.Join(hunkRows(got), ";") != strings.Join(hunkRows(want), ";") {
-		t.Errorf("Parse() = %v; Files() = %v", got, want)
-	}
-}
-
-// hunkRows renders hunk rows for comparison.
-func hunkRows(hs []hunks.Hunk) []string {
-	out := make([]string, len(hs))
-	for i, h := range hs {
-		out[i] = strings.TrimSuffix(h.Row(), "\n")
-	}
-	return out
 }
