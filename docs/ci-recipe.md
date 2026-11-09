@@ -98,8 +98,16 @@ so `contents: read` is enough); other providers refuse `controls-unavailable`
 (verdict never fetches the base for you). A targeted
 `git fetch --depth=1 origin <base-sha>` step is the minimal alternative.
 `persist-credentials: false` on checkout keeps the git credential helper
-empty; `gh` authenticates from `GH_TOKEN` only. Fork PRs have no secrets:
-run the fetch + advisory steps there, and keep `post` on same-repo runs.
+empty; `gh` authenticates from `GH_TOKEN` only. `GH_TOKEN` is scoped to the
+steps that call `gh`, so the agent step never inherits the write token.
+
+Fork PRs have no secrets. Without a guard, the shipped job fails at the agent
+step: `ANTHROPIC_API_KEY` is empty, `verdict run` reports `agent-missing` or a
+non-zero agent exit, and the job goes red instead of silently skipping review.
+That is the intended default, because a skipped review reads as a pass. If you
+would rather skip than fail, gate the agent and `post` steps on
+`github.event.pull_request.head.repo.full_name == github.repository` and run
+only `fetch`, `report`, and `gate` on forks.
 
 ## Pin policy
 

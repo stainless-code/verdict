@@ -54,7 +54,8 @@ else
   bad "workflow has $uses_total uses: entries but only $uses_pinned pinned by full SHA"
 fi
 assert_stream_nogrep "workflow floats on no moving tag" "$WORKFLOW" 'uses:[^#]*@(v[0-9]|latest|main|master)' "-E"
-for anchor in "setup-verdict" "verdict fetch" "verdict post" "verdict report" "verdict ready" "--check"; do
+for anchor in "setup-verdict" "verdict fetch" "verdict post" "verdict report" "verdict ready" \
+  "verdict gate" "--max-severity" "--check"; do
   if grep -q -F -- "$anchor" "$WORKFLOW" 2>/dev/null; then
     good "workflow runs $anchor"
   else
@@ -130,6 +131,10 @@ if grep -q -F '${{' "$STEPSH"; then
   bail "the agent step carries a GitHub expression this case cannot expand: $(grep -F -m1 '${{' "$STEPSH")"
 fi
 agent_step_env >"$STEPENV"
+# The agent gets the diff and its own model key, never the workflow's write
+# token: GH_TOKEN is scoped to the steps that call gh.
+assert_file_nogrep "the Agent review step never receives the workflow token" \
+  "$STEPENV" "GH_TOKEN=" "-F"
 set -a
 # shellcheck disable=SC1090 # generated from the workflow's own env: block
 . "$STEPENV"

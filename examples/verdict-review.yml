@@ -29,8 +29,6 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -48,10 +46,16 @@ jobs:
           version: latest
 
       - name: Readiness pre-check (saves agent spend)
+        env:
+          # The token is scoped to the steps that call gh. The agent step below
+          # must not inherit it: a review agent needs the diff, not write access.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           verdict ready "$GITHUB_REPOSITORY" "${{ github.event.pull_request.number }}" --check
 
       - name: Fetch the PR bundle
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           verdict fetch "$GITHUB_REPOSITORY" "${{ github.event.pull_request.number }}"
 
@@ -77,16 +81,22 @@ jobs:
             --agent "$VERDICT_AGENT"
 
       - name: Post the review
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           verdict post "$GITHUB_REPOSITORY" "${{ github.event.pull_request.number }}"
 
       - name: Review summary (advisory, never gates)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # The ranked findings, for the human reading the job log. Without
           # a gate flag report never sets an exit code on findings.
           verdict report "$GITHUB_REPOSITORY" "${{ github.event.pull_request.number }}"
 
       - name: Merge gate (findings + freshness + live threads)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # One composed exit code: 0 pass, 1 fail-or-unknown, 2 usage,
           # 3 tool error. --live auto keeps an unreachable lookup neutral;
