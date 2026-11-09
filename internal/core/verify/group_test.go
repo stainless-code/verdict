@@ -291,6 +291,11 @@ func TestGroupValidationRejectsCaptureMovedDuringCommand(t *testing.T) {
 // TestDeepGapsReadsReceiptsWithoutExecuting proves the record/report
 // visibility surface: missing and stale receipts are reported as gaps, a
 // current receipt is silent, and no command runs to produce the answer.
+//
+// "No command runs" is structural, not asserted: DeepGaps takes no commander
+// and config.RunState carries none, so there is no channel through which it
+// could execute. A run-count assertion here could never fire; the signature is
+// the guard, and a test that pretended otherwise would be decoration.
 func TestDeepGapsReadsReceiptsWithoutExecuting(t *testing.T) {
 	root := groupBundle(t)
 	dir := filepath.Join(root, ".verdict", "state", "7")
@@ -300,9 +305,6 @@ func TestDeepGapsReadsReceiptsWithoutExecuting(t *testing.T) {
 	}
 	cmdr := &groupCommander{head: groupHead, out: "ok\n"}
 	requireSingleGap(t, verifycore.DeepGaps(rs, dir, groupHead, root), "deep validation pending")
-	if len(cmdr.runs) != 0 {
-		t.Fatalf("DeepGaps executed %d commands", len(cmdr.runs))
-	}
 	if _, r2 := verifycore.Run(context.Background(), groupRequest(root, "group-a1", "true", cmdr)); r2 != nil {
 		t.Fatalf("Run: %v", r2)
 	}

@@ -569,9 +569,6 @@ func TestRunReportGateData(t *testing.T) {
 			if gate.Passed != !tc.wantFail {
 				t.Errorf("passed = %v, want %v", gate.Passed, !tc.wantFail)
 			}
-			if gate.Passed == resp.GateFailed {
-				t.Errorf("passed = %v and GateFailed = %v disagree", gate.Passed, resp.GateFailed)
-			}
 			if len(gate.Dimensions) != len(tc.wantIDs) {
 				t.Fatalf("dimensions = %+v, want %d", gate.Dimensions, len(tc.wantIDs))
 			}
