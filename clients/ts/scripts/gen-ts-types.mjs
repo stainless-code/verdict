@@ -153,7 +153,8 @@ function singleTS(type, node, defs) {
 
 function objectTS(node, defs) {
   const props = node.properties;
-  if (props === undefined || typeof props !== "object") return "unknown";
+  if (props === undefined || typeof props !== "object")
+    return mapTS(node, defs);
   const required = new Set(Array.isArray(node.required) ? node.required : []);
   const lines = [];
   for (const [name, sub] of Object.entries(props)) {
@@ -171,6 +172,18 @@ function objectTS(node, defs) {
     lines.push("  [key: string]: unknown;");
   }
   return `{\n${lines.join("\n")}\n}`;
+}
+
+// mapTS renders an open object with a typed value as a Record, so a reason
+// map keyed by capability reads as a string lookup instead of unknown. A bare
+// boolean additionalProperties keeps the legacy unknown: it promises nothing
+// about the values.
+function mapTS(node, defs) {
+  const extra = node.additionalProperties;
+  if (extra && typeof extra === "object") {
+    return `Record<string, ${toTS(extra, defs)}>`;
+  }
+  return "unknown";
 }
 
 function genTypes() {

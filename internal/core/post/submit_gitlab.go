@@ -249,8 +249,10 @@ func gitlabDiscussionOpen(discussion any) bool {
 // gitlabPost replays one hosted payload onto the merge request: a discussion
 // per inline finding, then the summary note, then the approval. A payload
 // that carries no comments is a body-split follow-up part and is a note
-// alone; only an APPROVE payload approves.
-func gitlabPost(ctx context.Context, cmdr Commander, repo, pr, dir, payload string) postAttempt {
+// alone; only an APPROVE payload on a host whose capability carries approve
+// performs the approval — a host that cannot approve posts the discussions and
+// note, and the service has already warned that the verdict did not bind.
+func gitlabPost(ctx context.Context, cmdr Commander, caps core.HostCapabilities, repo, pr, dir, payload string) postAttempt {
 	part, ok := parseGitLabPayload(payload)
 	if !ok {
 		return postFailure(dir, msgGitLabPayload, false, nil)
@@ -273,7 +275,7 @@ func gitlabPost(ctx context.Context, cmdr Commander, repo, pr, dir, payload stri
 	}
 	note := decodeGitLabNote(res.Stdout)
 	approved := false
-	if part.event == eventApprove {
+	if part.event == eventApprove && caps.Approve {
 		if ares, aerr := gitlabApprove(ctx, cmdr, repo, pr, part.commitID); aerr != nil || ares.ExitCode != 0 {
 			return postFailure(dir, failureReason(ares, aerr), true, warnings)
 		}
@@ -483,14 +485,12 @@ func orderedInt(obj *jq.Obj, key string) int {
 	return n
 }
 
-// gitlabPostWarnings states the mapping gaps this payload hits: a
-// request-changes event GitLab cannot carry, multi-line anchors the position
-// flattens, and findings that never became a discussion.
+// gitlabPostWarnings states the mapping gaps this payload hits: multi-line
+// anchors the position flattens, and findings that never became a discussion.
+// Verdict gaps — a request-changes event, an approval — come from the
+// capability table in the service, so one place decides what a host carries.
 func gitlabPostWarnings(part gitlabPostPayload) []string {
 	var warnings []string
-	if part.event == eventRequestChanges {
-		warnings = append(warnings, msgGitLabChangesEvent)
-	}
 	if n := countGitLabMultiLine(part.comments); n > 0 {
 		warnings = append(warnings, fmt.Sprintf(
 			"gitlab positions are single-line — %d multi-line anchor(s) anchored at their end line", n))

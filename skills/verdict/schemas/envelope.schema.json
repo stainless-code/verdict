@@ -1482,9 +1482,7 @@
         },
         "diff_bytes": { "type": "integer", "minimum": 0 },
         "panel": { "$ref": "#/$defs/fetchPanel" },
-        "capabilities": {
-          "description": "The provider capability summary when the bundle recorded one; shape owned by the fetch writer."
-        },
+        "capabilities": { "$ref": "#/$defs/fetchCapabilities" },
         "controls": {
           "description": "The review controls the run read from controls.json; shape owned by the controls document."
         },
@@ -1540,9 +1538,7 @@
         },
         "diff_bytes": { "type": "integer", "minimum": 0 },
         "panel": { "$ref": "#/$defs/fetchPanel" },
-        "capabilities": {
-          "description": "The provider capability summary when the bundle recorded one; shape owned by the fetch writer."
-        },
+        "capabilities": { "$ref": "#/$defs/fetchCapabilities" },
         "controls": {
           "description": "The review controls the run read from controls.json; shape owned by the controls document."
         },
@@ -1578,6 +1574,30 @@
         "panel",
         "artifacts"
       ],
+      "additionalProperties": true
+    },
+    "fetchCapabilities": {
+      "description": "What verdict can do through one host's own CLI or API: the boolean table an agent plans with, the compatibility sum review_verdicts, and one machine-readable reason per absent capability.",
+      "type": "object",
+      "properties": {
+        "provider": { "type": "string" },
+        "fetch": { "type": "boolean" },
+        "post": { "type": "boolean" },
+        "inline_anchors": { "type": "boolean" },
+        "approve": { "type": "boolean" },
+        "request_changes": { "type": "boolean" },
+        "thread_resolution": { "type": "boolean" },
+        "review_verdicts": {
+          "description": "approve && request_changes, kept so a consumer written before the split reads the same truth; new readers branch on approve and request_changes.",
+          "type": "boolean"
+        },
+        "unsupported": {
+          "description": "One machine-readable reason code per absent capability, keyed by capability name. Only an absent capability appears; a host that carries everything carries an empty object.",
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      },
+      "required": ["provider", "fetch"],
       "additionalProperties": true
     },
     "fetchPanel": {

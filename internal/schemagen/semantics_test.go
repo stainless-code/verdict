@@ -114,7 +114,14 @@ var publishedSemantics = map[string]string{
 	// Plan identity: verify.planGroup now requires id and label, and
 	// verify.checks requires head, so a verified envelope names the group it
 	// resolved rather than an anonymous profile/depth pair.
-	"envelope.schema.json": "9c7974504659b786993851ff95f37748d4262828524096be39651360eb5b952c",
+	// honest capabilities: fetchData/fetchLocalData.capabilities stops being an
+	// untyped placeholder and becomes $defs/fetchCapabilities — the booleans,
+	// the derived review_verdicts sum, and the unsupported reason map (whose
+	// values are typed strings). Only provider and fetch are required, because
+	// those are the only keys every previously written envelope carried; the
+	// split keys stay optional so legacy envelopes keep validating, while new
+	// writers always emit all of them. No other property, enum, or type changed.
+	"envelope.schema.json": "8a1a05803066cbf7e0e4349940d3019605b85e44ecd3d368f5d232d3d3944151",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

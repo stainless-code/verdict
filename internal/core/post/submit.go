@@ -314,7 +314,7 @@ func postOnce(ctx context.Context, cmdr Commander, provider, repo, pr, dir, payl
 		return postFailure(dir, errNoCommander.Error(), false, nil)
 	}
 	if provider == providerGitLab {
-		return gitlabPost(ctx, cmdr, repo, pr, dir, payload)
+		return gitlabPost(ctx, cmdr, core.CapabilitiesFor(provider), repo, pr, dir, payload)
 	}
 	res, err := cmdr.Run(ctx, &core.Command{
 		Argv:  githubReviewArgv(repo, pr),

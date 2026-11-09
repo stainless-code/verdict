@@ -343,6 +343,7 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[CalibrateJudgment](), name: "calibrateJudgment"},
 		{typ: reflect.TypeFor[FetchData](), name: "fetchData"},
 		{typ: reflect.TypeFor[FetchLocalData](), name: "fetchLocalData"},
+		{typ: reflect.TypeFor[FetchCapabilities](), name: "fetchCapabilities"},
 		{typ: reflect.TypeFor[FetchPanel](), name: "fetchPanel"},
 	}
 }
@@ -722,10 +723,13 @@ func (b *builder) mapNode(typ reflect.Type) (*node, error) {
 }
 
 // valueRef resolves a typed map value: a named struct with a $defs
-// registration validates through that reference. Every other element type
-// keeps the legacy open object, so previously published schemas do not
-// move.
+// registration validates through that reference, and a string value pins the
+// reason codes inside an open object. Every other element type keeps the
+// legacy open object, so previously published schemas do not move.
 func (b *builder) valueRef(elem reflect.Type) (*node, bool, error) {
+	if elem.Kind() == reflect.String {
+		return object(false, member{keyType, stringNode(typeString)}), true, nil
+	}
 	if elem.Kind() != reflect.Struct || elem.Name() == "" {
 		return nil, false, nil
 	}

@@ -6,15 +6,26 @@ import (
 )
 
 // capabilityWire renders one host's declared capabilities in published key
-// order: the identity first, then the booleans an agent plans with.
+// order: the identity first, then the booleans an agent plans with, then the
+// compatibility sum, then one machine-readable reason per absent capability.
+// review_verdicts stays in place as approve && request_changes so a pre-split
+// consumer keeps reading the same truth.
 func capabilityWire(provider string) *jq.Obj {
 	caps := core.CapabilitiesFor(provider)
-	return jq.NewObj(
+	obj := jq.NewObj(
 		keyProvider, caps.Provider,
 		"fetch", caps.Fetch,
 		"post", caps.Post,
 		"inline_anchors", caps.InlineAnchors,
+		"approve", caps.Approve,
+		"request_changes", caps.RequestChanges,
 		"thread_resolution", caps.ThreadResolution,
 		"review_verdicts", caps.ReviewVerdicts,
 	)
+	unsupported := jq.NewObj()
+	for _, gap := range caps.Unsupported() {
+		unsupported.Set(gap.Capability, gap.Reason)
+	}
+	obj.Set("unsupported", unsupported)
+	return obj
 }

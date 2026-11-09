@@ -172,7 +172,7 @@ func TestGitLabPositionMapping(t *testing.T) {
 			}
 			cmdr := gitlabCommander(t)
 			payload := postPayload("review body", eventComment, gitlabHead, []any{tc.comment})
-			attempt := gitlabPost(context.Background(), cmdr, "acme/app", "7", gitlabBundleDir(t, tc.diff), payload)
+			attempt := gitlabPost(context.Background(), cmdr, core.CapabilitiesFor(providerGitLab), "acme/app", "7", gitlabBundleDir(t, tc.diff), payload)
 			if !attempt.ok {
 				t.Fatalf("gitlabPost = %+v, want the accepted attempt", attempt)
 			}
@@ -216,25 +216,36 @@ func TestGitLabPositionMapping(t *testing.T) {
 }
 
 // TestGitLabPostApprovesOnlyOnApproval proves the approval is the last write
-// and covers the reviewed head by SHA, while a comment review never approves.
+// and covers the reviewed head by SHA, while a comment review never approves
+// and a host whose capability carries no approve writes no approval at all.
 func TestGitLabPostApprovesOnlyOnApproval(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name     string
 		event    string
+		caps     core.HostCapabilities
 		state    string
 		approves bool
 	}{
 		{name: "approval approves last", event: eventApprove, state: "approved", approves: true},
 		{name: "comment never approves", event: eventComment, state: "commented", approves: false},
+		{
+			name: "no approve capability writes no approval", event: eventApprove,
+			caps:  core.HostCapabilities{Provider: providerGitLab, Fetch: true, Post: true, InlineAnchors: true},
+			state: "commented", approves: false,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			cmdr := gitlabCommander(t)
+			caps := tc.caps
+			if caps.Provider == "" {
+				caps = core.CapabilitiesFor(providerGitLab)
+			}
 			payload := postPayload("review body", tc.event, gitlabHead, []any{
 				jq.NewObj("path", "notes.txt", "line", 2, "side", "RIGHT", "body", "B"),
 			})
-			attempt := gitlabPost(context.Background(), cmdr, "acme/app", "7", gitlabBundleDir(t, gitlabTestDiff), payload)
+			attempt := gitlabPost(context.Background(), cmdr, caps, "acme/app", "7", gitlabBundleDir(t, gitlabTestDiff), payload)
 			if !attempt.ok {
 				t.Fatalf("gitlabPost = %+v, want the accepted attempt", attempt)
 			}
@@ -269,7 +280,7 @@ func TestGitLabPostFollowUpPartIsNoteOnly(t *testing.T) {
 	t.Parallel()
 	cmdr := gitlabCommander(t)
 	payload := postPayload("part two", eventComment, gitlabHead, []any{})
-	attempt := gitlabPost(context.Background(), cmdr, "acme/app", "7", gitlabBundleDir(t, gitlabTestDiff), payload)
+	attempt := gitlabPost(context.Background(), cmdr, core.CapabilitiesFor(providerGitLab), "acme/app", "7", gitlabBundleDir(t, gitlabTestDiff), payload)
 	if !attempt.ok {
 		t.Fatalf("gitlabPost = %+v, want the accepted attempt", attempt)
 	}
@@ -282,15 +293,17 @@ func TestGitLabPostFollowUpPartIsNoteOnly(t *testing.T) {
 }
 
 // TestGitLabPostWarnings proves the mapping gaps the payload hits are said out
-// loud instead of silently dropped: a request-changes event GitLab cannot
-// carry, and a multi-line anchor flattened onto its end line.
+// loud instead of silently dropped: a multi-line anchor flattened onto its end
+// line, and a finding that never became a discussion. The request-changes gap
+// is a capability, so the service warns about it before any write.
 func TestGitLabPostWarnings(t *testing.T) {
 	t.Parallel()
 	cmdr := gitlabCommander(t)
 	payload := postPayload("review body", eventRequestChanges, gitlabHead, []any{
 		jq.NewObj("path", "notes.txt", "line", 2, "start_line", 1, "side", "RIGHT", "body", "B"),
+		jq.NewObj("line", 2, "side", "RIGHT", "body", "no path"),
 	})
-	attempt := gitlabPost(context.Background(), cmdr, "acme/app", "7", gitlabBundleDir(t, gitlabTestDiff), payload)
+	attempt := gitlabPost(context.Background(), cmdr, core.CapabilitiesFor(providerGitLab), "acme/app", "7", gitlabBundleDir(t, gitlabTestDiff), payload)
 	if !attempt.ok {
 		t.Fatalf("gitlabPost = %+v, want the accepted attempt", attempt)
 	}
@@ -298,10 +311,13 @@ func TestGitLabPostWarnings(t *testing.T) {
 		t.Errorf("a request-changes review approved: %q", callKeys(cmdr))
 	}
 	joined := strings.Join(attempt.warnings, "\n")
-	for _, want := range []string{"no request-changes review event", "single-line", "1 multi-line anchor"} {
+	for _, want := range []string{"single-line", "1 multi-line anchor", "1 finding(s) kept out of the diff"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("warnings = %q, want one carrying %q", attempt.warnings, want)
 		}
+	}
+	if strings.Contains(joined, "request-changes") {
+		t.Errorf("warnings = %q, want the verdict gap to come from the capability gate", attempt.warnings)
 	}
 }
 

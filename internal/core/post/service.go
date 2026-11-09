@@ -399,7 +399,7 @@ func (st *state) bindGate(ctx context.Context) *core.RefusalError {
 		return nil
 	}
 	if st.flags.RequestChanges {
-		st.event = eventRequestChanges
+		st.event = st.applyVerdictGap(eventRequestChanges)
 	} else if st.flags.Approve == approveTrue {
 		if ref := st.approveGate(); ref != nil {
 			return ref
@@ -411,6 +411,38 @@ func (st *state) bindGate(ctx context.Context) *core.RefusalError {
 	return st.authorGate(ctx)
 }
 
+// verdictGap states what a requested binding verdict loses on this host, and
+// the event to post instead: a host with no approve event cannot claim one, so
+// the review posts COMMENT, while a host with no request-changes event still
+// posts the request as its findings and summary note — the payload event is
+// verdict's own record of the request, not a host write. The capability table
+// decides, so a host that gains either event stops degrading. Pure: a test
+// flips one capability and watches both answers move.
+func verdictGap(caps core.HostCapabilities, event string) (gap, posted string) {
+	switch event {
+	case eventRequestChanges:
+		if !caps.RequestChanges {
+			return msgNoChangesEvent, eventRequestChanges
+		}
+	case eventApprove:
+		if !caps.Approve {
+			return msgNoApproveEvent, eventComment
+		}
+	}
+	return "", event
+}
+
+// applyVerdictGap warns about a verdict this host cannot carry and returns the
+// event to post for it.
+func (st *state) applyVerdictGap(event string) string {
+	gap, posted := verdictGap(core.CapabilitiesFor(st.provider()), event)
+	if gap == "" {
+		return posted
+	}
+	st.warn(fmt.Sprintf(gap, hostLabel(st.provider())))
+	return posted
+}
+
 func (st *state) unbound() bool {
 	wantBind := st.flags.Approve == approveTrue || st.flags.RequestChanges
 	if wantBind && !st.flags.Bind {
@@ -420,6 +452,9 @@ func (st *state) unbound() bool {
 }
 
 func (st *state) approveGate() *core.RefusalError {
+	if st.applyVerdictGap(eventApprove) == eventComment {
+		return nil
+	}
 	nOpen := recordcore.CountStatus(st.merged.Entries, statusOpen)
 	nDeferred := recordcore.CountStatus(st.merged.Entries, "deferred")
 	if nOpen+nDeferred > 0 && !st.flags.Force {
