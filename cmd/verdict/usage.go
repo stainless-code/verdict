@@ -7,7 +7,9 @@ func usageText() string {
 		"[--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
 		"    write .verdict/state/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
 		"(PR.json normalized for non-github providers)\n" +
-		"    Provider scope: record/report/triage/show/next run on any provider bundle; post/calibrate (live join)/adopt/ready\n" +
+		"    Provider scope: record/report/triage/show/next run on any provider bundle; post submits to GitHub and\n" +
+		"    GitLab, which takes an approval but has no request-changes event — a bound request-changes posts as a\n" +
+		"    comment; post.json records the withheld capability in withheld[]; calibrate (live join)/adopt/ready\n" +
 		"    need a GitHub bundle and refuse the rest typed (provider-unimplemented; a local bundle has its own\n" +
 		"    code — post/ready no-pr-target, calibrate no-threads, adopt bad-target). calibrate --probe is offline\n" +
 		"    and runs on any bundle. Incremental re-review\n" +
