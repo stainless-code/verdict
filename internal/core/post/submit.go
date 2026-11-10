@@ -307,23 +307,15 @@ func githubReviewArgv(repo, pr string) []string {
 	}
 }
 
-// postOnce submits one payload to the bundle's host: GitHub's single review
-// POST, or GitLab's one-discussion-per-finding replay.
-func postOnce(ctx context.Context, cmdr Commander, provider, repo, pr, dir, payload string) postAttempt {
+// postOnce submits one payload to the bundle's host through the host seam.
+func postOnce(ctx context.Context, cmdr Commander, provider string, env map[string]string,
+	repo, pr, dir, payload string,
+) postAttempt {
 	if cmdr == nil {
 		return postFailure(dir, errNoCommander.Error(), false, nil)
 	}
-	if provider == providerGitLab {
-		return gitlabPost(ctx, cmdr, core.CapabilitiesFor(provider), repo, pr, dir, payload)
-	}
-	res, err := cmdr.Run(ctx, &core.Command{
-		Argv:  githubReviewArgv(repo, pr),
-		Stdin: strings.NewReader(payload + newline),
-	})
-	if err != nil || res.ExitCode != 0 {
-		return postFailure(dir, res.Stderr, false, nil)
-	}
-	return postAccepted(dir, strings.TrimRight(res.Stdout, newline), res.Stderr, nil)
+	writer, _ := hostFor(provider)
+	return writer.post(ctx, cmdr, env, core.CapabilitiesFor(provider), repo, pr, dir, payload)
 }
 
 func (st *state) submit(ctx context.Context) (*core.PostResponse, *core.RefusalError) {
@@ -368,7 +360,7 @@ func (st *state) postWithRetry(ctx context.Context, cmdr Commander) (string, *co
 func (st *state) postOneWithRetry(ctx context.Context, cmdr Commander, payload string) (string, *core.RefusalError) {
 	st.retryAt = ""
 	for attempt := range retry.MaxAttempts {
-		res := postOnce(ctx, cmdr, st.provider(), st.req.Repo, st.req.Pr, st.dir, payload)
+		res := postOnce(ctx, cmdr, st.provider(), st.env(), st.req.Repo, st.req.Pr, st.dir, payload)
 		st.warnings = append(st.warnings, res.warnings...)
 		if res.ok {
 			return res.posted, nil

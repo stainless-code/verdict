@@ -271,12 +271,11 @@ func conformanceCommander(t *testing.T, row *hostConformance) *scriptCommander {
 }
 
 // conformanceTool is the CLI a host's submit path spawns; every other argv on
-// that row is a disagreement.
+// that row is a disagreement. It reads the host seam rather than a table, so a
+// host whose seam names another tool fails here.
 func conformanceTool(provider string) string {
-	if provider == providerGitLab {
-		return toolGlab
-	}
-	return toolGH
+	writer, _ := hostFor(provider)
+	return writer.tool()
 }
 
 // writeCounts is what the submit path actually did, counted per capability

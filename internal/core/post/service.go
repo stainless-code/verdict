@@ -223,6 +223,9 @@ func (st *state) prepare(ctx context.Context) *core.RefusalError {
 	if ref := st.checkBundle(); ref != nil {
 		return ref
 	}
+	if ref := st.hostAuthGate(); ref != nil {
+		return ref
+	}
 	if ref := st.loadReview(); ref != nil {
 		return ref
 	}
@@ -344,36 +347,37 @@ func (st *state) commanderOrNil() Commander {
 // readLiveSHA reads the host's live head for the bundle's PR, so the drift
 // check runs the same read on every host that can post.
 func (st *state) readLiveSHA(ctx context.Context) (string, error) {
-	if st.provider() != providerGitLab {
-		return ghLiveSHA(ctx, st.commanderOrNil(), st.req.Repo, st.req.Pr)
-	}
-	cmdr := st.commanderOrNil()
-	if cmdr == nil {
-		return "", errNoCommander
-	}
-	mr, _, err := gitlabMRRead(ctx, cmdr, st.req.Repo, st.req.Pr)
-	if err != nil {
-		return "", err
-	}
-	return mr.headSHA(), nil
+	_, reader := hostFor(st.provider())
+	return reader.liveSHA(ctx, st.commanderOrNil(), st.env(), st.req.Repo, st.req.Pr)
 }
 
 // selfLogin reads the authenticated login the authorship gate compares the
-// bundle author against: GitHub's user read, or GitLab's own whoami read.
+// bundle author against.
 func (st *state) selfLogin(ctx context.Context) (string, error) {
-	if st.provider() != providerGitLab {
-		return ghSelfLogin(ctx, st.commanderOrNil())
-	}
-	return gitlabSelfLogin(ctx, st.commanderOrNil())
+	_, reader := hostFor(st.provider())
+	return reader.selfLogin(ctx, st.commanderOrNil(), st.env())
 }
 
 // recheck counts the live unresolved threads the approval guard compares
-// against the store: GitHub's reviewThreads read, or GitLab's discussions.
+// against the store.
 func (st *state) recheck(ctx context.Context) (int, string, error) {
-	if st.provider() == providerGitLab {
-		return gitlabRecheck(ctx, st.commanderOrNil(), st.req.Repo, st.req.Pr, st.dir)
+	_, reader := hostFor(st.provider())
+	return reader.recheck(ctx, st.commanderOrNil(), st.env(), st.req.Repo, st.req.Pr, st.dir)
+}
+
+// hostAuthGate runs the host's local prerequisite gate, which fires before the
+// first call a post makes.
+func (st *state) hostAuthGate() *core.RefusalError {
+	_, reader := hostFor(st.provider())
+	return reader.auth(st.env())
+}
+
+// env is the runtime environment the host reads its credentials from.
+func (st *state) env() map[string]string {
+	if st.req != nil && st.req.Runtime != nil {
+		return st.req.Runtime.Env
 	}
-	return postRecheck(ctx, st.commanderOrNil(), st.req.Repo, st.req.Pr, st.dir)
+	return nil
 }
 
 func (st *state) applyApprovedFlag() {
