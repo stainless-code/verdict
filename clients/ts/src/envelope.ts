@@ -18,6 +18,7 @@ import type {
   ReportGate,
   ShowData,
   ThreadsData,
+  ThreadsResolveData,
   TriageData,
   TrendData,
   VerifyData,
@@ -65,7 +66,7 @@ export interface DataFor {
   triage: TriageData;
   fetch: FetchData;
   "fetch-local": FetchLocalData;
-  threads: ThreadsData;
+  threads: ThreadsData | ThreadsResolveData;
   verify: VerifyData;
   "check-tree": CheckTreeData;
   config: ConfigData;

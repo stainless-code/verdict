@@ -599,6 +599,26 @@ export interface ThreadsData {
   [key: string]: unknown;
 }
 
+/** threads resolve --json data: the receipt path, the host and head it proves, the ids it closed, and the candidates it left open with a reason. A dry run carries the same plan with dry_run true and writes nothing. */
+export interface ThreadsResolveData {
+  dir: string;
+  file: string;
+  provider: string;
+  head_sha: string;
+  resolved_at: string;
+  dry_run: boolean;
+  resolved: Array<string>;
+  skipped: Array<ThreadsResolveSkip>;
+  [key: string]: unknown;
+}
+
+/** One candidate a resolve run left open: its host thread id and the machine-readable reason (already-resolved, no-finding-link, finding-not-addressed). */
+export interface ThreadsResolveSkip {
+  id: string;
+  reason: string;
+  [key: string]: unknown;
+}
+
 /** verify --json data: the command's exit status, whether the watchdog timed it out, the redacted output tail, the patch read back from the bundle, and whether the run was sandboxed (absent means unsandboxed). A timed-out run is never proof. */
 export interface VerifyData {
   exit: number;
