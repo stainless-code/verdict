@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -43,18 +44,22 @@ type RemovalSet struct {
 
 // Uninstall removes the payload files the receipt owns, then the receipt.
 // Foreign files survive, and a target without a receipt refuses unless Force.
+// Every path is resolved inside the opened target root, so a symlink cannot
+// point a stat or a removal outside it; a target that is itself a symlink
+// refuses before anything is touched.
 func Uninstall(ctx context.Context, req *Request) (Removal, *core.RefusalError) {
 	if err := ctx.Err(); err != nil {
 		return Removal{}, refuse(codeCanceled, "canceled before skill uninstall completed")
 	}
-	rm, ref := planRemoval(ctx, req)
+	rm, root, ref := planRemoval(ctx, req)
 	if ref != nil {
 		return Removal{}, ref
 	}
+	defer func() { _ = root.Close() }()
 	if req.DryRun {
 		return rm, nil
 	}
-	if ref := applyRemoval(&rm); ref != nil {
+	if ref := applyRemoval(root, &rm); ref != nil {
 		return Removal{}, ref
 	}
 	return rm, nil
@@ -74,65 +79,69 @@ func UninstallAgents(ctx context.Context, req *Request, agents []string) (Remova
 	}
 	agents = dedupeAgents(agents)
 	removals := make([]Removal, 0, len(agents))
+	roots := make([]*os.Root, 0, len(agents))
+	closeRoots := func() {
+		for _, root := range roots {
+			_ = root.Close()
+		}
+	}
 	for _, agent := range agents {
 		at := *req
 		at.Agent = agent
-		rm, ref := planRemoval(ctx, &at)
+		rm, root, ref := planRemoval(ctx, &at)
 		if ref != nil {
+			closeRoots()
 			return RemovalSet{}, ref
 		}
 		removals = append(removals, rm)
+		roots = append(roots, root)
 	}
 	set := RemovalSet{Name: files.Name, Version: files.Version, Agents: agents, Targets: removals}
 	if req.DryRun {
+		closeRoots()
 		return set, nil
 	}
+	defer closeRoots()
 	for i := range removals {
-		if ref := applyRemoval(&removals[i]); ref != nil {
+		if ref := applyRemoval(roots[i], &removals[i]); ref != nil {
 			return RemovalSet{}, ref
 		}
 	}
 	return set, nil
 }
 
-func planRemoval(ctx context.Context, req *Request) (Removal, *core.RefusalError) {
+func planRemoval(ctx context.Context, req *Request) (Removal, *os.Root, *core.RefusalError) {
 	files, ref := List(ctx, req)
 	if ref != nil {
-		return Removal{}, ref
+		return Removal{}, nil, ref
 	}
 	target, ref := req.target()
 	if ref != nil {
-		return Removal{}, ref
+		return Removal{}, nil, ref
 	}
 	return planRemovalPath(req, files, target)
 }
 
-//
-//nolint:revive // the receipt/force/status classification
-func planRemovalPath(req *Request, files Inventory, target string) (Removal, *core.RefusalError) {
+func planRemovalPath(req *Request, files Inventory, target string) (Removal, *os.Root, *core.RefusalError) {
 	rm := Removal{Name: files.Name, Version: files.Version, Agent: req.Agent, Target: target, DryRun: req.DryRun}
-	info, err := os.Lstat(target)
-	if errors.Is(err, os.ErrNotExist) {
-		return Removal{}, refuse(codeNotInstall, "no installed skill at "+target+" (run `verdict skill install` first)")
+	root, ref := openTargetRoot(target)
+	if ref != nil {
+		return Removal{}, nil, ref
 	}
-	if err != nil {
-		return Removal{}, refuse(codeInstall, fmt.Sprintf("cannot inspect %s: %s", target, err))
-	}
-	if !info.IsDir() {
-		return Removal{}, refuse(codeTargetFile, target+" exists and is not a directory; refusing to remove it")
-	}
-	version, owned := readReceipt(filepath.Join(target, ReceiptName))
+	version, owned := readReceiptRoot(root)
 	rm.ReceiptVersion = version
 	if !owned && !req.Force && !req.DryRun {
-		return Removal{}, refuse(codeForeign, target+" is a non-verdict skill dir (no "+ReceiptName+
+		_ = root.Close()
+		return Removal{}, nil, refuse(codeForeign, target+" is a non-verdict skill dir (no "+ReceiptName+
 			" receipt); re-run with --force to remove only verdict's payload files")
 	}
-	present, ref := ownedPayload(target, files.Files)
+	present, ref := ownedPayload(root, target, files.Files)
 	if ref != nil {
-		return Removal{}, ref
+		_ = root.Close()
+		return Removal{}, nil, ref
 	}
 	rm.Would = present
-	rm.Kept = foreignPayload(target, files.Files)
+	rm.Kept = foreignPayload(root, files.Files)
 	switch {
 	case !owned && !req.Force:
 		rm.Status = StatusBlocked
@@ -141,19 +150,40 @@ func planRemovalPath(req *Request, files Inventory, target string) (Removal, *co
 	default:
 		rm.Status = StatusRemove
 	}
-	return rm, nil
+	return rm, root, nil
 }
 
-func ownedPayload(target string, files []string) ([]string, *core.RefusalError) {
+func openTargetRoot(target string) (*os.Root, *core.RefusalError) {
+	info, err := os.Lstat(target)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, refuse(codeNotInstall, "no installed skill at "+target+" (run `verdict skill install` first)")
+	}
+	if err != nil {
+		return nil, refuse(codeInstall, fmt.Sprintf("cannot inspect %s: %s", target, err))
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return nil, refuse(codeTargetFile, target+" is a symlink; refusing to remove through it")
+	}
+	if !info.IsDir() {
+		return nil, refuse(codeTargetFile, target+" exists and is not a directory; refusing to remove it")
+	}
+	root, err := os.OpenRoot(target)
+	if err != nil {
+		return nil, refuse(codeInstall, fmt.Sprintf("cannot inspect %s: %s", target, err))
+	}
+	return root, nil
+}
+
+func ownedPayload(root *os.Root, target string, files []string) ([]string, *core.RefusalError) {
 	present := make([]string, 0, len(files))
 	for _, rel := range files {
 		path := filepath.Join(target, filepath.FromSlash(rel))
-		info, err := os.Lstat(path)
+		info, err := root.Lstat(filepath.FromSlash(rel))
 		if errors.Is(err, os.ErrNotExist) {
 			continue
 		}
 		if err != nil {
-			return nil, refuse(codeInstall, fmt.Sprintf("cannot inspect %s: %s", path, err))
+			return nil, refuse(codeConflict, path+" is not a removable file inside the skill dir; refusing to remove it ("+err.Error()+")")
 		}
 		if !info.Mode().IsRegular() {
 			return nil, refuse(codeConflict, path+" is not a regular file; refusing to remove it")
@@ -163,28 +193,23 @@ func ownedPayload(target string, files []string) ([]string, *core.RefusalError) 
 	return present, nil
 }
 
-//
 //nolint:revive // one directory walk classifies owned and foreign files
-func foreignPayload(target string, files []string) []string {
+func foreignPayload(root *os.Root, files []string) []string {
 	owned := make(map[string]bool, len(files)+1)
 	for _, rel := range files {
 		owned[rel] = true
 	}
 	owned[ReceiptName] = true
 	var kept []string
-	err := filepath.WalkDir(target, func(path string, entry os.DirEntry, err error) error {
+	err := fs.WalkDir(root.FS(), ".", func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if entry.IsDir() {
+		if entry.IsDir() || path == "." {
 			return nil
 		}
-		rel, relErr := filepath.Rel(target, path)
-		if relErr != nil {
-			return fmt.Errorf("rel %s: %w", path, relErr)
-		}
-		if rel = filepath.ToSlash(rel); !owned[rel] {
-			kept = append(kept, rel)
+		if !owned[path] {
+			kept = append(kept, path)
 		}
 		return nil
 	})
@@ -195,17 +220,19 @@ func foreignPayload(target string, files []string) []string {
 	return kept
 }
 
-func applyRemoval(rm *Removal) *core.RefusalError {
+func applyRemoval(root *os.Root, rm *Removal) *core.RefusalError {
 	for _, rel := range rm.Would {
 		path := filepath.Join(rm.Target, filepath.FromSlash(rel))
-		if err := os.Remove(path); err != nil {
+		if err := root.Remove(filepath.FromSlash(rel)); err != nil {
 			return refuse(codeInstall, fmt.Sprintf("cannot remove %s: %s", path, err))
 		}
 	}
-	if err := removeReceipt(rm); err != nil {
+	if err := removeReceipt(root, rm); err != nil {
 		return err
 	}
-	pruneEmptyDirs(rm.Target)
+	pruneEmptyDirs(root)
+	_ = root.Close()
+	removeTargetDir(rm.Target)
 	rm.Removed = rm.Would
 	rm.Would = nil
 	if len(rm.Removed) > 0 {
@@ -216,10 +243,9 @@ func applyRemoval(rm *Removal) *core.RefusalError {
 	return nil
 }
 
-func removeReceipt(rm *Removal) *core.RefusalError {
-	path := filepath.Join(rm.Target, ReceiptName)
-	if _, err := os.Lstat(path); err == nil {
-		if err := os.Remove(path); err != nil {
+func removeReceipt(root *os.Root, rm *Removal) *core.RefusalError {
+	if _, err := root.Lstat(ReceiptName); err == nil {
+		if err := root.Remove(ReceiptName); err != nil {
 			return refuse(codeInstall, fmt.Sprintf("removed the payload but not the receipt: %s", err))
 		}
 		rm.ReceiptRemoved = true
@@ -227,9 +253,17 @@ func removeReceipt(rm *Removal) *core.RefusalError {
 	return nil
 }
 
-func pruneEmptyDirs(target string) {
+func pruneEmptyDirs(root *os.Root) {
 	for _, dir := range []string{payloadPromptsDir, payloadSchemasDir, payloadScriptsDir} {
-		os.Remove(filepath.Join(target, dir)) // non-empty: a foreign file keeps the directory
+		root.Remove(dir) //nolint:errcheck // best-effort prune; a foreign file keeps the directory
 	}
-	os.Remove(target) // non-empty: a foreign file keeps the directory
+}
+
+func removeTargetDir(target string) {
+	parent, err := os.OpenRoot(filepath.Dir(target))
+	if err != nil {
+		return
+	}
+	defer func() { _ = parent.Close() }()
+	parent.Remove(filepath.Base(target)) //nolint:errcheck // best-effort prune; a foreign file keeps the directory
 }

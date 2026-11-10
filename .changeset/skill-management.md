@@ -16,7 +16,10 @@ and exits 0 in sync and 1 when drifted, so CI can gate without
 deduplicated and handled in argv order, while `--dir` stays single.
 `skill uninstall [--dir|--agent...] [--force] [--dry-run] [--json]` deletes
 only the inventory paths the `.verdict-managed` receipt owns, then the receipt,
-and leaves every foreign file in place; a target without a receipt refuses
+and leaves every foreign file in place; a target that is a symlink
+(`skill-target-file`) or an inventory path that escapes the target through a
+symlinked directory (`skill-foreign-conflict`) refuses before any deletion; a
+target without a receipt refuses
 `skill-dir-foreign` unless `--force` (which still removes only inventory
 paths), an absent install refuses `skill-not-installed`, and `--dry-run`
 deletes nothing. `verdict uninstall`'s skill-copy hint now names

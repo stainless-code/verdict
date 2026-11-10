@@ -1670,7 +1670,10 @@ platform package. A plain `verdict` call consults neither variable.
   `verdict skill uninstall [--dir <skills-dir>|--agent <name>...] [--force] [--dry-run] [--json]`
   deletes only the inventory paths the receipt owns and
   then the receipt, pruning the payload directories it empties; every foreign
-  file survives. A target without a receipt refuses typed
+  file survives. A target that is a symlink refuses (`skill-target-file`), and
+  an inventory path that escapes the target through a symlinked directory
+  refuses (`skill-foreign-conflict`) before any file inside it is removed. A
+  target without a receipt refuses typed
   (`skill-dir-foreign`) unless `--force`, which still deletes only inventory
   paths; a target that was never installed refuses (`skill-not-installed`),
   and `--dry-run` lists the plan and deletes nothing. `verdict uninstall`'s

@@ -401,6 +401,18 @@ func readReceipt(path string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
+	return parseReceipt(raw)
+}
+
+func readReceiptRoot(root *os.Root) (string, bool) {
+	raw, err := root.ReadFile(ReceiptName)
+	if err != nil {
+		return "", false
+	}
+	return parseReceipt(raw)
+}
+
+func parseReceipt(raw []byte) (string, bool) {
 	doc, err := jq.DecodeObject(raw)
 	if err != nil || doc["tool"] != Name {
 		return "", false

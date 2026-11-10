@@ -68,6 +68,40 @@ run_review skill uninstall --dir "$EMPTY" --json
 assert_exit "an absent install refuses" 1
 assert_refusal "absent install refusal" "skill-not-installed"
 
+ESCAPE="$EVAL_SANDBOX/escape"
+OUTSIDE="$EVAL_SANDBOX/outside"
+run_review skill install --dir "$ESCAPE" --json
+assert_exit "seed an escaping install" 0
+mkdir -p "$OUTSIDE"
+printf 'outside bytes\n' >"$OUTSIDE/review.md"
+rm -rf "$ESCAPE/verdict/prompts"
+ln -s "$OUTSIDE" "$ESCAPE/verdict/prompts"
+run_review skill uninstall --dir "$ESCAPE" --dry-run --json
+assert_exit "dry-run on an escaping payload dir refuses" 1
+assert_refusal "escaping payload dir (dry-run)" "skill-foreign-conflict"
+assert_json_field "the dry-run names the escape" "true" '.error.message | contains("path escapes from parent")'
+run_review skill uninstall --dir "$ESCAPE" --json
+assert_exit "uninstall on an escaping payload dir refuses" 1
+assert_refusal "escaping payload dir (receipt-owned)" "skill-foreign-conflict"
+run_review skill uninstall --dir "$ESCAPE" --force --json
+assert_exit "uninstall --force on an escaping payload dir refuses" 1
+assert_refusal "escaping payload dir (--force)" "skill-foreign-conflict"
+if [ -f "$OUTSIDE/review.md" ] && grep -qx 'outside bytes' "$OUTSIDE/review.md" \
+  && [ -f "$ESCAPE/verdict/SKILL.md" ] && [ -f "$ESCAPE/verdict/.verdict-managed" ]; then
+  good "the escape removed nothing outside the target and no payload inside it"
+else
+  bad "the escape removed an outside file or a payload file"
+fi
+
+LINKED="$EVAL_SANDBOX/linked"
+LINKED_REAL="$EVAL_SANDBOX/linked-real"
+mkdir -p "$LINKED" "$LINKED_REAL"
+ln -s "$LINKED_REAL" "$LINKED/verdict"
+run_review skill uninstall --dir "$LINKED" --json
+assert_exit "a symlinked target refuses" 1
+assert_refusal "symlinked target refusal" "skill-target-file"
+assert_json_field "the refusal names the symlink" "true" '.error.message | contains("is a symlink")'
+
 if [ ! -s "$EVAL_STUBLOG" ]; then
   good "uninstall makes zero host calls (offline)"
 else
