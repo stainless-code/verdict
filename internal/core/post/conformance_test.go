@@ -80,13 +80,18 @@ const conformanceReview = `{"schema_version":"1","body":"> ✅ Looks good — mi
 // hostConformance is one host's row: the exact argv each write it can fire
 // uses, and the degradations docs/manual.md promises for what it cannot do.
 type hostConformance struct {
-	provider string
 	// gaps is the phrase docs/manual.md's reason-code row and the operator
 	// message must share, keyed by a submit capability the host lacks.
 	gaps map[string]string
 	// partial is the word docs/manual.md's submit row and the runtime warning
 	// must share, keyed by a capability the host carries but loses part of.
 	partial map[string]string
+	// wireEvent is the spelling this host's payload carries for a verdict
+	// event, where it differs from GitHub's vocabulary.
+	wireEvent map[string]string
+	// env is the environment the host's local auth gate reads.
+	env      map[string]string
+	provider string
 	// noSubmitDoc is the phrase docs/manual.md's §Providers Gaps cell promises
 	// a fetch-only host's refusal stands in for.
 	noSubmitDoc string
@@ -99,14 +104,9 @@ type hostConformance struct {
 	// approveArgv records an approval. Empty means the approval rides bodyArgv
 	// as that payload's own verdict event.
 	approveArgv string
-	// wireEvent is the spelling this host's payload carries for a verdict
-	// event, where it differs from GitHub's vocabulary.
-	wireEvent map[string]string
 	// lineField is the payload key this host's review comment anchors its line
 	// in; empty means GitHub's `line`.
 	lineField string
-	// env is the environment the host's local auth gate reads.
-	env map[string]string
 }
 
 // conformanceRows is the matrix: the three hosts with a submit path, and one
@@ -270,7 +270,7 @@ func runConformance(t *testing.T, row *hostConformance, scn conformanceScenario)
 	req := postTestReq(cmdr, flags, &warnings, &human)
 	req.RepoRoot = root
 	if row.env != nil {
-		req.Runtime.Env = maps.Clone(row.env)
+		req.Env = maps.Clone(row.env)
 	}
 	resp, ref := Run(context.Background(), req)
 	return &conformanceRun{calls: cmdr.calls, stdin: cmdr.stdin, root: root, response: resp, refusal: ref}

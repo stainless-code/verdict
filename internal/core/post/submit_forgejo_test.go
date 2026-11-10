@@ -302,8 +302,8 @@ func TestForgejoDraftGateAllowsStrangerDraft(t *testing.T) {
 }
 
 // TestForgejoDraftGateUnreadableUserRefuses proves the draft gate fails closed:
-// without the token user's login verdict cannot tell a stranger's draft from its
-// own, so the write is refused instead of risking publishing that draft.
+// without the token user's login verdict cannot tell a stranger's draft from
+// its own, so the write is refused instead of risking publishing that draft.
 func TestForgejoDraftGateUnreadableUserRefuses(t *testing.T) {
 	t.Parallel()
 	dir := forgejoPostDir(t)
