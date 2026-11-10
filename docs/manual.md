@@ -1278,6 +1278,9 @@ it. The argv it builds is
 
 ### Refusals, exit codes, and provenance
 
+Every refusal code the binary can emit is listed with its cause and its fix in
+[`docs/troubleshooting.md`](troubleshooting.md).
+
 Every way `run` can fail is typed, carries a `try:` hint, and leaves the
 agent's own failure visible to CI:
 
