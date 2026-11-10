@@ -100,7 +100,7 @@ for anchor in --json verify-destructive verify-networked verify-credential-read 
 done
 [ "$anchors_ok" = "true" ] && good "U5 block keeps --json, the verify codes, and token-scopes-excess"
 if grep -q -F -- "mcp [--read-only | --operator] (experimental)" "$USAGE" \
-  && grep -q -F -- "mcp config --agent <claude|cursor|codex>" "$USAGE" \
+  && grep -q -F -- "mcp config --agent <claude|cursor|codex|gemini|qwen|windsurf|opencode|goose|copilot>" "$USAGE" \
   && grep -q -F -- "(experimental)" "$USAGE"; then
   good "U5 block lists mcp and mcp config tagged experimental"
 else

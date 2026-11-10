@@ -1,0 +1,11 @@
+{
+  "servers": {
+    "verdict": {
+      "type": "stdio",
+      "command": "verdict",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}

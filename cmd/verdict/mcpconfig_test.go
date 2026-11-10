@@ -128,3 +128,53 @@ func TestMCPConfigUsage(t *testing.T) {
 		t.Errorf("stderr = %q", got)
 	}
 }
+
+// TestMCPConfigReadOnlySnippet proves --read-only lands in the printed entry.
+func TestMCPConfigReadOnlySnippet(t *testing.T) {
+	t.Chdir(t.TempDir())
+	env := testEnv(map[string]string{"HOME": t.TempDir()})
+	out, errOut := mcpTempFiles(t)
+	code := run([]string{"mcp", "config", "--agent", "claude", "--read-only"}, out, errOut, env, os.ReadFile)
+	if code != 0 {
+		t.Fatalf("exit = %d, stderr = %s", code, readOutput(t, errOut))
+	}
+	if got := readOutput(t, out); !strings.Contains(got, "--read-only") {
+		t.Errorf("snippet misses --read-only:\n%s", got)
+	}
+}
+
+// TestMCPConfigWriteUpdatesOwned proves --write upgrades a verdict-owned entry.
+func TestMCPConfigWriteUpdatesOwned(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	env := testEnv(map[string]string{"HOME": t.TempDir()})
+	out, errOut := mcpTempFiles(t)
+	if code := run([]string{"mcp", "config", "--agent", "claude", "--write"}, out, errOut, env, os.ReadFile); code != 0 {
+		t.Fatalf("write exit = %d, stderr = %s", code, readOutput(t, errOut))
+	}
+	out2, errOut2 := mcpTempFiles(t)
+	if code := run([]string{"mcp", "config", "--agent", "claude", "--write", "--read-only"}, out2, errOut2, env, os.ReadFile); code != 0 {
+		t.Fatalf("update exit = %d, stderr = %s", code, readOutput(t, errOut2))
+	}
+	if got := readOutput(t, out2); !strings.Contains(got, "update") {
+		t.Errorf("second write status = %q, want update", got)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, ".mcp.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "--read-only") {
+		t.Errorf("merged config misses --read-only:\n%s", raw)
+	}
+}
+
+// TestMCPConfigPrintOnlyWriteRefuses proves print-only hosts refuse --write.
+func TestMCPConfigPrintOnlyWriteRefuses(t *testing.T) {
+	t.Chdir(t.TempDir())
+	env := testEnv(map[string]string{"HOME": t.TempDir()})
+	out, errOut := mcpTempFiles(t)
+	code := run([]string{"mcp", "config", "--agent", "opencode", "--write"}, out, errOut, env, os.ReadFile)
+	if code != 1 {
+		t.Fatalf("exit = %d, want 1 (typed refusal)", code)
+	}
+}

@@ -41,7 +41,7 @@ func FuzzMergeJSON(f *testing.F) {
 		f.Add([]byte(s))
 	}
 	f.Fuzz(func(t *testing.T, old []byte) {
-		out, changed, ref := mergeJSON(old, "cfg.json")
+		out, changed, ref := mergeJSON(old, "cfg.json", []string{"mcp"})
 		if ref != nil {
 			assertRefusalIsClean(t, ref.Code, out, changed)
 			return
@@ -114,7 +114,7 @@ func assertMergedJSON(t *testing.T, old, out []byte) {
 	}
 	delete(servers, "verdict")
 	assertOperatorKeysKept(t, stdRoot(old), merged, old)
-	if _, again, ref := mergeJSON(out, "cfg.json"); ref != nil || again {
+	if _, again, ref := mergeJSON(out, "cfg.json", []string{"mcp"}); ref != nil || again {
 		t.Fatalf("second merge not a no-op: changed=%v ref=%v for %q", again, ref, out)
 	}
 }
@@ -166,7 +166,7 @@ func FuzzMergeTOML(f *testing.F) {
 		mustMergeTOML(f, s)
 	}
 	f.Fuzz(func(t *testing.T, old []byte) {
-		out, changed, ref := mergeTOML(old, "config.toml")
+		out, changed, ref := mergeTOML(old, "config.toml", []string{"mcp"})
 		if ref != nil {
 			assertRefusalIsClean(t, ref.Code, out, changed)
 			return
@@ -183,7 +183,7 @@ func FuzzMergeTOML(f *testing.F) {
 // unchanged or without the table.
 func mustMergeTOML(f *testing.F, s string) {
 	f.Helper()
-	out, changed, ref := mergeTOML([]byte(s), "config.toml")
+	out, changed, ref := mergeTOML([]byte(s), "config.toml", []string{"mcp"})
 	if ref != nil || !changed || !bytes.Contains(out, []byte("[mcp_servers.verdict]")) {
 		f.Fatalf("mergeTOML(%q) = changed=%v out=%q ref=%v, want the verdict table", s, changed, out, ref)
 	}
@@ -198,7 +198,7 @@ func assertMergedTOML(t *testing.T, old, out []byte) {
 	if !bytes.Contains(out, []byte("[mcp_servers.verdict]")) && !bytes.Contains(old, []byte("mcp_servers")) {
 		t.Fatalf("merge added no [mcp_servers.verdict] table: %q", out)
 	}
-	if _, again, ref := mergeTOML(out, "config.toml"); ref != nil || again {
+	if _, again, ref := mergeTOML(out, "config.toml", []string{"mcp"}); ref != nil || again {
 		t.Fatalf("second merge not a no-op: changed=%v ref=%v for %q", again, ref, out)
 	}
 }

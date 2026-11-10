@@ -193,7 +193,7 @@ func TestJSONRefusals(t *testing.T) {
 		{"array", `[]`, CodeUnparseable},
 		{"servers-not-object", `{"mcpServers":[]}`, CodeUnparseable},
 		{"foreign-entry", `{"mcpServers":{"verdict":{"command":"other","args":["mcp"]}}}`, CodeForeign},
-		{"foreign-args", `{"mcpServers":{"verdict":{"command":"verdict","args":["mcp","--read-only"]}}}`, CodeForeign},
+		{"foreign-args", `{"mcpServers":{"verdict":{"command":"verdict","args":["mcp","--bogus"]}}}`, CodeForeign},
 	} {
 		req := testRequest(t, AgentClaude, true)
 		req.Cwd = t.TempDir()
@@ -672,5 +672,282 @@ func TestTOMLMultiLineStringAfterTheTable(t *testing.T) {
 	}
 	if strings.Count(string(raw), "[mcp_servers.verdict]") != 1 {
 		t.Errorf("duplicate table:\n%s", raw)
+	}
+}
+
+// TestFlagSnippets proves each posture combination lands in the JSON snippet.
+func TestFlagSnippets(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		readOnly bool
+		operator bool
+	}{
+		{"plain", false, false},
+		{"read-only", true, false},
+		{"operator", false, true},
+		{"both", true, true},
+	} {
+		checkFlagSnippet(t, tc.name, tc.readOnly, tc.operator)
+	}
+}
+
+//nolint:revive,cyclop // the presence/absence/order checks read as one assertion block
+func checkFlagSnippet(t *testing.T, name string, readOnly, operator bool) {
+	t.Helper()
+	req := testRequest(t, AgentClaude, false)
+	req.ReadOnly = readOnly
+	req.Operator = operator
+	res, ref := Run(req)
+	if ref != nil {
+		t.Fatalf("%s: %v", name, ref)
+	}
+	mcp := strings.Index(res.Snippet, `"mcp"`)
+	ro := strings.Index(res.Snippet, `"--read-only"`)
+	op := strings.Index(res.Snippet, `"--operator"`)
+	if mcp < 0 {
+		t.Errorf("%s snippet misses \"mcp\":\n%s", name, res.Snippet)
+	}
+	if readOnly && ro < 0 {
+		t.Errorf("%s snippet misses --read-only:\n%s", name, res.Snippet)
+	}
+	if operator && op < 0 {
+		t.Errorf("%s snippet misses --operator:\n%s", name, res.Snippet)
+	}
+	if !readOnly && ro >= 0 {
+		t.Errorf("%s snippet carries --read-only:\n%s", name, res.Snippet)
+	}
+	if !operator && op >= 0 {
+		t.Errorf("%s snippet carries --operator:\n%s", name, res.Snippet)
+	}
+	if readOnly && operator && (mcp > ro || ro > op) {
+		t.Errorf("%s snippet argv out of order:\n%s", name, res.Snippet)
+	}
+}
+
+// TestFlagSnippetsTOML proves each posture combination lands in the TOML table.
+func TestFlagSnippetsTOML(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		want     string
+		readOnly bool
+		operator bool
+	}{
+		{"plain", `args = ["mcp"]`, false, false},
+		{"read-only", `args = ["mcp", "--read-only"]`, true, false},
+		{"operator", `args = ["mcp", "--operator"]`, false, true},
+		{"both", `args = ["mcp", "--read-only", "--operator"]`, true, true},
+	} {
+		req := testRequest(t, AgentCodex, false)
+		req.ReadOnly = tc.readOnly
+		req.Operator = tc.operator
+		res, ref := Run(req)
+		if ref != nil {
+			t.Fatalf("%s: %v", tc.name, ref)
+		}
+		if !strings.Contains(res.Snippet, tc.want) {
+			t.Errorf("%s snippet misses %q:\n%s", tc.name, tc.want, res.Snippet)
+		}
+	}
+}
+
+// TestJSONOwnershipUpdate proves --write upgrades an owned entry in place.
+//
+//nolint:revive,cyclop // the seed/update/keep sequence reads as one assertion block
+func TestJSONOwnershipUpdate(t *testing.T) {
+	t.Parallel()
+	req := testRequest(t, AgentClaude, true)
+	req.Cwd = t.TempDir()
+	path := filepath.Join(req.Cwd, ".mcp.json")
+	seed := `{"zeta":1,"mcpServers":{"verdict":{"command":"verdict","args":["mcp"]}}}` + "\n"
+	if err := os.WriteFile(path, []byte(seed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	req.ReadOnly = true
+	res, ref := Run(req)
+	if ref != nil {
+		t.Fatalf("update: %v", ref)
+	}
+	if res.Status != StatusUpdate || !res.Changed || res.Backup == "" {
+		t.Fatalf("update result = %+v", res)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"--read-only"`) || !strings.Contains(string(raw), `"zeta"`) {
+		t.Errorf("updated JSON misses argv or operator keys:\n%s", raw)
+	}
+	backup, err := os.ReadFile(res.Backup)
+	if err != nil || string(backup) != seed {
+		t.Errorf("backup = %q %v", backup, err)
+	}
+	again, ref := Run(req)
+	if ref != nil || again.Status != StatusKeep {
+		t.Fatalf("keep = %+v %v", again, ref)
+	}
+}
+
+// TestJSONOwnershipDowngrade proves --write drops a flag the request omits.
+func TestJSONOwnershipDowngrade(t *testing.T) {
+	t.Parallel()
+	req := testRequest(t, AgentClaude, true)
+	req.Cwd = t.TempDir()
+	path := filepath.Join(req.Cwd, ".mcp.json")
+	seed := `{"mcpServers":{"verdict":{"command":"verdict","args":["mcp","--read-only"]}}}` + "\n"
+	if err := os.WriteFile(path, []byte(seed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, ref := Run(req)
+	if ref != nil {
+		t.Fatalf("downgrade: %v", ref)
+	}
+	if res.Status != StatusUpdate || !res.Changed {
+		t.Fatalf("downgrade result = %+v", res)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "--read-only") {
+		t.Errorf("downgrade kept the flag:\n%s", raw)
+	}
+}
+
+// TestTOMLOwnershipUpdate proves --write rewrites an owned TOML argv in place.
+//
+//nolint:revive // the seed/update/keep sequence reads as one assertion block
+func TestTOMLOwnershipUpdate(t *testing.T) {
+	t.Parallel()
+	req := testRequest(t, AgentCodex, true)
+	req.Cwd = t.TempDir()
+	req.Env["CODEX_HOME"] = req.Cwd
+	req.ReadOnly = true
+	path := filepath.Join(req.Cwd, "config.toml")
+	seed := "[mcp_servers.verdict]\nstartup_timeout_sec = 20\ncommand = \"verdict\"\nargs = [\"mcp\"]\n"
+	if err := os.WriteFile(path, []byte(seed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, ref := Run(req)
+	if ref != nil {
+		t.Fatalf("update: %v", ref)
+	}
+	if res.Status != StatusUpdate || !res.Changed {
+		t.Fatalf("update result = %+v", res)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `args = ["mcp", "--read-only"]`) || !strings.Contains(string(raw), "startup_timeout_sec = 20") {
+		t.Errorf("updated TOML misses argv or operator keys:\n%s", raw)
+	}
+	if again, ref := Run(req); ref != nil || again.Status != StatusKeep {
+		t.Errorf("second run = %+v %v, want keep", again, ref)
+	}
+}
+
+// TestNewHostPaths proves the documented config location per new host.
+func TestNewHostPaths(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	cwd := t.TempDir()
+	for _, tc := range []struct {
+		agent string
+		want  string
+	}{
+		{AgentGemini, filepath.Join(home, ".gemini", "settings.json")},
+		{AgentQwen, filepath.Join(home, ".qwen", "settings.json")},
+		{AgentWindsurf, filepath.Join(home, ".codeium", "windsurf", "mcp_config.json")},
+		{AgentOpencode, filepath.Join(cwd, "opencode.json")},
+		{AgentGoose, filepath.Join(home, ".config", "goose", "config.yaml")},
+		{AgentCopilot, filepath.Join(cwd, ".vscode", "mcp.json")},
+	} {
+		req := &Request{Agent: tc.agent, Cwd: cwd, Env: map[string]string{"HOME": home}}
+		res, ref := Run(req)
+		if ref != nil {
+			t.Fatalf("%s: %v", tc.agent, ref)
+		}
+		if res.Path != tc.want {
+			t.Errorf("%s path = %s, want %s", tc.agent, res.Path, tc.want)
+		}
+	}
+}
+
+// TestNewHostSnippetShapes proves each new host gets its own entry shape.
+//
+//nolint:revive // the per-host matrix reads as one assertion block
+func TestNewHostSnippetShapes(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		agent string
+		want  []string
+	}{
+		{AgentGemini, []string{`"mcpServers"`, `"verdict"`, `"command": "verdict"`}},
+		{AgentQwen, []string{`"mcpServers"`, `"verdict"`, `"command": "verdict"`}},
+		{AgentWindsurf, []string{`"mcpServers"`, `"verdict"`, `"command": "verdict"`}},
+		{AgentOpencode, []string{`"mcp"`, `"verdict"`, `"type": "local"`, `"verdict"`, `"mcp"`}},
+		{AgentGoose, []string{"extensions:", "verdict:", "cmd: verdict"}},
+		{AgentCopilot, []string{`"servers"`, `"verdict"`, `"command": "verdict"`}},
+	} {
+		req := &Request{Agent: tc.agent, Cwd: t.TempDir(), Env: map[string]string{"HOME": t.TempDir()}}
+		res, ref := Run(req)
+		if ref != nil {
+			t.Fatalf("%s: %v", tc.agent, ref)
+		}
+		for _, w := range tc.want {
+			if !strings.Contains(res.Snippet, w) {
+				t.Errorf("%s snippet misses %q:\n%s", tc.agent, w, res.Snippet)
+			}
+		}
+	}
+}
+
+// TestPrintOnlyWriteRefuses proves print-only hosts refuse --write typed.
+func TestPrintOnlyWriteRefuses(t *testing.T) {
+	t.Parallel()
+	for _, agent := range []string{AgentOpencode, AgentGoose, AgentCopilot} {
+		req := &Request{Agent: agent, Write: true, Cwd: t.TempDir(), Env: map[string]string{"HOME": t.TempDir()}}
+		_, ref := Run(req)
+		if ref == nil || ref.Code != CodeUnmergeable {
+			t.Errorf("%s --write ref = %v, want %s", agent, ref, CodeUnmergeable)
+		}
+		if ref != nil && !strings.Contains(ref.Message, agent) {
+			t.Errorf("%s refusal misses the host name: %q", agent, ref.Message)
+		}
+	}
+}
+
+// TestGeminiMergePreservesKeys proves --write keeps the host's own keys.
+//
+//nolint:revive // the seed/merge sequence reads as one assertion block
+func TestGeminiMergePreservesKeys(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	req := &Request{Agent: AgentGemini, Write: true, Cwd: t.TempDir(), Env: map[string]string{"HOME": home}}
+	path := filepath.Join(home, ".gemini", "settings.json")
+	seed := `{"theme":"dark","mcpServers":{"other":{"command":"x"}}}` + "\n"
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(seed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, ref := Run(req)
+	if ref != nil {
+		t.Fatalf("merge: %v", ref)
+	}
+	if res.Status != StatusUpdate || res.Backup == "" {
+		t.Fatalf("merge result = %+v", res)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"theme"`, `"other"`, `"verdict"`} {
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("merged settings miss %q:\n%s", want, raw)
+		}
 	}
 }

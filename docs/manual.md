@@ -1021,16 +1021,24 @@ stdout is the protocol channel.
 
 #### Host config
 
-`verdict mcp config --agent <claude|cursor|codex>` prints the exact entry (the
-default is print-only, like `--dry-run`). Add `--write` to merge it into the
-host's documented config, or `--json` for one envelope with the path, format,
-snippet, and merge status. It never prompts and never starts the server.
+`verdict mcp config --agent <claude|cursor|codex|gemini|qwen|windsurf|opencode|goose|copilot>`
+prints the exact entry (the default is print-only, like `--dry-run`). Add
+`--read-only` and/or `--operator` to put the matching argv after `mcp` in the
+snippet. Add `--write` to merge it into the host's documented config, or
+`--json` for one envelope with the path, format, snippet, and merge status. It
+never prompts and never starts the server.
 
-| Agent    | Config file                                            | Format |
-| -------- | ------------------------------------------------------ | ------ |
-| `claude` | project `.mcp.json`                                    | JSON   |
-| `cursor` | project `.cursor/mcp.json`                             | JSON   |
-| `codex`  | `$CODEX_HOME/config.toml`, else `~/.codex/config.toml` | TOML   |
+| Agent      | Config file                                            | Format | `--write`  |
+| ---------- | ------------------------------------------------------ | ------ | ---------- |
+| `claude`   | project `.mcp.json`                                    | JSON   | merges     |
+| `cursor`   | project `.cursor/mcp.json`                             | JSON   | merges     |
+| `codex`    | `$CODEX_HOME/config.toml`, else `~/.codex/config.toml` | TOML   | merges     |
+| `gemini`   | `~/.gemini/settings.json`                              | JSON   | merges     |
+| `qwen`     | `~/.qwen/settings.json`                                | JSON   | merges     |
+| `windsurf` | `~/.codeium/windsurf/mcp_config.json`                  | JSON   | merges     |
+| `opencode` | project `opencode.json`                                | JSON   | print-only |
+| `copilot`  | project `.vscode/mcp.json`                             | JSON   | print-only |
+| `goose`    | `~/.config/goose/config.yaml`                          | YAML   | print-only |
 
 ```json
 { "mcpServers": { "verdict": { "command": "verdict", "args": ["mcp"] } } }
@@ -1043,25 +1051,24 @@ args = ["mcp"]
 ```
 
 `--write` is idempotent: an existing matching entry is `keep` and nothing is
-written; an absent one is `create`/`update`. The previous file is copied to
-`<path>.verdict.bak` before the first changing write. Unknown keys and other
-servers are preserved. A file that does not parse, or a `verdict` entry whose
-command/argv differs (including a `--read-only` argv), refuses typed instead of
-being rewritten; for TOML only a plain `[mcp_servers.verdict]` table is
-merged — inline/dotted spellings refuse rather than guess, and a header, key, or
-comment counts only outside strings and comments. A file that ends inside an
-unterminated TOML string, or whose `[mcp_servers.verdict]` line opens one,
-refuses too: the merge never writes keys the next run would read as string
-content. The file's own line endings are kept. Fix or remove the entry by hand
-and re-run.
+written; an absent one is `create`/`update`. An existing `verdict` entry whose
+argv is one of verdict's own shapes (`["mcp"]` plus any combination of
+`--read-only`/`--operator`) is updated in place to the requested argv; any
+other command/argv refuses typed (`mcp-config-foreign`) instead of being
+rewritten. The previous file is copied to `<path>.verdict.bak` before the
+first changing write. Unknown keys and other servers are preserved. A file that
+does not parse refuses typed instead of being rewritten; for TOML only a plain
+`[mcp_servers.verdict]` table is merged — inline/dotted spellings refuse
+rather than guess, and a header, key, or comment counts only outside strings
+and comments. A file that ends inside an unterminated TOML string, or whose
+`[mcp_servers.verdict]` line opens one, refuses too: the merge never writes
+keys the next run would read as string content. The file's own line endings
+are kept. Fix or remove the entry by hand and re-run.
 
-Use `--read-only` in review-only hosts by editing the entry to
-`{"command":"verdict","args":["mcp","--read-only"]}` (or the TOML
-`args = ["mcp", "--read-only"]`). An operator's own assistant opts into the
-human-owned verbs the same way with `args = ["mcp", "--operator"]`; never
-combine the two flags. `mcp config --write` refuses either edited entry on a
-later run because its argv differs; that is intentional, since silently
-rewriting it would widen the host's permissions.
+`opencode` (`"mcp"` map with `{type:"local", command:[...]}`),
+`copilot` (`"servers"` map), and `goose` (`extensions` YAML) are print-only:
+`--write` refuses typed naming the host, so copy the printed snippet into the
+host config by hand.
 
 The server is experimental until 1.0: tool shapes may still move, while the
 envelope keeps its `schema_version` contract.

@@ -11,7 +11,8 @@ import (
 
 func mcpUsageText() string {
 	return "usage: verdict mcp [--read-only | --operator]\n" +
-		"       verdict mcp config --agent <claude|cursor|codex> [--write] [--dry-run] [--json]\n" +
+		"       verdict mcp config --agent <claude|cursor|codex|gemini|qwen|windsurf|opencode|goose|copilot>\n" +
+		"       [--write] [--dry-run] [--json] [--read-only] [--operator]\n" +
 		"  Serve the review verbs as MCP tools over stdio (JSON-RPC 2.0, one frame per line).\n" +
 		"  stdout is the protocol channel; progress and warnings go to stderr.\n" +
 		"  Protocol: initialize, notifications/initialized, tools/list, tools/call, ping,\n" +
@@ -28,10 +29,13 @@ func mcpUsageText() string {
 		"  returns the review doctrine in `instructions`. Success data matches the CLI --json\n" +
 		"  envelope's data; typed refusals return isError=true with code/message/hint.\n" +
 		"\n" +
-		"  mcp config prints the exact host snippet; --write merges it idempotently into\n" +
-		"  .mcp.json (claude), .cursor/mcp.json (cursor), or $CODEX_HOME/config.toml (codex),\n" +
-		"  backing up the old file and refusing unparseable or foreign configs. It never\n" +
-		"  prompts and never starts the server. --dry-run is the default (print only).\n"
+		"  mcp config prints the exact host snippet for --read-only/--operator too; --write merges it idempotently into\n" +
+		"  .mcp.json (claude), .cursor/mcp.json (cursor), $CODEX_HOME/config.toml (codex),\n" +
+		"  ~/.gemini/settings.json (gemini), ~/.qwen/settings.json (qwen),\n" +
+		"  ~/.codeium/windsurf/mcp_config.json (windsurf), backing up the old file\n" +
+		"  and refusing unparseable or foreign configs. opencode.json (opencode),\n" +
+		"  .vscode/mcp.json (copilot), and ~/.config/goose/config.yaml (goose) are\n" +
+		"  print-only. It never prompts and never starts the server. --dry-run is the default (print only).\n"
 }
 
 //

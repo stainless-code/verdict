@@ -21,7 +21,7 @@ func TestVerbMissingValue(t *testing.T) {
 		{"skill install dir", "--dir needs a value", []string{"skill", "install", "--dir"}},
 		{"skill install agent", "--agent needs a value", []string{"skill", "install", "--agent"}},
 		{"upgrade version", "--version needs a value", []string{"upgrade", "--version"}},
-		{"mcp config agent", "--agent needs a value (want claude, cursor, or codex)", []string{"mcp", "config", "--agent"}},
+		{"mcp config agent", "--agent needs a value (want claude, cursor, codex, gemini, qwen, windsurf, opencode, goose, or copilot)", []string{"mcp", "config", "--agent"}},
 		{"fetch base-sha", "--base-sha needs a value (want <sha>)", []string{"fetch", "acme/app", "7", "--base-sha"}},
 		{"fetch since", "--since needs a value (want <sha>)", []string{"fetch", "acme/app", "7", "--since"}},
 		{"fetch provider", "--provider needs a value (want <name>)", []string{"fetch", "acme/app", "7", "--provider"}},

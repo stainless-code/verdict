@@ -276,7 +276,8 @@ func usageText() string {
 		"  mcp [--read-only | --operator] (experimental)\n" +
 		"    serve the review verbs as MCP tools over stdio (JSON-RPC 2.0, one frame per line).\n" +
 		"    stdout is the protocol channel; progress and warnings go to stderr.\n" +
-		"  mcp config --agent <claude|cursor|codex> [--write] [--dry-run] [--json] (experimental)\n" +
+		"  mcp config --agent <claude|cursor|codex|gemini|qwen|windsurf|opencode|goose|copilot>\n" +
+		"       [--write] [--dry-run] [--json] [--read-only] [--operator] (experimental)\n" +
 		"    print or idempotently merge the exact host config snippet; never prompts.\n" +
 		"  Global presentation flags (any verb, before or after the verb, repo, and pr;\n" +
 		"  global flags are stripped before the positionals are read):\n" +

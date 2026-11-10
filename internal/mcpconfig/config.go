@@ -1,5 +1,5 @@
 // Package mcpconfig renders one host's MCP server snippet and merges it into
-// that host's config file (Claude/Cursor JSON, Codex TOML). The merge is
+// that host's config file (Claude/Cursor/JSON hosts, Codex TOML). The merge is
 // deliberately minimal: ordered JSON via internal/jq and a plain
 // [mcp_servers.verdict] table for TOML, placed by a line scan that tracks TOML
 // strings and comments, never a full parser. Anything it cannot merge safely
@@ -23,12 +23,19 @@ import (
 
 // Supported agents, formats, merge statuses, and refusal codes.
 const (
-	AgentClaude = "claude"
-	AgentCursor = "cursor"
-	AgentCodex  = "codex"
+	AgentClaude   = "claude"
+	AgentCursor   = "cursor"
+	AgentCodex    = "codex"
+	AgentGemini   = "gemini"
+	AgentQwen     = "qwen"
+	AgentWindsurf = "windsurf"
+	AgentOpencode = "opencode"
+	AgentGoose    = "goose"
+	AgentCopilot  = "copilot"
 
 	FormatJSON = "json"
 	FormatTOML = "toml"
+	FormatYAML = "yaml"
 
 	StatusCreate  = "create"
 	StatusUpdate  = "update"
@@ -50,13 +57,15 @@ const (
 	serverName     = "verdict"
 	command        = "verdict"
 	mcpArg         = "mcp"
+	readOnlyFlag   = "--read-only"
+	operatorFlag   = "--operator"
+	maxOwnedArgs   = 3
 	configPerm     = 0o600
 	dirPerm        = 0o755
 	tomlName       = "mcp_servers.verdict"
 	jsonServersKey = "mcpServers"
 	keyCommand     = "command"
 	keyArgs        = "args"
-	argsValue      = `["mcp"]`
 	newline        = "\n"
 	openBracket    = "["
 	closeBracket   = "]"
@@ -72,11 +81,13 @@ const (
 //
 //nolint:govet // field order documents the invocation surface; alignment is irrelevant
 type Request struct {
-	Agent  string
-	Write  bool
-	DryRun bool
-	Cwd    string
-	Env    map[string]string
+	Agent    string
+	Write    bool
+	DryRun   bool
+	Cwd      string
+	Env      map[string]string
+	ReadOnly bool
+	Operator bool
 }
 
 // Result is the snippet to print plus the merge outcome.
@@ -91,8 +102,9 @@ type Result struct {
 }
 
 type host struct {
-	path   string
-	format string
+	path      string
+	format    string
+	printOnly bool
 }
 
 // Run resolves the host, renders its snippet, and (unless this is a preview)
@@ -102,29 +114,37 @@ func Run(req *Request) (Result, *core.RefusalError) {
 	if ref != nil {
 		return Result{}, ref
 	}
+	want := wantArgsList(req)
 	res := Result{
 		Agent: req.Agent, Path: where.path, Format: where.format,
-		Snippet: snippet(where.format), Status: StatusPreview,
+		Snippet: snippet(req.Agent, where.format, want), Status: StatusPreview,
 	}
 	if !req.Write || req.DryRun {
 		return res, nil
 	}
-	old, existed, mode, ref := readConfig(where.path)
-	if ref != nil {
-		return Result{}, ref
-	}
-	merged, changed, ref := merge(where.format, old, where.path)
-	if ref != nil {
-		return Result{}, ref
-	}
-	if !changed {
-		res.Status = StatusKeep
-		return res, nil
-	}
-	if ref := apply(where.path, old, merged, existed, mode, &res); ref != nil {
+	if ref := store(req, where, want, &res); ref != nil {
 		return Result{}, ref
 	}
 	return res, nil
+}
+
+func store(req *Request, where host, want []string, res *Result) *core.RefusalError {
+	if where.printOnly {
+		return refuse(CodeUnmergeable, req.Agent+" --write is print-only; copy the snippet into "+where.path+" by hand")
+	}
+	old, existed, mode, ref := readConfig(where.path)
+	if ref != nil {
+		return ref
+	}
+	merged, changed, ref := merge(where.format, old, where.path, want)
+	if ref != nil {
+		return ref
+	}
+	if !changed {
+		res.Status = StatusKeep
+		return nil
+	}
+	return apply(where.path, old, merged, existed, mode, res)
 }
 
 func apply(path string, old, merged []byte, existed bool, mode os.FileMode, res *Result) *core.RefusalError {
@@ -149,43 +169,153 @@ func apply(path string, old, merged []byte, existed bool, mode os.FileMode, res 
 	return nil
 }
 
+// wantArgsList renders the requested posture argv after `mcp`.
+func wantArgsList(req *Request) []string {
+	out := []string{mcpArg}
+	if req == nil {
+		return out
+	}
+	if req.ReadOnly {
+		out = append(out, readOnlyFlag)
+	}
+	if req.Operator {
+		out = append(out, operatorFlag)
+	}
+	return out
+}
+
+func toAnyArgs(want []string) []any {
+	out := make([]any, 0, len(want))
+	for _, a := range want {
+		out = append(out, a)
+	}
+	return out
+}
+
+// homeDir reads HOME for user-scoped host configs.
+func homeDir(env map[string]string) string {
+	if env == nil {
+		return ""
+	}
+	return env["HOME"]
+}
+
 func resolve(req *Request) (host, *core.RefusalError) {
 	if req == nil {
 		return host{}, refuse(CodeUnknownAgent, "mcp config needs an agent")
 	}
-	switch req.Agent {
-	case AgentClaude:
-		return host{filepath.Join(req.Cwd, ".mcp.json"), FormatJSON}, nil
-	case AgentCursor:
-		return host{filepath.Join(req.Cwd, ".cursor", "mcp.json"), FormatJSON}, nil
-	case AgentCodex:
-		base := req.Env["CODEX_HOME"]
-		if base == "" {
-			home := req.Env["HOME"]
-			if home == "" {
-				return host{}, refuse(CodeNoHome, "codex config needs HOME or CODEX_HOME; set one and re-run")
-			}
-			base = filepath.Join(home, ".codex")
+	if spec, ok := cwdHosts[req.Agent]; ok {
+		return host{filepath.Join(req.Cwd, spec.rel), spec.format, spec.printOnly}, nil
+	}
+	if spec, ok := homeHosts[req.Agent]; ok {
+		home := homeDir(req.Env)
+		if home == "" {
+			return host{}, refuse(CodeNoHome, req.Agent+" config needs HOME; set it and re-run")
 		}
-		return host{filepath.Join(base, "config.toml"), FormatTOML}, nil
-	default:
-		return host{}, refuse(CodeUnknownAgent,
-			fmt.Sprintf("unknown agent %q (want claude, cursor, or codex)", req.Agent))
+		return host{filepath.Join(home, spec.rel), spec.format, spec.printOnly}, nil
 	}
+	if req.Agent == AgentCodex {
+		return codexHost(req.Env)
+	}
+	return host{}, refuse(CodeUnknownAgent,
+		fmt.Sprintf("unknown agent %q (want claude, cursor, codex, gemini, qwen, windsurf, opencode, goose, or copilot)", req.Agent))
 }
 
-func snippet(format string) string {
+type hostSpec struct {
+	rel       string
+	format    string
+	printOnly bool
+}
+
+var cwdHosts = map[string]hostSpec{
+	AgentClaude:   {".mcp.json", FormatJSON, false},
+	AgentCursor:   {filepath.Join(".cursor", "mcp.json"), FormatJSON, false},
+	AgentOpencode: {"opencode.json", FormatJSON, true},
+	AgentCopilot:  {filepath.Join(".vscode", "mcp.json"), FormatJSON, true},
+}
+
+var homeHosts = map[string]hostSpec{
+	AgentGemini:   {filepath.Join(".gemini", "settings.json"), FormatJSON, false},
+	AgentQwen:     {filepath.Join(".qwen", "settings.json"), FormatJSON, false},
+	AgentWindsurf: {filepath.Join(".codeium", "windsurf", "mcp_config.json"), FormatJSON, false},
+	AgentGoose:    {filepath.Join(".config", "goose", "config.yaml"), FormatYAML, true},
+}
+
+func codexBase(env map[string]string) (string, *core.RefusalError) {
+	if base := env["CODEX_HOME"]; base != "" {
+		return base, nil
+	}
+	if home := env["HOME"]; home != "" {
+		return filepath.Join(home, ".codex"), nil
+	}
+	return "", refuse(CodeNoHome, "codex config needs HOME or CODEX_HOME; set one and re-run")
+}
+
+func codexHost(env map[string]string) (host, *core.RefusalError) {
+	base, ref := codexBase(env)
+	if ref != nil {
+		return host{}, ref
+	}
+	return host{filepath.Join(base, "config.toml"), FormatTOML, false}, nil
+}
+
+// snippet renders the host's documented entry for the requested posture.
+// Standard JSON hosts share the mcpServers shape; opencode, copilot, and
+// goose each use their own host shape.
+func snippet(agent, format string, want []string) string {
+	switch agent {
+	case AgentOpencode:
+		return opencodeSnippet(want)
+	case AgentCopilot:
+		return copilotSnippet(want)
+	case AgentGoose:
+		return gooseSnippet(want)
+	}
 	if format == FormatTOML {
-		return tomlTable()
+		return tomlTable(want)
 	}
-	return jq.NewObj(jsonServersKey, jq.NewObj(serverName, entry())).MarshalPretty() + newline
+	return jq.NewObj(jsonServersKey, jq.NewObj(serverName, entryFor(want))).MarshalPretty() + newline
 }
 
-func tomlTable() string {
-	return strings.Join(tableLines(), newline) + newline
+// Gemini CLI settings (~/.gemini/settings.json) carry MCP servers under
+// top-level "mcpServers" with {command, args} entries, per the Gemini CLI
+// configuration docs. Qwen Code settings (~/.qwen/settings.json) follow the
+// same shape, per the Qwen Code docs. Windsurf's MCP config
+// (~/.codeium/windsurf/mcp_config.json) is a JSON object with top-level
+// "mcpServers", per the Windsurf MCP docs.
+
+// opencode's project config (opencode.json) carries MCP servers under
+// top-level "mcp" mapping names to {type:"local", command:[...]} entries, per
+// the opencode MCP docs. Unverified live (offline); print-only.
+func opencodeSnippet(want []string) string {
+	cmd := append([]any{command}, toAnyArgs(want)...)
+	return jq.NewObj("mcp", jq.NewObj(serverName,
+		jq.NewObj("type", "local", keyCommand, cmd))).MarshalPretty() + newline
 }
 
-func entry() *jq.Obj { return jq.NewObj(keyCommand, command, keyArgs, []any{mcpArg}) }
+// VS Code's workspace MCP file (.vscode/mcp.json) carries servers under
+// top-level "servers" with {command, args} entries, per the VS Code MCP docs.
+// Unverified live (offline); print-only.
+func copilotSnippet(want []string) string {
+	return jq.NewObj("servers", jq.NewObj(serverName,
+		jq.NewObj("type", "stdio", keyCommand, command, keyArgs, toAnyArgs(want)))).MarshalPretty() + newline
+}
+
+// goose's user config (~/.config/goose/config.yaml) carries MCP extensions
+// under top-level "extensions" with stdio cmd/args entries, per the goose MCP
+// docs. Unverified live (offline); print-only, YAML is rendered by hand.
+func gooseSnippet(want []string) string {
+	return "extensions:\n  verdict:\n    enabled: true\n    type: stdio\n    cmd: verdict\n    args: [" +
+		strings.Join(want, ", ") + "]\n"
+}
+
+func tomlTable(want []string) string {
+	return strings.Join(tableLines(want), newline) + newline
+}
+
+func entryFor(want []string) *jq.Obj {
+	return jq.NewObj(keyCommand, command, keyArgs, toAnyArgs(want))
+}
 
 func readConfig(path string) ([]byte, bool, os.FileMode, *core.RefusalError) {
 	info, err := os.Lstat(path)
@@ -209,18 +339,19 @@ func readConfig(path string) ([]byte, bool, os.FileMode, *core.RefusalError) {
 }
 
 // merge dispatches on the host format and reports whether bytes changed.
-func merge(format string, old []byte, path string) ([]byte, bool, *core.RefusalError) {
+func merge(format string, old []byte, path string, want []string) ([]byte, bool, *core.RefusalError) {
 	if format == FormatTOML {
-		return mergeTOML(old, path)
+		return mergeTOML(old, path, want)
 	}
-	return mergeJSON(old, path)
+	return mergeJSON(old, path, want)
 }
 
 // mergeJSON upserts mcpServers.verdict without dropping unknown keys. A
-// different existing command/argv is foreign, never silently rewritten.
+// verdict entry whose argv is one of verdict's own shapes is updated in place;
+// a different existing command/argv is foreign, never silently rewritten.
 //
 //nolint:revive // the ordered upsert reads as one block
-func mergeJSON(old []byte, path string) ([]byte, bool, *core.RefusalError) {
+func mergeJSON(old []byte, path string, want []string) ([]byte, bool, *core.RefusalError) {
 	root := jq.NewObj()
 	if len(bytes.TrimSpace(old)) > 0 {
 		value, err := jq.DecodeOrdered(old)
@@ -245,17 +376,23 @@ func mergeJSON(old []byte, path string) ([]byte, bool, *core.RefusalError) {
 	}
 	if value, has := servers.Get(serverName); has {
 		server, ok := value.(*jq.Obj)
-		if !ok || !matches(server) {
+		if !ok || !isOwnedServer(server) {
 			return nil, false, refuse(CodeForeign,
 				path+" already configures mcpServers.verdict differently; refusing to rewrite it")
 		}
-		return nil, false, nil
+		if argsEqualJSON(server, want) {
+			return nil, false, nil
+		}
+		server.Set(keyArgs, toAnyArgs(want))
+		return []byte(root.MarshalPretty() + newline), true, nil
 	}
-	servers.Set(serverName, entry())
+	servers.Set(serverName, entryFor(want))
 	return []byte(root.MarshalPretty() + newline), true, nil
 }
 
-func matches(server *jq.Obj) bool {
+// isOwnedServer reports whether the entry is verdict's own shape: the verdict
+// command with an argv of ["mcp"] plus any combination of the posture flags.
+func isOwnedServer(server *jq.Obj) bool {
 	cmd, ok := server.Get(keyCommand)
 	if !ok || cmd != command {
 		return false
@@ -265,33 +402,77 @@ func matches(server *jq.Obj) bool {
 		return false
 	}
 	args, ok := value.([]any)
-	return ok && len(args) == 1 && args[0] == mcpArg
+	return ok && isOwnedArgs(args)
 }
 
-func mergeTOML(old []byte, path string) ([]byte, bool, *core.RefusalError) {
+func isOwnedArgs(args []any) bool {
+	if len(args) == 0 || len(args) > maxOwnedArgs {
+		return false
+	}
+	if args[0] != mcpArg {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, item := range args[1:] {
+		if !ownedFlag(item, seen) {
+			return false
+		}
+	}
+	return true
+}
+
+func ownedFlag(item any, seen map[string]bool) bool {
+	flag, ok := item.(string)
+	if !ok || (flag != readOnlyFlag && flag != operatorFlag) || seen[flag] {
+		return false
+	}
+	seen[flag] = true
+	return true
+}
+
+func argsEqualJSON(server *jq.Obj, want []string) bool {
+	value, ok := server.Get(keyArgs)
+	if !ok {
+		return false
+	}
+	got, ok := value.([]any)
+	if !ok || len(got) != len(want) {
+		return false
+	}
+	for i, w := range want {
+		s, ok := got[i].(string)
+		if !ok || s != w {
+			return false
+		}
+	}
+	return true
+}
+
+func mergeTOML(old []byte, path string, want []string) ([]byte, bool, *core.RefusalError) {
 	doc := scanTOML(string(old))
 	if ref := doc.unterminated(path); ref != nil {
 		return nil, false, ref
 	}
 	start, end := doc.verdictTable()
 	if start < 0 {
-		return doc.appendNewTable(path)
+		return doc.appendNewTable(path, want)
 	}
-	return doc.completeTable(start, end, path)
+	return doc.completeTable(start, end, path, want)
 }
 
 // appendNewTable adds the whole table to a file that has none, unless a
 // non-table spelling of the server is already there to define it.
-func (d *tomlDoc) appendNewTable(path string) ([]byte, bool, *core.RefusalError) {
+func (d *tomlDoc) appendNewTable(path string, want []string) ([]byte, bool, *core.RefusalError) {
 	if ref := d.spellingRefusal(path); ref != nil {
 		return nil, false, ref
 	}
-	return d.appendTable(), true, nil
+	return d.appendTable(want), true, nil
 }
 
-// completeTable fills the keys the table is missing, and treats a table that
-// carries both as configured: the operator's spelling stays byte-identical.
-func (d *tomlDoc) completeTable(start, end int, path string) ([]byte, bool, *core.RefusalError) {
+// completeTable fills the keys the table is missing, keeps a table that
+// already carries the requested argv byte-identical, and rewrites an owned
+// argv to the requested one in place.
+func (d *tomlDoc) completeTable(start, end int, path string, want []string) ([]byte, bool, *core.RefusalError) {
 	if ref := d.headerString(start, path); ref != nil {
 		return nil, false, ref
 	}
@@ -300,9 +481,41 @@ func (d *tomlDoc) completeTable(start, end int, path string) ([]byte, bool, *cor
 		return nil, false, ref
 	}
 	if hasCommand && hasArgs {
-		return nil, false, nil
+		if d.tableArgsMatch(start, end, want) {
+			return nil, false, nil
+		}
+		return d.rewriteTableArgs(start, end, want), true, nil
 	}
-	return d.fillTable(start, hasCommand, hasArgs), true, nil
+	return d.fillTable(start, hasCommand, hasArgs, want), true, nil
+}
+
+// tableArgsMatch reports whether every args line in the table already carries
+// the requested argv.
+func (d *tomlDoc) tableArgsMatch(start, end int, want []string) bool {
+	wantCompact := compactArgs(renderTOMLArgs(want))
+	for _, line := range d.scan[start+1 : end] {
+		if !line.hasPair || line.key != keyArgs {
+			continue
+		}
+		if compactArgs(line.value) != wantCompact {
+			return false
+		}
+	}
+	return true
+}
+
+func (d *tomlDoc) rewriteTableArgs(start, end int, want []string) []byte {
+	lines := make([]string, 0, len(d.lines))
+	lines = append(lines, d.lines[:start+1]...)
+	rendered := keyArgs + ` = ` + renderTOMLArgs(want)
+	for i := start + 1; i < end; i++ {
+		if d.scan[i].hasPair && d.scan[i].key == keyArgs {
+			lines = append(lines, rendered)
+			continue
+		}
+		lines = append(lines, d.lines[i])
+	}
+	return d.render(append(lines, d.lines[end:]...))
 }
 
 // TOML's triple-quoted forms are the only strings that may span a newline, so a
@@ -383,26 +596,44 @@ func (l *tomlLine) keyRefusal(path string) *core.RefusalError {
 			return foreignTable(path, keyCommand)
 		}
 	case keyArgs:
-		if compactArgs(l.value) != argsValue {
+		if !ownedTOMLArgs[compactArgs(l.value)] {
 			return foreignTable(path, keyArgs)
 		}
 	}
 	return nil
 }
 
-func (d *tomlDoc) fillTable(start int, hasCommand, hasArgs bool) []byte {
+// ownedTOMLArgs holds every compacted argv verdict itself emits: ["mcp"] plus
+// any combination of the posture flags, in either order for the pair.
+var ownedTOMLArgs = map[string]bool{
+	`["mcp"]`:                            true,
+	`["mcp","--read-only"]`:              true,
+	`["mcp","--operator"]`:               true,
+	`["mcp","--read-only","--operator"]`: true,
+	`["mcp","--operator","--read-only"]`: true,
+}
+
+func renderTOMLArgs(want []string) string {
+	quoted := make([]string, 0, len(want))
+	for _, a := range want {
+		quoted = append(quoted, doubleQuote+a+doubleQuote)
+	}
+	return openBracket + strings.Join(quoted, ", ") + closeBracket
+}
+
+func (d *tomlDoc) fillTable(start int, hasCommand, hasArgs bool, want []string) []byte {
 	lines := make([]string, 0, len(d.lines)+2)
 	lines = append(lines, d.lines[:start+1]...)
 	if !hasCommand {
 		lines = append(lines, keyCommand+` = "`+command+`"`)
 	}
 	if !hasArgs {
-		lines = append(lines, keyArgs+` = `+argsValue)
+		lines = append(lines, keyArgs+` = `+renderTOMLArgs(want))
 	}
 	return d.render(append(lines, d.lines[start+1:]...))
 }
 
-func (d *tomlDoc) appendTable() []byte {
+func (d *tomlDoc) appendTable(want []string) []byte {
 	lines := slices.Clone(d.lines)
 	for len(lines) > 0 && blankLine(lines[len(lines)-1]) {
 		lines = lines[:len(lines)-1]
@@ -410,7 +641,7 @@ func (d *tomlDoc) appendTable() []byte {
 	if len(lines) > 0 {
 		lines = append(lines, "")
 	}
-	return d.render(append(lines, tableLines()...))
+	return d.render(append(lines, tableLines(want)...))
 }
 
 func (d *tomlDoc) render(lines []string) []byte {
@@ -586,11 +817,11 @@ func tomlOpen(raw string, i int) (tomlString, int) {
 	}
 }
 
-func tableLines() []string {
+func tableLines(want []string) []string {
 	return []string{
 		openBracket + tomlName + closeBracket,
 		keyCommand + ` = "` + command + `"`,
-		keyArgs + ` = ` + argsValue,
+		keyArgs + ` = ` + renderTOMLArgs(want),
 	}
 }
 

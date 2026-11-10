@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "verdict": {
+      "command": "verdict",
+      "args": [
+        "mcp",
+        "--read-only",
+        "--operator"
+      ]
+    }
+  }
+}

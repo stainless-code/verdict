@@ -230,10 +230,17 @@
 # refusal's supported-host list add a few KiB of text; darwin/arm64 lands in
 # a fresh 16 KiB segment at 11489602 and moves to the next 10 kB above it,
 # the other five stay put.
+# MCP config hosts (ergonomics E1): posture argv (--read-only/--operator),
+# ownership-aware rewrite, and six new hosts (gemini/qwen/windsurf merge,
+# opencode/copilot/goose print-only) with snippet goldens. Measured here:
+# darwin/amd64 12531376, darwin/arm64 11489618, linux/amd64 12308640,
+# linux/arm64 11272352, windows/amd64 12645376, windows/arm64 11368448.
+# Five ceilings cross and move to the next 10 kB at least 5 kB above their
+# measurement; linux/arm64 holds.
 deps 0
-darwin/amd64 12520000
-darwin/arm64 11490000
-linux/amd64 12300000
+darwin/amd64 12540000
+darwin/arm64 11500000
+linux/amd64 12320000
 linux/arm64 11280000
-windows/amd64 12640000
-windows/arm64 11360000
+windows/amd64 12660000
+windows/arm64 11380000
