@@ -817,3 +817,47 @@ func TestUninstall(t *testing.T) {
 		})
 	}
 }
+
+// TestUninstallSkillHintNamesOnlyTheResolvedRoot pins the skill-copy hint: the
+// single-target `skill uninstall` verb is named only when its fixed target is
+// the detected skill root, and a sibling skill dir gets a hint that cannot
+// resolve to it.
+func TestUninstallSkillHintNamesOnlyTheResolvedRoot(t *testing.T) {
+	t.Parallel()
+	home := resolvedTempDir(t)
+	skills := filepath.Join(home, ".agents", "skills")
+	cases := []struct {
+		name string
+		exe  string
+		want string
+	}{
+		{
+			name: "verdict root",
+			exe:  filepath.Join(skills, "verdict", "bin", "verdict"),
+			want: "verdict skill uninstall --dir " + skills + " --force",
+		},
+		{
+			name: "sibling root",
+			exe:  filepath.Join(skills, "other", "bin", "verdict"),
+			want: "the tool that installed the skill copy at " + filepath.Join(skills, "other"),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			req := baseRequest(t)
+			req.Env["HOME"] = home
+			req.Executable = tc.exe
+			_, ref := upgrade.Uninstall(context.Background(), &req)
+			if ref == nil || ref.Code != "uninstall-foreign" {
+				t.Fatalf("refusal = %+v, want uninstall-foreign", ref)
+			}
+			if !strings.Contains(ref.Message, tc.want) {
+				t.Fatalf("message = %q, want it to contain %q", ref.Message, tc.want)
+			}
+			if tc.name == "sibling root" && strings.Contains(ref.Message, "--force") {
+				t.Fatalf("message = %q, want no command that can reach a sibling", ref.Message)
+			}
+		})
+	}
+}

@@ -1683,7 +1683,9 @@ platform package. A plain `verdict` call consults neither variable.
   (`skill-dir-foreign`) unless `--force`, which still deletes only inventory
   paths; a target that was never installed refuses (`skill-not-installed`),
   and `--dry-run` lists the plan and deletes nothing. `verdict uninstall`'s
-  skill-copy refusal names this verb instead of `rm -rf`.
+  skill-copy refusal names this verb only when the copy's root is the
+  `verdict` skill dir; any other skills dir is named in place, so the hint
+  can never remove a sibling.
 
 ## Publish footer + attribution knobs
 
