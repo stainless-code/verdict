@@ -1,0 +1,13 @@
+[
+  {
+    "id": 401,
+    "path": "notes.txt",
+    "position": 2,
+    "original_position": 2,
+    "body": "this can be one line",
+    "user": {
+      "login": "rev"
+    },
+    "html_url": "https://forgejo.invalid/acme/app/pulls/7#issuecomment-401"
+  }
+]

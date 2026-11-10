@@ -17,7 +17,7 @@ EVAL_JOBS=8 ./evals/run.sh  # cap the parallel batch at 8 cases
 
 Cases run concurrently by default, one job per CPU (`getconf
 _NPROCESSORS_ONLN`, then `sysctl -n hw.ncpu`, then 4); `EVAL_JOBS=N` overrides
-that limit. Every case gets its own sandbox, stub `gh` dir and stub log, so
+that limit. Every case gets its own sandbox, stub dir and stub logs, so
 cases cannot see each other's fixtures or intercept counts. Case output is
 buffered and replayed in sorted case order, so a parallel run's report is
 deterministic; the final `evals: N passed, M failed, K skipped` line and the
@@ -99,7 +99,9 @@ the build.
 | `fetch-worktree`           | `fetch-local --worktree` builds from an isolated checkout                                             | Sandbox repo with live dirt: an uncommitted change lands in the bundle, the human stream names the checkout, and no worktree, stash entry, or tree change survives; `--range` reads the committed endpoints byte-identically while the dirt is excluded and untouched; `--staged` materializes the index tree; a bad range refuses without a checkout or bundle; without the flag no line prints and no checkout is created                                                                                                                                                                           |
 | `fix`                      | Bounded verify-gated fix loops over local bundles                                                     | The default pick is the top open inline sig by severity then path; `--sig` refuses addressed/section/unknown (`bad-sig`) and ambiguous prefixes; PR and closed bundles and conflicted trees refuse; the 3-pass ceiling tombstones `stopped:ceiling`; a scope escape stops the loop naming the file (`stopped:scope-escape`) and recovers on revert; `kb.txt` surfaces in full; the verb writes only `fix.json`                                                                                                                                                                                        |
 | `fix-prompt-pins`          | Fix-verb prompt pins                                                                                  | `grep -Fq` on the prompt text: `address-reviews.md` step 3 carries the untrusted-data preamble (finding prose/path/quoted code untrusted, verify each anchor, skip with a reason), and `fix-ci.md` keeps the `INTRODUCED BY THIS PR` abort rule byte-identical                                                                                                                                                                                                                                                                                                                                        |
+| `forgejo-fetch`            | Forgejo PR bundle through the `curl` stub                                                             | A `curl` stub on a reserved `.invalid` host (a call that escaped it could not resolve) answers the PR, diff, files, reviews, and comment argvs: fetch writes the fixture `full.diff` and `hunks.tsv`, the `forgejo` provider marker, and `threads.json` with the review comment at `notes.txt:2`; the call log equals the fixture argv sequence, no `gh` call is made, and a missing `FORGEJO_TOKEN` refuses `auth-missing` with zero curl calls and no bundle file                                                                                                                                   |
 | `gate`                     | One composed CI gate: findings tier, HEAD freshness, live threads                                     | One call exits 0 only when every requested dimension passes: the tier fails on an open finding at-or-above `--max-severity`, `--require-head` fails unknown or stale on a missing or mismatched post, and `--live` picks the posture — `auto` fails only when live opens outnumber local ones and keeps an unreachable probe neutral, `strict` fails closed, `skip` pays zero gh calls; `--json` adds `data.passed` and `data.dimensions[]`; bare `gate` and bad flags are usage errors (2), a corrupt store a tool error (3), and no leg writes or posts                                             |
+| `gitlab-fetch-post`        | GitLab MR bundle and dry-run discussions through `glab`                                               | Registered `glab` argvs on a network-dead stub: fetch writes the fixture `full.diff` and `hunks.tsv`, the `gitlab` provider marker, and `threads.json` (an issue comment plus a resolved `DiffNote`); `post --dry-run` re-reads the live MR, renders one anchored discussion at `notes.txt:2` with the fixture sig, warns about nothing, and writes no `post.json`; the call log equals the fixture argv sequence and no `gh` call is made                                                                                                                                                            |
 | `hunk-snapshot`            | Anchors validate against the fetch-time snapshot                                                      | A mid-run push rewrites `full.diff` but post validates against `hunks.tsv`: the kept anchor posts inline while a snapshot-dropped anchor lands in the posted body as a named note with its reason (exit 0, drops never fail); a zero-drop run posts a body byte-identical to the rebuilt-index run                                                                                                                                                                                                                                                                                                    |
 | `install-routes`           | Every documented install route is coherent and true                                                   | Real `npm pack` into the sandbox: the registry tarball holds the skill payload (and no `scripts/review.sh`), the binary's embedded `skill install` writes the same bytes into repo and home scopes with a receipt and reads keep on a re-run, `init` owns the cwd `.verdict/state/`, the README never sends registry users to `./install.sh`, every `scripts/`/`prompts/` path `SKILL.md` names resolves inside the installed copy, `install-skill.sh` refuses outside a checkout, and its doctor gate passes on a PATH without jq/shasum                                                             |
 | `installer-binary`         | Verified binary installers (`install.sh`; `install.ps1` on Windows CI)                                | Hermetic fake releases from local archives/`file://` and a loopback server: contract archive names and cosign identity/issuer/trigger, SHA-256 and signature fail-closed with the old binary intact, Rosetta/unknown platforms, version pin + latest redirect, one marked PATH line with opt-outs, local-file install with no network, checksum-only warning/`VERDICT_REQUIRE_SIGNATURE=1`, idempotent re-install, uninstall and foreign refusal                                                                                                                                                      |
@@ -167,11 +169,44 @@ the build.
 - After the cases, `run.sh` diffs `git status --short` before/after and fails
   the run if the tree moved; fixtures are deleted unless `--keep`.
 
+### Host stubs (`glab`, `curl`)
+
+`evals/lib/hoststub.sh` gives the other hosts the same posture. A case
+installs the stub, proves it refuses an unregistered argv, registers one
+exact argv per fixture response, then grades the call log:
+
+```sh
+. "$HERE/../lib/hoststub.sh"
+
+hoststub_init glab                # network-dead glab written into $EVAL_STUBBIN
+hoststub_prove_dead glab          # PATH resolves the stub; an unknown argv exits 64
+hoststub_route glab 'mr view 7 -R acme/app -F json' "$FIX/MR.json"
+hoststub_argv_log glab "$EVAL_SANDBOX/glab-calls.txt"
+assert_file_eq "every call is a registered argv" \
+  "$FIX/expected-argvs.txt" "$EVAL_SANDBOX/glab-calls.txt"
+hoststub_assert_all_routed
+```
+
+A route key is the argv joined by single spaces — the string the stub logs,
+so a checked-in `expected-argvs.txt` reads as a contract. `hoststub_route
+<tool> <argv> <body-file> [exit-status]` answers the first matching route:
+`/dev/null` answers with no stdout (a write), and a non-zero status is a
+failing call. Nothing reads stdin, so a route that must capture a posted
+body extends `hoststub_write`; its argv still lands in the log. Anything
+else logs `stub-<tool> UNRECOGNISED <argv>`, prints a line on stderr, and
+exits 64, so a product change that shells a new read fails the case instead
+of passing against a stub that improvises. The stubs never exec the real
+tool, `hoststub_init` points `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY`
+at a dead local port, and the Forgejo fixtures live on the reserved
+`.invalid` TLD, so a call that escaped a stub could not resolve. Calls,
+routes, and the call log live beside the case (`$EVAL_STUBBIN/..`), like
+`gh-stub.log`.
+
 ## Hygiene
 
 - Shell is bash 3.2 compatible (macOS `/bin/bash`); keep it that way.
 - `shellcheck -S warning` must be clean on everything added:
 
 ```sh
-shellcheck -S warning evals/run.sh evals/lib/common.sh evals/cases/*.sh
+shellcheck -S warning evals/run.sh evals/lib/*.sh evals/cases/*.sh
 ```
