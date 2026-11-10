@@ -269,5 +269,5 @@ var (
 	reTarExec   = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])(g?tar)[[:space:]]+[^;|` +
 		`&]*--(checkpoint-action|use-compress-program|to-command)([^a-z-]|$)`)
 	reTarShortI = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])([Gg]?[Tt][Aa][Rr])[[:space:]]+` +
-		`([^;|&]*[[:space:]])?-I([[:space:]]|$)`)
+		`([^;|&]*[[:space:]])?-[a-zA-Z]*I`)
 )

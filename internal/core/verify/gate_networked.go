@@ -264,7 +264,7 @@ var (
 	reWgetRemoteName = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])wget[[:space:]]+([^;|&]*[[:space:]])?` +
 		`--remote-name([^a-z-]|$)`)
 	reWgetInputFile = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])wget[[:space:]]+([^;|&]*[[:space:]])?` +
-		`(-i([[:space:]]|$)|--input-file([^a-z-]|$))`)
+		`(-[a-z]*i|--input-file([^a-z-]|$))`)
 	reWgetUpperO     = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])[Ww][Gg][Ee][Tt][[:space:]]+[^;|&]*-O([^a-z0-9-]|$)`)
 	reTransferClient = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])(ftp|tftp|lftp|telnet)([[:space:];|&]|$)`)
 	reBusyboxFetch   = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])busybox[[:space:]]+([^;|&]*[[:space:]])?` +

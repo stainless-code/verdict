@@ -228,6 +228,10 @@ F-R30	verify-repo-escape
 F-R31	verify-repo-escape
 F-R32	verify-repo-escape
 F-R33	verify-repo-escape
+F-R34	verify-destructive
+F-R35	verify-destructive
+F-R36	verify-networked
+F-R37	verify-networked
 F-X01	verify-networked
 F-X02	verify-networked
 F-X03	verify-networked
@@ -274,6 +278,8 @@ F-P24	CLEAN
 F-P25	CLEAN
 F-P26	CLEAN
 F-P27	CLEAN
+F-P28	CLEAN
+F-P29	CLEAN
 G000	CLEAN
 G001	CLEAN
 G002	CLEAN

@@ -62,6 +62,10 @@ F-R30	verify-repo-escape	strict	cp fz-notes.txt -t/etc/cron.d
 F-R31	verify-repo-escape	strict	sort -o/etc/fz-attached-ranking fz-notes.txt
 F-R32	verify-repo-escape	strict	grep -f/etc/passwd fz-notes.txt
 F-R33	verify-repo-escape	strict	gcc -I/usr/include -c fz-notes.txt
+F-R34	verify-destructive	strict	tar -Itouch-fz -cf /tmp/verify-fuzz-attached.tar fz-notes.txt
+F-R35	verify-destructive	strict	tar -cIf touch-fz /tmp/verify-fuzz-cluster.tar fz-notes.txt
+F-R36	verify-networked	strict	wget -i/tmp/verify-fuzz-wgeturls http://127.0.0.1:9/f
+F-R37	verify-networked	strict	wget -qi /tmp/verify-fuzz-wgeturls http://127.0.0.1:9/f
 F-X01	verify-networked	strict	wget --remote-name http://127.0.0.1:9/f
 F-X02	verify-networked	strict	curl -K /tmp/verify-fuzz-curlcfg http://127.0.0.1:9/
 F-X03	verify-networked	strict	wget -i /tmp/verify-fuzz-wgeturls http://127.0.0.1:9/f
@@ -108,3 +112,5 @@ F-P24	PASS	strict	printf busybox
 F-P25	PASS	strict	curl http://127.0.0.1:9/$BRANCH/fixture
 F-P26	PASS	strict	git --exec-path
 F-P27	PASS	strict	tar -czf /tmp/verify-fuzz-ok.tar fz-notes.txt
+F-P28	PASS	strict	tar -cf /tmp/verify-fuzz-plain.tar fz-notes.txt
+F-P29	PASS	strict	wget -q --version

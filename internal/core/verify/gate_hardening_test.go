@@ -31,6 +31,10 @@ var staticHardeningRefusals = []staticHardeningCase{
 	{"git exec path spaced", `git --exec-path /tmp/verify-fuzz-gitexec status`, "verify-destructive"},
 	{"tar -I", `tar -I touch-fz -cf /tmp/verify-fuzz.tar fz-notes.txt`, "verify-destructive"},
 	{"tar -I uppercase", `TAR -I touch-fz -cf /tmp/verify-fuzz.tar fz-notes.txt`, "verify-destructive"},
+	{"tar -I attached", `tar -Itouch-fz -cf /tmp/verify-fuzz.tar fz-notes.txt`, "verify-destructive"},
+	{"tar -I clustered", `tar -cIf touch-fz /tmp/verify-fuzz.tar fz-notes.txt`, "verify-destructive"},
+	{"wget input-file attached", `wget -i/tmp/verify-fuzz-wgeturls http://127.0.0.1:9/f`, "verify-networked"},
+	{"wget input-file clustered", `wget -qi /tmp/verify-fuzz-wgeturls http://127.0.0.1:9/f`, "verify-networked"},
 }
 
 // TestCheckStaticHardeningRefuses pins the codes of the static gate arms that
@@ -80,7 +84,9 @@ func TestCheckStaticHardeningBenignStaysClean(t *testing.T) {
 		`git --exec-path`,
 		`git --version`,
 		`tar -czf /tmp/verify-fuzz-ok.tar fz-notes.txt`,
+		`tar -cf /tmp/verify-fuzz-plain.tar fz-notes.txt`,
 		`tar -tzf missing.tar.gz`,
+		`wget -q --version`,
 	} {
 		if ref := verifycore.Check(cmd); ref != nil {
 			t.Errorf("Check(%q) = %s: %q, want clean", cmd, ref.Code, ref.Message)
