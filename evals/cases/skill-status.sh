@@ -54,6 +54,16 @@ assert_envelope "blocked status"
 assert_json_field "foreign target is blocked" "blocked" '.data.status'
 assert_json_field "foreign target is not in sync" "false" '.data.in_sync'
 
+MISSING="$EVAL_SANDBOX/missing"
+mkdir -p "$MISSING"
+run_review skill status --dir "$MISSING" --diff --json
+assert_exit "a missing target reports drift" 1
+assert_json_field "missing target status" "create" '.data.status'
+assert_json_field "every changed file has a diff" "true" '(.data.diff | length) == (.data.changed | length)'
+assert_json_field "the first diff is the first changed file" "true" '.data.diff[0].path == .data.changed[0]'
+jq -r '.data.diff[0].diff' <"$EVAL_OUT" >"$EVAL_SANDBOX/create-diff.txt"
+assert_file_grep "a missing target diffs against empty" "$EVAL_SANDBOX/create-diff.txt" '@@ -0,0 ' "-F"
+
 if [ ! -s "$EVAL_STUBLOG" ]; then
   good "status makes zero host calls (offline)"
 else

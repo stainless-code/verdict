@@ -2,6 +2,7 @@ package skill
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,7 +37,7 @@ func Status(ctx context.Context, req *Request, includeDiff bool) (TargetStatus, 
 	if ref != nil {
 		return TargetStatus{}, ref
 	}
-	return buildStatus(&plan, includeDiff), nil
+	return buildStatus(&plan, includeDiff)
 }
 
 // StatusAgents reports one target per named agent, in argv order and deduped,
@@ -53,7 +54,7 @@ func StatusAgents(ctx context.Context, req *Request, agents []string, includeDif
 	if ref != nil {
 		return StatusSet{}, ref
 	}
-	return buildStatusSet(files, agents, plans, includeDiff), nil
+	return buildStatusSet(files, agents, plans, includeDiff)
 }
 
 // StatusDetected reports every agent whose skills dir already holds a setup.
@@ -69,44 +70,59 @@ func StatusDetected(ctx context.Context, req *Request, includeDiff bool) (Status
 		return StatusSet{}, refuse(codeNoDetected, "no agent with an existing skills dir was detected; "+
 			"run --agent <name> to pick one ("+strings.Join(agentNames, ", ")+")")
 	}
-	set := buildStatusSet(Inventory{Name: det.Name, Version: det.Version}, det.Agents, det.Plans, includeDiff)
+	set, ref := buildStatusSet(Inventory{Name: det.Name, Version: det.Version}, det.Agents, det.Plans, includeDiff)
+	if ref != nil {
+		return StatusSet{}, ref
+	}
 	return set, nil
 }
 
-func buildStatus(plan *Plan, includeDiff bool) TargetStatus {
+func buildStatus(plan *Plan, includeDiff bool) (TargetStatus, *core.RefusalError) {
 	st := TargetStatus{Plan: *plan, InSync: inSync(plan)}
 	if includeDiff {
-		st.Diffs = diffPlan(plan)
+		diffs, ref := diffPlan(plan)
+		if ref != nil {
+			return TargetStatus{}, ref
+		}
+		st.Diffs = diffs
 	}
-	return st
+	return st, nil
 }
 
-func buildStatusSet(files Inventory, agents []string, plans []Plan, includeDiff bool) StatusSet {
+func buildStatusSet(files Inventory, agents []string, plans []Plan, includeDiff bool) (StatusSet, *core.RefusalError) {
 	set := StatusSet{Name: files.Name, Version: files.Version, Agents: agents, InSync: true}
 	set.Targets = make([]TargetStatus, 0, len(plans))
 	for i := range plans {
-		st := buildStatus(&plans[i], includeDiff)
+		st, ref := buildStatus(&plans[i], includeDiff)
+		if ref != nil {
+			return StatusSet{}, ref
+		}
 		set.Targets = append(set.Targets, st)
 		if !st.InSync {
 			set.InSync = false
 		}
 	}
-	return set
+	return set, nil
 }
 
 func inSync(plan *Plan) bool {
 	return plan.Status == StatusKeep && plan.ReceiptVersion == plan.Version
 }
 
-func diffPlan(plan *Plan) []Diff {
+func diffPlan(plan *Plan) ([]Diff, *core.RefusalError) {
 	root, err := os.OpenRoot(plan.Target)
-	if err != nil {
-		return nil
+	if err == nil {
+		defer func() { _ = root.Close() }()
+		return diffChanged(root, plan), nil
 	}
-	defer func() { _ = root.Close() }()
-	return diffChanged(root, plan)
+	if plan.Status != StatusCreate {
+		return nil, refuse(codeRead, fmt.Sprintf("cannot read %s: %s", plan.Target, err))
+	}
+	return diffChanged(nil, plan), nil
 }
 
+// diffChanged renders one unified diff per changed file. A nil root is a
+// target that does not exist yet, so every file diffs against empty.
 func diffChanged(root *os.Root, plan *Plan) []Diff {
 	budget := DiffCapBytes
 	diffs := make([]Diff, 0, len(plan.Changed))
@@ -115,9 +131,12 @@ func diffChanged(root *os.Root, plan *Plan) []Diff {
 		if err != nil {
 			continue
 		}
-		got, err := root.ReadFile(filepath.FromSlash(rel))
-		if err != nil {
-			got = nil
+		var got []byte
+		if root != nil {
+			got, err = root.ReadFile(filepath.FromSlash(rel))
+			if err != nil {
+				got = nil
+			}
 		}
 		body, truncated := unifiedDiff(rel, got, want, budget)
 		budget -= len(body)

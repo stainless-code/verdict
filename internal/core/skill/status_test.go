@@ -182,3 +182,60 @@ func mapsEqual(a, b map[string]string) bool {
 	}
 	return true
 }
+
+// TestStatusMissingTargetDiffsEveryFile pins that a create plan has one diff
+// per changed file, each against empty.
+func TestStatusMissingTargetDiffsEveryFile(t *testing.T) {
+	t.Parallel()
+	req := newRequest(t)
+	req.Dir = t.TempDir()
+	st, ref := skill.Status(context.Background(), req, true)
+	if ref != nil {
+		t.Fatalf("Status: %v", ref)
+	}
+	if st.Plan.Status != skill.StatusCreate {
+		t.Fatalf("status = %q, want create", st.Plan.Status)
+	}
+	if len(st.Plan.Changed) == 0 {
+		t.Fatal("create plan lists no changed files")
+	}
+	if len(st.Diffs) != len(st.Plan.Changed) {
+		t.Fatalf("diffs = %d, want one per changed file (%d)", len(st.Diffs), len(st.Plan.Changed))
+	}
+	for i, diff := range st.Diffs {
+		if diff.Path != st.Plan.Changed[i] {
+			t.Fatalf("diff %d path = %q, want %q", i, diff.Path, st.Plan.Changed[i])
+		}
+		if diff.Body == "" || diff.Truncated {
+			continue
+		}
+		if !strings.Contains(diff.Body, "--- a/"+diff.Path+"\n") || !strings.Contains(diff.Body, "+++ b/"+diff.Path+"\n") {
+			t.Fatalf("diff %d lacks the file header:\n%s", i, diff.Body)
+		}
+		if strings.Contains(diff.Body, "\n-") {
+			t.Fatalf("diff %d removes lines from a missing target:\n%s", i, diff.Body)
+		}
+	}
+	if !strings.Contains(st.Diffs[0].Body, "@@ -0,0 ") {
+		t.Fatalf("first diff is not an addition hunk:\n%s", st.Diffs[0].Body)
+	}
+}
+
+// TestStatusSurfacesAnUnopenableTarget pins that a target that exists but
+// cannot be opened refuses typed instead of reporting an empty diff list.
+func TestStatusSurfacesAnUnopenableTarget(t *testing.T) {
+	t.Parallel()
+	req := newRequest(t)
+	req.Dir = t.TempDir()
+	target := filepath.Join(req.Dir, "verdict")
+	if err := os.WriteFile(target, []byte("not a dir\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, ref := skill.Status(context.Background(), req, true)
+	if ref == nil || ref.Code != "skill-read-failed" {
+		t.Fatalf("refusal = %v, want skill-read-failed", ref)
+	}
+	if !strings.Contains(ref.Message, "cannot read "+target) {
+		t.Fatalf("message = %q, want it to name %s", ref.Message, target)
+	}
+}
