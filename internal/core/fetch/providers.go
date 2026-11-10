@@ -875,7 +875,7 @@ func forgejoAuth(ctx2 *fetchRunCtx) (auth []string, api string, err error) {
 func forgejoAuthFor(env map[string]string, repo, pr string) (auth []string, api string, err error) {
 	auth, api, ref := forgejo.Resolve(env, repo, pr)
 	if ref != nil {
-		return nil, "", ref
+		return nil, "", &core.RefusalError{Code: ref.Code, Message: ref.Message}
 	}
 	return auth, api, nil
 }

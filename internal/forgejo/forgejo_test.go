@@ -4,6 +4,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/forgejo"
 )
 
@@ -49,19 +50,26 @@ func TestResolveGatesTheEnvironment(t *testing.T) {
 			e := env()
 			delete(e, tc.dropped)
 			auth, base, ref := forgejo.Resolve(e, "acme/app", "7")
-			if ref == nil {
-				t.Fatalf("Resolve accepted an environment without %s", tc.dropped)
-			}
-			if ref.Code != "auth-missing" {
-				t.Errorf("code = %q, want auth-missing", ref.Code)
-			}
-			if ref.Message != tc.want {
-				t.Errorf("message = %q, want %q", ref.Message, tc.want)
-			}
-			if auth != nil || base != "" {
-				t.Errorf("refused Resolve returned auth=%q base=%q", auth, base)
-			}
+			assertResolveRefused(t, tc.dropped, tc.want, auth, base, ref)
 		})
+	}
+}
+
+// assertResolveRefused checks one refused gate: the published code, the exact
+// sentence, and the empty values a caller must never build a URL from.
+func assertResolveRefused(t *testing.T, dropped, want string, auth []string, base string, ref *core.RefusalError) {
+	t.Helper()
+	if ref == nil {
+		t.Fatalf("Resolve accepted an environment without %s", dropped)
+	}
+	if ref.Code != "auth-missing" {
+		t.Errorf("code = %q, want auth-missing", ref.Code)
+	}
+	if ref.Message != want {
+		t.Errorf("message = %q, want %q", ref.Message, want)
+	}
+	if auth != nil || base != "" {
+		t.Errorf("refused Resolve returned auth=%q base=%q", auth, base)
 	}
 }
 
@@ -144,8 +152,8 @@ func TestDecodePull(t *testing.T) {
 func TestResolved(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name    string
 		comment map[string]any
+		name    string
 		want    bool
 	}{
 		{name: "no resolver", comment: map[string]any{"id": float64(1)}, want: false},

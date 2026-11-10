@@ -14,6 +14,10 @@ const providerGitHub = "github"
 // review as one discussion per finding, one summary note, and an approve.
 const providerGitLab = "gitlab"
 
+// providerForgejo is the third host with a submit path: one atomic review over
+// the REST API, because Forgejo ships no CLI.
+const providerForgejo = "forgejo"
+
 func typedPostItems(entries []any) []core.FindingItem {
 	items := make([]core.FindingItem, 0, len(entries))
 	for _, e := range entries {

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/forgejo"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -65,12 +66,20 @@ func (st *state) liveReviews() []liveReview {
 func parseReviewPage(items []any) []liveReview {
 	var out []liveReview
 	for _, el := range items {
-		if m, ok := el.(map[string]any); ok {
-			out = append(out, liveReview{
-				body: jq.StrOf(m["body"]), commitID: jq.StrOf(m["commit_id"]),
-				submittedAt: jq.StrOf(m["submitted_at"]),
-			})
+		m, ok := el.(map[string]any)
+		if !ok {
+			continue
 		}
+		if jq.StrOf(m["state"]) == forgejo.StatePending {
+			// A pending review is a draft: its body is empty until it is
+			// submitted, so reading one as a posted review would both suppress
+			// a real post and treat a draft as landed feedback.
+			continue
+		}
+		out = append(out, liveReview{
+			body: jq.StrOf(m["body"]), commitID: jq.StrOf(m["commit_id"]),
+			submittedAt: jq.StrOf(m["submitted_at"]),
+		})
 	}
 	return out
 }

@@ -24,7 +24,7 @@ type hostReader interface {
 	auth(env map[string]string) *core.RefusalError
 }
 
-// hostFor is the post path's only provider switch: every host behaviour a verb
+// hostFor is the post path's only provider switch: every host behavior a verb
 // reaches goes through the pair it returns. A provider outside the switch gets
 // GitHub's pair, because checkBundle refuses a host it cannot post to before
 // any call is built.
@@ -32,6 +32,8 @@ func hostFor(provider string) (hostWriter, hostReader) {
 	switch provider {
 	case providerGitLab:
 		return gitlabHost{}, gitlabHost{}
+	case providerForgejo:
+		return forgejoHost{}, forgejoHost{}
 	default:
 		return githubHost{}, githubHost{}
 	}

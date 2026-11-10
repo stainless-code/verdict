@@ -15,8 +15,10 @@ import (
 
 // Environment names the two variables every Forgejo call needs.
 const (
-	EnvHost  = "FORGEJO_HOST"
-	EnvToken = "FORGEJO_TOKEN"
+	EnvHost = "FORGEJO_HOST"
+	// EnvToken is the variable carrying the API token. G101 reads the name as a
+	// credential; the constant is a variable name, never a secret.
+	EnvToken = "FORGEJO_TOKEN" //nolint:gosec // variable name, not a credential
 )
 
 const apiPrefix = "/api/v1"
@@ -52,10 +54,10 @@ const (
 	EventApproved       = "APPROVED"
 )
 
-// Resolve gates the environment and returns the curl auth argv plus the
-// pull-scoped API base. Both messages name the variable to set, and the
+// APIBase gates the environment and returns the curl auth argv plus the
+// authenticated API root. Both messages name the variable to set, and the
 // refusal fires before any call is spawned.
-func Resolve(env map[string]string, repo, pr string) (auth []string, base string, err *core.RefusalError) {
+func APIBase(env map[string]string) (auth []string, api string, err *core.RefusalError) {
 	host := env[EnvHost]
 	token := env[EnvToken]
 	if host == "" {
@@ -64,7 +66,24 @@ func Resolve(env map[string]string, repo, pr string) (auth []string, base string
 	if token == "" {
 		return nil, "", &core.RefusalError{Code: CodeAuthMissing, Message: "forgejo needs FORGEJO_TOKEN set (app token with repo read)"}
 	}
-	return []string{"-H", "Authorization: token " + token}, host + apiPrefix + "/repos/" + repo + "/pulls/" + pr, nil
+	return []string{"-H", "Authorization: token " + token}, host + apiPrefix, nil
+}
+
+// Resolve gates the environment and returns the pull-scoped API base the read
+// and write paths share.
+func Resolve(env map[string]string, repo, pr string) (auth []string, base string, err *core.RefusalError) {
+	auth, api, ref := APIBase(env)
+	if ref != nil {
+		return nil, "", ref
+	}
+	return auth, api + "/repos/" + repo + "/pulls/" + pr, nil
+}
+
+// Auth gates the environment alone, for a caller that has not resolved a
+// position yet.
+func Auth(env map[string]string) *core.RefusalError {
+	_, _, ref := APIBase(env)
+	return ref
 }
 
 // ReviewListURL is the first reviews page: the URL fetch pages into
@@ -92,13 +111,13 @@ func UserURL(base string) string {
 // Review is one pull-review row: what post reads back from the list and from
 // an accepted write.
 type Review struct {
-	ID          int    `json:"id"`
 	State       string `json:"state"`
 	Body        string `json:"body"`
 	CommitID    string `json:"commit_id"`
 	SubmittedAt string `json:"submitted_at"`
 	HTMLURL     string `json:"html_url"`
 	User        User   `json:"user"`
+	ID          int    `json:"id"`
 }
 
 // User is the login a review attributes to its author.

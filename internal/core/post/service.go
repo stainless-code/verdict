@@ -375,7 +375,7 @@ func (st *state) hostAuthGate() *core.RefusalError {
 // env is the runtime environment the host reads its credentials from.
 func (st *state) env() map[string]string {
 	if st.req != nil && st.req.Runtime != nil {
-		return st.req.Runtime.Env
+		return st.req.Env
 	}
 	return nil
 }
