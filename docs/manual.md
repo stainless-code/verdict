@@ -1630,17 +1630,32 @@ platform package. A plain `verdict` call consults neither variable.
   files. `verdict skill` prints `SKILL.md` (default
   `--format md`); `--format json` is one standard envelope with
   `name`/`version`/`files`; `verdict skill files` lists every embedded path.
+  `verdict skill show <path>` prints one inventory file byte-identical (a
+  path from `skill files`; with `--json` one envelope carries `path` and the
+  same bytes in `content`), and a path outside the inventory — traversal,
+  absolute, or unknown — refuses typed (`skill-path-not-inventory`) and names
+  `skill files`.
+  `verdict skill status [--dir <skills-dir>|--agent <name>...|--detect] [--diff] [--json]`
+  is the read-only drift check: it writes nothing and
+  reports each target's create/update/keep/blocked result plus the receipt
+  versus embedded version, reusing the install plan. It exits 0 when every
+  target is in sync and 1 when drifted (a typed refusal still exits 1), so CI
+  can gate on it without `install --dry-run`. `--diff` adds one unified diff
+  per changed file, capped at 64 KiB overall with an explicit truncation
+  marker and `truncated: true` in the JSON entry.
   `verdict skill install` (flags: `--dir <skills-dir>`, `--agent <name>`,
   `--detect`, `--force`, `--dry-run`, `--json`) writes the payload plus a
   `.verdict-managed` receipt (file-atomic, receipt last), previews
-  create/update/keep/blocked (`--dry-run --json` is the drift check: `update`
+  create/update/keep/blocked (`--dry-run --json` stays a drift preview: `update`
   means the installed copy is stale, `keep` means current, `blocked` needs a
   human), refuses
   a target without a verdict receipt unless `--force`, never removes foreign
   files, never prompts, and makes no network call. `--agent` accepts
   `agents`, `claude`, `codex`, `cursor`, `opencode`, `copilot`, `gemini`,
   `goose`, `qwen`, and `windsurf`; `--agent agents` (and no flag) target the
-  shared `~/.agents/skills/verdict` slot. `--detect` installs into every one
+  shared `~/.agents/skills/verdict` slot. `--agent` repeats on `install`,
+  `status`, and `uninstall`: targets are deduplicated and handled in argv
+  order, and `--dir` stays a single target. `--detect` installs into every one
   of those agents whose skills dir already exists and holds a file, and names
   each target's result; with none present it refuses typed
   (`skill-no-detected-agent`) and asks for `--agent <name>`. It cannot be
@@ -1649,6 +1664,14 @@ platform package. A plain `verdict` call consults neither variable.
   target is written. It does not create a missing agent dir, and unlike
   `install-skill.sh --detect` it skips `~/.agents/skills` when that dir is
   absent or empty.
+  `verdict skill uninstall [--dir <skills-dir>|--agent <name>...] [--force] [--dry-run] [--json]`
+  deletes only the inventory paths the receipt owns and
+  then the receipt, pruning the payload directories it empties; every foreign
+  file survives. A target without a receipt refuses typed
+  (`skill-dir-foreign`) unless `--force`, which still deletes only inventory
+  paths; a target that was never installed refuses (`skill-not-installed`),
+  and `--dry-run` lists the plan and deletes nothing. `verdict uninstall`'s
+  skill-copy refusal names this verb instead of `rm -rf`.
 
 ## Publish footer + attribution knobs
 
