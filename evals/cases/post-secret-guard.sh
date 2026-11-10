@@ -52,17 +52,17 @@ run_review post acme/app "$PR" --dry-run --json
 assert_exit "a dry run over a secret-shaped finding exits 0" 0
 assert_json_field "the dry run warns with the refusal code" "1" \
   '[.warnings[] | select(test("post-secret-shaped"))] | length'
-if jq -r '.warnings[]' <"$EVAL_OUT" | grep -q "finding 1 (aws-access-key-id)"; then
+if jq -r '.warnings[]' <"$EVAL_OUT" | matches -F -- "finding 1 (aws-access-key-id)"; then
   good "the warning locates the site and the shape"
 else
   bad "the warning misses the location: $(jq -r '.warnings[]' <"$EVAL_OUT" | head -c 300)"
 fi
-if jq -r '.warnings[]' <"$EVAL_OUT" | grep -q -- "--allow-secret-values"; then
+if jq -r '.warnings[]' <"$EVAL_OUT" | matches -F -- "--allow-secret-values"; then
   good "the warning names the override flag"
 else
   bad "the warning does not name --allow-secret-values"
 fi
-if jq -r '.warnings[]' <"$EVAL_OUT" | grep -q "AKIAIOSFODNN7EXAMPLE"; then
+if jq -r '.warnings[]' <"$EVAL_OUT" | matches -F -- "AKIAIOSFODNN7EXAMPLE"; then
   bad "the warning republished the secret value"
 else
   good "the warning never repeats the value"

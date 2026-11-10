@@ -52,8 +52,8 @@ func (st *state) reviewSecretSites() []secretSite {
 // reviewComment is one comment object with the review-array index an operator
 // counts in review.json.
 type reviewComment struct {
-	index int
 	obj   *jq.Obj
+	index int
 }
 
 // commentSecretSites locates the values one review comment carries. Its body
@@ -88,7 +88,7 @@ func reviewComments(review *jq.Obj) []reviewComment {
 	var out []reviewComment
 	for i, c := range jq.Elements(raw) {
 		if obj, ok := c.(*jq.Obj); ok && obj != nil {
-			out = append(out, reviewComment{index: i + 1, obj: obj})
+			out = append(out, reviewComment{obj: obj, index: i + 1})
 		}
 	}
 	return out

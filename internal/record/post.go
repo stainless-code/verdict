@@ -84,7 +84,7 @@ func parsePostFlags(r *cli.Runner, args []string, dir string) (core.PostFlags, i
 			f.Bind = true
 		case a == "--force":
 			f.Force = true
-		case a == "--dry-run":
+		case a == postDryRunFlag:
 			f.DryRun = true
 		case a == "--require-coverage":
 			f.RequireCoverage = true
@@ -101,8 +101,11 @@ func parsePostFlags(r *cli.Runner, args []string, dir string) (core.PostFlags, i
 }
 
 // postApproveFlag names the --approve flag (which also takes the documented
-// --approve=bool form).
+// --approve=bool form), and postDryRunFlag the dry-run switch the parser and
+// the re-entry line share.
 const postApproveFlag = "--approve"
+
+const postDryRunFlag = "--dry-run"
 
 // postWants names each value flag's accepted operand for the missing-value
 // usage error.
@@ -125,29 +128,33 @@ func setPostValue(f *core.PostFlags, name, val string) {
 func postRentry(repo, pr, dir string, f core.PostFlags, jsonMode bool) string {
 	var sb strings.Builder
 	sb.WriteString("verdict post " + repo + " " + pr)
-	if f.Approve != "false" {
-		sb.WriteString(" --approve=" + f.Approve)
-	}
-	if f.RequestChanges {
-		sb.WriteString(" --request-changes")
-	}
-	if f.Bind {
-		sb.WriteString(" --bind")
-	}
-	if f.Force {
-		sb.WriteString(" --force")
-	}
-	if f.ReviewFile != dir+"/review.json" {
-		sb.WriteString(" --review-file " + f.ReviewFile)
-	}
-	if f.DryRun {
-		sb.WriteString(" --dry-run")
-	}
-	if f.AllowSecretValues {
-		sb.WriteString(" " + postcore.AllowSecretValuesFlag)
-	}
-	if jsonMode {
-		sb.WriteString(" --json")
+	for _, flag := range postRentryFlags(f, dir, jsonMode) {
+		sb.WriteString(" " + flag)
 	}
 	return sb.String()
+}
+
+// postRentryFlags lists the flags a retry repeats, in flag order: one row per
+// flag instead of one branch, so the list stays a table as flags are added.
+func postRentryFlags(f core.PostFlags, dir string, jsonMode bool) []string {
+	rows := []struct {
+		flag string
+		set  bool
+	}{
+		{"--approve=" + f.Approve, f.Approve != "false"},
+		{"--request-changes", f.RequestChanges},
+		{"--bind", f.Bind},
+		{"--force", f.Force},
+		{"--review-file " + f.ReviewFile, f.ReviewFile != dir+"/review.json"},
+		{postDryRunFlag, f.DryRun},
+		{postcore.AllowSecretValuesFlag, f.AllowSecretValues},
+		{"--json", jsonMode},
+	}
+	var out []string
+	for _, row := range rows {
+		if row.set {
+			out = append(out, row.flag)
+		}
+	}
+	return out
 }

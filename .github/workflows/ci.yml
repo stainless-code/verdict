@@ -301,7 +301,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.full == 'true'
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -338,9 +338,18 @@ jobs:
           go vet ./...
           go mod verify
 
-      - name: go test
+      - name: go test (race + shuffle)
         shell: bash
-        run: go test -count=1 -timeout=25m ./...
+        env:
+          # The race detector needs cgo, and cgo on Windows needs a C
+          # toolchain: the image preinstalls MinGW-w64 gcc on PATH (15.x, well
+          # past the mingw-w64 8 floor the detector's runtime requires), so pin
+          # cgo on and assert the compiler here instead of failing inside the
+          # linker. No toolchain action is installed for this.
+          CGO_ENABLED: "1"
+        run: |
+          gcc --version
+          go test -race -shuffle=on -count=1 -timeout=25m ./...
 
   cross:
     name: 🌍 Cross

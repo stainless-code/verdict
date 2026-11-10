@@ -27,6 +27,8 @@ const secretSummaryReview = `{"schema_version":"1","body":"> ⚠️ Rotate the l
 // published value with the typed code, names the located site and the override,
 // and makes zero host calls: the scan runs before the live-head read, so a
 // refused review never asks the host anything.
+//
+//nolint:revive // one leg, asserting code, wording, calls, and files inline
 func TestRunRefusesSecretShapedBeforeHostCalls(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -61,6 +63,8 @@ func TestRunRefusesSecretShapedBeforeHostCalls(t *testing.T) {
 // the warning names the location, the shape, and the override, and the response
 // still renders (the adapter exits 0). The summary body and a finding body are
 // graded in one run, so a scan that only reads one of them fails.
+//
+//nolint:revive // one leg, asserting the warnings and the empty POST inline
 func TestRunDryRunWarnsOnSecretShaped(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -93,6 +97,8 @@ func TestRunDryRunWarnsOnSecretShaped(t *testing.T) {
 
 // TestRunAllowSecretValuesRecordsOverride proves the override publishes the
 // review and records which shapes it let through on the receipt.
+//
+//nolint:revive // one leg, asserting the POST and the receipt inline
 func TestRunAllowSecretValuesRecordsOverride(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -139,6 +145,8 @@ func TestRunAllowSecretValuesRecordsOverride(t *testing.T) {
 // TestReviewSecretSitesLocations proves the scan's three locations and its
 // silence on clean text: the summary body, a comment body, and a suggestion are
 // each one site, and a review with no credential reports none.
+//
+//nolint:gocognit,revive // the location matrix reads as one block
 func TestReviewSecretSitesLocations(t *testing.T) {
 	t.Parallel()
 	cases := []struct {

@@ -8,6 +8,8 @@ import (
 // TestSecretValueShapes pins one literal per shape, so a provider row that
 // drifts (a lost quantifier, a narrowed class) fails here instead of shipping a
 // scan that no longer recognizes the credential it exists to catch.
+//
+//nolint:revive // the shape matrix reads as one block
 func TestSecretValueShapes(t *testing.T) {
 	t.Parallel()
 	cases := []struct {

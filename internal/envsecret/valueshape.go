@@ -5,8 +5,8 @@ import "regexp"
 // valueShape is one secret-shaped value literal: the name a warning or a
 // refusal reports and the expression that recognizes it.
 type valueShape struct {
-	name string
 	re   *regexp.Regexp
+	name string
 }
 
 // valueShapes are the literal credential shapes text can carry, in report
@@ -19,15 +19,15 @@ type valueShape struct {
 // The names are the published vocabulary a warning quotes; the matched bytes
 // never leave this package.
 var valueShapes = []valueShape{
-	{"private-key", regexp.MustCompile(`-----BEGIN (RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----`)},
-	{"aws-access-key-id", regexp.MustCompile(`(AKIA|ASIA)[A-Za-z0-9]{16}`)},
-	{"github-token", regexp.MustCompile(`gh[pousr]_[A-Za-z0-9]{36,}`)},
-	{"slack-token", regexp.MustCompile(`xox[baprs]-[A-Za-z0-9-]{10,}`)},
-	{"google-api-key", regexp.MustCompile(`AIza[A-Za-z0-9_-]{35}`)},
-	{"stripe-key", regexp.MustCompile(`(sk|rk)_(live|test)_[A-Za-z0-9]{16,}`)},
-	{"anthropic-api-key", regexp.MustCompile(`sk-ant-[A-Za-z0-9_-]{20,}`)},
-	{"openai-scoped-key", regexp.MustCompile(`sk-(proj|svcacct|admin)-[A-Za-z0-9]{20,}`)},
-	{"openai-api-key", regexp.MustCompile(`sk-[A-Za-z0-9]{40}`)},
+	{re: regexp.MustCompile(`-----BEGIN (RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----`), name: "private-key"},
+	{re: regexp.MustCompile(`(AKIA|ASIA)[A-Za-z0-9]{16}`), name: "aws-access-key-id"},
+	{re: regexp.MustCompile(`gh[pousr]_[A-Za-z0-9]{36,}`), name: "github-token"},
+	{re: regexp.MustCompile(`xox[baprs]-[A-Za-z0-9-]{10,}`), name: "slack-token"},
+	{re: regexp.MustCompile(`AIza[A-Za-z0-9_-]{35}`), name: "google-api-key"},
+	{re: regexp.MustCompile(`(sk|rk)_(live|test)_[A-Za-z0-9]{16,}`), name: "stripe-key"},
+	{re: regexp.MustCompile(`sk-ant-[A-Za-z0-9_-]{20,}`), name: "anthropic-api-key"},
+	{re: regexp.MustCompile(`sk-(proj|svcacct|admin)-[A-Za-z0-9]{20,}`), name: "openai-scoped-key"},
+	{re: regexp.MustCompile(`sk-[A-Za-z0-9]{40}`), name: "openai-api-key"},
 }
 
 // SecretValueShapes reports the names of the secret value shapes text carries,
