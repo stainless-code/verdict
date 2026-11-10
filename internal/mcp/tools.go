@@ -262,8 +262,9 @@ func allTools(readOnly, operator bool) []*tool {
 		dataTool(&toolSpec{
 			name: "verify",
 			description: "Run the recorded verifyCmd under the watchdog and record the proof. " +
-				"Pass group and command together to validate one deep plan group at the reviewed root and record a bound receipt. " +
-				"Never fabricates a patch or a command from repository configuration.",
+				"Pass group and command together to validate one deep plan group at the reviewed root, " +
+				"or set sandbox true for enforced bubblewrap isolation on Linux (refused where unenforceable). " +
+				"Never fabricates a patch or a command from configuration.",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Run verification", destructive: true, openWorld: true},
 		}, toolDeps{commander: coreexec.Watchdog{}}, decodeVerify, wireVerify, verifycore.Run,

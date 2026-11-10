@@ -384,6 +384,7 @@ func decodeVerify(req *core.VerifyRequest, a *args) {
 	a.str("timeoutRaw", &req.TimeoutRaw)
 	a.str("group", &req.Group)
 	a.str("command", &req.Command)
+	a.boolean("sandbox", &req.Sandbox)
 }
 
 func wireVerify(ctx context.Context, b *bindings, req *core.VerifyRequest) error {

@@ -511,6 +511,11 @@ type VerifyRequest struct {
 	Group   string
 	Command string
 	Env     []string
+	// Sandbox wraps the command in the enforced Linux bwrap sandbox: no
+	// network, empty credential dirs, a writable reviewed root, and a private
+	// /tmp. The call refuses with sandbox-unavailable when the host cannot
+	// enforce it instead of running unwrapped.
+	Sandbox bool
 }
     VerifyRequest runs the recorded verifyCmd under the watchdog, or one deep
     plan group's explicit command when Group and Command are both set.

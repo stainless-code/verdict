@@ -145,10 +145,20 @@
 # build measures darwin/amd64 12306832, linux/amd64 12087456, windows/amd64
 # 12421632, windows/arm64 11169280; those four move to the next 10 kB, the
 # two arm64 darwin/linux ceilings already hold.
+# verify --sandbox: the bwrap wrapper and its probe, the flag on the CLI/MCP/SDK
+# surfaces, and the additive sandboxed record fields. Measured here:
+# darwin/amd64 12290208, darwin/arm64 11287842, linux/amd64 12071072,
+# linux/arm64 11075744, windows/amd64 12405760, windows/arm64 11154432.
+# Five ceilings cross and move to the next 10 kB above; linux/arm64 stays put.
+# Stacked on the post secret guard and the gate dimensions above, the
+# combined build with the verify sandbox measures darwin/amd64 12323344,
+# darwin/arm64 11304722, linux/amd64 12099744, windows/amd64 12434944,
+# windows/arm64 11180544; those five move to the next 10 kB, linux/arm64
+# (11075744) still holds.
 deps 0
-darwin/amd64 12310000
-darwin/arm64 11290000
-linux/amd64 12090000
+darwin/amd64 12330000
+darwin/arm64 11310000
+linux/amd64 12100000
 linux/arm64 11080000
-windows/amd64 12430000
-windows/arm64 11170000
+windows/amd64 12440000
+windows/arm64 11190000

@@ -289,6 +289,8 @@ var fieldDocs = map[string]string{
 	"learn.Status":  "List rules with counters and precision (boolean list switch; learn sets no status).",
 	"next.Status":   "Status filter for the top finding (all, open, addressed, wont-fix, false-positive, deferred); empty means open.",
 	"triage.Status": "Status to flip the finding to (open, addressed, wont-fix, false-positive, deferred).",
+	"Sandbox": "Run under bwrap (Linux only) with no network, hidden credential dirs, " +
+		"a writable repo, and a private /tmp; refuses sandbox-unavailable when it cannot be enforced.",
 }
 
 func fieldDescription(toolName, field string) string {

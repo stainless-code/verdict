@@ -104,7 +104,7 @@
       "/$defs/doctorData": "doctor --json data: every preflight row and the healthy verdict over them. Row values are environment-shaped, so the goldens, not this schema, pin them.",
       "/$defs/doctorCheck": "One preflight row: the check name, its severity, whether it passed, and the observed detail.",
       "/$defs/checkTreeData": "check-tree --json data: the clean verdict plus exactly one of four explanations — ignored_review_lines (clean, with ignored .verdict/state paths), files (dirty), expected_only (only expected paths changed), unexpected (unexpected paths changed).",
-      "/$defs/verifyData": "verify --json data: the command's exit status, whether the watchdog timed it out, the redacted output tail, and the patch read back from the bundle. A timed-out run is never proof.",
+      "/$defs/verifyData": "verify --json data: the command's exit status, whether the watchdog timed it out, the redacted output tail, the patch read back from the bundle, and whether the run was sandboxed (absent means unsandboxed). A timed-out run is never proof.",
       "/$defs/trendData": "trend --json data: the portfolio rollup, one row per reviewed bundle, and the opt-in overlap and corpus joins. Every tally key is always present.",
       "/$defs/trendStatuses": "A five-status finding tally: open, addressed, wont-fix, false-positive, deferred.",
       "/$defs/trendTiers": "A four-tier finding tally: critical, important, informational, untagged.",

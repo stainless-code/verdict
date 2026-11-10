@@ -82,8 +82,8 @@ func TestVerifyToolGroupEntrypoint(t *testing.T) {
 	requireMCPReceipt(t, head)
 }
 
-// requireVerifySchemaFields asserts the published verify schema names both
-// deep-validation arguments.
+// requireVerifySchemaFields asserts the published verify schema names the
+// deep-validation pair and the sandbox opt-in.
 func requireVerifySchemaFields(t *testing.T, frame frame) {
 	t.Helper()
 	var list toolsListResult
@@ -99,14 +99,14 @@ func requireVerifySchemaFields(t *testing.T, frame frame) {
 	t.Fatalf("verify tool is not registered: %+v", list.Tools)
 }
 
-// requireSchemaProps asserts one tool's schema names group and command.
+// requireSchemaProps asserts one tool's schema names the verify knobs.
 func requireSchemaProps(t *testing.T, tool toolDescriptor) {
 	t.Helper()
 	props, ok := tool.InputSchema["properties"].(map[string]any)
 	if !ok {
 		t.Fatalf("verify schema properties = %T, want an object", tool.InputSchema["properties"])
 	}
-	for _, name := range []string{"group", "command"} {
+	for _, name := range []string{"group", "command", "sandbox"} {
 		if _, ok := props[name]; !ok {
 			t.Fatalf("verify schema lacks %s: %+v", name, props)
 		}

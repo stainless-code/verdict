@@ -1179,7 +1179,7 @@
       "additionalProperties": true
     },
     "verifyData": {
-      "description": "verify --json data: the command's exit status, whether the watchdog timed it out, the redacted output tail, and the patch read back from the bundle. A timed-out run is never proof.",
+      "description": "verify --json data: the command's exit status, whether the watchdog timed it out, the redacted output tail, the patch read back from the bundle, and whether the run was sandboxed (absent means unsandboxed). A timed-out run is never proof.",
       "type": "object",
       "properties": {
         "exit": { "type": "integer" },
@@ -1188,7 +1188,8 @@
         "patch": { "type": "string" },
         "group": { "type": "string" },
         "head": { "type": "string" },
-        "receipt": { "type": "string" }
+        "receipt": { "type": "string" },
+        "sandboxed": { "type": "boolean" }
       },
       "required": ["exit", "timedOut", "outputTail", "patch"],
       "additionalProperties": true

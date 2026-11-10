@@ -599,7 +599,7 @@ export interface ThreadsData {
   [key: string]: unknown;
 }
 
-/** verify --json data: the command's exit status, whether the watchdog timed it out, the redacted output tail, and the patch read back from the bundle. A timed-out run is never proof. */
+/** verify --json data: the command's exit status, whether the watchdog timed it out, the redacted output tail, the patch read back from the bundle, and whether the run was sandboxed (absent means unsandboxed). A timed-out run is never proof. */
 export interface VerifyData {
   exit: number;
   timedOut: boolean;
@@ -608,6 +608,7 @@ export interface VerifyData {
   group?: string;
   head?: string;
   receipt?: string;
+  sandboxed?: boolean;
   [key: string]: unknown;
 }
 

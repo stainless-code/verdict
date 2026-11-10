@@ -127,7 +127,10 @@ var publishedSemantics = map[string]string{
 	// property, required key, or type changed; a consumer that switches
 	// exhaustively on the dimension id gets the unknown-member case it would
 	// already need for a future dimension.
-	"envelope.schema.json": "fdcc36881b997a74dbef800706c145b005a6ef3ae46adb1983bd8024731111a6",
+	// verify sandbox: additive optional verifyData.sandboxed boolean (absent
+	// means the run was not sandboxed). No existing property, required key,
+	// enum, or type changed.
+	"envelope.schema.json": "e675f39dc84cb1b83c7577c657e937c4303d26e88010bc1992190df090366c35",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

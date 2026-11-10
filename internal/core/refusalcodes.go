@@ -146,6 +146,7 @@ var refusalCodes = []string{
 	"report-failed",
 	"requirement-blocked",
 	"requirement-unmet",
+	"sandbox-unavailable",
 	"scope-escape",
 	"skill-bad-dir",
 	"skill-dir-foreign",

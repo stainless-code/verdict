@@ -1,6 +1,7 @@
 package archtest
 
 import (
+	"encoding/json"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -428,4 +429,124 @@ func checkUnique(t *testing.T, kind string, list []string) {
 		}
 		seen[name] = true
 	}
+}
+
+// TestVerifySandboxReachesEveryTypedSurface pins the opt-in sandbox knob on
+// the surfaces that carry typed verify arguments: the CLI parser, the core
+// request, the MCP schema snapshot and decoder, and the Go facade. The
+// TypeScript client forwards raw argv, so `verify(["--sandbox"])` reaches the
+// same parser without a typed field to drift.
+func TestVerifySandboxReachesEveryTypedSurface(t *testing.T) {
+	t.Parallel()
+	root := moduleRoot(t)
+	if !structHasBoolField(t, filepath.Join(root, "internal", "core", "verifyapi.go"), "VerifyRequest", "Sandbox") {
+		t.Error("core.VerifyRequest lost its Sandbox field")
+	}
+	if !structHasBoolField(t, filepath.Join(root, "pkg", "verdict", "verbs.go"), "VerifyRequest", "Sandbox") {
+		t.Error("pkg/verdict.VerifyRequest lost its Sandbox field")
+	}
+	cli := readSource(t, filepath.Join(root, "internal", "verify", "verify.go"))
+	if !strings.Contains(cli, `case "--sandbox":`) {
+		t.Error("the verify adapter no longer parses --sandbox")
+	}
+	mcp := readSource(t, filepath.Join(root, "internal", "mcp", "requests.go"))
+	if !strings.Contains(mcp, `a.boolean("sandbox"`) {
+		t.Error("the MCP verify decoder no longer reads sandbox")
+	}
+	if !mcpSchemaHasBoolean(t, filepath.Join(root, "internal", "mcp", "testdata", "tools_list_default.jsonl"), "verify", "sandbox") {
+		t.Error("the published MCP verify schema lost its sandbox boolean")
+	}
+}
+
+// structHasBoolField reports whether path declares typeName with a bool field.
+func structHasBoolField(t *testing.T, path, typeName, field string) bool {
+	t.Helper()
+	st := declaredStruct(t, path, typeName)
+	if st == nil {
+		return false
+	}
+	for _, f := range st.Fields.List {
+		if isBoolField(f, field) {
+			return true
+		}
+	}
+	return false
+}
+
+// declaredStruct returns one named struct declaration, or nil.
+func declaredStruct(t *testing.T, path, typeName string) *ast.StructType {
+	t.Helper()
+	ts := findTypeSpec(t, path, typeName)
+	if ts == nil {
+		return nil
+	}
+	st, ok := ts.Type.(*ast.StructType)
+	if !ok {
+		return nil
+	}
+	return st
+}
+
+// findTypeSpec returns the named type declaration, or nil.
+func findTypeSpec(t *testing.T, path, typeName string) *ast.TypeSpec {
+	t.Helper()
+	var found *ast.TypeSpec
+	ast.Inspect(parseGo(t, path), func(n ast.Node) bool {
+		ts, ok := n.(*ast.TypeSpec)
+		if ok && ts.Name.Name == typeName {
+			found = ts
+			return false
+		}
+		return true
+	})
+	return found
+}
+
+// isBoolField reports whether f declares one bool field with the given name.
+func isBoolField(f *ast.Field, name string) bool {
+	if len(f.Names) != 1 || f.Names[0].Name != name {
+		return false
+	}
+	ident, ok := f.Type.(*ast.Ident)
+	return ok && ident.Name == "bool"
+}
+
+// readSource reads one source file as a string.
+func readSource(t *testing.T, path string) string {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
+// mcpSchemaHasBoolean reads the checked-in tools/list snapshot and reports
+// whether one tool's published input schema carries a boolean property.
+func mcpSchemaHasBoolean(t *testing.T, path, tool, property string) bool {
+	t.Helper()
+	var frame struct {
+		Result struct {
+			Tools []struct { //nolint:govet // decode-only shape for the checked-in snapshot
+				Name        string `json:"name"`
+				InputSchema struct {
+					Properties map[string]struct {
+						Type string `json:"type"`
+					} `json:"properties"`
+				} `json:"inputSchema"`
+			} `json:"tools"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(readSource(t, path)), &frame); err != nil {
+		t.Fatalf("decode %s: %v", path, err)
+	}
+	for _, candidate := range frame.Result.Tools {
+		if candidate.Name != tool {
+			continue
+		}
+		prop, ok := candidate.InputSchema.Properties[property]
+		return ok && prop.Type == "boolean"
+	}
+	t.Fatalf("%s: no %q tool", path, tool)
+	return false
 }

@@ -465,6 +465,23 @@ jobs:
       - name: Install shellcheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
 
+      - name: Install bubblewrap
+        run: sudo apt-get install -y bubblewrap
+
+      - name: Allow unprivileged user namespaces (bubblewrap)
+        shell: bash
+        run: |
+          # Ubuntu 24.04 restricts unprivileged user namespaces through
+          # AppArmor, which makes bwrap fail at namespace setup. The verify
+          # sandbox eval needs a working bwrap, so lift the restriction for
+          # this job only.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          sudo sysctl -w kernel.unprivileged_userns_clone=1 || true
+
+      - name: Prove bubblewrap can create its namespaces
+        shell: bash
+        run: bwrap --ro-bind / / --tmpfs /tmp --unshare-net -- true
+
       - name: Harness deps (bash/jq/git/go/shellcheck/node)
         shell: bash
         run: |
@@ -473,18 +490,22 @@ jobs:
           # without it), so its absence fails here instead of deep in the
           # suite. node renders the release-notes fixture the release-body
           # case grades.
-          command -v bash jq git go shellcheck node
+          command -v bash jq git go shellcheck node bwrap
           jq --version
           go version
 
       - name: Run offline contract evals (built binary)
         shell: bash
-        run: make evals
+        env:
+          # The Linux lane must grade the containment legs, not the refusal
+          # fallback; a broken bubblewrap install fails here instead.
+          EVAL_REQUIRE_SANDBOX: "1"
         # Builds bin/verdict, asserts it is executable (the suite fails here
         # rather than silently grading nothing), then runs every case
         # against it via $EVAL_CLI. Same hermeticity locally and here
         # (stub gh first on PATH, fixtures in a temp sandbox, tree-clean
         # assertion).
+        run: make evals
 
       - name: Prove the run --agent recipe case ran
         shell: bash
@@ -499,6 +520,16 @@ jobs:
           jq -e '[.cases[] | select(.name == "run-agent" and .status == "PASS")] | length == 1' \
             evals/results/summary.json
           echo "evals: run-agent PASS (stub agent, advisory gh stub, no model)"
+
+      - name: Prove the verify sandbox containment case ran
+        shell: bash
+        run: |
+          # A refusal-only pass would keep the lane green without proving
+          # isolation, so the Linux job re-reads the summary and fails when
+          # the case was deleted, renamed, or skipped.
+          jq -e '[.cases[] | select(.name == "verify-sandbox" and .status == "PASS")] | length == 1' \
+            evals/results/summary.json
+          echo "evals: verify-sandbox PASS (bubblewrap containment legs, Linux)"
 
       - name: Upload the eval summary (kept on a failed run)
         if: ${{ !cancelled() }}

@@ -15,7 +15,7 @@ _verdict_flags() { # $1 = verb
     next) printf '%s\n' --status --json;;
     show) printf '%s\n' --sig --json;;
     check-tree) printf '%s\n' --expect;;
-    verify) printf '%s\n' --timeout --group --command --json;;
+    verify) printf '%s\n' --timeout --group --command --sandbox --json;;
     config) printf '%s\n' --explain --preview --file --json;;
     doctor|calibrate|record|trend) printf '%s\n' --json;;
     threads) printf '%s\n' --provider --json;;

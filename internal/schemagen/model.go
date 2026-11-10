@@ -408,8 +408,8 @@ type CheckTreeData struct { //nolint:govet // field order is the published prope
 type ThreadsData = fetchcore.ThreadsData
 
 // VerifyData is core's verify --json data profile: the command's exit status,
-// whether the watchdog timed it out, the redacted tail, and the patch read
-// back from the bundle.
+// whether the watchdog timed it out, the redacted tail, the patch read back
+// from the bundle, and whether the run was sandboxed.
 type VerifyData = core.VerifyData
 
 // TrendData is the trend verb's --json data profile: the portfolio rollup,

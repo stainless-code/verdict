@@ -315,7 +315,7 @@ the artifact, who writes it, and whether a verb gates on it.
 | Artifact                  | What it is                                                                                                                                                                                                                                                             | Who writes it                                                 | Gates?                                                                                                                                                                                                                                                                                                                                 |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `run.json`                | The typed per-run capture: resolved defaults, per-file resolutions, plan, spend and privacy views, trusted-base inventory hashes, base SHA, the `inputs_sha256` digest, and appended check observations.                                                               | `fetch`/`fetch-local`; `post` appends observations            | Yes, except `config --preview` (see below). `post`, `record`, `triage`, `report`, `ready`, `config --explain`, and `verify --group` verify it; a run bundle deleted while its controls snapshot remains, or an edited captured input, refuses `controls-stale`; a bare bundle dir reads with a warning and no repository requirements. |
-| `validation-<group>.json` | The deep-validation receipt for one plan group: run, inputs digest, group, reviewed and execution heads, canonical root, command, exit, timeout flag, status, and a redacted output tail.                                                                              | `verify --group <id> --command <cmd>`                         | Yes. `post` refuses a binding approval while any `depth: "deep"` group lacks a current receipt; `ready` reports the gap as `profile-work`.                                                                                                                                                                                             |
+| `validation-<group>.json` | The deep-validation receipt for one plan group: run, inputs digest, group, reviewed and execution heads, canonical root, command, exit, timeout and sandbox flags, status, and a redacted output tail.                                                                 | `verify --group <id> --command <cmd>`                         | Yes. `post` refuses a binding approval while any `depth: "deep"` group lacks a current receipt; `ready` reports the gap as `profile-work`.                                                                                                                                                                                             |
 | `filesource.json`         | Provenance for the PR file list: `source` (`paged` or `cli`), `cli_cap` (100), `provider_ceiling` (3000), `count`, and `truncated` or `paging_error`.                                                                                                                  | GitHub `fetch`, when the CLI list arrives at its 100-file cap | No. It is an advisory coverage note: a paging failure warns and the run proceeds with the CLI's first 100 files.                                                                                                                                                                                                                       |
 | `full.raw.diff`           | The raw pre-exclusion diff, kept as the patch-identity input when a filtered diff would otherwise replace it. No shipped verb writes it today: `fetch` writes the host diff to `full.diff` and records the filtered hash in `run.json` without writing filtered bytes. | Nothing today (a future exclusion pass)                       | Partly. When present it feeds the identity, and `identity.json`'s `raw_diff_sha256` must reproduce it; a present-but-unreadable file refuses instead of falling back to `full.diff`. Absence is normal.                                                                                                                                |
 | `sensitive.txt`           | The advisory manifest of secret-adjacent paths: filename, extension, and added-line content hits, one path and reason per line, behind a comment header.                                                                                                               | `fetch`/`fetch-local` (and every provider fetch)              | No. It is advisory, not a gate: flagged paths stay reviewable evidence, the file is removed when nothing is flagged, and its header asks reviewers to name the path, never the value.                                                                                                                                                  |
@@ -541,12 +541,14 @@ facts: the canonical reviewed root, the bundle's reviewed head, and the
 checked-out head, which must be that same commit (otherwise `head-mismatch`).
 
 The command runs once through the same allowlist and watchdog as patch
-verify, and every outcome leaves a receipt — a failure is never dropped. The
+verify, and every outcome leaves a receipt — a failure is never dropped.
+Add `--sandbox` to either form to run the command inside the enforced Linux
+`bwrap` sandbox; the receipt then records `"sandboxed": true`. The
 receipt is `<bundle>/validation-<group>.json` (group ids are lowercase
 `[a-z0-9-]`, at most 64 chars, so the path stays confined), read back through
 a 64 KiB cap and written atomically. It records the run name, `inputs_sha256`, group id,
 reviewed and execution heads, canonical repo root, command, timestamp, exit
-code, timeout flag, `status` (`passed`, `failed`, `timeout`, `unavailable`,
+code, timeout and sandbox flags, `status` (`passed`, `failed`, `timeout`, `unavailable`,
 `stale-head`), and a redacted output tail. Reads re-derive the verdict: a
 receipt claiming a pass while recording a nonzero exit, a timeout, or another
 status is contradictory evidence and never approves. A head that moves during
@@ -1963,7 +1965,7 @@ counts) — the ledger is an audit trail, not a lock. Verifying an untrusted
 worktree? `verify` refuses hostile shapes pre-exec, but the static gate cannot
 see everything — run the verify step under the Hostile-PR sandbox recipe below.
 
-## Hostile-PR sandbox recipe (opt-in, not enforced)
+## Hostile-PR sandbox recipe (enforced on Linux with --sandbox; recipe for other OSes)
 
 When the diff is untrusted (unknown author, drive-by PR, patch claims
 arriving via `fix-ci`) and the `verifyCmd` wants the network, run the verify
@@ -1977,6 +1979,34 @@ the refusal leaves `patch.json` and `.verify.out` untouched. The sandbox
 below is the second layer for what the static gate cannot see (a plain
 `curl` GET stays allowed; `/tmp` scratch writes stay allowed) — not a
 replacement.
+
+### Enforced sandbox: `verify --sandbox`
+
+On Linux with `bubblewrap` installed, pass the flag and let `verify` build
+the sandbox itself:
+
+```bash
+verdict verify owner/repo 123 --sandbox
+```
+
+It runs the command (patch `verifyCmd`, or the deep-group
+`--group ... --command ...` pair) under `bwrap` with `--ro-bind / /`, a
+writable bind of the reviewed root, `--tmpfs` over `~/.aws`, `~/.ssh`, and
+`~/.config/gh`, a private `/tmp`, and `--unshare-net` — the command gets its
+own loopback and no route out. Before anything executes it probes the same
+flags with a no-op; when the host is not Linux, `bwrap` is missing, the
+user-namespace restriction is on, or `HOME` is unset, `verify` refuses
+`sandbox-unavailable` naming the cause and runs nothing. It never silently
+falls back to an unsandboxed command. The patch record and the deep-group
+receipt carry `"sandboxed": true`, and the `--json` data adds
+`"sandboxed": true`; absent means the run was not sandboxed. The same opt-in
+reaches the MCP tool (`sandbox`), the Go facade (`Sandbox`), and the
+TypeScript client (raw `--sandbox` argv).
+
+### Recipe for other OSes (and for wrapping the whole review)
+
+The one-liner below still applies on macOS or a minimal image with no
+`bwrap`, or when the whole `verdict` process must run inside the sandbox:
 
 `bwrap` one-liner, from the repo root (`verify` runs the same `verifyCmd`;
 only the filesystem and network it sees change):
@@ -2009,9 +2039,9 @@ network-only isolation: `--private-network` removes the route out, but the
 command still sees the host filesystem and credential paths. Prefer the
 `bwrap` variant above whenever filesystem or credential hiding matters.
 
-This is a recipe, not enforcement: nothing in the harness checks or mandates
-the sandbox — per K5, full namespace isolation stays opt-in, never default.
-The gate constrains what `verify` will execute; your own shell is unaffected
+That one-liner stays a recipe, not enforcement — only `--sandbox` probes and
+refuses. Per K5, full namespace isolation stays opt-in, never default. The
+gate constrains what `verify` will execute; your own shell is unaffected
 either way.
 
 ### Known residuals (string-scan ceiling)

@@ -151,7 +151,7 @@ On the other four hosts, `record`, `report`, `show`, `next`, `triage`, and `thre
 
 ## Security
 
-- **The skill runs with your privileges.** `verify` runs the agent's `verifyCmd` through `bash -c` with a 300 second limit. A pre-exec gate refuses destructive, networked, credential-reading, and repo-escaping commands before anything spawns. The gate is a tripwire, not a sandbox. For a hostile PR, run the verify step in a sandbox: see the [recipe](docs/manual.md#hostile-pr-sandbox-recipe-opt-in-not-enforced).
+- **The skill runs with your privileges.** `verify` runs the agent's `verifyCmd` through `bash -c` with a 300 second limit. A pre-exec gate refuses destructive, networked, credential-reading, and repo-escaping commands before anything spawns. The gate is a tripwire, not a sandbox. For a hostile PR on Linux, `verify --sandbox` enforces the sandbox; elsewhere follow the [recipe](docs/manual.md#hostile-pr-sandbox-recipe-enforced-on-linux-with---sandbox-recipe-for-other-oses).
 - **Review controls come from the base commit.** A PR cannot edit the panel, budget, or knowledge-base rules it is judged by. See [Review controls are base-owned](docs/manual.md#review-controls-are-base-owned).
 - **Diffs and comments are untrusted input.** The prompts treat them as evidence, never as instructions.
 - **Secrets stay local.** `GH_TOKEN` never leaves your machine, and provider tokens go only to their own hosts. Nothing phones home: no telemetry, no background updater.
