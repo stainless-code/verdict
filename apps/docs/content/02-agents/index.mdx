@@ -25,7 +25,10 @@ The install writes 28 files atomically — `SKILL.md`, ten review prompts, the J
 
 `verdict mcp` serves the review verbs as MCP tools over stdio: no daemon, no HTTP, no auth of its own. It runs with your credentials and exits when stdin closes.
 
-Every review verb is a tool except `triage` — nineteen tools, and status flips stay a human call. `--read-only` hides the writing verbs and caps `record` to its `dry_run` form; `--operator` adds `triage` back. Each tool returns the CLI envelope's `data`, and a typed refusal comes back with `isError: true` and `{code, message, hint}`. The [manual](https://github.com/stainless-code/verdict/blob/main/docs/manual.md#mcp-server-stdio-experimental-until-10) keeps the full tool list.
+Every review verb is a tool except `gate` and `run` (both CLI-only) and
+`triage` — nineteen tools by default, and status flips stay a human call.
+`--read-only` hides the writing verbs and caps `record` to its `dry_run` form;
+`--operator` adds `triage` back for twenty. Each tool returns the CLI envelope's `data`, and a typed refusal comes back with `isError: true` and `{code, message, hint}`. The [manual](https://github.com/stainless-code/verdict/blob/main/docs/manual.md#mcp-server-stdio-experimental-until-10) keeps the full tool list.
 
 `verdict mcp config --agent <host>` prints the exact snippet, with `--read-only` or `--operator` baked into the argv when you pass one. `--write` merges it into the host's config file, backing the old file up first.
 

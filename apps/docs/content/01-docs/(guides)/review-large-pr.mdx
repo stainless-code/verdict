@@ -15,10 +15,12 @@ A PR over the 512000-byte diff cap refuses instead of silently under-reviewing. 
     verdict fetch owner/repo 123 --json
     ```
 
-    A 1044738-byte diff answers with `data: null` and a typed refusal: exit 1,
+    A diff over the 512000-byte cap answers with `data: null` and a typed refusal: exit 1,
     `diff-too-large`, naming the size, the cap, and the split-or-narrow escape
-    with advisory candidates. Nothing is written, and the tool never
-    auto-narrows a diff you did not scope.
+    with advisory candidates. The refused fetch still writes the raw
+    `full.diff` (with `controls.json`) into the bundle directory, but no
+    reviewed bundle is kept — `record`, `report`, and `post` have nothing to
+    read — and the tool never auto-narrows a diff you did not scope.
 
   </Step>
   <Step title="Re-fetch with chunking opted in">
@@ -28,8 +30,7 @@ A PR over the 512000-byte diff cap refuses instead of silently under-reviewing. 
 
     An opted-in over-cap fetch is machine-sliced on file boundaries
     (deterministic — a re-fetch reproduces the map). The envelope gains
-    additive `data.chunk` with `count`, `manifest`, and `total_bytes` (here 3
-    chunks, 1044738 bytes). The bundle keeps `full.diff` for anchor pinning;
+    additive `data.chunk` with `count`, `manifest`, and `total_bytes`. The bundle keeps `full.diff` for anchor pinning;
     `chunks/manifest.json` lists each `chunk-NN.diff` with its own `toc`
     checklist and `roles` file.
 
@@ -64,7 +65,8 @@ A PR over the 512000-byte diff cap refuses instead of silently under-reviewing. 
     verdict post owner/repo 123 --dry-run --require-coverage
     ```
 
-    The dry run runs every check and writes nothing. It refuses
+    The dry run runs every check, writes `findings.dryrun.json`, and posts
+    nothing. It refuses
     attested-but-partial coverage before any store write, naming the missing
     chunks (`missing chunk-03`), so a partial review can never post.
 

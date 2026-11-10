@@ -27,7 +27,7 @@ Use this when CI should block the merge on review findings: one workflow file, o
       --max-severity critical --require-head --live auto
     ```
 
-    At least one dimension is required: `--max-severity critical|important|informational` (open findings at or above the tier), `--require-head` (a completed post for the fetched HEAD), and the `--live` posture for the unresolved-threads recheck. The coverage posture defaults to `require`: it reads the `coverage[]` receipt the `post` step stored, and a partial attestation fails here instead of merging — pass `--coverage warn` as the migration while the review does not attest yet. `--live auto` keeps an unreachable lookup neutral; `--live strict` fails closed. Only `open` findings count.
+    At least one dimension is required: `--max-severity critical|important|informational` (open findings at or above the tier) and/or `--require-head` (a completed post for the fetched HEAD). `--live` only sets the offline posture for the unresolved-threads recheck, and `--coverage` alone is a usage error — pair it with a dimension. The coverage posture defaults to `require`: it reads the `coverage[]` receipt the `post` step stored, and a partial attestation fails here instead of merging — pass `--coverage warn` as the migration while the review does not attest yet. `--live auto` keeps an unreachable lookup neutral; `--live strict` fails closed. Only `open` findings count.
 
   </Step>
 

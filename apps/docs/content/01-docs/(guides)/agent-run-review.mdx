@@ -79,8 +79,9 @@ Install reports `create` with the payload files (`SKILL.md`, `prompts/`,
 ## Refusals
 
 - [`unknown-agent`](/docs/troubleshooting#unknown-agent) — the name
-  is not in the agent table. Fix: pick from `claude`, `codex`, `cursor`,
-  `opencode`, `copilot`, `gemini`, `goose`, `qwen`, or `windsurf`.
+  is not in the launcher table. Fix: pick from `claude`, `codex`, `cursor`,
+  or `opencode`. (The nine-name host list on the [Agents](/agents) page is the
+  `skill install --agent` table, not the `run` launcher.)
 - [`agent-missing`](/docs/troubleshooting#agent-missing) — the
   binary is not on `PATH`. Fix: install the agent CLI or adjust `PATH`.
 - [`no-review-artifact`](/docs/troubleshooting#no-review-artifact) —

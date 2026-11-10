@@ -18,8 +18,8 @@ host. Read the per-host capability table first, then review as usual.
 
     `fetch --provider gitlab|gitcafe|forgejo|bitbucket|azure` builds the same
     bundle shape (`PR.json` normalized to one schema, `full.diff`, `toc.txt`,
-    `roles.txt`, threads). This fetch shells six `glab` reads and writes one
-    changed file at its fixture HEAD. `record`, `report`, `triage`, `show`,
+    `roles.txt`, threads). This fetch shells six `glab` reads and writes the
+    merge request's changed files at its head. `record`, `report`, `triage`, `show`,
     and `next` work on provider bundles as-is.
 
   </Step>

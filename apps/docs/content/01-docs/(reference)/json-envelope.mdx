@@ -40,7 +40,7 @@ A failure keeps `data` null and names a typed `error.code` with its cause and fi
 
 ## Schemas
 
-The shapes live in `skills/verdict/schemas/`, generated from `internal/schemagen/model.go` and shipped in the npm tarball. `envelope.schema.json` covers the envelope plus the pinned `report`, `post`, and `record` data shapes. Pin one by vendoring the file at a release tag and generating types from it — the Python client example checks in `models.py` generated exactly this way — and refuse at runtime when `schema_version` is not `"1"`.
+The shapes live in `skills/verdict/schemas/`, generated from `internal/schemagen/model.go` and shipped in the npm tarball. `envelope.schema.json` covers the envelope plus the 21 pinned `<verb>Data` profiles (including `report`, `post`, and `record`). Pin one by vendoring the file at a release tag and generating types from it — the Python client example checks in `models.py` generated exactly this way — and refuse at runtime when `schema_version` is not `"1"`.
 
 ## Worked example
 

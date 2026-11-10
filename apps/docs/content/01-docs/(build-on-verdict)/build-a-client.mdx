@@ -57,8 +57,10 @@ is generated from the Go shape and is the machine-readable source of truth.
 The nine top-level keys are fixed: the envelope schema sets
 `additionalProperties: false`. New information is added **inside `data`**, never
 as a new top-level key. `data` objects allow additional properties, so a client
-must ignore keys it does not know. `error` also allows additive keys; today the
-only extra is `candidates` on the oversize-fetch refusal.
+must ignore keys it does not know. `error` also allows additive keys: `candidates` on the oversize-fetch
+refusal, `problems` with `problems_truncated` on fixable refusals such as
+`bad-review-input`, and `retry_at` where a retry time applies. A client
+author must parse `problems[]` — it is the machine-readable fix list.
 
 ### Exit codes
 
@@ -207,32 +209,38 @@ Other rules that belong in every wrapper:
 
 Every verb that renders a `--json` envelope publishes its `data` profile as a
 single `<verb>Data` `$defs` entry in the envelope schema, and the generated
-models bind each client method to it. A pinned profile is the shape the writer
-actually emits, including the keys it leaves null on one mode; it still allows
+models bind each client method to it — with two exceptions. `gate` emits
+`data.passed` plus `data.dimensions[]` (only the `gateDimension` shape is
+pinned), and `run` emits its ad-hoc launch keys; neither has a `<verb>Data`
+profile, so a client generator looking for `gateData` or `runData` finds
+nothing. A pinned profile is the shape the writer actually emits, including
+the keys it leaves null on one mode; it still allows
 additional properties, so a new key stays additive. The installer surfaces
 (`skill`, `upgrade`, `uninstall`, `mcp`) keep the generic open object.
 
-| Verb          | `data` profile         |
-| ------------- | ---------------------- |
-| `report`      | `reportData`           |
-| `post`        | `postData`             |
-| `record`      | `recordData`           |
-| `show`        | `showData` / `showFix` |
-| `next`        | `nextData`             |
-| `ready`       | `readyData`            |
-| `triage`      | `triageData`           |
-| `fetch`       | `fetchData`            |
-| `fetch-local` | `fetchLocalData`       |
-| `threads`     | `threadsData`          |
-| `verify`      | `verifyData`           |
-| `check-tree`  | `checkTreeData`        |
-| `doctor`      | `doctorData`           |
-| `calibrate`   | `calibrateData`        |
-| `trend`       | `trendData`            |
-| `adopt`       | `adoptData`            |
-| `fix`         | `fixData`              |
-| `learn`       | `learnData`            |
-| `init`        | `initData`             |
+| Verb              | `data` profile         |
+| ----------------- | ---------------------- |
+| `report`          | `reportData`           |
+| `post`            | `postData`             |
+| `record`          | `recordData`           |
+| `show`            | `showData` / `showFix` |
+| `next`            | `nextData`             |
+| `ready`           | `readyData`            |
+| `triage`          | `triageData`           |
+| `fetch`           | `fetchData`            |
+| `fetch-local`     | `fetchLocalData`       |
+| `threads`         | `threadsData`          |
+| `verify`          | `verifyData`           |
+| `check-tree`      | `checkTreeData`        |
+| `doctor`          | `doctorData`           |
+| `calibrate`       | `calibrateData`        |
+| `trend`           | `trendData`            |
+| `adopt`           | `adoptData`            |
+| `fix`             | `fixData`              |
+| `learn`           | `learnData`            |
+| `init`            | `initData`             |
+| `config`          | `configData`           |
+| `threads resolve` | `threadsResolveData`   |
 
 `calibrate` has three modes (live join, corpus join, probe) that share one
 object, so every mode-specific key is optional there; narrow on the keys you

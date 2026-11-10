@@ -84,30 +84,117 @@ problems.push(
     .map((route) => `  ${route} is in the tree but builds no page`),
 );
 
-// Every built docs page is in the tree, so orphans fail the build. Generated
-// routes (the changelog timeline) are not docs pages.
-const builtDocsRoutes: string[] = [];
+// Every built page is either in the tree or on the known non-docs list: the
+// home page, the section landings, the generated changelog timeline, and the
+// 404 page. A stray top-level page (exactly the old `/manual` and `/glossary`
+// routes this restructure removed) fails the build.
+const builtRoutes: string[] = [];
 const collect = (dir: string, prefix: string): void => {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.isDirectory()) {
       collect(join(dir, entry.name), `${prefix}/${entry.name}`);
-    } else if (
-      entry.isFile() &&
-      entry.name === "index.html" &&
-      (prefix.startsWith("/docs/") ||
-        prefix === "/agents" ||
-        prefix === "/compare" ||
-        prefix === "/roadmap")
-    ) {
-      builtDocsRoutes.push(prefix);
+    } else if (entry.isFile() && entry.name === "index.html") {
+      builtRoutes.push(prefix === "" ? "/" : prefix);
     }
   }
 };
 collect(dist, "");
-const orphans = builtDocsRoutes.filter((route) => !seen.has(route));
+const knownRoutes = new Set([
+  "/",
+  "/404",
+  ...treeRoutes,
+  ...docsSections.map((section) => section.landing),
+]);
+const generatedPrefixes = ["/changelog/"];
+const orphans = builtRoutes.filter(
+  (route) =>
+    !knownRoutes.has(route) &&
+    !generatedPrefixes.some((prefix) => route.startsWith(prefix)),
+);
 problems.push(
   ...orphans.map((route) => `  ${route} builds but is in no tree group`),
 );
+
+// Every tree page's built sidebar label is the tree label. The sidebar, the
+// sitemap footer, and the pager all read `docsTree`; the page itself carries
+// the short name as frontmatter `sidebar.label`, or as `title` when the title
+// already is the short name (staged `docs/` pages carry it as their index
+// title instead). A drift between the two surfaces the wrong short name.
+const contentRoot = join(appRoot, "content");
+
+const frontmatterOf = (file: string): string => {
+  const text = readFileSync(file, "utf8");
+  return /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u.exec(text)?.[1] ?? "";
+};
+
+const scalarField = (frontmatter: string, field: string): string | null => {
+  const match = new RegExp(`^${field}:\\s*(?:"([^"]*)"|(.+?))\\s*$`, "mu").exec(
+    frontmatter,
+  );
+  return match?.[1] ?? match?.[2] ?? null;
+};
+
+const sidebarLabelIn = (file: string): string | null => {
+  const frontmatter = frontmatterOf(file);
+  const nested = /^sidebar:\s*\r?\n  label:\s*(?:"([^"]*)"|(.+?))\s*$/mu.exec(
+    frontmatter,
+  );
+  return nested?.[1] ?? nested?.[2] ?? scalarField(frontmatter, "title");
+};
+
+const contentFileFor = (route: string): string | null => {
+  if (route.startsWith("/docs/")) {
+    const wanted = `${route.slice("/docs/".length)}.mdx`;
+    const found: string[] = [];
+    const scan = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          scan(path);
+        } else if (entry.isFile() && entry.name === wanted) {
+          found.push(path);
+        }
+      }
+    };
+    scan(contentRoot);
+    return found[0] ?? null;
+  }
+  const tab = route.slice(1);
+  for (const entry of readdirSync(contentRoot, { withFileTypes: true })) {
+    if (
+      entry.isDirectory() &&
+      entry.name.replace(/^\d+-/u, "") === tab &&
+      existsSync(join(contentRoot, entry.name, "index.mdx"))
+    ) {
+      return join(contentRoot, entry.name, "index.mdx");
+    }
+  }
+  return null;
+};
+
+for (const group of docsTree) {
+  for (const page of group.pages) {
+    if (page.docsFile !== undefined) {
+      const entry = docsPages.find(
+        (candidate) => candidate.file === page.docsFile,
+      );
+      const label = entry?.title ?? null;
+      if (label !== page.label) {
+        problems.push(
+          `  ${page.route} sidebar label is ${label ?? "(docs/README.md has no such file)"}, tree says ${page.label}`,
+        );
+      }
+      continue;
+    }
+    const file = contentFileFor(page.route);
+    const label = file === null ? null : sidebarLabelIn(file);
+    if (label !== page.label) {
+      problems.push(
+        `  ${page.route} sidebar label is ${label ?? "(no page file or title)"}, tree says ${page.label}`,
+      );
+    }
+  }
+}
 
 // Every section landing builds.
 problems.push(

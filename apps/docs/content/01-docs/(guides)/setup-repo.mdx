@@ -35,8 +35,9 @@ this flow touches the network.
   <Step title="Tune the prefs file">
     The prefs file ends env sprawl without forced migration:
     `${XDG_CONFIG_HOME:-$HOME/.config}/verdict/settings.json`. It carries the
-    four presentation namespaces plus the typed personal layer (`review`,
-    `spend`, `privacy`) — eight top-level keys in total:
+    four presentation namespaces (`output`, `layout`, `color`, `publish`) plus
+    `$schema` and the typed personal layer (`review`, `spend`, `privacy`) —
+    eight top-level keys in total:
 
     ```json
     {"output": {"format": "text"}, "layout": {"compact": false}, "color": {"mode": "never"}}
@@ -68,8 +69,10 @@ this flow touches the network.
     verdict doctor --json
     ```
 
-    `doctor` checks the toolchain and reads both config layers, so a typo in
-    either file fails here instead of mid-review. Reviews work without any of
+    `doctor` checks the toolchain and the personal prefs layer, so a typo in
+    that file fails here instead of mid-review. It does not read the repo's
+    `.verdict/config.json`: a typo there fails at the verb that reads it
+    (`bad-config`), so keep both files valid. Reviews work without any of
     this — the scaffolder only pins comparable, cost-capped defaults.
 
   </Step>
