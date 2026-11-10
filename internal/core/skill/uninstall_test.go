@@ -48,6 +48,8 @@ func TestUninstallRemovesOwnedAndKeepsForeign(t *testing.T) {
 }
 
 // TestUninstallRefusesForeignWithoutForce pins the no-receipt refusal.
+//
+//nolint:revive // the refusal and dry-run arms read as one block
 func TestUninstallRefusesForeignWithoutForce(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

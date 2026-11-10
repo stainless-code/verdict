@@ -822,6 +822,8 @@ func TestUninstall(t *testing.T) {
 // single-target `skill uninstall` verb is named only when its fixed target is
 // the detected skill root, and a sibling skill dir gets a hint that cannot
 // resolve to it.
+//
+//nolint:revive // the two-path matrix reads as one block
 func TestUninstallSkillHintNamesOnlyTheResolvedRoot(t *testing.T) {
 	t.Parallel()
 	home := resolvedTempDir(t)

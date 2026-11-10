@@ -949,6 +949,8 @@ func TestGeminiMergePreservesKeys(t *testing.T) {
 
 // TestTOMLOwnedArgsWithoutCommand proves an owned argv is rewritten to the
 // requested posture even when the table is missing its command line.
+//
+//nolint:revive // the update and keep assertions read as one block
 func TestTOMLOwnedArgsWithoutCommand(t *testing.T) {
 	t.Parallel()
 	req := testRequest(t, AgentCodex, true)
@@ -1007,6 +1009,8 @@ func TestRunRefusesPosturePair(t *testing.T) {
 
 // TestLegacyPairArgsStayOwned proves an on-disk argv carrying both posture
 // flags is still verdict's own entry and is updated, not refused as foreign.
+//
+//nolint:revive // the two-format subtests read as one block
 func TestLegacyPairArgsStayOwned(t *testing.T) {
 	t.Parallel()
 	t.Run("json", func(t *testing.T) {

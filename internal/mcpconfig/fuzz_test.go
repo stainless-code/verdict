@@ -236,7 +236,7 @@ func assertMergedTOML(t *testing.T, old, out []byte) {
 func operatorLines(s string) []string {
 	var out []string
 	inVerdict := false
-	for _, line := range strings.Split(s, "\n") {
+	for line := range strings.SplitSeq(s, "\n") {
 		line = strings.TrimRight(line, " \t\r")
 		trimmed := strings.TrimSpace(line)
 		if isTableHeader(trimmed) {

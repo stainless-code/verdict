@@ -185,6 +185,8 @@ func mapsEqual(a, b map[string]string) bool {
 
 // TestStatusMissingTargetDiffsEveryFile pins that a create plan has one diff
 // per changed file, each against empty.
+//
+//nolint:cyclop,gocognit,revive // the create-plan assertions read as one block
 func TestStatusMissingTargetDiffsEveryFile(t *testing.T) {
 	t.Parallel()
 	req := newRequest(t)

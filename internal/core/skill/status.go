@@ -131,14 +131,7 @@ func diffChanged(root *os.Root, plan *Plan) []Diff {
 		if err != nil {
 			continue
 		}
-		var got []byte
-		if root != nil {
-			got, err = root.ReadFile(filepath.FromSlash(rel))
-			if err != nil {
-				got = nil
-			}
-		}
-		body, truncated := unifiedDiff(rel, got, want, budget)
+		body, truncated := unifiedDiff(rel, diffBytes(root, rel), want, budget)
 		budget -= len(body)
 		if budget < 0 {
 			budget = 0
@@ -146,4 +139,17 @@ func diffChanged(root *os.Root, plan *Plan) []Diff {
 		diffs = append(diffs, Diff{Path: rel, Body: body, Truncated: truncated})
 	}
 	return diffs
+}
+
+// diffBytes is the installed copy of rel; a nil root or an unreadable file
+// diffs as empty.
+func diffBytes(root *os.Root, rel string) []byte {
+	if root == nil {
+		return nil
+	}
+	got, err := root.ReadFile(filepath.FromSlash(rel))
+	if err != nil {
+		return nil
+	}
+	return got
 }
