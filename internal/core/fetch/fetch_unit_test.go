@@ -341,6 +341,21 @@ func TestSensPathReasons(t *testing.T) {
 	}
 }
 
+// TestSensAllHitsContentShape pins the fetch side of the shared value-shape
+// table: an added line carrying a credential is a content hit, an added line
+// naming a credential variable is not.
+func TestSensAllHitsContentShape(t *testing.T) {
+	t.Parallel()
+	dirty := "diff --git a/src/a.go b/src/a.go\n@@ -1 +1 @@\n+const id = \"AKIAIOSFODNN7EXAMPLE\"\n"
+	if hits := sensAllHits(dirty, ""); len(hits) != 1 || hits[0].path != "src/a.go" || hits[0].reason != "content" {
+		t.Fatalf("sensAllHits(dirty) = %v; want one content hit on src/a.go", hits)
+	}
+	clean := "diff --git a/src/a.go b/src/a.go\n@@ -1 +1 @@\n+const id = os.Getenv(\"AWS_ACCESS_KEY_ID\")\n"
+	if hits := sensAllHits(clean, ""); len(hits) != 0 {
+		t.Fatalf("sensAllHits(clean) = %v; want no hits", hits)
+	}
+}
+
 // TestSensAllHitsQuotedHeader proves the sensitive section walk reads
 // headers through the shared quote/space-safe parser: a C-quoted file with
 // spaces still flags under its decoded path.

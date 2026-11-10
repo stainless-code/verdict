@@ -3,12 +3,12 @@ package fetchcore
 import (
 	"fmt"
 	"os"
-	"regexp"
 	"slices"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/envsecret"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -67,17 +67,6 @@ func sensExtReason(lb string) []string {
 	return nil
 }
 
-// sensContentRe holds the added-line secret shapes.
-var sensContentRe = regexp.MustCompile(`-----BEGIN (RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----` +
-	`|(AKIA|ASIA)[A-Za-z0-9]{16}` +
-	`|gh[pousr]_[A-Za-z0-9]{36,}` +
-	`|xox[baprs]-[A-Za-z0-9-]{10,}` +
-	`|AIza[A-Za-z0-9_-]{35}` +
-	`|(sk|rk)_(live|test)_[A-Za-z0-9]{16,}` +
-	`|sk-ant-[A-Za-z0-9_-]{20,}` +
-	`|sk-(proj|svcacct|admin)-[A-Za-z0-9]{20,}` +
-	`|sk-[A-Za-z0-9]{40}`)
-
 // sensHit is one path/reason hit.
 type sensHit struct {
 	path   string
@@ -123,7 +112,7 @@ func sensContentHit(lines []string, first, last int, newP string) (sensHit, bool
 			added = append(added, l)
 		}
 	}
-	if len(added) > 0 && sensContentRe.MatchString(strings.Join(added, newline)) {
+	if len(added) > 0 && envsecret.HasSecretValue(strings.Join(added, newline)) {
 		return sensHit{path: newP, reason: "content"}, true
 	}
 	return sensHit{}, false

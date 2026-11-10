@@ -353,8 +353,11 @@ type PostRequest struct {
 	Invocation
 	Approve, ReviewFile                 string
 	RequestChanges, Bind, Force, DryRun bool
+	AllowSecretValues                   bool
 }
     PostRequest carries the post options: approval, review file, and guards.
+    AllowSecretValues publishes a review whose text carries a secret-shaped
+    value; the pre-submit scan refuses post-secret-shaped without it.
 
 type Problem = recordcore.Problem
     Problem is one review-input problem: its JSONPath, code, level, message,

@@ -63,6 +63,7 @@ var manualSurfaces = []manualSurface{
 			"post --review-file", "triage --dry-run", "check-tree --expect",
 			"upgrade --version", "upgrade-bad-version", "scripts/verdict-complete.sh",
 			"Retry-After", "upstream-diff-too-large", "300-file", "3000",
+			"post-secret-shaped", "--allow-secret-values", "secret_shapes_allowed",
 		},
 	},
 }

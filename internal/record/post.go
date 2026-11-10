@@ -88,9 +88,12 @@ func parsePostFlags(r *cli.Runner, args []string, dir string) (core.PostFlags, i
 			f.DryRun = true
 		case a == "--require-coverage":
 			f.RequireCoverage = true
+		case a == postcore.AllowSecretValuesFlag:
+			f.AllowSecretValues = true
 		default:
 			msg := fmt.Sprintf("unknown flag '%s' for post (want --approve[=bool], --request-changes, "+
-				"--bind, --force, --review-file <path>, --dry-run, --require-coverage, --json)", a)
+				"--bind, --force, --review-file <path>, --dry-run, --require-coverage, "+
+				"--allow-secret-values, --json)", a)
 			return f, r.ReportUsage(&cli.UsageError{Message: msg}), true
 		}
 	}
@@ -139,6 +142,9 @@ func postRentry(repo, pr, dir string, f core.PostFlags, jsonMode bool) string {
 	}
 	if f.DryRun {
 		sb.WriteString(" --dry-run")
+	}
+	if f.AllowSecretValues {
+		sb.WriteString(" " + postcore.AllowSecretValuesFlag)
 	}
 	if jsonMode {
 		sb.WriteString(" --json")

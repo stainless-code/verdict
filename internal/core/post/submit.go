@@ -510,6 +510,9 @@ func writePostReceipt(st *state, obj *jq.Obj) error {
 	if st.withheld != nil {
 		receipt.Withheld = st.withheld
 	}
+	if st.secretShapes != nil {
+		receipt.SecretShapesAllowed = st.secretShapes
+	}
 	if err := stampProvenance(st, receipt); err != nil {
 		return err
 	}

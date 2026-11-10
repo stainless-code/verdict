@@ -52,6 +52,11 @@
       "type": "array",
       "items": { "$ref": "#/$defs/withheldCapability" }
     },
+    "secret_shapes_allowed": {
+      "description": "Published value-shape names --allow-secret-values let through, one per distinct shape the review text carried; absent when the flag allowed nothing, so an unflagged receipt keeps its bytes.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
     "post_min_severity": { "enum": ["critical", "important", "informational"] },
     "below_floor_excluded": { "type": "integer", "minimum": 0 },
     "post_floor_scoped": {

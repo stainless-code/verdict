@@ -60,6 +60,19 @@ const (
 		"or run verdict fetch %s %s --base-sha %s and review the delta)"
 
 	msgPostFailed = "post failed: %s — narrow the cause (anchor drift? body size?) — do not drop comments blindly."
+
+	// msgSecretRefusal, msgSecretDryRun, and msgSecretAllowed are the three
+	// answers to a secret-shaped value in the review text: refuse before any
+	// host call, warn on a dry run, and record the override that published it.
+	// Each names the located site and the flag, never the value.
+	msgSecretRefusal = "post-secret-shaped: the review text carries a secret-shaped value at %s — " +
+		"post would publish it, and a posted review cannot be unsent; remove the value, " +
+		"or pass %s to publish it anyway"
+
+	msgSecretDryRun = "secret-shaped value in the review text at %s — a real post refuses " +
+		"post-secret-shaped; pass %s to publish it anyway"
+
+	msgSecretAllowed = "publishing a secret-shaped value at %s (%s set) — rotate it after the review lands"
 )
 
 const (

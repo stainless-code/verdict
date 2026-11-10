@@ -145,7 +145,11 @@ var publishedSemantics = map[string]string{
 	// requested_event), so a degraded post stays legible in the receipt after
 	// the envelope is gone. No existing property, required key, enum, or type
 	// changed.
-	"post.schema.json": "31d0c39f3d2dbce82a4e9d3d66852abe31f958eaec5b2b7ced77d245047ff33e",
+	// secret-shaped values: additive optional secret_shapes_allowed string
+	// array naming the value shapes --allow-secret-values published, so a
+	// receipt proves the override and what it let through. No existing
+	// property, required key, enum, or type changed.
+	"post.schema.json": "2bb0f9d7d63a2fa4107af81ed7804dd804b5c3fa8608ddb5280f859707c20dea",
 	// patch identity: additive $defs/identity root (new bundle document) —
 	// no existing property, required key, or type changed.
 	"identity.schema.json": "efe9a7b331e41715bc55b8824e95154add584c2d63f670811ef03c350d2e5bdb",

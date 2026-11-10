@@ -135,6 +135,7 @@ var refusalCodes = []string{
 	"not-local",
 	"not-retired",
 	"post-failed",
+	"post-secret-shaped",
 	"pr-not-open",
 	"pr-read-failed",
 	"privacy-unavailable",

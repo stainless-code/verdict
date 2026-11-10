@@ -313,10 +313,13 @@ func (c *Client) Record(ctx context.Context, req *RecordRequest) (*Result, error
 }
 
 // PostRequest carries the post options: approval, review file, and guards.
+// AllowSecretValues publishes a review whose text carries a secret-shaped
+// value; the pre-submit scan refuses post-secret-shaped without it.
 type PostRequest struct {
 	Invocation
 	Approve, ReviewFile                 string
 	RequestChanges, Bind, Force, DryRun bool
+	AllowSecretValues                   bool
 }
 
 // Post submits the review payload; DryRun renders without submitting.
@@ -330,6 +333,7 @@ func (c *Client) Post(ctx context.Context, req *PostRequest) (*Result, error) {
 		Flags: core.PostFlags{
 			Approve: req.Approve, ReviewFile: req.ReviewFile, RequestChanges: req.RequestChanges,
 			Bind: req.Bind, Force: req.Force, DryRun: req.DryRun,
+			AllowSecretValues: req.AllowSecretValues,
 		},
 		Effective: core.Defaults(),
 	})

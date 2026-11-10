@@ -75,7 +75,7 @@ func usageText() string {
 		"    touching files outside the anchor stops the loop (scope-escape).\n" +
 		"  post  <owner/repo> <pr> [--approve=true|false] [--request-changes] [--bind] [--force]\n" +
 		"        [--review-file .verdict/state/<pr>/review.json] [--dry-run] [--require-coverage]\n" +
-		"        [--json]\n" +
+		"        [--allow-secret-values] [--json]\n" +
 		"    validate anchors (partitioned, keep-biased), embed suggestions, merge findings.json,\n" +
 		"    guard stale-SHA + duplicates, post exactly one review.\n" +
 		"    Binding APPROVE/REQUEST_CHANGES needs --bind (else downgraded to COMMENT);\n" +
@@ -83,6 +83,9 @@ func usageText() string {
 		"    Agent status claims (resolved[]/triage[]) are proposals: addressed flips only on\n" +
 		"    verification.json evidence (VERIFIED + resultHead matching HEAD).\n" +
 		"    --dry-run prints validation + payload summary, writes findings.dryrun.json, posts nothing.\n" +
+		"    A secret-shaped value in the review text refuses post-secret-shaped before any host\n" +
+		"    call (--dry-run warns instead); --allow-secret-values publishes it and post.json\n" +
+		"    records the shapes it let through.\n" +
 		"    GitHub PR bundles only: local bundles refuse typed (no-pr-target), non-GitHub providers\n" +
 		"    refuse typed (provider-unimplemented).\n" +
 		"  triage <owner/repo> <pr> --sig <sig> --status <open|addressed|wont-fix|false-positive|deferred>\n" +

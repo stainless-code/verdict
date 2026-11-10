@@ -196,6 +196,7 @@
       "/properties/patch_id_kind": "Patch id algorithm (git-patch-id or the labeled diff-sha256 fallback); absent when the bundle had no identity.",
       "/properties/forced": "One entry per guard --force bypassed, in guard order; absent when the post needed no override.",
       "/properties/withheld": "One entry per capability the host could not carry, in the order the run discovered it: a GitLab REQUEST_CHANGES recorded as a comment lands here while review.state reads commented. Absent when every capability the run asked for landed.",
+      "/properties/secret_shapes_allowed": "Published value-shape names --allow-secret-values let through, one per distinct shape the review text carried; absent when the flag allowed nothing, so an unflagged receipt keeps its bytes.",
       "/$defs/withheldCapability": "One capability a host withheld from the post that landed, with the reason code data.capabilities publishes for it.",
       "/$defs/withheldCapability/properties/capability": "Published capability name (post, inline_anchors, approve, request_changes, thread_resolution) — the same string data.capabilities.unsupported keys.",
       "/$defs/withheldCapability/properties/reason": "Published reason code for the gap (fetch-only, no-request-changes-event, no-approve-verdict, no-inline-anchors, no-resolve-mutation, unknown-host); docs/manual.md § Providers maps each code to its sentence.",

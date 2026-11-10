@@ -123,6 +123,9 @@ type state struct { //nolint:govet // field grouping documents the post run stat
 	// policy is the typed run bundle when the fetch wrote one; nil on
 	// legacy bundles, which degrade to no repository requirements.
 	policy *runPolicy
+	// secretShapes is what --allow-secret-values let through, in first-seen
+	// order; the receipt records it so an overridden post stays legible.
+	secretShapes []string
 }
 
 func (st *state) withWarnings(ref *core.RefusalError) *core.RefusalError {
@@ -221,6 +224,9 @@ func (st *state) prepare(ctx context.Context) *core.RefusalError {
 		return ref
 	}
 	if ref := st.loadReview(); ref != nil {
+		return ref
+	}
+	if ref := st.secretScanGate(); ref != nil {
 		return ref
 	}
 	st.commitID = st.store().Head()

@@ -1101,6 +1101,15 @@ live-head lookup warns. A failed live-thread lookup under `no-live-threads`
 refuses a binding approval with `requirement-unmet`; a non-approving run
 continues without a thread-gate warning.
 
+A review whose text carries a secret-shaped value refuses
+`post-secret-shaped` before any host call: the scan reads the summary body and
+each finding's body and suggestion, and it names the site (`finding 2`) and the
+matched shape (`aws-access-key-id`, `github-token`, …), never the value. A
+`--dry-run` warns in the same words and exits 0 instead, so a preview never
+refuses what it cannot post. `--allow-secret-values` publishes the review
+anyway, and `post.json` records the shapes it let through in
+`secret_shapes_allowed[]` — the receipt proves the override and what it cost.
+
 `triage --dry-run` computes one status flip and writes nothing: it resolves
 the sig, applies the rationale rule, and prints `would set <sig> -> <status>`
 (`data.dry_run: true` in `--json`, and a `next` that says nothing was written).
