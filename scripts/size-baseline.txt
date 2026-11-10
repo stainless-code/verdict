@@ -134,10 +134,21 @@
 # darwin/arm64 11287874, linux/amd64 12079264, linux/arm64 11075744,
 # windows/amd64 12410368, windows/arm64 11158016. Five ceilings cross and move
 # to the next 10 kB above their measurement; linux/arm64 stays put.
+# The post secret-shape guard adds the shared value-only matcher, the scan that
+# runs before the first host call, the refusal and its hint, the override flag
+# on all three surfaces, and the receipt field. Measured here: darwin/amd64
+# 12290288, darwin/arm64 11271410, linux/amd64 12071072, linux/arm64 11075744,
+# windows/amd64 12402176, windows/arm64 11152896. Four ceilings cross and move
+# to the next 10 kB above their measurement; darwin/arm64 and linux/arm64 stay
+# put.
+# Stacked on the live-thread and coverage dimensions above, the combined
+# build measures darwin/amd64 12306832, linux/amd64 12087456, windows/amd64
+# 12421632, windows/arm64 11169280; those four move to the next 10 kB, the
+# two arm64 darwin/linux ceilings already hold.
 deps 0
-darwin/amd64 12300000
+darwin/amd64 12310000
 darwin/arm64 11290000
-linux/amd64 12080000
+linux/amd64 12090000
 linux/arm64 11080000
-windows/amd64 12420000
-windows/arm64 11160000
+windows/amd64 12430000
+windows/arm64 11170000
