@@ -6,6 +6,8 @@ export interface DocsSection {
 
 export interface DocsTreePage {
   readonly label: string;
+  /** Short label for the sitemap footer, where the full label would wrap. */
+  readonly footerLabel?: string;
   readonly docsFile?: string;
   readonly route: string;
 }
@@ -36,20 +38,39 @@ export const docsTree: readonly DocsTreeGroup[] = [
   {
     label: "Guides",
     pages: [
-      { label: "Set up a repo", route: "/docs/setup-repo" },
+      {
+        label: "Set up a repo",
+        footerLabel: "Repo setup",
+        route: "/docs/setup-repo",
+      },
       {
         label: "Review a branch without a PR",
+        footerLabel: "Local review",
         route: "/docs/local-review",
       },
       {
         label: "Let your agent run the review",
+        footerLabel: "Agent-run review",
         route: "/docs/agent-run-review",
       },
-      { label: "Gate a PR in CI", route: "/docs/ci-gate" },
-      { label: "Review a large PR", route: "/docs/review-large-pr" },
-      { label: "Review an untrusted PR", route: "/docs/untrusted-pr" },
+      {
+        label: "Gate a PR in CI",
+        footerLabel: "CI gate",
+        route: "/docs/ci-gate",
+      },
+      {
+        label: "Review a large PR",
+        footerLabel: "Large PRs",
+        route: "/docs/review-large-pr",
+      },
+      {
+        label: "Review an untrusted PR",
+        footerLabel: "Untrusted PRs",
+        route: "/docs/untrusted-pr",
+      },
       {
         label: "Review on GitLab and Forgejo",
+        footerLabel: "GitLab and Forgejo",
         route: "/docs/review-gitlab-forgejo",
       },
     ],
@@ -66,7 +87,11 @@ export const docsTree: readonly DocsTreeGroup[] = [
         docsFile: "troubleshooting.md",
         route: "/docs/troubleshooting",
       },
-      { label: "JSON envelope", route: "/docs/json-envelope" },
+      {
+        label: "JSON envelope",
+        footerLabel: "JSON envelope",
+        route: "/docs/json-envelope",
+      },
     ],
   },
   {
@@ -102,7 +127,7 @@ export const footerColumns: readonly FooterColumn[] = [
     .map((group) => ({
       label: group.label,
       links: group.pages.map((page) => ({
-        label: page.label,
+        label: page.footerLabel ?? page.label,
         path: page.route,
       })),
     })),
