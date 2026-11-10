@@ -23,7 +23,20 @@ func checkDestructiveGit(g *gateText) *core.RefusalError {
 	if ref := checkGitCloneVectors(g); ref != nil {
 		return ref
 	}
+	if ref := checkGitRemoteArchive(g); ref != nil {
+		return ref
+	}
 	return checkGitPager(g)
+}
+
+func checkGitRemoteArchive(g *gateText) *core.RefusalError {
+	if !reGitWord.MatchString(g.bare) {
+		return nil
+	}
+	if frag := grepO(reGitArchiveRemote, g.bare); frag != "" {
+		return refuse(codeNetworked, frag, "git archive --remote fetches from a remote host — archive a local ref")
+	}
+	return nil
 }
 
 func checkGitHomeOverride(g *gateText) *core.RefusalError {
@@ -124,23 +137,25 @@ func lastPathElement(pgval string) string {
 }
 
 var (
-	reGitFsmonitor    = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])core\.fsmonitor([[:space:]]*=|[[:space:]]+[^[:space:];|&])`)
-	reGitSSHCommand   = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])core\.sshcommand([[:space:]]*=|[[:space:]]+[^[:space:];|&])`)
-	reGitAskpass      = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])core\.askpass([[:space:]]*=|[[:space:]]+[^[:space:];|&])`)
-	reGitCredHelper   = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])credential\.helper([[:space:]]*=[[:space:]]*|[[:space:]]+)!`)
-	reGitConfigCount  = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])git_config_count[[:space:]]*=`)
-	reGitConfigKV     = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])git_config_(key|value)_[0-9]+[[:space:]]*=`)
-	reGitSSH          = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])git_ssh(_command)?[[:space:]]*=`)
-	reGitAskpassEnv   = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])git_askpass[[:space:]]*=`)
-	reGitExtDiff      = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])git_external_diff[[:space:]]*=`)
-	reGitPagerEnv     = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])git_pager[[:space:]]*=`)
-	reGitWord         = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])git([[:space:];|&]|$)`)
-	reGitHomeOverride = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])(home|xdg_config_home)[[:space:]]*=`)
-	reProtoExtAllow   = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])protocol\.ext\.allow`)
-	reProtoExtFrag    = regexp.MustCompile(`protocol\.ext\.allow|ext::[^[:space:];|&]*`)
-	reGitUploadPack   = regexp.MustCompile(`--upload-pack([^a-z-]|$)`)
-	reGitConfigEnv    = regexp.MustCompile(`--config-env[[:space:]=][^;|&]*(fsmonitor|sshcommand|askpass|helper|pager|ext\.allow|upload)`)
-	reCorePagerSet    = regexp.MustCompile(`core\.pager[[:space:]]*=`)
-	reCorePagerVal    = regexp.MustCompile(`core\.pager[[:space:]]*=[[:space:]]*[^[:space:];|&]*`)
-	reCorePagerStrip  = regexp.MustCompile(`^core\.pager[[:space:]]*=[[:space:]]*`)
+	reGitFsmonitor     = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])core\.fsmonitor([[:space:]]*=|[[:space:]]+[^[:space:];|&])`)
+	reGitSSHCommand    = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])core\.sshcommand([[:space:]]*=|[[:space:]]+[^[:space:];|&])`)
+	reGitAskpass       = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])core\.askpass([[:space:]]*=|[[:space:]]+[^[:space:];|&])`)
+	reGitCredHelper    = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])credential\.helper([[:space:]]*=[[:space:]]*|[[:space:]]+)!`)
+	reGitConfigCount   = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])git_config_count[[:space:]]*=`)
+	reGitConfigKV      = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])git_config_(key|value)_[0-9]+[[:space:]]*=`)
+	reGitSSH           = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])git_ssh(_command)?[[:space:]]*=`)
+	reGitAskpassEnv    = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])git_askpass[[:space:]]*=`)
+	reGitExtDiff       = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])git_external_diff[[:space:]]*=`)
+	reGitPagerEnv      = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])git_pager[[:space:]]*=`)
+	reGitWord          = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])git([[:space:];|&]|$)`)
+	reGitHomeOverride  = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])(home|xdg_config_home)[[:space:]]*=`)
+	reProtoExtAllow    = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])protocol\.ext\.allow`)
+	reProtoExtFrag     = regexp.MustCompile(`protocol\.ext\.allow|ext::[^[:space:];|&]*`)
+	reGitUploadPack    = regexp.MustCompile(`--upload-pack([^a-z-]|$)`)
+	reGitArchiveRemote = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])git[[:space:]]+([^;|&]*[[:space:]])?archive` +
+		`([[:space:];|&]|$)[^;|&]*--remote([[:space:]=]|$)`)
+	reGitConfigEnv   = regexp.MustCompile(`--config-env[[:space:]=][^;|&]*(fsmonitor|sshcommand|askpass|helper|pager|ext\.allow|upload)`)
+	reCorePagerSet   = regexp.MustCompile(`core\.pager[[:space:]]*=`)
+	reCorePagerVal   = regexp.MustCompile(`core\.pager[[:space:]]*=[[:space:]]*[^[:space:];|&]*`)
+	reCorePagerStrip = regexp.MustCompile(`^core\.pager[[:space:]]*=[[:space:]]*`)
 )
