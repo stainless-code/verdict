@@ -36,12 +36,22 @@ export const docsTree: readonly DocsTreeGroup[] = [
   {
     label: "Guides",
     pages: [
+      { label: "Set up a repo", route: "/docs/setup-repo" },
       {
         label: "Review a branch without a PR",
         route: "/docs/local-review",
       },
+      {
+        label: "Let your agent run the review",
+        route: "/docs/agent-run-review",
+      },
       { label: "Gate a PR in CI", route: "/docs/ci-gate" },
+      { label: "Review a large PR", route: "/docs/review-large-pr" },
       { label: "Review an untrusted PR", route: "/docs/untrusted-pr" },
+      {
+        label: "Review on GitLab and Forgejo",
+        route: "/docs/review-gitlab-forgejo",
+      },
     ],
   },
   {

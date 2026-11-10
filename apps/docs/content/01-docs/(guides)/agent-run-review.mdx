@@ -1,0 +1,98 @@
+---
+title: Let your agent run the review
+description: "Launch your own agent once against a fetched bundle with run --agent, validate its one fresh review.json, then record or post it."
+search:
+  tags: ["guides", "run", "agent", "skill", "launcher"]
+---
+
+`fetch` ends with a bundle and a prompt nobody ran. `run` closes that gap:
+it launches your agent once against the bundle and hands back the artifact,
+without becoming an orchestrator.
+
+<Steps>
+  <Step title="Fetch a bundle first">
+    ```bash
+    verdict fetch-local acme/app launch -- notes.txt
+    ```
+
+    `run` never fetches: it requires an existing bundle
+    (`.verdict/state/local-launch/` here, or `.verdict/state/123/` for a PR)
+    and refuses `missing-bundle` without one.
+
+  </Step>
+  <Step title="Preview the exact command">
+    ```bash
+    verdict run acme/app local-launch --agent claude --print
+    ```
+
+    `--print` renders the exact argv — `claude -p` plus the short
+    tool-generated directive naming the one review file to write — and exits 0
+    without resolving, spawning, or writing. Agent definitions are data (name,
+    binary, non-interactive flags), so your own model and turn flags go after
+    a bare `--`: `run acme/app local-launch --agent claude --print -- --model opus`.
+
+  </Step>
+  <Step title="Launch one agent, one shot">
+    ```bash
+    verdict run acme/app local-launch --agent claude --json
+    ```
+
+    One process, one bundle, one shot: no daemon, no queue, no retries. After
+    the process exits, `run` requires exactly one fresh
+    `review.json` — present, a regular file, not older than the launch record —
+    then stops. It never reads the agent's prose, never posts, and names the
+    next command (`record` here, `post` for a PR bundle) instead of running
+    it. The agent inherits your environment and key; verdict itself makes no
+    network calls.
+
+  </Step>
+  <Step title="Read the provenance, then record">
+    ```bash
+    verdict record acme/app local-launch
+    ```
+
+    The launch is recorded in `launcher.json`: agent name, resolved binary,
+    argv shape, timestamps, exit code, and artifact freshness and size (here
+    exit 0, fresh, 218 bytes). `record` validates that file unchanged — this
+    run merged 1 open finding — so a review `run` accepts is a review the
+    later verbs accept.
+
+  </Step>
+</Steps>
+
+## What success looks like
+
+`review.json` exists and is fresh, `launcher.json` pins the agent, binary,
+and timings, and `record` reports the merged findings. Install the skill the
+directive points at first — it ships inside the binary, so it always matches:
+
+```bash
+verdict skill install --dir <skills-dir> --json
+verdict skill status --dir <skills-dir> --json
+```
+
+Install reports `create` with the payload files (`SKILL.md`, `prompts/`,
+`schemas/`, `scripts/verdict`); `status` reads `keep` once in sync.
+
+## Refusals
+
+- [`unknown-agent`](/docs/troubleshooting#unknown-agent) — the name
+  is not in the agent table. Fix: pick from `claude`, `codex`, `cursor`,
+  `opencode`, `copilot`, `gemini`, `goose`, `qwen`, or `windsurf`.
+- [`agent-missing`](/docs/troubleshooting#agent-missing) — the
+  binary is not on `PATH`. Fix: install the agent CLI or adjust `PATH`.
+- [`no-review-artifact`](/docs/troubleshooting#no-review-artifact) —
+  the agent exited 0 and wrote no `review.json`. Fix: check the agent's own
+  output in `.run.out`, then re-run.
+- [`stale-review-artifact`](/docs/troubleshooting#stale-review-artifact) —
+  `review.json` predates this launch. Fix: delete the stale file and run again.
+  A non-zero agent exit is the process exit code (`agent-failed`); the
+  watchdog kill is `agent-timeout` (default 300 seconds, `--timeout` to move
+  it). There is no retry or repair pass.
+
+Related guides: [Review a large PR](/docs/review-large-pr), [Review on GitLab and Forgejo](/docs/review-gitlab-forgejo), [Set up a repo](/docs/setup-repo).
+
+## Full detail
+
+[Your agent, launched (`run --agent`)](https://github.com/stainless-code/verdict/blob/main/docs/manual.md#your-agent-launched-run---agent)
+in the manual.
