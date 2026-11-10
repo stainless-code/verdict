@@ -35,6 +35,15 @@ func TestHintForSpendAndBudget(t *testing.T) {
 	}
 }
 
+// TestHintForPostSecretShaped proves the refusal's hint offers both ways out —
+// strip the value, or publish it on purpose — and prints nothing that could be
+// the value itself.
+func TestHintForPostSecretShaped(t *testing.T) {
+	assertHintFragments(t, HintFor("post-secret-shaped"), "post-secret-shaped",
+		[]string{"remove the value", "--allow-secret-values"},
+		[]string{"AKIA", "ghp_", "sk-ant"})
+}
+
 // assertHintFragments proves the hint contains every required fragment and
 // none of the forbidden ones.
 func assertHintFragments(t *testing.T, hint, code string, want, deny []string) {
