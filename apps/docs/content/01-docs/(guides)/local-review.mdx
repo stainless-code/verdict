@@ -1,0 +1,70 @@
+---
+title: Review a branch without a PR
+description: "No PR yet? Fetch the worktree into a local bundle, have any agent write review.json, then record, report, and gate it — the full offline loop."
+search:
+  tags: ["local-review", "fetch-local", "record", "gate", "branch"]
+---
+
+Use this when there is no pull request yet: a branch you are shaping, a spike, or a fix you want checked before it reaches a host.
+
+<Steps>
+  <Step title="Fetch the work into a bundle">
+    ```bash
+    make build
+    bin/verdict fetch-local acme/app mywork
+    ```
+
+    This reads the worktree diff (unstaged plus staged, against `HEAD`) and writes `.verdict/state/local-mywork/` with `source.json`, `full.diff`, `toc.txt`, and `roles.txt`. Untracked files stay out until you stage them, and the `local-` prefix keeps the bundle namespaced so it can never collide with a PR number. Downstream verbs take `local-mywork`; the bare slug `mywork` resolves too. An empty diff exits `0` with "nothing to review".
+
+    Pick the diff source for a branch instead of the dirty tree:
+
+    | You want             | Command                                             |
+    | -------------------- | --------------------------------------------------- |
+    | Staged changes only  | `bin/verdict fetch-local acme/app staged --staged`  |
+    | A committed range    | `bin/verdict fetch-local acme/app ranged --range main..feature` |
+    | Everything since a base | `bin/verdict fetch-local acme/app based --base main` |
+
+    The flags are mutually exclusive: one diff source per bundle.
+
+  </Step>
+
+<Step title="Have an agent review it">
+  Point any agent at the bundle: it reads `full.diff` through `toc.txt` (plus
+  `SKILL.md` and `prompts/`) and writes exactly one
+  `.verdict/state/local-mywork/review.json` with `schema_version` 1, `body`,
+  `approved`, and `comments[]`. This is the agent's turn; there is no command to
+  run until the file lands.
+</Step>
+
+  <Step title="Record the findings">
+    ```bash
+    bin/verdict record acme/app local-mywork
+    ```
+
+    This runs the validate-and-merge half of `post` with no host call and writes `findings.json` plus `record.json`, which `report` and `triage` read. Success prints `recorded: …/findings.json (N open) + …/record.json`.
+
+  </Step>
+
+  <Step title="Read the report and gate it">
+    ```bash
+    bin/verdict report acme/app local-mywork
+    bin/verdict gate acme/app local-mywork --max-severity critical --live skip --coverage warn
+    ```
+
+    A clean bundle reports `open=0` and the gate prints `gate: PASS` with exit `0`. Leave `--require-head` off here: no completed post exists for a local bundle, so that dimension reads `unknown` and fails the gate.
+
+  </Step>
+</Steps>
+
+## What success looks like
+
+`record` prints one `recorded:` line naming `findings.json` with its open count plus `record.json`; `report` shows the ranked findings with `open=0` on a clean bundle; the gate prints one line per dimension and closes with `gate: PASS`, exit `0`. All three verbs are offline reads and writes under `.verdict/state/` — nothing leaves your machine.
+
+## Refusals you can hit
+
+- `record` rejects a thin review with [`bad-review-input`](/docs/troubleshooting#bad-review-input): the body needs a verdict marker and real substance. Open with the verdict, write more than a line, and re-run.
+- `post` on a local bundle fails [`no-pr-target`](/docs/troubleshooting#no-pr-target) with exit `1`: local bundles never post. When the PR exists, `fetch` it and adopt the local findings, then `post` and [gate it in CI](/docs/ci-gate) proceed normally.
+
+## Full detail
+
+The [Local review section of the manual](https://github.com/stainless-code/verdict/blob/main/docs/manual.md#local-review-no-pr) specifies every diff source, the `record` flags, and the upgrade arc from local bundle to posted PR.

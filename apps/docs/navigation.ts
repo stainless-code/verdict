@@ -34,6 +34,17 @@ export const docsTree: readonly DocsTreeGroup[] = [
     ],
   },
   {
+    label: "Guides",
+    pages: [
+      {
+        label: "Review a branch without a PR",
+        route: "/docs/local-review",
+      },
+      { label: "Gate a PR in CI", route: "/docs/ci-gate" },
+      { label: "Review an untrusted PR", route: "/docs/untrusted-pr" },
+    ],
+  },
+  {
     label: "Concepts",
     pages: [{ label: "How it reviews", route: "/docs/how-it-reviews" }],
   },

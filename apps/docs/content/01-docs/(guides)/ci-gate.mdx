@@ -1,0 +1,58 @@
+---
+title: Gate a PR in CI
+description: "Copy the first-party review workflow into your repo, then let one gate step block the merge: the flags it needs and the four exit codes it returns."
+search:
+  tags: ["ci", "gate", "github-actions", "exit-codes", "merge"]
+---
+
+Use this when CI should block the merge on review findings: one workflow file, one composed exit code, no new secrets leaving your runners.
+
+<Steps>
+  <Step title="Copy the recipe workflow">
+    ```bash
+    cp examples/verdict-review.yml .github/workflows/verdict-review.yml
+    ```
+
+    The recipe is specified in `docs/ci-recipe.md`: install a pinned, signature-verified binary, then `ready --check` (fails fast on an unreviewable PR), `fetch` (builds the bundle), `run --agent` (your agent, your key, writes `review.json`), `post` (validates anchors, merges findings, submits exactly one review), and finally the merge gate. Require the job in branch protection; the readiness pre-check saves agent spend before the expensive steps. To rehearse the loop before wiring CI, walk it on a branch first: [Review a branch without a PR](/docs/local-review).
+
+  </Step>
+
+  <Step title="Keep the gate step as the single decider">
+    The workflow already ends with the composed check:
+
+    ```bash
+    verdict gate "$GITHUB_REPOSITORY" "${{ github.event.pull_request.number }}" \
+      --max-severity critical --require-head --live auto
+    ```
+
+    At least one dimension is required: `--max-severity critical|important|informational` (open findings at or above the tier), `--require-head` (a completed post for the fetched HEAD), and the `--live` posture for the unresolved-threads recheck. The coverage posture defaults to `require`: it reads the `coverage[]` receipt the `post` step stored, and a partial attestation fails here instead of merging — pass `--coverage warn` as the migration while the review does not attest yet. `--live auto` keeps an unreachable lookup neutral; `--live strict` fails closed. Only `open` findings count.
+
+  </Step>
+
+  <Step title="Read the exit code">
+    | Code | Meaning                                                        |
+    | ---- | -------------------------------------------------------------- |
+    | `0`  | pass: every requested dimension is clean (`gate: PASS`)        |
+    | `1`  | fail or unknown: the `gate:` lines name the failing dimensions and one `try:` hint gives the recovery |
+    | `2`  | usage error: a dimension is missing or a flag is wrong — check the invocation |
+    | `3`  | tool error: the bundle, auth, or store is broken — inspect, then retry |
+
+    There is no `--force`: triage or fix, then re-fetch and re-run. The advisory `verdict report` step in the workflow never gates, so it stays the escape hatch.
+
+  </Step>
+</Steps>
+
+## What success looks like
+
+The job log shows the gate's one line per dimension and closes with `gate: PASS`, exit `0`, and branch protection holds the merge until that job is green. Fork PRs arrive with no secrets, so the agent step fails instead of silently skipping the review — for a diff you do not trust, verify its fix claims sandboxed first: [Review an untrusted PR](/docs/untrusted-pr). Secrets stay scoped: `GH_TOKEN` only reaches the steps that call `gh`, and the model key lives only in the agent step's environment — `verdict` itself makes no model call and never proxies the key.
+
+## Refusals you can hit
+
+- Exit `3` with [`missing-findings`](/docs/troubleshooting#missing-findings): the gate ran before anything recorded findings. Check that `fetch`, the agent review, and `post` all ran on this PR, then re-run.
+- Exit `1` on the head dimension (`no completed post record for HEAD`): the fetched HEAD is not the posted HEAD. Re-fetch, re-run the review, `post` again, then re-check.
+
+Machine readers parse the same verdict from `--json` (`data.passed` plus `data.dimensions[]` in findings, head, coverage, live-threads order); the envelope shape is pinned in [JSON envelope and exit codes](/docs/json-envelope).
+
+## Full detail
+
+The [`gate` section of the manual](https://github.com/stainless-code/verdict/blob/main/docs/manual.md#gate-one-composed-exit-code-for-ci) specifies every dimension, posture, and the exact tail format.
