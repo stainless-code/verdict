@@ -56,10 +56,14 @@ operator manual:
   HEAD-reviewed with `--require-head`, coverage attested for the same HEAD),
   1 findings, stale HEAD, a partial attestation, or an outnumbering
   live-thread set. The coverage dimension is `require` by default because the
-  recipe posts before it gates: the receipt exists by then, and a review that
-  skipped files fails here instead of merging. Pass `--coverage warn` to keep
-  a partial attestation advisory. Only `open` findings count, and the
-  advisory `verdict report` step never gates.
+  recipe posts before it gates: the receipt is written by then, but its
+  attestation is whatever the review wrote. A review that skipped files, or
+  wrote no `coverage[]` at all, fails here instead of merging — so the review
+  step must produce that attestation (or every `chunks[]` entry on a chunked
+  bundle). Pass `--coverage warn` as the migration while it does not: the
+  dimension then reports a partial or missing attestation without failing.
+  Only `open` findings count, and the advisory `verdict report` step never
+  gates.
 
 Triage or fix, then re-fetch and re-run: there is no `--force` — fetch +
 triage + re-check is the recovery.

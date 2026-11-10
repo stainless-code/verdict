@@ -637,9 +637,9 @@ attestation. A partial one warns once and adds one machine-built body line;
 was written", and a review that never stamped the key gets neither the warning
 nor the line, so its rendered body is unchanged.
 
-`gate` reads the stored receipt by default: a gated HEAD with no receipt, or
-one measuring under 100%, fails the merge gate (`--coverage warn` reports the
-same shortfall without failing). That is the only place the requirement is on
+`gate` reads the stored receipt by default: a gated HEAD with no receipt, one
+carrying no `coverage[]` attestation, or one measuring under 100%, fails the
+merge gate (`--coverage warn` reports the same shortfall without failing). That is the only place the requirement is on
 by default — `post` and `record` keep the warning posture below.
 
 `--require-coverage` on `post` and `record` turns absence or a gap into a
@@ -889,11 +889,14 @@ fail the gate, so a skip never turns a green run red. Exit codes mirror
 runs on every gate and defaults to `require`. `require` reads the stored
 receipt `post.json` or `record.json` carries for the gated HEAD — the summary
 [Diff coverage](#diff-coverage-agent-attestation) already describes — and fails
-the gate when that receipt is absent, names another HEAD, or measures under
-100%. `warn` runs the same evaluation, prints one `warn:` line, and marks the
-dimension `skip`, so the shortfall is reported without failing. A bundle whose
-changed files are all exempt passes either way once a receipt exists
-(`percent: null`, `total: 0`).
+the gate when that receipt is absent, names another HEAD, carries no
+`coverage[]` attestation (a completed post that never attested coverage reads
+`unknown`, not `pass`), or measures under 100%. `warn` runs the same
+evaluation, prints one `warn:` line, and marks the dimension `skip`, so the
+shortfall is reported without failing — the migration for a review that has
+not attested yet, not a permanent posture. A bundle whose changed files are
+all exempt passes either way once a receipt attests them (`percent: null`,
+`total: 0`).
 
 A chunked bundle is graded on the chunk attestation its receipt stores:
 every manifest chunk in `chunks[]` passes, and a shortfall fails naming the
