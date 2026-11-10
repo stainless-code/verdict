@@ -1,3 +1,0 @@
-[mcp_servers.verdict]
-command = "verdict"
-args = ["mcp", "--read-only", "--operator"]

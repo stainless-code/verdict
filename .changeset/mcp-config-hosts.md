@@ -3,7 +3,8 @@
 ---
 
 `verdict mcp config` now covers six more hosts and the server's posture flags.
-`--read-only` and/or `--operator` put the matching argv after `mcp` in the
+`--read-only` or `--operator` (mutually exclusive, like `verdict mcp`) puts the
+matching argv after `mcp` in the
 printed, `--json`, and `--write` snippets. A `verdict` entry whose argv is one
 of verdict's own shapes (`["mcp"]` plus any combination of the two flags) is
 updated in place on `--write` with the usual backup; any other argv still

@@ -1023,8 +1023,8 @@ stdout is the protocol channel.
 
 `verdict mcp config --agent <claude|cursor|codex|gemini|qwen|windsurf|opencode|goose|copilot>`
 prints the exact entry (the default is print-only, like `--dry-run`). Add
-`--read-only` and/or `--operator` to put the matching argv after `mcp` in the
-snippet. Add `--write` to merge it into the host's documented config, or
+`--read-only` or `--operator` (mutually exclusive, like `verdict mcp`) to put
+the matching argv after `mcp` in the snippet. Add `--write` to merge it into the host's documented config, or
 `--json` for one envelope with the path, format, snippet, and merge status. It
 never prompts and never starts the server.
 
@@ -1068,7 +1068,10 @@ are kept. Fix or remove the entry by hand and re-run.
 `opencode` (`"mcp"` map with `{type:"local", command:[...]}`),
 `copilot` (`"servers"` map), and `goose` (`extensions` YAML) are print-only:
 `--write` refuses typed naming the host, so copy the printed snippet into the
-host config by hand.
+host config by hand. The `gemini`, `qwen`, and `windsurf` shapes are confirmed
+from the host's docs; the `opencode`, `copilot`, and `goose` shapes are
+unverified live (offline), so check the printed snippet against the host's
+docs before trusting it.
 
 The server is experimental until 1.0: tool shapes may still move, while the
 envelope keeps its `schema_version` contract.

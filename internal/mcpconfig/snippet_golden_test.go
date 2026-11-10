@@ -28,10 +28,8 @@ var snippetGoldenCases = []snippetCase{
 	{"copilot", AgentCopilot, false, false},
 	{"claude-read-only", AgentClaude, true, false},
 	{"claude-operator", AgentClaude, false, true},
-	{"claude-both", AgentClaude, true, true},
 	{"codex-read-only", AgentCodex, true, false},
 	{"codex-operator", AgentCodex, false, true},
-	{"codex-both", AgentCodex, true, true},
 }
 
 // TestSnippetGoldens pins every host's printed entry plus the posture variants.

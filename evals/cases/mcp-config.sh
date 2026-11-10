@@ -99,4 +99,40 @@ else
   bad "print snippets miss the posture argv"
 fi
 
+set +e
+"$EVAL_CLI" mcp config --agent claude --read-only --operator >"$EVAL_SANDBOX/p-out.txt" 2>"$EVAL_SANDBOX/p-err.txt"
+st=$?
+set -e
+if [ "$st" -eq 2 ] && grep -q -- "--read-only and --operator are mutually exclusive" "$EVAL_SANDBOX/p-err.txt" \
+  && [ ! -s "$EVAL_SANDBOX/p-out.txt" ]; then
+  good "the --read-only --operator pair refuses with the mcp wording"
+else
+  bad "pair refusal exit $st (want 2 with the mcp wording)"
+fi
+
+if [ -e "$EVAL_SANDBOX/.mcp.json" ]; then
+  cp "$EVAL_SANDBOX/.mcp.json" "$EVAL_SANDBOX/pre-pair.json"
+else
+  rm -f "$EVAL_SANDBOX/pre-pair.json"
+fi
+set +e
+"$EVAL_CLI" mcp config --agent claude --read-only --operator --write >"$EVAL_SANDBOX/pw-out.txt" 2>"$EVAL_SANDBOX/pw-err.txt"
+st=$?
+set -e
+if [ "$st" -eq 2 ] && grep -q -- "--read-only and --operator are mutually exclusive" "$EVAL_SANDBOX/pw-err.txt"; then
+  if [ -e "$EVAL_SANDBOX/pre-pair.json" ]; then
+    if cmp -s "$EVAL_SANDBOX/.mcp.json" "$EVAL_SANDBOX/pre-pair.json"; then
+      good "pair refusal under --write leaves the file byte-identical"
+    else
+      bad "pair refusal under --write rewrote the file"
+    fi
+  elif [ ! -e "$EVAL_SANDBOX/.mcp.json" ]; then
+    good "pair refusal under --write writes nothing"
+  else
+    bad "pair refusal under --write wrote .mcp.json"
+  fi
+else
+  bad "pair --write exit $st (want 2 with the mcp wording)"
+fi
+
 eval_end

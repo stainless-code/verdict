@@ -686,13 +686,12 @@ func TestFlagSnippets(t *testing.T) {
 		{"plain", false, false},
 		{"read-only", true, false},
 		{"operator", false, true},
-		{"both", true, true},
 	} {
 		checkFlagSnippet(t, tc.name, tc.readOnly, tc.operator)
 	}
 }
 
-//nolint:revive,cyclop // the presence/absence/order checks read as one assertion block
+//nolint:revive // the presence/absence checks read as one assertion block
 func checkFlagSnippet(t *testing.T, name string, readOnly, operator bool) {
 	t.Helper()
 	req := testRequest(t, AgentClaude, false)
@@ -720,9 +719,6 @@ func checkFlagSnippet(t *testing.T, name string, readOnly, operator bool) {
 	if !operator && op >= 0 {
 		t.Errorf("%s snippet carries --operator:\n%s", name, res.Snippet)
 	}
-	if readOnly && operator && (mcp > ro || ro > op) {
-		t.Errorf("%s snippet argv out of order:\n%s", name, res.Snippet)
-	}
 }
 
 // TestFlagSnippetsTOML proves each posture combination lands in the TOML table.
@@ -737,7 +733,6 @@ func TestFlagSnippetsTOML(t *testing.T) {
 		{"plain", `args = ["mcp"]`, false, false},
 		{"read-only", `args = ["mcp", "--read-only"]`, true, false},
 		{"operator", `args = ["mcp", "--operator"]`, false, true},
-		{"both", `args = ["mcp", "--read-only", "--operator"]`, true, true},
 	} {
 		req := testRequest(t, AgentCodex, false)
 		req.ReadOnly = tc.readOnly

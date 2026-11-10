@@ -9,10 +9,12 @@ import (
 	"github.com/stainless-code/verdict/internal/mcp"
 )
 
+const mcpPostureConflict = "--read-only and --operator are mutually exclusive"
+
 func mcpUsageText() string {
 	return "usage: verdict mcp [--read-only | --operator]\n" +
 		"       verdict mcp config --agent <claude|cursor|codex|gemini|qwen|windsurf|opencode|goose|copilot>\n" +
-		"       [--write] [--dry-run] [--json] [--read-only] [--operator]\n" +
+		"       [--write] [--dry-run] [--json] [--read-only | --operator]\n" +
 		"  Serve the review verbs as MCP tools over stdio (JSON-RPC 2.0, one frame per line).\n" +
 		"  stdout is the protocol channel; progress and warnings go to stderr.\n" +
 		"  Protocol: initialize, notifications/initialized, tools/list, tools/call, ping,\n" +
@@ -64,7 +66,7 @@ func runMCP(
 		}
 	}
 	if readOnly && operator {
-		fmt.Fprintln(stderr, "--read-only and --operator are mutually exclusive")
+		fmt.Fprintln(stderr, mcpPostureConflict)
 		return cli.ExitUsage
 	}
 	root := exeRoot()
