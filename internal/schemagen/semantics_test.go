@@ -121,7 +121,13 @@ var publishedSemantics = map[string]string{
 	// those are the only keys every previously written envelope carried; the
 	// split keys stay optional so legacy envelopes keep validating, while new
 	// writers always emit all of them. No other property, enum, or type changed.
-	"envelope.schema.json": "8a1a05803066cbf7e0e4349940d3019605b85e44ecd3d368f5d232d3d3944151",
+	// gate coverage dimension: additive `coverage` member on gateDimension.id
+	// (the gate's stored diff-coverage verdict), with the id/count descriptions
+	// and the reportGate order note updated to name it. No existing member,
+	// property, required key, or type changed; a consumer that switches
+	// exhaustively on the dimension id gets the unknown-member case it would
+	// already need for a future dimension.
+	"envelope.schema.json": "fdcc36881b997a74dbef800706c145b005a6ef3ae46adb1983bd8024731111a6",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

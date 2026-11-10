@@ -81,34 +81,34 @@ func TestGateExitTable(t *testing.T) {
 	}{
 		{
 			name: "pass", store: "[" + openFinding(gateSigInf, "informational") + "]",
-			args: []string{"--max-severity", "important", "--live", "skip"},
+			args: []string{"--max-severity", "important", "--live", "skip", "--coverage", "warn"},
 			want: cli.ExitOK,
 			subs: []string{
 				"gate: findings     pass  no open findings at-or-above important",
-				"gate: skipped live_threads",
+				"gate: skipped coverage, live_threads",
 				"gate: PASS",
 			},
 			banned: []string{"try:"},
 		},
 		{
 			name: "tier-fail", store: "[" + openFinding(gateSigImp, "important") + "]",
-			args: []string{"--max-severity", "important", "--live", "skip"},
+			args: []string{"--max-severity", "important", "--live", "skip", "--coverage", "warn"},
 			want: cli.ExitRefused,
 			subs: []string{
 				"gate: findings     fail  1 open finding(s) at-or-above important",
-				"gate: FAIL (1 fail, 1 skip)",
+				"gate: FAIL (1 fail, 2 skip)",
 				"try: address or triage the open findings, then re-run gate",
 			},
 		},
 		{
 			name: "untagged-never-meets-a-tier", store: "[" + openFinding(gateSigImp, "null") + "]",
-			args: []string{"--max-severity", "informational", "--live", "skip"},
+			args: []string{"--max-severity", "informational", "--live", "skip", "--coverage", "warn"},
 			want: cli.ExitOK,
 			subs: []string{"gate: PASS"},
 		},
 		{
 			name: "head-unknown", store: "[]",
-			args: []string{"--require-head", "--live", "skip"},
+			args: []string{"--require-head", "--live", "skip", "--coverage", "warn"},
 			want: cli.ExitRefused,
 			subs: []string{
 				"gate: head         unknown  no completed post record for HEAD aaaaaaa",
@@ -140,9 +140,14 @@ func TestGateExitTable(t *testing.T) {
 			subs: []string{"unknown flag '--max-risk' for gate"},
 		},
 		{
-			name: "usage-coverage-unknown", args: []string{"--coverage", "80"}, store: "[]",
+			name: "usage-coverage-is-a-posture", args: []string{"--coverage", "warn"}, store: "[]",
 			want: cli.ExitUsage,
-			subs: []string{"unknown flag '--coverage' for gate"},
+			subs: []string{"gate needs at least one dimension"},
+		},
+		{
+			name: "usage-bad-coverage", args: []string{"--coverage", "80"}, store: "[]",
+			want: cli.ExitUsage,
+			subs: []string{"unknown --coverage posture '80' for gate"},
 		},
 		{
 			name: "tool-error", store: `[42]`,
@@ -190,7 +195,7 @@ func assertCarries(t *testing.T, name, output string, subs []string) {
 func TestGateEnvelopeShape(t *testing.T) {
 	req := gateBundle(t, "["+openFinding(gateSigImp, "important")+"]")
 	writeGateFile(t, ".verdict/state/5101/post.json", `{"head":"`+strings.Repeat("c", 40)+`"}`)
-	code, stdout, stderr := gateRun(t, []string{"--max-severity", "important", "--require-head", "--live", "skip"}, req, true)
+	code, stdout, stderr := gateRun(t, []string{"--max-severity", "important", "--require-head", "--live", "skip", "--coverage", "warn"}, req, true)
 	if code != cli.ExitRefused {
 		t.Fatalf("exit = %d, want 1\nstdout: %s", code, stdout)
 	}
@@ -231,7 +236,7 @@ func assertEnvelopeFrame(t *testing.T, stdout, stderr string) {
 // wire contract carries, so an added or renamed key fails here first.
 func assertGateShape(t *testing.T, dims []map[string]any) {
 	t.Helper()
-	wantIDs := []string{"findings", "head", "live_threads"}
+	wantIDs := []string{"findings", "head", "coverage", "live_threads"}
 	if len(dims) != len(wantIDs) {
 		t.Fatalf("dimensions = %v, want %d", dims, len(wantIDs))
 	}
@@ -306,7 +311,7 @@ func TestGateNeverWritesOrPosts(t *testing.T) {
 		`{"nodes":[{"isResolved":true}]}}}}}`}
 	req.Runtime = &core.Runtime{Now: gateNow, Commander: cmd}
 	before := bundleFingerprint(t)
-	code, _, _ := gateRun(t, []string{"--max-severity", "important"}, req, false)
+	code, _, _ := gateRun(t, []string{"--max-severity", "important", "--coverage", "warn"}, req, false)
 	if code != cli.ExitRefused {
 		t.Fatalf("exit = %d, want 1", code)
 	}
@@ -370,7 +375,7 @@ func assertLivePosture(t *testing.T, live, status string, want, wantCalls int) {
 	req := gateBundle(t, "[]")
 	cmd := &recordCommander{fail: true, stderr: "unreachable here"}
 	req.Runtime = &core.Runtime{Now: gateNow, Commander: cmd}
-	code, stdout, _ := gateRun(t, []string{"--max-severity", "critical", "--live", live}, req, true)
+	code, stdout, _ := gateRun(t, []string{"--max-severity", "critical", "--live", live, "--coverage", "warn"}, req, true)
 	if code != want {
 		t.Fatalf("%s: exit = %d, want %d\n%s", live, code, want, stdout)
 	}
@@ -450,4 +455,167 @@ func TestGateNextNamesCompliance(t *testing.T) {
 			t.Errorf("gateNext(%s compliance) is empty, want a recovery action", status)
 		}
 	}
+}
+
+// gateDefaultArgs gates on findings and skips the live probe, leaving the
+// coverage posture at its default. The store it runs against decides that
+// dimension, so each leg writes the receipt it needs.
+var gateDefaultArgs = []string{"--max-severity", "critical", "--live", "skip"}
+
+// coverageReceipt renders the head and measured summary `record` and `post`
+// store side by side.
+func coverageReceipt(head, summary string) string {
+	return `{"schema_version":"1","head":"` + head + `","posted_at":"2026-01-01T00:00:00Z","coverage":` + summary + `}`
+}
+
+// The three stored summaries a gate can read: fully attested, partial, and a
+// bundle with nothing non-exempt to measure.
+const (
+	coverageComplete = `{"percent":100,"attested":12,"total":12,"files":1,"exempt":0,"gaps":0}`
+	coveragePartial  = `{"percent":75,"attested":9,"total":12,"files":2,"exempt":0,"gaps":2}`
+	coverageExempt   = `{"percent":null,"attested":0,"total":0,"files":0,"exempt":2,"gaps":0}`
+)
+
+// TestGateCoveragePosture pins the coverage dimension against the stored
+// receipt: require (the default) fails on absent or partial, warn reports the
+// same shortfall and never fails, and a fully attested or wholly exempt
+// bundle passes under either posture.
+func TestGateCoveragePosture(t *testing.T) {
+	tests := []struct {
+		name    string
+		post    string
+		record  string
+		args    []string
+		warn    string
+		status  string
+		subs    []string
+		want    int
+		chunked bool
+	}{
+		{
+			name: "complete-passes", post: coverageReceipt(gateHead, coverageComplete),
+			args: gateDefaultArgs, status: statusPass, want: cli.ExitOK,
+			subs: []string{
+				"gate: coverage     pass  100% of full hunk spans, both sides and context attested (12/12 lines)",
+				"gate: PASS",
+			},
+		},
+		{
+			name: "complete-passes-under-warn", post: coverageReceipt(gateHead, coverageComplete),
+			args: append(slices.Clone(gateDefaultArgs), "--coverage", "warn"), status: statusPass, want: cli.ExitOK,
+			subs: []string{"gate: coverage     pass  100% of full hunk spans, both sides and context attested (12/12 lines)"},
+		},
+		{
+			name: "partial-fails-by-default", post: coverageReceipt(gateHead, coveragePartial),
+			args: gateDefaultArgs, status: statusFail, want: cli.ExitRefused,
+			subs: []string{
+				"gate: coverage     fail  2 unattested range(s) at 75% of full hunk spans, both sides and context (9/12 lines)",
+				"try: attest the unattested ranges in review.json coverage[], then re-record or re-post, then re-run gate",
+			},
+		},
+		{
+			name: "partial-warns-under-warn", post: coverageReceipt(gateHead, coveragePartial),
+			args: append(slices.Clone(gateDefaultArgs), "--coverage", "warn"), status: statusSkip, want: cli.ExitOK,
+			subs: []string{
+				"gate: coverage     skip  2 unattested range(s) at 75% of full hunk spans, both sides and context (9/12 lines) — coverage is advisory (--coverage warn)",
+				"gate: PASS",
+			},
+			warn: "warn: coverage: 2 unattested range(s) at 75% of full hunk spans, both sides and context (9/12 lines) — coverage is advisory (--coverage warn)",
+		},
+		{
+			name: "absent-fails-by-default", args: gateDefaultArgs, status: statusUnknown, want: cli.ExitRefused,
+			subs: []string{
+				"gate: coverage     unknown  stored coverage absent for HEAD aaaaaaa — no completed post or record",
+			},
+		},
+		{
+			name: "absent-warns-under-warn", args: append(slices.Clone(gateDefaultArgs), "--coverage", "warn"),
+			status: statusSkip, want: cli.ExitOK,
+			subs: []string{"gate: coverage     skip  stored coverage absent for HEAD aaaaaaa — no completed post or record — coverage is advisory (--coverage warn)"},
+			warn: "warn: coverage: stored coverage absent for HEAD aaaaaaa — no completed post or record — coverage is advisory (--coverage warn)",
+		},
+		{
+			name: "exempt-only-passes", post: coverageReceipt(gateHead, coverageExempt),
+			args: gateDefaultArgs, status: statusPass, want: cli.ExitOK,
+			subs: []string{"gate: coverage     pass  nothing changed to measure (2 file(s) exempt)"},
+		},
+		{
+			name: "stale-head-fails", post: coverageReceipt(strings.Repeat("c", 40), coverageComplete),
+			args: gateDefaultArgs, status: statusUnknown, want: cli.ExitRefused,
+			subs: []string{"gate: coverage     unknown  stored coverage is for HEAD ccccccc, not HEAD aaaaaaa"},
+		},
+		{
+			name: "receipt-without-attestation-fails", post: `{"schema_version":"1","head":"` + gateHead + `"}`,
+			args: gateDefaultArgs, status: statusUnknown, want: cli.ExitRefused,
+			subs: []string{"gate: coverage     unknown  stored coverage absent for HEAD aaaaaaa — the receipt carries no coverage[] attestation"},
+		},
+		{
+			name: "record-receipt-passes", record: coverageReceipt(gateHead, coverageComplete),
+			args: gateDefaultArgs, status: statusPass, want: cli.ExitOK,
+			subs: []string{"gate: coverage     pass  100% of full hunk spans, both sides and context attested (12/12 lines)"},
+		},
+		{
+			name: "chunked-fails-closed", chunked: true, post: coverageReceipt(gateHead, coverageComplete),
+			args: gateDefaultArgs, status: statusUnknown, want: cli.ExitRefused,
+			subs: []string{"gate: coverage     unknown  chunked bundle — chunks[] is the attestation and the store keeps no receipt"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assertCoverageCase(t, tc.post, tc.record, tc.chunked, tc.args, tc.warn, tc.status, tc.subs, tc.want)
+		})
+	}
+}
+
+// assertCoverageCase seeds one receipt and grades the exit, the human lines,
+// the warning stream, and the published dimension status.
+func assertCoverageCase(t *testing.T, post, record string, chunked bool, args []string, warn, status string, subs []string, want int) {
+	t.Helper()
+	req := gateBundle(t, "[]")
+	seedCoverageStore(t, post, record, chunked)
+	code, stdout, stderr := gateRun(t, args, req, false)
+	if code != want {
+		t.Fatalf("exit = %d, want %d\nstdout: %s\nstderr: %s", code, want, stdout, stderr)
+	}
+	assertCarries(t, "coverage", stdout, subs)
+	if warn != "" && !strings.Contains(stderr, warn) {
+		t.Errorf("stderr = %q, want it to carry %q", stderr, warn)
+	}
+	_, jsonOut, jsonErr := gateRun(t, args, req, true)
+	if jsonOut == "" {
+		t.Fatalf("no envelope on stdout: %s", jsonErr)
+	}
+	dim := coverageDimension(t, gateData(t, jsonOut))
+	if dim["status"] != status {
+		t.Errorf("coverage status = %v, want %s\ndetail: %v", dim["status"], status, dim["detail"])
+	}
+}
+
+// seedCoverageStore writes the receipts and the chunk manifest one leg gates
+// against: post.json, record.json, and the chunked marker are each optional.
+func seedCoverageStore(t *testing.T, post, record string, chunked bool) {
+	t.Helper()
+	const dir = ".verdict/state/5101"
+	if post != "" {
+		writeGateFile(t, dir+"/post.json", post)
+	}
+	if record != "" {
+		writeGateFile(t, dir+"/record.json", record)
+	}
+	if chunked {
+		writeGateFile(t, dir+"/chunks/manifest.json",
+			`{"schema_version":"1","chunks":[{"name":"01","diff":"chunks/01.diff"}]}`)
+	}
+}
+
+// coverageDimension returns the coverage entry of a gate envelope.
+func coverageDimension(t *testing.T, data map[string]any) map[string]any {
+	t.Helper()
+	for _, dim := range gateDimensions(t, data) {
+		if dim["id"] == "coverage" {
+			return dim
+		}
+	}
+	t.Fatalf("no coverage dimension in %v", data["dimensions"])
+	return nil
 }

@@ -128,10 +128,16 @@
 # Stacked on the verify gate fixes above, the combined build measures
 # darwin/amd64 12286128; that one ceiling moves to the next 10 kB, the other
 # five already hold the combined measurement.
+# The gate's coverage dimension (the stored-receipt reader, its verdict table,
+# the --coverage posture in the CLI parser, and the SDK's GateRequest field) is
+# a few KiB of text per target. Measured here: darwin/amd64 12294336,
+# darwin/arm64 11287874, linux/amd64 12079264, linux/arm64 11075744,
+# windows/amd64 12410368, windows/arm64 11158016. Five ceilings cross and move
+# to the next 10 kB above their measurement; linux/arm64 stays put.
 deps 0
-darwin/amd64 12290000
-darwin/arm64 11280000
-linux/amd64 12070000
+darwin/amd64 12300000
+darwin/arm64 11290000
+linux/amd64 12080000
 linux/arm64 11080000
-windows/amd64 12400000
-windows/arm64 11150000
+windows/amd64 12420000
+windows/arm64 11160000

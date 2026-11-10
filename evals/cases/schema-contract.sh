@@ -120,7 +120,7 @@ eval_mk_bundle "$PR"
 eval_write_findings "$PR" <<'EOF'
 [{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Usable body here with enough substance.","suggestion":null,"inBounds":true,"rigor":"walked","severity":"critical","sig":"cccccccccccccccccccccccccccccccccccccccc","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
 EOF
-run_review gate acme/app "$PR" --max-severity critical --live skip --json
+run_review gate acme/app "$PR" --max-severity critical --live skip --coverage warn --json
 if [ "$EVAL_STATUS" -eq 1 ] && [ "$(jq -r '.verb' <"$EVAL_OUT" 2>/dev/null)" = "gate" ]; then
   good "S3b gate --json exits 1 on the open critical with a gate verb"
 else

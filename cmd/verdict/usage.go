@@ -169,18 +169,21 @@ func usageText() string {
 		"    or wait, 2 usage, 3 tool error. Without --check the run stays advisory:\n" +
 		"    exit 0 with blockers listed (typed errors exit 1, usage exits 2).\n" +
 		"  gate <owner/repo> <pr> [--max-severity critical|important|informational] [--require-head]\n" +
-		"        [--live auto|strict|skip] [--json]\n" +
+		"        [--live auto|strict|skip] [--coverage require|warn] [--json]\n" +
 		"    one composed local gate over the dimensions report already computes: open\n" +
 		"    findings at-or-above a tier (--max-severity), a completed post for the fetched\n" +
-		"    HEAD (--require-head), live unresolved threads (--live, default auto), and the\n" +
-		"    captured compliance verdict when the bundle carries a typed policy.\n" +
-		"    At least one dimension is required; --live alone is not one. Exits 0 pass,\n" +
-		"    1 gate failed or unknown, 2 usage, 3 tool error; a gate failure carries\n" +
-		"    data.passed false with error null. data.dimensions[] lists findings, head,\n" +
-		"    live_threads, compliance with id, status, detail, count. --live skip makes\n" +
-		"    zero network calls; auto keeps the fail-open skip. Never posts, approves,\n" +
-		"    merges, or writes a store: the exit code is the whole integration, and the\n" +
-		"    merge stays the human's. Use report for the ranked items, cost, and\n" +
+		"    HEAD (--require-head), the stored diff-coverage receipt for that HEAD\n" +
+		"    (--coverage, default require), live unresolved threads (--live, default auto),\n" +
+		"    and the captured compliance verdict when the bundle carries a typed policy.\n" +
+		"    At least one dimension is required; --live and --coverage alone are not.\n" +
+		"    Exits 0 pass, 1 gate failed or unknown, 2 usage, 3 tool error; a gate failure\n" +
+		"    carries data.passed false with error null. data.dimensions[] lists findings,\n" +
+		"    head, coverage, live_threads, compliance with id, status, detail, count.\n" +
+		"    --coverage require fails on an absent or partial attestation for the gated\n" +
+		"    HEAD; --coverage warn reports the same and never fails the gate. --live skip\n" +
+		"    makes zero network calls; auto keeps the fail-open skip. Never posts,\n" +
+		"    approves, merges, or writes a store: the exit code is the whole integration,\n" +
+		"    and the merge stays the human's. Use report for the ranked items, cost, and\n" +
 		"    artifacts.\n" +
 		"  threads <owner/repo> <pr> [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] [--json]\n" +
 		"    refresh .verdict/state/<pr>/threads.json from the host (no diff refetch): host-resolved\n" +

@@ -5,6 +5,13 @@ import "github.com/stainless-code/verdict/internal/jq"
 // ReportFlags carries the resolved report options: the adapter parses argv
 // and the service receives values only.
 type ReportFlags struct {
+	// Coverage is the diff-coverage posture: `require` fails the gate on an
+	// absent or partial stored attestation, `warn` reports the same finding
+	// and never fails. Empty means the run does not compose the dimension at
+	// all, which is what keeps `report` advisory. It stays out of the MCP tool
+	// schema (`json:"-"`) for the same reason: gate composes the dimension,
+	// and the MCP report tool is the advisory read.
+	Coverage     string `enum:"require|warn"                                                            json:"-"`
 	Status       string `enum:"all|open|addressed|wont-fix|false-positive|deferred"`
 	Kind         string `enum:"all|inline|section"`
 	Category     string `enum:"logic|edge-case|security|performance|accidental-commit|style|docs|other"`

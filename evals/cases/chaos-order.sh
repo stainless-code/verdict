@@ -258,7 +258,7 @@ if jq -e 'has("body") and .event == "APPROVE"' "$EVAL_SANDBOX/payload.json" >/de
 else
   bad "posted payload is malformed or not APPROVE"
 fi
-run_review gate acme/app "$PR" --require-head --live skip --json
+run_review gate acme/app "$PR" --require-head --live skip --coverage warn --json
 assert_exit "gate on the posted HEAD exits 0" 0
 if [ "$(jq -r '.data.passed' "$EVAL_OUT" 2>/dev/null)" = "true" ] \
   && jq -e '.error == null' "$EVAL_OUT" >/dev/null 2>&1; then
@@ -273,7 +273,7 @@ jq '.head = "cccccccccccccccccccccccccccccccccccccccc"' \
   && mv "$EVAL_SANDBOX/post-tampered.json" "$EVAL_SANDBOX/.verdict/state/$PR/post.json"
 snap "$EVAL_SANDBOX/.verdict/state/$PR" "$EVAL_SANDBOX/s4.before"
 m0="$(mark)"
-run_review gate acme/app "$PR" --require-head --live skip --json
+run_review gate acme/app "$PR" --require-head --live skip --coverage warn --json
 assert_exit "gate on a stale head exits 1" 1
 if [ "$(jq -r '.data.dimensions[] | select(.id=="head") | .status' "$EVAL_OUT" 2>/dev/null)" = "fail" ] \
   && [ "$(jq -r '.data.dimensions[] | select(.id=="head") | .detail' "$EVAL_OUT" 2>/dev/null)" = "posted HEAD ccccccc != fetched HEAD aaaaaaa" ] \
@@ -282,7 +282,7 @@ if [ "$(jq -r '.data.dimensions[] | select(.id=="head") | .status' "$EVAL_OUT" 2
 else
   bad "stale head did not fail closed with a way forward"
 fi
-run_review gate acme/app "$PR" --require-head --live skip
+run_review gate acme/app "$PR" --require-head --live skip --coverage warn
 if grep -q "^try:" "$EVAL_OUT"; then
   good "human gate tail carries a try: recovery line"
 else

@@ -23,6 +23,13 @@ import (
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 )
 
+// The two coverage postures Gate accepts, spelled here so the exported field
+// documents its own published values. Unset means require.
+const (
+	coverageRequire = "require"
+	coverageWarn    = "warn"
+)
+
 // ReportRequest carries the report options. Output/Sarif name files whose
 // bytes return in the response instead of being written.
 type ReportRequest struct {
@@ -111,12 +118,15 @@ func (c *Client) Config(ctx context.Context, req *ConfigRequest) (*ConfigRespons
 	}, nil
 }
 
-// GateRequest composes the three CI gate dimensions. An empty MaxSeverity
-// skips the findings tier; Live stays empty for the auto posture.
+// GateRequest composes the CI gate dimensions. An empty MaxSeverity skips the
+// findings tier; Live stays empty for the auto posture. Coverage stays empty
+// for the `require` posture, the CLI's default: an absent or partial stored
+// diff-coverage receipt fails the gate, and "warn" reports it without failing.
 type GateRequest struct {
 	Invocation
 	MaxSeverity string
 	Live        string
+	Coverage    string
 	RequireHead bool
 }
 
@@ -137,17 +147,22 @@ type GateResponse struct {
 }
 
 // Gate runs the composed CI gate: findings at-or-above MaxSeverity, a
-// completed post for the fetched HEAD (RequireHead), and live unresolved
-// threads (Live, default auto). At least one dimension is required: Live
-// alone only sets the offline posture, so an empty request is a refusal. It
-// never posts, merges, or writes a store.
+// completed post for the fetched HEAD (RequireHead), the stored diff-coverage
+// receipt for that HEAD (Coverage, default require), and live unresolved
+// threads (Live, default auto). At least one dimension is required: Live and
+// Coverage alone only set postures, so an empty request is a refusal. It never
+// posts, merges, or writes a store.
 func (c *Client) Gate(ctx context.Context, req *GateRequest) (*GateResponse, error) {
 	if req.MaxSeverity == "" && !req.RequireHead {
 		return nil, refusalErr(&core.RefusalError{
 			Code: "bad-flags",
 			Message: "gate needs at least one dimension: set MaxSeverity or RequireHead " +
-				"(Live alone only sets the offline posture)",
+				"(Live and Coverage alone only set postures)",
 		})
+	}
+	coverage, err := gateCoveragePosture(req.Coverage)
+	if err != nil {
+		return nil, err
 	}
 	rr, err := c.request(ctx, req.Repo, req.PR)
 	if err != nil {
@@ -156,7 +171,7 @@ func (c *Client) Gate(ctx context.Context, req *GateRequest) (*GateResponse, err
 	resp, ref := reportcore.Run(ctx, &core.ReportRequest{
 		ReadRequest: rr,
 		Flags: core.ReportFlags{
-			Check: req.MaxSeverity, Completeness: req.RequireHead, Live: req.Live,
+			Check: req.MaxSeverity, Completeness: req.RequireHead, Live: req.Live, Coverage: coverage,
 		},
 		Effective: core.Defaults(),
 	})
@@ -175,6 +190,23 @@ func (c *Client) Gate(ctx context.Context, req *GateRequest) (*GateResponse, err
 		Passed:     gate.Passed,
 		Dimensions: dims,
 	}, nil
+}
+
+// gateCoveragePosture resolves the coverage posture the way the CLI parser
+// does: unset reads require, and anything outside the published pair refuses
+// instead of silently leaving the dimension out.
+func gateCoveragePosture(posture string) (string, error) {
+	switch posture {
+	case "":
+		return coverageRequire, nil
+	case coverageRequire, coverageWarn:
+		return posture, nil
+	default:
+		return "", refusalErr(&core.RefusalError{
+			Code:    "bad-flags",
+			Message: "unknown coverage posture '" + posture + "' for gate (want require|warn)",
+		})
+	}
 }
 
 // NextRequest asks for the top actionable finding, optionally filtered.

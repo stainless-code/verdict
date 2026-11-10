@@ -115,7 +115,7 @@ func Run(ctx context.Context, req *core.ReportRequest) (*core.ReportResponse, *c
 		req:      req,
 		flags:    flags,
 		warnings: append([]string{}, req.Warnings...),
-		gate:     flags.Check != "" || flags.Completeness,
+		gate:     flags.Check != "" || flags.Completeness || flags.Coverage != "",
 	}
 	if err := loadState(ctx, st); err != nil {
 		return nil, err

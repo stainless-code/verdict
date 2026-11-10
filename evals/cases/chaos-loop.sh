@@ -75,7 +75,7 @@ if [ "$OPEN1" = "3" ]; then
 else
   bad "round 1 open count is $OPEN1, want 3"
 fi
-run_review gate acme/app loop1 --max-severity informational --live skip --json
+run_review gate acme/app loop1 --max-severity informational --live skip --coverage warn --json
 assert_exit "gate with 3 open findings exits 1" 1
 if [ "$(jq -r '.data.passed' "$EVAL_OUT" 2>/dev/null)" = "false" ] \
   && jq -e '.error == null' "$EVAL_OUT" >/dev/null 2>&1; then
@@ -109,7 +109,7 @@ if [ "$OPEN2" = "2" ]; then
 else
   bad "round 2 open count is $OPEN2, want 2"
 fi
-run_review gate acme/app loop1 --max-severity informational --live skip --json
+run_review gate acme/app loop1 --max-severity informational --live skip --coverage warn --json
 assert_exit "gate with 2 open findings still exits 1" 1
 matrix_row "record" "round-2" "0" "none" "yes" "no" "merged" "$(reviews_since "$m0")"
 matrix_row "gate" "2-open" "$EVAL_STATUS" "none" "yes" "no" "same" "0"
@@ -144,7 +144,7 @@ fi
 run_review show acme/app loop1 --sig "$NEXT_SIG" --json
 assert_exit "show resolves the carried sig (exit 0)" 0
 assert_json_field "show returns the carried finding" "${NEXT_SIG:0:8}" '.data.item.sig | .[0:8]'
-run_review gate acme/app loop1 --max-severity informational --live skip --json
+run_review gate acme/app loop1 --max-severity informational --live skip --coverage warn --json
 assert_exit "gate after abandon still exits 1 (verdict, not refusal)" 1
 matrix_row "report" "abandoned" "0" "none" "yes" "no" "same" "0"
 matrix_row "next" "abandoned" "0" "none" "yes" "no" "same" "0"
@@ -189,7 +189,7 @@ if [ "$OPEN3" = "0" ]; then
 else
   bad "final round open count is $OPEN3, want 0"
 fi
-run_review gate acme/app loop1 --max-severity informational --live skip --json
+run_review gate acme/app loop1 --max-severity informational --live skip --coverage warn --json
 assert_exit "gate on the closed loop exits 0" 0
 matrix_row "record" "round-3" "0" "none" "yes" "no" "merged" "0"
 matrix_row "gate" "0-open" "$EVAL_STATUS" "none" "yes" "no" "same" "0"

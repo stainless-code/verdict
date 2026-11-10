@@ -115,9 +115,10 @@ func (c *Client) Fix(ctx context.Context, req *FixRequest) (*Outcome, error)
 
 func (c *Client) Gate(ctx context.Context, req *GateRequest) (*GateResponse, error)
     Gate runs the composed CI gate: findings at-or-above MaxSeverity,
-    a completed post for the fetched HEAD (RequireHead), and live unresolved
-    threads (Live, default auto). At least one dimension is required:
-    Live alone only sets the offline posture, so an empty request is a refusal.
+    a completed post for the fetched HEAD (RequireHead), the stored
+    diff-coverage receipt for that HEAD (Coverage, default require), and live
+    unresolved threads (Live, default auto). At least one dimension is required:
+    Live and Coverage alone only set postures, so an empty request is a refusal.
     It never posts, merges, or writes a store.
 
 func (c *Client) Init(ctx context.Context, req *InitRequest) (*InitResponse, error)
@@ -259,10 +260,13 @@ type GateRequest struct {
 	Invocation
 	MaxSeverity string
 	Live        string
+	Coverage    string
 	RequireHead bool
 }
-    GateRequest composes the three CI gate dimensions. An empty MaxSeverity
-    skips the findings tier; Live stays empty for the auto posture.
+    GateRequest composes the CI gate dimensions. An empty MaxSeverity skips the
+    findings tier; Live stays empty for the auto posture. Coverage stays empty
+    for the `require` posture, the CLI's default: an absent or partial stored
+    diff-coverage receipt fails the gate, and "warn" reports it without failing.
 
 type GateResponse struct {
 	Result
