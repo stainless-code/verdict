@@ -4,13 +4,12 @@ import { fileURLToPath } from "node:url";
 
 import GithubSlugger from "github-slugger";
 
-import { docsPage, docsPages, docsRoot } from "../docs-index.ts";
-import { sitePages } from "../navigation.ts";
+import { docsPages, docsRoot } from "../docs-index.ts";
+import { docsRedirects, docsSections, docsTree } from "../navigation.ts";
 
 const appRoot = fileURLToPath(new URL("..", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 const dist = join(appRoot, process.argv[2] ?? "dist");
-const nav = sitePages(docsPage("manual.md"), docsPage("troubleshooting.md"));
 
 const fail = (lines: readonly string[]): never => {
   console.error(lines.join("\n"));
@@ -48,49 +47,89 @@ if (unlisted.length > 0 || stale.length > 0) {
   ]);
 }
 
-const unmounted = docsPages
-  .filter((page) => page.published)
-  .filter((page) => !nav.some((site) => site.docsFile === page.file))
-  .map(
-    (page) =>
-      `  docs/${page.file} is published here but mounted nowhere: no entry in apps/docs/navigation.ts`,
-  );
-// A navigation entry that names a docs file takes that page's own route, so the
-// two surfaces cannot drift apart.
-const mounted = nav.flatMap((site) => {
-  if (site.docsFile === undefined) {
-    return [];
-  }
-  const page = docsPages.find((entry) => entry.file === site.docsFile);
-  if (page === undefined || !page.published) {
-    return [
-      `  ${site.path} mounts docs/${site.docsFile}, which docs/README.md does not publish`,
-    ];
-  }
-  if (page.route !== site.path) {
-    return [
-      `  ${site.path} mounts docs/${site.docsFile}, whose route is ${page.route}`,
-    ];
-  }
-  return [];
-});
-const missingRoutes = nav
-  .filter(
-    (site) =>
-      !existsSync(join(dist, site.path, "index.html")) ||
-      !existsSync(join(dist, `${site.path}.md`)),
-  )
-  .map((site) => `  ${site.path} is in the navigation`);
+const treeRoutes = docsTree.flatMap((group) =>
+  group.pages.map((page) => page.route),
+);
+const treeDocsFiles = docsTree.flatMap((group) =>
+  group.pages.flatMap((page) =>
+    page.docsFile === undefined ? [] : [page.docsFile],
+  ),
+);
 
-const problems = [...unmounted, ...mounted, ...missingRoutes];
+const problems: string[] = [];
+
+const seen = new Set<string>();
+for (const route of treeRoutes) {
+  if (seen.has(route)) {
+    problems.push(`  ${route} is in the tree twice`);
+  }
+  seen.add(route);
+}
+
+// Every page docs/README.md publishes has one home in the tree.
+const homeless = docsPages
+  .filter((page) => page.published)
+  .filter((page) => !treeDocsFiles.includes(page.file))
+  .map((page) => `  docs/${page.file} is published but has no tree entry`);
+problems.push(...homeless);
+
+// Every tree route builds as a page with its Markdown twin.
+problems.push(
+  ...treeRoutes
+    .filter(
+      (route) =>
+        !existsSync(join(dist, route, "index.html")) ||
+        !existsSync(join(dist, `${route}.md`)),
+    )
+    .map((route) => `  ${route} is in the tree but builds no page`),
+);
+
+// Every built docs page is in the tree, so orphans fail the build. Generated
+// routes (the changelog timeline) and redirect pages are not docs pages.
+const redirectFroms = new Set(docsRedirects.map((redirect) => redirect.from));
+const builtDocsRoutes: string[] = [];
+const collect = (dir: string, prefix: string): void => {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      collect(join(dir, entry.name), `${prefix}/${entry.name}`);
+    } else if (
+      entry.isFile() &&
+      entry.name === "index.html" &&
+      (prefix.startsWith("/docs/") ||
+        prefix === "/agents" ||
+        prefix === "/compare" ||
+        prefix === "/roadmap")
+    ) {
+      builtDocsRoutes.push(prefix);
+    }
+  }
+};
+collect(dist, "");
+const orphans = builtDocsRoutes.filter(
+  (route) => !seen.has(route) && !redirectFroms.has(route),
+);
+problems.push(
+  ...orphans.map((route) => `  ${route} builds but is in no tree group`),
+);
+
+// Every section landing builds.
+problems.push(
+  ...docsSections
+    .filter((section) => !existsSync(join(dist, section.landing, "index.html")))
+    .map(
+      (section) =>
+        `  ${section.label} lands on ${section.landing}, which builds no page`,
+    ),
+);
+
 if (problems.length > 0) {
   fail([
     "docs index: docs/README.md and the built site disagree.",
     ...problems,
     "",
-    'A page under "Published on the site" is mounted by `apps/docs/sources/` and',
-    'listed in `apps/docs/navigation.ts`; a page under "Repository-only" is',
-    "neither. Move the line when the page moves.",
+    'A page under "Published on the site" has one entry in',
+    "apps/docs/navigation.ts; every entry builds a page with its Markdown",
+    "twin; every section landing builds too.",
   ]);
 }
 
@@ -172,6 +211,9 @@ if (broken.length > 0) {
   ]);
 }
 
+// The tree model stays the single source: every published page the index
+// knows, every route the site serves, every redirect the config promises.
+const publishedCount = docsPages.filter((page) => page.published).length;
 console.log(
-  `docs index: ${docsPages.length} page(s), ${docsPages.filter((page) => page.published).length} published, every link and anchor resolves.`,
+  `docs index: ${docsPages.length} page(s), ${publishedCount} published, ${treeRoutes.length} tree route(s), ${docsRedirects.length} redirect(s), every link and anchor resolves.`,
 );

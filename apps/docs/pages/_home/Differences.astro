@@ -3,7 +3,7 @@ import { contentHref } from "blume/components/content/base-href.ts";
 import Inline from "./Inline.astro";
 import SectionHead from "./SectionHead.astro";
 
-const manual = contentHref("/manual");
+const manual = contentHref("/docs/manual");
 
 // Four claims, each with the page that documents it. Claim sources are in
 // docs/landing-claims.md.
@@ -11,12 +11,12 @@ const cards = [
   {
     title: "Findings carry receipts.",
     body: "Each finding records how it was checked, on a scale from `said` to `reproduced`. A finding that was only said is labeled unproven and never posts as fact.",
-    link: { label: "Evidence rungs", href: `${contentHref("/how-it-reviews")}#evidence-rungs` },
+    link: { label: "Evidence rungs", href: `${contentHref("/docs/how-it-reviews")}#evidence-rungs` },
   },
   {
     title: "Any agent, any model.",
     body: "The agent you run is the review model, and Verdict pins none. The skill installs into Claude Code, Cursor, Codex, OpenCode, Copilot, Gemini, Goose, Qwen and Windsurf.",
-    link: { label: "Skill and CLI", href: `${contentHref("/integrations")}#skill-and-cli` },
+    link: { label: "Skill and CLI", href: `${contentHref("/agents")}#skill-and-cli` },
   },
   {
     title: "Gates a script can read.",
@@ -26,7 +26,7 @@ const cards = [
   {
     title: "Calibrated on your history.",
     body: "`calibrate` compares each prediction with what happened to its thread, and `trend` rolls the outcomes up across your PRs.",
-    link: { label: "Measured, not asserted", href: `${contentHref("/how-it-reviews")}#measured-not-asserted` },
+    link: { label: "Measured, not asserted", href: `${contentHref("/docs/how-it-reviews")}#measured-not-asserted` },
   },
 ];
 ---

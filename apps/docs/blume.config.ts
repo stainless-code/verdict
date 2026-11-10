@@ -6,7 +6,7 @@ import { defineConfig } from "blume";
 import { orama } from "blume/search";
 import { custom, filesystem } from "blume/sources";
 import { docsPage } from "./docs-index.ts";
-import { sitePages } from "./navigation.ts";
+import { docsRedirects, docsRoute, docsSections } from "./navigation.ts";
 import { changelogSource } from "./sources/changelog.ts";
 import { manualSource } from "./sources/manual.ts";
 import { troubleshootingSource } from "./sources/troubleshooting.ts";
@@ -20,10 +20,10 @@ const deploymentBase = "/verdict";
 const origin = "https://stainless-code.com";
 
 const manual = docsPage("manual.md");
-const manualUrl = `${origin}${deploymentBase}${manual.route}.md`;
+const manualUrl = `${origin}${deploymentBase}${docsRoute(manual.file)}.md`;
 const manualSummary = manual.summary.replace(/\.$/u, "");
 const troubleshooting = docsPage("troubleshooting.md");
-const troubleshootingUrl = `${origin}${deploymentBase}${troubleshooting.route}.md`;
+const troubleshootingUrl = `${origin}${deploymentBase}${docsRoute(troubleshooting.file)}.md`;
 const troubleshootingSummary = troubleshooting.summary.replace(/\.$/u, "");
 
 // Prerendered pages skip transformIndexHtml, so append tags to dist after build.
@@ -126,12 +126,18 @@ export default defineConfig({
   },
 
   navigation: {
-    tabs: sitePages(manual, troubleshooting).map(({ label, path }) => ({
+    tabs: docsSections.map(({ label, path }) => ({
       label,
       path,
     })),
     sidebar: { display: "flat" },
   },
+
+  redirects: docsRedirects.map(({ from, to }) => ({
+    from,
+    to,
+    status: 301 as const,
+  })),
 
   footer: {
     copyright: `© 2026 stainless-code, MIT licensed.`,

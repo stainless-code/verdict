@@ -4,4 +4,4 @@ import { docsPage } from "../docs-index.ts";
 import { stagedDocSource } from "./staged-doc.ts";
 
 export const manualSource = (): ContentSource =>
-  stagedDocSource(docsPage("manual.md"));
+  stagedDocSource(docsPage("manual.md"), "01-docs/(reference)");

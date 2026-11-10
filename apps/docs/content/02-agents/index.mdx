@@ -76,7 +76,7 @@ Two flags change what the server exposes:
 
 Each tool returns the CLI envelope's `data`. A typed refusal comes back with
 `isError: true` and `{code, message, hint}`. The
-[manual](/manual#mcp-server-stdio-experimental-until-10)
+[manual](/docs/manual#mcp-server-stdio-experimental-until-10)
 has the full tool list.
 
 ## Go SDK
@@ -186,14 +186,14 @@ problem otherwise. It is the same checker the tests use. Run it from your
 installed skill's directory, or from `skills/verdict/` in a checkout.
 
 To generate a client for another language, point a code generator at
-`skills/verdict/schemas/envelope.schema.json`. [Build a client](/build-a-client) walks through
+`skills/verdict/schemas/envelope.schema.json`. [Build a client](/docs/build-a-client) walks through
 Python end to end.
 
 <CardGroup cols={2}>
-  <Card title="Build a client" href="/build-a-client">
+  <Card title="Build a client" href="/docs/build-a-client">
     The `--json` protocol, exit codes, and refusal codes.
   </Card>
-  <Card title="Quickstart" href="/quickstart">
+  <Card title="Quickstart" href="/docs/quickstart">
     Install, add the skill, and review a PR.
   </Card>
 </CardGroup>

@@ -2,15 +2,24 @@ import { watch } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { ContentSource, SourceLoadResult } from "blume/sources";
+import type {
+  ContentSource,
+  SourceLoadResult,
+  SourceEntry,
+} from "blume/sources";
 
 import { docsRoot, type DocsPage } from "../docs-index.ts";
 
 // A second `filesystem()` source rooted at the repository's `docs/` is refused
 // with `BLUME_ENTRY_ID_MISMATCH`, since the `docs` collection can only be
-// rooted at one directory, so each published `docs/` file is read as a single
-// staged file through this one factory.
-export const stagedDocSource = (page: DocsPage): ContentSource => {
+// rooted at one directory, so each published `docs/` file is staged through
+// this one factory. The ref is an authored tree path, not the repo path: with
+// `orderedNames` it groups and orders the entry the way a content file at that
+// path would, while the route drops the ordering prefixes and group folders.
+export const stagedDocSource = (
+  page: DocsPage,
+  treePath: string,
+): ContentSource => {
   const sourcePath = join(docsRoot, page.file);
   const editUrl = `https://github.com/stainless-code/verdict/edit/main/docs/${page.file}`;
 
@@ -23,23 +32,23 @@ export const stagedDocSource = (page: DocsPage): ContentSource => {
   );
   const frontmatter = `---\nseo:\n  description: ${JSON.stringify(description)}\n---\n\n`;
 
+  const entry = (text: string): SourceEntry => ({
+    ref: `${treePath}/${page.file}`,
+    data: {
+      ai: { exclude: true },
+      sidebar: { label: page.title },
+    },
+    body: { format: "md", text },
+    raw: `${frontmatter}${text}`,
+    sourcePath,
+    editUrl,
+  });
+
   const load = async (): Promise<SourceLoadResult> => {
     const body = await readFile(sourcePath, "utf8");
     return {
       diagnostics: [],
-      entries: [
-        {
-          ref: page.file,
-          data: {
-            ai: { exclude: true },
-            sidebar: { label: page.title },
-          },
-          body: { format: "md", text: body },
-          raw: `${frontmatter}${body}`,
-          sourcePath,
-          editUrl,
-        },
-      ],
+      entries: [entry(body)],
     };
   };
 
@@ -47,6 +56,8 @@ export const stagedDocSource = (page: DocsPage): ContentSource => {
     contentRoot: docsRoot,
     load,
     name: page.file.replace(/\.md$/u, ""),
+    orderedNames: true,
+    read: async (): Promise<string> => readFile(sourcePath, "utf8"),
     staged: true,
     watch: (onChange) => {
       const watcher = watch(sourcePath, onChange);

@@ -7,8 +7,6 @@ export interface DocsPage {
   readonly file: string;
   /** `true` under "Published on the site", `false` under "Repository-only". */
   readonly published: boolean;
-  /** Route the page publishes at, whether or not the site publishes it yet. */
-  readonly route: string;
   readonly summary: string;
   readonly title: string;
 }
@@ -17,12 +15,6 @@ export const docsRoot = fileURLToPath(new URL("../../docs", import.meta.url));
 
 const ENTRY =
   /^- \[(?<title>[^\]]+)\]\((?<file>[^)\s#]+?\.md)(?:#[^)\s]*)?\)(?::\s*(?<summary>.+))?$/u;
-
-const routeFor = (file: string): string => {
-  const segments = file.replace(/\.md$/u, "").split("/");
-  const last = segments.at(-1) === "README" ? segments.slice(0, -1) : segments;
-  return `/${last.join("/")}`;
-};
 
 const parse = (): DocsPage[] => {
   const pages: DocsPage[] = [];
@@ -47,7 +39,6 @@ const parse = (): DocsPage[] => {
     pages.push({
       file,
       published,
-      route: routeFor(file),
       summary: summary.trim(),
       title: title.trim(),
     });
