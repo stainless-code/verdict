@@ -44,6 +44,10 @@ const (
 	idWidth         = 12 // longest dimension id: live_threads
 	actionFindings  = "address or triage the open findings"
 	actionMissing   = "review + post the fetched HEAD"
+	// actionCoverage names both attestation keys: a chunked bundle ignores
+	// coverage[], so a recovery naming only that key would loop the operator.
+	actionCoverage = "attest the unattested ranges in review.json (coverage[], or every " +
+		"chunk in chunks[] when the bundle is chunked), then re-record or re-post"
 )
 
 // Run executes `gate <owner/repo> <pr> [flags]`, returning the exit code.
@@ -229,7 +233,7 @@ var gateActionsByID = map[string]func(status string) string{
 	idCoverage: func(status string) string {
 		switch status {
 		case statusFail:
-			return "attest the unattested ranges in review.json coverage[], then re-record or re-post"
+			return actionCoverage
 		case statusUnknown:
 			return "attest coverage for the fetched HEAD (post or record)"
 		}

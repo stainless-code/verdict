@@ -155,10 +155,24 @@
 # darwin/arm64 11304722, linux/amd64 12099744, windows/amd64 12434944,
 # windows/arm64 11180544; those five move to the next 10 kB, linux/arm64
 # (11075744) still holds.
+# Grading a chunked bundle adds the stored chunk attestation: the manifest-versus
+# chunks[] tally in the shared evaluator, the chunk_coverage receipt on post and
+# record, and the gate's chunk verdict. Measured here: darwin/amd64 12315088,
+# darwin/arm64 11304658, linux/amd64 12095648, linux/arm64 11075744,
+# windows/amd64 12429824, windows/arm64 11175936. Four ceilings cross and move to
+# the next 10 kB at least 5 kB above their measurement; linux/arm64 stays inside
+# and keeps its 11080000 line. windows/amd64 stays inside too at 176 bytes of
+# headroom, which is under the ~1 KB local-vs-CI drift this file has already
+# recorded once, so its ceiling moves to the next 10 kB at least 5 kB above the
+# measurement instead of gambling the lane on 176 bytes.
+# Stacked with the verify sandbox, the chunk-attestation receipt measures
+# darwin/amd64 12327504, darwin/arm64 11321298, linux/amd64 12107936,
+# linux/arm64 11141280 (one more 64 KiB segment), windows/amd64 12443136,
+# windows/arm64 11187712; the four that cross move to the next 10 kB.
 deps 0
 darwin/amd64 12330000
-darwin/arm64 11310000
-linux/amd64 12100000
-linux/arm64 11080000
-windows/amd64 12440000
+darwin/arm64 11330000
+linux/amd64 12110000
+linux/arm64 11150000
+windows/amd64 12450000
 windows/arm64 11190000

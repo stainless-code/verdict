@@ -108,6 +108,9 @@ type FloorScope = core.FloorScope
 // CoverageSummary is core's stored diff-coverage receipt on post and record.
 type CoverageSummary = core.CoverageSummary
 
+// ChunkCoverage is core's stored chunk attestation on a chunked post or record.
+type ChunkCoverage = core.ChunkCoverage
+
 // CoverageClaim is core's review.json coverage[] entry.
 type CoverageClaim = core.CoverageClaim
 

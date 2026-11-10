@@ -396,6 +396,7 @@ func (st *svc) finalize(ctx context.Context, dir, prov, headFull, now string, re
 		Model:           modelOrNil(model),
 		Repairs:         repairList(st.repairs),
 		Coverage:        res.Coverage.Receipt(),
+		ChunkCoverage:   res.Coverage.ChunkReceipt(),
 	}
 	if ident, ok := identity.Verify(ctx, st.identityCommander(), dir, identityHead(dir, prov, st.store), BundleBase(dir, st.store)); ok {
 		record.PatchID, record.PatchIDKind = ident.PatchID, ident.PatchIDKind

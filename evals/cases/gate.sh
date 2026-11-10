@@ -157,6 +157,55 @@ run_review gate acme/app "$PR" --max-severity critical --live skip --json
 assert_eq "absent coverage publishes an unknown dimension" "unknown" \
   "$(jq -r '.data.dimensions[] | select(.id=="coverage") | .status' <"$EVAL_OUT")"
 
+# --- chunked coverage: chunks[] is a chunked bundle's only attestation, so
+# record/post store the chunk tally beside the head and the gate grades that.
+chunked_store() { # $1 = pr, $2 = head, $3 = the chunk attestation (empty for none)
+  local dir="$EVAL_SANDBOX/.verdict/state/$1"
+  mkdir -p "$dir/chunks"
+  jq -n '{schema_version:"1",chunks:[{name:"chunk-01",diff:"chunks/chunk-01.diff"},{name:"chunk-02",diff:"chunks/chunk-02.diff"}]}' \
+    >"$dir/chunks/manifest.json"
+  if [ -n "$3" ]; then
+    jq -n --arg h "$2" --argjson c "$3" \
+      '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null,chunk_coverage:$c}' \
+      >"$dir/post.json"
+  else
+    jq -n --arg h "$2" \
+      '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null}' \
+      >"$dir/post.json"
+  fi
+}
+
+PR=7108
+eval_mk_bundle "$PR"
+printf '[]' | eval_write_findings "$PR"
+set_mode clear
+chunked_store "$PR" "$HEAD_A" '{"attested":2,"total":2}'
+run_review gate acme/app "$PR" --max-severity critical --live skip
+assert_exit "a fully attested chunked bundle passes the default gate" 0
+assert_file_grep "a fully attested chunked bundle names its chunk tally" "$EVAL_OUT" \
+  "gate: coverage     pass  2/2 chunk(s) attested"
+assert_stream_nogrep "a passing chunked gate prints no try: hint" "$EVAL_OUT" "try:"
+
+chunked_store "$PR" "$HEAD_A" '{"attested":1,"total":2}'
+run_review gate acme/app "$PR" --max-severity critical --live skip
+assert_exit "one unattested chunk fails the default gate" 1
+assert_file_grep "one unattested chunk names the missing count" "$EVAL_OUT" \
+  "gate: coverage     fail  1 of 2 chunk(s) unattested"
+assert_file_grep "a chunk shortfall carries the chunks[] recovery" "$EVAL_OUT" \
+  "try: attest the unattested ranges in review.json (coverage[], or every chunk in chunks[] when the bundle is chunked), then re-record or re-post, then re-run gate" -F
+run_review gate acme/app "$PR" --max-severity critical --live skip --json
+assert_eq "a chunk shortfall publishes its tally" "1" \
+  "$(jq -r '.data.dimensions[] | select(.id=="coverage") | .count' <"$EVAL_OUT")"
+
+chunked_store "$PR" "$HEAD_A" ''
+run_review gate acme/app "$PR" --max-severity critical --live skip
+assert_exit "a receipt without a chunk attestation stays unknown" 1
+assert_file_grep "a receipt without a chunk attestation names the gap" "$EVAL_OUT" \
+  "gate: coverage     unknown  stored coverage absent for HEAD aaaaaaa — the receipt predates the chunk attestation"
+run_review gate acme/app "$PR" --max-severity critical --live skip --json
+assert_eq "a receipt without a chunk attestation publishes unknown" "unknown" \
+  "$(jq -r '.data.dimensions[] | select(.id=="coverage") | .status' <"$EVAL_OUT")"
+
 # --- live: the posture decides whether an unreadable probe is neutral or fatal.
 PR=7104
 eval_mk_bundle "$PR"

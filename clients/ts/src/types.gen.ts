@@ -226,12 +226,12 @@ export interface ReportGate {
 
 /** One gate dimension: its id, verdict status, human detail text, and its own failing tally (null where the dimension has no count to report). */
 export interface GateDimension {
-  /** Which dimension read: findings (open findings at-or-above the --max-severity tier), head (a completed post for the fetched HEAD under --require-head), coverage (the stored diff-coverage receipt for that HEAD under --coverage, default require), or live_threads (unresolved threads on the PR under --live). */
+  /** Which dimension read: findings (open findings at-or-above the --max-severity tier), head (a completed post for the fetched HEAD under --require-head), coverage (the stored diff-coverage receipt for that HEAD under --coverage, default require; a chunked bundle is graded on the chunk attestation its receipt stores), or live_threads (unresolved threads on the PR under --live). */
   id: "findings" | "head" | "coverage" | "live_threads" | "compliance";
   /** pass, fail, unknown (the dimension could not be read and the posture fails closed), or skip (not requested, or unreachable under --live auto). Only fail and unknown fail the gate. */
   status: "pass" | "fail" | "skip" | "unknown";
   detail: string;
-  /** The dimension's own tally: offending findings for findings, unattested ranges for coverage, versus-thread count for live_threads, null for head and for a skipped or unreachable live probe. */
+  /** The dimension's own tally: offending findings for findings, unattested ranges for coverage (unattested chunks on a chunked bundle), versus-thread count for live_threads, null for head and for a skipped or unreachable live probe. */
   count: number | null;
   [key: string]: unknown;
 }

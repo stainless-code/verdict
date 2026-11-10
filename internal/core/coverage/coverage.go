@@ -33,9 +33,11 @@ const ChunkWarning = "coverage: chunked bundle — chunks[] is the attestation; 
 // `next --coverage` and the record warnings.
 const Basis = "full hunk spans, both sides and context"
 
-// Field is the review.json key the attestation lives under.
+// Field is the review.json key the attestation lives under. FieldChunks is the
+// chunked bundle's equivalent: the manifest chunk names the review claimed.
 const (
 	Field       = "coverage"
+	FieldChunks = "chunks"
 	FieldFile   = "file"
 	FieldRanges = "ranges"
 	// RangesAll attests a whole file.
@@ -91,6 +93,21 @@ type Summary struct {
 	Chunks     int   `json:"chunks,omitempty"`
 	Chunked    bool  `json:"chunked,omitempty"`
 	Present    bool  `json:"-"`
+	// ChunksAttested counts the manifest chunks the review claimed. It rides
+	// the store receipt and never the --json payload, which reports chunks
+	// alone; a chunked bundle is not scored in lines.
+	ChunksAttested int `json:"-"`
+}
+
+// ChunkReceipt returns the chunked bundle's stored attestation, or nil for a
+// bundle with no chunk manifest. A chunked post.json or record.json carries
+// this so `gate` can grade the bundle from the store instead of re-reading
+// review.json, the same way it reads the line-coverage receipt beside it.
+func (s *Summary) ChunkReceipt() *core.ChunkCoverage {
+	if s == nil || !s.Chunked {
+		return nil
+	}
+	return &core.ChunkCoverage{Attested: s.ChunksAttested, Total: s.Chunks}
 }
 
 // Receipt returns the published receipt shape, or nil when the run has nothing
@@ -137,8 +154,8 @@ type claim struct {
 // generated is the shared generated-path predicate; this package never owns a
 // second list.
 func Evaluate(dir string, review *jq.Obj, generated func(string) bool) (Summary, []string, *core.RefusalError) {
-	if chunks, ok := chunked(dir); ok {
-		return Summary{Chunked: true, Chunks: chunks}, nil, nil
+	if attested, total, ok := chunked(dir, review); ok {
+		return Summary{Chunked: true, Chunks: total, ChunksAttested: attested}, nil, nil
 	}
 	rows, ref := loadRows(dir)
 	if ref != nil {
@@ -318,32 +335,78 @@ func loadRows(dir string) ([]hunks.Hunk, *core.RefusalError) {
 	return nil, nil
 }
 
-// chunked reports whether the bundle carries a chunk manifest, and how many
-// chunk diffs that manifest names. The manifest is the authority, the same one
+// chunked reports whether the bundle carries a chunk manifest, and how many of
+// its chunks the review attested. The manifest is the authority, the same one
 // `record` reads: counting `*.diff` files in the directory let a stray or
 // missing file move the count while the attestation it describes stayed put.
 // A manifest that will not parse still marks the bundle chunked with no count;
 // `record` refuses such a bundle, and the count never surfaces.
-func chunked(dir string) (int, bool) {
+func chunked(dir string, review *jq.Obj) (attested, total int, ok bool) {
 	raw, err := os.ReadFile(dir + chunksDir + manifestFile)
 	if err != nil {
-		return 0, false
+		return 0, 0, false
 	}
 	doc, derr := jq.Decode(raw)
 	if derr != nil {
-		return 0, true
+		return 0, 0, true
 	}
-	man, ok := jq.AsMap(doc)
-	if !ok {
-		return 0, true
+	man, isMap := jq.AsMap(doc)
+	if !isMap {
+		return 0, 0, true
 	}
-	n := 0
-	for _, item := range jq.Elements(man["chunks"]) {
-		if _, isMap := jq.AsMap(item); isMap {
+	names := manifestChunkNames(man)
+	return claimedChunks(review, names), len(names), true
+}
+
+// manifestChunkNames reads the named chunks a manifest lists. An entry that is
+// not an object or names nothing is skipped, because `record` cannot require
+// an attestation for a chunk it cannot name.
+func manifestChunkNames(man map[string]any) []string {
+	var names []string
+	for _, item := range jq.Elements(man[FieldChunks]) {
+		m, isMap := jq.AsMap(item)
+		if !isMap {
+			continue
+		}
+		if name := jq.Str(m["name"]); name != "" {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+// claimedChunks counts the manifest names the review's chunks[] claimed. A
+// name the manifest does not list never widens the count, so a claim can only
+// attest a chunk that exists.
+func claimedChunks(review *jq.Obj, names []string) int {
+	claimed, n := claimSet(review), 0
+	for _, name := range names {
+		if claimed[name] {
 			n++
 		}
 	}
-	return n, true
+	return n
+}
+
+// claimSet reads chunks[] into the names it claims. A bundle with no
+// review.json, a key that is not an array, and an entry that is not a string
+// claim nothing: attesting more than the review wrote is the one error this
+// package must never make.
+func claimSet(review *jq.Obj) map[string]bool {
+	set := map[string]bool{}
+	if review == nil {
+		return set
+	}
+	items, isArr := fieldOf(review, FieldChunks).([]any)
+	if !isArr {
+		return set
+	}
+	for _, item := range items {
+		if s, isStr := item.(string); isStr {
+			set[s] = true
+		}
+	}
+	return set
 }
 
 // intervalsByFile merges each file's OLD and NEW spans into a minimal set: a

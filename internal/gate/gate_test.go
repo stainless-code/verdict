@@ -468,6 +468,13 @@ func coverageReceipt(head, summary string) string {
 	return `{"schema_version":"1","head":"` + head + `","posted_at":"2026-01-01T00:00:00Z","coverage":` + summary + `}`
 }
 
+// chunkedReceipt renders the head and chunk attestation a chunked post or
+// record stores in place of the measured summary.
+func chunkedReceipt(head string, attested, total int) string {
+	return fmt.Sprintf(`{"schema_version":"1","head":%q,"posted_at":"2026-01-01T00:00:00Z",`+
+		`"chunk_coverage":{"attested":%d,"total":%d}}`, head, attested, total)
+}
+
 // The three stored summaries a gate can read: fully attested, partial, and a
 // bundle with nothing non-exempt to measure.
 const (
@@ -513,7 +520,7 @@ func TestGateCoveragePosture(t *testing.T) {
 			args: gateDefaultArgs, status: statusFail, want: cli.ExitRefused,
 			subs: []string{
 				"gate: coverage     fail  2 unattested range(s) at 75% of full hunk spans, both sides and context (9/12 lines)",
-				"try: attest the unattested ranges in review.json coverage[], then re-record or re-post, then re-run gate",
+				"try: attest the unattested ranges in review.json (coverage[], or every chunk in chunks[] when the bundle is chunked), then re-record or re-post, then re-run gate",
 			},
 		},
 		{
@@ -563,9 +570,35 @@ func TestGateCoveragePosture(t *testing.T) {
 			subs: []string{"gate: coverage     pass  100% of full hunk spans, both sides and context attested (12/12 lines)"},
 		},
 		{
-			name: "chunked-fails-closed", chunked: true, post: coverageReceipt(gateHead, coverageComplete),
+			name: "chunked-all-attested-passes", chunked: true,
+			post: chunkedReceipt(gateHead, 2, 2),
+			args: gateDefaultArgs, status: statusPass, want: cli.ExitOK,
+			subs: []string{
+				"gate: coverage     pass  2/2 chunk(s) attested",
+				"gate: PASS",
+			},
+		},
+		{
+			name: "chunked-missing-chunk-fails", chunked: true,
+			post: chunkedReceipt(gateHead, 1, 2),
+			args: gateDefaultArgs, status: statusFail, want: cli.ExitRefused,
+			subs: []string{
+				"gate: coverage     fail  1 of 2 chunk(s) unattested",
+				"try: attest the unattested ranges in review.json (coverage[], or every chunk in chunks[] when the bundle is chunked), then re-record or re-post, then re-run gate",
+			},
+		},
+		{
+			name: "chunked-warns-under-warn", chunked: true,
+			post: chunkedReceipt(gateHead, 1, 2),
+			args: append(slices.Clone(gateDefaultArgs), "--coverage", "warn"), status: statusSkip, want: cli.ExitOK,
+			subs: []string{"gate: coverage     skip  1 of 2 chunk(s) unattested — coverage is advisory (--coverage warn)"},
+			warn: "warn: coverage: 1 of 2 chunk(s) unattested — coverage is advisory (--coverage warn)",
+		},
+		{
+			name: "chunked-predates-the-attestation-fails-closed", chunked: true,
+			post: coverageReceipt(gateHead, coverageComplete),
 			args: gateDefaultArgs, status: statusUnknown, want: cli.ExitRefused,
-			subs: []string{"gate: coverage     unknown  chunked bundle — chunks[] is the attestation and the store keeps no receipt"},
+			subs: []string{"gate: coverage     unknown  stored coverage absent for HEAD aaaaaaa — the receipt predates the chunk attestation"},
 		},
 	}
 	for _, tc := range tests {

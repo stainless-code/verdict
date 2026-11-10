@@ -22,6 +22,7 @@ const (
 	coverageRequire = "require"
 	fieldHead       = "head"
 	fieldCoverage   = "coverage"
+	fieldChunkCov   = "chunk_coverage"
 	fieldPercent    = "percent"
 	fieldAttested   = "attested"
 	fieldTotal      = "total"
@@ -36,13 +37,15 @@ const (
 )
 
 // storedCoverage is the receipt found in the bundle's store: the head a
-// receipt names, and the measured summary when that receipt carries one.
-// head is the last head seen, so an absent or stale receipt can say which head
-// it did describe.
+// receipt names, and the attestation when that receipt carries one. A chunked
+// bundle stores chunk_coverage where a non-chunked one stores coverage, so at
+// most one is ever set. head is the last head seen, so an absent or stale
+// receipt can say which head it did describe.
 type storedCoverage struct {
-	sum   *core.CoverageSummary
-	head  string
-	found bool
+	sum    *core.CoverageSummary
+	chunks *core.ChunkCoverage
+	head   string
+	found  bool
 }
 
 // readStoredCoverage reads post.json then record.json — the precedence the
@@ -56,7 +59,7 @@ func readStoredCoverage(dir, head string) storedCoverage {
 			continue
 		}
 		out = mergeReceipt(out, receipt, head)
-		if out.sum != nil {
+		if out.sum != nil || out.chunks != nil {
 			break
 		}
 	}
@@ -65,7 +68,7 @@ func readStoredCoverage(dir, head string) storedCoverage {
 
 // mergeReceipt folds one receipt into what is kept: a receipt naming another
 // head is remembered only for its name, a matching one marks the head found,
-// and its summary wins.
+// and its attestation wins.
 func mergeReceipt(kept, next storedCoverage, head string) storedCoverage {
 	if head != "" && next.head != head {
 		kept.head = next.head
@@ -74,6 +77,9 @@ func mergeReceipt(kept, next storedCoverage, head string) storedCoverage {
 	kept.head, kept.found = next.head, true
 	if next.sum != nil {
 		kept.sum = next.sum
+	}
+	if next.chunks != nil {
+		kept.chunks = next.chunks
 	}
 	return kept
 }
@@ -98,7 +104,15 @@ func receiptAt(path string) (storedCoverage, bool) {
 	if summary, ok := jq.AsMap(m[fieldCoverage]); ok {
 		out.sum = summaryOf(summary)
 	}
+	if chunks, ok := jq.AsMap(m[fieldChunkCov]); ok {
+		out.chunks = chunkCoverageOf(chunks)
+	}
 	return out, true
+}
+
+// chunkCoverageOf reads the stored receipt's chunk attestation.
+func chunkCoverageOf(m map[string]any) *core.ChunkCoverage {
+	return &core.ChunkCoverage{Attested: intAt(m, fieldAttested), Total: intAt(m, fieldTotal)}
 }
 
 // summaryOf reads the stored receipt's measured fields.
@@ -166,26 +180,72 @@ func coveragePosture(st *state, status, detail string, count *int) gateCheck {
 }
 
 // coverageVerdict maps the stored receipt to one verdict, its human detail,
-// and the unattested-range tally. Absent and unprovable receipts read unknown
-// (never a pass): the gate fails closed on what the store cannot show.
+// and the failing tally. Absent and unprovable receipts read unknown (never a
+// pass): the gate fails closed on what the store cannot show. A chunked bundle
+// is graded on its chunk attestation, since chunks[] is its only attestation.
 func coverageVerdict(st *state, cov storedCoverage) (string, string, *int) {
+	if isRegular(st.dir + chunksManifest) {
+		return chunkVerdict(st, cov)
+	}
+	return rangeVerdict(st, cov)
+}
+
+// receiptShortfall names why the store holds no receipt for the gated head:
+// an empty string means one names it. Both attestations are keyed to the same
+// head, so both dimensions read the same shortfall.
+func receiptShortfall(st *state, cov storedCoverage) string {
 	short := readcommon.ShortSHA(st.headSHA)
 	switch {
-	case isRegular(st.dir + chunksManifest):
-		return dimUnknown, "chunked bundle — chunks[] is the attestation and the store keeps no receipt", nil
 	case st.headSHA == "":
-		return dimUnknown, "stored coverage absent — the bundle records no HEAD to key it to", nil
+		return "stored coverage absent — the bundle records no HEAD to key it to"
 	case !cov.found && cov.head != "":
-		return dimUnknown, "stored coverage is for HEAD " + readcommon.ShortSHA(cov.head) +
-			", not HEAD " + short, nil
+		return "stored coverage is for HEAD " + readcommon.ShortSHA(cov.head) +
+			", not HEAD " + short
 	case !cov.found:
-		return dimUnknown, "stored coverage absent for HEAD " + short +
-			" — no completed post or record", nil
-	case cov.sum == nil:
-		return dimUnknown, "stored coverage absent for HEAD " + short +
+		return "stored coverage absent for HEAD " + short +
+			" — no completed post or record"
+	}
+	return ""
+}
+
+// rangeVerdict grades a non-chunked bundle on its measured line receipt.
+func rangeVerdict(st *state, cov storedCoverage) (string, string, *int) {
+	if gap := receiptShortfall(st, cov); gap != "" {
+		return dimUnknown, gap, nil
+	}
+	if cov.sum == nil {
+		return dimUnknown, "stored coverage absent for HEAD " + readcommon.ShortSHA(st.headSHA) +
 			" — the receipt carries no coverage[] attestation", nil
 	}
 	return receiptVerdict(cov.sum)
+}
+
+// chunkVerdict grades a chunked bundle on its stored chunk attestation. A
+// receipt written before that key existed reads unknown, never a pass: the
+// gate reports what the store holds, so it cannot assume the chunks[] it no
+// longer keeps were complete.
+func chunkVerdict(st *state, cov storedCoverage) (string, string, *int) {
+	if gap := receiptShortfall(st, cov); gap != "" {
+		return dimUnknown, gap, nil
+	}
+	if cov.chunks == nil {
+		return dimUnknown, "stored coverage absent for HEAD " + readcommon.ShortSHA(st.headSHA) +
+			" — the receipt predates the chunk attestation", nil
+	}
+	return chunkReceiptVerdict(cov.chunks)
+}
+
+// chunkReceiptVerdict grades one stored chunk attestation: every manifest chunk
+// claimed passes, and any shortfall fails naming the chunks still unattested.
+func chunkReceiptVerdict(c *core.ChunkCoverage) (string, string, *int) {
+	if c.Total == 0 {
+		return dimUnknown, "stored chunk attestation names no chunk to grade", nil
+	}
+	if missing := c.Total - c.Attested; missing > 0 {
+		return dimFail, strconv.Itoa(missing) + " of " + strconv.Itoa(c.Total) +
+			" chunk(s) unattested", new(missing)
+	}
+	return dimPass, strconv.Itoa(c.Attested) + "/" + strconv.Itoa(c.Total) + " chunk(s) attested", new(0)
 }
 
 // receiptVerdict grades one stored summary: a measured bundle passes only at

@@ -337,8 +337,121 @@ func assertChunkedSkipped(t *testing.T, dir string) {
 	if !Present(mustReview(t, `{"coverage":[]}`)) {
 		t.Fatal("Present must report a coverage key")
 	}
-	if got.Attested != 0 || got.Total != 0 {
+	if got.Attested != 0 || got.Total != 0 || got.ChunksAttested != 0 {
 		t.Fatalf("chunked bundle was evaluated: %+v", got)
+	}
+}
+
+// TestChunkAttestationCountsClaims pins the chunk tally `post` and `record`
+// store: a claim counts only when the manifest names it, and a claim the
+// manifest does not list never widens the attestation.
+func TestChunkAttestationCountsClaims(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		review   string
+		attested int
+	}{
+		{
+			name:   "every-chunk-claimed",
+			review: `{"chunks":["chunks/01.diff","chunks/02.diff"]}`, attested: 2,
+		},
+		{
+			name:   "second-chunk-missing",
+			review: `{"chunks":["chunks/01.diff"]}`, attested: 1,
+		},
+		{
+			name:   "unknown-name-does-not-count",
+			review: `{"chunks":["chunks/01.diff","chunks/99.diff"]}`, attested: 1,
+		},
+		{
+			name:   "duplicate-claim-counts-once",
+			review: `{"chunks":["chunks/01.diff","chunks/01.diff"]}`, attested: 1,
+		},
+		{
+			name:   "non-string-claim-does-not-count",
+			review: `{"chunks":[42,"chunks/02.diff"]}`, attested: 1,
+		},
+		{
+			name:   "chunks-not-an-array",
+			review: `{"chunks":"chunks/01.diff"}`, attested: 0,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assertChunkAttestation(t, tc.review, tc.attested)
+		})
+	}
+}
+
+// assertChunkAttestation grades one review's claims against the two-chunk
+// manifest and pins the receipt the store would carry.
+func assertChunkAttestation(t *testing.T, review string, attested int) {
+	t.Helper()
+	dir := writeBundle(t, fixtureRows())
+	if err := mkdirAll(dir + "/chunks"); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, dir+"/chunks/manifest.json", twoChunksManifest)
+	got, _, ref := Evaluate(dir, mustReview(t, review), notGenerated)
+	if ref != nil {
+		t.Fatalf("Evaluate refused: %v", ref)
+	}
+	if !got.Chunked || got.Chunks != 2 || got.ChunksAttested != attested {
+		t.Fatalf("chunked/chunks/attested = %v/%d/%d, want true/2/%d",
+			got.Chunked, got.Chunks, got.ChunksAttested, attested)
+	}
+	stored := got.ChunkReceipt()
+	if stored == nil || stored.Attested != attested || stored.Total != 2 {
+		t.Fatalf("ChunkReceipt = %+v, want attested %d of 2", stored, attested)
+	}
+}
+
+// TestChunkedWithoutReviewClaimsNothing proves a chunked bundle with no
+// review.json (the state `next --coverage` reads before an agent writes one)
+// attests nothing instead of failing: the bundle is chunked, and nothing is
+// claimed.
+func TestChunkedWithoutReviewClaimsNothing(t *testing.T) {
+	t.Parallel()
+	dir := writeBundle(t, fixtureRows())
+	if err := mkdirAll(dir + "/chunks"); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, dir+"/chunks/manifest.json", twoChunksManifest)
+	got, _, ref := Evaluate(dir, nil, notGenerated)
+	if ref != nil {
+		t.Fatalf("Evaluate refused: %v", ref)
+	}
+	if !got.Chunked || got.Chunks != 2 || got.ChunksAttested != 0 {
+		t.Fatalf("chunked/chunks/attested = %v/%d/%d, want true/2/0",
+			got.Chunked, got.Chunks, got.ChunksAttested)
+	}
+}
+
+// TestNonChunkedReceiptsStayNil proves a line-coverage run never stores the
+// chunk summary and a chunked one never stores the line summary: the receipt
+// key pair is exclusive, so a non-chunked store keeps its exact bytes.
+func TestNonChunkedReceiptsStayNil(t *testing.T) {
+	dir := writeBundle(t, fixtureRows())
+	got, _, ref := Evaluate(dir, mustReview(t, `{"coverage":[]}`), notGenerated)
+	if ref != nil {
+		t.Fatalf("Evaluate refused: %v", ref)
+	}
+	if got.ChunkReceipt() != nil {
+		t.Fatalf("ChunkReceipt = %+v on a non-chunked bundle, want nil", got.ChunkReceipt())
+	}
+	dir = writeBundle(t, fixtureRows())
+	if err := mkdirAll(dir + "/chunks"); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, dir+"/chunks/manifest.json", twoChunksManifest)
+	chunkedRun, _, ref := Evaluate(dir, mustReview(t, `{"chunks":["chunks/01.diff"]}`), notGenerated)
+	if ref != nil {
+		t.Fatalf("Evaluate refused: %v", ref)
+	}
+	if chunkedRun.Receipt() != nil {
+		t.Fatalf("Receipt = %+v on a chunked bundle, want nil", chunkedRun.Receipt())
 	}
 }
 

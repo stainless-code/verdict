@@ -186,6 +186,15 @@ type CoverageSummary struct {
 	Gaps     int  `json:"gaps"     min:"0"`
 }
 
+// ChunkCoverage is a chunked bundle's stored attestation: how many of the
+// manifest's chunks the review's chunks[] claimed. A chunked receipt carries
+// this instead of a CoverageSummary, because chunks[] is the bundle's only
+// attestation and it counts chunks, not lines.
+type ChunkCoverage struct {
+	Attested int `json:"attested" min:"0"`
+	Total    int `json:"total"    min:"0"`
+}
+
 // Record is schemas/record.schema.json: the completed-record artifact.
 // ConfidenceRaw wins over the typed confidence like RecordData does.
 type Record struct { //nolint:govet // field order is the published property order
@@ -196,7 +205,7 @@ type Record struct { //nolint:govet // field order is the published property ord
 	RecordedAt      string           `format:"date-time"                json:"recorded_at"`
 	Findings        int              `json:"findings"                   min:"0"`
 	Open            int              `json:"open"                       min:"0"`
-	Confidence      *int             `json:"confidence,omitempty"       max:"5"                   min:"1"`
+	Confidence      *int             `json:"confidence,omitempty"       max:"5"                         min:"1"`
 	SecuritySummary *string          `json:"security_summary,omitempty"`
 	ToolVersion     string           `json:"tool_version,omitempty"`
 	PromptsHash     string           `json:"prompts_hash,omitempty"`
@@ -204,7 +213,8 @@ type Record struct { //nolint:govet // field order is the published property ord
 	PatchID         *string          `json:"patch_id,omitempty"`
 	PatchIDKind     string           `json:"patch_id_kind,omitempty"`
 	Repairs         []Repair         `json:"repairs,omitempty"`
-	Coverage        *CoverageSummary `anyOf:"null"                      json:"coverage,omitempty" optional:"true"`
+	Coverage        *CoverageSummary `anyOf:"null"                      json:"coverage,omitempty"       optional:"true"`
+	ChunkCoverage   *ChunkCoverage   `anyOf:"null"                      json:"chunk_coverage,omitempty" optional:"true"`
 	ConfidenceRaw   any              `json:"-"`
 }
 
@@ -446,6 +456,9 @@ func (r *Record) Wire() *jq.Obj {
 	}
 	if r.Coverage != nil {
 		o.Set("coverage", r.Coverage)
+	}
+	if r.ChunkCoverage != nil {
+		o.Set("chunk_coverage", r.ChunkCoverage)
 	}
 	return o
 }

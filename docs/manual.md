@@ -656,10 +656,15 @@ partial attestation because it is a nudge, not the gate.
 present: `{"percent": 82, "attested": 18, "total": 22, "files": 3, "exempt": 1,
 "gaps": 2}`, where `gaps` counts unattested ranges (not lines).
 
-A chunked bundle is not evaluated: `chunks[]` is its attestation and the
-existing `missing-chunk-coverage` refusal is its gate. `coverage[]` on a
-chunked review is ignored with one warning. Do not translate chunks into
-ranges or the reverse.
+A chunked bundle is not evaluated line by line: `chunks[]` is its attestation
+and the existing `missing-chunk-coverage` refusal is its merge-time gate.
+`coverage[]` on a chunked review is ignored with one warning. Do not translate
+chunks into ranges or the reverse. A chunked `post.json`/`record.json` carries
+its own receipt instead of the measured summary — `"chunk_coverage":
+{"attested": 1, "total": 2}` — counting the manifest chunks `chunks[]`
+claimed, keyed to the same head. A claim the manifest cannot name never counts,
+and a review with no `chunks[]` key stores `0`, so the receipt never attests
+more than was written.
 
 ## Machine surface
 
@@ -888,13 +893,17 @@ the gate when that receipt is absent, names another HEAD, or measures under
 100%. `warn` runs the same evaluation, prints one `warn:` line, and marks the
 dimension `skip`, so the shortfall is reported without failing. A bundle whose
 changed files are all exempt passes either way once a receipt exists
-(`percent: null`, `total: 0`). A chunked bundle keeps nothing in the store about
-its `chunks[]` attestation, so it reads `unknown` under `require` and `skip`
-under `warn`: attest every chunk and gate the recorded bundle, or pass
-`--coverage warn`. Like `--live`, the posture alone is not a dimension, so
-`--coverage` alone is still a usage error. The gate reads the receipt and never
-re-evaluates `review.json`, so it cannot publish a number the store does not
-hold.
+(`percent: null`, `total: 0`).
+
+A chunked bundle is graded on the chunk attestation its receipt stores:
+every manifest chunk in `chunks[]` passes, and a shortfall fails naming the
+chunks still unattested (`1 of 2 chunk(s) unattested`), because `chunks[]` is
+that bundle's only attestation. A receipt written before that key existed
+carries no chunk attestation, so it reads `unknown` under `require` and `skip`
+under `warn` until the bundle is re-recorded or re-posted. Like `--live`, the
+posture alone is not a dimension, so `--coverage` alone is still a usage error.
+The gate reads the receipt and never re-evaluates `review.json`, so it cannot
+publish a number the store does not hold.
 
 The human tail is one line per dimension plus the verdict and a single
 `try:` hint naming every failing dimension's recovery in order:

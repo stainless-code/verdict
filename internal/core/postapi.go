@@ -123,6 +123,7 @@ type Post struct { //nolint:govet // field order is the published property order
 	BelowFloorExcluded int              `json:"below_floor_excluded,omitempty"   min:"0"`
 	PostFloorScoped    []FloorScope     `json:"post_floor_scoped,omitempty"`
 	Coverage           *CoverageSummary `anyOf:"null"                            json:"coverage,omitempty"          optional:"true"`
+	ChunkCoverage      *ChunkCoverage   `anyOf:"null"                            json:"chunk_coverage,omitempty"    optional:"true"`
 	ReviewRaw          any              `json:"-"`
 }
 
@@ -265,10 +266,20 @@ func (p *Post) Wire() *jq.Obj {
 	setPostWithheldWire(o, p)
 	setPostSecretWire(o, p)
 	setPostFloorWire(o, p)
+	setPostCoverageWire(o, p)
+	return o
+}
+
+// setPostCoverageWire appends the stored attestation last: the measured line
+// summary a non-chunked run carries, or the chunk tally a chunked one carries
+// in its place. Both stay absent when nothing was evaluated.
+func setPostCoverageWire(o *jq.Obj, p *Post) {
 	if p.Coverage != nil {
 		o.Set("coverage", p.Coverage)
 	}
-	return o
+	if p.ChunkCoverage != nil {
+		o.Set("chunk_coverage", p.ChunkCoverage)
+	}
 }
 
 // setPostWithheldWire appends the withheld-capability audit after the --force

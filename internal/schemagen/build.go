@@ -124,6 +124,10 @@ const defsRecord = "record"
 // under; three documents reference it, so one constant keeps them in step.
 const coverageSummaryType = "coverageSummary"
 
+// chunkCoverageType is the $defs name the chunked bundle's stored attestation
+// is published under on post and record.
+const chunkCoverageType = "chunkCoverage"
+
 // keyScopeDefaults is the scope property carrying inline defaults; the scope
 // presence rules name it more than once.
 const keyScopeDefaults = "defaults"
@@ -229,6 +233,7 @@ func documents() []document {
 				{typ: reflect.TypeFor[FloorScope](), name: "floorScope"},
 				{typ: reflect.TypeFor[WithheldCapability](), name: "withheldCapability"},
 				{typ: reflect.TypeFor[CoverageSummary](), name: coverageSummaryType},
+				{typ: reflect.TypeFor[ChunkCoverage](), name: chunkCoverageType},
 			},
 			additionalProperties: true,
 		},
@@ -239,6 +244,7 @@ func documents() []document {
 			defs: []definition{
 				{typ: reflect.TypeFor[Repair](), name: "repair"},
 				{typ: reflect.TypeFor[CoverageSummary](), name: coverageSummaryType},
+				{typ: reflect.TypeFor[ChunkCoverage](), name: chunkCoverageType},
 			},
 			additionalProperties: true,
 		},
