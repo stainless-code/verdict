@@ -25,17 +25,13 @@ exit: 0
     "capabilities": {
       "provider": "forgejo",
       "fetch": true,
-      "post": false,
-      "inline_anchors": false,
-      "approve": false,
-      "request_changes": false,
+      "post": true,
+      "inline_anchors": true,
+      "approve": true,
+      "request_changes": true,
       "thread_resolution": false,
-      "review_verdicts": false,
+      "review_verdicts": true,
       "unsupported": {
-        "post": "fetch-only",
-        "inline_anchors": "fetch-only",
-        "approve": "fetch-only",
-        "request_changes": "fetch-only",
         "thread_resolution": "no-resolve-mutation"
       }
     },
