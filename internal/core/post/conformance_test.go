@@ -36,15 +36,16 @@ const (
 )
 
 // conformanceColumns is the matrix's column order: the submit capabilities the
-// manual documents per host, then the gap every host shares today.
+// manual documents per host. thread_resolution is not a submit write — it is
+// the separate resolver seam, checked by TestThreadResolutionConformance — and
+// the manual explains it once, in the section prose, so it has no per-host row.
 var conformanceColumns = []string{
 	conformancePost, conformanceInlineAnchors,
-	conformanceApprove, conformanceRequestChanges, conformanceThreadResolution,
+	conformanceApprove, conformanceRequestChanges,
 }
 
 // conformanceSubmitColumns are the columns docs/manual.md documents in its
-// per-host submit row. thread_resolution is absent on every host and the
-// manual explains it once, in the section prose, so it has no per-host row.
+// per-host submit row.
 var conformanceSubmitColumns = conformanceColumns[:4]
 
 const (
@@ -171,6 +172,107 @@ func TestProviderConformance(t *testing.T) {
 			conformanceCheckHost(t, docs, row)
 		})
 	}
+}
+
+// The exact resolve argv each host takes. The literals are the contract: a
+// rename in the resolver fails here instead of following the helper that
+// produced it.
+const (
+	conformanceGitHubResolveArgv = "gh\x00api\x00graphql\x00-f\x00query=" + queryResolveThread +
+		"\x00-f\x00threadId=PRRT_kwDOacme"
+	conformanceGitLabResolveArgv = "glab\x00api\x00projects/acme%2Fapp/merge_requests/7/discussions/d1?resolved=true" +
+		"\x00--method\x00PUT"
+)
+
+// TestThreadResolutionConformance proves the published thread_resolution flag
+// agrees with the resolver seam: a host that advertises the capability has a
+// resolver, and a host without one advertises false. Flipping the flag without
+// the call fails here.
+func TestThreadResolutionConformance(t *testing.T) {
+	t.Parallel()
+	for _, row := range conformanceRows() {
+		caps := core.CapabilitiesFor(row.provider)
+		_, _, resolver := hostFor(row.provider)
+		if caps.ThreadResolution != (resolver != nil) {
+			t.Errorf("%s: thread_resolution = %v, resolver present = %v",
+				row.provider, caps.ThreadResolution, resolver != nil)
+		}
+	}
+}
+
+// TestThreadResolveArgv drives each resolver and pins the one write it makes.
+func TestThreadResolveArgv(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		provider, threadID, argv, answer string
+	}{
+		{
+			provider: providerGitHub, threadID: "PRRT_kwDOacme", argv: conformanceGitHubResolveArgv,
+			answer: `{"data":{"resolveReviewThread":{"thread":{"id":"PRRT_kwDOacme","isResolved":true}}}}`,
+		},
+		{
+			provider: providerGitLab, threadID: "d1", argv: conformanceGitLabResolveArgv,
+			answer: `{"id":"d1","notes":[{"id":101,"system":false,"resolvable":true,"resolved":true}]}`,
+		},
+	} {
+		t.Run(tc.provider, func(t *testing.T) {
+			t.Parallel()
+			cmdr := &scriptCommander{t: t, out: map[string]scriptResult{tc.argv: {stdout: tc.answer}}}
+			if ref := ResolveThread(context.Background(), cmdr, tc.provider, nil, "acme/app", "7", tc.threadID); ref != nil {
+				t.Fatalf("ResolveThread refusal: %s: %s", ref.Code, ref.Message)
+			}
+			if len(cmdr.calls) != 1 {
+				t.Fatalf("calls = %d, want 1: %q", len(cmdr.calls), cmdr.calls)
+			}
+			if got := strings.Join(cmdr.calls[0], conformanceArgvSep); got != tc.argv {
+				t.Errorf("argv = %q, want %q", got, tc.argv)
+			}
+		})
+	}
+}
+
+// TestThreadResolveHoldsTheAnswer proves a 200 that does not carry the
+// resolved state is a refusal, never a receipt that claims the thread closed.
+func TestThreadResolveHoldsTheAnswer(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ provider, threadID, argv, answer string }{
+		{providerGitHub, "PRRT_kwDOacme", conformanceGitHubResolveArgv, `{"data":{"resolveReviewThread":{"thread":{"id":"PRRT_kwDOacme","isResolved":false}}}}`},
+		{providerGitLab, "d1", conformanceGitLabResolveArgv, `{"id":"d1","notes":[{"id":101,"system":false,"resolved":false}]}`},
+	} {
+		t.Run(tc.provider, func(t *testing.T) {
+			t.Parallel()
+			cmdr := &scriptCommander{t: t, out: map[string]scriptResult{tc.argv: {stdout: tc.answer}}}
+			ref := ResolveThread(context.Background(), cmdr, tc.provider, nil, "acme/app", "7", tc.threadID)
+			if ref == nil || ref.Code != codeThreadsFailed {
+				t.Fatalf("refusal = %+v, want %s", ref, codeThreadsFailed)
+			}
+		})
+	}
+}
+
+// TestThreadResolveRefusals proves a host without a resolver refuses typed
+// before any call, and a missing commander never reaches the host.
+func TestThreadResolveRefusals(t *testing.T) {
+	t.Parallel()
+	t.Run("forgejo", func(t *testing.T) {
+		t.Parallel()
+		cmdr := &scriptCommander{t: t, out: map[string]scriptResult{}}
+		ref := ResolveThread(context.Background(), cmdr, providerForgejo,
+			conformanceForgejoEnv(), "acme/app", "7", "401")
+		if ref == nil || ref.Code != "provider-unimplemented" {
+			t.Fatalf("refusal = %+v, want provider-unimplemented", ref)
+		}
+		if len(cmdr.calls) != 0 {
+			t.Errorf("a host without a resolver fired %d call(s): %q", len(cmdr.calls), cmdr.calls)
+		}
+	})
+	t.Run("no commander", func(t *testing.T) {
+		t.Parallel()
+		ref := ResolveThread(context.Background(), nil, providerGitHub, nil, "acme/app", "7", "PRRT_kwDOacme")
+		if ref == nil || ref.Code != codeThreadsFailed {
+			t.Fatalf("refusal = %+v, want %s", ref, codeThreadsFailed)
+		}
+	})
 }
 
 // conformanceCheckHost runs every scenario against one host and asserts what
@@ -352,7 +454,7 @@ func conformanceForgejoAnswer(state string) string {
 // that row is a disagreement. It reads the host seam rather than a table, so a
 // host whose seam names another tool fails here.
 func conformanceTool(provider string) string {
-	writer, _ := hostFor(provider)
+	writer, _, _ := hostFor(provider)
 	return writer.tool()
 }
 
@@ -364,13 +466,12 @@ type writeCounts struct {
 	anchors int
 	approve int
 	changes int
-	resolve int
 }
 
 func (c writeCounts) add(o writeCounts) writeCounts {
 	return writeCounts{
 		post: c.post + o.post, anchors: c.anchors + o.anchors, approve: c.approve + o.approve,
-		changes: c.changes + o.changes, resolve: c.resolve + o.resolve,
+		changes: c.changes + o.changes,
 	}
 }
 
@@ -380,7 +481,6 @@ func (row *hostConformance) observe(t *testing.T, run *conformanceRun) writeCoun
 	t.Helper()
 	var counts writeCounts
 	for i, call := range run.calls {
-		counts.resolve += conformanceResolveWrite(call)
 		counts = counts.add(row.writeCount(t, run, i, call))
 	}
 	return counts
@@ -434,18 +534,6 @@ func (row *hostConformance) hostEvent(event string) string {
 		return mapped
 	}
 	return event
-}
-
-// conformanceResolveWrite reports whether one call is a thread-resolve
-// mutation: GitHub's resolveReviewThread mutation, or GitLab's discussion
-// resolve endpoint. verdict ships neither, which is why thread_resolution reads
-// false on every host.
-func conformanceResolveWrite(call []string) int {
-	joined := strings.Join(call, " ")
-	if strings.Contains(joined, "resolveReviewThread") || strings.Contains(joined, "/resolve") {
-		return 1
-	}
-	return 0
 }
 
 // conformancePayload decodes one posted stdin body.
@@ -873,8 +961,6 @@ func capabilityWrites(t *testing.T, counts writeCounts, column string) int {
 		return counts.approve
 	case conformanceRequestChanges:
 		return counts.changes
-	case conformanceThreadResolution:
-		return counts.resolve
 	default:
 		t.Fatalf("unknown capability column %q", column)
 		return 0
@@ -927,7 +1013,7 @@ func (row *hostConformance) carriedBy(column string) string {
 	case conformanceRequestChanges:
 		return hints.changes
 	default:
-		return "verdict ships no resolve mutation on any host"
+		return "unknown capability column " + column
 	}
 }
 
@@ -1047,18 +1133,16 @@ func conformanceEmitHost(t *testing.T, docs conformanceDocs, provider string, em
 	}
 }
 
-// conformanceCheckThreadProse checks the one promise the manual makes for every
-// host instead of per host: thread resolution is absent everywhere, so the
-// section prose (not a submit row) has to say so.
+// conformanceCheckThreadProse checks the promise the manual makes in the
+// section prose instead of per host: the hosts that carry thread_resolution
+// are named with the mutation, and the host that does not says why.
 func conformanceCheckThreadProse(t *testing.T, docs conformanceDocs) {
 	t.Helper()
-	for _, row := range conformanceRows() {
-		if core.CapabilitiesFor(row.provider).ThreadResolution {
-			return
-		}
+	if !strings.Contains(docs.prose, "threads resolve") {
+		t.Error("docs/manual.md no longer names the threads resolve mutation in the Providers prose")
 	}
-	if !strings.Contains(docs.prose, "false on every host") {
-		t.Error("docs/manual.md no longer says thread_resolution is false on every host, which is the whole promise for it")
+	if !strings.Contains(docs.prose, "no documented resolve endpoint") {
+		t.Error("docs/manual.md no longer says Forgejo has no documented resolve endpoint")
 	}
 }
 

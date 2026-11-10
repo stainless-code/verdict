@@ -8,9 +8,10 @@ package core
 //
 // A capability that reads true has code behind it and a test that fails when
 // it flips: post is the submit path, inline_anchors is the merge's inline- or
-// body-only partition, approve is the host's own approval write, and
-// request_changes is the review event a host accepts. thread_resolution has no
-// code on any host, so it reads false everywhere and its reason says why.
+// body-only partition, approve is the host's own approval write,
+// request_changes is the review event a host accepts, and thread_resolution
+// is the host's own resolve call. A host with no documented resolve endpoint
+// reads false and its reason says why.
 type HostCapabilities struct {
 	Provider         string
 	Fetch            bool
@@ -61,8 +62,9 @@ const (
 	// reasonNoInlineAnchors names a host that takes a body but no anchored
 	// comment.
 	reasonNoInlineAnchors = "no-inline-anchors"
-	// reasonNoResolveMutation names the gap every host shares: verdict ships
-	// no thread-resolve call, so resolution stays a manual host/CLI step.
+	// reasonNoResolveMutation names a host verdict cannot close threads on:
+	// it has no documented resolve endpoint, so resolution stays a manual
+	// host/CLI step there.
 	reasonNoResolveMutation = "no-resolve-mutation"
 )
 
@@ -81,17 +83,19 @@ type CapabilityGap struct {
 // request-changes review event, so request_changes reads false there and the
 // submit path posts the findings plus a warning instead of inventing a verdict
 // the host cannot record. review_verdicts is derived from that pair by
-// CapabilitiesFor, never declared here. Thread resolution reads false on every
-// host: verdict has no resolve mutation, and the bundled prompts leave
-// resolution to the host's own CLI.
+// CapabilitiesFor, never declared here. Thread resolution reads true on GitHub
+// (resolveReviewThread) and GitLab (the discussion resolved flag); Forgejo has
+// no documented resolve endpoint, so it reads false there and on every
+// fetch-only host.
 var hostCapabilities = map[string]HostCapabilities{
 	"github": {
 		Provider: "github", Fetch: true, Post: true,
 		InlineAnchors: true, Approve: true, RequestChanges: true,
+		ThreadResolution: true,
 	},
 	"gitlab": {
 		Provider: "gitlab", Fetch: true, Post: true, InlineAnchors: true,
-		Approve: true,
+		Approve: true, ThreadResolution: true,
 	},
 	"gitcafe": {Provider: "gitcafe", Fetch: true},
 	"forgejo": {

@@ -26,6 +26,7 @@ const (
 	flagMethod = "--method"
 	flagInput  = "--input"
 	methodPost = "POST"
+	methodPut  = "PUT"
 
 	// postErrSuffix is the sidecar that carries the forge's own stderr, so a
 	// post-failed refusal quotes the host instead of an empty reason.
@@ -330,7 +331,7 @@ func postOnce(ctx context.Context, cmdr Commander, provider string, env map[stri
 	if cmdr == nil {
 		return postFailure(dir, errNoCommander.Error(), false, nil)
 	}
-	writer, _ := hostFor(provider)
+	writer, _, _ := hostFor(provider)
 	return writer.post(ctx, cmdr, env, core.CapabilitiesFor(provider), repo, pr, dir, payload)
 }
 

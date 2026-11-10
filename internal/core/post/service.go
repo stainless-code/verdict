@@ -347,28 +347,28 @@ func (st *state) commanderOrNil() Commander {
 // readLiveSHA reads the host's live head for the bundle's PR, so the drift
 // check runs the same read on every host that can post.
 func (st *state) readLiveSHA(ctx context.Context) (string, error) {
-	_, reader := hostFor(st.provider())
+	_, reader, _ := hostFor(st.provider())
 	return reader.liveSHA(ctx, st.commanderOrNil(), st.env(), st.req.Repo, st.req.Pr)
 }
 
 // selfLogin reads the authenticated login the authorship gate compares the
 // bundle author against.
 func (st *state) selfLogin(ctx context.Context) (string, error) {
-	_, reader := hostFor(st.provider())
+	_, reader, _ := hostFor(st.provider())
 	return reader.selfLogin(ctx, st.commanderOrNil(), st.env())
 }
 
 // recheck counts the live unresolved threads the approval guard compares
 // against the store.
 func (st *state) recheck(ctx context.Context) (int, string, error) {
-	_, reader := hostFor(st.provider())
+	_, reader, _ := hostFor(st.provider())
 	return reader.recheck(ctx, st.commanderOrNil(), st.env(), st.req.Repo, st.req.Pr, st.dir)
 }
 
 // hostAuthGate runs the host's local prerequisite gate, which fires before the
 // first call a post makes.
 func (st *state) hostAuthGate() *core.RefusalError {
-	_, reader := hostFor(st.provider())
+	_, reader, _ := hostFor(st.provider())
 	return reader.auth(st.env())
 }
 

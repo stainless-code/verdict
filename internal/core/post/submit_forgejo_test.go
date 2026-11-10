@@ -450,7 +450,7 @@ func assertForgejoRecheck(t *testing.T, host forgejoHost, cmdr *scriptCommander,
 // reader that gates the environment before any call.
 func TestForgejoHostSeam(t *testing.T) {
 	t.Parallel()
-	writer, reader := hostFor(providerForgejo)
+	writer, reader, _ := hostFor(providerForgejo)
 	if got := writer.tool(); got != "curl" {
 		t.Errorf("forgejo tool = %q, want curl", got)
 	}

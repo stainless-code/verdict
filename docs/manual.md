@@ -2246,10 +2246,13 @@ review event, so a bound request-changes posts the discussions plus the summary
 note and warns that the verdict did not bind. `review_verdicts` stays as the
 compatibility sum `approve && request_changes` for consumers written before the
 split, and carries no reason of its own — the two flags explain it; new readers
-branch on those two flags. `thread_resolution` is false on every host: verdict
-ships no resolve call, so resolution stays a host-CLI step the prompts hand
-back to the agent. `unsupported` carries one machine-readable code per absent
-capability, keyed by capability name:
+branch on those two flags. `thread_resolution` is true on GitHub and GitLab:
+`threads resolve` closes a verdict-authored thread through `resolveReviewThread`
+or GitLab's discussion resolved flag.
+Forgejo has no documented resolve endpoint, so it reads false there and on
+every fetch-only host; resolution stays a host-CLI step the prompts hand back
+to the agent. `unsupported` carries
+one machine-readable code per absent capability, keyed by capability name:
 
 | Code                       | Meaning                                                                         |
 | -------------------------- | ------------------------------------------------------------------------------- |
@@ -2257,7 +2260,7 @@ capability, keyed by capability name:
 | `no-request-changes-event` | the host has no request-changes review event; the post degrades, with a warning |
 | `no-approve-verdict`       | the host posts but cannot record an approval                                    |
 | `no-inline-anchors`        | the host takes a body but no anchored comment                                   |
-| `no-resolve-mutation`      | verdict has no thread-resolve call on any host                                  |
+| `no-resolve-mutation`      | verdict has no thread-resolve call for this host                                |
 | `unknown-host`             | the provider is not one verdict reads                                           |
 
 | Provider    | Fetch reads                                                                                                                                                              | Auth                                                             | Gaps (v1)                                                                                                     |

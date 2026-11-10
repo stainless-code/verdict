@@ -14,10 +14,11 @@ func TestCapabilityTable(t *testing.T) {
 		"github": {
 			Provider: "github", Fetch: true, Post: true, InlineAnchors: true,
 			Approve: true, RequestChanges: true, ReviewVerdicts: true,
+			ThreadResolution: true,
 		},
 		"gitlab": {
 			Provider: "gitlab", Fetch: true, Post: true, InlineAnchors: true,
-			Approve: true,
+			Approve: true, ThreadResolution: true,
 		},
 		"gitcafe": {Provider: "gitcafe", Fetch: true},
 		"forgejo": {
