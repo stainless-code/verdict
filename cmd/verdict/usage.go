@@ -7,13 +7,14 @@ func usageText() string {
 		"[--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
 		"    write .verdict/state/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
 		"(PR.json normalized for non-github providers)\n" +
-		"    Provider scope: record/report/triage/show/next run on any provider bundle; post submits to GitHub and\n" +
-		"    GitLab, which takes an approval but has no request-changes event — a bound request-changes posts as a\n" +
-		"    comment; post.json records the withheld capability in withheld[]; calibrate (live join)/ready need a\n" +
-		"    GitHub bundle and adopt needs one verdict can post to (forgejo, github, gitlab); the rest refuse typed\n" +
-		"    (provider-unimplemented; a local bundle has its own code — post/ready no-pr-target, calibrate\n" +
-		"    no-threads, adopt bad-target). calibrate --probe is offline and runs on any bundle. Incremental\n" +
-		"    re-review (--base-sha/--since) runs on GitHub and GitLab; other providers write incremental.diff.note.\n" +
+		"    Provider scope: record/report/triage/show/next run on any provider bundle; post submits to GitHub,\n" +
+		"    GitLab, and Forgejo (GitLab takes an approval but has no request-changes event — a bound\n" +
+		"    request-changes posts as a comment; post.json records the withheld capability in withheld[]); live\n" +
+		"    calibrate and ready run on GitHub and GitLab; adopt needs one verdict can post to (forgejo, github,\n" +
+		"    gitlab); the rest refuse typed (provider-unimplemented; a local bundle has its own code — post/ready\n" +
+		"    no-pr-target, calibrate no-threads, adopt bad-target). calibrate --probe is offline and runs on any\n" +
+		"    bundle. Incremental re-review (--base-sha/--since) runs on GitHub and GitLab; other providers write\n" +
+		"    incremental.diff.note.\n" +
 		"    diffs over 512000 bytes refuse with a split-or-narrow hint (empty diffs warn, never fail).\n" +
 		"    Deliberate exceptions only: REVIEW_MAX_BYTES=<n> (or the typed max_bytes default) overrides the cap.\n" +
 		"    Chunking opt-in only: --chunk (or the typed chunk default) marks over-cap fetches for " +
@@ -87,8 +88,8 @@ func usageText() string {
 		"    A secret-shaped value in the review text refuses post-secret-shaped before any host\n" +
 		"    call (--dry-run warns instead); --allow-secret-values publishes it and post.json\n" +
 		"    records the shapes it let through.\n" +
-		"    GitHub PR bundles only: local bundles refuse typed (no-pr-target), non-GitHub providers\n" +
-		"    refuse typed (provider-unimplemented).\n" +
+		"    GitHub, GitLab, and Forgejo PR bundles submit; local bundles refuse typed (no-pr-target) and\n" +
+		"    the other providers refuse typed (provider-unimplemented).\n" +
 		"  triage <owner/repo> <pr> --sig <sig> --status <open|addressed|wont-fix|false-positive|deferred>\n" +
 		"        --rationale \"...\" [--force] [--dry-run]\n" +
 		"    mutate .verdict/state/<pr>/findings.json directly. No network. Rationale required unless --force.\n" +
@@ -120,8 +121,8 @@ func usageText() string {
 		"    only; combined with --check the run fails if tier-hits OR stale/missing\n" +
 		"    post. Every gate run (--check and/or --completeness) ends with a third,\n" +
 		"    network-backed live-thread dimension: more live opens than local opens\n" +
-		"    fails the gate (unreachable lookups warn and stay neutral; local and\n" +
-		"    non-GitHub bundles warn-skip with zero network). --live selects the\n" +
+		"    fails the gate (unreachable lookups warn and stay neutral under auto;\n" +
+		"    local bundles warn-skip with zero network, and strict fails closed). --live selects the\n" +
 		"    offline posture for that dimension: auto (default) keeps today's\n" +
 		"    fail-open behavior; strict fails the gate when the lookup is\n" +
 		"    unreachable; skip pays zero network and gates on local dimensions\n" +
@@ -175,8 +176,8 @@ func usageText() string {
 		"  ready <owner/repo> <pr> [--json] [--check]\n" +
 		"    advisory only (exit 0, never a gate): CI state, open threads, draft/conflict,\n" +
 		"    description completeness. Prints blockers with actions + recommendation\n" +
-		"    (review/wait/nudge-author). PR bundles only; local bundles refused.\n" +
-		"    Non-GitHub provider bundles refuse typed (provider-unimplemented).\n" +
+		"    (review/wait/nudge-author). GitHub and GitLab PR bundles; local bundles refuse\n" +
+		"    (no-pr-target) and other providers refuse typed (provider-unimplemented).\n" +
 		"    --check opts into gating (same output, machine exits): 0 ready, 1 blockers\n" +
 		"    or wait, 2 usage, 3 tool error. Without --check the run stays advisory:\n" +
 		"    exit 0 with blockers listed (typed errors exit 1, usage exits 2).\n" +

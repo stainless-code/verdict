@@ -149,7 +149,7 @@ A GitLab post is not a GitHub post: GitLab has no `REQUEST_CHANGES` review event
 
 Forgejo takes one atomic review over its REST API through `curl`, so it carries both binding verdicts like GitHub. Its comments anchor on file line numbers, the approval event is spelled `APPROVED`, and a comment the host cannot place — no numeric line, a deleted file — is withheld with a warning rather than sent as an unanchored comment.
 
-On the other three hosts, `record`, `report`, `show`, `next`, `triage`, and `threads` work on the fetched bundle. `post`, live `calibrate`, `ready`, and `adopt` refuse with a typed error; `calibrate --probe` runs offline on any bundle. `adopt`, `ready`, and live `calibrate` are GitHub-only — they refuse on a GitLab bundle too. Details and per-host gaps are in the [manual](docs/manual.md#providers-non-github-hosts).
+On the other three hosts, `record`, `report`, `show`, `next`, `triage`, and `threads` work on the fetched bundle. `post`, live `calibrate`, `ready`, and `adopt` refuse with a typed error; `calibrate --probe` runs offline on any bundle. `adopt` reaches any host verdict can post to (GitHub, GitLab, Forgejo), while `ready` and live `calibrate` run on GitHub and GitLab. Details and per-host gaps are in the [manual](docs/manual.md#providers-non-github-hosts).
 
 ## Security
 
