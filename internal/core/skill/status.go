@@ -99,6 +99,15 @@ func inSync(plan *Plan) bool {
 }
 
 func diffPlan(plan *Plan) []Diff {
+	root, err := os.OpenRoot(plan.Target)
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = root.Close() }()
+	return diffChanged(root, plan)
+}
+
+func diffChanged(root *os.Root, plan *Plan) []Diff {
 	budget := DiffCapBytes
 	diffs := make([]Diff, 0, len(plan.Changed))
 	for _, rel := range plan.Changed {
@@ -106,7 +115,7 @@ func diffPlan(plan *Plan) []Diff {
 		if err != nil {
 			continue
 		}
-		got, err := os.ReadFile(filepath.Join(plan.Target, filepath.FromSlash(rel)))
+		got, err := root.ReadFile(filepath.FromSlash(rel))
 		if err != nil {
 			got = nil
 		}

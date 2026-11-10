@@ -109,7 +109,7 @@ func dedupeAgents(agents []string) []string {
 
 func applyDetected(req *Request, plans []Plan) *core.RefusalError {
 	for i := range plans {
-		if ref := checkDetected(req, &plans[i]); ref != nil {
+		if ref := checkApply(req, &plans[i]); ref != nil {
 			return ref
 		}
 	}
@@ -119,16 +119,6 @@ func applyDetected(req *Request, plans []Plan) *core.RefusalError {
 		}
 	}
 	return nil
-}
-
-func checkDetected(req *Request, plan *Plan) *core.RefusalError {
-	if ref := checkApply(req, plan); ref != nil {
-		return ref
-	}
-	if plan.Status == StatusKeep {
-		return nil
-	}
-	return preflight(plan.Target, plan.Files)
 }
 
 func planDetected(ctx context.Context, req *Request) (Detection, *core.RefusalError) {

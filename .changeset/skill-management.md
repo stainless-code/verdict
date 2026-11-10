@@ -22,5 +22,8 @@ symlinked directory (`skill-foreign-conflict`) refuses before any deletion; a
 target without a receipt refuses
 `skill-dir-foreign` unless `--force` (which still removes only inventory
 paths), an absent install refuses `skill-not-installed`, and `--dry-run`
-deletes nothing. `verdict uninstall`'s skill-copy hint now names
+deletes nothing. `skill install` likewise refuses a symlinked target
+(`skill-target-file`) and a payload directory that escapes the target through
+a symlink (`skill-foreign-conflict`) before it writes anything.
+`verdict uninstall`'s skill-copy hint now names
 `verdict skill uninstall` instead of `rm -rf`.

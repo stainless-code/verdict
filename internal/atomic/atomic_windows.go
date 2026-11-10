@@ -48,6 +48,18 @@ func replaceFile(from, to string) error {
 	}
 }
 
+func replaceRootFile(root *os.Root, from, to string) error {
+	wait := replaceBackoff
+	for attempt := 1; ; attempt++ {
+		err := root.Rename(from, to)
+		if err == nil || attempt == replaceAttempts || !retryableReplace(err) {
+			return err
+		}
+		time.Sleep(wait)
+		wait = min(wait*2, replaceMaxBackoff)
+	}
+}
+
 // retryableReplace reports whether a rename failure is a transient Windows
 // sharing/access denial rather than a permanent one (a missing directory,
 // a read-only target, a cross-volume rename).

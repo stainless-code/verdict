@@ -104,6 +104,43 @@ func TestStatusBlockedWithoutReceipt(t *testing.T) {
 	}
 }
 
+// TestStatusReportsEscapingPayloadDirWithoutFollowingTheLink pins that status
+// refuses the escape through the root instead of reading the linked bytes.
+//
+//nolint:revive // the test walks the escape path
+func TestStatusReportsEscapingPayloadDirWithoutFollowingTheLink(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	req := newRequest(t)
+	req.Dir = dir
+	target := filepath.Join(dir, "verdict")
+	if _, ref := skill.Install(context.Background(), req); ref != nil {
+		t.Fatalf("seed install: %v", ref)
+	}
+	outside := filepath.Join(dir, "outside")
+	outsideFile := filepath.Join(outside, "review.md")
+	writeTestFile(t, outsideFile, "outside bytes\n")
+	if err := os.RemoveAll(filepath.Join(target, "prompts")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(target, "prompts")); err != nil {
+		t.Skipf("this platform cannot create symlinks here: %v", err)
+	}
+	_, ref := skill.Status(context.Background(), req, true)
+	if ref == nil || ref.Code != "skill-foreign-conflict" {
+		t.Fatalf("status refusal = %v, want skill-foreign-conflict", ref)
+	}
+	if !strings.Contains(ref.Message, "path escapes from parent") {
+		t.Fatalf("status message = %q, want the root escape named", ref.Message)
+	}
+	if got, err := os.ReadFile(outsideFile); err != nil || string(got) != "outside bytes\n" {
+		t.Fatalf("outside file = %q, %v; want it untouched", got, err)
+	}
+	if entries, err := os.ReadDir(outside); err != nil || len(entries) != 1 {
+		t.Fatalf("outside dir = %v, %v; want only review.md", entries, err)
+	}
+}
+
 // TestStatusAgentsInArgvOrder pins dedupe and argv order.
 //
 //nolint:revive // the test walks the multi-agent arm

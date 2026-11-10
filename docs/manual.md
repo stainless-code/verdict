@@ -1656,7 +1656,10 @@ platform package. A plain `verdict` call consults neither variable.
   means the installed copy is stale, `keep` means current, `blocked` needs a
   human), refuses
   a target without a verdict receipt unless `--force`, never removes foreign
-  files, never prompts, and makes no network call. `--agent` accepts
+  files, never prompts, and makes no network call. A target that is itself a
+  symlink refuses (`skill-target-file`), and a payload directory that escapes
+  the target through a symlink refuses (`skill-foreign-conflict`) before
+  anything is written. `--agent` accepts
   `agents`, `claude`, `codex`, `cursor`, `opencode`, `copilot`, `gemini`,
   `goose`, `qwen`, and `windsurf`; `--agent agents` (and no flag) target the
   shared `~/.agents/skills/verdict` slot. `--agent` repeats on `install`,

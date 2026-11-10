@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -343,6 +344,127 @@ func TestInstallConflictRefusesBeforeWriting(t *testing.T) {
 	if got, err := os.ReadFile(filepath.Join(target, "prompts")); err != nil || string(got) != "in the way" {
 		t.Fatal("conflict refusal touched the foreign file")
 	}
+}
+
+// TestInstallRefusesPayloadDirEscapingTheTarget pins the root boundary: an
+// install through a payload directory that links outside the target refuses
+// skill-foreign-conflict before writing, in fresh, upgrade, dry-run, and
+// --force modes, and leaves the outside directory byte-identical.
+//
+//nolint:cyclop,gocognit,revive // the test walks the escape matrix
+func TestInstallRefusesPayloadDirEscapingTheTarget(t *testing.T) {
+	t.Parallel()
+	outside := filepath.Join(t.TempDir(), "outside")
+	outsideFile := filepath.Join(outside, "review.md")
+	writeTestFile(t, outsideFile, "outside bytes\n")
+	modes := []struct {
+		name  string
+		owned bool
+		force bool
+		dry   bool
+	}{
+		{name: "fresh"},
+		{name: "upgrade", owned: true},
+		{name: "upgrade dry-run", owned: true, dry: true},
+		{name: "force", force: true},
+	}
+	for _, mode := range modes {
+		req := newRequest(t)
+		req.Dir = t.TempDir()
+		target := filepath.Join(req.Dir, "verdict")
+		if mode.owned {
+			if _, ref := skill.Install(context.Background(), req); ref != nil {
+				t.Fatalf("%s seed install: %v", mode.name, ref)
+			}
+		} else if err := os.MkdirAll(target, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.RemoveAll(filepath.Join(target, "prompts")); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, filepath.Join(target, "prompts")); err != nil {
+			t.Skipf("this platform cannot create symlinks here: %v", err)
+		}
+		req.Force = mode.force
+		req.DryRun = mode.dry
+		_, ref := skill.Install(context.Background(), req)
+		if ref == nil || ref.Code != "skill-foreign-conflict" {
+			t.Fatalf("%s refusal = %v, want skill-foreign-conflict", mode.name, ref)
+		}
+		if !strings.Contains(ref.Message, "path escapes from parent") {
+			t.Fatalf("%s message = %q, want the root escape named", mode.name, ref.Message)
+		}
+		if got, err := os.ReadFile(outsideFile); err != nil || string(got) != "outside bytes\n" {
+			t.Fatalf("%s outside file = %q, %v; want it untouched", mode.name, got, err)
+		}
+		if entries, err := os.ReadDir(outside); err != nil || len(entries) != 1 {
+			t.Fatalf("%s outside dir = %v, %v; want only review.md", mode.name, entries, err)
+		}
+		if extra := tempLeftovers(t, target); len(extra) != 0 {
+			t.Fatalf("%s left temp files in the target: %v", mode.name, extra)
+		}
+		if extra := tempLeftovers(t, outside); len(extra) != 0 {
+			t.Fatalf("%s left temp files outside the target: %v", mode.name, extra)
+		}
+		if !mode.owned {
+			if _, err := os.Stat(filepath.Join(target, "SKILL.md")); !os.IsNotExist(err) {
+				t.Fatalf("%s wrote SKILL.md before refusing", mode.name)
+			}
+			if _, err := os.Stat(filepath.Join(target, skill.ReceiptName)); !os.IsNotExist(err) {
+				t.Fatalf("%s wrote the receipt before refusing", mode.name)
+			}
+		}
+	}
+}
+
+// TestInstallRefusesSymlinkedTarget pins the symlink wording and that the
+// directory behind the link is untouched.
+//
+//nolint:revive // the test walks the symlink refusal
+func TestInstallRefusesSymlinkedTarget(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	req := newRequest(t)
+	req.Dir = dir
+	realDir := filepath.Join(dir, "real-skill")
+	keep := filepath.Join(realDir, "keep.txt")
+	writeTestFile(t, keep, "keep\n")
+	target := filepath.Join(dir, "verdict")
+	if err := os.Symlink(realDir, target); err != nil {
+		t.Skipf("this platform cannot create symlinks here: %v", err)
+	}
+	_, ref := skill.Install(context.Background(), req)
+	if ref == nil || ref.Code != "skill-target-file" {
+		t.Fatalf("symlinked target refusal = %v, want skill-target-file", ref)
+	}
+	if want := target + " is a symlink; refusing to install through it"; ref.Message != want {
+		t.Fatalf("symlinked target message = %q, want %q", ref.Message, want)
+	}
+	if _, ref := skill.Status(context.Background(), req, false); ref == nil || ref.Code != "skill-target-file" {
+		t.Fatalf("symlinked target status = %v, want skill-target-file", ref)
+	}
+	if got, err := os.ReadFile(keep); err != nil || string(got) != "keep\n" {
+		t.Fatalf("symlinked target file = %q, %v; want it untouched", got, err)
+	}
+}
+
+// tempLeftovers lists staged atomic temp files under root.
+func tempLeftovers(t *testing.T, root string) []string {
+	t.Helper()
+	var found []string
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if strings.HasPrefix(entry.Name(), ".tmp-") {
+			found = append(found, path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return found
 }
 
 func readReceiptMap(t *testing.T, path string) map[string]string {

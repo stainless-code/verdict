@@ -38,6 +38,13 @@ func checkSidecarMode(t *testing.T, _ os.FileInfo) {
 	t.Log("skipping POSIX sidecar mode assertion on Windows")
 }
 
+// checkPayloadMode skips the POSIX executable-bit assertion on Windows, which
+// does not model it.
+func checkPayloadMode(t *testing.T, _ os.FileInfo) {
+	t.Helper()
+	t.Log("skipping POSIX payload mode assertion on Windows")
+}
+
 // seedWriteFailure seeds a store the write path cannot replace: Windows
 // MoveFileEx(MOVEFILE_REPLACE_EXISTING) fails with access denied when the
 // destination carries the read-only attribute.

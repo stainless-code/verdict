@@ -146,6 +146,92 @@ func TestWriteFileRenameFailureLeavesNoTemp(t *testing.T) {
 	}
 }
 
+// TestWriteFileModeInRoundTrip checks a rooted write lands exact bytes with
+// the caller's mode and no temp leftovers.
+func TestWriteFileModeInRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = root.Close() }()
+	if err := root.MkdirAll("scripts", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	data := []byte("#!/bin/sh\nexit 0\n")
+	if err := atomic.WriteFileModeIn(root, "scripts/verdict", data, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "scripts", "verdict")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(raw, data) {
+		t.Errorf("round trip = %q; want %q", raw, data)
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkPayloadMode(t, fi)
+	assertNoTempFiles(t, filepath.Join(dir, "scripts"))
+}
+
+// TestWriteFileModeInRefusesEscapingParent checks a parent that links outside
+// the root cannot receive the write or a staged temp file.
+func TestWriteFileModeInRefusesEscapingParent(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+	outside := filepath.Join(dir, "outside")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(target, "prompts")); err != nil {
+		t.Skipf("this platform cannot create symlinks here: %v", err)
+	}
+	root, err := os.OpenRoot(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = root.Close() }()
+	if err := atomic.WriteFileModeIn(root, "prompts/review.md", []byte("x\n"), 0o644); err == nil {
+		t.Fatal("want a refused write through an escaping symlink, got nil")
+	}
+	entries, err := os.ReadDir(outside)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("outside dir = %v; want no files", entries)
+	}
+}
+
+// TestWriteFileModeInRenameFailureLeavesNoTemp covers a failure after the temp
+// file exists: the target is a non-empty directory, so the rename fails and
+// the deferred cleanup must remove the staged temp.
+func TestWriteFileModeInRenameFailureLeavesNoTemp(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "target", "keep"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "target", "keep", "file"), []byte("keep\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = root.Close() }()
+	if err := atomic.WriteFileModeIn(root, "target", []byte("replacement\n"), 0o644); err == nil {
+		t.Fatal("want a failed rename, got nil")
+	}
+	assertNoTempFiles(t, dir)
+}
+
 // assertNoTempFiles fails on any staged atomic temp left in dir.
 func assertNoTempFiles(t *testing.T, dir string) {
 	t.Helper()
