@@ -10,7 +10,7 @@ import { sitePages } from "../navigation.ts";
 const appRoot = fileURLToPath(new URL("..", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 const dist = join(appRoot, process.argv[2] ?? "dist");
-const nav = sitePages(docsPage("manual.md"));
+const nav = sitePages(docsPage("manual.md"), docsPage("troubleshooting.md"));
 
 const fail = (lines: readonly string[]): never => {
   console.error(lines.join("\n"));
