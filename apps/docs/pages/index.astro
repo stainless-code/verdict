@@ -5,8 +5,7 @@ import { THEME_INIT_SCRIPT } from "blume/components/layout/head-scripts.ts";
 import Fonts from "blume/components/layout/Fonts.astro";
 import WebMcp from "blume/components/layout/WebMcp.astro";
 import Header from "../components/blume/Header.astro";
-import Logo from "blume/components/layout/Logo.astro";
-import { footerColumns } from "../navigation.ts";
+import SitemapFooter from "../components/SitemapFooter.astro";
 import Hero from "./_home/Hero.astro";
 import HowItWorks from "./_home/HowItWorks.astro";
 import Differences from "./_home/Differences.astro";
@@ -21,7 +20,6 @@ import "blume:theme";
 
 const { config } = data;
 const pageTitle = `${config.title}: code review your agent runs`;
-const year = new Date().getFullYear();
 const siteUrl = (config.site ?? "").replace(/\/$/, "");
 const canonicalUrl = `${siteUrl}${contentHref("/")}`.replace(/\/$/, "");
 const ogImageUrl = `${siteUrl}${contentHref("/og/index.png")}`;
@@ -113,42 +111,7 @@ const jsonLd = {
       <Faq />
       <FinalCta />
     </main>
-    <footer class="border-border border-t">
-      <div class="mx-auto max-w-[1160px] px-6 py-14">
-        <div class="grid gap-12 lg:grid-cols-[254px_1fr]">
-          <div>
-            <Logo logo={data.config.logo} site={{ title: config.title }} />
-            <p class="mt-4 max-w-[254px] text-[14px] text-muted-foreground leading-[22px]">
-              Code review in steps your agent runs on your machine. It fetches a
-              pull request, a branch, a commit range or staged changes, and grades every
-              finding by how it was checked.
-            </p>
-          </div>
-          <nav aria-label="Footer" class="grid grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-3 sm:gap-x-12 xl:grid-cols-5">
-            {footerColumns.map((column) => (
-              <div class="min-w-0">
-                <h3 class="text-sm font-medium text-[var(--landing-faint)]">{column.label}</h3>
-                <ul class="mt-3 space-y-3">
-                  {column.links.map((link) => (
-                    <li>
-                      <a href={contentHref(link.path)} class="inline-block -my-1 py-1 text-base text-muted-foreground transition-colors hover:text-foreground">
-                        {link.label}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </nav>
-        </div>
-        <div class="mt-11 border-border border-t pt-5">
-          <div class="mx-auto flex flex-col items-center justify-between gap-2 text-xs text-[var(--landing-faint)] sm:flex-row">
-            <span>© 2026 stainless-code, <a href="https://github.com/stainless-code/verdict/blob/main/LICENSE" rel="noreferrer" target="_blank" class="inline-block py-1.5 transition-colors hover:text-foreground">MIT licensed</a></span>
-            <span>Built and maintained by <a href="https://stainless-code.com" rel="noreferrer" target="_blank" class="inline-block py-1.5 transition-colors hover:text-foreground">stainless-code</a></span>
-          </div>
-        </div>
-      </div>
-    </footer>
+    <SitemapFooter />
     <WebMcp />
   </body>
 </html>
