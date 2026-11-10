@@ -242,11 +242,11 @@ func (st *state) checkAdoptTarget(dir string) *core.RefusalError {
 	if !readcommon.IsFile(dir + fullDiffSuffix) {
 		return st.refuse("missing-diff", fmt.Sprintf(msgMissingDiff, dir))
 	}
-	if err := ensureStore(dir); err != nil {
-		return st.refuse("adopt-failed", fmt.Sprintf("adopt failed: %v", err))
-	}
 	if prov := bundleProvider(dir); !core.CapabilitiesFor(prov).Post {
 		return st.refuse("provider-unimplemented", fmt.Sprintf(msgProviderUnimplemented, strings.Join(postableProviders(), ", "), prov))
+	}
+	if err := ensureStore(dir); err != nil {
+		return st.refuse("adopt-failed", fmt.Sprintf("adopt failed: %v", err))
 	}
 	return nil
 }

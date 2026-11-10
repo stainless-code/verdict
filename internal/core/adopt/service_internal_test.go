@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -181,6 +182,47 @@ func TestAdoptRefusalListsPostableHosts(t *testing.T) {
 	if list := "(" + strings.Join(want, ", ") + ")"; !strings.Contains(ref.Message, list) {
 		t.Errorf("refusal message %q does not list the postable hosts %q", ref.Message, list)
 	}
+}
+
+// TestAdoptRefusalWritesNothing proves a refused adopt leaves the target
+// bundle byte-identical: the provider gate runs before the store write.
+func TestAdoptRefusalWritesNothing(t *testing.T) {
+	t.Parallel()
+	dir := mkAdoptTarget(t, `{"state":"OPEN","provider":"gitcafe"}`)
+	before := dirSnapshot(t, dir)
+	ref := (&state{}).checkAdoptTarget(dir)
+	if ref == nil || ref.Code != "provider-unimplemented" {
+		t.Fatalf("gitcafe target refusal = %+v, want provider-unimplemented", ref)
+	}
+	after := dirSnapshot(t, dir)
+	if !reflect.DeepEqual(before, after) {
+		t.Errorf("refused adopt mutated the target: before %q, after %q", before, after)
+	}
+}
+
+// dirSnapshot maps each file under dir to its bytes.
+func dirSnapshot(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		out[rel] = string(raw)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
 }
 
 // TestAdoptTargetWithoutProviderMarkerIsGitHub proves a bundle that predates
