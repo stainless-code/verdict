@@ -5,7 +5,7 @@ gate: coverage     unknown  stored coverage is for HEAD ccccccc, not HEAD aaaaaa
 gate: live_threads skip  live recheck skipped (--live skip)
 gate: FAIL (1 fail, 1 unknown, 1 skip)
 gate: skipped live_threads
-try: post a review for the fetched HEAD, then post or record a review attesting coverage for the fetched HEAD, then re-run gate
+try: post a review for the fetched HEAD, then attest coverage for the fetched HEAD (post or record), then re-run gate
 --- stderr ---
 warn: patch identity unavailable — completeness compares heads
 warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors

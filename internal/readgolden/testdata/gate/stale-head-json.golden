@@ -6,7 +6,7 @@ exit: 1
   "repo": "acme/app",
   "pr": 5202,
   "at": "0000-00-00T00:00:00Z",
-  "next": "post a review for the fetched HEAD, then post or record a review attesting coverage for the fetched HEAD",
+  "next": "post a review for the fetched HEAD, then attest coverage for the fetched HEAD (post or record)",
   "warnings": [
     "patch identity unavailable — completeness compares heads",
     "run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors",

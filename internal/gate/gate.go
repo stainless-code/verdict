@@ -231,7 +231,7 @@ var gateActionsByID = map[string]func(status string) string{
 		case statusFail:
 			return "attest the unattested ranges in review.json coverage[], then re-record or re-post"
 		case statusUnknown:
-			return "post or record a review attesting coverage for the fetched HEAD"
+			return "attest coverage for the fetched HEAD (post or record)"
 		}
 		return ""
 	},
