@@ -1,0 +1,6 @@
+extensions:
+  verdict:
+    enabled: true
+    type: stdio
+    cmd: verdict
+    args: [mcp]

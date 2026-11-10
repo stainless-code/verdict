@@ -12,7 +12,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	pathpkg "path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	skillfs "github.com/stainless-code/verdict"
@@ -40,6 +42,8 @@ const (
 	codeConflict   = "skill-foreign-conflict"
 	codeInstall    = "skill-install-failed"
 	codeRead       = "skill-read-failed"
+	codePath       = "skill-path-not-inventory"
+	codeNotInstall = "skill-not-installed"
 	codeCanceled   = "canceled"
 	dirPerm        = 0o755
 )
@@ -110,6 +114,32 @@ func Show(_ context.Context, _ *Request) ([]byte, *core.RefusalError) {
 	return body, nil
 }
 
+// ShowFile returns one embedded payload file by its slash path. The path must
+// be in the payload inventory; a traversal, absolute, or unknown path refuses
+// skill-path-not-inventory.
+func ShowFile(ctx context.Context, req *Request, path string) ([]byte, *core.RefusalError) {
+	inv, ref := List(ctx, req)
+	if ref != nil {
+		return nil, ref
+	}
+	if !inventoryPath(path) || !slices.Contains(inv.Files, path) {
+		return nil, refuse(codePath, "not an embedded skill path: "+path)
+	}
+	body, err := skillfs.Read(path)
+	if err != nil {
+		return nil, refuse(codeRead, err.Error())
+	}
+	return body, nil
+}
+
+func inventoryPath(path string) bool {
+	if path == "" || strings.HasPrefix(path, "/") {
+		return false
+	}
+	clean := pathpkg.Clean(path)
+	return clean == path && clean != "." && clean != ".." && !strings.HasPrefix(clean, "../")
+}
+
 // List returns the embedded payload inventory (paths sorted).
 func List(_ context.Context, req *Request) (Inventory, *core.RefusalError) {
 	files, err := skillfs.Paths()
@@ -120,8 +150,9 @@ func List(_ context.Context, req *Request) (Inventory, *core.RefusalError) {
 }
 
 // Install plans one install and, unless DryRun, applies it. A foreign target
-// refuses typed unless Force; a target that is not a directory always refuses
-// on apply (nothing foreign is ever replaced). Keep refreshes only a skewed
+// refuses typed unless Force; a target that is a symlink or not a directory,
+// and a payload path that escapes through one, refuse before anything is
+// written (nothing foreign is ever replaced). Keep refreshes only a skewed
 // receipt.
 func Install(ctx context.Context, req *Request) (Plan, *core.RefusalError) {
 	if err := ctx.Err(); err != nil {
@@ -170,33 +201,96 @@ func planAt(files Inventory, target string) (Plan, *core.RefusalError) {
 	plan := Plan{
 		Name: files.Name, Version: files.Version, Target: target, Files: files.Files,
 	}
-	info, err := os.Lstat(target)
-	if errors.Is(err, os.ErrNotExist) {
+	kind, ref := inspectTarget(target)
+	if ref != nil {
+		return Plan{}, ref
+	}
+	if kind == targetMissing {
 		plan.Status = StatusCreate
 		plan.Changed = append([]string(nil), files.Files...)
 		return plan, nil
 	}
-	if err != nil {
-		return Plan{}, refuse(codeInstall, fmt.Sprintf("cannot inspect %s: %s", target, err))
-	}
-	if !info.IsDir() {
+	if kind == targetBlocked {
 		plan.Status = StatusBlocked
 		plan.TargetFile = true
 		return plan, nil
 	}
-	version, owned := readReceipt(filepath.Join(target, ReceiptName))
+	root, ref := openTargetDir(target)
+	if ref != nil {
+		return Plan{}, ref
+	}
+	defer func() { _ = root.Close() }()
+	if ref := preflight(root, target, files.Files); ref != nil {
+		return Plan{}, ref
+	}
+	version, owned := readReceiptRoot(root)
 	if !owned {
 		plan.Status = StatusBlocked
 		return plan, nil
 	}
 	plan.ReceiptVersion = version
-	plan.Changed = changedFiles(target, files.Files)
+	plan.Changed = changedFiles(root, files.Files)
 	if len(plan.Changed) == 0 {
 		plan.Status = StatusKeep
 	} else {
 		plan.Status = StatusUpdate
 	}
 	return plan, nil
+}
+
+type targetKind int
+
+const (
+	targetMissing targetKind = iota
+	targetDir
+	targetBlocked
+)
+
+// inspectTarget classifies target; a symlink refuses skill-target-file before
+// any caller can open it.
+func inspectTarget(target string) (targetKind, *core.RefusalError) {
+	info, err := os.Lstat(target)
+	if errors.Is(err, os.ErrNotExist) {
+		return targetMissing, nil
+	}
+	if err != nil {
+		return targetBlocked, refuse(codeInstall, fmt.Sprintf("cannot inspect %s: %s", target, err))
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return targetBlocked, refuse(codeTargetFile, target+" is a symlink; refusing to install through it")
+	}
+	if !info.IsDir() {
+		return targetBlocked, nil
+	}
+	return targetDir, nil
+}
+
+func openTargetDir(target string) (*os.Root, *core.RefusalError) {
+	kind, ref := inspectTarget(target)
+	if ref != nil {
+		return nil, ref
+	}
+	if kind == targetBlocked {
+		return nil, refuse(codeTargetFile, target+" exists and is not a directory; refusing to replace it")
+	}
+	root, err := os.OpenRoot(target)
+	if err != nil {
+		return nil, refuse(codeInstall, fmt.Sprintf("cannot inspect %s: %s", target, err))
+	}
+	return root, nil
+}
+
+func ensureTargetRoot(target string) (*os.Root, *core.RefusalError) {
+	kind, ref := inspectTarget(target)
+	if ref != nil {
+		return nil, ref
+	}
+	if kind == targetMissing {
+		if err := os.MkdirAll(target, dirPerm); err != nil {
+			return nil, refuse(codeInstall, fmt.Sprintf("cannot create %s: %s", target, err))
+		}
+	}
+	return openTargetDir(target)
 }
 
 func (req *Request) target() (string, *core.RefusalError) {
@@ -220,6 +314,22 @@ func (req *Request) target() (string, *core.RefusalError) {
 			"--agent needs HOME (or CLAUDE_CONFIG_DIR/CODEX_HOME) to resolve the skills dir; pass --dir instead")
 	}
 	return filepath.Join(dir, Name), nil
+}
+
+// resolvedTarget is the install target for agent as a cleaned absolute path:
+// the key that dedupes agent names sharing one directory.
+func (req *Request) resolvedTarget(agent string) (string, *core.RefusalError) {
+	at := *req
+	at.Agent = agent
+	target, ref := at.target()
+	if ref != nil {
+		return "", ref
+	}
+	abs, err := filepath.Abs(target)
+	if err != nil {
+		return "", refuse(codeInstall, fmt.Sprintf("cannot resolve %s: %s", target, err))
+	}
+	return filepath.Clean(abs), nil
 }
 
 type agentLayout struct {
@@ -277,18 +387,20 @@ func apply(req *Request, plan *Plan) *core.RefusalError {
 	if plan.Status == StatusKeep {
 		return refreshReceipt(req, plan)
 	}
-	if ref := preflight(plan.Target, plan.Files); ref != nil {
+	root, ref := ensureTargetRoot(plan.Target)
+	if ref != nil {
 		return ref
 	}
-	if err := os.MkdirAll(plan.Target, dirPerm); err != nil {
-		return refuse(codeInstall, fmt.Sprintf("cannot create %s: %s", plan.Target, err))
+	defer func() { _ = root.Close() }()
+	if ref := preflight(root, plan.Target, plan.Files); ref != nil {
+		return ref
 	}
 	for _, rel := range plan.Files {
-		if err := writePayload(plan.Target, rel); err != nil {
+		if err := writePayload(root, plan.Target, rel); err != nil {
 			return err
 		}
 	}
-	if err := writeReceipt(plan.Target, req.version(), req.TimeUTC()); err != nil {
+	if err := writeReceipt(root, req.version(), req.TimeUTC()); err != nil {
 		return refuse(codeInstall, fmt.Sprintf("cannot write %s/%s: %s", plan.Target, ReceiptName, err))
 	}
 	plan.Written = len(plan.Files)
@@ -300,7 +412,12 @@ func refreshReceipt(req *Request, plan *Plan) *core.RefusalError {
 	if plan.ReceiptVersion == req.version() {
 		return nil
 	}
-	if err := writeReceipt(plan.Target, req.version(), req.TimeUTC()); err != nil {
+	root, ref := openTargetDir(plan.Target)
+	if ref != nil {
+		return ref
+	}
+	defer func() { _ = root.Close() }()
+	if err := writeReceipt(root, req.version(), req.TimeUTC()); err != nil {
 		return refuse(codeInstall, fmt.Sprintf("cannot refresh %s/%s: %s", plan.Target, ReceiptName, err))
 	}
 	plan.ReceiptVersion = req.version()
@@ -308,49 +425,72 @@ func refreshReceipt(req *Request, plan *Plan) *core.RefusalError {
 	return nil
 }
 
-func writePayload(target, rel string) *core.RefusalError {
+func writePayload(root *os.Root, target, rel string) *core.RefusalError {
 	body, err := skillfs.Read(rel)
 	if err != nil {
 		return refuse(codeRead, err.Error())
 	}
-	dst := filepath.Join(target, filepath.FromSlash(rel))
-	if err := os.MkdirAll(filepath.Dir(dst), dirPerm); err != nil {
-		return refuse(codeInstall, fmt.Sprintf("cannot create %s: %s", filepath.Dir(dst), err))
+	name := filepath.FromSlash(rel)
+	dir := filepath.Dir(name)
+	if err := root.MkdirAll(dir, dirPerm); err != nil {
+		return refuse(codeInstall, fmt.Sprintf("cannot create %s: %s", filepath.Join(target, dir), err))
 	}
-	if err := atomic.WriteFileMode(dst, body, skillfs.Mode(rel)); err != nil {
-		return refuse(codeInstall, fmt.Sprintf("cannot write %s: %s", dst, err))
+	if err := atomic.WriteFileModeIn(root, name, body, skillfs.Mode(rel)); err != nil {
+		return refuse(codeInstall, fmt.Sprintf("cannot write %s: %s", filepath.Join(target, name), err))
 	}
 	return nil
 }
 
-func preflight(target string, files []string) *core.RefusalError {
-	if ref := preflightDirs(target); ref != nil {
+func preflight(root *os.Root, target string, files []string) *core.RefusalError {
+	if ref := preflightDirs(root, target); ref != nil {
 		return ref
 	}
-	return preflightFiles(target, files)
+	return preflightFiles(root, target, files)
 }
 
-func preflightDirs(target string) *core.RefusalError {
+func preflightDirs(root *os.Root, target string) *core.RefusalError {
 	for _, dir := range []string{payloadPromptsDir, payloadSchemasDir, payloadScriptsDir} {
-		path := filepath.Join(target, dir)
-		if info, err := os.Stat(path); err == nil && !info.IsDir() {
-			return refuse(codeConflict, path+" exists and is not a directory; refusing to replace it")
+		info, ref := payloadStat(root, target, dir)
+		if ref != nil {
+			return ref
+		}
+		if info != nil && !info.IsDir() {
+			return refuse(codeConflict, filepath.Join(target, dir)+" exists and is not a directory; refusing to replace it")
 		}
 	}
 	return nil
 }
 
-func preflightFiles(target string, files []string) *core.RefusalError {
+func preflightFiles(root *os.Root, target string, files []string) *core.RefusalError {
 	for _, rel := range files {
-		path := filepath.Join(target, filepath.FromSlash(rel))
-		if info, err := os.Stat(path); err == nil && info.IsDir() {
-			return refuse(codeConflict, path+" is a directory; refusing to replace it")
+		name := filepath.FromSlash(rel)
+		info, ref := payloadStat(root, target, name)
+		if ref != nil {
+			return ref
+		}
+		if info != nil && info.IsDir() {
+			return refuse(codeConflict, filepath.Join(target, name)+" is a directory; refusing to replace it")
 		}
 	}
 	return nil
 }
 
-func changedFiles(target string, files []string) []string {
+// payloadStat stats name inside root; a missing path is nil, and a path that
+// escapes the root or cannot be inspected is a conflict before any write.
+func payloadStat(root *os.Root, target, name string) (os.FileInfo, *core.RefusalError) {
+	path := filepath.Join(target, name)
+	info, err := root.Stat(name)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, refuse(codeConflict, path+" is not a writable path inside the skill dir; "+
+			"refusing to write through it ("+err.Error()+")")
+	}
+	return info, nil
+}
+
+func changedFiles(root *os.Root, files []string) []string {
 	var changed []string
 	for _, rel := range files {
 		want, err := skillfs.Read(rel)
@@ -358,7 +498,7 @@ func changedFiles(target string, files []string) []string {
 			changed = append(changed, rel)
 			continue
 		}
-		got, err := os.ReadFile(filepath.Join(target, filepath.FromSlash(rel)))
+		got, err := root.ReadFile(filepath.FromSlash(rel))
 		if err != nil || !bytes.Equal(got, want) {
 			changed = append(changed, rel)
 		}
@@ -366,11 +506,15 @@ func changedFiles(target string, files []string) []string {
 	return changed
 }
 
-func readReceipt(path string) (string, bool) {
-	raw, err := os.ReadFile(path)
+func readReceiptRoot(root *os.Root) (string, bool) {
+	raw, err := root.ReadFile(ReceiptName)
 	if err != nil {
 		return "", false
 	}
+	return parseReceipt(raw)
+}
+
+func parseReceipt(raw []byte) (string, bool) {
 	doc, err := jq.DecodeObject(raw)
 	if err != nil || doc["tool"] != Name {
 		return "", false
@@ -378,9 +522,10 @@ func readReceipt(path string) (string, bool) {
 	return jq.StrOf(doc["version"]), true
 }
 
-func writeReceipt(target, version, now string) error {
+func writeReceipt(root *os.Root, version, now string) error {
 	doc := jq.NewObj("tool", Name, "version", version, "installed_at", now)
-	return atomic.WriteFile(filepath.Join(target, ReceiptName), []byte(doc.MarshalPretty()+"\n"))
+	//nolint:wrapcheck // the caller maps the sealed write error to a skill-install-failed refusal
+	return atomic.WriteFileIn(root, ReceiptName, []byte(doc.MarshalPretty()+"\n"))
 }
 
 func (req *Request) version() string {

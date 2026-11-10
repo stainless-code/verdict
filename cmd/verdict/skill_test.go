@@ -167,6 +167,11 @@ func TestSkillUsageErrors(t *testing.T) {
 		{"skill", "install", "--detect", "--agent", "claude"},
 		{"skill", "files", "--bogus"},
 		{"skill", "--format", "yaml"},
+		{"skill", "status", "--bogus"},
+		{"skill", "status", "--dir", "/tmp/x", "--agent", "claude"},
+		{"skill", "status", "--detect", "--agent", "claude"},
+		{"skill", "uninstall", "--dir", "/tmp/x", "--agent", "claude"},
+		{"skill", "uninstall", "--detect"},
 	} {
 		code, out, derr := runCapture(t, args)
 		if code != 2 || out != "" || derr == "" {

@@ -9,6 +9,7 @@ import { docsPage } from "./docs-index.ts";
 import { sitePages } from "./navigation.ts";
 import { changelogSource } from "./sources/changelog.ts";
 import { manualSource } from "./sources/manual.ts";
+import { troubleshootingSource } from "./sources/troubleshooting.ts";
 
 const title = "Verdict";
 const description =
@@ -21,6 +22,9 @@ const origin = "https://stainless-code.com";
 const manual = docsPage("manual.md");
 const manualUrl = `${origin}${deploymentBase}${manual.route}.md`;
 const manualSummary = manual.summary.replace(/\.$/u, "");
+const troubleshooting = docsPage("troubleshooting.md");
+const troubleshootingUrl = `${origin}${deploymentBase}${troubleshooting.route}.md`;
+const troubleshootingSummary = troubleshooting.summary.replace(/\.$/u, "");
 
 // Prerendered pages skip transformIndexHtml, so append tags to dist after build.
 const webAppHeadIntegration = {
@@ -89,6 +93,7 @@ export default defineConfig({
         }),
       ),
       custom(manualSource()),
+      custom(troubleshootingSource()),
     ],
   },
 
@@ -106,8 +111,9 @@ export default defineConfig({
     skills: "./skills",
     llmsTxt: {
       details: [
-        "The two long-form references are left out of `llms-full.txt` for their size:",
+        "The three long-form references are left out of `llms-full.txt` for their size:",
         `the ${manual.title.toLowerCase()} at ${manualUrl} (${manualSummary}),`,
+        `the ${troubleshooting.title.toLowerCase()} at ${troubleshootingUrl} (${troubleshootingSummary}),`,
         `and the release notes at ${origin}${deploymentBase}/changelog.`,
       ].join("\n"),
     },
@@ -120,7 +126,10 @@ export default defineConfig({
   },
 
   navigation: {
-    tabs: sitePages(manual).map(({ label, path }) => ({ label, path })),
+    tabs: sitePages(manual, troubleshooting).map(({ label, path }) => ({
+      label,
+      path,
+    })),
     sidebar: { display: "flat" },
   },
 

@@ -1,0 +1,11 @@
+{
+  "mcp": {
+    "verdict": {
+      "type": "local",
+      "command": [
+        "verdict",
+        "mcp"
+      ]
+    }
+  }
+}

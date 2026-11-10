@@ -11,3 +11,8 @@ func replaceFile(from, to string) error {
 	//nolint:wrapcheck // the caller seals the rename error in the atomic-write message (GO-ERRORS-03)
 	return os.Rename(from, to)
 }
+
+func replaceRootFile(root *os.Root, from, to string) error {
+	//nolint:wrapcheck // the caller seals the rename error in the atomic-write message (GO-ERRORS-03)
+	return root.Rename(from, to)
+}

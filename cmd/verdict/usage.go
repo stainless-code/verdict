@@ -246,17 +246,25 @@ func usageText() string {
 		"    standard (one pinned member, 5 / 0.5), strict (lead + 2 lenses, 3 / 0.3).\n" +
 		"    Never touches network. Existing files print a preview and need\n" +
 		"    --yes/--force (or an interactive confirm) before overwrite.\n" +
-		"  skill [show|files|install] [--format md|json] [--dir <skills-dir>|--agent <name>|--detect]\n" +
-		"        [--force] [--dry-run] [--json]\n" +
-		"    serve or install the skill embedded in this binary (never a skew):\n" +
-		"    show prints SKILL.md (default --format md), --format json emits one\n" +
-		"    envelope with name/version/files, files lists every embedded path.\n" +
+		"  skill [show [<path>]|files|status|install|uninstall] [--format md|json] [--dir <skills-dir>|--agent <name>...]\n" +
+		"        [--detect] [--diff] [--force] [--dry-run] [--json]\n" +
+		"    serve, inspect, or remove the skill embedded in this binary (never a skew):\n" +
+		"    show prints SKILL.md (default --format md), show <path> prints one\n" +
+		"    embedded file byte-identical, --format json emits one envelope with\n" +
+		"    name/version/files, files lists every embedded path.\n" +
+		"    status is a read-only drift report per target (create/update/keep/\n" +
+		"    blocked) with receipt vs embedded version; it exits 0 in sync and 1\n" +
+		"    when drifted. --diff adds a capped unified diff per changed file.\n" +
 		"    install atomically writes SKILL.md, prompts/, schemas/, and\n" +
 		"    scripts/verdict plus a .verdict-managed receipt; it previews\n" +
 		"    create/update/keep/blocked, never prompts, and refuses a foreign\n" +
 		"    target unless --force (foreign files are never touched).\n" +
-		"    --detect installs into every known agent whose skills dir already\n" +
-		"    exists and is non-empty, and lists each target's result; with none\n" +
+		"    uninstall removes only the payload paths the receipt owns, then the\n" +
+		"    receipt; foreign files survive, a target without a receipt refuses\n" +
+		"    unless --force, and --dry-run deletes nothing.\n" +
+		"    --agent repeats on install, status, and uninstall: targets are deduped\n" +
+		"    and handled in argv order. --detect installs or reports every known\n" +
+		"    agent whose skills dir already exists and is non-empty; with none\n" +
 		"    present it refuses typed and asks for --agent <name>.\n" +
 		"    In a skill copy, scripts/verdict resolves VERDICT_BIN, then\n" +
 		"    <skill>/bin/verdict, then verdict on PATH; otherwise run the one-time\n" +
@@ -276,7 +284,8 @@ func usageText() string {
 		"  mcp [--read-only | --operator] (experimental)\n" +
 		"    serve the review verbs as MCP tools over stdio (JSON-RPC 2.0, one frame per line).\n" +
 		"    stdout is the protocol channel; progress and warnings go to stderr.\n" +
-		"  mcp config --agent <claude|cursor|codex> [--write] [--dry-run] [--json] (experimental)\n" +
+		"  mcp config --agent <claude|cursor|codex|gemini|qwen|windsurf|opencode|goose|copilot>\n" +
+		"       [--write] [--dry-run] [--json] [--read-only] [--operator] (experimental)\n" +
 		"    print or idempotently merge the exact host config snippet; never prompts.\n" +
 		"  Global presentation flags (any verb, before or after the verb, repo, and pr;\n" +
 		"  global flags are stripped before the positionals are read):\n" +

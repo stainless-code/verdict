@@ -804,7 +804,7 @@ func TestUninstall(t *testing.T) {
 		{"yarn", "yarn global remove @stainless-code/verdict"},
 		{"brew", "brew uninstall stainless-code/tap/verdict"},
 		{"project-local", "npm uninstall @stainless-code/verdict"},
-		{"skill", "rm -rf"},
+		{"skill", "verdict skill uninstall"},
 	} {
 		t.Run("refuses "+tc.channel, func(t *testing.T) {
 			req := baseRequest(t)
@@ -816,4 +816,68 @@ func TestUninstall(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestUninstallSkillHintNamesOnlyTheResolvedRoot pins the skill-copy hint: the
+// single-target `skill uninstall` verb is named only when its fixed target is
+// the detected skill root, and a sibling skill dir gets a hint that cannot
+// resolve to it.
+//
+//nolint:revive // the two-path matrix reads as one block
+func TestUninstallSkillHintNamesOnlyTheResolvedRoot(t *testing.T) {
+	t.Parallel()
+	home := resolvedTempDir(t)
+	skills := filepath.Join(home, ".agents", "skills")
+	t.Run("verdict root", func(t *testing.T) {
+		t.Parallel()
+		msg := uninstallHint(t, home, filepath.Join(skills, "verdict", "bin", "verdict"))
+		if !strings.Contains(msg, "verdict skill uninstall --dir ") {
+			t.Fatalf("message = %q, want the skill uninstall command", msg)
+		}
+		if dir := hintDirOperand(t, msg); dir != skills {
+			t.Fatalf("hint --dir = %q, want %q (message %q)", dir, skills, msg)
+		}
+	})
+	t.Run("sibling root", func(t *testing.T) {
+		t.Parallel()
+		msg := uninstallHint(t, home, filepath.Join(skills, "other", "bin", "verdict"))
+		want := "the tool that installed the skill copy at " + filepath.Join(skills, "other")
+		if !strings.Contains(msg, want) {
+			t.Fatalf("message = %q, want it to contain %q", msg, want)
+		}
+		if strings.Contains(msg, "--force") {
+			t.Fatalf("message = %q, want no command that can reach a sibling", msg)
+		}
+	})
+}
+
+func uninstallHint(t *testing.T, home, exe string) string {
+	t.Helper()
+	req := baseRequest(t)
+	req.Env["HOME"] = home
+	req.Executable = exe
+	_, ref := upgrade.Uninstall(context.Background(), &req)
+	if ref == nil || ref.Code != "uninstall-foreign" {
+		t.Fatalf("refusal = %+v, want uninstall-foreign", ref)
+	}
+	return ref.Message
+}
+
+// hintDirOperand reads the `--dir` argument back out of a hint, undoing the
+// POSIX single quotes a shell would strip. Asserting on the resolved directory
+// keeps the test independent of the quoting rule and its platform paths.
+func hintDirOperand(t *testing.T, hint string) string {
+	t.Helper()
+	_, after, ok := strings.Cut(hint, " --dir ")
+	if !ok || !strings.HasSuffix(after, " --force") {
+		t.Fatalf("hint = %q, want a `--dir <path> --force` command", hint)
+	}
+	arg := strings.TrimSuffix(after, " --force")
+	if !strings.HasPrefix(arg, "'") {
+		return arg
+	}
+	if len(arg) < 2 || !strings.HasSuffix(arg, "'") {
+		t.Fatalf("hint = %q, want balanced single quotes around --dir", hint)
+	}
+	return strings.ReplaceAll(arg[1:len(arg)-1], `'\''`, "'")
 }

@@ -12,10 +12,12 @@ import (
 )
 
 type mcpConfigFlags struct {
-	agent string
-	write bool
-	dry   bool
-	json  bool
+	agent    string
+	write    bool
+	dry      bool
+	json     bool
+	readOnly bool
+	operator bool
 }
 
 func runMCPConfig(args []string, stdout, stderr *os.File, getenv func(string) string) int {
@@ -34,6 +36,7 @@ func runMCPConfig(args []string, stdout, stderr *os.File, getenv func(string) st
 	res, ref := mcpconfig.Run(&mcpconfig.Request{
 		Agent: flags.agent, Write: flags.write, DryRun: flags.dry,
 		Cwd: cwd, Env: envMap(getenv),
+		ReadOnly: flags.readOnly, Operator: flags.operator,
 	})
 	if ref != nil {
 		return r.Refuse(ref)
@@ -54,14 +57,14 @@ func runMCPConfig(args []string, stdout, stderr *os.File, getenv func(string) st
 }
 
 //
-//nolint:revive // the flag switch is the parser; splitting it hides the grammar
+//nolint:revive,cyclop // the flag switch is the parser; splitting it hides the grammar
 func parseMCPConfigFlags(args []string, stdout, stderr *os.File) (mcpConfigFlags, int, bool) {
 	var f mcpConfigFlags
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i]; {
 		case arg == "--agent":
 			if i+1 >= len(args) {
-				fmt.Fprintln(stderr, cli.MissingValue("--agent", "claude, cursor, or codex").Message)
+				fmt.Fprintln(stderr, cli.MissingValue("--agent", "claude, cursor, codex, gemini, qwen, windsurf, opencode, goose, or copilot").Message)
 				return f, cli.ExitUsage, true
 			}
 			i++
@@ -70,6 +73,10 @@ func parseMCPConfigFlags(args []string, stdout, stderr *os.File) (mcpConfigFlags
 			f.agent = strings.TrimPrefix(arg, "--agent=")
 		case arg == "--write":
 			f.write = true
+		case arg == "--read-only":
+			f.readOnly = true
+		case arg == "--operator":
+			f.operator = true
 		case arg == flagDryRun:
 			f.dry = true
 		case arg == flagJSON:
@@ -78,12 +85,16 @@ func parseMCPConfigFlags(args []string, stdout, stderr *os.File) (mcpConfigFlags
 			fmt.Fprint(stdout, mcpConfigUsageText())
 			return f, cli.ExitOK, true
 		default:
-			fmt.Fprintf(stderr, "unknown flag '%s' for mcp config (want --agent, --write, --dry-run, --json)\n", arg)
+			fmt.Fprintf(stderr, "unknown flag '%s' for mcp config (want --agent, --write, --dry-run, --json, --read-only, --operator)\n", arg)
 			return f, cli.ExitUsage, true
 		}
 	}
 	if f.agent == "" {
-		fmt.Fprintln(stderr, "mcp config needs --agent <claude|cursor|codex>")
+		fmt.Fprintln(stderr, "mcp config needs --agent <claude|cursor|codex|gemini|qwen|windsurf|opencode|goose|copilot>")
+		return f, cli.ExitUsage, true
+	}
+	if f.readOnly && f.operator {
+		fmt.Fprintln(stderr, mcpPostureConflict)
 		return f, cli.ExitUsage, true
 	}
 	return f, 0, false
@@ -109,11 +120,18 @@ func writeMCPConfigEnvelope(r *cli.Runner, res *mcpconfig.Result, f mcpConfigFla
 }
 
 func mcpConfigUsageText() string {
-	return "usage: verdict mcp config --agent <claude|cursor|codex> [--write] [--dry-run] [--json]\n" +
+	return "usage: verdict mcp config --agent <claude|cursor|codex|gemini|qwen|windsurf|opencode|goose|copilot>\n" +
+		"  [--write] [--dry-run] [--json] [--read-only | --operator]\n" +
 		"  Print the exact MCP server entry for the host (the default; --dry-run too).\n" +
-		"  --write merges it idempotently into the host's config, backing the old file up\n" +
+		"  --read-only or --operator puts the matching argv after mcp in the snippet;\n" +
+		"  the pair is mutually exclusive, like verdict mcp. --write merges it idempotently into the host's config,\n" +
+		"  updating a verdict-owned entry in place and backing the old file up\n" +
 		"  first; an unparseable or foreign entry refuses typed instead of rewriting it.\n" +
-		"  Paths: claude .mcp.json, cursor .cursor/mcp.json (project), codex\n" +
-		"  $CODEX_HOME/config.toml else ~/.codex/config.toml (user).\n" +
+		"  Paths: claude .mcp.json, cursor .cursor/mcp.json, codex\n" +
+		"  $CODEX_HOME/config.toml else ~/.codex/config.toml, gemini\n" +
+		"  ~/.gemini/settings.json, qwen ~/.qwen/settings.json, windsurf\n" +
+		"  ~/.codeium/windsurf/mcp_config.json (all JSON mcpServers, writable);\n" +
+		"  opencode opencode.json, copilot .vscode/mcp.json, goose\n" +
+		"  ~/.config/goose/config.yaml are print-only (--write refuses typed).\n" +
 		"  Never prompts, never starts the server. --json prints one envelope.\n"
 }

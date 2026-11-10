@@ -27,6 +27,14 @@ func checkSidecarMode(t *testing.T, fi os.FileInfo) {
 	}
 }
 
+// checkPayloadMode pins the explicit payload mode.
+func checkPayloadMode(t *testing.T, fi os.FileInfo) {
+	t.Helper()
+	if fi.Mode().Perm() != 0o755 {
+		t.Errorf("mode = %o; want 755", fi.Mode().Perm())
+	}
+}
+
 // seedWriteFailure seeds a store that the write path cannot replace: POSIX
 // rename is gated by the directory, so a read-only parent dir fails the
 // temp-file creation and leaves the original intact.

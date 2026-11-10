@@ -92,6 +92,51 @@ else
   bad "--force exits $EVAL_STATUS or touched foreign files"
 fi
 
+ESCAPE_INSTALL="$EVAL_SANDBOX/install-escape"
+ESCAPE_FRESH="$EVAL_SANDBOX/install-fresh"
+ESCAPE_OUTSIDE="$EVAL_SANDBOX/install-outside"
+mkdir -p "$ESCAPE_OUTSIDE" "$ESCAPE_FRESH/verdict"
+printf 'outside bytes\n' >"$ESCAPE_OUTSIDE/review.md"
+dir_hash() {
+  (cd "$1" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do shasum "$f"; done | shasum)
+}
+run_review skill install --dir "$ESCAPE_INSTALL" --json
+assert_exit "seed an escaping install" 0
+rm -rf "$ESCAPE_INSTALL/verdict/prompts"
+ln -s "$ESCAPE_OUTSIDE" "$ESCAPE_INSTALL/verdict/prompts"
+ln -s "$ESCAPE_OUTSIDE" "$ESCAPE_FRESH/verdict/prompts"
+outside_before="$(dir_hash "$ESCAPE_OUTSIDE")"
+
+run_review skill install --dir "$ESCAPE_INSTALL" --json
+assert_exit "install on an escaping payload dir refuses" 1
+assert_refusal "escaping payload dir (upgrade)" "skill-foreign-conflict"
+assert_json_field "the refusal names the upgrade escape" "true" '.error.message | contains("path escapes from parent")'
+
+run_review skill install --dir "$ESCAPE_FRESH" --json
+assert_exit "a fresh install on an escaping payload dir refuses" 1
+assert_refusal "escaping payload dir (fresh)" "skill-foreign-conflict"
+
+run_review skill install --dir "$ESCAPE_FRESH" --force --json
+assert_exit "install --force on an escaping payload dir refuses" 1
+assert_refusal "escaping payload dir (--force)" "skill-foreign-conflict"
+
+run_review skill status --dir "$ESCAPE_INSTALL" --json
+assert_exit "status on an escaping payload dir refuses" 1
+assert_refusal "status names the escaping payload dir" "skill-foreign-conflict"
+assert_json_field "status names the root escape" "true" '.error.message | contains("path escapes from parent")'
+
+outside_after="$(dir_hash "$ESCAPE_OUTSIDE")"
+if [ "$outside_before" = "$outside_after" ] \
+  && [ "$(find "$ESCAPE_OUTSIDE" -name '.tmp-*' | wc -l | tr -d ' ')" = "0" ] \
+  && [ -f "$ESCAPE_OUTSIDE/review.md" ] && grep -qx 'outside bytes' "$ESCAPE_OUTSIDE/review.md" \
+  && cmp -s "$ESCAPE_INSTALL/verdict/SKILL.md" "$EVAL_SKILL/SKILL.md" \
+  && [ -f "$ESCAPE_INSTALL/verdict/.verdict-managed" ] \
+  && [ ! -e "$ESCAPE_FRESH/verdict/SKILL.md" ] && [ ! -e "$ESCAPE_FRESH/verdict/.verdict-managed" ]; then
+  good "the install escape refused before writing and left the outside dir byte-identical"
+else
+  bad "the install escape wrote outside, left a temp file, or partially installed"
+fi
+
 jq '.version="0.0.0-stale"' "$SKILL/.verdict-managed" >"$EVAL_SANDBOX/rec.tmp"
 mv "$EVAL_SANDBOX/rec.tmp" "$SKILL/.verdict-managed"
 skill_sum="$(shasum "$SKILL/SKILL.md")"

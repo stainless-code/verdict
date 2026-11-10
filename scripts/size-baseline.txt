@@ -230,10 +230,52 @@
 # refusal's supported-host list add a few KiB of text; darwin/arm64 lands in
 # a fresh 16 KiB segment at 11489602 and moves to the next 10 kB above it,
 # the other five stay put.
+# MCP config hosts (ergonomics E1): posture argv (--read-only/--operator),
+# ownership-aware rewrite, and six new hosts (gemini/qwen/windsurf merge,
+# opencode/copilot/goose print-only) with snippet goldens. Measured here:
+# darwin/amd64 12531376, darwin/arm64 11489618, linux/amd64 12308640,
+# linux/arm64 11272352, windows/amd64 12645376, windows/arm64 11368448.
+# Five ceilings cross and move to the next 10 kB at least 5 kB above their
+# measurement; linux/arm64 holds.
+# The skill-management slice (STA-304..308): `skill show <path>` with its
+# inventory check, `skill status` with the unified-diff renderer, repeatable
+# `--agent` planning, and `skill uninstall` with its receipt/foreign safety.
+# Measured here: darwin/amd64 12597280, darwin/arm64 11556018, linux/amd64
+# 12374176, linux/arm64 11337888, windows/amd64 12711936, windows/arm64
+# 11422720. Every ceiling crosses, and each moves to the next 10 kB at least
+# 5 kB above its measurement.
+# Stacked together, the two ergonomics slices measure darwin/amd64 12622064,
+# darwin/arm64 11572754, linux/amd64 12402848, windows/amd64 12739584 and
+# windows/arm64 11446272; those five move to the next 10 kB, linux/arm64
+# holds.
+# Root-confined skill uninstall: the target is opened once with os.OpenRoot and
+# every stat, walk, and removal resolves inside it, so a symlinked payload
+# subdirectory can no longer redirect a deletion outside the target. Measured
+# here: darwin/amd64 12667488, darwin/arm64 11606146, linux/amd64 12439712,
+# linux/arm64 11403424, windows/amd64 12781056, windows/arm64 11481088. Every
+# ceiling crosses, and each moves to the next 10 kB above its measurement.
+# MCP config posture-pair refusal (ergonomics F4): the shared conflict
+# constant, the parse-time refusal, and the refusal tests add one 4 KiB
+# segment on linux/amd64 only. Measured here: linux/amd64 12443808; that
+# ceiling moves to the next 10 kB above its measurement, the other five hold.
+# Root-confined skill install: every plan stat, payload read, payload write,
+# and the receipt write resolve inside the target's os.Root, and the atomic
+# package grew a rooted temp+rename variant. Measured here: darwin/amd64
+# 12688144, darwin/arm64 11622818, linux/amd64 12460192, linux/arm64 11403424,
+# windows/amd64 12801536, windows/arm64 11499008. Five ceilings cross and move
+# to the next 10 kB above their measurement; linux/arm64 stays inside.
+# Ergonomics F6 (CodeRabbit fixes): the skill-root-aware uninstall hint, the
+# resolved-target dedupe, the blocked plan's empty would-remove list, the
+# create-status diffs, the owned-args TOML fill, and the exported mcp posture
+# refusal. Measured here: darwin/amd64 12692240, darwin/arm64 11622818,
+# linux/amd64 12468384, linux/arm64 11403424, windows/amd64 12805632,
+# windows/arm64 11502592. Only darwin/amd64 crosses, by 2240 bytes over its
+# 12690000 line, so its ceiling moves to the next 10 kB above the measurement;
+# the other five stay inside and keep their lines.
 deps 0
-darwin/amd64 12520000
-darwin/arm64 11490000
-linux/amd64 12300000
-linux/arm64 11280000
-windows/amd64 12640000
-windows/arm64 11360000
+darwin/amd64 12700000
+darwin/arm64 11630000
+linux/amd64 12470000
+linux/arm64 11410000
+windows/amd64 12810000
+windows/arm64 11510000

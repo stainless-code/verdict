@@ -3,6 +3,7 @@ package mcpconfig
 import (
 	"bytes"
 	"encoding/json"
+	"maps"
 	"reflect"
 	"strings"
 	"testing"
@@ -37,11 +38,13 @@ func FuzzMergeJSON(f *testing.F) {
 		`{"mcpServers":{"verdict":{"command":"verdict","args":["mcp"],"env":{"A":"b"}}}}`,
 		`{"mcpServers":{"verdict":{"command":"evil","args":["mcp"]}}}`, `{"mcpServers":[]}`, `[]`, `null`,
 		`{"a":1,"a":2}`, `{"mcpServers":{"verdict":null}}`, `{"mcpServers":{}}}`, "{\"k\":\"\xff\"}", `{"mcpServers":{"verdict":{"command":"verdict","args":["mcp","x"]}}}`,
+		`{"mcpServers":{"verdict":{"command":"verdict","args":["mcp","--read-only"]}}}`,
+		`{"mcpServers":{"verdict":{"command":"verdict","args":["mcp","--read-only"],"env":{"A":"b"},"note":"n"}}}`,
 	} {
 		f.Add([]byte(s))
 	}
 	f.Fuzz(func(t *testing.T, old []byte) {
-		out, changed, ref := mergeJSON(old, "cfg.json")
+		out, changed, ref := mergeJSON(old, "cfg.json", []string{"mcp"})
 		if ref != nil {
 			assertRefusalIsClean(t, ref.Code, out, changed)
 			return
@@ -108,14 +111,35 @@ func assertMergedJSON(t *testing.T, old, out []byte) {
 		t.Fatalf("merge produced invalid JSON or a non-object: %q (from %q)", out, old)
 	}
 	servers := asObject(merged["mcpServers"])
-	want := map[string]any{"command": "verdict", "args": []any{"mcp"}}
-	if !reflect.DeepEqual(servers["verdict"], want) {
-		t.Fatalf("merged verdict entry = %#v, want %#v", servers["verdict"], want)
+	entry := asObject(servers["verdict"])
+	if entry == nil || entry["command"] != "verdict" || !reflect.DeepEqual(entry["args"], []any{"mcp"}) {
+		t.Fatalf("merged verdict entry = %#v, want command verdict and argv [mcp]", servers["verdict"])
+	}
+	orig := stdRoot(old)
+	origServers := asObject(orig["mcpServers"])
+	if before := asObject(origServers["verdict"]); before != nil {
+		assertOwnedEntryKept(t, before, entry)
+	} else if want := map[string]any{"command": "verdict", "args": []any{"mcp"}}; !reflect.DeepEqual(entry, want) {
+		t.Fatalf("added verdict entry = %#v, want %#v", entry, want)
 	}
 	delete(servers, "verdict")
-	assertOperatorKeysKept(t, stdRoot(old), merged, old)
-	if _, again, ref := mergeJSON(out, "cfg.json"); ref != nil || again {
+	delete(origServers, "verdict")
+	assertOperatorKeysKept(t, orig, merged, old)
+	if _, again, ref := mergeJSON(out, "cfg.json", []string{"mcp"}); ref != nil || again {
 		t.Fatalf("second merge not a no-op: changed=%v ref=%v for %q", again, ref, out)
+	}
+}
+
+// assertOwnedEntryKept checks the in-place update: command and every key but
+// args survive, and only args move to the requested argv.
+func assertOwnedEntryKept(t *testing.T, before, after map[string]any) {
+	t.Helper()
+	was := maps.Clone(before)
+	now := maps.Clone(after)
+	delete(was, "args")
+	delete(now, "args")
+	if !reflect.DeepEqual(now, was) {
+		t.Fatalf("in-place update changed the owned entry: %#v -> %#v", before, after)
 	}
 }
 
@@ -153,6 +177,9 @@ func FuzzMergeTOML(f *testing.F) {
 		"\u2004", "model = \"x\"\n\u2003", " \t\n",
 		"[mcp_servers.verdict]\"\ncommand = \"verdict\"\nargs = [\"mcp\"]\n\"\n", "[mcp_servers.verdict]'''\ntext\n'''\n",
 		"model = \"x\"\r\n\r\n[b]\nc=1\n",
+		"[mcp_servers.verdict]\ncommand = \"verdict\"\nargs = [\"mcp\", \"--read-only\"]\n",
+		"[mcp_servers.verdict]\ncommand = \"verdict\"\nargs = [\"mcp\", \"--operator\"]\nstartup_timeout_sec = 20\n",
+		"[mcp_servers . \"verdict\"]\ncommand = 'verdict'\nargs = ['mcp', '--read-only']\n",
 	} {
 		f.Add([]byte(s))
 	}
@@ -166,7 +193,7 @@ func FuzzMergeTOML(f *testing.F) {
 		mustMergeTOML(f, s)
 	}
 	f.Fuzz(func(t *testing.T, old []byte) {
-		out, changed, ref := mergeTOML(old, "config.toml")
+		out, changed, ref := mergeTOML(old, "config.toml", []string{"mcp"})
 		if ref != nil {
 			assertRefusalIsClean(t, ref.Code, out, changed)
 			return
@@ -183,7 +210,7 @@ func FuzzMergeTOML(f *testing.F) {
 // unchanged or without the table.
 func mustMergeTOML(f *testing.F, s string) {
 	f.Helper()
-	out, changed, ref := mergeTOML([]byte(s), "config.toml")
+	out, changed, ref := mergeTOML([]byte(s), "config.toml", []string{"mcp"})
 	if ref != nil || !changed || !bytes.Contains(out, []byte("[mcp_servers.verdict]")) {
 		f.Fatalf("mergeTOML(%q) = changed=%v out=%q ref=%v, want the verdict table", s, changed, out, ref)
 	}
@@ -192,15 +219,35 @@ func mustMergeTOML(f *testing.F, s string) {
 // assertMergedTOML checks a changed TOML merge.
 func assertMergedTOML(t *testing.T, old, out []byte) {
 	t.Helper()
-	if !isSubsequence(nonBlankLines(string(old)), nonBlankLines(string(out))) {
+	if !isSubsequence(operatorLines(string(old)), nonBlankLines(string(out))) {
 		t.Fatalf("merge dropped or reordered operator lines:\nold %q\nnew %q", old, out)
 	}
 	if !bytes.Contains(out, []byte("[mcp_servers.verdict]")) && !bytes.Contains(old, []byte("mcp_servers")) {
 		t.Fatalf("merge added no [mcp_servers.verdict] table: %q", out)
 	}
-	if _, again, ref := mergeTOML(out, "config.toml"); ref != nil || again {
+	if _, again, ref := mergeTOML(out, "config.toml", []string{"mcp"}); ref != nil || again {
 		t.Fatalf("second merge not a no-op: changed=%v ref=%v for %q", again, ref, out)
 	}
+}
+
+// operatorLines returns the non-blank lines the merge must keep, dropping the
+// verdict table's args lines: that is the one line an in-place posture update
+// rewrites. The scan is the merge's own line model, because only it can say
+// which of TOML's many spellings a line is; everything it does not read as an
+// args line must survive byte-for-byte, in order.
+func operatorLines(s string) []string {
+	doc := scanTOML(s)
+	start, end := doc.verdictTable()
+	var out []string
+	for i, line := range doc.lines {
+		if start >= 0 && i > start && i < end && doc.scan[i].hasPair && doc.scan[i].key == keyArgs {
+			continue
+		}
+		if line = strings.TrimRight(line, " \t\r"); line != "" {
+			out = append(out, line)
+		}
+	}
+	return out
 }
 
 // nonBlankLines returns the trimmed-right non-empty lines of s.

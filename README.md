@@ -164,6 +164,7 @@ Report vulnerabilities through [`SECURITY.md`](SECURITY.md).
 
 - [Docs site](https://stainless-code.com/verdict): quickstart, how it reviews, comparison, glossary.
 - [`docs/manual.md`](docs/manual.md): the operator manual. Every verb, flag, store file, and exit code.
+- [`docs/troubleshooting.md`](docs/troubleshooting.md): every refusal code, its cause, and its fix.
 - [`docs/vision.md`](docs/vision.md): what Verdict is and where its craft comes from.
 - [`CHANGELOG.md`](CHANGELOG.md): release notes.
 

@@ -1021,16 +1021,24 @@ stdout is the protocol channel.
 
 #### Host config
 
-`verdict mcp config --agent <claude|cursor|codex>` prints the exact entry (the
-default is print-only, like `--dry-run`). Add `--write` to merge it into the
-host's documented config, or `--json` for one envelope with the path, format,
-snippet, and merge status. It never prompts and never starts the server.
+`verdict mcp config --agent <claude|cursor|codex|gemini|qwen|windsurf|opencode|goose|copilot>`
+prints the exact entry (the default is print-only, like `--dry-run`). Add
+`--read-only` or `--operator` (mutually exclusive, like `verdict mcp`) to put
+the matching argv after `mcp` in the snippet. Add `--write` to merge it into the host's documented config, or
+`--json` for one envelope with the path, format, snippet, and merge status. It
+never prompts and never starts the server.
 
-| Agent    | Config file                                            | Format |
-| -------- | ------------------------------------------------------ | ------ |
-| `claude` | project `.mcp.json`                                    | JSON   |
-| `cursor` | project `.cursor/mcp.json`                             | JSON   |
-| `codex`  | `$CODEX_HOME/config.toml`, else `~/.codex/config.toml` | TOML   |
+| Agent      | Config file                                            | Format | `--write`  |
+| ---------- | ------------------------------------------------------ | ------ | ---------- |
+| `claude`   | project `.mcp.json`                                    | JSON   | merges     |
+| `cursor`   | project `.cursor/mcp.json`                             | JSON   | merges     |
+| `codex`    | `$CODEX_HOME/config.toml`, else `~/.codex/config.toml` | TOML   | merges     |
+| `gemini`   | `~/.gemini/settings.json`                              | JSON   | merges     |
+| `qwen`     | `~/.qwen/settings.json`                                | JSON   | merges     |
+| `windsurf` | `~/.codeium/windsurf/mcp_config.json`                  | JSON   | merges     |
+| `opencode` | project `opencode.json`                                | JSON   | print-only |
+| `copilot`  | project `.vscode/mcp.json`                             | JSON   | print-only |
+| `goose`    | `~/.config/goose/config.yaml`                          | YAML   | print-only |
 
 ```json
 { "mcpServers": { "verdict": { "command": "verdict", "args": ["mcp"] } } }
@@ -1043,25 +1051,27 @@ args = ["mcp"]
 ```
 
 `--write` is idempotent: an existing matching entry is `keep` and nothing is
-written; an absent one is `create`/`update`. The previous file is copied to
-`<path>.verdict.bak` before the first changing write. Unknown keys and other
-servers are preserved. A file that does not parse, or a `verdict` entry whose
-command/argv differs (including a `--read-only` argv), refuses typed instead of
-being rewritten; for TOML only a plain `[mcp_servers.verdict]` table is
-merged — inline/dotted spellings refuse rather than guess, and a header, key, or
-comment counts only outside strings and comments. A file that ends inside an
-unterminated TOML string, or whose `[mcp_servers.verdict]` line opens one,
-refuses too: the merge never writes keys the next run would read as string
-content. The file's own line endings are kept. Fix or remove the entry by hand
-and re-run.
+written; an absent one is `create`/`update`. An existing `verdict` entry whose
+argv is one of verdict's own shapes (`["mcp"]` plus any combination of
+`--read-only`/`--operator`) is updated in place to the requested argv; any
+other command/argv refuses typed (`mcp-config-foreign`) instead of being
+rewritten. The previous file is copied to `<path>.verdict.bak` before the
+first changing write. Unknown keys and other servers are preserved. A file that
+does not parse refuses typed instead of being rewritten; for TOML only a plain
+`[mcp_servers.verdict]` table is merged — inline/dotted spellings refuse
+rather than guess, and a header, key, or comment counts only outside strings
+and comments. A file that ends inside an unterminated TOML string, or whose
+`[mcp_servers.verdict]` line opens one, refuses too: the merge never writes
+keys the next run would read as string content. The file's own line endings
+are kept. Fix or remove the entry by hand and re-run.
 
-Use `--read-only` in review-only hosts by editing the entry to
-`{"command":"verdict","args":["mcp","--read-only"]}` (or the TOML
-`args = ["mcp", "--read-only"]`). An operator's own assistant opts into the
-human-owned verbs the same way with `args = ["mcp", "--operator"]`; never
-combine the two flags. `mcp config --write` refuses either edited entry on a
-later run because its argv differs; that is intentional, since silently
-rewriting it would widen the host's permissions.
+`opencode` (`"mcp"` map with `{type:"local", command:[...]}`),
+`copilot` (`"servers"` map), and `goose` (`extensions` YAML) are print-only:
+`--write` refuses typed naming the host, so copy the printed snippet into the
+host config by hand. The `gemini`, `qwen`, and `windsurf` shapes are confirmed
+from the host's docs; the `opencode`, `copilot`, and `goose` shapes are
+unverified live (offline), so check the printed snippet against the host's
+docs before trusting it.
 
 The server is experimental until 1.0: tool shapes may still move, while the
 envelope keeps its `schema_version` contract.
@@ -1270,6 +1280,9 @@ it. The argv it builds is
 | `--print`          | Renders the exact command (POSIX-quoted) and exits `0` without resolving, spawning, or writing. The escape hatch for harnesses that build their own invocation. |
 
 ### Refusals, exit codes, and provenance
+
+Every refusal code the binary can emit is listed with its cause and its fix in
+[`docs/troubleshooting.md`](troubleshooting.md).
 
 Every way `run` can fail is typed, carries a `try:` hint, and leaves the
 agent's own failure visible to CI:
@@ -1623,17 +1636,37 @@ platform package. A plain `verdict` call consults neither variable.
   files. `verdict skill` prints `SKILL.md` (default
   `--format md`); `--format json` is one standard envelope with
   `name`/`version`/`files`; `verdict skill files` lists every embedded path.
+  `verdict skill show <path>` prints one inventory file byte-identical (a
+  path from `skill files`; with `--json` one envelope carries `path` and the
+  same bytes in `content`), and a path outside the inventory — traversal,
+  absolute, or unknown — refuses typed (`skill-path-not-inventory`) and names
+  `skill files`.
+  `verdict skill status [--dir <skills-dir>|--agent <name>...|--detect] [--diff] [--json]`
+  is the read-only drift check: it writes nothing and
+  reports each target's create/update/keep/blocked result plus the receipt
+  versus embedded version, reusing the install plan. It exits 0 when every
+  target is in sync and 1 when drifted (a typed refusal still exits 1), so CI
+  can gate on it without `install --dry-run`. `--diff` adds one unified diff
+  per changed file, capped at 64 KiB overall with an explicit truncation
+  marker and `truncated: true` in the JSON entry.
   `verdict skill install` (flags: `--dir <skills-dir>`, `--agent <name>`,
   `--detect`, `--force`, `--dry-run`, `--json`) writes the payload plus a
   `.verdict-managed` receipt (file-atomic, receipt last), previews
-  create/update/keep/blocked (`--dry-run --json` is the drift check: `update`
+  create/update/keep/blocked (`--dry-run --json` stays a drift preview: `update`
   means the installed copy is stale, `keep` means current, `blocked` needs a
   human), refuses
   a target without a verdict receipt unless `--force`, never removes foreign
-  files, never prompts, and makes no network call. `--agent` accepts
+  files, never prompts, and makes no network call. A target that is itself a
+  symlink refuses (`skill-target-file`), and a payload directory that escapes
+  the target through a symlink refuses (`skill-foreign-conflict`) before
+  anything is written. `--agent` accepts
   `agents`, `claude`, `codex`, `cursor`, `opencode`, `copilot`, `gemini`,
   `goose`, `qwen`, and `windsurf`; `--agent agents` (and no flag) target the
-  shared `~/.agents/skills/verdict` slot. `--detect` installs into every one
+  shared `~/.agents/skills/verdict` slot. `--agent` repeats on `install`,
+  `status`, and `uninstall`: targets are deduplicated by resolved path and
+  handled in argv order, so two agent names that reach one skills dir (for
+  example `claude` under `CLAUDE_CONFIG_DIR=~/.agents` and `agents`) plan and
+  act once, under the first name. `--dir` stays a single target. `--detect` installs into every one
   of those agents whose skills dir already exists and holds a file, and names
   each target's result; with none present it refuses typed
   (`skill-no-detected-agent`) and asks for `--agent <name>`. It cannot be
@@ -1642,6 +1675,19 @@ platform package. A plain `verdict` call consults neither variable.
   target is written. It does not create a missing agent dir, and unlike
   `install-skill.sh --detect` it skips `~/.agents/skills` when that dir is
   absent or empty.
+  `verdict skill uninstall [--dir <skills-dir>|--agent <name>...] [--force] [--dry-run] [--json]`
+  deletes only the inventory paths the receipt owns and
+  then the receipt, pruning the payload directories it empties; every foreign
+  file survives. A target that is a symlink refuses (`skill-target-file`), and
+  an inventory path that escapes the target through a symlinked directory
+  refuses (`skill-foreign-conflict`) before any file inside it is removed. A
+  target without a receipt refuses typed
+  (`skill-dir-foreign`) unless `--force`, which still deletes only inventory
+  paths; a target that was never installed refuses (`skill-not-installed`),
+  and `--dry-run` lists the plan and deletes nothing. `verdict uninstall`'s
+  skill-copy refusal names this verb only when the copy's root is the
+  `verdict` skill dir; any other skills dir is named in place, so the hint
+  can never remove a sibling.
 
 ## Publish footer + attribution knobs
 

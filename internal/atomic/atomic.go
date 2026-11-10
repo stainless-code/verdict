@@ -5,6 +5,8 @@
 package atomic
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"io/fs"
 	"os"
@@ -20,6 +22,10 @@ const errSidecarMode = 0o600
 const opWrite = "atomic write "
 
 const opDirectWrite = "write "
+
+const tempAttempts = 100
+
+const stagedMode = 0o600
 
 // WriteFile writes data to path atomically with mode 0o644 (the
 // umask-022 default for store files). The temp file lives in the target
@@ -49,6 +55,29 @@ func WriteFileKeepingModTime(path string, data []byte) error {
 // payload files that must land executable (the skill shim, schema validator).
 func WriteFileMode(path string, data []byte, mode os.FileMode) error {
 	return writeFile(path, data, mode, nil)
+}
+
+// WriteFileIn writes data atomically at name inside root with the store mode.
+func WriteFileIn(root *os.Root, name string, data []byte) error {
+	return WriteFileModeIn(root, name, data, storeFileMode)
+}
+
+// WriteFileModeIn writes data atomically at name inside root with an explicit
+// mode. The staged temp file and the rename both stay in root, so a parent
+// that escapes through a symlink fails the write instead of following it.
+func WriteFileModeIn(root *os.Root, name string, data []byte, mode os.FileMode) error {
+	dir := filepath.Dir(name)
+	path := filepath.Join(root.Name(), name)
+	staged, err := stageIn(root, path, dir, data, mode)
+	if err != nil {
+		return err
+	}
+	defer func() { root.Remove(staged) }() //nolint:errcheck // already renamed on the success path; cleanup rules
+	if err := replaceRootFile(root, staged, name); err != nil {
+		return jq.Sealed(opWrite+path, err)
+	}
+	fsyncRootDir(root, dir)
+	return nil
 }
 
 // WriteErrSidecar writes one command-stderr debug sidecar atomically with
@@ -95,16 +124,8 @@ func stage(path, dir string, data []byte, mode os.FileMode, stamp func(string) e
 // sealStaged finishes the staged file: the bytes, the sync, the mode, and the
 // caller's stamp.
 func sealStaged(path string, tmp *os.File, data []byte, mode os.FileMode, stamp func(string) error) error {
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close() // write error already rules; close adds nothing
-		return jq.Sealed(opWrite+path, err)
-	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close() // sync error already rules; close adds nothing
-		return jq.Sealed(opWrite+path, err)
-	}
-	if err := tmp.Close(); err != nil {
-		return jq.Sealed(opWrite+path, err)
+	if err := writeStaged(path, tmp, data); err != nil {
+		return err
 	}
 	if err := os.Chmod(tmp.Name(), mode); err != nil {
 		return jq.Sealed(opWrite+path, err)
@@ -118,8 +139,84 @@ func sealStaged(path string, tmp *os.File, data []byte, mode os.FileMode, stamp 
 	return nil
 }
 
+func writeStaged(path string, tmp *os.File, data []byte) error {
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close() // write error already rules; close adds nothing
+		return jq.Sealed(opWrite+path, err)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close() // sync error already rules; close adds nothing
+		return jq.Sealed(opWrite+path, err)
+	}
+	if err := tmp.Close(); err != nil {
+		return jq.Sealed(opWrite+path, err)
+	}
+	return nil
+}
+
+// stageIn writes data into a fresh temp file under dir inside root, returning
+// its root-relative name. A failure removes the partial file and comes back
+// sealed, so no caller inherits cleanup or wrapping.
+func stageIn(root *os.Root, path, dir string, data []byte, mode os.FileMode) (string, error) {
+	name, tmp, err := createStaged(root, path, dir)
+	if err != nil {
+		return "", err
+	}
+	if err := sealRootStaged(root, path, tmp, name, data, mode); err != nil {
+		root.Remove(name) //nolint:errcheck // the staged bytes are dead; cleanup rules
+		return "", err
+	}
+	return name, nil
+}
+
+func createStaged(root *os.Root, path, dir string) (string, *os.File, error) {
+	for range tempAttempts {
+		base, err := tempName(path)
+		if err != nil {
+			return "", nil, err
+		}
+		name := filepath.Join(dir, base)
+		tmp, err := root.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, stagedMode)
+		if errors.Is(err, fs.ErrExist) {
+			continue
+		}
+		if err != nil {
+			return "", nil, jq.Sealed(opWrite+path, err)
+		}
+		return name, tmp, nil
+	}
+	return "", nil, jq.Sealed(opWrite+path, errors.New("cannot allocate a temp file"))
+}
+
+func sealRootStaged(root *os.Root, path string, tmp *os.File, name string, data []byte, mode os.FileMode) error {
+	if err := writeStaged(path, tmp, data); err != nil {
+		return err
+	}
+	if err := root.Chmod(name, mode); err != nil {
+		return jq.Sealed(opWrite+path, err)
+	}
+	return nil
+}
+
+func tempName(path string) (string, error) {
+	var suffix [8]byte
+	if _, err := rand.Read(suffix[:]); err != nil {
+		return "", jq.Sealed(opWrite+path, err)
+	}
+	return ".tmp-" + hex.EncodeToString(suffix[:]), nil
+}
+
 func fsyncDir(dir string) {
 	d, err := os.Open(dir)
+	if err != nil {
+		return
+	}
+	defer func() { _ = d.Close() }() // best-effort dir fsync; failure must not fail the write
+	_ = d.Sync()                     //nolint:errcheck // best-effort dir fsync; failure must not fail the write
+}
+
+func fsyncRootDir(root *os.Root, dir string) {
+	d, err := root.Open(dir)
 	if err != nil {
 		return
 	}

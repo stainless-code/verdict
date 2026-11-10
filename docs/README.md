@@ -13,6 +13,7 @@ publishing a page adds a route in `apps/docs/sources/`, not a second copy.
 ## Published on the site
 
 - [Manual](manual.md): the operator contract: the --json envelope, exit codes, store files, refusal codes, control files, model wiring, and every provider.
+- [Troubleshooting](troubleshooting.md): every refusal code the binary can emit, with its cause and its fix, kept in sync with the registry by the archtest guard.
 
 ## Repository-only
 

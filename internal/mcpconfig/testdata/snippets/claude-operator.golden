@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "verdict": {
+      "command": "verdict",
+      "args": [
+        "mcp",
+        "--operator"
+      ]
+    }
+  }
+}

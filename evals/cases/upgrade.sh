@@ -394,6 +394,19 @@ if [ "$EVAL_STATUS" -eq 1 ] && [ "$(envelope_code)" = "upgrade-skill-copy" ] \
 else
   bad "U6 skill copy exit $EVAL_STATUS code $(envelope_code)"
 fi
+SIBLING_ROOT="$CASE_HOME/.agents/skills/other/bin"
+mkdir -p "$SIBLING_ROOT"
+cp "$EVAL_CLI" "$SIBLING_ROOT/verdict"
+run_cli "$SIBLING_ROOT/verdict" "" uninstall --json
+sibling_hint="/.agents/skills/other"
+if [ "$EVAL_STATUS" -eq 1 ] && [ "$(envelope_code)" = "uninstall-foreign" ] \
+  && jq -r '.error.message' "$EVAL_OUT" | matches -F "$sibling_hint" \
+  && jq -r '.error.message' "$EVAL_OUT" | matches -F 'the tool that installed the skill copy at ' \
+  && ! jq -r '.error.message' "$EVAL_OUT" | matches -F -- '--force'; then
+  good "U6 a sibling skill copy names its own dir, never a --force command"
+else
+  bad "U6 sibling skill copy exit $EVAL_STATUS code $(envelope_code) message $(jq -r '.error.message // empty' "$EVAL_OUT")"
+fi
 mkdir -p "$CASE/random"
 cp "$EVAL_CLI" "$CASE/random/verdict"
 run_cli "$CASE/random/verdict" "" upgrade --json
