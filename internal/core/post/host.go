@@ -56,6 +56,15 @@ func hostFor(provider string) (hostWriter, hostReader, hostResolver) {
 	}
 }
 
+// SelfLogin reads the authenticated login the resolve identity gate compares
+// the thread root author against.
+func SelfLogin(
+	ctx context.Context, cmdr Commander, provider string, env map[string]string,
+) (string, error) {
+	_, reader, _ := hostFor(provider)
+	return reader.selfLogin(ctx, cmdr, env)
+}
+
 // ResolveThread closes one review thread through the host seam. A host that
 // advertises no thread_resolution refuses typed before any call is built; a
 // host whose call fails keeps the host's own words where it has them.

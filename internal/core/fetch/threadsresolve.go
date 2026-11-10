@@ -55,22 +55,14 @@ type resolveSelection struct {
 }
 
 // resolve executes `threads resolve <owner/repo> <pr> [--thread <id>]...
-// [--dry-run]`: close verdict-authored review threads whose finding the local
+// [--dry-run]`: close self-authored review threads whose finding the local
 // store marks addressed, or only the named ids, and write the receipt.
 func (st *threadsRun) resolve(ctx context.Context) (*ThreadsResponse, *core.RefusalError) {
 	dir := readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
 	if ref := st.resolveBundle(dir); ref != nil {
 		return nil, ref
 	}
-	provider, ref := st.resolveProvider(dir)
-	if ref != nil {
-		return nil, st.withWarnings(ref)
-	}
-	feed, ref := st.resolveFeed(dir)
-	if ref != nil {
-		return nil, ref
-	}
-	sel, ref := st.selectThreads(feed, dir)
+	provider, feed, sel, ref := st.resolvePlan(ctx, dir)
 	if ref != nil {
 		return nil, ref
 	}
@@ -89,6 +81,30 @@ func (st *threadsRun) resolve(ctx context.Context) (*ThreadsResponse, *core.Refu
 		return nil, ref
 	}
 	return st.resolveResponse(data, at), nil
+}
+
+// resolvePlan reads the provider, feed, and authenticated login, then applies
+// the selection rules. A failure refuses before any write.
+func (st *threadsRun) resolvePlan(
+	ctx context.Context, dir string,
+) (string, *threadscore.File, resolveSelection, *core.RefusalError) {
+	provider, ref := st.resolveProvider(dir)
+	if ref != nil {
+		return "", nil, resolveSelection{}, st.withWarnings(ref)
+	}
+	feed, ref := st.resolveFeed(dir)
+	if ref != nil {
+		return "", nil, resolveSelection{}, ref
+	}
+	self, ref := st.resolveSelfLogin(ctx, provider)
+	if ref != nil {
+		return "", nil, resolveSelection{}, ref
+	}
+	sel, ref := st.selectThreads(feed, dir, self)
+	if ref != nil {
+		return "", nil, resolveSelection{}, ref
+	}
+	return provider, feed, sel, nil
 }
 
 // resolveBundle refuses a bundle that cannot supply the metadata and feed the
@@ -151,6 +167,23 @@ func (st *threadsRun) resolveProvider(dir string) (string, *core.RefusalError) {
 	return provider, nil
 }
 
+// resolveSelfLogin reads the authenticated login once per run. An unreadable
+// or empty login refuses before any write.
+func (st *threadsRun) resolveSelfLogin(ctx context.Context, provider string) (string, *core.RefusalError) {
+	s, ref := st.session()
+	if ref != nil {
+		return "", ref
+	}
+	self, err := postcore.SelfLogin(ctx, s.commander, provider, s.env)
+	if err != nil || self == "" {
+		return "", st.withWarnings(&core.RefusalError{
+			Code:    codeThreadsFailed,
+			Message: fmt.Sprintf("could not read authenticated login for %s: %v", provider, err),
+		})
+	}
+	return self, nil
+}
+
 // findingsStore reads the local finding statuses keyed by sig. A missing or
 // corrupt store refuses typed: the default selection's "addressed" rule is a
 // local fact, and guessing it would close a thread nobody fixed.
@@ -194,27 +227,31 @@ func storeEntry(entry any) (sig, status string, ok bool) {
 }
 
 // selectThreads applies the two selection rules: named ids must be
-// verdict-authored, and the default closes only open verdict-authored threads
+// self-authored, and the default closes only open self-authored threads
 // whose linked finding the store marks addressed.
-func (st *threadsRun) selectThreads(feed *threadscore.File, dir string) (resolveSelection, *core.RefusalError) {
+func (st *threadsRun) selectThreads(feed *threadscore.File, dir, self string) (resolveSelection, *core.RefusalError) {
 	if len(st.req.Threads) > 0 {
-		return st.selectNamed(feed)
+		return st.selectNamed(feed, self)
 	}
 	store, ref := st.findingsStore(dir)
 	if ref != nil {
 		return resolveSelection{}, ref
 	}
-	return defaultSelection(feed, store), nil
+	return defaultSelection(feed, store, self), nil
 }
 
-// defaultSelection walks the feed in order, recording why each verdict-authored
+// defaultSelection walks the feed in order, recording why each self-authored
 // candidate stayed open. Human and bot threads are not candidates, so they
 // never appear in the receipt.
-func defaultSelection(feed *threadscore.File, store map[string]string) resolveSelection {
+func defaultSelection(feed *threadscore.File, store map[string]string, self string) resolveSelection {
 	var sel resolveSelection
 	for i := range feed.Threads {
 		thread := &feed.Threads[i]
 		if thread.AuthorKind != threadscore.AuthorVerdict {
+			continue
+		}
+		if thread.Author != self {
+			sel.skip(thread.ID, "not-self-authored")
 			continue
 		}
 		switch {
@@ -235,7 +272,7 @@ func defaultSelection(feed *threadscore.File, store map[string]string) resolveSe
 // thread verdict did not write refuses the whole run.
 //
 //nolint:revive // the named-id loop reads as one selection pass
-func (st *threadsRun) selectNamed(feed *threadscore.File) (resolveSelection, *core.RefusalError) {
+func (st *threadsRun) selectNamed(feed *threadscore.File, self string) (resolveSelection, *core.RefusalError) {
 	byID := make(map[string]*threadscore.Thread, len(feed.Threads))
 	for i := range feed.Threads {
 		byID[feed.Threads[i].ID] = &feed.Threads[i]
@@ -247,7 +284,7 @@ func (st *threadsRun) selectNamed(feed *threadscore.File) (resolveSelection, *co
 			continue
 		}
 		seen[id] = true
-		skip, ref := st.namedID(byID, id)
+		skip, ref := st.namedID(byID, id, self)
 		if ref != nil {
 			return sel, ref
 		}
@@ -261,21 +298,25 @@ func (st *threadsRun) selectNamed(feed *threadscore.File) (resolveSelection, *co
 }
 
 // namedID resolves one named id and validates the thread it names.
-func (st *threadsRun) namedID(byID map[string]*threadscore.Thread, id string) (bool, *core.RefusalError) {
+func (st *threadsRun) namedID(byID map[string]*threadscore.Thread, id, self string) (bool, *core.RefusalError) {
 	thread, ok := byID[id]
 	if !ok {
 		return false, st.withWarnings(&core.RefusalError{Code: "unknown-thread", Message: fmt.Sprintf(
 			"no thread %q in threads.json (refresh threads first)", id)})
 	}
-	return st.namedSelection(thread, id)
+	return st.namedSelection(thread, id, self)
 }
 
 // namedSelection validates one named thread: a thread verdict did not author
 // refuses the whole run, and an already-resolved thread is a skip.
-func (st *threadsRun) namedSelection(thread *threadscore.Thread, id string) (bool, *core.RefusalError) {
+func (st *threadsRun) namedSelection(thread *threadscore.Thread, id, self string) (bool, *core.RefusalError) {
 	if thread.AuthorKind != threadscore.AuthorVerdict {
 		return false, st.withWarnings(&core.RefusalError{Code: "not-verdict-authored", Message: fmt.Sprintf(
 			"thread %q is %s-authored, not verdict-authored — refusing to resolve it", id, thread.AuthorKind)})
+	}
+	if thread.Author != self {
+		return false, st.withWarnings(&core.RefusalError{Code: "not-verdict-authored", Message: fmt.Sprintf(
+			"thread %q is not self-authored (root author %q) — refusing to resolve it", id, thread.Author)})
 	}
 	return thread.Resolved, nil
 }

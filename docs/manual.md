@@ -278,11 +278,15 @@ capped at 8 KiB with a `truncated` flag, `created_at`). Top level: `provider`,
 [--provider …]` re-reads only the thread surface and rewrites only this file,
 so a re-review after pushing fixes sees current resolution state.
 `verdict threads resolve owner/repo N [--thread <id>]... [--dry-run]` closes
-verdict-authored threads: without `--thread`, every open thread whose linked
-finding the local store marks addressed; with `--thread`, only the named ids,
-which must still be verdict-authored (a human thread refuses). `--dry-run`
-lists the plan and makes zero writes; a real run makes one host write per
-thread, marks them resolved in `threads.json`, and writes
+self-authored threads: a thread is resolvable only when its root carries
+verdict's marker and its root author equals the authenticated token user the
+run posts as (read once per run; an unreadable login refuses before any
+write). Without `--thread`, every open self-authored thread whose linked
+finding the local store marks addressed; a forged-marker thread skips as
+`not-self-authored`. With `--thread`, only the named ids, which must still be
+self-authored (a human or forged thread refuses `not-verdict-authored`).
+`--dry-run` lists the plan and makes zero writes; a real run makes one host
+write per thread, marks them resolved in `threads.json`, and writes
 `threads-resolve.json` (provider, repo, PR, head, timestamp, `resolved[]`,
 `skipped[]` with reasons). GitHub and GitLab carry the mutation; Forgejo
 refuses typed because its API has no documented resolve endpoint.

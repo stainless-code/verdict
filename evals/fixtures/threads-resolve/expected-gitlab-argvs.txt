@@ -1,1 +1,2 @@
+api user
 api projects/acme%2Fapp/merge_requests/7/discussions/d1?resolved=true --method PUT
