@@ -5,6 +5,7 @@ export interface DocsSection {
 }
 
 export interface DocsTreePage {
+  readonly label: string;
   readonly docsFile?: string;
   readonly route: string;
 }
@@ -33,23 +34,33 @@ export const docsTree: readonly DocsTreeGroup[] = [
   {
     label: "Start",
     pages: [
-      { route: "/docs/quickstart" },
-      { route: "/docs/glossary" },
-      { route: "/docs/why-verdict" },
+      { label: "Quickstart", route: "/docs/quickstart" },
+      { label: "Glossary", route: "/docs/glossary" },
+      { label: "Why Verdict", route: "/docs/why-verdict" },
     ],
   },
-  { label: "Concepts", pages: [{ route: "/docs/how-it-reviews" }] },
+  {
+    label: "Concepts",
+    pages: [{ label: "How it reviews", route: "/docs/how-it-reviews" }],
+  },
   {
     label: "Reference",
     pages: [
-      { docsFile: "manual.md", route: "/docs/manual" },
-      { docsFile: "troubleshooting.md", route: "/docs/troubleshooting" },
+      { label: "Manual", docsFile: "manual.md", route: "/docs/manual" },
+      {
+        label: "Troubleshooting",
+        docsFile: "troubleshooting.md",
+        route: "/docs/troubleshooting",
+      },
     ],
   },
-  { label: "Build on Verdict", pages: [{ route: "/docs/build-a-client" }] },
-  { label: "Agents", pages: [{ route: "/agents" }] },
-  { label: "Compare", pages: [{ route: "/compare" }] },
-  { label: "Roadmap", pages: [{ route: "/roadmap" }] },
+  {
+    label: "Build on Verdict",
+    pages: [{ label: "Build a client", route: "/docs/build-a-client" }],
+  },
+  { label: "Agents", pages: [{ label: "Agents", route: "/agents" }] },
+  { label: "Compare", pages: [{ label: "Compare", route: "/compare" }] },
+  { label: "Roadmap", pages: [{ label: "Roadmap", route: "/roadmap" }] },
 ];
 
 /** Old routes and where they land now. */
@@ -65,11 +76,35 @@ export const docsRedirects: readonly DocsRedirect[] = [
   { from: "/troubleshooting", to: "/docs/troubleshooting" },
 ];
 
-/** The three the landing footer lists, out of the new routes. */
-export const footerPaths: readonly { label: string; path: string }[] = [
-  { label: "Quickstart", path: "/docs/quickstart" },
-  { label: "How it reviews", path: "/docs/how-it-reviews" },
-  { label: "Comparison", path: "/compare" },
+export interface FooterLink {
+  readonly label: string;
+  readonly path: string;
+}
+
+export interface FooterColumn {
+  readonly label: string;
+  readonly links: readonly FooterLink[];
+}
+
+/** Columns the landing footer renders: one per docs group, then Project. */
+export const footerColumns: readonly FooterColumn[] = [
+  ...docsTree
+    .filter((group) =>
+      group.pages.every((page) => page.route.startsWith("/docs/")),
+    )
+    .map((group) => ({
+      label: group.label,
+      links: group.pages.map((page) => ({
+        label: page.label,
+        path: page.route,
+      })),
+    })),
+  {
+    label: "Project",
+    links: docsSections
+      .filter((section) => section.path !== "/docs")
+      .map((section) => ({ label: section.label, path: section.landing })),
+  },
 ];
 
 /** The route a staged `docs/` file publishes at. */

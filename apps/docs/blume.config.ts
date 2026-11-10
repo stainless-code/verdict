@@ -126,6 +126,10 @@ export default defineConfig({
   },
 
   navigation: {
+    // The header carries the GitHub mark, so the footer stays link-free and
+    // Blume renders no footer row on docs pages: only the home page below
+    // carries its own sitemap footer.
+    repo: false,
     tabs: docsSections.map(({ label, path }) => ({
       label,
       path,
@@ -138,27 +142,6 @@ export default defineConfig({
     to,
     status: 301 as const,
   })),
-
-  footer: {
-    copyright: `© 2026 stainless-code, MIT licensed.`,
-    links: [
-      {
-        label: "GitHub repository",
-        href: "https://github.com/stainless-code/verdict",
-      },
-      {
-        label: "Releases",
-        href: "https://github.com/stainless-code/verdict/releases",
-      },
-      {
-        label: "MIT license",
-        href: "https://github.com/stainless-code/verdict/blob/main/LICENSE",
-      },
-    ],
-    socials: {
-      website: "https://stainless-code.com",
-    },
-  },
 
   theme: {
     accent: { light: "#ae2a1e", dark: "#f2a192" },
