@@ -134,20 +134,22 @@ Inputs are `version` (default `latest`) and `require-signature` (default `true`)
 
 ## Hosts
 
-`fetch` works on all six hosts. `post` submits to GitHub and GitLab.
+`fetch` works on all six hosts. `post` submits to GitHub, GitLab, and Forgejo.
 
 | Host      | `--provider` | Fetch uses                                                 | Post | Incremental re-review (`--base-sha`) |
 | --------- | ------------ | ---------------------------------------------------------- | ---- | ------------------------------------ |
 | GitHub    | `github`     | `gh`                                                       | yes  | yes                                  |
 | GitLab    | `gitlab`     | `glab` (or `GITLAB_TOKEN`)                                 | yes  | yes                                  |
 | GitCafe   | `gitcafe`    | `cafe` (or `CAFE_TOKEN`)                                   | no   | no                                   |
-| Forgejo   | `forgejo`    | `curl` with `FORGEJO_HOST` and `FORGEJO_TOKEN`             | no   | no                                   |
+| Forgejo   | `forgejo`    | `curl` with `FORGEJO_HOST` and `FORGEJO_TOKEN`             | yes  | no                                   |
 | Bitbucket | `bitbucket`  | `curl` with `BITBUCKET_TOKEN`                              | no   | no                                   |
 | Azure     | `azure`      | `az` (login or `AZURE_DEVOPS_EXT_PAT`, `AZURE_DEVOPS_ORG`) | no   | no                                   |
 
 A GitLab post is not a GitHub post: GitLab has no `REQUEST_CHANGES` review event, so a `--bind --request-changes` run posts its discussions and summary as a comment, and `post.json` records the withheld capability in `withheld[]` (`request_changes`, `no-request-changes-event`). An approval is a real MR approval. The four hosts without a compare adapter accept `--base-sha` and write an `incremental.diff.note` instead of a delta.
 
-On the other four hosts, `record`, `report`, `show`, `next`, `triage`, and `threads` work on the fetched bundle. `post`, live `calibrate`, `ready`, and `adopt` refuse with a typed error; `calibrate --probe` runs offline on any bundle. `adopt`, `ready`, and live `calibrate` are GitHub-only — they refuse on a GitLab bundle too. Details and per-host gaps are in the [manual](docs/manual.md#providers-non-github-hosts).
+Forgejo takes one atomic review over its REST API through `curl`, so it carries both binding verdicts like GitHub. Its comments anchor on file line numbers, the approval event is spelled `APPROVED`, and a comment the host cannot place — no numeric line, a deleted file — is withheld with a warning rather than sent as an unanchored comment.
+
+On the other three hosts, `record`, `report`, `show`, `next`, `triage`, and `threads` work on the fetched bundle. `post`, live `calibrate`, `ready`, and `adopt` refuse with a typed error; `calibrate --probe` runs offline on any bundle. `adopt`, `ready`, and live `calibrate` are GitHub-only — they refuse on a GitLab bundle too. Details and per-host gaps are in the [manual](docs/manual.md#providers-non-github-hosts).
 
 ## Security
 

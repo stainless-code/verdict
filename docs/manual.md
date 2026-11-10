@@ -960,8 +960,8 @@ the arguments. Closed vocabularies and numeric bounds the structs declare
 (`status`, `kind`, check tier, `preset`, `rigor`, `approve`, provider names)
 become schema `enum`/`minimum`/`maximum` keywords, so a bad value is a schema
 error the model sees before calling instead of a runtime refusal. `post` writes
-a review and sends it to the host (GitHub or GitLab), so it is not exposed
-under `--read-only`.
+a review and sends it to the host (GitHub, GitLab, or Forgejo), so it is not
+exposed under `--read-only`.
 
 `--read-only` exposes eight read tools (`report`, `next`, `show`, `trend`,
 `ready`, `doctor`, `check-tree`, `config`) plus `record` limited to its `dry_run: true`
@@ -2227,16 +2227,16 @@ shape from another host (`PR.json` normalized to one schema: `provider`,
 `write_toc_roles` and the whole validate+merge path run unchanged — anchors
 validate against `full.diff` hunks regardless of host. `record`, `report`,
 `triage`, `show`, `next` work on provider bundles as-is. `post` submits to
-GitHub and GitLab, `ready` advises on both, plain `calibrate` joins live
-threads on both, and `adopt` merges into either of those bundles (its
-re-anchor reads the stored hunks and never shells a host CLI); `post`,
-`ready`, and plain `calibrate` on the
-other hosts refuse typed, while `adopt` into a host
-without a submit path refuses `provider-unimplemented` naming the host, and
-`calibrate --probe` grades any bundle offline. The refusal names the gap rather than an impossibility: Forgejo
-can author inline comments through its API even though its CLI cannot, but each
-remaining host still needs its own submit path with the comments → summary body
-→ verdict-last ordering laid out below. `fetch --json` publishes the facts in
+GitHub, GitLab, and Forgejo; `ready` advises on GitHub and GitLab, plain
+`calibrate` joins live threads on both, and `adopt` merges into any bundle
+verdict can post to (its re-anchor reads the stored hunks and never shells a
+host CLI). `post` on `gitcafe`, `bitbucket`, and `azure`, and `ready` and plain
+`calibrate` on any host but GitHub and GitLab, refuse typed, while `adopt` into
+a host without a submit path refuses `provider-unimplemented` naming the host,
+and `calibrate --probe` grades any bundle offline. The refusal names the gap
+rather than an impossibility: each remaining host still needs its own submit
+path, with the comments → summary body → verdict-last ordering laid out below.
+`fetch --json` publishes the facts in
 `data.capabilities`: `provider`, `fetch`, `post`, `inline_anchors`, `approve`,
 `request_changes`, `thread_resolution`, `review_verdicts`, and `unsupported`,
 so an agent can plan before it writes a review. `approve` and
@@ -2264,7 +2264,7 @@ capability, keyed by capability name:
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | `gitlab`    | `glab mr view/diff/note list/discussions` + changes/compare API; `ready` adds the MR, pipelines, and discussions reads, `calibrate` the discussions + repository compare | `glab auth login` (or `GITLAB_TOKEN`)                            | experimental note commands; no incremental (`--base-sha` refused); `post` approves but cannot request changes |
 | `gitcafe`   | `cafe pr view/diff/reviews/comments`                                                                                                                                     | `cafe auth login` (or `CAFE_TOKEN`)                              | reads `.data.*` envelope; threads paged via `--cursor`; hunks render only when `.patch` text ships            |
-| `forgejo`   | REST `curl` (`$FORGEJO_HOST/api/v1`, `$FORGEJO_TOKEN`) — neither `fj` nor `tea` exposes JSON review reads                                                                | token env                                                        | inline threads aggregated per review id                                                                       |
+| `forgejo`   | REST `curl` (`$FORGEJO_HOST/api/v1`, `$FORGEJO_TOKEN`) — neither `fj` nor `tea` exposes JSON review reads                                                                | token env                                                        | inline threads aggregated per review id; a review comment anchors on a file line number                       |
 | `bitbucket` | REST `curl` (`$BITBUCKET_TOKEN` Bearer or user+password Basic)                                                                                                           | token env                                                        | diffstat/comments paginated server-side; no grouped submit                                                    |
 | `azure`     | `az repos pr show` + `az rest` threads/iterations; diff via temp-clone `git fetch` of the two SHAs                                                                       | `az login` / `AZURE_DEVOPS_EXT_PAT`, `AZURE_DEVOPS_ORG` required | needs git reachability to the repo remote; no org/project auto-detect                                         |
 
@@ -2316,21 +2316,44 @@ the `anchors` tally counts).
 
 ### Submit (`post`) per host
 
-GitHub takes one atomic review; GitLab has no such call, so its submit replays
-three primitives in that order. Both hosts post the summary body last and
-neither replays a payload whose first write landed: a mid-way failure refuses
-typed `post-failed`, names what landed in the envelope `warnings`, and writes
-the host's own stderr to `.post.err`. The guarantee covers positioned
-discussions. A review with no comments posts only the summary note, and a
-summary write whose response was lost can be retried because nothing landed to
-observe; that case is the same lost-response shape GitHub documents.
+GitHub and Forgejo each take one atomic review; GitLab has no such call, so its
+submit replays three primitives in that order. GitLab posts the summary body
+last, and no host replays a payload whose first write landed: a mid-way failure
+refuses typed `post-failed`, names what landed in the envelope `warnings`, and
+writes the host's own stderr to `.post.err`. The guarantee covers positioned
+discussions. On GitLab a review with no comments posts only the summary note,
+and a summary write whose response was lost can be retried because nothing
+landed to observe; that case is the same lost-response shape GitHub documents.
 
-| Provider | Submit writes, in order                                                                                                                                                                                                                                                                            | Gaps                                                                                                                                                                                          |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `github` | one `repos/<owner>/<repo>/pulls/<n>/reviews` POST carrying `body`, `event`, and every inline comment (`gh api … --method POST --input -`)                                                                                                                                                          | —                                                                                                                                                                                             |
-| `gitlab` | one MR discussion per finding — a `position` with the MR's `base_sha`/`start_sha`/`head_sha`, both paths, `new_line` for an added line, both numbers for an unchanged one, `old_line` for a deletion — then one summary note, then `approve` (pinned by `sha`) only when the review is an approval | approve-only (GitLab has no `request-changes` event — the comments still post, with a warning); a multi-line anchor lands on its end line; `request_changes` and `review_verdicts` stay false |
+| Provider  | Submit writes, in order                                                                                                                                                                                                                                                                            | Gaps                                                                                                                                                                                          |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `github`  | one `repos/<owner>/<repo>/pulls/<n>/reviews` POST carrying `body`, `event`, and every inline comment (`gh api … --method POST --input -`)                                                                                                                                                          | —                                                                                                                                                                                             |
+| `gitlab`  | one MR discussion per finding — a `position` with the MR's `base_sha`/`start_sha`/`head_sha`, both paths, `new_line` for an added line, both numbers for an unchanged one, `old_line` for a deletion — then one summary note, then `approve` (pinned by `sha`) only when the review is an approval | approve-only (GitLab has no `request-changes` event — the comments still post, with a warning); a multi-line anchor lands on its end line; `request_changes` and `review_verdicts` stay false |
+| `forgejo` | one `api/v1/repos/<owner>/<repo>/pulls/<n>/reviews` POST over `curl` carrying `body`, `event` (`APPROVED` for an approval), `commit_id`, and every comment (`new_position` or `old_position`, both file line numbers)                                                                              | —                                                                                                                                                                                             |
 
-The repeat guard is the same on both hosts: the body's
+Forgejo has no CLI, so both directions are one `curl` call against
+`$FORGEJO_HOST/api/v1`; the write is GitHub-shaped — one atomic review POST
+carrying the body, the event, the reviewed commit, and every comment — but three
+limits need saying. Forgejo spells the approval `APPROVED`, and an event it does
+not know creates a **PENDING** draft with a 200, so `post` maps the event and
+refuses any answer whose `state` is not the one it asked for: a pending review
+is a draft nobody else sees. A review comment anchors on a **file line number**,
+not a diff offset, so a RIGHT anchor becomes `new_position` and a LEFT anchor
+`old_position`. A finding with no numeric line is withheld (Forgejo would accept
+an unanchored comment), a LEFT anchor on a path the change deletes is withheld
+(old-side blame cannot resolve there), and a multi-line range lands on its end
+line — each loss is counted in the envelope `warnings`. Before the write, `post`
+reads the token user and the PR's reviews: a `PENDING` review authored by that
+user refuses with a submit-or-discard hint, because Forgejo would attach these
+comments to that draft and submit the whole thing under this review's body.
+Nothing on the wire is atomic on the server, so a failed write is never
+replayed: the warnings say how many comments may have landed. Two limits stay
+unverified: whether a left-side anchor on a deleted file resolves at all — `post`
+withholds it — and whether the review list returns another user's draft. The
+draft check reads that list and refuses when the read breaks, but a host that
+filters other users' drafts out of the list would hide one.
+
+The repeat guard is the same on every host: the body's
 `<!-- verdict-review payload=… -->` marker is read from the fetched
 `reviews.json`, so a re-fetch restores it after a post, and the marker keys on
 the exact payload — body, anchors, and reviewed head — never on a diff

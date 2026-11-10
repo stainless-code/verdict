@@ -99,9 +99,17 @@ type hostConformance struct {
 	// approveArgv records an approval. Empty means the approval rides bodyArgv
 	// as that payload's own verdict event.
 	approveArgv string
+	// wireEvent is the spelling this host's payload carries for a verdict
+	// event, where it differs from GitHub's vocabulary.
+	wireEvent map[string]string
+	// lineField is the payload key this host's review comment anchors its line
+	// in; empty means GitHub's `line`.
+	lineField string
+	// env is the environment the host's local auth gate reads.
+	env map[string]string
 }
 
-// conformanceRows is the matrix: the two hosts with a submit path, and one
+// conformanceRows is the matrix: the three hosts with a submit path, and one
 // fetch-only host whose whole row must refuse.
 func conformanceRows() []*hostConformance {
 	return []*hostConformance{
@@ -118,10 +126,39 @@ func conformanceRows() []*hostConformance {
 			partial:     map[string]string{conformanceInlineAnchors: "multi-line"},
 		},
 		{
+			provider:  providerForgejo,
+			bodyArgv:  conformanceForgejoWrite,
+			env:       conformanceForgejoEnv(),
+			wireEvent: map[string]string{eventApprove: "APPROVED"},
+			lineField: "new_position",
+			partial:   map[string]string{conformanceInlineAnchors: "multi-line"},
+		},
+		{
 			provider:    "bitbucket",
 			noSubmitDoc: "no grouped submit",
 		},
 	}
+}
+
+// The exact argv a Forgejo post reads and writes with: `curl` on a reserved
+// `.invalid` host, with the token header both directions share.
+const (
+	conformanceForgejoBase = "https://forgejo.invalid/api/v1/repos/acme/app/pulls/7"
+	conformanceForgejoAuth = "-H\x00Authorization: token conformance-token"
+	conformanceForgejoRead = "curl\x00-sf\x00" + conformanceForgejoAuth + "\x00"
+
+	conformanceForgejoPull     = conformanceForgejoRead + conformanceForgejoBase
+	conformanceForgejoUser     = conformanceForgejoRead + "https://forgejo.invalid/api/v1/user"
+	conformanceForgejoReviews  = conformanceForgejoRead + conformanceForgejoBase + "/reviews?limit=50&page=1"
+	conformanceForgejoComments = conformanceForgejoRead + conformanceForgejoBase + "/reviews/301/comments"
+	conformanceForgejoWrite    = "curl\x00-sS\x00-i\x00" + conformanceForgejoAuth +
+		"\x00-H\x00Content-Type: application/json\x00-X\x00POST\x00--data-binary\x00@-\x00" +
+		conformanceForgejoBase + "/reviews"
+)
+
+// conformanceForgejoEnv is the environment the Forgejo auth gate reads.
+func conformanceForgejoEnv() map[string]string {
+	return map[string]string{"FORGEJO_HOST": "https://forgejo.invalid", "FORGEJO_TOKEN": "conformance-token"}
 }
 
 // TestProviderConformance is the suite: every host answers the three
@@ -175,6 +212,18 @@ type conformanceScenario struct {
 	dryRun  bool
 }
 
+// event is verdict's payload event for the scenario.
+func (scn conformanceScenario) event() string {
+	switch {
+	case scn.changes:
+		return eventRequestChanges
+	case scn.approve == approveTrue:
+		return eventApprove
+	default:
+		return eventComment
+	}
+}
+
 // conformanceScenarios are the three posts the matrix observes.
 func conformanceScenarios() []conformanceScenario {
 	return []conformanceScenario{
@@ -211,7 +260,7 @@ func conformanceEnvelopeWarnings(run *conformanceRun) []string {
 func runConformance(t *testing.T, row *hostConformance, scn conformanceScenario) *conformanceRun {
 	t.Helper()
 	root := conformanceBundle(t, row.provider)
-	cmdr := conformanceCommander(t, row)
+	cmdr := conformanceCommander(t, row, scn)
 	var warnings, human []string
 	flags := core.PostFlags{
 		Approve: scn.approve, RequestChanges: scn.changes, Bind: scn.bind,
@@ -220,6 +269,9 @@ func runConformance(t *testing.T, row *hostConformance, scn conformanceScenario)
 	}
 	req := postTestReq(cmdr, flags, &warnings, &human)
 	req.RepoRoot = root
+	if row.env != nil {
+		req.Runtime.Env = maps.Clone(row.env)
+	}
 	resp, ref := Run(context.Background(), req)
 	return &conformanceRun{calls: cmdr.calls, stdin: cmdr.stdin, root: root, response: resp, refusal: ref}
 }
@@ -256,7 +308,7 @@ func conformanceBundle(t *testing.T, provider string) string {
 // conformanceCommander scripts the reads and writes one host may make. A host
 // with no submit path gets an empty script, so any call it makes fails as an
 // unexpected argv instead of passing silently.
-func conformanceCommander(t *testing.T, row *hostConformance) *scriptCommander {
+func conformanceCommander(t *testing.T, row *hostConformance, scn conformanceScenario) *scriptCommander {
 	t.Helper()
 	switch row.provider {
 	case providerGitHub:
@@ -265,9 +317,35 @@ func conformanceCommander(t *testing.T, row *hostConformance) *scriptCommander {
 		return cmdr
 	case providerGitLab:
 		return gitlabCommander(t)
+	case providerForgejo:
+		return conformanceForgejoCommander(t, row, scn)
 	default:
 		return &scriptCommander{t: t, out: map[string]scriptResult{}}
 	}
+}
+
+// conformanceForgejoCommander scripts one Forgejo post. The write answers with
+// the state the scenario asked for, which is what a submitted review reads back
+// as: a host that created a draft would answer PENDING and the post-condition
+// would refuse it.
+func conformanceForgejoCommander(t *testing.T, row *hostConformance, scn conformanceScenario) *scriptCommander {
+	t.Helper()
+	return &scriptCommander{t: t, out: map[string]scriptResult{
+		conformanceForgejoPull:     {stdout: `{"head":{"sha":"` + gitlabHead + `"}}`},
+		conformanceForgejoUser:     {stdout: `{"login":"teammate"}`},
+		conformanceForgejoReviews:  {stdout: `[{"id":301,"state":"COMMENT","user":{"login":"alice"}}]`},
+		conformanceForgejoComments: {stdout: `[{"id":401,"path":"notes.txt","position":2,"user":{"login":"alice"}}]`},
+		conformanceForgejoWrite:    {stdout: conformanceForgejoAnswer(row.hostEvent(scn.event()))},
+	}}
+}
+
+// conformanceForgejoAnswer renders the `curl -i` document one created review
+// answers with.
+func conformanceForgejoAnswer(state string) string {
+	return "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" +
+		`{"id":901,"state":"` + state + `","commit_id":"` + gitlabHead + `",` +
+		`"submitted_at":"2026-11-02T12:00:00Z","html_url":"https://forgejo.invalid/acme/app/pulls/7#issuecomment-901"}` +
+		"\n"
 }
 
 // conformanceTool is the CLI a host's submit path spawns; every other argv on
@@ -340,13 +418,22 @@ func (row *hostConformance) bodyWrite(t *testing.T, stdin string) writeCounts {
 	}
 	if row.verbInPayload() {
 		switch payload["event"] {
-		case eventApprove:
+		case row.hostEvent(eventApprove):
 			counts.approve = 1
-		case eventRequestChanges:
+		case row.hostEvent(eventRequestChanges):
 			counts.changes = 1
 		}
 	}
 	return counts
+}
+
+// hostEvent is the spelling this host's payload carries for one verdict event:
+// GitHub's vocabulary unless the row declares another.
+func (row *hostConformance) hostEvent(event string) string {
+	if mapped, ok := row.wireEvent[event]; ok {
+		return mapped
+	}
+	return event
 }
 
 // conformanceResolveWrite reports whether one call is a thread-resolve
@@ -552,9 +639,20 @@ func conformanceCheckPartial(t *testing.T, row *hostConformance, caps core.HostC
 	t.Helper()
 	for _, column := range conformanceSubmitColumns {
 		if concept, documented := row.partial[column]; documented {
-			conformanceCheckPartialColumn(t, row, caps, column, concept, sent, docs.submit[row.provider])
+			conformanceCheckPartialColumn(t, row, caps, column, concept, sent, docs.partialSurface(row))
 		}
 	}
+}
+
+// partialSurface is where the manual documents a host's partial losses: its
+// submit row when that row lists gaps, the section prose when the row is "—"
+// because the host carries every capability the table publishes.
+func (d conformanceDocs) partialSurface(row *hostConformance) string {
+	cell := d.submit[row.provider]
+	if strings.TrimSpace(cell) == "—" {
+		return d.prose
+	}
+	return cell
 }
 
 // conformanceCheckPartialColumn checks one documented partial loss: the
@@ -694,7 +792,7 @@ func (row *hostConformance) anchoredFindings(t *testing.T, run *conformanceRun) 
 		key := strings.Join(call, conformanceArgvSep)
 		switch {
 		case row.verbInPayload() && row.bodyArgv != "" && key == row.bodyArgv:
-			out = append(out, conformanceReviewComments(t, run.stdin[i])...)
+			out = append(out, conformanceReviewComments(t, run.stdin[i], row.lineField)...)
 		case row.anchorArgv != "" && key == row.anchorArgv:
 			out = append(out, conformanceDiscussionAnchor(t, run.stdin[i]))
 		}
@@ -702,14 +800,19 @@ func (row *hostConformance) anchoredFindings(t *testing.T, run *conformanceRun) 
 	return out
 }
 
-// conformanceReviewComments reads the comments one atomic review carried.
-func conformanceReviewComments(t *testing.T, stdin string) []anchoredFinding {
+// conformanceReviewComments reads the comments one atomic review carried. A
+// host whose comment shape names the line differently passes its own key.
+func conformanceReviewComments(t *testing.T, stdin, lineField string) []anchoredFinding {
 	t.Helper()
+	if lineField == "" {
+		lineField = "line"
+	}
 	var out []anchoredFinding
 	for _, c := range jq.Elements(conformancePayload(t, stdin)["comments"]) {
 		comment := conformanceMap(c)
 		out = append(out, anchoredFinding{
-			path: jq.StrOf(comment["path"]), line: conformanceInt(comment["line"]), start: conformanceInt(comment["start_line"]),
+			path: jq.StrOf(comment["path"]), line: conformanceInt(comment[lineField]),
+			start: conformanceInt(comment["start_line"]),
 		})
 	}
 	return out

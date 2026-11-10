@@ -3,8 +3,8 @@ package core
 // HostCapabilities declares what verdict can do through one code host's own
 // CLI or API. It is the single source for the fetch envelope's
 // data.capabilities object and for the gates that depend on a host feature, so
-// an agent learns "post is GitHub and GitLab only" before writing a review
-// instead of by refusal.
+// an agent learns which hosts take a review before writing one instead of by
+// refusal.
 //
 // A capability that reads true has code behind it and a test that fails when
 // it flips: post is the submit path, inline_anchors is the merge's inline- or
@@ -74,9 +74,10 @@ type CapabilityGap struct {
 
 // hostCapabilities lists every supported host. Reading threads is part of
 // fetch, so fetch is true everywhere; posting — and with it inline anchors —
-// lands on GitHub (one atomic review) and GitLab (one discussion per finding,
-// then the summary note, then the approval last). GitHub carries both binding
-// verdicts; GitLab carries the approval only, because it has no
+// lands on GitHub (one atomic review), GitLab (one discussion per finding, then
+// the summary note, then the approval last), and Forgejo (one atomic review
+// over its REST API, because it ships no CLI). GitHub and Forgejo carry both
+// binding verdicts; GitLab carries the approval only, because it has no
 // request-changes review event, so request_changes reads false there and the
 // submit path posts the findings plus a warning instead of inventing a verdict
 // the host cannot record. review_verdicts is derived from that pair by
@@ -92,8 +93,11 @@ var hostCapabilities = map[string]HostCapabilities{
 		Provider: "gitlab", Fetch: true, Post: true, InlineAnchors: true,
 		Approve: true,
 	},
-	"gitcafe":   {Provider: "gitcafe", Fetch: true},
-	"forgejo":   {Provider: "forgejo", Fetch: true},
+	"gitcafe": {Provider: "gitcafe", Fetch: true},
+	"forgejo": {
+		Provider: "forgejo", Fetch: true, Post: true,
+		InlineAnchors: true, Approve: true, RequestChanges: true,
+	},
 	"bitbucket": {Provider: "bitbucket", Fetch: true},
 	"azure":     {Provider: "azure", Fetch: true},
 }

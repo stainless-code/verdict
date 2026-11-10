@@ -191,10 +191,10 @@ func allTools(readOnly, operator bool) []*tool {
 		}, toolDeps{}, decodeNext, wireNext, invokeNext),
 		dataTool(&toolSpec{
 			name: "post",
-			description: "Post exactly one review to GitHub or GitLab, or preview with dryRun. " +
+			description: "Post exactly one review to GitHub, GitLab, or Forgejo, or preview with dryRun. " +
 				"Call once after review.json is final; never write a review note. A secret-shaped " +
 				"value refuses post-secret-shaped (allowSecretValues publishes it). Writes post.json; " +
-				"GitLab posts a bound request-changes as a comment and records it in withheld[].",
+				"GitLab posts a bound request-changes as a comment, recorded in withheld[].",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Post review", destructive: true, idempotent: true, openWorld: true},
 		}, toolDeps{commander: fetchRunner}, decodePost, wirePost, postcore.Run,
