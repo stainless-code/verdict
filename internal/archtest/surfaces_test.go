@@ -521,6 +521,139 @@ func readSource(t *testing.T, path string) string {
 	return string(raw)
 }
 
+// TestCompletionTableCoversUsageFlags proves every flag a verb's synopsis
+// documents reaches that verb's completion row. Nothing compared the two
+// surfaces before, so each release added a flag to one of them alone.
+func TestCompletionTableCoversUsageFlags(t *testing.T) {
+	t.Parallel()
+	root := moduleRoot(t)
+	documented := usageFlagSets(t, functionStrings(t, filepath.Join(root, "cmd", "verdict", "usage.go"), "usageText"))
+	offered := completionFlagSets(t, readSource(t, filepath.Join(root, "scripts", "verdict-complete.sh")))
+	if len(documented) < 10 || len(offered) < 10 {
+		t.Fatalf("parsed %d usage verbs and %d completion arms; the guard would pass vacuously",
+			len(documented), len(offered))
+	}
+	for _, verb := range slices.Sorted(maps.Keys(documented)) {
+		checkCompletionVerb(t, verb, documented[verb], offered[verb])
+	}
+}
+
+// checkCompletionVerb fails every documented flag the verb's row omits.
+func checkCompletionVerb(t *testing.T, verb string, documented, offered map[string]bool) {
+	t.Helper()
+	for _, flag := range slices.Sorted(maps.Keys(documented)) {
+		if !offered[flag] {
+			t.Errorf("verb %q documents %s but its completion row does not offer it", verb, flag)
+		}
+	}
+}
+
+// usageFlagSets maps each verb to the flags its synopsis lines carry: the
+// header line plus the wrapped continuation lines before the prose starts.
+func usageFlagSets(t *testing.T, usage string) map[string]map[string]bool {
+	t.Helper()
+	lines := strings.Split(usage, "\n")
+	known := usageVerbs(lines[0])
+	out := make(map[string]map[string]bool)
+	for i := 0; i < len(lines); i++ {
+		verb, ok := synopsisVerb(lines[i], known)
+		if !ok {
+			continue
+		}
+		i = collectSynopsisFlags(lines, i, verb, out)
+	}
+	return out
+}
+
+// usageVerbs reads the verb list from the usage synopsis line.
+func usageVerbs(header string) map[string]bool {
+	verbs := strings.Split(strings.TrimSuffix(strings.TrimPrefix(header, "usage: verdict "), " [opts]"), "|")
+	known := make(map[string]bool, len(verbs))
+	for _, verb := range verbs {
+		known[verb] = true
+	}
+	return known
+}
+
+// collectSynopsisFlags adds one verb's synopsis flags and returns the index of
+// the last line the synopsis consumed.
+func collectSynopsisFlags(lines []string, start int, verb string, out map[string]map[string]bool) int {
+	if out[verb] == nil {
+		out[verb] = make(map[string]bool)
+	}
+	i := start
+	for {
+		for _, flag := range usageFlagToken.FindAllString(lines[i], -1) {
+			out[verb][flag] = true
+		}
+		if i+1 >= len(lines) || !synopsisContinuation(lines[i+1]) {
+			return i
+		}
+		i++
+	}
+}
+
+// synopsisVerb reads the verb a "  <verb> ..." synopsis header names.
+func synopsisVerb(line string, known map[string]bool) (string, bool) {
+	rest, ok := strings.CutPrefix(line, "  ")
+	if !ok || strings.HasPrefix(rest, " ") {
+		return "", false
+	}
+	verb, _, _ := strings.Cut(rest, " ")
+	return verb, known[verb]
+}
+
+// synopsisContinuation reports whether line continues the synopsis above it:
+// a wrapped flag line, never the four-space prose below the synopsis.
+func synopsisContinuation(line string) bool {
+	if strings.TrimSpace(line) == "" {
+		return false
+	}
+	return len(line)-len(strings.TrimLeft(line, " ")) >= 5 ||
+		strings.HasPrefix(line, "[") || strings.HasPrefix(line, "-")
+}
+
+// completionFlagSets maps each verb to the flags its _verdict_flags arm offers.
+func completionFlagSets(t *testing.T, script string) map[string]map[string]bool {
+	t.Helper()
+	out := make(map[string]map[string]bool)
+	for line := range strings.SplitSeq(completionTable(t, script), "\n") {
+		addCompletionArm(line, out)
+	}
+	return out
+}
+
+// completionTable returns the body of the _verdict_flags case arm.
+func completionTable(t *testing.T, script string) string {
+	t.Helper()
+	start := strings.Index(script, "_verdict_flags() {")
+	end := strings.Index(script, "_verdict_values() {")
+	if start < 0 || end < start {
+		t.Fatalf("scripts/verdict-complete.sh: cannot locate the _verdict_flags table")
+	}
+	return script[start:end]
+}
+
+// addCompletionArm records the flags one `verbs) ... ;;` arm offers.
+func addCompletionArm(line string, out map[string]map[string]bool) {
+	arm := completionArm.FindStringSubmatch(line)
+	if arm == nil {
+		return
+	}
+	flags := make(map[string]bool)
+	for _, flag := range usageFlagToken.FindAllString(line, -1) {
+		flags[flag] = true
+	}
+	for verb := range strings.SplitSeq(arm[1], "|") {
+		out[verb] = flags
+	}
+}
+
+var (
+	usageFlagToken = regexp.MustCompile(`--[a-z0-9][a-z0-9-]*`)
+	completionArm  = regexp.MustCompile(`^\s*([a-z][a-z0-9|-]*)\)`)
+)
+
 // mcpSchemaHasBoolean reads the checked-in tools/list snapshot and reports
 // whether one tool's published input schema carries a boolean property.
 func mcpSchemaHasBoolean(t *testing.T, path, tool, property string) bool {

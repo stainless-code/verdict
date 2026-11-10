@@ -8,26 +8,30 @@ _verdict_verbs() {
 
 _verdict_flags() { # $1 = verb
   case "$1" in
-    fetch) printf '%s\n' --base-sha --since --provider --consent-over-budget --json;;
-    post) printf '%s\n' --approve --request-changes --bind --force --review-file --dry-run --json;;
+    fetch) printf '%s\n' --base-sha --since --provider --consent-over-budget --show-prompts --chunk --json;;
+    post) printf '%s\n' --approve --request-changes --bind --force --review-file --dry-run --require-coverage --allow-secret-values --json;;
     triage) printf '%s\n' --sig --status --rationale --force --dry-run --json;;
-    report) printf '%s\n' --status --kind --output --sarif --cost --check --json;;
-    next) printf '%s\n' --status --json;;
+    report) printf '%s\n' --status --kind --category --output --sarif --cost --check --completeness --live --json;;
+    next) printf '%s\n' --status --coverage --json;;
     show) printf '%s\n' --sig --json;;
-    check-tree) printf '%s\n' --expect;;
+    check-tree) printf '%s\n' --expect --json;;
     verify) printf '%s\n' --timeout --group --command --sandbox --json;;
     config) printf '%s\n' --explain --preview --file --json;;
-    doctor|calibrate|record|trend) printf '%s\n' --json;;
+    doctor) printf '%s\n' --json;;
+    calibrate) printf '%s\n' --probe --judge --judge-file --json;;
+    record) printf '%s\n' --dry-run --strict --cost-names --require-coverage --json;;
+    trend) printf '%s\n' --overlap --json;;
     threads) printf '%s\n' --provider --json;;
-    fetch-local) printf '%s\n' --staged --range --base --stash --consent-over-budget --json;;
+    fetch-local) printf '%s\n' --staged --range --base --stash --worktree --consent-over-budget --show-prompts --chunk --json;;
     run) printf '%s\n' --agent --timeout --print --json;;
     learn) printf '%s\n' --rule --scope --id --provenance --rigor --status --retire --restore --reason --json;;
     adopt) printf '%s\n' --from --json;;
     fix) printf '%s\n' --sig --json;;
     ready) printf '%s\n' --json --check;;
-    gate) printf '%s\n' --max-severity --require-head --live --json;;
+    gate) printf '%s\n' --max-severity --require-head --live --coverage --json;;
+    mcp) printf '%s\n' --read-only --operator --agent --write --dry-run --json;;
     init) printf '%s\n' --preset --yes --force --json;;
-    skill) printf '%s\n' show files install --format --dir --agent --force --dry-run --json;;
+    skill) printf '%s\n' show files install --format --dir --detect --agent --force --dry-run --json;;
     upgrade) printf '%s\n' --version --dry-run --json;;
     uninstall) printf '%s\n' --remove-path --dry-run --json;;
     *) return 0;;
