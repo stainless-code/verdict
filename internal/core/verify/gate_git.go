@@ -20,6 +20,9 @@ func checkDestructiveGit(g *gateText) *core.RefusalError {
 	if ref := checkGitExtTransport(g); ref != nil {
 		return ref
 	}
+	if ref := checkGitExecPath(g); ref != nil {
+		return ref
+	}
 	if ref := checkGitCloneVectors(g); ref != nil {
 		return ref
 	}
@@ -57,6 +60,17 @@ func checkGitExtTransport(g *gateText) *core.RefusalError {
 	}
 	if frag := grepO(reProtoExtFrag, g.bare); frag != "" {
 		return refuse(codeDestructive, frag, "git ext transport executes a local command — fetch fixtures first, run offline")
+	}
+	return nil
+}
+
+func checkGitExecPath(g *gateText) *core.RefusalError {
+	if !reGitWord.MatchString(g.bare) {
+		return nil
+	}
+	if frag := grepO(reGitExecPath, g.bare); frag != "" {
+		return refuse(codeDestructive, frag,
+			"git --exec-path runs git's subcommands from an attacker directory — run git with its own exec path")
 	}
 	return nil
 }
@@ -154,6 +168,7 @@ var (
 	reGitUploadPack    = regexp.MustCompile(`--upload-pack([^a-z-]|$)`)
 	reGitArchiveRemote = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])git[[:space:]]+([^;|&]*[[:space:]])?archive` +
 		`([[:space:];|&]|$)[^;|&]*--remote([[:space:]=]|$)`)
+	reGitExecPath    = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])git[[:space:]]+[^;|&]*--exec-path(=|[[:space:]][^[:space:];|&])`)
 	reGitConfigEnv   = regexp.MustCompile(`--config-env[[:space:]=][^;|&]*(fsmonitor|sshcommand|askpass|helper|pager|ext\.allow|upload)`)
 	reCorePagerSet   = regexp.MustCompile(`core\.pager[[:space:]]*=`)
 	reCorePagerVal   = regexp.MustCompile(`core\.pager[[:space:]]*=[[:space:]]*[^[:space:];|&]*`)

@@ -204,6 +204,9 @@ func checkDestructiveExec(g *gateText) *core.RefusalError {
 	if frag := grepO(reTarExec, g.bare); frag != "" {
 		return refuse(codeDestructive, frag, "tar executes the named command — archive without exec options")
 	}
+	if frag := grepO(reTarShortI, g.csbare); frag != "" {
+		return refuse(codeDestructive, frag, "tar -I executes the named compressor — archive without exec options")
+	}
 	return nil
 }
 
@@ -265,4 +268,6 @@ var (
 	reNodeDashR = regexp.MustCompile(`(^|[[:space:];|&(){}"=,:/-])node_options[^;|&]*-r([^a-z0-9-]|$)`)
 	reTarExec   = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])(g?tar)[[:space:]]+[^;|` +
 		`&]*--(checkpoint-action|use-compress-program|to-command)([^a-z-]|$)`)
+	reTarShortI = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])([Gg]?[Tt][Aa][Rr])[[:space:]]+` +
+		`([^;|&]*[[:space:]])?-I([[:space:]]|$)`)
 )

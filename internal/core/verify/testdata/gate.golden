@@ -231,7 +231,7 @@ F-R33	verify-repo-escape
 F-X01	verify-networked
 F-X02	verify-networked
 F-X03	verify-networked
-F-X04	CLEAN
+F-X04	verify-destructive
 F-X05	verify-networked
 F-X06	verify-networked
 F-X07	verify-networked
@@ -246,7 +246,7 @@ F-X15	CLEAN
 F-X16	CLEAN
 F-X17	CLEAN
 F-X18	CLEAN
-F-X19	CLEAN
+F-X19	verify-destructive
 F-P01	CLEAN
 F-P02	CLEAN
 F-P03	CLEAN
@@ -272,6 +272,8 @@ F-P22	CLEAN
 F-P23	CLEAN
 F-P24	CLEAN
 F-P25	CLEAN
+F-P26	CLEAN
+F-P27	CLEAN
 G000	CLEAN
 G001	CLEAN
 G002	CLEAN

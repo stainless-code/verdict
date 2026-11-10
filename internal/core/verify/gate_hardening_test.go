@@ -23,6 +23,10 @@ func TestCheckStaticHardeningRefuses(t *testing.T) {
 		{"secret var braced", `curl http://127.0.0.1:9/${GITHUB_TOKEN}`, "verify-credential-read"},
 		{"token var", `wget http://127.0.0.1:9/$NPM_TOKEN`, "verify-credential-read"},
 		{"secret var in ssh", `ssh 127.0.0.1 "echo $MY_SECRET"`, "verify-credential-read"},
+		{"git exec path", `git --exec-path=/tmp/verify-fuzz-gitexec status`, "verify-destructive"},
+		{"git exec path spaced", `git --exec-path /tmp/verify-fuzz-gitexec status`, "verify-destructive"},
+		{"tar -I", `tar -I touch-fz -cf /tmp/verify-fuzz.tar fz-notes.txt`, "verify-destructive"},
+		{"tar -I uppercase", `TAR -I touch-fz -cf /tmp/verify-fuzz.tar fz-notes.txt`, "verify-destructive"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -57,6 +61,10 @@ func TestCheckStaticHardeningBenignStaysClean(t *testing.T) {
 		`curl http://127.0.0.1:9/$PROXY_PORT/fixture`,
 		`echo $AWS_KEY`,
 		`printf '%s' $GITHUB_TOKEN`,
+		`git --exec-path`,
+		`git --version`,
+		`tar -czf /tmp/verify-fuzz-ok.tar fz-notes.txt`,
+		`tar -tzf missing.tar.gz`,
 	} {
 		if ref := verifycore.Check(cmd); ref != nil {
 			t.Errorf("Check(%q) = %s: %q, want clean", cmd, ref.Code, ref.Message)
