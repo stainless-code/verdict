@@ -232,56 +232,22 @@ func assertMergedTOML(t *testing.T, old, out []byte) {
 
 // operatorLines returns the non-blank lines the merge must keep, dropping the
 // verdict table's args lines: that is the one line an in-place posture update
-// rewrites, and the tables the merge refuses if it cannot place a new one.
+// rewrites. The scan is the merge's own line model, because only it can say
+// which of TOML's many spellings a line is; everything it does not read as an
+// args line must survive byte-for-byte, in order.
 func operatorLines(s string) []string {
+	doc := scanTOML(s)
+	start, end := doc.verdictTable()
 	var out []string
-	inVerdict := false
-	for line := range strings.SplitSeq(s, "\n") {
-		line = strings.TrimRight(line, " \t\r")
-		trimmed := strings.TrimSpace(line)
-		if isTableHeader(trimmed) {
-			inVerdict = isVerdictHeader(trimmed)
-		} else if inVerdict && isArgsLine(trimmed) {
+	for i, line := range doc.lines {
+		if start >= 0 && i > start && i < end && doc.scan[i].hasPair && doc.scan[i].key == keyArgs {
 			continue
 		}
-		if line != "" {
+		if line = strings.TrimRight(line, " \t\r"); line != "" {
 			out = append(out, line)
 		}
 	}
 	return out
-}
-
-// isTableHeader reports the `[` and `]` shape of a TOML table header, not the
-// `[[` array-of-tables form.
-func isTableHeader(line string) bool {
-	return strings.HasPrefix(line, "[") && !strings.HasPrefix(line, "[[")
-}
-
-// isVerdictHeader matches the plain [mcp_servers.verdict] header, including
-// TOML's blank-space and quoted-key spellings.
-func isVerdictHeader(line string) bool {
-	end := strings.IndexByte(line, ']')
-	if end < 0 {
-		return false
-	}
-	inner := line[1:end]
-	inner = strings.ReplaceAll(inner, " ", "")
-	inner = strings.ReplaceAll(inner, "\t", "")
-	inner = strings.ReplaceAll(inner, `"`, "")
-	inner = strings.ReplaceAll(inner, "'", "")
-	return inner == tomlName
-}
-
-// isArgsLine reports one `args = ...` key line after dropping the quote
-// characters a TOML line scan skips before the key.
-func isArgsLine(line string) bool {
-	line = strings.NewReplacer(`"`, "", `'`, "").Replace(line)
-	line = strings.TrimSpace(line)
-	rest, ok := strings.CutPrefix(line, keyArgs)
-	if !ok {
-		return false
-	}
-	return strings.HasPrefix(strings.TrimLeft(rest, " \t"), "=")
 }
 
 // nonBlankLines returns the trimmed-right non-empty lines of s.
