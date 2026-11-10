@@ -254,10 +254,14 @@
 # here: darwin/amd64 12667488, darwin/arm64 11606146, linux/amd64 12439712,
 # linux/arm64 11403424, windows/amd64 12781056, windows/arm64 11481088. Every
 # ceiling crosses, and each moves to the next 10 kB above its measurement.
+# MCP config posture-pair refusal (ergonomics F4): the shared conflict
+# constant, the parse-time refusal, and the refusal tests add one 4 KiB
+# segment on linux/amd64 only. Measured here: linux/amd64 12443808; that
+# ceiling moves to the next 10 kB above its measurement, the other five hold.
 deps 0
 darwin/amd64 12670000
 darwin/arm64 11610000
-linux/amd64 12440000
+linux/amd64 12450000
 linux/arm64 11410000
 windows/amd64 12790000
 windows/arm64 11490000
