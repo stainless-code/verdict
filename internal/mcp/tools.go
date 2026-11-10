@@ -134,8 +134,9 @@ func allTools(readOnly, operator bool) []*tool {
 		}, toolDeps{}, decodeConfig, wireConfig, invokeConfig),
 		dataTool(&toolSpec{
 			name: "doctor",
-			description: "Preflight gh auth, git, and storage. Call first when a verb " +
-				"fails for environmental reasons. Reads local tools and config; writes nothing.",
+			description: "Preflight the configured code host's CLI and auth, git, and storage. " +
+				"Call first when a verb fails for environmental reasons; provider picks the host " +
+				"(default github). Reads local tools and config; writes nothing.",
 			omit: omitPositionals,
 			meta: toolMeta{title: "Preflight environment", readOnly: true, idempotent: true},
 		}, toolDeps{commander: coreexec.Runner{}}, decodeDoctor, wireDoctor, doctorcore.Run,

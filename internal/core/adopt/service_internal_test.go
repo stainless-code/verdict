@@ -2,9 +2,13 @@ package adoptcore
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -88,5 +92,83 @@ func TestAdoptEntriesBackfillsRigorSource(t *testing.T) {
 	got1, _ := m1.Get("rigor_source")
 	if got1 != "model" {
 		t.Errorf("model entry rigor_source = %v, want model", got1)
+	}
+}
+
+// testAdoptDiff is the minimal patch checkAdoptTarget needs beside the store.
+const testAdoptDiff = "diff --git a/notes.txt b/notes.txt\n" +
+	"index 1111111..2222222 100644\n" +
+	"--- a/notes.txt\n+++ b/notes.txt\n" +
+	"@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n"
+
+// mkAdoptTarget writes one PR target bundle with the given PR record.
+func mkAdoptTarget(t *testing.T, record string) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "PR.json"), []byte(record), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "full.diff"), []byte(testAdoptDiff), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// TestAdoptTargetHostGate proves adopt hands findings to every host verdict can
+// post to and refuses the rest with the host named, so the gate follows the
+// capability table instead of one hard-coded host.
+//
+//nolint:revive // the provider matrix reads as one block
+func TestAdoptTargetHostGate(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		provider string
+		adopts   bool
+	}{
+		{"github", true},
+		{"gitlab", true},
+		{"gitcafe", false},
+		{"forgejo", false},
+		{"bitbucket", false},
+		{"azure", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.provider, func(t *testing.T) {
+			t.Parallel()
+			dir := mkAdoptTarget(t, `{"state":"OPEN","provider":"`+tc.provider+`"}`)
+			ref := (&state{}).checkAdoptTarget(dir)
+			if tc.adopts {
+				if ref != nil {
+					t.Fatalf("%s target refused: %+v", tc.provider, ref)
+				}
+				return
+			}
+			assertHostRefusal(t, tc.provider, ref)
+		})
+	}
+}
+
+// assertHostRefusal proves one host's refusal is the typed provider gate and
+// names that host, so the message cannot degrade to a generic sentence.
+func assertHostRefusal(t *testing.T, provider string, ref *core.RefusalError) {
+	t.Helper()
+	if ref == nil {
+		t.Fatalf("%s target was accepted, want a typed refusal", provider)
+	}
+	if ref.Code != "provider-unimplemented" {
+		t.Errorf("%s refusal code = %q, want provider-unimplemented", provider, ref.Code)
+	}
+	if !strings.Contains(ref.Message, `"`+provider+`"`) {
+		t.Errorf("%s refusal message does not name the host: %q", provider, ref.Message)
+	}
+}
+
+// TestAdoptTargetWithoutProviderMarkerIsGitHub proves a bundle that predates
+// the provider marker still adopts: the missing marker reads as GitHub.
+func TestAdoptTargetWithoutProviderMarkerIsGitHub(t *testing.T) {
+	t.Parallel()
+	dir := mkAdoptTarget(t, `{"state":"OPEN"}`)
+	if ref := (&state{}).checkAdoptTarget(dir); ref != nil {
+		t.Fatalf("marker-less target refused: %+v", ref)
 	}
 }

@@ -9,11 +9,12 @@ func usageText() string {
 		"(PR.json normalized for non-github providers)\n" +
 		"    Provider scope: record/report/triage/show/next run on any provider bundle; post submits to GitHub and\n" +
 		"    GitLab, which takes an approval but has no request-changes event — a bound request-changes posts as a\n" +
-		"    comment; post.json records the withheld capability in withheld[]; calibrate (live join)/adopt/ready\n" +
-		"    need a GitHub bundle and refuse the rest typed (provider-unimplemented; a local bundle has its own\n" +
-		"    code — post/ready no-pr-target, calibrate no-threads, adopt bad-target). calibrate --probe is offline\n" +
-		"    and runs on any bundle. Incremental re-review\n" +
-		"    (--base-sha/--since) is GitHub-only (noted 2026-11-03; providers have no incremental re-review yet).\n" +
+		"    comment; post.json records the withheld capability in withheld[]; calibrate (live join)/ready need a\n" +
+		"    GitHub bundle and adopt needs one verdict can post to (github, gitlab); the rest refuse typed\n" +
+		"    (provider-unimplemented; a local bundle has its own code — post/ready no-pr-target, calibrate\n" +
+		"    no-threads, adopt bad-target). calibrate --probe is offline and runs on any bundle. Incremental\n" +
+		"    re-review (--base-sha/--since) is GitHub-only (noted 2026-11-03; providers have no incremental\n" +
+		"    re-review yet).\n" +
 		"    diffs over 512000 bytes refuse with a split-or-narrow hint (empty diffs warn, never fail).\n" +
 		"    Deliberate exceptions only: REVIEW_MAX_BYTES=<n> (or the typed max_bytes default) overrides the cap.\n" +
 		"    Chunking opt-in only: --chunk (or the typed chunk default) marks over-cap fetches for " +
@@ -67,7 +68,8 @@ func usageText() string {
 		"    changes no count; bare, it reads the panel pinned in the bundle and refuses without one.\n" +
 		"  adopt <owner/repo> <pr> --from <local-slug> [--json]\n" +
 		"    carry a local bundle's findings into a fresh PR fetch for posting (re-anchors, stamps handoff).\n" +
-		"    Adopt-into needs a GitHub PR target: non-GitHub targets refuse typed (provider-unimplemented).\n" +
+		"    Adopt-into needs a bundle verdict can post to (github, gitlab): other hosts refuse\n" +
+		"    typed (provider-unimplemented, naming the host).\n" +
 		"  fix <owner/repo> <local-slug> [--sig <s>] [--json]\n" +
 		"    one bounded pass over a local bundle: picks the top open inline sig\n" +
 		"    (or --sig), prints finding + kb.txt context with verify/land/re-run\n" +
@@ -149,12 +151,16 @@ func usageText() string {
 		"    Destructive, networked, credential-reading, and repo-escaping commands\n" +
 		"    refuse before execution as verify-destructive, verify-networked,\n" +
 		"    verify-credential-read, and verify-repo-escape.\n" +
-		"  doctor [--json]\n" +
-		"    preflight the harness: gh auth and .verdict storage writability hard-fail\n" +
-		"    the run; scopes, git, ps, and API reachability warn only (never fail). A\n" +
-		"    token granting more than runs need warns on a token-scopes-excess row\n" +
-		"    naming the excess scopes. Exit 0 unless a hard check fails. No repo/PR\n" +
-		"    args, no writes, no network beyond the existing gh reads.\n" +
+		"  doctor [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] [--json]\n" +
+		"    preflight the configured host: its CLI and auth, plus .verdict storage\n" +
+		"    writability, hard-fail the run; scopes, git, ps, and API reachability warn\n" +
+		"    only (never fail). --provider picks the host (default github); github reads\n" +
+		"    through gh, gitlab through glab, gitcafe through cafe, and\n" +
+		"    forgejo/bitbucket/azure check curl or az plus the credential variables\n" +
+		"    their fetch paths read (presence only, never a value). A token granting\n" +
+		"    more than runs need warns on a token-scopes-excess row naming the excess\n" +
+		"    scopes. Exit 0 unless a hard check fails. No repo/PR args, no writes, no\n" +
+		"    network beyond the host CLI reads.\n" +
 		"  calibrate <owner/repo> <pr> [--probe [--judge SIG:VERDICT[:HELPFUL]]... [--judge-file PATH]] [--json]\n" +
 		"    join findings against live ground truth (thread states + files changed since the\n" +
 		"    review head). Read-only; reports outcomes + tier precision, never auto-tunes.\n" +

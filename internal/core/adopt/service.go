@@ -245,8 +245,8 @@ func (st *state) checkAdoptTarget(dir string) *core.RefusalError {
 	if err := ensureStore(dir); err != nil {
 		return st.refuse("adopt-failed", fmt.Sprintf("adopt failed: %v", err))
 	}
-	if prov := bundleProvider(dir); prov != providerGitHub {
-		return st.refuse("provider-unimplemented", msgProviderUnimplemented)
+	if prov := bundleProvider(dir); !core.CapabilitiesFor(prov).Post {
+		return st.refuse("provider-unimplemented", fmt.Sprintf(msgProviderUnimplemented, prov))
 	}
 	return nil
 }
@@ -507,7 +507,7 @@ const (
 	fromAuto = "auto"
 	// maxTwinShown caps the ambiguous-patch-match candidate list.
 	maxTwinShown = 5
-	// providerGitHub is the only adopt target provider.
+	// providerGitHub is the provider a bundle without a host marker reads as.
 	providerGitHub = "github"
 	findingsSuffix = "/findings.json"
 	// fullDiffSuffix is the bundle diff path suffix.
@@ -551,8 +551,8 @@ const (
 
 	msgMissingDiff = "missing %s/full.diff (fetch the PR first)"
 
-	msgProviderUnimplemented = "adopt targets a GitHub PR bundle " +
-		"(adopting into another host's bundle is not implemented)"
+	msgProviderUnimplemented = "adopt targets a bundle verdict can post to (github, gitlab), " +
+		"and this bundle is %q — adopt only hands findings to a host with a submit path"
 
 	msgAlreadyAdopted = "%s/findings.json exists — adopt merges once into a fresh fetch " +
 		"(re-fetch or post first)"

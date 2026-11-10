@@ -696,7 +696,8 @@ Distinct from `prompts/ci.md`'s agent-written
 `report --output` at that path; the verb's markdown carries `report-machine`
 markers, the agent's does not. Severity is stored at write time (unknown → null,
 prose emoji never parsed) — rank uses status, then severity, then rigor, then
-anchored/inBounds, then path/line/sig. `doctor` preflights the harness; `calibrate`
+anchored/inBounds, then path/line/sig. `doctor` preflights one code host (the
+one `--provider` names, `github` by default); `calibrate`
 joins findings against live ground truth, read-only.
 
 `show --json` returns the finding in `data.item` (the raw store record in key
@@ -1076,9 +1077,20 @@ with `--live strict` (or accept the loudly-skipped local verdict with
 
 ### Doctor preflight
 
-`doctor` preflights the harness with no repo/PR args and no writes: `gh-cli`,
-`gh-auth`, and `storage-writable` hard-fail the run (exit 1); `token-scopes`,
-`ps`, `git`, and `api-reachable` warn only and never fail it.
+`doctor` preflights one code host with no repo/PR args and no writes: the
+host CLI, its auth, and `storage-writable` hard-fail the run (exit 1);
+`token-scopes`, `ps`, `git`, and `api-reachable` warn only and never fail it.
+`--provider github|gitlab|gitcafe|forgejo|bitbucket|azure` takes the same enum
+and the same `bad-provider` refusal as `fetch --provider`, and defaults to
+`github`, so a bare `doctor` keeps its GitHub rows byte for byte. Each host
+reads through its own CLI — `gh`, `glab`, `cafe` — and `forgejo`, `bitbucket`,
+and `azure` check the tool their fetch path shells (`curl`, `curl`, `az`) plus
+the credential variables that path reads (`FORGEJO_HOST`+`FORGEJO_TOKEN`;
+`BITBUCKET_TOKEN` or `BITBUCKET_USERNAME`+`BITBUCKET_PASSWORD`;
+`AZURE_DEVOPS_ORG`+`AZURE_DEVOPS_EXT_PAT`), reporting presence only and never a
+value. A host's rows carry its own names (`gh-cli`/`gh-auth` for GitHub,
+`glab-cli`/`glab-auth` for GitLab), so a preflight never shows a `gh` row for a
+host that does not use `gh`.
 The scope rows reuse the single existing `gh api user` scopes-header read —
 no new network calls. Grants below the baseline (`repo`/`public_repo` for the
 reads the tool performs) warn on the `token-scopes` row; grants above it warn
@@ -1883,7 +1895,9 @@ for that instant instead of parsing the prose.
 Upgrade arc: review locally, then `fetch owner/repo N` and
 `adopt owner/repo N --from local-<name>`. Adopt copies findings with an `adopted`
 history event and re-resolves anchors against the PR hunks (unmatched paths land
-`anchored:false`, never dropped), refuses into a non-empty store. From there `post`
+`anchored:false`, never dropped), refuses into a non-empty store, and needs a
+target verdict can post to (`github`, `gitlab`) — a host with no submit path
+refuses `provider-unimplemented` naming it. From there `post`
 and `calibrate` proceed normally — predictions recorded offline get settled against
 live ground truth.
 
@@ -2207,9 +2221,11 @@ shape from another host (`PR.json` normalized to one schema: `provider`,
 `write_toc_roles` and the whole validate+merge path run unchanged — anchors
 validate against `full.diff` hunks regardless of host. `record`, `report`,
 `triage`, `show`, `next` work on provider bundles as-is. `post` submits to
-GitHub and GitLab; `post` on the other hosts, plain `calibrate`, and
-`adopt`-into refuse non-GitHub bundles, and `calibrate --probe` grades any
-bundle offline. The refusal names the gap rather than an impossibility: Forgejo
+GitHub and GitLab, and `adopt` merges into either of those bundles (its
+re-anchor reads the stored hunks and never shells a host CLI); `post` on the
+other hosts and plain `calibrate` refuse typed, while `adopt` into a host
+without a submit path refuses `provider-unimplemented` naming the host, and
+`calibrate --probe` grades any bundle offline. The refusal names the gap rather than an impossibility: Forgejo
 can author inline comments through its API even though its CLI cannot, but each
 remaining host still needs its own submit path with the comments → summary body
 → verdict-last ordering laid out below. `fetch --json` publishes the facts in

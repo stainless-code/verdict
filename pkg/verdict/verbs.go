@@ -603,8 +603,11 @@ func (c *Client) Calibrate(ctx context.Context, req *CalibrateRequest) (*Result,
 	return resultPtr(resp.Repo, resp.Pr, resp.At, resp.Next, resp.Warnings, resp.Data), nil
 }
 
-// DoctorRequest carries no positionals: doctor preflights the harness.
-type DoctorRequest struct{}
+// DoctorRequest names the host to preflight: the fetch enum, and an empty
+// Provider keeps the GitHub posture.
+type DoctorRequest struct {
+	Provider string
+}
 
 // DoctorResponse carries the preflight result.
 type DoctorResponse struct {
@@ -612,8 +615,13 @@ type DoctorResponse struct {
 	Healthy bool
 }
 
-// Doctor preflights the harness (auth, git, storage) and reports health.
-func (c *Client) Doctor(ctx context.Context, _ *DoctorRequest) (*DoctorResponse, error) {
+// Doctor preflights one code host's CLI and auth, git, and storage, and
+// reports health.
+func (c *Client) Doctor(ctx context.Context, req *DoctorRequest) (*DoctorResponse, error) {
+	provider := ""
+	if req != nil {
+		provider = req.Provider
+	}
 	rr, err := c.requestBare(ctx)
 	if err != nil {
 		// Only cancellation aborts. Every other probe failure is exactly what
@@ -637,7 +645,7 @@ func (c *Client) Doctor(ctx context.Context, _ *DoctorRequest) (*DoctorResponse,
 			RepoRoot: ".",
 		}
 	}
-	resp, ref := doctorcore.Run(ctx, &doctorcore.Request{ReadRequest: rr})
+	resp, ref := doctorcore.Run(ctx, &doctorcore.Request{ReadRequest: rr, Provider: provider})
 	if ref != nil {
 		return nil, refusalErr(ref)
 	}

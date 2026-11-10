@@ -179,10 +179,17 @@
 # With the sandbox hardening stacked on top, the final PR 1 build measures
 # darwin/amd64 12331728, linux/amd64 12112032, windows/arm64 11190784; those
 # three move to the next 10 kB, the other three hold.
+# doctor's per-host preflight table (the gitlab/glab, gitcafe/cafe, and
+# curl-or-az credential probes with their row tables) plus adopt's gate reading
+# the capability table instead of one hard-coded host. Measured here:
+# darwin/amd64 12340064, darwin/arm64 11321570, linux/amd64 12124320,
+# linux/arm64 11141280, windows/amd64 12455936, windows/arm64 11198976. Three
+# ceilings cross and move to the next 10 kB at least 5 kB above their
+# measurement; darwin/arm64, linux/arm64, and windows/arm64 stay put.
 deps 0
-darwin/amd64 12340000
+darwin/amd64 12350000
 darwin/arm64 11330000
-linux/amd64 12120000
+linux/amd64 12130000
 linux/arm64 11150000
-windows/amd64 12450000
+windows/amd64 12470000
 windows/arm64 11200000

@@ -143,10 +143,17 @@ func (Runner) LookPath(tool string) error {
 // nonzero — callers map that to their verb's warn-or-refuse posture, the
 // way readcommon.Gh's error return mapped before the core move.
 func Gh(ctx context.Context, cmdr core.Commander, args ...string) (stdout, stderr string, ok bool) {
+	return Host(ctx, cmdr, ghBin, args...)
+}
+
+// Host runs one host CLI (gh, glab, az, cafe) with exactly the given argv and
+// the same ok contract as [Gh], so a verb that preflights a non-GitHub host
+// shares one call shape instead of re-deriving it.
+func Host(ctx context.Context, cmdr core.Commander, bin string, args ...string) (stdout, stderr string, ok bool) {
 	if cmdr == nil {
 		return "", "", false
 	}
-	res, err := cmdr.Run(ctx, &core.Command{Argv: append([]string{ghBin}, args...)})
+	res, err := cmdr.Run(ctx, &core.Command{Argv: append([]string{bin}, args...)})
 	if err != nil || res.ExitCode != 0 {
 		return res.Stdout, res.Stderr, false
 	}

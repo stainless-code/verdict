@@ -17,7 +17,7 @@ _verdict_flags() { # $1 = verb
     check-tree) printf '%s\n' --expect --json;;
     verify) printf '%s\n' --timeout --group --command --sandbox --json;;
     config) printf '%s\n' --explain --preview --file --json;;
-    doctor) printf '%s\n' --json;;
+    doctor) printf '%s\n' --provider --json;;
     calibrate) printf '%s\n' --probe --judge --judge-file --json;;
     record) printf '%s\n' --dry-run --strict --cost-names --require-coverage --json;;
     trend) printf '%s\n' --overlap --json;;

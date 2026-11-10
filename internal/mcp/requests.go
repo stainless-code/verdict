@@ -111,7 +111,9 @@ func wireConfig(ctx context.Context, b *bindings, req *core.ConfigRequest) error
 	return nil
 }
 
-func decodeDoctor(_ *doctorcore.Request, _ *args) {}
+func decodeDoctor(req *doctorcore.Request, a *args) {
+	a.str("provider", &req.Provider)
+}
 
 func wireDoctor(ctx context.Context, b *bindings, req *doctorcore.Request) error {
 	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {

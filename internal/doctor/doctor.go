@@ -19,9 +19,10 @@ import (
 // Request wires a doctor run.
 type Request = readcommon.Request
 
-// Run executes `doctor [--json]`, returning the exit code.
+// Run executes `doctor [--provider <name>] [--json]`, returning the exit code.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
-	if code, done := parseFlags(r, args); done {
+	provider, code, done := parseFlags(r, args)
+	if done {
 		return code
 	}
 	if code, done := r.Canceled(ctx, "doctor"); done {
@@ -29,7 +30,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	}
 	now := runTime(r)
 	writeStamp(r, now)
-	resp, ref := doctorcore.Run(ctx, doctorRequest(r, req, now))
+	resp, ref := doctorcore.Run(ctx, doctorRequest(r, req, now, provider))
 	if ref != nil {
 		return r.Refuse(ref)
 	}
@@ -78,7 +79,7 @@ func runTime(r *cli.Runner) time.Time {
 
 // doctorRequest injects the runner's clock, progress observer, and command
 // runner into the typed service request.
-func doctorRequest(r *cli.Runner, req Request, now time.Time) *doctorcore.Request {
+func doctorRequest(r *cli.Runner, req Request, now time.Time, provider string) *doctorcore.Request {
 	read := req
 	if read.Runtime == nil {
 		read.Runtime = &core.Runtime{}
@@ -88,14 +89,28 @@ func doctorRequest(r *cli.Runner, req Request, now time.Time) *doctorcore.Reques
 	read.Commander = coreexec.Runner{}
 	return &doctorcore.Request{
 		ReadRequest: read,
+		Provider:    provider,
 		Warnings:    append([]string{}, r.Warnings...),
 	}
 }
 
-// parseFlags parses the doctor flags.
-func parseFlags(r *cli.Runner, args []string) (int, bool) {
-	if len(args) == 0 {
-		return 0, false
+// parseFlags strips doctor's flags, reporting unknown ones. The provider enum
+// itself is validated by the service, so the CLI, MCP, and SDK surfaces share
+// one refusal.
+func parseFlags(r *cli.Runner, args []string) (string, int, bool) {
+	provider := ""
+	for i := 0; i < len(args); i++ {
+		switch a := args[i]; a {
+		case "--provider":
+			v, next, u := cli.FlagValue(args, i, a, "<name>")
+			if u != nil {
+				return "", r.ReportUsage(u), true
+			}
+			provider, i = v, next
+		default:
+			msg := fmt.Sprintf("unknown flag '%s' for doctor (want --provider <name>, --json)", a)
+			return "", r.ReportUsage(&cli.UsageError{Message: msg}), true
+		}
 	}
-	return r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf("unknown flag '%s' for doctor (want --json)", args[0])}), true
+	return provider, 0, false
 }

@@ -1,13 +1,15 @@
 // Package doctorcore is the doctor verb's domain service: the harness
-// preflight (gh auth and storage writability hard-fail the run; scopes,
-// git, ps, and API reachability warn only). No repo/PR args, no writes, no
-// network beyond the gh reads through the injected commander.
-// internal/doctor owns argv parsing, progress routing, envelope rendering,
-// and exit mapping.
+// preflight for one configured host (the host CLI, its auth, and API
+// reachability), the shared tool probes, and storage writability; auth, the
+// host CLI, and storage hard-fail the run, while scopes, git, ps, and
+// reachability warn only. No repo/PR args, no writes, no network beyond the
+// host CLI reads through the injected commander. internal/doctor owns argv
+// parsing, progress routing, envelope rendering, and exit mapping.
 package doctorcore
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -18,9 +20,11 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// Request wires a doctor run.
+// Request wires a doctor run. Provider names the host whose CLI the preflight
+// checks, with the fetch enum; empty keeps the GitHub posture.
 type Request struct {
 	core.ReadRequest
+	Provider string `enum:"github|gitlab|gitcafe|forgejo|bitbucket|azure"`
 	Warnings []string
 }
 
@@ -82,9 +86,13 @@ func (d *Data) Counts() (ok, warn, fail int) {
 	return ok, warn, fail
 }
 
-// Run executes the harness preflight.
+// Run executes the harness preflight for the requested host.
 func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
-	st := &state{req: req, warnings: append([]string{}, req.Warnings...)}
+	host := hostOf(req)
+	if _, known := hostChecks[host]; !known {
+		return nil, &core.RefusalError{Code: codeBadProvider, Message: fmt.Sprintf(msgBadProvider, host)}
+	}
+	st := &state{req: req, host: host, warnings: append([]string{}, req.Warnings...)}
 	if err := ctx.Err(); err != nil {
 		return nil, &core.RefusalError{Code: "canceled", Message: "canceled before doctor completed"}
 	}
@@ -119,26 +127,105 @@ const (
 
 const newline = "\n"
 
-const checkStorageWritable = "storage-writable"
+const (
+	checkStorageWritable = "storage-writable"
+	checkAPIReachable    = "api-reachable"
+)
 
 const anyWrite = 0o222
 
+// The hosts doctor can preflight, spelled as fetch spells them so one enum
+// spans both verbs.
+const (
+	providerGitHub    = "github"
+	providerGitLab    = "gitlab"
+	providerGitCafe   = "gitcafe"
+	providerForgejo   = "forgejo"
+	providerBitbucket = "bitbucket"
+	providerAzure     = "azure"
+)
+
+// The host CLIs the preflight shells, spelled once. GitHub's `gh` is not here:
+// coreexec.Gh owns that name for every verb that reads through it.
+const (
+	binGlab = "glab"
+	binCafe = "cafe"
+	binCurl = "curl"
+	binAz   = "az"
+)
+
+// The credential variables the fetch path reads per host. Doctor reports
+// whether they are set, never their values.
+//
+//nolint:gosec // G101: these name the variables to read, never a credential value
+const (
+	envForgejoHost    = "FORGEJO_HOST"
+	envForgejoToken   = "FORGEJO_TOKEN"
+	envBitbucketToken = "BITBUCKET_TOKEN"
+	envBitbucketUser  = "BITBUCKET_USERNAME"
+	envBitbucketPass  = "BITBUCKET_PASSWORD"
+	envAzureOrg       = "AZURE_DEVOPS_ORG"
+	envAzurePAT       = "AZURE_DEVOPS_EXT_PAT"
+)
+
+const (
+	codeBadProvider = "bad-provider"
+	msgBadProvider  = "unknown --provider '%s' (want github|gitlab|gitcafe|forgejo|bitbucket|azure)"
+)
+
 type state struct {
 	req      *Request
+	host     string
 	warnings []string
 	checks   []Check
 }
 
+// hostProbe is one provider-specific preflight step. A step appends its own
+// rows, so a read that reports twice (github's scope header and its excess row)
+// stays one entry.
+type hostProbe func(ctx context.Context, st *state)
+
+// hostChecks is the per-host preflight table: head runs before the shared tool
+// rows and tail after them, so every host keeps one documented row order — its
+// own CLI, then ps and git, then its reachability read. A provider missing from
+// this table is refused before any probe runs, so adding a host is one row here
+// plus its probes, never a branch in the run.
+var hostChecks = map[string]struct{ head, tail []hostProbe }{
+	providerGitHub: {
+		head: []hostProbe{checkGhCLI, checkGhAuth, checkTokenScopes},
+		tail: []hostProbe{checkGitHubReachable},
+	},
+	providerGitLab: {
+		head: []hostProbe{checkGlabCLI, checkGlabAuth},
+		tail: []hostProbe{checkGitLabReachable},
+	},
+	providerGitCafe:   {head: []hostProbe{checkCafeCLI}},
+	providerForgejo:   {head: []hostProbe{checkCurl, checkForgejoAuth}},
+	providerBitbucket: {head: []hostProbe{checkCurl, checkBitbucketAuth}},
+	providerAzure:     {head: []hostProbe{checkAzCLI, checkAzureAuth}},
+}
+
+// hostOf resolves the host to preflight: an unset flag keeps today's GitHub
+// posture.
+func hostOf(req *Request) string {
+	if req.Provider == "" {
+		return providerGitHub
+	}
+	return req.Provider
+}
+
+// examine runs the preflight: the host's own probes, the shared tool rows, the
+// host's reachability read, and storage.
 func (st *state) examine(ctx context.Context) {
-	st.checkGhCLI(ctx)
-	st.checkGhAuth(ctx)
-	scopes := st.checkTokenScopes(ctx)
-	if scopes != "" {
-		st.checkTokenExcess(scopes)
+	host := hostChecks[st.host]
+	for _, probe := range host.head {
+		probe(ctx, st)
 	}
 	st.checkTool("ps", "verify runs without timeout enforcement")
 	st.checkTool("git", "check-tree and verify degraded without git")
-	st.checkAPIReachable(ctx)
+	for _, probe := range host.tail {
+		probe(ctx, st)
+	}
 	st.checkStorage()
 }
 
@@ -173,7 +260,7 @@ func (st *state) runtime() *core.Runtime {
 	return st.req.Runtime
 }
 
-func (st *state) checkGhCLI(ctx context.Context) {
+func checkGhCLI(ctx context.Context, st *state) {
 	if _, err := exec.LookPath("gh"); err != nil {
 		st.add("gh-cli", severityFail, false, "missing — install github.com/cli/cli")
 		return
@@ -185,7 +272,7 @@ func (st *state) checkGhCLI(ctx context.Context) {
 	st.add("gh-cli", severityFail, true, version)
 }
 
-func (st *state) checkGhAuth(ctx context.Context) {
+func checkGhAuth(ctx context.Context, st *state) {
 	if _, _, ok := coreexec.Gh(ctx, st.commander(), "auth", "status"); !ok {
 		st.add("gh-auth", severityFail, false, "run gh auth login")
 		return
@@ -193,7 +280,100 @@ func (st *state) checkGhAuth(ctx context.Context) {
 	st.add("gh-auth", severityFail, true, "authenticated")
 }
 
-func (st *state) checkTokenScopes(ctx context.Context) string {
+// checkGlabCLI proves the GitLab CLI the fetch path shells is installed.
+func checkGlabCLI(ctx context.Context, st *state) {
+	if _, err := exec.LookPath(binGlab); err != nil {
+		st.add("glab-cli", severityFail, false, "missing — install gitlab.com/gitlab-org/cli (glab)")
+		return
+	}
+	version := ""
+	if stdout, _, ok := coreexec.Host(ctx, st.commander(), binGlab, "--version"); ok {
+		version = firstLine(stdout)
+	}
+	st.add("glab-cli", severityFail, true, version)
+}
+
+func checkGlabAuth(ctx context.Context, st *state) {
+	if _, _, ok := coreexec.Host(ctx, st.commander(), binGlab, "auth", "status"); !ok {
+		st.add("glab-auth", severityFail, false, "run glab auth login")
+		return
+	}
+	st.add("glab-auth", severityFail, true, "authenticated")
+}
+
+// checkCafeCLI proves the gitcafe CLI the fetch path shells is installed. It
+// has no auth probe: gitcafe reads carry no credential the fetch path gates on.
+func checkCafeCLI(_ context.Context, st *state) {
+	if _, err := exec.LookPath(binCafe); err != nil {
+		st.add("cafe-cli", severityFail, false, "missing — install the gitcafe CLI (cafe)")
+		return
+	}
+	st.add("cafe-cli", severityFail, true, "present")
+}
+
+// checkCurl proves the HTTP client the Forgejo and Bitbucket reads shell.
+func checkCurl(_ context.Context, st *state) {
+	if _, err := exec.LookPath(binCurl); err != nil {
+		st.add(binCurl, severityFail, false, "missing — install curl (forgejo and bitbucket PR reads shell it)")
+		return
+	}
+	st.add(binCurl, severityFail, true, "present")
+}
+
+// checkAzCLI proves the Azure CLI the fetch path shells.
+func checkAzCLI(_ context.Context, st *state) {
+	if _, err := exec.LookPath(binAz); err != nil {
+		st.add(binAz, severityFail, false, "missing — install the Azure CLI (az)")
+		return
+	}
+	st.add(binAz, severityFail, true, "present")
+}
+
+// checkForgejoAuth reports whether the pair forgejoAuthFor gates on is set.
+func checkForgejoAuth(_ context.Context, st *state) {
+	missing := st.missingEnv(envForgejoHost, envForgejoToken)
+	if len(missing) > 0 {
+		st.add("forgejo-auth", severityFail, false, "missing "+strings.Join(missing, ", ")+
+			" — forgejo fetch needs both (an app token with repo read)")
+		return
+	}
+	st.add("forgejo-auth", severityFail, true, "FORGEJO_HOST and FORGEJO_TOKEN set")
+}
+
+// checkBitbucketAuth reports whether either credential shape bitbucketAuthFor
+// accepts is set: a Bearer token, or a username and password pair.
+func checkBitbucketAuth(_ context.Context, st *state) {
+	if st.envSet(envBitbucketToken) {
+		st.add("bitbucket-auth", severityFail, true, "BITBUCKET_TOKEN set")
+		return
+	}
+	missing := st.missingEnv(envBitbucketUser, envBitbucketPass)
+	if len(missing) > 0 {
+		st.add("bitbucket-auth", severityFail, false, "set BITBUCKET_TOKEN or "+
+			strings.Join(missing, "+")+" — bitbucket needs one of the two")
+		return
+	}
+	st.add("bitbucket-auth", severityFail, true, "BITBUCKET_USERNAME and BITBUCKET_PASSWORD set")
+}
+
+// checkAzureAuth reports the credential the Azure fetch path resolves: an
+// organization plus either the PAT or an az login that supplies one, so an
+// unset PAT warns instead of failing a machine that authenticates through az.
+func checkAzureAuth(_ context.Context, st *state) {
+	if !st.envSet(envAzureOrg) {
+		st.add("azure-auth", severityFail, false,
+			"missing AZURE_DEVOPS_ORG=https://dev.azure.com/{org} — azure fetch reads it first")
+		return
+	}
+	if !st.envSet(envAzurePAT) {
+		st.add("azure-auth", severityWarn, false,
+			"AZURE_DEVOPS_EXT_PAT unset — azure fetch then needs an az login with token access")
+		return
+	}
+	st.add("azure-auth", severityFail, true, "AZURE_DEVOPS_ORG and AZURE_DEVOPS_EXT_PAT set")
+}
+
+func checkTokenScopes(ctx context.Context, st *state) {
 	stdout, _, ok := coreexec.Gh(ctx, st.commander(), "api", "user", "--include")
 	scopes := ""
 	if ok {
@@ -207,7 +387,9 @@ func (st *state) checkTokenScopes(ctx context.Context) string {
 	default:
 		st.add("token-scopes", severityWarn, false, "needs repo (private) or public_repo scope — "+scopes)
 	}
-	return scopes
+	if scopes != "" {
+		st.checkTokenExcess(scopes)
+	}
 }
 
 func (st *state) checkTokenExcess(scopes string) {
@@ -248,17 +430,47 @@ func (st *state) checkTool(name, missing string) {
 	st.add(name, severityWarn, present, detail)
 }
 
-func (st *state) checkAPIReachable(ctx context.Context) {
+func checkGitHubReachable(ctx context.Context, st *state) {
 	stdout, _, ok := coreexec.Gh(ctx, st.commander(), "api", "rate_limit", "--jq", ".resources.core.remaining")
 	remaining := ""
 	if ok {
 		remaining = strings.TrimRight(stdout, newline)
 	}
 	if remaining != "" {
-		st.add("api-reachable", severityWarn, true, "core quota remaining: "+remaining)
+		st.add(checkAPIReachable, severityWarn, true, "core quota remaining: "+remaining)
 		return
 	}
-	st.add("api-reachable", severityWarn, false, "cannot reach api.github.com with this token")
+	st.add(checkAPIReachable, severityWarn, false, "cannot reach api.github.com with this token")
+}
+
+// checkGitLabReachable proves the token can read the GitLab API, which is what
+// every glab-backed fetch starts from.
+func checkGitLabReachable(ctx context.Context, st *state) {
+	if _, _, ok := coreexec.Host(ctx, st.commander(), binGlab, "api", "user"); !ok {
+		st.add(checkAPIReachable, severityWarn, false, "cannot reach the GitLab API with this token")
+		return
+	}
+	st.add(checkAPIReachable, severityWarn, true, "GitLab API reachable")
+}
+
+// envSet reports whether a credential variable carries a value, never what it
+// carries.
+func (st *state) envSet(name string) bool {
+	if st.req.Runtime == nil {
+		return false
+	}
+	return st.req.Env[name] != ""
+}
+
+// missingEnv lists the named variables that are unset, in the order given.
+func (st *state) missingEnv(names ...string) []string {
+	var missing []string
+	for _, name := range names {
+		if !st.envSet(name) {
+			missing = append(missing, name)
+		}
+	}
+	return missing
 }
 
 func (st *state) checkStorage() {

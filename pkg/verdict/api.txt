@@ -100,8 +100,9 @@ func (c *Client) Config(ctx context.Context, req *ConfigRequest) (*ConfigRespons
     an injected Commander, so a caller that sandboxes execution must cover that
     probe too.
 
-func (c *Client) Doctor(ctx context.Context, _ *DoctorRequest) (*DoctorResponse, error)
-    Doctor preflights the harness (auth, git, storage) and reports health.
+func (c *Client) Doctor(ctx context.Context, req *DoctorRequest) (*DoctorResponse, error)
+    Doctor preflights one code host's CLI and auth, git, and storage, and
+    reports health.
 
 func (c *Client) Fetch(ctx context.Context, req *FetchRequest) (*Result, error)
     Fetch fetches a pull request into .verdict/state/<pr>.
@@ -201,8 +202,11 @@ type ConfigResponse struct {
     the typed config data as JSON, byte-identical to the --json envelope's data
     object.
 
-type DoctorRequest struct{}
-    DoctorRequest carries no positionals: doctor preflights the harness.
+type DoctorRequest struct {
+	Provider string
+}
+    DoctorRequest names the host to preflight: the fetch enum, and an empty
+    Provider keeps the GitHub posture.
 
 type DoctorResponse struct {
 	Outcome
