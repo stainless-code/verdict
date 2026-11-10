@@ -1,6 +1,6 @@
 ---
 title: Verdict
-description: "Code review with receipts: your agent reviews, Verdict grades every finding by how it was checked."
+description: "Code review with receipts: your agent reviews, Verdict grades every finding by how it was checked, from fetch to post."
 ---
 
 # Code review with receipts.
@@ -24,6 +24,6 @@ npm i -g @stainless-code/verdict
 5. `verdict post owner/repo 123` files exactly one review, once the anchor and
    duplicate guards pass.
 
-Every verb takes `--json` and a fixed exit code, so a script or a CI job runs
-the same steps your agent does. Start with the [quickstart](/quickstart) or
-[how it reviews](/how-it-reviews).
+Every review verb takes `--json` and a fixed exit code, so a script or a CI job runs
+the same steps your agent does (`mcp` serves tools over stdio and takes no `--json` flag). Start with the [introduction](/docs/introduction),
+the [quickstart](/docs/quickstart), or [how it reviews](/docs/how-it-reviews).

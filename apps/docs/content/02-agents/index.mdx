@@ -1,0 +1,68 @@
+---
+title: Agents
+description: "What an agent gets from Verdict: the skill with its prompts, the MCP server, the per-host config, llms.txt, and a Markdown twin of every page."
+search:
+  tags: ["agents", "skill", "mcp", "llms-txt", "clients"]
+mode: center
+pagination: false
+---
+
+Your agent runs Verdict one of two ways: it loads the skill and shells out to the binary, or it calls the MCP server. Either way the docs read as Markdown.
+
+## The skill carries the whole workflow
+
+One command installs the skill; `status` tells you when a copy drifts behind the binary.
+
+```bash
+verdict skill install --agent claude --dry-run   # preview: create, update, keep, blocked
+verdict skill install --agent claude             # write it
+verdict skill status --dir <skills-dir>          # keep, or drift with an update list
+```
+
+The install writes 28 files atomically — `SKILL.md`, ten review prompts, the JSON schemas, `scripts/verdict` — plus a `.verdict-managed` receipt, and refuses a directory it did not create unless you pass `--force`. It never prompts and makes no network call. Re-run it after upgrading the binary so the copy never skews from the CLI.
+
+## The MCP server meets the host where it is
+
+`verdict mcp` serves the review verbs as MCP tools over stdio: no daemon, no HTTP, no auth of its own. It runs with your credentials and exits when stdin closes.
+
+Every review verb is a tool except `gate` and `run` (both CLI-only) and
+`triage` — nineteen tools by default, and status flips stay a human call.
+`--read-only` hides the writing verbs and caps `record` to its `dry_run` form;
+`--operator` adds `triage` back for twenty. Each tool returns the CLI envelope's `data`, and a typed refusal comes back with `isError: true` and `{code, message, hint}`. The [manual](https://github.com/stainless-code/verdict/blob/main/docs/manual.md#mcp-server-stdio-experimental-until-10) keeps the full tool list.
+
+`verdict mcp config --agent <host>` prints the exact snippet, with `--read-only` or `--operator` baked into the argv when you pass one. `--write` merges it into the host's config file, backing the old file up first.
+
+| `--agent`  | Writes into                                                   | `--write` merges it             |
+| ---------- | ------------------------------------------------------------- | ------------------------------- |
+| `claude`   | `.mcp.json`                                                   | Yes                             |
+| `cursor`   | `.cursor/mcp.json`                                            | Yes                             |
+| `codex`    | `$CODEX_HOME/config.toml`, else `~/.codex/config.toml` (TOML) | Yes                             |
+| `gemini`   | `~/.gemini/settings.json`                                     | Yes                             |
+| `qwen`     | `~/.qwen/settings.json`                                       | Yes                             |
+| `windsurf` | `~/.codeium/windsurf/mcp_config.json`                         | Yes                             |
+| `opencode` | `opencode.json`                                               | No: print-only, unverified live |
+| `copilot`  | `.vscode/mcp.json`                                            | No: print-only, unverified live |
+| `goose`    | `~/.config/goose/config.yaml` (YAML)                          | No: print-only, unverified live |
+
+## Every page reads as Markdown
+
+`llms.txt` lists this tree in sidebar order with one-line descriptions, and every page has a twin at the same URL plus `.md` — an agent reads the docs without parsing HTML.
+
+## Clients stay thin wrappers
+
+There is no wire protocol and no server: a client spawns the binary and reads one `--json` envelope. The reference implementations live in Build on Verdict.
+
+<CardGroup cols={2}>
+  <Card title="Build a client" href="/docs/build-a-client">
+    The `--json` protocol, exit codes, and refusal codes.
+  </Card>
+  <Card title="MCP server" href="/docs/mcp-server">
+    The review verbs as MCP tools over stdio.
+  </Card>
+  <Card title="Go SDK" href="/docs/go-sdk">
+    The verbs in-process, with typed requests.
+  </Card>
+  <Card title="TypeScript client" href="/docs/typescript-client">
+    Spawns the binary and returns typed envelopes.
+  </Card>
+</CardGroup>

@@ -1,0 +1,104 @@
+---
+title: Set up a repo
+description: "Scaffold typed controls with verdict init, tune the four presentation settings in settings.json, and install the skill for your agents."
+sidebar:
+  label: Repo setup
+search:
+  tags: ["guides", "init", "onboarding", "settings", "skill"]
+---
+
+New repos onboard in one offline command plus two config files. Nothing in
+this flow touches the network.
+
+<Steps>
+  <Step title="Scaffold the controls">
+    ```bash
+    verdict init --preset standard --yes
+    ```
+
+    `init` writes the local control files, then runs `check-tree`
+    validation: `.verdict/config.json` (typed defaults), `.verdict/kb.jsonl`
+    (two starter rules, `check-error-paths` and `verify-before-claim`, ready
+    for `learn --status`), and the `.verdict/.gitignore` `/state/` line.
+    Presets map to panel strictness plus KB retirement thresholds:
+
+    | preset     | `defaults.budget_usd` | `defaults.panel`       | `defaults.kb_policy`              |
+    | ---------- | --------------------- | ---------------------- | --------------------------------- |
+    | `chill`    | `2.00` (lenient)      | none (comments only)   | `min_judged: 10`, `max_fp_rate: 0.7` |
+    | `standard` | `0.50` (default)      | `main` (one synthesizer) | `min_judged: 5`, `max_fp_rate: 0.5` |
+    | `strict`   | `0.10` (tight)        | `lead`, `lens-1`, `lens-2` | `min_judged: 3`, `max_fp_rate: 0.3` |
+
+    Existing files print a preview and need `--yes` before overwrite;
+    re-running the same preset reads `keep` and exits 0 (idempotent).
+
+  </Step>
+  <Step title="Tune the prefs file">
+    The prefs file ends env sprawl without forced migration:
+    `${XDG_CONFIG_HOME:-$HOME/.config}/verdict/settings.json`. It carries the
+    four presentation namespaces (`output`, `layout`, `color`, `publish`) plus
+    `$schema` and the typed personal layer (`review`, `spend`, `privacy`) —
+    eight top-level keys in total:
+
+    ```json
+    {"output": {"format": "text"}, "layout": {"compact": false}, "color": {"mode": "never"}}
+    ```
+
+    `output.format` is the `--json` default; `layout.compact` suppresses
+    advisory progress lines; `color.mode` controls ANSI on human progress
+    (machine envelopes never carry codes). Precedence is flags over file over
+    env (`REVIEW_OUTPUT_FORMAT`, `REVIEW_LAYOUT_COMPACT`, `REVIEW_COLOR_MODE`,
+    and the `REVIEW_PUBLISH_*` vars) over defaults.
+
+  </Step>
+  <Step title="Install the skill">
+    ```bash
+    verdict skill install --dir <skills-dir> --json
+    verdict skill status --dir <skills-dir> --json
+    ```
+
+    Install atomically writes `SKILL.md`, `prompts/`, `schemas/`, and
+    `scripts/verdict` plus a `.verdict-managed` receipt (status `create`);
+    `status` reads `keep` once every target is in sync. Prefer
+    `--agent claude --agent codex` to target agents, or `--detect` for every
+    agent whose skills dir already exists and is non-empty. The skill is
+    embedded in the binary, so the served copy can never skew.
+
+  </Step>
+  <Step title="Confirm the setup">
+    ```bash
+    verdict doctor --json
+    ```
+
+    `doctor` checks the toolchain and the personal prefs layer, so a typo in
+    that file fails here instead of mid-review. It does not read the repo's
+    `.verdict/config.json`: a typo there fails at the verb that reads it
+    (`bad-config`), so keep both files valid. Reviews work without any of
+    this — the scaffolder only pins comparable, cost-capped defaults.
+
+  </Step>
+</Steps>
+
+## What success looks like
+
+`.verdict/config.json` holds the preset's panel, budget, and KB policy;
+`settings.json` parses with only known keys; `skill status` reports `keep`;
+and `doctor` answers with `error: null`.
+
+## Refusals
+
+- [`needs-confirm`](/docs/troubleshooting#needs-confirm) — `init`
+  refuses to overwrite existing control files without confirm (exit 1, writes
+  nothing). Fix: re-run with `--yes` after reviewing the preview.
+- [`bad-settings`](/docs/troubleshooting#bad-settings) — the prefs
+  file carries anything outside its eight top-level keys (including `org.*`).
+  Fix: drop the unknown key.
+- [`bad-settings-credentials`](/docs/troubleshooting#bad-settings-credentials) —
+  any credential-shaped key at any depth (`token`, `key`, `secret`, …).
+  Fix: keep secrets in env vars — never in the file.
+
+Related guides: [Review a large PR](/docs/review-large-pr), [Review on GitLab and Forgejo](/docs/review-gitlab-forgejo), [Let your agent run the review](/docs/agent-run-review).
+
+## Full detail
+
+[Onboarding (scaffolder + prefs file + skill installer)](https://github.com/stainless-code/verdict/blob/main/docs/manual.md#onboarding-scaffolder--prefs-file--skill-installer)
+in the manual.

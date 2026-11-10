@@ -23,7 +23,7 @@ pull request or a local branch; load this one to answer questions about Verdict.
   docs on every build, so it is the current map and this file does not repeat it.
 - [llms-full.txt](https://stainless-code.com/verdict/llms-full.txt): the
   narrative pages in one file, for when you need most of them at once.
-- [Manual](https://stainless-code.com/verdict/manual.md): the operator contract
+- [Manual](https://github.com/stainless-code/verdict/blob/main/docs/manual.md): the operator contract
   — envelope, exit codes, store files, refusal codes, control files, provider
   matrix. It and the release notes are too long for `llms-full.txt`, so fetch
   them as their own Markdown.

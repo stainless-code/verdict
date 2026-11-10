@@ -1,0 +1,42 @@
+---
+title: Review an untrusted PR
+description: "A hostile diff gets no trust: fetch it as data, run the verify step under a bubblewrap sandbox on Linux, and read the typed refusals elsewhere."
+sidebar:
+  label: Untrusted PRs
+search:
+  tags: ["sandbox", "verify", "untrusted", "bwrap", "security"]
+---
+
+Use this when the diff is untrusted: an unknown author, a drive-by fork PR, or a patch arriving as text. Fetching and reading are safe; executing the claimed fix is not — so the verify step, never the whole review, runs inside a throwaway sandbox.
+
+<Steps>
+  <Step title="Fetch the PR as data">
+    ```bash
+    verdict fetch owner/repo 123
+    ```
+
+    `fetch` only writes the bundle (`PR.json`, `full.diff`, `toc.txt`): no checkout, no execution. The agent review reads that bundle and records claimed fixes with a `verifyCmd`, which is the one thing you do not yet trust. Keep it that way: do not check out the fork, do not apply the patch to your worktree, and do not run the claim yourself first.
+
+  </Step>
+
+  <Step title="Run the verify step sandboxed">
+    ```bash
+    verdict verify owner/repo 123 --sandbox
+    ```
+
+    On Linux with `bubblewrap` installed, `verify` builds the sandbox itself: the command gets its own PID namespace and loopback, no route out, an empty `/run`, a private `/tmp`, and every credential path on the host (`~/.aws`, `~/.ssh`, `~/.config/gh`, and the rest) replaced before the command runs. The patch record carries `"sandboxed": true`, and the `--json` envelope reports it the same way.
+
+  </Step>
+
+  <Step title="Read the refusals">
+    Two layers can stop the run, and both refuse before anything executes. The static gate rejects hostile shapes up front — [`verify-networked`](/docs/troubleshooting#verify-networked) for pipe-to-shell fetches, plus `verify-destructive`, `verify-credential-read`, and `verify-repo-escape` — each quoting the matched fragment with a `try:` rewrite hint. The sandbox is the second layer for what the static gate cannot see: when the host is not Linux, `bwrap` is missing, or user namespaces are restricted, `verify` refuses [`sandbox-unavailable`](/docs/troubleshooting#sandbox-unavailable) with exit `1`, names the cause, and runs nothing. It never silently falls back to an unsandboxed command.
+  </Step>
+</Steps>
+
+## What success looks like
+
+On Linux the claimed command runs contained and the patch record notes `"sandboxed": true`. Anywhere else you get `sandbox-unavailable`, the patch file stays byte-identical, no `.verify.out` is written, and exit `1` tells the caller the proof did not run. Either way, nothing untrusted touched your credentials or your network. Once the proof runs, the normal merge protection still applies: [Gate a PR in CI](/docs/ci-gate).
+
+## Full detail
+
+The [enforced-sandbox section of the manual](https://github.com/stainless-code/verdict/blob/main/docs/manual.md#enforced-sandbox-verify---sandbox) specifies every mount and namespace, and the [parent recipe](https://github.com/stainless-code/verdict/blob/main/docs/manual.md#hostile-pr-sandbox-recipe-enforced-on-linux-with---sandbox-recipe-for-other-oses) covers other OSes and wrapping the whole review.

@@ -3,42 +3,43 @@ import { contentHref } from "blume/components/content/base-href.ts";
 import Inline from "./Inline.astro";
 import SectionHead from "./SectionHead.astro";
 
-// Five surfaces over one review core. Snippets and claims: apps/docs/content/integrations.mdx.
-const base = contentHref("/integrations");
+// Five surfaces over one review core. Snippets and claims: apps/docs/content/02-agents/index.mdx
+// for the skill and MCP, apps/docs/content/01-docs/(build-on-verdict)/ for the clients.
+const base = contentHref("/agents");
 const rows = [
   {
     name: "Skill and CLI",
-    snippet: "verdict skill install --detect",
+    snippet: "verdict skill install --agent",
     body: "Your agent loads the skill and runs the verbs. The default way to use Verdict.",
-    href: `${base}#skill-and-cli`,
+    href: `${base}#the-skill-carries-the-whole-workflow`,
     span: "lg:col-span-3",
   },
   {
     name: "MCP server",
     snippet: "verdict mcp",
     body: "The review verbs as tools over stdio. `verdict mcp config --write` writes the host config. Experimental until 1.0.",
-    href: `${base}#mcp-server`,
+    href: `${base}#the-mcp-server-meets-the-host-where-it-is`,
     span: "lg:col-span-3",
   },
   {
     name: "Go SDK",
     snippet: "pkg/verdict",
     body: "The verbs in-process, with typed requests. Experimental until 1.0.",
-    href: `${base}#go-sdk`,
+    href: contentHref("/docs/go-sdk"),
     span: "lg:col-span-2",
   },
   {
     name: "TypeScript client",
     snippet: "@stainless-code/verdict/client",
     body: "Spawns the binary and returns typed envelopes. Experimental until 1.0.",
-    href: `${base}#typescript-client`,
+    href: contentHref("/docs/typescript-client"),
     span: "lg:col-span-2",
   },
   {
     name: "JSON schemas",
     snippet: "schemas/envelope.schema.json",
     body: "The envelope and the stores as JSON Schema, for a client in any language.",
-    href: `${base}#json-schemas`,
+    href: contentHref("/docs/build-a-client"),
     span: "lg:col-span-2",
   },
 ];

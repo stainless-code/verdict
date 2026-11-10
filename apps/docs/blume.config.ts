@@ -6,9 +6,8 @@ import { defineConfig } from "blume";
 import { orama } from "blume/search";
 import { custom, filesystem } from "blume/sources";
 import { docsPage } from "./docs-index.ts";
-import { sitePages } from "./navigation.ts";
+import { docsRoute, docsSections } from "./navigation.ts";
 import { changelogSource } from "./sources/changelog.ts";
-import { manualSource } from "./sources/manual.ts";
 import { troubleshootingSource } from "./sources/troubleshooting.ts";
 
 const title = "Verdict";
@@ -19,11 +18,8 @@ const description =
 const deploymentBase = "/verdict";
 const origin = "https://stainless-code.com";
 
-const manual = docsPage("manual.md");
-const manualUrl = `${origin}${deploymentBase}${manual.route}.md`;
-const manualSummary = manual.summary.replace(/\.$/u, "");
 const troubleshooting = docsPage("troubleshooting.md");
-const troubleshootingUrl = `${origin}${deploymentBase}${troubleshooting.route}.md`;
+const troubleshootingUrl = `${origin}${deploymentBase}${docsRoute(troubleshooting.file)}.md`;
 const troubleshootingSummary = troubleshooting.summary.replace(/\.$/u, "");
 
 // Prerendered pages skip transformIndexHtml, so append tags to dist after build.
@@ -92,7 +88,6 @@ export default defineConfig({
           site: origin,
         }),
       ),
-      custom(manualSource()),
       custom(troubleshootingSource()),
     ],
   },
@@ -111,8 +106,7 @@ export default defineConfig({
     skills: "./skills",
     llmsTxt: {
       details: [
-        "The three long-form references are left out of `llms-full.txt` for their size:",
-        `the ${manual.title.toLowerCase()} at ${manualUrl} (${manualSummary}),`,
+        "The long-form reference is left out of `llms-full.txt` for its size:",
         `the ${troubleshooting.title.toLowerCase()} at ${troubleshootingUrl} (${troubleshootingSummary}),`,
         `and the release notes at ${origin}${deploymentBase}/changelog.`,
       ].join("\n"),
@@ -126,32 +120,16 @@ export default defineConfig({
   },
 
   navigation: {
-    tabs: sitePages(manual, troubleshooting).map(({ label, path }) => ({
+    // The header carries the GitHub mark, so the footer stays link-free. The
+    // Footer slot override renders the sitemap footer after <main> on the
+    // home page's siblings (/agents, /compare, /roadmap) and nothing on docs
+    // and changelog pages.
+    repo: false,
+    tabs: docsSections.map(({ label, path }) => ({
       label,
       path,
     })),
     sidebar: { display: "flat" },
-  },
-
-  footer: {
-    copyright: `© 2026 stainless-code, MIT licensed.`,
-    links: [
-      {
-        label: "GitHub repository",
-        href: "https://github.com/stainless-code/verdict",
-      },
-      {
-        label: "Releases",
-        href: "https://github.com/stainless-code/verdict/releases",
-      },
-      {
-        label: "MIT license",
-        href: "https://github.com/stainless-code/verdict/blob/main/LICENSE",
-      },
-    ],
-    socials: {
-      website: "https://stainless-code.com",
-    },
   },
 
   theme: {

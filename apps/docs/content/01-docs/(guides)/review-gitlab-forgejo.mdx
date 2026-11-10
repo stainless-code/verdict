@@ -1,0 +1,99 @@
+---
+title: Review on GitLab and Forgejo
+description: "Fetch a GitLab merge request or Forgejo pull request with --provider, check data.capabilities, and post where the host allows it."
+sidebar:
+  label: GitLab and Forgejo
+search:
+  tags: ["guides", "gitlab", "forgejo", "provider", "hosts"]
+---
+
+Verdict builds the same bundle shape from another host, but verbs differ per
+host. Read the per-host capability table first, then review as usual.
+
+<Steps>
+  <Step title="Fetch the merge request">
+    ```bash
+    verdict fetch acme/app 7 --provider gitlab --json
+    ```
+
+    `fetch --provider gitlab|gitcafe|forgejo|bitbucket|azure` builds the same
+    bundle shape (`PR.json` normalized to one schema, `full.diff`, `toc.txt`,
+    `roles.txt`, threads). This fetch shells six `glab` reads and writes the
+    merge request's changed files at its head. `record`, `report`, `triage`, `show`,
+    and `next` work on provider bundles as-is.
+
+  </Step>
+  <Step title="Read the capabilities before writing a review">
+    `fetch --json` publishes `data.capabilities`: `provider`, `fetch`,
+    `post`, `inline_anchors`, `approve`, `request_changes`,
+    `thread_resolution`, `review_verdicts`, and `unsupported`. GitLab answers:
+
+    ```json
+    {"provider": "gitlab", "approve": true, "request_changes": false,
+     "thread_resolution": true, "review_verdicts": false,
+     "unsupported": {"request_changes": "no-request-changes-event"}}
+    ```
+
+    `approve` and `request_changes` split because hosts differ: GitLab
+    approves a merge request but has no request-changes event. Plan the review
+    from these two flags, not from `review_verdicts`.
+
+  </Step>
+  <Step title="Dry-run the submit">
+    ```bash
+    verdict post acme/app 7 --dry-run --json
+    ```
+
+    The dry run renders what the host would receive and posts nothing: event
+    `COMMENT`, one item at `notes.txt:2` keeping its anchor, side, and
+    finding. A bound request-changes on GitLab still posts the discussions
+    plus the summary note, warns that the verdict did not bind, and records
+    the withheld capability in `post.json` `withheld[]` — which is what
+    separates it from a plain comment afterwards.
+
+  </Step>
+  <Step title="Same flow on Forgejo">
+    ```bash
+    export FORGEJO_HOST="https://forgejo.example" FORGEJO_TOKEN="<token>"
+    verdict fetch acme/app 7 --provider forgejo --json
+    ```
+
+    Forgejo has no CLI, so both directions are `curl` against
+    `$FORGEJO_HOST/api/v1` with `$FORGEJO_TOKEN`. Its capabilities answer
+    `approve` and `request_changes` true but `"thread_resolution": false`
+    (`unsupported: {"thread_resolution": "no-resolve-mutation"}`): thread
+    resolution stays a host-CLI step the prompts hand back to the agent. A
+    `post --dry-run` renders event `COMMENT` with the item at `notes.txt:2`,
+    exactly like the GitLab leg.
+
+  </Step>
+</Steps>
+
+## What success looks like
+
+`PR.json` carries the `provider` marker with the folded `open` state and the
+fixture HEAD; `post --dry-run` reports the host-correct event with zero
+warnings and writes no `post.json`. A real `post` writes one atomic review on
+Forgejo, or the discussion-plus-summary-plus-approve replay on GitLab.
+
+## Refusals
+
+- [`auth-missing`](/docs/troubleshooting#auth-missing) — Forgejo
+  without a token (or GitLab without `glab auth login` / `GITLAB_TOKEN`). Fix:
+  export the token env var; the fetch shells no host call before this gate.
+- [`provider-unimplemented`](/docs/troubleshooting#provider-unimplemented) —
+  a verb the host has no submit path for: `post` on GitCafe, Bitbucket, or
+  Azure, and `ready` or plain `calibrate` anywhere but GitHub and GitLab.
+  Fix: review with `record`/`report` and post from the host UI;
+  `calibrate --probe` grades any bundle offline.
+- [`pr-not-open`](/docs/troubleshooting#pr-not-open) — `post`
+  refuses a PR whose state folded to anything but open. Fix: re-fetch; merged
+  or closed reviews stay read-only.
+
+Related guides: [Review a large PR](/docs/review-large-pr), [Let your agent run the review](/docs/agent-run-review), [Set up a repo](/docs/setup-repo).
+
+## Full detail
+
+[Providers (non-GitHub hosts)](https://github.com/stainless-code/verdict/blob/main/docs/manual.md#providers-non-github-hosts)
+and [Submit (`post`) per host](https://github.com/stainless-code/verdict/blob/main/docs/manual.md#submit-post-per-host)
+in the manual.

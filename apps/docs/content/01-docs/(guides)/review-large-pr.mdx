@@ -1,0 +1,118 @@
+---
+title: Review a large PR
+description: "Diffs over 512000 bytes refuse by default. Fetch with --chunk, review every sliced chunk, stamp chunks[] and gate on the chunk receipt."
+sidebar:
+  label: Large PRs
+search:
+  tags: ["guides", "large-pr", "chunk", "coverage", "gate"]
+---
+
+A PR over the 512000-byte diff cap refuses instead of silently under-reviewing. Chunk the fetch, review every slice, and attest the chunks you read.
+
+<Steps>
+  <Step title="Hit the cap on purpose">
+    ```bash
+    verdict fetch owner/repo 123 --json
+    ```
+
+    A diff over the 512000-byte cap answers with `data: null` and a typed refusal: exit 1,
+    `diff-too-large`, naming the size, the cap, and the split-or-narrow escape
+    with advisory candidates. The refused fetch still writes the raw
+    `full.diff` (with `controls.json`) into the bundle directory, but no
+    reviewed bundle is kept — `record`, `report`, and `post` have nothing to
+    read — and the tool never auto-narrows a diff you did not scope.
+
+  </Step>
+  <Step title="Re-fetch with chunking opted in">
+    ```bash
+    verdict fetch owner/repo 123 --chunk --json
+    ```
+
+    An opted-in over-cap fetch is machine-sliced on file boundaries
+    (deterministic — a re-fetch reproduces the map). The envelope gains
+    additive `data.chunk` with `count`, `manifest`, and `total_bytes`. The bundle keeps `full.diff` for anchor pinning;
+    `chunks/manifest.json` lists each `chunk-NN.diff` with its own `toc`
+    checklist and `roles` file.
+
+  </Step>
+  <Step title="Read the manifest first">
+    ```bash
+    cat .verdict/state/123/chunks/manifest.json
+    ```
+
+    The manifest carries the fetched HEAD and base SHAs, the cap bytes and
+    source, total bytes, and the ordered chunk list with member files and
+    sizes. Read each `chunk-NN.diff` end to end against its own
+    `chunk-NN.toc.txt` checklist. An unread chunk is as visible
+    as an unread range — synthesize exactly one `review.json` across all
+    chunks, same body format and evidence rungs as a small-PR review.
+
+  </Step>
+  <Step title="Stamp every chunk you covered">
+    Write top-level `"chunks"` naming every manifest chunk covered:
+
+    ```json
+    "chunks": ["chunk-01", "chunk-02", "chunk-03"]
+    ```
+
+    `chunks[]` is the chunked bundle's only attestation: `coverage[]`
+    line-ranges are ignored with one warning. A claim the manifest cannot name
+    never counts, and a review with no `chunks[]` key stores `0`.
+
+  </Step>
+  <Step title="Validate before posting">
+    ```bash
+    verdict post owner/repo 123 --dry-run --require-coverage
+    ```
+
+    The dry run runs every check, writes `findings.dryrun.json`, and posts
+    nothing. It refuses
+    attested-but-partial coverage before any store write, naming the missing
+    chunks (`missing chunk-03`), so a partial review can never post.
+
+  </Step>
+  <Step title="Post, then gate on the receipt">
+    ```bash
+    verdict post owner/repo 123
+    verdict gate owner/repo 123 --max-severity critical --coverage require
+    ```
+
+    `post.json` carries its own receipt keyed to the posted HEAD —
+    `"chunk_coverage": {"attested": 3, "total": 3}` — and the gate reads that
+    receipt: `gate: coverage pass 3/3 chunk(s) attested`, exit 0. `require` is
+    the default posture; it fails a gated HEAD whose receipt is absent, names
+    another HEAD, or attests fewer than all manifest chunks. Note `--coverage`
+    alone is a usage error: pair it with a dimension such as
+    `--max-severity`.
+
+  </Step>
+</Steps>
+
+## What success looks like
+
+`post.json` holds `chunk_coverage` with `attested` equal to `total`, and
+`gate` prints `PASS` with every requested dimension `pass`.
+
+## Refusals
+
+- [`diff-too-large`](/docs/troubleshooting#diff-too-large) — fetch
+  without `--chunk` over the cap. Fix: re-fetch with `--chunk`, hand-slice the
+  range (`--range`, `--base`, or a paths filter), or deliberately override with
+  `REVIEW_MAX_BYTES=<n>` (an override disables chunking and prints its source).
+- [`missing-chunk-coverage`](/docs/troubleshooting#missing-chunk-coverage) —
+  `chunks[]` names fewer than all manifest chunks. Fix: re-synthesize across
+  every chunk, then re-run.
+- [`missing-chunk-snapshot`](/docs/troubleshooting#missing-chunk-snapshot) —
+  the chunk files are unreadable. Fix: re-fetch with `--chunk`.
+- Coverage `unknown` under `require` — a receipt written before the
+  attestation key existed, or a gated HEAD with no receipt. Fix: re-record or
+  re-post at the fetched HEAD. `warn` reports the same shortfall and marks the
+  dimension `skip` instead of failing.
+
+Related guides: [Review on GitLab and Forgejo](/docs/review-gitlab-forgejo), [Let your agent run the review](/docs/agent-run-review), [Set up a repo](/docs/setup-repo).
+
+## Full detail
+
+[Over-cap diffs (chunked fetch + manual recipe)](https://github.com/stainless-code/verdict/blob/main/docs/manual.md#over-cap-diffs-chunked-fetch--manual-recipe)
+and [Diff coverage (agent attestation)](https://github.com/stainless-code/verdict/blob/main/docs/manual.md#diff-coverage-agent-attestation)
+in the manual.

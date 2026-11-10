@@ -1,0 +1,28 @@
+---
+title: TypeScript client
+description: "Call Verdict from Node or Bun: the npm wrapper spawns the binary, reads one --json envelope, and maps refusals to typed errors."
+search:
+  tags: ["typescript", "client", "node", "bun", "npm"]
+---
+
+Call one verb per function from Node or Bun without writing a wrapper: one
+install carries the binary and the client, which spawns it and maps refusals
+to typed errors.
+
+```bash
+npm i @stainless-code/verdict
+```
+
+```ts
+import {
+  createClient,
+  VerdictRefusalError,
+} from "@stainless-code/verdict/client";
+
+const verdict = createClient({ cwd: "path/to/repo" });
+
+const report = await verdict.report(["acme/app", "123"]);
+console.log(report.data.verdict.open, "open findings");
+```
+
+The binary resolves through `VERDICT_BIN`, then the platform package beside the wrapper, then `PATH`. A refusal throws `VerdictRefusalError` with `code` and `hint`; a failed gate throws `VerdictGateError` carrying the envelope. The shape is pinned in [JSON envelope and exit codes](/docs/json-envelope), and [Build a client](/docs/build-a-client) is the protocol for any other language. Experimental until 1.0.

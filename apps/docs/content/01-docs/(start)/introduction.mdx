@@ -1,0 +1,24 @@
+---
+title: Introduction
+description: "What Verdict is: your agent reviews on your machine while one binary fetches, grades, gates, and posts — the loop, and where to go next."
+search:
+  tags: ["introduction", "start", "loop", "quickstart"]
+---
+
+Verdict is a code review loop your agent runs on your own machine: fetch the
+diff, review it, grade what the review proved, post exactly one review.
+
+1. `fetch` writes one bundle to `.verdict/state/<pr>/`: the diff plus its table of contents.
+2. Your agent reviews the bundle and writes `.verdict/state/<pr>/review.json`.
+3. `record` validates the review and grades every finding by how it was checked; `report` renders it and `gate` blocks the merge on open findings.
+4. `post` files exactly one review on the host, once anchors and duplicates pass.
+
+Every review verb takes `--json` with a fixed exit code, so a script runs the same
+steps your agent does (`mcp` is the exception: it serves tools over stdio and takes no `--json` flag). There is no account and no hosted state: the bundle
+lives under `.verdict/state/` in your repo. What each stored file proves is in
+[Receipts and the store](/docs/receipts).
+
+Where to go next: the [Quickstart](/docs/quickstart) installs the binary and
+runs a first review; the [guides](/docs/setup-repo) wire it into a repo, CI,
+and untrusted diffs; [Agents](/agents) covers the skill, the MCP server, and
+the clients. How claims carry proof is in [How it reviews](/docs/how-it-reviews).

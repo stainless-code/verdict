@@ -3,6 +3,8 @@ title: Build a client
 description: "The verdict protocol: spawn the binary, read one --json envelope, map exit and refusal codes, and generate typed models from the published schemas."
 search:
   tags: ["protocol", "client", "python", "json", "schema", "api"]
+ai:
+  exclude: true
 ---
 
 There is no verdict wire protocol and no server. A client is a thin wrapper
@@ -15,7 +17,7 @@ TypeScript client is the reference implementation, and the
 [Python example](https://github.com/stainless-code/verdict/tree/main/examples/python-client)
 is the codegen recipe. Python has **no official package**. Generate types from
 the schemas and keep the wrapper thin. To use the TypeScript client, the Go
-SDK, or the MCP server as they are, see [Integrations](/integrations).
+SDK, or the MCP server as they are, see the [Agents](/agents) landing.
 
 ## The protocol in one command
 
@@ -36,7 +38,7 @@ verdict report acme/app 123 --json
 ### The envelope
 
 Every successful `--json` run prints one object with these nine keys, in this
-order. The
+order. The [JSON envelope and exit codes](/docs/json-envelope) reference pins this table with the exit codes. The
 [envelope schema](https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/envelope.schema.json)
 is generated from the Go shape and is the machine-readable source of truth.
 
@@ -55,8 +57,10 @@ is generated from the Go shape and is the machine-readable source of truth.
 The nine top-level keys are fixed: the envelope schema sets
 `additionalProperties: false`. New information is added **inside `data`**, never
 as a new top-level key. `data` objects allow additional properties, so a client
-must ignore keys it does not know. `error` also allows additive keys; today the
-only extra is `candidates` on the oversize-fetch refusal.
+must ignore keys it does not know. `error` also allows additive keys: `candidates` on the oversize-fetch
+refusal, `problems` with `problems_truncated` on fixable refusals such as
+`bad-review-input`, and `retry_at` where a retry time applies. A client
+author must parse `problems[]` — it is the machine-readable fix list.
 
 ### Exit codes
 
@@ -205,32 +209,38 @@ Other rules that belong in every wrapper:
 
 Every verb that renders a `--json` envelope publishes its `data` profile as a
 single `<verb>Data` `$defs` entry in the envelope schema, and the generated
-models bind each client method to it. A pinned profile is the shape the writer
-actually emits, including the keys it leaves null on one mode; it still allows
+models bind each client method to it — with two exceptions. `gate` emits
+`data.passed` plus `data.dimensions[]` (only the `gateDimension` shape is
+pinned), and `run` emits its ad-hoc launch keys; neither has a `<verb>Data`
+profile, so a client generator looking for `gateData` or `runData` finds
+nothing. A pinned profile is the shape the writer actually emits, including
+the keys it leaves null on one mode; it still allows
 additional properties, so a new key stays additive. The installer surfaces
 (`skill`, `upgrade`, `uninstall`, `mcp`) keep the generic open object.
 
-| Verb          | `data` profile         |
-| ------------- | ---------------------- |
-| `report`      | `reportData`           |
-| `post`        | `postData`             |
-| `record`      | `recordData`           |
-| `show`        | `showData` / `showFix` |
-| `next`        | `nextData`             |
-| `ready`       | `readyData`            |
-| `triage`      | `triageData`           |
-| `fetch`       | `fetchData`            |
-| `fetch-local` | `fetchLocalData`       |
-| `threads`     | `threadsData`          |
-| `verify`      | `verifyData`           |
-| `check-tree`  | `checkTreeData`        |
-| `doctor`      | `doctorData`           |
-| `calibrate`   | `calibrateData`        |
-| `trend`       | `trendData`            |
-| `adopt`       | `adoptData`            |
-| `fix`         | `fixData`              |
-| `learn`       | `learnData`            |
-| `init`        | `initData`             |
+| Verb              | `data` profile         |
+| ----------------- | ---------------------- |
+| `report`          | `reportData`           |
+| `post`            | `postData`             |
+| `record`          | `recordData`           |
+| `show`            | `showData` / `showFix` |
+| `next`            | `nextData`             |
+| `ready`           | `readyData`            |
+| `triage`          | `triageData`           |
+| `fetch`           | `fetchData`            |
+| `fetch-local`     | `fetchLocalData`       |
+| `threads`         | `threadsData`          |
+| `verify`          | `verifyData`           |
+| `check-tree`      | `checkTreeData`        |
+| `doctor`          | `doctorData`           |
+| `calibrate`       | `calibrateData`        |
+| `trend`           | `trendData`            |
+| `adopt`           | `adoptData`            |
+| `fix`             | `fixData`              |
+| `learn`           | `learnData`            |
+| `init`            | `initData`             |
+| `config`          | `configData`           |
+| `threads resolve` | `threadsResolveData`   |
 
 `calibrate` has three modes (live join, corpus join, probe) that share one
 object, so every mode-specific key is optional there; narrow on the keys you
@@ -270,7 +280,7 @@ structured results without writing a wrapper.
 - There is no HTTP/SSE mode, no daemon, and no remote auth. The process shares
   the host's credentials and exits when stdin closes.
 
-See the [MCP section of the manual](/manual#mcp-server-stdio-experimental-until-10)
+See the [MCP section of the manual](https://github.com/stainless-code/verdict/blob/main/docs/manual.md#mcp-server-stdio-experimental-until-10)
 for the config snippet and tool list.
 
 ## Python walkthrough

@@ -1,0 +1,82 @@
+---
+title: JSON envelope and exit codes
+description: "Every verdict verb answers in one --json envelope: the nine fields it always carries, the four exit codes and what each means, and the schemas to pin."
+sidebar:
+  label: JSON envelope
+search:
+  tags: ["json", "envelope", "exit-codes", "schemas", "client"]
+---
+
+Every machine-readable answer from Verdict has the same shape: parse the envelope once, reuse it for every verb.
+
+## The envelope
+
+`verdict <verb> … --json` prints exactly one JSON object to stdout and nothing else; human progress goes to stderr. The nine top-level keys always appear in this order:
+
+| Key              | Meaning                                                      |
+| ---------------- | ------------------------------------------------------------ |
+| `schema_version` | `"1"` today; refuse anything else                            |
+| `verb`           | the verb that ran                                            |
+| `repo`           | `owner/repo`, or `""` when the verb takes none               |
+| `pr`             | the PR number, or `null` for repo-level verbs                |
+| `at`             | UTC timestamp of the run, to the second                      |
+| `next`           | the suggested follow-up command, or `""`                     |
+| `warnings`       | non-fatal notices, also printed as `warn:` lines on stderr   |
+| `data`           | the verb's result object, or `null` on failure               |
+| `error`          | `null` on success, else `{code, message}` with a `try:` hint |
+
+A failure keeps `data` null and names a typed `error.code` with its cause and fix in [Refusal codes](/docs/troubleshooting) — except a failed `report --check` or `gate`, which exits `1` with the success-shaped envelope (`error: null`, full `data`); branch on the envelope, not the exit code alone. A usage error (exit 2) prints no envelope at all: usage text goes to stderr.
+
+## Exit codes
+
+| Code | Meaning                                                                                                                                                          |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`  | success; `error` is null                                                                                                                                         |
+| `1`  | typed refusal (`data` null; read `error.code` and its `try:` hint), or a failed `report --check` / `gate` (`error` null, `data` present; branch on the envelope) |
+| `2`  | usage error; check the flags (nothing on stdout)                                                                                                                 |
+| `3`  | canceled run or tool failure                                                                                                                                     |
+
+`report --check` and `gate` compose these for CI: `0` shippable, `1` a named dimension failed, `2` bad flags, `3` the gate itself broke. `run --agent` is the exception: when the agent exits non-zero, the process exit code is the agent's own, and `--json` disambiguates through `error.code`.
+
+## Schemas
+
+The shapes live in `skills/verdict/schemas/`, generated from `internal/schemagen/model.go` and shipped in the npm tarball. `envelope.schema.json` covers the envelope plus the 21 pinned `<verb>Data` profiles (including `report`, `post`, and `record`). Pin one by vendoring the file at a release tag and generating types from it — the Python client example checks in `models.py` generated exactly this way — and refuse at runtime when `schema_version` is not `"1"`.
+
+## Worked example
+
+```bash
+verdict doctor --json
+echo "exit: $?"
+```
+
+prints (abridged) with exit `0`:
+
+```json
+{
+  "schema_version": "1",
+  "verb": "doctor",
+  "repo": "",
+  "pr": null,
+  "at": "2026-11-10T17:16:36Z",
+  "next": "harness healthy",
+  "warnings": [
+    "token-scopes-excess: token grants more than runs need: gist, workflow — try: re-mint with only the repo scope (least privilege) and re-run"
+  ],
+  "data": {
+    "healthy": true,
+    "checks": [
+      {
+        "name": "gh-cli",
+        "severity": "fail",
+        "ok": true,
+        "detail": "gh version 2.103.2 (2026-10-23)"
+      }
+    ]
+  },
+  "error": null
+}
+```
+
+## Full detail
+
+The per-verb `data` shapes, gating flags, and machine-mode rules are specified in the [Machine surface section of the manual](https://github.com/stainless-code/verdict/blob/main/docs/manual.md#machine-surface).

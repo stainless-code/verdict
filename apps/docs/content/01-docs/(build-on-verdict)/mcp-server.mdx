@@ -1,0 +1,17 @@
+---
+title: MCP server
+description: "Serve Verdict's review verbs as MCP tools over stdio: the default toolset, the read-only and operator postures, and the per-host config."
+search:
+  tags: ["mcp", "tools", "stdio", "read-only", "operator"]
+---
+
+For an agent host that already speaks MCP and wants tool discovery instead of
+a wrapper, serve the review verbs as tools over stdio.
+
+`verdict mcp` serves the review verbs as MCP tools over stdio — JSON-RPC 2.0, one frame per line. Stdout is the protocol channel; progress and warnings go to stderr. There is no HTTP mode and no daemon: the process runs with your credentials and exits when stdin closes.
+
+Every review verb is a tool except `gate` and `run` (both CLI-only) and
+`triage`, which stays human-owned: nineteen tools by default, and an agent
+proposes status flips in `review.json` instead. `--read-only` exposes only the reading tools plus `record` capped to its `dry_run` form; `--operator` adds `triage` back. A success result carries the CLI envelope's `data`; a typed refusal returns `isError: true` with `{code, message, hint}`. The shape is pinned in [JSON envelope and exit codes](/docs/json-envelope), and the [manual](https://github.com/stainless-code/verdict/blob/main/docs/manual.md#mcp-server-stdio-experimental-until-10) keeps the full tool list.
+
+Point the host at it with [per-host config](/agents#the-mcp-server-meets-the-host-where-it-is): `verdict mcp config --agent <host>` prints the snippet, `--write` merges it where the host allows. Like the clients, the server is experimental until 1.0.

@@ -1,4 +1,4 @@
-# Troubleshooting (refusal codes)
+# Refusal codes
 
 Every refusal the binary can emit carries a machine `error.code` and a human
 `try:` hint. This page lists each code with its cause and its fix. The entries
