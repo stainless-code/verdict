@@ -68,7 +68,7 @@ assert_json_field "the covered anchor holds" true '.[0].anchored' "$DIR/findings
 assert_json_field "the drifted anchor clears" false '.[1].anchored' "$DIR/findings.json"
 assert_eq "the handoff shells no glab" "$fetch_calls" "$(hoststub_count glab)"
 
-# A bundle on a host verdict cannot post to has nowhere for the findings to go.
+# Forgejo ships a submit path, so adopt hands findings to it like GitHub.
 FORGEJO_PR=8
 FORGEJO_DIR="$EVAL_SANDBOX/.verdict/state/$FORGEJO_PR"
 cp -R "$DIR" "$FORGEJO_DIR"
@@ -76,10 +76,27 @@ rm -f "$FORGEJO_DIR/findings.json"
 jq '.provider = "forgejo"' "$FORGEJO_DIR/PR.json" >"$FORGEJO_DIR/PR.json.tmp"
 mv "$FORGEJO_DIR/PR.json.tmp" "$FORGEJO_DIR/PR.json"
 run_review adopt acme/app "$FORGEJO_PR" --from adopt1 --json
-assert_exit "forgejo adopt refuses" 1
-assert_json_field "the forgejo refusal is typed" provider-unimplemented '.error.code'
-assert_json_field "the refusal names the host" true '.error.message | contains("this bundle is \"forgejo\"") '
-if [ -e "$FORGEJO_DIR/findings.json" ]; then
+assert_exit "forgejo adopt" 0
+assert_envelope "forgejo adopt envelope"
+assert_json_field "the bundle keeps its forgejo marker" forgejo '.provider' "$FORGEJO_DIR/PR.json"
+assert_json_field "the forgejo handoff stamp lands" adopted '.[0].history[-1].event' "$FORGEJO_DIR/findings.json"
+assert_json_field "the forgejo history names the source" "from adopt1" '.[0].history[-1].note' "$FORGEJO_DIR/findings.json"
+
+# A bundle on a host verdict cannot post to has nowhere for the findings to go.
+REFUSE_PR=9
+REFUSE_DIR="$EVAL_SANDBOX/.verdict/state/$REFUSE_PR"
+cp -R "$DIR" "$REFUSE_DIR"
+rm -f "$REFUSE_DIR/findings.json"
+jq '.provider = "gitcafe"' "$REFUSE_DIR/PR.json" >"$REFUSE_DIR/PR.json.tmp"
+mv "$REFUSE_DIR/PR.json.tmp" "$REFUSE_DIR/PR.json"
+before_sum="$(find "$REFUSE_DIR" -type f -exec shasum -a 1 {} + | sort | shasum -a 1 | cut -d' ' -f1)"
+run_review adopt acme/app "$REFUSE_PR" --from adopt1 --json
+assert_exit "gitcafe adopt refuses" 1
+assert_json_field "the gitcafe refusal is typed" provider-unimplemented '.error.code'
+assert_json_field "the refusal names the host" true '.error.message | contains("this bundle is \"gitcafe\"") '
+after_sum="$(find "$REFUSE_DIR" -type f -exec shasum -a 1 {} + | sort | shasum -a 1 | cut -d' ' -f1)"
+assert_eq "the refused adopt leaves the target byte-identical" "$before_sum" "$after_sum"
+if [ -e "$REFUSE_DIR/findings.json" ]; then
   bad "the refused adopt wrote a findings store"
 else
   good "the refused adopt writes nothing"

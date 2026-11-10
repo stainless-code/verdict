@@ -102,11 +102,11 @@ func setupMissingDiff(t *testing.T, dir, _ string) {
 	mkLocal(t, dir, fixtureFindings)
 }
 
-// setupProvider builds a target on a host verdict cannot post to, so adopt has
+// setupProvider builds a target on a host with no submit path, so adopt has
 // nowhere to hand the findings.
 func setupProvider(t *testing.T, dir, _ string) {
 	t.Helper()
-	mkTarget(t, dir, `{"state":"OPEN","provider":"forgejo",`+
+	mkTarget(t, dir, `{"state":"OPEN","provider":"gitcafe",`+
 		`"headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
 		`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`)
 	mkLocal(t, dir, fixtureFindings)
@@ -117,6 +117,16 @@ func setupProvider(t *testing.T, dir, _ string) {
 func setupGitLab(t *testing.T, dir, _ string) {
 	t.Helper()
 	mkTarget(t, dir, `{"state":"OPEN","provider":"gitlab",`+
+		`"headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
+		`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`)
+	mkLocal(t, dir, fixtureFindings)
+}
+
+// setupForgejo builds a target bundle on Forgejo, which ships a submit path,
+// so adopt accepts it.
+func setupForgejo(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkTarget(t, dir, `{"state":"OPEN","provider":"forgejo",`+
 		`"headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
 		`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`)
 	mkLocal(t, dir, fixtureFindings)
@@ -159,6 +169,7 @@ func TestAdoptGolden(t *testing.T) {
 		{"missing-diff", setupMissingDiff, []string{"adopt", "acme/app", "4311", "--from", "adopt1", "--json"}},
 		{"provider-unimplemented", setupProvider, []string{"adopt", "acme/app", "4311", "--from", "adopt1", "--json"}},
 		{"gitlab-target", setupGitLab, []string{"adopt", "acme/app", "4311", "--from", "adopt1", "--json"}},
+		{"forgejo-target", setupForgejo, []string{"adopt", "acme/app", "4311", "--from", "adopt1", "--json"}},
 		{"already-adopted", setupAdopted, []string{"adopt", "acme/app", "4311", "--from", "adopt1", "--json"}},
 		{"corrupt-store", setupCorruptFrom, []string{"adopt", "acme/app", "4311", "--from", "adopt1", "--json"}},
 		{"unknown-flag", setupHappy, []string{"adopt", "acme/app", "4311", "--bogus", "--json"}},

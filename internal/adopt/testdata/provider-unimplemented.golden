@@ -11,13 +11,9 @@ exit: 1
   "data": null,
   "error": {
     "code": "provider-unimplemented",
-    "message": "adopt targets a bundle verdict can post to (github, gitlab), and this bundle is \"forgejo\" — adopt only hands findings to a host with a submit path\ntry: use the verb named above for this bundle kind"
+    "message": "adopt targets a bundle verdict can post to (forgejo, github, gitlab), and this bundle is \"gitcafe\" — adopt only hands findings to a host with a submit path\ntry: use the verb named above for this bundle kind"
   }
 }
 --- stderr ---
 
 --- files ---
---- file C/.verdict/state/4311/store.json ---
-{
-  "schema_version": "1"
-}

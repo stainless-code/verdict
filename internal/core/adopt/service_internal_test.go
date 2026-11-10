@@ -2,6 +2,7 @@ package adoptcore
 
 import (
 	"encoding/json"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -129,7 +130,7 @@ func TestAdoptTargetHostGate(t *testing.T) {
 		{"github", true},
 		{"gitlab", true},
 		{"gitcafe", false},
-		{"forgejo", false},
+		{"forgejo", true},
 		{"bitbucket", false},
 		{"azure", false},
 	}
@@ -204,7 +205,15 @@ func TestAdoptRefusalWritesNothing(t *testing.T) {
 func dirSnapshot(t *testing.T, dir string) map[string]string {
 	t.Helper()
 	out := map[string]string{}
-	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+	if err := filepath.WalkDir(dir, snapshotFile(out, dir)); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// snapshotFile records one walked file's bytes keyed by its path under dir.
+func snapshotFile(out map[string]string, dir string) fs.WalkDirFunc {
+	return func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
@@ -218,11 +227,7 @@ func dirSnapshot(t *testing.T, dir string) map[string]string {
 		}
 		out[rel] = string(raw)
 		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
-	return out
 }
 
 // TestAdoptTargetWithoutProviderMarkerIsGitHub proves a bundle that predates
