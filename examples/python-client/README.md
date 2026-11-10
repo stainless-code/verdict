@@ -108,6 +108,7 @@ Go/CI gates, because tests never pip install:
 - `data` is pinned for `report`, `post`, and `record`; every other verb keeps
   the generic object shape until its data stabilizes.
 
-See the docs page **Build a client** in `apps/docs/content/build-a-client.mdx`
-for the full protocol, exit-code table, binary resolution rules, MCP guidance,
-and the language-agnostic checklist.
+See the docs page **Build a client** in
+`apps/docs/content/01-docs/(build-on-verdict)/build-a-client.mdx` for the full
+protocol, exit-code table, binary resolution rules, MCP guidance, and the
+language-agnostic checklist.
