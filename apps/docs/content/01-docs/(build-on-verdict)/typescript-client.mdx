@@ -5,9 +5,9 @@ search:
   tags: ["typescript", "client", "node", "bun", "npm"]
 ---
 
-For a Node or Bun program that wants one call per verb without writing a wrapper.
-
-One install carries the binary and the client. It spawns `verdict <verb> … --json`, reads exactly one envelope, and maps the exit codes to typed errors — no dependencies, no server.
+Call one verb per function from Node or Bun without writing a wrapper: one
+install carries the binary and the client, which spawns it and maps refusals
+to typed errors.
 
 ```bash
 npm i @stainless-code/verdict

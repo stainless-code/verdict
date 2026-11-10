@@ -1,0 +1,56 @@
+---
+title: Receipts and the store
+description: "Where review state lives and what each receipt proves: post.json, record.json, threads-resolve.json, launcher.json, the skill receipt, and what is append-only."
+sidebar:
+  label: Receipts
+search:
+  tags: ["concepts", "receipts", "store", "state", "record", "launcher"]
+---
+
+Every claim Verdict makes about a review is backed by a file your next command
+can re-read: receipts for runs, a store for findings.
+
+## Where state lives
+
+One bundle per review target under `.verdict/state/`: `.verdict/state/<pr>/`
+for a host PR, `.verdict/state/local-<name>/` for `fetch-local`. `fetch`
+writes the inputs every later verb reads: `source.json` (or `PR.json` on a
+host bundle) with the base and head SHAs, `full.diff`, `toc.txt`, `roles.txt`,
+and `hunks.tsv`, the pinned snapshot anchors validate against. `store.json`
+marks the generation of the whole store. Agents write `review.json` into the
+bundle (plus attestation files where a mode file says so); every other bundle
+file is script-owned.
+
+## What each receipt proves
+
+`record` validates a local `review.json` and merges it, writing `findings.json`
+plus `record.json`, which `report` and `triage` read. `record.json` pins the
+reviewed head and diff hash, the open count, and the prompts hash of the skill
+that graded it — proof the review was checked, not just written.
+
+`post.json` is written only by a real post: dry runs and failures never create
+it. It carries the posted head, so a second completed post on the same
+reviewed SHA refuses as `already-posted`; a new commit re-arms it.
+
+`threads-resolve.json` is written only by a real `threads resolve` run: the
+provider, repo, PR, head, timestamp, and the resolved and skipped thread ids
+with their reasons. A dry run lists the plan and writes nothing.
+
+`launcher.json` is written by `run`: the agent name, resolved binary, argv
+shape, timings, exit code, and the artifact's freshness and size. `run`
+requires the artifact to stay fresh against that record, and `record` then
+validates the review itself — so a review `run` accepts is a review the later
+verbs accept.
+
+The skill carries its own receipt: `skill install` writes 28 files plus a
+`.verdict-managed` file with the tool name, version, and install time, and
+`skill status` reports `keep` only while the copy matches the binary.
+
+## What is append-only
+
+Findings carry a line-number-free signature, a status, and an append-only
+`history`: triage, re-reviews, and verification claims add events, and a
+rebase never orphans the record. The calibration probe writes only its one
+`kb-grades.jsonl` file. The per-HEAD receipts above are snapshots, not logs:
+the next run on a new HEAD rewrites them, and the history inside `findings.json`
+is what remembers.

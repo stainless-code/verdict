@@ -5,7 +5,8 @@ search:
   tags: ["mcp", "tools", "stdio", "read-only", "operator"]
 ---
 
-For an agent host that already speaks MCP and wants tool discovery instead of a wrapper.
+For an agent host that already speaks MCP and wants tool discovery instead of
+a wrapper, serve the review verbs as tools over stdio.
 
 `verdict mcp` serves the review verbs as MCP tools over stdio — JSON-RPC 2.0, one frame per line. Stdout is the protocol channel; progress and warnings go to stderr. There is no HTTP mode and no daemon: the process runs with your credentials and exits when stdin closes.
 

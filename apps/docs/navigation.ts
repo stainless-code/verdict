@@ -5,9 +5,13 @@ export interface DocsSection {
 }
 
 export interface DocsTreePage {
+  /**
+   * The one navigation label for the page: the sidebar, the sitemap footer,
+   * and the pager all read this. The page's H1, `<title>`, and `llms.txt`
+   * entry keep the full frontmatter title; where that title is longer, the
+   * page sets a matching `sidebar.label` in its own frontmatter.
+   */
   readonly label: string;
-  /** Short label for the sitemap footer, where the full label would wrap. */
-  readonly footerLabel?: string;
   readonly docsFile?: string;
   readonly route: string;
 }
@@ -19,7 +23,7 @@ export interface DocsTreeGroup {
 
 /** The header's five sections, each with the route its tab lands on. */
 export const docsSections: readonly DocsSection[] = [
-  { label: "Docs", landing: "/docs/quickstart", path: "/docs" },
+  { label: "Docs", landing: "/docs/introduction", path: "/docs" },
   { label: "Agents", landing: "/agents", path: "/agents" },
   { label: "Compare", landing: "/compare", path: "/compare" },
   { label: "Roadmap", landing: "/roadmap", path: "/roadmap" },
@@ -31,6 +35,7 @@ export const docsTree: readonly DocsTreeGroup[] = [
   {
     label: "Start",
     pages: [
+      { label: "Introduction", route: "/docs/introduction" },
       { label: "Quickstart", route: "/docs/quickstart" },
       { label: "Glossary", route: "/docs/glossary" },
     ],
@@ -38,46 +43,21 @@ export const docsTree: readonly DocsTreeGroup[] = [
   {
     label: "Guides",
     pages: [
-      {
-        label: "Set up a repo",
-        footerLabel: "Repo setup",
-        route: "/docs/setup-repo",
-      },
-      {
-        label: "Review a branch without a PR",
-        footerLabel: "Local review",
-        route: "/docs/local-review",
-      },
-      {
-        label: "Let your agent run the review",
-        footerLabel: "Agent-run review",
-        route: "/docs/agent-run-review",
-      },
-      {
-        label: "Gate a PR in CI",
-        footerLabel: "CI gate",
-        route: "/docs/ci-gate",
-      },
-      {
-        label: "Review a large PR",
-        footerLabel: "Large PRs",
-        route: "/docs/review-large-pr",
-      },
-      {
-        label: "Review an untrusted PR",
-        footerLabel: "Untrusted PRs",
-        route: "/docs/untrusted-pr",
-      },
-      {
-        label: "Review on GitLab and Forgejo",
-        footerLabel: "GitLab and Forgejo",
-        route: "/docs/review-gitlab-forgejo",
-      },
+      { label: "Repo setup", route: "/docs/setup-repo" },
+      { label: "Local review", route: "/docs/local-review" },
+      { label: "Agent-run review", route: "/docs/agent-run-review" },
+      { label: "CI gate", route: "/docs/ci-gate" },
+      { label: "Large PRs", route: "/docs/review-large-pr" },
+      { label: "Untrusted PRs", route: "/docs/untrusted-pr" },
+      { label: "GitLab and Forgejo", route: "/docs/review-gitlab-forgejo" },
     ],
   },
   {
     label: "Concepts",
-    pages: [{ label: "How it reviews", route: "/docs/how-it-reviews" }],
+    pages: [
+      { label: "How it reviews", route: "/docs/how-it-reviews" },
+      { label: "Receipts", route: "/docs/receipts" },
+    ],
   },
   {
     label: "Reference",
@@ -89,7 +69,6 @@ export const docsTree: readonly DocsTreeGroup[] = [
       },
       {
         label: "JSON envelope",
-        footerLabel: "JSON envelope",
         route: "/docs/json-envelope",
       },
     ],
@@ -127,7 +106,7 @@ export const footerColumns: readonly FooterColumn[] = [
     .map((group) => ({
       label: group.label,
       links: group.pages.map((page) => ({
-        label: page.footerLabel ?? page.label,
+        label: page.label,
         path: page.route,
       })),
     })),

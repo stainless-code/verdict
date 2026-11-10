@@ -5,7 +5,8 @@ search:
   tags: ["go", "sdk", "in-process", "typed"]
 ---
 
-For a Go program that wants the review without spawning a process.
+Run the review from a Go program without spawning a process: typed requests
+against the same core as the CLI, with the envelope as the stable contract.
 
 `pkg/verdict` runs the verbs in-process against the same core as the CLI. Requests are typed, methods never call `os.Exit` and never touch your stdio, and install, upgrade, and skill verbs stay CLI-only on purpose.
 
