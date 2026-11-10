@@ -287,3 +287,35 @@ func TestUninstallAgents(t *testing.T) {
 		}
 	}
 }
+
+// TestUninstallAgentsDedupesByResolvedTarget pins that two agent names mapped
+// to one skills dir remove it once and report the first name.
+func TestUninstallAgentsDedupesByResolvedTarget(t *testing.T) {
+	t.Parallel()
+	env := map[string]string{"HOME": t.TempDir()}
+	env["CLAUDE_CONFIG_DIR"] = filepath.Join(env["HOME"], ".agents")
+	seed := newRequest(t)
+	seed.Env = env
+	seed.Agent = "agents"
+	if _, ref := skill.Install(context.Background(), seed); ref != nil {
+		t.Fatalf("seed install: %v", ref)
+	}
+	req := newRequest(t)
+	req.Env = env
+	set, ref := skill.UninstallAgents(context.Background(), req, []string{"claude", "agents"})
+	if ref != nil {
+		t.Fatalf("UninstallAgents: %v", ref)
+	}
+	if want := []string{"claude"}; !slices.Equal(set.Agents, want) {
+		t.Fatalf("agents = %v, want %v", set.Agents, want)
+	}
+	if len(set.Targets) != 1 {
+		t.Fatalf("targets = %+v, want one", set.Targets)
+	}
+	if set.Targets[0].Agent != "claude" || set.Targets[0].Status != skill.StatusRemoved {
+		t.Fatalf("target = %+v, want claude removed", set.Targets[0])
+	}
+	if _, err := os.Stat(filepath.Join(env["HOME"], ".agents", "skills", "verdict")); !os.IsNotExist(err) {
+		t.Fatalf("shared target survived: %v", err)
+	}
+}

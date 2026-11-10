@@ -316,6 +316,22 @@ func (req *Request) target() (string, *core.RefusalError) {
 	return filepath.Join(dir, Name), nil
 }
 
+// resolvedTarget is the install target for agent as a cleaned absolute path:
+// the key that dedupes agent names sharing one directory.
+func (req *Request) resolvedTarget(agent string) (string, *core.RefusalError) {
+	at := *req
+	at.Agent = agent
+	target, ref := at.target()
+	if ref != nil {
+		return "", ref
+	}
+	abs, err := filepath.Abs(target)
+	if err != nil {
+		return "", refuse(codeInstall, fmt.Sprintf("cannot resolve %s: %s", target, err))
+	}
+	return filepath.Clean(abs), nil
+}
+
 type agentLayout struct {
 	base  string
 	parts []string

@@ -76,25 +76,31 @@ func InstallAgents(ctx context.Context, req *Request, agents []string) (Detectio
 }
 
 // planAgents resolves one target per named agent in argv order, dropping a
-// repeated agent.
+// repeated agent and every later agent that resolves to a target already
+// planned.
 func planAgents(req *Request, files Inventory, agents []string) ([]Plan, []string, *core.RefusalError) {
 	agents = dedupeAgents(agents)
 	plans := make([]Plan, 0, len(agents))
+	kept := make([]string, 0, len(agents))
+	seen := make(map[string]bool, len(agents))
 	for _, agent := range agents {
-		at := *req
-		at.Agent = agent
-		target, ref := at.target()
+		target, ref := req.resolvedTarget(agent)
 		if ref != nil {
 			return nil, nil, ref
 		}
+		if seen[target] {
+			continue
+		}
+		seen[target] = true
 		plan, ref := planAt(files, target)
 		if ref != nil {
 			return nil, nil, ref
 		}
 		plan.Agent = agent
 		plans = append(plans, plan)
+		kept = append(kept, agent)
 	}
-	return plans, agents, nil
+	return plans, kept, nil
 }
 
 func dedupeAgents(agents []string) []string {

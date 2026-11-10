@@ -285,3 +285,26 @@ func TestInstallDetectedHonorsEnvLayouts(t *testing.T) {
 		t.Fatal("installed into ~/.claude although CLAUDE_CONFIG_DIR is set")
 	}
 }
+
+// TestInstallAgentsDedupesByResolvedTarget pins that two agent names mapped to
+// one skills dir plan one install, under the first name.
+func TestInstallAgentsDedupesByResolvedTarget(t *testing.T) {
+	t.Parallel()
+	req := newRequest(t)
+	home := req.Env["HOME"]
+	req.Env = map[string]string{"HOME": home, "CLAUDE_CONFIG_DIR": filepath.Join(home, ".agents")}
+	req.DryRun = true
+	det, ref := skill.InstallAgents(context.Background(), req, []string{"claude", "agents"})
+	if ref != nil {
+		t.Fatalf("InstallAgents: %v", ref)
+	}
+	if want := []string{"claude"}; !slices.Equal(det.Agents, want) {
+		t.Fatalf("agents = %v, want %v", det.Agents, want)
+	}
+	if len(det.Plans) != 1 {
+		t.Fatalf("plans = %+v, want one target", det.Plans)
+	}
+	if want := filepath.Join(home, ".agents", "skills", "verdict"); det.Plans[0].Target != want {
+		t.Fatalf("target = %q, want %q", det.Plans[0].Target, want)
+	}
+}

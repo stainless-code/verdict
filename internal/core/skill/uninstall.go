@@ -66,7 +66,8 @@ func Uninstall(ctx context.Context, req *Request) (Removal, *core.RefusalError) 
 }
 
 // UninstallAgents removes one target per named agent, in argv order and
-// deduped, with every target planned before the first file is deleted.
+// deduped by resolved target, with every target planned before the first file
+// is deleted.
 //
 //nolint:revive // the multi-target plan-then-apply pass
 func UninstallAgents(ctx context.Context, req *Request, agents []string) (RemovalSet, *core.RefusalError) {
@@ -79,24 +80,36 @@ func UninstallAgents(ctx context.Context, req *Request, agents []string) (Remova
 	}
 	agents = dedupeAgents(agents)
 	removals := make([]Removal, 0, len(agents))
+	kept := make([]string, 0, len(agents))
 	roots := make([]*os.Root, 0, len(agents))
+	seen := make(map[string]bool, len(agents))
 	closeRoots := func() {
 		for _, root := range roots {
 			_ = root.Close()
 		}
 	}
 	for _, agent := range agents {
+		target, ref := req.resolvedTarget(agent)
+		if ref != nil {
+			closeRoots()
+			return RemovalSet{}, ref
+		}
+		if seen[target] {
+			continue
+		}
+		seen[target] = true
 		at := *req
 		at.Agent = agent
-		rm, root, ref := planRemoval(ctx, &at)
+		rm, root, ref := planRemovalPath(&at, files, target)
 		if ref != nil {
 			closeRoots()
 			return RemovalSet{}, ref
 		}
 		removals = append(removals, rm)
+		kept = append(kept, agent)
 		roots = append(roots, root)
 	}
-	set := RemovalSet{Name: files.Name, Version: files.Version, Agents: agents, Targets: removals}
+	set := RemovalSet{Name: files.Name, Version: files.Version, Agents: kept, Targets: removals}
 	if req.DryRun {
 		closeRoots()
 		return set, nil

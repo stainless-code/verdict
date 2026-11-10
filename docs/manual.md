@@ -1663,8 +1663,10 @@ platform package. A plain `verdict` call consults neither variable.
   `agents`, `claude`, `codex`, `cursor`, `opencode`, `copilot`, `gemini`,
   `goose`, `qwen`, and `windsurf`; `--agent agents` (and no flag) target the
   shared `~/.agents/skills/verdict` slot. `--agent` repeats on `install`,
-  `status`, and `uninstall`: targets are deduplicated and handled in argv
-  order, and `--dir` stays a single target. `--detect` installs into every one
+  `status`, and `uninstall`: targets are deduplicated by resolved path and
+  handled in argv order, so two agent names that reach one skills dir (for
+  example `claude` under `CLAUDE_CONFIG_DIR=~/.agents` and `agents`) plan and
+  act once, under the first name. `--dir` stays a single target. `--detect` installs into every one
   of those agents whose skills dir already exists and holds a file, and names
   each target's result; with none present it refuses typed
   (`skill-no-detected-agent`) and asks for `--agent <name>`. It cannot be
