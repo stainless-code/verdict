@@ -31,7 +31,6 @@ export const docsTree: readonly DocsTreeGroup[] = [
     pages: [
       { label: "Quickstart", route: "/docs/quickstart" },
       { label: "Glossary", route: "/docs/glossary" },
-      { label: "Why Verdict", route: "/docs/why-verdict" },
     ],
   },
   {

@@ -1,11 +1,13 @@
 ---
 title: Comparison
-description: "Verdict against CodeRabbit, Copilot code review, Bugbot, Greptile, Graphite, Macroscope and Pullfrog. Prices checked 2026-11-04."
+description: "The pains behind Verdict and how it differs from CodeRabbit, Copilot code review, Bugbot, Greptile, Graphite, Macroscope and Pullfrog."
 search:
   tags:
     [
       "comparison",
       "alternatives",
+      "why",
+      "pains",
       "coderabbit",
       "copilot",
       "bugbot",
@@ -18,10 +20,37 @@ search:
     ]
 ---
 
-The real competition is anything that reviews code before it merges: CodeRabbit, GitHub
-Copilot code review, Cursor's Bugbot and Agent Review, Greptile, Graphite, Macroscope
-and Pullfrog, plus a long tail of SaaS reviewers and one close open-source project, and
-the status quo of human-only review.
+AI review works. It is also metered, gated behind app installs, and hard to audit.
+Verdict keeps the review and drops the meter.
+
+## Hosted review trades the bottleneck for a meter
+
+Five pains sit behind Verdict: latency, held keys, unverifiable output, anchor rot, and approval theater.
+
+1. **Latency.** PRs wait days for a human look, or merge unreviewed.
+2. **Held keys and meters.** Hosted reviewers want an app install, webhooks, or vaulted keys, and most meter usage — some bill each re-review anew.
+3. **Unverifiable output.** Prose with no evidence level, anchor check, or record of what was claimed — authors skim past it.
+4. **Anchor rot and re-report spam.** Comments land on moved lines, findings return every push, threads resolve without a fix.
+5. **Approval theater.** An approve on an unexamined diff says nothing about what was checked — and since 2026-10-28 a Copilot approval can satisfy a required-approval rule.
+
+## One binary on your machine does fetch, review, gate, post
+
+`fetch` pulls the bundle — on GitHub with no clone — any model you run does the review, and `post` lands one native review.
+
+- **Trust.** Keys stay on your machine; diffs go only to your chosen model — a local one keeps them on the machine. Open Go, no Go dependencies.
+- **Proof.** Every finding carries an evidence rung from `said` to `reproduced`; unproven ships labeled or is dropped. Anchors check against hunks; suggestions are real suggestion blocks or the post refuses.
+- **Memory.** Signatures without line numbers, a status, and append-only history: re-reviews never re-report, threads retire by rule.
+- **Verdicts.** A severity ladder maps to the author's next action; binding verdicts need `--bind`, approval is refused with findings open, and `calibrate` scores predictions against outcomes.
+
+## What Verdict refuses to be
+
+No hosted merge gate, daemon, model provider, or dashboard. `gate` folds open findings, stale HEAD, and open threads into one local exit code honored like any other CI step. Verdict never posts a check run or merges for you.
+
+Enterprise merge gating, fleet policy, and hosted audit trails need a server, so they stay with hosted reviewers.
+
+## Every hosted reviewer meters; Verdict does not
+
+Anything that reviews code before it merges: the seven hosted reviewers, a long tail of SaaS reviewers, one close open-source project, and human-only review. Prices checked 2026-11-04.
 
 | Reviewer                   | Price and ask (as of 2026-11-04)                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Where they win                                                                                                                                                                                               | What Verdict does differently                                                                                                                                                                                                                                                      |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -32,40 +61,17 @@ the status quo of human-only review.
 | Graphite AI Reviews        | Per seat, billed annually: Hobby free (personal repos, limited AI reviews), Starter `$20` (adds org repos and Slack; AI reviews still limited), Team `$40` (unlimited AI reviews, custom rules, Automations, Merge Queue), Enterprise custom. Hosted GitHub App that reviews every new PR.                                                                                                                                                                                                                    | Issue categories on every comment, dashboard analytics, natural-language rules and exclusions, org-wide rollout controls, and a PR inbox, stacked-PR CLI and merge queue in the same product.                | Rules live in the repo as committed JSONL with provenance and history, not in a dashboard. Findings carry evidence rungs and anchor checks. Runs locally on any model, with no seat and no GitHub App. Loses the analytics dashboard and the merge queue by design.                |
 | Macroscope                 | Hosted app and CLI, no seats. Hosted GitHub reviews bill per KB by detection mode: `$0.025` Budget to `$0.20` Ultra, 10 KB minimum, so a review floors at `$0.25–$2.00`. Status adds `$0.05` per summarized commit, and Approvability 30 credits each time the eligibility agent runs. CLI reviews bill in Agent credits at model usage plus 5%, not per KB. Prepaid balance, `$100` welcome usage.                                                                                                           | Hosted check runs, fix PRs, analytics exports, per-mode effort dials with published rates, and a published benchmark method.                                                                                 | Local, file-based controls; no per-KB meter or hosted checks. Reads only files handed to it.                                                                                                                                                                                       |
 | Pullfrog                   | GitHub Actions only, with a hosted control plane; no local review. Public repos free on every plan and personal accounts free; `$30`/mo or `$300`/yr per org, no per-seat charge. Models are separate: your own key, or Pullfrog Router at provider cost with no markup.                                                                                                                                                                                                                                      | Configurable automations beyond review (fix CI, conflicts, triage), wrapping Claude Code, OpenCode, or Codex on your runner.                                                                                 | Review craft without a third-party review account, with keys staying on your machine. Loses automations beyond review by design.                                                                                                                                                   |
-| Human-only and gh aliases  | Salaries plus waiting                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Judgment, taste, context                                                                                                                                                                                     | Every PR can get a grounded first pass in minutes. Humans spend attention on the parts that need judgment.                                                                                                                                                                         |
+| Human-only and gh aliases  | Salaries plus waiting                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Judgment, taste, context                                                                                                                                                                                     | Every PR can get a grounded first pass before a human looks. Humans spend attention on the parts that need judgment.                                                                                                                                                               |
 
-<Callout type="info" title="Prices change">
-  Prices above were checked on 2026-11-04. Check the vendors for current
-  numbers. The shape does not change.
-</Callout>
+## Local review is no longer the wedge; the bundle is
 
-Every vendor row above is a hosted component with seats, credits, an org fee, a
-per-review credit or a usage meter. Verdict has none of those. It does one job: fetch,
-review, post, stop. Setup is one binary, the blast radius is one post, and the model is
-your choice. In exchange it skips the hosted features in the "Where they win" column.
-
-## Local review is no longer the wedge
-
-Most of the field has a local story now, so it is not the difference. CodeRabbit's CLI
-reviews tracked, staged and unstaged changes, with `--uncommitted` to narrow it and
-`--include-untracked` to widen it. Greptile's `greptile review` reviews committed branch
-changes against a base and skips uncommitted work. Cursor runs Agent Review and
-`/review-bugbot` over local changes before the push, and Copilot code review reviews
-uncommitted changes in VS Code. The Macroscope CLI reviews a frozen snapshot that
-includes work in progress. Each one wants its account signed in, and each bills the
-review on its own meter.
-
-What Verdict claims instead is narrower, and checkable: the review target is a plain
-bundle on disk. `fetch` writes `.verdict/state/<pr>/` with `PR.json`, and `fetch-local` writes
+CodeRabbit, Greptile, Cursor, Copilot, and Macroscope all review local changes now, each signed in and metered. Verdict's claim is narrower, and checkable: the review target is a plain bundle on disk. `fetch` writes `.verdict/state/<pr>/` with `PR.json`, and `fetch-local` writes
 `.verdict/state/local-<name>/` with `source.json`; both carry `full.diff`, `toc.txt` and
-`roles.txt`, and nothing stays running. A local bundle needs no host login, no app
-install and no account. The diff goes only to the model your agent runs, which you pick.
-The same files feed `report --check` in CI and `post` on GitHub, GitLab, or Forgejo, so the gate and the
-review read one artifact.
+`roles.txt`, and nothing stays running. The same files feed `report --check` in CI and `post` on GitHub, GitLab, or Forgejo.
 
-## The long tail
+## The long tail meters the same way
 
-The long tail is not uniform: Qodo meters credits (`$0.012` each; Pro Team `$30`/mo buys
+Qodo meters credits (`$0.012` each; Pro Team `$30`/mo buys
 roughly 18 reviews and packs scale to 20,000 credits, roughly 144) and also publishes
 `PR-Agent`, an MIT reviewer with 14k stars; Sourcery sells seats (`$12–$24` per dev/mo
 annual) and puts self-hosting, SSO and bring-your-own keys on Enterprise; Ellipsis runs
@@ -80,12 +86,11 @@ clawpatch (machine-checked fix-to-revalidate loops for whole-repo campaigns) and
 (verification culture and multi-model endurance) shaped this skill's discipline. They
 solve different problems and can run after Verdict posts.
 
-## Lineage
+## The prompt is shared on purpose; the meter is the disagreement
 
-Verdict's review core descends from Pullfrog's open-source action: the review prompt,
-not its harness wrapping. It is credited in
-[NOTICE](https://github.com/stainless-code/verdict/blob/main/NOTICE.md). The review
-craft is shared on purpose. The disagreement is the meter.
+Verdict's review core descends from Pullfrog's open-source action — the review prompt,
+not its harness wrapping, credited in
+[NOTICE](https://github.com/stainless-code/verdict/blob/main/NOTICE.md). The craft is shared on purpose; the disagreement is the meter.
 
 ## Sources
 
@@ -102,10 +107,10 @@ craft is shared on purpose. The disagreement is the meter.
 - proval: [repository](https://github.com/seoes/proval).
 
 <CardGroup cols={2}>
-  <Card title="Why Verdict" href="/docs/why-verdict">
-    The pains this solves and what it refuses to be.
-  </Card>
   <Card title="How it reviews" href="/docs/how-it-reviews">
     How claims carry proof and memory survives re-reviews.
+  </Card>
+  <Card title="Quickstart" href="/docs/quickstart">
+    Install the binary and run a first review.
   </Card>
 </CardGroup>
