@@ -164,6 +164,13 @@ func completePatchIdentity(ctx context.Context, cmdr core.Commander, dir, head, 
 	comp.SamePatch = &same
 }
 
+// refetchIncremental marks the hosts whose fetch owns the --base-sha compare:
+// a posted head on one of them advances incrementally.
+var refetchIncremental = map[string]bool{
+	providerGitHub: true,
+	providerGitLab: true,
+}
+
 func refetchCommand(dir string, req core.ReadRequest, posted string) string {
 	prov := ""
 	if isRegular(dir + "/PR.json") {
@@ -172,14 +179,15 @@ func refetchCommand(dir string, req core.ReadRequest, posted string) string {
 	if isLocalDir(dir) {
 		return fmt.Sprintf("verdict fetch-local %s %s", req.Repo, strings.TrimPrefix(req.Pr, "local-"))
 	}
-	// GitLab supports incremental re-review, so a posted head falls through
-	// to the --base-sha form below exactly like GitHub; without one the
-	// provider flag stays so the re-fetch hits the right host.
-	if prov != "" && prov != providerGitHub && (prov != providerGitLab || posted == "") {
-		return fmt.Sprintf("verdict fetch %s %s --provider %s", req.Repo, req.Pr, prov)
+	providerFlag := ""
+	if prov != "" && prov != providerGitHub {
+		providerFlag = " --provider " + prov
 	}
-	if posted != "" {
-		return fmt.Sprintf("verdict fetch %s %s --base-sha %s", req.Repo, req.Pr, readcommon.ShortSHA(posted))
+	// An absent provider marker reads as fetch's GitHub default, which owns
+	// the compare too.
+	if posted != "" && (prov == "" || refetchIncremental[prov]) {
+		return fmt.Sprintf("verdict fetch %s %s%s --base-sha %s",
+			req.Repo, req.Pr, providerFlag, readcommon.ShortSHA(posted))
 	}
-	return fmt.Sprintf("verdict fetch %s %s", req.Repo, req.Pr)
+	return fmt.Sprintf("verdict fetch %s %s%s", req.Repo, req.Pr, providerFlag)
 }

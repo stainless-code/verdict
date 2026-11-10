@@ -290,8 +290,23 @@ jq -n --arg h "$HEADB" \
 run_review report acme/app "$PR" --completeness
 assert_exit "provider stale-head fails the gate" 1
 assert_file_grep "provider stale-head names the typed code" "$EVAL_ERR" "stale-head"
-assert_file_grep "provider stale-head names the --base-sha advance form" "$EVAL_ERR" "fetch acme/app $PR --base-sha ${HEADB:0:7}"
-assert_stream_nogrep "provider stale-head keeps no plain provider fetch" "$EVAL_ERR" "--provider gitlab"
+assert_file_grep "provider stale-head names the provider and --base-sha advance" "$EVAL_ERR" "fetch acme/app $PR --provider gitlab --base-sha ${HEADB:0:7}"
+assert_stream_nogrep "provider stale-head keeps no provider-less fetch" "$EVAL_ERR" "fetch acme/app $PR --base-sha"
+
+PR=4309
+eval_mk_bundle "$PR"
+cat > "$EVAL_SANDBOX/.verdict/state/$PR/PR.json" <<EOF
+{"state":"OPEN","provider":"github","headRefOid":"$HEADA","baseRefOid":"$HEADB","author":{"login":"mate"}}
+EOF
+printf '[]' | eval_write_findings "$PR"
+jq -n --arg h "$HEADB" \
+  '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null}' \
+  > "$EVAL_SANDBOX/.verdict/state/$PR/post.json"
+run_review report acme/app "$PR" --completeness
+assert_exit "github stale-head fails the gate" 1
+assert_file_grep "github stale-head keeps the plain --base-sha advance" "$EVAL_ERR" "fetch acme/app $PR --base-sha ${HEADB:0:7}"
+assert_stream_nogrep "github stale-head names no provider flag" "$EVAL_ERR" "--provider"
+
 PR=4308
 eval_mk_bundle "$PR"
 cat > "$EVAL_SANDBOX/.verdict/state/$PR/PR.json" <<EOF
