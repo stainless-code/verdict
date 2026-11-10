@@ -150,8 +150,8 @@ func checkGhAPIFile(g *gateText) *core.RefusalError {
 func checkRemoteInstall(g *gateText) *core.RefusalError {
 	if frag := grepO(rePkgURLInstall, g.bare); frag != "" {
 		return refuse(codeNetworked, frag,
-			"package install from a URL executes remote code "+
-				"at install time — vendor the fixture, install offline")
+			"package install/download from a URL fetches remote content "+
+				"— vendor the fixture, install offline")
 	}
 	if frag := grepO(reNpxPackage, g.bare); frag != "" {
 		return refuse(codeNetworked, frag,
