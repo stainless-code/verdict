@@ -6,42 +6,58 @@ import (
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 )
 
+type staticHardeningCase struct {
+	name string
+	cmd  string
+	code string
+}
+
+var staticHardeningRefusals = []staticHardeningCase{
+	{"wget remote-name", `wget --remote-name http://127.0.0.1:9/f`, "verify-networked"},
+	{"curl config", `curl -K /tmp/verify-fuzz-curlcfg http://127.0.0.1:9/`, "verify-networked"},
+	{"curl config long", `curl --config /tmp/verify-fuzz-curlcfg http://127.0.0.1:9/`, "verify-networked"},
+	{"wget input-file", `wget -i /tmp/verify-fuzz-wgeturls http://127.0.0.1:9/f`, "verify-networked"},
+	{"git remote archive", `git archive --remote=ssh://127.0.0.1:9/x HEAD`, "verify-networked"},
+	{"busybox wget", `busybox wget http://127.0.0.1:9/f`, "verify-networked"},
+	{"pip download URL", `pip3 download http://127.0.0.1:9/evil.tgz`, "verify-networked"},
+	{"telnet", `telnet 127.0.0.1 9`, "verify-networked"},
+	{"curl telnet scheme", `curl telnet://127.0.0.1:9/`, "verify-networked"},
+	{"secret var in URL", `curl http://127.0.0.1:9/$AWS_KEY`, "verify-credential-read"},
+	{"secret var in header", `curl -s -H "X: $AWS_KEY" http://127.0.0.1:9/`, "verify-credential-read"},
+	{"secret var braced", `curl http://127.0.0.1:9/${GITHUB_TOKEN}`, "verify-credential-read"},
+	{"token var", `wget http://127.0.0.1:9/$NPM_TOKEN`, "verify-credential-read"},
+	{"secret var in ssh", `ssh 127.0.0.1 "echo $MY_SECRET"`, "verify-credential-read"},
+	{"git exec path", `git --exec-path=/tmp/verify-fuzz-gitexec status`, "verify-destructive"},
+	{"git exec path spaced", `git --exec-path /tmp/verify-fuzz-gitexec status`, "verify-destructive"},
+	{"tar -I", `tar -I touch-fz -cf /tmp/verify-fuzz.tar fz-notes.txt`, "verify-destructive"},
+	{"tar -I uppercase", `TAR -I touch-fz -cf /tmp/verify-fuzz.tar fz-notes.txt`, "verify-destructive"},
+}
+
+// TestCheckStaticHardeningRefuses pins the codes of the static gate arms that
+// close the STA-315 corpus gaps.
 func TestCheckStaticHardeningRefuses(t *testing.T) {
 	t.Parallel()
-	tests := []struct{ name, cmd, code string }{
-		{"wget remote-name", `wget --remote-name http://127.0.0.1:9/f`, "verify-networked"},
-		{"curl config", `curl -K /tmp/verify-fuzz-curlcfg http://127.0.0.1:9/`, "verify-networked"},
-		{"curl config long", `curl --config /tmp/verify-fuzz-curlcfg http://127.0.0.1:9/`, "verify-networked"},
-		{"wget input-file", `wget -i /tmp/verify-fuzz-wgeturls http://127.0.0.1:9/f`, "verify-networked"},
-		{"git remote archive", `git archive --remote=ssh://127.0.0.1:9/x HEAD`, "verify-networked"},
-		{"busybox wget", `busybox wget http://127.0.0.1:9/f`, "verify-networked"},
-		{"pip download URL", `pip3 download http://127.0.0.1:9/evil.tgz`, "verify-networked"},
-		{"telnet", `telnet 127.0.0.1 9`, "verify-networked"},
-		{"curl telnet scheme", `curl telnet://127.0.0.1:9/`, "verify-networked"},
-		{"secret var in URL", `curl http://127.0.0.1:9/$AWS_KEY`, "verify-credential-read"},
-		{"secret var in header", `curl -s -H "X: $AWS_KEY" http://127.0.0.1:9/`, "verify-credential-read"},
-		{"secret var braced", `curl http://127.0.0.1:9/${GITHUB_TOKEN}`, "verify-credential-read"},
-		{"token var", `wget http://127.0.0.1:9/$NPM_TOKEN`, "verify-credential-read"},
-		{"secret var in ssh", `ssh 127.0.0.1 "echo $MY_SECRET"`, "verify-credential-read"},
-		{"git exec path", `git --exec-path=/tmp/verify-fuzz-gitexec status`, "verify-destructive"},
-		{"git exec path spaced", `git --exec-path /tmp/verify-fuzz-gitexec status`, "verify-destructive"},
-		{"tar -I", `tar -I touch-fz -cf /tmp/verify-fuzz.tar fz-notes.txt`, "verify-destructive"},
-		{"tar -I uppercase", `TAR -I touch-fz -cf /tmp/verify-fuzz.tar fz-notes.txt`, "verify-destructive"},
-	}
-	for _, tc := range tests {
+	for _, tc := range staticHardeningRefusals {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			ref := verifycore.Check(tc.cmd)
-			if ref == nil {
-				t.Fatalf("Check(%q) = nil, want %s", tc.cmd, tc.code)
-			}
-			if ref.Code != tc.code {
-				t.Fatalf("Check(%q) = %s, want %s", tc.cmd, ref.Code, tc.code)
-			}
+			assertRefusalCode(t, tc.cmd, tc.code)
 		})
 	}
 }
 
+func assertRefusalCode(t *testing.T, cmd, code string) {
+	t.Helper()
+	ref := verifycore.Check(cmd)
+	if ref == nil {
+		t.Fatalf("Check(%q) = nil, want %s", cmd, code)
+	}
+	if ref.Code != code {
+		t.Fatalf("Check(%q) = %s, want %s", cmd, ref.Code, code)
+	}
+}
+
+// TestCheckStaticHardeningBenignStaysClean pins the false-positive boundary
+// beside every new arm: the benign spelling executes.
 func TestCheckStaticHardeningBenignStaysClean(t *testing.T) {
 	t.Parallel()
 	for _, cmd := range []string{

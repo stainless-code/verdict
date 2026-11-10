@@ -70,20 +70,25 @@ func envVarNames(s string) []string {
 		if s[i] != '$' {
 			continue
 		}
-		j := i + 1
-		if j < len(s) && s[j] == '{' {
-			j++
+		name, end := envVarAt(s, i)
+		if name != "" {
+			out = append(out, name)
 		}
-		start := j
-		for j < len(s) && isWordByte(s[j]) {
-			j++
-		}
-		if j > start {
-			out = append(out, s[start:j])
-		}
-		i = j - 1
+		i = end - 1
 	}
 	return out
+}
+
+func envVarAt(s string, i int) (string, int) {
+	j := i + 1
+	if j < len(s) && s[j] == '{' {
+		j++
+	}
+	start := j
+	for j < len(s) && isWordByte(s[j]) {
+		j++
+	}
+	return s[start:j], j
 }
 
 func checkReconSubst(g *gateText) *core.RefusalError {
