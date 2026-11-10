@@ -222,10 +222,14 @@
 # windows/arm64 11346944. Five ceilings cross and move to the next 10 kB at
 # least 5 kB above their measurement; windows/arm64 had already moved for the
 # same wave.
+# The thread-resolve identity gate and the host-truth help text put the PR 2
+# head at linux/amd64 12292256 (crosses) and windows/amd64 12629504 (496 bytes
+# under, inside the recorded ~1 kB local-vs-CI drift); both move to the next
+# 10 kB, the other four hold.
 deps 0
 darwin/amd64 12520000
 darwin/arm64 11480000
-linux/amd64 12290000
+linux/amd64 12300000
 linux/arm64 11280000
-windows/amd64 12630000
+windows/amd64 12640000
 windows/arm64 11360000
