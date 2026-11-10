@@ -290,8 +290,8 @@ jq -n --arg h "$HEADB" \
 run_review report acme/app "$PR" --completeness
 assert_exit "provider stale-head fails the gate" 1
 assert_file_grep "provider stale-head names the typed code" "$EVAL_ERR" "stale-head"
-assert_file_grep "provider stale-head names the plain provider fetch" "$EVAL_ERR" "fetch acme/app $PR --provider gitlab"
-assert_stream_nogrep "provider stale-head keeps no --base-sha" "$EVAL_ERR" "--base-sha"
+assert_file_grep "provider stale-head names the --base-sha advance form" "$EVAL_ERR" "fetch acme/app $PR --base-sha ${HEADB:0:7}"
+assert_stream_nogrep "provider stale-head keeps no plain provider fetch" "$EVAL_ERR" "--provider gitlab"
 PR=4308
 eval_mk_bundle "$PR"
 cat > "$EVAL_SANDBOX/.verdict/state/$PR/PR.json" <<EOF
