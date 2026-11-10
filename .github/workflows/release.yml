@@ -101,3 +101,39 @@ jobs:
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/checksums.txt
+
+      # Read the published signature back and grade it, so a bundle that is
+      # missing, mis-signed, or signed by another workflow fails this job
+      # instead of shipping. The identity and issuer are literals — the pair
+      # release/contract.json publishes and CONTRIBUTING tells an operator to
+      # pin — and release.yml is triggered by a push to main, so the SAN ends at
+      # refs/heads/main. The trigger and the commit.txt SHA claim are pinned
+      # too, the same way install.sh verifies: the identity alone would also
+      # accept a workflow_dispatch run at that commit.
+      #
+      # The step reads the release rather than dist/: an idempotent re-run over
+      # an already-complete release builds nothing, so dist/ may hold no bundle
+      # while the published one still needs grading. It skips with the same
+      # output the attestation skips on, which is a Version-PR run that never
+      # signed anything.
+      - name: Verify the published checksums signature
+        if: steps.changesets.outputs.published == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          dir="$RUNNER_TEMP/signed"
+          mkdir -p "$dir"
+          gh release download "v$version" --repo "$GITHUB_REPOSITORY" --dir "$dir" \
+            --pattern checksums.txt --pattern checksums.txt.sigstore.json \
+            --pattern commit.txt --clobber
+          cosign verify-blob \
+            --bundle "$dir/checksums.txt.sigstore.json" \
+            --certificate-identity "https://github.com/stainless-code/verdict/.github/workflows/release.yml@refs/heads/main" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --certificate-github-workflow-trigger push \
+            --certificate-github-workflow-sha "$(cat "$dir/commit.txt")" \
+            "$dir/checksums.txt"
+          echo "release: checksums.txt signature verified against release.yml@refs/heads/main"

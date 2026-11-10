@@ -214,6 +214,12 @@ same identity and the same SHA claim.
 
 Then compare the archive's SHA-256 with its line in `checksums.txt`.
 
+The release job runs this same verification against the assets it published
+(`Verify the published checksums signature` in
+[`.github/workflows/release.yml`](.github/workflows/release.yml)), with the
+identity and issuer as literals: a release nobody can verify this way fails the
+run instead of shipping.
+
 Dry-run (publishes nothing, pushes nothing, needs no secrets):
 `make release-dry-run`. It builds snapshot archives and the npm tree (a fake
 `npm` records argv), renders the formula and grades it with `brew style` and
