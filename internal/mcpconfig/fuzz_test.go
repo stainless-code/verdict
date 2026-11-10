@@ -3,6 +3,7 @@ package mcpconfig
 import (
 	"bytes"
 	"encoding/json"
+	"maps"
 	"reflect"
 	"strings"
 	"testing"
@@ -37,6 +38,8 @@ func FuzzMergeJSON(f *testing.F) {
 		`{"mcpServers":{"verdict":{"command":"verdict","args":["mcp"],"env":{"A":"b"}}}}`,
 		`{"mcpServers":{"verdict":{"command":"evil","args":["mcp"]}}}`, `{"mcpServers":[]}`, `[]`, `null`,
 		`{"a":1,"a":2}`, `{"mcpServers":{"verdict":null}}`, `{"mcpServers":{}}}`, "{\"k\":\"\xff\"}", `{"mcpServers":{"verdict":{"command":"verdict","args":["mcp","x"]}}}`,
+		`{"mcpServers":{"verdict":{"command":"verdict","args":["mcp","--read-only"]}}}`,
+		`{"mcpServers":{"verdict":{"command":"verdict","args":["mcp","--read-only"],"env":{"A":"b"},"note":"n"}}}`,
 	} {
 		f.Add([]byte(s))
 	}
@@ -108,14 +111,35 @@ func assertMergedJSON(t *testing.T, old, out []byte) {
 		t.Fatalf("merge produced invalid JSON or a non-object: %q (from %q)", out, old)
 	}
 	servers := asObject(merged["mcpServers"])
-	want := map[string]any{"command": "verdict", "args": []any{"mcp"}}
-	if !reflect.DeepEqual(servers["verdict"], want) {
-		t.Fatalf("merged verdict entry = %#v, want %#v", servers["verdict"], want)
+	entry := asObject(servers["verdict"])
+	if entry == nil || entry["command"] != "verdict" || !reflect.DeepEqual(entry["args"], []any{"mcp"}) {
+		t.Fatalf("merged verdict entry = %#v, want command verdict and argv [mcp]", servers["verdict"])
+	}
+	orig := stdRoot(old)
+	origServers := asObject(orig["mcpServers"])
+	if before := asObject(origServers["verdict"]); before != nil {
+		assertOwnedEntryKept(t, before, entry)
+	} else if want := map[string]any{"command": "verdict", "args": []any{"mcp"}}; !reflect.DeepEqual(entry, want) {
+		t.Fatalf("added verdict entry = %#v, want %#v", entry, want)
 	}
 	delete(servers, "verdict")
-	assertOperatorKeysKept(t, stdRoot(old), merged, old)
+	delete(origServers, "verdict")
+	assertOperatorKeysKept(t, orig, merged, old)
 	if _, again, ref := mergeJSON(out, "cfg.json", []string{"mcp"}); ref != nil || again {
 		t.Fatalf("second merge not a no-op: changed=%v ref=%v for %q", again, ref, out)
+	}
+}
+
+// assertOwnedEntryKept checks the in-place update: command and every key but
+// args survive, and only args move to the requested argv.
+func assertOwnedEntryKept(t *testing.T, before, after map[string]any) {
+	t.Helper()
+	was := maps.Clone(before)
+	now := maps.Clone(after)
+	delete(was, "args")
+	delete(now, "args")
+	if !reflect.DeepEqual(now, was) {
+		t.Fatalf("in-place update changed the owned entry: %#v -> %#v", before, after)
 	}
 }
 
@@ -153,6 +177,9 @@ func FuzzMergeTOML(f *testing.F) {
 		"\u2004", "model = \"x\"\n\u2003", " \t\n",
 		"[mcp_servers.verdict]\"\ncommand = \"verdict\"\nargs = [\"mcp\"]\n\"\n", "[mcp_servers.verdict]'''\ntext\n'''\n",
 		"model = \"x\"\r\n\r\n[b]\nc=1\n",
+		"[mcp_servers.verdict]\ncommand = \"verdict\"\nargs = [\"mcp\", \"--read-only\"]\n",
+		"[mcp_servers.verdict]\ncommand = \"verdict\"\nargs = [\"mcp\", \"--operator\"]\nstartup_timeout_sec = 20\n",
+		"[mcp_servers . \"verdict\"]\ncommand = 'verdict'\nargs = ['mcp', '--read-only']\n",
 	} {
 		f.Add([]byte(s))
 	}
@@ -192,7 +219,7 @@ func mustMergeTOML(f *testing.F, s string) {
 // assertMergedTOML checks a changed TOML merge.
 func assertMergedTOML(t *testing.T, old, out []byte) {
 	t.Helper()
-	if !isSubsequence(nonBlankLines(string(old)), nonBlankLines(string(out))) {
+	if !isSubsequence(operatorLines(string(old)), nonBlankLines(string(out))) {
 		t.Fatalf("merge dropped or reordered operator lines:\nold %q\nnew %q", old, out)
 	}
 	if !bytes.Contains(out, []byte("[mcp_servers.verdict]")) && !bytes.Contains(old, []byte("mcp_servers")) {
@@ -201,6 +228,60 @@ func assertMergedTOML(t *testing.T, old, out []byte) {
 	if _, again, ref := mergeTOML(out, "config.toml", []string{"mcp"}); ref != nil || again {
 		t.Fatalf("second merge not a no-op: changed=%v ref=%v for %q", again, ref, out)
 	}
+}
+
+// operatorLines returns the non-blank lines the merge must keep, dropping the
+// verdict table's args lines: that is the one line an in-place posture update
+// rewrites, and the tables the merge refuses if it cannot place a new one.
+func operatorLines(s string) []string {
+	var out []string
+	inVerdict := false
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimRight(line, " \t\r")
+		trimmed := strings.TrimSpace(line)
+		if isTableHeader(trimmed) {
+			inVerdict = isVerdictHeader(trimmed)
+		} else if inVerdict && isArgsLine(trimmed) {
+			continue
+		}
+		if line != "" {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+// isTableHeader reports the `[` and `]` shape of a TOML table header, not the
+// `[[` array-of-tables form.
+func isTableHeader(line string) bool {
+	return strings.HasPrefix(line, "[") && !strings.HasPrefix(line, "[[")
+}
+
+// isVerdictHeader matches the plain [mcp_servers.verdict] header, including
+// TOML's blank-space and quoted-key spellings.
+func isVerdictHeader(line string) bool {
+	end := strings.IndexByte(line, ']')
+	if end < 0 {
+		return false
+	}
+	inner := line[1:end]
+	inner = strings.ReplaceAll(inner, " ", "")
+	inner = strings.ReplaceAll(inner, "\t", "")
+	inner = strings.ReplaceAll(inner, `"`, "")
+	inner = strings.ReplaceAll(inner, "'", "")
+	return inner == tomlName
+}
+
+// isArgsLine reports one `args = ...` key line after dropping the quote
+// characters a TOML line scan skips before the key.
+func isArgsLine(line string) bool {
+	line = strings.NewReplacer(`"`, "", `'`, "").Replace(line)
+	line = strings.TrimSpace(line)
+	rest, ok := strings.CutPrefix(line, keyArgs)
+	if !ok {
+		return false
+	}
+	return strings.HasPrefix(strings.TrimLeft(rest, " \t"), "=")
 }
 
 // nonBlankLines returns the trimmed-right non-empty lines of s.
