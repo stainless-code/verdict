@@ -215,10 +215,17 @@
 # 11150000 line.
 # Stacked on the slices above, the combined PR 2 build measures darwin/amd64 12444400, darwin/arm64 11406098, linux/amd64 12222624, linux/arm64 11206816, windows/amd64 12556800, windows/arm64 11291136;
 # those move to the next 10 kB, the others hold.
+# Thread resolve (STA-318, H6): the host resolver seam, the receipt-backed
+# threads resolve service and schema, the CLI/MCP/SDK surface, and the two
+# eval cases. Measured here: darwin/amd64 12506768, darwin/arm64 11473074,
+# linux/amd64 12284064, linux/arm64 11272352, windows/amd64 12620288,
+# windows/arm64 11346944. Five ceilings cross and move to the next 10 kB at
+# least 5 kB above their measurement; windows/arm64 had already moved for the
+# same wave.
 deps 0
-darwin/amd64 12450000
-darwin/arm64 11410000
-linux/amd64 12230000
-linux/arm64 11210000
-windows/amd64 12560000
-windows/arm64 11300000
+darwin/amd64 12520000
+darwin/arm64 11480000
+linux/amd64 12290000
+linux/arm64 11280000
+windows/amd64 12630000
+windows/arm64 11360000
