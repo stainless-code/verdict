@@ -258,10 +258,16 @@
 # constant, the parse-time refusal, and the refusal tests add one 4 KiB
 # segment on linux/amd64 only. Measured here: linux/amd64 12443808; that
 # ceiling moves to the next 10 kB above its measurement, the other five hold.
+# Root-confined skill install: every plan stat, payload read, payload write,
+# and the receipt write resolve inside the target's os.Root, and the atomic
+# package grew a rooted temp+rename variant. Measured here: darwin/amd64
+# 12688144, darwin/arm64 11622818, linux/amd64 12460192, linux/arm64 11403424,
+# windows/amd64 12801536, windows/arm64 11499008. Five ceilings cross and move
+# to the next 10 kB above their measurement; linux/arm64 stays inside.
 deps 0
-darwin/amd64 12670000
-darwin/arm64 11610000
-linux/amd64 12450000
+darwin/amd64 12690000
+darwin/arm64 11630000
+linux/amd64 12470000
 linux/arm64 11410000
-windows/amd64 12790000
-windows/arm64 11490000
+windows/amd64 12810000
+windows/arm64 11510000
