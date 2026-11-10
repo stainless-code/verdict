@@ -191,6 +191,33 @@ func TestRunReportCompletenessGate(t *testing.T) {
 	})
 }
 
+// TestRunReportGitLabStalePostNamesBaseSHA proves a GitLab bundle with a
+// posted head re-fetches incrementally, exactly like GitHub, instead of
+// naming the plain provider fetch.
+func TestRunReportGitLabStalePostNamesBaseSHA(t *testing.T) {
+	req := fixture(t, "[]")
+	writeHostBundle(t, "gitlab")
+	posted := strings.Repeat("d", 40)
+	writeFile(t, ".verdict/state/5101/post.json", `{"head":"`+posted+`"}`)
+	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+		ReadRequest: req,
+		Flags:       core.ReportFlags{Completeness: true, Live: "skip"},
+	})
+	if ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	if !resp.GateFailed {
+		t.Error("GateFailed = false, want true for a stale post")
+	}
+	joined := strings.Join(resp.CheckLines, "\n")
+	if want := "verdict fetch acme/app 5101 --base-sha ddddddd"; !strings.Contains(joined, want) {
+		t.Errorf("CheckLines = %q, want it to contain %q", joined, want)
+	}
+	if strings.Contains(joined, "--provider gitlab") {
+		t.Errorf("CheckLines = %q, want no plain provider fetch for a posted GitLab bundle", joined)
+	}
+}
+
 type threadCommander struct {
 	stdout string
 	stderr string

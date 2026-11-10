@@ -172,7 +172,10 @@ func refetchCommand(dir string, req core.ReadRequest, posted string) string {
 	if isLocalDir(dir) {
 		return fmt.Sprintf("verdict fetch-local %s %s", req.Repo, strings.TrimPrefix(req.Pr, "local-"))
 	}
-	if prov != "" && prov != providerGitHub {
+	// GitLab supports incremental re-review, so a posted head falls through
+	// to the --base-sha form below exactly like GitHub; without one the
+	// provider flag stays so the re-fetch hits the right host.
+	if prov != "" && prov != providerGitHub && (prov != providerGitLab || posted == "") {
 		return fmt.Sprintf("verdict fetch %s %s --provider %s", req.Repo, req.Pr, prov)
 	}
 	if posted != "" {
