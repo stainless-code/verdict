@@ -782,9 +782,9 @@ Fix: pass an absolute `--dir`.
 
 ## `skill-dir-foreign`
 
-Cause: the target is a non-verdict skill dir (no receipt).
+Cause: the target is a non-verdict skill dir (no `.verdict-managed` receipt); `skill install` and `skill uninstall` both raise it.
 
-Fix: re-run with `--force` to write only verdict's payload files, or pick an empty dir.
+Fix: for install, re-run with `--force` to write only verdict's payload files, or pick an empty dir; for uninstall, re-run with `--force` to remove only verdict's payload files and the receipt.
 
 ## `skill-foreign-conflict`
 
