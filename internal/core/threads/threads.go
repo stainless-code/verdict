@@ -10,6 +10,7 @@
 package threadscore
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -25,6 +26,8 @@ const (
 	SchemaVersion = "1"
 	// KeyThreadsJSON is the artifact name beside the raw provider files.
 	KeyThreadsJSON = "threads.json"
+	// KeyResolveReceipt is the receipt the resolve mutation writes beside it.
+	KeyResolveReceipt = "threads-resolve.json"
 
 	// KindIssue marks a conversation comment.
 	KindIssue = "issue-comment"
@@ -164,6 +167,80 @@ func WriteFile(path string, f *File) error {
 		f.SchemaVersion = SchemaVersion
 	}
 	if err := atomic.WriteFile(path, []byte(jq.PrettyOrdered(f.Wire()))); err != nil {
+		return jq.Sealed("write "+path, err)
+	}
+	return nil
+}
+
+// ReadFile reads one bundle's threads.json. A missing, oversized, undecodable,
+// or wrong-version document is an error, never an empty feed: a resolve run
+// must not read a failed load as "nothing to close".
+func ReadFile(path string) (*File, error) {
+	raw, err := jq.CappedFile(path, jq.MaxPRBytes)
+	if err != nil {
+		return nil, err
+	}
+	var f File
+	if err := json.Unmarshal(raw, &f); err != nil {
+		return nil, err
+	}
+	if f.SchemaVersion != SchemaVersion {
+		return nil, fmt.Errorf("threads.json schema_version %q, want %q", f.SchemaVersion, SchemaVersion)
+	}
+	return &f, nil
+}
+
+// ResolveReceipt is the receipt `threads resolve` writes: the host, head, and
+// timestamp of the mutation, the ids it closed, and the candidates it skipped
+// with a machine-readable reason.
+type ResolveReceipt struct { //nolint:govet // field order is the published property order
+	SchemaVersion string        `const:"1"                                   json:"schema_version"`
+	Provider      string        `enum:"github|gitlab|gitcafe|forgejo|bitbucket|azure" json:"provider"`
+	Repo          string        `json:"repo"`
+	PR            int           `json:"pr"`
+	HeadSHA       string        `json:"head_sha"`
+	ResolvedAt    string        `format:"date-time"                          json:"resolved_at"`
+	DryRun        bool          `json:"dry_run"`
+	Resolved      []string      `json:"resolved"`
+	Skipped       []ResolveSkip `json:"skipped"`
+}
+
+// ResolveSkip is one candidate the run did not write, with the reason it was
+// left open.
+type ResolveSkip struct {
+	ID     string `json:"id"`
+	Reason string `json:"reason"`
+}
+
+// Wire renders one receipt in published key order, with empty lists as [].
+func (r *ResolveReceipt) Wire() *jq.Obj {
+	resolved := make([]any, 0, len(r.Resolved))
+	for _, id := range r.Resolved {
+		resolved = append(resolved, id)
+	}
+	skipped := make([]any, 0, len(r.Skipped))
+	for _, skip := range r.Skipped {
+		skipped = append(skipped, jq.NewObj("id", skip.ID, "reason", skip.Reason))
+	}
+	return jq.NewObj(
+		"schema_version", r.SchemaVersion,
+		"provider", r.Provider,
+		"repo", r.Repo,
+		"pr", r.PR,
+		"head_sha", r.HeadSHA,
+		"resolved_at", r.ResolvedAt,
+		"dry_run", r.DryRun,
+		"resolved", resolved,
+		"skipped", skipped,
+	)
+}
+
+// WriteResolveReceipt writes one resolve receipt atomically.
+func WriteResolveReceipt(path string, r *ResolveReceipt) error {
+	if r.SchemaVersion == "" {
+		r.SchemaVersion = SchemaVersion
+	}
+	if err := atomic.WriteFile(path, []byte(jq.PrettyOrdered(r.Wire()))); err != nil {
 		return jq.Sealed("write "+path, err)
 	}
 	return nil

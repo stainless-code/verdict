@@ -32,7 +32,7 @@ func TestToolCommanders(t *testing.T) {
 		"record":      "<nil>",
 		"report":      "<nil>",
 		"show":        "<nil>",
-		"threads":     "<nil>",
+		"threads":     "exec.Runner{cap=67108864 missing=true}",
 		"trend":       "<nil>",
 		"triage":      "<nil>",
 		"verify":      "exec.Watchdog",

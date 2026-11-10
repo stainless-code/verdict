@@ -18,7 +18,10 @@ import (
 // thread surface, so it never touches the diff or the rest of the bundle.
 type ThreadsRequest struct {
 	core.ReadRequest
-	Provider string `enum:"github|gitlab|gitcafe|forgejo|bitbucket|azure"`
+	Provider string   `enum:"github|gitlab|gitcafe|forgejo|bitbucket|azure"`
+	Threads  []string `json:"thread,omitempty"`
+	Resolve  bool     `json:"resolve,omitempty"`
+	DryRun   bool     `json:"dryRun,omitempty"`
 	Warnings []string
 }
 
@@ -27,6 +30,7 @@ type ThreadsRequest struct {
 // runtime progress observer.
 type ThreadsResponse struct {
 	Data     *ThreadsData
+	Resolve  *ThreadsResolveData
 	Repo     string
 	Pr       string
 	At       string
@@ -78,6 +82,9 @@ func RunThreads(ctx context.Context, req *ThreadsRequest) (*ThreadsResponse, *co
 	st := &threadsRun{req: req, warnings: append([]string{}, req.Warnings...)}
 	if ctx.Err() != nil {
 		return nil, st.withWarnings(&core.RefusalError{Code: codeCanceled, Message: "canceled before threads completed"})
+	}
+	if req.Resolve {
+		return st.resolve(ctx)
 	}
 	provider := threadsProvider(req.Provider)
 	if provider == "" {

@@ -148,7 +148,8 @@ func (c *Client) Show(ctx context.Context, req *ShowRequest) (*ShowResponse, err
 
 func (c *Client) Threads(ctx context.Context, req *ThreadsRequest) (*ThreadsResponse, error)
     Threads re-reads one provider's review conversations and rewrites only
-    .verdict/state/<pr>/threads.json. Human progress streams through the
+    .verdict/state/<pr>/threads.json, or with Resolve closes the selected
+    threads and writes threads-resolve.json. Human progress streams through the
     Options.Progress observer.
 
 func (c *Client) Trend(ctx context.Context, req *TrendRequest) (*TrendResponse, error)
@@ -468,18 +469,31 @@ type ShowResponse struct {
 type ThreadsRequest struct {
 	Invocation
 	Provider string
+	Threads  []string
+	Resolve  bool
+	DryRun   bool
 }
-    ThreadsRequest carries the threads refresh options: the provider override
-    ("" reads GitHub, like the CLI).
+    ThreadsRequest carries the threads options: the provider override ("" reads
+    GitHub, like the CLI) and the resolve mode's named threads and dry run.
+
+type ThreadsResolveSkip struct {
+	ID     string
+	Reason string
+}
+    ThreadsResolveSkip is one candidate a resolve run left open and why.
 
 type ThreadsResponse struct {
 	Result
 	Dir, File, Provider, HeadSHA, FetchedAt string
 	Threads, Open, Outdated, Verdict        int
 	Truncated                               bool
+	ResolvedAt                              string
+	Resolved                                []string
+	Skipped                                 []ThreadsResolveSkip
 }
     ThreadsResponse carries the threads envelope plus the refreshed feed tally.
     Data is the `threads` profile byte-for-byte; the typed fields mirror it.
+    A resolve run fills ResolvedAt/Resolved/Skipped instead of the feed tally.
 
 type TrendRequest struct {
 	Repo    string

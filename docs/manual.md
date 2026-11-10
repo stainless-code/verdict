@@ -277,6 +277,15 @@ capped at 8 KiB with a `truncated` flag, `created_at`). Top level: `provider`,
 `pr`, `head_sha`, `fetched_at`, `truncated`. `verdict threads owner/repo N
 [--provider …]` re-reads only the thread surface and rewrites only this file,
 so a re-review after pushing fixes sees current resolution state.
+`verdict threads resolve owner/repo N [--thread <id>]... [--dry-run]` closes
+verdict-authored threads: without `--thread`, every open thread whose linked
+finding the local store marks addressed; with `--thread`, only the named ids,
+which must still be verdict-authored (a human thread refuses). `--dry-run`
+lists the plan and makes zero writes; a real run makes one host write per
+thread, marks them resolved in `threads.json`, and writes
+`threads-resolve.json` (provider, repo, PR, head, timestamp, `resolved[]`,
+`skipped[]` with reasons). GitHub and GitLab carry the mutation; Forgejo
+refuses typed because its API has no documented resolve endpoint.
 `post.json` and `record.json` carry `schema_version: "1"`.
 
 ### Bundle namespace (core files vs `x-*`)
@@ -284,6 +293,7 @@ so a re-review after pushing fixes sees current resolution state.
 A bundle dir holds these core/script artifacts (`PR.json`/`source.json`,
 `full.diff`, `toc.txt`, `roles.txt`, `review.json`, `findings.json`, `findings.dryrun.json`, `record.json`,
 `post.json`, `store.json`, `hunks.tsv`, `reviews.json`, `inline.json`, `threads.json`,
+`threads-resolve.json`,
 `panel`, `patch.json`, `verification.json`, `incremental.diff`, `kb.txt`,
 `sensitive.txt`, `kb-recall.json`, `cost.json`, `budget.json`, `fix.json`,
 `kb-grades.jsonl`, `controls.json`, `controls/`, `chunks/`
@@ -970,7 +980,9 @@ there is an `isError` `bad-flags` result naming `dry_run`; the tool keeps
 `readOnlyHint: false` because the same tool writes by default. `report` writes
 nothing there either: the surface drops its `output` and `sarif` arguments and
 refuses them as unknown. `threads` is not exposed at all, because it rewrites
-`.verdict/state/<pr>/threads.json` from the host. Every review verb except the
+`.verdict/state/<pr>/threads.json` from the host; its `resolve` mode is
+operator-only, because it closes host threads, and a server started without
+`--operator` refuses that call naming the flag. Every review verb except the
 human-owned `triage` is exposed by default because the host already authorizes
 the binary and its credentials. A call to a tool the flags hide is a JSON-RPC
 `-32602` error whose message and `data` name the tool and the flag combination
@@ -978,12 +990,14 @@ that exposes it (`post` under `--read-only`, `triage` without `--operator`), so
 a hidden verb is never reported as an unknown one; a truly unknown name still
 answers `unknown tool`.
 `--operator` adds `triage` (20 tools) for an operator's own assistant that is
-allowed to flip statuses; it is never the default. Each `tools/list` entry
+allowed to flip statuses, and it unlocks the `threads` resolve mode; it is
+never the default. Each `tools/list` entry
 carries a short `title` plus the four MCP behavior hints (`readOnlyHint`,
 `destructiveHint`, `idempotentHint`, `openWorldHint`) derived from the verb's
 real behavior: `post` is destructive and open-world, `fetch` is open-world,
 `report` is idempotent and carries no `readOnlyHint` because `output`/`sarif`
-write files, and `threads` carries none because it writes `threads.json`.
+write files, and `threads` carries none because it writes `threads.json` and
+can resolve host threads.
 Descriptions state what the tool does,
 when to call it, and what it writes or sends. `initialize` returns an
 `instructions` string with the same doctrine (fetch, review, post; one review;

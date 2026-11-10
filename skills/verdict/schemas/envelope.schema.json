@@ -1178,6 +1178,47 @@
       ],
       "additionalProperties": true
     },
+    "threadsResolveData": {
+      "description": "threads resolve --json data: the receipt path, the host and head it proves, the ids it closed, and the candidates it left open with a reason. A dry run carries the same plan with dry_run true and writes nothing.",
+      "type": "object",
+      "properties": {
+        "dir": { "type": "string" },
+        "file": { "type": "string" },
+        "provider": { "type": "string" },
+        "head_sha": { "type": "string" },
+        "resolved_at": { "type": "string" },
+        "dry_run": { "type": "boolean" },
+        "resolved": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "skipped": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/threadsResolveSkip" }
+        }
+      },
+      "required": [
+        "dir",
+        "file",
+        "provider",
+        "head_sha",
+        "resolved_at",
+        "dry_run",
+        "resolved",
+        "skipped"
+      ],
+      "additionalProperties": true
+    },
+    "threadsResolveSkip": {
+      "description": "One candidate a resolve run left open: its host thread id and the machine-readable reason (already-resolved, no-finding-link, finding-not-addressed).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "reason": { "type": "string" }
+      },
+      "required": ["id", "reason"],
+      "additionalProperties": true
+    },
     "verifyData": {
       "description": "verify --json data: the command's exit status, whether the watchdog timed it out, the redacted output tail, the patch read back from the bundle, and whether the run was sandboxed (absent means unsandboxed). A timed-out run is never proof.",
       "type": "object",

@@ -130,6 +130,8 @@
       "/$defs/fetchData/properties/chunk": "The chunk plan summary; absent when the run was not chunked.",
       "/$defs/fetchData/properties/prompt_dump": "Where the staged prompt was written; absent unless a dump was requested.",
       "/$defs/threadsData": "threads --json data: where the refreshed feed was written plus a tally over it. The feed document itself is threads.schema.json.",
+      "/$defs/threadsResolveData": "threads resolve --json data: the receipt path, the host and head it proves, the ids it closed, and the candidates it left open with a reason. A dry run carries the same plan with dry_run true and writes nothing.",
+      "/$defs/threadsResolveSkip": "One candidate a resolve run left open: its host thread id and the machine-readable reason (already-resolved, no-finding-link, finding-not-addressed).",
       "/$defs/fetchLocalData/properties/controls": "The review controls the run read from controls.json; shape owned by the controls document.",
       "/$defs/fetchLocalData/properties/artifacts": "Bundle file paths by name (PR.json, full.diff, toc.txt, roles.txt, reviews.json, inline.json, threads.json, sensitive.txt, incremental.diff, plus kb.txt and kb-recall.json when present); files the run did not write read null.",
       "/$defs/fetchLocalData/properties/budget": "The resolved budget summary; present when the run resolved an ordinary budget (a grouped run reports its per-group guards and personal ceiling under estimate instead).",
@@ -300,6 +302,23 @@
       "/$defs/comment/properties/body": "Comment body, capped at 8 KiB; the raw provider file keeps the full text.",
       "/$defs/comment/properties/truncated": "True when body is an excerpt of a longer comment.",
       "/$defs/comment/properties/created_at": "Host creation timestamp (RFC 3339 when the host publishes one), empty when absent."
+    }
+  },
+  "threads-resolve": {
+    "descriptions": {
+      "": "The receipt `threads resolve` writes beside threads.json: the host, head, and timestamp of the mutation, the ids it closed, and the candidates it skipped with a machine-readable reason. A real run writes one host resolve call per id in resolved[]; a dry run writes no receipt and carries the plan in the envelope only. GitHub and GitLab carry the mutation; a host without a resolve endpoint refuses before this document is written.",
+      "/properties/schema_version": "Receipt format version; only \"1\" is read.",
+      "/properties/provider": "The host whose resolve call closed the threads.",
+      "/properties/repo": "Repository the bundle belongs to.",
+      "/properties/pr": "Pull request number the receipt belongs to.",
+      "/properties/head_sha": "The head the thread feed was read at when the run selected its candidates.",
+      "/properties/resolved_at": "UTC mutation timestamp (RFC 3339).",
+      "/properties/dry_run": "True only on a dry run; a real receipt is always false.",
+      "/properties/resolved": "Host thread ids the run closed, in selection order.",
+      "/properties/skipped": "Candidates the run left open, each with the reason it was skipped.",
+      "/$defs/skip": "One skipped candidate: the host thread id and the machine-readable reason (already-resolved, no-finding-link, finding-not-addressed).",
+      "/$defs/skip/properties/id": "Host thread id the selection considered.",
+      "/$defs/skip/properties/reason": "Why the thread stayed open: already-resolved, no-finding-link (no finding marker), or finding-not-addressed (the local store does not mark the linked finding addressed)."
     }
   },
   "usage": {

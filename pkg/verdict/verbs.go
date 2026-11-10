@@ -469,24 +469,38 @@ func (c *Client) FetchLocal(ctx context.Context, req *FetchLocalRequest) (*Resul
 	return resultPtr(resp.Repo, resp.Pr, resp.At, resp.Next, resp.Warnings, resp.Data), nil
 }
 
-// ThreadsRequest carries the threads refresh options: the provider override
-// ("" reads GitHub, like the CLI).
+// ThreadsRequest carries the threads options: the provider override ("" reads
+// GitHub, like the CLI) and the resolve mode's named threads and dry run.
 type ThreadsRequest struct {
 	Invocation
 	Provider string
+	Threads  []string
+	Resolve  bool
+	DryRun   bool
+}
+
+// ThreadsResolveSkip is one candidate a resolve run left open and why.
+type ThreadsResolveSkip struct {
+	ID     string
+	Reason string
 }
 
 // ThreadsResponse carries the threads envelope plus the refreshed feed tally.
-// Data is the `threads` profile byte-for-byte; the typed fields mirror it.
+// Data is the `threads` profile byte-for-byte; the typed fields mirror it. A
+// resolve run fills ResolvedAt/Resolved/Skipped instead of the feed tally.
 type ThreadsResponse struct { //nolint:govet // field order is the public API surface
 	Result
 	Dir, File, Provider, HeadSHA, FetchedAt string
 	Threads, Open, Outdated, Verdict        int
 	Truncated                               bool
+	ResolvedAt                              string
+	Resolved                                []string
+	Skipped                                 []ThreadsResolveSkip
 }
 
 // Threads re-reads one provider's review conversations and rewrites only
-// .verdict/state/<pr>/threads.json. Human progress streams through the
+// .verdict/state/<pr>/threads.json, or with Resolve closes the selected
+// threads and writes threads-resolve.json. Human progress streams through the
 // Options.Progress observer.
 func (c *Client) Threads(ctx context.Context, req *ThreadsRequest) (*ThreadsResponse, error) {
 	rr, err := c.requestFetch(ctx, req.Repo, req.PR)
@@ -496,9 +510,15 @@ func (c *Client) Threads(ctx context.Context, req *ThreadsRequest) (*ThreadsResp
 	resp, ref := fetchcore.RunThreads(ctx, &fetchcore.ThreadsRequest{
 		ReadRequest: rr,
 		Provider:    req.Provider,
+		Threads:     req.Threads,
+		Resolve:     req.Resolve,
+		DryRun:      req.DryRun,
 	})
 	if ref != nil {
 		return nil, refusalErr(ref)
+	}
+	if resp.Resolve != nil {
+		return resolveResponseOf(resp), nil
 	}
 	return &ThreadsResponse{
 		Result: resultOf(resp.Repo, resp.Pr, resp.At, resp.Next, resp.Warnings, resp.Data),
@@ -508,6 +528,22 @@ func (c *Client) Threads(ctx context.Context, req *ThreadsRequest) (*ThreadsResp
 		Outdated: resp.Data.Outdated, Verdict: resp.Data.Verdict,
 		Truncated: resp.Data.Truncated,
 	}, nil
+}
+
+// resolveResponseOf mirrors one resolve run's data profile onto the public
+// response.
+func resolveResponseOf(resp *fetchcore.ThreadsResponse) *ThreadsResponse {
+	data := resp.Resolve
+	skipped := make([]ThreadsResolveSkip, 0, len(data.Skipped))
+	for _, skip := range data.Skipped {
+		skipped = append(skipped, ThreadsResolveSkip{ID: skip.ID, Reason: skip.Reason})
+	}
+	return &ThreadsResponse{
+		Result: resultOf(resp.Repo, resp.Pr, resp.At, resp.Next, resp.Warnings, data),
+		Dir:    data.Dir, File: data.File, Provider: data.Provider,
+		HeadSHA: data.HeadSHA, ResolvedAt: data.ResolvedAt,
+		Resolved: append([]string{}, data.Resolved...), Skipped: skipped,
+	}
 }
 
 // ReadyRequest gates on merge readiness.

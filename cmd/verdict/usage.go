@@ -203,6 +203,13 @@ func usageText() string {
 		"    conversation. fetch writes the same feed beside the bundle; this verb re-reads\n" +
 		"    it after replies/resolutions so a re-review sees current state. Writes only\n" +
 		"    threads.json and needs an existing bundle (fetch first).\n" +
+		"  threads resolve <owner/repo> <pr> [--thread <id>]... [--dry-run] [--json]\n" +
+		"    close verdict-authored review threads: without --thread, every open thread\n" +
+		"    whose finding the local store marks addressed; with --thread, only the named\n" +
+		"    ids, and each must still be verdict-authored (a human thread refuses).\n" +
+		"    --dry-run lists what would be resolved and makes zero writes; a real run\n" +
+		"    makes one host write per thread and writes threads-resolve.json. GitHub and\n" +
+		"    GitLab carry it; Forgejo refuses typed (no documented resolve endpoint).\n" +
 		"  trend <owner/repo> [--overlap] [--json]\n" +
 		"    portfolio rollup over existing bundle stores (no network, writes nothing):\n" +
 		"    findings opened/addressed/closed over time, broken down by severity tier\n" +

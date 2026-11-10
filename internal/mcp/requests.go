@@ -343,6 +343,9 @@ func decodeThreads(req *fetchcore.ThreadsRequest, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.str(argPr, &req.Pr)
 	a.str("provider", &req.Provider)
+	a.strings("thread", &req.Threads)
+	a.boolean("resolve", &req.Resolve)
+	a.boolean("dryRun", &req.DryRun)
 }
 
 func wireThreads(ctx context.Context, b *bindings, req *fetchcore.ThreadsRequest) error {
