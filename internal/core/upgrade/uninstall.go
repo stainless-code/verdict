@@ -100,7 +100,7 @@ func uninstallCommand(det *detection) string {
 	case ChannelBrew:
 		return "brew uninstall " + brewTarget
 	case ChannelProject:
-		return fmt.Sprintf("cd %s && npm uninstall %s", projectRoot(filepath.Dir(det.exe)), npmPackage)
+		return fmt.Sprintf("cd %s && npm uninstall %s", shellQuote(projectRoot(filepath.Dir(det.exe))), npmPackage)
 	case ChannelSkill:
 		return skillUninstallCommand(det.exe)
 	default:
@@ -116,5 +116,5 @@ func skillUninstallCommand(exe string) string {
 	if filepath.Base(root) != skill.Name {
 		return "the tool that installed the skill copy at " + root
 	}
-	return "verdict skill uninstall --dir " + filepath.Dir(root) + " --force"
+	return "verdict skill uninstall --dir " + shellQuote(filepath.Dir(root)) + " --force"
 }
