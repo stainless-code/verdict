@@ -10,7 +10,7 @@ func usageText() string {
 		"    Provider scope: record/report/triage/show/next run on any provider bundle; post submits to GitHub and\n" +
 		"    GitLab, which takes an approval but has no request-changes event — a bound request-changes posts as a\n" +
 		"    comment; post.json records the withheld capability in withheld[]; calibrate (live join)/ready need a\n" +
-		"    GitHub bundle and adopt needs one verdict can post to (github, gitlab); the rest refuse typed\n" +
+		"    GitHub bundle and adopt needs one verdict can post to (forgejo, github, gitlab); the rest refuse typed\n" +
 		"    (provider-unimplemented; a local bundle has its own code — post/ready no-pr-target, calibrate\n" +
 		"    no-threads, adopt bad-target). calibrate --probe is offline and runs on any bundle. Incremental\n" +
 		"    re-review (--base-sha/--since) runs on GitHub and GitLab; other providers write incremental.diff.note.\n" +
@@ -67,7 +67,7 @@ func usageText() string {
 		"    changes no count; bare, it reads the panel pinned in the bundle and refuses without one.\n" +
 		"  adopt <owner/repo> <pr> --from <local-slug> [--json]\n" +
 		"    carry a local bundle's findings into a fresh PR fetch for posting (re-anchors, stamps handoff).\n" +
-		"    Adopt-into needs a bundle verdict can post to (github, gitlab): other hosts refuse\n" +
+		"    Adopt-into needs a bundle verdict can post to (forgejo, github, gitlab): other hosts refuse\n" +
 		"    typed (provider-unimplemented, naming the host).\n" +
 		"  fix <owner/repo> <local-slug> [--sig <s>] [--json]\n" +
 		"    one bounded pass over a local bundle: picks the top open inline sig\n" +

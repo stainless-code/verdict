@@ -1902,7 +1902,7 @@ Upgrade arc: review locally, then `fetch owner/repo N` and
 `adopt owner/repo N --from local-<name>`. Adopt copies findings with an `adopted`
 history event and re-resolves anchors against the PR hunks (unmatched paths land
 `anchored:false`, never dropped), refuses into a non-empty store, and needs a
-target verdict can post to (`github`, `gitlab`) — a host with no submit path
+target verdict can post to (`forgejo`, `github`, `gitlab`) — a host with no submit path
 refuses `provider-unimplemented` naming it. From there `post`
 and `calibrate` proceed normally — predictions recorded offline get settled against
 live ground truth.

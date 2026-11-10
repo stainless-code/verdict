@@ -163,6 +163,26 @@ func assertHostRefusal(t *testing.T, provider string, ref *core.RefusalError) {
 	}
 }
 
+// TestAdoptRefusalListsPostableHosts proves the refusal names the
+// capability-derived postable set, so a hard-coded host list cannot pass.
+func TestAdoptRefusalListsPostableHosts(t *testing.T) {
+	t.Parallel()
+	var want []string
+	for _, p := range []string{"azure", "bitbucket", "forgejo", "gitcafe", "github", "gitlab"} {
+		if core.CapabilitiesFor(p).Post {
+			want = append(want, p)
+		}
+	}
+	dir := mkAdoptTarget(t, `{"state":"OPEN","provider":"gitcafe"}`)
+	ref := (&state{}).checkAdoptTarget(dir)
+	if ref == nil {
+		t.Fatal("gitcafe target was accepted, want a typed refusal")
+	}
+	if list := "(" + strings.Join(want, ", ") + ")"; !strings.Contains(ref.Message, list) {
+		t.Errorf("refusal message %q does not list the postable hosts %q", ref.Message, list)
+	}
+}
+
 // TestAdoptTargetWithoutProviderMarkerIsGitHub proves a bundle that predates
 // the provider marker still adopts: the missing marker reads as GitHub.
 func TestAdoptTargetWithoutProviderMarkerIsGitHub(t *testing.T) {

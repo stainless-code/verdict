@@ -246,9 +246,21 @@ func (st *state) checkAdoptTarget(dir string) *core.RefusalError {
 		return st.refuse("adopt-failed", fmt.Sprintf("adopt failed: %v", err))
 	}
 	if prov := bundleProvider(dir); !core.CapabilitiesFor(prov).Post {
-		return st.refuse("provider-unimplemented", fmt.Sprintf(msgProviderUnimplemented, prov))
+		return st.refuse("provider-unimplemented", fmt.Sprintf(msgProviderUnimplemented, strings.Join(postableProviders(), ", "), prov))
 	}
 	return nil
+}
+
+// postableProviders lists the providers adopt accepts, read off the
+// capability table in stable order.
+func postableProviders() []string {
+	var out []string
+	for _, p := range []string{"azure", "bitbucket", "forgejo", "gitcafe", "github", "gitlab"} {
+		if core.CapabilitiesFor(p).Post {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func (st *state) checkAdoptFresh(dir string) *core.RefusalError {
@@ -551,7 +563,7 @@ const (
 
 	msgMissingDiff = "missing %s/full.diff (fetch the PR first)"
 
-	msgProviderUnimplemented = "adopt targets a bundle verdict can post to (github, gitlab), " +
+	msgProviderUnimplemented = "adopt targets a bundle verdict can post to (%s), " +
 		"and this bundle is %q — adopt only hands findings to a host with a submit path"
 
 	msgAlreadyAdopted = "%s/findings.json exists — adopt merges once into a fresh fetch " +
