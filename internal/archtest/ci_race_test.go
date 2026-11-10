@@ -20,8 +20,8 @@ import (
 const windowsRaceFlags = "go test -race -shuffle=on -count=1"
 
 // TestCIWindowsLaneRunsRaceAndShuffle fails when the Windows lane stops running
-// the race detector or the shuffled order, or loses the cgo switch that lets the
-// detector link.
+// the race detector or the shuffled order, or loses the cgo switch the detector
+// links through.
 func TestCIWindowsLaneRunsRaceAndShuffle(t *testing.T) {
 	workflow := readCIWorkflow(t)
 	block, ok := workflowJobs(t, "ci.yml", workflow)["go-windows"]
@@ -59,27 +59,42 @@ func TestTestRaceFlagsMatchTheWindowsLane(t *testing.T) {
 // testRaceFlags returns the flags of the test-race target's `go test` line.
 func testRaceFlags(t *testing.T) []string {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(moduleRoot(t), "Makefile"))
-	if err != nil {
-		t.Fatalf("read Makefile: %v", err)
+	recipe := testRaceRecipe(t)
+	var flags []string
+	for token := range strings.FieldsSeq(recipe) {
+		if strings.HasPrefix(token, "-") && token != "-" {
+			flags = append(flags, token)
+		}
 	}
-	lines := strings.Split(string(raw), "\n")
+	if len(flags) == 0 {
+		t.Fatalf("test-race recipe %q carries no flag: the guard would pass on nothing", recipe)
+	}
+	return flags
+}
+
+// testRaceRecipe returns the `go test` line of the test-race target.
+func testRaceRecipe(t *testing.T) string {
+	t.Helper()
+	lines := strings.Split(readMakefile(t), "\n")
 	start := lineIndex(lines, "test-race:")
 	if start < 0 {
 		t.Fatal("Makefile has no test-race target: the Windows lane pins flags nothing defines")
 	}
 	for _, line := range lines[start+1:] {
-		if !strings.Contains(line, " test ") {
-			continue
+		if strings.Contains(line, " test ") {
+			return line
 		}
-		var flags []string
-		for _, token := range strings.Fields(line) {
-			if strings.HasPrefix(token, "-") && token != "-" {
-				flags = append(flags, token)
-			}
-		}
-		return flags
 	}
-	t.Fatal("test-race runs no `go test` line: the guard would pass on an empty flag set")
-	return nil
+	t.Fatal("test-race runs no `go test` line: the guard would pin nothing")
+	return ""
+}
+
+// readMakefile returns the repository Makefile.
+func readMakefile(t *testing.T) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(moduleRoot(t), "Makefile"))
+	if err != nil {
+		t.Fatalf("read Makefile: %v", err)
+	}
+	return string(raw)
 }
