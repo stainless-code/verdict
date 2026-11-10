@@ -979,3 +979,63 @@ func TestTOMLOwnedArgsWithoutCommand(t *testing.T) {
 		t.Fatalf("second run = %+v %v, want keep", again, ref)
 	}
 }
+
+// TestRunRefusesPosturePair proves the exported API refuses the pair before
+// writing argv that `verdict mcp` itself rejects.
+func TestRunRefusesPosturePair(t *testing.T) {
+	t.Parallel()
+	req := testRequest(t, AgentClaude, true)
+	path := filepath.Join(req.Cwd, ".mcp.json")
+	seed := `{"mcpServers":{}}` + "\n"
+	if err := os.WriteFile(path, []byte(seed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	req.ReadOnly = true
+	req.Operator = true
+	res, ref := Run(req)
+	if ref == nil || ref.Code != "bad-flags" {
+		t.Fatalf("refusal = %v, want bad-flags", ref)
+	}
+	if res != (Result{}) {
+		t.Fatalf("refusal returned result %+v", res)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil || string(raw) != seed {
+		t.Fatalf("refusal wrote %q, %v", raw, err)
+	}
+}
+
+// TestLegacyPairArgsStayOwned proves an on-disk argv carrying both posture
+// flags is still verdict's own entry and is updated, not refused as foreign.
+func TestLegacyPairArgsStayOwned(t *testing.T) {
+	t.Parallel()
+	t.Run("json", func(t *testing.T) {
+		t.Parallel()
+		req := testRequest(t, AgentClaude, true)
+		path := filepath.Join(req.Cwd, ".mcp.json")
+		seed := `{"mcpServers":{"verdict":{"command":"verdict","args":["mcp","--read-only","--operator"]}}}` + "\n"
+		if err := os.WriteFile(path, []byte(seed), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		res, ref := Run(req)
+		if ref != nil || res.Status != StatusUpdate {
+			t.Fatalf("legacy pair = %+v %v, want update", res, ref)
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil || strings.Contains(string(raw), "--read-only") {
+			t.Fatalf("legacy pair not downgraded: %q, %v", raw, err)
+		}
+	})
+	t.Run("toml", func(t *testing.T) {
+		t.Parallel()
+		req, path := seedCodex(t, "[mcp_servers.verdict]\ncommand = \"verdict\"\nargs = [\"mcp\", \"--operator\", \"--read-only\"]\n")
+		res, ref := Run(req)
+		if ref != nil || res.Status != StatusUpdate {
+			t.Fatalf("legacy pair = %+v %v, want update", res, ref)
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil || strings.Contains(string(raw), "--operator") {
+			t.Fatalf("legacy pair not downgraded: %q, %v", raw, err)
+		}
+	})
+}
