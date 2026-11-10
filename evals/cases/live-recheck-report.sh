@@ -222,19 +222,28 @@ cat > "$EVAL_SANDBOX/.verdict/state/$PR/PR.json" <<EOF
 EOF
 printf '[]' | eval_write_findings "$PR"
 live_mk_post "$PR" "$HEAD_A"
+# A provider bundle reads its own host: keep glab network-dead so the read
+# fails the way an offline operator sees it, with no real host call.
+cat > "$EVAL_STUBBIN/glab" <<'EOF'
+#!/usr/bin/env bash
+echo "evals-stub-glab: network disabled" >&2
+exit 1
+EOF
+chmod +x "$EVAL_STUBBIN/glab"
 set_mode clear
 m="$(mark)"
 run_review report acme/app "$PR" --completeness --json
 if [ "$EVAL_STATUS" -eq 0 ]; then
-  good "provider bundle with reviewed HEAD exits 0"
+  good "provider bundle with reviewed HEAD exits 0 (an unread host stays fail-open)"
 else
-  bad "provider skip exits $EVAL_STATUS, want 0"
+  bad "provider read exits $EVAL_STATUS, want 0"
 fi
-assert_file_grep "provider run warn-skips the GitHub-only read" "$EVAL_ERR" "live recheck skipped: gitlab threads unreadable here"
+assert_file_grep "provider run reads its own host and carries its stderr" "$EVAL_ERR" \
+  "live thread recheck unreachable (evals-stub-glab: network disabled"
 assert_stream_nogrep "provider run prints no live open line" "$EVAL_ERR" "live open"
-assert_eq "provider run makes zero recheck calls" "0" "$(graphql_since "$m")"
-if jq -e '.warnings | join(" ") | contains("live recheck skipped")' <"$EVAL_OUT" >/dev/null 2>&1; then
-  good "provider skip rides the envelope warnings"
+assert_eq "provider run makes zero GitHub recheck calls" "0" "$(graphql_since "$m")"
+if jq -e '.warnings | join(" ") | contains("live thread recheck unreachable")' <"$EVAL_OUT" >/dev/null 2>&1; then
+  good "provider read failure rides the envelope warnings"
 else
   bad "provider envelope warnings: $(jq -c '.warnings' <"$EVAL_OUT" 2>/dev/null)"
 fi
@@ -243,7 +252,7 @@ m="$(mark)"
 run_review report acme/app "$PR" --completeness
 if [ "$EVAL_STATUS" -eq 1 ] \
   && grep -q "stale-head" "$EVAL_ERR" && [ "$(graphql_since "$m")" -eq 0 ]; then
-  good "stale provider bundle still fails on the local dimension with zero calls"
+  good "stale provider bundle still fails on the local dimension with zero GitHub calls"
 else
   bad "stale provider exits $EVAL_STATUS with $(graphql_since "$m") call(s)"
 fi

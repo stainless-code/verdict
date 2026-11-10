@@ -35,6 +35,7 @@ const (
 	strFalse          = "false"
 	patchSuffix       = "/patch.json"
 	liveAuto          = "auto"
+	providerGitHub    = "github"
 	newline           = "\n"
 	quoteMark         = "\""
 	slashSep          = "/"

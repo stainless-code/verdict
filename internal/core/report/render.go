@@ -644,7 +644,10 @@ func gateLiveCheck(st *state) gateCheck {
 			line: "check: live recheck skipped (--live skip) — gating on local dimensions only",
 		}
 	default:
-		return gateCheck{dim: core.GateDimension{ID: dimLive, Status: dimSkip, Detail: "live recheck skipped: " + liveSkipReason(st)}}
+		return gateCheck{dim: core.GateDimension{
+			ID: dimLive, Status: dimSkip,
+			Detail: "live recheck skipped: local bundle threads unreadable here",
+		}}
 	}
 }
 
@@ -660,14 +663,6 @@ func liveErrDetail(st *state) string {
 		return "lookup failed"
 	}
 	return st.live.err
-}
-
-// liveSkipReason names why the probe could not read live threads at all.
-func liveSkipReason(st *state) string {
-	if isLocalDir(st.dir) {
-		return "local bundle threads unreadable here"
-	}
-	return providerName(st.dir) + " threads unreadable here"
 }
 
 func tierHits(entries []any, tier, category string) int {

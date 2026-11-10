@@ -811,15 +811,19 @@ A third dimension runs last on every gate invocation (`--check`,
 and fails the gate when more are open live than the store holds open
 (`check: N live open thread(s) vs M local open finding(s) — gate fails
 (fetch + triage them, then re-check)` — fetch the PR, triage the new
-threads, re-run `report --check`. An unreachable lookup warns (`live
-thread recheck unreachable`) and, under the default `--live auto` posture,
-leaves the dimension neutral: the gate reflects local dimensions only, and
-the run never exits 3 over the network. Local bundles and non-GitHub
-providers skip the lookup with a warn (`live recheck skipped: ...`),
-paying zero network; plain `report`
-without a gate flag never calls the network. There is no `--force` on
-report: fetch + triage + re-check is the recovery, and advisory `report`
-without `--check` is the escape hatch.
+threads, re-run `report --check`. The probe reads the bundle's own host:
+GitHub through `gh api graphql`, every other provider through the adapter
+the `threads` refresh already uses — so a GitLab, GitCafe, Forgejo,
+Bitbucket, or Azure bundle gates on its threads too. A read that fails, and
+a read that stopped before the host's last page, both leave the surface
+unread rather than clean: each warns (`live thread recheck unreachable`)
+and, under the default `--live auto` posture, leaves the dimension neutral:
+the gate reflects local dimensions only, and the run never exits 3 over the
+network. Only local bundles skip the lookup with a warn (`live recheck
+skipped: ...`), paying zero network; plain `report` without a gate flag
+never calls the network. There is no `--force` on report: fetch + triage +
+re-check is the recovery, and advisory `report` without `--check` is the
+escape hatch.
 
 Offline posture (`--live auto|strict|skip`, gate runs only) is always an
 explicit operator choice — automation never inherits it silently. `auto`
@@ -833,8 +837,9 @@ store). `skip` pays zero network and gates on the local dimensions only,
 saying so loudly: a `live recheck skipped (--live skip ...)` warn (also in
 `--json` `warnings[]`) plus a neutral skipped `check:` line in the gate
 tail. Structural skips stay neutral in every posture — a local bundle has
-no live threads to verify and a non-GitHub provider's threads are outside
-the GitHub-only read, so there is no live dimension to pass or fail. Pick
+no live threads to verify, so there is no live dimension to pass or fail. A
+partial or failed live read is not a structural skip: `strict` fails it
+closed and `auto` reads it neutral, exactly like a dead network. Pick
 `strict` for merge gates that must never report ready while threads stand
 open live; pick `skip` for air-gapped runs where the operator accepts the
 local-dimensions-only verdict on the record. `--live` without a gate flag

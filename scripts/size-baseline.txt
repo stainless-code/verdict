@@ -117,8 +117,19 @@
 # darwin/arm64 11271202, linux/amd64 12062880, linux/arm64 11075744,
 # windows/amd64 12391424, windows/arm64 11142144. Four ceilings cross and move
 # to the next 10 kB above their measurement; darwin/arm64 stays put.
+# The gate's live-thread dimension reads every host through the fetch adapter
+# (ReadLiveThreads, the Run-only commander adapter, and the report probe's
+# provider-branch removal). Measured here: darwin/amd64 12277936, darwin/arm64
+# 11271346, linux/amd64 12062880, linux/arm64 11075744, windows/amd64
+# 12393472, windows/arm64 11142656. The new code adds ~4-7 KiB of text, and
+# linux/arm64 crosses a 64 KiB segment boundary for another 65536; the five
+# ceilings that overflow move to the next 10 kB above their exact measurement,
+# and darwin/arm64 stays put.
+# Stacked on the verify gate fixes above, the combined build measures
+# darwin/amd64 12286128; that one ceiling moves to the next 10 kB, the other
+# five already hold the combined measurement.
 deps 0
-darwin/amd64 12280000
+darwin/amd64 12290000
 darwin/arm64 11280000
 linux/amd64 12070000
 linux/arm64 11080000

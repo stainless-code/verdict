@@ -474,15 +474,67 @@ func TestRunReportEnvelopeDefaults(t *testing.T) {
 	}
 }
 
-// TestRunReportLiveProviderSkip pins the non-GitHub structural skip: a bundle
-// fetched from another forge has threads this verb cannot read, so the live
-// dimension warns neutral without a single spawn, and the completeness
-// recovery command names that provider instead of the GitHub default.
-func TestRunReportLiveProviderSkip(t *testing.T) {
-	req := fixture(t, "["+entryJSON("1111111111111111111111111111111111111111", "inline", "open", `"important"`, "true")+"]")
+// liveThreadCommander scripts the per-host reads a live probe issues, keyed by
+// the argv tail after the tool name. An unscripted call answers with an empty
+// success, so a leg that forgets a fixture fails on the payload rather than on
+// a hidden default.
+type liveThreadCommander struct {
+	script map[string]core.Result
+	calls  []string
+}
+
+func (c *liveThreadCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
+	key := strings.Join(cmd.Argv[1:], " ")
+	c.calls = append(c.calls, key)
+	return c.script[key], nil
+}
+
+// The two glab reads a GitLab live probe issues, in call order.
+const (
+	gitlabProjectIDCall = "api projects/acme%2Fapp --jq .id"
+	gitlabDiscussions   = "api projects/11/merge_requests/5101/discussions?per_page=100&page=1"
+)
+
+// The GitCafe reads a partial page walk issues: a full first page naming a
+// second cursor, then a comments page, then the failing second page.
+const (
+	gitcafeReviews     = "pr reviews 5101 -R acme/app --json"
+	gitcafeReviewsNext = "pr reviews 5101 -R acme/app --json --cursor c2"
+	gitcafeComments    = "pr comments 5101 -R acme/app --filter all --json"
+)
+
+// gitlabDiscussion renders one discussion whose first note resolution state is
+// resolved. An open note carries no resolved key, the shape GitLab serves for
+// a discussion nobody resolved.
+func gitlabDiscussion(id string, resolved bool) string {
+	flag := ""
+	if resolved {
+		flag = `"resolved":true,`
+	}
+	return `{"id":"` + id + `","notes":[{"id":9,"body":"nit",` + flag +
+		`"author":{"username":"ana"},"position":{"new_path":"notes.txt","new_line":2,` +
+		`"head_sha":"` + storeHeadSHA + `"}}]}`
+}
+
+// writeHostBundle rewrites the fixture's PR.json for another host.
+func writeHostBundle(t *testing.T, provider string) {
+	t.Helper()
 	writeFile(t, ".verdict/state/5101/PR.json",
-		`{"state":"OPEN","provider":"gitlab","headRefOid":"`+storeHeadSHA+`"}`)
-	cmd := &threadCommander{stdout: threadsPage(9, 0)}
+		`{"state":"OPEN","provider":"`+provider+`","headRefOid":"`+storeHeadSHA+
+			`","baseRefOid":"`+strings.Repeat("b", 40)+`"}`)
+}
+
+// TestRunReportLiveProviderRead pins the host read: a GitLab bundle's live
+// dimension reads that host's discussions through its own adapter instead of
+// skipping the dimension, and the completeness recovery command still names
+// the provider rather than the GitHub default.
+func TestRunReportLiveProviderRead(t *testing.T) {
+	req := fixture(t, "["+entryJSON("1111111111111111111111111111111111111111", "inline", "open", `"important"`, "true")+"]")
+	writeHostBundle(t, "gitlab")
+	cmd := &liveThreadCommander{script: map[string]core.Result{
+		gitlabProjectIDCall: {Stdout: "11\n"},
+		gitlabDiscussions:   {Stdout: "[" + gitlabDiscussion("d1", false) + "]"},
+	}}
 	req.Commander = cmd
 	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
 		ReadRequest: req,
@@ -491,14 +543,117 @@ func TestRunReportLiveProviderSkip(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
-	if cmd.calls != 0 {
-		t.Errorf("commander calls = %d; a non-GitHub bundle pays zero network", cmd.calls)
+	if got, want := strings.Join(cmd.calls, "\n"), gitlabProjectIDCall+"\n"+gitlabDiscussions; got != want {
+		t.Errorf("commander calls = %q, want %q", got, want)
 	}
-	if !containsLine(resp.Warnings, "live recheck skipped: gitlab threads unreadable here (gating on local dimensions only)") {
-		t.Errorf("Warnings = %q, want the provider skip notice", resp.Warnings)
+	for _, w := range resp.Warnings {
+		if strings.Contains(w, "live recheck skipped") {
+			t.Errorf("Warnings = %q, want no structural skip on a readable host", resp.Warnings)
+		}
+	}
+	if !containsLine(resp.CheckLines, "check: 1 live open thread(s) vs 1 local open finding(s) — live recheck passes") {
+		t.Errorf("CheckLines = %q, want the live-thread verdict line", resp.CheckLines)
 	}
 	if !containsLine(resp.CheckLines, "verdict fetch acme/app 5101 --provider gitlab") {
 		t.Errorf("CheckLines = %q, want the provider-aware re-fetch command", resp.CheckLines)
+	}
+}
+
+// TestRunReportLiveOtherProviderGate pins the live dimension on a non-GitHub
+// bundle across hosts: an open discussion fails the gate, a resolved one
+// passes, a failed read warns neutral under --live auto and fails closed under
+// --live strict, and a page walk that stopped early counts as an unread
+// surface rather than a clean one.
+//
+//nolint:gocognit,revive // the matrix asserts calls, lines, warns, and the exit inline
+func TestRunReportLiveOtherProviderGate(t *testing.T) {
+	failGitLab := map[string]core.Result{
+		gitlabProjectIDCall: {Stdout: "11\n"},
+		gitlabDiscussions:   {ExitCode: 1, Stderr: "glab: 500 down"},
+	}
+	tests := []struct { //nolint:govet // table grouping keeps the case fields readable
+		name      string
+		provider  string
+		live      string
+		script    map[string]core.Result
+		wantCalls []string
+		wantLine  string
+		wantWarn  string
+		wantFail  bool
+	}{
+		{
+			name: "open-discussion-fails", provider: "gitlab", live: "strict",
+			script: map[string]core.Result{
+				gitlabProjectIDCall: {Stdout: "11\n"},
+				gitlabDiscussions:   {Stdout: "[" + gitlabDiscussion("d1", false) + "]"},
+			},
+			wantCalls: []string{gitlabProjectIDCall, gitlabDiscussions}, wantFail: true,
+			wantLine: "check: 1 live open thread(s) vs 0 local open finding(s) — gate fails " +
+				"(fetch + triage them, then re-check)",
+		},
+		{
+			name: "resolved-discussion-passes", provider: "gitlab", live: "strict",
+			script: map[string]core.Result{
+				gitlabProjectIDCall: {Stdout: "11\n"},
+				gitlabDiscussions:   {Stdout: "[" + gitlabDiscussion("d1", true) + "]"},
+			},
+			wantCalls: []string{gitlabProjectIDCall, gitlabDiscussions}, wantFail: false,
+			wantLine: "check: 0 live open thread(s) vs 0 local open finding(s) — live recheck passes",
+		},
+		{
+			name: "read-failure-strict-fails-closed", provider: "gitlab", live: "strict",
+			script:    failGitLab,
+			wantCalls: []string{gitlabProjectIDCall, gitlabDiscussions}, wantFail: true,
+			wantLine: "check: live thread recheck unreachable (glab: 500 down — " +
+				"gate fails: offline posture is strict; restore the network or re-run with --live skip, then re-check)",
+		},
+		{
+			name: "read-failure-auto-warns", provider: "gitlab",
+			script:    failGitLab,
+			wantCalls: []string{gitlabProjectIDCall, gitlabDiscussions}, wantFail: false,
+			wantWarn: "live thread recheck unreachable (glab: 500 down — " +
+				"gating on local dimensions only)",
+			wantLine: "check: no open findings at-or-above critical — gate passes",
+		},
+		{
+			name: "partial-page-walk-strict-fails-closed", provider: "gitcafe", live: "strict",
+			script: map[string]core.Result{
+				gitcafeReviews: {Stdout: `{"data":{"items":[{"id":"r1","body":"review",` +
+					`"author":{"handle":"rev"}}]},"next":"c2"}`},
+				gitcafeReviewsNext: {ExitCode: 1, Stderr: "cafe: 500 down"},
+				gitcafeComments:    {Stdout: `{"data":{"items":[]}}`},
+			},
+			wantCalls: []string{gitcafeReviews, gitcafeReviewsNext, gitcafeComments}, wantFail: true,
+			wantLine: "check: live thread recheck unreachable (gitcafe thread read incomplete — " +
+				"gate fails: offline posture is strict; restore the network or re-run with --live skip, then re-check)",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := fixture(t, "[]")
+			writeHostBundle(t, tc.provider)
+			cmd := &liveThreadCommander{script: tc.script}
+			req.Commander = cmd
+			resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+				ReadRequest: req,
+				Flags:       core.ReportFlags{Check: "critical", Live: tc.live},
+			})
+			if ref != nil {
+				t.Fatalf("Run refusal: %v", ref)
+			}
+			if got, want := strings.Join(cmd.calls, "\n"), strings.Join(tc.wantCalls, "\n"); got != want {
+				t.Errorf("commander calls = %q, want %q", got, want)
+			}
+			if resp.GateFailed != tc.wantFail {
+				t.Errorf("GateFailed = %v, want %v (lines %q)", resp.GateFailed, tc.wantFail, resp.CheckLines)
+			}
+			if !containsLine(resp.CheckLines, tc.wantLine) {
+				t.Errorf("CheckLines = %q, want it to contain %q", resp.CheckLines, tc.wantLine)
+			}
+			if tc.wantWarn != "" && !containsLine(resp.Warnings, tc.wantWarn) {
+				t.Errorf("Warnings = %q, want it to contain %q", resp.Warnings, tc.wantWarn)
+			}
+		})
 	}
 }
 
