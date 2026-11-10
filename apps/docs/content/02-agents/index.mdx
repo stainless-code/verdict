@@ -1,199 +1,64 @@
 ---
-title: Integrations
-description: "Five ways to run Verdict: the agent skill and CLI, the MCP server, the Go SDK, the TypeScript client, and the JSON schemas."
+title: Agents
+description: "What an agent gets from Verdict: the skill with its prompts, the MCP server, the per-host config, llms.txt, and a Markdown twin of every page."
 search:
-  tags: ["integrations", "mcp", "sdk", "typescript", "go", "schemas", "skill"]
+  tags: ["agents", "skill", "mcp", "llms-txt", "clients"]
+mode: center
 ---
 
-Verdict is one binary. Every surface below calls the same review core and
-returns the same data as `--json`. Pick the one that matches who calls it.
+Your agent runs Verdict one of two ways: it loads the skill and shells out to the binary, or it calls the MCP server. Either way the docs read as Markdown.
 
-| You are…                              | Use                                     |
-| ------------------------------------- | --------------------------------------- |
-| An agent harness with a skills folder | [Skill and CLI](#skill-and-cli)         |
-| An agent host that speaks MCP         | [MCP server](#mcp-server)               |
-| A Go program                          | [Go SDK](#go-sdk)                       |
-| A Node or Bun program                 | [TypeScript client](#typescript-client) |
-| Any other language                    | [JSON schemas](#json-schemas)           |
+## The skill carries the whole workflow
 
-The MCP server, the Go SDK, and the TypeScript client are experimental until
-1.0. The `--json` envelope and the schemas are versioned separately with
-`schema_version: "1"`, and that contract is the stable part.
-
-## Skill and CLI
-
-The binary carries its own skill: `SKILL.md`, the prompts, and the schemas.
-Install it into your agents with one command:
-
-```bash
-verdict skill install --detect
-```
-
-`--detect` installs into every agent whose skills directory already exists and
-is non-empty. To target one agent, pass `--agent` with `claude`, `cursor`,
-`codex`, `opencode`, `copilot`, `gemini`, `goose`, `qwen`, `windsurf`, or
-`agents`. To install into any other directory, pass `--dir <skills-dir>`.
+One command installs the skill; `status` tells you when a copy drifts behind the binary.
 
 ```bash
 verdict skill install --agent claude --dry-run   # preview: create, update, keep, blocked
 verdict skill install --agent claude             # write it
+verdict skill status --dir <skills-dir>          # keep, or drift with an update list
 ```
 
-The install is atomic, writes a `.verdict-managed` receipt, and refuses to
-touch a directory it did not create unless you pass `--force`. It never
-prompts and makes no network call.
+The install writes 28 files atomically — `SKILL.md`, ten review prompts, the JSON schemas, `scripts/verdict` — plus a `.verdict-managed` receipt, and refuses a directory it did not create unless you pass `--force`. It never prompts and makes no network call. Re-run it after upgrading the binary so the copy never skews from the CLI.
 
-Prefer the registry? `npx skills add stainless-code/verdict` installs the same
-skill. Install one way per machine, or the agent loads the skill twice.
+## The MCP server meets the host where it is
 
-## MCP server
+`verdict mcp` serves the review verbs as MCP tools over stdio: no daemon, no HTTP, no auth of its own. It runs with your credentials and exits when stdin closes.
 
-`verdict mcp` serves the review verbs as MCP tools over stdio. It has no
-daemon, no HTTP mode, and no auth of its own: it runs with your credentials
-and exits when stdin closes. Print or write the host config in one command:
+Every review verb is a tool except `triage` — nineteen tools, and status flips stay a human call. `--read-only` hides the writing verbs and caps `record` to its `dry_run` form; `--operator` adds `triage` back. Each tool returns the CLI envelope's `data`, and a typed refusal comes back with `isError: true` and `{code, message, hint}`. The [manual](https://github.com/stainless-code/verdict/blob/main/docs/manual.md#mcp-server-stdio-experimental-until-10) keeps the full tool list.
 
-```bash
-verdict mcp config --agent claude --write
-```
+`verdict mcp config --agent <host>` prints the exact snippet, with `--read-only` or `--operator` baked into the argv when you pass one. `--write` merges it into the host's config file, backing the old file up first.
 
-That merges this entry into the project's `.mcp.json`:
+| `--agent`  | Writes into                                                   | `--write` merges it             |
+| ---------- | ------------------------------------------------------------- | ------------------------------- |
+| `claude`   | `.mcp.json`                                                   | Yes                             |
+| `cursor`   | `.cursor/mcp.json`                                            | Yes                             |
+| `codex`    | `$CODEX_HOME/config.toml`, else `~/.codex/config.toml` (TOML) | Yes                             |
+| `gemini`   | `~/.gemini/settings.json`                                     | Yes                             |
+| `qwen`     | `~/.qwen/settings.json`                                       | Yes                             |
+| `windsurf` | `~/.codeium/windsurf/mcp_config.json`                         | Yes                             |
+| `opencode` | `opencode.json`                                               | No: print-only, unverified live |
+| `copilot`  | `.vscode/mcp.json`                                            | No: print-only, unverified live |
+| `goose`    | `~/.config/goose/config.yaml` (YAML)                          | No: print-only, unverified live |
 
-```json
-{ "mcpServers": { "verdict": { "command": "verdict", "args": ["mcp"] } } }
-```
+## Every page reads as Markdown
 
-`--agent` takes `claude`, `cursor`, or `codex`. Without `--write` the command
-only prints the entry. It backs up the old file to `<path>.verdict.bak` and
-refuses a file it cannot parse.
+`llms.txt` lists this tree in sidebar order with one-line descriptions, and every page has a twin at the same URL plus `.md` — an agent reads the docs without parsing HTML.
 
-Two flags change what the server exposes:
+## Clients stay thin wrappers
 
-- `--read-only` exposes only tools that neither submit a review nor rewrite
-  the bundle: `report`, `next`, `show`, `trend`, `ready`, `doctor`,
-  `check-tree`, and `config`, plus `record` limited to `dry_run: true`.
-- `--operator` adds `triage`. Status changes are the human's call, so an agent
-  proposes them in `review.json` and never gets the tool by default.
-
-Each tool returns the CLI envelope's `data`. A typed refusal comes back with
-`isError: true` and `{code, message, hint}`. The
-[manual](https://github.com/stainless-code/verdict/blob/main/docs/manual.md#mcp-server-stdio-experimental-until-10)
-has the full tool list.
-
-## Go SDK
-
-`pkg/verdict` runs the verbs in-process. It takes typed requests, never calls
-`os.Exit`, and never touches your stdio.
-
-```bash
-go get github.com/stainless-code/verdict/pkg/verdict
-```
-
-```go
-package main
-
-import (
-	"context"
-	"errors"
-	"fmt"
-
-	"github.com/stainless-code/verdict/pkg/verdict"
-)
-
-func main() {
-	c := verdict.New(verdict.Options{})
-	defer c.Close()
-
-	resp, err := c.Report(context.Background(), &verdict.ReportRequest{
-		Invocation: verdict.Invocation{Repo: "acme/app", PR: "123"},
-	})
-	var refusal *verdict.RefusalError
-	if errors.As(err, &refusal) {
-		fmt.Println(refusal.Code, refusal.Hint)
-		return
-	}
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(resp.Human[0])
-	fmt.Println(resp.Next)
-}
-```
-
-Run it from the checkout that holds `.verdict/state/`, like the CLI. With a clean
-bundle for `acme/app` PR 123 it prints:
-
-```text
-report: .verdict/state/123 (0 shown) open=0 head=aaaaaaa
-none open — nothing to address
-```
-
-Install, upgrade, and skill verbs stay CLI-only and are not in the SDK.
-
-## TypeScript client
-
-One npm install brings the binary and the client:
-
-```bash
-npm i @stainless-code/verdict
-```
-
-```ts
-import {
-  createClient,
-  VerdictRefusalError,
-} from "@stainless-code/verdict/client";
-
-const verdict = createClient({ cwd: "path/to/repo" });
-
-const report = await verdict.report(["acme/app", "123"]);
-console.log(report.data.verdict.open, "open findings");
-
-try {
-  await verdict.report(["acme/app", "9999"]);
-} catch (error) {
-  if (error instanceof VerdictRefusalError) {
-    console.log(error.code); // "missing-findings"
-    console.log(error.hint); // "try: run the fetch/record step named above first, then re-run"
-  }
-}
-```
-
-The client spawns `verdict <verb> … --json`, reads one envelope, and maps the
-exit codes to typed errors. It finds the binary through `VERDICT_BIN`, then
-the platform package, then `PATH`. It has no dependencies and starts no server.
-Every review verb has a named method and its own typed `data`; keep
-`verdict.run(verb, args)` for a verb or field the client has not typed yet.
-
-## JSON schemas
-
-The envelope and every store file are published as JSON Schema (draft 2020-12)
-under
-[`skills/verdict/schemas/`](https://github.com/stainless-code/verdict/tree/main/skills/verdict/schemas). They
-ship in the npm package and inside the binary. List them from a clean install:
-
-```bash
-verdict skill files | grep schemas/
-```
-
-Check an agent-written review before you post it:
-
-```bash
-schemas/validate.sh schemas/review.schema.json .verdict/state/123/review.json
-```
-
-The script exits `0` when the file is valid and prints one `FAIL` line per
-problem otherwise. It is the same checker the tests use. Run it from your
-installed skill's directory, or from `skills/verdict/` in a checkout.
-
-To generate a client for another language, point a code generator at
-`skills/verdict/schemas/envelope.schema.json`. [Build a client](/docs/build-a-client) walks through
-Python end to end.
+There is no wire protocol and no server: a client spawns the binary and reads one `--json` envelope. The reference implementations live in Build on Verdict.
 
 <CardGroup cols={2}>
   <Card title="Build a client" href="/docs/build-a-client">
     The `--json` protocol, exit codes, and refusal codes.
   </Card>
-  <Card title="Quickstart" href="/docs/quickstart">
-    Install, add the skill, and review a PR.
+  <Card title="MCP server" href="/docs/mcp-server">
+    The review verbs as MCP tools over stdio.
+  </Card>
+  <Card title="Go SDK" href="/docs/go-sdk">
+    The verbs in-process, with typed requests.
+  </Card>
+  <Card title="TypeScript client" href="/docs/typescript-client">
+    Spawns the binary and returns typed envelopes.
   </Card>
 </CardGroup>

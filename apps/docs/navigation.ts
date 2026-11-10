@@ -50,7 +50,12 @@ export const docsTree: readonly DocsTreeGroup[] = [
   },
   {
     label: "Build on Verdict",
-    pages: [{ label: "Build a client", route: "/docs/build-a-client" }],
+    pages: [
+      { label: "Build a client", route: "/docs/build-a-client" },
+      { label: "MCP server", route: "/docs/mcp-server" },
+      { label: "Go SDK", route: "/docs/go-sdk" },
+      { label: "TypeScript client", route: "/docs/typescript-client" },
+    ],
   },
   { label: "Agents", pages: [{ label: "Agents", route: "/agents" }] },
   { label: "Compare", pages: [{ label: "Compare", route: "/compare" }] },

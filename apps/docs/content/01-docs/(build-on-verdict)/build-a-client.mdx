@@ -15,7 +15,7 @@ TypeScript client is the reference implementation, and the
 [Python example](https://github.com/stainless-code/verdict/tree/main/examples/python-client)
 is the codegen recipe. Python has **no official package**. Generate types from
 the schemas and keep the wrapper thin. To use the TypeScript client, the Go
-SDK, or the MCP server as they are, see [Integrations](/agents).
+SDK, or the MCP server as they are, see the [Agents](/agents) landing.
 
 ## The protocol in one command
 
@@ -36,7 +36,8 @@ verdict report acme/app 123 --json
 ### The envelope
 
 Every successful `--json` run prints one object with these nine keys, in this
-order. The
+order. The [JSON envelope and exit codes](/docs/json-envelope) reference pins this table with the exit codes.
+The
 [envelope schema](https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/envelope.schema.json)
 is generated from the Go shape and is the machine-readable source of truth.
 

@@ -1,0 +1,30 @@
+---
+title: Go SDK
+description: "Run Verdict's review verbs in-process from Go: typed requests, no os.Exit, no stdio, with the binary's envelope as the stable contract."
+search:
+  tags: ["go", "sdk", "in-process", "typed"]
+---
+
+For a Go program that wants the review without spawning a process.
+
+`pkg/verdict` runs the verbs in-process against the same core as the CLI. Requests are typed, methods never call `os.Exit` and never touch your stdio, and install, upgrade, and skill verbs stay CLI-only on purpose.
+
+```bash
+go get github.com/stainless-code/verdict/pkg/verdict
+```
+
+```go
+c := verdict.New(verdict.Options{})
+defer c.Close()
+
+resp, err := c.Report(context.Background(), &verdict.ReportRequest{
+    Invocation: verdict.Invocation{Repo: "acme/app", PR: "123"},
+})
+var refusal *verdict.RefusalError
+if errors.As(err, &refusal) {
+    fmt.Println(refusal.Code, refusal.Hint)
+    return
+}
+```
+
+Run it from the checkout that holds `.verdict/state/`, like the CLI: bundle paths resolve from the working directory. The envelope stays the stable contract — [JSON envelope and exit codes](/docs/json-envelope) pins it — and to build a client in another language, [Build a client](/docs/build-a-client) walks through the protocol. Experimental until 1.0.
