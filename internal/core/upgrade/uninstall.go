@@ -101,7 +101,7 @@ func uninstallCommand(det *detection) string {
 	case ChannelProject:
 		return fmt.Sprintf("cd %s && npm uninstall %s", projectRoot(filepath.Dir(det.exe)), npmPackage)
 	case ChannelSkill:
-		return "rm -rf " + skillRoot(det.exe)
+		return "verdict skill uninstall --dir " + filepath.Dir(skillRoot(det.exe)) + " --force"
 	default:
 		return installerCommand()
 	}

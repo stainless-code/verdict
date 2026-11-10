@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -47,6 +48,63 @@ func InstallDetected(ctx context.Context, req *Request) (Detection, *core.Refusa
 		return Detection{}, ref
 	}
 	return det, nil
+}
+
+// InstallAgents plans and applies one install per named agent, in argv order
+// and deduped. Every target keeps the single-target safety rules, and all
+// targets are classified before the first byte is written.
+func InstallAgents(ctx context.Context, req *Request, agents []string) (Detection, *core.RefusalError) {
+	if err := ctx.Err(); err != nil {
+		return Detection{}, refuse(codeCanceled, "canceled before skill install completed")
+	}
+	files, ref := List(ctx, req)
+	if ref != nil {
+		return Detection{}, ref
+	}
+	plans, agents, ref := planAgents(req, files, agents)
+	if ref != nil {
+		return Detection{}, ref
+	}
+	det := Detection{Name: files.Name, Version: files.Version, Agents: agents, Plans: plans}
+	if req.DryRun {
+		return det, nil
+	}
+	if ref := applyDetected(req, det.Plans); ref != nil {
+		return Detection{}, ref
+	}
+	return det, nil
+}
+
+// planAgents resolves one target per named agent in argv order, dropping a
+// repeated agent.
+func planAgents(req *Request, files Inventory, agents []string) ([]Plan, []string, *core.RefusalError) {
+	agents = dedupeAgents(agents)
+	plans := make([]Plan, 0, len(agents))
+	for _, agent := range agents {
+		at := *req
+		at.Agent = agent
+		target, ref := at.target()
+		if ref != nil {
+			return nil, nil, ref
+		}
+		plan, ref := planAt(files, target)
+		if ref != nil {
+			return nil, nil, ref
+		}
+		plan.Agent = agent
+		plans = append(plans, plan)
+	}
+	return plans, agents, nil
+}
+
+func dedupeAgents(agents []string) []string {
+	out := make([]string, 0, len(agents))
+	for _, agent := range agents {
+		if !slices.Contains(out, agent) {
+			out = append(out, agent)
+		}
+	}
+	return out
 }
 
 func applyDetected(req *Request, plans []Plan) *core.RefusalError {

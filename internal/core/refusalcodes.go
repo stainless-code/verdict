@@ -155,6 +155,8 @@ var refusalCodes = []string{
 	"skill-install-failed",
 	"skill-no-detected-agent",
 	"skill-no-home",
+	"skill-not-installed",
+	"skill-path-not-inventory",
 	"skill-read-failed",
 	"skill-target-file",
 	"skill-unknown-agent",

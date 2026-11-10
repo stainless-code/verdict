@@ -56,6 +56,9 @@ var hintRules = []HintRule{
 	},
 	{codes: []string{"skill-no-detected-agent"}, hint: "try: name the agent explicitly with " +
 		"'verdict skill install --agent <name>'"},
+	{codes: []string{"skill-path-not-inventory"}, hint: "try: run 'verdict skill files' to list every embedded path"},
+	{codes: []string{"skill-not-installed"}, hint: "try: install first with " +
+		"'verdict skill install --dir <skills-dir>', or check the target"},
 	{codes: []string{"bad-timeout"}, hint: "try: pass --timeout <positive-seconds> (default 300)"},
 	{codes: []string{"bad-approve"}, hint: "try: pass --approve=true|false"},
 	{codes: []string{"bad-review-schema"}, hint: "try: set \"schema_version\": \"1\" in review.json"},

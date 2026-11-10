@@ -12,7 +12,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	pathpkg "path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	skillfs "github.com/stainless-code/verdict"
@@ -40,6 +42,8 @@ const (
 	codeConflict   = "skill-foreign-conflict"
 	codeInstall    = "skill-install-failed"
 	codeRead       = "skill-read-failed"
+	codePath       = "skill-path-not-inventory"
+	codeNotInstall = "skill-not-installed"
 	codeCanceled   = "canceled"
 	dirPerm        = 0o755
 )
@@ -108,6 +112,32 @@ func Show(_ context.Context, _ *Request) ([]byte, *core.RefusalError) {
 		return nil, refuse(codeRead, err.Error())
 	}
 	return body, nil
+}
+
+// ShowFile returns one embedded payload file by its slash path. The path must
+// be in the payload inventory; a traversal, absolute, or unknown path refuses
+// skill-path-not-inventory.
+func ShowFile(ctx context.Context, req *Request, path string) ([]byte, *core.RefusalError) {
+	inv, ref := List(ctx, req)
+	if ref != nil {
+		return nil, ref
+	}
+	if !inventoryPath(path) || !slices.Contains(inv.Files, path) {
+		return nil, refuse(codePath, "not an embedded skill path: "+path)
+	}
+	body, err := skillfs.Read(path)
+	if err != nil {
+		return nil, refuse(codeRead, err.Error())
+	}
+	return body, nil
+}
+
+func inventoryPath(path string) bool {
+	if path == "" || strings.HasPrefix(path, "/") {
+		return false
+	}
+	clean := pathpkg.Clean(path)
+	return clean == path && clean != "." && clean != ".." && !strings.HasPrefix(clean, "../")
 }
 
 // List returns the embedded payload inventory (paths sorted).

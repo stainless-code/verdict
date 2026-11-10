@@ -804,7 +804,7 @@ func TestUninstall(t *testing.T) {
 		{"yarn", "yarn global remove @stainless-code/verdict"},
 		{"brew", "brew uninstall stainless-code/tap/verdict"},
 		{"project-local", "npm uninstall @stainless-code/verdict"},
-		{"skill", "rm -rf"},
+		{"skill", "verdict skill uninstall"},
 	} {
 		t.Run("refuses "+tc.channel, func(t *testing.T) {
 			req := baseRequest(t)

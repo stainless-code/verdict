@@ -237,10 +237,17 @@
 # linux/arm64 11272352, windows/amd64 12645376, windows/arm64 11368448.
 # Five ceilings cross and move to the next 10 kB at least 5 kB above their
 # measurement; linux/arm64 holds.
+# The skill-management slice (STA-304..308): `skill show <path>` with its
+# inventory check, `skill status` with the unified-diff renderer, repeatable
+# `--agent` planning, and `skill uninstall` with its receipt/foreign safety.
+# Measured here: darwin/amd64 12597280, darwin/arm64 11556018, linux/amd64
+# 12374176, linux/arm64 11337888, windows/amd64 12711936, windows/arm64
+# 11422720. Every ceiling crosses, and each moves to the next 10 kB at least
+# 5 kB above its measurement.
 deps 0
-darwin/amd64 12540000
-darwin/arm64 11500000
-linux/amd64 12320000
-linux/arm64 11280000
-windows/amd64 12660000
-windows/arm64 11380000
+darwin/amd64 12610000
+darwin/arm64 11570000
+linux/amd64 12380000
+linux/arm64 11350000
+windows/amd64 12720000
+windows/arm64 11430000
