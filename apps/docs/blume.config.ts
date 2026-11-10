@@ -6,9 +6,8 @@ import { defineConfig } from "blume";
 import { orama } from "blume/search";
 import { custom, filesystem } from "blume/sources";
 import { docsPage } from "./docs-index.ts";
-import { docsRedirects, docsRoute, docsSections } from "./navigation.ts";
+import { docsRoute, docsSections } from "./navigation.ts";
 import { changelogSource } from "./sources/changelog.ts";
-import { manualSource } from "./sources/manual.ts";
 import { troubleshootingSource } from "./sources/troubleshooting.ts";
 
 const title = "Verdict";
@@ -19,9 +18,6 @@ const description =
 const deploymentBase = "/verdict";
 const origin = "https://stainless-code.com";
 
-const manual = docsPage("manual.md");
-const manualUrl = `${origin}${deploymentBase}${docsRoute(manual.file)}.md`;
-const manualSummary = manual.summary.replace(/\.$/u, "");
 const troubleshooting = docsPage("troubleshooting.md");
 const troubleshootingUrl = `${origin}${deploymentBase}${docsRoute(troubleshooting.file)}.md`;
 const troubleshootingSummary = troubleshooting.summary.replace(/\.$/u, "");
@@ -92,7 +88,6 @@ export default defineConfig({
           site: origin,
         }),
       ),
-      custom(manualSource()),
       custom(troubleshootingSource()),
     ],
   },
@@ -111,8 +106,7 @@ export default defineConfig({
     skills: "./skills",
     llmsTxt: {
       details: [
-        "The three long-form references are left out of `llms-full.txt` for their size:",
-        `the ${manual.title.toLowerCase()} at ${manualUrl} (${manualSummary}),`,
+        "The long-form reference is left out of `llms-full.txt` for its size:",
         `the ${troubleshooting.title.toLowerCase()} at ${troubleshootingUrl} (${troubleshootingSummary}),`,
         `and the release notes at ${origin}${deploymentBase}/changelog.`,
       ].join("\n"),
@@ -136,12 +130,6 @@ export default defineConfig({
     })),
     sidebar: { display: "flat" },
   },
-
-  redirects: docsRedirects.map(({ from, to }) => ({
-    from,
-    to,
-    status: 301 as const,
-  })),
 
   theme: {
     accent: { light: "#ae2a1e", dark: "#f2a192" },

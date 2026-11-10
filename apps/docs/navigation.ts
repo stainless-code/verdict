@@ -15,11 +15,6 @@ export interface DocsTreeGroup {
   readonly pages: readonly DocsTreePage[];
 }
 
-export interface DocsRedirect {
-  readonly from: string;
-  readonly to: string;
-}
-
 /** The header's five sections, each with the route its tab lands on. */
 export const docsSections: readonly DocsSection[] = [
   { label: "Docs", landing: "/docs/quickstart", path: "/docs" },
@@ -46,12 +41,12 @@ export const docsTree: readonly DocsTreeGroup[] = [
   {
     label: "Reference",
     pages: [
-      { label: "Manual", docsFile: "manual.md", route: "/docs/manual" },
       {
-        label: "Troubleshooting",
+        label: "Refusal codes",
         docsFile: "troubleshooting.md",
         route: "/docs/troubleshooting",
       },
+      { label: "JSON envelope", route: "/docs/json-envelope" },
     ],
   },
   {
@@ -61,19 +56,6 @@ export const docsTree: readonly DocsTreeGroup[] = [
   { label: "Agents", pages: [{ label: "Agents", route: "/agents" }] },
   { label: "Compare", pages: [{ label: "Compare", route: "/compare" }] },
   { label: "Roadmap", pages: [{ label: "Roadmap", route: "/roadmap" }] },
-];
-
-/** Old routes and where they land now. */
-export const docsRedirects: readonly DocsRedirect[] = [
-  { from: "/quickstart", to: "/docs/quickstart" },
-  { from: "/how-it-reviews", to: "/docs/how-it-reviews" },
-  { from: "/integrations", to: "/agents" },
-  { from: "/why-verdict", to: "/docs/why-verdict" },
-  { from: "/comparison", to: "/compare" },
-  { from: "/glossary", to: "/docs/glossary" },
-  { from: "/build-a-client", to: "/docs/build-a-client" },
-  { from: "/manual", to: "/docs/manual" },
-  { from: "/troubleshooting", to: "/docs/troubleshooting" },
 ];
 
 export interface FooterLink {

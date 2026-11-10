@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import GithubSlugger from "github-slugger";
 
 import { docsPages, docsRoot } from "../docs-index.ts";
-import { docsRedirects, docsSections, docsTree } from "../navigation.ts";
+import { docsSections, docsTree } from "../navigation.ts";
 
 const appRoot = fileURLToPath(new URL("..", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
@@ -85,8 +85,7 @@ problems.push(
 );
 
 // Every built docs page is in the tree, so orphans fail the build. Generated
-// routes (the changelog timeline) and redirect pages are not docs pages.
-const redirectFroms = new Set(docsRedirects.map((redirect) => redirect.from));
+// routes (the changelog timeline) are not docs pages.
 const builtDocsRoutes: string[] = [];
 const collect = (dir: string, prefix: string): void => {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -105,9 +104,7 @@ const collect = (dir: string, prefix: string): void => {
   }
 };
 collect(dist, "");
-const orphans = builtDocsRoutes.filter(
-  (route) => !seen.has(route) && !redirectFroms.has(route),
-);
+const orphans = builtDocsRoutes.filter((route) => !seen.has(route));
 problems.push(
   ...orphans.map((route) => `  ${route} builds but is in no tree group`),
 );
@@ -212,8 +209,61 @@ if (broken.length > 0) {
 }
 
 // The tree model stays the single source: every published page the index
-// knows, every route the site serves, every redirect the config promises.
+// knows and every route the site serves.
 const publishedCount = docsPages.filter((page) => page.published).length;
+
+// The manual is repository-only, so site pages deep-link its GitHub copy.
+// Every such link must name a heading the manual still carries, slugged the
+// way GitHub slugs it (see `anchorsIn` above).
+const githubManual =
+  /^https:\/\/github\.com\/stainless-code\/verdict\/blob\/.+\/docs\/manual\.md$/u;
+const manualFile = join(docsRoot, "manual.md");
+const siteFiles: string[] = [];
+const collectSite = (dir: string): void => {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      collectSite(path);
+    } else if (entry.isFile() && /\.(?:md|mdx)$/u.test(entry.name)) {
+      siteFiles.push(path);
+    }
+  }
+};
+collectSite(join(appRoot, "content"));
+
+const dangling: string[] = [];
+for (const file of siteFiles) {
+  for (const link of readFileSync(file, "utf8").matchAll(/\]\(([^)\s]+)\)/gu)) {
+    const [href, anchor] = link[1].split("#");
+    if (anchor === undefined || anchor === "") {
+      continue;
+    }
+    const targetsManual =
+      githubManual.test(href) ||
+      (!href.includes(":") &&
+        !href.startsWith("/") &&
+        resolve(dirname(file), decodeURIComponent(href)) === manualFile);
+    if (
+      targetsManual &&
+      !anchorsIn(manualFile).has(decodeURIComponent(anchor))
+    ) {
+      dangling.push(
+        `  ${repoPath(file)} links to ${link[1]}, and docs/manual.md has no such heading`,
+      );
+    }
+  }
+}
+
+if (dangling.length > 0) {
+  fail([
+    "docs index: a site page links a manual section that does not exist.",
+    ...dangling,
+    "",
+    "Deep-link the exact GitHub section (`.../docs/manual.md#<anchor>`) and",
+    "spell the anchor the way GitHub slugs the heading, or drop the link.",
+  ]);
+}
+
 console.log(
-  `docs index: ${docsPages.length} page(s), ${publishedCount} published, ${treeRoutes.length} tree route(s), ${docsRedirects.length} redirect(s), every link and anchor resolves.`,
+  `docs index: ${docsPages.length} page(s), ${publishedCount} published, ${treeRoutes.length} tree route(s), every link and anchor resolves.`,
 );

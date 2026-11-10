@@ -1,16 +1,16 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// The two output contracts `blume build` cannot state itself: how large the
-// single-file agent corpus is, and that the site sends readers to its own
-// manual instead of the GitHub copy.
+// The output contract `blume build` cannot state itself: how large the
+// single-file agent corpus is. (Manual links need no output check: the manual
+// is repository-only, and `check-docs.ts` proves every section deep-link
+// names a heading the manual still carries.)
 const docsRoot = fileURLToPath(new URL("..", import.meta.url));
 const dist = join(docsRoot, process.argv[2] ?? "dist");
 
 const FULL_BUDGET = 72_000;
 const INSTALL_COMMAND = "npm i -g @stainless-code/verdict";
-const MANUAL_SOURCE = "blob/main/docs/manual.md";
 
 const fail = (lines: readonly string[]): never => {
   console.error(lines.join("\n"));
@@ -27,15 +27,6 @@ const read = (file: string): string => {
     ]);
   }
 };
-
-const published = (dir: string): string[] =>
-  readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      return published(path);
-    }
-    return /\.(?:html|md)$/u.test(entry.name) ? [path] : [];
-  });
 
 const home = read("index.md");
 const full = read("llms-full.txt");
@@ -58,21 +49,6 @@ if (full.length > FULL_BUDGET) {
   ]);
 }
 
-const githubLinks = published(dist).flatMap((file) =>
-  readFileSync(file, "utf8").includes(MANUAL_SOURCE)
-    ? [`  ${relative(dist, file)}`]
-    : [],
-);
-if (githubLinks.length > 0) {
-  fail([
-    "docs output: the site still sends readers to the GitHub copy of the manual.",
-    ...githubLinks,
-    "",
-    '`/manual` is the page; link it as `/manual` (or `contentHref("/manual")`',
-    "in an Astro component) with the anchor the manual's own headings carry.",
-  ]);
-}
-
 console.log(
-  `docs output: index.md is the landing page, llms-full.txt is ${full.length} chars, no GitHub-copy links.`,
+  `docs output: index.md is the landing page, llms-full.txt is ${full.length} chars.`,
 );
