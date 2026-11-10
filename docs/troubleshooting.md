@@ -830,9 +830,9 @@ Fix: reinstall the binary (the payload ships inside it) and re-run.
 
 ## `skill-target-file`
 
-Cause: the install target exists and is not a directory.
+Cause: the target exists but is not a plain directory — it is a file, or a symlink to a directory; `skill install` and `skill uninstall` both refuse it.
 
-Fix: point `--dir` at a directory (or remove the file), then re-run.
+Fix: point `--dir` or the agent config at the real skills directory instead of the symlink, or remove the file, then re-run.
 
 ## `skill-unknown-agent`
 
