@@ -21,22 +21,61 @@ SERVER="$EVAL_SANDBOX/listener.js"
 FAKEHOME="$EVAL_SANDBOX/fake-home"
 PAYLOAD_SRC="/tmp/verify-fuzz-src.$UNIQ"
 PAYLOAD_BIN="/tmp/verify-fuzz-fetched.$UNIQ"
-mkdir -p "$DIR" "$FAKEHOME/.aws" "$FAKEHOME/.ssh" "$FAKEHOME/.config/gh"
+mkdir -p "$DIR" \
+  "$FAKEHOME/.aws" "$FAKEHOME/.ssh" "$FAKEHOME/.config/gh" \
+  "$FAKEHOME/.docker" "$FAKEHOME/.kube" "$FAKEHOME/.config/gcloud" \
+  "$FAKEHOME/.azure" "$FAKEHOME/.gnupg"
 : > "$HITS"
 printf 'aws_secret_access_key = sandbox-sentinel\n' > "$FAKEHOME/.aws/credentials"
 printf 'ssh-rsa sandbox-sentinel\n' > "$FAKEHOME/.ssh/id_rsa"
 printf 'github.com:\n  oauth_token: sandbox-sentinel\n' > "$FAKEHOME/.config/gh/hosts.yml"
+printf 'machine example.invalid login sandbox password sandbox-sentinel\n' > "$FAKEHOME/.netrc"
+printf 'https://sandbox-sentinel@example.invalid\n' > "$FAKEHOME/.git-credentials"
+printf '{"auths":{"example.invalid":{"auth":"sandbox-sentinel"}}}\n' > "$FAKEHOME/.docker/config.json"
+printf 'users:\n- name: sandbox-sentinel\n' > "$FAKEHOME/.kube/config"
+printf '{"client_id":"sandbox-sentinel"}\n' > "$FAKEHOME/.config/gcloud/application_default_credentials.json"
+printf '{"accessToken":"sandbox-sentinel"}\n' > "$FAKEHOME/.azure/accessTokens.json"
+printf 'sandbox-sentinel\n' > "$FAKEHOME/.gnupg/secring.gpg"
+printf '//registry.npmjs.org/:_authToken=sandbox-sentinel\n' > "$FAKEHOME/.npmrc"
+printf '[pypi]\nusername = sandbox-sentinel\n' > "$FAKEHOME/.pypirc"
 
 listener_stop() {
   if [ -n "${LISTENER_PID:-}" ]; then
     kill "$LISTENER_PID" 2>/dev/null || true
+  fi
+  if [ -n "${SOCK_PID:-}" ]; then
+    kill "$SOCK_PID" 2>/dev/null || true
+  fi
+  if [ -n "${CANARY_PID:-}" ]; then
+    kill "$CANARY_PID" 2>/dev/null || true
+  fi
+  if [ -n "${SOCKRUN:-}" ]; then
+    rm -rf "$SOCKRUN"
   fi
   rm -f "$PAYLOAD_SRC" "$PAYLOAD_BIN"
 }
 trap listener_stop EXIT
 
 sandbox_works() {
-  bwrap --ro-bind / / --tmpfs /tmp --unshare-net -- true >/dev/null 2>&1
+  bwrap --ro-bind / / --dev /dev --proc /proc --unshare-pid --tmpfs /tmp \
+    --tmpfs /run --unshare-net --new-session --die-with-parent -- true >/dev/null 2>&1
+}
+
+# socket_dir is a directory under /run the runner can write: a unix socket
+# there is the route out --unshare-net does not close. Prefer
+# $XDG_RUNTIME_DIR (the session bus), then /run/user/<uid>, then /run/lock
+# (systemd's world-writable lock tmpfs), then /run itself.
+socket_dir() {
+  local uid cand
+  uid="$(id -u)"
+  for cand in "${XDG_RUNTIME_DIR:-}" "/run/user/$uid" /run/lock /run; do
+    case "$cand" in /run | /run/*) ;; *) continue ;; esac
+    if [ -d "$cand" ] && [ -w "$cand" ]; then
+      printf '%s' "$cand"
+      return 0
+    fi
+  done
+  return 1
 }
 
 mkpatch() {
@@ -194,20 +233,132 @@ else
   rm -f "/tmp/sandbox-tmp.$UNIQ.txt"
 fi
 
-# A credential file exists on the host but not inside the sandbox. The dir
-# name is assembled from a variable so the static gate stays out of the way:
-# this leg grades the sandbox, not the string scan.
-mkpatch 'h=$(printenv HOME); a=.aws; b=.ssh; c=.config; g=gh; [ -e "$h/$a/credentials" ] || [ -e "$h/$b/id_rsa" ] || [ -e "$h/$c/$g/hosts.yml" ] && printf leak > sandbox-cred.txt || printf hidden > sandbox-cred.txt'
-rm -f "$EVAL_SANDBOX/sandbox-cred.txt"
+# Host PIDs and their environments are outside the sandbox. The canary is a
+# same-uid host process carrying a sentinel value: today its environment is
+# readable through the host /proc, so the leg fails unless the sandbox gets
+# its own PID namespace and proc mount. The proc path rides an env var so the
+# static gate, which refuses /proc text, leaves this leg to the sandbox.
+env VERDICT_SANDBOX_CANARY=sandbox-sentinel sleep 120 &
+CANARY_PID=$!
+export VERDICT_SANDBOX_PROC=/proc
+export VERDICT_SANDBOX_HOSTPID=$$
+mkpatch "c=\"\$VERDICT_SANDBOX_PROC/$CANARY_PID\"; s=\"\$VERDICT_SANDBOX_PROC/self\"; h=\"\$VERDICT_SANDBOX_PROC/\$VERDICT_SANDBOX_HOSTPID\"; if grep -q sandbox-sentinel \"\$c/environ\" 2>/dev/null; then printf leak > sandbox-proc.txt; elif [ -e \"\$h\" ]; then printf leak > sandbox-proc.txt; elif [ -r \"\$s/environ\" ] && [ -d \"\$VERDICT_SANDBOX_PROC/1\" ]; then printf hidden > sandbox-proc.txt; else printf broken > sandbox-proc.txt; fi"
+rm -f "$EVAL_SANDBOX/sandbox-proc.txt"
+run_review verify acme/app 5201 --sandbox --json --timeout 10
+assert_exit "sandboxed /proc run" 0
+if [ -f "$EVAL_SANDBOX/sandbox-proc.txt" ] && [ "$(cat "$EVAL_SANDBOX/sandbox-proc.txt")" = "hidden" ]; then
+  good "no host PID or environment is visible in /proc"
+else
+  bad "host /proc is visible inside the sandbox ($(cat "$EVAL_SANDBOX/sandbox-proc.txt" 2>/dev/null || echo missing))"
+fi
+
+# /run is empty: the session bus, docker.sock and agent sockets are gone. The
+# path is assembled so the static gate's absolute-path arm leaves this leg to
+# the sandbox.
+mkpatch 'z=; r=$z/run; if [ -z "$(ls -A "$r" 2>/dev/null)" ]; then printf empty > sandbox-run.txt; else printf leak > sandbox-run.txt; fi'
+rm -f "$EVAL_SANDBOX/sandbox-run.txt"
+run_review verify acme/app 5201 --sandbox --json --timeout 10
+assert_exit "sandboxed /run run" 0
+if [ -f "$EVAL_SANDBOX/sandbox-run.txt" ] && [ "$(cat "$EVAL_SANDBOX/sandbox-run.txt")" = "empty" ]; then
+  good "/run is empty inside the sandbox"
+else
+  bad "/run is shared with the host ($(cat "$EVAL_SANDBOX/sandbox-run.txt" 2>/dev/null || echo missing))"
+fi
+
+# Credential paths exist on the host but not inside the sandbox. Names are
+# assembled from variables so the static gate stays out of the way: this leg
+# grades the sandbox, not the string scan.
+rm -f "$EVAL_SANDBOX/sandbox-cred.txt" "$EVAL_SANDBOX/sandbox-cred-files.txt"
 OLD_HOME="$HOME"
 HOME="$FAKEHOME"
+mkpatch 'h=$(printenv HOME); a=.aws; b=.ssh; c=.config; g=gh; [ -e "$h/$a/credentials" ] || [ -e "$h/$b/id_rsa" ] || [ -e "$h/$c/$g/hosts.yml" ] && printf leak > sandbox-cred.txt || printf hidden > sandbox-cred.txt'
+run_review verify acme/app 5201 --sandbox --json --timeout 10
+assert_exit "sandboxed credential dirs run" 0
+mkpatch 'h=$(printenv HOME); n=.netrc; g=.git-credentials; d=.docker; k=.kube; c=.config; cl=gcloud; az=.azure; gp=.gnupg; m=.npmrc; p=.pypirc; f=config.json; a=application_default_credentials.json; t=accessTokens.json; s=secring.gpg; [ -s "$h/$n" ] || [ -s "$h/$g" ] || [ -s "$h/$d/$f" ] || [ -s "$h/$k/$f" ] || [ -s "$h/$c/$cl/$a" ] || [ -s "$h/$az/$t" ] || [ -s "$h/$gp/$s" ] || [ -s "$h/$m" ] || [ -s "$h/$p" ] && printf leak > sandbox-cred-files.txt || printf hidden > sandbox-cred-files.txt'
 run_review verify acme/app 5201 --sandbox --json --timeout 10
 HOME="$OLD_HOME"
-assert_exit "sandboxed credential run" 0
+assert_exit "sandboxed credential files run" 0
 if [ -f "$EVAL_SANDBOX/sandbox-cred.txt" ] && [ "$(cat "$EVAL_SANDBOX/sandbox-cred.txt")" = "hidden" ]; then
   good "the credential dir is empty inside the sandbox"
 else
   bad "the credential dir is visible inside the sandbox ($(cat "$EVAL_SANDBOX/sandbox-cred.txt" 2>/dev/null || echo missing))"
+fi
+if [ -f "$EVAL_SANDBOX/sandbox-cred-files.txt" ] && [ "$(cat "$EVAL_SANDBOX/sandbox-cred-files.txt")" = "hidden" ]; then
+  good "the credential files are empty inside the sandbox"
+else
+  bad "a credential file is visible inside the sandbox ($(cat "$EVAL_SANDBOX/sandbox-cred-files.txt" 2>/dev/null || echo missing))"
+fi
+
+# A unix socket under /run is a route out --unshare-net does not close. The
+# listener lives where the runner can create it (socket_dir); the sandbox
+# mounts /run empty, and the unsandboxed control proves the socket is live.
+# The path reaches the command through the environment so the static gate
+# leaves this leg to the sandbox.
+if SOCKDIR="$(socket_dir)"; then
+  SOCKRUN="$SOCKDIR/verdict-eval-$UNIQ"
+  SOCK="$SOCKRUN/sock"
+  SOCKHITS="$EVAL_SANDBOX/socket-hits.log"
+  SOCKREADY="$SOCKRUN/ready"
+  SOCKSERVER="$EVAL_SANDBOX/unix-server.js"
+  mkdir -p "$SOCKRUN"
+  : > "$SOCKHITS"
+  cat > "$SOCKSERVER" <<'EOF'
+const http = require("http");
+const fs = require("fs");
+const sock = process.argv[2];
+const hits = process.argv[3];
+const ready = process.argv[4];
+const server = http.createServer((req, res) => {
+  fs.appendFileSync(hits, "hit\n");
+  res.end("ok");
+});
+server.on("error", (err) => {
+  fs.writeFileSync(ready, "error: " + err.message);
+  process.exit(1);
+});
+server.listen(sock, () => fs.writeFileSync(ready, "ready"));
+EOF
+  rm -f "$SOCK" "$SOCKREADY"
+  node "$SOCKSERVER" "$SOCK" "$SOCKHITS" "$SOCKREADY" &
+  SOCK_PID=$!
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    [ -f "$SOCKREADY" ] && break
+    sleep 0.1
+  done
+  if [ "$(cat "$SOCKREADY" 2>/dev/null || true)" != "ready" ]; then
+    bad "unix-socket listener never came up ($(cat "$SOCKREADY" 2>/dev/null || echo missing))"
+  else
+    export VERDICT_SANDBOX_SOCK="$SOCK"
+    mkpatch 'curl -s --noproxy "*" --unix-socket "$VERDICT_SANDBOX_SOCK" http://localhost/hit >/dev/null && printf reached > sandbox-sock.txt'
+    rm -f "$EVAL_SANDBOX/sandbox-sock.txt"
+    : > "$SOCKHITS"
+    run_review verify acme/app 5201 --json --timeout 10
+    assert_exit "unsandboxed unix-socket control" 0
+    assert_eq "unsandboxed unix-socket control reaches the listener" 1 "$(wc -l <"$SOCKHITS" | tr -d ' ')"
+    if [ -f "$EVAL_SANDBOX/sandbox-sock.txt" ]; then
+      good "unsandboxed unix-socket control exits clean"
+    else
+      bad "unsandboxed unix-socket control did not run"
+    fi
+
+    rm -f "$EVAL_SANDBOX/sandbox-sock.txt"
+    : > "$SOCKHITS"
+    run_review verify acme/app 5201 --sandbox --json --timeout 10
+    assert_exit "sandboxed unix-socket run" 0
+    if jq -e '.error == null and .data.sandboxed == true and .data.exit != 0' <"$EVAL_OUT" >/dev/null 2>&1; then
+      good "sandboxed unix-socket run fails to connect (exit $(jq -r '.data.exit' <"$EVAL_OUT"))"
+    else
+      bad "sandboxed unix-socket run reached the socket or broke: $(head -c 300 "$EVAL_OUT")"
+    fi
+    assert_eq "sandboxed unix-socket run leaves the listener untouched" 0 "$(wc -l <"$SOCKHITS" | tr -d ' ')"
+    if [ ! -e "$EVAL_SANDBOX/sandbox-sock.txt" ]; then
+      good "sandboxed unix-socket run writes no marker"
+    else
+      bad "sandboxed unix-socket run wrote the marker"
+    fi
+  fi
+else
+  bad "no writable directory under /run for the unix-socket leg"
 fi
 
 # Gate-bypass corpus rows F-X12..F-X18 execute (the static gate stays xfail)

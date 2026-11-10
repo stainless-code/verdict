@@ -2000,17 +2000,38 @@ verdict verify owner/repo 123 --sandbox
 
 It runs the command (patch `verifyCmd`, or the deep-group
 `--group ... --command ...` pair) under `bwrap` with `--ro-bind / /`, a
-writable bind of the reviewed root, `--tmpfs` over `~/.aws`, `~/.ssh`, and
-`~/.config/gh`, a private `/tmp`, and `--unshare-net` — the command gets its
-own loopback and no route out. Before anything executes it probes the same
-flags with a no-op; when the host is not Linux, `bwrap` is missing, the
-user-namespace restriction is on, or `HOME` is unset, `verify` refuses
-`sandbox-unavailable` naming the cause and runs nothing. It never silently
-falls back to an unsandboxed command. The patch record and the deep-group
-receipt carry `"sandboxed": true`, and the `--json` data adds
-`"sandboxed": true`; absent means the run was not sandboxed. The same opt-in
-reaches the MCP tool (`sandbox`), the Go facade (`Sandbox`), and the
-TypeScript client (raw `--sandbox` argv).
+writable bind of the reviewed root, a private `/tmp`, an empty `/run`, a
+fresh `/dev` and `/proc` under `--unshare-pid`, `--unshare-net`,
+`--new-session`, and `--die-with-parent`. The command gets its own loopback,
+its own PID namespace, and no route out:
+
+- **No host process data.** `/proc/<host-pid>` does not exist, so the
+  environment of the parent `verdict` process and every other same-uid
+  process is unreadable.
+- **No unix-socket route.** `/run` is empty, so `connect()` on
+  `/run/docker.sock`, `/run/user/<uid>/bus`, or another agent socket fails.
+  `--unshare-net` alone does not cover unix sockets.
+- **No terminal injection.** `--new-session` starts the command in a new
+  session, blocking TIOCSTI; `--die-with-parent` kills the sandbox when
+  `verdict` dies.
+
+Each credential path below, when it exists on the host, is replaced before
+the command runs:
+directories (`~/.aws`, `~/.ssh`, `~/.config/gh`, `~/.docker`, `~/.kube`,
+`~/.config/gcloud`, `~/.azure`, `~/.gnupg`) with an empty `--tmpfs`, and
+files (`~/.netrc`, `~/.git-credentials`, `~/.npmrc`, `~/.pypirc`) with a
+read-only bind of `/dev/null`. A missing entry adds no mount. `/var/run` is
+shadowed too when the host ships it as a real directory; on the distros
+where it is a symlink to `/run`, the `/run` mount covers it.
+
+Before anything executes it probes the same flags with a no-op; when the
+host is not Linux, `bwrap` is missing, the user-namespace restriction is on,
+or `HOME` is unset, `verify` refuses `sandbox-unavailable` naming the cause
+and runs nothing. It never silently falls back to an unsandboxed command.
+The patch record and the deep-group receipt carry `"sandboxed": true`, and
+the `--json` data adds `"sandboxed": true`; absent means the run was not
+sandboxed. The same opt-in reaches the MCP tool (`sandbox`), the Go facade
+(`Sandbox`), and the TypeScript client (raw `--sandbox` argv).
 
 ### Recipe for other OSes (and for wrapping the whole review)
 
@@ -2021,18 +2042,30 @@ The one-liner below still applies on macOS or a minimal image with no
 only the filesystem and network it sees change):
 
 ```bash
-bwrap --ro-bind / / --bind "$(pwd)" "$(pwd)" --tmpfs ~/.aws --tmpfs ~/.ssh \
-  --tmpfs ~/.config/gh -- verdict verify owner/repo 123
+bwrap --ro-bind / / --dev /dev --proc /proc --unshare-pid --tmpfs /tmp \
+  --tmpfs /run --bind "$(pwd)" "$(pwd)" \
+  --tmpfs ~/.aws --tmpfs ~/.ssh --tmpfs ~/.config/gh \
+  --ro-bind /dev/null ~/.netrc --new-session --die-with-parent \
+  -- verdict verify owner/repo 123
 ```
 
 `--ro-bind / /` makes the host read-only, `--bind` remounts the repo
-writable over it, and each `--tmpfs` hides a credential dir behind an empty
-mount. Add `--unshare-net` when the verify step needs no network at all —
-full network isolation for the command under test:
+writable over it, `--dev` and `--proc` under `--unshare-pid` replace the host
+device and process trees, `--tmpfs /run` removes the unix-socket routes, and
+each `--tmpfs` hides a credential dir behind an empty mount while
+`--ro-bind /dev/null` replaces a credential file. Add the rest of the
+credential table from above (`~/.docker`, `~/.kube`, `~/.config/gcloud`,
+`~/.azure`, `~/.gnupg`, `~/.git-credentials`, `~/.npmrc`, `~/.pypirc`) and
+drop the mounts for paths this host does not have. Add `--unshare-net` when
+the verify step needs no network at all — full network isolation for the
+command under test:
 
 ```bash
-bwrap --ro-bind / / --bind "$(pwd)" "$(pwd)" --tmpfs ~/.aws --tmpfs ~/.ssh \
-  --tmpfs ~/.config/gh --unshare-net -- verdict verify owner/repo 123
+bwrap --ro-bind / / --dev /dev --proc /proc --unshare-pid --tmpfs /tmp \
+  --tmpfs /run --bind "$(pwd)" "$(pwd)" \
+  --tmpfs ~/.aws --tmpfs ~/.ssh --tmpfs ~/.config/gh \
+  --ro-bind /dev/null ~/.netrc --unshare-net --new-session --die-with-parent \
+  -- verdict verify owner/repo 123
 ```
 
 No `bwrap` (macOS, minimal images)? `systemd-nspawn` covers the network

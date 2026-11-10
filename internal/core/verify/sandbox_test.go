@@ -35,13 +35,21 @@ func (c *sandboxCommander) Run(_ context.Context, cmd *core.Command) (core.Resul
 	return core.Result{}, nil
 }
 
-// sandboxHomeFixture builds the three credential dirs the wrapper hides and
+// sandboxHomeFixture builds every credential path the wrapper hides and
 // returns their home.
 func sandboxHomeFixture(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
-	for _, rel := range []string{".aws", ".ssh", filepath.Join(".config", "gh")} {
+	for _, rel := range []string{
+		".aws", ".ssh", filepath.Join(".config", "gh"), ".docker", ".kube",
+		filepath.Join(".config", "gcloud"), ".azure", ".gnupg",
+	} {
 		if err := os.MkdirAll(filepath.Join(home, rel), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, rel := range []string{".netrc", ".git-credentials", ".npmrc", ".pypirc"} {
+		if err := os.WriteFile(filepath.Join(home, rel), []byte("sandbox-sentinel\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -62,18 +70,46 @@ func sandboxRequest(env []string, cmdr core.Commander) *core.VerifyRequest {
 	}
 }
 
+// wantVarRunMount mirrors the host fact the wrapper reads, so a supported
+// platform that symlinks /var/run keeps the literal expectation.
+func wantVarRunMount() []string {
+	if info, err := os.Lstat("/var/run"); err == nil && info.IsDir() {
+		return []string{"--tmpfs", "/var/run"}
+	}
+	return nil
+}
+
 // wantProbeArgv is the literal no-op probe argv, mounts included.
 func wantProbeArgv(root, home string) []string {
-	return []string{
+	argv := []string{
 		"bwrap",
 		"--ro-bind", "/", "/",
+		"--dev", "/dev",
+		"--proc", "/proc",
+		"--unshare-pid",
 		"--tmpfs", "/tmp",
+		"--tmpfs", "/run",
+	}
+	argv = append(argv, wantVarRunMount()...)
+	return append(argv,
 		"--bind", root, root,
 		"--tmpfs", filepath.Join(home, ".aws"),
 		"--tmpfs", filepath.Join(home, ".ssh"),
 		"--tmpfs", filepath.Join(home, ".config", "gh"),
-		"--unshare-net", "--", "true",
-	}
+		"--tmpfs", filepath.Join(home, ".docker"),
+		"--tmpfs", filepath.Join(home, ".kube"),
+		"--tmpfs", filepath.Join(home, ".config", "gcloud"),
+		"--tmpfs", filepath.Join(home, ".azure"),
+		"--tmpfs", filepath.Join(home, ".gnupg"),
+		"--ro-bind", "/dev/null", filepath.Join(home, ".netrc"),
+		"--ro-bind", "/dev/null", filepath.Join(home, ".git-credentials"),
+		"--ro-bind", "/dev/null", filepath.Join(home, ".npmrc"),
+		"--ro-bind", "/dev/null", filepath.Join(home, ".pypirc"),
+		"--unshare-net",
+		"--new-session",
+		"--die-with-parent",
+		"--", "true",
+	)
 }
 
 // wantRunArgv is the same flags around `bash -c`, a literal expectation.

@@ -169,10 +169,20 @@
 # darwin/amd64 12327504, darwin/arm64 11321298, linux/amd64 12107936,
 # linux/arm64 11141280 (one more 64 KiB segment), windows/amd64 12443136,
 # windows/arm64 11187712; the four that cross move to the next 10 kB.
+# Hardening verify --sandbox (private PID namespace and /proc, empty /run,
+# fresh /dev, the wider credential table, --new-session, --die-with-parent)
+# adds the flag list and its resolvers. Measured here: darwin/amd64 12323472,
+# darwin/arm64 11304850, linux/amd64 12103840, linux/arm64 11075744,
+# windows/amd64 12438528, windows/arm64 11183104. Only linux/amd64 crosses,
+# by 3840 over its 12100000 line, so its ceiling moves to the next 10 kB
+# above the measurement; the other five stay put.
+# With the sandbox hardening stacked on top, the final PR 1 build measures
+# darwin/amd64 12331728, linux/amd64 12112032, windows/arm64 11190784; those
+# three move to the next 10 kB, the other three hold.
 deps 0
-darwin/amd64 12330000
+darwin/amd64 12340000
 darwin/arm64 11330000
-linux/amd64 12110000
+linux/amd64 12120000
 linux/arm64 11150000
 windows/amd64 12450000
-windows/arm64 11190000
+windows/arm64 11200000

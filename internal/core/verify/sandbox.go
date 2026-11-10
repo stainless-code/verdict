@@ -18,14 +18,51 @@ import (
 const (
 	codeSandboxUnavailable = "sandbox-unavailable"
 	sandboxTool            = "bwrap"
+	sandboxTmpfs           = "--tmpfs"
 	sandboxProbeTimeout    = 15 * time.Second
 	sandboxProbeCap        = 4 << 10
 	sandboxShellArgs       = 3
 )
 
-// credentialDirs are mounted empty after the manual recipe, so a hostile
-// verifyCmd finds no credentials even when the host user has them.
-var credentialDirs = []string{".aws", ".ssh", filepath.Join(".config", "gh")}
+// sandboxCredentialPaths are every host credential path the wrapper hides:
+// directories behind an empty tmpfs, files behind a read-only /dev/null bind.
+// Only entries that exist are mounted.
+var sandboxCredentialPaths = []string{
+	".aws",
+	".ssh",
+	filepath.Join(".config", "gh"),
+	".docker",
+	".kube",
+	filepath.Join(".config", "gcloud"),
+	".azure",
+	".gnupg",
+	".netrc",
+	".git-credentials",
+	".npmrc",
+	".pypirc",
+}
+
+// sandboxRuntimeDir is mounted empty because connect() on a unix socket there
+// ignores --unshare-net: /run/docker.sock reaches a daemon with its own
+// network and root, and /run/user/<uid> holds the session and agent sockets.
+const sandboxRuntimeDir = "/run"
+
+// sandboxVarRunDir is /var/run, a symlink to /run on most distros.
+const sandboxVarRunDir = "/var/run"
+
+// sandboxMount is one path the wrapper replaces; dir mounts an empty tmpfs,
+// a file binds /dev/null read-only over it.
+type sandboxMount struct {
+	dest string
+	dir  bool
+}
+
+func (m sandboxMount) argv() []string {
+	if m.dir {
+		return []string{sandboxTmpfs, m.dest}
+	}
+	return []string{"--ro-bind", "/dev/null", m.dest}
+}
 
 // sandbox is one probed bwrap wrapper: prefix holds the fixed mount and
 // namespace flags through `--`.
@@ -57,10 +94,11 @@ func prepareSandbox(ctx context.Context, commander core.Commander, workDir, root
 	return sb, nil
 }
 
-// sandboxArgv is the enforced shape of the manual recipe: a read-only host,
-// a writable reviewed root, empty credential dirs, a private /tmp, and no
-// network. /tmp is mounted before the repo bind because a checkout under
-// /tmp must stay visible after the tmpfs replaces its parent.
+// sandboxArgv is the enforced shape of the manual recipe: a read-only host, a
+// writable reviewed root, a private /tmp, an empty /run, a fresh /dev and
+// /proc under a private PID namespace, empty credential paths, and no
+// network. The repo bind is last so a checkout under /tmp or /run survives
+// the tmpfs that replaces its parent.
 func sandboxArgv(root string, env []string) ([]string, *core.RefusalError) {
 	repo, err := filepath.Abs(root)
 	if err != nil {
@@ -73,22 +111,56 @@ func sandboxArgv(root string, env []string) ([]string, *core.RefusalError) {
 	home, ok := sandboxHome(env)
 	if !ok {
 		return nil, sandboxUnavailable(
-			"HOME is unset in the child environment, so ~/.aws, ~/.ssh, and ~/.config/gh cannot be hidden")
+			"HOME is unset in the child environment, so the credential paths under it cannot be hidden")
 	}
 	argv := []string{
 		sandboxTool,
 		"--ro-bind", "/", "/",
-		"--tmpfs", "/tmp",
-		"--bind", repo, repo,
+		"--dev", "/dev",
+		"--proc", "/proc",
+		"--unshare-pid",
+		sandboxTmpfs, "/tmp",
+		sandboxTmpfs, sandboxRuntimeDir,
 	}
-	for _, rel := range credentialDirs {
-		dir := filepath.Join(home, rel)
-		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+	argv = append(argv, sandboxVarRunMount(lstatMode)...)
+	argv = append(argv, "--bind", repo, repo)
+	for _, mount := range sandboxCredentialMounts(home) {
+		argv = append(argv, mount.argv()...)
+	}
+	return append(argv, "--unshare-net", "--new-session", "--die-with-parent", "--"), nil
+}
+
+// sandboxCredentialMounts resolves the table against the host, so a missing
+// entry adds no mount and a file never gets a directory's tmpfs.
+func sandboxCredentialMounts(home string) []sandboxMount {
+	mounts := make([]sandboxMount, 0, len(sandboxCredentialPaths))
+	for _, rel := range sandboxCredentialPaths {
+		dest := filepath.Join(home, rel)
+		info, err := os.Stat(dest)
+		if err != nil {
 			continue
 		}
-		argv = append(argv, "--tmpfs", dir)
+		mounts = append(mounts, sandboxMount{dest: dest, dir: info.IsDir()})
 	}
-	return append(argv, "--unshare-net", "--"), nil
+	return mounts
+}
+
+// sandboxVarRunMount hides /var/run only when it is a real directory: a
+// symlink to /run is already covered by the runtime mount, and bwrap refuses
+// to mount over a symlink.
+func sandboxVarRunMount(stat func(string) (os.FileMode, bool)) []string {
+	if mode, ok := stat(sandboxVarRunDir); ok && mode.IsDir() {
+		return []string{sandboxTmpfs, sandboxVarRunDir}
+	}
+	return nil
+}
+
+func lstatMode(path string) (os.FileMode, bool) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return 0, false
+	}
+	return info.Mode(), true
 }
 
 // sandboxHome reads the home the child will see: the environment snapshot
