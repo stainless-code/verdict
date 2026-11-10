@@ -45,9 +45,10 @@ agent that needs to show its work. Bound to localhost, reading the same files th
 CLI writes, so nothing new is stored and nothing leaves the machine. Planned, not
 built.
 
-**Incremental re-review beyond GitHub.** `fetch --since` re-reviews only new
-commits today, and only for GitHub bundles. The other five providers get full
-fetches. Planned.
+**Incremental re-review on the remaining hosts.** `fetch --since` re-reviews
+only new commits today on GitHub and GitLab. GitCafe, Forgejo, Bitbucket, and
+Azure still get full fetches, and say so with an `incremental.diff.note` when
+handed `--base-sha`. Planned for those hosts.
 
 **Primitives before product.** New capability arrives as a verb with a schema, an
 envelope and an exit code, so a script, an agent, an editor or the dashboard can

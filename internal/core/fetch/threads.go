@@ -112,7 +112,7 @@ func gitlabDiscussionPage(
 	if !ok {
 		return nil, "", internalErrorf("bad page cursor %q", cursor)
 	}
-	path := fmt.Sprintf("projects/%s/merge_requests/%s/discussions?per_page=%d&page=%d",
+	path := fmt.Sprintf(gitlabProjects+"%s/merge_requests/%s/discussions?per_page=%d&page=%d",
 		pid, pr, gitlabNotePageSize, page)
 	res, err := r.cliFetch(ctx, binGlab, ghCmdAPI, path)
 	if err != nil {

@@ -72,10 +72,6 @@ func (st *state) dispatch(ctx context.Context, s *session, req *core.FetchReques
 	if err != nil {
 		return nil, st.fail(ctx, err, s)
 	}
-	if f.Provider != providerGitHub && f.HasBase && f.BaseSHA != "" {
-		return nil, st.withWarnings(&core.RefusalError{Code: "bad-flags", Message: "--base-sha/--since is GitHub-only for now " +
-			"(providers have no incremental re-review yet)"})
-	}
 	data, next, err := st.backend(ctx, ctx2, req, f, budget)
 	if err != nil {
 		return nil, st.fail(ctx, err, s)

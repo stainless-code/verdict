@@ -23,22 +23,36 @@ import (
 func runProvider(
 	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags, budget *budgetState,
 ) (*core.FetchData, string, error) {
-	r, dir := ctx2.runner, ctx2.dir
-	if err := fetchProviderBundle(ctx, ctx2, req, f.Provider); err != nil {
-		return nil, "", err
-	}
-	if ref := resolveControls(ctx, ctx2, "", req.RepoRootPath(), readcommon.PrField(dir, keyBaseSHA), f.HeadControls); ref != nil {
-		return nil, "", ref
-	}
-	if ref := phaseTwo(ctx, ctx2, req, f, dir, budget); ref != nil {
-		return nil, "", ref
-	}
-	fc, chunkActive, err := providerCap(r, ctx2.runCfg.resolved, dir, f.ChunkFlag)
+	incBase, incremental, err := fetchProviderBundle(ctx, ctx2, req, f)
 	if err != nil {
 		return nil, "", err
 	}
+	if ref := resolveControls(ctx, ctx2, "", req.RepoRootPath(), readcommon.PrField(ctx2.dir, keyBaseSHA), f.HeadControls); ref != nil {
+		return nil, "", ref
+	}
+	if ref := phaseTwo(ctx, ctx2, req, f, ctx2.dir, budget); ref != nil {
+		return nil, "", ref
+	}
+	fc, chunkActive, err := providerCap(ctx2.runner, ctx2.runCfg.resolved, ctx2.dir, f.ChunkFlag)
+	if err != nil {
+		return nil, "", err
+	}
+	return providerTail(ctx, ctx2, req, f, budget, &fc, chunkActive, incBase, incremental)
+}
+
+// providerTail owns the writes after the provider bundle: the shared stores,
+// the unsupported-host note, the identity record, the chunk plan, and the
+// envelope tail.
+func providerTail(
+	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags,
+	budget *budgetState, fc *fetchCap, chunkActive bool, incBase string, incremental bool,
+) (*core.FetchData, string, error) {
+	r, dir := ctx2.runner, ctx2.dir
 	if err := writeProviderBundle(ctx2); err != nil {
 		return nil, "", err
+	}
+	if ref := providerIncrementalNote(r, dir, f, incremental); ref != nil {
+		return nil, "", ref
 	}
 	if _, err := writeIdentityFile(ctx, r.commander, dir,
 		readcommon.PrField(dir, keyHeadSHA), readcommon.PrField(dir, keyBaseSHA)); err != nil {
@@ -50,7 +64,16 @@ func runProvider(
 	if ref != nil {
 		return nil, "", ref
 	}
-	return fetchTail(ctx, ctx2, req, f, budget, &fc, chunkJSON, nullStr)
+	return fetchTail(ctx, ctx2, req, f, budget, fc, chunkJSON, incBase)
+}
+
+// providerIncrementalNote writes the unsupported-host note when a provider
+// that did not own the compare still received --base-sha/--since.
+func providerIncrementalNote(r *session, dir string, f core.FetchFlags, incremental bool) *core.RefusalError {
+	if !f.HasBase || f.BaseSHA == "" || incremental {
+		return nil
+	}
+	return writeIncrementalNote(r, dir, "--base-sha/--since is not supported for provider "+f.Provider)
 }
 
 // providerCap owns the provider cap gate and hunk index write.
@@ -86,21 +109,27 @@ func writeProviderBundle(ctx2 *fetchRunCtx) error {
 	return nil
 }
 
-func fetchProviderBundle(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, provider string) error {
-	switch provider {
+// fetchProviderBundle runs one provider's read; incremental reports whether
+// the adapter owns the --base-sha step (GitLab today) instead of the shared
+// unsupported-host note.
+func fetchProviderBundle(
+	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags,
+) (incBase string, incremental bool, err error) {
+	switch f.Provider {
 	case providerGitLab:
-		return fetchGitLab(ctx, ctx2, req)
+		base, gerr := fetchGitLab(ctx, ctx2, req, f)
+		return base, true, gerr
 	case providerGitCafe:
-		return fetchGitCafe(ctx, ctx2, req)
+		return nullStr, false, fetchGitCafe(ctx, ctx2, req)
 	case providerForgejo:
-		return fetchForgejo(ctx, ctx2, req)
+		return nullStr, false, fetchForgejo(ctx, ctx2, req)
 	case providerBitbucket:
-		return fetchBitbucket(ctx, ctx2, req)
+		return nullStr, false, fetchBitbucket(ctx, ctx2, req)
 	case providerAzure:
-		return fetchAzure(ctx, ctx2, req)
+		return nullStr, false, fetchAzure(ctx, ctx2, req)
 	default:
-		return &core.RefusalError{Code: codeBadProvider, Message: fmt.Sprintf(
-			"unknown --provider '%s' (want github|gitlab|gitcafe|forgejo|bitbucket|azure)", provider)}
+		return nullStr, false, &core.RefusalError{Code: codeBadProvider, Message: fmt.Sprintf(
+			"unknown --provider '%s' (want github|gitlab|gitcafe|forgejo|bitbucket|azure)", f.Provider)}
 	}
 }
 
@@ -111,24 +140,29 @@ func (s *session) cliFetch(ctx context.Context, bin string, args ...string) (cor
 }
 
 // fetchGitLab mirrors the gitlab backend.
-func fetchGitLab(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest) error {
+func fetchGitLab(
+	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags,
+) (string, error) {
 	r, dir, repo, pr := ctx2.runner, ctx2.dir, req.Repo, req.Pr
 	if err := r.needTool(binGlab); err != nil {
-		return err
+		return nullStr, err
 	}
 	meta, changes, pid, err := gitlabReads(ctx, r, dir, repo, pr)
 	if err != nil {
-		return err
+		return nullStr, err
 	}
 	if err := gitlabDiff(ctx, r, dir, repo, pr); err != nil {
-		return err
+		return nullStr, err
 	}
 	if err := gitlabThreads(ctx, r, dir, pid, pr, gitlabHeadSHA(meta)); err != nil {
-		return err
+		return nullStr, err
 	}
 	numstat := diffNumstatMap(ctx, r, dir+suffixFullDiff)
 	doc, normErr := normalizeGitLab(meta, changes, numstat)
-	return writePRJSON(dir, "GitLab MR", pr, doc, normErr)
+	if err := writePRJSON(dir, "GitLab MR", pr, doc, normErr); err != nil {
+		return nullStr, err
+	}
+	return gitlabIncremental(ctx, r, dir, pid, f)
 }
 
 // gitlabReads owns the GitLab view and changes reads: the MR metadata, the
@@ -153,7 +187,7 @@ func gitlabReads(ctx context.Context, r *session, dir, repo, pr string) (meta, c
 // gitlabProjectID resolves the numeric project id the note/discussion reads
 // page by (the path is escaped as one segment, never with a trailing newline).
 func gitlabProjectID(ctx context.Context, r *session, repo string) (string, error) {
-	pidRes, err := r.cliFetch(ctx, binGlab, ghCmdAPI, "projects/"+url.PathEscape(repo), "--jq", ".id")
+	pidRes, err := r.cliFetch(ctx, binGlab, ghCmdAPI, gitlabProjects+url.PathEscape(repo), "--jq", ".id")
 	if err != nil {
 		return "", &core.RefusalError{Code: CodeFetchFailed, Message: "cannot resolve GitLab project id for " + repo}
 	}
@@ -161,10 +195,10 @@ func gitlabProjectID(ctx context.Context, r *session, repo string) (string, erro
 }
 
 func gitlabChanges(ctx context.Context, r *session, _, pr, pid string) string {
-	if res, err := r.cliFetch(ctx, binGlab, ghCmdAPI, "projects/"+pid+"/merge_requests/"+pr+"/diffs", flagPaginate); err == nil {
+	if res, err := r.cliFetch(ctx, binGlab, ghCmdAPI, gitlabProjects+pid+"/merge_requests/"+pr+"/diffs", flagPaginate); err == nil {
 		return gitlabReadable(r, res.Stdout)
 	}
-	if res, err := r.cliFetch(ctx, binGlab, ghCmdAPI, "projects/"+pid+"/merge_requests/"+pr+"/changes", flagPaginate); err == nil {
+	if res, err := r.cliFetch(ctx, binGlab, ghCmdAPI, gitlabProjects+pid+"/merge_requests/"+pr+"/changes", flagPaginate); err == nil {
 		return gitlabReadable(r, res.Stdout)
 	}
 	r.Warn("gitlab changed-file read failed (diffs and changes) — PR.json carries no file list; the bundle may under-cover")
@@ -206,6 +240,86 @@ func gitlabDiffFail(dir, stderr string) error {
 	return &core.RefusalError{Code: CodeFetchFailed, Message: "glab mr diff failed: " + headBytes(stderr, numExcerpt)}
 }
 
+// gitlabIncremental owns the --base-sha compare: the comparison API's
+// per-file diffs join into the bundle's incremental.diff, or the run
+// continues with the unavailability note GitHub writes.
+func gitlabIncremental(ctx context.Context, r *session, dir, pid string, f core.FetchFlags) (string, error) {
+	if !f.HasBase || f.BaseSHA == "" {
+		return nullStr, nil
+	}
+	headSHA := readcommon.PrField(dir, keyHeadSHA)
+	fmt.Fprintf(r.Human, "» glab compare %s...%s -> %s/incremental.diff\n", f.BaseSHA, headSHA, r.display(dir))
+	res, err := r.cliFetch(ctx, binGlab, ghCmdAPI, gitlabComparePath(pid, f.BaseSHA, headSHA))
+	if err != nil {
+		return nullStr, gitlabIncrementalFail(r, dir, res.Stderr)
+	}
+	if werr := writeErrFile(dir+"/.compare.err", ""); werr != nil {
+		return nullStr, werr
+	}
+	return gitlabIncrementalWrite(r, dir, f.BaseSHA, res.Stdout)
+}
+
+// gitlabIncrementalFail keeps the failed-compare fork: glab's stderr lands in
+// the sidecar, then the note explains the absent delta.
+func gitlabIncrementalFail(r *session, dir, stderr string) error {
+	if werr := writeErrFile(dir+"/.compare.err", stderr); werr != nil {
+		return werr
+	}
+	if nref := writeIncrementalNote(r, dir, stderr); nref != nil {
+		return nref
+	}
+	return nil
+}
+
+// gitlabIncrementalWrite converts an exit-zero compare payload: an unreadable
+// document reads unavailable, and a readable one lands as the delta bytes.
+func gitlabIncrementalWrite(r *session, dir, base, payload string) (string, error) {
+	entries, ok := gitlabCompareEntries(payload)
+	if !ok {
+		if nref := writeIncrementalNote(r, dir, "GitLab compare payload unreadable"); nref != nil {
+			return nullStr, nref
+		}
+		return nullStr, nil
+	}
+	if werr := atomic.WriteFile(dir+"/incremental.diff", []byte(gitlabCompareDiff(entries))); werr != nil {
+		return nullStr, &core.RefusalError{
+			Code:    CodeFetchFailed,
+			Message: fmt.Sprintf("could not write %s/incremental.diff: %v", dir, werr),
+		}
+	}
+	return base, nil
+}
+
+// gitlabComparePath is the project-scoped comparison endpoint.
+func gitlabComparePath(pid, base, head string) string {
+	return gitlabProjects + pid + "/repository/compare?from=" + base + "&to=" + head
+}
+
+// gitlabCompareEntries reads the compare document's diffs[] array: a missing
+// member or a non-array reads unreadable rather than an empty comparison.
+func gitlabCompareEntries(raw string) ([]any, bool) {
+	doc, err := jq.Decode([]byte(raw))
+	if err != nil {
+		return nil, false
+	}
+	m, ok := jq.AsMap(doc)
+	if !ok {
+		return nil, false
+	}
+	v, has := m["diffs"]
+	if !has {
+		return nil, false
+	}
+	if v == nil {
+		return []any{}, true
+	}
+	arr, ok := v.([]any)
+	if !ok {
+		return nil, false
+	}
+	return arr, true
+}
+
 // gitlabThreads owns the paged note-list read, the DiffNote split, and the
 // authoritative discussions read the feed is built from.
 func gitlabThreads(ctx context.Context, r *session, dir, pid, pr, head string) error {
@@ -232,7 +346,7 @@ func gitlabThreads(ctx context.Context, r *session, dir, pid, pr, head string) e
 func gitlabNotes(ctx context.Context, r *session, pid, pr string) (string, bool) {
 	body, truncated, err := indexPageWalk(ctx, gitlabNotePageSize,
 		func(ctx context.Context, page int) (string, error) {
-			path := fmt.Sprintf("projects/%s/merge_requests/%s/notes?per_page=%d&page=%d",
+			path := fmt.Sprintf(gitlabProjects+"%s/merge_requests/%s/notes?per_page=%d&page=%d",
 				pid, pr, gitlabNotePageSize, page)
 			res, ferr := r.cliFetch(ctx, binGlab, ghCmdAPI, path)
 			if ferr != nil {
@@ -508,23 +622,68 @@ func itemList(v any) ([]any, bool) {
 	return nil, false
 }
 
-func cafeFullDiff(items []any) string {
+// diffEntryPaths names one provider diff entry's header sides.
+type diffEntryPaths struct {
+	old string
+	new string
+}
+
+// joinFullDiff joins per-file patches under one `diff --git` header each: a
+// patch without a hunk header keeps its header alone, and a missing newline
+// never gains bytes.
+func joinFullDiff(
+	entries []any, paths func(map[string]any) diffEntryPaths, patch func(map[string]any) string,
+) string {
 	var parts []string
-	for _, e := range items {
+	for _, e := range entries {
 		m := objOrMap(e)
 		if m == nil {
 			m = map[string]any{}
 		}
-		path := jq.Interp(m[keyPath])
-		parts = append(parts, "diff --git a/"+path+" b/"+path)
-		patch := patchOf(m)
-		if strings.Contains(patch, "@@") {
-			parts = append(parts, patch)
+		p := paths(m)
+		parts = append(parts, "diff --git a/"+p.old+" b/"+p.new)
+		body := patch(m)
+		if strings.Contains(body, "@@") {
+			parts = append(parts, body)
 		} else {
 			parts = append(parts, "")
 		}
 	}
 	return strings.Join(parts, newline)
+}
+
+func cafeEntryPaths(m map[string]any) diffEntryPaths {
+	path := jq.Interp(m[keyPath])
+	return diffEntryPaths{old: path, new: path}
+}
+
+func cafeFullDiff(items []any) string {
+	return joinFullDiff(items, cafeEntryPaths, patchOf)
+}
+
+// gitlabCompareDiff joins the compare API's per-file diffs into the
+// incremental unified diff; renames keep both sides, and a dev-null side
+// falls back to the surviving path so every section carries a usable header.
+func gitlabCompareDiff(entries []any) string {
+	return joinFullDiff(entries, gitlabComparePaths, gitlabComparePatch)
+}
+
+func gitlabComparePaths(m map[string]any) diffEntryPaths {
+	oldPath, newPath := strOrEmpty(m, "old_path"), strOrEmpty(m, "new_path")
+	if newPath == "" || newPath == devNullPath {
+		newPath = oldPath
+	}
+	if oldPath == "" || oldPath == devNullPath {
+		oldPath = newPath
+	}
+	return diffEntryPaths{old: oldPath, new: newPath}
+}
+
+func gitlabComparePatch(m map[string]any) string {
+	if p, ok := m["diff"].(string); ok {
+		return p
+	}
+	return ""
 }
 
 // cafeUnhandledHunks owns the structured-hunks count: patch without @@

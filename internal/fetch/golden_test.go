@@ -107,6 +107,8 @@ const glabStub = "#!/usr/bin/env bash\necho \"CALL: $*\" >> \"$PWD/.glab-calls.l
 	"  *diffs*) cat \"$PWD/canned/gl-changes.json\"; exit 0;;\n" +
 	"  *changes*) cat \"$PWD/canned/gl-changes.json\"; exit 0;;\n" +
 	"  *mr\\ diff*) cat \"$PWD/canned/full.diff\"; exit 0;;\n" +
+	"  *repository/compare*) if [ \"${GLAB_COMPARE_FAIL:-0}\" = 1 ]; then echo \"glab: compare unavailable\" >&2; exit 1; fi\n" +
+	"    cat \"$PWD/canned/gl-compare.json\"; exit 0;;\n" +
 	"  */notes*) cat \"$PWD/canned/gl-notes.json\" 2>/dev/null || printf '[]'; exit 0;;\n" +
 	"  */discussions*) cat \"$PWD/canned/gl-discussions.json\" 2>/dev/null || printf '[]'; exit 0;;\n" +
 	"esac\necho \"glab-stub: unexpected ($*)\" >&2\nexit 1\n"
@@ -403,8 +405,6 @@ func TestFetchGoldenGitHub(t *testing.T) {
 		"fetch", "acme/app", "4701", "--bogus")
 	golden.Pin(t, harness, "bad-provider", setup, nil,
 		"fetch", "acme/app", "4701", "--provider", "gitea")
-	golden.Pin(t, harness, "provider-base-refused", setup, nil,
-		"fetch", "acme/app", "4701", "--provider", "gitlab", "--base-sha", headB[:7])
 	// The checkout lacks the base object (a shallow clone, or another repo):
 	// the controls come from the contents API at the base commit, never from
 	// the head worktree.
@@ -839,6 +839,9 @@ func TestFetchGoldenProviders(t *testing.T) {
 			`"author":{"username":"mate"},"web_url":"https://example.invalid/5","state":"opened","draft":false}`)
 		writeCanned(t, dir, "gl-changes.json", `{"changes":[{"old_path":"a.txt","new_path":"a.txt","new_file":false,`+
 			`"deleted_file":false,"renamed_file":false}]}`)
+		writeCanned(t, dir, "gl-compare.json", `{"diffs":[{"old_path":"a.txt","new_path":"a.txt",`+
+			`"new_file":false,"renamed_file":false,"deleted_file":false,`+
+			`"diff":"@@ -1 +1 @@\n-a\n+b\n"}]}`)
 		writeCanned(t, dir, "full.diff", "diff --git a/a.txt b/a.txt\nindex 1111111..2222222 100644\n"+
 			"--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-a\n+b\n")
 		writeCanned(t, dir, "gl-notes.json", `[{"type":"DiffNote"},{"type":"Note"}]`)
@@ -857,8 +860,10 @@ func TestFetchGoldenProviders(t *testing.T) {
 		"fetch", "acme/app", "4706", "--provider", "gitlab", "--json")
 	golden.Pin(t, harness, "gitlab-text", gitlab, nil,
 		"fetch", "acme/app", "4706", "--provider", "gitlab")
-	golden.Pin(t, harness, "gitlab-base-refused", gitlab, nil,
-		"fetch", "acme/app", "4706", "--provider", "gitlab", "--base-sha", headB[:7])
+	golden.Pin(t, harness, "gitlab-base", gitlab, map[string]string{"GLAB_COMPARE_FAIL": "0"},
+		"fetch", "acme/app", "4706", "--provider", "gitlab", "--base-sha", headB[:7], "--json")
+	golden.Pin(t, harness, "gitlab-base-note", gitlab, map[string]string{"GLAB_COMPARE_FAIL": "1"},
+		"fetch", "acme/app", "4706", "--provider", "gitlab", "--base-sha", headB[:7], "--json")
 
 	gitcafe := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -878,6 +883,8 @@ func TestFetchGoldenProviders(t *testing.T) {
 	// (no added or stripped trailing newline).
 	golden.Pin(t, harness, "gitcafe-happy", gitcafe, nil,
 		"fetch", "acme/app", "4707", "--provider", "gitcafe", "--json")
+	golden.Pin(t, harness, "gitcafe-base-note", gitcafe, nil,
+		"fetch", "acme/app", "4707", "--provider", "gitcafe", "--base-sha", headB[:7], "--json")
 
 	forgejo := func(t *testing.T, dir, _ string) {
 		t.Helper()

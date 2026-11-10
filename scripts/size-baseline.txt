@@ -186,10 +186,18 @@
 # linux/arm64 11141280, windows/amd64 12455936, windows/arm64 11198976. Three
 # ceilings cross and move to the next 10 kB at least 5 kB above their
 # measurement; darwin/arm64, linux/arm64, and windows/arm64 stay put.
+# GitLab incremental re-review adds the compare read, the compare-to-unified
+# join, and the note/refusal plumbing. Measured here: darwin/amd64 12339936,
+# darwin/arm64 11321442, linux/amd64 12120224, linux/arm64 11141280,
+# windows/amd64 12452864, windows/arm64 11196416. linux/amd64 crosses by 224
+# and windows/amd64 by 2864 over their old lines, so both ceilings move to the
+# next 10 kB above the measurements; the other four stay put.
+# Stacked, the doctor/adopt slice plus GitLab incremental measure windows/arm64
+# 11205120; that ceiling moves to the next 10 kB, the other five hold.
 deps 0
 darwin/amd64 12350000
 darwin/arm64 11330000
 linux/amd64 12130000
 linux/arm64 11150000
 windows/amd64 12470000
-windows/arm64 11200000
+windows/arm64 11210000

@@ -241,14 +241,16 @@ func githubIncrementalFail(r *session, dir, stderr string) error {
 	if werr := writeErrFile(dir+"/.compare.err", stderr); werr != nil {
 		return werr
 	}
-	if nref := githubIncrementalNote(r, dir, stderr); nref != nil {
+	if nref := writeIncrementalNote(r, dir, stderr); nref != nil {
 		return nref
 	}
 	return nil
 }
 
-func githubIncrementalNote(r *session, dir, stderr string) *core.RefusalError {
-	head := stderr
+// writeIncrementalNote writes the unavailability note beside the bundle, names
+// it on the human stream, and drops any stale delta it explains away.
+func writeIncrementalNote(r *session, dir, reason string) *core.RefusalError {
+	head := reason
 	if len(head) > compareErrHeadBytes {
 		head = head[:compareErrHeadBytes]
 	}

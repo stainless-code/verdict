@@ -13,8 +13,7 @@ func usageText() string {
 		"    GitHub bundle and adopt needs one verdict can post to (github, gitlab); the rest refuse typed\n" +
 		"    (provider-unimplemented; a local bundle has its own code — post/ready no-pr-target, calibrate\n" +
 		"    no-threads, adopt bad-target). calibrate --probe is offline and runs on any bundle. Incremental\n" +
-		"    re-review (--base-sha/--since) is GitHub-only (noted 2026-11-03; providers have no incremental\n" +
-		"    re-review yet).\n" +
+		"    re-review (--base-sha/--since) runs on GitHub and GitLab; other providers write incremental.diff.note.\n" +
 		"    diffs over 512000 bytes refuse with a split-or-narrow hint (empty diffs warn, never fail).\n" +
 		"    Deliberate exceptions only: REVIEW_MAX_BYTES=<n> (or the typed max_bytes default) overrides the cap.\n" +
 		"    Chunking opt-in only: --chunk (or the typed chunk default) marks over-cap fetches for " +
