@@ -480,13 +480,11 @@ func (d *tomlDoc) completeTable(start, end int, path string, want []string) ([]b
 	if ref != nil {
 		return nil, false, ref
 	}
-	if hasCommand && hasArgs {
-		if d.tableArgsMatch(start, end, want) {
-			return nil, false, nil
-		}
-		return d.rewriteTableArgs(start, end, want), true, nil
+	argsMatch := d.tableArgsMatch(start, end, want)
+	if hasCommand && hasArgs && argsMatch {
+		return nil, false, nil
 	}
-	return d.fillTable(start, hasCommand, hasArgs, want), true, nil
+	return d.render(d.rebuiltTable(start, end, hasCommand, hasArgs, argsMatch, want)), true, nil
 }
 
 // tableArgsMatch reports whether every args line in the table already carries
@@ -504,18 +502,24 @@ func (d *tomlDoc) tableArgsMatch(start, end int, want []string) bool {
 	return true
 }
 
-func (d *tomlDoc) rewriteTableArgs(start, end int, want []string) []byte {
-	lines := make([]string, 0, len(d.lines))
-	lines = append(lines, d.lines[:start+1]...)
+func (d *tomlDoc) rebuiltTable(start, end int, hasCommand, hasArgs, argsMatch bool, want []string) []string {
 	rendered := keyArgs + ` = ` + renderTOMLArgs(want)
+	lines := make([]string, 0, len(d.lines)+2)
+	lines = append(lines, d.lines[:start+1]...)
+	if !hasCommand {
+		lines = append(lines, keyCommand+` = "`+command+`"`)
+	}
+	if !hasArgs {
+		lines = append(lines, rendered)
+	}
 	for i := start + 1; i < end; i++ {
-		if d.scan[i].hasPair && d.scan[i].key == keyArgs {
+		if !argsMatch && d.scan[i].hasPair && d.scan[i].key == keyArgs {
 			lines = append(lines, rendered)
 			continue
 		}
 		lines = append(lines, d.lines[i])
 	}
-	return d.render(append(lines, d.lines[end:]...))
+	return append(lines, d.lines[end:]...)
 }
 
 // TOML's triple-quoted forms are the only strings that may span a newline, so a
@@ -619,18 +623,6 @@ func renderTOMLArgs(want []string) string {
 		quoted = append(quoted, doubleQuote+a+doubleQuote)
 	}
 	return openBracket + strings.Join(quoted, ", ") + closeBracket
-}
-
-func (d *tomlDoc) fillTable(start int, hasCommand, hasArgs bool, want []string) []byte {
-	lines := make([]string, 0, len(d.lines)+2)
-	lines = append(lines, d.lines[:start+1]...)
-	if !hasCommand {
-		lines = append(lines, keyCommand+` = "`+command+`"`)
-	}
-	if !hasArgs {
-		lines = append(lines, keyArgs+` = `+renderTOMLArgs(want))
-	}
-	return d.render(append(lines, d.lines[start+1:]...))
 }
 
 func (d *tomlDoc) appendTable(want []string) []byte {

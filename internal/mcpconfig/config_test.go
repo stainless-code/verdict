@@ -946,3 +946,36 @@ func TestGeminiMergePreservesKeys(t *testing.T) {
 		}
 	}
 }
+
+// TestTOMLOwnedArgsWithoutCommand proves an owned argv is rewritten to the
+// requested posture even when the table is missing its command line.
+func TestTOMLOwnedArgsWithoutCommand(t *testing.T) {
+	t.Parallel()
+	req := testRequest(t, AgentCodex, true)
+	req.Cwd = t.TempDir()
+	req.Env["CODEX_HOME"] = req.Cwd
+	req.ReadOnly = true
+	path := filepath.Join(req.Cwd, "config.toml")
+	seed := "[mcp_servers.verdict]\nargs = [\"mcp\"]\nnote = \"keep\"\n"
+	if err := os.WriteFile(path, []byte(seed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, ref := Run(req)
+	if ref != nil {
+		t.Fatalf("update: %v", ref)
+	}
+	if res.Status != StatusUpdate || !res.Changed {
+		t.Fatalf("update result = %+v", res)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "[mcp_servers.verdict]\ncommand = \"verdict\"\nargs = [\"mcp\", \"--read-only\"]\nnote = \"keep\"\n"
+	if string(raw) != want {
+		t.Fatalf("merged TOML = %q, want %q", raw, want)
+	}
+	if again, ref := Run(req); ref != nil || again.Status != StatusKeep {
+		t.Fatalf("second run = %+v %v, want keep", again, ref)
+	}
+}
