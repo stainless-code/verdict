@@ -713,6 +713,32 @@ func TestOperatorSurface(t *testing.T) {
 	}
 }
 
+// TestThreadsResolveNeedsOperator proves the resolve mode is operator-only:
+// the same call refuses with bad-flags naming --operator on a default server,
+// and reaches the service (a bundle refusal, not the gate) with --operator.
+func TestThreadsResolveNeedsOperator(t *testing.T) {
+	t.Chdir(t.TempDir())
+	cfg := testConfig()
+	call := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"threads","arguments":{"repo":"a/b","pr":"1","resolve":true,"dryRun":true}}}`
+	var result callToolResult
+	frames := serve(t, &cfg, call)
+	if err := json.Unmarshal(frames["1"].Result, &result); err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError || !strings.Contains(string(result.StructuredContent), "bad-flags") ||
+		!strings.Contains(string(result.StructuredContent), "--operator") {
+		t.Fatalf("resolve without --operator = %s, want a bad-flags refusal naming --operator", result.StructuredContent)
+	}
+	cfg.Operator = true
+	frames = serve(t, &cfg, call)
+	if err := json.Unmarshal(frames["1"].Result, &result); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(result.StructuredContent), "requires a server started with --operator") {
+		t.Fatal("resolve with --operator still hit the operator gate")
+	}
+}
+
 func hasTriage(tools []*tool) bool {
 	for _, tool := range tools {
 		if tool.name == "triage" {
