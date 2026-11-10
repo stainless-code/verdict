@@ -33,11 +33,9 @@ exit: 0
       "inline_anchors": true,
       "approve": true,
       "request_changes": true,
-      "thread_resolution": false,
+      "thread_resolution": true,
       "review_verdicts": true,
-      "unsupported": {
-        "thread_resolution": "no-resolve-mutation"
-      }
+      "unsupported": {}
     },
     "controls": {
       "policy": "base",
