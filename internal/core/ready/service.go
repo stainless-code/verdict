@@ -298,7 +298,7 @@ func applyLive(st *state, dir string) {
 	st.prState = liveOr(st.live, "state", mergeUnknown)
 	st.bodyLen = bodyLength(liveBody(st.live))
 	if st.mergeable == mergeUnknown && st.mergeState == mergeUnknown {
-		st.warn("mergeability UNKNOWN (GitHub still computing?) — conflict treated as absent, re-run ready if this persists")
+		st.warn("mergeability UNKNOWN (host still computing?) — conflict treated as absent, re-run ready if this persists")
 	}
 }
 
@@ -493,7 +493,7 @@ func githubThreads(ctx context.Context, st *state) *core.RefusalError {
 	nodes, _, err := readcommon.Threads(ctx, st.commander(), owner, name, st.pr, false)
 	if err != nil {
 		return st.withWarnings(&core.RefusalError{
-			Code:    "threads-failed",
+			Code:    codeThreadsFailed,
 			Message: "could not read live review threads for " + st.repo + hashSep + st.pr,
 		})
 	}
@@ -590,7 +590,7 @@ func computeReadiness(st *state) {
 	appendDescriptionBlocker(st)
 	st.ready = true
 	st.rec = "review"
-	if st.prState != "OPEN" {
+	if st.prState != stateOpen {
 		st.ready = false
 		st.rec = recWait
 		return
@@ -691,7 +691,7 @@ func (st *state) emitHuman() {
 		st.human("recommendation: review — fetch + review")
 		return
 	}
-	if st.prState != "OPEN" {
+	if st.prState != stateOpen {
 		st.human("ready: no — " + st.repo + hashSep + st.pr + " is " + st.prState + ", nothing to review")
 	} else {
 		st.human("ready: no — " + st.repo + hashSep + st.pr + " has " +

@@ -16,8 +16,8 @@ import (
 type gitlabReadyCommander struct {
 	mr        string
 	pipelines string
-	pipeFail  bool
 	discuss   string
+	pipeFail  bool
 }
 
 func (c *gitlabReadyCommander) LookPath(string) error { return nil }

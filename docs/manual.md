@@ -581,6 +581,12 @@ missing or stale receipt as required work without executing anything.
 `ready` stays advisory (exit 0); `ready --check` turns the same list into the
 machine exits 0 ready, 1 blockers-or-wait, 2 usage, 3 tool error.
 
+On GitLab the same blockers read through `glab`: the merge request carries
+`draft`, `has_conflicts` (plus a `conflict` `detailed_merge_status`), and the
+`description`, while CI comes from the merge request's pipeline list (a failed
+or canceled pipeline is one failing check, falling back to the head pipeline
+status when the list is empty) and threads come from the discussions list.
+
 ### Severity floors
 
 Two typed floors decide what is shown and what is published:
@@ -2221,9 +2227,11 @@ shape from another host (`PR.json` normalized to one schema: `provider`,
 `write_toc_roles` and the whole validate+merge path run unchanged — anchors
 validate against `full.diff` hunks regardless of host. `record`, `report`,
 `triage`, `show`, `next` work on provider bundles as-is. `post` submits to
-GitHub and GitLab, and `adopt` merges into either of those bundles (its
-re-anchor reads the stored hunks and never shells a host CLI); `post` on the
-other hosts and plain `calibrate` refuse typed, while `adopt` into a host
+GitHub and GitLab, `ready` advises on both, plain `calibrate` joins live
+threads on both, and `adopt` merges into either of those bundles (its
+re-anchor reads the stored hunks and never shells a host CLI); `post`,
+`ready`, and plain `calibrate` on the
+other hosts refuse typed, while `adopt` into a host
 without a submit path refuses `provider-unimplemented` naming the host, and
 `calibrate --probe` grades any bundle offline. The refusal names the gap rather than an impossibility: Forgejo
 can author inline comments through its API even though its CLI cannot, but each
@@ -2252,13 +2260,13 @@ capability, keyed by capability name:
 | `no-resolve-mutation`      | verdict has no thread-resolve call on any host                                  |
 | `unknown-host`             | the provider is not one verdict reads                                           |
 
-| Provider    | Fetch reads                                                                                               | Auth                                                             | Gaps (v1)                                                                                          |
-| ----------- | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `gitlab`    | `glab mr view/diff/note list/discussions` + changes/compare API                                           | `glab auth login` (or `GITLAB_TOKEN`)                            | experimental note commands; `post` approves but cannot request changes                             |
-| `gitcafe`   | `cafe pr view/diff/reviews/comments`                                                                      | `cafe auth login` (or `CAFE_TOKEN`)                              | reads `.data.*` envelope; threads paged via `--cursor`; hunks render only when `.patch` text ships |
-| `forgejo`   | REST `curl` (`$FORGEJO_HOST/api/v1`, `$FORGEJO_TOKEN`) — neither `fj` nor `tea` exposes JSON review reads | token env                                                        | inline threads aggregated per review id                                                            |
-| `bitbucket` | REST `curl` (`$BITBUCKET_TOKEN` Bearer or user+password Basic)                                            | token env                                                        | diffstat/comments paginated server-side; no grouped submit                                         |
-| `azure`     | `az repos pr show` + `az rest` threads/iterations; diff via temp-clone `git fetch` of the two SHAs        | `az login` / `AZURE_DEVOPS_EXT_PAT`, `AZURE_DEVOPS_ORG` required | needs git reachability to the repo remote; no org/project auto-detect                              |
+| Provider    | Fetch reads                                                                                                                                                              | Auth                                                             | Gaps (v1)                                                                                                     |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `gitlab`    | `glab mr view/diff/note list/discussions` + changes/compare API; `ready` adds the MR, pipelines, and discussions reads, `calibrate` the discussions + repository compare | `glab auth login` (or `GITLAB_TOKEN`)                            | experimental note commands; no incremental (`--base-sha` refused); `post` approves but cannot request changes |
+| `gitcafe`   | `cafe pr view/diff/reviews/comments`                                                                                                                                     | `cafe auth login` (or `CAFE_TOKEN`)                              | reads `.data.*` envelope; threads paged via `--cursor`; hunks render only when `.patch` text ships            |
+| `forgejo`   | REST `curl` (`$FORGEJO_HOST/api/v1`, `$FORGEJO_TOKEN`) — neither `fj` nor `tea` exposes JSON review reads                                                                | token env                                                        | inline threads aggregated per review id                                                                       |
+| `bitbucket` | REST `curl` (`$BITBUCKET_TOKEN` Bearer or user+password Basic)                                                                                                           | token env                                                        | diffstat/comments paginated server-side; no grouped submit                                                    |
+| `azure`     | `az repos pr show` + `az rest` threads/iterations; diff via temp-clone `git fetch` of the two SHAs                                                                       | `az login` / `AZURE_DEVOPS_EXT_PAT`, `AZURE_DEVOPS_ORG` required | needs git reachability to the repo remote; no org/project auto-detect                                         |
 
 State maps to open|closed|merged at fetch (`opened`→open, `active`→open,
 `ABANDONED`→closed, `SUPERSEDED`→closed, `completed`/`merged`→merged;
@@ -2333,9 +2341,11 @@ position, which shifts as the branch gains commits.
 Everything the store records is a prediction; `calibrate <owner/repo> <pr>` checks it.
 Read-only join (threads + one compare + PR state), keep-biased:
 
-- Sources: live review threads (GraphQL, matched by the exact body we sent — robust, no
+- Sources: live review threads (GraphQL on GitHub, the discussions list on
+  GitLab, matched by the exact body we sent — robust, no
   fuzzy matching) → per-finding outcome; `post.json:review.id` records which review posted them;
-  one `compare` of review head vs live head for changed-file evidence; PR merged state as context. Terminal findings are
+  one `compare` of review head vs live head for changed-file evidence (the
+  repository compare read on GitLab); PR merged state as context. Terminal findings are
   skipped, not judged.
 - Outcomes: `fixed` (cited file changed + thread resolved), `resolved-unfixed` (resolved
   without touching the cited file — disagreement or fix-elsewhere), `open` (still open),

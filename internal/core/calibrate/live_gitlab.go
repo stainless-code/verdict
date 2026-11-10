@@ -28,11 +28,11 @@ func gitlabLiveThreads(ctx context.Context, st *state) ([]any, *core.RefusalErro
 	stdout, _, ok := coreexec.Host(ctx, st.commander(), toolGlab, "api",
 		gitlabAPIPath(st.req.Repo, st.req.Pr, "/discussions?per_page=100"), "--paginate")
 	if !ok {
-		return nil, st.withWarnings(&core.RefusalError{Code: codeThreadsFailed, Message: "could not read live review threads"})
+		return nil, st.withWarnings(&core.RefusalError{Code: codeThreadsFailed, Message: msgThreadsFailed})
 	}
 	threads, err := gitlabDiscussionNodes(stdout)
 	if err != nil {
-		return nil, st.withWarnings(&core.RefusalError{Code: codeThreadsFailed, Message: "could not read live review threads"})
+		return nil, st.withWarnings(&core.RefusalError{Code: codeThreadsFailed, Message: msgThreadsFailed})
 	}
 	return threads, nil
 }
@@ -40,13 +40,13 @@ func gitlabLiveThreads(ctx context.Context, st *state) ([]any, *core.RefusalErro
 func gitlabDiscussionNodes(stdout string) ([]any, error) {
 	docs, err := jq.DecodeSlurp(strings.NewReader(stdout))
 	if err != nil {
-		return nil, err
+		return nil, jq.Sealed("gitlab discussions", err)
 	}
 	var out []any
 	for _, doc := range docs {
 		page, ok := doc.([]any)
 		if !ok {
-			return nil, errGitLabDiscussionShape
+			return nil, jq.Sealed("gitlab discussions", errGitLabDiscussionShape)
 		}
 		out = append(out, page...)
 	}
@@ -60,15 +60,24 @@ func gitlabLivePR(ctx context.Context, st *state) (map[string]any, *core.Refusal
 	if !ok {
 		return nil, st.withWarnings(&core.RefusalError{Code: codePRReadFailed, Message: "could not read live PR state"})
 	}
+	if m, ok := decodeGitLabLivePR(stdout); ok {
+		return m, nil
+	}
+	return map[string]any{}, nil
+}
+
+// decodeGitLabLivePR folds one merge-request payload onto the join's
+// canonical keys; false reads an empty live state like the GitHub path.
+func decodeGitLabLivePR(stdout string) (map[string]any, bool) {
 	doc, err := jq.Decode([]byte(stdout))
 	if err != nil {
-		return map[string]any{}, nil
+		return nil, false
 	}
 	m, ok := jq.AsMap(doc)
 	if !ok {
-		return map[string]any{}, nil
+		return nil, false
 	}
-	return gitlabLivePRMap(m), nil
+	return gitlabLivePRMap(m), true
 }
 
 // gitlabLivePRMap folds a merge-request payload onto the join's canonical
@@ -135,11 +144,11 @@ func gitlabLiveChanged(ctx context.Context, st *state, head0, live string) []any
 func gitlabCompareFiles(stdout string) ([]any, error) {
 	doc, err := jq.Decode([]byte(stdout))
 	if err != nil {
-		return nil, err
+		return nil, jq.Sealed("gitlab compare", err)
 	}
 	m, ok := jq.AsMap(doc)
 	if !ok {
-		return nil, errGitLabDiscussionShape
+		return nil, jq.Sealed("gitlab compare", errGitLabDiscussionShape)
 	}
 	var out []any
 	for _, e := range jq.Elements(m["diffs"]) {
@@ -205,18 +214,22 @@ func gitlabThreadMatches(thread any, postedBody string, path any) bool {
 		return false
 	}
 	for _, n := range jq.Elements(m["notes"]) {
-		nm, ok := n.(map[string]any)
-		if !ok {
-			continue
-		}
-		if sys, _ := nm["system"].(bool); sys {
-			continue
-		}
-		if readcommon.Cmp(noteBody(nm), postedBody) == 0 && readcommon.Cmp(notePath(nm), path) == 0 {
+		if gitlabNoteMatches(n, postedBody, path) {
 			return true
 		}
 	}
 	return false
+}
+
+func gitlabNoteMatches(n any, postedBody string, path any) bool {
+	nm, ok := n.(map[string]any)
+	if !ok {
+		return false
+	}
+	if sys, ok := nm["system"].(bool); ok && sys {
+		return false
+	}
+	return readcommon.Cmp(noteBody(nm), postedBody) == 0 && readcommon.Cmp(notePath(nm), path) == 0
 }
 
 func noteBody(nm map[string]any) string {
@@ -248,16 +261,29 @@ func gitlabThreadResolved(thread any) bool {
 	if !ok {
 		return false
 	}
+	root, ok := gitlabRootNote(m)
+	if !ok {
+		return false
+	}
+	resolved, ok := root["resolved"].(bool)
+	if !ok {
+		return false
+	}
+	return resolved
+}
+
+// gitlabRootNote returns the first non-system note: the note carrying
+// the discussion's resolution state.
+func gitlabRootNote(m map[string]any) (map[string]any, bool) {
 	for _, n := range jq.Elements(m["notes"]) {
 		nm, ok := n.(map[string]any)
 		if !ok {
 			continue
 		}
-		if sys, _ := nm["system"].(bool); sys {
+		if sys, ok := nm["system"].(bool); ok && sys {
 			continue
 		}
-		resolved, _ := nm["resolved"].(bool)
-		return resolved
+		return nm, true
 	}
-	return false
+	return nil, false
 }

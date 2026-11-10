@@ -25,6 +25,10 @@ type liveHost struct {
 
 const providerGitHub = "github"
 
+// msgThreadsFailed is the shared threads-failed refusal message: every
+// host's thread read maps its failure onto it.
+const msgThreadsFailed = "could not read live review threads"
+
 var liveHosts = map[string]liveHost{
 	providerGitHub: {
 		threads:  githubLiveThreads,
@@ -76,7 +80,7 @@ func githubLiveThreads(ctx context.Context, st *state) ([]any, *core.RefusalErro
 	owner, name := readcommon.SplitOwner(st.req.Repo)
 	nodes, _, err := readcommon.Threads(ctx, st.commander(), owner, name, st.req.Pr, true)
 	if err != nil {
-		return nil, st.withWarnings(&core.RefusalError{Code: codeThreadsFailed, Message: "could not read live review threads"})
+		return nil, st.withWarnings(&core.RefusalError{Code: codeThreadsFailed, Message: msgThreadsFailed})
 	}
 	return nodes, nil
 }

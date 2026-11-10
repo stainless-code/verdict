@@ -17,6 +17,13 @@ type readyHost struct {
 	threads func(context.Context, *state) *core.RefusalError
 }
 
+// Shared refusal codes and state words: one spelling across both hosts so
+// the wire keeps a single vocabulary.
+const (
+	codeThreadsFailed = "threads-failed"
+	stateOpen         = "OPEN"
+)
+
 var readyHosts = map[string]readyHost{
 	providerGitHub: {
 		live:    githubLive,

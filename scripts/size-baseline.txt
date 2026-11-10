@@ -194,10 +194,21 @@
 # next 10 kB above the measurements; the other four stay put.
 # Stacked, the doctor/adopt slice plus GitLab incremental measure windows/arm64
 # 11205120; that ceiling moves to the next 10 kB, the other five hold.
+# Ready and calibrate on GitLab (the glab MR/pipeline/discussion reads,
+# the head-pipeline fallback, the discussion-match join with its posted-body
+# renderer and repository-compare changed-file read, plus the shared tails
+# both hosts now run through). Measured here: darwin/amd64 12373840,
+# darwin/arm64 11355602, linux/amd64 12152992, linux/arm64 11141280,
+# windows/amd64 12487680, windows/arm64 11229184. The five ceilings that
+# cross move to the next 10 kB at least 5 kB above their measurement;
+# linux/arm64 stays put.
+# Stacked with GitLab incremental and the doctor/adopt slice, the ready and
+# calibrate GitLab legs measure darwin/amd64 12382064 and linux/amd64 12161184;
+# those two move to the next 10 kB, the others hold.
 deps 0
-darwin/amd64 12350000
-darwin/arm64 11330000
-linux/amd64 12130000
+darwin/amd64 12390000
+darwin/arm64 11370000
+linux/amd64 12170000
 linux/arm64 11150000
-windows/amd64 12470000
-windows/arm64 11210000
+windows/amd64 12500000
+windows/arm64 11240000
