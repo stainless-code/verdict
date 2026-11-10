@@ -18,6 +18,7 @@ type liveHost struct {
 	threads  func(context.Context, *state) ([]any, *core.RefusalError)
 	pr       func(context.Context, *state) (map[string]any, *core.RefusalError)
 	changed  func(context.Context, *state, string, string) []any
+	posted   func(entry any) string
 	match    func(thread any, postedBody string, path any) bool
 	resolved func(thread any) bool
 }
@@ -29,8 +30,17 @@ var liveHosts = map[string]liveHost{
 		threads:  githubLiveThreads,
 		pr:       githubLivePR,
 		changed:  githubLiveChanged,
+		posted:   postedBody,
 		match:    threadMatches,
 		resolved: readcommon.ThreadResolved,
+	},
+	providerGitLab: {
+		threads:  gitlabLiveThreads,
+		pr:       gitlabLivePR,
+		changed:  gitlabLiveChanged,
+		posted:   gitlabPostedBody,
+		match:    gitlabThreadMatches,
+		resolved: gitlabThreadResolved,
 	},
 }
 

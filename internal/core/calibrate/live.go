@@ -32,7 +32,7 @@ func (st *state) runLive(ctx context.Context, dir string) *core.RefusalError {
 		return ref
 	}
 	changed := host.changed(ctx, st, head0, liveHead(live))
-	outcomes := joinOutcomes(entries, threads, changed, host.match, host.resolved)
+	outcomes := joinOutcomes(entries, threads, changed, host)
 	st.emitLiveHuman(reviewID, head0, live, outcomes, dir)
 	st.live = &liveResult{
 		reviewID: reviewID,
@@ -133,19 +133,19 @@ type outcome struct {
 	hasKb   bool
 }
 
-func joinOutcomes(entries, threads, changed []any, match func(any, string, any) bool, resolved func(any) bool) []outcome {
+func joinOutcomes(entries, threads, changed []any, host liveHost) []outcome {
 	var out []outcome
 	for _, e := range entries {
 		status := readcommon.StatusOf(e)
 		if status != statusOpen && status != statusAddressed && status != statusDeferred {
 			continue
 		}
-		out = append(out, joinOne(e, threads, changed, match, resolved))
+		out = append(out, joinOne(e, threads, changed, host))
 	}
 	return out
 }
 
-func joinOne(entry any, threads, changed []any, match func(any, string, any) bool, resolved func(any) bool) outcome {
+func joinOne(entry any, threads, changed []any, host liveHost) outcome {
 	out := outcome{
 		entry:   entry,
 		sig:     sigHuman(entry),
@@ -164,15 +164,15 @@ func joinOne(entry any, threads, changed []any, match func(any, string, any) boo
 		withKb(&out, entry)
 		return out
 	}
-	pb := postedBody(entry)
-	hit := findThread(threads, pb, readcommon.FieldOf(entry, "path"), match)
+	pb := host.posted(entry)
+	hit := findThread(threads, pb, readcommon.FieldOf(entry, "path"), host.match)
 	if hit == nil {
 		out.result = outcomeUnknown
 		out.detail = "comment not found live"
 		withKb(&out, entry)
 		return out
 	}
-	if !resolved(hit) {
+	if !host.resolved(hit) {
 		out.result = statusOpen
 		out.detail = "thread still open"
 		withKb(&out, entry)
