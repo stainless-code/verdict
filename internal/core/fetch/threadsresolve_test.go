@@ -75,6 +75,8 @@ func resolveRequest(cmdr Commander, named []string, dry bool) *ThreadsRequest {
 // TestRunThreadsResolveDefault proves the default closes exactly the open
 // verdict-authored addressed thread, writes the receipt, and a second run
 // reads its own result instead of writing again.
+//
+//nolint:revive,cyclop // the resolve matrix reads as one assertion block
 func TestRunThreadsResolveDefault(t *testing.T) {
 	t.Chdir(t.TempDir())
 	writeResolveBundle(t, providerGitHub)
@@ -229,12 +231,14 @@ func TestRunThreadsResolveNamedIgnoresStore(t *testing.T) {
 
 // receiptDoc is the receipt slice the test asserts, decoded with
 // encoding/json rather than the writer's own Wire() output.
+//
+//nolint:govet // decode-only shape, not a runtime allocation
 type receiptDoc struct {
+	Skipped  []threadscore.ResolveSkip `json:"skipped"`
+	Resolved []string                  `json:"resolved"`
 	Provider string                    `json:"provider"`
 	HeadSHA  string                    `json:"head_sha"`
 	DryRun   bool                      `json:"dry_run"`
-	Resolved []string                  `json:"resolved"`
-	Skipped  []threadscore.ResolveSkip `json:"skipped"`
 }
 
 // hasSkip reports whether the receipt carries one id with one reason.

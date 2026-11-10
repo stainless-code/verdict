@@ -59,34 +59,16 @@ type resolveSelection struct {
 // store marks addressed, or only the named ids, and write the receipt.
 func (st *threadsRun) resolve(ctx context.Context) (*ThreadsResponse, *core.RefusalError) {
 	dir := readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
-	if !fileExists(dir + suffixPRJSON) {
-		return nil, st.withWarnings(&core.RefusalError{
-			Code:    CodeFetchFailed,
-			Message: fmt.Sprintf("missing %s/PR.json (fetch the PR first)", dir),
-		})
-	}
-	if !fileExists(dir + suffixThreadsJSON) {
-		return nil, st.withWarnings(&core.RefusalError{
-			Code:    codeThreadsFailed,
-			Message: fmt.Sprintf("missing %s/threads.json (run threads first)", dir),
-		})
+	if ref := st.resolveBundle(dir); ref != nil {
+		return nil, ref
 	}
 	provider, ref := st.resolveProvider(dir)
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	feed, err := threadscore.ReadFile(dir + suffixThreadsJSON)
-	if err != nil {
-		return nil, st.withWarnings(&core.RefusalError{
-			Code:    codeThreadsFailed,
-			Message: fmt.Sprintf("unreadable %s/threads.json: %v", dir, err),
-		})
-	}
-	if feed.Truncated {
-		return nil, st.withWarnings(&core.RefusalError{
-			Code:    codeThreadsFailed,
-			Message: fmt.Sprintf("%s/threads.json is truncated — refresh threads before resolving", dir),
-		})
+	feed, ref := st.resolveFeed(dir)
+	if ref != nil {
+		return nil, ref
 	}
 	sel, ref := st.selectThreads(feed, dir)
 	if ref != nil {
@@ -107,6 +89,43 @@ func (st *threadsRun) resolve(ctx context.Context) (*ThreadsResponse, *core.Refu
 		return nil, ref
 	}
 	return st.resolveResponse(data, at), nil
+}
+
+// resolveBundle refuses a bundle that cannot supply the metadata and feed the
+// mutation selects from.
+func (st *threadsRun) resolveBundle(dir string) *core.RefusalError {
+	if !fileExists(dir + suffixPRJSON) {
+		return st.withWarnings(&core.RefusalError{
+			Code:    CodeFetchFailed,
+			Message: fmt.Sprintf("missing %s/PR.json (fetch the PR first)", dir),
+		})
+	}
+	if !fileExists(dir + suffixThreadsJSON) {
+		return st.withWarnings(&core.RefusalError{
+			Code:    codeThreadsFailed,
+			Message: fmt.Sprintf("missing %s/threads.json (run threads first)", dir),
+		})
+	}
+	return nil
+}
+
+// resolveFeed reads the stored feed and refuses a truncated one: a partial
+// view is not a safe basis for a host write.
+func (st *threadsRun) resolveFeed(dir string) (*threadscore.File, *core.RefusalError) {
+	feed, err := threadscore.ReadFile(dir + suffixThreadsJSON)
+	if err != nil {
+		return nil, st.withWarnings(&core.RefusalError{
+			Code:    codeThreadsFailed,
+			Message: fmt.Sprintf("unreadable %s/threads.json: %v", dir, err),
+		})
+	}
+	if feed.Truncated {
+		return nil, st.withWarnings(&core.RefusalError{
+			Code:    codeThreadsFailed,
+			Message: dir + "/threads.json is truncated — refresh threads before resolving",
+		})
+	}
+	return feed, nil
 }
 
 // resolveProvider reads the provider from the bundle unless the request names
@@ -148,19 +167,30 @@ func (st *threadsRun) findingsStore(dir string) (map[string]string, *core.Refusa
 	}
 	store := make(map[string]string, len(entries))
 	for _, entry := range entries {
-		obj, ok := entry.(*jq.Obj)
-		if !ok || obj == nil {
-			continue
+		if sig, status, ok := storeEntry(entry); ok {
+			store[sig] = status
 		}
-		sig, _ := obj.Get("sig")
-		s, ok := sig.(string)
-		if !ok || s == "" {
-			continue
-		}
-		status, _ := obj.Get("status")
-		store[s], _ = status.(string)
 	}
 	return store, nil
+}
+
+// storeEntry reads one finding's sig and status; a non-object or a missing
+// sig is not a store entry this selection can match.
+func storeEntry(entry any) (sig, status string, ok bool) {
+	obj, ok := entry.(*jq.Obj)
+	if !ok || obj == nil {
+		return "", "", false
+	}
+	rawSig, _ := obj.Get("sig")
+	sig, ok = rawSig.(string)
+	if !ok || sig == "" {
+		return "", "", false
+	}
+	rawStatus, _ := obj.Get("status")
+	if s, ok := rawStatus.(string); ok {
+		status = s
+	}
+	return sig, status, true
 }
 
 // selectThreads applies the two selection rules: named ids must be
@@ -203,6 +233,8 @@ func defaultSelection(feed *threadscore.File, store map[string]string) resolveSe
 
 // selectNamed validates every named id before any write: an unknown id or a
 // thread verdict did not write refuses the whole run.
+//
+//nolint:revive // the named-id loop reads as one selection pass
 func (st *threadsRun) selectNamed(feed *threadscore.File) (resolveSelection, *core.RefusalError) {
 	byID := make(map[string]*threadscore.Thread, len(feed.Threads))
 	for i := range feed.Threads {
@@ -215,22 +247,37 @@ func (st *threadsRun) selectNamed(feed *threadscore.File) (resolveSelection, *co
 			continue
 		}
 		seen[id] = true
-		thread, ok := byID[id]
-		if !ok {
-			return sel, st.withWarnings(&core.RefusalError{Code: "unknown-thread", Message: fmt.Sprintf(
-				"no thread %q in threads.json (refresh threads first)", id)})
+		skip, ref := st.namedID(byID, id)
+		if ref != nil {
+			return sel, ref
 		}
-		if thread.AuthorKind != threadscore.AuthorVerdict {
-			return sel, st.withWarnings(&core.RefusalError{Code: "not-verdict-authored", Message: fmt.Sprintf(
-				"thread %q is %s-authored, not verdict-authored — refusing to resolve it", id, thread.AuthorKind)})
-		}
-		if thread.Resolved {
+		if skip {
 			sel.skip(id, "already-resolved")
 			continue
 		}
 		sel.resolved = append(sel.resolved, id)
 	}
 	return sel, nil
+}
+
+// namedID resolves one named id and validates the thread it names.
+func (st *threadsRun) namedID(byID map[string]*threadscore.Thread, id string) (bool, *core.RefusalError) {
+	thread, ok := byID[id]
+	if !ok {
+		return false, st.withWarnings(&core.RefusalError{Code: "unknown-thread", Message: fmt.Sprintf(
+			"no thread %q in threads.json (refresh threads first)", id)})
+	}
+	return st.namedSelection(thread, id)
+}
+
+// namedSelection validates one named thread: a thread verdict did not author
+// refuses the whole run, and an already-resolved thread is a skip.
+func (st *threadsRun) namedSelection(thread *threadscore.Thread, id string) (bool, *core.RefusalError) {
+	if thread.AuthorKind != threadscore.AuthorVerdict {
+		return false, st.withWarnings(&core.RefusalError{Code: "not-verdict-authored", Message: fmt.Sprintf(
+			"thread %q is %s-authored, not verdict-authored — refusing to resolve it", id, thread.AuthorKind)})
+	}
+	return thread.Resolved, nil
 }
 
 // skip records one candidate the run left open.

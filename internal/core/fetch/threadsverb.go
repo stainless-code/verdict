@@ -16,13 +16,15 @@ import (
 // ThreadsRequest carries one threads refresh invocation: the shared read
 // runtime plus the provider override. The verb re-reads only the provider's
 // thread surface, so it never touches the diff or the rest of the bundle.
+//
+//nolint:govet // field order documents the request grammar
 type ThreadsRequest struct {
-	core.ReadRequest
-	Provider string   `enum:"github|gitlab|gitcafe|forgejo|bitbucket|azure"`
 	Threads  []string `json:"thread,omitempty"`
-	Resolve  bool     `json:"resolve,omitempty"`
-	DryRun   bool     `json:"dryRun,omitempty"`
 	Warnings []string
+	Provider string `enum:"github|gitlab|gitcafe|forgejo|bitbucket|azure"`
+	core.ReadRequest
+	Resolve bool `json:"resolve,omitempty"`
+	DryRun  bool `json:"dryRun,omitempty"`
 }
 
 // ThreadsResponse carries the refresh outcome: envelope identity, the typed

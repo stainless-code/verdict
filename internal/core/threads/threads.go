@@ -178,14 +178,15 @@ func WriteFile(path string, f *File) error {
 func ReadFile(path string) (*File, error) {
 	raw, err := jq.CappedFile(path, jq.MaxPRBytes)
 	if err != nil {
-		return nil, err
+		return nil, jq.Sealed("read "+path, err)
 	}
 	var f File
 	if err := json.Unmarshal(raw, &f); err != nil {
-		return nil, err
+		return nil, jq.Sealed("decode "+path, err)
 	}
 	if f.SchemaVersion != SchemaVersion {
-		return nil, fmt.Errorf("threads.json schema_version %q, want %q", f.SchemaVersion, SchemaVersion)
+		return nil, jq.Sealed("threads.json schema", fmt.Errorf(
+			"schema_version %q, want %q", f.SchemaVersion, SchemaVersion))
 	}
 	return &f, nil
 }
@@ -194,12 +195,12 @@ func ReadFile(path string) (*File, error) {
 // timestamp of the mutation, the ids it closed, and the candidates it skipped
 // with a machine-readable reason.
 type ResolveReceipt struct { //nolint:govet // field order is the published property order
-	SchemaVersion string        `const:"1"                                   json:"schema_version"`
+	SchemaVersion string        `const:"1"                                            json:"schema_version"`
 	Provider      string        `enum:"github|gitlab|gitcafe|forgejo|bitbucket|azure" json:"provider"`
 	Repo          string        `json:"repo"`
 	PR            int           `json:"pr"`
 	HeadSHA       string        `json:"head_sha"`
-	ResolvedAt    string        `format:"date-time"                          json:"resolved_at"`
+	ResolvedAt    string        `format:"date-time"                                   json:"resolved_at"`
 	DryRun        bool          `json:"dry_run"`
 	Resolved      []string      `json:"resolved"`
 	Skipped       []ResolveSkip `json:"skipped"`

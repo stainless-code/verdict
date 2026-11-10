@@ -17,6 +17,9 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
+// verbThreads is the verb name every envelope and cancel line carries.
+const verbThreads = "threads"
+
 // Request wires a threads run.
 type Request = readcommon.Request
 
@@ -32,7 +35,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 		return code
 	}
 	r.RouteHuman()
-	if code, done := r.Canceled(ctx, "threads"); done {
+	if code, done := r.Canceled(ctx, verbThreads); done {
 		return code
 	}
 	resp, ref := fetchcore.RunThreads(ctx, threadsRequest(r, req, provider))
@@ -41,7 +44,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	}
 	r.Warnings = resp.Warnings
 	if r.JSONMode {
-		env := core.RenderEnvelope("threads", resp.Repo, resp.Pr, resp.At, resp.Next,
+		env := core.RenderEnvelope(verbThreads, resp.Repo, resp.Pr, resp.At, resp.Next,
 			resp.Warnings, resp.Data.Wire(), nil)
 		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
 	}
@@ -63,7 +66,7 @@ func runResolve(ctx context.Context, r *cli.Runner, args []string, req Request) 
 		return code
 	}
 	r.RouteHuman()
-	if code, done := r.Canceled(ctx, "threads"); done {
+	if code, done := r.Canceled(ctx, verbThreads); done {
 		return code
 	}
 	resp, ref := fetchcore.RunThreads(ctx, resolveRequest(r, req, repo, pr, threads, dry))
@@ -72,7 +75,7 @@ func runResolve(ctx context.Context, r *cli.Runner, args []string, req Request) 
 	}
 	r.Warnings = resp.Warnings
 	if r.JSONMode {
-		env := core.RenderEnvelope("threads", resp.Repo, resp.Pr, resp.At, resp.Next,
+		env := core.RenderEnvelope(verbThreads, resp.Repo, resp.Pr, resp.At, resp.Next,
 			resp.Warnings, resp.Resolve.Wire(), nil)
 		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
 	}

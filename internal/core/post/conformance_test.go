@@ -201,6 +201,8 @@ func TestThreadResolutionConformance(t *testing.T) {
 }
 
 // TestThreadResolveArgv drives each resolver and pins the one write it makes.
+//
+//nolint:revive // the resolve matrix reads as one assertion block
 func TestThreadResolveArgv(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -252,6 +254,8 @@ func TestThreadResolveHoldsTheAnswer(t *testing.T) {
 
 // TestThreadResolveRefusals proves a host without a resolver refuses typed
 // before any call, and a missing commander never reaches the host.
+//
+//nolint:revive // the refusal matrix reads as one assertion block
 func TestThreadResolveRefusals(t *testing.T) {
 	t.Parallel()
 	t.Run("forgejo", func(t *testing.T) {
