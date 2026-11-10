@@ -1,12 +1,6 @@
 package archtest
 
-// Repository guard for the size and dependency ratchet: `make size`
-// (scripts/size.sh) compares every shipped binary and the module graph against
-// scripts/size-baseline.txt. The budget must name exactly the platforms the
-// release contract ships — a missing line leaves a shipped binary unmeasured,
-// a stale one keeps a ceiling for nothing — and the ratchet must stay wired
-// into the Makefile and the Linux CI lane, or nothing measures the payload
-// every installer hands out.
+// Size ratchet guard: see scripts/size.sh next to BUDGET.
 
 import (
 	"maps"
@@ -112,12 +106,16 @@ func TestSizeRatchetWiring(t *testing.T) {
 	}
 }
 
-// readSizeBudget parses the budget file: comment lines, `<goos>/<goarch>
-// <bytes>` rows, and one `deps <count>` row.
+// readSizeBudget parses the data-only budget file; the contract lives in
+// scripts/size.sh.
 func readSizeBudget(t *testing.T, root string) sizeBudget {
 	t.Helper()
+	lines := strings.Split(readRepoFile(t, root, "scripts/size-baseline.txt"), "\n")
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
 	budget := sizeBudget{}
-	for line := range strings.SplitSeq(readRepoFile(t, root, "scripts/size-baseline.txt"), "\n") {
+	for _, line := range lines {
 		if name, value, ok := parseBudgetLine(t, line); ok {
 			budget[name] = value
 		}
@@ -125,12 +123,17 @@ func readSizeBudget(t *testing.T, root string) sizeBudget {
 	return budget
 }
 
-// parseBudgetLine reads one `<name> <bytes>` row, skipping blank lines and
-// comments, and reports ok=false for a row it cannot take.
+// parseBudgetLine reads one `<name> <bytes>` row, refusing comments and blank
+// lines, and reports ok=false for a row it cannot take.
 func parseBudgetLine(t *testing.T, line string) (name string, value int64, ok bool) {
 	t.Helper()
 	line = strings.TrimSpace(line)
-	if line == "" || strings.HasPrefix(line, "#") {
+	if strings.HasPrefix(line, "#") {
+		t.Errorf("scripts/size-baseline.txt: %q is a comment: the file holds data only; put the measurement and reason in the commit message", line)
+		return "", 0, false
+	}
+	if line == "" {
+		t.Errorf("scripts/size-baseline.txt: blank line: the file holds data only")
 		return "", 0, false
 	}
 	name, raw, cut := strings.Cut(line, " ")

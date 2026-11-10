@@ -15,7 +15,7 @@ claiming done. Each rung is a command CI runs.
 1. **Build** — `make build` writes `bin/verdict`, the binary the evals invoke.
 2. **Vet** — `make vet` (`go vet ./...`, then `go mod verify`), `make cross` for
    every shipped `GOOS/GOARCH` (`release/contract.json`), and `make size`: the
-   byte ratchet (`scripts/size-baseline.txt`) moves with the growth.
+   byte ratchet (`scripts/size-baseline.txt`) moves with the growth: raise the crossed line to the next 10 kB; the measurement goes in the commit message.
 3. **Unit** — `go test ./internal/<pkg>/...` while iterating; `make test-race`
    (`go test -race -shuffle=on -count=1 ./...`) before done.
 4. **Goldens** — files under `testdata/` are the contract. Regenerate with
