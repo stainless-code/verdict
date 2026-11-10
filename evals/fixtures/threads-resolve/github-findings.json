@@ -1,0 +1,21 @@
+[
+  {
+    "kind": "inline",
+    "path": "notes.txt",
+    "side": "RIGHT",
+    "line": 2,
+    "anchored": true,
+    "body": "Fixed body here with enough substance.",
+    "suggestion": null,
+    "inBounds": true,
+    "rigor": "walked",
+    "severity": "critical",
+    "sig": "c111111111111111111111111111111111111111",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "addressed",
+    "rationale": "",
+    "history": []
+  }
+]
