@@ -1,0 +1,12 @@
+exit: 1
+--- stdout ---
+gate: findings     pass  no open findings at-or-above critical
+gate: coverage     fail  1 of 2 chunk(s) unattested
+gate: live_threads skip  live recheck skipped (--live skip)
+gate: FAIL (1 fail, 1 pass, 1 skip)
+gate: skipped live_threads
+try: attest the unattested ranges in review.json (coverage[], or every chunk in chunks[] when the bundle is chunked), then re-record or re-post, then re-run gate
+--- stderr ---
+warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
+warn: live recheck skipped (--live skip requested — gating on local dimensions only)
+--- files ---

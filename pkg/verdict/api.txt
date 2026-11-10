@@ -115,9 +115,10 @@ func (c *Client) Fix(ctx context.Context, req *FixRequest) (*Outcome, error)
 
 func (c *Client) Gate(ctx context.Context, req *GateRequest) (*GateResponse, error)
     Gate runs the composed CI gate: findings at-or-above MaxSeverity,
-    a completed post for the fetched HEAD (RequireHead), and live unresolved
-    threads (Live, default auto). At least one dimension is required:
-    Live alone only sets the offline posture, so an empty request is a refusal.
+    a completed post for the fetched HEAD (RequireHead), the stored
+    diff-coverage receipt for that HEAD (Coverage, default require), and live
+    unresolved threads (Live, default auto). At least one dimension is required:
+    Live and Coverage alone only set postures, so an empty request is a refusal.
     It never posts, merges, or writes a store.
 
 func (c *Client) Init(ctx context.Context, req *InitRequest) (*InitResponse, error)
@@ -259,10 +260,13 @@ type GateRequest struct {
 	Invocation
 	MaxSeverity string
 	Live        string
+	Coverage    string
 	RequireHead bool
 }
-    GateRequest composes the three CI gate dimensions. An empty MaxSeverity
-    skips the findings tier; Live stays empty for the auto posture.
+    GateRequest composes the CI gate dimensions. An empty MaxSeverity skips the
+    findings tier; Live stays empty for the auto posture. Coverage stays empty
+    for the `require` posture, the CLI's default: an absent or partial stored
+    diff-coverage receipt fails the gate, and "warn" reports it without failing.
 
 type GateResponse struct {
 	Result
@@ -349,8 +353,11 @@ type PostRequest struct {
 	Invocation
 	Approve, ReviewFile                 string
 	RequestChanges, Bind, Force, DryRun bool
+	AllowSecretValues                   bool
 }
     PostRequest carries the post options: approval, review file, and guards.
+    AllowSecretValues publishes a review whose text carries a secret-shaped
+    value; the pre-submit scan refuses post-secret-shaped without it.
 
 type Problem = recordcore.Problem
     Problem is one review-input problem: its JSONPath, code, level, message,
@@ -504,6 +511,11 @@ type VerifyRequest struct {
 	Group   string
 	Command string
 	Env     []string
+	// Sandbox wraps the command in the enforced Linux bwrap sandbox: no
+	// network, empty credential dirs, a writable reviewed root, and a private
+	// /tmp. The call refuses with sandbox-unavailable when the host cannot
+	// enforce it instead of running unwrapped.
+	Sandbox bool
 }
     VerifyRequest runs the recorded verifyCmd under the watchdog, or one deep
     plan group's explicit command when Group and Command are both set.

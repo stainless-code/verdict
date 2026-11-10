@@ -75,7 +75,7 @@ func usageText() string {
 		"    touching files outside the anchor stops the loop (scope-escape).\n" +
 		"  post  <owner/repo> <pr> [--approve=true|false] [--request-changes] [--bind] [--force]\n" +
 		"        [--review-file .verdict/state/<pr>/review.json] [--dry-run] [--require-coverage]\n" +
-		"        [--json]\n" +
+		"        [--allow-secret-values] [--json]\n" +
 		"    validate anchors (partitioned, keep-biased), embed suggestions, merge findings.json,\n" +
 		"    guard stale-SHA + duplicates, post exactly one review.\n" +
 		"    Binding APPROVE/REQUEST_CHANGES needs --bind (else downgraded to COMMENT);\n" +
@@ -83,6 +83,9 @@ func usageText() string {
 		"    Agent status claims (resolved[]/triage[]) are proposals: addressed flips only on\n" +
 		"    verification.json evidence (VERIFIED + resultHead matching HEAD).\n" +
 		"    --dry-run prints validation + payload summary, writes findings.dryrun.json, posts nothing.\n" +
+		"    A secret-shaped value in the review text refuses post-secret-shaped before any host\n" +
+		"    call (--dry-run warns instead); --allow-secret-values publishes it and post.json\n" +
+		"    records the shapes it let through.\n" +
 		"    GitHub PR bundles only: local bundles refuse typed (no-pr-target), non-GitHub providers\n" +
 		"    refuse typed (provider-unimplemented).\n" +
 		"  triage <owner/repo> <pr> --sig <sig> --status <open|addressed|wont-fix|false-positive|deferred>\n" +
@@ -131,13 +134,17 @@ func usageText() string {
 		"    one full finding record. Pure read.\n" +
 		"  check-tree [--expect <prefix,...>] [--json]\n" +
 		"    refuse on unexpected dirt (own .verdict/state/ scratch ignored). No network. Machine clean-tree gate for mutating modes.\n" +
-		"  verify <owner/repo> <pr> [--timeout <secs, default 300>] [--group <stableID> --command <cmd>] [--json]\n" +
+		"  verify <owner/repo> <pr> [--timeout <secs, default 300>] [--group <stableID> --command <cmd>]\n" +
+		"        [--sandbox] [--json]\n" +
 		"    With neither --group nor --command, execute patch.json verifyCmd with a watchdog and\n" +
 		"    record exit + tail in the patch record. --group and --command are required together:\n" +
 		"    --command runs for the named deep plan group at the reviewed head and writes\n" +
 		"    validation-<group>.json (patch.json stays untouched).\n" +
 		"    Runs in its own process group (timeout kills the tree); known secret values\n" +
 		"    are redacted from the recorded tail.\n" +
+		"    --sandbox runs the command under bwrap (Linux only) with no network, empty\n" +
+		"    ~/.aws, ~/.ssh, and ~/.config/gh, a writable reviewed root, and a private /tmp;\n" +
+		"    when bwrap cannot enforce that it refuses sandbox-unavailable and runs nothing.\n" +
 		"    Runs the agent's claimed proof — exit code becomes machine fact. No GitHub I/O.\n" +
 		"    Destructive, networked, credential-reading, and repo-escaping commands\n" +
 		"    refuse before execution as verify-destructive, verify-networked,\n" +
@@ -169,18 +176,21 @@ func usageText() string {
 		"    or wait, 2 usage, 3 tool error. Without --check the run stays advisory:\n" +
 		"    exit 0 with blockers listed (typed errors exit 1, usage exits 2).\n" +
 		"  gate <owner/repo> <pr> [--max-severity critical|important|informational] [--require-head]\n" +
-		"        [--live auto|strict|skip] [--json]\n" +
+		"        [--live auto|strict|skip] [--coverage require|warn] [--json]\n" +
 		"    one composed local gate over the dimensions report already computes: open\n" +
 		"    findings at-or-above a tier (--max-severity), a completed post for the fetched\n" +
-		"    HEAD (--require-head), live unresolved threads (--live, default auto), and the\n" +
-		"    captured compliance verdict when the bundle carries a typed policy.\n" +
-		"    At least one dimension is required; --live alone is not one. Exits 0 pass,\n" +
-		"    1 gate failed or unknown, 2 usage, 3 tool error; a gate failure carries\n" +
-		"    data.passed false with error null. data.dimensions[] lists findings, head,\n" +
-		"    live_threads, compliance with id, status, detail, count. --live skip makes\n" +
-		"    zero network calls; auto keeps the fail-open skip. Never posts, approves,\n" +
-		"    merges, or writes a store: the exit code is the whole integration, and the\n" +
-		"    merge stays the human's. Use report for the ranked items, cost, and\n" +
+		"    HEAD (--require-head), the stored diff-coverage receipt for that HEAD\n" +
+		"    (--coverage, default require), live unresolved threads (--live, default auto),\n" +
+		"    and the captured compliance verdict when the bundle carries a typed policy.\n" +
+		"    At least one dimension is required; --live and --coverage alone are not.\n" +
+		"    Exits 0 pass, 1 gate failed or unknown, 2 usage, 3 tool error; a gate failure\n" +
+		"    carries data.passed false with error null. data.dimensions[] lists findings,\n" +
+		"    head, coverage, live_threads, compliance with id, status, detail, count.\n" +
+		"    --coverage require fails on an absent or partial attestation for the gated\n" +
+		"    HEAD; --coverage warn reports the same and never fails the gate. --live skip\n" +
+		"    makes zero network calls; auto keeps the fail-open skip. Never posts,\n" +
+		"    approves, merges, or writes a store: the exit code is the whole integration,\n" +
+		"    and the merge stays the human's. Use report for the ranked items, cost, and\n" +
 		"    artifacts.\n" +
 		"  threads <owner/repo> <pr> [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] [--json]\n" +
 		"    refresh .verdict/state/<pr>/threads.json from the host (no diff refetch): host-resolved\n" +

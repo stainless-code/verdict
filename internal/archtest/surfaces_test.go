@@ -1,6 +1,7 @@
 package archtest
 
 import (
+	"encoding/json"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -428,4 +429,257 @@ func checkUnique(t *testing.T, kind string, list []string) {
 		}
 		seen[name] = true
 	}
+}
+
+// TestVerifySandboxReachesEveryTypedSurface pins the opt-in sandbox knob on
+// the surfaces that carry typed verify arguments: the CLI parser, the core
+// request, the MCP schema snapshot and decoder, and the Go facade. The
+// TypeScript client forwards raw argv, so `verify(["--sandbox"])` reaches the
+// same parser without a typed field to drift.
+func TestVerifySandboxReachesEveryTypedSurface(t *testing.T) {
+	t.Parallel()
+	root := moduleRoot(t)
+	if !structHasBoolField(t, filepath.Join(root, "internal", "core", "verifyapi.go"), "VerifyRequest", "Sandbox") {
+		t.Error("core.VerifyRequest lost its Sandbox field")
+	}
+	if !structHasBoolField(t, filepath.Join(root, "pkg", "verdict", "verbs.go"), "VerifyRequest", "Sandbox") {
+		t.Error("pkg/verdict.VerifyRequest lost its Sandbox field")
+	}
+	cli := readSource(t, filepath.Join(root, "internal", "verify", "verify.go"))
+	if !strings.Contains(cli, `case "--sandbox":`) {
+		t.Error("the verify adapter no longer parses --sandbox")
+	}
+	mcp := readSource(t, filepath.Join(root, "internal", "mcp", "requests.go"))
+	if !strings.Contains(mcp, `a.boolean("sandbox"`) {
+		t.Error("the MCP verify decoder no longer reads sandbox")
+	}
+	if !mcpSchemaHasBoolean(t, filepath.Join(root, "internal", "mcp", "testdata", "tools_list_default.jsonl"), "verify", "sandbox") {
+		t.Error("the published MCP verify schema lost its sandbox boolean")
+	}
+}
+
+// structHasBoolField reports whether path declares typeName with a bool field.
+func structHasBoolField(t *testing.T, path, typeName, field string) bool {
+	t.Helper()
+	st := declaredStruct(t, path, typeName)
+	if st == nil {
+		return false
+	}
+	for _, f := range st.Fields.List {
+		if isBoolField(f, field) {
+			return true
+		}
+	}
+	return false
+}
+
+// declaredStruct returns one named struct declaration, or nil.
+func declaredStruct(t *testing.T, path, typeName string) *ast.StructType {
+	t.Helper()
+	ts := findTypeSpec(t, path, typeName)
+	if ts == nil {
+		return nil
+	}
+	st, ok := ts.Type.(*ast.StructType)
+	if !ok {
+		return nil
+	}
+	return st
+}
+
+// findTypeSpec returns the named type declaration, or nil.
+func findTypeSpec(t *testing.T, path, typeName string) *ast.TypeSpec {
+	t.Helper()
+	var found *ast.TypeSpec
+	ast.Inspect(parseGo(t, path), func(n ast.Node) bool {
+		ts, ok := n.(*ast.TypeSpec)
+		if ok && ts.Name.Name == typeName {
+			found = ts
+			return false
+		}
+		return true
+	})
+	return found
+}
+
+// isBoolField reports whether f declares one bool field with the given name.
+func isBoolField(f *ast.Field, name string) bool {
+	if len(f.Names) != 1 || f.Names[0].Name != name {
+		return false
+	}
+	ident, ok := f.Type.(*ast.Ident)
+	return ok && ident.Name == "bool"
+}
+
+// readSource reads one source file as a string.
+func readSource(t *testing.T, path string) string {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
+// TestCompletionTableCoversUsageFlags proves every flag a verb's synopsis
+// documents reaches that verb's completion row. Nothing compared the two
+// surfaces before, so each release added a flag to one of them alone.
+func TestCompletionTableCoversUsageFlags(t *testing.T) {
+	t.Parallel()
+	root := moduleRoot(t)
+	documented := usageFlagSets(t, functionStrings(t, filepath.Join(root, "cmd", "verdict", "usage.go"), "usageText"))
+	offered := completionFlagSets(t, readSource(t, filepath.Join(root, "scripts", "verdict-complete.sh")))
+	if len(documented) < 10 || len(offered) < 10 {
+		t.Fatalf("parsed %d usage verbs and %d completion arms; the guard would pass vacuously",
+			len(documented), len(offered))
+	}
+	for _, verb := range slices.Sorted(maps.Keys(documented)) {
+		checkCompletionVerb(t, verb, documented[verb], offered[verb])
+	}
+}
+
+// checkCompletionVerb fails every documented flag the verb's row omits.
+func checkCompletionVerb(t *testing.T, verb string, documented, offered map[string]bool) {
+	t.Helper()
+	for _, flag := range slices.Sorted(maps.Keys(documented)) {
+		if !offered[flag] {
+			t.Errorf("verb %q documents %s but its completion row does not offer it", verb, flag)
+		}
+	}
+}
+
+// usageFlagSets maps each verb to the flags its synopsis lines carry: the
+// header line plus the wrapped continuation lines before the prose starts.
+func usageFlagSets(t *testing.T, usage string) map[string]map[string]bool {
+	t.Helper()
+	lines := strings.Split(usage, "\n")
+	known := usageVerbs(lines[0])
+	out := make(map[string]map[string]bool)
+	for i := 0; i < len(lines); i++ {
+		verb, ok := synopsisVerb(lines[i], known)
+		if !ok {
+			continue
+		}
+		i = collectSynopsisFlags(lines, i, verb, out)
+	}
+	return out
+}
+
+// usageVerbs reads the verb list from the usage synopsis line.
+func usageVerbs(header string) map[string]bool {
+	verbs := strings.Split(strings.TrimSuffix(strings.TrimPrefix(header, "usage: verdict "), " [opts]"), "|")
+	known := make(map[string]bool, len(verbs))
+	for _, verb := range verbs {
+		known[verb] = true
+	}
+	return known
+}
+
+// collectSynopsisFlags adds one verb's synopsis flags and returns the index of
+// the last line the synopsis consumed.
+func collectSynopsisFlags(lines []string, start int, verb string, out map[string]map[string]bool) int {
+	if out[verb] == nil {
+		out[verb] = make(map[string]bool)
+	}
+	i := start
+	for {
+		for _, flag := range usageFlagToken.FindAllString(lines[i], -1) {
+			out[verb][flag] = true
+		}
+		if i+1 >= len(lines) || !synopsisContinuation(lines[i+1]) {
+			return i
+		}
+		i++
+	}
+}
+
+// synopsisVerb reads the verb a "  <verb> ..." synopsis header names.
+func synopsisVerb(line string, known map[string]bool) (string, bool) {
+	rest, ok := strings.CutPrefix(line, "  ")
+	if !ok || strings.HasPrefix(rest, " ") {
+		return "", false
+	}
+	verb, _, _ := strings.Cut(rest, " ")
+	return verb, known[verb]
+}
+
+// synopsisContinuation reports whether line continues the synopsis above it:
+// a wrapped flag line, never the four-space prose below the synopsis.
+func synopsisContinuation(line string) bool {
+	if strings.TrimSpace(line) == "" {
+		return false
+	}
+	return len(line)-len(strings.TrimLeft(line, " ")) >= 5 ||
+		strings.HasPrefix(line, "[") || strings.HasPrefix(line, "-")
+}
+
+// completionFlagSets maps each verb to the flags its _verdict_flags arm offers.
+func completionFlagSets(t *testing.T, script string) map[string]map[string]bool {
+	t.Helper()
+	out := make(map[string]map[string]bool)
+	for line := range strings.SplitSeq(completionTable(t, script), "\n") {
+		addCompletionArm(line, out)
+	}
+	return out
+}
+
+// completionTable returns the body of the _verdict_flags case arm.
+func completionTable(t *testing.T, script string) string {
+	t.Helper()
+	start := strings.Index(script, "_verdict_flags() {")
+	end := strings.Index(script, "_verdict_values() {")
+	if start < 0 || end < start {
+		t.Fatalf("scripts/verdict-complete.sh: cannot locate the _verdict_flags table")
+	}
+	return script[start:end]
+}
+
+// addCompletionArm records the flags one `verbs) ... ;;` arm offers.
+func addCompletionArm(line string, out map[string]map[string]bool) {
+	arm := completionArm.FindStringSubmatch(line)
+	if arm == nil {
+		return
+	}
+	flags := make(map[string]bool)
+	for _, flag := range usageFlagToken.FindAllString(line, -1) {
+		flags[flag] = true
+	}
+	for verb := range strings.SplitSeq(arm[1], "|") {
+		out[verb] = flags
+	}
+}
+
+var (
+	usageFlagToken = regexp.MustCompile(`--[a-z0-9][a-z0-9-]*`)
+	completionArm  = regexp.MustCompile(`^\s*([a-z][a-z0-9|-]*)\)`)
+)
+
+// mcpSchemaHasBoolean reads the checked-in tools/list snapshot and reports
+// whether one tool's published input schema carries a boolean property.
+func mcpSchemaHasBoolean(t *testing.T, path, tool, property string) bool {
+	t.Helper()
+	var frame struct {
+		Result struct {
+			Tools []struct { //nolint:govet // decode-only shape for the checked-in snapshot
+				Name        string `json:"name"`
+				InputSchema struct {
+					Properties map[string]struct {
+						Type string `json:"type"`
+					} `json:"properties"`
+				} `json:"inputSchema"`
+			} `json:"tools"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(readSource(t, path)), &frame); err != nil {
+		t.Fatalf("decode %s: %v", path, err)
+	}
+	for _, candidate := range frame.Result.Tools {
+		if candidate.Name != tool {
+			continue
+		}
+		prop, ok := candidate.InputSchema.Properties[property]
+		return ok && prop.Type == "boolean"
+	}
+	t.Fatalf("%s: no %q tool", path, tool)
+	return false
 }

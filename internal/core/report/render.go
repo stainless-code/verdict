@@ -418,6 +418,7 @@ func receiptFieldFromObj(latest any, key string) string {
 const (
 	dimFindings   = "findings"
 	dimHead       = "head"
+	dimCoverage   = "coverage"
 	dimLive       = "live_threads"
 	dimPass       = "pass"
 	dimFail       = "fail"
@@ -454,8 +455,9 @@ func gateTail(st *state) (bool, []string, *core.ReportGate) {
 	return failed, lines, &core.ReportGate{Passed: !failed, Dimensions: dims}
 }
 
-// gateDimensions is the ceiling on one run's gate checks: findings, head, live.
-const gateDimensions = 4
+// gateDimensions is the ceiling on one run's gate checks: findings, head,
+// coverage, live, compliance.
+const gateDimensions = 5
 
 // gateChecks evaluates the dimensions this run asked for, in wire order.
 func gateChecks(st *state) []gateCheck {
@@ -465,6 +467,9 @@ func gateChecks(st *state) []gateCheck {
 	}
 	if st.flags.Completeness {
 		checks = append(checks, gateCompletenessCheck(st))
+	}
+	if st.flags.Coverage != "" {
+		checks = append(checks, gateCoverageCheck(st))
 	}
 	checks = append(checks, gateLiveCheck(st))
 	if st.compliance != nil && st.compliance.HasPolicy {
@@ -644,7 +649,10 @@ func gateLiveCheck(st *state) gateCheck {
 			line: "check: live recheck skipped (--live skip) — gating on local dimensions only",
 		}
 	default:
-		return gateCheck{dim: core.GateDimension{ID: dimLive, Status: dimSkip, Detail: "live recheck skipped: " + liveSkipReason(st)}}
+		return gateCheck{dim: core.GateDimension{
+			ID: dimLive, Status: dimSkip,
+			Detail: "live recheck skipped: local bundle threads unreadable here",
+		}}
 	}
 }
 
@@ -660,14 +668,6 @@ func liveErrDetail(st *state) string {
 		return "lookup failed"
 	}
 	return st.live.err
-}
-
-// liveSkipReason names why the probe could not read live threads at all.
-func liveSkipReason(st *state) string {
-	if isLocalDir(st.dir) {
-		return "local bundle threads unreadable here"
-	}
-	return providerName(st.dir) + " threads unreadable here"
 }
 
 func tierHits(entries []any, tier, category string) int {

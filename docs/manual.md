@@ -315,7 +315,7 @@ the artifact, who writes it, and whether a verb gates on it.
 | Artifact                  | What it is                                                                                                                                                                                                                                                             | Who writes it                                                 | Gates?                                                                                                                                                                                                                                                                                                                                 |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `run.json`                | The typed per-run capture: resolved defaults, per-file resolutions, plan, spend and privacy views, trusted-base inventory hashes, base SHA, the `inputs_sha256` digest, and appended check observations.                                                               | `fetch`/`fetch-local`; `post` appends observations            | Yes, except `config --preview` (see below). `post`, `record`, `triage`, `report`, `ready`, `config --explain`, and `verify --group` verify it; a run bundle deleted while its controls snapshot remains, or an edited captured input, refuses `controls-stale`; a bare bundle dir reads with a warning and no repository requirements. |
-| `validation-<group>.json` | The deep-validation receipt for one plan group: run, inputs digest, group, reviewed and execution heads, canonical root, command, exit, timeout flag, status, and a redacted output tail.                                                                              | `verify --group <id> --command <cmd>`                         | Yes. `post` refuses a binding approval while any `depth: "deep"` group lacks a current receipt; `ready` reports the gap as `profile-work`.                                                                                                                                                                                             |
+| `validation-<group>.json` | The deep-validation receipt for one plan group: run, inputs digest, group, reviewed and execution heads, canonical root, command, exit, timeout and sandbox flags, status, and a redacted output tail.                                                                 | `verify --group <id> --command <cmd>`                         | Yes. `post` refuses a binding approval while any `depth: "deep"` group lacks a current receipt; `ready` reports the gap as `profile-work`.                                                                                                                                                                                             |
 | `filesource.json`         | Provenance for the PR file list: `source` (`paged` or `cli`), `cli_cap` (100), `provider_ceiling` (3000), `count`, and `truncated` or `paging_error`.                                                                                                                  | GitHub `fetch`, when the CLI list arrives at its 100-file cap | No. It is an advisory coverage note: a paging failure warns and the run proceeds with the CLI's first 100 files.                                                                                                                                                                                                                       |
 | `full.raw.diff`           | The raw pre-exclusion diff, kept as the patch-identity input when a filtered diff would otherwise replace it. No shipped verb writes it today: `fetch` writes the host diff to `full.diff` and records the filtered hash in `run.json` without writing filtered bytes. | Nothing today (a future exclusion pass)                       | Partly. When present it feeds the identity, and `identity.json`'s `raw_diff_sha256` must reproduce it; a present-but-unreadable file refuses instead of falling back to `full.diff`. Absence is normal.                                                                                                                                |
 | `sensitive.txt`           | The advisory manifest of secret-adjacent paths: filename, extension, and added-line content hits, one path and reason per line, behind a comment header.                                                                                                               | `fetch`/`fetch-local` (and every provider fetch)              | No. It is advisory, not a gate: flagged paths stay reviewable evidence, the file is removed when nothing is flagged, and its header asks reviewers to name the path, never the value.                                                                                                                                                  |
@@ -541,12 +541,14 @@ facts: the canonical reviewed root, the bundle's reviewed head, and the
 checked-out head, which must be that same commit (otherwise `head-mismatch`).
 
 The command runs once through the same allowlist and watchdog as patch
-verify, and every outcome leaves a receipt — a failure is never dropped. The
+verify, and every outcome leaves a receipt — a failure is never dropped.
+Add `--sandbox` to either form to run the command inside the enforced Linux
+`bwrap` sandbox; the receipt then records `"sandboxed": true`. The
 receipt is `<bundle>/validation-<group>.json` (group ids are lowercase
 `[a-z0-9-]`, at most 64 chars, so the path stays confined), read back through
 a 64 KiB cap and written atomically. It records the run name, `inputs_sha256`, group id,
 reviewed and execution heads, canonical repo root, command, timestamp, exit
-code, timeout flag, `status` (`passed`, `failed`, `timeout`, `unavailable`,
+code, timeout and sandbox flags, `status` (`passed`, `failed`, `timeout`, `unavailable`,
 `stale-head`), and a redacted output tail. Reads re-derive the verdict: a
 receipt claiming a pass while recording a nonzero exit, a timeout, or another
 status is contradictory evidence and never approves. A head that moves during
@@ -635,6 +637,11 @@ attestation. A partial one warns once and adds one machine-built body line;
 was written", and a review that never stamped the key gets neither the warning
 nor the line, so its rendered body is unchanged.
 
+`gate` reads the stored receipt by default: a gated HEAD with no receipt, one
+carrying no `coverage[]` attestation, or one measuring under 100%, fails the
+merge gate (`--coverage warn` reports the same shortfall without failing). That is the only place the requirement is on
+by default — `post` and `record` keep the warning posture below.
+
 `--require-coverage` on `post` and `record` turns absence or a gap into a
 `coverage-incomplete` refusal that names the unattested ranges. `--force` does
 not bypass it: this is a read receipt, not a security boundary, but a require
@@ -649,10 +656,15 @@ partial attestation because it is a nudge, not the gate.
 present: `{"percent": 82, "attested": 18, "total": 22, "files": 3, "exempt": 1,
 "gaps": 2}`, where `gaps` counts unattested ranges (not lines).
 
-A chunked bundle is not evaluated: `chunks[]` is its attestation and the
-existing `missing-chunk-coverage` refusal is its gate. `coverage[]` on a
-chunked review is ignored with one warning. Do not translate chunks into
-ranges or the reverse.
+A chunked bundle is not evaluated line by line: `chunks[]` is its attestation
+and the existing `missing-chunk-coverage` refusal is its merge-time gate.
+`coverage[]` on a chunked review is ignored with one warning. Do not translate
+chunks into ranges or the reverse. A chunked `post.json`/`record.json` carries
+its own receipt instead of the measured summary — `"chunk_coverage":
+{"attested": 1, "total": 2}` — counting the manifest chunks `chunks[]`
+claimed, keyed to the same head. A claim the manifest cannot name never counts,
+and a review with no `chunks[]` key stores `0`, so the receipt never attests
+more than was written.
 
 ## Machine surface
 
@@ -811,15 +823,19 @@ A third dimension runs last on every gate invocation (`--check`,
 and fails the gate when more are open live than the store holds open
 (`check: N live open thread(s) vs M local open finding(s) — gate fails
 (fetch + triage them, then re-check)` — fetch the PR, triage the new
-threads, re-run `report --check`. An unreachable lookup warns (`live
-thread recheck unreachable`) and, under the default `--live auto` posture,
-leaves the dimension neutral: the gate reflects local dimensions only, and
-the run never exits 3 over the network. Local bundles and non-GitHub
-providers skip the lookup with a warn (`live recheck skipped: ...`),
-paying zero network; plain `report`
-without a gate flag never calls the network. There is no `--force` on
-report: fetch + triage + re-check is the recovery, and advisory `report`
-without `--check` is the escape hatch.
+threads, re-run `report --check`. The probe reads the bundle's own host:
+GitHub through `gh api graphql`, every other provider through the adapter
+the `threads` refresh already uses — so a GitLab, GitCafe, Forgejo,
+Bitbucket, or Azure bundle gates on its threads too. A read that fails, and
+a read that stopped before the host's last page, both leave the surface
+unread rather than clean: each warns (`live thread recheck unreachable`)
+and, under the default `--live auto` posture, leaves the dimension neutral:
+the gate reflects local dimensions only, and the run never exits 3 over the
+network. Only local bundles skip the lookup with a warn (`live recheck
+skipped: ...`), paying zero network; plain `report` without a gate flag
+never calls the network. There is no `--force` on report: fetch + triage +
+re-check is the recovery, and advisory `report` without `--check` is the
+escape hatch.
 
 Offline posture (`--live auto|strict|skip`, gate runs only) is always an
 explicit operator choice — automation never inherits it silently. `auto`
@@ -833,8 +849,9 @@ store). `skip` pays zero network and gates on the local dimensions only,
 saying so loudly: a `live recheck skipped (--live skip ...)` warn (also in
 `--json` `warnings[]`) plus a neutral skipped `check:` line in the gate
 tail. Structural skips stay neutral in every posture — a local bundle has
-no live threads to verify and a non-GitHub provider's threads are outside
-the GitHub-only read, so there is no live dimension to pass or fail. Pick
+no live threads to verify, so there is no live dimension to pass or fail. A
+partial or failed live read is not a structural skip: `strict` fails it
+closed and `auto` reads it neutral, exactly like a dead network. Pick
 `strict` for merge gates that must never report ready while threads stand
 open live; pick `skip` for air-gapped runs where the operator accepts the
 local-dimensions-only verdict on the record. `--live` without a gate flag
@@ -842,10 +859,10 @@ is inert: advisory runs never touch the network regardless.
 
 ### `gate`: one composed exit code for CI
 
-`report --check` and `ready --check` answer one question each. `gate` asks all
-three gating questions in one call and returns one CI exit code — the verb a
-pipeline step uses when it wants "is this PR shippable" without composing three
-checks and three error branches itself:
+`report --check` and `ready --check` answer one question each. `gate` asks
+every gating question in one call and returns one CI exit code — the verb a
+pipeline step uses when it wants "is this PR shippable" without composing the
+checks and their error branches itself:
 
 ```bash
 verdict gate owner/repo 123 --max-severity critical --require-head --live strict
@@ -868,6 +885,29 @@ A dimension is `pass`, `fail`, `unknown` (unreadable and failing closed), or
 fail the gate, so a skip never turns a green run red. Exit codes mirror
 `report --check`: 0 pass, 1 fail-or-unknown, 2 usage, 3 tool error.
 
+`--coverage require|warn` sets the posture of the coverage dimension, which
+runs on every gate and defaults to `require`. `require` reads the stored
+receipt `post.json` or `record.json` carries for the gated HEAD — the summary
+[Diff coverage](#diff-coverage-agent-attestation) already describes — and fails
+the gate when that receipt is absent, names another HEAD, carries no
+`coverage[]` attestation (a completed post that never attested coverage reads
+`unknown`, not `pass`), or measures under 100%. `warn` runs the same
+evaluation, prints one `warn:` line, and marks the dimension `skip`, so the
+shortfall is reported without failing — the migration for a review that has
+not attested yet, not a permanent posture. A bundle whose changed files are
+all exempt passes either way once a receipt attests them (`percent: null`,
+`total: 0`).
+
+A chunked bundle is graded on the chunk attestation its receipt stores:
+every manifest chunk in `chunks[]` passes, and a shortfall fails naming the
+chunks still unattested (`1 of 2 chunk(s) unattested`), because `chunks[]` is
+that bundle's only attestation. A receipt written before that key existed
+carries no chunk attestation, so it reads `unknown` under `require` and `skip`
+under `warn` until the bundle is re-recorded or re-posted. Like `--live`, the
+posture alone is not a dimension, so `--coverage` alone is still a usage error.
+The gate reads the receipt and never re-evaluates `review.json`, so it cannot
+publish a number the store does not hold.
+
 The human tail is one line per dimension plus the verdict and a single
 `try:` hint naming every failing dimension's recovery in order:
 
@@ -880,8 +920,8 @@ threads, then re-run gate
 ```
 
 `--json` publishes the same verdict as `data.passed` plus `data.dimensions[]`
-in `findings, head, live_threads, compliance` order (`id`, `status`, `detail`,
-`count` —
+in `findings, head, coverage, live_threads, compliance` order (`id`, `status`,
+`detail`, `count` —
 null where a dimension has no tally). A failed gate is a verdict, not a
 refusal: the envelope keeps `error: null` and the exit code carries the
 outcome. `gate` is read-only — no store writes, no `post.json`, no review
@@ -890,8 +930,8 @@ method): a local pass is not authority to merge, so the merge stays the
 human's call.
 
 Compose it where `report --check --completeness` used to go; the flag set is
-the same dimensions (plus the captured compliance verdict), and the flagless
-form remains advisory `report`.
+the same dimensions (plus the coverage receipt and the captured compliance
+verdict), and the flagless form remains advisory `report`.
 
 ### MCP server (stdio, experimental until 1.0)
 
@@ -1074,6 +1114,15 @@ requires; only the stored-open recheck is skipped. It is not fully offline. A fa
 live-head lookup warns. A failed live-thread lookup under `no-live-threads`
 refuses a binding approval with `requirement-unmet`; a non-approving run
 continues without a thread-gate warning.
+
+A review whose text carries a secret-shaped value refuses
+`post-secret-shaped` before any host call: the scan reads the summary body and
+each finding's body and suggestion, and it names the site (`finding 2`) and the
+matched shape (`aws-access-key-id`, `github-token`, …), never the value. A
+`--dry-run` warns in the same words and exits 0 instead, so a preview never
+refuses what it cannot post. `--allow-secret-values` publishes the review
+anyway, and `post.json` records the shapes it let through in
+`secret_shapes_allowed[]` — the receipt proves the override and what it cost.
 
 `triage --dry-run` computes one status flip and writes nothing: it resolves
 the sig, applies the rationale rule, and prints `would set <sig> -> <status>`
@@ -1928,7 +1977,7 @@ counts) — the ledger is an audit trail, not a lock. Verifying an untrusted
 worktree? `verify` refuses hostile shapes pre-exec, but the static gate cannot
 see everything — run the verify step under the Hostile-PR sandbox recipe below.
 
-## Hostile-PR sandbox recipe (opt-in, not enforced)
+## Hostile-PR sandbox recipe (enforced on Linux with --sandbox; recipe for other OSes)
 
 When the diff is untrusted (unknown author, drive-by PR, patch claims
 arriving via `fix-ci`) and the `verifyCmd` wants the network, run the verify
@@ -1943,22 +1992,83 @@ below is the second layer for what the static gate cannot see (a plain
 `curl` GET stays allowed; `/tmp` scratch writes stay allowed) — not a
 replacement.
 
+### Enforced sandbox: `verify --sandbox`
+
+On Linux with `bubblewrap` installed, pass the flag and let `verify` build
+the sandbox itself:
+
+```bash
+verdict verify owner/repo 123 --sandbox
+```
+
+It runs the command (patch `verifyCmd`, or the deep-group
+`--group ... --command ...` pair) under `bwrap` with `--ro-bind / /`, a
+writable bind of the reviewed root, a private `/tmp`, an empty `/run`, a
+fresh `/dev` and `/proc` under `--unshare-pid`, `--unshare-net`,
+`--new-session`, and `--die-with-parent`. The command gets its own loopback,
+its own PID namespace, and no route out:
+
+- **No host process data.** `/proc/<host-pid>` does not exist, so the
+  environment of the parent `verdict` process and every other same-uid
+  process is unreadable.
+- **No unix-socket route.** `/run` is empty, so `connect()` on
+  `/run/docker.sock`, `/run/user/<uid>/bus`, or another agent socket fails.
+  `--unshare-net` alone does not cover unix sockets.
+- **No terminal injection.** `--new-session` starts the command in a new
+  session, blocking TIOCSTI; `--die-with-parent` kills the sandbox when
+  `verdict` dies.
+
+Each credential path below, when it exists on the host, is replaced before
+the command runs:
+directories (`~/.aws`, `~/.ssh`, `~/.config/gh`, `~/.docker`, `~/.kube`,
+`~/.config/gcloud`, `~/.azure`, `~/.gnupg`) with an empty `--tmpfs`, and
+files (`~/.netrc`, `~/.git-credentials`, `~/.npmrc`, `~/.pypirc`) with a
+read-only bind of `/dev/null`. A missing entry adds no mount. `/var/run` is
+shadowed too when the host ships it as a real directory; on the distros
+where it is a symlink to `/run`, the `/run` mount covers it.
+
+Before anything executes it probes the same flags with a no-op; when the
+host is not Linux, `bwrap` is missing, the user-namespace restriction is on,
+or `HOME` is unset, `verify` refuses `sandbox-unavailable` naming the cause
+and runs nothing. It never silently falls back to an unsandboxed command.
+The patch record and the deep-group receipt carry `"sandboxed": true`, and
+the `--json` data adds `"sandboxed": true`; absent means the run was not
+sandboxed. The same opt-in reaches the MCP tool (`sandbox`), the Go facade
+(`Sandbox`), and the TypeScript client (raw `--sandbox` argv).
+
+### Recipe for other OSes (and for wrapping the whole review)
+
+The one-liner below still applies on macOS or a minimal image with no
+`bwrap`, or when the whole `verdict` process must run inside the sandbox:
+
 `bwrap` one-liner, from the repo root (`verify` runs the same `verifyCmd`;
 only the filesystem and network it sees change):
 
 ```bash
-bwrap --ro-bind / / --bind "$(pwd)" "$(pwd)" --tmpfs ~/.aws --tmpfs ~/.ssh \
-  --tmpfs ~/.config/gh -- verdict verify owner/repo 123
+bwrap --ro-bind / / --dev /dev --proc /proc --unshare-pid --tmpfs /tmp \
+  --tmpfs /run --bind "$(pwd)" "$(pwd)" \
+  --tmpfs ~/.aws --tmpfs ~/.ssh --tmpfs ~/.config/gh \
+  --ro-bind /dev/null ~/.netrc --new-session --die-with-parent \
+  -- verdict verify owner/repo 123
 ```
 
 `--ro-bind / /` makes the host read-only, `--bind` remounts the repo
-writable over it, and each `--tmpfs` hides a credential dir behind an empty
-mount. Add `--unshare-net` when the verify step needs no network at all —
-full network isolation for the command under test:
+writable over it, `--dev` and `--proc` under `--unshare-pid` replace the host
+device and process trees, `--tmpfs /run` removes the unix-socket routes, and
+each `--tmpfs` hides a credential dir behind an empty mount while
+`--ro-bind /dev/null` replaces a credential file. Add the rest of the
+credential table from above (`~/.docker`, `~/.kube`, `~/.config/gcloud`,
+`~/.azure`, `~/.gnupg`, `~/.git-credentials`, `~/.npmrc`, `~/.pypirc`) and
+drop the mounts for paths this host does not have. Add `--unshare-net` when
+the verify step needs no network at all — full network isolation for the
+command under test:
 
 ```bash
-bwrap --ro-bind / / --bind "$(pwd)" "$(pwd)" --tmpfs ~/.aws --tmpfs ~/.ssh \
-  --tmpfs ~/.config/gh --unshare-net -- verdict verify owner/repo 123
+bwrap --ro-bind / / --dev /dev --proc /proc --unshare-pid --tmpfs /tmp \
+  --tmpfs /run --bind "$(pwd)" "$(pwd)" \
+  --tmpfs ~/.aws --tmpfs ~/.ssh --tmpfs ~/.config/gh \
+  --ro-bind /dev/null ~/.netrc --unshare-net --new-session --die-with-parent \
+  -- verdict verify owner/repo 123
 ```
 
 No `bwrap` (macOS, minimal images)? `systemd-nspawn` covers the network
@@ -1974,9 +2084,9 @@ network-only isolation: `--private-network` removes the route out, but the
 command still sees the host filesystem and credential paths. Prefer the
 `bwrap` variant above whenever filesystem or credential hiding matters.
 
-This is a recipe, not enforcement: nothing in the harness checks or mandates
-the sandbox — per K5, full namespace isolation stays opt-in, never default.
-The gate constrains what `verify` will execute; your own shell is unaffected
+That one-liner stays a recipe, not enforcement — only `--sandbox` probes and
+refuses. Per K5, full namespace isolation stays opt-in, never default. The
+gate constrains what `verify` will execute; your own shell is unaffected
 either way.
 
 ### Known residuals (string-scan ceiling)

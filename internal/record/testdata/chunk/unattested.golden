@@ -28,7 +28,8 @@ c1.txt	NEW	1	2
   "security_summary": null,
   "tool_version": "VERSION",
   "prompts_hash": "648f2080aeecf5952419db4a1f90d951895a41cc8498028a6fd5fd41d1eb6508",
-  "model": null
+  "model": null,
+  "chunk_coverage": {"attested":0,"total":2}
 }
 --- file C/.verdict/state/local-ch/store.json ---
 {

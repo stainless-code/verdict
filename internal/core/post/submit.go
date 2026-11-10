@@ -497,6 +497,7 @@ func writePostReceipt(st *state, obj *jq.Obj) error {
 		receipt.PostMinSeverity = &floor
 	}
 	receipt.Coverage = st.merged.Coverage.Receipt()
+	receipt.ChunkCoverage = st.merged.Coverage.ChunkReceipt()
 	if len(withheld) > 0 {
 		receipt.BelowFloorExcluded = len(withheld)
 		receipt.PostFloorScoped = scopedFloors(withheld)
@@ -510,6 +511,7 @@ func writePostReceipt(st *state, obj *jq.Obj) error {
 	if st.withheld != nil {
 		receipt.Withheld = st.withheld
 	}
+	stampSecretOverride(st, receipt)
 	if err := stampProvenance(st, receipt); err != nil {
 		return err
 	}
@@ -517,6 +519,15 @@ func writePostReceipt(st *state, obj *jq.Obj) error {
 		return &core.RefusalError{Code: codePostFailed, Message: fmt.Sprintf("could not write %s/post.json: %v", st.dir, err)}
 	}
 	return nil
+}
+
+// stampSecretOverride records the value shapes --allow-secret-values published,
+// so a receipt proves the override and what it let through; a post that
+// published none writes nothing.
+func stampSecretOverride(st *state, receipt *core.Post) {
+	if st.secretShapes != nil {
+		receipt.SecretShapesAllowed = st.secretShapes
+	}
 }
 
 // stampProvenance copies the recorded tool version, prompts hash, and model

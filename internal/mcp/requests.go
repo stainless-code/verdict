@@ -252,6 +252,7 @@ func decodePost(req *core.PostRequest, a *args) {
 		f.boolean("force", &req.Flags.Force)
 		f.boolean("dryRun", &req.Flags.DryRun)
 		f.boolean("requireCoverage", &req.Flags.RequireCoverage)
+		f.boolean("allowSecretValues", &req.Flags.AllowSecretValues)
 	})
 }
 
@@ -383,6 +384,7 @@ func decodeVerify(req *core.VerifyRequest, a *args) {
 	a.str("timeoutRaw", &req.TimeoutRaw)
 	a.str("group", &req.Group)
 	a.str("command", &req.Command)
+	a.boolean("sandbox", &req.Sandbox)
 }
 
 func wireVerify(ctx context.Context, b *bindings, req *core.VerifyRequest) error {

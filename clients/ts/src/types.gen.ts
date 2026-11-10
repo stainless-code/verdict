@@ -98,7 +98,7 @@ export interface CoverageSummary {
   [key: string]: unknown;
 }
 
-/** report --json data: ranked read over the store. cost appears only with --cost, completeness only with --completeness, gate only when a gating flag (--max-severity, --require-head, --live) is set, receipt keys only when budget.json parses. */
+/** report --json data: ranked read over the store. cost appears only with --cost, completeness only with --completeness, gate only when a gating flag (--max-severity, --require-head, --live) is set (gate itself always carries the coverage dimension), receipt keys only when budget.json parses. */
 export interface ReportData {
   generated_at: string;
   dir: string;
@@ -216,7 +216,7 @@ export interface ReportCompliance {
   [key: string]: unknown;
 }
 
-/** Composed gate result: every requested dimension in findings, head, live_threads, compliance order. passed is true iff no dimension failed or read unknown, so a skip and an auto-posture unreachable probe stay neutral. */
+/** Composed gate result: every requested dimension in findings, head, coverage, live_threads, compliance order. passed is true iff no dimension failed or read unknown, so a skip and an auto-posture unreachable probe stay neutral. */
 export interface ReportGate {
   /** The gate verdict the exit code follows: exit 0 when true, exit 1 when false. */
   passed: boolean;
@@ -226,12 +226,12 @@ export interface ReportGate {
 
 /** One gate dimension: its id, verdict status, human detail text, and its own failing tally (null where the dimension has no count to report). */
 export interface GateDimension {
-  /** Which dimension read: findings (open findings at-or-above the --max-severity tier), head (a completed post for the fetched HEAD under --require-head), or live_threads (unresolved threads on the PR under --live). */
-  id: "findings" | "head" | "live_threads" | "compliance";
+  /** Which dimension read: findings (open findings at-or-above the --max-severity tier), head (a completed post for the fetched HEAD under --require-head), coverage (the stored diff-coverage receipt for that HEAD under --coverage, default require; a chunked bundle is graded on the chunk attestation its receipt stores), or live_threads (unresolved threads on the PR under --live). */
+  id: "findings" | "head" | "coverage" | "live_threads" | "compliance";
   /** pass, fail, unknown (the dimension could not be read and the posture fails closed), or skip (not requested, or unreachable under --live auto). Only fail and unknown fail the gate. */
   status: "pass" | "fail" | "skip" | "unknown";
   detail: string;
-  /** The dimension's own tally: offending findings for findings, versus-thread count for live_threads, null for head and for a skipped or unreachable live probe. */
+  /** The dimension's own tally: offending findings for findings, unattested ranges for coverage (unattested chunks on a chunked bundle), versus-thread count for live_threads, null for head and for a skipped or unreachable live probe. */
   count: number | null;
   [key: string]: unknown;
 }
@@ -599,7 +599,7 @@ export interface ThreadsData {
   [key: string]: unknown;
 }
 
-/** verify --json data: the command's exit status, whether the watchdog timed it out, the redacted output tail, and the patch read back from the bundle. A timed-out run is never proof. */
+/** verify --json data: the command's exit status, whether the watchdog timed it out, the redacted output tail, the patch read back from the bundle, and whether the run was sandboxed (absent means unsandboxed). A timed-out run is never proof. */
 export interface VerifyData {
   exit: number;
   timedOut: boolean;
@@ -608,6 +608,7 @@ export interface VerifyData {
   group?: string;
   head?: string;
   receipt?: string;
+  sandboxed?: boolean;
   [key: string]: unknown;
 }
 

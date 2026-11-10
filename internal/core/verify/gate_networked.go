@@ -67,6 +67,10 @@ func checkCurlShapes(g *gateText) *core.RefusalError {
 	if frag := grepO(reCurlDownload, g.bare); frag != "" {
 		return refuse(codeNetworked, frag, "curl exfil/download-to-file shape — fetch fixtures first, run offline")
 	}
+	if frag := grepO(reCurlConfig, g.csbare); frag != "" {
+		return refuse(codeNetworked, frag,
+			"curl -K/--config loads options from a file that can add an output — fetch fixtures first, run offline")
+	}
 	if frag := grepO(reCurlUpload, g.csbare); frag != "" {
 		return refuse(codeNetworked, frag, "curl upload shape — fetch fixtures first, run offline")
 	}
@@ -80,6 +84,12 @@ func checkWgetShapes(g *gateText) *core.RefusalError {
 	if frag := grepO(reWgetPost, g.bare); frag != "" {
 		return refuse(codeNetworked, frag, "wget download/post shape — fetch fixtures first, run offline")
 	}
+	if frag := grepO(reWgetRemoteName, g.bare); frag != "" {
+		return refuse(codeNetworked, frag, "wget --remote-name saves the response to a file — fetch fixtures first, run offline")
+	}
+	if frag := grepO(reWgetInputFile, g.bare); frag != "" {
+		return refuse(codeNetworked, frag, "wget -i reads URLs from a file — fetch fixtures first, run offline")
+	}
 	if frag := grepO(reWgetUpperO, g.csbare); frag != "" {
 		return refuse(codeNetworked, frag, "wget -O download-to-file shape — fetch fixtures first, run offline")
 	}
@@ -92,6 +102,9 @@ func checkWgetShapes(g *gateText) *core.RefusalError {
 func checkFetchClients(g *gateText) *core.RefusalError {
 	if ref := checkGhWrite(g); ref != nil {
 		return ref
+	}
+	if frag := grepO(reBusyboxFetch, g.bare); frag != "" {
+		return refuse(codeNetworked, frag, "busybox network applet fetches remote content — fetch fixtures first, run offline")
 	}
 	if frag := grepO(reOpensslSClient, g.bare); frag != "" {
 		return refuse(codeNetworked, frag, "openssl s_client is a TLS exfil oracle — fetch fixtures first, run offline")
@@ -137,8 +150,8 @@ func checkGhAPIFile(g *gateText) *core.RefusalError {
 func checkRemoteInstall(g *gateText) *core.RefusalError {
 	if frag := grepO(rePkgURLInstall, g.bare); frag != "" {
 		return refuse(codeNetworked, frag,
-			"package install from a URL executes remote code "+
-				"at install time — vendor the fixture, install offline")
+			"package install/download from a URL fetches remote content "+
+				"— vendor the fixture, install offline")
 	}
 	if frag := grepO(reNpxPackage, g.bare); frag != "" {
 		return refuse(codeNetworked, frag,
@@ -241,13 +254,21 @@ var (
 	reShellInSeg    = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])(sh|bash|zsh|fish|dash)([[:space:];|&]|$)`)
 	reCurlDownload  = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])curl[[:space:]]+([^;|&]*[[:space:]])?(-X[[:space:]]*(post|` +
 		`put)|--output|-o[[:space:]]|-O([[:space:];|&]|$))`)
+	reCurlConfig = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])[Cc][Uu][Rr][Ll][[:space:]]+([^;|&]*[[:space:]])?` +
+		`(-[a-zA-Z]*K[^[:space:];|&]*|--config([[:space:]=]|$))`)
 	reCurlUpload = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])[Cc][Uu][Rr][Ll][[:space:]]+([^;|&]*[[:space:]])?((--data)([^a-zA-Z]|` +
 		`$)|-[a-z]*[dTF]|--upload-file([^a-zA-Z]|$)|--form(-string)?([^a-zA-Z-]|$))`)
-	reFetchScheme = regexp.MustCompile(`(file|ftp|ftps|git|dict|gopher|tftp|ldap|ldaps|sftp|scp|rsync)://`)
+	reFetchScheme = regexp.MustCompile(`(file|ftp|ftps|git|dict|gopher|tftp|ldap|ldaps|sftp|scp|rsync|telnet)://`)
 	reWgetPost    = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])wget[[:space:]]+[^;|` +
 		`&]*--(output-document|post-data|post-file)([^a-z-]|$)`)
-	reWgetUpperO      = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])[Ww][Gg][Ee][Tt][[:space:]]+[^;|&]*-O([^a-z0-9-]|$)`)
-	reTransferClient  = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])(ftp|tftp|lftp)([[:space:];|&]|$)`)
+	reWgetRemoteName = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])wget[[:space:]]+([^;|&]*[[:space:]])?` +
+		`--remote-name([^a-z-]|$)`)
+	reWgetInputFile = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])wget[[:space:]]+([^;|&]*[[:space:]])?` +
+		`(-[a-z]*i|--input-file([^a-z-]|$))`)
+	reWgetUpperO     = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])[Ww][Gg][Ee][Tt][[:space:]]+[^;|&]*-O([^a-z0-9-]|$)`)
+	reTransferClient = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])(ftp|tftp|lftp|telnet)([[:space:];|&]|$)`)
+	reBusyboxFetch   = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])busybox[[:space:]]+([^;|&]*[[:space:]])?` +
+		`(wget|nc|ncat|netcat|telnet|ftp|tftp|lftp|ssh|scp|socat)([[:space:];|&]|$)`)
 	reGhWord          = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])gh([[:space:];|&]|$)`)
 	reGhGistCreate    = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])gh[[:space:]]+[^;|&]*gist[[:space:]]+create([^a-z]|$)`)
 	reGhGistEdit      = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])gh[[:space:]]+[^;|&]*gist[[:space:]]+edit([^a-z]|$)`)
@@ -260,7 +281,7 @@ var (
 	reOpensslSClient = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])openssl[[:space:]]+[^;|&]*s_client([^a-z_]|$)`)
 	rePingPattern    = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])ping[[:space:]]+[^;|&]*-[a-z]*p([^a-z0-9-]|$)`)
 	rePkgURLInstall  = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])(pip|pip3|npm|yarn|pnpm|bun|cargo|gem|` +
-		`go)[[:space:]]+[^;|&]*(install|add)[[:space:]]+[^;|&]*https?://`)
+		`go)[[:space:]]+[^;|&]*(install|add|download)[[:space:]]+[^;|&]*https?://`)
 	reNpxPackage      = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])npx[[:space:]]+[^;|&]*(-p([^a-z0-9-]|$)|--package)`)
 	reDlx             = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])(yarn[[:space:]]+dlx|pnpm[[:space:]]+dlx|bunx)([^a-z0-9-]|$)`)
 	reCargoGit        = regexp.MustCompile(`(^|[[:space:];|&(){}"=,/])cargo[[:space:]]+[^;|&]*--git([^a-z-]|$)`)

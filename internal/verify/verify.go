@@ -27,7 +27,7 @@ type Request struct {
 }
 
 // Run executes `verify <owner/repo> <slug> [--timeout <secs>]
-// [--group <stableID> --command <cmd>] [--json]`,
+// [--group <stableID> --command <cmd>] [--sandbox] [--json]`,
 // returning the process exit code.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
@@ -70,6 +70,7 @@ func verifyRequest(r *cli.Runner, req Request, flags verifyFlags) *core.VerifyRe
 		TimeoutRaw:  flags.timeout,
 		Group:       flags.group,
 		Command:     flags.command,
+		Sandbox:     flags.sandbox,
 		Environ:     os.Environ(),
 		JSONMode:    r.JSONMode,
 		Warnings:    append([]string{}, r.Warnings...),
@@ -86,6 +87,7 @@ type verifyFlags struct {
 	timeout string
 	group   string
 	command string
+	sandbox bool
 }
 
 // parseFlags strips verify's flags, reporting unknown ones. A value flag with
@@ -114,9 +116,12 @@ func parseToken(r *cli.Runner, args []string, i int, flags *verifyFlags) (int, i
 		return takeValue(r, args, i, a, "<stableID>", false, &flags.group)
 	case "--command":
 		return takeValue(r, args, i, a, "<cmd>", false, &flags.command)
+	case "--sandbox":
+		flags.sandbox = true
+		return i, 0, false
 	}
 	return i, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
-		"unknown flag '%s' for verify (want --timeout <secs>, --group <stableID>, --command <cmd>, --json)", a)}), true
+		"unknown flag '%s' for verify (want --timeout <secs>, --group <stableID>, --command <cmd>, --sandbox, --json)", a)}), true
 }
 
 // takeValue consumes one value flag. An empty explicit timeout keeps the

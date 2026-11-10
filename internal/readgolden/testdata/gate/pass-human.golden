@@ -1,6 +1,7 @@
 exit: 0
 --- stdout ---
 gate: findings     pass  no open findings at-or-above critical
+gate: coverage     pass  100% of full hunk spans, both sides and context attested (24/24 lines)
 gate: live_threads skip  live recheck skipped (--live skip)
 gate: PASS
 gate: skipped live_threads

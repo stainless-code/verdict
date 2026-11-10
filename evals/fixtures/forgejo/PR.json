@@ -1,0 +1,22 @@
+{
+  "id": 11,
+  "number": 7,
+  "index": 7,
+  "title": "Retry count off by one",
+  "body": "Fixes the retry count so the third attempt runs.",
+  "state": "open",
+  "draft": false,
+  "user": {
+    "login": "mate"
+  },
+  "html_url": "https://forgejo.invalid/acme/app/pulls/7",
+  "base": {
+    "label": "main",
+    "sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "head": {
+    "label": "feat/retry",
+    "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "diff_url": "https://forgejo.invalid/acme/app/pulls/7.diff"
+}

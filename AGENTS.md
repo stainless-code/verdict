@@ -37,9 +37,9 @@ skip-token ban and test determinism. Read both before writing or reviewing Go.
 
 - **Never run a real `post`.** It submits to GitHub or GitLab, so stub that
   host's CLI (`gh`, or `glab` for GitLab) and use `post --dry-run`.
-- **No network.** Unit tests and evals must pass offline. The eval suite is
-  GitHub-only: it stubs `gh` network-dead and proves zero real calls
-  (`evals/README.md`). A GitLab `post --dry-run` is manual — stub `glab` by hand.
+- **No network.** Unit tests and evals must pass offline. Every host CLI the
+  suite shells (`gh`, `glab`, `curl`) is stubbed network-dead, refusing any
+  argv a case did not register (`evals/README.md`, `evals/lib/hoststub.sh`).
 - **No `/tmp` test dirs.** Use `t.TempDir()` for files and `internal/testenv`
   for child processes; a hardcoded path leaks across parallel runs.
 - **Exactly four skill files are hashed into goldens.** `skills/verdict/SKILL.md`,

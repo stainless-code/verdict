@@ -22,6 +22,7 @@ const (
 	codeBadTimeout   = "bad-timeout"
 	codeVerifyFailed = "verify-failed"
 	codeCanceled     = "canceled"
+	msgCanceled      = "canceled before verify completed"
 	patchFile        = "patch.json"
 	noVerifyCmdMsg   = "patch.json carries no verifyCmd to execute"
 	msgVerifyFailed  = "verify failed: %v"
@@ -53,7 +54,7 @@ func corruptStoreRefusal(dir string) *core.RefusalError {
 func Run(ctx context.Context, req *core.VerifyRequest) (*core.VerifyResponse, *core.RefusalError) {
 	st := &state{req: req, warnings: append([]string{}, req.Warnings...)}
 	if err := ctx.Err(); err != nil {
-		return nil, &core.RefusalError{Code: codeCanceled, Message: "canceled before verify completed"}
+		return nil, &core.RefusalError{Code: codeCanceled, Message: msgCanceled}
 	}
 	dir := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
 	if req.Group != "" || req.Command != "" {
@@ -116,11 +117,15 @@ func (st *state) execute(ctx context.Context, dir, now, vcmd string, timeout int
 	if !coreexec.WatchdogEnforced() {
 		st.warn("no ps(1) — timeout unenforced for this run")
 	}
+	sb, ref := st.sandboxed(ctx, commander, "", st.req.RepoRootPath())
+	if ref != nil {
+		return nil, st.withWarnings(ref)
+	}
 	outPath, timeoutPath := dir+"/.verify.out", dir+"/.verify.timeout"
 	st.human(fmt.Sprintf("» verify: %s (timeout %ss)", vcmd, st.req.TimeoutRaw))
-	res, ref := runCommand(ctx, commander, vcmd, timeout, "", st.childEnv())
+	res, ref := runCommand(ctx, commander, vcmd, timeout, "", st.childEnv(), sb)
 	if ctx.Err() != nil {
-		return nil, st.withWarnings(&core.RefusalError{Code: codeCanceled, Message: "canceled before verify completed"})
+		return nil, st.withWarnings(&core.RefusalError{Code: codeCanceled, Message: msgCanceled})
 	}
 	if ref != nil {
 		return nil, st.withWarnings(ref)
@@ -136,13 +141,25 @@ func (st *state) commander() core.Commander {
 	return commander
 }
 
+// sandboxed prepares the opt-in wrapper, or returns nil for an unwrapped run.
+func (st *state) sandboxed(ctx context.Context, commander core.Commander, workDir, root string) (*sandbox, *core.RefusalError) {
+	if !st.req.Sandbox {
+		return nil, nil
+	}
+	return prepareSandbox(ctx, commander, workDir, root, st.childEnv())
+}
+
 func runCommand(ctx context.Context, commander core.Commander, vcmd string, timeout int,
-	dir string, env []string,
+	dir string, env []string, sb *sandbox,
 ) (core.Result, *core.RefusalError) {
+	argv := []string{"bash", "-c", vcmd}
+	if sb != nil {
+		argv = sb.argv(vcmd)
+	}
 	tctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
 	res, err := commander.Run(tctx, &core.Command{
-		Argv:      []string{"bash", "-c", vcmd},
+		Argv:      argv,
 		Env:       env,
 		Dir:       dir,
 		OutputCap: coreexec.VerifyOutputCap,
@@ -168,7 +185,7 @@ func (st *state) record(dir, now, outPath, timeoutPath string, res core.Result) 
 	if ref := recordTimeoutMarker(timeoutPath, timeoutMarker(st.req.TimeoutRaw, res.TimedOut, res.Decoy)); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	if ref := recordOutcome(dir, now, res.ExitCode, res.TimedOut, tail); ref != nil {
+	if ref := recordOutcome(dir, now, res.ExitCode, res.TimedOut, tail, st.req.Sandbox); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
 	return st.response(dir, now, res.ExitCode, res.TimedOut, tail), nil
@@ -183,7 +200,7 @@ func (st *state) response(dir, now string, exit int, timedOut bool, tail string)
 		Repo:     st.req.Repo,
 		Pr:       st.req.Pr,
 		At:       now,
-		Data:     &core.VerifyData{Exit: exit, TimedOut: timedOut, OutputTail: tail, Patch: dir},
+		Data:     &core.VerifyData{Exit: exit, TimedOut: timedOut, OutputTail: tail, Patch: dir, Sandboxed: st.req.Sandbox},
 		Warnings: st.warnings,
 		Next:     next,
 		Exit:     exit,
@@ -247,7 +264,7 @@ func parseTimeout(s string) (int, bool) {
 
 // recordOutcome merges the watchdog result into patch.json, preserving key
 // order (existing keys keep position, new keys append).
-func recordOutcome(dir, now string, exit int, timedOut bool, tail string) *core.RefusalError {
+func recordOutcome(dir, now string, exit int, timedOut bool, tail string, sandboxed bool) *core.RefusalError {
 	raw, err := os.ReadFile(patchPath(dir))
 	if err != nil {
 		return missingPatchRefusal(dir)
@@ -264,6 +281,11 @@ func recordOutcome(dir, now string, exit int, timedOut bool, tail string) *core.
 	m.Set("verifiedAt", now)
 	m.Set("timedOut", timedOut)
 	m.Set("verifiedTail", tail)
+	if sandboxed {
+		m.Set("sandboxed", true)
+	} else {
+		m.Delete("sandboxed")
+	}
 	if err := atomic.WriteFile(dir+"/"+patchFile, []byte(m.MarshalPretty()+"\n")); err != nil {
 		return &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf("could not write %s/patch.json: %v", dir, err)}
 	}

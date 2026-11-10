@@ -32,6 +32,8 @@ var hintRules = []HintRule{
 	},
 	{codes: []string{"prompt-dump-failed"}, hint: "try: run from a checkout carrying SKILL.md/prompts, then re-run"},
 	{codes: []string{"post-failed"}, hint: "try: narrow anchor drift or body size (see above), then re-run"},
+	{codes: []string{"post-secret-shaped"}, hint: "try: remove the value from review.json and re-run, " +
+		"or pass --allow-secret-values to publish it anyway"},
 	{
 		codes: []string{"diff-too-large"},
 		hint:  "try: split the range (--range/--base/--base-sha) or narrow with a paths filter, then re-fetch",
@@ -108,6 +110,8 @@ var hintRules = []HintRule{
 	{codes: []string{"verify-credential-read"}, hint: "try: rewrite verifyCmd without reading credential paths " +
 		"or piping env into the network, then re-run"},
 	{codes: []string{"verify-repo-escape"}, hint: "try: rewrite verifyCmd with repo-relative paths (/tmp for scratch), then re-run"},
+	{codes: []string{"sandbox-unavailable"}, hint: "try: install bubblewrap on Linux and allow unprivileged user " +
+		"namespaces, or re-run without --sandbox on a command you trust"},
 	{codes: []string{"agent-missing"}, hint: "try: install the agent CLI (or put it on PATH), or re-run with " +
 		"--agent <name> for one you have"},
 	{codes: []string{"agent-spawn-failed"}, hint: "try: check the binary runs from your shell " +

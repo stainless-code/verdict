@@ -16,6 +16,11 @@ type PostFlags struct {
 	// RequireCoverage refuses an absent or partial diff-coverage
 	// attestation; --force never bypasses it.
 	RequireCoverage bool
+	// AllowSecretValues publishes a review whose text carries a
+	// secret-shaped value: the pre-submit scan refuses
+	// post-secret-shaped without it, and the receipt records what it let
+	// through.
+	AllowSecretValues bool
 }
 
 // PostRequest is the post service invocation: the read runtime and
@@ -106,6 +111,11 @@ type Post struct { //nolint:govet // field order is the published property order
 	// commented. Absent when every capability the run asked for landed, so an
 	// undegraded receipt keeps its bytes.
 	Withheld []WithheldCapability `json:"withheld,omitempty"`
+	// SecretShapesAllowed names the secret-shaped value shapes
+	// --allow-secret-values published, in first-seen order, so a receipt proves
+	// the operator overrode the pre-submit scan and what it let through. Absent
+	// when the flag allowed nothing, so an unflagged receipt keeps its bytes.
+	SecretShapesAllowed []string `json:"secret_shapes_allowed,omitempty"`
 	// PostMinSeverity is the global posting floor. PostFloorScoped records
 	// different path-specific floors that withheld findings, and
 	// BelowFloorExcluded counts all withheld findings.
@@ -113,6 +123,7 @@ type Post struct { //nolint:govet // field order is the published property order
 	BelowFloorExcluded int              `json:"below_floor_excluded,omitempty"   min:"0"`
 	PostFloorScoped    []FloorScope     `json:"post_floor_scoped,omitempty"`
 	Coverage           *CoverageSummary `anyOf:"null"                            json:"coverage,omitempty"          optional:"true"`
+	ChunkCoverage      *ChunkCoverage   `anyOf:"null"                            json:"chunk_coverage,omitempty"    optional:"true"`
 	ReviewRaw          any              `json:"-"`
 }
 
@@ -253,11 +264,22 @@ func (p *Post) Wire() *jq.Obj {
 		o.Set("forced", p.Forced)
 	}
 	setPostWithheldWire(o, p)
+	setPostSecretWire(o, p)
 	setPostFloorWire(o, p)
+	setPostCoverageWire(o, p)
+	return o
+}
+
+// setPostCoverageWire appends the stored attestation last: the measured line
+// summary a non-chunked run carries, or the chunk tally a chunked one carries
+// in its place. Both stay absent when nothing was evaluated.
+func setPostCoverageWire(o *jq.Obj, p *Post) {
 	if p.Coverage != nil {
 		o.Set("coverage", p.Coverage)
 	}
-	return o
+	if p.ChunkCoverage != nil {
+		o.Set("chunk_coverage", p.ChunkCoverage)
+	}
 }
 
 // setPostWithheldWire appends the withheld-capability audit after the --force
@@ -266,6 +288,15 @@ func (p *Post) Wire() *jq.Obj {
 func setPostWithheldWire(o *jq.Obj, p *Post) {
 	if p.Withheld != nil {
 		o.Set("withheld", p.Withheld)
+	}
+}
+
+// setPostSecretWire appends the secret-shape override after the withheld audit:
+// only a post that published a credential shape carries it, so a receipt that
+// carried none keeps its published bytes.
+func setPostSecretWire(o *jq.Obj, p *Post) {
+	if p.SecretShapesAllowed != nil {
+		o.Set("secret_shapes_allowed", p.SecretShapesAllowed)
 	}
 }
 

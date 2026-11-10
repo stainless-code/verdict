@@ -4,10 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/threads"
@@ -312,38 +310,11 @@ func azureThreadsRead(ctx context.Context, s *session, conn *azureConn, pr strin
 // session builds the refresh session: the injected commander, clock, env, and
 // warning sink.
 func (st *threadsRun) session() (*session, *core.RefusalError) {
-	req := st.req
-	var cmdr Commander
-	if req.Runtime != nil {
-		var ok bool
-		cmdr, ok = req.Commander.(Commander)
-		if !ok {
-			cmdr = nil
-		}
+	s, ref := threadSession(st.req.ReadRequest, st.progress(), &st.warnings)
+	if ref != nil {
+		return nil, st.withWarnings(ref)
 	}
-	if cmdr == nil {
-		return nil, st.withWarnings(&core.RefusalError{
-			Code:    codeThreadsFailed,
-			Message: "threads failed: no commander in runtime",
-		})
-	}
-	return &session{
-		Human:     io.Discard,
-		Diag:      io.Discard,
-		progress:  st.progress(),
-		commander: cmdr,
-		Now:       st.clock(),
-		env:       st.environ(),
-		warnings:  &st.warnings,
-	}, nil
-}
-
-// clock returns the injected clock, defaulting to the wall clock.
-func (st *threadsRun) clock() func() time.Time {
-	if st.req.Runtime != nil && st.req.Now != nil {
-		return st.req.Now
-	}
-	return time.Now
+	return s, nil
 }
 
 // progress returns the injected progress observer (nil when unset).
@@ -352,14 +323,6 @@ func (st *threadsRun) progress() core.Progress {
 		return st.req.Progress
 	}
 	return nil
-}
-
-// environ returns the injected environment snapshot.
-func (st *threadsRun) environ() map[string]string {
-	if st.req.Runtime != nil && st.req.Env != nil {
-		return st.req.Env
-	}
-	return map[string]string{}
 }
 
 // human streams one human output line through the progress observer.

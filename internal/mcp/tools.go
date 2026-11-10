@@ -191,9 +191,9 @@ func allTools(readOnly, operator bool) []*tool {
 		dataTool(&toolSpec{
 			name: "post",
 			description: "Post exactly one review to GitHub or GitLab, or preview with dryRun. " +
-				"Call once after review.json is final; never write a review note. Writes post.json " +
-				"and sends to the host. GitLab has no request-changes event, so a bound " +
-				"request-changes posts as a comment and post.json records it in withheld[].",
+				"Call once after review.json is final; never write a review note. A secret-shaped " +
+				"value refuses post-secret-shaped (allowSecretValues publishes it). Writes post.json; " +
+				"GitLab posts a bound request-changes as a comment and records it in withheld[].",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Post review", destructive: true, idempotent: true, openWorld: true},
 		}, toolDeps{commander: fetchRunner}, decodePost, wirePost, postcore.Run,
@@ -262,8 +262,9 @@ func allTools(readOnly, operator bool) []*tool {
 		dataTool(&toolSpec{
 			name: "verify",
 			description: "Run the recorded verifyCmd under the watchdog and record the proof. " +
-				"Pass group and command together to validate one deep plan group at the reviewed root and record a bound receipt. " +
-				"Never fabricates a patch or a command from repository configuration.",
+				"Pass group and command together to validate one deep plan group at the reviewed root, " +
+				"or set sandbox true for enforced bubblewrap isolation on Linux (refused where unenforceable). " +
+				"Never fabricates a patch or a command from configuration.",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Run verification", destructive: true, openWorld: true},
 		}, toolDeps{commander: coreexec.Watchdog{}}, decodeVerify, wireVerify, verifycore.Run,

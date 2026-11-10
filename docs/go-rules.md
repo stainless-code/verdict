@@ -29,7 +29,7 @@ this repo, and the repo files stay the truth for what is gated:
 - Channels move ownership; mutexes guard state; maps are never shared unsynchronized (GO-CONC-03). — partly: `test -race`, `vet:copylock`.
 - `WaitGroup.Add` before `go`, same frame (GO-CONC-05). — enforced: `vet:waitgroup` (runs under `go test`).
 - Set `Cmd.WaitDelay` on every command with captured pipes (GO-CONC-06). — review-only (analyzer candidate, map §2).
-- `go test -race -shuffle=on -count=1 ./...` is green on 3 OSes (GO-CONC-07). — partly: `make test-race` runs `-race -shuffle=on -count=1` on macOS + Ubuntu; Windows runs plain `go test`, so both flags are gated on two of the three OSes.
+- `go test -race -shuffle=on -count=1 ./...` is green on 3 OSes (GO-CONC-07). — enforced: `make test-race` runs `-race -shuffle=on -count=1` on macOS + Ubuntu, and `ci:go-windows` runs the same flags with `CGO_ENABLED=1`, because the race detector needs cgo and cgo needs the runner's MinGW-w64 gcc.
 - No `*io.Reader`; comma-ok every type assertion (GO-IFACE-04). — partly: `lint:forcetypeassert`.
 - Copy collections at trust boundaries (GO-COLLECT-02). — review-only.
 - `defer` cleanup at the acquisition site (GO-DEFER-01). — partly: `lint:bodyclose,sqlclosecheck,rowserrcheck`.
@@ -62,7 +62,7 @@ this repo, and the repo files stay the truth for what is gated:
 - No SHA-1 outside the one wire-compat package (scoped lint exception, not-a-security-boundary doc, explicit FIPS stance); suite runs once under `GODEBUG=fips140=only` (GO-CRYPTO-02). — partly: `lint:depguard` bans `crypto/sha1` outside `internal/sig`; the FIPS-only run is not a CI step.
 - Windows runs in CI, not just cross-compiles (GO-XPLAT-01). — enforced: `ci:go-windows`.
 - `default: none`-equivalent explicit lint set; `gofumpt` + `gci` formatting (GO-LINT-01/02). — partly: `.golangci.yml` pins an explicit enable list over `default: standard` plus the two formatters; `make gofmt-check` and CI gate plain `gofmt`; `golangci-lint fmt` is not a CI step.
-- CI: lint, vet, 3-OS test matrix, vuln, fuzz, build, tag-release (GO-CI-01/03). — partly: `ci.yml` runs format, lint, go (race + vet + vuln + golangci), go-windows, cross (every shipped `GOOS/GOARCH`, from `release/contract.json`), evals, docs, ts-client, audit, release dry-run — every lane except format/docs/audit on any diff that is not docs-only, and unfiltered on `main` pushes; `fuzz` and `bench` are advisory and run on the nightly schedule alone, and tagging lives in `release.yml`.
+- CI: lint, vet, 3-OS test matrix, vuln, fuzz, build, tag-release (GO-CI-01/03). — partly: `ci.yml` runs format, lint, go (race + vet + vuln + golangci), go-windows (race + shuffle), cross (every shipped `GOOS/GOARCH`, from `release/contract.json`), evals, docs, ts-client, audit, release dry-run — every lane except format/docs/audit on any diff that is not docs-only, and unfiltered on `main` pushes; `fuzz` and `bench` are advisory and run on the nightly schedule alone, and tagging lives in `release.yml`.
 - Releases via goreleaser: signed SBOMs + cosign bundles (GO-CI-04). — enforced: `.goreleaser.yml` (`sboms`, keyless `signs`) + `ci:release-dry-run`.
 
 ## SHOULD (fix or record a reason)

@@ -187,7 +187,7 @@
       "additionalProperties": true
     },
     "reportData": {
-      "description": "report --json data: ranked read over the store. cost appears only with --cost, completeness only with --completeness, gate only when a gating flag (--max-severity, --require-head, --live) is set, receipt keys only when budget.json parses.",
+      "description": "report --json data: ranked read over the store. cost appears only with --cost, completeness only with --completeness, gate only when a gating flag (--max-severity, --require-head, --live) is set (gate itself always carries the coverage dimension), receipt keys only when budget.json parses.",
       "type": "object",
       "properties": {
         "generated_at": { "type": "string", "format": "date-time" },
@@ -408,7 +408,7 @@
       "additionalProperties": true
     },
     "reportGate": {
-      "description": "Composed gate result: every requested dimension in findings, head, live_threads, compliance order. passed is true iff no dimension failed or read unknown, so a skip and an auto-posture unreachable probe stay neutral.",
+      "description": "Composed gate result: every requested dimension in findings, head, coverage, live_threads, compliance order. passed is true iff no dimension failed or read unknown, so a skip and an auto-posture unreachable probe stay neutral.",
       "type": "object",
       "properties": {
         "passed": {
@@ -428,8 +428,8 @@
       "type": "object",
       "properties": {
         "id": {
-          "description": "Which dimension read: findings (open findings at-or-above the --max-severity tier), head (a completed post for the fetched HEAD under --require-head), or live_threads (unresolved threads on the PR under --live).",
-          "enum": ["findings", "head", "live_threads", "compliance"]
+          "description": "Which dimension read: findings (open findings at-or-above the --max-severity tier), head (a completed post for the fetched HEAD under --require-head), coverage (the stored diff-coverage receipt for that HEAD under --coverage, default require; a chunked bundle is graded on the chunk attestation its receipt stores), or live_threads (unresolved threads on the PR under --live).",
+          "enum": ["findings", "head", "coverage", "live_threads", "compliance"]
         },
         "status": {
           "description": "pass, fail, unknown (the dimension could not be read and the posture fails closed), or skip (not requested, or unreachable under --live auto). Only fail and unknown fail the gate.",
@@ -437,7 +437,7 @@
         },
         "detail": { "type": "string" },
         "count": {
-          "description": "The dimension's own tally: offending findings for findings, versus-thread count for live_threads, null for head and for a skipped or unreachable live probe.",
+          "description": "The dimension's own tally: offending findings for findings, unattested ranges for coverage (unattested chunks on a chunked bundle), versus-thread count for live_threads, null for head and for a skipped or unreachable live probe.",
           "type": ["integer", "null"],
           "minimum": 0
         }
@@ -1179,7 +1179,7 @@
       "additionalProperties": true
     },
     "verifyData": {
-      "description": "verify --json data: the command's exit status, whether the watchdog timed it out, the redacted output tail, and the patch read back from the bundle. A timed-out run is never proof.",
+      "description": "verify --json data: the command's exit status, whether the watchdog timed it out, the redacted output tail, the patch read back from the bundle, and whether the run was sandboxed (absent means unsandboxed). A timed-out run is never proof.",
       "type": "object",
       "properties": {
         "exit": { "type": "integer" },
@@ -1188,7 +1188,8 @@
         "patch": { "type": "string" },
         "group": { "type": "string" },
         "head": { "type": "string" },
-        "receipt": { "type": "string" }
+        "receipt": { "type": "string" },
+        "sandboxed": { "type": "boolean" }
       },
       "required": ["exit", "timedOut", "outputTail", "patch"],
       "additionalProperties": true

@@ -26,6 +26,11 @@ type VerifyRequest struct { //nolint:govet // field grouping documents the reque
 	// these fields.
 	Group   string
 	Command string
+	// Sandbox wraps the executed command in the enforced Linux bwrap sandbox:
+	// no network, empty credential dirs, a writable reviewed root, and a
+	// private /tmp. A host that cannot enforce it refuses
+	// sandbox-unavailable instead of running unwrapped.
+	Sandbox bool
 }
 
 // ValidationReceipt is the tool-produced deep-validation record for one
@@ -46,6 +51,7 @@ type ValidationReceipt struct { //nolint:govet // field order is the published p
 	OutputTail    string `json:"output_tail"`
 	Exit          int    `json:"exit"`
 	TimedOut      bool   `json:"timed_out"`
+	Sandboxed     bool   `json:"sandboxed,omitempty"`
 	Status        string `json:"status"`
 	Failure       string `json:"failure,omitempty"`
 	Passed        bool   `json:"passed"`
@@ -78,6 +84,7 @@ type VerifyData struct { //nolint:govet // field order is the published property
 	Group      string `json:"group,omitempty"`
 	Head       string `json:"head,omitempty"`
 	Receipt    string `json:"receipt,omitempty"`
+	Sandboxed  bool   `json:"sandboxed,omitempty"`
 }
 
 // Wire renders the data object in wire order.

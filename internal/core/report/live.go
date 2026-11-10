@@ -8,6 +8,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
+	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -38,12 +39,6 @@ func runLiveProbe(ctx context.Context, st *state) {
 		st.warn("live recheck skipped: local bundle threads unreadable here (gating on local dimensions only)")
 		st.live.status = liveSkip
 	default:
-		prov := providerName(st.dir)
-		if prov != "" && prov != "github" {
-			st.warn(fmt.Sprintf("live recheck skipped: %s threads unreadable here (gating on local dimensions only)", prov))
-			st.live.status = liveSkip
-			return
-		}
 		probeLiveCount(ctx, st)
 	}
 }
@@ -57,19 +52,26 @@ func providerName(dir string) string {
 }
 
 func probeLiveCount(ctx context.Context, st *state) {
-	owner, name := readcommon.SplitOwner(st.req.Repo)
-	nodes, res, err := readcommon.Threads(ctx, st.commander(), owner, name, st.req.Pr, false)
-	writeErrFile(st, st.dir+"/.recheck.err", res.Stderr)
+	read, err := fetchcore.ReadLiveThreads(ctx, st.req.ReadRequest, providerName(st.dir), st.headSHA, st.warn)
+	writeErrFile(st, st.dir+"/.recheck.err", read.Stderr)
 	if err != nil {
-		probeUnreachable(st, res.Stderr)
+		detail := read.Stderr
+		if detail == "" {
+			detail = err.Error()
+		}
+		probeUnreachable(st, detail)
 		return
 	}
 	removeErrFile(st.dir + "/.recheck.err")
-	if malformed := readcommon.MalformedThreadCount(nodes); malformed > 0 {
-		st.warn(fmt.Sprintf("live thread recheck: %d malformed thread node(s) counted as "+
-			"unresolved (fail-closed)", malformed))
+	if read.Truncated {
+		probeUnreachable(st, providerName(st.dir)+" thread read incomplete")
+		return
 	}
-	st.live.open = readcommon.OpenThreadCount(nodes)
+	if read.Malformed > 0 {
+		st.warn(fmt.Sprintf("live thread recheck: %d malformed thread node(s) counted as "+
+			"unresolved (fail-closed)", read.Malformed))
+	}
+	st.live.open = read.Open
 	if st.live.open > st.nAllOpen {
 		st.live.status = liveFail
 		return
@@ -85,9 +87,11 @@ func (st *state) commander() core.Commander {
 	return commander
 }
 
-func probeUnreachable(st *state, stderr string) {
+// probeUnreachable records a live read that did not happen: the gate reads
+// neutral under --live auto and fails closed under --live strict.
+func probeUnreachable(st *state, detail string) {
 	removeErrFile(st.dir + "/.recheck.err")
-	detail := firstLine(stderr)
+	detail = firstLine(detail)
 	if detail == "" {
 		detail = "lookup failed"
 	}
@@ -168,7 +172,7 @@ func refetchCommand(dir string, req core.ReadRequest, posted string) string {
 	if isLocalDir(dir) {
 		return fmt.Sprintf("verdict fetch-local %s %s", req.Repo, strings.TrimPrefix(req.Pr, "local-"))
 	}
-	if prov != "" && prov != "github" {
+	if prov != "" && prov != providerGitHub {
 		return fmt.Sprintf("verdict fetch %s %s --provider %s", req.Repo, req.Pr, prov)
 	}
 	if posted != "" {

@@ -26,6 +26,19 @@ var macOSTwin = map[string]string{
 	"evals-macos":      "evals",
 }
 
+// macOSStepOmissions are the base-lane steps a macOS twin cannot repeat, with
+// why. Bubblewrap is Linux-only, so the verify sandbox install, namespace
+// sysctl, namespace probe, and containment summary stay on the Linux eval
+// lane; the same case still runs its refusal leg on macOS.
+var macOSStepOmissions = map[string][]string{
+	"evals": {
+		"Install bubblewrap",
+		"Allow unprivileged user namespaces (bubblewrap)",
+		"Prove bubblewrap can create its namespaces",
+		"Prove the verify sandbox containment case ran",
+	},
+}
+
 // TestCIMacOSLanesSkipPullRequests fails when a macOS leg would run on a pull
 // request, when one of the legs is gone, or when another lane takes a macOS
 // runner.
@@ -119,17 +132,47 @@ func TestCIMacOSLaneStepsMatch(t *testing.T) {
 	workflow := readCIWorkflow(t)
 	jobs := workflowJobs(t, "ci.yml", workflow)
 	for _, macLane := range slices.Sorted(maps.Keys(macOSTwin)) {
-		baseLane := macOSTwin[macLane]
-		want, got := stepNames(jobs[baseLane]), stepNames(jobs[macLane])
-		if len(want) == 0 {
-			t.Errorf("%s declares no named step", baseLane)
-			continue
-		}
-		if !slices.Equal(want, got) {
-			t.Errorf("%s steps drifted from %s:\n %s: %v\n %s: %v",
-				macLane, baseLane, baseLane, want, macLane, got)
+		checkMacOSLaneSteps(t, macLane, macOSTwin[macLane], jobs)
+	}
+}
+
+// checkMacOSLaneSteps compares one twin's step names with its base lane,
+// after dropping the steps bubblewrap makes Linux-only.
+func checkMacOSLaneSteps(t *testing.T, macLane, baseLane string, jobs map[string][]string) {
+	t.Helper()
+	base, got := stepNames(jobs[baseLane]), stepNames(jobs[macLane])
+	if len(base) == 0 {
+		t.Errorf("%s declares no named step", baseLane)
+		return
+	}
+	omit := macOSStepOmissions[baseLane]
+	checkOmittedSteps(t, macLane, base, omit)
+	want := withoutSteps(base, omit)
+	if !slices.Equal(want, got) {
+		t.Errorf("%s steps drifted from %s:\n %s: %v\n %s: %v",
+			macLane, baseLane, baseLane, want, macLane, got)
+	}
+}
+
+// checkOmittedSteps fails an omission the base lane no longer declares.
+func checkOmittedSteps(t *testing.T, macLane string, base, omit []string) {
+	t.Helper()
+	for _, name := range omit {
+		if !slices.Contains(base, name) {
+			t.Errorf("%s omits stale step %q: the base lane no longer carries it", macLane, name)
 		}
 	}
+}
+
+// withoutSteps drops the lane-specific step names from a base lane.
+func withoutSteps(have, drop []string) []string {
+	kept := make([]string, 0, len(have))
+	for _, name := range have {
+		if !slices.Contains(drop, name) {
+			kept = append(kept, name)
+		}
+	}
+	return kept
 }
 
 // stepNames lists a job's step names in order.

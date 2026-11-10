@@ -296,6 +296,16 @@ if [ "$(jq -r '.head' <"$EVAL_SANDBOX/.verdict/state/4644/post.json" 2>/dev/null
 else
   bad "post record/envelope broke"
 fi
+if [ "$(jq -c '.chunk_coverage' <"$EVAL_SANDBOX/.verdict/state/4644/post.json" 2>/dev/null)" = '{"attested":2,"total":2}' ] \
+  && [ "$(jq -r 'has("coverage")' <"$EVAL_SANDBOX/.verdict/state/4644/post.json" 2>/dev/null)" = "false" ]; then
+  good "a chunked post stores its chunk attestation beside the head, not a line summary"
+else
+  bad "chunked post receipt: $(jq -c '{chunk_coverage,coverage}' <"$EVAL_SANDBOX/.verdict/state/4644/post.json" 2>/dev/null || echo unreadable)"
+fi
+run_review gate acme/app 4644 --max-severity critical --live skip
+assert_exit "the gate passes the chunked post the tool just wrote" 0
+assert_file_grep "the gate reads the chunk tally the post stored" "$EVAL_OUT" \
+  "gate: coverage     pass  2/2 chunk(s) attested"
 if [ -z "$(ls "$EVAL_SANDBOX/.verdict/state/4644"/chunks/*.review.json 2>/dev/null || true)" ]; then
   good "no per-chunk review files beside the single synthesis"
 else

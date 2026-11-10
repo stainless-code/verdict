@@ -108,6 +108,9 @@ type FloorScope = core.FloorScope
 // CoverageSummary is core's stored diff-coverage receipt on post and record.
 type CoverageSummary = core.CoverageSummary
 
+// ChunkCoverage is core's stored chunk attestation on a chunked post or record.
+type ChunkCoverage = core.ChunkCoverage
+
 // CoverageClaim is core's review.json coverage[] entry.
 type CoverageClaim = core.CoverageClaim
 
@@ -408,8 +411,8 @@ type CheckTreeData struct { //nolint:govet // field order is the published prope
 type ThreadsData = fetchcore.ThreadsData
 
 // VerifyData is core's verify --json data profile: the command's exit status,
-// whether the watchdog timed it out, the redacted tail, and the patch read
-// back from the bundle.
+// whether the watchdog timed it out, the redacted tail, the patch read back
+// from the bundle, and whether the run was sandboxed.
 type VerifyData = core.VerifyData
 
 // TrendData is the trend verb's --json data profile: the portfolio rollup,

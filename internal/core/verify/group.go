@@ -55,7 +55,21 @@ func RunGroup(ctx context.Context, req *core.VerifyRequest, dir, now string) (*c
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
+	if ref := st.bindSandbox(ctx, run); ref != nil {
+		return nil, st.withWarnings(ref)
+	}
 	return st.executeValidation(ctx, dir, now, req, run)
+}
+
+// bindSandbox prepares the opt-in wrapper before any receipt exists, so an
+// unenforceable sandbox refuses without inventing evidence.
+func (st *state) bindSandbox(ctx context.Context, run *validationRun) *core.RefusalError {
+	sb, ref := st.sandboxed(ctx, run.commander, run.root, run.root)
+	if ref != nil {
+		return ref
+	}
+	run.sandbox = sb
+	return nil
 }
 
 // validationRun pins the facts a receipt must certify: the stable group, the
@@ -63,6 +77,7 @@ func RunGroup(ctx context.Context, req *core.VerifyRequest, dir, now string) (*c
 // the reviewed head, and the command budget.
 type validationRun struct {
 	commander    core.Commander
+	sandbox      *sandbox
 	rs           *config.RunState
 	group        config.PlanGroup
 	receiptPath  string
@@ -168,11 +183,11 @@ func (st *state) executeValidation(ctx context.Context, dir, now string, req *co
 	receipt := core.ValidationReceipt{
 		SchemaVersion: validationSchema, Run: run.rs.Name, InputsSHA256: run.rs.InputsSHA256,
 		Group: run.group.ID, ReviewedHead: run.reviewedHead, ExecutionHead: run.reviewedHead,
-		RepoRoot: run.root, Command: req.Command, At: now,
+		RepoRoot: run.root, Command: req.Command, At: now, Sandboxed: req.Sandbox,
 	}
 	st.human(fmt.Sprintf("» group validation %s: %s in %s (timeout %ss)",
 		run.group.ID, req.Command, run.root, req.TimeoutRaw))
-	res, runRef := runCommand(ctx, run.commander, req.Command, run.timeout, run.root, st.childEnv())
+	res, runRef := runCommand(ctx, run.commander, req.Command, run.timeout, run.root, st.childEnv(), run.sandbox)
 	st.applyExecution(ctx, req, &receipt, res, runRef)
 	after, headRef := gitHead(ctx, run.commander, run.root)
 	st.applyPostChecks(dir, run, &receipt, after, headRef)
@@ -490,6 +505,7 @@ func (st *state) groupResponse(dir, receiptPath string, receipt *core.Validation
 		Data: &core.VerifyData{
 			Exit: receipt.Exit, TimedOut: receipt.TimedOut, OutputTail: receipt.OutputTail,
 			Group: receipt.Group, Head: receipt.ExecutionHead, Receipt: receiptPath,
+			Sandboxed: receipt.Sandboxed,
 		},
 		Warnings: st.warnings,
 		Next:     next,

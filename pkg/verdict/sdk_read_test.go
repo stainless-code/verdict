@@ -375,7 +375,7 @@ func TestClientGate(t *testing.T) {
 	defer c.Close()
 
 	gate, err := c.Gate(context.Background(), &verdict.GateRequest{
-		Invocation: sdkInvocation("6101"), MaxSeverity: "important", Live: "skip",
+		Invocation: sdkInvocation("6101"), MaxSeverity: "important", Live: "skip", Coverage: "warn",
 	})
 	requireNoError(t, err)
 	if gate.Passed {
@@ -387,7 +387,7 @@ func TestClientGate(t *testing.T) {
 	assertGateDimensions(t, gate.Dimensions)
 
 	clean, err := c.Gate(context.Background(), &verdict.GateRequest{
-		Invocation: sdkInvocation("6101"), MaxSeverity: "critical", RequireHead: true, Live: "skip",
+		Invocation: sdkInvocation("6101"), MaxSeverity: "critical", RequireHead: true, Live: "skip", Coverage: "warn",
 	})
 	requireNoError(t, err)
 	if clean.Passed {
@@ -397,7 +397,30 @@ func TestClientGate(t *testing.T) {
 		t.Errorf("last dimension = %+v, want live_threads/skip", last)
 	}
 
+	assertDefaultCoveragePosture(t, c)
+
 	_, err = c.Gate(context.Background(), &verdict.GateRequest{Invocation: sdkInvocation("6101")})
+	requireRefusal(t, err, "bad-flags", "try: re-run with one of the valid values named above")
+}
+
+// assertDefaultCoveragePosture pins the SDK's coverage default against the
+// CLI's: an unset Coverage requires a stored receipt, and an unpublished value
+// refuses instead of silently dropping the dimension.
+func assertDefaultCoveragePosture(t *testing.T, c *verdict.Client) {
+	t.Helper()
+	required, err := c.Gate(context.Background(), &verdict.GateRequest{
+		Invocation: sdkInvocation("6101"), MaxSeverity: "critical", Live: "skip",
+	})
+	requireNoError(t, err)
+	if defaultCoverage := required.Dimensions[1]; defaultCoverage.ID != "coverage" || defaultCoverage.Status != "unknown" {
+		t.Errorf("dimension 1 = %+v, want coverage/unknown under the default posture", defaultCoverage)
+	}
+	if required.Passed {
+		t.Error("passed = true, want false: the default posture requires a stored coverage receipt")
+	}
+	_, err = c.Gate(context.Background(), &verdict.GateRequest{
+		Invocation: sdkInvocation("6101"), MaxSeverity: "critical", Coverage: "sometimes",
+	})
 	requireRefusal(t, err, "bad-flags", "try: re-run with one of the valid values named above")
 }
 
@@ -407,7 +430,7 @@ type wantDim struct{ id, status string }
 // assertGateDimensions pins the composed gate's wire order and tallies.
 func assertGateDimensions(t *testing.T, dims []verdict.GateDimension) {
 	t.Helper()
-	want := []wantDim{{"findings", "fail"}, {"live_threads", "skip"}}
+	want := []wantDim{{"findings", "fail"}, {"coverage", "skip"}, {"live_threads", "skip"}}
 	if len(dims) != len(want) {
 		t.Fatalf("dimensions = %+v, want %d", dims, len(want))
 	}
@@ -416,7 +439,7 @@ func assertGateDimensions(t *testing.T, dims []verdict.GateDimension) {
 			t.Errorf("dimension %d = %+v, want id %q, status %q, and a detail", i, dims[i], w.id, w.status)
 		}
 	}
-	findings, live := dims[0], dims[1]
+	findings, live := dims[0], dims[2]
 	if findings.Count == nil || *findings.Count != 2 {
 		t.Errorf("findings count = %v, want the store's two important+ findings", findings.Count)
 	}

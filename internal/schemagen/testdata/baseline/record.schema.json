@@ -62,6 +62,9 @@
     },
     "coverage": {
       "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/coverageSummary" }]
+    },
+    "chunk_coverage": {
+      "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/chunkCoverage" }]
     }
   },
   "required": [
@@ -104,6 +107,15 @@
         "gaps": { "type": "integer", "minimum": 0 }
       },
       "required": ["percent", "attested", "total", "files", "exempt", "gaps"],
+      "additionalProperties": true
+    },
+    "chunkCoverage": {
+      "type": "object",
+      "properties": {
+        "attested": { "type": "integer", "minimum": 0 },
+        "total": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["attested", "total"],
       "additionalProperties": true
     }
   }

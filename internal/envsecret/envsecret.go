@@ -1,8 +1,10 @@
 // Package envsecret classifies environment-variable names as secret-shaped,
-// and owns the one scrubber that hides a collected credential value in text.
-// The verify redactor, the launcher's tail scrub, and the test harnesses'
-// environment scrubber share it, so "which variables carry credentials" and
-// "how a value is hidden once found" each have one answer.
+// owns the one table of secret-shaped value literals, and owns the one scrubber
+// that hides a collected credential value in text. The verify redactor, the
+// launcher's tail scrub, and the test harnesses' environment scrubber share it,
+// as do the fetch sensitive-content scan and post's pre-submit scan, so "which
+// variables carry credentials", "what a credential value looks like", and "how
+// a value is hidden once found" each have one answer.
 package envsecret
 
 import "strings"

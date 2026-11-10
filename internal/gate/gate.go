@@ -37,9 +37,17 @@ const (
 	flagMaxSeverity = "--max-severity"
 	flagRequireHE   = "--require-head"
 	flagLive        = "--live"
+	flagCoverage    = "--coverage"
+	coverageRequire = "require"
+	coverageWarn    = "warn"
+	idCoverage      = "coverage"
 	idWidth         = 12 // longest dimension id: live_threads
 	actionFindings  = "address or triage the open findings"
 	actionMissing   = "review + post the fetched HEAD"
+	// actionCoverage names both attestation keys: a chunked bundle ignores
+	// coverage[], so a recovery naming only that key would loop the operator.
+	actionCoverage = "attest the unattested ranges in review.json (coverage[], or every " +
+		"chunk in chunks[] when the bundle is chunked), then re-record or re-post"
 )
 
 // Run executes `gate <owner/repo> <pr> [flags]`, returning the exit code.
@@ -222,12 +230,23 @@ var gateActionsByID = map[string]func(status string) string{
 		}
 		return ""
 	},
+	idCoverage: func(status string) string {
+		switch status {
+		case statusFail:
+			return actionCoverage
+		case statusUnknown:
+			return "attest coverage for the fetched HEAD (post or record)"
+		}
+		return ""
+	},
 }
 
 // parseFlags parses the gate flags left to right; a missing operand, a bad
 // enum, or no requested dimension is a usage error (exit 2, no envelope).
+// --coverage defaults to require: the stored attestation is part of the gate
+// unless the operator opts out, the same way --live carries its posture.
 func parseFlags(r *cli.Runner, args []string) (reportcore.Flags, int, bool) {
-	flags := reportcore.Flags{Live: liveAuto}
+	flags := reportcore.Flags{Live: liveAuto, Coverage: coverageRequire}
 	gated := false
 	i := 0
 	for i < len(args) {
@@ -252,26 +271,32 @@ func parseFlag(r *cli.Runner, flags *reportcore.Flags, gated *bool, args []strin
 		flags.Completeness = true
 		*gated = true
 		return 1, 0, false
-	case flagMaxSeverity, flagLive:
+	case flagMaxSeverity, flagLive, flagCoverage:
 		return parseValueFlag(r, flags, gated, args, i)
 	default:
 		return 0, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
-			"unknown flag '%s' for gate (want --max-severity, --require-head, --live, --json)", args[i])}), true
+			"unknown flag '%s' for gate (want --max-severity, --require-head, --live, --coverage, --json)", args[i])}), true
 	}
 }
 
 func parseValueFlag(r *cli.Runner, flags *reportcore.Flags, gated *bool, args []string, i int) (int, int, bool) {
 	name := args[i]
 	want := "auto|strict|skip"
-	if name == flagMaxSeverity {
+	switch name {
+	case flagMaxSeverity:
 		want = "critical|important|informational"
+	case flagCoverage:
+		want = "require|warn"
 	}
 	v, next, u := cli.FlagValue(args, i, name, want)
 	if u != nil {
 		return 0, r.ReportUsage(u), true
 	}
-	if name == flagMaxSeverity {
+	switch name {
+	case flagMaxSeverity:
 		return applyTier(r, flags, gated, v, next-i+1)
+	case flagCoverage:
+		return applyCoverage(r, flags, v, next-i+1)
 	}
 	return applyLive(r, flags, v, next-i+1)
 }
@@ -295,6 +320,18 @@ func applyLive(r *cli.Runner, flags *reportcore.Flags, v string, consumed int) (
 	return consumed, 0, false
 }
 
+// applyCoverage sets the coverage posture. It is a posture, not a dimension:
+// like --live it never satisfies "gate needs at least one dimension", so a
+// bare gate stays a usage error instead of silently gating on coverage alone.
+func applyCoverage(r *cli.Runner, flags *reportcore.Flags, v string, consumed int) (int, int, bool) {
+	if !validCoverage(v) {
+		return 0, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+			"unknown --coverage posture '%s' for gate (want require|warn)", v)}), true
+	}
+	flags.Coverage = v
+	return consumed, 0, false
+}
+
 func validTier(s string) bool {
 	switch s {
 	case tierCritical, tierImportant, tierInfo:
@@ -311,4 +348,8 @@ func validLive(s string) bool {
 	default:
 		return false
 	}
+}
+
+func validCoverage(s string) bool {
+	return s == coverageRequire || s == coverageWarn
 }

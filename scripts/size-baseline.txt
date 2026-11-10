@@ -111,10 +111,78 @@
 # windows/amd64 12385280, windows/arm64 11136000. Only darwin/arm64 crosses, so
 # its ceiling moves to the next 10 kB above its measurement; the other five
 # stay put.
+# The verify static-gate bypass fixes (fetch-config and archive arms, the
+# secret-shaped variable arm, and the git exec-path/tar -I arms) add seven
+# regexes and widen three more. Measured here: darwin/amd64 12273696,
+# darwin/arm64 11271202, linux/amd64 12062880, linux/arm64 11075744,
+# windows/amd64 12391424, windows/arm64 11142144. Four ceilings cross and move
+# to the next 10 kB above their measurement; darwin/arm64 stays put.
+# The gate's live-thread dimension reads every host through the fetch adapter
+# (ReadLiveThreads, the Run-only commander adapter, and the report probe's
+# provider-branch removal). Measured here: darwin/amd64 12277936, darwin/arm64
+# 11271346, linux/amd64 12062880, linux/arm64 11075744, windows/amd64
+# 12393472, windows/arm64 11142656. The new code adds ~4-7 KiB of text, and
+# linux/arm64 crosses a 64 KiB segment boundary for another 65536; the five
+# ceilings that overflow move to the next 10 kB above their exact measurement,
+# and darwin/arm64 stays put.
+# Stacked on the verify gate fixes above, the combined build measures
+# darwin/amd64 12286128; that one ceiling moves to the next 10 kB, the other
+# five already hold the combined measurement.
+# The gate's coverage dimension (the stored-receipt reader, its verdict table,
+# the --coverage posture in the CLI parser, and the SDK's GateRequest field) is
+# a few KiB of text per target. Measured here: darwin/amd64 12294336,
+# darwin/arm64 11287874, linux/amd64 12079264, linux/arm64 11075744,
+# windows/amd64 12410368, windows/arm64 11158016. Five ceilings cross and move
+# to the next 10 kB above their measurement; linux/arm64 stays put.
+# The post secret-shape guard adds the shared value-only matcher, the scan that
+# runs before the first host call, the refusal and its hint, the override flag
+# on all three surfaces, and the receipt field. Measured here: darwin/amd64
+# 12290288, darwin/arm64 11271410, linux/amd64 12071072, linux/arm64 11075744,
+# windows/amd64 12402176, windows/arm64 11152896. Four ceilings cross and move
+# to the next 10 kB above their measurement; darwin/arm64 and linux/arm64 stay
+# put.
+# Stacked on the live-thread and coverage dimensions above, the combined
+# build measures darwin/amd64 12306832, linux/amd64 12087456, windows/amd64
+# 12421632, windows/arm64 11169280; those four move to the next 10 kB, the
+# two arm64 darwin/linux ceilings already hold.
+# verify --sandbox: the bwrap wrapper and its probe, the flag on the CLI/MCP/SDK
+# surfaces, and the additive sandboxed record fields. Measured here:
+# darwin/amd64 12290208, darwin/arm64 11287842, linux/amd64 12071072,
+# linux/arm64 11075744, windows/amd64 12405760, windows/arm64 11154432.
+# Five ceilings cross and move to the next 10 kB above; linux/arm64 stays put.
+# Stacked on the post secret guard and the gate dimensions above, the
+# combined build with the verify sandbox measures darwin/amd64 12323344,
+# darwin/arm64 11304722, linux/amd64 12099744, windows/amd64 12434944,
+# windows/arm64 11180544; those five move to the next 10 kB, linux/arm64
+# (11075744) still holds.
+# Grading a chunked bundle adds the stored chunk attestation: the manifest-versus
+# chunks[] tally in the shared evaluator, the chunk_coverage receipt on post and
+# record, and the gate's chunk verdict. Measured here: darwin/amd64 12315088,
+# darwin/arm64 11304658, linux/amd64 12095648, linux/arm64 11075744,
+# windows/amd64 12429824, windows/arm64 11175936. Four ceilings cross and move to
+# the next 10 kB at least 5 kB above their measurement; linux/arm64 stays inside
+# and keeps its 11080000 line. windows/amd64 stays inside too at 176 bytes of
+# headroom, which is under the ~1 KB local-vs-CI drift this file has already
+# recorded once, so its ceiling moves to the next 10 kB at least 5 kB above the
+# measurement instead of gambling the lane on 176 bytes.
+# Stacked with the verify sandbox, the chunk-attestation receipt measures
+# darwin/amd64 12327504, darwin/arm64 11321298, linux/amd64 12107936,
+# linux/arm64 11141280 (one more 64 KiB segment), windows/amd64 12443136,
+# windows/arm64 11187712; the four that cross move to the next 10 kB.
+# Hardening verify --sandbox (private PID namespace and /proc, empty /run,
+# fresh /dev, the wider credential table, --new-session, --die-with-parent)
+# adds the flag list and its resolvers. Measured here: darwin/amd64 12323472,
+# darwin/arm64 11304850, linux/amd64 12103840, linux/arm64 11075744,
+# windows/amd64 12438528, windows/arm64 11183104. Only linux/amd64 crosses,
+# by 3840 over its 12100000 line, so its ceiling moves to the next 10 kB
+# above the measurement; the other five stay put.
+# With the sandbox hardening stacked on top, the final PR 1 build measures
+# darwin/amd64 12331728, linux/amd64 12112032, windows/arm64 11190784; those
+# three move to the next 10 kB, the other three hold.
 deps 0
-darwin/amd64 12270000
-darwin/arm64 11280000
-linux/amd64 12060000
-linux/arm64 11020000
-windows/amd64 12390000
-windows/arm64 11140000
+darwin/amd64 12340000
+darwin/arm64 11330000
+linux/amd64 12120000
+linux/arm64 11150000
+windows/amd64 12450000
+windows/arm64 11200000

