@@ -301,6 +301,23 @@ func TestForgejoDraftGateAllowsStrangerDraft(t *testing.T) {
 	}
 }
 
+// TestForgejoDraftGateUnreadableUserRefuses proves the draft gate fails closed:
+// without the token user's login verdict cannot tell a stranger's draft from its
+// own, so the write is refused instead of risking publishing that draft.
+func TestForgejoDraftGateUnreadableUserRefuses(t *testing.T) {
+	t.Parallel()
+	dir := forgejoPostDir(t)
+	cmdr := forgejoCommander(t, forgejoAnswer("200 OK", forgejoReviewBody("COMMENT")))
+	cmdr.out[forgejoUserRoute] = scriptResult{stdout: "not json"}
+	attempt := forgejoPost(t, cmdr, dir, forgejoPayload(eventComment, ""))
+	if !strings.Contains(attempt.message, "could not name the token user") {
+		t.Fatalf("refusal = %q, want the unreadable user read named", attempt.message)
+	}
+	if n := countCalls(cmdr, forgejoWriteRoute); n != 0 {
+		t.Errorf("write calls = %d, want none before the draft gate completes", n)
+	}
+}
+
 // TestParseForgejoResponse proves the `-i` split: the status line, the header
 // block, and the body, with CRLF and LF both accepted and a header-only answer
 // read as an empty body.

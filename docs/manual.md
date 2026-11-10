@@ -2345,7 +2345,9 @@ an unanchored comment), a LEFT anchor on a path the change deletes is withheld
 line — each loss is counted in the envelope `warnings`. Before the write, `post`
 reads the token user and the PR's reviews: a `PENDING` review authored by that
 user refuses with a submit-or-discard hint, because Forgejo would attach these
-comments to that draft and submit the whole thing under this review's body.
+comments to that draft and submit the whole thing under this review's body. An
+unreadable user read refuses before the write too, because the draft could not
+be ruled out.
 Nothing on the wire is atomic on the server, so a failed write is never
 replayed: the warnings say how many comments may have landed. Two limits stay
 unverified: whether a left-side anchor on a deleted file resolves at all — `post`

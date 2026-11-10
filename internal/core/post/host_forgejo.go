@@ -45,7 +45,8 @@ const (
 	msgForgejoDropped      = "forgejo anchors need a numeric line — %d finding(s) withheld from the review"
 	msgForgejoDeleted      = "forgejo cannot anchor a comment on a file the change deletes — %d finding(s) withheld at submit"
 	msgForgejoMultiLine    = "forgejo anchors are single-line — %d multi-line anchor(s) anchored at their end line"
-	msgForgejoDraftUnknown = "forgejo could not name the token user — an unsubmitted review draft on this PR would receive these comments"
+	msgForgejoDraftUnknown = "post failed: forgejo could not name the token user, so an unsubmitted review draft " +
+		"could not be ruled out — nothing was written; re-run when the read works"
 
 	msgForgejoNoCommit = "post failed: the payload carries no commit_id — forgejo would pin the review " +
 		"to the current head instead of the reviewed one; re-fetch to record the head"
@@ -173,8 +174,7 @@ func forgejoDraftGate(ctx context.Context, cmdr Commander, auth []string, url, d
 ) (postAttempt, bool) {
 	me, err := forgejoSelfLogin(ctx, cmdr, auth, forgejo.UserURL(url))
 	if err != nil {
-		*warnings = append(*warnings, msgForgejoDraftUnknown)
-		return postAttempt{}, true
+		return postRefusal(dir, msgForgejoDraftUnknown, *warnings), false
 	}
 	reviews, err := forgejoReviews(ctx, cmdr, auth, url)
 	if err != nil {
