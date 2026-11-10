@@ -205,10 +205,20 @@
 # Stacked with GitLab incremental and the doctor/adopt slice, the ready and
 # calibrate GitLab legs measure darwin/amd64 12382064 and linux/amd64 12161184;
 # those two move to the next 10 kB, the others hold.
+# Forgejo submit (STA-313, H4): the shared wire contract behind internal/forgejo,
+# the post seam that absorbed the GitHub/GitLab branches, the curl writer with
+# its anchor withholding and draft gate, and the capability row with its
+# conformance and docs. Measured here: darwin/amd64 12394080, darwin/arm64
+# 11371874, linux/amd64 12173472, linux/arm64 11141280, windows/amd64 12507136,
+# windows/arm64 11245056. Five ceilings cross and move to the next 10 kB at
+# least 5 kB above their measurement; linux/arm64 stays inside and keeps its
+# 11150000 line.
+# Stacked on the slices above, the combined PR 2 build measures darwin/amd64 12444400, darwin/arm64 11406098, linux/amd64 12222624, linux/arm64 11206816, windows/amd64 12556800, windows/arm64 11291136;
+# those move to the next 10 kB, the others hold.
 deps 0
-darwin/amd64 12390000
-darwin/arm64 11370000
-linux/amd64 12170000
-linux/arm64 11150000
-windows/amd64 12500000
-windows/arm64 11240000
+darwin/amd64 12450000
+darwin/arm64 11410000
+linux/amd64 12230000
+linux/arm64 11210000
+windows/amd64 12560000
+windows/arm64 11300000
