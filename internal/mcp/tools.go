@@ -87,6 +87,7 @@ type tool struct { //nolint:govet // the grouping documents the descriptor; alig
 	idempotent         bool
 	openWorld          bool
 	operatorOnly       bool
+	operatorWrite      func(any) bool
 	writeArgs          map[string]string
 	refusedArgs        map[string]bool
 	decode             func(json.RawMessage) (any, error)
@@ -134,8 +135,9 @@ func allTools(readOnly, operator bool) []*tool {
 		}, toolDeps{}, decodeConfig, wireConfig, invokeConfig),
 		dataTool(&toolSpec{
 			name: "doctor",
-			description: "Preflight gh auth, git, and storage. Call first when a verb " +
-				"fails for environmental reasons. Reads local tools and config; writes nothing.",
+			description: "Preflight the configured code host's CLI and auth, git, and storage. " +
+				"Call first when a verb fails for environmental reasons; provider picks the host " +
+				"(default github). Reads local tools and config; writes nothing.",
 			omit: omitPositionals,
 			meta: toolMeta{title: "Preflight environment", readOnly: true, idempotent: true},
 		}, toolDeps{commander: coreexec.Runner{}}, decodeDoctor, wireDoctor, doctorcore.Run,
@@ -190,10 +192,10 @@ func allTools(readOnly, operator bool) []*tool {
 		}, toolDeps{}, decodeNext, wireNext, invokeNext),
 		dataTool(&toolSpec{
 			name: "post",
-			description: "Post exactly one review to GitHub or GitLab, or preview with dryRun. " +
+			description: "Post exactly one review to GitHub, GitLab, or Forgejo, or preview with dryRun. " +
 				"Call once after review.json is final; never write a review note. A secret-shaped " +
 				"value refuses post-secret-shaped (allowSecretValues publishes it). Writes post.json; " +
-				"GitLab posts a bound request-changes as a comment and records it in withheld[].",
+				"GitLab posts a bound request-changes as a comment, recorded in withheld[].",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Post review", destructive: true, idempotent: true, openWorld: true},
 		}, toolDeps{commander: fetchRunner}, decodePost, wirePost, postcore.Run,
@@ -234,13 +236,13 @@ func allTools(readOnly, operator bool) []*tool {
 		dataTool(&toolSpec{
 			name: "threads",
 			description: "Refresh the normalized review-thread feed " +
-				"(.verdict/state/<pr>/threads.json) from the host. Call after pushing fixes to re-read " +
-				"resolution state before a re-review or merge readiness. Reads the host; writes " +
-				"threads.json only.",
+				"(.verdict/state/<pr>/threads.json) from the host, or with resolve close verdict-authored " +
+				"threads. Call after pushing fixes to re-read resolution state before a re-review or merge readiness. " +
+				"Reads the host; writes threads.json and, on resolve, threads-resolve.json.",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Refresh review threads", idempotent: true, openWorld: true},
-		}, toolDeps{}, decodeThreads, wireThreads, fetchcore.RunThreads,
-			func(resp *fetchcore.ThreadsResponse) *jq.Obj { return wireData(resp.Data) }),
+		}, toolDeps{commander: fetchRunner}, decodeThreads, wireThreads, fetchcore.RunThreads,
+			wireThreadsData),
 		dataTool(&toolSpec{
 			name: "trend",
 			description: "Roll up review outcomes across fetched bundles. Call for a cross-PR " +
@@ -269,6 +271,11 @@ func allTools(readOnly, operator bool) []*tool {
 			meta:     toolMeta{title: "Run verification", destructive: true, openWorld: true},
 		}, toolDeps{commander: coreexec.Watchdog{}}, decodeVerify, wireVerify, verifycore.Run,
 			func(resp *core.VerifyResponse) *jq.Obj { return wireData(resp.Data) }),
+	}
+	for _, t := range tools {
+		if t.name == "threads" {
+			t.operatorWrite = threadsResolveWrite
+		}
 	}
 	kept := make([]*tool, 0, len(tools))
 	for _, t := range tools {
@@ -373,6 +380,22 @@ func newTool[Req any](
 		return run(ctx, req)
 	}
 	return t
+}
+
+// wireThreadsData renders either half of the threads tool: the refreshed feed
+// tally or the resolve receipt profile.
+func wireThreadsData(resp *fetchcore.ThreadsResponse) *jq.Obj {
+	if resp.Resolve != nil {
+		return resp.Resolve.Wire()
+	}
+	return wireData(resp.Data)
+}
+
+// threadsResolveWrite reports whether one threads request is the operator-only
+// resolve mode, so the server can refuse it without --operator.
+func threadsResolveWrite(raw any) bool {
+	req, ok := raw.(*fetchcore.ThreadsRequest)
+	return ok && req.Resolve
 }
 
 func invokeService[R, S any](

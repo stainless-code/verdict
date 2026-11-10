@@ -266,6 +266,15 @@ func documents() []document {
 			additionalProperties: false,
 		},
 		{
+			name:  "threads-resolve",
+			title: "threads-resolve.json — thread-resolve receipt",
+			root:  reflect.TypeFor[ThreadsResolveReceipt](),
+			defs: []definition{
+				{typ: reflect.TypeFor[ThreadsResolveSkip](), name: "skip"},
+			},
+			additionalProperties: false,
+		},
+		{
 			name:  "usage",
 			title: "usage.json — explicitly handed spend record",
 			anyOf: []reflect.Type{reflect.TypeFor[Usage](), reflect.TypeFor[[]Usage]()},
@@ -339,6 +348,8 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[DoctorCheck](), name: "doctorCheck"},
 		{typ: reflect.TypeFor[CheckTreeData](), name: "checkTreeData"},
 		{typ: reflect.TypeFor[ThreadsData](), name: "threadsData"},
+		{typ: reflect.TypeFor[ThreadsResolveData](), name: "threadsResolveData"},
+		{typ: reflect.TypeFor[ThreadsResolveSkip](), name: "threadsResolveSkip"},
 		{typ: reflect.TypeFor[VerifyData](), name: "verifyData"},
 		{typ: reflect.TypeFor[TrendData](), name: "trendData"},
 		{typ: reflect.TypeFor[TrendStatuses](), name: "trendStatuses"},

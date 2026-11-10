@@ -31,15 +31,15 @@ export const faq: Qa[] = [
     q: "Which hosts does it work with?",
     a: [
       "`fetch` reads GitHub, GitLab, GitCafe, Forgejo, Bitbucket and Azure DevOps. On all six, `record`, `report`, `triage`, `show` and `next` work on the fetched bundle.",
-      "`post` submits to GitHub and GitLab: GitLab takes the approval but has no request-changes event, so a bound request-changes posts as a comment and `post.json` records `withheld[]`.",
-      "`adopt`, `ready`, the live `calibrate` join and incremental re-review need a GitHub bundle. On the other hosts they refuse with a typed error; `calibrate --probe` is offline and works on any bundle.",
+      "`post` submits to GitHub, GitLab, and Forgejo: GitLab takes the approval but has no request-changes event, so a bound request-changes posts as a comment and `post.json` records `withheld[]`.",
+      "`adopt` reaches any host verdict can post to, while `ready` and the live `calibrate` join run on GitHub and GitLab. Elsewhere they refuse with a typed error; `calibrate --probe` is offline and works on any bundle.",
     ],
   },
   {
     q: "Can it review something other than a PR?",
     a: [
       "Yes. `fetch-local owner/repo work` builds a review bundle from git alone: a branch against a base (`--base main`), a commit range (`--range A..B`), staged changes (`--staged`), a stash entry (`--stash [n]`), or an isolated checkout (`--worktree`).",
-      "`record`, `report`, `triage`, `show` and `next` all run on the local bundle. Only `post` needs a GitHub PR, and it refuses a local bundle with `no-pr-target` instead of inventing a target.",
+      "`record`, `report`, `triage`, `show` and `next` all run on the local bundle. Only `post` needs a PR target, and it refuses a local bundle with `no-pr-target` instead of inventing one.",
     ],
   },
 ];

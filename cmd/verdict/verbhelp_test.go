@@ -18,7 +18,7 @@ func TestVerbHelpPrintsOnlyThatVerb(t *testing.T) {
 		{want: "  post  <owner/repo> <pr>", notWant: "  fetch <owner/repo>", args: []string{"post", "--help"}},
 		{want: "--review-file", notWant: "  triage <owner/repo>", args: []string{"post", "acme/app", "7", "-h"}},
 		{want: "learn --retire <id>", notWant: "  init [", args: []string{"learn", "--help"}},
-		{want: "  doctor [--json]", notWant: "usage: verdict", args: []string{"doctor", "--help"}},
+		{want: "  doctor [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure]", notWant: "usage: verdict", args: []string{"doctor", "--help"}},
 	} {
 		code, out, derr := runCapture(t, tc.args)
 		if code != 0 || derr != "" || !strings.Contains(out, tc.want) || strings.Contains(out, tc.notWant) {

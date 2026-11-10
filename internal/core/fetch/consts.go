@@ -104,6 +104,7 @@ const (
 	providerGitCafe   = "gitcafe"
 	providerGitHub    = "github"
 	providerGitLab    = "gitlab"
+	gitlabProjects    = "projects/"
 	stateActive       = "active"
 	stateClosed       = "closed"
 	stateMerged       = "merged"

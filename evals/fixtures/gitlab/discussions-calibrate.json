@@ -1,0 +1,44 @@
+[
+  {
+    "id": "d1",
+    "notes": [
+      {
+        "id": 101,
+        "type": "DiffNote",
+        "body": "Fixed body here with enough substance.\n\n<!-- verdict-finding sig=c111111111111111111111111111111111111111 -->",
+        "position": {
+          "new_path": "notes.txt",
+          "new_line": 2,
+          "old_line": null
+        },
+        "author": {
+          "username": "rev"
+        },
+        "created_at": "2026-11-01T10:00:00Z",
+        "resolved": true,
+        "system": false
+      }
+    ]
+  },
+  {
+    "id": "d2",
+    "notes": [
+      {
+        "id": 102,
+        "type": "DiffNote",
+        "body": "Open body here with enough substance.\n\n<!-- verdict-finding sig=b222222222222222222222222222222222222222 -->",
+        "position": {
+          "new_path": "notes.txt",
+          "new_line": 2,
+          "old_line": null
+        },
+        "author": {
+          "username": "rev"
+        },
+        "created_at": "2026-11-01T11:00:00Z",
+        "resolved": false,
+        "system": false
+      }
+    ]
+  }
+]

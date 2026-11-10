@@ -60,7 +60,7 @@ bundle on disk. `fetch` writes `.verdict/state/<pr>/` with `PR.json`, and `fetch
 `.verdict/state/local-<name>/` with `source.json`; both carry `full.diff`, `toc.txt` and
 `roles.txt`, and nothing stays running. A local bundle needs no host login, no app
 install and no account. The diff goes only to the model your agent runs, which you pick.
-The same files feed `report --check` in CI and `post` on GitHub, so the gate and the
+The same files feed `report --check` in CI and `post` on GitHub, GitLab, or Forgejo, so the gate and the
 review read one artifact.
 
 ## The long tail

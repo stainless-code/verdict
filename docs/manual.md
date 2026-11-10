@@ -204,7 +204,7 @@ typical level; `mixed` means the level depends on whether `record` can drop or
 move the part (warning) or must refuse it (error). The published code set
 (also the `problem.code` enum in `envelope.schema.json`). `record --dry-run`
 validates local and provider-PR bundles and writes nothing; a real `record` on a
-GitHub PR still refuses `not-local` (use `post`).
+PR bundle still refuses `not-local` (use `post`).
 
 Before checking, `record` runs `NormalizeReview` over the agent's bytes: one
 whole-document code fence is unwrapped, prose around exactly one balanced JSON
@@ -277,6 +277,19 @@ capped at 8 KiB with a `truncated` flag, `created_at`). Top level: `provider`,
 `pr`, `head_sha`, `fetched_at`, `truncated`. `verdict threads owner/repo N
 [--provider …]` re-reads only the thread surface and rewrites only this file,
 so a re-review after pushing fixes sees current resolution state.
+`verdict threads resolve owner/repo N [--thread <id>]... [--dry-run]` closes
+self-authored threads: a thread is resolvable only when its root carries
+verdict's marker and its root author equals the authenticated token user the
+run posts as (read once per run; an unreadable login refuses before any
+write). Without `--thread`, every open self-authored thread whose linked
+finding the local store marks addressed; a forged-marker thread skips as
+`not-self-authored`. With `--thread`, only the named ids, which must still be
+self-authored (a human or forged thread refuses `not-verdict-authored`).
+`--dry-run` lists the plan and makes zero writes; a real run makes one host
+write per thread, marks them resolved in `threads.json`, and writes
+`threads-resolve.json` (provider, repo, PR, head, timestamp, `resolved[]`,
+`skipped[]` with reasons). GitHub and GitLab carry the mutation; Forgejo
+refuses typed because its API has no documented resolve endpoint.
 `post.json` and `record.json` carry `schema_version: "1"`.
 
 ### Bundle namespace (core files vs `x-*`)
@@ -284,6 +297,7 @@ so a re-review after pushing fixes sees current resolution state.
 A bundle dir holds these core/script artifacts (`PR.json`/`source.json`,
 `full.diff`, `toc.txt`, `roles.txt`, `review.json`, `findings.json`, `findings.dryrun.json`, `record.json`,
 `post.json`, `store.json`, `hunks.tsv`, `reviews.json`, `inline.json`, `threads.json`,
+`threads-resolve.json`,
 `panel`, `patch.json`, `verification.json`, `incremental.diff`, `kb.txt`,
 `sensitive.txt`, `kb-recall.json`, `cost.json`, `budget.json`, `fix.json`,
 `kb-grades.jsonl`, `controls.json`, `controls/`, `chunks/`
@@ -312,15 +326,15 @@ and `plan.txt` is the fence label for its rendered section in the
 Seven artifacts explain what a run knew and what it proved. Each row states
 the artifact, who writes it, and whether a verb gates on it.
 
-| Artifact                  | What it is                                                                                                                                                                                                                                                             | Who writes it                                                 | Gates?                                                                                                                                                                                                                                                                                                                                 |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `run.json`                | The typed per-run capture: resolved defaults, per-file resolutions, plan, spend and privacy views, trusted-base inventory hashes, base SHA, the `inputs_sha256` digest, and appended check observations.                                                               | `fetch`/`fetch-local`; `post` appends observations            | Yes, except `config --preview` (see below). `post`, `record`, `triage`, `report`, `ready`, `config --explain`, and `verify --group` verify it; a run bundle deleted while its controls snapshot remains, or an edited captured input, refuses `controls-stale`; a bare bundle dir reads with a warning and no repository requirements. |
-| `validation-<group>.json` | The deep-validation receipt for one plan group: run, inputs digest, group, reviewed and execution heads, canonical root, command, exit, timeout and sandbox flags, status, and a redacted output tail.                                                                 | `verify --group <id> --command <cmd>`                         | Yes. `post` refuses a binding approval while any `depth: "deep"` group lacks a current receipt; `ready` reports the gap as `profile-work`.                                                                                                                                                                                             |
-| `filesource.json`         | Provenance for the PR file list: `source` (`paged` or `cli`), `cli_cap` (100), `provider_ceiling` (3000), `count`, and `truncated` or `paging_error`.                                                                                                                  | GitHub `fetch`, when the CLI list arrives at its 100-file cap | No. It is an advisory coverage note: a paging failure warns and the run proceeds with the CLI's first 100 files.                                                                                                                                                                                                                       |
-| `full.raw.diff`           | The raw pre-exclusion diff, kept as the patch-identity input when a filtered diff would otherwise replace it. No shipped verb writes it today: `fetch` writes the host diff to `full.diff` and records the filtered hash in `run.json` without writing filtered bytes. | Nothing today (a future exclusion pass)                       | Partly. When present it feeds the identity, and `identity.json`'s `raw_diff_sha256` must reproduce it; a present-but-unreadable file refuses instead of falling back to `full.diff`. Absence is normal.                                                                                                                                |
-| `sensitive.txt`           | The advisory manifest of secret-adjacent paths: filename, extension, and added-line content hits, one path and reason per line, behind a comment header.                                                                                                               | `fetch`/`fetch-local` (and every provider fetch)              | No. It is advisory, not a gate: flagged paths stay reviewable evidence, the file is removed when nothing is flagged, and its header asks reviewers to name the path, never the value.                                                                                                                                                  |
-| `incremental.diff.note`   | One `incrementalUnavailable: <host stderr head>` line explaining why the GitHub compare read produced no delta.                                                                                                                                                        | GitHub `fetch --base-sha/--since` on a failed compare         | No. No verb reads it; it explains the absent `incremental.diff` beside it while the full-diff review proceeds.                                                                                                                                                                                                                         |
-| `plan.txt`                | The combined plan as the `--show-prompts` dump renders it, fenced under this label: one line per group with its stable id, profile, depth, `max_lenses`, checks, files, scopes, panel, panel source, effort, and per-group cap.                                        | `fetch`/`fetch-local --show-prompts`                          | No. It is a rendered view for the agent; `run.json` holds the captured plan every gate reads.                                                                                                                                                                                                                                          |
+| Artifact                  | What it is                                                                                                                                                                                                                                                             | Who writes it                                                                                                                 | Gates?                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `run.json`                | The typed per-run capture: resolved defaults, per-file resolutions, plan, spend and privacy views, trusted-base inventory hashes, base SHA, the `inputs_sha256` digest, and appended check observations.                                                               | `fetch`/`fetch-local`; `post` appends observations                                                                            | Yes, except `config --preview` (see below). `post`, `record`, `triage`, `report`, `ready`, `config --explain`, and `verify --group` verify it; a run bundle deleted while its controls snapshot remains, or an edited captured input, refuses `controls-stale`; a bare bundle dir reads with a warning and no repository requirements. |
+| `validation-<group>.json` | The deep-validation receipt for one plan group: run, inputs digest, group, reviewed and execution heads, canonical root, command, exit, timeout and sandbox flags, status, and a redacted output tail.                                                                 | `verify --group <id> --command <cmd>`                                                                                         | Yes. `post` refuses a binding approval while any `depth: "deep"` group lacks a current receipt; `ready` reports the gap as `profile-work`.                                                                                                                                                                                             |
+| `filesource.json`         | Provenance for the PR file list: `source` (`paged` or `cli`), `cli_cap` (100), `provider_ceiling` (3000), `count`, and `truncated` or `paging_error`.                                                                                                                  | GitHub `fetch`, when the CLI list arrives at its 100-file cap                                                                 | No. It is an advisory coverage note: a paging failure warns and the run proceeds with the CLI's first 100 files.                                                                                                                                                                                                                       |
+| `full.raw.diff`           | The raw pre-exclusion diff, kept as the patch-identity input when a filtered diff would otherwise replace it. No shipped verb writes it today: `fetch` writes the host diff to `full.diff` and records the filtered hash in `run.json` without writing filtered bytes. | Nothing today (a future exclusion pass)                                                                                       | Partly. When present it feeds the identity, and `identity.json`'s `raw_diff_sha256` must reproduce it; a present-but-unreadable file refuses instead of falling back to `full.diff`. Absence is normal.                                                                                                                                |
+| `sensitive.txt`           | The advisory manifest of secret-adjacent paths: filename, extension, and added-line content hits, one path and reason per line, behind a comment header.                                                                                                               | `fetch`/`fetch-local` (and every provider fetch)                                                                              | No. It is advisory, not a gate: flagged paths stay reviewable evidence, the file is removed when nothing is flagged, and its header asks reviewers to name the path, never the value.                                                                                                                                                  |
+| `incremental.diff.note`   | One `incrementalUnavailable: <host stderr head>` line explaining why the GitHub or GitLab compare read produced no delta.                                                                                                                                              | GitHub/GitLab `fetch --base-sha/--since` on a failed compare, or any other provider on the flag (naming the unsupported host) | No. No verb reads it; it explains the absent `incremental.diff` beside it while the full-diff review proceeds.                                                                                                                                                                                                                         |
+| `plan.txt`                | The combined plan as the `--show-prompts` dump renders it, fenced under this label: one line per group with its stable id, profile, depth, `max_lenses`, checks, files, scopes, panel, panel source, effort, and per-group cap.                                        | `fetch`/`fetch-local --show-prompts`                                                                                          | No. It is a rendered view for the agent; `run.json` holds the captured plan every gate reads.                                                                                                                                                                                                                                          |
 
 `config --preview` is the exception: when `run.json` is absent it can fall back
 to its file list, though it still verifies `controls.json` and may lose
@@ -581,6 +595,12 @@ missing or stale receipt as required work without executing anything.
 `ready` stays advisory (exit 0); `ready --check` turns the same list into the
 machine exits 0 ready, 1 blockers-or-wait, 2 usage, 3 tool error.
 
+On GitLab the same blockers read through `glab`: the merge request carries
+`draft`, `has_conflicts` (plus a `conflict` `detailed_merge_status`), and the
+`description`, while CI comes from the merge request's pipeline list (a failed
+or canceled pipeline is one failing check, falling back to the head pipeline
+status when the list is empty) and threads come from the discussions list.
+
 ### Severity floors
 
 Two typed floors decide what is shown and what is published:
@@ -696,7 +716,8 @@ Distinct from `prompts/ci.md`'s agent-written
 `report --output` at that path; the verb's markdown carries `report-machine`
 markers, the agent's does not. Severity is stored at write time (unknown → null,
 prose emoji never parsed) — rank uses status, then severity, then rigor, then
-anchored/inBounds, then path/line/sig. `doctor` preflights the harness; `calibrate`
+anchored/inBounds, then path/line/sig. `doctor` preflights one code host (the
+one `--provider` names, `github` by default); `calibrate`
 joins findings against live ground truth, read-only.
 
 `show --json` returns the finding in `data.item` (the raw store record in key
@@ -754,7 +775,7 @@ instructs the model to treat all fenced content as evidence, never
 instructions. Thread files (`reviews.json`, `inline.json`) are deliberately
 excluded: the dump reproduces the initial-review reading list (the fetch
 `next:` line), and threads are prior-review context consumed live via
-`gh api` on the incremental path — never bundle files in the prompt. This
+`gh api`/`glab api` on the incremental path — never bundle files in the prompt. This
 section is the format contract: the binary reproduces it exactly (same
 order, markers, nonce grammar, and section labels).
 
@@ -953,8 +974,8 @@ the arguments. Closed vocabularies and numeric bounds the structs declare
 (`status`, `kind`, check tier, `preset`, `rigor`, `approve`, provider names)
 become schema `enum`/`minimum`/`maximum` keywords, so a bad value is a schema
 error the model sees before calling instead of a runtime refusal. `post` writes
-a review and sends it to the host (GitHub or GitLab), so it is not exposed
-under `--read-only`.
+a review and sends it to the host (GitHub, GitLab, or Forgejo), so it is not
+exposed under `--read-only`.
 
 `--read-only` exposes eight read tools (`report`, `next`, `show`, `trend`,
 `ready`, `doctor`, `check-tree`, `config`) plus `record` limited to its `dry_run: true`
@@ -963,7 +984,9 @@ there is an `isError` `bad-flags` result naming `dry_run`; the tool keeps
 `readOnlyHint: false` because the same tool writes by default. `report` writes
 nothing there either: the surface drops its `output` and `sarif` arguments and
 refuses them as unknown. `threads` is not exposed at all, because it rewrites
-`.verdict/state/<pr>/threads.json` from the host. Every review verb except the
+`.verdict/state/<pr>/threads.json` from the host; its `resolve` mode is
+operator-only, because it closes host threads, and a server started without
+`--operator` refuses that call naming the flag. Every review verb except the
 human-owned `triage` is exposed by default because the host already authorizes
 the binary and its credentials. A call to a tool the flags hide is a JSON-RPC
 `-32602` error whose message and `data` name the tool and the flag combination
@@ -971,12 +994,14 @@ that exposes it (`post` under `--read-only`, `triage` without `--operator`), so
 a hidden verb is never reported as an unknown one; a truly unknown name still
 answers `unknown tool`.
 `--operator` adds `triage` (20 tools) for an operator's own assistant that is
-allowed to flip statuses; it is never the default. Each `tools/list` entry
+allowed to flip statuses, and it unlocks the `threads` resolve mode; it is
+never the default. Each `tools/list` entry
 carries a short `title` plus the four MCP behavior hints (`readOnlyHint`,
 `destructiveHint`, `idempotentHint`, `openWorldHint`) derived from the verb's
 real behavior: `post` is destructive and open-world, `fetch` is open-world,
 `report` is idempotent and carries no `readOnlyHint` because `output`/`sarif`
-write files, and `threads` carries none because it writes `threads.json`.
+write files, and `threads` carries none because it writes `threads.json` and
+can resolve host threads.
 Descriptions state what the tool does,
 when to call it, and what it writes or sends. `initialize` returns an
 `instructions` string with the same doctrine (fetch, review, post; one review;
@@ -1076,9 +1101,20 @@ with `--live strict` (or accept the loudly-skipped local verdict with
 
 ### Doctor preflight
 
-`doctor` preflights the harness with no repo/PR args and no writes: `gh-cli`,
-`gh-auth`, and `storage-writable` hard-fail the run (exit 1); `token-scopes`,
-`ps`, `git`, and `api-reachable` warn only and never fail it.
+`doctor` preflights one code host with no repo/PR args and no writes: the
+host CLI, its auth, and `storage-writable` hard-fail the run (exit 1);
+`token-scopes`, `ps`, `git`, and `api-reachable` warn only and never fail it.
+`--provider github|gitlab|gitcafe|forgejo|bitbucket|azure` takes the same enum
+and the same `bad-provider` refusal as `fetch --provider`, and defaults to
+`github`, so a bare `doctor` keeps its GitHub rows byte for byte. Each host
+reads through its own CLI — `gh`, `glab`, `cafe` — and `forgejo`, `bitbucket`,
+and `azure` check the tool their fetch path shells (`curl`, `curl`, `az`) plus
+the credential variables that path reads (`FORGEJO_HOST`+`FORGEJO_TOKEN`;
+`BITBUCKET_TOKEN` or `BITBUCKET_USERNAME`+`BITBUCKET_PASSWORD`;
+`AZURE_DEVOPS_ORG`+`AZURE_DEVOPS_EXT_PAT`), reporting presence only and never a
+value. A host's rows carry its own names (`gh-cli`/`gh-auth` for GitHub,
+`glab-cli`/`glab-auth` for GitLab), so a preflight never shows a `gh` row for a
+host that does not use `gh`.
 The scope rows reuse the single existing `gh api user` scopes-header read —
 no new network calls. Grants below the baseline (`repo`/`public_repo` for the
 reads the tool performs) warn on the `token-scopes` row; grants above it warn
@@ -1883,7 +1919,9 @@ for that instant instead of parsing the prose.
 Upgrade arc: review locally, then `fetch owner/repo N` and
 `adopt owner/repo N --from local-<name>`. Adopt copies findings with an `adopted`
 history event and re-resolves anchors against the PR hunks (unmatched paths land
-`anchored:false`, never dropped), refuses into a non-empty store. From there `post`
+`anchored:false`, never dropped), refuses into a non-empty store, and needs a
+target verdict can post to (`forgejo`, `github`, `gitlab`) — a host with no submit path
+refuses `provider-unimplemented` naming it. From there `post`
 and `calibrate` proceed normally — predictions recorded offline get settled against
 live ground truth.
 
@@ -2207,12 +2245,16 @@ shape from another host (`PR.json` normalized to one schema: `provider`,
 `write_toc_roles` and the whole validate+merge path run unchanged — anchors
 validate against `full.diff` hunks regardless of host. `record`, `report`,
 `triage`, `show`, `next` work on provider bundles as-is. `post` submits to
-GitHub and GitLab; `post` on the other hosts, plain `calibrate`, and
-`adopt`-into refuse non-GitHub bundles, and `calibrate --probe` grades any
-bundle offline. The refusal names the gap rather than an impossibility: Forgejo
-can author inline comments through its API even though its CLI cannot, but each
-remaining host still needs its own submit path with the comments → summary body
-→ verdict-last ordering laid out below. `fetch --json` publishes the facts in
+GitHub, GitLab, and Forgejo; `ready` advises on GitHub and GitLab, plain
+`calibrate` joins live threads on both, and `adopt` merges into any bundle
+verdict can post to (its re-anchor reads the stored hunks and never shells a
+host CLI). `post` on `gitcafe`, `bitbucket`, and `azure`, and `ready` and plain
+`calibrate` on any host but GitHub and GitLab, refuse typed, while `adopt` into
+a host without a submit path refuses `provider-unimplemented` naming the host,
+and `calibrate --probe` grades any bundle offline. The refusal names the gap
+rather than an impossibility: each remaining host still needs its own submit
+path, with the comments → summary body → verdict-last ordering laid out below.
+`fetch --json` publishes the facts in
 `data.capabilities`: `provider`, `fetch`, `post`, `inline_anchors`, `approve`,
 `request_changes`, `thread_resolution`, `review_verdicts`, and `unsupported`,
 so an agent can plan before it writes a review. `approve` and
@@ -2222,10 +2264,13 @@ review event, so a bound request-changes posts the discussions plus the summary
 note and warns that the verdict did not bind. `review_verdicts` stays as the
 compatibility sum `approve && request_changes` for consumers written before the
 split, and carries no reason of its own — the two flags explain it; new readers
-branch on those two flags. `thread_resolution` is false on every host: verdict
-ships no resolve call, so resolution stays a host-CLI step the prompts hand
-back to the agent. `unsupported` carries one machine-readable code per absent
-capability, keyed by capability name:
+branch on those two flags. `thread_resolution` is true on GitHub and GitLab:
+`threads resolve` closes a verdict-authored thread through `resolveReviewThread`
+or GitLab's discussion resolved flag.
+Forgejo has no documented resolve endpoint, so it reads false there and on
+every fetch-only host; resolution stays a host-CLI step the prompts hand back
+to the agent. `unsupported` carries
+one machine-readable code per absent capability, keyed by capability name:
 
 | Code                       | Meaning                                                                         |
 | -------------------------- | ------------------------------------------------------------------------------- |
@@ -2233,24 +2278,38 @@ capability, keyed by capability name:
 | `no-request-changes-event` | the host has no request-changes review event; the post degrades, with a warning |
 | `no-approve-verdict`       | the host posts but cannot record an approval                                    |
 | `no-inline-anchors`        | the host takes a body but no anchored comment                                   |
-| `no-resolve-mutation`      | verdict has no thread-resolve call on any host                                  |
+| `no-resolve-mutation`      | verdict has no thread-resolve call for this host                                |
 | `unknown-host`             | the provider is not one verdict reads                                           |
 
-| Provider    | Fetch reads                                                                                               | Auth                                                             | Gaps (v1)                                                                                                     |
-| ----------- | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `gitlab`    | `glab mr view/diff/note list/discussions` + changes API                                                   | `glab auth login` (or `GITLAB_TOKEN`)                            | experimental note commands; no incremental (`--base-sha` refused); `post` approves but cannot request changes |
-| `gitcafe`   | `cafe pr view/diff/reviews/comments`                                                                      | `cafe auth login` (or `CAFE_TOKEN`)                              | reads `.data.*` envelope; threads paged via `--cursor`; hunks render only when `.patch` text ships            |
-| `forgejo`   | REST `curl` (`$FORGEJO_HOST/api/v1`, `$FORGEJO_TOKEN`) — neither `fj` nor `tea` exposes JSON review reads | token env                                                        | inline threads aggregated per review id                                                                       |
-| `bitbucket` | REST `curl` (`$BITBUCKET_TOKEN` Bearer or user+password Basic)                                            | token env                                                        | diffstat/comments paginated server-side; no grouped submit                                                    |
-| `azure`     | `az repos pr show` + `az rest` threads/iterations; diff via temp-clone `git fetch` of the two SHAs        | `az login` / `AZURE_DEVOPS_EXT_PAT`, `AZURE_DEVOPS_ORG` required | needs git reachability to the repo remote; no org/project auto-detect                                         |
+| Provider    | Fetch reads                                                                                                                                                              | Auth                                                             | Gaps (v1)                                                                                                  |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `gitlab`    | `glab mr view/diff/note list/discussions` + changes/compare API; `ready` adds the MR, pipelines, and discussions reads, `calibrate` the discussions + repository compare | `glab auth login` (or `GITLAB_TOKEN`)                            | experimental note commands; incremental via repository compare; `post` approves but cannot request changes |
+| `gitcafe`   | `cafe pr view/diff/reviews/comments`                                                                                                                                     | `cafe auth login` (or `CAFE_TOKEN`)                              | reads `.data.*` envelope; threads paged via `--cursor`; hunks render only when `.patch` text ships         |
+| `forgejo`   | REST `curl` (`$FORGEJO_HOST/api/v1`, `$FORGEJO_TOKEN`) — neither `fj` nor `tea` exposes JSON review reads                                                                | token env                                                        | inline threads aggregated per review id; a review comment anchors on a file line number                    |
+| `bitbucket` | REST `curl` (`$BITBUCKET_TOKEN` Bearer or user+password Basic)                                                                                                           | token env                                                        | diffstat/comments paginated server-side; no grouped submit                                                 |
+| `azure`     | `az repos pr show` + `az rest` threads/iterations; diff via temp-clone `git fetch` of the two SHAs                                                                       | `az login` / `AZURE_DEVOPS_EXT_PAT`, `AZURE_DEVOPS_ORG` required | needs git reachability to the repo remote; no org/project auto-detect                                      |
 
 State maps to open|closed|merged at fetch (`opened`→open, `active`→open,
 `ABANDONED`→closed, `SUPERSEDED`→closed, `completed`/`merged`→merged;
-anything else lands `unknown`, which `post` would refuse — but post is
-refused earlier anyway). File +/- stats come from the host API where it
+anything else lands `unknown`, and `post` refuses any non-open PR
+(`pr-not-open`) before it submits). File +/- stats come from the host API where it
 provides them (GitCafe, Forgejo, Bitbucket); otherwise they are derived
 from the reviewed diff itself (`git apply --numstat`), so the coverage
 manifest always describes the fetched object.
+
+Incremental re-review (`fetch --base-sha` / `--since`) runs on GitHub and
+GitLab. On GitLab the delta is `glab api
+projects/<id>/repository/compare?from=<base>&to=<head>`: the response's
+per-file `diff` entries join into `incremental.diff` under the same
+`diff --git` headers the GitHub compare path writes. A failed compare still
+finishes the fetch — it writes `incremental.diff.note` beside the absent
+delta and keeps `glab`'s stderr in `.compare.err`, exactly the GitHub
+posture. Hosts with no compare adapter (GitCafe, Forgejo, Bitbucket, Azure)
+accept the flag but write the note naming the unsupported provider instead
+of a delta; the fetch never fails for it. The delta then feeds the ordinary
+record/advance path: `record` reopens an addressed finding whose path the
+delta touches, stamps the reopen history with the fetched head, and writes
+`record.json` at that head; `post` names the next `--base-sha` advance.
 
 A host that advertises `inline_anchors: false` is sent no anchored comment at
 all: `post` hands that answer to the merge, which keeps every finding and posts
@@ -2278,21 +2337,46 @@ the `anchors` tally counts).
 
 ### Submit (`post`) per host
 
-GitHub takes one atomic review; GitLab has no such call, so its submit replays
-three primitives in that order. Both hosts post the summary body last and
-neither replays a payload whose first write landed: a mid-way failure refuses
-typed `post-failed`, names what landed in the envelope `warnings`, and writes
-the host's own stderr to `.post.err`. The guarantee covers positioned
-discussions. A review with no comments posts only the summary note, and a
-summary write whose response was lost can be retried because nothing landed to
-observe; that case is the same lost-response shape GitHub documents.
+GitHub and Forgejo each take one atomic review; GitLab has no such call, so its
+submit replays three primitives in that order. GitLab posts the summary body
+last, and no host replays a payload whose first write landed: a mid-way failure
+refuses typed `post-failed`, names what landed in the envelope `warnings`, and
+writes the host's own stderr to `.post.err`. The guarantee covers positioned
+discussions. On GitLab a review with no comments posts only the summary note,
+and a summary write whose response was lost can be retried because nothing
+landed to observe; that case is the same lost-response shape GitHub documents.
 
-| Provider | Submit writes, in order                                                                                                                                                                                                                                                                            | Gaps                                                                                                                                                                                          |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `github` | one `repos/<owner>/<repo>/pulls/<n>/reviews` POST carrying `body`, `event`, and every inline comment (`gh api … --method POST --input -`)                                                                                                                                                          | —                                                                                                                                                                                             |
-| `gitlab` | one MR discussion per finding — a `position` with the MR's `base_sha`/`start_sha`/`head_sha`, both paths, `new_line` for an added line, both numbers for an unchanged one, `old_line` for a deletion — then one summary note, then `approve` (pinned by `sha`) only when the review is an approval | approve-only (GitLab has no `request-changes` event — the comments still post, with a warning); a multi-line anchor lands on its end line; `request_changes` and `review_verdicts` stay false |
+| Provider  | Submit writes, in order                                                                                                                                                                                                                                                                            | Gaps                                                                                                                                                                                          |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `github`  | one `repos/<owner>/<repo>/pulls/<n>/reviews` POST carrying `body`, `event`, and every inline comment (`gh api … --method POST --input -`)                                                                                                                                                          | —                                                                                                                                                                                             |
+| `gitlab`  | one MR discussion per finding — a `position` with the MR's `base_sha`/`start_sha`/`head_sha`, both paths, `new_line` for an added line, both numbers for an unchanged one, `old_line` for a deletion — then one summary note, then `approve` (pinned by `sha`) only when the review is an approval | approve-only (GitLab has no `request-changes` event — the comments still post, with a warning); a multi-line anchor lands on its end line; `request_changes` and `review_verdicts` stay false |
+| `forgejo` | one `api/v1/repos/<owner>/<repo>/pulls/<n>/reviews` POST over `curl` carrying `body`, `event` (`APPROVED` for an approval), `commit_id`, and every comment (`new_position` or `old_position`, both file line numbers)                                                                              | —                                                                                                                                                                                             |
 
-The repeat guard is the same on both hosts: the body's
+Forgejo has no CLI, so both directions are one `curl` call against
+`$FORGEJO_HOST/api/v1`; the write is GitHub-shaped — one atomic review POST
+carrying the body, the event, the reviewed commit, and every comment — but three
+limits need saying. Forgejo spells the approval `APPROVED`, and an event it does
+not know creates a **PENDING** draft with a 200, so `post` maps the event and
+refuses any answer whose `state` is not the one it asked for: a pending review
+is a draft nobody else sees. A review comment anchors on a **file line number**,
+not a diff offset, so a RIGHT anchor becomes `new_position` and a LEFT anchor
+`old_position`. A finding with no numeric line is withheld (Forgejo would accept
+an unanchored comment), a LEFT anchor on a path the change deletes is withheld
+(old-side blame cannot resolve there), and a multi-line range lands on its end
+line — each loss is counted in the envelope `warnings`. Before the write, `post`
+reads the token user and the PR's reviews: a `PENDING` review authored by that
+user refuses with a submit-or-discard hint, because Forgejo would attach these
+comments to that draft and submit the whole thing under this review's body. An
+unreadable user read refuses before the write too, because the draft could not
+be ruled out.
+Nothing on the wire is atomic on the server, so a failed write is never
+replayed: the warnings say how many comments may have landed. Two limits stay
+unverified: whether a left-side anchor on a deleted file resolves at all — `post`
+withholds it — and whether the review list returns another user's draft. The
+draft check reads that list and refuses when the read breaks, but a host that
+filters other users' drafts out of the list would hide one.
+
+The repeat guard is the same on every host: the body's
 `<!-- verdict-review payload=… -->` marker is read from the fetched
 `reviews.json`, so a re-fetch restores it after a post, and the marker keys on
 the exact payload — body, anchors, and reviewed head — never on a diff
@@ -2303,9 +2387,11 @@ position, which shifts as the branch gains commits.
 Everything the store records is a prediction; `calibrate <owner/repo> <pr>` checks it.
 Read-only join (threads + one compare + PR state), keep-biased:
 
-- Sources: live review threads (GraphQL, matched by the exact body we sent — robust, no
+- Sources: live review threads (GraphQL on GitHub, the discussions list on
+  GitLab, matched by the exact body we sent — robust, no
   fuzzy matching) → per-finding outcome; `post.json:review.id` records which review posted them;
-  one `compare` of review head vs live head for changed-file evidence; PR merged state as context. Terminal findings are
+  one `compare` of review head vs live head for changed-file evidence (the
+  repository compare read on GitLab); PR merged state as context. Terminal findings are
   skipped, not judged.
 - Outcomes: `fixed` (cited file changed + thread resolved), `resolved-unfixed` (resolved
   without touching the cited file — disagreement or fix-elsewhere), `open` (still open),

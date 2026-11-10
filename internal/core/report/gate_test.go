@@ -191,6 +191,67 @@ func TestRunReportCompletenessGate(t *testing.T) {
 	})
 }
 
+// TestRunReportPostedHeadRefetchCommand pins the stale-head recovery command
+// per host: a host whose fetch owns the compare re-fetches incrementally and
+// still names itself off the GitHub default, while a host without that
+// support names only its provider.
+func TestRunReportPostedHeadRefetchCommand(t *testing.T) {
+	tests := []struct {
+		provider string
+		want     string
+		absent   string
+	}{
+		{
+			provider: "gitlab",
+			want:     "verdict fetch acme/app 5101 --provider gitlab --base-sha ddddddd",
+			absent:   "acme/app 5101 --base-sha",
+		},
+		{
+			provider: "github",
+			want:     "verdict fetch acme/app 5101 --base-sha ddddddd",
+			absent:   "--provider",
+		},
+		{
+			provider: "forgejo",
+			want:     "verdict fetch acme/app 5101 --provider forgejo",
+			absent:   "--base-sha",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.provider, func(t *testing.T) {
+			assertRefetchHint(t, stalePostCheckLines(t, tc.provider), tc.want, tc.absent)
+		})
+	}
+}
+
+func assertRefetchHint(t *testing.T, joined, want, absent string) {
+	t.Helper()
+	if !strings.Contains(joined, want) {
+		t.Errorf("CheckLines = %q, want it to contain %q", joined, want)
+	}
+	if strings.Contains(joined, absent) {
+		t.Errorf("CheckLines = %q, want it not to contain %q", joined, absent)
+	}
+}
+
+func stalePostCheckLines(t *testing.T, provider string) string {
+	t.Helper()
+	req := fixture(t, "[]")
+	writeHostBundle(t, provider)
+	writeFile(t, ".verdict/state/5101/post.json", `{"head":"`+strings.Repeat("d", 40)+`"}`)
+	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+		ReadRequest: req,
+		Flags:       core.ReportFlags{Completeness: true, Live: "skip"},
+	})
+	if ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	if !resp.GateFailed {
+		t.Error("GateFailed = false, want true for a stale post")
+	}
+	return strings.Join(resp.CheckLines, "\n")
+}
+
 type threadCommander struct {
 	stdout string
 	stderr string

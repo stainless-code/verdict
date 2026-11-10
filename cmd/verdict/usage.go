@@ -7,13 +7,14 @@ func usageText() string {
 		"[--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
 		"    write .verdict/state/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
 		"(PR.json normalized for non-github providers)\n" +
-		"    Provider scope: record/report/triage/show/next run on any provider bundle; post submits to GitHub and\n" +
-		"    GitLab, which takes an approval but has no request-changes event — a bound request-changes posts as a\n" +
-		"    comment; post.json records the withheld capability in withheld[]; calibrate (live join)/adopt/ready\n" +
-		"    need a GitHub bundle and refuse the rest typed (provider-unimplemented; a local bundle has its own\n" +
-		"    code — post/ready no-pr-target, calibrate no-threads, adopt bad-target). calibrate --probe is offline\n" +
-		"    and runs on any bundle. Incremental re-review\n" +
-		"    (--base-sha/--since) is GitHub-only (noted 2026-11-03; providers have no incremental re-review yet).\n" +
+		"    Provider scope: record/report/triage/show/next run on any provider bundle; post submits to GitHub,\n" +
+		"    GitLab, and Forgejo (GitLab takes an approval but has no request-changes event — a bound\n" +
+		"    request-changes posts as a comment; post.json records the withheld capability in withheld[]); live\n" +
+		"    calibrate and ready run on GitHub and GitLab; adopt needs one verdict can post to (forgejo, github,\n" +
+		"    gitlab); the rest refuse typed (provider-unimplemented; a local bundle has its own code — post/ready\n" +
+		"    no-pr-target, calibrate no-threads, adopt bad-target). calibrate --probe is offline and runs on any\n" +
+		"    bundle. Incremental re-review (--base-sha/--since) runs on GitHub and GitLab; other providers write\n" +
+		"    incremental.diff.note.\n" +
 		"    diffs over 512000 bytes refuse with a split-or-narrow hint (empty diffs warn, never fail).\n" +
 		"    Deliberate exceptions only: REVIEW_MAX_BYTES=<n> (or the typed max_bytes default) overrides the cap.\n" +
 		"    Chunking opt-in only: --chunk (or the typed chunk default) marks over-cap fetches for " +
@@ -67,7 +68,8 @@ func usageText() string {
 		"    changes no count; bare, it reads the panel pinned in the bundle and refuses without one.\n" +
 		"  adopt <owner/repo> <pr> --from <local-slug> [--json]\n" +
 		"    carry a local bundle's findings into a fresh PR fetch for posting (re-anchors, stamps handoff).\n" +
-		"    Adopt-into needs a GitHub PR target: non-GitHub targets refuse typed (provider-unimplemented).\n" +
+		"    Adopt-into needs a bundle verdict can post to (forgejo, github, gitlab): other hosts refuse\n" +
+		"    typed (provider-unimplemented, naming the host).\n" +
 		"  fix <owner/repo> <local-slug> [--sig <s>] [--json]\n" +
 		"    one bounded pass over a local bundle: picks the top open inline sig\n" +
 		"    (or --sig), prints finding + kb.txt context with verify/land/re-run\n" +
@@ -86,8 +88,8 @@ func usageText() string {
 		"    A secret-shaped value in the review text refuses post-secret-shaped before any host\n" +
 		"    call (--dry-run warns instead); --allow-secret-values publishes it and post.json\n" +
 		"    records the shapes it let through.\n" +
-		"    GitHub PR bundles only: local bundles refuse typed (no-pr-target), non-GitHub providers\n" +
-		"    refuse typed (provider-unimplemented).\n" +
+		"    GitHub, GitLab, and Forgejo PR bundles submit; local bundles refuse typed (no-pr-target) and\n" +
+		"    the other providers refuse typed (provider-unimplemented).\n" +
 		"  triage <owner/repo> <pr> --sig <sig> --status <open|addressed|wont-fix|false-positive|deferred>\n" +
 		"        --rationale \"...\" [--force] [--dry-run]\n" +
 		"    mutate .verdict/state/<pr>/findings.json directly. No network. Rationale required unless --force.\n" +
@@ -119,8 +121,8 @@ func usageText() string {
 		"    only; combined with --check the run fails if tier-hits OR stale/missing\n" +
 		"    post. Every gate run (--check and/or --completeness) ends with a third,\n" +
 		"    network-backed live-thread dimension: more live opens than local opens\n" +
-		"    fails the gate (unreachable lookups warn and stay neutral; local and\n" +
-		"    non-GitHub bundles warn-skip with zero network). --live selects the\n" +
+		"    fails the gate (unreachable lookups warn and stay neutral under auto;\n" +
+		"    local bundles warn-skip with zero network, and strict fails closed). --live selects the\n" +
 		"    offline posture for that dimension: auto (default) keeps today's\n" +
 		"    fail-open behavior; strict fails the gate when the lookup is\n" +
 		"    unreachable; skip pays zero network and gates on local dimensions\n" +
@@ -149,12 +151,16 @@ func usageText() string {
 		"    Destructive, networked, credential-reading, and repo-escaping commands\n" +
 		"    refuse before execution as verify-destructive, verify-networked,\n" +
 		"    verify-credential-read, and verify-repo-escape.\n" +
-		"  doctor [--json]\n" +
-		"    preflight the harness: gh auth and .verdict storage writability hard-fail\n" +
-		"    the run; scopes, git, ps, and API reachability warn only (never fail). A\n" +
-		"    token granting more than runs need warns on a token-scopes-excess row\n" +
-		"    naming the excess scopes. Exit 0 unless a hard check fails. No repo/PR\n" +
-		"    args, no writes, no network beyond the existing gh reads.\n" +
+		"  doctor [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] [--json]\n" +
+		"    preflight the configured host: its CLI and auth, plus .verdict storage\n" +
+		"    writability, hard-fail the run; scopes, git, ps, and API reachability warn\n" +
+		"    only (never fail). --provider picks the host (default github); github reads\n" +
+		"    through gh, gitlab through glab, gitcafe through cafe, and\n" +
+		"    forgejo/bitbucket/azure check curl or az plus the credential variables\n" +
+		"    their fetch paths read (presence only, never a value). A token granting\n" +
+		"    more than runs need warns on a token-scopes-excess row naming the excess\n" +
+		"    scopes. Exit 0 unless a hard check fails. No repo/PR args, no writes, no\n" +
+		"    network beyond the host CLI reads.\n" +
 		"  calibrate <owner/repo> <pr> [--probe [--judge SIG:VERDICT[:HELPFUL]]... [--judge-file PATH]] [--json]\n" +
 		"    join findings against live ground truth (thread states + files changed since the\n" +
 		"    review head). Read-only; reports outcomes + tier precision, never auto-tunes.\n" +
@@ -170,8 +176,8 @@ func usageText() string {
 		"  ready <owner/repo> <pr> [--json] [--check]\n" +
 		"    advisory only (exit 0, never a gate): CI state, open threads, draft/conflict,\n" +
 		"    description completeness. Prints blockers with actions + recommendation\n" +
-		"    (review/wait/nudge-author). PR bundles only; local bundles refused.\n" +
-		"    Non-GitHub provider bundles refuse typed (provider-unimplemented).\n" +
+		"    (review/wait/nudge-author). GitHub and GitLab PR bundles; local bundles refuse\n" +
+		"    (no-pr-target) and other providers refuse typed (provider-unimplemented).\n" +
 		"    --check opts into gating (same output, machine exits): 0 ready, 1 blockers\n" +
 		"    or wait, 2 usage, 3 tool error. Without --check the run stays advisory:\n" +
 		"    exit 0 with blockers listed (typed errors exit 1, usage exits 2).\n" +
@@ -198,6 +204,13 @@ func usageText() string {
 		"    conversation. fetch writes the same feed beside the bundle; this verb re-reads\n" +
 		"    it after replies/resolutions so a re-review sees current state. Writes only\n" +
 		"    threads.json and needs an existing bundle (fetch first).\n" +
+		"  threads resolve <owner/repo> <pr> [--thread <id>]... [--dry-run] [--json]\n" +
+		"    close verdict-authored review threads: without --thread, every open thread\n" +
+		"    whose finding the local store marks addressed; with --thread, only the named\n" +
+		"    ids, and each must still be verdict-authored (a human thread refuses).\n" +
+		"    --dry-run lists what would be resolved and makes zero writes; a real run\n" +
+		"    makes one host write per thread and writes threads-resolve.json. GitHub and\n" +
+		"    GitLab carry it; Forgejo refuses typed (no documented resolve endpoint).\n" +
 		"  trend <owner/repo> [--overlap] [--json]\n" +
 		"    portfolio rollup over existing bundle stores (no network, writes nothing):\n" +
 		"    findings opened/addressed/closed over time, broken down by severity tier\n" +

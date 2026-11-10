@@ -173,3 +173,22 @@ func TestReviewMarker(t *testing.T) {
 		t.Error("mid-body marker parsed as the posted tail")
 	}
 }
+
+// TestFinalizerGuardIgnoresPendingReviews proves an unsubmitted draft never
+// reads as a posted review: Forgejo keeps a PENDING review's body empty until
+// it is submitted, so treating one as published would suppress a real post and
+// call a draft landed feedback.
+func TestFinalizerGuardIgnoresPendingReviews(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	raw := fmt.Sprintf(`[{"id":1,"state":"PENDING","body":%s,"commit_id":%s,"submitted_at":"2026-01-01T00:00:00Z"}]`,
+		strconv.Quote(markedReview(liveGuardHead)), strconv.Quote(liveGuardHead))
+	if err := writeTestFile(dir+"/reviews.json", raw); err != nil {
+		t.Fatal(err)
+	}
+	var warnings []string
+	p := postTestState(dir, liveGuardHead, core.PostFlags{}, &warnings)
+	if ref := p.finalizerGuard(); ref != nil {
+		t.Fatalf("a pending draft refused the post: %v", ref)
+	}
+}

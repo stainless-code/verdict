@@ -29,11 +29,10 @@ exit: 0
       "inline_anchors": true,
       "approve": true,
       "request_changes": false,
-      "thread_resolution": false,
+      "thread_resolution": true,
       "review_verdicts": false,
       "unsupported": {
-        "request_changes": "no-request-changes-event",
-        "thread_resolution": "no-resolve-mutation"
+        "request_changes": "no-request-changes-event"
       }
     },
     "controls": {

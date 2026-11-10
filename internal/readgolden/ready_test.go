@@ -48,6 +48,39 @@ func writeStub(t *testing.T, script string, extra map[string]string) map[string]
 	return env
 }
 
+// writeGlabStub writes an executable glab stub with the given script,
+// returning extraEnv that puts it first on PATH.
+func writeGlabStub(t *testing.T, script string, extra map[string]string) map[string]string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := harness.WriteStubAt(dir, "glab", script); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{"PATH": dir + string(os.PathListSeparator) + os.Getenv("PATH")}
+	maps.Copy(env, extra)
+	return env
+}
+
+// gitlabReadyStubScript answers the three GitLab live reads: a draft,
+// conflicting merge request with one failed pipeline, and one open plus
+// one resolved discussion. Anything else fails like the network-dead stub.
+const gitlabReadyStubScript = `#!/usr/bin/env bash
+echo "stub-glab $*" >> "${EVAL_STUBLOG:-/dev/null}"
+case "$*" in
+  *"merge_requests/5101/pipelines"*)
+    printf '%s' '[{"id":12,"status":"success"},{"id":13,"status":"failed"}]'
+    exit 0;;
+  *"merge_requests/5101/discussions"*)
+    printf '%s' '[{"id":"d1","notes":[{"id":1,"body":"still open","resolved":false,"system":false}]},{"id":"d2","notes":[{"id":2,"body":"lgtm","resolved":true,"system":false}]}]'
+    exit 0;;
+  *"merge_requests/5101"*)
+    printf '%s' '{"id":9001,"iid":5101,"title":"Retry count off by one","description":"A description that is long enough to pass the thin check easily here.","state":"opened","draft":true,"has_conflicts":true,"detailed_merge_status":"conflict","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","merged_at":null,"head_pipeline":{"id":12,"status":"success","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}'
+    exit 0;;
+esac
+echo "stub-glab: no match ($*)" >&2
+exit 1
+`
+
 // readyBundle writes a PR bundle with a findings store for the advisory.
 func readyBundle(t *testing.T, dir, pr string) {
 	t.Helper()
@@ -113,13 +146,27 @@ func TestReadyGolden(t *testing.T) {
 		t.Helper()
 		mkPRBundle(t, dir, "5101")
 		writeFiles(t, dir, map[string]string{
-			".verdict/state/5101/PR.json": `{"provider":"gitlab","number":5101,` +
+			".verdict/state/5101/PR.json": `{"provider":"forgejo","number":5101,` +
 				`"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`,
 			".verdict/state/5101/findings.json": mixedFindings(),
 		})
 	}
 	goArgs = splitRepo("ready", "5101", "--json")
 	goldenRead(t, "ready/provider-refused", gitlab, nil, nil, goArgs...)
+
+	gitlabBlocked := func(t *testing.T, dir, _ string) {
+		t.Helper()
+		mkPRBundle(t, dir, "5101")
+		writeFiles(t, dir, map[string]string{
+			".verdict/state/5101/PR.json": `{"provider":"gitlab","number":5101,` +
+				`"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`,
+			".verdict/state/5101/findings.json": mixedFindings(),
+		})
+	}
+	glab := writeGlabStub(t, gitlabReadyStubScript, nil)
+	goArgs = splitRepo("ready", "5101", "--json")
+	goldenRead(t, "ready/gitlab-blocked-json", gitlabBlocked, glab,
+		allowKeys("C/.verdict/state/5101/.ready.err"), goArgs...)
 
 	missing := func(t *testing.T, _, _ string) {
 		t.Helper()

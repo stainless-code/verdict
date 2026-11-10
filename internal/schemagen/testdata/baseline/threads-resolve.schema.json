@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/threads-resolve.schema.json",
+  "title": "threads-resolve.json — thread-resolve receipt",
+  "description": "The receipt `threads resolve` writes beside threads.json: the host, head, and timestamp of the mutation, the ids it closed, and the candidates it skipped with a machine-readable reason. A real run writes one host resolve call per id in resolved[]; a dry run writes no receipt and carries the plan in the envelope only. GitHub and GitLab carry the mutation; a host without a resolve endpoint refuses before this document is written.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "description": "Receipt format version; only \"1\" is read.",
+      "const": "1"
+    },
+    "provider": {
+      "description": "The host whose resolve call closed the threads.",
+      "enum": ["github", "gitlab", "gitcafe", "forgejo", "bitbucket", "azure"]
+    },
+    "repo": {
+      "description": "Repository the bundle belongs to.",
+      "type": "string"
+    },
+    "pr": {
+      "description": "Pull request number the receipt belongs to.",
+      "type": "integer"
+    },
+    "head_sha": {
+      "description": "The head the thread feed was read at when the run selected its candidates.",
+      "type": "string"
+    },
+    "resolved_at": {
+      "description": "UTC mutation timestamp (RFC 3339).",
+      "type": "string",
+      "format": "date-time"
+    },
+    "dry_run": {
+      "description": "True only on a dry run; a real receipt is always false.",
+      "type": "boolean"
+    },
+    "resolved": {
+      "description": "Host thread ids the run closed, in selection order.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "skipped": {
+      "description": "Candidates the run left open, each with the reason it was skipped.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/skip" }
+    }
+  },
+  "required": [
+    "schema_version",
+    "provider",
+    "repo",
+    "pr",
+    "head_sha",
+    "resolved_at",
+    "dry_run",
+    "resolved",
+    "skipped"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "skip": {
+      "description": "One skipped candidate: the host thread id and the machine-readable reason (already-resolved, no-finding-link, finding-not-addressed).",
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "Host thread id the selection considered.",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Why the thread stayed open: already-resolved, no-finding-link (no finding marker), or finding-not-addressed (the local store does not mark the linked finding addressed).",
+          "type": "string"
+        }
+      },
+      "required": ["id", "reason"],
+      "additionalProperties": true
+    }
+  }
+}

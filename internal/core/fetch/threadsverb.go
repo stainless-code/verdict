@@ -16,10 +16,15 @@ import (
 // ThreadsRequest carries one threads refresh invocation: the shared read
 // runtime plus the provider override. The verb re-reads only the provider's
 // thread surface, so it never touches the diff or the rest of the bundle.
+//
+//nolint:govet // field order documents the request grammar
 type ThreadsRequest struct {
-	core.ReadRequest
-	Provider string `enum:"github|gitlab|gitcafe|forgejo|bitbucket|azure"`
+	Threads  []string `json:"thread,omitempty"`
 	Warnings []string
+	Provider string `enum:"github|gitlab|gitcafe|forgejo|bitbucket|azure"`
+	core.ReadRequest
+	Resolve bool `json:"resolve,omitempty"`
+	DryRun  bool `json:"dryRun,omitempty"`
 }
 
 // ThreadsResponse carries the refresh outcome: envelope identity, the typed
@@ -27,6 +32,7 @@ type ThreadsRequest struct {
 // runtime progress observer.
 type ThreadsResponse struct {
 	Data     *ThreadsData
+	Resolve  *ThreadsResolveData
 	Repo     string
 	Pr       string
 	At       string
@@ -78,6 +84,9 @@ func RunThreads(ctx context.Context, req *ThreadsRequest) (*ThreadsResponse, *co
 	st := &threadsRun{req: req, warnings: append([]string{}, req.Warnings...)}
 	if ctx.Err() != nil {
 		return nil, st.withWarnings(&core.RefusalError{Code: codeCanceled, Message: "canceled before threads completed"})
+	}
+	if req.Resolve {
+		return st.resolve(ctx)
 	}
 	provider := threadsProvider(req.Provider)
 	if provider == "" {

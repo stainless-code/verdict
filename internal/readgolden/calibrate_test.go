@@ -32,6 +32,27 @@ echo "stub-gh: no match ($*)" >&2
 exit 1
 `
 
+// calibrateGitLabStubScript answers the GitLab live join: two marker-stamped
+// discussions (one resolved, one open), the MR state with a parametrized
+// live head ($CAL_LIVE), and the compare file list. Anything else fails
+// like the network-dead stub.
+const calibrateGitLabStubScript = `#!/usr/bin/env bash
+echo "stub-glab $*" >> "${EVAL_STUBLOG:-/dev/null}"
+case "$*" in
+  *"repository/compare"*)
+    printf '%s' '{"diffs":[{"new_path":"notes.txt","old_path":"notes.txt","new_file":false,"renamed_file":false,"deleted_file":false}]}'
+    exit 0;;
+  *"merge_requests/5101/discussions"*)
+    printf '%s' '[{"id":"d1","notes":[{"id":101,"type":"DiffNote","body":"Fixed body here with enough substance.\n\n<!-- verdict-finding sig=c111111111111111111111111111111111111111 -->","resolved":true,"system":false,"position":{"new_path":"notes.txt","new_line":2}}]},{"id":"d2","notes":[{"id":102,"type":"DiffNote","body":"Open body here with enough substance.\n\n<!-- verdict-finding sig=b222222222222222222222222222222222222222 -->","resolved":false,"system":false,"position":{"new_path":"notes.txt","new_line":2}}]}]'
+    exit 0;;
+  *"merge_requests/5101"*)
+    printf '%s' "{\"id\":9001,\"iid\":5101,\"state\":\"opened\",\"sha\":\"${CAL_LIVE:-cccccccccccccccccccccccccccccccccccccccc}\",\"merged_at\":null}"
+    exit 0;;
+esac
+echo "stub-glab: no match ($*)" >&2
+exit 1
+`
+
 // findingBody renders one inline entry with a custom body and kb cites.
 func findingBody(sig, status, severity, body, kb string) string {
 	if kb == "" {
@@ -144,7 +165,7 @@ func TestCalibrateLiveGolden(t *testing.T) {
 		t.Helper()
 		mkPRBundle(t, dir, "5101")
 		writeFiles(t, dir, map[string]string{
-			".verdict/state/5101/PR.json": `{"provider":"gitlab","number":5101,` +
+			".verdict/state/5101/PR.json": `{"provider":"forgejo","number":5101,` +
 				`"head_sha":"` + headA + `"}`,
 			".verdict/state/5101/findings.json": mixedFindings(),
 			".verdict/state/5101/post.json":     postDoc(headA, 99),
@@ -152,6 +173,18 @@ func TestCalibrateLiveGolden(t *testing.T) {
 	}
 	goArgs = splitRepo("calibrate", "5101", "--json")
 	goldenRead(t, "calibrate/provider-refused", gitlab, nil, nil, goArgs...)
+
+	gitlabLive := func(t *testing.T, dir, _ string) {
+		t.Helper()
+		calibrateLive(t, dir)
+		writeFiles(t, dir, map[string]string{
+			".verdict/state/5101/PR.json": `{"provider":"gitlab","number":5101,` +
+				`"head_sha":"` + headA + `"}`,
+		})
+	}
+	glab := writeGlabStub(t, calibrateGitLabStubScript, map[string]string{"CAL_LIVE": headC})
+	goArgs = splitRepo("calibrate", "5101", "--json")
+	goldenRead(t, "calibrate/gitlab-live-json", gitlabLive, glab, nil, goArgs...)
 
 	corrupt := func(t *testing.T, dir, _ string) {
 		t.Helper()

@@ -226,11 +226,9 @@ func loadState(ctx context.Context, st *state) *core.RefusalError {
 			Message: "ready needs a PR bundle (fetch owner/repo N first); local bundles have no live checks to advise on",
 		})
 	}
-	if prov := readcommon.ProviderOf(dir); prov != "" && prov != providerGitHub {
-		return st.withWarnings(&core.RefusalError{
-			Code:    "provider-unimplemented",
-			Message: "ready on " + prov + " is not implemented yet (no live gh reads for it)",
-		})
+	host, ref := st.readyHost(dir)
+	if ref != nil {
+		return ref
 	}
 	if !isRegular(dir + "/PR.json") {
 		return st.withWarnings(&core.RefusalError{
@@ -238,11 +236,11 @@ func loadState(ctx context.Context, st *state) *core.RefusalError {
 			Message: "missing " + dir + "/PR.json (run fetch " + st.repo + " " + st.pr + " first)",
 		})
 	}
-	if ref := loadLive(ctx, st, dir); ref != nil {
+	if ref := host.live(ctx, st, dir); ref != nil {
 		return ref
 	}
-	loadChecks(ctx, st)
-	if ref := loadThreads(ctx, st); ref != nil {
+	host.checks(ctx, st)
+	if ref := host.threads(ctx, st); ref != nil {
 		return ref
 	}
 	loadPolicyCompliance(st, dir)
@@ -261,7 +259,7 @@ func isRegular(path string) bool {
 	return err == nil && fi.Mode().IsRegular()
 }
 
-func loadLive(ctx context.Context, st *state, dir string) *core.RefusalError {
+func githubLive(ctx context.Context, st *state, dir string) *core.RefusalError {
 	stdout, stderr, ok := coreexec.Gh(ctx, st.commander(), "pr", "view", st.pr, "--repo", st.repo,
 		"--json", "isDraft,mergeable,mergeStateStatus,body,state,headRefOid")
 	writeErrFile(st, dir+"/.ready.err", stderr)
@@ -279,6 +277,15 @@ func loadLive(ctx context.Context, st *state, dir string) *core.RefusalError {
 	} else {
 		st.live = map[string]any{}
 	}
+	applyLive(st, dir)
+	return nil
+}
+
+// applyLive folds the canonical live map into the advisory: the stale
+// warning, the draft/mergeable/state reads, and the unknown-mergeability
+// warning. Both hosts decode onto the same keys first, so this tail runs
+// once for either provider.
+func applyLive(st *state, dir string) {
 	fetched := readcommon.PrField(dir, "head_sha")
 	liveHead := liveString(st.live, "headRefOid")
 	if fetched != "" && liveHead != "" && fetched != liveHead {
@@ -291,9 +298,8 @@ func loadLive(ctx context.Context, st *state, dir string) *core.RefusalError {
 	st.prState = liveOr(st.live, "state", mergeUnknown)
 	st.bodyLen = bodyLength(liveBody(st.live))
 	if st.mergeable == mergeUnknown && st.mergeState == mergeUnknown {
-		st.warn("mergeability UNKNOWN (GitHub still computing?) — conflict treated as absent, re-run ready if this persists")
+		st.warn("mergeability UNKNOWN (host still computing?) — conflict treated as absent, re-run ready if this persists")
 	}
-	return nil
 }
 
 const probeStagePerm = 0o600
@@ -405,7 +411,7 @@ func isSpaceByte(c byte) bool {
 	}
 }
 
-func loadChecks(ctx context.Context, st *state) {
+func githubChecks(ctx context.Context, st *state) {
 	stdout, _, ok := coreexec.Gh(ctx, st.commander(), "pr", "checks", st.pr, "--repo", st.repo,
 		"--json", "bucket,name,state")
 	raw := "[]"
@@ -429,6 +435,12 @@ func loadChecks(ctx context.Context, st *state) {
 		return
 	}
 	st.ciTotal = len(list)
+	appendCIFailing(st, failNames)
+}
+
+// appendCIFailing records the failing-check blocker once the tally is
+// final. Both hosts render the same kind, detail shape, and action.
+func appendCIFailing(st *state, failNames []string) {
 	if st.ciFail > 0 {
 		st.blockers = append(st.blockers, Blocker{
 			Kind:   "ci-failing",
@@ -476,20 +488,28 @@ func checkName(m map[string]any) string {
 	return jq.R(v)
 }
 
-func loadThreads(ctx context.Context, st *state) *core.RefusalError {
+func githubThreads(ctx context.Context, st *state) *core.RefusalError {
 	owner, name := readcommon.SplitOwner(st.repo)
 	nodes, _, err := readcommon.Threads(ctx, st.commander(), owner, name, st.pr, false)
 	if err != nil {
 		return st.withWarnings(&core.RefusalError{
-			Code:    "threads-failed",
+			Code:    codeThreadsFailed,
 			Message: "could not read live review threads for " + st.repo + hashSep + st.pr,
 		})
 	}
-	if malformed := readcommon.MalformedThreadCount(nodes); malformed > 0 {
+	applyThreadCounts(st, readcommon.OpenThreadCount(nodes), readcommon.MalformedThreadCount(nodes))
+	return nil
+}
+
+// applyThreadCounts folds an open/malformed thread tally into the
+// advisory: the fail-closed warning and the open-threads blocker. Both
+// hosts count first, so this tail runs once for either provider.
+func applyThreadCounts(st *state, open, malformed int) {
+	if malformed > 0 {
 		st.warn(strconv.Itoa(malformed) + " live thread node(s) carry no readable resolution state " +
 			"— counted as unresolved (fail-closed)")
 	}
-	st.threadsOpen = readcommon.OpenThreadCount(nodes)
+	st.threadsOpen = open
 	if st.threadsOpen > 0 {
 		st.blockers = append(st.blockers, Blocker{
 			Kind:   "threads-open",
@@ -497,7 +517,6 @@ func loadThreads(ctx context.Context, st *state) *core.RefusalError {
 			Action: "address or resolve open threads, then re-run ready",
 		})
 	}
-	return nil
 }
 
 // loadPolicyCompliance evaluates captured requirements for the saved head:
@@ -571,7 +590,7 @@ func computeReadiness(st *state) {
 	appendDescriptionBlocker(st)
 	st.ready = true
 	st.rec = "review"
-	if st.prState != "OPEN" {
+	if st.prState != stateOpen {
 		st.ready = false
 		st.rec = recWait
 		return
@@ -672,7 +691,7 @@ func (st *state) emitHuman() {
 		st.human("recommendation: review — fetch + review")
 		return
 	}
-	if st.prState != "OPEN" {
+	if st.prState != stateOpen {
 		st.human("ready: no — " + st.repo + hashSep + st.pr + " is " + st.prState + ", nothing to review")
 	} else {
 		st.human("ready: no — " + st.repo + hashSep + st.pr + " has " +

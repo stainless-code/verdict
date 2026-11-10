@@ -22,6 +22,7 @@ import {
   type ReportGate,
   type ShowData,
   type ThreadsData,
+  type ThreadsResolveData,
   type TrendData,
   type TriageData,
   type VerifyData,
@@ -38,6 +39,14 @@ type Exact<A, B> =
     ? true
     : false;
 type IsAny<T> = 0 extends 1 & T ? true : false; // a bare `any` passes Exact
+
+// `threads` reports either the refreshed feed tally or the resolve receipt;
+// only the receipt carries `resolved`.
+function isThreadsResolve(
+  data: ThreadsData | ThreadsResolveData,
+): data is ThreadsResolveData {
+  return "resolved" in data;
+}
 
 // Every wire verb the client exposes, spelled the way the envelope reports it.
 type Verb =
@@ -156,17 +165,29 @@ export async function typeChecks(): Promise<void> {
   const kind: string = local.data.kind;
   void kind;
 
-  const exactThreads: Exact<DataFor["threads"], ThreadsData> = true;
+  const exactThreads: Exact<
+    DataFor["threads"],
+    ThreadsData | ThreadsResolveData
+  > = true;
   void exactThreads;
 
-  const threads: Envelope<ThreadsData> = await client.threads([
-    "acme/app",
-    "4243",
-    "--provider",
-    "gitlab",
-  ]);
-  const openThreads: number = threads.data.open;
-  void openThreads;
+  const threads: Envelope<ThreadsData | ThreadsResolveData> =
+    await client.threads(["acme/app", "4243", "--provider", "gitlab"]);
+  if (!isThreadsResolve(threads.data)) {
+    const openThreads: number = threads.data.open;
+    void openThreads;
+  }
+
+  const resolveThreads: Envelope<ThreadsData | ThreadsResolveData> =
+    await client.threads(["resolve", "acme/app", "4243"]);
+  if (isThreadsResolve(resolveThreads.data)) {
+    const resolvedIds: string[] = resolveThreads.data.resolved;
+    const skippedIds: string[] = resolveThreads.data.skipped.map(
+      (skip) => skip.id,
+    );
+    void resolvedIds;
+    void skippedIds;
+  }
 
   const verify: Envelope<VerifyData> = await client.verify([]);
   const exit: number = verify.data.exit;

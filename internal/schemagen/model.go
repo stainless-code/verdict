@@ -702,3 +702,14 @@ type Thread = threadscore.Thread
 // ThreadComment is one comment inside a thread, body capped with a truncated
 // flag (the raw provider file keeps the full text).
 type ThreadComment = threadscore.Comment
+
+// ThreadsResolveReceipt is the receipt `threads resolve` writes, published as
+// schemas/threads-resolve.schema.json: the host, head, and timestamp of the
+// mutation plus the ids it closed and the candidates it skipped.
+type ThreadsResolveReceipt = threadscore.ResolveReceipt
+
+// ThreadsResolveSkip is one candidate a resolve run left open and why.
+type ThreadsResolveSkip = threadscore.ResolveSkip
+
+// ThreadsResolveData is the resolve half of the threads --json data profile.
+type ThreadsResolveData = fetchcore.ThreadsResolveData

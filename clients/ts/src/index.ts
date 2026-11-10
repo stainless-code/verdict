@@ -62,6 +62,8 @@ export type {
   ShowData,
   ShowFix,
   ThreadsData,
+  ThreadsResolveData,
+  ThreadsResolveSkip,
   TrendBundleRow,
   TrendData,
   TrendPeriod,

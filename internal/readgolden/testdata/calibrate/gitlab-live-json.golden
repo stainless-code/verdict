@@ -1,0 +1,118 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "calibrate",
+  "repo": "acme/app",
+  "pr": 5101,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "address open threads",
+  "warnings": [],
+  "data": {
+    "review_id": 424242,
+    "head": {
+      "reviewed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "live": "cccccccccccccccccccccccccccccccccccccccc"
+    },
+    "pr": {
+      "state": "OPEN",
+      "merged_at": null
+    },
+    "outcomes": [
+      {
+        "sig": "c111111111111111111111111111111111111111",
+        "status": "open",
+        "severity": "critical",
+        "category": null,
+        "locator": "notes.txt:2",
+        "outcome": "fixed",
+        "detail": "thread resolved + cited file changed since review head",
+        "kb": [
+          "r-a1"
+        ]
+      },
+      {
+        "sig": "b222222222222222222222222222222222222222",
+        "status": "open",
+        "severity": "important",
+        "category": null,
+        "locator": "notes.txt:2",
+        "outcome": "open",
+        "detail": "thread still open"
+      },
+      {
+        "sig": "d444444444444444444444444444444444444444",
+        "status": "addressed",
+        "severity": "important",
+        "category": null,
+        "locator": "notes.txt:2",
+        "outcome": "unknown",
+        "detail": "comment not found live",
+        "kb": [
+          "r-a2"
+        ]
+      },
+      {
+        "sig": "f666666666666666666666666666666666666666",
+        "status": "open",
+        "severity": "informational",
+        "category": null,
+        "locator": "?",
+        "outcome": "unknown",
+        "detail": "body section — not a thread comment"
+      }
+    ],
+    "precision": {
+      "fixed": 1,
+      "resolved_unfixed": 0,
+      "open": 1,
+      "unknown": 2,
+      "judged": 2,
+      "by_tier": {
+        "critical": {
+          "fixed": 1,
+          "resolved_unfixed": 0,
+          "open": 0,
+          "unknown": 0
+        },
+        "important": {
+          "fixed": 0,
+          "resolved_unfixed": 0,
+          "open": 1,
+          "unknown": 1
+        },
+        "informational": {
+          "fixed": 0,
+          "resolved_unfixed": 0,
+          "open": 0,
+          "unknown": 1
+        }
+      },
+      "by_category": {
+        "untagged": {
+          "fixed": 1,
+          "resolved_unfixed": 0,
+          "open": 1,
+          "unknown": 2,
+          "judged": 2,
+          "resolution_rate": 0.5
+        }
+      }
+    },
+    "provenance": {
+      "tool_version": "0.0.1-test",
+      "prompts_hash": "abc123def456",
+      "model": "m"
+    }
+  },
+  "error": null
+}
+--- stderr ---
+calibrate: acme/app#5101 — review 424242 @ aaaaaaa (stale — aaaaaaa → ccccccc), PR OPEN
+c1111111 [fixed] notes.txt:2 — thread resolved + cited file changed since review head kb:c111111111111111111111111111111111111111,open,critical,notes.txt:2,fixed,thread resolved + cited file changed since review head,["r-a1"]
+b2222222 [open] notes.txt:2 — thread still open kb:b222222222222222222222222222222222222222,open,important,notes.txt:2,open,thread still open
+d4444444 [unknown] notes.txt:2 — comment not found live kb:d444444444444444444444444444444444444444,addressed,important,notes.txt:2,unknown,comment not found live,["r-a2"]
+f6666666 [unknown] ? — body section — not a thread comment kb:f666666666666666666666666666666666666666,open,informational,?,unknown,body section — not a thread comment
+precision: fixed=1 resolved-unfixed=0 open=1 unknown=2 (judged 2)
+provenance: tool v0.0.1-test prompts abc123def456 model m
+--- files ---

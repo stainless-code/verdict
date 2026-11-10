@@ -23,12 +23,12 @@ func allProviders() []string {
 	return []string{providerGitHub, providerGitLab, "gitcafe", "forgejo", "bitbucket", "azure"}
 }
 
-// postsTo lists the hosts whose submit path is implemented: GitHub's single
-// atomic review POST and GitLab's discussion-per-finding replay. It is the
-// independent half of TestCapabilitiesMatchPostGate: an advertised bit, not a
-// table this file restates.
+// postsTo lists the hosts whose submit path is implemented: GitHub's and
+// Forgejo's single atomic review POST, and GitLab's discussion-per-finding
+// replay. It is the independent half of TestCapabilitiesMatchPostGate: an
+// advertised bit, not a table this file restates.
 func postsTo(provider string) bool {
-	return provider == providerGitHub || provider == providerGitLab
+	return provider == providerGitHub || provider == providerGitLab || provider == "forgejo"
 }
 
 // TestCapabilityWire proves the envelope's capability object is the capability

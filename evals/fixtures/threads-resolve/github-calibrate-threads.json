@@ -1,0 +1,23 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "reviewThreads": {
+          "nodes": [
+            {
+              "isResolved": true,
+              "comments": {
+                "nodes": [
+                  {
+                    "body": "Fixed body here with enough substance.",
+                    "path": "notes.txt"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -111,7 +111,9 @@ func wireConfig(ctx context.Context, b *bindings, req *core.ConfigRequest) error
 	return nil
 }
 
-func decodeDoctor(_ *doctorcore.Request, _ *args) {}
+func decodeDoctor(req *doctorcore.Request, a *args) {
+	a.str("provider", &req.Provider)
+}
 
 func wireDoctor(ctx context.Context, b *bindings, req *doctorcore.Request) error {
 	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
@@ -341,6 +343,9 @@ func decodeThreads(req *fetchcore.ThreadsRequest, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.str(argPr, &req.Pr)
 	a.str("provider", &req.Provider)
+	a.strings("thread", &req.Threads)
+	a.boolean("resolve", &req.Resolve)
+	a.boolean("dryRun", &req.DryRun)
 }
 
 func wireThreads(ctx context.Context, b *bindings, req *fetchcore.ThreadsRequest) error {

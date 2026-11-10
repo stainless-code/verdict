@@ -1,0 +1,2 @@
+api user --jq .login
+api graphql -f query=mutation($threadId:ID!){resolveReviewThread(input:{threadId:$threadId}){thread{id isResolved}}} -f threadId=PRRT_kwDOacme

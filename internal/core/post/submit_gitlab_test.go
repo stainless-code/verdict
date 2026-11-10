@@ -567,7 +567,7 @@ func TestRunPostGitLabRefusesRepostFromFetchedMarker(t *testing.T) {
 // the hosts whose submit path is not implemented, before any read fires.
 func TestRunPostRefusesHostWithoutSubmit(t *testing.T) {
 	t.Chdir(t.TempDir())
-	writeGitLabBundle(t, "forgejo", gitlabBundleReview)
+	writeGitLabBundle(t, "bitbucket", gitlabBundleReview)
 	cmdr := gitlabCommander(t)
 	var warnings, human []string
 	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
@@ -575,7 +575,7 @@ func TestRunPostRefusesHostWithoutSubmit(t *testing.T) {
 	if ref == nil || ref.Code != "provider-unimplemented" {
 		t.Fatalf("ref = %v, want provider-unimplemented", ref)
 	}
-	if !strings.Contains(ref.Message, "forgejo") {
+	if !strings.Contains(ref.Message, "bitbucket") {
 		t.Errorf("refusal = %q, want the provider named", ref.Message)
 	}
 	if len(cmdr.calls) != 0 {

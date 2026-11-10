@@ -286,9 +286,10 @@ var fieldDocs = map[string]string{
 	"DryRun":     "Report what would change without writing.",
 	"AllowSecretValues": "Publish review text that carries a secret-shaped value; " +
 		"the post-secret-shaped refusal names this override.",
-	"learn.Status":  "List rules with counters and precision (boolean list switch; learn sets no status).",
-	"next.Status":   "Status filter for the top finding (all, open, addressed, wont-fix, false-positive, deferred); empty means open.",
-	"triage.Status": "Status to flip the finding to (open, addressed, wont-fix, false-positive, deferred).",
+	"doctor.Provider": "Code host to preflight (github, gitlab, gitcafe, forgejo, bitbucket, azure); default github.",
+	"learn.Status":    "List rules with counters and precision (boolean list switch; learn sets no status).",
+	"next.Status":     "Status filter for the top finding (all, open, addressed, wont-fix, false-positive, deferred); empty means open.",
+	"triage.Status":   "Status to flip the finding to (open, addressed, wont-fix, false-positive, deferred).",
 	"Sandbox": "Run under bwrap (Linux only) with no network, hidden credential dirs, " +
 		"a writable repo, and a private /tmp; refuses sandbox-unavailable when it cannot be enforced.",
 }

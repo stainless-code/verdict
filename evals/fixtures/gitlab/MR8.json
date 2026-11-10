@@ -1,0 +1,20 @@
+{
+  "iid": 8,
+  "id": 9002,
+  "title": "Retry count off by one",
+  "description": "Fixes the retry count so the third attempt runs.",
+  "target_branch": "main",
+  "source_branch": "feat/retry",
+  "state": "opened",
+  "draft": false,
+  "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "diff_refs": {
+    "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "start_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "author": {
+    "username": "mate"
+  },
+  "web_url": "https://gitlab.example/acme/app/-/merge_requests/8"
+}

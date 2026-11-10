@@ -232,15 +232,15 @@ func TestDocumentsCarryStableIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	if len(files) != 12 {
-		t.Fatalf("generated %d schemas, want 12", len(files))
+	if len(files) != 13 {
+		t.Fatalf("generated %d schemas, want 13", len(files))
 	}
 	seen := map[string]bool{}
 	for _, file := range files {
 		seen[file.Name] = true
 		assertIdentity(t, file)
 	}
-	for _, name := range []string{"config.schema.json", "corpus.schema.json", "cost.schema.json", "envelope.schema.json", "findings.schema.json", "identity.schema.json", "post.schema.json", "record.schema.json", "review.schema.json", "threads.schema.json", "usage.schema.json"} {
+	for _, name := range []string{"config.schema.json", "corpus.schema.json", "cost.schema.json", "envelope.schema.json", "findings.schema.json", "identity.schema.json", "post.schema.json", "record.schema.json", "review.schema.json", "threads.schema.json", "threads-resolve.schema.json", "usage.schema.json"} {
 		if !seen[name] {
 			t.Errorf("missing generated schema %s", name)
 		}

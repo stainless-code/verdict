@@ -1,0 +1,58 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "ready",
+  "repo": "acme/app",
+  "pr": 5101,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "hold the review — re-run ready later",
+  "warnings": [],
+  "data": {
+    "ready": false,
+    "recommendation": "wait",
+    "blockers": [
+      {
+        "kind": "ci-failing",
+        "detail": "1 failing check(s): #13 failed",
+        "action": "fix CI, then re-run ready"
+      },
+      {
+        "kind": "threads-open",
+        "detail": "1 unresolved thread(s)",
+        "action": "address or resolve open threads, then re-run ready"
+      },
+      {
+        "kind": "draft",
+        "detail": "PR is still a draft",
+        "action": "mark ready for review when done, then re-run ready"
+      },
+      {
+        "kind": "conflict",
+        "detail": "mergeable=CONFLICTING mergeStateStatus=CONFLICT",
+        "action": "rebase onto base and resolve conflicts, then re-run ready"
+      }
+    ],
+    "state": "OPEN",
+    "draft": true,
+    "mergeable": "CONFLICTING",
+    "mergeStateStatus": "CONFLICT",
+    "ci": {
+      "failing": 1,
+      "total": 2
+    },
+    "threads_open": 1,
+    "description_chars": 70
+  },
+  "error": null
+}
+--- stderr ---
+ready: no — acme/app#5101 has 4 blocker(s):
+  - [ci-failing] 1 failing check(s): #13 failed — action: fix CI, then re-run ready
+  - [threads-open] 1 unresolved thread(s) — action: address or resolve open threads, then re-run ready
+  - [draft] PR is still a draft — action: mark ready for review when done, then re-run ready
+  - [conflict] mergeable=CONFLICTING mergeStateStatus=CONFLICT — action: rebase onto base and resolve conflicts, then re-run ready
+recommendation: wait — hold the review, re-run ready later
+--- files ---
+--- file C/.verdict/state/5101/.ready.err ---
+

@@ -342,6 +342,12 @@ func (s *Server) decodeCall(t *tool, id, raw json.RawMessage) (any, bool) {
 }
 
 func (s *Server) call(ctx context.Context, t *tool, request any) any {
+	if t.operatorWrite != nil && t.operatorWrite(request) && !s.cfg.Operator {
+		return refusalResult(&core.RefusalError{
+			Code:    codeBadFlags,
+			Message: "threads resolve requires a server started with --operator",
+		})
+	}
 	if t.wire != nil {
 		if err := t.wire(ctx, s.bindings(t), request); err != nil {
 			return refusalResult(rootResolutionRefusal(err))

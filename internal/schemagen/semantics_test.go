@@ -134,7 +134,11 @@ var publishedSemantics = map[string]string{
 	// descriptions now say a chunked bundle is graded on the chunk
 	// attestation its receipt stores, and counts unattested chunks. No
 	// member, property, required key, enum, or type changed.
-	"envelope.schema.json": "7b6b25c259f368f81ce0e7f49618ebe16e001b9644557e7568d8f62aef71932e",
+	// thread resolve: additive $defs/threadsResolveData and
+	// $defs/threadsResolveSkip entries pinning the resolve half of the
+	// threads --json data profile. Additions only; no existing property,
+	// required key, enum, or type changed.
+	"envelope.schema.json": "b91215777f8ac98ba2a203db3d6c84d08dc1ce8ffaf9ed8dabbdb962a4c09335",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -194,6 +198,11 @@ var publishedSemantics = map[string]string{
 	// envelope, root author kind, finding_sig, and the comments[] array: all
 	// additions to the new document, no previously published shape changed.
 	"threads.schema.json": "0dfe2a58cc8e51beede189ccc676fee3446e847336e2b72270539eb4c4eed3bc",
+	// additive threads-resolve.schema.json (new bundle document; no existing
+	// schema property, required key, or type changed). The receipt proves the
+	// resolve mutation: provider, repo, pr, head, timestamp, dry_run, the
+	// closed ids, and the skipped candidates with their reasons.
+	"threads-resolve.schema.json": "e550441f9990bf2109f4f078b42e4a86728582e45f661745e725c8d06012c1d4",
 	// additive usage.schema.json (new handoff document; no existing schema
 	// property, required key, or type changed — the envelope fetchEstimate entry
 	// from f3a22047 is untouched).

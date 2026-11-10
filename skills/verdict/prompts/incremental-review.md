@@ -10,7 +10,8 @@ Same body format + callout ladder as `review.md`, scoped to the delta.
 2. **Checkout.** `verdict fetch owner/repo N --base-sha <prior-reviewed-sha>`
    (writes `full.diff` + `incremental.diff` when computable). If `incremental.diff` exists it is
    your coverage checklist: read it FIRST in full, then only the `full.diff` ranges the delta
-   needs for context. If absent: full TOC, determine what changed since the last review yourself.
+   needs for context. If absent: read `incremental.diff.note` when present (another host has no
+   compare adapter), then use the full TOC to determine what changed since the last review yourself.
    Also read `.verdict/state/N/findings.json` (prior sigs, statuses, history) — it feeds step 6 dedup.
    Chunked bundles: when the bundle carries `chunks/manifest.json`, the delta is scoped to the
    affected chunks. Map every `incremental.diff` file to its manifest chunk(s); those chunk diffs
@@ -69,4 +70,9 @@ Same body format + callout ladder as `review.md`, scoped to the delta.
 
 Every review branch above ends the same way: Write exactly one `.verdict/state/N/review.json` with `{schema_version: "1", body, approved, comments[]}` (plus optional `resolved` sigs); `post` validates anchors, merges the findings store, and submits — the same path as an unchunked delta, no extra machinery. On chunked bundles the cross-chunk coverage gate applies unchanged: stamp every manifest chunk in top-level `"chunks"` — the affected chunks re-read for this delta, plus the unaffected chunks carried from the prior completed review (prior `findings.json`, step 2; when no prior review exists, read the unaffected chunks too) — and a synthesis missing one is refused, never posted partial. Top-level `confidence` (1–5) and `security_summary` are optional, as in `review.md` — absent stays absent. List prior-run sigs the delta addresses in `resolved`. Triage and verification work exactly as in `review.md` step 7.
 
-Coverage is yours to track against the TOC — no tool checks it; read every range the delta touches. On chunked bundles, track it against the affected chunks' checklists instead — an unread affected chunk is as visible as an unread range.
+Coverage is yours to track against the TOC; `gate` reads the stored receipt by default, so a delta
+review still attests the full diff. Carry the prior review's `coverage[]` forward (the bundle's
+`review.json` until this run overwrites it, or the ranges you already read) and add every range the
+delta touches — `next --coverage` lists what is missing. On chunked bundles, stamp every manifest
+chunk instead: the affected chunks plus the unaffected ones carried from the prior review. An unread
+affected chunk is as visible as an unread range.

@@ -36,15 +36,16 @@ const (
 )
 
 // conformanceColumns is the matrix's column order: the submit capabilities the
-// manual documents per host, then the gap every host shares today.
+// manual documents per host. thread_resolution is not a submit write — it is
+// the separate resolver seam, checked by TestThreadResolutionConformance — and
+// the manual explains it once, in the section prose, so it has no per-host row.
 var conformanceColumns = []string{
 	conformancePost, conformanceInlineAnchors,
-	conformanceApprove, conformanceRequestChanges, conformanceThreadResolution,
+	conformanceApprove, conformanceRequestChanges,
 }
 
 // conformanceSubmitColumns are the columns docs/manual.md documents in its
-// per-host submit row. thread_resolution is absent on every host and the
-// manual explains it once, in the section prose, so it has no per-host row.
+// per-host submit row.
 var conformanceSubmitColumns = conformanceColumns[:4]
 
 const (
@@ -80,13 +81,18 @@ const conformanceReview = `{"schema_version":"1","body":"> ✅ Looks good — mi
 // hostConformance is one host's row: the exact argv each write it can fire
 // uses, and the degradations docs/manual.md promises for what it cannot do.
 type hostConformance struct {
-	provider string
 	// gaps is the phrase docs/manual.md's reason-code row and the operator
 	// message must share, keyed by a submit capability the host lacks.
 	gaps map[string]string
 	// partial is the word docs/manual.md's submit row and the runtime warning
 	// must share, keyed by a capability the host carries but loses part of.
 	partial map[string]string
+	// wireEvent is the spelling this host's payload carries for a verdict
+	// event, where it differs from GitHub's vocabulary.
+	wireEvent map[string]string
+	// env is the environment the host's local auth gate reads.
+	env      map[string]string
+	provider string
 	// noSubmitDoc is the phrase docs/manual.md's §Providers Gaps cell promises
 	// a fetch-only host's refusal stands in for.
 	noSubmitDoc string
@@ -99,9 +105,12 @@ type hostConformance struct {
 	// approveArgv records an approval. Empty means the approval rides bodyArgv
 	// as that payload's own verdict event.
 	approveArgv string
+	// lineField is the payload key this host's review comment anchors its line
+	// in; empty means GitHub's `line`.
+	lineField string
 }
 
-// conformanceRows is the matrix: the two hosts with a submit path, and one
+// conformanceRows is the matrix: the three hosts with a submit path, and one
 // fetch-only host whose whole row must refuse.
 func conformanceRows() []*hostConformance {
 	return []*hostConformance{
@@ -118,10 +127,39 @@ func conformanceRows() []*hostConformance {
 			partial:     map[string]string{conformanceInlineAnchors: "multi-line"},
 		},
 		{
+			provider:  providerForgejo,
+			bodyArgv:  conformanceForgejoWrite,
+			env:       conformanceForgejoEnv(),
+			wireEvent: map[string]string{eventApprove: "APPROVED"},
+			lineField: "new_position",
+			partial:   map[string]string{conformanceInlineAnchors: "multi-line"},
+		},
+		{
 			provider:    "bitbucket",
 			noSubmitDoc: "no grouped submit",
 		},
 	}
+}
+
+// The exact argv a Forgejo post reads and writes with: `curl` on a reserved
+// `.invalid` host, with the token header both directions share.
+const (
+	conformanceForgejoBase = "https://forgejo.invalid/api/v1/repos/acme/app/pulls/7"
+	conformanceForgejoAuth = "-H\x00Authorization: token conformance-token"
+	conformanceForgejoRead = "curl\x00-sf\x00" + conformanceForgejoAuth + "\x00"
+
+	conformanceForgejoPull     = conformanceForgejoRead + conformanceForgejoBase
+	conformanceForgejoUser     = conformanceForgejoRead + "https://forgejo.invalid/api/v1/user"
+	conformanceForgejoReviews  = conformanceForgejoRead + conformanceForgejoBase + "/reviews?limit=50&page=1"
+	conformanceForgejoComments = conformanceForgejoRead + conformanceForgejoBase + "/reviews/301/comments"
+	conformanceForgejoWrite    = "curl\x00-sS\x00-i\x00" + conformanceForgejoAuth +
+		"\x00-H\x00Content-Type: application/json\x00-X\x00POST\x00--data-binary\x00@-\x00" +
+		conformanceForgejoBase + "/reviews"
+)
+
+// conformanceForgejoEnv is the environment the Forgejo auth gate reads.
+func conformanceForgejoEnv() map[string]string {
+	return map[string]string{"FORGEJO_HOST": "https://forgejo.invalid", "FORGEJO_TOKEN": "conformance-token"}
 }
 
 // TestProviderConformance is the suite: every host answers the three
@@ -134,6 +172,111 @@ func TestProviderConformance(t *testing.T) {
 			conformanceCheckHost(t, docs, row)
 		})
 	}
+}
+
+// The exact resolve argv each host takes. The literals are the contract: a
+// rename in the resolver fails here instead of following the helper that
+// produced it.
+const (
+	conformanceGitHubResolveArgv = "gh\x00api\x00graphql\x00-f\x00query=" + queryResolveThread +
+		"\x00-f\x00threadId=PRRT_kwDOacme"
+	conformanceGitLabResolveArgv = "glab\x00api\x00projects/acme%2Fapp/merge_requests/7/discussions/d1?resolved=true" +
+		"\x00--method\x00PUT"
+)
+
+// TestThreadResolutionConformance proves the published thread_resolution flag
+// agrees with the resolver seam: a host that advertises the capability has a
+// resolver, and a host without one advertises false. Flipping the flag without
+// the call fails here.
+func TestThreadResolutionConformance(t *testing.T) {
+	t.Parallel()
+	for _, row := range conformanceRows() {
+		caps := core.CapabilitiesFor(row.provider)
+		_, _, resolver := hostFor(row.provider)
+		if caps.ThreadResolution != (resolver != nil) {
+			t.Errorf("%s: thread_resolution = %v, resolver present = %v",
+				row.provider, caps.ThreadResolution, resolver != nil)
+		}
+	}
+}
+
+// TestThreadResolveArgv drives each resolver and pins the one write it makes.
+//
+//nolint:revive // the resolve matrix reads as one assertion block
+func TestThreadResolveArgv(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		provider, threadID, argv, answer string
+	}{
+		{
+			provider: providerGitHub, threadID: "PRRT_kwDOacme", argv: conformanceGitHubResolveArgv,
+			answer: `{"data":{"resolveReviewThread":{"thread":{"id":"PRRT_kwDOacme","isResolved":true}}}}`,
+		},
+		{
+			provider: providerGitLab, threadID: "d1", argv: conformanceGitLabResolveArgv,
+			answer: `{"id":"d1","notes":[{"id":101,"system":false,"resolvable":true,"resolved":true}]}`,
+		},
+	} {
+		t.Run(tc.provider, func(t *testing.T) {
+			t.Parallel()
+			cmdr := &scriptCommander{t: t, out: map[string]scriptResult{tc.argv: {stdout: tc.answer}}}
+			if ref := ResolveThread(context.Background(), cmdr, tc.provider, nil, "acme/app", "7", tc.threadID); ref != nil {
+				t.Fatalf("ResolveThread refusal: %s: %s", ref.Code, ref.Message)
+			}
+			if len(cmdr.calls) != 1 {
+				t.Fatalf("calls = %d, want 1: %q", len(cmdr.calls), cmdr.calls)
+			}
+			if got := strings.Join(cmdr.calls[0], conformanceArgvSep); got != tc.argv {
+				t.Errorf("argv = %q, want %q", got, tc.argv)
+			}
+		})
+	}
+}
+
+// TestThreadResolveHoldsTheAnswer proves a 200 that does not carry the
+// resolved state is a refusal, never a receipt that claims the thread closed.
+func TestThreadResolveHoldsTheAnswer(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ provider, threadID, argv, answer string }{
+		{providerGitHub, "PRRT_kwDOacme", conformanceGitHubResolveArgv, `{"data":{"resolveReviewThread":{"thread":{"id":"PRRT_kwDOacme","isResolved":false}}}}`},
+		{providerGitLab, "d1", conformanceGitLabResolveArgv, `{"id":"d1","notes":[{"id":101,"system":false,"resolved":false}]}`},
+	} {
+		t.Run(tc.provider, func(t *testing.T) {
+			t.Parallel()
+			cmdr := &scriptCommander{t: t, out: map[string]scriptResult{tc.argv: {stdout: tc.answer}}}
+			ref := ResolveThread(context.Background(), cmdr, tc.provider, nil, "acme/app", "7", tc.threadID)
+			if ref == nil || ref.Code != codeThreadsFailed {
+				t.Fatalf("refusal = %+v, want %s", ref, codeThreadsFailed)
+			}
+		})
+	}
+}
+
+// TestThreadResolveRefusals proves a host without a resolver refuses typed
+// before any call, and a missing commander never reaches the host.
+//
+//nolint:revive // the refusal matrix reads as one assertion block
+func TestThreadResolveRefusals(t *testing.T) {
+	t.Parallel()
+	t.Run("forgejo", func(t *testing.T) {
+		t.Parallel()
+		cmdr := &scriptCommander{t: t, out: map[string]scriptResult{}}
+		ref := ResolveThread(context.Background(), cmdr, providerForgejo,
+			conformanceForgejoEnv(), "acme/app", "7", "401")
+		if ref == nil || ref.Code != "provider-unimplemented" {
+			t.Fatalf("refusal = %+v, want provider-unimplemented", ref)
+		}
+		if len(cmdr.calls) != 0 {
+			t.Errorf("a host without a resolver fired %d call(s): %q", len(cmdr.calls), cmdr.calls)
+		}
+	})
+	t.Run("no commander", func(t *testing.T) {
+		t.Parallel()
+		ref := ResolveThread(context.Background(), nil, providerGitHub, nil, "acme/app", "7", "PRRT_kwDOacme")
+		if ref == nil || ref.Code != codeThreadsFailed {
+			t.Fatalf("refusal = %+v, want %s", ref, codeThreadsFailed)
+		}
+	})
 }
 
 // conformanceCheckHost runs every scenario against one host and asserts what
@@ -175,6 +318,18 @@ type conformanceScenario struct {
 	dryRun  bool
 }
 
+// event is verdict's payload event for the scenario.
+func (scn conformanceScenario) event() string {
+	switch {
+	case scn.changes:
+		return eventRequestChanges
+	case scn.approve == approveTrue:
+		return eventApprove
+	default:
+		return eventComment
+	}
+}
+
 // conformanceScenarios are the three posts the matrix observes.
 func conformanceScenarios() []conformanceScenario {
 	return []conformanceScenario{
@@ -211,7 +366,7 @@ func conformanceEnvelopeWarnings(run *conformanceRun) []string {
 func runConformance(t *testing.T, row *hostConformance, scn conformanceScenario) *conformanceRun {
 	t.Helper()
 	root := conformanceBundle(t, row.provider)
-	cmdr := conformanceCommander(t, row)
+	cmdr := conformanceCommander(t, row, scn)
 	var warnings, human []string
 	flags := core.PostFlags{
 		Approve: scn.approve, RequestChanges: scn.changes, Bind: scn.bind,
@@ -220,6 +375,9 @@ func runConformance(t *testing.T, row *hostConformance, scn conformanceScenario)
 	}
 	req := postTestReq(cmdr, flags, &warnings, &human)
 	req.RepoRoot = root
+	if row.env != nil {
+		req.Env = maps.Clone(row.env)
+	}
 	resp, ref := Run(context.Background(), req)
 	return &conformanceRun{calls: cmdr.calls, stdin: cmdr.stdin, root: root, response: resp, refusal: ref}
 }
@@ -256,7 +414,7 @@ func conformanceBundle(t *testing.T, provider string) string {
 // conformanceCommander scripts the reads and writes one host may make. A host
 // with no submit path gets an empty script, so any call it makes fails as an
 // unexpected argv instead of passing silently.
-func conformanceCommander(t *testing.T, row *hostConformance) *scriptCommander {
+func conformanceCommander(t *testing.T, row *hostConformance, scn conformanceScenario) *scriptCommander {
 	t.Helper()
 	switch row.provider {
 	case providerGitHub:
@@ -265,18 +423,43 @@ func conformanceCommander(t *testing.T, row *hostConformance) *scriptCommander {
 		return cmdr
 	case providerGitLab:
 		return gitlabCommander(t)
+	case providerForgejo:
+		return conformanceForgejoCommander(t, row, scn)
 	default:
 		return &scriptCommander{t: t, out: map[string]scriptResult{}}
 	}
 }
 
+// conformanceForgejoCommander scripts one Forgejo post. The write answers with
+// the state the scenario asked for, which is what a submitted review reads back
+// as: a host that created a draft would answer PENDING and the post-condition
+// would refuse it.
+func conformanceForgejoCommander(t *testing.T, row *hostConformance, scn conformanceScenario) *scriptCommander {
+	t.Helper()
+	return &scriptCommander{t: t, out: map[string]scriptResult{
+		conformanceForgejoPull:     {stdout: `{"head":{"sha":"` + gitlabHead + `"}}`},
+		conformanceForgejoUser:     {stdout: `{"login":"teammate"}`},
+		conformanceForgejoReviews:  {stdout: `[{"id":301,"state":"COMMENT","user":{"login":"alice"}}]`},
+		conformanceForgejoComments: {stdout: `[{"id":401,"path":"notes.txt","position":2,"user":{"login":"alice"}}]`},
+		conformanceForgejoWrite:    {stdout: conformanceForgejoAnswer(row.hostEvent(scn.event()))},
+	}}
+}
+
+// conformanceForgejoAnswer renders the `curl -i` document one created review
+// answers with.
+func conformanceForgejoAnswer(state string) string {
+	return "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" +
+		`{"id":901,"state":"` + state + `","commit_id":"` + gitlabHead + `",` +
+		`"submitted_at":"2026-11-02T12:00:00Z","html_url":"https://forgejo.invalid/acme/app/pulls/7#issuecomment-901"}` +
+		"\n"
+}
+
 // conformanceTool is the CLI a host's submit path spawns; every other argv on
-// that row is a disagreement.
+// that row is a disagreement. It reads the host seam rather than a table, so a
+// host whose seam names another tool fails here.
 func conformanceTool(provider string) string {
-	if provider == providerGitLab {
-		return toolGlab
-	}
-	return toolGH
+	writer, _, _ := hostFor(provider)
+	return writer.tool()
 }
 
 // writeCounts is what the submit path actually did, counted per capability
@@ -287,13 +470,12 @@ type writeCounts struct {
 	anchors int
 	approve int
 	changes int
-	resolve int
 }
 
 func (c writeCounts) add(o writeCounts) writeCounts {
 	return writeCounts{
 		post: c.post + o.post, anchors: c.anchors + o.anchors, approve: c.approve + o.approve,
-		changes: c.changes + o.changes, resolve: c.resolve + o.resolve,
+		changes: c.changes + o.changes,
 	}
 }
 
@@ -303,7 +485,6 @@ func (row *hostConformance) observe(t *testing.T, run *conformanceRun) writeCoun
 	t.Helper()
 	var counts writeCounts
 	for i, call := range run.calls {
-		counts.resolve += conformanceResolveWrite(call)
 		counts = counts.add(row.writeCount(t, run, i, call))
 	}
 	return counts
@@ -341,25 +522,22 @@ func (row *hostConformance) bodyWrite(t *testing.T, stdin string) writeCounts {
 	}
 	if row.verbInPayload() {
 		switch payload["event"] {
-		case eventApprove:
+		case row.hostEvent(eventApprove):
 			counts.approve = 1
-		case eventRequestChanges:
+		case row.hostEvent(eventRequestChanges):
 			counts.changes = 1
 		}
 	}
 	return counts
 }
 
-// conformanceResolveWrite reports whether one call is a thread-resolve
-// mutation: GitHub's resolveReviewThread mutation, or GitLab's discussion
-// resolve endpoint. verdict ships neither, which is why thread_resolution reads
-// false on every host.
-func conformanceResolveWrite(call []string) int {
-	joined := strings.Join(call, " ")
-	if strings.Contains(joined, "resolveReviewThread") || strings.Contains(joined, "/resolve") {
-		return 1
+// hostEvent is the spelling this host's payload carries for one verdict event:
+// GitHub's vocabulary unless the row declares another.
+func (row *hostConformance) hostEvent(event string) string {
+	if mapped, ok := row.wireEvent[event]; ok {
+		return mapped
 	}
-	return 0
+	return event
 }
 
 // conformancePayload decodes one posted stdin body.
@@ -553,9 +731,20 @@ func conformanceCheckPartial(t *testing.T, row *hostConformance, caps core.HostC
 	t.Helper()
 	for _, column := range conformanceSubmitColumns {
 		if concept, documented := row.partial[column]; documented {
-			conformanceCheckPartialColumn(t, row, caps, column, concept, sent, docs.submit[row.provider])
+			conformanceCheckPartialColumn(t, row, caps, column, concept, sent, docs.partialSurface(row))
 		}
 	}
+}
+
+// partialSurface is where the manual documents a host's partial losses: its
+// submit row when that row lists gaps, the section prose when the row is "—"
+// because the host carries every capability the table publishes.
+func (d conformanceDocs) partialSurface(row *hostConformance) string {
+	cell := d.submit[row.provider]
+	if strings.TrimSpace(cell) == "—" {
+		return d.prose
+	}
+	return cell
 }
 
 // conformanceCheckPartialColumn checks one documented partial loss: the
@@ -695,7 +884,7 @@ func (row *hostConformance) anchoredFindings(t *testing.T, run *conformanceRun) 
 		key := strings.Join(call, conformanceArgvSep)
 		switch {
 		case row.verbInPayload() && row.bodyArgv != "" && key == row.bodyArgv:
-			out = append(out, conformanceReviewComments(t, run.stdin[i])...)
+			out = append(out, conformanceReviewComments(t, run.stdin[i], row.lineField)...)
 		case row.anchorArgv != "" && key == row.anchorArgv:
 			out = append(out, conformanceDiscussionAnchor(t, run.stdin[i]))
 		}
@@ -703,14 +892,19 @@ func (row *hostConformance) anchoredFindings(t *testing.T, run *conformanceRun) 
 	return out
 }
 
-// conformanceReviewComments reads the comments one atomic review carried.
-func conformanceReviewComments(t *testing.T, stdin string) []anchoredFinding {
+// conformanceReviewComments reads the comments one atomic review carried. A
+// host whose comment shape names the line differently passes its own key.
+func conformanceReviewComments(t *testing.T, stdin, lineField string) []anchoredFinding {
 	t.Helper()
+	if lineField == "" {
+		lineField = "line"
+	}
 	var out []anchoredFinding
 	for _, c := range jq.Elements(conformancePayload(t, stdin)["comments"]) {
 		comment := conformanceMap(c)
 		out = append(out, anchoredFinding{
-			path: jq.StrOf(comment["path"]), line: conformanceInt(comment["line"]), start: conformanceInt(comment["start_line"]),
+			path: jq.StrOf(comment["path"]), line: conformanceInt(comment[lineField]),
+			start: conformanceInt(comment["start_line"]),
 		})
 	}
 	return out
@@ -771,8 +965,6 @@ func capabilityWrites(t *testing.T, counts writeCounts, column string) int {
 		return counts.approve
 	case conformanceRequestChanges:
 		return counts.changes
-	case conformanceThreadResolution:
-		return counts.resolve
 	default:
 		t.Fatalf("unknown capability column %q", column)
 		return 0
@@ -825,7 +1017,7 @@ func (row *hostConformance) carriedBy(column string) string {
 	case conformanceRequestChanges:
 		return hints.changes
 	default:
-		return "verdict ships no resolve mutation on any host"
+		return "unknown capability column " + column
 	}
 }
 
@@ -945,18 +1137,16 @@ func conformanceEmitHost(t *testing.T, docs conformanceDocs, provider string, em
 	}
 }
 
-// conformanceCheckThreadProse checks the one promise the manual makes for every
-// host instead of per host: thread resolution is absent everywhere, so the
-// section prose (not a submit row) has to say so.
+// conformanceCheckThreadProse checks the promise the manual makes in the
+// section prose instead of per host: the hosts that carry thread_resolution
+// are named with the mutation, and the host that does not says why.
 func conformanceCheckThreadProse(t *testing.T, docs conformanceDocs) {
 	t.Helper()
-	for _, row := range conformanceRows() {
-		if core.CapabilitiesFor(row.provider).ThreadResolution {
-			return
-		}
+	if !strings.Contains(docs.prose, "threads resolve") {
+		t.Error("docs/manual.md no longer names the threads resolve mutation in the Providers prose")
 	}
-	if !strings.Contains(docs.prose, "false on every host") {
-		t.Error("docs/manual.md no longer says thread_resolution is false on every host, which is the whole promise for it")
+	if !strings.Contains(docs.prose, "no documented resolve endpoint") {
+		t.Error("docs/manual.md no longer says Forgejo has no documented resolve endpoint")
 	}
 }
 

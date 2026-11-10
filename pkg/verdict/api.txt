@@ -100,8 +100,9 @@ func (c *Client) Config(ctx context.Context, req *ConfigRequest) (*ConfigRespons
     an injected Commander, so a caller that sandboxes execution must cover that
     probe too.
 
-func (c *Client) Doctor(ctx context.Context, _ *DoctorRequest) (*DoctorResponse, error)
-    Doctor preflights the harness (auth, git, storage) and reports health.
+func (c *Client) Doctor(ctx context.Context, req *DoctorRequest) (*DoctorResponse, error)
+    Doctor preflights one code host's CLI and auth, git, and storage, and
+    reports health.
 
 func (c *Client) Fetch(ctx context.Context, req *FetchRequest) (*Result, error)
     Fetch fetches a pull request into .verdict/state/<pr>.
@@ -147,7 +148,8 @@ func (c *Client) Show(ctx context.Context, req *ShowRequest) (*ShowResponse, err
 
 func (c *Client) Threads(ctx context.Context, req *ThreadsRequest) (*ThreadsResponse, error)
     Threads re-reads one provider's review conversations and rewrites only
-    .verdict/state/<pr>/threads.json. Human progress streams through the
+    .verdict/state/<pr>/threads.json, or with Resolve closes the selected
+    threads and writes threads-resolve.json. Human progress streams through the
     Options.Progress observer.
 
 func (c *Client) Trend(ctx context.Context, req *TrendRequest) (*TrendResponse, error)
@@ -201,8 +203,11 @@ type ConfigResponse struct {
     the typed config data as JSON, byte-identical to the --json envelope's data
     object.
 
-type DoctorRequest struct{}
-    DoctorRequest carries no positionals: doctor preflights the harness.
+type DoctorRequest struct {
+	Provider string
+}
+    DoctorRequest names the host to preflight: the fetch enum, and an empty
+    Provider keeps the GitHub posture.
 
 type DoctorResponse struct {
 	Outcome
@@ -464,18 +469,31 @@ type ShowResponse struct {
 type ThreadsRequest struct {
 	Invocation
 	Provider string
+	Threads  []string
+	Resolve  bool
+	DryRun   bool
 }
-    ThreadsRequest carries the threads refresh options: the provider override
-    ("" reads GitHub, like the CLI).
+    ThreadsRequest carries the threads options: the provider override ("" reads
+    GitHub, like the CLI) and the resolve mode's named threads and dry run.
+
+type ThreadsResolveSkip struct {
+	ID     string
+	Reason string
+}
+    ThreadsResolveSkip is one candidate a resolve run left open and why.
 
 type ThreadsResponse struct {
 	Result
 	Dir, File, Provider, HeadSHA, FetchedAt string
 	Threads, Open, Outdated, Verdict        int
 	Truncated                               bool
+	ResolvedAt                              string
+	Resolved                                []string
+	Skipped                                 []ThreadsResolveSkip
 }
     ThreadsResponse carries the threads envelope plus the refreshed feed tally.
     Data is the `threads` profile byte-for-byte; the typed fields mirror it.
+    A resolve run fills ResolvedAt/Resolved/Skipped instead of the feed tally.
 
 type TrendRequest struct {
 	Repo    string

@@ -11,7 +11,7 @@ exit: 1
   "data": null,
   "error": {
     "code": "provider-unimplemented",
-    "message": "calibrate on gitlab is not implemented yet (no live thread join for it)\ntry: use the verb named above for this bundle kind"
+    "message": "calibrate on forgejo is not implemented yet (no live thread join for it)\ntry: use the verb named above for this bundle kind"
   }
 }
 --- stderr ---

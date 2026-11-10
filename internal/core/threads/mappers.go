@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/forgejo"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -259,7 +260,7 @@ func forgejoThread(m map[string]any) (Thread, bool) {
 	t := Thread{
 		ID:       idStr(m[keyID]),
 		Path:     str(m, keyPath),
-		Resolved: m["resolver"] != nil,
+		Resolved: forgejo.Resolved(m),
 		Kind:     KindReview,
 		Comments: []Comment{plainComment(m, login, body, truncated)},
 	}

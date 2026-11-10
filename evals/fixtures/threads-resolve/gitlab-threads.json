@@ -1,0 +1,106 @@
+{
+  "schema_version": "1",
+  "provider": "gitlab",
+  "pr": 7,
+  "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "fetched_at": "2026-11-01T00:00:00Z",
+  "truncated": false,
+  "threads": [
+    {
+      "id": "d1",
+      "path": "notes.txt",
+      "line": 2,
+      "start_line": null,
+      "side": "RIGHT",
+      "resolved": false,
+      "outdated": false,
+      "url": null,
+      "author": "rev",
+      "author_kind": "verdict",
+      "finding_sig": "c111111111111111111111111111111111111111",
+      "kind": "review-comment",
+      "comments": [
+        {
+          "id": "101",
+          "author": "rev",
+          "author_kind": "verdict",
+          "body": "Fixed body here with enough substance.\n\n<!-- verdict-finding sig=c111111111111111111111111111111111111111 -->",
+          "truncated": false,
+          "created_at": "2026-11-01T10:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "d2",
+      "path": "notes.txt",
+      "line": 2,
+      "start_line": null,
+      "side": "RIGHT",
+      "resolved": false,
+      "outdated": false,
+      "url": null,
+      "author": "ana",
+      "author_kind": "human",
+      "finding_sig": null,
+      "kind": "review-comment",
+      "comments": [
+        {
+          "id": "102",
+          "author": "ana",
+          "author_kind": "human",
+          "body": "human note",
+          "truncated": false,
+          "created_at": "2026-11-01T11:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "d3",
+      "path": "notes.txt",
+      "line": 2,
+      "start_line": null,
+      "side": "RIGHT",
+      "resolved": true,
+      "outdated": false,
+      "url": null,
+      "author": "rev",
+      "author_kind": "verdict",
+      "finding_sig": "c111111111111111111111111111111111111111",
+      "kind": "review-comment",
+      "comments": [
+        {
+          "id": "103",
+          "author": "rev",
+          "author_kind": "verdict",
+          "body": "old\n\n<!-- verdict-finding sig=c111111111111111111111111111111111111111 -->",
+          "truncated": false,
+          "created_at": "2026-11-01T09:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "d4",
+      "path": "notes.txt",
+      "line": 2,
+      "start_line": null,
+      "side": "RIGHT",
+      "resolved": false,
+      "outdated": false,
+      "url": null,
+      "author": "mallory",
+      "author_kind": "verdict",
+      "finding_sig": "c111111111111111111111111111111111111111",
+      "kind": "review-comment",
+      "comments": [
+        {
+          "id": "104",
+          "author": "mallory",
+          "author_kind": "verdict",
+          "body": "copied marker\n\n<!-- verdict-finding sig=c111111111111111111111111111111111111111 -->",
+          "truncated": false,
+          "created_at": "2026-11-01T12:00:00Z"
+        }
+      ]
+    }
+  ]
+}

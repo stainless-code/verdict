@@ -35,8 +35,9 @@ skip-token ban and test determinism. Read both before writing or reviewing Go.
 
 ## Hazards
 
-- **Never run a real `post`.** It submits to GitHub or GitLab, so stub that
-  host's CLI (`gh`, or `glab` for GitLab) and use `post --dry-run`.
+- **Never run a real `post`.** It submits to GitHub, GitLab, or Forgejo, so
+  stub that host's client (`gh`, `glab` for GitLab, `curl` for Forgejo) and use
+  `post --dry-run`.
 - **No network.** Unit tests and evals must pass offline. Every host CLI the
   suite shells (`gh`, `glab`, `curl`) is stubbed network-dead, refusing any
   argv a case did not register (`evals/README.md`, `evals/lib/hoststub.sh`).

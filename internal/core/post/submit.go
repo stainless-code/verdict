@@ -26,6 +26,7 @@ const (
 	flagMethod = "--method"
 	flagInput  = "--input"
 	methodPost = "POST"
+	methodPut  = "PUT"
 
 	// postErrSuffix is the sidecar that carries the forge's own stderr, so a
 	// post-failed refusal quotes the host instead of an empty reason.
@@ -242,12 +243,16 @@ const recheckReasonBytes = 120
 
 // postAttempt is one submission attempt's outcome. posted is the accepted
 // receipt object on success; errText is the forge's own words, which the
-// retry policy classifies. partial marks a run whose payload already landed
-// in part, so replaying the whole payload would duplicate it. warnings are
-// the progress notes the refusal carries back to the operator.
+// retry policy classifies. message is the operator sentence a local refusal
+// reports instead of the generic post-failed reason, and it ends the retry,
+// because a refusal made before any write cannot improve by repeating it.
+// partial marks a run whose payload already landed in part, so replaying the
+// whole payload would duplicate it. warnings are the progress notes the
+// refusal carries back to the operator.
 type postAttempt struct {
 	posted   string
 	errText  string
+	message  string
 	warnings []string
 	partial  bool
 	ok       bool
@@ -261,6 +266,16 @@ func postFailure(dir, reason string, partial bool, warnings []string) postAttemp
 		return postAttempt{}
 	}
 	return postAttempt{errText: reason, partial: partial, warnings: warnings}
+}
+
+// postRefusal records one attempt that refused before the host accepted a
+// write. The sentence is the whole refusal message, so it does not read inside
+// msgPostFailed's reason slot.
+func postRefusal(dir, message string, warnings []string) postAttempt {
+	if werr := atomic.WriteErrSidecar(dir+postErrSuffix, []byte(message)); werr != nil {
+		return postAttempt{}
+	}
+	return postAttempt{errText: message, message: message, warnings: warnings}
 }
 
 // postAccepted records one accepted attempt and the last call's stderr, so a
@@ -294,6 +309,8 @@ func hostLabel(provider string) string {
 		return "GitHub"
 	case providerGitLab:
 		return "GitLab"
+	case providerForgejo:
+		return "Forgejo"
 	default:
 		return provider
 	}
@@ -307,23 +324,15 @@ func githubReviewArgv(repo, pr string) []string {
 	}
 }
 
-// postOnce submits one payload to the bundle's host: GitHub's single review
-// POST, or GitLab's one-discussion-per-finding replay.
-func postOnce(ctx context.Context, cmdr Commander, provider, repo, pr, dir, payload string) postAttempt {
+// postOnce submits one payload to the bundle's host through the host seam.
+func postOnce(ctx context.Context, cmdr Commander, provider string, env map[string]string,
+	repo, pr, dir, payload string,
+) postAttempt {
 	if cmdr == nil {
 		return postFailure(dir, errNoCommander.Error(), false, nil)
 	}
-	if provider == providerGitLab {
-		return gitlabPost(ctx, cmdr, core.CapabilitiesFor(provider), repo, pr, dir, payload)
-	}
-	res, err := cmdr.Run(ctx, &core.Command{
-		Argv:  githubReviewArgv(repo, pr),
-		Stdin: strings.NewReader(payload + newline),
-	})
-	if err != nil || res.ExitCode != 0 {
-		return postFailure(dir, res.Stderr, false, nil)
-	}
-	return postAccepted(dir, strings.TrimRight(res.Stdout, newline), res.Stderr, nil)
+	writer, _, _ := hostFor(provider)
+	return writer.post(ctx, cmdr, env, core.CapabilitiesFor(provider), repo, pr, dir, payload)
 }
 
 func (st *state) submit(ctx context.Context) (*core.PostResponse, *core.RefusalError) {
@@ -367,14 +376,18 @@ func (st *state) postWithRetry(ctx context.Context, cmdr Commander) (string, *co
 //nolint:revive // the bounded retry loop branches are the post contract
 func (st *state) postOneWithRetry(ctx context.Context, cmdr Commander, payload string) (string, *core.RefusalError) {
 	st.retryAt = ""
+	var last postAttempt
 	for attempt := range retry.MaxAttempts {
-		res := postOnce(ctx, cmdr, st.provider(), st.req.Repo, st.req.Pr, st.dir, payload)
-		st.warnings = append(st.warnings, res.warnings...)
-		if res.ok {
-			return res.posted, nil
+		last = postOnce(ctx, cmdr, st.provider(), st.env(), st.req.Repo, st.req.Pr, st.dir, payload)
+		st.warnings = append(st.warnings, last.warnings...)
+		if last.ok {
+			return last.posted, nil
 		}
-		wait, canRetry := retry.Delay(res.errText, attempt)
-		if res.partial {
+		if last.message != "" {
+			break
+		}
+		wait, canRetry := retry.Delay(last.errText, attempt)
+		if last.partial {
 			// A replayed payload would post the landed part twice; the
 			// refusal names it instead of retrying it. GitHub's single
 			// call keeps the documented lost-response retry.
@@ -391,9 +404,11 @@ func (st *state) postOneWithRetry(ctx context.Context, cmdr Commander, payload s
 			break
 		}
 	}
-	return "", &core.RefusalError{
-		Code: codePostFailed, Message: fmt.Sprintf(msgPostFailed, headReason(st.dir)), RetryAt: st.retryAt,
+	message := fmt.Sprintf(msgPostFailed, headReason(st.dir))
+	if last.message != "" {
+		message = last.message
 	}
+	return "", &core.RefusalError{Code: codePostFailed, Message: message, RetryAt: st.retryAt}
 }
 
 func (st *state) awaitPostRetry(ctx context.Context, wait time.Duration, attempt int) (bool, *core.RefusalError) {

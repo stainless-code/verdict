@@ -179,10 +179,61 @@
 # With the sandbox hardening stacked on top, the final PR 1 build measures
 # darwin/amd64 12331728, linux/amd64 12112032, windows/arm64 11190784; those
 # three move to the next 10 kB, the other three hold.
+# doctor's per-host preflight table (the gitlab/glab, gitcafe/cafe, and
+# curl-or-az credential probes with their row tables) plus adopt's gate reading
+# the capability table instead of one hard-coded host. Measured here:
+# darwin/amd64 12340064, darwin/arm64 11321570, linux/amd64 12124320,
+# linux/arm64 11141280, windows/amd64 12455936, windows/arm64 11198976. Three
+# ceilings cross and move to the next 10 kB at least 5 kB above their
+# measurement; darwin/arm64, linux/arm64, and windows/arm64 stay put.
+# GitLab incremental re-review adds the compare read, the compare-to-unified
+# join, and the note/refusal plumbing. Measured here: darwin/amd64 12339936,
+# darwin/arm64 11321442, linux/amd64 12120224, linux/arm64 11141280,
+# windows/amd64 12452864, windows/arm64 11196416. linux/amd64 crosses by 224
+# and windows/amd64 by 2864 over their old lines, so both ceilings move to the
+# next 10 kB above the measurements; the other four stay put.
+# Stacked, the doctor/adopt slice plus GitLab incremental measure windows/arm64
+# 11205120; that ceiling moves to the next 10 kB, the other five hold.
+# Ready and calibrate on GitLab (the glab MR/pipeline/discussion reads,
+# the head-pipeline fallback, the discussion-match join with its posted-body
+# renderer and repository-compare changed-file read, plus the shared tails
+# both hosts now run through). Measured here: darwin/amd64 12373840,
+# darwin/arm64 11355602, linux/amd64 12152992, linux/arm64 11141280,
+# windows/amd64 12487680, windows/arm64 11229184. The five ceilings that
+# cross move to the next 10 kB at least 5 kB above their measurement;
+# linux/arm64 stays put.
+# Stacked with GitLab incremental and the doctor/adopt slice, the ready and
+# calibrate GitLab legs measure darwin/amd64 12382064 and linux/amd64 12161184;
+# those two move to the next 10 kB, the others hold.
+# Forgejo submit (STA-313, H4): the shared wire contract behind internal/forgejo,
+# the post seam that absorbed the GitHub/GitLab branches, the curl writer with
+# its anchor withholding and draft gate, and the capability row with its
+# conformance and docs. Measured here: darwin/amd64 12394080, darwin/arm64
+# 11371874, linux/amd64 12173472, linux/arm64 11141280, windows/amd64 12507136,
+# windows/arm64 11245056. Five ceilings cross and move to the next 10 kB at
+# least 5 kB above their measurement; linux/arm64 stays inside and keeps its
+# 11150000 line.
+# Stacked on the slices above, the combined PR 2 build measures darwin/amd64 12444400, darwin/arm64 11406098, linux/amd64 12222624, linux/arm64 11206816, windows/amd64 12556800, windows/arm64 11291136;
+# those move to the next 10 kB, the others hold.
+# Thread resolve (STA-318, H6): the host resolver seam, the receipt-backed
+# threads resolve service and schema, the CLI/MCP/SDK surface, and the two
+# eval cases. Measured here: darwin/amd64 12506768, darwin/arm64 11473074,
+# linux/amd64 12284064, linux/arm64 11272352, windows/amd64 12620288,
+# windows/arm64 11346944. Five ceilings cross and move to the next 10 kB at
+# least 5 kB above their measurement; windows/arm64 had already moved for the
+# same wave.
+# The thread-resolve identity gate and the host-truth help text put the PR 2
+# head at linux/amd64 12292256 (crosses) and windows/amd64 12629504 (496 bytes
+# under, inside the recorded ~1 kB local-vs-CI drift); both move to the next
+# 10 kB, the other four hold.
+# The stale-head refetch hint's per-host capability table and the ready
+# refusal's supported-host list add a few KiB of text; darwin/arm64 lands in
+# a fresh 16 KiB segment at 11489602 and moves to the next 10 kB above it,
+# the other five stay put.
 deps 0
-darwin/amd64 12340000
-darwin/arm64 11330000
-linux/amd64 12120000
-linux/arm64 11150000
-windows/amd64 12450000
-windows/arm64 11200000
+darwin/amd64 12520000
+darwin/arm64 11490000
+linux/amd64 12300000
+linux/arm64 11280000
+windows/amd64 12640000
+windows/arm64 11360000

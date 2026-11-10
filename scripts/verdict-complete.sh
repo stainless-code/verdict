@@ -17,11 +17,11 @@ _verdict_flags() { # $1 = verb
     check-tree) printf '%s\n' --expect --json;;
     verify) printf '%s\n' --timeout --group --command --sandbox --json;;
     config) printf '%s\n' --explain --preview --file --json;;
-    doctor) printf '%s\n' --json;;
+    doctor) printf '%s\n' --provider --json;;
     calibrate) printf '%s\n' --probe --judge --judge-file --json;;
     record) printf '%s\n' --dry-run --strict --cost-names --require-coverage --json;;
     trend) printf '%s\n' --overlap --json;;
-    threads) printf '%s\n' --provider --json;;
+    threads) printf '%s\n' --provider --thread --dry-run --json;;
     fetch-local) printf '%s\n' --staged --range --base --stash --worktree --consent-over-budget --show-prompts --chunk --json;;
     run) printf '%s\n' --agent --timeout --print --json;;
     learn) printf '%s\n' --rule --scope --id --provenance --rigor --status --retire --restore --reason --json;;

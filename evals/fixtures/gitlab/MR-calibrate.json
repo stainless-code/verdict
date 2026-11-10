@@ -1,0 +1,22 @@
+{
+  "id": 9001,
+  "iid": 7,
+  "title": "Retry count off by one",
+  "description": "Fixes the retry count so the third attempt runs. Adds a regression test for the boundary case.",
+  "target_branch": "main",
+  "source_branch": "feat/retry",
+  "state": "opened",
+  "draft": false,
+  "has_conflicts": false,
+  "sha": "cccccccccccccccccccccccccccccccccccccccc",
+  "merged_at": null,
+  "diff_refs": {
+    "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "head_sha": "cccccccccccccccccccccccccccccccccccccccc",
+    "start_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "author": {
+    "username": "mate"
+  },
+  "web_url": "https://gitlab.example/acme/app/-/merge_requests/7"
+}

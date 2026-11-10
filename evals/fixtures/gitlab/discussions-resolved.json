@@ -1,0 +1,39 @@
+[
+  {
+    "id": "d1",
+    "notes": [
+      {
+        "id": 101,
+        "type": null,
+        "body": "lgtm",
+        "author": {
+          "username": "mate"
+        },
+        "created_at": "2026-11-01T10:00:00Z",
+        "resolved": true,
+        "system": false
+      }
+    ]
+  },
+  {
+    "id": "d2",
+    "notes": [
+      {
+        "id": 102,
+        "type": "DiffNote",
+        "body": "this can be one line",
+        "position": {
+          "new_path": "notes.txt",
+          "new_line": 2,
+          "old_line": null
+        },
+        "author": {
+          "username": "rev"
+        },
+        "created_at": "2026-11-01T11:00:00Z",
+        "resolved": true,
+        "system": false
+      }
+    ]
+  }
+]

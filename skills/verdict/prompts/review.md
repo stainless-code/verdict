@@ -13,13 +13,14 @@
    and do not nudge.
    Non-GitHub host: add `--provider gitlab|gitcafe|forgejo|bitbucket|azure`
    (same bundle shape, `PR.json` normalized; `record`, `report`, `triage`,
-   `show` and `next` work on provider bundles, and `post` submits to GitLab —
-   one discussion per finding, then the summary note, then `approve` when the
-   review is an approval. GitLab has no `REQUEST_CHANGES` event, so a bound
+   `show` and `next` work on provider bundles, and `post` submits to GitLab and
+   Forgejo too — GitLab takes one discussion per finding, then the summary note,
+   then `approve` when the review is an approval; Forgejo takes one atomic
+   review over its REST API. GitLab has no `REQUEST_CHANGES` event, so a bound
    request-changes posts as a comment and `post.json` records the withheld
-   capability in `withheld[]`. `post` refuses the other four hosts; live
-   `calibrate`, `ready`, and `adopt`-into a non-GitHub bundle refuse
-   (`provider-unimplemented`)).
+   capability in `withheld[]`. `post` refuses the other three hosts; live
+   `calibrate` and `ready` run on GitHub and GitLab, and `adopt` reaches any host
+   verdict can post to; elsewhere they refuse (`provider-unimplemented`)).
    Local variant: `fetch-local owner/repo <name>` writes `.verdict/state/local-<name>/`
    with `source.json` instead of `PR.json` — no `reviews.json`/`inline.json`
    exist, so skip thread-context reads entirely. Absence of threads is not signal.
@@ -123,15 +124,17 @@
 details</details>` when the fix is non-trivial or cross-file. For the top-severity finding,
    state the one load-bearing fact it stands on plus its rung — if that fact never got past
    `pointed`, say so.
-7. **Submit.** Write exactly one `.verdict/state/N/review.json` with `{schema_version: "1", body, approved, comments[]}` — one document total across all chunks, never one per chunk — (plus optional `resolved` sigs and `sections[]` severity tags `{heading, severity}` — exact heading string, unmatched tags ignored — and per-comment `category?` from the taxonomy below); on chunked bundles also stamp top-level `"chunks": [...]` naming every manifest chunk the synthesis covers (the coverage attestation `post`/`record` gate on — an attested claim that omits a chunk is refused, so attested partial coverage can never post as complete; unattested reviews validate as today with a loud warning naming the manifest). Verdict repairs a fenced or prose-wrapped document, a scalar where a string array belongs, the aliases `inBounds`/`rung`/`file`, enum synonyms and case, and null optional keys, and reports every repair — but write clean JSON anyway: repairs are a safety net, and strict CI refuses them. `post` validates anchors, merges the findings store, and submits. You may state top-level `confidence` (integer 1–5, your overall certainty) and `security_summary` (one-paragraph security read); both optional — absent stays absent; an out-of-range confidence or non-string `security_summary` refuses the review. Before `post` or `record`, run `verdict record <repo> <slug> --dry-run`, fix every problem it lists, repeat at most 3 rounds, and if problems remain STOP and report them to the user instead of recording a partial review. Then run `verdict post owner/repo N` — done when it returns a review URL. Record addressed sigs (short ids from the prior `findings.json` table) in `resolved`; the flip to `addressed` needs `verification.json` evidence (below). `post` prints the fresh sig table for the next run. Binding verdicts (`APPROVE` / `REQUEST_CHANGES`) need `--bind`, else `post` downgrades to `COMMENT`; `APPROVE` is refused while `open` + `deferred` findings remain (`--force` overrides). A binding `APPROVE` on a stale fetch (commits landed after your fetch) posts as `COMMENT`, never `APPROVE` — `--force` does not override that; re-fetch the delta per `prompts/incremental-review.md` step 2 and review it to bind. Claim other states via `triage[]` entries `{sig, status, rationale}` — `wont-fix` / `false-positive` / `deferred` need rationale ≥30 chars citing a re-read or the intent anchor, else ignored; bare `resolved[]` sigs are proposals only and flip to `addressed` solely on a `.verdict/state/N/verification.json` entry `{sig, verdict: VERIFIED, verifyCmd, resultHead}` with `resultHead` matching HEAD (`NOT VERIFIED` reopens, `INCONCLUSIVE` only logs).
-   Attest coverage — verdict checks it now. Stamp top-level `coverage: [{file, ranges?}]`: `ranges` is
-   `"1-240,300-320"` of changed source lines, or absent/`"all"` for the whole file. A range is
-   side-agnostic (one interval covers that hunk on either side). Generated and vendored paths are
-   exempt automatically. A partial attestation warns once and adds one body line; an absent
-   `coverage` key attests nothing and stays quiet, which is the legacy posture. `--require-coverage`
-   on `post`/`record` turns absence or a gap into a `coverage-incomplete` refusal that `--force`
-   cannot bypass; `next <repo> <pr> --coverage` prints the gaps before you post. Chunked bundles
-   keep `chunks[]` as their attestation and `coverage[]` is ignored with one warning.
+7. **Submit.** Write exactly one `.verdict/state/N/review.json` with `{schema_version: "1", body, approved, comments[]}` — one document total across all chunks, never one per chunk — (plus optional `resolved` sigs and `sections[]` severity tags `{heading, severity}` — exact heading string, unmatched tags ignored — and per-comment `category?` from the taxonomy below); on chunked bundles also stamp top-level `"chunks": [...]` naming every manifest chunk the synthesis covers (the coverage attestation `post`/`record` gate on — an attested claim that omits a chunk is refused, so attested partial coverage can never post as complete; unattested reviews validate as today with a loud warning naming the manifest). Verdict repairs a fenced or prose-wrapped document, a scalar where a string array belongs, the aliases `inBounds`/`rung`/`file`, enum synonyms and case, and null optional keys, and reports every repair — but write clean JSON anyway: repairs are a safety net, and strict CI refuses them. `post` validates anchors, merges the findings store, and submits. You may state top-level `confidence` (integer 1–5, your overall certainty) and `security_summary` (one-paragraph security read); both optional — absent stays absent; an out-of-range confidence or non-string `security_summary` refuses the review. Before `post` or `record`, run `verdict record <repo> <slug> --dry-run`, fix every problem it lists, repeat at most 3 rounds, and if problems remain STOP and report them to the user instead of recording a partial review. Then run `verdict post owner/repo N` — done when it returns a review URL. A secret-shaped value in the body or a finding refuses `post-secret-shaped` before any host call (name the path, never the value; `--allow-secret-values` publishes it anyway). Record addressed sigs (short ids from the prior `findings.json` table) in `resolved`; the flip to `addressed` needs `verification.json` evidence (below). `post` prints the fresh sig table for the next run. Binding verdicts (`APPROVE` / `REQUEST_CHANGES`) need `--bind`, else `post` downgrades to `COMMENT`; `APPROVE` is refused while `open` + `deferred` findings remain (`--force` overrides). A binding `APPROVE` on a stale fetch (commits landed after your fetch) posts as `COMMENT`, never `APPROVE` — `--force` does not override that; re-fetch the delta per `prompts/incremental-review.md` step 2 and review it to bind. Claim other states via `triage[]` entries `{sig, status, rationale}` — `wont-fix` / `false-positive` / `deferred` need rationale ≥30 chars citing a re-read or the intent anchor, else ignored; bare `resolved[]` sigs are proposals only and flip to `addressed` solely on a `.verdict/state/N/verification.json` entry `{sig, verdict: VERIFIED, verifyCmd, resultHead}` with `resultHead` matching HEAD (`NOT VERIFIED` reopens, `INCONCLUSIVE` only logs).
+   Attest coverage — the default `gate` requires it. Stamp top-level `coverage: [{file, ranges?}]`:
+   one entry per changed source file, with `ranges` as `"1-240,300-320"` of changed source lines, or
+   absent/`"all"` for the whole file (read them from `toc.txt`; a range is side-agnostic — one
+   interval covers that hunk on either side). Generated and vendored paths are exempt automatically.
+   A partial attestation warns once and adds one body line, and `next <repo> <pr> --coverage` prints
+   the gaps before you post; `gate` reads the stored receipt and fails on an absent or partial one,
+   so a review that stamps nothing fails the default merge gate even though `post`/`record` only warn.
+   `--require-coverage` on `post`/`record` turns absence or a gap into a `coverage-incomplete`
+   refusal that `--force` cannot bypass. Chunked bundles keep `chunks[]` as their attestation and
+   `coverage[]` is ignored with one warning — stamp every manifest chunk.
 8. **Cost record.** With every `review.json`, write `.verdict/state/N/cost.json`
    (local: `.verdict/state/local-<name>/cost.json`) — your self-reported spend for
    this run. `report --cost` rolls it up; a missing record never fails anything,
@@ -285,8 +288,8 @@ definitions collected in one block after the last finding:
   inside `<details>` blocks, at most 3 lines each; anything longer moves
   inside the details or is cut — the link already points at the lines.
 - Non-GitHub and local bundles: plain `` `path:line` `` text, never
-  `github.com/.../blob/...` URLs (they would 404 on another host — GitLab
-  `post` anchors findings as MR discussions instead, and the other four hosts
+  `github.com/.../blob/...` URLs (they would 404 on another host — GitLab and
+  Forgejo `post` anchor findings natively instead, and the other three hosts
   have no submit path, so `record`/`report` degrade gracefully).
 - The script checks blob SHAs against the reviewed commit and warns on drift
   or long visible quotes, keeping the body — pin SHAs honestly and never
