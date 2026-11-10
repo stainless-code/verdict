@@ -10,26 +10,29 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
-	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 func (st *state) runLive(ctx context.Context, dir string) *core.RefusalError {
+	host, refusal := st.liveHost(dir)
+	if refusal != nil {
+		return refusal
+	}
 	entries, reviewID, head0, refusal := st.liveBundle(dir)
 	if refusal != nil {
 		return refusal
 	}
-	threads, ref := st.liveThreads(ctx)
+	threads, ref := host.threads(ctx, st)
 	if ref != nil {
 		return ref
 	}
-	live, ref := st.livePR(ctx)
+	live, ref := host.pr(ctx, st)
 	if ref != nil {
 		return ref
 	}
-	changed := st.liveChanged(ctx, head0, liveHead(live))
-	outcomes := joinOutcomes(entries, threads, changed)
+	changed := host.changed(ctx, st, head0, liveHead(live))
+	outcomes := joinOutcomes(entries, threads, changed, host.match, host.resolved)
 	st.emitLiveHuman(reviewID, head0, live, outcomes, dir)
 	st.live = &liveResult{
 		reviewID: reviewID,
@@ -50,17 +53,6 @@ type liveResult struct { //nolint:govet // field grouping documents the loaded d
 }
 
 func (st *state) liveBundle(dir string) ([]any, string, string, *core.RefusalError) {
-	if isLocalDir(dir) {
-		return nil, "", "", st.withWarnings(&core.RefusalError{
-			Code: codeNoThreads,
-			Message: "calibrate joins live threads — nothing to settle on a local bundle " +
-				"(adopt + post first, then calibrate the PR)",
-		})
-	}
-	if prov := readcommon.ProviderOf(dir); prov != "" && prov != "github" {
-		return nil, "", "", st.withWarnings(&core.RefusalError{Code: codeProviderUnimplemented, Message: fmt.Sprintf(
-			"calibrate on %s is not implemented yet (no live thread join for it)", prov)})
-	}
 	if !isRegular(dir + postFileSuffix) {
 		return nil, "", "", st.withWarnings(&core.RefusalError{Code: codeMissingPost, Message: fmt.Sprintf(
 			"missing %s/post.json (post for real first — calibration needs a posted review id)", dir)})
@@ -112,27 +104,6 @@ func nestedReviewID(dir string) string {
 	return jq.R(id)
 }
 
-func (st *state) liveThreads(ctx context.Context) ([]any, *core.RefusalError) {
-	owner, name := readcommon.SplitOwner(st.req.Repo)
-	nodes, _, err := readcommon.Threads(ctx, st.commander(), owner, name, st.req.Pr, true)
-	if err != nil {
-		return nil, st.withWarnings(&core.RefusalError{Code: codeThreadsFailed, Message: "could not read live review threads"})
-	}
-	return nodes, nil
-}
-
-func (st *state) livePR(ctx context.Context) (map[string]any, *core.RefusalError) {
-	stdout, _, ok := coreexec.Gh(ctx, st.commander(),
-		"pr", "view", st.req.Pr, "--repo", st.req.Repo, "--json", "headRefOid,state,mergedAt")
-	if !ok {
-		return nil, st.withWarnings(&core.RefusalError{Code: codePRReadFailed, Message: "could not read live PR state"})
-	}
-	if m, ok := decodeLivePR(stdout); ok {
-		return m, nil
-	}
-	return map[string]any{}, nil
-}
-
 func decodeLivePR(stdout string) (map[string]any, bool) {
 	doc, err := jq.Decode([]byte(stdout))
 	if err != nil {
@@ -149,30 +120,6 @@ func liveHead(live map[string]any) string {
 	return jq.StrOf(live["headRefOid"])
 }
 
-func (st *state) liveChanged(ctx context.Context, head0, liveHead string) []any {
-	if head0 == liveHead {
-		return []any{}
-	}
-	stdout, _, ok := coreexec.Gh(ctx, st.commander(),
-		"api", "repos/"+st.req.Repo+"/compare/"+head0+"..."+liveHead, "--jq", "[.files[].filename]")
-	if !ok {
-		st.warn("compare unavailable (rewritten history?) — changed-file evidence off, resolved reads as resolved-unfixed")
-		return []any{}
-	}
-	doc, derr := jq.Decode([]byte(stdout))
-	if derr != nil {
-		st.warn("compare unavailable (rewritten history?) — resolved reads as resolved-unfixed")
-		st.warn("compare unavailable (rewritten history?) — changed-file evidence off, resolved reads as resolved-unfixed")
-		return []any{}
-	}
-	list, ok := doc.([]any)
-	if !ok {
-		st.warn("compare unavailable (rewritten history?) — resolved reads as resolved-unfixed")
-		return []any{}
-	}
-	return list
-}
-
 type outcome struct {
 	entry   any
 	kb      any
@@ -186,19 +133,19 @@ type outcome struct {
 	hasKb   bool
 }
 
-func joinOutcomes(entries, threads, changed []any) []outcome {
+func joinOutcomes(entries, threads, changed []any, match func(any, string, any) bool, resolved func(any) bool) []outcome {
 	var out []outcome
 	for _, e := range entries {
 		status := readcommon.StatusOf(e)
 		if status != statusOpen && status != statusAddressed && status != statusDeferred {
 			continue
 		}
-		out = append(out, joinOne(e, threads, changed))
+		out = append(out, joinOne(e, threads, changed, match, resolved))
 	}
 	return out
 }
 
-func joinOne(entry any, threads, changed []any) outcome {
+func joinOne(entry any, threads, changed []any, match func(any, string, any) bool, resolved func(any) bool) outcome {
 	out := outcome{
 		entry:   entry,
 		sig:     sigHuman(entry),
@@ -218,14 +165,14 @@ func joinOne(entry any, threads, changed []any) outcome {
 		return out
 	}
 	pb := postedBody(entry)
-	hit := findThread(threads, pb, readcommon.FieldOf(entry, "path"))
+	hit := findThread(threads, pb, readcommon.FieldOf(entry, "path"), match)
 	if hit == nil {
 		out.result = outcomeUnknown
 		out.detail = "comment not found live"
 		withKb(&out, entry)
 		return out
 	}
-	if !readcommon.ThreadResolved(hit) {
+	if !resolved(hit) {
 		out.result = statusOpen
 		out.detail = "thread still open"
 		withKb(&out, entry)
@@ -319,9 +266,9 @@ func postedBody(entry any) string {
 	return body
 }
 
-func findThread(threads []any, pb string, path any) any {
+func findThread(threads []any, pb string, path any, match func(any, string, any) bool) any {
 	for _, t := range threads {
-		if threadMatches(t, pb, path) {
+		if match(t, pb, path) {
 			return t
 		}
 	}

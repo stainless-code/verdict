@@ -226,11 +226,9 @@ func loadState(ctx context.Context, st *state) *core.RefusalError {
 			Message: "ready needs a PR bundle (fetch owner/repo N first); local bundles have no live checks to advise on",
 		})
 	}
-	if prov := readcommon.ProviderOf(dir); prov != "" && prov != providerGitHub {
-		return st.withWarnings(&core.RefusalError{
-			Code:    "provider-unimplemented",
-			Message: "ready on " + prov + " is not implemented yet (no live gh reads for it)",
-		})
+	host, ref := st.readyHost(dir)
+	if ref != nil {
+		return ref
 	}
 	if !isRegular(dir + "/PR.json") {
 		return st.withWarnings(&core.RefusalError{
@@ -238,11 +236,11 @@ func loadState(ctx context.Context, st *state) *core.RefusalError {
 			Message: "missing " + dir + "/PR.json (run fetch " + st.repo + " " + st.pr + " first)",
 		})
 	}
-	if ref := loadLive(ctx, st, dir); ref != nil {
+	if ref := host.live(ctx, st, dir); ref != nil {
 		return ref
 	}
-	loadChecks(ctx, st)
-	if ref := loadThreads(ctx, st); ref != nil {
+	host.checks(ctx, st)
+	if ref := host.threads(ctx, st); ref != nil {
 		return ref
 	}
 	loadPolicyCompliance(st, dir)
@@ -261,7 +259,7 @@ func isRegular(path string) bool {
 	return err == nil && fi.Mode().IsRegular()
 }
 
-func loadLive(ctx context.Context, st *state, dir string) *core.RefusalError {
+func githubLive(ctx context.Context, st *state, dir string) *core.RefusalError {
 	stdout, stderr, ok := coreexec.Gh(ctx, st.commander(), "pr", "view", st.pr, "--repo", st.repo,
 		"--json", "isDraft,mergeable,mergeStateStatus,body,state,headRefOid")
 	writeErrFile(st, dir+"/.ready.err", stderr)
@@ -405,7 +403,7 @@ func isSpaceByte(c byte) bool {
 	}
 }
 
-func loadChecks(ctx context.Context, st *state) {
+func githubChecks(ctx context.Context, st *state) {
 	stdout, _, ok := coreexec.Gh(ctx, st.commander(), "pr", "checks", st.pr, "--repo", st.repo,
 		"--json", "bucket,name,state")
 	raw := "[]"
@@ -476,7 +474,7 @@ func checkName(m map[string]any) string {
 	return jq.R(v)
 }
 
-func loadThreads(ctx context.Context, st *state) *core.RefusalError {
+func githubThreads(ctx context.Context, st *state) *core.RefusalError {
 	owner, name := readcommon.SplitOwner(st.repo)
 	nodes, _, err := readcommon.Threads(ctx, st.commander(), owner, name, st.pr, false)
 	if err != nil {
