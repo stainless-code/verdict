@@ -277,6 +277,15 @@ func githubLive(ctx context.Context, st *state, dir string) *core.RefusalError {
 	} else {
 		st.live = map[string]any{}
 	}
+	applyLive(st, dir)
+	return nil
+}
+
+// applyLive folds the canonical live map into the advisory: the stale
+// warning, the draft/mergeable/state reads, and the unknown-mergeability
+// warning. Both hosts decode onto the same keys first, so this tail runs
+// once for either provider.
+func applyLive(st *state, dir string) {
 	fetched := readcommon.PrField(dir, "head_sha")
 	liveHead := liveString(st.live, "headRefOid")
 	if fetched != "" && liveHead != "" && fetched != liveHead {
@@ -291,7 +300,6 @@ func githubLive(ctx context.Context, st *state, dir string) *core.RefusalError {
 	if st.mergeable == mergeUnknown && st.mergeState == mergeUnknown {
 		st.warn("mergeability UNKNOWN (GitHub still computing?) — conflict treated as absent, re-run ready if this persists")
 	}
-	return nil
 }
 
 const probeStagePerm = 0o600
@@ -427,6 +435,12 @@ func githubChecks(ctx context.Context, st *state) {
 		return
 	}
 	st.ciTotal = len(list)
+	appendCIFailing(st, failNames)
+}
+
+// appendCIFailing records the failing-check blocker once the tally is
+// final. Both hosts render the same kind, detail shape, and action.
+func appendCIFailing(st *state, failNames []string) {
 	if st.ciFail > 0 {
 		st.blockers = append(st.blockers, Blocker{
 			Kind:   "ci-failing",
@@ -483,11 +497,19 @@ func githubThreads(ctx context.Context, st *state) *core.RefusalError {
 			Message: "could not read live review threads for " + st.repo + hashSep + st.pr,
 		})
 	}
-	if malformed := readcommon.MalformedThreadCount(nodes); malformed > 0 {
+	applyThreadCounts(st, readcommon.OpenThreadCount(nodes), readcommon.MalformedThreadCount(nodes))
+	return nil
+}
+
+// applyThreadCounts folds an open/malformed thread tally into the
+// advisory: the fail-closed warning and the open-threads blocker. Both
+// hosts count first, so this tail runs once for either provider.
+func applyThreadCounts(st *state, open, malformed int) {
+	if malformed > 0 {
 		st.warn(strconv.Itoa(malformed) + " live thread node(s) carry no readable resolution state " +
 			"— counted as unresolved (fail-closed)")
 	}
-	st.threadsOpen = readcommon.OpenThreadCount(nodes)
+	st.threadsOpen = open
 	if st.threadsOpen > 0 {
 		st.blockers = append(st.blockers, Blocker{
 			Kind:   "threads-open",
@@ -495,7 +517,6 @@ func githubThreads(ctx context.Context, st *state) *core.RefusalError {
 			Action: "address or resolve open threads, then re-run ready",
 		})
 	}
-	return nil
 }
 
 // loadPolicyCompliance evaluates captured requirements for the saved head:

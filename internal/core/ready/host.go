@@ -23,6 +23,11 @@ var readyHosts = map[string]readyHost{
 		checks:  githubChecks,
 		threads: githubThreads,
 	},
+	providerGitLab: {
+		live:    gitlabLive,
+		checks:  gitlabChecks,
+		threads: gitlabThreads,
+	},
 }
 
 // readyHostFor resolves the live-read surface for one provider: false
