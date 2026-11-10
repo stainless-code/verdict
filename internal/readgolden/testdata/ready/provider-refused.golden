@@ -11,7 +11,7 @@ exit: 1
   "data": null,
   "error": {
     "code": "provider-unimplemented",
-    "message": "ready on forgejo is not implemented yet (no live gh reads for it)\ntry: use the verb named above for this bundle kind"
+    "message": "ready on forgejo is not implemented yet (no live reads for it — supported hosts: github, gitlab)\ntry: use the verb named above for this bundle kind"
   }
 }
 --- stderr ---

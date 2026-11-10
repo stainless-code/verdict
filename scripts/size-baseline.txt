@@ -226,9 +226,13 @@
 # head at linux/amd64 12292256 (crosses) and windows/amd64 12629504 (496 bytes
 # under, inside the recorded ~1 kB local-vs-CI drift); both move to the next
 # 10 kB, the other four hold.
+# The stale-head refetch hint's per-host capability table and the ready
+# refusal's supported-host list add a few KiB of text; darwin/arm64 lands in
+# a fresh 16 KiB segment at 11489602 and moves to the next 10 kB above it,
+# the other five stay put.
 deps 0
 darwin/amd64 12520000
-darwin/arm64 11480000
+darwin/arm64 11490000
 linux/amd64 12300000
 linux/arm64 11280000
 windows/amd64 12640000

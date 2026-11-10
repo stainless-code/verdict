@@ -2,6 +2,8 @@ package readycore
 
 import (
 	"context"
+	"slices"
+	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -44,6 +46,17 @@ func readyHostFor(prov string) (readyHost, bool) {
 	return host, ok
 }
 
+// readyHostNames lists the hosts the table serves, for the refusal that names
+// what the verb does cover.
+func readyHostNames() string {
+	names := make([]string, 0, len(readyHosts))
+	for name := range readyHosts {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	return strings.Join(names, ", ")
+}
+
 // readyHost gates the advisory on the bundle kind: a host outside the
 // table refuses typed naming the host.
 func (st *state) readyHost(dir string) (readyHost, *core.RefusalError) {
@@ -55,7 +68,8 @@ func (st *state) readyHost(dir string) (readyHost, *core.RefusalError) {
 		return host, nil
 	}
 	return readyHost{}, st.withWarnings(&core.RefusalError{
-		Code:    "provider-unimplemented",
-		Message: "ready on " + prov + " is not implemented yet (no live gh reads for it)",
+		Code: "provider-unimplemented",
+		Message: "ready on " + prov + " is not implemented yet (no live reads for it — " +
+			"supported hosts: " + readyHostNames() + ")",
 	})
 }
