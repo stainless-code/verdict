@@ -398,9 +398,10 @@ SIBLING_ROOT="$CASE_HOME/.agents/skills/other/bin"
 mkdir -p "$SIBLING_ROOT"
 cp "$EVAL_CLI" "$SIBLING_ROOT/verdict"
 run_cli "$SIBLING_ROOT/verdict" "" uninstall --json
-sibling_hint="the tool that installed the skill copy at $CASE_HOME/.agents/skills/other"
+sibling_hint="/.agents/skills/other"
 if [ "$EVAL_STATUS" -eq 1 ] && [ "$(envelope_code)" = "uninstall-foreign" ] \
   && jq -r '.error.message' "$EVAL_OUT" | matches -F "$sibling_hint" \
+  && jq -r '.error.message' "$EVAL_OUT" | matches -F 'the tool that installed the skill copy at ' \
   && ! jq -r '.error.message' "$EVAL_OUT" | matches -F -- '--force'; then
   good "U6 a sibling skill copy names its own dir, never a --force command"
 else
