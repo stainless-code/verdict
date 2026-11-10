@@ -1,0 +1,4 @@
+HTTP/1.1 200 OK
+Content-Type: application/json;charset=utf-8
+
+{"id":901,"state":"COMMENT","commit_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","submitted_at":"2026-11-02T12:00:00Z","html_url":"https://forgejo.invalid/acme/app/pulls/7#issuecomment-901"}
