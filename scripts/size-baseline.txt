@@ -264,8 +264,16 @@
 # 12688144, darwin/arm64 11622818, linux/amd64 12460192, linux/arm64 11403424,
 # windows/amd64 12801536, windows/arm64 11499008. Five ceilings cross and move
 # to the next 10 kB above their measurement; linux/arm64 stays inside.
+# Ergonomics F6 (CodeRabbit fixes): the skill-root-aware uninstall hint, the
+# resolved-target dedupe, the blocked plan's empty would-remove list, the
+# create-status diffs, the owned-args TOML fill, and the exported mcp posture
+# refusal. Measured here: darwin/amd64 12692240, darwin/arm64 11622818,
+# linux/amd64 12468384, linux/arm64 11403424, windows/amd64 12805632,
+# windows/arm64 11502592. Only darwin/amd64 crosses, by 2240 bytes over its
+# 12690000 line, so its ceiling moves to the next 10 kB above the measurement;
+# the other five stay inside and keep their lines.
 deps 0
-darwin/amd64 12690000
+darwin/amd64 12700000
 darwin/arm64 11630000
 linux/amd64 12470000
 linux/arm64 11410000
