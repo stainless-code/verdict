@@ -16,6 +16,7 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/threads"
+	"github.com/stainless-code/verdict/internal/forgejo"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -868,17 +869,15 @@ func forgejoAuth(ctx2 *fetchRunCtx) (auth []string, api string, err error) {
 }
 
 // forgejoAuthFor is forgejoAuth over an explicit environment and positionals:
-// the threads refresh has no fetchRunCtx but needs the same gate.
+// the threads refresh has no fetchRunCtx but needs the same gate. The gate and
+// the URL shape are the shared wire contract in internal/forgejo, so a read and
+// a write can never resolve the host differently.
 func forgejoAuthFor(env map[string]string, repo, pr string) (auth []string, api string, err error) {
-	host, _ := env["FORGEJO_HOST"]
-	token, _ := env["FORGEJO_TOKEN"]
-	if host == "" {
-		return nil, "", &core.RefusalError{Code: codeAuthMissing, Message: "forgejo needs FORGEJO_HOST=https://host and FORGEJO_TOKEN set"}
+	auth, api, ref := forgejo.Resolve(env, repo, pr)
+	if ref != nil {
+		return nil, "", ref
 	}
-	if token == "" {
-		return nil, "", &core.RefusalError{Code: codeAuthMissing, Message: "forgejo needs FORGEJO_TOKEN set (app token with repo read)"}
-	}
-	return []string{flagH, "Authorization: token " + token}, host + "/api/v1/repos/" + repo + "/pulls/" + pr, nil
+	return auth, api, nil
 }
 
 // forgejoMeta owns the PR read with its stderr sidecar.
