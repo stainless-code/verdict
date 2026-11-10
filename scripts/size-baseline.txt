@@ -244,10 +244,14 @@
 # 12374176, linux/arm64 11337888, windows/amd64 12711936, windows/arm64
 # 11422720. Every ceiling crosses, and each moves to the next 10 kB at least
 # 5 kB above its measurement.
+# Stacked together, the two ergonomics slices measure darwin/amd64 12622064,
+# darwin/arm64 11572754, linux/amd64 12402848, windows/amd64 12739584 and
+# windows/arm64 11446272; those five move to the next 10 kB, linux/arm64
+# holds.
 deps 0
-darwin/amd64 12610000
-darwin/arm64 11570000
-linux/amd64 12380000
+darwin/amd64 12630000
+darwin/arm64 11580000
+linux/amd64 12410000
 linux/arm64 11350000
-windows/amd64 12720000
-windows/arm64 11430000
+windows/amd64 12740000
+windows/arm64 11450000
