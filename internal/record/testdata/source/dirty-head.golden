@@ -57,7 +57,7 @@ other.txt	NEW	1	3
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "648f2080aeecf5952419db4a1f90d951895a41cc8498028a6fd5fd41d1eb6508",
+  "prompts_hash": "259fa2dc6d63fc600a2fc94a6b70bc16399031bbf62dbf524366bd1b53db700b",
   "model": null
 }
 --- file C/.verdict/state/local-rf/store.json ---

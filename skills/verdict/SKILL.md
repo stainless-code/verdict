@@ -53,7 +53,9 @@ verdict fetch owner/repo 123
 #    from the router below, plus the bundle.
 #    Write exactly one `.verdict/state/N/review.json`; the mode file defines its shape
 #    (`body` and `comments[]` at minimum, plus optional `resolved` sigs and
-#    `triage[]` claims). Verdict repairs a fenced or prose-wrapped document,
+#    `triage[]` claims). Attest what you read in `coverage[]` (`chunks[]` on a
+#    chunked bundle): the default `gate` fails without it, and `next --coverage`
+#    lists the gaps. Verdict repairs a fenced or prose-wrapped document,
 #    scalar-for-array values, the aliases `inBounds`/`rung`/`file`, enum
 #    synonyms and case, and null optional keys, and reports every repair — but
 #    write clean JSON anyway: repairs are a safety net, and strict CI refuses
@@ -64,7 +66,8 @@ verdict fetch owner/repo 123
 #    Prior feedback lives in `.verdict/state/N/threads.json` (all six hosts): host-resolved
 #    state, anchors, authors, and `finding_sig` links. `verdict threads owner/repo N`
 #    refreshes it alone — no diff refetch — so run it after pushing fixes and before
-#    a re-review or merge gate.
+#    a re-review or merge gate. `verdict threads resolve owner/repo N [--thread <id>]...
+#    [--dry-run]` closes verdict-authored threads (GitHub and GitLab).
 
 # 3. Post: validates anchors, merges the findings store, submits. Done when
 #    exactly one review lands — one review.json, one post call.
@@ -89,6 +92,8 @@ local bundle — prints the finding plus land instructions).
 
 Delta re-review: `verdict fetch owner/repo 123 --base-sha <prior-reviewed-sha>`,
 then load `prompts/incremental-review.md` instead of `prompts/review.md`.
+GitHub and GitLab compute the delta; other hosts write `incremental.diff.note`
+and you fall back to the full diff.
 
 ## Mode router
 

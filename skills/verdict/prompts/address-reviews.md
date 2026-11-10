@@ -44,11 +44,14 @@
 7. Finalize ONLY if code changed → land it as a single commit (amend as you iterate, push
    once at the end); on push failure report exact error and STOP (don't
    claim fix or resolve threads). Reply ONCE per relevant thread: on GitHub the reply takes
-   the root comment id (`comments[0].id`, numeric) and resolution takes the host thread `id`
-   (GraphQL, not the numeric comment id). Log every posted reply `{thread, reply_id, at}` into
+   the root comment id (`comments[0].id`, numeric); GitLab replies through `glab api` on the
+   discussion. Resolve through `verdict threads resolve owner/repo N [--thread <id>]...
+   [--dry-run]` (GitHub and GitLab; `--thread` takes the host thread `id` — GraphQL on GitHub,
+   not the numeric comment id), which closes only verdict-authored threads and writes
+   `threads-resolve.json`. Log every posted reply `{thread, reply_id, at}` into
    `.verdict/state/N/replies.json` (creating it) and skip threads already logged — a crashed-and-rerun
-   pass must never double-reply. Reading works on all six hosts; reply/resolve writes stay
-   GitHub-only today — on other hosts record the disposition in `replies.json` and the summary.
+   pass must never double-reply. Reading works on all six hosts; on GitCafe, Bitbucket, and
+   Azure record the disposition in `replies.json` and the summary.
    Resolve only after the revalidator confirms fixed,
    user asked, or you withdraw your own bot finding. Leave discussion/partial/disagreement open.
 8. Summary once: open with a 1–2 sentence intent restatement (what you understood the goal
