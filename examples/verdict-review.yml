@@ -94,12 +94,15 @@ jobs:
           # a gate flag report never sets an exit code on findings.
           verdict report "$GITHUB_REPOSITORY" "${{ github.event.pull_request.number }}"
 
-      - name: Merge gate (findings + freshness + live threads)
+      - name: Merge gate (findings + freshness + coverage + live threads)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # One composed exit code: 0 pass, 1 fail-or-unknown, 2 usage,
           # 3 tool error. --live auto keeps an unreachable lookup neutral;
           # use --live strict to fail closed instead (see docs/ci-recipe.md).
+          # --coverage defaults to require: the post above stored the review's
+          # coverage[] receipt, and a partial one fails here. Pass
+          # --coverage warn to keep a partial attestation advisory.
           verdict gate "$GITHUB_REPOSITORY" "${{ github.event.pull_request.number }}" \
             --max-severity critical --require-head --live auto

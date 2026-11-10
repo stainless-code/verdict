@@ -34,8 +34,9 @@ into your repo as `.github/workflows/verdict-review.yml`.
 6. **Merge gate** — one composed exit code:
    `verdict gate <repo> <pr> --max-severity critical --require-head --live auto`
    exits 0 only when no open `critical` findings stand, the fetched HEAD is
-   the posted HEAD, and no live thread stands open that the store does not.
-   One gate step instead of three chained checks. Require this job in branch
+   the posted HEAD, the stored diff-coverage receipt for that HEAD attests the
+   whole diff, and no live thread stands open that the store does not. One
+   gate step instead of chained checks. Require this job in branch
    protection: the readiness gate saves tokens before the review, the merged
    gate blocks the merge after it.
 
@@ -46,14 +47,19 @@ example). The gate composes two machine exits, both documented in the
 operator manual:
 
 - `ready --check`: 0 reviewable, 1 blockers-or-wait, 2 usage, 3 tool error.
-- `gate --max-severity <tier> [--require-head] [--live auto|strict|skip]`:
+- `gate --max-severity <tier> [--require-head]`, with the `--live` and
+  `--coverage` postures (defaults `auto` and `require`):
   0 every requested dimension passed (a skip is neutral), 1 a dimension
-  failed or read unknown, 2 usage, 3 tool error. Its three dimensions are the
-  findings tier, the HEAD freshness check, and the live-thread recheck —
-  0 no open findings at-or-above the tier (and HEAD-reviewed with
-  `--require-head`), 1 findings, stale HEAD, or an outnumbering live-thread
-  set. Only `open` findings count, and the advisory `verdict report` step
-  never gates.
+  failed or read unknown, 2 usage, 3 tool error. Its dimensions are the
+  findings tier, the HEAD freshness check, the stored diff-coverage receipt,
+  and the live-thread recheck — 0 no open findings at-or-above the tier (and
+  HEAD-reviewed with `--require-head`, coverage attested for the same HEAD),
+  1 findings, stale HEAD, a partial attestation, or an outnumbering
+  live-thread set. The coverage dimension is `require` by default because the
+  recipe posts before it gates: the receipt exists by then, and a review that
+  skipped files fails here instead of merging. Pass `--coverage warn` to keep
+  a partial attestation advisory. Only `open` findings count, and the
+  advisory `verdict report` step never gates.
 
 Triage or fix, then re-fetch and re-run: there is no `--force` — fetch +
 triage + re-check is the recovery.

@@ -635,6 +635,11 @@ attestation. A partial one warns once and adds one machine-built body line;
 was written", and a review that never stamped the key gets neither the warning
 nor the line, so its rendered body is unchanged.
 
+`gate` reads the stored receipt by default: a gated HEAD with no receipt, or
+one measuring under 100%, fails the merge gate (`--coverage warn` reports the
+same shortfall without failing). That is the only place the requirement is on
+by default — `post` and `record` keep the warning posture below.
+
 `--require-coverage` on `post` and `record` turns absence or a gap into a
 `coverage-incomplete` refusal that names the unattested ranges. `--force` does
 not bypass it: this is a read receipt, not a security boundary, but a require
@@ -847,10 +852,10 @@ is inert: advisory runs never touch the network regardless.
 
 ### `gate`: one composed exit code for CI
 
-`report --check` and `ready --check` answer one question each. `gate` asks all
-three gating questions in one call and returns one CI exit code — the verb a
-pipeline step uses when it wants "is this PR shippable" without composing three
-checks and three error branches itself:
+`report --check` and `ready --check` answer one question each. `gate` asks
+every gating question in one call and returns one CI exit code — the verb a
+pipeline step uses when it wants "is this PR shippable" without composing the
+checks and their error branches itself:
 
 ```bash
 verdict gate owner/repo 123 --max-severity critical --require-head --live strict
@@ -873,6 +878,22 @@ A dimension is `pass`, `fail`, `unknown` (unreadable and failing closed), or
 fail the gate, so a skip never turns a green run red. Exit codes mirror
 `report --check`: 0 pass, 1 fail-or-unknown, 2 usage, 3 tool error.
 
+`--coverage require|warn` sets the posture of the coverage dimension, which
+runs on every gate and defaults to `require`. `require` reads the stored
+receipt `post.json` or `record.json` carries for the gated HEAD — the summary
+[Diff coverage](#diff-coverage-agent-attestation) already describes — and fails
+the gate when that receipt is absent, names another HEAD, or measures under
+100%. `warn` runs the same evaluation, prints one `warn:` line, and marks the
+dimension `skip`, so the shortfall is reported without failing. A bundle whose
+changed files are all exempt passes either way once a receipt exists
+(`percent: null`, `total: 0`). A chunked bundle keeps nothing in the store about
+its `chunks[]` attestation, so it reads `unknown` under `require` and `skip`
+under `warn`: attest every chunk and gate the recorded bundle, or pass
+`--coverage warn`. Like `--live`, the posture alone is not a dimension, so
+`--coverage` alone is still a usage error. The gate reads the receipt and never
+re-evaluates `review.json`, so it cannot publish a number the store does not
+hold.
+
 The human tail is one line per dimension plus the verdict and a single
 `try:` hint naming every failing dimension's recovery in order:
 
@@ -885,8 +906,8 @@ threads, then re-run gate
 ```
 
 `--json` publishes the same verdict as `data.passed` plus `data.dimensions[]`
-in `findings, head, live_threads, compliance` order (`id`, `status`, `detail`,
-`count` —
+in `findings, head, coverage, live_threads, compliance` order (`id`, `status`,
+`detail`, `count` —
 null where a dimension has no tally). A failed gate is a verdict, not a
 refusal: the envelope keeps `error: null` and the exit code carries the
 outcome. `gate` is read-only — no store writes, no `post.json`, no review
@@ -895,8 +916,8 @@ method): a local pass is not authority to merge, so the merge stays the
 human's call.
 
 Compose it where `report --check --completeness` used to go; the flag set is
-the same dimensions (plus the captured compliance verdict), and the flagless
-form remains advisory `report`.
+the same dimensions (plus the coverage receipt and the captured compliance
+verdict), and the flagless form remains advisory `report`.
 
 ### MCP server (stdio, experimental until 1.0)
 
