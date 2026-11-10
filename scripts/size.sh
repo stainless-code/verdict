@@ -5,6 +5,12 @@ ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
 
 BUDGET='scripts/size-baseline.txt'
+# Per-target byte ceilings plus one `deps` line; data only, no comments.
+# `make size` fails when a target or the dep count grows past its line, when a
+# shipped target has no line, or a line names a target the release contract no
+# longer ships. A deliberate growth raises only the crossed ceilings, in the
+# same change, to the next 10 kB above the exact measurement; the measured
+# values and the reason go in the commit message body.
 # The release build's own inputs (.goreleaser.yml): ./cmd/verdict, -trimpath,
 # -s -w, and a fixed version so the embedded string length cannot drift.
 VERSION='0.0.0'
@@ -67,7 +73,7 @@ for pair in $(go run ./cmd/crossplatforms); do
 done
 
 budgeted="$work/budgeted"
-awk '$1 != "deps" && $1 !~ /^#/ && NF == 2 { print $1 }' "$BUDGET" > "$budgeted"
+awk '$1 != "deps" && NF == 2 { print $1 }' "$BUDGET" > "$budgeted"
 while read -r pair; do
   case " $seen " in
     *" $pair "*) ;;
