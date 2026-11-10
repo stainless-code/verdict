@@ -158,6 +158,7 @@ func planRemovalPath(req *Request, files Inventory, target string) (Removal, *os
 	switch {
 	case !owned && !req.Force:
 		rm.Status = StatusBlocked
+		rm.Would = nil
 	case len(present) == 0:
 		rm.Status = StatusKeep
 	default:

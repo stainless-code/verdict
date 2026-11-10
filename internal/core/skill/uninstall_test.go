@@ -57,11 +57,15 @@ func TestUninstallRefusesForeignWithoutForce(t *testing.T) {
 	if err := os.MkdirAll(target, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	writeTestFile(t, filepath.Join(target, "SKILL.md"), "foreign skill\n")
 	writeTestFile(t, filepath.Join(target, "keep.txt"), "foreign\n")
 
 	_, ref := skill.Uninstall(context.Background(), req)
 	if ref == nil || ref.Code != "skill-dir-foreign" {
 		t.Fatalf("foreign refusal = %v, want skill-dir-foreign", ref)
+	}
+	if got, err := os.ReadFile(filepath.Join(target, "SKILL.md")); err != nil || string(got) != "foreign skill\n" {
+		t.Fatalf("refusal touched the inventory-named foreign file: %q, %v", got, err)
 	}
 	if _, err := os.Stat(filepath.Join(target, "keep.txt")); err != nil {
 		t.Fatal("refusal touched the foreign file")

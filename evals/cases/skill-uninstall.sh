@@ -49,6 +49,19 @@ else
   bad "the no-receipt refusal deleted the foreign file"
 fi
 
+BLOCKED="$EVAL_SANDBOX/blocked"
+mkdir -p "$BLOCKED/verdict"
+printf 'foreign skill\n' >"$BLOCKED/verdict/SKILL.md"
+run_review skill uninstall --dir "$BLOCKED" --dry-run --json
+assert_exit "a blocked dry-run reports the plan" 0
+assert_json_field "an inventory-named foreign file blocks" "blocked" '.data.status'
+assert_json_field "a blocked plan would remove nothing" "0" '.data.would_remove | length'
+if [ -f "$BLOCKED/verdict/SKILL.md" ]; then
+  good "the blocked dry-run kept the inventory-named foreign file"
+else
+  bad "the blocked dry-run removed the inventory-named foreign file"
+fi
+
 COPY="$EVAL_SANDBOX/copy"
 run_review skill install --dir "$COPY" --json
 assert_exit "seed a registry-shaped copy" 0
