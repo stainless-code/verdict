@@ -8,16 +8,27 @@ interface Props {
   route?: string;
   page?: unknown;
   headings?: unknown;
+  footer?: unknown;
+  locale?: string;
+  site?: unknown;
+  navigation?: unknown;
+  ui?: unknown;
 }
 
-const { route } = Astro.props;
 const { config } = data;
 const year = new Date().getFullYear();
-// Blume's PageFooter slot passes the content route; the home page renders this
-// component directly with no route. Render only on the three content landings
-// (home renders directly, so "/" never arrives here but stays listed).
+// The site-wide Footer slot passes no route, so the component reads the URL
+// itself: strip the deployment base and render only on the three content
+// landings. The home page imports this file directly; its URL ("/" or the
+// base) is in the same set. An explicit route prop, when given, wins.
 const LANDING_ROUTES = new Set(["/", "/agents", "/compare", "/roadmap"]);
-const show = route === undefined || LANDING_ROUTES.has(route);
+const raw = Astro.url.pathname.replace(/\/+$/u, "") || "/";
+const base = "/verdict";
+const fromUrl =
+  raw === base ? "/" : raw.startsWith(`${base}/`) ? raw.slice(base.length) : raw;
+const propRoute = (Astro.props as Props).route;
+const show =
+  propRoute === undefined ? LANDING_ROUTES.has(fromUrl) : LANDING_ROUTES.has(propRoute);
 ---
 
 {show && (

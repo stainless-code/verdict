@@ -120,9 +120,10 @@ export default defineConfig({
   },
 
   navigation: {
-    // The header carries the GitHub mark, so the footer stays link-free and
-    // Blume renders no footer row on docs pages: only the home page below
-    // carries its own sitemap footer.
+    // The header carries the GitHub mark, so the footer stays link-free. The
+    // Footer slot override renders the sitemap footer after <main> on the
+    // home page's siblings (/agents, /compare, /roadmap) and nothing on docs
+    // and changelog pages.
     repo: false,
     tabs: docsSections.map(({ label, path }) => ({
       label,
