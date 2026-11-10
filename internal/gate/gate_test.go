@@ -474,6 +474,9 @@ const (
 	coverageComplete = `{"percent":100,"attested":12,"total":12,"files":1,"exempt":0,"gaps":0}`
 	coveragePartial  = `{"percent":75,"attested":9,"total":12,"files":2,"exempt":0,"gaps":2}`
 	coverageExempt   = `{"percent":null,"attested":0,"total":0,"files":0,"exempt":2,"gaps":0}`
+	// A stored receipt can claim no gaps and still measure under 100%: the
+	// gate grades the percentage the store holds, not the gap count alone.
+	coverageShortNoGaps = `{"percent":90,"attested":9,"total":10,"files":1,"exempt":0,"gaps":0}`
 )
 
 // TestGateCoveragePosture pins the coverage dimension against the stored
@@ -512,6 +515,11 @@ func TestGateCoveragePosture(t *testing.T) {
 				"gate: coverage     fail  2 unattested range(s) at 75% of full hunk spans, both sides and context (9/12 lines)",
 				"try: attest the unattested ranges in review.json coverage[], then re-record or re-post, then re-run gate",
 			},
+		},
+		{
+			name: "under-100-without-gaps-fails", post: coverageReceipt(gateHead, coverageShortNoGaps),
+			args: gateDefaultArgs, status: statusFail, want: cli.ExitRefused,
+			subs: []string{"gate: coverage     fail  0 unattested range(s) at 90% of full hunk spans, both sides and context (9/10 lines)"},
 		},
 		{
 			name: "partial-warns-under-warn", post: coverageReceipt(gateHead, coveragePartial),
