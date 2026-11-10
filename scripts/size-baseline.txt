@@ -111,10 +111,16 @@
 # windows/amd64 12385280, windows/arm64 11136000. Only darwin/arm64 crosses, so
 # its ceiling moves to the next 10 kB above its measurement; the other five
 # stay put.
+# The verify static-gate bypass fixes (fetch-config and archive arms, the
+# secret-shaped variable arm, and the git exec-path/tar -I arms) add seven
+# regexes and widen three more. Measured here: darwin/amd64 12273696,
+# darwin/arm64 11271202, linux/amd64 12062880, linux/arm64 11075744,
+# windows/amd64 12391424, windows/arm64 11142144. Four ceilings cross and move
+# to the next 10 kB above their measurement; darwin/arm64 stays put.
 deps 0
-darwin/amd64 12270000
+darwin/amd64 12280000
 darwin/arm64 11280000
-linux/amd64 12060000
-linux/arm64 11020000
-windows/amd64 12390000
-windows/arm64 11140000
+linux/amd64 12070000
+linux/arm64 11080000
+windows/amd64 12400000
+windows/arm64 11150000
