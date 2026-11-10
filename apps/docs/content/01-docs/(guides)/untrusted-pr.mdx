@@ -12,8 +12,7 @@ Use this when the diff is untrusted: an unknown author, a drive-by fork PR, or a
 <Steps>
   <Step title="Fetch the PR as data">
     ```bash
-    make build
-    bin/verdict fetch owner/repo 123
+    verdict fetch owner/repo 123
     ```
 
     `fetch` only writes the bundle (`PR.json`, `full.diff`, `toc.txt`): no checkout, no execution. The agent review reads that bundle and records claimed fixes with a `verifyCmd`, which is the one thing you do not yet trust. Keep it that way: do not check out the fork, do not apply the patch to your worktree, and do not run the claim yourself first.
@@ -22,7 +21,7 @@ Use this when the diff is untrusted: an unknown author, a drive-by fork PR, or a
 
   <Step title="Run the verify step sandboxed">
     ```bash
-    bin/verdict verify owner/repo 123 --sandbox
+    verdict verify owner/repo 123 --sandbox
     ```
 
     On Linux with `bubblewrap` installed, `verify` builds the sandbox itself: the command gets its own PID namespace and loopback, no route out, an empty `/run`, a private `/tmp`, and every credential path on the host (`~/.aws`, `~/.ssh`, `~/.config/gh`, and the rest) replaced before the command runs. The patch record carries `"sandboxed": true`, and the `--json` envelope reports it the same way.

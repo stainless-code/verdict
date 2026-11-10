@@ -1907,7 +1907,7 @@ bundle from the worktree instead of the API:
 | `fetch-local owner/repo x -- <paths>`                | any of the above, pathspec-filtered          | as above             |
 
 Flags are mutually exclusive (one diff source per bundle); an empty diff,
-including a paths filter that matches nothing, exits 0 with "nothing to review".
+including a paths filter that matches nothing, exits 0 with an `empty diff (0 bytes)` warning and the bundle kept: the review proceeds on the empty diff.
 Default `git diff HEAD` omits untracked files and warns to stage or commit;
 `--staged` includes them after `git add`; binary or mode-only changes are
 skipped with a warning and anchors stay unchecked. Writes `.verdict/state/local-<name>/` (`source.json`, `full.diff`,

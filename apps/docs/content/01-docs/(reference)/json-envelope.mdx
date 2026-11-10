@@ -25,16 +25,16 @@ Every machine-readable answer from Verdict has the same shape: parse the envelop
 | `data`           | the verb's result object, or `null` on failure               |
 | `error`          | `null` on success, else `{code, message}` with a `try:` hint |
 
-A failure keeps `data` null and names a typed `error.code` with its cause and fix in [Refusal codes](/docs/troubleshooting). A usage error (exit 2) prints no envelope at all: usage text goes to stderr.
+A failure keeps `data` null and names a typed `error.code` with its cause and fix in [Refusal codes](/docs/troubleshooting) — except a failed `report --check` or `gate`, which exits `1` with the success-shaped envelope (`error: null`, full `data`); branch on the envelope, not the exit code alone. A usage error (exit 2) prints no envelope at all: usage text goes to stderr.
 
 ## Exit codes
 
-| Code | Meaning                                                                   |
-| ---- | ------------------------------------------------------------------------- |
-| `0`  | success; `error` is null                                                  |
-| `1`  | typed refusal; read `error.code` and its `try:` hint, then fix and re-run |
-| `2`  | usage error; check the flags (nothing on stdout)                          |
-| `3`  | canceled run or tool failure                                              |
+| Code | Meaning                                                                                                                                                          |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`  | success; `error` is null                                                                                                                                         |
+| `1`  | typed refusal (`data` null; read `error.code` and its `try:` hint), or a failed `report --check` / `gate` (`error` null, `data` present; branch on the envelope) |
+| `2`  | usage error; check the flags (nothing on stdout)                                                                                                                 |
+| `3`  | canceled run or tool failure                                                                                                                                     |
 
 `report --check` and `gate` compose these for CI: `0` shippable, `1` a named dimension failed, `2` bad flags, `3` the gate itself broke. `run --agent` is the exception: when the agent exits non-zero, the process exit code is the agent's own, and `--json` disambiguates through `error.code`.
 

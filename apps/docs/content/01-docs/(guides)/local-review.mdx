@@ -12,8 +12,7 @@ Use this when there is no pull request yet: a branch you are shaping, a spike, o
 <Steps>
   <Step title="Fetch the work into a bundle">
     ```bash
-    make build
-    bin/verdict fetch-local acme/app mywork
+    verdict fetch-local acme/app mywork
     ```
 
     This reads the worktree diff (unstaged plus staged, against `HEAD`) and writes `.verdict/state/local-mywork/` with `source.json`, `full.diff`, `toc.txt`, and `roles.txt`. Untracked files stay out until you stage them, and the `local-` prefix keeps the bundle namespaced so it can never collide with a PR number. Downstream verbs take `local-mywork`; the bare slug `mywork` resolves too. An empty diff exits `0` with an `empty diff (0 bytes)` warning and the bundle kept: the review proceeds on the empty diff.
@@ -22,9 +21,9 @@ Use this when there is no pull request yet: a branch you are shaping, a spike, o
 
     | You want             | Command                                             |
     | -------------------- | --------------------------------------------------- |
-    | Staged changes only  | `bin/verdict fetch-local acme/app staged --staged`  |
-    | A committed range    | `bin/verdict fetch-local acme/app ranged --range main..feature` |
-    | Everything since a base | `bin/verdict fetch-local acme/app based --base main` |
+    | Staged changes only  | `verdict fetch-local acme/app staged --staged`  |
+    | A committed range    | `verdict fetch-local acme/app ranged --range main..feature` |
+    | Everything since a base | `verdict fetch-local acme/app based --base main` |
 
     The flags are mutually exclusive: one diff source per bundle.
 
@@ -40,7 +39,7 @@ Use this when there is no pull request yet: a branch you are shaping, a spike, o
 
   <Step title="Record the findings">
     ```bash
-    bin/verdict record acme/app local-mywork
+    verdict record acme/app local-mywork
     ```
 
     This runs the validate-and-merge half of `post` with no host call and writes `findings.json` plus `record.json`, which `report` and `triage` read. Success prints `recorded: …/findings.json (N open) + …/record.json`.
@@ -49,8 +48,8 @@ Use this when there is no pull request yet: a branch you are shaping, a spike, o
 
   <Step title="Read the report and gate it">
     ```bash
-    bin/verdict report acme/app local-mywork
-    bin/verdict gate acme/app local-mywork --max-severity critical --live skip --coverage warn
+    verdict report acme/app local-mywork
+    verdict gate acme/app local-mywork --max-severity critical --live skip --coverage warn
     ```
 
     A clean bundle reports `open=0` and the gate prints `gate: PASS` with exit `0`. Leave `--require-head` off here: no completed post exists for a local bundle, so that dimension reads `unknown` and fails the gate.

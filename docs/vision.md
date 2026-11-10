@@ -18,8 +18,8 @@ harness wrapping; its discipline borrows from clawpatch and pstack — credited,
 The pains, the answers, the refusals, the concessions, and the competition table
 live on the docs site, which owns that wording:
 
-- pains and answers → [`why-verdict.mdx`](../apps/docs/content/why-verdict.mdx)
-- refusals and concessions → [`why-verdict.mdx`](../apps/docs/content/why-verdict.mdx)
-- competition table, complements, lineage → [`comparison.mdx`](../apps/docs/content/comparison.mdx)
+- pains and answers → [`index.mdx`](../apps/docs/content/03-compare/index.mdx)
+- refusals and concessions → [`index.mdx`](../apps/docs/content/03-compare/index.mdx)
+- competition table, complements, lineage → [`index.mdx`](../apps/docs/content/03-compare/index.mdx)
 
 This file keeps the essentials: what the thing is and where its craft comes from.
