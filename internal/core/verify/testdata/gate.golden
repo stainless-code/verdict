@@ -236,8 +236,8 @@ F-X05	verify-networked
 F-X06	verify-networked
 F-X07	verify-networked
 F-X08	verify-networked
-F-X09	CLEAN
-F-X10	CLEAN
+F-X09	verify-credential-read
+F-X10	verify-credential-read
 F-X11	verify-networked
 F-X12	CLEAN
 F-X13	CLEAN
@@ -271,6 +271,7 @@ F-P21	CLEAN
 F-P22	CLEAN
 F-P23	CLEAN
 F-P24	CLEAN
+F-P25	CLEAN
 G000	CLEAN
 G001	CLEAN
 G002	CLEAN

