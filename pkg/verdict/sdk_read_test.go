@@ -500,6 +500,13 @@ func TestClientIndex(t *testing.T) {
 	})
 	requireNoError(t, err)
 	assertIndexCallers(t, queried.Data)
+
+	pruned, err := c.Index(context.Background(), &verdict.IndexRequest{Query: "prune"})
+	requireNoError(t, err)
+	removed := asMap(t, decodeData(t, pruned.Data)["removed"], "removed")
+	if removed["trees"] != float64(0) || removed["shards"] != float64(0) {
+		t.Errorf("prune removed = %v, want 0 trees and 0 shards", removed)
+	}
 }
 
 // assertIndexBuild checks the build profile counted one parsed file.

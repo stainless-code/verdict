@@ -614,9 +614,9 @@ func (c *Client) Trend(ctx context.Context, req *TrendRequest) (*TrendResponse, 
 	}, nil
 }
 
-// IndexRequest queries the local Go index. Query is callers or status; the
-// MCP surface does not build or prune. Symbol is the caller query's symbol,
-// At names a tree or ref, From overrides the checkout, and Limit bounds rows.
+// IndexRequest queries the local Go index. Query is any index subcommand —
+// callers, status, build, or prune; Symbol is the caller query's symbol, At
+// names a tree or ref, From overrides the checkout, and Limit bounds rows.
 type IndexRequest struct {
 	Query, Symbol, From, At string
 	Limit                   int
@@ -631,8 +631,8 @@ type IndexResponse struct {
 	Data     json.RawMessage
 }
 
-// Index queries or reports the local Go index. Building and pruning stay on
-// the CLI; this method serves callers and status.
+// Index runs one index query. The MCP tool serves callers and status only;
+// this method forwards every query, build and prune included.
 func (c *Client) Index(ctx context.Context, req *IndexRequest) (*IndexResponse, error) {
 	rr, err := c.requestBare(ctx)
 	if err != nil {
