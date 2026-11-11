@@ -41,6 +41,7 @@ run_review index build --json
 assert_exit "index build exits 0" 0
 assert_envelope "index build envelope"
 assert_json_field "build verb" "index" '.verb'
+assert_json_field "build kind" "build" '.data.kind'
 assert_json_field "four Go files indexed" 4 '.data.files_indexed'
 assert_json_field "nothing skipped" 0 '.data.skipped'
 assert_json_field "everything parsed on the first build" 4 '.data.parsed'
@@ -48,6 +49,7 @@ assert_json_field "everything parsed on the first build" 4 '.data.parsed'
 run_review index status --json
 assert_exit "index status exits 0" 0
 assert_envelope "index status envelope"
+assert_json_field "status kind" "status" '.data.kind'
 assert_json_field "HEAD tree is indexed" true '.data.built'
 assert_json_field "status is not stale" false '.data.stale'
 assert_json_field "one stored tree" 1 '.data.trees | length'
@@ -55,6 +57,7 @@ assert_json_field "one stored tree" 1 '.data.trees | length'
 run_review index callers a.Target --json
 assert_exit "index callers exits 0" 0
 assert_envelope "callers envelope"
+assert_json_field "callers kind" "callers" '.data.kind'
 assert_json_field "two call sites" 2 '.data.counts.callers'
 assert_json_field "first row is exact in a" "exact" '.data.rows[0].resolution'
 assert_json_field "first row path" "a/a.go" '.data.rows[0].path'

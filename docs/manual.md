@@ -2592,7 +2592,9 @@ edge); otherwise they are counted in `counts.unresolved`, never guessed.
 Methods, interface and dynamic dispatch, reflection, and generic instantiation
 are unresolved by construction. A bare symbol (`Target`) selects every package
 declaring it; a qualified one (`app.Target`, or the import path) names the
-package. Rows sort by path, line, and kind, and truncate to `--limit` (default
+package. A qualifier that matches no package directory or import path refuses
+`bad-flags` naming it, as does an ambiguous one, so a typo never reads as no
+callers. Rows sort by path, line, and kind, and truncate to `--limit` (default
 50, maximum 200) with `data.truncated` naming how many were not shown.
 
 The honest limits are the contract: **exact within a package, lexical across
@@ -2603,12 +2605,17 @@ is counted unresolved, not found.
 Caps: 20,000 Go files, 1 MiB per file (an oversized file is skipped and
 counted in `coverage.skipped`), a 96 MiB tree file, and a 256 MiB shard cache;
 a repo over a cap refuses `index-capped` naming the measured number. The typed
-`index` section of `.verdict/config.json` overrides each default. A
-truncated or invalid shard refuses `index-corrupt` and is never read as empty.
+`index` section of `.verdict/config.json` overrides each default. One build
+reads every parseable blob through a single `git cat-file` capture capped at
+97 MiB including record framing, so the total source size parsed in one build
+is the effective ceiling. It binds before the nominal 20,000 × 1 MiB file caps;
+an over-cap capture refuses `index-capped` naming the cap, and the capture cap
+is not configurable. A truncated or invalid shard refuses `index-corrupt` and
+is never read as empty.
 Querying a tree that is not HEAD's marks the envelope `stale: true` and warns
 `» index: built for <tree>, HEAD is <tree2>`. The MCP `index` tool is
-read-only and serves `callers` and `status`; building and pruning stay on the
-CLI.
+read-only and serves `callers` and `status`; the SDK forwards every
+subcommand.
 
 ## Backtest (SZZ candidates)
 
