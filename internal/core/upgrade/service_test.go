@@ -840,10 +840,15 @@ func TestUninstallSkillHintNamesOnlyTheResolvedRoot(t *testing.T) {
 	})
 	t.Run("sibling root", func(t *testing.T) {
 		t.Parallel()
-		msg := uninstallHint(t, home, filepath.Join(skills, "other", "bin", "verdict"))
-		want := "the tool that installed the skill copy at " + filepath.Join(skills, "other")
-		if !strings.Contains(msg, want) {
-			t.Fatalf("message = %q, want it to contain %q", msg, want)
+		exe := filepath.Join(skills, "other", "bin", "verdict")
+		msg := uninstallHint(t, home, exe)
+		want := exe + " is not installer-managed; remove it with the tool that installed " +
+			"the skill copy at " + filepath.Join(skills, "other")
+		if msg != want {
+			t.Fatalf("message = %q, want %q", msg, want)
+		}
+		if strings.Contains(msg, "remove it with:") {
+			t.Fatalf("message = %q, want no command slot before the prose hint", msg)
 		}
 		if strings.Contains(msg, "--force") {
 			t.Fatalf("message = %q, want no command that can reach a sibling", msg)
@@ -861,6 +866,53 @@ func uninstallHint(t *testing.T, home, exe string) string {
 		t.Fatalf("refusal = %+v, want uninstall-foreign", ref)
 	}
 	return ref.Message
+}
+
+// TestProjectLocalReasonQuotesRoot pins STA-376: a project root with a space
+// and a single quote is rendered exactly as the POSIX single-quote rule
+// renders it, so the pasted `cd` resolves; a plain path stays bare.
+func TestProjectLocalReasonQuotesRoot(t *testing.T) {
+	t.Parallel()
+	t.Run("space and quote", func(t *testing.T) {
+		t.Parallel()
+		root := filepath.Join(t.TempDir(), "my proj", "it's")
+		reason := projectLocalReason(t, root)
+		quoted := "'" + strings.ReplaceAll(root, "'", `'\''`) + "'"
+		want := "run: cd " + quoted + " && npm install @stainless-code/verdict@latest"
+		if !strings.Contains(reason, want) {
+			t.Fatalf("reason = %q; want it to contain %q", reason, want)
+		}
+	})
+	t.Run("plain path stays bare", func(t *testing.T) {
+		t.Parallel()
+		root := filepath.Join(t.TempDir(), "plainproj")
+		reason := projectLocalReason(t, root)
+		want := "run: cd " + root + " && npm install @stainless-code/verdict@latest"
+		if !strings.Contains(reason, want) {
+			t.Fatalf("reason = %q; want it to contain %q", reason, want)
+		}
+	})
+}
+
+func projectLocalReason(t *testing.T, root string) string {
+	t.Helper()
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "package.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	req := baseRequest(t)
+	req.Executable = filepath.Join(root, "node_modules", "verdict", "bin", "verdict")
+	req.DryRun = true
+	resp, ref := upgrade.Run(context.Background(), &req)
+	if ref != nil {
+		t.Fatalf("dry-run refused: %+v", ref)
+	}
+	if resp.Action != upgrade.ActionRefuse {
+		t.Fatalf("action = %q; want refuse", resp.Action)
+	}
+	return resp.Reason
 }
 
 // hintDirOperand reads the `--dir` argument back out of a hint, undoing the
