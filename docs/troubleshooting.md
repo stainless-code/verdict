@@ -1032,6 +1032,12 @@ Cause: `verifyCmd` escapes the repo root.
 
 Fix: rewrite `verifyCmd` with repo-relative paths (`/tmp` for scratch), then re-run.
 
+## `window-too-large`
+
+Cause: the `--since..--until` commit list is larger than one 16 MiB capture.
+
+Fix: narrow `--since` to a shorter span or a later ref, then re-run.
+
 ## `worktree-failed`
 
 Cause: the isolated worktree checkout failed — the message carries the git error.

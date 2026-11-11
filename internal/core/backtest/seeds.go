@@ -144,9 +144,13 @@ func (ss *seedState) processFix(ctx context.Context, fix, subject string) *core.
 }
 
 // anchorFix anchors each eligible deleted line; a line that does not anchor
-// records its own skipped row.
+// records its own skipped row. The context is checked per line so a cancel
+// stops between blames instead of after the next git failure.
 func (ss *seedState) anchorFix(ctx context.Context, fix, kind string, lines []diffLine) *core.RefusalError {
 	for _, line := range lines {
+		if ref := ss.st.canceled(ctx); ref != nil {
+			return ref
+		}
 		if ref := ss.anchorLine(ctx, fix, kind, line); ref != nil {
 			return ref
 		}
@@ -339,10 +343,10 @@ func (ss *seedState) fixStats(ctx context.Context, fix string) ([]fileStat, bool
 	out, exit, stderr, truncated, err := ss.st.gitCapped(ctx, commandOutputCap, ss.st.root,
 		diffArgs("show", "--numstat", "--format=", "--no-renames", "-z", fix)...)
 	if err != nil {
-		return nil, false, ss.st.refuse(codeBacktestFail, err.Error())
+		return nil, false, ss.st.gitFailure(ctx, err.Error())
 	}
 	if exit != 0 {
-		return nil, false, ss.st.refuse(codeBacktestFail, "git show failed for "+short(fix)+": "+firstLine(stderr))
+		return nil, false, ss.st.gitFailure(ctx, "git show failed for "+short(fix)+": "+firstLine(stderr))
 	}
 	if truncated {
 		return nil, true, nil
@@ -407,10 +411,10 @@ func (ss *seedState) fixDiff(ctx context.Context, fix string) (fixDiff, bool, *c
 	out, exit, stderr, truncated, err := ss.st.gitCapped(ctx, commandOutputCap, ss.st.root,
 		diffArgs("show", "-U0", "--no-renames", "--format=", fix)...)
 	if err != nil {
-		return fixDiff{}, false, ss.st.refuse(codeBacktestFail, err.Error())
+		return fixDiff{}, false, ss.st.gitFailure(ctx, err.Error())
 	}
 	if exit != 0 {
-		return fixDiff{}, false, ss.st.refuse(codeBacktestFail, "git show failed for "+short(fix)+": "+firstLine(stderr))
+		return fixDiff{}, false, ss.st.gitFailure(ctx, "git show failed for "+short(fix)+": "+firstLine(stderr))
 	}
 	if truncated {
 		return fixDiff{}, true, nil
@@ -496,10 +500,10 @@ func (ss *seedState) onFirstParentLine(ctx context.Context, introducer string) (
 	out, exit, stderr, _, err := ss.st.gitCapped(ctx, commandOutputCap, ss.st.root,
 		"rev-list", "--first-parent", "--reverse", "--parents", introducer+".."+ss.until.SHA)
 	if err != nil {
-		return false, ss.st.refuse(codeBacktestFail, err.Error())
+		return false, ss.st.gitFailure(ctx, err.Error())
 	}
 	if exit != 0 {
-		return false, ss.st.refuse(codeBacktestFail, "git rev-list failed: "+firstLine(stderr))
+		return false, ss.st.gitFailure(ctx, "git rev-list failed: "+firstLine(stderr))
 	}
 	fields := strings.Fields(firstLine(out))
 	return len(fields) >= 2 && fields[1] == introducer, nil
@@ -511,10 +515,10 @@ func (ss *seedState) firstParentUnit(ctx context.Context, introducer string) (pr
 	out, exit, stderr, err := ss.st.git(ctx, ss.st.root,
 		"rev-list", "--merges", "--first-parent", "--reverse", introducer+".."+ss.until.SHA)
 	if err != nil {
-		return prUnit{}, ss.st.refuse(codeBacktestFail, err.Error())
+		return prUnit{}, ss.st.gitFailure(ctx, err.Error())
 	}
 	if exit != 0 {
-		return prUnit{}, ss.st.refuse(codeBacktestFail, "git rev-list failed: "+firstLine(stderr))
+		return prUnit{}, ss.st.gitFailure(ctx, "git rev-list failed: "+firstLine(stderr))
 	}
 	for merge := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 		unit, ok, ref := ss.mergeCandidate(ctx, introducer, merge)
@@ -608,10 +612,10 @@ func (ss *seedState) prOverCap(ctx context.Context, head, base string) (bool, *c
 	out, exit, stderr, truncated, err := ss.st.gitCapped(ctx, fetchDiffCapBytes+1, ss.st.root,
 		diffArgs("diff", "--no-renames", base, head)...)
 	if err != nil {
-		return false, ss.st.refuse(codeBacktestFail, err.Error())
+		return false, ss.st.gitFailure(ctx, err.Error())
 	}
 	if exit != 0 {
-		return false, ss.st.refuse(codeBacktestFail, "git diff failed: "+firstLine(stderr))
+		return false, ss.st.gitFailure(ctx, "git diff failed: "+firstLine(stderr))
 	}
 	over := truncated || len(out) > fetchDiffCapBytes
 	ss.prCaps[head] = over
@@ -650,13 +654,13 @@ func (st *state) blame(ctx context.Context, rev, path string, line int) (string,
 	out, exit, stderr, err := st.git(ctx, st.root, "blame", "--porcelain", "--no-ignore-revs-file",
 		"-L", strconv.Itoa(line)+","+strconv.Itoa(line), rev, "--", path)
 	if err != nil {
-		return "", false, st.refuse(codeBacktestFail, err.Error())
+		return "", false, st.gitFailure(ctx, err.Error())
 	}
 	if exit != 0 {
 		if unreadableLine(stderr) {
 			return "", false, nil
 		}
-		return "", false, st.refuse(codeBacktestFail, "git blame failed: "+firstLine(stderr))
+		return "", false, st.gitFailure(ctx, "git blame failed: "+firstLine(stderr))
 	}
 	fields := strings.Fields(firstLine(out))
 	if len(fields) == 0 {
@@ -680,13 +684,13 @@ func unreadableLine(stderr string) bool {
 func (st *state) anchor(ctx context.Context, unit *prUnit, line diffLine, introducer string) (int, bool, *core.RefusalError) {
 	out, exit, stderr, err := st.git(ctx, st.root, "grep", "--no-color", "-n", "-F", "-e", line.Text, unit.head, "--", line.Path)
 	if err != nil {
-		return 0, false, st.refuse(codeBacktestFail, err.Error())
+		return 0, false, st.gitFailure(ctx, err.Error())
 	}
 	if exit == 1 {
 		return 0, false, nil
 	}
 	if exit != 0 {
-		return 0, false, st.refuse(codeBacktestFail, "git grep failed: "+firstLine(stderr))
+		return 0, false, st.gitFailure(ctx, "git grep failed: "+firstLine(stderr))
 	}
 	hits := grepHits(out, unit.head, line)
 	if len(hits) == 0 {

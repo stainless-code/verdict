@@ -192,6 +192,7 @@ var refusalCodes = []string{
 	"verify-failed",
 	"verify-networked",
 	"verify-repo-escape",
+	"window-too-large",
 	"worktree-failed",
 }
 

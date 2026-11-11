@@ -29,33 +29,35 @@ import (
 
 // Refusal codes this verb owns.
 const (
-	codeBadSince      = "bad-since"
-	codeBadUntil      = "bad-until"
-	codeRunMismatch   = "run-mismatch"
-	codeBacktestFail  = "backtest-failed"
-	codeNotARepo      = "not-a-repo"
-	codeBadSlug       = "bad-slug"
-	codeCorruptStore  = "corrupt-store"
-	codeCanceled      = "canceled"
-	codeBadFlags      = "bad-flags"
-	modeMine          = "mine"
-	methodSZZ         = "szz-blame-v1"
-	schemaVersion     = "1"
-	headSourceMerge   = "merge-time"
-	artifactDir       = ".verdict/backtest"
-	commandOutputCap  = 16 << 20
-	gitDateLayout     = "2006-01-02T15:04:05Z"
-	humanDateLayout   = "2006-01-02"
-	shortSHA          = 7
-	dayHours          = 24
-	weekDays          = 7
-	monthsPerYear     = 12
-	fetchDiffCapBytes = 512000
-	maxFixLines       = 200
-	maxFixFiles       = 5
-	numStatFields     = 3
-	colonSep          = ":"
-	dirPerm           = 0o755
+	codeBadSince       = "bad-since"
+	codeBadUntil       = "bad-until"
+	codeRunMismatch    = "run-mismatch"
+	codeBacktestFail   = "backtest-failed"
+	codeNotARepo       = "not-a-repo"
+	codeBadSlug        = "bad-slug"
+	codeCorruptStore   = "corrupt-store"
+	codeCanceled       = "canceled"
+	codeBadFlags       = "bad-flags"
+	codeWindowTooLarge = "window-too-large"
+	modeMine           = "mine"
+	methodSZZ          = "szz-blame-v1"
+	schemaVersion      = "1"
+	headSourceMerge    = "merge-time"
+	msgCanceled        = "canceled before backtest mine completed"
+	artifactDir        = ".verdict/backtest"
+	commandOutputCap   = 16 << 20
+	gitDateLayout      = "2006-01-02T15:04:05Z"
+	humanDateLayout    = "2006-01-02"
+	shortSHA           = 7
+	dayHours           = 24
+	weekDays           = 7
+	monthsPerYear      = 12
+	fetchDiffCapBytes  = 512000
+	maxFixLines        = 200
+	maxFixFiles        = 5
+	numStatFields      = 3
+	colonSep           = ":"
+	dirPerm            = 0o755
 )
 
 // Request is one `backtest mine` invocation. The adapter supplies the parsed
@@ -199,7 +201,7 @@ func Run(ctx context.Context, req *Request) (resp *Response, ref *core.RefusalEr
 	st := &state{req: req, warnings: append([]string{}, req.Warnings...)}
 	defer st.carry(&resp, &ref)
 	if err := ctx.Err(); err != nil {
-		return nil, st.refuse(codeCanceled, "canceled before backtest mine completed")
+		return nil, st.refuse(codeCanceled, msgCanceled)
 	}
 	if req.Mode != modeMine {
 		return nil, st.refuse(codeBadFlags, "backtest needs the 'mine' mode")
@@ -267,6 +269,24 @@ func (st *state) refuse(code, msg string) *core.RefusalError {
 	return &core.RefusalError{Code: code, Message: msg}
 }
 
+// canceled refuses a run whose context is done, so an interrupt reports the
+// cancel (exit 3) rather than whichever step happened to notice it.
+func (st *state) canceled(ctx context.Context) *core.RefusalError {
+	if ctx.Err() == nil {
+		return nil
+	}
+	return st.refuse(codeCanceled, msgCanceled)
+}
+
+// gitFailure refuses a failed git step: a canceled run reports the cancel,
+// never the killed child's message.
+func (st *state) gitFailure(ctx context.Context, msg string) *core.RefusalError {
+	if ctx.Err() != nil {
+		return st.refuse(codeCanceled, msgCanceled)
+	}
+	return st.refuse(codeBacktestFail, msg)
+}
+
 // now reads the injected clock.
 func (st *state) now() time.Time {
 	if st.req.Runtime != nil && st.req.Runtime.Now != nil {
@@ -305,7 +325,7 @@ func (st *state) repoRoot(ctx context.Context) (string, *core.RefusalError) {
 	}
 	out, exit, _, err := st.git(ctx, root, "rev-parse", "--show-toplevel")
 	if err != nil {
-		return "", st.refuse(codeBacktestFail, err.Error())
+		return "", st.gitFailure(ctx, err.Error())
 	}
 	if exit != 0 || strings.TrimSpace(out) == "" {
 		return "", st.refuse(codeNotARepo, "not a git repository: "+root)
@@ -317,10 +337,10 @@ func (st *state) repoRoot(ctx context.Context) (string, *core.RefusalError) {
 func (st *state) gitVersion(ctx context.Context) (string, *core.RefusalError) {
 	out, exit, stderr, err := st.git(ctx, st.root, "--version")
 	if err != nil {
-		return "", st.refuse(codeBacktestFail, err.Error())
+		return "", st.gitFailure(ctx, err.Error())
 	}
 	if exit != 0 {
-		return "", st.refuse(codeBacktestFail, "git --version failed: "+firstLine(stderr))
+		return "", st.gitFailure(ctx, "git --version failed: "+firstLine(stderr))
 	}
 	version := strings.TrimSpace(firstLine(out))
 	if version == "" {
@@ -340,10 +360,16 @@ func (st *state) until(ctx context.Context) (Resolution, *core.RefusalError) {
 	}
 	sha, ok := st.revParse(ctx, spec)
 	if !ok {
+		if ref := st.canceled(ctx); ref != nil {
+			return Resolution{}, ref
+		}
 		return Resolution{}, st.refuse(codeBadUntil, "cannot resolve --until '"+spec+"' to a commit")
 	}
 	head, ok := st.revParse(ctx, "HEAD")
 	if !ok {
+		if ref := st.canceled(ctx); ref != nil {
+			return Resolution{}, ref
+		}
 		return Resolution{}, st.refuse(codeBadUntil, "HEAD does not resolve to a commit")
 	}
 	if sha != head {
@@ -380,6 +406,9 @@ func (st *state) since(ctx context.Context, until Resolution) (Resolution, *core
 	}
 	sha, ok := st.revParse(ctx, spec)
 	if !ok {
+		if ref := st.canceled(ctx); ref != nil {
+			return Resolution{}, ref
+		}
 		return Resolution{}, st.refuse(codeBadSince, "cannot resolve --since '"+spec+"' to a commit")
 	}
 	ancestor, ref := st.isAncestor(ctx, sha, until.SHA)
@@ -407,9 +436,15 @@ func (st *state) durationSince(
 		return Resolution{}, st.refuse(codeBacktestFail, "unreadable --until commit date: "+until.Date)
 	}
 	cutoff := span.back(at.UTC()).Format(gitDateLayout)
-	sha := st.commitBefore(ctx, until.SHA, cutoff)
+	sha, ref := st.commitBefore(ctx, until.SHA, cutoff)
+	if ref != nil {
+		return Resolution{}, ref
+	}
 	if sha == "" {
-		sha = st.rootCommit(ctx, until.SHA)
+		sha, ref = st.rootCommit(ctx, until.SHA)
+		if ref != nil {
+			return Resolution{}, ref
+		}
 	}
 	if sha == "" {
 		return Resolution{}, st.refuse(codeBadSince,
@@ -523,6 +558,9 @@ func (st *state) mine(ctx context.Context, since, until Resolution) ([]Candidate
 		return nil, nil, ref
 	}
 	for _, commit := range commits {
+		if ref := st.canceled(ctx); ref != nil {
+			return nil, nil, ref
+		}
 		if ref := seed.consider(ctx, commit); ref != nil {
 			return nil, nil, ref
 		}
@@ -541,13 +579,20 @@ func newSeed(st *state, since, until Resolution) *seedState {
 }
 
 // rangeCommits lists every commit in since..until, newest first, with parents.
+// A window too large for one capture refuses by name so the operator narrows
+// --since instead of reading a git failure.
 func (st *state) rangeCommits(ctx context.Context, since, until string) ([]commit, *core.RefusalError) {
-	out, exit, stderr, err := st.git(ctx, st.root, "rev-list", "--parents", since+".."+until)
+	out, exit, stderr, truncated, err := st.gitCapped(ctx, commandOutputCap, st.root,
+		"rev-list", "--parents", since+".."+until)
 	if err != nil {
-		return nil, st.refuse(codeBacktestFail, err.Error())
+		return nil, st.gitFailure(ctx, err.Error())
+	}
+	if truncated {
+		return nil, st.refuse(codeWindowTooLarge,
+			"the window "+short(since)+".."+short(until)+" is too large to list in one capture; narrow --since")
 	}
 	if exit != 0 {
-		return nil, st.refuse(codeBacktestFail, "git rev-list failed: "+firstLine(stderr))
+		return nil, st.gitFailure(ctx, "git rev-list failed: "+firstLine(stderr))
 	}
 	var commits []commit
 	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {

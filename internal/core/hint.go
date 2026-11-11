@@ -149,6 +149,7 @@ var hintRules = []HintRule{
 	{prefix: "mcp-config-", hint: "try: check the config path and permissions named above, then re-run"},
 	{codes: []string{"run-mismatch"}, hint: "try: pick another --run, or delete the existing run directory"},
 	{codes: []string{"backtest-failed"}, hint: "try: confirm git works in this checkout, then re-run"},
+	{codes: []string{"window-too-large"}, hint: "try: narrow --since (a shorter span or a later ref), then re-run"},
 }
 
 // matches reports whether the rule answers code.

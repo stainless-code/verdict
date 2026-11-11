@@ -147,7 +147,7 @@ func (st *state) revParse(ctx context.Context, spec string) (string, bool) {
 func (st *state) isAncestor(ctx context.Context, a, b string) (bool, *core.RefusalError) {
 	_, exit, stderr, err := st.git(ctx, st.root, "merge-base", "--is-ancestor", a, b)
 	if err != nil {
-		return false, st.refuse(codeBacktestFail, err.Error())
+		return false, st.gitFailure(ctx, err.Error())
 	}
 	switch exit {
 	case 0:
@@ -155,7 +155,7 @@ func (st *state) isAncestor(ctx context.Context, a, b string) (bool, *core.Refus
 	case 1:
 		return false, nil
 	default:
-		return false, st.refuse(codeBacktestFail, "git merge-base failed: "+firstLine(stderr))
+		return false, st.gitFailure(ctx, "git merge-base failed: "+firstLine(stderr))
 	}
 }
 
@@ -163,10 +163,10 @@ func (st *state) isAncestor(ctx context.Context, a, b string) (bool, *core.Refus
 func (st *state) parents(ctx context.Context, sha string) ([]string, *core.RefusalError) {
 	out, exit, stderr, err := st.git(ctx, st.root, "rev-list", "--parents", "-n", "1", sha)
 	if err != nil {
-		return nil, st.refuse(codeBacktestFail, err.Error())
+		return nil, st.gitFailure(ctx, err.Error())
 	}
 	if exit != 0 {
-		return nil, st.refuse(codeBacktestFail, "git rev-list failed for "+short(sha)+": "+firstLine(stderr))
+		return nil, st.gitFailure(ctx, "git rev-list failed for "+short(sha)+": "+firstLine(stderr))
 	}
 	fields := strings.Fields(firstLine(out))
 	if len(fields) == 0 {
@@ -188,10 +188,10 @@ func (st *state) mergeBase(ctx context.Context, a, b string) string {
 func (st *state) commitDate(ctx context.Context, sha string) (string, *core.RefusalError) {
 	out, exit, stderr, err := st.git(ctx, st.root, "show", "-s", "--format=%cI", sha)
 	if err != nil {
-		return "", st.refuse(codeBacktestFail, err.Error())
+		return "", st.gitFailure(ctx, err.Error())
 	}
 	if exit != 0 {
-		return "", st.refuse(codeBacktestFail, "git show failed for "+short(sha)+": "+firstLine(stderr))
+		return "", st.gitFailure(ctx, "git show failed for "+short(sha)+": "+firstLine(stderr))
 	}
 	at, err := time.Parse(time.RFC3339, strings.TrimSpace(firstLine(out)))
 	if err != nil {
@@ -201,31 +201,37 @@ func (st *state) commitDate(ctx context.Context, sha string) (string, *core.Refu
 }
 
 // commitBefore returns the newest commit at or before cutoff, or "" when none.
-func (st *state) commitBefore(ctx context.Context, until, cutoff string) string {
-	out, exit, _, err := st.git(ctx, st.root, "rev-list", "-1", "--before="+cutoff, until)
-	if err != nil || exit != 0 {
-		return ""
+func (st *state) commitBefore(ctx context.Context, until, cutoff string) (string, *core.RefusalError) {
+	out, exit, stderr, err := st.git(ctx, st.root, "rev-list", "-1", "--before="+cutoff, until)
+	if err != nil {
+		return "", st.gitFailure(ctx, err.Error())
 	}
-	return strings.TrimSpace(firstLine(out))
+	if exit != 0 {
+		return "", st.gitFailure(ctx, "git rev-list failed: "+firstLine(stderr))
+	}
+	return strings.TrimSpace(firstLine(out)), nil
 }
 
 // rootCommit returns the oldest root commit of until's history, or "".
-func (st *state) rootCommit(ctx context.Context, until string) string {
-	out, exit, _, err := st.git(ctx, st.root, "rev-list", "--max-parents=0", "--reverse", until)
-	if err != nil || exit != 0 {
-		return ""
+func (st *state) rootCommit(ctx context.Context, until string) (string, *core.RefusalError) {
+	out, exit, stderr, err := st.git(ctx, st.root, "rev-list", "--max-parents=0", "--reverse", until)
+	if err != nil {
+		return "", st.gitFailure(ctx, err.Error())
 	}
-	return strings.TrimSpace(firstLine(out))
+	if exit != 0 {
+		return "", st.gitFailure(ctx, "git rev-list failed: "+firstLine(stderr))
+	}
+	return strings.TrimSpace(firstLine(out)), nil
 }
 
 // subjectBody returns a commit's subject and body.
 func (st *state) subjectBody(ctx context.Context, sha string) (string, string, *core.RefusalError) {
 	out, exit, stderr, err := st.git(ctx, st.root, "show", "-s", "--format=%s%x00%b", sha)
 	if err != nil {
-		return "", "", st.refuse(codeBacktestFail, err.Error())
+		return "", "", st.gitFailure(ctx, err.Error())
 	}
 	if exit != 0 {
-		return "", "", st.refuse(codeBacktestFail, "git show failed for "+short(sha)+": "+firstLine(stderr))
+		return "", "", st.gitFailure(ctx, "git show failed for "+short(sha)+": "+firstLine(stderr))
 	}
 	subject, body, _ := strings.Cut(out, "\x00")
 	return strings.TrimSpace(subject), strings.TrimSpace(body), nil
