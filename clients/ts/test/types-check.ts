@@ -69,6 +69,7 @@ type Verb =
   | "adopt"
   | "fix"
   | "learn"
+  | "pack"
   | "init"
   | "config"
   | "gate";

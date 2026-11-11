@@ -709,6 +709,25 @@ export interface TrendBundleRow {
   [key: string]: unknown;
 }
 
+/** pack list --json data: one row per loaded pack in precedence order (built-in, org, repo). */
+export interface PackData {
+  packs: Array<PackEntry>;
+  [key: string]: unknown;
+}
+
+/** One pack row: its manifest identity, layer, source, canonical tree hash, declared lens and rule ids, and drift (null until verdict.lock pins the pack). */
+export interface PackEntry {
+  name: string;
+  version: string;
+  layer: "builtin" | "org" | "repo";
+  source: string;
+  hash: string;
+  lenses: Array<string>;
+  rules: Array<string>;
+  drift: string | null;
+  [key: string]: unknown;
+}
+
 /** index --json data: one object across build, status, prune, callers, tests-for, co-changed, and owners, so kind names the subcommand and every other key is optional. */
 export interface IndexData {
   kind:

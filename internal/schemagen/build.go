@@ -243,6 +243,7 @@ func documents() []document {
 			root:  reflect.TypeFor[PackManifest](),
 			defs: []definition{
 				{typ: reflect.TypeFor[PackLens](), name: "lens", closed: true},
+				{typ: reflect.TypeFor[PackRule](), name: "rule", closed: true},
 			},
 			additionalProperties: false,
 		},
@@ -379,6 +380,8 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[TrendProvenance](), name: "trendProvenance"},
 		{typ: reflect.TypeFor[TrendPeriod](), name: "trendPeriod"},
 		{typ: reflect.TypeFor[TrendBundleRow](), name: "trendBundleRow"},
+		{typ: reflect.TypeFor[PackData](), name: "packData"},
+		{typ: reflect.TypeFor[PackEntry](), name: "packEntry"},
 		{typ: reflect.TypeFor[IndexData](), name: "indexData"},
 		{typ: reflect.TypeFor[IndexShards](), name: "indexShards"},
 		{typ: reflect.TypeFor[IndexTreeRow](), name: "indexTreeRow"},

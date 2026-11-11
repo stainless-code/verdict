@@ -338,6 +338,7 @@ export interface VerdictClient {
     args?: string[],
     opts?: RunOptions,
   ): Promise<Envelope<DataFor["learn"]>>;
+  pack(args?: string[], opts?: RunOptions): Promise<Envelope<DataFor["pack"]>>;
   init(args?: string[], opts?: RunOptions): Promise<Envelope<DataFor["init"]>>;
 }
 
@@ -403,6 +404,7 @@ export function createClient(defaults: ClientOptions = {}): VerdictClient {
     adopt: (args, opts) => run<DataFor["adopt"]>("adopt", args, opts),
     fix: (args, opts) => run<DataFor["fix"]>("fix", args, opts),
     learn: (args, opts) => run<DataFor["learn"]>("learn", args, opts),
+    pack: (args, opts) => run<DataFor["pack"]>("pack", args, opts),
     init: (args, opts) => run<DataFor["init"]>("init", args, opts),
   };
   return client;

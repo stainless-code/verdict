@@ -30,7 +30,39 @@ var fullSHA = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
 // repository, the same base commit is read through the contents API instead;
 // without a repo the read refuses.
 func readBase(ctx context.Context, cmd core.Commander, repo, root, base string) (map[string][]byte, *core.RefusalError) {
-	return ReadPaths(ctx, cmd, repo, root, base, Inventory)
+	return readPaths(ctx, cmd, repo, root, base, Inventory, true)
+}
+
+// readPaths reads the fixed inventory plus, when trees is set, every regular
+// file under the repo pack directory. The recursive ls-tree lists the pack
+// tree in the same call, so one base object supplies both.
+func readPaths(
+	ctx context.Context, cmd core.Commander, repo, root, base string, paths []string, trees bool,
+) (map[string][]byte, *core.RefusalError) {
+	argv := []string{"ls-tree"}
+	if trees {
+		argv = append(argv, "-r")
+	}
+	argv = append(argv, "-lz", base, "--")
+	argv = append(argv, paths...)
+	if trees {
+		argv = append(argv, PacksPrefix)
+	}
+	read := append([]string{}, paths...)
+	if trees {
+		read = append(read, PacksPrefix)
+	}
+	if !fullSHA.MatchString(base) {
+		return nil, refuse(CodeUnavailable, "the bundle does not name a full PR base commit")
+	}
+	tree, err := runGit(ctx, cmd, 0, root, argv...)
+	if err != nil && repo != "" {
+		return readContents(ctx, cmd, repo, base, read)
+	}
+	if err != nil {
+		return nil, refuse(CodeUnavailable, fmt.Sprintf("PR base %s is not readable here (shallow checkout?): %v", base[:shortLen], err))
+	}
+	return readBlobs(ctx, cmd, root, base, tree)
 }
 
 // ReadPaths reads arbitrary inventory paths at the PR base commit through
@@ -40,19 +72,7 @@ func readBase(ctx context.Context, cmd core.Commander, repo, root, base string) 
 // exactly like the inventory read above; configuration inputs reuse it so
 // the trust posture stays in one place.
 func ReadPaths(ctx context.Context, cmd core.Commander, repo, root, base string, paths []string) (map[string][]byte, *core.RefusalError) {
-	if !fullSHA.MatchString(base) {
-		return nil, refuse(CodeUnavailable, "the bundle does not name a full PR base commit")
-	}
-	// One ls-tree sees every path at once: the blob size caps it before
-	// any read, and mode 120000 (a tracked symlink) refuses.
-	tree, err := runGit(ctx, cmd, 0, root, append([]string{"ls-tree", "-lz", base, "--"}, paths...)...)
-	if err != nil && repo != "" {
-		return readContents(ctx, cmd, repo, base, paths)
-	}
-	if err != nil {
-		return nil, refuse(CodeUnavailable, fmt.Sprintf("PR base %s is not readable here (shallow checkout?): %v", base[:shortLen], err))
-	}
-	return readBlobs(ctx, cmd, root, base, tree)
+	return readPaths(ctx, cmd, repo, root, base, paths, false)
 }
 
 // readBlobs reads every regular blob the ls-tree output lists.

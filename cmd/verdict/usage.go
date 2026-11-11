@@ -3,7 +3,7 @@ package main
 func usageText() string {
 	return "usage: verdict fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
 		"fetch-local|run|record|adopt|fix|check-tree|ready|gate|threads|trend|index|" +
-		"backtest|learn|init|skill|upgrade|uninstall|mcp|config [opts]\n" +
+		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|config [opts]\n" +
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
 		"[--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
 		"    write .verdict/state/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
@@ -309,6 +309,14 @@ func usageText() string {
 		"    In a skill copy, scripts/verdict resolves VERDICT_BIN, then\n" +
 		"    <skill>/bin/verdict, then verdict on PATH; otherwise run the one-time\n" +
 		"    verified <skill>/scripts/verdict bootstrap (no review-time fetch).\n" +
+		"  pack list [--json]\n" +
+		"    read-only lens-pack inventory in precedence order: built-in, org\n" +
+		"    (explicit packs[] paths in personal settings), and repo\n" +
+		"    (.verdict/packs/<name>/, read from the PR base by fetch). Rows carry\n" +
+		"    name, version, layer, source, tree hash, lens and rule ids, and drift\n" +
+		"    (null until verdict.lock). Duplicate ids inside one layer refuse\n" +
+		"    bad-pack; overriding a lower layer needs replace[] naming it, else\n" +
+		"    pack-conflict.\n" +
 		"  upgrade [--version <v>] [--dry-run] [--json]\n" +
 		"    explicit, channel-aware self-update. Installer-managed installs verify the\n" +
 		"    release (cosign bundle when present, SHA-256 always), smoke-test, and\n" +
@@ -349,7 +357,7 @@ func usageText() string {
 		"  overview + diagrams) namespaces\n" +
 		"  (~/.config/verdict/settings.json, $XDG_CONFIG_HOME respected).\n" +
 		"  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/" +
-		"fetch-local/run/record/adopt/fix/check-tree/ready/gate/trend/index/backtest/learn/init/skill/upgrade/uninstall/config: " +
+		"fetch-local/run/record/adopt/fix/check-tree/ready/gate/trend/index/backtest/learn/pack/init/skill/upgrade/uninstall/config: " +
 		"stdout is exactly one JSON envelope (schema_version 1);\n" +
 		"  all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.\n" +
 		"  Glossary: https://stainless-code.com/verdict/docs/glossary\n"
@@ -364,6 +372,7 @@ var bareVerbs = map[string]bool{
 	"upgrade":    true,
 	"uninstall":  true,
 	"index":      true,
+	"pack":       true,
 }
 
 func arityUsage(cmd, repo, pr string) bool {

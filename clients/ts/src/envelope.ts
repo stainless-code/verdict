@@ -11,6 +11,7 @@ import type {
   InitData,
   LearnData,
   NextData,
+  PackData,
   PostData,
   ReadyData,
   RecordData,
@@ -78,6 +79,7 @@ export interface DataFor {
   adopt: AdoptData;
   fix: FixData;
   learn: LearnData;
+  pack: PackData;
   init: InitData;
 }
 

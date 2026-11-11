@@ -370,7 +370,7 @@ type fetchRunCtx struct {
 	runner    *session
 	env       map[string]string
 	runCfg    *runConfig
-	lensPack  *pack.Pack
+	packs     *pack.Set
 	repo      string
 	pr        string
 	dir       string

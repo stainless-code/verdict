@@ -18,8 +18,13 @@ const (
 	// truncated stream — decides an over-cap refusal.
 	contentsCap  = 2 << 20
 	typeFile     = "file"
+	typeDir      = "dir"
 	encodingB64  = "base64"
 	httpNotFound = "HTTP 404"
+	binGH        = "gh"
+	// maxTreeEntries bounds one recursive pack listing so a hostile or
+	// runaway tree cannot make the fallback allocate without limit.
+	maxTreeEntries = 1024
 )
 
 // repoSlug gates the repository before it reaches a gh argv.
@@ -45,11 +50,81 @@ func readContents(ctx context.Context, cmd core.Commander, repo, base string, pa
 	}
 	reader := contentsReader{contents: map[string][]byte{}}
 	for _, path := range paths {
-		if ref := reader.read(ctx, cmd, repo, base, path); ref != nil {
+		var ref *core.RefusalError
+		if path == PacksPrefix {
+			ref = reader.readTree(ctx, cmd, repo, base, path)
+		} else {
+			ref = reader.read(ctx, cmd, repo, base, path)
+		}
+		if ref != nil {
 			return nil, ref
 		}
 	}
 	return reader.contents, nil
+}
+
+// contentsEntry is one directory listing row the tree reader trusts.
+type contentsEntry struct {
+	Type string `json:"type"`
+	Name string `json:"name"`
+}
+
+// readTree lists one pack directory recursively: directories descend, files
+// join the ordinary capped read, and any other shape refuses.
+func (r *contentsReader) readTree(ctx context.Context, cmd core.Commander, repo, base, path string) *core.RefusalError {
+	entries, ref := listContents(ctx, cmd, repo, base, path)
+	if ref != nil || entries == nil {
+		return ref
+	}
+	if len(entries) > maxTreeEntries {
+		return refuse(CodeTooLarge, fmt.Sprintf("control %s lists more than %d entries", path, maxTreeEntries))
+	}
+	for _, entry := range entries {
+		if ref := r.readTreeEntry(ctx, cmd, repo, base, path, entry); ref != nil {
+			return ref
+		}
+	}
+	return nil
+}
+
+// readTreeEntry dispatches one listed directory entry: descend, read, or
+// refuse a shape that is neither.
+func (r *contentsReader) readTreeEntry(
+	ctx context.Context, cmd core.Commander, repo, base, dir string, entry contentsEntry,
+) *core.RefusalError {
+	full := dir + packSep + entry.Name
+	switch entry.Type {
+	case typeDir:
+		return r.readTree(ctx, cmd, repo, base, full)
+	case typeFile:
+		return r.read(ctx, cmd, repo, base, full)
+	default:
+		return refuse(CodeUnavailable, controlPrefix+full+" is not a regular file — replace it with one")
+	}
+}
+
+// listContents asks the contents API for one directory: nil, nil is a 404.
+func listContents(ctx context.Context, cmd core.Commander, repo, base, path string) ([]contentsEntry, *core.RefusalError) {
+	endpoint := "repos/" + repo + "/contents/" + path + "?ref=" + base
+	res, err := cmd.Run(ctx, &core.Command{Argv: []string{binGH, "api", endpoint}, OutputCap: contentsCap})
+	if err == nil && res.ExitCode != 0 {
+		err = res.ExitFailure(binGH)
+	}
+	if err != nil {
+		if strings.Contains(strings.TrimSpace(res.Stderr), httpNotFound) {
+			return nil, nil
+		}
+		return nil, refuse(CodeUnavailable, fmt.Sprintf("could not list %s at %s through the contents API",
+			path, base[:shortLen]))
+	}
+	if res.StdoutTruncated {
+		return nil, refuse(CodeTooLarge, fmt.Sprintf("control %s listing is over the %d-byte cap", path, contentsCap))
+	}
+	var entries []contentsEntry
+	if json.Unmarshal([]byte(res.Stdout), &entries) != nil {
+		return nil, refuse(CodeUnavailable, fmt.Sprintf("control %s is not a directory — replace it with one", path))
+	}
+	return entries, nil
 }
 
 // contentsReader accumulates the controls and their reported sizes.
@@ -89,9 +164,9 @@ func contentAt(ctx context.Context, cmd core.Commander, repo, base, path string)
 // fetchContent asks the contents API for one path: nil, nil is a 404.
 func fetchContent(ctx context.Context, cmd core.Commander, repo, base, path string) (*contentsDoc, *core.RefusalError) {
 	endpoint := "repos/" + repo + "/contents/" + path + "?ref=" + base
-	res, err := cmd.Run(ctx, &core.Command{Argv: []string{"gh", "api", endpoint}, OutputCap: contentsCap})
+	res, err := cmd.Run(ctx, &core.Command{Argv: []string{binGH, "api", endpoint}, OutputCap: contentsCap})
 	if err == nil && res.ExitCode != 0 {
-		err = res.ExitFailure("gh")
+		err = res.ExitFailure(binGH)
 	}
 	if err != nil {
 		return nil, contentsFailure(path, base, res, err)

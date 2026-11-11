@@ -28,6 +28,7 @@ func TestToolCommanders(t *testing.T) {
 		"init":        "exec.Runner{cap=67108864 missing=true}",
 		"learn":       "<nil>",
 		"next":        "<nil>",
+		"pack":        "<nil>",
 		"post":        "exec.Runner{cap=67108864 missing=true}",
 		"ready":       "exec.Runner{cap=4194304 missing=false}",
 		"record":      "<nil>",

@@ -17,6 +17,18 @@ import (
 const lensTestManifest = `{"schema_version":"1","name":"acme/lenses","version":"1.2.3","lenses":[` +
 	`{"id":"perf"},{"id":"api-contract"},{"id":"test"},{"id":"docs","globs":["docs/**"]}]}`
 
+// lensTestSet loads the fixture pack and wraps it as a one-layer set.
+func lensTestSet(t *testing.T) *pack.Set {
+	t.Helper()
+	set, ref := pack.Merge([]pack.Origin{{
+		Layer: pack.LayerBuiltin, Source: "builtin", Pack: lensTestPack(t),
+	}})
+	if ref != nil {
+		t.Fatalf("merge: %s: %s", ref.Code, ref.Message)
+	}
+	return set
+}
+
 // lensTestPack loads the fixture pack the fetch tests share.
 func lensTestPack(t *testing.T) *pack.Pack {
 	t.Helper()
@@ -48,7 +60,7 @@ func TestPlanLineCarriesLensFields(t *testing.T) {
 	}
 	resolved.Defaults.Values.Effort = "standard"
 	var sb strings.Builder
-	dumpPlan(&fetchRunCtx{runCfg: &runConfig{resolved: resolved}, lensPack: lensTestPack(t)}, &sb, "NONCE")
+	dumpPlan(&fetchRunCtx{runCfg: &runConfig{resolved: resolved}, packs: lensTestSet(t)}, &sb, "NONCE")
 	want := "- group 1: id=g1 profile=- depth=standard max_lenses=unset checks=[] files=[a.go,b.go] " +
 		"scopes=[] panel=[] panel_from=- effort=standard cap_bytes=512000 cap_from=- chunk=false " +
 		"lens_pack=acme/lenses@1.2.3 lenses=[api-contract:887b27a0,perf:4927e908,test:94ceebc5]"
@@ -71,7 +83,46 @@ func TestPlanLineCarriesEmptyLensList(t *testing.T) {
 		t.Fatalf("load pack: %s: %s", ref.Code, ref.Message)
 	}
 	group := &config.PlanGroup{ID: "g1", Depth: "standard", Files: []string{"a.go"}}
-	if got, want := lensPlanFields(p, group), " lens_pack=acme/lenses@1.2.3 lenses=[]"; got != want {
+	set, ref := pack.Merge([]pack.Origin{{Layer: pack.LayerBuiltin, Source: "builtin", Pack: p}})
+	if ref != nil {
+		t.Fatalf("merge: %s: %s", ref.Code, ref.Message)
+	}
+	if got, want := lensPlanFields(set, group), " lens_pack=acme/lenses@1.2.3 lenses=[]"; got != want {
+		t.Fatalf("plan fields = %q, want %q", got, want)
+	}
+}
+
+// TestPlanLineCarriesLayeredLensTags proves a layered set tags each lens with
+// its winning pack slug and lists every pack identity in precedence order.
+func TestPlanLineCarriesLayeredLensTags(t *testing.T) {
+	t.Parallel()
+	builtin, ref := pack.Load(fstest.MapFS{
+		"pack.json": {Data: []byte(
+			`{"schema_version":"1","name":"acme/lenses","version":"1.2.3","lenses":[{"id":"perf"}]}`)},
+		"lenses/perf.md": {Data: []byte("perf body\n")},
+	}, ".")
+	if ref != nil {
+		t.Fatalf("load builtin: %s: %s", ref.Code, ref.Message)
+	}
+	org, ref := pack.Load(fstest.MapFS{
+		"pack.json": {Data: []byte(
+			`{"schema_version":"1","name":"acme/security","version":"1.0.0","replace":["acme/lenses"],` +
+				`"lenses":[{"id":"perf"}]}`)},
+		"lenses/perf.md": {Data: []byte("security body\n")},
+	}, ".")
+	if ref != nil {
+		t.Fatalf("load org: %s: %s", ref.Code, ref.Message)
+	}
+	set, ref := pack.Merge([]pack.Origin{
+		{Layer: pack.LayerBuiltin, Source: "builtin", Pack: builtin},
+		{Layer: pack.LayerOrg, Source: "dir:org", Pack: org},
+	})
+	if ref != nil {
+		t.Fatalf("merge: %s: %s", ref.Code, ref.Message)
+	}
+	group := &config.PlanGroup{ID: "g1", Depth: "standard", Files: []string{"a.go"}}
+	want := " lens_pack=acme/lenses@1.2.3,acme/security@1.0.0 lenses=[perf@security:e0760be4]"
+	if got := lensPlanFields(set, group); got != want {
 		t.Fatalf("plan fields = %q, want %q", got, want)
 	}
 }

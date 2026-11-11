@@ -80,7 +80,7 @@ func TestResolveContentsFallback(t *testing.T) {
 // base SHA and the resulting snapshot passes the gate.
 func TestResolveContentsFallbackPinsBase(t *testing.T) {
 	f, snap, _ := contentsFallback(t)
-	if len(f.calls) != len(Inventory) || !strings.HasSuffix(f.calls[0], "?ref="+apiBase) {
+	if len(f.calls) != len(Inventory)+1 || !strings.HasSuffix(f.calls[0], "?ref="+apiBase) {
 		t.Errorf("calls = %q", f.calls)
 	}
 	if _, ref := Gate(filepath.Dir(snap.Dir), apiBase); ref != nil {

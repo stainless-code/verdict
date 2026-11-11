@@ -243,12 +243,12 @@ func TestPackRejectsMalformedManifest(t *testing.T) {
 		{
 			name:     "unknown top-level field",
 			manifest: `{"schema_version":"1","name":"acme/lenses","version":"1.2.3","lenses":[{"id":"perf"}],"extra":true}`,
-			want:     `unknown field "extra"`,
+			want:     `carries key "extra"`,
 		},
 		{
 			name:     "unknown lens field",
 			manifest: `{"schema_version":"1","name":"acme/lenses","version":"1.2.3","lenses":[{"id":"perf","scope":"hot"}]}`,
-			want:     `unknown field "scope"`,
+			want:     `carries key "scope"`,
 		},
 		{
 			name:     "trailing data",
@@ -319,6 +319,113 @@ func TestPackRejectsMalformedManifest(t *testing.T) {
 	}
 }
 
+// TestPackRejectsMalformedRules pins the rule manifest rules: a KB id, a
+// severity key that exists in the pack map, required globs, unique ids, and a
+// body at rules/<id>.md.
+//
+//nolint:revive // the table is the rule manifest matrix
+func TestPackRejectsMalformedRules(t *testing.T) {
+	t.Parallel()
+	validHeader := `"schema_version":"1","name":"acme/rules","version":"1.0.0",` +
+		`"severity":{"secrets":"critical"},`
+	base := `, "lenses":[{"id":"perf"}]`
+	cases := []struct {
+		name     string
+		manifest string
+		want     string
+	}{
+		{
+			name:     "unknown severity key",
+			manifest: `{` + validHeader + `"rules":[{"id":"r1","severity":"missing","globs":["**/*.go"]}]` + base + `}`,
+			want:     `severity "missing" is not in the severity map`,
+		},
+		{
+			name:     "bad severity value",
+			manifest: `{"schema_version":"1","name":"acme/rules","version":"1.0.0","severity":{"s":"high"},"lenses":[{"id":"perf"}],"rules":[{"id":"r1","severity":"s","globs":["**/*.go"]}]}`,
+			want:     `severity "s" is "high"`,
+		},
+		{
+			name:     "no globs",
+			manifest: `{` + validHeader + `"rules":[{"id":"r1","severity":"secrets"}]` + base + `}`,
+			want:     `rule "r1" names no globs`,
+		},
+		{
+			name:     "empty glob",
+			manifest: `{` + validHeader + `"rules":[{"id":"r1","severity":"secrets","globs":[""]}]` + base + `}`,
+			want:     `rule "r1" carries an empty glob`,
+		},
+		{
+			name:     "duplicate id",
+			manifest: `{` + validHeader + `"rules":[{"id":"r1","severity":"secrets","globs":["**/*.go"]},{"id":"r1","severity":"secrets","globs":["**/*.go"]}]` + base + `}`,
+			want:     `repeats rule id "r1"`,
+		},
+		{
+			name:     "bad id",
+			manifest: `{` + validHeader + `"rules":[{"id":"R1","severity":"secrets","globs":["**/*.go"]}]` + base + `}`,
+			want:     `rule id "R1" is not a KB id`,
+		},
+		{
+			name:     "empty tool",
+			manifest: `{` + validHeader + `"rules":[{"id":"r1","severity":"secrets","globs":["**/*.go"],"tools":[""]}]` + base + `}`,
+			want:     `rule "r1" carries an empty tool name`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fsys := fstest.MapFS{
+				"pack.json":      {Data: []byte(tc.manifest)},
+				"lenses/perf.md": {Data: []byte("perf body\n")},
+				"rules/r1.md":    {Data: []byte("rule body\n")},
+			}
+			_, ref := Load(fsys, ".")
+			if ref == nil || ref.Code != CodeBadPack {
+				t.Fatalf("Load = %v, want bad-pack", ref)
+			}
+			if !strings.Contains(ref.Message, tc.want) {
+				t.Fatalf("message = %q, want it to contain %q", ref.Message, tc.want)
+			}
+		})
+	}
+}
+
+// TestPackRefusesMissingOrEmptyRuleBody proves a declared rule needs its own
+// non-empty markdown body.
+//
+//nolint:revive // the two-body matrix reads as one block
+func TestPackRefusesMissingOrEmptyRuleBody(t *testing.T) {
+	t.Parallel()
+	manifest := `{"schema_version":"1","name":"acme/rules","version":"1.0.0",` +
+		`"severity":{"s":"critical"},"lenses":[{"id":"perf"}],` +
+		`"rules":[{"id":"r1","severity":"s","globs":["**/*.go"]}]}`
+	for _, tc := range []struct {
+		name string
+		body string
+		want string
+	}{
+		{name: "missing", body: "", want: `rule "r1" has no rules/r1.md`},
+		{name: "empty", body: " \n\t\n", want: `rule "r1" has an empty body at rules/r1.md`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fsys := fstest.MapFS{
+				"pack.json":      {Data: []byte(manifest)},
+				"lenses/perf.md": {Data: []byte("perf body\n")},
+			}
+			if tc.body != "" {
+				fsys["rules/r1.md"] = &fstest.MapFile{Data: []byte(tc.body)}
+			}
+			_, ref := Load(fsys, ".")
+			if ref == nil || ref.Code != CodeBadPack {
+				t.Fatalf("Load = %v, want bad-pack", ref)
+			}
+			if ref.Message != tc.want {
+				t.Fatalf("message = %q, want %q", ref.Message, tc.want)
+			}
+		})
+	}
+}
+
 // TestPackRefusesEmptyLensBody pins the refusal for a body that carries no
 // content: a manifest row with only whitespace has nothing to dispatch.
 func TestPackRefusesEmptyLensBody(t *testing.T) {
@@ -342,8 +449,8 @@ func TestPackRefusesEmptyLensBody(t *testing.T) {
 // lensIDs extracts the ids from a lens slice.
 func lensIDs(lenses []Lens) []string {
 	ids := make([]string, len(lenses))
-	for i, lens := range lenses {
-		ids[i] = lens.ID
+	for i := range lenses {
+		ids[i] = lenses[i].ID
 	}
 	return ids
 }
