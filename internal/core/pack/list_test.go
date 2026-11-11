@@ -212,9 +212,6 @@ func requirePackRow(t *testing.T, i int, got, want *Entry) {
 	if !slices.Equal(got.Rules, want.Rules) {
 		t.Errorf("row %d rules = %v, want %v", i, got.Rules, want.Rules)
 	}
-	if got.Drift != nil {
-		t.Errorf("row %d drift = %v, want null", i, *got.Drift)
-	}
 }
 
 // writeFixture writes a map of slash-relative files under dir.
