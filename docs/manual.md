@@ -2526,7 +2526,13 @@ to that PR's head. It is a hypothesis about where a defect was introduced —
 not a defect, not a finding, not a calibration result, and not citable. SZZ
 blame is noisy: a fix can touch cleanup adjacent to the real bug, a refactor
 can move a line without changing it, and a squash commit is the whole PR only
-by convention. Treat `mine.json` as the input to replay, never as evidence.
+by convention. A candidate can be an intra-PR self-fix: a fix commit inside a
+merged PR's branch is a seed like any other, so the PR a candidate names may
+be the same PR that carried the deleting commit. The anchor runs at the PR
+head, where that line is usually already gone, so most of these read
+`unaligned`; when an identical line survives at the head, the candidate can
+still name the PR. Treat `mine.json` as the input to replay, never as
+evidence.
 
 ### Window
 
@@ -2535,7 +2541,11 @@ by convention. Treat `mine.json` as the input to replay, never as evidence.
 `12w`, `18mo`, `2y`) measured back from `--until`'s committer date, or a ref
 that must be an ancestor of `--until`, else `bad-since`. A bare `m` is refused
 — months are `mo`, minutes do not exist. The range is `since..until`; when no
-commit predates the cutoff, the span starts at the history root.
+commit predates the cutoff, the span starts at the history root. A range too
+large to list in one capture refuses `window-too-large`, naming `--since`:
+narrow the span. In a shallow clone the run warns that an introducer at the
+clone boundary reads as `no-pr`; `git fetch --unshallow` removes the
+boundary.
 
 The default run id is `<until-short-sha>-<since-slug>`. A duration keeps its
 digits and unit (`12w`); a hex commit id becomes its first seven characters; a
@@ -2585,15 +2595,21 @@ reconstruction is invented.
 ### Anchor
 
 At the PR head, `git grep -n -F -e <deleted line>` in the same path must find
-the exact line text. One hit is the bug line. Several hits are accepted only
-when every hit blames back to `I`; otherwise the fix is `unaligned`. A PR is
-one candidate, and its bugs are the de-duplicated union (path, line) over every
-fix that anchors to it.
+the exact line text. Paths are matched literally — a `:`-leading name or a
+glob-shaped name is the file name git stored, never pathspec magic. One hit is
+the bug line. Several hits are accepted only when every hit blames back to
+`I`; otherwise the fix is `unaligned`. A PR is one candidate, and its bugs are
+the de-duplicated union (path, line) over every fix that anchors to it.
 
 ### Exclusions
 
-Exclusions are counted in `skipped[]` with `reason`, `fix`, and the PR or line
-when known; they never refuse the run.
+Exclusions never refuse the run. Every deleted line is either a bug line in
+`candidates[].bugs` or one row in `skipped[]`: a row carries the line's own
+`reason`, its `fix`, the `pr` when the line resolved to one, and its position
+as `detail: "path:line"` in the fix's parent. A reason is per line, so one fix
+can produce several rows with different reasons. A whole-fix exclusion
+(`binary`, `wide-fix`, `docs-test-only`, `added-only`) and a merge seed are
+one row without a detail.
 
 | Reason                                  | Rule                                                                                                                                                                                                                    |
 | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -2604,7 +2620,7 @@ when known; they never refuse the run.
 | `docs-test-only`                        | every touched path is documentation or a test (`docs/`, `test/`, `tests/`, `testdata/`, `__tests__/`, `*_test.go`, `*.test.*`, `*.spec.*`, `README*`, `CHANGELOG*`, `LICENSE*`, `*.md`, `*.mdx`, `*.rst`)               |
 | `wide-fix`                              | more than 200 changed lines or more than 5 files                                                                                                                                                                        |
 | `added-only`                            | the fix deletes no old-side line                                                                                                                                                                                        |
-| `blank-line`                            | every deleted line is whitespace                                                                                                                                                                                        |
+| `blank-line`                            | the deleted line is whitespace                                                                                                                                                                                          |
 | `no-pr`                                 | the introducer has no merge or squash PR                                                                                                                                                                                |
 | `unaligned`                             | the deleted text is absent, ambiguous, or outside history at the head                                                                                                                                                   |
 | `ancestor-of-since`                     | the PR landed at or before `--since`                                                                                                                                                                                    |
