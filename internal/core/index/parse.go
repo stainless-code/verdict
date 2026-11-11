@@ -273,14 +273,14 @@ func (c *collector) typeExpr(expr ast.Expr, record bool) {
 	switch t := expr.(type) {
 	case *ast.Ident:
 		c.skip[t.Pos()] = true
-		if record && t.Name != blankName {
+		if record && t.Name != blankName && !c.isLocal(t) {
 			c.record(t.Name, KindTypeRef, t.Pos(), "", false, false)
 		}
 	case *ast.SelectorExpr:
 		c.skip[t.Sel.Pos()] = true
 		if x, ok := t.X.(*ast.Ident); ok {
 			c.skip[x.Pos()] = true
-			if _, ok := c.aliases[x.Name]; ok {
+			if _, ok := c.aliases[x.Name]; ok && !c.isLocal(x) {
 				if record {
 					c.record(t.Sel.Name, KindTypeRef, t.Sel.Pos(), x.Name, true, false)
 				}
@@ -352,10 +352,13 @@ func (c *collector) structFields(list *ast.FieldList, record bool) {
 func (c *collector) embedExpr(expr ast.Expr) {
 	switch t := expr.(type) {
 	case *ast.Ident:
+		if c.isLocal(t) {
+			return
+		}
 		c.record(t.Name, KindEmbed, t.Pos(), "", false, false)
 	case *ast.SelectorExpr:
 		if x, ok := t.X.(*ast.Ident); ok {
-			if _, ok := c.aliases[x.Name]; ok {
+			if _, ok := c.aliases[x.Name]; ok && !c.isLocal(x) {
 				c.record(t.Sel.Name, KindEmbed, t.Sel.Pos(), x.Name, true, false)
 				return
 			}
@@ -424,14 +427,14 @@ func (c *collector) callee(expr ast.Expr, generic bool) {
 	switch f := expr.(type) {
 	case *ast.Ident:
 		c.skip[f.Pos()] = true
-		if !builtins[f.Name] && f.Name != blankName {
+		if !builtins[f.Name] && f.Name != blankName && !c.isLocal(f) {
 			c.record(f.Name, KindCall, f.Pos(), "", false, generic)
 		}
 	case *ast.SelectorExpr:
 		c.skip[f.Sel.Pos()] = true
 		if x, ok := f.X.(*ast.Ident); ok {
 			c.skip[x.Pos()] = true
-			if _, ok := c.aliases[x.Name]; ok {
+			if _, ok := c.aliases[x.Name]; ok && !c.isLocal(x) {
 				c.record(f.Sel.Name, KindCall, f.Sel.Pos(), x.Name, true, generic)
 				return
 			}
@@ -457,7 +460,7 @@ func (c *collector) selector(expr *ast.SelectorExpr) {
 	c.skip[expr.Sel.Pos()] = true
 	if x, ok := expr.X.(*ast.Ident); ok {
 		c.skip[x.Pos()] = true
-		if _, ok := c.aliases[x.Name]; ok {
+		if _, ok := c.aliases[x.Name]; ok && !c.isLocal(x) {
 			c.record(expr.Sel.Name, KindValueRef, expr.Sel.Pos(), x.Name, true, false)
 			return
 		}
@@ -470,10 +473,18 @@ func (c *collector) ident(expr *ast.Ident) {
 	if c.skip[expr.Pos()] || expr.Name == blankName || builtins[expr.Name] {
 		return
 	}
-	if expr.Obj != nil && !c.pkgObjects[expr.Obj] {
+	if c.isLocal(expr) {
 		return
 	}
 	c.record(expr.Name, KindValueRef, expr.Pos(), "", false, false)
+}
+
+// isLocal reports whether ident names a function-scope declaration: a local
+// variable, a parameter, or a function-local type. The parser resolves those
+// objects and leaves package-level names in the file scope, so shadowing is
+// visible without type checking.
+func (c *collector) isLocal(ident *ast.Ident) bool {
+	return ident.Obj != nil && !c.pkgObjects[ident.Obj]
 }
 
 // record appends one reference under the per-file cap.

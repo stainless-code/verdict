@@ -308,11 +308,57 @@ func TestTruncatedShardRefuses(t *testing.T) {
 	}
 }
 
+// writeShadowFixture writes the exactness fixture: two real call sites of
+// a.Target plus the four function-scope shadows that must contribute nothing.
+func writeShadowFixture(f *fixture) {
+	f.write("go.mod", "module example.com/m\n\ngo 1.27\n")
+	f.write("a/a.go", `package a
+
+func Target() {}
+
+func Caller() {
+	Target()
+}
+
+func LocalVar() {
+	Target := func() {}
+	Target()
+}
+
+func Param(Target func()) {
+	Target()
+}
+
+func LocalType() {
+	type Target struct{}
+	_ = Target{}
+}
+`)
+	f.write("b/b.go", `package b
+
+import "example.com/m/a"
+
+func Uses() {
+	a.Target()
+}
+
+type Holder struct{ Target int }
+
+func QualifierShadow() {
+	a := Holder{}
+	_ = a.Target
+}
+`)
+	f.write("c/c.go", "package c\n\nfunc Target() {}\n\nfunc Local() {\n\tTarget()\n}\n")
+}
+
 // TestCallersExactnessLitmus proves same-package call sites are exact and a
-// same-named local in a non-importing package contributes no rows.
+// same-named local in a non-importing package contributes no rows, and that
+// no function-scope shadow — a local, a parameter, a local type, or a variable
+// masking an import qualifier — is ever recorded as a caller.
 func TestCallersExactnessLitmus(t *testing.T) {
 	f := newFixture(t)
-	writeCallFixture(f, "")
+	writeShadowFixture(f)
 	f.commit("one")
 	f.build()
 	resp := f.callers("a.Target")
@@ -327,6 +373,12 @@ func TestCallersExactnessLitmus(t *testing.T) {
 		if resp.Data.Rows[i] != want[i] {
 			t.Errorf("row %d = %+v; want %+v", i, resp.Data.Rows[i], want[i])
 		}
+	}
+	if resp.Data.Callers != 2 {
+		t.Errorf("callers = %d; want 2", resp.Data.Callers)
+	}
+	if resp.Data.Unresolved != 0 {
+		t.Errorf("unresolved = %d; want 0", resp.Data.Unresolved)
 	}
 	for _, row := range resp.Data.Rows {
 		if strings.HasPrefix(row.Path, "c/") {
