@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -522,6 +523,75 @@ func TestCallersQualifierRefusals(t *testing.T) {
 			t.Fatalf("refusal = %q: %q; want bad-flags ambiguous", ref.Code, ref.Message)
 		}
 	})
+}
+
+// TestCallersLimitTruncates proves rows are truncated to the limit and the
+// human stream names what was withheld, never silently.
+func TestCallersLimitTruncates(t *testing.T) {
+	f := newFixture(t)
+	f.write("go.mod", "module example.com/m\n")
+	f.write("a/a.go", `package a
+
+func Target() {}
+
+func A() {
+	Target()
+}
+
+func B() {
+	Target()
+}
+
+func C() {
+	Target()
+}
+`)
+	f.commit("one")
+	f.build()
+	req := f.request(QueryCallers, nil)
+	req.Symbol, req.Limit = "a.Target", 2
+	resp, ref := Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("index callers refused: %v", ref)
+	}
+	if resp.Data.Callers != 3 || resp.Data.Truncated != 1 || resp.Data.Limit != 2 {
+		t.Fatalf("limit data = callers %d, truncated %d, limit %d; want 3, 1, 2",
+			resp.Data.Callers, resp.Data.Truncated, resp.Data.Limit)
+	}
+	wantRows := []Row{
+		{Path: "a/a.go", Line: 6, Kind: KindCall, Resolution: "exact"},
+		{Path: "a/a.go", Line: 10, Kind: KindCall, Resolution: "exact"},
+	}
+	if len(resp.Data.Rows) != len(wantRows) {
+		t.Fatalf("rows = %+v; want %+v", resp.Data.Rows, wantRows)
+	}
+	for i := range wantRows {
+		if resp.Data.Rows[i] != wantRows[i] {
+			t.Errorf("row %d = %+v; want %+v", i, resp.Data.Rows[i], wantRows[i])
+		}
+	}
+	wantLine := "index: showing 2 of 3 callers (1 not shown; raise --limit up to 200)"
+	if !slices.Contains(resp.Human, wantLine) {
+		t.Errorf("human lines = %q; want one equal to %q", resp.Human, wantLine)
+	}
+}
+
+// TestCallersLimitBoundsRefuse proves an out-of-range limit refuses on every
+// transport instead of rendering a negative truncation.
+func TestCallersLimitBoundsRefuse(t *testing.T) {
+	f := newFixture(t)
+	writeCallFixture(f, "")
+	f.commit("one")
+	f.build()
+	for _, limit := range []int{-1, 201} {
+		req := f.request(QueryCallers, nil)
+		req.Symbol, req.Limit = "a.Target", limit
+		_, ref := Run(context.Background(), req)
+		want := "index callers wants --limit from 1 to 200"
+		if ref == nil || ref.Code != "bad-flags" || ref.Message != want {
+			t.Errorf("limit %d refusal = %v; want bad-flags: %q", limit, ref, want)
+		}
+	}
 }
 
 // TestIndexCapRefusal proves the file-count cap names the measured number and

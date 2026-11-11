@@ -31,6 +31,10 @@ type coverage struct {
 
 // callers executes `index callers`.
 func (st *state) callers(ctx context.Context) (*Response, *core.RefusalError) {
+	limit, ref := st.callersLimit()
+	if ref != nil {
+		return nil, ref
+	}
 	root := st.sourceRoot()
 	st.trust = st.readTrust(ctx, root)
 	tree, commit, ref := st.queryRef(ctx, root)
@@ -49,7 +53,7 @@ func (st *state) callers(ctx context.Context) (*Response, *core.RefusalError) {
 		return nil, ref
 	}
 	results := queryCallers(pkgs, targets)
-	return st.callersResponse(t, commit, stale, results, st.limit()), nil
+	return st.callersResponse(t, commit, stale, results, limit), nil
 }
 
 // queryRef resolves the query's tree and commit. A raw tree SHA has no
@@ -83,12 +87,20 @@ func (st *state) warnStale(ctx context.Context, root, tree string) bool {
 	return true
 }
 
-// limit resolves the caller-row limit.
-func (st *state) limit() int {
-	if st.req.Limit == 0 {
-		return DefaultLimit
+// callersLimit resolves the caller-row limit and enforces the published
+// bounds, so every transport — not only the CLI parser — holds them.
+func (st *state) callersLimit() (int, *core.RefusalError) {
+	switch {
+	case st.req.Limit == 0:
+		return DefaultLimit, nil
+	case st.req.Limit < 1 || st.req.Limit > MaxLimit:
+		return 0, &core.RefusalError{
+			Code:    codeBadFlags,
+			Message: fmt.Sprintf("index callers wants --limit from 1 to %d", MaxLimit),
+		}
+	default:
+		return st.req.Limit, nil
 	}
-	return st.req.Limit
 }
 
 // packageMap groups a tree's files by directory and collects declarations.
