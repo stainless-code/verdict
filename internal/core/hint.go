@@ -104,6 +104,11 @@ var hintRules = []HintRule{
 	{codes: []string{"controls-too-large"}, hint: "try: trim the named control file under its cap, commit it at base, then re-fetch"},
 	{codes: []string{"bad-review-input"}, hint: "try: fix the malformed agent input named above " +
 		"(review.json wants {body, approved, comments[]}; claims want string sigs), then re-run"},
+	{codes: []string{"bad-pack"}, hint: "try: fix pack.json against schemas/pack.schema.json, then re-run"},
+	{codes: []string{"pack-too-large"}, hint: "try: trim the pack under 64 KiB per file, 1 MiB total, " +
+		"256 files, and 64 lenses, then re-run"},
+	{codes: []string{"pack-unsafe-path"}, hint: "try: keep every pack path relative with no symlink " +
+		"components, then re-run"},
 	{prefix: "bad-", hint: "try: re-run with one of the valid values named above"},
 	{codes: []string{"already-learned"}, hint: "try: cite the existing rule id instead of learning it twice"},
 	{codes: []string{"verify-destructive"}, hint: "try: rewrite verifyCmd to stay in-repo and " +

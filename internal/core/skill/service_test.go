@@ -346,6 +346,40 @@ func TestInstallConflictRefusesBeforeWriting(t *testing.T) {
 	}
 }
 
+// TestInstallRefusesFileWherePacksDirBelongsTo pins the directory-level
+// preflight for the pack payload: a regular file at <target>/packs refuses
+// skill-foreign-conflict before any write, not a raw ENOTDIR from a nested
+// file.
+//
+//nolint:revive // the test walks the seed, refusal, and no-write arms
+func TestInstallRefusesFileWherePacksDirBelongsTo(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	req := newRequest(t)
+	req.Dir = dir
+	target := filepath.Join(dir, "verdict")
+	if _, ref := skill.Install(context.Background(), req); ref != nil {
+		t.Fatalf("seed install: %v", ref)
+	}
+	if err := os.RemoveAll(filepath.Join(target, "packs")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "packs"), []byte("in the way"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, ref := skill.Install(context.Background(), req)
+	if ref == nil || ref.Code != "skill-foreign-conflict" {
+		t.Fatalf("packs conflict refusal = %v, want skill-foreign-conflict", ref)
+	}
+	want := filepath.Join(target, "packs") + " exists and is not a directory; refusing to replace it"
+	if ref.Message != want {
+		t.Fatalf("message = %q, want %q", ref.Message, want)
+	}
+	if got, err := os.ReadFile(filepath.Join(target, "packs")); err != nil || string(got) != "in the way" {
+		t.Fatal("conflict refusal touched the foreign file")
+	}
+}
+
 // TestInstallRefusesPayloadDirEscapingTheTarget pins the root boundary: an
 // install through a payload directory that links outside the target refuses
 // skill-foreign-conflict before writing, in fresh, upgrade, dry-run, and

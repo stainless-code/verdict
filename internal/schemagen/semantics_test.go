@@ -171,6 +171,15 @@ var publishedSemantics = map[string]string{
 	// patch identity: additive $defs/identity root (new bundle document) —
 	// no existing property, required key, or type changed.
 	"identity.schema.json": "efe9a7b331e41715bc55b8824e95154add584c2d63f670811ef03c350d2e5bdb",
+	// additive pack.schema.json (new document; no existing schema property,
+	// required key, or type changed). The lens-pack manifest fetch resolves
+	// from skills/verdict/packs/builtin: a closed object plus one closed lens
+	// row (id, optional globs, and the dispatch caps).
+	// lens count prose: the description now names the loader as the enforcer
+	// of the 64-lens cap (pack-too-large) instead of promising a maxItems the
+	// published keyword subset does not implement. Prose only; no property,
+	// required key, enum, or type changed.
+	"pack.schema.json": "7525f56b2c60ae932397adf9546e8f34640247ec5a38ed21854f8cda9ee2f7c4",
 	// patch identity: additive optional patch_id/patch_id_kind plus the
 	// optional forced[] audit with $defs/forcedPost. No existing property,
 	// required key, or type changed.

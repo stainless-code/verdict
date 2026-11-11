@@ -1,6 +1,9 @@
 package core
 
-import "time"
+import (
+	"io/fs"
+	"time"
+)
 
 // Progress observes human-facing lines emitted by a service. It is not an
 // [io.Writer]: the adapter decides which stream receives which kind, and a
@@ -16,9 +19,11 @@ type Progress interface {
 }
 
 // Runtime is the injected per-invocation state every service receives: the
-// environment snapshot, the clock, the progress observer, and the command
-// runner. Core never reads the process environment or stdio directly.
+// environment snapshot, the clock, the progress observer, the command runner,
+// and the shipped skill payload the built-in lens pack is read from. Core
+// never reads the process environment or stdio directly.
 type Runtime struct {
+	PackFS    fs.FS
 	Env       map[string]string
 	Now       func() time.Time
 	Progress  Progress

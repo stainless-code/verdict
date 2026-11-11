@@ -186,6 +186,12 @@ Cause: the named overview/walkthrough override file is unreadable.
 
 Fix: fix its permissions (or remove it), then re-run.
 
+## `bad-pack`
+
+Cause: a lens pack manifest is malformed, missing a named lens body, carries an empty body, or its id and file stem disagree.
+
+Fix: fix `pack.json` against `schemas/pack.schema.json` (every lens id equals `lenses/<id>.md`), then re-run.
+
 ## `bad-preset`
 
 Cause: `--preset` is not a known preset.
@@ -689,6 +695,18 @@ Fix: check the rule status with `learn --status`, then re-run.
 Cause: the thread is authored by someone (or something) else — only verdict-authored threads resolve.
 
 Fix: resolve only verdict-authored threads (pass the ids from `threads.json`).
+
+## `pack-too-large`
+
+Cause: a lens pack exceeds the per-file (64 KiB), per-pack (1 MiB), file-count (256), or lens-count (64) cap.
+
+Fix: trim the pack under those caps, then re-run.
+
+## `pack-unsafe-path`
+
+Cause: a lens pack root, file, or symlink escapes the pack directory.
+
+Fix: keep every pack path relative with no symlink components, then re-run.
 
 ## `post-failed`
 

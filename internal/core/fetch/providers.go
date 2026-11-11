@@ -108,6 +108,7 @@ func writeProviderBundle(ctx2 *fetchRunCtx) error {
 		return ref
 	}
 	writeKBRecall(r, dir, extra)
+	writeLensBodies(ctx2)
 	return nil
 }
 

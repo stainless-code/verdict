@@ -10,6 +10,7 @@ import (
 	osexec "os/exec"
 	"time"
 
+	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -186,7 +187,7 @@ func (c *Client) readWith(ctx context.Context, commander core.Commander, repo, p
 	}
 	root := c.dir
 	return core.ReadRequest{
-		Runtime:  &core.Runtime{Env: c.env, Now: c.now, Progress: c.progress, Commander: commander},
+		Runtime:  &core.Runtime{Env: c.env, Now: c.now, Progress: c.progress, Commander: commander, PackFS: skillfs.FS},
 		Repo:     repo,
 		Pr:       pr,
 		Forces:   &core.GlobalForces{},

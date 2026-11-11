@@ -248,6 +248,7 @@ func fetchData(
 	if _, err := os.Stat(ctx2.dir + suffixKBRecall); err == nil {
 		artifacts.Set("kb-recall.json", ctx2.dir+suffixKBRecall)
 	}
+	addArtifactIfPresent(artifacts, ctx2.dir, "lenses.txt", suffixLensesTxt)
 	data := &core.FetchData{
 		Dir:        ctx2.dir,
 		HeadSHA:    readcommon.PrField(ctx2.dir, keyHeadSHA),
@@ -362,6 +363,7 @@ func localArtifacts(dir string) *jq.Obj {
 	)
 	addArtifactIfPresent(artifacts, dir, "kb.txt", suffixKBTxt)
 	addArtifactIfPresent(artifacts, dir, "kb-recall.json", suffixKBRecall)
+	addArtifactIfPresent(artifacts, dir, "lenses.txt", suffixLensesTxt)
 	return artifacts
 }
 
