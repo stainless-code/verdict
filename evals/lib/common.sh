@@ -177,6 +177,18 @@ assert_stream_nogrep() {
   fi
 }
 
+# file_url <path> is the file:// URL for a local path, with the bytes a URL
+# cannot carry raw percent-encoded. curl refuses a path holding a space (a
+# sandbox under a TMPDIR with one) rather than reading the file (STA-379).
+file_url() {
+  local p="$1"
+  p="${p//%/%25}"
+  p="${p// /%20}"
+  p="${p//\#/%23}"
+  p="${p//\?/%3F}"
+  printf 'file://%s' "$p"
+}
+
 # eval_fixture_repo <dir> readies the throwaway checkout the fixture
 # producer builds from: a committed base carrying the old lines and a
 # worktree carrying the reviewed change. It lives apart from the case

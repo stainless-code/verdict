@@ -200,6 +200,7 @@ else
 fi
 
 REL="$EVAL_SANDBOX/release"
+REL_URL="$(file_url "$REL")"
 RELPAY="$EVAL_SANDBOX/release-payload"
 mkdir -p "$RELPAY"
 cat >"$RELPAY/verdict" <<'EOF'
@@ -252,7 +253,7 @@ printf '{"tool":"verdict","version":"1.2.3","installed_at":"2026-11-02T00:00:00Z
 : >"$EVAL_SANDBOX/bootstrap-curl.log"
 set +e
 (cd "$EVAL_SANDBOX" && HOME="$EVAL_SANDBOX/boot-home" PATH="$BOOTPATH" \
-    VERDICT_DOWNLOAD_URL="file://$REL" VERDICT_COSIGN="$PLAT/cosign" sh "$SHIM" bootstrap) >"$EVAL_OUT" 2>"$EVAL_ERR"
+    VERDICT_DOWNLOAD_URL="$REL_URL" VERDICT_COSIGN="$PLAT/cosign" sh "$SHIM" bootstrap) >"$EVAL_OUT" 2>"$EVAL_ERR"
 st=$?
 set -e
 if [ "$st" -eq 0 ] && [ -x "$SKILL/bin/verdict" ] \
@@ -267,7 +268,7 @@ fi
 : >"$EVAL_SANDBOX/bootstrap-curl.log"
 set +e
 (cd "$EVAL_SANDBOX" && HOME="$EVAL_SANDBOX/boot-home" PATH="$BOOTPATH" \
-    VERDICT_DOWNLOAD_URL="file://$REL" VERDICT_COSIGN="$PLAT/cosign" sh "$SHIM" bootstrap) >"$EVAL_OUT" 2>"$EVAL_ERR"
+    VERDICT_DOWNLOAD_URL="$REL_URL" VERDICT_COSIGN="$PLAT/cosign" sh "$SHIM" bootstrap) >"$EVAL_OUT" 2>"$EVAL_ERR"
 st=$?
 set -e
 if [ "$st" -eq 0 ] && grep -q "already bootstrapped" "$EVAL_OUT" \
@@ -280,7 +281,7 @@ rm -rf "${SKILL:?}/bin"
 printf '{"tool":"verdict","version":"2.0.0","installed_at":"2026-11-02T00:00:00Z"}\n' >"$SKILL/.verdict-managed"
 set +e
 (cd "$EVAL_SANDBOX" && HOME="$EVAL_SANDBOX/boot-home" PATH="$BOOTPATH" \
-    VERDICT_DOWNLOAD_URL="file://$REL" VERDICT_COSIGN="$PLAT/cosign" sh "$SHIM" bootstrap) >"$EVAL_OUT" 2>"$EVAL_ERR"
+    VERDICT_DOWNLOAD_URL="$REL_URL" VERDICT_COSIGN="$PLAT/cosign" sh "$SHIM" bootstrap) >"$EVAL_OUT" 2>"$EVAL_ERR"
 st=$?
 set -e
 if [ "$st" -ne 0 ] && grep -q "bootstrap-failed" "$EVAL_ERR" \
