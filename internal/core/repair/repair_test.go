@@ -24,6 +24,33 @@ func TestNonceIsUnpredictableHex(t *testing.T) {
 	}
 }
 
+// TestWindowsEscapedLen pins the length Go's Windows exec measures an argument
+// at, with values derived by hand from its three escaping rules: a backslash is
+// doubled only when a quote follows it, every quote gains a backslash, and an
+// argument holding a space or a tab gains a quote pair.
+func TestWindowsEscapedLen(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		in   string
+		why  string
+		want int
+	}{
+		{in: "", want: 2, why: "the empty argument is the two quotes"},
+		{in: "abc", want: 3, why: "nothing to escape, nothing to quote"},
+		{in: "a b", want: 5, why: "one space, so the argument gains a quote pair"},
+		{in: `a"b`, want: 4, why: `a"b`},
+		{in: `a\\"b`, want: 8, why: `a\\"b: the two backslashes double, the quote gains one`},
+		{in: `a\`, want: 2, why: "a trailing backslash with no quote after it stays single"},
+		{in: `a\ b`, want: 6, why: `"a\ b": quoted, and the backslash before the space stays single`},
+		{in: `a b\`, want: 7, why: `"a b\\": a trailing backslash doubles before the closing quote`},
+		{in: "a\tb", want: 5, why: "a tab quotes like a space"},
+	} {
+		if got := windowsEscapedLen(tc.in); got != tc.want {
+			t.Errorf("windowsEscapedLen(%q) = %d, want %d (%s)", tc.in, got, tc.want, tc.why)
+		}
+	}
+}
+
 // assertNonce pins one draw's shape and records it for the uniqueness check.
 func assertNonce(t *testing.T, seen map[string]bool, n string) {
 	t.Helper()
@@ -141,6 +168,116 @@ func TestRoundPromptCapsHugePrior(t *testing.T) {
 	}
 }
 
+// TestRoundPromptFitsTheArgvBudget proves the escaped prompt, the length
+// CreateProcess measures against its 32,767-unit command line, stays under the
+// 24,000 budget however the prior escapes: a quote, a backslash, an
+// angle-bracket, and a JSON prior of 16 KiB each lose their tail next to a full
+// fix list, and every one of them leaves a note naming the round file that
+// holds the bytes the prompt dropped.
+func TestRoundPromptFitsTheArgvBudget(t *testing.T) {
+	t.Parallel()
+	base := "Review acme/app PR 42 and write exactly one review file.\n"
+	problems := budgetProblems()
+	for _, tc := range []struct{ name, prior string }{
+		{"quotes", strings.Repeat(`"`, priorCap)},
+		{"backslashes", strings.Repeat(`\`, priorCap)},
+		{"angle brackets", strings.Repeat(`<`, priorCap)},
+		{"review json", `{"schema_version":"1","body":"` + strings.Repeat(`\"path\":\"$.body\",`, 800) + `"}`},
+	} {
+		got := RoundPrompt(base, testNonce, []byte(tc.prior), 2, 3, problems, "ART")
+		if n := windowsEscapedLen(got); n > promptBudget {
+			t.Errorf("%s prior: escaped prompt is %d bytes, want at most %d", tc.name, n, promptBudget)
+		}
+		assertPriorCut(t, got, tc.name, tc.prior)
+	}
+}
+
+// assertPriorCut proves one budgeted prompt embeds a head of the sanitized
+// prior and names the round file that holds the rest.
+func assertPriorCut(t *testing.T, prompt, name, prior string) {
+	t.Helper()
+	// The prompt adds the newline a prior with no trailing one does not end
+	// with, so the embedded bytes are the fenced payload minus that byte.
+	embedded := strings.TrimSuffix(fencedPayload(t, prompt, "review.json:round-1"), "\n")
+	if embedded == "" {
+		t.Errorf("%s prior: the prompt embedded none of the prior", name)
+		return
+	}
+	if !strings.HasPrefix(sanitizeFences(prior), embedded) {
+		t.Errorf("%s prior: the embedded %d bytes are not its head", name, len(embedded))
+	}
+	if !strings.Contains(prompt, ".run.rounds/01.review.json") {
+		t.Errorf("%s prior: the prompt names no round file", name)
+	}
+}
+
+// budgetProblems is the fix list a review that missed many keys leaves: more
+// problems than the 8 KiB raw cap admits, each with the longest message the
+// field cap allows, so the JSON is quote-dense as well as long.
+func budgetProblems() []core.Problem {
+	problems := make([]core.Problem, 0, 40)
+	for range 40 {
+		problems = append(problems, core.Problem{
+			Path:    "$.body",
+			Code:    core.ProblemCodeMissingField,
+			Level:   core.ProblemLevelError,
+			Message: strings.Repeat(`"`, problemFieldCap),
+			Fix:     "name the key",
+		})
+	}
+	return problems
+}
+
+// TestRoundPromptCapsProblemsFirst proves the order the budget cuts in: when
+// the trusted directive, the whole fix list, and the prior cannot all fit, the
+// fix list loses its tail - warnings first - before one prior byte does, and
+// the feedback says how many problems it dropped.
+func TestRoundPromptCapsProblemsFirst(t *testing.T) {
+	t.Parallel()
+	base := strings.Repeat("Directive line.\n", 1024)
+	prior := []byte(strings.Repeat("x", 200))
+	got := RoundPrompt(base, testNonce, prior, 2, 3, mixedProblems(), "ART")
+	if n := windowsEscapedLen(got); n > promptBudget {
+		t.Errorf("escaped prompt is %d bytes, want at most %d", n, promptBudget)
+	}
+	feedback := fencedPayload(t, got, "repair-feedback")
+	if listed := strings.Count(feedback, `"path"`); listed != 4 {
+		t.Errorf("feedback lists %d problem(s), want 4", listed)
+	}
+	if strings.Contains(feedback, `"level":"warning"`) {
+		t.Error("feedback kept a warning while dropping errors")
+	}
+	if !strings.Contains(feedback, "has 6 error(s) and 2 warning(s)") {
+		t.Errorf("feedback misses the checker's counts:\n%s", feedback)
+	}
+	if !strings.Contains(feedback, "(+4 more problem(s) omitted for size)") {
+		t.Errorf("feedback does not report the dropped problems:\n%s", feedback)
+	}
+	if embedded := strings.TrimSuffix(fencedPayload(t, got, "review.json:round-1"), "\n"); embedded != string(prior) {
+		t.Errorf("prior embedded %d bytes, want all %d: problems pay first", len(embedded), len(prior))
+	}
+}
+
+// mixedProblems is six errors and two warnings that fit the raw problems cap
+// together, so only the argv budget can drop one.
+func mixedProblems() []core.Problem {
+	problems := make([]core.Problem, 0, 8)
+	for i := range 8 {
+		level := core.ProblemLevelError
+		if i >= 6 {
+			level = core.ProblemLevelWarning
+		}
+		problems = append(problems, core.Problem{
+			Path:    "$.body",
+			Code:    core.ProblemCodeMissingField,
+			Level:   level,
+			Message: strings.Repeat(`"`, 400),
+			Fix:     "name the key",
+		})
+	}
+	return problems
+}
+
 // TestSanitizeFencesBreaksEveryAngleRun proves no run of three or more "<"
 // survives the sanitizer, whatever its length: 3, 4, 5, 6, 8, and 100 "<" in a
 // row and a forged closer all come back without a fence marker, and every
@@ -227,11 +364,11 @@ func TestRenderProblemsCapsFirstEntry(t *testing.T) {
 	problems := []core.Problem{
 		{Path: "$.body", Code: core.ProblemCodeMissingField, Level: core.ProblemLevelError, Message: strings.Repeat("m", 9000), Fix: "f"},
 	}
-	rendered, omitted := renderProblems(problems)
+	kept, omitted := keepProblems(problems)
 	if omitted != 1 {
 		t.Errorf("omitted = %d, want 1 for a single over-cap problem", omitted)
 	}
-	if rendered != "[]" {
+	if rendered := marshalKept(kept); rendered != "[]" {
 		t.Errorf("rendered = %q, want [] when nothing fits", rendered)
 	}
 }
@@ -252,22 +389,24 @@ func TestTruncateProblemsCapsFields(t *testing.T) {
 	}
 }
 
-// TestFeedbackSortsErrorsFirst proves the fix list leads with errors: the
+// TestKeepProblemsSortsErrorsFirst proves the fix list leads with errors: the
 // agent fixes what refuses before what warns.
-func TestFeedbackSortsErrorsFirst(t *testing.T) {
+func TestKeepProblemsSortsErrorsFirst(t *testing.T) {
 	t.Parallel()
 	problems := []core.Problem{
 		{Path: "$.x", Code: core.ProblemCodeUnknownField, Level: core.ProblemLevelWarning, Message: "w", Fix: "f"},
 		{Path: "$.body", Code: core.ProblemCodeMissingField, Level: core.ProblemLevelError, Message: "e", Fix: "f"},
 	}
-	got := Feedback(2, 3, problems)
-	errAt := strings.Index(got, `"level":"error"`)
-	warnAt := strings.Index(got, `"level":"warning"`)
-	if errAt < 0 || warnAt < 0 || errAt > warnAt {
-		t.Errorf("feedback does not lead with the error:\n%s", got)
+	kept, omitted := keepProblems(problems)
+	if omitted != 0 || len(kept) != 2 {
+		t.Fatalf("kept %d problem(s), omitted %d; want both kept", len(kept), omitted)
 	}
-	if !strings.Contains(got, "has 1 error(s) and 1 warning(s)") {
-		t.Errorf("feedback misses the counts:\n%s", got)
+	if kept[0].Level != core.ProblemLevelError || kept[1].Level != core.ProblemLevelWarning {
+		t.Errorf("kept levels = %q, %q; want the error first", kept[0].Level, kept[1].Level)
+	}
+	prompt := RoundPrompt("Review acme/app PR 42.\n", testNonce, nil, 2, 3, problems, "ART")
+	if !strings.Contains(prompt, "has 1 error(s) and 1 warning(s)") {
+		t.Errorf("prompt misses the checker's counts:\n%s", prompt)
 	}
 }
 

@@ -1269,7 +1269,8 @@ privacy exclusions applied); the agent reads the bundle with its own tools.
 
 With `--rounds N` (2–5) an invalid `review.json` does not end the run: the
 next round re-sends the directive with the prior review bytes (capped at 16 KiB,
-full bytes in `.run.rounds/NN.review.json`) and the
+and cut shorter when Windows argv escaping would carry the whole command line
+past 32,767 characters; full bytes in `.run.rounds/NN.review.json`) and the
 checker's fix list fenced under a fresh per-round nonce, and the loop stops on the
 first valid round. Each round rewrites the launch record just before it spawns,
 so the freshness assert is per round. Only shape errors re-prompt (warnings never
