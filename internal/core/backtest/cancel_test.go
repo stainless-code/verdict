@@ -13,7 +13,7 @@ import (
 
 // twoHunkRepo lands one PR that introduces two bad lines far apart, then a fix
 // that deletes both in one commit, so the fix parses as two hunks.
-func twoHunkRepo(t *testing.T) (r *repo, base, merge, fix string) {
+func twoHunkRepo(t *testing.T) (r *repo, base, fix string) {
 	t.Helper()
 	r = newRepo(t)
 	r.write("a.txt", "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n")
@@ -22,10 +22,10 @@ func twoHunkRepo(t *testing.T) (r *repo, base, merge, fix string) {
 	r.write("a.txt", "one\ntwo-bug\nthree\nfour\nfive\nsix\nseven\neight\nnine-bug\nten\n")
 	r.commit("feat: pass the values through")
 	r.switchMain()
-	merge = r.merge("feature", "Merge pull request #21 from acme/feature")
+	r.merge("feature", "Merge pull request #21 from acme/feature")
 	r.write("a.txt", "one\ntwo-fixed\nthree\nfour\nfive\nsix\nseven\neight\nnine-fixed\nten\n")
 	fix = r.commit("fix: repair both values")
-	return r, base, merge, fix
+	return r, base, fix
 }
 
 // cancelAfter cancels the run when stop first matches a command, then runs
@@ -36,8 +36,8 @@ type cancelAfter struct {
 	inner  core.Commander
 	stop   func(*core.Command) bool
 	cancel context.CancelFunc
-	fired  bool
 	after  [][]string
+	fired  bool
 }
 
 // Run delegates to the real runner, canceling once.
@@ -103,7 +103,7 @@ func TestMineCanceledBetweenSeeds(t *testing.T) {
 // cancel lands after the first hunk's anchor and before the second line's
 // blame is spawned.
 func TestMineCanceledBetweenLines(t *testing.T) {
-	r, base, _, _ := twoHunkRepo(t)
+	r, base, _ := twoHunkRepo(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	cmdr := &cancelAfter{
 		inner: coreexec.Runner{MissingTool: true}, cancel: cancel,
@@ -164,11 +164,11 @@ func (c cancelingCommander) Run(context.Context, *core.Command) (core.Result, er
 // reports the cancel code, never a git failure message.
 func TestGitFailureReportsCancel(t *testing.T) {
 	tests := []struct {
-		name string
 		err  error
+		name string
 	}{
-		{"exit", nil},
-		{"spawn", errors.New("signal: killed")},
+		{name: "exit"},
+		{name: "spawn", err: errors.New("signal: killed")},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

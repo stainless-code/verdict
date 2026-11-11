@@ -19,8 +19,8 @@ type pinRecorder struct {
 
 // recordedCall is one spawned git command.
 type recordedCall struct {
-	argv []string
 	env  map[string]string
+	argv []string
 }
 
 // Run records the command and delegates.
@@ -32,7 +32,7 @@ func (r *pinRecorder) Run(ctx context.Context, cmd *core.Command) (core.Result, 
 			env[name] = value
 		}
 	}
-	r.calls = append(r.calls, recordedCall{argv: slices.Clone(cmd.Argv), env: env})
+	r.calls = append(r.calls, recordedCall{env: env, argv: slices.Clone(cmd.Argv)})
 	return r.inner.Run(ctx, cmd)
 }
 
@@ -62,56 +62,83 @@ func TestMinePinsEveryGitCall(t *testing.T) {
 	if len(rec.calls) == 0 {
 		t.Fatal("no git call was recorded; the guard would pass vacuously")
 	}
+	for _, call := range rec.calls {
+		name := "git " + strings.Join(call.argv, " ")
+		checkPinArgv(t, name, call.argv)
+		checkPinEnv(t, name, call.env, home)
+	}
+}
+
+// checkPinArgv proves one command carries the pin prefix and, for a show or
+// diff, the diff-flag prefix.
+func checkPinArgv(t *testing.T, name string, argv []string) {
+	t.Helper()
 	wantPins := []string{
 		"--literal-pathspecs",
 		"-c", "core.quotepath=false",
 		"-c", "color.ui=false",
 		"-c", "log.showSignature=false",
 	}
+	if len(argv) < 3 || argv[0] != "git" || argv[1] != "-C" || argv[2] == "" {
+		t.Errorf("%s: want `git -C <dir> ...`", name)
+		return
+	}
+	rest := argv[3:]
+	if len(rest) <= len(wantPins) || !slices.Equal(rest[:len(wantPins)], wantPins) {
+		t.Errorf("%s: pins = %v; want prefix %v", name, rest, wantPins)
+		return
+	}
+	args := rest[len(wantPins):]
+	if args[0] == "show" || args[0] == "diff" {
+		checkDiffPins(t, name, args)
+	}
+}
+
+// checkDiffPins proves one diff-family call carries the diff-flag prefix.
+func checkDiffPins(t *testing.T, name string, args []string) {
+	t.Helper()
+	wantDiff := append([]string{args[0]}, diffPins...)
+	if len(args) < len(wantDiff) || !slices.Equal(args[:len(wantDiff)], wantDiff) {
+		t.Errorf("%s: diff flags = %v; want prefix %v", name, args, wantDiff)
+	}
+}
+
+// checkPinEnv proves one command's environment is the rebuilt one: pins
+// present, the parent's git redirects absent, and the caller's benign values
+// kept.
+func checkPinEnv(t *testing.T, name string, env map[string]string, home string) {
+	t.Helper()
 	wantEnv := map[string]string{
 		"HOME": home, "MINE_MARKER": "kept", "LC_ALL": "C", "GIT_PAGER": "cat",
 		"GIT_OPTIONAL_LOCKS": "0", "GIT_CONFIG_NOSYSTEM": "1",
 		"GIT_CONFIG_GLOBAL": os.DevNull, "GIT_TERMINAL_PROMPT": "0",
 		"GIT_NO_REPLACE_OBJECTS": "1",
 	}
-	forbidden := []string{
+	for key, want := range wantEnv {
+		if got := env[key]; got != want {
+			t.Errorf("%s: env %s = %q; want %q", name, key, got, want)
+		}
+	}
+	checkNoRedirects(t, name, env)
+}
+
+// checkNoRedirects proves none of git's location or config escape hatches
+// reached the child.
+func checkNoRedirects(t *testing.T, name string, env map[string]string) {
+	t.Helper()
+	for _, key := range []string{
 		"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY",
 		"GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0",
 		"GIT_CONFIG_VALUE_0",
+	} {
+		if _, bad := env[key]; bad {
+			t.Errorf("%s: inherited %s from the parent environment", name, key)
+		}
 	}
-	for _, call := range rec.calls {
-		name := "git " + strings.Join(call.argv, " ")
-		if len(call.argv) < 3 || call.argv[0] != "git" || call.argv[1] != "-C" || call.argv[2] == "" {
-			t.Errorf("%s: want `git -C <dir> ...`", name)
-			continue
-		}
-		rest := call.argv[3:]
-		if len(rest) <= len(wantPins) || !slices.Equal(rest[:len(wantPins)], wantPins) {
-			t.Errorf("%s: pins = %v; want prefix %v", name, rest, wantPins)
-			continue
-		}
-		args := rest[len(wantPins):]
-		if args[0] == "show" || args[0] == "diff" {
-			wantDiff := append([]string{args[0]}, diffPins...)
-			if len(args) < len(wantDiff) || !slices.Equal(args[:len(wantDiff)], wantDiff) {
-				t.Errorf("%s: diff flags = %v; want prefix %v", name, args, wantDiff)
-			}
-		}
-		for key, want := range wantEnv {
-			if got := call.env[key]; got != want {
-				t.Errorf("%s: env %s = %q; want %q", name, key, got, want)
-			}
-		}
-		for _, key := range forbidden {
-			if _, bad := call.env[key]; bad {
-				t.Errorf("%s: inherited %s from the parent environment", name, key)
-			}
-		}
-		for key := range call.env {
-			if strings.HasPrefix(key, "GIT_CONFIG_") &&
-				key != "GIT_CONFIG_GLOBAL" && key != "GIT_CONFIG_NOSYSTEM" {
-				t.Errorf("%s: inherited %s from the parent environment", name, key)
-			}
+	for key := range env {
+		if strings.HasPrefix(key, "GIT_CONFIG_") &&
+			key != "GIT_CONFIG_GLOBAL" && key != "GIT_CONFIG_NOSYSTEM" {
+			t.Errorf("%s: inherited %s from the parent environment", name, key)
 		}
 	}
 }

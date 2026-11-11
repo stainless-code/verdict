@@ -67,7 +67,7 @@ func TestMineRevertOfRevertIsNotASeed(t *testing.T) {
 // TestMineMultiHunkFix proves one fix commit with two hunks anchors both
 // deleted lines at their own old-side positions.
 func TestMineMultiHunkFix(t *testing.T) {
-	r, base, _, fix := twoHunkRepo(t)
+	r, base, fix := twoHunkRepo(t)
 	data := runMine(t, r, base)
 	if len(data.Mine.Candidates) != 1 {
 		t.Fatalf("candidates = %+v; skipped %+v; want one", data.Mine.Candidates, data.Mine.Skipped)

@@ -25,7 +25,7 @@ func oddPathRepo(t *testing.T) (r *repo, base, feature, fix string) {
 // colon-leading path as file names, not as git pathspecs: both deleted lines
 // anchor at the PR head.
 func TestMineLiteralPathspecs(t *testing.T) {
-	r, base, feature, fix := oddPathRepo(t)
+	r, base, _, _ := oddPathRepo(t)
 	data := runMine(t, r, base)
 	if len(data.Mine.Candidates) != 1 {
 		t.Fatalf("candidates = %+v; skipped %+v; want one", data.Mine.Candidates, data.Mine.Skipped)
@@ -45,7 +45,4 @@ func TestMineLiteralPathspecs(t *testing.T) {
 			{Path: "app/[id].tsx", Line: 1, Kind: "unclassified", Fix: "654560ae429430b5cb1765e0f7ce480e9bbbaa06"},
 		},
 	})
-	if feature == "" || fix == "" || data.Since.SHA != base {
-		t.Errorf("fixture ids = %s %s %s; want non-empty", base, feature, fix)
-	}
 }

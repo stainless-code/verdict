@@ -36,16 +36,22 @@ func checkParsedHunks(t *testing.T, got fixDiff) {
 	t.Helper()
 	last := map[string]int{}
 	for i, line := range got.Deleted {
-		if line.Path == "" {
-			t.Fatalf("deleted[%d] has an empty path", i)
-		}
-		if line.Line <= 0 {
-			t.Fatalf("deleted[%d] line = %d; want > 0", i, line.Line)
-		}
-		if prev, ok := last[line.Path]; ok && line.Line <= prev {
-			t.Fatalf("deleted[%d] %s:%d does not follow %d; want strictly increasing per path",
-				i, line.Path, line.Line, prev)
-		}
-		last[line.Path] = line.Line
+		checkDeletedLine(t, i, line, last)
 	}
+}
+
+// checkDeletedLine checks one emitted line and records its position.
+func checkDeletedLine(t *testing.T, i int, line diffLine, last map[string]int) {
+	t.Helper()
+	if line.Path == "" {
+		t.Fatalf("deleted[%d] has an empty path", i)
+	}
+	if line.Line <= 0 {
+		t.Fatalf("deleted[%d] line = %d; want > 0", i, line.Line)
+	}
+	if prev, ok := last[line.Path]; ok && line.Line <= prev {
+		t.Fatalf("deleted[%d] %s:%d does not follow %d; want strictly increasing per path",
+			i, line.Path, line.Line, prev)
+	}
+	last[line.Path] = line.Line
 }

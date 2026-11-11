@@ -156,9 +156,15 @@ func ensureStateLine(ignorePath string) *stateError {
 	if line, bad := conflictingStateNegation(string(raw)); bad {
 		return &stateError{msg: ignorePath + " negates the state ignore with " + line + ": remove the negation", operator: true}
 	}
+	return writeIgnoreLines(ignorePath, raw)
+}
+
+// writeIgnoreLines appends each missing artifact line, preserving the file's
+// existing bytes and its trailing-newline contract.
+func writeIgnoreLines(ignorePath string, raw []byte) *stateError {
+	var err error
 	for _, want := range []string{gitignoreStateLine, gitignoreBacktestLine} {
-		raw, err = ensureIgnoreLine(ignorePath, raw, want)
-		if err != nil {
+		if raw, err = ensureIgnoreLine(ignorePath, raw, want); err != nil {
 			return &stateError{msg: "could not write " + ignorePath, cause: err}
 		}
 	}

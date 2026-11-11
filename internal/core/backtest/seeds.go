@@ -301,15 +301,15 @@ func comparePosition(a, b string) int {
 // splitPosition splits a `path:line` detail; a detail with no line reads as
 // line zero.
 func splitPosition(detail string) (string, int) {
-	at := strings.LastIndex(detail, colonSep)
-	if at < 0 {
+	pathPart, numPart, ok := strings.CutLast(detail, colonSep)
+	if !ok {
 		return detail, 0
 	}
-	line, err := strconv.Atoi(detail[at+1:])
+	line, err := strconv.Atoi(numPart)
 	if err != nil {
 		return detail, 0
 	}
-	return detail[:at], line
+	return pathPart, line
 }
 
 // candidate renders one builder as a published candidate.
@@ -462,17 +462,7 @@ func (ss *seedState) prShape(
 ) (prUnit, *core.RefusalError) {
 	switch {
 	case len(parents) >= 2:
-		base, ref := ss.st.mergeBase(ctx, parents[0], parents[1])
-		if ref != nil {
-			return prUnit{}, ref
-		}
-		if base == "" {
-			return prUnit{skip: reasonNoPR, head: parents[1]}, nil
-		}
-		return prUnit{
-			head: parents[1], base: base, landed: introducer, reconstruction: reconMergeParent,
-			number: mergeNumber(subject),
-		}, nil
+		return ss.mergeParentUnit(ctx, introducer, subject, parents)
 	case squashNumberRe.MatchString(subject) && len(parents) == 0:
 		return prUnit{skip: reasonNoPR}, nil
 	case squashNumberRe.MatchString(subject):
@@ -490,6 +480,24 @@ func (ss *seedState) prShape(
 	default:
 		return ss.firstParentUnit(ctx, introducer)
 	}
+}
+
+// mergeParentUnit reconstructs a merge introducer through its second parent.
+// No common ancestor reads no-pr; a failed merge-base is a refusal.
+func (ss *seedState) mergeParentUnit(
+	ctx context.Context, introducer, subject string, parents []string,
+) (prUnit, *core.RefusalError) {
+	base, ref := ss.st.mergeBase(ctx, parents[0], parents[1])
+	if ref != nil {
+		return prUnit{}, ref
+	}
+	if base == "" {
+		return prUnit{skip: reasonNoPR, head: parents[1]}, nil
+	}
+	return prUnit{
+		head: parents[1], base: base, landed: introducer, reconstruction: reconMergeParent,
+		number: mergeNumber(subject),
+	}, nil
 }
 
 // onFirstParentLine reports whether introducer is on the first-parent line of

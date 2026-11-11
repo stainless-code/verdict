@@ -11,7 +11,7 @@ import (
 )
 
 // hostileGlobalConfig is an operator's ~/.gitconfig that would reshape every
-// line the miner parses: coloured diffs, prefixes, the patience algorithm,
+// line the miner parses: colored diffs, prefixes, the patience algorithm,
 // and signature output.
 const hostileGlobalConfig = `[color]
 	ui = always

@@ -44,21 +44,22 @@ const (
 	schemaVersion      = "1"
 	headSourceMerge    = "merge-time"
 	msgCanceled        = "canceled before backtest mine completed"
-	shallowWarning     = "shallow clone: an introducer at the clone boundary reads as no-pr; run 'git fetch --unshallow' for the full history"
-	artifactDir        = ".verdict/backtest"
-	commandOutputCap   = 16 << 20
-	gitDateLayout      = "2006-01-02T15:04:05Z"
-	humanDateLayout    = "2006-01-02"
-	shortSHA           = 7
-	dayHours           = 24
-	weekDays           = 7
-	monthsPerYear      = 12
-	fetchDiffCapBytes  = 512000
-	maxFixLines        = 200
-	maxFixFiles        = 5
-	numStatFields      = 3
-	colonSep           = ":"
-	dirPerm            = 0o755
+	shallowWarning     = "shallow clone: an introducer at the clone boundary reads as no-pr; " +
+		"run 'git fetch --unshallow' for the full history"
+	artifactDir       = ".verdict/backtest"
+	commandOutputCap  = 16 << 20
+	gitDateLayout     = "2006-01-02T15:04:05Z"
+	humanDateLayout   = "2006-01-02"
+	shortSHA          = 7
+	dayHours          = 24
+	weekDays          = 7
+	monthsPerYear     = 12
+	fetchDiffCapBytes = 512000
+	maxFixLines       = 200
+	maxFixFiles       = 5
+	numStatFields     = 3
+	colonSep          = ":"
+	dirPerm           = 0o755
 )
 
 // Request is one `backtest mine` invocation. The adapter supplies the parsed
@@ -371,6 +372,19 @@ func (st *state) gitVersion(ctx context.Context) (string, *core.RefusalError) {
 	return version, nil
 }
 
+// resolveRef resolves one window ref, reporting a cancel as a refusal and a
+// plain miss as unresolved so the caller names the window end it refused.
+func (st *state) resolveRef(ctx context.Context, spec string) (string, bool, *core.RefusalError) {
+	sha, ok := st.revParse(ctx, spec)
+	if ok {
+		return sha, true, nil
+	}
+	if ref := st.canceled(ctx); ref != nil {
+		return "", false, ref
+	}
+	return "", false, nil
+}
+
 // until resolves --until (default HEAD) and requires it to be in HEAD's
 // history, so the mined window never mixes unrelated lines.
 //
@@ -380,18 +394,18 @@ func (st *state) until(ctx context.Context) (Resolution, *core.RefusalError) {
 	if spec == "" {
 		spec = "HEAD"
 	}
-	sha, ok := st.revParse(ctx, spec)
+	sha, ok, ref := st.resolveRef(ctx, spec)
+	if ref != nil {
+		return Resolution{}, ref
+	}
 	if !ok {
-		if ref := st.canceled(ctx); ref != nil {
-			return Resolution{}, ref
-		}
 		return Resolution{}, st.refuse(codeBadUntil, "cannot resolve --until '"+spec+"' to a commit")
 	}
-	head, ok := st.revParse(ctx, "HEAD")
+	head, ok, ref := st.resolveRef(ctx, "HEAD")
+	if ref != nil {
+		return Resolution{}, ref
+	}
 	if !ok {
-		if ref := st.canceled(ctx); ref != nil {
-			return Resolution{}, ref
-		}
 		return Resolution{}, st.refuse(codeBadUntil, "HEAD does not resolve to a commit")
 	}
 	if sha != head {
@@ -413,6 +427,8 @@ func (st *state) until(ctx context.Context) (Resolution, *core.RefusalError) {
 
 // since resolves --since: a duration is a calendar span back from --until's
 // commit date, a ref is a commit that must be an ancestor of --until.
+//
+//nolint:revive // the window-resolution ladder is one refusal check per rule
 func (st *state) since(ctx context.Context, until Resolution) (Resolution, *core.RefusalError) {
 	spec := st.req.Since
 	if spec == "" {
@@ -426,11 +442,11 @@ func (st *state) since(ctx context.Context, until Resolution) (Resolution, *core
 	if span, ok := parseSpan(spec); ok {
 		return st.durationSince(ctx, spec, span, until)
 	}
-	sha, ok := st.revParse(ctx, spec)
+	sha, ok, ref := st.resolveRef(ctx, spec)
+	if ref != nil {
+		return Resolution{}, ref
+	}
 	if !ok {
-		if ref := st.canceled(ctx); ref != nil {
-			return Resolution{}, ref
-		}
 		return Resolution{}, st.refuse(codeBadSince, "cannot resolve --since '"+spec+"' to a commit")
 	}
 	ancestor, ref := st.isAncestor(ctx, sha, until.SHA)
