@@ -495,8 +495,9 @@ Track your controls once so the base commit carries them — in a repo whose
 `.verdict/config.json` is the only repository configuration file:
 one strict document (schema `skills/verdict/schemas/config.schema.json`) for
 defaults (`panel`, `budget_usd`, `max_bytes`, `chunk`, `kb_policy`, `effort`,
-the two severity floors), blocking clauses, path scopes, named profiles, and
-the bind requirement. `fetch`/`fetch-local` read it from the base commit (or
+the two severity floors), the local `index` caps (`files`, `file_bytes`,
+`tree_bytes`, `shards_bytes`, `keep_trees`, `refs_per_file`), blocking
+clauses, path scopes, named profiles, and the bind requirement. `fetch`/`fetch-local` read it from the base commit (or
 the reviewed worktree for local runs) through the same trusted read; unknown
 fields, misplaced nulls, credential keys, and unsatisfiable clauses refuse
 typed (`bad-config`, `bad-config-credentials`, `bad-requirement`, `bad-scope`)
@@ -2601,7 +2602,8 @@ is counted unresolved, not found.
 
 Caps: 20,000 Go files, 1 MiB per file (an oversized file is skipped and
 counted in `coverage.skipped`), a 96 MiB tree file, and a 256 MiB shard cache;
-a repo over a cap refuses `index-capped` naming the measured number. A
+a repo over a cap refuses `index-capped` naming the measured number. The typed
+`index` section of `.verdict/config.json` overrides each default. A
 truncated or invalid shard refuses `index-corrupt` and is never read as empty.
 Querying a tree that is not HEAD's marks the envelope `stale: true` and warns
 `» index: built for <tree>, HEAD is <tree2>`. The MCP `index` tool is

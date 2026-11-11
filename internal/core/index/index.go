@@ -7,7 +7,11 @@ package indexcore
 
 import (
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 )
 
@@ -143,31 +147,80 @@ type state struct {
 	trust    []string
 }
 
-func (st *state) limits() Limits {
+// limits resolves the caps: the repository's typed index section first, then
+// any injected override.
+//
+//nolint:revive // the cap override matrix reads as one block
+func (st *state) limits() (Limits, *core.RefusalError) {
+	l := DefaultLimits()
+	if ref := st.loadConfigLimits(&l); ref != nil {
+		return Limits{}, ref
+	}
 	if st.req.Limits == nil {
-		return DefaultLimits()
+		return l, nil
 	}
-	l := *st.req.Limits
-	d := DefaultLimits()
-	if l.Files <= 0 {
-		l.Files = d.Files
+	override := *st.req.Limits
+	if override.Files > 0 {
+		l.Files = override.Files
 	}
-	if l.FileBytes <= 0 {
-		l.FileBytes = d.FileBytes
+	if override.FileBytes > 0 {
+		l.FileBytes = override.FileBytes
 	}
-	if l.TreeBytes <= 0 {
-		l.TreeBytes = d.TreeBytes
+	if override.TreeBytes > 0 {
+		l.TreeBytes = override.TreeBytes
 	}
-	if l.ShardsBytes <= 0 {
-		l.ShardsBytes = d.ShardsBytes
+	if override.ShardsBytes > 0 {
+		l.ShardsBytes = override.ShardsBytes
 	}
-	if l.KeepTrees <= 0 {
-		l.KeepTrees = d.KeepTrees
+	if override.KeepTrees > 0 {
+		l.KeepTrees = override.KeepTrees
 	}
-	if l.RefsPerFile <= 0 {
-		l.RefsPerFile = d.RefsPerFile
+	if override.RefsPerFile > 0 {
+		l.RefsPerFile = override.RefsPerFile
 	}
-	return l
+	return l, nil
+}
+
+// loadConfigLimits overlays the repository's typed index caps when present.
+func (st *state) loadConfigLimits(l *Limits) *core.RefusalError {
+	raw, err := os.ReadFile(filepath.Join(st.sourceRoot(), config.VerdictDir, "config.json"))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return &core.RefusalError{Code: codeIndexFailed, Message: "could not read the index caps: " + err.Error()}
+	}
+	cfg, ref := config.Parse(raw)
+	if ref != nil {
+		return ref
+	}
+	if cfg.Index == nil {
+		return nil
+	}
+	applyIndexCaps(l, cfg.Index)
+	return nil
+}
+
+// applyIndexCaps copies the non-nil typed caps onto l.
+func applyIndexCaps(l *Limits, caps *core.ConfigIndex) {
+	if caps.Files != nil {
+		l.Files = *caps.Files
+	}
+	if caps.FileBytes != nil {
+		l.FileBytes = *caps.FileBytes
+	}
+	if caps.TreeBytes != nil {
+		l.TreeBytes = *caps.TreeBytes
+	}
+	if caps.ShardsBytes != nil {
+		l.ShardsBytes = *caps.ShardsBytes
+	}
+	if caps.KeepTrees != nil {
+		l.KeepTrees = *caps.KeepTrees
+	}
+	if caps.RefsPerFile != nil {
+		l.RefsPerFile = *caps.RefsPerFile
+	}
 }
 
 func (st *state) sourceRoot() string {

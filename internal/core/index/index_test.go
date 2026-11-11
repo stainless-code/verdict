@@ -352,6 +352,20 @@ func TestIndexCapRefusal(t *testing.T) {
 			t.Fatalf("refusal = %q: %q; want index-capped: %q", ref.Code, ref.Message, want)
 		}
 	})
+	t.Run("config cap", func(t *testing.T) {
+		f := newFixture(t)
+		f.write(".verdict/config.json", `{"schema_version":"1","index":{"files":2}}`)
+		writeCallFixture(f, "")
+		f.commit("one")
+		ref := f.buildRef(nil)
+		if ref == nil {
+			t.Fatal("config-capped build succeeded")
+		}
+		want := "3 package files exceeds the 2-file cap"
+		if ref.Code != "index-capped" || ref.Message != want {
+			t.Fatalf("refusal = %q: %q; want index-capped: %q", ref.Code, ref.Message, want)
+		}
+	})
 	t.Run("oversized file skipped", func(t *testing.T) {
 		f := newFixture(t)
 		f.write("go.mod", "module example.com/m\n")

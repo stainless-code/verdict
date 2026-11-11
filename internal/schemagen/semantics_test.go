@@ -25,7 +25,10 @@ var publishedSemantics = map[string]string{
 	// (anyOf), never profile with inline defaults, and never a scope's own
 	// defaults.kb_policy — the knowledge-base policy is global-only, which
 	// the parser refuses with bad-scope.
-	"config.schema.json": "d6860823b067abcc43e2cdb77dbb8243ffe232d5d51272aa674b73b63c99ae1e",
+	// additive index caps: an optional top-level index object and its
+	// $defs/configIndex shape. Additions only; no existing property, required
+	// key, enum, or type changed.
+	"config.schema.json": "67da0f560b74df5a1dfef3a49f8887f9d76863ffc017161df65e9ad96eb0d54c",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets

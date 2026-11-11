@@ -38,6 +38,9 @@ func buildConfig(root map[string]any) (*core.Config, *core.RefusalError) {
 	if cfg.Requirements, ref = presentNested(root, requirementsKey, rootLocation, buildRequirements); ref != nil {
 		return nil, ref
 	}
+	if cfg.Index, ref = presentNested(root, "index", rootLocation, buildIndex); ref != nil {
+		return nil, ref
+	}
 	if ref = buildConfigTail(cfg, root); ref != nil {
 		return nil, ref
 	}
@@ -142,6 +145,38 @@ func requiredString(obj map[string]any, key, path, code string) (string, *core.R
 		return "", remap(raw, path+keySep+key, ref, code)
 	}
 	return val, nil
+}
+
+// buildIndex validates the local index caps.
+func buildIndex(raw any, path string) (*core.ConfigIndex, *core.RefusalError) {
+	obj, ref := asObject(raw, path)
+	if ref != nil {
+		return nil, ref
+	}
+	out := &core.ConfigIndex{}
+	var err *core.RefusalError
+	if out.Files, err = presentValue(obj, "files", path, countAtLeastOne); err != nil {
+		return nil, err
+	}
+	if out.FileBytes, err = presentValue(obj, "file_bytes", path, positiveInt); err != nil {
+		return nil, err
+	}
+	if out.TreeBytes, err = presentValue(obj, "tree_bytes", path, positiveInt); err != nil {
+		return nil, err
+	}
+	if out.ShardsBytes, err = presentValue(obj, "shards_bytes", path, positiveInt); err != nil {
+		return nil, err
+	}
+	if out.KeepTrees, err = presentValue(obj, "keep_trees", path, countAtLeastOne); err != nil {
+		return nil, err
+	}
+	out.RefsPerFile, err = presentValue(obj, "refs_per_file", path, countAtLeastOne)
+	return out, err
+}
+
+// countAtLeastOne reads one positive count.
+func countAtLeastOne(raw any, path string) (int, *core.RefusalError) {
+	return boundedCount(raw, path, 1)
 }
 
 // buildDefaults validates the optional defaults object.

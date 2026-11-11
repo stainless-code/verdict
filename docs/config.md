@@ -15,8 +15,10 @@ lives in `docs/policy-contract.md`.
 .verdict/kb.jsonl               tracked, shared knowledge corpus
 .verdict/learnings.md           tracked, shared heading memory
 .verdict/overrides/             tracked, shared override files
-.verdict/.gitignore             tracked-shape, contains the single line /state/
-.verdict/state/                 ignored, local review state only
+.verdict/.gitignore             tracked-shape, carries /state/, /backtest/, and /index/
+.verdict/state/                 ignored, local review state
+.verdict/backtest/              ignored, mined backtest runs
+.verdict/index/                 ignored, local Go index
 ```
 
 Only `/state/` is ignored, through the nested file.

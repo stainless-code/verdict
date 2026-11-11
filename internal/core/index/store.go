@@ -202,7 +202,10 @@ func goEntries(entries []treeEntry) []treeEntry {
 //
 //nolint:revive,cyclop // the store failure matrix reads as one pass
 func (st *state) build(ctx context.Context) (*Response, *core.RefusalError) {
-	limits := st.limits()
+	limits, ref := st.limits()
+	if ref != nil {
+		return nil, ref
+	}
 	dir := st.sourceRoot()
 	st.trust = st.readTrust(ctx, dir)
 	at := st.req.At
@@ -497,7 +500,10 @@ func (st *state) prune(ctx context.Context) (*Response, *core.RefusalError) {
 	root := st.sourceRoot()
 	st.trust = st.readTrust(ctx, root)
 	store := storePath(root)
-	limits := st.limits()
+	limits, ref := st.limits()
+	if ref != nil {
+		return nil, ref
+	}
 	old, err := os.ReadDir(filepath.Join(store, treesDirName))
 	if errors.Is(err, os.ErrNotExist) {
 		return st.pruneResponse(nil, 0, 0), nil

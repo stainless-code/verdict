@@ -10,7 +10,8 @@
       "/$defs/requirements": "Blocking clauses with per-source thresholds, prepublication check names, and the approval bind requirement.",
       "/$defs/blockClause": "One blocking predicate: a required name and severity threshold with optional category and path masks; absent masks mean every category or path.",
       "/$defs/scope": "One path-scoped entry: required include globs with optional excludes plus resolution inputs — at most one of a named profile or inline defaults, with optional inline requirements.",
-      "/$defs/profile": "One work-profile description: provider-neutral depth, the checks the group must evaluate, and the lens budget."
+      "/$defs/profile": "One work-profile description: provider-neutral depth, the checks the group must evaluate, and the lens budget.",
+      "/$defs/configIndex": "The local Go index caps: file count, per-file bytes, tree bytes, shard-cache bytes, trees kept by prune, and references recorded per file. Absent keys keep the built-in defaults."
     }
   },
   "cost": {
