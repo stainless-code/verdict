@@ -142,6 +142,7 @@ func documents() []document {
 			defs: []definition{
 				{typ: reflect.TypeFor[ConfigDefaults](), name: "defaults", closed: true},
 				{typ: reflect.TypeFor[ConfigKBPolicy](), name: "kbPolicy", closed: true},
+				{typ: reflect.TypeFor[ConfigIndex](), name: "configIndex", closed: true},
 				{typ: reflect.TypeFor[ConfigRequirements](), name: "requirements", closed: true},
 				{typ: reflect.TypeFor[BlockClause](), name: "blockClause", closed: true},
 				{typ: reflect.TypeFor[ConfigScope](), name: "scope", closed: true, constraints: []member{
@@ -222,6 +223,18 @@ func documents() []document {
 			name:                 "identity",
 			title:                "identity.json — bundle patch identity",
 			root:                 reflect.TypeFor[Identity](),
+			additionalProperties: false,
+		},
+		{
+			name:  "index",
+			title: "index tree — .verdict/index/trees/<tree>.json",
+			root:  reflect.TypeFor[IndexTree](),
+			defs: []definition{
+				{typ: reflect.TypeFor[IndexTreeFile](), name: "file"},
+				{typ: reflect.TypeFor[IndexImport](), name: "import"},
+				{typ: reflect.TypeFor[IndexDecl](), name: "decl"},
+				{typ: reflect.TypeFor[IndexRef](), name: "ref"},
+			},
 			additionalProperties: false,
 		},
 		{
@@ -366,6 +379,15 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[TrendProvenance](), name: "trendProvenance"},
 		{typ: reflect.TypeFor[TrendPeriod](), name: "trendPeriod"},
 		{typ: reflect.TypeFor[TrendBundleRow](), name: "trendBundleRow"},
+		{typ: reflect.TypeFor[IndexData](), name: "indexData"},
+		{typ: reflect.TypeFor[IndexShards](), name: "indexShards"},
+		{typ: reflect.TypeFor[IndexTreeRow](), name: "indexTreeRow"},
+		{typ: reflect.TypeFor[IndexRemoved](), name: "indexRemoved"},
+		{typ: reflect.TypeFor[IndexQuery](), name: "indexQuery"},
+		{typ: reflect.TypeFor[IndexStatus](), name: "indexStatus"},
+		{typ: reflect.TypeFor[IndexCoverage](), name: "indexCoverage"},
+		{typ: reflect.TypeFor[IndexCounts](), name: "indexCounts"},
+		{typ: reflect.TypeFor[IndexRow](), name: "indexRow"},
 		{typ: reflect.TypeFor[CalibrateData](), name: "calibrateData"},
 		{typ: reflect.TypeFor[CalibrateHead](), name: "calibrateHead"},
 		{typ: reflect.TypeFor[CalibratePR](), name: "calibratePR"},

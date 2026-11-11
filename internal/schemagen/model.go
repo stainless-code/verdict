@@ -54,6 +54,9 @@ type ConfigDefaults = core.ConfigDefaults
 // ConfigKBPolicy is the configuration's knowledge-base policy.
 type ConfigKBPolicy = core.ConfigKBPolicy
 
+// ConfigIndex is the configuration's local Go index caps.
+type ConfigIndex = core.ConfigIndex
+
 // ConfigRequirements is the configuration's conjunctive requirements.
 type ConfigRequirements = core.ConfigRequirements
 
@@ -720,3 +723,130 @@ type ThreadsResolveSkip = threadscore.ResolveSkip
 
 // ThreadsResolveData is the resolve half of the threads --json data profile.
 type ThreadsResolveData = fetchcore.ThreadsResolveData
+
+// IndexData is the index verb's --json data profile. One object serves four
+// subcommands, so every subcommand-specific key is optional and a consumer
+// branches on kind.
+type IndexData struct { //nolint:govet // field order is the published property order
+	Kind         string         `enum:"build|status|prune|callers" json:"kind"`
+	Tree         string         `json:"tree"                       optional:"true"`
+	Commit       string         `json:"commit"                     optional:"true"`
+	Built        bool           `json:"built"                      optional:"true"`
+	Stale        bool           `json:"stale"                      optional:"true"`
+	FilesIndexed int            `json:"files_indexed"              min:"0"         optional:"true"`
+	Skipped      int            `json:"skipped"                    min:"0"         optional:"true"`
+	Parsed       int            `json:"parsed"                     min:"0"         optional:"true"`
+	Reused       int            `json:"reused"                     min:"0"         optional:"true"`
+	TreeBytes    int64          `json:"tree_bytes"                 min:"0"         optional:"true"`
+	Shards       IndexShards    `json:"shards"                     optional:"true"`
+	Trees        []IndexTreeRow `json:"trees"                      optional:"true"`
+	Kept         []string       `json:"kept"                       optional:"true"`
+	Removed      IndexRemoved   `json:"removed"                    optional:"true"`
+	Query        IndexQuery     `json:"query"                      optional:"true"`
+	Index        IndexStatus    `json:"index"                      optional:"true"`
+	Counts       IndexCounts    `json:"counts"                     optional:"true"`
+	Limit        int            `json:"limit"                      min:"1"         optional:"true"`
+	Truncated    int            `json:"truncated"                  min:"0"         optional:"true"`
+	Rows         []IndexRow     `json:"rows"                       optional:"true"`
+}
+
+// IndexShards is the local shard store's count and byte total.
+type IndexShards struct {
+	Count int   `json:"count" min:"0"`
+	Bytes int64 `json:"bytes" min:"0"`
+}
+
+// IndexTreeRow is one stored tree file in the status inventory.
+type IndexTreeRow struct {
+	Tree  string `json:"tree"`
+	Files int    `json:"files" min:"0"`
+	Bytes int64  `json:"bytes" min:"0"`
+}
+
+// IndexRemoved is the prune receipt's removed counts.
+type IndexRemoved struct {
+	Trees  int `json:"trees"  min:"0"`
+	Shards int `json:"shards" min:"0"`
+}
+
+// IndexQuery is the caller query's symbol input.
+type IndexQuery struct {
+	Symbol string `json:"symbol"`
+}
+
+// IndexStatus is the caller envelope's index state.
+type IndexStatus struct {
+	Tree     string        `json:"tree"`
+	Commit   string        `json:"commit"   optional:"true"`
+	Stale    bool          `json:"stale"`
+	Coverage IndexCoverage `json:"coverage"`
+}
+
+// IndexCoverage is the indexed and skipped file counts.
+type IndexCoverage struct {
+	FilesIndexed int `json:"files_indexed" min:"0"`
+	Skipped      int `json:"skipped"       min:"0"`
+}
+
+// IndexCounts is the caller query's measured counts.
+type IndexCounts struct {
+	Callers    int `json:"callers"    min:"0"`
+	Unresolved int `json:"unresolved" min:"0"`
+}
+
+// IndexRow is one caller row.
+type IndexRow struct { //nolint:govet // field order is the published property order
+	Path       string `json:"path"`
+	Line       int    `json:"line"                                 min:"1"`
+	Kind       string `enum:"call|method|type-ref|value-ref|embed" json:"kind"`       //nolint:revive // published enum tag exceeds the line limit
+	Resolution string `enum:"exact|lexical"                        json:"resolution"` //nolint:revive // published enum tag exceeds the line limit
+}
+
+// IndexTree is the stored per-tree index document under
+// .verdict/index/trees/<tree>.json.
+type IndexTree struct {
+	SchemaVersion string          `const:"1"               json:"schema_version"`
+	Tree          string          `json:"tree"`
+	Module        string          `json:"module,omitempty" optional:"true"`
+	Files         []IndexTreeFile `json:"files"`
+}
+
+// IndexTreeFile is one file's parsed contribution to a tree index.
+type IndexTreeFile struct { //nolint:govet // field order is the published property order
+	Path          string        `json:"path"`
+	Blob          string        `json:"blob"`
+	Size          int64         `json:"size"                     min:"0"`
+	Oversize      bool          `json:"oversize,omitempty"       optional:"true"`
+	Package       string        `json:"package,omitempty"        optional:"true"`
+	Imports       []IndexImport `json:"imports,omitempty"        optional:"true"`
+	Decls         []IndexDecl   `json:"decls,omitempty"          optional:"true"`
+	Refs          []IndexRef    `json:"refs,omitempty"           optional:"true"`
+	Error         string        `json:"error,omitempty"          optional:"true"`
+	RefsTruncated bool          `json:"refs_truncated,omitempty" optional:"true"`
+}
+
+// IndexImport is one import binding in an indexed file.
+type IndexImport struct {
+	Path string `json:"path"`
+	Name string `json:"name"`
+}
+
+// IndexDecl is one package-level declaration in an indexed file.
+type IndexDecl struct { //nolint:govet // field order is the published property order
+	Name     string `json:"name"`
+	Kind     string `enum:"func|method|type|var|const" json:"kind"`
+	Line     int    `json:"line"                       min:"1"`
+	Exported bool   `json:"exported,omitempty"         optional:"true"`
+	Recv     string `json:"recv,omitempty"             optional:"true"`
+}
+
+// IndexRef is one identifier reference in an indexed file.
+type IndexRef struct {
+	Name       string `json:"name"`
+	Kind       string `enum:"call|method|type-ref|value-ref|embed" json:"kind"`
+	Qualifier  string `json:"qualifier,omitempty"                  optional:"true"`
+	Line       int    `json:"line"                                 min:"1"`
+	Col        int    `json:"col"                                  min:"1"`
+	Selector   bool   `json:"selector,omitempty"                   optional:"true"`
+	Unresolved bool   `json:"unresolved,omitempty"                 optional:"true"`
+}

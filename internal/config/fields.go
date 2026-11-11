@@ -15,7 +15,7 @@ const defaultsKey = "defaults"
 const requirementsKey = "requirements"
 
 var (
-	topFields      = []string{"$schema", "schema_version", "defaults", "requirements", "scopes", "profiles", "default_profile"}
+	topFields      = []string{"$schema", "schema_version", "defaults", "requirements", "scopes", "profiles", "default_profile", "index"}
 	defaultsFields = []string{
 		keyPanel, keyBudgetUSD, keyMaxBytes, keyChunk, keyKBPolicy, keyEffort,
 		keyDisplayFloor, keyPostFloor,
@@ -25,6 +25,7 @@ var (
 	clauseFields       = []string{"name", "threshold", "categories", "paths"}
 	scopeFields        = []string{"name", "include", "exclude", "profile", "defaults", "requirements"}
 	profileFields      = []string{"depth", "checks", "max_lenses"}
+	indexFields        = []string{"files", "file_bytes", "tree_bytes", "shards_bytes", "keep_trees", "refs_per_file"}
 	// personalTopFields lists the recognized operator-settings keys: the
 	// typed personal sections plus the CLI prefs keys the prefs layer
 	// owns (output, layout, color, publish), which parse but never feed
@@ -65,6 +66,7 @@ func checkUnknownFields(root map[string]any) *core.RefusalError {
 		{key: requirementsKey, check: checkRequirementsKeys},
 		{key: "scopes", check: checkScopeListKeys},
 		{key: "profiles", check: checkProfilesKeys},
+		{key: "index", check: checkKeysSection(indexFields)},
 	} {
 		if ref := checkSectionUnknown(root, section.key, section.check); ref != nil {
 			return ref
@@ -82,6 +84,17 @@ func checkSectionUnknown(root map[string]any, key string, check func(any, string
 		return nil
 	}
 	return check(raw, "$."+key)
+}
+
+// checkKeysSection returns a section walker over a fixed field list.
+func checkKeysSection(fields []string) func(any, string) *core.RefusalError {
+	return func(raw any, path string) *core.RefusalError {
+		obj, ok := raw.(map[string]any)
+		if !ok {
+			return nil
+		}
+		return checkKeys(path, obj, fields)
+	}
 }
 
 // checkDefaultsKeys walks the defaults object and its nested kb_policy.

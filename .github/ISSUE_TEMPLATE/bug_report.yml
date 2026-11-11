@@ -41,6 +41,7 @@ body:
         - check-tree
         - ready
         - trend
+        - index
         - backtest
         - learn
         - init

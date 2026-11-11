@@ -17,6 +17,7 @@ import (
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	fixcore "github.com/stainless-code/verdict/internal/core/fix"
+	indexcore "github.com/stainless-code/verdict/internal/core/index"
 	initcore "github.com/stainless-code/verdict/internal/core/init"
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
 	postcore "github.com/stainless-code/verdict/internal/core/post"
@@ -166,6 +167,15 @@ func allTools(readOnly, operator bool) []*tool {
 			meta:     toolMeta{title: "Prepare a fix"},
 		}, toolDeps{commander: fetchRunner}, decodeFix, wireFix, fixcore.Run,
 			func(resp *fixcore.Response) *jq.Obj { return wireData(resp.Data) }),
+		directTool(&toolSpec{
+			name: "index",
+			description: "Query the local Go index under .verdict/index. query=callers returns one symbol's " +
+				"call sites (exact within a package, lexical across an import edge); query=status reports " +
+				"the stored trees. Call before editing code to find callers. Reads the index only; never " +
+				"builds or prunes (those are CLI-only) and writes nothing.",
+			omit: omitPositionals,
+			meta: toolMeta{title: "Query code index", readOnly: true, idempotent: true},
+		}, toolDeps{commander: coreexec.Runner{}}, decodeIndex, wireIndex, invokeIndex),
 		dataTool(&toolSpec{
 			name: "init",
 			description: "Scaffold .verdict control files from a style preset. Call once in a " +
@@ -425,6 +435,17 @@ func invokeReport(ctx context.Context, req *core.ReportRequest) (*jq.Obj, *core.
 		return nil, ref
 	}
 	return wireData(resp.Data), nil
+}
+
+func invokeIndex(ctx context.Context, req *indexcore.Request) (*jq.Obj, *core.RefusalError) {
+	if req.Query != indexcore.QueryCallers && req.Query != indexcore.QueryStatus {
+		return nil, &core.RefusalError{Code: codeBadFlags, Message: "index serves callers and status; build and prune are CLI-only"}
+	}
+	resp, ref := indexcore.Run(ctx, req)
+	if ref != nil {
+		return nil, ref
+	}
+	return resp.Data.Wire(), nil
 }
 
 func invokeNext(ctx context.Context, req *core.NextRequest) (*jq.Obj, *core.RefusalError) {

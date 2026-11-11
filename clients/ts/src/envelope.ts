@@ -7,6 +7,7 @@ import type {
   FetchData,
   FetchLocalData,
   FixData,
+  IndexData,
   InitData,
   LearnData,
   NextData,
@@ -73,6 +74,7 @@ export interface DataFor {
   doctor: DoctorData;
   calibrate: CalibrateData;
   trend: TrendData;
+  index: IndexData;
   adopt: AdoptData;
   fix: FixData;
   learn: LearnData;

@@ -22,6 +22,7 @@ var wantAnnotations = map[string]toolAnnotations{
 	},
 	"fetch-local": {Title: "Fetch local diff", IdempotentHint: true},
 	"fix":         {Title: "Prepare a fix"},
+	"index":       {Title: "Query code index", ReadOnlyHint: true, IdempotentHint: true},
 	"init": {
 		Title: "Scaffold controls", DestructiveHint: true, IdempotentHint: true,
 	},
@@ -98,19 +99,19 @@ func TestSurfaceSets(t *testing.T) {
 	defaults := names(allTools(false, false))
 	wantDefaults := []string{
 		"adopt", "calibrate", "check-tree", "config", "doctor", "fetch", "fetch-local", "fix",
-		"init", "learn", "next", "post", "ready", "record", "report", "show",
+		"index", "init", "learn", "next", "post", "ready", "record", "report", "show",
 		"threads", "trend", "verify",
 	}
 	if !reflect.DeepEqual(defaults, wantDefaults) {
 		t.Errorf("default tools = %v, want %v", defaults, wantDefaults)
 	}
 	readOnly := names(allTools(true, false))
-	wantReadOnly := []string{"check-tree", "config", "doctor", "next", "ready", "record", "report", "show", "trend"}
+	wantReadOnly := []string{"check-tree", "config", "doctor", "index", "next", "ready", "record", "report", "show", "trend"}
 	if !reflect.DeepEqual(readOnly, wantReadOnly) {
 		t.Errorf("read-only tools = %v, want %v", readOnly, wantReadOnly)
 	}
 	operator := names(allTools(false, true))
-	wantOperator := append(append([]string{}, wantDefaults[:18]...), "triage", "verify")
+	wantOperator := append(append([]string{}, wantDefaults[:len(wantDefaults)-1]...), "triage", "verify")
 	if !reflect.DeepEqual(operator, wantOperator) {
 		t.Errorf("operator tools = %v, want %v", operator, wantOperator)
 	}

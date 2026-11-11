@@ -709,6 +709,91 @@ export interface TrendBundleRow {
   [key: string]: unknown;
 }
 
+/** index --json data: one object across build, status, prune, and callers, so kind names the subcommand and every other key is optional. */
+export interface IndexData {
+  kind: "build" | "status" | "prune" | "callers";
+  tree?: string;
+  commit?: string;
+  built?: boolean;
+  stale?: boolean;
+  files_indexed?: number;
+  skipped?: number;
+  parsed?: number;
+  reused?: number;
+  tree_bytes?: number;
+  shards?: IndexShards;
+  trees?: Array<IndexTreeRow>;
+  kept?: Array<string>;
+  removed?: IndexRemoved;
+  query?: IndexQuery;
+  index?: IndexStatus;
+  counts?: IndexCounts;
+  limit?: number;
+  truncated?: number;
+  rows?: Array<IndexRow>;
+  [key: string]: unknown;
+}
+
+/** The local shard store: file count and byte total. */
+export interface IndexShards {
+  count: number;
+  bytes: number;
+  [key: string]: unknown;
+}
+
+/** One stored tree file: its tree SHA, file count, and bytes. */
+export interface IndexTreeRow {
+  tree: string;
+  files: number;
+  bytes: number;
+  [key: string]: unknown;
+}
+
+/** The prune receipt: trees and shards removed. */
+export interface IndexRemoved {
+  trees: number;
+  shards: number;
+  [key: string]: unknown;
+}
+
+/** The caller query input: the symbol as written. */
+export interface IndexQuery {
+  symbol: string;
+  [key: string]: unknown;
+}
+
+/** The caller envelope index state: tree, commit, staleness, and file coverage. */
+export interface IndexStatus {
+  tree: string;
+  commit?: string;
+  stale: boolean;
+  coverage: IndexCoverage;
+  [key: string]: unknown;
+}
+
+/** The indexed and skipped file counts for the queried tree. */
+export interface IndexCoverage {
+  files_indexed: number;
+  skipped: number;
+  [key: string]: unknown;
+}
+
+/** The caller query counts: rows returned and candidates left unresolved. */
+export interface IndexCounts {
+  callers: number;
+  unresolved: number;
+  [key: string]: unknown;
+}
+
+/** One caller row: slash path, line, kind, and exact or lexical resolution. */
+export interface IndexRow {
+  path: string;
+  line: number;
+  kind: "call" | "method" | "type-ref" | "value-ref" | "embed";
+  resolution: "exact" | "lexical";
+  [key: string]: unknown;
+}
+
 /** calibrate --json data: one object shared by the three modes, so every mode-specific key is optional. The live join fills review_id, head, pr, outcomes, precision (an object with by_tier), and provenance; the corpus join fills bundle, case, kind, model, panel, line_tolerance, ground_truth, reported, matched, false_positives, missed, precision (a rate or null), recall, false_positive_rate, outcomes, and missed_bugs; the probe fills bundle, grades, counts, and judgment. */
 export interface CalibrateData {
   review_id?: unknown;

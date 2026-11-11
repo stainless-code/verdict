@@ -1394,6 +1394,129 @@
       ],
       "additionalProperties": true
     },
+    "indexData": {
+      "description": "index --json data: one object across build, status, prune, and callers, so kind names the subcommand and every other key is optional.",
+      "type": "object",
+      "properties": {
+        "kind": { "enum": ["build", "status", "prune", "callers"] },
+        "tree": { "type": "string" },
+        "commit": { "type": "string" },
+        "built": { "type": "boolean" },
+        "stale": { "type": "boolean" },
+        "files_indexed": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 },
+        "parsed": { "type": "integer", "minimum": 0 },
+        "reused": { "type": "integer", "minimum": 0 },
+        "tree_bytes": { "type": "integer", "minimum": 0 },
+        "shards": { "$ref": "#/$defs/indexShards" },
+        "trees": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/indexTreeRow" }
+        },
+        "kept": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "removed": { "$ref": "#/$defs/indexRemoved" },
+        "query": { "$ref": "#/$defs/indexQuery" },
+        "index": { "$ref": "#/$defs/indexStatus" },
+        "counts": { "$ref": "#/$defs/indexCounts" },
+        "limit": { "type": "integer", "minimum": 1 },
+        "truncated": { "type": "integer", "minimum": 0 },
+        "rows": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/indexRow" }
+        }
+      },
+      "required": ["kind"],
+      "additionalProperties": true
+    },
+    "indexShards": {
+      "description": "The local shard store: file count and byte total.",
+      "type": "object",
+      "properties": {
+        "count": { "type": "integer", "minimum": 0 },
+        "bytes": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["count", "bytes"],
+      "additionalProperties": true
+    },
+    "indexTreeRow": {
+      "description": "One stored tree file: its tree SHA, file count, and bytes.",
+      "type": "object",
+      "properties": {
+        "tree": { "type": "string" },
+        "files": { "type": "integer", "minimum": 0 },
+        "bytes": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["tree", "files", "bytes"],
+      "additionalProperties": true
+    },
+    "indexRemoved": {
+      "description": "The prune receipt: trees and shards removed.",
+      "type": "object",
+      "properties": {
+        "trees": { "type": "integer", "minimum": 0 },
+        "shards": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["trees", "shards"],
+      "additionalProperties": true
+    },
+    "indexQuery": {
+      "description": "The caller query input: the symbol as written.",
+      "type": "object",
+      "properties": {
+        "symbol": { "type": "string" }
+      },
+      "required": ["symbol"],
+      "additionalProperties": true
+    },
+    "indexStatus": {
+      "description": "The caller envelope index state: tree, commit, staleness, and file coverage.",
+      "type": "object",
+      "properties": {
+        "tree": { "type": "string" },
+        "commit": { "type": "string" },
+        "stale": { "type": "boolean" },
+        "coverage": { "$ref": "#/$defs/indexCoverage" }
+      },
+      "required": ["tree", "stale", "coverage"],
+      "additionalProperties": true
+    },
+    "indexCoverage": {
+      "description": "The indexed and skipped file counts for the queried tree.",
+      "type": "object",
+      "properties": {
+        "files_indexed": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["files_indexed", "skipped"],
+      "additionalProperties": true
+    },
+    "indexCounts": {
+      "description": "The caller query counts: rows returned and candidates left unresolved.",
+      "type": "object",
+      "properties": {
+        "callers": { "type": "integer", "minimum": 0 },
+        "unresolved": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["callers", "unresolved"],
+      "additionalProperties": true
+    },
+    "indexRow": {
+      "description": "One caller row: slash path, line, kind, and exact or lexical resolution.",
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "line": { "type": "integer", "minimum": 1 },
+        "kind": {
+          "enum": ["call", "method", "type-ref", "value-ref", "embed"]
+        },
+        "resolution": { "enum": ["exact", "lexical"] }
+      },
+      "required": ["path", "line", "kind", "resolution"],
+      "additionalProperties": true
+    },
     "calibrateData": {
       "description": "calibrate --json data: one object shared by the three modes, so every mode-specific key is optional. The live join fills review_id, head, pr, outcomes, precision (an object with by_tier), and provenance; the corpus join fills bundle, case, kind, model, panel, line_tolerance, ground_truth, reported, matched, false_positives, missed, precision (a rate or null), recall, false_positive_rate, outcomes, and missed_bugs; the probe fills bundle, grades, counts, and judgment.",
       "type": "object",

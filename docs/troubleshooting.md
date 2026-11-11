@@ -108,6 +108,12 @@ Cause: `--approve` is not a boolean.
 
 Fix: pass `--approve=true|false`.
 
+## `bad-at`
+
+Cause: `--at` names a revision the checkout cannot resolve to a tree or commit.
+
+Fix: pass a ref or tree SHA that exists in the source checkout, then re-run.
+
 ## `bad-attribution`
 
 Cause: `--attribution` names an unknown tier.
@@ -504,6 +510,26 @@ Cause: `--id` is already taken.
 
 Fix: pass a different `--id`.
 
+## `index-capped`
+
+Cause: the tree or shard store crossed the index caps (20,000 files, a 96 MiB
+tree, or a 256 MiB shard cache); the message names the measured number.
+
+Fix: narrow `--from`/`--at` to a smaller tree, or raise the caps deliberately.
+
+## `index-corrupt`
+
+Cause: a stored tree or shard is truncated or invalid.
+
+Fix: delete `.verdict/index` and rebuild with `verdict index build`.
+
+## `index-failed`
+
+Cause: an index store read or write failed, or git could not be run.
+
+Fix: confirm git works in the checkout, make `.verdict/index` writable, then
+re-run.
+
 ## `init-failed`
 
 Cause: `init` could not create `.verdict` or write a control file (storage not writable).
@@ -611,6 +637,12 @@ Fix: fetch the PR first, then re-run.
 Cause: `findings.json` is absent.
 
 Fix: run `post` or `record` first, then re-run.
+
+## `missing-index`
+
+Cause: no tree file exists for the queried tree.
+
+Fix: run `verdict index build` at that tree (or omit `--at` to query HEAD).
 
 ## `missing-patch`
 

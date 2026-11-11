@@ -21,6 +21,18 @@ type Config struct { //nolint:govet // field order is the published property ord
 	Scopes         []ConfigScope            `json:"scopes,omitempty"`
 	Profiles       map[string]ConfigProfile `json:"profiles,omitempty"`
 	DefaultProfile string                   `json:"default_profile,omitempty" nonnull:"true"`
+	Index          *ConfigIndex             `json:"index,omitempty"           nonnull:"true"`
+}
+
+// ConfigIndex holds the local Go index caps; absent keys keep the built-in
+// defaults.
+type ConfigIndex struct {
+	Files       *int   `json:"files,omitempty"         min:"1" nonnull:"true"`
+	FileBytes   *int64 `json:"file_bytes,omitempty"    min:"1" nonnull:"true"`
+	TreeBytes   *int64 `json:"tree_bytes,omitempty"    min:"1" nonnull:"true"`
+	ShardsBytes *int64 `json:"shards_bytes,omitempty"  min:"1" nonnull:"true"`
+	KeepTrees   *int   `json:"keep_trees,omitempty"    min:"1" nonnull:"true"`
+	RefsPerFile *int   `json:"refs_per_file,omitempty" min:"1" nonnull:"true"`
 }
 
 // ConfigDefaults holds the ordinary review defaults: the flag, environment,

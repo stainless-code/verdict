@@ -24,7 +24,8 @@
       "type": "object",
       "additionalProperties": { "$ref": "#/$defs/profile" }
     },
-    "default_profile": { "type": "string" }
+    "default_profile": { "type": "string" },
+    "index": { "$ref": "#/$defs/configIndex" }
   },
   "required": ["schema_version"],
   "additionalProperties": false,
@@ -59,6 +60,20 @@
       "properties": {
         "min_judged": { "type": "integer", "minimum": 1 },
         "max_fp_rate": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "configIndex": {
+      "description": "The local Go index caps: file count, per-file bytes, tree bytes, shard-cache bytes, trees kept by prune, and references recorded per file. Absent keys keep the built-in defaults.",
+      "type": "object",
+      "properties": {
+        "files": { "type": "integer", "minimum": 1 },
+        "file_bytes": { "type": "integer", "minimum": 1 },
+        "tree_bytes": { "type": "integer", "minimum": 1 },
+        "shards_bytes": { "type": "integer", "minimum": 1 },
+        "keep_trees": { "type": "integer", "minimum": 1 },
+        "refs_per_file": { "type": "integer", "minimum": 1 }
       },
       "required": [],
       "additionalProperties": false

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -16,11 +17,14 @@ import (
 	calibratecore "github.com/stainless-code/verdict/internal/core/calibrate"
 	checktreecore "github.com/stainless-code/verdict/internal/core/checktree"
 	doctorcore "github.com/stainless-code/verdict/internal/core/doctor"
+	coreexec "github.com/stainless-code/verdict/internal/core/exec"
+	indexcore "github.com/stainless-code/verdict/internal/core/index"
 	readycore "github.com/stainless-code/verdict/internal/core/ready"
 	trendcore "github.com/stainless-code/verdict/internal/core/trend"
 	triagecore "github.com/stainless-code/verdict/internal/core/triage"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 // fixedNow is the conformance clock: one deterministic, valid RFC 3339
@@ -174,6 +178,79 @@ func fixtureDiff() string {
 		"-old line\n" +
 		"+new line\n" +
 		" bottom\n"
+}
+
+// TestRuntimeIndexEnvelopeValidates proves the index response envelope
+// validates against the generated schema for every query kind and that each
+// kind labels itself: a status profile never masquerades as build.
+func TestRuntimeIndexEnvelopeValidates(t *testing.T) {
+	doc := loadSchemaDocument(t, "envelope.schema.json")
+	dir, env := indexConformanceRepo(t)
+	cases := []struct {
+		want   map[string]any
+		query  string
+		symbol string
+	}{
+		{query: indexcore.QueryBuild, want: map[string]any{
+			"kind": "build", "files_indexed": json.Number("2"), "parsed": json.Number("2"),
+		}},
+		{query: indexcore.QueryStatus, want: map[string]any{
+			"kind": "status", "built": true, "stale": false,
+		}},
+		{query: indexcore.QueryCallers, symbol: "a.Target", want: map[string]any{
+			"kind": "callers", "counts": map[string]any{"callers": json.Number("2"), "unresolved": json.Number("0")},
+		}},
+		{query: indexcore.QueryPrune, want: map[string]any{
+			"kind": "prune", "removed": map[string]any{"trees": json.Number("0"), "shards": json.Number("0")},
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.query, func(t *testing.T) {
+			req := &indexcore.Request{Query: tc.query, Symbol: tc.symbol}
+			req.ReadRequest = core.ReadRequest{
+				Runtime:  &core.Runtime{Now: fixedNow, Commander: coreexec.Runner{}, Env: env},
+				RepoRoot: dir,
+			}
+			resp, ref := indexcore.Run(context.Background(), req)
+			if ref != nil {
+				t.Fatalf("index %s refusal: %v", tc.query, ref)
+			}
+			data := resp.Data.Wire()
+			assertWireFields(t, data, tc.want)
+			assertServiceEnvelope(t, doc, "index", "", "", resp.At, resp.Next, resp.Warnings, data)
+		})
+	}
+}
+
+// indexConformanceRepo writes the two-package index fixture as one commit and
+// returns the checkout plus the hermetic child environment.
+func indexConformanceRepo(t *testing.T) (string, map[string]string) {
+	t.Helper()
+	dir := t.TempDir()
+	writeFixture(t, filepath.Join(dir, "go.mod"), "module example.com/m\n\ngo 1.27\n")
+	writeFixture(t, filepath.Join(dir, "a", "a.go"),
+		"package a\n\nfunc Target() {}\n\nfunc Caller() {\n\tTarget()\n}\n")
+	writeFixture(t, filepath.Join(dir, "b", "b.go"),
+		"package b\n\nimport \"example.com/m/a\"\n\nfunc Uses() {\n\ta.Target()\n}\n")
+	for _, args := range [][]string{
+		{"init", "-q", "-b", "main"},
+		{"add", "-A"},
+		{"commit", "-qm", "index conformance"},
+	} {
+		cmd := exec.CommandContext(t.Context(), "git", args...)
+		cmd.Dir = dir
+		cmd.Env = testenv.Base(nil)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	env := map[string]string{}
+	for _, kv := range testenv.Base(nil) {
+		if name, value, ok := strings.Cut(kv, "="); ok {
+			env[name] = value
+		}
+	}
+	return dir, env
 }
 
 // TestCostRecordNamesAreAWriterGateReadersTolerate pins both halves of the

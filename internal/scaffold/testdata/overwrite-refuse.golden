@@ -18,6 +18,7 @@ init: preset chill (chill: unpinned/10/0.7, standard: 1 member/5/0.5, strict: le
 --- .verdict/.gitignore (create) ---
 /state/
 /backtest/
+/index/
 wrote: .verdict/config.json
 wrote: .verdict/kb.jsonl
 wrote: .verdict/.gitignore
@@ -36,6 +37,7 @@ warn: init completed; the worktree has uncommitted changes (see check-tree above
 --- file C/.verdict/.gitignore ---
 /state/
 /backtest/
+/index/
 --- file C/.verdict/config.json ---
 {
   "schema_version": "1",

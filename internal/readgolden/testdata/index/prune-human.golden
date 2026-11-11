@@ -1,0 +1,8 @@
+exit: 0
+--- stdout ---
+index: kept 4 tree(s), removed 1 tree(s) and 1 shard(s)
+--- stderr ---
+
+--- files ---
+--- file C/.verdict/index/shards/88c2e45c61106cef23537deb6ecc6bd44eb98a3c.json (deleted) ---
+--- file C/.verdict/index/trees/aec3de3b47100da02b57b0c898e18fe8e23e5e0a.json (deleted) ---

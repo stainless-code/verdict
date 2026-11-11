@@ -381,10 +381,11 @@ func presetPanel(body string) string {
 // gitignoreName is the tracked-shape nested ignore file the state dir needs.
 const gitignoreName = ".gitignore"
 
-// gitignoreBody is the entire tracked ignore contract: only generated state
-// and backtest artifacts stay local, so the configuration and support files
+// gitignoreBody is the entire tracked ignore contract: only generated
+// state, backtest artifacts, and the local index stay local, so the
+// configuration and support files
 // are reviewable.
-const gitignoreBody = "/state/\n/backtest/"
+const gitignoreBody = "/state/\n/backtest/\n/index/"
 
 func kbStarter() string {
 	first := `{"id":"check-error-paths",` +

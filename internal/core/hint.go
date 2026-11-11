@@ -42,6 +42,7 @@ var hintRules = []HintRule{
 		"or narrow with a paths filter, then re-run"},
 	{codes: []string{"missing-chunk-coverage", "missing-chunk-snapshot"}, hint: "try: re-fetch the bundle with --chunk, " +
 		"then re-synthesize across all chunks and re-run"},
+	{codes: []string{"missing-index"}, hint: "try: run 'verdict index build' first"},
 	{prefix: "missing-", hint: "try: run the fetch/record step named above first, then re-run"},
 	{
 		codes: []string{
@@ -104,6 +105,8 @@ var hintRules = []HintRule{
 	{codes: []string{"controls-too-large"}, hint: "try: trim the named control file under its cap, commit it at base, then re-fetch"},
 	{codes: []string{"bad-review-input"}, hint: "try: fix the malformed agent input named above " +
 		"(review.json wants {body, approved, comments[]}; claims want string sigs), then re-run"},
+	{codes: []string{"index-capped"}, hint: "try: narrow --from/--at to a smaller tree, or raise the index caps"},
+	{codes: []string{"index-corrupt", "index-failed"}, hint: "try: delete .verdict/index and rebuild with 'verdict index build'"},
 	{codes: []string{"bad-since"}, hint: "try: pass --since <90d|12w|18mo|2y|ref> " +
 		"(a bare m is not a unit, and the ref must precede --until)"},
 	{codes: []string{"bad-until"}, hint: "try: pass --until <ref> that is an ancestor of HEAD"},

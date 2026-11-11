@@ -2,6 +2,7 @@ package verdict_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -476,4 +477,61 @@ func TestClientDoctorFallsBackWhenTheProbeFails(t *testing.T) {
 	}
 	doc := decodeData(t, resp.Data)
 	assertDoctorRows(t, asSlice(t, doc["checks"], "checks"))
+}
+
+// TestClientIndex proves the index verb through the SDK: a build reports its
+// tree, and a caller query returns the exact site inside the package.
+func TestClientIndex(t *testing.T) {
+	dir := t.TempDir()
+	sdkGitRepo(t, dir, map[string]string{
+		"go.mod": "module example.com/m\n",
+		"a/a.go": "package a\n\nfunc Target() {}\n\nfunc Caller() {\n\tTarget()\n}\n",
+	})
+	t.Chdir(dir)
+	c := newSDKClient(nil, nil)
+	defer c.Close()
+
+	built, err := c.Index(context.Background(), &verdict.IndexRequest{Query: "build"})
+	requireNoError(t, err)
+	assertIndexBuild(t, built.Data)
+
+	queried, err := c.Index(context.Background(), &verdict.IndexRequest{
+		Query: "callers", Symbol: "a.Target",
+	})
+	requireNoError(t, err)
+	assertIndexCallers(t, queried.Data)
+
+	pruned, err := c.Index(context.Background(), &verdict.IndexRequest{Query: "prune"})
+	requireNoError(t, err)
+	removed := asMap(t, decodeData(t, pruned.Data)["removed"], "removed")
+	if removed["trees"] != float64(0) || removed["shards"] != float64(0) {
+		t.Errorf("prune removed = %v, want 0 trees and 0 shards", removed)
+	}
+}
+
+// assertIndexBuild checks the build profile counted one parsed file.
+func assertIndexBuild(t *testing.T, data json.RawMessage) {
+	t.Helper()
+	build := decodeData(t, data)
+	if build["files_indexed"] != float64(1) || build["parsed"] != float64(1) {
+		t.Errorf("build data = %v, want one parsed file", build)
+	}
+}
+
+// assertIndexCallers checks the query profile's one exact row.
+func assertIndexCallers(t *testing.T, data json.RawMessage) {
+	t.Helper()
+	doc := decodeData(t, data)
+	counts := asMap(t, doc["counts"], "counts")
+	if counts["callers"] != float64(1) || counts["unresolved"] != float64(0) {
+		t.Errorf("counts = %v, want one exact caller", counts)
+	}
+	rows, ok := doc["rows"].([]any)
+	if !ok || len(rows) != 1 {
+		t.Fatalf("rows = %v, want one row", doc["rows"])
+	}
+	row := asMap(t, rows[0], "row")
+	if row["path"] != "a/a.go" || row["line"] != float64(6) || row["resolution"] != "exact" {
+		t.Errorf("row = %v, want a/a.go:6 exact", row)
+	}
 }

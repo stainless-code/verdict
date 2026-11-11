@@ -209,7 +209,7 @@ func TestEnsureStateIgnorePreservesBenignNegations(t *testing.T) {
 		t.Fatalf("EnsureStateIgnore: %v", err)
 	}
 	kept, err := os.ReadFile(layout.GitignoreFile())
-	if err != nil || string(kept) != before+"/state/\n/backtest/\n" {
+	if err != nil || string(kept) != before+"/state/\n/backtest/\n/index/\n" {
 		t.Fatalf("ignore = %q, err = %v", kept, err)
 	}
 }
@@ -243,7 +243,7 @@ func TestEnsureStateGeneratedFilesStayIgnored(t *testing.T) {
 	}
 	// Operator content with the sharp `!*.json` negation, then the
 	// generated files under test.
-	if err := os.WriteFile(layout.GitignoreFile(), []byte("# notes\n*.log\n!keep.log\n!*.json\n/state/\n/backtest/\n"), 0o644); err != nil {
+	if err := os.WriteFile(layout.GitignoreFile(), []byte("# notes\n*.log\n!keep.log\n!*.json\n/state/\n/backtest/\n/index/\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(layout.ConfigFile(), []byte("{\"schema_version\":\"1\"}"), 0o644); err != nil {

@@ -10,12 +10,13 @@
       "/$defs/requirements": "Blocking clauses with per-source thresholds, prepublication check names, and the approval bind requirement.",
       "/$defs/blockClause": "One blocking predicate: a required name and severity threshold with optional category and path masks; absent masks mean every category or path.",
       "/$defs/scope": "One path-scoped entry: required include globs with optional excludes plus resolution inputs — at most one of a named profile or inline defaults, with optional inline requirements.",
-      "/$defs/profile": "One work-profile description: provider-neutral depth, the checks the group must evaluate, and the lens budget."
+      "/$defs/profile": "One work-profile description: provider-neutral depth, the checks the group must evaluate, and the lens budget.",
+      "/$defs/configIndex": "The local Go index caps: file count, per-file bytes, tree bytes, shard-cache bytes, trees kept by prune, and references recorded per file. Absent keys keep the built-in defaults."
     }
   },
   "cost": {
     "descriptions": {
-      "": "What the agent writes per prompts/review.md and report --cost rolls up. One object per run, or an array when a bundle was reviewed more than once. The script only sums — it never prices: effort defaults to standard when missing or unknown, records without models still count as runs but not as runs_with_cost, every `models[]` entry must name its model — the name is what attribution reads, and the rollup sums all of them into one total rather than reporting per model, absent/unreadable records contribute zeros and never fail. Per-chunk records (chunks/<name>.cost.json) share this shape. Two readers treat unknown keys differently, and this schema allows them for both. Aggregators \u2014 the rollup, the group estimate, the receipt \u2014 read the fields they know and ignore the rest, so a newer writer's extra field never voids history. Certification of lens evidence is version-scoped: a record offered as schema_version \"2\" may carry only the top-level fields v2 defines, and an extra one refuses that record by name until it is removed or a version that defines it is declared. A record bound to the run at a different version refuses as unsupported rather than being re-read as v2.",
+      "": "What the agent writes per prompts/review.md and report --cost rolls up. One object per run, or an array when a bundle was reviewed more than once. The script only sums — it never prices: effort defaults to standard when missing or unknown, records without models still count as runs but not as runs_with_cost, every `models[]` entry must name its model — the name is what attribution reads, and the rollup sums all of them into one total rather than reporting per model, absent/unreadable records contribute zeros and never fail. Per-chunk records (chunks/<name>.cost.json) share this shape. Two readers treat unknown keys differently, and this schema allows them for both. Aggregators — the rollup, the group estimate, the receipt — read the fields they know and ignore the rest, so a newer writer's extra field never voids history. Certification of lens evidence is version-scoped: a record offered as schema_version \"2\" may carry only the top-level fields v2 defines, and an extra one refuses that record by name until it is removed or a version that defines it is declared. A record bound to the run at a different version refuses as unsupported rather than being re-read as v2.",
       "/$defs/record/properties/effort": "Run tier; missing or unknown values roll up as standard.",
       "/$defs/record/properties/models": "One entry per model that generated tokens: the synthesizer first, then each lens.",
       "/$defs/record/properties/est_usd": "The agent's own math from its price sheet, null when prices are unknown — never guessed.",
@@ -71,7 +72,7 @@
       "/$defs/fetchEstimate": "fetch --json data.estimate, in exactly one of two shapes. A whole-run resolution names the projected tier and cost from comparable past runs, with basis/harness/measured_runs appearing only when a local harness session priced a comparable run (their absence is the legacy self-reported estimate). A grouped resolution names each plan group's guard, tier and history-backed projection, plus the personal ceiling comparison; projected_usd is absent for a group no bound history priced, and the personal total is absent when any group is unknown, leaving the known subtotal as a lower bound.",
       "/$defs/fetchEstimate/properties/groups": "One entry per resolved plan group: its stable id, effort tier, its own guard when the plan resolved one, and projected_usd only when bound history priced it.",
       "/$defs/fetchEstimate/properties/personal": "The personal whole-run ceiling comparison: exact-total when every group is priced, known-lower-bound when some are unknown, no-personal-limit when no ceiling was set. limit_usd is absent when unset and never zero; total_usd is absent unless the aggregate is exact.",
-      "/$defs/fetchGroupEstimate/properties/guard_usd": "The group\u0027s resolved guard. Absent when the plan set none — never reported as zero.",
+      "/$defs/fetchGroupEstimate/properties/guard_usd": "The group's resolved guard. Absent when the plan set none — never reported as zero.",
       "/$defs/fetchGroupPersonal/properties/limit_usd": "The resolved personal ceiling. Absent when none was set — never reported as zero.",
       "/$defs/fetchGroupEstimate": "One plan group's public projection. projected_usd is omitted for an unknown group rather than reported as zero.",
       "/$defs/reportCompliance": "The captured-policy compliance view: whether the bundle captured a policy and its provenance verified, how many findings blocked and how many required checks are still pending for the saved head, and whether the work therefore satisfies the policy. Unknown or pending never reads as satisfied.",
@@ -158,7 +159,16 @@
       "/$defs/reportFilters/properties/category": "The active --category filter, or null when the run did not filter by category.",
       "/$defs/trendData/properties/by_category": "Portfolio finding counts by observed category with untagged for null entries; only observed categories appear.",
       "/$defs/trendBundleRow/properties/by_category": "One bundle's finding counts by observed category with untagged for null entries.",
-      "/$defs/calibrateData/properties/precision": "Live-join precision: totals plus by_tier counts and by_category cells (fixed, resolved_unfixed, open, unknown, judged, resolution_rate; a zero judged denominator reads null). Outcome rows carry the finding's category, null when untagged."
+      "/$defs/calibrateData/properties/precision": "Live-join precision: totals plus by_tier counts and by_category cells (fixed, resolved_unfixed, open, unknown, judged, resolution_rate; a zero judged denominator reads null). Outcome rows carry the finding's category, null when untagged.",
+      "/$defs/indexData": "index --json data: one object across build, status, prune, and callers, so kind names the subcommand and every other key is optional.",
+      "/$defs/indexShards": "The local shard store: file count and byte total.",
+      "/$defs/indexTreeRow": "One stored tree file: its tree SHA, file count, and bytes.",
+      "/$defs/indexRemoved": "The prune receipt: trees and shards removed.",
+      "/$defs/indexQuery": "The caller query input: the symbol as written.",
+      "/$defs/indexStatus": "The caller envelope index state: tree, commit, staleness, and file coverage.",
+      "/$defs/indexCoverage": "The indexed and skipped file counts for the queried tree.",
+      "/$defs/indexCounts": "The caller query counts: rows returned and candidates left unresolved.",
+      "/$defs/indexRow": "One caller row: slash path, line, kind, and exact or lexical resolution."
     }
   },
   "findings": {
@@ -368,6 +378,15 @@
       "/$defs/file/properties/bytes": "The exact bytes written to the snapshot.",
       "/$defs/file/properties/sha256": "SHA-256 of the exact written bytes; post/record re-hash and refuse controls-stale on drift.",
       "/properties/strict_input": "When true, record promotes review.json warnings to errors and refuses while any remain. fetch resolves it from REVIEW_STRICT_INPUT=1 only; absent means off."
+    }
+  },
+  "index": {
+    "descriptions": {
+      "": "One stored per-tree index under .verdict/index/trees/<tree>.json. Files are sorted by path, declarations and references stay in source order, and no timestamp or commit id lands here, so the same tree always writes the same bytes.",
+      "/$defs/file": "One indexed file: its blob, package, imports, declarations, and references. An oversized or unparsable file carries the marker instead of silently disappearing from the coverage count.",
+      "/$defs/import": "One import binding: the import path and the name it is bound to in the file.",
+      "/$defs/decl": "One package-level declaration: name, kind, line, exported bit, and receiver type for a method.",
+      "/$defs/ref": "One identifier reference: name, kind, qualifier for a package selector, source position, and whether it needs type information to resolve."
     }
   }
 }
