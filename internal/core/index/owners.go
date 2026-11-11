@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/core"
 )
@@ -80,41 +81,59 @@ func entryByPath(entries []treeEntry, p string) (treeEntry, bool) {
 }
 
 // parseCodeowners reads one CODEOWNERS body: one pattern and its owners per
-// line, last matching rule wins. A line whose pattern shape the matcher cannot
-// evaluate is counted and skipped; a pattern with no owners is not a rule.
+// line, last matching rule wins. An inline `#` starts a comment; a `\#` inside
+// a pattern names a literal `#`. A line whose pattern shape the matcher cannot
+// evaluate is counted and skipped. A pattern with no owners is kept: it is a
+// rule that clears an earlier match's ownership.
 //
 //nolint:revive // one branch per line shape keeps the grammar auditable
 func parseCodeowners(src string) ([]ownerRule, int) {
 	var rules []ownerRule
 	unsupported := 0
 	for line := range strings.SplitSeq(src, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
+		line = strings.TrimSpace(stripOwnerComment(line))
+		if line == "" {
 			continue
 		}
 		fields := strings.Fields(line)
-		if len(fields) < 2 {
-			continue
-		}
 		re, ok := compileOwnerPattern(fields[0])
 		if !ok {
 			unsupported++
 			continue
 		}
-		rules = append(rules, ownerRule{re: re, owners: fields[1:]})
+		owners := make([]string, 0, len(fields)-1)
+		owners = append(owners, fields[1:]...)
+		rules = append(rules, ownerRule{re: re, owners: owners})
 	}
 	return rules, unsupported
+}
+
+// stripOwnerComment cuts one line at its first unescaped `#`: GitHub reads the
+// rest as a comment, while `\#` keeps the character in the pattern.
+func stripOwnerComment(line string) string {
+	for i := 0; i < len(line); i++ {
+		switch line[i] {
+		case '\\':
+			i++
+		case '#':
+			return line[:i]
+		}
+	}
+	return line
 }
 
 // compileOwnerPattern turns one GitHub-style path pattern into a matcher. A
 // leading slash anchors at the repository root; a pattern with no slash matches
 // a path segment at any depth; a trailing slash matches everything below the
-// directory. `*` stays inside one segment, `**` crosses segments only in
+// directory, and a pattern without one also matches the directory's
+// descendants. `*` stays inside one segment, `**` crosses segments only in
 // gitignore's three positional forms (`**/`, `/**`, `/**/`) and is a plain `*`
-// anywhere else, `?` matches one character. Negation, escapes, and character
-// classes are refused here so the caller can warn about them.
+// anywhere else, `?` matches one character, and `\#` writes a literal `#`.
+// Negation, other escapes, and character classes are refused here so the caller
+// can warn about them.
 func compileOwnerPattern(pattern string) (*regexp.Regexp, bool) {
-	if pattern == "" || strings.HasPrefix(pattern, "!") || strings.ContainsAny(pattern, `\[]`) {
+	if pattern == "" || strings.HasPrefix(pattern, "!") ||
+		strings.ContainsAny(pattern, `[]`) || hasUnknownEscape(pattern) {
 		return nil, false
 	}
 	dir := strings.HasSuffix(pattern, pathSeparator)
@@ -132,9 +151,9 @@ func compileOwnerPattern(pattern string) (*regexp.Regexp, bool) {
 	case dir:
 		expr = "(?:^|/)" + body + "/.*$"
 	case anchored:
-		expr = "^" + body + "$"
+		expr = "^" + body + "(?:/.*)?$"
 	default:
-		expr = "(?:^|/)" + body + "$"
+		expr = "(?:^|/)" + body + "(?:/.*)?$"
 	}
 	re, err := regexp.Compile(expr)
 	if err != nil {
@@ -143,12 +162,29 @@ func compileOwnerPattern(pattern string) (*regexp.Regexp, bool) {
 	return re, true
 }
 
+// hasUnknownEscape reports a backslash escape other than `\#`, the one escape
+// the matcher evaluates as a literal character.
+func hasUnknownEscape(pattern string) bool {
+	for i := 0; i < len(pattern); i++ {
+		if pattern[i] != '\\' {
+			continue
+		}
+		if i+1 < len(pattern) && pattern[i+1] == '#' {
+			i++
+			continue
+		}
+		return true
+	}
+	return false
+}
+
 // ownerGlobDoubleStar is the marker [ownerGlob] translates positionally: it
 // crosses segments only in `**/`, `/**`, and `/**/`, and is a plain `*`
 // anywhere else.
 const ownerGlobDoubleStar = "**"
 
-// ownerGlob converts the glob body of one pattern to a regexp fragment.
+// ownerGlob converts the glob body of one pattern to a regexp fragment. One
+// rune is one literal, so a UTF-8 character reaches the matcher unchanged.
 func ownerGlob(pattern string) string {
 	var sb strings.Builder
 	for i := 0; i < len(pattern); {
@@ -169,9 +205,13 @@ func ownerGlob(pattern string) string {
 		case rest[0] == '?':
 			sb.WriteString("[^/]")
 			i++
+		case strings.HasPrefix(rest, `\#`):
+			sb.WriteString("#")
+			i += len(`\#`)
 		default:
-			sb.WriteString(regexp.QuoteMeta(rest[:1]))
-			i++
+			_, size := utf8.DecodeRuneInString(rest)
+			sb.WriteString(regexp.QuoteMeta(rest[:size]))
+			i += size
 		}
 	}
 	return sb.String()
@@ -269,6 +309,9 @@ func ownerLine(target *Target, tree string) string {
 		return fmt.Sprintf("index: %s has no owners: no CODEOWNERS at %s", quotePath(target.Path), tree)
 	case target.Owners == nil:
 		return fmt.Sprintf("index: %s has no owner rule in %s at %s",
+			quotePath(target.Path), target.OwnersSource, tree)
+	case len(target.Owners) == 0:
+		return fmt.Sprintf("index: %s has no owners: the last matching rule in %s names none (at %s)",
 			quotePath(target.Path), target.OwnersSource, tree)
 	default:
 		return fmt.Sprintf("index: %s owned by %s (from %s at %s)",

@@ -191,8 +191,9 @@ type Window struct {
 }
 
 // Target is one queried path and the CODEOWNERS rule that owns it. A nil
-// Owners slice is "no rule matched" (or no CODEOWNERS file at the tree); it is
-// never rendered as an owner named nobody.
+// Owners slice is "no rule matched" (or no CODEOWNERS file at the tree); an
+// empty non-nil slice is GitHub's ownerless rule, which clears an earlier
+// match. It is never rendered as an owner named nobody.
 type Target struct {
 	Path         string
 	OwnersSource string

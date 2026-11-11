@@ -318,6 +318,55 @@ func TestOwnersUnsupportedPatternWarns(t *testing.T) {
 	}
 }
 
+// TestOwnersOwnerlessRuleClearsEarlierOwnership proves a rule that names nobody
+// is kept and clears an earlier match: the path reads an empty owner list, not
+// the previous rule's owners and not the no-rule null.
+func TestOwnersOwnerlessRuleClearsEarlierOwnership(t *testing.T) {
+	f := newFixture(t)
+	codeownersFixture(f, "* @everyone\nspecial.go\n")
+	f.write("special.go", "package m\n\nfunc Special() {}\n")
+	f.commit("one")
+	resp := f.queryPath(QueryOwners, "special.go")
+	got := resp.Data.Target
+	if got == nil || got.Owners == nil || len(got.Owners) != 0 || got.OwnersSource != ".github/CODEOWNERS" {
+		t.Fatalf("target = %+v; want an empty owner list from .github/CODEOWNERS", got)
+	}
+	if wire := resp.Data.Wire().MarshalCompact(); !strings.Contains(wire, `"owners":[]`) {
+		t.Errorf("wire = %s; want an empty owners array", wire)
+	}
+	want := "index: special.go has no owners: the last matching rule in .github/CODEOWNERS names none (at " +
+		f.bodyTree() + ")"
+	if !slices.Contains(resp.Human, want) {
+		t.Errorf("human lines = %q; want one equal to %q", resp.Human, want)
+	}
+	assertOwners(t, f.queryPath(QueryOwners, "a/a.go").Data.Target, []string{"@everyone"}, ".github/CODEOWNERS")
+}
+
+// TestOwnersInlineCommentAndEscapedHash proves an inline `#` starts a comment
+// after the owners, while `\#` in a pattern names a literal `#`.
+func TestOwnersInlineCommentAndEscapedHash(t *testing.T) {
+	f := newFixture(t)
+	codeownersFixture(f, "*.go @a # contact @backup\n"+`a\#b.go @hash # comment`+"\n")
+	f.write("a#b.go", "package m\n\nfunc Hash() {}\n")
+	f.commit("one")
+	resp := f.queryPath(QueryOwners, "a/a.go")
+	assertOwners(t, resp.Data.Target, []string{"@a"}, ".github/CODEOWNERS")
+	if len(resp.Warnings) != 0 {
+		t.Errorf("warnings = %q; want none: an inline comment is not an unsupported pattern", resp.Warnings)
+	}
+	assertOwners(t, f.queryPath(QueryOwners, "a#b.go").Data.Target, []string{"@hash"}, ".github/CODEOWNERS")
+}
+
+// TestOwnersDirectoryRuleOwnsDescendants proves a directory named without a
+// trailing slash owns every file below it, GitHub's directory-rule form.
+func TestOwnersDirectoryRuleOwnsDescendants(t *testing.T) {
+	f := newFixture(t)
+	codeownersFixture(f, "* @default\n**/logs @logs\n")
+	f.write("build/logs/error.log", "boom\n")
+	f.commit("one")
+	assertOwners(t, f.queryPath(QueryOwners, "build/logs/error.log").Data.Target, []string{"@logs"}, ".github/CODEOWNERS")
+}
+
 // TestOwnerGlobSemantics pins the documented pattern subset: anchors, segment
 // patterns, `**`, `?`, and directory patterns.
 //
@@ -352,6 +401,12 @@ func TestOwnerGlobSemantics(t *testing.T) {
 		{"docs/", "docs/a.go", true},
 		{"docs/", "x/docs/a.go", true},
 		{"docs/", "docsx/a.go", false},
+		{"logs", "build/logs/error.log", true},
+		{"**/logs", "build/logs/error.log", true},
+		{"/docs", "docs/a/b.md", true},
+		{"logs", "build/logsx/error.log", false},
+		{"café/*.go", "café/a.go", true},
+		{"café/*.go", "cafe/a.go", false},
 		{"a?.go", "ab.go", true},
 		{"a?.go", "abc.go", false},
 	}

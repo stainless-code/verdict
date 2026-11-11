@@ -2650,18 +2650,25 @@ names why nothing was cached; a shallow clone's own warning carries its case.
 path at the queried tree. The file is read **at the tree**, from the git object
 store, at GitHub's first match of
 `.github/CODEOWNERS`, `CODEOWNERS`, then `docs/CODEOWNERS` — never the worktree
-copy, so an uncommitted edit changes nothing. The last matching rule wins.
+copy, so an uncommitted edit changes nothing. The last matching rule wins, and
+a rule with no owners is kept: it clears an earlier match, so the path reads
+`owners: []` with the source named — GitHub's way of saying the last matching
+rule removed ownership. An inline `#` starts a comment, so `*.go @a # contact`
+names only `@a`; `\#` inside a pattern writes a literal `#`.
 Patterns follow gitignore's positional subset: `*` stays inside a segment, `?`
 matches one character, `**` crosses segments only in the three positional
 forms `**/`, `/**`, and `/**/` and is a plain `*` anywhere else (so `a**b`
 never matches across a `/`), a leading `/` anchors at the repository
-root, a pattern with no slash matches a segment at any depth, and a trailing
-slash matches everything below the directory. Negation (`!`), backslash
-escapes, and character classes are not evaluated: a file using them warns, and
-those lines match nothing. A tree with no CODEOWNERS reads `owners: null` and
-`owners_source: null`; a file whose rules do not match reads `owners: null`
-with the source named. Neither ever reads as an owner named nobody. The same
-`target` object rides on `tests-for` (path form) and `co-changed`.
+root, and a pattern with no slash matches a segment at any depth. A trailing
+slash matches everything below the directory; a pattern without one matches a
+file or directory by that name, so a directory rule also owns every file below
+it (`**/logs` owns `build/logs/error.log`). Negation (`!`), every other
+backslash escape, and character classes are not evaluated: a file using them
+warns, and those lines match nothing. A tree with no CODEOWNERS reads
+`owners: null` and `owners_source: null`; a file no rule matches reads
+`owners: null` with the source named; a matching ownerless rule reads
+`owners: []` with the source named. None ever reads as an owner named nobody.
+The same `target` object rides on `tests-for` (path form) and `co-changed`.
 
 Caps: 20,000 Go files, 1 MiB per file (an oversized file is skipped and
 counted in `coverage.skipped`), a 96 MiB tree file, and a 256 MiB shard cache;
