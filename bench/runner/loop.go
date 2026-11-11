@@ -321,7 +321,11 @@ func (r *runner) prepareRound(
 	out *LoopOutcome,
 	round int,
 ) (string, string, *RoundAttempt, error) {
-	prompt := assembleLoopPrompt(prefix, nonce, prior, source, cr.corpus.diff, round, lc.MaxRounds, out.Attempts)
+	derived, err := toToolFreePrefix(prefix)
+	if err != nil {
+		return prior, "", nil, err
+	}
+	prompt := assembleLoopPrompt(derived, nonce, prior, source, cr.corpus.diff, round, lc.MaxRounds, out.Attempts)
 	roundPath := roundDir(cr, round)
 	if err := os.MkdirAll(roundPath, dirPerm); err != nil {
 		return prior, "", nil, jq.NewErrf("round dir: %s", err)
@@ -329,11 +333,11 @@ func (r *runner) prepareRound(
 	if err := atomic.WriteFile(filepath.Join(roundPath, promptFile), []byte(prompt)); err != nil {
 		return prior, "", nil, jq.NewErrf("prompt: %s", err)
 	}
-	sum := sha256.Sum256([]byte(prompt))
+	sha := hashPrompt(prefix, prompt)
 	if round == 1 {
-		cr.promptSHA = hex.EncodeToString(sum[:])
+		cr.promptSHA = sha
 	}
-	attempt := &RoundAttempt{Round: round, PromptSHA: hex.EncodeToString(sum[:])}
+	attempt := &RoundAttempt{Round: round, PromptSHA: sha}
 	return prompt, roundPath, attempt, nil
 }
 

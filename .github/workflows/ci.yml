@@ -240,6 +240,18 @@ jobs:
           version: v2.15.0
           args: --timeout=10m
 
+      # Windows-only files never compile in the pass above, so a finding there
+      # reaches main with the lane green. Type-check them as the go-windows
+      # runner will: same config, GOOS=windows, cgo off.
+      - name: golangci-lint (GOOS=windows, CGO_ENABLED=0)
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        env:
+          GOOS: windows
+          CGO_ENABLED: "0"
+        with:
+          version: v2.15.0
+          args: --timeout=10m
+
       - name: Prove the golden tests ran (no silent skip)
         shell: bash
         run: |
@@ -283,6 +295,18 @@ jobs:
 
       - name: golangci-lint (repo config, pinned v2.15.x)
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.15.0
+          args: --timeout=10m
+
+      # Windows-only files never compile in the pass above, so a finding there
+      # reaches main with the lane green. Type-check them as the go-windows
+      # runner will: same config, GOOS=windows, cgo off.
+      - name: golangci-lint (GOOS=windows, CGO_ENABLED=0)
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        env:
+          GOOS: windows
+          CGO_ENABLED: "0"
         with:
           version: v2.15.0
           args: --timeout=10m

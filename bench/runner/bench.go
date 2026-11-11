@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"io"
 	"os"
@@ -460,12 +458,15 @@ func (r *runner) measure(ctx context.Context, cr *caseRun, prefix, nonce string)
 		return jq.NewErrf("sample dir: %s", err)
 	}
 	source := caseSource(cr.corpus.id, cr.corpus.diff)
-	prompt := assemblePrompt(prefix, nonce, source, cr.corpus.diff)
+	derived, err := toToolFreePrefix(prefix)
+	if err != nil {
+		return err
+	}
+	prompt := assemblePrompt(derived, nonce, source, cr.corpus.diff)
 	if err := atomic.WriteFile(filepath.Join(cr.dir, promptFile), []byte(prompt)); err != nil {
 		return jq.NewErrf("prompt: %s", err)
 	}
-	sum := sha256.Sum256([]byte(prompt))
-	cr.promptSHA = hex.EncodeToString(sum[:])
+	cr.promptSHA = hashPrompt(prefix, prompt)
 	if err := r.runAgent(ctx, cr); err != nil {
 		return err
 	}
@@ -691,7 +692,10 @@ func (r *runner) fail(rep *Report, cr *caseRun, err error) {
 	if rmErr := os.RemoveAll(filepath.Join(reviewRoot, cr.slug)); rmErr != nil {
 		err = jq.NewErrf("%s (could not drop the partial bundle: %s)", err, rmErr)
 	}
-	rep.Failures = append(rep.Failures, Failure{Case: cr.corpus.id, Run: cr.index, Error: err.Error(), Evidence: cr.dir})
+	rep.Failures = append(rep.Failures, Failure{
+		Case: cr.corpus.id, Run: cr.index, Error: err.Error(),
+		Evidence: cr.dir, Kind: r.failureKind(cr),
+	})
 }
 
 // roundMillis keeps the published wall clock readable and diff-stable.

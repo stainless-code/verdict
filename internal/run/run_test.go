@@ -9,16 +9,14 @@ import (
 	"github.com/stainless-code/verdict/internal/cli"
 )
 
-// testRunner builds a runner whose buffers the caller can inspect.
-func testRunner(cmd string, jsonMode bool) (*cli.Runner, *strings.Builder, *strings.Builder) {
+// testRunner builds the run verb's runner around buffers the caller can
+// inspect. A test that drives another verb, or JSON mode, adjusts the runner.
+func testRunner() (*cli.Runner, *strings.Builder, *strings.Builder) {
 	var out, diag strings.Builder
 	r := &cli.Runner{
-		Cmd: cmd, Repo: "acme/app", Pr: "42",
+		Cmd: "run", Repo: "acme/app", Pr: "42",
 		Out: &out, Diag: &diag, Human: &out,
-		Now: time.Now, Effective: cli.Defaults(), EnvNoColor: true, JSONMode: jsonMode,
-	}
-	if jsonMode {
-		r.Human = &diag
+		Now: time.Now, Effective: cli.Defaults(), EnvNoColor: true,
 	}
 	return r, &out, &diag
 }
@@ -70,7 +68,7 @@ func TestRenderCommandQuotesForShell(t *testing.T) {
 // TestParseFlagsPassThrough proves everything after a bare `--` reaches the
 // agent unchanged, including tokens the verb would otherwise own.
 func TestParseFlagsPassThrough(t *testing.T) {
-	r, _, _ := testRunner("run", false)
+	r, _, _ := testRunner()
 	flags, code, done := parseFlags(r, []string{
 		"--agent", "claude", "--timeout", "42", "--print",
 		"--", "--json", "--agent", "not-ours", "--", "trailing",
@@ -90,7 +88,7 @@ func TestParseFlagsPassThrough(t *testing.T) {
 // TestParseFlagsDefaults proves the absent --timeout keeps verify's default and
 // that a bare `--` with nothing after it is no pass-through at all.
 func TestParseFlagsDefaults(t *testing.T) {
-	r, _, _ := testRunner("run", false)
+	r, _, _ := testRunner()
 	flags, code, done := parseFlags(r, []string{"--agent", "codex", "--"})
 	if done {
 		t.Fatalf("parse failed with exit %d", code)
@@ -103,10 +101,13 @@ func TestParseFlagsDefaults(t *testing.T) {
 // TestParseFlagsUnknownFlagIsUsage proves an unknown pre-`--` token is a usage
 // error (exit 2) naming the accepted surface, never a passthrough.
 func TestParseFlagsUnknownFlagIsUsage(t *testing.T) {
-	r, _, diag := testRunner("run", false)
+	r, out, diag := testRunner()
 	_, code, done := parseFlags(r, []string{"--agent", "claude", "--model", "opus"})
 	if !done || code != cli.ExitUsage {
 		t.Fatalf("exit = %d done %v, want the usage exit", code, done)
+	}
+	if out.Len() != 0 {
+		t.Errorf("usage error wrote %q to stdout; want the diagnostic stream only", out.String())
 	}
 	if !strings.Contains(diag.String(), "--agent <name>") {
 		t.Errorf("usage error does not name the accepted flags: %q", diag.String())
@@ -116,7 +117,7 @@ func TestParseFlagsUnknownFlagIsUsage(t *testing.T) {
 // TestParseFlagsMissingValueIsUsage proves a value flag without its operand
 // is a usage error rather than an empty agent name.
 func TestParseFlagsMissingValueIsUsage(t *testing.T) {
-	r, _, diag := testRunner("run", false)
+	r, _, diag := testRunner()
 	_, code, done := parseFlags(r, []string{"--agent"})
 	if !done || code != cli.ExitUsage {
 		t.Fatalf("exit = %d done %v, want the usage exit", code, done)

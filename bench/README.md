@@ -74,9 +74,25 @@ runner records a failure instead of scoring garbage.
 `pi`'s default system prompt advertises tools, and this adapter disables them. A
 model told it can run commands answers with literal tool-call markup instead of
 a review (4 of 24 samples did before `--system-prompt` replaced that claim with
-the truth). The shipped prompt set is written for a harness with tools and
-subagents, so a tool-free sample reads that workflow without being able to run
-it: that is the measurement, not something to paper over.
+the truth), so the system prompt stays as a backup: the derived prompt below
+already carries the contract, and every adapter inherits it.
+
+Single-shot bench mode is explicitly tool-free: the runner rewrites the shipped
+review workflow into a read-only task at run time (`bench/runner/prompt.go`, a
+pure transform over the rendered trusted prefix — checkout, reads, greps, the
+lens dispatch, and the record/post submission become one read-only
+instruction), so the sample gets the shipped judgment rubric with everything it
+may read fenced in `prompt.md`, and its final message must be exactly one
+`review.json` document. There is no second hand-maintained copy; a drift pin
+(`bench/runner/testdata/tool-free-prompt.golden`) fails when the shipped prompt
+changes without review. The tool-bearing contract belongs to full-workflow
+mode, not this one. A final message carrying tool-call markup is an adapter
+failure, never a scored review: `pi.sh` refuses it before writing `review.json`
+with `pi agent: final message is a tool call, but this sample has no tools:
+<first 240 chars>`, and the runner labels it `kind: "adapter_tool_call"` in
+`failures[]` — but only for a sample that already failed (a valid `review.json`
+is never reclassified). `prompt_sha256` hashes the shipped and derived bytes
+together, so either side moving changes the pin.
 
 | variable         | default                        |
 | ---------------- | ------------------------------ |

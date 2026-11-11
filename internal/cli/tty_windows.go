@@ -5,12 +5,12 @@ package cli
 import (
 	"os"
 	"syscall"
-	"unsafe"
 )
 
+// IsTerminal reports whether f is a console. The console API is the Windows
+// analog of the unix terminal ioctl: a character device alone is not enough
+// (NUL is one but is never a TTY).
 func IsTerminal(f *os.File) bool {
 	var mode uint32
-	r, _, _ := syscall.NewLazyDLL("kernel32.dll").NewProc("GetConsoleMode").Call(
-		uintptr(f.Fd()), uintptr(unsafe.Pointer(&mode)))
-	return r != 0
+	return syscall.GetConsoleMode(syscall.Handle(f.Fd()), &mode) == nil
 }
