@@ -208,6 +208,7 @@ func Run(ctx context.Context, req *Request) (resp *Response, ref *core.RefusalEr
 	if req.Mode != modeMine {
 		return nil, st.refuse(codeBadFlags, "backtest needs the 'mine' mode")
 	}
+	st.trust = st.readTrust(ctx)
 	root, ref := st.repoRoot(ctx)
 	if ref != nil {
 		return nil, ref
@@ -250,10 +251,12 @@ func Run(ctx context.Context, req *Request) (resp *Response, ref *core.RefusalEr
 	}, nil
 }
 
-// state carries the request, the resolved repository root, and the warnings.
+// state carries the request, the resolved repository root, the user's
+// forwarded safe.directory list, and the warnings.
 type state struct {
 	req      *Request
 	root     string
+	trust    []string
 	warnings []string
 }
 
@@ -319,16 +322,26 @@ func (st *state) humanLine(line string) {
 	}
 }
 
+// notARepoStderr is git's own phrasing for a path outside every worktree;
+// every other non-zero rev-parse exit keeps git's line.
+const notARepoStderr = "not a git repository"
+
 // repoRoot resolves the git top level: the checkout outside a repository is a
-// typed not-a-repo, never a silent cwd-relative read.
+// typed not-a-repo, never a silent cwd-relative read. Any other git failure —
+// a checkout owned by another uid is the one an operator hits — is a
+// backtest-failed carrying git's first stderr line, so the cause is named
+// instead of hidden behind not-a-repo.
 func (st *state) repoRoot(ctx context.Context) (string, *core.RefusalError) {
 	root := st.req.RepoRoot
 	if root == "" {
 		root = "."
 	}
-	out, exit, _, err := st.git(ctx, root, "rev-parse", "--show-toplevel")
+	out, exit, stderr, err := st.git(ctx, root, "rev-parse", "--show-toplevel")
 	if err != nil {
 		return "", st.gitFailure(ctx, err.Error())
+	}
+	if exit != 0 && !strings.Contains(stderr, notARepoStderr) {
+		return "", st.gitFailure(ctx, "git rev-parse failed: "+firstLine(stderr))
 	}
 	if exit != 0 || strings.TrimSpace(out) == "" {
 		return "", st.refuse(codeNotARepo, "not a git repository: "+root)

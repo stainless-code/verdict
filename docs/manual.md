@@ -2521,6 +2521,12 @@ calls and zero network calls: everything comes from git objects already on
 disk. `replay` (run the review) and `score` (join findings to the later fix)
 are later slices; this release ships `mine` alone.
 
+Every mining git call runs with the system and user config nulled — the artifact
+never depends on a formatting knob — with one exception: the user's
+`safe.directory` list, read from the `--system` and `--global` scopes with the
+user's own git environment and forwarded at command scope, so a checkout owned
+by another uid mines exactly when that user's own git trusts it.
+
 A **candidate** is one merged PR plus the lines a later fix deleted that blame
 to that PR's head. It is a hypothesis about where a defect was introduced —
 not a defect, not a finding, not a calibration result, and not citable. SZZ

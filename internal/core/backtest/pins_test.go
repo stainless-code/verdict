@@ -36,10 +36,19 @@ func (r *pinRecorder) Run(ctx context.Context, cmd *core.Command) (core.Result, 
 	return r.inner.Run(ctx, cmd)
 }
 
-// TestMinePinsEveryGitCall pins the mining git contract: every call carries
-// the command-scope pins, diff calls carry the diff flags, and the child
-// environment is rebuilt without the parent's git redirects. A dropped pin
-// fails here even where an explicit flag would mask its effect.
+// trustReadArgvs are the two protected-scope safe.directory reads, in order.
+// safe.directory is honored from the command line and these two scopes only,
+// so the read cannot be widened to the repository's own config.
+var trustReadArgvs = [][]string{
+	{"git", "config", "--system", "--null", "--get-all", "safe.directory"},
+	{"git", "config", "--global", "--null", "--get-all", "safe.directory"},
+}
+
+// TestMinePinsEveryGitCall pins the mining git contract: every mining call
+// carries the command-scope pins, diff calls carry the diff flags, and the
+// child environment is rebuilt without the parent's git redirects. The two
+// safe.directory reads run first, with the user's config scopes still live.
+// A dropped pin fails here even where an explicit flag would mask its effect.
 func TestMinePinsEveryGitCall(t *testing.T) {
 	b, _ := newMergedFixRepo(t)
 	home := t.TempDir()
@@ -48,7 +57,7 @@ func TestMinePinsEveryGitCall(t *testing.T) {
 		Runtime: &core.Runtime{
 			Commander: rec,
 			Env: map[string]string{
-				"HOME": home, "MINE_MARKER": "kept",
+				"HOME": home, "MINE_MARKER": "kept", "GIT_CONFIG_NOSYSTEM": "1",
 				"GIT_DIR": "/evil", "GIT_WORK_TREE": "/evil", "GIT_INDEX_FILE": "/evil",
 				"GIT_OBJECT_DIRECTORY": "/evil", "GIT_ALTERNATE_OBJECT_DIRECTORIES": "/evil",
 				"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "color.ui", "GIT_CONFIG_VALUE_0": "always",
@@ -59,14 +68,31 @@ func TestMinePinsEveryGitCall(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("refusal %s: %s", ref.Code, ref.Message)
 	}
-	if len(rec.calls) == 0 {
-		t.Fatal("no git call was recorded; the guard would pass vacuously")
-	}
+	var reads [][]string
+	var mined int
 	for _, call := range rec.calls {
 		name := "git " + strings.Join(call.argv, " ")
+		if isTrustRead(call.argv) {
+			reads = append(reads, call.argv)
+			checkUserEnv(t, name, call.env, home)
+			continue
+		}
+		mined++
 		checkPinArgv(t, name, call.argv)
 		checkPinEnv(t, name, call.env, home)
 	}
+	if !slices.EqualFunc(reads, trustReadArgvs, slices.Equal) {
+		t.Errorf("trust reads = %v; want %v", reads, trustReadArgvs)
+	}
+	if mined == 0 {
+		t.Fatal("no mining call was recorded; the guard would pass vacuously")
+	}
+}
+
+// isTrustRead reports the safe.directory reads, the only git calls that run
+// with the user's config scopes.
+func isTrustRead(argv []string) bool {
+	return len(argv) > 1 && argv[1] == "config"
 }
 
 // checkPinArgv proves one command carries the pin prefix and, for a show or
@@ -138,6 +164,36 @@ func checkNoRedirects(t *testing.T, name string, env map[string]string) {
 	for key := range env {
 		if strings.HasPrefix(key, "GIT_CONFIG_") &&
 			key != "GIT_CONFIG_GLOBAL" && key != "GIT_CONFIG_NOSYSTEM" {
+			t.Errorf("%s: inherited %s from the parent environment", name, key)
+		}
+	}
+}
+
+// checkUserEnv proves one safe.directory read runs with the user's config
+// scopes and overlays live, git's location redirects dropped, and the locale
+// and pager pins in place.
+func checkUserEnv(t *testing.T, name string, env map[string]string, home string) {
+	t.Helper()
+	wantEnv := map[string]string{
+		"HOME": home, "LC_ALL": "C", "GIT_PAGER": "cat",
+		"GIT_OPTIONAL_LOCKS": "0", "GIT_TERMINAL_PROMPT": "0",
+		"GIT_NO_REPLACE_OBJECTS": "1", "GIT_CONFIG_NOSYSTEM": "1",
+		"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "color.ui",
+		"GIT_CONFIG_VALUE_0": "always",
+	}
+	for key, want := range wantEnv {
+		if got := env[key]; got != want {
+			t.Errorf("%s: env %s = %q; want %q", name, key, got, want)
+		}
+	}
+	if _, bad := env["GIT_CONFIG_GLOBAL"]; bad {
+		t.Errorf("%s: pinned GIT_CONFIG_GLOBAL; the read must use the user's resolution", name)
+	}
+	for _, key := range []string{
+		"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY",
+		"GIT_ALTERNATE_OBJECT_DIRECTORIES",
+	} {
+		if _, bad := env[key]; bad {
 			t.Errorf("%s: inherited %s from the parent environment", name, key)
 		}
 	}
