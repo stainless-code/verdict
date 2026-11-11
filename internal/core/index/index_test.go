@@ -307,6 +307,73 @@ func TestIndexReparsesOnlyChangedBlob(t *testing.T) {
 	}
 }
 
+// TestCallersCorruptTreeRefuses proves a truncated tree file refuses
+// index-corrupt instead of answering from a partial store.
+func TestCallersCorruptTreeRefuses(t *testing.T) {
+	f := newFixture(t)
+	writeCallFixture(f, "")
+	f.commit("one")
+	tree := f.run("", "rev-parse", "HEAD^{tree}")
+	f.build()
+	path := filepath.Join(f.dir, ".verdict", "index", "trees", tree+".json")
+	if err := os.Truncate(path, 5); err != nil {
+		t.Fatal(err)
+	}
+	req := f.request(QueryCallers, nil)
+	req.Symbol = "a.Target"
+	_, ref := Run(context.Background(), req)
+	want := "tree " + tree + ".json is truncated or invalid"
+	if ref == nil || ref.Code != "index-corrupt" || ref.Message != want {
+		t.Fatalf("refusal = %v; want index-corrupt: %q", ref, want)
+	}
+}
+
+// TestIndexVersionResetRebuilds proves a store written by another version is
+// reset and reparsed, never partially read.
+func TestIndexVersionResetRebuilds(t *testing.T) {
+	f := newFixture(t)
+	writeCallFixture(f, "")
+	f.commit("one")
+	first := f.build()
+	if first.Data.Parsed != 3 {
+		t.Fatalf("first build parsed %d; want 3", first.Data.Parsed)
+	}
+	version := filepath.Join(f.dir, ".verdict", "index", "version")
+	if err := os.WriteFile(version, []byte("2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	second := f.build()
+	if second.Data.Parsed != 3 {
+		t.Errorf("version reset parsed %d; want 3", second.Data.Parsed)
+	}
+	raw, err := os.ReadFile(version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != "1\n" {
+		t.Errorf("version file = %q; want %q", raw, "1\n")
+	}
+	if got := storeFiles(t, f.dir, "trees"); got != 1 {
+		t.Errorf("tree files = %d; want 1", got)
+	}
+}
+
+// TestCallersMissingIndexRefuses proves a caller query before a build refuses
+// missing-index with the build instruction, not an empty answer.
+func TestCallersMissingIndexRefuses(t *testing.T) {
+	f := newFixture(t)
+	writeCallFixture(f, "")
+	f.commit("one")
+	tree := f.run("", "rev-parse", "HEAD^{tree}")
+	req := f.request(QueryCallers, nil)
+	req.Symbol = "a.Target"
+	_, ref := Run(context.Background(), req)
+	want := "no index for tree " + tree + "; run verdict index build"
+	if ref == nil || ref.Code != "missing-index" || ref.Message != want {
+		t.Fatalf("refusal = %v; want missing-index: %q", ref, want)
+	}
+}
+
 // TestShardIdentityIncludesRefsPerFile proves a shard parsed under a lower
 // reference cap is reparsed when the cap rises: reusing it would answer with
 // the truncated reference list.
