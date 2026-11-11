@@ -46,6 +46,67 @@ func TestRecordWarnsNamelessCostEntry(t *testing.T) {
 	}
 }
 
+// TestRecordWarnsNonStringCostName proves a name that is not a string still
+// warns: the schema requires a name and only a string satisfies it.
+func TestRecordWarnsNonStringCostName(t *testing.T) {
+	bundle(t, "local-costnum", reviewJSON(""))
+	writeFile(t, ".verdict/state/local-costnum/cost.json",
+		`{"schema_version":"2","models":[{"model":"a","input_tokens":1,"name":5}]}`)
+	c := &collector{}
+	resp, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-costnum"))
+	if ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	if got := countCostWarnings(resp.Warnings, namelessCostWarning); got != 1 {
+		t.Errorf("warnings = %q, want exactly one %q", resp.Warnings, namelessCostWarning)
+	}
+}
+
+// TestRecordSilentOnEmptyStringCostName proves an empty-string name does not
+// warn: the schema sets no minimum length, so only a missing or non-string
+// name warns.
+func TestRecordSilentOnEmptyStringCostName(t *testing.T) {
+	bundle(t, "local-costempty", reviewJSON(""))
+	writeFile(t, ".verdict/state/local-costempty/cost.json",
+		`{"schema_version":"2","models":[{"model":"a","input_tokens":1,"name":""}]}`)
+	c := &collector{}
+	resp, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-costempty"))
+	if ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	for _, w := range resp.Warnings {
+		if strings.Contains(w, "has no name") {
+			t.Errorf("warnings = %q, want no nameless warning for an empty-string name", resp.Warnings)
+			break
+		}
+	}
+}
+
+// TestRecordWarnsEachRecordOfMultiRecordCostFile proves a document holding two
+// records qualifies each warning with its record, as a literal.
+func TestRecordWarnsEachRecordOfMultiRecordCostFile(t *testing.T) {
+	bundle(t, "local-costmulti", reviewJSON(""))
+	writeFile(t, ".verdict/state/local-costmulti/cost.json",
+		`[{"models":[{"model":"a","input_tokens":1}]},`+
+			`{"models":[{"model":"b","input_tokens":2},{"name":"lead","model":"c","input_tokens":3}]}]`)
+	c := &collector{}
+	resp, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-costmulti"))
+	if ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	for _, want := range []string{
+		`cost.json record 1: models[0] has no name — the name is what attribution reads; add "name"`,
+		`cost.json record 2: models[0] has no name — the name is what attribution reads; add "name"`,
+	} {
+		if got := countCostWarnings(resp.Warnings, want); got != 1 {
+			t.Errorf("warnings = %q, want exactly one %q", resp.Warnings, want)
+		}
+	}
+	if got := countNamelessWarnings(resp.Warnings); got != 2 {
+		t.Errorf("warnings = %q, want exactly the two record-qualified warnings", resp.Warnings)
+	}
+}
+
 func mustCostField(t *testing.T, res readcommon.CostResult, key string) any {
 	t.Helper()
 	if res.Cost == nil {
