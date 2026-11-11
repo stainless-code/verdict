@@ -128,17 +128,12 @@ func (st *svc) checkInputs(dir string) (CheckResult, *core.RefusalError) {
 		}
 		return CheckResult{}, &core.RefusalError{Code: codeMissingReviewFile, Message: fmt.Sprintf(msgReviewMissing, dir+"/review.json")}
 	}
-	diff, err := os.ReadFile(dir + diffSuffix)
-	if err != nil {
-		return CheckResult{}, &core.RefusalError{Code: codeMissingDiff, Message: fmt.Sprintf(msgMissingDiff, dir)}
-	}
 	st.normalized, st.repairs = NormalizeReview(raw)
-	in := CheckInput{Diff: string(diff)}
-	in.ChunkNames, in.ChunkManifest = chunkCheckNames(dir)
-	if verification, ok := ReadOptional(dir + "/verification.json"); ok {
-		in.Verification, in.HasVerification = verification, true
+	res, ref := CheckBundle(dir, raw)
+	if ref != nil {
+		return CheckResult{}, ref
 	}
-	return MergeRepairs(CheckReviewInput(st.normalized, in), st.repairs, st.normalized), nil
+	return res, nil
 }
 
 func (st *svc) addCheckWarnings(check CheckResult) {
