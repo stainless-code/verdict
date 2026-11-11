@@ -70,6 +70,7 @@ func Run(ctx context.Context, req *core.RecordRequest) (*core.RecordResponse, *c
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
+	st.warnCostModels(dir)
 	if st.req.DryRun {
 		return st.dryRun(dir, now, &res), nil
 	}

@@ -163,5 +163,52 @@ assert_exit "a panel split across records refuses" 1
 assert_json_field "the split panel refuses typed" "cost-entry-unnamed" '.error.code'
 assert_eq "the split-panel refusal wrote nothing" "$BEFORE" "$(snapshot)"
 
+# A cost record whose models[] entry has no name still records and prices, but
+# warns once per offending entry naming the file, the position, and the rule —
+# on stderr and in warnings[], in both dry-run and real runs.
+mk_local <<'JSON'
+{"schema_version":"1","body":"> ✅ Nameless cost entry.","approved":false,"comments":[]}
+JSON
+cat >"$LB/cost.json" <<'JSON'
+{"schema_version":"2","run":"dog","inputs_sha256":"deadbeef","models":[{"model":"claude-x","input_tokens":1200,"output_tokens":300}]}
+JSON
+BEFORE="$(snapshot)"
+run_review record acme/app "$SLUG" --dry-run --json
+assert_exit "nameless cost entry dry-runs 0" 0
+assert_json_field "dry run warns the nameless entry" "1" \
+  '[.warnings[] | select(contains("cost.json: models[0] has no name"))] | length'
+if grep -Fq 'cost.json: models[0] has no name' "$EVAL_ERR"; then
+  good "dry-run warning reaches stderr"
+else
+  bad "dry-run warning missing from stderr"
+fi
+check_untouched "nameless dry run" "$BEFORE"
+
+COST_BEFORE="$(shasum -a 256 "$LB/cost.json" | cut -d' ' -f1)"
+run_review record acme/app "$SLUG" --json
+assert_exit "nameless cost entry records 0" 0
+assert_json_field "the record warns the nameless entry" "1" \
+  '[.warnings[] | select(contains("cost.json: models[0] has no name"))] | length'
+if grep -Fq 'cost.json: models[0] has no name' "$EVAL_ERR"; then
+  good "record warning reaches stderr"
+else
+  bad "record warning missing from stderr"
+fi
+if [ -e "$LB/record.json" ]; then
+  good "the warned record is still written"
+else
+  bad "the warned record was not written"
+fi
+if [ "$(shasum -a 256 "$LB/cost.json" | cut -d' ' -f1)" = "$COST_BEFORE" ]; then
+  good "the record never rewrites the cost file"
+else
+  bad "the record touched the cost file"
+fi
+
+run_review report acme/app "$SLUG" --cost --json
+assert_exit "the warned record still prices" 0
+assert_json_field "warned cost reads in" "1200" '.data.cost.input_tokens'
+assert_json_field "warned cost reads out" "300" '.data.cost.output_tokens'
+
 rm -rf "$LB"
 eval_end

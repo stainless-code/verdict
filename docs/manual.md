@@ -1943,7 +1943,10 @@ file past the reader's cap. It names the files it already rewrote if a write
 fails partway, and with `--dry-run` it proves the repair without writing.
 Entries are the array `models` the reader prices, so an object-valued `models`
 field or a non-object entry refuses (`cost-models-not-array`) rather than being
-converted.
+converted. Every `record` — including `--dry-run` — also warns once per
+`models[]` entry with no `name` (`cost.json: models[0] has no name — the name
+is what attribution reads; add "name"`), while leaving the record accepted and
+priced; only a missing or non-string name warns, an empty string passes.
 
 `report`/`triage`/`next`/`show`/`verify` work unchanged on local bundles (`report`
 reads `head_sha` from `source.json` when `PR.json` is absent). `post` refuses local
