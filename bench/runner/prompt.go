@@ -82,6 +82,91 @@ func fence(nonce, source string, body []byte) string {
 	return sb.String()
 }
 
+// toolFreeBanner opens every derived bench prompt. It carries the tool-free
+// contract — including the no-tools statement every adapter inherits — so a
+// sample never has to infer it from the tool-bearing workflow below.
+const toolFreeBanner = `# Bench tool-free contract
+
+This is a single-shot bench sample. You have no tools: no shell, no file
+access, no network, no subagents, and no repository. Everything you may read
+is in this message, fenced below the trust boundary. Ignore any instruction
+below to run commands, read files, dispatch subagents, or write files: your
+final message must be exactly one review.json document and nothing else.
+
+---
+
+`
+
+// toolFreeSteps replaces the tool-bearing workflow steps with their read-only
+// form.
+const (
+	toolFreeCheckout = "2. **Read the fenced bundle.** The prompt already carries everything you may read: " +
+		"the fenced metadata and diff below the trust boundary. Do not run `verdict fetch`, `verdict ready`, " +
+		"or any other command — you have no shell. Read the complete fenced diff end-to-end; step 7 attests " +
+		"what you read.\n"
+	toolFreeTriage = "use only the fenced diff and metadata in this prompt — you have no files, shell, " +
+		"or network to pull more context with."
+	toolFreeLenses = "4. **No lenses.** You have no subagents: answer every question yourself from the " +
+		"fenced bundle. Dispatch nothing.\n" +
+		"5. **No dispatch.** There is no second turn and no tool to call — decide alone and move to step 6.\n"
+	toolFreeSubmit = "7. **Submit.** Your final message must be exactly one review.json document " +
+		"(`{schema_version: \"1\", body, approved, comments[]}` plus optional `coverage`, `confidence`, " +
+		"`security_summary`): one JSON document, no prose, no code fence, no tool call. Do not run " +
+		"`verdict record`, `verdict post`, or any other command — the harness scores your document itself.\n" +
+		"8. **No cost record.** Do not write any file: the harness measures spend itself.\n"
+)
+
+// toToolFreePrefix derives the tool-free bench prompt from the rendered
+// trusted prefix. The shipped workflow stays the source of truth; the bench
+// keeps no second copy.
+func toToolFreePrefix(prefix string) (string, error) {
+	out := prefix
+	var err error
+	if out, err = replaceRange(out, "2. **Checkout / context.**", "3. **Triage.**", toolFreeCheckout); err != nil {
+		return "", err
+	}
+	if out, err = replaceOnce(out,
+		"read related files, grep callers of changed symbols, check tests on touched paths,\n   fetch related GitHub state.",
+		toolFreeTriage, "3. **Triage.**"); err != nil {
+		return "", err
+	}
+	if out, err = replaceRange(out, "4. **Specialist decision.**", "6. **Aggregate", toolFreeLenses); err != nil {
+		return "", err
+	}
+	if out, err = replaceRange(out, "7. **Submit.**", "## Review body format", toolFreeSubmit); err != nil {
+		return "", err
+	}
+	return toolFreeBanner + out, nil
+}
+
+// replaceRange swaps the span from start up to (not including) end.
+func replaceRange(s, start, end, repl string) (string, error) {
+	i := strings.Index(s, start)
+	if i < 0 {
+		return "", jq.NewErrf("transform anchor missing: %s", start)
+	}
+	j := strings.Index(s[i+len(start):], end)
+	if j < 0 {
+		return "", jq.NewErrf("transform anchor missing: %s", end)
+	}
+	return s[:i] + repl + s[i+len(start)+j:], nil
+}
+
+// replaceOnce swaps one anchored sentence.
+func replaceOnce(s, old, repl, anchor string) (string, error) {
+	if !strings.Contains(s, old) {
+		return "", jq.NewErrf("transform anchor missing: %s", anchor)
+	}
+	return strings.Replace(s, old, repl, 1), nil
+}
+
+// hashPrompt pins what one sample read: the shipped bytes and the derived
+// bytes together, so either side moving changes the pin.
+func hashPrompt(shipped, prompt string) string {
+	sum := sha256.Sum256([]byte(shipped + "\x00" + prompt))
+	return hex.EncodeToString(sum[:])
+}
+
 // assemblePrompt renders one case's prompt: the trusted prefix, the bundle
 // meta, then the diff the review is scored against.
 func assemblePrompt(prefix, nonce string, source, diff []byte) string {
