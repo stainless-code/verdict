@@ -298,6 +298,9 @@ func resolveRef(tgt target, samePkg bool, f *treeFile, r ref) (Row, bool) {
 	if !ok || ipath != tgt.pkg.importPath || !tgt.exported {
 		return Row{}, false
 	}
+	if r.Unresolved {
+		return Row{Resolution: resolutionUnresolved}, true
+	}
 	return Row{Path: f.Path, Line: r.Line, Kind: r.Kind, Resolution: resolutionLexical}, true
 }
 

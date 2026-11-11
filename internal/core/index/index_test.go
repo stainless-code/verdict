@@ -405,6 +405,28 @@ func TestCallersCrossPackageNeedsImport(t *testing.T) {
 	}
 }
 
+// TestCallersGenericInstantiationIsUnresolved proves a generic instantiation
+// is counted unresolved on both tiers: in the declaring package and through
+// an import edge.
+func TestCallersGenericInstantiationIsUnresolved(t *testing.T) {
+	f := newFixture(t)
+	f.write("go.mod", "module example.com/m\n\ngo 1.27\n")
+	f.write("a/a.go", "package a\n\nfunc Target[T any](v T) {}\n\nfunc Caller() {\n\tTarget[int](0)\n}\n")
+	f.write("b/b.go", "package b\n\nimport \"example.com/m/a\"\n\nfunc Uses() {\n\ta.Target[int](0)\n}\n")
+	f.commit("one")
+	f.build()
+	resp := f.callers("a.Target")
+	if len(resp.Data.Rows) != 0 {
+		t.Errorf("rows = %+v; want none for generic instantiations", resp.Data.Rows)
+	}
+	if resp.Data.Callers != 0 {
+		t.Errorf("callers = %d; want 0", resp.Data.Callers)
+	}
+	if resp.Data.Unresolved != 2 {
+		t.Errorf("unresolved = %d; want 2", resp.Data.Unresolved)
+	}
+}
+
 // TestIndexCapRefusal proves the file-count cap names the measured number and
 // an oversized file is skipped and counted.
 //
