@@ -138,7 +138,7 @@
       "/$defs/fetchLocalData/properties/cap": "The armed cost cap summary; absent when no cap is armed.",
       "/$defs/fetchLocalData/properties/chunk": "The chunk plan summary; absent when the run was not chunked.",
       "/$defs/fetchLocalData/properties/prompt_dump": "Where the staged prompt was written; absent unless a dump was requested.",
-      "/$defs/error/properties/problems": "Review-input problems in document order (at most 50); present only on a bad-review-input refusal, with the exact fix for each.",
+      "/$defs/error/properties/problems": "Review-input problems in document order, errors first (at most 50); present on a bad-review-input refusal and on a repair-exhausted refusal, with the exact fix for each.",
       "/$defs/error/properties/problems_truncated": "How many problems were past the 50-problem cap; 0 when the list is complete.",
       "/$defs/problem": "One review-input problem: its JSONPath in review.json, the published code, the level, the message, the exact fix, and an optional example of the accepted shape. --strict and controls strict_input promote warnings to errors.",
       "/$defs/problem/properties/path": "JSONPath into review.json, for example $.comments[3].brief.questions.",

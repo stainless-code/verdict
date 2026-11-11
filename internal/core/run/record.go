@@ -25,6 +25,21 @@ const (
 	// anything the child printed, so it is the operator's to read and nobody
 	// else's, unlike the 0644 store files beside it.
 	runOutputFileMode = 0o600
+	// roundsDir holds one round's bytes beside the final review: NN.review.json
+	// is what round NN's agent left, NN.check.json the shape checker's verdict
+	// on it. A dot-dir under the bundle, so check-tree ignores it the way it
+	// ignores the rest of the bundle scratch.
+	roundsDir = ".run.rounds"
+	// roundsDirMode is the per-round evidence directory's permission: the
+	// agent's raw bytes are the operator's to read and nobody else's, so a
+	// bundle it created is closed to everyone else.
+	roundsDirMode = 0o700
+	// roundEvidenceMode is every file the loop keeps in .run.rounds, the same
+	// permission as the log beside it.
+	roundEvidenceMode = 0o600
+)
+
+const (
 	// launcherSchema is the record's own schema_version, independent of the
 	// review file's.
 	launcherSchema = "1"
@@ -33,27 +48,40 @@ const (
 	tailCap = 4000
 )
 
+// launcherRepair is the launcher's repair summary: the round cap, how many
+// rounds it took to reach a valid review, and whether the last round was
+// valid. The per-round attempts ride top-level in launcher.Attempts, never
+// duplicated inside repair.
+type launcherRepair struct {
+	Rounds        int  `json:"rounds"`
+	RoundsToValid int  `json:"rounds_to_valid"`
+	FinalValid    bool `json:"final_valid"`
+}
+
 // launcher is the provenance record. The launch write fills everything down to
 // Timeout; the outcome write adds the fields from DurationMS on, so a record
 // left behind by a launcher that never came back still says what started and
 // never claims an exit it did not observe. Pointer fields keep "not observed
-// yet" distinct from a real zero.
+// yet" distinct from a real zero. Repair and Attempts stay out unless --rounds
+// asked for more than one round, so a one-shot record keeps its old shape.
 type launcher struct { //nolint:govet // field order is the published property order
-	SchemaVersion string   `json:"schema_version"`
-	Agent         string   `json:"agent"`
-	Binary        string   `json:"binary"`
-	Argv          []string `json:"argv"`
-	Bundle        string   `json:"bundle"`
-	Artifact      string   `json:"artifact"`
-	StartedAt     string   `json:"started_at"`
-	Timeout       int      `json:"timeout"`
-	DurationMS    *int     `json:"duration_ms,omitempty"`
-	EndedAt       string   `json:"ended_at,omitempty"`
-	Exit          *int     `json:"exit,omitempty"`
-	TimedOut      *bool    `json:"timed_out,omitempty"`
-	ArtifactFresh *bool    `json:"artifact_fresh,omitempty"`
-	ArtifactBytes *int64   `json:"artifact_bytes,omitempty"`
-	OutputTail    string   `json:"output_tail,omitempty"`
+	SchemaVersion string            `json:"schema_version"`
+	Agent         string            `json:"agent"`
+	Binary        string            `json:"binary"`
+	Argv          []string          `json:"argv"`
+	Bundle        string            `json:"bundle"`
+	Artifact      string            `json:"artifact"`
+	StartedAt     string            `json:"started_at"`
+	Timeout       int               `json:"timeout"`
+	DurationMS    *int              `json:"duration_ms,omitempty"`
+	EndedAt       string            `json:"ended_at,omitempty"`
+	Exit          *int              `json:"exit,omitempty"`
+	TimedOut      *bool             `json:"timed_out,omitempty"`
+	ArtifactFresh *bool             `json:"artifact_fresh,omitempty"`
+	ArtifactBytes *int64            `json:"artifact_bytes,omitempty"`
+	OutputTail    string            `json:"output_tail,omitempty"`
+	Repair        *launcherRepair   `json:"repair,omitempty"`
+	Attempts      []core.RunAttempt `json:"attempts,omitempty"`
 }
 
 // path is the record's location beside the bundle's other receipts.

@@ -5,7 +5,7 @@ export interface RefusalErrorBody {
   message: string;
   candidates?: Array<Candidate>;
   retry_at?: string;
-  /** Review-input problems in document order (at most 50); present only on a bad-review-input refusal, with the exact fix for each. */
+  /** Review-input problems in document order, errors first (at most 50); present on a bad-review-input refusal and on a repair-exhausted refusal, with the exact fix for each. */
   problems?: Array<Problem>;
   /** How many problems were past the 50-problem cap; 0 when the list is complete. */
   problems_truncated?: number;

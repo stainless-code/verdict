@@ -104,7 +104,7 @@ var facadeAllowedDeps = map[string]bool{
 // unnoticed.
 var coreSubpackages = []string{
 	"adopt", "calibrate", "checktree", "corpus", "coverage", "doctor", "exec", "fetch", "fix",
-	"init", "learn", "pack", "post", "ready", "record", "report", "run", "skill", "threads",
+	"init", "learn", "pack", "post", "ready", "record", "repair", "report", "run", "skill", "threads",
 	"trend", "triage", "upgrade", "verify",
 }
 

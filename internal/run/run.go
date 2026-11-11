@@ -40,24 +40,33 @@ type Request struct {
 // default verify gives the commands it spawns.
 const defaultTimeoutS = "300"
 
+// defaultRounds is the launch-to-check round count when --rounds is absent:
+// today's one-shot.
+const defaultRounds = "1"
+
+// roundsFlag is the round-count flag, named once for the parser and the
+// usage line.
+const roundsFlag = "--rounds"
+
 // verbsWanted is the flag list the unknown-flag usage error names.
-const verbsWanted = "--agent <name>, --timeout <secs>, --print, -- <agent args>, --json"
+const verbsWanted = "--agent <name>, --timeout <secs>, --rounds <n>, --print, -- <agent args>, --json"
 
 // Run executes `run <owner/repo> <pr|local-name> --agent <name> [--timeout
-// <secs>] [--print] [-- <agent args>...] [--json]`, returning the process
-// exit code. A non-zero agent exit is preserved as this process's exit code
-// after the typed refusal is rendered, so CI surfaces the real failure.
+// <secs>] [--rounds <n>] [--print] [-- <agent args>...] [--json]`, returning
+// the process exit code. A non-zero agent exit is preserved as this process's
+// exit code after the typed refusal is rendered, so CI surfaces the real
+// failure.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
 	flags, code, done := parseFlags(r, args)
 	if done {
 		return code
 	}
-	r.Rentry = rentry(req, flags, r.JSONMode)
+	r.Rentry = rentry(req, &flags, r.JSONMode)
 	if code, done := r.Canceled(ctx, "run"); done {
 		return code
 	}
-	resp, ref := runcore.Run(ctx, runRequest(r, req, flags))
+	resp, ref := runcore.Run(ctx, runRequest(r, req, &flags))
 	if ref != nil {
 		return refuse(r, resp, ref)
 	}
@@ -86,7 +95,7 @@ func refuse(r *cli.Runner, resp *core.RunResponse, ref *core.RefusalError) int {
 // runRequest injects the production commander (the verify watchdog), the PATH
 // probe, the ordered process environment, and the runner's clock and progress
 // observer into the typed service request.
-func runRequest(r *cli.Runner, req Request, flags flags) *core.RunRequest {
+func runRequest(r *cli.Runner, req Request, flags *flags) *core.RunRequest {
 	root := req.Root
 	return &core.RunRequest{
 		Runtime: &core.Runtime{
@@ -99,6 +108,7 @@ func runRequest(r *cli.Runner, req Request, flags flags) *core.RunRequest {
 		Environ:     os.Environ(),
 		Agent:       flags.agent,
 		TimeoutRaw:  flags.timeout,
+		RoundsRaw:   flags.rounds,
 		Print:       flags.print,
 		JSONMode:    r.JSONMode,
 		Warnings:    append([]string{}, r.Warnings...),
@@ -109,6 +119,7 @@ func runRequest(r *cli.Runner, req Request, flags flags) *core.RunRequest {
 type flags struct {
 	agent   string
 	timeout string
+	rounds  string
 	pass    []string
 	print   bool
 }
@@ -116,7 +127,7 @@ type flags struct {
 // parseFlags strips run's flags, reporting unknown ones. Every argument after a
 // bare `--` is the operator's business and is passed through unchanged.
 func parseFlags(r *cli.Runner, args []string) (flags, int, bool) {
-	f := flags{timeout: defaultTimeoutS}
+	f := flags{timeout: defaultTimeoutS, rounds: defaultRounds}
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if a == "--" {
@@ -144,15 +155,8 @@ func parseToken(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) 
 		}
 		f.agent = v
 		return next, 0, false
-	case "--timeout":
-		v, next, u := cli.FlagValue(args, i, a, "<secs>")
-		if u != nil {
-			return i, r.ReportUsage(u), true
-		}
-		if v != "" {
-			f.timeout = v
-		}
-		return next, 0, false
+	case "--timeout", roundsFlag:
+		return parseCountedFlag(r, f, args, i)
 	case "--print":
 		f.print = true
 		return i, 0, false
@@ -162,16 +166,41 @@ func parseToken(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) 
 	}
 }
 
+// parseCountedFlag consumes one --timeout or --rounds value flag, leaving the
+// other count at its default when the operand is empty.
+func parseCountedFlag(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) {
+	a := args[i]
+	operand := "<secs>"
+	if a == "--rounds" {
+		operand = "<n>"
+	}
+	v, next, u := cli.FlagValue(args, i, a, operand)
+	if u != nil {
+		return i, r.ReportUsage(u), true
+	}
+	if v != "" {
+		if a == roundsFlag {
+			f.rounds = v
+		} else {
+			f.timeout = v
+		}
+	}
+	return next, 0, false
+}
+
 // rentry rebuilds the exact re-run command after flag parsing. The
 // pass-through tail is not reproduced: its quoting belongs to whatever shell
 // the operator used.
-func rentry(req Request, f flags, jsonMode bool) string {
+func rentry(req Request, f *flags, jsonMode bool) string {
 	s := "verdict run " + req.Repo + " " + req.Pr
 	if f.agent != "" {
 		s += " --agent " + f.agent
 	}
 	if f.timeout != defaultTimeoutS {
 		s += " --timeout " + f.timeout
+	}
+	if f.rounds != defaultRounds && f.rounds != "" {
+		s += " --rounds " + f.rounds
 	}
 	if f.print {
 		s += " --print"

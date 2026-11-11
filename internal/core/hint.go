@@ -130,6 +130,10 @@ var hintRules = []HintRule{
 		"fix the invocation (the agent's own flags go after '--'), then re-run"},
 	{codes: []string{"agent-record-failed"}, hint: "try: make the bundle directory writable " +
 		"(or re-fetch the bundle), then re-run"},
+	{codes: []string{"repair-exhausted"}, hint: "try: fix every error named in error.problems, " +
+		"then re-run (when the cap was hit, raise --rounds up to 5; for no progress check the round files)"},
+	{codes: []string{"rounds-path-unsafe"}, hint: "try: remove the named path from the bundle " +
+		"(verdict owns it as a plain directory), then re-run"},
 	{codes: []string{"no-review-artifact"}, hint: "try: run the printed command yourself " +
 		"(--print) to see why no review.json appeared, then re-run"},
 	{codes: []string{"stale-review-artifact"}, hint: "try: delete the stale review.json " +

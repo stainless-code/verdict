@@ -70,7 +70,7 @@ this case grades review judgment — calibration does. Freshness is a
 modification-time comparison at one-second granularity, so the guarantee is
 "not older than the launch", never "written by this agent": an artifact left
 behind in the same second as the launch record reads as fresh by design.
-`run` never posts, records, repairs, or retries: the dry-run leg proves the
+`run` never posts: with the default one shot it never records, repairs, or retries (with `--rounds N` it repeats only the launch→check pair, up to N rounds, and still records nothing): the dry-run leg proves the
 review is postable, not that anything was submitted. `--timeout` is a kill
 budget, not a cost or turn bound, and none of this touches the host.
 

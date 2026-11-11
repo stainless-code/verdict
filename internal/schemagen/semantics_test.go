@@ -138,7 +138,10 @@ var publishedSemantics = map[string]string{
 	// $defs/threadsResolveSkip entries pinning the resolve half of the
 	// threads --json data profile. Additions only; no existing property,
 	// required key, enum, or type changed.
-	"envelope.schema.json": "b91215777f8ac98ba2a203db3d6c84d08dc1ce8ffaf9ed8dabbdb962a4c09335",
+	// repair-exhausted problems: the error.problems description now covers
+	// repair-exhausted (errors first) alongside bad-review-input. Description
+	// only; no property, required key, enum, or type changed.
+	"envelope.schema.json": "c32eac3735890eace13f359f55caa0f8d2077730005c4b16a6bc7e696b819bac",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
