@@ -252,7 +252,8 @@ func usageText() string {
 		"  index owners <path> [--at <tree>] [--json]\n" +
 		"    the CODEOWNERS rule that owns one path at HEAD, read from the git tree (never\n" +
 		"    the worktree): GitHub's file order, last matching rule wins, no rule reads as\n" +
-		"    owners null, never nobody.\n" +
+		"    owners null, an ownerless rule reads as owners [] (it clears an earlier\n" +
+		"    match), never nobody.\n" +
 		"  backtest mine --since <90d|12w|18mo|2y|<ref>> [--until <ref>] [--run <slug>] [--json]\n" +
 		"    mine SZZ bug-introducing PR candidates from the local clone: seeds are fix:,\n" +
 		"    bugfix:, hotfix:, Fixes #N, and Revert \"...\" commits in the window; each locked\n" +
