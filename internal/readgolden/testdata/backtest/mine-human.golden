@@ -1,0 +1,38 @@
+exit: 0
+--- stdout ---
+backtest mine 29320a6-84b3173  (84b3173..HEAD 29320a6)
+  1d1518c  2024-01-03  #2  first-parent-merge  main.go:6 missing-error-check
+skipped: none
+not citable — SZZ-derived: candidates are blame-derived guesses, not verified defects
+--- stderr ---
+
+--- files ---
+--- file C/.verdict/backtest/29320a6-84b3173/mine.json ---
+{
+  "schema_version": "1",
+  "method": "szz-blame-v1",
+  "candidates": [
+    {
+      "head": "1d1518cf4adca036e1325e9666d54094dccacfa5",
+      "base": "84b31730499aa237889660981350fda2b3edc91d",
+      "landed_by": "e9c8f1d1d1363d94c4c766eacf3d1d6fc6e09eb8",
+      "pr": 2,
+      "reconstruction": "first-parent-merge",
+      "head_source": "merge-time",
+      "merged_at": "0000-00-00T00:00:00Z",
+      "head_at": "0000-00-00T00:00:00Z",
+      "fixes": [
+        "29320a6e9fac8488fb678921021d68af35843beb"
+      ],
+      "bugs": [
+        {
+          "path": "main.go",
+          "line": 6,
+          "kind": "missing-error-check",
+          "fix": "29320a6e9fac8488fb678921021d68af35843beb"
+        }
+      ]
+    }
+  ],
+  "skipped": []
+}

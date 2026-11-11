@@ -96,6 +96,12 @@ Cause: the credential the host call needs is not exported.
 
 Fix: export the credential named above, then re-run.
 
+## `backtest-failed`
+
+Cause: a git read failed while mining (git is missing, or the checkout is unreadable).
+
+Fix: confirm `git --version` works in the checkout, then re-run.
+
 ## `bad-approve`
 
 Cause: `--approve` is not a boolean.
@@ -270,6 +276,12 @@ Cause: the `--sig` prefix matched nothing actionable.
 
 Fix: list open inline sigs with `report --status open --kind inline`, then re-run with the full prefix.
 
+## `bad-since`
+
+Cause: `backtest mine --since` is missing, is a bare month (`18m`), does not resolve, or names a commit that is not an ancestor of `--until`.
+
+Fix: pass `--since <90d|12w|18mo|2y|ref>` with a unit of `d`, `w`, `mo`, or `y`, or a ref that precedes `--until`.
+
 ## `bad-slug`
 
 Cause: the local bundle name is unusable (it sanitizes to nothing, looks like a PR number, or already carries the `local-` prefix).
@@ -299,6 +311,12 @@ Fix: pass `--timeout <positive-seconds>` (default 300).
 Cause: `--status` is not a known triage state.
 
 Fix: re-run with one of `open|addressed|wont-fix|false-positive|deferred`.
+
+## `bad-until`
+
+Cause: `backtest mine --until` does not resolve, or names a commit that is not an ancestor of `HEAD`.
+
+Fix: pass a ref in `HEAD`'s history (the default is `HEAD`), then re-run.
 
 ## `bad-usage`
 
@@ -792,6 +810,12 @@ Cause: the bundle's `.run.rounds` entry is a symlink or another non-directory, s
 
 Fix: remove the named path from the bundle, then re-run.
 
+## `run-mismatch`
+
+Cause: `.verdict/backtest/<run>/run.json` exists with a different mode or window than this invocation.
+
+Fix: pick another `--run <slug>`, or delete the existing run directory.
+
 ## `sandbox-unavailable`
 
 Cause: the sandbox cannot be enforced (no bubblewrap, or no unprivileged user namespaces).
@@ -1037,6 +1061,12 @@ Fix: rewrite `verifyCmd` without network fetches or pipe-to-shell (fetch fixture
 Cause: `verifyCmd` escapes the repo root.
 
 Fix: rewrite `verifyCmd` with repo-relative paths (`/tmp` for scratch), then re-run.
+
+## `window-too-large`
+
+Cause: the `--since..--until` commit list is larger than one 16 MiB capture.
+
+Fix: narrow `--since` to a shorter span or a later ref, then re-run.
 
 ## `worktree-failed`
 

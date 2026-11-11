@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/adopt"
+	backtestverb "github.com/stainless-code/verdict/internal/backtest"
 	"github.com/stainless-code/verdict/internal/calibrate"
 	"github.com/stainless-code/verdict/internal/checktree"
 	"github.com/stainless-code/verdict/internal/cli"
@@ -55,7 +56,7 @@ const (
 )
 
 const verbsHint = "fetch|fetch-local|run|record|adopt|fix|post|triage|report|next|show|" +
-	"check-tree|verify|doctor|calibrate|ready|gate|threads|trend|learn|init|skill|upgrade|uninstall|mcp|config"
+	"check-tree|verify|doctor|calibrate|ready|gate|threads|trend|backtest|learn|init|skill|upgrade|uninstall|mcp|config"
 
 func main() {
 	//nolint:forbidigo // GO-LAYOUT-02: main is the only os.Exit caller by design
@@ -157,6 +158,8 @@ func dispatchHidden(args []string, stderr *os.File) (code int, ok bool) {
 type readHandler func(context.Context, *cli.Runner, []string, readcommon.Request) int
 
 const cmdTrend = "trend"
+
+const cmdBacktest = "backtest"
 
 var readVerbs = map[string]readHandler{
 	"config":     configcmd.Run,
@@ -271,15 +274,20 @@ func dispatchMutating(
 	}
 }
 
-// dispatchLocal serves the verbs that need no repository or pull request: the
-// scaffold writer and the skill distributor. They share dispatchMutating's
-// "handled" contract so one switch can stay small enough to read.
+// dispatchLocal serves the verbs that need no repository or pull request:
+// the scaffold writer, the local backtest miner, and the skill distributor.
+// They share dispatchMutating's "handled" contract so one switch can stay
+// small enough to read.
 func dispatchLocal(
 	ctx context.Context, cmd string, r *cli.Runner, env map[string]string, root, repoRoot string, rest []string,
 ) (int, bool) {
 	switch cmd {
 	case "init":
 		return scaffold.Run(ctx, r, rest, scaffold.Request{Env: env, RepoRoot: repoRoot}), true
+	case cmdBacktest:
+		return backtestverb.Run(ctx, r, rest, backtestverb.Request{
+			Env: env, Root: root, RepoRoot: repoRoot,
+		}), true
 	case verbSkill:
 		return runSkill(ctx, r, rest, env, root), true
 	default:
@@ -315,6 +323,9 @@ func splitCommand(args []string) (cmd, repo, pr string, rest []string) {
 			repo, rest = args[0], args[1:]
 		}
 		return cmd, repo, "", rest
+	}
+	if cmd == cmdBacktest {
+		return cmd, "", "", args
 	}
 	repo, pr, rest = splitPositionals(args)
 	return cmd, repo, pr, rest

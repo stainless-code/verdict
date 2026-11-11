@@ -2,7 +2,8 @@ package main
 
 func usageText() string {
 	return "usage: verdict fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
-		"fetch-local|run|record|adopt|fix|check-tree|ready|gate|threads|trend|learn|init|skill|upgrade|uninstall|mcp|config [opts]\n" +
+		"fetch-local|run|record|adopt|fix|check-tree|ready|gate|threads|trend|" +
+		"backtest|learn|init|skill|upgrade|uninstall|mcp|config [opts]\n" +
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
 		"[--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
 		"    write .verdict/state/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
@@ -226,6 +227,16 @@ func usageText() string {
 		"    (addressed vs false-positive); missing manifests read unmeasured (never\n" +
 		"    zero) and stay out of both denominators. Default output is byte-identical\n" +
 		"    without the flag.\n" +
+		"  backtest mine --since <90d|12w|18mo|2y|<ref>> [--until <ref>] [--run <slug>] [--json]\n" +
+		"    mine SZZ bug-introducing PR candidates from the local clone: seeds are fix:,\n" +
+		"    bugfix:, hotfix:, Fixes #N, and Revert \"...\" commits in the window; each locked\n" +
+		"    line is blamed to its introducing commit and mapped to the merge or squash PR\n" +
+		"    that carried it. Zero model calls, zero network. Writes\n" +
+		"    .verdict/backtest/<run>/{run.json,mine.json}; a rerun of the same window is\n" +
+		"    byte-identical. --until defaults to HEAD and must be an ancestor of HEAD;\n" +
+		"    --since takes a duration against --until's commit date or a ref. Skipped fixes are\n" +
+		"    counted with reasons, never refused. Candidates are not citable: SZZ-derived,\n" +
+		"    unverified. replay/score land later.\n" +
 		"  learn --rule <text> --scope <globs> [--id <id>] [--provenance <s>] [--rigor <level>] [--json]\n" +
 		"    append one rule to .verdict/kb.jsonl (zeros + status active; provenance\n" +
 		"    defaults to manual, rigor defaults to pointed). Refuses exact-duplicate\n" +
@@ -311,7 +322,7 @@ func usageText() string {
 		"  overview + diagrams) namespaces\n" +
 		"  (~/.config/verdict/settings.json, $XDG_CONFIG_HOME respected).\n" +
 		"  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/" +
-		"fetch-local/run/record/adopt/fix/check-tree/ready/gate/trend/learn/init/skill/upgrade/uninstall/config: " +
+		"fetch-local/run/record/adopt/fix/check-tree/ready/gate/trend/backtest/learn/init/skill/upgrade/uninstall/config: " +
 		"stdout is exactly one JSON envelope (schema_version 1);\n" +
 		"  all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.\n" +
 		"  Glossary: https://stainless-code.com/verdict/docs/glossary\n"
@@ -336,6 +347,9 @@ func arityUsage(cmd, repo, pr string) bool {
 	}
 	if cmd == cmdTrend {
 		return repo == ""
+	}
+	if cmd == cmdBacktest {
+		return false
 	}
 	return repo == "" || pr == ""
 }

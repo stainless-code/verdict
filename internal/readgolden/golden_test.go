@@ -8,7 +8,9 @@
 // err file), which the golden still pins byte-exact. Gate flags (--check
 // tiers, freshness, live-thread skip/unreachable), --json envelopes, and the
 // corrupt-store typed refusals all have legs. Every leg runs parallel with
-// per-case temp dirs.
+// per-case temp dirs. The backtest legs pin a mutating miner instead: its
+// artifacts are the contract, so they drive golden.Case directly and omit
+// the machine-only run.json.
 package readgolden_test
 
 import (

@@ -104,6 +104,9 @@ var hintRules = []HintRule{
 	{codes: []string{"controls-too-large"}, hint: "try: trim the named control file under its cap, commit it at base, then re-fetch"},
 	{codes: []string{"bad-review-input"}, hint: "try: fix the malformed agent input named above " +
 		"(review.json wants {body, approved, comments[]}; claims want string sigs), then re-run"},
+	{codes: []string{"bad-since"}, hint: "try: pass --since <90d|12w|18mo|2y|ref> " +
+		"(a bare m is not a unit, and the ref must precede --until)"},
+	{codes: []string{"bad-until"}, hint: "try: pass --until <ref> that is an ancestor of HEAD"},
 	{codes: []string{"bad-pack"}, hint: "try: fix pack.json against schemas/pack.schema.json, then re-run"},
 	{codes: []string{"pack-too-large"}, hint: "try: trim the pack under 64 KiB per file, 1 MiB total, " +
 		"256 files, and 64 lenses, then re-run"},
@@ -153,6 +156,9 @@ var hintRules = []HintRule{
 	{codes: []string{"mcp-config-foreign", "mcp-config-unmergeable"}, hint: "try: remove the existing MCP entry by hand, then re-run"},
 	{codes: []string{"mcp-config-no-home"}, hint: "try: set HOME (or CODEX_HOME), then re-run"},
 	{prefix: "mcp-config-", hint: "try: check the config path and permissions named above, then re-run"},
+	{codes: []string{"run-mismatch"}, hint: "try: pick another --run, or delete the existing run directory"},
+	{codes: []string{"backtest-failed"}, hint: "try: confirm git works in this checkout, then re-run"},
+	{codes: []string{"window-too-large"}, hint: "try: narrow --since (a shorter span or a later ref), then re-run"},
 }
 
 // matches reports whether the rule answers code.

@@ -339,6 +339,18 @@ every attempt including invalid and adapter-failed rounds when spend is
 present. Missing spend stays unmeasured, never zero. Model attribution is
 preserved. Loop runs are never citable.
 
+## SZZ candidate mining
+
+`verdict backtest mine --since <duration|ref>` is the offline front half of
+06b: it blames each later `fix:` or `Revert "..."` commit's deleted lines back
+to the merged or squash PR that introduced them and writes a deterministic
+`.verdict/backtest/<run>/mine.json` with zero model calls and zero network.
+The artifact is a candidate list, not a corpus, not a measurement, and not
+citable: SZZ blame is a hypothesis, every excluded fix is counted with a
+reason, and replay/score are later slices. Use it to pick the PRs worth
+turning into `real` corpus cases by hand, then verify each bug at the reviewed
+head before publishing it.
+
 ## What the comparison page may cite
 
 Once 06b has run, the comparison page may cite:
