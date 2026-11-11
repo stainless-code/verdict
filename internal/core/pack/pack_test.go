@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"testing/fstest"
 )
@@ -102,11 +103,43 @@ func TestPackPathsConfined(t *testing.T) {
 	if err := os.Symlink(filepath.Join(outside, "lenses"), filepath.Join(base, "lenses")); err != nil {
 		t.Skipf("this platform cannot create symlinks here: %v", err)
 	}
-	if _, ref := LoadDir(base); ref == nil || ref.Code != CodePackUnsafePath {
-		t.Fatalf("symlinked lenses/ = %v, want pack-unsafe-path", ref)
+	if _, ref := LoadDir(base); ref == nil || ref.Code != "pack-unsafe-path" {
+		t.Errorf("symlinked lenses/ = %v, want pack-unsafe-path", ref)
 	}
 	if _, ref := LoadAt(base, ".."); ref == nil || ref.Code != CodePackUnsafePath {
 		t.Fatalf("LoadAt root .. = %v, want pack-unsafe-path", ref)
+	}
+}
+
+// TestPackSymlinkFilesRefuse pins the file-level symlink refusal under the
+// [os.Root] resolver: a symlinked manifest or lens body is pack-unsafe-path,
+// never a silent read through the link.
+func TestPackSymlinkFilesRefuse(t *testing.T) {
+	t.Parallel()
+	manifestBase := t.TempDir()
+	manifestOutside := filepath.Join(t.TempDir(), "pack.json")
+	writeFile(t, manifestOutside,
+		`{"schema_version":"1","name":"acme/lenses","version":"1.2.3","lenses":[{"id":"perf"}]}`)
+	if err := os.Symlink(manifestOutside, filepath.Join(manifestBase, "pack.json")); err != nil {
+		t.Skipf("this platform cannot create symlinks here: %v", err)
+	}
+	writeFile(t, filepath.Join(manifestBase, "lenses", "perf.md"), "body\n")
+	if _, ref := LoadDir(manifestBase); ref == nil || ref.Code != "pack-unsafe-path" {
+		t.Errorf("symlinked pack.json = %v, want pack-unsafe-path", ref)
+	}
+	lensBase := t.TempDir()
+	writeFile(t, filepath.Join(lensBase, "pack.json"),
+		`{"schema_version":"1","name":"acme/lenses","version":"1.2.3","lenses":[{"id":"perf"}]}`)
+	lensOutside := filepath.Join(t.TempDir(), "perf.md")
+	writeFile(t, lensOutside, "body\n")
+	if err := os.MkdirAll(filepath.Join(lensBase, "lenses"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(lensOutside, filepath.Join(lensBase, "lenses", "perf.md")); err != nil {
+		t.Skipf("this platform cannot create symlinks here: %v", err)
+	}
+	if _, ref := LoadDir(lensBase); ref == nil || ref.Code != "pack-unsafe-path" {
+		t.Errorf("symlinked lens body = %v, want pack-unsafe-path", ref)
 	}
 }
 
@@ -127,9 +160,6 @@ func TestPackCapsRefuseBeforeParse(t *testing.T) {
 	many := fstest.MapFS{"pack.json": {Data: []byte("{")}}
 	for i := range 256 {
 		many[fmt.Sprintf("lenses/f%03d.md", i)] = &fstest.MapFile{Data: []byte("x")}
-	}
-	if got := len(many); got != 257 {
-		t.Fatalf("fixture carries %d files, want 257", got)
 	}
 	if _, ref := Load(many, "."); ref == nil || ref.Code != CodePackTooLarge {
 		t.Fatalf("257-file pack = %v, want pack-too-large", ref)
@@ -185,12 +215,127 @@ func TestPackNoteLabelsBodies(t *testing.T) {
 // manifest refuses bad-pack.
 func TestPackMissingIsNotARefusal(t *testing.T) {
 	t.Parallel()
+	if p, ref := Load(fstest.MapFS{}, "."); p != nil || ref != nil {
+		t.Fatalf("empty pack dir = (%v, %v), want (nil, nil)", p, ref)
+	}
 	if p, ref := Load(fstest.MapFS{}, "packs/absent"); p != nil || ref != nil {
 		t.Fatalf("absent pack = (%v, %v), want (nil, nil)", p, ref)
 	}
 	noManifest := fstest.MapFS{"lenses/perf.md": {Data: []byte("body\n")}}
 	if _, ref := Load(noManifest, "."); ref == nil || ref.Code != CodeBadPack {
 		t.Fatalf("pack without pack.json = %v, want bad-pack", ref)
+	}
+}
+
+// TestPackRejectsMalformedManifest pins every manifest rule the published
+// schema states: unknown fields refuse through the strict decoder, trailing
+// data refuses, identity fields keep their formats, lens ids stay unique
+// lowercase slugs, and a present cap stays inside 1..24 / 1..20.
+//
+//nolint:revive // the table is the manifest rule matrix
+func TestPackRejectsMalformedManifest(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		manifest string
+		want     string
+	}{
+		{
+			name:     "unknown top-level field",
+			manifest: `{"schema_version":"1","name":"acme/lenses","version":"1.2.3","lenses":[{"id":"perf"}],"extra":true}`,
+			want:     `unknown field "extra"`,
+		},
+		{
+			name:     "unknown lens field",
+			manifest: `{"schema_version":"1","name":"acme/lenses","version":"1.2.3","lenses":[{"id":"perf","scope":"hot"}]}`,
+			want:     `unknown field "scope"`,
+		},
+		{
+			name:     "trailing data",
+			manifest: `{"schema_version":"1","name":"acme/lenses","version":"1.2.3","lenses":[{"id":"perf"}]} {}`,
+			want:     "trailing data",
+		},
+		{
+			name:     "duplicate lens id",
+			manifest: `{"schema_version":"1","name":"acme/lenses","version":"1.2.3","lenses":[{"id":"perf"},{"id":"perf"}]}`,
+			want:     `repeats lens id "perf"`,
+		},
+		{
+			name:     "non-slug lens id",
+			manifest: `{"schema_version":"1","name":"acme/lenses","version":"1.2.3","lenses":[{"id":"Perf Lens"}]}`,
+			want:     `lens id "Perf Lens" is not a lowercase slug`,
+		},
+		{
+			name:     "bad name",
+			manifest: `{"schema_version":"1","name":"acme","version":"1.2.3","lenses":[{"id":"perf"}]}`,
+			want:     `name "acme" is not <namespace>/<slug>`,
+		},
+		{
+			name:     "bad version",
+			manifest: `{"schema_version":"1","name":"acme/lenses","version":"1.2","lenses":[{"id":"perf"}]}`,
+			want:     `version "1.2" is not semver`,
+		},
+		{
+			name:     "bad schema_version",
+			manifest: `{"schema_version":"2","name":"acme/lenses","version":"1.2.3","lenses":[{"id":"perf"}]}`,
+			want:     `schema_version is "2", want "1"`,
+		},
+		{
+			name:     "max_files below one",
+			manifest: `{"schema_version":"1","name":"acme/lenses","version":"1.2.3","lenses":[{"id":"perf","max_files":0}]}`,
+			want:     `lens "perf" max_files must be 1..24`,
+		},
+		{
+			name:     "max_files above twenty-four",
+			manifest: `{"schema_version":"1","name":"acme/lenses","version":"1.2.3","lenses":[{"id":"perf","max_files":25}]}`,
+			want:     `lens "perf" max_files must be 1..24`,
+		},
+		{
+			name:     "max_findings below one",
+			manifest: `{"schema_version":"1","name":"acme/lenses","version":"1.2.3","lenses":[{"id":"perf","max_findings":0}]}`,
+			want:     `lens "perf" max_findings must be 1..20`,
+		},
+		{
+			name:     "max_findings above twenty",
+			manifest: `{"schema_version":"1","name":"acme/lenses","version":"1.2.3","lenses":[{"id":"perf","max_findings":21}]}`,
+			want:     `lens "perf" max_findings must be 1..20`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fsys := fstest.MapFS{
+				"pack.json":      {Data: []byte(tc.manifest)},
+				"lenses/perf.md": {Data: []byte("perf body\n")},
+			}
+			_, ref := Load(fsys, ".")
+			if ref == nil || ref.Code != "bad-pack" {
+				t.Fatalf("Load = %v, want bad-pack", ref)
+			}
+			if !strings.Contains(ref.Message, tc.want) {
+				t.Fatalf("message = %q, want it to contain %q", ref.Message, tc.want)
+			}
+		})
+	}
+}
+
+// TestPackRefusesEmptyLensBody pins the refusal for a body that carries no
+// content: a manifest row with only whitespace has nothing to dispatch.
+func TestPackRefusesEmptyLensBody(t *testing.T) {
+	t.Parallel()
+	for _, body := range []string{"", " \n\t\n"} {
+		fsys := fstest.MapFS{
+			"pack.json": {Data: []byte(
+				`{"schema_version":"1","name":"acme/lenses","version":"1.2.3","lenses":[{"id":"perf"}]}`)},
+			"lenses/perf.md": {Data: []byte(body)},
+		}
+		_, ref := Load(fsys, ".")
+		if ref == nil || ref.Code != "bad-pack" {
+			t.Fatalf("body %q = %v, want bad-pack", body, ref)
+		}
+		if want := `lens "perf" has an empty body at lenses/perf.md`; ref.Message != want {
+			t.Fatalf("message = %q, want %q", ref.Message, want)
+		}
 	}
 }
 

@@ -278,14 +278,26 @@ func parseManifest(raw []byte, name string) (*Manifest, *core.RefusalError) {
 	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return nil, badPack(name + " carries trailing data after the manifest object")
 	}
-	if ref := validate(&manifest, name); ref != nil {
+	if ref := validate(&manifest, lensRows(raw), name); ref != nil {
 		return nil, ref
 	}
 	return &manifest, nil
 }
 
+// lensRows returns the keys each manifest row spelled, so an optional cap set
+// to zero refuses against the published minimum instead of reading as absent.
+func lensRows(raw []byte) []map[string]json.RawMessage {
+	var shape struct {
+		Lenses []map[string]json.RawMessage `json:"lenses"`
+	}
+	if err := json.Unmarshal(raw, &shape); err != nil {
+		return nil
+	}
+	return shape.Lenses
+}
+
 // validate enforces the manifest rules pack.schema.json documents.
-func validate(manifest *Manifest, name string) *core.RefusalError {
+func validate(manifest *Manifest, rows []map[string]json.RawMessage, name string) *core.RefusalError {
 	if ref := validateHeader(manifest, name); ref != nil {
 		return ref
 	}
@@ -298,9 +310,18 @@ func validate(manifest *Manifest, name string) *core.RefusalError {
 	}
 	seen := map[string]bool{}
 	for i := range manifest.Lenses {
-		if ref := validateLens(&manifest.Lenses[i], name, seen); ref != nil {
+		if ref := validateLens(&manifest.Lenses[i], lensRow(rows, i), name, seen); ref != nil {
 			return ref
 		}
+	}
+	return nil
+}
+
+// lensRow returns the spelled keys for row i, or nil when the shape scan
+// cannot reach it.
+func lensRow(rows []map[string]json.RawMessage, i int) map[string]json.RawMessage {
+	if i < len(rows) {
+		return rows[i]
 	}
 	return nil
 }
@@ -320,7 +341,7 @@ func validateHeader(manifest *Manifest, name string) *core.RefusalError {
 }
 
 // validateLens checks one row's id, uniqueness, caps, and globs.
-func validateLens(lens *LensSpec, name string, seen map[string]bool) *core.RefusalError {
+func validateLens(lens *LensSpec, row map[string]json.RawMessage, name string, seen map[string]bool) *core.RefusalError {
 	if !lensIDRE.MatchString(lens.ID) {
 		return badPack(fmt.Sprintf("%s lens id %q is not a lowercase slug", name, lens.ID))
 	}
@@ -328,18 +349,19 @@ func validateLens(lens *LensSpec, name string, seen map[string]bool) *core.Refus
 		return badPack(fmt.Sprintf("%s repeats lens id %q", name, lens.ID))
 	}
 	seen[lens.ID] = true
-	if ref := validateLensCaps(lens, name); ref != nil {
+	if ref := validateLensCaps(lens, row, name); ref != nil {
 		return ref
 	}
 	return validateLensGlobs(lens, name)
 }
 
-// validateLensCaps checks the optional dispatch caps.
-func validateLensCaps(lens *LensSpec, name string) *core.RefusalError {
-	if lens.MaxFiles < 0 || lens.MaxFiles > maxLensFiles {
+// validateLensCaps checks the optional dispatch caps; a spelled zero is out of
+// bounds even though an absent key decodes to the same zero.
+func validateLensCaps(lens *LensSpec, row map[string]json.RawMessage, name string) *core.RefusalError {
+	if _, ok := row["max_files"]; ok && (lens.MaxFiles < 1 || lens.MaxFiles > maxLensFiles) {
 		return badPack(fmt.Sprintf("%s lens %q max_files must be 1..%d", name, lens.ID, maxLensFiles))
 	}
-	if lens.MaxFindings < 0 || lens.MaxFindings > maxLensFindings {
+	if _, ok := row["max_findings"]; ok && (lens.MaxFindings < 1 || lens.MaxFindings > maxLensFindings) {
 		return badPack(fmt.Sprintf("%s lens %q max_findings must be 1..%d", name, lens.ID, maxLensFindings))
 	}
 	return nil

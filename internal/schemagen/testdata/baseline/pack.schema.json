@@ -20,7 +20,7 @@
       "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
     },
     "lenses": {
-      "description": "One row per lens, at least one and at most 64; each id names lenses/<id>.md.",
+      "description": "One row per lens, at least one; the loader refuses more than 64 with pack-too-large. Each id names lenses/<id>.md.",
       "type": "array",
       "items": { "$ref": "#/$defs/lens" },
       "minItems": 1

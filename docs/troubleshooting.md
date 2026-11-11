@@ -188,7 +188,7 @@ Fix: fix its permissions (or remove it), then re-run.
 
 ## `bad-pack`
 
-Cause: a lens pack manifest is malformed, missing a named lens body, or its id and file stem disagree.
+Cause: a lens pack manifest is malformed, missing a named lens body, carries an empty body, or its id and file stem disagree.
 
 Fix: fix `pack.json` against `schemas/pack.schema.json` (every lens id equals `lenses/<id>.md`), then re-run.
 

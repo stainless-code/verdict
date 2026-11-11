@@ -69,7 +69,7 @@ EOF
     if [ -n "$plan_files" ]; then
       group_id="$(jq -r '.resolved.plan.groups[0].id' "$dir/run.json")"
       printf '<<<UNTRUSTED nonce=%s source=plan.txt>>>\n' "$nonce" >> "$out"
-      printf 'plan status: pending\n- group 1: id=%s profile=- depth=standard max_lenses=unset checks=[] files=[%s] scopes=[] panel=[] panel_from=built-in effort=standard cap_bytes=512000 cap_from=built-in chunk=false lens_pack=verdict/builtin@1.0.0 lenses=[api-contract:56f789a7,perf:fb32e60b,test:1298f542]\neffort: standard\n' "$group_id" "$plan_files" >> "$out"
+      printf 'plan status: pending\n- group 1: id=%s profile=- depth=standard max_lenses=unset checks=[] files=[%s] scopes=[] panel=[] panel_from=built-in effort=standard cap_bytes=512000 cap_from=built-in chunk=false lens_pack=verdict/builtin@1.0.0 lenses=[api-contract:2aa23d13,perf:67c1d05a,test:456be8d2]\neffort: standard\n' "$group_id" "$plan_files" >> "$out"
       printf '<<<END UNTRUSTED nonce=%s>>>\n' "$nonce" >> "$out"
     fi
     if [ -f "$dir/full.diff" ]; then fence_file "full.diff" "$dir/full.diff"; fi

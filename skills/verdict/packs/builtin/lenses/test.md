@@ -1,9 +1,10 @@
 # Test lens
 
-Dispatch when the change has no co-located test. Frame one falsifiable
-question about the risk that absence leaves unproven for the changed
-behaviour, and give it a short hypothesis label (`webhook-replay`,
-`billing-rounding`) for log separation.
+Dispatch only when the lens could return evidence that changes disposition —
+a trigger, not a roster. The trigger for this lens: the change has no
+co-located test. Frame one falsifiable question about the risk that absence
+leaves unproven for the changed behaviour, and give it a short hypothesis
+label (`webhook-replay`, `billing-rounding`) for log separation.
 
 Read the diff paths the dispatch names. The on-disk diff is authoritative
 scope: source it yourself and never re-derive it. Read-only tools only — no

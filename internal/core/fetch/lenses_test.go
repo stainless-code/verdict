@@ -57,6 +57,25 @@ func TestPlanLineCarriesLensFields(t *testing.T) {
 	}
 }
 
+// TestPlanLineCarriesEmptyLensList pins the rendered suffix when a group is
+// offered no lens: the pack identity still prints, and the empty list is an
+// explicit [] rather than a missing field.
+func TestPlanLineCarriesEmptyLensList(t *testing.T) {
+	t.Parallel()
+	p, ref := pack.Load(fstest.MapFS{
+		"pack.json": {Data: []byte(
+			`{"schema_version":"1","name":"acme/lenses","version":"1.2.3","lenses":[{"id":"docs","globs":["docs/**"]}]}`)},
+		"lenses/docs.md": {Data: []byte("docs body\n")},
+	}, ".")
+	if ref != nil {
+		t.Fatalf("load pack: %s: %s", ref.Code, ref.Message)
+	}
+	group := &config.PlanGroup{ID: "g1", Depth: "standard", Files: []string{"a.go"}}
+	if got, want := lensPlanFields(p, group), " lens_pack=acme/lenses@1.2.3 lenses=[]"; got != want {
+		t.Fatalf("plan fields = %q, want %q", got, want)
+	}
+}
+
 // planGroupString extracts the one plan group line from the fenced section.
 func planGroupString(t *testing.T, out string) string {
 	t.Helper()

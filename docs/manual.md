@@ -333,10 +333,13 @@ and published as `schemas/pack.schema.json`. The fixed layout is `pack.json`,
 by the caps, not loaded); a file no manifest row names is not loaded.
 
 Every load checks the caps while walking, before any parse: 64 KiB per file,
-1 MiB per pack, 256 files, 64 lenses (`pack-too-large`). An invalid manifest
-or a missing or mis-stemmed body refuses `bad-pack`; an absolute path, `..`,
-or a symlink component refuses `pack-unsafe-path`. The pack hash is sha256
-over the canonical loaded tree (sorted slash paths, each fed as
+1 MiB per pack, 256 files, 64 lenses (`pack-too-large`). An invalid manifest,
+a missing or mis-stemmed body, or an empty (whitespace-only) body refuses
+`bad-pack`; a present `max_files` must be 1..24 and a present `max_findings`
+1..20. An absolute path, `..`, or a symlink component refuses
+`pack-unsafe-path`. A missing or empty pack root is absent, not an error: the
+loader returns no pack and the bundle carries no lens surface. The pack hash
+is sha256 over the canonical loaded tree (sorted slash paths, each fed as
 `== <path> ==`, its bytes, then a newline); each lens also carries the first
 eight hex digits of its body's sha256.
 

@@ -172,7 +172,11 @@ var publishedSemantics = map[string]string{
 	// required key, or type changed). The lens-pack manifest fetch resolves
 	// from skills/verdict/packs/builtin: a closed object plus one closed lens
 	// row (id, optional globs, and the dispatch caps).
-	"pack.schema.json": "da0b677f7e1be68a2007dd86116dd26f2bad9745232fa6fe459608c169f9e0b4",
+	// lens count prose: the description now names the loader as the enforcer
+	// of the 64-lens cap (pack-too-large) instead of promising a maxItems the
+	// published keyword subset does not implement. Prose only; no property,
+	// required key, enum, or type changed.
+	"pack.schema.json": "7525f56b2c60ae932397adf9546e8f34640247ec5a38ed21854f8cda9ee2f7c4",
 	// patch identity: additive optional patch_id/patch_id_kind plus the
 	// optional forced[] audit with $defs/forcedPost. No existing property,
 	// required key, or type changed.
