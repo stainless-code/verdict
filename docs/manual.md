@@ -2633,13 +2633,12 @@ history is excluded. A shallow clone warns that the counts are true of the
 commits present only. The window is cached under
 `.verdict/index/cochange/<head>-<commits>.json` (two newest kept); the file is
 timestamp-free, so the same window writes the same bytes, and a corrupt cache
-is rebuilt rather than read as an empty window. The cache is best-effort and a
-query creates nothing: it is written only inside an index store that already
-exists, never while the clone is shallow (a truncated window must not survive
-`git fetch --unshallow`), and never when a path in the window is not valid
-UTF-8 (JSON would rewrite the bytes and a later hit would stop matching). When
-any of those holds — absent store, unwritable checkout, shallow clone, a
-non-UTF-8 path — the answer is computed from git as usual and one
+is rebuilt rather than read as an empty window. The cache is best-effort: a
+query writes nothing into an absent index store, nothing for a shallow clone's
+window (a truncated window must not survive `git fetch --unshallow`), and
+nothing for a window holding a path that is not valid UTF-8 (JSON would rewrite
+the bytes and a later hit would stop matching). Each costs the answer nothing —
+the rows are already computed — and one
 `» index: co-change cache not written: <reason>` line on the human surface
 names why nothing was cached; a shallow clone's own warning carries its case.
 
@@ -2672,6 +2671,7 @@ build is the effective ceiling. It binds before the nominal 20,000 × 1 MiB file
 caps; an over-cap capture refuses `index-capped` naming the cap, and the
 capture cap is not configurable. A truncated or invalid shard refuses
 `index-corrupt` and is never read as empty.
+
 Querying a tree that is not HEAD's marks the envelope `stale: true` and warns
 `» index: built for <tree>, HEAD is <tree2>`. `callers`, `tests-for`, and
 `owners` take `--at`; `co-changed` always reads HEAD's tree and history. The
