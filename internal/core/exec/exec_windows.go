@@ -58,10 +58,24 @@ var (
 // win32Call runs one Win32 proc and returns its first result word. A proc
 // reports failure through that word — a NULL handle, FALSE, or (DWORD)-1 —
 // and its third Call return is GetLastError, meaningful only after a failure.
-// Every caller tests the word, so the last error is already ruled.
+// Callers read the word with win32OK, resumeOK, or a NULL-handle test.
 func win32Call(proc *syscall.LazyProc, args ...uintptr) uintptr {
 	r, _, _ := proc.Call(args...) //nolint:errcheck // GetLastError, ruled by the result word
 	return r
+}
+
+// win32OK reads a BOOL result. BOOL is a 32-bit int and the x64 ABI leaves
+// the upper half of the return register undefined, so only the low 32 bits
+// carry the verdict.
+func win32OK(r uintptr) bool {
+	return uint32(r) != 0 //nolint:gosec // G115: the 32-bit narrowing is the contract
+}
+
+// resumeOK reads ResumeThread's DWORD result: only (DWORD)-1 fails, any other
+// value is the thread's previous suspend count. Reading the full word would
+// call a failure with junk in the upper half a resumed thread.
+func resumeOK(r uintptr) bool {
+	return uint32(r) != resumeFailed //nolint:gosec // G115: the 32-bit narrowing is the contract
 }
 
 // closeHandle releases a handle whose operation has already returned its
@@ -151,7 +165,7 @@ func setGroup(cmd *osexec.Cmd) {
 			handle, jobObjectExtendedLimitInformation,
 			uintptr(unsafe.Pointer(&info)), unsafe.Sizeof(info),
 		)
-		if ok != 0 {
+		if win32OK(ok) {
 			tr.handle = syscall.Handle(handle)
 			tr.suspended = true
 			if cmd.SysProcAttr == nil {
@@ -195,7 +209,7 @@ func (tr *tree) attach(cmd *osexec.Cmd) error {
 	}
 	defer closeHandle(handle) // the assignment error already rules
 	r, _, callErr := procAssignProcessToJob.Call(uintptr(tr.handle), uintptr(handle))
-	if r == 0 {
+	if !win32OK(r) {
 		return watchdogError("assign verify process to job object: " + callErr.Error())
 	}
 	tr.attached = true
@@ -252,7 +266,7 @@ func threadsOf(snap syscall.Handle, pid uint32) []uint32 {
 	var ids []uint32
 	entry := threadEntry{Size: uint32(unsafe.Sizeof(threadEntry{}))}
 	more := win32Call(procThread32First, uintptr(snap), uintptr(unsafe.Pointer(&entry)))
-	for more != 0 {
+	for win32OK(more) {
 		if entry.OwnerProcessID == pid {
 			ids = append(ids, entry.ThreadID)
 		}
@@ -269,7 +283,7 @@ func resumeThread(id uint32) bool {
 	}
 	defer closeHandle(syscall.Handle(th)) // the resume result already rules
 	prev := win32Call(procResumeThread, th)
-	return prev != resumeFailed
+	return resumeOK(prev)
 }
 
 func (tr *tree) terminate() bool {
@@ -279,7 +293,7 @@ func (tr *tree) terminate() bool {
 		return false
 	}
 	r := win32Call(procTerminateJobObject, uintptr(tr.handle), forcedExitCode)
-	return r != 0
+	return win32OK(r)
 }
 
 func (tr *tree) active() bool {
@@ -293,7 +307,7 @@ func (tr *tree) active() bool {
 		uintptr(tr.handle), jobObjectBasicAccountingInformation,
 		uintptr(unsafe.Pointer(&info)), unsafe.Sizeof(info), 0,
 	)
-	return r != 0 && info.ActiveProcesses > 0
+	return win32OK(r) && info.ActiveProcesses > 0
 }
 
 func killGroup(cmd *osexec.Cmd) error {
@@ -328,7 +342,7 @@ func processAlive(_ context.Context, cmd *osexec.Cmd) bool {
 	defer closeHandle(handle) // the liveness read already rules
 	var code uint32
 	r := win32Call(procGetExitCodeProcess, uintptr(handle), uintptr(unsafe.Pointer(&code)))
-	return r != 0 && code == stillActive
+	return win32OK(r) && code == stillActive
 }
 
 func sweepOrphans(cmd *osexec.Cmd) bool {

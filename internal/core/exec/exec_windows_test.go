@@ -99,6 +99,49 @@ func TestCancelKillsGrandchildSpawnedAtStart(t *testing.T) {
 	assertPidDead(t, pidFile)
 }
 
+// TestResumeOKReadsTheDWORD proves ResumeThread's verdict comes from the low
+// 32 bits: a failure whose upper half carries junk still reads as a failure,
+// not as a resumed thread that lets armStarted return success.
+func TestResumeOKReadsTheDWORD(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		word uintptr
+		want bool
+	}{
+		{name: "failure", word: 0x00000000FFFFFFFF, want: false},
+		{name: "failure with junk upper bits", word: 0xDEADBEEFFFFFFFFF, want: false},
+		{name: "previous suspend count zero", word: 0, want: true},
+		{name: "previous suspend count one", word: 1, want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := resumeOK(tc.word); got != tc.want {
+				t.Errorf("resumeOK(%#x) = %v; want %v", tc.word, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestWin32OKReadsTheBOOL proves a BOOL result's verdict is its low 32 bits:
+// FALSE with junk above it is still FALSE.
+func TestWin32OKReadsTheBOOL(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		word uintptr
+		want bool
+	}{
+		{name: "false", word: 0, want: false},
+		{name: "false with junk upper bits", word: 0xDEADBEEF00000000, want: false},
+		{name: "true", word: 1, want: true},
+		{name: "true with junk upper bits", word: 0xDEADBEEF00000001, want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := win32OK(tc.word); got != tc.want {
+				t.Errorf("win32OK(%#x) = %v; want %v", tc.word, got, tc.want)
+			}
+		})
+	}
+}
+
 func pidReport(file string) string {
 	return `cat /proc/$!/winpid > '` + file + `'`
 }
