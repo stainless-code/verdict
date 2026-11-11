@@ -3,8 +3,9 @@
 # index graph: tests-for, co-changed, and owners answer from the built index
 # and the git objects, not the worktree. Candidate tests cover all three via
 # kinds, co-change rows carry literal counts and jaccard with an echoed
-# window, the CODEOWNERS last match wins, and an uncommitted CODEOWNERS edit
-# changes nothing. No network.
+# window, the CODEOWNERS last match wins, an uncommitted CODEOWNERS edit
+# changes nothing, and a co-changed query on a checkout with no index store
+# writes nothing at all. No network.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -150,6 +151,22 @@ assert_refusal "co-changed names the refusal code" "bad-flags"
 run_review index owners nope.go --json
 assert_exit "an unknown owner path refuses" 1
 assert_refusal "owners names the refusal code" "bad-flags"
+
+# A query creates nothing: with no .verdict at all, co-changed answers from git
+# and leaves the checkout as it found it.
+rm -rf "$EVAL_SANDBOX/.verdict"
+run_review index co-changed a/a.go --json
+assert_exit "co-changed without an index store exits 0" 0
+assert_envelope "co-changed without a store envelope"
+assert_json_field "co-changed answers from git alone" 2 '.data.counts.partners'
+assert_json_field "the missing cache is named once" \
+  "» index: co-change cache not written: the index store is absent (run verdict index build)" \
+  '.warnings | join(",")'
+if [ -e "$EVAL_SANDBOX/.verdict" ]; then
+  bad "a read-only co-changed created .verdict"
+else
+  good "a read-only co-changed wrote nothing into the checkout"
+fi
 
 stub_after="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 assert_eq "no host calls" "$stub_before" "$stub_after"

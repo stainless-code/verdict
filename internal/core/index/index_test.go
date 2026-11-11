@@ -28,12 +28,25 @@ type fixture struct {
 	day int
 }
 
-// newFixture creates an empty repository on main.
+// newFixture creates an empty repository on main. The repository's own exclude
+// file keeps the workspace a build writes out of every commit, so a fixture
+// that builds before its last commit has a window of its own paths only.
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
 	f := &fixture{t: t, dir: t.TempDir(), day: 1}
 	f.git("init", "-q", "-b", "main")
+	f.ignoreVerdict()
 	return f
+}
+
+// ignoreVerdict appends the workspace to the repository's own exclude file,
+// never to a tracked .gitignore, so no fixture path is added to a commit.
+func (f *fixture) ignoreVerdict() {
+	f.t.Helper()
+	path := filepath.Join(f.dir, ".git", "info", "exclude")
+	if err := os.WriteFile(path, []byte(".verdict/\n"), 0o644); err != nil {
+		f.t.Fatal(err)
+	}
 }
 
 // date renders the fixture's next pinned commit date.

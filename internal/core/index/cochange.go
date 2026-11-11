@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -13,9 +14,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/atomic"
-	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 )
 
@@ -36,6 +37,11 @@ const (
 // the counts are true of the commits present, not of the full history.
 const shallowCoChangeWarning = "» index: shallow clone: co-change counts see only the commits present; " +
 	"run 'git fetch --unshallow' for the full history"
+
+// coChangeCacheWarning is the one line a query that could not cache its window
+// gets: the cache is an optimization, never a reason to refuse or to write
+// outside a store that already exists.
+const coChangeCacheWarning = "» index: co-change cache not written: "
 
 // coChangeDoc is the cached history window: one bounded git log, in the order
 // git printed it. It carries no timestamp, so the same window writes the same
@@ -99,8 +105,8 @@ func (st *state) coChanged(ctx context.Context) (*Response, *core.RefusalError) 
 	if ref != nil {
 		return nil, ref
 	}
-	st.warnShallow(ctx, root)
-	doc, ref := st.coChangeWindow(ctx, root, head, commits, spec)
+	shallow := st.warnShallow(ctx, root)
+	doc, ref := st.coChangeWindow(ctx, root, head, commits, spec, shallow)
 	if ref != nil {
 		return nil, ref
 	}
@@ -212,25 +218,26 @@ func (s coChangeSpan) back(at time.Time) time.Time {
 }
 
 // warnShallow reports a depth-limited clone: a boundary commit reads as the
-// history root, so co-change counts are true of what is present only.
-func (st *state) warnShallow(ctx context.Context, root string) {
+// history root, so co-change counts are true of what is present only. An
+// unreadable probe counts as shallow, so a window nothing proves complete is
+// never cached.
+func (st *state) warnShallow(ctx context.Context, root string) bool {
 	out, exit, _, err := st.git(ctx, root, "rev-parse", "--is-shallow-repository")
 	if err != nil || exit != 0 {
-		return
+		return true
 	}
-	if strings.TrimSpace(out) == "true" {
-		st.warn(shallowCoChangeWarning)
+	if strings.TrimSpace(out) != "true" {
+		return false
 	}
+	st.warn(shallowCoChangeWarning)
+	return true
 }
 
 // coChangeWindow reads the bounded window from the cache or from one git log.
 func (st *state) coChangeWindow(
-	ctx context.Context, root, head string, commits int, spec windowSpec,
+	ctx context.Context, root, head string, commits int, spec windowSpec, shallow bool,
 ) (*coChangeDoc, *core.RefusalError) {
-	dir, ref := ensureCoChangeStore(root)
-	if ref != nil {
-		return nil, ref
-	}
+	dir := coChangeDir(root)
 	path := coChangePath(dir, head, commits)
 	if doc := readCoChangeCache(path, head, commits, spec.cache); doc != nil {
 		return doc, nil
@@ -243,27 +250,53 @@ func (st *state) coChangeWindow(
 		SchemaVersion: cochangeSchema, Head: head, Commits: commits,
 		Since: spec.cache, Changes: changes,
 	}
-	if ref := writeCoChangeCache(dir, path, doc); ref != nil {
-		return nil, ref
-	}
+	st.cacheCoChange(root, dir, path, doc, shallow)
 	return doc, nil
 }
 
-// ensureCoChangeStore creates the co-change cache under the index store.
-func ensureCoChangeStore(root string) (string, *core.RefusalError) {
-	if err := config.NewLayout(root).EnsureStateIgnore(); err != nil {
-		if ref := err.Refusal(); ref != nil {
-			return "", ref
+// coChangeDir returns one repository's co-change cache directory. Only
+// [state.cacheCoChange] writes there; a read never creates it.
+func coChangeDir(root string) string {
+	return filepath.Join(storePath(root), cochangeDirName)
+}
+
+// cacheCoChange stores one window best-effort. A query is a read: it never
+// creates the index store, and a window that cannot be cached loses the sum of
+// nothing — the rows are already computed — so the cache never fails the
+// query, and one warning line names the reason it is absent.
+func (st *state) cacheCoChange(root, dir, path string, doc *coChangeDoc, shallow bool) {
+	switch {
+	case shallow:
+		// The shallow warning already says why this window is partial.
+	case !utf8Paths(doc.Changes):
+		st.warn(coChangeCacheWarning + "a path in the window is not valid UTF-8")
+	case !storeExists(storePath(root)):
+		st.warn(coChangeCacheWarning + "the index store is absent (run verdict index build)")
+	default:
+		if reason := writeCoChangeCache(dir, path, doc); reason != "" {
+			st.warn(coChangeCacheWarning + reason)
 		}
-		return "", &core.RefusalError{Code: codeIndexFailed, Message: err.Error()}
 	}
-	dir := filepath.Join(storePath(root), cochangeDirName)
-	if err := os.MkdirAll(dir, storeDirPerm); err != nil {
-		return "", &core.RefusalError{
-			Code: codeIndexFailed, Message: "could not create " + dir + colonSpace + err.Error(),
+}
+
+// utf8Paths reports whether every path in the window survives a JSON
+// round-trip unchanged: a non-UTF-8 byte becomes U+FFFD on encode, so a cached
+// window would stop matching the target git actually printed.
+func utf8Paths(commits []windowCommit) bool {
+	for i := range commits {
+		for _, p := range commits[i].Paths {
+			if !utf8.ValidString(p) {
+				return false
+			}
 		}
 	}
-	return dir, nil
+	return true
+}
+
+// storeExists reports whether the index store exists, without creating it.
+func storeExists(store string) bool {
+	info, err := os.Stat(store)
+	return err == nil && info.IsDir()
 }
 
 // coChangePath returns one cache file's path.
@@ -289,17 +322,23 @@ func readCoChangeCache(path, head string, commits int, since string) *coChangeDo
 	return &doc
 }
 
-// writeCoChangeCache stores one window and keeps the two newest caches.
-func writeCoChangeCache(dir, path string, doc *coChangeDoc) *core.RefusalError {
+// writeCoChangeCache stores one window and keeps the two newest caches. It
+// creates the cache directory inside an existing store and nothing above it.
+// What it cannot do, it returns as the warning's reason: a cache miss costs the
+// answer nothing, so no caller inspects the cause.
+func writeCoChangeCache(dir, path string, doc *coChangeDoc) string {
+	if err := os.Mkdir(dir, storeDirPerm); err != nil && !errors.Is(err, os.ErrExist) {
+		return "could not create " + dir + ": " + err.Error()
+	}
 	raw, err := json.Marshal(doc)
 	if err != nil {
-		return &core.RefusalError{Code: codeIndexFailed, Message: "could not encode the co-change window: " + err.Error()}
+		return "could not encode the window: " + err.Error()
 	}
 	if err := atomic.WriteFile(path, raw); err != nil {
-		return &core.RefusalError{Code: codeIndexFailed, Message: "could not write the co-change window: " + err.Error()}
+		return "could not write " + path + ": " + err.Error()
 	}
 	pruneCoChangeCache(dir)
-	return nil
+	return ""
 }
 
 // pruneCoChangeCache deletes every cache but the two newest, name-breaking
@@ -348,11 +387,13 @@ func newestCacheFirst(a, b cacheCandidate) int {
 }
 
 // readCoChangeLog reads one bounded history window with a single git log call.
+// `--no-renames` lists both sides of a rename, so the window holds the names
+// the file had rather than one path the repository's diff config chose.
 func (st *state) readCoChangeLog(
 	ctx context.Context, root string, commits int, spec windowSpec,
 ) ([]windowCommit, *core.RefusalError) {
 	args := []string{
-		"log", "--no-merges", "--name-only", "-z", "-n", strconv.Itoa(commits),
+		"log", "--no-merges", "--no-renames", "--name-only", "-z", "-n", strconv.Itoa(commits),
 		"--pretty=format:" + commitHeaderPrefix + "%H",
 	}
 	if spec.cutoff != "" {

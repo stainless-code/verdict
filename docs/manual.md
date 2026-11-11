@@ -2623,15 +2623,25 @@ with its co-change count and Jaccard ratio `|A∩B|/|A∪B|` over the window,
 rounded to four decimals. Rows sort by count then path; partners below
 `--min-count` are dropped. The window is echoed — oldest and newest commit,
 commit count, and how many commits touched the target — so a count is never
-divorced from its denominator. Merges are excluded. A rename counts as its old
-and new path in one commit, so both names co-change with everything in it and
-the two are never joined here. `--since` takes a duration (`90d`, `12w`,
+divorced from its denominator. Merges are excluded. The call passes
+`--no-renames` under a pinned `diff.renames=false`, so a rename counts as its
+old and new path in one commit — both names co-change with everything in it
+and the two are never joined here — and no repository diff config can shrink
+the window. `--since` takes a duration (`90d`, `12w`,
 `18mo`, `2y`) measured back from HEAD's own committer date, or a ref whose
 history is excluded. A shallow clone warns that the counts are true of the
 commits present only. The window is cached under
 `.verdict/index/cochange/<head>-<commits>.json` (two newest kept); the file is
 timestamp-free, so the same window writes the same bytes, and a corrupt cache
-is rebuilt rather than read as an empty window.
+is rebuilt rather than read as an empty window. The cache is best-effort and a
+query creates nothing: it is written only inside an index store that already
+exists, never while the clone is shallow (a truncated window must not survive
+`git fetch --unshallow`), and never when a path in the window is not valid
+UTF-8 (JSON would rewrite the bytes and a later hit would stop matching). When
+any of those holds — absent store, unwritable checkout, shallow clone, a
+non-UTF-8 path — the answer is computed from git as usual and one
+`» index: co-change cache not written: <reason>` line on the human surface
+names why nothing was cached; a shallow clone's own warning carries its case.
 
 `index owners <path> [--at <tree>]` answers the CODEOWNERS rule that owns one
 path at the queried tree. The file is read **at the tree**, from the git object

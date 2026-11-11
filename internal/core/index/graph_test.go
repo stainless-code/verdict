@@ -2,6 +2,7 @@ package indexcore
 
 import (
 	"context"
+	"errors"
 	"maps"
 	"os"
 	"os/exec"
@@ -498,6 +499,7 @@ func TestCoChangedWindowDuration(t *testing.T) {
 func TestCoChangedCacheIsDeterministic(t *testing.T) {
 	f := newFixture(t)
 	writeHistoryFixture(f)
+	f.build()
 	first := f.queryPath(QueryCoChanged, "a/target.go")
 	before := snapshotCoChange(t, f.dir)
 	if err := os.RemoveAll(filepath.Join(f.dir, ".verdict", "index", "cochange")); err != nil {
@@ -548,13 +550,15 @@ func snapshotCoChange(t *testing.T, root string) map[string]string {
 func TestCoChangedCacheKeepsTwo(t *testing.T) {
 	f := newFixture(t)
 	writeHistoryFixture(f)
+	f.build()
 	var paths []string
 	for i := range 3 {
 		f.write("a/target.go", "package a\n\nfunc Target() {}\n\nfunc Round"+string(rune('A'+i))+"() {}\n")
 		f.commit("round " + string(rune('A'+i)))
+		head := f.run("", "rev-parse", "HEAD")
 		f.queryPath(QueryCoChanged, "a/target.go")
-		stampCache(t, f.dir, int64(1000+i))
-		paths = append(paths, f.run("", "rev-parse", "HEAD"))
+		stampCache(t, f.dir, head+"-2000.json", int64(1000+i))
+		paths = append(paths, head)
 	}
 	entries, err := os.ReadDir(filepath.Join(f.dir, ".verdict", "index", "cochange"))
 	if err != nil {
@@ -575,20 +579,14 @@ func TestCoChangedCacheKeepsTwo(t *testing.T) {
 	}
 }
 
-// stampCache pins every cache file's mtime, so prune's order is fixture data
-// rather than the filesystem's clock granularity.
-func stampCache(t *testing.T, root string, sec int64) {
+// stampCache pins one cache file's mtime, so prune's order is fixture data
+// rather than the filesystem's clock.
+func stampCache(t *testing.T, root, name string, sec int64) {
 	t.Helper()
-	dir := filepath.Join(root, ".verdict", "index", "cochange")
-	entries, err := os.ReadDir(dir)
-	if err != nil {
+	stamp := time.Unix(sec, 0)
+	path := filepath.Join(root, ".verdict", "index", "cochange", name)
+	if err := os.Chtimes(path, stamp, stamp); err != nil {
 		t.Fatal(err)
-	}
-	for _, e := range entries {
-		stamp := time.Unix(sec, 0)
-		if err := os.Chtimes(filepath.Join(dir, e.Name()), stamp, stamp); err != nil {
-			t.Fatal(err)
-		}
 	}
 }
 
@@ -687,4 +685,312 @@ func TestCoChangedSinceRefusal(t *testing.T) {
 	if ref == nil || ref.Code != "bad-at" {
 		t.Fatalf("refusal = %v; want bad-at", ref)
 	}
+}
+
+// cochangeCacheDirName is the cache directory a fixture looks for, spelled as
+// the published layout rather than read from the code under test.
+const cochangeCacheDirName = ".verdict/index/cochange"
+
+// TestCoChangedRenameListsBothPaths proves a rename enters the window as its
+// old and new path, so the new name co-changes with the old one and with
+// everything in that commit.
+func TestCoChangedRenameListsBothPaths(t *testing.T) {
+	f := newFixture(t)
+	f.write("go.mod", "module example.com/m\n")
+	f.write("old/target.go", "package old\n\nfunc Target() {}\n")
+	f.write("partner.go", "package m\n\nfunc Partner() {}\n")
+	f.commit("one")
+	f.build()
+	if err := os.MkdirAll(filepath.Join(f.dir, "new"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f.git("mv", "old/target.go", "new/target.go")
+	f.write("partner.go", "package m\n\nfunc Partner() {}\n\nfunc Partner2() {}\n")
+	f.commit("rename and touch")
+	req := f.request(QueryCoChanged, nil)
+	req.Path, req.MinCount = "new/target.go", 1
+	resp, ref := Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("index co-changed refused: %v", ref)
+	}
+	assertCoChangeRows(t, resp.Data.CoChangeRows, []CoChangeRow{
+		{Path: "old/target.go", Commits: 1, Jaccard: 0.5},
+		{Path: "partner.go", Commits: 1, Jaccard: 0.5},
+	})
+	if resp.Data.TargetCommits != 1 {
+		t.Errorf("target commits = %d; want 1", resp.Data.TargetCommits)
+	}
+	raw, err := os.ReadFile(filepath.Join(f.dir, cochangeCacheDirName, f.run("", "rev-parse", "HEAD")+"-2000.json"))
+	if err != nil {
+		t.Fatalf("reading the co-change cache: %v", err)
+	}
+	for _, want := range []string{`"old/target.go"`, `"new/target.go"`} {
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("cache = %s; want it to carry %s", raw, want)
+		}
+	}
+}
+
+// TestCoChangedReadsWithoutWriting proves a query on a checkout that carries no
+// index store answers from git and leaves the workspace alone: no .verdict, one
+// warning naming why the cache is absent.
+func TestCoChangedReadsWithoutWriting(t *testing.T) {
+	f := newFixture(t)
+	writeHistoryFixture(f)
+	resp := f.queryPath(QueryCoChanged, "a/target.go")
+	assertCoChangeRows(t, resp.Data.CoChangeRows, []CoChangeRow{
+		{Path: "b/partner.go", Commits: 3, Jaccard: 0.75},
+		{Path: "c/rare.go", Commits: 2, Jaccard: 0.5},
+	})
+	if _, err := os.Stat(filepath.Join(f.dir, ".verdict")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("query created %s (stat error %v); want a read to write nothing", filepath.Join(f.dir, ".verdict"), err)
+	}
+	want := "» index: co-change cache not written: the index store is absent (run verdict index build)"
+	if len(resp.Warnings) != 1 || resp.Warnings[0] != want {
+		t.Errorf("warnings = %q; want exactly [%q]", resp.Warnings, want)
+	}
+}
+
+// TestCoChangedReadOnlyStoreStillAnswers proves an unwritable index store costs
+// the answer nothing: the rows are computed and one warning names the cache.
+func TestCoChangedReadOnlyStoreStillAnswers(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a 0555 directory does not deny writes on Windows")
+	}
+	f := newFixture(t)
+	writeHistoryFixture(f)
+	f.build()
+	indexDir := filepath.Join(f.dir, ".verdict", "index")
+	if err := os.Chmod(indexDir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chmod(indexDir, 0o755); err != nil {
+			t.Errorf("restoring the index store's mode: %v", err)
+		}
+	})
+	resp := f.queryPath(QueryCoChanged, "a/target.go")
+	assertCoChangeRows(t, resp.Data.CoChangeRows, []CoChangeRow{
+		{Path: "b/partner.go", Commits: 3, Jaccard: 0.75},
+		{Path: "c/rare.go", Commits: 2, Jaccard: 0.5},
+	})
+	if _, err := os.Stat(filepath.Join(f.dir, cochangeCacheDirName)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a read-only store gained %s (stat error %v)", cochangeCacheDirName, err)
+	}
+	const prefix = "» index: co-change cache not written: "
+	if len(resp.Warnings) != 1 || !strings.HasPrefix(resp.Warnings[0], prefix) {
+		t.Errorf("warnings = %q; want exactly one starting %q", resp.Warnings, prefix)
+	}
+}
+
+// TestCoChangedShallowCachesNothing proves a depth-limited window is never
+// cached: the cache would survive `git fetch --unshallow` and keep answering
+// with the truncated window. After unshallow the query recomputes the full
+// history and caches it.
+func TestCoChangedShallowCachesNothing(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the file:// clone transport is not portable on Windows")
+	}
+	f := newFixture(t)
+	writeHistoryFixture(f)
+	clone := shallowClone(t, f.dir)
+	if _, ref := Run(context.Background(), &Request{
+		Query:    QueryBuild,
+		Runtime:  &core.Runtime{Commander: coreexec.Runner{}, Env: envMap()},
+		RepoRoot: clone,
+	}); ref != nil {
+		t.Fatalf("index build in the shallow clone refused: %v", ref)
+	}
+	shallow := queryClone(t, clone, "a/target.go", 1)
+	if shallow.Data.Window.Commits != 1 {
+		t.Fatalf("shallow window commits = %d; want 1", shallow.Data.Window.Commits)
+	}
+	if _, err := os.Stat(filepath.Join(clone, cochangeCacheDirName)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a shallow query cached %s (stat error %v)", cochangeCacheDirName, err)
+	}
+	gitIn(t, clone, "fetch", "-q", "--unshallow")
+	full := queryClone(t, clone, "a/target.go", 2)
+	if full.Data.Window.Commits != 4 {
+		t.Fatalf("window commits after unshallow = %d; want 4", full.Data.Window.Commits)
+	}
+	assertCoChangeRows(t, full.Data.CoChangeRows, []CoChangeRow{
+		{Path: "b/partner.go", Commits: 3, Jaccard: 0.75},
+		{Path: "c/rare.go", Commits: 2, Jaccard: 0.5},
+	})
+	entries, err := os.ReadDir(filepath.Join(clone, cochangeCacheDirName))
+	if err != nil {
+		t.Fatalf("the unshallowed query cached nothing: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Errorf("cache files = %d; want the one full window", len(entries))
+	}
+}
+
+// TestCoChangedNonUTF8PathSkipsCache proves a window holding a path JSON cannot
+// round-trip is answered from git's bytes and never cached, so no later hit can
+// disagree with the first run.
+func TestCoChangedNonUTF8PathSkipsCache(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a 0xff byte in a path is not representable on Windows")
+	}
+	f := newFixture(t)
+	f.write("go.mod", "module example.com/m\n")
+	f.write("partner.go", "package m\n\nfunc Partner() {}\n")
+	f.commit("one")
+	f.build()
+	f.write("partner.go", "package m\n\nfunc Partner() {}\n\nfunc Partner2() {}\n")
+	f.commitObject("bad\xffname.go", "package m\n\nfunc Bad() {}\n", "a path JSON cannot carry")
+	req := f.request(QueryCoChanged, nil)
+	req.Path, req.MinCount = "bad\xffname.go", 1
+	resp, ref := Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("index co-changed refused: %v", ref)
+	}
+	assertCoChangeRows(t, resp.Data.CoChangeRows, []CoChangeRow{
+		{Path: "partner.go", Commits: 1, Jaccard: 0.5},
+	})
+	if _, err := os.Stat(filepath.Join(f.dir, cochangeCacheDirName)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a non-UTF-8 window cached %s (stat error %v)", cochangeCacheDirName, err)
+	}
+	want := "» index: co-change cache not written: a path in the window is not valid UTF-8"
+	if !slices.Contains(resp.Warnings, want) {
+		t.Errorf("warnings = %q; want one equal to %q", resp.Warnings, want)
+	}
+}
+
+// queryClone runs one co-changed query in a clone at the given minimum count.
+func queryClone(t *testing.T, dir, p string, minCount int) *Response {
+	t.Helper()
+	req := &Request{
+		Query: QueryCoChanged, Path: p, MinCount: minCount,
+		Runtime:  &core.Runtime{Commander: coreexec.Runner{}, Env: envMap()},
+		RepoRoot: dir,
+	}
+	resp, ref := Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("index co-changed %s refused: %v", p, ref)
+	}
+	return resp
+}
+
+// gitIn runs one installed-git command in dir and fails on a non-zero exit.
+func gitIn(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.CommandContext(t.Context(), "git", append([]string{"-C", dir}, args...)...)
+	cmd.Env = testenv.Base(nil)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+// TestCoChangedTruncatesPartners proves partner rows truncate with a count,
+// never silently.
+func TestCoChangedTruncatesPartners(t *testing.T) {
+	f := newFixture(t)
+	writeHistoryFixture(f)
+	req := f.request(QueryCoChanged, nil)
+	req.Path, req.Limit = "a/target.go", 1
+	resp, ref := Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("index co-changed refused: %v", ref)
+	}
+	if resp.Data.Partners != 2 || resp.Data.Truncated != 1 || resp.Data.Limit != 1 {
+		t.Fatalf("truncated data = partners %d, truncated %d, limit %d; want 2, 1, 1",
+			resp.Data.Partners, resp.Data.Truncated, resp.Data.Limit)
+	}
+	assertCoChangeRows(t, resp.Data.CoChangeRows, []CoChangeRow{
+		{Path: "b/partner.go", Commits: 3, Jaccard: 0.75},
+	})
+	want := "index: showing 1 of 2 partners (1 not shown; raise --limit up to 200)"
+	if !slices.Contains(resp.Human, want) {
+		t.Errorf("human lines = %q; want one equal to %q", resp.Human, want)
+	}
+}
+
+// TestCoChangedTieOrder proves partners with the same co-change count sort by
+// path, so equal counts never order by map iteration.
+func TestCoChangedTieOrder(t *testing.T) {
+	f := newFixture(t)
+	f.write("t/t.go", "package t\n\nfunc T() {}\n")
+	f.write("z/z.go", "package z\n\nfunc Z() {}\n")
+	f.write("m/m.go", "package m\n\nfunc M() {}\n")
+	f.commit("one")
+	f.write("t/t.go", "package t\n\nfunc T() {}\n\nfunc T2() {}\n")
+	f.commit("two")
+	req := f.request(QueryCoChanged, nil)
+	req.Path, req.MinCount = "t/t.go", 1
+	resp, ref := Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("index co-changed refused: %v", ref)
+	}
+	assertCoChangeRows(t, resp.Data.CoChangeRows, []CoChangeRow{
+		{Path: "m/m.go", Commits: 1, Jaccard: 0.5},
+		{Path: "z/z.go", Commits: 1, Jaccard: 0.5},
+	})
+}
+
+// TestCoChangedEmptyWindow proves `--since HEAD` reads an empty window as zero
+// commits with no bounds, not as an error or a foreign history.
+func TestCoChangedEmptyWindow(t *testing.T) {
+	f := newFixture(t)
+	writeHistoryFixture(f)
+	req := f.request(QueryCoChanged, nil)
+	req.Path, req.Since = "a/target.go", f.run("", "rev-parse", "HEAD")
+	resp, ref := Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("index co-changed refused: %v", ref)
+	}
+	if resp.Data.Window != (Window{}) || resp.Data.TargetCommits != 0 || resp.Data.Partners != 0 {
+		t.Fatalf("empty window = %+v, target commits %d, partners %d; want zeroes",
+			resp.Data.Window, resp.Data.TargetCommits, resp.Data.Partners)
+	}
+	if len(resp.Data.CoChangeRows) != 0 {
+		t.Errorf("rows = %+v; want none", resp.Data.CoChangeRows)
+	}
+	if wire := resp.Data.Wire().MarshalCompact(); !strings.Contains(wire, `"window":{"commits":0}`) {
+		t.Errorf("wire = %s; want a four-key window carrying only its zero commits", wire)
+	}
+	want := `index: no co-changed partners of a/target.go across 0 commit(s) (target in 0)`
+	if !slices.Contains(resp.Human, want) {
+		t.Errorf("human lines = %q; want one equal to %q", resp.Human, want)
+	}
+}
+
+// TestCoChangedTargetOutsideWindow proves a window that never touched the
+// target answers zero target commits and no partners.
+func TestCoChangedTargetOutsideWindow(t *testing.T) {
+	f := newFixture(t)
+	writeHistoryFixture(f)
+	f.write("d/never.go", "package d\n\nfunc D() {}\n\nfunc D2() {}\n")
+	f.commit("five")
+	req := f.request(QueryCoChanged, nil)
+	req.Path, req.Since, req.MinCount = "a/target.go", "HEAD~1", 1
+	resp, ref := Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("index co-changed refused: %v", ref)
+	}
+	if resp.Data.Window.Commits != 1 || resp.Data.TargetCommits != 0 || resp.Data.Partners != 0 {
+		t.Fatalf("window = %+v, target commits %d, partners %d; want one commit touching neither",
+			resp.Data.Window, resp.Data.TargetCommits, resp.Data.Partners)
+	}
+	assertCoChangeRows(t, resp.Data.CoChangeRows, nil)
+}
+
+// TestCoChangedNewlinePath proves a partner whose name carries a newline is one
+// row with that literal name, not two rows or a broken record.
+func TestCoChangedNewlinePath(t *testing.T) {
+	f := newFixture(t)
+	f.write("t/t.go", "package t\n\nfunc T() {}\n")
+	f.commit("one")
+	f.write("t/t.go", "package t\n\nfunc T() {}\n\nfunc T2() {}\n")
+	f.commitObject("weird\nname.go", "package w\n\nfunc W() {}\n", "two")
+	req := f.request(QueryCoChanged, nil)
+	req.Path, req.MinCount = "t/t.go", 1
+	resp, ref := Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("index co-changed refused: %v", ref)
+	}
+	assertCoChangeRows(t, resp.Data.CoChangeRows, []CoChangeRow{
+		{Path: "weird\nname.go", Commits: 1, Jaccard: 0.5},
+	})
 }
