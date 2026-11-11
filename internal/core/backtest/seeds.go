@@ -568,22 +568,24 @@ func (ss *seedState) mergeCandidate(ctx context.Context, introducer, merge strin
 	}, true, nil
 }
 
-// prChecks applies the PR-level exclusions and fills the dates.
+// prChecks applies the PR-level exclusions and fills the dates. The since
+// ancestor check runs first: it is a comparison of two commit ids, while the
+// size check reads the whole PR diff.
 func (ss *seedState) prChecks(ctx context.Context, unit *prUnit) *core.RefusalError {
-	over, ref := ss.prOverCap(ctx, unit.head, unit.base)
-	if ref != nil {
-		return ref
-	}
-	if over {
-		unit.skip = reasonLargePR
-		return nil
-	}
 	ancestor, ref := ss.st.isAncestor(ctx, unit.landed, ss.since.SHA)
 	if ref != nil {
 		return ref
 	}
 	if ancestor {
 		unit.skip = reasonAncestorSince
+		return nil
+	}
+	over, ref := ss.prOverCap(ctx, unit.head, unit.base)
+	if ref != nil {
+		return ref
+	}
+	if over {
+		unit.skip = reasonLargePR
 		return nil
 	}
 	headAt, ref := ss.st.commitDate(ctx, unit.head)
