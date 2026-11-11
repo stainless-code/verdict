@@ -403,10 +403,11 @@ the PR's base, so a pack the PR adds or edits is listed here but not used.
 A regular file directly under `.verdict/packs/` (a README, say) is not a
 pack: `pack list` skips it with one warning naming it, and `fetch` ignores
 it, so a stray regular file never refuses the run. A symlink or special file
-at that level refuses `pack-unsafe-path` naming the joined path, matching the
-controls read, so neither surface calls one ignorable. Conflict refusals
-surface here too, so a bad layering fails before a review spends anything. The
-MCP `pack` tool serves the same read-only list.
+at that level refuses `pack-unsafe-path` naming the joined path, and the
+controls read refuses the same entries, so neither surface calls one
+ignorable. Conflict refusals surface here too, so a bad layering fails before
+a review spends anything. The MCP `pack` tool serves the same read-only list
+and repeats the same warning list in its result.
 
 ### Evidence ledger
 

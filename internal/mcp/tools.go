@@ -496,7 +496,9 @@ func invokePack(ctx context.Context, req *packcore.Request) (*jq.Obj, *core.Refu
 	if ref != nil {
 		return nil, ref
 	}
-	return resp.Data.Wire(), nil
+	data := resp.Data.Wire()
+	data.Set("warnings", core.StringValues(resp.Warnings))
+	return data, nil
 }
 
 func invokeShow(ctx context.Context, req *core.ShowRequest) (*jq.Obj, *core.RefusalError) {
