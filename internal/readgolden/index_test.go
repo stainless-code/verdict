@@ -115,11 +115,17 @@ func buildIndex(t *testing.T, dir string, env map[string]string) {
 	}
 }
 
+// gitWaitDelay bounds every git command these fixtures capture pipes from
+// (GO-CONC-06): a descendant that keeps the pipe open costs a wait, not a
+// hung test.
+const gitWaitDelay = time.Minute
+
 // runIndexGit runs one pinned git command in the fixture.
 func runIndexGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.CommandContext(t.Context(), "git", args...)
 	cmd.Dir = dir
+	cmd.WaitDelay = gitWaitDelay
 	cmd.Env = testenv.Base(map[string]string{
 		"GIT_AUTHOR_DATE":    "2024-04-01T00:00:00Z",
 		"GIT_COMMITTER_DATE": "2024-04-01T00:00:00Z",
@@ -204,6 +210,7 @@ func runIndexGitOut(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.CommandContext(t.Context(), "git", args...)
 	cmd.Dir = dir
+	cmd.WaitDelay = gitWaitDelay
 	cmd.Env = testenv.Base(map[string]string{
 		"GIT_AUTHOR_DATE":    "2024-04-01T00:00:00Z",
 		"GIT_COMMITTER_DATE": "2024-04-01T00:00:00Z",
@@ -321,9 +328,9 @@ func TestIndexGraphGolden(t *testing.T) {
 // TestIndexGoldensNeverCarryDataPath proves the index data profile advertises
 // no top-level path: the schema dropped it because no wire branch emitted it,
 // and every kind publishes its path as query.path. A golden that grew one
-// would mean the wire and the schema disagree again.
+// would mean the wire and the schema disagree again. It runs unparallel: under
+// -update the parallel legs rewrite the files it reads.
 func TestIndexGoldensNeverCarryDataPath(t *testing.T) {
-	t.Parallel()
 	dir := filepath.Join("testdata", "index")
 	entries, err := os.ReadDir(dir)
 	if err != nil {

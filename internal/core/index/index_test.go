@@ -39,11 +39,21 @@ func newFixture(t *testing.T) *fixture {
 	return f
 }
 
+// gitWaitDelay bounds every git command a fixture captures pipes from
+// (GO-CONC-06): a descendant that keeps the pipe open costs a wait, not a
+// hung test.
+const gitWaitDelay = time.Minute
+
 // ignoreVerdict appends the workspace to the repository's own exclude file,
 // never to a tracked .gitignore, so no fixture path is added to a commit.
+// git init skips .git/info when its template is empty, so the directory is
+// created rather than assumed.
 func (f *fixture) ignoreVerdict() {
 	f.t.Helper()
 	path := filepath.Join(f.dir, ".git", "info", "exclude")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		f.t.Fatal(err)
+	}
 	if err := os.WriteFile(path, []byte(".verdict/\n"), 0o644); err != nil {
 		f.t.Fatal(err)
 	}
@@ -60,6 +70,7 @@ func (f *fixture) run(stdin string, args ...string) string {
 	cmd := exec.CommandContext(f.t.Context(), "git", args...)
 	cmd.Dir = f.dir
 	cmd.Stdin = strings.NewReader(stdin)
+	cmd.WaitDelay = gitWaitDelay
 	cmd.Env = testenv.Base(map[string]string{
 		"GIT_AUTHOR_DATE":    f.date(),
 		"GIT_COMMITTER_DATE": f.date(),

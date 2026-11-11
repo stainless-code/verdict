@@ -828,6 +828,7 @@ func shallowClone(t *testing.T, src string) string {
 	dest := filepath.Join(t.TempDir(), "shallow")
 	cmd := exec.CommandContext(t.Context(), "git", "clone", "-q", "--depth", "1", "file://"+filepath.ToSlash(src), dest)
 	cmd.Env = testenv.Base(nil)
+	cmd.WaitDelay = gitWaitDelay
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git clone --depth 1: %v\n%s", err, out)
 	}
@@ -956,35 +957,30 @@ func TestCoChangedReadsWithoutWriting(t *testing.T) {
 	}
 }
 
-// TestCoChangedReadOnlyStoreStillAnswers proves an unwritable index store costs
-// the answer nothing: the rows are computed and one warning names the cache.
-func TestCoChangedReadOnlyStoreStillAnswers(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("a 0555 directory does not deny writes on Windows")
-	}
+// TestCoChangedUnwritableStoreStillAnswers proves a store that cannot hold the
+// cache costs the answer nothing: the rows are computed and one warning names
+// the cache. A regular file stands where the cache directory belongs, so the
+// write fails whatever the process is allowed to do with permission bits.
+func TestCoChangedUnwritableStoreStillAnswers(t *testing.T) {
 	f := newFixture(t)
 	writeHistoryFixture(f)
 	f.build()
-	indexDir := filepath.Join(f.dir, ".verdict", "index")
-	if err := os.Chmod(indexDir, 0o555); err != nil {
+	cacheDir := filepath.Join(f.dir, filepath.FromSlash(cochangeCacheDirName))
+	if err := os.WriteFile(cacheDir, nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := os.Chmod(indexDir, 0o755); err != nil {
-			t.Errorf("restoring the index store's mode: %v", err)
-		}
-	})
 	resp := f.queryPath(QueryCoChanged, "a/target.go")
 	assertCoChangeRows(t, resp.Data.CoChangeRows, []CoChangeRow{
 		{Path: "b/partner.go", Commits: 3, Jaccard: 0.75},
 		{Path: "c/rare.go", Commits: 2, Jaccard: 0.5},
 	})
-	if _, err := os.Stat(filepath.Join(f.dir, cochangeCacheDirName)); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("a read-only store gained %s (stat error %v)", cochangeCacheDirName, err)
+	cacheFile := filepath.Join(cacheDir, f.run("", "rev-parse", "HEAD")+"-2000.json")
+	if info, err := os.Stat(cacheDir); err != nil || !info.Mode().IsRegular() || info.Size() != 0 {
+		t.Errorf("the blocking file = %v (err %v); want an empty regular file", info, err)
 	}
-	const prefix = "» index: co-change cache not written: "
-	if len(resp.Warnings) != 1 || !strings.HasPrefix(resp.Warnings[0], prefix) {
-		t.Errorf("warnings = %q; want exactly one starting %q", resp.Warnings, prefix)
+	want := "» index: co-change cache not written: could not write " + cacheFile + ": "
+	if len(resp.Warnings) != 1 || !strings.HasPrefix(resp.Warnings[0], want) {
+		t.Errorf("warnings = %q; want exactly one starting %q", resp.Warnings, want)
 	}
 }
 
@@ -1289,6 +1285,7 @@ func gitIn(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.CommandContext(t.Context(), "git", append([]string{"-C", dir}, args...)...)
 	cmd.Env = testenv.Base(nil)
+	cmd.WaitDelay = gitWaitDelay
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
