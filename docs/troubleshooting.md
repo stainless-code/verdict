@@ -744,6 +744,12 @@ Cause: `record` could not write its capture (the message names the file and the 
 
 Fix: make the bundle directory writable (or re-fetch the bundle), then re-run.
 
+## `repair-exhausted`
+
+Cause: `run --rounds N` spent every round without a valid `review.json` (or a round repeated the prior bytes, so there was no progress to spend).
+
+Fix: fix every error named in `error.problems`, then re-run (when the cap was hit, raise `--rounds` up to 5; for no progress check the round files).
+
 ## `report-failed`
 
 Cause: `report` could not read the bundle's review input.
@@ -761,6 +767,12 @@ Fix: address it, narrow the clause, or re-fetch without the policy.
 Cause: a required typed check has no passing evidence for the reviewed head.
 
 Fix: record the evidence named above (`verify --group <id> --command <cmd>`), then re-run — `--force` cannot satisfy a trusted requirement.
+
+## `rounds-path-unsafe`
+
+Cause: the bundle's `.run.rounds` entry is a symlink or another non-directory, so round evidence would land outside the bundle (or a sweep would delete files there).
+
+Fix: remove the named path from the bundle, then re-run.
 
 ## `sandbox-unavailable`
 
