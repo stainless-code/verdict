@@ -55,6 +55,10 @@ printf 'stub-$tool %s\n' "\$argv" >>"\$log"
 config=""
 match=""
 prev=""
+# The split is the point, but argv carries URLs full of glob characters (?
+# and *): without -f a ? expands against the working directory and the match
+# never equals the registered route.
+set -f
 for arg in \$argv; do
   if [ "\$prev" = "--config" ]; then
     if [ "\$arg" = "-" ]; then
@@ -67,6 +71,7 @@ for arg in \$argv; do
   match="\${match:+\$match }\$arg"
   prev="\$arg"
 done
+set +f
 while IFS=\$'\\t' read -r want body status want_config; do
   [ "\$want" = "\$match" ] || continue
   if [ -n "\$want_config" ] && [ "\$config" != "\$want_config" ]; then
