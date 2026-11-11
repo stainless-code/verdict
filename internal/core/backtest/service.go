@@ -200,7 +200,7 @@ type RunDoc struct {
 //
 //nolint:revive // the resolution ladder is one refusal check per step
 func Run(ctx context.Context, req *Request) (resp *Response, ref *core.RefusalError) {
-	st := &state{req: req, warnings: append([]string{}, req.Warnings...)}
+	st := &state{req: req, rt: req.Runtime, warnings: append([]string{}, req.Warnings...)}
 	defer st.carry(&resp, &ref)
 	if err := ctx.Err(); err != nil {
 		return nil, st.refuse(codeCanceled, msgCanceled)
@@ -251,10 +251,13 @@ func Run(ctx context.Context, req *Request) (resp *Response, ref *core.RefusalEr
 	}, nil
 }
 
-// state carries the request, the resolved repository root, the user's
-// forwarded safe.directory list, and the warnings.
+// state carries the injected runtime, the resolved repository root, the user's
+// forwarded safe.directory list, and the warnings. The mine and replay modes
+// share it: everything git-facing reads these fields and nothing here is
+// mine-specific.
 type state struct {
 	req      *Request
+	rt       *core.Runtime
 	root     string
 	trust    []string
 	warnings []string
@@ -295,8 +298,8 @@ func (st *state) gitFailure(ctx context.Context, msg string) *core.RefusalError 
 
 // now reads the injected clock.
 func (st *state) now() time.Time {
-	if st.req.Runtime != nil && st.req.Runtime.Now != nil {
-		return st.req.Runtime.Now()
+	if st.rt != nil && st.rt.Now != nil {
+		return st.rt.Now()
 	}
 	return time.Now()
 }
@@ -309,16 +312,16 @@ func (st *state) timeUTC() string {
 // commander returns the injected commander, falling back to the separated
 // read runner so a direct caller still runs and stderr stays out of stdout.
 func (st *state) commander() core.Commander {
-	if st.req.Runtime != nil && st.req.Runtime.Commander != nil {
-		return st.req.Runtime.Commander
+	if st.rt != nil && st.rt.Commander != nil {
+		return st.rt.Commander
 	}
 	return coreexec.Runner{MissingTool: true}
 }
 
 // human writes one human line through the injected observer.
 func (st *state) humanLine(line string) {
-	if st.req.Runtime != nil {
-		st.req.Runtime.Human(line)
+	if st.rt != nil {
+		st.rt.Human(line)
 	}
 }
 
@@ -332,7 +335,11 @@ const notARepoStderr = "not a git repository"
 // backtest-failed carrying git's first stderr line, so the cause is named
 // instead of hidden behind not-a-repo.
 func (st *state) repoRoot(ctx context.Context) (string, *core.RefusalError) {
-	root := st.req.RepoRoot
+	return st.resolveRoot(ctx, st.req.RepoRoot)
+}
+
+// resolveRoot resolves one candidate repository path to its git top level.
+func (st *state) resolveRoot(ctx context.Context, root string) (string, *core.RefusalError) {
 	if root == "" {
 		root = "."
 	}
@@ -350,11 +357,16 @@ func (st *state) repoRoot(ctx context.Context) (string, *core.RefusalError) {
 }
 
 // warn records one warning on the envelope and streams it through the
-// injected progress observer, whose adapter adds the `warn: ` prefix.
+// injected progress observer, whose adapter adds the `warn: ` prefix. The
+// same message is recorded once: nested services (a replay's fetch, run, and
+// record) report the same fact through their own warning lists.
 func (st *state) warn(msg string) {
+	if slices.Contains(st.warnings, msg) {
+		return
+	}
 	st.warnings = append(st.warnings, msg)
-	if st.req.Runtime != nil {
-		st.req.Runtime.Warn(msg)
+	if st.rt != nil {
+		st.rt.Warn(msg)
 	}
 }
 

@@ -308,8 +308,9 @@ func TestMineArtifacts(t *testing.T) {
 // parent, and that the conflict text then fails the anchor honestly.
 func TestMineMergeParent(t *testing.T) {
 	r, base, feature, merge, fix := conflictRepo(t)
+	rt := &core.Runtime{Commander: coreexec.Runner{MissingTool: true}}
 	ss := &seedState{
-		st:    &state{req: &Request{Runtime: &core.Runtime{Commander: coreexec.Runner{MissingTool: true}}}, root: r.dir},
+		st:    &state{req: &Request{Runtime: rt}, rt: rt, root: r.dir},
 		since: Resolution{SHA: base}, until: Resolution{SHA: fix},
 		units: map[string]prUnit{}, prCaps: map[string]bool{}, builders: map[string]*candidateBuilder{},
 	}

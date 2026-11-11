@@ -37,10 +37,8 @@ func TestMergeBaseDistinguishesNoAncestorFromFailure(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			st := &state{
-				req:  &Request{Runtime: &core.Runtime{Commander: tc.cmdr}},
-				root: t.TempDir(),
-			}
+			rt := &core.Runtime{Commander: tc.cmdr}
+			st := &state{req: &Request{Runtime: rt}, rt: rt, root: t.TempDir()}
 			got, ref := st.mergeBase(t.Context(), "aaaaaaa", "bbbbbbb")
 			checkMergeBase(t, got, ref, tc.want, tc.code, tc.message)
 		})

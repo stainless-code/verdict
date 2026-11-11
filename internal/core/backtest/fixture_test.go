@@ -13,8 +13,14 @@ import (
 	"github.com/stainless-code/verdict/internal/testenv"
 )
 
-// TestMain pins the git environment every fixture assumes.
+// TestMain pins the git environment every fixture assumes. It also doubles as
+// the replay tests' fake agent: the launcher resolves a symlink to this binary
+// under an agent's name, and [fakeAgentMain] writes the review instead of
+// running the suite.
 func TestMain(m *testing.M) {
+	if mode := os.Getenv(fakeAgentEnv); mode != "" {
+		os.Exit(fakeAgentMain(mode))
+	}
 	os.Exit(testenv.Main(m))
 }
 
