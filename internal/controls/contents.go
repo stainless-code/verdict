@@ -22,9 +22,10 @@ const (
 	encodingB64  = "base64"
 	httpNotFound = "HTTP 404"
 	binGH        = "gh"
-	// maxTreeEntries bounds one recursive pack listing so a hostile or
-	// runaway tree cannot make the fallback allocate without limit.
+	// maxTreeEntries and maxTreeDepth bound one recursive pack walk, not one
+	// listing, so a hostile or runaway tree cannot allocate without limit.
 	maxTreeEntries = 1024
+	maxTreeDepth   = 8
 )
 
 // repoSlug gates the repository before it reaches a gh argv.
@@ -48,11 +49,11 @@ func readContents(ctx context.Context, cmd core.Commander, repo, base string, pa
 	if !repoSlug.MatchString(repo) {
 		return nil, refuse(CodeUnavailable, "the repository is not an owner/repo slug — cannot read controls through the contents API")
 	}
-	reader := contentsReader{contents: map[string][]byte{}}
+	reader := contentsReader{contents: map[string][]byte{}, tree: treeBudget{root: PacksPrefix}}
 	for _, path := range paths {
 		var ref *core.RefusalError
 		if path == PacksPrefix {
-			ref = reader.readTree(ctx, cmd, repo, base, path)
+			ref = reader.readTree(ctx, cmd, repo, base, path, 0)
 		} else {
 			ref = reader.read(ctx, cmd, repo, base, path)
 		}
@@ -70,17 +71,23 @@ type contentsEntry struct {
 }
 
 // readTree lists one pack directory recursively: directories descend, files
-// join the ordinary capped read, and any other shape refuses.
-func (r *contentsReader) readTree(ctx context.Context, cmd core.Commander, repo, base, path string) *core.RefusalError {
+// join the ordinary capped read, and any other shape refuses. The shared tree
+// budget spans the whole walk; depth starts at zero for the pack root.
+func (r *contentsReader) readTree(
+	ctx context.Context, cmd core.Commander, repo, base, path string, depth int,
+) *core.RefusalError {
+	if ref := r.tree.checkDepth(depth); ref != nil {
+		return ref
+	}
 	entries, ref := listContents(ctx, cmd, repo, base, path)
 	if ref != nil || entries == nil {
 		return ref
 	}
-	if len(entries) > maxTreeEntries {
-		return refuse(CodeTooLarge, fmt.Sprintf("control %s lists more than %d entries", path, maxTreeEntries))
+	if ref := r.tree.spend(len(entries)); ref != nil {
+		return ref
 	}
 	for _, entry := range entries {
-		if ref := r.readTreeEntry(ctx, cmd, repo, base, path, entry); ref != nil {
+		if ref := r.readTreeEntry(ctx, cmd, repo, base, path, depth, entry); ref != nil {
 			return ref
 		}
 	}
@@ -90,17 +97,43 @@ func (r *contentsReader) readTree(ctx context.Context, cmd core.Commander, repo,
 // readTreeEntry dispatches one listed directory entry: descend, read, or
 // refuse a shape that is neither.
 func (r *contentsReader) readTreeEntry(
-	ctx context.Context, cmd core.Commander, repo, base, dir string, entry contentsEntry,
+	ctx context.Context, cmd core.Commander, repo, base, dir string, depth int, entry contentsEntry,
 ) *core.RefusalError {
 	full := dir + packSep + entry.Name
 	switch entry.Type {
 	case typeDir:
-		return r.readTree(ctx, cmd, repo, base, full)
+		return r.readTree(ctx, cmd, repo, base, full, depth+1)
 	case typeFile:
 		return r.read(ctx, cmd, repo, base, full)
 	default:
 		return refuse(CodeUnavailable, controlPrefix+full+" is not a regular file — replace it with one")
 	}
+}
+
+// treeBudget bounds one recursive pack walk: every listing's entries spend one
+// running total, and descent stops at the depth cap.
+type treeBudget struct {
+	root    string
+	entries int
+}
+
+// checkDepth refuses a listing deeper than the walk may descend.
+func (b *treeBudget) checkDepth(depth int) *core.RefusalError {
+	if depth <= maxTreeDepth {
+		return nil
+	}
+	return refuse(CodeTooLarge, fmt.Sprintf(
+		"control %s nests deeper than %d directories — trim it at base", b.root, maxTreeDepth))
+}
+
+// spend charges one listing's entries against the shared total.
+func (b *treeBudget) spend(listed int) *core.RefusalError {
+	b.entries += listed
+	if b.entries <= maxTreeEntries {
+		return nil
+	}
+	return refuse(CodeTooLarge, fmt.Sprintf(
+		"control %s lists more than %d entries across its tree — trim it at base", b.root, maxTreeEntries))
 }
 
 // listContents asks the contents API for one directory: nil, nil is a 404.
@@ -127,9 +160,11 @@ func listContents(ctx context.Context, cmd core.Commander, repo, base, path stri
 	return entries, nil
 }
 
-// contentsReader accumulates the controls and their reported sizes.
+// contentsReader accumulates the controls, their reported sizes, and the pack
+// walk's shared budget.
 type contentsReader struct {
 	contents map[string][]byte
+	tree     treeBudget
 	total    int
 }
 
