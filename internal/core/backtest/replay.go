@@ -25,29 +25,42 @@ import (
 
 // Replay constants. The bundle name is the fetch-local name the store prefixes
 // with `local-`, so `local-bt-<n>-<run>` is what the operator sees on disk: the
-// index comes first because the store caps a name at [replaySlugMax] bytes.
+// index comes first so the store's name cap can only ever cut the run tail.
 const (
 	modeReplay         = "replay"
 	replayBundlePrefix = "bt-"
-	replaySlugMax      = 48
-	replayRepo         = "local"
-	replayPRsDir       = "prs"
-	replayFile         = "replay.json"
-	findingsFile       = "findings.json"
-	replayPRWidth      = 3
-	worktreePrefix     = ".worktree-bt-"
-	defaultMaxReviews  = 10
-	defaultReplayTO    = "300"
-	defaultRounds      = "1"
-	priceFormat        = "$%.2f"
-	labelSep           = ": "
-	floatBits          = 64
-	gitWorktree        = "worktree"
-	gitWorktreeAdd     = "add"
-	gitWorktreeRemove  = "remove"
-	gitWorktreePrune   = "prune"
-	flagForce          = "--force"
-	flagDetach         = "--detach"
+	// replaySlugMax mirrors the 48-byte cap fetch-local's localSlug keeps of a
+	// bundle name (internal/core/fetch); it is unexported there.
+	replaySlugMax = 48
+	// replayMaxReviews is the ceiling --max-reviews may not pass: 99 is the
+	// widest candidate index [runIDMax] budgets for.
+	replayMaxReviews = 99
+	// replayIndexWidth is the decimal width of [replayMaxReviews], written from
+	// it so the arithmetic below cannot drift from the ceiling.
+	replayIndexWidth = len("99")
+	// runIDMax is the longest --run id either verb accepts. A bundle is named
+	// `bt-<n>-<run>` and fetch-local keeps only the first [replaySlugMax] bytes
+	// of it, so a longer id would let two runs sharing a prefix land on one
+	// bundle: the id carries what the frame leaves of the cap.
+	runIDMax          = replaySlugMax - len(replayBundlePrefix) - replayIndexWidth - len("-")
+	replayRepo        = "local"
+	replayPRsDir      = "prs"
+	replayFile        = "replay.json"
+	findingsFile      = "findings.json"
+	replayPRWidth     = 3
+	worktreePrefix    = ".worktree-bt-"
+	defaultMaxReviews = 10
+	defaultReplayTO   = "300"
+	defaultRounds     = "1"
+	priceFormat       = "$%.2f"
+	labelSep          = ": "
+	floatBits         = 64
+	gitWorktree       = "worktree"
+	gitWorktreeAdd    = "add"
+	gitWorktreeRemove = "remove"
+	gitWorktreePrune  = "prune"
+	flagForce         = "--force"
+	flagDetach        = "--detach"
 )
 
 // Replay statuses and stop reasons. A status is `ok` for a review that was
@@ -272,25 +285,14 @@ func (st *state) carryReplay(resp **ReplayResponse, ref **core.RefusalError) {
 	}
 }
 
-// replayRunID validates the --run id: it is one path segment under
-// .verdict/backtest, so it must already be slug-shaped, and it must fit the
-// bundle store's name cap.
+// replayRunID validates the --run id: replay needs one, and it is the same
+// shared rule the miner applies.
 func replayRunID(run string) (string, *core.RefusalError) {
 	if run == "" {
 		return "", &core.RefusalError{Code: codeBadFlags, Message: "backtest replay needs --run <id> (the run 'backtest mine' wrote)"}
 	}
-	if readcommon.Slugify(run) != run {
-		return "", &core.RefusalError{
-			Code:    codeBadSlug,
-			Message: "--run must be lowercase letters, digits, and dashes: '" + run + "'",
-		}
-	}
-	if len(run) > replaySlugMax {
-		return "", &core.RefusalError{
-			Code: codeBadSlug,
-			Message: fmt.Sprintf("--run must be at most %d bytes (the bundle store's name cap), got %d: '%s'",
-				replaySlugMax, len(run), run),
-		}
+	if ref := runIDSlug(run); ref != nil {
+		return "", ref
 	}
 	return run, nil
 }
@@ -364,6 +366,11 @@ func parseReplayBudgets(req *ReplayRequest) (replayBudgets, *core.RefusalError) 
 		"--max-reviews must be a positive whole number, got '%s'")
 	if ref != nil {
 		return out, ref
+	}
+	if capped > replayMaxReviews {
+		return out, &core.RefusalError{Code: codeBadFlags, Message: fmt.Sprintf(
+			"--max-reviews must be at most %d: a `bt-<n>-<run>` name has room for %d digits, got %d",
+			replayMaxReviews, replayIndexWidth, capped)}
 	}
 	out.maxReviews = capped
 	timeout, ref := positiveInt(out.timeoutRaw, 0, codeBadTimeout,

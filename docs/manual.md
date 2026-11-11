@@ -2883,8 +2883,10 @@ passed to the agent after its own flags, so a per-run model override is
 
 Budgets bound the spend, and each one is a real refusal path, not a warning:
 
-- `--max-reviews <n>` (default 10) caps the number of reviews. The stop reason
-  is `max-reviews`.
+- `--max-reviews <n>` (default 10) caps the number of reviews. It is a whole
+  number from 1 to 99 — the ceiling keeps the candidate index two digits, which
+  is what the bundle name cap budgets for (below) — and the stop reason is
+  `max-reviews`.
 - `--budget-usd <usd>` caps the agent-reported estimate. The run stops before a
   review whose projected cost (the median of the reviews already priced) would
   cross the ceiling; the stop reason is `budget-usd`. A review that reported no
@@ -2927,12 +2929,16 @@ resume record: `run`, `n`, `pr`, `head`, `base`, `agent`, `pass_through`,
 `status`, `bundle`, `cost_usd`, `detail`, `at`), the bundle under
 `.verdict/state/local-bt-<n>-<run>`, and a `backtest.json` marker inside every
 bundle replay builds. The candidate index leads the bundle name because
-fetch-local caps a bundle name at 48 bytes: the cap can truncate the run tail
-but never the index, so each candidate keeps its own bundle. A `--run` id
-longer than those 48 bytes refuses `bad-slug` before anything is built. The
-marker is what keeps these bundles out of the operator's own history: `trend`
-skips a marked bundle and names the count it skipped. `backtest mine` never
-writes a marker.
+fetch-local caps a bundle name at 48 bytes: `bt-<n>-` spends at most 6 of them
+(`bt-99-`), which leaves 42 for the run id. A `--run` id longer than 42 bytes
+refuses `bad-slug` before anything is built — by `backtest mine` too, so a run
+that exists is always replayable — because two longer ids sharing a 43-byte
+prefix would be cut onto one bundle: the second run would overwrite the first's
+diff, and resuming the first would report `ok` against the second's review. A
+run id longer than 42 bytes derived from `--since` refuses the same way and asks
+for a shorter `--run`. The marker is what keeps these bundles out of the
+operator's own history: `trend` skips a marked bundle and names the count it
+skipped. `backtest mine` never writes a marker.
 
 `--json` `data` is `{run, mode, agent, budgets, stop_reason, prs}`. `mode` is
 `replay`; `budgets` is `{max_reviews, budget_usd, timeout_s, spent_usd,

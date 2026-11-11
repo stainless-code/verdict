@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -104,10 +105,11 @@ func TestReplayRefusesBadInputs(t *testing.T) {
 		{name: "missing mine", mutate: func(r *ReplayRequest) { r.Run = "absent" }, code: "missing-bundle", part: "no mine.json"},
 		{name: "empty run", mutate: func(r *ReplayRequest) { r.Run = "" }, code: "bad-flags", part: "--run <id>"},
 		{name: "path run", mutate: func(r *ReplayRequest) { r.Run = "../ra" }, code: "bad-slug", part: "lowercase letters"},
-		{name: "overlong run", mutate: func(r *ReplayRequest) { r.Run = strings.Repeat("a", 49) }, code: "bad-slug", part: "at most 48 bytes"},
+		{name: "overlong run", mutate: func(r *ReplayRequest) { r.Run = strings.Repeat("a", 43) }, code: "bad-slug", part: "at most 42 bytes"},
 		{name: "zero budget", mutate: func(r *ReplayRequest) { r.BudgetRaw = "0" }, code: "bad-flags", part: "--budget-usd"},
 		{name: "word budget", mutate: func(r *ReplayRequest) { r.BudgetRaw = "five" }, code: "bad-flags", part: "--budget-usd"},
 		{name: "zero reviews", mutate: func(r *ReplayRequest) { r.MaxReviewsRaw = "0" }, code: "bad-flags", part: "--max-reviews"},
+		{name: "too many reviews", mutate: func(r *ReplayRequest) { r.MaxReviewsRaw = "100" }, code: "bad-flags", part: "at most 99"},
 		{name: "zero timeout", mutate: func(r *ReplayRequest) { r.TimeoutRaw = "0" }, code: "bad-timeout", part: "timeout"},
 		{name: "zero rounds", mutate: func(r *ReplayRequest) { r.RoundsRaw = "0" }, code: "bad-flags", part: "--rounds must be 1-5"},
 		{name: "six rounds", mutate: func(r *ReplayRequest) { r.RoundsRaw = "6" }, code: "bad-flags", part: "--rounds must be 1-5"},
@@ -116,6 +118,27 @@ func TestReplayRefusesBadInputs(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) { checkBadInput(t, tc.mutate, tc.code, tc.part) })
+	}
+}
+
+// TestRunIDCapFillsTheBundleNameCap proves the shared cap is derived from the
+// store's name cap and the review ceiling rather than picked: the widest bundle
+// a replay can build is exactly the store's 48 bytes, and the index that names
+// it is [replayMaxReviews]'s own.
+func TestRunIDCapFillsTheBundleNameCap(t *testing.T) {
+	if got := strconv.Itoa(replayMaxReviews); got != "99" {
+		t.Fatalf("replayMaxReviews = %s; the frame budgets for a two-digit index", got)
+	}
+	longest := strings.Repeat("a", runIDMax)
+	if got := len(longest); got != 42 {
+		t.Fatalf("runIDMax = %d; want 42 bytes", got)
+	}
+	name := replayBundleName(longest, replayMaxReviews)
+	if want := "bt-99-" + longest; name != want {
+		t.Errorf("widest bundle name = %q, want %q", name, want)
+	}
+	if got := len(name); got != 48 {
+		t.Errorf("widest bundle name = %d bytes; the store's cap is 48, so one more byte truncates", got)
 	}
 }
 

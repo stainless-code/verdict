@@ -332,26 +332,42 @@ func checkLaunch(t *testing.T, f *replayFixture, i int, line []string) {
 	}
 }
 
-// TestReplayLongRunIDKeepsOneBundlePerCandidate proves a run id long enough for
-// the store's 48-byte name cap to bite still yields one distinct bundle per
-// candidate: the index leads the name, so the cap truncates the run tail only.
-func TestReplayLongRunIDKeepsOneBundlePerCandidate(t *testing.T) {
+// TestReplayLongRunIDsKeepDistinctBundles proves the two longest ids that differ
+// only in their last byte build distinct bundles: at the cap the store truncates
+// nothing, so neither run can land on the other's diff.
+func TestReplayLongRunIDsKeepDistinctBundles(t *testing.T) {
 	f := newReplayFixture(t)
-	long := strings.Repeat("a", 44)
-	f.writeMine(t, long, &f.mine)
 	f.plant(t, "write", "0.6")
-	data := runReplayOK(t, f.request(t, func(r *ReplayRequest) { r.Run = long })).Data
-	if len(data.PRs) != len(replayRowPRs) {
-		t.Fatalf("rows = %d, want one per candidate", len(data.PRs))
+	stem := strings.Repeat("a", 41)
+	seen := map[string]string{}
+	for _, id := range []string{stem + "x", stem + "y"} {
+		f.writeMine(t, id, &f.mine)
+		data := runReplayOK(t, f.request(t, func(r *ReplayRequest) { r.Run = id })).Data
+		want := "local-bt-1-" + id
+		if got := data.PRs[0].Bundle; got != want {
+			t.Errorf("run %q bundle = %q, want %q", id, got, want)
+		}
+		if other, ok := seen[data.PRs[0].Bundle]; ok {
+			t.Errorf("runs %q and %q share bundle %q", other, id, data.PRs[0].Bundle)
+		}
+		seen[data.PRs[0].Bundle] = id
 	}
-	want := []string{"local-bt-1-" + long[:43], "local-bt-2-" + long[:43]}
-	for i, row := range data.PRs {
-		if row.Bundle != want[i] {
-			t.Errorf("row %d bundle = %q, want %q", i+1, row.Bundle, want[i])
+}
+
+// TestReplayRefusesTheRunIDsThatWouldShareABundle proves the pair whose bundle
+// names differ only past the store's cap is refused before either is built:
+// accepting both would let the second overwrite the first's diff, and resuming
+// the first would report ok against the second's.
+func TestReplayRefusesTheRunIDsThatWouldShareABundle(t *testing.T) {
+	prefix := strings.Repeat("a", 43)
+	for _, id := range []string{prefix + "x", prefix + "y"} {
+		f := newReplayFixture(t)
+		f.writeMine(t, id, &f.mine)
+		ref := runReplayRefusal(t, f.request(t, func(r *ReplayRequest) { r.Run = id }))
+		if ref.Code != "bad-slug" || !strings.Contains(ref.Message, "at most 42 bytes") {
+			t.Errorf("run %q refused %s: %s; want bad-slug naming the 42-byte cap", id, ref.Code, ref.Message)
 		}
-		if _, err := os.Stat(filepath.Join(f.repo.dir, ".verdict", "state", want[i])); err != nil {
-			t.Errorf("row %d built no bundle: %v", i+1, err)
-		}
+		checkNothingBuilt(t, f)
 	}
 }
 

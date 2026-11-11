@@ -176,6 +176,21 @@ run_review backtest replay --run missing --agent claude --json
 assert_exit "missing run refuses" 1
 assert_refusal "missing run" "missing-bundle"
 
+# A run id longer than the room a bundle name leaves for one is refused by both
+# verbs, so no mined run is ever unreplayable and no two runs share a bundle.
+long_id="$(printf 'a%.0s' {1..43})"
+run_review backtest mine --since "$BASE" --run "$long_id" --json
+assert_exit "overlong mine refuses" 1
+assert_refusal "overlong mine" "bad-slug"
+assert_file_grep "mine refusal names the cap" "$EVAL_OUT" "--run must be at most 42 bytes"
+run_review backtest replay --run "$long_id" --agent claude --json
+assert_exit "overlong replay refuses" 1
+assert_refusal "overlong replay" "bad-slug"
+
+run_review backtest replay --run rel --agent claude --max-reviews 100 --json
+assert_exit "reviews past the ceiling refuse" 1
+assert_refusal "reviews past the ceiling" "bad-flags"
+
 stub_after="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 assert_eq "zero host CLI calls" "$stub_before" "$stub_after"
 

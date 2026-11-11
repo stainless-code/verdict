@@ -7,7 +7,8 @@ Mine SZZ candidates from a local clone. `backtest mine --since
 `fix:`/`Revert "..."` commit's deleted lines to the merged or squash PR that
 introduced them and writes
 `.verdict/backtest/<run>/{run.json,mine.json}` with zero model calls and zero
-network. Candidates carry the PR head, base, reconstruction, merge/head dates,
+network. `--run` ids are at most 42 bytes, the room a replay bundle name has
+for one, so a mined run is always replayable. Candidates carry the PR head, base, reconstruction, merge/head dates,
 and the union of anchored `path:line:kind` bugs; exclusions are counted by
 reason and never refused. `mine.json` is timestamp-free, so a rerun over the
 same window is byte-identical. The artifact is not citable: SZZ blame is a

@@ -349,6 +349,7 @@ func TestMineRefusals(t *testing.T) {
 		{"unknown until", Request{RepoRoot: r.dir, Mode: modeMine, Since: "HEAD~3", Until: "nope"}, "bad-until"},
 		{"not a repo", Request{RepoRoot: outside, Mode: modeMine, Since: "HEAD~1"}, "not-a-repo"},
 		{"bad run", Request{RepoRoot: r.dir, Mode: modeMine, Since: "HEAD~3", Run: "Bad Slug"}, "bad-slug"},
+		{"overlong run", Request{RepoRoot: r.dir, Mode: modeMine, Since: "HEAD~3", Run: strings.Repeat("a", 43)}, "bad-slug"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -361,6 +362,48 @@ func TestMineRefusals(t *testing.T) {
 				t.Errorf("code = %s; want %s", ref.Code, tc.code)
 			}
 		})
+	}
+}
+
+// TestMineRunIDCap proves the miner applies replay's id rule: the longest id a
+// bundle name has room for mines, one byte more refuses before anything is
+// written, and an over-long id derived from --since refuses with the way out.
+func TestMineRunIDCap(t *testing.T) {
+	r, base := twoCandidateRepo(t)
+	longest := strings.Repeat("a", 42)
+	resp, ref := Run(t.Context(), &Request{
+		Runtime:  &core.Runtime{Commander: coreexec.Runner{MissingTool: true}, Env: userEnv(t, nil)},
+		RepoRoot: r.dir, Mode: modeMine, Since: base, Run: longest,
+	})
+	if ref != nil {
+		t.Fatalf("longest run id refused: %s: %s", ref.Code, ref.Message)
+	}
+	if resp.Data.Run != longest {
+		t.Errorf("run = %q; want the 42-byte id back", resp.Data.Run)
+	}
+	if _, err := os.Stat(filepath.Join(r.dir, ".verdict", "backtest", longest, "mine.json")); err != nil {
+		t.Errorf("the longest id wrote no run: %v", err)
+	}
+}
+
+// TestMineDerivedRunIDRefuses proves a long --since ref refuses instead of
+// deriving an id replay would reject.
+func TestMineDerivedRunIDRefuses(t *testing.T) {
+	r, base := twoCandidateRepo(t)
+	branch := "release-branch-maintenance-hotfix-rollforward"
+	r.git("branch", branch, base)
+	_, ref := Run(t.Context(), &Request{
+		Runtime:  &core.Runtime{Commander: coreexec.Runner{MissingTool: true}, Env: userEnv(t, nil)},
+		RepoRoot: r.dir, Mode: modeMine, Since: branch,
+	})
+	if ref == nil || ref.Code != "bad-slug" {
+		t.Fatalf("refusal = %+v; want bad-slug", ref)
+	}
+	if !strings.Contains(ref.Message, "pass --run with at most 42 bytes") {
+		t.Errorf("message = %q; want it to name --run and the 42-byte cap", ref.Message)
+	}
+	if _, err := os.Stat(filepath.Join(r.dir, ".verdict", "backtest")); !os.IsNotExist(err) {
+		t.Errorf("a refused run wrote a run directory: %v", err)
 	}
 }
 

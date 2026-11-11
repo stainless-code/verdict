@@ -571,12 +571,28 @@ func (s span) back(at time.Time) time.Time {
 	}
 }
 
+// runIDSlug is the one --run rule both verbs apply: the id is one path segment
+// under .verdict/backtest, so it must already be slug-shaped, and it must leave
+// the frame for the bundle name inside fetch-local's name cap — a longer id
+// would let two runs sharing a prefix be cut onto the same bundle.
+func runIDSlug(run string) *core.RefusalError {
+	if readcommon.Slugify(run) != run {
+		return &core.RefusalError{Code: codeBadSlug,
+			Message: "--run must be lowercase letters, digits, and dashes: '" + run + "'"}
+	}
+	if len(run) > runIDMax {
+		return &core.RefusalError{Code: codeBadSlug, Message: fmt.Sprintf(
+			"--run must be at most %d bytes: 'bt-<n>-' plus the id must fit the %d-byte bundle name cap, got %d",
+			runIDMax, replaySlugMax, len(run))}
+	}
+	return nil
+}
+
 // runID resolves the default `<until7>-<since-slug>` id, or validates --run.
 func (st *state) runID(since, until Resolution) (string, *core.RefusalError) {
 	if st.req.Run != "" {
-		if readcommon.Slugify(st.req.Run) != st.req.Run {
-			return "", st.refuse(codeBadSlug,
-				"--run must be lowercase letters, digits, and dashes: '"+st.req.Run+"'")
+		if ref := runIDSlug(st.req.Run); ref != nil {
+			return "", ref
 		}
 		return st.req.Run, nil
 	}
@@ -584,7 +600,17 @@ func (st *state) runID(since, until Resolution) (string, *core.RefusalError) {
 	if slug == "" {
 		slug = since.SHA[:shortSHA]
 	}
-	return until.SHA[:shortSHA] + "-" + slug, nil
+	id := until.SHA[:shortSHA] + "-" + slug
+	// A derived id is refused rather than clipped: clipping would silently merge
+	// two windows onto one id. The operator chose the ref, not the id, so the
+	// refusal names --run as the way out.
+	if len(id) > runIDMax {
+		return "", st.refuse(codeBadSlug, fmt.Sprintf(
+			"the run id '%s' from --since is %d bytes; pass --run with at most %d bytes "+
+				"('bt-<n>-' plus the id must fit the %d-byte bundle name cap)",
+			id, len(id), runIDMax, replaySlugMax))
+	}
+	return id, nil
 }
 
 // hexRe matches a commit id the operator may have passed as --since.
