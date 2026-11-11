@@ -395,6 +395,8 @@ func TestOwnerGlobSemantics(t *testing.T) {
 		{"a/**/b", "a/xb", false},
 		{"a/**b", "a/xb", true},
 		{"a/**b", "a/x/b", false},
+		{"a**/b", "a/x/b", false},
+		{"a**/b", "ax/b", true},
 		{"a/**/x.go", "a/x.go", true},
 		{"a/**/x.go", "a/b/c/x.go", true},
 		{"a/**/x.go", "b/x.go", false},

@@ -2660,7 +2660,7 @@ names only `@a`; `\#` inside a pattern writes a literal `#`.
 Patterns follow gitignore's positional subset: `*` stays inside a segment, `?`
 matches one character, `**` crosses segments only in the three positional
 forms `**/`, `/**`, and `/**/` and is a plain `*` anywhere else (so `a**b`
-never matches across a `/`), a leading `/` anchors at the repository
+and `a**/b` never match across a `/`), a leading `/` anchors at the repository
 root, and a pattern with no slash matches a segment at any depth. A trailing
 slash matches everything below the directory; a pattern without one matches a
 file or directory by that name, so a directory rule also owns every file below

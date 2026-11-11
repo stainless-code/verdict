@@ -194,15 +194,10 @@ func ownerGlob(pattern string) string {
 	for i := 0; i < len(pattern); {
 		rest := pattern[i:]
 		switch {
-		case strings.HasPrefix(rest, "**/"):
-			sb.WriteString("(?:.*/)?")
-			i += len("**/")
-		case rest == ownerGlobDoubleStar && i > 0 && pattern[i-1] == pathSeparator[0]:
-			sb.WriteString(".*")
-			i += len(ownerGlobDoubleStar)
 		case strings.HasPrefix(rest, ownerGlobDoubleStar):
-			sb.WriteString("[^/]*")
-			i += len(ownerGlobDoubleStar)
+			n, fragment := ownerDoubleStar(pattern, i)
+			sb.WriteString(fragment)
+			i += n
 		case rest[0] == '*':
 			sb.WriteString("[^/]*")
 			i++
@@ -219,6 +214,19 @@ func ownerGlob(pattern string) string {
 		}
 	}
 	return sb.String()
+}
+
+// ownerDoubleStar translates the `**` run at i: `**/` at a segment start and a
+// trailing `/**` cross segments, and any other pair is a plain `*`.
+func ownerDoubleStar(pattern string, i int) (int, string) {
+	switch {
+	case strings.HasPrefix(pattern[i:], "**/") && (i == 0 || pattern[i-1] == pathSeparator[0]):
+		return len("**/"), "(?:.*/)?"
+	case pattern[i:] == ownerGlobDoubleStar && i > 0 && pattern[i-1] == pathSeparator[0]:
+		return len(ownerGlobDoubleStar), ".*"
+	default:
+		return len(ownerGlobDoubleStar), "[^/]*"
+	}
 }
 
 // matchOwners returns the owners of the last rule matching p, or nil when no
