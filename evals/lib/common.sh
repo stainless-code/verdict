@@ -186,6 +186,12 @@ file_url() {
   p="${p// /%20}"
   p="${p//\#/%23}"
   p="${p//\?/%3F}"
+  # curl reads [ ] { } as its own URL globs, so a path holding one never
+  # reaches the file it names.
+  p="${p//\[/%5B}"
+  p="${p//\]/%5D}"
+  p="${p//\{/%7B}"
+  p="${p//\}/%7D}"
   printf 'file://%s' "$p"
 }
 
