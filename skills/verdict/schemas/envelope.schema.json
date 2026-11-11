@@ -1395,10 +1395,20 @@
       "additionalProperties": true
     },
     "indexData": {
-      "description": "index --json data: one object across build, status, prune, and callers, so kind names the subcommand and every other key is optional.",
+      "description": "index --json data: one object across build, status, prune, callers, tests-for, co-changed, and owners, so kind names the subcommand and every other key is optional.",
       "type": "object",
       "properties": {
-        "kind": { "enum": ["build", "status", "prune", "callers"] },
+        "kind": {
+          "enum": [
+            "build",
+            "status",
+            "prune",
+            "callers",
+            "tests-for",
+            "co-changed",
+            "owners"
+          ]
+        },
         "tree": { "type": "string" },
         "commit": { "type": "string" },
         "built": { "type": "boolean" },
@@ -1418,6 +1428,7 @@
           "items": { "type": "string" }
         },
         "removed": { "$ref": "#/$defs/indexRemoved" },
+        "path": { "type": "string" },
         "query": { "$ref": "#/$defs/indexQuery" },
         "index": { "$ref": "#/$defs/indexStatus" },
         "counts": { "$ref": "#/$defs/indexCounts" },
@@ -1426,6 +1437,10 @@
         "rows": {
           "type": "array",
           "items": { "$ref": "#/$defs/indexRow" }
+        },
+        "window": { "$ref": "#/$defs/indexWindow" },
+        "target": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/indexTarget" }]
         }
       },
       "required": ["kind"],
@@ -1463,12 +1478,13 @@
       "additionalProperties": true
     },
     "indexQuery": {
-      "description": "The caller query input: the symbol as written.",
+      "description": "The query input: the symbol as written for callers or tests-for --symbol, or the repository path for tests-for, co-changed, and owners.",
       "type": "object",
       "properties": {
-        "symbol": { "type": "string" }
+        "symbol": { "type": "string" },
+        "path": { "type": "string" }
       },
-      "required": ["symbol"],
+      "required": [],
       "additionalProperties": true
     },
     "indexStatus": {
@@ -1498,13 +1514,16 @@
       "type": "object",
       "properties": {
         "callers": { "type": "integer", "minimum": 0 },
-        "unresolved": { "type": "integer", "minimum": 0 }
+        "unresolved": { "type": "integer", "minimum": 0 },
+        "tests": { "type": "integer", "minimum": 0 },
+        "partners": { "type": "integer", "minimum": 0 },
+        "target_commits": { "type": "integer", "minimum": 0 }
       },
-      "required": ["callers", "unresolved"],
+      "required": [],
       "additionalProperties": true
     },
     "indexRow": {
-      "description": "One caller row: slash path, line, kind, and exact or lexical resolution.",
+      "description": "One row of a caller, candidate-test, or co-change query: path plus the fields that kind measures (line/kind/resolution for callers, via for candidates, commits/jaccard for partners).",
       "type": "object",
       "properties": {
         "path": { "type": "string" },
@@ -1512,9 +1531,37 @@
         "kind": {
           "enum": ["call", "method", "type-ref", "value-ref", "embed"]
         },
-        "resolution": { "enum": ["exact", "lexical"] }
+        "resolution": { "enum": ["exact", "lexical"] },
+        "via": { "enum": ["same-package", "references", "imports-module"] },
+        "commits": { "type": "integer", "minimum": 0 },
+        "jaccard": { "type": "number", "minimum": 0, "maximum": 1 }
       },
-      "required": ["path", "line", "kind", "resolution"],
+      "required": ["path"],
+      "additionalProperties": true
+    },
+    "indexWindow": {
+      "description": "The bounded history window a co-change query read: oldest and newest commit sha, and how many commits it counted (empty window names no bounds).",
+      "type": "object",
+      "properties": {
+        "first": { "type": "string" },
+        "last": { "type": "string" },
+        "commits": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["commits"],
+      "additionalProperties": true
+    },
+    "indexTarget": {
+      "description": "One queried path and its CODEOWNERS answer: owners and owners_source are null when the tree carries no rule, never an owner named nobody.",
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "owners": {
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        },
+        "owners_source": { "type": ["string", "null"] }
+      },
+      "required": ["path", "owners", "owners_source"],
       "additionalProperties": true
     },
     "calibrateData": {

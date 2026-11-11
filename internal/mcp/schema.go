@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
+	indexcore "github.com/stainless-code/verdict/internal/core/index"
 )
 
 const (
@@ -142,9 +143,29 @@ func fieldSchema(toolName string, sf *reflect.StructField, omit map[string]bool)
 		node[schemaDescription] = desc
 	}
 	applyEnum(node, sf)
+	applyFieldEnum(node, toolName, sf.Name)
 	applyBound(node, schemaMinimum, sf.Tag.Get(tagMin))
 	applyBound(node, schemaMaximum, sf.Tag.Get(tagMax))
 	return node, true
+}
+
+// fieldEnums publishes a tool-specific value list for a field whose Go type
+// carries none, so the transport advertises exactly what it serves.
+var fieldEnums = map[string][]string{
+	"index.Query": indexcore.MCPQueries,
+}
+
+// applyFieldEnum overrides a struct-tag enum with the tool's own list.
+func applyFieldEnum(node map[string]any, toolName, field string) {
+	values, ok := fieldEnums[toolName+"."+field]
+	if !ok {
+		return
+	}
+	out := make([]any, 0, len(values))
+	for _, value := range values {
+		out = append(out, value)
+	}
+	node[schemaEnum] = out
 }
 
 func applyEnum(node map[string]any, sf *reflect.StructField) {
@@ -290,11 +311,15 @@ var fieldDocs = map[string]string{
 	"learn.Status":    "List rules with counters and precision (boolean list switch; learn sets no status).",
 	"next.Status":     "Status filter for the top finding (all, open, addressed, wont-fix, false-positive, deferred); empty means open.",
 	"triage.Status":   "Status to flip the finding to (open, addressed, wont-fix, false-positive, deferred).",
-	"index.Query":     "Subcommand to serve: callers or status. Build and prune stay on the CLI.",
-	"index.Symbol":    "Caller query symbol, bare (Target) or package-qualified (app.Target).",
-	"index.At":        "Tree or ref to query in callers mode; default HEAD.",
+	"index.Query":     "Subcommand to serve: callers, status, tests-for, co-changed, or owners. Build and prune stay on the CLI.",
+	"index.Symbol":    "Caller query symbol (bare Target or package-qualified app.Target), or the tests-for --symbol input.",
+	"index.At":        "Tree or ref to query; default HEAD.",
 	"index.From":      "Checkout directory to read the index from; default the repository root.",
-	"index.Limit":     "Maximum caller rows to return (1-200; default 50).",
+	"index.Path":      "Repository path for tests-for, co-changed, or owners.",
+	"index.Since":     "Co-change window start: a duration (90d, 12w, 18mo, 2y) or a commit ref.",
+	"index.Commits":   "Co-change window size in commits (1-100000; default 2000).",
+	"index.MinCount":  "Minimum co-change count a partner needs (1-100000; default 2).",
+	"index.Limit":     "Maximum rows to return (1-200; default 50 for callers and tests-for, 20 for co-changed).",
 	"Sandbox": "Run under bwrap (Linux only) with no network, hidden credential dirs, " +
 		"a writable repo, and a private /tmp; refuses sandbox-unavailable when it cannot be enforced.",
 }

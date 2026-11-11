@@ -709,9 +709,16 @@ export interface TrendBundleRow {
   [key: string]: unknown;
 }
 
-/** index --json data: one object across build, status, prune, and callers, so kind names the subcommand and every other key is optional. */
+/** index --json data: one object across build, status, prune, callers, tests-for, co-changed, and owners, so kind names the subcommand and every other key is optional. */
 export interface IndexData {
-  kind: "build" | "status" | "prune" | "callers";
+  kind:
+    | "build"
+    | "status"
+    | "prune"
+    | "callers"
+    | "tests-for"
+    | "co-changed"
+    | "owners";
   tree?: string;
   commit?: string;
   built?: boolean;
@@ -725,12 +732,15 @@ export interface IndexData {
   trees?: Array<IndexTreeRow>;
   kept?: Array<string>;
   removed?: IndexRemoved;
+  path?: string;
   query?: IndexQuery;
   index?: IndexStatus;
   counts?: IndexCounts;
   limit?: number;
   truncated?: number;
   rows?: Array<IndexRow>;
+  window?: IndexWindow;
+  target?: IndexTarget | null;
   [key: string]: unknown;
 }
 
@@ -756,9 +766,10 @@ export interface IndexRemoved {
   [key: string]: unknown;
 }
 
-/** The caller query input: the symbol as written. */
+/** The query input: the symbol as written for callers or tests-for --symbol, or the repository path for tests-for, co-changed, and owners. */
 export interface IndexQuery {
-  symbol: string;
+  symbol?: string;
+  path?: string;
   [key: string]: unknown;
 }
 
@@ -780,17 +791,39 @@ export interface IndexCoverage {
 
 /** The caller query counts: rows returned and candidates left unresolved. */
 export interface IndexCounts {
-  callers: number;
-  unresolved: number;
+  callers?: number;
+  unresolved?: number;
+  tests?: number;
+  partners?: number;
+  target_commits?: number;
   [key: string]: unknown;
 }
 
-/** One caller row: slash path, line, kind, and exact or lexical resolution. */
+/** One row of a caller, candidate-test, or co-change query: path plus the fields that kind measures (line/kind/resolution for callers, via for candidates, commits/jaccard for partners). */
 export interface IndexRow {
   path: string;
-  line: number;
-  kind: "call" | "method" | "type-ref" | "value-ref" | "embed";
-  resolution: "exact" | "lexical";
+  line?: number;
+  kind?: "call" | "method" | "type-ref" | "value-ref" | "embed";
+  resolution?: "exact" | "lexical";
+  via?: "same-package" | "references" | "imports-module";
+  commits?: number;
+  jaccard?: number;
+  [key: string]: unknown;
+}
+
+/** The bounded history window a co-change query read: oldest and newest commit sha, and how many commits it counted (empty window names no bounds). */
+export interface IndexWindow {
+  first?: string;
+  last?: string;
+  commits: number;
+  [key: string]: unknown;
+}
+
+/** One queried path and its CODEOWNERS answer: owners and owners_source are null when the tree carries no rule, never an owner named nobody. */
+export interface IndexTarget {
+  path: string;
+  owners: Array<string> | null;
+  owners_source: string | null;
   [key: string]: unknown;
 }
 

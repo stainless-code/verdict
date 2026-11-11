@@ -1,0 +1,30 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "index",
+  "repo": "",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "run verdict index co-changed a/a.go to see what moves with it",
+  "warnings": [],
+  "data": {
+    "kind": "owners",
+    "query": {
+      "path": "a/a.go"
+    },
+    "tree": "cea7780b5463b90e8c9e0bce830f6e65a46bca74",
+    "commit": "b5d0f533c75664c4619f9e2b6df4f26090044345",
+    "target": {
+      "path": "a/a.go",
+      "owners": [
+        "@go-owner"
+      ],
+      "owners_source": ".github/CODEOWNERS"
+    }
+  },
+  "error": null
+}
+--- stderr ---
+
+--- files ---

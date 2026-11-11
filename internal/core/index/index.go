@@ -17,17 +17,32 @@ import (
 
 // Index subcommands.
 const (
-	QueryBuild   = "build"
-	QueryStatus  = "status"
-	QueryPrune   = "prune"
-	QueryCallers = "callers"
+	QueryBuild     = "build"
+	QueryStatus    = "status"
+	QueryPrune     = "prune"
+	QueryCallers   = "callers"
+	QueryTestsFor  = "tests-for"
+	QueryCoChanged = "co-changed"
+	QueryOwners    = "owners"
 )
 
-// DefaultLimit is the caller-row limit when the request names none.
+// MCPQueries are the index subcommands the read-only MCP tool serves. Build
+// and prune stay on the CLI because they write the store.
+var MCPQueries = []string{QueryCallers, QueryStatus, QueryTestsFor, QueryCoChanged, QueryOwners}
+
+// DefaultLimit is the row limit when the request names none.
 const DefaultLimit = 50
 
-// MaxLimit is the largest caller-row limit a request may name.
+// MaxLimit is the largest row limit a request may name.
 const MaxLimit = 200
+
+// Co-change query defaults and bounds.
+const (
+	DefaultCoChangeLimit   = 20
+	DefaultCoChangeCommits = 2000
+	DefaultMinCount        = 2
+	MaxCommitWindow        = 100000
+)
 
 // Shipped index caps.
 const (
@@ -50,6 +65,8 @@ const (
 	resolutionExact      = "exact"
 	resolutionLexical    = "lexical"
 	resolutionUnresolved = "unresolved"
+	goSuffix             = ".go"
+	testSuffix           = "_test.go"
 )
 
 // Limits is the index's byte and count budget. The zero value reads as
@@ -83,7 +100,11 @@ type Request struct { //nolint:govet // field grouping documents the request sur
 	From     string
 	At       string
 	Symbol   string
-	Limit    int
+	Path     string
+	Since    string
+	Commits  int `max:"100000" min:"1"`
+	MinCount int `max:"100000" min:"1"`
+	Limit    int `max:"200"    min:"1"`
 	Warnings []string
 	Limits   *Limits `json:"-"`
 }
@@ -101,28 +122,36 @@ type Response struct { //nolint:govet // field grouping documents the response s
 // Data is the index verb's --json data profile. Wire branches on Kind, so
 // each subcommand publishes only the keys it measured.
 type Data struct { //nolint:govet // field order is the published property order
-	Kind        string
-	Tree        string
-	Commit      string
-	Stale       bool
-	Built       bool
-	Files       int
-	Skipped     int
-	Parsed      int
-	Reused      int
-	TreeBytes   int64
-	ShardCount  int
-	ShardBytes  int64
-	Trees       []TreeRow
-	Symbol      string
-	Limit       int
-	Callers     int
-	Unresolved  int
-	Rows        []Row
-	Truncated   int
-	Kept        []string
-	RemovedTree int
-	GoneShards  int
+	Kind          string
+	Tree          string
+	Commit        string
+	Stale         bool
+	Built         bool
+	Files         int
+	Skipped       int
+	Parsed        int
+	Reused        int
+	TreeBytes     int64
+	ShardCount    int
+	ShardBytes    int64
+	Trees         []TreeRow
+	Symbol        string
+	Path          string
+	Limit         int
+	Callers       int
+	Unresolved    int
+	Rows          []Row
+	Truncated     int
+	Kept          []string
+	RemovedTree   int
+	GoneShards    int
+	Tests         int
+	TestRows      []TestRow
+	Window        Window
+	Partners      int
+	TargetCommits int
+	CoChangeRows  []CoChangeRow
+	Target        *Target
 }
 
 // TreeRow is one stored tree file.
@@ -138,6 +167,36 @@ type Row struct {
 	Kind       string
 	Resolution string
 	Line       int
+}
+
+// TestRow is one candidate test for a changed file or symbol.
+type TestRow struct {
+	Path string
+	Via  string
+}
+
+// CoChangeRow is one partner path and how often it moved with the target.
+type CoChangeRow struct {
+	Path    string
+	Commits int
+	Jaccard float64
+}
+
+// Window is the bounded history window a co-change query read: the oldest and
+// newest commits it saw, and how many it counted.
+type Window struct {
+	First   string
+	Last    string
+	Commits int
+}
+
+// Target is one queried path and the CODEOWNERS rule that owns it. A nil
+// Owners slice is "no rule matched" (or no CODEOWNERS file at the tree); it is
+// never rendered as an owner named nobody.
+type Target struct {
+	Path         string
+	OwnersSource string
+	Owners       []string
 }
 
 type state struct {
@@ -256,8 +315,17 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 		resp, ref = st.prune(ctx)
 	case QueryCallers:
 		resp, ref = st.callers(ctx)
+	case QueryTestsFor:
+		resp, ref = st.testsFor(ctx)
+	case QueryCoChanged:
+		resp, ref = st.coChanged(ctx)
+	case QueryOwners:
+		resp, ref = st.owners(ctx)
 	default:
-		return nil, &core.RefusalError{Code: "bad-flags", Message: "index wants build, status, prune, or callers"}
+		return nil, &core.RefusalError{
+			Code:    "bad-flags",
+			Message: "index wants build, status, prune, callers, tests-for, co-changed, or owners",
+		}
 	}
 	if ref != nil {
 		ref.Warnings = st.warnings

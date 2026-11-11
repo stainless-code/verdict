@@ -213,3 +213,106 @@ func runIndexGitOut(t *testing.T, dir string, args ...string) string {
 	}
 	return strings.TrimSpace(string(out))
 }
+
+// graphFixture is the candidate-test and co-change fixture: a target package
+// with a same-package test, a package that references the symbol through an
+// import edge, a package that only imports the target's package, and a
+// CODEOWNERS chain whose last matching rule owns a/a.go.
+var graphFixture = map[string]string{
+	"go.mod": "module example.com/m\n\ngo 1.27\n",
+	"a/a.go": `package a
+
+func Target() {}
+
+func Caller() {
+	Target()
+}
+`,
+	"a/other.go": `package a
+
+func Other() {}
+`,
+	"a/a_test.go": `package a
+
+import "testing"
+
+func TestTarget(t *testing.T) {
+	Target()
+}
+`,
+	"b/b_test.go": `package b
+
+import (
+	"testing"
+
+	"example.com/m/a"
+)
+
+func TestUses(t *testing.T) {
+	a.Target()
+}
+`,
+	"c/c.go": `package c
+
+func Local() {}
+`,
+	"c/c_test.go": `package c
+
+import (
+	"testing"
+
+	"example.com/m/a"
+)
+
+func TestLocal(t *testing.T) {
+	a.Other()
+}
+`,
+	".github/CODEOWNERS": "# global owner\n*       @everyone\n/a/*    @a-owner\na/*.go  @go-owner\n",
+}
+
+// graphRepo writes the fixture as four commits: a/a.go moves with b's test in
+// two of them and with c's test in one, so the co-change counts are fixture
+// data. The index is built for the last tree.
+func graphRepo(t *testing.T, dir, _ string) {
+	t.Helper()
+	writeFiles(t, dir, graphFixture)
+	runIndexGit(t, dir, "init", "-q", "-b", "main")
+	runIndexGit(t, dir, "add", "-A")
+	runIndexGit(t, dir, "commit", "-qm", "graph fixture")
+	steps := []struct{ path, body string }{
+		{"a/a.go", "package a\n\nfunc Target() {}\n\nfunc Caller() {\n\tTarget()\n}\n\nfunc Second() {}\n"},
+		{"b/b_test.go", graphFixture["b/b_test.go"] + "\nfunc TestMore(t *testing.T) {\n\ta.Target()\n}\n"},
+		{"a/a.go", "package a\n\nfunc Target() {}\n\nfunc Caller() {\n\tTarget()\n}\n\nfunc Second() {}\n\nfunc Third() {}\n"},
+		{"c/c_test.go", graphFixture["c/c_test.go"] + "\nfunc TestMore(t *testing.T) {\n\ta.Other()\n}\n"},
+		{"a/a.go", "package a\n\nfunc Target() {}\n\nfunc Caller() {\n\tTarget()\n}\n\nfunc Second() {}\n\nfunc Third() {}\n\nfunc Fourth() {}\n"},
+		{"b/b_test.go", graphFixture["b/b_test.go"] + "\nfunc TestMore(t *testing.T) {\n\ta.Target()\n}\n\nfunc TestThird(t *testing.T) {\n\ta.Target()\n}\n"},
+	}
+	for i := 0; i < len(steps); i += 2 {
+		writeFiles(t, dir, map[string]string{steps[i].path: steps[i].body, steps[i+1].path: steps[i+1].body})
+		runIndexGit(t, dir, "add", "-A")
+		runIndexGit(t, dir, "commit", "-qm", "graph step")
+	}
+	buildIndex(t, dir, indexEnv())
+}
+
+// TestIndexGraphGolden pins the candidate-test, co-change, and owner reads:
+// all three via kinds, literal partner counts with the window, and the last
+// matching CODEOWNERS rule.
+func TestIndexGraphGolden(t *testing.T) {
+	t.Parallel()
+	goldenRead(t, "index/tests-for-human", graphRepo, nil, nil, "index", "tests-for", "a/a.go")
+	goldenRead(t, "index/tests-for-json", graphRepo, nil, nil, "index", "tests-for", "a/a.go", "--json")
+	goldenRead(t, "index/owners-human", graphRepo, nil, nil, "index", "owners", "a/a.go")
+	goldenRead(t, "index/owners-json", graphRepo, nil, nil, "index", "owners", "a/a.go", "--json")
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{"index/co-changed-human", []string{"index", "co-changed", "a/a.go"}},
+		{"index/co-changed-json", []string{"index", "co-changed", "a/a.go", "--json"}},
+	} {
+		c := &golden.Case{Name: tc.name, Setup: graphRepo, Args: tc.args}
+		c.Run(t, harness)
+	}
+}

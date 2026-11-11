@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/config"
@@ -169,9 +170,9 @@ func allTools(readOnly, operator bool) []*tool {
 			func(resp *fixcore.Response) *jq.Obj { return wireData(resp.Data) }),
 		directTool(&toolSpec{
 			name: "index",
-			description: "Query the local Go index under .verdict/index. query=callers returns one symbol's " +
-				"call sites (exact within a package, lexical across an import edge); query=status reports " +
-				"the stored trees. Call before editing code to find callers. Reads the index only; never " +
+			description: "Query the local Go index under .verdict/index for callers, candidate tests, " +
+				"co-change partners, CODEOWNERS owners, or stored trees. Call before editing code to " +
+				"find callers and the tests to read. Reads the index and git objects only; never " +
 				"builds or prunes (those are CLI-only) and writes nothing.",
 			omit: omitPositionals,
 			meta: toolMeta{title: "Query code index", readOnly: true, idempotent: true},
@@ -438,8 +439,11 @@ func invokeReport(ctx context.Context, req *core.ReportRequest) (*jq.Obj, *core.
 }
 
 func invokeIndex(ctx context.Context, req *indexcore.Request) (*jq.Obj, *core.RefusalError) {
-	if req.Query != indexcore.QueryCallers && req.Query != indexcore.QueryStatus {
-		return nil, &core.RefusalError{Code: codeBadFlags, Message: "index serves callers and status; build and prune are CLI-only"}
+	if !slices.Contains(indexcore.MCPQueries, req.Query) {
+		return nil, &core.RefusalError{
+			Code:    codeBadFlags,
+			Message: "index serves callers, status, tests-for, co-changed, and owners; build and prune are CLI-only",
+		}
 	}
 	resp, ref := indexcore.Run(ctx, req)
 	if ref != nil {

@@ -33,3 +33,131 @@ func TestParseCallersLimitAcceptsBounds(t *testing.T) {
 		}
 	}
 }
+
+// TestParseGraphSubcommands pins the new subcommands' argv contract:
+// defaults and flag mapping.
+func TestParseGraphSubcommands(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want invocation
+	}{
+		{
+			name: "co-changed defaults", args: []string{"co-changed", "a/a.go"},
+			want: invocation{
+				query: "co-changed", path: "a/a.go", limit: 20, commits: 2000, minCount: 2,
+			},
+		},
+		{
+			name: "co-changed flags",
+			args: []string{"co-changed", "a/a.go", "--commits", "50", "--since", "90d", "--min-count", "3", "--limit", "7"},
+			want: invocation{
+				query: "co-changed", path: "a/a.go", since: "90d", limit: 7, commits: 50, minCount: 3,
+			},
+		},
+		{
+			name: "tests-for path", args: []string{"tests-for", "a/a.go", "--at", "HEAD~1", "--limit", "2"},
+			want: invocation{query: "tests-for", path: "a/a.go", at: "HEAD~1", limit: 2},
+		},
+		{
+			name: "tests-for symbol", args: []string{"tests-for", "--symbol", "a.Target"},
+			want: invocation{query: "tests-for", symbol: "a.Target", limit: 50},
+		},
+		{
+			name: "owners", args: []string{"owners", "a/a.go"},
+			want: invocation{query: "owners", path: "a/a.go"},
+		},
+		{
+			name: "owners at a tree", args: []string{"owners", "a/a.go", "--at", "HEAD~1"},
+			want: invocation{query: "owners", path: "a/a.go", at: "HEAD~1"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			inv := parseAccepted(t, tc.args)
+			if inv != tc.want {
+				t.Errorf("invocation = %+v; want %+v", inv, tc.want)
+			}
+		})
+	}
+}
+
+// parseAccepted parses one accepted argv and fails on any refusal.
+func parseAccepted(t *testing.T, args []string) invocation {
+	t.Helper()
+	var diag strings.Builder
+	inv, code, done := parse(&cli.Runner{Diag: &diag}, args)
+	if done || code != 0 {
+		t.Fatalf("parse refused: %q", diag.String())
+	}
+	return inv
+}
+
+// TestParseGraphRefusals pins one usage refusal per bad new-subcommand shape.
+func TestParseGraphRefusals(t *testing.T) {
+	cases := []struct {
+		name string
+		diag string
+		args []string
+		code int
+	}{
+		{
+			name: "co-changed commits bound", args: []string{"co-changed", "a/a.go", "--commits", "0"},
+			code: cli.ExitUsage, diag: "index co-changed wants --commits from 1 to 100000\n",
+		},
+		{
+			name: "co-changed min count bound", args: []string{"co-changed", "a/a.go", "--min-count", "x"},
+			code: cli.ExitUsage, diag: "index co-changed wants --min-count from 1 to 100000\n",
+		},
+		{
+			name: "co-changed limit bound", args: []string{"co-changed", "a/a.go", "--limit", "201"},
+			code: cli.ExitUsage, diag: "index co-changed wants --limit from 1 to 200\n",
+		},
+		{
+			name: "co-changed missing path", args: []string{"co-changed"},
+			code: cli.ExitUsage,
+			diag: "usage: verdict index co-changed <path> [--commits <n>] [--since <dur|ref>] " +
+				"[--min-count <n>] [--limit <n>]\n",
+		},
+		{
+			name: "tests-for neither", args: []string{"tests-for"},
+			code: cli.ExitUsage,
+			diag: "usage: verdict index tests-for <path>|--symbol <pkg.Name> [--at <tree>] [--limit <n>]\n",
+		},
+		{
+			name: "tests-for both", args: []string{"tests-for", "a/a.go", "--symbol", "a.Target"},
+			code: cli.ExitUsage,
+			diag: "usage: verdict index tests-for <path>|--symbol <pkg.Name> [--at <tree>] [--limit <n>]\n",
+		},
+		{
+			name: "tests-for limit bound", args: []string{"tests-for", "a/a.go", "--limit", "0"},
+			code: cli.ExitUsage, diag: "index tests-for wants --limit from 1 to 200\n",
+		},
+		{
+			name: "owners missing path", args: []string{"owners"},
+			code: cli.ExitUsage, diag: "usage: verdict index owners <path> [--at <tree>]\n",
+		},
+		{
+			name: "owners unknown flag", args: []string{"owners", "a/a.go", "--limit", "2"},
+			code: cli.ExitUsage, diag: "unknown flag '--limit' for index owners (want --at <tree>)\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assertUsageRefusal(t, tc.args, tc.code, tc.diag)
+		})
+	}
+}
+
+// assertUsageRefusal parses one argv that must refuse with the exact stderr.
+func assertUsageRefusal(t *testing.T, args []string, code int, diag string) {
+	t.Helper()
+	var stderr strings.Builder
+	got, gotCode, done := parse(&cli.Runner{Diag: &stderr}, args)
+	if !done || gotCode != code {
+		t.Fatalf("parse = invocation %+v, code %d, done %t; want usage refusal", got, gotCode, done)
+	}
+	if stderr.String() != diag {
+		t.Errorf("stderr = %q; want %q", stderr.String(), diag)
+	}
+}

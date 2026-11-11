@@ -31,7 +31,7 @@ type coverage struct {
 
 // callers executes `index callers`.
 func (st *state) callers(ctx context.Context) (*Response, *core.RefusalError) {
-	limit, ref := st.callersLimit()
+	limit, ref := st.rowLimit(QueryCallers)
 	if ref != nil {
 		return nil, ref
 	}
@@ -85,22 +85,6 @@ func (st *state) warnStale(ctx context.Context, root, tree string) bool {
 	}
 	st.warn(fmt.Sprintf("» index: built for %s, HEAD is %s", tree, head))
 	return true
-}
-
-// callersLimit resolves the caller-row limit and enforces the published
-// bounds, so every transport — not only the CLI parser — holds them.
-func (st *state) callersLimit() (int, *core.RefusalError) {
-	switch {
-	case st.req.Limit == 0:
-		return DefaultLimit, nil
-	case st.req.Limit < 1 || st.req.Limit > MaxLimit:
-		return 0, &core.RefusalError{
-			Code:    codeBadFlags,
-			Message: fmt.Sprintf("index callers wants --limit from 1 to %d", MaxLimit),
-		}
-	default:
-		return st.req.Limit, nil
-	}
 }
 
 // packageMap groups a tree's files by directory and collects declarations.

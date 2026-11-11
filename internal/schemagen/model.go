@@ -728,26 +728,29 @@ type ThreadsResolveData = fetchcore.ThreadsResolveData
 // subcommands, so every subcommand-specific key is optional and a consumer
 // branches on kind.
 type IndexData struct { //nolint:govet // field order is the published property order
-	Kind         string         `enum:"build|status|prune|callers" json:"kind"`
-	Tree         string         `json:"tree"                       optional:"true"`
-	Commit       string         `json:"commit"                     optional:"true"`
-	Built        bool           `json:"built"                      optional:"true"`
-	Stale        bool           `json:"stale"                      optional:"true"`
-	FilesIndexed int            `json:"files_indexed"              min:"0"         optional:"true"`
-	Skipped      int            `json:"skipped"                    min:"0"         optional:"true"`
-	Parsed       int            `json:"parsed"                     min:"0"         optional:"true"`
-	Reused       int            `json:"reused"                     min:"0"         optional:"true"`
-	TreeBytes    int64          `json:"tree_bytes"                 min:"0"         optional:"true"`
-	Shards       IndexShards    `json:"shards"                     optional:"true"`
-	Trees        []IndexTreeRow `json:"trees"                      optional:"true"`
-	Kept         []string       `json:"kept"                       optional:"true"`
-	Removed      IndexRemoved   `json:"removed"                    optional:"true"`
-	Query        IndexQuery     `json:"query"                      optional:"true"`
-	Index        IndexStatus    `json:"index"                      optional:"true"`
-	Counts       IndexCounts    `json:"counts"                     optional:"true"`
-	Limit        int            `json:"limit"                      min:"1"         optional:"true"`
-	Truncated    int            `json:"truncated"                  min:"0"         optional:"true"`
-	Rows         []IndexRow     `json:"rows"                       optional:"true"`
+	Kind         string         `enum:"build|status|prune|callers|tests-for|co-changed|owners" json:"kind"`
+	Tree         string         `json:"tree"                                                   optional:"true"`
+	Commit       string         `json:"commit"                                                 optional:"true"`
+	Built        bool           `json:"built"                                                  optional:"true"`
+	Stale        bool           `json:"stale"                                                  optional:"true"`
+	FilesIndexed int            `json:"files_indexed"                                          min:"0"         optional:"true"`
+	Skipped      int            `json:"skipped"                                                min:"0"         optional:"true"`
+	Parsed       int            `json:"parsed"                                                 min:"0"         optional:"true"`
+	Reused       int            `json:"reused"                                                 min:"0"         optional:"true"`
+	TreeBytes    int64          `json:"tree_bytes"                                             min:"0"         optional:"true"`
+	Shards       IndexShards    `json:"shards"                                                 optional:"true"`
+	Trees        []IndexTreeRow `json:"trees"                                                  optional:"true"`
+	Kept         []string       `json:"kept"                                                   optional:"true"`
+	Removed      IndexRemoved   `json:"removed"                                                optional:"true"`
+	Path         string         `json:"path"                                                   optional:"true"`
+	Query        IndexQuery     `json:"query"                                                  optional:"true"`
+	Index        IndexStatus    `json:"index"                                                  optional:"true"`
+	Counts       IndexCounts    `json:"counts"                                                 optional:"true"`
+	Limit        int            `json:"limit"                                                  min:"1"         optional:"true"`
+	Truncated    int            `json:"truncated"                                              min:"0"         optional:"true"`
+	Rows         []IndexRow     `json:"rows"                                                   optional:"true"`
+	Window       IndexWindow    `json:"window"                                                 optional:"true"`
+	Target       *IndexTarget   `anyOf:"null"                                                  json:"target"   optional:"true"`
 }
 
 // IndexShards is the local shard store's count and byte total.
@@ -769,9 +772,27 @@ type IndexRemoved struct {
 	Shards int `json:"shards" min:"0"`
 }
 
-// IndexQuery is the caller query's symbol input.
+// IndexQuery is the query's input: the caller or tests-for symbol, or the
+// path tests-for, co-changed, and owners read.
 type IndexQuery struct {
-	Symbol string `json:"symbol"`
+	Symbol string `json:"symbol" optional:"true"`
+	Path   string `json:"path"   optional:"true"`
+}
+
+// IndexWindow is the bounded history window a co-change query read.
+type IndexWindow struct {
+	First   string `json:"first"   optional:"true"`
+	Last    string `json:"last"    optional:"true"`
+	Commits int    `json:"commits" min:"0"`
+}
+
+// IndexTarget is one queried path and the CODEOWNERS answer for it. Owners and
+// owners_source are nullable and always published, so an absent rule can never
+// read as an owner named nobody.
+type IndexTarget struct { //nolint:govet // field order is the published property order
+	Path         string    `json:"path"`
+	Owners       *[]string `json:"owners"`
+	OwnersSource *string   `json:"owners_source"`
 }
 
 // IndexStatus is the caller envelope's index state.
@@ -788,18 +809,26 @@ type IndexCoverage struct {
 	Skipped      int `json:"skipped"       min:"0"`
 }
 
-// IndexCounts is the caller query's measured counts.
+// IndexCounts is the query's measured counts; the kind decides which keys are
+// present.
 type IndexCounts struct {
-	Callers    int `json:"callers"    min:"0"`
-	Unresolved int `json:"unresolved" min:"0"`
+	Callers       int `json:"callers"        min:"0" optional:"true"`
+	Unresolved    int `json:"unresolved"     min:"0" optional:"true"`
+	Tests         int `json:"tests"          min:"0" optional:"true"`
+	Partners      int `json:"partners"       min:"0" optional:"true"`
+	TargetCommits int `json:"target_commits" min:"0" optional:"true"`
 }
 
-// IndexRow is one caller row.
+// IndexRow is one row of a caller, candidate-test, or co-change query; the
+// kind decides which fields the row carries.
 type IndexRow struct { //nolint:govet // field order is the published property order
-	Path       string `json:"path"`
-	Line       int    `json:"line"                                 min:"1"`
-	Kind       string `enum:"call|method|type-ref|value-ref|embed" json:"kind"`       //nolint:revive // published enum tag exceeds the line limit
-	Resolution string `enum:"exact|lexical"                        json:"resolution"` //nolint:revive // published enum tag exceeds the line limit
+	Path       string  `json:"path"`
+	Line       int     `json:"line"                                   min:"1"           optional:"true"`
+	Kind       string  `enum:"call|method|type-ref|value-ref|embed"   json:"kind"       optional:"true"` //nolint:revive // published enum tag exceeds the line limit
+	Resolution string  `enum:"exact|lexical"                          json:"resolution" optional:"true"` //nolint:revive // published enum tag exceeds the line limit
+	Via        string  `enum:"same-package|references|imports-module" json:"via"        optional:"true"` //nolint:revive // published enum tag exceeds the line limit
+	Commits    int     `json:"commits"                                min:"0"           optional:"true"`
+	Jaccard    float64 `json:"jaccard"                                max:"1"           min:"0"         optional:"true"`
 }
 
 // IndexTree is the stored per-tree index document under

@@ -1,0 +1,6 @@
+exit: 0
+--- stdout ---
+index: a/a.go owned by @go-owner (from .github/CODEOWNERS at cea7780b5463b90e8c9e0bce830f6e65a46bca74)
+--- stderr ---
+
+--- files ---

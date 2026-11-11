@@ -160,15 +160,17 @@
       "/$defs/trendData/properties/by_category": "Portfolio finding counts by observed category with untagged for null entries; only observed categories appear.",
       "/$defs/trendBundleRow/properties/by_category": "One bundle's finding counts by observed category with untagged for null entries.",
       "/$defs/calibrateData/properties/precision": "Live-join precision: totals plus by_tier counts and by_category cells (fixed, resolved_unfixed, open, unknown, judged, resolution_rate; a zero judged denominator reads null). Outcome rows carry the finding's category, null when untagged.",
-      "/$defs/indexData": "index --json data: one object across build, status, prune, and callers, so kind names the subcommand and every other key is optional.",
+      "/$defs/indexData": "index --json data: one object across build, status, prune, callers, tests-for, co-changed, and owners, so kind names the subcommand and every other key is optional.",
       "/$defs/indexShards": "The local shard store: file count and byte total.",
       "/$defs/indexTreeRow": "One stored tree file: its tree SHA, file count, and bytes.",
       "/$defs/indexRemoved": "The prune receipt: trees and shards removed.",
-      "/$defs/indexQuery": "The caller query input: the symbol as written.",
+      "/$defs/indexQuery": "The query input: the symbol as written for callers or tests-for --symbol, or the repository path for tests-for, co-changed, and owners.",
       "/$defs/indexStatus": "The caller envelope index state: tree, commit, staleness, and file coverage.",
       "/$defs/indexCoverage": "The indexed and skipped file counts for the queried tree.",
       "/$defs/indexCounts": "The caller query counts: rows returned and candidates left unresolved.",
-      "/$defs/indexRow": "One caller row: slash path, line, kind, and exact or lexical resolution."
+      "/$defs/indexRow": "One row of a caller, candidate-test, or co-change query: path plus the fields that kind measures (line/kind/resolution for callers, via for candidates, commits/jaccard for partners).",
+      "/$defs/indexWindow": "The bounded history window a co-change query read: oldest and newest commit sha, and how many commits it counted (empty window names no bounds).",
+      "/$defs/indexTarget": "One queried path and its CODEOWNERS answer: owners and owners_source are null when the tree carries no rule, never an owner named nobody."
     }
   },
   "findings": {

@@ -2573,7 +2573,7 @@ posted review id + head that `calibrate` could settle against live threads — t
 audit reads those shapes only, never recomputes them and never touches the
 network. Without the flag both outputs are byte-identical to today.
 
-## Code index (Go callers)
+## Code index (Go)
 
 `index build [--from <dir>] [--at <ref>]` parses a git tree with the standard
 library (`go/parser`, `go/ast`) — no tree-sitter, no cgo, no third-party
@@ -2602,6 +2602,52 @@ packages, incomplete by construction**. Do not read a caller row as proof of
 every call: a method value, a function stored in a variable, or a type argument
 is counted unresolved, not found.
 
+`index tests-for <path>|--symbol <pkg.Name> [--at <tree>]` lists the candidate
+tests to read for one source file (or one qualified symbol), each labelled with
+the mechanism that reached it: `same-package` (a `_test.go` in the package
+directory), `references` (the test's recorded references name a symbol declared
+in the file, resolved exactly within the package and lexically only through an
+import edge), or `imports-module` (the test imports the declaring package).
+Only `_test.go` files appear. These are **candidates, never coverage claims**:
+a row names a test worth reading, not a test that covers the change, and a test
+the index cannot attribute (a method value, a reflection call) is missing
+rather than guessed. Rows sort by path and truncate to `--limit` with a count.
+A path that names no indexed Go file refuses `bad-flags`, and `--symbol` wants
+a qualified `pkg.Name` — a bare name would fold unrelated packages together.
+The path form also carries the file's CODEOWNERS `target`.
+
+`index co-changed <path> [--commits <n>] [--since <dur|ref>] [--min-count <n>]
+[--limit <n>]` reads one bounded `git log --no-merges --name-only -z` window
+(default 2,000 commits) and reports every path that moved in the same commits,
+with its co-change count and Jaccard ratio `|A∩B|/|A∪B|` over the window,
+rounded to four decimals. Rows sort by count then path; partners below
+`--min-count` are dropped. The window is echoed — oldest and newest commit,
+commit count, and how many commits touched the target — so a count is never
+divorced from its denominator. Merges are excluded. A rename counts as its old
+and new path in one commit, so both names co-change with everything in it and
+the two are never joined here. `--since` takes a duration (`90d`, `12w`,
+`18mo`, `2y`) measured back from HEAD's own committer date, or a ref whose
+history is excluded. A shallow clone warns that the counts are true of the
+commits present only. The window is cached under
+`.verdict/index/cochange/<head>-<commits>.json` (two newest kept); the file is
+timestamp-free, so the same window writes the same bytes, and a corrupt cache
+is rebuilt rather than read as an empty window.
+
+`index owners <path> [--at <tree>]` answers the CODEOWNERS rule that owns one
+path at the queried tree. The file is read **at the tree**, from the git object
+store, at GitHub's first match of
+`.github/CODEOWNERS`, `CODEOWNERS`, then `docs/CODEOWNERS` — never the worktree
+copy, so an uncommitted edit changes nothing. The last matching rule wins.
+Patterns follow a documented subset: `*` stays inside a segment, `**` crosses
+segments, `?` matches one character, a leading `/` anchors at the repository
+root, a pattern with no slash matches a segment at any depth, and a trailing
+slash matches everything below the directory. Negation (`!`), backslash
+escapes, and character classes are not evaluated: a file using them warns, and
+those lines match nothing. A tree with no CODEOWNERS reads `owners: null` and
+`owners_source: null`; a file whose rules do not match reads `owners: null`
+with the source named. Neither ever reads as an owner named nobody. The same
+`target` object rides on `tests-for` (path form) and `co-changed`.
+
 Caps: 20,000 Go files, 1 MiB per file (an oversized file is skipped and
 counted in `coverage.skipped`), a 96 MiB tree file, and a 256 MiB shard cache;
 a repo over a cap refuses `index-capped` naming the measured number. The typed
@@ -2613,9 +2659,11 @@ an over-cap capture refuses `index-capped` naming the cap, and the capture cap
 is not configurable. A truncated or invalid shard refuses `index-corrupt` and
 is never read as empty.
 Querying a tree that is not HEAD's marks the envelope `stale: true` and warns
-`» index: built for <tree>, HEAD is <tree2>`. The MCP `index` tool is
-read-only and serves `callers` and `status`; the SDK forwards every
-subcommand.
+`» index: built for <tree>, HEAD is <tree2>`. `callers`, `tests-for`, and
+`owners` take `--at`; `co-changed` always reads HEAD's tree and history. The
+MCP `index` tool is read-only and serves `callers`, `status`, `tests-for`,
+`co-changed`, and `owners`; `build` and `prune` stay on the CLI, and the SDK
+forwards every subcommand.
 
 ## Backtest (SZZ candidates)
 

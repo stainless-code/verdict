@@ -190,6 +190,7 @@ func TestRuntimeIndexEnvelopeValidates(t *testing.T) {
 		want   map[string]any
 		query  string
 		symbol string
+		path   string
 	}{
 		{query: indexcore.QueryBuild, want: map[string]any{
 			"kind": "build", "files_indexed": json.Number("2"), "parsed": json.Number("2"),
@@ -203,10 +204,23 @@ func TestRuntimeIndexEnvelopeValidates(t *testing.T) {
 		{query: indexcore.QueryPrune, want: map[string]any{
 			"kind": "prune", "removed": map[string]any{"trees": json.Number("0"), "shards": json.Number("0")},
 		}},
+		{query: indexcore.QueryTestsFor, path: "a/a.go", want: map[string]any{
+			"kind": "tests-for", "counts": map[string]any{"tests": json.Number("0")},
+		}},
+		{query: indexcore.QueryCoChanged, path: "a/a.go", want: map[string]any{
+			"kind": "co-changed", "counts": map[string]any{
+				"partners": json.Number("0"), "target_commits": json.Number("1"),
+			},
+		}},
+		{query: indexcore.QueryOwners, path: "a/a.go", want: map[string]any{
+			"kind": "owners", "target": map[string]any{
+				"path": "a/a.go", "owners": nil, "owners_source": nil,
+			},
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.query, func(t *testing.T) {
-			req := &indexcore.Request{Query: tc.query, Symbol: tc.symbol}
+			req := &indexcore.Request{Query: tc.query, Symbol: tc.symbol, Path: tc.path}
 			req.ReadRequest = core.ReadRequest{
 				Runtime:  &core.Runtime{Now: fixedNow, Commander: coreexec.Runner{}, Env: env},
 				RepoRoot: dir,

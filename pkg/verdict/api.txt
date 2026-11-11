@@ -286,12 +286,14 @@ type GateResponse struct {
     not a refusal: the error stays nil and Passed is false.
 
 type IndexRequest struct {
-	Query, Symbol, From, At string
-	Limit                   int
+	Query, Symbol, Path, From, At, Since string
+	Limit, Commits, MinCount             int
 }
-    IndexRequest queries the local Go index. Query is any index subcommand —
-    callers, status, build, or prune; Symbol is the caller query's symbol,
-    At names a tree or ref, From overrides the checkout, and Limit bounds rows.
+    IndexRequest queries the local Go index. Query is any index subcommand
+    — callers, status, tests-for, co-changed, owners, build, or prune;
+    Symbol is the caller or tests-for symbol, Path the tests-for, co-changed,
+    or owners path, At names a tree or ref, From overrides the checkout, Since,
+    Commits, and MinCount bound the co-change window, and Limit bounds rows.
 
 type IndexResponse struct {
 	At       string

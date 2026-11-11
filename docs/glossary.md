@@ -29,6 +29,12 @@ dispatcher uses those per-group values for that group's files.
 and built from `go/parser` alone. `index callers` labels each row `exact`
 (within the declaring package) or `lexical` (an exported name reached through
 an import edge); everything type-dependent stays counted as unresolved.
+`index tests-for` labels each candidate test `same-package`, `references`, or
+`imports-module` — candidates to read, never coverage claims. `index
+co-changed` counts the paths that moved in the same bounded history window and
+echoes that window. `index owners` answers the CODEOWNERS rule at the tree
+(GitHub file order, last match wins), with a null owner list when no rule
+matches rather than an owner named nobody.
 
 ## Evidence
 

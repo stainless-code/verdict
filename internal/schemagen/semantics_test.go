@@ -146,7 +146,13 @@ var publishedSemantics = map[string]string{
 	// only; no property, required key, enum, or type changed.
 	// index: additive $defs/indexData and its sub-shapes. Additions only; no
 	// existing property, required key, enum, or type changed.
-	"envelope.schema.json": "835bb40b131b463309c4f50f1430c02498b58c78e64e3ec54f4eaa0c96c8cb82",
+	// index graph: additive kind enum values (tests-for, co-changed, owners),
+	// optional query.path, window, target, and the row/counts fields those
+	// kinds publish. One data object serves every kind, so the caller row's
+	// line/kind/resolution and the caller counts' callers/unresolved relax to
+	// optional and the schema widens rather than narrowing: an older consumer
+	// validating a caller envelope still passes.
+	"envelope.schema.json": "bf22c9ea5ec0812740ca5994ad99f2eb8ddb907f2193213ca3c493638dc798be",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
