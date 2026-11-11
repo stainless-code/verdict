@@ -210,11 +210,14 @@ var publishedSemantics = map[string]string{
 	// changed; the loader's exact-key, regular-file, and bounded-read rules
 	// are prose only. The rule id carries the KB-id pattern the loader
 	// enforces.
-	// refused manifests: minItems 1 on replace and rule globs, minLength 1
-	// on a rule severity key, and the three-value enum on the severity map's
-	// values, so the published schema rejects the empty shapes the loader
-	// already refuses instead of accepting a manifest that cannot load.
-	"pack.schema.json": "1907ba9d8abd9e0f388804640d5286cb04e7ed76691a12855f6277da4579b41b",
+	// refused manifests: minItems 1 on rule globs, minLength 1 on a rule
+	// severity key, and the three-value enum on the severity map's values, so
+	// the published schema rejects the empty shapes the loader already
+	// refuses instead of accepting a manifest that cannot load.
+	// empty replace: the replace array no longer carries minItems 1, because
+	// the loader accepts an empty list and the schema must not refuse a
+	// manifest that loads.
+	"pack.schema.json": "fc8dc3ae76bfee94157f23e03ad2173f643d96974896c05307f89491f2a207b9",
 	// patch identity: additive optional patch_id/patch_id_kind plus the
 	// optional forced[] audit with $defs/forcedPost. No existing property,
 	// required key, or type changed.

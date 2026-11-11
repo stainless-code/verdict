@@ -89,7 +89,7 @@ type Manifest struct {
 	SchemaVersion string            `const:"1"                 json:"schema_version"`
 	Name          string            `json:"name"`
 	Version       string            `json:"version"`
-	Replace       []string          `json:"replace,omitempty"  minItems:"1"`
+	Replace       []string          `json:"replace,omitempty"`
 	Severity      map[string]string `json:"severity,omitempty" value_enum:"critical|important|informational"`
 	Lenses        []LensSpec        `json:"lenses"             minItems:"1"`
 	Rules         []RuleSpec        `json:"rules,omitempty"`

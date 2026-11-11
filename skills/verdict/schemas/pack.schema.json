@@ -22,8 +22,7 @@
     "replace": {
       "description": "Lower-layer pack names this pack may override by id. Replacement is downward only: naming a pack at the same or a higher layer refuses pack-conflict.",
       "type": "array",
-      "items": { "type": "string" },
-      "minItems": 1
+      "items": { "type": "string" }
     },
     "severity": {
       "description": "The pack's severity names mapped to critical, important, or informational; every rule's severity key must exist here.",

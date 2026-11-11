@@ -298,7 +298,7 @@ func TestPackNoteLabelsBodies(t *testing.T) {
 // TestRefusedManifestsFailPublishedSchema proves the published schema rejects
 // the empty shapes the loader refuses — no rule globs, an empty rule severity
 // key, and a severity-map value outside the three levels — and that an empty
-// replace array is rejected too.
+// replace array is accepted by both the schema and the loader.
 //
 //nolint:revive // the refused-shape table and its loader arm read as one block
 func TestRefusedManifestsFailPublishedSchema(t *testing.T) {
@@ -314,16 +314,22 @@ func TestRefusedManifestsFailPublishedSchema(t *testing.T) {
 	if failures := checker.Check(decodeJSON(t, valid)); len(failures) != 0 {
 		t.Fatalf("valid manifest rejected: %v", failures)
 	}
+	emptyReplace := `{"schema_version":"1","name":"acme/lenses","version":"1.0.0","replace":[],` +
+		`"lenses":[{"id":"perf"}]}`
+	if failures := checker.Check(decodeJSON(t, emptyReplace)); len(failures) != 0 {
+		t.Fatalf("empty replace rejected by the schema: %v", failures)
+	}
+	if _, ref := Load(fstest.MapFS{
+		"pack.json":      {Data: []byte(emptyReplace)},
+		"lenses/perf.md": {Data: []byte("perf body\n")},
+	}, "."); ref != nil {
+		t.Fatalf("empty replace refused by the loader: %s: %s", ref.Code, ref.Message)
+	}
 	cases := []struct {
 		name     string
 		manifest string
 		loader   bool
 	}{
-		{
-			name: "empty replace",
-			manifest: `{"schema_version":"1","name":"acme/lenses","version":"1.0.0","replace":[],` +
-				`"lenses":[{"id":"perf"}]}`,
-		},
 		{
 			name: "empty rule globs",
 			manifest: `{"schema_version":"1","name":"acme/lenses","version":"1.0.0",` +
