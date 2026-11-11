@@ -17,6 +17,8 @@ join the fenced `kb.txt` context, never the trusted prompt. Manifest keys must
 be exact lowercase, non-regular pack files and a symlinked pack root refuse
 `pack-unsafe-path`, and body reads are bounded. A regular file directly under
 `.verdict/packs/` is not a pack: `pack list` warns once and `fetch` ignores
-it, while a symlink or special file there refuses `pack-unsafe-path` in both
-reads. The read-only `pack` MCP tool, `Client.Pack`/`ListPacks`, and the
-TypeScript `pack` method serve the same list.
+it. A symlink or special file under `.verdict/packs/`, or a `.verdict/packs`
+that is not a real directory, refuses naming the joined path — `pack list`
+as `pack-unsafe-path`, `fetch` as `controls-unavailable` — so neither read
+calls one ignorable. The read-only `pack` MCP tool, `Client.Pack`/`ListPacks`,
+and the TypeScript `pack` method serve the same list.

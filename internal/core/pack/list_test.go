@@ -224,6 +224,82 @@ func TestListRefusesSymlinkedPackRoot(t *testing.T) {
 	}
 }
 
+// TestListRefusesSymlinkedPacksRoot proves the pack root itself is Lstat'ed: a
+// `.verdict/packs` symlink to a tree outside the repo refuses instead of
+// listing packs the controls read would refuse.
+func TestListRefusesSymlinkedPacksRoot(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	outside := t.TempDir()
+	writeFixture(t, filepath.Join(outside, "shared"), map[string]string{
+		"pack.json": `{"schema_version":"1","name":"acme/shared","version":"1.0.0",` +
+			`"lenses":[{"id":"perf"}]}`,
+		"lenses/perf.md": "shared perf\n",
+	})
+	if err := os.MkdirAll(filepath.Join(root, ".verdict"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	packs := filepath.Join(root, ".verdict", "packs")
+	if err := os.Symlink(outside, packs); err != nil {
+		t.Skipf("this platform cannot create symlinks here: %v", err)
+	}
+	_, ref := RunList(t.Context(), &Request{
+		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
+		"",
+		true,
+	})
+	if ref == nil || ref.Code != CodePackUnsafePath {
+		t.Fatalf("symlinked packs root = %v, want pack-unsafe-path", ref)
+	}
+	if want := fmt.Sprintf("%q", packs); !strings.Contains(ref.Message, want) {
+		t.Fatalf("message = %q, want it to name %s", ref.Message, want)
+	}
+}
+
+// TestListRefusesFilePacksRoot proves a `.verdict/packs` that is a regular file
+// refuses pack-unsafe-path naming the joined path, instead of reading as no
+// repo packs.
+func TestListRefusesFilePacksRoot(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeFixture(t, root, map[string]string{".verdict/packs": "not a directory\n"})
+	packs := filepath.Join(root, ".verdict", "packs")
+	_, ref := RunList(t.Context(), &Request{
+		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
+		"",
+		true,
+	})
+	if ref == nil || ref.Code != CodePackUnsafePath {
+		t.Fatalf("file packs root = %v, want pack-unsafe-path", ref)
+	}
+	if want := fmt.Sprintf("%q", packs); !strings.Contains(ref.Message, want) {
+		t.Fatalf("message = %q, want it to name %s", ref.Message, want)
+	}
+}
+
+// TestListRefusalCarriesScanWarnings proves a refusal found after a skipped
+// stray file still carries that file's warning, so the operator sees both.
+func TestListRefusalCarriesScanWarnings(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeFixture(t, root, map[string]string{".verdict/packs/README.md": "not a pack\n"})
+	if err := os.MkdirAll(filepath.Join(root, ".verdict", "packs", "broken"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, ref := RunList(t.Context(), &Request{
+		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
+		"",
+		true,
+	})
+	if ref == nil || ref.Code != CodeBadPack {
+		t.Fatalf("packless repo dir = %v, want bad-pack", ref)
+	}
+	want := []string{".verdict/packs/README.md is not a pack directory — ignored"}
+	if !slices.Equal(ref.Warnings, want) {
+		t.Fatalf("refusal warnings = %q, want %q", ref.Warnings, want)
+	}
+}
+
 // requirePackRow compares one list row with its literal expectation.
 func requirePackRow(t *testing.T, i int, got, want *Entry) {
 	t.Helper()

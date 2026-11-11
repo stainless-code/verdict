@@ -177,6 +177,9 @@ func orgOrigin(root, listed string) (Origin, *core.RefusalError) {
 // that level is not a pack: the walk names it in one warning and reads on.
 func repoOrigins(root string) ([]Origin, []string, *core.RefusalError) {
 	dir := filepath.Join(root, RepoPacksDir)
+	if ref := checkPacksRoot(dir); ref != nil {
+		return nil, nil, ref
+	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -185,6 +188,23 @@ func repoOrigins(root string) ([]Origin, []string, *core.RefusalError) {
 		return nil, nil, badPack(fmt.Sprintf("read %s: %v", RepoPacksDir, err))
 	}
 	return repoEntries(dir, entries)
+}
+
+// checkPacksRoot refuses a pack root that is not a real directory: following a
+// symlink would list an out-of-tree pack the controls read refuses. A missing
+// root is an absent layer, not a failure.
+func checkPacksRoot(dir string) *core.RefusalError {
+	info, err := os.Lstat(dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return badPack(fmt.Sprintf("inspect %s: %v", RepoPacksDir, err))
+	}
+	if info.Mode()&fs.ModeSymlink != 0 || !info.IsDir() {
+		return unsafePath(dir)
+	}
+	return nil
 }
 
 // repoEntries reads each child of the pack root.
