@@ -1,6 +1,7 @@
 package indexcore
 
 import (
+	"bytes"
 	"context"
 	"maps"
 	"os"
@@ -39,20 +40,27 @@ func (f *fixture) date() string {
 	return time.Date(2024, 3, f.day, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
 }
 
-// git runs one git command in the fixture.
-func (f *fixture) git(args ...string) {
+// run runs one git command in the fixture with stdin and returns its stdout.
+func (f *fixture) run(stdin string, args ...string) string {
 	f.t.Helper()
 	cmd := exec.CommandContext(f.t.Context(), "git", args...)
 	cmd.Dir = f.dir
+	cmd.Stdin = strings.NewReader(stdin)
 	cmd.Env = testenv.Base(map[string]string{
 		"GIT_AUTHOR_DATE":    f.date(),
 		"GIT_COMMITTER_DATE": f.date(),
 	})
-	out, err := cmd.CombinedOutput()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
 	if err != nil {
-		f.t.Fatalf("git %v: %v\n%s", args, err, out)
+		f.t.Fatalf("git %v: %v\n%s", args, err, stderr.String())
 	}
+	return strings.TrimSpace(string(out))
 }
+
+// git runs one git command in the fixture.
+func (f *fixture) git(args ...string) { f.run("", args...) }
 
 // write writes one file under the repository.
 func (f *fixture) write(name, body string) {
@@ -70,6 +78,17 @@ func (f *fixture) write(name, body string) {
 func (f *fixture) commit(msg string) {
 	f.t.Helper()
 	f.git("add", "-A")
+	f.git("commit", "-qm", msg)
+	f.day++
+}
+
+// commitObject commits the written files plus one path held only by a git
+// object, so a name no filesystem accepts — a newline — survives every OS.
+func (f *fixture) commitObject(name, body, msg string) {
+	f.t.Helper()
+	f.git("add", "-A")
+	blob := f.run(body, "hash-object", "-w", "--stdin")
+	f.git("update-index", "--add", "--cacheinfo", "100644,"+blob+","+name)
 	f.git("commit", "-qm", msg)
 	f.day++
 }
@@ -448,8 +467,7 @@ func TestIndexRenderedPathsAreEscaped(t *testing.T) {
 	f := newFixture(t)
 	f.write("go.mod", "module example.com/m\n")
 	f.write("a/a.go", "package a\n\nfunc Target() {}\n\nfunc Caller() {\n\tTarget()\n}\n")
-	f.write("a/a\nb```.go", "package a\n\nfunc Other() {\n\tTarget()\n}\n")
-	f.commit("one")
+	f.commitObject("a/a\nb```.go", "package a\n\nfunc Other() {\n\tTarget()\n}\n", "one")
 	f.build()
 	resp := f.callers("a.Target")
 	if len(resp.Human) != 3 {
