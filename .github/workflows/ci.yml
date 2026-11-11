@@ -528,23 +528,14 @@ jobs:
         # rather than silently grading nothing), then runs every case
         # against it via $EVAL_CLI. Same hermeticity locally and here
         # (stub gh first on PATH, fixtures in a temp sandbox, tree-clean
-        # assertion).
-        run: make evals
-
-      - name: Prove the suite survives a TMPDIR with a space
-        shell: bash
+        # assertion). The sandbox TMPDIR carries a space on purpose: that is
+        # the shape an unquoted expansion or an unencoded file:// URL breaks
+        # on (STA-379), and the whole suite therefore grades it. macOS keeps
+        # its own `.../T/...` shape.
         run: |
-          # A path with a space is a valid TMPDIR, and it is the shape an
-          # unquoted expansion or an unencoded file:// URL breaks on (STA-379).
-          # A second full `make evals` would roughly double this job's dominant
-          # step, so this runs the cases that build a file:// URL out of the
-          # sandbox and the one that hands a private --config path to a host
-          # stub, through the shared quoting in evals/lib they all load.
           spaced="$RUNNER_TEMP/eval space dir"
           mkdir -p "$spaced"
-          for name in forgejo-post installer-binary skill-route; do
-            TMPDIR="$spaced" ./evals/one.sh "$name"
-          done
+          TMPDIR="$spaced" make evals
 
       - name: Prove the run --agent recipe case ran
         shell: bash
@@ -621,18 +612,6 @@ jobs:
         # (stub gh first on PATH, fixtures in a temp sandbox, tree-clean
         # assertion). macOS runners shell out with bash 3.2, which doubles
         # as the suite's 3.2-compat bar.
-
-      - name: Prove the suite survives a TMPDIR with a space
-        shell: bash
-        run: |
-          # The twin of the Linux step: archtest pins this lane to the evals
-          # job's step names, and a path with a space breaks the same quoting
-          # here (STA-379).
-          spaced="$RUNNER_TEMP/eval space dir"
-          mkdir -p "$spaced"
-          for name in forgejo-post installer-binary skill-route; do
-            TMPDIR="$spaced" ./evals/one.sh "$name"
-          done
 
       - name: Prove the run --agent recipe case ran
         shell: bash
