@@ -9,13 +9,15 @@ import (
 	"time"
 )
 
+// TestWaitProcessReturnsForExitedChild proves WaitForSingleObject on an
+// already-exited parent signals immediately instead of polling to the budget.
 func TestWaitProcessReturnsForExitedChild(t *testing.T) {
-	cmd := exec.Command("cmd.exe", "/c", "exit", "0")
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "cmd.exe", "/c", "exit", "0")
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
 	if err := waitProcess(ctx, cmd.Process.Pid); err != nil {
 		t.Fatalf("waitProcess: %v", err)
 	}

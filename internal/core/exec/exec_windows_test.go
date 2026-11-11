@@ -5,6 +5,7 @@ package exec
 import (
 	"context"
 	"os"
+	osexec "os/exec"
 	"path/filepath"
 	"syscall"
 	"testing"
@@ -14,6 +15,8 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 )
 
+// TestExecuteTimeoutKillsTree proves the budget expiry kills the whole tree:
+// a grandchild that ignores TERM is dead once Run returns the timeout code.
 func TestExecuteTimeoutKillsTree(t *testing.T) {
 	pidFile := filepath.ToSlash(filepath.Join(t.TempDir(), "grandchild.pid"))
 	vcmd := `trap '' TERM; (trap '' TERM; exec sleep 30) & ` + pidReport(pidFile) + `; exec sleep 30`
@@ -30,6 +33,9 @@ func TestExecuteTimeoutKillsTree(t *testing.T) {
 	assertPidDead(t, pidFile)
 }
 
+// TestSpawnedChildIsInJobBeforeItRuns proves the job assignment lands before
+// the suspended primary thread is resumed: a grandchild spawned at start is
+// already inside the job, and the child is running afterwards.
 func TestSpawnedChildIsInJobBeforeItRuns(t *testing.T) {
 	proc, waitDone, _, err := spawnWatched(t.Context(), &core.Command{
 		Argv: []string{"bash", "-c", "exec sleep 30"}, Env: os.Environ(),
@@ -37,20 +43,16 @@ func TestSpawnedChildIsInJobBeforeItRuns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		_ = killGroup(proc)
-		<-waitDone
-		releaseTree(proc)
-	}()
+	defer reapWatched(t, proc, waitDone)
 	tr := treeFor(proc)
 	if tr == nil {
 		t.Fatal("no job registered for the spawned command")
 	}
-	h, err := syscall.OpenProcess(processQueryLimitedInformation, false, uint32(proc.Process.Pid))
+	h, err := syscall.OpenProcess(processQueryLimitedInformation, false, pid32(proc.Process.Pid))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = syscall.CloseHandle(h) }()
+	defer closeHandle(h)
 	var inJob int32
 	r, _, callErr := syscall.NewLazyDLL("kernel32.dll").NewProc("IsProcessInJob").Call(
 		uintptr(h), uintptr(tr.handle), uintptr(unsafe.Pointer(&inJob)))
@@ -65,6 +67,8 @@ func TestSpawnedChildIsInJobBeforeItRuns(t *testing.T) {
 	}
 }
 
+// TestCancelKillsGrandchildSpawnedAtStart proves a canceled run is not read
+// as a timeout and still kills the grandchild the child spawned immediately.
 func TestCancelKillsGrandchildSpawnedAtStart(t *testing.T) {
 	pidFile := filepath.ToSlash(filepath.Join(t.TempDir(), "grandchild.pid"))
 	vcmd := `(exec sleep 30) & ` + pidReport(pidFile) + `; exec sleep 30`
@@ -99,16 +103,30 @@ func pidReport(file string) string {
 	return `cat /proc/$!/winpid > '` + file + `'`
 }
 
+// reapWatched kills the spawned tree, waits for the reaper goroutine, and
+// releases the job handle. Cleanup failures are logged, never failed here:
+// the test's assertions own the verdict.
+func reapWatched(t *testing.T, proc *osexec.Cmd, waitDone chan error) {
+	t.Helper()
+	if err := killGroup(proc); err != nil {
+		t.Logf("kill spawned child: %v", err)
+	}
+	if err := <-waitDone; err != nil {
+		t.Logf("wait spawned child: %v", err)
+	}
+	releaseTree(proc)
+}
+
 func pidAlive(pid int) bool {
 	const (
 		processQueryLimitedInformation = 0x1000
 		stillActive                    = 259
 	)
-	h, err := syscall.OpenProcess(processQueryLimitedInformation, false, uint32(pid))
+	h, err := syscall.OpenProcess(processQueryLimitedInformation, false, pid32(pid))
 	if err != nil {
 		return false
 	}
-	defer func() { _ = syscall.CloseHandle(h) }()
+	defer closeHandle(h)
 	var code uint32
 	if err := syscall.GetExitCodeProcess(h, &code); err != nil {
 		return false
