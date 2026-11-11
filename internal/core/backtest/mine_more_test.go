@@ -31,27 +31,29 @@ func (*recorder) Diag(string) {}
 // TestMineExclusions proves every whole-fix exclusion is counted, not refused.
 func TestMineExclusions(t *testing.T) {
 	tests := []struct { //nolint:govet // test table readability
-		name  string
-		want  string
-		fix   string
-		build func(*testing.T) (*repo, string)
+		name   string
+		want   string
+		detail string
+		fix    string
+		build  func(*testing.T) (*repo, string)
 	}{
-		{"vendor", "vendor", "2dc62ead5dbb0e1ff77ac91dd91163dec6bc3523", vendorFixture},
-		{"generated", "generated", "8151bf37fd9ee19d8795f1741b966280b168ebab", generatedFixture},
-		{"wide", "wide-fix", "760bbd98efadf0d6b83e9b49d487a6057d4f0bcb", wideFixture},
-		{"docs", "docs-test-only", "b7677beb5224368c15e4451e4d03111ada8aa1fb", docsFixture},
-		{"added-only", "added-only", "bd36d1e1be4acafc3b439acc37ba1e3f8ef95c59", addedOnlyFixture},
-		{"binary", "binary", "9462456c220ab3129f1bceeaa1057528f2a6de05", binaryFixture},
+		{"vendor", "vendor", "vendor/lib/x.go:3", "2dc62ead5dbb0e1ff77ac91dd91163dec6bc3523", vendorFixture},
+		{"generated", "generated", "api.pb.go:3", "8151bf37fd9ee19d8795f1741b966280b168ebab", generatedFixture},
+		{"wide", "wide-fix", "", "760bbd98efadf0d6b83e9b49d487a6057d4f0bcb", wideFixture},
+		{"docs", "docs-test-only", "", "b7677beb5224368c15e4451e4d03111ada8aa1fb", docsFixture},
+		{"added-only", "added-only", "", "bd36d1e1be4acafc3b439acc37ba1e3f8ef95c59", addedOnlyFixture},
+		{"binary", "binary", "", "9462456c220ab3129f1bceeaa1057528f2a6de05", binaryFixture},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			checkExclusion(t, tc.build, tc.want, tc.fix)
+			checkExclusion(t, tc.build, tc.want, tc.detail, tc.fix)
 		})
 	}
 }
 
-// checkExclusion proves one fixture yields exactly its skip reason.
-func checkExclusion(t *testing.T, build func(*testing.T) (*repo, string), wantReason, wantFix string) {
+// checkExclusion proves one fixture yields exactly its skip row: the reason,
+// the position of a line-level exclusion, and the fix.
+func checkExclusion(t *testing.T, build func(*testing.T) (*repo, string), wantReason, wantDetail, wantFix string) {
 	t.Helper()
 	r, base := build(t)
 	fix := r.commit("fix: change it")
@@ -59,7 +61,7 @@ func checkExclusion(t *testing.T, build func(*testing.T) (*repo, string), wantRe
 	if len(data.Mine.Candidates) != 0 {
 		t.Fatalf("candidates = %+v; want none", data.Mine.Candidates)
 	}
-	want := Skipped{Reason: wantReason, Fix: fix}
+	want := Skipped{Reason: wantReason, Fix: fix, Detail: wantDetail}
 	if len(data.Mine.Skipped) != 1 || data.Mine.Skipped[0] != want {
 		t.Errorf("skipped = %+v; want [%+v]", data.Mine.Skipped, want)
 	}

@@ -135,113 +135,75 @@ func (ss *seedState) processFix(ctx context.Context, fix, subject string) *core.
 		ss.skip(Skipped{Reason: reasonBinary, Fix: fix})
 		return nil
 	}
-	eligible, reason := eligibleLines(diff.Deleted)
-	if reason != "" {
-		ss.skip(Skipped{Reason: reason, Fix: fix})
+	if len(diff.Deleted) == 0 {
+		ss.skip(Skipped{Reason: reasonAddedOnly, Fix: fix})
 		return nil
 	}
 	kind := classifyKind(subject, diffTexts(diff.Deleted), diff.Added)
-	return ss.anchorFix(ctx, fix, kind, eligible)
+	return ss.anchorFix(ctx, fix, kind, ss.eligibleLines(fix, diff.Deleted))
 }
 
-// anchorFix anchors each eligible deleted line and records the fix's skips.
+// anchorFix anchors each eligible deleted line; a line that does not anchor
+// records its own skipped row.
 func (ss *seedState) anchorFix(ctx context.Context, fix, kind string, lines []diffLine) *core.RefusalError {
-	fail := Skipped{Fix: fix}
-	anchored := 0
 	for _, line := range lines {
-		ok, ref := ss.anchorLine(ctx, fix, kind, line, &fail)
-		if ref != nil {
+		if ref := ss.anchorLine(ctx, fix, kind, line); ref != nil {
 			return ref
 		}
-		if ok {
-			anchored++
-		}
-	}
-	if anchored == 0 {
-		ss.skipZero(fail)
 	}
 	return nil
 }
 
-// skipZero records a fix that anchored nothing, naming the first failure.
-func (ss *seedState) skipZero(fail Skipped) {
-	if fail.Reason == "" {
-		fail.Reason = reasonUnaligned
-	}
-	ss.skip(fail)
-}
-
 // anchorLine blames one deleted line, maps the introducer to a PR, and anchors
-// the text at the PR head. It returns false and fills fail on an exclusion.
-func (ss *seedState) anchorLine(
-	ctx context.Context, fix, kind string, line diffLine, fail *Skipped,
-) (bool, *core.RefusalError) {
+// the text at the PR head. A line that fails at any step records one skipped
+// row naming that step's reason and the line's own position.
+func (ss *seedState) anchorLine(ctx context.Context, fix, kind string, line diffLine) *core.RefusalError {
 	introducer, ok, ref := ss.st.blame(ctx, fix+"^", line.Path, line.Line)
 	if ref != nil {
-		return false, ref
+		return ref
 	}
 	if !ok {
-		recordFailure(fail, reasonUnaligned, line, "")
-		return false, nil
+		ss.skipLine(reasonUnaligned, fix, "", line)
+		return nil
 	}
 	unit, ref := ss.prFor(ctx, introducer)
 	if ref != nil {
-		return false, ref
+		return ref
 	}
 	if unit.skip != "" {
-		recordFailure(fail, unit.skip, line, unit.head)
-		return false, nil
+		ss.skipLine(unit.skip, fix, unit.head, line)
+		return nil
 	}
 	at, ok, ref := ss.st.anchor(ctx, &unit, line, introducer)
 	if ref != nil {
-		return false, ref
+		return ref
 	}
 	if !ok {
-		recordFailure(fail, reasonUnaligned, line, unit.head)
-		return false, nil
+		ss.skipLine(reasonUnaligned, fix, unit.head, line)
+		return nil
 	}
 	ss.add(&unit, fix, Bug{Path: line.Path, Line: at, Kind: kind, Fix: fix})
-	return true, nil
+	return nil
 }
 
-// recordFailure keeps the first failure, so the skip reason is deterministic
-// in deleted-line order.
-func recordFailure(fail *Skipped, reason string, line diffLine, pr string) {
-	if fail.Reason != "" {
-		return
-	}
-	fail.Reason = reason
-	fail.PR = pr
-	fail.Detail = line.Path + ":" + strconv.Itoa(line.Line)
+// skipLine records one dropped deleted line: its reason, its fix, the PR it
+// resolved to when it got that far, and its path:line in the fix's parent.
+func (ss *seedState) skipLine(reason, fix, pr string, line diffLine) {
+	ss.skip(Skipped{Reason: reason, Fix: fix, PR: pr, Detail: line.Path + colonSep + strconv.Itoa(line.Line)})
 }
 
-// eligibleLines filters a fix's deleted lines to the ones that can anchor,
-// returning the first path-class or blank-line reason when none remain.
-func eligibleLines(deleted []diffLine) ([]diffLine, string) {
-	if len(deleted) == 0 {
-		return nil, reasonAddedOnly
-	}
+// eligibleLines keeps the deleted lines that can anchor and records one
+// skipped row for every line it drops.
+func (ss *seedState) eligibleLines(fix string, deleted []diffLine) []diffLine {
 	eligible := make([]diffLine, 0, len(deleted))
-	reason := ""
 	for _, line := range deleted {
-		if lineClass := lineReason(line); lineClass != "" {
-			reason = firstReason(reason, lineClass)
+		if reason := lineReason(line); reason != "" {
+			ss.skipLine(reason, fix, "", line)
 			continue
 		}
 		eligible = append(eligible, line)
 	}
-	if len(eligible) == 0 {
-		return nil, reason
-	}
-	return eligible, ""
-}
-
-// firstReason keeps the earliest non-empty reason.
-func firstReason(current, next string) string {
-	if current != "" {
-		return current
-	}
-	return next
+	return eligible
 }
 
 // lineReason names why one deleted line cannot anchor, or "" when it can.
@@ -307,7 +269,7 @@ func compareCandidates(a, b Candidate) int {
 	return strings.Compare(a.Head, b.Head)
 }
 
-// compareSkipped publishes skips by reason, fix, then PR.
+// compareSkipped publishes skips by reason, fix, PR, then position.
 func compareSkipped(a, b Skipped) int {
 	if byReason := strings.Compare(a.Reason, b.Reason); byReason != 0 {
 		return byReason
@@ -315,7 +277,35 @@ func compareSkipped(a, b Skipped) int {
 	if byFix := strings.Compare(a.Fix, b.Fix); byFix != 0 {
 		return byFix
 	}
-	return strings.Compare(a.PR, b.PR)
+	if byPR := strings.Compare(a.PR, b.PR); byPR != 0 {
+		return byPR
+	}
+	return comparePosition(a.Detail, b.Detail)
+}
+
+// comparePosition orders `path:line` details by path, then by line number as
+// a number, so line 9 publishes before line 10.
+func comparePosition(a, b string) int {
+	pathA, lineA := splitPosition(a)
+	pathB, lineB := splitPosition(b)
+	if byPath := strings.Compare(pathA, pathB); byPath != 0 {
+		return byPath
+	}
+	return lineA - lineB
+}
+
+// splitPosition splits a `path:line` detail; a detail with no line reads as
+// line zero.
+func splitPosition(detail string) (string, int) {
+	at := strings.LastIndex(detail, colonSep)
+	if at < 0 {
+		return detail, 0
+	}
+	line, err := strconv.Atoi(detail[at+1:])
+	if err != nil {
+		return detail, 0
+	}
+	return detail[:at], line
 }
 
 // candidate renders one builder as a published candidate.

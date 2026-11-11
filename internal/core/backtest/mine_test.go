@@ -146,12 +146,16 @@ func TestMineDirectPush(t *testing.T) {
 	}
 }
 
-// TestMineUnaligned proves duplicate line text is skipped, not guessed.
+// TestMineUnaligned proves duplicate line text is skipped, not guessed, and
+// that each duplicated deleted line keeps its own row.
 func TestMineUnaligned(t *testing.T) {
 	r, base, feature, fix := newUnalignedRepo(t)
 	data := runMine(t, r, base)
-	want := Skipped{Reason: "unaligned", Fix: fix, PR: feature, Detail: "main.go:9"}
-	if len(data.Mine.Skipped) != 1 || data.Mine.Skipped[0] != want {
-		t.Errorf("skipped = %+v; want [%+v]", data.Mine.Skipped, want)
+	want := []Skipped{
+		{Reason: "unaligned", Fix: fix, PR: feature, Detail: "main.go:9"},
+		{Reason: "unaligned", Fix: fix, PR: feature, Detail: "main.go:10"},
+	}
+	if !slices.Equal(data.Mine.Skipped, want) {
+		t.Errorf("skipped = %+v; want %+v", data.Mine.Skipped, want)
 	}
 }
