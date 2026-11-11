@@ -104,6 +104,7 @@ type Failure struct {
 	Case     string `json:"case"`
 	Error    string `json:"error"`
 	Evidence string `json:"evidence,omitempty"`
+	Kind     string `json:"kind,omitempty"`
 	Run      int    `json:"run"`
 }
 

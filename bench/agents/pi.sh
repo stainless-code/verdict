@@ -86,6 +86,11 @@ jq -R -s -r '[split("\n")[] | select(length > 0) | fromjson? | select(.type == "
 	"$work/events.jsonl" >"$work/review.json"
 
 if ! jq -e . "$work/review.json" >/dev/null 2>&1; then
+	if grep -qiE 'tool_call|tool-call|toolcall|function_calls|<invoke|<function|antml:tool' "$work/review.json"; then
+		printf 'pi agent: final message is a tool call, but this sample has no tools: %s\n' "$(tr -d '\n' <"$work/review.json" | cut -c1-240)" >&2
+		write_cost || true
+		exit 1
+	fi
 	if ! grep -q '```' "$work/review.json"; then
 		printf 'pi agent: final message is not JSON: %s\n' "$(tr -d '\n' <"$work/review.json" | cut -c1-240)" >&2
 		write_cost || true
