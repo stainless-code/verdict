@@ -15,16 +15,17 @@ FIX="$EVAL_ROOT/evals/fixtures/forgejo"
 PR=7
 HEAD="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 TOKEN="eval-token"
+CONFIG="header = \"Authorization: token $TOKEN\""
 DIR="$EVAL_SANDBOX/.verdict/state/$PR"
 PULL="https://forgejo.invalid/api/v1/repos/acme/app/pulls/$PR"
 
 hoststub_init curl
 hoststub_prove_dead curl
-hoststub_route curl "-sf -H Authorization: token $TOKEN $PULL" "$FIX/PR.json"
-hoststub_route curl "-sf -H Authorization: token $TOKEN $PULL.diff" "$FIX/full.diff"
-hoststub_route curl "-sf -H Authorization: token $TOKEN $PULL/files?limit=50&page=1" "$FIX/files.json"
-hoststub_route curl "-sf -H Authorization: token $TOKEN $PULL/reviews?limit=50&page=1" "$FIX/reviews.json"
-hoststub_route curl "-sf -H Authorization: token $TOKEN $PULL/reviews/301/comments" "$FIX/comments.json"
+hoststub_route curl "--config - -sf $PULL" "$FIX/PR.json" 0 "$CONFIG"
+hoststub_route curl "--config - -sf $PULL.diff" "$FIX/full.diff" 0 "$CONFIG"
+hoststub_route curl "--config - -sf $PULL/files?limit=50&page=1" "$FIX/files.json" 0 "$CONFIG"
+hoststub_route curl "--config - -sf $PULL/reviews?limit=50&page=1" "$FIX/reviews.json" 0 "$CONFIG"
+hoststub_route curl "--config - -sf $PULL/reviews/301/comments" "$FIX/comments.json" 0 "$CONFIG"
 
 export FORGEJO_HOST="https://forgejo.invalid"
 unset FORGEJO_TOKEN
@@ -66,6 +67,7 @@ assert_json_field "the inline comment is stored verbatim" 1 'length' "$DIR/inlin
 assert_eq "the case makes zero gh calls" 0 "$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 hoststub_argv_log curl "$EVAL_SANDBOX/curl-calls.txt"
 assert_file_eq "every curl call is a registered argv in order" "$FIX/expected-argvs.txt" "$EVAL_SANDBOX/curl-calls.txt"
+assert_file_nogrep "no curl argv carries the fixture token" "$EVAL_SANDBOX/curl-calls.txt" "$TOKEN" -F
 assert_eq "fetch spends five curl reads" 5 "$(hoststub_count curl)"
 hoststub_assert_all_routed
 

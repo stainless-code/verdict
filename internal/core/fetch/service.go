@@ -10,11 +10,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/curlauth"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/retry"
 )
@@ -342,13 +344,23 @@ func (s *session) needTool(tool string) error {
 	return s.commander.LookPath(tool)
 }
 
-// run spawns argv with the runner's stdin default, capturing both streams.
-// A missing binary or a spawn failure returns the seam error with streams
-// attached; a completed process with a non-zero wait code returns the same
-// shell-visible failure text, and callers map both to the fetch
+// run spawns one git command with the runner's stdin default, capturing both
+// streams. A missing binary or a spawn failure returns the seam error with
+// streams attached; a completed process with a non-zero wait code returns the
+// same shell-visible failure text, and callers map both to the fetch
 // warn-or-refuse posture.
-func (s *session) run(ctx context.Context, bin string, args ...string) (core.Result, error) {
-	res, err := s.commander.Run(ctx, &core.Command{Argv: append([]string{bin}, args...)})
+func (s *session) run(ctx context.Context, args ...string) (core.Result, error) {
+	return s.runStdin(ctx, binGit, "", args...)
+}
+
+// runStdin is run with an explicit child stdin: a non-empty document replaces
+// the runner's default, and every retry gets a fresh reader over it.
+func (s *session) runStdin(ctx context.Context, bin, stdin string, args ...string) (core.Result, error) {
+	cmd := &core.Command{Argv: append([]string{bin}, args...)}
+	if stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
+	}
+	res, err := s.commander.Run(ctx, cmd)
 	if err != nil {
 		return res, err //nolint:wrapcheck // the seam error passes through by design; callers map it per site
 	}
@@ -362,13 +374,15 @@ func (s *session) run(ctx context.Context, bin string, args ...string) (core.Res
 // transient retry. The caller owns the error sidecars and the
 // warn-or-refuse posture.
 func (s *session) ghFetch(ctx context.Context, args ...string) (core.Result, error) {
-	return s.fetchWithRetry(ctx, "gh", args)
+	return s.fetchWithRetry(ctx, "gh", args, "")
 }
 
-// curlFetch runs curl with exactly the given argv and the same bounded
-// transient retry as gh (providers share one backoff contract).
-func (s *session) curlFetch(ctx context.Context, args ...string) (core.Result, error) {
-	return s.fetchWithRetry(ctx, "curl", args)
+// curlFetch runs curl with the credential on its stdin and the same bounded
+// transient retry as gh (providers share one backoff contract). The caller
+// owns the error sidecars and the warn-or-refuse posture.
+func (s *session) curlFetch(ctx context.Context, auth curlauth.Credential, flags ...string) (core.Result, error) {
+	argv, stdin := auth.StdinArgv(flags...)
+	return s.fetchWithRetry(ctx, "curl", argv, stdin)
 }
 
 // fetchWithRetry runs one tool with the shared bounded transient retry:
@@ -378,12 +392,12 @@ func (s *session) curlFetch(ctx context.Context, args ...string) (core.Result, e
 // lands only after a success.
 //
 //nolint:revive // the bounded retry loop branches are the retry contract
-func (s *session) fetchWithRetry(ctx context.Context, bin string, args []string) (core.Result, error) {
+func (s *session) fetchWithRetry(ctx context.Context, bin string, args []string, stdin string) (core.Result, error) {
 	var res core.Result
 	var err error
 	s.retryAt = ""
 	for attempt := range retry.MaxAttempts {
-		res, err = s.run(ctx, bin, args...)
+		res, err = s.runStdin(ctx, bin, stdin, args...)
 		if err == nil || s.missing(err) {
 			return res, err
 		}

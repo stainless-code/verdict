@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -68,6 +69,9 @@ func runReadRetry(ctx context.Context, cmdr Commander, cmd *core.Command) (core.
 	var res core.Result
 	var err error
 	for attempt := range retry.MaxAttempts {
+		if rerr := rewindStdin(cmd); rerr != nil {
+			return res, rerr
+		}
 		res, err = cmdr.Run(ctx, cmd)
 		if err != nil {
 			return res, jq.Sealed("read retry", err)
@@ -84,6 +88,17 @@ func runReadRetry(ctx context.Context, cmdr Commander, cmd *core.Command) (core.
 		}
 	}
 	return res, jq.Sealed("read retry", res.ExitFailure(cmd.Argv[0]))
+}
+
+// rewindStdin replays a seekable stdin, so a retried read sends the same
+// document its first attempt did.
+func rewindStdin(cmd *core.Command) error {
+	if seeker, ok := cmd.Stdin.(io.Seeker); ok {
+		if _, err := seeker.Seek(0, io.SeekStart); err != nil {
+			return jq.Sealed("rewind read stdin", err)
+		}
+	}
+	return nil
 }
 
 func awaitRead(ctx context.Context, wait time.Duration) error {

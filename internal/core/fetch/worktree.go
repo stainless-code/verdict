@@ -42,7 +42,7 @@ func setupIsolation(ctx context.Context, s *session, slug string, mode *localMod
 	if ref != nil {
 		return nil, false, ref
 	}
-	if res, err := s.run(ctx, binGit, gitCmdWorktree, gitWorktreeAdd, flagDetach, dir, target); err != nil {
+	if res, err := s.run(ctx, gitCmdWorktree, gitWorktreeAdd, flagDetach, dir, target); err != nil {
 		if mt, ok := errors.AsType[*core.MissingToolError](err); ok {
 			return nil, false, mt
 		}
@@ -72,7 +72,7 @@ func isolationBase(mode *localMode) string {
 // refusal that carries the cause.
 func scrubIsolation(ctx context.Context, s *session, dir string) {
 	ctx = context.WithoutCancel(ctx)
-	if _, err := s.run(ctx, binGit, gitCmdWorktree, gitWorktreeRemove, flagForce, dir); err != nil {
+	if _, err := s.run(ctx, gitCmdWorktree, gitWorktreeRemove, flagForce, dir); err != nil {
 		s.Warn(fmt.Sprintf("isolated worktree %s was not scrubbed after a failed checkout (%v)", dir, err))
 	}
 	_ = os.RemoveAll(dir)
@@ -182,7 +182,7 @@ func (iso *isolation) cleanup(ctx context.Context, s *session) {
 		return
 	}
 	ctx = context.WithoutCancel(ctx)
-	if _, err := s.run(ctx, binGit, gitCmdWorktree, gitWorktreeRemove, flagForce, iso.dir); err != nil {
+	if _, err := s.run(ctx, gitCmdWorktree, gitWorktreeRemove, flagForce, iso.dir); err != nil {
 		s.Warn(fmt.Sprintf("isolated worktree %s was not removed (%v) — remove it with: git worktree remove --force %s",
 			iso.dir, err, iso.dir))
 		return
@@ -198,5 +198,5 @@ func (s *session) git(ctx context.Context, args ...string) (core.Result, error) 
 	if s.iso != nil {
 		args = append([]string{gitDashC, s.iso.dir}, args...)
 	}
-	return s.run(ctx, binGit, args...)
+	return s.run(ctx, args...)
 }

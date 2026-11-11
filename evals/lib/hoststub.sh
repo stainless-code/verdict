@@ -38,8 +38,11 @@ hoststub_init() {
   done
 }
 
-# hoststub_write <tool> <path> emits one stub: log the argv, answer the first
-# matching route (body file, then exit status), refuse everything else.
+# hoststub_write <tool> <path> emits one stub: log the argv, read the curl
+# credential a `--config` operand names (stdin or a private file), answer the
+# first matching route (body file, then exit status), refuse everything else.
+# A route whose fourth field is non-empty also requires that exact credential
+# document, so an authenticated call cannot pass on a missing header.
 hoststub_write() {
   local tool="$1" path="$2"
   cat >"$path" <<STUB
@@ -49,8 +52,28 @@ routes="\${HOSTSTUB_ROUTES:?hoststub_init was not called}"
 log="\${HOSTSTUB_LOG:?hoststub_init was not called}"
 argv="\$*"
 printf 'stub-$tool %s\n' "\$argv" >>"\$log"
-while IFS=\$'\\t' read -r want body status; do
-  [ "\$want" = "\$argv" ] || continue
+config=""
+match=""
+prev=""
+for arg in \$argv; do
+  if [ "\$prev" = "--config" ]; then
+    if [ "\$arg" = "-" ]; then
+      config="\$(cat)"
+    else
+      config="\$(cat "\$arg" 2>/dev/null || true)"
+      arg="FILE"
+    fi
+  fi
+  match="\${match:+\$match }\$arg"
+  prev="\$arg"
+done
+while IFS=\$'\\t' read -r want body status want_config; do
+  [ "\$want" = "\$match" ] || continue
+  if [ -n "\$want_config" ] && [ "\$config" != "\$want_config" ]; then
+    printf 'stub-$tool AUTH-MISMATCH %s\n' "\$argv" >>"\$log"
+    printf 'evals-stub-$tool: credential config mismatch (network disabled): %s\n' "\$argv" >&2
+    exit 65
+  fi
   [ -z "\$body" ] || cat "\$body"
   exit "\${status:-0}"
 done <"\$routes/$tool"
@@ -61,11 +84,14 @@ STUB
   chmod +x "$path"
 }
 
-# hoststub_route <tool> <argv> <body-file> [exit-status] registers one exact
-# argv. An empty body file (`/dev/null`) answers with no stdout, which is what
-# a write route looks like from the caller's side.
+# hoststub_route <tool> <argv> <body-file> [exit-status] [credential-config]
+# registers one exact argv. An empty body file (`/dev/null`) answers with no
+# stdout, which is what a write route looks like from the caller's side. A
+# non-empty credential-config is the exact `--config` document the stub must
+# receive; use `FILE` in the argv for a private config file whose path changes
+# every call.
 hoststub_route() {
-  local tool="$1" argv="$2" body="$3" status="${4:-0}"
+  local tool="$1" argv="$2" body="$3" status="${4:-0}" want_config="${5:-}"
   case "$argv" in
     *$'\t'*)
       bad "hoststub_route argv carries a tab: $argv"
@@ -80,7 +106,7 @@ hoststub_route() {
     bad "hoststub_route fixture for '$argv' is missing: $body"
     return 1
   fi
-  printf '%s\t%s\t%s\n' "$argv" "$body" "$status" >>"$HOSTSTUB_ROUTES/$tool"
+  printf '%s\t%s\t%s\t%s\n' "$argv" "$body" "$status" "$want_config" >>"$HOSTSTUB_ROUTES/$tool"
 }
 
 # hoststub_count <tool> is the number of calls that tool logged.
@@ -89,9 +115,12 @@ hoststub_count() {
 }
 
 # hoststub_argv_log <tool> <out> writes one call's argv per line, in call
-# order, for comparison against an expected-argvs fixture.
+# order, for comparison against an expected-argvs fixture. A `--config <path>`
+# operand renders as `--config FILE`: the credential file lives in a fresh
+# private temp dir whose name changes every call, and the path is not part of
+# the argv contract.
 hoststub_argv_log() {
-  sed -n "s/^stub-$1 //p" "$HOSTSTUB_LOG" >"$2"
+  sed -n "s/^stub-$1 //p" "$HOSTSTUB_LOG" | sed -E 's/--config [^-][^ ]*/--config FILE/g' >"$2"
 }
 
 # hoststub_prove_dead <tool> proves the stub is what PATH resolves and that an

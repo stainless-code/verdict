@@ -163,7 +163,7 @@ func localSetup(
 	}
 	dir := readcommon.ResolveBundleDir(req.RepoRootPath(), "local-"+slug)
 	ctx2.dir = dir
-	if res, err := ctx2.runner.run(ctx, binGit, gitCmdRevParse, "--is-inside-work-tree"); err != nil {
+	if res, err := ctx2.runner.run(ctx, gitCmdRevParse, "--is-inside-work-tree"); err != nil {
 		_ = res
 		return localMode{}, "", "", &core.RefusalError{Code: "not-a-repo", Message: "fetch-local runs inside a git worktree"}
 	}
@@ -395,7 +395,7 @@ func resolveLocalMode(ctx context.Context, s *session, f *core.FetchLocalFlags, 
 }
 
 func resolveStashMode(ctx context.Context, s *session, f *core.FetchLocalFlags) (localMode, error) {
-	if _, err := s.run(ctx, binGit, gitCmdRevParse, "-q", flagVerify, stashRefPrefix+f.StashN+"}"); err != nil {
+	if _, err := s.run(ctx, gitCmdRevParse, "-q", flagVerify, stashRefPrefix+f.StashN+"}"); err != nil {
 		return localMode{}, &core.RefusalError{
 			Code:    "bad-stash",
 			Message: fmt.Sprintf("no such stash: stash@{%s} (see git stash list)", f.StashN),
@@ -490,7 +490,7 @@ func resolveTwoDot(ctx context.Context, s *session, spec string) (localMode, err
 // gitLine runs git, returning stdout stripped of trailing newlines. Stderr
 // is discarded.
 func (s *session) gitLine(ctx context.Context, args ...string) (string, error) {
-	res, err := s.run(ctx, binGit, args...)
+	res, err := s.run(ctx, args...)
 	if err != nil {
 		return "", err
 	}
@@ -624,7 +624,7 @@ func writeLocalUntrackedWarns(ctx context.Context, r *session, paths []string) {
 		args = append(args, "--")
 		args = append(args, paths...)
 	}
-	res, err := r.run(ctx, binGit, args...)
+	res, err := r.run(ctx, args...)
 	if err != nil {
 		return
 	}

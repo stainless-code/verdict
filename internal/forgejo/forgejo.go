@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/curlauth"
 )
 
 // Environment names the two variables every Forgejo call needs.
@@ -54,27 +55,40 @@ const (
 	EventApproved       = "APPROVED"
 )
 
-// APIBase gates the environment and returns the curl auth argv plus the
+// APIBase gates the environment and returns the curl credential plus the
 // authenticated API root. Both messages name the variable to set, and the
 // refusal fires before any call is spawned.
-func APIBase(env map[string]string) (auth []string, api string, err *core.RefusalError) {
+func APIBase(env map[string]string) (auth curlauth.Credential, api string, err *core.RefusalError) {
 	host := env[EnvHost]
 	token := env[EnvToken]
 	if host == "" {
-		return nil, "", &core.RefusalError{Code: CodeAuthMissing, Message: "forgejo needs FORGEJO_HOST=https://host and FORGEJO_TOKEN set"}
+		return curlauth.Credential{}, "", &core.RefusalError{
+			Code:    CodeAuthMissing,
+			Message: "forgejo needs FORGEJO_HOST=https://host and FORGEJO_TOKEN set",
+		}
 	}
 	if token == "" {
-		return nil, "", &core.RefusalError{Code: CodeAuthMissing, Message: "forgejo needs FORGEJO_TOKEN set (app token with repo read)"}
+		return curlauth.Credential{}, "", &core.RefusalError{
+			Code:    CodeAuthMissing,
+			Message: "forgejo needs FORGEJO_TOKEN set (app token with repo read)",
+		}
 	}
-	return []string{"-H", "Authorization: token " + token}, host + apiPrefix, nil
+	auth, cerr := curlauth.Header("Authorization", "token "+token)
+	if cerr != nil {
+		return curlauth.Credential{}, "", &core.RefusalError{
+			Code:    CodeAuthMissing,
+			Message: "FORGEJO_TOKEN carries a line break — refusing to build a curl config",
+		}
+	}
+	return auth, host + apiPrefix, nil
 }
 
 // Resolve gates the environment and returns the pull-scoped API base the read
 // and write paths share.
-func Resolve(env map[string]string, repo, pr string) (auth []string, base string, err *core.RefusalError) {
+func Resolve(env map[string]string, repo, pr string) (auth curlauth.Credential, base string, err *core.RefusalError) {
 	auth, api, ref := APIBase(env)
 	if ref != nil {
-		return nil, "", ref
+		return curlauth.Credential{}, "", ref
 	}
 	return auth, api + "/repos/" + repo + "/pulls/" + pr, nil
 }

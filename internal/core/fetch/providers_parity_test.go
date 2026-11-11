@@ -420,7 +420,7 @@ func assertForgejoFeed(t *testing.T, name string, out map[string]scriptResult, t
 	t.Helper()
 	dir := t.TempDir()
 	s, warns := newTestSession(&scriptCommander{t: t, out: out})
-	over := []string{"-H", "Authorization: token tok"}
+	over := forgejoCred(t)
 	if err := forgejoThreads(context.Background(), s, dir, over, forgejoAPI, hostPR, `{"head":{"sha":"head111"}}`); err != nil {
 		t.Fatalf("%s: forgejoThreads: %v", name, err)
 	}
@@ -665,7 +665,7 @@ func TestBitbucketFailedPageWarnsAndTruncates(t *testing.T) {
 func assertBitbucketPartial(t *testing.T, out map[string]scriptResult, items int) {
 	t.Helper()
 	s, warns := newTestSession(&scriptCommander{t: t, out: out})
-	got, truncated, ref := bitbucketPages(context.Background(), s, bitbucketBearer(), testBitbucketFirst)
+	got, truncated, ref := bitbucketPages(context.Background(), s, bitbucketBearer(t), testBitbucketFirst)
 	if ref != nil {
 		t.Fatalf("refusal = %v, want a warning path", ref)
 	}
@@ -688,7 +688,7 @@ func TestBitbucketFailedCommentsMarkThreadsTruncated(t *testing.T) {
 		bitbucketCall(base + "/diffstat?pagelen=100"): {stdout: `{"values":[]}`},
 		bitbucketCall(base + "/comments?pagelen=100"): {stderr: "curl: (22) 500", fail: true},
 	}})
-	if _, ref := bitbucketThreads(context.Background(), s, dir, bitbucketBearer(), base, hostPR, "head111"); ref != nil {
+	if _, ref := bitbucketThreads(context.Background(), s, dir, bitbucketBearer(t), base, hostPR, "head111"); ref != nil {
 		t.Fatalf("bitbucketThreads: %v", ref)
 	}
 	if got := hostTruncated(t, dir); got != "true" {

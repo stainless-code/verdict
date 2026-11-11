@@ -16,17 +16,18 @@ FIX="$EVAL_ROOT/evals/fixtures/forgejo"
 PR=7
 HEAD="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 TOKEN="eval-token"
+CONFIG="header = \"Authorization: token $TOKEN\""
 DIR="$EVAL_SANDBOX/.verdict/state/$PR"
 PULL="https://forgejo.invalid/api/v1/repos/acme/app/pulls/$PR"
-WANT_WRITE="-sS -i -H Authorization: token $TOKEN -H Content-Type: application/json -X POST --data-binary @- $PULL/reviews"
+WANT_WRITE="--config FILE -sS -i -H Content-Type: application/json -X POST --data-binary @- $PULL/reviews"
 
 fetch_routes() {
   hoststub_init curl
-  hoststub_route curl "-sf -H Authorization: token $TOKEN $PULL" "$FIX/PR.json"
-  hoststub_route curl "-sf -H Authorization: token $TOKEN $PULL.diff" "$FIX/full.diff"
-  hoststub_route curl "-sf -H Authorization: token $TOKEN $PULL/files?limit=50&page=1" "$FIX/files.json"
-  hoststub_route curl "-sf -H Authorization: token $TOKEN $PULL/reviews?limit=50&page=1" "$FIX/reviews.json"
-  hoststub_route curl "-sf -H Authorization: token $TOKEN $PULL/reviews/301/comments" "$FIX/comments.json"
+  hoststub_route curl "--config - -sf $PULL" "$FIX/PR.json" 0 "$CONFIG"
+  hoststub_route curl "--config - -sf $PULL.diff" "$FIX/full.diff" 0 "$CONFIG"
+  hoststub_route curl "--config - -sf $PULL/files?limit=50&page=1" "$FIX/files.json" 0 "$CONFIG"
+  hoststub_route curl "--config - -sf $PULL/reviews?limit=50&page=1" "$FIX/reviews.json" 0 "$CONFIG"
+  hoststub_route curl "--config - -sf $PULL/reviews/301/comments" "$FIX/comments.json" 0 "$CONFIG"
 }
 
 # post_routes swaps the one write answer, so each post leg grades the status
@@ -34,11 +35,11 @@ fetch_routes() {
 post_routes() {
   local write="$1"
   hoststub_init curl
-  hoststub_route curl "-sf -H Authorization: token $TOKEN $PULL" "$FIX/PR.json"
-  hoststub_route curl "-sf -H Authorization: token $TOKEN $PULL/reviews?limit=50&page=1" "$FIX/reviews.json"
-  hoststub_route curl "-sf -H Authorization: token $TOKEN $PULL/reviews/301/comments" "$FIX/comments.json"
-  hoststub_route curl "-sf -H Authorization: token $TOKEN https://forgejo.invalid/api/v1/user" "$FIX/user.json"
-  hoststub_route curl "$WANT_WRITE" "$write"
+  hoststub_route curl "--config - -sf $PULL" "$FIX/PR.json" 0 "$CONFIG"
+  hoststub_route curl "--config - -sf $PULL/reviews?limit=50&page=1" "$FIX/reviews.json" 0 "$CONFIG"
+  hoststub_route curl "--config - -sf $PULL/reviews/301/comments" "$FIX/comments.json" 0 "$CONFIG"
+  hoststub_route curl "--config - -sf https://forgejo.invalid/api/v1/user" "$FIX/user.json" 0 "$CONFIG"
+  hoststub_route curl "$WANT_WRITE" "$write" 0 "$CONFIG"
 }
 
 write_calls() { grep -c " $PULL/reviews\$" "$HOSTSTUB_LOG" || true; }
@@ -74,6 +75,7 @@ assert_json_field "the review comment is open" false '.threads[0].resolved' "$DI
 assert_eq "the fetch case makes zero gh calls" 0 "$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 hoststub_argv_log curl "$EVAL_SANDBOX/curl-calls.txt"
 assert_file_eq "every fetch call is a registered argv in order" "$FIX/expected-argvs.txt" "$EVAL_SANDBOX/curl-calls.txt"
+assert_file_nogrep "no fetch curl argv carries the fixture token" "$EVAL_SANDBOX/curl-calls.txt" "$TOKEN" -F
 assert_eq "fetch spends five curl reads" 5 "$(hoststub_count curl)"
 
 eval_write_review "$PR" <<'EOF'
@@ -121,6 +123,7 @@ assert_eq "the post arms one payload marker" 1 "$(ls "$DIR"/.posted_* 2>/dev/nul
 assert_eq "the post makes one write" 1 "$(write_calls)"
 hoststub_argv_log curl "$EVAL_SANDBOX/post-calls.txt"
 assert_file_eq "every post call is a registered argv in order" "$FIX/expected-argvs-post.txt" "$EVAL_SANDBOX/post-calls.txt"
+assert_file_nogrep "no post curl argv carries the fixture token" "$EVAL_SANDBOX/post-calls.txt" "$TOKEN" -F
 
 run_review post acme/app "$PR" --json
 assert_exit "the second post refuses" 1

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/curlauth"
 	"github.com/stainless-code/verdict/internal/forgejo"
 )
 
@@ -16,16 +17,20 @@ func env() map[string]string {
 	}
 }
 
-// TestResolve pins the auth argv and the pull-scoped base: the two literals a
-// read and a write must share.
+// TestResolve pins the credential config and the pull-scoped base: the two
+// literals a read and a write must share, with no credential in the argv.
 func TestResolve(t *testing.T) {
 	t.Parallel()
 	auth, base, ref := forgejo.Resolve(env(), "acme/app", "7")
 	if ref != nil {
 		t.Fatalf("Resolve refusal: %s: %s", ref.Code, ref.Message)
 	}
-	if want := []string{"-H", "Authorization: token eval-token"}; !slices.Equal(auth, want) {
-		t.Errorf("auth = %q, want %q", auth, want)
+	if want := "header = \"Authorization: token eval-token\"\n"; auth.Stdin() != want {
+		t.Errorf("config = %q, want %q", auth.Stdin(), want)
+	}
+	argv, _ := auth.StdinArgv("-sf", "https://forgejo.invalid/api/v1")
+	if want := []string{"--config", "-", "-sf", "https://forgejo.invalid/api/v1"}; !slices.Equal(argv, want) {
+		t.Errorf("argv = %q, want %q", argv, want)
 	}
 	if want := "https://forgejo.invalid/api/v1/repos/acme/app/pulls/7"; base != want {
 		t.Errorf("base = %q, want %q", base, want)
@@ -56,8 +61,8 @@ func TestResolveGatesTheEnvironment(t *testing.T) {
 }
 
 // assertResolveRefused checks one refused gate: the published code, the exact
-// sentence, and the empty values a caller must never build a URL from.
-func assertResolveRefused(t *testing.T, dropped, want string, auth []string, base string, ref *core.RefusalError) {
+// sentence, and the zero values a caller must never build a URL from.
+func assertResolveRefused(t *testing.T, dropped, want string, auth curlauth.Credential, base string, ref *core.RefusalError) {
 	t.Helper()
 	if ref == nil {
 		t.Fatalf("Resolve accepted an environment without %s", dropped)
@@ -68,8 +73,26 @@ func assertResolveRefused(t *testing.T, dropped, want string, auth []string, bas
 	if ref.Message != want {
 		t.Errorf("message = %q, want %q", ref.Message, want)
 	}
-	if auth != nil || base != "" {
-		t.Errorf("refused Resolve returned auth=%q base=%q", auth, base)
+	if auth.Stdin() != "" || base != "" {
+		t.Errorf("refused Resolve returned config=%q base=%q", auth.Stdin(), base)
+	}
+}
+
+// TestResolveRefusesLineBreak proves a token carrying a newline refuses before
+// any curl argv or config can be built.
+func TestResolveRefusesLineBreak(t *testing.T) {
+	t.Parallel()
+	e := env()
+	e[forgejo.EnvToken] = "eval\ntoken"
+	auth, base, ref := forgejo.Resolve(e, "acme/app", "7")
+	if ref == nil || ref.Code != "auth-missing" {
+		t.Fatalf("refusal = %v, want auth-missing", ref)
+	}
+	if want := "FORGEJO_TOKEN carries a line break — refusing to build a curl config"; ref.Message != want {
+		t.Errorf("message = %q, want %q", ref.Message, want)
+	}
+	if auth.Stdin() != "" || base != "" {
+		t.Errorf("refused Resolve returned config=%q base=%q", auth.Stdin(), base)
 	}
 }
 

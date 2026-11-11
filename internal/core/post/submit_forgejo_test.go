@@ -3,27 +3,33 @@ package postcore
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/forgejo"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
 const (
-	forgejoHead   = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	forgejoAPI    = "https://forgejo.invalid/api/v1/repos/acme/app/pulls/7"
-	forgejoAuthHd = "-H\x00Authorization: token eval-token"
+	forgejoHead = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	forgejoAPI  = "https://forgejo.invalid/api/v1/repos/acme/app/pulls/7"
 
 	// The exact argv a Forgejo post fires. Every one is a literal: a rename in
 	// the submit path fails here instead of following the helper that built it.
-	forgejoPullRoute     = "curl\x00-sf\x00" + forgejoAuthHd + "\x00" + forgejoAPI
-	forgejoUserRoute     = "curl\x00-sf\x00" + forgejoAuthHd + "\x00https://forgejo.invalid/api/v1/user"
-	forgejoReviewsRoute  = "curl\x00-sf\x00" + forgejoAuthHd + "\x00" + forgejoAPI + "/reviews?limit=50&page=1"
-	forgejoCommentsRoute = "curl\x00-sf\x00" + forgejoAuthHd + "\x00" + forgejoAPI + "/reviews/301/comments"
-	forgejoWriteRoute    = "curl\x00-sS\x00-i\x00" + forgejoAuthHd +
-		"\x00-H\x00Content-Type: application/json\x00-X\x00POST\x00--data-binary\x00@-\x00" + forgejoAPI + "/reviews"
+	// Reads carry the credential on stdin; the write stages it in a private 0600
+	// file, so its path is the CONFIG placeholder rather than a random temp name.
+	forgejoReadPrefix    = "curl\x00--config\x00-\x00-sf\x00"
+	forgejoPullRoute     = forgejoReadPrefix + forgejoAPI
+	forgejoUserRoute     = forgejoReadPrefix + "https://forgejo.invalid/api/v1/user"
+	forgejoReviewsRoute  = forgejoReadPrefix + forgejoAPI + "/reviews?limit=50&page=1"
+	forgejoCommentsRoute = forgejoReadPrefix + forgejoAPI + "/reviews/301/comments"
+	forgejoWriteRoute    = "curl\x00--config\x00" + configPlaceholder + "\x00-sS\x00-i\x00" +
+		"-H\x00Content-Type: application/json\x00-X\x00POST\x00--data-binary\x00@-\x00" + forgejoAPI + "/reviews"
 )
 
 // forgejoTestDiff is the reviewed change: one modified file with both sides
@@ -93,7 +99,7 @@ func forgejoPost(t *testing.T, cmdr Commander, dir, payload string) postAttempt 
 func postedBodyDoc(t *testing.T, cmdr *scriptCommander, route string) map[string]any {
 	t.Helper()
 	for i, call := range cmdr.calls {
-		if strings.Join(call, "\x00") != route {
+		if routeKey(call) != route {
 			continue
 		}
 		var doc map[string]any
@@ -426,6 +432,13 @@ func TestForgejoReads(t *testing.T) {
 		t.Errorf("selfLogin = %q, %v; want rev", me, err)
 	}
 	assertForgejoRecheck(t, host, cmdr, dir)
+	wantConfig := "header = \"Authorization: token eval-token\"\n"
+	for i, call := range cmdr.calls {
+		assertForgejoNoCredential(t, call, "eval-token", "Authorization")
+		if cmdr.stdin[i] != wantConfig {
+			t.Errorf("call %d config = %q, want %q", i, cmdr.stdin[i], wantConfig)
+		}
+	}
 }
 
 // assertForgejoRecheck checks the open-thread count and the pending review the
@@ -483,5 +496,147 @@ func TestForgejoFlattenCountIsLiteral(t *testing.T) {
 	}
 	if len(part.comments) != 2 || part.comments[1].line != 3 {
 		t.Errorf("comments = %+v, want both anchored at their end line", part.comments)
+	}
+}
+
+// credentialFileCommander records the private config a write stages, while it
+// still exists.
+type credentialFileCommander struct {
+	*scriptCommander
+	path string
+	mode os.FileMode
+}
+
+func (c *credentialFileCommander) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
+	if path := configPathOf(cmd.Argv); path != "" {
+		c.path = path
+		if info, err := os.Stat(path); err == nil {
+			c.mode = info.Mode().Perm()
+		}
+	}
+	return c.scriptCommander.Run(ctx, cmd)
+}
+
+// configPathOf returns the file a `--config <path>` call reads ("" for stdin
+// or no config).
+func configPathOf(argv []string) string {
+	for i := 0; i+1 < len(argv); i++ {
+		if argv[i] == "--config" && argv[i+1] != "-" {
+			return argv[i+1]
+		}
+	}
+	return ""
+}
+
+// TestForgejoWriteCredentialFileOwnerOnlyAndCleaned proves the write hands curl
+// a 0600 file outside the bundle and removes it once the call returns.
+func TestForgejoWriteCredentialFileOwnerOnlyAndCleaned(t *testing.T) {
+	t.Parallel()
+	dir := forgejoPostDir(t)
+	base := forgejoCommander(t, forgejoAnswer("200 OK", forgejoReviewBody("COMMENT")))
+	cmdr := &credentialFileCommander{scriptCommander: base}
+	attempt := forgejoPost(t, cmdr, dir, forgejoPayload(eventComment, ""))
+	if !attempt.ok {
+		t.Fatalf("post refused: %s", attempt.message)
+	}
+	i := callIndex(base, forgejoWriteRoute)
+	if i < 0 {
+		t.Fatalf("no write call: %q", callKeys(base))
+	}
+	assertForgejoNoCredential(t, base.calls[i], "eval-token", "Authorization")
+	if want := "header = \"Authorization: token eval-token\"\n"; base.configs[i] != want {
+		t.Errorf("config = %q, want %q", base.configs[i], want)
+	}
+	if runtime.GOOS != "windows" && cmdr.mode != 0o600 {
+		t.Errorf("config mode = %04o, want 0600", cmdr.mode)
+	}
+	if _, err := os.Stat(cmdr.path); !os.IsNotExist(err) {
+		t.Errorf("credential file survived the write: %v", err)
+	}
+}
+
+// TestForgejoWriteCredentialFileCleanedOnFailure proves a failed curl still
+// removes the private config.
+func TestForgejoWriteCredentialFileCleanedOnFailure(t *testing.T) {
+	t.Parallel()
+	dir := forgejoPostDir(t)
+	base := forgejoCommander(t, "")
+	base.out[forgejoWriteRoute] = scriptResult{stderr: "curl: (7) could not connect", fail: true}
+	cmdr := &credentialFileCommander{scriptCommander: base}
+	attempt := forgejoPost(t, cmdr, dir, forgejoPayload(eventComment, ""))
+	if attempt.ok {
+		t.Fatal("a failed write was accepted")
+	}
+	if cmdr.path == "" {
+		t.Fatal("no credential file was staged")
+	}
+	if _, err := os.Stat(cmdr.path); !os.IsNotExist(err) {
+		t.Errorf("credential file survived the failure: %v", err)
+	}
+}
+
+// TestForgejoReadRetryReplaysConfig proves a retried read sends the same
+// credential document both times instead of an exhausted reader.
+func TestForgejoReadRetryReplaysConfig(t *testing.T) {
+	t.Parallel()
+	cmdr := &forgejoRetryCommander{t: t}
+	auth, _, ref := forgejo.APIBase(forgejoEnv())
+	if ref != nil {
+		t.Fatalf("auth: %s: %s", ref.Code, ref.Message)
+	}
+	login, rerr := forgejoSelfLogin(context.Background(), cmdr, auth, "https://forgejo.invalid/api/v1/user")
+	if rerr != nil || login != "rev" {
+		t.Fatalf("selfLogin = %q, %v; want rev", login, rerr)
+	}
+	want := "header = \"Authorization: token eval-token\"\n"
+	if len(cmdr.stdin) != 2 || cmdr.stdin[0] != want || cmdr.stdin[1] != want {
+		t.Errorf("config per attempt = %q, want two %q", cmdr.stdin, want)
+	}
+}
+
+// forgejoRetryCommander answers the first authenticated read as a no-wait rate
+// limit and the second as the user page.
+type forgejoRetryCommander struct {
+	t     *testing.T
+	stdin []string
+}
+
+func (c *forgejoRetryCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
+	c.t.Helper()
+	var raw string
+	if cmd.Stdin != nil {
+		b, err := io.ReadAll(cmd.Stdin)
+		if err != nil {
+			c.t.Fatal(err)
+		}
+		raw = string(b)
+	}
+	c.stdin = append(c.stdin, raw)
+	if len(c.stdin) == 1 {
+		return core.Result{ExitCode: 1, Stderr: "HTTP 429: secondary rate limit exceeded, retry-after: 0"}, nil
+	}
+	return core.Result{Stdout: `{"login":"rev"}`}, nil
+}
+
+func (*forgejoRetryCommander) LookPath(string) error { return nil }
+
+// callIndex finds the one call whose normalized argv matches key.
+func callIndex(cmdr *scriptCommander, key string) int {
+	for i, call := range cmdr.calls {
+		if routeKey(call) == key {
+			return i
+		}
+	}
+	return -1
+}
+
+// assertForgejoNoCredential proves no argv element carries a credential.
+func assertForgejoNoCredential(t *testing.T, argv []string, secrets ...string) {
+	t.Helper()
+	joined := strings.Join(argv, " ")
+	for _, secret := range secrets {
+		if strings.Contains(joined, secret) {
+			t.Errorf("argv carries %q: %q", secret, argv)
+		}
 	}
 }

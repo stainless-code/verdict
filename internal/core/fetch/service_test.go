@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -24,7 +25,7 @@ type scriptCommander struct {
 	tools map[string]bool
 	t     *testing.T
 	calls [][]string
-	stdin []bool
+	stdin []string
 	env   [][]string
 }
 
@@ -47,7 +48,7 @@ const patchIDKey = "git\x00patch-id\x00--stable"
 func (s *scriptCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	s.t.Helper()
 	s.calls = append(s.calls, append([]string{}, cmd.Argv...))
-	s.stdin = append(s.stdin, cmd.Stdin != nil)
+	s.stdin = append(s.stdin, readTestStdin(s.t, cmd.Stdin))
 	s.env = append(s.env, cmd.Env)
 	key := strings.Join(cmd.Argv, "\x00")
 	if key == patchIDKey {
@@ -67,6 +68,20 @@ func (s *scriptCommander) Run(_ context.Context, cmd *core.Command) (core.Result
 		out.ExitCode = 1
 	}
 	return out, nil
+}
+
+// readTestStdin drains one child's stdin, failing the test on a read error.
+func readTestStdin(t *testing.T, r io.Reader) string {
+	t.Helper()
+	if r == nil {
+		return ""
+	}
+	raw, err := io.ReadAll(r)
+	if err != nil {
+		t.Errorf("read child stdin: %v", err)
+		return ""
+	}
+	return string(raw)
 }
 
 // LookPath reports scripted tool presence (missing reads MissingToolError).
@@ -89,18 +104,19 @@ func assertScriptCalls(t *testing.T, cmdr *scriptCommander, want [][]string) {
 	}
 }
 
-// assertOneCall proves one scripted call fired with an inherited env; the
-// patch-id spawn carries the diff on stdin, every other call sends none.
+// assertOneCall proves one scripted call fired with an inherited env. The
+// patch-id spawn carries the diff on stdin; an authenticated curl reads its
+// credential there. Every other call sends none.
 func assertOneCall(t *testing.T, cmdr *scriptCommander, i int, want []string) {
 	t.Helper()
 	if strings.Join(cmdr.calls[i], "\x00") != strings.Join(want, "\x00") {
 		t.Errorf("argv %d = %q, want %q", i, cmdr.calls[i], want)
 	}
-	if strings.Join(want, "\x00") == patchIDKey {
-		if !cmdr.stdin[i] {
-			t.Errorf("argv %d sent no stdin, want the diff on stdin", i)
-		}
-	} else if cmdr.stdin[i] {
+	wantsStdin := strings.Join(want, "\x00") == patchIDKey || slices.Contains(want, "--config")
+	if wantsStdin && cmdr.stdin[i] == "" {
+		t.Errorf("argv %d sent no stdin, want the stream the call reads", i)
+	}
+	if !wantsStdin && cmdr.stdin[i] != "" {
 		t.Errorf("argv %d sent stdin, want none", i)
 	}
 	if cmdr.env[i] != nil {

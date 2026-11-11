@@ -23,16 +23,33 @@ import (
 // argv, every call logged for argv/stdin/stream assertions. Unmatched argv
 // fails the test (no network, no real forge).
 type scriptCommander struct {
-	out   map[string]scriptResult
-	t     *testing.T
-	calls [][]string
-	stdin []string
+	out     map[string]scriptResult
+	t       *testing.T
+	calls   [][]string
+	stdin   []string
+	configs []string
 }
 
 type scriptResult struct {
 	stdout string
 	stderr string
 	fail   bool
+}
+
+// configPlaceholder stands in for the one curl config path a write stages under
+// a fresh private temp dir, whose name changes every call.
+const configPlaceholder = "CONFIG"
+
+// routeKey renders one argv for the canned lookup, replacing a `--config`
+// file operand with [configPlaceholder].
+func routeKey(argv []string) string {
+	out := append([]string{}, argv...)
+	for i := 0; i+1 < len(out); i++ {
+		if out[i] == "--config" && out[i+1] != "-" {
+			out[i+1] = configPlaceholder
+		}
+	}
+	return strings.Join(out, "\x00")
 }
 
 func (s *scriptCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
@@ -46,7 +63,8 @@ func (s *scriptCommander) Run(_ context.Context, cmd *core.Command) (core.Result
 		}
 	}
 	s.stdin = append(s.stdin, stdin)
-	key := strings.Join(cmd.Argv, "\x00")
+	s.configs = append(s.configs, s.readConfig(cmd.Argv))
+	key := routeKey(cmd.Argv)
 	res, ok := s.out[key]
 	if !ok {
 		s.t.Errorf("unexpected argv: %q", cmd.Argv)
@@ -57,6 +75,24 @@ func (s *scriptCommander) Run(_ context.Context, cmd *core.Command) (core.Result
 		out.ExitCode = 1
 	}
 	return out, nil
+}
+
+// readConfig reads the credential file a call names, so a test can assert its
+// content while the call is still running.
+func (s *scriptCommander) readConfig(argv []string) string {
+	s.t.Helper()
+	for i := 0; i+1 < len(argv); i++ {
+		if argv[i] != "--config" || argv[i+1] == "-" {
+			continue
+		}
+		raw, err := os.ReadFile(argv[i+1])
+		if err != nil {
+			s.t.Errorf("read curl config: %v", err)
+			return ""
+		}
+		return string(raw)
+	}
+	return ""
 }
 
 func (s *scriptCommander) LookPath(string) error { return nil }

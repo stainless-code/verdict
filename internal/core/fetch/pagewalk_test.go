@@ -9,18 +9,26 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/curlauth"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // testBitbucketFirst is the trusted first page URL bitbucketPages builds.
 const testBitbucketFirst = "https://api.bitbucket.org/2.0/repos/o/r/pullrequests/7/comments?pagelen=100"
 
-// bitbucketBearer is the auth argv the bitbucket reads attach.
-func bitbucketBearer() []string { return []string{"-H", "Authorization: Bearer tok"} }
+// bitbucketBearer is the credential the bitbucket reads attach.
+func bitbucketBearer(t *testing.T) curlauth.Credential {
+	t.Helper()
+	cred, err := curlauth.Header("Authorization", "Bearer tok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cred
+}
 
 // bitbucketCall is the exact scripted argv one page fires.
 func bitbucketCall(url string) string {
-	return "curl\x00-sfL\x00-H\x00Authorization: Bearer tok\x00" + url
+	return "curl\x00--config\x00-\x00-sfL\x00" + url
 }
 
 // newTestSession builds the service session over a scripted commander.
@@ -66,7 +74,7 @@ func TestBitbucketPagesRefusesOffOriginNext(t *testing.T) {
 			`"next":"https://evil.invalid/steal?cursor=token-like"}`},
 	}}
 	s, _ := newTestSession(cmdr)
-	items, _, ref := bitbucketPages(context.Background(), s, bitbucketBearer(), testBitbucketFirst)
+	items, _, ref := bitbucketPages(context.Background(), s, bitbucketBearer(t), testBitbucketFirst)
 	if ref == nil || ref.Code != CodeFetchFailed {
 		t.Fatalf("refusal = %v, want fetch-failed", ref)
 	}
@@ -91,7 +99,7 @@ func TestBitbucketPagesFollowsSameOriginNext(t *testing.T) {
 		bitbucketCall(next):               {stdout: `{"values":[{"id":2}],"next":null}`},
 	}}
 	s, warns := newTestSession(cmdr)
-	items, _, ref := bitbucketPages(context.Background(), s, bitbucketBearer(), testBitbucketFirst)
+	items, _, ref := bitbucketPages(context.Background(), s, bitbucketBearer(t), testBitbucketFirst)
 	if ref != nil {
 		t.Fatalf("refusal = %v", ref)
 	}
@@ -114,7 +122,7 @@ func TestBitbucketPagesRepeatedCursorTrips(t *testing.T) {
 		bitbucketCall(testBitbucketFirst): {stdout: `{"values":[{"id":1}],"next":"` + testBitbucketFirst + `"}`},
 	}}
 	s, warns := newTestSession(cmdr)
-	items, _, ref := bitbucketPages(context.Background(), s, bitbucketBearer(), testBitbucketFirst)
+	items, _, ref := bitbucketPages(context.Background(), s, bitbucketBearer(t), testBitbucketFirst)
 	if ref != nil {
 		t.Fatalf("refusal = %v", ref)
 	}
@@ -152,7 +160,7 @@ func TestForgejoDiffRefusesOffOriginDiffURL(t *testing.T) {
 	t.Parallel()
 	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{}}
 	s, _ := newTestSession(cmdr)
-	err := forgejoDiffFallback(context.Background(), s, t.TempDir(), bitbucketBearer(),
+	err := forgejoDiffFallback(context.Background(), s, t.TempDir(), bitbucketBearer(t),
 		"https://example.invalid/api/v1/repos/o/r/pulls/7",
 		`{"diff_url":"https://evil.invalid/steal.diff"}`)
 	var ref *core.RefusalError
@@ -205,7 +213,17 @@ func jsonRows(n int, item func(int) string) string {
 
 // forgejoCall is the exact scripted argv one Forgejo list page fires.
 func forgejoCall(url string) string {
-	return "curl\x00-sf\x00-H\x00Authorization: token tok\x00" + url
+	return "curl\x00--config\x00-\x00-sf\x00" + url
+}
+
+// forgejoCred is the credential the Forgejo reads attach.
+func forgejoCred(t *testing.T) curlauth.Credential {
+	t.Helper()
+	cred, err := curlauth.Header("Authorization", "token tok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cred
 }
 
 // TestForgejoFilesPages proves the file list walks every page instead of
@@ -218,7 +236,7 @@ func TestForgejoFilesPages(t *testing.T) {
 		forgejoCall(base + "?limit=50&page=2"): {stdout: `[{"id":2}]`},
 	}}
 	s, warns := newTestSession(cmdr)
-	raw := forgejoFiles(context.Background(), s, []string{"-H", "Authorization: token tok"},
+	raw := forgejoFiles(context.Background(), s, forgejoCred(t),
 		"https://example.invalid/api/v1/repos/o/r/pulls/7")
 	items, err := jsonArray(raw)
 	if err != nil || len(items) != forgejoPageSize+1 {
@@ -241,7 +259,7 @@ func TestForgejoListSinglePageVerbatim(t *testing.T) {
 		forgejoCall(base + "?limit=50&page=1"): {stdout: `[{"id":7}]`},
 	}}
 	s, _ := newTestSession(cmdr)
-	raw := forgejoList(context.Background(), s, []string{"-H", "Authorization: token tok"},
+	raw := forgejoList(context.Background(), s, forgejoCred(t),
 		base, "reviews")
 	if raw != `[{"id":7}]` {
 		t.Errorf("raw = %q, want the host bytes", raw)
@@ -259,7 +277,7 @@ func TestForgejoListWarnsAtPageCap(t *testing.T) {
 		out[forgejoCall(u)] = scriptResult{stdout: jsonRows(forgejoPageSize, func(int) string { return `{"id":1}` })}
 	}
 	s, warns := newTestSession(&scriptCommander{t: t, out: out})
-	raw := forgejoFiles(context.Background(), s, []string{"-H", "Authorization: token tok"},
+	raw := forgejoFiles(context.Background(), s, forgejoCred(t),
 		"https://example.invalid/api/v1/repos/o/r/pulls/7")
 	items, err := jsonArray(raw)
 	if err != nil || len(items) != providerMaxPages*forgejoPageSize {
@@ -281,7 +299,7 @@ func TestForgejoCommentReadFailureWarns(t *testing.T) {
 	}}
 	s, warns := newTestSession(cmdr)
 	dir := t.TempDir()
-	if err := forgejoThreads(context.Background(), s, dir, []string{"-H", "Authorization: token tok"}, api, "7", `{"head":{"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}`); err != nil {
+	if err := forgejoThreads(context.Background(), s, dir, forgejoCred(t), api, "7", `{"head":{"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}`); err != nil {
 		t.Fatal(err)
 	}
 	if len(*warns) != 1 || !strings.Contains((*warns)[0], "review-comment read failed") {

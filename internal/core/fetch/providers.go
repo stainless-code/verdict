@@ -16,6 +16,7 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/threads"
+	"github.com/stainless-code/verdict/internal/curlauth"
 	"github.com/stainless-code/verdict/internal/forgejo"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -137,7 +138,7 @@ func fetchProviderBundle(
 // cliFetch runs a provider CLI through the shared bounded transient retry
 // (the same contract as the gh reads).
 func (s *session) cliFetch(ctx context.Context, bin string, args ...string) (core.Result, error) {
-	return s.fetchWithRetry(ctx, bin, args)
+	return s.fetchWithRetry(ctx, bin, args, "")
 }
 
 // fetchGitLab mirrors the gitlab backend.
@@ -454,7 +455,7 @@ func noteTypeDiff(n any) bool {
 // list stays authoritative).
 func diffNumstatMap(ctx context.Context, s *session, fullDiff string) map[string]map[string]int64 {
 	out := map[string]map[string]int64{}
-	res, err := s.run(ctx, binGit, "apply", "--numstat", fullDiff)
+	res, err := s.run(ctx, "apply", "--numstat", fullDiff)
 	if err != nil {
 		return out
 	}
@@ -835,11 +836,6 @@ func plainValue(e any) any {
 	return e
 }
 
-func curlArgs(auth []string, extra ...string) []string {
-	args := append([]string{flagCurlFail}, auth...)
-	return append(args, extra...)
-}
-
 func fetchForgejo(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest) error {
 	r, dir, pr := ctx2.runner, ctx2.dir, req.Pr
 	if err := r.needTool("curl"); err != nil {
@@ -864,7 +860,7 @@ func fetchForgejo(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest
 	return writePRJSON(dir, "Forgejo PR", pr, doc, normErr)
 }
 
-func forgejoAuth(ctx2 *fetchRunCtx) (auth []string, api string, err error) {
+func forgejoAuth(ctx2 *fetchRunCtx) (auth curlauth.Credential, api string, err error) {
 	return forgejoAuthFor(ctx2.env, ctx2.repo, ctx2.pr)
 }
 
@@ -872,17 +868,17 @@ func forgejoAuth(ctx2 *fetchRunCtx) (auth []string, api string, err error) {
 // the threads refresh has no fetchRunCtx but needs the same gate. The gate and
 // the URL shape are the shared wire contract in internal/forgejo, so a read and
 // a write can never resolve the host differently.
-func forgejoAuthFor(env map[string]string, repo, pr string) (auth []string, api string, err error) {
+func forgejoAuthFor(env map[string]string, repo, pr string) (auth curlauth.Credential, api string, err error) {
 	auth, api, ref := forgejo.Resolve(env, repo, pr)
 	if ref != nil {
-		return nil, "", &core.RefusalError{Code: ref.Code, Message: ref.Message}
+		return curlauth.Credential{}, "", &core.RefusalError{Code: ref.Code, Message: ref.Message}
 	}
 	return auth, api, nil
 }
 
 // forgejoMeta owns the PR read with its stderr sidecar.
-func forgejoMeta(ctx context.Context, r *session, dir string, auth []string, api string) (core.Result, error) {
-	metaRes, err := r.curlFetch(ctx, curlArgs(auth, api)...)
+func forgejoMeta(ctx context.Context, r *session, dir string, auth curlauth.Credential, api string) (core.Result, error) {
+	metaRes, err := r.curlFetch(ctx, auth, flagCurlFail, api)
 	if werr := writeErrFile(dir+suffixMetaErr, metaRes.Stderr); werr != nil {
 		return metaRes, werr
 	}
@@ -893,9 +889,9 @@ func forgejoMeta(ctx context.Context, r *session, dir string, auth []string, api
 	return metaRes, nil
 }
 
-func forgejoDiff(ctx context.Context, r *session, dir string, auth []string, api, metaStdout string) error {
+func forgejoDiff(ctx context.Context, r *session, dir string, auth curlauth.Credential, api, metaStdout string) error {
 	fmt.Fprintf(r.Human, "» forgejo diff -> %s/full.diff\n", r.display(dir))
-	diffRes, err := r.curlFetch(ctx, curlArgs(auth, api+".diff")...)
+	diffRes, err := r.curlFetch(ctx, auth, flagCurlFail, api+".diff")
 	if err != nil {
 		return forgejoDiffFallback(ctx, r, dir, auth, api, metaStdout)
 	}
@@ -926,12 +922,12 @@ func forgejoDiffURL(metaStdout string) string {
 
 // forgejoDiffFallback owns the metadata-URL fallback with its stderr
 // sidecar and empty-diff truncation on total failure.
-func forgejoDiffFallback(ctx context.Context, r *session, dir string, auth []string, api, metaStdout string) error {
+func forgejoDiffFallback(ctx context.Context, r *session, dir string, auth curlauth.Credential, api, metaStdout string) error {
 	diffURL := forgejoDiffURL(metaStdout)
 	if diffURL != "" && !sameOrigin(api, diffURL) {
 		return offOriginRefusal(providerForgejo, diffURL)
 	}
-	diffRes, err := r.curlFetch(ctx, curlArgs(auth, diffURL)...)
+	diffRes, err := r.curlFetch(ctx, auth, flagCurlFail, diffURL)
 	if werr := writeErrFile(dir+suffixDiffErr, diffRes.Stderr); werr != nil {
 		return werr
 	}
@@ -948,7 +944,7 @@ func forgejoDiffFallback(ctx context.Context, r *session, dir string, auth []str
 }
 
 // forgejoFiles owns the paged file-list read, defaulting to [] on failure.
-func forgejoFiles(ctx context.Context, r *session, auth []string, api string) string {
+func forgejoFiles(ctx context.Context, r *session, auth curlauth.Credential, api string) string {
 	return forgejoList(ctx, r, auth, api+"/files", "file list")
 }
 
@@ -956,7 +952,7 @@ func forgejoFiles(ctx context.Context, r *session, auth []string, api string) st
 // page). A single complete page returns verbatim, so existing bundles stay
 // byte-identical; a failed page or the page cap warns instead of returning
 // the first page silently.
-func forgejoList(ctx context.Context, r *session, auth []string, base, what string) string {
+func forgejoList(ctx context.Context, r *session, auth curlauth.Credential, base, what string) string {
 	body, truncated, err := forgejoListRead(ctx, r, auth, base)
 	warnPaging(r, providerForgejo, what, err, truncated)
 	return body
@@ -965,12 +961,12 @@ func forgejoList(ctx context.Context, r *session, auth []string, base, what stri
 // forgejoListRead pages one Forgejo list endpoint and hands back the partial
 // body, truncation, and page error so a caller can decide warn-vs-refuse.
 func forgejoListRead(
-	ctx context.Context, r *session, auth []string, base string,
+	ctx context.Context, r *session, auth curlauth.Credential, base string,
 ) (body string, truncated bool, err error) {
 	return indexPageWalk(ctx, forgejoPageSize,
 		func(ctx context.Context, page int) (string, error) {
 			u := fmt.Sprintf("%s?limit=%d&page=%d", base, forgejoPageSize, page)
-			res, ferr := r.curlFetch(ctx, curlArgs(auth, u)...)
+			res, ferr := r.curlFetch(ctx, auth, flagCurlFail, u)
 			if ferr != nil {
 				return "", ferr
 			}
@@ -978,7 +974,7 @@ func forgejoListRead(
 		})
 }
 
-func forgejoThreads(ctx context.Context, r *session, dir string, auth []string, api, pr, meta string) error {
+func forgejoThreads(ctx context.Context, r *session, dir string, auth curlauth.Credential, api, pr, meta string) error {
 	revs, revTruncated, revErr := forgejoListRead(ctx, r, auth, api+"/reviews")
 	warnPaging(r, providerForgejo, "reviews", revErr, revTruncated)
 	if werr := atomic.WriteFile(dir+suffixReviewsJSON, []byte(revs)); werr != nil {
@@ -1002,7 +998,7 @@ func forgejoThreads(ctx context.Context, r *session, dir string, auth []string, 
 	return nil
 }
 
-func forgejoInline(ctx context.Context, r *session, api string, auth []string, revs string) (string, bool) {
+func forgejoInline(ctx context.Context, r *session, api string, auth curlauth.Credential, revs string) (string, bool) {
 	doc, err := jq.Decode([]byte(revs))
 	if err != nil {
 		// Undecodable revs feed no ids; the empty stream still merges
@@ -1040,11 +1036,11 @@ func forgejoItems(doc any) []any {
 	return nil
 }
 
-func forgejoCommentDocs(ctx context.Context, r *session, api string, auth, ids []string) ([]any, bool) {
+func forgejoCommentDocs(ctx context.Context, r *session, api string, auth curlauth.Credential, ids []string) ([]any, bool) {
 	var docs []any
 	complete := true
 	for _, id := range ids {
-		res, err := r.curlFetch(ctx, curlArgs(auth, api+"/reviews/"+id+"/comments")...)
+		res, err := r.curlFetch(ctx, auth, flagCurlFail, api+"/reviews/"+id+"/comments")
 		if err != nil {
 			complete = false
 			docs = append(docs, plainValue([]any{}))
@@ -1165,23 +1161,37 @@ func fetchBitbucket(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchReque
 }
 
 // bitbucketAuth owns the token/user-password gate.
-func bitbucketAuth(ctx2 *fetchRunCtx) ([]string, *core.RefusalError) {
+func bitbucketAuth(ctx2 *fetchRunCtx) (curlauth.Credential, *core.RefusalError) {
 	return bitbucketAuthFor(ctx2.env)
 }
 
 // bitbucketAuthFor is bitbucketAuth over an explicit environment: the threads
 // refresh has no fetchRunCtx but needs the same credential gate.
-func bitbucketAuthFor(env map[string]string) ([]string, *core.RefusalError) {
+func bitbucketAuthFor(env map[string]string) (curlauth.Credential, *core.RefusalError) {
 	token, _ := env["BITBUCKET_TOKEN"]
 	user, _ := env["BITBUCKET_USERNAME"]
 	pass, _ := env["BITBUCKET_PASSWORD"]
 	switch {
 	case token != "":
-		return []string{flagH, "Authorization: Bearer " + token}, nil
+		auth, err := curlauth.Header("Authorization", "Bearer "+token)
+		if err != nil {
+			return curlauth.Credential{}, &core.RefusalError{
+				Code:    codeAuthMissing,
+				Message: "BITBUCKET_TOKEN carries a line break — refusing to build a curl config",
+			}
+		}
+		return auth, nil
 	case user != "" && pass != "":
-		return []string{"-u", user + ":" + pass}, nil
+		auth, err := curlauth.Basic(user, pass)
+		if err != nil {
+			return curlauth.Credential{}, &core.RefusalError{
+				Code:    codeAuthMissing,
+				Message: "BITBUCKET_USERNAME/BITBUCKET_PASSWORD carry a line break — refusing to build a curl config",
+			}
+		}
+		return auth, nil
 	default:
-		return nil, &core.RefusalError{
+		return curlauth.Credential{}, &core.RefusalError{
 			Code:    codeAuthMissing,
 			Message: "bitbucket needs BITBUCKET_TOKEN (Bearer) or BITBUCKET_USERNAME+BITBUCKET_PASSWORD",
 		}
@@ -1189,8 +1199,8 @@ func bitbucketAuthFor(env map[string]string) ([]string, *core.RefusalError) {
 }
 
 // bitbucketMeta owns the PR read with its stderr sidecar.
-func bitbucketMeta(ctx context.Context, r *session, dir string, auth []string, base string) (string, *core.RefusalError) {
-	metaRes, err := r.curlFetch(ctx, append(append([]string{flagCurlFail}, auth...), base)...)
+func bitbucketMeta(ctx context.Context, r *session, dir string, auth curlauth.Credential, base string) (string, *core.RefusalError) {
+	metaRes, err := r.curlFetch(ctx, auth, flagCurlFail, base)
 	if werr := writeErrFile(dir+suffixMetaErr, metaRes.Stderr); werr != nil {
 		return "", &core.RefusalError{Code: CodeFetchFailed, Message: werr.Error()}
 	}
@@ -1201,9 +1211,9 @@ func bitbucketMeta(ctx context.Context, r *session, dir string, auth []string, b
 	return metaRes.Stdout, nil
 }
 
-func bitbucketDiff(ctx context.Context, r *session, dir string, auth []string, base string) *core.RefusalError {
+func bitbucketDiff(ctx context.Context, r *session, dir string, auth curlauth.Credential, base string) *core.RefusalError {
 	fmt.Fprintf(r.Human, "» bitbucket diff -> %s/full.diff\n", r.display(dir))
-	diffRes, err := r.curlFetch(ctx, append(append([]string{"-sfL"}, auth...), base+"/diff")...)
+	diffRes, err := r.curlFetch(ctx, auth, flagCurlFollowFail, base+"/diff")
 	if werr := writeErrFile(dir+suffixDiffErr, diffRes.Stderr); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: werr.Error()}
 	}
@@ -1219,7 +1229,9 @@ func bitbucketDiff(ctx context.Context, r *session, dir string, auth []string, b
 	return nil
 }
 
-func bitbucketThreads(ctx context.Context, r *session, dir string, auth []string, base, pr, head string) ([]any, *core.RefusalError) {
+func bitbucketThreads(
+	ctx context.Context, r *session, dir string, auth curlauth.Credential, base, pr, head string,
+) ([]any, *core.RefusalError) {
 	ds, _, ref := bitbucketPages(ctx, r, auth, base+"/diffstat?pagelen=100")
 	if ref != nil {
 		return nil, ref
@@ -1242,7 +1254,7 @@ func bitbucketThreads(ctx context.Context, r *session, dir string, auth []string
 	return ds, nil
 }
 
-func bitbucketPages(ctx context.Context, r *session, auth []string, first string) ([]any, bool, *core.RefusalError) {
+func bitbucketPages(ctx context.Context, r *session, auth curlauth.Credential, first string) ([]any, bool, *core.RefusalError) {
 	out, truncated, _, err := pageWalk(ctx, first, providerMaxPages,
 		func(ctx context.Context, u string) ([]any, string, error) {
 			target, ok := resolveOnOrigin(first, u)
@@ -1281,8 +1293,8 @@ func bitbucketWarnPaging(r *session, err error, truncated bool) {
 // not a JSON object is an error, never an empty page: the walk then stops with
 // the pages it has and the caller warns and marks the read truncated, instead
 // of reading a failed diffstat or comment list as "no files" / "no threads".
-func bitbucketPage(ctx context.Context, r *session, auth []string, u string) (map[string]any, error) {
-	res, err := r.curlFetch(ctx, append(append([]string{"-sfL"}, auth...), u)...)
+func bitbucketPage(ctx context.Context, r *session, auth curlauth.Credential, u string) (map[string]any, error) {
+	res, err := r.curlFetch(ctx, auth, flagCurlFollowFail, u)
 	if err != nil {
 		return nil, err
 	}
@@ -1457,7 +1469,7 @@ func azureCloneInit(ctx context.Context, r *session) (string, error) {
 	if err != nil {
 		return "", &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("azure temp clone init failed: %v", err)}
 	}
-	if res, err := r.run(ctx, binGit, "init", "-q", tmp); err != nil {
+	if res, err := r.run(ctx, "init", "-q", tmp); err != nil {
 		// No stderr redirect on the init call: git's own text leaks.
 		fmt.Fprint(r.Human, res.Stderr)
 		return "", &core.RefusalError{Code: CodeFetchFailed, Message: "azure temp clone init failed"}
@@ -1486,14 +1498,14 @@ func azureCloneDiff(ctx context.Context, r *session, dir, tmp string, conn *azur
 		return err
 	}
 	remote, hs, bs := azureMergeRef(conn.meta)
-	fetchRes, err := r.run(ctx, binGit, "-C", tmp, "fetch", "-q", remote, hs, bs)
+	fetchRes, err := r.run(ctx, "-C", tmp, "fetch", "-q", remote, hs, bs)
 	if werr := writeErrFile(dir+suffixDiffErr, fetchRes.Stderr); werr != nil {
 		return werr
 	}
 	if err != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: "azure git fetch failed: " + headBytes(fetchRes.Stderr, numExcerpt)}
 	}
-	diffRes, err := r.run(ctx, binGit, "-C", tmp, gitCmdDiff, bs, hs)
+	diffRes, err := r.run(ctx, "-C", tmp, gitCmdDiff, bs, hs)
 	if err != nil {
 		return azureDiffFail(dir, diffRes.Stderr)
 	}

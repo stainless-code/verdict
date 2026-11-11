@@ -1,0 +1,26 @@
+{
+  "values": [
+    {
+      "id": 501,
+      "user": {
+        "nickname": "rev",
+        "display_name": "Reviewer",
+        "type": "user"
+      },
+      "content": {
+        "raw": "Name the retry boundary so the third attempt is visible here."
+      },
+      "created_on": "2026-11-02T12:00:00Z",
+      "inline": {
+        "path": "notes.txt",
+        "to": 2
+      },
+      "links": {
+        "html": {
+          "href": "https://bitbucket.org/acme/app/pull-requests/7#comment-501"
+        }
+      }
+    }
+  ],
+  "next": null
+}

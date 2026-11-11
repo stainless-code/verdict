@@ -9,6 +9,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/curlauth"
 	"github.com/stainless-code/verdict/internal/forgejo"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -47,6 +48,7 @@ const (
 	msgForgejoMultiLine    = "forgejo anchors are single-line — %d multi-line anchor(s) anchored at their end line"
 	msgForgejoDraftUnknown = "post failed: forgejo could not name the token user, so an unsubmitted review draft " +
 		"could not be ruled out — nothing was written; re-run when the read works"
+	msgForgejoConfig = "post failed: forgejo could not stage the curl credential file — nothing was written"
 
 	msgForgejoNoCommit = "post failed: the payload carries no commit_id — forgejo would pin the review " +
 		"to the current head instead of the reviewed one; re-fetch to record the head"
@@ -138,10 +140,15 @@ func (forgejoHost) post(ctx context.Context, cmdr Commander, env map[string]stri
 // review's state must be the state the run asked for, because Forgejo creates a
 // PENDING draft with a 200 when the event is not one it knows, and a draft is
 // feedback nobody sees.
-func forgejoSubmit(ctx context.Context, cmdr Commander, auth []string, url string,
+func forgejoSubmit(ctx context.Context, cmdr Commander, auth curlauth.Credential, url string,
 	part *forgejoPostPayload, dir string, warnings []string,
 ) postAttempt {
-	res, err := forgejoCall(ctx, cmdr, forgejoWriteArgv(auth, url+forgejo.ReviewsPath), part.requestBody())
+	argv, cleanup, cerr := forgejoWriteArgv(auth, url+forgejo.ReviewsPath)
+	if cerr != nil {
+		return postRefusal(dir, msgForgejoConfig, warnings)
+	}
+	defer cleanup()
+	res, err := forgejoCall(ctx, cmdr, argv, part.requestBody())
 	if err != nil {
 		return postFailure(dir, msgForgejoLost, true, append(warnings, forgejoLandedWarning(len(part.comments))...))
 	}
@@ -169,7 +176,7 @@ func forgejoSubmit(ctx context.Context, cmdr Commander, auth []string, url strin
 // thing, so verdict would publish someone's in-progress review under its own
 // body. A review list that cannot be read fails closed — the risk it guards
 // against is exactly the one that would go unnoticed.
-func forgejoDraftGate(ctx context.Context, cmdr Commander, auth []string, url, dir string,
+func forgejoDraftGate(ctx context.Context, cmdr Commander, auth curlauth.Credential, url, dir string,
 	warnings *[]string,
 ) (postAttempt, bool) {
 	me, err := forgejoSelfLogin(ctx, cmdr, auth, forgejo.UserURL(url))
@@ -244,15 +251,21 @@ func parseForgejoResponse(raw string) (forgejoHTTP, bool) {
 // forgejoWriteArgv is the one write a Forgejo post makes: an explicit method,
 // both headers, and the JSON body on stdin. `-i` carries the status line and
 // the host's own error body on stdout where `-f` would throw both away on 4xx.
-func forgejoWriteArgv(auth []string, url string) []string {
-	argv := append([]string{toolCurl, curlShowStatus, curlInclude}, auth...)
-	argv = append(argv, "-H", curlJSONHeader, curlRequest, methodPost, curlDataBinary, curlStdin)
-	return append(argv, url)
+// The credential comes from a 0600 file because stdin already carries the body.
+func forgejoWriteArgv(auth curlauth.Credential, url string) (argv []string, cleanup func(), err error) {
+	argv, cleanup, err = auth.FileArgv(curlShowStatus, curlInclude, "-H", curlJSONHeader,
+		curlRequest, methodPost, curlDataBinary, curlStdin, url)
+	if err != nil {
+		return nil, nil, jq.Sealed("forgejo credential file", err)
+	}
+	return append([]string{toolCurl}, argv...), cleanup, nil
 }
 
-// forgejoReadArgv is one authenticated GET, in fetch's shape.
-func forgejoReadArgv(auth []string, url string) []string {
-	return append(append([]string{toolCurl, curlFail}, auth...), url)
+// forgejoReadArgv is one authenticated GET, in fetch's shape: curl reads the
+// credential from stdin.
+func forgejoReadArgv(auth curlauth.Credential, url string) (argv []string, stdin string) {
+	argv, stdin = auth.StdinArgv(curlFail, url)
+	return append([]string{toolCurl}, argv...), stdin
 }
 
 // forgejoCall runs one Forgejo write and seals a spawn failure; the caller
@@ -272,11 +285,12 @@ func forgejoCall(ctx context.Context, cmdr Commander, argv []string, body string
 // forgejoRead runs one authenticated GET and hands back the body with the
 // host's stderr, so a caller that owns the recheck sidecar records the host's
 // own words.
-func forgejoRead(ctx context.Context, cmdr Commander, auth []string, url string) (body, stderr string, err error) {
+func forgejoRead(ctx context.Context, cmdr Commander, auth curlauth.Credential, url string) (body, stderr string, err error) {
 	if cmdr == nil {
 		return "", errNoCommander.Error(), errNoCommander
 	}
-	res, err := runReadRetry(ctx, cmdr, &core.Command{Argv: forgejoReadArgv(auth, url)})
+	argv, stdin := forgejoReadArgv(auth, url)
+	res, err := runReadRetry(ctx, cmdr, &core.Command{Argv: argv, Stdin: strings.NewReader(stdin)})
 	if err != nil {
 		return "", res.Stderr, err
 	}
@@ -285,7 +299,7 @@ func forgejoRead(ctx context.Context, cmdr Commander, auth []string, url string)
 
 // forgejoSelfLogin reads the login the draft check and the authorship gate
 // compare against.
-func forgejoSelfLogin(ctx context.Context, cmdr Commander, auth []string, userURL string) (string, error) {
+func forgejoSelfLogin(ctx context.Context, cmdr Commander, auth curlauth.Credential, userURL string) (string, error) {
 	raw, _, err := forgejoRead(ctx, cmdr, auth, userURL)
 	if err != nil {
 		return "", err
@@ -298,7 +312,7 @@ func forgejoSelfLogin(ctx context.Context, cmdr Commander, auth []string, userUR
 }
 
 // forgejoReviews reads the reviews page the draft check scans.
-func forgejoReviews(ctx context.Context, cmdr Commander, auth []string, base string) ([]forgejo.Review, error) {
+func forgejoReviews(ctx context.Context, cmdr Commander, auth curlauth.Credential, base string) ([]forgejo.Review, error) {
 	raw, _, err := forgejoRead(ctx, cmdr, auth, forgejo.ReviewListURL(base))
 	if err != nil {
 		return nil, err
@@ -567,7 +581,7 @@ func (forgejoHost) recheck(ctx context.Context, cmdr Commander, env map[string]s
 
 // countForgejoOpen walks the review list and one comment page per submitted
 // review, counting the comments no resolver closed.
-func countForgejoOpen(ctx context.Context, cmdr Commander, auth []string, base string) (int, string, error) {
+func countForgejoOpen(ctx context.Context, cmdr Commander, auth curlauth.Credential, base string) (int, string, error) {
 	reviews, err := forgejoReviews(ctx, cmdr, auth, base)
 	if err != nil {
 		return 0, "", err
@@ -588,7 +602,7 @@ func countForgejoOpen(ctx context.Context, cmdr Commander, auth []string, base s
 
 // forgejoOpenInReview counts the comments no resolver closed on one submitted
 // review.
-func forgejoOpenInReview(ctx context.Context, cmdr Commander, auth []string, base string, id int) (int, string, error) {
+func forgejoOpenInReview(ctx context.Context, cmdr Commander, auth curlauth.Credential, base string, id int) (int, string, error) {
 	raw, stderr, err := forgejoRead(ctx, cmdr, auth, forgejo.CommentsURL(base, strconv.Itoa(id)))
 	if err != nil {
 		return 0, stderr, err
