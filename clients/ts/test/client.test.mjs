@@ -153,6 +153,26 @@ describe("unit: fake binary exit paths", () => {
     }
   });
 
+  it("index reaches the index verb", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "verdict-argv-"));
+    const argvFile = join(dir, "argv.json");
+    const client = createClient({ bin: FAKE, stderr: "pipe" });
+    const env = await client.index(["callers", "app.Target"], {
+      env: {
+        ...process.env,
+        FAKE_MODE: "record-args",
+        FAKE_ARGV_FILE: argvFile,
+      },
+    });
+    assert.equal(env.schema_version, "1");
+    assert.deepEqual(JSON.parse(readFileSync(argvFile, "utf8")), [
+      "index",
+      "callers",
+      "app.Target",
+      "--json",
+    ]);
+  });
+
   it("threads reaches the threads verb with its flags", async () => {
     const dir = mkdtempSync(join(tmpdir(), "verdict-argv-"));
     const argvFile = join(dir, "argv.json");

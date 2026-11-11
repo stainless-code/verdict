@@ -13,6 +13,7 @@ import (
 	doctorcore "github.com/stainless-code/verdict/internal/core/doctor"
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	fixcore "github.com/stainless-code/verdict/internal/core/fix"
+	indexcore "github.com/stainless-code/verdict/internal/core/index"
 	initcore "github.com/stainless-code/verdict/internal/core/init"
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
 	postcore "github.com/stainless-code/verdict/internal/core/post"
@@ -610,6 +611,43 @@ func (c *Client) Trend(ctx context.Context, req *TrendRequest) (*TrendResponse, 
 	return &TrendResponse{
 		Repo: resp.Repo, At: resp.At, Next: resp.Next,
 		Warnings: resp.Warnings, Human: resp.Human, Data: wireJSON(resp.Data),
+	}, nil
+}
+
+// IndexRequest queries the local Go index. Query is callers or status; the
+// MCP surface does not build or prune. Symbol is the caller query's symbol,
+// At names a tree or ref, From overrides the checkout, and Limit bounds rows.
+type IndexRequest struct {
+	Query, Symbol, From, At string
+	Limit                   int
+}
+
+// IndexResponse carries the index data profile and its human lines.
+type IndexResponse struct {
+	At       string
+	Next     string
+	Warnings []string
+	Human    []string
+	Data     json.RawMessage
+}
+
+// Index queries or reports the local Go index. Building and pruning stay on
+// the CLI; this method serves callers and status.
+func (c *Client) Index(ctx context.Context, req *IndexRequest) (*IndexResponse, error) {
+	rr, err := c.requestBare(ctx)
+	if err != nil {
+		return nil, err
+	}
+	resp, ref := indexcore.Run(ctx, &indexcore.Request{
+		ReadRequest: rr, Query: req.Query, Symbol: req.Symbol, From: req.From,
+		At: req.At, Limit: req.Limit,
+	})
+	if ref != nil {
+		return nil, refusalErr(ref)
+	}
+	return &IndexResponse{
+		At: resp.At, Next: resp.Next, Warnings: resp.Warnings,
+		Human: resp.Human, Data: wireJSON(resp.Data),
 	}, nil
 }
 

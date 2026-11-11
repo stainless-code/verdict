@@ -25,6 +25,11 @@ dump's `plan.txt` section additionally exports each group's actually resolved
 roster (`panel=[...]`, `panel_from`) and accounting `effort`, and the shipped
 dispatcher uses those per-group values for that group's files.
 
+**Code index.** The local Go index under `.verdict/index/`, keyed by tree SHA
+and built from `go/parser` alone. `index callers` labels each row `exact`
+(within the declaring package) or `lexical` (an exported name reached through
+an import edge); everything type-dependent stays counted as unresolved.
+
 ## Evidence
 
 **Evidence rung.** The proof behind a finding: `said`, `pointed`, `walked`,

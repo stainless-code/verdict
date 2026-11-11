@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/index.schema.json",
+  "title": "index tree — .verdict/index/trees/<tree>.json",
+  "description": "One stored per-tree index under .verdict/index/trees/<tree>.json. Files are sorted by path, declarations and references stay in source order, and no timestamp or commit id lands here, so the same tree always writes the same bytes.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "const": "1" },
+    "tree": { "type": "string" },
+    "module": { "type": "string" },
+    "files": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/file" }
+    }
+  },
+  "required": ["schema_version", "tree", "files"],
+  "additionalProperties": false,
+  "$defs": {
+    "file": {
+      "description": "One indexed file: its blob, package, imports, declarations, and references. An oversized or unparsable file carries the marker instead of silently disappearing from the coverage count.",
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "blob": { "type": "string" },
+        "size": { "type": "integer", "minimum": 0 },
+        "oversize": { "type": "boolean" },
+        "package": { "type": "string" },
+        "imports": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/import" }
+        },
+        "decls": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/decl" }
+        },
+        "refs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ref" }
+        },
+        "error": { "type": "string" },
+        "refs_truncated": { "type": "boolean" }
+      },
+      "required": ["path", "blob", "size"],
+      "additionalProperties": true
+    },
+    "import": {
+      "description": "One import binding: the import path and the name it is bound to in the file.",
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "required": ["path", "name"],
+      "additionalProperties": true
+    },
+    "decl": {
+      "description": "One package-level declaration: name, kind, line, exported bit, and receiver type for a method.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "kind": { "enum": ["func", "method", "type", "var", "const"] },
+        "line": { "type": "integer", "minimum": 1 },
+        "exported": { "type": "boolean" },
+        "recv": { "type": "string" }
+      },
+      "required": ["name", "kind", "line"],
+      "additionalProperties": true
+    },
+    "ref": {
+      "description": "One identifier reference: name, kind, qualifier for a package selector, source position, and whether it needs type information to resolve.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "kind": {
+          "enum": ["call", "method", "type-ref", "value-ref", "embed"]
+        },
+        "qualifier": { "type": "string" },
+        "line": { "type": "integer", "minimum": 1 },
+        "col": { "type": "integer", "minimum": 1 },
+        "selector": { "type": "boolean" },
+        "unresolved": { "type": "boolean" }
+      },
+      "required": ["name", "kind", "line", "col"],
+      "additionalProperties": true
+    }
+  }
+}

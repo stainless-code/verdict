@@ -718,7 +718,7 @@ more than was written.
 
 ## Machine surface
 
-`fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`run`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`threads`/`trend`/`backtest`/`learn`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
+`fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`run`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`threads`/`trend`/`index`/`backtest`/`learn`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
 non-zero. `mcp config` also takes `--json`. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `threads` refreshes only `.verdict/state/<pr>/threads.json` from the host (all six
@@ -2571,6 +2571,42 @@ credited flips, and per-bundle `calibrate_eligible` marks bundles carrying a
 posted review id + head that `calibrate` could settle against live threads — the
 audit reads those shapes only, never recomputes them and never touches the
 network. Without the flag both outputs are byte-identical to today.
+
+## Code index (Go callers)
+
+`index build [--from <dir>] [--at <ref>]` parses a git tree with the standard
+library (`go/parser`, `go/ast`) — no tree-sitter, no cgo, no third-party
+module — and writes a per-tree index under `.verdict/index/`, which the tracked
+ignore contract keeps local. The query key is the tree SHA, so an empty commit
+reuses the same tree file; shards are content-addressed by blob, so a pure
+rename parses nothing and an edit parses one file. `--from` reads another
+checkout; `--at` names a ref (default `HEAD`).
+
+`index status` reports the stored trees and shards and whether HEAD's tree is
+indexed. `index prune` keeps the newest four trees and the shards they
+reference. `index callers <symbol>` answers call sites for one symbol: results
+are **exact within a package** (object identity in that package's declarations)
+and **lexical across packages** (an exported name reached through an import
+edge); otherwise they are counted in `counts.unresolved`, never guessed.
+Methods, interface and dynamic dispatch, reflection, and generic instantiation
+are unresolved by construction. A bare symbol (`Target`) selects every package
+declaring it; a qualified one (`app.Target`, or the import path) names the
+package. Rows sort by path, line, and kind, and truncate to `--limit` (default
+50, maximum 200) with `data.truncated` naming how many were not shown.
+
+The honest limits are the contract: **exact within a package, lexical across
+packages, incomplete by construction**. Do not read a caller row as proof of
+every call: a method value, a function stored in a variable, or a type argument
+is counted unresolved, not found.
+
+Caps: 20,000 Go files, 1 MiB per file (an oversized file is skipped and
+counted in `coverage.skipped`), a 96 MiB tree file, and a 256 MiB shard cache;
+a repo over a cap refuses `index-capped` naming the measured number. A
+truncated or invalid shard refuses `index-corrupt` and is never read as empty.
+Querying a tree that is not HEAD's marks the envelope `stale: true` and warns
+`» index: built for <tree>, HEAD is <tree2>`. The MCP `index` tool is
+read-only and serves `callers` and `status`; building and pruning stay on the
+CLI.
 
 ## Backtest (SZZ candidates)
 

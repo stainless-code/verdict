@@ -155,6 +155,7 @@ const (
 	renameSep        = " -> "               // rename lines match on the post-arrow path
 	stateDir         = ".verdict/state/"    // review run scratch
 	backtestDir      = ".verdict/backtest/" // mined backtest artifacts
+	indexDir         = ".verdict/index/"    // local Go index
 	newline          = "\n"
 )
 
@@ -222,10 +223,12 @@ func isScratchLine(line string) bool {
 	return isScratchPath(file) && isScratchPath(renameTarget(file))
 }
 
-// isScratchPath reports a generated artifact directory: review state and
-// mined backtest runs stay out of the dirt set, both sides of a rename.
+// isScratchPath reports a generated artifact directory: review state, mined
+// backtest runs, and the local index stay out of the dirt set, both sides of
+// a rename.
 func isScratchPath(path string) bool {
-	return strings.HasPrefix(path, stateDir) || strings.HasPrefix(path, backtestDir)
+	return strings.HasPrefix(path, stateDir) || strings.HasPrefix(path, backtestDir) ||
+		strings.HasPrefix(path, indexDir)
 }
 
 func (st *state) notARepo() *Response {

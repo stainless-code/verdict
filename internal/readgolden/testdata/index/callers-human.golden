@@ -1,0 +1,11 @@
+exit: 0
+--- stdout ---
+index: 5 caller(s) of app.Target at 7a4ae225bc9550e4ab70a5d4c08dedc668325f7c (0 unresolved)
+app/app.go:6 call (exact)
+app/extra.go:3 value-ref (exact)
+app/helper.go:4 call (exact)
+cmd/main.go:6 call (lexical)
+lib/lib.go:6 call (lexical)
+--- stderr ---
+
+--- files ---

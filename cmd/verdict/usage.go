@@ -2,7 +2,7 @@ package main
 
 func usageText() string {
 	return "usage: verdict fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
-		"fetch-local|run|record|adopt|fix|check-tree|ready|gate|threads|trend|" +
+		"fetch-local|run|record|adopt|fix|check-tree|ready|gate|threads|trend|index|" +
 		"backtest|learn|init|skill|upgrade|uninstall|mcp|config [opts]\n" +
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
 		"[--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
@@ -227,6 +227,19 @@ func usageText() string {
 		"    (addressed vs false-positive); missing manifests read unmeasured (never\n" +
 		"    zero) and stay out of both denominators. Default output is byte-identical\n" +
 		"    without the flag.\n" +
+		"  index build [--from <dir>] [--at <ref>] [--json]\n" +
+		"    build the Go index for one tree under .verdict/index/ (stdlib go/parser).\n" +
+		"    --from reads another checkout; --at names a ref (default HEAD). Shards are\n" +
+		"    content-addressed by blob, so a rename parses nothing and an edit parses one.\n" +
+		"  index status [--json]\n" +
+		"    stored trees and shards, and whether HEAD's tree is indexed.\n" +
+		"  index prune [--json]\n" +
+		"    keep the newest 4 trees and the shards they reference.\n" +
+		"  index callers <symbol> [--at <tree>] [--limit <n, default 50, max 200>] [--json]\n" +
+		"    call sites of one symbol: exact within its package, lexical across packages\n" +
+		"    only through an import edge. A qualified symbol names the package (a.Target);\n" +
+		"    rows are truncated with a count, never silently, and unresolved candidates\n" +
+		"    (methods, dynamic dispatch, generic instantiation) are counted, never guessed.\n" +
 		"  backtest mine --since <90d|12w|18mo|2y|<ref>> [--until <ref>] [--run <slug>] [--json]\n" +
 		"    mine SZZ bug-introducing PR candidates from the local clone: seeds are fix:,\n" +
 		"    bugfix:, hotfix:, Fixes #N, and Revert \"...\" commits in the window; each locked\n" +
@@ -322,7 +335,7 @@ func usageText() string {
 		"  overview + diagrams) namespaces\n" +
 		"  (~/.config/verdict/settings.json, $XDG_CONFIG_HOME respected).\n" +
 		"  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/" +
-		"fetch-local/run/record/adopt/fix/check-tree/ready/gate/trend/backtest/learn/init/skill/upgrade/uninstall/config: " +
+		"fetch-local/run/record/adopt/fix/check-tree/ready/gate/trend/index/backtest/learn/init/skill/upgrade/uninstall/config: " +
 		"stdout is exactly one JSON envelope (schema_version 1);\n" +
 		"  all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.\n" +
 		"  Glossary: https://stainless-code.com/verdict/docs/glossary\n"
@@ -336,6 +349,7 @@ var bareVerbs = map[string]bool{
 	verbSkill:    true,
 	"upgrade":    true,
 	"uninstall":  true,
+	"index":      true,
 }
 
 func arityUsage(cmd, repo, pr string) bool {

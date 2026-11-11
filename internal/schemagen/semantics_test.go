@@ -141,7 +141,9 @@ var publishedSemantics = map[string]string{
 	// repair-exhausted problems: the error.problems description now covers
 	// repair-exhausted (errors first) alongside bad-review-input. Description
 	// only; no property, required key, enum, or type changed.
-	"envelope.schema.json": "c32eac3735890eace13f359f55caa0f8d2077730005c4b16a6bc7e696b819bac",
+	// index: additive $defs/indexData and its sub-shapes. Additions only; no
+	// existing property, required key, enum, or type changed.
+	"envelope.schema.json": "835bb40b131b463309c4f50f1430c02498b58c78e64e3ec54f4eaa0c96c8cb82",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -179,7 +181,10 @@ var publishedSemantics = map[string]string{
 	// of the 64-lens cap (pack-too-large) instead of promising a maxItems the
 	// published keyword subset does not implement. Prose only; no property,
 	// required key, enum, or type changed.
-	"pack.schema.json": "7525f56b2c60ae932397adf9546e8f34640247ec5a38ed21854f8cda9ee2f7c4",
+	// additive index.schema.json (new local-tree document; no existing
+	// schema property, required key, or type changed).
+	"index.schema.json": "2200ac9089a3bb4979964bbf44332dfaf00e7953d27c9d7c6faf9b590eb03a95",
+	"pack.schema.json":  "7525f56b2c60ae932397adf9546e8f34640247ec5a38ed21854f8cda9ee2f7c4",
 	// patch identity: additive optional patch_id/patch_id_kind plus the
 	// optional forced[] audit with $defs/forcedPost. No existing property,
 	// required key, or type changed.

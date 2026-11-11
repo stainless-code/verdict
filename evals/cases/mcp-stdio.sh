@@ -60,10 +60,10 @@ if jq -e 'select(.id == 1).result.instructions | (type == "string") and (contain
 else
   bad "initialize instructions are missing or thin"
 fi
-if jq -e 'select(.id == 2).result.tools | length == 19' <"$MCP_OUT" >/dev/null; then
-  good "tools/list carries 19 core tools (triage is operator-only)"
+if jq -e 'select(.id == 2).result.tools | length == 20' <"$MCP_OUT" >/dev/null; then
+  good "tools/list carries 20 core tools (triage is operator-only)"
 else
-  bad "tools/list count is not 19"
+  bad "tools/list count is not 20"
 fi
 if jq -e 'select(.id == 2).result.tools | map(.name) | (index("report") != null) and (index("post") != null) and (index("install") == null) and (index("triage") == null)' <"$MCP_OUT" >/dev/null; then
   good "tool names follow the core surface (install and triage are never tools)"
@@ -156,7 +156,7 @@ cat >"$FRAMES" <<'EOF'
 EOF
 run_mcp_input "$FRAMES" --read-only
 if [ "$EVAL_STATUS" -eq 0 ]; then good "--read-only session exits 0"; else bad "--read-only exit $EVAL_STATUS"; fi
-if jq -e 'select(.id == 2).result.tools | (length == 9) and (map(.name) | (index("report") != null) and (index("record") != null) and (index("config") != null) and (index("triage") == null))' <"$MCP_OUT" >/dev/null; then
+if jq -e 'select(.id == 2).result.tools | (length == 10) and (map(.name) | (index("report") != null) and (index("record") != null) and (index("config") != null) and (index("triage") == null))' <"$MCP_OUT" >/dev/null; then
   good "--read-only exposes report, the dry-run record tool, config, and no submit verbs"
 else
   bad "--read-only tool list drifted"
@@ -185,8 +185,8 @@ else
 fi
 run_mcp_input "$FRAMES" --operator
 if [ "$EVAL_STATUS" -eq 0 ]; then good "--operator session exits 0"; else bad "--operator exit $EVAL_STATUS"; fi
-if jq -e 'select(.id == 2).result.tools | (length == 20) and (map(.name) | index("triage") != null) and (map(select(.name == "triage"))[0].inputSchema.properties.status.enum == ["open","addressed","wont-fix","false-positive","deferred"])' <"$MCP_OUT" >/dev/null; then
-  good "--operator exposes 20 tools including triage with its status enum"
+if jq -e 'select(.id == 2).result.tools | (length == 21) and (map(.name) | index("triage") != null) and (map(select(.name == "triage"))[0].inputSchema.properties.status.enum == ["open","addressed","wont-fix","false-positive","deferred"])' <"$MCP_OUT" >/dev/null; then
+  good "--operator exposes 21 tools including triage with its status enum"
 else
   bad "--operator tool list drifted"
 fi

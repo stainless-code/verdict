@@ -2,10 +2,10 @@ package checktreecore
 
 import "testing"
 
-// TestSplitScratchKeepsSharedControls proves review state and backtest
-// artifacts are the only run scratch: a control file that is untracked,
-// modified, or renamed out of those directories stays in the dirt set, so the
-// gate cannot report clean for an uncommitted policy.
+// TestSplitScratchKeepsSharedControls proves review state, backtest
+// artifacts, and the local index are the run scratch: a control file that is
+// untracked, modified, or renamed out of those directories stays in the dirt
+// set, so the gate cannot report clean for an uncommitted policy.
 func TestSplitScratchKeepsSharedControls(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -25,6 +25,9 @@ func TestSplitScratchKeepsSharedControls(t *testing.T) {
 		{"untracked backtest artifact", "?? .verdict/backtest/run/run.json", true},
 		{"rename out of backtest", "R  .verdict/backtest/run/mine.json -> .verdict/config.json", false},
 		{"rename config into backtest", "R  .verdict/config.json -> .verdict/backtest/run/mine.json", false},
+		{"tracked index shard", " M .verdict/index/shards/abc.json", true},
+		{"untracked index tree", "?? .verdict/index/trees/abc.json", true},
+		{"rename out of index", "R  .verdict/index/version -> .verdict/config.json", false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

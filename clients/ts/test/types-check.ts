@@ -65,6 +65,7 @@ type Verb =
   | "doctor"
   | "calibrate"
   | "trend"
+  | "index"
   | "adopt"
   | "fix"
   | "learn"

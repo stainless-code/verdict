@@ -13,6 +13,7 @@ import (
 	doctorcore "github.com/stainless-code/verdict/internal/core/doctor"
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	fixcore "github.com/stainless-code/verdict/internal/core/fix"
+	indexcore "github.com/stainless-code/verdict/internal/core/index"
 	initcore "github.com/stainless-code/verdict/internal/core/init"
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
 	readycore "github.com/stainless-code/verdict/internal/core/ready"
@@ -192,6 +193,22 @@ func wireFix(ctx context.Context, b *bindings, req *fixcore.Request) error {
 		return err
 	}
 	req.Human = b.stderr
+	return nil
+}
+
+func decodeIndex(req *indexcore.Request, a *args) {
+	a.str("query", &req.Query)
+	a.str("symbol", &req.Symbol)
+	a.str("at", &req.At)
+	a.str("from", &req.From)
+	a.integer("limit", &req.Limit)
+}
+
+func wireIndex(ctx context.Context, b *bindings, req *indexcore.Request) error {
+	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
+		return err
+	}
+	req.Warnings = b.warningList()
 	return nil
 }
 

@@ -44,6 +44,7 @@ init: preset standard (chill: unpinned/10/0.7, standard: 1 member/5/0.5, strict:
 --- .verdict/.gitignore (create) ---
 /state/
 /backtest/
+/index/
 wrote: .verdict/config.json
 wrote: .verdict/kb.jsonl
 wrote: .verdict/.gitignore
@@ -57,6 +58,7 @@ next: pin real panel slugs in .verdict/config.json, tune defaults.budget_usd, th
 --- file C/.verdict/.gitignore ---
 /state/
 /backtest/
+/index/
 --- file C/.verdict/config.json ---
 {
   "schema_version": "1",

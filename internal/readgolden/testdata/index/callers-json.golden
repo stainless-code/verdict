@@ -1,0 +1,68 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "index",
+  "repo": "",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "narrow the query to one package, or raise --limit",
+  "warnings": [],
+  "data": {
+    "kind": "callers",
+    "query": {
+      "symbol": "app.Target"
+    },
+    "index": {
+      "tree": "7a4ae225bc9550e4ab70a5d4c08dedc668325f7c",
+      "commit": "48c76ec4038fbf532045ece0513c7ceeb1d6a524",
+      "stale": false,
+      "coverage": {
+        "files_indexed": 6,
+        "skipped": 0
+      }
+    },
+    "counts": {
+      "callers": 5,
+      "unresolved": 0
+    },
+    "limit": 50,
+    "truncated": 0,
+    "rows": [
+      {
+        "path": "app/app.go",
+        "line": 6,
+        "kind": "call",
+        "resolution": "exact"
+      },
+      {
+        "path": "app/extra.go",
+        "line": 3,
+        "kind": "value-ref",
+        "resolution": "exact"
+      },
+      {
+        "path": "app/helper.go",
+        "line": 4,
+        "kind": "call",
+        "resolution": "exact"
+      },
+      {
+        "path": "cmd/main.go",
+        "line": 6,
+        "kind": "call",
+        "resolution": "lexical"
+      },
+      {
+        "path": "lib/lib.go",
+        "line": 6,
+        "kind": "call",
+        "resolution": "lexical"
+      }
+    ]
+  },
+  "error": null
+}
+--- stderr ---
+
+--- files ---

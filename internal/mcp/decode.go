@@ -9,6 +9,9 @@ import (
 
 const jsonNull = "null"
 
+// msgArgument is the shared argument decode failure shape.
+const msgArgument = "argument %q: %v"
+
 type paramError struct {
 	msg string
 }
@@ -137,7 +140,7 @@ func (a *args) str(key string, dst *string) {
 		return
 	}
 	if err := json.Unmarshal(raw, dst); err != nil {
-		a.fail(paramErrorf("argument %q: %v", key, err))
+		a.fail(paramErrorf(msgArgument, key, err))
 	}
 }
 
@@ -150,7 +153,20 @@ func (a *args) boolean(key string, dst *bool) {
 		return
 	}
 	if err := json.Unmarshal(raw, dst); err != nil {
-		a.fail(paramErrorf("argument %q: %v", key, err))
+		a.fail(paramErrorf(msgArgument, key, err))
+	}
+}
+
+func (a *args) integer(key string, dst *int) {
+	if a.err != nil {
+		return
+	}
+	raw, ok := a.take(key)
+	if !ok {
+		return
+	}
+	if err := json.Unmarshal(raw, dst); err != nil {
+		a.fail(paramErrorf(msgArgument, key, err))
 	}
 }
 
@@ -163,7 +179,7 @@ func (a *args) strings(key string, dst *[]string) {
 		return
 	}
 	if err := json.Unmarshal(raw, dst); err != nil {
-		a.fail(paramErrorf("argument %q: %v", key, err))
+		a.fail(paramErrorf(msgArgument, key, err))
 	}
 }
 

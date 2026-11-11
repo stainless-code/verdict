@@ -122,6 +122,10 @@ func (c *Client) Gate(ctx context.Context, req *GateRequest) (*GateResponse, err
     Live and Coverage alone only set postures, so an empty request is a refusal.
     It never posts, merges, or writes a store.
 
+func (c *Client) Index(ctx context.Context, req *IndexRequest) (*IndexResponse, error)
+    Index queries or reports the local Go index. Building and pruning stay on
+    the CLI; this method serves callers and status.
+
 func (c *Client) Init(ctx context.Context, req *InitRequest) (*InitResponse, error)
     Init scaffolds .verdict control files from a style preset.
 
@@ -280,6 +284,23 @@ type GateResponse struct {
 }
     GateResponse carries the composed gate verdict. A failed gate is a verdict,
     not a refusal: the error stays nil and Passed is false.
+
+type IndexRequest struct {
+	Query, Symbol, From, At string
+	Limit                   int
+}
+    IndexRequest queries the local Go index. Query is callers or status; the
+    MCP surface does not build or prune. Symbol is the caller query's symbol,
+    At names a tree or ref, From overrides the checkout, and Limit bounds rows.
+
+type IndexResponse struct {
+	At       string
+	Next     string
+	Warnings []string
+	Human    []string
+	Data     json.RawMessage
+}
+    IndexResponse carries the index data profile and its human lines.
 
 type InitRequest struct {
 	Preset string
