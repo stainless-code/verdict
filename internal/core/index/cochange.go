@@ -24,7 +24,7 @@ import (
 const (
 	cochangeDirName    = "cochange"
 	cochangeKeep       = 2
-	cochangeSchema     = "1"
+	cochangeSchema     = "2"
 	commitHeaderPrefix = "\x01"
 	commitDateFormat   = "2006-01-02T15:04:05Z07:00"
 	jaccardDecimals    = 10000

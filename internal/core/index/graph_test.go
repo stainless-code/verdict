@@ -671,6 +671,42 @@ func TestCoChangedCacheIsDeterministic(t *testing.T) {
 	})
 }
 
+// TestCoChangedIgnoresPreV2Cache proves a cache written before the schema bump
+// is a miss: its partners are discarded and the window is rewritten at the
+// current schema.
+func TestCoChangedIgnoresPreV2Cache(t *testing.T) {
+	f := newFixture(t)
+	writeHistoryFixture(f)
+	f.build()
+	head := f.run("", "rev-parse", "HEAD")
+	dir := filepath.Join(f.dir, ".verdict", "index", "cochange")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, head+"-2000.json")
+	stale := `{"schema_version":"1","head":"` + head + `","since":"","commits":2000,"changes":[` +
+		`{"commit":"` + strings.Repeat("a", 40) + `","paths":["a/target.go","z/bogus.go"]},` +
+		`{"commit":"` + strings.Repeat("b", 40) + `","paths":["a/target.go","z/bogus.go"]}]}`
+	if err := os.WriteFile(path, []byte(stale), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	resp := f.queryPath(QueryCoChanged, "a/target.go")
+	assertCoChangeRows(t, resp.Data.CoChangeRows, []CoChangeRow{
+		{Path: "b/partner.go", Commits: 3, Jaccard: 0.75},
+		{Path: "c/rare.go", Commits: 2, Jaccard: 0.5},
+	})
+	rewritten, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(rewritten), `"schema_version":"2"`) {
+		t.Errorf("cache = %s; want the rewritten schema 2 window", rewritten)
+	}
+	if strings.Contains(string(rewritten), "z/bogus.go") {
+		t.Errorf("cache = %s; want the stale partners gone", rewritten)
+	}
+}
+
 // snapshotCoChange reads every co-change cache file keyed by name.
 func snapshotCoChange(t *testing.T, root string) map[string]string {
 	t.Helper()
