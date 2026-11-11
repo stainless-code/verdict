@@ -198,7 +198,7 @@ func TestMineTwoCandidates(t *testing.T) {
 	r, base := twoCandidateRepo(t)
 	rec := &recorder{}
 	resp, ref := Run(t.Context(), &Request{
-		Runtime:  &core.Runtime{Commander: coreexec.Runner{MissingTool: true}, Progress: rec},
+		Runtime:  &core.Runtime{Commander: coreexec.Runner{MissingTool: true}, Progress: rec, Env: userEnv(t, nil)},
 		RepoRoot: r.dir, Mode: modeMine, Since: base, Until: "HEAD",
 	})
 	if ref != nil {
@@ -227,7 +227,7 @@ func TestMineTwoCandidates(t *testing.T) {
 	}
 	first := readMine(t, r, resp.Data.Run)
 	_, ref = Run(t.Context(), &Request{
-		Runtime:  &core.Runtime{Commander: coreexec.Runner{MissingTool: true}},
+		Runtime:  &core.Runtime{Commander: coreexec.Runner{MissingTool: true}, Env: userEnv(t, nil)},
 		RepoRoot: r.dir, Mode: modeMine, Since: base, Until: "HEAD",
 	})
 	if ref != nil {
@@ -264,7 +264,7 @@ func TestMineArtifacts(t *testing.T) {
 	b, _ := newMergedFixRepo(t)
 	clock := func() time.Time { return time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC) }
 	resp, ref := Run(t.Context(), &Request{
-		Runtime:  &core.Runtime{Commander: coreexec.Runner{MissingTool: true}, Now: clock},
+		Runtime:  &core.Runtime{Commander: coreexec.Runner{MissingTool: true}, Now: clock, Env: userEnv(t, nil)},
 		RepoRoot: b.r.dir, Mode: modeMine, Since: b.base, Until: "HEAD",
 	})
 	if ref != nil {
@@ -351,7 +351,7 @@ func TestMineRefusals(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			tc.req.Runtime = &core.Runtime{Commander: coreexec.Runner{MissingTool: true}}
+			tc.req.Runtime = &core.Runtime{Commander: coreexec.Runner{MissingTool: true}, Env: userEnv(t, nil)}
 			_, ref := Run(t.Context(), &tc.req)
 			if ref == nil {
 				t.Fatal("no refusal")
@@ -366,7 +366,7 @@ func TestMineRefusals(t *testing.T) {
 // TestMineRunMismatch proves an existing run with another resolution refuses.
 func TestMineRunMismatch(t *testing.T) {
 	r, _ := twoCandidateRepo(t)
-	seed := Request{Runtime: &core.Runtime{Commander: coreexec.Runner{MissingTool: true}}, RepoRoot: r.dir, Mode: modeMine, Since: "HEAD~3", Run: "fixed"}
+	seed := Request{Runtime: &core.Runtime{Commander: coreexec.Runner{MissingTool: true}, Env: userEnv(t, nil)}, RepoRoot: r.dir, Mode: modeMine, Since: "HEAD~3", Run: "fixed"}
 	if _, ref := Run(t.Context(), &seed); ref != nil {
 		t.Fatalf("seed run: %s: %s", ref.Code, ref.Message)
 	}
@@ -388,7 +388,7 @@ func TestMineCorruptRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, ref := Run(t.Context(), &Request{
-		Runtime: &core.Runtime{Commander: coreexec.Runner{MissingTool: true}}, RepoRoot: r.dir,
+		Runtime: &core.Runtime{Commander: coreexec.Runner{MissingTool: true}, Env: userEnv(t, nil)}, RepoRoot: r.dir,
 		Mode: modeMine, Since: "HEAD~3", Run: "fixed",
 	})
 	if ref == nil || ref.Code != "corrupt-store" {

@@ -44,6 +44,7 @@ func TestMineStderrNoiseDoesNotCorruptParses(t *testing.T) {
 	resp, ref := Run(t.Context(), &Request{
 		Runtime: &core.Runtime{
 			Commander: noisyCommander{inner: coreexec.Runner{MissingTool: true}},
+			Env:       userEnv(t, nil),
 		},
 		RepoRoot: b.r.dir, Mode: modeMine, Since: b.base, Until: "HEAD",
 	})

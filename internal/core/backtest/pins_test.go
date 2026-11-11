@@ -52,16 +52,18 @@ var trustReadArgvs = [][]string{
 func TestMinePinsEveryGitCall(t *testing.T) {
 	b, _ := newMergedFixRepo(t)
 	home := t.TempDir()
+	global := writeGitConfig(t, "")
 	rec := &pinRecorder{inner: coreexec.Runner{MissingTool: true}}
 	_, ref := Run(t.Context(), &Request{
 		Runtime: &core.Runtime{
 			Commander: rec,
-			Env: map[string]string{
+			Env: userEnv(t, map[string]string{
 				"HOME": home, "MINE_MARKER": "kept", "GIT_CONFIG_NOSYSTEM": "1",
 				"GIT_DIR": "/evil", "GIT_WORK_TREE": "/evil", "GIT_INDEX_FILE": "/evil",
 				"GIT_OBJECT_DIRECTORY": "/evil", "GIT_ALTERNATE_OBJECT_DIRECTORIES": "/evil",
-				"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "color.ui", "GIT_CONFIG_VALUE_0": "always",
-			},
+				"GIT_CONFIG_GLOBAL": global, "GIT_CONFIG_COUNT": "1",
+				"GIT_CONFIG_KEY_0": "color.ui", "GIT_CONFIG_VALUE_0": "always",
+			}),
 		},
 		RepoRoot: b.r.dir, Mode: modeMine, Since: b.base, Until: "HEAD",
 	})
@@ -74,7 +76,7 @@ func TestMinePinsEveryGitCall(t *testing.T) {
 		name := "git " + strings.Join(call.argv, " ")
 		if isTrustRead(call.argv) {
 			reads = append(reads, call.argv)
-			checkUserEnv(t, name, call.env, home)
+			checkUserEnv(t, name, call.env, home, global)
 			continue
 		}
 		mined++
@@ -170,14 +172,15 @@ func checkNoRedirects(t *testing.T, name string, env map[string]string) {
 }
 
 // checkUserEnv proves one safe.directory read runs with the user's config
-// scopes and overlays live, git's location redirects dropped, and the locale
-// and pager pins in place.
-func checkUserEnv(t *testing.T, name string, env map[string]string, home string) {
+// scopes and overlays live — the test's own files, not the host's — git's
+// location redirects dropped, and the locale and pager pins in place.
+func checkUserEnv(t *testing.T, name string, env map[string]string, home, global string) {
 	t.Helper()
 	wantEnv := map[string]string{
 		"HOME": home, "LC_ALL": "C", "GIT_PAGER": "cat",
 		"GIT_OPTIONAL_LOCKS": "0", "GIT_TERMINAL_PROMPT": "0",
 		"GIT_NO_REPLACE_OBJECTS": "1", "GIT_CONFIG_NOSYSTEM": "1",
+		"GIT_CONFIG_GLOBAL": global, "GIT_CONFIG_SYSTEM": os.DevNull,
 		"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "color.ui",
 		"GIT_CONFIG_VALUE_0": "always",
 	}
@@ -185,9 +188,6 @@ func checkUserEnv(t *testing.T, name string, env map[string]string, home string)
 		if got := env[key]; got != want {
 			t.Errorf("%s: env %s = %q; want %q", name, key, got, want)
 		}
-	}
-	if _, bad := env["GIT_CONFIG_GLOBAL"]; bad {
-		t.Errorf("%s: pinned GIT_CONFIG_GLOBAL; the read must use the user's resolution", name)
 	}
 	for _, key := range []string{
 		"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY",

@@ -1,6 +1,7 @@
 package backtest
 
 import (
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -39,6 +40,8 @@ func (r *repo) date() string {
 }
 
 // git runs one git command with the pinned identity and the current date.
+// The host's protected config files are pinned too: a runner's own
+// safe.directory must not decide what the fixture repository contains.
 func (r *repo) git(args ...string) string {
 	r.t.Helper()
 	cmd := exec.CommandContext(r.t.Context(), "git", args...)
@@ -46,6 +49,7 @@ func (r *repo) git(args ...string) string {
 	cmd.Env = testenv.Base(map[string]string{
 		"GIT_AUTHOR_DATE":    r.date(),
 		"GIT_COMMITTER_DATE": r.date(),
+		"GIT_CONFIG_SYSTEM":  os.DevNull,
 	})
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -112,6 +116,7 @@ func (r *repo) gitAllow(args ...string) (string, bool) {
 	cmd.Env = testenv.Base(map[string]string{
 		"GIT_AUTHOR_DATE":    r.date(),
 		"GIT_COMMITTER_DATE": r.date(),
+		"GIT_CONFIG_SYSTEM":  os.DevNull,
 	})
 	out, err := cmd.CombinedOutput()
 	return string(out), err == nil
@@ -131,11 +136,36 @@ func stringTrim(s string) string {
 	return s
 }
 
+// writeGitConfig writes one GIT_CONFIG_GLOBAL target and returns its path.
+func writeGitConfig(t *testing.T, body string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "gitconfig")
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// userEnv returns the environment snapshot the service resolves the user's
+// protected git config from. The host's system and global files are replaced —
+// the system scope with the null device, the global scope with one empty file
+// per test — so a developer's or a runner's own safe.directory cannot decide
+// the result. A test that sets its own value keeps it: override wins.
+func userEnv(t *testing.T, override map[string]string) map[string]string {
+	t.Helper()
+	env := map[string]string{
+		"GIT_CONFIG_SYSTEM": os.DevNull,
+		"GIT_CONFIG_GLOBAL": writeGitConfig(t, ""),
+	}
+	maps.Copy(env, override)
+	return env
+}
+
 // runMine runs the service against r over since..until.
 func runMine(t *testing.T, r *repo, since string) *Data {
 	t.Helper()
 	resp, ref := Run(t.Context(), &Request{
-		Runtime:  &core.Runtime{Commander: coreexec.Runner{MissingTool: true}},
+		Runtime:  &core.Runtime{Commander: coreexec.Runner{MissingTool: true}, Env: userEnv(t, nil)},
 		RepoRoot: r.dir, Mode: modeMine, Since: since, Until: "HEAD",
 	})
 	if ref != nil {

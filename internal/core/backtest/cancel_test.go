@@ -83,7 +83,7 @@ func TestMineCanceledBetweenSeeds(t *testing.T) {
 		stop: func(cmd *core.Command) bool { return slices.Contains(cmd.Argv, "--numstat") },
 	}
 	_, ref := Run(ctx, &Request{
-		Runtime: &core.Runtime{Commander: cmdr}, RepoRoot: r.dir,
+		Runtime: &core.Runtime{Commander: cmdr, Env: userEnv(t, nil)}, RepoRoot: r.dir,
 		Mode: modeMine, Since: base, Until: "HEAD",
 	})
 	if !cmdr.fired {
@@ -110,7 +110,7 @@ func TestMineCanceledBetweenLines(t *testing.T) {
 		stop: func(cmd *core.Command) bool { return slices.Contains(cmd.Argv, "grep") },
 	}
 	_, ref := Run(ctx, &Request{
-		Runtime: &core.Runtime{Commander: cmdr}, RepoRoot: r.dir,
+		Runtime: &core.Runtime{Commander: cmdr, Env: userEnv(t, nil)}, RepoRoot: r.dir,
 		Mode: modeMine, Since: base, Until: "HEAD",
 	})
 	if !cmdr.fired {

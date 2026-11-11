@@ -63,10 +63,11 @@ func TestMineIgnoresHostileGitConfig(t *testing.T) {
 
 // mineRun runs the service over base..HEAD with an injected environment
 // snapshot and returns the envelope data and the bytes it wrote to mine.json.
+// The snapshot's protected config scopes are the test's own, never the host's.
 func mineRun(t *testing.T, r *repo, since string, env map[string]string) (*Data, []byte) {
 	t.Helper()
 	resp, ref := Run(t.Context(), &Request{
-		Runtime:  &core.Runtime{Commander: coreexec.Runner{MissingTool: true}, Env: env},
+		Runtime:  &core.Runtime{Commander: coreexec.Runner{MissingTool: true}, Env: userEnv(t, env)},
 		RepoRoot: r.dir, Mode: modeMine, Since: since, Until: "HEAD",
 	})
 	if ref != nil {

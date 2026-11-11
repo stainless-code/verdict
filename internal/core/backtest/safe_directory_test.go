@@ -13,16 +13,6 @@ import (
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 )
 
-// writeTrustConfig writes one GIT_CONFIG_GLOBAL target and returns its path.
-func writeTrustConfig(t *testing.T, body string) string {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "gitconfig")
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	return path
-}
-
 // otherOwnerEnv is the snapshot that makes the fixture checkout read as owned
 // by another uid, with the user's config scopes pinned to path.
 func otherOwnerEnv(path string) map[string]string {
@@ -38,7 +28,7 @@ func otherOwnerEnv(path string) map[string]string {
 // the user's own git environment and forwarded into the scrubbed calls.
 func TestMineHonoursUserSafeDirectory(t *testing.T) {
 	b, _ := newMergedFixRepo(t)
-	global := writeTrustConfig(t, "[safe]\n\tdirectory = *\n")
+	global := writeGitConfig(t, "[safe]\n\tdirectory = *\n")
 	data, _ := mineRun(t, b.r, b.base, otherOwnerEnv(global))
 	want := "1d1518cf4adca036e1325e9666d54094dccacfa5"
 	if len(data.Mine.Candidates) != 1 || data.Mine.Candidates[0].Head != want {
@@ -50,7 +40,7 @@ func TestMineHonoursUserSafeDirectory(t *testing.T) {
 func mineRefusal(t *testing.T, b bugRepo, env map[string]string) *core.RefusalError {
 	t.Helper()
 	_, ref := Run(t.Context(), &Request{
-		Runtime:  &core.Runtime{Commander: coreexec.Runner{MissingTool: true}, Env: env},
+		Runtime:  &core.Runtime{Commander: coreexec.Runner{MissingTool: true}, Env: userEnv(t, env)},
 		RepoRoot: b.r.dir, Mode: modeMine, Since: b.base, Until: "HEAD",
 	})
 	return ref
@@ -61,7 +51,7 @@ func mineRefusal(t *testing.T, b bugRepo, env map[string]string) *core.RefusalEr
 // path is not a repository.
 func TestMineNamesDubiousOwnership(t *testing.T) {
 	b, _ := newMergedFixRepo(t)
-	ref := mineRefusal(t, b, otherOwnerEnv(writeTrustConfig(t, "")))
+	ref := mineRefusal(t, b, otherOwnerEnv(writeGitConfig(t, "")))
 	if ref == nil {
 		t.Fatal("refusal = nil; want backtest-failed naming dubious ownership")
 	}
@@ -76,7 +66,7 @@ func TestMineNamesDubiousOwnership(t *testing.T) {
 // would grant a trust the user withdrew.
 func TestMineHonoursSafeDirectoryReset(t *testing.T) {
 	b, _ := newMergedFixRepo(t)
-	ref := mineRefusal(t, b, otherOwnerEnv(writeTrustConfig(t, "[safe]\n\tdirectory = *\n\tdirectory =\n")))
+	ref := mineRefusal(t, b, otherOwnerEnv(writeGitConfig(t, "[safe]\n\tdirectory = *\n\tdirectory =\n")))
 	if ref == nil || ref.Code != codeBacktestFail || !strings.Contains(ref.Message, "detected dubious ownership") {
 		t.Fatalf("refusal = %+v; want backtest-failed naming dubious ownership", ref)
 	}
@@ -92,8 +82,8 @@ func TestMineForwardsOnlySafeDirectory(t *testing.T) {
 	if err := os.WriteFile(attrs, []byte("*.go binary\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	clean := writeTrustConfig(t, "")
-	hostile := writeTrustConfig(t, fmt.Sprintf(
+	clean := writeGitConfig(t, "")
+	hostile := writeGitConfig(t, fmt.Sprintf(
 		"[safe]\n\tdirectory = *\n[core]\n\tattributesFile = %s\n", attrs)+hostileGlobalConfig)
 	_, want := mineRun(t, b.r, b.base, map[string]string{"GIT_CONFIG_GLOBAL": clean})
 	_, got := mineRun(t, b.r, b.base, map[string]string{"GIT_CONFIG_GLOBAL": hostile})
@@ -108,15 +98,15 @@ func TestMineForwardsOnlySafeDirectory(t *testing.T) {
 // values as command scope ahead of the git pins while its config stays nulled.
 func TestMineForwardsSafeDirectoryArgv(t *testing.T) {
 	b, _ := newMergedFixRepo(t)
-	global := writeTrustConfig(t, "[safe]\n\tdirectory = /trusted/one\n\tdirectory = *\n"+hostileGlobalConfig)
+	global := writeGitConfig(t, "[safe]\n\tdirectory = /trusted/one\n\tdirectory = *\n"+hostileGlobalConfig)
 	rec := &pinRecorder{inner: coreexec.Runner{MissingTool: true}}
 	_, ref := Run(t.Context(), &Request{
 		Runtime: &core.Runtime{
 			Commander: rec,
-			Env: map[string]string{
+			Env: userEnv(t, map[string]string{
 				"HOME": t.TempDir(), "GIT_CONFIG_GLOBAL": global,
 				"GIT_CONFIG_NOSYSTEM": "1",
-			},
+			}),
 		},
 		RepoRoot: b.r.dir, Mode: modeMine, Since: b.base, Until: "HEAD",
 	})
