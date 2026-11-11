@@ -2656,34 +2656,40 @@ copy, so an uncommitted edit changes nothing. The last matching rule wins, and
 a rule with no owners is kept: it clears an earlier match, so the path reads
 `owners: []` with the source named — GitHub's way of saying the last matching
 rule removed ownership. An inline `#` starts a comment, so `*.go @a # contact`
-names only `@a`; `\#` inside a pattern writes a literal `#`.
-Patterns follow gitignore's positional subset: `*` stays inside a segment, `?`
-matches one character, `**` crosses segments only in the three positional
-forms `**/`, `/**`, and `/**/` and is a plain `*` anywhere else (so `a**b`
-and `a**/b` never match across a `/`), a leading `/` anchors at the repository
-root, and a pattern with no slash matches a segment at any depth. A trailing
-slash matches everything below the directory; a pattern without one matches a
-file or directory by that name, so a directory rule also owns every file below
-it (`**/logs` owns `build/logs/error.log`). Negation (`!`), every other
-backslash escape, and character classes are not evaluated: a file using them
-warns, and those lines match nothing. A tree with no CODEOWNERS reads
-`owners: null` and `owners_source: null`; a file no rule matches reads
-`owners: null` with the source named; a matching ownerless rule reads
-`owners: []` with the source named. None ever reads as an owner named nobody.
-The same `target` object rides on `tests-for` (path form) and `co-changed`.
+names only `@a`; `\#` inside a pattern writes a literal `#`, while a line that
+starts with `\#` is not a pattern at all — GitHub reads it as a comment, so
+the rule matches nothing and joins the warning below. Patterns follow
+gitignore's positional subset: `*` stays inside a segment, `?` matches one
+character, `**` crosses segments only in the three positional forms `**/`,
+`/**`, and `/**/` and is a plain `*` anywhere else (so `a**b` and `a**/b`
+never match across a `/`), a leading `/` anchors at the repository root, and a
+pattern with no slash matches a segment at any depth. A trailing slash matches
+everything below the directory; a pattern without one matches a file or
+directory by that name, so a directory rule also owns every file below it
+(`**/logs` owns `build/logs/error.log`). A final segment that is a wildcard
+names files only: `docs/*` owns `docs/a.md` and never `docs/a/b.md`. Negation
+(`!`), every other backslash escape, and character classes are not evaluated:
+a file using them warns, and those lines match nothing. A tree with no
+CODEOWNERS reads `owners: null` and `owners_source: null`; a file no rule
+matches reads `owners: null` with the source named; a matching ownerless rule
+reads `owners: []` with the source named. None ever reads as an owner named
+nobody. The same `target` object rides on `tests-for` (path form) and
+`co-changed`.
 
 Caps: 20,000 Go files, 1 MiB per file (an oversized file is skipped and
 counted in `coverage.skipped`), a 96 MiB tree file, and a 256 MiB shard cache;
 a repo over a cap refuses `index-capped` naming the measured number. The typed
 `index` section of `.verdict/config.json` overrides each default. The 1 MiB
 file cap governs Go parsing alone: a CODEOWNERS blob is read whole from the
-object store, so a large ownership file is never silently half-applied. One
-build reads every parseable blob through a single `git cat-file` capture capped
-at 97 MiB including record framing, so the total source size parsed in one
-build is the effective ceiling. It binds before the nominal 20,000 × 1 MiB file
-caps; an over-cap capture refuses `index-capped` naming the cap, and the
-capture cap is not configurable. A truncated or invalid shard refuses
-`index-corrupt` and is never read as empty.
+object store, so a large ownership file is never silently half-applied. That
+read has no size limit of its own; GitHub loads no CODEOWNERS file of 3 MB or
+more, so past that limit the answer names the owners the file's rules describe
+and GitHub requests none of them. One build reads every parseable blob through
+a single `git cat-file` capture capped at 97 MiB including record framing, so
+the total source size parsed in one build is the effective ceiling. It binds
+before the nominal 20,000 × 1 MiB file caps; an over-cap capture refuses
+`index-capped` naming the cap, and the capture cap is not configurable. A
+truncated or invalid shard refuses `index-corrupt` and is never read as empty.
 
 Querying a tree that is not HEAD's marks the envelope `stale: true` and warns
 `» index: built for <tree>, HEAD is <tree2>`. `callers`, `tests-for`, and
