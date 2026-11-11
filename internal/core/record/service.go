@@ -66,10 +66,11 @@ func Run(ctx context.Context, req *core.RecordRequest) (*core.RecordResponse, *c
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	res, ref := st.mergeAndName(dir, prov, headFull, review)
+	res, names, ref := st.mergeAndName(dir, prov, headFull, review)
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
+	st.warnCostModels(dir, names)
 	if st.req.DryRun {
 		return st.dryRun(dir, now, &res), nil
 	}
@@ -239,20 +240,21 @@ func (st *svc) loadInputs(dir string) (*jq.Obj, *core.RefusalError) {
 // before it. Planning comes first so a missing panel, a contradiction, or an
 // unpriceable shape refuses while the bundle is untouched: a refused record
 // leaves no findings behind for a later `fix` to consume. Applying writes
-// nothing on a dry run.
-func (st *svc) mergeAndName(dir, prov, headFull string, review *jq.Obj) (MergeResult, *core.RefusalError) {
+// nothing on a dry run. The returned pass is what the warning scan skips: a
+// planned file's nameless entries are the repair message's, in both modes.
+func (st *svc) mergeAndName(dir, prov, headFull string, review *jq.Obj) (MergeResult, *costNamePass, *core.RefusalError) {
 	names, ref := st.planCostNames(dir)
 	if ref != nil {
-		return MergeResult{}, ref
+		return MergeResult{}, nil, ref
 	}
 	res, ref := st.merge(dir, prov, headFull, review)
 	if ref != nil {
-		return MergeResult{}, ref
+		return MergeResult{}, nil, ref
 	}
 	if ref := st.applyCostNames(names); ref != nil {
-		return MergeResult{}, ref
+		return MergeResult{}, nil, ref
 	}
-	return res, nil
+	return res, names, nil
 }
 
 func (st *svc) merge(dir, prov, headFull string, review *jq.Obj) (MergeResult, *core.RefusalError) {

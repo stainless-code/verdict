@@ -74,11 +74,11 @@ done: .verdict/state/4717/PR.json .verdict/state/4717/full.diff .verdict/state/4
 next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4717/PR.json + .verdict/state/4717/full.diff (+ .verdict/state/4717/roles.txt) to any agent; ask it to write .verdict/state/4717/review.json
 --- files ---
 --- file C/.curl-calls.log ---
-CALL: -sf -H Authorization: Bearer tok https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4717
-CALL: -sfL -H Authorization: Bearer tok https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4717/diff
-CALL: -sfL -H Authorization: Bearer tok https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4717/diffstat?pagelen=100
-CALL: -sfL -H Authorization: Bearer tok https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4717/diffstat?cursor=cursor2
-CALL: -sfL -H Authorization: Bearer tok https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4717/comments?pagelen=100
+CALL: --config - -sf https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4717
+CALL: --config - -sfL https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4717/diff
+CALL: --config - -sfL https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4717/diffstat?pagelen=100
+CALL: --config - -sfL https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4717/diffstat?cursor=cursor2
+CALL: --config - -sfL https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4717/comments?pagelen=100
 --- file C/.verdict/.gitignore ---
 /state/
 --- file C/.verdict/state/.gitignore ---

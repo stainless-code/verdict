@@ -1,0 +1,32 @@
+{
+  "id": 7,
+  "title": "Retry count off by one",
+  "description": "Fixes the retry count so the third attempt runs.",
+  "state": "OPEN",
+  "draft": false,
+  "author": {
+    "nickname": "mate",
+    "display_name": "Mate"
+  },
+  "source": {
+    "branch": {
+      "name": "feat/retry"
+    },
+    "commit": {
+      "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
+  "destination": {
+    "branch": {
+      "name": "main"
+    },
+    "commit": {
+      "hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  },
+  "links": {
+    "html": {
+      "href": "https://bitbucket.org/acme/app/pull-requests/7"
+    }
+  }
+}

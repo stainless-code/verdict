@@ -1943,7 +1943,10 @@ file past the reader's cap. It names the files it already rewrote if a write
 fails partway, and with `--dry-run` it proves the repair without writing.
 Entries are the array `models` the reader prices, so an object-valued `models`
 field or a non-object entry refuses (`cost-models-not-array`) rather than being
-converted.
+converted. Every `record` — including `--dry-run` — also warns once per
+`models[]` entry with no `name` (`cost.json: models[0] has no name — the name
+is what attribution reads; add "name"`), while leaving the record accepted and
+priced; only a missing or non-string name warns, an empty string passes.
 
 `report`/`triage`/`next`/`show`/`verify` work unchanged on local bundles (`report`
 reads `head_sha` from `source.json` when `PR.json` is absent). `post` refuses local
@@ -2334,6 +2337,14 @@ one machine-readable code per absent capability, keyed by capability name:
 | `forgejo`   | REST `curl` (`$FORGEJO_HOST/api/v1`, `$FORGEJO_TOKEN`) — neither `fj` nor `tea` exposes JSON review reads                                                                | token env                                                        | inline threads aggregated per review id; a review comment anchors on a file line number                    |
 | `bitbucket` | REST `curl` (`$BITBUCKET_TOKEN` Bearer or user+password Basic)                                                                                                           | token env                                                        | diffstat/comments paginated server-side; no grouped submit                                                 |
 | `azure`     | `az repos pr show` + `az rest` threads/iterations; diff via temp-clone `git fetch` of the two SHAs                                                                       | `az login` / `AZURE_DEVOPS_EXT_PAT`, `AZURE_DEVOPS_ORG` required | needs git reachability to the repo remote; no org/project auto-detect                                      |
+
+Neither `curl` host takes its credential on the command line, where `ps` and
+argv logs would show it: the client reads a one-directive config document from
+stdin (`--config -`) on a fetch read, and from a `0600` file in a private temp
+directory — removed after the call — on the Forgejo review write, whose stdin
+already carries the JSON body. A token or password carrying CR or LF refuses
+`auth-missing` before `curl` starts, because that document is line-oriented and
+a break could end the directive and start another.
 
 State maps to open|closed|merged at fetch (`opened`→open, `active`→open,
 `ABANDONED`→closed, `SUPERSEDED`→closed, `completed`/`merged`→merged;

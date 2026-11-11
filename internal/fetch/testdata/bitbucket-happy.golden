@@ -74,10 +74,10 @@ done: .verdict/state/4709/PR.json .verdict/state/4709/full.diff .verdict/state/4
 next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4709/PR.json + .verdict/state/4709/full.diff (+ .verdict/state/4709/roles.txt) to any agent; ask it to write .verdict/state/4709/review.json; prior threads are in .verdict/state/4709/threads.json (run verdict threads to refresh)
 --- files ---
 --- file C/.curl-calls.log ---
-CALL: -sf -H Authorization: Bearer tok https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4709
-CALL: -sfL -H Authorization: Bearer tok https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4709/diff
-CALL: -sfL -H Authorization: Bearer tok https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4709/diffstat?pagelen=100
-CALL: -sfL -H Authorization: Bearer tok https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4709/comments?pagelen=100
+CALL: --config - -sf https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4709
+CALL: --config - -sfL https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4709/diff
+CALL: --config - -sfL https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4709/diffstat?pagelen=100
+CALL: --config - -sfL https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4709/comments?pagelen=100
 --- file C/.verdict/.gitignore ---
 /state/
 --- file C/.verdict/state/.gitignore ---

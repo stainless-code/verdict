@@ -1,0 +1,4 @@
+--config - -sf https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/7
+--config - -sfL https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/7/diff
+--config - -sfL https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/7/diffstat?pagelen=100
+--config - -sfL https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/7/comments?pagelen=100

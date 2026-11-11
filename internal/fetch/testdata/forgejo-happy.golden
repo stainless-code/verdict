@@ -70,11 +70,11 @@ done: .verdict/state/4708/PR.json .verdict/state/4708/full.diff .verdict/state/4
 next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4708/PR.json + .verdict/state/4708/full.diff (+ .verdict/state/4708/roles.txt) to any agent; ask it to write .verdict/state/4708/review.json; prior threads are in .verdict/state/4708/threads.json (run verdict threads to refresh)
 --- files ---
 --- file C/.curl-calls.log ---
-CALL: -sf -H Authorization: token tok https://example.invalid/api/v1/repos/acme/app/pulls/4708
-CALL: -sf -H Authorization: token tok https://example.invalid/api/v1/repos/acme/app/pulls/4708.diff
-CALL: -sf -H Authorization: token tok https://example.invalid/api/v1/repos/acme/app/pulls/4708/files?limit=50&page=1
-CALL: -sf -H Authorization: token tok https://example.invalid/api/v1/repos/acme/app/pulls/4708/reviews?limit=50&page=1
-CALL: -sf -H Authorization: token tok https://example.invalid/api/v1/repos/acme/app/pulls/4708/reviews/7/comments
+CALL: --config - -sf https://example.invalid/api/v1/repos/acme/app/pulls/4708
+CALL: --config - -sf https://example.invalid/api/v1/repos/acme/app/pulls/4708.diff
+CALL: --config - -sf https://example.invalid/api/v1/repos/acme/app/pulls/4708/files?limit=50&page=1
+CALL: --config - -sf https://example.invalid/api/v1/repos/acme/app/pulls/4708/reviews?limit=50&page=1
+CALL: --config - -sf https://example.invalid/api/v1/repos/acme/app/pulls/4708/reviews/7/comments
 --- file C/.verdict/.gitignore ---
 /state/
 --- file C/.verdict/state/.gitignore ---

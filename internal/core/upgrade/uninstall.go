@@ -80,6 +80,22 @@ func uninstallRefusal(det *detection) *core.RefusalError {
 				"refusing to remove %s: no installer receipt (not installed by install.sh)", det.exe),
 		}
 	}
+	if det.Channel == ChannelSkill {
+		if cmd, ok := skillUninstallCommand(det.exe); ok {
+			return &core.RefusalError{
+				Code: codeUninstallGate,
+				Message: fmt.Sprintf(
+					"%s is not installer-managed; remove it with: %s",
+					det.exe, cmd),
+			}
+		}
+		return &core.RefusalError{
+			Code: codeUninstallGate,
+			Message: fmt.Sprintf(
+				"%s is not installer-managed; remove it with the tool that installed the skill copy at %s",
+				det.exe, skillRoot(det.exe)),
+		}
+	}
 	return &core.RefusalError{
 		Code: codeUninstallGate,
 		Message: fmt.Sprintf("%s is not installer-managed; remove it with: %s",
@@ -102,19 +118,21 @@ func uninstallCommand(det *detection) string {
 	case ChannelProject:
 		return fmt.Sprintf("cd %s && npm uninstall %s", shellQuote(projectRoot(filepath.Dir(det.exe))), npmPackage)
 	case ChannelSkill:
-		return skillUninstallCommand(det.exe)
+		cmd, _ := skillUninstallCommand(det.exe)
+		return cmd
 	default:
 		return installerCommand()
 	}
 }
 
 // skillUninstallCommand names `verdict skill uninstall` only when that verb's
-// fixed target is the detected skill root; any other skills dir gets a hint
-// that cannot resolve to a sibling.
-func skillUninstallCommand(exe string) string {
+// fixed target is the detected skill root; any other skills dir has no
+// command that can reach it, so this reports false and the refusal owns the
+// hint instead of rendering prose as a command.
+func skillUninstallCommand(exe string) (string, bool) {
 	root := skillRoot(exe)
 	if filepath.Base(root) != skill.Name {
-		return "the tool that installed the skill copy at " + root
+		return "", false
 	}
-	return "verdict skill uninstall --dir " + shellQuote(filepath.Dir(root)) + " --force"
+	return "verdict skill uninstall --dir " + shellQuote(filepath.Dir(root)) + " --force", true
 }

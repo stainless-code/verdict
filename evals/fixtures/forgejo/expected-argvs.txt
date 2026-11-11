@@ -1,5 +1,5 @@
--sf -H Authorization: token eval-token https://forgejo.invalid/api/v1/repos/acme/app/pulls/7
--sf -H Authorization: token eval-token https://forgejo.invalid/api/v1/repos/acme/app/pulls/7.diff
--sf -H Authorization: token eval-token https://forgejo.invalid/api/v1/repos/acme/app/pulls/7/files?limit=50&page=1
--sf -H Authorization: token eval-token https://forgejo.invalid/api/v1/repos/acme/app/pulls/7/reviews?limit=50&page=1
--sf -H Authorization: token eval-token https://forgejo.invalid/api/v1/repos/acme/app/pulls/7/reviews/301/comments
+--config - -sf https://forgejo.invalid/api/v1/repos/acme/app/pulls/7
+--config - -sf https://forgejo.invalid/api/v1/repos/acme/app/pulls/7.diff
+--config - -sf https://forgejo.invalid/api/v1/repos/acme/app/pulls/7/files?limit=50&page=1
+--config - -sf https://forgejo.invalid/api/v1/repos/acme/app/pulls/7/reviews?limit=50&page=1
+--config - -sf https://forgejo.invalid/api/v1/repos/acme/app/pulls/7/reviews/301/comments

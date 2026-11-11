@@ -86,7 +86,7 @@ func gitlabBundleDir(t *testing.T, diff string) string {
 func countCalls(cmdr *scriptCommander, key string) int {
 	n := 0
 	for _, call := range cmdr.calls {
-		if strings.Join(call, "\x00") == key {
+		if routeKey(call) == key {
 			n++
 		}
 	}

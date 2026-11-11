@@ -335,7 +335,7 @@ func applySafety(req *Request, det *detection) (*detection, *core.RefusalError) 
 		det.Code = codeProjectLocal
 		det.Command = "npm install " + npmPackage + "@latest"
 		det.Reason = fmt.Sprintf("project-local install at %s: the upgrade belongs in the project manifest/lockfile; "+
-			"run: cd %s && %s", det.exe, root, det.Command)
+			"run: cd %s && %s", det.exe, shellQuote(root), det.Command)
 	case ChannelSkill:
 		root := skillRoot(det.exe)
 		det.Code = codeSkillCopy

@@ -1,0 +1,16 @@
+{
+  "values": [
+    {
+      "status": "modified",
+      "lines_added": 1,
+      "lines_removed": 1,
+      "old": {
+        "path": "notes.txt"
+      },
+      "new": {
+        "path": "notes.txt"
+      }
+    }
+  ],
+  "next": null
+}

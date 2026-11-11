@@ -3,6 +3,7 @@ package upgrade
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -50,7 +51,10 @@ func TestUninstallCommandQuotesPaths(t *testing.T) {
 		t.Parallel()
 		home := filepath.Join(t.TempDir(), "home dir")
 		exe := filepath.Join(home, ".agents", "skills", "verdict", "bin", "verdict")
-		got := skillUninstallCommand(exe)
+		got, ok := skillUninstallCommand(exe)
+		if !ok {
+			t.Fatalf("skillUninstallCommand(%q) = false, want the skill command", exe)
+		}
 		want := "verdict skill uninstall --dir '" + filepath.Join(home, ".agents", "skills") + "' --force"
 		if got != want {
 			t.Errorf("skillUninstallCommand = %q, want %q", got, want)
@@ -68,4 +72,24 @@ func spacedProject(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return root
+}
+
+// TestSkillUninstallCommandOwnsTheSkillDecision pins the refusal's branch:
+// the resolved verdict root reports its command, and any other skills dir
+// reports false with no command text to render.
+func TestSkillUninstallCommandOwnsTheSkillDecision(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	verdictExe := filepath.Join(home, ".agents", "skills", "verdict", "bin", "verdict")
+	cmd, ok := skillUninstallCommand(verdictExe)
+	if !ok {
+		t.Fatalf("skillUninstallCommand(%q) = false, want the skill command", verdictExe)
+	}
+	if !strings.HasPrefix(cmd, "verdict skill uninstall --dir ") || !strings.HasSuffix(cmd, " --force") {
+		t.Errorf("skillUninstallCommand = %q, want the skill uninstall command", cmd)
+	}
+	siblingExe := filepath.Join(home, ".agents", "skills", "other", "bin", "verdict")
+	if cmd, ok := skillUninstallCommand(siblingExe); ok || cmd != "" {
+		t.Errorf("skillUninstallCommand(%q) = %q, %v, want no command for a sibling root", siblingExe, cmd, ok)
+	}
 }

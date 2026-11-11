@@ -81,6 +81,7 @@ var facadeAllowedDeps = map[string]bool{
 	"internal/core/trend":     true,
 	"internal/core/triage":    true,
 	"internal/core/verify":    true,
+	"internal/curlauth":       true,
 	"internal/diagram":        true,
 	"internal/envsecret":      true,
 	"internal/forgejo":        true,

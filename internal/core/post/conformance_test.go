@@ -142,18 +142,18 @@ func conformanceRows() []*hostConformance {
 }
 
 // The exact argv a Forgejo post reads and writes with: `curl` on a reserved
-// `.invalid` host, with the token header both directions share.
+// `.invalid` host, with the credential on stdin for reads and in a private file
+// (the CONFIG placeholder) for the one write.
 const (
 	conformanceForgejoBase = "https://forgejo.invalid/api/v1/repos/acme/app/pulls/7"
-	conformanceForgejoAuth = "-H\x00Authorization: token conformance-token"
-	conformanceForgejoRead = "curl\x00-sf\x00" + conformanceForgejoAuth + "\x00"
+	conformanceForgejoRead = "curl\x00--config\x00-\x00-sf\x00"
 
 	conformanceForgejoPull     = conformanceForgejoRead + conformanceForgejoBase
 	conformanceForgejoUser     = conformanceForgejoRead + "https://forgejo.invalid/api/v1/user"
 	conformanceForgejoReviews  = conformanceForgejoRead + conformanceForgejoBase + "/reviews?limit=50&page=1"
 	conformanceForgejoComments = conformanceForgejoRead + conformanceForgejoBase + "/reviews/301/comments"
-	conformanceForgejoWrite    = "curl\x00-sS\x00-i\x00" + conformanceForgejoAuth +
-		"\x00-H\x00Content-Type: application/json\x00-X\x00POST\x00--data-binary\x00@-\x00" +
+	conformanceForgejoWrite    = "curl\x00--config\x00" + configPlaceholder + "\x00-sS\x00-i\x00" +
+		"-H\x00Content-Type: application/json\x00-X\x00POST\x00--data-binary\x00@-\x00" +
 		conformanceForgejoBase + "/reviews"
 )
 
@@ -497,7 +497,7 @@ func (row *hostConformance) writeCount(t *testing.T, run *conformanceRun, i int,
 		// No submit path: any call at all is the disagreement.
 		return writeCounts{post: 1}
 	}
-	key := strings.Join(call, conformanceArgvSep)
+	key := routeKey(call)
 	switch {
 	case key == row.bodyArgv:
 		return row.bodyWrite(t, run.stdin[i])
@@ -808,7 +808,7 @@ func (row *hostConformance) bodyPayloads(t *testing.T, run *conformanceRun) []ma
 	t.Helper()
 	var out []map[string]any
 	for i, call := range run.calls {
-		if row.bodyArgv != "" && strings.Join(call, conformanceArgvSep) == row.bodyArgv {
+		if row.bodyArgv != "" && routeKey(call) == row.bodyArgv {
 			out = append(out, conformancePayload(t, run.stdin[i]))
 		}
 	}
@@ -881,7 +881,7 @@ func (row *hostConformance) anchoredFindings(t *testing.T, run *conformanceRun) 
 	t.Helper()
 	var out []anchoredFinding
 	for i, call := range run.calls {
-		key := strings.Join(call, conformanceArgvSep)
+		key := routeKey(call)
 		switch {
 		case row.verbInPayload() && row.bodyArgv != "" && key == row.bodyArgv:
 			out = append(out, conformanceReviewComments(t, run.stdin[i], row.lineField)...)
