@@ -106,17 +106,18 @@ func parse(r *cli.Runner, args []string) (invocation, int, bool) {
 	case indexcore.QueryOwners:
 		return parseOwners(r, rest)
 	default:
-		return invocation{}, r.ReportUsage(usageError(unknownFlag + sub + "' (want " + indexSubcommands + ")")), true
+		return invocation{}, r.ReportUsage(usageError(unknownSubcommand + sub + "' (want " + indexSubcommands + ")")), true
 	}
 }
 
 // indexWants is the shared "wants" phrase every index usage error carries.
 const (
-	indexWants       = "index wants build, status, prune, callers, tests-for, co-changed, or owners"
-	indexSubcommands = "build, status, prune, callers, tests-for, co-changed, owners"
-	flagAt           = "--at"
-	flagLimit        = "--limit"
-	unknownFlag      = "unknown flag '"
+	indexWants        = "index wants build, status, prune, callers, tests-for, co-changed, or owners"
+	indexSubcommands  = "build, status, prune, callers, tests-for, co-changed, owners"
+	flagAt            = "--at"
+	flagLimit         = "--limit"
+	unknownFlag       = "unknown flag '"
+	unknownSubcommand = "unknown index subcommand '"
 )
 
 // parseTestsFor reads `index tests-for` positionals and flags.

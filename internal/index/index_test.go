@@ -141,6 +141,11 @@ func TestParseGraphRefusals(t *testing.T) {
 			name: "owners unknown flag", args: []string{"owners", "a/a.go", "--limit", "2"},
 			code: cli.ExitUsage, diag: "unknown flag '--limit' for index owners (want --at <tree>)\n",
 		},
+		{
+			name: "unknown subcommand", args: []string{"calers", "app.Target"},
+			code: cli.ExitUsage,
+			diag: "unknown index subcommand 'calers' (want build, status, prune, callers, tests-for, co-changed, owners)\n",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
