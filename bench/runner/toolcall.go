@@ -22,6 +22,8 @@ var toolCallMarks = []string{
 	"<invoke",
 	"<function",
 	"antml:tool",
+	"dsml",
+	"invoke name=",
 }
 
 // looksLikeToolCall reports tool-call markup in an adapter log.

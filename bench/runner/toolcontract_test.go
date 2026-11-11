@@ -161,3 +161,100 @@ func TestValidReviewWithToolMarkupStaysPass(t *testing.T) {
 		t.Fatalf("samples=%d failures=%v, want one clean sample", rep.Samples, rep.Failures)
 	}
 }
+
+// dsmlSample is the verbatim STA-271 failure: DSML tool markup with fullwidth
+// bars (U+FF5C) between the brackets and the tag names.
+const dsmlSample = "<｜｜DSML｜｜ calls><｜｜DSML｜｜ invoke name=\"bg_run\"><｜｜DSML｜｜ parameter name=\"command\" string=\"true\">ls -la; echo ---; cat go.mod 2>/dev/null; …"
+
+// TestPiAdapterRefusesDSMLMarkup drives pi.sh with a stub whose final message
+// is the STA-271 DSML sample: exit 1, the tool-call refusal, no review file.
+func TestPiAdapterRefusesDSMLMarkup(t *testing.T) {
+	needPOSIX(t)
+	root, err := moduleRoot()
+	if err != nil {
+		t.Fatalf("moduleRoot: %v", err)
+	}
+	text := strings.ReplaceAll(dsmlSample, `"`, `\"`)
+	stub := piStub(t, "#!/bin/sh\nprintf '%s\\n' '{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\""+text+"\"}]}}'\n")
+	t.Setenv("BENCH_PI_MODEL", "fixture-good")
+	t.Setenv("BENCH_PI_BIN", stub)
+	t.Setenv("VERDICT_BENCH_MODEL", "fixture-good")
+	t.Setenv("VERDICT_BENCH_PROMPT", filepath.Join(t.TempDir(), "prompt.md"))
+	out := filepath.Join(t.TempDir(), "review.json")
+	t.Setenv("VERDICT_BENCH_OUT", out)
+	t.Setenv("VERDICT_BENCH_COST", filepath.Join(t.TempDir(), "cost.json"))
+	cmd := exec.CommandContext(context.Background(), "sh", filepath.Join(root, "bench", "agents", "pi.sh"))
+	cmd.Env = os.Environ()
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err == nil {
+		t.Fatal("pi.sh accepted DSML markup as a review")
+	}
+	want := "pi agent: final message is a tool call, but this sample has no tools: " + dsmlSample
+	if !strings.Contains(stderr.String(), want) {
+		t.Errorf("stderr = %q, want %q", stderr.String(), want)
+	}
+	if _, err := os.Stat(out); !os.IsNotExist(err) {
+		t.Errorf("pi.sh wrote %s for a tool-call refusal", out)
+	}
+}
+
+// TestRunnerLabelsDSMLToolCall labels the DSML sample adapter_tool_call.
+func TestRunnerLabelsDSMLToolCall(t *testing.T) {
+	needPOSIX(t)
+	restoreWD(t)
+	cfg := benchConfig(t, fakeCorpus(t), `printf '%s' '<｜｜DSML｜｜ calls><｜｜DSML｜｜ invoke name="bg_run"><｜｜DSML｜｜ parameter name="command" string="true">ls -la; echo ---; cat go.mod 2>/dev/null; …'; exit 3`)
+	fake := &fakeGrader{model: cfg.Model, panel: cfg.Panel, prefix: fakePrefix}
+	rep, err := runGraded(context.Background(), cfg, fake)
+	if err == nil {
+		t.Fatal("runGraded reported success after a DSML tool-call agent")
+	}
+	if rep == nil || len(rep.Failures) != 1 {
+		t.Fatalf("failures = %+v, want one labeled failure", rep)
+	}
+	got := rep.Failures[0]
+	if got.Kind != "adapter_tool_call" {
+		t.Errorf("kind = %q, want adapter_tool_call", got.Kind)
+	}
+	if !strings.Contains(got.Error, "agent exit 3") {
+		t.Errorf("error = %q, want the adapter exit", got.Error)
+	}
+}
+
+// piAdapterMarks reads the tool-call pattern out of pi.sh.
+func piAdapterMarks(t *testing.T) []string {
+	t.Helper()
+	root, err := moduleRoot()
+	if err != nil {
+		t.Fatalf("moduleRoot: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, "bench", "agents", "pi.sh"))
+	if err != nil {
+		t.Fatalf("read pi.sh: %v", err)
+	}
+	const anchor = "grep -qiE '"
+	text := string(raw)
+	_, rest, found := strings.Cut(text, anchor)
+	if !found {
+		t.Fatal("pi.sh carries no grep -qiE tool-call pattern")
+	}
+	marks, _, found := strings.Cut(rest, "'")
+	if !found {
+		t.Fatal("pi.sh tool-call pattern is unterminated")
+	}
+	return strings.Split(marks, "|")
+}
+
+// TestToolCallMarksMatchPiAdapter pins the runner marks to the pi.sh grep
+// pattern: the two lists name the same markup and cannot drift apart.
+func TestToolCallMarksMatchPiAdapter(t *testing.T) {
+	got := piAdapterMarks(t)
+	if len(got) != len(toolCallMarks) {
+		t.Fatalf("pi.sh marks %q vs toolCallMarks %q", got, toolCallMarks)
+	}
+	for i := range got {
+		if got[i] != toolCallMarks[i] {
+			t.Errorf("mark %d: pi.sh %q vs toolCallMarks %q", i, got[i], toolCallMarks[i])
+		}
+	}
+}
