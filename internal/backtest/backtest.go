@@ -17,6 +17,7 @@ import (
 	corebacktest "github.com/stainless-code/verdict/internal/core/backtest"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/jq"
+	runverb "github.com/stainless-code/verdict/internal/run"
 )
 
 // The two shipped modes. `mine` is free and local; `replay` spawns the
@@ -240,13 +241,15 @@ func usage(msg string) *cli.UsageError {
 	return &cli.UsageError{Message: msg}
 }
 
-// rentry rebuilds the re-run command after flag parsing. The pass-through
-// tail is not reproduced: its quoting belongs to whatever shell the operator
-// used.
+// rentry rebuilds the re-run command after flag parsing: the flags the operator
+// changed, json mode, and replay's pass-through tail after the bare `--`.
 func rentry(f *flags, jsonMode bool) string {
 	s := "verdict backtest " + f.mode + modeRentry(f)
 	if jsonMode {
 		s += " --json"
+	}
+	if f.mode == modeReplay && len(f.pass) > 0 {
+		s += " -- " + runverb.RenderCommand(f.pass)
 	}
 	return s
 }

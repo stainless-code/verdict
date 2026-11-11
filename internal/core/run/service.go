@@ -323,7 +323,18 @@ func (st *state) spawn(ctx context.Context, argv []string, timeout int) (*core.R
 	if err != nil {
 		return nil, err //nolint:wrapcheck // spawn failures are mapped by the caller, never reworded
 	}
+	if watchdogFired(ctx, tctx, &res) {
+		res.TimedOut = true
+	}
 	return &res, nil
+}
+
+// watchdogFired reports a kill this call's own budget made: the budget
+// expired, the operator did not cancel, and the child did not exit clean. A
+// commander that never sets Result.TimedOut still owes the launcher the
+// timeout refusal, because the deadline this call armed is the watchdog.
+func watchdogFired(ctx, tctx context.Context, res *core.Result) bool {
+	return res.ExitCode != 0 && !res.TimedOut && tctx.Err() != nil && ctx.Err() == nil
 }
 
 // errNoCommander is the launcher's own wiring failure: no scripted or

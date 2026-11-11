@@ -252,15 +252,16 @@ func Run(ctx context.Context, req *Request) (resp *Response, ref *core.RefusalEr
 }
 
 // state carries the injected runtime, the resolved repository root, the user's
-// forwarded safe.directory list, and the warnings. The mine and replay modes
-// share it: everything git-facing reads these fields and nothing here is
-// mine-specific.
+// forwarded safe.directory list, the verb's cancel text, and the warnings. The
+// mine and replay modes share it: everything git-facing reads these fields and
+// nothing here is mine-specific.
 type state struct {
-	req      *Request
-	rt       *core.Runtime
-	root     string
-	trust    []string
-	warnings []string
+	req       *Request
+	rt        *core.Runtime
+	cancelMsg string
+	root      string
+	trust     []string
+	warnings  []string
 }
 
 // carry replays the warnings onto the response or the refusal.
@@ -284,14 +285,23 @@ func (st *state) canceled(ctx context.Context) *core.RefusalError {
 	if ctx.Err() == nil {
 		return nil
 	}
-	return st.refuse(codeCanceled, msgCanceled)
+	return st.refuse(codeCanceled, st.cancelText())
+}
+
+// cancelText is the mode's frozen cancel message: the miner's unless the caller
+// set the mode's own.
+func (st *state) cancelText() string {
+	if st.cancelMsg != "" {
+		return st.cancelMsg
+	}
+	return msgCanceled
 }
 
 // gitFailure refuses a failed git step: a canceled run reports the cancel,
 // never the killed child's message.
 func (st *state) gitFailure(ctx context.Context, msg string) *core.RefusalError {
 	if ctx.Err() != nil {
-		return st.refuse(codeCanceled, msgCanceled)
+		return st.refuse(codeCanceled, st.cancelText())
 	}
 	return st.refuse(codeBacktestFail, msg)
 }

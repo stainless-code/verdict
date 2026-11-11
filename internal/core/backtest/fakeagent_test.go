@@ -1,23 +1,30 @@
 package backtest
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // The replay tests spawn a real child through the production launcher. No real
-// agent CLI and no model is ever invoked: this test binary is symlinked into a
+// agent CLI and no model is ever invoked: this test binary is linked into a
 // PATH directory under an agent's name and switched into fake mode by an
-// environment variable, so the child observes the exact argv, cwd, and
-// directive a real agent would.
+// environment variable, so the child observes the exact argv, cwd, checkout
+// head, and directive a real agent would.
 const (
 	fakeAgentEnv     = "VERDICT_TEST_FAKE_AGENT"
 	fakeAgentLogEnv  = "VERDICT_TEST_FAKE_AGENT_LOG"
 	fakeAgentCostEnv = "VERDICT_TEST_FAKE_AGENT_COST"
 )
+
+// fakeSleep outlives any test's --timeout, so the watchdog is what ends the
+// launch, never the stub.
+const fakeSleep = 5 * time.Second
 
 // fakeReviewBody is a body the record path accepts unchanged: its Basis line
 // carries the counts the record path computes for one walked comment, so the
@@ -46,8 +53,8 @@ type fakeReviewDoc struct {
 }
 
 // fakeAgentMain is the child's side of the contract: it appends one line naming
-// its cwd, the artifact the directive asked for, and its own argv, then behaves
-// as the planted mode asked.
+// its cwd, the artifact the directive asked for, its checkout head, and its own
+// argv, then behaves as the planted mode asked.
 func fakeAgentMain(mode string) int {
 	directive := os.Args[len(os.Args)-1]
 	artifact := fakeArtifact(directive)
@@ -56,18 +63,33 @@ func fakeAgentMain(mode string) int {
 		fmt.Fprintln(os.Stderr, "fake agent: getwd:", err)
 		return 90
 	}
-	if code := fakeAppendLog(cwd + "\t" + artifact + "\t" + fakeArgvTail() + "\n"); code != 0 {
+	line := cwd + "\t" + artifact + "\t" + fakeArgvTail() + "\t" + fakeHead(cwd) + "\n"
+	prior, code := fakeAppendLog(line)
+	if code != 0 {
 		return code
 	}
 	switch mode {
 	case "write":
-		return fakeWrite(artifact)
+		return fakeWrite(artifact, prior)
+	case "sleep":
+		time.Sleep(fakeSleep)
+		return 0
 	case "exit":
 		fmt.Fprintln(os.Stderr, "fake agent: the model refused the request")
 		return 7
 	default: // "silent": exit 0 and write nothing
 		return 0
 	}
+}
+
+// fakeHead resolves the checkout the launcher started the agent in, so a test
+// proves the tree is the candidate's historical head, not today's.
+func fakeHead(dir string) string {
+	out, err := exec.CommandContext(context.Background(), "git", "-C", dir, "rev-parse", "HEAD").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // fakeArgvTail renders the launch's own arguments without the directive, whose
@@ -79,26 +101,44 @@ func fakeArgvTail() string {
 	return strings.Join(os.Args[:len(os.Args)-1], " ")
 }
 
-// fakeAppendLog appends one line to the planted log, if any.
-func fakeAppendLog(line string) int {
+// fakeAppendLog appends one line to the planted log, returning how many
+// launches it already held so a planted price list can price each one.
+func fakeAppendLog(line string) (int, int) {
 	path := os.Getenv(fakeAgentLogEnv)
 	if path == "" {
-		return 0
+		return 0, 0
+	}
+	prior := 0
+	if raw, err := os.ReadFile(path); err == nil {
+		prior = strings.Count(string(raw), "\n")
 	}
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "fake agent: open log:", err)
-		return 91
+		return 0, 91
 	}
 	if _, err := f.WriteString(line); err != nil {
 		fmt.Fprintln(os.Stderr, "fake agent: write log:", err)
-		return 92
+		return 0, 92
 	}
 	if err := f.Close(); err != nil {
 		fmt.Fprintln(os.Stderr, "fake agent: close log:", err)
-		return 93
+		return 0, 93
 	}
-	return 0
+	return prior, 0
+}
+
+// fakePrice picks one launch's planted price: one value prices every launch, a
+// comma-separated list prices them in launch order.
+func fakePrice(raw string, launch int) string {
+	if raw == "" {
+		return ""
+	}
+	prices := strings.Split(raw, ",")
+	if launch >= 0 && launch < len(prices) {
+		return prices[launch]
+	}
+	return prices[len(prices)-1]
 }
 
 // fakeArtifact extracts the review path from the launcher's directive: the
@@ -138,7 +178,7 @@ func fakeComments(dir string) []fakeComment {
 
 // fakeWrite writes the review into the bundle the directive named and, when a
 // price is planted, the agent-reported cost beside it.
-func fakeWrite(artifact string) int {
+func fakeWrite(artifact string, launch int) int {
 	if artifact == "" {
 		fmt.Fprintln(os.Stderr, "fake agent: the directive names no artifact")
 		return 94
@@ -161,7 +201,7 @@ func fakeWrite(artifact string) int {
 		fmt.Fprintln(os.Stderr, "fake agent: write review:", err)
 		return 96
 	}
-	price := os.Getenv(fakeAgentCostEnv)
+	price := fakePrice(os.Getenv(fakeAgentCostEnv), launch)
 	if price == "" {
 		return 0
 	}

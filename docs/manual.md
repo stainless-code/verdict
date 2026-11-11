@@ -2891,23 +2891,31 @@ Budgets bound the spend, and each one is a real refusal path, not a warning:
   price contributes no projection sample, so unknown spend is never projected
   as zero.
 - `--timeout <secs>` (default 300) and `--rounds <n>` (default 1) are `run`'s
-  watchdog and repair-round flags, applied to each review.
+  watchdog and repair-round flags, applied to each review. `--rounds` is
+  checked here (1–5) before any worktree or bundle exists, so an unsupported
+  count refuses `bad-flags` without spending anything.
 
 A review that fails is that candidate's row, not the run's refusal: an agent
 that exits non-zero, times out, leaves no artifact, or writes one the record
 path rejects is recorded with that refusal code as its `status`, its bundle
-kept for inspection, and the walk continues. Three failures end the whole
-walk because every later candidate would fail the same way: `agent-missing`
-(the binary is not on `PATH`), `agent-spawn-failed`, and `canceled`. A
-candidate whose range cannot be resolved is likewise one failed row.
+kept for inspection, and the walk continues. The timeout row carries
+`agent-timeout`, the same refusal `verdict run --timeout` reports. Three
+failures end the whole walk because every later candidate would fail the same
+way: `agent-missing` (the binary is not on `PATH`), `agent-spawn-failed`, and
+`canceled`. A candidate whose checkout or range cannot be materialized is
+likewise one failed row — `backtest-failed` for a head git cannot check out,
+the range's own code for a bundle build — with an empty `bundle`, and the walk
+continues.
 
 Rerunning the same `--run` resumes: a candidate whose `replay.json` says `ok`
-is reported from that record and the agent is not launched again. A stored
-row is bound to the agent and pass-through arguments that produced it, and to
-the candidate's resolution — replaying it with another agent, other
-pass-through arguments, or a re-mined head/base refuses `run-mismatch` instead
-of silently rewriting a priced review. Delete the run directory to start over.
-Candidates that failed are retried.
+is reported from that record and the agent is not launched again — as long as
+the bundle and its `findings.json` still exist. A row whose bundle was deleted
+or pruned is replayed again. A stored row is bound to the agent and
+pass-through arguments that produced it, and to the candidate's resolution —
+replaying it with another agent, other pass-through arguments, or a re-mined
+head/base refuses `run-mismatch` instead of silently rewriting a priced
+review. Delete the run directory to start over. Candidates that failed are
+retried.
 
 Spend is the agent-reported estimate from each bundle's `cost.json`, never a
 price verdict computes. A row with no price carries `cost_usd: null`, and the
@@ -2917,10 +2925,14 @@ could not price itself must not look free.
 Artifacts: `.verdict/backtest/<run>/prs/<NNN>/replay.json` per candidate (the
 resume record: `run`, `n`, `pr`, `head`, `base`, `agent`, `pass_through`,
 `status`, `bundle`, `cost_usd`, `detail`, `at`), the bundle under
-`.verdict/state/local-bt-<run>-<n>`, and a `backtest.json` marker inside every
-bundle replay builds. The marker is what keeps these bundles out of the
-operator's own history: `trend` skips a marked bundle and names the count it
-skipped. `backtest mine` never writes a marker.
+`.verdict/state/local-bt-<n>-<run>`, and a `backtest.json` marker inside every
+bundle replay builds. The candidate index leads the bundle name because
+fetch-local caps a bundle name at 48 bytes: the cap can truncate the run tail
+but never the index, so each candidate keeps its own bundle. A `--run` id
+longer than those 48 bytes refuses `bad-slug` before anything is built. The
+marker is what keeps these bundles out of the operator's own history: `trend`
+skips a marked bundle and names the count it skipped. `backtest mine` never
+writes a marker.
 
 `--json` `data` is `{run, mode, agent, budgets, stop_reason, prs}`. `mode` is
 `replay`; `budgets` is `{max_reviews, budget_usd, timeout_s, spent_usd,

@@ -24,13 +24,16 @@ import (
 )
 
 // Replay constants. The bundle name is the fetch-local name the store prefixes
-// with `local-`, so `local-bt-<run>-<n>` is what the operator sees on disk.
+// with `local-`, so `local-bt-<n>-<run>` is what the operator sees on disk: the
+// index comes first because the store caps a name at [replaySlugMax] bytes.
 const (
 	modeReplay         = "replay"
 	replayBundlePrefix = "bt-"
+	replaySlugMax      = 48
 	replayRepo         = "local"
 	replayPRsDir       = "prs"
 	replayFile         = "replay.json"
+	findingsFile       = "findings.json"
 	replayPRWidth      = 3
 	worktreePrefix     = ".worktree-bt-"
 	defaultMaxReviews  = 10
@@ -219,10 +222,10 @@ type MarkerDoc struct { //nolint:govet // field order is the published property 
 // and price it against the budgets. It never chooses a model: the agent name
 // and everything after `--` are the operator's.
 func RunReplay(ctx context.Context, req *ReplayRequest) (resp *ReplayResponse, ref *core.RefusalError) {
-	st := &state{rt: req.Runtime, warnings: append([]string{}, req.Warnings...)}
+	st := &state{rt: req.Runtime, cancelMsg: msgReplayCanceled, warnings: append([]string{}, req.Warnings...)}
 	defer st.carryReplay(&resp, &ref)
-	if err := ctx.Err(); err != nil {
-		return nil, st.refuse(codeCanceled, msgReplayCanceled)
+	if ref := st.canceled(ctx); ref != nil {
+		return nil, ref
 	}
 	run, ref := replayRunID(req.Run)
 	if ref != nil {
@@ -270,7 +273,8 @@ func (st *state) carryReplay(resp **ReplayResponse, ref **core.RefusalError) {
 }
 
 // replayRunID validates the --run id: it is one path segment under
-// .verdict/backtest, so it must already be slug-shaped.
+// .verdict/backtest, so it must already be slug-shaped, and it must fit the
+// bundle store's name cap.
 func replayRunID(run string) (string, *core.RefusalError) {
 	if run == "" {
 		return "", &core.RefusalError{Code: codeBadFlags, Message: "backtest replay needs --run <id> (the run 'backtest mine' wrote)"}
@@ -279,6 +283,13 @@ func replayRunID(run string) (string, *core.RefusalError) {
 		return "", &core.RefusalError{
 			Code:    codeBadSlug,
 			Message: "--run must be lowercase letters, digits, and dashes: '" + run + "'",
+		}
+	}
+	if len(run) > replaySlugMax {
+		return "", &core.RefusalError{
+			Code: codeBadSlug,
+			Message: fmt.Sprintf("--run must be at most %d bytes (the bundle store's name cap), got %d: '%s'",
+				replaySlugMax, len(run), run),
 		}
 	}
 	return run, nil
@@ -361,12 +372,27 @@ func parseReplayBudgets(req *ReplayRequest) (replayBudgets, *core.RefusalError) 
 		return out, ref
 	}
 	out.timeout = timeout
+	if ref := replayRounds(out.roundsRaw); ref != nil {
+		return out, ref
+	}
 	budget, ref := replayBudgetUSD(req.BudgetRaw)
 	if ref != nil {
 		return out, ref
 	}
 	out.budgetUSD = budget
 	return out, nil
+}
+
+// replayRounds applies run's --rounds range here, before any worktree or
+// bundle exists: the launcher would refuse the same value, but by then the
+// marker and the bundle are already written.
+func replayRounds(raw string) *core.RefusalError {
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < runcore.MinRounds || n > runcore.MaxRounds || !digitsOnly(raw) {
+		return &core.RefusalError{Code: codeBadFlags, Message: fmt.Sprintf(
+			"--rounds must be %d-%d, got '%s'", runcore.MinRounds, runcore.MaxRounds, raw)}
+	}
+	return nil
 }
 
 // positiveInt parses one positive count, falling back to dflt for an empty
@@ -491,11 +517,15 @@ func (s *replaySession) one(ctx context.Context, n int, c *Candidate) (ReplayPR,
 }
 
 // replay checks out the candidate's head, builds its bundle, and reviews it
-// there. The checkout is removed however the review ends.
+// there. The checkout is removed however the review it reaches ends; a
+// checkout git cannot create is this candidate's failure, never the walk's.
 func (s *replaySession) replay(ctx context.Context, n int, c *Candidate) (ReplayPR, *core.RefusalError) {
-	wt, ref := s.st.worktreeAdd(ctx, s.run, n, c.Head)
+	wt, status, detail, ref := s.st.worktreeAdd(ctx, s.run, n, c.Head)
 	if ref != nil {
 		return ReplayPR{}, ref
+	}
+	if status != "" {
+		return s.failed(n, c, "", status, detail)
 	}
 	defer s.st.worktreeRemove(ctx, wt)
 	dir, status, detail, ref := s.bundle(ctx, n, c)
@@ -571,9 +601,10 @@ func (s *replaySession) settle(entry ReplayPR) ReplayPR {
 }
 
 // stored reads one candidate's resume record. complete is true only for a row
-// whose review was recorded; a row that stopped short is retried, and a row
-// recorded by another agent, another pass-through, or another resolution
-// refuses run-mismatch rather than silently rewriting it.
+// whose review was recorded and whose bundle still carries it: a row that
+// stopped short, or one whose bundle or findings.json is gone, is replayed
+// again. A row recorded by another agent, other pass-through arguments, or
+// another resolution refuses run-mismatch rather than silently rewriting it.
 func (s *replaySession) stored(n int, c *Candidate) (*ReplayPRDoc, bool, *core.RefusalError) {
 	var doc ReplayPRDoc
 	raw, err := os.ReadFile(s.st.prPath(s.run, n))
@@ -589,7 +620,19 @@ func (s *replaySession) stored(n int, c *Candidate) (*ReplayPRDoc, bool, *core.R
 	if ref := s.mismatch(&doc, c, n); ref != nil {
 		return nil, false, ref
 	}
-	return &doc, doc.Status == statusOK, nil
+	return &doc, doc.Status == statusOK && s.kept(&doc), nil
+}
+
+// kept reports whether the row's bundle still holds the findings.json its
+// resume record claims: a deleted or pruned bundle is replayed, never reported
+// as a priced review the operator cannot score.
+func (s *replaySession) kept(doc *ReplayPRDoc) bool {
+	if doc.Bundle == "" {
+		return false
+	}
+	dir := filepath.FromSlash(readcommon.ResolveBundleDir(s.st.root, doc.Bundle))
+	info, err := os.Stat(filepath.Join(dir, findingsFile))
+	return err == nil && info.Mode().IsRegular()
 }
 
 // mismatch refuses a resume whose stored agent, pass-through arguments, or
@@ -687,7 +730,7 @@ func bundleCost(dir string) *float64 {
 // there). A per-PR failure comes back as that row's status and detail; a
 // non-nil refusal means the whole run cannot continue.
 func (s *replaySession) bundle(ctx context.Context, n int, c *Candidate) (string, string, string, *core.RefusalError) {
-	name := replayBundlePrefix + s.run + "-" + strconv.Itoa(n)
+	name := replayBundleName(s.run, n)
 	resp, err := fetchcore.RunLocal(ctx, s.fetchRequest(name, c))
 	if err == nil {
 		return s.bundleDir(resp.Data.Dir), "", "", nil
@@ -702,6 +745,12 @@ func (s *replaySession) bundle(ctx context.Context, n int, c *Candidate) (string
 		return "", typed.Code, typed.Message, nil
 	}
 	return "", statusBundleFailed, err.Error(), nil
+}
+
+// replayBundleName is one candidate's fetch-local name: the index first, so
+// the store's name cap truncates the run tail, never the index.
+func replayBundleName(run string, n int) string {
+	return replayBundlePrefix + strconv.Itoa(n) + "-" + run
 }
 
 // bundleDir resolves the directory the bundle build reported: fetch-local's
@@ -730,7 +779,9 @@ func (s *replaySession) fetchRequest(name string, c *Candidate) *core.FetchLocal
 }
 
 // review launches the operator's agent in the detached checkout of the
-// candidate's head and maps the launcher's answer onto this PR's row.
+// candidate's head and maps the launcher's answer onto this PR's row. A cancel
+// keeps the launcher's code but reports the replay verb, the way every other
+// replay step does.
 func (s *replaySession) review(ctx context.Context, checkout, bundle string) (string, string, *core.RefusalError) {
 	resp, ref := runcore.Run(ctx, s.runRequest(bundle, checkout))
 	if ref == nil {
@@ -738,6 +789,9 @@ func (s *replaySession) review(ctx context.Context, checkout, bundle string) (st
 	}
 	if slices.Contains(replayStopCodes, ref.Code) {
 		out := &core.RefusalError{Code: ref.Code, Message: ref.Message}
+		if ref.Code == codeCanceled {
+			out.Message = msgReplayCanceled
+		}
 		if resp != nil {
 			out.Warnings = resp.Warnings
 		}
@@ -898,31 +952,56 @@ func (st *state) displayRun(run string) string {
 
 // worktreeAdd materializes the candidate head as a detached checkout beside
 // the bundles. A leftover checkout from an interrupted run is dropped first, so
-// a retry never trips over it.
-func (st *state) worktreeAdd(ctx context.Context, run string, n int, head string) (string, *core.RefusalError) {
+// a retry never trips over it. A checkout git refuses is that candidate's
+// status and detail; only a cancel or a missing git ends the walk.
+func (st *state) worktreeAdd(
+	ctx context.Context, run string, n int, head string,
+) (string, string, string, *core.RefusalError) {
 	state := readcommon.StateDir(st.root)
 	if err := os.MkdirAll(state, dirPerm); err != nil {
-		return "", st.refuse(codeBacktestFail, "cannot create "+display(st.root, state)+labelSep+err.Error())
+		return "", "", "", st.refuse(codeBacktestFail, "cannot create "+display(st.root, state)+labelSep+err.Error())
 	}
 	dir := filepath.ToSlash(filepath.Join(state, worktreePrefix+run+"-"+strconv.Itoa(n)))
 	st.worktreeDrop(ctx, dir)
-	if detail := st.worktreeRun(ctx, gitWorktreeAdd, flagDetach, dir, head); detail != "" {
-		return "", st.gitFailure(ctx, "git "+gitWorktree+" "+gitWorktreeAdd+" failed for "+short(head)+labelSep+detail)
+	detail, err := st.worktreeRun(ctx, gitWorktreeAdd, flagDetach, dir, head)
+	if ctx.Err() != nil {
+		return "", "", "", st.refuse(codeCanceled, st.cancelText())
 	}
-	return dir, nil
+	switch {
+	case errors.Is(err, errGitMissing):
+		return "", "", "", st.refuse(codeBacktestFail, "backtest replay needs git on PATH")
+	case err != nil:
+		detail = err.Error()
+	}
+	if detail == "" {
+		return dir, "", "", nil
+	}
+	st.worktreeDrop(ctx, dir)
+	return "", codeBacktestFail, "git " + gitWorktree + " " + gitWorktreeAdd + " failed for " + short(head) + labelSep + detail, nil
 }
 
 // worktreeRun runs one `git worktree` subcommand in the repository root,
-// returning "" on success and a one-line failure detail otherwise.
-func (st *state) worktreeRun(ctx context.Context, args ...string) string {
+// returning git's one-line failure detail beside the spawn error.
+func (st *state) worktreeRun(ctx context.Context, args ...string) (string, error) {
 	_, exit, stderr, err := st.git(ctx, st.root, append([]string{gitWorktree}, args...)...)
+	if err != nil {
+		return "", err
+	}
+	if exit != 0 {
+		return firstLine(stderr), nil
+	}
+	return "", nil
+}
+
+// worktreeDetail flattens worktreeRun's failure into its detail line for the
+// best-effort calls: a checkout that cannot be dropped or removed warns, it
+// never revokes a review that already recorded.
+func (st *state) worktreeDetail(ctx context.Context, args ...string) string {
+	detail, err := st.worktreeRun(ctx, args...)
 	if err != nil {
 		return err.Error()
 	}
-	if exit != 0 {
-		return firstLine(stderr)
-	}
-	return ""
+	return detail
 }
 
 // worktreeDrop clears one checkout path whether or not git still knows about
@@ -930,9 +1009,9 @@ func (st *state) worktreeRun(ctx context.Context, args ...string) string {
 // administrative entry.
 func (st *state) worktreeDrop(ctx context.Context, dir string) {
 	ctx = context.WithoutCancel(ctx)
-	st.worktreeRun(ctx, gitWorktreeRemove, flagForce, dir)
+	st.worktreeDetail(ctx, gitWorktreeRemove, flagForce, dir)
 	_ = os.RemoveAll(dir)
-	st.worktreeRun(ctx, gitWorktreePrune)
+	st.worktreeDetail(ctx, gitWorktreePrune)
 }
 
 // worktreeRemove removes the checkout after its review, on success and on
@@ -941,9 +1020,9 @@ func (st *state) worktreeDrop(ctx context.Context, dir string) {
 // instead of failing the run: the review already recorded.
 func (st *state) worktreeRemove(ctx context.Context, dir string) {
 	ctx = context.WithoutCancel(ctx)
-	detail := st.worktreeRun(ctx, gitWorktreeRemove, flagForce, dir)
+	detail := st.worktreeDetail(ctx, gitWorktreeRemove, flagForce, dir)
 	_ = os.RemoveAll(dir)
-	pruned := st.worktreeRun(ctx, gitWorktreePrune)
+	pruned := st.worktreeDetail(ctx, gitWorktreePrune)
 	if detail == "" && pruned == "" {
 		return
 	}

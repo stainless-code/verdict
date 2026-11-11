@@ -31,13 +31,16 @@ const (
 	// symlink, so cleanup would delete and the writers would write files
 	// outside the bundle.
 	codeRoundsPathUnsafe = "rounds-path-unsafe"
-	// minRounds is the one-shot default; maxRounds caps the launch-to-check
-	// loop so a never-valid agent cannot bill unbounded work.
-	minRounds = 1
-	maxRounds = 5
 	// maxRoundReviewBytes caps one round's review read, the same 32 MiB
 	// record's agent-input cap uses.
 	maxRoundReviewBytes = 32 << 20
+)
+
+// MinRounds and MaxRounds bound --rounds: one shot by default, and a cap so a
+// never-valid agent cannot bill unbounded work.
+const (
+	MinRounds = 1
+	MaxRounds = 5
 )
 
 // rounds parses the raw --rounds value: a total launch-to-check round count
@@ -49,8 +52,9 @@ func (st *state) rounds() (int, *core.RefusalError) {
 		raw = "1"
 	}
 	n, err := strconv.Atoi(raw)
-	if err != nil || n < minRounds || n > maxRounds || !digits(raw) {
-		return 0, st.refuse(codeBadFlags, fmt.Sprintf("run --rounds must be 1-5, got '%s'", st.req.RoundsRaw))
+	if err != nil || n < MinRounds || n > MaxRounds || !digits(raw) {
+		return 0, st.refuse(codeBadFlags, fmt.Sprintf("run --rounds must be %d-%d, got '%s'",
+			MinRounds, MaxRounds, st.req.RoundsRaw))
 	}
 	return n, nil
 }

@@ -95,8 +95,17 @@ func TestParseFlagsMissingValueIsUsage(t *testing.T) {
 	}
 }
 
+// TestParseFlagsReplayRejectsPrint proves --print stays run's escape hatch: a
+// replay always launches, so the flag is a usage error that names run.
+func TestParseFlagsReplayRejectsPrint(t *testing.T) {
+	_, uerr := parseFlags([]string{"replay", "--run", "sweep", "--agent", "claude", "--print"})
+	if uerr == nil || !strings.Contains(uerr.Message, "--print belongs to 'verdict run'") {
+		t.Fatalf("usage = %v, want the replay --print rejection", uerr)
+	}
+}
+
 // TestRentryRebuildsEachMode proves the re-run line reproduces the invocation
-// the operator made, without the pass-through tail.
+// the operator made, including replay's pass-through tail.
 func TestRentryRebuildsEachMode(t *testing.T) {
 	tests := []struct { //nolint:govet // the table reads the case before its expectation
 		name string
@@ -125,7 +134,10 @@ func TestRentryRebuildsEachMode(t *testing.T) {
 		{"replay budgets", []string{
 			"replay", "--run", "sweep-1", "--agent", "codex", "--max-reviews", "4",
 			"--budget-usd", "3", "--timeout", "90", "--rounds", "2", "--", "--model", "x",
-		}, false, "verdict backtest replay --run sweep-1 --agent codex --max-reviews 4 --budget-usd 3 --timeout 90 --rounds 2"},
+		}, false, "verdict backtest replay --run sweep-1 --agent codex --max-reviews 4 --budget-usd 3 --timeout 90 --rounds 2 -- --model x"},
+		{"replay pass-through quoting", []string{
+			"replay", "--run", "sweep-1", "--agent", "claude", "--", "--model", "fast mode",
+		}, true, "verdict backtest replay --run sweep-1 --agent claude --json -- --model 'fast mode'"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) { checkRentry(t, tc.args, tc.json, tc.want) })

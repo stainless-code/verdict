@@ -225,6 +225,30 @@ func TestRunPrintSpawnsNothing(t *testing.T) {
 	}
 }
 
+// blocking waits out the deadline the way a child that ignores it does, then
+// reports only the killed exit status: it never fills Result.TimedOut.
+type blocking struct{}
+
+// Run implements core.Commander.
+func (blocking) Run(ctx context.Context, _ *core.Command) (core.Result, error) {
+	<-ctx.Done()
+	return core.Result{ExitCode: 137}, nil
+}
+
+// TestRunInfersTheWatchdogTimeout proves a commander that blocks past the
+// deadline but sets no TimedOut still yields the timeout refusal: the budget
+// this call armed is the watchdog, and the operator did not cancel.
+func TestRunInfersTheWatchdogTimeout(t *testing.T) {
+	root := fixtureRoot(t)
+	req := request(root, nil)
+	req.Commander = blocking{}
+	req.TimeoutRaw = "1"
+	_, ref := Run(t.Context(), req)
+	if ref == nil || ref.Code != codeAgentTimeout {
+		t.Fatalf("refusal = %v, want %s", ref, codeAgentTimeout)
+	}
+}
+
 // TestRunRefusals pins the six failure modes plus the two pre-flight refusals:
 // code, message fragment, and a non-empty hint for every one.
 func TestRunRefusals(t *testing.T) {

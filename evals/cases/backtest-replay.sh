@@ -98,10 +98,10 @@ assert_json_field "row count" "1" '.data.prs | length'
 assert_json_field "row n" "1" '.data.prs[0].n'
 assert_json_field "row pr" "2" '.data.prs[0].pr'
 assert_json_field "row status" "ok" '.data.prs[0].status'
-assert_json_field "row bundle" "local-bt-rel-1" '.data.prs[0].bundle'
+assert_json_field "row bundle" "local-bt-1-rel" '.data.prs[0].bundle'
 assert_json_field "row cost" "0.6" '.data.prs[0].cost_usd'
 
-BUNDLE="$EVAL_SANDBOX/.verdict/state/local-bt-rel-1"
+BUNDLE="$EVAL_SANDBOX/.verdict/state/local-bt-1-rel"
 # The review was recorded against the historical diff, which is the PR's own
 # change: the fix that landed after it is not in the bundle.
 assert_file_grep "findings recorded" "$BUNDLE/findings.json" '"path": "main.go"'
@@ -130,13 +130,30 @@ assert_exit "rerun exits 0" 0
 assert_json_field "rerun spent" "0.6" '.data.budgets.spent_usd'
 assert_eq "resume launched no agent" "$agent_runs" "$(wc -l <"$EVAL_AGENT_LOG" | tr -d ' ')"
 
+# A resume record is not trusted when the bundle it names lost its findings: the
+# PR is replayed and recorded again.
+rm "$BUNDLE/findings.json"
+agent_runs="$(wc -l <"$EVAL_AGENT_LOG" | tr -d ' ')"
+EVAL_AGENT_PRICE=0.6 run_review backtest replay --run rel --agent claude --json
+assert_exit "lost-findings replay exits 0" 0
+assert_eq "lost-findings replay relaunched the agent" "$((agent_runs + 1))" "$(wc -l <"$EVAL_AGENT_LOG" | tr -d ' ')"
+assert_file_grep "lost-findings replay recorded again" "$BUNDLE/findings.json" '"path": "main.go"'
+
 EVAL_AGENT_PRICE=0.6 run_review backtest replay --run rel --agent codex --json
 assert_exit "another agent refuses" 1
 assert_refusal "another agent" "run-mismatch"
 
+run_review backtest replay --run rel --agent claude --rounds 6 --json
+assert_exit "six rounds refuse" 1
+assert_refusal "six rounds" "bad-flags"
+
+run_review backtest replay --run rel --agent claude --print --json
+assert_exit "replay --print is a usage error" 2
+assert_file_grep "print refusal names run" "$EVAL_ERR" "--print belongs to 'verdict run'"
+
 cat >"$EVAL_SANDBOX/expected-human.txt" <<EOF
 backtest replay rel  (agent claude, max 10 reviews, no budget, timeout 300s)
-  1  #2  local-bt-rel-1  ok  \$0.60
+  1  #2  local-bt-1-rel  ok  \$0.60
 stopped: complete
 spend: \$0.60 over 1 review
 not citable — SZZ-derived: a replay grades a blame-derived guess, not a verified defect
