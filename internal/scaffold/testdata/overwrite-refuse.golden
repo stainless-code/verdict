@@ -17,6 +17,7 @@ init: preset chill (chill: unpinned/10/0.7, standard: 1 member/5/0.5, strict: le
 {"id":"verify-before-claim","rule":"Verify every addressed claim with the repo's own verify command before marking addressed","scope":"*","provenance":"starter","rigor":"walked","hits":0,"false_hits":0,"judged":0,"status":"active"}
 --- .verdict/.gitignore (create) ---
 /state/
+/backtest/
 wrote: .verdict/config.json
 wrote: .verdict/kb.jsonl
 wrote: .verdict/.gitignore
@@ -34,6 +35,7 @@ warn: init completed; the worktree has uncommitted changes (see check-tree above
 --- files ---
 --- file C/.verdict/.gitignore ---
 /state/
+/backtest/
 --- file C/.verdict/config.json ---
 {
   "schema_version": "1",
