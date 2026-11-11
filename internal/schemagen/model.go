@@ -742,7 +742,6 @@ type IndexData struct { //nolint:govet // field order is the published property 
 	Trees        []IndexTreeRow `json:"trees"                                                  optional:"true"`
 	Kept         []string       `json:"kept"                                                   optional:"true"`
 	Removed      IndexRemoved   `json:"removed"                                                optional:"true"`
-	Path         string         `json:"path"                                                   optional:"true"`
 	Query        IndexQuery     `json:"query"                                                  optional:"true"`
 	Index        IndexStatus    `json:"index"                                                  optional:"true"`
 	Counts       IndexCounts    `json:"counts"                                                 optional:"true"`

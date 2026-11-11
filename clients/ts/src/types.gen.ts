@@ -732,7 +732,6 @@ export interface IndexData {
   trees?: Array<IndexTreeRow>;
   kept?: Array<string>;
   removed?: IndexRemoved;
-  path?: string;
   query?: IndexQuery;
   index?: IndexStatus;
   counts?: IndexCounts;
@@ -773,7 +772,7 @@ export interface IndexQuery {
   [key: string]: unknown;
 }
 
-/** The caller envelope index state: tree, commit, staleness, and file coverage. */
+/** The queried tree's index state, published by callers and tests-for: tree, commit, staleness, and file coverage. */
 export interface IndexStatus {
   tree: string;
   commit?: string;
@@ -789,7 +788,7 @@ export interface IndexCoverage {
   [key: string]: unknown;
 }
 
-/** The caller query counts: rows returned and candidates left unresolved. */
+/** The query counts for the kind: caller rows and candidates left unresolved, candidate tests, or co-change partners and the commits that touched the target. */
 export interface IndexCounts {
   callers?: number;
   unresolved?: number;

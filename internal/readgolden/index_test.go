@@ -2,6 +2,7 @@ package readgolden_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -315,4 +316,73 @@ func TestIndexGraphGolden(t *testing.T) {
 		c := &golden.Case{Name: tc.name, Setup: graphRepo, Args: tc.args}
 		c.Run(t, harness)
 	}
+}
+
+// TestIndexGoldensNeverCarryDataPath proves the index data profile advertises
+// no top-level path: the schema dropped it because no wire branch emitted it,
+// and every kind publishes its path as query.path. A golden that grew one
+// would mean the wire and the schema disagree again.
+func TestIndexGoldensNeverCarryDataPath(t *testing.T) {
+	t.Parallel()
+	dir := filepath.Join("testdata", "index")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) == 0 {
+		t.Fatal("no index goldens to check")
+	}
+	checked := 0
+	for _, e := range entries {
+		if data, ok := indexGoldenData(t, filepath.Join(dir, e.Name())); ok {
+			checked++
+			assertNoDataPath(t, e.Name(), data)
+		}
+	}
+	if checked < 5 {
+		t.Errorf("checked %d JSON index goldens; want the six envelope legs and more", checked)
+	}
+}
+
+// indexGoldenData returns one golden's data object, and whether its stdout is
+// a JSON envelope at all: the human legs are prose.
+func indexGoldenData(t *testing.T, path string) (map[string]any, bool) {
+	t.Helper()
+	stdout := goldenStdout(t, path)
+	if !strings.HasPrefix(stdout, "{") {
+		return nil, false
+	}
+	var env struct {
+		Data map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &env); err != nil {
+		t.Fatalf("%s: %v", path, err)
+	}
+	return env.Data, true
+}
+
+// assertNoDataPath proves an envelope publishes no top-level data.path.
+func assertNoDataPath(t *testing.T, name string, data map[string]any) {
+	t.Helper()
+	if _, ok := data["path"]; ok {
+		t.Errorf("%s carries top-level data.path; want the path under query", name)
+	}
+}
+
+// goldenStdout returns one golden file's recorded stdout section.
+func goldenStdout(t *testing.T, path string) string {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, rest, ok := strings.Cut(string(raw), "\n--- stdout ---\n")
+	if !ok {
+		t.Fatalf("%s: no stdout section", path)
+	}
+	stdout, _, ok := strings.Cut(rest, "\n--- stderr ---\n")
+	if !ok {
+		t.Fatalf("%s: no stderr section", path)
+	}
+	return stdout
 }

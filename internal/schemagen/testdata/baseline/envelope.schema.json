@@ -1428,7 +1428,6 @@
           "items": { "type": "string" }
         },
         "removed": { "$ref": "#/$defs/indexRemoved" },
-        "path": { "type": "string" },
         "query": { "$ref": "#/$defs/indexQuery" },
         "index": { "$ref": "#/$defs/indexStatus" },
         "counts": { "$ref": "#/$defs/indexCounts" },
@@ -1488,7 +1487,7 @@
       "additionalProperties": true
     },
     "indexStatus": {
-      "description": "The caller envelope index state: tree, commit, staleness, and file coverage.",
+      "description": "The queried tree's index state, published by callers and tests-for: tree, commit, staleness, and file coverage.",
       "type": "object",
       "properties": {
         "tree": { "type": "string" },
@@ -1510,7 +1509,7 @@
       "additionalProperties": true
     },
     "indexCounts": {
-      "description": "The caller query counts: rows returned and candidates left unresolved.",
+      "description": "The query counts for the kind: caller rows and candidates left unresolved, candidate tests, or co-change partners and the commits that touched the target.",
       "type": "object",
       "properties": {
         "callers": { "type": "integer", "minimum": 0 },

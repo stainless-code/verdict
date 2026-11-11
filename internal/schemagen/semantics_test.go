@@ -152,7 +152,13 @@ var publishedSemantics = map[string]string{
 	// line/kind/resolution and the caller counts' callers/unresolved relax to
 	// optional and the schema widens rather than narrowing: an older consumer
 	// validating a caller envelope still passes.
-	"envelope.schema.json": "bf22c9ea5ec0812740ca5994ad99f2eb8ddb907f2193213ca3c493638dc798be",
+	// index data honesty: the top-level data.path property goes away, because
+	// no wire branch emitted it — tests-for, co-changed, and owners publish
+	// query.path and owners publishes tree/commit — and a typed consumer must
+	// not see a field the wire cannot produce. The indexStatus and indexCounts
+	// descriptions now name every kind that publishes them. One property
+	// removed, prose only elsewhere.
+	"envelope.schema.json": "1145cade958d074c1bfcc13d701531bb7a4890bf2bc3fb1f1f09f82adcaae58f",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
