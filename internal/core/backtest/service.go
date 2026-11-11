@@ -302,8 +302,8 @@ func (st *state) timeUTC() string {
 	return st.now().UTC().Format(gitDateLayout)
 }
 
-// commander returns the injected commander, falling back to the production
-// watchdog so a direct caller still runs.
+// commander returns the injected commander, falling back to the separated
+// read runner so a direct caller still runs and stderr stays out of stdout.
 func (st *state) commander() core.Commander {
 	if st.req.Runtime != nil && st.req.Runtime.Commander != nil {
 		return st.req.Runtime.Commander

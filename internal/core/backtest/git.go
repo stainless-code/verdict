@@ -195,7 +195,7 @@ func (st *state) mergeBase(ctx context.Context, a, b string) (string, *core.Refu
 
 // commitDate returns a commit's committer date in UTC to the second.
 func (st *state) commitDate(ctx context.Context, sha string) (string, *core.RefusalError) {
-	out, exit, stderr, err := st.git(ctx, st.root, "show", "-s", "--format=%cI", sha)
+	out, exit, stderr, err := st.git(ctx, st.root, diffArgs("show", "-s", "--format=%cI", sha)...)
 	if err != nil {
 		return "", st.gitFailure(ctx, err.Error())
 	}
@@ -235,7 +235,7 @@ func (st *state) rootCommit(ctx context.Context, until string) (string, *core.Re
 
 // subjectBody returns a commit's subject and body.
 func (st *state) subjectBody(ctx context.Context, sha string) (string, string, *core.RefusalError) {
-	out, exit, stderr, err := st.git(ctx, st.root, "show", "-s", "--format=%s%x00%b", sha)
+	out, exit, stderr, err := st.git(ctx, st.root, diffArgs("show", "-s", "--format=%s%x00%b", sha)...)
 	if err != nil {
 		return "", "", st.gitFailure(ctx, err.Error())
 	}
