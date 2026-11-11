@@ -462,7 +462,10 @@ func (ss *seedState) prShape(
 ) (prUnit, *core.RefusalError) {
 	switch {
 	case len(parents) >= 2:
-		base := ss.st.mergeBase(ctx, parents[0], parents[1])
+		base, ref := ss.st.mergeBase(ctx, parents[0], parents[1])
+		if ref != nil {
+			return prUnit{}, ref
+		}
 		if base == "" {
 			return prUnit{skip: reasonNoPR, head: parents[1]}, nil
 		}
@@ -558,7 +561,10 @@ func (ss *seedState) mergeCandidate(ctx context.Context, introducer, merge strin
 	if ref != nil || !introduced {
 		return prUnit{}, false, ref
 	}
-	base := ss.st.mergeBase(ctx, parents[0], parents[1])
+	base, ref := ss.st.mergeBase(ctx, parents[0], parents[1])
+	if ref != nil {
+		return prUnit{}, false, ref
+	}
 	if base == "" {
 		return prUnit{skip: reasonNoPR}, true, nil
 	}

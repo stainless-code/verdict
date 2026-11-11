@@ -175,13 +175,22 @@ func (st *state) parents(ctx context.Context, sha string) ([]string, *core.Refus
 	return fields[1:], nil
 }
 
-// mergeBase returns the merge base of two commits, or "" when none exists.
-func (st *state) mergeBase(ctx context.Context, a, b string) string {
-	out, exit, _, err := st.git(ctx, st.root, "merge-base", a, b)
-	if err != nil || exit != 0 {
-		return ""
+// mergeBase returns the merge base of two commits, or "" when they share no
+// ancestor. A git failure is a typed refusal: "exit 1, no common ancestor" is
+// an answer the caller reads as no-pr, and a broken object is not.
+func (st *state) mergeBase(ctx context.Context, a, b string) (string, *core.RefusalError) {
+	out, exit, stderr, err := st.git(ctx, st.root, "merge-base", a, b)
+	if err != nil {
+		return "", st.gitFailure(ctx, err.Error())
 	}
-	return strings.TrimSpace(firstLine(out))
+	switch exit {
+	case 0:
+		return strings.TrimSpace(firstLine(out)), nil
+	case 1:
+		return "", nil
+	default:
+		return "", st.gitFailure(ctx, "git merge-base failed: "+firstLine(stderr))
+	}
 }
 
 // commitDate returns a commit's committer date in UTC to the second.
