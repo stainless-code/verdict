@@ -1271,11 +1271,12 @@ With `--rounds N` (2–5) an invalid `review.json` does not end the run: the
 next round re-sends the directive with the prior review bytes (capped at 16 KiB,
 full bytes in `.run.rounds/NN.review.json`) and the
 checker's fix list fenced under a fresh per-round nonce, and the loop stops on the
-first valid round. Only shape errors re-prompt (warnings never do); a crash, a
-timeout, a missing artifact, or a byte-identical repeat stops the loop at
-once. `--json` carries the loop in `data.repair` (rounds, rounds to valid,
-per-round hashes, problems); each round's bytes stay in the bundle's
-`.run.rounds/` files.
+first valid round. Each round rewrites the launch record just before it spawns,
+so the freshness assert is per round. Only shape errors re-prompt (warnings never
+do); a crash, a timeout, a missing or stale artifact, or a byte-identical repeat
+stops the loop at once. `--json` carries the loop in `data.repair` (rounds,
+rounds to valid, per-round hashes, problems); each round's bytes stay in the
+bundle's `.run.rounds/` files.
 
 ### Agents, arguments, and `--print`
 

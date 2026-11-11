@@ -351,19 +351,20 @@ func TestRepairExhaustedCarriesProblems(t *testing.T) {
 }
 
 // TestRepairWarningsOnlyNeedsNoExtraRound proves leniency: a warnings-only
-// review is valid and never triggers another round.
+// review is valid and never triggers another round, whatever the cap, and the
+// recorded profile echoes the cap asked for rather than the rounds run.
 func TestRepairWarningsOnlyNeedsNoExtraRound(t *testing.T) {
 	root := repairFixture(t)
 	var lines collector
 	cmdr := &sequenced{write: func(int) { writeDoc(t, root, warningsDoc) }}
-	resp, ref := Run(t.Context(), repairRequest(root, cmdr, "3", &lines))
+	resp, ref := Run(t.Context(), repairRequest(root, cmdr, "5", &lines))
 	if ref != nil {
 		t.Fatalf("Run refused: %v", ref)
 	}
 	if cmdr.calls != 1 {
 		t.Fatalf("spawns = %d, want 1: warnings must not re-prompt", cmdr.calls)
 	}
-	assertRepairProfile(t, resp, 3, 1, []bool{true})
+	assertRepairProfile(t, resp, 5, 1, []bool{true})
 }
 
 // TestRoundsValidation pins the --rounds range: 1-5 parses, and an absent
@@ -468,6 +469,77 @@ func TestRepairSilentSecondRoundIsStale(t *testing.T) {
 	if cmdr.calls != 2 {
 		t.Fatalf("spawns = %d, want 2: the silent round must stop the loop", cmdr.calls)
 	}
+}
+
+// TestRepairRoundStampsFromLaunchRecord proves the freshness baseline is the
+// launch record's own modification time, not the process clock: a review whose
+// mtime equals that of the record written before its spawn - what a
+// whole-second filesystem records for both - reads as fresh, so the loop
+// re-prompts instead of refusing stale-review-artifact.
+func TestRepairRoundStampsFromLaunchRecord(t *testing.T) {
+	root := repairFixture(t)
+	dir := bundleDir(root)
+	var lines collector
+	cmdr := &sequenced{write: func(call int) {
+		if call == 1 {
+			writeDoc(t, root, invalidDoc)
+		} else {
+			writeDoc(t, root, validDoc)
+		}
+		stamp := launcherMtime(t, dir)
+		if err := os.Chtimes(filepath.Join(dir, "review.json"), stamp, stamp); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	resp, ref := Run(t.Context(), repairRequest(root, cmdr, "3", &lines))
+	if ref != nil {
+		t.Fatalf("Run refused: %v (want the launch record's mtime accepted as fresh)", ref)
+	}
+	if cmdr.calls != 2 {
+		t.Fatalf("spawns = %d, want 2: both rounds wrote inside the launch second", cmdr.calls)
+	}
+	if !resp.Data.Fresh {
+		t.Error("response reports the artifact stale, want fresh")
+	}
+	assertRepairProfile(t, resp, 3, 2, []bool{false, true})
+}
+
+// TestRepairStampIgnoresTheProcessClock proves the freshness baseline is the
+// filesystem's stamp, not the clock the service is handed: a process clock an
+// hour ahead of the filesystem would read a review the agent just wrote as
+// stale, and the round would refuse instead of re-prompting.
+func TestRepairStampIgnoresTheProcessClock(t *testing.T) {
+	root := repairFixture(t)
+	var lines collector
+	cmdr := &sequenced{write: func(call int) {
+		if call == 1 {
+			writeDoc(t, root, invalidDoc)
+			return
+		}
+		writeDoc(t, root, validDoc)
+	}}
+	req := repairRequest(root, cmdr, "3", &lines)
+	ahead := time.Now().Add(time.Hour)
+	req.Now = func() time.Time { return ahead }
+	resp, ref := Run(t.Context(), req)
+	if ref != nil {
+		t.Fatalf("Run refused: %v (a process clock ahead of the filesystem is not the launch stamp)", ref)
+	}
+	if cmdr.calls != 2 {
+		t.Fatalf("spawns = %d, want 2", cmdr.calls)
+	}
+	assertRepairProfile(t, resp, 3, 2, []bool{false, true})
+}
+
+// launcherMtime reads the launch record's modification time: the stamp the
+// freshness assertion measures one round's artifact against.
+func launcherMtime(t *testing.T, dir string) time.Time {
+	t.Helper()
+	info, err := os.Stat(filepath.Join(dir, launcherFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info.ModTime()
 }
 
 // TestRepairMissingDiffStopsWithMissingDiff proves the loop uses the bundle

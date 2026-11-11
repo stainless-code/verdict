@@ -51,10 +51,11 @@ func (st *state) rounds() (int, *core.RefusalError) {
 // repairLoop runs up to n launch-to-check rounds against one bundle. Round 1
 // sends the one-shot directive unchanged; later rounds append the prior
 // review bytes and the shape checker's fix list under a fresh per-round
-// nonce. The loop stops on the first valid round, on any launch or artifact
-// failure (the existing codes, no further rounds), and on a round that
-// repeats the prior bytes. A never-valid run leaves the last attempt's
-// review.json in place.
+// nonce. Each round rewrites the launch record before it spawns, so the
+// freshness assertion measures that round's launch. The loop stops on the
+// first valid round, on any launch or artifact failure (the existing codes, no
+// further rounds), and on a round that repeats the prior bytes. A never-valid
+// run leaves the last attempt's review.json in place.
 func (st *state) repairLoop(ctx context.Context, args *launchArgs, n int) (*core.RunResponse, *core.RefusalError) {
 	bin, ref := st.resolve(args.def)
 	if ref != nil {
@@ -71,16 +72,21 @@ func (st *state) repairLoop(ctx context.Context, args *launchArgs, n int) (*core
 		Timeout:       args.timeout,
 	}
 	rec.Argv, st.argSecrets = recordArgv(args.argv, args.prompt, st.req.Environ)
-	if _, ref := writeLauncher(args.dir+"/"+launcherFile, rec); ref != nil {
-		return nil, ref
-	}
 	st.clearRoundFiles(args.dir)
 	rep := &core.RunRepair{Rounds: n, Attempts: []core.RunAttempt{}}
 	var prior []byte
 	var lastRes *core.Result
 	var lastArt artifactState
 	for k := 1; k <= n; k++ {
-		resp, stop, ref, review, res, art := st.repairRound(ctx, args, rec, rep, started, prior, k, n)
+		// The launch record's mtime is this round's freshness baseline: it
+		// comes from the same filesystem clock, at the same granularity, as the
+		// artifact's mtime. A process clock runs ahead of a whole-second
+		// filesystem's stamps and refuses a review the agent did write.
+		launched, writeRef := writeLauncher(args.dir+"/"+launcherFile, rec)
+		if writeRef != nil {
+			return nil, writeRef
+		}
+		resp, stop, ref, review, res, art := st.repairRound(ctx, args, rec, rep, started, launched, prior, k, n)
 		lastRes, lastArt = res, art
 		if stop {
 			return resp, ref
@@ -91,12 +97,13 @@ func (st *state) repairLoop(ctx context.Context, args *launchArgs, n int) (*core
 	return resp, ref
 }
 
-// repairRound runs one launch-to-check round and its shape check. stop ends
+// repairRound runs one launch-to-check round and its shape check, launched
+// being the modification time the round's launch record just got. stop ends
 // the loop: a valid review, any launch or artifact failure, and a round that
-// repeats the prior bytes all stop here. review is the bytes this round
-// left, for the next round's no-progress comparison.
+// repeats the prior bytes all stop here. review is the bytes this round left,
+// for the next round's no-progress comparison.
 func (st *state) repairRound(ctx context.Context, args *launchArgs, rec *launcher, rep *core.RunRepair,
-	started time.Time, prior []byte, k, n int,
+	started, launched time.Time, prior []byte, k, n int,
 ) (resp *core.RunResponse, stop bool, ref *core.RefusalError, review []byte, res *core.Result, art artifactState) {
 	prompt := args.prompt
 	if k > 1 {
@@ -104,11 +111,11 @@ func (st *state) repairRound(ctx context.Context, args *launchArgs, rec *launche
 	}
 	argv := argvFor(args.def, st.req.PassThrough, prompt)
 	st.human(fmt.Sprintf("» round %d/%d: %s (timeout %ds)", k, n, strings.Join(rec.Argv, " "), args.timeout))
-	roundLaunched := st.now()
+	roundStarted := st.now()
 	roundRes, spawnErr := st.spawn(ctx, argv, args.timeout)
-	wallS := st.now().Sub(roundLaunched).Seconds()
+	wallS := st.now().Sub(roundStarted).Seconds()
 	st.writeRoundOut(args.dir, k, roundRes)
-	roundArt := inspectArtifact(args.abs, roundLaunched)
+	roundArt := inspectArtifact(args.abs, launched)
 	if ref := st.verdict(ctx, args, roundRes, spawnErr, roundArt); ref != nil {
 		st.writeCrashRoundReview(args, k)
 		resp, ref, res, art := st.roundFailed(args, rec, rep, started, roundRes, roundArt, ref)
