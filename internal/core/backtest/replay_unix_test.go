@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
@@ -732,6 +733,7 @@ func TestReplayCancelReportsTheReplayVerb(t *testing.T) {
 	t.Run("pre-flight", checkCancelBeforeTheWalk)
 	t.Run("during the checkout", checkCancelDuringTheCheckout)
 	t.Run("during the review", checkCancelDuringTheReview)
+	t.Run("before the record", checkCancelBeforeTheRecord)
 	t.Run("between reviews", checkCancelBetweenReviews)
 }
 
@@ -801,6 +803,51 @@ func checkCancelDuringTheReview(t *testing.T) {
 	checkReplayCancelText(t, ref)
 	if got := f.launches(t); got != 1 {
 		t.Errorf("launches = %d; the canceled review is the only one", got)
+	}
+	checkNoLeftoverCheckouts(t, f)
+}
+
+// agentRan notes whether the agent launch reached the commander, so a cancel can
+// fire on the first clock read after it.
+type agentRan struct {
+	inner core.Commander
+	ran   bool
+}
+
+// Run records the agent invocation, then delegates.
+func (a *agentRan) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
+	if len(cmd.Argv) > 0 && filepath.Base(cmd.Argv[0]) == "claude" {
+		a.ran = true
+	}
+	return a.inner.Run(ctx, cmd)
+}
+
+// checkCancelBeforeTheRecord cancels between the agent's exit and the record
+// step: the launcher's closing clock read is the last seam before the merge, so
+// the cancel lands there. The walk reports the replay's own cancel and no row
+// names the record verb.
+func checkCancelBeforeTheRecord(t *testing.T) {
+	t.Helper()
+	f := newReplayFixture(t)
+	f.plant(t, "write", "0.6")
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	cmdr := &agentRan{inner: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}}
+	req := f.request(t, func(r *ReplayRequest) { r.Runtime.Commander = cmdr })
+	clock := req.Runtime.Now
+	req.Runtime.Now = func() time.Time {
+		if cmdr.ran {
+			cancel()
+		}
+		return clock()
+	}
+	_, ref := RunReplay(ctx, req)
+	checkReplayCancelText(t, ref)
+	if got := f.launches(t); got != 1 {
+		t.Errorf("launches = %d; the cancel lands after the first review", got)
+	}
+	if _, err := os.Stat(filepath.Join(f.repo.dir, ".verdict", "backtest", replayTestRun, "prs")); !os.IsNotExist(err) {
+		t.Errorf("the canceled record left a resume row naming the record verb: %v", err)
 	}
 	checkNoLeftoverCheckouts(t, f)
 }

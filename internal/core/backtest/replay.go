@@ -563,6 +563,9 @@ func (s *replaySession) reviewed(
 	}
 	entry.CostUSD = bundleCost(dir)
 	if ref := s.record(ctx, entry.Bundle); ref != nil {
+		if ref.Code == codeCanceled {
+			return ReplayPR{}, ref
+		}
 		return s.failed(n, c, entry.Bundle, ref.Code, ref.Message)
 	}
 	if ref := s.st.writePR(s.run, n, s.prDoc(n, c, entry.Bundle, statusOK, "", entry.CostUSD)); ref != nil {
@@ -824,8 +827,14 @@ func (s *replaySession) runRequest(bundle, checkout string) *core.RunRequest {
 }
 
 // record validates and merges the review into findings.json, which is what a
-// later scoring pass reads. A record refusal is that PR's row, never the run's.
+// later scoring pass reads. A record refusal is that PR's row, never the run's,
+// except a cancel: the record verb would report it as its own step, so the
+// context is read before and after the merge and a cancel is reported as the
+// replay's.
 func (s *replaySession) record(ctx context.Context, bundle string) *core.RefusalError {
+	if cancel := s.st.canceled(ctx); cancel != nil {
+		return cancel
+	}
 	resp, ref := recordcore.Run(ctx, &core.RecordRequest{
 		ReadRequest: s.readRequest(replayRepo, bundle),
 		Effective:   s.req.Effective,
@@ -833,6 +842,9 @@ func (s *replaySession) record(ctx context.Context, bundle string) *core.Refusal
 	if ref == nil {
 		s.st.warnAll(resp.Warnings)
 		return nil
+	}
+	if cancel := s.st.canceled(ctx); cancel != nil {
+		return cancel
 	}
 	return ref
 }
