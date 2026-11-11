@@ -281,6 +281,44 @@ func TestIndexReparsesOnlyChangedBlob(t *testing.T) {
 	}
 }
 
+// TestShardIdentityIncludesRefsPerFile proves a shard parsed under a lower
+// reference cap is reparsed when the cap rises: reusing it would answer with
+// the truncated reference list.
+func TestShardIdentityIncludesRefsPerFile(t *testing.T) {
+	f := newFixture(t)
+	f.write("go.mod", "module example.com/m\n")
+	f.write("a/a.go", "package a\n\nfunc Caller() {\n\tOne()\n\tTwo()\n}\n")
+	f.commit("one")
+	low, ref := Run(context.Background(), f.request(QueryBuild, &Limits{RefsPerFile: 1}))
+	if ref != nil {
+		t.Fatalf("capped build refused: %v", ref)
+	}
+	if low.Data.Parsed != 1 || low.Data.Skipped != 1 {
+		t.Fatalf("capped build = parsed %d, skipped %d; want parsed 1, skipped 1", low.Data.Parsed, low.Data.Skipped)
+	}
+	store := storePath(f.dir)
+	truncated, ref := readTree(store, low.Data.Tree)
+	if ref != nil {
+		t.Fatalf("read capped tree: %v", ref)
+	}
+	if len(truncated.Files) != 1 || !truncated.Files[0].RefsTruncated || len(truncated.Files[0].Refs) != 1 {
+		t.Fatalf("capped tree file = %+v; want one truncated reference", truncated.Files)
+	}
+
+	full := f.build()
+	if full.Data.Parsed != 1 {
+		t.Errorf("raising the cap parsed %d shards; want 1", full.Data.Parsed)
+	}
+	reparsed, ref := readTree(store, full.Data.Tree)
+	if ref != nil {
+		t.Fatalf("read full tree: %v", ref)
+	}
+	refs := reparsed.Files[0].Refs
+	if reparsed.Files[0].RefsTruncated || len(refs) != 2 || refs[0].Name != "One" || refs[1].Name != "Two" {
+		t.Errorf("reparsed refs = %+v (truncated %t); want One and Two", refs, reparsed.Files[0].RefsTruncated)
+	}
+}
+
 // TestTruncatedShardRefuses proves a truncated shard is a typed refusal, never
 // read as empty.
 func TestTruncatedShardRefuses(t *testing.T) {

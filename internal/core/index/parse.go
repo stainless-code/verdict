@@ -10,10 +10,14 @@ import (
 )
 
 // shard is one content-addressed parse result. It carries no file path: the
-// bytes depend on the blob alone, so a rename reuses the shard.
+// bytes depend on the blob alone, so a rename reuses the shard. RefsPerFile
+// records the parse cap the shard was built under: a shard parsed with a
+// lower cap holds a truncated reference list, so it is not reusable when the
+// cap rises.
 type shard struct {
 	SchemaVersion string        `json:"schema_version"`
 	Blob          string        `json:"blob"`
+	RefsPerFile   int           `json:"refs_per_file"`
 	Package       string        `json:"package,omitempty"`
 	Error         string        `json:"error,omitempty"`
 	Imports       []importEntry `json:"imports,omitempty"`
@@ -80,7 +84,7 @@ var builtins = map[string]bool{
 // shard carrying the parser's error: it stays content-addressed and truthful
 // instead of disappearing from the coverage count.
 func parseShard(blob string, src []byte, maxRefs int) shard {
-	out := shard{SchemaVersion: "1", Blob: blob}
+	out := shard{SchemaVersion: "1", Blob: blob, RefsPerFile: maxRefs}
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "indexed.go", src, 0)
 	if err != nil {

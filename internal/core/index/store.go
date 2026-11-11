@@ -139,8 +139,10 @@ func dirStats(dir string) (int, int64) {
 }
 
 // readShard reads and validates one content-addressed shard. A truncated or
-// invalid shard refuses: it is never read as empty.
-func readShard(store, blob string) (*shard, bool, *core.RefusalError) {
+// invalid shard refuses: it is never read as empty. A shard parsed under
+// another reference cap is a cache miss, not corruption: it is reparsed and
+// overwritten.
+func readShard(store, blob string, refsPerFile int) (*shard, bool, *core.RefusalError) {
 	raw, err := os.ReadFile(shardPath(store, blob))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, false, nil
@@ -155,6 +157,9 @@ func readShard(store, blob string) (*shard, bool, *core.RefusalError) {
 		return nil, true, &core.RefusalError{
 			Code: codeIndexCorrupt, Message: fmt.Sprintf("shard %s.json is truncated or invalid", blob),
 		}
+	}
+	if s.RefsPerFile != refsPerFile {
+		return nil, false, nil
 	}
 	return &s, true, nil
 }
@@ -280,7 +285,7 @@ func (st *state) collectShards(
 		if _, done := parsed[e.Blob]; done {
 			continue
 		}
-		s, found, ref := readShard(store, e.Blob)
+		s, found, ref := readShard(store, e.Blob, limits.RefsPerFile)
 		if ref != nil {
 			return nil, nil, ref
 		}
