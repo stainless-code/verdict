@@ -44,6 +44,7 @@ const (
 	schemaVersion      = "1"
 	headSourceMerge    = "merge-time"
 	msgCanceled        = "canceled before backtest mine completed"
+	shallowWarning     = "shallow clone: an introducer at the clone boundary reads as no-pr; run 'git fetch --unshallow' for the full history"
 	artifactDir        = ".verdict/backtest"
 	commandOutputCap   = 16 << 20
 	gitDateLayout      = "2006-01-02T15:04:05Z"
@@ -215,6 +216,7 @@ func Run(ctx context.Context, req *Request) (resp *Response, ref *core.RefusalEr
 	if ref != nil {
 		return nil, ref
 	}
+	st.shallow(ctx)
 	until, ref := st.until(ctx)
 	if ref != nil {
 		return nil, ref
@@ -331,6 +333,26 @@ func (st *state) repoRoot(ctx context.Context) (string, *core.RefusalError) {
 		return "", st.refuse(codeNotARepo, "not a git repository: "+root)
 	}
 	return filepath.Clean(strings.TrimSpace(out)), nil
+}
+
+// warn records one warning on the envelope and streams it through the
+// injected progress observer, whose adapter adds the `warn: ` prefix.
+func (st *state) warn(msg string) {
+	st.warnings = append(st.warnings, msg)
+	if st.req.Runtime != nil {
+		st.req.Runtime.Warn(msg)
+	}
+}
+
+// shallow warns when the window is read from a shallow clone: a boundary
+// commit carries no parents in the clone, so an introducer outside it reads
+// as no-pr. The probe is advisory, so an old git without the flag stays quiet.
+func (st *state) shallow(ctx context.Context) {
+	out, exit, _, err := st.git(ctx, st.root, "rev-parse", "--is-shallow-repository")
+	if err != nil || exit != 0 || strings.TrimSpace(out) != "true" {
+		return
+	}
+	st.warn(shallowWarning)
 }
 
 // gitVersion records the exact git that produced the artifact.

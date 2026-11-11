@@ -14,16 +14,17 @@ import (
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 )
 
-// recorder captures the human lines a service emits.
+// recorder captures the human and warning lines a service emits.
 type recorder struct {
-	lines []string
+	lines    []string
+	warnings []string
 }
 
 // Human records one line.
 func (r *recorder) Human(line string) { r.lines = append(r.lines, line) }
 
-// Warn is a no-op for the recorder.
-func (*recorder) Warn(string) {}
+// Warn records one warning.
+func (r *recorder) Warn(line string) { r.warnings = append(r.warnings, line) }
 
 // Diag is a no-op for the recorder.
 func (*recorder) Diag(string) {}
