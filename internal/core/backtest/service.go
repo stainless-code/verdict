@@ -577,8 +577,10 @@ func (s span) back(at time.Time) time.Time {
 // would let two runs sharing a prefix be cut onto the same bundle.
 func runIDSlug(run string) *core.RefusalError {
 	if readcommon.Slugify(run) != run {
-		return &core.RefusalError{Code: codeBadSlug,
-			Message: "--run must be lowercase letters, digits, and dashes: '" + run + "'"}
+		return &core.RefusalError{
+			Code:    codeBadSlug,
+			Message: "--run must be lowercase letters, digits, and dashes: '" + run + "'",
+		}
 	}
 	if len(run) > runIDMax {
 		return &core.RefusalError{Code: codeBadSlug, Message: fmt.Sprintf(

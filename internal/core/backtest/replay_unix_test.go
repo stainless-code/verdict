@@ -333,9 +333,9 @@ func checkLaunch(t *testing.T, f *replayFixture, i int, line []string) {
 	}
 }
 
-// TestReplayLongRunIDsKeepDistinctBundles proves the two longest ids that differ
-// only in their last byte build distinct bundles: at the cap the store truncates
-// nothing, so neither run can land on the other's diff.
+// TestReplayLongRunIDsKeepDistinctBundles proves the two longest ids that
+// differ only in their last byte build distinct bundles: at the cap the store
+// truncates nothing, so neither run can land on the other's diff.
 func TestReplayLongRunIDsKeepDistinctBundles(t *testing.T) {
 	f := newReplayFixture(t)
 	f.plant(t, "write", "0.6")
@@ -807,8 +807,8 @@ func checkCancelDuringTheReview(t *testing.T) {
 	checkNoLeftoverCheckouts(t, f)
 }
 
-// agentRan notes whether the agent launch reached the commander, so a cancel can
-// fire on the first clock read after it.
+// agentRan notes whether the agent launch reached the commander, so a cancel
+// can fire on the first clock read after it.
 type agentRan struct {
 	inner core.Commander
 	ran   bool

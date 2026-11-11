@@ -35,8 +35,8 @@ const (
 	// replayMaxReviews is the ceiling --max-reviews may not pass: 99 is the
 	// widest candidate index [runIDMax] budgets for.
 	replayMaxReviews = 99
-	// replayIndexWidth is the decimal width of [replayMaxReviews], written from
-	// it so the arithmetic below cannot drift from the ceiling.
+	// replayIndexWidth is [replayMaxReviews] in digits: the widest candidate
+	// index a bundle name can carry.
 	replayIndexWidth = len("99")
 	// runIDMax is the longest --run id either verb accepts. A bundle is named
 	// `bt-<n>-<run>` and fetch-local keeps only the first [replaySlugMax] bytes
@@ -563,6 +563,8 @@ func (s *replaySession) reviewed(
 	}
 	entry.CostUSD = bundleCost(dir)
 	if ref := s.record(ctx, entry.Bundle); ref != nil {
+		// A cancel belongs to the walk, not to this row: the row would name the
+		// record step and every later candidate would stop anyway.
 		if ref.Code == codeCanceled {
 			return ReplayPR{}, ref
 		}
