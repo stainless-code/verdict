@@ -748,7 +748,7 @@ Fix: make the bundle directory writable (or re-fetch the bundle), then re-run.
 
 Cause: `run --rounds N` spent every round without a valid `review.json` (or a round repeated the prior bytes, so there was no progress to spend).
 
-Fix: fix every error named in `error.problems`, then re-run (or raise `--rounds` up to 5).
+Fix: fix every error named in `error.problems`, then re-run (when the cap was hit, raise `--rounds` up to 5; for no progress check the round files).
 
 ## `report-failed`
 

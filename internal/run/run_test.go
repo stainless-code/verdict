@@ -151,6 +151,19 @@ func TestParseFlagsRounds(t *testing.T) {
 	}
 }
 
+// TestParseFlagsRoundsMissingValue proves a --rounds without its operand is a
+// usage error, never a silent default: the operator must name the count.
+func TestParseFlagsRoundsMissingValue(t *testing.T) {
+	r, _, diag := testRunner()
+	_, code, done := parseFlags(r, []string{"--agent", "claude", "--rounds"})
+	if !done || code != cli.ExitUsage {
+		t.Fatalf("exit = %d done %v, want the usage exit", code, done)
+	}
+	if !strings.Contains(diag.String(), "--rounds") {
+		t.Errorf("usage error does not name the flag: %q", diag.String())
+	}
+}
+
 // TestRentryKeepsRounds pins the re-run line: the round count it names is
 // the one the operator ran, dropped only at the default.
 func TestRentryKeepsRounds(t *testing.T) {

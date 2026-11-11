@@ -9,7 +9,7 @@ Verdict splits code review into steps your agent runs on your machine: fetch, re
 - **Evidence-graded findings.** Every finding carries an evidence rung, from `said` to `reproduced`, plus a severity. Unproven claims are labeled, never posted as fact.
 - **Guarded posting.** Anchors are validated before posting. One bad anchor never fails a post. Stale-SHA and duplicate-post guards refuse to post over a moved head or a repeat.
 - **Any model, any agent.** The agent you run is the review model. Verdict pins no models.
-- **Your agent runs only when you ask.** `verdict run --agent <name>` launches one process against one bundle: no daemon, queue, scheduler, webhook, or model selection, and verdict never interprets what the model wrote.
+- **Your agent runs only when you ask.** `verdict run --agent <name>` launches one process against one bundle by default (with `--rounds N` it repeats only the launch→check pair up to N rounds): no daemon, queue, scheduler, webhook, or model selection, and by default verdict never interprets what the model wrote (with `--rounds N` it runs the shape checker to build the next round's fix list).
 - **Machine-readable.** Review verbs print one `--json` envelope. `report` also exports SARIF for scanners and CI.
 - **No PR needed.** `fetch-local` reviews your working tree and never posts.
 

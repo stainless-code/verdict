@@ -43,6 +43,16 @@ const (
 	tailCap = 4000
 )
 
+// launcherRepair is the launcher's repair summary: the round cap, how many
+// rounds it took to reach a valid review, and whether the last round was
+// valid. The per-round attempts ride top-level in launcher.Attempts, never
+// duplicated inside repair.
+type launcherRepair struct {
+	Rounds        int  `json:"rounds"`
+	RoundsToValid int  `json:"rounds_to_valid"`
+	FinalValid    bool `json:"final_valid"`
+}
+
 // launcher is the provenance record. The launch write fills everything down to
 // Timeout; the outcome write adds the fields from DurationMS on, so a record
 // left behind by a launcher that never came back still says what started and
@@ -65,7 +75,7 @@ type launcher struct { //nolint:govet // field order is the published property o
 	ArtifactFresh *bool             `json:"artifact_fresh,omitempty"`
 	ArtifactBytes *int64            `json:"artifact_bytes,omitempty"`
 	OutputTail    string            `json:"output_tail,omitempty"`
-	Repair        *core.RunRepair   `json:"repair,omitempty"`
+	Repair        *launcherRepair   `json:"repair,omitempty"`
 	Attempts      []core.RunAttempt `json:"attempts,omitempty"`
 }
 

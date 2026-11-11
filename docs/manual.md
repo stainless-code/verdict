@@ -1241,9 +1241,9 @@ merges, or pushes; with `--rounds N` it repeats only the launch→check pair,
 up to N rounds, and still records nothing: `next` in its envelope names the
 command it did not run.
 
-`run` invokes your agent only when you ask: one process, one bundle. No
-daemon, no queue, no scheduler, no webhook, no model selection, and it never
-reads prose: with `--rounds N` it runs the published `CheckReview` shape
+`run` invokes your agent only when you ask: one process per round, one bundle. No
+daemon, no queue, no scheduler, no webhook, no model selection, and by default
+it never reads prose: with `--rounds N` it runs the published `CheckReview` shape
 checker over review.json (paths and codes only) to build the next round's fix
 list.
 
@@ -1268,8 +1268,9 @@ not re-render the diff — `fetch --show-prompts` is that (fetch-time, with your
 privacy exclusions applied); the agent reads the bundle with its own tools.
 
 With `--rounds N` (2–5) an invalid `review.json` does not end the run: the
-next round re-sends the directive with the prior review bytes and the
-checker's fix list fenced under the run's nonce, and the loop stops on the
+next round re-sends the directive with the prior review bytes (capped at 16 KiB,
+full bytes in `.run.rounds/NN.review.json`) and the
+checker's fix list fenced under a fresh per-round nonce, and the loop stops on the
 first valid round. Only shape errors re-prompt (warnings never do); a crash, a
 timeout, a missing artifact, or a byte-identical repeat stops the loop at
 once. `--json` carries the loop in `data.repair` (rounds, rounds to valid,
@@ -1318,7 +1319,7 @@ them through `error.code`, and the envelope's `data.exit` records what the agent
 itself returned.
 
 Plus the shared codes: `missing-bundle` (fetch first), `bad-flags` (no
-`--agent`, a `--rounds` outside 1–5, or `--print` with `--rounds`),
+`--agent`, a `--rounds` outside 1–5, or `--print` with `--rounds` greater than 1),
 `bad-timeout`, `canceled` (exit 3), and usage errors (exit 2).
 With the default one shot there is no retry, no re-prompt, and no repair
 pass: fix the invocation and run again. With `--rounds N` the only repetition
@@ -1330,10 +1331,11 @@ The launch is recorded in `.verdict/state/<bundle>/launcher.json`: agent name,
 resolved binary path, the argv shape (directive replaced by `<prompt>`,
 secret-shaped operands and secret-named environment values redacted), start
 and end timestamps, duration, exit code, timeout flag, artifact freshness and
-size, and a redacted output tail. The child's full combined output stays in
-`.verdict/state/<bundle>/.run.out`. Both are evidence, not gates. With
-`--rounds N` the record also carries `repair` (rounds, rounds to valid) and
-`attempts[]` (per-round prompt and review hashes, check verdict, problems),
+size, and a redacted output tail. Each round's full combined output stays in
+`.verdict/state/<bundle>/.run.rounds/NN.out` (crash rounds too) and the last
+round's output also stays in `.verdict/state/<bundle>/.run.out`. Both are evidence, not gates. With
+`--rounds N` the record also carries `repair` (rounds, rounds to valid, final
+valid) and top-level `attempts[]` (per-round prompt and review hashes, check verdict, problems),
 and each round's bytes land in `.verdict/state/<bundle>/.run.rounds/`.
 
 ### Network

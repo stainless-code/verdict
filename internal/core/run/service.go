@@ -427,7 +427,7 @@ func (st *state) recordOutcome(rec *launcher, dir string, ended, started time.Ti
 		rec.ArtifactBytes = &art.size
 	}
 	if rep != nil {
-		rec.Repair = rep
+		rec.Repair = &launcherRepair{Rounds: rep.Rounds, RoundsToValid: rep.RoundsToValid, FinalValid: rep.FinalValid}
 		rec.Attempts = rep.Attempts
 	}
 	_, ref := writeLauncher(filepath.Join(dir, launcherFile), rec)
