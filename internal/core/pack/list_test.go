@@ -123,6 +123,29 @@ func TestListMissingOrgPathRefuses(t *testing.T) {
 	}
 }
 
+// TestListRefusesOrgEntryInsideRepoPacks proves a packs[] entry pointing into
+// the repo layer refuses bad-pack and names the entry: that tree is read from
+// the PR base, so listing it as the org layer would read head bytes.
+func TestListRefusesOrgEntryInsideRepoPacks(t *testing.T) {
+	t.Parallel()
+	root, _ := listFixtures(t, `"replace":["acme/org"],`)
+	home := t.TempDir()
+	settings := config.SettingsPath(home, "")
+	writeJSON(t, settings, `{"packs":[".verdict/packs/repo"]}`)
+	_, ref := RunList(t.Context(), &Request{
+		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
+		settings,
+		true,
+	})
+	if ref == nil || ref.Code != CodeBadPack {
+		t.Fatalf("org entry inside repo packs = %v, want bad-pack", ref)
+	}
+	want := `org pack path ".verdict/packs/repo" is inside .verdict/packs`
+	if !strings.Contains(ref.Message, want) {
+		t.Fatalf("message = %q, want it to contain %q", ref.Message, want)
+	}
+}
+
 // TestListUndeclaredOverrideRefuses proves pack list surfaces the same
 // pack-conflict fetch does.
 func TestListUndeclaredOverrideRefuses(t *testing.T) {

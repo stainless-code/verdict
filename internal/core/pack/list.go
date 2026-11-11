@@ -76,7 +76,7 @@ func RunList(ctx context.Context, req *Request) (*Response, *core.RefusalError) 
 	if !req.List {
 		return nil, &core.RefusalError{Code: "bad-flags", Message: "pack serves list; pass list"}
 	}
-	origins, ref := loadOrigins(req)
+	origins, warnings, ref := loadOrigins(req)
 	if ref != nil {
 		return nil, ref
 	}
@@ -84,22 +84,26 @@ func RunList(ctx context.Context, req *Request) (*Response, *core.RefusalError) 
 	if ref != nil {
 		return nil, ref
 	}
+	for _, warning := range warnings {
+		req.Warn(warning)
+	}
 	data := listData(set)
 	return &Response{
-		At:    req.TimeUTC(),
-		Next:  "add a repo pack under .verdict/packs/<name>/ or list an org pack path in settings packs",
-		Human: humanRows(data),
-		Data:  data,
+		At:       req.TimeUTC(),
+		Next:     "add a repo pack under .verdict/packs/<name>/ or list an org pack path in settings packs",
+		Warnings: warnings,
+		Human:    humanRows(data),
+		Data:     data,
 	}, nil
 }
 
 // loadOrigins reads the three layers in precedence order.
-func loadOrigins(req *Request) ([]Origin, *core.RefusalError) {
+func loadOrigins(req *Request) ([]Origin, []string, *core.RefusalError) {
 	origins := []Origin{}
 	if packFS := req.builtinFS(); packFS != nil {
 		p, ref := Load(packFS, BuiltinRoot)
 		if ref != nil {
-			return nil, ref
+			return nil, nil, ref
 		}
 		if p != nil {
 			origins = append(origins, Origin{Layer: LayerBuiltin, Source: "builtin", Pack: p})
@@ -107,14 +111,14 @@ func loadOrigins(req *Request) ([]Origin, *core.RefusalError) {
 	}
 	org, ref := orgOrigins(req)
 	if ref != nil {
-		return nil, ref
+		return nil, nil, ref
 	}
-	repo, ref := repoOrigins(req.RepoRootPath())
+	repo, warnings, ref := repoOrigins(req.RepoRootPath())
 	if ref != nil {
-		return nil, ref
+		return nil, nil, ref
 	}
 	origins = append(origins, org...)
-	return append(origins, repo...), nil
+	return append(origins, repo...), warnings, nil
 }
 
 // builtinFS returns the injected skill FS, or nil for a caller that supplied
@@ -165,25 +169,32 @@ func orgOrigin(root, listed string) (Origin, *core.RefusalError) {
 	return Origin{Layer: LayerOrg, Source: "dir:" + filepath.ToSlash(listed), Pack: p}, nil
 }
 
-// repoOrigins reads one pack per child directory of .verdict/packs.
-func repoOrigins(root string) ([]Origin, *core.RefusalError) {
+// repoOrigins reads one pack per child directory of .verdict/packs. A file at
+// that level is not a pack: the walk names it in one warning and reads on.
+func repoOrigins(root string) ([]Origin, []string, *core.RefusalError) {
 	dir := filepath.Join(root, RepoPacksDir)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil
+			return nil, nil, nil
 		}
-		return nil, badPack(fmt.Sprintf("read %s: %v", RepoPacksDir, err))
+		return nil, nil, badPack(fmt.Sprintf("read %s: %v", RepoPacksDir, err))
 	}
 	out := make([]Origin, 0, len(entries))
+	var warnings []string
 	for _, entry := range entries {
+		if !entry.IsDir() {
+			warnings = append(warnings, fmt.Sprintf("%s/%s is not a pack directory — ignored",
+				RepoPacksDir, entry.Name()))
+			continue
+		}
 		origin, ref := repoOrigin(dir, entry.Name())
 		if ref != nil {
-			return nil, ref
+			return nil, nil, ref
 		}
 		out = append(out, origin)
 	}
-	return out, nil
+	return out, warnings, nil
 }
 
 // repoOrigin loads one .verdict/packs child directory.

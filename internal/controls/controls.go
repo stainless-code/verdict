@@ -301,8 +301,8 @@ func (s *Snapshot) PackNames() []string {
 	return names
 }
 
-// packNameOf returns the pack directory one row names, or "" for a non-pack
-// row and a missing one.
+// packNameOf returns the pack directory one row sits under, or "" for a
+// non-pack row, a file directly under the pack root, and a missing row.
 func packNameOf(entry core.ControlsFileEntry) string {
 	if entry.Status != statusUsed {
 		return ""
@@ -311,7 +311,10 @@ func packNameOf(entry core.ControlsFileEntry) string {
 	if !ok {
 		return ""
 	}
-	name, _, _ := strings.Cut(tail, packSep)
+	name, _, nested := strings.Cut(tail, packSep)
+	if !nested {
+		return ""
+	}
 	return name
 }
 

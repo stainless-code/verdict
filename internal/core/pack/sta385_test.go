@@ -1,6 +1,7 @@
 package pack
 
 import (
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -152,5 +153,20 @@ func TestPackSymlinkedRootRefuses(t *testing.T) {
 	}
 	if _, ref := LoadDir(link); ref == nil || ref.Code != CodePackUnsafePath {
 		t.Fatalf("symlinked root = %v, want pack-unsafe-path", ref)
+	}
+}
+
+// TestPackFileRootNamesThePath proves a non-directory pack root refuses with
+// the path the caller joined, never the "." the walk names.
+func TestPackFileRootNamesThePath(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "README.md")
+	writeFile(t, path, "not a pack\n")
+	_, ref := LoadDir(path)
+	if ref == nil || ref.Code != CodePackUnsafePath {
+		t.Fatalf("file root = %v, want pack-unsafe-path", ref)
+	}
+	if want := fmt.Sprintf("path %q", path); !strings.Contains(ref.Message, want) {
+		t.Fatalf("message = %q, want it to name %s", ref.Message, want)
 	}
 }

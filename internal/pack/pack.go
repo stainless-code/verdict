@@ -35,6 +35,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if read.Runtime == nil {
 		read.Runtime = &core.Runtime{}
 	}
+	read.Progress = cli.Progress{R: r}
 	read.PackFS = skillfs.FS
 	resp, ref := packcore.RunList(ctx, &packcore.Request{
 		ReadRequest:  read,

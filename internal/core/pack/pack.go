@@ -198,8 +198,16 @@ func Load(fsys fs.FS, root string) (*Pack, *core.RefusalError) {
 //
 //nolint:revive // the root checks read as one ordered gate before the walk
 func LoadAt(base, root string) (*Pack, *core.RefusalError) {
+	return loadAt(base, root, root)
+}
+
+// loadAt is LoadAt with the refusal label: a caller reading a directory by its
+// path names that path instead of the relative root it walks from.
+//
+//nolint:revive // the root checks read as one ordered gate before the walk
+func loadAt(base, root, label string) (*Pack, *core.RefusalError) {
 	if !confinedRoot(root) {
-		return nil, unsafePath(root)
+		return nil, unsafePath(label)
 	}
 	full := root
 	if root != rootSelf {
@@ -212,10 +220,10 @@ func LoadAt(base, root string) (*Pack, *core.RefusalError) {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, badPack(fmt.Sprintf("inspect pack root %s: %v", root, err))
+		return nil, badPack(fmt.Sprintf("inspect pack root %s: %v", label, err))
 	}
 	if info.Mode()&fs.ModeSymlink != 0 || !info.IsDir() {
-		return nil, unsafePath(root)
+		return nil, unsafePath(label)
 	}
 	dir, err := os.OpenRoot(base)
 	if err != nil {

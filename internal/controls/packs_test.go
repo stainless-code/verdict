@@ -3,6 +3,7 @@ package controls
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -45,6 +46,29 @@ func TestResolvePackTreeSnapshotsBase(t *testing.T) {
 	}
 	if _, ref := Gate(".verdict/state/12", base); ref == nil || ref.Code != CodeStale {
 		t.Fatalf("tampered pack Gate = %v, want controls-stale", ref)
+	}
+}
+
+// TestResolvePackNamesSkipStrayFile proves a regular file directly under the
+// pack root is not a pack directory: the snapshot still carries its bytes as a
+// control row, but it names no pack, so fetch never loads it and never refuses
+// the run.
+func TestResolvePackNamesSkipStrayFile(t *testing.T) {
+	base := baseRepo(t, map[string]string{
+		".verdict/config.json":               `{"schema_version":"1"}`,
+		".verdict/packs/README.md":           "pack docs\n",
+		".verdict/packs/acme/pack.json":      packManifest,
+		".verdict/packs/acme/lenses/perf.md": "perf body\n",
+	})
+	snap, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: ".verdict/state/15", BaseSHA: base})
+	if ref != nil {
+		t.Fatalf("Resolve: %v", ref)
+	}
+	if got, want := snap.PackNames(), []string{"acme"}; !slices.Equal(got, want) {
+		t.Fatalf("pack dirs = %v, want %v", got, want)
+	}
+	if !snap.Has(".verdict/packs/README.md") {
+		t.Error("the stray file is a control row and must stay snapshotted")
 	}
 }
 
