@@ -888,22 +888,36 @@ func TestProjectLocalReasonQuotesRoot(t *testing.T) {
 	})
 }
 
-// TestProjectLocalReasonBareRoot pins the other half: a temp path no shell
-// metacharacter touches is emitted bare, so the hint stays copy-pasteable.
+// TestProjectLocalReasonBareRoot pins the copy-pasteable form: a root no
+// shell metacharacter touches is emitted bare, and any other root — a TMPDIR
+// with a space, a Windows temp dir — is single-quoted.
 func TestProjectLocalReasonBareRoot(t *testing.T) {
 	t.Parallel()
 	root := filepath.Join(t.TempDir(), "plainproj")
 	arg := cdArgument(t, projectLocalReason(t, root))
-	if runtime.GOOS == "windows" {
-		// A Windows temp dir carries `\` and `~`, neither shell-safe.
-		if want := "'" + root + "'"; arg != want {
-			t.Fatalf("cd argument = %q; want %q", arg, want)
+	if shellSafePath(root) {
+		if arg != root {
+			t.Fatalf("cd argument = %q; want the bare root %q", arg, root)
 		}
 		return
 	}
-	if arg != root {
-		t.Fatalf("cd argument = %q; want the bare root %q", arg, root)
+	if want := "'" + root + "'"; arg != want {
+		t.Fatalf("cd argument = %q; want the quoted root %q", arg, want)
 	}
+}
+
+// shellSafeRunes repeats the literal safe set shellQuote
+// (internal/core/upgrade/shellquote.go) leaves bare. The upgrade test package
+// is external, so it cannot call the unexported predicate and no exported one
+// exists; the set is repeated here instead of the quoting rule.
+const shellSafeRunes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./:@%+=,-"
+
+// shellSafePath reports whether the shell reads every rune of s back
+// verbatim: any rune outside the safe set gets single quotes.
+func shellSafePath(s string) bool {
+	return !strings.ContainsFunc(s, func(r rune) bool {
+		return !strings.ContainsRune(shellSafeRunes, r)
+	})
 }
 
 // cdArgument reads the `cd` operand out of a project-local reason exactly as
