@@ -129,7 +129,7 @@ func (st *svc) checkInputs(dir string) (CheckResult, *core.RefusalError) {
 		return CheckResult{}, &core.RefusalError{Code: codeMissingReviewFile, Message: fmt.Sprintf(msgReviewMissing, dir+"/review.json")}
 	}
 	st.normalized, st.repairs = NormalizeReview(raw)
-	res, ref := CheckBundle(dir, raw)
+	res, ref := checkNormalized(dir, st.normalized, st.repairs)
 	if ref != nil {
 		return CheckResult{}, ref
 	}
