@@ -134,16 +134,7 @@ func (st *state) gitBatch(ctx context.Context, dir string, blobs []string) (map[
 	stdin := strings.NewReader(strings.Join(blobs, newline) + newline)
 	res, err := cmdr.Run(ctx, &core.Command{Argv: argv, Env: st.gitEnv(false), OutputCap: gitOutputCap, Stdin: stdin})
 	if err != nil {
-		if _, ok := errors.AsType[*core.MissingToolError](err); ok {
-			return nil, &core.RefusalError{Code: "missing-tool", Message: "git is not on PATH"}
-		}
-		if _, ok := errors.AsType[*core.OutputCappedError](err); ok {
-			return nil, &core.RefusalError{
-				Code:    codeIndexCapped,
-				Message: fmt.Sprintf("git cat-file output exceeded the %d-byte capture cap", gitOutputCap),
-			}
-		}
-		return nil, &core.RefusalError{Code: codeIndexFailed, Message: "git cat-file failed: " + err.Error()}
+		return nil, batchRefusal(err)
 	}
 	if res.ExitCode != 0 {
 		return nil, &core.RefusalError{Code: codeIndexFailed, Message: "git cat-file failed: " + firstLine(res.Stderr)}
@@ -153,6 +144,21 @@ func (st *state) gitBatch(ctx context.Context, dir string, blobs []string) (map[
 		return nil, ref
 	}
 	return objects, nil
+}
+
+// batchRefusal seals one cat-file run error: a missing git binary, an
+// over-cap capture, or a plain failure.
+func batchRefusal(err error) *core.RefusalError {
+	if _, ok := errors.AsType[*core.MissingToolError](err); ok {
+		return &core.RefusalError{Code: "missing-tool", Message: "git is not on PATH"}
+	}
+	if _, ok := errors.AsType[*core.OutputCappedError](err); ok {
+		return &core.RefusalError{
+			Code:    codeIndexCapped,
+			Message: fmt.Sprintf("git cat-file output exceeded the %d-byte capture cap", gitOutputCap),
+		}
+	}
+	return &core.RefusalError{Code: codeIndexFailed, Message: "git cat-file failed: " + err.Error()}
 }
 
 // parseBatch reads a cat-file --batch stream: a header line followed by the

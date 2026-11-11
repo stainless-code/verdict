@@ -17,12 +17,12 @@ import (
 type shard struct {
 	SchemaVersion string        `json:"schema_version"`
 	Blob          string        `json:"blob"`
-	RefsPerFile   int           `json:"refs_per_file"`
 	Package       string        `json:"package,omitempty"`
 	Error         string        `json:"error,omitempty"`
 	Imports       []importEntry `json:"imports,omitempty"`
 	Decls         []decl        `json:"decls,omitempty"`
 	Refs          []ref         `json:"refs,omitempty"`
+	RefsPerFile   int           `json:"refs_per_file"`
 	RefsTruncated bool          `json:"refs_truncated,omitempty"`
 }
 
@@ -361,13 +361,7 @@ func (c *collector) embedExpr(expr ast.Expr) {
 		}
 		c.record(t.Name, KindEmbed, t.Pos(), "", false, false)
 	case *ast.SelectorExpr:
-		if x, ok := t.X.(*ast.Ident); ok {
-			if _, ok := c.aliases[x.Name]; ok && !c.isLocal(x) {
-				c.record(t.Sel.Name, KindEmbed, t.Sel.Pos(), x.Name, true, false)
-				return
-			}
-		}
-		c.record(t.Sel.Name, KindEmbed, t.Sel.Pos(), "", true, true)
+		c.embedSelector(t)
 	case *ast.StarExpr:
 		c.embedExpr(t.X)
 	case *ast.IndexExpr:
@@ -376,6 +370,18 @@ func (c *collector) embedExpr(expr ast.Expr) {
 		c.embedExpr(t.X)
 	default:
 	}
+}
+
+// embedSelector records one embedded qualified type through an import edge,
+// or an unresolved method-shaped field.
+func (c *collector) embedSelector(t *ast.SelectorExpr) {
+	if x, ok := t.X.(*ast.Ident); ok {
+		if _, ok := c.aliases[x.Name]; ok && !c.isLocal(x) {
+			c.record(t.Sel.Name, KindEmbed, t.Sel.Pos(), x.Name, true, false)
+			return
+		}
+	}
+	c.record(t.Sel.Name, KindEmbed, t.Sel.Pos(), "", true, true)
 }
 
 // walk records calls, selectors, and value references across the file.
@@ -425,25 +431,12 @@ func (c *collector) markArgs(expr ast.Expr) {
 }
 
 // callee records one call target.
-//
-//nolint:revive // one branch per AST node kind keeps the mapping auditable
 func (c *collector) callee(expr ast.Expr, generic bool) {
 	switch f := expr.(type) {
 	case *ast.Ident:
-		c.skip[f.Pos()] = true
-		if !builtins[f.Name] && f.Name != blankName && !c.isLocal(f) {
-			c.record(f.Name, KindCall, f.Pos(), "", false, generic)
-		}
+		c.calleeIdent(f, generic)
 	case *ast.SelectorExpr:
-		c.skip[f.Sel.Pos()] = true
-		if x, ok := f.X.(*ast.Ident); ok {
-			c.skip[x.Pos()] = true
-			if _, ok := c.aliases[x.Name]; ok && !c.isLocal(x) {
-				c.record(f.Sel.Name, KindCall, f.Sel.Pos(), x.Name, true, generic)
-				return
-			}
-		}
-		c.record(f.Sel.Name, KindMethod, f.Sel.Pos(), "", true, true)
+		c.calleeSelector(f, generic)
 	case *ast.IndexExpr:
 		c.callee(f.X, true)
 	case *ast.IndexListExpr:
@@ -454,6 +447,29 @@ func (c *collector) callee(expr ast.Expr, generic bool) {
 		c.typeExpr(f.Type, true)
 	default:
 	}
+}
+
+// calleeIdent records a bare call target, ignoring builtins and names the
+// function scope shadows.
+func (c *collector) calleeIdent(f *ast.Ident, generic bool) {
+	c.skip[f.Pos()] = true
+	if !builtins[f.Name] && f.Name != blankName && !c.isLocal(f) {
+		c.record(f.Name, KindCall, f.Pos(), "", false, generic)
+	}
+}
+
+// calleeSelector records a qualified call target through an import edge, or a
+// method call on a value.
+func (c *collector) calleeSelector(f *ast.SelectorExpr, generic bool) {
+	c.skip[f.Sel.Pos()] = true
+	if x, ok := f.X.(*ast.Ident); ok {
+		c.skip[x.Pos()] = true
+		if _, ok := c.aliases[x.Name]; ok && !c.isLocal(x) {
+			c.record(f.Sel.Name, KindCall, f.Sel.Pos(), x.Name, true, generic)
+			return
+		}
+	}
+	c.record(f.Sel.Name, KindMethod, f.Sel.Pos(), "", true, true)
 }
 
 // selector records one non-call selector use.

@@ -133,16 +133,40 @@ func (f *fixture) buildRef(limits *Limits) *core.RefusalError {
 	return ref
 }
 
-// callers runs one callers query against the fixture.
-func (f *fixture) callers(symbol string) *Response {
+// callers runs the fixture's a.Target callers query.
+func (f *fixture) callers() *Response {
 	f.t.Helper()
 	req := f.request(QueryCallers, nil)
-	req.Symbol = symbol
+	req.Symbol = "a.Target"
 	resp, ref := Run(context.Background(), req)
 	if ref != nil {
 		f.t.Fatalf("index callers refused: %v", ref)
 	}
 	return resp
+}
+
+// assertRows compares caller rows against literals, including order.
+func assertRows(t *testing.T, got, want []Row) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("rows = %+v; want %+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("row %d = %+v; want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+// assertRefusal compares one typed refusal against literals.
+func assertRefusal(t *testing.T, ref *core.RefusalError, code, message string) {
+	t.Helper()
+	if ref == nil {
+		t.Fatalf("want %s: %q, got a response", code, message)
+	}
+	if ref.Code != code || ref.Message != message {
+		t.Fatalf("refusal = %q: %q; want %s: %q", ref.Code, ref.Message, code, message)
+	}
 }
 
 // snapshotStore reads every file under .verdict/index keyed by relative path.
@@ -208,18 +232,11 @@ func (cappedCommander) Run(context.Context, *core.Command) (core.Result, error) 
 // TestGitBatchCaptureCapRefuses proves an over-cap cat-file stream refuses as
 // index-capped naming the cap, never index-failed pointing at a rebuild.
 func TestGitBatchCaptureCapRefuses(t *testing.T) {
-	st := &state{req: &Request{ReadRequest: core.ReadRequest{Runtime: &core.Runtime{
-		Commander: cappedCommander{},
-		Env:       map[string]string{},
-	}}}}
+	req := &Request{}
+	req.Runtime = &core.Runtime{Commander: cappedCommander{}, Env: map[string]string{}}
+	st := &state{req: req}
 	_, ref := st.gitBatch(context.Background(), ".", []string{"0f1e2d3c"})
-	want := "git cat-file output exceeded the 101711872-byte capture cap"
-	if ref == nil {
-		t.Fatal("over-cap batch succeeded")
-	}
-	if ref.Code != "index-capped" || ref.Message != want {
-		t.Fatalf("refusal = %q: %q; want index-capped: %q", ref.Code, ref.Message, want)
-	}
+	assertRefusal(t, ref, "index-capped", "git cat-file output exceeded the 101711872-byte capture cap")
 }
 
 // TestIndexBytesAreDeterministic proves two builds of the same tree write
@@ -322,10 +339,7 @@ func TestCallersCorruptTreeRefuses(t *testing.T) {
 	req := f.request(QueryCallers, nil)
 	req.Symbol = "a.Target"
 	_, ref := Run(context.Background(), req)
-	want := "tree " + tree + ".json is truncated or invalid"
-	if ref == nil || ref.Code != "index-corrupt" || ref.Message != want {
-		t.Fatalf("refusal = %v; want index-corrupt: %q", ref, want)
-	}
+	assertRefusal(t, ref, "index-corrupt", "tree "+tree+".json is truncated or invalid")
 }
 
 // TestIndexVersionResetRebuilds proves a store written by another version is
@@ -368,10 +382,7 @@ func TestCallersMissingIndexRefuses(t *testing.T) {
 	req := f.request(QueryCallers, nil)
 	req.Symbol = "a.Target"
 	_, ref := Run(context.Background(), req)
-	want := "no index for tree " + tree + "; run verdict index build"
-	if ref == nil || ref.Code != "missing-index" || ref.Message != want {
-		t.Fatalf("refusal = %v; want missing-index: %q", ref, want)
-	}
+	assertRefusal(t, ref, "missing-index", "no index for tree "+tree+"; run verdict index build")
 }
 
 // TestShardIdentityIncludesRefsPerFile proves a shard parsed under a lower
@@ -390,25 +401,36 @@ func TestShardIdentityIncludesRefsPerFile(t *testing.T) {
 		t.Fatalf("capped build = parsed %d, skipped %d; want parsed 1, skipped 1", low.Data.Parsed, low.Data.Skipped)
 	}
 	store := storePath(f.dir)
-	truncated, ref := readTree(store, low.Data.Tree)
-	if ref != nil {
-		t.Fatalf("read capped tree: %v", ref)
-	}
-	if len(truncated.Files) != 1 || !truncated.Files[0].RefsTruncated || len(truncated.Files[0].Refs) != 1 {
-		t.Fatalf("capped tree file = %+v; want one truncated reference", truncated.Files)
-	}
+	assertTreeRefs(t, store, low.Data.Tree, true, "One")
 
 	full := f.build()
 	if full.Data.Parsed != 1 {
 		t.Errorf("raising the cap parsed %d shards; want 1", full.Data.Parsed)
 	}
-	reparsed, ref := readTree(store, full.Data.Tree)
+	assertTreeRefs(t, store, full.Data.Tree, false, "One", "Two")
+}
+
+// assertTreeRefs pins the references one single-file tree carries.
+func assertTreeRefs(t *testing.T, store, tree string, truncated bool, names ...string) {
+	t.Helper()
+	got, ref := readTree(store, tree)
 	if ref != nil {
-		t.Fatalf("read full tree: %v", ref)
+		t.Fatalf("read tree %s: %v", tree, ref)
 	}
-	refs := reparsed.Files[0].Refs
-	if reparsed.Files[0].RefsTruncated || len(refs) != 2 || refs[0].Name != "One" || refs[1].Name != "Two" {
-		t.Errorf("reparsed refs = %+v (truncated %t); want One and Two", refs, reparsed.Files[0].RefsTruncated)
+	if len(got.Files) != 1 {
+		t.Fatalf("tree %s files = %d; want 1", tree, len(got.Files))
+	}
+	file := got.Files[0]
+	if file.RefsTruncated != truncated {
+		t.Errorf("tree %s refs_truncated = %t; want %t", tree, file.RefsTruncated, truncated)
+	}
+	if len(file.Refs) != len(names) {
+		t.Fatalf("tree %s refs = %d; want %d", tree, len(file.Refs), len(names))
+	}
+	for i, name := range names {
+		if file.Refs[i].Name != name {
+			t.Errorf("tree %s ref %d = %q; want %q", tree, i, file.Refs[i].Name, name)
+		}
 	}
 }
 
@@ -492,19 +514,11 @@ func TestCallersExactnessLitmus(t *testing.T) {
 	writeShadowFixture(f)
 	f.commit("one")
 	f.build()
-	resp := f.callers("a.Target")
-	want := []Row{
+	resp := f.callers()
+	assertRows(t, resp.Data.Rows, []Row{
 		{Path: "a/a.go", Line: 6, Kind: KindCall, Resolution: "exact"},
 		{Path: "b/b.go", Line: 6, Kind: KindCall, Resolution: "lexical"},
-	}
-	if len(resp.Data.Rows) != len(want) {
-		t.Fatalf("rows = %+v; want %+v", resp.Data.Rows, want)
-	}
-	for i := range want {
-		if resp.Data.Rows[i] != want[i] {
-			t.Errorf("row %d = %+v; want %+v", i, resp.Data.Rows[i], want[i])
-		}
-	}
+	})
 	if resp.Data.Callers != 2 {
 		t.Errorf("callers = %d; want 2", resp.Data.Callers)
 	}
@@ -525,7 +539,7 @@ func TestCallersCrossPackageNeedsImport(t *testing.T) {
 	writeCallFixture(f, "package d\n\nfunc Uses() {\n\tTarget()\n}\n")
 	f.commit("one")
 	f.build()
-	resp := f.callers("a.Target")
+	resp := f.callers()
 	for _, row := range resp.Data.Rows {
 		if strings.HasPrefix(row.Path, "d/") {
 			t.Errorf("package d matched without an import edge: %+v", row)
@@ -546,7 +560,7 @@ func TestCallersGenericInstantiationIsUnresolved(t *testing.T) {
 	f.write("b/b.go", "package b\n\nimport \"example.com/m/a\"\n\nfunc Uses() {\n\ta.Target[int](0)\n}\n")
 	f.commit("one")
 	f.build()
-	resp := f.callers("a.Target")
+	resp := f.callers()
 	if len(resp.Data.Rows) != 0 {
 		t.Errorf("rows = %+v; want none for generic instantiations", resp.Data.Rows)
 	}
@@ -568,12 +582,8 @@ func TestCallersQualifierRefusals(t *testing.T) {
 		f.build()
 		req := f.request(QueryCallers, nil)
 		req.Symbol = "nosuchpkg.Target"
-		if _, ref := Run(context.Background(), req); ref == nil {
-			t.Fatal("unmatched qualifier returned a response")
-		} else if ref.Code != "bad-flags" ||
-			ref.Message != "package qualifier nosuchpkg matches no package directory or import path" {
-			t.Fatalf("refusal = %q: %q; want bad-flags naming the qualifier", ref.Code, ref.Message)
-		}
+		_, ref := Run(context.Background(), req)
+		assertRefusal(t, ref, "bad-flags", "package qualifier nosuchpkg matches no package directory or import path")
 	})
 	t.Run("ambiguous", func(t *testing.T) {
 		f := newFixture(t)
@@ -584,11 +594,8 @@ func TestCallersQualifierRefusals(t *testing.T) {
 		f.build()
 		req := f.request(QueryCallers, nil)
 		req.Symbol = "x.Target"
-		if _, ref := Run(context.Background(), req); ref == nil {
-			t.Fatal("ambiguous qualifier returned a response")
-		} else if ref.Code != "bad-flags" || ref.Message != "package qualifier x is ambiguous" {
-			t.Fatalf("refusal = %q: %q; want bad-flags ambiguous", ref.Code, ref.Message)
-		}
+		_, ref := Run(context.Background(), req)
+		assertRefusal(t, ref, "bad-flags", "package qualifier x is ambiguous")
 	})
 }
 
@@ -629,14 +636,7 @@ func C() {
 		{Path: "a/a.go", Line: 6, Kind: KindCall, Resolution: "exact"},
 		{Path: "a/a.go", Line: 10, Kind: KindCall, Resolution: "exact"},
 	}
-	if len(resp.Data.Rows) != len(wantRows) {
-		t.Fatalf("rows = %+v; want %+v", resp.Data.Rows, wantRows)
-	}
-	for i := range wantRows {
-		if resp.Data.Rows[i] != wantRows[i] {
-			t.Errorf("row %d = %+v; want %+v", i, resp.Data.Rows[i], wantRows[i])
-		}
-	}
+	assertRows(t, resp.Data.Rows, wantRows)
 	wantLine := "index: showing 2 of 3 callers (1 not shown; raise --limit up to 200)"
 	if !slices.Contains(resp.Human, wantLine) {
 		t.Errorf("human lines = %q; want one equal to %q", resp.Human, wantLine)
@@ -654,10 +654,7 @@ func TestCallersLimitBoundsRefuse(t *testing.T) {
 		req := f.request(QueryCallers, nil)
 		req.Symbol, req.Limit = "a.Target", limit
 		_, ref := Run(context.Background(), req)
-		want := "index callers wants --limit from 1 to 200"
-		if ref == nil || ref.Code != "bad-flags" || ref.Message != want {
-			t.Errorf("limit %d refusal = %v; want bad-flags: %q", limit, ref, want)
-		}
+		assertRefusal(t, ref, "bad-flags", "index callers wants --limit from 1 to 200")
 	}
 }
 
@@ -777,7 +774,7 @@ func TestIndexRenderedPathsAreEscaped(t *testing.T) {
 	f.write("a/a.go", "package a\n\nfunc Target() {}\n\nfunc Caller() {\n\tTarget()\n}\n")
 	f.commitObject("a/a\nb```.go", "package a\n\nfunc Other() {\n\tTarget()\n}\n", "one")
 	f.build()
-	resp := f.callers("a.Target")
+	resp := f.callers()
 	if len(resp.Human) != 3 {
 		t.Fatalf("human lines = %q; want summary and two rows", resp.Human)
 	}

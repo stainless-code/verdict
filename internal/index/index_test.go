@@ -8,9 +8,9 @@ import (
 	"github.com/stainless-code/verdict/internal/cli"
 )
 
-// TestParseCallersLimitBounds pins the CLI's --limit refusal: one usage error
-// and exit code for every out-of-range shape, and both bounds accepted.
-func TestParseCallersLimitBounds(t *testing.T) {
+// TestParseCallersLimitRefuses pins the CLI's --limit usage refusal: one
+// message and exit code for every out-of-range shape.
+func TestParseCallersLimitRefuses(t *testing.T) {
 	for _, value := range []string{"0", "201", "x", "-1"} {
 		var diag strings.Builder
 		r := &cli.Runner{Diag: &diag}
@@ -21,6 +21,10 @@ func TestParseCallersLimitBounds(t *testing.T) {
 			t.Errorf("--limit %s stderr = %q; want %q", value, diag.String(), want)
 		}
 	}
+}
+
+// TestParseCallersLimitAcceptsBounds proves both published bounds parse.
+func TestParseCallersLimitAcceptsBounds(t *testing.T) {
 	for _, want := range []int{1, 200} {
 		r := &cli.Runner{Diag: &strings.Builder{}}
 		inv, code, done := parse(r, []string{"callers", "a.Target", "--limit", strconv.Itoa(want)})

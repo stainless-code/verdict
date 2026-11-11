@@ -200,10 +200,9 @@ func sortedDirs(pkgs map[string]*packageInfo) []string {
 	return dirs
 }
 
-// matchingPackages resolves a qualifier against directory names, package
-// names, and import paths.
-//
-//nolint:revive // the query resolution matrix reads as one block
+// matchingPackages resolves a qualifier against directory names, import
+// paths, and import-path suffixes, refusing when nothing or more than one
+// directory matches.
 func matchingPackages(pkgs map[string]*packageInfo, dirs []string, qualifier string) ([]string, *core.RefusalError) {
 	var exact []string
 	var byBase []string
@@ -286,19 +285,12 @@ func sortRows(rows []Row) {
 }
 
 // resolveRef classifies one matching reference. It reports false when the
-// reference cannot name the target at all; a true row with an empty resolution
-// is a candidate that needs type information, counted as unresolved.
-//
-//nolint:revive // the query resolution matrix reads as one block
+// reference cannot name the target at all; a true row with the unresolved
+// resolution is a candidate that needs type information, counted and not
+// rendered.
 func resolveRef(tgt target, samePkg bool, f *treeFile, r ref) (Row, bool) {
 	if !r.Selector {
-		if !samePkg {
-			return Row{}, false
-		}
-		if r.Unresolved || r.Kind == KindMethod {
-			return Row{Resolution: resolutionUnresolved}, true
-		}
-		return Row{Path: f.Path, Line: r.Line, Kind: r.Kind, Resolution: resolutionExact}, true
+		return resolveBareRef(samePkg, f, r)
 	}
 	if r.Qualifier == "" {
 		if samePkg && (r.Unresolved || r.Kind == KindMethod) {
@@ -306,8 +298,25 @@ func resolveRef(tgt target, samePkg bool, f *treeFile, r ref) (Row, bool) {
 		}
 		return Row{}, false
 	}
-	fileShard := &shard{Imports: f.Imports}
-	ipath, ok := importPathFor(fileShard, r.Qualifier)
+	return resolveQualifiedRef(tgt, f, r)
+}
+
+// resolveBareRef classifies a name written without a qualifier: only the
+// declaring package can see it.
+func resolveBareRef(samePkg bool, f *treeFile, r ref) (Row, bool) {
+	if !samePkg {
+		return Row{}, false
+	}
+	if r.Unresolved || r.Kind == KindMethod {
+		return Row{Resolution: resolutionUnresolved}, true
+	}
+	return Row{Path: f.Path, Line: r.Line, Kind: r.Kind, Resolution: resolutionExact}, true
+}
+
+// resolveQualifiedRef classifies a name reached through an import qualifier:
+// a lexical row only when the edge names the declaring package.
+func resolveQualifiedRef(tgt target, f *treeFile, r ref) (Row, bool) {
+	ipath, ok := importPathFor(&shard{Imports: f.Imports}, r.Qualifier)
 	if !ok || ipath != tgt.pkg.importPath || !tgt.exported {
 		return Row{}, false
 	}
