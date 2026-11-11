@@ -183,21 +183,36 @@ func repoOrigins(root string) ([]Origin, []string, *core.RefusalError) {
 		}
 		return nil, nil, badPack(fmt.Sprintf("read %s: %v", RepoPacksDir, err))
 	}
+	return repoEntries(dir, entries)
+}
+
+// repoEntries reads each child of the pack root.
+func repoEntries(dir string, entries []fs.DirEntry) ([]Origin, []string, *core.RefusalError) {
 	out := make([]Origin, 0, len(entries))
 	var warnings []string
 	for _, entry := range entries {
-		if !entry.IsDir() {
-			warnings = append(warnings, fmt.Sprintf("%s/%s is not a pack directory — ignored",
-				RepoPacksDir, entry.Name()))
-			continue
-		}
-		origin, ref := repoOrigin(dir, entry.Name())
+		origin, warning, ref := repoOriginEntry(dir, entry)
 		if ref != nil {
 			return nil, nil, ref
+		}
+		if warning != "" {
+			warnings = append(warnings, warning)
+			continue
 		}
 		out = append(out, origin)
 	}
 	return out, warnings, nil
+}
+
+// repoOriginEntry reads one child of the pack root: a non-directory is a
+// warning naming it, and a directory is a pack root.
+func repoOriginEntry(dir string, entry fs.DirEntry) (Origin, string, *core.RefusalError) {
+	if !entry.IsDir() {
+		return Origin{}, fmt.Sprintf("%s/%s is not a pack directory — ignored",
+			RepoPacksDir, entry.Name()), nil
+	}
+	origin, ref := repoOrigin(dir, entry.Name())
+	return origin, "", ref
 }
 
 // repoOrigin loads one .verdict/packs child directory.

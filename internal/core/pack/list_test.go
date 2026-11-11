@@ -129,7 +129,7 @@ func TestListMissingOrgPathRefuses(t *testing.T) {
 // the PR base, so listing it as the org layer would read head bytes.
 func TestListRefusesOrgEntryInsideRepoPacks(t *testing.T) {
 	t.Parallel()
-	root, _ := listFixtures(t, `"replace":["acme/org"],`)
+	root, _ := listFixtures(t, "")
 	home := t.TempDir()
 	settings := config.SettingsPath(home, "")
 	writeJSON(t, settings, `{"packs":[".verdict/packs/repo"]}`)

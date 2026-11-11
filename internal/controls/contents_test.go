@@ -150,6 +150,8 @@ func TestResolveContentsRefusals(t *testing.T) {
 // TestResolveContentsTreeBudget proves one shared bound spans the pack walk:
 // entries accumulate across sibling directories and descent stops at the depth
 // cap, so neither a wide nor a deep tree can make the fallback walk past it.
+//
+//nolint:revive // the two budget arms read as one block
 func TestResolveContentsTreeBudget(t *testing.T) {
 	t.Run("entries shared across directories", func(t *testing.T) {
 		f := &apiFake{bodies: map[string]string{

@@ -198,6 +198,8 @@ func TestPackOfferedFiltersGlobs(t *testing.T) {
 // TestCheckOrgEntryRefusesOnlyRepoPacks proves an org packs[] entry is refused
 // exactly when it resolves inside the repo layer's tree; a sibling name with
 // the same prefix and an outside path stay legal.
+//
+//nolint:revive // the inside and outside arms read as one block
 func TestCheckOrgEntryRefusesOnlyRepoPacks(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -243,6 +245,8 @@ func TestPackNoteLabelsBodies(t *testing.T) {
 // the empty shapes the loader refuses — no rule globs, an empty rule severity
 // key, and a severity-map value outside the three levels — and that an empty
 // replace array is rejected too.
+//
+//nolint:revive // the refused-shape table and its loader arm read as one block
 func TestRefusedManifestsFailPublishedSchema(t *testing.T) {
 	t.Parallel()
 	checker, err := schemacheck.Load(

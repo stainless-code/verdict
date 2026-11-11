@@ -89,8 +89,8 @@ type Manifest struct {
 	SchemaVersion string            `const:"1"                 json:"schema_version"`
 	Name          string            `json:"name"`
 	Version       string            `json:"version"`
-	Replace       []string          `json:"replace,omitempty"          minItems:"1"`
-	Severity      map[string]string `json:"severity,omitempty"         value_enum:"critical|important|informational"`
+	Replace       []string          `json:"replace,omitempty"  minItems:"1"`
+	Severity      map[string]string `json:"severity,omitempty" value_enum:"critical|important|informational"`
 	Lenses        []LensSpec        `json:"lenses"             minItems:"1"`
 	Rules         []RuleSpec        `json:"rules,omitempty"`
 }
@@ -110,8 +110,8 @@ type LensSpec struct {
 // tools it talks about.
 type RuleSpec struct {
 	ID       string   `json:"id"`
-	Severity string   `json:"severity"             minLength:"1"`
-	Globs    []string `json:"globs"                minItems:"1"`
+	Severity string   `json:"severity"        minLength:"1"`
+	Globs    []string `json:"globs"           minItems:"1"`
 	Tools    []string `json:"tools,omitempty"`
 }
 
@@ -195,8 +195,6 @@ func Load(fsys fs.FS, root string) (*Pack, *core.RefusalError) {
 // confining every read through [os.Root]. A missing base returns (nil, nil).
 // The pack root itself is Lstat'ed: a symlink or non-directory is refused,
 // never followed to a tree outside the operator's choice.
-//
-//nolint:revive // the root checks read as one ordered gate before the walk
 func LoadAt(base, root string) (*Pack, *core.RefusalError) {
 	return loadAt(base, root, root)
 }
@@ -245,25 +243,34 @@ func LoadDir(dir string) (*Pack, *core.RefusalError) {
 // layer's tracked tree: fetch reads that tree from the PR base, so treating a
 // path in it as the org layer would read PR-editable files at head.
 func CheckOrgEntry(root, listed string) *core.RefusalError {
-	packsRoot, err := filepath.Abs(filepath.Join(root, filepath.FromSlash(RepoPacksDir)))
+	base, err := filepath.Abs(root)
 	if err != nil {
-		return nil
+		return unresolvableOrg(listed, err)
 	}
 	full := listed
 	if !filepath.IsAbs(full) {
-		full = filepath.Join(root, filepath.FromSlash(listed))
+		full = filepath.Join(base, filepath.FromSlash(listed))
 	}
 	abs, err := filepath.Abs(full)
 	if err != nil {
-		return nil
+		return unresolvableOrg(listed, err)
 	}
-	rel, err := filepath.Rel(packsRoot, abs)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	rel, err := filepath.Rel(filepath.Join(base, filepath.FromSlash(RepoPacksDir)), abs)
+	if err != nil {
+		return unresolvableOrg(listed, err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return nil
 	}
 	return badPack(fmt.Sprintf(
 		"org pack path %q is inside %s, which is the repo layer read from the PR base — move it outside that tree",
 		listed, RepoPacksDir))
+}
+
+// unresolvableOrg refuses an org entry whose path cannot be resolved, rather
+// than silently treating it as outside the repo layer.
+func unresolvableOrg(listed string, err error) *core.RefusalError {
+	return badPack(fmt.Sprintf("org pack path %q cannot be resolved: %v", listed, err))
 }
 
 // walk lists the pack tree, checking the closed layout, every entry's
