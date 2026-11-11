@@ -127,16 +127,54 @@ func TestParseFlagsMissingValueIsUsage(t *testing.T) {
 	}
 }
 
+// TestParseFlagsRounds proves --rounds is parsed, defaults to the one-shot,
+// and never leaks into the pass-through tail.
+func TestParseFlagsRounds(t *testing.T) {
+	r, _, _ := testRunner()
+	flags, code, done := parseFlags(r, []string{"--agent", "claude"})
+	if done {
+		t.Fatalf("parse failed with exit %d", code)
+	}
+	if flags.rounds != "1" {
+		t.Fatalf("rounds = %q, want the one-shot default", flags.rounds)
+	}
+	flags, code, done = parseFlags(r, []string{"--agent", "claude", "--rounds", "3", "--", "--rounds", "9"})
+	if done {
+		t.Fatalf("parse failed with exit %d", code)
+	}
+	if flags.rounds != "3" {
+		t.Fatalf("rounds = %q, want 3", flags.rounds)
+	}
+	want := []string{"--rounds", "9"}
+	if !slices.Equal(flags.pass, want) {
+		t.Fatalf("pass-through = %q, want %q", flags.pass, want)
+	}
+}
+
+// TestRentryKeepsRounds pins the re-run line: the round count it names is
+// the one the operator ran, dropped only at the default.
+func TestRentryKeepsRounds(t *testing.T) {
+	req := Request{Repo: "acme/app", Pr: "42"}
+	got := rentry(req, &flags{agent: "claude", timeout: defaultTimeoutS, rounds: "3"}, false)
+	want := "verdict run acme/app 42 --agent claude --rounds 3"
+	if got != want {
+		t.Fatalf("rentry = %q, want %q", got, want)
+	}
+	if plain := rentry(req, &flags{agent: "claude", timeout: defaultTimeoutS, rounds: defaultRounds}, false); plain != "verdict run acme/app 42 --agent claude" {
+		t.Fatalf("rentry default = %q", plain)
+	}
+}
+
 // TestRentryRebuildsTheCommand pins the re-run line: the identity it names
 // is the one the operator ran, minus the unquotable pass-through tail.
 func TestRentryRebuildsTheCommand(t *testing.T) {
 	req := Request{Repo: "acme/app", Pr: "42"}
-	got := rentry(req, flags{agent: "claude", timeout: "42", print: true}, true)
+	got := rentry(req, &flags{agent: "claude", timeout: "42", print: true}, true)
 	want := "verdict run acme/app 42 --agent claude --timeout 42 --print --json"
 	if got != want {
 		t.Fatalf("rentry = %q, want %q", got, want)
 	}
-	if plain := rentry(req, flags{agent: "claude", timeout: defaultTimeoutS}, false); plain != "verdict run acme/app 42 --agent claude" {
+	if plain := rentry(req, &flags{agent: "claude", timeout: defaultTimeoutS}, false); plain != "verdict run acme/app 42 --agent claude" {
 		t.Fatalf("rentry default = %q", plain)
 	}
 }

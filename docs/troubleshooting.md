@@ -744,6 +744,12 @@ Cause: `record` could not write its capture (the message names the file and the 
 
 Fix: make the bundle directory writable (or re-fetch the bundle), then re-run.
 
+## `repair-exhausted`
+
+Cause: `run --rounds N` spent every round without a valid `review.json` (or a round repeated the prior bytes, so there was no progress to spend).
+
+Fix: fix every error named in `error.problems`, then re-run (or raise `--rounds` up to 5).
+
 ## `report-failed`
 
 Cause: `report` could not read the bundle's review input.

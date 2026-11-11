@@ -125,6 +125,8 @@ var hintRules = []HintRule{
 		"fix the invocation (the agent's own flags go after '--'), then re-run"},
 	{codes: []string{"agent-record-failed"}, hint: "try: make the bundle directory writable " +
 		"(or re-fetch the bundle), then re-run"},
+	{codes: []string{"repair-exhausted"}, hint: "try: fix every error named in error.problems, " +
+		"then re-run (or raise --rounds up to 5)"},
 	{codes: []string{"no-review-artifact"}, hint: "try: run the printed command yourself " +
 		"(--print) to see why no review.json appeared, then re-run"},
 	{codes: []string{"stale-review-artifact"}, hint: "try: delete the stale review.json " +

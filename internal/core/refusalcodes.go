@@ -144,6 +144,7 @@ var refusalCodes = []string{
 	"provider-unimplemented",
 	"rationale-required",
 	"record-failed",
+	"repair-exhausted",
 	"report-failed",
 	"requirement-blocked",
 	"requirement-unmet",

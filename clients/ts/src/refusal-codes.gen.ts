@@ -125,6 +125,7 @@ export type RefusalCode =
   | "provider-unimplemented"
   | "rationale-required"
   | "record-failed"
+  | "repair-exhausted"
   | "report-failed"
   | "requirement-blocked"
   | "requirement-unmet"

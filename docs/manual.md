@@ -1226,8 +1226,8 @@ asks reviewers to name the path, never quote a flagged value.
 
 `fetch` ends with a bundle and a prompt nobody ran. `run` closes that gap
 without becoming an orchestrator: it launches **your** agent against an
-existing bundle, one process, one shot, and hands the result back to the verbs
-that already exist.
+existing bundle, one process per round and one shot by default, and hands the
+result back to the verbs that already exist.
 
 ```bash
 verdict fetch-local acme/app work              # writes .verdict/state/local-work/
@@ -1237,12 +1237,15 @@ verdict record acme/app local-work             # the existing validation path, u
 
 For a PR bundle the middle step is `verdict run acme/app 123 --agent claude`
 and the handoff is `verdict post acme/app 123`. `run` never records, posts,
-merges, pushes, or repeats a step: `next` in its envelope names the command it
-did not run.
+merges, or pushes; with `--rounds N` it repeats only the launch→check pair,
+up to N rounds, and still records nothing: `next` in its envelope names the
+command it did not run.
 
 `run` invokes your agent only when you ask: one process, one bundle. No
 daemon, no queue, no scheduler, no webhook, no model selection, and it never
-reads or interprets what the model wrote.
+reads prose: with `--rounds N` it runs the published `CheckReview` shape
+checker over review.json (paths and codes only) to build the next round's fix
+list.
 
 ### What `run` asserts
 
@@ -1264,6 +1267,15 @@ the bundle path, the single review file to write, and the boundary. `run` does
 not re-render the diff — `fetch --show-prompts` is that (fetch-time, with your
 privacy exclusions applied); the agent reads the bundle with its own tools.
 
+With `--rounds N` (2–5) an invalid `review.json` does not end the run: the
+next round re-sends the directive with the prior review bytes and the
+checker's fix list fenced under the run's nonce, and the loop stops on the
+first valid round. Only shape errors re-prompt (warnings never do); a crash, a
+timeout, a missing artifact, or a byte-identical repeat stops the loop at
+once. `--json` carries the loop in `data.repair` (rounds, rounds to valid,
+per-round hashes, problems); each round's bytes stay in the bundle's
+`.run.rounds/` files.
+
 ### Agents, arguments, and `--print`
 
 Agent definitions are data: a name, a binary, and the non-interactive argument
@@ -1275,7 +1287,8 @@ it. The argv it builds is
 | Piece              | Meaning                                                                                                                                                         |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--agent <name>`   | Required. An unknown name refuses `unknown-agent` and lists the known ones.                                                                                     |
-| `--timeout <secs>` | Watchdog budget, default `300` (the same default `verify` uses).                                                                                                |
+| `--timeout <secs>` | Watchdog budget, default `300` (the same default `verify` uses). `--timeout` is per round.                                                                      |
+| `--rounds <n>`     | Total launch→check rounds, default `1` (today's one-shot), range 1–5. `-- <args>` passes through every round.                                                   |
 | `-- <args>`        | Everything after the bare `--` goes to the agent unchanged: its own model, cost, and turn flags are yours.                                                      |
 | `--print`          | Renders the exact command (POSIX-quoted) and exits `0` without resolving, spawning, or writing. The escape hatch for harnesses that build their own invocation. |
 
@@ -1287,16 +1300,17 @@ Every refusal code the binary can emit is listed with its cause and its fix in
 Every way `run` can fail is typed, carries a `try:` hint, and leaves the
 agent's own failure visible to CI:
 
-| Code                    | When                                                            | Exit        |
-| ----------------------- | --------------------------------------------------------------- | ----------- |
-| `agent-missing`         | the binary is not on `PATH`                                     | 1           |
-| `agent-spawn-failed`    | the binary resolved but could not be started                    | 1           |
-| `agent-timeout`         | the watchdog killed it after `--timeout` seconds                | 1           |
-| `agent-failed`          | it exited non-zero — **its exit code is the process exit code** | the agent's |
-| `no-review-artifact`    | it exited `0` and wrote no `review.json` (or a non-file)        | 1           |
-| `stale-review-artifact` | `review.json` is older than this launch (an earlier run's)      | 1           |
-| `unknown-agent`         | the name is not in the agent table                              | 1           |
-| `agent-record-failed`   | the launcher could not write its provenance record              | 1           |
+| Code                    | When                                                                            | Exit        |
+| ----------------------- | ------------------------------------------------------------------------------- | ----------- |
+| `agent-missing`         | the binary is not on `PATH`                                                     | 1           |
+| `agent-spawn-failed`    | the binary resolved but could not be started                                    | 1           |
+| `agent-timeout`         | the watchdog killed it after `--timeout` seconds                                | 1           |
+| `agent-failed`          | it exited non-zero — **its exit code is the process exit code**                 | the agent's |
+| `no-review-artifact`    | it exited `0` and wrote no `review.json` (or a non-file)                        | 1           |
+| `stale-review-artifact` | `review.json` is older than this launch (an earlier run's)                      | 1           |
+| `unknown-agent`         | the name is not in the agent table                                              | 1           |
+| `agent-record-failed`   | the launcher could not write its provenance record                              | 1           |
+| `repair-exhausted`      | every round left an invalid `review.json` (or a round repeated the prior bytes) | 1           |
 
 An agent exiting `1`, `2`, or `3` is indistinguishable on the exit code alone
 from verdict's own refusal, usage, and canceled codes; `--json` disambiguates
@@ -1304,16 +1318,23 @@ them through `error.code`, and the envelope's `data.exit` records what the agent
 itself returned.
 
 Plus the shared codes: `missing-bundle` (fetch first), `bad-flags` (no
-`--agent`), `bad-timeout`, `canceled` (exit 3), and usage errors (exit 2).
-There is no retry, no re-prompt, and no repair pass: fix the invocation and
-run again.
+`--agent`, a `--rounds` outside 1–5, or `--print` with `--rounds`),
+`bad-timeout`, `canceled` (exit 3), and usage errors (exit 2).
+With the default one shot there is no retry, no re-prompt, and no repair
+pass: fix the invocation and run again. With `--rounds N` the only repetition
+is the launch→check pair: an invalid `review.json` re-prompts the agent with
+the checker's fix list, up to N rounds, and exhaustion refuses
+`repair-exhausted`.
 
 The launch is recorded in `.verdict/state/<bundle>/launcher.json`: agent name,
 resolved binary path, the argv shape (directive replaced by `<prompt>`,
 secret-shaped operands and secret-named environment values redacted), start
 and end timestamps, duration, exit code, timeout flag, artifact freshness and
 size, and a redacted output tail. The child's full combined output stays in
-`.verdict/state/<bundle>/.run.out`. Both are evidence, not gates.
+`.verdict/state/<bundle>/.run.out`. Both are evidence, not gates. With
+`--rounds N` the record also carries `repair` (rounds, rounds to valid) and
+`attempts[]` (per-round prompt and review hashes, check verdict, problems),
+and each round's bytes land in `.verdict/state/<bundle>/.run.rounds/`.
 
 ### Network
 
