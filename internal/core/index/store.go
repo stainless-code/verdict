@@ -343,7 +343,9 @@ func freshShards(parsed map[string]*shard, fresh map[string]bool) map[string]*sh
 }
 
 // checkShardCaps measures the shard directory plus the pending writes before
-// anything lands.
+// anything lands. A fresh shard replacing one on disk counts once: a cap
+// change rewrites every shard, and charging the old bytes too would refuse a
+// rebuild that ends under the cap.
 func checkShardCaps(store string, fresh map[string]*shard, limits Limits) (int, int64, *core.RefusalError) {
 	count, bytes := shardStats(store)
 	for blob, s := range fresh {
@@ -351,7 +353,11 @@ func checkShardCaps(store string, fresh map[string]*shard, limits Limits) (int, 
 		if err != nil {
 			return 0, 0, &core.RefusalError{Code: codeIndexFailed, Message: "could not encode shard " + blob + colonSpace + err.Error()}
 		}
-		count++
+		if info, err := os.Stat(shardPath(store, blob)); err == nil {
+			bytes -= info.Size()
+		} else {
+			count++
+		}
 		bytes += int64(len(raw))
 	}
 	if bytes > limits.ShardsBytes {

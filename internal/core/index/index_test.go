@@ -434,6 +434,31 @@ func assertTreeRefs(t *testing.T, store, tree string, truncated bool, names ...s
 	}
 }
 
+// TestShardCapCountsOverwritesOnce proves a shard rewritten under a new cap
+// is charged once, so raising the cap cannot refuse a store that ends within
+// it.
+func TestShardCapCountsOverwritesOnce(t *testing.T) {
+	store := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(store, shardsDirName), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	blob := "0f1e2d3c"
+	if err := os.WriteFile(shardPath(store, blob), []byte(strings.Repeat("x", 1<<20)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fresh := map[string]*shard{blob: {SchemaVersion: "1", Blob: blob, RefsPerFile: 5000}}
+	count, got, ref := checkShardCaps(store, fresh, Limits{ShardsBytes: 3000})
+	if ref != nil {
+		t.Fatalf("overwrite refusal: %v", ref)
+	}
+	if count != 1 {
+		t.Errorf("shard count = %d; want 1", count)
+	}
+	if got > 3000 {
+		t.Errorf("shard bytes = %d; want within 3000", got)
+	}
+}
+
 // TestTruncatedShardRefuses proves a truncated shard is a typed refusal, never
 // read as empty.
 func TestTruncatedShardRefuses(t *testing.T) {
