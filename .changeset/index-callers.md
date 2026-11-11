@@ -12,7 +12,8 @@ reference, and `index callers <symbol> [--at <tree>] [--limit <n>]` returns
 call sites labelled `exact` within a package or `lexical` across an import
 edge; method values, dynamic dispatch, reflection, and generic instantiation
 are counted as unresolved, never guessed. A package qualifier that matches no
-indexed package refuses `bad-flags` rather than reading as no callers. Caps
+package directory or import path refuses `bad-flags` rather than reading as no
+callers. Caps
 refuse `index-capped` with the measured number, a truncated shard refuses
 `index-corrupt`, and a query against a tree that is not HEAD's warns and sets
 `stale: true`. The MCP `index` tool is read-only and serves `callers` and
