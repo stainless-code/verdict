@@ -11,19 +11,33 @@ import (
 // warnCostModels warns once per cost models[] entry with no name, naming the
 // file, the entry position, and the schema rule it breaks. The record stays
 // accepted and priced: the reader tolerates a nameless entry so older bundles
-// still price, and record is where the writer can still hear about it.
-func (st *svc) warnCostModels(dir string) {
-	for _, msg := range namelessCostEntries(dir) {
+// still price, and record is where the writer can still hear about it. Files
+// the cost-name pass planned stay silent here: a successful pass names every
+// nameless entry they hold, so those entries carry the repair message instead
+// — on a dry run the plan counts without writing, which is exactly when the
+// scan would otherwise double-warn what the real run names silently.
+func (st *svc) warnCostModels(dir string, pass *costNamePass) {
+	var skip map[string]bool
+	if pass != nil {
+		skip = make(map[string]bool, len(pass.plans))
+		for _, plan := range pass.plans {
+			skip[plan.path] = true
+		}
+	}
+	for _, msg := range namelessCostEntries(dir, skip) {
 		st.addWarning(msg)
 	}
 }
 
-// namelessCostEntries scans every cost record the bundle carries. Unreadable,
-// undecodable, and unpriceable files stay silent here: they belong to another
-// check's refusal or the rollup's own warning.
-func namelessCostEntries(dir string) []string {
+// namelessCostEntries scans every cost record the bundle carries except the
+// planned ones. Unreadable, undecodable, and unpriceable files stay silent
+// here: they belong to another check's refusal or the rollup's own warning.
+func namelessCostEntries(dir string, skip map[string]bool) []string {
 	var out []string
 	for _, path := range readcommon.CostFiles(dir) {
+		if skip[path] {
+			continue
+		}
 		out = append(out, namelessCostFile(path)...)
 	}
 	return out
