@@ -72,6 +72,9 @@ assert_exit() {
     good "$label (exit $want)"
   else
     bad "$label: exit $EVAL_STATUS, want $want"
+    # The die that ended the command writes to stderr, and the status alone
+    # named nothing the one time this bit CI (STA-378: release-body leg 1).
+    sed -e 's/^/    | /' "$EVAL_ERR" 2>/dev/null || true
   fi
 }
 
