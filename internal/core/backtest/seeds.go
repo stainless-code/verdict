@@ -347,7 +347,7 @@ type fileStat struct {
 // fixStats reads a fix's per-file line counts.
 func (ss *seedState) fixStats(ctx context.Context, fix string) ([]fileStat, bool, *core.RefusalError) {
 	out, exit, stderr, truncated, err := ss.st.gitCapped(ctx, commandOutputCap, ss.st.root,
-		"show", "--numstat", "--format=", "--no-renames", "-z", fix)
+		diffArgs("show", "--numstat", "--format=", "--no-renames", "-z", fix)...)
 	if err != nil {
 		return nil, false, ss.st.refuse(codeBacktestFail, err.Error())
 	}
@@ -415,7 +415,7 @@ func statExclusion(stats []fileStat) string {
 // fixDiff reads and parses a fix's deleted and added lines.
 func (ss *seedState) fixDiff(ctx context.Context, fix string) (fixDiff, bool, *core.RefusalError) {
 	out, exit, stderr, truncated, err := ss.st.gitCapped(ctx, commandOutputCap, ss.st.root,
-		"show", "-U0", "--no-ext-diff", "--no-textconv", "--no-renames", "--format=", fix)
+		diffArgs("show", "-U0", "--no-renames", "--format=", fix)...)
 	if err != nil {
 		return fixDiff{}, false, ss.st.refuse(codeBacktestFail, err.Error())
 	}
@@ -588,7 +588,7 @@ func (ss *seedState) prOverCap(ctx context.Context, head, base string) (bool, *c
 		return over, nil
 	}
 	out, exit, stderr, truncated, err := ss.st.gitCapped(ctx, fetchDiffCapBytes+1, ss.st.root,
-		"diff", "--no-ext-diff", "--no-textconv", "--no-renames", base, head)
+		diffArgs("diff", "--no-renames", base, head)...)
 	if err != nil {
 		return false, ss.st.refuse(codeBacktestFail, err.Error())
 	}
@@ -660,7 +660,7 @@ func unreadableLine(stderr string) bool {
 // identifies. A unique hit is accepted; multiple hits must all blame to the
 // introducer.
 func (st *state) anchor(ctx context.Context, unit *prUnit, line diffLine, introducer string) (int, bool, *core.RefusalError) {
-	out, exit, stderr, err := st.git(ctx, st.root, "grep", "-n", "-F", "-e", line.Text, unit.head, "--", line.Path)
+	out, exit, stderr, err := st.git(ctx, st.root, "grep", "--no-color", "-n", "-F", "-e", line.Text, unit.head, "--", line.Path)
 	if err != nil {
 		return 0, false, st.refuse(codeBacktestFail, err.Error())
 	}

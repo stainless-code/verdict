@@ -3,6 +3,9 @@ package backtest
 import (
 	"context"
 	"errors"
+	"maps"
+	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -30,13 +33,76 @@ func (st *state) git(ctx context.Context, dir string, args ...string) (string, i
 	return out, exit, stderr, nil
 }
 
+// gitPins are the command-scope config values every mining git call carries.
+// They outrank the repository's own config, so a `color.diff=always` or
+// `log.showSignature=true` in .git/config cannot change what is parsed.
+var gitPins = []string{
+	"-c", "core.quotepath=false",
+	"-c", "color.ui=false",
+	"-c", "log.showSignature=false",
+}
+
+// diffPins are the diff-family flags: they fix the prefixes, the algorithm,
+// and the external-tool and textconv hooks that would reshape `-U0` output.
+var diffPins = []string{
+	"--no-color", "--no-ext-diff", "--no-textconv",
+	"--src-prefix=a/", "--dst-prefix=b/", "--diff-algorithm=myers",
+}
+
+// gitPinnedEnv is the environment every mining git call runs with. The
+// config files are nulled, not merely overridden, because the user's global
+// config is a machine fact the artifact must not depend on; the locale is C
+// so stderr matching is stable across hosts.
+var gitPinnedEnv = map[string]string{
+	"GIT_CONFIG_NOSYSTEM":    "1",
+	"GIT_CONFIG_GLOBAL":      os.DevNull,
+	"GIT_PAGER":              "cat",
+	"GIT_OPTIONAL_LOCKS":     "0",
+	"GIT_TERMINAL_PROMPT":    "0",
+	"GIT_NO_REPLACE_OBJECTS": "1",
+	"LC_ALL":                 "C",
+}
+
+// gitInheritedRedirects names git's location and behavior escape hatches that
+// a snapshot must never pass through: each one retargets the repository,
+// index, object store, or diff driver the miner reads.
+var gitInheritedRedirects = []string{
+	"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY",
+	"GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_COMMON_DIR", "GIT_NAMESPACE",
+	"GIT_PREFIX", "GIT_EXTERNAL_DIFF", "GIT_DIFF_OPTS",
+}
+
+// diffArgs prefixes a diff-family subcommand with the pinned diff flags.
+func diffArgs(sub string, args ...string) []string {
+	return slices.Concat([]string{sub}, diffPins, args)
+}
+
+// gitEnv builds the child environment from the injected snapshot: every
+// variable except git's redirects and config overrides, then the pins.
+func gitEnv(snapshot map[string]string) []string {
+	env := make(map[string]string, len(snapshot)+len(gitPinnedEnv))
+	for name, value := range snapshot {
+		if strings.HasPrefix(name, "GIT_CONFIG") || slices.Contains(gitInheritedRedirects, name) {
+			continue
+		}
+		env[name] = value
+	}
+	maps.Copy(env, gitPinnedEnv)
+	out := make([]string, 0, len(env))
+	for _, name := range slices.Sorted(maps.Keys(env)) {
+		out = append(out, name+"="+env[name])
+	}
+	return out
+}
+
 // gitCapped runs one git command through the injected commander, reporting a
 // stream that hit its cap instead of failing on it.
 func (st *state) gitCapped(
 	ctx context.Context, limit int, dir string, args ...string,
 ) (string, int, string, bool, error) {
-	argv := append([]string{"git", "-C", dir, "-c", "core.quotepath=false"}, args...)
-	res, err := st.commander().Run(ctx, &core.Command{Argv: argv, OutputCap: limit})
+	argv := slices.Concat([]string{"git", "-C", dir}, gitPins, args)
+	cmd := &core.Command{Argv: argv, Env: gitEnv(st.snapshot()), OutputCap: limit}
+	res, err := st.commander().Run(ctx, cmd)
 	if err != nil {
 		if _, ok := errors.AsType[*core.MissingToolError](err); ok {
 			return "", 0, "", false, errGitMissing //nolint:wrapcheck // sealed local sentinel
@@ -44,6 +110,16 @@ func (st *state) gitCapped(
 		return "", 0, "", false, jq.Sealed("git "+args[0], err)
 	}
 	return res.Stdout, res.ExitCode, res.Stderr, res.StdoutTruncated, nil
+}
+
+// snapshot is the injected environment the child environment is built from.
+// A direct caller that injects no runtime gets an empty snapshot, so the pins
+// alone decide the child's environment.
+func (st *state) snapshot() map[string]string {
+	if st.req.Runtime == nil {
+		return nil
+	}
+	return st.req.Runtime.Env
 }
 
 // revParse resolves one revision to a full commit id.
