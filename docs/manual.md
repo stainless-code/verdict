@@ -360,9 +360,11 @@ Packs layer built-in < org < repo. The org layer is the explicit `packs`
 string array in personal settings (`~/.config/verdict/settings.json`): each
 entry is a pack directory, absolute or relative to the reviewed repository
 root, and there is no directory scan. A repo-relative entry is read from the
-checkout, not the trusted base; an entry that resolves inside `.verdict/packs/`
-refuses `bad-pack`, because that tree is the repo layer and must be read at
-the PR base. A listed path that carries no
+checkout, not the trusted base; an entry inside `.verdict/packs/` refuses
+`bad-pack`, because that tree is the repo layer and must be read at the PR
+base. The comparison is lexical and also follows symlinks when both sides
+exist, so a linked path into the tree refuses too; a case-variant spelling on
+a case-insensitive volume is not caught. A listed path that carries no
 `pack.json` refuses `bad-pack`. The repo layer is
 `.verdict/packs/<name>/`, read by `fetch`/`fetch-local` from the trusted-base
 snapshot (the `controls` inventory records every pack file's path, bytes, and

@@ -255,16 +255,40 @@ func CheckOrgEntry(root, listed string) *core.RefusalError {
 	if err != nil {
 		return unresolvableOrg(listed, err)
 	}
-	rel, err := filepath.Rel(filepath.Join(base, filepath.FromSlash(RepoPacksDir)), abs)
+	packs := filepath.Join(base, filepath.FromSlash(RepoPacksDir))
+	rel, relErr := filepath.Rel(packs, abs)
+	if insideRel(rel, relErr) || resolvesInside(packs, abs) {
+		return badPack(fmt.Sprintf(
+			"org pack path %q is inside %s, which is the repo layer read from the PR base — move it outside that tree",
+			listed, RepoPacksDir))
+	}
+	return nil
+}
+
+// insideRel reports whether rel places a path inside its base. ".." and any
+// "..<separator>" prefix are outside, and a Rel error is a Windows volume
+// mismatch, which likewise proves the path is outside.
+func insideRel(rel string, err error) bool {
 	if err != nil {
-		return unresolvableOrg(listed, err)
+		return false
 	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return nil
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// resolvesInside reports whether target lands inside dir after resolving both
+// sides' symlinks. A side that does not exist proves nothing, so the lexical
+// check stands alone there.
+func resolvesInside(dir, target string) bool {
+	realDir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return false
 	}
-	return badPack(fmt.Sprintf(
-		"org pack path %q is inside %s, which is the repo layer read from the PR base — move it outside that tree",
-		listed, RepoPacksDir))
+	realTarget, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(realDir, realTarget)
+	return insideRel(rel, err)
 }
 
 // unresolvableOrg refuses an org entry whose path cannot be resolved, rather

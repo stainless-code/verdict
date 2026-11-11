@@ -2,6 +2,7 @@ package pack
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -221,6 +222,59 @@ func TestCheckOrgEntryRefusesOnlyRepoPacks(t *testing.T) {
 		if ref := CheckOrgEntry(root, listed); ref != nil {
 			t.Errorf("%s = %s: %s, want no refusal", listed, ref.Code, ref.Message)
 		}
+	}
+}
+
+// TestCheckOrgEntryAllowsAbsoluteOutsidePath proves an absolute org entry
+// outside the repo stays legal: only the repo layer's tree is refused.
+func TestCheckOrgEntryAllowsAbsoluteOutsidePath(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	for _, listed := range []string{
+		filepath.Join(t.TempDir(), "packs", "team"),
+		filepath.Join(filepath.Dir(root), filepath.Base(root)+"-sibling", "packs"),
+	} {
+		if ref := CheckOrgEntry(root, listed); ref != nil {
+			t.Errorf("%s = %s: %s, want no refusal", listed, ref.Code, ref.Message)
+		}
+	}
+}
+
+// TestCheckOrgEntryRefusesSymlinkedEntryInsideRepoPacks proves the check
+// resolves symlinks: an entry spelled outside the tree that links into it
+// would still read the repo layer at head, so it refuses too.
+func TestCheckOrgEntryRefusesSymlinkedEntryInsideRepoPacks(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	packs := filepath.Join(root, ".verdict", "packs")
+	writeFixture(t, packs, map[string]string{"team/pack.json": "{}"})
+	link := filepath.Join(root, "linked")
+	if err := os.Symlink(packs, link); err != nil {
+		t.Skipf("this platform cannot create symlinks here: %v", err)
+	}
+	listed := filepath.Join(link, "team")
+	if ref := CheckOrgEntry(root, listed); ref == nil || ref.Code != CodeBadPack {
+		t.Fatalf("symlinked org entry = %v, want bad-pack", ref)
+	}
+}
+
+// TestInsideRelTreatsVolumeMismatchAsOutside proves a Rel failure reads as
+// outside: [filepath.Rel] fails only across volumes, and a legal absolute org
+// path on another drive must not refuse as unresolvable. The Windows-only
+// end-to-end case lives in orgentry_windows_test.go.
+func TestInsideRelTreatsVolumeMismatchAsOutside(t *testing.T) {
+	t.Parallel()
+	if insideRel("", errors.New(`Rel: can't make D:\packs\team relative to C:\repo\.verdict\packs`)) {
+		t.Fatal("a volume mismatch read as inside the repo layer")
+	}
+	if !insideRel("team", nil) {
+		t.Fatal(`rel "team" read as outside`)
+	}
+	if insideRel("..", nil) {
+		t.Fatal(`rel ".." read as inside`)
+	}
+	if insideRel(".."+string(filepath.Separator)+"team", nil) {
+		t.Fatal("a parent-relative rel read as inside")
 	}
 }
 
