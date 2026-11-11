@@ -306,11 +306,11 @@ func TestOwnersReadFromTreeNotWorktree(t *testing.T) {
 // evaluate is counted in one warning and never silently changes ownership.
 func TestOwnersUnsupportedPatternWarns(t *testing.T) {
 	f := newFixture(t)
-	codeownersFixture(f, "* @everyone\n!a/* @blocked\n")
+	codeownersFixture(f, "* @everyone\n!a/* @blocked\na[bc].go @bracket\n")
 	f.commit("one")
 	resp := f.queryPath(QueryOwners, "a/a.go")
 	assertOwners(t, resp.Data.Target, []string{"@everyone"}, ".github/CODEOWNERS")
-	want := "» index: CODEOWNERS has 1 rule line(s) the index does not evaluate " +
+	want := "» index: CODEOWNERS has 2 rule line(s) the index does not evaluate " +
 		"(negation, escape, or character class); those lines match nothing"
 	if !slices.Contains(resp.Warnings, want) {
 		t.Errorf("warnings = %q; want one equal to %q", resp.Warnings, want)
@@ -334,6 +334,17 @@ func TestOwnerGlobSemantics(t *testing.T) {
 		{"/a/*", "a/x.go", true},
 		{"/a/*", "b/a/x.go", false},
 		{"a/**", "a/sub/x.go", true},
+		{"a**b", "axxb", true},
+		{"a**b", "a/x/b", false},
+		{"**/x", "x", true},
+		{"**/x", "a/b/x", true},
+		{"x/**", "x/a/b.go", true},
+		{"x/**", "y/x/a", false},
+		{"a/**/b", "a/b", true},
+		{"a/**/b", "a/x/y/b", true},
+		{"a/**/b", "a/xb", false},
+		{"a/**b", "a/xb", true},
+		{"a/**b", "a/x/b", false},
 		{"a/**/x.go", "a/x.go", true},
 		{"a/**/x.go", "a/b/c/x.go", true},
 		{"a/**/x.go", "b/x.go", false},
@@ -355,6 +366,83 @@ func TestOwnerGlobSemantics(t *testing.T) {
 				t.Errorf("%q vs %q = %t; want %t", tc.pattern, tc.path, got, tc.want)
 			}
 		})
+	}
+}
+
+// TestOwnersAtOldTreeMarksStale proves `--at` answers the requested tree,
+// publishes the staleness bit, and warns with both trees, like every other
+// --at query.
+func TestOwnersAtOldTreeMarksStale(t *testing.T) {
+	f := newFixture(t)
+	codeownersFixture(f, "* @old\n")
+	f.commit("one")
+	old := f.run("", "rev-parse", "HEAD^{tree}")
+	f.write(".github/CODEOWNERS", "* @new\n")
+	f.commit("two")
+	head := f.run("", "rev-parse", "HEAD^{tree}")
+	req := f.request(QueryOwners, nil)
+	req.Path, req.At = "a/a.go", old
+	resp, ref := Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("index owners refused: %v", ref)
+	}
+	assertOwners(t, resp.Data.Target, []string{"@old"}, ".github/CODEOWNERS")
+	if !resp.Data.Stale || resp.Data.Tree != old {
+		t.Errorf("stale = %t, tree = %s; want true and %s", resp.Data.Stale, resp.Data.Tree, old)
+	}
+	want := "» index: built for " + old + ", HEAD is " + head
+	if !slices.Contains(resp.Warnings, want) {
+		t.Errorf("warnings = %q; want one equal to %q", resp.Warnings, want)
+	}
+	if wire := resp.Data.Wire().MarshalCompact(); !strings.Contains(wire, `"stale":true`) {
+		t.Errorf("wire = %s; want the published stale bit", wire)
+	}
+}
+
+// TestOwnersReadsTheFileWhole proves the CODEOWNERS blob is evaluated in full
+// however small the Go parsing cap is: the rule below the cap still owns the
+// path, so no cap-driven truncation can silently change an owner.
+func TestOwnersReadsTheFileWhole(t *testing.T) {
+	f := newFixture(t)
+	codeownersFixture(f, "* @everyone\n"+strings.Repeat("docs/* @docs\n", 40)+"a/*.go @go-owner\n")
+	f.commit("one")
+	req := f.request(QueryOwners, &Limits{FileBytes: 8})
+	req.Path = "a/a.go"
+	resp, ref := Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("index owners refused: %v", ref)
+	}
+	assertOwners(t, resp.Data.Target, []string{"@go-owner"}, ".github/CODEOWNERS")
+}
+
+// TestTestsForAtOldTreeMarksStale proves `--at` answers the requested tree and
+// marks the envelope stale when it is not HEAD's.
+func TestTestsForAtOldTreeMarksStale(t *testing.T) {
+	f := newFixture(t)
+	writeGraphFixture(f)
+	f.commit("one")
+	f.build()
+	old := f.run("", "rev-parse", "HEAD^{tree}")
+	f.write("c/c.go", "package c\n\nfunc Local() {}\n\nfunc Added() {}\n")
+	f.commit("two")
+	head := f.run("", "rev-parse", "HEAD^{tree}")
+	req := f.request(QueryTestsFor, nil)
+	req.Path, req.At = "a/a.go", old
+	resp, ref := Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("index tests-for refused: %v", ref)
+	}
+	assertTestRows(t, resp.Data.TestRows, []TestRow{
+		{Path: "a/a_test.go", Via: viaSamePackage},
+		{Path: "b/b_test.go", Via: viaReferences},
+		{Path: "c/c_test.go", Via: viaImportsModule},
+	})
+	if !resp.Data.Stale || resp.Data.Tree != old {
+		t.Errorf("stale = %t, tree = %s; want true and %s", resp.Data.Stale, resp.Data.Tree, old)
+	}
+	want := "» index: built for " + old + ", HEAD is " + head
+	if !slices.Contains(resp.Warnings, want) {
+		t.Errorf("warnings = %q; want one equal to %q", resp.Warnings, want)
 	}
 }
 

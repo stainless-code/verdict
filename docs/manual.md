@@ -2648,8 +2648,10 @@ path at the queried tree. The file is read **at the tree**, from the git object
 store, at GitHub's first match of
 `.github/CODEOWNERS`, `CODEOWNERS`, then `docs/CODEOWNERS` — never the worktree
 copy, so an uncommitted edit changes nothing. The last matching rule wins.
-Patterns follow a documented subset: `*` stays inside a segment, `**` crosses
-segments, `?` matches one character, a leading `/` anchors at the repository
+Patterns follow gitignore's positional subset: `*` stays inside a segment, `?`
+matches one character, `**` crosses segments only in the three positional
+forms `**/`, `/**`, and `/**/` and is a plain `*` anywhere else (so `a**b`
+never matches across a `/`), a leading `/` anchors at the repository
 root, a pattern with no slash matches a segment at any depth, and a trailing
 slash matches everything below the directory. Negation (`!`), backslash
 escapes, and character classes are not evaluated: a file using them warns, and
@@ -2661,19 +2663,23 @@ with the source named. Neither ever reads as an owner named nobody. The same
 Caps: 20,000 Go files, 1 MiB per file (an oversized file is skipped and
 counted in `coverage.skipped`), a 96 MiB tree file, and a 256 MiB shard cache;
 a repo over a cap refuses `index-capped` naming the measured number. The typed
-`index` section of `.verdict/config.json` overrides each default. One build
-reads every parseable blob through a single `git cat-file` capture capped at
-97 MiB including record framing, so the total source size parsed in one build
-is the effective ceiling. It binds before the nominal 20,000 × 1 MiB file caps;
-an over-cap capture refuses `index-capped` naming the cap, and the capture cap
-is not configurable. A truncated or invalid shard refuses `index-corrupt` and
-is never read as empty.
+`index` section of `.verdict/config.json` overrides each default. The 1 MiB
+file cap governs Go parsing alone: a CODEOWNERS blob is read whole from the
+object store, so a large ownership file is never silently half-applied. One
+build reads every parseable blob through a single `git cat-file` capture capped
+at 97 MiB including record framing, so the total source size parsed in one
+build is the effective ceiling. It binds before the nominal 20,000 × 1 MiB file
+caps; an over-cap capture refuses `index-capped` naming the cap, and the
+capture cap is not configurable. A truncated or invalid shard refuses
+`index-corrupt` and is never read as empty.
 Querying a tree that is not HEAD's marks the envelope `stale: true` and warns
 `» index: built for <tree>, HEAD is <tree2>`. `callers`, `tests-for`, and
 `owners` take `--at`; `co-changed` always reads HEAD's tree and history. The
 MCP `index` tool is read-only and serves `callers`, `status`, `tests-for`,
-`co-changed`, and `owners`; `build` and `prune` stay on the CLI, and the SDK
-forwards every subcommand.
+`co-changed`, and `owners`; it creates no workspace and no index store, its one
+write is the co-change cache inside a store that already exists, and it never
+builds or prunes — those stay on the CLI, and the SDK forwards every
+subcommand.
 
 ## Backtest (SZZ candidates)
 

@@ -65,6 +65,7 @@ func (d *Data) Wire() *jq.Obj {
 			"query", queryDoc(d),
 			keyTree, d.Tree,
 			"commit", d.Commit,
+			"stale", d.Stale,
 			"target", targetDoc(d.Target),
 		)
 	default:

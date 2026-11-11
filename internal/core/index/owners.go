@@ -109,9 +109,10 @@ func parseCodeowners(src string) ([]ownerRule, int) {
 // compileOwnerPattern turns one GitHub-style path pattern into a matcher. A
 // leading slash anchors at the repository root; a pattern with no slash matches
 // a path segment at any depth; a trailing slash matches everything below the
-// directory. `*` stays inside one segment, `**` crosses segments, `?` matches
-// one character. Negation, escapes, and character classes are refused here so
-// the caller can warn about them.
+// directory. `*` stays inside one segment, `**` crosses segments only in
+// gitignore's three positional forms (`**/`, `/**`, `/**/`) and is a plain `*`
+// anywhere else, `?` matches one character. Negation, escapes, and character
+// classes are refused here so the caller can warn about them.
 func compileOwnerPattern(pattern string) (*regexp.Regexp, bool) {
 	if pattern == "" || strings.HasPrefix(pattern, "!") || strings.ContainsAny(pattern, `\[]`) {
 		return nil, false
@@ -142,35 +143,38 @@ func compileOwnerPattern(pattern string) (*regexp.Regexp, bool) {
 	return re, true
 }
 
+// ownerGlobDoubleStar is the marker [ownerGlob] translates positionally: it
+// crosses segments only in `**/`, `/**`, and `/**/`, and is a plain `*`
+// anywhere else.
+const ownerGlobDoubleStar = "**"
+
 // ownerGlob converts the glob body of one pattern to a regexp fragment.
 func ownerGlob(pattern string) string {
 	var sb strings.Builder
-	for i := 0; i < len(pattern); i++ {
-		switch c := pattern[i]; c {
-		case '*':
-			if i+1 < len(pattern) && pattern[i+1] == '*' {
-				i = ownerDoubleStar(&sb, pattern, i)
-				continue
-			}
+	for i := 0; i < len(pattern); {
+		rest := pattern[i:]
+		switch {
+		case strings.HasPrefix(rest, "**/"):
+			sb.WriteString("(?:.*/)?")
+			i += len("**/")
+		case rest == ownerGlobDoubleStar && i > 0 && pattern[i-1] == pathSeparator[0]:
+			sb.WriteString(".*")
+			i += len(ownerGlobDoubleStar)
+		case strings.HasPrefix(rest, ownerGlobDoubleStar):
 			sb.WriteString("[^/]*")
-		case '?':
+			i += len(ownerGlobDoubleStar)
+		case rest[0] == '*':
+			sb.WriteString("[^/]*")
+			i++
+		case rest[0] == '?':
 			sb.WriteString("[^/]")
+			i++
 		default:
-			sb.WriteString(regexp.QuoteMeta(string(c)))
+			sb.WriteString(regexp.QuoteMeta(rest[:1]))
+			i++
 		}
 	}
 	return sb.String()
-}
-
-// ownerDoubleStar writes the translation of `**` starting at i and returns the
-// last byte index it consumed.
-func ownerDoubleStar(sb *strings.Builder, pattern string, i int) int {
-	if i+2 < len(pattern) && pattern[i+2] == '/' {
-		sb.WriteString("(?:.*/)?")
-		return i + 2
-	}
-	sb.WriteString(".*")
-	return i + 1
 }
 
 // matchOwners returns the owners of the last rule matching p, or nil when no
@@ -234,6 +238,7 @@ func (st *state) owners(ctx context.Context) (*Response, *core.RefusalError) {
 	if ref != nil {
 		return nil, ref
 	}
+	stale := st.warnStale(ctx, root, tree)
 	entries, ref := st.lsTree(ctx, root, tree)
 	if ref != nil {
 		return nil, ref
@@ -252,7 +257,7 @@ func (st *state) owners(ctx context.Context) (*Response, *core.RefusalError) {
 		At:   st.req.TimeUTC(),
 		Next: "run verdict index co-changed " + quotePath(p) + " to see what moves with it",
 		Data: &Data{
-			Kind: QueryOwners, Path: p, Tree: tree, Commit: commit, Target: target,
+			Kind: QueryOwners, Path: p, Tree: tree, Commit: commit, Stale: stale, Target: target,
 		},
 	}, nil
 }
