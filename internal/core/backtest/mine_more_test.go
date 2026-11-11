@@ -39,6 +39,8 @@ func TestMineExclusions(t *testing.T) {
 		build  func(*testing.T) (*repo, string)
 	}{
 		{"vendor", "vendor", "vendor/lib/x.go:3", "2dc62ead5dbb0e1ff77ac91dd91163dec6bc3523", vendorFixture},
+		{"node_modules", "node_modules", "web/node_modules/pkg/index.js:1", "3cbe2c7068d516c44b1cb1523ac103917db67997", nodeModulesFixture},
+		{"third_party", "third_party", "third_party/z/base.c:1", "f25d3d0d231c039082d2a42ed1eb16658f6ee05a", thirdPartyFixture},
 		{"generated", "generated", "api.pb.go:3", "8151bf37fd9ee19d8795f1741b966280b168ebab", generatedFixture},
 		{"wide", "wide-fix", "", "760bbd98efadf0d6b83e9b49d487a6057d4f0bcb", wideFixture},
 		{"docs", "docs-test-only", "", "b7677beb5224368c15e4451e4d03111ada8aa1fb", docsFixture},
@@ -83,6 +85,36 @@ func vendorFixture(t *testing.T) (*repo, string) {
 	r.switchMain()
 	r.merge("feature", "Merge pull request #3 from acme/feature")
 	r.write("vendor/lib/x.go", "package lib\n\nvar X = 2\n")
+	return r, base
+}
+
+// nodeModulesFixture changes a dependency file.
+func nodeModulesFixture(t *testing.T) (*repo, string) {
+	t.Helper()
+	r := newRepo(t)
+	r.write("main.go", "package main\n")
+	base := r.commit("feat: base")
+	r.switchNew("feature")
+	r.write("web/node_modules/pkg/index.js", "let x = 1;\n")
+	r.commit("feat: add a dependency")
+	r.switchMain()
+	r.merge("feature", "Merge pull request #7 from acme/feature")
+	r.write("web/node_modules/pkg/index.js", "let x = 2;\n")
+	return r, base
+}
+
+// thirdPartyFixture changes a vendored third-party file.
+func thirdPartyFixture(t *testing.T) (*repo, string) {
+	t.Helper()
+	r := newRepo(t)
+	r.write("main.go", "package main\n")
+	base := r.commit("feat: base")
+	r.switchNew("feature")
+	r.write("third_party/z/base.c", "int x = 0;\n")
+	r.commit("feat: add third party code")
+	r.switchMain()
+	r.merge("feature", "Merge pull request #8 from acme/feature")
+	r.write("third_party/z/base.c", "int x = 1;\n")
 	return r, base
 }
 

@@ -50,6 +50,23 @@ diff --git a/"odd name.go" b/"odd name.go"
 	}
 }
 
+// TestParseFixHunksMultiHunk pins old-side numbering across hunks, the CRLF
+// byte a Windows file keeps, and the no-newline marker that carries no line.
+func TestParseFixHunksMultiHunk(t *testing.T) {
+	diff := "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n" +
+		"@@ -2 +2 @@\n-old one\n+new one\n" +
+		"@@ -9,2 +9,2 @@\n-old two\r\n-old three\n\\ No newline at end of file\n+new two\n+new three\n"
+	got := parseFixHunks(diff)
+	want := []diffLine{
+		{Path: "a.txt", Line: 2, Text: "old one"},
+		{Path: "a.txt", Line: 9, Text: "old two\r"},
+		{Path: "a.txt", Line: 10, Text: "old three"},
+	}
+	if !slices.Equal(got.Deleted, want) {
+		t.Errorf("deleted = %+v; want %+v", got.Deleted, want)
+	}
+}
+
 // TestParseFixHunksBinary pins the binary marker.
 func TestParseFixHunksBinary(t *testing.T) {
 	got := parseFixHunks("diff --git a/x.bin b/x.bin\nBinary files a/x.bin and b/x.bin differ\n")

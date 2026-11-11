@@ -26,13 +26,16 @@ type fixDiff struct {
 var hunkHeaderRe = regexp.MustCompile(`^@@ -([0-9]+)(?:,([0-9]+))? \+([0-9]+)(?:,([0-9]+))? @@`)
 
 // parseFixHunks parses `git show -U0 --no-renames` output. It never fails: a
-// malformed line ends the hunk it appears in, so fuzzed input yields fewer
-// lines rather than a panic.
+// malformed line ends the hunk it appears in, and a deleted line that would
+// run backwards for its path (only a duplicated section can carry one) is
+// dropped, so fuzzed input yields fewer lines rather than a panic and the
+// emitted line numbers strictly increase per path.
 //
 //nolint:revive,cyclop // one branch per unified-diff line shape reads truer than a state machine
 func parseFixHunks(diff string) fixDiff {
 	var out fixDiff
 	oldPath, oldLine := "", 0
+	last := map[string]int{}
 	inHunk := false
 	for line := range strings.SplitSeq(diff, "\n") {
 		switch {
@@ -55,8 +58,9 @@ func parseFixHunks(diff string) fixDiff {
 		case !inHunk:
 			// Diff metadata before the first hunk.
 		case strings.HasPrefix(line, "-"):
-			if oldPath != "" && oldLine > 0 {
+			if oldPath != "" && oldLine > 0 && oldLine > last[oldPath] {
 				out.Deleted = append(out.Deleted, diffLine{Path: oldPath, Line: oldLine, Text: strings.TrimPrefix(line, "-")})
+				last[oldPath] = oldLine
 			}
 			oldLine++
 		case strings.HasPrefix(line, "+"):
