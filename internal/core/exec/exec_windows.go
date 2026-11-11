@@ -4,7 +4,9 @@ package exec
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	osexec "os/exec"
 	"strconv"
 	"strings"
@@ -226,12 +228,12 @@ func armStarted(cmd *osexec.Cmd) error {
 		err = resumeProcess(pid32(cmd.Process.Pid))
 	}
 	if err != nil {
-		if killErr := cmd.Process.Kill(); killErr != nil {
-			// A failed kill leaves the suspended child alive; returning without
-			// Wait would hang on a process that can never run.
-			return watchdogError(err.Error() + "; kill suspended verify process: " + killErr.Error())
+		if killErr := cmd.Process.Kill(); killErr != nil && !errors.Is(killErr, os.ErrProcessDone) {
+			// A failed kill leaves the suspended child alive; Wait would block
+			// forever on a process that can never run.
+			return watchdogError(err.Error() + "; kill child process: " + killErr.Error())
 		}
-		_ = cmd.Wait() //nolint:errcheck // reap it and release the output copiers; the kill's exit is expected
+		_ = cmd.Wait() //nolint:errcheck // release the process handle and output copiers; the spawn error already rules
 		return err
 	}
 	return nil
