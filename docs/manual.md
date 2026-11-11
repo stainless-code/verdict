@@ -2901,13 +2901,19 @@ A review that fails is that candidate's row, not the run's refusal: an agent
 that exits non-zero, times out, leaves no artifact, or writes one the record
 path rejects is recorded with that refusal code as its `status`, its bundle
 kept for inspection, and the walk continues. The timeout row carries
-`agent-timeout`, the same refusal `verdict run --timeout` reports. Three
-failures end the whole walk because every later candidate would fail the same
-way: `agent-missing` (the binary is not on `PATH`), `agent-spawn-failed`, and
-`canceled`. A candidate whose checkout or range cannot be materialized is
-likewise one failed row — `backtest-failed` for a head git cannot check out,
-the range's own code for a bundle build — with an empty `bundle`, and the walk
-continues.
+`agent-timeout`, the same refusal `verdict run --timeout` reports. A candidate
+whose checkout or range cannot be materialized is likewise one failed row —
+`backtest-failed` for a head git cannot check out, the range's own code for a
+bundle build — with an empty `bundle`, and the walk continues.
+
+Five failures end the whole walk instead, because every later candidate would
+fail the same way: `agent-missing` (the binary is not on `PATH`),
+`agent-spawn-failed`, and `canceled`, plus `backtest-failed` when git vanishes
+mid-run — a repository whose git has already resolved and then disappears
+refuses with the install hint rather than a row — and `backtest-failed` again
+when the state directory that holds the checkouts cannot be created. Those
+refuse the run itself: the rows already walked stay on disk, no further
+candidate starts, and no agent is launched.
 
 Rerunning the same `--run` resumes: a candidate whose `replay.json` says `ok`
 is reported from that record and the agent is not launched again — as long as

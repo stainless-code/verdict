@@ -12,7 +12,9 @@ bundle's `findings.json`. Spend is bounded by `--max-reviews` (1–99), a
 median-projected `--budget-usd` ceiling, and a per-review `--timeout`; a review
 that reported no price is unknown spend, never `$0.00`. A failed review is
 that candidate's row (`status` is the refusal code) and the walk continues;
-only `agent-missing`, `agent-spawn-failed`, and cancellation end the run.
+only `agent-missing`, `agent-spawn-failed`, cancellation, and a
+`backtest-failed` that would hit every candidate (git gone mid-run, or a
+state directory that cannot be created) end the run.
 `--run` ids are capped at 42 bytes by `backtest mine` and `backtest replay`
 alike, so two runs can never be cut onto one bundle name.
 Rerunning the same `--run` replays only candidates that produced no review, and

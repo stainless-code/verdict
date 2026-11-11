@@ -142,6 +142,22 @@ func TestRunIDCapFillsTheBundleNameCap(t *testing.T) {
 	}
 }
 
+// TestReplayRefusesAnUncreatableStateDir proves a state directory replay cannot
+// create ends the walk: no candidate can check out, so no row and no agent run
+// would tell the operator anything new.
+func TestReplayRefusesAnUncreatableStateDir(t *testing.T) {
+	f := newReplayFixture(t)
+	state := filepath.Join(f.repo.dir, ".verdict", "state")
+	writeTestFile(t, state, "not a directory")
+	ref := runReplayRefusal(t, f.request(t, nil))
+	if ref.Code != codeBacktestFail || !strings.Contains(ref.Message, "cannot create") {
+		t.Fatalf("refusal = %s: %s; want %s naming the directory it cannot create", ref.Code, ref.Message, codeBacktestFail)
+	}
+	if _, err := os.Stat(filepath.Join(f.repo.dir, ".verdict", "backtest", replayTestRun, "prs")); !os.IsNotExist(err) {
+		t.Errorf("a refused run wrote resume records: %v", err)
+	}
+}
+
 // checkBadInput proves the refusal code, the named cause, and that no work ran.
 func checkBadInput(t *testing.T, mutate func(*ReplayRequest), code, part string) {
 	t.Helper()
