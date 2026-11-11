@@ -290,6 +290,11 @@ var fieldDocs = map[string]string{
 	"learn.Status":    "List rules with counters and precision (boolean list switch; learn sets no status).",
 	"next.Status":     "Status filter for the top finding (all, open, addressed, wont-fix, false-positive, deferred); empty means open.",
 	"triage.Status":   "Status to flip the finding to (open, addressed, wont-fix, false-positive, deferred).",
+	"index.Query":     "Subcommand to serve: callers or status. Build and prune stay on the CLI.",
+	"index.Symbol":    "Caller query symbol, bare (Target) or package-qualified (app.Target).",
+	"index.At":        "Tree or ref to query in callers mode; default HEAD.",
+	"index.From":      "Checkout directory to read the index from; default the repository root.",
+	"index.Limit":     "Maximum caller rows to return (1-200; default 50).",
 	"Sandbox": "Run under bwrap (Linux only) with no network, hidden credential dirs, " +
 		"a writable repo, and a private /tmp; refuses sandbox-unavailable when it cannot be enforced.",
 }
