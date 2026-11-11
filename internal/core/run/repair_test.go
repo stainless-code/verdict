@@ -457,7 +457,12 @@ func TestRepairSilentSecondRoundIsStale(t *testing.T) {
 	cmdr := &sequenced{write: func(call int) {
 		if call == 1 {
 			writeDoc(t, root, invalidDoc)
+			return
 		}
+		// Age round 1's bytes before this round's launch: the silent round
+		// leaves them untouched, and a whole-second filesystem would otherwise
+		// stamp both writes inside one second and read the stale file as fresh.
+		ageReview(t, root, time.Hour)
 	}}
 	_, ref := Run(t.Context(), repairRequest(root, cmdr, "3", &lines))
 	if ref == nil {
@@ -540,6 +545,16 @@ func launcherMtime(t *testing.T, dir string) time.Time {
 		t.Fatal(err)
 	}
 	return info.ModTime()
+}
+
+// ageReview moves review.json into the past, so the next round's launch record
+// cannot share its second even on a whole-second filesystem.
+func ageReview(t *testing.T, root string, by time.Duration) {
+	t.Helper()
+	past := time.Now().Add(-by)
+	if err := os.Chtimes(filepath.Join(bundleDir(root), "review.json"), past, past); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestRepairMissingDiffStopsWithMissingDiff proves the loop uses the bundle

@@ -1259,6 +1259,9 @@ The freshness stamp has one-second granularity, so the guarantee is "not older
 than the launch", not "written by this agent". A `review.json` left by an
 earlier run in the same second the launch record was stamped reads as fresh by
 design: refusing it would fail an agent whose write landed inside that second.
+The same window covers a silent later round on a whole-second filesystem: inside
+the previous review's second it reads as fresh and the loop stops by the
+no-progress rule, not as stale.
 `run` records whether the artifact was fresh and how large it was, and a refusal
 names both timestamps, so the limit is visible after the fact rather than hidden.
 
