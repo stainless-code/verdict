@@ -18,8 +18,12 @@ func TestWaitProcessReturnsForExitedChild(t *testing.T) {
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
+	start := time.Now()
 	if err := waitProcess(ctx, cmd.Process.Pid); err != nil {
 		t.Fatalf("waitProcess: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Errorf("waitProcess took %v for an exited child; the signaled handle returns on the first 100ms poll, not after a wait toward the 10s budget", elapsed)
 	}
 	if err := cmd.Wait(); err != nil {
 		t.Fatalf("wait child: %v", err)
