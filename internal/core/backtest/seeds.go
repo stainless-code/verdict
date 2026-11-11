@@ -466,17 +466,43 @@ func (ss *seedState) prShape(
 			head: parents[1], base: base, landed: introducer, reconstruction: reconMergeParent,
 			number: mergeNumber(subject),
 		}, nil
+	case squashNumberRe.MatchString(subject) && len(parents) == 0:
+		return prUnit{skip: reasonNoPR}, nil
 	case squashNumberRe.MatchString(subject):
-		if len(parents) == 0 {
-			return prUnit{skip: reasonNoPR}, nil
+		onLine, ref := ss.onFirstParentLine(ctx, introducer)
+		if ref != nil {
+			return prUnit{}, ref
 		}
-		return prUnit{
-			head: introducer, base: parents[0], landed: introducer, reconstruction: reconSquash,
-			number: squashNumber(subject),
-		}, nil
+		if onLine {
+			return prUnit{
+				head: introducer, base: parents[0], landed: introducer, reconstruction: reconSquash,
+				number: squashNumber(subject),
+			}, nil
+		}
+		return ss.firstParentUnit(ctx, introducer)
 	default:
 		return ss.firstParentUnit(ctx, introducer)
 	}
+}
+
+// onFirstParentLine reports whether introducer is on the first-parent line of
+// until. The range is listed oldest first, so the first line is the commit
+// nearest introducer; its first parent is introducer exactly when introducer
+// is on that line. A title alone never makes a commit a squash landing.
+func (ss *seedState) onFirstParentLine(ctx context.Context, introducer string) (bool, *core.RefusalError) {
+	if introducer == ss.until.SHA {
+		return true, nil
+	}
+	out, exit, stderr, _, err := ss.st.gitCapped(ctx, commandOutputCap, ss.st.root,
+		"rev-list", "--first-parent", "--reverse", "--parents", introducer+".."+ss.until.SHA)
+	if err != nil {
+		return false, ss.st.refuse(codeBacktestFail, err.Error())
+	}
+	if exit != 0 {
+		return false, ss.st.refuse(codeBacktestFail, "git rev-list failed: "+firstLine(stderr))
+	}
+	fields := strings.Fields(firstLine(out))
+	return len(fields) >= 2 && fields[1] == introducer, nil
 }
 
 // firstParentUnit finds the first first-parent merge after introducer that
