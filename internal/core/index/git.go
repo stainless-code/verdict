@@ -137,6 +137,12 @@ func (st *state) gitBatch(ctx context.Context, dir string, blobs []string) (map[
 		if _, ok := errors.AsType[*core.MissingToolError](err); ok {
 			return nil, &core.RefusalError{Code: "missing-tool", Message: "git is not on PATH"}
 		}
+		if _, ok := errors.AsType[*core.OutputCappedError](err); ok {
+			return nil, &core.RefusalError{
+				Code:    codeIndexCapped,
+				Message: fmt.Sprintf("git cat-file output exceeded the %d-byte capture cap", gitOutputCap),
+			}
+		}
 		return nil, &core.RefusalError{Code: codeIndexFailed, Message: "git cat-file failed: " + err.Error()}
 	}
 	if res.ExitCode != 0 {

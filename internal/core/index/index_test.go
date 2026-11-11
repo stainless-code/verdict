@@ -196,6 +196,31 @@ func writeCallFixture(f *fixture, extra string) {
 	}
 }
 
+// cappedCommander returns the capture-cap error for every command, standing in
+// for a git stream larger than the runner keeps.
+type cappedCommander struct{}
+
+func (cappedCommander) Run(context.Context, *core.Command) (core.Result, error) {
+	return core.Result{}, &core.OutputCappedError{Stream: "stdout", Limit: 101711872}
+}
+
+// TestGitBatchCaptureCapRefuses proves an over-cap cat-file stream refuses as
+// index-capped naming the cap, never index-failed pointing at a rebuild.
+func TestGitBatchCaptureCapRefuses(t *testing.T) {
+	st := &state{req: &Request{ReadRequest: core.ReadRequest{Runtime: &core.Runtime{
+		Commander: cappedCommander{},
+		Env:       map[string]string{},
+	}}}}
+	_, ref := st.gitBatch(context.Background(), ".", []string{"0f1e2d3c"})
+	want := "git cat-file output exceeded the 101711872-byte capture cap"
+	if ref == nil {
+		t.Fatal("over-cap batch succeeded")
+	}
+	if ref.Code != "index-capped" || ref.Message != want {
+		t.Fatalf("refusal = %q: %q; want index-capped: %q", ref.Code, ref.Message, want)
+	}
+}
+
 // TestIndexBytesAreDeterministic proves two builds of the same tree write
 // byte-identical stores.
 func TestIndexBytesAreDeterministic(t *testing.T) {
