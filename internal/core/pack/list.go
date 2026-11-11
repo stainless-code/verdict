@@ -155,6 +155,9 @@ func orgOrigins(req *Request) ([]Origin, *core.RefusalError) {
 
 // orgOrigin loads one explicitly listed org pack directory.
 func orgOrigin(root, listed string) (Origin, *core.RefusalError) {
+	if ref := CheckOrgEntry(root, listed); ref != nil {
+		return Origin{}, ref
+	}
 	full := listed
 	if !filepath.IsAbs(full) {
 		full = filepath.Join(root, filepath.FromSlash(listed))

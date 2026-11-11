@@ -71,8 +71,12 @@ func orgPackOrigins(ctx2 *fetchRunCtx) ([]pack.Origin, *core.RefusalError) {
 	return out, nil
 }
 
-// orgPackOrigin loads one explicitly listed org pack directory.
+// orgPackOrigin loads one explicitly listed org pack directory. An entry
+// inside the repo layer's tree is refused: that tree is read from the base.
 func orgPackOrigin(root, listed string) (pack.Origin, *core.RefusalError) {
+	if ref := pack.CheckOrgEntry(root, listed); ref != nil {
+		return pack.Origin{}, ref
+	}
 	full := listed
 	if !filepath.IsAbs(full) {
 		full = filepath.Join(root, filepath.FromSlash(listed))

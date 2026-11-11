@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -171,6 +172,30 @@ func TestListUndeclaredOverrideRefuses(t *testing.T) {
 	})
 	if ref == nil || ref.Code != CodePackConflict {
 		t.Fatalf("undeclared override = %v, want pack-conflict", ref)
+	}
+}
+
+// TestListIgnoresStrayFileUnderRepoPacks proves a regular file beside the pack
+// directories is not a pack root: the report warns once, names it, and still
+// lists every directory pack.
+func TestListIgnoresStrayFileUnderRepoPacks(t *testing.T) {
+	t.Parallel()
+	root, settings := listFixtures(t, `"replace":["acme/org"],`)
+	writeFixture(t, root, map[string]string{".verdict/packs/README.md": "not a pack\n"})
+	resp, ref := RunList(t.Context(), &Request{
+		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
+		settings,
+		true,
+	})
+	if ref != nil {
+		t.Fatalf("RunList: %s: %s", ref.Code, ref.Message)
+	}
+	wantWarnings := []string{".verdict/packs/README.md is not a pack directory — ignored"}
+	if !slices.Equal(resp.Warnings, wantWarnings) {
+		t.Fatalf("warnings = %q, want %q", resp.Warnings, wantWarnings)
+	}
+	if got, want := len(resp.Data.Packs), 3; got != want {
+		t.Fatalf("rows = %d, want %d", got, want)
 	}
 }
 

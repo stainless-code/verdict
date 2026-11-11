@@ -238,7 +238,32 @@ func loadAt(base, root, label string) (*Pack, *core.RefusalError) {
 
 // LoadDir reads a pack whose root is dir itself.
 func LoadDir(dir string) (*Pack, *core.RefusalError) {
-	return LoadAt(dir, rootSelf)
+	return loadAt(dir, rootSelf, dir)
+}
+
+// CheckOrgEntry refuses a settings packs[] entry that resolves inside the repo
+// layer's tracked tree: fetch reads that tree from the PR base, so treating a
+// path in it as the org layer would read PR-editable files at head.
+func CheckOrgEntry(root, listed string) *core.RefusalError {
+	packsRoot, err := filepath.Abs(filepath.Join(root, filepath.FromSlash(RepoPacksDir)))
+	if err != nil {
+		return nil
+	}
+	full := listed
+	if !filepath.IsAbs(full) {
+		full = filepath.Join(root, filepath.FromSlash(listed))
+	}
+	abs, err := filepath.Abs(full)
+	if err != nil {
+		return nil
+	}
+	rel, err := filepath.Rel(packsRoot, abs)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return nil
+	}
+	return badPack(fmt.Sprintf(
+		"org pack path %q is inside %s, which is the repo layer read from the PR base — move it outside that tree",
+		listed, RepoPacksDir))
 }
 
 // walk lists the pack tree, checking the closed layout, every entry's

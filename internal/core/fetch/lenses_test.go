@@ -69,6 +69,20 @@ func TestPlanLineCarriesLensFields(t *testing.T) {
 	}
 }
 
+// TestOrgPackOriginRefusesRepoPacksEntry proves the fetch org layer refuses a
+// settings entry inside .verdict/packs, which is read from the PR base.
+func TestOrgPackOriginRefusesRepoPacksEntry(t *testing.T) {
+	t.Parallel()
+	_, ref := orgPackOrigin(t.TempDir(), ".verdict/packs/repo")
+	if ref == nil || ref.Code != pack.CodeBadPack {
+		t.Fatalf("org entry inside repo packs = %v, want bad-pack", ref)
+	}
+	want := `org pack path ".verdict/packs/repo" is inside .verdict/packs`
+	if !strings.Contains(ref.Message, want) {
+		t.Fatalf("message = %q, want it to contain %q", ref.Message, want)
+	}
+}
+
 // TestPlanLineCarriesEmptyLensList pins the rendered suffix when a group is
 // offered no lens: the pack identity still prints, and the empty list is an
 // explicit [] rather than a missing field.

@@ -193,6 +193,33 @@ func TestPackOfferedFiltersGlobs(t *testing.T) {
 	}
 }
 
+// TestCheckOrgEntryRefusesOnlyRepoPacks proves an org packs[] entry is refused
+// exactly when it resolves inside the repo layer's tree; a sibling name with
+// the same prefix and an outside path stay legal.
+func TestCheckOrgEntryRefusesOnlyRepoPacks(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	for _, listed := range []string{
+		".verdict/packs",
+		".verdict/packs/acme",
+		".verdict/other/../packs/acme",
+	} {
+		ref := CheckOrgEntry(root, listed)
+		if ref == nil || ref.Code != CodeBadPack {
+			t.Errorf("%s = %v, want bad-pack", listed, ref)
+			continue
+		}
+		if want := fmt.Sprintf("%q", listed); !strings.Contains(ref.Message, want) {
+			t.Errorf("message = %q, want it to name %s", ref.Message, want)
+		}
+	}
+	for _, listed := range []string{"org-packs", ".verdict/packs-extra/acme"} {
+		if ref := CheckOrgEntry(root, listed); ref != nil {
+			t.Errorf("%s = %s: %s, want no refusal", listed, ref.Code, ref.Message)
+		}
+	}
+}
+
 // TestPackNoteLabelsBodies pins the lenses.txt body: every lens labeled with
 // its id and eight-hex body digest and delimited by its own end marker.
 func TestPackNoteLabelsBodies(t *testing.T) {
