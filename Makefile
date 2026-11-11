@@ -59,6 +59,7 @@ test-race:
 # here, or when an entry names a package that does not declare it.
 FUZZTIME ?= 30s
 FUZZ_TARGETS := \
+	./internal/core/backtest:FuzzParseFixHunks \
 	./internal/core/record:FuzzCheckReview \
 	./internal/core/record:FuzzNormalizeReview \
 	./internal/core/threads:FuzzProviderMappers \

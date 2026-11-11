@@ -688,7 +688,7 @@ more than was written.
 
 ## Machine surface
 
-`fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`run`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`threads`/`trend`/`learn`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
+`fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`run`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`threads`/`trend`/`backtest`/`learn`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
 non-zero. `mcp config` also takes `--json`. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `threads` refreshes only `.verdict/state/<pr>/threads.json` from the host (all six
@@ -2512,6 +2512,144 @@ credited flips, and per-bundle `calibrate_eligible` marks bundles carrying a
 posted review id + head that `calibrate` could settle against live threads — the
 audit reads those shapes only, never recomputes them and never touches the
 network. Without the flag both outputs are byte-identical to today.
+
+## Backtest (SZZ candidates)
+
+`backtest mine --since <90d|12w|18mo|2y|ref> [--until <ref>] [--run <slug>] [--json]`
+mines bug-introducing PR candidates from the local clone. It makes zero model
+calls and zero network calls: everything comes from git objects already on
+disk. `replay` (run the review) and `score` (join findings to the later fix)
+are later slices; this release ships `mine` alone.
+
+A **candidate** is one merged PR plus the lines a later fix deleted that blame
+to that PR's head. It is a hypothesis about where a defect was introduced —
+not a defect, not a finding, not a calibration result, and not citable. SZZ
+blame is noisy: a fix can touch cleanup adjacent to the real bug, a refactor
+can move a line without changing it, and a squash commit is the whole PR only
+by convention. Treat `mine.json` as the input to replay, never as evidence.
+
+### Window
+
+`--until` defaults to `HEAD`; any other value must resolve to a commit in
+`HEAD`'s history, else `bad-until`. `--since` is either a calendar span (`90d`,
+`12w`, `18mo`, `2y`) measured back from `--until`'s committer date, or a ref
+that must be an ancestor of `--until`, else `bad-since`. A bare `m` is refused
+— months are `mo`, minutes do not exist. The range is `since..until`; when no
+commit predates the cutoff, the span starts at the history root.
+
+The default run id is `<until-short-sha>-<since-slug>`. A duration keeps its
+digits and unit (`12w`); a hex commit id becomes its first seven characters; a
+branch or tag name is lowercased with every non-alphanumeric run collapsed to
+`-`. `--run <slug>` overrides it and must already be slug-shaped. An existing
+`run.json` for the same id with another mode or window refuses `run-mismatch`;
+delete that directory or pick another `--run`.
+
+### Artifacts
+
+`.verdict/backtest/<run>/run.json` holds the resolution (`spec`, `sha`, `date`,
+and the `cutoff` a duration computed), the mode, the git version, `created_at`,
+and the artifact paths. It is the only file carrying a timestamp or a machine
+fact. `.verdict/backtest/<run>/mine.json` holds `schema_version`, `method`,
+`candidates[]`, and `skipped[]`, in sorted order with no timestamp, so mining
+the same window twice is byte-identical. Both are written atomically.
+
+### Seeds and SZZ
+
+Seeds are commits inside the window, newest first:
+
+- subject matching `^(?i)(fix|bugfix|hotfix)(\(|:|!)`;
+- a body line matching `(?i)\b(fixes|closes|resolves) #[0-9]+`;
+- subject `Revert "..."`, except a revert of a revert.
+
+A merge commit is not a seed: it is counted `merge-seed` when it matches a seed
+rule. For each other seed `F`, `git show -U0 --no-ext-diff --no-textconv
+--no-renames F` gives the deleted old-side lines. Each deleted line is blamed at
+`F^` with `git blame --porcelain --no-ignore-revs-file -L <line>,<line>`; the
+blamed commit is the introducer `I`. A `-L` outside the file's history or a
+zero boundary id reads `unaligned`, never a guess.
+
+The PR unit for `I` is the first matching rule:
+
+- `I` is a merge: head `I^2`, base `merge-base(I^1, I^2)`, `merge-parent`.
+  Conflict-resolution text usually exists at neither parent head, so the
+  anchor step normally skips it as `unaligned`.
+- `I`'s subject ends `(#N)`: head `I`, base `I^1`, `squash-commit`.
+- otherwise the first first-parent merge in `I..until` that brought `I` into
+  the first-parent line: head `M^2`, base `merge-base(M^1, M^2)`,
+  `first-parent-merge`.
+
+Every candidate records `head_source: "merge-time"`, `merged_at` (the landing
+commit's committer date), and `head_at` (the head's). No pre-merge
+reconstruction is invented.
+
+### Anchor
+
+At the PR head, `git grep -n -F -e <deleted line>` in the same path must find
+the exact line text. One hit is the bug line. Several hits are accepted only
+when every hit blames back to `I`; otherwise the fix is `unaligned`. A PR is
+one candidate, and its bugs are the de-duplicated union (path, line) over every
+fix that anchors to it.
+
+### Exclusions
+
+Exclusions are counted in `skipped[]` with `reason`, `fix`, and the PR or line
+when known; they never refuse the run.
+
+| Reason                                  | Rule                                                                                                                                                                                                                    |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `merge-seed`                            | the seed commit is a merge                                                                                                                                                                                              |
+| `vendor`, `node_modules`, `third_party` | the deleted path has that component                                                                                                                                                                                     |
+| `generated`                             | `*.pb.go`, `zz_generated.*`, `*.gen.go`, or a dependency lockfile (`go.sum`, `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`, `bun.lockb`, `Cargo.lock`, `composer.lock`, `Gemfile.lock`, `poetry.lock`) |
+| `binary`                                | the fix's numstat reports a binary file                                                                                                                                                                                 |
+| `docs-test-only`                        | every touched path is documentation or a test (`docs/`, `test/`, `tests/`, `testdata/`, `__tests__/`, `*_test.go`, `*.test.*`, `*.spec.*`, `README*`, `CHANGELOG*`, `LICENSE*`, `*.md`, `*.mdx`, `*.rst`)               |
+| `wide-fix`                              | more than 200 changed lines or more than 5 files                                                                                                                                                                        |
+| `added-only`                            | the fix deletes no old-side line                                                                                                                                                                                        |
+| `blank-line`                            | every deleted line is whitespace                                                                                                                                                                                        |
+| `no-pr`                                 | the introducer has no merge or squash PR                                                                                                                                                                                |
+| `unaligned`                             | the deleted text is absent, ambiguous, or outside history at the head                                                                                                                                                   |
+| `ancestor-of-since`                     | the PR landed at or before `--since`                                                                                                                                                                                    |
+| `large-pr-diff`                         | the PR diff is over fetch's 512,000-byte cap                                                                                                                                                                            |
+
+### Kinds
+
+A bug's `kind` is a deterministic guess: the fix subject first, then the fix
+diff; first match wins. Subject words match case-insensitively at a word start,
+in this order:
+
+| Kind                  | Subject words                                                                         |
+| --------------------- | ------------------------------------------------------------------------------------- |
+| `auth-bypass`         | `auth`, `authoriz`, `authentic`, `permission`, `privilege`, `bypass`, `admin`, `role` |
+| `path-traversal`      | `traversal`, `zip slip`, `path escape`, `directory traversal`, `confine`, `path join` |
+| `injection`           | `inject`, `sql`, `xss`, `command execution`, `sanitiz`                                |
+| `race`                | `race`, `concurrent`, `goroutine`, `mutex`, `deadlock`, `lock`                        |
+| `nil-deref`           | `nil`, `null pointer`, `nil pointer`, `dereference`                                   |
+| `off-by-one`          | `off-by-one`, `off by one`, `loop bound`, `fencepost`, `boundary`                     |
+| `index-out-of-range`  | `index out of range`, `index-out-of-range`, `out of range`, `panic`                   |
+| `missing-error-check` | `error`, `err`, `unchecked`, `ignored`, `handle failure`                              |
+
+When no subject word matches, the same order applies to the fix diff: an added
+line carries `err != nil` or `err == nil` (`missing-error-check`); a deleted
+line carries the word `nil` or `null` (`nil-deref`); a deleted line carries
+`<=` and `len(` while an added line carries `<` and `len(` (`off-by-one`); an
+added line carries `>= len(` or `<= 0` (`index-out-of-range`); an added line
+carries `sync.Mutex`, `sync.RWMutex`, `sync/atomic`, or `atomic.` (`race`); an
+added line carries `filepath.Clean` or `filepath.Rel` (`path-traversal`); an
+added line carries `html.EscapeString`, `strconv.Quote`, or `?` with `SELECT`,
+`INSERT`, or `UPDATE` (`injection`); an added line starts the word `authorized`,
+`permission`, or `admin` (`auth-bypass`). Everything else is `unclassified`.
+The first fix in newest-first order owns a duplicated path/line.
+
+### `--json`
+
+`data` is `{run, mode, since, until, method, artifacts, mine}`. `since` and
+`until` are `{spec, sha, date[, cutoff]}`; `artifacts` is `{run, mine}` with
+slash paths relative to the repository root; `mine` is `{candidates, skipped}`.
+A candidate carries `head`, `base`, `landed_by`, `pr` (number or null),
+`reconstruction`, `head_source`, `merged_at`, `head_at`, `fixes[]`, and
+`bugs[]`; a bug carries `path`, `line`, `kind`, and its `fix`. The envelope's
+`repo` is empty and `pr` is null: mining targets the checkout, not a bundle.
+Human output is one header line, one line per candidate, a skipped-by-reason
+footer, and the `not citable — SZZ-derived` line.
 
 ## Out of scope by design
 

@@ -96,6 +96,12 @@ Cause: the credential the host call needs is not exported.
 
 Fix: export the credential named above, then re-run.
 
+## `backtest-failed`
+
+Cause: a git read failed while mining (git is missing, or the checkout is unreadable).
+
+Fix: confirm `git --version` works in the checkout, then re-run.
+
 ## `bad-approve`
 
 Cause: `--approve` is not a boolean.
@@ -264,6 +270,12 @@ Cause: the `--sig` prefix matched nothing actionable.
 
 Fix: list open inline sigs with `report --status open --kind inline`, then re-run with the full prefix.
 
+## `bad-since`
+
+Cause: `backtest mine --since` is missing, is a bare month (`18m`), does not resolve, or names a commit that is not an ancestor of `--until`.
+
+Fix: pass `--since <90d|12w|18mo|2y|ref>` with a unit of `d`, `w`, `mo`, or `y`, or a ref that precedes `--until`.
+
 ## `bad-slug`
 
 Cause: the local bundle name is unusable (it sanitizes to nothing, looks like a PR number, or already carries the `local-` prefix).
@@ -293,6 +305,12 @@ Fix: pass `--timeout <positive-seconds>` (default 300).
 Cause: `--status` is not a known triage state.
 
 Fix: re-run with one of `open|addressed|wont-fix|false-positive|deferred`.
+
+## `bad-until`
+
+Cause: `backtest mine --until` does not resolve, or names a commit that is not an ancestor of `HEAD`.
+
+Fix: pass a ref in `HEAD`'s history (the default is `HEAD`), then re-run.
 
 ## `bad-usage`
 
@@ -761,6 +779,12 @@ Fix: address it, narrow the clause, or re-fetch without the policy.
 Cause: a required typed check has no passing evidence for the reviewed head.
 
 Fix: record the evidence named above (`verify --group <id> --command <cmd>`), then re-run — `--force` cannot satisfy a trusted requirement.
+
+## `run-mismatch`
+
+Cause: `.verdict/backtest/<run>/run.json` exists with a different mode or window than this invocation.
+
+Fix: pick another `--run <slug>`, or delete the existing run directory.
 
 ## `sandbox-unavailable`
 
