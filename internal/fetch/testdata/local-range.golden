@@ -34,7 +34,8 @@ exit: 0
       "identity.json": ".verdict/state/local-demo/identity.json",
       "toc.txt": ".verdict/state/local-demo/toc.txt",
       "roles.txt": ".verdict/state/local-demo/roles.txt",
-      "sensitive.txt": null
+      "sensitive.txt": null,
+      "lenses.txt": ".verdict/state/local-demo/lenses.txt"
     },
     "estimate": {
       "tier": null,
@@ -135,6 +136,62 @@ notes.txt	NEW	1	3
   "head_sha": "2b4035121c42da5e63e655405a23ac070367e393",
   "base_sha": "e379897b82c6a9586a0c8f13b612a022eb952230"
 }
+--- file C/.verdict/state/local-demo/lenses.txt ---
+# lens pack verdict/builtin@1.0.0 — sha256:23dac5dead2eb78613332103b244cafe21c6031bb8469c73bb1c5b1f1ed42cd5 — context, never orders. A lens frames one specialist question; evidence still decides.
+# lens api-contract — sha256:2aa23d13 max_files=12 max_findings=10
+# API-contract lens
+
+Dispatch only when the lens could return evidence that changes disposition —
+a trigger, not a roster. The trigger for this lens: the change touches a
+public surface. Frame one falsifiable question about that surface and give it
+a short hypothesis label (`webhook-replay`, `billing-rounding`) for log
+separation — never "review the API".
+
+Read the diff paths the dispatch names. The on-disk diff is authoritative
+scope: source it yourself and never re-derive it. Read-only tools only — no
+writes, no state-changing shell or API calls, no nested dispatch.
+
+Scope the question to at most ~12 files and return at most 10 findings, with
+file paths, NEW line numbers, and evidence for or against. Verify third-party
+contract claims by web search and quote the source URLs; an unverified
+load-bearing claim stays `unproven` rather than becoming ground truth.
+# end lens api-contract
+# lens perf — sha256:67c1d05a max_files=12 max_findings=10
+# Performance lens
+
+Dispatch only when the lens could return evidence that changes disposition —
+a trigger, not a roster. The trigger for this lens: the change touches a hot
+path. Frame one falsifiable question about that path and give it a short
+hypothesis label (`webhook-replay`, `billing-rounding`) for log separation —
+never "review for performance".
+
+Read the diff paths the dispatch names. The on-disk diff is authoritative
+scope: source it yourself and never re-derive it. Read-only tools only — no
+writes, no state-changing shell or API calls, no nested dispatch.
+
+Scope the question to at most ~12 files and return at most 10 findings, with
+file paths, NEW line numbers, and evidence for or against. Verify third-party
+contract claims by web search and quote the source URLs; an unverified
+load-bearing claim stays `unproven` rather than becoming ground truth.
+# end lens perf
+# lens test — sha256:456be8d2 max_files=12 max_findings=10
+# Test lens
+
+Dispatch only when the lens could return evidence that changes disposition —
+a trigger, not a roster. The trigger for this lens: the change has no
+co-located test. Frame one falsifiable question about the risk that absence
+leaves unproven for the changed behaviour, and give it a short hypothesis
+label (`webhook-replay`, `billing-rounding`) for log separation.
+
+Read the diff paths the dispatch names. The on-disk diff is authoritative
+scope: source it yourself and never re-derive it. Read-only tools only — no
+writes, no state-changing shell or API calls, no nested dispatch.
+
+Scope the question to at most ~12 files and return at most 10 findings, with
+file paths, NEW line numbers, and evidence for or against. Verify third-party
+contract claims by web search and quote the source URLs; an unverified
+load-bearing claim stays `unproven` rather than becoming ground truth.
+# end lens test
 --- file C/.verdict/state/local-demo/roles.txt ---
 ## docs
 - notes.txt

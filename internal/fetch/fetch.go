@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strings"
 
+	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
@@ -86,6 +87,7 @@ func fetchRequest(r *cli.Runner, req Request, f core.FetchFlags) *core.FetchRequ
 		Runtime: &core.Runtime{
 			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r},
 			Commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true},
+			PackFS:    skillfs.FS,
 		},
 		Repo: req.Repo, Pr: req.Pr, Root: &root, RepoRoot: req.RepoRoot,
 	}
@@ -108,6 +110,7 @@ func fetchLocalRequest(r *cli.Runner, req Request, f *core.FetchLocalFlags) *cor
 		Runtime: &core.Runtime{
 			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r},
 			Commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true},
+			PackFS:    skillfs.FS,
 		},
 		Repo: req.Repo, Pr: req.Pr, Root: &root, RepoRoot: req.RepoRoot,
 	}

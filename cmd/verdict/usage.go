@@ -42,11 +42,13 @@ func usageText() string {
 		"    to stdout (human; progress moves to stderr) or data.prompt_dump (--json).\n" +
 		"    No agent runs, no network beyond the fetch, no store writes beyond the bundle.\n" +
 		"  run <owner/repo> <pr|local-name> --agent <claude|codex|cursor|opencode>\n" +
-		"      [--timeout <secs, default 300>] [--print] [-- <agent args>...] [--json]\n" +
-		"    launch YOUR agent against an existing bundle: one process, one bundle, one shot.\n" +
+		"      [--timeout <secs, default 300>] [--rounds <n, default 1>] [--print] [-- <agent args>...] [--json]\n" +
+		"    launch YOUR agent against an existing bundle: one process per round, one shot by default.\n" +
 		"    It requires exactly one fresh review.json (absent refuses no-review-artifact, older\n" +
-		"    than the launch refuses stale-review-artifact), names the next command, and never\n" +
-		"    reads the agent's prose, retries, repairs, or posts. The agent inherits your\n" +
+		"    than the launch refuses stale-review-artifact), names the next command, and by default never\n" +
+		"    reads the agent's prose, retries, repairs, and never posts. With --rounds N (2-5) an\n" +
+		"    invalid review.json re-prompts the agent with the shape checker's fix list, up to\n" +
+		"    N launch-to-check rounds; exhaustion refuses repair-exhausted. The agent inherits your\n" +
 		"    environment (your key) and may use the network; verdict itself makes no calls.\n" +
 		"    A non-zero agent exit is the process exit code (agent-failed); the watchdog\n" +
 		"    timeout (agent-timeout), a missing binary (agent-missing), and a spawn failure\n" +

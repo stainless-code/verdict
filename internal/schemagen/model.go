@@ -3,6 +3,7 @@ package schemagen
 import (
 	"github.com/stainless-code/verdict/internal/core"
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
+	"github.com/stainless-code/verdict/internal/core/pack"
 	"github.com/stainless-code/verdict/internal/core/threads"
 	"github.com/stainless-code/verdict/internal/identity"
 )
@@ -241,6 +242,12 @@ type WithheldCapability = core.WithheldCapability
 
 // Identity is schemas/identity.schema.json: the bundle's stable patch id.
 type Identity = identity.Identity
+
+// PackManifest is a lens pack manifest, generated as schemas/pack.schema.json.
+type PackManifest = pack.Manifest
+
+// PackLens is one lens row inside a pack manifest.
+type PackLens = pack.LensSpec
 
 // Record is core's completed-record artifact.
 type Record = core.Record

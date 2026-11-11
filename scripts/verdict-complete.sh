@@ -24,7 +24,7 @@ _verdict_flags() { # $1 = verb
     backtest) printf '%s\n' --since --until --run --json;;
     threads) printf '%s\n' --provider --thread --dry-run --json;;
     fetch-local) printf '%s\n' --staged --range --base --stash --worktree --consent-over-budget --show-prompts --chunk --json;;
-    run) printf '%s\n' --agent --timeout --print --json;;
+    run) printf '%s\n' --agent --timeout --rounds --print --json;;
     learn) printf '%s\n' --rule --scope --id --provenance --rigor --status --retire --restore --reason --json;;
     adopt) printf '%s\n' --from --json;;
     fix) printf '%s\n' --sig --json;;

@@ -268,7 +268,14 @@ func removeReceipt(root *os.Root, rm *Removal) *core.RefusalError {
 }
 
 func pruneEmptyDirs(root *os.Root) {
-	for _, dir := range []string{payloadPromptsDir, payloadSchemasDir, payloadScriptsDir} {
+	for _, dir := range []string{
+		filepath.Join(payloadPacksDir, "builtin", "lenses"),
+		filepath.Join(payloadPacksDir, "builtin"),
+		payloadPacksDir,
+		payloadPromptsDir,
+		payloadSchemasDir,
+		payloadScriptsDir,
+	} {
 		root.Remove(dir) //nolint:errcheck // best-effort prune; a foreign file keeps the directory
 	}
 }

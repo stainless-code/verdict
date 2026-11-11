@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	adoptcore "github.com/stainless-code/verdict/internal/core/adopt"
@@ -673,7 +674,7 @@ func (c *Client) Doctor(ctx context.Context, req *DoctorRequest) (*DoctorRespons
 		// the tool rows still report.
 		root := c.dir
 		rr = core.ReadRequest{
-			Runtime:  &core.Runtime{Env: c.env, Now: c.now, Progress: c.progress, Commander: c.commander},
+			Runtime:  &core.Runtime{Env: c.env, Now: c.now, Progress: c.progress, Commander: c.commander, PackFS: skillfs.FS},
 			Repo:     "",
 			Pr:       "",
 			Forces:   &core.GlobalForces{},

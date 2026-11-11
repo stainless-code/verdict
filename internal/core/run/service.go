@@ -1,12 +1,13 @@
 // Package run launches the operator's own agent against an existing bundle.
 //
-// One process, one bundle, one shot: the service resolves the agent binary,
-// writes a launch record, spawns the agent through the injected commander with
-// the same watchdog verify uses, then asserts exactly one fresh review artifact
-// and hands off. It never retries, re-prompts, repairs, or reads the agent's
-// prose, and it never posts. A missing binary, a spawn failure, a watchdog
-// timeout, a non-zero exit, an absent artifact, and a stale one are typed
-// refusals, each with a hint; the agent's own non-zero exit is also the
+// One process, one bundle, up to --rounds shots: the service resolves the
+// agent binary, writes a launch record, spawns the agent through the injected
+// commander with the same watchdog verify uses, then asserts exactly one fresh
+// review artifact and hands off. A one-shot run never re-prompts; with
+// --rounds N an invalid review re-prompts the agent with the shape checker's
+// fix list, up to N rounds. It never posts. A missing binary, a spawn failure,
+// a watchdog timeout, a non-zero exit, an absent artifact, and a stale one are
+// typed refusals, each with a hint; the agent's own non-zero exit is also the
 // process exit code.
 package run
 
@@ -56,7 +57,8 @@ const (
 	msgCanceled = "canceled before run completed"
 )
 
-// Run launches the configured agent against the bundle for one shot.
+// Run launches the configured agent against the bundle, one shot by default
+// and up to --rounds launch-to-check rounds when the operator asks.
 func Run(ctx context.Context, req *core.RunRequest) (resp *core.RunResponse, ref *core.RefusalError) {
 	st := &state{req: req, warnings: append([]string{}, req.Warnings...)}
 	defer func() { st.carry(resp, ref) }()
@@ -75,6 +77,10 @@ func Run(ctx context.Context, req *core.RunRequest) (resp *core.RunResponse, ref
 	if ref != nil {
 		return nil, ref
 	}
+	rounds, ref := st.rounds()
+	if ref != nil {
+		return nil, ref
+	}
 	args := launchArgs{
 		def:      def,
 		dir:      dir,
@@ -85,10 +91,23 @@ func Run(ctx context.Context, req *core.RunRequest) (resp *core.RunResponse, ref
 	}
 	args.prompt = directive(st.req.Repo, st.req.Pr, args.bundle, args.artifact, readcommon.IsLocalBundleDir(dir))
 	args.argv = argvFor(def, st.req.PassThrough, args.prompt)
+	return st.invoke(ctx, &args, rounds)
+}
+
+// invoke runs the print escape hatch, the repair loop, or the one-shot,
+// after the request is fully resolved.
+func (st *state) invoke(ctx context.Context, args *launchArgs, rounds int) (*core.RunResponse, *core.RefusalError) {
 	if st.req.Print {
-		return st.printed(&args), nil
+		if rounds > 1 {
+			return nil, st.refuse(codeBadFlags, "run --print renders one command: re-run without --print "+
+				"to launch --rounds "+st.req.RoundsRaw)
+		}
+		return st.printed(args), nil
 	}
-	return st.launch(ctx, &args)
+	if rounds > 1 {
+		return st.repairLoop(ctx, args, rounds)
+	}
+	return st.launch(ctx, args)
 }
 
 // state carries the accumulated warnings, the credential values the recorded
@@ -218,8 +237,8 @@ func (st *state) printed(args *launchArgs) *core.RunResponse {
 	}
 }
 
-// launch runs the one process: resolve, record the launch, spawn with the
-// watchdog, then assert the artifact and hand off.
+// launch runs the one process of a one-shot run: resolve, record the launch,
+// spawn with the watchdog, then assert the artifact and hand off.
 func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunResponse, *core.RefusalError) {
 	bin, ref := st.resolve(args.def)
 	if ref != nil {
@@ -242,7 +261,7 @@ func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunRespons
 	}
 	st.human(fmt.Sprintf("» run: %s (timeout %ds)", strings.Join(rec.Argv, " "), args.timeout))
 	res, err := st.spawn(ctx, args.argv, args.timeout)
-	return st.finish(ctx, args, rec, launched, started, res, err)
+	return st.finish(ctx, args, rec, launched, started, res, err, nil)
 }
 
 // resolve finds the agent binary on PATH. "Not installed" is the launcher's
@@ -312,14 +331,15 @@ func (st *state) childEnv() []string {
 
 // finish writes the outcome record and turns the observations into the run's
 // answer: the cancel, the agent's failure, the watchdog, then the artifact
-// assertion. res is nil when no process ever started.
+// assertion. res is nil when no process ever started. rep carries the
+// repair-loop attempts, nil on a one-shot run.
 func (st *state) finish(ctx context.Context, args *launchArgs, rec *launcher, launched, started time.Time,
-	res *core.Result, spawnErr error,
+	res *core.Result, spawnErr error, rep *core.RunRepair,
 ) (*core.RunResponse, *core.RefusalError) {
 	art := inspectArtifact(args.abs, launched)
 	ref := st.verdict(ctx, args, res, spawnErr, art)
 	ended := st.now()
-	if writeRef := st.recordOutcome(rec, args.dir, ended, started, res, art); writeRef != nil {
+	if writeRef := st.recordOutcome(rec, args.dir, ended, started, res, art, rep); writeRef != nil {
 		if ref == nil {
 			ref = writeRef
 		} else {
@@ -329,7 +349,7 @@ func (st *state) finish(ctx context.Context, args *launchArgs, rec *launcher, la
 	if ref != nil {
 		return st.refused(ref, res, ended), ref
 	}
-	return st.response(args, rec, res, art, started, ended), nil
+	return st.response(args, rec, res, art, started, ended, rep), nil
 }
 
 // refused is the response that accompanies a refusal: it exists only so a
@@ -386,9 +406,9 @@ func (st *state) artifactRefusal(args *launchArgs, art artifactState) *core.Refu
 // recordOutcome writes the log, then the completed provenance record. The
 // record carries the agent name, the resolved binary, the redacted argv
 // shape, the timings, and the exit code; the full stream stays in .run.out
-// for the operator.
+// for the operator. A non-nil rep adds the repair-loop profile and attempts.
 func (st *state) recordOutcome(rec *launcher, dir string, ended, started time.Time,
-	res *core.Result, art artifactState,
+	res *core.Result, art artifactState, rep *core.RunRepair,
 ) *core.RefusalError {
 	if res != nil {
 		output := res.Stdout + res.Stderr
@@ -406,6 +426,10 @@ func (st *state) recordOutcome(rec *launcher, dir string, ended, started time.Ti
 	if art.exists && art.regular {
 		rec.ArtifactBytes = &art.size
 	}
+	if rep != nil {
+		rec.Repair = &launcherRepair{Rounds: rep.Rounds, RoundsToValid: rep.RoundsToValid, FinalValid: rep.FinalValid}
+		rec.Attempts = rep.Attempts
+	}
 	_, ref := writeLauncher(filepath.Join(dir, launcherFile), rec)
 	return ref
 }
@@ -421,7 +445,7 @@ func (st *state) tail(output string) string {
 
 // response is the successful run's envelope data plus the handoff line.
 func (st *state) response(args *launchArgs, rec *launcher, res *core.Result, art artifactState,
-	started, ended time.Time,
+	started, ended time.Time, rep *core.RunRepair,
 ) *core.RunResponse {
 	st.human(fmt.Sprintf("» exit=%d timed_out=%s duration=%s",
 		res.ExitCode, strconv.FormatBool(res.TimedOut), ended.Sub(started).Round(time.Millisecond)))
@@ -445,6 +469,7 @@ func (st *state) response(args *launchArgs, rec *launcher, res *core.Result, art
 			Timeout:    rec.Timeout,
 			Fresh:      art.fresh,
 			Record:     st.display(rec.path(args.dir)),
+			Repair:     rep,
 		},
 		Next: st.next(args.dir),
 	}

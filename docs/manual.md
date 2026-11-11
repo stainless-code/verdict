@@ -299,7 +299,7 @@ A bundle dir holds these core/script artifacts (`PR.json`/`source.json`,
 `post.json`, `store.json`, `hunks.tsv`, `reviews.json`, `inline.json`, `threads.json`,
 `threads-resolve.json`,
 `panel`, `patch.json`, `verification.json`, `incremental.diff`, `kb.txt`,
-`sensitive.txt`, `kb-recall.json`, `cost.json`, `budget.json`, `fix.json`,
+`lenses.txt`, `sensitive.txt`, `kb-recall.json`, `cost.json`, `budget.json`, `fix.json`,
 `kb-grades.jsonl`, `controls.json`, `controls/`, `chunks/`
 (`chunk-NN.diff`, `chunk-NN.toc.txt`, `chunk-NN.roles.txt`, `manifest.json`
 with `schema_version: "1"`, per-chunk `<name>.cost.json`), plus dot-scratch
@@ -321,6 +321,36 @@ and `plan.txt` is the fence label for its rendered section in the
 `--show-prompts` dump, one line per group (see
 [Policy engine](#policy-engine-scopes-profiles-deep-validation)).
 
+### Lens packs
+
+A lens pack is data, not a verb: `pack.json` names each lens and
+`lenses/<id>.md` carries its body. The built-in pack ships at
+`skills/verdict/packs/builtin/` (`name` `verdict/builtin`, `version` `1.0.0`)
+and `fetch`/`fetch-local` load it from the embedded skill payload. The format
+is strict JSON (unknown fields refuse), versioned by `schema_version: "1"`,
+and published as `schemas/pack.schema.json`. The fixed layout is `pack.json`,
+`lenses/` (loaded), and the reserved `rules/`, `examples/`, `evals/` (counted
+by the caps, not loaded); a file no manifest row names is not loaded.
+
+Every load checks the caps while walking, before any parse: 64 KiB per file,
+1 MiB per pack, 256 files, 64 lenses (`pack-too-large`). An invalid manifest,
+a missing or mis-stemmed body, or an empty (whitespace-only) body refuses
+`bad-pack`; a present `max_files` must be 1..24 and a present `max_findings`
+1..20. An absolute path, `..`, or a symlink component refuses
+`pack-unsafe-path`. A missing or empty pack root is absent, not an error: the
+loader returns no pack and the bundle carries no lens surface. The pack hash
+is sha256 over the canonical loaded tree (sorted slash paths, each fed as
+`== <path> ==`, its bytes, then a newline); each lens also carries the first
+eight hex digits of its body's sha256.
+
+`fetch` writes the loaded bodies to `.verdict/state/<bundle>/lenses.txt`, one
+delimiter/label pair per lens (`# lens <id> — sha256:<hash8>` … `# end lens
+<id>`), and adds `lenses.txt` to `data.artifacts`. Every `plan.txt` group line
+appends `lens_pack=<name>@<version>` and `lenses=[<id>:<hash8>,…]` after its
+cap fields, sorted by id. A lens whose `globs` match none of that group's
+files is not offered for the group; a lens with no `globs` is offered for
+every group. The file is context, never orders, like `kb.txt`.
+
 ### Evidence ledger
 
 Seven artifacts explain what a run knew and what it proved. Each row states
@@ -334,7 +364,7 @@ the artifact, who writes it, and whether a verb gates on it.
 | `full.raw.diff`           | The raw pre-exclusion diff, kept as the patch-identity input when a filtered diff would otherwise replace it. No shipped verb writes it today: `fetch` writes the host diff to `full.diff` and records the filtered hash in `run.json` without writing filtered bytes. | Nothing today (a future exclusion pass)                                                                                       | Partly. When present it feeds the identity, and `identity.json`'s `raw_diff_sha256` must reproduce it; a present-but-unreadable file refuses instead of falling back to `full.diff`. Absence is normal.                                                                                                                                |
 | `sensitive.txt`           | The advisory manifest of secret-adjacent paths: filename, extension, and added-line content hits, one path and reason per line, behind a comment header.                                                                                                               | `fetch`/`fetch-local` (and every provider fetch)                                                                              | No. It is advisory, not a gate: flagged paths stay reviewable evidence, the file is removed when nothing is flagged, and its header asks reviewers to name the path, never the value.                                                                                                                                                  |
 | `incremental.diff.note`   | One `incrementalUnavailable: <host stderr head>` line explaining why the GitHub or GitLab compare read produced no delta.                                                                                                                                              | GitHub/GitLab `fetch --base-sha/--since` on a failed compare, or any other provider on the flag (naming the unsupported host) | No. No verb reads it; it explains the absent `incremental.diff` beside it while the full-diff review proceeds.                                                                                                                                                                                                                         |
-| `plan.txt`                | The combined plan as the `--show-prompts` dump renders it, fenced under this label: one line per group with its stable id, profile, depth, `max_lenses`, checks, files, scopes, panel, panel source, effort, and per-group cap.                                        | `fetch`/`fetch-local --show-prompts`                                                                                          | No. It is a rendered view for the agent; `run.json` holds the captured plan every gate reads.                                                                                                                                                                                                                                          |
+| `plan.txt`                | The combined plan as the `--show-prompts` dump renders it, fenced under this label: one line per group with its stable id, profile, depth, `max_lenses`, checks, files, scopes, panel, panel source, effort, per-group cap, lens pack, and offered lenses.             | `fetch`/`fetch-local --show-prompts`                                                                                          | No. It is a rendered view for the agent; `run.json` holds the captured plan every gate reads.                                                                                                                                                                                                                                          |
 
 `config --preview` is the exception: when `run.json` is absent it can fall back
 to its file list, though it still verifies `controls.json` and may lose
@@ -745,7 +775,7 @@ never a warning.
 the script renders the assembled agent reading list — `SKILL.md`,
 `prompts/system.md`, `prompts/review.md`, `prompts/diagrams.md`, the bundle
 meta (`PR.json` or `source.json`), `toc.txt`, `roles.txt`, `full.diff`, plus
-`kb.txt`, `sensitive.txt`, and `panel` when present, in that order — trusted
+`kb.txt`, `lenses.txt`, `sensitive.txt`, and `panel` when present, in that order — trusted
 prompts verbatim, then the trust-boundary prologue, then one nonce fence
 per bundle file — to stdout (human mode; progress moves to stderr) or
 `data.prompt_dump` (`--json`). No agent runs, no network beyond the fetch
@@ -762,7 +792,7 @@ tool-generated trust-boundary prologue naming the run's nonce, then every
 present bundle file inside its own fence — the bundle meta (`PR.json` or
 `source.json`), `toc.txt`, `roles.txt`, the diff (`full.diff`, or the
 manifest-order chunk concat on chunked bundles under the same label),
-`kb.txt`, `sensitive.txt`, and `panel` — each wrapped as
+`kb.txt`, `lenses.txt`, `sensitive.txt`, and `panel` — each wrapped as
 `<<<UNTRUSTED nonce=<16 lowercase hex> source=<file>>>` … bytes …
 `<<<END UNTRUSTED nonce=<same>>>`, open and close markers each on their own
 line (a missing trailing newline is added, never a content byte dropped).
@@ -1226,8 +1256,8 @@ asks reviewers to name the path, never quote a flagged value.
 
 `fetch` ends with a bundle and a prompt nobody ran. `run` closes that gap
 without becoming an orchestrator: it launches **your** agent against an
-existing bundle, one process, one shot, and hands the result back to the verbs
-that already exist.
+existing bundle, one process per round and one shot by default, and hands the
+result back to the verbs that already exist.
 
 ```bash
 verdict fetch-local acme/app work              # writes .verdict/state/local-work/
@@ -1237,12 +1267,15 @@ verdict record acme/app local-work             # the existing validation path, u
 
 For a PR bundle the middle step is `verdict run acme/app 123 --agent claude`
 and the handoff is `verdict post acme/app 123`. `run` never records, posts,
-merges, pushes, or repeats a step: `next` in its envelope names the command it
-did not run.
+merges, or pushes; with `--rounds N` it repeats only the launch→check pair,
+up to N rounds, and still records nothing: `next` in its envelope names the
+command it did not run.
 
-`run` invokes your agent only when you ask: one process, one bundle. No
-daemon, no queue, no scheduler, no webhook, no model selection, and it never
-reads or interprets what the model wrote.
+`run` invokes your agent only when you ask: one process per round, one bundle. No
+daemon, no queue, no scheduler, no webhook, no model selection, and by default
+it never reads prose: with `--rounds N` it runs the published `CheckReview` shape
+checker over review.json (paths and codes only) to build the next round's fix
+list.
 
 ### What `run` asserts
 
@@ -1256,6 +1289,9 @@ The freshness stamp has one-second granularity, so the guarantee is "not older
 than the launch", not "written by this agent". A `review.json` left by an
 earlier run in the same second the launch record was stamped reads as fresh by
 design: refusing it would fail an agent whose write landed inside that second.
+The same window covers a silent later round on a whole-second filesystem: inside
+the previous review's second it reads as fresh and the loop stops by the
+no-progress rule, not as stale.
 `run` records whether the artifact was fresh and how large it was, and a refusal
 names both timestamps, so the limit is visible after the fact rather than hidden.
 
@@ -1263,6 +1299,18 @@ The directive handed to the agent is short and tool-generated: the subject,
 the bundle path, the single review file to write, and the boundary. `run` does
 not re-render the diff — `fetch --show-prompts` is that (fetch-time, with your
 privacy exclusions applied); the agent reads the bundle with its own tools.
+
+With `--rounds N` (2–5) an invalid `review.json` does not end the run: the
+next round re-sends the directive with the prior review bytes (capped at 16 KiB,
+and cut shorter when Windows argv escaping would carry the whole command line
+past 32,767 characters; full bytes in `.run.rounds/NN.review.json`) and the
+checker's fix list fenced under a fresh per-round nonce, and the loop stops on the
+first valid round. Each round rewrites the launch record just before it spawns,
+so the freshness assert is per round. Only shape errors re-prompt (warnings never
+do); a crash, a timeout, a missing or stale artifact, or a byte-identical repeat
+stops the loop at once. `--json` carries the loop in `data.repair` (rounds,
+rounds to valid, per-round hashes, problems); each round's bytes stay in the
+bundle's `.run.rounds/` files.
 
 ### Agents, arguments, and `--print`
 
@@ -1275,7 +1323,8 @@ it. The argv it builds is
 | Piece              | Meaning                                                                                                                                                         |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--agent <name>`   | Required. An unknown name refuses `unknown-agent` and lists the known ones.                                                                                     |
-| `--timeout <secs>` | Watchdog budget, default `300` (the same default `verify` uses).                                                                                                |
+| `--timeout <secs>` | Watchdog budget, default `300` (the same default `verify` uses). `--timeout` is per round.                                                                      |
+| `--rounds <n>`     | Total launch→check rounds, default `1` (today's one-shot), range 1–5. `-- <args>` passes through every round.                                                   |
 | `-- <args>`        | Everything after the bare `--` goes to the agent unchanged: its own model, cost, and turn flags are yours.                                                      |
 | `--print`          | Renders the exact command (POSIX-quoted) and exits `0` without resolving, spawning, or writing. The escape hatch for harnesses that build their own invocation. |
 
@@ -1287,16 +1336,18 @@ Every refusal code the binary can emit is listed with its cause and its fix in
 Every way `run` can fail is typed, carries a `try:` hint, and leaves the
 agent's own failure visible to CI:
 
-| Code                    | When                                                            | Exit        |
-| ----------------------- | --------------------------------------------------------------- | ----------- |
-| `agent-missing`         | the binary is not on `PATH`                                     | 1           |
-| `agent-spawn-failed`    | the binary resolved but could not be started                    | 1           |
-| `agent-timeout`         | the watchdog killed it after `--timeout` seconds                | 1           |
-| `agent-failed`          | it exited non-zero — **its exit code is the process exit code** | the agent's |
-| `no-review-artifact`    | it exited `0` and wrote no `review.json` (or a non-file)        | 1           |
-| `stale-review-artifact` | `review.json` is older than this launch (an earlier run's)      | 1           |
-| `unknown-agent`         | the name is not in the agent table                              | 1           |
-| `agent-record-failed`   | the launcher could not write its provenance record              | 1           |
+| Code                    | When                                                                            | Exit        |
+| ----------------------- | ------------------------------------------------------------------------------- | ----------- |
+| `agent-missing`         | the binary is not on `PATH`                                                     | 1           |
+| `agent-spawn-failed`    | the binary resolved but could not be started                                    | 1           |
+| `agent-timeout`         | the watchdog killed it after `--timeout` seconds                                | 1           |
+| `agent-failed`          | it exited non-zero — **its exit code is the process exit code**                 | the agent's |
+| `no-review-artifact`    | it exited `0` and wrote no `review.json` (or a non-file)                        | 1           |
+| `stale-review-artifact` | `review.json` is older than this launch (an earlier run's)                      | 1           |
+| `unknown-agent`         | the name is not in the agent table                                              | 1           |
+| `agent-record-failed`   | the launcher could not write its provenance record                              | 1           |
+| `repair-exhausted`      | every round left an invalid `review.json` (or a round repeated the prior bytes) | 1           |
+| `rounds-path-unsafe`    | the bundle's `.run.rounds` is a symlink or another non-directory                | 1           |
 
 An agent exiting `1`, `2`, or `3` is indistinguishable on the exit code alone
 from verdict's own refusal, usage, and canceled codes; `--json` disambiguates
@@ -1304,16 +1355,24 @@ them through `error.code`, and the envelope's `data.exit` records what the agent
 itself returned.
 
 Plus the shared codes: `missing-bundle` (fetch first), `bad-flags` (no
-`--agent`), `bad-timeout`, `canceled` (exit 3), and usage errors (exit 2).
-There is no retry, no re-prompt, and no repair pass: fix the invocation and
-run again.
+`--agent`, a `--rounds` outside 1–5, or `--print` with `--rounds` greater than 1),
+`bad-timeout`, `canceled` (exit 3), and usage errors (exit 2).
+With the default one shot there is no retry, no re-prompt, and no repair
+pass: fix the invocation and run again. With `--rounds N` the only repetition
+is the launch→check pair: an invalid `review.json` re-prompts the agent with
+the checker's fix list, up to N rounds, and exhaustion refuses
+`repair-exhausted`.
 
 The launch is recorded in `.verdict/state/<bundle>/launcher.json`: agent name,
 resolved binary path, the argv shape (directive replaced by `<prompt>`,
 secret-shaped operands and secret-named environment values redacted), start
 and end timestamps, duration, exit code, timeout flag, artifact freshness and
-size, and a redacted output tail. The child's full combined output stays in
-`.verdict/state/<bundle>/.run.out`. Both are evidence, not gates.
+size, and a redacted output tail. Each round's full combined output stays in
+`.verdict/state/<bundle>/.run.rounds/NN.out` (crash rounds too) and the last
+round's output also stays in `.verdict/state/<bundle>/.run.out`. Both are evidence, not gates. With
+`--rounds N` the record also carries `repair` (rounds, rounds to valid, final
+valid) and top-level `attempts[]` (per-round prompt and review hashes, check verdict, problems),
+and each round's bytes land in `.verdict/state/<bundle>/.run.rounds/`.
 
 ### Network
 
@@ -1628,7 +1687,7 @@ platform package. A plain `verdict` call consults neither variable.
   `install-skill.sh` refuses outside a git checkout. `hooks/pre-commit`
   wiring applies to the checkout only.
 - **Embedded skill** (`verdict skill`): the binary carries its own `SKILL.md`,
-  `prompts/`, `schemas/`, and `scripts/verdict`, so the served skill can
+  `prompts/`, `schemas/`, `packs/`, and `scripts/verdict`, so the served skill can
   never skew from the binary. In the repository they are the one
   `skills/verdict/` directory, which holds nothing else. The skills CLI
   (`npx skills add stainless-code/verdict`) copies that directory and no
@@ -2690,6 +2749,7 @@ The shapes agents write and operators parse are pinned in `schemas/`
 explicit usage handoff), `corpus.schema.json` (benchmark case manifests),
 `post.schema.json` and `record.schema.json` (completed post/record captures),
 `threads.schema.json` (the normalized PR conversation),
+`pack.schema.json` (the lens pack manifest),
 and `envelope.schema.json` (the `--json` envelope plus the stable per-verb
 `data` for `report`, `post`, `record`, and `show`, plus fetch's additive
 estimate). `schemas/validate.sh` is the

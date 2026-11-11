@@ -225,6 +225,15 @@ func documents() []document {
 			additionalProperties: false,
 		},
 		{
+			name:  "pack",
+			title: "pack.json — a lens pack manifest",
+			root:  reflect.TypeFor[PackManifest](),
+			defs: []definition{
+				{typ: reflect.TypeFor[PackLens](), name: "lens", closed: true},
+			},
+			additionalProperties: false,
+		},
+		{
 			name:  "post",
 			title: "post.json — completed-post record (PR bundles)",
 			root:  reflect.TypeFor[Post](),

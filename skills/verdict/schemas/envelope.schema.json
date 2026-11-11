@@ -46,7 +46,7 @@
         },
         "retry_at": { "type": "string", "format": "date-time" },
         "problems": {
-          "description": "Review-input problems in document order (at most 50); present only on a bad-review-input refusal, with the exact fix for each.",
+          "description": "Review-input problems in document order, errors first (at most 50); present on a bad-review-input refusal and on a repair-exhausted refusal, with the exact fix for each.",
           "type": "array",
           "items": { "$ref": "#/$defs/problem" }
         },

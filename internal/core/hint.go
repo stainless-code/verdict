@@ -107,6 +107,11 @@ var hintRules = []HintRule{
 	{codes: []string{"bad-since"}, hint: "try: pass --since <90d|12w|18mo|2y|ref> " +
 		"(a bare m is not a unit, and the ref must precede --until)"},
 	{codes: []string{"bad-until"}, hint: "try: pass --until <ref> that is an ancestor of HEAD"},
+	{codes: []string{"bad-pack"}, hint: "try: fix pack.json against schemas/pack.schema.json, then re-run"},
+	{codes: []string{"pack-too-large"}, hint: "try: trim the pack under 64 KiB per file, 1 MiB total, " +
+		"256 files, and 64 lenses, then re-run"},
+	{codes: []string{"pack-unsafe-path"}, hint: "try: keep every pack path relative with no symlink " +
+		"components, then re-run"},
 	{prefix: "bad-", hint: "try: re-run with one of the valid values named above"},
 	{codes: []string{"already-learned"}, hint: "try: cite the existing rule id instead of learning it twice"},
 	{codes: []string{"verify-destructive"}, hint: "try: rewrite verifyCmd to stay in-repo and " +
@@ -128,6 +133,10 @@ var hintRules = []HintRule{
 		"fix the invocation (the agent's own flags go after '--'), then re-run"},
 	{codes: []string{"agent-record-failed"}, hint: "try: make the bundle directory writable " +
 		"(or re-fetch the bundle), then re-run"},
+	{codes: []string{"repair-exhausted"}, hint: "try: fix every error named in error.problems, " +
+		"then re-run (when the cap was hit, raise --rounds up to 5; for no progress check the round files)"},
+	{codes: []string{"rounds-path-unsafe"}, hint: "try: remove the named path from the bundle " +
+		"(verdict owns it as a plain directory), then re-run"},
 	{codes: []string{"no-review-artifact"}, hint: "try: run the printed command yourself " +
 		"(--print) to see why no review.json appeared, then re-run"},
 	{codes: []string{"stale-review-artifact"}, hint: "try: delete the stale review.json " +

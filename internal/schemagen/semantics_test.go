@@ -138,7 +138,10 @@ var publishedSemantics = map[string]string{
 	// $defs/threadsResolveSkip entries pinning the resolve half of the
 	// threads --json data profile. Additions only; no existing property,
 	// required key, enum, or type changed.
-	"envelope.schema.json": "b91215777f8ac98ba2a203db3d6c84d08dc1ce8ffaf9ed8dabbdb962a4c09335",
+	// repair-exhausted problems: the error.problems description now covers
+	// repair-exhausted (errors first) alongside bad-review-input. Description
+	// only; no property, required key, enum, or type changed.
+	"envelope.schema.json": "c32eac3735890eace13f359f55caa0f8d2077730005c4b16a6bc7e696b819bac",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -168,6 +171,15 @@ var publishedSemantics = map[string]string{
 	// patch identity: additive $defs/identity root (new bundle document) —
 	// no existing property, required key, or type changed.
 	"identity.schema.json": "efe9a7b331e41715bc55b8824e95154add584c2d63f670811ef03c350d2e5bdb",
+	// additive pack.schema.json (new document; no existing schema property,
+	// required key, or type changed). The lens-pack manifest fetch resolves
+	// from skills/verdict/packs/builtin: a closed object plus one closed lens
+	// row (id, optional globs, and the dispatch caps).
+	// lens count prose: the description now names the loader as the enforcer
+	// of the 64-lens cap (pack-too-large) instead of promising a maxItems the
+	// published keyword subset does not implement. Prose only; no property,
+	// required key, enum, or type changed.
+	"pack.schema.json": "7525f56b2c60ae932397adf9546e8f34640247ec5a38ed21854f8cda9ee2f7c4",
 	// patch identity: additive optional patch_id/patch_id_kind plus the
 	// optional forced[] audit with $defs/forcedPost. No existing property,
 	// required key, or type changed.
