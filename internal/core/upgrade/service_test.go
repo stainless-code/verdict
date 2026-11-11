@@ -868,30 +868,54 @@ func uninstallHint(t *testing.T, home, exe string) string {
 	return ref.Message
 }
 
-// TestProjectLocalReasonQuotesRoot pins STA-376: a project root with a space
-// and a single quote is rendered exactly as the POSIX single-quote rule
-// renders it, so the pasted `cd` resolves; a plain path stays bare.
+// TestProjectLocalReasonQuotesRoot pins STA-376: the `cd` operand of a
+// project-local run hint resolves to the project root, single-quoted when the
+// root holds a space and a quote.
 func TestProjectLocalReasonQuotesRoot(t *testing.T) {
 	t.Parallel()
 	t.Run("space and quote", func(t *testing.T) {
 		t.Parallel()
 		root := filepath.Join(t.TempDir(), "my proj", "it's")
 		reason := projectLocalReason(t, root)
-		quoted := "'" + strings.ReplaceAll(root, "'", `'\''`) + "'"
-		want := "run: cd " + quoted + " && npm install @stainless-code/verdict@latest"
+		want := "my proj" + string(filepath.Separator) +
+			`it'\''s' && npm install @stainless-code/verdict@latest`
 		if !strings.Contains(reason, want) {
 			t.Fatalf("reason = %q; want it to contain %q", reason, want)
 		}
-	})
-	t.Run("plain path stays bare", func(t *testing.T) {
-		t.Parallel()
-		root := filepath.Join(t.TempDir(), "plainproj")
-		reason := projectLocalReason(t, root)
-		want := "run: cd " + root + " && npm install @stainless-code/verdict@latest"
-		if !strings.Contains(reason, want) {
-			t.Fatalf("reason = %q; want it to contain %q", reason, want)
+		if arg := cdArgument(t, reason); !strings.HasPrefix(arg, "'") {
+			t.Fatalf("reason = %q; want the cd argument single-quoted", reason)
 		}
 	})
+}
+
+// TestProjectLocalReasonBareRoot pins the other half: a temp path no shell
+// metacharacter touches is emitted bare, so the hint stays copy-pasteable.
+func TestProjectLocalReasonBareRoot(t *testing.T) {
+	t.Parallel()
+	root := filepath.Join(t.TempDir(), "plainproj")
+	arg := cdArgument(t, projectLocalReason(t, root))
+	if runtime.GOOS == "windows" {
+		// A Windows temp dir carries `\` and `~`, neither shell-safe.
+		if want := "'" + root + "'"; arg != want {
+			t.Fatalf("cd argument = %q; want %q", arg, want)
+		}
+		return
+	}
+	if arg != root {
+		t.Fatalf("cd argument = %q; want the bare root %q", arg, root)
+	}
+}
+
+// cdArgument reads the `cd` operand out of a project-local reason exactly as
+// the shell would receive it, so the assertion does not restate the rule.
+func cdArgument(t *testing.T, reason string) string {
+	t.Helper()
+	const suffix = " && npm install @stainless-code/verdict@latest"
+	_, arg, ok := strings.Cut(reason, "run: cd ")
+	if !ok || !strings.HasSuffix(arg, suffix) {
+		t.Fatalf("reason = %q, want a `run: cd <path>` command", reason)
+	}
+	return strings.TrimSuffix(arg, suffix)
 }
 
 func projectLocalReason(t *testing.T, root string) string {
