@@ -204,15 +204,23 @@ func repoEntries(dir string, entries []fs.DirEntry) ([]Origin, []string, *core.R
 	return out, warnings, nil
 }
 
-// repoOriginEntry reads one child of the pack root: a non-directory is a
-// warning naming it, and a directory is a pack root.
+// repoOriginEntry reads one child of the pack root: a regular file is a
+// warning naming it, a symlink or special file refuses, and a directory is a
+// pack root.
 func repoOriginEntry(dir string, entry fs.DirEntry) (Origin, string, *core.RefusalError) {
-	if !entry.IsDir() {
-		return Origin{}, fmt.Sprintf("%s/%s is not a pack directory — ignored",
-			RepoPacksDir, entry.Name()), nil
+	if entry.IsDir() {
+		origin, ref := repoOrigin(dir, entry.Name())
+		return origin, "", ref
 	}
-	origin, ref := repoOrigin(dir, entry.Name())
-	return origin, "", ref
+	info, err := entry.Info()
+	if err != nil {
+		return Origin{}, "", badPack(fmt.Sprintf("inspect %s/%s: %v", RepoPacksDir, entry.Name(), err))
+	}
+	if !info.Mode().IsRegular() {
+		return Origin{}, "", unsafePath(filepath.Join(dir, entry.Name()))
+	}
+	return Origin{}, fmt.Sprintf("%s/%s is not a pack directory — ignored",
+		RepoPacksDir, entry.Name()), nil
 }
 
 // repoOrigin loads one .verdict/packs child directory.

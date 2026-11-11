@@ -1,6 +1,7 @@
 package pack
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -196,6 +197,30 @@ func TestListIgnoresStrayFileUnderRepoPacks(t *testing.T) {
 	}
 	if got, want := len(resp.Data.Packs), 3; got != want {
 		t.Fatalf("rows = %d, want %d", got, want)
+	}
+}
+
+// TestListRefusesSymlinkedPackRoot proves a symlink directly under the pack
+// root refuses pack-unsafe-path instead of reading as an ignored non-pack:
+// the controls read refuses a non-regular control file, so the list may not
+// promise to ignore one.
+func TestListRefusesSymlinkedPackRoot(t *testing.T) {
+	t.Parallel()
+	root, settings := listFixtures(t, `"replace":["acme/org"],`)
+	link := filepath.Join(root, ".verdict", "packs", "linked")
+	if err := os.Symlink(filepath.Join(root, ".verdict", "packs", "repo"), link); err != nil {
+		t.Skipf("this platform cannot create symlinks here: %v", err)
+	}
+	_, ref := RunList(t.Context(), &Request{
+		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
+		settings,
+		true,
+	})
+	if ref == nil || ref.Code != CodePackUnsafePath {
+		t.Fatalf("symlinked pack root = %v, want pack-unsafe-path", ref)
+	}
+	if want := fmt.Sprintf("%q", link); !strings.Contains(ref.Message, want) {
+		t.Fatalf("message = %q, want it to name %s", ref.Message, want)
 	}
 }
 
