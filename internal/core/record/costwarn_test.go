@@ -215,84 +215,92 @@ func countNamelessWarnings(warnings []string) int {
 }
 
 // TestCostWarningsMatchAcrossDryRunWithCostNames proves the dry run and the
-// real run carry the same cost warnings once --cost-names repairs the entry:
+// live run carry the same cost warnings once --cost-names repairs the entry:
 // the repaired entry gets the repair message, never the nameless warning.
 // Before the fix the dry run warned both, because the repair counts without
 // writing while the nameless scan reads the file the repair has not touched.
 func TestCostWarningsMatchAcrossDryRunWithCostNames(t *testing.T) {
-	bundle(t, "local-costparity", reviewJSON(""))
-	writeFile(t, ".verdict/state/local-costparity/cost.json",
-		`{"schema_version":"2","models":[{"model":"a","input_tokens":1}]}`)
-	c := &collector{}
-	req := recordRequest(t, c, "local-costparity")
-	req.Flags = core.RecordFlags{CostNames: true, CostPanel: []string{"lead"}}
-	req.DryRun = true
-	dryResp, ref := recordcore.Run(context.Background(), req)
-	if ref != nil {
-		t.Fatalf("dry-run refusal: %v", ref)
-	}
-	req.DryRun = false
-	realResp, ref := recordcore.Run(context.Background(), req)
-	if ref != nil {
-		t.Fatalf("real-run refusal: %v", ref)
-	}
+	dryResp, liveResp := runCostParityPair(t, "local-costparity",
+		core.RecordFlags{CostNames: true, CostPanel: []string{"lead"}})
 	if got := countCostWarnings(dryResp.Warnings,
 		`cost names: would name 1 models[] entries from the panel (dry run — nothing written)`); got != 1 {
 		t.Errorf("dry-run warnings = %q, want exactly one would-name repair message", dryResp.Warnings)
 	}
-	if got := countCostWarnings(realResp.Warnings,
+	if got := countCostWarnings(liveResp.Warnings,
 		`cost names: named 1 models[] entries from the panel; no token count changed`); got != 1 {
-		t.Errorf("real-run warnings = %q, want exactly one named repair message", realResp.Warnings)
+		t.Errorf("live-run warnings = %q, want exactly one named repair message", liveResp.Warnings)
 	}
-	for _, w := range append(slices.Clone(dryResp.Warnings), realResp.Warnings...) {
-		if strings.Contains(w, "has no name") {
-			t.Errorf("warnings = %q, want no nameless warning for the repaired entry",
-				append(slices.Clone(dryResp.Warnings), realResp.Warnings...))
-			break
-		}
-	}
-	dryCost, realCost := costWarnings(dryResp.Warnings), costWarnings(realResp.Warnings)
-	if dry, real := normalizeCostVerbs(dryCost), normalizeCostVerbs(realCost); !slices.Equal(dry, real) {
-		t.Errorf("dry-run warnings = %q, real-run warnings = %q, want the same cost set modulo would/named",
-			dryResp.Warnings, realResp.Warnings)
-	}
+	assertNoNamelessWarning(t, dryResp.Warnings, liveResp.Warnings)
+	assertEqualCostSets(t, dryResp.Warnings, liveResp.Warnings)
 	raw, err := os.ReadFile(".verdict/state/local-costparity/cost.json")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(raw), `"name": "lead"`) {
-		t.Errorf("cost.json = %s, want the real run to carry the repaired name", raw)
+		t.Errorf("cost.json = %s, want the live run to carry the repaired name", raw)
 	}
 }
 
 // TestCostWarningsMatchAcrossDryRunWithoutCostNames proves the other half: an
 // entry no repair names still warns in both modes, with the same warning set.
 func TestCostWarningsMatchAcrossDryRunWithoutCostNames(t *testing.T) {
-	bundle(t, "local-costparityplain", reviewJSON(""))
-	writeFile(t, ".verdict/state/local-costparityplain/cost.json",
+	dryResp, liveResp := runCostParityPair(t, "local-costparityplain", core.RecordFlags{})
+	if got := countCostWarnings(dryResp.Warnings, namelessCostWarning); got != 1 {
+		t.Errorf("dry-run warnings = %q, want exactly one %q", dryResp.Warnings, namelessCostWarning)
+	}
+	if got := countCostWarnings(liveResp.Warnings, namelessCostWarning); got != 1 {
+		t.Errorf("live-run warnings = %q, want exactly one %q", liveResp.Warnings, namelessCostWarning)
+	}
+	assertEqualCostSets(t, dryResp.Warnings, liveResp.Warnings)
+}
+
+// runCostParityPair records one nameless cost entry twice over the same
+// bundle: first as a dry run, then live. Both runs share the flags, so the
+// parity assertion compares only what the mode changes.
+func runCostParityPair(t *testing.T, slug string, flags core.RecordFlags) (dry, live *core.RecordResponse) {
+	t.Helper()
+	bundle(t, slug, reviewJSON(""))
+	writeFile(t, ".verdict/state/"+slug+"/cost.json",
 		`{"schema_version":"2","models":[{"model":"a","input_tokens":1}]}`)
 	c := &collector{}
-	req := recordRequest(t, c, "local-costparityplain")
+	req := recordRequest(t, c, slug)
+	req.Flags = flags
 	req.DryRun = true
-	dryResp, ref := recordcore.Run(context.Background(), req)
+	dry, ref := recordcore.Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("dry-run refusal: %v", ref)
 	}
 	req.DryRun = false
-	realResp, ref := recordcore.Run(context.Background(), req)
+	live, ref = recordcore.Run(context.Background(), req)
 	if ref != nil {
-		t.Fatalf("real-run refusal: %v", ref)
+		t.Fatalf("live-run refusal: %v", ref)
 	}
-	if got := countCostWarnings(dryResp.Warnings, namelessCostWarning); got != 1 {
-		t.Errorf("dry-run warnings = %q, want exactly one %q", dryResp.Warnings, namelessCostWarning)
+	return dry, live
+}
+
+// assertNoNamelessWarning fails when either mode warns a missing name: the
+// repaired entry owns the repair message instead.
+func assertNoNamelessWarning(t *testing.T, warningSets ...[]string) {
+	t.Helper()
+	for _, warnings := range warningSets {
+		for _, w := range warnings {
+			if strings.Contains(w, "has no name") {
+				t.Errorf("warnings = %q, want no nameless warning for the repaired entry", warnings)
+				return
+			}
+		}
 	}
-	if got := countCostWarnings(realResp.Warnings, namelessCostWarning); got != 1 {
-		t.Errorf("real-run warnings = %q, want exactly one %q", realResp.Warnings, namelessCostWarning)
-	}
-	dryCost, realCost := costWarnings(dryResp.Warnings), costWarnings(realResp.Warnings)
-	if dry, real := normalizeCostVerbs(dryCost), normalizeCostVerbs(realCost); !slices.Equal(dry, real) {
-		t.Errorf("dry-run warnings = %q, real-run warnings = %q, want the same cost set",
-			dryResp.Warnings, realResp.Warnings)
+}
+
+// assertEqualCostSets compares the two modes' cost warnings exactly after
+// mapping the repair verb to one shape: the dry run says "would name" where
+// the live run says "named", and everything else matches.
+func assertEqualCostSets(t *testing.T, dryWarnings, liveWarnings []string) {
+	t.Helper()
+	dry, live := costWarnings(dryWarnings), costWarnings(liveWarnings)
+	if dry, live = normalizeCostVerbs(dry), normalizeCostVerbs(live); !slices.Equal(dry, live) {
+		t.Errorf("dry-run warnings = %q, live-run warnings = %q, want the same cost set",
+			dryWarnings, liveWarnings)
 	}
 }
 
@@ -311,7 +319,7 @@ func costWarnings(warnings []string) []string {
 
 // normalizeCostVerbs maps the repair message to one shape so a parity
 // assertion compares the two modes' warning sets exactly: the dry run says
-// "would name" where the real run says "named", and everything else matches.
+// "would name" where the live run says "named", and everything else matches.
 func normalizeCostVerbs(warnings []string) []string {
 	out := make([]string, 0, len(warnings))
 	for _, w := range warnings {
