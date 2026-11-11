@@ -9,8 +9,8 @@ import (
 )
 
 // TestEnsureStateIgnore pins the ignore-first rule: the ignore file gains
-// the single `/state/` line before any state is written, and a second
-// call never duplicates it.
+// the `/state/` and `/backtest/` lines before any generated file is written,
+// and a second call never duplicates them.
 func TestEnsureStateIgnore(t *testing.T) {
 	root := t.TempDir()
 	layout := NewLayout(root)
@@ -21,14 +21,14 @@ func TestEnsureStateIgnore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read ignore: %v", err)
 	}
-	if string(raw) != "/state/\n" {
+	if string(raw) != "/state/\n/backtest/\n" {
 		t.Fatalf("ignore = %q", raw)
 	}
 	if err := layout.EnsureStateIgnore(); err != nil {
 		t.Fatalf("second EnsureStateIgnore: %v", err)
 	}
 	raw, err = os.ReadFile(filepath.Join(root, ".verdict", ".gitignore"))
-	if err != nil || string(raw) != "/state/\n" {
+	if err != nil || string(raw) != "/state/\n/backtest/\n" {
 		t.Fatalf("ignore after second call = %q, err = %v", raw, err)
 	}
 }
@@ -63,13 +63,13 @@ func readIgnore(t *testing.T, layout Layout) string {
 }
 
 // TestEnsureStateIgnoreRepairs pins non-destructive repair: an existing
-// ignore file keeps its lines and gains `/state/` exactly once.
+// ignore file keeps its lines and gains `/state/` and `/backtest/` once.
 func TestEnsureStateIgnoreRepairs(t *testing.T) {
 	layout, _ := stateFixture(t)
 	if err := layout.EnsureStateIgnore(); err != nil {
 		t.Fatalf("EnsureStateIgnore: %v", err)
 	}
-	if got := readIgnore(t, layout); got != "dist/\n/state/\n" {
+	if got := readIgnore(t, layout); got != "dist/\n/state/\n/backtest/\n" {
 		t.Fatalf("ignore = %q", got)
 	}
 }

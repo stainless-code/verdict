@@ -149,11 +149,12 @@ func (st *state) response(next string, data *Data, errObj *core.SchemaError, exi
 }
 
 const (
-	porcelainSpaceAt = 2                 // separator between the XY columns and the path
-	porcelainPathAt  = 3                 // path starts after the XY columns and the space
-	porcelainMinLen  = 4                 // XY columns + space + at least one path byte
-	renameSep        = " -> "            // rename lines match on the post-arrow path
-	stateDir         = ".verdict/state/" // the only run-scratch directory
+	porcelainSpaceAt = 2                    // separator between the XY columns and the path
+	porcelainPathAt  = 3                    // path starts after the XY columns and the space
+	porcelainMinLen  = 4                    // XY columns + space + at least one path byte
+	renameSep        = " -> "               // rename lines match on the post-arrow path
+	stateDir         = ".verdict/state/"    // review run scratch
+	backtestDir      = ".verdict/backtest/" // mined backtest artifacts
 	newline          = "\n"
 )
 
@@ -218,7 +219,13 @@ func isScratchLine(line string) bool {
 		return false
 	}
 	file := stripStatus(line)
-	return strings.HasPrefix(file, stateDir) && strings.HasPrefix(renameTarget(file), stateDir)
+	return isScratchPath(file) && isScratchPath(renameTarget(file))
+}
+
+// isScratchPath reports a generated artifact directory: review state and
+// mined backtest runs stay out of the dirt set, both sides of a rename.
+func isScratchPath(path string) bool {
+	return strings.HasPrefix(path, stateDir) || strings.HasPrefix(path, backtestDir)
 }
 
 func (st *state) notARepo() *Response {

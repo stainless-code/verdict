@@ -382,8 +382,9 @@ func presetPanel(body string) string {
 const gitignoreName = ".gitignore"
 
 // gitignoreBody is the entire tracked ignore contract: only generated state
-// stays local, so the configuration and support files are reviewable.
-const gitignoreBody = "/state/"
+// and backtest artifacts stay local, so the configuration and support files
+// are reviewable.
+const gitignoreBody = "/state/\n/backtest/"
 
 func kbStarter() string {
 	first := `{"id":"check-error-paths",` +

@@ -2,10 +2,10 @@ package checktreecore
 
 import "testing"
 
-// TestSplitScratchKeepsSharedControls proves only .verdict/state/ is run
-// scratch: a control file that is untracked, modified, or renamed out of the
-// state directory stays in the dirt set, so the gate cannot report clean for
-// an uncommitted policy.
+// TestSplitScratchKeepsSharedControls proves review state and backtest
+// artifacts are the only run scratch: a control file that is untracked,
+// modified, or renamed out of those directories stays in the dirt set, so the
+// gate cannot report clean for an uncommitted policy.
 func TestSplitScratchKeepsSharedControls(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -21,6 +21,10 @@ func TestSplitScratchKeepsSharedControls(t *testing.T) {
 		{"rename out of state", "R  .verdict/state/local-a/run.json -> .verdict/config.json", false},
 		{"rename shared config into state", "R  .verdict/config.json -> .verdict/state/local-a/run.json", false},
 		{"rename within state", "R  .verdict/state/local-a/run.json -> .verdict/state/local-b/run.json", true},
+		{"tracked backtest artifact", " M .verdict/backtest/run/mine.json", true},
+		{"untracked backtest artifact", "?? .verdict/backtest/run/run.json", true},
+		{"rename out of backtest", "R  .verdict/backtest/run/mine.json -> .verdict/config.json", false},
+		{"rename config into backtest", "R  .verdict/config.json -> .verdict/backtest/run/mine.json", false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
