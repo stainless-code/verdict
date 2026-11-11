@@ -1317,6 +1317,7 @@ agent's own failure visible to CI:
 | `unknown-agent`         | the name is not in the agent table                                              | 1           |
 | `agent-record-failed`   | the launcher could not write its provenance record                              | 1           |
 | `repair-exhausted`      | every round left an invalid `review.json` (or a round repeated the prior bytes) | 1           |
+| `rounds-path-unsafe`    | the bundle's `.run.rounds` is a symlink or another non-directory                | 1           |
 
 An agent exiting `1`, `2`, or `3` is indistinguishable on the exit code alone
 from verdict's own refusal, usage, and canceled codes; `--json` disambiguates

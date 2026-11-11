@@ -768,6 +768,12 @@ Cause: a required typed check has no passing evidence for the reviewed head.
 
 Fix: record the evidence named above (`verify --group <id> --command <cmd>`), then re-run — `--force` cannot satisfy a trusted requirement.
 
+## `rounds-path-unsafe`
+
+Cause: the bundle's `.run.rounds` entry is a symlink or another non-directory, so round evidence would land outside the bundle (or a sweep would delete files there).
+
+Fix: remove the named path from the bundle, then re-run.
+
 ## `sandbox-unavailable`
 
 Cause: the sandbox cannot be enforced (no bubblewrap, or no unprivileged user namespaces).

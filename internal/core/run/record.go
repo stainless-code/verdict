@@ -30,8 +30,13 @@ const (
 	// on it. A dot-dir under the bundle, so check-tree ignores it the way it
 	// ignores the rest of the bundle scratch.
 	roundsDir = ".run.rounds"
-	// roundsDirMode is the per-round evidence directory's permission.
-	roundsDirMode = 0o755
+	// roundsDirMode is the per-round evidence directory's permission: the
+	// agent's raw bytes are the operator's to read and nobody else's, so a
+	// bundle it created is closed to everyone else.
+	roundsDirMode = 0o700
+	// roundEvidenceMode is every file the loop keeps in .run.rounds, the same
+	// permission as the log beside it.
+	roundEvidenceMode = 0o600
 )
 
 const (

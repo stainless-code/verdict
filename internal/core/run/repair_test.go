@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -802,8 +803,53 @@ func assertRoundFileExists(t *testing.T, dir, name string) {
 	}
 }
 
+// assertNoRoundFile proves the loop kept no evidence file under that name.
+func assertNoRoundFile(t *testing.T, dir, name string) {
+	t.Helper()
+	if _, err := os.Stat(filepath.Join(dir, roundsDir, name)); !os.IsNotExist(err) {
+		t.Errorf("%s = %v, want no such evidence file", name, err)
+	}
+}
+
+// crashAfterInvalid scripts two rounds for a crash test: round 1 leaves an
+// invalid review, round 2 leaves whatever crash leaves at review.json and exits
+// 9.
+func crashAfterInvalid(t *testing.T, dir string, crash func() error) *sequenced {
+	t.Helper()
+	review := filepath.Join(dir, reviewFile)
+	return &sequenced{
+		write:  func(call int) { crashRoundWrite(t, review, crash, call) },
+		result: crashRoundStatus,
+	}
+}
+
+// crashRoundWrite performs round call's side effect for a crash test. Neither
+// branch calls t.Fatal, so a test may run it off the main goroutine.
+func crashRoundWrite(t *testing.T, path string, crash func() error, call int) {
+	t.Helper()
+	if call > 1 {
+		if err := crash(); err != nil {
+			t.Errorf("round 2 side effect: %v", err)
+		}
+		return
+	}
+	if err := os.WriteFile(path, []byte(invalidDoc), 0o644); err != nil {
+		t.Errorf("write review.json: %v", err)
+	}
+}
+
+// crashRoundStatus is round 1's clean exit and every later round's crash.
+func crashRoundStatus(call int) core.Result {
+	if call == 1 {
+		return core.Result{}
+	}
+	return core.Result{ExitCode: 9}
+}
+
 // TestRepairClearsStaleRoundFiles proves the loop clears .run.rounds/ before
-// round 1, so a shorter run never inherits a longer run's files.
+// TestRepairClearsStaleRoundFiles proves the loop clears its own numbered files
+// from .run.rounds/ before round 1, so a shorter run never inherits a longer
+// run's files, and leaves a name it never wrote alone.
 func TestRepairClearsStaleRoundFiles(t *testing.T) {
 	root := repairFixture(t)
 	dir := bundleDir(root)
@@ -812,6 +858,9 @@ func TestRepairClearsStaleRoundFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(rounded, "03.review.json"), []byte("stale"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(rounded, "notes.txt"), []byte("mine"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	var lines collector
@@ -828,5 +877,117 @@ func TestRepairClearsStaleRoundFiles(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(rounded, "03.review.json")); !os.IsNotExist(err) {
 		t.Error("stale 03.review.json survived the loop, want it cleared")
+	}
+	assertFileContent(t, filepath.Join(rounded, "notes.txt"), "mine")
+}
+
+// TestRepairRefusesSymlinkedRoundsDir proves the loop never follows a symlinked
+// .run.rounds out of the bundle: it refuses before round 1 and the file the
+// link points at survives the stale-file sweep.
+func TestRepairRefusesSymlinkedRoundsDir(t *testing.T) {
+	root := repairFixture(t)
+	dir := bundleDir(root)
+	outside := t.TempDir()
+	decoy := filepath.Join(outside, "01.review.json")
+	if err := os.WriteFile(decoy, []byte("decoy"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(dir, roundsDir)); err != nil {
+		t.Skipf("symlink creation unavailable: %v", err)
+	}
+	var lines collector
+	cmdr := &sequenced{write: func(int) { writeDoc(t, root, reviewDoc) }}
+	_, ref := Run(t.Context(), repairRequest(root, cmdr, "3", &lines))
+	if ref == nil {
+		t.Fatal("Run ran through a symlinked .run.rounds, want rounds-path-unsafe")
+	}
+	if ref.Code != "rounds-path-unsafe" {
+		t.Errorf("refusal = %q, want rounds-path-unsafe", ref.Code)
+	}
+	if !strings.Contains(ref.Message, ".verdict/state/42/.run.rounds") {
+		t.Errorf("refusal message = %q, want it to name the bundle-relative .run.rounds path", ref.Message)
+	}
+	if cmdr.calls != 0 {
+		t.Errorf("spawns = %d, want 0: the refusal comes before round 1", cmdr.calls)
+	}
+	assertFileContent(t, decoy, "decoy")
+}
+
+// TestRepairRefusesFileAtRoundsDir proves a non-directory .run.rounds refuses
+// on every platform, not only the symlink case: the loop cannot clear or write
+// round evidence through it.
+func TestRepairRefusesFileAtRoundsDir(t *testing.T) {
+	root := repairFixture(t)
+	dir := bundleDir(root)
+	rounded := filepath.Join(dir, roundsDir)
+	if err := os.WriteFile(rounded, []byte("not a dir"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var lines collector
+	cmdr := &sequenced{write: func(int) { writeDoc(t, root, reviewDoc) }}
+	_, ref := Run(t.Context(), repairRequest(root, cmdr, "3", &lines))
+	if ref == nil || ref.Code != "rounds-path-unsafe" {
+		t.Fatalf("ref = %v, want rounds-path-unsafe", ref)
+	}
+	if cmdr.calls != 0 {
+		t.Errorf("spawns = %d, want 0: the refusal comes before round 1", cmdr.calls)
+	}
+	assertFileContent(t, rounded, "not a dir")
+}
+
+// TestRepairCrashRoundSkipsOversizedReview proves a crash round copies no
+// bytes past the 32 MiB review cap: the round's own refusal stands unchanged
+// and only its output is kept.
+func TestRepairCrashRoundSkipsOversizedReview(t *testing.T) {
+	root := repairFixture(t)
+	dir := bundleDir(root)
+	var lines collector
+	cmdr := crashAfterInvalid(t, dir, func() error {
+		return os.Truncate(filepath.Join(dir, reviewFile), maxRoundReviewBytes+1)
+	})
+	_, ref := Run(t.Context(), repairRequest(root, cmdr, "3", &lines))
+	if ref == nil || ref.Code != codeAgentFailed {
+		t.Fatalf("ref = %v, want agent-failed", ref)
+	}
+	assertRoundFileExists(t, dir, "02.out")
+	assertNoRoundFile(t, dir, "02.review.json")
+}
+
+// TestRepairRoundEvidenceModes proves the per-round evidence is owner-only: a
+// bundle the loop creates is 0700 and every file in it 0600, so the agent's raw
+// bytes are not world-readable beside the 0644 store files.
+func TestRepairRoundEvidenceModes(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("NTFS carries no POSIX mode bits")
+	}
+	root := repairFixture(t)
+	dir := bundleDir(root)
+	var lines collector
+	cmdr := &sequenced{write: func(call int) {
+		if call == 1 {
+			writeDoc(t, root, invalidDoc)
+		} else {
+			writeDoc(t, root, validDoc)
+		}
+	}}
+	if _, ref := Run(t.Context(), repairRequest(root, cmdr, "3", &lines)); ref != nil {
+		t.Fatalf("Run refused: %v", ref)
+	}
+	rounded := filepath.Join(dir, roundsDir)
+	assertMode(t, rounded, 0o700)
+	for _, name := range []string{"01.out", "01.review.json", "01.check.json", "02.out", "02.review.json"} {
+		assertMode(t, filepath.Join(rounded, name), 0o600)
+	}
+}
+
+// assertMode pins one path's permission bits.
+func assertMode(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("missing %s: %v", path, err)
+	}
+	if got := fi.Mode().Perm(); got != want {
+		t.Errorf("%s mode = %#o, want %#o", filepath.Base(path), got, want)
 	}
 }

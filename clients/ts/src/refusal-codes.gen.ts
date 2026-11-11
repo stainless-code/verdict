@@ -129,6 +129,7 @@ export type RefusalCode =
   | "report-failed"
   | "requirement-blocked"
   | "requirement-unmet"
+  | "rounds-path-unsafe"
   | "sandbox-unavailable"
   | "scope-escape"
   | "skill-bad-dir"
