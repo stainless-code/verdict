@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/stainless-code/verdict/internal/schemacheck"
 )
 
 const fixtureManifest = `{"schema_version":"1","name":"acme/lenses","version":"1.2.3","lenses":[{"id":"beta"},{"id":"alpha"}]}`
@@ -235,6 +237,86 @@ func TestPackNoteLabelsBodies(t *testing.T) {
 	if got := loadFixture(t, fixture()).Note(); got != want {
 		t.Fatalf("Note =\n%s\nwant\n%s", got, want)
 	}
+}
+
+// TestRefusedManifestsFailPublishedSchema proves the published schema rejects
+// the empty shapes the loader refuses — no rule globs, an empty rule severity
+// key, and a severity-map value outside the three levels — and that an empty
+// replace array is rejected too.
+func TestRefusedManifestsFailPublishedSchema(t *testing.T) {
+	t.Parallel()
+	checker, err := schemacheck.Load(
+		filepath.Join("..", "..", "..", "skills", "verdict", "schemas", "pack.schema.json"), "")
+	if err != nil {
+		t.Fatalf("load pack schema: %v", err)
+	}
+	valid := `{"schema_version":"1","name":"acme/lenses","version":"1.0.0",` +
+		`"replace":["verdict/builtin"],"severity":{"s":"critical"},` +
+		`"lenses":[{"id":"perf"}],"rules":[{"id":"r1","severity":"s","globs":["**/*.go"]}]}`
+	if failures := checker.Check(decodeJSON(t, valid)); len(failures) != 0 {
+		t.Fatalf("valid manifest rejected: %v", failures)
+	}
+	cases := []struct {
+		name     string
+		manifest string
+		loader   bool
+	}{
+		{
+			name: "empty replace",
+			manifest: `{"schema_version":"1","name":"acme/lenses","version":"1.0.0","replace":[],` +
+				`"lenses":[{"id":"perf"}]}`,
+		},
+		{
+			name: "empty rule globs",
+			manifest: `{"schema_version":"1","name":"acme/lenses","version":"1.0.0",` +
+				`"severity":{"s":"critical"},"lenses":[{"id":"perf"}],` +
+				`"rules":[{"id":"r1","severity":"s","globs":[]}]}`,
+			loader: true,
+		},
+		{
+			name: "empty rule severity",
+			manifest: `{"schema_version":"1","name":"acme/lenses","version":"1.0.0",` +
+				`"severity":{"s":"critical"},"lenses":[{"id":"perf"}],` +
+				`"rules":[{"id":"r1","severity":"","globs":["**/*.go"]}]}`,
+			loader: true,
+		},
+		{
+			name: "unknown severity level",
+			manifest: `{"schema_version":"1","name":"acme/lenses","version":"1.0.0",` +
+				`"severity":{"s":"high"},"lenses":[{"id":"perf"}],` +
+				`"rules":[{"id":"r1","severity":"s","globs":["**/*.go"]}]}`,
+			loader: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if failures := checker.Check(decodeJSON(t, tc.manifest)); len(failures) == 0 {
+				t.Fatalf("schema accepted a refused manifest shape:\n%s", tc.manifest)
+			}
+			if !tc.loader {
+				return
+			}
+			fsys := fstest.MapFS{
+				"pack.json":      {Data: []byte(tc.manifest)},
+				"lenses/perf.md": {Data: []byte("perf body\n")},
+				"rules/r1.md":    {Data: []byte("rule body\n")},
+			}
+			if _, ref := Load(fsys, "."); ref == nil || ref.Code != CodeBadPack {
+				t.Fatalf("Load = %v, want bad-pack", ref)
+			}
+		})
+	}
+}
+
+// decodeJSON decodes one manifest with number fidelity for the schema checker.
+func decodeJSON(t *testing.T, raw string) any {
+	t.Helper()
+	value, err := schemacheck.Decode([]byte(raw))
+	if err != nil {
+		t.Fatalf("decode manifest: %v", err)
+	}
+	return value
 }
 
 // TestPackMissingIsNotARefusal pins the absent-pack posture the transports

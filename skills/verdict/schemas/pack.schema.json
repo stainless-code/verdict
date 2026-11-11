@@ -22,12 +22,15 @@
     "replace": {
       "description": "Lower-layer pack names this pack may override by id. Replacement is downward only: naming a pack at the same or a higher layer refuses pack-conflict.",
       "type": "array",
-      "items": { "type": "string" }
+      "items": { "type": "string" },
+      "minItems": 1
     },
     "severity": {
       "description": "The pack's severity names mapped to critical, important, or informational; every rule's severity key must exist here.",
       "type": "object",
-      "additionalProperties": { "type": "string" }
+      "additionalProperties": {
+        "enum": ["critical", "important", "informational"]
+      }
     },
     "lenses": {
       "description": "One row per lens, at least one; the loader refuses more than 64 with pack-too-large. Each id names lenses/<id>.md.",
@@ -85,12 +88,14 @@
         },
         "severity": {
           "description": "Key into the manifest severity map; the mapped value is the rule's published severity.",
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "globs": {
           "description": "Required slash-path globs; a rule that matches no changed file is not recalled.",
           "type": "array",
-          "items": { "type": "string" }
+          "items": { "type": "string" },
+          "minItems": 1
         },
         "tools": {
           "description": "Optional tool names the rule talks about.",

@@ -89,8 +89,8 @@ type Manifest struct {
 	SchemaVersion string            `const:"1"                 json:"schema_version"`
 	Name          string            `json:"name"`
 	Version       string            `json:"version"`
-	Replace       []string          `json:"replace,omitempty"`
-	Severity      map[string]string `json:"severity,omitempty"`
+	Replace       []string          `json:"replace,omitempty"          minItems:"1"`
+	Severity      map[string]string `json:"severity,omitempty"         value_enum:"critical|important|informational"`
 	Lenses        []LensSpec        `json:"lenses"             minItems:"1"`
 	Rules         []RuleSpec        `json:"rules,omitempty"`
 }
@@ -110,8 +110,8 @@ type LensSpec struct {
 // tools it talks about.
 type RuleSpec struct {
 	ID       string   `json:"id"`
-	Severity string   `json:"severity"`
-	Globs    []string `json:"globs"`
+	Severity string   `json:"severity"             minLength:"1"`
+	Globs    []string `json:"globs"                minItems:"1"`
 	Tools    []string `json:"tools,omitempty"`
 }
 
