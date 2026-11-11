@@ -1,0 +1,34 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "index",
+  "repo": "",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "run verdict index build to index the current HEAD",
+  "warnings": [],
+  "data": {
+    "kind": "prune",
+    "kept": [
+      "077ca7cf9703310ec56d3f9010398c80bd0eb4b9",
+      "2aa02b364fc82bfc5c36e35da1475b0bef1f4f94",
+      "9693554c7f4ee59c8c79ea5350e95e59fbd829f5",
+      "f8eb35af9979d9bd1d9acdaa65b19fbec7143b9b"
+    ],
+    "removed": {
+      "trees": 1,
+      "shards": 1
+    },
+    "shards": {
+      "count": 10,
+      "bytes": 2273
+    }
+  },
+  "error": null
+}
+--- stderr ---
+
+--- files ---
+--- file C/.verdict/index/shards/88c2e45c61106cef23537deb6ecc6bd44eb98a3c.json (deleted) ---
+--- file C/.verdict/index/trees/aec3de3b47100da02b57b0c898e18fe8e23e5e0a.json (deleted) ---

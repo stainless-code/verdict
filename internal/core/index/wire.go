@@ -27,7 +27,7 @@ func (d *Data) Wire() *jq.Obj {
 		)
 	case QueryStatus:
 		return jq.NewObj(
-			keyKind, QueryBuild,
+			keyKind, QueryStatus,
 			keyTree, d.Tree,
 			"commit", d.Commit,
 			"built", d.Built,

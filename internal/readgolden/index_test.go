@@ -5,11 +5,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	indexcore "github.com/stainless-code/verdict/internal/core/index"
+	"github.com/stainless-code/verdict/internal/golden"
 	"github.com/stainless-code/verdict/internal/testenv"
 )
 
@@ -142,4 +146,70 @@ func TestIndexCallersGolden(t *testing.T) {
 	goldenRead(t, "index/callers-human", indexRepo, nil, nil, args...)
 	args = []string{"index", "callers", "app.Target", "--json"}
 	goldenRead(t, "index/callers-json", indexRepo, nil, nil, args...)
+}
+
+// TestIndexStatusGolden pins the status read: the stored-tree summary, the
+// built state, and the envelope's status kind.
+func TestIndexStatusGolden(t *testing.T) {
+	t.Parallel()
+	goldenRead(t, "index/status-human", indexRepo, nil, nil, "index", "status")
+	goldenRead(t, "index/status-json", indexRepo, nil, nil, "index", "status", "--json")
+}
+
+// TestIndexPruneGolden pins the prune mutation: the four newest trees and
+// their shards survive, and the oldest tree and its unique shard are deleted.
+func TestIndexPruneGolden(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{"index/prune-human", []string{"index", "prune"}},
+		{"index/prune-json", []string{"index", "prune", "--json"}},
+	} {
+		c := &golden.Case{Name: tc.name, Setup: indexPruneRepo, Args: tc.args}
+		c.Run(t, harness)
+	}
+}
+
+// indexPruneRepo builds five trees and stamps their files oldest to newest, so
+// prune's modification-time order is fixture data rather than the clock.
+func indexPruneRepo(t *testing.T, dir, _ string) {
+	t.Helper()
+	writeIndexFixture(t, dir)
+	runIndexGit(t, dir, "init", "-q", "-b", "main")
+	var trees []string
+	for i := range 5 {
+		body := "package app\n\nfunc Target" + strconv.Itoa(i) + "() {}\n"
+		if err := os.WriteFile(filepath.Join(dir, "app", "target.go"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		runIndexGit(t, dir, "add", "-A")
+		runIndexGit(t, dir, "commit", "-qm", "tree "+strconv.Itoa(i))
+		trees = append(trees, runIndexGitOut(t, dir, "rev-parse", "HEAD^{tree}"))
+		buildIndex(t, dir, indexEnv())
+	}
+	for i, tree := range trees {
+		stamp := time.Unix(int64(1000+i), 0)
+		path := filepath.Join(dir, ".verdict", "index", "trees", tree+".json")
+		if err := os.Chtimes(path, stamp, stamp); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// runIndexGitOut runs one pinned git command and returns its trimmed stdout.
+func runIndexGitOut(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.CommandContext(t.Context(), "git", args...)
+	cmd.Dir = dir
+	cmd.Env = testenv.Base(map[string]string{
+		"GIT_AUTHOR_DATE":    "2024-04-01T00:00:00Z",
+		"GIT_COMMITTER_DATE": "2024-04-01T00:00:00Z",
+	})
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git %v: %v", args, err)
+	}
+	return strings.TrimSpace(string(out))
 }

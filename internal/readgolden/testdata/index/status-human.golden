@@ -1,0 +1,7 @@
+exit: 0
+--- stdout ---
+index: 1 tree(s), 6 shard(s) (1565 bytes)
+index: HEAD 7a4ae225bc9550e4ab70a5d4c08dedc668325f7c is indexed
+--- stderr ---
+
+--- files ---

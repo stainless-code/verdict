@@ -1,0 +1,33 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "index",
+  "repo": "",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "build it with verdict index build",
+  "warnings": [],
+  "data": {
+    "kind": "status",
+    "tree": "7a4ae225bc9550e4ab70a5d4c08dedc668325f7c",
+    "commit": "48c76ec4038fbf532045ece0513c7ceeb1d6a524",
+    "built": true,
+    "stale": false,
+    "trees": [
+      {
+        "tree": "7a4ae225bc9550e4ab70a5d4c08dedc668325f7c",
+        "files": 6,
+        "bytes": 1614
+      }
+    ],
+    "shards": {
+      "count": 6,
+      "bytes": 1565
+    }
+  },
+  "error": null
+}
+--- stderr ---
+
+--- files ---
