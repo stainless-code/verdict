@@ -123,12 +123,14 @@ func stripOwnerComment(line string) string {
 // compileOwnerPattern turns one GitHub-style path pattern into a matcher. A
 // leading slash anchors at the repository root; a pattern with no slash matches
 // a path segment at any depth; a trailing slash matches everything below the
-// directory, and a pattern without one also matches the directory's
-// descendants. `*` stays inside one segment, `**` crosses segments only in
-// gitignore's three positional forms (`**/`, `/**`, `/**/`) and is a plain `*`
-// anywhere else, `?` matches one character, and `\#` writes a literal `#`.
-// Negation, other escapes, and character classes are refused here so the caller
-// can warn about them.
+// directory, and a pattern without one also owns the descendants of a file or
+// directory by that name — unless its last segment is a wildcard, which names
+// files only (`docs/*` owns `docs/a.md`, never `docs/a/b.md`). `*` stays inside
+// one segment, `**` crosses segments only in gitignore's three positional forms
+// (`**/`, `/**`, `/**/`) and is a plain `*` anywhere else, `?` matches one
+// character, and `\#` writes a literal `#`. Negation, other escapes, a leading
+// `\#`, and character classes are refused here so the caller can warn about
+// them.
 func compileOwnerPattern(pattern string) (*regexp.Regexp, bool) {
 	if !ownerPatternShape(pattern) {
 		return nil, false
@@ -141,6 +143,11 @@ func compileOwnerPattern(pattern string) (*regexp.Regexp, bool) {
 		return nil, false
 	}
 	body := ownerGlob(pattern)
+	last := pattern[strings.LastIndex(pattern, pathSeparator)+1:]
+	descend := ""
+	if !strings.ContainsAny(last, "*?") {
+		descend = "(?:/.*)?"
+	}
 	var expr string
 	switch {
 	case dir && anchored:
@@ -148,9 +155,9 @@ func compileOwnerPattern(pattern string) (*regexp.Regexp, bool) {
 	case dir:
 		expr = "(?:^|/)" + body + "/.*$"
 	case anchored:
-		expr = "^" + body + "(?:/.*)?$"
+		expr = "^" + body + descend + "$"
 	default:
-		expr = "(?:^|/)" + body + "(?:/.*)?$"
+		expr = "(?:^|/)" + body + descend + "$"
 	}
 	re, err := regexp.Compile(expr)
 	if err != nil {
