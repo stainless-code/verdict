@@ -158,7 +158,12 @@ var publishedSemantics = map[string]string{
 	// not see a field the wire cannot produce. The indexStatus and indexCounts
 	// descriptions now name every kind that publishes them. One property
 	// removed, prose only elsewhere.
-	"envelope.schema.json": "1145cade958d074c1bfcc13d701531bb7a4890bf2bc3fb1f1f09f82adcaae58f",
+	// indexTarget prose: the description now names all three owner shapes —
+	// no CODEOWNERS file (source null too), no matching rule (source named),
+	// and an ownerless rule that cleared ownership ([] with the source
+	// named). Description only; no property, required key, enum, or type
+	// changed.
+	"envelope.schema.json": "349de8e0045f0f95461b46cdb7a8c9b41ee9343b4a9c3a301375fcc2a1145279",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

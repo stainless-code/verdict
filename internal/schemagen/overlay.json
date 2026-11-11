@@ -170,7 +170,7 @@
       "/$defs/indexCounts": "The query counts for the kind: caller rows and candidates left unresolved, candidate tests, or co-change partners and the commits that touched the target.",
       "/$defs/indexRow": "One row of a caller, candidate-test, or co-change query: path plus the fields that kind measures (line/kind/resolution for callers, via for candidates, commits/jaccard for partners).",
       "/$defs/indexWindow": "The bounded history window a co-change query read: oldest and newest commit sha, and how many commits it counted (empty window names no bounds).",
-      "/$defs/indexTarget": "One queried path and its CODEOWNERS answer: owners and owners_source are null when the tree carries no rule, never an owner named nobody."
+      "/$defs/indexTarget": "One queried path and its CODEOWNERS answer. owners is null when the tree has no CODEOWNERS file (owners_source is null too) or when no rule matches (owners_source names the file); a matching ownerless rule cleared an earlier match, so owners is [] with owners_source named. Never an owner named nobody."
     }
   },
   "findings": {

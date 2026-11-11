@@ -818,7 +818,7 @@ export interface IndexWindow {
   [key: string]: unknown;
 }
 
-/** One queried path and its CODEOWNERS answer: owners and owners_source are null when the tree carries no rule, never an owner named nobody. */
+/** One queried path and its CODEOWNERS answer. owners is null when the tree has no CODEOWNERS file (owners_source is null too) or when no rule matches (owners_source names the file); a matching ownerless rule cleared an earlier match, so owners is [] with owners_source named. Never an owner named nobody. */
 export interface IndexTarget {
   path: string;
   owners: Array<string> | null;
