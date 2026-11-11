@@ -199,6 +199,77 @@ func TestPiAdapterRefusesDSMLMarkup(t *testing.T) {
 	}
 }
 
+// TestPiAdapterAcceptsFencedReviewWithToolMarkup drives pi.sh with a stub
+// whose final message is fenced valid JSON that mentions tool-call markup:
+// the fence strip accepts it, exit 0, and the out file holds the unfenced
+// bytes.
+func TestPiAdapterAcceptsFencedReviewWithToolMarkup(t *testing.T) {
+	needPOSIX(t)
+	root, err := moduleRoot()
+	if err != nil {
+		t.Fatalf("moduleRoot: %v", err)
+	}
+	inner := `{"schema_version":"1","body":"mentions tool_call and <function> in review","approved":false,"comments":[]}`
+	text := "```json\\n" + strings.ReplaceAll(inner, `"`, `\"`) + "\\n```"
+	stub := piStub(t, "#!/bin/sh\nprintf '%s\\n' '{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\""+text+"\"}]}}'\n")
+	t.Setenv("BENCH_PI_MODEL", "fixture-good")
+	t.Setenv("BENCH_PI_BIN", stub)
+	t.Setenv("VERDICT_BENCH_MODEL", "fixture-good")
+	t.Setenv("VERDICT_BENCH_PROMPT", filepath.Join(t.TempDir(), "prompt.md"))
+	out := filepath.Join(t.TempDir(), "review.json")
+	t.Setenv("VERDICT_BENCH_OUT", out)
+	t.Setenv("VERDICT_BENCH_COST", filepath.Join(t.TempDir(), "cost.json"))
+	cmd := exec.CommandContext(context.Background(), "sh", filepath.Join(root, "bench", "agents", "pi.sh"))
+	cmd.Env = os.Environ()
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("pi.sh refused fenced valid review with tool markup: %v, stderr %q", err, stderr.String())
+	}
+	got, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("read %s: %v", out, err)
+	}
+	want := "{\"schema_version\":\"1\",\"body\":\"mentions tool_call and <function> in review\",\"approved\":false,\"comments\":[]}\n\n"
+	if string(got) != want {
+		t.Errorf("review.json = %q, want %q", got, want)
+	}
+}
+
+// TestPiAdapterRefusesFencedNonJSONWithToolMark drives pi.sh with a stub
+// whose final message is a fenced non-JSON answer containing a tool mark:
+// exit 1, the tool-call refusal, no review file.
+func TestPiAdapterRefusesFencedNonJSONWithToolMark(t *testing.T) {
+	needPOSIX(t)
+	root, err := moduleRoot()
+	if err != nil {
+		t.Fatalf("moduleRoot: %v", err)
+	}
+	text := "```\\n" + strings.ReplaceAll(`<tool_call name="shell">ls`, `"`, `\"`) + "\\n```"
+	stub := piStub(t, "#!/bin/sh\nprintf '%s\\n' '{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\""+text+"\"}]}}'\n")
+	t.Setenv("BENCH_PI_MODEL", "fixture-good")
+	t.Setenv("BENCH_PI_BIN", stub)
+	t.Setenv("VERDICT_BENCH_MODEL", "fixture-good")
+	t.Setenv("VERDICT_BENCH_PROMPT", filepath.Join(t.TempDir(), "prompt.md"))
+	out := filepath.Join(t.TempDir(), "review.json")
+	t.Setenv("VERDICT_BENCH_OUT", out)
+	t.Setenv("VERDICT_BENCH_COST", filepath.Join(t.TempDir(), "cost.json"))
+	cmd := exec.CommandContext(context.Background(), "sh", filepath.Join(root, "bench", "agents", "pi.sh"))
+	cmd.Env = os.Environ()
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err == nil {
+		t.Fatal("pi.sh accepted fenced non-JSON tool-call markup as a review")
+	}
+	want := "pi agent: final message is a tool call, but this sample has no tools: ```<tool_call name=\"shell\">ls```"
+	if !strings.Contains(stderr.String(), want) {
+		t.Errorf("stderr = %q, want %q", stderr.String(), want)
+	}
+	if _, err := os.Stat(out); !os.IsNotExist(err) {
+		t.Errorf("pi.sh wrote %s for a tool-call refusal", out)
+	}
+}
+
 // TestRunnerLabelsDSMLToolCall labels the DSML sample adapter_tool_call.
 func TestRunnerLabelsDSMLToolCall(t *testing.T) {
 	needPOSIX(t)
