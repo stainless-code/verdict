@@ -85,8 +85,6 @@ func entryByPath(entries []treeEntry, p string) (treeEntry, bool) {
 // a pattern names a literal `#`. A line whose pattern shape the matcher cannot
 // evaluate is counted and skipped. A pattern with no owners is kept: it is a
 // rule that clears an earlier match's ownership.
-//
-//nolint:revive // one branch per line shape keeps the grammar auditable
 func parseCodeowners(src string) ([]ownerRule, int) {
 	var rules []ownerRule
 	unsupported := 0
@@ -132,8 +130,7 @@ func stripOwnerComment(line string) string {
 // Negation, other escapes, and character classes are refused here so the caller
 // can warn about them.
 func compileOwnerPattern(pattern string) (*regexp.Regexp, bool) {
-	if pattern == "" || strings.HasPrefix(pattern, "!") ||
-		strings.ContainsAny(pattern, `[]`) || hasUnknownEscape(pattern) {
+	if !ownerPatternShape(pattern) {
 		return nil, false
 	}
 	dir := strings.HasSuffix(pattern, pathSeparator)
@@ -160,6 +157,13 @@ func compileOwnerPattern(pattern string) (*regexp.Regexp, bool) {
 		return nil, false
 	}
 	return re, true
+}
+
+// ownerPatternShape reports a pattern the matcher evaluates: no negation, no
+// character class, and no escape other than the literal `#`.
+func ownerPatternShape(pattern string) bool {
+	return pattern != "" && !strings.HasPrefix(pattern, "!") &&
+		!strings.ContainsAny(pattern, `[]`) && !hasUnknownEscape(pattern)
 }
 
 // hasUnknownEscape reports a backslash escape other than `\#`, the one escape

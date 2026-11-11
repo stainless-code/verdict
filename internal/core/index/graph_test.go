@@ -963,85 +963,83 @@ func assertDecoysIntact(t *testing.T, dir string, n int) {
 	}
 }
 
-// TestCoChangedSymlinkedCacheWritesNothing proves a cache that would carry a
-// write or a prune outside the checkout is skipped: the rows still answer,
-// every linked file survives untouched, and one warning names the link.
-func TestCoChangedSymlinkedCacheWritesNothing(t *testing.T) {
-	t.Run("cache directory", func(t *testing.T) {
-		f := newFixture(t)
-		writeHistoryFixture(f)
-		f.build()
-		outside := seededDecoys(t, t.TempDir(), 3)
-		if err := os.Symlink(outside, filepath.Join(f.dir, cochangeCacheDirName)); err != nil {
-			t.Skipf("this platform cannot create symlinks here: %v", err)
-		}
-		resp := f.queryPath(QueryCoChanged, "a/target.go")
-		assertCoChangeRows(t, resp.Data.CoChangeRows, []CoChangeRow{
-			{Path: "b/partner.go", Commits: 3, Jaccard: 0.75},
-			{Path: "c/rare.go", Commits: 2, Jaccard: 0.5},
-		})
-		assertDecoysIntact(t, outside, 3)
-		want := "» index: co-change cache not written: the co-change cache directory is a symlink"
-		if !slices.Contains(resp.Warnings, want) {
-			t.Errorf("warnings = %q; want one equal to %q", resp.Warnings, want)
-		}
+// assertSymlinkedCacheSkip proves the query still answered and named the link
+// that kept the cache off disk.
+func assertSymlinkedCacheSkip(t *testing.T, resp *Response, reason string) {
+	t.Helper()
+	assertCoChangeRows(t, resp.Data.CoChangeRows, []CoChangeRow{
+		{Path: "b/partner.go", Commits: 3, Jaccard: 0.75},
+		{Path: "c/rare.go", Commits: 2, Jaccard: 0.5},
 	})
-	t.Run("store directory", func(t *testing.T) {
-		f := newFixture(t)
-		writeHistoryFixture(f)
-		f.build()
-		store := filepath.Join(t.TempDir(), "store")
-		if err := os.Rename(filepath.Join(f.dir, ".verdict", "index"), store); err != nil {
-			t.Fatal(err)
-		}
-		outside := seededDecoys(t, filepath.Join(store, "cochange"), 3)
-		if err := os.Symlink(store, filepath.Join(f.dir, ".verdict", "index")); err != nil {
-			t.Skipf("this platform cannot create symlinks here: %v", err)
-		}
-		resp := f.queryPath(QueryCoChanged, "a/target.go")
-		assertCoChangeRows(t, resp.Data.CoChangeRows, []CoChangeRow{
-			{Path: "b/partner.go", Commits: 3, Jaccard: 0.75},
-			{Path: "c/rare.go", Commits: 2, Jaccard: 0.5},
-		})
-		assertDecoysIntact(t, outside, 3)
-		want := "» index: co-change cache not written: the index store is a symlink"
-		if !slices.Contains(resp.Warnings, want) {
-			t.Errorf("warnings = %q; want one equal to %q", resp.Warnings, want)
-		}
-	})
-	t.Run("cache file", func(t *testing.T) {
-		f := newFixture(t)
-		writeHistoryFixture(f)
-		f.build()
-		cache := filepath.Join(f.dir, cochangeCacheDirName, f.run("", "rev-parse", "HEAD")+"-2000.json")
-		f.queryPath(QueryCoChanged, "a/target.go")
-		if err := os.Remove(cache); err != nil {
-			t.Fatal(err)
-		}
-		outside := filepath.Join(t.TempDir(), "decoy.json")
-		if err := os.WriteFile(outside, []byte("not a window"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Symlink(outside, cache); err != nil {
-			t.Skipf("this platform cannot create symlinks here: %v", err)
-		}
-		resp := f.queryPath(QueryCoChanged, "a/target.go")
-		assertCoChangeRows(t, resp.Data.CoChangeRows, []CoChangeRow{
-			{Path: "b/partner.go", Commits: 3, Jaccard: 0.75},
-			{Path: "c/rare.go", Commits: 2, Jaccard: 0.5},
-		})
-		info, err := os.Lstat(cache)
-		if err != nil || info.Mode()&os.ModeSymlink == 0 {
-			t.Errorf("cache path = %v (%v); want the symlink left in place", info, err)
-		}
-		if raw, err := os.ReadFile(outside); err != nil || string(raw) != "not a window" {
-			t.Errorf("decoy = %q (%v); want it untouched", raw, err)
-		}
-		want := "» index: co-change cache not written: the co-change cache file is a symlink"
-		if !slices.Contains(resp.Warnings, want) {
-			t.Errorf("warnings = %q; want one equal to %q", resp.Warnings, want)
-		}
-	})
+	want := "» index: co-change cache not written: " + reason
+	if !slices.Contains(resp.Warnings, want) {
+		t.Errorf("warnings = %q; want one equal to %q", resp.Warnings, want)
+	}
+}
+
+// TestCoChangedSymlinkedCacheDirWritesNothing proves a symlinked cache
+// directory earns no write and no prune: the rows still answer, every file in
+// the linked directory survives, and one warning names the link.
+func TestCoChangedSymlinkedCacheDirWritesNothing(t *testing.T) {
+	f := newFixture(t)
+	writeHistoryFixture(f)
+	f.build()
+	outside := seededDecoys(t, t.TempDir(), 3)
+	if err := os.Symlink(outside, filepath.Join(f.dir, cochangeCacheDirName)); err != nil {
+		t.Skipf("this platform cannot create symlinks here: %v", err)
+	}
+	resp := f.queryPath(QueryCoChanged, "a/target.go")
+	assertSymlinkedCacheSkip(t, resp, "the co-change cache directory is a symlink")
+	assertDecoysIntact(t, outside, 3)
+}
+
+// TestCoChangedSymlinkedStoreWritesNothing proves a symlinked `.verdict/index`
+// earns no cache write or prune inside the directory it points at.
+func TestCoChangedSymlinkedStoreWritesNothing(t *testing.T) {
+	f := newFixture(t)
+	writeHistoryFixture(f)
+	f.build()
+	store := filepath.Join(t.TempDir(), "store")
+	if err := os.Rename(filepath.Join(f.dir, ".verdict", "index"), store); err != nil {
+		t.Fatal(err)
+	}
+	outside := seededDecoys(t, filepath.Join(store, "cochange"), 3)
+	if err := os.Symlink(store, filepath.Join(f.dir, ".verdict", "index")); err != nil {
+		t.Skipf("this platform cannot create symlinks here: %v", err)
+	}
+	resp := f.queryPath(QueryCoChanged, "a/target.go")
+	assertSymlinkedCacheSkip(t, resp, "the index store is a symlink")
+	assertDecoysIntact(t, outside, 3)
+}
+
+// TestCoChangedSymlinkedCacheFileWritesNothing proves a symlinked cache file is
+// left in place and the file it points at is never read as a window or
+// overwritten.
+func TestCoChangedSymlinkedCacheFileWritesNothing(t *testing.T) {
+	f := newFixture(t)
+	writeHistoryFixture(f)
+	f.build()
+	cache := filepath.Join(f.dir, cochangeCacheDirName, f.run("", "rev-parse", "HEAD")+"-2000.json")
+	f.queryPath(QueryCoChanged, "a/target.go")
+	if err := os.Remove(cache); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "decoy.json")
+	if err := os.WriteFile(outside, []byte("not a window"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, cache); err != nil {
+		t.Skipf("this platform cannot create symlinks here: %v", err)
+	}
+	resp := f.queryPath(QueryCoChanged, "a/target.go")
+	assertSymlinkedCacheSkip(t, resp, "the co-change cache file is a symlink")
+	info, err := os.Lstat(cache)
+	if err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("cache path = %v (%v); want the symlink left in place", info, err)
+	}
+	if raw, err := os.ReadFile(outside); err != nil || string(raw) != "not a window" {
+		t.Errorf("decoy = %q (%v); want it untouched", raw, err)
+	}
 }
 
 // movingHeadCommander performs act once, when the query reaches an argv the
@@ -1080,7 +1078,7 @@ func TestCoChangedPinsTheResolvedCommit(t *testing.T) {
 	head := f.run("", "rev-parse", "HEAD")
 	req := f.request(QueryCoChanged, nil)
 	req.Path = "a/target.go"
-	req.Runtime.Commander = &movingHeadCommander{
+	req.Commander = &movingHeadCommander{
 		move: movesOnLog,
 		act:  func() { f.emptyCommit("moved mid-query") },
 	}
@@ -1118,7 +1116,7 @@ func TestCoChangedReadsThePinnedTree(t *testing.T) {
 	f.build()
 	req := f.request(QueryCoChanged, nil)
 	req.Path = "a/a.go"
-	req.Runtime.Commander = &movingHeadCommander{
+	req.Commander = &movingHeadCommander{
 		move: movesOnTree,
 		act: func() {
 			f.write(".github/CODEOWNERS", "* @new\n")
