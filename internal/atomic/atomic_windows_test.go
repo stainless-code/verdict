@@ -32,7 +32,7 @@ func checkStoreMode(t *testing.T, fi os.FileInfo) {
 }
 
 // checkSidecarMode skips the POSIX permission assertion on Windows, where
-// os.Chmod does not model owner/group/other bits.
+// [os.Chmod] does not model owner/group/other bits.
 func checkSidecarMode(t *testing.T, _ os.FileInfo) {
 	t.Helper()
 	t.Log("skipping POSIX sidecar mode assertion on Windows")
@@ -86,8 +86,7 @@ func TestWriteFileRetriesWhileDestinationOpen(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hold store handle: %v", err)
 	}
-	var once sync.Once
-	closeHandle := func() { once.Do(func() { _ = syscall.CloseHandle(handle) }) }
+	closeHandle := releaseOnce(t, handle)
 	defer closeHandle()
 	timer := time.AfterFunc(openHandleHold, closeHandle)
 	defer timer.Stop()
@@ -101,5 +100,20 @@ func TestWriteFileRetriesWhileDestinationOpen(t *testing.T) {
 	}
 	if !bytes.Equal(raw, []byte("new content here\n")) {
 		t.Errorf("overwrite = %q; want new content", raw)
+	}
+}
+
+// releaseOnce closes handle at most once, so the deferred call and the
+// timer racing to release it cannot double-close. A failed close only leaks
+// a handle the process reclaims at exit, so it goes to the test log.
+func releaseOnce(t *testing.T, handle syscall.Handle) func() {
+	t.Helper()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			if err := syscall.CloseHandle(handle); err != nil {
+				t.Logf("release store handle: %v", err)
+			}
+		})
 	}
 }

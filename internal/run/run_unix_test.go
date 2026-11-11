@@ -212,7 +212,11 @@ func runVerb(t *testing.T, f *fixture, args ...string) (int, string, string) {
 		}
 		local = append(local, a)
 	}
-	r, out, diag := testRunner("run", jsonMode)
+	r, out, diag := testRunner()
+	r.JSONMode = jsonMode
+	if jsonMode {
+		r.Human = diag
+	}
 	code := Run(context.Background(), r, local, Request{
 		Env:  map[string]string{"HOME": os.Getenv("HOME"), "XDG_CONFIG_HOME": os.Getenv("XDG_CONFIG_HOME")},
 		Repo: "acme/app", Pr: f.slug, Root: f.root, RepoRoot: f.root,
@@ -295,7 +299,8 @@ func TestRunLaunchesAndHandsOff(t *testing.T) {
 	// bundle carries the controls snapshot and typed capture this seeds; record
 	// gates on them, and the launcher writes neither.
 	seedControls(t, f)
-	rec2, out2, diag2 := testRunner("record", false)
+	rec2, out2, diag2 := testRunner()
+	rec2.Cmd = "record"
 	rec2.Effective = cli.Defaults()
 	code = record.Run(context.Background(), rec2, nil, &record.Request{
 		Env:  map[string]string{"HOME": os.Getenv("HOME"), "XDG_CONFIG_HOME": os.Getenv("XDG_CONFIG_HOME")},

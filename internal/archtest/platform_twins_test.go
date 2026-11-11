@@ -16,12 +16,19 @@ import (
 // on purpose, keyed "<dir>:<func>" with the reason. An entry that stops naming
 // an unpaired function fails, so the allowlist cannot rot.
 var windowsOnlyFuncs = map[string]string{
-	"internal/atomic:retryableReplace": "retries the Windows-only rename locks",
-	"internal/core/exec:resumeProcess": "resumes a suspended Windows process",
-	"internal/core/exec:resumeThread":  "resumes a suspended Windows thread",
-	"internal/core/exec:taskkillTree":  "kills a Windows tree through taskkill",
-	"internal/core/exec:threadsOf":     "reads the threads of a suspended Windows process",
-	"internal/core/exec:treeFor":       "wraps the Windows Job Object handle",
+	"internal/atomic:retryableReplace":   "retries the Windows-only rename locks",
+	"internal/core/exec:closeHandle":     "closes a Win32 handle whose outcome is already decided",
+	"internal/core/exec:pid32":           "narrows a pid to the DWORD a Win32 call takes",
+	"internal/core/exec:resumeOK":        "reads ResumeThread's DWORD result word",
+	"internal/core/exec:resumeProcess":   "resumes a suspended Windows process",
+	"internal/core/exec:resumeThread":    "resumes a suspended Windows thread",
+	"internal/core/exec:taskkillTree":    "kills a Windows tree through taskkill",
+	"internal/core/exec:threadsOf":       "reads the threads of a suspended Windows process",
+	"internal/core/exec:treeFor":         "wraps the Windows Job Object handle",
+	"internal/core/exec:win32Call":       "runs a Win32 proc whose result word rules the call",
+	"internal/core/exec:win32OK":         "reads a Win32 BOOL result word",
+	"internal/core/upgrade:pid32":        "narrows a pid to the DWORD OpenProcess takes",
+	"internal/core/upgrade:waitOnHandle": "polls a process handle until it signals or the context ends",
 }
 
 var nonWindowsTargets = []string{"linux", "darwin", "freebsd", "openbsd", "netbsd", "dragonfly"}

@@ -4,7 +4,9 @@ package exec
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	osexec "os/exec"
 	"strconv"
 	"strings"
@@ -55,6 +57,42 @@ var (
 	procResumeThread            = syscall.NewLazyDLL("kernel32.dll").NewProc("ResumeThread")
 )
 
+// win32Call runs one Win32 proc and returns its first result word. A proc
+// reports failure through that word — a NULL handle, FALSE, or (DWORD)-1 —
+// and its third Call return is GetLastError, meaningful only after a failure.
+// Callers read the word with win32OK, resumeOK, or a NULL-handle test.
+func win32Call(proc *syscall.LazyProc, args ...uintptr) uintptr {
+	r, _, _ := proc.Call(args...) //nolint:errcheck // GetLastError, ruled by the result word
+	return r
+}
+
+// win32OK reads a BOOL result. BOOL is a 32-bit int and the x64 ABI leaves
+// the upper half of the return register undefined, so only the low 32 bits
+// carry the verdict.
+func win32OK(r uintptr) bool {
+	return uint32(r) != 0 //nolint:gosec // G115: the 32-bit narrowing is the contract
+}
+
+// resumeOK reads ResumeThread's DWORD result: only (DWORD)-1 fails, any other
+// value is the thread's previous suspend count. Reading the full word would
+// call a failure with junk in the upper half a resumed thread.
+func resumeOK(r uintptr) bool {
+	return uint32(r) != resumeFailed //nolint:gosec // G115: the 32-bit narrowing is the contract
+}
+
+// closeHandle releases a handle whose operation has already returned its
+// verdict. A failed close is not actionable: the handle is closed or leaked
+// to process exit, where the job object's kill-on-close still runs.
+func closeHandle(h syscall.Handle) {
+	_ = syscall.CloseHandle(h) //nolint:errcheck // cleanup; the caller's outcome already rules
+}
+
+// pid32 narrows a process id to the DWORD a Win32 call takes. A Windows
+// process id is a DWORD, so the int already holds a value that fits.
+func pid32(pid int) uint32 {
+	return uint32(pid) //nolint:gosec // G115: Windows pids are 32-bit; os keeps one in an int
+}
+
 type threadEntry struct {
 	Size           uint32
 	Usage          uint32
@@ -74,7 +112,10 @@ type jobExtendedLimit struct {
 	PeakJobMemoryUsed     uintptr
 }
 
-type jobBasicLimit struct {
+// jobBasicLimit mirrors JOBOBJECT_BASIC_LIMIT_INFORMATION. The field order
+// is the Win32 ABI SetInformationJobObject reads, so it cannot be reordered
+// to save padding.
+type jobBasicLimit struct { //nolint:govet // fieldalignment: the Win32 ABI fixes the field order
 	PerProcessUserTimeLimit int64
 	PerJobUserTimeLimit     int64
 	LimitFlags              uint32
@@ -118,15 +159,15 @@ var trees sync.Map
 
 func setGroup(cmd *osexec.Cmd) {
 	tr := &tree{}
-	handle, _, _ := procCreateJobObject.Call(0, 0)
+	handle := win32Call(procCreateJobObject, 0, 0)
 	if handle != 0 {
 		info := jobExtendedLimit{}
 		info.BasicLimit.LimitFlags = jobLimitKillOnJobClose
-		ok, _, _ := procSetInformationJobObject.Call(
+		ok := win32Call(procSetInformationJobObject,
 			handle, jobObjectExtendedLimitInformation,
 			uintptr(unsafe.Pointer(&info)), unsafe.Sizeof(info),
 		)
-		if ok != 0 {
+		if win32OK(ok) {
 			tr.handle = syscall.Handle(handle)
 			tr.suspended = true
 			if cmd.SysProcAttr == nil {
@@ -134,15 +175,21 @@ func setGroup(cmd *osexec.Cmd) {
 			}
 			cmd.SysProcAttr.CreationFlags |= createSuspended
 		} else {
-			_ = syscall.CloseHandle(syscall.Handle(handle)) // creation failed; no tree to kill
+			closeHandle(syscall.Handle(handle)) // creation failed; no tree to kill
 		}
 	}
 	trees.Store(cmd, tr)
 }
 
 func treeFor(cmd *osexec.Cmd) *tree {
-	v, _ := trees.Load(cmd)
-	tr, _ := v.(*tree)
+	v, ok := trees.Load(cmd)
+	if !ok {
+		return nil
+	}
+	tr, ok := v.(*tree)
+	if !ok {
+		return nil
+	}
 	return tr
 }
 
@@ -158,13 +205,13 @@ func (tr *tree) attach(cmd *osexec.Cmd) error {
 	if cmd.Process == nil {
 		return errNoProcess
 	}
-	handle, err := syscall.OpenProcess(processSetQuota|syscall.PROCESS_TERMINATE, false, uint32(cmd.Process.Pid))
+	handle, err := syscall.OpenProcess(processSetQuota|syscall.PROCESS_TERMINATE, false, pid32(cmd.Process.Pid))
 	if err != nil {
 		return watchdogError("open verify process for job assignment: " + err.Error())
 	}
-	defer func() { _ = syscall.CloseHandle(handle) }() // assignment error already rules
+	defer closeHandle(handle) // the assignment error already rules
 	r, _, callErr := procAssignProcessToJob.Call(uintptr(tr.handle), uintptr(handle))
-	if r == 0 {
+	if !win32OK(r) {
 		return watchdogError("assign verify process to job object: " + callErr.Error())
 	}
 	tr.attached = true
@@ -178,11 +225,15 @@ func armStarted(cmd *osexec.Cmd) error {
 	}
 	err := tr.attach(cmd)
 	if err == nil {
-		err = resumeProcess(uint32(cmd.Process.Pid))
+		err = resumeProcess(pid32(cmd.Process.Pid))
 	}
 	if err != nil {
-		_ = cmd.Process.Kill() // best effort: a suspended child must not leak
-		_ = cmd.Wait()         // reap it and release the output copiers
+		if killErr := cmd.Process.Kill(); killErr != nil && !errors.Is(killErr, os.ErrProcessDone) {
+			// A failed kill leaves the suspended child alive; Wait would block
+			// forever on a process that can never run.
+			return watchdogError(err.Error() + "; kill child process: " + killErr.Error())
+		}
+		_ = cmd.Wait() //nolint:errcheck // release the process handle and output copiers; the spawn error already rules
 		return err
 	}
 	return nil
@@ -200,7 +251,7 @@ func resumeProcess(pid uint32) error {
 	if err != nil {
 		return watchdogError("snapshot verify process threads: " + err.Error())
 	}
-	defer func() { _ = syscall.CloseHandle(snap) }() // snapshot read already rules
+	defer closeHandle(snap) // the snapshot read already rules
 	resumed := 0
 	for _, id := range threadsOf(snap, pid) {
 		if resumeThread(id) {
@@ -216,25 +267,25 @@ func resumeProcess(pid uint32) error {
 func threadsOf(snap syscall.Handle, pid uint32) []uint32 {
 	var ids []uint32
 	entry := threadEntry{Size: uint32(unsafe.Sizeof(threadEntry{}))}
-	more, _, _ := procThread32First.Call(uintptr(snap), uintptr(unsafe.Pointer(&entry)))
-	for more != 0 {
+	more := win32Call(procThread32First, uintptr(snap), uintptr(unsafe.Pointer(&entry)))
+	for win32OK(more) {
 		if entry.OwnerProcessID == pid {
 			ids = append(ids, entry.ThreadID)
 		}
 		entry.Size = uint32(unsafe.Sizeof(entry))
-		more, _, _ = procThread32Next.Call(uintptr(snap), uintptr(unsafe.Pointer(&entry)))
+		more = win32Call(procThread32Next, uintptr(snap), uintptr(unsafe.Pointer(&entry)))
 	}
 	return ids
 }
 
 func resumeThread(id uint32) bool {
-	th, _, _ := procOpenThread.Call(threadSuspendResume, 0, uintptr(id))
+	th := win32Call(procOpenThread, threadSuspendResume, 0, uintptr(id))
 	if th == 0 {
 		return false
 	}
-	defer func() { _ = syscall.CloseHandle(syscall.Handle(th)) }() // resume result already rules
-	prev, _, _ := procResumeThread.Call(th)
-	return uint32(prev) != resumeFailed
+	defer closeHandle(syscall.Handle(th)) // the resume result already rules
+	prev := win32Call(procResumeThread, th)
+	return resumeOK(prev)
 }
 
 func (tr *tree) terminate() bool {
@@ -243,8 +294,8 @@ func (tr *tree) terminate() bool {
 	if tr.closed || tr.handle == 0 {
 		return false
 	}
-	r, _, _ := procTerminateJobObject.Call(uintptr(tr.handle), forcedExitCode)
-	return r != 0
+	r := win32Call(procTerminateJobObject, uintptr(tr.handle), forcedExitCode)
+	return win32OK(r)
 }
 
 func (tr *tree) active() bool {
@@ -254,11 +305,11 @@ func (tr *tree) active() bool {
 		return false
 	}
 	var info jobAccounting
-	r, _, _ := procQueryInformationJob.Call(
+	r := win32Call(procQueryInformationJob,
 		uintptr(tr.handle), jobObjectBasicAccountingInformation,
 		uintptr(unsafe.Pointer(&info)), unsafe.Sizeof(info), 0,
 	)
-	return r != 0 && info.ActiveProcesses > 0
+	return win32OK(r) && info.ActiveProcesses > 0
 }
 
 func killGroup(cmd *osexec.Cmd) error {
@@ -272,6 +323,7 @@ func killGroup(cmd *osexec.Cmd) error {
 }
 
 func taskkillTree(pid int) error {
+	//nolint:gosec,noctx // G204: fixed argv over our own pid; noctx: the kill must outlive the expired context
 	kill := osexec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(pid))
 	kill.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	if out, err := kill.CombinedOutput(); err != nil {
@@ -285,14 +337,14 @@ func processAlive(_ context.Context, cmd *osexec.Cmd) bool {
 	if cmd.Process == nil {
 		return false
 	}
-	handle, err := syscall.OpenProcess(processQueryLimitedInformation, false, uint32(cmd.Process.Pid))
+	handle, err := syscall.OpenProcess(processQueryLimitedInformation, false, pid32(cmd.Process.Pid))
 	if err != nil {
 		return false
 	}
-	defer func() { _ = syscall.CloseHandle(handle) }() // liveness read already rules
+	defer closeHandle(handle) // the liveness read already rules
 	var code uint32
-	r, _, _ := procGetExitCodeProcess.Call(uintptr(handle), uintptr(unsafe.Pointer(&code)))
-	return r != 0 && code == stillActive
+	r := win32Call(procGetExitCodeProcess, uintptr(handle), uintptr(unsafe.Pointer(&code)))
+	return win32OK(r) && code == stillActive
 }
 
 func sweepOrphans(cmd *osexec.Cmd) bool {
@@ -308,6 +360,8 @@ func sweepOrphans(cmd *osexec.Cmd) bool {
 	return true
 }
 
+// TrimTail strips the trailing CR-LF pairs a Windows child leaves on a
+// captured last line, matching unix's shell-substitution trim.
 func TrimTail(s string) string {
 	return strings.TrimRight(s, "\r\n")
 }
@@ -317,8 +371,8 @@ func releaseTree(cmd *osexec.Cmd) {
 	if !ok {
 		return
 	}
-	tr, _ := v.(*tree)
-	if tr == nil {
+	tr, ok := v.(*tree)
+	if !ok || tr == nil {
 		return
 	}
 	tr.mu.Lock()
@@ -328,7 +382,7 @@ func releaseTree(cmd *osexec.Cmd) {
 	}
 	tr.closed = true
 	if tr.handle != 0 {
-		_ = syscall.CloseHandle(tr.handle) // final kill-on-close; no recovery path
+		closeHandle(tr.handle) // final kill-on-close; no recovery path
 		tr.handle = 0
 	}
 }
@@ -337,7 +391,7 @@ func waitStatusOf(exitErr *osexec.ExitError) (waitStatus, bool) {
 	if exitErr.ProcessState == nil {
 		return waitStatus{}, false
 	}
-	return waitStatus{status: exitErr.ProcessState.ExitCode()}, true
+	return waitStatus{status: exitErr.ExitCode()}, true
 }
 
 func timeoutExitCode() (int, bool) {

@@ -41,6 +41,7 @@ func replaceFile(from, to string) error {
 	for attempt := 1; ; attempt++ {
 		err := os.Rename(from, to)
 		if err == nil || attempt == replaceAttempts || !retryableReplace(err) {
+			//nolint:wrapcheck // the caller seals the rename error in the atomic-write message (GO-ERRORS-03)
 			return err
 		}
 		time.Sleep(wait)
@@ -53,6 +54,7 @@ func replaceRootFile(root *os.Root, from, to string) error {
 	for attempt := 1; ; attempt++ {
 		err := root.Rename(from, to)
 		if err == nil || attempt == replaceAttempts || !retryableReplace(err) {
+			//nolint:wrapcheck // the caller seals the rename error in the atomic-write message (GO-ERRORS-03)
 			return err
 		}
 		time.Sleep(wait)
