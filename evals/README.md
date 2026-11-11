@@ -208,7 +208,10 @@ hoststub_assert_all_routed
 ```
 
 A route key is the argv joined by single spaces — the string the stub logs,
-so a checked-in `expected-argvs.txt` reads as a contract. `hoststub_route
+so a checked-in `expected-argvs.txt` reads as a contract. The stub walks the
+real argv one element at a time, so an operand may carry a space (a sandbox
+under a `TMPDIR` with one); the private file behind `--config` is the one
+operand it rewrites, logged as `FILE`. `hoststub_route
 <tool> <argv> <body-file> [exit-status]` answers the first matching route:
 `/dev/null` answers with no stdout (a write), and a non-zero status is a
 failing call. Nothing reads stdin, so a route that must capture a posted

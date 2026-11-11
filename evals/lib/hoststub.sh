@@ -13,7 +13,9 @@
 #   hoststub_route glab 'mr view 7 -R acme/app -F json' "$FIX/MR.json"
 #
 # Route keys are the argv joined by single spaces, which is exactly what the
-# stub logs and what `hoststub_argv_log` writes out for comparison.
+# stub logs and what `hoststub_argv_log` writes out for comparison. The one
+# operand a stub rewrites is the private file behind `--config` (logged as
+# `FILE`): its path changes every call and is not part of the contract.
 set -euo pipefail
 
 : "${EVAL_STUBBIN:?run via evals/run.sh}"
@@ -50,16 +52,14 @@ hoststub_write() {
 set -uo pipefail
 routes="\${HOSTSTUB_ROUTES:?hoststub_init was not called}"
 log="\${HOSTSTUB_LOG:?hoststub_init was not called}"
-argv="\$*"
-printf 'stub-$tool %s\n' "\$argv" >>"\$log"
 config=""
 match=""
 prev=""
-# The split is the point, but argv carries URLs full of glob characters (?
-# and *): without -f a ? expands against the working directory and the match
-# never equals the registered route.
-set -f
-for arg in \$argv; do
+# The argv one element at a time, never a split of the joined line: an operand
+# may carry a space (a sandbox under a TMPDIR with one) and a split would turn
+# it into two words no registered route can match. URLs full of ? and * stay
+# literal for the same reason.
+for arg in "\$@"; do
   if [ "\$prev" = "--config" ]; then
     if [ "\$arg" = "-" ]; then
       config="\$(cat)"
@@ -71,19 +71,19 @@ for arg in \$argv; do
   match="\${match:+\$match }\$arg"
   prev="\$arg"
 done
-set +f
+printf 'stub-$tool %s\n' "\$match" >>"\$log"
 while IFS=\$'\\t' read -r want body status want_config; do
   [ "\$want" = "\$match" ] || continue
   if [ -n "\$want_config" ] && [ "\$config" != "\$want_config" ]; then
-    printf 'stub-$tool AUTH-MISMATCH %s\n' "\$argv" >>"\$log"
-    printf 'evals-stub-$tool: credential config mismatch (network disabled): %s\n' "\$argv" >&2
+    printf 'stub-$tool AUTH-MISMATCH %s\n' "\$match" >>"\$log"
+    printf 'evals-stub-$tool: credential config mismatch (network disabled): %s\n' "\$match" >&2
     exit 65
   fi
   [ -z "\$body" ] || cat "\$body"
   exit "\${status:-0}"
 done <"\$routes/$tool"
-printf 'stub-$tool UNRECOGNISED %s\n' "\$argv" >>"\$log"
-printf 'evals-stub-$tool: unrecognised argv (network disabled): %s\n' "\$argv" >&2
+printf 'stub-$tool UNRECOGNISED %s\n' "\$match" >>"\$log"
+printf 'evals-stub-$tool: unrecognised argv (network disabled): %s\n' "\$match" >&2
 exit 64
 STUB
   chmod +x "$path"
@@ -120,12 +120,10 @@ hoststub_count() {
 }
 
 # hoststub_argv_log <tool> <out> writes one call's argv per line, in call
-# order, for comparison against an expected-argvs fixture. A `--config <path>`
-# operand renders as `--config FILE`: the credential file lives in a fresh
-# private temp dir whose name changes every call, and the path is not part of
-# the argv contract.
+# order, for comparison against an expected-argvs fixture. The stub already
+# logs the argv contract (`--config FILE` for the private credential file).
 hoststub_argv_log() {
-  sed -n "s/^stub-$1 //p" "$HOSTSTUB_LOG" | sed -E 's/--config [^-][^ ]*/--config FILE/g' >"$2"
+  sed -n "s/^stub-$1 //p" "$HOSTSTUB_LOG" >"$2"
 }
 
 # hoststub_prove_dead <tool> proves the stub is what PATH resolves and that an

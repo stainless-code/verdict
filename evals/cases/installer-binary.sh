@@ -9,6 +9,7 @@ stub_before="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 
 CASE="$EVAL_SANDBOX/installer"
 REL="$CASE/release"
+REL_URL="$(file_url "$REL")"
 FAKEBIN="$CASE/fakebin"
 BIN_SRC="$CASE/fake-verdict"
 RELEASE_SHA='72e7d304d3cb8b85bc6c18eab2e51a50bd38fdad'
@@ -129,7 +130,7 @@ run_install() {
   (
     cd "$EVAL_SANDBOX" || exit 99
     HOME="$CASE_HOME" SHELL="$TEST_SHELL" PATH="$FAKEBIN:$PATH" \
-      VERDICT_DOWNLOAD_URL="file://$REL" VERDICT_INSTALL="$INSTALL_DIR" \
+      VERDICT_DOWNLOAD_URL="$REL_URL" VERDICT_INSTALL="$INSTALL_DIR" \
       VERDICT_VERSION="$PIN" VERDICT_NO_MODIFY_PATH="$NO_PATH" \
       VERDICT_REQUIRE_SIGNATURE="$REQUIRE_SIG" \
       VERDICT_COSIGN="${COSIGN_OVERRIDE:-$FAKEBIN/cosign}" \
@@ -164,7 +165,7 @@ for leg in "linux amd64 0 linux amd64" "linux arm64 0 linux arm64" \
   else
     bad "$want_os/$want_arch install exits $EVAL_STATUS ($(head -c 200 "$EVAL_ERR"))"
   fi
-  if grep -Fq "file://$REL/v1.2.3/$archive" "$CURL_LOG"; then
+  if grep -Fq "$REL_URL/v1.2.3/$archive" "$CURL_LOG"; then
     good "$want_os/$want_arch requests the contract archive $archive"
   else
     bad "$want_os/$want_arch did not request contract archive $archive"
@@ -178,7 +179,7 @@ for leg in "linux amd64 0 linux amd64" "linux arm64 0 linux arm64" \
     bad "$want_os/$want_arch cosign argv missing identity/issuer: $(cat "$COSIGN_LOG")"
   fi
   if grep -Fq -- "--certificate-github-workflow-sha $RELEASE_SHA" "$COSIGN_LOG" \
-    && grep -Fq "file://$REL/v1.2.3/commit.txt" "$CURL_LOG"; then
+    && grep -Fq "$REL_URL/v1.2.3/commit.txt" "$CURL_LOG"; then
     good "$want_os/$want_arch pins the signature to the published build commit"
   else
     bad "$want_os/$want_arch cosign argv lacks the build-commit pin: $(cat "$COSIGN_LOG")"
@@ -317,18 +318,18 @@ fresh
 PLAT_OS=linux; PLAT_ARCH=amd64; PIN=v3.0.0; COSIGN_OVERRIDE=''
 run_install
 if [ "$EVAL_STATUS" -eq 0 ] && grep -Fq '"version":"3.0.0"' "$INSTALL_DIR/.verdict-installer" \
-  && grep -Fq "file://$REL/v3.0.0/" "$CURL_LOG"; then
+  && grep -Fq "$REL_URL/v3.0.0/" "$CURL_LOG"; then
   good "VERDICT_VERSION=v3.0.0 pins the release"
 else
   bad "version pin exit $EVAL_STATUS"
 fi
 fresh
-PIN=latest; EFFECTIVE_URL="file://$REL/v9.9.9"
+PIN=latest; EFFECTIVE_URL="$REL_URL/v9.9.9"
 run_install
 assert_exit "latest resolution succeeds" 0
 assert_file_grep "latest pins the resolved version" "$INSTALL_DIR/.verdict-installer" '"version":"9.9.9"' "-F"
-assert_file_grep "latest fetches the resolved release" "$CURL_LOG" "file://$REL/v9.9.9/" "-F"
-assert_file_grep "latest walks the redirect" "$CURL_LOG" "file://$REL/latest" "-F"
+assert_file_grep "latest fetches the resolved release" "$CURL_LOG" "$REL_URL/v9.9.9/" "-F"
+assert_file_grep "latest walks the redirect" "$CURL_LOG" "$REL_URL/latest" "-F"
 assert_file_nogrep "latest never falls back to the API" "$CURL_LOG" 'api.github.com'
 EFFECTIVE_URL=''
 
