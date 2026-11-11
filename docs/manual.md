@@ -338,7 +338,12 @@ a missing or mis-stemmed body, or an empty (whitespace-only) body refuses
 `bad-pack`; a present `max_files` must be 1..24 and a present `max_findings`
 1..20. An absolute path, `..`, or a symlink component refuses
 `pack-unsafe-path`. A missing or empty pack root is absent, not an error: the
-loader returns no pack and the bundle carries no lens surface. The pack hash
+loader returns no pack and the bundle carries no lens surface. The 1 MiB
+per-pack cap is not a separate budget: the pack tree joins the controls
+inventory, so its bytes count against the controls tree's shared 1 MiB
+(`config.json`, `kb.jsonl`, `learnings.md`, and `overrides/` included), and a
+pack at its own ceiling leaves no room for the rest — the controls read
+refuses `controls-too-large`. The pack hash
 is sha256 over the canonical loaded tree (sorted slash paths, each fed as
 `== <path> ==`, its bytes, then a newline); each lens also carries the first
 eight hex digits of its body's sha256.
