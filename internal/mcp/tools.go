@@ -204,10 +204,10 @@ func allTools(readOnly, operator bool) []*tool {
 		}, toolDeps{}, decodeNext, wireNext, invokeNext),
 		directTool(&toolSpec{
 			name: "pack",
-			description: "List the lens packs that apply here: built-in, org (personal settings " +
-				"packs[]), and repo (.verdict/packs/), in precedence order, with lens and rule ids " +
-				"and drift. Call before reviewing to see which pack steers the run. Reads local " +
-				"files; writes nothing.",
+			description: "List lens packs: built-in, org (personal settings packs[]), and repo " +
+				"(.verdict/packs/), in precedence order, with lens/rule ids and drift. Lists the " +
+				"packs in this checkout; a review reads repo packs from the PR's base, so a pack " +
+				"the PR adds or edits is listed here but not used. Reads local files; writes nothing.",
 			omit:     omitPositionals,
 			required: []string{"list"},
 			meta:     toolMeta{title: "List lens packs", readOnly: true, idempotent: true},

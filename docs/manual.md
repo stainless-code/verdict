@@ -391,8 +391,13 @@ prompt, and the shipped prompt hash does not move.
 in precedence order: `name`, `version`, `layer`, `source` (`builtin`,
 `dir:<path>`, or `.verdict/packs/<name>`), the canonical tree `hash`, the
 declared `lenses` and `rules` ids, and `drift` (null until `verdict.lock`
-lands). Conflict refusals surface here too, so a bad layering fails before a
-review spends anything. The MCP `pack` tool serves the same read-only list.
+lands). It lists the packs in this checkout; a review reads repo packs from
+the PR's base, so a pack the PR adds or edits is listed here but not used.
+A regular file directly under `.verdict/packs/` (a README, say) is not a
+pack: `pack list` skips it with one warning naming it, and `fetch` ignores
+it, so a stray file never refuses the run. Conflict refusals surface here
+too, so a bad layering fails before a review spends anything. The MCP `pack`
+tool serves the same read-only list.
 
 ### Evidence ledger
 

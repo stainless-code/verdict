@@ -312,10 +312,12 @@ func usageText() string {
 		"  pack list [--json]\n" +
 		"    read-only lens-pack inventory in precedence order: built-in, org\n" +
 		"    (explicit packs[] paths in personal settings), and repo\n" +
-		"    (.verdict/packs/<name>/, read from the PR base by fetch). Rows carry\n" +
-		"    name, version, layer, source, tree hash, lens and rule ids, and drift\n" +
-		"    (null until verdict.lock). Duplicate ids inside one layer refuse\n" +
-		"    bad-pack; overriding a lower layer needs replace[] naming it, else\n" +
+		"    (.verdict/packs/<name>/). Lists the packs in this checkout; a review\n" +
+		"    reads repo packs from the PR's base, so a pack the PR adds or edits\n" +
+		"    is listed here but not used. Rows carry name, version, layer,\n" +
+		"    source, tree hash, lens and rule ids, and drift (null until\n" +
+		"    verdict.lock). Duplicate ids inside one layer refuse bad-pack;\n" +
+		"    overriding a lower layer needs replace[] naming it, else\n" +
 		"    pack-conflict.\n" +
 		"  upgrade [--version <v>] [--dry-run] [--json]\n" +
 		"    explicit, channel-aware self-update. Installer-managed installs verify the\n" +
