@@ -82,6 +82,7 @@ func RunList(ctx context.Context, req *Request) (*Response, *core.RefusalError) 
 	}
 	set, ref := Merge(origins)
 	if ref != nil {
+		ref.Warnings = warnings
 		return nil, ref
 	}
 	for _, warning := range warnings {
@@ -193,6 +194,7 @@ func repoEntries(dir string, entries []fs.DirEntry) ([]Origin, []string, *core.R
 	for _, entry := range entries {
 		origin, warning, ref := repoOriginEntry(dir, entry)
 		if ref != nil {
+			ref.Warnings = warnings
 			return nil, nil, ref
 		}
 		if warning != "" {

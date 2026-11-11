@@ -43,7 +43,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 		List:         true,
 	})
 	if ref != nil {
-		return r.Refuse(ref)
+		return r.RefuseTyped(ref)
 	}
 	if r.JSONMode {
 		env := core.RenderEnvelope(verbPack, "", "", resp.At, resp.Next,
