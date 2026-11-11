@@ -427,6 +427,40 @@ func TestCallersGenericInstantiationIsUnresolved(t *testing.T) {
 	}
 }
 
+// TestCallersQualifierRefusals proves an unmatched package qualifier refuses
+// instead of reporting no callers, and an ambiguous one still refuses.
+func TestCallersQualifierRefusals(t *testing.T) {
+	t.Run("unmatched", func(t *testing.T) {
+		f := newFixture(t)
+		writeCallFixture(f, "")
+		f.commit("one")
+		f.build()
+		req := f.request(QueryCallers, nil)
+		req.Symbol = "nosuchpkg.Target"
+		if _, ref := Run(context.Background(), req); ref == nil {
+			t.Fatal("unmatched qualifier returned a response")
+		} else if ref.Code != "bad-flags" ||
+			ref.Message != "package qualifier nosuchpkg matches no package directory or import path" {
+			t.Fatalf("refusal = %q: %q; want bad-flags naming the qualifier", ref.Code, ref.Message)
+		}
+	})
+	t.Run("ambiguous", func(t *testing.T) {
+		f := newFixture(t)
+		f.write("go.mod", "module example.com/m\n")
+		f.write("one/x/x.go", "package x\n\nfunc Target() {}\n")
+		f.write("two/x/x.go", "package x\n\nfunc Target() {}\n")
+		f.commit("one")
+		f.build()
+		req := f.request(QueryCallers, nil)
+		req.Symbol = "x.Target"
+		if _, ref := Run(context.Background(), req); ref == nil {
+			t.Fatal("ambiguous qualifier returned a response")
+		} else if ref.Code != "bad-flags" || ref.Message != "package qualifier x is ambiguous" {
+			t.Fatalf("refusal = %q: %q; want bad-flags ambiguous", ref.Code, ref.Message)
+		}
+	})
+}
+
 // TestIndexCapRefusal proves the file-count cap names the measured number and
 // an oversized file is skipped and counted.
 //

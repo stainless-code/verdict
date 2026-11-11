@@ -202,8 +202,6 @@ func matchingPackages(pkgs map[string]*packageInfo, dirs []string, qualifier str
 			exact = append(exact, dir)
 		case pkg.importPath != "" && strings.HasSuffix(pkg.importPath, "/"+qualifier):
 			byBase = append(byBase, dir)
-		case dir == "." && pkg.importPath == qualifier:
-			exact = append(exact, dir)
 		}
 	}
 	if len(exact) > 0 {
@@ -215,7 +213,10 @@ func matchingPackages(pkgs map[string]*packageInfo, dirs []string, qualifier str
 	if len(byBase) > 1 {
 		return nil, &core.RefusalError{Code: codeBadFlags, Message: "package qualifier " + qualifier + " is ambiguous"}
 	}
-	return nil, nil
+	return nil, &core.RefusalError{
+		Code:    codeBadFlags,
+		Message: "package qualifier " + qualifier + " matches no package directory or import path",
+	}
 }
 
 // queryCallers walks every package once per target: exact matches inside the
