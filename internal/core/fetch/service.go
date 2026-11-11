@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"strings"
 	"time"
 
@@ -229,7 +230,17 @@ func (st *state) session() (*session, *core.RefusalError) {
 		warnings:  &st.warnings,
 		commander: cmdr,
 		repoRoot:  st.req.RepoRootPath(),
+		packFS:    st.runtimePackFS(),
 	}, nil
+}
+
+// runtimePackFS returns the injected skill FS the built-in lens pack reads,
+// or nil when the caller supplied none.
+func (st *state) runtimePackFS() fs.FS {
+	if st.req.Runtime == nil {
+		return nil
+	}
+	return st.req.PackFS
 }
 
 // commander resolves the injected commander, refusing when the caller set
@@ -300,6 +311,7 @@ type session struct {
 	// repoRoot is the reviewed repository root every bundle path
 	// anchors to, resolved once per run from the request.
 	repoRoot string
+	packFS   fs.FS
 	retryAt  string
 	privacy  config.PrivacyView
 	JSONMode bool

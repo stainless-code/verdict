@@ -168,6 +168,11 @@ var publishedSemantics = map[string]string{
 	// patch identity: additive $defs/identity root (new bundle document) —
 	// no existing property, required key, or type changed.
 	"identity.schema.json": "efe9a7b331e41715bc55b8824e95154add584c2d63f670811ef03c350d2e5bdb",
+	// additive pack.schema.json (new document; no existing schema property,
+	// required key, or type changed). The lens-pack manifest fetch resolves
+	// from skills/verdict/packs/builtin: a closed object plus one closed lens
+	// row (id, optional globs, and the dispatch caps).
+	"pack.schema.json": "da0b677f7e1be68a2007dd86116dd26f2bad9745232fa6fe459608c169f9e0b4",
 	// patch identity: additive optional patch_id/patch_id_kind plus the
 	// optional forced[] audit with $defs/forcedPost. No existing property,
 	// required key, or type changed.

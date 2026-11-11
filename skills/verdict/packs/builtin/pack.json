@@ -1,0 +1,22 @@
+{
+  "schema_version": "1",
+  "name": "verdict/builtin",
+  "version": "1.0.0",
+  "lenses": [
+    {
+      "id": "api-contract",
+      "max_files": 12,
+      "max_findings": 10
+    },
+    {
+      "id": "perf",
+      "max_files": 12,
+      "max_findings": 10
+    },
+    {
+      "id": "test",
+      "max_files": 12,
+      "max_findings": 10
+    }
+  ]
+}

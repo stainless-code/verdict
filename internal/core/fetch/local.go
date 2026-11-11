@@ -83,6 +83,9 @@ func localPolicy(
 	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest,
 	f *core.FetchLocalFlags, r *session, mode *localMode,
 ) error {
+	if ref := loadLensPack(ctx2); ref != nil {
+		return ref
+	}
 	controlsRoot := req.RepoRootPath()
 	if r.iso != nil {
 		controlsRoot = r.iso.dir
@@ -286,6 +289,7 @@ func localStores(ctx2 *fetchRunCtx, r *session, dir, slug, listed, numstat strin
 		return ref
 	}
 	writeKBRecall(r, dir, listed)
+	writeLensBodies(ctx2)
 	return nil
 }
 

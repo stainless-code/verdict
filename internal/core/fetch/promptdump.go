@@ -142,7 +142,7 @@ func renderPromptDump(ctx *fetchRunCtx) (string, error) {
 	if ref := dumpChunkDiffs(ctx, &sb, nonce); ref != nil {
 		return "", ref
 	}
-	dumpFencedList(&sb, ctx.dir, nonce, []string{"kb.txt", "sensitive.txt", "panel"})
+	dumpFencedList(&sb, ctx.dir, nonce, []string{"kb.txt", "lenses.txt", "sensitive.txt", "panel"})
 	return sb.String(), nil
 }
 
@@ -445,7 +445,8 @@ func dumpPlan(ctx *fetchRunCtx, sb *strings.Builder, nonce string) {
 	for i := range rc.resolved.Plan.Groups {
 		group := &rc.resolved.Plan.Groups[i]
 		panel, panelFrom, effort := groupDispatch(rc.resolved, group)
-		fmt.Fprintln(&inner, planGroupLine(group, i, panel, panelFrom, effort)+groupCapFields(rc.resolved, group))
+		fmt.Fprintln(&inner, planGroupLine(group, i, panel, panelFrom, effort)+
+			groupCapFields(rc.resolved, group)+lensPlanFields(ctx.lensPack, group))
 	}
 	if rc.resolved.Plan.EffortTier != "" {
 		fmt.Fprintf(&inner, "effort: %s\n", rc.resolved.Plan.EffortTier)

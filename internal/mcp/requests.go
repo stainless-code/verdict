@@ -5,6 +5,7 @@ import (
 	"io"
 	"time"
 
+	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/core"
 	adoptcore "github.com/stainless-code/verdict/internal/core/adopt"
 	calibratecore "github.com/stainless-code/verdict/internal/core/calibrate"
@@ -40,6 +41,7 @@ func (b *bindings) wireRead(ctx context.Context, req *core.ReadRequest) error {
 		Now:       b.now,
 		Progress:  b.progress,
 		Commander: b.commander,
+		PackFS:    skillfs.FS,
 	}
 	req.Forces = &core.GlobalForces{}
 	req.Root = &root

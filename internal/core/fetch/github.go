@@ -169,6 +169,7 @@ func githubMiddle(ctx context.Context, ctx2 *fetchRunCtx, dir, repo, pr string) 
 		return ref
 	}
 	writeKBRecall(r, dir, extra)
+	writeLensBodies(ctx2)
 	if ref := githubReviews(ctx, r, dir, repo, pr); ref != nil {
 		return ref
 	}
@@ -297,6 +298,9 @@ func githubStat(ctx context.Context, ctx2 *fetchRunCtx) (string, []string) {
 }
 
 func fetchPrepare(ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags) (*budgetState, string, error) {
+	if ref := loadLensPack(ctx2); ref != nil {
+		return nil, "", ref
+	}
 	rc, ref := resolvePhaseOne(ctx2.env, req.SettingsPath, f.ChunkFlag)
 	if ref != nil {
 		return nil, "", ref

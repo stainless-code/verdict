@@ -55,6 +55,7 @@ const (
 	suffixInlineJSON    = "/inline.json"
 	suffixKBRecall      = "/kb-recall.json"
 	suffixKBTxt         = "/kb.txt"
+	suffixLensesTxt     = "/lenses.txt"
 	suffixMetaErr       = "/.meta.err"
 	suffixPRJSON        = "/PR.json"
 	suffixReviewsJSON   = "/reviews.json"

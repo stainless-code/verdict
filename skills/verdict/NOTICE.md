@@ -23,6 +23,7 @@ Adapted from Pullfrog:
 - `prompts/review.md`
 - `prompts/reviewer-subagent.md`
 - `prompts/system.md`
+- `packs/` (the lens bodies are drawn from the adapted review prompts)
 
 First-party, no upstream text:
 

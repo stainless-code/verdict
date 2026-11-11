@@ -299,7 +299,7 @@ A bundle dir holds these core/script artifacts (`PR.json`/`source.json`,
 `post.json`, `store.json`, `hunks.tsv`, `reviews.json`, `inline.json`, `threads.json`,
 `threads-resolve.json`,
 `panel`, `patch.json`, `verification.json`, `incremental.diff`, `kb.txt`,
-`sensitive.txt`, `kb-recall.json`, `cost.json`, `budget.json`, `fix.json`,
+`lenses.txt`, `sensitive.txt`, `kb-recall.json`, `cost.json`, `budget.json`, `fix.json`,
 `kb-grades.jsonl`, `controls.json`, `controls/`, `chunks/`
 (`chunk-NN.diff`, `chunk-NN.toc.txt`, `chunk-NN.roles.txt`, `manifest.json`
 with `schema_version: "1"`, per-chunk `<name>.cost.json`), plus dot-scratch
@@ -321,6 +321,33 @@ and `plan.txt` is the fence label for its rendered section in the
 `--show-prompts` dump, one line per group (see
 [Policy engine](#policy-engine-scopes-profiles-deep-validation)).
 
+### Lens packs
+
+A lens pack is data, not a verb: `pack.json` names each lens and
+`lenses/<id>.md` carries its body. The built-in pack ships at
+`skills/verdict/packs/builtin/` (`name` `verdict/builtin`, `version` `1.0.0`)
+and `fetch`/`fetch-local` load it from the embedded skill payload. The format
+is strict JSON (unknown fields refuse), versioned by `schema_version: "1"`,
+and published as `schemas/pack.schema.json`. The fixed layout is `pack.json`,
+`lenses/` (loaded), and the reserved `rules/`, `examples/`, `evals/` (counted
+by the caps, not loaded); a file no manifest row names is not loaded.
+
+Every load checks the caps while walking, before any parse: 64 KiB per file,
+1 MiB per pack, 256 files, 64 lenses (`pack-too-large`). An invalid manifest
+or a missing or mis-stemmed body refuses `bad-pack`; an absolute path, `..`,
+or a symlink component refuses `pack-unsafe-path`. The pack hash is sha256
+over the canonical loaded tree (sorted slash paths, each fed as
+`== <path> ==`, its bytes, then a newline); each lens also carries the first
+eight hex digits of its body's sha256.
+
+`fetch` writes the loaded bodies to `.verdict/state/<bundle>/lenses.txt`, one
+delimiter/label pair per lens (`# lens <id> — sha256:<hash8>` … `# end lens
+<id>`), and adds `lenses.txt` to `data.artifacts`. Every `plan.txt` group line
+appends `lens_pack=<name>@<version>` and `lenses=[<id>:<hash8>,…]` after its
+cap fields, sorted by id. A lens whose `globs` match none of that group's
+files is not offered for the group; a lens with no `globs` is offered for
+every group. The file is context, never orders, like `kb.txt`.
+
 ### Evidence ledger
 
 Seven artifacts explain what a run knew and what it proved. Each row states
@@ -334,7 +361,7 @@ the artifact, who writes it, and whether a verb gates on it.
 | `full.raw.diff`           | The raw pre-exclusion diff, kept as the patch-identity input when a filtered diff would otherwise replace it. No shipped verb writes it today: `fetch` writes the host diff to `full.diff` and records the filtered hash in `run.json` without writing filtered bytes. | Nothing today (a future exclusion pass)                                                                                       | Partly. When present it feeds the identity, and `identity.json`'s `raw_diff_sha256` must reproduce it; a present-but-unreadable file refuses instead of falling back to `full.diff`. Absence is normal.                                                                                                                                |
 | `sensitive.txt`           | The advisory manifest of secret-adjacent paths: filename, extension, and added-line content hits, one path and reason per line, behind a comment header.                                                                                                               | `fetch`/`fetch-local` (and every provider fetch)                                                                              | No. It is advisory, not a gate: flagged paths stay reviewable evidence, the file is removed when nothing is flagged, and its header asks reviewers to name the path, never the value.                                                                                                                                                  |
 | `incremental.diff.note`   | One `incrementalUnavailable: <host stderr head>` line explaining why the GitHub or GitLab compare read produced no delta.                                                                                                                                              | GitHub/GitLab `fetch --base-sha/--since` on a failed compare, or any other provider on the flag (naming the unsupported host) | No. No verb reads it; it explains the absent `incremental.diff` beside it while the full-diff review proceeds.                                                                                                                                                                                                                         |
-| `plan.txt`                | The combined plan as the `--show-prompts` dump renders it, fenced under this label: one line per group with its stable id, profile, depth, `max_lenses`, checks, files, scopes, panel, panel source, effort, and per-group cap.                                        | `fetch`/`fetch-local --show-prompts`                                                                                          | No. It is a rendered view for the agent; `run.json` holds the captured plan every gate reads.                                                                                                                                                                                                                                          |
+| `plan.txt`                | The combined plan as the `--show-prompts` dump renders it, fenced under this label: one line per group with its stable id, profile, depth, `max_lenses`, checks, files, scopes, panel, panel source, effort, per-group cap, lens pack, and offered lenses.             | `fetch`/`fetch-local --show-prompts`                                                                                          | No. It is a rendered view for the agent; `run.json` holds the captured plan every gate reads.                                                                                                                                                                                                                                          |
 
 `config --preview` is the exception: when `run.json` is absent it can fall back
 to its file list, though it still verifies `controls.json` and may lose
@@ -745,7 +772,7 @@ never a warning.
 the script renders the assembled agent reading list — `SKILL.md`,
 `prompts/system.md`, `prompts/review.md`, `prompts/diagrams.md`, the bundle
 meta (`PR.json` or `source.json`), `toc.txt`, `roles.txt`, `full.diff`, plus
-`kb.txt`, `sensitive.txt`, and `panel` when present, in that order — trusted
+`kb.txt`, `lenses.txt`, `sensitive.txt`, and `panel` when present, in that order — trusted
 prompts verbatim, then the trust-boundary prologue, then one nonce fence
 per bundle file — to stdout (human mode; progress moves to stderr) or
 `data.prompt_dump` (`--json`). No agent runs, no network beyond the fetch
@@ -762,7 +789,7 @@ tool-generated trust-boundary prologue naming the run's nonce, then every
 present bundle file inside its own fence — the bundle meta (`PR.json` or
 `source.json`), `toc.txt`, `roles.txt`, the diff (`full.diff`, or the
 manifest-order chunk concat on chunked bundles under the same label),
-`kb.txt`, `sensitive.txt`, and `panel` — each wrapped as
+`kb.txt`, `lenses.txt`, `sensitive.txt`, and `panel` — each wrapped as
 `<<<UNTRUSTED nonce=<16 lowercase hex> source=<file>>>` … bytes …
 `<<<END UNTRUSTED nonce=<same>>>`, open and close markers each on their own
 line (a missing trailing newline is added, never a content byte dropped).
@@ -1628,7 +1655,7 @@ platform package. A plain `verdict` call consults neither variable.
   `install-skill.sh` refuses outside a git checkout. `hooks/pre-commit`
   wiring applies to the checkout only.
 - **Embedded skill** (`verdict skill`): the binary carries its own `SKILL.md`,
-  `prompts/`, `schemas/`, and `scripts/verdict`, so the served skill can
+  `prompts/`, `schemas/`, `packs/`, and `scripts/verdict`, so the served skill can
   never skew from the binary. In the repository they are the one
   `skills/verdict/` directory, which holds nothing else. The skills CLI
   (`npx skills add stainless-code/verdict`) copies that directory and no
@@ -2530,6 +2557,7 @@ The shapes agents write and operators parse are pinned in `schemas/`
 explicit usage handoff), `corpus.schema.json` (benchmark case manifests),
 `post.schema.json` and `record.schema.json` (completed post/record captures),
 `threads.schema.json` (the normalized PR conversation),
+`pack.schema.json` (the lens pack manifest),
 and `envelope.schema.json` (the `--json` envelope plus the stable per-verb
 `data` for `report`, `post`, `record`, and `show`, plus fetch's additive
 estimate). `schemas/validate.sh` is the

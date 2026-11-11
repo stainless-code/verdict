@@ -16,6 +16,17 @@ var fenceLine = regexp.MustCompile("^ {0,3}(`{3,})(.*)$")
 // infoWord accepts the info strings these prompts use: a bare language tag.
 var infoWord = regexp.MustCompile(`^[A-Za-z0-9_+.-]*$`)
 
+// TestPromptsHashUnchanged pins the shipped prompt-set hash. The built-in
+// lens pack is not part of promptFiles, so shipping it must leave this value
+// byte-identical; a move here is a deliberate prompt edit, never a side effect.
+func TestPromptsHashUnchanged(t *testing.T) {
+	t.Parallel()
+	const want = "259fa2dc6d63fc600a2fc94a6b70bc16399031bbf62dbf524366bd1b53db700b"
+	if got := PromptsHash(filepath.Join("..", "..")); got != want {
+		t.Fatalf("PromptsHash = %s, want %s", got, want)
+	}
+}
+
 // TestPromptBlocksBalanced guards the copyable skeletons in the served
 // prompts. Every prompt is hashed into the review provenance, so a corrupt
 // fence ships to every agent that reads the skill and nothing else compares

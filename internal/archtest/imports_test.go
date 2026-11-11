@@ -57,6 +57,7 @@ var forbiddenDeps = []string{
 // distribution surfaces (internal/core/upgrade, internal/core/skill) and every
 // CLI/transport adapter are absent by design.
 var facadeAllowedDeps = map[string]bool{
+	"":                        true, // the payload root (skillfs) embeds the shipped lens pack
 	"internal/atomic":         true,
 	"internal/brief":          true,
 	"internal/config":         true,
@@ -73,6 +74,7 @@ var facadeAllowedDeps = map[string]bool{
 	"internal/core/fix":       true,
 	"internal/core/init":      true,
 	"internal/core/learn":     true,
+	"internal/core/pack":      true,
 	"internal/core/post":      true,
 	"internal/core/ready":     true,
 	"internal/core/record":    true,
@@ -102,7 +104,7 @@ var facadeAllowedDeps = map[string]bool{
 // unnoticed.
 var coreSubpackages = []string{
 	"adopt", "calibrate", "checktree", "corpus", "coverage", "doctor", "exec", "fetch", "fix",
-	"init", "learn", "post", "ready", "record", "report", "run", "skill", "threads",
+	"init", "learn", "pack", "post", "ready", "record", "report", "run", "skill", "threads",
 	"trend", "triage", "upgrade", "verify",
 }
 

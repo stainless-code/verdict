@@ -51,6 +51,7 @@ const (
 const (
 	payloadPromptsDir = "prompts"
 	payloadSchemasDir = "schemas"
+	payloadPacksDir   = "packs"
 	payloadScriptsDir = "scripts"
 )
 

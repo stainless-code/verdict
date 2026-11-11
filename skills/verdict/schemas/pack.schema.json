@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/pack.schema.json",
+  "title": "pack.json — a lens pack manifest",
+  "description": "A lens pack manifest at skills/verdict/packs/builtin/pack.json: the published format fetch resolves into the bundle. The schema closes the shape; the loader also enforces the caps (64 KiB/file, 1 MiB/pack, 256 files, 64 lenses) and the rule that every lens id names lenses/<id>.md. A file no manifest row names is counted but never loaded.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "description": "Pack format version; exactly \"1\".",
+      "const": "1"
+    },
+    "name": {
+      "description": "Pack identity as <namespace>/<slug>, for example verdict/builtin.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$"
+    },
+    "version": {
+      "description": "Pack semver; fetch prints <name>@<version> on every plan group line.",
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    },
+    "lenses": {
+      "description": "One row per lens, at least one and at most 64; each id names lenses/<id>.md.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/lens" },
+      "minItems": 1
+    }
+  },
+  "required": ["schema_version", "name", "version", "lenses"],
+  "additionalProperties": false,
+  "$defs": {
+    "lens": {
+      "description": "One lens row: its id, optional group-file globs, and the dispatch caps. A lens with no globs is offered for every plan group; a lens whose globs match none of a group's files is not offered for that group.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "Lowercase slug; the body is lenses/<id>.md and the file stem must equal the id.",
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "globs": {
+          "description": "Optional slash-path globs matched with the repository-config dialect; absent means every plan group.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "max_files": {
+          "description": "Dispatch scope cap, 1..24 files; the shipped reviewer contract states at most ~12.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 24
+        },
+        "max_findings": {
+          "description": "Dispatch return cap, 1..20 findings; the shipped reviewer contract states at most 10.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        }
+      },
+      "required": ["id"],
+      "additionalProperties": false
+    }
+  }
+}

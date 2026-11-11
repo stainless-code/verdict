@@ -10,6 +10,7 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/core/pack"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -369,6 +370,7 @@ type fetchRunCtx struct {
 	runner    *session
 	env       map[string]string
 	runCfg    *runConfig
+	lensPack  *pack.Pack
 	repo      string
 	pr        string
 	dir       string

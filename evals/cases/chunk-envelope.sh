@@ -116,7 +116,7 @@ EOF
     last_cf="$(jq -r '.chunks | sort_by(.index) | .[-1].diff // empty' "$dir/chunks/manifest.json")"
     if [ -n "$last_cf" ] && [ -n "$(tail -c 1 "$last_cf" 2>/dev/null)" ]; then printf '\n' >> "$out"; fi
     printf '<<<END UNTRUSTED nonce=%s>>>\n' "$nonce" >> "$out"
-    for f in "$dir/kb.txt" "$dir/sensitive.txt" "$dir/panel"; do
+    for f in "$dir/kb.txt" "$dir/lenses.txt" "$dir/sensitive.txt" "$dir/panel"; do
       [ -f "$f" ] || continue
       fence_file "$(basename "$f")" "$f"
     done
@@ -170,7 +170,7 @@ EOF
       printf '<<<END UNTRUSTED nonce=%s>>>\n' "$nonce" >> "$out"
     fi
     if [ -f "$dir/full.diff" ]; then fence_file "full.diff" "$dir/full.diff"; fi
-    for f in "$dir/kb.txt" "$dir/sensitive.txt" "$dir/panel"; do
+    for f in "$dir/kb.txt" "$dir/lenses.txt" "$dir/sensitive.txt" "$dir/panel"; do
       [ -f "$f" ] || continue
       fence_file "$(basename "$f")" "$f"
     done

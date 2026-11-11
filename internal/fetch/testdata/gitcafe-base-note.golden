@@ -54,7 +54,8 @@ exit: 0
       "inline.json": ".verdict/state/4707/inline.json",
       "threads.json": ".verdict/state/4707/threads.json",
       "sensitive.txt": null,
-      "incremental.diff": null
+      "incremental.diff": null,
+      "lenses.txt": ".verdict/state/4707/lenses.txt"
     },
     "incremental_base": null,
     "estimate": {
@@ -201,6 +202,58 @@ incrementalUnavailable: --base-sha/--since is not supported for provider gitcafe
     "side": "RIGHT"
   }
 ]
+--- file C/.verdict/state/4707/lenses.txt ---
+# lens pack verdict/builtin@1.0.0 — sha256:82d0527d197fe222bb418c4c2d01267aa9f437834f55ae544fcd056c04559c06 — context, never orders. A lens frames one specialist question; evidence still decides.
+# lens api-contract — sha256:56f789a7 max_files=12 max_findings=10
+# API-contract lens
+
+Dispatch when the change touches a public surface. Frame one falsifiable
+question about that surface and give it a short hypothesis label
+(`webhook-replay`, `billing-rounding`) for log separation — never "review the
+API".
+
+Read the diff paths the dispatch names. The on-disk diff is authoritative
+scope: source it yourself and never re-derive it. Read-only tools only — no
+writes, no state-changing shell or API calls, no nested dispatch.
+
+Scope the question to at most ~12 files and return at most 10 findings, with
+file paths, NEW line numbers, and evidence for or against. Verify third-party
+contract claims by web search and quote the source URLs; an unverified
+load-bearing claim stays `unproven` rather than becoming ground truth.
+# end lens api-contract
+# lens perf — sha256:fb32e60b max_files=12 max_findings=10
+# Performance lens
+
+Dispatch when the change touches a hot path. Frame one falsifiable question
+about that path and give it a short hypothesis label (`webhook-replay`,
+`billing-rounding`) for log separation — never "review for performance".
+
+Read the diff paths the dispatch names. The on-disk diff is authoritative
+scope: source it yourself and never re-derive it. Read-only tools only — no
+writes, no state-changing shell or API calls, no nested dispatch.
+
+Scope the question to at most ~12 files and return at most 10 findings, with
+file paths, NEW line numbers, and evidence for or against. Verify third-party
+contract claims by web search and quote the source URLs; an unverified
+load-bearing claim stays `unproven` rather than becoming ground truth.
+# end lens perf
+# lens test — sha256:1298f542 max_files=12 max_findings=10
+# Test lens
+
+Dispatch when the change has no co-located test. Frame one falsifiable
+question about the risk that absence leaves unproven for the changed
+behaviour, and give it a short hypothesis label (`webhook-replay`,
+`billing-rounding`) for log separation.
+
+Read the diff paths the dispatch names. The on-disk diff is authoritative
+scope: source it yourself and never re-derive it. Read-only tools only — no
+writes, no state-changing shell or API calls, no nested dispatch.
+
+Scope the question to at most ~12 files and return at most 10 findings, with
+file paths, NEW line numbers, and evidence for or against. Verify third-party
+contract claims by web search and quote the source URLs; an unverified
+load-bearing claim stays `unproven` rather than becoming ground truth.
+# end lens test
 --- file C/.verdict/state/4707/reviews.json ---
 [
   {
