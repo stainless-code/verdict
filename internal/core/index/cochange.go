@@ -88,7 +88,7 @@ func (st *state) coChanged(ctx context.Context) (*Response, *core.RefusalError) 
 	if ref != nil {
 		return nil, ref
 	}
-	tree, ref := st.resolveTree(ctx, root, "HEAD")
+	tree, ref := st.resolveTree(ctx, root, head)
 	if ref != nil {
 		return nil, ref
 	}
@@ -242,7 +242,7 @@ func (st *state) coChangeWindow(
 	if doc := readCoChangeCache(path, head, commits, spec.cache); doc != nil {
 		return doc, nil
 	}
-	changes, ref := st.readCoChangeLog(ctx, root, commits, spec)
+	changes, ref := st.readCoChangeLog(ctx, root, head, commits, spec)
 	if ref != nil {
 		return nil, ref
 	}
@@ -322,11 +322,37 @@ func readCoChangeCache(path, head string, commits int, since string) *coChangeDo
 	return &doc
 }
 
+// coChangeCacheLink names the symlinked component that forbids a cache write,
+// or "" when the write may proceed. A symlinked store, cache directory, or
+// cache file would carry the write or the prune outside the checkout, so the
+// window is skipped like any other the cache cannot hold.
+func coChangeCacheLink(dir, path string) string {
+	switch {
+	case isSymlink(filepath.Dir(dir)):
+		return "the index store is a symlink"
+	case isSymlink(dir):
+		return "the co-change cache directory is a symlink"
+	case isSymlink(path):
+		return "the co-change cache file is a symlink"
+	}
+	return ""
+}
+
+// isSymlink reports whether path exists and is a symbolic link, without
+// following it.
+func isSymlink(path string) bool {
+	info, err := os.Lstat(path)
+	return err == nil && info.Mode()&os.ModeSymlink != 0
+}
+
 // writeCoChangeCache stores one window and keeps the two newest caches. It
 // creates the cache directory inside an existing store and nothing above it.
 // What it cannot do, it returns as the warning's reason: a cache miss costs the
 // answer nothing, so no caller inspects the cause.
 func writeCoChangeCache(dir, path string, doc *coChangeDoc) string {
+	if reason := coChangeCacheLink(dir, path); reason != "" {
+		return reason
+	}
 	if err := os.Mkdir(dir, storeDirPerm); err != nil && !errors.Is(err, os.ErrExist) {
 		return "could not create " + dir + ": " + err.Error()
 	}
@@ -361,11 +387,12 @@ type cacheCandidate struct {
 	mod  int64
 }
 
-// cacheCandidates collects the regular JSON files one cache directory holds.
+// cacheCandidates collects the regular JSON files one cache directory holds. A
+// symlink is skipped, never pruned or written through.
 func cacheCandidates(entries []os.DirEntry) []cacheCandidate {
 	var files []cacheCandidate
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), jsonSuffix) {
+		if e.IsDir() || e.Type()&os.ModeSymlink != 0 || !strings.HasSuffix(e.Name(), jsonSuffix) {
 			continue
 		}
 		info, err := e.Info()
@@ -386,11 +413,12 @@ func newestCacheFirst(a, b cacheCandidate) int {
 	return strings.Compare(b.name, a.name)
 }
 
-// readCoChangeLog reads one bounded history window with a single git log call.
+// readCoChangeLog reads one bounded history window with a single git log call,
+// pinned to the resolved commit so a ref moving mid-query cannot mix windows.
 // `--no-renames` lists both sides of a rename, so the window holds the names
 // the file had rather than one path the repository's diff config chose.
 func (st *state) readCoChangeLog(
-	ctx context.Context, root string, commits int, spec windowSpec,
+	ctx context.Context, root, head string, commits int, spec windowSpec,
 ) ([]windowCommit, *core.RefusalError) {
 	args := []string{
 		"log", "--no-merges", "--no-renames", "--name-only", "-z", "-n", strconv.Itoa(commits),
@@ -399,10 +427,11 @@ func (st *state) readCoChangeLog(
 	if spec.cutoff != "" {
 		args = append(args, "--since="+spec.cutoff)
 	}
-	if spec.revRange != "" {
-		args = append(args, spec.revRange)
+	revision := spec.revRange
+	if revision == "" {
+		revision = head
 	}
-	out, exit, stderr, err := st.git(ctx, root, append(args, "--")...)
+	out, exit, stderr, err := st.git(ctx, root, append(args, revision, "--")...)
 	if err != nil {
 		return nil, asRefusal(err)
 	}

@@ -2627,7 +2627,9 @@ divorced from its denominator. Merges are excluded. The call passes
 `--no-renames` under a pinned `diff.renames=false`, so a rename counts as its
 old and new path in one commit — both names co-change with everything in it
 and the two are never joined here — and no repository diff config can shrink
-the window. `--since` takes a duration (`90d`, `12w`,
+the window. The history read is pinned to the commit the query resolved, so a
+ref that moves mid-query cannot mix two windows. `--since` takes a duration
+(`90d`, `12w`,
 `18mo`, `2y`) measured back from HEAD's own committer date, or a ref whose
 history is excluded. A shallow clone warns that the counts are true of the
 commits present only. The window is cached under
@@ -2635,9 +2637,11 @@ commits present only. The window is cached under
 timestamp-free, so the same window writes the same bytes, and a corrupt cache
 is rebuilt rather than read as an empty window. The cache is best-effort: a
 query writes nothing into an absent index store, nothing for a shallow clone's
-window (a truncated window must not survive `git fetch --unshallow`), and
+window (a truncated window must not survive `git fetch --unshallow`),
 nothing for a window holding a path that is not valid UTF-8 (JSON would rewrite
-the bytes and a later hit would stop matching). Each costs the answer nothing —
+the bytes and a later hit would stop matching), and nothing through a symlinked
+`.verdict/index`, `cochange/` directory, or cache file — a write or a prune
+must stay inside the checkout. Each costs the answer nothing —
 the rows are already computed — and one
 `» index: co-change cache not written: <reason>` line on the human surface
 names why nothing was cached; a shallow clone's own warning carries its case.

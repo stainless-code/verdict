@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -869,6 +870,214 @@ func TestCoChangedReadOnlyStoreStillAnswers(t *testing.T) {
 	if len(resp.Warnings) != 1 || !strings.HasPrefix(resp.Warnings[0], prefix) {
 		t.Errorf("warnings = %q; want exactly one starting %q", resp.Warnings, prefix)
 	}
+}
+
+// seededDecoys fills dir with old JSON files a prune would delete if it
+// followed a symlink, and returns dir.
+func seededDecoys(t *testing.T, dir string, n int) string {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for i := range n {
+		path := filepath.Join(dir, "decoy-"+strconv.Itoa(i)+".json")
+		if err := os.WriteFile(path, []byte(`{"decoy":`+strconv.Itoa(i)+`}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		stamp := time.Unix(int64(i), 0)
+		if err := os.Chtimes(path, stamp, stamp); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+// assertDecoysIntact reads every seeded decoy back byte for byte.
+func assertDecoysIntact(t *testing.T, dir string, n int) {
+	t.Helper()
+	for i := range n {
+		path := filepath.Join(dir, "decoy-"+strconv.Itoa(i)+".json")
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("decoy %d: %v", i, err)
+		}
+		want := `{"decoy":` + strconv.Itoa(i) + `}`
+		if string(raw) != want {
+			t.Errorf("decoy %d = %q; want %q", i, raw, want)
+		}
+	}
+}
+
+// TestCoChangedSymlinkedCacheWritesNothing proves a cache that would carry a
+// write or a prune outside the checkout is skipped: the rows still answer,
+// every linked file survives untouched, and one warning names the link.
+func TestCoChangedSymlinkedCacheWritesNothing(t *testing.T) {
+	t.Run("cache directory", func(t *testing.T) {
+		f := newFixture(t)
+		writeHistoryFixture(f)
+		f.build()
+		outside := seededDecoys(t, t.TempDir(), 3)
+		if err := os.Symlink(outside, filepath.Join(f.dir, cochangeCacheDirName)); err != nil {
+			t.Skipf("this platform cannot create symlinks here: %v", err)
+		}
+		resp := f.queryPath(QueryCoChanged, "a/target.go")
+		assertCoChangeRows(t, resp.Data.CoChangeRows, []CoChangeRow{
+			{Path: "b/partner.go", Commits: 3, Jaccard: 0.75},
+			{Path: "c/rare.go", Commits: 2, Jaccard: 0.5},
+		})
+		assertDecoysIntact(t, outside, 3)
+		want := "» index: co-change cache not written: the co-change cache directory is a symlink"
+		if !slices.Contains(resp.Warnings, want) {
+			t.Errorf("warnings = %q; want one equal to %q", resp.Warnings, want)
+		}
+	})
+	t.Run("store directory", func(t *testing.T) {
+		f := newFixture(t)
+		writeHistoryFixture(f)
+		f.build()
+		store := filepath.Join(t.TempDir(), "store")
+		if err := os.Rename(filepath.Join(f.dir, ".verdict", "index"), store); err != nil {
+			t.Fatal(err)
+		}
+		outside := seededDecoys(t, filepath.Join(store, "cochange"), 3)
+		if err := os.Symlink(store, filepath.Join(f.dir, ".verdict", "index")); err != nil {
+			t.Skipf("this platform cannot create symlinks here: %v", err)
+		}
+		resp := f.queryPath(QueryCoChanged, "a/target.go")
+		assertCoChangeRows(t, resp.Data.CoChangeRows, []CoChangeRow{
+			{Path: "b/partner.go", Commits: 3, Jaccard: 0.75},
+			{Path: "c/rare.go", Commits: 2, Jaccard: 0.5},
+		})
+		assertDecoysIntact(t, outside, 3)
+		want := "» index: co-change cache not written: the index store is a symlink"
+		if !slices.Contains(resp.Warnings, want) {
+			t.Errorf("warnings = %q; want one equal to %q", resp.Warnings, want)
+		}
+	})
+	t.Run("cache file", func(t *testing.T) {
+		f := newFixture(t)
+		writeHistoryFixture(f)
+		f.build()
+		cache := filepath.Join(f.dir, cochangeCacheDirName, f.run("", "rev-parse", "HEAD")+"-2000.json")
+		f.queryPath(QueryCoChanged, "a/target.go")
+		if err := os.Remove(cache); err != nil {
+			t.Fatal(err)
+		}
+		outside := filepath.Join(t.TempDir(), "decoy.json")
+		if err := os.WriteFile(outside, []byte("not a window"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, cache); err != nil {
+			t.Skipf("this platform cannot create symlinks here: %v", err)
+		}
+		resp := f.queryPath(QueryCoChanged, "a/target.go")
+		assertCoChangeRows(t, resp.Data.CoChangeRows, []CoChangeRow{
+			{Path: "b/partner.go", Commits: 3, Jaccard: 0.75},
+			{Path: "c/rare.go", Commits: 2, Jaccard: 0.5},
+		})
+		info, err := os.Lstat(cache)
+		if err != nil || info.Mode()&os.ModeSymlink == 0 {
+			t.Errorf("cache path = %v (%v); want the symlink left in place", info, err)
+		}
+		if raw, err := os.ReadFile(outside); err != nil || string(raw) != "not a window" {
+			t.Errorf("decoy = %q (%v); want it untouched", raw, err)
+		}
+		want := "» index: co-change cache not written: the co-change cache file is a symlink"
+		if !slices.Contains(resp.Warnings, want) {
+			t.Errorf("warnings = %q; want one equal to %q", resp.Warnings, want)
+		}
+	})
+}
+
+// movingHeadCommander performs act once, when the query reaches an argv the
+// move predicate names, so a ref that moves mid-query is visible in what the
+// query reads next.
+type movingHeadCommander struct {
+	act   func()
+	move  func(argv []string) bool
+	moved bool
+}
+
+// Run implements core.Commander.
+func (c *movingHeadCommander) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
+	if !c.moved && c.move(cmd.Argv) {
+		c.moved = true
+		c.act()
+	}
+	return coreexec.Runner{}.Run(ctx, cmd)
+}
+
+// movesOnLog triggers the move when the history read starts.
+func movesOnLog(argv []string) bool { return slices.Contains(argv, "log") }
+
+// movesOnTree triggers the move when a tree resolution starts.
+func movesOnTree(argv []string) bool {
+	return slices.ContainsFunc(argv, func(arg string) bool { return strings.HasSuffix(arg, "^{tree}") })
+}
+
+// TestCoChangedPinsTheResolvedCommit proves the window is read from the commit
+// the query resolved: a HEAD that moves before git log runs cannot add its
+// commits to the window or name the cache file.
+func TestCoChangedPinsTheResolvedCommit(t *testing.T) {
+	f := newFixture(t)
+	writeHistoryFixture(f)
+	f.build()
+	head := f.run("", "rev-parse", "HEAD")
+	req := f.request(QueryCoChanged, nil)
+	req.Path = "a/target.go"
+	req.Runtime.Commander = &movingHeadCommander{
+		move: movesOnLog,
+		act:  func() { f.emptyCommit("moved mid-query") },
+	}
+	resp, ref := Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("index co-changed refused: %v", ref)
+	}
+	moved := f.run("", "rev-parse", "HEAD")
+	if moved == head {
+		t.Fatal("the commander did not move HEAD; the fixture proves nothing")
+	}
+	if resp.Data.Window.Last != head || resp.Data.Window.Commits != 4 {
+		t.Errorf("window = %+v; want the four commits ending at %s", resp.Data.Window, head)
+	}
+	assertCoChangeRows(t, resp.Data.CoChangeRows, []CoChangeRow{
+		{Path: "b/partner.go", Commits: 3, Jaccard: 0.75},
+		{Path: "c/rare.go", Commits: 2, Jaccard: 0.5},
+	})
+	for _, name := range []string{head + "-2000.json", moved + "-2000.json"} {
+		_, err := os.Stat(filepath.Join(f.dir, cochangeCacheDirName, name))
+		want := name == head+"-2000.json"
+		if got := err == nil; got != want {
+			t.Errorf("cache %s exists = %t; want %t", name, got, want)
+		}
+	}
+}
+
+// TestCoChangedReadsThePinnedTree proves the tree the answer reads is the
+// resolved commit's, not a HEAD re-read that may have moved: a CODEOWNERS rule
+// landing after resolution cannot change this answer.
+func TestCoChangedReadsThePinnedTree(t *testing.T) {
+	f := newFixture(t)
+	codeownersFixture(f, "* @old\n")
+	f.commit("one")
+	f.build()
+	req := f.request(QueryCoChanged, nil)
+	req.Path = "a/a.go"
+	req.Runtime.Commander = &movingHeadCommander{
+		move: movesOnTree,
+		act: func() {
+			f.write(".github/CODEOWNERS", "* @new\n")
+			f.commit("moved mid-query")
+		},
+	}
+	resp, ref := Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("index co-changed refused: %v", ref)
+	}
+	if f.run("", "show", "HEAD:.github/CODEOWNERS") != "* @new" {
+		t.Fatal("the commander did not move HEAD's CODEOWNERS; the fixture proves nothing")
+	}
+	assertOwners(t, resp.Data.Target, []string{"@old"}, ".github/CODEOWNERS")
 }
 
 // TestCoChangedShallowCachesNothing proves a depth-limited window is never
