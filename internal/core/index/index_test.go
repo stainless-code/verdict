@@ -63,6 +63,15 @@ func (f *fixture) run(stdin string, args ...string) string {
 // git runs one git command in the fixture.
 func (f *fixture) git(args ...string) { f.run("", args...) }
 
+// gitNoProtect runs one git command with the pathname-protection heuristics
+// off. Git for Windows rejects NTFS-invalid names (core.protectNTFS) even in
+// the index, and the index under test only reads tree objects, which git never
+// validates.
+func (f *fixture) gitNoProtect(args ...string) {
+	f.t.Helper()
+	f.git(append([]string{"-c", "core.protectNTFS=false", "-c", "core.protectHFS=false"}, args...)...)
+}
+
 // write writes one file under the repository.
 func (f *fixture) write(name, body string) {
 	f.t.Helper()
@@ -89,8 +98,8 @@ func (f *fixture) commitObject(name, body, msg string) {
 	f.t.Helper()
 	f.git("add", "-A")
 	blob := f.run(body, "hash-object", "-w", "--stdin")
-	f.git("update-index", "--add", "--cacheinfo", "100644,"+blob+","+name)
-	f.git("commit", "-qm", msg)
+	f.gitNoProtect("update-index", "--add", "--cacheinfo", "100644,"+blob+","+name)
+	f.gitNoProtect("commit", "-qm", msg)
 	f.day++
 }
 
