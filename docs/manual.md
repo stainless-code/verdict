@@ -2338,6 +2338,14 @@ one machine-readable code per absent capability, keyed by capability name:
 | `bitbucket` | REST `curl` (`$BITBUCKET_TOKEN` Bearer or user+password Basic)                                                                                                           | token env                                                        | diffstat/comments paginated server-side; no grouped submit                                                 |
 | `azure`     | `az repos pr show` + `az rest` threads/iterations; diff via temp-clone `git fetch` of the two SHAs                                                                       | `az login` / `AZURE_DEVOPS_EXT_PAT`, `AZURE_DEVOPS_ORG` required | needs git reachability to the repo remote; no org/project auto-detect                                      |
 
+Neither `curl` host takes its credential on the command line, where `ps` and
+argv logs would show it: the client reads a one-directive config document from
+stdin (`--config -`) on a fetch read, and from a `0600` file in a private temp
+directory — removed after the call — on the Forgejo review write, whose stdin
+already carries the JSON body. A token or password carrying CR or LF refuses
+`auth-missing` before `curl` starts, because that document is line-oriented and
+a break could end the directive and start another.
+
 State maps to open|closed|merged at fetch (`opened`→open, `active`→open,
 `ABANDONED`→closed, `SUPERSEDED`→closed, `completed`/`merged`→merged;
 anything else lands `unknown`, and `post` refuses any non-open PR
