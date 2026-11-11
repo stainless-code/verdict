@@ -160,9 +160,11 @@ func compileOwnerPattern(pattern string) (*regexp.Regexp, bool) {
 }
 
 // ownerPatternShape reports a pattern the matcher evaluates: no negation, no
-// character class, and no escape other than the literal `#`.
+// character class, no escape other than the literal `#`, and no leading `\#`,
+// which GitHub's CODEOWNERS parser reads as a comment rather than a pattern.
 func ownerPatternShape(pattern string) bool {
 	return pattern != "" && !strings.HasPrefix(pattern, "!") &&
+		!strings.HasPrefix(pattern, `\#`) &&
 		!strings.ContainsAny(pattern, `[]`) && !hasUnknownEscape(pattern)
 }
 

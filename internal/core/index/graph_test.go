@@ -357,6 +357,23 @@ func TestOwnersInlineCommentAndEscapedHash(t *testing.T) {
 	assertOwners(t, f.queryPath(QueryOwners, "a#b.go").Data.Target, []string{"@hash"}, ".github/CODEOWNERS")
 }
 
+// TestOwnersLeadingEscapedHashIsNotEvaluated proves GitHub's CODEOWNERS escape
+// warning holds: `\#` does not turn a comment line into a rule, so it cannot
+// take ownership from an earlier pattern.
+func TestOwnersLeadingEscapedHashIsNotEvaluated(t *testing.T) {
+	f := newFixture(t)
+	codeownersFixture(f, "* @default\n"+`\#secret.go @special`+"\n")
+	f.write("#secret.go", "package m\n\nfunc Secret() {}\n")
+	f.commit("one")
+	resp := f.queryPath(QueryOwners, "#secret.go")
+	assertOwners(t, resp.Data.Target, []string{"@default"}, ".github/CODEOWNERS")
+	want := "» index: CODEOWNERS has 1 rule line(s) the index does not evaluate " +
+		"(negation, escape, or character class); those lines match nothing"
+	if !slices.Contains(resp.Warnings, want) {
+		t.Errorf("warnings = %q; want one equal to %q", resp.Warnings, want)
+	}
+}
+
 // TestOwnersDirectoryRuleOwnsDescendants proves a directory named without a
 // trailing slash owns every file below it, GitHub's directory-rule form.
 func TestOwnersDirectoryRuleOwnsDescendants(t *testing.T) {
@@ -507,7 +524,7 @@ func TestTestsForAtOldTreeMarksStale(t *testing.T) {
 // TestOwnerGlobRefusals proves the documented-unsupported shapes never reach
 // the matcher, so a rule using them cannot silently change ownership.
 func TestOwnerGlobRefusals(t *testing.T) {
-	for _, pattern := range []string{"!a/*", `a\*`, "a[bc].go"} {
+	for _, pattern := range []string{"!a/*", `a\*`, "a[bc].go", `\#secret.go`} {
 		if _, ok := compileOwnerPattern(pattern); ok {
 			t.Errorf("compileOwnerPattern(%q) accepted an unsupported shape", pattern)
 		}
