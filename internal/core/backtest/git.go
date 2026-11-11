@@ -33,10 +33,14 @@ func (st *state) git(ctx context.Context, dir string, args ...string) (string, i
 	return out, exit, stderr, nil
 }
 
-// gitPins are the command-scope config values every mining git call carries.
-// They outrank the repository's own config, so a `color.diff=always` or
-// `log.showSignature=true` in .git/config cannot change what is parsed.
+// gitPins are the command-scope values every mining git call carries. The
+// config pins outrank the repository's own config, so a `color.diff=always`
+// or `log.showSignature=true` in .git/config cannot change what is parsed.
+// Pathspecs stay literal so a deleted path such as `app/[id].tsx` or a name
+// starting with `:` reaches blame and grep as the file name git stored, not
+// as a glob or pathspec magic.
 var gitPins = []string{
+	"--literal-pathspecs",
 	"-c", "core.quotepath=false",
 	"-c", "color.ui=false",
 	"-c", "log.showSignature=false",
