@@ -445,6 +445,7 @@ func invokeIndex(ctx context.Context, req *indexcore.Request) (*jq.Obj, *core.Re
 			Message: "index serves callers, status, tests-for, co-changed, and owners; build and prune are CLI-only",
 		}
 	}
+	req.NoCache = true
 	resp, ref := indexcore.Run(ctx, req)
 	if ref != nil {
 		return nil, ref

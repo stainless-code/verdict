@@ -107,6 +107,9 @@ type Request struct { //nolint:govet // field grouping documents the request sur
 	Limit    int `max:"200"    min:"1"`
 	Warnings []string
 	Limits   *Limits `json:"-"`
+	// NoCache reads a valid cached co-change window but never writes or
+	// prunes the cache.
+	NoCache bool `json:"-"`
 }
 
 // Response carries the completed invocation: the envelope fields, the human

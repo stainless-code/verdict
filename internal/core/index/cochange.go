@@ -250,7 +250,9 @@ func (st *state) coChangeWindow(
 		SchemaVersion: cochangeSchema, Head: head, Commits: commits,
 		Since: spec.cache, Changes: changes,
 	}
-	st.cacheCoChange(root, dir, path, doc, shallow)
+	if !st.req.NoCache {
+		st.cacheCoChange(root, dir, path, doc, shallow)
+	}
 	return doc, nil
 }
 

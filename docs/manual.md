@@ -2645,6 +2645,8 @@ must stay inside the checkout. Each costs the answer nothing —
 the rows are already computed — and one
 `» index: co-change cache not written: <reason>` line on the human surface
 names why nothing was cached; a shallow clone's own warning carries its case.
+The CLI keeps that cache; an MCP query reads a valid window if one is present
+and never writes or prunes one.
 
 `index owners <path> [--at <tree>]` answers the CODEOWNERS rule that owns one
 path at the queried tree. The file is read **at the tree**, from the git object
@@ -2687,10 +2689,10 @@ Querying a tree that is not HEAD's marks the envelope `stale: true` and warns
 `» index: built for <tree>, HEAD is <tree2>`. `callers`, `tests-for`, and
 `owners` take `--at`; `co-changed` always reads HEAD's tree and history. The
 MCP `index` tool is read-only and serves `callers`, `status`, `tests-for`,
-`co-changed`, and `owners`; it creates no workspace and no index store, its one
-write is the co-change cache inside a store that already exists, and it never
-builds or prunes — those stay on the CLI, and the SDK forwards every
-subcommand.
+`co-changed`, and `owners`; it creates no workspace and no index store, writes
+nothing (a `co-changed` query reads a valid cache but never writes or prunes
+one), and it never builds or prunes — those stay on the CLI, and the SDK
+forwards every subcommand.
 
 ## Backtest (SZZ candidates)
 
