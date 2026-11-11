@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stainless-code/verdict/internal/golden"
 )
@@ -94,28 +95,13 @@ func TestToolFreeTransformRewritesTheWorkflow(t *testing.T) {
 // message is tool-call markup: exit 1, the exact refusal, no review file.
 func TestPiAdapterRefusesToolCallMarkup(t *testing.T) {
 	needPOSIX(t)
-	root, err := moduleRoot()
-	if err != nil {
-		t.Fatalf("moduleRoot: %v", err)
-	}
-	stub := piStub(t, "#!/bin/sh\nprintf '%s\\n' '{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"<tool_call name=\\\"shell\\\">ls\"}]}}'\n")
-	t.Setenv("BENCH_PI_MODEL", "fixture-good")
-	t.Setenv("BENCH_PI_BIN", stub)
-	t.Setenv("VERDICT_BENCH_MODEL", "fixture-good")
-	t.Setenv("VERDICT_BENCH_PROMPT", filepath.Join(t.TempDir(), "prompt.md"))
-	out := filepath.Join(t.TempDir(), "review.json")
-	t.Setenv("VERDICT_BENCH_OUT", out)
-	t.Setenv("VERDICT_BENCH_COST", filepath.Join(t.TempDir(), "cost.json"))
-	cmd := exec.CommandContext(context.Background(), "sh", filepath.Join(root, "bench", "agents", "pi.sh"))
-	cmd.Env = os.Environ()
-	var stderr strings.Builder
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err == nil {
+	out, stderr, err := runPiAdapter(t, "#!/bin/sh\nprintf '%s\\n' '{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"<tool_call name=\\\"shell\\\">ls\"}]}}'\n")
+	if err == nil {
 		t.Fatal("pi.sh accepted tool-call markup as a review")
 	}
 	want := "pi agent: final message is a tool call, but this sample has no tools: <tool_call name=\"shell\">ls"
-	if !strings.Contains(stderr.String(), want) {
-		t.Errorf("stderr = %q, want %q", stderr.String(), want)
+	if !strings.Contains(stderr, want) {
+		t.Errorf("stderr = %q, want %q", stderr, want)
 	}
 	if _, err := os.Stat(out); !os.IsNotExist(err) {
 		t.Errorf("pi.sh wrote %s for a tool-call refusal", out)
@@ -170,29 +156,14 @@ const dsmlSample = "<｜｜DSML｜｜ calls><｜｜DSML｜｜ invoke name=\"bg_r
 // is the STA-271 DSML sample: exit 1, the tool-call refusal, no review file.
 func TestPiAdapterRefusesDSMLMarkup(t *testing.T) {
 	needPOSIX(t)
-	root, err := moduleRoot()
-	if err != nil {
-		t.Fatalf("moduleRoot: %v", err)
-	}
 	text := strings.ReplaceAll(dsmlSample, `"`, `\"`)
-	stub := piStub(t, "#!/bin/sh\nprintf '%s\\n' '{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\""+text+"\"}]}}'\n")
-	t.Setenv("BENCH_PI_MODEL", "fixture-good")
-	t.Setenv("BENCH_PI_BIN", stub)
-	t.Setenv("VERDICT_BENCH_MODEL", "fixture-good")
-	t.Setenv("VERDICT_BENCH_PROMPT", filepath.Join(t.TempDir(), "prompt.md"))
-	out := filepath.Join(t.TempDir(), "review.json")
-	t.Setenv("VERDICT_BENCH_OUT", out)
-	t.Setenv("VERDICT_BENCH_COST", filepath.Join(t.TempDir(), "cost.json"))
-	cmd := exec.CommandContext(context.Background(), "sh", filepath.Join(root, "bench", "agents", "pi.sh"))
-	cmd.Env = os.Environ()
-	var stderr strings.Builder
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err == nil {
+	out, stderr, err := runPiAdapter(t, "#!/bin/sh\nprintf '%s\\n' '{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\""+text+"\"}]}}'\n")
+	if err == nil {
 		t.Fatal("pi.sh accepted DSML markup as a review")
 	}
 	want := "pi agent: final message is a tool call, but this sample has no tools: " + dsmlSample
-	if !strings.Contains(stderr.String(), want) {
-		t.Errorf("stderr = %q, want %q", stderr.String(), want)
+	if !strings.Contains(stderr, want) {
+		t.Errorf("stderr = %q, want %q", stderr, want)
 	}
 	if _, err := os.Stat(out); !os.IsNotExist(err) {
 		t.Errorf("pi.sh wrote %s for a tool-call refusal", out)
@@ -205,26 +176,11 @@ func TestPiAdapterRefusesDSMLMarkup(t *testing.T) {
 // bytes.
 func TestPiAdapterAcceptsFencedReviewWithToolMarkup(t *testing.T) {
 	needPOSIX(t)
-	root, err := moduleRoot()
-	if err != nil {
-		t.Fatalf("moduleRoot: %v", err)
-	}
 	inner := `{"schema_version":"1","body":"mentions tool_call and <function> in review","approved":false,"comments":[]}`
 	text := "```json\\n" + strings.ReplaceAll(inner, `"`, `\"`) + "\\n```"
-	stub := piStub(t, "#!/bin/sh\nprintf '%s\\n' '{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\""+text+"\"}]}}'\n")
-	t.Setenv("BENCH_PI_MODEL", "fixture-good")
-	t.Setenv("BENCH_PI_BIN", stub)
-	t.Setenv("VERDICT_BENCH_MODEL", "fixture-good")
-	t.Setenv("VERDICT_BENCH_PROMPT", filepath.Join(t.TempDir(), "prompt.md"))
-	out := filepath.Join(t.TempDir(), "review.json")
-	t.Setenv("VERDICT_BENCH_OUT", out)
-	t.Setenv("VERDICT_BENCH_COST", filepath.Join(t.TempDir(), "cost.json"))
-	cmd := exec.CommandContext(context.Background(), "sh", filepath.Join(root, "bench", "agents", "pi.sh"))
-	cmd.Env = os.Environ()
-	var stderr strings.Builder
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("pi.sh refused fenced valid review with tool markup: %v, stderr %q", err, stderr.String())
+	out, stderr, err := runPiAdapter(t, "#!/bin/sh\nprintf '%s\\n' '{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\""+text+"\"}]}}'\n")
+	if err != nil {
+		t.Fatalf("pi.sh refused fenced valid review with tool markup: %v, stderr %q", err, stderr)
 	}
 	got, err := os.ReadFile(out)
 	if err != nil {
@@ -241,29 +197,14 @@ func TestPiAdapterAcceptsFencedReviewWithToolMarkup(t *testing.T) {
 // exit 1, the tool-call refusal, no review file.
 func TestPiAdapterRefusesFencedNonJSONWithToolMark(t *testing.T) {
 	needPOSIX(t)
-	root, err := moduleRoot()
-	if err != nil {
-		t.Fatalf("moduleRoot: %v", err)
-	}
 	text := "```\\n" + strings.ReplaceAll(`<tool_call name="shell">ls`, `"`, `\"`) + "\\n```"
-	stub := piStub(t, "#!/bin/sh\nprintf '%s\\n' '{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\""+text+"\"}]}}'\n")
-	t.Setenv("BENCH_PI_MODEL", "fixture-good")
-	t.Setenv("BENCH_PI_BIN", stub)
-	t.Setenv("VERDICT_BENCH_MODEL", "fixture-good")
-	t.Setenv("VERDICT_BENCH_PROMPT", filepath.Join(t.TempDir(), "prompt.md"))
-	out := filepath.Join(t.TempDir(), "review.json")
-	t.Setenv("VERDICT_BENCH_OUT", out)
-	t.Setenv("VERDICT_BENCH_COST", filepath.Join(t.TempDir(), "cost.json"))
-	cmd := exec.CommandContext(context.Background(), "sh", filepath.Join(root, "bench", "agents", "pi.sh"))
-	cmd.Env = os.Environ()
-	var stderr strings.Builder
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err == nil {
+	out, stderr, err := runPiAdapter(t, "#!/bin/sh\nprintf '%s\\n' '{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\""+text+"\"}]}}'\n")
+	if err == nil {
 		t.Fatal("pi.sh accepted fenced non-JSON tool-call markup as a review")
 	}
 	want := "pi agent: final message is a tool call, but this sample has no tools: ```<tool_call name=\"shell\">ls```"
-	if !strings.Contains(stderr.String(), want) {
-		t.Errorf("stderr = %q, want %q", stderr.String(), want)
+	if !strings.Contains(stderr, want) {
+		t.Errorf("stderr = %q, want %q", stderr, want)
 	}
 	if _, err := os.Stat(out); !os.IsNotExist(err) {
 		t.Errorf("pi.sh wrote %s for a tool-call refusal", out)
@@ -290,6 +231,42 @@ func TestRunnerLabelsDSMLToolCall(t *testing.T) {
 	if !strings.Contains(got.Error, "agent exit 3") {
 		t.Errorf("error = %q, want the adapter exit", got.Error)
 	}
+}
+
+// piAdapterTimeout bounds one pi.sh run: the adapter is a shell script over a
+// stub binary, so anything slower is a hang, not work.
+const piAdapterTimeout = 30 * time.Second
+
+// piAdapterLinger bounds the wait for the adapter's captured stderr once the
+// process exits with its pipes still open.
+const piAdapterLinger = 5 * time.Second
+
+// runPiAdapter drives bench/agents/pi.sh against a stub whose final message is
+// body, and returns the review path it was told to write, its stderr, and its
+// exit error.
+func runPiAdapter(t *testing.T, body string) (out, stderr string, runErr error) {
+	t.Helper()
+	root, err := moduleRoot()
+	if err != nil {
+		t.Fatalf("moduleRoot: %v", err)
+	}
+	t.Setenv("BENCH_PI_MODEL", "fixture-good")
+	t.Setenv("BENCH_PI_BIN", piStub(t, body))
+	t.Setenv("VERDICT_BENCH_MODEL", "fixture-good")
+	t.Setenv("VERDICT_BENCH_PROMPT", filepath.Join(t.TempDir(), "prompt.md"))
+	out = filepath.Join(t.TempDir(), "review.json")
+	t.Setenv("VERDICT_BENCH_OUT", out)
+	t.Setenv("VERDICT_BENCH_COST", filepath.Join(t.TempDir(), "cost.json"))
+
+	ctx, cancel := context.WithTimeout(t.Context(), piAdapterTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "sh", filepath.Join(root, "bench", "agents", "pi.sh"))
+	cmd.Env = os.Environ()
+	var captured strings.Builder
+	cmd.Stderr = &captured
+	cmd.WaitDelay = piAdapterLinger
+	runErr = cmd.Run()
+	return out, captured.String(), runErr
 }
 
 // piAdapterMarks reads the tool-call pattern out of pi.sh.
