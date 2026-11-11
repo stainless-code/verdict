@@ -615,11 +615,13 @@ func (c *Client) Trend(ctx context.Context, req *TrendRequest) (*TrendResponse, 
 }
 
 // IndexRequest queries the local Go index. Query is any index subcommand —
-// callers, status, build, or prune; Symbol is the caller query's symbol, At
-// names a tree or ref, From overrides the checkout, and Limit bounds rows.
+// callers, status, tests-for, co-changed, owners, build, or prune; Symbol is
+// the caller or tests-for symbol, Path the tests-for, co-changed, or owners
+// path, At names a tree or ref, From overrides the checkout, Since,
+// Commits, and MinCount bound the co-change window, and Limit bounds rows.
 type IndexRequest struct {
-	Query, Symbol, From, At string
-	Limit                   int
+	Query, Symbol, Path, From, At, Since string
+	Limit, Commits, MinCount             int
 }
 
 // IndexResponse carries the index data profile and its human lines.
@@ -639,8 +641,9 @@ func (c *Client) Index(ctx context.Context, req *IndexRequest) (*IndexResponse, 
 		return nil, err
 	}
 	resp, ref := indexcore.Run(ctx, &indexcore.Request{
-		ReadRequest: rr, Query: req.Query, Symbol: req.Symbol, From: req.From,
-		At: req.At, Limit: req.Limit,
+		ReadRequest: rr, Query: req.Query, Symbol: req.Symbol, Path: req.Path,
+		From: req.From, At: req.At, Since: req.Since, Limit: req.Limit,
+		Commits: req.Commits, MinCount: req.MinCount,
 	})
 	if ref != nil {
 		return nil, refusalErr(ref)

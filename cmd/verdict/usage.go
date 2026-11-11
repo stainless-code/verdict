@@ -240,6 +240,20 @@ func usageText() string {
 		"    only through an import edge. A qualified symbol names the package (a.Target);\n" +
 		"    rows are truncated with a count, never silently, and unresolved candidates\n" +
 		"    (methods, dynamic dispatch, generic instantiation) are counted, never guessed.\n" +
+		"  index tests-for <path>|--symbol <pkg.Name> [--at <tree>] [--limit <n, default 50, max 200>] [--json]\n" +
+		"    candidate tests to read for one source file or qualified symbol, labeled\n" +
+		"    same-package, references, or imports-module. Candidates are not coverage:\n" +
+		"    only _test.go files appear, and a row is a test worth reading, not proof.\n" +
+		"  index co-changed <path> [--commits <n, default 2000>] [--since <90d|12w|18mo|2y|ref>]\n" +
+		"    [--min-count <n, default 2>] [--limit <n, default 20, max 200>] [--json]\n" +
+		"    paths that moved with one path, with their co-change count and jaccard, from\n" +
+		"    one bounded git log window (merges excluded; a rename counts as two paths).\n" +
+		"    The window's first/last commit and count are echoed; a shallow clone warns.\n" +
+		"  index owners <path> [--at <tree>] [--json]\n" +
+		"    the CODEOWNERS rule that owns one path at HEAD, read from the git tree (never\n" +
+		"    the worktree): GitHub's file order, last matching rule wins, no rule reads as\n" +
+		"    owners null, an ownerless rule reads as owners [] (it clears an earlier\n" +
+		"    match), never nobody.\n" +
 		"  backtest mine --since <90d|12w|18mo|2y|<ref>> [--until <ref>] [--run <slug>] [--json]\n" +
 		"    mine SZZ bug-introducing PR candidates from the local clone: seeds are fix:,\n" +
 		"    bugfix:, hotfix:, Fixes #N, and Revert \"...\" commits in the window; each locked\n" +

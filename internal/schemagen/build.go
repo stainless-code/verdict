@@ -388,6 +388,8 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[IndexCoverage](), name: "indexCoverage"},
 		{typ: reflect.TypeFor[IndexCounts](), name: "indexCounts"},
 		{typ: reflect.TypeFor[IndexRow](), name: "indexRow"},
+		{typ: reflect.TypeFor[IndexWindow](), name: "indexWindow"},
+		{typ: reflect.TypeFor[IndexTarget](), name: "indexTarget"},
 		{typ: reflect.TypeFor[CalibrateData](), name: "calibrateData"},
 		{typ: reflect.TypeFor[CalibrateHead](), name: "calibrateHead"},
 		{typ: reflect.TypeFor[CalibratePR](), name: "calibratePR"},

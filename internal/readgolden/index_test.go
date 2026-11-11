@@ -2,6 +2,7 @@ package readgolden_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -114,11 +115,17 @@ func buildIndex(t *testing.T, dir string, env map[string]string) {
 	}
 }
 
+// gitWaitDelay bounds every git command these fixtures capture pipes from
+// (GO-CONC-06): a descendant that keeps the pipe open costs a wait, not a
+// hung test.
+const gitWaitDelay = time.Minute
+
 // runIndexGit runs one pinned git command in the fixture.
 func runIndexGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.CommandContext(t.Context(), "git", args...)
 	cmd.Dir = dir
+	cmd.WaitDelay = gitWaitDelay
 	cmd.Env = testenv.Base(map[string]string{
 		"GIT_AUTHOR_DATE":    "2024-04-01T00:00:00Z",
 		"GIT_COMMITTER_DATE": "2024-04-01T00:00:00Z",
@@ -203,6 +210,7 @@ func runIndexGitOut(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.CommandContext(t.Context(), "git", args...)
 	cmd.Dir = dir
+	cmd.WaitDelay = gitWaitDelay
 	cmd.Env = testenv.Base(map[string]string{
 		"GIT_AUTHOR_DATE":    "2024-04-01T00:00:00Z",
 		"GIT_COMMITTER_DATE": "2024-04-01T00:00:00Z",
@@ -212,4 +220,176 @@ func runIndexGitOut(t *testing.T, dir string, args ...string) string {
 		t.Fatalf("git %v: %v", args, err)
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// graphFixture is the candidate-test and co-change fixture: a target package
+// with a same-package test, a package that references the symbol through an
+// import edge, a package that only imports the target's package, and a
+// CODEOWNERS chain whose last matching rule owns a/a.go.
+var graphFixture = map[string]string{
+	"go.mod": "module example.com/m\n\ngo 1.27\n",
+	"a/a.go": `package a
+
+func Target() {}
+
+func Caller() {
+	Target()
+}
+`,
+	"a/other.go": `package a
+
+func Other() {}
+`,
+	"a/a_test.go": `package a
+
+import "testing"
+
+func TestTarget(t *testing.T) {
+	Target()
+}
+`,
+	"b/b_test.go": `package b
+
+import (
+	"testing"
+
+	"example.com/m/a"
+)
+
+func TestUses(t *testing.T) {
+	a.Target()
+}
+`,
+	"c/c.go": `package c
+
+func Local() {}
+`,
+	"c/c_test.go": `package c
+
+import (
+	"testing"
+
+	"example.com/m/a"
+)
+
+func TestLocal(t *testing.T) {
+	a.Other()
+}
+`,
+	".github/CODEOWNERS": "# global owner\n*       @everyone\n/a/*    @a-owner\na/*.go  @go-owner\n",
+}
+
+// graphRepo writes the fixture as four commits: a/a.go moves with b's test in
+// two of them and with c's test in one, so the co-change counts are fixture
+// data. The index is built for the last tree.
+func graphRepo(t *testing.T, dir, _ string) {
+	t.Helper()
+	writeFiles(t, dir, graphFixture)
+	runIndexGit(t, dir, "init", "-q", "-b", "main")
+	runIndexGit(t, dir, "add", "-A")
+	runIndexGit(t, dir, "commit", "-qm", "graph fixture")
+	steps := []struct{ path, body string }{
+		{"a/a.go", "package a\n\nfunc Target() {}\n\nfunc Caller() {\n\tTarget()\n}\n\nfunc Second() {}\n"},
+		{"b/b_test.go", graphFixture["b/b_test.go"] + "\nfunc TestMore(t *testing.T) {\n\ta.Target()\n}\n"},
+		{"a/a.go", "package a\n\nfunc Target() {}\n\nfunc Caller() {\n\tTarget()\n}\n\nfunc Second() {}\n\nfunc Third() {}\n"},
+		{"c/c_test.go", graphFixture["c/c_test.go"] + "\nfunc TestMore(t *testing.T) {\n\ta.Other()\n}\n"},
+		{"a/a.go", "package a\n\nfunc Target() {}\n\nfunc Caller() {\n\tTarget()\n}\n\nfunc Second() {}\n\nfunc Third() {}\n\nfunc Fourth() {}\n"},
+		{"b/b_test.go", graphFixture["b/b_test.go"] + "\nfunc TestMore(t *testing.T) {\n\ta.Target()\n}\n\nfunc TestThird(t *testing.T) {\n\ta.Target()\n}\n"},
+	}
+	for i := 0; i < len(steps); i += 2 {
+		writeFiles(t, dir, map[string]string{steps[i].path: steps[i].body, steps[i+1].path: steps[i+1].body})
+		runIndexGit(t, dir, "add", "-A")
+		runIndexGit(t, dir, "commit", "-qm", "graph step")
+	}
+	buildIndex(t, dir, indexEnv())
+}
+
+// TestIndexGraphGolden pins the candidate-test, co-change, and owner reads:
+// all three via kinds, literal partner counts with the window, and the last
+// matching CODEOWNERS rule.
+func TestIndexGraphGolden(t *testing.T) {
+	t.Parallel()
+	goldenRead(t, "index/tests-for-human", graphRepo, nil, nil, "index", "tests-for", "a/a.go")
+	goldenRead(t, "index/tests-for-json", graphRepo, nil, nil, "index", "tests-for", "a/a.go", "--json")
+	goldenRead(t, "index/owners-human", graphRepo, nil, nil, "index", "owners", "a/a.go")
+	goldenRead(t, "index/owners-json", graphRepo, nil, nil, "index", "owners", "a/a.go", "--json")
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{"index/co-changed-human", []string{"index", "co-changed", "a/a.go"}},
+		{"index/co-changed-json", []string{"index", "co-changed", "a/a.go", "--json"}},
+	} {
+		c := &golden.Case{Name: tc.name, Setup: graphRepo, Args: tc.args}
+		c.Run(t, harness)
+	}
+}
+
+// TestIndexGoldensNeverCarryDataPath proves the index data profile advertises
+// no top-level path: the schema dropped it because no wire branch emitted it,
+// and every kind publishes its path as query.path. A golden that grew one
+// would mean the wire and the schema disagree again. It runs unparallel: under
+// -update the parallel legs rewrite the files it reads.
+func TestIndexGoldensNeverCarryDataPath(t *testing.T) {
+	dir := filepath.Join("testdata", "index")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) == 0 {
+		t.Fatal("no index goldens to check")
+	}
+	checked := 0
+	for _, e := range entries {
+		if data, ok := indexGoldenData(t, filepath.Join(dir, e.Name())); ok {
+			checked++
+			assertNoDataPath(t, e.Name(), data)
+		}
+	}
+	if checked < 5 {
+		t.Errorf("checked %d JSON index goldens; want the six envelope legs and more", checked)
+	}
+}
+
+// indexGoldenData returns one golden's data object, and whether its stdout is
+// a JSON envelope at all: the human legs are prose.
+func indexGoldenData(t *testing.T, path string) (map[string]any, bool) {
+	t.Helper()
+	stdout := goldenStdout(t, path)
+	if !strings.HasPrefix(stdout, "{") {
+		return nil, false
+	}
+	var env struct {
+		Data map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &env); err != nil {
+		t.Fatalf("%s: %v", path, err)
+	}
+	return env.Data, true
+}
+
+// assertNoDataPath proves an envelope publishes no top-level data.path.
+func assertNoDataPath(t *testing.T, name string, data map[string]any) {
+	t.Helper()
+	if _, ok := data["path"]; ok {
+		t.Errorf("%s carries top-level data.path; want the path under query", name)
+	}
+}
+
+// goldenStdout returns one golden file's recorded stdout section.
+func goldenStdout(t *testing.T, path string) string {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, rest, ok := strings.Cut(string(raw), "\n--- stdout ---\n")
+	if !ok {
+		t.Fatalf("%s: no stdout section", path)
+	}
+	stdout, _, ok := strings.Cut(rest, "\n--- stderr ---\n")
+	if !ok {
+		t.Fatalf("%s: no stderr section", path)
+	}
+	return stdout
 }

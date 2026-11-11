@@ -1,0 +1,53 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "index",
+  "repo": "",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "run verdict index tests-for a/a.go to find candidate tests",
+  "warnings": [],
+  "data": {
+    "kind": "co-changed",
+    "query": {
+      "path": "a/a.go"
+    },
+    "window": {
+      "first": "f73a93bdf0a0754967d29a3d76d94d04b6be9e2c",
+      "last": "b5d0f533c75664c4619f9e2b6df4f26090044345",
+      "commits": 4
+    },
+    "target": {
+      "path": "a/a.go",
+      "owners": [
+        "@go-owner"
+      ],
+      "owners_source": ".github/CODEOWNERS"
+    },
+    "counts": {
+      "partners": 2,
+      "target_commits": 4
+    },
+    "limit": 20,
+    "truncated": 0,
+    "rows": [
+      {
+        "path": "b/b_test.go",
+        "commits": 3,
+        "jaccard": 0.75
+      },
+      {
+        "path": "c/c_test.go",
+        "commits": 2,
+        "jaccard": 0.5
+      }
+    ]
+  },
+  "error": null
+}
+--- stderr ---
+
+--- files ---
+--- file C/.verdict/index/cochange/b5d0f533c75664c4619f9e2b6df4f26090044345-2000.json ---
+{"schema_version":"2","head":"b5d0f533c75664c4619f9e2b6df4f26090044345","since":"","changes":[{"commit":"b5d0f533c75664c4619f9e2b6df4f26090044345","paths":["a/a.go","b/b_test.go"]},{"commit":"2e77246a18900dc35f45acf27e8dc4e35f8a8325","paths":["a/a.go","c/c_test.go"]},{"commit":"498e51cc4727095ef4c9ed1316c933adaf8f778d","paths":["a/a.go","b/b_test.go"]},{"commit":"f73a93bdf0a0754967d29a3d76d94d04b6be9e2c","paths":[".github/CODEOWNERS","a/a.go","a/a_test.go","a/other.go","b/b_test.go","c/c.go","c/c_test.go","go.mod"]}],"commits":2000}

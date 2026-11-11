@@ -14,12 +14,13 @@ import (
 )
 
 // gitPins are the command-scope values every index git call carries. They
-// outrank the repository's own config, so a color, signature, or pathspec
-// setting cannot change what is parsed.
+// outrank the repository's own config, so a color, signature, rename, or
+// pathspec setting cannot change what is parsed.
 var gitPins = []string{
 	"--literal-pathspecs",
 	"-c", "core.quotepath=false",
 	"-c", "color.ui=false",
+	"-c", "diff.renames=false",
 	"-c", "log.showSignature=false",
 }
 

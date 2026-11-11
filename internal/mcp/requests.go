@@ -201,6 +201,10 @@ func decodeIndex(req *indexcore.Request, a *args) {
 	a.str("symbol", &req.Symbol)
 	a.str("at", &req.At)
 	a.str("from", &req.From)
+	a.str("path", &req.Path)
+	a.str("since", &req.Since)
+	a.integer("commits", &req.Commits)
+	a.integer("minCount", &req.MinCount)
 	a.integer("limit", &req.Limit)
 }
 

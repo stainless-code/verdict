@@ -1,0 +1,9 @@
+exit: 0
+--- stdout ---
+index: 3 candidate test(s) for a/a.go at cea7780b5463b90e8c9e0bce830f6e65a46bca74 (same-package 1, references 1, imports-module 1)
+a/a_test.go (same-package)
+b/b_test.go (references)
+c/c_test.go (imports-module)
+--- stderr ---
+
+--- files ---

@@ -146,7 +146,24 @@ var publishedSemantics = map[string]string{
 	// only; no property, required key, enum, or type changed.
 	// index: additive $defs/indexData and its sub-shapes. Additions only; no
 	// existing property, required key, enum, or type changed.
-	"envelope.schema.json": "835bb40b131b463309c4f50f1430c02498b58c78e64e3ec54f4eaa0c96c8cb82",
+	// index graph: additive kind enum values (tests-for, co-changed, owners),
+	// optional query.path, window, target, and the row/counts fields those
+	// kinds publish. One data object serves every kind, so the caller row's
+	// line/kind/resolution and the caller counts' callers/unresolved relax to
+	// optional and the schema widens rather than narrowing: an older consumer
+	// validating a caller envelope still passes.
+	// index data honesty: the top-level data.path property goes away, because
+	// no wire branch emitted it — tests-for, co-changed, and owners publish
+	// query.path and owners publishes tree/commit — and a typed consumer must
+	// not see a field the wire cannot produce. The indexStatus and indexCounts
+	// descriptions now name every kind that publishes them. One property
+	// removed, prose only elsewhere.
+	// indexTarget prose: the description now names all three owner shapes —
+	// no CODEOWNERS file (source null too), no matching rule (source named),
+	// and an ownerless rule that cleared ownership ([] with the source
+	// named). Description only; no property, required key, enum, or type
+	// changed.
+	"envelope.schema.json": "349de8e0045f0f95461b46cdb7a8c9b41ee9343b4a9c3a301375fcc2a1145279",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
