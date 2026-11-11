@@ -730,6 +730,7 @@ func TestReplayMissingGitStopsTheWalk(t *testing.T) {
 // checkout.
 func TestReplayCancelReportsTheReplayVerb(t *testing.T) {
 	t.Run("pre-flight", checkCancelBeforeTheWalk)
+	t.Run("during the checkout", checkCancelDuringTheCheckout)
 	t.Run("during the review", checkCancelDuringTheReview)
 	t.Run("between reviews", checkCancelBetweenReviews)
 }
@@ -747,6 +748,29 @@ func checkCancelBeforeTheWalk(t *testing.T) {
 	}
 	_, ref := RunReplay(ctx, f.request(t, func(r *ReplayRequest) { r.Runtime.Commander = cmdr }))
 	checkReplayCancel(t, cmdr, ref)
+}
+
+// checkCancelDuringTheCheckout cancels while git is creating the detached
+// checkout: the half-created tree and its administrative entry are dropped
+// before the cancel is reported.
+func checkCancelDuringTheCheckout(t *testing.T) {
+	t.Helper()
+	f := newReplayFixture(t)
+	f.plant(t, "write", "0.6")
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	cmdr := &cancelAfter{
+		inner: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}, cancel: cancel,
+		stop: func(cmd *core.Command) bool {
+			return slices.Contains(cmd.Argv, gitWorktree) && slices.Contains(cmd.Argv, gitWorktreeAdd)
+		},
+	}
+	_, ref := RunReplay(ctx, f.request(t, func(r *ReplayRequest) { r.Runtime.Commander = cmdr }))
+	checkReplayCancel(t, cmdr, ref)
+	if got := f.launches(t); got != 0 {
+		t.Errorf("launches = %d; a canceled checkout must not start an agent", got)
+	}
+	checkNoLeftoverCheckouts(t, f)
 }
 
 // checkCancelDuringTheReview cancels while the agent is running: the launcher

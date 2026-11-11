@@ -959,8 +959,10 @@ func (st *state) displayRun(run string) string {
 
 // worktreeAdd materializes the candidate head as a detached checkout beside
 // the bundles. A leftover checkout from an interrupted run is dropped first, so
-// a retry never trips over it. A checkout git refuses is that candidate's
-// status and detail; only a cancel or a missing git ends the walk.
+// a retry never trips over it, and a cancel during the add drops the
+// half-created tree and its administrative entry before reporting the cancel. A
+// checkout git refuses is that candidate's status and detail; only a cancel or a
+// missing git ends the walk.
 func (st *state) worktreeAdd(
 	ctx context.Context, run string, n int, head string,
 ) (string, string, string, *core.RefusalError) {
@@ -972,6 +974,7 @@ func (st *state) worktreeAdd(
 	st.worktreeDrop(ctx, dir)
 	detail, err := st.worktreeRun(ctx, gitWorktreeAdd, flagDetach, dir, head)
 	if ctx.Err() != nil {
+		st.worktreeDrop(ctx, dir)
 		return "", "", "", st.refuse(codeCanceled, st.cancelText())
 	}
 	switch {
