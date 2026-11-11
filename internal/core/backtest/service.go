@@ -286,7 +286,7 @@ func (st *state) commander() core.Commander {
 	if st.req.Runtime != nil && st.req.Runtime.Commander != nil {
 		return st.req.Runtime.Commander
 	}
-	return coreexec.Watchdog{}
+	return coreexec.Runner{MissingTool: true}
 }
 
 // human writes one human line through the injected observer.

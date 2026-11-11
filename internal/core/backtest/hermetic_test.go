@@ -66,7 +66,7 @@ func TestMineIgnoresHostileGitConfig(t *testing.T) {
 func mineRun(t *testing.T, r *repo, since string, env map[string]string) (*Data, []byte) {
 	t.Helper()
 	resp, ref := Run(t.Context(), &Request{
-		Runtime:  &core.Runtime{Commander: coreexec.Watchdog{}, Env: env},
+		Runtime:  &core.Runtime{Commander: coreexec.Runner{MissingTool: true}, Env: env},
 		RepoRoot: r.dir, Mode: modeMine, Since: since, Until: "HEAD",
 	})
 	if ref != nil {

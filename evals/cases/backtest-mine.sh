@@ -93,6 +93,14 @@ run_review backtest mine --since "$BASE"
 assert_exit "human mode exits 0" 0
 assert_file_eq "human output matches the fixed fixture" "$EVAL_SANDBOX/expected-human.txt" "$EVAL_OUT"
 
+# A tag and a branch both named amb: git warns on stderr beside the sha on stdout.
+git -C "$EVAL_SANDBOX" branch amb "$BASE"
+git -C "$EVAL_SANDBOX" tag amb "$BASE"
+run_review backtest mine --since amb --json
+assert_exit "ambiguous ref exits 0" 0
+assert_json_field "ambiguous ref resolves to the base" "$BASE" '.data.since.sha'
+assert_json_field "ambiguous ref candidate head" "$FEATURE" '.data.mine.candidates[0].head'
+
 run_review backtest mine --since 18m --json
 assert_exit "bare m refuses" 1
 assert_refusal "bare m" "bad-since"

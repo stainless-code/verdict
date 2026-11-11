@@ -107,6 +107,9 @@ func (st *state) gitCapped(
 		if _, ok := errors.AsType[*core.MissingToolError](err); ok {
 			return "", 0, "", false, errGitMissing //nolint:wrapcheck // sealed local sentinel
 		}
+		if _, ok := errors.AsType[*core.OutputCappedError](err); ok {
+			return res.Stdout, res.ExitCode, res.Stderr, true, nil
+		}
 		return "", 0, "", false, jq.Sealed("git "+args[0], err)
 	}
 	return res.Stdout, res.ExitCode, res.Stderr, res.StdoutTruncated, nil

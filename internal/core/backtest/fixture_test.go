@@ -135,7 +135,7 @@ func stringTrim(s string) string {
 func runMine(t *testing.T, r *repo, since string) *Data {
 	t.Helper()
 	resp, ref := Run(t.Context(), &Request{
-		Runtime:  &core.Runtime{Commander: coreexec.Watchdog{}},
+		Runtime:  &core.Runtime{Commander: coreexec.Runner{MissingTool: true}},
 		RepoRoot: r.dir, Mode: modeMine, Since: since, Until: "HEAD",
 	})
 	if ref != nil {

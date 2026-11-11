@@ -38,7 +38,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	}
 	resp, ref := corebacktest.Run(ctx, &corebacktest.Request{
 		Runtime: &core.Runtime{
-			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r}, Commander: coreexec.Watchdog{},
+			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r}, Commander: coreexec.Runner{MissingTool: true},
 		},
 		RepoRoot: req.RepoRoot, Mode: mode, Since: flags.since, Until: flags.until,
 		Run: flags.run, Warnings: append([]string{}, r.Warnings...),
