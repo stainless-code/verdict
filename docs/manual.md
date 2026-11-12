@@ -3144,7 +3144,8 @@ count heads, then one line per row, and the printed `next:` step adds
 `toc.txt` to the files to feed. The section is capped at **8 KiB** so a
 wide blast radius cannot spend the review budget on rows; when rows do not fit,
 the section ends `truncated: <n> line(s) omitted to fit the 8 KiB impact cap`,
-and the per-list `--limit` truncation stays visible in the heads (default 50
+Rows are budgeted round-robin across symbols, callers, and tests; each capped
+list prints `omitted: <n> row(s)`. The per-list `--limit` truncation stays visible in the heads (default 50
 rows, as in `index blast-radius`). Every path and symbol the section renders is
 escaped first: control characters become their backslash escapes and any run of
 `<` long enough to spell a fence marker is broken by the shared fence rule, so
