@@ -654,7 +654,8 @@ func (x *pyExtractor) bindingActive(i, call int) bool {
 	start := x.statementStart(i)
 	indent := x.tokens[start].col
 	for j := start; j >= 0; j-- {
-		if x.tokens[j].logical && (x.text(j) == wordDef || x.text(j) == wordAsync) && (x.tokens[j].col < indent || j == start) {
+		if x.tokens[j].logical && (x.text(j) == wordDef || x.text(j) == wordAsync ||
+			x.text(j) == wordClass) && (x.tokens[j].col < indent || j == start) {
 			return x.scopeActive(j, call)
 		}
 	}
