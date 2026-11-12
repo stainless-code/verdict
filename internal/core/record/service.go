@@ -202,7 +202,7 @@ func runtimeStrictInput(rt *core.Runtime) bool {
 
 func (st *svc) bundle() (dir, prov, headFull, now string, ref *core.RefusalError) {
 	req := st.req
-	dir, ref = readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
+	dir, ref = readcommon.ResolveWritableBundleDir(req.RepoRootPath(), req.Pr)
 	if ref != nil {
 		return "", "", "", "", ref
 	}

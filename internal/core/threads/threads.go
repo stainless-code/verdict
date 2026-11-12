@@ -11,7 +11,9 @@ package threadscore
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"regexp"
 	"strconv"
 	"strings"
@@ -178,8 +180,13 @@ func WriteFile(path string, f *File) error {
 // missing, oversized, undecodable, or wrong-version document is an error,
 // never an empty feed: a resolve run must not read a failed load as "nothing
 // to close".
+// ReadFile preserves [fs.ErrNotExist] for an absent feed.
 func ReadFile(path string) (*File, error) {
 	raw, err := readcommon.ReadRegularCapped(path, jq.MaxPRBytes)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("read %s: %w", path, err) //nolint:wrapcheck // preserves the documented missing-file inspection contract
+	}
+
 	if err != nil {
 		return nil, jq.Sealed("read "+path, err)
 	}

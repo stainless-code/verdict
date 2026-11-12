@@ -186,6 +186,9 @@ func (c *sourceCollector) readArtifact(abs string, maxBytes int64) ([]byte, erro
 // charge folds an attempted read into the byte budget.
 func (c *sourceCollector) charge(size int64) {
 	if size > 0 {
+		if c.maxBytes > 0 {
+			size = min(size, max(0, c.maxBytes-c.bytes))
+		}
 		c.bytes += size
 	}
 }
