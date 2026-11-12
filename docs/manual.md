@@ -2688,8 +2688,9 @@ and GitHub requests none of them. One build reads every parseable blob through
 a single `git cat-file` capture capped at 97 MiB including record framing, so
 the total source size parsed in one build is the effective ceiling. It binds
 before the nominal 20,000 × 1 MiB file caps; an over-cap capture refuses
-`index-capped` naming the cap, and the capture cap is not configurable. A
-truncated or invalid shard refuses `index-corrupt` and is never read as empty.
+`index-capped` naming the cap and the bytes read, and the capture cap is not
+configurable. A truncated or invalid shard refuses `index-corrupt` and is
+never read as empty.
 
 Querying a tree that is not HEAD's marks the envelope `stale: true` and warns
 `» index: built for <tree>, HEAD is <tree2>`. `callers`, `tests-for`, and

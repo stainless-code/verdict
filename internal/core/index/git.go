@@ -102,9 +102,9 @@ func (st *state) gitCapped(
 		if _, ok := errors.AsType[*core.MissingToolError](err); ok {
 			return "", 0, "", &core.RefusalError{Code: "missing-tool", Message: "git is not on PATH"}
 		}
-		if _, ok := errors.AsType[*core.OutputCappedError](err); ok {
+		if capErr, ok := errors.AsType[*core.OutputCappedError](err); ok {
 			return "", 0, "", &core.RefusalError{
-				Code: codeIndexCapped, Message: fmt.Sprintf("git output exceeded the %d-byte capture cap", limit),
+				Code: codeIndexCapped, Message: capMessage("git output", capErr),
 			}
 		}
 		return "", 0, "", &core.RefusalError{Code: codeIndexFailed, Message: "git " + args[0] + " failed: " + err.Error()}
@@ -153,13 +153,20 @@ func batchRefusal(err error) *core.RefusalError {
 	if _, ok := errors.AsType[*core.MissingToolError](err); ok {
 		return &core.RefusalError{Code: "missing-tool", Message: "git is not on PATH"}
 	}
-	if _, ok := errors.AsType[*core.OutputCappedError](err); ok {
-		return &core.RefusalError{
-			Code:    codeIndexCapped,
-			Message: fmt.Sprintf("git cat-file output exceeded the %d-byte capture cap", gitOutputCap),
-		}
+	if capErr, ok := errors.AsType[*core.OutputCappedError](err); ok {
+		return &core.RefusalError{Code: codeIndexCapped, Message: capMessage("git cat-file output", capErr)}
 	}
 	return &core.RefusalError{Code: codeIndexFailed, Message: "git cat-file failed: " + err.Error()}
+}
+
+// capMessage renders one over-cap refusal: the cap, and the bytes git
+// delivered when the commander counted them.
+func capMessage(subject string, capErr *core.OutputCappedError) string {
+	if capErr.ReadBytes <= 0 {
+		return fmt.Sprintf("%s exceeded the %d-byte capture cap", subject, gitOutputCap)
+	}
+	return fmt.Sprintf("%s exceeded the %d-byte capture cap after %d bytes",
+		subject, capErr.Limit, capErr.ReadBytes)
 }
 
 // parseBatch reads a cat-file --batch stream: a header line followed by the

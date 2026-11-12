@@ -82,7 +82,7 @@ fix-ceiling	try: triage the sig or split the fix — the 3-pass ceiling is hard-
 fix-failed	try: address the cause above, then re-run the same command
 head-mismatch	try: address the cause above, then re-run the same command
 id-taken	try: pass a different --id
-index-capped	try: narrow --from/--at to a smaller tree, or raise the index caps
+index-capped	try: narrow --from/--at to a smaller tree (the 97 MiB git capture cap is fixed; the typed caps cover file, tree and shard bytes only)
 index-corrupt	try: delete .verdict/index and rebuild with 'verdict index build'
 index-failed	try: delete .verdict/index and rebuild with 'verdict index build'
 init-failed	try: address the cause above, then re-run the same command

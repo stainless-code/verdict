@@ -80,7 +80,7 @@ func (r Runner) Run(ctx context.Context, cmd *core.Command) (core.Result, error)
 		return res, fmt.Errorf("%s: %w", cmd.Argv[0], runErr) //nolint:wrapcheck // locally constructed spawn message, not an external error
 	}
 	if res.StdoutTruncated {
-		return res, &core.OutputCappedError{Stream: "stdout", Limit: limit}
+		return res, &core.OutputCappedError{Stream: "stdout", Limit: limit, ReadBytes: stdout.Seen()}
 	}
 	return res, nil
 }

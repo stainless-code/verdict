@@ -31,6 +31,7 @@ type boundedBuffer struct {
 	mu        sync.Mutex
 	limit     int
 	mode      captureMode
+	seen      int
 	truncated bool
 }
 
@@ -41,6 +42,7 @@ func newBoundedBuffer(limit int, mode captureMode) *boundedBuffer {
 func (b *boundedBuffer) Write(p []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	b.seen += len(p)
 	if b.limit <= 0 {
 		if len(p) > 0 {
 			b.truncated = true
@@ -99,6 +101,14 @@ func (b *boundedBuffer) Truncated() bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.truncated
+}
+
+// Seen reports how many bytes the stream delivered, kept even when the cap
+// dropped them, so an over-cap refusal can name the overrun.
+func (b *boundedBuffer) Seen() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.seen
 }
 
 func (b *boundedBuffer) Limit() int { return b.limit }

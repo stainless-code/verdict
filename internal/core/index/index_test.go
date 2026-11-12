@@ -255,21 +255,37 @@ func writeCallFixture(f *fixture, extra string) {
 }
 
 // cappedCommander returns the capture-cap error for every command, standing in
-// for a git stream larger than the runner keeps.
-type cappedCommander struct{}
+// for a git stream larger than the runner keeps. readBytes is the count the
+// runner measured; 0 stands in for a commander that keeps no count.
+type cappedCommander struct{ readBytes int }
 
-func (cappedCommander) Run(context.Context, *core.Command) (core.Result, error) {
-	return core.Result{}, &core.OutputCappedError{Stream: "stdout", Limit: 101711872}
+func (c cappedCommander) Run(context.Context, *core.Command) (core.Result, error) {
+	return core.Result{}, &core.OutputCappedError{Stream: "stdout", Limit: 101711872, ReadBytes: c.readBytes}
 }
 
 // TestGitBatchCaptureCapRefuses proves an over-cap cat-file stream refuses as
-// index-capped naming the cap, never index-failed pointing at a rebuild.
+// index-capped naming the cap and, once the commander counted the stream, the
+// bytes git delivered — never index-failed pointing at a rebuild.
 func TestGitBatchCaptureCapRefuses(t *testing.T) {
+	t.Run("measured", func(t *testing.T) {
+		assertGitBatchCapRefusal(t, cappedCommander{readBytes: 118111600},
+			"git cat-file output exceeded the 101711872-byte capture cap after 118111600 bytes")
+	})
+	t.Run("unmeasured", func(t *testing.T) {
+		assertGitBatchCapRefusal(t, cappedCommander{},
+			"git cat-file output exceeded the 101711872-byte capture cap")
+	})
+}
+
+// assertGitBatchCapRefusal drives gitBatch with a commander that reports the
+// capture cap and asserts the refusal.
+func assertGitBatchCapRefusal(t *testing.T, cmdr core.Commander, want string) {
+	t.Helper()
 	req := &Request{}
-	req.Runtime = &core.Runtime{Commander: cappedCommander{}, Env: map[string]string{}}
+	req.Runtime = &core.Runtime{Commander: cmdr, Env: map[string]string{}}
 	st := &state{req: req}
 	_, ref := st.gitBatch(context.Background(), ".", []string{"0f1e2d3c"})
-	assertRefusal(t, ref, "index-capped", "git cat-file output exceeded the 101711872-byte capture cap")
+	assertRefusal(t, ref, "index-capped", want)
 }
 
 // TestIndexBytesAreDeterministic proves two builds of the same tree write
