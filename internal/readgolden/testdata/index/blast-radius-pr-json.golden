@@ -1,0 +1,169 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "index",
+  "repo": "",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "read each candidate test before changing the code",
+  "warnings": [],
+  "data": {
+    "kind": "blast-radius",
+    "index": {
+      "tree": "40d865adf4bce4ae5595a9b09c3c9db07919b28e",
+      "commit": "92a6dcc6c0fb1cd1e1a9fa9070403fc9f2fe2824",
+      "stale": false,
+      "coverage": {
+        "files_indexed": 9,
+        "skipped": 0
+      }
+    },
+    "input": {
+      "pr": "7",
+      "head": "92a6dcc6c0fb1cd1e1a9fa9070403fc9f2fe2824",
+      "paths": [
+        "a/ab.go"
+      ]
+    },
+    "limit": 50,
+    "symbols": {
+      "count": 3,
+      "truncated": 0,
+      "rows": [
+        {
+          "path": "a/ab.go",
+          "name": "A",
+          "kind": "func",
+          "line": 3
+        },
+        {
+          "path": "a/ab.go",
+          "name": "B",
+          "kind": "func",
+          "line": 7
+        },
+        {
+          "path": "a/ab.go",
+          "name": "Third",
+          "kind": "func",
+          "line": 9
+        }
+      ]
+    },
+    "callers": {
+      "count": 7,
+      "unresolved": 1,
+      "truncated": 0,
+      "rows": [
+        {
+          "symbol": "example.com/m/a.A",
+          "path": "a/a_test.go",
+          "kind": "call",
+          "resolution": "exact",
+          "line": 6,
+          "depth": 1
+        },
+        {
+          "symbol": "example.com/m/a.A",
+          "path": "a/top.go",
+          "kind": "call",
+          "resolution": "exact",
+          "line": 4,
+          "depth": 1
+        },
+        {
+          "symbol": "example.com/m/a.B",
+          "path": "a/top.go",
+          "kind": "call",
+          "resolution": "exact",
+          "line": 5,
+          "depth": 1
+        },
+        {
+          "symbol": "example.com/m/a.A",
+          "path": "b/b.go",
+          "kind": "call",
+          "resolution": "lexical",
+          "line": 6,
+          "depth": 1
+        },
+        {
+          "symbol": "example.com/m/a.A",
+          "path": "b/b_test.go",
+          "kind": "call",
+          "resolution": "lexical",
+          "line": 10,
+          "depth": 1
+        },
+        {
+          "symbol": "example.com/m/a.A",
+          "path": "b/b_test.go",
+          "kind": "call",
+          "resolution": "lexical",
+          "line": 14,
+          "depth": 1
+        },
+        {
+          "symbol": "example.com/m/b.UseA",
+          "path": "c/c.go",
+          "kind": "call",
+          "resolution": "lexical",
+          "line": 6,
+          "depth": 2
+        }
+      ]
+    },
+    "tests": {
+      "count": 2,
+      "truncated": 0,
+      "rows": [
+        {
+          "path": "a/a_test.go",
+          "via": "same-package"
+        },
+        {
+          "path": "b/b_test.go",
+          "via": "references"
+        }
+      ]
+    },
+    "co_changed": {
+      "count": 2,
+      "truncated": 0,
+      "rows": [
+        {
+          "target": "a/ab.go",
+          "path": "b/b_test.go",
+          "commits": 2,
+          "jaccard": 0.6667
+        },
+        {
+          "target": "a/ab.go",
+          "path": "c/c.go",
+          "commits": 2,
+          "jaccard": 0.6667
+        }
+      ]
+    },
+    "owners": {
+      "count": 1,
+      "truncated": 0,
+      "rows": [
+        {
+          "path": "a/ab.go",
+          "owners": [
+            "@go-owner"
+          ],
+          "owners_source": ".github/CODEOWNERS"
+        }
+      ]
+    }
+  },
+  "error": null
+}
+--- stderr ---
+
+--- files ---
+--- file C/.verdict/index/cochange/92a6dcc6c0fb1cd1e1a9fa9070403fc9f2fe2824-2000.json ---
+{"schema_version":"2","head":"92a6dcc6c0fb1cd1e1a9fa9070403fc9f2fe2824","since":"","changes":[{"commit":"92a6dcc6c0fb1cd1e1a9fa9070403fc9f2fe2824","paths":["a/ab.go","c/c.go"]},{"commit":"3a340e7dc75cde7584539987485b18f67f2e9459","paths":["a/ab.go","b/b_test.go"]},{"commit":"1647310ab513f03bed87e79037dd6fa0fd99a9c7","paths":[".github/CODEOWNERS","a/a_test.go","a/ab.go","a/cycle.go","a/top.go","a/use.go","b/b.go","b/b_test.go","c/c.go","d/d.go","go.mod"]}],"commits":2000}
