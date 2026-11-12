@@ -1,4 +1,4 @@
-/** The EventSource methods used to subscribe to the invalidation event. */
+/** The EventSource methods used to subscribe to invalidations and reconnects. */
 export type BundleEventSource = Pick<
   EventSource,
   "addEventListener" | "removeEventListener"
@@ -9,7 +9,22 @@ export function refetchOnBundleEvent(
   events: BundleEventSource,
   refetch: () => void,
 ): () => void {
-  const listener: EventListener = () => refetch();
-  events.addEventListener("bundles", listener);
-  return () => events.removeEventListener("bundles", listener);
+  let disconnected = false;
+  const onBundle: EventListener = () => refetch();
+  const onError: EventListener = () => {
+    disconnected = true;
+  };
+  const onOpen: EventListener = () => {
+    if (!disconnected) return;
+    disconnected = false;
+    refetch();
+  };
+  events.addEventListener("bundles", onBundle);
+  events.addEventListener("error", onError);
+  events.addEventListener("open", onOpen);
+  return () => {
+    events.removeEventListener("bundles", onBundle);
+    events.removeEventListener("error", onError);
+    events.removeEventListener("open", onOpen);
+  };
 }

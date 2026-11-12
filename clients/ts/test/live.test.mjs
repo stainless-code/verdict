@@ -3,24 +3,33 @@ import assert from "node:assert/strict";
 import { refetchOnBundleEvent } from "../dist/live.js";
 
 it("refetches on bundle invalidation and unregisters on cleanup", () => {
-  const listeners = new Set();
+  const listeners = new Map();
   const events = {
     addEventListener(type, listener) {
-      assert.equal(type, "bundles");
-      listeners.add(listener);
+      const typed = listeners.get(type) ?? new Set();
+      typed.add(listener);
+      listeners.set(type, typed);
     },
     removeEventListener(type, listener) {
-      assert.equal(type, "bundles");
-      listeners.delete(listener);
+      listeners.get(type)?.delete(listener);
     },
+  };
+  const dispatch = (type) => {
+    for (const listener of listeners.get(type) ?? []) listener(new Event(type));
   };
   let refetches = 0;
   const cleanup = refetchOnBundleEvent(events, () => {
     refetches += 1;
   });
 
-  for (const listener of listeners) listener(new Event("bundles"));
+  dispatch("bundles");
   assert.equal(refetches, 1);
+  dispatch("error");
+  dispatch("open");
+  assert.equal(refetches, 2);
+  dispatch("open");
+  assert.equal(refetches, 2);
+
   cleanup();
-  assert.equal(listeners.size, 0);
+  for (const typed of listeners.values()) assert.equal(typed.size, 0);
 });
