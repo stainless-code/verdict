@@ -90,58 +90,57 @@ func colonPackBase(t *testing.T) string {
 	return gitRun(t, "commit-tree", tree, "-p", gitRun(t, "rev-parse", "HEAD"), "-m", "colon pack")
 }
 
-// TestResolveWorktreePackBudget proves the head opt-out's pack walk spends the
-// same entry and depth budget as the contents fallback: a wide or a deep
-// worktree tree refuses instead of being walked in full.
-//
-//nolint:revive // the two budget arms read as one block
-func TestResolveWorktreePackBudget(t *testing.T) {
-	t.Run("entry budget", func(t *testing.T) {
-		root := t.TempDir()
-		packs := filepath.Join(root, filepath.FromSlash(PacksPrefix), "acme")
-		if err := os.MkdirAll(packs, 0o755); err != nil {
+// TestResolveWorktreePackEntryBudget proves the head opt-out's pack walk spends
+// the same entry total as the contents fallback: a wide worktree tree refuses
+// instead of being walked in full.
+func TestResolveWorktreePackEntryBudget(t *testing.T) {
+	wide := map[string]string{}
+	for i := range maxTreeEntries {
+		wide[fmt.Sprintf("%s/acme/f%04d.md", PacksPrefix, i)] = ""
+	}
+	requireWorktreeRefusal(t, worktreeFiles(t, wide),
+		"control .verdict/packs lists more than 1024 entries across its tree")
+}
+
+// TestResolveWorktreePackDepthBudget proves the same walk stops at the depth
+// cap, so a hostile worktree cannot nest the pack tree out of the budget.
+func TestResolveWorktreePackDepthBudget(t *testing.T) {
+	segments := make([]string, 0, maxTreeDepth+1)
+	for i := 1; i <= maxTreeDepth+1; i++ {
+		segments = append(segments, fmt.Sprintf("d%d", i))
+	}
+	deep := PacksPrefix + "/" + strings.Join(segments, "/")
+	requireWorktreeRefusal(t, worktreeFiles(t, map[string]string{deep + "/pack.json": ""}),
+		"control .verdict/packs nests deeper than 8 directories")
+}
+
+// worktreeFiles writes one slash-relative file map under a fresh temp root.
+func worktreeFiles(t *testing.T, files map[string]string) string {
+	t.Helper()
+	root := t.TempDir()
+	for rel, body := range files {
+		path := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		for i := range maxTreeEntries {
-			name := filepath.Join(packs, fmt.Sprintf("f%04d.md", i))
-			if err := os.WriteFile(name, nil, 0o644); err != nil {
-				t.Fatal(err)
-			}
-		}
-		_, ref := Resolve(t.Context(), cmdr, &Request{
-			BundleDir: t.TempDir(), AllowHead: true, Root: root,
-		})
-		if ref == nil || ref.Code != CodeTooLarge {
-			t.Fatalf("wide worktree pack tree = %v, want controls-too-large", ref)
-		}
-		want := "control .verdict/packs lists more than 1024 entries across its tree"
-		if !strings.Contains(ref.Message, want) {
-			t.Fatalf("message = %q, want it to contain %q", ref.Message, want)
-		}
-	})
-	t.Run("depth budget", func(t *testing.T) {
-		root := t.TempDir()
-		deep := filepath.Join(root, filepath.FromSlash(PacksPrefix))
-		for i := 1; i <= maxTreeDepth+1; i++ {
-			deep = filepath.Join(deep, fmt.Sprintf("d%d", i))
-		}
-		if err := os.MkdirAll(deep, 0o755); err != nil {
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(deep, "pack.json"), nil, 0o644); err != nil {
-			t.Fatal(err)
-		}
-		_, ref := Resolve(t.Context(), cmdr, &Request{
-			BundleDir: t.TempDir(), AllowHead: true, Root: root,
-		})
-		if ref == nil || ref.Code != CodeTooLarge {
-			t.Fatalf("deep worktree pack tree = %v, want controls-too-large", ref)
-		}
-		want := "control .verdict/packs nests deeper than 8 directories"
-		if !strings.Contains(ref.Message, want) {
-			t.Fatalf("message = %q, want it to contain %q", ref.Message, want)
-		}
-	})
+	}
+	return root
+}
+
+// requireWorktreeRefusal resolves the head opt-out over root and fails unless
+// it refuses controls-too-large with want in the message.
+func requireWorktreeRefusal(t *testing.T, root, want string) {
+	t.Helper()
+	_, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: t.TempDir(), AllowHead: true, Root: root})
+	if ref == nil || ref.Code != CodeTooLarge {
+		t.Fatalf("worktree pack tree = %v, want controls-too-large", ref)
+	}
+	if !strings.Contains(ref.Message, want) {
+		t.Fatalf("message = %q, want it to contain %q", ref.Message, want)
+	}
 }
 
 // TestResolveRefusesDirectoryAtControlPath proves a directory squatting a

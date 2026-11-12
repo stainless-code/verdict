@@ -138,6 +138,20 @@ func (b *treeBudget) spend(listed int) *core.RefusalError {
 		"control %s lists more than %d entries across its tree — trim it", b.root, maxTreeEntries))
 }
 
+// charge spends one walked entry: its depth against the depth cap and then one
+// place in the entry total. The depth counts a directory one level deeper than
+// the files it lists, the same count a listed directory spends.
+func (b *treeBudget) charge(tail string, isDir bool) *core.RefusalError {
+	depth := strings.Count(tail, packSep)
+	if isDir {
+		depth++
+	}
+	if ref := b.checkDepth(depth); ref != nil {
+		return ref
+	}
+	return b.spend(1)
+}
+
 // escapePath percent-escapes each slash-separated segment of a repository
 // path, so a name holding '#', '?', or '%' reaches the contents API as that
 // name instead of being parsed as a fragment, a query, or already-escaped

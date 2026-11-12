@@ -18,19 +18,9 @@ import (
 // pack bodies: a lens file the new read dropped must not reach the review.
 func TestRepoPackIgnoresReusedBundleStaleBody(t *testing.T) {
 	root := t.TempDir()
-	for rel, body := range map[string]string{
-		".verdict/packs/acme/pack.json": `{"schema_version":"1","name":"acme/lenses",` +
-			`"version":"1.0.0","lenses":[{"id":"perf"}]}`,
-		".verdict/packs/acme/lenses/perf.md": "old body\n",
-	} {
-		path := filepath.Join(root, filepath.FromSlash(rel))
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
+	writeFixtureFile(t, filepath.Join(root, filepath.FromSlash(".verdict/packs/acme/pack.json")),
+		`{"schema_version":"1","name":"acme/lenses","version":"1.0.0","lenses":[{"id":"perf"}]}`)
+	writeFixtureFile(t, filepath.Join(root, filepath.FromSlash(".verdict/packs/acme/lenses/perf.md")), "old body\n")
 	bundle := t.TempDir()
 	if _, ref := controls.Resolve(t.Context(), nil, &controls.Request{
 		BundleDir: bundle, AllowHead: true, Root: root,

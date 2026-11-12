@@ -47,25 +47,15 @@ func readPaths(
 	if trees {
 		read = append(read, PacksPrefix)
 	}
-	fixed, err := lsTree(ctx, cmd, root, base, false, paths...)
-	if err != nil && repo != "" {
-		return readContents(ctx, cmd, repo, base, read)
-	}
-	if err != nil {
-		return nil, refuse(CodeUnavailable, fmt.Sprintf("PR base %s is not readable here (shallow checkout?): %v", base[:shortLen], err))
-	}
 	blobs := &blobReader{cmd: cmd, root: root, base: base, contents: map[string][]byte{}}
-	if ref := blobs.read(ctx, fixed); ref != nil {
+	served, ref := blobs.readFixed(ctx, repo, read, paths)
+	if ref != nil {
 		return nil, ref
 	}
-	if !trees {
+	if !trees || served {
 		return blobs.contents, nil
 	}
-	packTree, err := lsTree(ctx, cmd, root, base, true, PacksPrefix)
-	if err != nil {
-		return nil, refuse(CodeUnavailable, fmt.Sprintf("PR base %s is not readable here (shallow checkout?): %v", base[:shortLen], err))
-	}
-	if ref := blobs.read(ctx, packTree); ref != nil {
+	if ref := blobs.readPacks(ctx); ref != nil {
 		return nil, ref
 	}
 	return blobs.contents, nil
@@ -96,11 +86,44 @@ func ReadPaths(ctx context.Context, cmd core.Commander, repo, root, base string,
 // blobReader reads every regular blob one ls-tree listing names, with the
 // total cap spanning every listing of the same base read.
 type blobReader struct {
+	contents map[string][]byte
 	cmd      core.Commander
 	root     string
 	base     string
-	contents map[string][]byte
 	total    int
+}
+
+// readFixed reads the fixed control paths, falling back to the contents API
+// when git cannot supply the base and repo names a GitHub repository. served
+// reports that the API answered for the whole tree, pack walk included.
+func (b *blobReader) readFixed(ctx context.Context, repo string, read, paths []string) (bool, *core.RefusalError) {
+	tree, err := lsTree(ctx, b.cmd, b.root, b.base, false, paths...)
+	if err != nil && repo != "" {
+		contents, ref := readContents(ctx, b.cmd, repo, b.base, read)
+		if ref != nil {
+			return false, ref
+		}
+		b.contents = contents
+		return true, nil
+	}
+	if err != nil {
+		return false, b.unreadable(err)
+	}
+	return false, b.read(ctx, tree)
+}
+
+// readPacks reads the recursive pack tree listing.
+func (b *blobReader) readPacks(ctx context.Context) *core.RefusalError {
+	tree, err := lsTree(ctx, b.cmd, b.root, b.base, true, PacksPrefix)
+	if err != nil {
+		return b.unreadable(err)
+	}
+	return b.read(ctx, tree)
+}
+
+// unreadable maps one failed listing to the shallow-checkout refusal.
+func (b *blobReader) unreadable(err error) *core.RefusalError {
+	return refuse(CodeUnavailable, fmt.Sprintf("PR base %s is not readable here (shallow checkout?): %v", b.base[:shortLen], err))
 }
 
 // read reads one ls-tree listing.

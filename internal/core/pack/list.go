@@ -24,7 +24,8 @@ const RepoPacksDir = ".verdict/packs"
 const listSep = ","
 
 // maxRepoPackEntries bounds one pack-root scan at the same 1024 entries the
-// controls pack budget allows, and readDirBatch is how many it reads at a time.
+// controls pack budget allows; readDirBatch is how many entries one directory
+// read returns, and canceledCode is what a canceled read reports.
 const (
 	maxRepoPackEntries = 1024
 	readDirBatch       = 256
@@ -212,25 +213,52 @@ func readPackRoot(ctx context.Context, dir string) ([]fs.DirEntry, *core.Refusal
 		return nil, badPack(fmt.Sprintf("read %s: %v", RepoPacksDir, err))
 	}
 	defer func() { _ = f.Close() }()
+	entries, ref := readPackEntries(ctx, f)
+	if ref != nil {
+		return nil, ref
+	}
+	slices.SortFunc(entries, func(a, b fs.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
+	return entries, nil
+}
+
+// readPackEntries reads one directory handle to EOF in batches, checking the
+// caller's context before each batch and refusing past the entry cap.
+func readPackEntries(ctx context.Context, f *os.File) ([]fs.DirEntry, *core.RefusalError) {
 	var entries []fs.DirEntry
 	for {
-		if err := ctx.Err(); err != nil {
-			return nil, &core.RefusalError{Code: canceledCode, Message: "canceled while scanning " + RepoPacksDir}
+		batch, done, ref := readPackBatch(ctx, f, len(entries))
+		if ref != nil {
+			return nil, ref
 		}
-		batch, rerr := f.ReadDir(readDirBatch)
 		entries = append(entries, batch...)
-		if len(entries) > maxRepoPackEntries {
-			return nil, tooLarge(fmt.Sprintf("%s holds more than %d entries — trim it",
-				RepoPacksDir, maxRepoPackEntries))
-		}
-		if errors.Is(rerr, io.EOF) {
-			slices.SortFunc(entries, func(a, b fs.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
+		if done {
 			return entries, nil
 		}
-		if rerr != nil {
-			return nil, badPack(fmt.Sprintf("read %s: %v", RepoPacksDir, rerr))
-		}
 	}
+}
+
+// readPackBatch reads one bounded batch and reports whether it ended the
+// listing; listed is the count the cap is charged against.
+func readPackBatch(ctx context.Context, f *os.File, listed int) ([]fs.DirEntry, bool, *core.RefusalError) {
+	if err := ctx.Err(); err != nil {
+		return nil, false, &core.RefusalError{Code: canceledCode, Message: "canceled while scanning " + RepoPacksDir}
+	}
+	batch, rerr := f.ReadDir(readDirBatch)
+	if listed += len(batch); listed > maxRepoPackEntries {
+		return nil, false, packRootTooLarge()
+	}
+	if errors.Is(rerr, io.EOF) {
+		return batch, true, nil
+	}
+	if rerr != nil {
+		return nil, false, badPack(fmt.Sprintf("read %s: %v", RepoPacksDir, rerr))
+	}
+	return batch, false, nil
+}
+
+// packRootTooLarge refuses a pack root past the entry cap.
+func packRootTooLarge() *core.RefusalError {
+	return tooLarge(fmt.Sprintf("%s holds more than %d entries — trim it", RepoPacksDir, maxRepoPackEntries))
 }
 
 // checkPacksRoot refuses a pack root that is not a real directory: following a

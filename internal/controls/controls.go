@@ -153,21 +153,30 @@ func (s *Snapshot) write(bundleDir string, contents map[string][]byte) *core.Ref
 		return refuse(CodeUnavailable, fmt.Sprintf("could not clear %s: %v", s.Dir, err))
 	}
 	for _, path := range s.Inventory {
-		raw, ok := contents[path]
-		entry := core.ControlsFileEntry{Path: path, Status: statusMissing}
-		if ok {
-			entry = core.ControlsFileEntry{Path: path, Status: statusUsed, Bytes: int64(len(raw)), SHA256: hash(raw)}
-			if ref := writeAt(filepath.Join(s.Dir, filepath.FromSlash(snapshotRel(path))), raw); ref != nil {
-				return ref
-			}
+		raw, used := contents[path]
+		if ref := s.record(path, raw, used); ref != nil {
+			return ref
 		}
-		s.File.Files = append(s.File.Files, entry)
 	}
 	doc, err := json.MarshalIndent(s.File, "", "  ")
 	if err != nil {
 		return refuse(CodeUnavailable, fmt.Sprintf("could not encode %s: %v", FileName, err))
 	}
 	return writeAt(filepath.Join(bundleDir, FileName), append(doc, '\n'))
+}
+
+// record appends one inventory row and materializes a used control's bytes.
+// A missing row stays in the inventory with no file behind it.
+func (s *Snapshot) record(path string, raw []byte, used bool) *core.RefusalError {
+	entry := core.ControlsFileEntry{Path: path, Status: statusMissing}
+	if used {
+		entry = core.ControlsFileEntry{Path: path, Status: statusUsed, Bytes: int64(len(raw)), SHA256: hash(raw)}
+		if ref := writeAt(filepath.Join(s.Dir, filepath.FromSlash(snapshotRel(path))), raw); ref != nil {
+			return ref
+		}
+	}
+	s.File.Files = append(s.File.Files, entry)
+	return nil
 }
 
 // inventoryFor keeps the fixed inventory order and appends every pack file
@@ -432,14 +441,19 @@ func readWorktreePackEntry(
 	if !inside {
 		return nil // the pack root itself, whose entries the walk charges
 	}
-	if ref := budget.checkDepth(packDepth(tail, entry.IsDir())); ref != nil {
-		return ref
-	}
-	if ref := budget.spend(1); ref != nil {
+	if ref := budget.charge(tail, entry.IsDir()); ref != nil {
 		return ref
 	}
 	if entry.IsDir() {
 		return nil
+	}
+	return recordWorktreePackFile(filepath.ToSlash(rel), path, entry, contents, total)
+}
+
+// recordWorktreePackFile records one regular head pack file's bytes.
+func recordWorktreePackFile(rel, path string, entry fs.DirEntry, contents map[string][]byte, total *int) error {
+	if !validPackRel(rel) {
+		return refuse(CodeUnavailable, controlPrefix+path+" is outside "+PacksPrefix)
 	}
 	if ref := regularPackEntry(path, entry); ref != nil {
 		return ref
@@ -448,22 +462,8 @@ func readWorktreePackEntry(
 	if *total += len(raw); rerr != nil || *total > MaxTotalBytes {
 		return refuse(CodeTooLarge, controlPrefix+path+" is unreadable or the controls are over their size caps")
 	}
-	if !validPackRel(filepath.ToSlash(rel)) {
-		return refuse(CodeUnavailable, controlPrefix+path+" is outside "+PacksPrefix)
-	}
-	contents[filepath.ToSlash(rel)] = raw
+	contents[rel] = raw
 	return nil
-}
-
-// packDepth renders one walked pack entry's depth in the same count the
-// contents fallback charges: a directory is one level deeper than the files
-// it lists.
-func packDepth(tail string, isDir bool) int {
-	depth := strings.Count(tail, packSep)
-	if isDir {
-		depth++
-	}
-	return depth
 }
 
 // regularPackEntry refuses a symlink or special file before it is opened.
