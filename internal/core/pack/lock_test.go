@@ -82,9 +82,10 @@ func TestLockSigPinsEveryEntryField(t *testing.T) {
 func TestLockStrictJSONRefuses(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name string
-		body string
-		want string
+		name  string
+		body  string
+		want  string
+		valid bool
 	}{
 		{
 			name: "unknown top key",
@@ -110,6 +111,12 @@ func TestLockStrictJSONRefuses(t *testing.T) {
 			want: "not sorted",
 		},
 		{
+			name: "git userinfo source",
+			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:https://user@host/repo.git@` +
+				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
+			valid: true,
+		},
+		{
 			name: "bad source",
 			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"http://x",` +
 				`"version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
@@ -120,6 +127,12 @@ func TestLockStrictJSONRefuses(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, ref := parseLock([]byte(tc.body))
+			if tc.valid {
+				if ref != nil {
+					t.Fatalf("parseLock = %s: %s, want it accepted", ref.Code, ref.Message)
+				}
+				return
+			}
 			if ref == nil || ref.Code != CodeBadPack {
 				t.Fatalf("parseLock = %v, want bad-pack", ref)
 			}

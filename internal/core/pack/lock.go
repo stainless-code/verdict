@@ -281,8 +281,8 @@ func validLockSource(source string) bool {
 	if !ok {
 		return false
 	}
-	url, sha, ok := strings.Cut(rest, "@")
-	return ok && url != "" && hex40(sha)
+	at := strings.LastIndex(rest, "@")
+	return at > 0 && hex40(rest[at+1:])
 }
 
 // hex64 reports whether s is a lowercase 64-hex digest.
