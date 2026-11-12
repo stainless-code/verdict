@@ -248,18 +248,18 @@
   },
   "lock": {
     "descriptions": {
-      "": "The repo layer's pin file at .verdict/verdict.lock: strict JSON with exactly one row per pack vendored under .verdict/packs/, sorted by name. The lock covers only the repo layer — the built-in pack is pinned by the binary and org packs live in per-operator settings. source is dir:<path as given> or git:<url>@<40-hex sha>; hash is the pack's canonical tree hash; sig is sha256 over name, source, version, and hash, so a hand edit is caught. fetch, post, and record refuse pack-lock-missing or pack-lock-drift from the trusted-base snapshot, and the file joins the controls inventory so an edited snapshot copy refuses controls-stale.",
+      "": "The repo layer's pin file at .verdict/verdict.lock: strict JSON with exactly one row per pack vendored under .verdict/packs/, sorted by name. The lock covers only the repo layer — the built-in pack is pinned by the binary and org packs live in per-operator settings. source is dir:<path as given> or git:<allowlisted url>@<40-hex sha>; hash is the pack's canonical tree hash; sig is sha256 over name, source, version, and hash, so a hand edit is caught. fetch, post, and record refuse pack-lock-missing or pack-lock-drift from the trusted-base snapshot, and the file joins the controls inventory so an edited snapshot copy refuses controls-stale.",
       "/properties/schema_version": "Lock format version; exactly \"1\".",
       "/properties/packs": "One pinned pack row per vendored repo pack, sorted by name.",
       "/$defs/pack": "One pinned pack: its manifest identity, where it was vendored from, the canonical tree hash, and an integrity digest over those fields.",
       "/$defs/pack/properties/name": "Manifest pack identity as <namespace>/<slug>; the vendored directory is the slug.",
-      "/$defs/pack/properties/source": "dir:<path as given on the add command line> or git:<url>@<resolved 40-hex HEAD sha>. A dir: payload is a slash path with no control character, backslash, or leading \"-\"; a git: URL carries no userinfo on http or https and only a bare user on ssh or scp.",
+      "/$defs/pack/properties/source": "dir:<path as given on the add command line> or git:<url>@<resolved 40-hex HEAD sha>. A dir: payload is a slash path with no control character, backslash, or leading \"-\". A git: URL is exactly https://host/path with no userinfo, ssh://user@host/path, or user@host:path, with a DNS, IPv4, or bracketed IPv6 host, a path with no control character, whitespace, or leading \"-\", and only the bare [A-Za-z0-9._-]{1,64} ssh user; the scheme is stored lower-case, so an upper-case row refuses.",
       "/$defs/pack/properties/version": "Pinned pack semver, as the manifest declares it.",
       "/$defs/pack/properties/hash": "The pack's canonical tree hash: sha256 over sorted slash paths, each fed as `== <path-length>:<path> ==`, the body's byte length, the body's bytes, then a newline.",
       "/$defs/pack/properties/sig": "sha256 over the entry's name, source, version, and hash in that order, one `key=value` line each. Integrity only: a hand edit breaks it; it is not a signature."
     },
     "patterns": {
-      "/$defs/pack/properties/source": "^(?:dir:[^\\x00-\\x1f\\x7f\\\\-][^\\x00-\\x1f\\x7f\\\\]*|git:(?:https?://[^@/\\x00-\\x1f\\x7f]+(?:/[^\\x00-\\x1f\\x7f]*)?|ssh://[^@:/\\x00-\\x1f\\x7f]+@[^@/\\x00-\\x1f\\x7f]+(?:/[^\\x00-\\x1f\\x7f]*)?|[^@:/\\x00-\\x1f\\x7f]+@[^@:/\\x00-\\x1f\\x7f]+:[^\\x00-\\x1f\\x7f]*)@[0-9a-f]{40})$"
+      "/$defs/pack/properties/source": "^(?:dir:[^\\\\\\x00-\\x1f\\x7f-][^\\\\\\x00-\\x1f\\x7f]*|git:(?:https://(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*|\\[[0-9A-Fa-f]*:[0-9A-Fa-f:.]*\\])(?::[0-9]{1,5})?/[^@ \\x00-\\x1f\\x7f-][^@ \\x00-\\x1f\\x7f]*|ssh://[A-Za-z0-9._-]{1,64}@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*|\\[[0-9A-Fa-f]*:[0-9A-Fa-f:.]*\\])(?::[0-9]{1,5})?/[^@ \\x00-\\x1f\\x7f-][^@ \\x00-\\x1f\\x7f]*|[A-Za-z0-9._-]{1,64}@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*|\\[[0-9A-Fa-f]*:[0-9A-Fa-f:.]*\\]):[^@ \\x00-\\x1f\\x7f-][^@ \\x00-\\x1f\\x7f]*)@[0-9a-f]{40})$"
     }
   },
   "pack": {

@@ -63,10 +63,7 @@ func lockSourceBody(source string) string {
 }
 
 // TestLockSourceSchemaMatchesLoader proves the published source pattern and
-// the loader agree on a clean dir: path and reject a leading dash, newline,
-// backslash, or control character.
-//
-//nolint:gocognit,revive // the source grammar matrix reads as one block
+// the loader agree over the whole allowlist table, plus the dir: grammar.
 func TestLockSourceSchemaMatchesLoader(t *testing.T) {
 	t.Parallel()
 	checker, err := schemacheck.Load(
@@ -74,42 +71,70 @@ func TestLockSourceSchemaMatchesLoader(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load lock schema: %v", err)
 	}
-	for _, tc := range []struct {
+	type sourceCase struct {
+		name   string
 		source string
 		valid  bool
-	}{
-		{"dir:../packs", true},
-		{"dir:src-packs/lenses", true},
-		{"git:ssh://git@host/repo.git@" + strings.Repeat("c", 40), true},
-		{"git:git@host:path@" + strings.Repeat("c", 40), true},
-		{"git:https://host/repo.git@" + strings.Repeat("c", 40), true},
-		{"git:https://user@host/repo.git@" + strings.Repeat("c", 40), false},
-		{"git:https://user:tok@host/repo.git@" + strings.Repeat("c", 40), false},
-		{"git:ssh://user:pw@host/repo.git@" + strings.Repeat("c", 40), false},
-		{"git:oauth2:tok@host:path@" + strings.Repeat("c", 40), false},
-		{"dir:-src", false},
-		{"dir:src\npacks", false},
-		{`dir:src\packs`, false},
-		{"dir:src\x7fpacks", false},
-	} {
-		t.Run(tc.source, func(t *testing.T) {
-			t.Parallel()
-			body := lockSourceBody(tc.source)
-			_, ref := parseLock([]byte(body))
-			if tc.valid && ref != nil {
-				t.Fatalf("parseLock = %s: %s, want it accepted", ref.Code, ref.Message)
-			}
-			if !tc.valid && (ref == nil || ref.Code != CodeBadPack) {
-				t.Fatalf("parseLock = %v, want bad-pack", ref)
-			}
-			failures := checker.Check(decodeJSON(t, body))
-			if tc.valid && len(failures) != 0 {
-				t.Fatalf("schema rejected %q: %v", tc.source, failures)
-			}
-			if !tc.valid && len(failures) == 0 {
-				t.Fatalf("schema accepted refused source %q", tc.source)
-			}
+	}
+	sha := strings.Repeat("c", 40)
+	cases := []sourceCase{
+		{"dir parent", "dir:../packs", true},
+		{"dir path", "dir:src-packs/lenses", true},
+		{"dir leading dash", "dir:-src", false},
+		{"dir newline", "dir:src\npacks", false},
+		{"dir backslash", `dir:src\packs`, false},
+		{"dir control", "dir:src\x7fpacks", false},
+		{"dir url label", "dir:https://user:tok@host/x", true},
+		{"uppercase git row", "git:HTTPS://host/x.git@" + sha, false},
+	}
+	for _, tc := range allowedGitSources {
+		cases = append(cases, sourceCase{
+			name: tc.name, source: sourceGitPrefix + tc.url + refSep + sha, valid: true,
 		})
+	}
+	for _, tc := range refusedGitSources {
+		cases = append(cases, sourceCase{
+			name: tc.name, source: sourceGitPrefix + tc.source + refSep + sha, valid: false,
+		})
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			checkLockSource(t, checker, tc.source, tc.valid)
+		})
+	}
+}
+
+// checkLockSource proves the loader and the published schema agree on one
+// source.
+func checkLockSource(t *testing.T, checker *schemacheck.Checker, source string, valid bool) {
+	t.Helper()
+	body := lockSourceBody(source)
+	checkLockParse(t, source, body, valid)
+	checkLockPattern(t, checker, source, body, valid)
+}
+
+// checkLockParse proves the loader's verdict on one source.
+func checkLockParse(t *testing.T, source, body string, valid bool) {
+	t.Helper()
+	_, ref := parseLock([]byte(body))
+	switch {
+	case valid && ref != nil:
+		t.Fatalf("parseLock(%q) = %s: %s, want it accepted", source, ref.Code, ref.Message)
+	case !valid && (ref == nil || ref.Code != CodeBadPack):
+		t.Fatalf("parseLock(%q) = %v, want bad-pack", source, ref)
+	}
+}
+
+// checkLockPattern proves the published pattern's verdict on one source.
+func checkLockPattern(t *testing.T, checker *schemacheck.Checker, source, body string, valid bool) {
+	t.Helper()
+	failures := checker.Check(decodeJSON(t, body))
+	switch {
+	case valid && len(failures) != 0:
+		t.Fatalf("schema rejected %q: %v", source, failures)
+	case !valid && len(failures) == 0:
+		t.Fatalf("schema accepted refused source %q", source)
 	}
 }
 
@@ -194,72 +219,72 @@ func TestLockStrictJSONRefuses(t *testing.T) {
 			name: "git bare https user source",
 			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:https://user@host/repo.git@` +
 				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
-			want: "https://***@host/repo.git",
+			want: invalidSource,
 			hide: "user@host",
 		},
 		{
 			name: "git second at source",
 			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:https://us@er:S3CRET@host/x.git@` +
 				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
-			want: "https://***@host/x.git",
+			want: invalidSource,
 			hide: "S3CRET",
 		},
 		{
 			name: "git at in password source",
 			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:https://user:p@ss@host/x.git@` +
 				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
-			want: "https://***@host/x.git",
+			want: invalidSource,
 			hide: "p@ss",
 		},
 		{
 			name: "git token only source",
 			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:https://ghp_SUPERSECRET@host/x.git@` +
 				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
-			want: "https://***@host/x.git",
+			want: invalidSource,
 			hide: "ghp_SUPERSECRET",
 		},
 		{
 			name: "git ssh password source",
 			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:ssh://user:S3CRET@host/x@` +
 				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
-			want: "ssh://***@host/x",
+			want: invalidSource,
 			hide: "S3CRET",
 		},
 		{
 			name: "git percent colon source",
 			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:https://user%3AS3CRET@host/x.git@` +
 				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
-			want: "https://***@host/x.git",
+			want: invalidSource,
 			hide: "S3CRET",
 		},
 		{
 			name: "git percent at source",
 			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:https://us%40er:S3CRET@host/x.git@` +
 				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
-			want: "https://***@host/x.git",
+			want: invalidSource,
 			hide: "S3CRET",
 		},
 		{
 			name: "git http userinfo source",
 			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:http://ghp_SUPERSECRET@host/x.git@` +
 				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
-			want: "http://***@host/x.git",
+			want: invalidSource,
 			hide: "ghp_SUPERSECRET",
 		},
 		{
 			name: "git password source",
 			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:https://user:tok@host/repo.git@` +
 				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
-			want: "https://***@host/repo.git",
+			want: invalidSource,
 			hide: "user:tok@host",
 		},
 		{
 			name: "bad source",
 			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"http://x",` +
 				`"version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
-			want: `source "http://x"`,
+			want: `source "<invalid source>"`,
 		},
-		{name: "dir leading dash", body: lockSourceBody("dir:-src"), want: `source "dir:-src"`},
+		{name: "dir leading dash", body: lockSourceBody("dir:-src"), want: `source "<invalid source>"`},
 		{name: "dir newline", body: lockSourceBody("dir:src\npacks"), want: "source"},
 		{name: "dir backslash", body: lockSourceBody(`dir:src\packs`), want: "source"},
 		{name: "dir control", body: lockSourceBody("dir:src\x7fpacks"), want: "source"},

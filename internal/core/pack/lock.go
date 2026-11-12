@@ -268,8 +268,9 @@ func validateLockEntry(entry *LockEntry) *core.RefusalError {
 		return badLock(fmt.Sprintf("%s pack name %q is not <namespace>/<slug>", LockFile, entry.Name))
 	}
 	if !validLockSource(entry.Source) {
-		return badLock(fmt.Sprintf("%s pack %q source %q is not dir:<path> or git:<url>@<sha>",
-			LockFile, entry.Name, redactURL(entry.Source)))
+		return badLock(fmt.Sprintf(
+			"%s pack %q source %q is not dir:<path> or an allowlisted git remote pinned to a 40-hex sha",
+			LockFile, entry.Name, displaySource(entry.Source)))
 	}
 	if !versionRE.MatchString(entry.Version) {
 		return badLock(fmt.Sprintf("%s pack %q version %q is not semver", LockFile, entry.Name, entry.Version))
@@ -284,8 +285,8 @@ func validateLockEntry(entry *LockEntry) *core.RefusalError {
 }
 
 // validLockSource accepts the two published provenance spellings. A source
-// never carries a control character, and a dir: payload is a clean slash path
-// with no leading "-".
+// never carries a control character, and a git: row is the canonical URL the
+// allowlist parses plus its pinned 40-hex sha.
 func validLockSource(source string) bool {
 	if dir, ok := strings.CutPrefix(source, sourceDirPrefix); ok {
 		return validDirSource(dir)
@@ -294,11 +295,12 @@ func validLockSource(source string) bool {
 	if !ok || !cleanSource(source) {
 		return false
 	}
-	at := strings.LastIndex(rest, "@")
+	at := strings.LastIndex(rest, refSep)
 	if at <= 0 || !hex40(rest[at+1:]) {
 		return false
 	}
-	return userinfoRefusal(rest[:at]) == nil
+	g, ok := parseGitSource(rest[:at])
+	return ok && g.ref == "" && source == sourceGitPrefix+g.url+refSep+rest[at+1:]
 }
 
 // validDirSource constrains one dir: payload: non-empty, not an option, and a

@@ -253,7 +253,15 @@ var publishedSemantics = map[string]string{
 	// userinfo and only a bare ssh/scp user. The hash description now names
 	// the length-delimited tree framing. No property, required key, or type
 	// changed.
-	"lock.schema.json": "152662502915eb9d63d1a439f8eb80784ae2ba2b57ca4bafd35e47926b6b2609",
+	// source allowlist: the git: pattern narrows to the three accepted remote
+	// forms — https://host/path with no userinfo, ssh://user@host/path, and
+	// user@host:path — with a DNS/IPv4/bracketed-IPv6 host, the bare
+	// [A-Za-z0-9._-]{1,64} ssh user, no whitespace/control/@ in the path, and
+	// the lower-case scheme pack add stores. A row the old pattern accepted
+	// (any userinfo shape, http, a one-slash scheme) now refuses, so this is
+	// an intentional narrowing of one pattern; no property, required key, or
+	// type changed.
+	"lock.schema.json": "64f370ac595834942c9550db28347bb0709021a5b0f726478b121ad9b08637d9",
 	"pack.schema.json": "fc8dc3ae76bfee94157f23e03ad2173f643d96974896c05307f89491f2a207b9",
 	// patch identity: additive optional patch_id/patch_id_kind plus the
 	// optional forced[] audit with $defs/forcedPost. No existing property,

@@ -22,15 +22,18 @@ const (
 	sourceDirPrefix = "dir:"
 	sourceGitPrefix = "git:"
 	refSep          = "@"
-	userinfoSep     = ":"
 	schemeSep       = "://"
-	httpsPrefix     = "https://"
-	sshPrefix       = "ssh://"
+	schemeSlash     = ":/"
+	invalidSource   = "<invalid source>"
 	packDirPerm     = 0o755
 	shaHexLen       = 40
 	stagingDot      = "."
 	revParseArgs    = 3
 	revParseIndex   = 1
+	maxSourceUser   = 64
+	maxHostLen      = 253
+	maxHostLabel    = 63
+	maxPortLen      = 5
 )
 
 // packCloneTimeout bounds the clone, rev-parse, and checkout group so a slow
@@ -131,14 +134,14 @@ func commitAdd(root, slug, backup string, lock *Lock) *core.RefusalError {
 func loadAdd(root string, src *packSource) (*Lock, *Pack, *LockEntry, *core.RefusalError) {
 	if sameTree(filepath.Join(root, filepath.FromSlash(RepoPacksDir)), src.dir) {
 		return nil, nil, nil, badPack(fmt.Sprintf(
-			"pack source %q is inside %s — it is already vendored", redactURL(src.label), RepoPacksDir))
+			"pack source %q is inside %s — it is already vendored", displaySource(src.label), RepoPacksDir))
 	}
 	p, ref := LoadDir(src.dir)
 	if ref != nil {
 		return nil, nil, nil, ref
 	}
 	if p == nil {
-		return nil, nil, nil, badPack(fmt.Sprintf("pack source %q carries no %s", redactURL(src.label), ManifestFile))
+		return nil, nil, nil, badPack(fmt.Sprintf("pack source %q carries no %s", displaySource(src.label), ManifestFile))
 	}
 	lock, ref := loadLock(root)
 	if ref != nil {
@@ -205,7 +208,7 @@ func addResponse(p *Pack, entry *LockEntry, old *LockEntry, slug string) *AddRes
 			Lenses: lensIDsOf(p), Rules: ruleIDsOf(p),
 		},
 	}
-	source := redactURL(entry.Source)
+	source := displaySource(entry.Source)
 	line := fmt.Sprintf("added %s@%s source=%s sha256:%s", p.Name, p.Version, source, p.Hash)
 	if old != nil {
 		data.Replaced = true
@@ -246,140 +249,380 @@ type packSource struct {
 	label   string
 }
 
-// addSource resolves a directory or a hermetic git clone.
+// addSource resolves an allowlisted git remote into a hermetic clone, or a
+// local directory into a pack source. A remote-shaped source the allowlist
+// rejects refuses before any git call.
 func addSource(ctx context.Context, req *AddRequest) (*packSource, *core.RefusalError) {
 	source := strings.TrimSpace(req.Source)
-	sourceURL, _, _ := refSplit(source)
-	if ref := userinfoRefusal(sourceURL); ref != nil {
-		return nil, ref
-	}
-	if url, refName, ok := splitGitSource(source); ok {
-		return cloneSource(ctx, req, url, refName)
+	if src, ok := parseGitSource(source); ok {
+		return cloneSource(ctx, req, src.url, src.ref)
 	}
 	if strings.HasPrefix(source, "-") {
-		return nil, badPack(fmt.Sprintf("pack source %q starts with '-'", redactURL(source)))
+		return nil, badPack(fmt.Sprintf("pack source %q starts with '-'", displaySource(source)))
+	}
+	if looksLikeGitSource(source) {
+		return nil, badPack(fmt.Sprintf(
+			"pack source %q is not an allowlisted git remote", displaySource(source)))
 	}
 	dir, err := filepath.Abs(source)
 	if err != nil {
-		return nil, badPack(fmt.Sprintf("pack source %q cannot be resolved: %v", redactURL(source), err))
+		return nil, badPack(fmt.Sprintf("pack source %q cannot be resolved: %v", displaySource(source), err))
 	}
 	label := sourceDirPrefix + filepath.ToSlash(source)
 	if !validLockSource(label) {
-		return nil, badPack(fmt.Sprintf("pack source %q cannot be recorded in %s", redactURL(source), LockFile))
+		return nil, badPack(fmt.Sprintf("pack source %q cannot be recorded in %s", displaySource(label), LockFile))
 	}
 	return &packSource{dir: dir, label: label, cleanup: func() {}}, nil
 }
 
-// splitGitSource recognizes the published https and ssh forms and the
-// optional @ref suffix.
-func splitGitSource(source string) (string, string, bool) {
-	url, refName, hasRef := refSplit(source)
-	if hasRef {
-		if refName == "" || !gitRef.MatchString(refName) {
-			return "", "", false
+// gitSource is one allowlisted git remote and its optional @ref.
+type gitSource struct {
+	url string
+	ref string
+}
+
+// parseGitSource accepts exactly the published git sources: https://host/path
+// with no userinfo, ssh://user@host/path, and user@host:path, each with an
+// optional @ref. The scheme is matched case-insensitively and stored
+// lower-case.
+func parseGitSource(s string) (gitSource, bool) {
+	if base, ref, ok := splitSourceRef(s); ok {
+		url, ok := parseSourceURL(base)
+		if !ok {
+			return gitSource{}, false
 		}
+		return gitSource{url: url, ref: ref}, true
 	}
-	if !gitURL(url) || strings.HasPrefix(url, "-") || userinfoRefusal(url) != nil {
+	url, ok := parseSourceURL(s)
+	if !ok {
+		return gitSource{}, false
+	}
+	return gitSource{url: url}, true
+}
+
+// splitSourceRef cuts the optional @ref at the first @ after a URL authority,
+// or at the last @ of a possible scp source. The suffix must match the ref
+// grammar, so a bare git@host:path stays one source.
+func splitSourceRef(s string) (string, string, bool) {
+	if schemeEnd := strings.Index(s, schemeSep); schemeEnd > 0 {
+		return splitURLRef(s, schemeEnd)
+	}
+	at := strings.LastIndexByte(s, '@')
+	if at <= 0 || !gitRef.MatchString(s[at+1:]) {
+		return s, "", false
+	}
+	return s[:at], s[at+1:], true
+}
+
+// splitURLRef cuts a URL source at the first @ after its authority.
+func splitURLRef(s string, schemeEnd int) (string, string, bool) {
+	rest := schemeEnd + len(schemeSep)
+	slash := strings.IndexByte(s[rest:], '/')
+	if slash < 0 {
+		return s, "", false
+	}
+	rest += slash
+	at := strings.IndexByte(s[rest:], '@')
+	if at < 0 {
+		return s, "", false
+	}
+	at += rest
+	if !gitRef.MatchString(s[at+1:]) {
+		return s, "", false
+	}
+	return s[:at], s[at+1:], true
+}
+
+// parseSourceURL parses one allowlisted git URL without its @ref.
+func parseSourceURL(s string) (string, bool) {
+	if scheme, rest, ok := sourceScheme(s); ok {
+		switch strings.ToLower(scheme) {
+		case "https":
+			return parseHTTPSource(rest)
+		case "ssh":
+			return parseSSHSource(rest)
+		}
+		return "", false
+	}
+	return parseSCPSource(s)
+}
+
+// sourceScheme splits one scheme:// prefix.
+func sourceScheme(s string) (string, string, bool) {
+	i := strings.Index(s, schemeSep)
+	if i <= 0 {
 		return "", "", false
 	}
-	return url, refName, true
+	scheme := s[:i]
+	if !validScheme(scheme) {
+		return "", "", false
+	}
+	return scheme, s[i+len(schemeSep):], true
 }
 
-// userinfoRefusal reports the refusal a source's userinfo earns: http and
-// https sources carry none at all, and ssh and scp sources carry a bare user
-// only.
-func userinfoRefusal(raw string) *core.RefusalError {
-	auth, ok := parseSourceAuthority(raw)
-	if !ok || auth.at < 0 {
-		return nil
+// parseHTTPSource accepts https://HOST[:PORT]/PATH with no userinfo.
+func parseHTTPSource(rest string) (string, bool) {
+	authority, rel, ok := splitAuthorityPath(rest)
+	if !ok || strings.Contains(authority, refSep) || !validHostPort(authority) || !validPath(rel) {
+		return "", false
 	}
-	scheme := strings.ToLower(auth.scheme)
-	if scheme == "http" || scheme == "https" {
-		return badPack(fmt.Sprintf(
-			"pack source %q carries userinfo — %s URLs must carry no userinfo; "+
-				"use ssh (ssh://git@host/path or git@host:path) or a public https URL",
-			redactURL(raw), scheme))
-	}
-	if strings.Contains(auth.userinfo, userinfoSep) {
-		return badPack(fmt.Sprintf(
-			"pack source %q carries a userinfo password — use a bare ssh user, or a public https URL",
-			redactURL(raw)))
-	}
-	return nil
+	return "https://" + authority + "/" + rel, true
 }
 
-// redactURL masks each source's whole userinfo, keeping a dir:/git: wrapper
-// and a git lock's @<sha> suffix intact.
-func redactURL(raw string) string {
-	if dir, ok := strings.CutPrefix(raw, sourceDirPrefix); ok {
-		return sourceDirPrefix + redactURL(dir)
+// parseSSHSource accepts ssh://USER@HOST[:PORT]/PATH.
+func parseSSHSource(rest string) (string, bool) {
+	authority, rel, ok := splitAuthorityPath(rest)
+	if !ok {
+		return "", false
 	}
-	if rest, ok := strings.CutPrefix(raw, sourceGitPrefix); ok {
-		if at := strings.LastIndex(rest, refSep); at > 0 && hex40(rest[at+1:]) {
-			return sourceGitPrefix + redactSourceURL(rest[:at]) + rest[at:]
+	user, hostPort, ok := splitSourceUser(authority)
+	if !ok || !validSourceUser(user) || !validHostPort(hostPort) || !validPath(rel) {
+		return "", false
+	}
+	return "ssh://" + user + "@" + hostPort + "/" + rel, true
+}
+
+// splitAuthorityPath cuts a URL authority at its first slash; both sides must
+// be non-empty.
+func splitAuthorityPath(rest string) (string, string, bool) {
+	slash := strings.IndexByte(rest, '/')
+	if slash <= 0 || slash == len(rest)-1 {
+		return "", "", false
+	}
+	return rest[:slash], rest[slash+1:], true
+}
+
+// splitSourceUser splits one user@host authority at its single @.
+func splitSourceUser(authority string) (string, string, bool) {
+	at := strings.IndexByte(authority, '@')
+	if at <= 0 || at == len(authority)-1 || strings.Contains(authority[at+1:], refSep) {
+		return "", "", false
+	}
+	return authority[:at], authority[at+1:], true
+}
+
+// parseSCPSource accepts the scp form USER@HOST:PATH.
+func parseSCPSource(s string) (string, bool) {
+	if strings.Contains(s, schemeSep) {
+		return "", false
+	}
+	at := strings.IndexByte(s, '@')
+	if at <= 0 {
+		return "", false
+	}
+	user, rest := s[:at], s[at+1:]
+	host, rel, ok := splitSCPHost(rest)
+	if !ok || !validSourceUser(user) || !validHost(host) || !validPath(rel) {
+		return "", false
+	}
+	return user + "@" + host + ":" + rel, true
+}
+
+// splitSCPHost cuts one scp destination at the colon after its host, or after
+// a bracketed IPv6 literal.
+func splitSCPHost(rest string) (string, string, bool) {
+	if strings.HasPrefix(rest, "[") {
+		end := strings.IndexByte(rest, ']')
+		if end < 0 || end+1 >= len(rest) || rest[end+1] != ':' {
+			return "", "", false
 		}
-		return sourceGitPrefix + redactSourceURL(rest)
+		return rest[:end+1], rest[end+2:], true
 	}
-	return redactSourceURL(raw)
+	colon := strings.IndexByte(rest, ':')
+	if colon <= 0 {
+		return "", "", false
+	}
+	return rest[:colon], rest[colon+1:], true
 }
 
-// redactSourceURL masks the userinfo one URL or scp source carries.
-func redactSourceURL(raw string) string {
-	auth, ok := parseSourceAuthority(raw)
-	if !ok || auth.at < 0 {
+// validHostPort validates HOST or HOST:PORT, with a bracketed IPv6 host.
+func validHostPort(s string) bool {
+	if strings.HasPrefix(s, "[") {
+		return validBracketedHostPort(s)
+	}
+	host, port, hasPort := strings.Cut(s, ":")
+	return (!hasPort || validPort(port)) && validHost(host)
+}
+
+// validBracketedHostPort validates [ipv6] with its optional :port.
+func validBracketedHostPort(s string) bool {
+	end := strings.IndexByte(s, ']')
+	if end < 0 || !validHost(s[:end+1]) {
+		return false
+	}
+	rest := s[end+1:]
+	return rest == "" || (strings.HasPrefix(rest, ":") && validPort(rest[1:]))
+}
+
+// validHost accepts a DNS name, an IPv4 address, or a bracketed IPv6 literal.
+func validHost(host string) bool {
+	if strings.HasPrefix(host, "[") {
+		return strings.HasSuffix(host, "]") && validIPv6(host[1:len(host)-1])
+	}
+	if host == "" || len(host) > maxHostLen {
+		return false
+	}
+	for label := range strings.SplitSeq(host, ".") {
+		if !validHostLabel(label) {
+			return false
+		}
+	}
+	return true
+}
+
+// validHostLabel accepts one DNS label: 1..63 bytes, alphanumeric at both
+// ends, hyphen inside.
+func validHostLabel(label string) bool {
+	if label == "" || len(label) > maxHostLabel {
+		return false
+	}
+	for i := range len(label) {
+		c := label[i]
+		if !isAlnum(c) && (c != '-' || i == 0 || i == len(label)-1) {
+			return false
+		}
+	}
+	return true
+}
+
+// validIPv6 accepts the inside of a bracketed IPv6 literal: hex digits,
+// colons, and dots, with at least one colon.
+func validIPv6(inner string) bool {
+	if inner == "" || !strings.ContainsRune(inner, ':') {
+		return false
+	}
+	for i := range len(inner) {
+		c := inner[i]
+		if !isHex(c) && c != ':' && c != '.' {
+			return false
+		}
+	}
+	return true
+}
+
+// validSourceUser accepts the bare ssh user grammar: 1..64 of [A-Za-z0-9._-].
+func validSourceUser(user string) bool {
+	if user == "" || len(user) > maxSourceUser {
+		return false
+	}
+	for i := range len(user) {
+		c := user[i]
+		if !isAlnum(c) && c != '.' && c != '_' && c != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+// validPath accepts a source path with no whitespace, control character, @,
+// or leading '-'.
+func validPath(rel string) bool {
+	if rel == "" || rel[0] == '-' {
+		return false
+	}
+	for i := range len(rel) {
+		c := rel[i]
+		if c <= ' ' || c == controlDEL || c == '@' {
+			return false
+		}
+	}
+	return true
+}
+
+// validPort accepts 1..5 decimal digits.
+func validPort(port string) bool {
+	if port == "" || len(port) > maxPortLen {
+		return false
+	}
+	for i := range len(port) {
+		if port[i] < '0' || port[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func isAlnum(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
+}
+
+func isHex(c byte) bool {
+	return c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F'
+}
+
+// looksLikeGitSource reports whether s asks to be a git remote. Anything that
+// does refuses when the allowlist rejects it, instead of falling through to a
+// directory label.
+func looksLikeGitSource(s string) bool {
+	if strings.Contains(s, schemeSep) || schemeColonSlash(s) {
+		return true
+	}
+	at := strings.IndexByte(s, '@')
+	if at <= 0 || strings.ContainsAny(s[:at], `/\`) {
+		return false
+	}
+	return strings.IndexByte(s[at+1:], ':') > 0
+}
+
+// schemeColonSlash matches a scheme and a single slash, the mangled URL shape
+// that would otherwise read as a directory path. Two-letter-plus schemes keep
+// a Windows drive prefix ("C:/packs") a path.
+func schemeColonSlash(s string) bool {
+	i := strings.Index(s, schemeSlash)
+	return i >= 2 && validScheme(s[:i])
+}
+
+// secretShaped reports whether a label carries a URL or userinfo shape that
+// must never be echoed, including inside a dir: label.
+func secretShaped(s string) bool {
+	return strings.Contains(s, schemeSep) || schemeColonSlash(s) ||
+		(strings.Contains(s, refSep) && strings.ContainsRune(s, ':'))
+}
+
+// displaySource renders one source for output. It prints only a source the
+// grammar accepts, canonicalising a git URL; anything else becomes a fixed
+// placeholder so no refusal can echo a credential.
+func displaySource(raw string) string {
+	switch {
+	case raw == "builtin" || strings.HasPrefix(raw, RepoPacksDir+"/"):
+		return raw
+	case strings.HasPrefix(raw, sourceDirPrefix):
+		return displayDirSource(raw)
+	case strings.HasPrefix(raw, sourceGitPrefix):
+		return displayGitSource(raw)
+	}
+	if g, ok := parseGitSource(raw); ok {
+		return g.url
+	}
+	if validDirSource(raw) && !secretShaped(raw) {
+		return sourceDirPrefix + raw
+	}
+	return invalidSource
+}
+
+// displayDirSource renders one dir: label, masking a payload that looks like a
+// URL.
+func displayDirSource(raw string) string {
+	dir, _ := strings.CutPrefix(raw, sourceDirPrefix)
+	if validDirSource(dir) && !secretShaped(dir) {
 		return raw
 	}
-	return raw[:auth.start] + "***" + raw[auth.at:]
+	return invalidSource
 }
 
-// sourceAuthority is one source's authority split at the last @ before the
-// host, the delimiter git itself uses.
-type sourceAuthority struct {
-	scheme   string
-	userinfo string
-	at       int
-	start    int
-	end      int
-}
-
-// parseSourceAuthority splits a URL authority or an scp user@host at git's
-// last @. A scheme-less string counts only when a host:path colon follows the
-// @, so a local path with an @ stays a path.
-func parseSourceAuthority(raw string) (sourceAuthority, bool) {
-	if scheme, rest, ok := strings.Cut(raw, schemeSep); ok && validScheme(scheme) {
-		return urlAuthority(raw, scheme, rest)
+// displayGitSource renders one git: lock label, masking anything that is not
+// the canonical URL plus its pinned sha.
+func displayGitSource(raw string) string {
+	rest, _ := strings.CutPrefix(raw, sourceGitPrefix)
+	at := strings.LastIndex(rest, refSep)
+	if at <= 0 || !hex40(rest[at+1:]) {
+		return invalidSource
 	}
-	at := strings.LastIndex(raw, refSep)
-	if at <= 0 || strings.Contains(raw[:at], "/") || !strings.Contains(raw[at+1:], userinfoSep) {
-		return sourceAuthority{}, false
+	g, ok := parseGitSource(rest[:at])
+	if !ok || g.ref != "" || raw != sourceGitPrefix+g.url+rest[at:] {
+		return invalidSource
 	}
-	return splitLastAt(raw, sourceAuthority{start: 0, end: len(raw)})
-}
-
-// urlAuthority splits one scheme:// authority at its first path slash.
-func urlAuthority(raw, scheme, rest string) (sourceAuthority, bool) {
-	start := len(raw) - len(rest)
-	end := len(raw)
-	if slash := strings.IndexByte(rest, '/'); slash >= 0 {
-		end = start + slash
-	}
-	if start >= end {
-		return sourceAuthority{}, false
-	}
-	return splitLastAt(raw, sourceAuthority{scheme: scheme, start: start, end: end})
-}
-
-// splitLastAt fills the userinfo fields from the last @ inside bounds.
-func splitLastAt(raw string, auth sourceAuthority) (sourceAuthority, bool) {
-	authorityText := raw[auth.start:auth.end]
-	at := strings.LastIndexByte(authorityText, '@')
-	if at < 0 {
-		auth.at = -1
-		return auth, true
-	}
-	auth.at = auth.start + at
-	auth.userinfo = authorityText[:at]
-	return auth, true
+	return raw
 }
 
 // validScheme reports whether s is an RFC 3986 URL scheme.
@@ -403,111 +646,13 @@ func isSchemeByte(c byte) bool {
 	return isSchemeLetter(c) || c >= '0' && c <= '9' || c == '+' || c == '-' || c == '.'
 }
 
-// refSplit cuts the @ref suffix at the last @ outside the source's authority.
-func refSplit(source string) (string, string, bool) {
-	auth, ok := parseSourceAuthority(source)
-	if ok && auth.scheme != "" {
-		start := auth.end
-		if at := strings.Index(source[start:], refSep); at >= 0 {
-			split := start + at
-			return source[:split], source[split+1:], true
-		}
-		return source, "", false
+// scrubGitStderr drops git's own error text when it carries an @, because a
+// remote URL or scp destination can put a credential there.
+func scrubGitStderr(text string) string {
+	if strings.Contains(text, refSep) {
+		return "the remote error is withheld because it carries an @; check the source and your access"
 	}
-	at := strings.LastIndex(source, refSep)
-	if at <= 0 {
-		return source, "", false
-	}
-	if !hasSCPForm(source[:at]) {
-		return source, "", false
-	}
-	return source[:at], source[at+1:], true
-}
-
-// hasSCPForm reports whether raw is an scp user@host:path source.
-func hasSCPForm(raw string) bool {
-	auth, ok := parseSourceAuthority(raw)
-	return ok && auth.scheme == ""
-}
-
-// textURL is one scheme:// span in a message, bounded at the first path,
-// query, fragment, or quote byte.
-type textURL struct {
-	start, schemeEnd, at, end int
-}
-
-// findTextURL locates the next scheme:// span at or after from. A span with no
-// userinfo @ carries at -1.
-func findTextURL(text string, from int) (textURL, bool) {
-	i := strings.Index(text[from:], schemeSep)
-	if i < 0 {
-		return textURL{}, false
-	}
-	i += from
-	start := i
-	for start > 0 && isSchemeByte(text[start-1]) {
-		start--
-	}
-	schemeEnd := i + len(schemeSep)
-	end := schemeEnd
-	for end < len(text) && !urlTextStop(text[end]) {
-		end++
-	}
-	at := strings.LastIndexByte(text[schemeEnd:end], '@')
-	if at <= 0 {
-		return textURL{start: start, schemeEnd: schemeEnd, at: -1, end: end}, true
-	}
-	return textURL{start: start, schemeEnd: schemeEnd, at: schemeEnd + at, end: end}, true
-}
-
-// redactURLText masks the userinfo of every scheme:// URL in text, so a
-// failed clone cannot echo a credential git was handed.
-func redactURLText(text string) string {
-	var out strings.Builder
-	last := 0
-	redacted := false
-	for from := 0; ; {
-		span, ok := findTextURL(text, from)
-		if !ok {
-			break
-		}
-		from = span.end
-		if span.at < 0 {
-			continue
-		}
-		redacted = true
-		out.WriteString(text[last:span.start])
-		out.WriteString(text[span.start:span.schemeEnd])
-		out.WriteString("***")
-		last = span.at
-	}
-	if !redacted {
-		return text
-	}
-	out.WriteString(text[last:])
-	return out.String()
-}
-
-// urlTextStop bounds a URL in a message: git quotes the URL, and a path,
-// query, or fragment starts at the first of these.
-func urlTextStop(c byte) bool {
-	switch c {
-	case '/', '?', '#', '\'', '"', '<', '>', ' ', '\t', '\n', '\r':
-		return true
-	}
-	return false
-}
-
-// gitURL reports whether url is an https or ssh git remote.
-func gitURL(url string) bool {
-	if rest, ok := strings.CutPrefix(url, httpsPrefix); ok {
-		return rest != ""
-	}
-	if rest, ok := strings.CutPrefix(url, sshPrefix); ok {
-		return rest != ""
-	}
-	at, colon := strings.Index(url, refSep), strings.Index(url, userinfoSep)
-	return at > 0 && colon > at+1 && !strings.Contains(url, schemeSep)
+	return text
 }
 
 // cloneSource fetches one git URL hermetically into a temp directory and
@@ -542,7 +687,7 @@ func cloneSource(
 		return nil, ref
 	}
 	return &packSource{
-		dir: clone, label: sourceGitPrefix + redactURL(url) + refSep + sha, cleanup: cleanup,
+		dir: clone, label: sourceGitPrefix + url + refSep + sha, cleanup: cleanup,
 	}, nil
 }
 
@@ -557,7 +702,7 @@ func resolveClone(
 	}
 	if !hex40(sha) {
 		return "", badPack(fmt.Sprintf("git remote %q resolved HEAD to %q, not a 40-hex commit",
-			redactURL(url), sha))
+			displaySource(url), sha))
 	}
 	if ref := runGitPackOK(ctx, cmdr, env, clone, tmp, "checkout", "--detach", sha); ref != nil {
 		return "", ref
@@ -673,10 +818,10 @@ func runGitPack(
 		if _, ok := errors.AsType[*core.MissingToolError](err); ok {
 			return "", &core.RefusalError{Code: "missing-tool", Message: "git is not on PATH"}
 		}
-		return "", badPack(fmt.Sprintf("git %s failed: %s", sub, redactURLText(jq.Sealed(res.Stderr, err).Error())))
+		return "", badPack(fmt.Sprintf("git %s failed: %s", sub, scrubGitStderr(jq.Sealed(res.Stderr, err).Error())))
 	}
 	if res.ExitCode != 0 {
-		return "", badPack(fmt.Sprintf("git %s failed: %s", sub, redactURLText(strings.TrimSpace(res.Stderr))))
+		return "", badPack(fmt.Sprintf("git %s failed: %s", sub, scrubGitStderr(strings.TrimSpace(res.Stderr))))
 	}
 	if res.StdoutTruncated {
 		return "", tooLarge("git " + sub + " output is over its cap")

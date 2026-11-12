@@ -30,7 +30,7 @@ const (
 
 const packUsage = "usage: verdict pack <list|add> [--json]\n" +
 	"       verdict pack add <dir|git-url>[@ref] [--json]\n" +
-	"       https URLs carry no userinfo: use ssh://git@host/path, git@host:path, or a public https URL"
+	"       git sources: https://host/path (no userinfo), ssh://user@host/path, or user@host:path"
 
 // Run executes `pack list [--json]` or `pack add <dir|git-url>[@ref] [--json]`,
 // returning the process exit code.

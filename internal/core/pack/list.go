@@ -350,7 +350,7 @@ func listData(set *Set, lock *Lock) *ListData {
 		}
 		entry := Entry{
 			Name: origin.Pack.Name, Version: origin.Pack.Version,
-			Layer: string(origin.Layer), Source: redactURL(origin.Source), Hash: origin.Pack.Hash,
+			Layer: string(origin.Layer), Source: displaySource(origin.Source), Hash: origin.Pack.Hash,
 			Lenses: lensIDsOf(origin.Pack), Rules: ruleIDsOf(origin.Pack),
 		}
 		if origin.Layer == LayerRepo {
@@ -376,7 +376,7 @@ func appendMissingLocked(data *ListData, lock *Lock, listed map[string]bool) *Li
 		code := CodeLockDrift
 		data.Packs = append(data.Packs, Entry{
 			Name: entry.Name, Version: entry.Version, Layer: string(LayerRepo),
-			Source: redactURL(entry.Source), Hash: entry.Hash,
+			Source: displaySource(entry.Source), Hash: entry.Hash,
 			Lenses: []string{}, Rules: []string{}, Drift: &code,
 		})
 	}

@@ -441,29 +441,38 @@ that temporary tree, `GIT_TERMINAL_PROMPT=0`, `-c core.hooksPath=/dev/null`
 when `@ref` is given), then a detached checkout of the resolved 40-hex HEAD
 commit; that commit is what the lock records. The clone, rev-parse, and
 checkout share one five-minute budget, and the resulting working tree is
-checked against the pack file-count and byte caps before it is loaded. The https, ssh, and scp-like
-remote forms are accepted (`https://host/path`, `ssh://user@host/path`,
-`user@host:path`). An https URL must carry no userinfo at all — the hermetic
-clone has no credential source, so a URL user is only ever a token
-(`https://user@host/path`, `https://token@host/path`) and refuses `bad-pack`
-before the clone and before any write. An ssh or scp source accepts a bare
-user only: `ssh://user:password@host/path` refuses the same way. No printed or
-recorded URL carries userinfo — every message, lock line, and `pack list` row
-masks it as `***@host`. Re-adding a name
-replaces the vendored tree and the lock row, and prints the old and new tree
-hashes. A re-add builds and verifies the new tree in a temp sibling under
-`.verdict/packs/` and swaps it in, so a failed re-add leaves the previous tree
-and lock row intact; a crashed re-add's dot-prefixed staging and backup
-siblings are ignored by the loader and swept by the next add of that pack. A
-source inside `.verdict/packs/` refuses `bad-pack`: it
-is already vendored.
+checked against the pack file-count and byte caps before it is loaded. Exactly
+three remote forms are accepted, and nothing else is a git source:
+`https://HOST[:PORT]/PATH` with no userinfo at all, `ssh://USER@HOST[:PORT]/PATH`,
+or `USER@HOST:PATH`. `USER` is 1–64 of `[A-Za-z0-9._-]`; `HOST` is a DNS name,
+an IPv4 address, or a bracketed IPv6 literal; `PATH` carries no control
+character, whitespace, or leading `-`. The scheme is matched
+case-insensitively and stored lower-case. A string that names a remote but
+fails this grammar refuses `bad-pack` before the clone and before any write:
+the one-slash scheme, a `%`-escaped password (`ssh://user%3ATOK@host/x`), a
+token-only or two-`@` https URL, `http://`, `git+https://`, and an IPv6 literal
+with userinfo are all the same refusal. No source is ever echoed raw: every
+refusal, human line, and `pack list` row renders through one display that
+prints only a parsed source, and prints `<invalid source>` for anything else.
+git's own failure text is dropped for a fixed hint when it carries an `@`,
+because an scp destination or a URL in that text can carry a credential.
+Re-adding a name replaces the vendored tree and the lock row, and prints the
+old and new tree hashes. A re-add builds and verifies the new tree in a temp
+sibling under `.verdict/packs/` and swaps it in, so a failed re-add leaves the
+previous tree and lock row intact; a crashed re-add's dot-prefixed staging and
+backup siblings are ignored by the loader and swept by the next add of that
+pack. A source inside `.verdict/packs/` refuses `bad-pack`: it is already
+vendored.
 
 `verdict.lock` is strict JSON (unknown or differently-cased keys refuse,
 exactly as `pack.json`), with `schema_version: "1"` and `packs` sorted by
 name: `{name, source, version, hash, sig}`. `source` is `dir:<path>` or
 `git:<url>@<sha>`; a `dir:` payload is a slash path with no control
-character, backslash, or leading `-`, and a `git:` source carries no https
-userinfo and only a bare user on ssh or scp. `hash` is the canonical tree hash
+character, backslash, or leading `-`, and a `git:` URL is exactly the three
+accepted remote forms above, stored with the lower-case scheme and pinned to
+the resolved 40-hex sha — a hand-written row with an upper-case scheme, a
+one-slash scheme, or any userinfo password refuses. A `dir:` label that looks
+like a URL is listed as `<invalid source>`. `hash` is the canonical tree hash
 `pack list` prints. `sig` is an integrity digest, not a signature: sha256
 over `name=`, `source=`, `version=`, and `hash=` lines in that order, so a
 hand-edited row is caught. The lock covers the repo layer only: the built-in
