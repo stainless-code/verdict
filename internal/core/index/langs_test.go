@@ -2,6 +2,9 @@ package indexcore
 
 import (
 	"context"
+	"errors"
+	"io/fs"
+	"os"
 	"testing"
 )
 
@@ -106,43 +109,57 @@ func TestTestsForScannedLanguages(t *testing.T) {
 }
 
 // TestSharedBlobParsesPerLanguage proves two paths holding identical bytes in
-// two languages are each parsed in their own language, and that the store
-// caches neither under the shared blob.
+// two languages are each parsed in their own language, that the store caches
+// neither under the shared blob, and that those parses are reported as parses
+// rather than as cache reuse — the shared paths are read again on every build.
 func TestSharedBlobParsesPerLanguage(t *testing.T) {
 	f := newFixture(t)
 	f.write("same.ts", "shared(1)\n")
 	f.write("same.py", "shared(1)\n")
+	f.write("other.ts", "other(1)\n")
 	f.commit("one")
-	f.build()
+	counts := []struct{ parsed, reused int }{{3, 0}, {2, 1}}
+	for i, want := range counts {
+		resp := f.build()
+		if resp.Data.Parsed != want.parsed || resp.Data.Reused != want.reused {
+			t.Errorf("build %d parsed/reused = %d/%d; want %d/%d",
+				i+1, resp.Data.Parsed, resp.Data.Reused, want.parsed, want.reused)
+		}
+	}
 	tree, ref := readTree(storePath(f.dir), f.bodyTree())
 	if ref != nil {
 		t.Fatalf("readTree refused: %v", ref)
 	}
-	want := []struct{ path, lang string }{
-		{"same.py", "python"},
-		{"same.ts", "typescript"},
+	want := []struct{ path, lang, call string }{
+		{"other.ts", "typescript", "other"},
+		{"same.py", "python", "shared"},
+		{"same.ts", "typescript", "shared"},
 	}
 	if len(tree.Files) != len(want) {
 		t.Fatalf("files = %+v; want two", tree.Files)
 	}
 	for i := range want {
-		assertScannedFile(t, &tree.Files[i], want[i].path, want[i].lang)
+		assertScannedFile(t, &tree.Files[i], want[i].path, want[i].lang, want[i].call)
 	}
-	if n := storeFiles(t, f.dir, "shards"); n != 0 {
-		t.Errorf("shards = %d; want 0 for a blob two languages share", n)
+	if n := storeFiles(t, f.dir, "shards"); n != 1 {
+		t.Errorf("shards = %d; want 1, for the one blob only a single language claims", n)
+	}
+	const sharedBlob = "2cf812485aef6b0f59dd7407debb4c6cd3476357"
+	if _, err := os.Stat(shardPath(storePath(f.dir), sharedBlob)); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("shard for the blob two languages share: err = %v; want it never written", err)
 	}
 }
 
 // assertScannedFile compares one stored file against its literal path and
 // language, and proves the shared blob was parsed as that language's own call
 // site.
-func assertScannedFile(t *testing.T, got *treeFile, path, lang string) {
+func assertScannedFile(t *testing.T, got *treeFile, path, lang, call string) {
 	t.Helper()
 	if got.Path != path || got.Language != lang {
 		t.Errorf("file = %s/%s; want %s/%s", got.Path, got.Language, path, lang)
 	}
-	if refs := got.Refs; len(refs) != 1 || refs[0].Name != "shared" {
-		t.Errorf("%s refs = %+v; want one call of shared", got.Path, refs)
+	if refs := got.Refs; len(refs) != 1 || refs[0].Name != call {
+		t.Errorf("%s refs = %+v; want one call of %s", got.Path, refs, call)
 	}
 }
 

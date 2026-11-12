@@ -266,15 +266,18 @@ func (st *state) build(ctx context.Context) (*Response, *core.RefusalError) {
 	if err := atomic.WriteFile(treePath(store, tree), raw); err != nil {
 		return nil, &core.RefusalError{Code: codeIndexFailed, Message: "could not write the tree index: " + err.Error()}
 	}
-	return st.buildResponse(t, commit, parsed.fresh), nil
+	return st.buildResponse(t, commit, parsed), nil
 }
 
 // parsedTree is one build's parse results: the reuse keyed by blob, the blobs
-// two languages both claim keyed by path, and the blobs freshly parsed.
+// two languages both claim keyed by path, the blobs freshly parsed, the paths
+// freshly parsed when a blob is never cached, and the parse count.
 type parsedTree struct {
-	byBlob map[string]*shard
-	byPath map[string]*shard
-	fresh  map[string]bool
+	byBlob    map[string]*shard
+	byPath    map[string]*shard
+	fresh     map[string]bool
+	freshPath map[string]bool
+	parses    int
 }
 
 // shardFor returns one tree entry's parse result.
@@ -289,7 +292,12 @@ func (p *parsedTree) shardFor(e treeEntry) *shard {
 func (st *state) collectShards(
 	ctx context.Context, dir, store string, files []treeEntry, limits Limits,
 ) (*parsedTree, *core.RefusalError) {
-	p := &parsedTree{byBlob: map[string]*shard{}, byPath: map[string]*shard{}, fresh: map[string]bool{}}
+	p := &parsedTree{
+		byBlob:    map[string]*shard{},
+		byPath:    map[string]*shard{},
+		fresh:     map[string]bool{},
+		freshPath: map[string]bool{},
+	}
 	wants := shardWants(files, limits)
 	missing, ref := missingBlobs(store, wants, limits, p)
 	if ref != nil {
@@ -317,8 +325,10 @@ func (p *parsedTree) parse(w *shardWant, objects map[string][]byte, limits Limit
 		return &core.RefusalError{Code: codeIndexFailed, Message: "git cat-file did not return blob " + w.e.Blob}
 	}
 	s := parseShard(w.e.Blob, src, w.lang, limits.RefsPerFile)
+	p.parses++
 	if w.perPath {
 		p.byPath[w.e.Path] = &s
+		p.freshPath[w.e.Path] = true
 		return nil
 	}
 	p.byBlob[w.e.Blob] = &s
@@ -484,8 +494,11 @@ func writeShards(store string, fresh map[string]*shard) *core.RefusalError {
 	return nil
 }
 
-// buildCounts derives the coverage numbers from the assembled tree.
-func buildCounts(t *treeIndex, fresh map[string]bool) (indexed, skipped, reused int) {
+// buildCounts derives the coverage numbers from the assembled tree. A file
+// counts as reused only when nothing parsed it this build: a blob two languages
+// claim is parsed per path and cached under neither, so its paths are read from
+// the worktree's bytes every time and are never reuse.
+func buildCounts(t *treeIndex, parsed *parsedTree) (indexed, skipped, reused int) {
 	for i := range t.Files {
 		f := &t.Files[i]
 		switch {
@@ -493,7 +506,7 @@ func buildCounts(t *treeIndex, fresh map[string]bool) (indexed, skipped, reused 
 			skipped++
 		default:
 			indexed++
-			if !fresh[f.Blob] {
+			if !parsed.fresh[f.Blob] && !parsed.freshPath[f.Path] {
 				reused++
 			}
 		}
@@ -502,21 +515,21 @@ func buildCounts(t *treeIndex, fresh map[string]bool) (indexed, skipped, reused 
 }
 
 // buildResponse renders the build outcome.
-func (st *state) buildResponse(t *treeIndex, commit string, fresh map[string]bool) *Response {
-	indexed, skipped, reused := buildCounts(t, fresh)
+func (st *state) buildResponse(t *treeIndex, commit string, parsed *parsedTree) *Response {
+	indexed, skipped, reused := buildCounts(t, parsed)
 	count, bytes := shardStats(storePath(st.sourceRoot()))
 	treeBytes := int64(0)
 	if raw, err := json.Marshal(t); err == nil {
 		treeBytes = int64(len(raw))
 	}
 	st.line(fmt.Sprintf("index: %s at %s (%d files indexed, %d skipped, %d parsed, %d reused)",
-		t.Tree, short(commit), indexed, skipped, len(fresh), reused))
+		t.Tree, short(commit), indexed, skipped, parsed.parses, reused))
 	return &Response{
 		At:   st.req.TimeUTC(),
 		Next: "query it with verdict index callers <symbol>",
 		Data: &Data{
 			Kind: QueryBuild, Tree: t.Tree, Commit: commit, Built: true,
-			Files: indexed, Skipped: skipped, Parsed: len(fresh), Reused: reused,
+			Files: indexed, Skipped: skipped, Parsed: parsed.parses, Reused: reused,
 			TreeBytes: treeBytes, Languages: languageCounts(t), ShardCount: count, ShardBytes: bytes,
 		},
 	}
