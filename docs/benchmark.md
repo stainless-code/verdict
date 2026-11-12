@@ -486,9 +486,10 @@ precision denominator.
 | `ts/tests-for-two-families` | 1.0000    | 0.5000 | 1       | 1        | 2       |
 | `ts/tests-for`              | 1.0000    | 0.6667 | 4       | 4        | 6       |
 | `py/callers-save`           | 0.7500    | 0.4286 | 3       | 4        | 7       |
+| `py/callers-write`          | 1.0000    | 1.0000 | 1       | 1        | 1       |
 | `py/callers-route`          | 1.0000    | 0.5000 | 1       | 1        | 2       |
 | `py/callers-namesake`       | 1.0000    | 1.0000 | 1       | 1        | 1       |
-| `py/callers`                | 0.8333    | 0.5000 | 5       | 6        | 10      |
+| `py/callers`                | 0.8571    | 0.5455 | 6       | 7        | 11      |
 | `py/callers-cross-package`  | n/a       | 0.0000 | 0       | 0        | 3       |
 | `py/tests-for-saver`        | 1.0000    | 1.0000 | 5       | 5        | 5       |
 | `py/tests-for`              | 1.0000    | 1.0000 | 5       | 5        | 5       |
