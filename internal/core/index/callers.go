@@ -320,11 +320,11 @@ func resolveGoRef(tgt target, samePkg bool, f *treeFile, r ref) (Row, bool) {
 
 // resolveValueSelector classifies a selector written on a value (`s.Save`): no
 // import edge names the declaration's package, so the site is a candidate that
-// type information would settle, never a row. Only a method declaration can be
+// type information would settle, never a row. Only an exported method can be
 // named this way from outside the declaring package: a value cannot carry a
-// package-level function.
+// package-level function, and another package cannot name an unexported one.
 func resolveValueSelector(tgt target, samePkg bool, r ref) (Row, bool) {
-	if !samePkg && tgt.kind != wordMethod {
+	if !samePkg && (tgt.kind != wordMethod || !tgt.exported) {
 		return Row{}, false
 	}
 	if r.Unresolved || r.Kind == KindMethod {

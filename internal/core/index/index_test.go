@@ -650,6 +650,20 @@ func TestCallersValueSelectorIsUnresolved(t *testing.T) {
 	}
 }
 
+// TestCallersUnexportedMethodIsNotCrossPackage proves a selector in another
+// package is no candidate for an unexported method, which it cannot name.
+func TestCallersUnexportedMethodIsNotCrossPackage(t *testing.T) {
+	f := newFixture(t)
+	f.write("go.mod", "module example.com/m\n\ngo 1.27\n")
+	f.write("a/a.go", "package a\n\ntype A struct{}\n\nfunc (A) save() {}\n")
+	f.write("b/b.go", "package b\n\ntype B struct{}\n\nfunc (B) save() {}\n\nfunc Use(v B) {\n\tv.save()\n}\n")
+	f.commit("one")
+	f.build()
+	if got := callersOf(t, f, "a.save"); len(got.Data.Rows) != 0 || got.Data.Unresolved != 0 {
+		t.Errorf("a.save: rows = %+v, unresolved = %d; want none and 0", got.Data.Rows, got.Data.Unresolved)
+	}
+}
+
 // TestCallersCountsEachUnresolvedSiteOnce proves one selector matching two
 // package declarations is one unresolved source site.
 func TestCallersCountsEachUnresolvedSiteOnce(t *testing.T) {
