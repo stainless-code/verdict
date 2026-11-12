@@ -27,8 +27,9 @@
           "type": "string"
         },
         "source": {
-          "description": "dir:<path as given on the add command line> or git:<url>@<resolved 40-hex HEAD sha>.",
-          "type": "string"
+          "description": "dir:<path as given on the add command line> or git:<url>@<resolved 40-hex HEAD sha>. A dir: payload is a slash path with no control character, backslash, or leading \"-\"; a git: URL carries no userinfo password.",
+          "type": "string",
+          "pattern": "^(?:dir:[^\\x00-\\x1f\\x7f\\\\-][^\\x00-\\x1f\\x7f\\\\]*|git:[^\\x00-\\x1f\\x7f]+@[0-9a-f]{40})$"
         },
         "version": {
           "description": "Pinned pack semver, as the manifest declares it.",

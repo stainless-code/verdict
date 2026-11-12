@@ -253,10 +253,13 @@
       "/properties/packs": "One pinned pack row per vendored repo pack, sorted by name.",
       "/$defs/pack": "One pinned pack: its manifest identity, where it was vendored from, the canonical tree hash, and an integrity digest over those fields.",
       "/$defs/pack/properties/name": "Manifest pack identity as <namespace>/<slug>; the vendored directory is the slug.",
-      "/$defs/pack/properties/source": "dir:<path as given on the add command line> or git:<url>@<resolved 40-hex HEAD sha>.",
+      "/$defs/pack/properties/source": "dir:<path as given on the add command line> or git:<url>@<resolved 40-hex HEAD sha>. A dir: payload is a slash path with no control character, backslash, or leading \"-\"; a git: URL carries no userinfo password.",
       "/$defs/pack/properties/version": "Pinned pack semver, as the manifest declares it.",
       "/$defs/pack/properties/hash": "The pack's canonical tree hash: sha256 over sorted slash paths, each fed as `== <path> ==`, its bytes, then a newline.",
       "/$defs/pack/properties/sig": "sha256 over the entry's name, source, version, and hash in that order, one `key=value` line each. Integrity only: a hand edit breaks it; it is not a signature."
+    },
+    "patterns": {
+      "/$defs/pack/properties/source": "^(?:dir:[^\\x00-\\x1f\\x7f\\\\-][^\\x00-\\x1f\\x7f\\\\]*|git:[^\\x00-\\x1f\\x7f]+@[0-9a-f]{40})$"
     }
   },
   "pack": {

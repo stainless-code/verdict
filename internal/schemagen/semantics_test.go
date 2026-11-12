@@ -237,7 +237,11 @@ var publishedSemantics = map[string]string{
 	// schema moved. The envelope gains an additive $defs/packAddData and a
 	// drift description on packEntry, with no existing property, required key,
 	// enum, or type changed.
-	"lock.schema.json": "8058bd369e89daff4d43dcfee1e856cde7896db9a7968138df916d263bf5c9e3",
+	// source grammar: the lock row's source gains the pattern the loader
+	// enforces — a dir: payload with no control character, backslash, or
+	// leading "-", or a git: URL pinned to a 40-hex sha. No property, required
+	// key, or type changed.
+	"lock.schema.json": "45dc36c961bd4f0c7f15c800793cfc9be0cad1bb9716dda4266cdbe5f9bd9300",
 	"pack.schema.json": "fc8dc3ae76bfee94157f23e03ad2173f643d96974896c05307f89491f2a207b9",
 	// patch identity: additive optional patch_id/patch_id_kind plus the
 	// optional forced[] audit with $defs/forcedPost. No existing property,

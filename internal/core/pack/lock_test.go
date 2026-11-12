@@ -1,11 +1,15 @@
 package pack
 
 import (
+	"encoding/json"
+	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/controls"
+	"github.com/stainless-code/verdict/internal/schemacheck"
 )
 
 const (
@@ -45,6 +49,59 @@ func lockSnapshot(t *testing.T, root string) *controls.Snapshot {
 func lockBody(hash, sig string) string {
 	return `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"dir:src-packs/lenses",` +
 		`"version":"1.0.0","hash":"` + hash + `","sig":"` + sig + `"}]}`
+}
+
+// lockSourceBody renders one well-formed row with the given source.
+func lockSourceBody(source string) string {
+	quoted, err := json.Marshal(source)
+	if err != nil {
+		panic(err)
+	}
+	return fmt.Sprintf(`{"schema_version":"1","packs":[{"name":"acme/lenses","source":%s,`+
+		`"version":"1.0.0","hash":%q,"sig":%q}]}`, quoted, lockHash, lockSigDir)
+}
+
+// TestLockSourceSchemaMatchesLoader proves the published source pattern and
+// the loader agree on a clean dir: path and reject a leading dash, newline,
+// backslash, or control character.
+func TestLockSourceSchemaMatchesLoader(t *testing.T) {
+	t.Parallel()
+	checker, err := schemacheck.Load(
+		filepath.Join("..", "..", "..", "skills", "verdict", "schemas", "lock.schema.json"), "")
+	if err != nil {
+		t.Fatalf("load lock schema: %v", err)
+	}
+	for _, tc := range []struct {
+		source string
+		valid  bool
+	}{
+		{"dir:../packs", true},
+		{"dir:src-packs/lenses", true},
+		{"git:https://user@host/repo.git@" + strings.Repeat("c", 40), true},
+		{"dir:-src", false},
+		{"dir:src\npacks", false},
+		{`dir:src\packs`, false},
+		{"dir:src\x7fpacks", false},
+	} {
+		t.Run(tc.source, func(t *testing.T) {
+			t.Parallel()
+			body := lockSourceBody(tc.source)
+			_, ref := parseLock([]byte(body))
+			if tc.valid && ref != nil {
+				t.Fatalf("parseLock = %s: %s, want it accepted", ref.Code, ref.Message)
+			}
+			if !tc.valid && (ref == nil || ref.Code != CodeBadPack) {
+				t.Fatalf("parseLock = %v, want bad-pack", ref)
+			}
+			failures := checker.Check(decodeJSON(t, body))
+			if tc.valid && len(failures) != 0 {
+				t.Fatalf("schema rejected %q: %v", tc.source, failures)
+			}
+			if !tc.valid && len(failures) == 0 {
+				t.Fatalf("schema accepted refused source %q", tc.source)
+			}
+		})
+	}
 }
 
 // TestLockSigPinsEveryEntryField proves the integrity digest covers name,
@@ -131,6 +188,10 @@ func TestLockStrictJSONRefuses(t *testing.T) {
 				`"version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
 			want: `source "http://x"`,
 		},
+		{name: "dir leading dash", body: lockSourceBody("dir:-src"), want: `source "dir:-src"`},
+		{name: "dir newline", body: lockSourceBody("dir:src\npacks"), want: "source"},
+		{name: "dir backslash", body: lockSourceBody(`dir:src\packs`), want: "source"},
+		{name: "dir control", body: lockSourceBody("dir:src\x7fpacks"), want: "source"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

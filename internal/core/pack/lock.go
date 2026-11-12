@@ -273,17 +273,36 @@ func validateLockEntry(entry *LockEntry) *core.RefusalError {
 	return nil
 }
 
-// validLockSource accepts the two published provenance spellings.
+// validLockSource accepts the two published provenance spellings. A source
+// never carries a control character, and a dir: payload is a clean slash path
+// with no leading "-".
 func validLockSource(source string) bool {
 	if dir, ok := strings.CutPrefix(source, sourceDirPrefix); ok {
-		return dir != ""
+		return validDirSource(dir)
 	}
 	rest, ok := strings.CutPrefix(source, sourceGitPrefix)
-	if !ok {
+	if !ok || !cleanSource(source) {
 		return false
 	}
 	at := strings.LastIndex(rest, "@")
 	return at > 0 && hex40(rest[at+1:]) && !userinfoPassword(rest[:at])
+}
+
+// validDirSource constrains one dir: payload: non-empty, not an option, and a
+// slash path with no control characters or backslash.
+func validDirSource(dir string) bool {
+	return dir != "" && !strings.HasPrefix(dir, "-") &&
+		!strings.Contains(dir, `\`) && cleanSource(dir)
+}
+
+// cleanSource reports whether s carries no C0 or DEL control character.
+func cleanSource(s string) bool {
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f {
+			return false
+		}
+	}
+	return true
 }
 
 // hex64 reports whether s is a lowercase 64-hex digest.

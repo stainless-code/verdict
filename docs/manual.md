@@ -449,7 +449,10 @@ vendored.
 
 `verdict.lock` is strict JSON (unknown or differently-cased keys refuse,
 exactly as `pack.json`), with `schema_version: "1"` and `packs` sorted by
-name: `{name, source, version, hash, sig}`. `hash` is the canonical tree hash
+name: `{name, source, version, hash, sig}`. `source` is `dir:<path>` or
+`git:<url>@<sha>`; a `dir:` payload is a slash path with no control
+character, backslash, or leading `-`, and neither spelling carries a
+userinfo password. `hash` is the canonical tree hash
 `pack list` prints. `sig` is an integrity digest, not a signature: sha256
 over `name=`, `source=`, `version=`, and `hash=` lines in that order, so a
 hand-edited row is caught. The lock covers the repo layer only: the built-in
