@@ -10,7 +10,7 @@ exit: 0
   "warnings": [
     "$.comments[0].rigor: rigor is unset",
     "no fetch-time hunk snapshot (.verdict/state/local-rf/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
-    "$.body: no basis line — inserted the computed counts (basis-replaced)"
+    "$.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)"
   ],
   "data": {
     "dir": ".verdict/state/local-rf",
@@ -41,7 +41,7 @@ exit: 0
 warn: $.comments[0].rigor: rigor is unset
 warn: no fetch-time hunk snapshot (.verdict/state/local-rf/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
 » anchors: 1 inline, 0 moved to body
-warn: $.body: no basis line — inserted the computed counts (basis-replaced)
+warn: $.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)
 » findings: 1 sigs -> .verdict/state/local-rf/findings.json
   1be7940e  open  true  notes.txt
 recorded: .verdict/state/local-rf/findings.json (1 open) + .verdict/state/local-rf/record.json — report/triage read it; post stays refused (no PR target)
