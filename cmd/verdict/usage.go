@@ -217,7 +217,7 @@ func usageText() string {
 		"    --dry-run lists what would be resolved and makes zero writes; a real run\n" +
 		"    makes one host write per thread and writes threads-resolve.json. GitHub and\n" +
 		"    GitLab carry it; Forgejo refuses typed (no documented resolve endpoint).\n" +
-		"  trend <owner/repo> [--overlap] [--json]\n" +
+		"  trend <owner/repo> [--overlap] [--resolution] [--json]\n" +
 		"    portfolio rollup over existing bundle stores (no network, writes nothing):\n" +
 		"    findings opened/addressed/closed over time, broken down by severity tier\n" +
 		"    and status, with per-bundle models/effort for the calibration join.\n" +

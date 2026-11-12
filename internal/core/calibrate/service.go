@@ -9,7 +9,9 @@ package calibratecore
 import (
 	"context"
 	"errors"
+	"path/filepath"
 
+	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	corpuscore "github.com/stainless-code/verdict/internal/core/corpus"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -129,6 +131,7 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if st.corpus != nil {
 		return st.corpusResponse(), nil
 	}
+	st.persistCalibration(dir)
 	return st.liveResponse(), nil
 }
 
@@ -193,5 +196,15 @@ func (st *state) probeResponse() *Response {
 		Next:     nextProbe(&st.probe.counts),
 		Warnings: st.warnings,
 		Data:     &Data{probe: st.probe},
+	}
+}
+
+func (st *state) persistCalibration(dir string) {
+	doc := st.live.Wire()
+	doc.Set("schema_version", "1")
+	doc.Set("bundle", filepath.Base(dir))
+	doc.Set("as_of", st.live.asOf)
+	if err := atomic.WriteFile(filepath.Join(dir, "calibration.json"), []byte(jq.PrettyOrdered(doc))); err != nil {
+		st.warn("cannot save calibration.json: " + err.Error())
 	}
 }

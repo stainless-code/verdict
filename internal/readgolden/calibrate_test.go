@@ -94,7 +94,8 @@ func calibrateLive(t *testing.T, dir string) {
 // TestCalibrateLiveGolden pins the live join across the
 // stale/current heads, the downed compare, and the bundle-gate refusals
 // (missing post, no review id, dead threads read, local bundles,
-// non-GitHub providers, corrupt stores). All legs prove no writes.
+// non-GitHub providers, corrupt stores). Successful live legs permit only
+// the calibration receipt.
 func TestCalibrateLiveGolden(t *testing.T) {
 	t.Parallel()
 
@@ -108,22 +109,22 @@ func TestCalibrateLiveGolden(t *testing.T) {
 	}
 	live := stub(map[string]string{"CAL_LIVE": headC})
 	goArgs := splitRepo("calibrate", "5101")
-	goldenRead(t, "calibrate/live-stale-human", stale, live, nil, goArgs...)
+	goldenRead(t, "calibrate/live-stale-human", stale, live, allowKeys("C/.verdict/state/5101/calibration.json"), goArgs...)
 
 	goArgs = splitRepo("calibrate", "5101", "--json")
-	goldenRead(t, "calibrate/live-stale-json", stale, live, nil, goArgs...)
+	goldenRead(t, "calibrate/live-stale-json", stale, live, allowKeys("C/.verdict/state/5101/calibration.json"), goArgs...)
 
 	liveCurrent := stub(map[string]string{"CAL_LIVE": headA})
 	goArgs = splitRepo("calibrate", "5101", "--json")
-	goldenRead(t, "calibrate/live-current-json", stale, liveCurrent, nil, goArgs...)
+	goldenRead(t, "calibrate/live-current-json", stale, liveCurrent, allowKeys("C/.verdict/state/5101/calibration.json"), goArgs...)
 
 	downed := stub(map[string]string{"CAL_LIVE": headC, "CAL_COMPARE": "fail"})
 	goArgs = splitRepo("calibrate", "5101", "--json")
-	goldenRead(t, "calibrate/live-compare-down", stale, downed, nil, goArgs...)
+	goldenRead(t, "calibrate/live-compare-down", stale, downed, allowKeys("C/.verdict/state/5101/calibration.json"), goArgs...)
 
 	garbage := stub(map[string]string{"CAL_LIVE": headC, "CAL_COMPARE": "garbage"})
 	goArgs = splitRepo("calibrate", "5101", "--json")
-	goldenRead(t, "calibrate/live-compare-garbage", stale, garbage, nil, goArgs...)
+	goldenRead(t, "calibrate/live-compare-garbage", stale, garbage, allowKeys("C/.verdict/state/5101/calibration.json"), goArgs...)
 
 	noPost := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -184,7 +185,7 @@ func TestCalibrateLiveGolden(t *testing.T) {
 	}
 	glab := writeGlabStub(t, calibrateGitLabStubScript, map[string]string{"CAL_LIVE": headC})
 	goArgs = splitRepo("calibrate", "5101", "--json")
-	goldenRead(t, "calibrate/gitlab-live-json", gitlabLive, glab, nil, goArgs...)
+	goldenRead(t, "calibrate/gitlab-live-json", gitlabLive, glab, allowKeys("C/.verdict/state/5101/calibration.json"), goArgs...)
 
 	corrupt := func(t *testing.T, dir, _ string) {
 		t.Helper()

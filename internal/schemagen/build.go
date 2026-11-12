@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/threads"
 )
 
@@ -285,6 +286,16 @@ func documents() []document {
 				{typ: reflect.TypeFor[ChunkCoverage](), name: chunkCoverageType},
 			},
 			additionalProperties: true,
+		},
+
+		{
+			name: "calibration", title: "calibration.json — live outcome audit",
+			root: reflect.TypeFor[core.Calibration](),
+			defs: []definition{
+				{typ: reflect.TypeFor[core.CalibrationPrecision](), name: "calibrationPrecision"},
+				{typ: reflect.TypeFor[core.PrecisionCell](), name: "precisionCell"},
+			},
+			additionalProperties: false,
 		},
 		{
 			name:  "record",

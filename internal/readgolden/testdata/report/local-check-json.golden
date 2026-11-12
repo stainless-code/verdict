@@ -27,6 +27,8 @@ exit: 0
       "terminal": 0
     },
     "counts": {
+      "clean": false,
+      "checked_files": 1,
       "inline": 1,
       "section": 0,
       "anchored": 1,

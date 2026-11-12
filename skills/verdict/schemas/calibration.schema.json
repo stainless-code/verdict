@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/calibration.schema.json",
+  "title": "calibration.json — live outcome audit",
+  "description": "Saved live calibration audit. Unknown outcomes are excluded from judged; resolution_rate is null without a judged denominator.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "enum": ["1"] },
+    "bundle": { "type": "string" },
+    "as_of": { "type": "string" },
+    "review_id": {},
+    "head": { "type": "object", "additionalProperties": true },
+    "pr": { "type": "object", "additionalProperties": true },
+    "precision": { "$ref": "#/$defs/calibrationPrecision" },
+    "outcomes": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "provenance": { "type": "object", "additionalProperties": true }
+  },
+  "required": [
+    "schema_version",
+    "bundle",
+    "as_of",
+    "review_id",
+    "head",
+    "pr",
+    "precision",
+    "outcomes",
+    "provenance"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "calibrationPrecision": {
+      "type": "object",
+      "properties": {
+        "fixed": { "type": "integer", "minimum": 0 },
+        "resolved_unfixed": { "type": "integer", "minimum": 0 },
+        "open": { "type": "integer", "minimum": 0 },
+        "unknown": { "type": "integer", "minimum": 0 },
+        "judged": { "type": "integer", "minimum": 0 },
+        "resolution_rate": { "type": ["number", "null"] },
+        "sample_size": { "type": "integer", "minimum": 0 },
+        "judge": { "enum": ["human", "agent", "mixed", "none"] },
+        "as_of": { "type": "string" },
+        "by_judge": { "type": "object", "additionalProperties": true },
+        "by_tier": { "type": "object", "additionalProperties": true },
+        "by_severity": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/precisionCell" }
+        },
+        "by_rule": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/precisionCell" }
+        },
+        "by_category": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/precisionCell" }
+        }
+      },
+      "required": [
+        "fixed",
+        "resolved_unfixed",
+        "open",
+        "unknown",
+        "judged",
+        "resolution_rate",
+        "sample_size",
+        "judge",
+        "as_of",
+        "by_judge",
+        "by_tier",
+        "by_severity",
+        "by_rule",
+        "by_category"
+      ],
+      "additionalProperties": true
+    },
+    "precisionCell": {
+      "type": "object",
+      "properties": {
+        "fixed": { "type": "integer", "minimum": 0 },
+        "resolved_unfixed": { "type": "integer", "minimum": 0 },
+        "open": { "type": "integer", "minimum": 0 },
+        "unknown": { "type": "integer", "minimum": 0 },
+        "judged": { "type": "integer", "minimum": 0 },
+        "resolution_rate": { "type": ["number", "null"] }
+      },
+      "required": [
+        "fixed",
+        "resolved_unfixed",
+        "open",
+        "unknown",
+        "judged",
+        "resolution_rate"
+      ],
+      "additionalProperties": true
+    }
+  }
+}

@@ -2,6 +2,7 @@ package trendcore
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -29,6 +30,7 @@ type rollup struct {
 	models     []any
 	hashes     []any
 	periods    []period
+	clean      int
 	bundles    int
 	findings   int
 	open       int
@@ -60,6 +62,7 @@ func rollupRows(rows []row) rollup {
 	for i := range rows {
 		r := &rows[i]
 		out.bundles++
+		out.clean += cleanCount(r)
 		out.findings += len(r.findings)
 		out.open += r.byStatus[statusOpen]
 		out.addressed += r.byStatus[statusAddressed]
@@ -170,6 +173,11 @@ func rollupDoc(out *rollup) *jq.Obj {
 	}
 	return jq.NewObj(
 		"bundles", out.bundles,
+		"reviews", out.bundles,
+		"reviews_with_findings", out.bundles-out.clean,
+		"reviews_clean", out.clean,
+		"findings_per_review", rateOrNil(out.findings, out.bundles),
+		"clean_rate", rateOrNil(out.clean, out.bundles),
 		"findings", out.findings,
 		"open", out.open,
 		"addressed", out.addressed,
@@ -235,6 +243,7 @@ func rowDoc(r *row) *jq.Obj {
 		"efforts", anyList(r.efforts),
 		"provenance", r.prov,
 		"findings", len(r.findings),
+		"clean", len(r.findings) == 0,
 		"open", r.byStatus[statusOpen],
 		"addressed", r.byStatus[statusAddressed],
 		"closed", r.byStatus[statusWontFix]+r.byStatus[statusFalsePositive]+r.byStatus[statusDeferred],
@@ -266,6 +275,7 @@ func (st *state) emitRollupHuman(out *rollup) {
 	} else {
 		st.human(fmt.Sprintf("trend: %s — %d bundle(s), %d findings (open=%d addressed=%d closed=%d)",
 			st.req.Repo, out.bundles, out.findings, out.open, out.addressed, out.closed))
+		st.emitReviewHuman(out)
 		for i := range out.periods {
 			p := &out.periods[i]
 			name := "undated"
@@ -337,4 +347,30 @@ func uniqueStrings(sorted []string) []string {
 		}
 	}
 	return out
+}
+
+func rateOrNil(n, d int) any {
+	if d == 0 {
+		return nil
+	}
+	return math.Round(float64(n)/float64(d)*rateScale) / rateScale
+}
+
+const (
+	rateScale    = 10000
+	percentScale = 100
+)
+
+func cleanCount(r *row) int {
+	if len(r.findings) == 0 {
+		return 1
+	}
+	return 0
+}
+
+func (st *state) emitReviewHuman(out *rollup) {
+	if out.bundles > 0 {
+		st.human(fmt.Sprintf("reviews: %d (%d clean) — findings/review %.4f, clean rate %.1f%% (n=%d)", out.bundles, out.clean,
+			rateOrNil(out.findings, out.bundles), percentScale*float64(out.clean)/float64(out.bundles), out.bundles))
+	}
 }

@@ -3576,3 +3576,17 @@ Drift rule: additive within `schema_version`/`sig_version` `"1"` — new
 optional keys pass through the stores and the schemas alike; renames,
 tighter types, and newly required keys never happen without a version bump,
 and a bump ships only by operator decision.
+
+### Resolution and clean reviews
+
+Live `calibrate` saves `calibration.json` in the bundle and publishes
+`resolution_rate = fixed / judged`, rounded to four decimals. Judged outcomes
+include fixed, resolved-unfixed, and open; unknown outcomes appear only in
+`sample_size`. A zero denominator renders `null` and human `n/a`.
+The audit includes severity, rule, category, and judge splits.
+
+`trend --resolution` reads saved audits offline, grouped by every cost model
+and the pinned panel. Missing or malformed audits warn and count as unmeasured.
+Each measured row prints its judged sample size. Plain `trend` reports review
+counts, clean rate, and findings per review. A clean review has no stored
+findings; addressing every finding does not make a review clean.

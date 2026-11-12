@@ -401,6 +401,7 @@ func wirePack(ctx context.Context, b *bindings, req *packcore.Request) error {
 func decodeTrend(req *trendcore.Request, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.boolean("overlap", &req.Overlap)
+	a.boolean("resolution", &req.Resolution)
 }
 
 func wireTrend(ctx context.Context, b *bindings, req *trendcore.Request) error {

@@ -11,6 +11,11 @@ exit: 0
   "data": {
     "generated_at": "0000-00-00T00:00:00Z",
     "bundles": 3,
+    "reviews": 3,
+    "reviews_with_findings": 3,
+    "reviews_clean": 0,
+    "findings_per_review": 3,
+    "clean_rate": 0,
     "findings": 9,
     "open": 6,
     "addressed": 2,
@@ -98,6 +103,7 @@ exit: 0
           "model": null
         },
         "findings": 6,
+        "clean": false,
         "open": 4,
         "addressed": 1,
         "closed": 1,
@@ -133,6 +139,7 @@ exit: 0
           "model": null
         },
         "findings": 2,
+        "clean": false,
         "open": 1,
         "addressed": 1,
         "closed": 0,
@@ -164,6 +171,7 @@ exit: 0
           "model": null
         },
         "findings": 1,
+        "clean": false,
         "open": 1,
         "addressed": 0,
         "closed": 0,

@@ -584,8 +584,9 @@ func (c *Client) Ready(ctx context.Context, req *ReadyRequest) (*ReadyResponse, 
 // TrendRequest rolls up review outcomes across fetched bundles.
 // PR is unused; trend scopes by repo.
 type TrendRequest struct {
-	Repo    string
-	Overlap bool
+	Repo       string
+	Resolution bool
+	Overlap    bool
 }
 
 // TrendResponse carries the outcome rollup and the human summary.
@@ -605,6 +606,7 @@ func (c *Client) Trend(ctx context.Context, req *TrendRequest) (*TrendResponse, 
 	resp, ref := trendcore.Run(ctx, &trendcore.Request{
 		ReadRequest: rr,
 		Overlap:     req.Overlap,
+		Resolution:  req.Resolution,
 	})
 	if ref != nil {
 		return nil, refusalErr(ref)
