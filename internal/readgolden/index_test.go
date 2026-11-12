@@ -3,6 +3,7 @@ package readgolden_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -321,6 +322,76 @@ func TestIndexGraphGolden(t *testing.T) {
 		{"index/co-changed-json", []string{"index", "co-changed", "a/a.go", "--json"}},
 	} {
 		c := &golden.Case{Name: tc.name, Setup: graphRepo, Args: tc.args}
+		c.Run(t, harness)
+	}
+}
+
+// blastFixture is the blast-radius call graph: A and B in package a, a caller
+// at depth 1, a caller of that caller at depth 2, a depth-3 caller that must be
+// excluded, a mutual call cycle, one same-package test and one referencing
+// test, and a CODEOWNERS rule for package a's files.
+var blastFixture = map[string]string{
+	"go.mod":      "module example.com/m\n\ngo 1.27\n",
+	"a/ab.go":     "package a\n\nfunc A() {}\n\nfunc B() {}\n",
+	"a/top.go":    "package a\n\nfunc Top() {\n\tA()\n\tB()\n}\n",
+	"a/use.go":    "package a\n\ntype holder struct{}\n\nfunc Use() {\n\tvar h holder\n\th.Top()\n}\n",
+	"a/cycle.go":  "package a\n\nfunc Ping() {\n\tPong()\n}\n\nfunc Pong() {\n\tPing()\n}\n",
+	"a/a_test.go": "package a\n\nimport \"testing\"\n\nfunc TestA(t *testing.T) {\n\tA()\n}\n",
+	"b/b.go":      "package b\n\nimport \"example.com/m/a\"\n\nfunc UseA() {\n\ta.A()\n}\n",
+	"b/b_test.go": "package b\n\nimport (\n\t\"testing\"\n\n\t\"example.com/m/a\"\n)\n\n" +
+		"func TestUsesA(t *testing.T) {\n\ta.A()\n}\n",
+	"c/c.go":             "package c\n\nimport \"example.com/m/b\"\n\nfunc Deep() {\n\tb.UseA()\n}\n",
+	"d/d.go":             "package d\n\nimport \"example.com/m/c\"\n\nfunc Deeper() {\n\tc.Deep()\n}\n",
+	".github/CODEOWNERS": "*       @everyone\n/a/*    @a-owner\na/*.go  @go-owner\n",
+}
+
+// blastRepo writes three commits (a/ab.go moves with b's test, then with c's
+// file), a fetched bundle whose diff names a/ab.go, and the index at the last
+// commit.
+func blastRepo(t *testing.T, dir, _ string) {
+	t.Helper()
+	writeFiles(t, dir, blastFixture)
+	runIndexGit(t, dir, "init", "-q", "-b", "main")
+	runIndexGit(t, dir, "add", "-A")
+	runIndexGit(t, dir, "commit", "-qm", "one")
+	writeFiles(t, dir, map[string]string{
+		"a/ab.go": "package a\n\nfunc A() {\n\t_ = 1\n}\n\nfunc B() {}\n",
+		"b/b_test.go": "package b\n\nimport (\n\t\"testing\"\n\n\t\"example.com/m/a\"\n)\n\n" +
+			"func TestUsesA(t *testing.T) {\n\ta.A()\n}\n\nfunc TestMore(t *testing.T) {\n\ta.A()\n}\n",
+	})
+	runIndexGit(t, dir, "add", "-A")
+	runIndexGit(t, dir, "commit", "-qm", "two")
+	writeFiles(t, dir, map[string]string{
+		"a/ab.go": "package a\n\nfunc A() {\n\t_ = 1\n}\n\nfunc B() {}\n\nfunc Third() {}\n",
+		"c/c.go":  "package c\n\nimport \"example.com/m/b\"\n\nfunc Deep() {\n\tb.UseA()\n}\n\nfunc More() {}\n",
+	})
+	runIndexGit(t, dir, "add", "-A")
+	runIndexGit(t, dir, "commit", "-qm", "three")
+	diff := runIndexGitOut(t, dir, "diff", "HEAD~2", "HEAD", "--", "a/ab.go")
+	head := runIndexGitOut(t, dir, "rev-parse", "HEAD")
+	base := runIndexGitOut(t, dir, "rev-parse", "HEAD~2")
+	writeFiles(t, dir, map[string]string{
+		".verdict/state/7/full.diff": diff + "\n",
+		".verdict/state/7/PR.json": fmt.Sprintf(
+			`{"state":"OPEN","headRefOid":%q,"baseRefOid":%q,"author":{"login":"t"}}`+"\n", head, base),
+	})
+	buildIndex(t, dir, indexEnv())
+}
+
+// TestIndexBlastRadiusGolden pins the reach read: the changed declarations,
+// callers to depth 2 with the depth-3 caller excluded, candidate tests, literal
+// co-change partners, owners, and the bundle-diff input.
+func TestIndexBlastRadiusGolden(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{"index/blast-radius-json", []string{"index", "blast-radius", "--paths", "a/ab.go", "--json"}},
+		{"index/blast-radius-human", []string{"index", "blast-radius", "--paths", "a/ab.go"}},
+		{"index/blast-radius-pr-json", []string{"index", "blast-radius", "--pr", "7", "--json"}},
+	} {
+		c := &golden.Case{Name: tc.name, Setup: blastRepo, Args: tc.args}
 		c.Run(t, harness)
 	}
 }

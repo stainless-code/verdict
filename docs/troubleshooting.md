@@ -102,6 +102,18 @@ Cause: a git read failed while mining (git is missing, or the checkout is unread
 
 Fix: confirm `git --version` works in the checkout, then re-run.
 
+## `backtest-row-stale`
+
+Cause: a scored run's `prs/<NNN>/replay.json` is unreadable, names another run, repeats a candidate another row already scored, or its bundle's `findings.json` is missing or unreadable.
+
+Fix: delete the named `prs/<NNN>/` directory, then replay the run so it records a fresh row from the same candidate.
+
+## `backtest-run-stale`
+
+Cause: the run's `mine.json` predates the seed `signal` field, is unreadable, or no longer carries a PR a recorded review names.
+
+Fix: re-mine the run in place with the same `--run` and window, then replay and score it again. Deleting the run directory is never required.
+
 ## `bad-approve`
 
 Cause: `--approve` is not a boolean.
@@ -610,9 +622,9 @@ Fix: check the config path and permissions named above, then re-run.
 
 ## `missing-bundle`
 
-Cause: the bundle is absent — nothing fetched it yet.
+Cause: the bundle is absent — nothing fetched it yet. For `backtest score`, the run has no `mine.json` (never mined) or no `prs/` records (never replayed).
 
-Fix: run `fetch` first (`verdict fetch <owner>/<repo> <pr>`, or `verdict fetch-local` for a local bundle).
+Fix: run `fetch` first (`verdict fetch <owner>/<repo> <pr>`, or `verdict fetch-local` for a local bundle). For a backtest run, mine it (`verdict backtest mine --since … --run <id>`) and replay it (`verdict backtest replay --run <id> --agent <name>`) before scoring.
 
 ## `missing-chunk-coverage`
 
@@ -850,9 +862,9 @@ Fix: remove the named path from the bundle, then re-run.
 
 ## `run-mismatch`
 
-Cause: `.verdict/backtest/<run>/run.json` exists with a different mode or window than this invocation.
+Cause: `.verdict/backtest/<run>/run.json` exists with a different mode or window than this invocation, so replay would grade one resolution against another.
 
-Fix: pick another `--run <slug>`, or delete the existing run directory.
+Fix: pick another `--run <slug>`, or delete the existing run directory and mine the window again.
 
 ## `sandbox-unavailable`
 

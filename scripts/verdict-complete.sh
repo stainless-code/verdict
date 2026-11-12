@@ -21,8 +21,8 @@ _verdict_flags() { # $1 = verb
     calibrate) printf '%s\n' --probe --judge --judge-file --json;;
     record) printf '%s\n' --dry-run --strict --cost-names --require-coverage --json;;
     trend) printf '%s\n' --overlap --json;;
-    index) printf '%s\n' build status prune callers tests-for co-changed owners --from --at --limit --commits --since --min-count --symbol --json;;
-    backtest) printf '%s\n' --since --until --run --agent --max-reviews --budget-usd --timeout --rounds --json;;
+    index) printf '%s\n' build status prune callers tests-for co-changed owners blast-radius --from --at --limit --commits --since --min-count --symbol --pr --paths --json;;
+    backtest) printf '%s\n' mine replay score --since --until --run --agent --max-reviews --budget-usd --timeout --rounds --json;;
     threads) printf '%s\n' --provider --thread --dry-run --json;;
     fetch-local) printf '%s\n' --staged --range --base --stash --worktree --consent-over-budget --show-prompts --chunk --json;;
     run) printf '%s\n' --agent --timeout --rounds --print --json;;
@@ -110,6 +110,13 @@ _verdict_bash_complete() {
     done <<<"$(_verdict_flags "$verb")"
     return 0
   fi
+  if [[ "$COMP_CWORD" -eq 2 ]]; then
+    while IFS= read -r v; do
+      [[ "$v" == -* ]] && continue
+      if [[ "$v" == "$cur"* ]]; then COMPREPLY+=("$v"); fi
+    done <<<"$(_verdict_flags "$verb")"
+    return 0
+  fi
   return 0
 }
 
@@ -138,6 +145,13 @@ _verdict_zsh_complete() {
   fi
   if [[ "$cur" == -* ]]; then
     while IFS= read -r v; do
+      case "$v" in "$cur"*) compadd -- "$v";; esac
+    done <<<"$(_verdict_flags "$verb")"
+    return 0
+  fi
+  if [[ "$CURRENT" -eq 3 ]]; then
+    while IFS= read -r v; do
+      [[ "$v" == -* ]] && continue
       case "$v" in "$cur"*) compadd -- "$v";; esac
     done <<<"$(_verdict_flags "$verb")"
     return 0

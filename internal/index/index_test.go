@@ -1,6 +1,7 @@
 package index
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -71,15 +72,37 @@ func TestParseGraphSubcommands(t *testing.T) {
 			name: "owners at a tree", args: []string{"owners", "a/a.go", "--at", "HEAD~1"},
 			want: invocation{query: "owners", path: "a/a.go", at: "HEAD~1"},
 		},
+		{
+			name: "blast-radius paths", args: []string{"blast-radius", "--paths", "a/a.go", "--paths", "b/b.go", "--limit", "7"},
+			want: invocation{
+				query: "blast-radius", paths: []string{"a/a.go", "b/b.go"},
+				limit: 7, commits: 2000, minCount: 2,
+			},
+		},
+		{
+			name: "blast-radius pr", args: []string{"blast-radius", "--pr", "12", "--at", "HEAD~1", "--min-count", "3"},
+			want: invocation{
+				query: "blast-radius", pr: "12", at: "HEAD~1",
+				limit: 50, commits: 2000, minCount: 3,
+			},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			inv := parseAccepted(t, tc.args)
-			if inv != tc.want {
+			if !sameInvocation(&inv, &tc.want) {
 				t.Errorf("invocation = %+v; want %+v", inv, tc.want)
 			}
 		})
 	}
+}
+
+// sameInvocation compares two parsed invocations, slices included.
+func sameInvocation(a, b *invocation) bool {
+	return a.query == b.query && a.from == b.from && a.at == b.at &&
+		a.symbol == b.symbol && a.path == b.path && a.since == b.since &&
+		a.pr == b.pr && a.commits == b.commits && a.minCount == b.minCount &&
+		a.limit == b.limit && slices.Equal(a.paths, b.paths)
 }
 
 // parseAccepted parses one accepted argv and fails on any refusal.
@@ -142,9 +165,30 @@ func TestParseGraphRefusals(t *testing.T) {
 			code: cli.ExitUsage, diag: "unknown flag '--limit' for index owners (want --at <tree>)\n",
 		},
 		{
+			name: "blast-radius neither input", args: []string{"blast-radius"},
+			code: cli.ExitUsage, diag: blastUsage + "\n",
+		},
+		{
+			name: "blast-radius both inputs", args: []string{"blast-radius", "--pr", "7", "--paths", "a/a.go"},
+			code: cli.ExitUsage, diag: blastUsage + "\n",
+		},
+		{
+			name: "blast-radius positional", args: []string{"blast-radius", "a/a.go"},
+			code: cli.ExitUsage,
+			diag: "index blast-radius takes --pr <n> or --paths <path>, not the positional 'a/a.go'\n",
+		},
+		{
+			name: "blast-radius limit bound", args: []string{"blast-radius", "--paths", "a/a.go", "--limit", "0"},
+			code: cli.ExitUsage, diag: "index blast-radius wants --limit from 1 to 200\n",
+		},
+		{
+			name: "blast-radius commits bound", args: []string{"blast-radius", "--paths", "a/a.go", "--commits", "0"},
+			code: cli.ExitUsage, diag: "index blast-radius wants --commits from 1 to 100000\n",
+		},
+		{
 			name: "unknown subcommand", args: []string{"calers", "app.Target"},
 			code: cli.ExitUsage,
-			diag: "unknown index subcommand 'calers' (want build, status, prune, callers, tests-for, co-changed, owners)\n",
+			diag: "unknown index subcommand 'calers' (want build, status, prune, callers, tests-for, co-changed, owners, blast-radius)\n",
 		},
 	}
 	for _, tc := range cases {

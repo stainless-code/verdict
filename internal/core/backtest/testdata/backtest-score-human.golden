@@ -1,0 +1,8 @@
+backtest score s1  (2 PRs, 3 bugs)
+  catch rate: 0.6667 (2/3 bugs)
+  off-target: 0.5000 per PR (3 reported, 2 matched, 2 PRs)
+  cost: $0.50 per review (≥ $0.50 over 1 priced review, 1 unpriced)
+  unclassified: 1 of 3 bugs (kind matched no rule)
+  signal fix: 1.0000 (1/1)
+  signal revert: 0.5000 (1/2)
+not citable — SZZ-derived: a score grades a blame-derived guess, not a verified defect

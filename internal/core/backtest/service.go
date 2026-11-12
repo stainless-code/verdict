@@ -29,22 +29,24 @@ import (
 
 // Refusal codes this verb owns.
 const (
-	codeBadSince       = "bad-since"
-	codeBadUntil       = "bad-until"
-	codeRunMismatch    = "run-mismatch"
-	codeBacktestFail   = "backtest-failed"
-	codeNotARepo       = "not-a-repo"
-	codeBadSlug        = "bad-slug"
-	codeCorruptStore   = "corrupt-store"
-	codeCanceled       = "canceled"
-	codeBadFlags       = "bad-flags"
-	codeWindowTooLarge = "window-too-large"
-	modeMine           = "mine"
-	methodSZZ          = "szz-blame-v1"
-	schemaVersion      = "1"
-	headSourceMerge    = "merge-time"
-	msgCanceled        = "canceled before backtest mine completed"
-	shallowWarning     = "shallow clone: an introducer at the clone boundary reads as no-pr; " +
+	codeBadSince         = "bad-since"
+	codeBadUntil         = "bad-until"
+	codeRunMismatch      = "run-mismatch"
+	codeBacktestFail     = "backtest-failed"
+	codeBacktestRunStale = "backtest-run-stale"
+	codeBacktestRowStale = "backtest-row-stale"
+	codeNotARepo         = "not-a-repo"
+	codeBadSlug          = "bad-slug"
+	codeCorruptStore     = "corrupt-store"
+	codeCanceled         = "canceled"
+	codeBadFlags         = "bad-flags"
+	codeWindowTooLarge   = "window-too-large"
+	modeMine             = "mine"
+	methodSZZ            = "szz-blame-v1"
+	schemaVersion        = "1"
+	headSourceMerge      = "merge-time"
+	msgCanceled          = "canceled before backtest mine completed"
+	shallowWarning       = "shallow clone: an introducer at the clone boundary reads as no-pr; " +
 		"run 'git fetch --unshallow' for the full history"
 	artifactDir       = ".verdict/backtest"
 	commandOutputCap  = 16 << 20
@@ -154,12 +156,14 @@ type Candidate struct {
 }
 
 // Bug is one anchored line at the PR head. Fix is the seed fix whose deleted
-// line produced the anchor.
+// line produced the anchor, and Signal is the seed rule that fix matched:
+// `fix` or `revert`.
 type Bug struct { //nolint:govet // field order is the published property order
-	Path string `json:"path"`
-	Line int    `json:"line"`
-	Kind string `json:"kind"`
-	Fix  string `json:"fix"`
+	Path   string `json:"path"`
+	Line   int    `json:"line"`
+	Kind   string `json:"kind"`
+	Signal string `json:"signal"`
+	Fix    string `json:"fix"`
 }
 
 // Skipped is one seed fix that produced no candidate, with the deterministic

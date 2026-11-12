@@ -311,15 +311,18 @@ var fieldDocs = map[string]string{
 	"learn.Status":    "List rules with counters and precision (boolean list switch; learn sets no status).",
 	"next.Status":     "Status filter for the top finding (all, open, addressed, wont-fix, false-positive, deferred); empty means open.",
 	"triage.Status":   "Status to flip the finding to (open, addressed, wont-fix, false-positive, deferred).",
-	"index.Query":     "Subcommand to serve: callers, status, tests-for, co-changed, or owners. Build and prune stay on the CLI.",
+	"index.Query":     "Subcommand: callers, status, tests-for, co-changed, owners, or blast-radius; build and prune are CLI-only.",
 	"index.Symbol":    "Caller query symbol (bare Target or package-qualified app.Target), or the tests-for --symbol input.",
 	"index.At":        "Tree or ref to query; default HEAD.",
 	"index.From":      "Checkout directory to read the index from; default the repository root.",
 	"index.Path":      "Repository path for tests-for, co-changed, or owners.",
-	"index.Since":     "Co-change window start: a duration (90d, 12w, 18mo, 2y) or a commit ref.",
-	"index.Commits":   "Co-change window size in commits (1-100000; default 2000).",
-	"index.MinCount":  "Minimum co-change count a partner needs (1-100000; default 2).",
-	"index.Limit":     "Maximum rows to return (1-200; default 50 for callers and tests-for, 20 for co-changed).",
+	"index.Paths":     "Repository paths for blast-radius: every declaration in each file is a changed symbol; no bundle or host call.",
+	"index.Pr": "Fetched PR bundle whose full.diff names blast-radius's changed paths and lines; " +
+		"its tree is queried when the index holds it, otherwise HEAD with a warning.",
+	"index.Since":    "Co-change window start: a duration (90d, 12w, 18mo, 2y) or a commit ref.",
+	"index.Commits":  "Co-change window size in commits (1-100000; default 2000).",
+	"index.MinCount": "Minimum co-change count a partner needs (1-100000; default 2).",
+	"index.Limit":    "Maximum rows to return (1-200; default 50 for callers and tests-for, 20 for co-changed).",
 	"Sandbox": "Run under bwrap (Linux only) with no network, hidden credential dirs, " +
 		"a writable repo, and a private /tmp; refuses sandbox-unavailable when it cannot be enforced.",
 }

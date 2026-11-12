@@ -2788,6 +2788,48 @@ reads `owners: []` with the source named. None ever reads as an owner named
 nobody. The same `target` object rides on `tests-for` (path form) and
 `co-changed`.
 
+`index blast-radius --pr <n>|--paths <path> [--at <tree>] [--limit <n>]
+[--commits <n>] [--since <dur|ref>] [--min-count <n>]` answers one change's
+reach. `--pr` reads the fetched bundle's `full.diff` — no host call — and takes
+the new-side lines it touched: every added line, and both sides of every
+deleted line, because the removed text sat between them. `--paths` names files
+directly (repeat the flag) and needs no bundle; each must exist at the queried
+tree (`bad-flags` otherwise) and every declaration in it is a changed symbol. A
+shard records a declaration's start line, so a declaration owns its source from
+that line to the line before the next declaration. A comment or blank line in
+the gap before a declaration therefore belongs to the declaration above it,
+and a change there is attributed there too; a changed line before the first
+declaration (the package clause, imports) changes no symbol. A section
+of the diff with no line hunks — a rename or a mode change — names no touched
+line, so every declaration in its new path is a changed symbol and one warning
+names that path.
+
+The queried tree is `--at` when given. With `--pr` it is the bundle's PR head
+when the store already holds that tree; otherwise HEAD is queried and one
+warning names the head — the answer is a truthful lower bound for the tree it
+names, and `data.input.head` names the bundle's head. `--paths` queries HEAD. A
+tree with no stored index is not a refusal: `data.index` is absent and the
+symbol, caller, and test counts are `null`, never 0, because an unmeasured list
+is not an empty one. `co_changed` and `owners` are measured from git either
+way.
+
+Callers walk from every changed symbol to depth 2: depth 1 is a direct caller,
+depth 2 a caller of a direct caller. Each declaration is queried at most once
+per run (a visited set), so a recursive or mutual call cycle cannot grow the
+walk, and rows deduplicate by call site. A caller row names the changed symbol
+it is reached from, the file and line, `exact` or `lexical` under the same
+rules as `index callers`, and its depth; candidates the index cannot attribute
+are counted in `callers.unresolved`, never guessed. Candidate tests reuse
+`tests-for` (strongest mechanism per file), co-change partners reuse
+`co-changed`'s single bounded window at HEAD, and owners reuse the CODEOWNERS
+answer at the queried tree — one row per changed path.
+
+Every list is a measured object — `count`, `truncated`, and `rows` — so a
+truncated answer says how much it hid instead of looking complete. The result is
+a lower bound: a method value, a reflection call, an unparsed file, or a skipped
+oversize file is missing rather than invented. `data.input` echoes the PR slug
+or the resolved paths, and `data.limit` echoes the row limit.
+
 Caps: 20,000 source files, 1 MiB per file (an oversized file is skipped and
 counted in `coverage.skipped`), a 96 MiB tree file, and a 256 MiB shard cache;
 a repo over a cap refuses `index-capped` naming the measured number. The typed
@@ -2809,10 +2851,10 @@ Querying a tree that is not HEAD's marks the envelope `stale: true` and warns
 `» index: built for <tree>, HEAD is <tree2>`. `callers`, `tests-for`, and
 `owners` take `--at`; `co-changed` always reads HEAD's tree and history. The
 MCP `index` tool is read-only and serves `callers`, `status`, `tests-for`,
-`co-changed`, and `owners`; it creates no workspace and no index store, writes
-nothing (a `co-changed` query reads a valid cache but never writes or prunes
-one), and it never builds or prunes — those stay on the CLI, and the SDK
-forwards every subcommand.
+`co-changed`, `owners`, and `blast-radius`; it creates no workspace and no index
+store, writes nothing (a `co-changed` or `blast-radius` query reads a valid
+cache but never writes or prunes one), and it never builds or prunes — those
+stay on the CLI, and the SDK forwards every subcommand.
 
 ## Backtest (SZZ candidates)
 
@@ -2822,8 +2864,9 @@ calls and zero network calls: everything comes from git objects already on
 disk. `backtest replay --run <id> --agent <name> [--max-reviews <n>]
 [--budget-usd <usd>] [--timeout <secs>] [--rounds <n>] [-- <agent args>]` then
 reviews those candidates with the operator's own agent, one launch per
-candidate; it is the one mode that spends. `score` (join the replayed findings
-to the later fix) is a later slice.
+candidate; it is the backtest step that spends. `backtest score --run <id>`
+then grades the replayed findings against the lines the miner blamed, and
+`backtest --since … --agent <name>` runs all three in one invocation.
 
 Every mining git call runs with the system and user config nulled — the artifact
 never depends on a formatting knob — with one exception: the user's
@@ -2972,7 +3015,8 @@ The first fix in newest-first order owns a duplicated path/line.
 slash paths relative to the repository root; `mine` is `{candidates, skipped}`.
 A candidate carries `head`, `base`, `landed_by`, `pr` (number or null),
 `reconstruction`, `head_source`, `merged_at`, `head_at`, `fixes[]`, and
-`bugs[]`; a bug carries `path`, `line`, `kind`, and its `fix`. The envelope's
+`bugs[]`; a bug carries `path`, `line`, `kind`, `signal` (`fix` or `revert`,
+the seed rule that fix commit matched), and its `fix`. The envelope's
 `repo` is empty and `pr` is null: mining targets the checkout, not a bundle.
 Human output is one header line, one line per candidate, a skipped-by-reason
 footer, and the `not citable — SZZ-derived` line.
@@ -3070,6 +3114,79 @@ plan header, one row per review as it finishes, the stop reason, the spend
 footer, and the `not citable — SZZ-derived` line. Replayed findings are
 benchmark input: not citable, never posted.
 
+### Score
+
+`backtest score --run <id> [--json]` grades the reviews a replay recorded. It is
+a pure read: no agent launches, no bundle is built, and nothing enters the
+corpus store. It reads `.verdict/backtest/<run>/mine.json`, each
+`prs/<NNN>/replay.json`, and the `findings.json` of the bundle that record
+names, then writes `.verdict/backtest/<run>/report.json`. A run with no
+`mine.json` refuses `missing-bundle` naming `backtest mine`; a run never
+replayed refuses `missing-bundle` naming `backtest replay`; a `mine.json` that
+predates the seed `signal`, is unreadable, or no longer carries a scored PR
+refuses `backtest-run-stale` and asks for a re-mine in place; a resume record
+that is unreadable, names another run, repeats a candidate, or points at a
+missing findings file refuses `backtest-row-stale` and asks for that
+`prs/<NNN>/` directory to be removed before replaying. Neither refusal asks
+for the run directory to be deleted: re-mining or replaying rebuilds the
+artifact in place.
+
+Grading is the corpus matcher's own rule (`corpuscore.Evaluate`): a finding
+matches a bug when it carries the same `path`, its line is within ±1 of the
+bug's line, and its text names the defect — the bug's `kind` in hyphen or space
+form, or a phrase from the published category vocabulary for that kind. A
+backtest case carries no keywords: the kind is the miner's deterministic guess,
+so a finding must name what that guess calls the defect. One bug is one match;
+a second finding on the same bug is off target. A finding record moved out of
+its hunk is graded as body text, never as a line claim.
+
+The metrics:
+
+- `catch_rate = matched / bugs` over the PRs whose review was graded. It is a
+  match rate over SZZ candidates, not a measured catch rate: a bug is visible
+  only when a later fix deleted that exact line, so a defect fixed without
+  touching the line, or never fixed, is invisible, while a fix that deletes
+  cleanup beside the real bug makes a never-defective line a candidate. A
+  finding on a line that later needed a fix is evidence the review looked at
+  the right place — not proof the line was defective.
+- `off_target_per_pr = (reported − matched) / prs`. The name is deliberate: an
+  unmatched finding is not proven false, so it is never called one. It can be a
+  real defect on a line no later fix deleted.
+- `cost_per_review_usd` is the priced spend divided by the reviews that
+  reported a price, and null when none did. `spend.usd` sums those prices and is
+  a lower bound whenever `spend.unpriced_reviews` is non-zero: a review that
+  reported no price is unknown spend, never zero.
+- `unclassified` counts graded bugs whose kind matched no rule in the miner. No
+  finding can name that kind, so those bugs can only lower `catch_rate`; the
+  count says how much of the denominator is unreachable.
+- `signals[]` splits the same counts by seed signal, `fix` then `revert`. A
+  revert that deletes the line is a stronger signal than a fix commit that
+  rewrites it, so the table publishes the two rates apart; `catch_rate` above
+  stays the pooled rate over every graded bug.
+- Every zero denominator renders `null`; the human lines render `n/a`.
+  `not_replayed` counts mined candidates the run never scored (no resume row,
+  or a row that recorded no review); their bugs stay out of every denominator.
+
+`--json` `data` is `{schema_version, run, mode, prs, not_replayed, bugs,
+reported, matched, unclassified, catch_rate, off_target_per_pr,
+cost_per_review_usd, spend, signals}` — and `report.json` is that same object,
+so [`schemas/backtest.schema.json`](../skills/verdict/schemas/backtest.schema.json)
+describes both. `spend` is `{usd, priced_reviews, unpriced_reviews}`; a signal
+row is `{signal, bugs, matched, catch_rate}`. Human output is the scope header,
+the catch rate, the off-target rate, the cost line, the unclassified count, one
+line per signal, and the `not citable — SZZ-derived` line.
+
+### Composed run
+
+`backtest --since <90d|12w|18mo|2y|ref> --agent <name> [replay flags]
+[-- <agent args>]` mines, replays, and scores in one invocation. It calls the
+same three services, not a copy: the miner resolves the run id (or `--run`),
+and the replay and score read that id. `--agent` is required because the
+composed run replays and spends; every replay budget and the bare `--`
+pass-through apply. `--json` data is the score report, because that is the
+composed run's product; the per-review rows stay on disk in
+`prs/<NNN>/replay.json`. Human output is the three phases' lines in order.
+
 ## Out of scope by design
 
 Hosted settings, metered proxies, token mints, server-seeded comments and checks,
@@ -3085,7 +3202,8 @@ The shapes agents write and operators parse are pinned in `schemas/`
 `cost.schema.json` (the self-reported spend record), `controls.schema.json`
 (the resolved base-owned controls snapshot), `usage.schema.json` (the
 explicit usage handoff), `corpus.schema.json` (benchmark case manifests),
-`post.schema.json` and `record.schema.json` (completed post/record captures),
+`backtest.schema.json` (the backtest score report), `post.schema.json` and
+`record.schema.json` (completed post/record captures),
 `threads.schema.json` (the normalized PR conversation),
 `pack.schema.json` (the lens pack manifest),
 and `envelope.schema.json` (the `--json` envelope plus the stable per-verb

@@ -18,18 +18,19 @@ import (
 
 // Index subcommands.
 const (
-	QueryBuild     = "build"
-	QueryStatus    = "status"
-	QueryPrune     = "prune"
-	QueryCallers   = "callers"
-	QueryTestsFor  = "tests-for"
-	QueryCoChanged = "co-changed"
-	QueryOwners    = "owners"
+	QueryBuild       = "build"
+	QueryStatus      = "status"
+	QueryPrune       = "prune"
+	QueryCallers     = "callers"
+	QueryTestsFor    = "tests-for"
+	QueryCoChanged   = "co-changed"
+	QueryOwners      = "owners"
+	QueryBlastRadius = "blast-radius"
 )
 
 // MCPQueries are the index subcommands the read-only MCP tool serves. Build
 // and prune stay on the CLI because they write the store.
-var MCPQueries = []string{QueryCallers, QueryStatus, QueryTestsFor, QueryCoChanged, QueryOwners}
+var MCPQueries = []string{QueryCallers, QueryStatus, QueryTestsFor, QueryCoChanged, QueryOwners, QueryBlastRadius}
 
 // DefaultLimit is the row limit when the request names none.
 const DefaultLimit = 50
@@ -102,6 +103,7 @@ type Request struct { //nolint:govet // field grouping documents the request sur
 	Symbol   string
 	Path     string
 	Since    string
+	Paths    []string
 	Commits  int `max:"100000" min:"1"`
 	MinCount int `max:"100000" min:"1"`
 	Limit    int `max:"200"    min:"1"`
@@ -156,6 +158,7 @@ type Data struct { //nolint:govet // field order is the published property order
 	TargetCommits int
 	CoChangeRows  []CoChangeRow
 	Target        *Target
+	Blast         *Blast
 }
 
 // TreeRow is one stored tree file.
@@ -333,10 +336,12 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 		resp, ref = st.coChanged(ctx)
 	case QueryOwners:
 		resp, ref = st.owners(ctx)
+	case QueryBlastRadius:
+		resp, ref = st.blastRadius(ctx)
 	default:
 		return nil, &core.RefusalError{
 			Code:    "bad-flags",
-			Message: "index wants build, status, prune, callers, tests-for, co-changed, or owners",
+			Message: "index wants build, status, prune, callers, tests-for, co-changed, owners, or blast-radius",
 		}
 	}
 	if ref != nil {

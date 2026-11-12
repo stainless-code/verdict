@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 func pidReport(file string) string {
@@ -341,4 +342,60 @@ func TestRunnerBothStreamsPastCapDoNotDeadlock(t *testing.T) {
 	if res.Stderr != wantErr || !res.StderrTruncated {
 		t.Errorf("Stderr = %q (truncated %v), want the last %d bytes plus the notice", res.Stderr, res.StderrTruncated, limit)
 	}
+}
+
+// TestWatchdogOperatorCancelIsNotATimeout proves a cancel with no deadline
+// stops the run promptly and does not read as a timeout, on both the watchdog
+// and the runner.
+func TestWatchdogOperatorCancelIsNotATimeout(t *testing.T) {
+	for _, tc := range []struct {
+		run  func(context.Context, *core.Command) (core.Result, error)
+		name string
+	}{
+		{name: "watchdog", run: Watchdog{}.Run},
+		{name: "runner", run: Runner{}.Run},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res := runThenCancel(t, tc.run)
+			if res.TimedOut {
+				t.Errorf("TimedOut = true after an operator cancel, want false: %+v", res)
+			}
+		})
+	}
+}
+
+// runThenCancel cancels a child once its marker file shows it is running, and
+// returns the result, failing if Run does not return within returnBound.
+func runThenCancel(t *testing.T, run func(context.Context, *core.Command) (core.Result, error)) core.Result {
+	t.Helper()
+	marker := filepath.Join(t.TempDir(), "started")
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	type outcome struct {
+		err error
+		res core.Result
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		res, err := run(ctx, &core.Command{
+			Argv: []string{"bash", "-c", `echo started > '` + marker + `'; exec sleep 30`},
+			Env:  os.Environ(),
+		})
+		done <- outcome{err: err, res: res}
+	}()
+	testenv.Until(t, func() bool {
+		_, err := os.Stat(marker)
+		return err == nil
+	})
+	cancel()
+	select {
+	case o := <-done:
+		if o.err != nil {
+			t.Fatal(o.err)
+		}
+		return o.res
+	case <-time.After(returnBound):
+		t.Fatalf("Run did not return within %v of the cancel", returnBound)
+	}
+	return core.Result{}
 }

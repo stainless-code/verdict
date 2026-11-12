@@ -191,6 +191,7 @@ func TestRuntimeIndexEnvelopeValidates(t *testing.T) {
 		query  string
 		symbol string
 		path   string
+		paths  []string
 	}{
 		{query: indexcore.QueryBuild, want: map[string]any{
 			"kind": "build", "files_indexed": json.Number("2"), "parsed": json.Number("2"),
@@ -217,10 +218,33 @@ func TestRuntimeIndexEnvelopeValidates(t *testing.T) {
 				"path": "a/a.go", "owners": nil, "owners_source": nil,
 			},
 		}},
+		{query: indexcore.QueryBlastRadius, paths: []string{"a/a.go"}, want: map[string]any{
+			"kind": "blast-radius",
+			"symbols": map[string]any{
+				"count": json.Number("2"), "truncated": json.Number("0"),
+				"rows": []any{
+					map[string]any{"path": "a/a.go", "name": "Target", "kind": "func", "line": json.Number("3")},
+					map[string]any{"path": "a/a.go", "name": "Caller", "kind": "func", "line": json.Number("5")},
+				},
+			},
+			"callers": map[string]any{
+				"count": json.Number("2"), "unresolved": json.Number("0"), "truncated": json.Number("0"),
+				"rows": []any{
+					map[string]any{
+						"symbol": "example.com/m/a.Target", "path": "a/a.go", "kind": "call",
+						"resolution": "exact", "line": json.Number("6"), "depth": json.Number("1"),
+					},
+					map[string]any{
+						"symbol": "example.com/m/a.Target", "path": "b/b.go", "kind": "call",
+						"resolution": "lexical", "line": json.Number("6"), "depth": json.Number("1"),
+					},
+				},
+			},
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.query, func(t *testing.T) {
-			req := &indexcore.Request{Query: tc.query, Symbol: tc.symbol, Path: tc.path}
+			req := &indexcore.Request{Query: tc.query, Symbol: tc.symbol, Path: tc.path, Paths: tc.paths}
 			req.ReadRequest = core.ReadRequest{
 				Runtime:  &core.Runtime{Now: fixedNow, Commander: coreexec.Runner{}, Env: env},
 				RepoRoot: dir,

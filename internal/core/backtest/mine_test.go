@@ -68,7 +68,7 @@ func TestMineMergedFix(t *testing.T) {
 		MergedAt:       "2024-01-03T00:00:00Z",
 		HeadAt:         "2024-01-02T00:00:00Z",
 		Fixes:          []string{"29320a6e9fac8488fb678921021d68af35843beb"},
-		Bugs:           []Bug{{Path: "main.go", Line: 6, Kind: "missing-error-check", Fix: "29320a6e9fac8488fb678921021d68af35843beb"}},
+		Bugs:           []Bug{{Path: "main.go", Line: 6, Kind: "missing-error-check", Signal: "fix", Fix: "29320a6e9fac8488fb678921021d68af35843beb"}},
 	})
 	if data.Mine.Skipped == nil {
 		t.Error("skipped is nil; want an empty array")
@@ -108,7 +108,7 @@ func TestMineRevert(t *testing.T) {
 		MergedAt:       "2024-01-03T00:00:00Z",
 		HeadAt:         "2024-01-02T00:00:00Z",
 		Fixes:          []string{"c1aaf5167e48a51abd54314631d8cf8a7fca9df1"},
-		Bugs:           []Bug{{Path: "main.go", Line: 6, Kind: "unclassified", Fix: "c1aaf5167e48a51abd54314631d8cf8a7fca9df1"}},
+		Bugs:           []Bug{{Path: "main.go", Line: 6, Kind: "unclassified", Signal: "revert", Fix: "c1aaf5167e48a51abd54314631d8cf8a7fca9df1"}},
 	})
 }
 
@@ -129,7 +129,7 @@ func TestMineSquash(t *testing.T) {
 		MergedAt:       "2024-01-03T00:00:00Z",
 		HeadAt:         "2024-01-03T00:00:00Z",
 		Fixes:          []string{"2467cb3da814ba1b89c1442e1390b6958bbb798a"},
-		Bugs:           []Bug{{Path: "a.txt", Line: 1, Kind: "unclassified", Fix: "2467cb3da814ba1b89c1442e1390b6958bbb798a"}},
+		Bugs:           []Bug{{Path: "a.txt", Line: 1, Kind: "unclassified", Signal: "fix", Fix: "2467cb3da814ba1b89c1442e1390b6958bbb798a"}},
 	})
 }
 

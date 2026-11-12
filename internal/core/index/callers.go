@@ -63,6 +63,11 @@ func (st *state) queryRef(ctx context.Context, root string) (string, string, *co
 	if at == "" {
 		at = "HEAD"
 	}
+	return st.queryRefAt(ctx, root, at)
+}
+
+// queryRefAt resolves one explicit revision to its tree and commit.
+func (st *state) queryRefAt(ctx context.Context, root, at string) (string, string, *core.RefusalError) {
 	tree, ref := st.resolveTree(ctx, root, at)
 	if ref != nil {
 		return "", "", ref

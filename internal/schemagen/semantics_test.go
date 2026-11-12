@@ -18,6 +18,11 @@ import (
 // skill) re-pinned all ten hashes: only each $id URL moved; no property,
 // required key, enum, or type changed.
 var publishedSemantics = map[string]string{
+	// additive backtest.schema.json (new run-artifact document for the backtest
+	// score report; no existing schema property, required key, or type changed).
+	// The catch_rate description now calls the rate a match rate over
+	// blame-derived candidates instead of a lower bound on catch.
+	"backtest.schema.json": "23ea7e2b720c097bf41cdbebf9a4d828ec69d738c916deb475df1c1bc8216b89",
 	// additive config.schema.json (new typed-repository-configuration
 	// document; no existing schema property, required key, or type
 	// changed). The scope $def now carries the presence contract the
@@ -164,11 +169,22 @@ var publishedSemantics = map[string]string{
 	// named). Description only; no property, required key, enum, or type
 	// changed. Pack list: additive $defs/packData and $defs/packEntry; the
 	// envelope data object was already open, so no existing shape moved.
+	// blast radius: additive indexData properties input, symbols, callers,
+	// tests, co_changed, and owners with their $defs entries, an additive
+	// blast-radius kind enum value, and one optional description on the shared
+	// index property. count/unresolved/truncated are nullable integers on the
+	// new list objects, so an absent index reads null instead of 0; no existing
+	// property, required key, or type changed.
+	// co-change units: additive indexBlastPartners.partners integer (the
+	// distinct partner paths) beside the existing row count, because count is
+	// a (target, partner) pair count; one description now names both units.
+	// Additions only; no existing property, required key, enum, or type
+	// changed.
 	// scanned languages: additive $defs/indexLangRow and the build branch's
 	// optional languages[] (required language enum, required file count), plus
 	// the caller row's optional language enum. No existing property, required
 	// key, enum, or type changed.
-	"envelope.schema.json": "dd316347f15a6da923ead54d81733603083abf3887a47aea41d00947e9f291bc",
+	"envelope.schema.json": "a5a9fca3a4ec11cad62861de922a9b31d2bb6c6f9989d6582a7122a15372cb46",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

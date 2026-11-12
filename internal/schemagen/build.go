@@ -138,6 +138,16 @@ const keyScopeDefaults = "defaults"
 func documents() []document {
 	return []document{
 		{
+			name:  "backtest",
+			title: "report.json — backtest score report",
+			root:  reflect.TypeFor[BacktestData](),
+			defs: []definition{
+				{typ: reflect.TypeFor[BacktestSpend](), name: "spend"},
+				{typ: reflect.TypeFor[BacktestSignal](), name: "signal"},
+			},
+			additionalProperties: false,
+		},
+		{
 			name:  "config",
 			title: "config.json — typed repository configuration",
 			root:  reflect.TypeFor[Config](),
@@ -396,6 +406,15 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[IndexRow](), name: "indexRow"},
 		{typ: reflect.TypeFor[IndexWindow](), name: "indexWindow"},
 		{typ: reflect.TypeFor[IndexTarget](), name: "indexTarget"},
+		{typ: reflect.TypeFor[IndexBlastInput](), name: "indexBlastInput"},
+		{typ: reflect.TypeFor[IndexBlastSymbols](), name: "indexBlastSymbols"},
+		{typ: reflect.TypeFor[IndexBlastSymbol](), name: "indexBlastSymbol"},
+		{typ: reflect.TypeFor[IndexBlastCallers](), name: "indexBlastCallers"},
+		{typ: reflect.TypeFor[IndexBlastCaller](), name: "indexBlastCaller"},
+		{typ: reflect.TypeFor[IndexBlastTests](), name: "indexBlastTests"},
+		{typ: reflect.TypeFor[IndexBlastPartners](), name: "indexBlastPartners"},
+		{typ: reflect.TypeFor[IndexBlastPartner](), name: "indexBlastPartner"},
+		{typ: reflect.TypeFor[IndexBlastOwners](), name: "indexBlastOwners"},
 		{typ: reflect.TypeFor[CalibrateData](), name: "calibrateData"},
 		{typ: reflect.TypeFor[CalibrateHead](), name: "calibrateHead"},
 		{typ: reflect.TypeFor[CalibratePR](), name: "calibratePR"},

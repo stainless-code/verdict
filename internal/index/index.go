@@ -54,6 +54,8 @@ type invocation struct {
 	symbol   string
 	path     string
 	since    string
+	pr       string
+	paths    []string
 	commits  int
 	minCount int
 	limit    int
@@ -66,6 +68,7 @@ func (inv *invocation) request(r *cli.Runner, req Request) *indexcore.Request {
 		read.Runtime = &core.Runtime{}
 	}
 	read.Now = r.Now
+	read.Pr = inv.pr
 	read.Progress = cli.Progress{R: r}
 	read.Commander = coreexec.Runner{}
 	return &indexcore.Request{
@@ -76,6 +79,7 @@ func (inv *invocation) request(r *cli.Runner, req Request) *indexcore.Request {
 		Symbol:      inv.symbol,
 		Path:        inv.path,
 		Since:       inv.since,
+		Paths:       inv.paths,
 		Commits:     inv.commits,
 		MinCount:    inv.minCount,
 		Limit:       inv.limit,
@@ -105,6 +109,8 @@ func parse(r *cli.Runner, args []string) (invocation, int, bool) {
 		return parseCoChanged(r, rest)
 	case indexcore.QueryOwners:
 		return parseOwners(r, rest)
+	case indexcore.QueryBlastRadius:
+		return parseBlastRadius(r, rest)
 	default:
 		return invocation{}, r.ReportUsage(usageError(unknownSubcommand + sub + "' (want " + indexSubcommands + ")")), true
 	}
@@ -112,10 +118,14 @@ func parse(r *cli.Runner, args []string) (invocation, int, bool) {
 
 // indexWants is the shared "wants" phrase every index usage error carries.
 const (
-	indexWants        = "index wants build, status, prune, callers, tests-for, co-changed, or owners"
-	indexSubcommands  = "build, status, prune, callers, tests-for, co-changed, owners"
+	indexWants        = "index wants build, status, prune, callers, tests-for, co-changed, owners, or blast-radius"
+	indexSubcommands  = "build, status, prune, callers, tests-for, co-changed, owners, blast-radius"
 	flagAt            = "--at"
 	flagLimit         = "--limit"
+	flagCommits       = "--commits"
+	flagMinCount      = "--min-count"
+	flagSince         = "--since"
+	flagPrefix        = "-"
 	unknownFlag       = "unknown flag '"
 	unknownSubcommand = "unknown index subcommand '"
 )
@@ -152,7 +162,7 @@ func parseTestsForArg(r *cli.Runner, args []string, i int, inv *invocation) (int
 		return callerAt(r, args, i, inv)
 	case a == flagLimit:
 		return queryLimit(r, args, i, inv, indexcore.QueryTestsFor)
-	case strings.HasPrefix(a, "-"):
+	case strings.HasPrefix(a, flagPrefix):
 		return 0, r.ReportUsage(usageError(unknownFlag + a +
 			"' for index tests-for (want --symbol <pkg.Name>, --at <tree>, --limit <n>)")), true
 	default:
@@ -188,10 +198,10 @@ func parseCoChanged(r *cli.Runner, args []string) (invocation, int, bool) {
 func parseCoChangedArg(r *cli.Runner, args []string, i int, inv *invocation) (int, int, bool) {
 	a := args[i]
 	switch a {
-	case "--commits", "--min-count":
-		return coChangeCount(r, args, i, inv, a)
-	case "--since":
-		v, next, u := cli.FlagValue(args, i, "--since", "<dur|ref>")
+	case flagCommits, flagMinCount:
+		return coChangeCount(r, args, i, inv, indexcore.QueryCoChanged, a)
+	case flagSince:
+		v, next, u := cli.FlagValue(args, i, flagSince, "<dur|ref>")
 		if u != nil {
 			return 0, r.ReportUsage(u), true
 		}
@@ -200,7 +210,7 @@ func parseCoChangedArg(r *cli.Runner, args []string, i int, inv *invocation) (in
 	case flagLimit:
 		return queryLimit(r, args, i, inv, indexcore.QueryCoChanged)
 	default:
-		if strings.HasPrefix(a, "-") {
+		if strings.HasPrefix(a, flagPrefix) {
 			return 0, r.ReportUsage(usageError(unknownFlag + a + "' for index co-changed" +
 				" (want --commits <n>, --since <dur|ref>, --min-count <n>, --limit <n>)")), true
 		}
@@ -213,17 +223,17 @@ func parseCoChangedArg(r *cli.Runner, args []string, i int, inv *invocation) (in
 }
 
 // coChangeCount reads and validates --commits or --min-count.
-func coChangeCount(r *cli.Runner, args []string, i int, inv *invocation, flag string) (int, int, bool) {
+func coChangeCount(r *cli.Runner, args []string, i int, inv *invocation, query, flag string) (int, int, bool) {
 	v, next, u := cli.FlagValue(args, i, flag, "<n>")
 	if u != nil {
 		return 0, r.ReportUsage(u), true
 	}
 	n, ok := boundedInt(v, indexcore.MaxCommitWindow)
 	if !ok {
-		return 0, r.ReportUsage(usageError("index co-changed wants " + flag + " from 1 to " +
+		return 0, r.ReportUsage(usageError("index " + query + " wants " + flag + " from 1 to " +
 			strconv.Itoa(indexcore.MaxCommitWindow))), true
 	}
-	if flag == "--commits" {
+	if flag == flagCommits {
 		inv.commits = n
 	} else {
 		inv.minCount = n
@@ -253,7 +263,7 @@ func parseOwnerArg(r *cli.Runner, args []string, i int, inv *invocation) (int, i
 	switch {
 	case a == flagAt:
 		return callerAt(r, args, i, inv)
-	case strings.HasPrefix(a, "-"):
+	case strings.HasPrefix(a, flagPrefix):
 		return 0, r.ReportUsage(usageError(unknownFlag + a +
 			"' for index owners (want --at <tree>)")), true
 	default:
@@ -262,6 +272,71 @@ func parseOwnerArg(r *cli.Runner, args []string, i int, inv *invocation) (int, i
 		}
 		inv.path = a
 		return i + 1, 0, false
+	}
+}
+
+// parseBlastRadius reads `index blast-radius` flags: a PR or a path list.
+func parseBlastRadius(r *cli.Runner, args []string) (invocation, int, bool) {
+	inv := invocation{
+		query: indexcore.QueryBlastRadius, limit: indexcore.DefaultLimit,
+		commits: indexcore.DefaultCoChangeCommits, minCount: indexcore.DefaultMinCount,
+	}
+	for i := 0; i < len(args); {
+		next, code, done := parseBlastArg(r, args, i, &inv)
+		if done {
+			return inv, code, true
+		}
+		i = next
+	}
+	if (inv.pr == "") == (len(inv.paths) == 0) {
+		return inv, r.ReportUsage(usageError(blastUsage)), true
+	}
+	return inv, 0, false
+}
+
+// blastUsage is the one usage line both missing and doubled inputs print.
+const blastUsage = "usage: verdict index blast-radius --pr <n>|--paths <path> [--paths <path>...] " +
+	"[--at <tree>] [--limit <n>] [--commits <n>] [--since <dur|ref>] [--min-count <n>]"
+
+// parseBlastArg reads one blast-radius argument and returns the next index.
+//
+//nolint:revive // one branch per flag keeps the argv contract readable
+func parseBlastArg(r *cli.Runner, args []string, i int, inv *invocation) (int, int, bool) {
+	a := args[i]
+	switch a {
+	case "--pr":
+		v, next, u := cli.FlagValue(args, i, "--pr", "<pr>")
+		if u != nil {
+			return 0, r.ReportUsage(u), true
+		}
+		inv.pr = v
+		return next + 1, 0, false
+	case "--paths":
+		v, next, u := cli.FlagValue(args, i, "--paths", "<path>")
+		if u != nil {
+			return 0, r.ReportUsage(u), true
+		}
+		inv.paths = append(inv.paths, v)
+		return next + 1, 0, false
+	case flagCommits, flagMinCount:
+		return coChangeCount(r, args, i, inv, indexcore.QueryBlastRadius, a)
+	case flagSince:
+		v, next, u := cli.FlagValue(args, i, flagSince, "<dur|ref>")
+		if u != nil {
+			return 0, r.ReportUsage(u), true
+		}
+		inv.since = v
+		return next + 1, 0, false
+	case flagAt:
+		return callerAt(r, args, i, inv)
+	case flagLimit:
+		return queryLimit(r, args, i, inv, indexcore.QueryBlastRadius)
+	default:
+		if strings.HasPrefix(a, flagPrefix) {
+			return 0, r.ReportUsage(usageError(unknownFlag + a + "' for index blast-radius" +
+				" (want --pr <n>, --paths <path>, --at <tree>, --limit <n>, --commits <n>, --since <dur|ref>, --min-count <n>)")), true
+		}
+		return 0, r.ReportUsage(usageError("index blast-radius takes --pr <n> or --paths <path>, not the positional '" + a + "'")), true
 	}
 }
 
