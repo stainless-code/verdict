@@ -117,10 +117,6 @@ func (l Layout) StateDir() string {
 // GitignoreFile returns the nested ignore file path.
 func (l Layout) GitignoreFile() string { return filepath.Join(l.Root, GitignorePath) }
 
-// bundleNameProbe is any non-empty parent: the guard only cares that joining a
-// name under it lands one level down, under the same parent.
-const bundleNameProbe = StateDirName
-
 // msgBundleName refuses a bundle name that is not one path element. Every
 // bundle verb renders this one line, so the refusal reads the same wherever a
 // positional is wrong.
@@ -143,13 +139,21 @@ func BundleDir(root, name string) (string, *core.RefusalError) {
 	return filepath.Join(ifEmpty(root), VerdictDir, StateDirName, name), nil
 }
 
-// validBundleName reports whether name is exactly one path element: a value
-// that joins under the bundle home without adding a level or landing outside
-// it. A separator, dot-dot, the dot itself, an empty name, and a name carrying
-// a control byte are all refused, whatever the platform's separator happens to
-// be, so one operator spelling refuses everywhere.
+// validBundleName reports whether name is exactly one path element that keeps
+// its own spelling on every platform: joining it under the bundle home adds no
+// level and lands nowhere else, and no other host's path rule reads it as a
+// different name. A separator, dot-dot, the dot itself, an empty name, and a
+// control byte refuse, as do the three spellings Windows re-reads: a colon
+// (an alternate data stream or a volume-relative path), a trailing dot or
+// space (trimmed, so `7.` is `7` and `.. ` is `..`), and a DOS device basename
+// (`NUL`, `CON`, `PRN`, `AUX`, `COM1`-`COM9`, `LPT1`-`LPT9`, also before a
+// dot), which opens the device instead of the bundle. Every rule applies on
+// every OS, so one operator spelling refuses everywhere.
 func validBundleName(name string) bool {
-	if name == "" || strings.ContainsAny(name, `/\`) {
+	if !filepath.IsLocal(name) || strings.ContainsAny(name, `/\`) || strings.ContainsRune(name, ':') {
+		return false
+	}
+	if strings.HasSuffix(name, ".") || strings.HasSuffix(name, " ") || reservedBundleName(name) {
 		return false
 	}
 	for i := range len(name) {
@@ -157,8 +161,23 @@ func validBundleName(name string) bool {
 			return false
 		}
 	}
-	joined := filepath.Join(bundleNameProbe, name)
-	return filepath.Dir(joined) == bundleNameProbe && filepath.Base(joined) == name
+	return true
+}
+
+// reservedBundleName reports whether name is a DOS device name, which Windows
+// resolves in every directory and before any extension: `NUL` and `nul.txt`
+// both name the device.
+func reservedBundleName(name string) bool {
+	base, _, _ := strings.Cut(name, ".")
+	switch strings.ToUpper(base) {
+	case "CON", "PRN", "AUX", "NUL":
+		return true
+	}
+	if len(base) != len("COM1") {
+		return false
+	}
+	prefix := strings.ToUpper(base[:len("COM")])
+	return (prefix == "COM" || prefix == "LPT") && base[len("COM")] >= '1' && base[len("COM")] <= '9'
 }
 
 // EnsureStateIgnore creates the `.verdict` directory and its `.gitignore`

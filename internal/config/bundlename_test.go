@@ -10,9 +10,10 @@ import (
 const bundleNameMsg = "bundle name must be one path element (a PR number or fetch-local name), not a path"
 
 // TestBundleDirRefusesNonElementNames proves the shared guard admits exactly
-// one path element: every spelling that would leave the bundle home, land on
-// the home itself, or break a path round-trip refuses with the one refusal the
-// bundle verbs render.
+// one path element that keeps its own spelling on every host: every spelling
+// that would leave the bundle home, land on the home itself, or break a path
+// round-trip refuses with the one refusal the bundle verbs render, as does
+// every name Windows re-reads as another path or as a device.
 func TestBundleDirRefusesNonElementNames(t *testing.T) {
 	for _, name := range []string{
 		"",
@@ -27,6 +28,21 @@ func TestBundleDirRefusesNonElementNames(t *testing.T) {
 		"a\x00b",
 		"a\nb",
 		"a\x7fb",
+		"a:b",
+		"C:x",
+		"C:",
+		"7.",
+		"7 ",
+		".. ",
+		"NUL",
+		"CON",
+		"PRN",
+		"AUX",
+		"COM1",
+		"LPT9",
+		"nul.txt",
+		"Com1",
+		"CON.",
 	} {
 		t.Run(name, func(t *testing.T) { assertBundleDirRefused(t, name) })
 	}
@@ -55,6 +71,8 @@ func TestBundleDirResolvesElementNames(t *testing.T) {
 		{name: "pr number", bundle: "7", want: ".verdict/state/7"},
 		{name: "fetch-local slug", bundle: "local-tidy", want: ".verdict/state/local-tidy"},
 		{name: "corpus slug", bundle: "corpus-1", want: ".verdict/state/corpus-1"},
+		{name: "backtest run", bundle: "bt-2-tidy", want: ".verdict/state/bt-2-tidy"},
+		{name: "bare slug", bundle: "tidy-fix", want: ".verdict/state/tidy-fix"},
 		{name: "rooted", bundle: "7", root: "/repo", want: "/repo/.verdict/state/7"},
 	} {
 		t.Run(tc.name, func(t *testing.T) { assertBundleDirResolves(t, tc.root, tc.bundle, tc.want) })

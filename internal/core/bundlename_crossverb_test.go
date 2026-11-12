@@ -181,8 +181,13 @@ func refusalOf(err error) *core.RefusalError {
 }
 
 // hostileBundleNames are the spellings no verb may resolve: a parent step, one
-// separator then its Windows twin, the dot, dot-dot, and the empty name.
-var hostileBundleNames = []string{"../escaped", "a/b", `a\b`, ".", "..", ""}
+// separator then its Windows twin, the dot, dot-dot, the empty name, and the
+// names Windows re-reads as another path or as a DOS device.
+var hostileBundleNames = []string{
+	"../escaped", "a/b", `a\b`, ".", "..", "",
+	"NUL", "CON", "AUX", "COM1", "nul.txt", "Com1", "LPT9",
+	"a:b", "C:x", "7.", ".. ",
+}
 
 // TestBundleVerbsRefuseHostileNames proves every bundle verb refuses a
 // positional that is not one path element, and that the decoy bundles a
