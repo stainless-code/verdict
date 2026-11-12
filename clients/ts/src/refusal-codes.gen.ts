@@ -93,6 +93,8 @@ export type RefusalCode =
   | "fix-ceiling"
   | "fix-failed"
   | "head-mismatch"
+  | "html-not-export"
+  | "html-symlink"
   | "id-taken"
   | "index-capped"
   | "index-corrupt"

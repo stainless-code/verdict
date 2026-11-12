@@ -96,7 +96,7 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 	if failed {
 		return reportStripFailure(r, env, readFile, uerr, ref)
 	}
-	if arityUsage(cmd, repo, pr) {
+	if invocationArityUsage(cmd, repo, pr, rest) {
 		fmt.Fprint(stderr, arityText(cmd))
 		return cli.ExitUsage
 	}
@@ -201,6 +201,9 @@ func dispatch(
 	r.RouteHuman()
 	ctx, stop := shutdownSignalContext()
 	defer stop()
+	if htmlInvocation(cmd, rest) {
+		return serve.RunHTML(ctx, r, rest, cliVersion(root, readFile))
+	}
 	switch cmd {
 	case "upgrade":
 		return runUpgrade(ctx, r, rest, env)
@@ -323,6 +326,9 @@ func splitCommand(args []string) (cmd, repo, pr string, rest []string) {
 		return "", "", "", args
 	}
 	cmd, args = args[0], args[1:]
+	if htmlInvocation(cmd, args) {
+		return cmd, "", "", args
+	}
 	if bareVerbs[cmd] {
 		return cmd, "", "", args
 	}
@@ -494,4 +500,12 @@ func versionOf(root string, readFile func(string) ([]byte, error)) string {
 		return core.VersionUnknown
 	}
 	return doc.Version
+}
+
+func htmlInvocation(cmd string, args []string) bool {
+	return cmd == "report" && len(args) > 0 && args[0] == "--html"
+}
+
+func invocationArityUsage(cmd, repo, pr string, args []string) bool {
+	return arityUsage(cmd, repo, pr) && !htmlInvocation(cmd, args)
 }

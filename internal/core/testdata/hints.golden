@@ -89,6 +89,8 @@ fetch-failed	try: run 'gh auth status', confirm the repo/PR spelling, then re-ru
 fix-ceiling	try: triage the sig or split the fix — the 3-pass ceiling is hard-coded
 fix-failed	try: address the cause above, then re-run the same command
 head-mismatch	try: address the cause above, then re-run the same command
+html-not-export	try: choose a new, empty, or previous HTML export directory
+html-symlink	try: choose an HTML export directory that is not a symlink
 id-taken	try: pass a different --id
 index-capped	try: narrow --from/--at to a smaller tree (the 97 MiB git capture cap is fixed; the typed caps cover file, tree and shard bytes only)
 index-corrupt	try: delete .verdict/index and rebuild with 'verdict index build'
