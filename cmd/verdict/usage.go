@@ -59,6 +59,7 @@ func usageText() string {
 		"    .verdict/state/<bundle>/launcher.json (agent, binary, argv shape, timings, exit)\n" +
 		"    and the full child output in .run.out. --print renders the exact command and\n" +
 		"    exits 0 without spawning; everything after '--' goes to the agent unchanged.\n" +
+		"    --print refuses options outside the safe model/cost display allowlist.\n" +
 		"    run passes a short tool-generated directive, never bundle bytes.\n" +
 		"  config <owner/repo> <pr> (--explain | --preview [--file <path>]) [--json]\n" +
 		"    read-only policy surface: --explain renders the stored effective policy of a fetched run\n" +
@@ -475,4 +476,11 @@ func arityUsage(cmd, repo, pr string) bool {
 
 func unknownCmdMessage(cmd string) string {
 	return "unknown cmd '" + cmd + "' (want " + verbsHint + ")"
+}
+
+func arityText(cmd string) string {
+	if cmd == "next" {
+		return "error: next requires <owner/repo> and <pr|local-name>\n" + usageText()
+	}
+	return usageText()
 }

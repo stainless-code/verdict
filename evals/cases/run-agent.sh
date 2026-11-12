@@ -262,10 +262,10 @@ run_review run acme/app "$LOCAL" --agent claude --json \
   -- --api-key "$ANTHROPIC_API_KEY" --fast
 assert_exit "a launch carrying a credential still succeeds" 0
 assert_json_field "the recorded argv redacts the secret operand" "***REDACTED***" \
-  '.argv[.argv | index("--api-key") + 1]' "$LAUNCHER"
+  '.argv[3]' "$LAUNCHER"
 assert_file_nogrep "the record carries no secret bytes" "$LAUNCHER" "$SECRET" "-F"
-assert_json_field "a flag after the redacted operand is not swallowed" "true" \
-  '(.argv | index("--fast")) != null' "$LAUNCHER"
+assert_json_field "unknown flags and their operands stay hidden" "true" \
+  '.argv[2:5] == ["***REDACTED***", "***REDACTED***", "***REDACTED***"]' "$LAUNCHER"
 assert_file_grep "the child received the real credential" "$STUB_AGENT_LOG" \
   "^arg\\[[0-9]+\\]=$SECRET$" "-E"
 unset ANTHROPIC_API_KEY
@@ -288,7 +288,7 @@ run_review run acme/app "$LOCAL" --agent claude --json \
 export STUB_AGENT_LOG="$SANDBOX/agent-argv.log"
 assert_exit "a child that echoes its own argv still launches" 0
 assert_json_field "the record still marks the credential's position" "true" \
-  '.output_tail | contains("arg[1]=--api-key") and contains("arg[2]=***REDACTED***")' "$LAUNCHER"
+  '.output_tail | contains("arg[1]=***REDACTED***") and contains("arg[2]=***REDACTED***")' "$LAUNCHER"
 assert_file_nogrep "the record carries no credential the child printed" "$LAUNCHER" "$ARG_SECRET" "-F"
 assert_file_grep "the child received the real credential (raw log)" "$LOCAL_DIR/.run.out" \
   "^arg\\[2\\]=$ARG_SECRET$" "-E"

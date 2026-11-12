@@ -97,7 +97,7 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 		return reportStripFailure(r, env, readFile, uerr, ref)
 	}
 	if invocationArityUsage(cmd, repo, pr, rest) {
-		fmt.Fprint(stderr, usageText())
+		fmt.Fprint(stderr, arityText(cmd))
 		return cli.ExitUsage
 	}
 	if code, done := resolveRunnerPrefs(r, env, readFile); done {

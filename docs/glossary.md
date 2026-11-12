@@ -123,3 +123,5 @@ evidence does not support is not reported.
 **Additive-only.** Store changes add optional keys within `schema_version`
 `"1"`; history is append-only; the calibration probe writes only its one
 `kb-grades.jsonl` file. Renames and tighter shapes require a version bump.
+
+**Agent definition** — a data row mapping an agent name to its executable, noninteractive arguments, and installation step.

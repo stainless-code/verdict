@@ -322,3 +322,12 @@ func TestApplyBasisLineInsertsBlankBeforeHeading(t *testing.T) {
 		t.Errorf("body = %q, want %q", got, want)
 	}
 }
+
+// TestPlainBasisBelowConfidence accepts matching plain Basis text.
+func TestPlainBasisBelowConfidence(t *testing.T) {
+	const body = "> Confidence: 3/5\nBasis: 0 0 0 1 0 0 0\n\n## Summary\nReviewed."
+	got, problem := provenance.ApplyBasisLine("0 0 0 1 0 0 0", body)
+	if got != body || problem != nil {
+		t.Fatalf("plain Basis = %q, %v; want unchanged body without warning", got, problem)
+	}
+}

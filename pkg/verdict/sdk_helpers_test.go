@@ -88,11 +88,14 @@ func sdkInvocation(pr string) verdict.Invocation {
 // newSDKClient builds a client on the deterministic clock with the given
 // stream observer and command runner.
 func newSDKClient(progress verdict.Progress, cmdr verdict.Commander) *verdict.Client {
-	return verdict.New(verdict.Options{
+	c := verdict.New(verdict.Options{
 		Now:       func() time.Time { return sdkNow },
 		Progress:  progress,
 		Commander: cmdr,
 	})
+
+	verdict.SetRepoRootForTest(c, func(context.Context) (string, error) { return ".", nil })
+	return c
 }
 
 // recordedProgress keeps every observed line so tests can assert what the
