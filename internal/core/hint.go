@@ -119,6 +119,8 @@ var hintRules = []HintRule{
 		"from the pack source so .verdict/verdict.lock records a valid source"},
 	{codes: []string{"pack-conflict"}, hint: "try: add \"replace\": [\"<lower pack name>\"] " +
 		"to the higher pack's manifest, or rename the conflicting id"},
+	{codes: []string{"pack-git-failed"}, hint: "try: check the source URL, the ref, " +
+		"your access, and the network, then re-run"},
 	{codes: []string{"pack-lock-drift"}, hint: "try: re-add the pack with " +
 		"'verdict pack add <dir|git-url>' so .verdict/verdict.lock records its current tree hash"},
 	{codes: []string{"pack-lock-missing"}, hint: "try: run 'verdict pack add <dir|git-url>' " +

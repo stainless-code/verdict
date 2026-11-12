@@ -455,8 +455,9 @@ token-only or two-`@` https URL, `http://`, `git+https://`, and an IPv6 literal
 with userinfo are all the same refusal. No source is ever echoed raw: every
 refusal, human line, and `pack list` row renders through one display that
 prints only a parsed source, and prints `<invalid source>` for anything else.
-git's own failure text is dropped for a fixed hint when it carries an `@`,
-because an scp destination or a URL in that text can carry a credential.
+git's own failure text is never rendered: a failed clone, rev-parse, or
+checkout refuses `pack-git-failed` with fixed wording for the phase and its
+exit code, because that text can carry the source URL, its query, or the ref.
 Re-adding a name replaces the vendored tree and the lock row, and prints the
 old and new tree hashes. A re-add builds and verifies the new tree in a temp
 sibling under `.verdict/packs/` and swaps it in, so a failed re-add leaves the

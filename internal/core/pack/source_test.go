@@ -73,6 +73,12 @@ var refusedGitSources = []refusedSourceCase{
 	{"invalid ref", "https://host/x.git@-bad", ""},
 	{"no path", "https://host", ""},
 	{"dir url label", "dir:https://TOK@host/x.git", "TOK"},
+	{"https query token", "https://host/x.git?private_token=TOKQUERY", "TOKQUERY"},
+	{"https fragment token", "https://host/x.git#TOKFRAG", "TOKFRAG"},
+	{"https ref query token", "https://host/x.git@v1?private_token=TOKREFQUERY", "TOKREFQUERY"},
+	{"ssh query token", "ssh://git@host/x.git?private_token=TOKSSH", "TOKSSH"},
+	{"scp query token", "git@host:acme/x.git?private_token=TOKSCP", "TOKSCP"},
+	{"scp fragment token", "git@host:acme/x.git#TOKSCPFRAG", "TOKSCPFRAG"},
 }
 
 // TestParseGitSourceAllows proves every accepted form parses to its canonical
@@ -271,50 +277,77 @@ func TestDisplaySource(t *testing.T) {
 	}
 }
 
-// TestGitStderrWithheld proves git's own text is kept only when it carries no
-// userinfo separator: an @ anywhere in it drops the whole message.
-func TestGitStderrWithheld(t *testing.T) {
+// TestGitFailureNamesThePhase proves a failed git call renders fixed wording
+// per phase and exit code, never git's own text.
+func TestGitFailureNamesThePhase(t *testing.T) {
 	t.Parallel()
-	const hint = "the remote error is withheld because it carries an @; check the source and your access"
 	for _, tc := range []struct {
 		name string
-		text string
+		sub  string
 		want string
+		exit int
 	}{
-		{"scp form", "fatal: repository 'er:TOKX@other.invalid:acme/packs.git' not found", hint},
-		{"https form", "fatal: unable to access 'https://er:S3CRET@example.invalid/x.git/'", hint},
-		{"clean", "fatal: not a git repository", "fatal: not a git repository"},
+		{
+			name: "clone fatal",
+			sub:  "clone",
+			exit: 128,
+			want: "the remote refused the clone (the repository or ref was not found, " +
+				"authentication failed, or the network is down) — check the source, the ref, and your access",
+		},
+		{"clone other", "clone", "the clone exited 129 — check the source and your access", 129},
+		{"rev-parse", "rev-parse", "the clone carries no resolvable HEAD commit", 128},
+		{"checkout", "checkout", "the resolved commit could not be checked out", 128},
+		{"other phase", "fetch", "exit 3", 3},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if got := scrubGitStderr(tc.text); got != tc.want {
-				t.Fatalf("scrubGitStderr(%q) = %q, want %q", tc.text, got, tc.want)
+			if got := gitFailure(tc.sub, tc.exit); got != tc.want {
+				t.Fatalf("gitFailure(%q, %d) = %q, want %q", tc.sub, tc.exit, got, tc.want)
 			}
 		})
 	}
 }
 
-// TestAddWithholdsCloneStderrCarryingAnAt proves the re-check's scp-form stderr
-// escape cannot print its token through a refusal.
-func TestAddWithholdsCloneStderrCarryingAnAt(t *testing.T) {
-	t.Chdir(t.TempDir())
-	cmdr := &gitCommander{
-		t:           t,
-		cloneStderr: "fatal: repository 'er:TOKX@other.invalid:acme/packs.git' not found\n",
-		cloneExit:   128,
+// TestAddNeverRendersCloneStderr proves a failed clone whose stderr carries a
+// secret prints none of that text: the refusal is the fixed phase wording.
+func TestAddNeverRendersCloneStderr(t *testing.T) {
+	const want = "git clone failed: the remote refused the clone (the repository or ref was " +
+		"not found, authentication failed, or the network is down) — check the source, " +
+		"the ref, and your access"
+	for _, tc := range []struct {
+		name   string
+		stderr string
+	}{
+		{"query", "fatal: unable to access 'https://example.invalid/acme/packs.git?private_token=TOKQUERY/': Failed to connect"},
+		{"ref", "fatal: Remote branch ghp_TOKENREF not found in upstream origin"},
+		{"path", "fatal: 'https://example.invalid/ghp_TOKPATH/packs.git' not found"},
+		{"scp userinfo", "fatal: repository 'er:TOKX@other.invalid:acme/packs.git' not found"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assertCloneStderrMasked(t, tc.stderr, want)
+		})
 	}
+}
+
+// assertCloneStderrMasked runs one failed clone whose stderr carries the given
+// text and proves the refusal is exactly the fixed phase wording.
+func assertCloneStderrMasked(t *testing.T, stderr, want string) {
+	t.Helper()
+	t.Chdir(t.TempDir())
+	cmdr := &gitCommander{t: t, cloneStderr: stderr + "\n", cloneExit: 128}
 	_, ref := RunAdd(context.Background(), &AddRequest{
 		Runtime: &core.Runtime{Commander: cmdr},
 		Source:  "https://example.invalid/acme/packs.git",
 	})
-	if ref == nil || ref.Code != CodeBadPack {
-		t.Fatalf("RunAdd = %v, want bad-pack", ref)
+	if ref == nil || ref.Code != CodePackGitFailed {
+		t.Fatalf("RunAdd = %v, want pack-git-failed", ref)
 	}
-	if strings.Contains(ref.Message, "TOKX") {
-		t.Fatalf("message = %q, carries the clone credential", ref.Message)
+	if ref.Message != want {
+		t.Fatalf("message = %q, want %q", ref.Message, want)
 	}
-	if !strings.Contains(ref.Message, "withheld") {
-		t.Fatalf("message = %q, want the withheld hint", ref.Message)
+	const wantHint = "try: check the source URL, the ref, your access, and the network, then re-run"
+	if got := core.HintFor(ref.Code); got != wantHint {
+		t.Fatalf("hint = %q, want %q", got, wantHint)
 	}
 }
 

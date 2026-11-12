@@ -269,7 +269,11 @@ var publishedSemantics = map[string]string{
 	// (any userinfo shape, http, a one-slash scheme) now refuses, so this is
 	// an intentional narrowing of one pattern; no property, required key, or
 	// type changed.
-	"lock.schema.json": "64f370ac595834942c9550db28347bb0709021a5b0f726478b121ad9b08637d9",
+	// source query: a ? or # in a git source refuses before any git call (a
+	// source is recorded in the committed lock), so the pattern's git paths
+	// exclude both and the description names them. One pattern narrowed
+	// further; nothing else changed.
+	"lock.schema.json": "a4d34934cd3784b05607582684332c3a550dc05b410c128ddd212a01d270fb14",
 	"pack.schema.json": "fc8dc3ae76bfee94157f23e03ad2173f643d96974896c05307f89491f2a207b9",
 	// patch identity: additive optional patch_id/patch_id_kind plus the
 	// optional forced[] audit with $defs/forcedPost. No existing property,

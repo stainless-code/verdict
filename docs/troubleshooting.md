@@ -776,6 +776,12 @@ Cause: a higher-layer pack declares an id a lower-layer pack already declares, w
 
 Fix: add `"replace": ["<lower pack name>"]` to the higher pack's manifest (replacement is downward only), or rename the id. Then re-run.
 
+## `pack-git-failed`
+
+Cause: the hermetic `git clone`, the HEAD resolution, or the detached checkout `pack add` runs could not complete: the remote or the ref was not found, the credential was refused, the network is down, or the five-minute clone budget ran out. git's own error text is never printed, because it can carry the source URL, its query, or the ref.
+
+Fix: check the source spelling, the `@ref`, your access (an ssh key for an ssh source), and the network, then re-run. For a private remote, use ssh with a key rather than a token in the URL.
+
 ## `pack-lock-drift`
 
 Cause: `.verdict/verdict.lock` no longer matches the vendored repo pack: its tree hash differs, its pack directory is gone, or its `sig` does not match the entry's name, source, version, and hash.

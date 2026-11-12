@@ -47,6 +47,10 @@ var gitRef = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/+-]*$`)
 // allowlist rejects.
 const CodeBadPackSource = "bad-pack-source"
 
+// CodePackGitFailed is the refusal for a git call the pack clone could not
+// complete: no network, no such repository or ref, or a refused credential.
+const CodePackGitFailed = "pack-git-failed"
+
 // AddRequest wires one `pack add <dir|git-url>[@ref]` run.
 type AddRequest struct {
 	core.ReadRequest
@@ -291,6 +295,11 @@ func addSource(ctx context.Context, req *AddRequest) (*packSource, *core.Refusal
 	return &packSource{dir: dir, label: label, cleanup: func() {}}, nil
 }
 
+// badPackGitFailed builds the failed-git-call refusal.
+func badPackGitFailed(reason string) *core.RefusalError {
+	return &core.RefusalError{Code: CodePackGitFailed, Message: reason}
+}
+
 // badPackSource builds the git-source refusal.
 func badPackSource(reason string) *core.RefusalError {
 	return &core.RefusalError{Code: CodeBadPackSource, Message: reason}
@@ -305,8 +314,12 @@ type gitSource struct {
 // parseGitSource accepts exactly the published git sources: https://host/path
 // with no userinfo, ssh://user@host/path, and user@host:path, each with an
 // optional @ref. The scheme is matched case-insensitively and stored
-// lower-case.
+// lower-case. A query or fragment refuses: a source is recorded in the
+// committed lock, so nothing after the path may carry a token.
 func parseGitSource(s string) (gitSource, bool) {
+	if strings.ContainsAny(s, "?#") {
+		return gitSource{}, false
+	}
 	if base, ref, ok := splitSourceRef(s); ok {
 		url, ok := parseSourceURL(base)
 		if !ok {
@@ -667,13 +680,26 @@ func isSchemeByte(c byte) bool {
 	return isSchemeLetter(c) || c >= '0' && c <= '9' || c == '+' || c == '-' || c == '.'
 }
 
-// scrubGitStderr drops git's own error text when it carries an @, because a
-// remote URL or scp destination can put a credential there.
-func scrubGitStderr(text string) string {
-	if strings.Contains(text, refSep) {
-		return "the remote error is withheld because it carries an @; check the source and your access"
+// gitFatalExit is git's generic fatal exit status: a clone that reaches the
+// remote and fails there (not found, auth, network) exits with it.
+const gitFatalExit = 128
+
+// gitFailure renders a failed git call without git's own text: that text can
+// carry the source URL, its query, or the ref, each operator-supplied and
+// possibly a credential. The wording is fixed per phase and exit code.
+func gitFailure(sub string, exit int) string {
+	switch {
+	case sub == "clone" && exit == gitFatalExit:
+		return "the remote refused the clone (the repository or ref was not found, " +
+			"authentication failed, or the network is down) — check the source, the ref, and your access"
+	case sub == "clone":
+		return fmt.Sprintf("the clone exited %d — check the source and your access", exit)
+	case sub == "rev-parse":
+		return "the clone carries no resolvable HEAD commit"
+	case sub == "checkout":
+		return "the resolved commit could not be checked out"
 	}
-	return text
+	return fmt.Sprintf("exit %d", exit)
 }
 
 // cloneSource fetches one git URL hermetically into a temp directory and
@@ -839,10 +865,15 @@ func runGitPack(
 		if _, ok := errors.AsType[*core.MissingToolError](err); ok {
 			return "", &core.RefusalError{Code: "missing-tool", Message: "git is not on PATH"}
 		}
-		return "", badPack(fmt.Sprintf("git %s failed: %s", sub, scrubGitStderr(jq.Sealed(res.Stderr, err).Error())))
+		return "", badPackGitFailed(fmt.Sprintf(
+			"git %s could not run — check that git works in this shell, then re-run", sub))
+	}
+	if res.TimedOut {
+		return "", badPackGitFailed(fmt.Sprintf(
+			"git %s ran out of the five-minute pack budget — check the network and re-run", sub))
 	}
 	if res.ExitCode != 0 {
-		return "", badPack(fmt.Sprintf("git %s failed: %s", sub, scrubGitStderr(strings.TrimSpace(res.Stderr))))
+		return "", badPackGitFailed(fmt.Sprintf("git %s failed: %s", sub, gitFailure(sub, res.ExitCode)))
 	}
 	if res.StdoutTruncated {
 		return "", tooLarge("git " + sub + " output is over its cap")

@@ -126,6 +126,7 @@ not-local	try: run the fetch/record step named above first, then re-run
 not-retired	try: check the rule status with learn --status, then re-run
 not-verdict-authored	try: address the cause above, then re-run the same command
 pack-conflict	try: add "replace": ["<lower pack name>"] to the higher pack's manifest, or rename the conflicting id
+pack-git-failed	try: check the source URL, the ref, your access, and the network, then re-run
 pack-lock-drift	try: re-add the pack with 'verdict pack add <dir|git-url>' so .verdict/verdict.lock records its current tree hash
 pack-lock-missing	try: run 'verdict pack add <dir|git-url>' to vendor the pack and write its .verdict/verdict.lock entry
 pack-too-large	try: trim the pack under 64 KiB per file, 1 MiB total, 256 files, and 64 lenses, then re-run
