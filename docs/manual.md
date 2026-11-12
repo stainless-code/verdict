@@ -1433,7 +1433,8 @@ when missing or not a directory, then discover `.verdict/` repositories below
 it), `--depth <n>` (default `6`, maximum `16`), `--max-visits <n>` (default
 `20000` directories), and `--max-repos <n>` (default `500`); reaching either
 walk cap sets `truncated` and adds a warning with the last visited path.
-Discovery skips `.git`, `node_modules`, `vendor`, and directory symlinks.
+Discovery skips `.git`, `node_modules`, `vendor`, and every encountered
+symlink entry; each symlink entry is counted without following it.
 `.gitignore` supports comments, `!` re-inclusion, leading and trailing `/`,
 `*`, and whole-segment `**`; unsupported patterns such as `?` are skipped and
 named in warnings. A rule that would require more than two effective

@@ -217,13 +217,17 @@ func (w *discoveryWalk) enqueueDirectories(item walkItem, entries []os.DirEntry,
 }
 
 func (w *discoveryWalk) enqueueDirectory(item walkItem, entry os.DirEntry, rules []ignoreRule, stack *[]walkItem) {
-	if shouldSkipDiscoveryDirectory(entry.Name()) {
+	rel := relativePath(item.rel, entry.Name())
+	if entry.Type()&fs.ModeSymlink != 0 {
+		w.result.Symlinks++
 		return
 	}
-	rel := relativePath(item.rel, entry.Name())
 	entryInfo, err := entry.Info()
 	if err == nil && entryInfo.Mode()&fs.ModeSymlink != 0 {
-		w.countDirectorySymlink(rel)
+		w.result.Symlinks++
+		return
+	}
+	if shouldSkipDiscoveryDirectory(entry.Name()) {
 		return
 	}
 	if !w.isDirectoryCandidate(entry, rel, rules) {
@@ -242,13 +246,6 @@ func (w *discoveryWalk) isDirectoryCandidate(entry os.DirEntry, rel string, rule
 	}
 	path := strings.TrimPrefix(filepath.ToSlash(rel), "./")
 	return !ignored(rules, path)
-}
-
-func (w *discoveryWalk) countDirectorySymlink(rel string) {
-	info, err := w.root.Stat(rel)
-	if err == nil && info.IsDir() {
-		w.result.Symlinks++
-	}
 }
 
 func relativePath(parent, name string) string {

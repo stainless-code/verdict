@@ -40,6 +40,33 @@ func TestDiscoveryFixture(t *testing.T) {
 	assertDiscoveryFixture(t, &got, root, symlinkCount)
 }
 
+// TestDiscoveryCountsSymlinksWithoutFollowing counts links without inspecting targets.
+func TestDiscoveryCountsSymlinksWithoutFollowing(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	makeRepo(t, outside, "foreign")
+	if err := os.WriteFile(filepath.Join(root, "plain-file"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	links := []struct{ target, name string }{
+		{target: ".", name: "loop"},
+		{target: outside, name: "outside"},
+		{target: "plain-file", name: "file-link"},
+	}
+	for _, link := range links {
+		if err := os.Symlink(link.target, filepath.Join(root, link.name)); err != nil {
+			t.Skipf("symlinks are unavailable: %v", err)
+		}
+	}
+	got, err := Discover(root, DiscoveryOptions{Depth: 3, Now: discoveryNow()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Symlinks != 3 || len(got.Roots) != 0 || got.Visits != 1 {
+		t.Fatalf("symlink discovery = %+v; want three counted links, no roots, and one visit", got)
+	}
+}
+
 func copyDiscoveryFixture(t *testing.T) (string, int) {
 	t.Helper()
 	root := t.TempDir()

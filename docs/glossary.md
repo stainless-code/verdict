@@ -14,8 +14,9 @@ normalized metadata; every later verb reads it and never re-fetches on its own.
 repository's `.verdict/` directory at startup. `--rediscover` bypasses the cache.
 
 **Discovery snapshot.** The bounded set of `.verdict/` repositories found when
-`serve` starts. Directory symlinks and the documented ignored directories are not
-traversed. Either walk cap marks the result `truncated`.
+`serve` starts. Symlink entries and the documented ignored directories are not
+traversed; each encountered symlink entry is counted without following it.
+Either walk cap marks the result `truncated`.
 
 **Lens.** A read-only subagent dispatched to answer one falsifiable question
 whose answer could change the review's disposition. Lenses are staffed by
