@@ -234,6 +234,39 @@ func assertResponseHeaders(t *testing.T, got result) {
 	}
 }
 
+// TestCSP pins the browser policy on the UI and data routes.
+func TestCSP(t *testing.T) {
+	t.Parallel()
+	ts := testServer(t, testLayer(writeFixture(t, fixtureFiles()), nil))
+	for _, test := range []struct{ path, contentType, body string }{
+		{path: "/", contentType: "text/html; charset=utf-8", body: `id="main"`},
+		{path: "/assets/app.js", contentType: "text/javascript; charset=utf-8", body: "function render("},
+		{path: "/assets/app.css", contentType: "text/css; charset=utf-8", body: "prefers-color-scheme: dark"},
+		{path: "/v1/health", contentType: "application/json; charset=utf-8", body: `"watch"`},
+	} {
+		assertCSPRoute(t, ts, test.path, test.contentType, test.body)
+	}
+	unknown := call(t, ts, http.MethodGet, "/assets/not-a-file", "", bearer())
+	if unknown.status != http.StatusNotFound {
+		t.Errorf("unknown asset status = %d, want 404", unknown.status)
+	}
+}
+
+func assertCSPRoute(t *testing.T, ts *httptest.Server, path, contentType, body string) {
+	t.Helper()
+	got := call(t, ts, http.MethodGet, path, "", bearer())
+	if got.status != http.StatusOK {
+		t.Errorf("GET %s = %d, want 200", path, got.status)
+	}
+	if got.header.Get("Content-Security-Policy") != wantCSP ||
+		strings.Contains(got.header.Get("Content-Security-Policy"), "unsafe-inline") {
+		t.Errorf("GET %s CSP = %q, want strict policy %q", path, got.header.Get("Content-Security-Policy"), wantCSP)
+	}
+	if got.header.Get("Content-Type") != contentType || !strings.Contains(string(got.body), body) {
+		t.Errorf("GET %s content type/body = %q/%q", path, got.header.Get("Content-Type"), got.body)
+	}
+}
+
 // assertSessionCookie pins the exchange cookie's attributes.
 func assertSessionCookie(t *testing.T, cookie string) {
 	t.Helper()
