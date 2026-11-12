@@ -404,6 +404,166 @@ quality claim. To publish one, re-run the chosen cases through the corpus
 path above: the SZZ artifact is reproducible and deterministic, but the reviews
 are live model runs.
 
+## Index accuracy: callers and `tests-for`
+
+`verdict index callers` and `verdict index tests-for` report edges from a
+static index: Go through `go/parser`, TypeScript/JavaScript and Python through
+lexical scanners. This section publishes how accurate those edges are against a
+**fixture corpus**, so the decision ADR-0003 holds open — a deeper scanner,
+`go/types`, or exact rows — rests on a measured number instead of an
+impression. The corpus is three small hand-labeled repositories, so every rate
+here is a **fixture-corpus rate, not a real-world rate**: it measures what each
+scanner model can and cannot see, not what a large repository would cost.
+
+What lives where:
+
+- `internal/core/index/testdata/corpus/{go,ts,py}/` holds the fixture sources
+  and, beside each, `expected.json`: every caller site of a queried symbol
+  (`path`, `line`, `kind`, and whether a correct index can call it `exact` or
+  only `lexical`), the count of unresolved candidates, and every candidate test
+  with the mechanism and import depth the walk must report. The Go fixture's
+  sources end in `.txt` because the fixture is a module of its own and the
+  pre-commit hook vets the directory of every staged `.go` file; the scorecard
+  seeds them under their real names.
+- `internal/core/index/testdata/corpus/floors.golden` holds the pinned floors,
+  one line per scorecard row: the precision and recall a change may not drop
+  below.
+- `internal/core/index/corpus_test.go` runs the scorecard as
+  `TestCorpusAccuracy`. It seeds each repository into a scratch git repository,
+  builds the index, prints the table below, and fails when a rate drops below
+  its floor, when a labeled path is missing from the fixture, or when the
+  build's indexed and skipped counts move.
+
+```sh
+go test ./internal/core/index/ -run TestCorpusAccuracy -v        # print the scorecard
+go test ./internal/core/index/ -run TestCorpusAccuracy -update   # re-pin the floors
+```
+
+`-update` prints the lines that moved, so a re-pin is reviewed like code. The
+scanners stay frozen (ADR-0003): a rate is recorded as measured, never raised by
+changing the scanner it measures.
+
+### What the rates mean
+
+- Precision is `matched / reported`; recall is `matched / labeled`. Both round
+  to four decimals, and a zero denominator renders `n/a`, never `0`.
+- A caller row's identity is `path:line kind resolution`. A site reported at the
+  right line with the wrong kind or the wrong resolution is a false positive
+  _and_ a miss, so the label is the whole claim.
+- A Go site inside the declaring package is labeled `exact`. Every
+  cross-package site and every site in a scanned language is labeled `lexical`:
+  the index matches a name and an import path, never an object.
+- `*/callers-cross-package` restricts both sides to sites outside the declaring
+  package directory. That is the row the `go/types` gate reads.
+- Labels cover call sites and value uses. An import statement or a re-export
+  clause is a module edge, not a use, so it is not labeled; the call that goes
+  through it is labeled at its own line.
+- `unresolved` and `depth_truncated` are pinned counts beside the rows: a
+  candidate the index could not attribute and a candidate the depth cap hid.
+
+### The measured scorecard
+
+Measured with `go test ./internal/core/index/ -run TestCorpusAccuracy -v` on the
+corpus in this commit. `labeled` is the recall denominator, `reported` the
+precision denominator.
+
+| row                         | precision | recall | matched | reported | labeled |
+| --------------------------- | --------- | ------ | ------- | -------- | ------- |
+| `go/callers-open`           | 1.0000    | 0.7500 | 6       | 6        | 8       |
+| `go/callers-save`           | n/a       | 0.0000 | 0       | 0        | 5       |
+| `go/callers-touch`          | n/a       | 0.0000 | 0       | 0        | 1       |
+| `go/callers`                | 1.0000    | 0.4286 | 6       | 6        | 14      |
+| `go/callers-cross-package`  | 1.0000    | 0.4167 | 5       | 5        | 12      |
+| `go/tests-for-store`        | 1.0000    | 1.0000 | 4       | 4        | 4       |
+| `go/tests-for-capped`       | 1.0000    | 1.0000 | 3       | 3        | 3       |
+| `go/tests-for`              | 1.0000    | 1.0000 | 7       | 7        | 7       |
+| `ts/callers-save`           | 1.0000    | 0.5455 | 6       | 6        | 11      |
+| `ts/callers-audit`          | 1.0000    | 0.5000 | 1       | 1        | 2       |
+| `ts/callers-namesake`       | 1.0000    | 1.0000 | 1       | 1        | 1       |
+| `ts/callers`                | 1.0000    | 0.5714 | 8       | 8        | 14      |
+| `ts/callers-cross-package`  | n/a       | 0.0000 | 0       | 0        | 4       |
+| `ts/tests-for-save`         | 1.0000    | 0.7500 | 3       | 3        | 4       |
+| `ts/tests-for-two-families` | 1.0000    | 0.5000 | 1       | 1        | 2       |
+| `ts/tests-for`              | 1.0000    | 0.6667 | 4       | 4        | 6       |
+| `py/callers-save`           | 0.7500    | 0.4286 | 3       | 4        | 7       |
+| `py/callers-route`          | 1.0000    | 0.5000 | 1       | 1        | 2       |
+| `py/callers-namesake`       | 1.0000    | 1.0000 | 1       | 1        | 1       |
+| `py/callers`                | 0.8333    | 0.5000 | 5       | 6        | 10      |
+| `py/callers-cross-package`  | n/a       | 0.0000 | 0       | 0        | 3       |
+| `py/tests-for-saver`        | 1.0000    | 1.0000 | 5       | 5        | 5       |
+| `py/tests-for`              | 1.0000    | 1.0000 | 5       | 5        | 5       |
+
+### The `go/types` gate
+
+ADR-0003 gates `go/types` on Go **cross-package** caller accuracy: a recall
+below 0.8 or a precision below 0.9 means the lexical index is not good enough
+and type information is needed. Measured on this corpus:
+
+- precision **1.0000** (5 of 5 reported cross-package sites are real),
+- recall **0.4167** (5 of 12 labeled cross-package sites are reported).
+
+The precision arm holds; **the recall arm trips**. The 12 labeled sites split
+three ways, and only the first is reported: a qualified package call through an
+import edge (`store.Open`, `st.Open` with an alias) is a row; a method call on a
+value (`s.Save`, `a.Touch`, including an embed and an interface dispatch) is not
+attributed at all, and a call through a dot-import or a re-exported variable is
+not attributed at all. A type-checked index answers all three.
+
+### What the corpus found
+
+Each item is a measured drop in the table above, not a guess. None of them is
+fixed here: the scanners are frozen.
+
+- **No method call is ever a caller row.** `resolveGoRef`
+  (`internal/core/index/callers.go:297`) returns a counted unresolved candidate
+  for a same-package selector and a bare `false` for a cross-package one, so
+  `s.Save(1)` in `internal/api/api.go` and `a.Touch()` on an embedded
+  `*store.Base` are invisible to `callers` while `store.Save` and `store.Touch`
+  report zero rows.
+- **A dot-import loses its bare calls.** `resolveBareRef`
+  (`internal/core/index/callers.go:323`) attributes a bare name only inside the
+  declaring package, so `Open("c")` in `internal/dot/dot.go` (package `dot`,
+  `import . "example.com/m/internal/store"`) is not a caller. A re-exported
+  variable is the same shape one step removed: `reexport.Open(...)` in
+  `internal/cli/cli.go` names `reexport`'s import path, not `store`'s.
+- **Scanned-language sites outside the declaring directory are dropped.**
+  `resolveScannedRef` (`internal/core/index/callers.go:314`) requires the same
+  directory, so every `save(...)` in `ts/app/` and `py/tests/` is invisible to a
+  query for the `lib` declaration: cross-package recall is 0.0000 for both
+  scanned languages, against 4 and 3 labeled sites.
+- **A scanned language records no value use.** `{ save }` in
+  `ts/lib/callers.ts`, `@audit` in `ts/lib/service.ts`, and `@route` in
+  `py/lib/views.py` are uses of the symbol, and no row is produced for any of
+  them. Only a call or an attribute site is recorded
+  (`internal/core/index/scan_ts.go:1267`,
+  `internal/core/index/scan_py.go:576`).
+- **An attribute call is attributed to any same-directory declaration of that
+  name.** `py/lib/uses.py` calls `log.save(...)` on a `Log` that has no `save`
+  method, and the row is reported for `lib.save`: the one false positive in the
+  table (`py/callers-save` precision 0.7500).
+- **`imports-module` cannot fire for a relative specifier.**
+  `importsAny` (`internal/core/index/tests.go:390`) compares the raw specifier
+  with the declaring directory, so `import { tidy } from "../lib"` in
+  `ts/app/tidy.spec.ts` matches neither `"../lib"` nor the resolved `lib`;
+  the file is then not a candidate at all, because the transitive walk starts at
+  depth 2. Its label is `imports-module, depth 1` and the walk reports nothing
+  (`ts/tests-for-save` recall 0.7500).
+- **A symbol's `tests-for` language is the first target's.** With `run` declared
+  in both `shared/run.py` and `shared/run.ts`, `tests-for --symbol shared.run`
+  reads `internal/core/index/tests.go:156` and answers in Python only, so the
+  TypeScript test file is never listed (`ts/tests-for-two-families` recall
+  0.5000). This is the documented limitation the fixture pins.
+
+### Coverage and bail-outs
+
+The build reports `files_indexed` and `skipped`, and the corpus pins both per
+repository: `go` is 15 indexed and 1 skipped, `ts` 22 and 0, `py` 14 and 0. The
+one skip is a Go file `go/parser` refuses, which is the only bail-out the index
+can report: both lexical scanners always finish, recording whatever they
+recognized, so a py or ts file the scanner mis-reads appears as a missing edge
+and never as a skip. That asymmetry is a gap in the coverage number, not
+something the corpus can measure.
+
 ## What the comparison page may cite
 
 Once 06b has run, the comparison page may cite:
