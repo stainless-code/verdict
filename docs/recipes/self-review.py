@@ -88,7 +88,7 @@ def loop(repo, agent, rounds, budget, output, verdict="verdict", call=execute,
             if reason == "coverage-stale":
                 review = json.loads((bundle / "review.json").read_text())
                 if review.get("comments"):
-                    previous = output / f"round-{number}.review.json"
+                    previous = output / f"round-{number}.findings.json"
                     previous.write_text(json.dumps(review) + "\n")
                     receipt["findings"] = len(review["comments"])
                     receipt["stale"] = True
