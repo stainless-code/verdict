@@ -227,6 +227,7 @@ func worktreeCommander(t *testing.T, wt string) *fakeCommander {
 		{tokens: []string{"-C", wt, "diff", "--no-renames"}, result: verdict.CommandResult{Stdout: "notes.txt\n"}},
 		{tokens: []string{"-C", wt, "diff", "--numstat"}, result: verdict.CommandResult{Stdout: "1\t1\tnotes.txt\n"}},
 		{tokens: []string{"-C", wt, "diff", sdkHeadA, sdkWorktreeStash}, result: verdict.CommandResult{Stdout: sdkDiff}},
+		{tokens: []string{"diff", "HEAD"}, result: verdict.CommandResult{Stdout: sdkDiff}},
 		{tokens: []string{"ls-files", "--others"}, result: verdict.CommandResult{}},
 		{tokens: []string{"worktree", "remove"}, result: verdict.CommandResult{}},
 		{tokens: []string{"patch-id"}, result: verdict.CommandResult{Stdout: sdkPatchID}},
