@@ -420,6 +420,14 @@ func TestCacheBypassesUnreadableOverride(t *testing.T) {
 	}
 }
 
+// setMode sets one file's mode or fails the test.
+func setMode(t *testing.T, path string, mode os.FileMode) {
+	t.Helper()
+	if err := os.Chmod(path, mode); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // restoreMode puts one file's mode back when the test ends.
 func restoreMode(t *testing.T, path string, mode os.FileMode) {
 	t.Helper()
@@ -814,6 +822,59 @@ func sourceBytes(t *testing.T, data map[string]any, name string) any {
 	}
 	t.Fatalf("artifacts = %v, want a row for %s", data["artifacts"], name)
 	return nil
+}
+
+// TestCacheRecomposesAfterAnInventoryReadIsRestored proves a failed inventory
+// read is not pinned: once access returns, the artifact reappears even though
+// only the file's mode moved.
+func TestCacheRecomposesAfterAnInventoryReadIsRestored(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("mode bits do not deny reads on Windows")
+	}
+	dir, _ := fixture(t)
+	diff := filepath.Join(dir, ".verdict", "state", "1234", "full.diff")
+	info, err := os.Stat(diff)
+	if err != nil {
+		t.Fatal(err)
+	}
+	setMode(t, diff, 0)
+	restoreMode(t, diff, info.Mode())
+	layer := newLayer(dir)
+	root := RootID(mustAbs(t, dir))
+	view, err := layer.Detail(context.Background(), root, "1234")
+	if err != nil {
+		t.Fatalf("Detail over the unreadable artifact = %v, want a partial view", err)
+	}
+	if artifactPresent(t, wireMap(t, view.Data), "full.diff") {
+		t.Fatal("full.diff present = true, want false while it is unreadable")
+	}
+	setMode(t, diff, info.Mode())
+	view, err = layer.Detail(context.Background(), root, "1234")
+	if err != nil {
+		t.Fatalf("Detail after restoring access = %v, want success", err)
+	}
+	if !artifactPresent(t, wireMap(t, view.Data), "full.diff") {
+		t.Error("full.diff present = false after restoring access; want true (stale inventory)")
+	}
+}
+
+// artifactPresent reads one artifact row's presence from a decoded detail view.
+func artifactPresent(t *testing.T, data map[string]any, name string) bool {
+	t.Helper()
+	for _, row := range asList(t, data["artifacts"]) {
+		artifact := asMap(t, row)
+		if artifact["path"] != name {
+			continue
+		}
+		present, ok := artifact["present"].(bool)
+		if !ok {
+			t.Fatalf("artifact %s present = %v, want a boolean", name, artifact["present"])
+		}
+		return present
+	}
+	t.Fatalf("artifacts = %v, want a row for %s", data["artifacts"], name)
+	return false
 }
 
 // TestCacheDoesNotPinRefusals proves a refusal is never stored: the refused
