@@ -109,7 +109,7 @@ func (c *sourceCollector) add(bundle, abs string) {
 		return
 	}
 	rel, err := filepath.Rel(c.rootPath, abs)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	if err != nil || rel == parentDir || strings.HasPrefix(rel, parentDir+string(filepath.Separator)) {
 		return
 	}
 	raw, ok := c.read(abs, rel, info)
@@ -222,9 +222,21 @@ func (c *sourceCollector) readDir(dir string) ([]os.DirEntry, bool) {
 	}
 	entries, more, err := readcommon.ReadDirLimit(dir, limit)
 	if err != nil {
+		c.truncated = true
+		c.notes = append(c.notes, fmt.Sprintf("serve: source inventory could not list %s: %s",
+			c.relPath(dir), err))
 		return nil, false
 	}
 	return entries, more
+}
+
+// relPath names one inventory path the way a source row does.
+func (c *sourceCollector) relPath(abs string) string {
+	rel, err := filepath.Rel(c.rootPath, abs)
+	if err != nil || rel == parentDir || strings.HasPrefix(rel, parentDir+string(filepath.Separator)) {
+		return filepath.ToSlash(abs)
+	}
+	return filepath.ToSlash(rel)
 }
 
 // walkFiles inventories the regular supported files in one directory.

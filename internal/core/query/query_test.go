@@ -675,6 +675,38 @@ func TestInventoryChargesOverCapReadsToTheBudget(t *testing.T) {
 	}
 }
 
+// TestInventoryReportsAnUnlistableDirectory proves a directory the walk cannot
+// enumerate leaves the view partial with the directory named, instead of
+// reporting its artifacts absent.
+func TestInventoryReportsAnUnlistableDirectory(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("mode bits do not deny a directory listing on Windows")
+	}
+	dir, _ := fixture(t)
+	writeFiles(t, dir, map[string]string{".verdict/state/1234/chunks/cost.json": "[]"})
+	chunks := filepath.Join(dir, ".verdict", "state", "1234", "chunks")
+	info, err := os.Stat(chunks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(chunks, 0); err != nil {
+		t.Fatal(err)
+	}
+	restoreMode(t, chunks, info.Mode())
+	view, err := newLayer(dir).Detail(context.Background(), RootID(mustAbs(t, dir)), "1234")
+	if err != nil {
+		t.Fatalf("Detail over an unlistable directory = %v, want a partial view", err)
+	}
+	if got := wireMap(t, view.Data)["partial"]; got != true {
+		t.Errorf("partial = %v, want true for an unlistable directory", got)
+	}
+	const want = "serve: source inventory could not list .verdict/state/1234/chunks"
+	if !slices.ContainsFunc(view.Warnings, func(line string) bool { return strings.HasPrefix(line, want) }) {
+		t.Errorf("warnings = %v, want one naming %q", view.Warnings, want)
+	}
+}
+
 // TestInventoryCapsReadsAtTheBudgetLeft proves one read never asks for more
 // than the budget has left: a file that grows after its size check cannot
 // overrun the walk, and the failed read is charged the cap it asked for.

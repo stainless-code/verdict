@@ -39,6 +39,8 @@ const (
 	defaultCheck = "critical"
 	// slashSep is the portable separator every wire path uses.
 	slashSep = "/"
+	// parentDir is the one relative path segment that leaves the root.
+	parentDir = ".."
 )
 
 // Source is one artifact a view was composed from: the serving root, the
@@ -416,7 +418,7 @@ func normalizeReportData(root string, data *core.ReportData) *jq.Obj {
 		return wire
 	}
 	rel, err := filepath.Rel(root, filepath.FromSlash(text))
-	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	if err != nil || rel == "." || rel == parentDir || strings.HasPrefix(rel, parentDir+string(filepath.Separator)) {
 		return wire
 	}
 	wire.Set("dir", filepath.ToSlash(rel))
