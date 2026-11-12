@@ -72,14 +72,16 @@ func (d *AddData) Wire() *jq.Obj {
 	)
 }
 
-// AddResponse carries the envelope inputs and the human lines.
+// AddResponse carries the envelope inputs, the human lines, and any warning a
+// successful add collected after the lock became durable.
 //
 //nolint:govet // the envelope fields read in render order
 type AddResponse struct {
-	Data  *AddData
-	Human []string
-	At    string
-	Next  string
+	Data     *AddData
+	Human    []string
+	Warnings []string
+	At       string
+	Next     string
 }
 
 // RunAdd vendors one validated pack under .verdict/packs/<slug>/ and pins it
@@ -112,25 +114,35 @@ func RunAdd(ctx context.Context, req *AddRequest) (*AddResponse, *core.RefusalEr
 	if ref != nil {
 		return nil, ref
 	}
-	if ref := commitAdd(root, slug, backup, next); ref != nil {
+	warning, ref := commitAdd(root, slug, backup, next)
+	if ref != nil {
 		return nil, ref
 	}
-	return addResponse(p, &entry, old, slug), nil
+	resp := addResponse(p, &entry, old, slug)
+	if warning != "" {
+		resp.Warnings = []string{warning}
+		req.Warn(warning)
+	}
+	return resp, nil
 }
 
 // commitAdd writes the new lock, restoring the previous tree when the write
-// fails, and drops the backup only after the lock is durable.
-func commitAdd(root, slug, backup string, lock *Lock) *core.RefusalError {
+// fails, and drops the backup after the lock is durable. A failed drop is a
+// warning, not a refusal: the tree and lock are already committed.
+func commitAdd(root, slug, backup string, lock *Lock) (string, *core.RefusalError) {
 	if ref := writeLock(root, lock); ref != nil {
 		if err := undoVendored(root, slug, backup); err != nil {
-			return cleanupStageFailure(ref, err)
+			return "", cleanupStageFailure(ref, err)
 		}
-		return ref
+		return "", ref
 	}
 	if err := dropVendoredBackup(root, backup); err != nil {
-		return badPack(fmt.Sprintf("remove the previous %s/%s backup: %v", RepoPacksDir, slug, err))
+		leftover := path.Join(RepoPacksDir, backup)
+		return fmt.Sprintf(
+			"pack add installed %s/%s, but the previous tree at %s could not be removed: %v — delete it by hand; the loader ignores it",
+			RepoPacksDir, slug, leftover, err), nil
 	}
-	return nil
+	return "", nil
 }
 
 // loadAdd validates the source and returns the current lock, the loaded pack,

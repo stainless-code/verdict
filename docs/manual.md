@@ -462,8 +462,10 @@ old and new tree hashes. A re-add builds and verifies the new tree in a temp
 sibling under `.verdict/packs/` and swaps it in, so a failed re-add leaves the
 previous tree and lock row intact; a crashed re-add's dot-prefixed staging and
 backup siblings are ignored by the loader and swept by the next add of that
-pack. A source inside `.verdict/packs/` refuses `bad-pack`: it is already
-vendored.
+pack. Once the new tree and lock are durable, a failure to remove the old
+backup is a warning that names the leftover path, not a refusal: the add has
+succeeded and the loader skips the dotted sibling. A source inside
+`.verdict/packs/` refuses `bad-pack`: it is already vendored.
 
 `verdict.lock` is strict JSON (unknown or differently-cased keys refuse,
 exactly as `pack.json`), with `schema_version: "1"` and `packs` sorted by

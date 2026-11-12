@@ -336,7 +336,7 @@ func TestCommitAddRestoresTreeWhenLockFails(t *testing.T) {
 		Version: "1.0.0", Hash: p.Hash,
 	}}}
 	big.Packs[0].Sig = LockSig(&big.Packs[0])
-	if ref := commitAdd(repo, "lenses", backup, big); ref == nil || ref.Code != CodeBadPack {
+	if _, ref := commitAdd(repo, "lenses", backup, big); ref == nil || ref.Code != CodeBadPack {
 		t.Fatalf("commitAdd = %v, want bad-pack", ref)
 	}
 	assertFile(t, ".verdict/packs/lenses/lenses/perf.md", "old body\n")

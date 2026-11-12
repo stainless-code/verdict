@@ -92,7 +92,7 @@ func runAdd(ctx context.Context, r *cli.Runner, read Request, source string) int
 	}
 	if r.JSONMode {
 		env := core.RenderEnvelope(verbPack, "", "", resp.At, resp.Next,
-			nil, resp.Data.Wire(), nil)
+			resp.Warnings, resp.Data.Wire(), nil)
 		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
 		return cli.ExitOK
 	}
