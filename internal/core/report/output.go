@@ -111,26 +111,24 @@ func basisCounts(entries []any) string {
 			verified++
 		}
 	}
-	reproduced := strconv.Itoa(counts[rungReproduced])
-	ran := strconv.Itoa(counts[rungRan])
-	walked := strconv.Itoa(counts[rungWalked])
-	pointed := strconv.Itoa(counts[rungPointed])
-	said := strconv.Itoa(counts[rungSaid])
+	counted := make([]string, 0, len(core.RungValues))
+	for _, rung := range core.RungValues {
+		counted = append(counted, strconv.Itoa(counts[rung])+" "+rung)
+	}
 	rules := strconv.Itoa(len(dedupeValues(cited)))
 	fixes := strconv.Itoa(verified)
-	return reproduced + " reproduced · " + ran + " ran · " + walked + " walked · " +
-		pointed + " pointed · " + said + " said · " + rules + " rules cited · " +
+	return strings.Join(counted, " · ") + " · " + rules + " rules cited · " +
 		fixes + " verified fixes"
 }
 
 func basisRigor(entry any) string {
 	m, ok := entry.(*jq.Obj)
 	if !ok || m == nil {
-		return rungPointed
+		return core.RungPointed
 	}
 	rigor, _ := m.Get("rigor")
 	if rigor == nil || rigor == false {
-		return rungPointed
+		return core.RungPointed
 	}
 	if s, ok := rigor.(string); ok {
 		return s

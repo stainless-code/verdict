@@ -455,6 +455,40 @@ func matchesDimension(dim verdict.GateDimension, want wantDim) bool {
 	return dim.ID == want.id && dim.Status == want.status && dim.Detail != ""
 }
 
+// TestClientTierRefusals proves the Go SDK shares the core tier rule on both
+// verbs that carry one: Report.Check and Gate.MaxSeverity refuse an
+// unpublished tier, and every published tier still runs.
+func TestClientTierRefusals(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writePRBundle(t, "6101")
+	writeFindings(t, "6101", sdkStore())
+	c := newSDKClient(nil, nil)
+	defer c.Close()
+
+	_, err := c.Report(context.Background(), &verdict.ReportRequest{
+		Invocation: sdkInvocation("6101"), Check: "bogus",
+	})
+	requireRefusal(t, err, "bad-flags", "try: re-run with one of the valid values named above")
+
+	_, err = c.Gate(context.Background(), &verdict.GateRequest{
+		Invocation: sdkInvocation("6101"), MaxSeverity: "bogus", Live: "skip",
+	})
+	requireRefusal(t, err, "bad-flags", "try: re-run with one of the valid values named above")
+
+	for _, tier := range []string{"critical", "important", "informational"} {
+		if _, err := c.Report(context.Background(), &verdict.ReportRequest{
+			Invocation: sdkInvocation("6101"), Check: tier, Live: "skip",
+		}); err != nil {
+			t.Errorf("Report Check %s: %v", tier, err)
+		}
+		if _, err := c.Gate(context.Background(), &verdict.GateRequest{
+			Invocation: sdkInvocation("6101"), MaxSeverity: tier, Live: "skip", Coverage: "warn",
+		}); err != nil {
+			t.Errorf("Gate MaxSeverity %s: %v", tier, err)
+		}
+	}
+}
+
 // TestClientDoctorFallsBackWhenTheProbeFails pins doctor's documented posture
 // on the SDK path: a probe that cannot answer (git absent from PATH inside a
 // checkout) must not become a refusal, because reporting the missing tool is
