@@ -477,25 +477,25 @@ an unchanged scorecard.
 | `go/callers-open`           | 1.0000    | 0.7500 | 6       | 6        | 8       |
 | `go/callers-save`           | n/a       | 0.0000 | 0       | 0        | 5       |
 | `go/callers-touch`          | n/a       | 0.0000 | 0       | 0        | 1       |
-| `go/tests-for-store`        | 1.0000    | 0.8000 | 4       | 4        | 5       |
-| `go/tests-for-capped`       | 1.0000    | 0.7500 | 3       | 3        | 4       |
+| `go/tests-for-store`        | 1.0000    | 1.0000 | 5       | 5        | 5       |
+| `go/tests-for-capped`       | 1.0000    | 1.0000 | 4       | 4        | 4       |
 | `go/callers`                | 1.0000    | 0.4286 | 6       | 6        | 14      |
 | `go/callers-cross-package`  | 1.0000    | 0.4167 | 5       | 5        | 12      |
-| `go/tests-for`              | 1.0000    | 0.7778 | 7       | 7        | 9       |
-| `ts/callers-save`           | 1.0000    | 0.5455 | 6       | 6        | 11      |
+| `go/tests-for`              | 1.0000    | 1.0000 | 9       | 9        | 9       |
+| `ts/callers-save`           | 1.0000    | 0.4545 | 5       | 5        | 11      |
 | `ts/callers-audit`          | 1.0000    | 0.5000 | 1       | 1        | 2       |
 | `ts/callers-namesake`       | 1.0000    | 1.0000 | 1       | 1        | 1       |
-| `ts/tests-for-save`         | 1.0000    | 0.7500 | 3       | 3        | 4       |
+| `ts/tests-for-save`         | 1.0000    | 1.0000 | 4       | 4        | 4       |
 | `ts/tests-for-two-families` | 1.0000    | 0.5000 | 1       | 1        | 2       |
-| `ts/callers`                | 1.0000    | 0.5714 | 8       | 8        | 14      |
+| `ts/callers`                | 1.0000    | 0.5000 | 7       | 7        | 14      |
 | `ts/callers-cross-package`  | n/a       | 0.0000 | 0       | 0        | 4       |
-| `ts/tests-for`              | 1.0000    | 0.6667 | 4       | 4        | 6       |
-| `py/callers-save`           | 0.7500    | 0.4286 | 3       | 4        | 7       |
+| `ts/tests-for`              | 1.0000    | 0.8333 | 5       | 5        | 6       |
+| `py/callers-save`           | 1.0000    | 0.5000 | 4       | 4        | 8       |
 | `py/callers-write`          | 1.0000    | 1.0000 | 1       | 1        | 1       |
 | `py/callers-route`          | 1.0000    | 0.5000 | 1       | 1        | 2       |
 | `py/callers-namesake`       | 1.0000    | 1.0000 | 1       | 1        | 1       |
 | `py/tests-for-saver`        | 1.0000    | 1.0000 | 5       | 5        | 5       |
-| `py/callers`                | 0.8571    | 0.5455 | 6       | 7        | 11      |
+| `py/callers`                | 1.0000    | 0.5833 | 7       | 7        | 12      |
 | `py/callers-cross-package`  | n/a       | 0.0000 | 0       | 0        | 3       |
 | `py/tests-for`              | 1.0000    | 1.0000 | 5       | 5        | 5       |
 
@@ -577,9 +577,10 @@ stays closed, because ADR-0003 opens it only when both arms are met.
 The 12 labeled sites split three ways, and only the first is reported: a
 qualified package call through an import edge (`store.Open`, `st.Open` with an
 alias) is a row; a method call on a value (`s.Save`, `a.Touch`, including an
-embed and an interface dispatch) is not attributed at all, and a call through a
-dot-import or a re-exported variable is not attributed at all. Type information
-does not settle all three. `go/types` answers a method call on a concrete value
+embed and an interface dispatch) is not a row but is counted in `unresolved`,
+because only the value's type says which method it carries; and a call through a
+dot-import or a re-exported variable is neither a row nor a candidate. Type
+information does not settle every case. `go/types` answers a method call on a concrete value
 — `s.Save` on a `*store.Store`, `a.Touch` on the promoted `*store.Base` — and
 the bare `Open` a dot-import leaves at `internal/dot/dot.go:8`. The re-exported
 variable is typed but its origin is a value, so the call at
@@ -590,29 +591,33 @@ variable is typed but its origin is a value, so the call at
 
 Each item is a measured drop in the table above, not a guess, and each names its
 class. A **scanner bug** is a fact the scanner already holds and drops, so fixing
-it would move the rate. A **design limit** is outside what a lexical index
-resolves: no resolver, no types, no object identity. A **documented limit** is a
-rule the manual states, so the fixture pins the rule rather than a defect. None
-of them is fixed here: the scanners are frozen.
+it moves the rate: those are fixed below, each naming the test that pins it, and
+ADR-0003's freeze otherwise holds, so no rate rises by tuning a scanner to a
+label. A **design limit** is outside what a lexical index resolves: no resolver,
+no types, no object identity. A **documented limit** is a rule the manual
+states, so the fixture pins the rule rather than a defect.
 
-- **A cross-package method selector is neither a row nor an unresolved
-  candidate.** `resolveGoRef` (`internal/core/index/callers.go:297`) answers a
-  qualifier-less selector outside the declaring package with a bare `false`
-  (`internal/core/index/callers.go:301-306`). Neither `s.Save(1)` in
-  `internal/api/api.go:9` nor `a.Touch()` on an embedded `*store.Base`
-  (`internal/app/app.go:18`) is reported or counted: the `store.Touch` query
-  answers zero rows at `unresolved` 0, so the envelope claims nothing was left
-  unattributed. Inside the declaring package the same selector is counted
-  unresolved, which is the same limit stated honestly. **Scanner bug.**
+- **A cross-package method selector was neither a row nor an unresolved
+  candidate.** `resolveGoRef` (`internal/core/index/callers.go:300`) answered a
+  qualifier-less selector outside the declaring package with a bare `false`.
+  Neither `s.Save(1)` in `internal/api/api.go:9` nor `a.Touch()` on an embedded
+  `*store.Base` (`internal/app/app.go:18`) was reported or counted: the
+  `store.Touch` query answered zero rows at `unresolved` 0, so the envelope
+  claimed nothing was left unattributed. `resolveValueSelector` now counts such
+  a site in `unresolved` in every package — `store.Touch` answers 0 rows at 1
+  unresolved and `store.Save` 0 rows at 5 — and only when the declaration it
+  could name is a method, because a value cannot carry a package-level function.
+  `TestCallersValueSelectorIsUnresolved` pins both. Rows do not move: the site
+  still needs a type. **Scanner bug, fixed in the count.**
 - **A dot-import and a re-exported variable lose their calls.** `resolveBareRef`
-  (`internal/core/index/callers.go:323`) attributes a bare name only inside the
+  (`internal/core/index/callers.go:353`) attributes a bare name only inside the
   declaring package, so `Open("c")` in `internal/dot/dot.go:8` (package `dot`,
   `import . "example.com/m/internal/store"`) is not a caller. A re-exported
   variable is the same shape one step removed: `reexport.Open("e")` in
   `internal/cli/cli.go:14` names `reexport`'s import path, not `store`'s.
   **Design limit.**
 - **Scanned-language sites outside the declaring directory are dropped.**
-  `resolveScannedRef` (`internal/core/index/callers.go:314`) requires the same
+  `resolveScannedRef` (`internal/core/index/callers.go:330`) requires the same
   directory, so every `save(...)` in `ts/app/` and `py/tests/` is invisible to a
   query for the `lib` declaration: cross-package recall is 0.0000 for both
   scanned languages, against 4 and 3 labeled sites. **Design limit.**
@@ -622,35 +627,52 @@ of them is fixed here: the scanners are frozen.
   them. Only a call or an attribute site is recorded
   (`internal/core/index/scan_ts.go:1267`,
   `internal/core/index/scan_py.go:576`). **Design limit.**
-- **An attribute call is attributed to a declaration of the wrong kind.**
-  `py/lib/uses.py:6` calls `log.save(value)` on a `Log` that declares `write`
-  and no `save`, and the row is reported for `lib.save`, a module function: the
-  one false positive in the table (`py/callers-save` precision 0.7500). The
-  scanner knows the callee follows a dot and records the site as `method`
-  (`internal/core/index/scan_py.go:587`); the resolution keeps that kind as a
-  row label and never checks it against the declaration it matches, so a method
-  site lands on a function. **Scanner bug.**
-- **`imports-module` cannot fire for a relative specifier.**
-  `importsAny` (`internal/core/index/tests.go:390`) compares the raw specifier
-  with the declaring package's import path, so `import { tidy } from "../lib"`
-  in `ts/app/tidy.spec.ts` matches neither `"../lib"` nor the resolved `lib`;
-  the file is then not a candidate at all, because the transitive walk starts at
-  depth 2. Its label is `imports-module, depth 1` and the walk reports nothing
-  (`ts/tests-for-save` recall 0.7500). `scannedSpecifier` already resolves that
-  same specifier for the other mechanisms. **Scanner bug.**
-- **A test whose package imports the target is not a candidate.**
+- **An attribute call was attributed to a declaration of the wrong kind, while
+  an imported module attribute was dropped.**
+  `py/lib/uses.py:7` calls `log.save(value)` on a `Log` that declares `write`
+  and no `save`. The previous corpus reported that row for `lib.save`, a module
+  function, lowering `py/callers-save` precision to 0.7500. The scanner records
+  the receiver qualifier
+  (`internal/core/index/scan_py.go:587`), and Python records each declaration's
+  kind. A module-level function attribute is accepted only when its receiver is
+  bound by an import in that file; `saver.save(value)` is kept while
+  `log.save(value)` is dropped. TypeScript applies the same imported-qualifier
+  rule to module-level functions. Both precision cells are 1.0000, pinned by
+  `TestCallersPythonRespectsDeclarationKind` and `TestCallersTypeScriptRows`.
+  **Scanner bug, fixed.**
+- **TypeScript value aliases are not resolved as module attributes.** The
+  previous `ts/callers-save` row at `lib/callers.ts:9` used `handlers.save`,
+  where `handlers` is a local object made from the imported `save` function.
+  The scanner now accepts a function attribute only when its receiver is bound
+  by an import, which also drops `obj.target` in `TestCallersTypeScriptRows`.
+  It cannot trace the local object's property back to the import, so this true
+  caller is now a known false negative; the table's recall moves from 0.5455 to
+  0.4545. **Design limit.**
+- **`imports-module` did not fire for a relative specifier.** `importsAny`
+  (`internal/core/index/tests.go:403`) compared the raw specifier with the
+  declaring package's import path, so `import { tidy } from "../lib"` in
+  `ts/app/tidy.spec.ts` matched neither `"../lib"` nor the resolved `lib`, and
+  the file was not a candidate at all. `importedPackage` now resolves each
+  specifier by its own language's rule — the same `scannedSpecifier` the other
+  mechanisms use — so the file is a candidate at `imports-module, depth 1` and
+  `ts/tests-for-save` recall is 1.0000, pinned by
+  `TestTestsForRelativeSpecifierImportsPackage`. **Scanner bug, fixed.**
+- **A test whose package imports the target was not a candidate.**
   `internal/worker/worker_test.go` imports only `testing`; its package imports
   `internal/store` in `worker.go:3`, which is one hop from the declaring
-  package. `minTransitiveDepth` (`internal/core/index/tests.go:24`) drops a
-  depth-1 candidate, and `importsAny` (`internal/core/index/tests.go:390`) reads
-  the test file's own imports only, so no mechanism reaches it: the walk counts
-  its one hop and discards it. Its label is `transitive-import, depth 1`, and the
-  manual's `2 or more` sentence rests on the same assumption. The walk reports
-  nothing (`go/tests-for-store` recall 0.8000, `go/tests-for-capped` 0.7500,
-  `go/tests-for` 0.7778). **Scanner bug.**
+  package. `transitiveVia` (`internal/core/index/tests.go:357`) started at depth
+  2, so the walk counted the hop and discarded the file.
+  It is now named `transitive-import, depth 1` — the manual's own mechanism
+  definition, with the direct mechanisms still tried first — and a scanned
+  specifier naming no indexed directory or file no longer contributes an edge
+  to the directory that would have contained it. `go/tests-for-store`,
+  `go/tests-for-capped`, and `go/tests-for` recall are all 1.0000, pinned by
+  `TestTestsForPackageImportIsOneHop`; `TestTestsForScannedLanguages` carries
+  the package-scoped row and `TestTestsForUnresolvedSpecifierIsNoEdge` the
+  missing module. **Scanner bug, fixed.**
 - **A symbol's `tests-for` language is the first target's.** With `run` declared
   in both `shared/run.py` and `shared/run.ts`, `tests-for --symbol shared.run`
-  reads `internal/core/index/tests.go:156` and answers in Python only, so the
+  reads `internal/core/index/tests.go:153` and answers in Python only, so the
   TypeScript test file is never listed (`ts/tests-for-two-families` recall
   0.5000). **Documented limit:** the manual already says a candidate in another
   language family is never listed.

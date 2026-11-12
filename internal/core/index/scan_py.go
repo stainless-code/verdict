@@ -573,7 +573,7 @@ func (x *pyExtractor) calls() {
 	for i := range x.tokens {
 		if x.callCallee(i) {
 			t := x.tokens[i]
-			x.buf.addCall(t.text, x.callKind(i), t.line, t.col)
+			x.buf.addCall(t.text, x.callKind(i), x.callQualifier(i), t.line, t.col)
 		}
 	}
 }
@@ -589,6 +589,18 @@ func (x *pyExtractor) callKind(i int) string {
 		return KindMethod
 	}
 	return KindCall
+}
+
+// callQualifier returns the token immediately before a dotted call's dot.
+func (x *pyExtractor) callQualifier(i int) string {
+	if x.text(i-1) != punctDot || x.kind(i-2) != pyIdent {
+		return ""
+	}
+	start := i - 2
+	for start >= 2 && x.text(start-1) == punctDot && x.kind(start-2) == pyIdent {
+		start -= 2
+	}
+	return x.text(start)
 }
 
 // text returns one token's text, "" outside the stream.

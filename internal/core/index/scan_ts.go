@@ -1268,7 +1268,7 @@ func (x *tsExtractor) calls() {
 	for i := range x.tokens {
 		if x.callCallee(i) {
 			t := x.tokens[i]
-			x.buf.addCall(t.text, x.callKind(i), t.line, t.col)
+			x.buf.addCall(t.text, x.callKind(i), x.callQualifier(i), t.line, t.col)
 		}
 	}
 }
@@ -1287,6 +1287,19 @@ func (x *tsExtractor) callKind(i int) string {
 		return KindMethod
 	}
 	return KindCall
+}
+
+// callQualifier returns the token immediately before a dotted call's dot.
+func (x *tsExtractor) callQualifier(i int) string {
+	prev := x.prevText(i)
+	if i < 2 || (prev != punctDot && prev != punctOptional) || x.tokens[i-2].kind != tsIdent {
+		return ""
+	}
+	start := i - 2
+	for start >= 2 && (x.text(start-1) == punctDot || x.text(start-1) == punctOptional) && x.tokens[start-2].kind == tsIdent {
+		start -= 2
+	}
+	return x.text(start)
 }
 
 // callParen reports whether the token after i opens a call's arguments, with

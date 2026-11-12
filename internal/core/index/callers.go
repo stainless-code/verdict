@@ -132,6 +132,7 @@ func importPathOf(module, dir string) string {
 type target struct {
 	pkg      *packageInfo
 	name     string
+	kind     string
 	lang     language
 	exported bool
 }
@@ -164,7 +165,9 @@ func resolveTargets(pkgs map[string]*packageInfo, symbol string) ([]target, *cor
 		for _, f := range pkg.files {
 			for _, d := range f.Decls {
 				if d.Name == name {
-					targets = append(targets, target{pkg: pkg, name: name, lang: fileLanguage(f), exported: d.Exported})
+					targets = append(targets, target{
+						pkg: pkg, name: name, kind: d.Kind, lang: fileLanguage(f), exported: d.Exported,
+					})
 				}
 			}
 		}
@@ -225,12 +228,13 @@ func matchingPackages(pkgs map[string]*packageInfo, dirs []string, qualifier str
 func queryCallers(pkgs map[string]*packageInfo, targets []target) callerResults {
 	var out callerResults
 	seen := map[Row]bool{}
+	seenUnresolved := map[referenceSite]bool{}
 	dirs := sortedDirs(pkgs)
 	for _, tgt := range targets {
 		for _, dir := range dirs {
 			pkg := pkgs[dir]
 			for _, f := range pkg.files {
-				collectFileRefs(&out, seen, tgt, pkg.dir == tgt.pkg.dir, f)
+				collectFileRefs(&out, seen, seenUnresolved, tgt, pkg.dir == tgt.pkg.dir, f)
 			}
 		}
 	}
@@ -238,10 +242,16 @@ func queryCallers(pkgs map[string]*packageInfo, targets []target) callerResults 
 	return out
 }
 
+type referenceSite struct {
+	path string
+	line int
+	col  int
+}
+
 // collectFileRefs folds one file's matching references into the result set.
 //
 //nolint:revive // the query resolution matrix reads as one block
-func collectFileRefs(out *callerResults, seen map[Row]bool, tgt target, same bool, f *treeFile) {
+func collectFileRefs(out *callerResults, seen map[Row]bool, seenUnresolved map[referenceSite]bool, tgt target, same bool, f *treeFile) {
 	for _, r := range f.Refs {
 		if r.Name != tgt.name {
 			continue
@@ -251,7 +261,11 @@ func collectFileRefs(out *callerResults, seen map[Row]bool, tgt target, same boo
 			continue
 		}
 		if row.Resolution == resolutionUnresolved {
-			out.unresolved++
+			site := referenceSite{path: f.Path, line: r.Line, col: r.Col}
+			if !seenUnresolved[site] {
+				seenUnresolved[site] = true
+				out.unresolved++
+			}
 			continue
 		}
 		row.Language = string(fileLanguage(f))
@@ -286,36 +300,88 @@ func resolveRef(tgt target, samePkg bool, f *treeFile, r ref) (Row, bool) {
 		return Row{}, false
 	}
 	if lang != langGo {
-		return resolveScannedRef(samePkg, f, r)
+		return resolveScannedRef(lang, tgt, samePkg, f, r)
 	}
 	return resolveGoRef(tgt, samePkg, f, r)
 }
 
 // resolveGoRef attributes one reference to a Go declaration: a bare name only
-// inside the declaring package, a qualified name by import path, and a
-// same-package method or unresolved qualifier as a counted candidate.
+// inside the declaring package, a qualified name by import path, and a selector
+// written on a value as a counted candidate.
 func resolveGoRef(tgt target, samePkg bool, f *treeFile, r ref) (Row, bool) {
 	if !r.Selector {
 		return resolveBareRef(samePkg, f, r)
 	}
 	if r.Qualifier == "" {
-		if samePkg && (r.Unresolved || r.Kind == KindMethod) {
-			return Row{Resolution: resolutionUnresolved}, true
-		}
-		return Row{}, false
+		return resolveValueSelector(tgt, samePkg, r)
 	}
 	return resolveQualifiedRef(tgt, f, r)
+}
+
+// resolveValueSelector classifies a selector written on a value (`s.Save`): no
+// import edge names the declaration's package, so the site is a candidate that
+// type information would settle, never a row. Only an exported method can be
+// named this way from outside the declaring package: a value cannot carry a
+// package-level function, and another package cannot name an unexported one.
+func resolveValueSelector(tgt target, samePkg bool, r ref) (Row, bool) {
+	if !samePkg && (tgt.kind != wordMethod || !tgt.exported) {
+		return Row{}, false
+	}
+	if r.Unresolved || r.Kind == KindMethod {
+		return Row{Resolution: resolutionUnresolved}, true
+	}
+	return Row{}, false
 }
 
 // resolveScannedRef classifies one reference a lexical scanner produced. A
 // scanned language has no object identity to check and no module resolution to
 // follow, so a name found in the declaring directory is a lexical row and a
-// name found anywhere else is not attributed at all.
-func resolveScannedRef(samePkg bool, f *treeFile, r ref) (Row, bool) {
+// name found anywhere else is not attributed at all. Python records each
+// declaration's kind, so a site cannot land on a declaration it could not name.
+func resolveScannedRef(lang language, tgt target, samePkg bool, f *treeFile, r ref) (Row, bool) {
 	if !samePkg {
 		return Row{}, false
 	}
+	if lang.family() == langPython && !pySiteNamesDecl(r, tgt.kind, importedQualifier(f, r)) {
+		return Row{}, false
+	}
+	if lang.family() == langTypeScript && !tsSiteNamesDecl(r, tgt.kind, importedQualifier(f, r)) {
+		return Row{}, false
+	}
 	return Row{Path: f.Path, Line: r.Line, Kind: r.Kind, Resolution: resolutionLexical}, true
+}
+
+// pySiteNamesDecl reports whether one recorded Python site can name a
+// declaration of the target's kind: an attribute site is written on a receiver,
+// so it names a method or a class, never a module-level function, while a bare
+// call never names a method, which needs that receiver.
+func pySiteNamesDecl(site ref, decl string, imported bool) bool {
+	if site.Kind == KindMethod {
+		return decl == KindMethod || decl == wordType || (decl == wordFunc && imported)
+	}
+	return decl != KindMethod
+}
+
+// tsSiteNamesDecl reports whether a TypeScript site can name the declaration.
+func tsSiteNamesDecl(site ref, decl string, imported bool) bool {
+	if site.Kind == KindMethod {
+		return decl == KindMethod || decl == wordType || (decl == wordFunc && imported)
+	}
+	return decl != KindMethod
+}
+
+// importedQualifier reports whether a dotted site's receiver is bound by an
+// import in the source file.
+func importedQualifier(f *treeFile, site ref) bool {
+	if site.Qualifier == "" {
+		return false
+	}
+	for _, imp := range f.Imports {
+		if imp.Name == site.Qualifier {
+			return true
+		}
+	}
+	return false
 }
 
 // resolveBareRef classifies a name written without a qualifier: only the

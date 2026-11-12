@@ -167,10 +167,10 @@ func (b *fileBuf) addDecl(name, kind, recv string, line int, exported bool) {
 }
 
 // addCall records one call or attribute site. A scanned language has no object
-// identity to resolve, so a site carries no qualifier.
-func (b *fileBuf) addCall(name, kind string, line, col int) {
+// identity to resolve, but it can retain a dotted site's immediate qualifier.
+func (b *fileBuf) addCall(name, kind, qualifier string, line, col int) {
 	if name != "" {
-		b.refs.add(ref{Name: name, Kind: kind, Line: line, Col: col, Selector: kind == KindMethod})
+		b.refs.add(ref{Name: name, Kind: kind, Qualifier: qualifier, Line: line, Col: col, Selector: kind == KindMethod})
 	}
 }
 
