@@ -529,58 +529,72 @@ variable is typed but its origin is a value, so the call at
 
 ### What the corpus found
 
-Each item is a measured drop in the table above, not a guess. None of them is
-fixed here: the scanners are frozen.
+Each item is a measured drop in the table above, not a guess, and each names its
+class. A **scanner bug** is a fact the scanner already holds and drops, so fixing
+it would move the rate. A **design limit** is outside what a lexical index
+resolves: no resolver, no types, no object identity. A **documented limit** is a
+rule the manual states, so the fixture pins the rule rather than a defect. None
+of them is fixed here: the scanners are frozen.
 
-- **No method call is ever a caller row.** `resolveGoRef`
-  (`internal/core/index/callers.go:297`) returns a counted unresolved candidate
-  for a same-package selector and a bare `false` for a cross-package one, so
-  `s.Save(1)` in `internal/api/api.go` and `a.Touch()` on an embedded
-  `*store.Base` are invisible to `callers` while `store.Save` and `store.Touch`
-  report zero rows.
-- **A dot-import loses its bare calls.** `resolveBareRef`
+- **A cross-package method selector is neither a row nor an unresolved
+  candidate.** `resolveGoRef` (`internal/core/index/callers.go:297`) answers a
+  qualifier-less selector outside the declaring package with a bare `false`
+  (`internal/core/index/callers.go:301-306`). Neither `s.Save(1)` in
+  `internal/api/api.go:9` nor `a.Touch()` on an embedded `*store.Base`
+  (`internal/app/app.go:18`) is reported or counted: the `store.Touch` query
+  answers zero rows at `unresolved` 0, so the envelope claims nothing was left
+  unattributed. Inside the declaring package the same selector is counted
+  unresolved, which is the same limit stated honestly. **Scanner bug.**
+- **A dot-import and a re-exported variable lose their calls.** `resolveBareRef`
   (`internal/core/index/callers.go:323`) attributes a bare name only inside the
-  declaring package, so `Open("c")` in `internal/dot/dot.go` (package `dot`,
+  declaring package, so `Open("c")` in `internal/dot/dot.go:8` (package `dot`,
   `import . "example.com/m/internal/store"`) is not a caller. A re-exported
-  variable is the same shape one step removed: `reexport.Open(...)` in
-  `internal/cli/cli.go` names `reexport`'s import path, not `store`'s.
+  variable is the same shape one step removed: `reexport.Open("e")` in
+  `internal/cli/cli.go:14` names `reexport`'s import path, not `store`'s.
+  **Design limit.**
 - **Scanned-language sites outside the declaring directory are dropped.**
   `resolveScannedRef` (`internal/core/index/callers.go:314`) requires the same
   directory, so every `save(...)` in `ts/app/` and `py/tests/` is invisible to a
   query for the `lib` declaration: cross-package recall is 0.0000 for both
-  scanned languages, against 4 and 3 labeled sites.
+  scanned languages, against 4 and 3 labeled sites. **Design limit.**
 - **A scanned language records no value use.** `{ save }` in
   `ts/lib/callers.ts`, `@audit` in `ts/lib/service.ts`, and `@route` in
   `py/lib/views.py` are uses of the symbol, and no row is produced for any of
   them. Only a call or an attribute site is recorded
   (`internal/core/index/scan_ts.go:1267`,
-  `internal/core/index/scan_py.go:576`).
-- **An attribute call is attributed to any same-directory declaration of that
-  name.** `py/lib/uses.py` calls `log.save(...)` on a `Log` that has no `save`
-  method, and the row is reported for `lib.save`: the one false positive in the
-  table (`py/callers-save` precision 0.7500).
+  `internal/core/index/scan_py.go:576`). **Design limit.**
+- **An attribute call is attributed to a declaration of the wrong kind.**
+  `py/lib/uses.py:6` calls `log.save(value)` on a `Log` that declares `write`
+  and no `save`, and the row is reported for `lib.save`, a module function: the
+  one false positive in the table (`py/callers-save` precision 0.7500). The
+  scanner knows the callee follows a dot and records the site as `method`
+  (`internal/core/index/scan_py.go:587`); the resolution keeps that kind as a
+  row label and never checks it against the declaration it matches, so a method
+  site lands on a function. **Scanner bug.**
 - **`imports-module` cannot fire for a relative specifier.**
   `importsAny` (`internal/core/index/tests.go:390`) compares the raw specifier
-  with the declaring directory, so `import { tidy } from "../lib"` in
-  `ts/app/tidy.spec.ts` matches neither `"../lib"` nor the resolved `lib`;
+  with the declaring package's import path, so `import { tidy } from "../lib"`
+  in `ts/app/tidy.spec.ts` matches neither `"../lib"` nor the resolved `lib`;
   the file is then not a candidate at all, because the transitive walk starts at
   depth 2. Its label is `imports-module, depth 1` and the walk reports nothing
-  (`ts/tests-for-save` recall 0.7500).
+  (`ts/tests-for-save` recall 0.7500). `scannedSpecifier` already resolves that
+  same specifier for the other mechanisms. **Scanner bug.**
 - **A test whose package imports the target is not a candidate.**
   `internal/worker/worker_test.go` imports only `testing`; its package imports
   `internal/store` in `worker.go:3`, which is one hop from the declaring
   package. `minTransitiveDepth` (`internal/core/index/tests.go:24`) drops a
   depth-1 candidate, and `importsAny` (`internal/core/index/tests.go:390`) reads
   the test file's own imports only, so no mechanism reaches it: the walk counts
-  its one hop and discards it. Its label is `transitive-import, depth 1` — the
-  manual's `2 or more` sentence rests on the same assumption — and the walk
-  reports nothing (`go/tests-for-store` recall 0.8000, `go/tests-for-capped`
-  0.7500, `go/tests-for` 0.7778).
+  its one hop and discards it. Its label is `transitive-import, depth 1`, and the
+  manual's `2 or more` sentence rests on the same assumption. The walk reports
+  nothing (`go/tests-for-store` recall 0.8000, `go/tests-for-capped` 0.7500,
+  `go/tests-for` 0.7778). **Scanner bug.**
 - **A symbol's `tests-for` language is the first target's.** With `run` declared
   in both `shared/run.py` and `shared/run.ts`, `tests-for --symbol shared.run`
   reads `internal/core/index/tests.go:156` and answers in Python only, so the
   TypeScript test file is never listed (`ts/tests-for-two-families` recall
-  0.5000). This is the documented limitation the fixture pins.
+  0.5000). **Documented limit:** the manual already says a candidate in another
+  language family is never listed.
 
 ### Coverage and bail-outs
 
