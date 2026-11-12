@@ -12,7 +12,7 @@ exit: 0
     "verification claim deadbeef ignored (not in store)",
     "triage claim deadbeef ignored (not in store)",
     "triage claim without rationale, kept prior status: bfd750df",
-    "$.body: no basis line — inserted the computed counts (basis-replaced)"
+    "$.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)"
   ],
   "data": {
     "dir": ".verdict/state/local-kb",
@@ -45,7 +45,7 @@ warn: resolved claim deadbeef ignored (not in store)
 warn: verification claim deadbeef ignored (not in store)
 warn: triage claim deadbeef ignored (not in store)
 warn: triage claim without rationale, kept prior status: bfd750df
-warn: $.body: no basis line — inserted the computed counts (basis-replaced)
+warn: $.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)
 » findings: 1 sigs -> .verdict/state/local-kb/findings.json
   bfd750df  addressed  true  notes.txt
 recorded: .verdict/state/local-kb/findings.json (0 open) + .verdict/state/local-kb/record.json — report/triage read it; post stays refused (no PR target)

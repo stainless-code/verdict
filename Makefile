@@ -186,6 +186,7 @@ clients-ts: build
 	go run ./cmd/tsgen
 	node clients/ts/scripts/gen-ts-types.mjs --check
 	node_modules/.bin/tsc -p clients/ts/tsconfig.json
+	node --test internal/webui/test/*.test.mjs
 	VERDICT_BIN="$(CURDIR)/$(BIN)" node --test clients/ts/test/*.test.mjs
 	node_modules/.bin/tsc --noEmit -p clients/ts/tsconfig.types.json
 

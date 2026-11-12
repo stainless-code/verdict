@@ -15,9 +15,6 @@ const (
 	verbShow  = "show"
 )
 
-// contentTypeHTML is the index body's type.
-const contentTypeHTML = "text/html; charset=utf-8"
-
 // route is one table row. The table registers GET only; ServeMux adds HEAD
 // and answers every other method with 405 and an Allow header.
 type route struct { //nolint:govet // method/pattern/handler reads as the table row
@@ -31,6 +28,9 @@ type route struct { //nolint:govet // method/pattern/handler reads as the table 
 func (s *Server) routes() []route {
 	routes := []route{
 		{Method: http.MethodGet, Pattern: "/{$}", Handler: http.HandlerFunc(s.handleRoot)},
+		{Method: http.MethodGet, Pattern: "/app.js", Handler: s.assetHandler("app.js")},
+		{Method: http.MethodGet, Pattern: "/app.css", Handler: s.assetHandler("app.css")},
+		{Method: http.MethodGet, Pattern: "/assets/{name}", Handler: http.HandlerFunc(s.handleAsset)},
 		{Method: http.MethodGet, Pattern: "/v1/health", Handler: s.guard(s.handleHealth)},
 		{Method: http.MethodGet, Pattern: "/v1/roots", Handler: s.guard(s.handleRoots)},
 		{Method: http.MethodGet, Pattern: "/v1/bundles", Handler: s.guard(s.handleBundles)},
@@ -131,9 +131,7 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	w.Header().Set("Content-Type", contentTypeHTML)
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, indexHTML)
+	s.serveIndex(w)
 }
 
 // handleHealth publishes the process posture.
@@ -188,20 +186,3 @@ func (s *Server) handleShow(w http.ResponseWriter, r *http.Request) {
 	}
 	s.writeView(w, verbShow, view)
 }
-
-// indexHTML is the token-free landing page: no data, no inline script or
-// style, no external asset.
-const indexHTML = `<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><title>verdict serve</title></head>
-<body>
-<main id="main">
-<h1>verdict serve</h1>
-<p>This is the read-only loopback surface. Open the start URL the process
-printed in your terminal; it exchanges the start token for this browser's
-session cookie.</p>
-<p><a href="/v1/health">/v1/health</a></p>
-</main>
-</body>
-</html>
-`
