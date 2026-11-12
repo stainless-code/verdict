@@ -671,7 +671,7 @@ func liveErrDetail(st *state) string {
 }
 
 func tierHits(entries []any, tier, category string) int {
-	threshold := map[string]int{tierCritical: 0, tierImportant: 1, tierInformational: 2}[tier]
+	threshold := core.TierRank(tier)
 	n := 0
 	for _, e := range entries {
 		if tierHit(e, threshold, category) {
@@ -693,60 +693,22 @@ func tierHit(e any, threshold int, category string) bool {
 	if category != "" && core.CategoryOf(e) != category {
 		return false
 	}
-	if sevRankOf(e) > threshold {
+	if core.TierRank(readcommon.FieldOf(e, "severity")) > threshold {
 		return false
 	}
 	return category == "" || gateEligible(e)
 }
 
-// The recorded evidence rungs, spelled once for the gate and the Basis
-// display: every published rung counts, said included — the gate sets no
-// minimum rung. Missing, non-string, or unknown rigor never gates.
-const (
-	rungSaid       = "said"
-	rungPointed    = "pointed"
-	rungWalked     = "walked"
-	rungRan        = "ran"
-	rungReproduced = "reproduced"
-)
-
-// gateRungsList is the eligibility set the category gate checks.
-var gateRungsList = []string{rungSaid, rungPointed, rungWalked, rungRan, rungReproduced}
-
 // gateEligible reports whether one category-matched entry carries the anchor
 // and rigor the gate still requires: an inline anchor plus a recorded rung.
+// Every published rung counts, said included — the category gate sets no
+// minimum rung — and an absent, null, or unknown rigor never gates.
 func gateEligible(e any) bool {
 	if !inlineAnchored(e, true) {
 		return false
 	}
-	m, ok := e.(*jq.Obj)
-	if !ok || m == nil {
-		return false
-	}
-	rigor, _ := m.Get("rigor")
-	s, ok := rigor.(string)
-	return ok && slices.Contains(gateRungsList, s)
-}
-
-const sevRankUntagged = 3
-
-func sevRankOf(entry any) int {
-	m, ok := entry.(*jq.Obj)
-	if !ok || m == nil {
-		return sevRankUntagged
-	}
-	sev, _ := m.Get("severity")
-	if s, ok := sev.(string); ok {
-		switch s {
-		case tierCritical:
-			return 0
-		case tierImportant:
-			return 1
-		case tierInformational:
-			return 2
-		}
-	}
-	return sevRankUntagged
+	rigor, ok := readcommon.FieldOf(e, "rigor").(string)
+	return ok && slices.Contains(core.RungValues, rigor)
 }
 
 func completenessFailLines(st *state) []string {

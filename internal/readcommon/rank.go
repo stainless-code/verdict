@@ -3,6 +3,7 @@ package readcommon
 import (
 	"slices"
 
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -24,33 +25,6 @@ func statusRank(status string) int {
 	default:
 		return 2
 	}
-}
-
-var sevOrder = []string{"critical", "important", "informational"}
-
-func sevRank(sev any) int {
-	if s, ok := sev.(string); ok {
-		if i := slices.Index(sevOrder, s); i >= 0 {
-			return i
-		}
-	}
-	return len(sevOrder)
-}
-
-var rigorOrder = []string{"reproduced", "ran", "walked", "pointed", "said"}
-
-func rigorRank(rigor any) int {
-	r, ok := rigor.(string)
-	if !ok {
-		r = ""
-	}
-	if rigor == nil || rigor == false {
-		r = "said"
-	}
-	if i := slices.Index(rigorOrder, r); i >= 0 {
-		return i
-	}
-	return -1
 }
 
 func boolRank(v any) int {
@@ -198,8 +172,8 @@ func sortKeys(e any) rankKeys {
 	}
 	return rankKeys{
 		status:   statusRank(StatusOf(e)),
-		severity: sevRank(FieldOf(e, "severity")),
-		rigor:    rigorRank(FieldOf(e, "rigor")),
+		severity: core.TierRank(FieldOf(e, "severity")),
+		rigor:    core.RungRank(FieldOf(e, "rigor")),
 		anchored: boolRank(FieldOf(e, "anchored")),
 		inBounds: boolRank(FieldOf(e, "inBounds")),
 		path:     path,

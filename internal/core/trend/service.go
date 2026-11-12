@@ -305,8 +305,10 @@ func bundleProvenance(bundle string) *jq.Obj {
 	return unmarkedProvenance()
 }
 
+// provenanceTriple reads one bundle record under PRE-01's cap, so an
+// oversized record is unmarked instead of allocated and decoded.
 func provenanceTriple(path string) *jq.Obj {
-	raw, err := os.ReadFile(path)
+	raw, err := jq.CappedFile(path, jq.MaxPRBytes)
 	if err != nil {
 		return nil
 	}
@@ -346,24 +348,9 @@ func tierCounts(findings []any) map[string]int {
 		tierCritical: 0, tierImportant: 0, tierInformational: 0, tierUntagged: 0,
 	}
 	for _, e := range findings {
-		counts[tierOf(e)]++
+		counts[core.TierOf(e)]++
 	}
 	return counts
-}
-
-func tierOf(entry any) string {
-	m, ok := entry.(*jq.Obj)
-	if !ok || m == nil {
-		return tierUntagged
-	}
-	sev, _ := m.Get("severity")
-	if s, ok := sev.(string); ok {
-		switch s {
-		case tierCritical, tierImportant, tierInformational:
-			return s
-		}
-	}
-	return tierUntagged
 }
 
 // categoryCounts buckets one bundle's findings by published category,
