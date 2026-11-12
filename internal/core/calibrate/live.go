@@ -40,6 +40,7 @@ func (st *state) runLive(ctx context.Context, dir string) *core.RefusalError {
 		live:     live,
 		outcomes: outcomes,
 		dir:      dir,
+		asOf:     st.req.TimeUTC(),
 	}
 	return nil
 }
@@ -50,6 +51,7 @@ type liveResult struct { //nolint:govet // field grouping documents the loaded d
 	live     map[string]any
 	outcomes []outcome
 	dir      string
+	asOf     string
 }
 
 func (st *state) liveBundle(dir string) ([]any, string, string, *core.RefusalError) {
@@ -419,6 +421,7 @@ func (st *state) emitLiveHuman(reviewID, head0 string, live map[string]any, outc
 	}
 	st.human(fmt.Sprintf("precision: fixed=%d resolved-unfixed=%d open=%d unknown=%d (judged %d)%s",
 		p.fixed, p.resolvedUnfixed, p.open, p.unknown, p.judged, precisionCategorySuffix(&p)))
+	st.human(resolutionHuman(outcomes))
 	st.human(fmt.Sprintf("provenance: tool v%s prompts %s model %s",
 		provOrUnmarked(dir, "tool_version"), provHashPrefix(dir), provOrUnmarked(dir, "model")))
 }
@@ -568,7 +571,7 @@ func (r *liveResult) Wire() *jq.Obj {
 		cell := p.byCategory[name]
 		var rate any
 		if judged := cell.judged(); judged > 0 {
-			rate = float64(cell.fixed) / float64(judged)
+			rate = resolutionRate(cell.fixed, judged)
 		}
 		byCategory.Set(name, jq.NewObj(
 			outcomeFixed, cell.fixed,
@@ -583,7 +586,7 @@ func (r *liveResult) Wire() *jq.Obj {
 	if merged := jq.StrOf(r.live["mergedAt"]); merged != "" {
 		mergedAt = merged
 	}
-	return jq.NewObj(
+	doc := jq.NewObj(
 		"review_id", reviewIDValue(r.reviewID),
 		"head", jq.NewObj("reviewed", r.head0, "live", liveHead(r.live)),
 		"pr", jq.NewObj("state", jq.StrOf(r.live["state"]), "merged_at", mergedAt),
@@ -596,6 +599,9 @@ func (r *liveResult) Wire() *jq.Obj {
 			"judged", p.judged,
 			"by_tier", byTier,
 			"by_category", byCategory,
+			"resolution_rate", resolutionRate(p.fixed, p.judged),
+			"sample_size", len(r.outcomes),
+			"as_of", r.asOf,
 		),
 		"provenance", jq.NewObj(
 			"tool_version", provValue(r.dir, "tool_version"),
@@ -603,12 +609,18 @@ func (r *liveResult) Wire() *jq.Obj {
 			"model", provValue(r.dir, "model"),
 		),
 	)
+	precisionDoc, _ := doc.Get("precision")
+	if pd, ok := precisionDoc.(*jq.Obj); ok {
+		extendPrecision(pd, r.outcomes)
+	}
+	return doc
 }
 
 func outcomeDoc(o *outcome) *jq.Obj {
 	doc := jq.NewObj(
 		"sig", outcomeSig(o),
 		"status", o.status,
+		"judge", judgeOf(o),
 		"severity", o.sev,
 		"category", outcomeCategory(o),
 		"locator", o.locator,

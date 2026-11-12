@@ -20,7 +20,8 @@ type Request = readcommon.Request
 // Run executes `trend <owner/repo> [--overlap, --json]`, returning the
 // exit code.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
-	doOverlap, code, done := parseFlags(r, args)
+	resolution, filtered := resolutionFlag(args)
+	doOverlap, code, done := parseFlags(r, filtered)
 	if done {
 		return code
 	}
@@ -30,7 +31,9 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if req.Repo == "" {
 		return r.ReportUsage(&cli.UsageError{Message: "usage: verdict trend <owner/repo> [--overlap] [--json]"})
 	}
-	resp, ref := trendcore.Run(ctx, trendRequest(r, req, doOverlap))
+	request := trendRequest(r, req, doOverlap)
+	request.Resolution = resolution
+	resp, ref := trendcore.Run(ctx, request)
 	if ref != nil {
 		return r.Refuse(ref)
 	}
@@ -76,4 +79,17 @@ func parseFlags(r *cli.Runner, args []string) (bool, int, bool) {
 		}
 	}
 	return overlap, 0, false
+}
+
+func resolutionFlag(args []string) (bool, []string) {
+	resolution := false
+	filtered := make([]string, 0, len(args))
+	for _, a := range args {
+		if a == "--resolution" {
+			resolution = true
+		} else {
+			filtered = append(filtered, a)
+		}
+	}
+	return resolution, filtered
 }

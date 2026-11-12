@@ -538,8 +538,9 @@ type ThreadsResponse struct {
     A resolve run fills ResolvedAt/Resolved/Skipped instead of the feed tally.
 
 type TrendRequest struct {
-	Repo    string
-	Overlap bool
+	Repo       string
+	Resolution bool
+	Overlap    bool
 }
     TrendRequest rolls up review outcomes across fetched bundles. PR is unused;
     trend scopes by repo.

@@ -101,6 +101,7 @@ var facadeAllowedDeps = map[string]bool{
 	"internal/provenance":     true,
 	"internal/readcommon":     true,
 	"internal/retry":          true,
+	"internal/schemacheck":    true,
 	"internal/sig":            true,
 	"pkg/verdict":             true,
 }
