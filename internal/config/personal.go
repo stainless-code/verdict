@@ -331,3 +331,8 @@ func credentialScanPersonal(root map[string]any) *core.RefusalError {
 	}
 	return scanCredentialObject(root, "$", creds, false)
 }
+
+// RegistryPath returns the derived discovery registry path.
+func RegistryPath(home, xdg string) string {
+	return filepath.Join(filepath.Dir(SettingsPath(home, xdg)), "projects.json")
+}

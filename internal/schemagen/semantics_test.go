@@ -195,10 +195,11 @@ var publishedSemantics = map[string]string{
 	// key, enum, or type changed.
 	// serve: additive $defs/serveData (and its source/error/root/counts/row/
 	// artifact/cache/skipped/discovery defs plus threadsFile/thread/comment).
-	// Additions only; the envelope's data slot stays free-form per verb.
+	// Additive skipped.gitignore_patterns counts unsupported ignore patterns;
+	// the envelope's data slot stays free-form per verb.
 	// pack lock/add: additive $defs/packAddData and the drift description on
 	// packEntry; no existing property, required key, enum, or type changed.
-	"envelope.schema.json": "5b0b1c927a1383cd739247d2366f92cb0630ad13c537379a95447ca79bd09769",
+	"envelope.schema.json": "1ad42f01e23aa377e91011a56b6d95b4745f45ee25593d8de31939b2894bff64",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

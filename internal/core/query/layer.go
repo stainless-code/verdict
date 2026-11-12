@@ -86,10 +86,11 @@ type Root struct {
 // Snapshot is the layer's fixed input: the roots this process serves, the
 // build version a health row reports, and the runtime seam every composed
 // service receives.
-type Snapshot struct { //nolint:govet // construction snapshot; field order follows the spec type
-	Version string
-	Roots   []Root
-	Runtime *core.Runtime
+type Snapshot struct {
+	Version   string
+	Roots     []Root
+	Runtime   *core.Runtime
+	Discovery Discovery
 }
 
 // Options are the layer's resolved serve flags.
@@ -102,6 +103,7 @@ type Options struct {
 // never a source of truth: the stamp comparison rebuilds a stale entry.
 type Layer struct { //nolint:govet // fields group by role (options, read seams, derived state), not alignment
 	version    string
+	discovery  Discovery
 	roots      []Root
 	runtime    *core.Runtime
 	check      string
@@ -115,9 +117,10 @@ type Layer struct { //nolint:govet // fields group by role (options, read seams,
 }
 
 // New builds the read model over a snapshot of roots.
-func New(s Snapshot, o Options) *Layer {
+func New(s Snapshot, o Options) *Layer { //nolint:gocritic // public API keeps the fixed construction snapshot as a value.
 	layer := &Layer{
 		version:    s.Version,
+		discovery:  s.Discovery,
 		runtime:    s.Runtime,
 		check:      o.Check,
 		maxBundles: o.MaxBundles,

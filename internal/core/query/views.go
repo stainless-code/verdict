@@ -59,6 +59,7 @@ func (l *Layer) Health(_ context.Context) *View {
 		"interval", "0s",
 		"cache", jq.NewObj("entries", l.cacheEntries()),
 		"read_only", true,
+		"discovery", l.discoveryWire(),
 		keyPartial, false,
 		keySources, []any{},
 		keyErrors, []any{},
@@ -66,8 +67,7 @@ func (l *Layer) Health(_ context.Context) *View {
 	return view
 }
 
-// Roots lists the served roots with their bundle counts. Discovery is S2:
-// every root here is the one the process was started with.
+// Roots lists the discovered roots with their bundle counts and scan state.
 func (l *Layer) Roots(_ context.Context) *View {
 	view := l.newView()
 	roots := make([]any, 0, len(l.roots))
@@ -85,15 +85,24 @@ func (l *Layer) Roots(_ context.Context) *View {
 	}
 	view.Data = jq.NewObj(
 		"roots", roots,
-		"truncated", truncated,
-		"skipped", jq.NewObj("symlinks", 0),
-		"discovery", jq.NewObj("cached", false, "scanned_at", ""),
-		keyPartial, truncated || len(errs) > 0,
+		"truncated", truncated || l.discovery.Truncated,
+		"skipped", jq.NewObj("symlinks", l.discovery.Symlinks, "gitignore_patterns", l.discovery.SkippedPatterns),
+		"discovery", l.discoveryWire(),
+		keyPartial, truncated || l.discovery.Truncated || len(errs) > 0,
 		keySources, []any{},
 		keyErrors, errorsWire(errs),
 	)
 	view.Errors = errs
+	view.Warnings = append(view.Warnings, l.discovery.Warnings...)
 	return view
+}
+
+func (l *Layer) discoveryWire() *jq.Obj {
+	stamp := ""
+	if !l.discovery.ScannedAt.IsZero() {
+		stamp = core.NowUTC(l.discovery.ScannedAt)
+	}
+	return jq.NewObj("cached", l.discovery.Cached, "scanned_at", stamp)
 }
 
 // totals is the portfolio rollup /v1/bundles publishes.
@@ -154,6 +163,7 @@ func (l *Layer) Bundles(ctx context.Context, pattern string) (*View, error) {
 		data.Set(keyCounts, sum.wire())
 	}
 	data.Set(keyPartial, partial)
+	data.Set("discovery", l.discoveryWire())
 	data.Set(keySources, sourcesWire(view.Sources))
 	data.Set(keyErrors, errorsWire(errs))
 	view.Data = data
