@@ -27,10 +27,14 @@ func fetchTail(
 	if ref := finalizeRemoteRun(ctx, ctx2, req, f); ref != nil {
 		return nil, "", ref
 	}
+	if ierr := writeImpact(ctx, ctx2, impactInput{index: f.Index, head: readcommon.PrField(ctx2.dir, keyHeadSHA)}); ierr != nil {
+		return nil, "", ierr
+	}
 	writeTailReceipt(ctx2, budget)
 	s, dir := ctx2.runner, ctx2.dir
 	next := "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + " +
-		dir + "/PR.json + " + diffFeed(dir, chunkJSON != nil, fullDiffFile) + " to any agent; ask it to write " + dir + "/review.json" +
+		dir + "/PR.json + " + diffFeed(dir, chunkJSON != nil, fullDiffFile) + impactFeed(dir, f.Index) +
+		" to any agent; ask it to write " + dir + "/review.json" +
 		threadsHint(dir)
 	if req.JSONMode {
 		return writeFetchTailJSON(ctx2, f, budget, fcap, chunkJSON, incBase, next)
@@ -39,7 +43,7 @@ func fetchTail(
 	if err != nil {
 		return nil, "", err
 	}
-	writeFetchDone(s, dir, stats.filesStr, chunkJSON != nil)
+	writeFetchDone(s, dir, stats.filesStr, chunkJSON != nil, f.Index)
 	data := fetchData(ctx2, &stats, budget, fcap, chunkJSON, incBase, nil)
 	data.Capabilities = capabilityWire(f.Provider)
 	if f.ShowPrompts {
@@ -64,7 +68,7 @@ func writeFetchTailJSON(
 	if err != nil {
 		return nil, "", err
 	}
-	writeFetchDone(ctx2.runner, ctx2.dir, stats.filesStr, chunkJSON != nil)
+	writeFetchDone(ctx2.runner, ctx2.dir, stats.filesStr, chunkJSON != nil, f.Index)
 	var dumpPtr *string
 	if hasDump {
 		dumpPtr = &dump
@@ -87,12 +91,12 @@ func stageDump(ctx2 *fetchRunCtx, show bool) (string, bool, error) {
 	return d, true, nil
 }
 
-func writeFetchDone(r *session, dir, filesStr string, chunked bool) {
+func writeFetchDone(r *session, dir, filesStr string, chunked bool, index string) {
 	shown := r.display(dir)
 	fmt.Fprintf(r.Human, "done: %s/PR.json %s/full.diff %s/toc.txt %s/roles.txt (%s files)\n", shown, shown, shown, shown, filesStr)
 	fmt.Fprintf(r.Human, "next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + "+
-		"%s/PR.json + %s (+ %s/roles.txt) to any agent; ask it to write %s/review.json%s\n",
-		dir, diffFeed(dir, chunked, dir+"/full.diff"), dir, dir, threadsHint(dir))
+		"%s/PR.json + %s%s (+ %s/roles.txt) to any agent; ask it to write %s/review.json%s\n",
+		dir, diffFeed(dir, chunked, dir+"/full.diff"), impactFeed(dir, index), dir, dir, threadsHint(dir))
 }
 
 // threadsHint names the normalized conversation feed when the PR carries
@@ -113,6 +117,15 @@ func diffFeed(dir string, chunked bool, whole string) string {
 		return whole
 	}
 	return dir + "/chunks/manifest.json and the chunks it lists"
+}
+
+// impactFeed names toc.txt in the next step when an index was handed off,
+// because its impact section lives there and the diff feed does not carry it.
+func impactFeed(dir, index string) string {
+	if index == "" {
+		return ""
+	}
+	return " + " + dir + "/toc.txt"
 }
 
 // fetchStats carries the tail's bundle measurements.
@@ -249,6 +262,7 @@ func fetchData(
 		artifacts.Set("kb-recall.json", ctx2.dir+suffixKBRecall)
 	}
 	addArtifactIfPresent(artifacts, ctx2.dir, "lenses.txt", suffixLensesTxt)
+	impactArtifactRow(artifacts, ctx2.dir)
 	data := &core.FetchData{
 		Dir:        ctx2.dir,
 		HeadSHA:    readcommon.PrField(ctx2.dir, keyHeadSHA),
@@ -364,6 +378,7 @@ func localArtifacts(dir string) *jq.Obj {
 	addArtifactIfPresent(artifacts, dir, "kb.txt", suffixKBTxt)
 	addArtifactIfPresent(artifacts, dir, "kb-recall.json", suffixKBRecall)
 	addArtifactIfPresent(artifacts, dir, "lenses.txt", suffixLensesTxt)
+	impactArtifactRow(artifacts, dir)
 	return artifacts
 }
 
@@ -386,9 +401,12 @@ func fetchTailLocal(
 	if ref := finalizeLocalRun(ctx, ctx2, req, f, mode.baseSHA, listed); ref != nil {
 		return nil, "", ref
 	}
+	if ierr := writeImpact(ctx, ctx2, impactInput{index: f.Index, head: mode.headSHA}); ierr != nil {
+		return nil, "", ierr
+	}
 	writeTailReceipt(ctx2, budget)
 	next := "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + " +
-		ctx2.dir + "/source.json + " + diffFeed(ctx2.dir, chunkJSON != nil, fullDiffFile) +
+		ctx2.dir + "/source.json + " + diffFeed(ctx2.dir, chunkJSON != nil, fullDiffFile) + impactFeed(ctx2.dir, f.Index) +
 		" to any agent; ask it to write " + ctx2.dir + "/review.json"
 	dump, hasDump, err := localDumpPtr(ctx2, req, f)
 	if err != nil {

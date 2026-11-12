@@ -17,6 +17,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
+	"github.com/stainless-code/verdict/internal/fence"
 )
 
 // feedbackCap bounds the problems JSON a follow-up prompt carries.
@@ -33,14 +34,6 @@ const priorCap = 16 << 10
 // quote-dense review escapes to twice its bytes. The cut is applied on every
 // platform, so a prompt is identical wherever the loop runs.
 const promptBudget = 24_000
-
-// fenceBreak is the zero-width space the sanitizer slips into a run of "<":
-// it renders invisibly and breaks the fence pattern without dropping a byte.
-const fenceBreak = "\u200b"
-
-// fenceRun is the length of the shortest run of "<" that can spell a fence
-// marker.
-const fenceRun = 3
 
 // problemFieldCap bounds one problem's message and path before rendering, so
 // a single pathological field cannot spend the whole feedback budget.
@@ -236,60 +229,10 @@ func cutRunes(s string, n int) string {
 }
 
 // sanitizeFences neutralizes fence marker text so a forged closer stays
-// payload: in every run of three or more "<" a zero-width space follows each
-// second byte, so three consecutive "<" never survive and the fence pattern
-// cannot reappear at any run length or offset. Shorter runs are ordinary text
-// and stay byte-identical. A prior with no fence text is returned as is: the
-// embedded bytes can be as large as the 32 MiB artifact read cap.
-func sanitizeFences(s string) string {
-	if !strings.Contains(s, "<<<") {
-		return s
-	}
-	var sb strings.Builder
-	for i := 0; i < len(s); {
-		if s[i] != '<' {
-			sb.WriteByte(s[i])
-			i++
-			continue
-		}
-		end := angleRunEnd(s, i)
-		writeAngleRun(&sb, end-i)
-		i = end
-	}
-	return sb.String()
-}
-
-// writeAngleRun writes one run of n "<" bytes: a run long enough to spell a
-// fence marker is broken, a shorter one is ordinary text and stays as it was.
-func writeAngleRun(sb *strings.Builder, n int) {
-	if n < fenceRun {
-		for range n {
-			sb.WriteByte('<')
-		}
-		return
-	}
-	writeBrokenRun(sb, n)
-}
-
-// writeBrokenRun writes n "<" bytes with a zero-width space after every second
-// one, leaving runs of at most two.
-func writeBrokenRun(sb *strings.Builder, n int) {
-	for k := range n {
-		sb.WriteByte('<')
-		if k%2 == 1 {
-			sb.WriteString(fenceBreak)
-		}
-	}
-}
-
-// angleRunEnd returns the end of the run of "<" bytes that starts at i.
-func angleRunEnd(s string, i int) int {
-	end := i
-	for end < len(s) && s[end] == '<' {
-		end++
-	}
-	return end
-}
+// payload. The rule lives in [fence.Safe] because fetch's impact rows cross
+// the same boundary; this wrapper keeps the repair loop's call sites reading
+// as fence work.
+func sanitizeFences(s string) string { return fence.Safe(s) }
 
 // truncateProblems caps one problem's message and path to problemFieldCap
 // bytes before rendering.

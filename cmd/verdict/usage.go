@@ -5,9 +5,11 @@ func usageText() string {
 		"fetch-local|run|record|adopt|fix|check-tree|ready|gate|threads|trend|index|" +
 		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|config [opts]\n" +
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
-		"[--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
+		"[--index <ref|dir>] [--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
 		"    write .verdict/state/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
 		"(PR.json normalized for non-github providers)\n" +
+		"    --index <ref|dir> hands one index the operator built to the bundle: impact.json plus a\n" +
+		"    capped \"## impact\" section on toc.txt (nothing is built or discovered; omit for no section).\n" +
 		"    Provider scope: record/report/triage/show/next run on any provider bundle; post submits to GitHub,\n" +
 		"    GitLab, and Forgejo (GitLab takes an approval but has no request-changes event — a bound\n" +
 		"    request-changes posts as a comment; post.json records the withheld capability in withheld[]); live\n" +
@@ -25,7 +27,8 @@ func usageText() string {
 		"    runs unless --consent-over-budget is given (consent lands in budget.json,\n" +
 		"    surfaced by report --cost). Unset: estimate off, fetch as today.\n" +
 		"  fetch-local <owner/repo> <name> [--staged] [--range A[..|...]B] [--base R]\n" +
-		"        [--stash [n]] [--worktree] [--consent-over-budget] [--show-prompts] [--chunk] [-- paths...] [--json]\n" +
+		"        [--stash [n]] [--worktree] [--index <ref|dir>] [--consent-over-budget] [--show-prompts] [--chunk]\n" +
+		"        [-- paths...] [--json]\n" +
 		"    local review bundle from git (no GitHub, no PR): writes\n" +
 		"    .verdict/state/local-<name>/{source.json,full.diff,toc.txt,roles.txt}.\n" +
 		"    --worktree checks the review target into a temporary isolated worktree and\n" +

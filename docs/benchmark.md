@@ -501,6 +501,53 @@ an unchanged scorecard.
 
 <!-- scorecard:end -->
 
+### The impact hand-off, measured (proxy)
+
+`fetch --index` attaches a blast radius to a bundle, so the question this arm
+asks is whether that section names what a review needed: the blamed path's own
+file, a caller of the changed declaration, or a candidate test. The cheap proxy
+is to score the section against ground truth that already exists — the backtest
+miner's own findings — instead of paying for paired on/off reviews.
+
+The measurement is the backtest's, end to end: `backtest mine` reads each
+fixture, blames a path and line, the index is built at the mined head, the
+candidate's diff answers `index blast-radius`, and every row path the impact
+section renders is compared with the blamed path. A finding is **named** when
+the section names its path, and **beyond the diff** when the section names a
+path the diff itself never touched (a caller or a test file, the reach a bare
+diff does not have). Fixtures are synthetic and small: a rate below is a
+fixture measurement, not a claim about real reviews.
+
+```sh
+go test ./internal/core/backtest/ -run TestImpactProxy -v                          # print the table
+go test ./internal/core/backtest/ -run TestImpactProxy -update-impact-proxy        # republish it
+```
+
+<!-- impact-proxy:begin -->
+
+| language | bugs | named | not named | beyond the diff |
+| -------- | ---- | ----- | --------- | --------------- |
+| go       | 4    | 4     | 0         | 1               |
+| text     | 2    | 0     | 2         | 0               |
+| ts       | 1    | 1     | 0         | 1               |
+| py       | 1    | 1     | 0         | 1               |
+
+<!-- impact-proxy:end -->
+
+Read as follows. **Every blamed path the index can parse is named**: four Go
+findings, one TypeScript and one Python finding, 6 of 6, because a changed
+declaration in an indexed language is a symbol row. The two misses are `.txt`
+paths — a changed file with no declaration, which the section mentions only in
+its `changed: <n>` head, never by name. That is outside the index's languages,
+not a caller question. Reach is the narrower result: the package-call fixture
+names its cross-package caller, and `TestImpactProxyCallerReach` pins both
+shapes — the qualified package call is attributed and the method call on a
+value is not, so a method caller's file is missing from the section the same way
+the corpus scorecard's cross-package recall is short.
+
+Because the proxy answers the question directly — is the blamed path named —
+it is not ambiguous, so no paired on/off reviews were run for this slice.
+
 ### The `go/types` gate
 
 ADR-0003 opens the `go/types` spike only when two arms hold. The corpus arm:
@@ -512,8 +559,20 @@ traceable to a Go caller (STA-390). Measured on this corpus:
 - recall **0.4167** (5 of 12 labeled cross-package sites are reported).
 
 The precision arm holds and **the recall arm trips**, so the corpus arm is met.
-The backtest arm is pending, so the spike is not opened: the 7 misses below are
-a measured gap on a fixture, not yet a finding a review lost.
+
+The backtest arm is measured through the impact hand-off's proxy above: of the
+8 mined findings, the section names 6, and the 2 it does not are `a.txt` and
+`notes.txt` — changed paths with no indexed declaration, mentioned only in the
+`changed: <n>` head. Neither miss traces to a missing Go caller row: a caller
+row can only add a path the diff did not change, and both misses are changed
+paths the index cannot parse at all. The caller gap is real one step out — the
+method-call fixture loses `internal/api/api.go` from the section entirely
+(`TestImpactProxyCallerReach`), the same 0.4167 measured above — but a lost
+caller file is lost reach, not a lost finding. Every fixture blames a line the
+diff already changes, so a missing caller row cannot turn into a missed finding
+here: **the backtest arm is unmeasured**, not met and not cleared. Measuring it
+needs ground truth that blames a caller outside the diff. Until then the spike
+stays closed, because ADR-0003 opens it only when both arms are met.
 
 The 12 labeled sites split three ways, and only the first is reported: a
 qualified package call through an import edge (`store.Open`, `st.Open` with an
