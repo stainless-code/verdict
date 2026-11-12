@@ -292,15 +292,17 @@ func (st *state) checkBundle() *core.RefusalError {
 	default:
 		return &core.RefusalError{Code: "pr-not-open", Message: fmt.Sprintf(msgPRNotOpen, prState)}
 	}
+	return st.gateControls()
+}
+
+// gateControls verifies the captured controls and their repo pack lock.
+func (st *state) gateControls() *core.RefusalError {
 	snap, ref := controls.Gate(st.dir, recordcore.BundleBase(st.dir, st.store()))
 	st.controls = snap
 	if ref != nil {
 		return ref
 	}
-	if ref := packcore.CheckLock(snap); ref != nil {
-		return ref
-	}
-	return nil
+	return packcore.CheckLock(snap)
 }
 
 func (st *state) loadReview() *core.RefusalError {

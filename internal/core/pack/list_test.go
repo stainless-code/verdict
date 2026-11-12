@@ -96,6 +96,8 @@ func TestListThreeLayers(t *testing.T) {
 
 // TestListReportsLockDrift proves the repo row's drift is null for a matching
 // lock, pack-lock-drift for a changed hash, and pack-lock-missing with no lock.
+//
+//nolint:revive // the match, drift, and missing legs read as one block
 func TestListReportsLockDrift(t *testing.T) {
 	t.Parallel()
 	root, settings := listFixtures(t, `"replace":["acme/org"],`)
@@ -120,7 +122,7 @@ func TestListReportsLockDrift(t *testing.T) {
 	}
 
 	wrong := strings.Repeat("0", 64)
-	sig := LockSig(LockEntry{Name: "acme/repo", Source: "dir:repo-packs", Version: "0.1.0", Hash: wrong})
+	sig := LockSig(&LockEntry{Name: "acme/repo", Source: "dir:repo-packs", Version: "0.1.0", Hash: wrong})
 	writeFixture(t, root, map[string]string{LockFile: `{"schema_version":"1","packs":[{` +
 		`"name":"acme/repo","source":"dir:repo-packs","version":"0.1.0",` +
 		`"hash":"` + wrong + `","sig":"` + sig + `"}]}`})

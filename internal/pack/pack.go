@@ -23,6 +23,11 @@ const verbPack = "pack"
 // Request wires a pack run.
 type Request = readcommon.Request
 
+const (
+	subList = "list"
+	subAdd  = "add"
+)
+
 const packUsage = "usage: verdict pack <list|add> [--json]\n" +
 	"       verdict pack add <dir|git-url>[@ref] [--json]"
 
@@ -42,7 +47,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 		read.Runtime = &core.Runtime{}
 	}
 	read.Progress = cli.Progress{R: r}
-	if inv.sub == "list" {
+	if inv.sub == subList {
 		return runList(ctx, r, read)
 	}
 	return runAdd(ctx, r, read, inv.source)
@@ -102,16 +107,16 @@ func checkArgs(r *cli.Runner, args []string) (invocation, int, bool) {
 		return invocation{}, r.ReportUsage(&cli.UsageError{Message: packUsage}), true
 	}
 	switch args[0] {
-	case "list":
+	case subList:
 		if len(args) != 1 {
 			return invocation{}, r.ReportUsage(&cli.UsageError{Message: packUsage}), true
 		}
-		return invocation{sub: "list"}, 0, false
-	case "add":
+		return invocation{sub: subList}, 0, false
+	case subAdd:
 		if len(args) != 2 || args[1] == "" {
 			return invocation{}, r.ReportUsage(&cli.UsageError{Message: packUsage}), true
 		}
-		return invocation{sub: "add", source: args[1]}, 0, false
+		return invocation{sub: subAdd, source: args[1]}, 0, false
 	default:
 		return invocation{}, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
 			"unknown pack subcommand '%s' (want list or add)", args[0])}), true

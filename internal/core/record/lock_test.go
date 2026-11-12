@@ -29,7 +29,7 @@ func lockBodyFor(hash string) string {
 		Name: "acme/lenses", Source: "dir:src-packs/lenses", Version: "1.0.0", Hash: hash,
 	}
 	return `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"dir:src-packs/lenses",` +
-		`"version":"1.0.0","hash":"` + hash + `","sig":"` + pack.LockSig(entry) + `"}]}`
+		`"version":"1.0.0","hash":"` + hash + `","sig":"` + pack.LockSig(&entry) + `"}]}`
 }
 
 // TestRecordRefusesMissingLock proves record runs the shared lock check: a

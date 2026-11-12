@@ -54,9 +54,10 @@ func TestLockSigPinsEveryEntryField(t *testing.T) {
 		Name: "acme/lenses", Source: "dir:src-packs/lenses", Version: "1.0.0",
 		Hash: lockHash, Sig: lockSigDir,
 	}
-	if got := LockSig(entry); got != lockSigDir {
+	if got := LockSig(&entry); got != lockSigDir {
 		t.Fatalf("LockSig = %s, want %s", got, lockSigDir)
 	}
+	//nolint:govet // the mutate matrix reads as name then action
 	for _, mutate := range []struct {
 		name string
 		edit func(*LockEntry)
@@ -68,7 +69,7 @@ func TestLockSigPinsEveryEntryField(t *testing.T) {
 	} {
 		edited := entry
 		mutate.edit(&edited)
-		if got := LockSig(edited); got == lockSigDir {
+		if got := LockSig(&edited); got == lockSigDir {
 			t.Errorf("LockSig ignores %s: still %s", mutate.name, got)
 		}
 	}
@@ -76,6 +77,8 @@ func TestLockSigPinsEveryEntryField(t *testing.T) {
 
 // TestLockStrictJSONRefuses proves the lock refuses an unknown key, a
 // differently-cased key, an unsorted entry list, and a malformed source.
+//
+//nolint:revive // the strict-JSON matrix reads as one block
 func TestLockStrictJSONRefuses(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -159,7 +162,7 @@ func TestCheckLockRefusesTreeDrift(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	wrong := strings.Repeat("0", 64)
-	lockFixture(t, root, lockBody(wrong, LockSig(LockEntry{
+	lockFixture(t, root, lockBody(wrong, LockSig(&LockEntry{
 		Name: "acme/lenses", Source: "dir:src-packs/lenses", Version: "1.0.0", Hash: wrong,
 	})))
 	ref := CheckLock(lockSnapshot(t, root))

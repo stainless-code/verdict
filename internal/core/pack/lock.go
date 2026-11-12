@@ -47,14 +47,14 @@ type LockEntry struct {
 // Lock is the published verdict.lock document: strict JSON, entries sorted by
 // name, one row per pack under .verdict/packs/.
 type Lock struct {
-	SchemaVersion string      `const:"1" json:"schema_version"`
+	SchemaVersion string      `const:"1"    json:"schema_version"`
 	Packs         []LockEntry `json:"packs"`
 }
 
 // LockSig digests one entry's identity fields. The encoding is
 // "key=value" lines in name, source, version, hash order, so a hand edit to
 // any field breaks the digest while the tree hash stays recomputable.
-func LockSig(entry LockEntry) string {
+func LockSig(entry *LockEntry) string {
 	h := sha256.New()
 	fmt.Fprintf(h, "name=%s\nsource=%s\nversion=%s\nhash=%s\n",
 		entry.Name, entry.Source, entry.Version, entry.Hash)
@@ -71,14 +71,7 @@ func CheckLock(snap *controls.Snapshot) *core.RefusalError {
 	names := snap.PackNames()
 	raw, ok := snap.ReadFile(LockFile)
 	if !ok {
-		if len(names) == 0 {
-			return nil
-		}
-		missing, ref := manifestNames(snap, names)
-		if ref != nil {
-			return ref
-		}
-		return lockMissing(missing)
+		return checkUnlocked(snap, names)
 	}
 	lock, ref := parseLock(raw)
 	if ref != nil {
@@ -90,24 +83,44 @@ func CheckLock(snap *controls.Snapshot) *core.RefusalError {
 	return checkLockedPacks(snap, lock, names)
 }
 
-// checkLockEntries verifies every lock row's signature, directory, and tree
-// hash against the snapshot.
+// checkUnlocked refuses a repo layer with no lock file.
+func checkUnlocked(snap *controls.Snapshot, names []string) *core.RefusalError {
+	if len(names) == 0 {
+		return nil
+	}
+	missing, ref := manifestNames(snap, names)
+	if ref != nil {
+		return ref
+	}
+	return lockMissing(missing)
+}
+
+// checkLockEntries verifies every lock row's directory, tree hash, and
+// signature against the snapshot.
 func checkLockEntries(snap *controls.Snapshot, lock *Lock) *core.RefusalError {
 	for i := range lock.Packs {
-		entry := lock.Packs[i]
-		origin, ref := lockedPack(snap, entry.Name)
-		if ref != nil {
+		if ref := checkLockEntry(snap, &lock.Packs[i]); ref != nil {
 			return ref
 		}
-		if origin == nil {
-			return lockDrift(entry.Name, "tree", entry.Hash, "no vendored pack")
-		}
-		if origin.Hash != entry.Hash {
-			return lockDrift(entry.Name, "tree", entry.Hash, origin.Hash)
-		}
-		if want := LockSig(entry); entry.Sig != want {
-			return lockDrift(entry.Name, "sig", entry.Sig, want)
-		}
+	}
+	return nil
+}
+
+// checkLockEntry verifies one row: its pack still exists, its tree hash
+// matches, and its sig covers the recorded fields.
+func checkLockEntry(snap *controls.Snapshot, entry *LockEntry) *core.RefusalError {
+	origin, ref := lockedPack(snap, entry.Name)
+	if ref != nil {
+		return ref
+	}
+	if origin == nil {
+		return lockDrift(entry.Name, "tree", entry.Hash, "no vendored pack")
+	}
+	if origin.Hash != entry.Hash {
+		return lockDrift(entry.Name, "tree", entry.Hash, origin.Hash)
+	}
+	if want := LockSig(entry); entry.Sig != want {
+		return lockDrift(entry.Name, "sig", entry.Sig, want)
 	}
 	return nil
 }
@@ -227,7 +240,7 @@ func validateLock(lock *Lock) *core.RefusalError {
 			LockFile, lock.SchemaVersion, LockSchemaVersion))
 	}
 	for i := range lock.Packs {
-		entry := lock.Packs[i]
+		entry := &lock.Packs[i]
 		if ref := validateLockEntry(entry); ref != nil {
 			return ref
 		}
@@ -239,7 +252,7 @@ func validateLock(lock *Lock) *core.RefusalError {
 }
 
 // validateLockEntry checks one row's name, source, version, hash, and sig.
-func validateLockEntry(entry LockEntry) *core.RefusalError {
+func validateLockEntry(entry *LockEntry) *core.RefusalError {
 	if !nameRE.MatchString(entry.Name) {
 		return badLock(fmt.Sprintf("%s pack name %q is not <namespace>/<slug>", LockFile, entry.Name))
 	}
@@ -261,10 +274,10 @@ func validateLockEntry(entry LockEntry) *core.RefusalError {
 
 // validLockSource accepts the two published provenance spellings.
 func validLockSource(source string) bool {
-	if dir, ok := strings.CutPrefix(source, "dir:"); ok {
+	if dir, ok := strings.CutPrefix(source, sourceDirPrefix); ok {
 		return dir != ""
 	}
-	rest, ok := strings.CutPrefix(source, "git:")
+	rest, ok := strings.CutPrefix(source, sourceGitPrefix)
 	if !ok {
 		return false
 	}
@@ -283,7 +296,7 @@ func hex64(s string) bool {
 
 // hex40 reports whether s is a lowercase 40-hex commit.
 func hex40(s string) bool {
-	if len(s) != 40 {
+	if len(s) != shaHexLen {
 		return false
 	}
 	_, err := hex.DecodeString(s)
@@ -327,7 +340,7 @@ func writeLock(root string, lock *Lock) *core.RefusalError {
 		return badLock(fmt.Sprintf("encode %s: %v", LockFile, err))
 	}
 	path := filepath.Join(root, filepath.FromSlash(LockFile))
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), packDirPerm); err != nil {
 		return badLock(fmt.Sprintf("create %s: %v", filepath.Dir(LockFile), err))
 	}
 	if err := atomic.WriteFile(path, append(raw, '\n')); err != nil {
@@ -337,20 +350,20 @@ func writeLock(root string, lock *Lock) *core.RefusalError {
 }
 
 // upsertLock returns the lock with entry added or replacing its same-name row.
-func upsertLock(lock *Lock, entry LockEntry) *Lock {
+func upsertLock(lock *Lock, entry *LockEntry) *Lock {
 	if lock == nil {
 		lock = &Lock{SchemaVersion: LockSchemaVersion, Packs: []LockEntry{}}
 	}
 	replaced := false
 	for i := range lock.Packs {
 		if lock.Packs[i].Name == entry.Name {
-			lock.Packs[i] = entry
+			lock.Packs[i] = *entry
 			replaced = true
 			break
 		}
 	}
 	if !replaced {
-		lock.Packs = append(lock.Packs, entry)
+		lock.Packs = append(lock.Packs, *entry)
 	}
 	slices.SortFunc(lock.Packs, func(a, b LockEntry) int { return strings.Compare(a.Name, b.Name) })
 	return lock

@@ -365,7 +365,7 @@ func entryDrift(lock *Lock, p *Pack) *string {
 		code := CodeLockMissing
 		return &code
 	}
-	if entry.Sig != LockSig(*entry) || entry.Hash != p.Hash {
+	if entry.Sig != LockSig(entry) || entry.Hash != p.Hash {
 		code := CodeLockDrift
 		return &code
 	}

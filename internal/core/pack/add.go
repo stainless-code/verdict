@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -14,6 +15,20 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+)
+
+const (
+	sourceDirPrefix = "dir:"
+	sourceGitPrefix = "git:"
+	refSep          = "@"
+	schemeSep       = "://"
+	httpsPrefix     = "https://"
+	sshPrefix       = "ssh://"
+	packDirPerm     = 0o755
+	shaHexLen       = 40
+	gitEnvFixed     = 7
+	revParseArgs    = 3
+	revParseIndex   = 1
 )
 
 // gitRef gates the optional @ref before it reaches a git argv.
@@ -28,8 +43,8 @@ type AddRequest struct {
 // AddData is the pack add --json data profile.
 type AddData struct {
 	Pack         Entry   `json:"pack"`
-	Replaced     bool    `json:"replaced"`
 	PreviousHash *string `json:"previous_hash"`
+	Replaced     bool    `json:"replaced"`
 }
 
 // Wire renders the add data in published wire order.
@@ -45,11 +60,13 @@ func (d *AddData) Wire() *jq.Obj {
 }
 
 // AddResponse carries the envelope inputs and the human lines.
+//
+//nolint:govet // the envelope fields read in render order
 type AddResponse struct {
+	Data  *AddData
+	Human []string
 	At    string
 	Next  string
-	Human []string
-	Data  *AddData
 }
 
 // RunAdd vendors one validated pack under .verdict/packs/<slug>/ and pins it
@@ -65,25 +82,9 @@ func RunAdd(ctx context.Context, req *AddRequest) (*AddResponse, *core.RefusalEr
 	}
 	defer src.cleanup()
 	root := req.RepoRootPath()
-	if sameTree(filepath.Join(root, filepath.FromSlash(RepoPacksDir)), src.dir) {
-		return nil, badPack(fmt.Sprintf(
-			"pack source %q is inside %s — it is already vendored", src.label, RepoPacksDir))
-	}
-	p, ref := LoadDir(src.dir)
+	lock, p, old, ref := loadAdd(root, src)
 	if ref != nil {
 		return nil, ref
-	}
-	if p == nil {
-		return nil, badPack(fmt.Sprintf("pack source %q carries no %s", src.label, ManifestFile))
-	}
-	lock, ref := loadLock(root)
-	if ref != nil {
-		return nil, ref
-	}
-	var old *LockEntry
-	if existing := lockEntry(lock, p.Name); existing != nil {
-		previous := *existing
-		old = &previous
 	}
 	slug := packSlug(p.Name)
 	if ref := vendorPack(root, src.dir, slug, p); ref != nil {
@@ -92,19 +93,45 @@ func RunAdd(ctx context.Context, req *AddRequest) (*AddResponse, *core.RefusalEr
 	entry := LockEntry{
 		Name: p.Name, Source: src.label, Version: p.Version, Hash: p.Hash,
 	}
-	entry.Sig = LockSig(entry)
-	if ref := writeLock(root, upsertLock(lock, entry)); ref != nil {
+	entry.Sig = LockSig(&entry)
+	if ref := writeLock(root, upsertLock(lock, &entry)); ref != nil {
 		return nil, ref
 	}
-	return addResponse(p, entry, old, slug), nil
+	return addResponse(p, &entry, old, slug), nil
+}
+
+// loadAdd validates the source and returns the current lock, the loaded pack,
+// and the row a re-add replaces (nil on a first add).
+func loadAdd(root string, src *packSource) (*Lock, *Pack, *LockEntry, *core.RefusalError) {
+	if sameTree(filepath.Join(root, filepath.FromSlash(RepoPacksDir)), src.dir) {
+		return nil, nil, nil, badPack(fmt.Sprintf(
+			"pack source %q is inside %s — it is already vendored", src.label, RepoPacksDir))
+	}
+	p, ref := LoadDir(src.dir)
+	if ref != nil {
+		return nil, nil, nil, ref
+	}
+	if p == nil {
+		return nil, nil, nil, badPack(fmt.Sprintf("pack source %q carries no %s", src.label, ManifestFile))
+	}
+	lock, ref := loadLock(root)
+	if ref != nil {
+		return nil, nil, nil, ref
+	}
+	var old *LockEntry
+	if existing := lockEntry(lock, p.Name); existing != nil {
+		previous := *existing
+		old = &previous
+	}
+	return lock, p, old, nil
 }
 
 // addResponse renders the added row and its human line.
-func addResponse(p *Pack, entry LockEntry, old *LockEntry, slug string) *AddResponse {
+func addResponse(p *Pack, entry *LockEntry, old *LockEntry, slug string) *AddResponse {
 	data := &AddData{
 		Pack: Entry{
 			Name: p.Name, Version: p.Version, Layer: string(LayerRepo),
-			Source: RepoPacksDir + "/" + slug, Hash: p.Hash,
+			Source: path.Join(RepoPacksDir, slug), Hash: p.Hash,
 			Lenses: lensIDsOf(p), Rules: ruleIDsOf(p),
 		},
 	}
@@ -143,22 +170,22 @@ func ruleIDsOf(p *Pack) []string {
 
 // packSource is one resolved add source and its cleanup.
 type packSource struct {
+	cleanup func()
 	dir     string
 	label   string
-	cleanup func()
 }
 
 // addSource resolves a directory or a hermetic git clone.
 func addSource(ctx context.Context, req *AddRequest) (*packSource, *core.RefusalError) {
 	source := strings.TrimSpace(req.Source)
 	if url, refName, ok := splitGitSource(source); ok {
-		return cloneSource(ctx, req, source, url, refName)
+		return cloneSource(ctx, req, url, refName)
 	}
 	dir, err := filepath.Abs(source)
 	if err != nil {
 		return nil, badPack(fmt.Sprintf("pack source %q cannot be resolved: %v", source, err))
 	}
-	return &packSource{dir: dir, label: "dir:" + filepath.ToSlash(source), cleanup: func() {}}, nil
+	return &packSource{dir: dir, label: sourceDirPrefix + filepath.ToSlash(source), cleanup: func() {}}, nil
 }
 
 // splitGitSource recognizes the published https and ssh forms and the
@@ -180,22 +207,22 @@ func splitGitSource(source string) (string, string, bool) {
 // refSplit cuts the @ref suffix. The first @ is URL userinfo, never the
 // separator; the first @ after the authority (or after the scp user) is.
 func refSplit(source string) (string, string, bool) {
-	start := 0
-	if scheme := strings.Index(source, "://"); scheme >= 0 {
-		rest := source[scheme+3:]
+	var start int
+	if scheme := strings.Index(source, schemeSep); scheme >= 0 {
+		rest := source[scheme+len(schemeSep):]
 		slash := strings.Index(rest, "/")
 		if slash < 0 {
 			return source, "", false
 		}
-		start = scheme + 3 + slash
+		start = scheme + len(schemeSep) + slash
 	} else {
-		at := strings.Index(source, "@")
+		at := strings.Index(source, refSep)
 		if at < 0 {
 			return source, "", false
 		}
 		start = at + 1
 	}
-	if at := strings.Index(source[start:], "@"); at >= 0 {
+	if at := strings.Index(source[start:], refSep); at >= 0 {
 		split := start + at
 		return source[:split], source[split+1:], true
 	}
@@ -204,20 +231,20 @@ func refSplit(source string) (string, string, bool) {
 
 // gitURL reports whether url is an https or ssh git remote.
 func gitURL(url string) bool {
-	if rest, ok := strings.CutPrefix(url, "https://"); ok {
+	if rest, ok := strings.CutPrefix(url, httpsPrefix); ok {
 		return rest != ""
 	}
-	if rest, ok := strings.CutPrefix(url, "ssh://"); ok {
+	if rest, ok := strings.CutPrefix(url, sshPrefix); ok {
 		return rest != ""
 	}
-	at, colon := strings.Index(url, "@"), strings.Index(url, ":")
-	return at > 0 && colon > at+1 && !strings.Contains(url, "://")
+	at, colon := strings.Index(url, refSep), strings.Index(url, ":")
+	return at > 0 && colon > at+1 && !strings.Contains(url, schemeSep)
 }
 
 // cloneSource fetches one git URL hermetically into a temp directory and
 // checks out the resolved HEAD commit before loading the pack.
 func cloneSource(
-	ctx context.Context, req *AddRequest, source, url, refName string,
+	ctx context.Context, req *AddRequest, url, refName string,
 ) (*packSource, *core.RefusalError) {
 	cmdr := req.Commander
 	if cmdr == nil {
@@ -252,7 +279,7 @@ func cloneSource(
 		return nil, ref
 	}
 	return &packSource{
-		dir: clone, label: "git:" + url + "@" + sha, cleanup: cleanup,
+		dir: clone, label: sourceGitPrefix + url + refSep + sha, cleanup: cleanup,
 	}, nil
 }
 
@@ -260,7 +287,7 @@ func cloneSource(
 // Windows clone uses in place of /dev/null.
 func prepareGitEnv(tmp string) *core.RefusalError {
 	for _, dir := range []string{"home", "cache", "config", "data", "state", "hooks"} {
-		if err := os.MkdirAll(filepath.Join(tmp, dir), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(tmp, dir), packDirPerm); err != nil {
 			return badPack(fmt.Sprintf("could not create the pack work dir: %v", err))
 		}
 	}
@@ -309,7 +336,7 @@ func hooksPath(tmp string) string {
 // gitEnv builds the scrubbed clone environment: the caller's entries minus
 // every HOME/XDG/GIT override, then the hermetic values a clone needs.
 func gitEnv(base []string, tmp string) []string {
-	out := make([]string, 0, len(base)+8)
+	out := make([]string, 0, len(base)+gitEnvFixed)
 	for _, pair := range base {
 		key, _, _ := strings.Cut(pair, "=")
 		if scrubGitEnv(key) {
@@ -385,13 +412,28 @@ func vendorPack(root, srcDir, slug string, p *Pack) *core.RefusalError {
 		return ref
 	}
 	defer func() { _ = dest.Close() }()
+	if ref := replaceVendored(dest, src, slug, p); ref != nil {
+		return ref
+	}
+	return verifyVendored(packsDir, slug, p)
+}
+
+// replaceVendored removes any previous tree and writes the loaded pack.
+func replaceVendored(dest, src *os.Root, slug string, p *Pack) *core.RefusalError {
 	if err := dest.RemoveAll(slug); err != nil {
 		return badPack(fmt.Sprintf("replace %s/%s: %v", RepoPacksDir, slug, err))
 	}
 	if ref := writeVendored(dest, src, slug, p); ref != nil {
-		_ = dest.RemoveAll(slug)
+		if err := dest.RemoveAll(slug); err != nil {
+			return badPack(fmt.Sprintf("clean up %s/%s: %v", RepoPacksDir, slug, err))
+		}
 		return ref
 	}
+	return nil
+}
+
+// verifyVendored reloads the copied tree and proves it hashes like the source.
+func verifyVendored(packsDir, slug string, p *Pack) *core.RefusalError {
 	check, ref := LoadAt(packsDir, slug)
 	if ref != nil {
 		return ref
@@ -406,7 +448,7 @@ func vendorPack(root, srcDir, slug string, p *Pack) *core.RefusalError {
 // [os.Root]; a symlink or non-directory refuses.
 func openPacksRoot(root string) (*os.Root, string, *core.RefusalError) {
 	dir := filepath.Join(root, filepath.FromSlash(RepoPacksDir))
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, packDirPerm); err != nil {
 		return nil, "", badPack(fmt.Sprintf("create %s: %v", RepoPacksDir, err))
 	}
 	info, err := os.Lstat(dir)
@@ -429,27 +471,40 @@ func writeVendored(dest, src *os.Root, slug string, p *Pack) *core.RefusalError 
 	if err != nil {
 		return badPack(fmt.Sprintf("read %s from the pack source: %v", ManifestFile, err))
 	}
-	if err := dest.MkdirAll(slug, 0o755); err != nil {
+	if err := dest.MkdirAll(slug, packDirPerm); err != nil {
 		return badPack(fmt.Sprintf("create %s/%s: %v", RepoPacksDir, slug, err))
 	}
 	if ref := writeVendoredFile(dest, slug, ManifestFile, manifest); ref != nil {
 		return ref
 	}
+	if ref := writeVendoredLenses(dest, slug, p.Lenses); ref != nil {
+		return ref
+	}
+	return writeVendoredRules(dest, slug, p.Rules)
+}
+
+// writeVendoredLenses creates lenses/ and writes every loaded lens body.
+func writeVendoredLenses(dest *os.Root, slug string, lenses []Lens) *core.RefusalError {
 	if ref := writeVendoredDir(dest, slug, LensesDir); ref != nil {
 		return ref
 	}
-	for i := range p.Lenses {
-		rel := LensesDir + "/" + p.Lenses[i].ID + mdExt
-		if ref := writeVendoredFile(dest, slug, rel, p.Lenses[i].Body); ref != nil {
+	for i := range lenses {
+		rel := path.Join(LensesDir, lenses[i].ID+mdExt)
+		if ref := writeVendoredFile(dest, slug, rel, lenses[i].Body); ref != nil {
 			return ref
 		}
 	}
+	return nil
+}
+
+// writeVendoredRules creates rules/ and writes every loaded rule body.
+func writeVendoredRules(dest *os.Root, slug string, rules []Rule) *core.RefusalError {
 	if ref := writeVendoredDir(dest, slug, RulesDir); ref != nil {
 		return ref
 	}
-	for i := range p.Rules {
-		rel := RulesDir + "/" + p.Rules[i].ID + mdExt
-		if ref := writeVendoredFile(dest, slug, rel, p.Rules[i].Body); ref != nil {
+	for i := range rules {
+		rel := path.Join(RulesDir, rules[i].ID+mdExt)
+		if ref := writeVendoredFile(dest, slug, rel, rules[i].Body); ref != nil {
 			return ref
 		}
 	}
@@ -458,7 +513,7 @@ func writeVendored(dest, src *os.Root, slug string, p *Pack) *core.RefusalError 
 
 // writeVendoredDir creates one fixed layout directory under slug.
 func writeVendoredDir(dest *os.Root, slug, dir string) *core.RefusalError {
-	if err := dest.MkdirAll(filepath.Join(slug, dir), 0o755); err != nil {
+	if err := dest.MkdirAll(filepath.Join(slug, dir), packDirPerm); err != nil {
 		return badPack(fmt.Sprintf("create %s/%s/%s: %v", RepoPacksDir, slug, dir, err))
 	}
 	return nil
@@ -476,12 +531,12 @@ func writeVendoredFile(dest *os.Root, slug, rel string, body []byte) *core.Refus
 
 // sameTree reports whether two paths name the same directory, following
 // symlinks on both sides when they exist.
-func sameTree(dir, path string) bool {
+func sameTree(dir, target string) bool {
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
 		return false
 	}
-	absPath, err := filepath.Abs(path)
+	absPath, err := filepath.Abs(target)
 	if err != nil {
 		return false
 	}

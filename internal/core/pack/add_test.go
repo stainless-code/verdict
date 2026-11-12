@@ -3,6 +3,7 @@ package pack
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -36,22 +37,18 @@ const (
 `
 )
 
-// sourcePack writes one pack directory under root and returns its relative
-// path.
-func sourcePack(t *testing.T, root, rel, manifest string, files map[string]string) string {
+// sourcePack writes one pack directory under root.
+func sourcePack(t *testing.T, root, rel, manifest string, files map[string]string) {
 	t.Helper()
 	body := map[string]string{"pack.json": manifest}
-	for name, content := range files {
-		body[name] = content
-	}
+	maps.Copy(body, files)
 	writeFixture(t, filepath.Join(root, filepath.FromSlash(rel)), body)
-	return rel
 }
 
 // lensesSource writes the shared acme/lenses source pack.
-func lensesSource(t *testing.T, root, rel, body string) string {
+func lensesSource(t *testing.T, root, rel, body string) {
 	t.Helper()
-	return sourcePack(t, root, rel, lockManifest, map[string]string{"lenses/perf.md": body})
+	sourcePack(t, root, rel, lockManifest, map[string]string{"lenses/perf.md": body})
 }
 
 // TestAddDirVendorsAndLocks proves a directory add validates the pack, copies
@@ -210,6 +207,8 @@ func (c *gitCommander) Run(_ context.Context, cmd *core.Command) (core.Result, e
 // TestAddGitPinsHermeticArgvEnvAndRecordsSha proves the production clone argv
 // carries every hermetic flag, the environment is scrubbed, and the lock
 // records the resolved HEAD commit.
+//
+//nolint:revive // the argv, env, and lock assertions read as one contract block
 func TestAddGitPinsHermeticArgvEnvAndRecordsSha(t *testing.T) {
 	repo := t.TempDir()
 	t.Chdir(repo)
@@ -219,10 +218,10 @@ func TestAddGitPinsHermeticArgvEnvAndRecordsSha(t *testing.T) {
 		"lenses/perf.md": "perf body\n",
 	}}
 	resp, ref := RunAdd(context.Background(), &AddRequest{
-		ReadRequest: core.ReadRequest{Runtime: &core.Runtime{
+		Runtime: &core.Runtime{
 			Env:       map[string]string{"PATH": "/usr/bin", "HOME": "/home/operator", "GIT_DIR": "/bad"},
 			Commander: cmdr,
-		}},
+		},
 		Source: url + "@v1.2.3",
 	})
 	if ref != nil {

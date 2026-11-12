@@ -58,7 +58,7 @@ func TestPostRefusesLockDrift(t *testing.T) {
 	wrong := strings.Repeat("0", 64)
 	writePostLockPack(t, `{"schema_version":"1","packs":[{"name":"acme/lenses",`+
 		`"source":"dir:src-packs/lenses","version":"1.0.0","hash":"`+wrong+`","sig":"`+
-		pack.LockSig(pack.LockEntry{
+		pack.LockSig(&pack.LockEntry{
 			Name: "acme/lenses", Source: "dir:src-packs/lenses", Version: "1.0.0", Hash: wrong,
 		})+`"}]}`)
 	postBundle(t, postReview)

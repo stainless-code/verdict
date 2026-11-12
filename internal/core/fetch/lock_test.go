@@ -49,7 +49,7 @@ func TestFetchRefusesLockDrift(t *testing.T) {
 	t.Parallel()
 	wrong := strings.Repeat("0", 64)
 	lock := `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"dir:src-packs/lenses",` +
-		`"version":"1.0.0","hash":"` + wrong + `","sig":"` + pack.LockSig(pack.LockEntry{
+		`"version":"1.0.0","hash":"` + wrong + `","sig":"` + pack.LockSig(&pack.LockEntry{
 		Name: "acme/lenses", Source: "dir:src-packs/lenses", Version: "1.0.0", Hash: wrong,
 	}) + `"}]}`
 	ctx2 := &fetchRunCtx{runner: &session{controls: lockFetchSnapshot(t, t.TempDir(), lock)}}
