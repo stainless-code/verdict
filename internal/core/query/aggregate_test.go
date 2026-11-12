@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -51,6 +52,48 @@ func precisionFeed(fetchedAt string, resolved bool) string {
 }
 
 const modelFixtureFinding = `[]`
+
+// TestTruncatedDiscoveryMakesCostAndPrecisionPartial pins capped aggregates.
+func TestTruncatedDiscoveryMakesCostAndPrecisionPartial(t *testing.T) {
+	t.Parallel()
+	workspace := t.TempDir()
+	rootA := makeRepo(t, workspace, "a")
+	rootB := makeRepo(t, workspace, "b")
+	cost := `[{"models":[{"name":"alpha","input_tokens":10,"output_tokens":2}],"est_usd":0.25}]`
+	aggregateBundle(t, rootA, "101", "acme/one", "2026-11-12T12:00:00Z", cost, precisionFinding(), precisionFeed("2026-11-12T12:01:00Z", false))
+	aggregateBundle(t, rootB, "101", "acme/two", "2026-10-20T12:00:00Z", cost, precisionFinding(), precisionFeed("2026-10-20T12:01:00Z", false))
+	discovery, err := Discover(workspace, DiscoveryOptions{Depth: 2, MaxRepos: 1, Now: discoveryNow()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !discovery.Truncated || len(discovery.Roots) != 1 {
+		t.Fatalf("discovery = %+v; want one root and truncation", discovery)
+	}
+	layer := New(Snapshot{
+		Version: "1.2.3", Roots: discovery.Roots, Runtime: &core.Runtime{Now: fixedNow}, Discovery: discovery,
+	}, Options{Check: "critical", MaxBundles: 10})
+	assertAggregateDiscoveryPartial(t, layer)
+}
+
+func assertAggregateDiscoveryPartial(t *testing.T, layer *Layer) {
+	t.Helper()
+	cost, err := layer.Cost(context.Background(), "repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	costData := wireMap(t, cost.Data)
+	if costData["partial"] != true || asMap(t, costData["cost"])["totals"] != nil {
+		t.Errorf("truncated cost = %v; want partial with null totals", costData)
+	}
+	precision, err := layer.Precision(context.Background(), "category")
+	if err != nil {
+		t.Fatal(err)
+	}
+	precisionData := wireMap(t, precision.Data)
+	if precisionData["partial"] != true || asMap(t, precisionData["precision"])["totals"] != nil {
+		t.Errorf("truncated precision = %v; want partial with null totals", precisionData)
+	}
+}
 
 // TestModelBucketsAreLiterals pins model buckets to the record rollup.
 func TestModelBucketsAreLiterals(t *testing.T) {

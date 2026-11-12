@@ -23,6 +23,9 @@ func (a *aggregateState) fail(root Root, bundle, code, message string) {
 }
 
 func collectBundles(ctx context.Context, layer *Layer, collector aggregateCollector) {
+	if layer.discovery.Truncated {
+		collector.addCollectionIssue(true, nil)
+	}
 	for _, root := range layer.roots {
 		collectRoot(ctx, layer, collector, root)
 	}
