@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 const (
@@ -74,7 +76,7 @@ func loadRegistry(path string, disabled bool) (registry, string) {
 		return registry{}, ""
 	}
 	var saved registry
-	raw, err := jq.CappedFile(path, registryReadCap)
+	raw, err := readRegistry(path)
 	if err == nil {
 		err = json.Unmarshal(raw, &saved)
 		if err == nil && saved.Version != registrySchemaVer {
@@ -85,6 +87,64 @@ func loadRegistry(path string, disabled bool) (registry, string) {
 		return registry{}, "serve: registry unavailable or corrupt; rebuilding"
 	}
 	return saved, ""
+}
+
+func readRegistry(path string) ([]byte, error) {
+	root, name, err := openRegistryParent(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = root.Close() }()
+	before, err := root.Lstat(name)
+	if err != nil || !safeRegistryFile(before) {
+		return nil, errors.New("unsafe registry file")
+	}
+	f, err := readcommon.OpenNoBlockIn(root, name)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	opened, err := f.Stat()
+	if err != nil || !safeRegistryFile(opened) {
+		return nil, errors.New("unsafe registry file")
+	}
+	after, err := root.Lstat(name)
+	if err != nil || !safeRegistryFile(after) || !os.SameFile(opened, after) {
+		return nil, errors.New("unsafe registry file")
+	}
+	return jq.Capped(f, registryReadCap)
+}
+
+func safeRegistryFile(info os.FileInfo) bool {
+	return info != nil && info.Mode()&os.ModeSymlink == 0 && info.Mode().IsRegular() && !unsafeRegistryPermissions(info.Mode())
+}
+
+func unsafeRegistryPermissions(mode os.FileMode) bool {
+	return runtime.GOOS != "windows" && mode.Perm()&0o022 != 0
+}
+
+func openRegistryParent(path string) (*os.Root, string, error) {
+	dir, name := filepath.Dir(path), filepath.Base(path)
+	if name == "." || name == string(filepath.Separator) {
+		return nil, "", errors.New("invalid registry path")
+	}
+	info, err := os.Lstat(dir)
+	if err != nil {
+		return nil, "", err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() || unsafeRegistryPermissions(info.Mode()) {
+		return nil, "", errors.New("unsafe registry directory")
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, "", err
+	}
+	opened, err := root.Stat(".")
+	if err != nil || !os.SameFile(info, opened) {
+		_ = root.Close()
+		return nil, "", errors.New("unsafe registry directory")
+	}
+	return root, name, nil
 }
 
 func findCached(root string, opts DiscoveryOptions, saved registry) (Discovery, bool, error) {
@@ -108,12 +168,21 @@ func persistRegistry(root string, opts DiscoveryOptions, path string, saved regi
 		err = os.MkdirAll(filepath.Dir(path), registryDirMode)
 	}
 	if err == nil {
-		err = atomic.WriteFileMode(path, raw, registryFileMode)
+		err = writeRegistry(path, raw)
 	}
 	if err != nil {
 		return append(result.Warnings, "serve: registry write failed: "+err.Error())
 	}
 	return result.Warnings
+}
+
+func writeRegistry(path string, raw []byte) error {
+	root, name, err := openRegistryParent(path)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = root.Close() }()
+	return atomic.WriteFileModeIn(root, name, raw, registryFileMode)
 }
 
 func registryEntry(root string, opts DiscoveryOptions, result *Discovery, warnings []string) registryRoot {

@@ -171,6 +171,100 @@ func TestRegistryCorruptIsRebuilt(t *testing.T) {
 	}
 }
 
+// TestUnsafeRegistryFilesAreRebuilt rejects permissive files and symlinks.
+func TestUnsafeRegistryFilesAreRebuilt(t *testing.T) {
+	t.Run("world-writable", testWorldWritableRegistryIsRebuilt)
+	t.Run("symlink", testSymlinkedRegistryIsRebuilt)
+}
+
+func testWorldWritableRegistryIsRebuilt(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not model POSIX permission bits")
+	}
+	root, path, opts := seedEmptyRegistry(t)
+	if err := os.Chmod(path, 0o666); err != nil {
+		t.Fatal(err)
+	}
+	got, err := DiscoverCached(root, opts, path, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertUnsafeRegistryRebuilt(t, got)
+	assertRegistryMode(t, path)
+}
+
+func testSymlinkedRegistryIsRebuilt(t *testing.T) {
+	t.Helper()
+	root, path, opts := seedEmptyRegistry(t)
+	target := filepath.Join(t.TempDir(), "target.json")
+	if err := os.Rename(path, target); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, path); err != nil {
+		t.Skipf("this platform cannot create symlinks here: %v", err)
+	}
+	targetBefore, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := DiscoverCached(root, opts, path, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertUnsafeRegistryRebuilt(t, got)
+	linkInfo, err := os.Lstat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if linkInfo.Mode()&os.ModeSymlink != 0 {
+		t.Fatal("rebuilt registry is still a symlink")
+	}
+	targetAfter, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(targetBefore, targetAfter) {
+		t.Fatal("registry rebuild changed the symlink target")
+	}
+}
+
+func seedEmptyRegistry(t *testing.T) (string, string, DiscoveryOptions) {
+	t.Helper()
+	root := t.TempDir()
+	makeRepo(t, root, ".")
+	path := filepath.Join(t.TempDir(), "projects.json")
+	opts := DiscoveryOptions{Depth: 1, Now: discoveryNow()}
+	if _, err := DiscoverCached(root, opts, path, false, false); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved registry
+	if err := json.Unmarshal(data, &saved); err != nil {
+		t.Fatal(err)
+	}
+	saved.Roots[0].Repos = []string{}
+	data, err = json.Marshal(saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return root, path, opts
+}
+
+func assertUnsafeRegistryRebuilt(t *testing.T, got Discovery) {
+	t.Helper()
+	if got.Cached || len(got.Roots) != 1 || len(got.Warnings) == 0 ||
+		got.Warnings[len(got.Warnings)-1] != "serve: registry unavailable or corrupt; rebuilding" {
+		t.Fatalf("unsafe registry discovery = %+v; want rebuilt root and warning", got)
+	}
+}
+
 // TestWalkCapsTruncateVisibly requires both caps to report truncation.
 func TestWalkCapsTruncateVisibly(t *testing.T) {
 	root := t.TempDir()
