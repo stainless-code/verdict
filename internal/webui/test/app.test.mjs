@@ -5,11 +5,15 @@ import vm from "node:vm";
 import test from "node:test";
 
 const appSource = readFileSync(
-  new URL("../static/app.js", import.meta.url),
+  process.env.VERDICT_EXPORT
+    ? `${process.env.VERDICT_EXPORT}/app.js`
+    : new URL("../static/app.js", import.meta.url),
   "utf8",
 );
 const pageSource = readFileSync(
-  new URL("../static/index.html", import.meta.url),
+  process.env.VERDICT_EXPORT
+    ? `${process.env.VERDICT_EXPORT}/index.html`
+    : new URL("../static/index.html", import.meta.url),
   "utf8",
 );
 
@@ -714,3 +718,37 @@ test("static refresh reloads data.json and displays the newer bundle", async () 
   assert.ok(ui.elements.get("content").textContent.includes("local-new"));
   assert.ok(!ui.elements.get("content").textContent.includes("local-old"));
 });
+
+if (process.env.VERDICT_EXPORT) {
+  test("export renders all six views from its data.json", async () => {
+    const data = JSON.parse(
+      readFileSync(`${process.env.VERDICT_EXPORT}/data.json`, "utf8"),
+    );
+    const row = data["/v1/bundles"].data.rows[0];
+    const base = `#/r/${row.root}/${row.bundle}`;
+    const ui = await createUI({
+      mode: "static",
+      respond: async () => ({ body: data }),
+    });
+    for (const [hash, title, caption] of [
+      ["#/bundles", "Inbox", "Review bundles"],
+      [base, "Review detail", "Review summary"],
+      [`${base}/threads`, "Threads", "Review threads"],
+      [`${base}/gate`, "Gate", "Gate dimensions"],
+      ["#/cost", "Cost", "Cost"],
+      ["#/precision", "Precision", "Precision"],
+    ]) {
+      await ui.navigate(hash);
+      assert.equal(ui.elements.get("title").textContent, title);
+      assert.ok(
+        captionedTable(ui.elements.get("content"), caption),
+        `missing ${caption}`,
+      );
+    }
+    assert.deepEqual(
+      ui.fetches.map((x) => x.path),
+      ["/data.json"],
+    );
+    assert.equal(ui.sources.length, 0);
+  });
+}

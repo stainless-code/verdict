@@ -2,11 +2,14 @@ package serve
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,40 +20,25 @@ import (
 	"github.com/stainless-code/verdict/internal/webui"
 )
 
+const (
+	exportIndex     = "index.html"
+	exportNotExport = "html-not-export"
+	exportPerm      = 0o600
+)
+
 // RunHTML writes the dashboard's static snapshot without starting a listener.
 func RunHTML(ctx context.Context, r *cli.Runner, args []string, version string) int {
-	var dest, root string
-	for i := 0; i < len(args); i += 2 {
-		if i+1 >= len(args) {
-			return r.ReportUsage(&cli.UsageError{Message: "report --html <dir> [--root <dir>]"})
-		}
-		switch args[i] {
-		case "--html":
-			dest = args[i+1]
-		case "--root":
-			root = args[i+1]
-		default:
-			return r.ReportUsage(&cli.UsageError{Message: "report --html accepts only --html and --root"})
-		}
-	}
-	if dest == "" {
-		return r.ReportUsage(&cli.UsageError{Message: "report --html requires a directory"})
+	dest, root, usage := htmlFlags(args)
+	if usage != nil {
+		return r.ReportUsage(usage)
 	}
 	resolved, ref := resolveRoot(ctx, root)
 	if ref != nil {
 		return r.Refuse(ref)
 	}
-	// Snapshot envelopes use a fixed clock; only generated_at records export time.
-	clock := func() time.Time { return time.Unix(0, 0).UTC() }
-	var layer *query.Layer
-	if root == "" {
-		layer = query.New(query.Snapshot{Version: version, Roots: []query.Root{{Path: resolved}}, Runtime: &core.Runtime{Now: clock}}, query.Options{Clock: clock, NoWatch: true})
-	} else {
-		var err error
-		layer, err = discoveryLayer(resolved, clock, Request{Version: version}, &serveOptions{depth: query.DefaultDiscoveryDepth, noRegistry: true, rediscover: true, noWatch: true, check: defaultCheck})
-		if err != nil {
-			return r.Refuse(&cli.RefusalError{Code: codeBadRoot, Message: err.Error()})
-		}
+	layer, err := htmlLayer(resolved, root != "", version)
+	if err != nil {
+		return r.Refuse(err)
 	}
 	if err := exportHTML(ctx, dest, layer, r.Now()); err != nil {
 		return r.Refuse(err)
@@ -59,104 +47,204 @@ func RunHTML(ctx context.Context, r *cli.Runner, args []string, version string) 
 	return cli.ExitOK
 }
 
-func snapshotData(ctx context.Context, layer Layer, now time.Time) ([]byte, error) {
-	data := map[string]json.RawMessage{}
-	add := func(path, verb string, view *query.View, err error) error {
-		if err != nil {
-			return fmt.Errorf("compose %s: %v", path, err)
+func htmlFlags(args []string) (dest, root string, usage *cli.UsageError) {
+	values := map[string]string{}
+	for i := 0; i < len(args); i += 2 {
+		if i+1 >= len(args) || (args[i] != "--html" && args[i] != "--root") {
+			return "", "", &cli.UsageError{Message: "report --html <dir> [--root <dir>]"}
 		}
-		data[path] = json.RawMessage(jq.PrettyOrdered(core.RenderEnvelope(verb, view.Repo, view.Pr, view.At, view.Next, view.Warnings, view.Data, nil)))
-		return nil
+		values[args[i]] = args[i+1]
 	}
-	if err := add("/v1/roots", verbServe, layer.Roots(ctx), nil); err != nil {
+	if values["--html"] == "" {
+		return "", "", &cli.UsageError{Message: "report --html requires a directory"}
+	}
+	return values["--html"], values["--root"], nil
+}
+
+func htmlLayer(root string, discover bool, version string) (*query.Layer, error) {
+	// Export envelopes use the Unix epoch; only generated_at records export time.
+	clock := func() time.Time { return time.Unix(0, 0).UTC() }
+	if discover {
+		return discoveryLayer(root, clock, Request{Version: version}, &serveOptions{
+			depth: query.DefaultDiscoveryDepth, noRegistry: true, rediscover: true, noWatch: true, check: defaultCheck,
+		})
+	}
+	return query.New(query.Snapshot{
+		Version: version, Roots: []query.Root{{Path: root}}, Runtime: &core.Runtime{Now: clock},
+	}, query.Options{Clock: clock, NoWatch: true}), nil
+}
+
+type htmlSnapshot map[string]string
+
+func (s htmlSnapshot) add(route string, view *query.View, err error) error {
+	if err != nil {
+		return s.refusal(route, err)
+	}
+	s[route] = jq.PrettyOrdered(core.RenderEnvelope(verbServe, view.Repo, view.Pr, view.At,
+		view.Next, view.Warnings, view.Data, nil))
+	return nil
+}
+
+func (s htmlSnapshot) refusal(route string, err error) error {
+	ref, ok := errors.AsType[*core.RefusalError](err)
+	if !ok {
+		return exportFailure(fmt.Errorf("compose %s: %w", route, err))
+	}
+	problem := jq.NewObj("code", ref.Code, "message", ref.Message+"\n"+core.HintFor(ref.Code))
+	s[route] = jq.PrettyOrdered(core.RenderEnvelope(verbServe, "", "", core.NowUTC(time.Unix(0, 0)), "", nil, nil, problem))
+	return nil
+}
+
+func snapshotData(ctx context.Context, layer Layer, now time.Time) ([]byte, error) {
+	data := htmlSnapshot{"generated_at": strconv.Quote(core.NowUTC(now))}
+	if err := data.add("/v1/roots", layer.Roots(ctx), nil); err != nil {
 		return nil, err
 	}
 	bundles, err := layer.Bundles(ctx, "")
-	if err := add("/v1/bundles", verbServe, bundles, err); err != nil {
+	if err := data.add("/v1/bundles", bundles, err); err != nil {
 		return nil, err
 	}
+	if err := data.aggregates(ctx, layer); err != nil {
+		return nil, err
+	}
+	if err := data.details(ctx, layer, bundles); err != nil {
+		return nil, err
+	}
+	return data.bytes(), nil
+}
+
+func (s htmlSnapshot) aggregates(ctx context.Context, layer Layer) error {
 	for _, by := range []string{"repo", "week", "model"} {
 		view, err := layer.Cost(ctx, by)
-		if err := add("/v1/cost?by="+by, verbServe, view, err); err != nil {
-			return nil, err
+		if err := s.add("/v1/cost?by="+by, view, err); err != nil {
+			return err
 		}
 	}
 	for _, by := range []string{"category", "tier"} {
 		view, err := layer.Precision(ctx, by)
-		if err := add("/v1/precision?by="+by, verbServe, view, err); err != nil {
-			return nil, err
+		if err := s.add("/v1/precision?by="+by, view, err); err != nil {
+			return err
 		}
 	}
-	rows, _ := bundles.Data.Get("rows")
-	raw, err := json.Marshal(rows)
-	if err != nil {
-		return nil, fmt.Errorf("marshal bundle rows: %v", err)
+	return nil
+}
+
+func (s htmlSnapshot) details(ctx context.Context, layer Layer, bundles *query.View) error {
+	value, _ := bundles.Data.Get("rows")
+	rows, ok := value.([]any)
+	if !ok && value != nil {
+		return exportFailure(errors.New("unexpected bundle listing"))
 	}
-	var listing []struct {
-		Root   string `json:"root"`
-		Bundle string `json:"bundle"`
-	}
-	if err := json.Unmarshal(raw, &listing); err != nil {
-		return nil, fmt.Errorf("decode bundle rows: %v", err)
-	}
-	for _, row := range listing {
-		path := "/v1/roots/" + url.PathEscape(row.Root) + "/bundles/" + url.PathEscape(row.Bundle)
-		view, err := layer.Detail(ctx, row.Root, row.Bundle)
-		if err := add(path, verbServe, view, err); err != nil {
-			return nil, err
+	for _, value := range rows {
+		row, ok := value.(*jq.Obj)
+		if !ok {
+			return exportFailure(errors.New("unexpected bundle row"))
+		}
+		root := exportString(row, "root")
+		bundle := exportString(row, "bundle")
+		route := "/v1/roots/" + url.PathEscape(root) + "/bundles/" + url.PathEscape(bundle)
+		view, err := layer.Detail(ctx, root, bundle)
+		if err := s.add(route, view, err); err != nil {
+			return err
 		}
 	}
-	stamp, err := json.Marshal(core.NowUTC(now))
-	if err != nil {
-		return nil, fmt.Errorf("marshal export time: %v", err)
+	return nil
+}
+
+func (s htmlSnapshot) bytes() []byte {
+	var out strings.Builder
+	out.WriteString("{\n")
+	for i, key := range slices.Sorted(maps.Keys(s)) {
+		if i > 0 {
+			out.WriteString(",\n")
+		}
+		out.WriteString(strconv.Quote(key))
+		out.WriteByte(':')
+		out.WriteString(s[key])
 	}
-	data["generated_at"] = stamp
-	body, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		return nil, fmt.Errorf("marshal snapshot: %v", err)
-	}
-	return append(body, '\n'), nil
+	out.WriteString("\n}\n")
+	return []byte(out.String())
 }
 
 func exportHTML(ctx context.Context, dest string, layer Layer, now time.Time) error {
+	return exportWithRename(ctx, dest, layer, now, os.Rename)
+}
+
+func exportWithRename(ctx context.Context, dest string, layer Layer, now time.Time, rename func(string, string) error) error {
+	dest = filepath.Clean(dest)
+	if err := exportRemnants(dest); err != nil {
+		return err
+	}
 	if err := exportDestination(dest); err != nil {
 		return err
 	}
 	body, err := snapshotData(ctx, layer, now)
 	if err != nil {
-		return &cli.RefusalError{Code: "report-failed", Message: err.Error()}
+		return exportFailure(err)
 	}
-	dest, err = filepath.Abs(dest)
+	stage, err := os.MkdirTemp(filepath.Dir(dest), filepath.Base(dest)+".tmp-*")
 	if err != nil {
-		return &cli.RefusalError{Code: "report-failed", Message: err.Error()}
-	}
-	stage, err := os.MkdirTemp(filepath.Dir(dest), ".verdict-export-*")
-	if err != nil {
-		return &cli.RefusalError{Code: "report-failed", Message: err.Error()}
+		return exportFailure(err)
 	}
 	defer func() { _ = os.RemoveAll(stage) }()
+	if err := writeExport(stage, body); err != nil {
+		return exportFailure(err)
+	}
+	if err := ctx.Err(); err != nil {
+		return exportFailure(err)
+	}
+	return publishExport(stage, dest, rename)
+}
+
+func writeExport(stage string, body []byte) error {
 	for _, name := range webui.Names() {
 		asset, err := webui.Asset(name)
 		if err != nil {
-			return &cli.RefusalError{Code: "report-failed", Message: err.Error()}
+			return exportFailure(err)
 		}
-		if name == "index.html" {
+		if name == exportIndex {
 			asset = []byte(strings.Replace(string(asset), `content="live"`, `content="static"`, 1))
 		}
-		if err := os.WriteFile(filepath.Join(stage, name), asset, 0o600); err != nil {
-			return &cli.RefusalError{Code: "report-failed", Message: err.Error()}
+		if err := os.WriteFile(filepath.Join(stage, name), asset, exportPerm); err != nil {
+			return err
 		}
 	}
-	if err := os.WriteFile(filepath.Join(stage, "data.json"), body, 0o600); err != nil {
-		return &cli.RefusalError{Code: "report-failed", Message: err.Error()}
+	return os.WriteFile(filepath.Join(stage, "data.json"), body, exportPerm)
+}
+
+func publishExport(stage, dest string, rename func(string, string) error) error {
+	_, err := os.Lstat(dest)
+	if os.IsNotExist(err) {
+		return publishNew(stage, dest, rename)
 	}
-	if err := ctx.Err(); err != nil {
-		return &cli.RefusalError{Code: "report-failed", Message: err.Error()}
+	if err != nil {
+		return exportFailure(err)
 	}
-	if err := os.Rename(stage, dest); err != nil {
-		return &cli.RefusalError{Code: "report-failed", Message: err.Error()}
+	old := dest + ".old-" + strings.TrimPrefix(filepath.Base(stage), filepath.Base(dest)+".tmp-")
+	if err := rename(dest, old); err != nil {
+		return exportFailure(err)
+	}
+	if err := rename(stage, dest); err != nil {
+		return rollbackExport(old, dest, err, rename)
+	}
+	if err := os.RemoveAll(old); err != nil {
+		return exportFailure(err)
 	}
 	return nil
+}
+
+func publishNew(stage, dest string, rename func(string, string) error) error {
+	if err := rename(stage, dest); err != nil {
+		return exportFailure(err)
+	}
+	return nil
+}
+
+func rollbackExport(old, dest string, publish error, rename func(string, string) error) error {
+	if err := rename(old, dest); err != nil {
+		return exportFailure(fmt.Errorf("publish: %w; rollback: %w; restore %s manually", publish, err, old))
+	}
+	return exportFailure(publish)
 }
 
 func exportDestination(dest string) error {
@@ -165,33 +253,76 @@ func exportDestination(dest string) error {
 		return nil
 	}
 	if err != nil {
-		return &cli.RefusalError{Code: "report-failed", Message: err.Error()}
+		return exportFailure(err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
 		return &cli.RefusalError{Code: "html-symlink", Message: "HTML export destination must not be a symlink"}
 	}
 	if !info.IsDir() {
-		return &cli.RefusalError{Code: "html-not-export", Message: "HTML export destination is not a directory"}
+		return notExport()
 	}
+	return validateExport(dest)
+}
+
+func validateExport(dest string) error {
 	entries, err := os.ReadDir(dest)
 	if err != nil {
-		return &cli.RefusalError{Code: "report-failed", Message: err.Error()}
+		return exportFailure(err)
 	}
 	if len(entries) == 0 {
 		return nil
 	}
-	expected := map[string]bool{"index.html": true, "app.js": true, "app.css": true, "data.json": true}
+	if !exportEntries(entries) {
+		return notExport()
+	}
+	page, err := os.ReadFile(filepath.Join(dest, exportIndex))
+	if err != nil || !strings.Contains(string(page), `<meta name="verdict-mode" content="static" />`) {
+		return notExport()
+	}
+	return nil
+}
+
+func exportEntries(entries []os.DirEntry) bool {
+	expected := map[string]bool{exportIndex: true, "app.js": true, "app.css": true, "data.json": true}
 	if len(entries) != len(expected) {
-		return &cli.RefusalError{Code: "html-not-export", Message: "non-empty destination is not a previous HTML export"}
+		return false
 	}
 	for _, entry := range entries {
 		if !expected[entry.Name()] || !entry.Type().IsRegular() {
-			return &cli.RefusalError{Code: "html-not-export", Message: "non-empty destination is not a previous HTML export"}
+			return false
 		}
 	}
-	page, err := os.ReadFile(filepath.Join(dest, "index.html"))
-	if err != nil || !strings.Contains(string(page), `<meta name="verdict-mode" content="static" />`) {
-		return &cli.RefusalError{Code: "html-not-export", Message: "destination lacks the static export marker"}
+	return true
+}
+
+func notExport() error {
+	return &cli.RefusalError{Code: exportNotExport, Message: "non-empty destination is not a previous HTML export"}
+}
+
+func exportFailure(err error) error {
+	return &cli.RefusalError{Code: "report-failed", Message: err.Error()}
+}
+
+func exportRemnants(dest string) error {
+	entries, err := os.ReadDir(filepath.Dir(dest))
+	if err != nil {
+		return exportFailure(err)
+	}
+	base := filepath.Base(dest)
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), base+".old-") || strings.HasPrefix(entry.Name(), base+".tmp-") {
+			return exportFailure(errors.New("interrupted HTML export: inspect sibling " + entry.Name() +
+				"; restore the .old-* directory if the destination is absent, then move stale " +
+				".old-* and .tmp-* siblings away before retrying"))
+		}
 	}
 	return nil
+}
+
+func exportString(row *jq.Obj, key string) string {
+	value, ok := row.Fields[key].(string)
+	if !ok {
+		return ""
+	}
+	return value
 }

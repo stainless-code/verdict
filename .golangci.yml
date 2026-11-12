@@ -82,6 +82,12 @@ linters:
       - common-false-positives
       - legacy
     rules:
+      # The operator chooses the export location, including paths outside the
+      # checkout. G703 taint is expected; destination validation refuses links.
+      - path: internal/serve/export\.go
+        text: "G703:"
+        linters:
+          - gosec
       # Test ergonomics: fixture builders and the golden harness use direct
       # output and temp-dir cleanup; failures surface via t.Fatal/Fail.
       - path: .*_test\.go

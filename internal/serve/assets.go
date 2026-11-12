@@ -14,7 +14,7 @@ const (
 )
 
 func (s *Server) serveIndex(w http.ResponseWriter) {
-	body, err := webui.Asset("index.html")
+	body, err := webui.Asset(exportIndex)
 	if err != nil {
 		s.problem(w, http.StatusInternalServerError, "asset-error", "the embedded UI is unavailable")
 		return
@@ -43,7 +43,7 @@ func (s *Server) serveAsset(w http.ResponseWriter, name string) {
 		return
 	}
 	switch name {
-	case "index.html":
+	case exportIndex:
 		w.Header().Set(contentTypeHeader, contentTypeHTML)
 	case "app.js":
 		w.Header().Set(contentTypeHeader, contentTypeJavaScript)
