@@ -298,6 +298,154 @@ export interface ShowData {
   [key: string]: unknown;
 }
 
+/** serve --json data (and the start envelope): one profile across health, roots, inbox, detail, and the start line, so every view-specific key is optional while partial, sources, and errors are always present. A product refusal is data null with the typed error; a corrupt bundle in a listing keeps its row with null counts and an errors[] entry, and any total over it is null and partial. */
+export interface ServeData {
+  version?: string;
+  url?: string;
+  listen?: string;
+  read_only?: boolean | null;
+  watch?: boolean | null;
+  interval?: string;
+  cache?: ServeCache | null;
+  roots?: Array<ServeRoot>;
+  truncated?: boolean | null;
+  skipped?: ServeSkipped | null;
+  discovery?: ServeDiscovery | null;
+  root?: string | null;
+  rows?: Array<ServeRow>;
+  counts?: ServeCounts | null;
+  report?: ReportData | null;
+  gate?: ReportGate | null;
+  threads?: ThreadsFile | null;
+  artifacts?: Array<ServeArtifact>;
+  partial: boolean;
+  sources: Array<ServeSource>;
+  errors: Array<ServeErrorRow>;
+  [key: string]: unknown;
+}
+
+/** One artifact a composed view read: the serving root id, the bundle name (empty for a root-level override fragment), the root-relative slash path, its SHA-256, and the byte count. Every inventory read is capped. */
+export interface ServeSource {
+  root: string;
+  bundle: string;
+  path: string;
+  sha256: string;
+  bytes: number;
+  [key: string]: unknown;
+}
+
+/** One tolerated bundle failure: the root id, bundle name, machine code, and message. A row is never dropped for a refused bundle. */
+export interface ServeErrorRow {
+  root: string;
+  bundle: string;
+  code: string;
+  message: string;
+  [key: string]: unknown;
+}
+
+/** One served root: its 12-hex id, absolute path, and addressable bundle count. */
+export interface ServeRoot {
+  id: string;
+  path: string;
+  bundles: number;
+  [key: string]: unknown;
+}
+
+/** The portfolio rollup over the inbox rows. Null when any input bundle refuses, so a partial set never reads as a smaller total. */
+export interface ServeCounts {
+  bundles: number;
+  open: number;
+  deferred: number;
+  addressed: number;
+  terminal: number;
+  [key: string]: unknown;
+}
+
+/** One inbox row: the bundle identity, its post receipt's model, and the verdict counts. Every numeric count is null for a refused bundle, never zero-for-unknown. */
+export interface ServeRow {
+  root: string;
+  bundle: string;
+  dir: string;
+  repo: string;
+  pr: number | null;
+  model: string | null;
+  head: string | null;
+  open: number | null;
+  deferred: number | null;
+  addressed: number | null;
+  terminal: number | null;
+  [key: string]: unknown;
+}
+
+/** One evidence-ledger row: the bundle-relative path, its presence, and the hash and size when present. */
+export interface ServeArtifact {
+  path: string;
+  present: boolean;
+  sha256: string | null;
+  bytes: number | null;
+  [key: string]: unknown;
+}
+
+/** The in-memory composition cache's size; derived state only, never written to disk. */
+export interface ServeCache {
+  entries: number;
+  [key: string]: unknown;
+}
+
+/** Walk outcomes discovery reports; S1 has no walk, so only the zero row is published. */
+export interface ServeSkipped {
+  symlinks: number;
+  [key: string]: unknown;
+}
+
+/** Whether the root list came from the registry. S1 reports cached false with an empty scanned_at. */
+export interface ServeDiscovery {
+  cached: boolean;
+  scanned_at: string;
+  [key: string]: unknown;
+}
+
+/** The bundle's threads.json feed; null when the bundle carries none. Shape shared with threads.schema.json. */
+export interface ThreadsFile {
+  schema_version: "1";
+  provider: "github" | "gitlab" | "gitcafe" | "forgejo" | "bitbucket" | "azure";
+  pr: number;
+  head_sha: string;
+  fetched_at: string;
+  truncated: boolean;
+  threads: Array<Thread>;
+  [key: string]: unknown;
+}
+
+/** One root review thread or conversation comment plus its replies. */
+export interface Thread {
+  id: string;
+  path: string;
+  line: number | null;
+  start_line: number | null;
+  side: string | null;
+  resolved: boolean;
+  outdated: boolean;
+  url: string | null;
+  author: string;
+  author_kind: "human" | "bot" | "verdict";
+  finding_sig: string | null;
+  kind: "issue-comment" | "review-comment";
+  comments: Array<Comment>;
+  [key: string]: unknown;
+}
+
+/** One comment inside a thread, body capped and flagged. */
+export interface Comment {
+  id: string;
+  author: string;
+  author_kind: "human" | "bot" | "verdict";
+  body: string;
+  truncated: boolean;
+  created_at: string;
+  [key: string]: unknown;
+}
+
 export interface ConfigData {
   mode: "explain" | "preview";
   trusted: boolean;

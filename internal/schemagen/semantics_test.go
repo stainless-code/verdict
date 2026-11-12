@@ -185,7 +185,10 @@ var publishedSemantics = map[string]string{
 	// optional languages[] (required language enum, required file count), plus
 	// the caller row's optional language enum. No existing property, required
 	// key, enum, or type changed.
-	"envelope.schema.json": "a5a9fca3a4ec11cad62861de922a9b31d2bb6c6f9989d6582a7122a15372cb46",
+	// serve: additive $defs/serveData (and its source/error/root/counts/row/
+	// artifact/cache/skipped/discovery defs plus threadsFile/thread/comment).
+	// Additions only; the envelope's data slot stays free-form per verb.
+	"envelope.schema.json": "c9f077d6d866568065eaa7daaca8c2a58fbd67f3de15b7789603cdf4e57c3371",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

@@ -3,6 +3,8 @@ package schemagen
 import (
 	"reflect"
 	"strings"
+
+	"github.com/stainless-code/verdict/internal/core/threads"
 )
 
 const (
@@ -47,6 +49,9 @@ const (
 	inlineTrue              = "true"
 	defsBrief               = "brief"
 	defsBriefSite           = "briefSite"
+	defsThread              = "thread"
+	defsComment             = "comment"
+	defsThreadsFile         = "threadsFile"
 )
 
 type nodeKind int
@@ -296,7 +301,7 @@ func documents() []document {
 			root:  reflect.TypeFor[ThreadsFile](),
 			defs: []definition{
 				{typ: reflect.TypeFor[Thread](), name: "thread"},
-				{typ: reflect.TypeFor[ThreadComment](), name: "comment"},
+				{typ: reflect.TypeFor[ThreadComment](), name: defsComment},
 			},
 			additionalProperties: false,
 		},
@@ -350,6 +355,19 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[RecordData](), name: "recordData"},
 		{typ: reflect.TypeFor[Repair](), name: "repair"},
 		{typ: reflect.TypeFor[ShowData](), name: "showData"},
+		{typ: reflect.TypeFor[ServeData](), name: "serveData"},
+		{typ: reflect.TypeFor[ServeSource](), name: "serveSource"},
+		{typ: reflect.TypeFor[ServeErrorRow](), name: "serveErrorRow"},
+		{typ: reflect.TypeFor[ServeRoot](), name: "serveRoot"},
+		{typ: reflect.TypeFor[ServeCounts](), name: "serveCounts"},
+		{typ: reflect.TypeFor[ServeRow](), name: "serveRow"},
+		{typ: reflect.TypeFor[ServeArtifact](), name: "serveArtifact"},
+		{typ: reflect.TypeFor[ServeCache](), name: "serveCache"},
+		{typ: reflect.TypeFor[ServeSkipped](), name: "serveSkipped"},
+		{typ: reflect.TypeFor[ServeDiscovery](), name: "serveDiscovery"},
+		{typ: reflect.TypeFor[threadscore.File](), name: defsThreadsFile},
+		{typ: reflect.TypeFor[threadscore.Thread](), name: defsThread},
+		{typ: reflect.TypeFor[threadscore.Comment](), name: defsComment},
 		{typ: reflect.TypeFor[ConfigData](), name: "configData"},
 		{typ: reflect.TypeFor[ConfigFile](), name: "configFile"},
 		{typ: reflect.TypeFor[ConfigValue](), name: "configValue"},
