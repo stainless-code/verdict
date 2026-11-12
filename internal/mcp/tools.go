@@ -175,7 +175,7 @@ func allTools(readOnly, operator bool) []*tool {
 				"co-change partners, CODEOWNERS owners, blast radius, or stored trees. Call before editing " +
 				"code to find callers and the tests to read. Reads the index and git objects only; never " +
 				"builds or prunes (those are CLI-only) and writes nothing.",
-			omit: omitPositionals,
+			omit: map[string]bool{fieldRepo: true},
 			meta: toolMeta{title: "Query code index", readOnly: true, idempotent: true},
 		}, toolDeps{commander: coreexec.Runner{}}, decodeIndex, wireIndex, invokeIndex),
 		dataTool(&toolSpec{

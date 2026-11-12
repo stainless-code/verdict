@@ -317,7 +317,7 @@ var fieldDocs = map[string]string{
 	"index.From":      "Checkout directory to read the index from; default the repository root.",
 	"index.Path":      "Repository path for tests-for, co-changed, or owners.",
 	"index.Paths":     "Repository paths for blast-radius: every declaration in each file is a changed symbol; no bundle or host call.",
-	"index.Pr":        "Fetched PR bundle whose full.diff names blast-radius's changed paths and lines; its tree must be indexed.",
+	"index.Pr":        "Fetched PR bundle whose full.diff names blast-radius's changed paths and lines; its tree is queried when the index holds it, otherwise HEAD with a warning.",
 	"index.Since":     "Co-change window start: a duration (90d, 12w, 18mo, 2y) or a commit ref.",
 	"index.Commits":   "Co-change window size in commits (1-100000; default 2000).",
 	"index.MinCount":  "Minimum co-change count a partner needs (1-100000; default 2).",

@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"reflect"
+	"slices"
 	"testing"
 )
 
@@ -57,6 +58,30 @@ func TestSchemaEnums(t *testing.T) {
 				t.Errorf("%s enum lost its string type: %v", tc.name, node)
 			}
 		})
+	}
+}
+
+// TestIndexSchemaListsEveryArgument proves the published index schema
+// advertises every argument the index request carries, including pr for the
+// blast-radius bundle form: a schema-respecting client must be able to send
+// it, and additionalProperties:false means an omitted field is unsendable.
+func TestIndexSchemaListsEveryArgument(t *testing.T) {
+	t.Parallel()
+	props, ok := inputSchema(findTool(t, "index"))[schemaProperties].(map[string]any)
+	if !ok {
+		t.Fatal("index schema has no properties")
+	}
+	got := make([]string, 0, len(props))
+	for key := range props {
+		got = append(got, key)
+	}
+	slices.Sort(got)
+	want := []string{
+		"at", "commits", "from", "limit", "minCount", "path", "paths", "pr",
+		"query", "since", "symbol",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("index schema arguments = %v; want %v", got, want)
 	}
 }
 
