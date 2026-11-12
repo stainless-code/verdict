@@ -159,7 +159,7 @@ func RunScore(ctx context.Context, req *ScoreRequest) (resp *ScoreResponse, ref 
 	return &ScoreResponse{
 		Data:     data,
 		Warnings: st.warnings,
-		Next:     "inspect .verdict/backtest/" + run + "/report.json; a score is a lower bound, not a citable measurement",
+		Next:     "inspect .verdict/backtest/" + run + "/report.json; a score is a match rate over blame-derived candidates, not a citable measurement",
 		At:       st.timeUTC(),
 	}, nil
 }

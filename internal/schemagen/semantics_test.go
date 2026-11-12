@@ -20,7 +20,9 @@ import (
 var publishedSemantics = map[string]string{
 	// additive backtest.schema.json (new run-artifact document for the backtest
 	// score report; no existing schema property, required key, or type changed).
-	"backtest.schema.json": "5b138d14b22f1a3637562b2ca5aa3a5eca3792e3548b47ccd7be15ab87fd55d9",
+	// The catch_rate description now calls the rate a match rate over
+	// blame-derived candidates instead of a lower bound on catch.
+	"backtest.schema.json": "23ea7e2b720c097bf41cdbebf9a4d828ec69d738c916deb475df1c1bc8216b89",
 	// additive config.schema.json (new typed-repository-configuration
 	// document; no existing schema property, required key, or type
 	// changed). The scope $def now carries the presence contract the

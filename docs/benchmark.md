@@ -370,11 +370,15 @@ keywords: the kind is the miner's deterministic guess, so a finding must name
 what that guess calls the defect.
 
 - **`catch_rate = matched / bugs`** over the replayed PRs whose review was
-  graded. This is a **lower bound on catch**, and the report says so: a bug is
-  visible only when a later fix deleted that exact line. A defect fixed without
-  touching its line, or never fixed at all, is invisible; a fix that rewrote
-  the line will usually hide it (`unaligned`). So "findings on lines that later
-  needed a fix" undercounts what a review caught — it never overcounts.
+  graded. Read it as a **match rate over SZZ candidates**, not a measured catch
+  rate. A bug is visible only when a later fix deleted that exact line: a defect
+  fixed without touching its line, or never fixed at all, is invisible, and a
+  fix that rewrote the line will usually hide it (`unaligned`). In the other
+  direction, a fix that deletes cleanup beside the real bug turns a line that
+  was never defective into a candidate, so a match on it is not proof the
+  review caught a defect. "Findings on lines that later needed a fix" is the
+  numerator, and a hand-verification step is what separates a real catch from a
+  candidate that merely matched.
 - **`off_target_per_pr = (reported − matched) / prs`.** An unmatched finding is
   not proven false — it may be a real defect on a line no later fix deleted —
   so the report keeps the name "off target" instead of claiming a false
@@ -389,8 +393,8 @@ what that guess calls the defect.
   classifier gap, not a review failure.
 - **`signals[]`** splits the same counts by the seed signal, `fix` then
   `revert`. A revert that deletes the line is a stronger signal than a fix
-  commit that rewrites it, so the two catch rates are published apart rather
-  than pooled.
+  commit that rewrites it, so the table publishes the two catch rates apart;
+  the overall `catch_rate` above stays the pooled rate over every graded bug.
 - Every zero denominator renders `null` (`n/a` in the human lines), never `0`.
   `not_replayed` counts mined candidates the run never scored; their bugs stay
   out of every denominator.

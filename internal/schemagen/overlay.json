@@ -404,7 +404,7 @@
   },
   "backtest": {
     "descriptions": {
-      "": "The backtest score report, written to .verdict/backtest/<run>/report.json and echoed as the score envelope's data object: the same object, so one schema covers both. It grades each replayed PR's recorded findings against the bug lines the run's own SZZ candidate records, through the corpus matcher (+/-1 line, one finding per bug, text that names the defect kind). The numbers are lower bounds: a line a later fix deleted is a hypothesis about where a defect was, so findings on lines that later needed a fix are a lower bound on catch, and an unmatched finding is not proven false.",
+      "": "The backtest score report, written to .verdict/backtest/<run>/report.json and echoed as the score envelope's data object: the same object, so one schema covers both. It grades each replayed PR's recorded findings against the bug lines the run's own SZZ candidate records, through the corpus matcher (+/-1 line, one finding per bug, text that names the defect kind). catch_rate is a match rate over blame-derived candidates, not a measured catch rate: a line a later fix deleted is a hypothesis about where a defect was, a deleted cleanup line beside the real bug is a candidate that was never defective, and an unmatched finding is not proven false.",
       "/properties/prs": "Replayed PRs whose recorded review was graded: the denominator of off_target_per_pr.",
       "/properties/not_replayed": "Mined candidates the run never scored (no resume row, or a row that recorded no review). Their bugs stay out of the denominators.",
       "/properties/bugs": "Ground-truth bug lines over the graded PRs: the denominator of catch_rate.",

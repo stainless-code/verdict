@@ -286,9 +286,10 @@ func usageText() string {
 		"    off-target findings per PR, cost per review, and a fix/revert signal table.\n" +
 		"    A pure read of the run directory and the bundles it names: no agent, no\n" +
 		"    bundle build, no corpus store. Writes .verdict/backtest/<run>/report.json.\n" +
-		"    A finding on a line a later fix deleted is a lower bound on catch, never\n" +
-		"    proof of a defect; an unmatched finding is not proven false. Scores are\n" +
-		"    not citable.\n" +
+		"    Catch rate is a match rate over SZZ candidates, not a measured catch rate:\n" +
+		"    a deleted cleanup line beside the real bug is a candidate that was never\n" +
+		"    defective, and an unmatched finding is not proven false. Scores are not\n" +
+		"    citable.\n" +
 		"  backtest --since <90d|12w|18mo|2y|<ref>> --agent <name> [replay flags] [--json]\n" +
 		"    mine, replay, and score in one run: the miner resolves --run (or derives it),\n" +
 		"    then the replay and the score read that id. --agent is required because the\n" +

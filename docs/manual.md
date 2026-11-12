@@ -3058,10 +3058,12 @@ its hunk is graded as body text, never as a line claim.
 The metrics:
 
 - `catch_rate = matched / bugs` over the PRs whose review was graded. It is a
-  lower bound on catch: a bug is visible only when a later fix deleted that
-  exact line, so a defect fixed without touching the line, or never fixed, is
-  invisible. A finding on a line that later needed a fix is evidence the review
-  looked at the right place — not proof the line was defective.
+  match rate over SZZ candidates, not a measured catch rate: a bug is visible
+  only when a later fix deleted that exact line, so a defect fixed without
+  touching the line, or never fixed, is invisible, while a fix that deletes
+  cleanup beside the real bug makes a never-defective line a candidate. A
+  finding on a line that later needed a fix is evidence the review looked at
+  the right place — not proof the line was defective.
 - `off_target_per_pr = (reported − matched) / prs`. The name is deliberate: an
   unmatched finding is not proven false, so it is never called one. It can be a
   real defect on a line no later fix deleted.
@@ -3074,7 +3076,8 @@ The metrics:
   count says how much of the denominator is unreachable.
 - `signals[]` splits the same counts by seed signal, `fix` then `revert`. A
   revert that deletes the line is a stronger signal than a fix commit that
-  rewrites it, so the two rates are published apart, never pooled.
+  rewrites it, so the table publishes the two rates apart; `catch_rate` above
+  stays the pooled rate over every graded bug.
 - Every zero denominator renders `null`; the human lines render `n/a`.
   `not_replayed` counts mined candidates the run never scored (no resume row,
   or a row that recorded no review); their bugs stay out of every denominator.
