@@ -82,6 +82,9 @@ type sourceCollector struct { //nolint:govet // grouped as one collector
 	sources    []Source
 	truncated  bool
 	notes      []string
+	// openArtifact is the test seam between the pre-stat and the descriptor
+	// open; production leaves it nil.
+	openArtifact func(string, int64) ([]byte, error)
 }
 
 // full reports whether either budget is spent.
@@ -144,7 +147,7 @@ func (c *sourceCollector) read(abs, rel string, info os.FileInfo) ([]byte, bool)
 		c.truncated = true
 		return nil, false
 	}
-	raw, err := jq.CappedFile(abs, sourceCap)
+	raw, err := c.readArtifact(abs, sourceCap)
 	if err != nil {
 		c.charge(info.Size())
 		if errors.Is(err, jq.ErrTooLarge) {
@@ -155,6 +158,16 @@ func (c *sourceCollector) read(abs, rel string, info os.FileInfo) ([]byte, bool)
 		return nil, false
 	}
 	return raw, true
+}
+
+// readArtifact opens one artifact through the race-free reader: the open is
+// non-blocking and the descriptor is fstat'd, so a path swapped for a FIFO
+// after the pre-stat cannot block the request.
+func (c *sourceCollector) readArtifact(abs string, maxBytes int64) ([]byte, error) {
+	if c.openArtifact != nil {
+		return c.openArtifact(abs, maxBytes)
+	}
+	return readcommon.ReadRegularCapped(abs, maxBytes)
 }
 
 // charge folds an attempted read into the byte budget.

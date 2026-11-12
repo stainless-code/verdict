@@ -8,7 +8,49 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
+
+// TestInventoryNeverBlocksOnSwapToFIFO proves the artifact open is the check:
+// a regular file swapped for a FIFO between the pre-stat and the open is
+// refused at once instead of waiting for a writer that never comes.
+func TestInventoryNeverBlocksOnSwapToFIFO(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "full.diff")
+	if err := os.WriteFile(path, []byte("diff --git a b\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c := &sourceCollector{
+		root: Root{Path: dir}, rootPath: dir,
+		maxEntries: maxInventoryEntries, maxBytes: maxInventoryBytes,
+	}
+	c.openArtifact = func(p string, max int64) ([]byte, error) {
+		if err := os.Remove(p); err != nil {
+			return nil, err
+		}
+		if err := syscall.Mkfifo(p, 0o600); err != nil {
+			return nil, err
+		}
+		return readcommon.ReadRegularCapped(p, max)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		c.add("1234", path)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("inventory blocked after the swap: the open waited for a FIFO writer")
+	}
+	if !c.truncated {
+		t.Error("truncated = false, want true for the refused artifact")
+	}
+	if len(c.sources) != 0 {
+		t.Errorf("sources = %d, want none for a FIFO", len(c.sources))
+	}
+}
 
 // TestInventoryDoesNotOpenAFIFO proves both inventory paths refuse a special
 // file before opening it: the walk's type check covers the bundle entry, and
