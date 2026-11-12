@@ -9,8 +9,10 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	corpuscore "github.com/stainless-code/verdict/internal/core/corpus"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -181,14 +183,17 @@ func (st *state) walkEntry(e os.DirEntry) (row, bool, bool) {
 
 // listedBundleDir resolves one state-directory entry's bundle dir. A name the
 // shared guard refuses is skipped with a warning: a listing carries names, not
-// paths, so nothing outside the bundle home is ever read.
+// paths, so nothing outside the bundle home is ever read. The listed name keeps
+// its own directory: the bare-name fallback ResolveBundleDir applies to an
+// operator's positional would let a listed `42` read `local-42`, counting that
+// bundle twice and dropping `42` from the totals with no warning.
 func (st *state) listedBundleDir(name string) (string, bool) {
-	dir, ref := readcommon.ResolveBundleDir(st.req.RepoRootPath(), name)
+	dir, ref := config.BundleDir(st.req.RepoRootPath(), name)
 	if ref != nil {
 		st.warn(skipWarn + name + " (" + ref.Message + ")")
 		return "", false
 	}
-	return dir, true
+	return filepath.ToSlash(dir), true
 }
 
 func readBundleRow(st *state, dir, name string) (row, bool) {
