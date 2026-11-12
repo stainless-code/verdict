@@ -539,7 +539,7 @@ no types, no object identity. A **documented limit** is a rule the manual
 states, so the fixture pins the rule rather than a defect.
 
 - **A cross-package method selector was neither a row nor an unresolved
-  candidate.** `resolveGoRef` (`internal/core/index/callers.go:297`) answered a
+  candidate.** `resolveGoRef` (`internal/core/index/callers.go:300`) answered a
   qualifier-less selector outside the declaring package with a bare `false`.
   Neither `s.Save(1)` in `internal/api/api.go:9` nor `a.Touch()` on an embedded
   `*store.Base` (`internal/app/app.go:18`) was reported or counted: the
@@ -551,14 +551,14 @@ states, so the fixture pins the rule rather than a defect.
   `TestCallersValueSelectorIsUnresolved` pins both. Rows do not move: the site
   still needs a type. **Scanner bug, fixed in the count.**
 - **A dot-import and a re-exported variable lose their calls.** `resolveBareRef`
-  (`internal/core/index/callers.go:323`) attributes a bare name only inside the
+  (`internal/core/index/callers.go:353`) attributes a bare name only inside the
   declaring package, so `Open("c")` in `internal/dot/dot.go:8` (package `dot`,
   `import . "example.com/m/internal/store"`) is not a caller. A re-exported
   variable is the same shape one step removed: `reexport.Open("e")` in
   `internal/cli/cli.go:14` names `reexport`'s import path, not `store`'s.
   **Design limit.**
 - **Scanned-language sites outside the declaring directory are dropped.**
-  `resolveScannedRef` (`internal/core/index/callers.go:314`) requires the same
+  `resolveScannedRef` (`internal/core/index/callers.go:330`) requires the same
   directory, so every `save(...)` in `ts/app/` and `py/tests/` is invisible to a
   query for the `lib` declaration: cross-package recall is 0.0000 for both
   scanned languages, against 4 and 3 labeled sites. **Design limit.**
@@ -579,7 +579,7 @@ states, so the fixture pins the rule rather than a defect.
   cells are 1.0000 now, pinned by
   `TestCallersPythonRespectsDeclarationKind`. **Scanner bug, fixed.**
 - **`imports-module` did not fire for a relative specifier.** `importsAny`
-  (`internal/core/index/tests.go:390`) compared the raw specifier with the
+  (`internal/core/index/tests.go:403`) compared the raw specifier with the
   declaring package's import path, so `import { tidy } from "../lib"` in
   `ts/app/tidy.spec.ts` matched neither `"../lib"` nor the resolved `lib`, and
   the file was not a candidate at all. `importedPackage` now resolves each
@@ -590,8 +590,8 @@ states, so the fixture pins the rule rather than a defect.
 - **A test whose package imports the target was not a candidate.**
   `internal/worker/worker_test.go` imports only `testing`; its package imports
   `internal/store` in `worker.go:3`, which is one hop from the declaring
-  package. `minTransitiveDepth` (`internal/core/index/tests.go:21`) dropped
-  every depth-1 candidate, so the walk counted the hop and discarded the file.
+  package. `transitiveVia` (`internal/core/index/tests.go:357`) started at depth
+  2, so the walk counted the hop and discarded the file.
   It is now named `transitive-import, depth 1` — the manual's own mechanism
   definition, with the direct mechanisms still tried first — and a scanned
   specifier naming no indexed directory or file no longer contributes an edge
@@ -602,7 +602,7 @@ states, so the fixture pins the rule rather than a defect.
   missing module. **Scanner bug, fixed.**
 - **A symbol's `tests-for` language is the first target's.** With `run` declared
   in both `shared/run.py` and `shared/run.ts`, `tests-for --symbol shared.run`
-  reads `internal/core/index/tests.go:156` and answers in Python only, so the
+  reads `internal/core/index/tests.go:153` and answers in Python only, so the
   TypeScript test file is never listed (`ts/tests-for-two-families` recall
   0.5000). **Documented limit:** the manual already says a candidate in another
   language family is never listed.
