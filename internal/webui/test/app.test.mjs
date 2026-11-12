@@ -444,6 +444,48 @@ test("refetches after invalidation and after an EventSource reconnect", async ()
   assert.equal(countBundles(), 3);
 });
 
+test("decodes a bundle hash segment once before requesting and linking it", async () => {
+  const encodedPath = "/v1/roots/root-123/bundles/local%20space%20name";
+  const spaceInbox = envelope({
+    rows: [
+      {
+        root: "root-123",
+        bundle: "local space name",
+        repo: "acme/widgets",
+        model: "reviewer-v1",
+        head: "a1b2c3d4",
+        open: 1,
+        deferred: 0,
+        addressed: 0,
+      },
+    ],
+    counts: { bundles: 1, open: 1, deferred: 0, addressed: 0, terminal: 0 },
+  });
+  const ui = await createUI({
+    respond: async (path) => {
+      if (path === "/v1/bundles") return { body: spaceInbox };
+      if (path === encodedPath) return { body: detail };
+      return { status: 404, body: { error: { message: "no such bundle" } } };
+    },
+  });
+  const bundleLink = descendants(ui.elements.get("content")).find(
+    (element) =>
+      element.tagName === "A" && element.textContent === "local space name",
+  );
+  assert.equal(bundleLink.href, "#/r/root-123/local%20space%20name");
+
+  await ui.navigate(`${bundleLink.href}/threads`);
+  assert.equal(ui.fetches.at(-1).path, encodedPath);
+  const sectionLinks = descendants(ui.elements.get("content"))
+    .filter((element) => element.tagName === "A")
+    .map((element) => element.href);
+  assert.deepEqual(sectionLinks, [
+    "#/r/root-123/local%20space%20name",
+    "#/r/root-123/local%20space%20name/threads",
+    "#/r/root-123/local%20space%20name/gate",
+  ]);
+});
+
 test("no-watch mode exposes a manual refresh that refetches the active view", async () => {
   const ui = await createUI({
     watch: false,

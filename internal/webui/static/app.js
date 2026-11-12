@@ -86,9 +86,17 @@
     );
   }
 
+  function encodeHashSegment(segment) {
+    let decoded = segment || "";
+    try {
+      decoded = decodeURIComponent(decoded);
+    } catch (_) {}
+    return encodeURIComponent(decoded);
+  }
+
   function detailNavigation(current) {
     const parts = location.hash.slice(1).split("/").filter(Boolean);
-    const base = `#/r/${encodeURIComponent(parts[1] || "")}/${encodeURIComponent(parts[2] || "")}`;
+    const base = `#/r/${encodeHashSegment(parts[1])}/${encodeHashSegment(parts[2])}`;
     const nav = node("nav", undefined, "section-nav");
     nav.setAttribute("aria-label", "Review sections");
     for (const [suffix, label] of [
@@ -310,7 +318,7 @@
             : "detail";
       return {
         view,
-        path: `/v1/roots/${encodeURIComponent(parts[1])}/bundles/${encodeURIComponent(parts[2])}`,
+        path: `/v1/roots/${encodeHashSegment(parts[1])}/bundles/${encodeHashSegment(parts[2])}`,
       };
     }
     return { view: "inbox", path: "/v1/bundles" };
