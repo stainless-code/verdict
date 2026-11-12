@@ -4,7 +4,7 @@
   "repo": "",
   "pr": null,
   "at": "2026-11-12T09:00:00Z",
-  "next": "run verdict record <repo> <pr> --cost to record spend",
+  "next": "write measured spend to the bundle's cost.json, then re-run",
   "warnings": [],
   "data": {
     "cost": {

@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	costNext         = "run verdict record <repo> <pr> --cost to record spend"
+	costNext         = "write measured spend to the bundle's cost.json, then re-run"
 	costUnattributed = "unattributed"
 	costRoundScale   = 10000
 )

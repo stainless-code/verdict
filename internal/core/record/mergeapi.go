@@ -155,7 +155,11 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 }
 
 func reportFindings(st *state) {
-	st.human(fmt.Sprintf("» findings: %d sigs -> %s", len(st.entries), st.findingsFile))
+	line := fmt.Sprintf("» findings: %d sigs -> %s", len(st.entries), st.findingsFile)
+	if st.dryRun && st.cmd == "record" {
+		line = fmt.Sprintf("» findings: %d sigs (dry run — no findings file written)", len(st.entries))
+	}
+	st.human(line)
 	for _, e := range st.entries {
 		m, ok := e.(*jq.Obj)
 		if !ok || m == nil {

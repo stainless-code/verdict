@@ -1502,11 +1502,12 @@ interface address such as `--host 192.168.1.10`. `/v1` is the only version: a
 breaking change becomes `/v2`.
 
 Cost accepts exactly one `by` value: `repo`, `week`, or `model`. Week buckets
-use the ISO week of the bundle receipt's `post.json` `posted_at`; cost records
-do not carry timestamps. Cost rows distinguish record `runs` from `model_runs`
+use the UTC ISO week of the bundle receipt's `post.json` `posted_at`; cost
+records do not carry timestamps. Cost rows distinguish record `runs` from `model_runs`
 (one record can name multiple models). Model buckets expose token counts and
 `est_usd: null`, because a record stores one run price rather than a price per
-model. Precision accepts `by=category|tier` and joins findings with stored
+model. Missing token measurements and unknown run prices remain `null` and
+mark the view partial. Precision accepts `by=category|tier` and joins findings with stored
 `threads.json` only. It reports `as_of` from `fetched_at`; `fixed` remains
 `null` without changed-file evidence, and no rate is printed. Unknown
 dimensions, extra query keys, and repeated `by` parameters return a typed

@@ -78,7 +78,7 @@ never meet a tier.
 It counts open, resolved-unfixed, and unknown outcomes; without changed-file
 evidence, fixed counts remain `null`, and no rate is published.
 
-**Cost week.** A `serve` cost bucket keyed by the ISO week of the bundle's
+**Cost week.** A `serve` cost bucket keyed by the UTC ISO week of the bundle's
 `post.json` `posted_at` receipt. Cost records do not carry their own timestamp.
 
 **Sig.** A finding's stable, line-number-free signature (with `sig_version`
