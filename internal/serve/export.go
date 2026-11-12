@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"maps"
 	"net/url"
-	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -17,13 +15,6 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/query"
 	"github.com/stainless-code/verdict/internal/jq"
-	"github.com/stainless-code/verdict/internal/webui"
-)
-
-const (
-	exportIndex     = "index.html"
-	exportNotExport = "html-not-export"
-	exportPerm      = 0o600
 )
 
 // RunHTML writes the dashboard's static snapshot without starting a listener.
@@ -173,159 +164,6 @@ func (s htmlSnapshot) bytes() []byte {
 	}
 	out.WriteString("\n}\n")
 	return []byte(out.String())
-}
-
-func exportHTML(ctx context.Context, dest string, layer Layer, now time.Time) error {
-	return exportWithRename(ctx, dest, layer, now, os.Rename)
-}
-
-func exportWithRename(ctx context.Context, dest string, layer Layer, now time.Time, rename func(string, string) error) error {
-	dest = filepath.Clean(dest)
-	if err := exportRemnants(dest); err != nil {
-		return err
-	}
-	if err := exportDestination(dest); err != nil {
-		return err
-	}
-	body, err := snapshotData(ctx, layer, now)
-	if err != nil {
-		return exportFailure(err)
-	}
-	stage, err := os.MkdirTemp(filepath.Dir(dest), filepath.Base(dest)+".tmp-*")
-	if err != nil {
-		return exportFailure(err)
-	}
-	defer func() { _ = os.RemoveAll(stage) }()
-	if err := writeExport(stage, body); err != nil {
-		return exportFailure(err)
-	}
-	if err := ctx.Err(); err != nil {
-		return exportFailure(err)
-	}
-	return publishExport(stage, dest, rename)
-}
-
-func writeExport(stage string, body []byte) error {
-	for _, name := range webui.Names() {
-		asset, err := webui.Asset(name)
-		if err != nil {
-			return exportFailure(err)
-		}
-		if name == exportIndex {
-			asset = []byte(strings.Replace(string(asset), `content="live"`, `content="static"`, 1))
-		}
-		if err := os.WriteFile(filepath.Join(stage, name), asset, exportPerm); err != nil {
-			return err
-		}
-	}
-	return os.WriteFile(filepath.Join(stage, "data.json"), body, exportPerm)
-}
-
-func publishExport(stage, dest string, rename func(string, string) error) error {
-	_, err := os.Lstat(dest)
-	if os.IsNotExist(err) {
-		return publishNew(stage, dest, rename)
-	}
-	if err != nil {
-		return exportFailure(err)
-	}
-	old := dest + ".old-" + strings.TrimPrefix(filepath.Base(stage), filepath.Base(dest)+".tmp-")
-	if err := rename(dest, old); err != nil {
-		return exportFailure(err)
-	}
-	if err := rename(stage, dest); err != nil {
-		return rollbackExport(old, dest, err, rename)
-	}
-	if err := os.RemoveAll(old); err != nil {
-		return exportFailure(err)
-	}
-	return nil
-}
-
-func publishNew(stage, dest string, rename func(string, string) error) error {
-	if err := rename(stage, dest); err != nil {
-		return exportFailure(err)
-	}
-	return nil
-}
-
-func rollbackExport(old, dest string, publish error, rename func(string, string) error) error {
-	if err := rename(old, dest); err != nil {
-		return exportFailure(fmt.Errorf("publish: %w; rollback: %w; restore %s manually", publish, err, old))
-	}
-	return exportFailure(publish)
-}
-
-func exportDestination(dest string) error {
-	info, err := os.Lstat(dest)
-	if os.IsNotExist(err) {
-		return nil
-	}
-	if err != nil {
-		return exportFailure(err)
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return &cli.RefusalError{Code: "html-symlink", Message: "HTML export destination must not be a symlink"}
-	}
-	if !info.IsDir() {
-		return notExport()
-	}
-	return validateExport(dest)
-}
-
-func validateExport(dest string) error {
-	entries, err := os.ReadDir(dest)
-	if err != nil {
-		return exportFailure(err)
-	}
-	if len(entries) == 0 {
-		return nil
-	}
-	if !exportEntries(entries) {
-		return notExport()
-	}
-	page, err := os.ReadFile(filepath.Join(dest, exportIndex))
-	if err != nil || !strings.Contains(string(page), `<meta name="verdict-mode" content="static" />`) {
-		return notExport()
-	}
-	return nil
-}
-
-func exportEntries(entries []os.DirEntry) bool {
-	expected := map[string]bool{exportIndex: true, "app.js": true, "app.css": true, "data.json": true}
-	if len(entries) != len(expected) {
-		return false
-	}
-	for _, entry := range entries {
-		if !expected[entry.Name()] || !entry.Type().IsRegular() {
-			return false
-		}
-	}
-	return true
-}
-
-func notExport() error {
-	return &cli.RefusalError{Code: exportNotExport, Message: "non-empty destination is not a previous HTML export"}
-}
-
-func exportFailure(err error) error {
-	return &cli.RefusalError{Code: "report-failed", Message: err.Error()}
-}
-
-func exportRemnants(dest string) error {
-	entries, err := os.ReadDir(filepath.Dir(dest))
-	if err != nil {
-		return exportFailure(err)
-	}
-	base := filepath.Base(dest)
-	for _, entry := range entries {
-		if strings.HasPrefix(entry.Name(), base+".old-") || strings.HasPrefix(entry.Name(), base+".tmp-") {
-			return exportFailure(errors.New("interrupted HTML export: inspect sibling " + entry.Name() +
-				"; restore the .old-* directory if the destination is absent, then move stale " +
-				".old-* and .tmp-* siblings away before retrying"))
-		}
-	}
-	return nil
 }
 
 func exportString(row *jq.Obj, key string) string {

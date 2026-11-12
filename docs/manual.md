@@ -1468,8 +1468,9 @@ These are process-crash recovery guarantees, not power-loss durability guarantee
 A subsequent run refuses if any matching `.old-*` or `.tmp-*` sibling exists.
 Inspect the siblings first. If `<dir>` is absent, restore the desired `.old-*`
 directory to `<dir>`. Move remaining stale siblings away before retrying. Verdict
-never deletes those recovery artifacts automatically. A symlinked destination
-refuses `html-symlink`; a non-empty directory without the export file set and
+never deletes those recovery artifacts automatically. Any symlink component in the destination path
+refuses `html-symlink` — use the real parent path (for example, `pwd -P`).
+Filesystem operations stay anchored to that checked parent directory. A non-empty directory without the export file set and
 static-page marker refuses `html-not-export`. Recovery and I/O failures use
 `report-failed`. Empty destinations are accepted.
 

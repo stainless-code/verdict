@@ -84,7 +84,7 @@ linters:
     rules:
       # The operator chooses the export location, including paths outside the
       # checkout. G703 taint is expected; destination validation refuses links.
-      - path: internal/serve/export\.go
+      - path: internal/serve/exportfs\.go
         text: "G703:"
         linters:
           - gosec
