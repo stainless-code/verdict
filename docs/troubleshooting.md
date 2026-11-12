@@ -892,7 +892,8 @@ Fix: for install, re-run with `--force` to write only verdict's payload files, o
 
 ## `skill-foreign-conflict`
 
-Cause: a payload path collides with a foreign file or directory.
+Cause: a payload path or the `.verdict-managed` receipt collides with a file or
+directory in the way.
 
 Fix: remove the colliding path by hand, then re-run.
 

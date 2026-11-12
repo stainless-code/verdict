@@ -542,11 +542,13 @@ func writePayload(root *os.Root, target, rel string) *core.RefusalError {
 	return nil
 }
 
+// preflight refuses before a write when the receipt or a payload path would
+// replace a directory or cannot be inspected inside the target root.
 func preflight(root *os.Root, target string, files []string) *core.RefusalError {
 	if ref := preflightDirs(root, target); ref != nil {
 		return ref
 	}
-	return preflightFiles(root, target, files)
+	return preflightFiles(root, target, append(slices.Clone(files), ReceiptName))
 }
 
 func preflightDirs(root *os.Root, target string) *core.RefusalError {

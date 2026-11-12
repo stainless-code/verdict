@@ -351,6 +351,37 @@ func seedClaudeInstall(t *testing.T, req *skill.Request) string {
 	return filepath.Join(req.Env["HOME"], ".claude", "skills", "verdict")
 }
 
+// TestInstallDetectedRefusesReceiptDirWritesNothing pins the receipt in the
+// preflight: a receipt path that is a directory in a later target refuses
+// skill-foreign-conflict naming it, instead of landing the earlier target and
+// this target's payload before the receipt rename fails.
+func TestInstallDetectedRefusesReceiptDirWritesNothing(t *testing.T) {
+	t.Parallel()
+	req := newRequest(t)
+	req.Force = true
+	home := req.Env["HOME"]
+	claude := seedSkillsDir(t, home, ".claude")
+	codex := seedSkillsDir(t, home, ".codex")
+	receipt := filepath.Join(codex, "verdict", ".verdict-managed")
+	if err := os.MkdirAll(receipt, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, ref := skill.InstallDetected(context.Background(), req)
+	if ref == nil || ref.Code != "skill-foreign-conflict" {
+		t.Fatalf("receipt-dir refusal = %v, want skill-foreign-conflict", ref)
+	}
+	if want := receipt + " is a directory; refusing to replace it"; ref.Message != want {
+		t.Fatalf("message = %q, want %q", ref.Message, want)
+	}
+	if _, err := os.Stat(filepath.Join(claude, "verdict")); !os.IsNotExist(err) {
+		t.Fatalf("refused run wrote the first target: stat %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(codex, "verdict", "SKILL.md")); !os.IsNotExist(err) {
+		t.Fatalf("refused run wrote the second target's payload: stat %v", err)
+	}
+}
+
 // TestInstallDetectedHonorsEnvLayouts pins detection through CLAUDE_CONFIG_DIR
 // and XDG_CONFIG_HOME, the two overrides install-skill.sh also honors.
 func TestInstallDetectedHonorsEnvLayouts(t *testing.T) {
