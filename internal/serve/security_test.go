@@ -71,6 +71,34 @@ func exchangeSession(t *testing.T, ts *httptest.Server) (session map[string]stri
 	return map[string]string{"Cookie": cookieName + "=" + testToken}
 }
 
+// TestBadPathIsTheEarlyRouteRefusal proves the pre-routing gate is the one
+// that refuses a traversal spelling, not a downstream pattern: only badPath
+// produces the "no such route" transport message.
+func TestBadPathIsTheEarlyRouteRefusal(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, fixtureFiles())
+	ts := testServer(t, testLayer(root, nil))
+	headers := bearer()
+	rootID := rootIDOf(t, ts, headers)
+	for _, tc := range []struct{ name, path string }{
+		{name: "encoded traversal", path: "/v1/roots/" + rootID + "/bundles/%2e%2e%2f"},
+		{name: "control byte", path: "/v1/roots/" + rootID + "/bundles/local%00"},
+		{name: "backslash", path: "/v1/roots/" + rootID + "/bundles/..%5C..%5Cetc"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := call(t, ts, http.MethodGet, tc.path, "", headers)
+			if got.status != http.StatusNotFound {
+				t.Fatalf("status = %d, want 404 (%s)", got.status, got.body)
+			}
+			for _, want := range []string{`"reason":"not-found"`, `"message":"no such route"`} {
+				if !strings.Contains(string(got.body), want) {
+					t.Errorf("body = %s, want %s", got.body, want)
+				}
+			}
+		})
+	}
+}
+
 // securityCases is the literal matrix.
 func securityCases(rootID string, session map[string]string) []securityCase {
 	return []securityCase{

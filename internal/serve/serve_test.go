@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -63,6 +64,14 @@ func prDoc(head string) string {
 func postDoc(head string, id int) string {
 	return fmt.Sprintf(`{"schema_version":"1","review":{"id":%d},"head":%q,"model":"m1",`+
 		`"posted_at":"2026-01-01T00:00:00Z","confidence":null,"security_summary":null}`, id, head)
+}
+
+// guardRefusedBundleNames are the directories the shared guard refuses: the
+// 18 names the old route regex admitted while the CLI refused them.
+var guardRefusedBundleNames = []string{
+	"NUL", "nul", "NuL", "nul.txt", "CON", "con.json", "PRN", "AUX",
+	"COM1", "com9", "LPT1", "lpt9", "123.", "1234.", "a.", "1234..",
+	"com1.txt", "1.",
 }
 
 // fixtureFiles is the two-bundle root every view test reads.
@@ -578,6 +587,74 @@ func TestBundleAmbiguousIsA200Refusal(t *testing.T) {
 	}
 	if asMap(t, envelope["error"])["code"] != "bundle-ambiguous" {
 		t.Errorf("ambiguous error = %v, want bundle-ambiguous", envelope["error"])
+	}
+}
+
+// TestGuardRefusedBundlesAreRefusals proves the route and the CLI answer the
+// shared bundle-name guard: a directory it refuses never appears in the inbox,
+// and addressing it returns the same bad-flags refusal the CLI renders.
+func TestGuardRefusedBundlesAreRefusals(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows cannot create a DOS-device or trailing-dot directory; the shared guard is tested on every OS by internal/config")
+	}
+	t.Parallel()
+	files := map[string]string{}
+	for _, name := range guardRefusedBundleNames {
+		base := ".verdict/state/" + name + "/"
+		files[base+"PR.json"] = prDoc(headA)
+		files[base+"findings.json"] = "[" + finding(sigCrit, "open", "critical", "walked") + "]"
+	}
+	root := writeFixture(t, files)
+	ts := testServer(t, testLayer(root, nil))
+	headers := bearer()
+	rootID := rootIDOf(t, ts, headers)
+	inbox := call(t, ts, http.MethodGet, "/v1/bundles", "", headers)
+	if inbox.status != http.StatusOK {
+		t.Fatalf("GET bundles = %d (%s)", inbox.status, inbox.body)
+	}
+	data := asMap(t, decode(t, inbox.body)["data"])
+	if rows := asList(t, data["rows"]); len(rows) != 0 {
+		t.Errorf("rows = %v, want no row for a name no verb can address", rows)
+	}
+	if data["partial"] != false {
+		t.Errorf("partial = %v, want false", data["partial"])
+	}
+	for _, name := range guardRefusedBundleNames {
+		t.Run(name, func(t *testing.T) {
+			got := call(t, ts, http.MethodGet, "/v1/roots/"+rootID+"/bundles/"+url.PathEscape(name), "", headers)
+			if got.status != http.StatusOK {
+				t.Fatalf("detail status = %d, want 200 (%s)", got.status, got.body)
+			}
+			envelope := decode(t, got.body)
+			if envelope["data"] != nil {
+				t.Errorf("data = %v, want null", envelope["data"])
+			}
+			if code := asMap(t, envelope["error"])["code"]; code != "bad-flags" {
+				t.Errorf("error.code = %v, want bad-flags (the CLI's own refusal)", code)
+			}
+		})
+	}
+}
+
+// TestLongBundleNameIsAddressable proves the route's old 128-byte bound did
+// not hide a directory the CLI can address.
+func TestLongBundleNameIsAddressable(t *testing.T) {
+	t.Parallel()
+	longName := strings.Repeat("a", 140)
+	files := fixtureFiles()
+	base := ".verdict/state/" + longName + "/"
+	files[base+"PR.json"] = prDoc(headA)
+	files[base+"findings.json"] = "[" + finding(sigCrit, "open", "critical", "walked") + "]"
+	root := writeFixture(t, files)
+	ts := testServer(t, testLayer(root, nil))
+	headers := bearer()
+	rootID := rootIDOf(t, ts, headers)
+	got := call(t, ts, http.MethodGet, "/v1/roots/"+rootID+"/bundles/"+longName, "", headers)
+	if got.status != http.StatusOK {
+		t.Fatalf("detail status = %d, want 200 (%s)", got.status, got.body)
+	}
+	if envelope := decode(t, got.body); envelope["data"] == nil {
+		t.Errorf("long-name detail data = null, want the report")
 	}
 }
 

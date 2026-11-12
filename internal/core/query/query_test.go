@@ -10,6 +10,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -378,6 +379,112 @@ func TestBundleAmbiguous(t *testing.T) {
 	}
 	if _, err := layer.Detail(context.Background(), root, "local-1234"); err != nil {
 		t.Fatalf("Detail(local-1234) = %v, want success", err)
+	}
+}
+
+// guardRefusedNames are bundle directories the shared guard refuses: the
+// names serve's old route regex accepted and the CLI refused.
+var guardRefusedNames = []string{
+	"NUL", "nul", "NuL", "nul.txt", "CON", "con.json", "PRN", "AUX",
+	"COM1", "com9", "LPT1", "lpt9", "123.", "1234.", "a.", "1234..",
+	"com1.txt", "1.",
+}
+
+// TestDetailRefusesNamesTheSharedGuardRefuses proves the route and the CLI
+// answer one rule: every divergent name reaches the shared refusal, never a
+// bundle read and never a spurious not-found.
+func TestDetailRefusesNamesTheSharedGuardRefuses(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows cannot create a DOS-device or trailing-dot directory; the shared guard is tested on every OS by internal/config")
+	}
+	t.Parallel()
+	dir := t.TempDir()
+	files := map[string]string{}
+	for _, name := range guardRefusedNames {
+		base := ".verdict/state/" + name + "/"
+		files[base+"PR.json"] = prDoc(headA)
+		files[base+"findings.json"] = "[" + finding(sigCrit, "open", "critical", "walked") + "]"
+	}
+	writeFiles(t, dir, files)
+	layer := newLayer(dir)
+	root := RootID(mustAbs(t, dir))
+	for _, name := range guardRefusedNames {
+		t.Run(name, func(t *testing.T) {
+			_, err := layer.Detail(context.Background(), root, name)
+			var ref *core.RefusalError
+			if !errors.As(err, &ref) || ref.Code != "bad-flags" {
+				t.Fatalf("Detail(%q) = %v, want bad-flags", name, err)
+			}
+			const want = "bundle name must be one path element (a PR number or fetch-local name), not a path"
+			if ref.Message != want {
+				t.Errorf("Detail(%q) message = %q, want %q", name, ref.Message, want)
+			}
+		})
+	}
+}
+
+// TestBundleListingUsesTheSharedGuard proves a directory no verb can address
+// never becomes an inbox row, while the names the old regex refused remain
+// addressable.
+func TestBundleListingUsesTheSharedGuard(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows cannot create a DOS-device or trailing-dot directory; the shared guard is tested on every OS by internal/config")
+	}
+	t.Parallel()
+	dir, _ := fixture(t)
+	longName := strings.Repeat("a", 140)
+	names := []string{".hidden", "-x", longName, "_x"}
+	files := map[string]string{}
+	for _, name := range append(append([]string{}, guardRefusedNames...), names...) {
+		base := ".verdict/state/" + name + "/"
+		files[base+"PR.json"] = prDoc(headA)
+		files[base+"findings.json"] = "[" + finding(sigCrit, "open", "critical", "walked") + "]"
+	}
+	writeFiles(t, dir, files)
+	view, err := newLayer(dir).Bundles(context.Background(), "")
+	if err != nil {
+		t.Fatalf("Bundles: %v", err)
+	}
+	data := wireMap(t, view.Data)
+	rows := asList(t, data["rows"])
+	got := make([]string, 0, len(rows))
+	for _, row := range rows {
+		got = append(got, asString(t, asMap(t, row)["bundle"]))
+	}
+	want := []string{"-x", ".hidden", "1234", "_x", longName, "local-1"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("rows = %v, want exactly %v", got, want)
+	}
+	if data["partial"] != false {
+		t.Errorf("partial = %v, want false: a refused directory is not a bundle", data["partial"])
+	}
+	if errs := asList(t, data["errors"]); len(errs) != 0 {
+		t.Errorf("errors = %v, want none", errs)
+	}
+}
+
+// TestSharedGuardNamesAreAddressable proves the other direction: names the old
+// regex refused resolve through the CLI's own guard.
+func TestSharedGuardNamesAreAddressable(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	longName := strings.Repeat("a", 140)
+	names := []string{".hidden", "-x", longName, "_x"}
+	files := map[string]string{}
+	for _, name := range names {
+		base := ".verdict/state/" + name + "/"
+		files[base+"PR.json"] = prDoc(headA)
+		files[base+"findings.json"] = "[" + finding(sigCrit, "open", "critical", "walked") + "]"
+	}
+	writeFiles(t, dir, files)
+	layer := newLayer(dir)
+	root := RootID(mustAbs(t, dir))
+	for _, name := range names {
+		t.Run(name, func(t *testing.T) {
+			if _, err := layer.Detail(context.Background(), root, name); err != nil {
+				t.Fatalf("Detail(%q) = %v, want success", name, err)
+			}
+		})
 	}
 }
 

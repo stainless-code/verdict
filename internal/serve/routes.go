@@ -118,10 +118,6 @@ func (s *Server) handleBundles(w http.ResponseWriter, r *http.Request) {
 // handleDetail publishes one bundle's report, gate, threads, and ledger.
 func (s *Server) handleDetail(w http.ResponseWriter, r *http.Request) {
 	bundle := r.PathValue("bundle")
-	if !query.ValidBundleName(bundle) {
-		s.problem(w, http.StatusNotFound, "not-found", "no such bundle")
-		return
-	}
 	view, err := s.layer.Detail(r.Context(), r.PathValue("root"), bundle)
 	if err != nil {
 		s.writeViewError(w, verbServe, "", bundle, err)
@@ -134,7 +130,7 @@ func (s *Server) handleDetail(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleShow(w http.ResponseWriter, r *http.Request) {
 	bundle := r.PathValue("bundle")
 	sig := r.PathValue("sig")
-	if !query.ValidBundleName(bundle) || !query.ValidSig(sig) {
+	if !query.ValidSig(sig) {
 		s.problem(w, http.StatusNotFound, "not-found", "no such bundle or sig")
 		return
 	}

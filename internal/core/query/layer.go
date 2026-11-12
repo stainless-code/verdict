@@ -208,20 +208,19 @@ func (l *Layer) rootByID(id string) (Root, bool) {
 	return Root{}, false
 }
 
-// resolve maps one bundle name onto its discovered directory. A name outside
-// the discovered set is not found; a name whose ResolveBundleDir answer points
-// at a sibling is refused bundle-ambiguous instead of reading that sibling.
+// resolve maps one bundle name onto its discovered directory. The shared
+// bundle-name guard decides what a name may be, so the route and the CLI
+// refuse the same spellings; a name outside the discovered set is not found.
+// A name whose ResolveBundleDir answer points at a sibling is refused
+// bundle-ambiguous instead of reading that sibling.
 func (l *Layer) resolve(root Root, bundle string) (string, bool, *core.RefusalError) {
-	if !ValidBundleName(bundle) {
-		return "", false, nil
+	dir, ref := readcommon.ResolveBundleDir(root.Path, bundle)
+	if ref != nil {
+		return "", false, ref
 	}
 	names, _, _ := l.listBundles(root)
 	if !slices.Contains(names, bundle) {
 		return "", false, nil
-	}
-	dir, ref := readcommon.ResolveBundleDir(root.Path, bundle)
-	if ref != nil {
-		return "", false, ref
 	}
 	want := filepath.ToSlash(filepath.Join(readcommon.StateDir(root.Path), bundle))
 	if dir != want {
@@ -281,17 +280,22 @@ func (l *Layer) listBundles(root Root) ([]string, bool, []ErrRow) {
 		return nil, false, []ErrRow{errRow(root, "", "corrupt-store",
 			"bundle directory unreadable: "+err.Error())}
 	}
-	names, truncated := l.capBundles(bundleNames(entries))
+	names, truncated := l.capBundles(bundleNames(root, entries))
 	return names, truncated, nil
 }
 
-// bundleNames keeps the addressable bundle directories in readdir order.
-func bundleNames(entries []os.DirEntry) []string {
+// bundleNames keeps the addressable bundle directories in readdir order,
+// asking the shared guard the same question every verb asks.
+func bundleNames(root Root, entries []os.DirEntry) []string {
 	names := make([]string, 0, len(entries))
 	for _, entry := range entries {
-		if entry.IsDir() && ValidBundleName(entry.Name()) {
-			names = append(names, entry.Name())
+		if !entry.IsDir() {
+			continue
 		}
+		if _, ref := config.BundleDir(root.Path, entry.Name()); ref != nil {
+			continue
+		}
+		names = append(names, entry.Name())
 	}
 	return names
 }

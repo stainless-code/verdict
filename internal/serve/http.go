@@ -77,8 +77,8 @@ func (s *Server) rejected(w http.ResponseWriter, r *http.Request) bool {
 	return false
 }
 
-// badPath refuses a traversal segment or a backslash before routing: the URL
-// never becomes a filesystem path.
+// badPath refuses a traversal segment, a control byte, or a backslash before
+// routing: the URL never becomes a filesystem path.
 func badPath(p string) bool {
 	if strings.Contains(p, `\`) {
 		return true
@@ -88,7 +88,7 @@ func badPath(p string) bool {
 			return true
 		}
 	}
-	return false
+	return strings.ContainsFunc(p, func(r rune) bool { return r < 0x20 || r == 0x7f })
 }
 
 // problem writes one transport error: status, reason, message.
