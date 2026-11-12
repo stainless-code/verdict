@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	"crypto/sha256"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -17,12 +18,14 @@ const (
 	decimalBase = 10
 )
 
-// stamp fingerprints every composition input: each bundle-directory entry, the
-// chunks directory, and the root override fragments. An atomic write moves a
-// directory entry; an in-place rewrite moves the file's own size and mtime. A
-// symlink is fingerprinted through to its target, the same file the readers
-// open.
-type stamp string
+// stamp is the SHA-256 digest of every composition input: each bundle-directory
+// entry, the chunks directory, and the root override fragments. A 32-byte
+// digest keeps a cache row constant-size no matter how many files a bundle
+// holds. An atomic write moves a directory entry; an in-place rewrite moves the
+// target file's own size and mtime. A symlink is fingerprinted through to its
+// target, the same file the readers open. The stamp is a stat fingerprint, not
+// a content hash: a same-size, same-mtime in-place rewrite does not move it.
+type stamp [sha256.Size]byte
 
 // cacheKey names one composed view: the bundle plus the flags that change
 // the composition. Check separates an inbox row (no gate) from a detail.
@@ -63,7 +66,7 @@ func bundleStamp(root Root, dir string) stamp {
 	for _, fragment := range overrideFragments {
 		appendFileStamp(&out, filepath.Join(root.Path, filepath.FromSlash(fragment)))
 	}
-	return stamp(out.String())
+	return sha256.Sum256([]byte(out.String()))
 }
 
 // appendDirStamp fingerprints one directory's entries and recurses into the
@@ -134,7 +137,7 @@ func (l *Layer) cached(
 
 	resp, ref := l.compose(ctx, root, bundle, dir, flags)
 	inv := l.inventory(root, bundle, dir)
-	if ref != nil && ref.Code == "canceled" {
+	if ref != nil {
 		return resp, ref, inv
 	}
 

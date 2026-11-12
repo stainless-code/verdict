@@ -1389,6 +1389,12 @@ still allowlists only the loopback names, so a LAN client needs a concrete
 interface address such as `--host 192.168.1.10`. `/v1` is the only version: a
 breaking change becomes `/v2`.
 
+Composed views are cached in memory, keyed by a stat stamp of their inputs
+(each file's size and mtime, with symlinks followed to the target). The stamp
+catches an atomic write and an ordinary in-place rewrite, but not a same-size,
+same-mtime in-place rewrite: it is an invalidation fingerprint, not a content
+hash. Refusals are never cached.
+
 ## Your agent, launched (`run --agent`)
 
 `fetch` ends with a bundle and a prompt nobody ran. `run` closes that gap

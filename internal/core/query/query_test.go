@@ -635,6 +635,42 @@ func sourceBytes(t *testing.T, data map[string]any, name string) any {
 	return nil
 }
 
+// TestCacheDoesNotPinRefusals proves a refusal is never stored: a permission
+// fix that leaves the stamp untouched reads cleanly at the next request.
+func TestCacheDoesNotPinRefusals(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("mode bits do not deny reads on Windows")
+	}
+	dir, _ := fixture(t)
+	store := filepath.Join(dir, ".verdict", "state", "1234", "findings.json")
+	info, err := os.Stat(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	layer := newLayer(dir)
+	root := RootID(mustAbs(t, dir))
+	bundleDirPath := filepath.Join(dir, ".verdict", "state", "1234")
+	before := bundleStamp(Root{ID: root, Path: mustAbs(t, dir)}, bundleDirPath)
+	if err := os.Chmod(store, 0); err != nil {
+		t.Fatal(err)
+	}
+	_, err = layer.Detail(context.Background(), root, "1234")
+	var ref *core.RefusalError
+	if !errors.As(err, &ref) || ref.Code != "missing-findings" {
+		t.Fatalf("Detail with an unreadable store = %v, want missing-findings", err)
+	}
+	if after := bundleStamp(Root{ID: root, Path: mustAbs(t, dir)}, bundleDirPath); after != before {
+		t.Fatalf("permission change moved the cache stamp; the test proves nothing")
+	}
+	if err := os.Chmod(store, info.Mode()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := layer.Detail(context.Background(), root, "1234"); err != nil {
+		t.Errorf("Detail after the permission fix = %v, want success (refusal cached)", err)
+	}
+}
+
 // TestCacheDoesNotPinCancellation proves a request-scoped cancellation is not
 // stored: the next request with a live context composes normally.
 func TestCacheDoesNotPinCancellation(t *testing.T) {
