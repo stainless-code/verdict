@@ -282,7 +282,7 @@ func insertBasisLine(lines []string, computed string) (string, *core.Problem) {
 	lines = append(lines[:at], append(insert, lines[at:]...)...)
 	return strings.Join(lines, newline), &core.Problem{
 		Path: "$.body", Code: core.ProblemCodeBasisReplaced, Level: core.ProblemLevelWarning,
-		Message: "no basis line — inserted the computed counts (basis-replaced)",
+		Message: "no Basis line in the leading quote block — inserted the computed counts (basis-replaced)",
 		Fix:     "write the computed Basis line, or leave the line to the CLI",
 		Example: computed,
 	}

@@ -8,7 +8,7 @@ exit: 0
   "at": "0000-00-00T00:00:00Z",
   "next": "report or triage the local bundle; post stays refused (no PR target)",
   "warnings": [
-    "$.body: no basis line — inserted the computed counts (basis-replaced)"
+    "$.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)"
   ],
   "data": {
     "dir": ".verdict/state/local-mx",
@@ -349,7 +349,7 @@ exit: 0
 }
 --- stderr ---
 » anchors: 0 inline, 0 moved to body
-warn: $.body: no basis line — inserted the computed counts (basis-replaced)
+warn: $.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)
 » findings: 53 sigs -> .verdict/state/local-mx/findings.json
   c7bc06e4  deferred  true  notes.txt
   63b8aa5b  open  true  notes.txt

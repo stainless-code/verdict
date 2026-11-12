@@ -88,6 +88,10 @@ never meet a tier.
 It counts open, resolved-unfixed, and unknown outcomes; without changed-file
 evidence, fixed counts remain `null`, and no rate is published.
 
+**Serve UI.** The embedded, read-only browser view for `serve`: inbox, review
+detail, threads, cost, precision, and gate. It reads `/v1`; static exports can
+read the same envelope data from `data.json`.
+
 **Cost week.** A `serve` cost bucket keyed by the UTC ISO week of the bundle's
 `post.json` `posted_at` receipt. Cost records do not carry their own timestamp.
 

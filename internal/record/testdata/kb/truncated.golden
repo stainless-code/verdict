@@ -12,7 +12,7 @@ warn: ignoring unknown kb rule 'c'
 warn: ignoring unknown kb rule 'd'
 warn: ignoring unknown kb rule 'e'
 warn: ignoring unknown kb rule 'f'
-warn: $.body: no basis line — inserted the computed counts (basis-replaced)
+warn: $.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)
 --- files ---
 --- file C/.verdict/state/local-kb/findings.json ---
 [

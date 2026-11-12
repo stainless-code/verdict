@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="verdict-mode" content="live" />
+    <title>Verdict</title>
+    <link rel="stylesheet" href="app.css" />
+    <script defer src="app.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="topbar">
+      <a class="brand" href="#/bundles">Verdict</a>
+      <nav aria-label="Views">
+        <a href="#/bundles">Inbox</a>
+        <a href="#/cost">Cost</a>
+        <a href="#/precision">Precision</a>
+      </nav>
+      <span id="live-status" class="live" aria-live="polite">Connecting</span>
+      <button id="refresh" type="button" hidden>Refresh</button>
+    </header>
+    <main id="main" tabindex="-1">
+      <h1 id="title">Loading</h1>
+      <p id="message" role="status"></p>
+      <section id="content" aria-label="View"></section>
+    </main>
+    <noscript
+      >JavaScript is required for this view. Run <code>verdict report</code>,
+      <code>verdict report --cost</code>, <code>verdict calibrate</code>, or
+      <code>verdict gate</code> in the terminal.</noscript
+    >
+  </body>
+</html>
