@@ -76,6 +76,22 @@ type threadsRun struct {
 	warnings []string
 }
 
+// openBundle resolves the request's bundle under the shared name guard and
+// proves the fetch that created it left a PR record beside it.
+func (st *threadsRun) openBundle() (string, *core.RefusalError) {
+	dir, ref := readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
+	if ref != nil {
+		return "", st.withWarnings(ref)
+	}
+	if !fileExists(dir + suffixPRJSON) {
+		return "", st.withWarnings(&core.RefusalError{
+			Code:    CodeFetchFailed,
+			Message: fmt.Sprintf("missing %s/PR.json (fetch the PR first)", dir),
+		})
+	}
+	return dir, nil
+}
+
 // RunThreads executes `threads <owner/repo> <pr> [--provider <name>]`:
 // re-read the provider's review conversations and rewrite only
 // .verdict/state/<pr>/threads.json. Human progress streams through the runtime
@@ -93,12 +109,9 @@ func RunThreads(ctx context.Context, req *ThreadsRequest) (*ThreadsResponse, *co
 		return nil, st.withWarnings(&core.RefusalError{Code: codeBadProvider, Message: fmt.Sprintf(
 			"unknown --provider '%s' (want github|gitlab|gitcafe|forgejo|bitbucket|azure)", req.Provider)})
 	}
-	dir := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
-	if !fileExists(dir + suffixPRJSON) {
-		return nil, st.withWarnings(&core.RefusalError{
-			Code:    CodeFetchFailed,
-			Message: fmt.Sprintf("missing %s/PR.json (fetch the PR first)", dir),
-		})
+	dir, ref := st.openBundle()
+	if ref != nil {
+		return nil, ref
 	}
 	s, ref := st.session()
 	if ref != nil {

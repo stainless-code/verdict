@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -348,16 +349,48 @@ func sha256HexBytes(body []byte) string {
 func ensureBundleState(root string) *core.RefusalError {
 	layout := config.NewLayout(root)
 	if serr := layout.EnsureStateIgnore(); serr != nil {
-		if ref := serr.Refusal(); ref != nil {
-			return ref
-		}
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not prepare state directory: %v", serr)}
+		return stateRefusal(serr, "state directory")
 	}
 	if serr := layout.EnsureStateDir(); serr != nil {
-		if ref := serr.Refusal(); ref != nil {
-			return ref
-		}
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not prepare state directory: %v", serr)}
+		return stateRefusal(serr, "state directory")
+	}
+	return nil
+}
+
+// stateFailure is the sealed layout error config returns: Refusal answers the
+// typed refusal when the repository layout caused the failure, nil for a local
+// one.
+type stateFailure interface {
+	error
+	Refusal() *core.RefusalError
+}
+
+// stateRefusal maps one layout failure on what to the fetch refusal: a layout
+// the operator has to edit refuses typed, a local failure becomes a fetch
+// failure.
+func stateRefusal(serr stateFailure, what string) *core.RefusalError {
+	if ref := serr.Refusal(); ref != nil {
+		return ref
+	}
+	return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not prepare %s: %v", what, serr)}
+}
+
+// refuseSymlinkedBundleDir refuses a bundle directory that is a symlink before
+// the run writes into it. fetch-local writes controls.json and the diff before
+// its spend gate, so the refusal cannot wait for the directory's creation. dir
+// is the slash-form path ResolveBundleDir returned.
+func refuseSymlinkedBundleDir(root, dir string) *core.RefusalError {
+	if serr := config.NewLayout(root).RefuseBundleSymlink(filepath.Base(dir)); serr != nil {
+		return stateRefusal(serr, dir)
+	}
+	return nil
+}
+
+// ensureBundleDir creates the bundle directory the run writes into after the
+// same refusal.
+func ensureBundleDir(root, dir string) *core.RefusalError {
+	if serr := config.NewLayout(root).EnsureBundleDir(filepath.Base(dir)); serr != nil {
+		return stateRefusal(serr, dir)
 	}
 	return nil
 }

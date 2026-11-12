@@ -147,7 +147,9 @@ func dirtyTarget(ctx context.Context, s *session) (string, bool, error) {
 // human lines, and goldens never carry a native separator. git itself
 // creates the directory, so this only probes. The worktree add is the
 // atomic claim: a lost race refuses typed with git's own already-exists
-// excerpt instead of sharing a checkout.
+// excerpt instead of sharing a checkout. The joined name needs no bundle-name
+// guard: slug is localSlug's output, `[a-z0-9-]` and never empty, so it is one
+// path element by construction.
 func resolveIsolationDir(root, slug string) (string, error) {
 	state := readcommon.StateDir(root)
 	if err := os.MkdirAll(state, dirPerm); err != nil {

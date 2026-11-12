@@ -149,6 +149,81 @@ func TestEnsureStateDirRefusesStateSymlink(t *testing.T) {
 	assertUntouched(t, outside)
 }
 
+// symlinkedBundleFixture builds a layout whose state home carries name as a
+// symlink to a sibling directory inside the root, returning the link target a
+// refused write would land in.
+func symlinkedBundleFixture(t *testing.T, name string) (Layout, string) {
+	t.Helper()
+	root := t.TempDir()
+	layout := NewLayout(root)
+	if err := layout.EnsureStateDir(); err != nil {
+		t.Fatalf("EnsureStateDir: %v", err)
+	}
+	target := filepath.Join(root, "elsewhere")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(layout.StateDir(), name)); err != nil {
+		t.Skipf("this platform cannot create symlinks here: %v", err)
+	}
+	return layout, target
+}
+
+// bundleSymlinkMessage is the refusal one symlinked bundle directory renders.
+func bundleSymlinkMessage(name string) string {
+	return filepath.Join(VerdictDir, StateDirName, name) + " is a symlink: refusing to write through it"
+}
+
+// TestRefuseBundleSymlinkRefusesALinkedBundle pins the bundle-leaf rule on the
+// check-only gate: a symlinked bundle directory refuses typed and nothing is
+// written through the link.
+func TestRefuseBundleSymlinkRefusesALinkedBundle(t *testing.T) {
+	layout, target := symlinkedBundleFixture(t, "local-mine")
+	serr := layout.RefuseBundleSymlink("local-mine")
+	if serr == nil {
+		t.Fatal("RefuseBundleSymlink accepted a symlinked bundle directory")
+	}
+	want := bundleSymlinkMessage("local-mine")
+	if ref := serr.Refusal(); ref == nil || ref.Code != CodeBadConfig || ref.Message != want {
+		t.Fatalf("refusal = %v, want %s: %s", ref, CodeBadConfig, want)
+	}
+	if got := dirEntries(t, target); len(got) != 0 {
+		t.Fatalf("link target gained files: %v", got)
+	}
+}
+
+// TestEnsureBundleDirRefusesALinkedBundle pins the same refusal on the gate
+// that creates the directory, so no caller can skip it by creating first.
+func TestEnsureBundleDirRefusesALinkedBundle(t *testing.T) {
+	layout, target := symlinkedBundleFixture(t, "local-mine")
+	serr := layout.EnsureBundleDir("local-mine")
+	if serr == nil {
+		t.Fatal("EnsureBundleDir accepted a symlinked bundle directory")
+	}
+	if ref := serr.Refusal(); ref == nil || ref.Message != bundleSymlinkMessage("local-mine") {
+		t.Fatalf("refusal = %v, want the symlink message", ref)
+	}
+	if got := dirEntries(t, target); len(got) != 0 {
+		t.Fatalf("link target gained files: %v", got)
+	}
+}
+
+// TestRefuseBundleSymlinkCreatesNothing pins the absent half: the refusal check
+// answers for a bundle that does not exist yet and leaves the state home as it
+// found it, so a run that fails before its gate creates no bundle.
+func TestRefuseBundleSymlinkCreatesNothing(t *testing.T) {
+	layout := NewLayout(t.TempDir())
+	if err := layout.EnsureStateDir(); err != nil {
+		t.Fatalf("EnsureStateDir: %v", err)
+	}
+	if serr := layout.RefuseBundleSymlink("local-mine"); serr != nil {
+		t.Fatalf("RefuseBundleSymlink on an absent bundle: %v", serr)
+	}
+	if got := dirEntries(t, layout.StateDir()); len(got) != 1 || got[0] != ".gitignore" {
+		t.Fatalf("state dir = %v, want only the generated ignore layer", got)
+	}
+}
+
 // TestEnsureStateIgnoreRefusesStateNegations pins the loud-negation rule:
 // every negation able to match the state directory refuses naming the
 // line, and the ignore file stays byte-identical.

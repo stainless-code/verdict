@@ -3,7 +3,6 @@ package trendcore
 import (
 	"fmt"
 	"maps"
-	"os"
 	"slices"
 
 	corpuscore "github.com/stainless-code/verdict/internal/core/corpus"
@@ -38,16 +37,15 @@ type corpusRollup struct {
 	total   corpusCounts
 }
 
-func (st *state) readCorpus(e os.DirEntry) {
-	dir := readcommon.ResolveBundleDir(st.req.RepoRootPath(), e.Name())
+func (st *state) readCorpus(dir string) {
 	c, ref := corpuscore.Load(dir)
 	if ref != nil {
-		st.warn("trend skips corpus bundle " + dir + "/ (" + ref.Message + ")")
+		st.warn(skipWarn + "corpus bundle " + dir + "/ (" + ref.Message + ")")
 		return
 	}
 	entries, err := readcommon.LoadFindings(dir)
 	if err != nil {
-		st.warn("trend skips corpus bundle " + dir + "/ (" + err.Error() + ")")
+		st.warn(skipWarn + "corpus bundle " + dir + "/ (" + err.Error() + ")")
 		return
 	}
 	report := corpuscore.Evaluate(c, entries)

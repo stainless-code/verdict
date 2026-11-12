@@ -13,10 +13,10 @@ import (
 func TestPortableBundlePaths(t *testing.T) {
 	t.Parallel()
 	paths := []string{
-		readcommon.ResolveBundleDir(".", "42"),
-		readcommon.ResolveBundleDir(".", "local-7"),
-		readcommon.ResolveBundleDir(".", "corpus-7"),
-		readcommon.ResolveBundleDir("/repo", "42"),
+		resolveBundleDir(t, ".", "42"),
+		resolveBundleDir(t, ".", "local-7"),
+		resolveBundleDir(t, ".", "corpus-7"),
+		resolveBundleDir(t, "/repo", "42"),
 		readcommon.StateDir("."),
 		readcommon.StateDir("/repo"),
 	}
@@ -25,7 +25,7 @@ func TestPortableBundlePaths(t *testing.T) {
 			t.Errorf("bundle path %q carries a native separator; want slash-form", got)
 		}
 	}
-	if got := readcommon.ResolveBundleDir("/repo", "42"); got != "/repo/.verdict/state/42" {
+	if got := resolveBundleDir(t, "/repo", "42"); got != "/repo/.verdict/state/42" {
 		t.Errorf("ResolveBundleDir(/repo, 42) = %q; want the slash-form bundle dir", got)
 	}
 }
