@@ -26,7 +26,9 @@ HEAD_A="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 )
 run_review learn --rule "Dump probe lines stay short" --scope "dumpdir/*.txt" --id dump-probe --json >/dev/null 2>&1 || true
 
-dump_nonce() { sed -n 's/.*nonce=\([0-9a-f]\{16\}\).*/\1/p' "$1" | head -n 1; }
+# awk drains the pipe; `head -n 1` exits at the first match, and pipefail turns
+# the producer's SIGPIPE into a failure (STA-378).
+dump_nonce() { sed -n 's/.*nonce=\([0-9a-f]\{16\}\).*/\1/p' "$1" | awk 'NR == 1'; }
 
 dump_expected() {
   (

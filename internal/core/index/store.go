@@ -452,14 +452,16 @@ func (st *state) status(ctx context.Context) (*Response, *core.RefusalError) {
 	}
 	count, bytes := shardStats(store)
 	st.line(fmt.Sprintf("index: %d tree(s), %d shard(s) (%d bytes)", len(rows), count, bytes))
+	next := "query it with verdict index callers <symbol>"
 	if built {
 		st.line("index: HEAD " + head + " is indexed")
 	} else {
 		st.line("index: no tree for HEAD " + head + " — run verdict index build")
+		next = "build it with verdict index build"
 	}
 	return &Response{
 		At:   st.req.TimeUTC(),
-		Next: "build it with verdict index build",
+		Next: next,
 		Data: &Data{
 			Kind: QueryStatus, Tree: head, Commit: commit, Stale: !built, Built: built,
 			Trees: rows, ShardCount: count, ShardBytes: bytes,

@@ -1,0 +1,8 @@
+exit: 1
+--- stdout ---
+
+--- stderr ---
+warn: .verdict/packs/README.md is not a pack directory — ignored
+error: repo pack "acme/repo" overrides lens id "perf" from "verdict/builtin"; add "replace": ["verdict/builtin"] to the acme/repo pack manifest
+try: add "replace": ["<lower pack name>"] to the higher pack's manifest, or rename the conflicting id
+--- files ---

@@ -200,16 +200,16 @@ func TestRunnerCapsStdout(t *testing.T) {
 			Argv:      []string{"bash", "-c", "head -c 4096 /dev/zero"},
 			OutputCap: limit,
 		})
-		assertOutputCapped(t, res, err, limit)
+		assertOutputCapped(t, res, err, limit, 4096)
 	})
 	t.Run("runner cap", func(t *testing.T) {
 		res, err := Runner{OutputCap: limit}.Run(tctx,
 			&core.Command{Argv: []string{"bash", "-c", "head -c 4096 /dev/zero"}})
-		assertOutputCapped(t, res, err, limit)
+		assertOutputCapped(t, res, err, limit, 4096)
 	})
 }
 
-func assertOutputCapped(t *testing.T, res core.Result, err error, limit int) {
+func assertOutputCapped(t *testing.T, res core.Result, err error, limit, delivered int) {
 	t.Helper()
 	capErr, ok := errors.AsType[*core.OutputCappedError](err)
 	if !ok || capErr.Stream != "stdout" {
@@ -217,6 +217,9 @@ func assertOutputCapped(t *testing.T, res core.Result, err error, limit int) {
 	}
 	if capErr.Limit != limit {
 		t.Errorf("cap = %d, want %d", capErr.Limit, limit)
+	}
+	if capErr.ReadBytes != delivered {
+		t.Errorf("ReadBytes = %d, want the %d bytes the child wrote", capErr.ReadBytes, delivered)
 	}
 	if !res.StdoutTruncated {
 		t.Error("StdoutTruncated = false, want true")

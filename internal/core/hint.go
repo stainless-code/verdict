@@ -105,7 +105,8 @@ var hintRules = []HintRule{
 	{codes: []string{"controls-too-large"}, hint: "try: trim the named control file under its cap, commit it at base, then re-fetch"},
 	{codes: []string{"bad-review-input"}, hint: "try: fix the malformed agent input named above " +
 		"(review.json wants {body, approved, comments[]}; claims want string sigs), then re-run"},
-	{codes: []string{"index-capped"}, hint: "try: narrow --from/--at to a smaller tree, or raise the index caps"},
+	{codes: []string{"index-capped"}, hint: "try: narrow --from/--at to a smaller tree " +
+		"(the 97 MiB git capture cap is fixed; the typed caps cover file, tree and shard bytes only)"},
 	{codes: []string{"index-corrupt", "index-failed"}, hint: "try: delete .verdict/index and rebuild with 'verdict index build'"},
 	{codes: []string{"bad-since"}, hint: "try: pass --since <90d|12w|18mo|2y|ref> " +
 		"(a bare m is not a unit, and the ref must precede --until)"},

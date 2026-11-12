@@ -81,6 +81,35 @@ func TestRefuseTypedAdoptsWarnings(t *testing.T) {
 	}
 }
 
+// TestRefuseRendersCarriedWarnings pins the human error path: a refusal that
+// carries the warnings its verb already collected writes each one as a warn:
+// line before the error line, and a warning Warn already wrote is not written
+// twice.
+func TestRefuseRendersCarriedWarnings(t *testing.T) {
+	t.Parallel()
+	var out, diag bytes.Buffer
+	r := &cli.Runner{Out: &out, Human: &out, Diag: &diag, Effective: cli.Defaults()}
+	r.Warn("already on stderr")
+	code := r.RefuseTyped(&core.RefusalError{
+		Code:     "bad-pack",
+		Message:  "boom",
+		Warnings: []string{"already on stderr", "only on the refusal"},
+	})
+	if code != cli.ExitRefused {
+		t.Errorf("exit = %d; want %d", code, cli.ExitRefused)
+	}
+	const want = "warn: already on stderr\n" +
+		"warn: only on the refusal\n" +
+		"error: boom\n" +
+		"try: fix pack.json against schemas/pack.schema.json (exact lowercase keys, every id paired with its markdown file), then re-run\n"
+	if got := diag.String(); got != want {
+		t.Errorf("stderr = %q; want %q", got, want)
+	}
+	if out.Len() != 0 {
+		t.Errorf("stdout = %q; a refusal stays off stdout", out.String())
+	}
+}
+
 func checkRefuseTyped(t *testing.T, tc refusalCase) {
 	t.Helper()
 	var out, diag bytes.Buffer

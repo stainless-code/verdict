@@ -255,21 +255,37 @@ func writeCallFixture(f *fixture, extra string) {
 }
 
 // cappedCommander returns the capture-cap error for every command, standing in
-// for a git stream larger than the runner keeps.
-type cappedCommander struct{}
+// for a git stream larger than the runner keeps. readBytes is the count the
+// runner measured; 0 stands in for a commander that keeps no count.
+type cappedCommander struct{ readBytes int }
 
-func (cappedCommander) Run(context.Context, *core.Command) (core.Result, error) {
-	return core.Result{}, &core.OutputCappedError{Stream: "stdout", Limit: 101711872}
+func (c cappedCommander) Run(context.Context, *core.Command) (core.Result, error) {
+	return core.Result{}, &core.OutputCappedError{Stream: "stdout", Limit: 101711872, ReadBytes: c.readBytes}
 }
 
 // TestGitBatchCaptureCapRefuses proves an over-cap cat-file stream refuses as
-// index-capped naming the cap, never index-failed pointing at a rebuild.
+// index-capped naming the cap and, once the commander counted the stream, the
+// bytes git delivered — never index-failed pointing at a rebuild.
 func TestGitBatchCaptureCapRefuses(t *testing.T) {
+	t.Run("measured", func(t *testing.T) {
+		assertGitBatchCapRefusal(t, cappedCommander{readBytes: 118111600},
+			"git cat-file output exceeded the 101711872-byte capture cap after 118111600 bytes")
+	})
+	t.Run("unmeasured", func(t *testing.T) {
+		assertGitBatchCapRefusal(t, cappedCommander{},
+			"git cat-file output exceeded the 101711872-byte capture cap")
+	})
+}
+
+// assertGitBatchCapRefusal drives gitBatch with a commander that reports the
+// capture cap and asserts the refusal.
+func assertGitBatchCapRefusal(t *testing.T, cmdr core.Commander, want string) {
+	t.Helper()
 	req := &Request{}
-	req.Runtime = &core.Runtime{Commander: cappedCommander{}, Env: map[string]string{}}
+	req.Runtime = &core.Runtime{Commander: cmdr, Env: map[string]string{}}
 	st := &state{req: req}
 	_, ref := st.gitBatch(context.Background(), ".", []string{"0f1e2d3c"})
-	assertRefusal(t, ref, "index-capped", "git cat-file output exceeded the 101711872-byte capture cap")
+	assertRefusal(t, ref, "index-capped", want)
 }
 
 // TestIndexBytesAreDeterministic proves two builds of the same tree write
@@ -630,6 +646,26 @@ func TestCallersGenericInstantiationIsUnresolved(t *testing.T) {
 	}
 }
 
+// TestCallersSymbolTypoIsAnEmptyAnswer pins the manual's scope: only the
+// qualifier is checked, so a mistyped symbol answers zero rows instead of a
+// refusal and the reader has to check the name against the declarations.
+func TestCallersSymbolTypoIsAnEmptyAnswer(t *testing.T) {
+	f := newFixture(t)
+	writeCallFixture(f, "")
+	f.commit("one")
+	f.build()
+	req := f.request(QueryCallers, nil)
+	req.Symbol = "a.Nope"
+	resp, ref := Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("index callers refused a mistyped symbol: %v", ref)
+	}
+	if resp.Data.Callers != 0 || len(resp.Data.Rows) != 0 || resp.Data.Unresolved != 0 {
+		t.Errorf("callers = %d, rows = %d, unresolved = %d; want an empty answer",
+			resp.Data.Callers, len(resp.Data.Rows), resp.Data.Unresolved)
+	}
+}
+
 // TestCallersQualifierRefusals proves an unmatched package qualifier refuses
 // instead of reporting no callers, and an ambiguous one still refuses.
 func TestCallersQualifierRefusals(t *testing.T) {
@@ -845,5 +881,36 @@ func TestIndexRenderedPathsAreEscaped(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("human lines = %q; want one containing %q", resp.Human, want)
+	}
+}
+
+// TestIndexStatusNextFollowsTheBuildState proves status never sends the
+// operator back to a build that already happened: no tree for HEAD names the
+// build, an indexed HEAD names the query the index can answer.
+func TestIndexStatusNextFollowsTheBuildState(t *testing.T) {
+	f := newFixture(t)
+	f.write("go.mod", "module example.com/m\n")
+	f.write("a/a.go", "package a\n\nfunc A() {}\n")
+	f.commit("one")
+	before, ref := Run(context.Background(), f.request(QueryStatus, nil))
+	if ref != nil {
+		t.Fatalf("index status refused: %v", ref)
+	}
+	if before.Data.Built {
+		t.Fatal("Built = true before any build")
+	}
+	if before.Next != "build it with verdict index build" {
+		t.Errorf("unbuilt next = %q; want the build step", before.Next)
+	}
+	f.build()
+	after, ref := Run(context.Background(), f.request(QueryStatus, nil))
+	if ref != nil {
+		t.Fatalf("index status refused after build: %v", ref)
+	}
+	if !after.Data.Built {
+		t.Fatal("Built = false after a build of HEAD's tree")
+	}
+	if after.Next != "query it with verdict index callers <symbol>" {
+		t.Errorf("built next = %q; want the query step", after.Next)
 	}
 }
