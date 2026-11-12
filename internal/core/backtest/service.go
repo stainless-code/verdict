@@ -154,12 +154,14 @@ type Candidate struct {
 }
 
 // Bug is one anchored line at the PR head. Fix is the seed fix whose deleted
-// line produced the anchor.
+// line produced the anchor, and Signal is the seed rule that fix matched:
+// `fix` or `revert`.
 type Bug struct { //nolint:govet // field order is the published property order
-	Path string `json:"path"`
-	Line int    `json:"line"`
-	Kind string `json:"kind"`
-	Fix  string `json:"fix"`
+	Path   string `json:"path"`
+	Line   int    `json:"line"`
+	Kind   string `json:"kind"`
+	Signal string `json:"signal"`
+	Fix    string `json:"fix"`
 }
 
 // Skipped is one seed fix that produced no candidate, with the deterministic

@@ -74,8 +74,8 @@ func TestMineMultiHunkFix(t *testing.T) {
 	}
 	candidate := data.Mine.Candidates[0]
 	want := []Bug{
-		{Path: "a.txt", Line: 2, Kind: "unclassified", Fix: fix},
-		{Path: "a.txt", Line: 9, Kind: "unclassified", Fix: fix},
+		{Path: "a.txt", Line: 2, Kind: "unclassified", Signal: "fix", Fix: fix},
+		{Path: "a.txt", Line: 9, Kind: "unclassified", Signal: "fix", Fix: fix},
 	}
 	if !slices.EqualFunc(candidate.Bugs, want, func(a, b Bug) bool { return a == b }) {
 		t.Errorf("bugs = %+v; want %+v", candidate.Bugs, want)
@@ -106,7 +106,7 @@ func TestMineRenameOff(t *testing.T) {
 	if len(data.Mine.Candidates) != 1 {
 		t.Fatalf("candidates = %+v; skipped %+v; want one", data.Mine.Candidates, data.Mine.Skipped)
 	}
-	want := []Bug{{Path: "old.txt", Line: 1, Kind: "unclassified", Fix: fix}}
+	want := []Bug{{Path: "old.txt", Line: 1, Kind: "unclassified", Signal: "fix", Fix: fix}}
 	if !slices.EqualFunc(data.Mine.Candidates[0].Bugs, want, func(a, b Bug) bool { return a == b }) {
 		t.Errorf("bugs = %+v; want %+v", data.Mine.Candidates[0].Bugs, want)
 	}
@@ -129,7 +129,7 @@ func TestMineCRLFDeletion(t *testing.T) {
 	if len(data.Mine.Candidates) != 1 {
 		t.Fatalf("candidates = %+v; skipped %+v; want one", data.Mine.Candidates, data.Mine.Skipped)
 	}
-	want := []Bug{{Path: "w.txt", Line: 2, Kind: "unclassified", Fix: fix}}
+	want := []Bug{{Path: "w.txt", Line: 2, Kind: "unclassified", Signal: "fix", Fix: fix}}
 	if !slices.EqualFunc(data.Mine.Candidates[0].Bugs, want, func(a, b Bug) bool { return a == b }) {
 		t.Errorf("bugs = %+v; want %+v", data.Mine.Candidates[0].Bugs, want)
 	}
@@ -152,7 +152,7 @@ func TestMineDeletedLinePatternChars(t *testing.T) {
 	if len(data.Mine.Candidates) != 1 {
 		t.Fatalf("candidates = %+v; skipped %+v; want one", data.Mine.Candidates, data.Mine.Skipped)
 	}
-	want := []Bug{{Path: "notes.txt", Line: 2, Kind: "unclassified", Fix: fix}}
+	want := []Bug{{Path: "notes.txt", Line: 2, Kind: "unclassified", Signal: "fix", Fix: fix}}
 	if !slices.EqualFunc(data.Mine.Candidates[0].Bugs, want, func(a, b Bug) bool { return a == b }) {
 		t.Errorf("bugs = %+v; want %+v", data.Mine.Candidates[0].Bugs, want)
 	}

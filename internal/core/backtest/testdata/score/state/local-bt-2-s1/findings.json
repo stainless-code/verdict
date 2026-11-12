@@ -1,0 +1,28 @@
+[
+  {
+    "kind": "inline",
+    "path": "b.go",
+    "side": "RIGHT",
+    "line": 5,
+    "anchored": true,
+    "body": "This dereferences a nil pointer.",
+    "suggestion": null,
+    "rigor": "walked",
+    "severity": "critical",
+    "sig": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "status": "open"
+  },
+  {
+    "kind": "inline",
+    "path": "b.go",
+    "side": "RIGHT",
+    "line": 20,
+    "anchored": true,
+    "body": "Nit: rename this line.",
+    "suggestion": null,
+    "rigor": "walked",
+    "severity": "informational",
+    "sig": "cccccccccccccccccccccccccccccccccccccccc",
+    "status": "open"
+  }
+]

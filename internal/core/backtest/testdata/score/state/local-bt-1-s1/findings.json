@@ -1,0 +1,15 @@
+[
+  {
+    "kind": "inline",
+    "path": "a.go",
+    "side": "RIGHT",
+    "line": 10,
+    "anchored": true,
+    "body": "The removal is unchecked: the error is dropped.",
+    "suggestion": null,
+    "rigor": "walked",
+    "severity": "important",
+    "sig": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "status": "open"
+  }
+]

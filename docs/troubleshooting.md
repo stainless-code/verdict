@@ -610,9 +610,9 @@ Fix: check the config path and permissions named above, then re-run.
 
 ## `missing-bundle`
 
-Cause: the bundle is absent — nothing fetched it yet.
+Cause: the bundle is absent — nothing fetched it yet. For `backtest score`, the run has no `mine.json` (never mined) or no `prs/` records (never replayed).
 
-Fix: run `fetch` first (`verdict fetch <owner>/<repo> <pr>`, or `verdict fetch-local` for a local bundle).
+Fix: run `fetch` first (`verdict fetch <owner>/<repo> <pr>`, or `verdict fetch-local` for a local bundle). For a backtest run, mine it (`verdict backtest mine --since … --run <id>`) and replay it (`verdict backtest replay --run <id> --agent <name>`) before scoring.
 
 ## `missing-chunk-coverage`
 
@@ -844,9 +844,9 @@ Fix: remove the named path from the bundle, then re-run.
 
 ## `run-mismatch`
 
-Cause: `.verdict/backtest/<run>/run.json` exists with a different mode or window than this invocation.
+Cause: `.verdict/backtest/<run>/run.json` exists with a different mode or window than this invocation. For `backtest score`, the run's `mine.json` no longer carries a PR a recorded review names, a bug was mined before it recorded its seed signal, or two resume records name the same candidate.
 
-Fix: pick another `--run <slug>`, or delete the existing run directory.
+Fix: pick another `--run <slug>`, or delete the existing run directory. Re-mine and replay the run when the score refuses it, so the review and its ground truth come from the same resolution; delete a duplicated `prs/<NNN>/replay.json` when two rows name one candidate.
 
 ## `sandbox-unavailable`
 

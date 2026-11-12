@@ -18,6 +18,9 @@ import (
 // skill) re-pinned all ten hashes: only each $id URL moved; no property,
 // required key, enum, or type changed.
 var publishedSemantics = map[string]string{
+	// additive backtest.schema.json (new run-artifact document for the backtest
+	// score report; no existing schema property, required key, or type changed).
+	"backtest.schema.json": "5b138d14b22f1a3637562b2ca5aa3a5eca3792e3548b47ccd7be15ab87fd55d9",
 	// additive config.schema.json (new typed-repository-configuration
 	// document; no existing schema property, required key, or type
 	// changed). The scope $def now carries the presence contract the

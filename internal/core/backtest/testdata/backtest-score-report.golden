@@ -1,0 +1,33 @@
+{
+  "schema_version": "1",
+  "run": "s1",
+  "mode": "score",
+  "prs": 2,
+  "not_replayed": 0,
+  "bugs": 3,
+  "reported": 3,
+  "matched": 2,
+  "unclassified": 1,
+  "catch_rate": 0.6667,
+  "off_target_per_pr": 0.5,
+  "cost_per_review_usd": 0.5,
+  "spend": {
+    "usd": 0.5,
+    "priced_reviews": 1,
+    "unpriced_reviews": 1
+  },
+  "signals": [
+    {
+      "signal": "fix",
+      "bugs": 1,
+      "matched": 1,
+      "catch_rate": 1
+    },
+    {
+      "signal": "revert",
+      "bugs": 2,
+      "matched": 1,
+      "catch_rate": 0.5
+    }
+  ]
+}
