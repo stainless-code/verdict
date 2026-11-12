@@ -616,9 +616,10 @@ func blastTests(t *treeIndex, symbols []blastSymbol) []TestRow {
 	if t == nil {
 		return nil
 	}
+	g := newImportGraph(t)
 	best := map[string]TestRow{}
 	for i := range symbols {
-		collectSymbolTests(best, t, &symbols[i])
+		collectSymbolTests(best, t, g, &symbols[i])
 	}
 	rows := make([]TestRow, 0, len(best))
 	for _, row := range best {
@@ -635,32 +636,50 @@ func blastTests(t *treeIndex, symbols []blastSymbol) []TestRow {
 
 // collectSymbolTests keeps the strongest candidate mechanism per test file for
 // one changed symbol.
-func collectSymbolTests(best map[string]TestRow, t *treeIndex, sym *blastSymbol) {
+func collectSymbolTests(best map[string]TestRow, t *treeIndex, g *importGraph, sym *blastSymbol) {
 	plan := &testPlan{
-		path: sym.row.Path, dirs: []string{sym.tgt.pkg.dir}, lang: sym.tgt.lang, targets: []target{sym.tgt},
+		path: sym.row.Path, dirs: []string{sym.tgt.pkg.dir}, lang: sym.tgt.lang,
+		depth: DefaultDepth, targets: []target{sym.tgt},
 	}
-	for _, row := range collectTestRows(t, plan) {
+	for _, row := range walkTestRows(t, plan, g).rows {
 		cur, seen := best[row.Path]
-		if !seen || viaRank(row.Via) < viaRank(cur.Via) {
+		if !seen || strongerTestRow(row, cur) {
 			best[row.Path] = row
 		}
 	}
 }
 
-// viaRankOther ranks a mechanism the list does not publish.
-const viaRankOther = 3
+// strongerTestRow reports whether one candidate outranks another for the same
+// file: the stronger mechanism, then the shorter walk to it.
+func strongerTestRow(row, cur TestRow) bool {
+	if a, b := viaRank(row.Via), viaRank(cur.Via); a != b {
+		return a < b
+	}
+	return row.Depth < cur.Depth
+}
 
-// viaRank orders the candidate-test mechanisms strongest first.
+// The candidate-test mechanism ranks, strongest first. The transitive walk is
+// the weakest mechanism the list publishes, so every rank it names or does not
+// name outranks it.
+const (
+	rankSamePackage = iota
+	rankReferences
+	rankImportsModule
+	rankTransitiveImport
+)
+
+// viaRank orders the candidate-test mechanisms strongest first; a mechanism
+// this switch does not name ranks as the transitive walk, the weakest.
 func viaRank(via string) int {
 	switch via {
 	case viaSamePackage:
-		return 0
+		return rankSamePackage
 	case viaReferences:
-		return 1
+		return rankReferences
 	case viaImportsModule:
-		return 2
+		return rankImportsModule
 	default:
-		return viaRankOther
+		return rankTransitiveImport
 	}
 }
 
@@ -835,7 +854,7 @@ func (st *state) blastCallerLines(blast *Blast) {
 func (st *state) blastTestLines(blast *Blast) {
 	st.line(fmt.Sprintf(blastTestsHead, *blast.Counts.Tests))
 	for _, row := range blast.Tests {
-		st.line(fmt.Sprintf("%s (%s)", quotePath(row.Path), row.Via))
+		st.line(testRowText(row))
 	}
 	st.showingRow("candidate tests", len(blast.Tests), *blast.Counts.Tests, *blast.Truncated.Tests)
 }

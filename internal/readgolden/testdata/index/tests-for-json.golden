@@ -33,7 +33,9 @@ exit: 0
       "tests": 3
     },
     "limit": 50,
+    "depth": 3,
     "truncated": 0,
+    "depth_truncated": 0,
     "rows": [
       {
         "path": "a/a_test.go",
@@ -41,11 +43,13 @@ exit: 0
       },
       {
         "path": "b/b_test.go",
-        "via": "references"
+        "via": "references",
+        "depth": 1
       },
       {
         "path": "c/c_test.go",
-        "via": "imports-module"
+        "via": "imports-module",
+        "depth": 1
       }
     ]
   },

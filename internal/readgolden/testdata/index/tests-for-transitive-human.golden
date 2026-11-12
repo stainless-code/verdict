@@ -1,0 +1,8 @@
+exit: 0
+--- stdout ---
+index: 2 candidate test(s) for a/a.go at d6faf5ca4be97f8f96e8a0aa501f80377df5c138 (same-package 0, references 0, imports-module 0, transitive-import 2)
+c/c_test.go (transitive-import, depth 2)
+d/d_test.go (transitive-import, depth 3)
+--- stderr ---
+
+--- files ---

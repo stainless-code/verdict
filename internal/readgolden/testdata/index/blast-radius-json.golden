@@ -124,7 +124,8 @@ exit: 0
         },
         {
           "path": "b/b_test.go",
-          "via": "references"
+          "via": "references",
+          "depth": 1
         }
       ]
     },

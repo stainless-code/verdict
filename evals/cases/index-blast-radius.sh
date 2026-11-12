@@ -2,7 +2,8 @@
 #
 # index blast-radius: changed declarations from --paths and from a fetched
 # bundle diff, callers to depth 2 (a known depth-3 caller and a call cycle prove
-# the cap and the visited set), candidate tests, co-change partners, owners,
+# the cap and the visited set), candidate tests (one reached transitively two
+# package hops out), co-change partners, owners,
 # per-list truncation counts, and null counts when the index is absent. No
 # network.
 set -euo pipefail
@@ -36,6 +37,7 @@ mkdir -p "$HOME"
   printf 'package b\n\nimport (\n\t"testing"\n\n\t"example.com/m/a"\n)\n\nfunc TestUsesA(t *testing.T) {\n\ta.A()\n}\n' >b/b_test.go
   printf 'package c\n\nimport "example.com/m/b"\n\nfunc Deep() {\n\tb.UseA()\n}\n' >c/c.go
   printf 'package d\n\nimport "example.com/m/c"\n\nfunc Deeper() {\n\tc.Deep()\n}\n' >d/d.go
+  printf 'package c\n\nimport "testing"\n\nfunc TestDeep(t *testing.T) {\n\tDeep()\n}\n' >c/c_test.go
   printf '*       @everyone\n/a/*    @a-owner\na/*.go  @go-owner\n' >.github/CODEOWNERS
   git add -A
   GIT_AUTHOR_DATE=2024-04-01T00:00:00Z GIT_COMMITTER_DATE=2024-04-01T00:00:00Z \
@@ -60,7 +62,7 @@ stub_before="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 
 run_review index build --json
 assert_exit "index build exits 0" 0
-assert_json_field "nine files indexed" 9 '.data.files_indexed'
+assert_json_field "ten files indexed" 10 '.data.files_indexed'
 
 run_review index blast-radius --paths a/ab.go --json
 assert_exit "blast-radius --paths exits 0" 0
@@ -78,9 +80,12 @@ assert_json_field "the depth-2 caller is reachable through the import chain" \
   '[.data.callers.rows[] | select(.depth == 2) | "\(.path) \(.line) \(.resolution) \(.depth)"] | join(",")'
 assert_json_field "no depth-3 caller appears" 0 \
   '[.data.callers.rows[] | select(.path == "d/d.go")] | length'
-assert_json_field "two candidate tests" 2 '.data.tests.count'
-assert_json_field "candidates carry the strongest mechanism" "a/a_test.go,b/b_test.go" \
+assert_json_field "three candidate tests" 3 '.data.tests.count'
+assert_json_field "candidates carry the strongest mechanism" \
+  "a/a_test.go,b/b_test.go,c/c_test.go" \
   '[.data.tests.rows[].path] | join(",")'
+assert_json_field "the two-package test is transitive at depth 2" "c/c_test.go transitive-import 2" \
+  '[.data.tests.rows[] | select(.via == "transitive-import") | "\(.path) \(.via) \(.depth)"] | join(",")'
 assert_json_field "two co-change partners" 2 '.data.co_changed.count'
 assert_json_field "the partner count names distinct files, not pairs" 2 '.data.co_changed.partners'
 assert_json_field "partners carry literal counts and jaccard" \
@@ -107,6 +112,8 @@ assert_file_grep "the human header counts the changed declarations" "$EVAL_OUT" 
   '^index: 1 changed file(s), 3 changed symbol(s) at '
 assert_file_grep "the human caller row names the depth" "$EVAL_OUT" \
   '^c/c.go:6 call (lexical, depth 2) example.com/m/a.A$'
+assert_file_grep "the human test row names the transitive hops" "$EVAL_OUT" \
+  '^c/c_test.go (transitive-import, depth 2)$'
 
 run_review index blast-radius --paths a/ab.go --limit 2
 assert_exit "the truncated human blast-radius exits 0" 0

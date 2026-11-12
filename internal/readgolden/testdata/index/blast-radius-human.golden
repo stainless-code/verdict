@@ -14,7 +14,7 @@ b/b_test.go:14 call (lexical, depth 1) example.com/m/a.A
 c/c.go:6 call (lexical, depth 2) example.com/m/a.A
 index: 2 candidate test(s)
 a/a_test.go (same-package)
-b/b_test.go (references)
+b/b_test.go (references, depth 1)
 index: 2 co-change pair(s) over 2 partner file(s)
 b/b_test.go (with a/ab.go, 2 commit(s))
 c/c.go (with a/ab.go, 2 commit(s))

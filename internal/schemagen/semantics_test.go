@@ -185,7 +185,11 @@ var publishedSemantics = map[string]string{
 	// optional languages[] (required language enum, required file count), plus
 	// the caller row's optional language enum. No existing property, required
 	// key, enum, or type changed.
-	"envelope.schema.json": "a5a9fca3a4ec11cad62861de922a9b31d2bb6c6f9989d6582a7122a15372cb46",
+	// transitive tests: additive indexRow.via enum value "transitive-import",
+	// additive optional indexRow.depth and indexData.depth/depth_truncated
+	// integers. No existing property, required key, or type changed; the
+	// depth_truncated name keeps the row limit's `truncated` distinct.
+	"envelope.schema.json": "8e6eecfe0df4189f324bfada01a9301e4263f856a91abf352dab6f57cc555f84",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

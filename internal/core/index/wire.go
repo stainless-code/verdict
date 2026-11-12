@@ -84,7 +84,9 @@ func testsForDoc(d *Data) *jq.Obj {
 	}
 	o.Set("counts", jq.NewObj("tests", d.Tests))
 	o.Set("limit", d.Limit)
+	o.Set("depth", d.Depth)
 	o.Set("truncated", d.Truncated)
+	o.Set("depth_truncated", d.DepthTruncated)
 	o.Set("rows", testRowValues(d.TestRows))
 	return o
 }
@@ -187,11 +189,16 @@ func languageValues(rows []LangRow) []any {
 	return out
 }
 
-// testRowValues renders the candidate-test rows.
+// testRowValues renders the candidate-test rows and the import hops that
+// reached them.
 func testRowValues(rows []TestRow) []any {
 	out := make([]any, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, jq.NewObj(keyPath, row.Path, "via", row.Via))
+		o := jq.NewObj(keyPath, row.Path, "via", row.Via)
+		if row.Depth > 0 {
+			o.Set("depth", row.Depth)
+		}
+		out = append(out, o)
 	}
 	return out
 }

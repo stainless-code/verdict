@@ -10,26 +10,41 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 )
 
-// The three mechanisms a candidate test can reach a source file through.
+// The four mechanisms a candidate test can reach a source file through.
 const (
-	viaSamePackage   = "same-package"
-	viaReferences    = "references"
-	viaImportsModule = "imports-module"
+	viaSamePackage      = "same-package"
+	viaReferences       = "references"
+	viaImportsModule    = "imports-module"
+	viaTransitiveImport = "transitive-import"
 )
 
-// testPlan is the resolved tests-for input: the queried path, its language, the
-// declaring package directories, and one resolution target per declared symbol.
+// minTransitiveDepth is the first hop count that reads as transitive: a test
+// one hop out imports the declaring package itself, which the direct
+// mechanisms already name.
+const minTransitiveDepth = 2
+
+// testsDepthCapped names the candidates the depth cap hid.
+const testsDepthCapped = "index: depth cap %d reached (%d candidate test(s) one import hop beyond; raise --depth up to %d)"
+
+// testPlan is the resolved tests-for input: the declaring language and the
+// queried path, the package directories candidates can sit in, one resolution
+// target per declared symbol, and the import-hop cap.
 type testPlan struct {
+	lang    language
 	path    string
 	dirs    []string
-	lang    language
 	targets []target
+	depth   int
 }
 
 // testsFor executes `index tests-for`: candidate tests to read, never a
 // coverage claim.
 func (st *state) testsFor(ctx context.Context) (*Response, *core.RefusalError) {
 	limit, ref := st.rowLimit(QueryTestsFor)
+	if ref != nil {
+		return nil, ref
+	}
+	depth, ref := st.depthLimit()
 	if ref != nil {
 		return nil, ref
 	}
@@ -42,6 +57,7 @@ func (st *state) testsFor(ctx context.Context) (*Response, *core.RefusalError) {
 	if ref != nil {
 		return nil, ref
 	}
+	plan.depth = depth
 	var target *Target
 	if plan.path != "" {
 		target, ref = st.ownersAt(ctx, st.sourceRoot(), entries, plan.path)
@@ -49,8 +65,7 @@ func (st *state) testsFor(ctx context.Context) (*Response, *core.RefusalError) {
 			return nil, ref
 		}
 	}
-	rows := collectTestRows(t, plan)
-	return st.testsForResponse(t, commit, stale, plan, target, rows, limit), nil
+	return st.testsForResponse(t, commit, stale, plan, target, walkTestRows(t, plan, newImportGraph(t)), limit), nil
 }
 
 // testTargets loads the tree, its entries, and the candidate plan in one step.
@@ -154,29 +169,70 @@ func findIndexedFile(t *treeIndex, p string) *treeFile {
 	return nil
 }
 
-// collectTestRows walks the tree's test files once, labeling each candidate
-// with the strongest mechanism that reaches the target.
-func collectTestRows(t *treeIndex, plan *testPlan) []TestRow {
+// testWalk is one candidate walk: the rows, and the candidate files one import
+// hop past the depth cap that it counted instead of naming.
+type testWalk struct {
+	rows []TestRow
+	hid  int
+}
+
+// walkTestRows walks the tree's test files once, labeling each candidate with
+// the strongest mechanism that reaches the target and the import hops it took.
+func walkTestRows(t *treeIndex, plan *testPlan, g *importGraph) testWalk {
 	dirs, importPaths := testMechanisms(t, plan)
-	var rows []TestRow
+	depths, beyond := g.reverseDepth(planNodes(plan), plan.depth)
+	var walk testWalk
 	for i := range t.Files {
 		f := &t.Files[i]
 		if !isCandidateFile(plan, f) {
 			continue
 		}
-		via := testVia(plan, dirs, importPaths, f)
+		via, depth := testVia(plan, dirs, importPaths, depths, f)
 		if via == "" {
 			continue
 		}
-		rows = append(rows, TestRow{Path: f.Path, Via: via})
+		walk.rows = append(walk.rows, TestRow{Path: f.Path, Via: via, Depth: depth})
 	}
-	slices.SortFunc(rows, func(a, b TestRow) int {
+	walk.hid = hiddenCandidates(t, plan, beyond)
+	slices.SortFunc(walk.rows, func(a, b TestRow) int {
 		if c := strings.Compare(a.Path, b.Path); c != 0 {
 			return c
 		}
 		return strings.Compare(a.Via, b.Via)
 	})
-	return rows
+	return walk
+}
+
+// planNodes names the plan's directories in its own language family, where the
+// reverse walk starts.
+func planNodes(plan *testPlan) []graphNode {
+	nodes := make([]graphNode, 0, len(plan.dirs))
+	for _, dir := range plan.dirs {
+		nodes = append(nodes, graphNode{family: plan.lang.family(), dir: dir})
+	}
+	return nodes
+}
+
+// hiddenCandidates counts the candidate tests the depth cap kept out of the
+// walk: the files in the directories one hop past it. A candidate already named
+// is never one of them — a direct mechanism reads an import edge out of that
+// file, which puts its own directory at the first hop, short of the cap.
+func hiddenCandidates(t *treeIndex, plan *testPlan, beyond []graphNode) int {
+	if len(beyond) == 0 {
+		return 0
+	}
+	hidden := make(map[graphNode]bool, len(beyond))
+	for _, node := range beyond {
+		hidden[node] = true
+	}
+	n := 0
+	for i := range t.Files {
+		f := &t.Files[i]
+		if hidden[fileNode(f)] && isCandidateFile(plan, f) {
+			n++
+		}
+	}
+	return n
 }
 
 // testMechanisms indexes the plan's package directories and import paths.
@@ -277,19 +333,33 @@ func isCandidateFile(plan *testPlan, f *treeFile) bool {
 		!f.Oversize && f.Error == "" && f.Path != plan.path
 }
 
-// testVia classifies one test file: same package directory, a recorded
-// reference to a declared symbol, or an import of the declaring package.
-func testVia(plan *testPlan, dirs, importPaths map[string]bool, f *treeFile) string {
+// testVia classifies one test file and counts the import hops it took: same
+// package directory, a recorded reference to a declared symbol, an import of
+// the declaring package, or a package that reaches the declaring package
+// through imports of its own.
+func testVia(
+	plan *testPlan, dirs, importPaths map[string]bool, depths map[graphNode]int, f *treeFile,
+) (string, int) {
 	switch {
 	case samePackageTest(dirs, f):
-		return viaSamePackage
+		return viaSamePackage, 0
 	case referencesTargets(plan.targets, f), importsTargetPath(plan, f):
-		return viaReferences
+		return viaReferences, 1
 	case importsAny(f, importPaths):
-		return viaImportsModule
+		return viaImportsModule, 1
 	default:
-		return ""
+		return transitiveVia(depths, f)
 	}
+}
+
+// transitiveVia labels one file reached through its own package's imports, or
+// nothing: a file one hop out imports the declaring package itself, and the
+// direct mechanisms name that edge first.
+func transitiveVia(depths map[graphNode]int, f *treeFile) (string, int) {
+	if depth := depths[fileNode(f)]; depth >= minTransitiveDepth {
+		return viaTransitiveImport, depth
+	}
+	return "", 0
 }
 
 // samePackageTest reports whether one candidate is a test in a declaring
@@ -339,10 +409,10 @@ func importsAny(f *treeFile, importPaths map[string]bool) bool {
 
 // testsForResponse renders the candidate list, truncating rows with a count.
 func (st *state) testsForResponse(
-	t *treeIndex, commit string, stale bool, plan *testPlan, target *Target, rows []TestRow, limit int,
+	t *treeIndex, commit string, stale bool, plan *testPlan, target *Target, walk testWalk, limit int,
 ) *Response {
 	cov := coverageOf(t)
-	all := rows
+	all, rows := walk.rows, walk.rows
 	truncated := 0
 	if len(rows) > limit {
 		truncated = len(rows) - limit
@@ -355,7 +425,7 @@ func (st *state) testsForResponse(
 	if len(all) == 0 {
 		st.line("index: no candidate tests for " + query + " at " + t.Tree)
 	} else {
-		st.testsForHuman(t, query, all, rows, truncated)
+		st.testsForHuman(t, query, all, rows, truncated, walk, plan)
 	}
 	next := "read each candidate test before changing the code"
 	if len(all) == 0 {
@@ -369,24 +439,36 @@ func (st *state) testsForResponse(
 			Tree: t.Tree, Commit: commit, Stale: stale, Built: true,
 			Files: cov.files, Skipped: cov.skipped,
 			Tests: len(all), TestRows: rows, Truncated: truncated, Limit: limit,
+			Depth: plan.depth, DepthTruncated: walk.hid,
 			Target: target,
 		},
 	}
 }
 
 // testsForHuman renders the candidate header, one row per test, and the
-// truncation count.
-func (st *state) testsForHuman(t *treeIndex, query string, all, rows []TestRow, truncated int) {
-	st.line(fmt.Sprintf("index: %d candidate test(s) for %s at %s (%s, %s, %s)",
-		len(all), query, t.Tree, viaCount(all, viaSamePackage),
-		viaCount(all, viaReferences), viaCount(all, viaImportsModule)))
+// truncation counts.
+func (st *state) testsForHuman(t *treeIndex, query string, all, rows []TestRow, truncated int, walk testWalk, plan *testPlan) {
+	st.line(fmt.Sprintf("index: %d candidate test(s) for %s at %s (%s, %s, %s, %s)",
+		len(all), query, t.Tree, viaCount(all, viaSamePackage), viaCount(all, viaReferences),
+		viaCount(all, viaImportsModule), viaCount(all, viaTransitiveImport)))
 	for _, row := range rows {
-		st.line(fmt.Sprintf("%s (%s)", quotePath(row.Path), row.Via))
+		st.line(testRowText(row))
 	}
 	if truncated > 0 {
 		st.line(fmt.Sprintf("index: showing %d of %d candidate tests (%d not shown; raise --limit up to %d)",
 			len(rows), len(all), truncated, MaxLimit))
 	}
+	if walk.hid > 0 {
+		st.line(fmt.Sprintf(testsDepthCapped, plan.depth, walk.hid, MaxDepth))
+	}
+}
+
+// testRowText renders one candidate, naming the import hops it took.
+func testRowText(row TestRow) string {
+	if row.Depth > 0 {
+		return fmt.Sprintf("%s (%s, depth %d)", quotePath(row.Path), row.Via, row.Depth)
+	}
+	return fmt.Sprintf("%s (%s)", quotePath(row.Path), row.Via)
 }
 
 // viaCount counts the candidate rows one mechanism labeled.
@@ -404,6 +486,12 @@ func viaCount(rows []TestRow, via string) string {
 // so every transport — not only the CLI parser — holds them.
 func (st *state) rowLimit(query string) (int, *core.RefusalError) {
 	return boundedValue(query, "--limit", st.req.Limit, DefaultLimit, MaxLimit)
+}
+
+// depthLimit resolves the transitive walk's import-hop cap under the published
+// bounds.
+func (st *state) depthLimit() (int, *core.RefusalError) {
+	return boundedValue(QueryTestsFor, "--depth", st.req.Depth, DefaultDepth, MaxDepth)
 }
 
 // boundedValue resolves one numeric flag: zero takes the default, and

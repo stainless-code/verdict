@@ -38,6 +38,12 @@ const DefaultLimit = 50
 // MaxLimit is the largest row limit a request may name.
 const MaxLimit = 200
 
+// The transitive candidate walk's import-hop cap: default and bound.
+const (
+	DefaultDepth = 3
+	MaxDepth     = 8
+)
+
 // Co-change query defaults and bounds.
 const (
 	DefaultCoChangeLimit   = 20
@@ -107,6 +113,7 @@ type Request struct { //nolint:govet // field grouping documents the request sur
 	Commits  int `max:"100000" min:"1"`
 	MinCount int `max:"100000" min:"1"`
 	Limit    int `max:"200"    min:"1"`
+	Depth    int `max:"8"      min:"1"`
 	Warnings []string
 	Limits   *Limits `json:"-"`
 	// NoCache reads a valid cached co-change window but never writes or
@@ -127,38 +134,40 @@ type Response struct { //nolint:govet // field grouping documents the response s
 // Data is the index verb's --json data profile. Wire branches on Kind, so
 // each subcommand publishes only the keys it measured.
 type Data struct { //nolint:govet // field order is the published property order
-	Kind          string
-	Tree          string
-	Commit        string
-	Stale         bool
-	Built         bool
-	Files         int
-	Skipped       int
-	Parsed        int
-	Reused        int
-	TreeBytes     int64
-	ShardCount    int
-	ShardBytes    int64
-	Trees         []TreeRow
-	Symbol        string
-	Path          string
-	Limit         int
-	Callers       int
-	Unresolved    int
-	Languages     []LangRow // build only
-	Rows          []Row
-	Truncated     int
-	Kept          []string
-	RemovedTree   int
-	GoneShards    int
-	Tests         int
-	TestRows      []TestRow
-	Window        Window
-	Partners      int
-	TargetCommits int
-	CoChangeRows  []CoChangeRow
-	Target        *Target
-	Blast         *Blast
+	Kind           string
+	Tree           string
+	Commit         string
+	Stale          bool
+	Built          bool
+	Files          int
+	Skipped        int
+	Parsed         int
+	Reused         int
+	TreeBytes      int64
+	ShardCount     int
+	ShardBytes     int64
+	Trees          []TreeRow
+	Symbol         string
+	Path           string
+	Limit          int
+	Depth          int
+	Callers        int
+	Unresolved     int
+	Languages      []LangRow // build only
+	Rows           []Row
+	Truncated      int
+	Kept           []string
+	RemovedTree    int
+	GoneShards     int
+	Tests          int
+	TestRows       []TestRow
+	DepthTruncated int
+	Window         Window
+	Partners       int
+	TargetCommits  int
+	CoChangeRows   []CoChangeRow
+	Target         *Target
+	Blast          *Blast
 }
 
 // TreeRow is one stored tree file.
@@ -183,10 +192,13 @@ type LangRow struct {
 	Files    int
 }
 
-// TestRow is one candidate test for a changed file or symbol.
+// TestRow is one candidate test for a changed file or symbol, and the import
+// hops the walk took to reach it: 0 in the declaring package, 1 for a direct
+// import edge, and 2 or more for a transitive one.
 type TestRow struct {
-	Path string
-	Via  string
+	Path  string
+	Via   string
+	Depth int
 }
 
 // CoChangeRow is one partner path and how often it moved with the target.
