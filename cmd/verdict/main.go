@@ -96,7 +96,7 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 	if failed {
 		return reportStripFailure(r, env, readFile, uerr, ref)
 	}
-	if arityUsage(cmd, repo, pr) {
+	if arityUsage(cmd, repo, pr) && !(cmd == "report" && len(rest) > 0 && rest[0] == "--html") {
 		fmt.Fprint(stderr, usageText())
 		return cli.ExitUsage
 	}
@@ -206,6 +206,10 @@ func dispatch(
 		return runUpgrade(ctx, r, rest, env)
 	case "uninstall":
 		return runUninstall(ctx, r, rest, env)
+	case "report":
+		if len(rest) > 0 && rest[0] == "--html" {
+			return serve.RunHTML(ctx, r, rest, cliVersion(root, readFile))
+		}
 	case "serve":
 		return serve.Run(ctx, r, rest, serve.Request{Version: cliVersion(root, readFile)})
 	}
@@ -323,6 +327,9 @@ func splitCommand(args []string) (cmd, repo, pr string, rest []string) {
 		return "", "", "", args
 	}
 	cmd, args = args[0], args[1:]
+	if cmd == "report" && len(args) > 0 && args[0] == "--html" {
+		return cmd, "", "", args
+	}
 	if bareVerbs[cmd] {
 		return cmd, "", "", args
 	}
