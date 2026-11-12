@@ -105,10 +105,7 @@ func receiptAt(path string) (storedCoverage, bool) {
 	if !ok {
 		return storedCoverage{}, false
 	}
-	out := storedCoverage{head: jq.Str(m[fieldHead])}
-	if (out.head == "" || out.head == "dirty") && jq.Str(m[fieldDiffSHA256]) != "" {
-		out.head = "diff:" + jq.Str(m[fieldDiffSHA256])
-	}
+	out := storedCoverage{head: receiptIdentity(m)}
 	if summary, ok := jq.AsMap(m[fieldCoverage]); ok {
 		out.sum = summaryOf(summary)
 	}
@@ -116,6 +113,17 @@ func receiptAt(path string) (storedCoverage, bool) {
 		out.chunks = chunkCoverageOf(chunks)
 	}
 	return out, true
+}
+
+func receiptIdentity(m map[string]any) string {
+	head := jq.Str(m[fieldHead])
+	if head != "" && head != "dirty" {
+		return head
+	}
+	if diff := jq.Str(m[fieldDiffSHA256]); diff != "" {
+		return "diff:" + diff
+	}
+	return head
 }
 
 // chunkCoverageOf reads the stored receipt's chunk attestation.
