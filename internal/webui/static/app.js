@@ -249,7 +249,15 @@
           ),
         );
       }
-      const rows = Array.isArray(data.rows) ? data.rows : [];
+      const aggregate = view === "cost" ? data.cost : data.precision;
+      const rows =
+        view === "cost"
+          ? Array.isArray(aggregate?.rows)
+            ? aggregate.rows
+            : []
+          : Array.isArray(aggregate?.outcomes)
+            ? aggregate.outcomes
+            : [];
       content.append(
         table(
           title.textContent,
@@ -259,7 +267,18 @@
           rows,
         ),
       );
-      content.append(objectPanel("Totals", data.totals || data.counts || data));
+      content.append(objectPanel("Totals", aggregate?.totals));
+      if (view === "precision") {
+        content.append(
+          objectPanel("Precision status", {
+            by: aggregate?.by,
+            fixed: aggregate?.fixed,
+            as_of: aggregate?.as_of,
+            stale: aggregate?.stale,
+            next: aggregate?.next,
+          }),
+        );
+      }
       if (data.partial)
         message.textContent =
           "Partial view: one or more source values are unknown.";
