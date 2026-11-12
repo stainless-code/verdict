@@ -204,6 +204,47 @@ func foreignScoreRow(t *testing.T, root string) {
 	writeTestFile(t, path, body)
 }
 
+// TestScoreUnclassifiedBugIsNotMatchable proves the documented guarantee: a
+// finding that names the sentinel cannot turn an unclassified bug into a true
+// positive. The fixture already carries one at b.go:9, so the probe adds the
+// one finding that would match it.
+func TestScoreUnclassifiedBugIsNotMatchable(t *testing.T) {
+	root := scoreFixture(t)
+	addUnclassifiedFinding(t, root)
+	data := runScoreOK(t, root, &recorder{}).Data
+	if data.Bugs != 3 || data.Matched != 2 {
+		t.Errorf("bugs/matched = %d/%d; want 3/2", data.Bugs, data.Matched)
+	}
+	if data.CatchRate == nil || *data.CatchRate != 0.6667 {
+		t.Errorf("catch_rate = %v; want 0.6667", data.CatchRate)
+	}
+	if data.Signals[1].CatchRate == nil || *data.Signals[1].CatchRate != 0.5 {
+		t.Errorf("revert rate = %v; want 0.5 (1 of 2)", data.Signals[1].CatchRate)
+	}
+}
+
+// addUnclassifiedFinding appends a finding on the unclassified bug's line,
+// naming the sentinel the way the matcher would read it.
+func addUnclassifiedFinding(t *testing.T, root string) {
+	t.Helper()
+	path := filepath.Join(root, ".verdict", "state", "local-bt-2-s1", "findings.json")
+	const entry = `  {
+    "kind": "inline",
+    "path": "b.go",
+    "side": "RIGHT",
+    "line": 9,
+    "anchored": true,
+    "body": "This unclassified branch is never reached.",
+    "suggestion": null,
+    "rigor": "walked",
+    "severity": "important",
+    "sig": "dddddddddddddddddddddddddddddddddddddddd",
+    "status": "open"
+  }`
+	body := strings.Replace(readScoreFile(t, path), "\n]", ",\n"+entry+"\n]", 1)
+	writeTestFile(t, path, body)
+}
+
 // TestScoreNoReviewsReportsUnmeasured proves a run whose every row failed
 // writes a report of nulls and counts the candidates it could not score.
 func TestScoreNoReviewsReportsUnmeasured(t *testing.T) {

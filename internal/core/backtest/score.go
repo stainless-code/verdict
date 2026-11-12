@@ -445,11 +445,17 @@ func (st *state) writeReport(run string, data *ScoreReport) *core.RefusalError {
 // matcher never reads it.
 const severityInert = "important"
 
-// scoreCase builds the in-memory case a PR is graded against. The bugs carry
-// no severity claim: the value only fills the type, and Evaluate ignores it.
+// scoreCase builds the in-memory case a PR is graded against. An
+// `unclassified` bug stays in the denominator but never reaches the matcher:
+// its kind text is a sentinel, so a finding that says "unclassified" would
+// otherwise grade as a true positive. The bugs carry no severity claim: the
+// value only fills the type, and Evaluate ignores it.
 func scoreCase(c *Candidate) *core.CorpusCase {
 	bugs := make([]core.CorpusBug, 0, len(c.Bugs))
 	for _, b := range c.Bugs {
+		if b.Kind == kindUnclassified {
+			continue
+		}
 		bugs = append(bugs, core.CorpusBug{Path: b.Path, Line: b.Line, Kind: b.Kind, Severity: severityInert})
 	}
 	return &core.CorpusCase{
