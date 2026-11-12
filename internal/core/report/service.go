@@ -28,6 +28,7 @@ const (
 	tierInformational = "informational"
 	codeCanceled      = "canceled"
 	codeBadCategory   = "bad-category"
+	codeBadFlags      = "bad-flags"
 	codeReportFailed  = "report-failed"
 	prJSONSuffix      = "/PR.json"
 	fullDiffSuffix    = "/full.diff"
@@ -109,6 +110,9 @@ func Run(ctx context.Context, req *core.ReportRequest) (*core.ReportResponse, *c
 	if ref := validateCategory(flags.Category); ref != nil {
 		return nil, ref
 	}
+	if ref := validateTier(flags.Check); ref != nil {
+		return nil, ref
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, &core.RefusalError{Code: codeCanceled, Message: "canceled before report completed"}
 	}
@@ -152,6 +156,20 @@ func validateCategory(category string) *core.RefusalError {
 		Code: codeBadCategory,
 		Message: fmt.Sprintf("report: unknown category '%s' (want %s)",
 			category, strings.Join(core.CategoryValues, "|")),
+	}
+}
+
+// validateTier refuses an unpublished gate tier in core, so the CLI, MCP, and
+// Go SDK share one rule: a tier is a published severity or the gate refuses to
+// run, rather than ranking an unknown value past every finding.
+func validateTier(tier string) *core.RefusalError {
+	if tier == "" || core.ValidTier(tier) {
+		return nil
+	}
+	return &core.RefusalError{
+		Code: codeBadFlags,
+		Message: fmt.Sprintf("report: unknown gate tier '%s' (want %s)",
+			tier, strings.Join(core.TierValues, "|")),
 	}
 }
 

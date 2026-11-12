@@ -15,6 +15,9 @@ const TierUntagged = "untagged"
 // tier, and the gate's severity threshold is a rank.
 var TierValues = []string{"critical", "important", "informational"}
 
+// ValidTier reports whether s names one of the published severities.
+func ValidTier(s string) bool { return slices.Contains(TierValues, s) }
+
 // TierOf reads one entry's severity bucket: its severity when published,
 // untagged when absent, null, or unrecognized.
 func TierOf(entry any) string {
