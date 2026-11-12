@@ -629,3 +629,44 @@ test("static mode reads data.json and renders the selected envelope", async () =
   assert.equal(ui.elements.get("title").textContent, "Inbox");
   assert.ok(ui.elements.get("content").textContent.includes("local-corrupt"));
 });
+
+test("static refresh reloads data.json and displays the newer bundle", async () => {
+  let reads = 0;
+  const bundleList = (bundle) =>
+    envelope({
+      rows: [
+        {
+          root: "root-123",
+          bundle,
+          repo: "acme/widgets",
+          model: "reviewer-v1",
+          head: "a1b2c3d4",
+          open: 0,
+          deferred: 0,
+          addressed: 0,
+        },
+      ],
+      counts: { bundles: 1, open: 0, deferred: 0, addressed: 0, terminal: 0 },
+    });
+  const ui = await createUI({
+    mode: "static",
+    baseURL: "https://example.test/export/index.html",
+    respond: async (path) => {
+      if (path !== "/export/data.json") return { body: envelope({}) };
+      reads++;
+      return {
+        body: {
+          "/v1/bundles": bundleList(reads === 1 ? "local-old" : "local-new"),
+        },
+      };
+    },
+  });
+  assert.equal(reads, 1);
+  assert.ok(ui.elements.get("content").textContent.includes("local-old"));
+
+  ui.elements.get("refresh").dispatch("click");
+  await ui.flush();
+  assert.equal(reads, 2);
+  assert.ok(ui.elements.get("content").textContent.includes("local-new"));
+  assert.ok(!ui.elements.get("content").textContent.includes("local-old"));
+});

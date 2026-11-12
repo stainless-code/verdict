@@ -395,7 +395,10 @@
     eventSource.addEventListener("bundles", () => fetchView());
   }
 
-  refresh.addEventListener("click", fetchView);
+  refresh.addEventListener("click", () => {
+    if (mode === "static") staticData = undefined;
+    fetchView();
+  });
   window.addEventListener("hashchange", fetchView);
   window.addEventListener("beforeunload", () => eventSource?.close());
   fetchView();
