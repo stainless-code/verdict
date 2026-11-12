@@ -1436,7 +1436,9 @@ walk cap sets `truncated` and adds a warning with the last visited path.
 Discovery skips `.git`, `node_modules`, `vendor`, and directory symlinks.
 `.gitignore` supports comments, `!` re-inclusion, leading and trailing `/`,
 `*`, and whole-segment `**`; unsupported patterns such as `?` are skipped and
-named in warnings. The local registry is `~/.config/verdict/projects.json`, or
+named in warnings. A rule that would require more than two effective
+whole-segment `**` terms is also skipped with a warning to bound matching work.
+The local registry is `~/.config/verdict/projects.json`, or
 `$XDG_CONFIG_HOME/verdict/projects.json` when `XDG_CONFIG_HOME` is set. The
 server writes it atomically with mode `0600`, and it expires after 24 hours.
 `--rediscover` forces a walk; `--no-registry` bypasses registry reads and writes. A warm start

@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	maxGitignoreBytes = 1 << 20
-	gitPathSeparator  = "/"
+	maxGitignoreBytes           = 1 << 20
+	maxIgnoreDoubleStarSegments = 2
+	gitPathSeparator            = "/"
 )
 
 type ignoreRule struct {
@@ -63,6 +64,10 @@ func parseIgnoreLine(source string, line int, file, rootPath, base string, warni
 	if !anchored && !strings.Contains(lineText, gitPathSeparator) {
 		lineText = "**/" + lineText
 	}
+	if ignoreDoubleStarSegments(lineText, dirOnly) > maxIgnoreDoubleStarSegments {
+		warnSkippedPattern(file, rootPath, line, original, warnings, skipped)
+		return ignoreRule{}, false
+	}
 	return ignoreRule{base: base, pattern: lineText, negate: negate, dirOnly: dirOnly}, true
 }
 
@@ -102,6 +107,19 @@ func validIgnorePattern(pattern string) bool {
 		}
 	}
 	return true
+}
+
+func ignoreDoubleStarSegments(pattern string, dirOnly bool) int {
+	count := 0
+	for segment := range strings.SplitSeq(pattern, gitPathSeparator) {
+		if segment == "**" {
+			count++
+		}
+	}
+	if dirOnly {
+		count++
+	}
+	return count
 }
 
 func ignored(rules []ignoreRule, rel string) bool {

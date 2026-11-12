@@ -350,6 +350,23 @@ func TestTruncatedDiscoveryMakesInboxPartial(t *testing.T) {
 	}
 }
 
+// TestRepeatedDoubleStarPatternIsSkipped bounds the recursive glob matcher.
+func TestRepeatedDoubleStarPatternIsSkipped(t *testing.T) {
+	root := t.TempDir()
+	want := makeRepo(t, root, filepath.Join("a", "b", "c", "d", "e", "f"))
+	pattern := strings.Repeat("**/", 2000) + "z"
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte(pattern+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Discover(root, DiscoveryOptions{Depth: 6, MaxVisits: 20, Now: discoveryNow()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Roots) != 1 || got.Roots[0].Path != want || got.SkippedPatterns != 1 || len(got.Warnings) != 1 || !strings.Contains(got.Warnings[0], ".gitignore:1: skipped gitignore pattern") {
+		t.Fatalf("complex gitignore discovery = %+v; want the nested repo and one skipped-pattern warning", got)
+	}
+}
+
 // TestWarmRegistryRestartDoesNotReadDirectories pins zero warm walk reads.
 func TestWarmRegistryRestartDoesNotReadDirectories(t *testing.T) {
 	root, registryPath, opts, reads := warmRegistryFixture(t)
