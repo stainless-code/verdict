@@ -503,19 +503,29 @@ an unchanged scorecard.
 
 ### The `go/types` gate
 
-ADR-0003 gates `go/types` on Go **cross-package** caller accuracy: a recall
-below 0.8 or a precision below 0.9 means the lexical index is not good enough
-and type information is needed. Measured on this corpus:
+ADR-0003 opens the `go/types` spike only when two arms hold. The corpus arm:
+Go **cross-package** caller recall below 0.8, or its precision below 0.9, on
+this corpus. The backtest arm: a missed or wrong finding in a real review,
+traceable to a Go caller (STA-390). Measured on this corpus:
 
 - precision **1.0000** (5 of 5 reported cross-package sites are real),
 - recall **0.4167** (5 of 12 labeled cross-package sites are reported).
 
-The precision arm holds; **the recall arm trips**. The 12 labeled sites split
-three ways, and only the first is reported: a qualified package call through an
-import edge (`store.Open`, `st.Open` with an alias) is a row; a method call on a
-value (`s.Save`, `a.Touch`, including an embed and an interface dispatch) is not
-attributed at all, and a call through a dot-import or a re-exported variable is
-not attributed at all. A type-checked index answers all three.
+The precision arm holds and **the recall arm trips**, so the corpus arm is met.
+The backtest arm is pending, so the spike is not opened: the 7 misses below are
+a measured gap on a fixture, not yet a finding a review lost.
+
+The 12 labeled sites split three ways, and only the first is reported: a
+qualified package call through an import edge (`store.Open`, `st.Open` with an
+alias) is a row; a method call on a value (`s.Save`, `a.Touch`, including an
+embed and an interface dispatch) is not attributed at all, and a call through a
+dot-import or a re-exported variable is not attributed at all. Type information
+does not settle all three. `go/types` answers a method call on a concrete value
+— `s.Save` on a `*store.Store`, `a.Touch` on the promoted `*store.Base` — and
+the bare `Open` a dot-import leaves at `internal/dot/dot.go:8`. The re-exported
+variable is typed but its origin is a value, so the call at
+`internal/cli/cli.go:14` needs value flow, and the interface dispatch at
+`internal/app/app.go:14` needs implementation analysis (CHA or RTA) on top.
 
 ### What the corpus found
 
