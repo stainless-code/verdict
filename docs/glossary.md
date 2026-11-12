@@ -65,6 +65,13 @@ posts as fact that was never shown.
 --check <tier>` gates on open findings at or above that tier; untagged findings
 never meet a tier.
 
+**Stored precision.** The `serve` view that joins findings to `threads.json`.
+It counts open, resolved-unfixed, and unknown outcomes; without changed-file
+evidence, fixed counts remain `null`, and no rate is published.
+
+**Cost week.** A `serve` cost bucket keyed by the ISO week of the bundle's
+`post.json` `posted_at` receipt. Cost records do not carry their own timestamp.
+
 **Sig.** A finding's stable, line-number-free signature (with `sig_version`
 `"1"`). Sigs survive rebases and re-slices, dedupe incremental reviews, group
 threads, and are the join key for triage, calibration, and external policy

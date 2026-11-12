@@ -46,12 +46,20 @@ type CostResult struct {
 // the budget.json receipts join. Absent files contribute zeros silently;
 // unparseable files warn and contribute zeros — neither ever fails the run.
 func CostRollup(dir string) CostResult {
+	res := CostTotal(dir)
+	attachReceipts(dir, &res)
+	return res
+}
+
+// CostTotal reads only cost.json and chunk cost records, without the
+// budget.json receipt join. Aggregate views that do not publish receipts use
+// this same canonical rollup without reading an unrelated artifact.
+func CostTotal(dir string) CostResult {
 	res := CostResult{}
 	top, topPresent, topParsed := readCostFile(filepath.Join(dir, CostFile))
 	chunkFiles := chunkCostFiles(dir)
 	if len(chunkFiles) == 0 {
 		res.Cost = rollupTop(top, topPresent, topParsed, &res)
-		attachReceipts(dir, &res)
 		return res
 	}
 	chunkRecords := mergeChunkRecords(chunkFiles, &res)
@@ -75,7 +83,6 @@ func CostRollup(dir string) CostResult {
 		}
 		res.Cost = costZeros()
 	}
-	attachReceipts(dir, &res)
 	return res
 }
 
@@ -187,6 +194,19 @@ func CostFiles(dir string) []string {
 func CostRecords(dir string) []any {
 	recs, _, _ := readCostFile(filepath.Join(dir, CostFile))
 	return recs
+}
+
+// CostFileRecords reads one rollup input and reports whether its contents
+// pass the same record and model shape gate as the cost rollup.
+func CostFileRecords(path string) (records []any, present, valid bool) {
+	records, present, parsed := readCostFile(path)
+	if !present {
+		return nil, false, true
+	}
+	if !parsed || rollupRecords(records) == nil {
+		return records, true, false
+	}
+	return records, true, true
 }
 
 // CostTier reads one record's effort tier as cheap, standard, or deep;
@@ -315,7 +335,7 @@ func manifestChunkNames(path string) []string {
 }
 
 func manifestChunkList(path string) ([]any, bool) {
-	raw, err := os.ReadFile(path)
+	raw, err := jq.CappedFile(path, jq.MaxCostBytes)
 	if err != nil {
 		return nil, false
 	}

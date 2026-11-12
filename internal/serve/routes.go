@@ -3,7 +3,9 @@ package serve
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/query"
 )
 
@@ -32,6 +34,8 @@ func (s *Server) routes() []route {
 		{Method: http.MethodGet, Pattern: "/v1/health", Handler: s.guard(s.handleHealth)},
 		{Method: http.MethodGet, Pattern: "/v1/roots", Handler: s.guard(s.handleRoots)},
 		{Method: http.MethodGet, Pattern: "/v1/bundles", Handler: s.guard(s.handleBundles)},
+		{Method: http.MethodGet, Pattern: "/v1/cost", Handler: s.guard(s.handleCost)},
+		{Method: http.MethodGet, Pattern: "/v1/precision", Handler: s.guard(s.handlePrecision)},
 		{
 			Method:  http.MethodGet,
 			Pattern: "/v1/roots/{root}/bundles/{bundle}",
@@ -43,6 +47,43 @@ func (s *Server) routes() []route {
 			Handler: s.guard(s.handleShow),
 		},
 	}
+}
+
+func (s *Server) handleCost(w http.ResponseWriter, r *http.Request) {
+	by, ok := s.aggregateDimension(w, r, "cost")
+	if !ok {
+		return
+	}
+	view, err := s.layer.Cost(r.Context(), by)
+	if err != nil {
+		s.writeViewError(w, verbServe, "", err)
+		return
+	}
+	s.writeView(w, verbServe, view)
+}
+
+func (s *Server) handlePrecision(w http.ResponseWriter, r *http.Request) {
+	by, ok := s.aggregateDimension(w, r, "precision")
+	if !ok {
+		return
+	}
+	view, err := s.layer.Precision(r.Context(), by)
+	if err != nil {
+		s.writeViewError(w, verbServe, "", err)
+		return
+	}
+	s.writeView(w, verbServe, view)
+}
+
+func (s *Server) aggregateDimension(w http.ResponseWriter, r *http.Request, view string) (string, bool) {
+	values, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil || len(values) != 1 || len(values["by"]) != 1 {
+		s.writeRefusal(w, verbServe, "", "", &core.RefusalError{
+			Code: "bad-by", Message: fmt.Sprintf("serve %s accepts one by query parameter", view),
+		})
+		return "", false
+	}
+	return values.Get("by"), true
 }
 
 // Handler builds the mux and wraps it in the security middleware.
@@ -109,7 +150,7 @@ func (s *Server) handleBundles(w http.ResponseWriter, r *http.Request) {
 	}
 	view, err := s.layer.Bundles(r.Context(), pattern)
 	if err != nil {
-		s.writeViewError(w, verbServe, "", "", err)
+		s.writeViewError(w, verbServe, "", err)
 		return
 	}
 	s.writeView(w, verbServe, view)
@@ -120,7 +161,7 @@ func (s *Server) handleDetail(w http.ResponseWriter, r *http.Request) {
 	bundle := r.PathValue("bundle")
 	view, err := s.layer.Detail(r.Context(), r.PathValue("root"), bundle)
 	if err != nil {
-		s.writeViewError(w, verbServe, "", bundle, err)
+		s.writeViewError(w, verbServe, bundle, err)
 		return
 	}
 	s.writeView(w, verbServe, view)
@@ -136,7 +177,7 @@ func (s *Server) handleShow(w http.ResponseWriter, r *http.Request) {
 	}
 	view, err := s.layer.Show(r.Context(), r.PathValue("root"), bundle, sig)
 	if err != nil {
-		s.writeViewError(w, verbShow, "", bundle, err)
+		s.writeViewError(w, verbShow, bundle, err)
 		return
 	}
 	s.writeView(w, verbShow, view)

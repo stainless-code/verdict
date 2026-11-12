@@ -1458,6 +1458,8 @@ than from history.
 | `GET /v1/health`                                       | `serve` — version, roots, `watch: false`, interval, cache counters, `read_only: true` |
 | `GET /v1/roots`                                        | `serve` — the served roots with counts, `truncated`, `skipped`, `discovery`           |
 | `GET /v1/bundles`                                      | `serve` — inbox rows, portfolio counts, `partial`, `sources[]`, `errors[]`            |
+| `GET /v1/cost?by=repo\|week\|model`                    | `serve` — cost buckets and totals, with `partial`, `sources[]`, `errors[]`            |
+| `GET /v1/precision?by=category\|tier`                  | `serve` — stored-join outcomes; `fixed` is `null` and no rate is printed              |
 | `GET /v1/roots/{root}/bundles/{bundle}`                | `serve` — `data.{report,gate,threads,artifacts,sources,errors}`                       |
 | `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}` | `show` — byte-identical `data` to `show --json`                                       |
 
@@ -1475,6 +1477,23 @@ accepted (the DNS-rebinding gate). A wildcard bind (`--host 0.0.0.0` or `::`)
 still allowlists only the loopback names, so a LAN client needs a concrete
 interface address such as `--host 192.168.1.10`. `/v1` is the only version: a
 breaking change becomes `/v2`.
+
+Cost accepts exactly one `by` value: `repo`, `week`, or `model`. Week buckets
+use the ISO week of the bundle receipt's `post.json` `posted_at`; cost records
+do not carry timestamps. Cost rows distinguish record `runs` from `model_runs`
+(one record can name multiple models). Model buckets expose token counts and
+`est_usd: null`, because a record stores one run price rather than a price per
+model. Precision accepts `by=category|tier` and joins findings with stored
+`threads.json` only. It reports `as_of` from `fetched_at`; `fixed` remains
+`null` without changed-file evidence, and no rate is printed. Unknown
+dimensions, extra query keys, and repeated `by` parameters return a typed
+`bad-by` refusal envelope at HTTP 200. An absent cost record or corrupt
+precision store makes the view `partial`,
+names the bundle in `errors[]`, and nulls the totals instead of showing a
+smaller sum. Without `threads.json`, eligible findings count as unknown and
+`as_of`/`stale` are null. Across bundles, `as_of` is the oldest valid feed timestamp and
+`stale` is true if any comparable feed predates its post receipt; it is null
+when no feed/post timestamp pair can be compared.
 
 Composed views are cached in memory, keyed by a stamp of their inputs. Each
 bundle-directory entry contributes its mode bits, size, and mtime, with a
