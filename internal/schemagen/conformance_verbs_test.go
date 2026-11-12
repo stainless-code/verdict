@@ -793,7 +793,8 @@ func serveConformanceLayer(t *testing.T) (string, *query.Layer) {
 		`{"schema_version":"1","review":{"id":9},"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
 			`"model":"m1","posted_at":"2026-01-01T00:00:00Z"}`)
 	writeFixture(t, filepath.Join(bundle, "findings.json"), "["+fixtureFinding()+"]")
-	writeFixture(t, filepath.Join(bundle, "cost.json"), `{"models":[],"est_usd":1.25}`)
+	writeFixture(t, filepath.Join(bundle, "cost.json"),
+		`{"models":[{"name":"alpha","input_tokens":null,"output_tokens":null}],"est_usd":1.25}`)
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		t.Fatal(err)

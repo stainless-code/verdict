@@ -820,9 +820,21 @@
         "dimension": { "type": "string" },
         "runs": { "type": "integer", "minimum": 0 },
         "model_runs": { "type": "integer", "minimum": 0 },
-        "input_tokens": { "type": "number", "minimum": 0 },
-        "output_tokens": { "type": "number", "minimum": 0 },
-        "total_tokens": { "type": "number", "minimum": 0 },
+        "input_tokens": {
+          "description": "Null when any contributing model has no input-token measurement.",
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "output_tokens": {
+          "description": "Null when any contributing model has no output-token measurement.",
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "total_tokens": {
+          "description": "Null when either token measurement is unknown.",
+          "type": ["number", "null"],
+          "minimum": 0
+        },
         "est_usd": { "type": ["number", "null"] }
       },
       "required": [
@@ -842,9 +854,21 @@
       "properties": {
         "runs": { "type": "integer", "minimum": 0 },
         "model_runs": { "type": "integer", "minimum": 0 },
-        "input_tokens": { "type": "number", "minimum": 0 },
-        "output_tokens": { "type": "number", "minimum": 0 },
-        "total_tokens": { "type": "number", "minimum": 0 },
+        "input_tokens": {
+          "description": "Null when any contributing bucket has an unknown input-token measurement.",
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "output_tokens": {
+          "description": "Null when any contributing bucket has an unknown output-token measurement.",
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "total_tokens": {
+          "description": "Null when any contributing bucket has an unknown token measurement.",
+          "type": ["number", "null"],
+          "minimum": 0
+        },
         "est_usd": { "type": ["number", "null"] }
       },
       "required": [

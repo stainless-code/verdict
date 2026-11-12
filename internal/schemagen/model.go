@@ -1049,9 +1049,9 @@ type ServeCostBucket struct { //nolint:govet // field order is the published pro
 	Dimension    string   `json:"dimension"`
 	Runs         int      `json:"runs"          min:"0"`
 	ModelRuns    int      `json:"model_runs"    min:"0"`
-	InputTokens  float64  `json:"input_tokens"  min:"0"`
-	OutputTokens float64  `json:"output_tokens" min:"0"`
-	TotalTokens  float64  `json:"total_tokens"  min:"0"`
+	InputTokens  *float64 `json:"input_tokens"  min:"0"`
+	OutputTokens *float64 `json:"output_tokens" min:"0"`
+	TotalTokens  *float64 `json:"total_tokens"  min:"0"`
 	EstUSD       *float64 `json:"est_usd"`
 }
 
@@ -1059,9 +1059,9 @@ type ServeCostBucket struct { //nolint:govet // field order is the published pro
 type ServeCostTotals struct { //nolint:govet // field order is the published property order
 	Runs         int      `json:"runs"          min:"0"`
 	ModelRuns    int      `json:"model_runs"    min:"0"`
-	InputTokens  float64  `json:"input_tokens"  min:"0"`
-	OutputTokens float64  `json:"output_tokens" min:"0"`
-	TotalTokens  float64  `json:"total_tokens"  min:"0"`
+	InputTokens  *float64 `json:"input_tokens"  min:"0"`
+	OutputTokens *float64 `json:"output_tokens" min:"0"`
+	TotalTokens  *float64 `json:"total_tokens"  min:"0"`
 	EstUSD       *float64 `json:"est_usd"`
 }
 

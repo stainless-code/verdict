@@ -421,9 +421,12 @@ export interface ServeCostBucket {
   dimension: string;
   runs: number;
   model_runs: number;
-  input_tokens: number;
-  output_tokens: number;
-  total_tokens: number;
+  /** Null when any contributing model has no input-token measurement. */
+  input_tokens: number | null;
+  /** Null when any contributing model has no output-token measurement. */
+  output_tokens: number | null;
+  /** Null when either token measurement is unknown. */
+  total_tokens: number | null;
   est_usd: number | null;
   [key: string]: unknown;
 }
@@ -432,9 +435,12 @@ export interface ServeCostBucket {
 export interface ServeCostTotals {
   runs: number;
   model_runs: number;
-  input_tokens: number;
-  output_tokens: number;
-  total_tokens: number;
+  /** Null when any contributing bucket has an unknown input-token measurement. */
+  input_tokens: number | null;
+  /** Null when any contributing bucket has an unknown output-token measurement. */
+  output_tokens: number | null;
+  /** Null when any contributing bucket has an unknown token measurement. */
+  total_tokens: number | null;
   est_usd: number | null;
   [key: string]: unknown;
 }

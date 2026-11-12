@@ -193,13 +193,13 @@ var publishedSemantics = map[string]string{
 	// count/truncated/rows are already all required, so it is required there
 	// too and reads null when no index answered. No existing property, required
 	// key, enum, or type changed.
-	// serve: additive $defs/serveData (and its source/error/root/counts/row/
-	// artifact/cache/skipped/discovery defs plus threadsFile/thread/comment).
-	// Additive skipped.gitignore_patterns counts unsupported ignore patterns;
-	// the envelope's data slot stays free-form per verb.
+	// serve: additive $defs/serveData (and source/error/root/counts/row/artifact/
+	// cache/skipped/discovery plus threadsFile/thread/comment). S2 adds
+	// skipped.gitignore_patterns for unsupported ignore patterns; S3 adds the
+	// cost/precision definitions. Token counts are nullable when unmeasured.
 	// pack lock/add: additive $defs/packAddData and the drift description on
 	// packEntry; no existing property, required key, enum, or type changed.
-	"envelope.schema.json": "ab920afe1c79f2e29bce979510525883629812efba874d8f399819af07f3bc1e",
+	"envelope.schema.json": "9803265fbd2f4f030461766c98c2db7b2e39399e17adc869d3a5d5800e9f0d43",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

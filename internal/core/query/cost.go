@@ -20,12 +20,14 @@ const (
 )
 
 type costBucket struct {
-	runs      int
-	modelRuns int
-	input     float64
-	output    float64
-	est       float64
-	estKnown  bool
+	runs          int
+	modelRuns     int
+	input         float64
+	output        float64
+	est           float64
+	inputUnknown  bool
+	outputUnknown bool
+	estKnown      bool
 }
 
 // Cost composes cost records from every served bundle by repository, ISO week,
@@ -80,15 +82,16 @@ func (a *costAggregate) addBundle(layer *Layer, root Root, bundle string, known 
 }
 
 func (a *costAggregate) result() *View {
-	rows := costRows(a.buckets, a.by, a.partial)
+	rows := costRows(a.buckets, a.by)
 	var totals any = costTotals(a.buckets, a.by)
 	if a.partial {
 		totals = nil
 		rows = []any{}
 	}
+	partial := a.partial || a.unknownTokens()
 	a.view.Data = jq.NewObj(
 		"cost", jq.NewObj("by", a.by, "rows", rows, "totals", totals),
-		keyPartial, a.partial,
+		keyPartial, partial,
 		keySources, sourcesWire(a.view.Sources),
 		keyErrors, errorsWire(a.errs),
 	)
@@ -145,10 +148,6 @@ func addRollupBucket(buckets map[string]*costBucket, label string, rollup *jq.Ob
 	bucket := costBucketFor(buckets, label)
 	runs, _ := jq.IntOf(field(rollup, "runs"))
 	bucket.runs += runs
-	input, _ := readcommon.NumVal(field(rollup, "input_tokens"))
-	output, _ := readcommon.NumVal(field(rollup, "output_tokens"))
-	bucket.input += input
-	bucket.output += output
 	est, ok := readcommon.NumVal(field(rollup, "est_usd"))
 	if ok {
 		bucket.est += est
@@ -157,6 +156,7 @@ func addRollupBucket(buckets map[string]*costBucket, label string, rollup *jq.Ob
 	for _, record := range records {
 		models, _ := readcommon.CostModels(record)
 		bucket.modelRuns += len(models)
+		addCostMeasurements(bucket, models)
 	}
 }
 
@@ -183,11 +183,23 @@ func costLabel(by, repo, dir string) string {
 func addCostRecord(buckets map[string]*costBucket, name string, models []any) {
 	bucket := costBucketFor(buckets, name)
 	bucket.modelRuns += len(models)
+	addCostMeasurements(bucket, models)
+}
+
+func addCostMeasurements(bucket *costBucket, models []any) {
 	for _, model := range models {
-		input, _ := readcommon.NumVal(field(model, "input_tokens"))
-		output, _ := readcommon.NumVal(field(model, "output_tokens"))
-		bucket.input += input
-		bucket.output += output
+		input, inputKnown := readcommon.NumVal(field(model, "input_tokens"))
+		output, outputKnown := readcommon.NumVal(field(model, "output_tokens"))
+		if inputKnown {
+			bucket.input += input
+		} else {
+			bucket.inputUnknown = true
+		}
+		if outputKnown {
+			bucket.output += output
+		} else {
+			bucket.outputUnknown = true
+		}
 	}
 }
 
@@ -198,7 +210,7 @@ func costBucketFor(buckets map[string]*costBucket, key string) *costBucket {
 	return buckets[key]
 }
 
-func costRows(buckets map[string]*costBucket, by string, partial bool) []any {
+func costRows(buckets map[string]*costBucket, by string) []any {
 	keys := make([]string, 0, len(buckets))
 	for key := range buckets {
 		keys = append(keys, key)
@@ -211,20 +223,27 @@ func costRows(buckets map[string]*costBucket, by string, partial bool) []any {
 			"dimension", key,
 			"runs", bucket.runs,
 			"model_runs", bucket.modelRuns,
-			keyInputTokens, roundCost(bucket.input),
-			keyOutputTokens, roundCost(bucket.output),
-			"total_tokens", roundCost(bucket.input+bucket.output),
-			"est_usd", costEstimate(by, partial, bucket),
+			keyInputTokens, measuredCost(bucket.input, bucket.inputUnknown),
+			keyOutputTokens, measuredCost(bucket.output, bucket.outputUnknown),
+			"total_tokens", measuredCost(bucket.input+bucket.output, bucket.inputUnknown || bucket.outputUnknown),
+			"est_usd", costEstimate(by, bucket),
 		))
 	}
 	return rows
 }
 
-func costEstimate(by string, partial bool, bucket *costBucket) any {
-	if by == keyModel || partial || !bucket.estKnown {
+func costEstimate(by string, bucket *costBucket) any {
+	if by == keyModel || !bucket.estKnown {
 		return nil
 	}
 	return roundCost(bucket.est)
+}
+
+func measuredCost(value float64, unknown bool) any {
+	if unknown {
+		return nil
+	}
+	return roundCost(value)
 }
 
 func costTotals(buckets map[string]*costBucket, by string) *jq.Obj {
@@ -235,6 +254,8 @@ func costTotals(buckets map[string]*costBucket, by string) *jq.Obj {
 		total.input += bucket.input
 		total.output += bucket.output
 		total.est += bucket.est
+		total.inputUnknown = total.inputUnknown || bucket.inputUnknown
+		total.outputUnknown = total.outputUnknown || bucket.outputUnknown
 		total.estKnown = total.estKnown || bucket.estKnown
 	}
 	var est any
@@ -244,11 +265,20 @@ func costTotals(buckets map[string]*costBucket, by string) *jq.Obj {
 	return jq.NewObj(
 		"runs", total.runs,
 		"model_runs", total.modelRuns,
-		keyInputTokens, roundCost(total.input),
-		keyOutputTokens, roundCost(total.output),
-		"total_tokens", roundCost(total.input+total.output),
+		keyInputTokens, measuredCost(total.input, total.inputUnknown),
+		keyOutputTokens, measuredCost(total.output, total.outputUnknown),
+		"total_tokens", measuredCost(total.input+total.output, total.inputUnknown || total.outputUnknown),
 		"est_usd", est,
 	)
+}
+
+func (a *costAggregate) unknownTokens() bool {
+	for _, bucket := range a.buckets {
+		if bucket.inputUnknown || bucket.outputUnknown {
+			return true
+		}
+	}
+	return false
 }
 
 func roundCost(n float64) float64 {
