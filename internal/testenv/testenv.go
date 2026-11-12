@@ -91,10 +91,11 @@ var gitConfig = [][2]string{
 	{"gc.auto", "0"},
 }
 
-// emptyGlobalConfig is the GIT_CONFIG_GLOBAL target: a path that exists but is
-// empty, so the host's ~/.gitconfig is never read. [os.DevNull] is not
-// portable to every Git-for-Windows build, hence a real file.
-func emptyGlobalConfig() string {
+// emptyGitConfig is the GIT_CONFIG_GLOBAL and GIT_CONFIG_SYSTEM target: a
+// path that exists but is empty, so neither the host's ~/.gitconfig nor its
+// /etc/gitconfig is read. [os.DevNull] is not portable to every
+// Git-for-Windows build, hence a real file.
+func emptyGitConfig() string {
 	emptyOnce.Do(func() {
 		path := filepath.Join(os.TempDir(), "verdict-testenv-empty-gitconfig")
 		if err := os.WriteFile(path, nil, configPerm); err != nil {
@@ -112,12 +113,14 @@ var (
 )
 
 // GitConfig returns the exported environment that pins git: no system config,
-// an empty global config, the fixed keys at command scope (highest precedence,
-// so a repository's own config cannot override them), and the fixed identity.
+// empty global and system config files, the fixed keys at command scope
+// (highest precedence, so a repository's own config cannot override them),
+// and the fixed identity.
 func GitConfig() []string {
 	env := []string{
 		"GIT_CONFIG_NOSYSTEM=1",
-		"GIT_CONFIG_GLOBAL=" + emptyGlobalConfig(),
+		"GIT_CONFIG_GLOBAL=" + emptyGitConfig(),
+		"GIT_CONFIG_SYSTEM=" + emptyGitConfig(),
 		"GIT_CONFIG_COUNT=" + strconv.Itoa(len(gitConfig)),
 	}
 	for i, kv := range gitConfig {

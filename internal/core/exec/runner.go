@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	osexec "os/exec"
+	"sync/atomic"
 
 	"github.com/stainless-code/verdict/internal/core"
 )
@@ -21,7 +22,9 @@ import (
 // come back as results with the wait code, so callers map non-zero
 // exits to their verb's warn-or-refuse posture instead of unpacking an error
 // (GO-EXEC-05). An over-cap stdout returns [core.OutputCappedError]: the
-// captured head cannot stand in for the whole document.
+// captured head cannot stand in for the whole document. A context deadline
+// that kills the tree records itself in [core.Result.TimedOut], so a caller
+// reads the kill instead of inferring one from the clock.
 //
 // The zero value is the read-verb posture: [ReadOutputCap], no missing-tool
 // pre-check, and inherits the caller's stdin. The fetch and scaffold verbs
@@ -62,7 +65,8 @@ func (r Runner) Run(ctx context.Context, cmd *core.Command) (core.Result, error)
 	proc.Dir = cmd.Dir
 	proc.WaitDelay = waitDelay
 	setGroup(proc)
-	proc.Cancel = func() error { return killGroup(proc) }
+	var expired atomic.Bool
+	proc.Cancel = recordExpiry(ctx, proc, &expired)
 	if err := startTree(proc); err != nil {
 		return core.Result{}, err
 	}
@@ -71,6 +75,7 @@ func (r Runner) Run(ctx context.Context, cmd *core.Command) (core.Result, error)
 	res := core.Result{
 		Stdout:          stdout.String(),
 		Stderr:          stderr.String(),
+		TimedOut:        expired.Load(),
 		StdoutTruncated: stdout.Truncated(),
 		StderrTruncated: stderr.Truncated(),
 	}
@@ -80,7 +85,7 @@ func (r Runner) Run(ctx context.Context, cmd *core.Command) (core.Result, error)
 		return res, fmt.Errorf("%s: %w", cmd.Argv[0], runErr) //nolint:wrapcheck // locally constructed spawn message, not an external error
 	}
 	if res.StdoutTruncated {
-		return res, &core.OutputCappedError{Stream: "stdout", Limit: limit}
+		return res, &core.OutputCappedError{Stream: "stdout", Limit: limit, ReadBytes: stdout.Seen()}
 	}
 	return res, nil
 }

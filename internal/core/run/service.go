@@ -306,7 +306,9 @@ func (st *state) resolve(def agentDef) (string, *core.RefusalError) {
 // spawn runs the agent under the watchdog: its own process group, a tree
 // kill on the budget, and a combined bounded capture. The agent inherits the
 // operator's environment (that is how it authenticates), minus color when
-// the run is machine-only.
+// the run is machine-only. The commander records the watchdog's kill in
+// Result.TimedOut; this call never infers one from its own clock, so an agent
+// that exits non-zero just before the budget stays a failure.
 func (st *state) spawn(ctx context.Context, argv []string, timeout int) (*core.Result, error) {
 	commander := st.commander()
 	if commander == nil {
@@ -323,18 +325,7 @@ func (st *state) spawn(ctx context.Context, argv []string, timeout int) (*core.R
 	if err != nil {
 		return nil, err //nolint:wrapcheck // spawn failures are mapped by the caller, never reworded
 	}
-	if watchdogFired(ctx, tctx, &res) {
-		res.TimedOut = true
-	}
 	return &res, nil
-}
-
-// watchdogFired reports a kill this call's own budget made: the budget
-// expired, the operator did not cancel, and the child did not exit clean. A
-// commander that never sets Result.TimedOut still owes the launcher the
-// timeout refusal, because the deadline this call armed is the watchdog.
-func watchdogFired(ctx, tctx context.Context, res *core.Result) bool {
-	return res.ExitCode != 0 && !res.TimedOut && tctx.Err() != nil && ctx.Err() == nil
 }
 
 // errNoCommander is the launcher's own wiring failure: no scripted or

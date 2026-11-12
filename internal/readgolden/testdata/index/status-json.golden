@@ -6,7 +6,7 @@ exit: 0
   "repo": "",
   "pr": null,
   "at": "0000-00-00T00:00:00Z",
-  "next": "build it with verdict index build",
+  "next": "query it with verdict index callers <symbol>",
   "warnings": [],
   "data": {
     "kind": "status",

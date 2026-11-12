@@ -43,3 +43,30 @@ func TestRepairCrashRoundSkipsFIFOReview(t *testing.T) {
 	assertRoundFileExists(t, dir, "02.out")
 	assertNoRoundFile(t, dir, "02.review.json")
 }
+
+// TestCrashReviewBytesNeverBlocksOnAFIFO proves the open itself cannot hang: a
+// regular file swapped for a FIFO after any stat is opened non-blocking, so
+// the mode check rejects it without waiting for a writer that never comes.
+func TestCrashReviewBytesNeverBlocksOnAFIFO(t *testing.T) {
+	path := filepath.Join(t.TempDir(), reviewFile)
+	if err := syscall.Mkfifo(path, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	type read struct {
+		raw []byte
+		ok  bool
+	}
+	done := make(chan read, 1)
+	go func() {
+		raw, ok := crashReviewBytes(path)
+		done <- read{raw: raw, ok: ok}
+	}()
+	select {
+	case got := <-done:
+		if got.ok || got.raw != nil {
+			t.Errorf("crashReviewBytes = %q, %v; want nothing for a FIFO", got.raw, got.ok)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("crashReviewBytes still blocked after 5s: the open waited for a FIFO writer")
+	}
+}

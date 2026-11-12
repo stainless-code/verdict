@@ -47,6 +47,7 @@ testenv_git_config() {
   local sandbox="$1" n=0
   : >"$sandbox/gitconfig-empty"
   export GIT_CONFIG_GLOBAL="$sandbox/gitconfig-empty"
+  export GIT_CONFIG_SYSTEM="$sandbox/gitconfig-empty"
   export GIT_CONFIG_NOSYSTEM=1
   set -- core.autocrlf false commit.gpgsign false tag.gpgsign false \
     init.defaultBranch main core.longpaths true maintenance.auto false gc.auto 0

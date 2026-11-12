@@ -365,19 +365,21 @@ func (st *state) writeRoundOut(args *launchArgs, k int, res *core.Result) {
 	}
 }
 
-// crashReviewBytes returns the bytes a stopped round left at path. A file that
-// is not regular, or that outgrew the review cap, yields nothing to copy: a
-// FIFO blocks the read and a path the child controls has no size ceiling.
+// crashReviewBytes returns the bytes a stopped round left at path. The open is
+// the check, never a stat ahead of it: the child owns the path, so a regular
+// file can become a FIFO between the two calls, and a path the child controls
+// has no size ceiling. A file that does not open, is not regular once opened,
+// or outgrew the review cap yields nothing to copy.
 func crashReviewBytes(path string) ([]byte, bool) {
-	fi, err := os.Stat(path)
-	if err != nil || !fi.Mode().IsRegular() || fi.Size() > maxRoundReviewBytes {
-		return nil, false
-	}
-	f, err := os.Open(path)
-	if err != nil {
+	f, ok := openEvidence(path)
+	if !ok {
 		return nil, false
 	}
 	defer func() { _ = f.Close() }()
+	fi, err := f.Stat()
+	if err != nil || !fi.Mode().IsRegular() || fi.Size() > maxRoundReviewBytes {
+		return nil, false
+	}
 	raw, err := io.ReadAll(io.LimitReader(f, maxRoundReviewBytes+1))
 	if err != nil || len(raw) > maxRoundReviewBytes {
 		return nil, false

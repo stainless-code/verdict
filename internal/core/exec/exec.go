@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	osexec "os/exec"
+	"sync/atomic"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -23,15 +24,17 @@ type Watchdog struct{}
 
 // Run starts cmd.Argv in its own process group with combined output
 // capture, returning the wait status. The context deadline is the watchdog
-// budget: expiry SIGKILLs the group. A nil Stdin or Env inherits the
-// caller's. Infra failures (spawn) come back as errors; completed
-// processes — any exit code — come back as results.
+// budget: expiry SIGKILLs the group and records itself, so TimedOut reports
+// the kill this watchdog made rather than a deadline read after the exit. A
+// nil Stdin or Env inherits the caller's. Infra failures (spawn) come back as
+// errors; completed processes — any exit code — come back as results.
 func (Watchdog) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
 	if len(cmd.Argv) == 0 {
 		return core.Result{}, errEmptyArgv
 	}
 	secs, budgeted := watchdogBudget(ctx)
-	proc, waitDone, out, err := spawnWatched(ctx, cmd)
+	var expired atomic.Bool
+	proc, waitDone, out, err := spawnWatched(ctx, cmd, &expired)
 	if err != nil {
 		return core.Result{}, err
 	}
@@ -40,14 +43,13 @@ func (Watchdog) Run(ctx context.Context, cmd *core.Command) (core.Result, error)
 	if havePS() && budgeted {
 		timedOut = pollTimeout(ctx, proc, secs)
 	}
-	exit := waitExit(waitDone, timedOut)
+	waitErr := <-waitDone
+	timedOut = timedOut || expired.Load()
+	exit := exitCode(waitErr, timedOut)
 	decoy := false
 	if !timedOut && sweepOrphans(proc) {
 		timedOut = true
 		decoy = true
-	}
-	if ctx.Err() == context.DeadlineExceeded {
-		timedOut = true
 	}
 	return core.Result{
 		Stdout:          out.String(),
@@ -75,11 +77,11 @@ func watchdogBudget(ctx context.Context) (int, bool) {
 	return int(time.Until(deadline).Seconds()), true
 }
 
-func spawnWatched(ctx context.Context, cmd *core.Command) (*osexec.Cmd, chan error, *boundedBuffer, error) {
+func spawnWatched(ctx context.Context, cmd *core.Command, expired *atomic.Bool) (*osexec.Cmd, chan error, *boundedBuffer, error) {
 	//nolint:gosec // G204: argv is the operator's own verify command (the documented bash -c model), not external input.
 	proc := osexec.CommandContext(ctx, cmd.Argv[0], cmd.Argv[1:]...)
 	setGroup(proc)
-	proc.Cancel = func() error { return killGroup(proc) }
+	proc.Cancel = recordExpiry(ctx, proc, expired)
 	proc.WaitDelay = waitDelay
 	out := newBoundedBuffer(outputCap(cmd.OutputCap, VerifyOutputCap), captureTail)
 	proc.Stdout = out
@@ -117,6 +119,19 @@ func pollTimeout(ctx context.Context, cmd *osexec.Cmd, timeoutSecs int) bool {
 	return stopTimedOut(cmd)
 }
 
+// recordExpiry is the Cancel hook both commanders install: the budget kill
+// records itself as it happens, so a result never reads the deadline off the
+// clock after the exit. An operator cancel is not a budget kill and records
+// nothing.
+func recordExpiry(ctx context.Context, proc *osexec.Cmd, expired *atomic.Bool) func() error {
+	return func() error {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			expired.Store(true)
+		}
+		return killGroup(proc)
+	}
+}
+
 func stopTimedOut(cmd *osexec.Cmd) bool {
 	if err := killGroup(cmd); err != nil {
 		return true
@@ -133,8 +148,8 @@ func waitPollSecond(ctx context.Context) bool {
 	return ctx.Err() != nil
 }
 
-func waitExit(waitDone chan error, timedOut bool) int {
-	err := <-waitDone
+// exitCode translates one Wait result into the wait status callers record.
+func exitCode(err error, timedOut bool) int {
 	if err == nil {
 		return 0
 	}

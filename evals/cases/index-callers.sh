@@ -91,7 +91,9 @@ assert_json_field "the stale warning is in warnings" "1" \
   '[.warnings[] | select(test("built for .*HEAD is"))] | length'
 
 # A truncated shard refuses instead of reading as an empty index.
-shard="$(find "$EVAL_SANDBOX/.verdict/index/shards" -name '*.json' | head -n 1)"
+# awk drains find's output; `head -n 1` exits early and pipefail would abort on
+# find's SIGPIPE (STA-378).
+shard="$(find "$EVAL_SANDBOX/.verdict/index/shards" -name '*.json' | awk 'NR == 1')"
 head -c 5 /dev/zero >"$shard"
 run_review index build --json
 assert_exit "truncated shard refuses" 1

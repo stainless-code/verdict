@@ -28,10 +28,13 @@ const (
 
 // Runner carries the per-invocation CLI state: routing, prefs, warnings.
 type Runner struct {
-	Out                io.Writer
-	Human              io.Writer
-	Diag               io.Writer
-	Now                func() time.Time
+	Out   io.Writer
+	Human io.Writer
+	Diag  io.Writer
+	Now   func() time.Time
+	// written counts the warnings already on the diagnostic stream, by
+	// text, so a refusal's replayed list does not print a line twice.
+	written            map[string]int
 	Effective          Effective
 	Output             string
 	EnvReviewColorMode string
@@ -75,12 +78,44 @@ func NowUTC(t time.Time) string {
 // Diagnostic stream writes are un-actionable, so errcheck excludes the
 // [fmt.Fprint] family here via .golangci.yml.
 func (r *Runner) Warn(msg string) {
+	r.writeWarning(msg)
+	r.Warnings = append(r.Warnings, msg)
+	r.markWarningWritten(msg)
+}
+
+// writeWarning writes one frozen `warn:` line to the diagnostic stream.
+func (r *Runner) writeWarning(msg string) {
 	if r.Effective.Color == colorAlways {
 		fmt.Fprintf(r.Diag, "\033[33mwarn: %s\033[0m\n", msg)
 	} else {
 		fmt.Fprintf(r.Diag, "warn: %s\n", msg)
 	}
-	r.Warnings = append(r.Warnings, msg)
+}
+
+// markWarningWritten counts one warning line already on the diagnostic
+// stream, so a refusal that replays a list Warn has partly written prints
+// only the lines still missing. A count, not a set: the same text twice is
+// two lines.
+func (r *Runner) markWarningWritten(msg string) {
+	if r.written == nil {
+		r.written = map[string]int{}
+	}
+	r.written[msg]++
+}
+
+// emitRefusalWarnings writes the refusal's warnings no Warn call has written
+// yet, before the human error line: a verb that collected warnings and then
+// refused (`pack list` dropping the stray-file warning) would otherwise lose
+// them. JSON mode keeps its envelope-only surface.
+func (r *Runner) emitRefusalWarnings(warnings []string) {
+	for _, msg := range warnings {
+		if r.written[msg] > 0 {
+			r.written[msg]--
+			continue
+		}
+		r.writeWarning(msg)
+		r.markWarningWritten(msg)
+	}
 }
 
 // RefusalError is core's typed refusal (alias of core.RefusalError): machine
@@ -105,6 +140,9 @@ func (r *Runner) RefuseExit(err error, code int) int {
 	}
 	code = ExitFor(ref, code)
 	msg := ref.Message + "\n" + HintFor(ref.Code)
+	if !r.JSONMode {
+		r.emitRefusalWarnings(ref.Warnings)
+	}
 	switch {
 	case r.JSONMode:
 		env := core.RenderEnvelope(r.Cmd, r.Repo, r.Pr, NowUTC(r.Now()), "",
