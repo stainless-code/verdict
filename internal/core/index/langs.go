@@ -54,6 +54,7 @@ const (
 	wordFunction  = "function"
 	wordImport    = "import"
 	wordInterface = "interface"
+	wordLet       = "let"
 	wordMethod    = "method"
 	wordNew       = "new"
 	wordReturn    = "return"
@@ -195,6 +196,15 @@ func testPath(lang language, p string) bool {
 func hasDirSegment(p, name string) bool {
 	for dir := range strings.SplitSeq(path.Dir(p), "/") {
 		if dir == name {
+			return true
+		}
+	}
+	return false
+}
+
+func (b *fileBuf) importsName(name string) bool {
+	for _, imp := range b.imports {
+		if imp.Name == name {
 			return true
 		}
 	}

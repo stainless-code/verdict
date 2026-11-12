@@ -2891,6 +2891,12 @@ resolver the scanner cannot prove the name it saw is the declaration it
 matched — so `counts.unresolved` stays zero for those rows and a caller list
 for a scanned symbol is a floor, not a proof.
 
+Python and TypeScript module-function attribute calls require an import-bound
+qualifier. Assignments and local parameters before the call suppress that
+binding within the enclosing lexical scope; Python also recognizes
+`for`, `with`, and `except` targets, and TypeScript recognizes
+`let`, `const`, and `var`. This is a lexical filter without type analysis.
+
 What the scanners deliberately do not read, they skip rather than guess.
 TypeScript and JavaScript: `with` and `eval` blocks, prototype patching, and
 computed member access (`obj[key]`) name no callee; a callee reached through a

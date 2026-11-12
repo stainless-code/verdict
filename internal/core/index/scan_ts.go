@@ -47,7 +47,7 @@ var tsReserved = map[string]bool{
 	"continue": true, "debugger": true, "default": true, wordDelete: true,
 	"do": true, wordElse: true, wordEnum: true, wordExport: true, "extends": true,
 	"false": true, "finally": true, wordFor: true, wordFunction: true, "if": true,
-	wordImport: true, "in": true, "instanceof": true, "let": true, wordNew: true,
+	wordImport: true, "in": true, "instanceof": true, wordLet: true, wordNew: true,
 	"null": true, wordReturn: true, "super": true, "switch": true, "this": true,
 	"throw": true, "try": true, wordTypeof: true, wordVar: true,
 	"void": true, wordWhile: true, wordWith: true,
@@ -1168,7 +1168,7 @@ func tsDecl(tokens []tsToken, i int) (int, string, bool) {
 		return tsNamed(tokens, i, wordFunc)
 	case wordConst:
 		return tsNamed(tokens, i, wordConst)
-	case "let", wordVar:
+	case wordLet, wordVar:
 		return tsNamed(tokens, i, wordVar)
 	case wordClass, "enum":
 		return tsNamed(tokens, i, wordType)
@@ -1299,7 +1299,68 @@ func (x *tsExtractor) callQualifier(i int) string {
 	for start >= 2 && (x.text(start-1) == punctDot || x.text(start-1) == punctOptional) && x.tokens[start-2].kind == tsIdent {
 		start -= 2
 	}
-	return x.text(start)
+	name := x.text(start)
+	if x.shadowed(name, start) {
+		return ""
+	}
+	return name
+}
+
+func (x *tsExtractor) shadowed(name string, call int) bool {
+	if !x.buf.importsName(name) {
+		return false
+	}
+	for i := range call {
+		if x.text(i) != name || x.tokens[i].kind != tsIdent || x.text(i-1) == punctDot {
+			continue
+		}
+		if x.bindingActive(i, call) {
+			return true
+		}
+	}
+	return false
+}
+
+func (x *tsExtractor) bindingActive(i, call int) bool {
+	binding := x.text(i+1) == punctAssign || x.text(i-1) == wordLet || x.text(i-1) == wordConst || x.text(i-1) == wordVar
+	scope := x.bindingScope(i)
+	if body := x.parameterBody(i); body >= 0 {
+		binding, scope = true, body
+	}
+	return binding && (scope < 0 || x.match[scope] > call)
+}
+
+func (x *tsExtractor) bindingScope(i int) int {
+	for j := i - 1; j >= 0; j-- {
+		if x.text(j) == punctBrace && x.match[j] > i {
+			return j
+		}
+	}
+	return -1
+}
+
+func (x *tsExtractor) parameterBody(i int) int {
+	if x.text(i-1) != punctParen && x.text(i-1) != "," {
+		return -1
+	}
+	for j := i - 1; j >= 0; j-- {
+		if x.text(j) != punctParen || x.match[j] < i {
+			continue
+		}
+		return x.bodyAfter(x.match[j])
+	}
+	return -1
+}
+
+func (x *tsExtractor) bodyAfter(end int) int {
+	body := end + 1
+	if x.text(body) == punctArrow {
+		body++
+	}
+	if x.text(body) == punctBrace {
+		return body
+	}
+	return -1
 }
 
 // callParen reports whether the token after i opens a call's arguments, with

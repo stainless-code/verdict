@@ -600,7 +600,70 @@ func (x *pyExtractor) callQualifier(i int) string {
 	for start >= 2 && x.text(start-1) == punctDot && x.kind(start-2) == pyIdent {
 		start -= 2
 	}
-	return x.text(start)
+	name := x.text(start)
+	if x.shadowed(name, start) {
+		return ""
+	}
+	return name
+}
+
+func (x *pyExtractor) shadowed(name string, call int) bool {
+	if !x.buf.importsName(name) {
+		return false
+	}
+	for i := range call {
+		if x.text(i) == name && x.kind(i) == pyIdent && x.text(i-1) != punctDot && x.bindingAt(i) && x.bindingActive(i, call) {
+			return true
+		}
+	}
+	return false
+}
+
+func (x *pyExtractor) statementStart(i int) int {
+	for i > 0 && !x.tokens[i].logical {
+		i--
+	}
+	return i
+}
+
+func (x *pyExtractor) bindingAt(i int) bool {
+	if x.text(i+1) == punctAssign || x.text(i+1) == ":=" || x.text(i-1) == wordFor || x.text(i-1) == wordAs {
+		return true
+	}
+	return x.parameterAt(i)
+}
+
+func (x *pyExtractor) parameterAt(i int) bool {
+	start := x.statementStart(i)
+	if x.text(start) != wordDef && x.text(start) != wordAsync {
+		return false
+	}
+	open := start
+	for open < i && x.text(open) != punctParen {
+		open++
+	}
+	end := x.pair(open)
+	return open < i && i < end && (x.text(i-1) == punctParen || x.text(i-1) == ",")
+}
+
+func (x *pyExtractor) bindingActive(i, call int) bool {
+	start := x.statementStart(i)
+	indent := x.tokens[start].col
+	for j := start; j >= 0; j-- {
+		if x.tokens[j].logical && (x.text(j) == wordDef || x.text(j) == wordAsync) && (x.tokens[j].col < indent || j == start) {
+			return x.scopeActive(j, call)
+		}
+	}
+	return true
+}
+
+func (x *pyExtractor) scopeActive(scope, call int) bool {
+	for j := scope + 1; j <= call; j++ {
+		if x.tokens[j].logical && x.tokens[j].line > x.tokens[scope].line && x.tokens[j].col <= x.tokens[scope].col {
+			return false
+		}
+	}
+	return true
 }
 
 // text returns one token's text, "" outside the stream.
