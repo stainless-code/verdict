@@ -26,15 +26,10 @@ const (
 	// corpusSuffix marks a fixture source the repository's own gates cannot
 	// build: the Go fixture is a module of its own, and the pre-commit hook
 	// vets the directory of every staged .go file. The seeder strips it.
-	corpusSuffix = ".txt"
-	// corpusBrokenPath is the go/parser bail-out the coverage expectation
-	// proves. It is written by the test rather than checked in because
-	// gofmt -l . walks testdata and refuses a file it cannot parse.
-	corpusBrokenPath = "internal/broken/broken.go"
-	corpusBrokenBody = "package broken\n\nfunc Broken( {\n"
-	corpusGo         = "go"
-	floorUnpinned    = "n/a"
-	minNameWidth     = 5
+	corpusSuffix  = ".txt"
+	corpusGo      = "go"
+	floorUnpinned = "n/a"
+	minNameWidth  = 5
 )
 
 // corpusLanguages are the fixture repositories, in scorecard order.
@@ -145,9 +140,6 @@ func runCorpus(t *testing.T, lang string) []scoreCard {
 	c := loadCorpus(t, dir)
 	f := newFixture(t)
 	files := seedCorpus(t, f, dir)
-	if lang == corpusGo {
-		f.write(corpusBrokenPath, corpusBrokenBody)
-	}
 	f.commit("corpus")
 	built := f.build()
 	assertCoverage(t, lang, built.Data, c.Coverage)

@@ -559,8 +559,8 @@ fixed here: the scanners are frozen.
 
 The build reports `files_indexed` and `skipped`, and the corpus pins both per
 repository: `go` is 15 indexed and 1 skipped, `ts` 22 and 0, `py` 14 and 0. The
-one skip is a Go file `go/parser` refuses, which is the only bail-out the index
-can report: both lexical scanners always finish, recording whatever they
+one skip is the Go fixture's `internal/broken/broken.go`, which `go/parser`
+refuses, and it is the only bail-out the index can report: both lexical scanners always finish, recording whatever they
 recognized, so a py or ts file the scanner mis-reads appears as a missing edge
 and never as a skip. That asymmetry is a gap in the coverage number, not
 something the corpus can measure.
