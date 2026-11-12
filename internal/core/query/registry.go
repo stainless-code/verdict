@@ -22,6 +22,13 @@ const (
 	registryDirMode   = 0o700
 	registryFileMode  = 0o600
 	registrySchemaVer = "1"
+	registryWriteMask = 0o022
+)
+
+var (
+	errUnsafeRegistryFile      = errors.New("unsafe registry file")
+	errUnsafeRegistryDirectory = errors.New("unsafe registry directory")
+	errInvalidRegistryPath     = errors.New("invalid registry path")
 )
 
 type registry struct {
@@ -95,24 +102,38 @@ func readRegistry(path string) ([]byte, error) {
 		return nil, err
 	}
 	defer func() { _ = root.Close() }()
-	before, err := root.Lstat(name)
-	if err != nil || !safeRegistryFile(before) {
-		return nil, errors.New("unsafe registry file")
-	}
-	f, err := readcommon.OpenNoBlockIn(root, name)
+	f, err := openSafeRegistry(root, name)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = f.Close() }()
+	raw, err := jq.Capped(f, registryReadCap)
+	if err != nil {
+		return nil, fmt.Errorf("read registry: %w", err) //nolint:wrapcheck // keeps the capped-reader cause available to callers.
+	}
+	return raw, nil
+}
+
+func openSafeRegistry(root *os.Root, name string) (*os.File, error) {
+	before, err := root.Lstat(name)
+	if err != nil || !safeRegistryFile(before) {
+		return nil, errUnsafeRegistryFile //nolint:wrapcheck // callers map unsafe leaves to a cache miss.
+	}
+	f, err := readcommon.OpenNoBlockIn(root, name)
+	if err != nil {
+		return nil, fmt.Errorf("open registry file: %w", err) //nolint:wrapcheck // preserves the descriptor-open cause.
+	}
 	opened, err := f.Stat()
 	if err != nil || !safeRegistryFile(opened) {
-		return nil, errors.New("unsafe registry file")
+		_ = f.Close()
+		return nil, errUnsafeRegistryFile //nolint:wrapcheck // callers map unsafe leaves to a cache miss.
 	}
 	after, err := root.Lstat(name)
 	if err != nil || !safeRegistryFile(after) || !os.SameFile(opened, after) {
-		return nil, errors.New("unsafe registry file")
+		_ = f.Close()
+		return nil, errUnsafeRegistryFile //nolint:wrapcheck // callers map unsafe leaves to a cache miss.
 	}
-	return jq.Capped(f, registryReadCap)
+	return f, nil
 }
 
 func safeRegistryFile(info os.FileInfo) bool {
@@ -120,31 +141,39 @@ func safeRegistryFile(info os.FileInfo) bool {
 }
 
 func unsafeRegistryPermissions(mode os.FileMode) bool {
-	return runtime.GOOS != "windows" && mode.Perm()&0o022 != 0
+	return runtime.GOOS != "windows" && mode.Perm()&registryWriteMask != 0
 }
 
 func openRegistryParent(path string) (*os.Root, string, error) {
 	dir, name := filepath.Dir(path), filepath.Base(path)
 	if name == "." || name == string(filepath.Separator) {
-		return nil, "", errors.New("invalid registry path")
+		return nil, "", errInvalidRegistryPath //nolint:wrapcheck // loadRegistry converts invalid cache paths to a rebuild.
 	}
 	info, err := os.Lstat(dir)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("inspect registry directory: %w", err) //nolint:wrapcheck // keeps the cause for diagnostics.
 	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() || unsafeRegistryPermissions(info.Mode()) {
-		return nil, "", errors.New("unsafe registry directory")
+	if !safeRegistryDirectory(info) {
+		return nil, "", errUnsafeRegistryDirectory //nolint:wrapcheck // unsafe cache directories are reported as unavailable.
 	}
 	root, err := os.OpenRoot(dir)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("open registry directory: %w", err) //nolint:wrapcheck // keeps the root-open cause for diagnostics.
 	}
-	opened, err := root.Stat(".")
-	if err != nil || !os.SameFile(info, opened) {
+	if !sameRegistryDirectory(root, info) {
 		_ = root.Close()
-		return nil, "", errors.New("unsafe registry directory")
+		return nil, "", errUnsafeRegistryDirectory //nolint:wrapcheck // unsafe cache directories are reported as unavailable.
 	}
 	return root, name, nil
+}
+
+func safeRegistryDirectory(info os.FileInfo) bool {
+	return info != nil && info.Mode()&os.ModeSymlink == 0 && info.IsDir() && !unsafeRegistryPermissions(info.Mode())
+}
+
+func sameRegistryDirectory(root *os.Root, info os.FileInfo) bool {
+	opened, err := root.Stat(".")
+	return err == nil && os.SameFile(info, opened)
 }
 
 func findCached(root string, opts DiscoveryOptions, saved registry) (Discovery, bool, error) {
@@ -182,7 +211,10 @@ func writeRegistry(path string, raw []byte) error {
 		return err
 	}
 	defer func() { _ = root.Close() }()
-	return atomic.WriteFileModeIn(root, name, raw, registryFileMode)
+	if err := atomic.WriteFileModeIn(root, name, raw, registryFileMode); err != nil {
+		return fmt.Errorf("write registry: %w", err) //nolint:wrapcheck // persistRegistry reports cache-write failures as warnings.
+	}
+	return nil
 }
 
 func registryEntry(root string, opts DiscoveryOptions, result *Discovery, warnings []string) registryRoot {

@@ -15,6 +15,7 @@ const (
 	maxGitignoreBytes           = 1 << 20
 	maxIgnoreDoubleStarSegments = 2
 	gitPathSeparator            = "/"
+	gitDoubleStar               = "**"
 )
 
 type ignoreRule struct {
@@ -62,7 +63,7 @@ func parseIgnoreLine(source string, line int, file, rootPath, base string, warni
 		return ignoreRule{}, false
 	}
 	if !anchored && !strings.Contains(lineText, gitPathSeparator) {
-		lineText = "**/" + lineText
+		lineText = gitDoubleStar + gitPathSeparator + lineText
 	}
 	if ignoreDoubleStarSegments(lineText, dirOnly) > maxIgnoreDoubleStarSegments {
 		warnSkippedPattern(file, rootPath, line, original, warnings, skipped)
@@ -102,7 +103,7 @@ func validIgnorePattern(pattern string) bool {
 		return false
 	}
 	for segment := range strings.SplitSeq(pattern, gitPathSeparator) {
-		if segment == "" || (strings.Contains(segment, "**") && segment != "**") {
+		if segment == "" || (strings.Contains(segment, gitDoubleStar) && segment != gitDoubleStar) {
 			return false
 		}
 	}
@@ -112,7 +113,7 @@ func validIgnorePattern(pattern string) bool {
 func ignoreDoubleStarSegments(pattern string, dirOnly bool) int {
 	count := 0
 	for segment := range strings.SplitSeq(pattern, gitPathSeparator) {
-		if segment == "**" {
+		if segment == gitDoubleStar {
 			count++
 		}
 	}
@@ -144,5 +145,5 @@ func matchesIgnoreRule(rule ignoreRule, rel string) bool {
 	if config.Match(rule.pattern, sub) {
 		return true
 	}
-	return rule.dirOnly && config.Match(path.Join(rule.pattern, "**"), sub)
+	return rule.dirOnly && config.Match(path.Join(rule.pattern, gitDoubleStar), sub)
 }

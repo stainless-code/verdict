@@ -40,7 +40,7 @@ func TestDiscoveryFixture(t *testing.T) {
 	assertDiscoveryFixture(t, &got, root, symlinkCount)
 }
 
-// TestDiscoveryCountsSymlinksWithoutFollowing counts links without inspecting targets.
+// TestDiscoveryCountsSymlinksWithoutFollowing never follows counted links.
 func TestDiscoveryCountsSymlinksWithoutFollowing(t *testing.T) {
 	root := t.TempDir()
 	outside := t.TempDir()
@@ -217,13 +217,26 @@ func testWorldWritableRegistryIsRebuilt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertUnsafeRegistryRebuilt(t, got)
+	assertUnsafeRegistryRebuilt(t, &got)
 	assertRegistryMode(t, path)
 }
 
 func testSymlinkedRegistryIsRebuilt(t *testing.T) {
 	t.Helper()
 	root, path, opts := seedEmptyRegistry(t)
+	target := replaceRegistryWithSymlink(t, path)
+	targetBefore := readTestFile(t, target)
+	got, err := DiscoverCached(root, opts, path, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertUnsafeRegistryRebuilt(t, &got)
+	assertRegistryPathIsNotSymlink(t, path)
+	assertFileUnchanged(t, target, targetBefore)
+}
+
+func replaceRegistryWithSymlink(t *testing.T, path string) string {
+	t.Helper()
 	target := filepath.Join(t.TempDir(), "target.json")
 	if err := os.Rename(path, target); err != nil {
 		t.Fatal(err)
@@ -231,27 +244,32 @@ func testSymlinkedRegistryIsRebuilt(t *testing.T) {
 	if err := os.Symlink(target, path); err != nil {
 		t.Skipf("this platform cannot create symlinks here: %v", err)
 	}
-	targetBefore, err := os.ReadFile(target)
+	return target
+}
+
+func assertRegistryPathIsNotSymlink(t *testing.T, path string) {
+	t.Helper()
+	info, err := os.Lstat(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := DiscoverCached(root, opts, path, false, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertUnsafeRegistryRebuilt(t, got)
-	linkInfo, err := os.Lstat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if linkInfo.Mode()&os.ModeSymlink != 0 {
+	if info.Mode()&os.ModeSymlink != 0 {
 		t.Fatal("rebuilt registry is still a symlink")
 	}
-	targetAfter, err := os.ReadFile(target)
+}
+
+func readTestFile(t *testing.T, path string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(targetBefore, targetAfter) {
+	return data
+}
+
+func assertFileUnchanged(t *testing.T, path string, before []byte) {
+	t.Helper()
+	if after := readTestFile(t, path); !slices.Equal(before, after) {
 		t.Fatal("registry rebuild changed the symlink target")
 	}
 }
@@ -284,7 +302,7 @@ func seedEmptyRegistry(t *testing.T) (string, string, DiscoveryOptions) {
 	return root, path, opts
 }
 
-func assertUnsafeRegistryRebuilt(t *testing.T, got Discovery) {
+func assertUnsafeRegistryRebuilt(t *testing.T, got *Discovery) {
 	t.Helper()
 	if got.Cached || len(got.Roots) != 1 || len(got.Warnings) == 0 ||
 		got.Warnings[len(got.Warnings)-1] != "serve: registry unavailable or corrupt; rebuilding" {
@@ -337,20 +355,25 @@ func testExplicitRepositoryCapIsExact(t *testing.T) {
 func testDefaultRepositoryCapIsExact(t *testing.T) {
 	t.Helper()
 	root := t.TempDir()
-	for i := range DefaultMaxRepos + 1 {
+	for i := range 501 {
 		makeRepo(t, root, fmt.Sprintf("repo-%03d", i))
 	}
 	got, err := Discover(root, DiscoveryOptions{Depth: 1, Now: discoveryNow()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Roots) != DefaultMaxRepos || !got.Truncated || len(got.Warnings) != 1 || !strings.Contains(got.Warnings[0], "max repos 500 reached") {
+	if len(got.Roots) != 500 || !got.Truncated || len(got.Warnings) != 1 || !strings.Contains(got.Warnings[0], "max repos 500 reached") {
 		t.Fatalf("default repo cap = roots %d, truncated %v, warnings %q; want exactly 500 and a truncation warning", len(got.Roots), got.Truncated, got.Warnings)
 	}
 }
 
-// TestTruncatedDiscoveryMakesInboxPartial keeps incomplete discovery out of totals.
+// TestTruncatedDiscoveryMakesInboxPartial nulls totals after a capped scan.
 func TestTruncatedDiscoveryMakesInboxPartial(t *testing.T) {
+	assertTruncatedInbox(t, truncatedDiscoveryLayer(t))
+}
+
+func truncatedDiscoveryLayer(t *testing.T) *Layer {
+	t.Helper()
 	workspace := t.TempDir()
 	makeRepo(t, workspace, "a")
 	makeRepo(t, workspace, "b")
@@ -361,9 +384,13 @@ func TestTruncatedDiscoveryMakesInboxPartial(t *testing.T) {
 	if !discovery.Truncated || len(discovery.Roots) != 1 {
 		t.Fatalf("discovery = %+v; want one root and truncation", discovery)
 	}
-	layer := New(Snapshot{
+	return New(Snapshot{
 		Version: "1.2.3", Roots: discovery.Roots, Runtime: &core.Runtime{Now: fixedNow}, Discovery: discovery,
 	}, Options{Check: "critical", MaxBundles: 10})
+}
+
+func assertTruncatedInbox(t *testing.T, layer *Layer) {
+	t.Helper()
 	view, err := layer.Bundles(context.Background(), "")
 	if err != nil {
 		t.Fatal(err)
