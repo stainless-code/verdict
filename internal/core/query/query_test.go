@@ -675,6 +675,41 @@ func TestInventoryChargesOverCapReadsToTheBudget(t *testing.T) {
 	}
 }
 
+// TestInventoryCapsReadsAtTheBudgetLeft proves one read never asks for more
+// than the budget has left: a file that grows after its size check cannot
+// overrun the walk, and the failed read is charged the cap it asked for.
+func TestInventoryCapsReadsAtTheBudgetLeft(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "full.diff")
+	if err := os.WriteFile(path, []byte("diff\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	const budget int64 = 64
+	c := &sourceCollector{
+		root: Root{Path: dir}, rootPath: dir,
+		maxEntries: maxInventoryEntries, maxBytes: budget,
+	}
+	c.beforeOpen = func(abs string) {
+		if err := os.Truncate(abs, budget*4); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c.add("1234", path)
+	if c.bytes != budget {
+		t.Errorf("bytes = %d, want the failed read charged the %d-byte budget", c.bytes, budget)
+	}
+	if !c.full() {
+		t.Error("full = false, want the budget spent after the failed read")
+	}
+	if !c.truncated {
+		t.Error("truncated = false, want the failed read reported")
+	}
+	if len(c.sources) != 0 {
+		t.Errorf("sources = %d, want none for the unread artifact", len(c.sources))
+	}
+}
+
 // TestInventoryBoundsAHugeDirectory proves enumeration reads only one batch:
 // a 10 000-entry chunks directory yields the source cap, reports truncation,
 // and never materializes the whole directory.

@@ -136,9 +136,9 @@ func regularFile(path string) (os.FileInfo, bool) {
 	return info, info.Mode().IsRegular()
 }
 
-// read hashes one artifact unless its size would cross a cap. An oversized or
-// failed read is charged to the byte budget, so many of them cannot turn one
-// request into unbounded work.
+// read hashes one artifact unless its size would cross a cap. The read is
+// capped by what the budget has left, so a file that grows after the size
+// check cannot overrun it, and a failed read is charged the cap it asked for.
 func (c *sourceCollector) read(abs, rel string, info os.FileInfo) ([]byte, bool) {
 	if info.Size() > sourceCap {
 		c.charge(info.Size())
@@ -149,17 +149,27 @@ func (c *sourceCollector) read(abs, rel string, info os.FileInfo) ([]byte, bool)
 		c.truncated = true
 		return nil, false
 	}
-	raw, err := c.readArtifact(abs, sourceCap)
+	limit := c.readLimit()
+	raw, err := c.readArtifact(abs, limit)
 	if err != nil {
-		c.charge(info.Size())
+		c.charge(limit)
 		if errors.Is(err, jq.ErrTooLarge) {
-			c.skip(rel, fmt.Sprintf("over the %d MiB read cap", sourceCap>>mibShift))
+			c.skip(rel, fmt.Sprintf("over the %d-byte read cap", limit))
 		} else {
 			c.skip(rel, err.Error())
 		}
 		return nil, false
 	}
 	return raw, true
+}
+
+// readLimit is how many bytes one read may consume: the per-artifact cap,
+// bounded by the budget left.
+func (c *sourceCollector) readLimit() int64 {
+	if c.maxBytes <= 0 || c.maxBytes-c.bytes >= sourceCap {
+		return sourceCap
+	}
+	return c.maxBytes - c.bytes
 }
 
 // readArtifact opens one artifact through the race-free reader: the open is
