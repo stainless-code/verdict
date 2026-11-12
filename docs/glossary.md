@@ -38,11 +38,12 @@ SHA: Go built from `go/parser`, TypeScript, JavaScript, and Python from two
 lexical scanners. `index callers` labels each row `exact`
 (within the declaring package) or `lexical` (an exported name reached through
 an import edge); everything type-dependent stays counted as unresolved.
-`index tests-for` labels each candidate test `same-package`, `references`, or
-`imports-module` — candidates to read, never coverage claims. `index
-co-changed` counts the paths that moved in the same bounded history window and
-echoes that window. `index owners` answers the CODEOWNERS rule at the tree
-(GitHub file order, last match wins), with a null owner list when no rule
+`index tests-for` labels each candidate test `same-package`, `references`,
+`imports-module`, or `transitive-import` — candidates to read, never coverage
+claims — and names the import hops that reached the test, bounded by `--depth`.
+`index co-changed` counts the paths that moved in the same bounded history
+window and echoes that window. `index owners` answers the CODEOWNERS rule at the
+tree (GitHub file order, last match wins), with a null owner list when no rule
 matches rather than an owner named nobody.
 
 ## Evidence

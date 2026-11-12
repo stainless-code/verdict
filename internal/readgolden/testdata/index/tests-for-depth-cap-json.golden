@@ -1,0 +1,49 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "index",
+  "repo": "",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "read each candidate test before changing the code",
+  "warnings": [],
+  "data": {
+    "kind": "tests-for",
+    "query": {
+      "path": "a/a.go"
+    },
+    "index": {
+      "tree": "d6faf5ca4be97f8f96e8a0aa501f80377df5c138",
+      "commit": "91cfcdd063b9d02b98ecb670f3080dbc60fbc550",
+      "stale": false,
+      "coverage": {
+        "files_indexed": 6,
+        "skipped": 0
+      }
+    },
+    "target": {
+      "path": "a/a.go",
+      "owners": null,
+      "owners_source": null
+    },
+    "counts": {
+      "tests": 1
+    },
+    "limit": 50,
+    "depth": 2,
+    "truncated": 0,
+    "depth_truncated": 1,
+    "rows": [
+      {
+        "path": "c/c_test.go",
+        "via": "transitive-import",
+        "depth": 2
+      }
+    ]
+  },
+  "error": null
+}
+--- stderr ---
+
+--- files ---

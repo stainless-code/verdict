@@ -210,6 +210,7 @@ func decodeIndex(req *indexcore.Request, a *args) {
 	a.integer("commits", &req.Commits)
 	a.integer("minCount", &req.MinCount)
 	a.integer("limit", &req.Limit)
+	a.integer("depth", &req.Depth)
 }
 
 func wireIndex(ctx context.Context, b *bindings, req *indexcore.Request) error {
