@@ -546,6 +546,20 @@ Cause: the bundle carries no reviewed head, or the checked-out head is not the r
 
 Fix: check out the reviewed commit (or re-fetch the bundle), then re-run validation.
 
+## `html-not-export`
+
+Cause: the HTML export destination is a file or a non-empty directory without
+Verdict's export file set and static-page marker.
+
+Fix: choose a new or empty directory, or a previous HTML export directory.
+
+## `html-symlink`
+
+Cause: the HTML export destination is a symlink.
+
+Fix: choose a directory path that is not a symlink. Verdict does not follow the
+export destination link.
+
 ## `id-taken`
 
 Cause: `--id` is already taken.

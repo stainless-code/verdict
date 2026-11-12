@@ -3,6 +3,11 @@
 The vocabulary Verdict's help, prompts, and reports use. Terms are grouped by
 where you meet them; each definition matches how the verbs behave today.
 
+**Static dashboard export.** The five-file snapshot produced by
+`report --html <dir>`. Its `data.json` stores the query layer's envelopes for all
+six dashboard views; `manifest.json` records the export-owned file digests. Refresh preserves the previous snapshot in a sibling
+`.old-*` directory until the new snapshot is published.
+
 ## Review shape
 
 **Bundle.** The directory one fetch produces: `.verdict/state/<pr>/` for a fetch, or

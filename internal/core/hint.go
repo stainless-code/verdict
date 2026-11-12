@@ -42,6 +42,8 @@ var hintRules = []HintRule{
 		"or narrow with a paths filter, then re-run"},
 	{codes: []string{"missing-chunk-coverage", "missing-chunk-snapshot"}, hint: "try: re-fetch the bundle with --chunk, " +
 		"then re-synthesize across all chunks and re-run"},
+	{codes: []string{"html-not-export"}, hint: "try: choose a new, empty, or previous HTML export directory"},
+	{codes: []string{"html-symlink"}, hint: "try: choose an HTML export directory that is not a symlink"},
 	{codes: []string{"missing-index"}, hint: "try: run 'verdict index build' first"},
 	{prefix: "missing-", hint: "try: run the fetch/record step named above first, then re-run"},
 	{
