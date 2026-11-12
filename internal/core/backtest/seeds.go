@@ -85,10 +85,11 @@ const (
 	signalRevert = "revert"
 )
 
-// seedSignal names the seed rule one fix subject matched. Revert is the only
-// non-fix rule that reaches the miner: a body-only seed keeps its own subject.
+// seedSignal names the seed rule one commit matched: only a revert seed is a
+// revert, so a `Revert "Revert ..."` commit that seeded through its body is an
+// ordinary fix.
 func seedSignal(subject string) string {
-	if strings.HasPrefix(subject, `Revert "`) {
+	if revertSubject(subject) {
 		return signalRevert
 	}
 	return signalFix
@@ -99,10 +100,16 @@ func isSeed(subject, body string) bool {
 	if seedSubjectRe.MatchString(subject) {
 		return true
 	}
-	if strings.HasPrefix(subject, `Revert "`) && !strings.HasPrefix(subject, `Revert "Revert`) {
+	if revertSubject(subject) {
 		return true
 	}
 	return seedBodyRe.MatchString(body)
+}
+
+// revertSubject reports a revert seed: a `Revert "..."` subject that is not
+// itself a revert of a revert.
+func revertSubject(subject string) bool {
+	return strings.HasPrefix(subject, `Revert "`) && !strings.HasPrefix(subject, `Revert "Revert`)
 }
 
 // consider checks one commit in the window: a seed is mined, a merge seed is

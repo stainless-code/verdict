@@ -64,6 +64,25 @@ func TestMineRevertOfRevertIsNotASeed(t *testing.T) {
 	}
 }
 
+// TestSeedSignalFollowsTheSeedRule proves the signal names the rule that
+// accepted the commit: a `Revert "Revert ..."` subject seeds only through its
+// body, so it is a fix, not a revert.
+func TestSeedSignalFollowsTheSeedRule(t *testing.T) {
+	tests := []struct{ subject, body, signal string }{
+		{`Revert "feat: x"`, "", signalRevert},
+		{`Revert "Revert "feat: x""`, "Fixes #123", signalFix},
+		{"fix: x", "", signalFix},
+	}
+	for _, tc := range tests {
+		if !isSeed(tc.subject, tc.body) {
+			t.Errorf("isSeed(%q, %q) = false; want a seed", tc.subject, tc.body)
+		}
+		if got := seedSignal(tc.subject); got != tc.signal {
+			t.Errorf("seedSignal(%q) = %q; want %q", tc.subject, got, tc.signal)
+		}
+	}
+}
+
 // TestMineMultiHunkFix proves one fix commit with two hunks anchors both
 // deleted lines at their own old-side positions.
 func TestMineMultiHunkFix(t *testing.T) {
