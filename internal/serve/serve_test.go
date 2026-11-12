@@ -480,6 +480,75 @@ func TestServeRootDiscoversEveryRepository(t *testing.T) {
 	assertServeRootInbox(t, serveRootInbox(t))
 }
 
+// TestDiscoveryLayerWatchOptionsReachEveryRoot proves --root discovery keeps
+// the watch settings and emits a sweep invalidation from the second repo.
+func TestDiscoveryLayerWatchOptionsReachEveryRoot(t *testing.T) {
+	t.Parallel()
+	workspace := t.TempDir()
+	rootA, rootB := filepath.Join(workspace, "a"), filepath.Join(workspace, "b")
+	writeFixtureAt(t, rootA, fixtureFiles())
+	writeFixtureAt(t, rootB, fixtureFiles())
+	opts := &serveOptions{
+		depth: 6, maxVisits: 20000, maxRepos: 500, noRegistry: true,
+		check: "critical", maxBundles: 500,
+		interval: 100 * time.Millisecond, sweep: 300 * time.Millisecond,
+	}
+	layer, err := discoveryLayer(workspace, fixedNow, Request{Version: "1.2.3"}, opts)
+	if err != nil {
+		t.Fatalf("discoveryLayer: %v", err)
+	}
+	health := wire(t, layer.Health(t.Context()).Data)
+	if health["watch"] != true || health["interval"] != "100ms" {
+		t.Fatalf("discovery health watch/interval = %v/%v, want true/100ms", health["watch"], health["interval"])
+	}
+	if roots := asList(t, health["roots"]); len(roots) != 2 {
+		t.Fatalf("discovered roots = %d, want two", len(roots))
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	changes := layer.Changes(ctx)
+	rootAID, rootBID := query.RootID(rootA), query.RootID(rootB)
+	syncWrites := 0
+	testenv.Until(t, func() bool {
+		select {
+		case change, open := <-changes:
+			if !open {
+				t.Fatal("watch stream closed before the synchronization invalidation")
+			}
+			if change.Root == rootAID {
+				return true
+			}
+		default:
+		}
+		syncWrites++
+		writeFixtureAt(t, rootA, map[string]string{
+			".verdict/state/" + fmt.Sprintf("%04d", 6000+syncWrites) + "/PR.json": prDoc(),
+		})
+		return false
+	})
+
+	prPath := filepath.Join(rootB, filepath.FromSlash(".verdict/state/1234/PR.json"))
+	pr, err := os.ReadFile(prPath)
+	if err != nil {
+		t.Fatalf("read second repo PR fixture: %v", err)
+	}
+	if err := os.WriteFile(prPath, append(pr, '\n'), 0o644); err != nil {
+		t.Fatalf("write second repo PR fixture: %v", err)
+	}
+	testenv.Until(t, func() bool {
+		select {
+		case change, open := <-changes:
+			if !open {
+				t.Fatal("watch stream closed before the second-repo invalidation")
+			}
+			return change.Root == rootBID && change.Via == "sweep" && slices.Contains(change.Changed, "1234")
+		default:
+			return false
+		}
+	})
+}
+
 func serveRootInbox(t *testing.T) map[string]any {
 	t.Helper()
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
