@@ -59,6 +59,7 @@ type invocation struct {
 	commits  int
 	minCount int
 	limit    int
+	depth    int
 }
 
 // request builds the typed service request.
@@ -83,6 +84,7 @@ func (inv *invocation) request(r *cli.Runner, req Request) *indexcore.Request {
 		Commits:     inv.commits,
 		MinCount:    inv.minCount,
 		Limit:       inv.limit,
+		Depth:       inv.depth,
 		Warnings:    append([]string{}, r.Warnings...),
 	}
 }
@@ -122,12 +124,15 @@ const (
 	indexSubcommands  = "build, status, prune, callers, tests-for, co-changed, owners, blast-radius"
 	flagAt            = "--at"
 	flagLimit         = "--limit"
+	flagDepth         = "--depth"
 	flagCommits       = "--commits"
 	flagMinCount      = "--min-count"
 	flagSince         = "--since"
 	flagPrefix        = "-"
 	unknownFlag       = "unknown flag '"
 	unknownSubcommand = "unknown index subcommand '"
+	// nPlaceholder is what a numeric flag's missing-value complaint names.
+	nPlaceholder = "<n>"
 )
 
 // parseTestsFor reads `index tests-for` positionals and flags.
@@ -142,7 +147,7 @@ func parseTestsFor(r *cli.Runner, args []string) (invocation, int, bool) {
 	}
 	if (inv.path == "") == (inv.symbol == "") {
 		return inv, r.ReportUsage(usageError(
-			"usage: verdict index tests-for <path>|--symbol <pkg.Name> [--at <tree>] [--limit <n>]")), true
+			"usage: verdict index tests-for <path>|--symbol <pkg.Name> [--at <tree>] [--depth <n>] [--limit <n>]")), true
 	}
 	return inv, 0, false
 }
@@ -162,9 +167,11 @@ func parseTestsForArg(r *cli.Runner, args []string, i int, inv *invocation) (int
 		return callerAt(r, args, i, inv)
 	case a == flagLimit:
 		return queryLimit(r, args, i, inv, indexcore.QueryTestsFor)
+	case a == flagDepth:
+		return queryDepth(r, args, i, inv)
 	case strings.HasPrefix(a, flagPrefix):
 		return 0, r.ReportUsage(usageError(unknownFlag + a +
-			"' for index tests-for (want --symbol <pkg.Name>, --at <tree>, --limit <n>)")), true
+			"' for index tests-for (want --symbol <pkg.Name>, --at <tree>, --depth <n>, --limit <n>)")), true
 	default:
 		if inv.path != "" {
 			return 0, r.ReportUsage(usageError("index tests-for wants one path")), true
@@ -224,7 +231,7 @@ func parseCoChangedArg(r *cli.Runner, args []string, i int, inv *invocation) (in
 
 // coChangeCount reads and validates --commits or --min-count.
 func coChangeCount(r *cli.Runner, args []string, i int, inv *invocation, query, flag string) (int, int, bool) {
-	v, next, u := cli.FlagValue(args, i, flag, "<n>")
+	v, next, u := cli.FlagValue(args, i, flag, nPlaceholder)
 	if u != nil {
 		return 0, r.ReportUsage(u), true
 	}
@@ -415,7 +422,7 @@ func callerAt(r *cli.Runner, args []string, i int, inv *invocation) (int, int, b
 
 // callerLimit reads and validates the --limit value.
 func callerLimit(r *cli.Runner, args []string, i int, inv *invocation) (int, int, bool) {
-	v, next, u := cli.FlagValue(args, i, flagLimit, "<n>")
+	v, next, u := cli.FlagValue(args, i, flagLimit, nPlaceholder)
 	if u != nil {
 		return 0, r.ReportUsage(u), true
 	}
@@ -429,7 +436,7 @@ func callerLimit(r *cli.Runner, args []string, i int, inv *invocation) (int, int
 
 // queryLimit reads and validates one subcommand's --limit value.
 func queryLimit(r *cli.Runner, args []string, i int, inv *invocation, query string) (int, int, bool) {
-	v, next, u := cli.FlagValue(args, i, flagLimit, "<n>")
+	v, next, u := cli.FlagValue(args, i, flagLimit, nPlaceholder)
 	if u != nil {
 		return 0, r.ReportUsage(u), true
 	}
@@ -439,6 +446,21 @@ func queryLimit(r *cli.Runner, args []string, i int, inv *invocation, query stri
 			strconv.Itoa(indexcore.MaxLimit))), true
 	}
 	inv.limit = n
+	return next + 1, 0, false
+}
+
+// queryDepth reads and validates the transitive walk's --depth value.
+func queryDepth(r *cli.Runner, args []string, i int, inv *invocation) (int, int, bool) {
+	v, next, u := cli.FlagValue(args, i, flagDepth, nPlaceholder)
+	if u != nil {
+		return 0, r.ReportUsage(u), true
+	}
+	n, ok := boundedInt(v, indexcore.MaxDepth)
+	if !ok {
+		return 0, r.ReportUsage(usageError("index " + indexcore.QueryTestsFor + " wants --depth from 1 to " +
+			strconv.Itoa(indexcore.MaxDepth))), true
+	}
+	inv.depth = n
 	return next + 1, 0, false
 }
 

@@ -396,6 +396,48 @@ func TestIndexBlastRadiusGolden(t *testing.T) {
 	}
 }
 
+// transitiveFixture is the reverse-import chain a ← b ← c ← d: a test two
+// package hops out and one three hops out, so the default cap names both and a
+// lower one counts what it hid.
+var transitiveFixture = map[string]string{
+	"go.mod":      "module example.com/m\n\ngo 1.27\n",
+	"a/a.go":      "package a\n\nfunc Target() {}\n",
+	"b/b.go":      "package b\n\nimport \"example.com/m/a\"\n\nfunc UseA() {}\n",
+	"c/c.go":      "package c\n\nimport \"example.com/m/b\"\n\nfunc Deep() {}\n",
+	"c/c_test.go": "package c\n\nimport \"testing\"\n\nfunc TestDeep(t *testing.T) {}\n",
+	"d/d.go":      "package d\n\nimport \"example.com/m/c\"\n\nfunc Deeper() {}\n",
+	"d/d_test.go": "package d\n\nimport \"testing\"\n\nfunc TestDeeper(t *testing.T) {}\n",
+}
+
+// transitiveRepo writes the chain as one commit and builds its index.
+func transitiveRepo(t *testing.T, dir, _ string) {
+	t.Helper()
+	writeFiles(t, dir, transitiveFixture)
+	runIndexGit(t, dir, "init", "-q", "-b", "main")
+	runIndexGit(t, dir, "add", "-A")
+	runIndexGit(t, dir, "commit", "-qm", "transitive fixture")
+	buildIndex(t, dir, indexEnv())
+}
+
+// TestIndexTransitiveGolden pins the reverse import walk: the hop depths on
+// every row, a test two packages out named transitive-import, and a depth cap
+// that counts the row it hid.
+func TestIndexTransitiveGolden(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{"index/tests-for-transitive-human", []string{"index", "tests-for", "a/a.go"}},
+		{"index/tests-for-transitive-json", []string{"index", "tests-for", "a/a.go", "--json"}},
+		{"index/tests-for-depth-cap-human", []string{"index", "tests-for", "a/a.go", "--depth", "2"}},
+		{"index/tests-for-depth-cap-json", []string{"index", "tests-for", "a/a.go", "--depth", "2", "--json"}},
+	} {
+		c := &golden.Case{Name: tc.name, Setup: transitiveRepo, Args: tc.args}
+		c.Run(t, harness)
+	}
+}
+
 // TestIndexGoldensNeverCarryDataPath proves the index data profile advertises
 // no top-level path: the schema dropped it because no wire branch emitted it,
 // and every kind publishes its path as query.path. A golden that grew one

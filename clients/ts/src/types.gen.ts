@@ -758,7 +758,9 @@ export interface IndexData {
   index?: IndexStatus;
   counts?: IndexCounts;
   limit?: number;
+  depth?: number;
   truncated?: number;
+  depth_truncated?: number;
   rows?: Array<IndexRow>;
   window?: IndexWindow;
   target?: IndexTarget | null;
@@ -839,7 +841,8 @@ export interface IndexRow {
   kind?: "call" | "method" | "type-ref" | "value-ref" | "embed";
   resolution?: "exact" | "lexical";
   language?: "go" | "typescript" | "javascript" | "python";
-  via?: "same-package" | "references" | "imports-module";
+  via?: "same-package" | "references" | "imports-module" | "transitive-import";
+  depth?: number;
   commits?: number;
   jaccard?: number;
   [key: string]: unknown;
@@ -910,6 +913,7 @@ export interface IndexBlastCaller {
 export interface IndexBlastTests {
   count: number | null;
   truncated: number | null;
+  depth_truncated: number | null;
   rows: Array<IndexRow>;
   [key: string]: unknown;
 }

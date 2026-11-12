@@ -77,8 +77,8 @@ func TestIndexSchemaListsEveryArgument(t *testing.T) {
 	}
 	slices.Sort(got)
 	want := []string{
-		"at", "commits", "from", "limit", "minCount", "path", "paths", "pr",
-		"query", "since", "symbol",
+		"at", "commits", "depth", "from", "limit", "minCount", "path", "paths",
+		"pr", "query", "since", "symbol",
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("index schema arguments = %v; want %v", got, want)

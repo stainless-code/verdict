@@ -99,12 +99,12 @@ func TestTestsForScannedLanguages(t *testing.T) {
 	f.commit("one")
 	f.build()
 	assertTestRows(t, f.queryPath(QueryTestsFor, "util.ts").Data.TestRows, []TestRow{
-		{Path: "tests/extra.spec.ts", Via: viaReferences},
+		{Path: "tests/extra.spec.ts", Via: viaReferences, Depth: 1},
 		{Path: "util.test.ts", Via: viaSamePackage},
 	})
 	assertTestRows(t, f.queryPath(QueryTestsFor, "pkg/mod.py").Data.TestRows, []TestRow{
 		{Path: "pkg/test_mod.py", Via: viaSamePackage},
-		{Path: "tests/test_use.py", Via: viaReferences},
+		{Path: "tests/test_use.py", Via: viaReferences, Depth: 1},
 	})
 }
 
@@ -291,7 +291,7 @@ func TestImportEdgeStaysInsideOneLanguage(t *testing.T) {
 			name:   "typescript target, other directory typescript test",
 			target: "web/app.ts", targetBody: tsTarget,
 			test: "checks/app.test.ts", testBody: "import \"../web/app\";\nexport const x = 1;\n",
-			want: []TestRow{{Path: "checks/app.test.ts", Via: viaReferences}},
+			want: []TestRow{{Path: "checks/app.test.ts", Via: viaReferences, Depth: 1}},
 		},
 	}
 	for _, tc := range cases {
@@ -341,7 +341,7 @@ func TestTestsForPythonSubmoduleImport(t *testing.T) {
 	f.commit("one")
 	f.build()
 	assertTestRows(t, f.queryPath(QueryTestsFor, "lib/mod.py").Data.TestRows, []TestRow{
-		{Path: "tests/test_mod.py", Via: viaReferences},
+		{Path: "tests/test_mod.py", Via: viaReferences, Depth: 1},
 	})
 }
 

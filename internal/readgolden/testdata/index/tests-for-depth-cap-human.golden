@@ -1,0 +1,8 @@
+exit: 0
+--- stdout ---
+index: 1 candidate test(s) for a/a.go at d6faf5ca4be97f8f96e8a0aa501f80377df5c138 (same-package 0, references 0, imports-module 0, transitive-import 1)
+c/c_test.go (transitive-import, depth 2)
+index: depth cap 2 reached (1 candidate test(s) one import hop beyond; raise --depth up to 8)
+--- stderr ---
+
+--- files ---

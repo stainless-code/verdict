@@ -751,34 +751,36 @@ type ThreadsResolveData = fetchcore.ThreadsResolveData
 type IndexData struct { //nolint:govet // field order is the published property order
 	Kind string `enum:"build|status|prune|callers|tests-for|co-changed|owners|blast-radius" json:"kind"`
 
-	Tree         string             `json:"tree"          optional:"true"`
-	Commit       string             `json:"commit"        optional:"true"`
-	Built        bool               `json:"built"         optional:"true"`
-	Stale        bool               `json:"stale"         optional:"true"`
-	FilesIndexed int                `json:"files_indexed" min:"0"         optional:"true"`
-	Skipped      int                `json:"skipped"       min:"0"         optional:"true"`
-	Parsed       int                `json:"parsed"        min:"0"         optional:"true"`
-	Reused       int                `json:"reused"        min:"0"         optional:"true"`
-	TreeBytes    int64              `json:"tree_bytes"    min:"0"         optional:"true"`
-	Languages    []IndexLangRow     `json:"languages"     optional:"true"`
-	Shards       IndexShards        `json:"shards"        optional:"true"`
-	Trees        []IndexTreeRow     `json:"trees"         optional:"true"`
-	Kept         []string           `json:"kept"          optional:"true"`
-	Removed      IndexRemoved       `json:"removed"       optional:"true"`
-	Query        IndexQuery         `json:"query"         optional:"true"`
-	Index        IndexStatus        `json:"index"         optional:"true"`
-	Counts       IndexCounts        `json:"counts"        optional:"true"`
-	Limit        int                `json:"limit"         min:"1"         optional:"true"`
-	Truncated    int                `json:"truncated"     min:"0"         optional:"true"`
-	Rows         []IndexRow         `json:"rows"          optional:"true"`
-	Window       IndexWindow        `json:"window"        optional:"true"`
-	Target       *IndexTarget       `anyOf:"null"         json:"target"   optional:"true"`
-	Input        IndexBlastInput    `json:"input"         optional:"true"`
-	Symbols      IndexBlastSymbols  `json:"symbols"       optional:"true"`
-	Callers      IndexBlastCallers  `json:"callers"       optional:"true"`
-	Tests        IndexBlastTests    `json:"tests"         optional:"true"`
-	CoChanged    IndexBlastPartners `json:"co_changed"    optional:"true"`
-	Owners       IndexBlastOwners   `json:"owners"        optional:"true"`
+	Tree           string             `json:"tree"            optional:"true"`
+	Commit         string             `json:"commit"          optional:"true"`
+	Built          bool               `json:"built"           optional:"true"`
+	Stale          bool               `json:"stale"           optional:"true"`
+	FilesIndexed   int                `json:"files_indexed"   min:"0"         optional:"true"`
+	Skipped        int                `json:"skipped"         min:"0"         optional:"true"`
+	Parsed         int                `json:"parsed"          min:"0"         optional:"true"`
+	Reused         int                `json:"reused"          min:"0"         optional:"true"`
+	TreeBytes      int64              `json:"tree_bytes"      min:"0"         optional:"true"`
+	Languages      []IndexLangRow     `json:"languages"       optional:"true"`
+	Shards         IndexShards        `json:"shards"          optional:"true"`
+	Trees          []IndexTreeRow     `json:"trees"           optional:"true"`
+	Kept           []string           `json:"kept"            optional:"true"`
+	Removed        IndexRemoved       `json:"removed"         optional:"true"`
+	Query          IndexQuery         `json:"query"           optional:"true"`
+	Index          IndexStatus        `json:"index"           optional:"true"`
+	Counts         IndexCounts        `json:"counts"          optional:"true"`
+	Limit          int                `json:"limit"           min:"1"         optional:"true"`
+	Depth          int                `json:"depth"           min:"1"         optional:"true"`
+	Truncated      int                `json:"truncated"       min:"0"         optional:"true"`
+	DepthTruncated int                `json:"depth_truncated" min:"0"         optional:"true"`
+	Rows           []IndexRow         `json:"rows"            optional:"true"`
+	Window         IndexWindow        `json:"window"          optional:"true"`
+	Target         *IndexTarget       `anyOf:"null"           json:"target"   optional:"true"`
+	Input          IndexBlastInput    `json:"input"           optional:"true"`
+	Symbols        IndexBlastSymbols  `json:"symbols"         optional:"true"`
+	Callers        IndexBlastCallers  `json:"callers"         optional:"true"`
+	Tests          IndexBlastTests    `json:"tests"           optional:"true"`
+	CoChanged      IndexBlastPartners `json:"co_changed"      optional:"true"`
+	Owners         IndexBlastOwners   `json:"owners"          optional:"true"`
 }
 
 // IndexBlastInput is the blast-radius query input: the fetched PR bundle slug
@@ -827,10 +829,14 @@ type IndexBlastCaller struct {
 }
 
 // IndexBlastTests is the candidate-test list for the changed declarations.
+// count, truncated, and depth_truncated are null when the index could not
+// answer; depth_truncated counts the candidates one import hop past the
+// transitive walk's depth cap.
 type IndexBlastTests struct {
-	Count     *int       `json:"count"     min:"0"`
-	Truncated *int       `json:"truncated" min:"0"`
-	Rows      []IndexRow `json:"rows"`
+	Count          *int       `json:"count"           min:"0"`
+	Truncated      *int       `json:"truncated"       min:"0"`
+	DepthTruncated *int       `json:"depth_truncated" min:"0"`
+	Rows           []IndexRow `json:"rows"`
 }
 
 // IndexBlastPartners is the co-change list for the changed paths: count is the
@@ -933,13 +939,14 @@ type IndexCounts struct {
 // kind decides which fields the row carries.
 type IndexRow struct { //nolint:govet // field order is the published property order
 	Path       string  `json:"path"`
-	Line       int     `json:"line"                                   min:"1"           optional:"true"`
-	Kind       string  `enum:"call|method|type-ref|value-ref|embed"   json:"kind"       optional:"true"` //nolint:revive // published enum tag exceeds the line limit
-	Resolution string  `enum:"exact|lexical"                          json:"resolution" optional:"true"` //nolint:revive // published enum tag exceeds the line limit
-	Language   string  `enum:"go|typescript|javascript|python"        json:"language"   optional:"true"` //nolint:revive // published enum tag exceeds the line limit
-	Via        string  `enum:"same-package|references|imports-module" json:"via"        optional:"true"` //nolint:revive // published enum tag exceeds the line limit
-	Commits    int     `json:"commits"                                min:"0"           optional:"true"`
-	Jaccard    float64 `json:"jaccard"                                max:"1"           min:"0"         optional:"true"`
+	Line       int     `json:"line"                                                     min:"1"           optional:"true"`
+	Kind       string  `enum:"call|method|type-ref|value-ref|embed"                     json:"kind"       optional:"true"` //nolint:revive // published enum tag exceeds the line limit
+	Resolution string  `enum:"exact|lexical"                                            json:"resolution" optional:"true"` //nolint:revive // published enum tag exceeds the line limit
+	Language   string  `enum:"go|typescript|javascript|python"                          json:"language"   optional:"true"` //nolint:revive // published enum tag exceeds the line limit
+	Via        string  `enum:"same-package|references|imports-module|transitive-import" json:"via"        optional:"true"` //nolint:revive // published enum tag exceeds the line limit
+	Depth      int     `json:"depth"                                                    min:"1"           optional:"true"`
+	Commits    int     `json:"commits"                                                  min:"0"           optional:"true"`
+	Jaccard    float64 `json:"jaccard"                                                  max:"1"           min:"0"         optional:"true"`
 }
 
 // IndexTree is the stored per-tree index document under
