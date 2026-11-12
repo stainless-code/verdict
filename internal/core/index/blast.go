@@ -35,6 +35,7 @@ const (
 	blastSymbolsHead = "index: %d changed file(s), %d changed symbol(s) at %s"
 	blastTestsHead   = "index: %d candidate test(s)"
 	blastPartnerHead = "index: %d co-changed partner(s)"
+	blastHunkless    = "» index: %s changed with no line hunks; every declaration in the new path is a changed symbol"
 	blastOwnerHead   = "index: ownership for %d changed path(s)"
 	blastIndexAbsent = "index: no index for %s: symbol, caller, and test lists are unmeasured"
 )
@@ -126,11 +127,14 @@ func checkBlastPaths(entries []treeEntry, paths []string, tree string) *core.Ref
 }
 
 // blastChange is one changed file and the new-side lines the diff touched; all
-// names every declaration in the file instead.
+// names every declaration in the file instead, and hunkless reports that the
+// diff carried no line hunks, so all was assumed rather than read.
 type blastChange struct {
-	path  string
-	lines []int
-	all   bool
+	path     string
+	lines    []int
+	all      bool
+	hunkless bool
+	binary   bool
 }
 
 // blastSymbol is one declaration whose span a change touched, with the query
@@ -180,6 +184,11 @@ func (st *state) blastRadius(ctx context.Context) (*Response, *core.RefusalError
 		pkgs = packageMap(t)
 	} else {
 		st.warn(fmt.Sprintf(blastNoIndexWarn, tree))
+	}
+	for _, ch := range changes {
+		if ch.hunkless {
+			st.warn(fmt.Sprintf(blastHunkless, ch.path))
+		}
 	}
 	symbols := blastSymbols(pkgs, t, changes)
 	callers, unresolved := blastCallers(pkgs, t, blastRoots(symbols))

@@ -2759,7 +2759,10 @@ directly (repeat the flag) and needs no bundle; each must exist at the queried
 tree (`bad-flags` otherwise) and every declaration in it is a changed symbol. A
 shard records a declaration's start line, so a declaration owns its source from
 that line to the line before the next declaration; a changed line before the
-first declaration (the package clause, imports) changes no symbol.
+first declaration (the package clause, imports) changes no symbol. A section
+of the diff with no line hunks — a rename or a mode change — names no touched
+line, so every declaration in its new path is a changed symbol and one warning
+names that path.
 
 The queried tree is `--at` when given. With `--pr` it is the bundle's PR head
 when the store already holds that tree; otherwise HEAD is queried and one

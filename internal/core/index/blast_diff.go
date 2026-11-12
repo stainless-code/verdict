@@ -15,13 +15,14 @@ const (
 	blastDeleted   = "-"
 	blastAdded     = "+"
 	blastNoEOL     = `\`
+	blastBinary    = "Binary files "
 	blastHunkParts = 3
 )
 
 // blastChanges reads a unified diff into each file's changed new-side lines:
 // every added line, and both sides of every deleted line because the removed
-// text sat between them. A file with no content change (a rename, a binary)
-// keeps its path and no lines.
+// text sat between them. A section with no line hunks (a rename, a mode
+// change) keeps its path and selects every declaration instead.
 func blastChanges(diff string) []blastChange {
 	var out []blastChange
 	cur := -1
@@ -47,6 +48,9 @@ func blastChanges(diff string) []blastChange {
 		case strings.HasPrefix(ln, blastDeleted):
 			out[cur].lines = append(out[cur].lines, max(newLine-1, 1), max(newLine, 1))
 		default:
+			if strings.HasPrefix(ln, blastBinary) {
+				out[cur].binary = true
+			}
 			newLine++
 		}
 	}
@@ -83,11 +87,25 @@ func blastHunkSeed(ln string) int {
 	return start
 }
 
-// finishBlastChanges orders the files and their lines deterministically.
+// finishBlastChanges orders the files and their lines deterministically, and
+// turns a section the diff gave no line hunks into a whole-file change: a
+// rename or a mode change names no touched line, so every declaration counts
+// and the caller warns that it made that call. A binary section stays empty
+// because the index never parses it.
 func finishBlastChanges(in []blastChange) []blastChange {
-	byPath := make(map[string][]int, len(in))
+	type section struct {
+		lines  []int
+		binary bool
+	}
+	byPath := make(map[string]*section, len(in))
 	for _, ch := range in {
-		byPath[ch.path] = append(byPath[ch.path], ch.lines...)
+		sec := byPath[ch.path]
+		if sec == nil {
+			sec = &section{}
+			byPath[ch.path] = sec
+		}
+		sec.lines = append(sec.lines, ch.lines...)
+		sec.binary = sec.binary || ch.binary
 	}
 	paths := make([]string, 0, len(byPath))
 	for p := range byPath {
@@ -96,7 +114,10 @@ func finishBlastChanges(in []blastChange) []blastChange {
 	slices.Sort(paths)
 	out := make([]blastChange, 0, len(paths))
 	for _, p := range paths {
-		out = append(out, blastChange{path: p, lines: uniqueLines(byPath[p])})
+		sec := byPath[p]
+		lines := uniqueLines(sec.lines)
+		hunkless := len(lines) == 0 && !sec.binary
+		out = append(out, blastChange{path: p, lines: lines, all: hunkless, hunkless: hunkless})
 	}
 	return out
 }

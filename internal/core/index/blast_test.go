@@ -236,6 +236,34 @@ func TestBlastDeletionAnchorsStayAboveTheRemovedLine(t *testing.T) {
 	)
 }
 
+// TestBlastRenameOnlySectionNamesEveryDeclaration proves a hunk-less section
+// reads as a whole-file change and warns, so a rename is never mistaken for a
+// file that changed nothing.
+func TestBlastRenameOnlySectionNamesEveryDeclaration(t *testing.T) {
+	f := newFixture(t)
+	writeBlastFixture(f)
+	f.commit("one")
+	base := f.run("", "rev-parse", "HEAD")
+	f.git("mv", "a/ab.go", "a/renamed.go")
+	f.git("commit", "-qm", "rename")
+	head := f.run("", "rev-parse", "HEAD")
+	diff := f.run("", "diff", "-M", base, head)
+	f.write(".verdict/state/7/full.diff", diff+"\n")
+	f.write(".verdict/state/7/PR.json",
+		fmt.Sprintf(`{"state":"OPEN","headRefOid":%q,"baseRefOid":%q,"author":{"login":"t"}}`, head, base))
+	f.build()
+	resp := blastRun(t, f, func(r *Request) { r.Pr = "7" })
+	assertSymbolRows(t, resp.Data.Blast.Symbols,
+		SymbolRow{Path: "a/renamed.go", Name: "A", Kind: "func", Line: 3},
+		SymbolRow{Path: "a/renamed.go", Name: "B", Kind: "func", Line: 5},
+	)
+	want := "» index: a/renamed.go changed with no line hunks; " +
+		"every declaration in the new path is a changed symbol"
+	if !slices.Contains(resp.Warnings, want) {
+		t.Errorf("warnings = %q; want %q", resp.Warnings, want)
+	}
+}
+
 // TestBlastNullCountsWithoutIndex proves an absent index reads the symbol,
 // caller, and test counts as null (never 0) while the git-measured lists still
 // answer.

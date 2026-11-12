@@ -7,7 +7,7 @@ import (
 
 // TestBlastChangesReadNewSideLines pins the diff scan: added lines, the two
 // sides of a deletion, context that moves the pointer without marking, a rename
-// with no hunk, and a C-quoted path.
+// with no hunk, a binary section, and a C-quoted path.
 //
 //nolint:revive // the diff-fixture table reads as one block
 func TestBlastChangesReadNewSideLines(t *testing.T) {
@@ -53,13 +53,22 @@ func TestBlastChangesReadNewSideLines(t *testing.T) {
 			want: []blastChange{{path: "c.go", lines: []int{1, 2, 4}}},
 		},
 		{
-			name: "a rename with no hunk keeps the new path",
+			name: "a rename with no hunk keeps the new path and every declaration",
 			diff: `diff --git a/old.go b/new.go
 similarity index 100%
 rename from old.go
 rename to new.go
 `,
-			want: []blastChange{{path: "new.go"}},
+			want: []blastChange{{path: "new.go", all: true, hunkless: true}},
+		},
+		{
+			name: "a binary section keeps the new path and names no line",
+			diff: `diff --git a/img.png b/img.png
+new file mode 100644
+index 0000000..e69de29
+Binary files /dev/null and b/img.png differ
+`,
+			want: []blastChange{{path: "img.png"}},
 		},
 		{
 			name: "a C-quoted path is decoded",
@@ -75,7 +84,8 @@ rename to new.go
 				t.Fatalf("changes = %+v; want %+v", got, tc.want)
 			}
 			for i := range tc.want {
-				if got[i].path != tc.want[i].path || !slices.Equal(got[i].lines, tc.want[i].lines) {
+				if got[i].path != tc.want[i].path || !slices.Equal(got[i].lines, tc.want[i].lines) ||
+					got[i].all != tc.want[i].all || got[i].hunkless != tc.want[i].hunkless {
 					t.Errorf("change %d = %+v; want %+v", i, got[i], tc.want[i])
 				}
 			}
