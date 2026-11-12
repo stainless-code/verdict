@@ -455,6 +455,97 @@ func assertSourceHashes(t *testing.T, got, want map[string]string) {
 	}
 }
 
+// TestInventoryCapsAndReportsTruncation proves a bundle past the entry budget
+// stops hashing, reports partial with a warning, and still ledgers the store.
+func TestInventoryCapsAndReportsTruncation(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	files := map[string]string{
+		".verdict/state/1234/PR.json":     prDoc(headA),
+		".verdict/state/1234/unknown.bin": "not an artifact",
+		".verdict/state/1234/findings.json": "[" +
+			finding(sigCrit, "open", "critical", "walked") + "]",
+	}
+	for i := 0; i < 70; i++ {
+		files[fmt.Sprintf(".verdict/state/1234/chunks/%02d.cost.json", i)] = "{}"
+	}
+	writeFiles(t, dir, files)
+	layer := newLayer(dir)
+	root := RootID(mustAbs(t, dir))
+	view, err := layer.Detail(context.Background(), root, "1234")
+	if err != nil {
+		t.Fatalf("Detail: %v", err)
+	}
+	if len(view.Sources) != 64 {
+		t.Fatalf("sources = %d, want the 64-entry cap", len(view.Sources))
+	}
+	data := wireMap(t, view.Data)
+	if data["partial"] != true {
+		t.Errorf("partial = %v, want true for a truncated inventory", data["partial"])
+	}
+	want := "serve: source inventory capped at 64 entries or 16 MiB for bundle 1234; sources[] is incomplete"
+	if !slices.Contains(view.Warnings, want) {
+		t.Errorf("warnings = %v, want %q", view.Warnings, want)
+	}
+	first := asMap(t, asList(t, data["artifacts"])[0])
+	if first["path"] != "findings.json" || first["present"] != true {
+		t.Errorf("first artifact = %v, want the findings store present", first)
+	}
+	for _, source := range view.Sources {
+		if strings.HasSuffix(source.Path, "/unknown.bin") {
+			t.Errorf("source %s is not a supported artifact", source.Path)
+		}
+	}
+}
+
+// TestSourceCollectorBudgets pins both cuts directly.
+func TestSourceCollectorBudgets(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "artifact")
+	if err := os.WriteFile(path, []byte("0123456789A"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name        string
+		maxEntries  int
+		maxBytes    int64
+		wantSources int
+	}{
+		{name: "entry cap", maxEntries: 1, maxBytes: 0, wantSources: 1},
+		{name: "byte cap", maxEntries: 10, maxBytes: 10, wantSources: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &sourceCollector{
+				root: Root{Path: dir}, rootPath: dir,
+				maxEntries: tc.maxEntries, maxBytes: tc.maxBytes,
+			}
+			c.add("1234", path)
+			c.add("1234", path)
+			if len(c.sources) != tc.wantSources {
+				t.Errorf("sources = %d, want %d", len(c.sources), tc.wantSources)
+			}
+			if !c.truncated {
+				t.Error("truncated = false, want true past the budget")
+			}
+		})
+	}
+}
+
+// TestShowDoesNotInventoryTheBundle proves the byte-identical show route does
+// not hash an inventory it cannot render.
+func TestShowDoesNotInventoryTheBundle(t *testing.T) {
+	t.Parallel()
+	dir, _ := fixture(t)
+	view, err := newLayer(dir).Show(context.Background(), RootID(mustAbs(t, dir)), "1234", sigCrit[:4])
+	if err != nil {
+		t.Fatalf("Show: %v", err)
+	}
+	if len(view.Sources) != 0 {
+		t.Errorf("show sources = %v, want none", view.Sources)
+	}
+}
+
 // TestDetailReportDirIsRootRelative proves the served report data keeps the
 // CLI's portable bundle path.
 func TestDetailReportDirIsRootRelative(t *testing.T) {

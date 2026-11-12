@@ -39,11 +39,12 @@ func keyFor(root Root, bundle string, flags *core.ReportFlags) cacheKey {
 // entry is one cached composition: the response or refusal plus the artifact
 // inventory it was built from.
 type entry struct {
-	resp    *core.ReportResponse
-	ref     *core.RefusalError
-	sources []Source
-	stamp   stamp
-	used    uint64
+	resp      *core.ReportResponse
+	ref       *core.RefusalError
+	sources   []Source
+	truncated bool
+	stamp     stamp
+	used      uint64
 }
 
 // bundleStamp reads one bundle's cache fingerprint and the root policy inputs
@@ -104,21 +105,21 @@ func appendFileStamp(out *strings.Builder, path string) {
 // anywhere: a stale entry is a bug, not data loss.
 func (l *Layer) cached(
 	ctx context.Context, root Root, bundle, dir string, flags *core.ReportFlags,
-) (*core.ReportResponse, *core.RefusalError, []Source) {
+) (*core.ReportResponse, *core.RefusalError, []Source, bool) {
 	key := keyFor(root, bundle, flags)
 	current := bundleStamp(root, dir)
 	l.mu.Lock()
 	if hit, ok := l.cache[key]; ok && hit.stamp == current {
 		l.touchLocked(key, &hit)
 		l.mu.Unlock()
-		return hit.resp, hit.ref, hit.sources
+		return hit.resp, hit.ref, hit.sources, hit.truncated
 	}
 	l.mu.Unlock()
 
 	resp, ref := l.compose(ctx, root, bundle, dir, flags)
-	sources := l.inventory(root, bundle, dir)
+	sources, truncated := l.inventory(root, bundle, dir)
 	if ref != nil && ref.Code == "canceled" {
-		return resp, ref, sources
+		return resp, ref, sources, truncated
 	}
 
 	l.mu.Lock()
@@ -127,10 +128,10 @@ func (l *Layer) cached(
 		evictOldestBundleLocked(l.cache)
 	}
 	l.touchLocked(key, &entry{
-		resp: resp, ref: ref, sources: sources, stamp: current,
+		resp: resp, ref: ref, sources: sources, truncated: truncated, stamp: current,
 	})
 	l.mu.Unlock()
-	return resp, ref, sources
+	return resp, ref, sources, truncated
 }
 
 // touchLocked stores one entry as the most recently used composition.
