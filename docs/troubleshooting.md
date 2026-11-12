@@ -102,6 +102,18 @@ Cause: a git read failed while mining (git is missing, or the checkout is unread
 
 Fix: confirm `git --version` works in the checkout, then re-run.
 
+## `backtest-row-stale`
+
+Cause: a scored run's `prs/<NNN>/replay.json` is unreadable, names another run, repeats a candidate another row already scored, or its bundle's `findings.json` is missing or unreadable.
+
+Fix: delete the named `prs/<NNN>/` directory, then replay the run so it records a fresh row from the same candidate.
+
+## `backtest-run-stale`
+
+Cause: the run's `mine.json` predates the seed `signal` field, is unreadable, or no longer carries a PR a recorded review names.
+
+Fix: re-mine the run in place with the same `--run` and window, then replay and score it again. Deleting the run directory is never required.
+
 ## `bad-approve`
 
 Cause: `--approve` is not a boolean.
@@ -850,9 +862,9 @@ Fix: remove the named path from the bundle, then re-run.
 
 ## `run-mismatch`
 
-Cause: `.verdict/backtest/<run>/run.json` exists with a different mode or window than this invocation. For `backtest score`, the run's `mine.json` no longer carries a PR a recorded review names, a bug was mined before it recorded its seed signal, or two resume records name the same candidate.
+Cause: `.verdict/backtest/<run>/run.json` exists with a different mode or window than this invocation, so replay would grade one resolution against another.
 
-Fix: pick another `--run <slug>`, or delete the existing run directory. Re-mine and replay the run when the score refuses it, so the review and its ground truth come from the same resolution; delete a duplicated `prs/<NNN>/replay.json` when two rows name one candidate.
+Fix: pick another `--run <slug>`, or delete the existing run directory and mine the window again.
 
 ## `sandbox-unavailable`
 

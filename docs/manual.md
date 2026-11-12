@@ -3037,9 +3037,14 @@ corpus store. It reads `.verdict/backtest/<run>/mine.json`, each
 `prs/<NNN>/replay.json`, and the `findings.json` of the bundle that record
 names, then writes `.verdict/backtest/<run>/report.json`. A run with no
 `mine.json` refuses `missing-bundle` naming `backtest mine`; a run never
-replayed refuses `missing-bundle` naming `backtest replay`; a recorded row whose
-candidate `mine.json` no longer carries refuses `run-mismatch` instead of
-grading a review against another resolution's ground truth.
+replayed refuses `missing-bundle` naming `backtest replay`; a `mine.json` that
+predates the seed `signal`, is unreadable, or no longer carries a scored PR
+refuses `backtest-run-stale` and asks for a re-mine in place; a resume record
+that is unreadable, names another run, repeats a candidate, or points at a
+missing findings file refuses `backtest-row-stale` and asks for that
+`prs/<NNN>/` directory to be removed before replaying. Neither refusal asks
+for the run directory to be deleted: re-mining or replaying rebuilds the
+artifact in place.
 
 Grading is the corpus matcher's own rule (`corpuscore.Evaluate`): a finding
 matches a bug when it carries the same `path`, its line is within ±1 of the

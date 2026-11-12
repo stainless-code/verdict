@@ -37,6 +37,8 @@ var refusalCodes = []string{
 	"approve-blocked",
 	"auth-missing",
 	"backtest-failed",
+	"backtest-row-stale",
+	"backtest-run-stale",
 	"bad-approve",
 	"bad-at",
 	"bad-attribution",

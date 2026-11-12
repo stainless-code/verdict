@@ -126,10 +126,13 @@ func TestScoreRefusesBadRuns(t *testing.T) {
 		{name: "bad slug", run: "../s1", code: "bad-slug", part: "lowercase letters"},
 		{name: "unmined", run: "s2", code: "missing-bundle", part: "no mine.json"},
 		{name: "unreplayed", run: "s1", mutate: removeScoreRows, code: "missing-bundle", part: "no replayed reviews"},
-		{name: "corrupt row", run: "s1", mutate: corruptScoreRow, code: "corrupt-store", part: "unreadable"},
-		{name: "re-mined candidate", run: "s1", mutate: remineScoreRow, code: "run-mismatch", part: "no longer carries"},
-		{name: "foreign row", run: "s1", mutate: foreignScoreRow, code: "run-mismatch", part: "not 's1'"},
-		{name: "repeated row", run: "s1", mutate: repeatScoreRow, code: "run-mismatch", part: "already scored"},
+		{name: "corrupt row", run: "s1", mutate: corruptScoreRow, code: "backtest-row-stale", part: "unreadable"},
+		{name: "pre-signal mine", run: "s1", mutate: stripScoreSignal, code: "backtest-run-stale", part: "before bugs recorded a seed signal"},
+		{name: "missing findings", run: "s1", mutate: removeScoreFindings, code: "backtest-row-stale", part: "missing or unreadable"},
+		{name: "corrupt findings", run: "s1", mutate: corruptScoreFindings, code: "backtest-row-stale", part: "missing or unreadable"},
+		{name: "re-mined candidate", run: "s1", mutate: remineScoreRow, code: "backtest-run-stale", part: "no longer carries"},
+		{name: "foreign row", run: "s1", mutate: foreignScoreRow, code: "backtest-row-stale", part: "not 's1'"},
+		{name: "repeated row", run: "s1", mutate: repeatScoreRow, code: "backtest-row-stale", part: "already scored"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) { checkScoreRefusal(t, tc) })
@@ -166,6 +169,52 @@ func removeScoreRows(t *testing.T, root string) {
 	if err := os.RemoveAll(filepath.Join(root, ".verdict", "backtest", scoreRun, "prs")); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// TestScoreRefusalHintsNameTheBacktestStep proves the two score refusals do
+// not borrow the shared run-mismatch/corrupt-store hints: each printed step
+// rebuilds a backtest artifact and never deletes the run's replay bundles.
+func TestScoreRefusalHintsNameTheBacktestStep(t *testing.T) {
+	tests := []struct{ code, hint string }{
+		{
+			code: "backtest-row-stale",
+			hint: "try: delete the named prs/<NNN>/ directory, then replay the run so it records a fresh row",
+		},
+		{
+			code: "backtest-run-stale",
+			hint: "try: re-mine the run in place with the same --run and window, then replay it again",
+		},
+	}
+	for _, tc := range tests {
+		if got := core.HintFor(tc.code); got != tc.hint {
+			t.Errorf("HintFor(%q) = %q, want %q", tc.code, got, tc.hint)
+		}
+	}
+}
+
+// stripScoreSignal rewrites the mine as one written before bugs recorded a
+// seed signal.
+func stripScoreSignal(t *testing.T, root string) {
+	t.Helper()
+	path := filepath.Join(root, ".verdict", "backtest", scoreRun, "mine.json")
+	body := strings.Replace(readScoreFile(t, path), `"signal": "fix",`+"\n", "", 1)
+	writeTestFile(t, path, body)
+}
+
+// removeScoreFindings deletes the first row's recorded review, leaving its
+// resume record pointing at a bundle with no findings.
+func removeScoreFindings(t *testing.T, root string) {
+	t.Helper()
+	path := filepath.Join(root, ".verdict", "state", "local-bt-1-s1", "findings.json")
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// corruptScoreFindings writes bytes the findings store cannot decode.
+func corruptScoreFindings(t *testing.T, root string) {
+	t.Helper()
+	writeTestFile(t, filepath.Join(root, ".verdict", "state", "local-bt-1-s1", "findings.json"), "{")
 }
 
 // corruptScoreRow truncates one resume record.

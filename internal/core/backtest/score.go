@@ -196,7 +196,7 @@ func (st *state) scoreCandidates(run string) ([]Candidate, *core.RefusalError) {
 	}
 	var doc MineDoc
 	if err := json.Unmarshal(raw, &doc); err != nil {
-		return nil, st.refuse(codeCorruptStore, "unreadable "+display(st.root, path)+"; re-mine the run")
+		return nil, st.refuse(codeBacktestRunStale, "unreadable "+display(st.root, path)+"; re-mine the run in place")
 	}
 	return doc.Candidates, nil
 }
@@ -234,15 +234,15 @@ func (st *state) scoreRow(run, dir string) (*ReplayPRDoc, *core.RefusalError) {
 	path := filepath.Join(dir, replayFile)
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, st.refuse(codeCorruptStore, "unreadable "+display(st.root, path)+"; delete it to replay this PR again")
+		return nil, st.refuse(codeBacktestRowStale, "unreadable "+display(st.root, path)+"; delete its directory to replay this PR again")
 	}
 	var doc ReplayPRDoc
 	if err := json.Unmarshal(raw, &doc); err != nil {
-		return nil, st.refuse(codeCorruptStore, "unreadable "+display(st.root, path)+"; delete it to replay this PR again")
+		return nil, st.refuse(codeBacktestRowStale, "unreadable "+display(st.root, path)+"; delete its directory to replay this PR again")
 	}
 	if doc.Run != run {
-		return nil, st.refuse(codeRunMismatch, fmt.Sprintf(
-			"%s names run '%s', not '%s'", st.displayPR(run, doc.N), doc.Run, run))
+		return nil, st.refuse(codeBacktestRowStale, fmt.Sprintf(
+			"%s names run '%s', not '%s'; delete its directory to replay it", st.displayPR(run, doc.N), doc.Run, run))
 	}
 	return &doc, nil
 }
@@ -281,8 +281,8 @@ func (st *state) scoreOne(t *scoreTotals, run string, row *ReplayPRDoc, candidat
 		return ref
 	}
 	if t.scored[c] {
-		return st.refuse(codeRunMismatch, fmt.Sprintf(
-			"run '%s' PR %d repeats a candidate another resume record already scored; delete one of the records", run, row.N))
+		return st.refuse(codeBacktestRowStale, fmt.Sprintf(
+			"run '%s' PR %d repeats a candidate another resume record already scored; delete one of the record directories", run, row.N))
 	}
 	t.scored[c] = true
 	report, ref := st.gradeReview(c, row.Bundle)
@@ -338,9 +338,9 @@ func (st *state) rowCandidate(run string, row *ReplayPRDoc, candidates []Candida
 			return &candidates[i], nil
 		}
 	}
-	return nil, st.refuse(codeRunMismatch, fmt.Sprintf(
-		"run '%s' PR %d was replayed at %s..%s, which mine.json no longer carries; re-mine and replay the run, or delete %s",
-		run, row.N, short(row.Base), short(row.Head), st.displayRun(run)))
+	return nil, st.refuse(codeBacktestRunStale, fmt.Sprintf(
+		"run '%s' PR %d was replayed at %s..%s, which mine.json no longer carries; re-mine and replay the run",
+		run, row.N, short(row.Base), short(row.Head)))
 }
 
 // gradeReview grades one PR's recorded findings against its bugs through the
@@ -353,10 +353,8 @@ func (st *state) gradeReview(c *Candidate, bundle string) (*corpuscore.Report, *
 	dir := filepath.FromSlash(readcommon.ResolveBundleDir(st.root, bundle))
 	entries, err := readcommon.LoadFindings(dir)
 	if err != nil {
-		if ref, ok := errors.AsType[*core.RefusalError](err); ok {
-			return nil, ref
-		}
-		return nil, st.refuse(codeCorruptStore, err.Error())
+		return nil, st.refuse(codeBacktestRowStale,
+			"recorded review "+display(st.root, dir)+" is missing or unreadable; delete its prs/<NNN>/ directory and replay the run")
 	}
 	return corpuscore.Evaluate(scoreCase(c), entries), nil
 }
@@ -383,7 +381,7 @@ func (st *state) gradeSignals(tally *signalTally, run string, c *Candidate, repo
 		b := &c.Bugs[i]
 		row, ok := tally.row(b.Signal)
 		if !ok {
-			return st.refuse(codeRunMismatch, fmt.Sprintf(
+			return st.refuse(codeBacktestRunStale, fmt.Sprintf(
 				"run '%s' was mined before bugs recorded a seed signal; re-mine it", run))
 		}
 		row.bugs++
