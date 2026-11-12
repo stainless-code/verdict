@@ -51,3 +51,11 @@ func TestVerifyHelpNamesGroupValidationFlags(t *testing.T) {
 		}
 	}
 }
+
+// TestServeUsageListsEventsRoute pins the route in the usage text.
+func TestServeUsageListsEventsRoute(t *testing.T) {
+	const want = "    .../findings/{sig}, /v1/events (--no-watch removes it). GET only, no CORS, no writes; Ctrl-C exits 3.\n"
+	if !strings.Contains(usageText(), want) {
+		t.Fatalf("serve usage route line = %q, want %q", usageText(), want)
+	}
+}

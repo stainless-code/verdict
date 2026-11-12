@@ -36,7 +36,8 @@ const (
 	// idleTimeout bounds a keep-alive connection between requests.
 	idleTimeout = 60 * time.Second
 	// shutdownTimeout bounds the graceful drain on cancellation.
-	shutdownTimeout = 5 * time.Second
+	shutdownTimeout  = 5 * time.Second
+	minWatchInterval = 100 * time.Millisecond
 
 	flagRoot       = "--root"
 	flagHost       = "--host"
@@ -44,6 +45,9 @@ const (
 	flagToken      = "--token"
 	flagCheck      = "--check"
 	flagMaxBundles = "--max-bundles"
+	flagInterval   = "--interval"
+	flagSweep      = "--sweep"
+	flagNoWatch    = "--no-watch"
 	flagJSON       = "--json"
 	flagDepth      = "--depth"
 	flagMaxVisits  = "--max-visits"
@@ -65,9 +69,13 @@ func (e startError) Error() string { return string(e) }
 
 // Start-up sentinels.
 var (
-	errNoRoot     error = startError("serve: no root to serve")
-	errNoListener error = startError("serve: listener is not bound")
-	errRange      error = startError("value out of range")
+	errNoRoot        error = startError("serve: no root to serve")
+	errNoListener    error = startError("serve: listener is not bound")
+	errRange         error = startError("value out of range")
+	errWatchInterval error = startError("serve: --interval must be at least 100ms")
+	errWatchSweep    error = startError("serve: --sweep must be at least 100ms")
+	errWatchOrder    error = startError("serve: --sweep must be at least --interval")
+	errNoChanges     error = startError("serve: layer has no change stream; disable watch to serve it")
 )
 
 // Layer is the read model the transport serves. The query package implements
@@ -82,6 +90,10 @@ type Layer interface {
 	Precision(ctx context.Context, by string) (*query.View, error)
 }
 
+type changeSource interface {
+	Changes(ctx context.Context) <-chan query.Change
+}
+
 // Config is one server's resolved start state.
 type Config struct { //nolint:govet // start snapshot; field order mirrors the flag table
 	Root       string
@@ -90,6 +102,10 @@ type Config struct { //nolint:govet // start snapshot; field order mirrors the f
 	Token      string
 	Check      string
 	MaxBundles int
+	Interval   time.Duration
+	Sweep      time.Duration
+	NoWatch    bool
+	Heartbeat  time.Duration
 	Version    string
 	Now        func() time.Time
 	Layer      Layer
@@ -106,6 +122,10 @@ type Server struct { //nolint:govet // grouped by listener, allowlists, and inje
 	listener     net.Listener
 	port         int
 	drainTimeout time.Duration
+	heartbeat    time.Duration
+	streamsDone  chan struct{}
+	streamsStop  sync.Once
+	events       *eventBroker
 	hosts        map[string]bool
 	origins      map[string]bool
 }
@@ -113,25 +133,10 @@ type Server struct { //nolint:govet // grouped by listener, allowlists, and inje
 // New builds a server over one root (or the injected layer) and mints its
 // token when none was supplied.
 func New(cfg *Config) (*Server, error) {
-	if cfg.Host == "" {
-		cfg.Host = defaultHost
-	}
-	if cfg.Check == "" {
-		cfg.Check = defaultCheck
-	}
-	if cfg.Now == nil {
-		cfg.Now = time.Now
-	}
-	layer := cfg.Layer
-	if layer == nil {
-		if cfg.Root == "" {
-			return nil, errNoRoot
-		}
-		layer = query.New(query.Snapshot{
-			Version: cfg.Version,
-			Roots:   []query.Root{{Path: cfg.Root}},
-			Runtime: &core.Runtime{Now: cfg.Now},
-		}, query.Options{Check: cfg.Check, MaxBundles: cfg.MaxBundles})
+	applyServerDefaults(cfg)
+	layer, err := configuredLayer(cfg)
+	if err != nil {
+		return nil, err
 	}
 	token := cfg.Token
 	if token == "" {
@@ -144,9 +149,79 @@ func New(cfg *Config) (*Server, error) {
 		layer:        layer,
 		port:         cfg.Port,
 		drainTimeout: shutdownTimeout,
+		heartbeat:    cfg.Heartbeat,
+		streamsDone:  make(chan struct{}),
+		events:       newEventBroker(),
 	}
 	server.refreshAllowlists()
 	return server, nil
+}
+
+func applyServerDefaults(cfg *Config) {
+	if cfg.Host == "" {
+		cfg.Host = defaultHost
+	}
+	if cfg.Check == "" {
+		cfg.Check = defaultCheck
+	}
+	if cfg.Now == nil {
+		cfg.Now = time.Now
+	}
+	if cfg.Heartbeat <= 0 {
+		cfg.Heartbeat = defaultHeartbeat
+	}
+	if cfg.Interval <= 0 {
+		cfg.Interval = time.Second
+	}
+	if cfg.Sweep <= 0 {
+		cfg.Sweep = query.DefaultSweep
+	}
+}
+
+func configuredLayer(cfg *Config) (Layer, error) {
+	if err := validateWatchConfig(cfg); err != nil {
+		return nil, err
+	}
+	if cfg.Layer != nil {
+		if err := validateLayerWatch(cfg.Layer, cfg.NoWatch); err != nil {
+			return nil, err
+		}
+		return cfg.Layer, nil
+	}
+	if cfg.Root == "" {
+		return nil, errNoRoot
+	}
+	return query.New(query.Snapshot{
+		Version: cfg.Version,
+		Roots:   []query.Root{{Path: cfg.Root}},
+		Runtime: &core.Runtime{Now: cfg.Now},
+	}, query.Options{
+		Check: cfg.Check, MaxBundles: cfg.MaxBundles, NoWatch: cfg.NoWatch,
+		Interval: cfg.Interval, Sweep: cfg.Sweep, Clock: cfg.Now,
+	}), nil
+}
+
+func validateWatchConfig(cfg *Config) error {
+	if cfg.Interval < minWatchInterval {
+		return errWatchInterval
+	}
+	if cfg.Sweep < minWatchInterval {
+		return errWatchSweep
+	}
+	if cfg.Sweep < cfg.Interval {
+		return errWatchOrder
+	}
+	return nil
+}
+
+func validateLayerWatch(layer Layer, noWatch bool) error {
+	if noWatch {
+		return nil
+	}
+	if _, ok := layer.(changeSource); !ok {
+		return errNoChanges
+	}
+	return nil
 }
 
 // Listen binds the configured address and records the kernel-assigned port.
@@ -197,7 +272,7 @@ func (s *Server) Close() error {
 }
 
 // Serve blocks until ctx is canceled, then drains the listener within the
-// shutdown bound. The server owns no goroutine beyond the listener loop.
+// shutdown bound.
 func (s *Server) Serve(ctx context.Context) error {
 	s.mu.RLock()
 	listener := s.listener
@@ -206,6 +281,21 @@ func (s *Server) Serve(ctx context.Context) error {
 		return errNoListener
 	}
 	server := newHTTPServer(s.Handler())
+	server.RegisterOnShutdown(s.stopEventStreams)
+	watchCtx, cancelWatch := context.WithCancel(ctx)
+	watchDone := make(chan struct{})
+	if s.cfg.NoWatch {
+		close(watchDone)
+	} else {
+		go func() {
+			defer close(watchDone)
+			s.pumpChanges(watchCtx)
+		}()
+	}
+	defer func() {
+		cancelWatch()
+		<-watchDone
+	}()
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- server.Serve(listener) }()
 	select {
@@ -217,6 +307,10 @@ func (s *Server) Serve(ctx context.Context) error {
 		}
 		return jq.Sealed("serve: http listener", err)
 	}
+}
+
+func (s *Server) stopEventStreams() {
+	s.streamsStop.Do(func() { close(s.streamsDone) })
 }
 
 // drain stops accepting and waits for the active requests within the bound. A
@@ -252,7 +346,7 @@ type Request struct {
 	Version string
 }
 
-// serveOptions contains the resolved server and discovery flags.
+// serveOptions contains the resolved server, discovery, and watch flags.
 type serveOptions struct { //nolint:govet // field order mirrors the flag table
 	root                       string
 	host                       string
@@ -263,6 +357,9 @@ type serveOptions struct { //nolint:govet // field order mirrors the flag table
 	maxBundles                 int
 	depth, maxVisits, maxRepos int
 	rediscover, noRegistry     bool
+	interval                   time.Duration
+	sweep                      time.Duration
+	noWatch                    bool
 	layer                      Layer
 }
 
@@ -321,7 +418,10 @@ func discoveryLayer(root string, now func() time.Time, req Request, opts *serveO
 	}
 	return query.New(query.Snapshot{
 		Version: req.Version, Roots: discovery.Roots, Runtime: &core.Runtime{Now: now}, Discovery: discovery,
-	}, query.Options{Check: opts.check, MaxBundles: opts.maxBundles}), nil
+	}, query.Options{
+		Check: opts.check, MaxBundles: opts.maxBundles, NoWatch: opts.noWatch,
+		Interval: opts.interval, Sweep: opts.sweep, Clock: now,
+	}), nil
 }
 
 // serveExit maps one Serve result onto the documented exit code: a canceled
@@ -353,7 +453,8 @@ func start(
 ) (*Server, int, bool) {
 	server, err := New(&Config{
 		Root: root, Host: opts.host, Port: opts.port, Token: opts.token,
-		Check: opts.check, MaxBundles: opts.maxBundles, Version: req.Version, Now: r.Now,
+		Check: opts.check, MaxBundles: opts.maxBundles, Interval: opts.interval,
+		Sweep: opts.sweep, NoWatch: opts.noWatch, Version: req.Version, Now: r.Now,
 		Layer: opts.layer,
 	})
 	if err != nil {
@@ -431,6 +532,7 @@ func resolveProbeRoot(ctx context.Context) (string, *cli.RefusalError) {
 func parseFlags(r *cli.Runner, args []string) (serveOptions, int, bool) {
 	opts := serveOptions{
 		host: defaultHost, check: defaultCheck, maxBundles: query.DefaultMaxBundles,
+		interval: time.Second, sweep: query.DefaultSweep,
 		depth: query.DefaultDiscoveryDepth, maxVisits: query.DefaultMaxVisits, maxRepos: query.DefaultMaxRepos,
 	}
 	for i := 0; i < len(args); i++ {
@@ -439,6 +541,9 @@ func parseFlags(r *cli.Runner, args []string) (serveOptions, int, bool) {
 			return opts, code, true
 		}
 		i = next
+	}
+	if opts.sweep < opts.interval {
+		return opts, usage(r, "serve: --sweep must be at least --interval"), true
 	}
 	return opts, 0, false
 }
@@ -449,13 +554,17 @@ func parseFlag(r *cli.Runner, opts *serveOptions, args []string, i int) (int, in
 	switch name {
 	case flagJSON:
 		return i, 0, false
+	case flagNoWatch:
+		opts.noWatch = true
+		return i, 0, false
 	case flagRediscover:
 		opts.rediscover = true
 		return i, 0, false
 	case flagNoRegistry:
 		opts.noRegistry = true
 		return i, 0, false
-	case flagRoot, flagHost, flagPort, flagToken, flagCheck, flagMaxBundles, flagDepth, flagMaxVisits, flagMaxRepos:
+	case flagRoot, flagHost, flagPort, flagToken, flagCheck, flagMaxBundles, flagInterval, flagSweep,
+		flagDepth, flagMaxVisits, flagMaxRepos:
 		value, next, uerr := cli.FlagValue(args, i, name, flagWants(name))
 		if uerr != nil {
 			return i, r.ReportUsage(uerr), true
@@ -465,7 +574,8 @@ func parseFlag(r *cli.Runner, opts *serveOptions, args []string, i int) (int, in
 	default:
 		return i, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
 			"unknown flag '%s' for serve (want --root, --depth, --max-visits, --max-repos, "+
-				"--rediscover, --no-registry, --host, --port, --token, --check, --max-bundles, --json)", name)}), true
+				"--rediscover, --no-registry, --host, --port, --token, --check, --max-bundles, "+
+				"--interval, --sweep, --no-watch, --json)", name)}), true
 	}
 }
 
@@ -476,6 +586,8 @@ func flagWants(name string) string {
 		return "<n>"
 	case flagMaxBundles:
 		return "<n>"
+	case flagInterval, flagSweep:
+		return "<duration>"
 	case flagCheck:
 		return "critical|important|informational"
 	case flagToken:
@@ -499,6 +611,10 @@ func applyFlag(r *cli.Runner, opts *serveOptions, name, value string) (int, bool
 		return applyPort(r, opts, value)
 	case flagMaxBundles:
 		return applyMaxBundles(r, opts, value)
+	case flagInterval:
+		return applyDuration(r, name, value, &opts.interval)
+	case flagSweep:
+		return applyDuration(r, name, value, &opts.sweep)
 	case flagCheck:
 		return applyCheck(r, opts, value)
 	case flagDepth, flagMaxVisits, flagMaxRepos:
@@ -525,6 +641,18 @@ func applyDiscoveryFlag(r *cli.Runner, opts *serveOptions, name, value string) (
 	case flagMaxRepos:
 		opts.maxRepos = n
 	}
+	return 0, false
+}
+
+func applyDuration(r *cli.Runner, name, value string, target *time.Duration) (int, bool) {
+	duration, err := time.ParseDuration(value)
+	if err != nil || duration <= 0 {
+		return usage(r, "serve: "+name+" wants a positive duration"), true
+	}
+	if name == flagInterval && duration < minWatchInterval {
+		return usage(r, "serve: --interval must be at least 100ms"), true
+	}
+	*target = duration
 	return 0, false
 }
 

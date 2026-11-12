@@ -1471,8 +1471,14 @@ other value warns that it exposes the surface beyond the machine over plain
 HTTP, with the token and session cookie unencrypted), `--port <n>` (default
 `0`, the kernel assigns one), `--token <s>` (default: a fresh 128-bit token per
 start; the flag warns it is visible in `ps` and shell history), `--check
-<tier>` (the gate tier the bundle detail composes; default `critical`), and
-`--max-bundles <n>` (default 500). `--json` prints one start envelope whose
+<tier>` (the gate tier the bundle detail composes; default `critical`),
+`--max-bundles <n>` (default 500), `--interval <duration>` (default `1s`, minimum
+`100ms`), `--sweep <duration>` (default `30s`, at least `--interval`), and
+`--no-watch` (disable polling and remove `/v1/events`). Atomic writes are visible
+within one tick; non-atomic in-place edits are visible within one sweep. A tick
+checks the state directory, each bundle directory, existing `chunks/`
+directories, and `.verdict/overrides/`; a sweep fingerprints directory entries.
+`--interval` controls the network-filesystem polling cost. `--json` prints one start envelope whose
 `data.url` is the tokenised URL and `data.listen` is `host:port`; the envelope
 is the only machine-readable place a script learns where to connect, and a log
 that captures it captures a capability that dies with the process.
@@ -1493,15 +1499,22 @@ than from history.
 
 **Routes** (GET, plus HEAD from the mux):
 
-| Route                                                  | Envelope                                                                              |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| `GET /v1/health`                                       | `serve` — version, roots, `watch: false`, interval, cache counters, `read_only: true` |
-| `GET /v1/roots`                                        | `serve` — the served roots with counts, `truncated`, `skipped`, `discovery`           |
-| `GET /v1/bundles`                                      | `serve` — inbox rows, portfolio counts, `partial`, `sources[]`, `errors[]`            |
-| `GET /v1/cost?by=repo\|week\|model`                    | `serve` — cost buckets and totals, with `partial`, `sources[]`, `errors[]`            |
-| `GET /v1/precision?by=category\|tier`                  | `serve` — stored-join outcomes; `fixed` is `null` and no rate is printed              |
-| `GET /v1/roots/{root}/bundles/{bundle}`                | `serve` — `data.{report,gate,threads,artifacts,sources,errors}`                       |
-| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}` | `show` — byte-identical `data` to `show --json`                                       |
+| Route                                                  | Envelope                                                                           |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| `GET /v1/health`                                       | `serve` — version, roots, watch state, interval, cache counters, `read_only: true` |
+| `GET /v1/roots`                                        | `serve` — the served roots with counts, `truncated`, `skipped`, `discovery`        |
+| `GET /v1/bundles`                                      | `serve` — inbox rows, portfolio counts, `partial`, `sources[]`, `errors[]`         |
+| `GET /v1/cost?by=repo\|week\|model`                    | `serve` — cost buckets and totals, with `partial`, `sources[]`, `errors[]`         |
+| `GET /v1/precision?by=category\|tier`                  | `serve` — stored-join outcomes; `fixed` is `null` and no rate is printed           |
+| `GET /v1/roots/{root}/bundles/{bundle}`                | `serve` — `data.{report,gate,threads,artifacts,sources,errors}`                    |
+| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}` | `show` — byte-identical `data` to `show --json`                                    |
+| `GET /v1/events`                                       | SSE invalidations; absent with `--no-watch`                                        |
+
+The `bundles` SSE event carries one compact envelope with the root, detector
+(`tick` or `sweep`), changed and removed bundle names, and `truncated`. Events
+carry invalidations only. Clients refetch `/v1/bundles` after a truncated
+event; reconnects do not replay events, so clients fetch the visible view again.
+The server coalesces changes for 250ms and caps each event at 100 bundle names.
 
 Discovery is a startup snapshot: a repository added below a cached root appears
 after `--rediscover` or registry expiry. `/v1/roots` reports `truncated` and

@@ -32,6 +32,8 @@ const (
 	// DefaultMaxBundles bounds a root's listing, the cache, and every tick a
 	// later slice builds on it.
 	DefaultMaxBundles = 500
+	// DefaultSweep is the fingerprint interval for catching in-place edits.
+	DefaultSweep = 30 * time.Second
 	// rootIDLen is the visible root identity width: 12 hex characters, the
 	// same shape a bundle sig prefix uses.
 	rootIDLen = 12
@@ -95,8 +97,14 @@ type Snapshot struct {
 
 // Options are the layer's resolved serve flags.
 type Options struct {
+	Stat       func(string) (os.FileInfo, error)
+	ReadDir    func(string) ([]os.DirEntry, error)
+	Clock      func() time.Time
 	Check      string
+	NoWatch    bool
 	MaxBundles int
+	Interval   time.Duration
+	Sweep      time.Duration
 }
 
 // Layer is the in-memory read model. Its cache is a derived optimisation,
@@ -108,6 +116,12 @@ type Layer struct { //nolint:govet // fields group by role (options, read seams,
 	runtime    *core.Runtime
 	check      string
 	maxBundles int
+	noWatch    bool
+	interval   time.Duration
+	sweep      time.Duration
+	stat       func(string) (os.FileInfo, error)
+	readDir    func(string) ([]os.DirEntry, error)
+	clock      func() time.Time
 	// stampFn reads a bundle's cache stamp; a test replaces it to observe the
 	// read a canceled request must never make.
 	stampFn func(Root, string) (stamp, bool)
@@ -124,6 +138,12 @@ func New(s Snapshot, o Options) *Layer { //nolint:gocritic // public API keeps t
 		runtime:    s.Runtime,
 		check:      o.Check,
 		maxBundles: o.MaxBundles,
+		noWatch:    o.NoWatch,
+		interval:   o.Interval,
+		sweep:      o.Sweep,
+		stat:       o.Stat,
+		readDir:    o.ReadDir,
+		clock:      o.Clock,
 		stampFn:    bundleStamp,
 		cache:      map[cacheKey]entry{},
 	}
@@ -145,6 +165,25 @@ func (l *Layer) applyDefaults() {
 	}
 	if l.maxBundles <= 0 {
 		l.maxBundles = DefaultMaxBundles
+	}
+	l.applyWatchDefaults()
+}
+
+func (l *Layer) applyWatchDefaults() {
+	if l.interval <= 0 {
+		l.interval = time.Second
+	}
+	if l.sweep <= 0 {
+		l.sweep = DefaultSweep
+	}
+	if l.stat == nil {
+		l.stat = os.Stat
+	}
+	if l.readDir == nil {
+		l.readDir = os.ReadDir
+	}
+	if l.clock == nil {
+		l.clock = l.now
 	}
 }
 
@@ -297,7 +336,7 @@ func errRow(root Root, bundle, code, message string) ErrRow {
 // listBundles reads one root's state directory: sorted directory names that
 // are addressable bundle slugs, truncated at the bundle cap.
 func (l *Layer) listBundles(root Root) ([]string, bool, []ErrRow) {
-	entries, err := os.ReadDir(readcommon.StateDir(root.Path))
+	entries, err := l.readDir(readcommon.StateDir(root.Path))
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, false, nil
