@@ -663,6 +663,7 @@ func tsExtract(tokens []tsToken, buf *fileBuf) {
 		match: tsPairs(tokens), depth: tsBraceDepths(tokens),
 	}
 	x.blocks = tsBlocks(x.depth, tokens)
+	x.inside, x.outer = tsBlockIndex(x.blocks, len(tokens))
 	x.imports()
 	x.declarations()
 	x.calls()
@@ -676,6 +677,8 @@ type tsExtractor struct {
 	match  []int
 	depth  []int
 	blocks []tsBlock
+	inside []int
+	outer  []int
 }
 
 // tsBlock is one declaration body: a class, interface, enum, or type literal.
@@ -740,6 +743,9 @@ const (
 	blockInterface
 	blockType
 )
+
+// tsBlockNest is the declaration nesting the block sweep's stack starts with.
+const tsBlockNest = 8
 
 // tsBlockKinds maps a declaration keyword to the body it opens.
 var tsBlockKinds = map[string]int{
@@ -827,16 +833,70 @@ func tsPairClose(tokens []tsToken, open int) int {
 	return len(tokens)
 }
 
+// tsBlockIndex answers both block questions once per token: inside[i] is the
+// innermost declaration body holding token i and outer[b] the body holding
+// block b, both by index, -1 for none. One sweep over the token stream, so a
+// file's cost is its token count rather than tokens times blocks.
+func tsBlockIndex(blocks []tsBlock, tokens int) (inside, outer []int) {
+	inside, outer = negIndex(tokens), negIndex(len(blocks))
+	s := &blockStack{blocks: blocks, outer: outer, open: make([]int, 0, tsBlockNest)}
+	for i := range inside {
+		s.enter(i)
+		s.leave(i)
+		inside[i] = s.top()
+	}
+	return inside, outer
+}
+
+// blockStack tracks the declaration bodies open at one token index. Bodies nest
+// by brace, so they open and close on a stack.
+type blockStack struct {
+	blocks []tsBlock
+	outer  []int
+	open   []int
+	next   int
+}
+
+// enter opens every body that began before token i, recording its holder.
+func (s *blockStack) enter(i int) {
+	for s.next < len(s.blocks) && s.blocks[s.next].open < i {
+		s.outer[s.next] = s.top()
+		s.open = append(s.open, s.next)
+		s.next++
+	}
+}
+
+// leave closes every body that ended at or before token i.
+func (s *blockStack) leave(i int) {
+	for len(s.open) > 0 && s.blocks[s.open[len(s.open)-1]].close <= i {
+		s.open = s.open[:len(s.open)-1]
+	}
+}
+
+// top returns the innermost open body index, -1 when none is open.
+func (s *blockStack) top() int {
+	if len(s.open) == 0 {
+		return -1
+	}
+	return s.open[len(s.open)-1]
+}
+
+// negIndex returns n indexes set to -1.
+func negIndex(n int) []int {
+	out := make([]int, n)
+	for i := range out {
+		out[i] = -1
+	}
+	return out
+}
+
 // enclosingBlock returns the innermost declaration body holding one token
 // index.
 func (x *tsExtractor) enclosingBlock(i int) *tsBlock {
-	var found *tsBlock
-	for b := range x.blocks {
-		if block := &x.blocks[b]; i > block.open && i < block.close {
-			found = block
-		}
+	if b := x.inside[i]; b >= 0 {
+		return &x.blocks[b]
 	}
-	return found
+	return nil
 }
 
 // classMember returns the class one token index is a direct member of, when the
@@ -1179,8 +1239,8 @@ func (x *tsExtractor) callParen(i int) bool {
 // inTypeBlock reports whether one token sits in a declaration that holds types
 // rather than executable code, where a `name(` is a signature, not a call.
 func (x *tsExtractor) inTypeBlock(i int) bool {
-	for b := range x.blocks {
-		if block := &x.blocks[b]; block.kind != blockClass && i > block.open && i < block.close {
+	for b := x.inside[i]; b >= 0; b = x.outer[b] {
+		if x.blocks[b].kind != blockClass {
 			return true
 		}
 	}

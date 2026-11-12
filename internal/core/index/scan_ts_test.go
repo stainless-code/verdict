@@ -3,6 +3,7 @@ package indexcore
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // tsDeclSource is one TypeScript file carrying every declaration form the
@@ -167,6 +168,14 @@ func TestScanTypeScriptTypeBodies(t *testing.T) {
 	assertRefs(t, s.Refs, []ref{{Name: "real", Kind: KindCall, Line: 4, Col: 1}})
 }
 
+// TestScanTypeScriptClassInTypeBlock proves the type-body rule follows the
+// nesting chain: a class declared inside a type literal is still type context,
+// so its `name(` sites are signatures, not calls.
+func TestScanTypeScriptClassInTypeBlock(t *testing.T) {
+	s := scanFile(t, langTypeScript, "type T = { a: class D { m() { return h(); } } }\n")
+	assertRefs(t, s.Refs, nil)
+}
+
 // TestScanTypeScriptPrivateAndOptionalChain proves a `#private` name survives
 // as one token and optional chaining still names the callee.
 func TestScanTypeScriptPrivateAndOptionalChain(t *testing.T) {
@@ -224,4 +233,66 @@ func FuzzScanTypeScript(f *testing.F) {
 		s := parseShard("blob", []byte(src), langTypeScript, 64)
 		assertScannedPositions(t, &s, src)
 	})
+}
+
+// denseBlocks builds a declaration-dense TypeScript file of exactly size bytes:
+// the shape a generated bundle takes, and the one a per-token block rescan made
+// quadratic.
+func denseBlocks(size int) []byte {
+	line := "class A{m(){h()}}\n"
+	src := make([]byte, 0, size+len(line))
+	for len(src)+len(line) <= size {
+		src = append(src, line...)
+	}
+	return src[:size-1]
+}
+
+// TestScanTypeScriptDenseBlocksIsLinear proves the block lookup costs the
+// file's size: eight times the input scans in about eight times the time, where
+// the per-token block rescan it replaced took sixty-four. The check compares
+// two runs of one machine rather than an absolute second count, so a slow or
+// loaded runner cannot fail a correct scan.
+func TestScanTypeScriptDenseBlocksIsLinear(t *testing.T) {
+	const runs = 2
+	small := denseBlocks(defaultFileBytes / 8)
+	big := denseBlocks(defaultFileBytes)
+	if len(big) != defaultFileBytes-1 {
+		t.Fatalf("fixture is %d bytes; want the 1 MiB cap", len(big))
+	}
+	one, eight := scanCost(t, small, runs), scanCost(t, big, runs)
+	if eight > 16*one {
+		t.Fatalf("%d KiB of class bodies took %s, %.1fx the %s of %d KiB: want linear, not tokens times blocks",
+			len(big)>>10, eight, float64(eight)/float64(one), one, len(small)>>10)
+	}
+}
+
+// scanCost returns the fastest of runs scans of one file, so a single scheduler
+// stall or collection cycle cannot decide a linearity check.
+func scanCost(t *testing.T, src []byte, runs int) time.Duration {
+	t.Helper()
+	var best time.Duration
+	for i := range runs {
+		start := time.Now()
+		s := parseShard("blob", src, langTypeScript, defaultRefsPerFile)
+		if len(s.Decls) < 1000 {
+			t.Fatalf("fixture read %d decls; want every class and method", len(s.Decls))
+		}
+		if d := time.Since(start); i == 0 || d < best {
+			best = d
+		}
+	}
+	return best
+}
+
+// BenchmarkScanTypeScriptDenseBlocks measures one declaration-dense file built
+// to the 1 MiB file cap, so the number reads as bytes scanned.
+func BenchmarkScanTypeScriptDenseBlocks(b *testing.B) {
+	src := denseBlocks(defaultFileBytes)
+	if len(src) != defaultFileBytes-1 {
+		b.Fatalf("fixture is %d bytes; want the 1 MiB cap", len(src))
+	}
+	b.SetBytes(int64(len(src)))
+	for b.Loop() {
+		parseShard("blob", src, langTypeScript, defaultRefsPerFile)
+	}
 }
