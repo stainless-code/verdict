@@ -26,7 +26,7 @@ const (
 	sshPrefix       = "ssh://"
 	packDirPerm     = 0o755
 	shaHexLen       = 40
-	gitEnvFixed     = 7
+	gitEnvFixed     = 11
 	revParseArgs    = 3
 	revParseIndex   = 1
 )
@@ -331,7 +331,7 @@ func cloneSource(
 		cleanup()
 		return nil, ref
 	}
-	sha, ref := runGitPack(ctx, cmdr, env, clone, "rev-parse", "HEAD")
+	sha, ref := runGitPack(ctx, cmdr, env, clone, tmp, "rev-parse", "HEAD")
 	if ref != nil {
 		cleanup()
 		return nil, ref
@@ -341,9 +341,13 @@ func cloneSource(
 		return nil, badPack(fmt.Sprintf("git remote %q resolved HEAD to %q, not a 40-hex commit",
 			redactURL(url), sha))
 	}
-	if ref := runGitPackOK(ctx, cmdr, env, clone, "checkout", "--detach", sha); ref != nil {
+	if ref := runGitPackOK(ctx, cmdr, env, clone, tmp, "checkout", "--detach", sha); ref != nil {
 		cleanup()
 		return nil, ref
+	}
+	if err := os.RemoveAll(filepath.Join(clone, ".git")); err != nil {
+		cleanup()
+		return nil, badPack(fmt.Sprintf("clean the pack clone metadata: %v", err))
 	}
 	return &packSource{
 		dir: clone, label: sourceGitPrefix + redactURL(url) + refSep + sha, cleanup: cleanup,
@@ -365,17 +369,22 @@ func prepareGitEnv(tmp string) *core.RefusalError {
 func gitClone(
 	ctx context.Context, cmdr core.Commander, env []string, tmp, url, refName, clone string,
 ) *core.RefusalError {
-	args := []string{
-		"-c", "core.hooksPath=" + hooksPath(tmp),
-		"-c", "protocol.file.allow=never",
-		"clone", "--depth=1", "--no-tags", "--no-recurse-submodules",
-	}
+	args := []string{"--depth=1", "--no-tags", "--no-recurse-submodules"}
 	if refName != "" {
 		args = append(args, "--branch", refName)
 	}
 	args = append(args, url, clone)
-	_, ref := runGitPack(ctx, cmdr, env, "", args...)
+	_, ref := runGitPack(ctx, cmdr, env, "", tmp, "clone", args...)
 	return ref
+}
+
+// gitPrefix is the one argv prefix every pack-add git call carries, so no
+// inherited hook can run.
+func gitPrefix(tmp string) []string {
+	return []string{
+		"git", "-c", "core.hooksPath=" + hooksPath(tmp),
+		"-c", "protocol.file.allow=never",
+	}
 }
 
 // runtimeEnv renders the injected environment as the KEY=value pairs a clone
@@ -431,38 +440,41 @@ func scrubGitEnv(key string) bool {
 	case "HOME", "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME",
 		"GIT_TERMINAL_PROMPT", "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
 		"GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_ASKPASS",
+		"GIT_TEMPLATE_DIR", "GIT_SSH_COMMAND", "GIT_EXEC_PATH", "GIT_PROXY_COMMAND",
 		"SSH_ASKPASS":
 		return true
 	}
 	return strings.HasPrefix(key, "GIT_CONFIG_")
 }
 
-// runGitPack runs one git command and returns its trimmed stdout.
+// runGitPack runs one git command with the shared hermetic prefix and returns
+// its trimmed stdout.
 func runGitPack(
-	ctx context.Context, cmdr core.Commander, env []string, dir string, args ...string,
+	ctx context.Context, cmdr core.Commander, env []string, dir, tmp, sub string, args ...string,
 ) (string, *core.RefusalError) {
-	argv := append([]string{"git"}, args...)
+	argv := append(gitPrefix(tmp), sub)
+	argv = append(argv, args...)
 	res, err := cmdr.Run(ctx, &core.Command{Argv: argv, Env: env, Dir: dir, OutputCap: MaxPackBytes})
 	if err != nil {
 		if _, ok := errors.AsType[*core.MissingToolError](err); ok {
 			return "", &core.RefusalError{Code: "missing-tool", Message: "git is not on PATH"}
 		}
-		return "", badPack(fmt.Sprintf("git %s failed: %v", args[0], jq.Sealed(res.Stderr, err)))
+		return "", badPack(fmt.Sprintf("git %s failed: %v", sub, jq.Sealed(res.Stderr, err)))
 	}
 	if res.ExitCode != 0 {
-		return "", badPack(fmt.Sprintf("git %s failed: %s", args[0], strings.TrimSpace(res.Stderr)))
+		return "", badPack(fmt.Sprintf("git %s failed: %s", sub, strings.TrimSpace(res.Stderr)))
 	}
 	if res.StdoutTruncated {
-		return "", tooLarge("git " + args[0] + " output is over its cap")
+		return "", tooLarge("git " + sub + " output is over its cap")
 	}
 	return strings.TrimSpace(res.Stdout), nil
 }
 
 // runGitPackOK is runGitPack for a call whose stdout carries nothing.
 func runGitPackOK(
-	ctx context.Context, cmdr core.Commander, env []string, dir string, args ...string,
+	ctx context.Context, cmdr core.Commander, env []string, dir, tmp, sub string, args ...string,
 ) *core.RefusalError {
-	_, ref := runGitPack(ctx, cmdr, env, dir, args...)
+	_, ref := runGitPack(ctx, cmdr, env, dir, tmp, sub, args...)
 	return ref
 }
 

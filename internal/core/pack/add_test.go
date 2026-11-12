@@ -224,7 +224,7 @@ func (c *gitCommander) Run(_ context.Context, cmd *core.Command) (core.Result, e
 		writeFixture(c.t, dest, c.files)
 		return core.Result{}, nil
 	}
-	if len(cmd.Argv) >= 3 && cmd.Argv[1] == "rev-parse" {
+	if slices.Contains(cmd.Argv, "rev-parse") {
 		return core.Result{Stdout: addGitSha + "\n"}, nil
 	}
 	return core.Result{}, nil
@@ -240,12 +240,18 @@ func TestAddGitPinsHermeticArgvEnvAndRecordsSha(t *testing.T) {
 	t.Chdir(repo)
 	const url = "https://example.invalid/acme/packs.git"
 	cmdr := &gitCommander{t: t, files: map[string]string{
-		"pack.json":      lockManifest,
-		"lenses/perf.md": "perf body\n",
+		"pack.json":                lockManifest,
+		"lenses/perf.md":           "perf body\n",
+		".git/config":              "planted metadata\n",
+		".git/hooks/post-checkout": "#!/bin/sh\nexit 0\n",
 	}}
 	resp, ref := RunAdd(context.Background(), &AddRequest{
 		Runtime: &core.Runtime{
-			Env:       map[string]string{"PATH": "/usr/bin", "HOME": "/home/operator", "GIT_DIR": "/bad"},
+			Env: map[string]string{
+				"PATH": "/usr/bin", "HOME": "/home/operator", "GIT_DIR": "/bad",
+				"GIT_TEMPLATE_DIR": "/bad/templates", "GIT_SSH_COMMAND": "/bad/ssh",
+				"GIT_EXEC_PATH": "/bad/exec", "GIT_PROXY_COMMAND": "/bad/proxy",
+			},
 			Commander: cmdr,
 		},
 		Source: url + "@v1.2.3",
@@ -274,11 +280,14 @@ func TestAddGitPinsHermeticArgvEnvAndRecordsSha(t *testing.T) {
 		t.Fatalf("clone dir=%q env=%v", clone.dir, clone.env)
 	}
 	assertGitEnv(t, clone.env, tmp)
-	if got, want := cmdr.calls[1].argv, []string{"git", "rev-parse", "HEAD"}; !slices.Equal(got, want) {
-		t.Errorf("rev-parse argv = %q, want %q", got, want)
+	prefix := []string{"git", "-c", "core.hooksPath=" + hooks, "-c", "protocol.file.allow=never"}
+	wantRevParse := append(slices.Clone(prefix), "rev-parse", "HEAD")
+	if got := cmdr.calls[1].argv; !slices.Equal(got, wantRevParse) {
+		t.Errorf("rev-parse argv = %q, want %q", got, wantRevParse)
 	}
-	if got, want := cmdr.calls[2].argv, []string{"git", "checkout", "--detach", addGitSha}; !slices.Equal(got, want) {
-		t.Errorf("checkout argv = %q, want %q", got, want)
+	wantCheckout := append(slices.Clone(prefix), "checkout", "--detach", addGitSha)
+	if got := cmdr.calls[2].argv; !slices.Equal(got, wantCheckout) {
+		t.Errorf("checkout argv = %q, want %q", got, wantCheckout)
 	}
 	if cmdr.calls[1].dir != filepath.Join(tmp, "repo") || cmdr.calls[2].dir != filepath.Join(tmp, "repo") {
 		t.Errorf("rev-parse/checkout dirs = %q/%q, want the clone", cmdr.calls[1].dir, cmdr.calls[2].dir)
@@ -374,6 +383,27 @@ func TestAddRefusesCredentialedSource(t *testing.T) {
 				t.Fatalf("refused add wrote .verdict (stat err %v)", err)
 			}
 		})
+	}
+}
+
+// TestAddRefusesLeadingDashSource proves a source git would parse as an option
+// refuses as bad-pack before any clone argument exists.
+func TestAddRefusesLeadingDashSource(t *testing.T) {
+	repo := t.TempDir()
+	t.Chdir(repo)
+	cmdr := &gitCommander{t: t}
+	_, ref := RunAdd(context.Background(), &AddRequest{
+		Runtime: &core.Runtime{Commander: cmdr},
+		Source:  "--upload-pack=x@y:z",
+	})
+	if ref == nil || ref.Code != CodeBadPack {
+		t.Fatalf("RunAdd = %v, want bad-pack", ref)
+	}
+	if !strings.Contains(ref.Message, "starts with '-'") {
+		t.Fatalf("message = %q, want the leading-dash cause", ref.Message)
+	}
+	if len(cmdr.calls) != 0 {
+		t.Fatalf("git calls = %d, want none", len(cmdr.calls))
 	}
 }
 
