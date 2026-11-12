@@ -274,3 +274,28 @@ func TestTestsForPythonSubmoduleImport(t *testing.T) {
 		{Path: "tests/test_mod.py", Via: viaReferences},
 	})
 }
+
+// TestRenameAcrossLanguagesReparses proves a shard cached for one language is
+// not reused for another: renaming a file from `.py` to `.ts` keeps its bytes,
+// so only the recorded language can tell the build to read it again.
+func TestRenameAcrossLanguagesReparses(t *testing.T) {
+	const src = "function target(a) { return a; }\n"
+	f := newFixture(t)
+	f.write("same.py", src)
+	f.commit("one")
+	f.build()
+	f.git("mv", "same.py", "same.ts")
+	f.commit("rename")
+	resp := f.build()
+	if resp.Data.Parsed != 1 || resp.Data.Reused != 0 {
+		t.Errorf("parsed/reused = %d/%d; want 1/0 for the renamed file", resp.Data.Parsed, resp.Data.Reused)
+	}
+	tree, ref := readTree(storePath(f.dir), f.bodyTree())
+	if ref != nil {
+		t.Fatalf("readTree refused: %v", ref)
+	}
+	if len(tree.Files) != 1 || tree.Files[0].Language != "typescript" {
+		t.Fatalf("files = %+v; want one typescript file", tree.Files)
+	}
+	assertDecls(t, tree.Files[0].Decls, []decl{{Name: "target", Kind: "func", Line: 1}})
+}
