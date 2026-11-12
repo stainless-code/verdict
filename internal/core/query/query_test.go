@@ -324,6 +324,126 @@ func TestSourcesCoverEveryRead(t *testing.T) {
 	}
 }
 
+// TestCacheInvalidatesOnOverrideEdit proves a policy edit under the served
+// root re-composes instead of serving the entry built before it.
+func TestCacheInvalidatesOnOverrideEdit(t *testing.T) {
+	t.Parallel()
+	dir, _ := fixture(t)
+	layer := newLayer(dir)
+	root := RootID(mustAbs(t, dir))
+	if _, err := layer.Detail(context.Background(), root, "1234"); err != nil {
+		t.Fatalf("first Detail: %v", err)
+	}
+	writeFiles(t, dir, map[string]string{
+		".verdict/overrides/preamble.md": "### not allowed\n",
+	})
+	_, err := layer.Detail(context.Background(), root, "1234")
+	var ref *core.RefusalError
+	if !errors.As(err, &ref) || ref.Code != "bad-override" {
+		t.Fatalf("Detail after the override edit = %v, want bad-override", err)
+	}
+}
+
+// TestCacheStampCoversBundleInputs proves the stamp moves for an in-place edit
+// of each artifact class the composition reads.
+func TestCacheStampCoversBundleInputs(t *testing.T) {
+	t.Parallel()
+	dir, _ := fixture(t)
+	root := Root{ID: RootID(mustAbs(t, dir)), Path: mustAbs(t, dir)}
+	bundleDir := filepath.Join(dir, ".verdict", "state", "1234")
+	writeFiles(t, dir, map[string]string{".verdict/state/1234/chunks/cost.json": "aa"})
+	before := bundleStamp(root, bundleDir)
+	for rel, content := range map[string]string{
+		".verdict/state/1234/patch.json":       "x",
+		".verdict/state/1234/panel":            "x",
+		".verdict/state/1234/chunks/cost.json": "bbb",
+		".verdict/overrides/preamble.md":       "x",
+	} {
+		writeFiles(t, dir, map[string]string{rel: content})
+		after := bundleStamp(root, bundleDir)
+		if after == before {
+			t.Errorf("%s did not move the cache stamp", rel)
+		}
+		before = after
+	}
+}
+
+// TestCacheDoesNotPinCancellation proves a request-scoped cancellation is not
+// stored: the next request with a live context composes normally.
+func TestCacheDoesNotPinCancellation(t *testing.T) {
+	t.Parallel()
+	dir, _ := fixture(t)
+	layer := newLayer(dir)
+	root := RootID(mustAbs(t, dir))
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := layer.Detail(canceled, root, "1234")
+	var ref *core.RefusalError
+	if !errors.As(err, &ref) || ref.Code != "canceled" {
+		t.Fatalf("canceled Detail = %v, want canceled", err)
+	}
+	if _, err := layer.Detail(context.Background(), root, "1234"); err != nil {
+		t.Fatalf("Detail after a canceled request = %v, want success", err)
+	}
+}
+
+// TestCacheKeepsCompositionsPerBundle proves the cap is counted in bundles,
+// not compositions: an inbox and a detail for one bundle coexist.
+func TestCacheKeepsCompositionsPerBundle(t *testing.T) {
+	t.Parallel()
+	dir, _ := fixture(t)
+	layer := New(Snapshot{
+		Version: "1.2.3",
+		Roots:   []Root{{Path: dir}},
+		Runtime: &core.Runtime{Now: fixedNow},
+	}, Options{Check: "critical", MaxBundles: 1})
+	ctx := context.Background()
+	if _, err := layer.Bundles(ctx, ""); err != nil {
+		t.Fatalf("Bundles: %v", err)
+	}
+	root := RootID(mustAbs(t, dir))
+	if _, err := layer.Detail(ctx, root, "1234"); err != nil {
+		t.Fatalf("Detail: %v", err)
+	}
+	if got := layer.cacheEntries(); got != 2 {
+		t.Fatalf("cache entries = %d, want 2 (inbox plus detail for one bundle)", got)
+	}
+	if _, err := layer.Bundles(ctx, ""); err != nil {
+		t.Fatalf("Bundles again: %v", err)
+	}
+	if got := layer.cacheEntries(); got != 2 {
+		t.Fatalf("cache entries after the second inbox = %d, want 2", got)
+	}
+}
+
+// TestCacheEvictsByBundleAtTheCap proves a new bundle evicts one whole bundle
+// instead of clearing every composition.
+func TestCacheEvictsByBundleAtTheCap(t *testing.T) {
+	t.Parallel()
+	dirA, _ := fixture(t)
+	dirB, _ := fixture(t)
+	rootA := Root{ID: RootID(mustAbs(t, dirA)), Path: mustAbs(t, dirA)}
+	rootB := Root{ID: RootID(mustAbs(t, dirB)), Path: mustAbs(t, dirB)}
+	layer := New(Snapshot{
+		Version: "1.2.3",
+		Roots:   []Root{rootA, rootB},
+		Runtime: &core.Runtime{Now: fixedNow},
+	}, Options{Check: "critical", MaxBundles: 1})
+	flags := inboxFlags()
+	layer.cached(context.Background(), rootA, "1234",
+		filepath.Join(dirA, ".verdict", "state", "1234"), &flags)
+	layer.cached(context.Background(), rootB, "1234",
+		filepath.Join(dirB, ".verdict", "state", "1234"), &flags)
+	if got := layer.cacheEntries(); got != 1 {
+		t.Fatalf("cache entries = %d, want 1 at a one-bundle cap", got)
+	}
+	for key := range layer.cache {
+		if key.root != rootB.ID {
+			t.Errorf("cache kept root %s, want the newest root %s", key.root, rootB.ID)
+		}
+	}
+}
+
 // assertSourceHashes compares every path's hash with the fixture content.
 func assertSourceHashes(t *testing.T, got, want map[string]string) {
 	t.Helper()

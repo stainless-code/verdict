@@ -106,6 +106,7 @@ type Layer struct { //nolint:govet // the mutex leads the derived-state fields f
 	maxBundles int
 	mu         sync.Mutex
 	cache      map[cacheKey]entry
+	seq        uint64
 }
 
 // New builds the read model over a snapshot of roots.
