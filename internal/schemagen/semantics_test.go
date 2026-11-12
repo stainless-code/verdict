@@ -193,10 +193,6 @@ var publishedSemantics = map[string]string{
 	// count/truncated/rows are already all required, so it is required there
 	// too and reads null when no index answered. No existing property, required
 	// key, enum, or type changed.
-	// serve: additive $defs/serveData (and source/error/root/counts/row/artifact/
-	// cache/skipped/discovery plus threadsFile/thread/comment). S2 adds
-	// skipped.gitignore_patterns for unsupported ignore patterns; S3 adds the
-	// cost/precision definitions. Token counts are nullable when unmeasured.
 	// pack lock/add: additive $defs/packAddData and the drift description on
 	// packEntry; no existing property, required key, enum, or type changed.
 	"envelope.schema.json": "9803265fbd2f4f030461766c98c2db7b2e39399e17adc869d3a5d5800e9f0d43",

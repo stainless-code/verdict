@@ -54,7 +54,8 @@ func precisionFeed(fetchedAt string, resolved bool) string {
 
 const modelFixtureFinding = `[]`
 
-// TestTruncatedDiscoveryMakesCostAndPrecisionPartial pins capped aggregates.
+// TestTruncatedDiscoveryMakesCostAndPrecisionPartial requires capped roots
+// to keep both views partial.
 func TestTruncatedDiscoveryMakesCostAndPrecisionPartial(t *testing.T) {
 	t.Parallel()
 	workspace := t.TempDir()
@@ -238,7 +239,8 @@ func assertCostBucket(t *testing.T, got map[string]any, want []any, keys ...stri
 	}
 }
 
-// TestUnknownTokenMeasurementsStayNull pins unknown token sums by dimension.
+// TestUnknownTokenMeasurementsStayNull preserves null for unmeasured token
+// totals.
 func TestUnknownTokenMeasurementsStayNull(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -247,59 +249,39 @@ func TestUnknownTokenMeasurementsStayNull(t *testing.T) {
 	aggregateBundle(t, root, "101", "acme/one", "2026-11-12T12:00:00Z", unknown, modelFixtureFinding, "")
 	aggregateBundle(t, root, "102", "acme/two", "2026-10-20T12:00:00Z", known, modelFixtureFinding, "")
 	layer := newLayer(root)
-	for _, tc := range []struct {
-		by        string
-		rows      [][]any
-		totals    []any
-		totalKeys []string
-	}{
-		{
-			by: "repo",
-			rows: [][]any{
-				{"acme/one", json.Number("1"), json.Number("1"), nil, nil, nil, json.Number("0.25")},
-				{"acme/two", json.Number("1"), json.Number("1"), json.Number("40"), json.Number("5"), json.Number("45"), json.Number("0.5")},
-			},
-			totals:    []any{json.Number("2"), json.Number("2"), nil, nil, nil, json.Number("0.75")},
-			totalKeys: []string{"runs", "model_runs", "input_tokens", "output_tokens", "total_tokens", "est_usd"},
-		},
-		{
-			by: "week",
-			rows: [][]any{
-				{"2026-W43", json.Number("1"), json.Number("1"), json.Number("40"), json.Number("5"), json.Number("45"), json.Number("0.5")},
-				{"2026-W46", json.Number("1"), json.Number("1"), nil, nil, nil, json.Number("0.25")},
-			},
-			totals:    []any{json.Number("2"), json.Number("2"), nil, nil, nil, json.Number("0.75")},
-			totalKeys: []string{"runs", "model_runs", "input_tokens", "output_tokens", "total_tokens", "est_usd"},
-		},
-		{
-			by: "model",
-			rows: [][]any{
-				{"alpha", json.Number("2"), json.Number("2"), nil, nil, nil, nil},
-			},
-			totals:    []any{json.Number("2"), json.Number("2"), nil, nil, nil, nil},
-			totalKeys: []string{"runs", "model_runs", "input_tokens", "output_tokens", "total_tokens", "est_usd"},
-		},
-	} {
-		t.Run(tc.by, func(t *testing.T) {
-			view, err := layer.Cost(context.Background(), tc.by)
-			if err != nil {
-				t.Fatal(err)
-			}
-			data := wireMap(t, view.Data)
-			profile := asMap(t, data["cost"])
-			if data["partial"] != true {
-				t.Errorf("partial = %v, want true for unknown token measurements", data["partial"])
-			}
-			rows := asList(t, profile["rows"])
-			if len(rows) != len(tc.rows) {
-				t.Fatalf("rows = %v, want %v", rows, tc.rows)
-			}
-			for i := range tc.rows {
-				assertCostBucket(t, asMap(t, rows[i]), tc.rows[i])
-			}
-			assertCostBucket(t, asMap(t, profile["totals"]), tc.totals, tc.totalKeys...)
-		})
+	assertPartialCost(t, layer, "repo", [][]any{
+		{"acme/one", json.Number("1"), json.Number("1"), nil, nil, nil, json.Number("0.25")},
+		{"acme/two", json.Number("1"), json.Number("1"), json.Number("40"), json.Number("5"), json.Number("45"), json.Number("0.5")},
+	}, []any{json.Number("2"), json.Number("2"), nil, nil, nil, json.Number("0.75")})
+	assertPartialCost(t, layer, "week", [][]any{
+		{"2026-W43", json.Number("1"), json.Number("1"), json.Number("40"), json.Number("5"), json.Number("45"), json.Number("0.5")},
+		{"2026-W46", json.Number("1"), json.Number("1"), nil, nil, nil, json.Number("0.25")},
+	}, []any{json.Number("2"), json.Number("2"), nil, nil, nil, json.Number("0.75")})
+	assertPartialCost(t, layer, "model", [][]any{
+		{"alpha", json.Number("2"), json.Number("2"), nil, nil, nil, nil},
+	}, []any{json.Number("2"), json.Number("2"), nil, nil, nil, nil})
+}
+
+func assertPartialCost(t *testing.T, layer *Layer, by string, wantRows [][]any, wantTotals []any) {
+	t.Helper()
+	view, err := layer.Cost(context.Background(), by)
+	if err != nil {
+		t.Fatal(err)
 	}
+	data := wireMap(t, view.Data)
+	profile := asMap(t, data["cost"])
+	if data["partial"] != true {
+		t.Errorf("%s partial = %v, want true", by, data["partial"])
+	}
+	rows := asList(t, profile["rows"])
+	if len(rows) != len(wantRows) {
+		t.Fatalf("%s rows = %v, want %v", by, rows, wantRows)
+	}
+	for i := range wantRows {
+		assertCostBucket(t, asMap(t, rows[i]), wantRows[i])
+	}
+	assertCostBucket(t, asMap(t, profile["totals"]), wantTotals,
+		"runs", "model_runs", "input_tokens", "output_tokens", "total_tokens", "est_usd")
 }
 
 func equalJSONValues(got, want []any) bool {
@@ -314,7 +296,7 @@ func equalJSONValues(got, want []any) bool {
 	return true
 }
 
-// TestUnknownPricesStayNull pins price sums with an unmeasured record.
+// TestUnknownPricesStayNull requires unmeasured price sums to remain null.
 func TestUnknownPricesStayNull(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -323,52 +305,18 @@ func TestUnknownPricesStayNull(t *testing.T) {
 	aggregateBundle(t, root, "101", "acme/one", "2026-11-12T12:00:00Z", priced, modelFixtureFinding, "")
 	aggregateBundle(t, root, "102", "acme/two", "2026-10-20T12:00:00Z", unpriced, modelFixtureFinding, "")
 	layer := newLayer(root)
-	for _, tc := range []struct {
-		by        string
-		rows      [][]any
-		totalRows []any
-	}{
-		{
-			by: "repo",
-			rows: [][]any{
-				{"acme/one", json.Number("1"), json.Number("1"), json.Number("10"), json.Number("2"), json.Number("12"), json.Number("0.25")},
-				{"acme/two", json.Number("1"), json.Number("1"), json.Number("20"), json.Number("3"), json.Number("23"), nil},
-			},
-			totalRows: []any{json.Number("2"), json.Number("2"), json.Number("30"), json.Number("5"), json.Number("35"), nil},
-		},
-		{
-			by: "week",
-			rows: [][]any{
-				{"2026-W43", json.Number("1"), json.Number("1"), json.Number("20"), json.Number("3"), json.Number("23"), nil},
-				{"2026-W46", json.Number("1"), json.Number("1"), json.Number("10"), json.Number("2"), json.Number("12"), json.Number("0.25")},
-			},
-			totalRows: []any{json.Number("2"), json.Number("2"), json.Number("30"), json.Number("5"), json.Number("35"), nil},
-		},
-	} {
-		t.Run(tc.by, func(t *testing.T) {
-			view, err := layer.Cost(context.Background(), tc.by)
-			if err != nil {
-				t.Fatal(err)
-			}
-			data := wireMap(t, view.Data)
-			profile := asMap(t, data["cost"])
-			if data["partial"] != true {
-				t.Errorf("partial = %v, want true for an unmeasured price", data["partial"])
-			}
-			rows := asList(t, profile["rows"])
-			if len(rows) != len(tc.rows) {
-				t.Fatalf("rows = %v, want %v", rows, tc.rows)
-			}
-			for i := range tc.rows {
-				assertCostBucket(t, asMap(t, rows[i]), tc.rows[i])
-			}
-			assertCostBucket(t, asMap(t, profile["totals"]), tc.totalRows,
-				"runs", "model_runs", "input_tokens", "output_tokens", "total_tokens", "est_usd")
-		})
-	}
+	assertPartialCost(t, layer, "repo", [][]any{
+		{"acme/one", json.Number("1"), json.Number("1"), json.Number("10"), json.Number("2"), json.Number("12"), json.Number("0.25")},
+		{"acme/two", json.Number("1"), json.Number("1"), json.Number("20"), json.Number("3"), json.Number("23"), nil},
+	}, []any{json.Number("2"), json.Number("2"), json.Number("30"), json.Number("5"), json.Number("35"), nil})
+	assertPartialCost(t, layer, "week", [][]any{
+		{"2026-W43", json.Number("1"), json.Number("1"), json.Number("20"), json.Number("3"), json.Number("23"), nil},
+		{"2026-W46", json.Number("1"), json.Number("1"), json.Number("10"), json.Number("2"), json.Number("12"), json.Number("0.25")},
+	}, []any{json.Number("2"), json.Number("2"), json.Number("30"), json.Number("5"), json.Number("35"), nil})
 }
 
-// TestAggregateSourcesDistinguishRoots pins equal bundle paths per root.
+// TestAggregateSourcesDistinguishRoots preserves provenance when roots contain
+// the same bundle path.
 func TestAggregateSourcesDistinguishRoots(t *testing.T) {
 	t.Parallel()
 	rootA := t.TempDir()
