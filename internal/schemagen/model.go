@@ -820,9 +820,11 @@ type IndexBlastTests struct {
 	Rows      []IndexRow `json:"rows"`
 }
 
-// IndexBlastPartners is the co-change list for the changed paths.
+// IndexBlastPartners is the co-change list for the changed paths: count is the
+// number of (target, partner) rows and partners the distinct partner paths.
 type IndexBlastPartners struct { //nolint:govet // field order is the published property order
 	Count     int                 `json:"count"     min:"0"`
+	Partners  int                 `json:"partners"  min:"0"`
 	Truncated int                 `json:"truncated" min:"0"`
 	Rows      []IndexBlastPartner `json:"rows"`
 }

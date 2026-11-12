@@ -340,6 +340,36 @@ func TestBlastCoChangePartners(t *testing.T) {
 	)
 }
 
+// TestBlastCoChangeCountsPairsAndPartners proves count counts rows while
+// partners counts the files they name: two changed paths sharing one partner
+// report two pairs over one partner file.
+func TestBlastCoChangeCountsPairsAndPartners(t *testing.T) {
+	f := newFixture(t)
+	f.write("go.mod", "module example.com/m\n\ngo 1.27\n")
+	f.write("a/x.go", "package a\n\nfunc X() {}\n")
+	f.write("a/y.go", "package a\n\nfunc Y() {}\n")
+	f.write("b/shared.txt", "one\n")
+	f.commit("one")
+	f.write("a/x.go", "package a\n\nfunc X() {}\n\nfunc X2() {}\n")
+	f.write("b/shared.txt", "two\n")
+	f.commit("share x")
+	f.write("a/y.go", "package a\n\nfunc Y() {}\n\nfunc Y2() {}\n")
+	f.write("b/shared.txt", "three\n")
+	f.commit("share y")
+	f.build()
+	resp := blastRun(t, f, func(r *Request) { r.Paths = []string{"a/x.go", "a/y.go"} })
+	assertPartnerRows(t, resp.Data.Blast.Partners,
+		BlastPartnerRow{Target: "a/x.go", Path: "b/shared.txt", Commits: 2, Jaccard: 0.6667},
+		BlastPartnerRow{Target: "a/y.go", Path: "b/shared.txt", Commits: 2, Jaccard: 0.6667},
+	)
+	if got := resp.Data.Blast.Counts.CoChanged; got != 2 {
+		t.Errorf("count = %d; want 2 (target, partner) pairs", got)
+	}
+	if got := resp.Data.Blast.Counts.Partners; got != 1 {
+		t.Errorf("partners = %d; want the one shared partner file", got)
+	}
+}
+
 // TestBlastRefusals pins the query's input refusals.
 func TestBlastRefusals(t *testing.T) {
 	f := newFixture(t)

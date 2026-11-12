@@ -179,7 +179,7 @@
       "/$defs/indexBlastCallers": "The callers of the changed declarations within depth 2, walked once per target and deduplicated by call site. count, unresolved, and truncated are null when no index answered.",
       "/$defs/indexBlastCaller": "One caller row: the changed symbol it is reached from (import path and name), the call site, and the depth — 1 for a direct caller, 2 for a caller of a direct caller. resolution is exact within the declaring package and lexical through an import edge, as `index callers` defines it.",
       "/$defs/indexBlastTests": "The candidate tests to read for the changed declarations, strongest mechanism per file. A candidate is never a coverage claim, and count/truncated are null when no index answered.",
-      "/$defs/indexBlastPartners": "The paths that moved with each changed path in one bounded co-change window, read at HEAD. count and truncated are always measured: history needs no index.",
+      "/$defs/indexBlastPartners": "The paths that moved with each changed path in one bounded co-change window, read at HEAD. count is the number of (changed path, partner) rows and partners the distinct partner paths across them; truncated is always measured: history needs no index.",
       "/$defs/indexBlastPartner": "One partner path, the changed path it moved with, its co-change count, and the Jaccard ratio.",
       "/$defs/indexBlastOwners": "One ownership row per changed path, from the CODEOWNERS file at the queried tree. count and truncated are always measured.",
       "/$defs/indexData/properties/index": "Present only when the queried tree has a stored index; blast-radius omits it when the symbol, caller, and test lists are unmeasured."

@@ -130,6 +130,7 @@ exit: 0
     },
     "co_changed": {
       "count": 2,
+      "partners": 2,
       "truncated": 0,
       "rows": [
         {

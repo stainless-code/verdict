@@ -906,9 +906,10 @@ export interface IndexBlastTests {
   [key: string]: unknown;
 }
 
-/** The paths that moved with each changed path in one bounded co-change window, read at HEAD. count and truncated are always measured: history needs no index. */
+/** The paths that moved with each changed path in one bounded co-change window, read at HEAD. count is the number of (changed path, partner) rows and partners the distinct partner paths across them; truncated is always measured: history needs no index. */
 export interface IndexBlastPartners {
   count: number;
+  partners: number;
   truncated: number;
   rows: Array<IndexBlastPartner>;
   [key: string]: unknown;

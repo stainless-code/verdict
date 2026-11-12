@@ -170,7 +170,12 @@ var publishedSemantics = map[string]string{
 	// index property. count/unresolved/truncated are nullable integers on the
 	// new list objects, so an absent index reads null instead of 0; no existing
 	// property, required key, or type changed.
-	"envelope.schema.json": "0abfacb93a88d3eecbe5efe5b0794c7ab07011ccf6739e1b2a02618fd174913b",
+	// co-change units: additive indexBlastPartners.partners integer (the
+	// distinct partner paths) beside the existing row count, because count is
+	// a (target, partner) pair count; one description now names both units.
+	// Additions only; no existing property, required key, enum, or type
+	// changed.
+	"envelope.schema.json": "60782042feac7948f6152005b3eabea18e158bb6a78510fdee1bf0c6dc7d1cbe",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

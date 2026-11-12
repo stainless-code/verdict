@@ -70,10 +70,11 @@ func blastTestDoc(b *Blast) *jq.Obj {
 	)
 }
 
-// blastPartnerDoc renders the co-change list.
+// blastPartnerDoc renders the co-change list with its pair and partner counts.
 func blastPartnerDoc(b *Blast) *jq.Obj {
 	return jq.NewObj(
 		keyCount, b.Counts.CoChanged,
+		"partners", b.Counts.Partners,
 		keyTruncated, b.Truncated.CoChanged,
 		keyRows, blastPartnerValues(b.Partners),
 	)

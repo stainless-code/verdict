@@ -1702,17 +1702,18 @@
       "additionalProperties": true
     },
     "indexBlastPartners": {
-      "description": "The paths that moved with each changed path in one bounded co-change window, read at HEAD. count and truncated are always measured: history needs no index.",
+      "description": "The paths that moved with each changed path in one bounded co-change window, read at HEAD. count is the number of (changed path, partner) rows and partners the distinct partner paths across them; truncated is always measured: history needs no index.",
       "type": "object",
       "properties": {
         "count": { "type": "integer", "minimum": 0 },
+        "partners": { "type": "integer", "minimum": 0 },
         "truncated": { "type": "integer", "minimum": 0 },
         "rows": {
           "type": "array",
           "items": { "$ref": "#/$defs/indexBlastPartner" }
         }
       },
-      "required": ["count", "truncated", "rows"],
+      "required": ["count", "partners", "truncated", "rows"],
       "additionalProperties": true
     },
     "indexBlastPartner": {

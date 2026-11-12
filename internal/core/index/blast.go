@@ -34,7 +34,7 @@ const (
 	blastNoSymbols   = "index: %d changed file(s), no indexed declarations at %s"
 	blastSymbolsHead = "index: %d changed file(s), %d changed symbol(s) at %s"
 	blastTestsHead   = "index: %d candidate test(s)"
-	blastPartnerHead = "index: %d co-changed partner(s)"
+	blastPartnerHead = "index: %d co-change pair(s) over %d partner file(s)"
 	blastHunkless    = "» index: %s changed with no line hunks; every declaration in the new path is a changed symbol"
 	blastOwnerHead   = "index: ownership for %d changed path(s)"
 	blastIndexAbsent = "index: no index for %s: symbol, caller, and test lists are unmeasured"
@@ -78,13 +78,16 @@ type BlastPartnerRow struct {
 }
 
 // BlastCounts is the measured size of each list. The index-derived counts are
-// nil when the index could not answer, never 0.
+// nil when the index could not answer, never 0. CoChanged counts rows — one
+// (changed path, partner) pair each — while Partners counts the distinct
+// partner paths across them.
 type BlastCounts struct {
 	ChangedSymbols *int
 	Callers        *int
 	Unresolved     *int
 	Tests          *int
 	CoChanged      int
+	Partners       int
 	Owners         int
 }
 
@@ -716,7 +719,10 @@ func (st *state) blastResponse(
 // blastCounts measures the untruncated lists; the index-derived counts are nil
 // when no index answered.
 func blastCounts(blast *Blast, t *treeIndex) BlastCounts {
-	counts := BlastCounts{CoChanged: len(blast.Partners), Owners: len(blast.Owners)}
+	counts := BlastCounts{
+		CoChanged: len(blast.Partners), Partners: partnerPaths(blast.Partners),
+		Owners: len(blast.Owners),
+	}
 	if t == nil {
 		return counts
 	}
@@ -725,6 +731,15 @@ func blastCounts(blast *Blast, t *treeIndex) BlastCounts {
 	counts.Unresolved = new(blast.unresolved)
 	counts.Tests = new(len(blast.Tests))
 	return counts
+}
+
+// partnerPaths counts the distinct paths a co-change list names.
+func partnerPaths(rows []BlastPartnerRow) int {
+	seen := make(map[string]bool, len(rows))
+	for _, row := range rows {
+		seen[row.Path] = true
+	}
+	return len(seen)
 }
 
 // blastTruncated applies the row limit to every list and reports the hidden
@@ -803,14 +818,14 @@ func (st *state) blastTestLines(blast *Blast) {
 	st.showingRow("candidate tests", len(blast.Tests), *blast.Counts.Tests, *blast.Truncated.Tests)
 }
 
-// blastPartnerLines renders the co-change partners.
+// blastPartnerLines renders the co-change pairs and the files they name.
 func (st *state) blastPartnerLines(blast *Blast) {
-	st.line(fmt.Sprintf(blastPartnerHead, blast.Counts.CoChanged))
+	st.line(fmt.Sprintf(blastPartnerHead, blast.Counts.CoChanged, blast.Counts.Partners))
 	for _, row := range blast.Partners {
 		st.line(fmt.Sprintf("%s (with %s, %d commit(s))", quotePath(row.Path),
 			quotePath(row.Target), row.Commits))
 	}
-	st.showingRow("co-changed partners", len(blast.Partners), blast.Counts.CoChanged, blast.Truncated.CoChanged)
+	st.showingRow("co-change pairs", len(blast.Partners), blast.Counts.CoChanged, blast.Truncated.CoChanged)
 }
 
 // blastOwnerLines renders one ownership line per changed path.

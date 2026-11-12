@@ -82,6 +82,7 @@ assert_json_field "two candidate tests" 2 '.data.tests.count'
 assert_json_field "candidates carry the strongest mechanism" "a/a_test.go,b/b_test.go" \
   '[.data.tests.rows[].path] | join(",")'
 assert_json_field "two co-change partners" 2 '.data.co_changed.count'
+assert_json_field "the partner count names distinct files, not pairs" 2 '.data.co_changed.partners'
 assert_json_field "partners carry literal counts and jaccard" \
   "b/b_test.go 2 0.6667,c/c.go 2 0.6667" \
   '[.data.co_changed.rows[] | "\(.path) \(.commits) \(.jaccard)"] | join(",")'
