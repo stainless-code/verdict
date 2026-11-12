@@ -197,6 +197,10 @@ func ApplyBasisLine(expected, body string) (string, *core.Problem) {
 func basisLineIndex(lines []string) (int, bool) {
 	s := &basisScan{}
 	for i, line := range lines {
+		if !s.inFence && strings.HasPrefix(strings.TrimSpace(line), "Basis:") && i > 0 &&
+			strings.HasPrefix(strings.TrimSpace(lines[i-1]), "> Confidence:") {
+			return i, true
+		}
 		idx, found, stop := s.visit(line, i)
 		if found || stop {
 			return idx, found

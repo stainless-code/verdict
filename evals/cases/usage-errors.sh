@@ -28,12 +28,17 @@ fi
 usage_gate() { # $1 = label, rest after -- = cli args
   local label="$1"; shift
   [ "${1:-}" = "--" ] && shift
+  local expected="$USAGE"
+  if [ "${1:-}" = next ]; then
+    expected="$EVAL_SANDBOX/next-usage-block.txt"
+    { printf '%s\n' 'error: next requires <owner/repo> and <pr|local-name>'; cat "$USAGE"; } >"$expected"
+  fi
   set +e
   ( cd "$EVAL_SANDBOX" && "$EVAL_CLI" "$@" >"$EVAL_SANDBOX/u-out.txt" 2>"$EVAL_SANDBOX/u-err.txt" )
   st=$?
   set -e
   if [ "$st" -eq 2 ] \
-    && cmp -s "$EVAL_SANDBOX/u-err.txt" "$USAGE" \
+    && cmp -s "$EVAL_SANDBOX/u-err.txt" "$expected" \
     && [ ! -s "$EVAL_SANDBOX/u-out.txt" ]; then
     good "$label: usage block on stderr, exit 2"
   else
