@@ -30,9 +30,11 @@ bad-from	try: re-run with one of the valid values named above
 bad-group-validation	try: re-run with one of the valid values named above
 bad-id	try: re-run with one of the valid values named above
 bad-judgment	try: re-run with one of the valid values named above
+bad-lock-source	try: re-run 'verdict pack add <dir|git-url>' from the pack source so .verdict/verdict.lock records a valid source
 bad-max-bytes	try: re-run with one of the valid values named above
 bad-override	try: re-run with one of the valid values named above
 bad-pack	try: fix pack.json against schemas/pack.schema.json (exact lowercase keys, every id paired with its markdown file), then re-run
+bad-pack-source	try: use https://host/path with no userinfo, ssh://user@host/path, or user@host:path, then re-run
 bad-preset	try: re-run with one of the valid values named above
 bad-provider	try: re-run with one of the valid values named above
 bad-range	try: re-run with one of the valid values named above

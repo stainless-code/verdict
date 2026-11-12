@@ -29,8 +29,9 @@ const LockSchemaVersion = "1"
 
 // Lock refusal codes.
 const (
-	CodeLockMissing = "pack-lock-missing"
-	CodeLockDrift   = "pack-lock-drift"
+	CodeLockMissing   = "pack-lock-missing"
+	CodeLockDrift     = "pack-lock-drift"
+	CodeBadLockSource = "bad-lock-source"
 )
 
 const sigLen = 64
@@ -268,7 +269,7 @@ func validateLockEntry(entry *LockEntry) *core.RefusalError {
 		return badLock(fmt.Sprintf("%s pack name %q is not <namespace>/<slug>", LockFile, entry.Name))
 	}
 	if !validLockSource(entry.Source) {
-		return badLock(fmt.Sprintf(
+		return badLockSource(fmt.Sprintf(
 			"%s pack %q source %q is not dir:<path> or an allowlisted git remote pinned to a 40-hex sha",
 			LockFile, entry.Name, displaySource(entry.Source)))
 	}
@@ -341,6 +342,11 @@ func hex40(s string) bool {
 // badLock builds the malformed-lock refusal.
 func badLock(reason string) *core.RefusalError {
 	return &core.RefusalError{Code: CodeBadPack, Message: reason}
+}
+
+// badLockSource builds the lock-row source refusal.
+func badLockSource(reason string) *core.RefusalError {
+	return &core.RefusalError{Code: CodeBadLockSource, Message: reason}
 }
 
 // loadLock reads the worktree's verdict.lock. A missing file reads nil.

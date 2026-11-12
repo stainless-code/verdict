@@ -121,8 +121,8 @@ func checkLockParse(t *testing.T, source, body string, valid bool) {
 	switch {
 	case valid && ref != nil:
 		t.Fatalf("parseLock(%q) = %s: %s, want it accepted", source, ref.Code, ref.Message)
-	case !valid && (ref == nil || ref.Code != CodeBadPack):
-		t.Fatalf("parseLock(%q) = %v, want bad-pack", source, ref)
+	case !valid && (ref == nil || ref.Code != CodeBadLockSource):
+		t.Fatalf("parseLock(%q) = %v, want bad-lock-source", source, ref)
 	}
 }
 
@@ -178,6 +178,7 @@ func TestLockStrictJSONRefuses(t *testing.T) {
 		body  string
 		want  string
 		hide  string
+		code  string
 		valid bool
 	}{
 		{
@@ -220,6 +221,7 @@ func TestLockStrictJSONRefuses(t *testing.T) {
 			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:https://user@host/repo.git@` +
 				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
 			want: invalidSource,
+			code: CodeBadLockSource,
 			hide: "user@host",
 		},
 		{
@@ -227,6 +229,7 @@ func TestLockStrictJSONRefuses(t *testing.T) {
 			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:https://us@er:S3CRET@host/x.git@` +
 				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
 			want: invalidSource,
+			code: CodeBadLockSource,
 			hide: "S3CRET",
 		},
 		{
@@ -234,6 +237,7 @@ func TestLockStrictJSONRefuses(t *testing.T) {
 			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:https://user:p@ss@host/x.git@` +
 				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
 			want: invalidSource,
+			code: CodeBadLockSource,
 			hide: "p@ss",
 		},
 		{
@@ -241,6 +245,7 @@ func TestLockStrictJSONRefuses(t *testing.T) {
 			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:https://ghp_SUPERSECRET@host/x.git@` +
 				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
 			want: invalidSource,
+			code: CodeBadLockSource,
 			hide: "ghp_SUPERSECRET",
 		},
 		{
@@ -248,6 +253,7 @@ func TestLockStrictJSONRefuses(t *testing.T) {
 			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:ssh://user:S3CRET@host/x@` +
 				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
 			want: invalidSource,
+			code: CodeBadLockSource,
 			hide: "S3CRET",
 		},
 		{
@@ -255,6 +261,7 @@ func TestLockStrictJSONRefuses(t *testing.T) {
 			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:https://user%3AS3CRET@host/x.git@` +
 				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
 			want: invalidSource,
+			code: CodeBadLockSource,
 			hide: "S3CRET",
 		},
 		{
@@ -262,6 +269,7 @@ func TestLockStrictJSONRefuses(t *testing.T) {
 			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:https://us%40er:S3CRET@host/x.git@` +
 				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
 			want: invalidSource,
+			code: CodeBadLockSource,
 			hide: "S3CRET",
 		},
 		{
@@ -269,6 +277,7 @@ func TestLockStrictJSONRefuses(t *testing.T) {
 			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:http://ghp_SUPERSECRET@host/x.git@` +
 				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
 			want: invalidSource,
+			code: CodeBadLockSource,
 			hide: "ghp_SUPERSECRET",
 		},
 		{
@@ -276,6 +285,7 @@ func TestLockStrictJSONRefuses(t *testing.T) {
 			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:https://user:tok@host/repo.git@` +
 				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
 			want: invalidSource,
+			code: CodeBadLockSource,
 			hide: "user:tok@host",
 		},
 		{
@@ -283,11 +293,12 @@ func TestLockStrictJSONRefuses(t *testing.T) {
 			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"http://x",` +
 				`"version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
 			want: `source "<invalid source>"`,
+			code: CodeBadLockSource,
 		},
-		{name: "dir leading dash", body: lockSourceBody("dir:-src"), want: `source "<invalid source>"`},
-		{name: "dir newline", body: lockSourceBody("dir:src\npacks"), want: "source"},
-		{name: "dir backslash", body: lockSourceBody(`dir:src\packs`), want: "source"},
-		{name: "dir control", body: lockSourceBody("dir:src\x7fpacks"), want: "source"},
+		{name: "dir leading dash", body: lockSourceBody("dir:-src"), want: `source "<invalid source>"`, code: CodeBadLockSource},
+		{name: "dir newline", body: lockSourceBody("dir:src\npacks"), want: "source", code: CodeBadLockSource},
+		{name: "dir backslash", body: lockSourceBody(`dir:src\packs`), want: "source", code: CodeBadLockSource},
+		{name: "dir control", body: lockSourceBody("dir:src\x7fpacks"), want: "source", code: CodeBadLockSource},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -299,8 +310,12 @@ func TestLockStrictJSONRefuses(t *testing.T) {
 				}
 				return
 			}
-			if ref == nil || ref.Code != CodeBadPack {
-				t.Fatalf("parseLock = %v, want bad-pack", ref)
+			wantCode := tc.code
+			if wantCode == "" {
+				wantCode = CodeBadPack
+			}
+			if ref == nil || ref.Code != wantCode {
+				t.Fatalf("parseLock = %v, want %s", ref, wantCode)
 			}
 			if !strings.Contains(ref.Message, tc.want) {
 				t.Fatalf("message = %q, want it to contain %q", ref.Message, tc.want)

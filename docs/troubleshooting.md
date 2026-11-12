@@ -198,6 +198,12 @@ Cause: the `calibrate --probe` judge file is missing or unreadable.
 
 Fix: write one `{"sig": ..., "agent_verdict": ...}` object per line (or a JSON array of them), then re-run.
 
+## `bad-lock-source`
+
+Cause: a `.verdict/verdict.lock` row's `source` is neither a clean `dir:` path nor one of the three allowlisted git remotes pinned to a 40-hex sha. A hand-written row with a one-slash scheme, an upper-case scheme, a `%`-escaped password, or https userinfo refuses here; the message prints the fixed `<invalid source>` placeholder, never the row.
+
+Fix: re-run `verdict pack add <dir|git-url>` from the pack's source so the lock records a valid source, then commit the lock.
+
 ## `bad-max-bytes`
 
 Cause: `REVIEW_MAX_BYTES` is not a positive byte count.
@@ -215,6 +221,12 @@ Fix: fix its permissions (or remove it), then re-run.
 Cause: a lens pack manifest is malformed, a key is spelled in any case but the published lowercase form, two packs in one layer share an id, or a named lens/rule body is missing, empty, or stem-mismatched.
 
 Fix: fix `pack.json` against `schemas/pack.schema.json` (exact lowercase keys; every lens id equals `lenses/<id>.md` and every rule id `rules/<id>.md`), then re-run.
+
+## `bad-pack-source`
+
+Cause: `verdict pack add` named a remote-shaped source the git allowlist rejects. Only `https://host/path` with no userinfo, `ssh://user@host/path`, and `user@host:path` are git sources; a one-slash scheme, `http://`, `git+https://`, a `%`-escaped password, a token-only https user, a second `@`, or userinfo on a bracketed IPv6 host refuses before any git call. The message prints `<invalid source>`, never the bytes supplied.
+
+Fix: use one of the three forms with a bare ssh user and a public https URL, then re-run.
 
 ## `bad-preset`
 

@@ -43,6 +43,10 @@ const packCloneTimeout = 5 * time.Minute
 // gitRef gates the optional @ref before it reaches a git argv.
 var gitRef = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/+-]*$`)
 
+// CodeBadPackSource is the refusal for a remote-shaped source the git
+// allowlist rejects.
+const CodeBadPackSource = "bad-pack-source"
+
 // AddRequest wires one `pack add <dir|git-url>[@ref]` run.
 type AddRequest struct {
 	core.ReadRequest
@@ -260,8 +264,8 @@ func addSource(ctx context.Context, req *AddRequest) (*packSource, *core.Refusal
 	if strings.HasPrefix(source, "-") {
 		return nil, badPack(fmt.Sprintf("pack source %q starts with '-'", displaySource(source)))
 	}
-	if looksLikeGitSource(source) {
-		return nil, badPack(fmt.Sprintf(
+	if looksLikeGitSource(source) || secretShaped(source) {
+		return nil, badPackSource(fmt.Sprintf(
 			"pack source %q is not an allowlisted git remote", displaySource(source)))
 	}
 	dir, err := filepath.Abs(source)
@@ -273,6 +277,11 @@ func addSource(ctx context.Context, req *AddRequest) (*packSource, *core.Refusal
 		return nil, badPack(fmt.Sprintf("pack source %q cannot be recorded in %s", displaySource(label), LockFile))
 	}
 	return &packSource{dir: dir, label: label, cleanup: func() {}}, nil
+}
+
+// badPackSource builds the git-source refusal.
+func badPackSource(reason string) *core.RefusalError {
+	return &core.RefusalError{Code: CodeBadPackSource, Message: reason}
 }
 
 // gitSource is one allowlisted git remote and its optional @ref.

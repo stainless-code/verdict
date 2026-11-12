@@ -125,8 +125,8 @@ func assertAddRefused(t *testing.T, source, secret string) {
 		Runtime: &core.Runtime{Commander: cmdr},
 		Source:  source,
 	})
-	if ref == nil || ref.Code != CodeBadPack {
-		t.Fatalf("RunAdd(%q) = %v, want bad-pack", source, ref)
+	if ref == nil || ref.Code != CodeBadPackSource {
+		t.Fatalf("RunAdd(%q) = %v, want bad-pack-source", source, ref)
 	}
 	assertMaskedMessage(t, ref.Message, secret)
 	if len(cmdr.calls) != 0 {
@@ -152,9 +152,9 @@ func assertMaskedMessage(t *testing.T, message, secret string) {
 	}
 }
 
-// TestAddMasksCredentialShapedDirPath proves a source that only looks like a
-// directory still refuses with its credential-shaped text masked.
-func TestAddMasksCredentialShapedDirPath(t *testing.T) {
+// TestAddRefusesCredentialShapedPath proves a source that only looks like a
+// directory still refuses as a source, with its bytes masked.
+func TestAddRefusesCredentialShapedPath(t *testing.T) {
 	t.Chdir(t.TempDir())
 	cmdr := &gitCommander{t: t}
 	const source = "user:pass@host"
@@ -162,8 +162,8 @@ func TestAddMasksCredentialShapedDirPath(t *testing.T) {
 		Runtime: &core.Runtime{Commander: cmdr},
 		Source:  source,
 	})
-	if ref == nil || ref.Code != CodeBadPack {
-		t.Fatalf("RunAdd(%q) = %v, want bad-pack", source, ref)
+	if ref == nil || ref.Code != CodeBadPackSource {
+		t.Fatalf("RunAdd(%q) = %v, want bad-pack-source", source, ref)
 	}
 	if !strings.Contains(ref.Message, invalidSource) {
 		t.Fatalf("message = %q, want the %s placeholder", ref.Message, invalidSource)
@@ -357,8 +357,8 @@ func TestListRefusesOneSlashLockSource(t *testing.T) {
 	req.Runtime = &core.Runtime{}
 	req.RepoRoot = root
 	_, ref := RunList(t.Context(), req)
-	if ref == nil || ref.Code != CodeBadPack {
-		t.Fatalf("RunList = %v, want bad-pack", ref)
+	if ref == nil || ref.Code != CodeBadLockSource {
+		t.Fatalf("RunList = %v, want bad-lock-source", ref)
 	}
 	if strings.Contains(ref.Message, secret) {
 		t.Fatalf("message = %q, carries %q", ref.Message, secret)
@@ -384,8 +384,8 @@ func TestLockRejectsRefusedGitSources(t *testing.T) {
 func assertLockRefused(t *testing.T, source, secret string) {
 	t.Helper()
 	_, ref := parseLock([]byte(lockSourceBody(source)))
-	if ref == nil || ref.Code != CodeBadPack {
-		t.Fatalf("parseLock(%q) = %v, want bad-pack", source, ref)
+	if ref == nil || ref.Code != CodeBadLockSource {
+		t.Fatalf("parseLock(%q) = %v, want bad-lock-source", source, ref)
 	}
 	assertMaskedMessage(t, ref.Message, secret)
 	if got := displaySource(source); got != invalidSource {

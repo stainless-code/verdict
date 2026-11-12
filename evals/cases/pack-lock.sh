@@ -84,7 +84,7 @@ lock_sum="$(shasum -a 256 "$EVAL_SANDBOX/.verdict/verdict.lock" | cut -d' ' -f1)
 TOKEN=ghp_SUPERSECRET_C5A2
 run_review pack add "https://oauth2:$TOKEN@host/acme/packs.git" --json
 assert_exit "credentialed source refuses" 1
-assert_refusal "credential refusal keeps the envelope contract" "bad-pack"
+assert_refusal "credential refusal keeps the envelope contract" "bad-pack-source"
 assert_json_field "credential refusal masks the source" "1" \
   '[.error.message | select(contains("<invalid source>"))] | length'
 assert_stream_nogrep "the token is not on stdout" "$EVAL_OUT" "$TOKEN"
@@ -93,7 +93,7 @@ assert_stream_nogrep "the token is not on stderr" "$EVAL_ERR" "$TOKEN"
 # A token-only userinfo and a second @ are the same credential class.
 run_review pack add "https://$TOKEN@host/acme/packs.git" --json
 assert_exit "token-only source refuses" 1
-assert_refusal "token-only refusal keeps the envelope contract" "bad-pack"
+assert_refusal "token-only refusal keeps the envelope contract" "bad-pack-source"
 assert_json_field "token-only refusal masks the source" "1" \
   '[.error.message | select(contains("<invalid source>"))] | length'
 assert_stream_nogrep "the token-only token is not on stdout" "$EVAL_OUT" "$TOKEN"
@@ -101,7 +101,7 @@ assert_stream_nogrep "the token-only token is not on stderr" "$EVAL_ERR" "$TOKEN
 
 run_review pack add "https://us@er:$TOKEN@host/x.git" --json
 assert_exit "second-at source refuses" 1
-assert_refusal "second-at refusal keeps the envelope contract" "bad-pack"
+assert_refusal "second-at refusal keeps the envelope contract" "bad-pack-source"
 assert_json_field "second-at refusal masks the source" "1" \
   '[.error.message | select(contains("<invalid source>"))] | length'
 assert_stream_nogrep "the second-at token is not on stdout" "$EVAL_OUT" "$TOKEN"
@@ -111,9 +111,11 @@ assert_stream_nogrep "the second-at token is not on stderr" "$EVAL_ERR" "$TOKEN"
 TOKEN_A=S3CRET_ONESLASH_C5A4
 run_review pack add "https:/user:$TOKEN_A@host/acme/packs.git" --json
 assert_exit "one-slash scheme source refuses" 1
-assert_refusal "one-slash refusal keeps the envelope contract" "bad-pack"
+assert_refusal "one-slash refusal keeps the envelope contract" "bad-pack-source"
 assert_json_field "one-slash refusal masks the source" "1" \
   '[.error.message | select(contains("<invalid source>"))] | length'
+assert_json_field "one-slash refusal hints the allowlist" "1" \
+  '[.error.message | select(contains("https://host/path with no userinfo"))] | length'
 assert_stream_nogrep "the one-slash token is not on stdout" "$EVAL_OUT" "$TOKEN_A"
 assert_stream_nogrep "the one-slash token is not on stderr" "$EVAL_ERR" "$TOKEN_A"
 
@@ -121,7 +123,7 @@ assert_stream_nogrep "the one-slash token is not on stderr" "$EVAL_ERR" "$TOKEN_
 TOKEN_B=TOKSECRET_SSH_C5A4
 run_review pack add "ssh://user%3A$TOKEN_B@host/acme/packs.git" --json
 assert_exit "percent-colon ssh source refuses" 1
-assert_refusal "percent-colon ssh refusal keeps the envelope contract" "bad-pack"
+assert_refusal "percent-colon ssh refusal keeps the envelope contract" "bad-pack-source"
 assert_json_field "percent-colon ssh refusal masks the source" "1" \
   '[.error.message | select(contains("<invalid source>"))] | length'
 assert_stream_nogrep "the percent-colon ssh token is not on stdout" "$EVAL_OUT" "$TOKEN_B"
@@ -130,7 +132,7 @@ assert_stream_nogrep "the percent-colon ssh token is not on stderr" "$EVAL_ERR" 
 # The scp spelling of the same escape refuses too.
 run_review pack add "user%3A$TOKEN_B@host:acme/packs.git" --json
 assert_exit "percent-colon scp source refuses" 1
-assert_refusal "percent-colon scp refusal keeps the envelope contract" "bad-pack"
+assert_refusal "percent-colon scp refusal keeps the envelope contract" "bad-pack-source"
 assert_json_field "percent-colon scp refusal masks the source" "1" \
   '[.error.message | select(contains("<invalid source>"))] | length'
 assert_stream_nogrep "the percent-colon scp token is not on stdout" "$EVAL_OUT" "$TOKEN_B"
@@ -189,9 +191,11 @@ jq -n --arg src "$BAD_SRC" --arg hash "$HASH_V2" --arg sig "$BAD_SIG" \
   >"$EVAL_SANDBOX/.verdict/verdict.lock"
 run_review pack list --json
 assert_exit "a one-slash lock row refuses pack list" 1
-assert_refusal "the bad lock row keeps the envelope contract" "bad-pack"
+assert_refusal "the bad lock row keeps the envelope contract" "bad-lock-source"
 assert_json_field "the bad lock row masks the source" "1" \
   '[.error.message | select(contains("<invalid source>"))] | length'
+assert_json_field "the bad lock row hints pack add" "1" \
+  '[.error.message | select(contains("verdict pack add"))] | length'
 assert_stream_nogrep "the lock token is not on stdout" "$EVAL_OUT" "$TOKEN_LOCK"
 assert_stream_nogrep "the lock token is not on stderr" "$EVAL_ERR" "$TOKEN_LOCK"
 run_review pack list

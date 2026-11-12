@@ -113,6 +113,10 @@ var hintRules = []HintRule{
 	{codes: []string{"bad-until"}, hint: "try: pass --until <ref> that is an ancestor of HEAD"},
 	{codes: []string{"bad-pack"}, hint: "try: fix pack.json against schemas/pack.schema.json " +
 		"(exact lowercase keys, every id paired with its markdown file), then re-run"},
+	{codes: []string{"bad-pack-source"}, hint: "try: use https://host/path with no userinfo, " +
+		"ssh://user@host/path, or user@host:path, then re-run"},
+	{codes: []string{"bad-lock-source"}, hint: "try: re-run 'verdict pack add <dir|git-url>' " +
+		"from the pack source so .verdict/verdict.lock records a valid source"},
 	{codes: []string{"pack-conflict"}, hint: "try: add \"replace\": [\"<lower pack name>\"] " +
 		"to the higher pack's manifest, or rename the conflicting id"},
 	{codes: []string{"pack-lock-drift"}, hint: "try: re-add the pack with " +

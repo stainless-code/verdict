@@ -448,7 +448,8 @@ or `USER@HOST:PATH`. `USER` is 1–64 of `[A-Za-z0-9._-]`; `HOST` is a DNS name,
 an IPv4 address, or a bracketed IPv6 literal; `PATH` carries no control
 character, whitespace, or leading `-`. The scheme is matched
 case-insensitively and stored lower-case. A string that names a remote but
-fails this grammar refuses `bad-pack` before the clone and before any write:
+fails this grammar refuses `bad-pack-source` before the clone and before any
+write:
 the one-slash scheme, a `%`-escaped password (`ssh://user%3ATOK@host/x`), a
 token-only or two-`@` https URL, `http://`, `git+https://`, and an IPv6 literal
 with userinfo are all the same refusal. No source is ever echoed raw: every
@@ -471,7 +472,8 @@ name: `{name, source, version, hash, sig}`. `source` is `dir:<path>` or
 character, backslash, or leading `-`, and a `git:` URL is exactly the three
 accepted remote forms above, stored with the lower-case scheme and pinned to
 the resolved 40-hex sha — a hand-written row with an upper-case scheme, a
-one-slash scheme, or any userinfo password refuses. A `dir:` label that looks
+one-slash scheme, or any userinfo password refuses `bad-lock-source`. A
+`dir:` label that looks
 like a URL is listed as `<invalid source>`. `hash` is the canonical tree hash
 `pack list` prints. `sig` is an integrity digest, not a signature: sha256
 over `name=`, `source=`, `version=`, and `hash=` lines in that order, so a
