@@ -900,8 +900,12 @@ Fix: remove the colliding path by hand, then re-run.
 ## `skill-install-failed`
 
 Cause: the skill payload could not be inspected, created, or written — including a
-target or payload dir that is not writable, which `skill install` reports before
-it writes anything.
+target or payload dir that is not writable. On POSIX `skill install` probes every
+directory it will write before the first byte, so an unwritable target or payload
+dir refuses there instead; a target that changes between that probe and the write
+still fails here, at write time. On Windows the probe only stats the directory, so
+an ACL-denied dir or a read-only payload file also fails here, after the files and
+targets ahead of it landed.
 
 Fix: check the target path and permissions named above, then re-run.
 
