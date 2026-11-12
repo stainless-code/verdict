@@ -202,18 +202,28 @@ func importsTargetPath(plan *testPlan, f *treeFile) bool {
 	}
 	want := trimSourceExt(plan.path)
 	for _, imp := range f.Imports {
-		module := scannedSpecifier(lang, path.Dir(f.Path), imp.Path)
-		if module == "" {
-			continue
-		}
-		if trimSourceExt(module) == want {
-			return true
-		}
-		if lang.family() == langPython && trimSourceExt(path.Join(module, imp.Name)) == want {
+		if importNamesPath(lang, path.Dir(f.Path), imp, want) {
 			return true
 		}
 	}
 	return false
+}
+
+// importNamesPath reports whether one recorded import resolves to the wanted
+// path: the module itself, or for Python the submodule a `from … import …`
+// statement takes out of that module.
+func importNamesPath(lang language, dir string, imp importEntry, want string) bool {
+	module := scannedSpecifier(lang, dir, imp.Path)
+	switch {
+	case module == "":
+		return false
+	case trimSourceExt(module) == want:
+		return true
+	case lang.family() == langPython:
+		return trimSourceExt(path.Join(module, imp.Name)) == want
+	default:
+		return false
+	}
 }
 
 // scannedSpecifier resolves one module specifier to a repository path as the

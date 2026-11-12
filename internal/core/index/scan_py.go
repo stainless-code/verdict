@@ -200,7 +200,7 @@ func (l *pyLexer) stringStep(raw, formatted, triple bool, quote byte, line, col 
 		return false
 	}
 	switch {
-	case c == '\\' && (!raw || l.next(1) == quote || l.next(1) == '\\'):
+	case l.escapeStep(c, raw, quote):
 		l.advance(2)
 		return false
 	case triple && l.triple(quote):
@@ -214,6 +214,13 @@ func (l *pyLexer) stringStep(raw, formatted, triple bool, quote byte, line, col 
 	}
 	l.emit(pyValue, "", line, col)
 	return true
+}
+
+// escapeStep reports whether a backslash hides the byte after it: always
+// outside a raw string, and inside one only before the quote or another
+// backslash.
+func (l *pyLexer) escapeStep(c byte, raw bool, quote byte) bool {
+	return c == '\\' && (!raw || l.next(1) == quote || l.next(1) == '\\')
 }
 
 // braceStep consumes one f-string brace: a doubled pair renders as one literal
