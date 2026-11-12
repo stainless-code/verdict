@@ -144,6 +144,7 @@ func (w *discoveryWalk) visit(item walkItem, stack *[]walkItem) bool {
 		}
 		return false
 	}
+	slices.SortFunc(entries, func(a, b os.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
 	rules := append([]ignoreRule(nil), item.rules...)
 	ignorePath := relativePath(item.rel, ".gitignore")
 	rules = append(rules, readIgnore(

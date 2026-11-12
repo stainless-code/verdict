@@ -40,6 +40,22 @@ func TestDiscoveryFixture(t *testing.T) {
 	assertDiscoveryFixture(t, &got, root, symlinkCount)
 }
 
+// TestDiscoveryOrderIgnoresReadDirOrder proves the walk sorts each directory,
+// so a filesystem listing entries in another order yields the same roots.
+func TestDiscoveryOrderIgnoresReadDirOrder(t *testing.T) {
+	root, symlinkCount := copyDiscoveryFixture(t)
+	reversed := func(r *os.Root, path string) ([]os.DirEntry, error) {
+		entries, err := rootReadDir(r, path)
+		slices.Reverse(entries)
+		return entries, err
+	}
+	got, err := Discover(root, DiscoveryOptions{Depth: 3, Now: discoveryNow(), ReadDir: reversed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertDiscoveryFixture(t, &got, root, symlinkCount)
+}
+
 // TestDiscoveryCountsSymlinksWithoutFollowing never follows counted links.
 func TestDiscoveryCountsSymlinksWithoutFollowing(t *testing.T) {
 	root := t.TempDir()
