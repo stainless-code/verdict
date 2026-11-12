@@ -39,6 +39,15 @@ func gitRun(t *testing.T, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// gitRunNoProtect runs one git command with the NTFS pathname protection off.
+// Git for Windows rejects an NTFS-invalid name (core.protectNTFS) as soon as it
+// enters the index, and the fixtures below only ever read tree objects from it,
+// which git never validates.
+func gitRunNoProtect(t *testing.T, args ...string) string {
+	t.Helper()
+	return gitRun(t, append([]string{"-c", "core.protectNTFS=false"}, args...)...)
+}
+
 // writeAll writes name->content files under the current directory.
 func writeAll(t *testing.T, files map[string]string) {
 	t.Helper()

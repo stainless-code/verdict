@@ -85,8 +85,8 @@ func colonPackBase(t *testing.T) string {
 	gitRun(t, "add", "-f", "-A")
 	gitRun(t, "commit", "-qm", "base")
 	blob := gitRun(t, "rev-parse", "HEAD:manifest.json")
-	gitRun(t, "update-index", "--add", "--cacheinfo", "100644,"+blob+",.verdict/packs/team:qa/pack.json")
-	tree := gitRun(t, "write-tree")
+	gitRunNoProtect(t, "update-index", "--add", "--cacheinfo", "100644,"+blob+",.verdict/packs/team:qa/pack.json")
+	tree := gitRunNoProtect(t, "write-tree")
 	return gitRun(t, "commit-tree", tree, "-p", gitRun(t, "rev-parse", "HEAD"), "-m", "colon pack")
 }
 
