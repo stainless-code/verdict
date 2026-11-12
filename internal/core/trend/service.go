@@ -9,13 +9,19 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	corpuscore "github.com/stainless-code/verdict/internal/core/corpus"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
+
+// skipWarn heads every warning a trend scan renders about an entry it passed
+// over: one bundle, one line, so the rollup never silently drops a review.
+const skipWarn = "trend skips "
 
 // Request carries the resolved trend invocation: the shared read runtime
 // plus the --overlap audit flag.
@@ -147,7 +153,7 @@ func collectRows(st *state) []row {
 		}
 	}
 	if replays > 0 {
-		st.warn(fmt.Sprintf("trend skips %d backtest bundle(s) (replay input, not your review history)", replays))
+		st.warn(fmt.Sprintf(skipWarn+"%d backtest bundle(s) (replay input, not your review history)", replays))
 	}
 	return rows
 }
@@ -156,36 +162,55 @@ func collectRows(st *state) []row {
 // measurement, a replay bundle is reported as skipped, and anything else is a
 // history row when its findings store is readable.
 func (st *state) walkEntry(e os.DirEntry) (row, bool, bool) {
-	if corpuscore.IsDir(readcommon.StateDir(st.req.RepoRootPath()) + "/" + e.Name()) {
-		st.readCorpus(e)
+	if !e.IsDir() {
 		return row{}, false, false
 	}
-	if isRegular(readcommon.ResolveBundleDir(st.req.RepoRootPath(), e.Name()) + "/" + readcommon.BacktestMarkerFile) {
+	name := e.Name()
+	dir, ok := st.listedBundleDir(name)
+	if !ok {
+		return row{}, false, false
+	}
+	if corpuscore.IsDir(dir) {
+		st.readCorpus(dir)
+		return row{}, false, false
+	}
+	if isRegular(dir + "/" + readcommon.BacktestMarkerFile) {
 		return row{}, true, false
 	}
-	bundleRow, ok := readBundleRow(st, e)
+	bundleRow, ok := readBundleRow(st, dir, name)
 	return bundleRow, false, ok
 }
 
-func readBundleRow(st *state, e os.DirEntry) (row, bool) {
-	if !e.IsDir() {
-		return row{}, false
+// listedBundleDir resolves one state-directory entry's bundle dir. A name the
+// shared guard refuses is skipped with a warning: a listing carries names, not
+// paths, so nothing outside the bundle home is ever read. The listed name keeps
+// its own directory: the bare-name fallback ResolveBundleDir applies to an
+// operator's positional would let a listed `42` read `local-42`, counting that
+// bundle twice and dropping `42` from the totals with no warning.
+func (st *state) listedBundleDir(name string) (string, bool) {
+	dir, ref := config.BundleDir(st.req.RepoRootPath(), name)
+	if ref != nil {
+		st.warn(skipWarn + name + " (" + ref.Message + ")")
+		return "", false
 	}
-	name := e.Name()
-	bundle := readcommon.ResolveBundleDir(st.req.RepoRootPath(), name) + "/"
+	return filepath.ToSlash(dir), true
+}
+
+func readBundleRow(st *state, dir, name string) (row, bool) {
+	bundle := dir + "/"
 	raw, err := jq.CappedFile(bundle+"findings.json", jq.MaxFindingsBytes)
 	if err != nil {
-		st.warn("trend skips " + bundle + " (findings.json unreadable or not a findings array)")
+		st.warn(skipWarn + bundle + " (findings.json unreadable or not a findings array)")
 		return row{}, false
 	}
 	doc, err := jq.DecodeOrdered(raw)
 	if err != nil {
-		st.warn("trend skips " + bundle + " (findings.json unreadable or not a findings array)")
+		st.warn(skipWarn + bundle + " (findings.json unreadable or not a findings array)")
 		return row{}, false
 	}
 	findings, ok := doc.([]any)
 	if !ok || !readcommon.ValidEntries(findings) {
-		st.warn("trend skips " + bundle + " (findings.json unreadable or not a findings array)")
+		st.warn(skipWarn + bundle + " (findings.json unreadable or not a findings array)")
 		return row{}, false
 	}
 	return buildRow(bundle, name, findings), true

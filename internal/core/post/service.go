@@ -218,12 +218,22 @@ func refusalOrFailed(err error) *core.RefusalError {
 	return &core.RefusalError{Code: codePostFailed, Message: fmt.Sprintf("post failed: %v", err)}
 }
 
-func (st *state) prepare(ctx context.Context) *core.RefusalError {
-	st.dir = readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
-	st.event = eventComment
-	if ref := st.checkBundle(); ref != nil {
+// openBundle resolves the request's bundle under the shared name guard and
+// proves its store complete before any other gate reads it.
+func (st *state) openBundle() *core.RefusalError {
+	dir, ref := readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
+	if ref != nil {
 		return ref
 	}
+	st.dir = dir
+	return st.checkBundle()
+}
+
+func (st *state) prepare(ctx context.Context) *core.RefusalError {
+	if ref := st.openBundle(); ref != nil {
+		return ref
+	}
+	st.event = eventComment
 	if ref := st.hostAuthGate(); ref != nil {
 		return ref
 	}

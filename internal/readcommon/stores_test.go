@@ -20,14 +20,24 @@ func TestResolveBundleDirSlugs(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if got := readcommon.ResolveBundleDir(".", tc.pr); got != tc.want {
+			if got := resolveBundleDir(t, ".", tc.pr); got != tc.want {
 				t.Errorf("ResolveBundleDir(%q) = %q; want %q", tc.pr, got, tc.want)
 			}
 		})
 	}
-	if got := readcommon.ResolveBundleDir("/repo", "42"); got != "/repo/.verdict/state/42" {
+	if got := resolveBundleDir(t, "/repo", "42"); got != "/repo/.verdict/state/42" {
 		t.Errorf("rooted ResolveBundleDir = %q, want the git-root bundle dir", got)
 	}
+}
+
+// resolveBundleDir resolves one bundle dir and fails the test on a refusal.
+func resolveBundleDir(t *testing.T, root, pr string) string {
+	t.Helper()
+	dir, ref := readcommon.ResolveBundleDir(root, pr)
+	if ref != nil {
+		t.Fatalf("ResolveBundleDir(%q, %q) refused: %v", root, pr, ref)
+	}
+	return dir
 }
 
 // TestResolveBundleDirLocalPrecedence pins the bare-slug preference: a
@@ -68,7 +78,7 @@ func checkResolveBundleDir(t *testing.T, pr string, seed []string, want string) 
 	for _, dir := range seed {
 		seedBundleDir(t, dir)
 	}
-	if got := readcommon.ResolveBundleDir(".", pr); got != want {
+	if got := resolveBundleDir(t, ".", pr); got != want {
 		t.Errorf("ResolveBundleDir(%q) = %q; want %q", pr, got, want)
 	}
 }

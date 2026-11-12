@@ -126,7 +126,11 @@ func tallyOutcome(out *overlapRow, status string) {
 }
 
 func recallManifest(st *state, bundle string) ([]any, bool) {
-	path := readcommon.ResolveBundleDir(st.req.RepoRootPath(), bundle) + "/kb-recall.json"
+	dir, ok := st.listedBundleDir(bundle)
+	if !ok {
+		return []any{}, false
+	}
+	path := dir + "/kb-recall.json"
 	if !isRegular(path) {
 		return []any{}, false
 	}
@@ -136,18 +140,17 @@ func recallManifest(st *state, bundle string) ([]any, bool) {
 	}
 	doc, derr := jq.Decode(raw)
 	if derr != nil {
-		return warnManifest(st, bundle)
+		return warnManifest(st, dir)
 	}
 	list, ok := doc.([]any)
 	if !ok {
-		return warnManifest(st, bundle)
+		return warnManifest(st, dir)
 	}
 	return manifestIDs(list), true
 }
 
-func warnManifest(st *state, bundle string) ([]any, bool) {
-	st.warn("trend skips " + readcommon.ResolveBundleDir(st.req.RepoRootPath(), bundle) +
-		"/kb-recall.json (unreadable or not a manifest array)")
+func warnManifest(st *state, dir string) ([]any, bool) {
+	st.warn(skipWarn + dir + "/kb-recall.json (unreadable or not a manifest array)")
 	return []any{}, false
 }
 
@@ -292,7 +295,10 @@ func calibrateEligible(st *state, bundle string) bool {
 	if len(bundle) >= len("local-") && bundle[:len("local-")] == "local-" {
 		return false
 	}
-	dir := readcommon.ResolveBundleDir(st.req.RepoRootPath(), bundle)
+	dir, ok := st.listedBundleDir(bundle)
+	if !ok {
+		return false
+	}
 	if !isRegular(dir + "/post.json") {
 		return false
 	}

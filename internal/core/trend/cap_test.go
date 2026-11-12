@@ -36,14 +36,15 @@ func TestFindingsStoreReadRefusesOversizedInput(t *testing.T) {
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("ReadDir(state) = %d entries, %v; want 1", len(entries), err)
 	}
-	if _, ok := readBundleRow(&state{req: &Request{}}, entries[0]); !ok {
+	dir := filepath.Join(".verdict", "state", "5101")
+	if _, ok := readBundleRow(&state{req: &Request{}}, dir, "5101"); !ok {
 		t.Fatal("readBundleRow at cap = false, want true")
 	}
 	if err := os.Truncate(path, jq.MaxFindingsBytes+1); err != nil {
 		t.Fatal(err)
 	}
 	st := &state{req: &Request{}}
-	if _, ok := readBundleRow(st, entries[0]); ok {
+	if _, ok := readBundleRow(st, dir, "5101"); ok {
 		t.Fatal("readBundleRow over cap = true, want false")
 	}
 	if len(st.warnings) != 1 || !strings.Contains(st.warnings[0], "trend skips") {

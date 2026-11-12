@@ -69,3 +69,25 @@ func writeTrendBundle(t *testing.T, dir string, marked bool) {
 		t.Fatal(err)
 	}
 }
+
+// TestTrendSkipsHostileEntryNames proves a state entry whose name is not one
+// path element is skipped with a named warning rather than resolved: a listing
+// carries names, and no name becomes a path.
+func TestTrendSkipsHostileEntryNames(t *testing.T) {
+	t.Parallel()
+	read := core.ReadRequest{RepoRoot: t.TempDir()}
+	st := &state{req: &Request{ReadRequest: read}}
+	for _, name := range []string{"../escaped", "a/b", `a\b`, ".."} {
+		dir, ok := st.listedBundleDir(name)
+		if ok || dir != "" {
+			t.Fatalf("listedBundleDir(%q) = %q, true; want a skip", name, dir)
+		}
+	}
+	if len(st.warnings) != 4 {
+		t.Fatalf("warnings = %q; want one per hostile name", st.warnings)
+	}
+	want := "trend skips ../escaped (bundle name must be one path element (a PR number or fetch-local name), not a path)"
+	if st.warnings[0] != want {
+		t.Errorf("warning = %q; want %q", st.warnings[0], want)
+	}
+}

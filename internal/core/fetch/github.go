@@ -320,13 +320,17 @@ func fetchPrepare(ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags) 
 	// the whole-run guard would silently not arm. phaseTwo fills this state in
 	// over the resolved plan before gating.
 	budget := budgetState{}
-	dir := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
-	ctx2.dir = dir
-	if ref := ensureBundleState(req.RepoRootPath()); ref != nil {
+	dir, ref := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
+	if ref != nil {
+		//nolint:wrapcheck // typed refusal passes through untouched so the edge renders its code/message
 		return nil, "", ref
 	}
-	if err := os.MkdirAll(dir, dirPerm); err != nil {
-		return nil, "", &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not create %s: %v", dir, err)}
+	ctx2.dir = dir
+	if ref := ensureBundleDir(req.RepoRootPath(), dir); ref != nil {
+		return nil, "", ref
+	}
+	if ref := ensureBundleState(req.RepoRootPath()); ref != nil {
+		return nil, "", ref
 	}
 	return &budget, dir, nil
 }

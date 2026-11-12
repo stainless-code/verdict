@@ -536,7 +536,7 @@ func TestPreviewReportsProspectiveFileScopes(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp, ref := Run(context.Background(), &core.ConfigRequest{
-		Repo: "acme/app", Flags: core.ConfigFlags{File: proposed},
+		Repo: "acme/app", Pr: "99", Flags: core.ConfigFlags{File: proposed},
 	})
 	if ref != nil {
 		t.Fatalf("preview: %v", ref)

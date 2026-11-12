@@ -46,6 +46,12 @@ func corruptStoreRefusal(dir string) *core.RefusalError {
 	}
 }
 
+// deepGroup reports whether the request asks for deep group validation, which
+// takes the group path instead of the ordinary patch path.
+func deepGroup(req *core.VerifyRequest) bool {
+	return req.Group != "" || req.Command != ""
+}
+
 // Run executes the verify verb: bundle gates, the allowlist gate, the
 // watchdog spawn, and the patch record. It never writes stdout/stderr or
 // exits; human lines stream through the runtime progress observer, stores
@@ -56,8 +62,11 @@ func Run(ctx context.Context, req *core.VerifyRequest) (*core.VerifyResponse, *c
 	if err := ctx.Err(); err != nil {
 		return nil, &core.RefusalError{Code: codeCanceled, Message: msgCanceled}
 	}
-	dir := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
-	if req.Group != "" || req.Command != "" {
+	dir, ref := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
+	if ref != nil {
+		return nil, st.withWarnings(ref)
+	}
+	if deepGroup(req) {
 		return RunGroup(ctx, req, dir, req.TimeUTC())
 	}
 	if !readcommon.IsFile(patchPath(dir)) {

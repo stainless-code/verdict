@@ -477,6 +477,9 @@ func invokeNext(ctx context.Context, req *core.NextRequest) (*jq.Obj, *core.Refu
 	if ref != nil {
 		return nil, ref
 	}
+	if resp.ReportRefusal != nil {
+		return nil, resp.ReportRefusal
+	}
 	if req.Coverage {
 		return jq.NewObj("coverage", resp.Coverage, "human", resp.Human,
 			"warnings", resp.Warnings), nil

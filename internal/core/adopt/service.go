@@ -109,11 +109,25 @@ func (st *state) runAdopt(ctx context.Context) *core.RefusalError {
 	return st.finishAdopt(dir, fromDir, display, entries)
 }
 
+// adoptTarget resolves the bundle a handoff targets under the shared name
+// guard, refusing a fetch-local name: a handoff adopts a review fetched from
+// the host, never a local twin.
+func (st *state) adoptTarget() (string, *core.RefusalError) {
+	dir, ref := readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
+	if ref != nil {
+		return "", st.refuse(ref.Code, ref.Message)
+	}
+	if strings.HasPrefix(st.req.Pr, localPrefix) {
+		return "", st.refuse("bad-target", msgBadTarget)
+	}
+	return dir, nil
+}
+
 func (st *state) resolveAdoptDirs(ctx context.Context) (string, string, string, *core.RefusalError) {
 	root := st.req.RepoRootPath()
-	dir := readcommon.ResolveBundleDir(root, st.req.Pr)
-	if strings.HasPrefix(st.req.Pr, localPrefix) {
-		return "", "", "", st.refuse("bad-target", msgBadTarget)
+	dir, ref := st.adoptTarget()
+	if ref != nil {
+		return "", "", "", ref
 	}
 	if st.req.From == "" {
 		return "", "", "", st.refuse("bad-from", msgBadFrom)
@@ -125,9 +139,13 @@ func (st *state) resolveAdoptDirs(ctx context.Context) (string, string, string, 
 		}
 		return dir, fromDir, display, nil
 	}
-	fromDir := readcommon.ResolveBundleDir(root, st.req.From)
-	if !strings.HasPrefix(st.req.From, localPrefix) {
-		fromDir = readcommon.ResolveBundleDir(root, localPrefix+st.req.From)
+	fromName := st.req.From
+	if !strings.HasPrefix(fromName, localPrefix) {
+		fromName = localPrefix + fromName
+	}
+	fromDir, ref := readcommon.ResolveBundleDir(root, fromName)
+	if ref != nil {
+		return "", "", "", st.refuse(ref.Code, ref.Message)
 	}
 	return dir, fromDir, st.req.From, nil
 }
@@ -166,7 +184,11 @@ func (st *state) resolveAutoFrom(ctx context.Context, dir string) (string, strin
 			*cur.PatchID, cur.PatchIDKind, dir))
 	case 1:
 		st.autoPatch = *cur.PatchID
-		return readcommon.ResolveBundleDir(st.req.RepoRootPath(), twins[0]), "auto -> " + twins[0], nil
+		twinDir, ref := readcommon.ResolveBundleDir(st.req.RepoRootPath(), twins[0])
+		if ref != nil {
+			return "", "", st.refuse(ref.Code, ref.Message)
+		}
+		return twinDir, "auto -> " + twins[0], nil
 	default:
 		return "", "", st.refuse("ambiguous-patch-match", ambiguousPatchMessage(*cur.PatchID, twins))
 	}
@@ -197,7 +219,11 @@ func (st *state) twinSlug(ctx context.Context, entry os.DirEntry, cur *identity.
 	if !entry.IsDir() || !strings.HasPrefix(name, localPrefix) {
 		return "", false
 	}
-	twinDir := readcommon.ResolveBundleDir(st.req.RepoRootPath(), name)
+	twinDir, ref := readcommon.ResolveBundleDir(st.req.RepoRootPath(), name)
+	if ref != nil {
+		st.warn("adopt skips " + name + " (" + ref.Message + ")")
+		return "", false
+	}
 	head := readcommon.JSONStr(twinDir+"/source.json", "head_sha")
 	base := readcommon.JSONStr(twinDir+"/source.json", "base_sha")
 	id, ok := identity.Verify(ctx, st.identityCommander(), twinDir, head, base)
