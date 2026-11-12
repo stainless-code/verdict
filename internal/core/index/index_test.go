@@ -413,8 +413,8 @@ func TestIndexVersionResetRebuilds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(raw) != "3\n" {
-		t.Errorf("version file = %q; want %q", raw, "3\n")
+	if string(raw) != "4\n" {
+		t.Errorf("version file = %q; want %q", raw, "4\n")
 	}
 	if got := storeFiles(t, f.dir, "trees"); got != 1 {
 		t.Errorf("tree files = %d; want 1", got)

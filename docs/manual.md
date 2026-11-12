@@ -2913,6 +2913,12 @@ resolver the scanner cannot prove the name it saw is the declaration it
 matched — so `counts.unresolved` stays zero for those rows and a caller list
 for a scanned symbol is a floor, not a proof.
 
+Python and TypeScript module-function attribute calls require an import-bound
+qualifier. Assignments and local parameters before the call suppress that
+binding within the enclosing lexical scope; Python also recognizes
+`for`, `with`, and `except` targets, and TypeScript recognizes
+`let`, `const`, and `var`. This is a lexical filter without type analysis.
+
 What the scanners deliberately do not read, they skip rather than guess.
 TypeScript and JavaScript: `with` and `eval` blocks, prototype patching, and
 computed member access (`obj[key]`) name no callee; a callee reached through a
@@ -3166,7 +3172,8 @@ count heads, then one line per row, and the printed `next:` step adds
 `toc.txt` to the files to feed. The section is capped at **8 KiB** so a
 wide blast radius cannot spend the review budget on rows; when rows do not fit,
 the section ends `truncated: <n> line(s) omitted to fit the 8 KiB impact cap`,
-and the per-list `--limit` truncation stays visible in the heads (default 50
+Rows are budgeted round-robin across symbols, callers, and tests; each capped
+list prints `omitted: <n> row(s)`. The per-list `--limit` truncation stays visible in the heads (default 50
 rows, as in `index blast-radius`). Every path and symbol the section renders is
 escaped first: control characters become their backslash escapes and any run of
 `<` long enough to spell a fence marker is broken by the shared fence rule, so
