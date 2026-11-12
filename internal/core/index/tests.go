@@ -118,7 +118,9 @@ func pathTestPlan(pkgs map[string]*packageInfo, t *treeIndex, rawPath string) (*
 	}
 	plan := &testPlan{path: p, dirs: []string{pkg.dir}, lang: fileLanguage(f)}
 	for _, d := range f.Decls {
-		plan.targets = append(plan.targets, target{pkg: pkg, name: d.Name, lang: plan.lang, exported: d.Exported})
+		plan.targets = append(plan.targets, target{
+			pkg: pkg, name: d.Name, kind: d.Kind, lang: plan.lang, exported: d.Exported,
+		})
 	}
 	return plan, nil
 }

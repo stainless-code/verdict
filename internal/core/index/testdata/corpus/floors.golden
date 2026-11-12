@@ -14,11 +14,11 @@ ts/tests-for-two-families 1.0000 0.5000
 ts/callers 1.0000 0.5714
 ts/callers-cross-package n/a 0.0000
 ts/tests-for 1.0000 0.8333
-py/callers-save 0.7500 0.4286
+py/callers-save 1.0000 0.4286
 py/callers-write 1.0000 1.0000
 py/callers-route 1.0000 0.5000
 py/callers-namesake 1.0000 1.0000
 py/tests-for-saver 1.0000 1.0000
-py/callers 0.8571 0.5455
+py/callers 1.0000 0.5455
 py/callers-cross-package n/a 0.0000
 py/tests-for 1.0000 1.0000

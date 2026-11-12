@@ -490,12 +490,12 @@ an unchanged scorecard.
 | `ts/callers`                | 1.0000    | 0.5714 | 8       | 8        | 14      |
 | `ts/callers-cross-package`  | n/a       | 0.0000 | 0       | 0        | 4       |
 | `ts/tests-for`              | 1.0000    | 0.8333 | 5       | 5        | 6       |
-| `py/callers-save`           | 0.7500    | 0.4286 | 3       | 4        | 7       |
+| `py/callers-save`           | 1.0000    | 0.4286 | 3       | 3        | 7       |
 | `py/callers-write`          | 1.0000    | 1.0000 | 1       | 1        | 1       |
 | `py/callers-route`          | 1.0000    | 0.5000 | 1       | 1        | 2       |
 | `py/callers-namesake`       | 1.0000    | 1.0000 | 1       | 1        | 1       |
 | `py/tests-for-saver`        | 1.0000    | 1.0000 | 5       | 5        | 5       |
-| `py/callers`                | 0.8571    | 0.5455 | 6       | 7        | 11      |
+| `py/callers`                | 1.0000    | 0.5455 | 6       | 6        | 11      |
 | `py/callers-cross-package`  | n/a       | 0.0000 | 0       | 0        | 3       |
 | `py/tests-for`              | 1.0000    | 1.0000 | 5       | 5        | 5       |
 
@@ -564,14 +564,16 @@ states, so the fixture pins the rule rather than a defect.
   them. Only a call or an attribute site is recorded
   (`internal/core/index/scan_ts.go:1267`,
   `internal/core/index/scan_py.go:576`). **Design limit.**
-- **An attribute call is attributed to a declaration of the wrong kind.**
+- **An attribute call was attributed to a declaration of the wrong kind.**
   `py/lib/uses.py:6` calls `log.save(value)` on a `Log` that declares `write`
-  and no `save`, and the row is reported for `lib.save`, a module function: the
-  one false positive in the table (`py/callers-save` precision 0.7500). The
+  and no `save`, and the row was reported for `lib.save`, a module function: the
+  one false positive the table carried (`py/callers-save` precision 0.7500). The
   scanner knows the callee follows a dot and records the site as `method`
-  (`internal/core/index/scan_py.go:587`); the resolution keeps that kind as a
-  row label and never checks it against the declaration it matches, so a method
-  site lands on a function. **Scanner bug.**
+  (`internal/core/index/scan_py.go:587`), and Python also records each
+  declaration's kind; resolution now compares the two, so an attribute site
+  names a method or a class and never a module-level function. Both precision
+  cells are 1.0000 now, pinned by
+  `TestCallersPythonRespectsDeclarationKind`. **Scanner bug, fixed.**
 - **`imports-module` did not fire for a relative specifier.** `importsAny`
   (`internal/core/index/tests.go:390`) compared the raw specifier with the
   declaring package's import path, so `import { tidy } from "../lib"` in

@@ -419,7 +419,9 @@ func blastSymbols(pkgs map[string]*packageInfo, t *treeIndex, changes []blastCha
 			seen[key] = true
 			out = append(out, blastSymbol{
 				row: SymbolRow{Path: f.Path, Name: d.Name, Kind: d.Kind, Line: d.Line},
-				tgt: target{pkg: pkg, name: d.Name, lang: fileLanguage(f), exported: d.Exported},
+				tgt: target{
+					pkg: pkg, name: d.Name, kind: d.Kind, lang: fileLanguage(f), exported: d.Exported,
+				},
 				key: blastKey(pkg, d.Name), label: blastLabel(pkg, d.Name),
 			})
 		}
@@ -590,7 +592,9 @@ func callerSymbol(pkgs map[string]*packageInfo, t *treeIndex, row Row) (blastSym
 	}
 	return blastSymbol{
 		row: SymbolRow{Path: f.Path, Name: d.Name, Kind: d.Kind, Line: d.Line},
-		tgt: target{pkg: pkg, name: d.Name, lang: fileLanguage(f), exported: d.Exported},
+		tgt: target{
+			pkg: pkg, name: d.Name, kind: d.Kind, lang: fileLanguage(f), exported: d.Exported,
+		},
 		key: blastKey(pkg, d.Name), label: blastLabel(pkg, d.Name),
 	}, true
 }

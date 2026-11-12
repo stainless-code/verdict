@@ -132,6 +132,7 @@ func importPathOf(module, dir string) string {
 type target struct {
 	pkg      *packageInfo
 	name     string
+	kind     string
 	lang     language
 	exported bool
 }
@@ -164,7 +165,9 @@ func resolveTargets(pkgs map[string]*packageInfo, symbol string) ([]target, *cor
 		for _, f := range pkg.files {
 			for _, d := range f.Decls {
 				if d.Name == name {
-					targets = append(targets, target{pkg: pkg, name: name, lang: fileLanguage(f), exported: d.Exported})
+					targets = append(targets, target{
+						pkg: pkg, name: name, kind: d.Kind, lang: fileLanguage(f), exported: d.Exported,
+					})
 				}
 			}
 		}
@@ -286,7 +289,7 @@ func resolveRef(tgt target, samePkg bool, f *treeFile, r ref) (Row, bool) {
 		return Row{}, false
 	}
 	if lang != langGo {
-		return resolveScannedRef(samePkg, f, r)
+		return resolveScannedRef(lang, tgt, samePkg, f, r)
 	}
 	return resolveGoRef(tgt, samePkg, f, r)
 }
@@ -310,12 +313,27 @@ func resolveGoRef(tgt target, samePkg bool, f *treeFile, r ref) (Row, bool) {
 // resolveScannedRef classifies one reference a lexical scanner produced. A
 // scanned language has no object identity to check and no module resolution to
 // follow, so a name found in the declaring directory is a lexical row and a
-// name found anywhere else is not attributed at all.
-func resolveScannedRef(samePkg bool, f *treeFile, r ref) (Row, bool) {
+// name found anywhere else is not attributed at all. Python records each
+// declaration's kind, so a site cannot land on a declaration it could not name.
+func resolveScannedRef(lang language, tgt target, samePkg bool, f *treeFile, r ref) (Row, bool) {
 	if !samePkg {
 		return Row{}, false
 	}
+	if lang.family() == langPython && !pySiteNamesDecl(r.Kind, tgt.kind) {
+		return Row{}, false
+	}
 	return Row{Path: f.Path, Line: r.Line, Kind: r.Kind, Resolution: resolutionLexical}, true
+}
+
+// pySiteNamesDecl reports whether one recorded Python site can name a
+// declaration of the target's kind: an attribute site is written on a receiver,
+// so it names a method or a class, never a module-level function, while a bare
+// call never names a method, which needs that receiver.
+func pySiteNamesDecl(site, decl string) bool {
+	if site == KindMethod {
+		return decl == KindMethod || decl == wordType
+	}
+	return decl != KindMethod
 }
 
 // resolveBareRef classifies a name written without a qualifier: only the

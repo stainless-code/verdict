@@ -84,6 +84,42 @@ func TestCallersPythonRows(t *testing.T) {
 	})
 }
 
+// callersOf runs one caller query for a symbol.
+func callersOf(t *testing.T, f *fixture, symbol string) *Response {
+	t.Helper()
+	req := f.request(QueryCallers, nil)
+	req.Symbol = symbol
+	resp, ref := Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("index callers %s refused: %v", symbol, ref)
+	}
+	return resp
+}
+
+// TestCallersPythonRespectsDeclarationKind proves an attribute site is
+// attributed by declaration kind, not by name: `log.save(...)` on a receiver is
+// not a caller of the module-level `save`, `log.write(...)` still names the
+// method `write`, and an attribute site naming a class is still a row.
+func TestCallersPythonRespectsDeclarationKind(t *testing.T) {
+	f := newFixture(t)
+	f.write("lib/saver.py", "def save(value):\n    return value\n")
+	f.write("lib/store.py", "class Log:\n    def write(self, text):\n        return text\n")
+	f.write("lib/uses.py", "from .saver import save\nfrom .store import Log\n\n\n"+
+		"def flush(value, log: Log):\n    log.save(value)\n    log.write(value)\n    return save(value)\n")
+	f.write("lib/make.py", "import lib.store\n\n\ndef build():\n    return lib.store.Log()\n")
+	f.commit("one")
+	f.build()
+	assertRows(t, callersOf(t, f, "lib.save").Data.Rows, []Row{
+		{Path: "lib/uses.py", Line: 8, Kind: KindCall, Resolution: "lexical", Language: "python"},
+	})
+	assertRows(t, callersOf(t, f, "lib.write").Data.Rows, []Row{
+		{Path: "lib/uses.py", Line: 7, Kind: KindMethod, Resolution: "lexical", Language: "python"},
+	})
+	assertRows(t, callersOf(t, f, "lib.Log").Data.Rows, []Row{
+		{Path: "lib/make.py", Line: 5, Kind: KindMethod, Resolution: "lexical", Language: "python"},
+	})
+}
+
 // TestTestsForScannedLanguages proves the candidate test set for a TypeScript
 // and a Python source file: a test in the same directory, a test elsewhere that
 // imports the file, and a test that names nothing the tree holds — that one is
