@@ -21,7 +21,7 @@ func TestArityMatrix(t *testing.T) {
 		"triage", "report", "next", "show", "verify", "calibrate",
 		"ready", "gate",
 	})
-	checkBareVerbs(t, []string{"check-tree", "doctor", "learn", "init", "skill", "upgrade", "uninstall"})
+	checkBareVerbs(t, []string{"check-tree", "doctor", "learn", "init", "skill", "upgrade", "uninstall", "serve"})
 	checkTrendArity(t)
 	checkUnknownArity(t)
 }
@@ -83,6 +83,7 @@ func TestSplitCommandRest(t *testing.T) {
 	checkSplit(t, []string{"check-tree", "--expect", "x"}, "check-tree", "", "", 2)
 	checkSplit(t, []string{"trend", "acme/app", "--overlap"}, "trend", "acme/app", "", 1)
 	checkSplit(t, []string{"report", "acme/app", "1", "--json"}, "report", "acme/app", "1", 1)
+	checkSplit(t, []string{"serve", "--root", "x"}, "serve", "", "", 2)
 	checkSplit(t, nil, "", "", "", 0)
 }
 
@@ -207,5 +208,18 @@ func writeCorruptSettings(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(bad, "settings.json"), []byte(`{broken`), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestServeDispatchShape pins the two registries the transport needs: serve
+// is a bare verb whose flags pass through, and it is not a read verb (a read
+// row would die on not-a-repo before --root was read).
+func TestServeDispatchShape(t *testing.T) {
+	t.Parallel()
+	if _, ok := readVerbs["serve"]; ok {
+		t.Fatal("serve is a readVerbs entry; the transport must dispatch before resolveRepoRoot")
+	}
+	if !bareVerbs["serve"] {
+		t.Fatal("serve is not a bareVerbs entry; splitCommand would read --root as a positional")
 	}
 }

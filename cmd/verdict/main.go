@@ -39,6 +39,7 @@ import (
 	runverb "github.com/stainless-code/verdict/internal/run"
 	"github.com/stainless-code/verdict/internal/scaffold"
 	"github.com/stainless-code/verdict/internal/schemacheck"
+	"github.com/stainless-code/verdict/internal/serve"
 	"github.com/stainless-code/verdict/internal/threads"
 	"github.com/stainless-code/verdict/internal/trend"
 	"github.com/stainless-code/verdict/internal/triage"
@@ -58,7 +59,7 @@ const (
 )
 
 const verbsHint = "fetch|fetch-local|run|record|adopt|fix|post|triage|report|next|show|" +
-	"check-tree|verify|doctor|calibrate|ready|gate|threads|trend|index|backtest|learn|pack|init|skill|upgrade|uninstall|mcp|config"
+	"check-tree|verify|doctor|calibrate|ready|gate|threads|trend|index|backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|config"
 
 func main() {
 	//nolint:forbidigo // GO-LAYOUT-02: main is the only os.Exit caller by design
@@ -106,7 +107,7 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 		r.RouteHuman()
 		return r.Refuse(err)
 	}
-	return dispatch(cmd, r, repo, pr, root, env, forces, rest, stderr)
+	return dispatch(cmd, r, repo, pr, root, env, forces, rest, stderr, readFile)
 }
 
 func handleMetaFlags(args []string, stdout *os.File, readFile func(string) ([]byte, error)) bool {
@@ -195,6 +196,7 @@ func shutdownSignalContext() (context.Context, context.CancelFunc) {
 func dispatch(
 	cmd string, r *cli.Runner, repo, pr, root string, env map[string]string,
 	forces *cli.GlobalForces, rest []string, stderr *os.File,
+	readFile func(string) ([]byte, error),
 ) int {
 	r.RouteHuman()
 	ctx, stop := shutdownSignalContext()
@@ -204,6 +206,8 @@ func dispatch(
 		return runUpgrade(ctx, r, rest, env)
 	case "uninstall":
 		return runUninstall(ctx, r, rest, env)
+	case "serve":
+		return serve.Run(ctx, r, rest, serve.Request{Version: cliVersion(root, readFile)})
 	}
 	repoRoot, code, ok := resolveRepoRoot(ctx, r, cmd)
 	if !ok {
@@ -467,6 +471,15 @@ func envMap(getenv func(string) string) map[string]string {
 		}
 	}
 	return env
+}
+
+// cliVersion prefers the linked release version over package.json at runtime,
+// the same rule --version follows.
+func cliVersion(root string, readFile func(string) ([]byte, error)) string {
+	if v := strings.TrimPrefix(version, "v"); v != "" {
+		return v
+	}
+	return versionOf(root, readFile)
 }
 
 func versionOf(root string, readFile func(string) ([]byte, error)) string {

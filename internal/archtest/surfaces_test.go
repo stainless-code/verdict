@@ -33,6 +33,7 @@ var mcpOmittedVerbs = map[string]string{
 	"gate":      "a CI exit code, not a tool an agent should act on",
 	"run":       "spawns the operator's agent; a tool that launches an agent recurses",
 	"backtest":  "mining is free, but replay will spend on model runs: the CLI owns both",
+	"serve":     "the MCP surface already exposes the same reads as tools; a tool that binds a listener starts a transport from a transport",
 }
 
 // sdkOmittedVerbs are CLI verbs with no Go facade method or TypeScript client
@@ -49,6 +50,7 @@ var sdkOmittedVerbs = map[string]string{
 	"upgrade":   "distribution surface (pkg/verdict/doc.go)",
 	"run":       "a process launcher, not review data: the CLI owns it (see --print)",
 	"backtest":  "replay will spend on model runs; the CLI owns the spend boundary",
+	"serve":     "its product is HTTP; a method that blocks on a listener is not a client call",
 }
 
 // sdkGaps are review verbs one public surface is still missing. Closing a gap

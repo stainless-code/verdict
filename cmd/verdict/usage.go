@@ -3,7 +3,7 @@ package main
 func usageText() string {
 	return "usage: verdict fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
 		"fetch-local|run|record|adopt|fix|check-tree|ready|gate|threads|trend|index|" +
-		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|config [opts]\n" +
+		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|config [opts]\n" +
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
 		"[--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
 		"    write .verdict/state/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
@@ -370,6 +370,14 @@ func usageText() string {
 		"    remove an installer-managed verdict plus its receipt; only with --remove-path\n" +
 		"    also remove the marked PATH line. npm/brew/project-local/skill copies refuse\n" +
 		"    with the owning removal command.\n" +
+		"  serve [--root <dir>] [--host <addr>] [--port <n>] [--token <s>] [--check <tier>]\n" +
+		"      [--max-bundles <n>] [--json]\n" +
+		"    read-only loopback HTTP surface over the current repository's bundles (or --root).\n" +
+		"    Binds 127.0.0.1 on a kernel-assigned port and prints one tokenised start URL.\n" +
+		"    GET /?token=<t> sets verdict_session_<port> (HttpOnly, SameSite=Strict, Path=/v1)\n" +
+		"    and 303s to /; /v1 refuses ?token= and requires that cookie or Authorization: Bearer.\n" +
+		"    Routes: /v1/health, /v1/roots, /v1/bundles, /v1/roots/{root}/bundles/{bundle},\n" +
+		"    .../findings/{sig}. GET only, no CORS, no writes; Ctrl-C exits 3.\n" +
 		"  mcp [--read-only | --operator] (experimental)\n" +
 		"    serve the review verbs as MCP tools over stdio (JSON-RPC 2.0, one frame per line).\n" +
 		"    stdout is the protocol channel; progress and warnings go to stderr.\n" +
@@ -398,7 +406,8 @@ func usageText() string {
 		"  overview + diagrams) namespaces\n" +
 		"  (~/.config/verdict/settings.json, $XDG_CONFIG_HOME respected).\n" +
 		"  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/" +
-		"fetch-local/run/record/adopt/fix/check-tree/ready/gate/trend/index/backtest/learn/pack/init/skill/upgrade/uninstall/config: " +
+		"fetch-local/run/record/adopt/fix/check-tree/ready/gate/trend/index/backtest/learn/pack/init/" +
+		"skill/upgrade/uninstall/serve/config: " +
 		"stdout is exactly one JSON envelope (schema_version 1);\n" +
 		"  all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.\n" +
 		"  Glossary: https://stainless-code.com/verdict/docs/glossary\n"
@@ -414,6 +423,7 @@ var bareVerbs = map[string]bool{
 	"uninstall":  true,
 	"index":      true,
 	"pack":       true,
+	"serve":      true,
 }
 
 func arityUsage(cmd, repo, pr string) bool {

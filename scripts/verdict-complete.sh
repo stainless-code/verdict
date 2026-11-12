@@ -3,7 +3,7 @@
 #
 
 _verdict_verbs() {
-  printf '%s\n' fetch post triage report next show verify doctor calibrate fetch-local run record adopt fix check-tree ready gate threads trend index backtest learn pack init skill upgrade uninstall config
+  printf '%s\n' fetch post triage report next show verify doctor calibrate fetch-local run record adopt fix check-tree ready gate threads trend index backtest learn pack init skill upgrade uninstall serve config
 }
 
 _verdict_flags() { # $1 = verb
@@ -33,6 +33,7 @@ _verdict_flags() { # $1 = verb
     ready) printf '%s\n' --json --check;;
     gate) printf '%s\n' --max-severity --require-head --live --coverage --json;;
     mcp) printf '%s\n' --read-only --operator --agent --write --dry-run --json;;
+    serve) printf '%s\n' --root --host --port --token --check --max-bundles --json;;
     init) printf '%s\n' --preset --yes --force --json;;
     skill) printf '%s\n' show files status install uninstall --format --dir --detect --diff --agent --force --dry-run --json;;
     upgrade) printf '%s\n' --version --dry-run --json;;
