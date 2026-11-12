@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -364,6 +365,63 @@ func TestUnknownPricesStayNull(t *testing.T) {
 			assertCostBucket(t, asMap(t, profile["totals"]), tc.totalRows,
 				"runs", "model_runs", "input_tokens", "output_tokens", "total_tokens", "est_usd")
 		})
+	}
+}
+
+// TestAggregateSourcesDistinguishRoots pins equal bundle paths per root.
+func TestAggregateSourcesDistinguishRoots(t *testing.T) {
+	t.Parallel()
+	rootA := t.TempDir()
+	rootB := t.TempDir()
+	aggregateBundle(t, rootA, "101", "acme/one", "2026-11-12T12:00:00Z",
+		`{"models":[{"name":"alpha","input_tokens":10,"output_tokens":2}],"est_usd":0.25}`, modelFixtureFinding, "")
+	aggregateBundle(t, rootB, "101", "acme/two", "2026-10-20T12:00:00Z",
+		`{"models":[{"name":"beta","input_tokens":20,"output_tokens":3}],"est_usd":0.5}`, modelFixtureFinding, "")
+	layer := New(Snapshot{
+		Version: "1.2.3", Roots: []Root{{ID: "root-a", Path: rootA}, {ID: "root-b", Path: rootB}},
+		Runtime: &core.Runtime{Now: fixedNow},
+	}, Options{Check: "critical", MaxBundles: 10})
+	view, err := layer.Cost(context.Background(), "repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := wireMap(t, view.Data)
+	profile := asMap(t, data["cost"])
+	rows := asList(t, profile["rows"])
+	assertCostBucket(t, asMap(t, rows[0]), []any{
+		"acme/one", json.Number("1"), json.Number("1"), json.Number("10"),
+		json.Number("2"), json.Number("12"), json.Number("0.25"),
+	})
+	assertCostBucket(t, asMap(t, rows[1]), []any{
+		"acme/two", json.Number("1"), json.Number("1"), json.Number("20"),
+		json.Number("3"), json.Number("23"), json.Number("0.5"),
+	})
+	assertCostBucket(t, asMap(t, profile["totals"]), []any{
+		json.Number("2"), json.Number("2"), json.Number("30"),
+		json.Number("5"), json.Number("35"), json.Number("0.75"),
+	}, "runs", "model_runs", "input_tokens", "output_tokens", "total_tokens", "est_usd")
+	sources := asList(t, data["sources"])
+	got := make([]string, 0, len(sources))
+	for _, value := range sources {
+		source := asMap(t, value)
+		got = append(got, fmt.Sprintf("%s|%s|%s", source["root"], source["bundle"], source["path"]))
+	}
+	paths := []string{
+		".verdict/state/101/PR.json",
+		".verdict/state/101/cost.json",
+		".verdict/state/101/findings.json",
+		".verdict/state/101/post.json",
+	}
+	rootIDs := []string{layer.roots[0].ID, layer.roots[1].ID}
+	slices.Sort(rootIDs)
+	want := make([]string, 0, len(rootIDs)*len(paths))
+	for _, rootID := range rootIDs {
+		for _, path := range paths {
+			want = append(want, fmt.Sprintf("%s|101|%s", rootID, path))
+		}
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("sources = %v, want %v", got, want)
 	}
 }
 
