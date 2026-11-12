@@ -55,6 +55,19 @@ var hintRules = []HintRule{
 		codes: []string{"corrupt-store"},
 		hint:  "try: re-run post/record to rebuild the store, or restore findings.json from backup, then re-run",
 	},
+	{
+		codes: []string{"bad-root"},
+		hint:  "try: pass --root <existing-directory>, or run serve inside a checkout",
+	},
+	{
+		codes: []string{"bundle-ambiguous"},
+		hint: "try: address the local bundle as local-<name>; the bare name resolves to a different " +
+			"directory than the discovered one",
+	},
+	{
+		codes: []string{"serve-listen-failed"},
+		hint:  "try: pass --port 0 for a kernel-assigned port, or free the named address, then re-run",
+	},
 	{codes: []string{"skill-no-detected-agent"}, hint: "try: name the agent explicitly with " +
 		"'verdict skill install --agent <name>'"},
 	{codes: []string{"skill-path-not-inventory"}, hint: "try: run 'verdict skill files' to list every embedded path"},

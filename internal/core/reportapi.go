@@ -26,11 +26,17 @@ type ReportFlags struct {
 // ReportRequest is the report service invocation: the read runtime and
 // positionals, the resolved options, the render configuration, and the
 // warnings the adapter already accumulated (prefs).
-type ReportRequest struct {
+type ReportRequest struct { //nolint:govet // request grouping; the struct is one call, not a hot array
 	ReadRequest
 	Flags     ReportFlags
 	Effective Effective
 	Warnings  []string
+	// OverridesDir is the overrides directory this run validates. Empty keeps
+	// the CLI's cwd-relative `.verdict/overrides`; a served root passes
+	// `<root>/.verdict/overrides` so every repository is judged by its own
+	// policy rather than the launch directory's. It is a transport seam, not
+	// an MCP argument, so it stays out of the generated tool schema.
+	OverridesDir string `json:"-"`
 }
 
 // FileArtifact is one requested output file the adapter must write after a

@@ -66,6 +66,16 @@ var manualSurfaces = []manualSurface{
 			"post-secret-shaped", "--allow-secret-values", "secret_shapes_allowed",
 		},
 	},
+	{
+		section: "serve local HTTP surface",
+		heading: "## Serve (local HTTP surface)",
+		terms: []string{
+			"verdict serve", "--root", "--host", "--port", "--token", "--check",
+			"verdict_session_<port>", "/v1/health", "/v1/roots", "/v1/bundles",
+			"/v1/roots/{root}/bundles/{bundle}", "/findings/{sig}", "?token=",
+			"127.0.0.1", "token-in-query", "bad-glob",
+		},
+	},
 }
 
 // currentDocs are the hand-written files that describe the current binary to

@@ -19,6 +19,7 @@ import (
 	doctorcore "github.com/stainless-code/verdict/internal/core/doctor"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	indexcore "github.com/stainless-code/verdict/internal/core/index"
+	"github.com/stainless-code/verdict/internal/core/query"
 	readycore "github.com/stainless-code/verdict/internal/core/ready"
 	trendcore "github.com/stainless-code/verdict/internal/core/trend"
 	triagecore "github.com/stainless-code/verdict/internal/core/triage"
@@ -752,4 +753,56 @@ func TestRuntimeConfigEnvelopeValidates(t *testing.T) {
 		"trusted": true,
 	})
 	assertEnvelope(t, doc, "config", "7", "2026-11-02T12:00:00Z", "post, report, and verify enforce this policy; re-fetch to move it", nil, data.Wire())
+}
+
+// TestRuntimeServeEnvelopeValidates proves every serve view validates against
+// the generated serveData profile and that the show route keeps show's data
+// profile byte-for-byte.
+func TestRuntimeServeEnvelopeValidates(t *testing.T) {
+	doc := loadSchemaDocument(t, "envelope.schema.json")
+	defs, ok := doc["$defs"].(map[string]any)
+	if !ok {
+		t.Fatal("envelope schema has no $defs")
+	}
+	if _, ok := defs["serveData"]; !ok {
+		t.Fatal("envelope schema lacks $defs/serveData")
+	}
+	dir := t.TempDir()
+	bundle := filepath.Join(dir, ".verdict", "state", "4232")
+	writeFixture(t, filepath.Join(bundle, "PR.json"),
+		`{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
+			`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`)
+	writeFixture(t, filepath.Join(bundle, "post.json"),
+		`{"schema_version":"1","review":{"id":9},"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
+			`"model":"m1","posted_at":"2026-01-01T00:00:00Z"}`)
+	writeFixture(t, filepath.Join(bundle, "findings.json"), "["+fixtureFinding()+"]")
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	layer := query.New(query.Snapshot{
+		Version: "1.2.3",
+		Roots:   []query.Root{{Path: abs}},
+		Runtime: fixedRuntime(),
+	}, query.Options{Check: "critical", MaxBundles: 10})
+
+	health := layer.Health(t.Context())
+	assertEnvelope(t, doc, "serve", "", health.At, health.Next, health.Warnings, health.Data)
+	roots := layer.Roots(t.Context())
+	assertEnvelope(t, doc, "serve", "", roots.At, roots.Next, roots.Warnings, roots.Data)
+	inbox, err := layer.Bundles(t.Context(), "")
+	if err != nil {
+		t.Fatalf("Bundles: %v", err)
+	}
+	assertEnvelope(t, doc, "serve", "", inbox.At, inbox.Next, inbox.Warnings, inbox.Data)
+	detail, err := layer.Detail(t.Context(), query.RootID(abs), "4232")
+	if err != nil {
+		t.Fatalf("Detail: %v", err)
+	}
+	assertEnvelope(t, doc, "serve", "4232", detail.At, detail.Next, detail.Warnings, detail.Data)
+	show, err := layer.Show(t.Context(), query.RootID(abs), "4232", "c111")
+	if err != nil {
+		t.Fatalf("Show: %v", err)
+	}
+	assertEnvelope(t, doc, "show", "4232", show.At, show.Next, show.Warnings, show.Data)
 }

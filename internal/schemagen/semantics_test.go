@@ -193,9 +193,12 @@ var publishedSemantics = map[string]string{
 	// count/truncated/rows are already all required, so it is required there
 	// too and reads null when no index answered. No existing property, required
 	// key, enum, or type changed.
+	// serve: additive $defs/serveData (and its source/error/root/counts/row/
+	// artifact/cache/skipped/discovery defs plus threadsFile/thread/comment).
+	// Additions only; the envelope's data slot stays free-form per verb.
 	// pack lock/add: additive $defs/packAddData and the drift description on
 	// packEntry; no existing property, required key, enum, or type changed.
-	"envelope.schema.json": "ad64d1598666ee7a80de07acec4b6ae896139e02fdd08f59af32fb5b73f438c6",
+	"envelope.schema.json": "5b0b1c927a1383cd739247d2366f92cb0630ad13c537379a95447ca79bd09769",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

@@ -43,6 +43,7 @@ bad-requirement	try: re-run with one of the valid values named above
 bad-review-input	try: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run
 bad-review-schema	try: set "schema_version": "1" in review.json
 bad-rigor	try: re-run with one of the valid values named above
+bad-root	try: pass --root <existing-directory>, or run serve inside a checkout
 bad-rule	try: re-run with one of the valid values named above
 bad-scope	try: re-run with one of the valid values named above
 bad-settings	try: keep only output/layout/color/publish/review/spend/privacy keys (see docs/manual.md), then re-run
@@ -59,6 +60,7 @@ bad-usage	try: fix the usage record named above to match schemas/usage.schema.js
 bind-required	try: address the cause above, then re-run the same command
 budget-exceeded	try: re-run with --consent-over-budget once the spend is approved, or raise REVIEW_BUDGET_USD/the typed budget_usd default
 budget-unknown	try: address the cause above, then re-run the same command
+bundle-ambiguous	try: address the local bundle as local-<name>; the bare name resolves to a different directory than the discovered one
 calibrate-failed	try: address the cause above, then re-run the same command
 canceled	try: address the cause above, then re-run the same command
 chunk-write-failed	try: address the cause above, then re-run the same command
@@ -149,6 +151,7 @@ rounds-path-unsafe	try: remove the named path from the bundle (verdict owns it a
 run-mismatch	try: pick another --run, or delete the existing run directory
 sandbox-unavailable	try: install bubblewrap on Linux and allow unprivileged user namespaces, or re-run without --sandbox on a command you trust
 scope-escape	try: revert or stash files outside the anchor path, then re-run fix
+serve-listen-failed	try: pass --port 0 for a kernel-assigned port, or free the named address, then re-run
 skill-bad-dir	try: address the cause above, then re-run the same command
 skill-dir-foreign	try: address the cause above, then re-run the same command
 skill-foreign-conflict	try: address the cause above, then re-run the same command

@@ -52,6 +52,7 @@ var forbiddenDeps = []string{
 	"internal/scaffold",
 	"internal/run",
 	"internal/backtest",
+	"internal/serve",
 }
 
 // facadeAllowedDeps is the exact facade dependency set: the core domain
@@ -108,8 +109,8 @@ var facadeAllowedDeps = map[string]bool{
 // unnoticed.
 var coreSubpackages = []string{
 	"adopt", "backtest", "calibrate", "checktree", "corpus", "coverage", "doctor", "exec", "fetch", "fix",
-	"index", "init", "learn", "pack", "post", "ready", "record", "repair", "report", "run", "skill", "threads",
-	"trend", "triage", "upgrade", "verify",
+	"index", "init", "learn", "pack", "post", "query", "ready", "record", "repair", "report", "run", "skill",
+	"threads", "trend", "triage", "upgrade", "verify",
 }
 
 // readcommonDeniedCoreDeps names every core service package the shared store

@@ -1007,3 +1007,104 @@ type IndexRef struct {
 	Selector   bool   `json:"selector,omitempty"                   optional:"true"`
 	Unresolved bool   `json:"unresolved,omitempty"                 optional:"true"`
 }
+
+// ServeData is `serve`'s composed data profile: one object shared by the
+// start envelope, health, roots, inbox, and bundle detail, so every view's
+// fields are optional and the trio partial/sources/errors is always present.
+type ServeData struct { //nolint:govet // field order groups the view families
+	Version   string            `json:"version,omitempty"`
+	URL       string            `json:"url,omitempty"`
+	Listen    string            `json:"listen,omitempty"`
+	ReadOnly  *bool             `json:"read_only,omitempty" type:"boolean|null"`
+	Watch     *bool             `json:"watch,omitempty"     type:"boolean|null"`
+	Interval  string            `json:"interval,omitempty"`
+	Cache     *ServeCache       `anyOf:"null"               json:"cache,omitempty"`
+	Roots     []ServeRoot       `json:"roots,omitempty"`
+	Truncated *bool             `json:"truncated,omitempty" type:"boolean|null"`
+	Skipped   *ServeSkipped     `anyOf:"null"               json:"skipped,omitempty"`
+	Discovery *ServeDiscovery   `anyOf:"null"               json:"discovery,omitempty"`
+	Root      *string           `json:"root,omitempty"`
+	Rows      []ServeRow        `json:"rows,omitempty"`
+	Counts    *ServeCounts      `anyOf:"null"               json:"counts,omitempty"`
+	Report    *ReportData       `anyOf:"null"               json:"report,omitempty"`
+	Gate      *ReportGate       `anyOf:"null"               json:"gate,omitempty"`
+	Threads   *threadscore.File `anyOf:"null"               json:"threads,omitempty"`
+	Artifacts []ServeArtifact   `json:"artifacts,omitempty"`
+	Partial   bool              `json:"partial"`
+	Sources   []ServeSource     `json:"sources"`
+	Errors    []ServeErrorRow   `json:"errors"`
+}
+
+// ServeSource is one artifact read a view was composed from.
+type ServeSource struct {
+	Root   string `json:"root"`
+	Bundle string `json:"bundle"`
+	Path   string `json:"path"`
+	SHA256 string `json:"sha256"`
+	Bytes  int64  `json:"bytes"  min:"0"`
+}
+
+// ServeErrorRow is one bundle failure a listing tolerated.
+type ServeErrorRow struct {
+	Root    string `json:"root"`
+	Bundle  string `json:"bundle"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+// ServeRoot is one served root row.
+type ServeRoot struct {
+	ID      string `json:"id"`
+	Path    string `json:"path"`
+	Bundles int    `json:"bundles" min:"0"`
+}
+
+// ServeCounts is the portfolio rollup over the inbox rows.
+type ServeCounts struct {
+	Bundles   int `json:"bundles"   min:"0"`
+	Open      int `json:"open"      min:"0"`
+	Deferred  int `json:"deferred"  min:"0"`
+	Addressed int `json:"addressed" min:"0"`
+	Terminal  int `json:"terminal"  min:"0"`
+}
+
+// ServeRow is one inbox bundle row. Counts are null for a refused bundle;
+// they are never a zero-for-unknown.
+type ServeRow struct { //nolint:govet // field order is the published property order
+	Root      string  `json:"root"`
+	Bundle    string  `json:"bundle"`
+	Dir       string  `json:"dir"`
+	Repo      string  `json:"repo"`
+	Pr        *int    `json:"pr"        type:"integer|null"`
+	Model     *string `json:"model"`
+	Head      *string `json:"head"`
+	Open      *int    `json:"open"      type:"integer|null"`
+	Deferred  *int    `json:"deferred"  type:"integer|null"`
+	Addressed *int    `json:"addressed" type:"integer|null"`
+	Terminal  *int    `json:"terminal"  type:"integer|null"`
+}
+
+// ServeArtifact is one evidence-ledger row.
+type ServeArtifact struct { //nolint:govet // field order is the published property order
+	Path    string  `json:"path"`
+	Present bool    `json:"present"`
+	SHA256  *string `json:"sha256"`
+	Bytes   *int64  `json:"bytes"   type:"integer|null"`
+}
+
+// ServeCache reports the in-memory cache size a health row publishes.
+type ServeCache struct {
+	Entries int `json:"entries" min:"0"`
+}
+
+// ServeSkipped counts the walk outcomes discovery will report: S1 has no
+// walk, so only the zero row is published.
+type ServeSkipped struct {
+	Symlinks int `json:"symlinks" min:"0"`
+}
+
+// ServeDiscovery reports whether the root list came from the registry.
+type ServeDiscovery struct { //nolint:govet // field order is the published property order
+	Cached    bool   `json:"cached"`
+	ScannedAt string `json:"scanned_at"`
+}

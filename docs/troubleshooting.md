@@ -276,6 +276,12 @@ Cause: `--rigor` is not a known level.
 
 Fix: re-run with one of `said|pointed|walked|ran|reproduced`.
 
+## `bad-root`
+
+Cause: `serve --root` names a path that is missing, not a directory, or unreadable.
+
+Fix: pass `--root <existing-directory>`, or start `verdict serve` inside a checkout with no `--root`.
+
 ## `bad-rule`
 
 Cause: `learn --rule` got an empty rule.
@@ -371,6 +377,12 @@ Fix: re-run with `--consent-over-budget` once the spend is approved, or raise `R
 Cause: no usable cost projection exists and the operator settings require a known estimate.
 
 Fix: re-run with `--consent-over-budget` to consent to the blind run (or relax `require_known_estimate`).
+
+## `bundle-ambiguous`
+
+Cause: a served bundle name resolves to a different directory than the discovered one — the bare name shadows an existing `local-<name>` bundle with no `PR.json`.
+
+Fix: address the local bundle explicitly as `local-<name>`, or restore the PR bundle's `PR.json` so the bare name resolves to it.
 
 ## `calibrate-failed`
 
@@ -913,6 +925,12 @@ Fix: install bubblewrap on Linux and allow unprivileged user namespaces, or re-r
 Cause: the fix touched files outside the anchor path.
 
 Fix: revert or stash files outside the anchor path, then re-run `fix`.
+
+## `serve-listen-failed`
+
+Cause: the listener cannot bind — the address is in use, unavailable, or not a local interface.
+
+Fix: pass `--port 0` for a kernel-assigned port (the default), free the named address, or choose a bind address this machine owns.
 
 ## `skill-bad-dir`
 

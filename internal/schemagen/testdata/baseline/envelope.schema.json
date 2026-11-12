@@ -609,6 +609,278 @@
       "required": ["item", "fix"],
       "additionalProperties": true
     },
+    "serveData": {
+      "description": "serve --json data (and the start envelope): one profile across health, roots, inbox, detail, and the start line, so every view-specific key is optional while partial, sources, and errors are always present. A product refusal is data null with the typed error; a corrupt bundle in a listing keeps its row with null counts and an errors[] entry, and any total over it is null and partial.",
+      "type": "object",
+      "properties": {
+        "version": { "type": "string" },
+        "url": { "type": "string" },
+        "listen": { "type": "string" },
+        "read_only": { "type": ["boolean", "null"] },
+        "watch": { "type": ["boolean", "null"] },
+        "interval": { "type": "string" },
+        "cache": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/serveCache" }]
+        },
+        "roots": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/serveRoot" }
+        },
+        "truncated": { "type": ["boolean", "null"] },
+        "skipped": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/serveSkipped" }]
+        },
+        "discovery": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/serveDiscovery" }]
+        },
+        "root": { "type": ["string", "null"] },
+        "rows": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/serveRow" }
+        },
+        "counts": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/serveCounts" }]
+        },
+        "report": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reportData" }]
+        },
+        "gate": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reportGate" }]
+        },
+        "threads": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/threadsFile" }]
+        },
+        "artifacts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/serveArtifact" }
+        },
+        "partial": { "type": "boolean" },
+        "sources": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/serveSource" }
+        },
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/serveErrorRow" }
+        }
+      },
+      "required": ["partial", "sources", "errors"],
+      "additionalProperties": true
+    },
+    "serveSource": {
+      "description": "One artifact a composed view read: the serving root id, the bundle name (empty for a root-level override fragment), the root-relative slash path, its SHA-256, and the byte count. Every inventory read is capped.",
+      "type": "object",
+      "properties": {
+        "root": { "type": "string" },
+        "bundle": { "type": "string" },
+        "path": { "type": "string" },
+        "sha256": { "type": "string" },
+        "bytes": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["root", "bundle", "path", "sha256", "bytes"],
+      "additionalProperties": true
+    },
+    "serveErrorRow": {
+      "description": "One tolerated bundle failure: the root id, bundle name, machine code, and message. A row is never dropped for a refused bundle.",
+      "type": "object",
+      "properties": {
+        "root": { "type": "string" },
+        "bundle": { "type": "string" },
+        "code": { "type": "string" },
+        "message": { "type": "string" }
+      },
+      "required": ["root", "bundle", "code", "message"],
+      "additionalProperties": true
+    },
+    "serveRoot": {
+      "description": "One served root: its 12-hex id, absolute path, and addressable bundle count.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "path": { "type": "string" },
+        "bundles": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["id", "path", "bundles"],
+      "additionalProperties": true
+    },
+    "serveCounts": {
+      "description": "The portfolio rollup over the inbox rows. Null when any input bundle refuses, so a partial set never reads as a smaller total.",
+      "type": "object",
+      "properties": {
+        "bundles": { "type": "integer", "minimum": 0 },
+        "open": { "type": "integer", "minimum": 0 },
+        "deferred": { "type": "integer", "minimum": 0 },
+        "addressed": { "type": "integer", "minimum": 0 },
+        "terminal": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["bundles", "open", "deferred", "addressed", "terminal"],
+      "additionalProperties": true
+    },
+    "serveRow": {
+      "description": "One inbox row: the bundle identity, its post receipt's model, and the verdict counts. Every numeric count is null for a refused bundle, never zero-for-unknown.",
+      "type": "object",
+      "properties": {
+        "root": { "type": "string" },
+        "bundle": { "type": "string" },
+        "dir": { "type": "string" },
+        "repo": { "type": "string" },
+        "pr": { "type": ["integer", "null"] },
+        "model": { "type": ["string", "null"] },
+        "head": { "type": ["string", "null"] },
+        "open": { "type": ["integer", "null"] },
+        "deferred": { "type": ["integer", "null"] },
+        "addressed": { "type": ["integer", "null"] },
+        "terminal": { "type": ["integer", "null"] }
+      },
+      "required": [
+        "root",
+        "bundle",
+        "dir",
+        "repo",
+        "pr",
+        "model",
+        "head",
+        "open",
+        "deferred",
+        "addressed",
+        "terminal"
+      ],
+      "additionalProperties": true
+    },
+    "serveArtifact": {
+      "description": "One evidence-ledger row: the bundle-relative path, its presence, and the hash and size when present.",
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "present": { "type": "boolean" },
+        "sha256": { "type": ["string", "null"] },
+        "bytes": { "type": ["integer", "null"] }
+      },
+      "required": ["path", "present", "sha256", "bytes"],
+      "additionalProperties": true
+    },
+    "serveCache": {
+      "description": "The in-memory composition cache's size; derived state only, never written to disk.",
+      "type": "object",
+      "properties": {
+        "entries": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["entries"],
+      "additionalProperties": true
+    },
+    "serveSkipped": {
+      "description": "Walk outcomes discovery reports; S1 has no walk, so only the zero row is published.",
+      "type": "object",
+      "properties": {
+        "symlinks": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["symlinks"],
+      "additionalProperties": true
+    },
+    "serveDiscovery": {
+      "description": "Whether the root list came from the registry. S1 reports cached false with an empty scanned_at.",
+      "type": "object",
+      "properties": {
+        "cached": { "type": "boolean" },
+        "scanned_at": { "type": "string" }
+      },
+      "required": ["cached", "scanned_at"],
+      "additionalProperties": true
+    },
+    "threadsFile": {
+      "description": "The bundle's threads.json feed; null when the bundle carries none. Shape shared with threads.schema.json.",
+      "type": "object",
+      "properties": {
+        "schema_version": { "const": "1" },
+        "provider": {
+          "enum": [
+            "github",
+            "gitlab",
+            "gitcafe",
+            "forgejo",
+            "bitbucket",
+            "azure"
+          ]
+        },
+        "pr": { "type": "integer" },
+        "head_sha": { "type": "string" },
+        "fetched_at": { "type": "string", "format": "date-time" },
+        "truncated": { "type": "boolean" },
+        "threads": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/thread" }
+        }
+      },
+      "required": [
+        "schema_version",
+        "provider",
+        "pr",
+        "head_sha",
+        "fetched_at",
+        "truncated",
+        "threads"
+      ],
+      "additionalProperties": true
+    },
+    "thread": {
+      "description": "One root review thread or conversation comment plus its replies.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "path": { "type": "string" },
+        "line": { "type": ["integer", "null"] },
+        "start_line": { "type": ["integer", "null"] },
+        "side": { "type": ["string", "null"] },
+        "resolved": { "type": "boolean" },
+        "outdated": { "type": "boolean" },
+        "url": { "type": ["string", "null"] },
+        "author": { "type": "string" },
+        "author_kind": { "enum": ["human", "bot", "verdict"] },
+        "finding_sig": { "type": ["string", "null"] },
+        "kind": { "enum": ["issue-comment", "review-comment"] },
+        "comments": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/comment" }
+        }
+      },
+      "required": [
+        "id",
+        "path",
+        "line",
+        "start_line",
+        "side",
+        "resolved",
+        "outdated",
+        "url",
+        "author",
+        "author_kind",
+        "finding_sig",
+        "kind",
+        "comments"
+      ],
+      "additionalProperties": true
+    },
+    "comment": {
+      "description": "One comment inside a thread, body capped and flagged.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "author": { "type": "string" },
+        "author_kind": { "enum": ["human", "bot", "verdict"] },
+        "body": { "type": "string" },
+        "truncated": { "type": "boolean" },
+        "created_at": { "type": "string" }
+      },
+      "required": [
+        "id",
+        "author",
+        "author_kind",
+        "body",
+        "truncated",
+        "created_at"
+      ],
+      "additionalProperties": true
+    },
     "configData": {
       "type": "object",
       "properties": {

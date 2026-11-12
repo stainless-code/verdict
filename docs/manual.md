@@ -1,7 +1,8 @@
 # Verdict — operator manual
 
 Verdict splits code review into steps your agent runs on your machine: fetch,
-review, gate, post. The agent reviews; `gh` does GitHub I/O. No servers, no external services.
+review, gate, post. The agent reviews; `gh` does GitHub I/O. No remote servers, no external
+services; `verdict serve` is a local, read-only surface.
 
 ## Quickstart
 
@@ -1407,6 +1408,84 @@ secret-adjacent paths with the matched reason, `fetch --json` publishes its
 path under `data.artifacts.sensitive.txt` (null when absent), and the prompt
 dump fences it when present. Nothing withholds or blocks on it, and its header
 asks reviewers to name the path, never quote a flagged value.
+
+## Serve (local HTTP surface)
+
+`verdict serve` starts one read-only HTTP surface over the current repository's
+bundles: the server binds `127.0.0.1` on a kernel-assigned port by default (pass
+`--port` to pin it, `--host` to bind another interface), prints one tokenised
+start URL, and stops on Ctrl-C (exit 3). It never fetches, posts, runs a model,
+or writes a store.
+
+```bash
+verdict serve                    # the current repository
+verdict serve --root ~/work      # one explicit repository root
+verdict serve --host 192.168.1.10 # bind one interface: warns, never a default
+verdict serve --token fixed      # tests/scripts: visible in argv and history
+```
+
+Flags: `--root <dir>` (serve that directory as the root; refused `bad-root`
+when missing or not a directory), `--host <addr>` (default `127.0.0.1`; any
+other value warns that it exposes the surface beyond the machine over plain
+HTTP, with the token and session cookie unencrypted), `--port <n>` (default
+`0`, the kernel assigns one), `--token <s>` (default: a fresh 128-bit token per
+start; the flag warns it is visible in `ps` and shell history), `--check
+<tier>` (the gate tier the bundle detail composes; default `critical`), and
+`--max-bundles <n>` (default 500). `--json` prints one start envelope whose
+`data.url` is the tokenised URL and `data.listen` is `host:port`; the envelope
+is the only machine-readable place a script learns where to connect, and a log
+that captures it captures a capability that dies with the process.
+
+**The exchange.** `GET /?token=<t>` is the only URL-borne token: a valid token
+sets `verdict_session_<port>` (`HttpOnly`, `SameSite=Strict`, `Path=/v1`, no
+`Max-Age`, no `Secure` — plain HTTP; the default bind keeps it on loopback) and
+`303`s to `/`, so the page
+a browser lands on keeps a token-free URL. The start URL itself is a bearer
+credential for `/v1` until the process exits, and a browser that visited it can
+keep that URL in its history; a history entry is therefore a live capability,
+not a bookmark. An invalid token is `401` with no
+cookie. Every `/v1` route accepts that cookie or `Authorization: Bearer <t>`
+and refuses `?token=` with a `400` `token-in-query` transport error. `/`
+carries no data and needs no credential. A stale cookie after a restart is a
+`401`: open the start URL the running process printed, from the terminal rather
+than from history.
+
+**Routes** (GET, plus HEAD from the mux):
+
+| Route                                                  | Envelope                                                                              |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| `GET /v1/health`                                       | `serve` — version, roots, `watch: false`, interval, cache counters, `read_only: true` |
+| `GET /v1/roots`                                        | `serve` — the served roots with counts, `truncated`, `skipped`, `discovery`           |
+| `GET /v1/bundles`                                      | `serve` — inbox rows, portfolio counts, `partial`, `sources[]`, `errors[]`            |
+| `GET /v1/roots/{root}/bundles/{bundle}`                | `serve` — `data.{report,gate,threads,artifacts,sources,errors}`                       |
+| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}` | `show` — byte-identical `data` to `show --json`                                       |
+
+`{root}` is a 12-hex id derived from the absolute root path; `{bundle}` is a
+path-safe slug and `{sig}` a 4–40 hex prefix. A product refusal is always HTTP
+`200` with the envelope (`error.code` set, `data: null`); a corrupt bundle in a
+listing keeps its row with `null` counts and an `errors[]` entry, and any total
+over it is `null` and `partial: true` — never `0`. Transport errors are a
+separate vocabulary: `400` (`token-in-query`, `bad-glob`), `401`, `403`
+(Host/Origin), `404`, and `405` with `Allow: GET, HEAD`. Every response carries
+the strict CSP (`default-src 'self'`, no inline script or style), no referrer,
+`nosniff`, same-origin resource and opener policies, and `no-store`; no CORS
+header is ever emitted, and only loopback `Host`/`Origin` spellings are
+accepted (the DNS-rebinding gate). A wildcard bind (`--host 0.0.0.0` or `::`)
+still allowlists only the loopback names, so a LAN client needs a concrete
+interface address such as `--host 192.168.1.10`. `/v1` is the only version: a
+breaking change becomes `/v2`.
+
+Composed views are cached in memory, keyed by a stamp of their inputs. Each
+bundle-directory entry contributes its mode bits, size, and mtime, with a
+symlink followed to its target; each `.verdict/overrides/` fragment contributes
+its mode bits and the SHA-256 of its bytes, read through the shared capped,
+non-blocking reader at a 64 KiB cap. The stamp catches an atomic
+write, an ordinary in-place rewrite, and a permission-only change. One blind
+spot remains, and only for bundle artifacts: a same-size, same-mtime in-place
+rewrite moves nothing, because the bundle side is an invalidation fingerprint,
+not a content hash. A fragment the stamp cannot read (unreadable, or past the
+64 KiB cap) bypasses the cache for that request, so the readers' own refusal
+shows. Refusals are never cached.
 
 ## Your agent, launched (`run --agent`)
 

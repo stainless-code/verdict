@@ -25,6 +25,7 @@ so the section name is authoritative.
 | Agent entry points (`llms.txt`, `agent-readability.json`, skill index, `{route}.md`)                | generated into `apps/docs/dist/` by the Blume build; the first three are the footer's `For agents` column                                                                                                                              |
 | Pipeline section: stages, their commands, the Shipped and Planned groups, the MCP badge             | `apps/docs/content/04-roadmap/index.mdx` § Shipped today and § Next; commands in `verdict --help`; MCP experimental per the roadmap callout; `--since` GitHub/GitLab per `fetch` usage and manual                                      |
 | Vendor prices and the 2026-11-04 date                                                               | `apps/docs/content/03-compare/index.mdx`, the only page that carries them                                                                                                                                                              |
+| `verdict serve` is a local, read-only HTTP surface, loopback by default                             | § Serve (local HTTP surface); `internal/serve` security matrix, `TestOnlyGetRoutes`, and `TestReadsWriteNothing`; no CORS header is emitted                                                                                            |
 
 ## The terminal sample
 

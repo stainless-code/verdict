@@ -20,6 +20,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/core/repair"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 const (
@@ -371,8 +372,8 @@ func (st *state) writeRoundOut(args *launchArgs, k int, res *core.Result) {
 // has no size ceiling. A file that does not open, is not regular once opened,
 // or outgrew the review cap yields nothing to copy.
 func crashReviewBytes(path string) ([]byte, bool) {
-	f, ok := openEvidence(path)
-	if !ok {
+	f, err := readcommon.OpenNoBlock(path)
+	if err != nil {
 		return nil, false
 	}
 	defer func() { _ = f.Close() }()

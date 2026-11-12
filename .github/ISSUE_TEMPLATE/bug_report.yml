@@ -51,6 +51,7 @@ body:
         - upgrade
         - uninstall
         - mcp
+        - serve
     validations:
       required: true
   - type: textarea
