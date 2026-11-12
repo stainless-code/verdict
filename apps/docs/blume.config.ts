@@ -12,7 +12,7 @@ import { troubleshootingSource } from "./sources/troubleshooting.ts";
 
 const title = "Verdict";
 const description =
-  "Code review any coding agent can run: fetch, review, gate, post. Evidence-graded findings, cost rollups, one static binary — no server, no account, no daemon.";
+  "Code review any coding agent can run: fetch, review, gate, post. Evidence-graded findings, cost rollups, one static binary — no remote server, no account, no daemon; a local, read-only view is opt-in.";
 
 /** Mount point of the deployed site, shared with every absolute href below. */
 const deploymentBase = "/verdict";

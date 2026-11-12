@@ -35,6 +35,7 @@ body:
         - upgrade
         - uninstall
         - mcp
+        - serve
         - TS client
         - installer / upgrade channel
         - docs site

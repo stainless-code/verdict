@@ -262,7 +262,8 @@ Use the issue templates (bug reports name the verb and paste the
 the PR template checklist. Verbs are: `fetch`, `post`, `triage`,
 `report`, `next`, `show`, `verify`, `doctor`, `calibrate`,
 `fetch-local`, `run`, `record`, `adopt`, `fix`, `check-tree`, `ready`,
-`trend`, `index`, `backtest`, `learn`, `pack`, `init`, `threads`, `skill`, `upgrade`, `uninstall`
+`trend`, `index`, `backtest`, `learn`, `pack`, `init`, `threads`, `skill`, `upgrade`, `uninstall`,
+`serve`
 — plus the hidden `mcp` stdio transport. If your change adds or
 renames one, the templates, the manual, and `cmd/verdict/usage.go`
 must agree; [`docs/adding-a-verb.md`](docs/adding-a-verb.md) is the
