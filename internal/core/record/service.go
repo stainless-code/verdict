@@ -14,6 +14,7 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
+	packcore "github.com/stainless-code/verdict/internal/core/pack"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/identity"
@@ -49,6 +50,9 @@ func Run(ctx context.Context, req *core.RecordRequest) (*core.RecordResponse, *c
 	}
 	snap, ref := controls.Gate(dir, BundleBase(dir, st.store))
 	if ref != nil {
+		return nil, st.withWarnings(ref)
+	}
+	if ref := packcore.CheckLock(snap); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
 	st.controls = snap
