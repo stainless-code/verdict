@@ -1565,15 +1565,16 @@ when no feed/post timestamp pair can be compared.
 
 Composed views are cached in memory, keyed by a stamp of their inputs. Each
 bundle-directory entry contributes its mode bits, size, and mtime, with a
-symlink followed to its target; each `.verdict/overrides/` fragment contributes
+symlink followed to its target, plus the SHA-256 of its bytes when it is a
+regular file of at most 64 KiB; each `.verdict/overrides/` fragment contributes
 its mode bits and the SHA-256 of its bytes, read through the shared capped,
 non-blocking reader at a 64 KiB cap. The stamp catches an atomic
 write, an ordinary in-place rewrite, and a permission-only change. One blind
-spot remains, and only for bundle artifacts: a same-size, same-mtime in-place
-rewrite moves nothing, because the bundle side is an invalidation fingerprint,
-not a content hash. A fragment the stamp cannot read (unreadable, or past the
-64 KiB cap) bypasses the cache for that request, so the readers' own refusal
-shows. Refusals are never cached.
+spot remains, and only for bundle artifacts larger than 64 KiB: a same-size,
+same-mtime in-place rewrite moves nothing until the periodic sweep, because
+those are fingerprinted by metadata, not content. An artifact or fragment the
+stamp cannot read bypasses the cache for that request, so the readers' own
+refusal shows. Refusals are never cached.
 
 ## Your agent, launched (`run --agent`)
 
@@ -3607,9 +3608,6 @@ before writing artifacts, matching `fetch` and `fetch-local`.
 
 Serve inventory charges never exceed the 16 MiB per-bundle budget, including
 failed reads and artifacts larger than the per-file cap.
-
-Serve cache fingerprints include content for bundle artifacts up to 64 KiB.
-Larger artifacts use mode, size and mtime; the periodic sweep refreshes them.
 
 A `threads.json` feed removed during a serve read is absent; malformed feeds
 still report `corrupt-store`.
