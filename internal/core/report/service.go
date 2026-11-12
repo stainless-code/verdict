@@ -196,7 +196,7 @@ func loadState(ctx context.Context, st *state) *core.RefusalError {
 	if err != nil {
 		return st.withWarnings(loadRefusal(err))
 	}
-	if err := readcommon.ValidateOverrides(); err != nil {
+	if err := readcommon.ValidateOverridesAt(st.req.OverridesDir); err != nil {
 		return st.withWarnings(loadRefusal(err))
 	}
 	st.now = st.req.TimeUTC()
