@@ -305,6 +305,8 @@ func TestAddRefusesUnrecordableDirLabel(t *testing.T) {
 
 // TestCommitAddRestoresTreeWhenLockFails proves a failed lock write rolls the
 // vendored tree back to the previous one and leaves the old lock intact.
+//
+//nolint:revive // the swap, fail, and rollback sequence reads as one scenario
 func TestCommitAddRestoresTreeWhenLockFails(t *testing.T) {
 	repo := t.TempDir()
 	t.Chdir(repo)
@@ -383,12 +385,14 @@ func TestAddRefusesInvalidPack(t *testing.T) {
 
 // gitCommander scripts the three git calls a hermetic add makes and plants the
 // fixture tree in the clone destination.
+//
+//nolint:govet // test helper; field order reads as the scripted call fields
 type gitCommander struct {
 	t           *testing.T
 	files       map[string]string
 	calls       []gitCall
-	cloneStderr string
 	cloneExit   int
+	cloneStderr string
 }
 
 type gitCall struct {

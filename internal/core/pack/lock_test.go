@@ -289,6 +289,8 @@ func TestLockStrictJSONRefuses(t *testing.T) {
 
 // TestLockRequiresPacksArray proves a missing or null packs field refuses while
 // an explicitly empty array stays a valid lock.
+//
+//nolint:revive // the missing, null, and empty matrix reads as one block
 func TestLockRequiresPacksArray(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {

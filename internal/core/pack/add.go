@@ -28,6 +28,7 @@ const (
 	sshPrefix       = "ssh://"
 	packDirPerm     = 0o755
 	shaHexLen       = 40
+	stagingDot      = "."
 	revParseArgs    = 3
 	revParseIndex   = 1
 )
@@ -158,38 +159,41 @@ func loadAdd(root string, src *packSource) (*Lock, *Pack, *LockEntry, *core.Refu
 // checkSlugOwner refuses a first add that would overwrite another pack's
 // vendored slug, or a directory no lock row owns.
 func checkSlugOwner(root string, lock *Lock, name, slug string) *core.RefusalError {
-	if lock != nil {
-		for i := range lock.Packs {
-			other := &lock.Packs[i]
-			if other.Name != name && packSlug(other.Name) == slug {
-				return badPack(fmt.Sprintf(
-					"pack %s would vendor over %s at %s/%s — rename one pack",
-					name, other.Name, RepoPacksDir, slug))
-			}
-		}
+	if ref := lockSlugConflict(lock, name, slug); ref != nil {
+		return ref
 	}
-	_, err := os.Lstat(filepath.Join(root, filepath.FromSlash(RepoPacksDir), slug))
-	if errors.Is(err, fs.ErrNotExist) {
+	dir := filepath.Join(root, filepath.FromSlash(RepoPacksDir), slug)
+	if _, err := os.Lstat(dir); errors.Is(err, fs.ErrNotExist) {
 		return nil
-	}
-	if err != nil {
+	} else if err != nil {
 		return badPack(fmt.Sprintf("inspect %s/%s: %v", RepoPacksDir, slug, err))
 	}
 	if lockEntry(lock, name) != nil {
 		return nil
 	}
-	existing, ref := LoadDir(filepath.Join(root, filepath.FromSlash(RepoPacksDir), slug))
-	if ref != nil {
-		return badPack(fmt.Sprintf(
-			"%s/%s is not named by %s — remove it or re-add the pack it holds",
-			RepoPacksDir, slug, LockFile))
-	}
-	if existing != nil && existing.Name == name {
+	existing, ref := LoadDir(dir)
+	if ref == nil && existing != nil && existing.Name == name {
 		return nil
 	}
 	return badPack(fmt.Sprintf(
 		"%s/%s is not named by %s — remove it or re-add the pack it holds",
 		RepoPacksDir, slug, LockFile))
+}
+
+// lockSlugConflict refuses a lock row whose name maps to the same directory.
+func lockSlugConflict(lock *Lock, name, slug string) *core.RefusalError {
+	if lock == nil {
+		return nil
+	}
+	for i := range lock.Packs {
+		other := &lock.Packs[i]
+		if other.Name != name && packSlug(other.Name) == slug {
+			return badPack(fmt.Sprintf(
+				"pack %s would vendor over %s at %s/%s — rename one pack",
+				name, other.Name, RepoPacksDir, slug))
+		}
+	}
+	return nil
 }
 
 // addResponse renders the added row and its human line.
@@ -343,21 +347,26 @@ type sourceAuthority struct {
 // @, so a local path with an @ stays a path.
 func parseSourceAuthority(raw string) (sourceAuthority, bool) {
 	if scheme, rest, ok := strings.Cut(raw, schemeSep); ok && validScheme(scheme) {
-		start := len(raw) - len(rest)
-		end := len(raw)
-		if slash := strings.IndexByte(rest, '/'); slash >= 0 {
-			end = start + slash
-		}
-		if start >= end {
-			return sourceAuthority{}, false
-		}
-		return splitLastAt(raw, sourceAuthority{scheme: scheme, start: start, end: end})
+		return urlAuthority(raw, scheme, rest)
 	}
 	at := strings.LastIndex(raw, refSep)
 	if at <= 0 || strings.Contains(raw[:at], "/") || !strings.Contains(raw[at+1:], userinfoSep) {
 		return sourceAuthority{}, false
 	}
 	return splitLastAt(raw, sourceAuthority{start: 0, end: len(raw)})
+}
+
+// urlAuthority splits one scheme:// authority at its first path slash.
+func urlAuthority(raw, scheme, rest string) (sourceAuthority, bool) {
+	start := len(raw) - len(rest)
+	end := len(raw)
+	if slash := strings.IndexByte(rest, '/'); slash >= 0 {
+		end = start + slash
+	}
+	if start >= end {
+		return sourceAuthority{}, false
+	}
+	return splitLastAt(raw, sourceAuthority{scheme: scheme, start: start, end: end})
 }
 
 // splitLastAt fills the userinfo fields from the last @ inside bounds.
@@ -421,39 +430,58 @@ func hasSCPForm(raw string) bool {
 	return ok && auth.scheme == ""
 }
 
+// textURL is one scheme:// span in a message, bounded at the first path,
+// query, fragment, or quote byte.
+type textURL struct {
+	start, schemeEnd, at, end int
+}
+
+// findTextURL locates the next scheme:// span at or after from. A span with no
+// userinfo @ carries at -1.
+func findTextURL(text string, from int) (textURL, bool) {
+	i := strings.Index(text[from:], schemeSep)
+	if i < 0 {
+		return textURL{}, false
+	}
+	i += from
+	start := i
+	for start > 0 && isSchemeByte(text[start-1]) {
+		start--
+	}
+	schemeEnd := i + len(schemeSep)
+	end := schemeEnd
+	for end < len(text) && !urlTextStop(text[end]) {
+		end++
+	}
+	at := strings.LastIndexByte(text[schemeEnd:end], '@')
+	if at <= 0 {
+		return textURL{start: start, schemeEnd: schemeEnd, at: -1, end: end}, true
+	}
+	return textURL{start: start, schemeEnd: schemeEnd, at: schemeEnd + at, end: end}, true
+}
+
 // redactURLText masks the userinfo of every scheme:// URL in text, so a
 // failed clone cannot echo a credential git was handed.
 func redactURLText(text string) string {
 	var out strings.Builder
 	last := 0
+	redacted := false
 	for from := 0; ; {
-		i := strings.Index(text[from:], schemeSep)
-		if i < 0 {
+		span, ok := findTextURL(text, from)
+		if !ok {
 			break
 		}
-		i += from
-		start := i
-		for start > 0 && isSchemeByte(text[start-1]) {
-			start--
-		}
-		authStart := i + len(schemeSep)
-		end := authStart
-		for end < len(text) && !urlTextStop(text[end]) {
-			end++
-		}
-		at := strings.LastIndexByte(text[authStart:end], '@')
-		if at < 0 || at == 0 {
-			from = end
+		from = span.end
+		if span.at < 0 {
 			continue
 		}
-		at += authStart
-		out.WriteString(text[last:start])
-		out.WriteString(text[start:authStart])
+		redacted = true
+		out.WriteString(text[last:span.start])
+		out.WriteString(text[span.start:span.schemeEnd])
 		out.WriteString("***")
-		last = at
-		from = end
+		last = span.at
 	}
-	if last == 0 {
+	if !redacted {
 		return text
 	}
 	out.WriteString(text[last:])
@@ -748,7 +776,7 @@ func sweepStaleVendored(packsDir, slug string) *core.RefusalError {
 	}
 	for _, entry := range entries {
 		name := entry.Name()
-		if !strings.HasPrefix(name, "."+slug+".tmp-") && !strings.HasPrefix(name, "."+slug+".old-") {
+		if !strings.HasPrefix(name, stagingDot+slug+".tmp-") && !strings.HasPrefix(name, stagingDot+slug+".old-") {
 			continue
 		}
 		if err := os.RemoveAll(filepath.Join(packsDir, name)); err != nil {
@@ -762,7 +790,7 @@ func sweepStaleVendored(packsDir, slug string) *core.RefusalError {
 // pack root. Every failure closes the staging root before removing the tree:
 // Windows refuses to delete a directory with an open handle.
 func stageVendored(src *os.Root, packsDir, slug string, p *Pack) (string, *core.RefusalError) {
-	stage, err := os.MkdirTemp(packsDir, "."+slug+".tmp-")
+	stage, err := os.MkdirTemp(packsDir, stagingDot+slug+".tmp-")
 	if err != nil {
 		return "", badPack(fmt.Sprintf("create a staging directory under %s: %v", RepoPacksDir, err))
 	}
@@ -787,7 +815,18 @@ func stageVendored(src *os.Root, packsDir, slug string, p *Pack) (string, *core.
 // closeStage closes a staging root and removes its tree, joining both errors
 // so a caller can report either failure.
 func closeStage(root *os.Root, stage string) error {
-	return errors.Join(root.Close(), os.RemoveAll(stage))
+	return errors.Join( //nolint:wrapcheck // wrapOp names each cause; Join only combines them
+		wrapOp("close the staging root", root.Close()),
+		wrapOp("remove the staging tree", os.RemoveAll(stage)),
+	)
+}
+
+// wrapOp names an operation and wraps its error; a nil error stays nil.
+func wrapOp(op string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%s: %w", op, err) //nolint:wrapcheck // %w preserves the cause; wrapcheck reads the constructor
 }
 
 // cleanupStageFailure keeps the original refusal and names a cleanup failure
@@ -823,16 +862,16 @@ func swapVendored(dest *os.Root, packsDir, slug, stage string) (string, *core.Re
 func undoVendored(root, slug, backup string) error {
 	dest, err := os.OpenRoot(filepath.Join(root, filepath.FromSlash(RepoPacksDir)))
 	if err != nil {
-		return err
+		return wrapOp("open the pack root", err)
 	}
 	defer func() { _ = dest.Close() }()
 	if backup == "" {
-		return dest.RemoveAll(slug)
+		return wrapOp("remove the new pack tree", dest.RemoveAll(slug))
 	}
 	if err := dest.RemoveAll(slug); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return err
+		return wrapOp("remove the new pack tree", err)
 	}
-	return dest.Rename(backup, slug)
+	return wrapOp("restore the previous pack tree", dest.Rename(backup, slug))
 }
 
 // dropVendoredBackup removes the previous tree after the lock is durable.
@@ -842,10 +881,10 @@ func dropVendoredBackup(root, backup string) error {
 	}
 	dest, err := os.OpenRoot(filepath.Join(root, filepath.FromSlash(RepoPacksDir)))
 	if err != nil {
-		return err
+		return wrapOp("open the pack root", err)
 	}
 	defer func() { _ = dest.Close() }()
-	return dest.RemoveAll(backup)
+	return wrapOp("remove the previous pack tree", dest.RemoveAll(backup))
 }
 
 // backupVendored renames any previous tree aside and returns its name, or ""
@@ -857,7 +896,7 @@ func backupVendored(dest *os.Root, packsDir, slug string) (string, *core.Refusal
 		}
 		return "", badPack(fmt.Sprintf("inspect %s/%s: %v", RepoPacksDir, slug, err))
 	}
-	holder, err := os.MkdirTemp(packsDir, "."+slug+".old-")
+	holder, err := os.MkdirTemp(packsDir, stagingDot+slug+".old-")
 	if err != nil {
 		return "", badPack(fmt.Sprintf("create a backup directory under %s: %v", RepoPacksDir, err))
 	}
