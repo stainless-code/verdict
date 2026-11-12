@@ -20,6 +20,7 @@ const (
 	exportScript    = "app.js"
 	exportStyles    = "app.css"
 	exportNotExport = "html-not-export"
+	exportSymlink   = "html-symlink"
 	exportPerm      = 0o600
 	exportDirPerm   = 0o700
 )
@@ -151,7 +152,7 @@ func parentDestination(parent *os.Root, dest string) error {
 		return exportFailure(err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		return &cli.RefusalError{Code: "html-symlink", Message: "HTML export destination must not be a symlink"}
+		return &cli.RefusalError{Code: exportSymlink, Message: "HTML export destination must not be a symlink"}
 	}
 	if !info.IsDir() {
 		return notExport()
@@ -227,15 +228,38 @@ func parentRemnants(parent *os.Root, dest string) error {
 }
 
 func openExportParent(dest string) (*os.Root, string, error) {
+	return openExportParentWith(dest, os.OpenRoot)
+}
+
+func openExportParentWith(dest string, open func(string) (*os.Root, error)) (*os.Root, string, error) {
 	absolute, err := checkedExportPath(dest)
 	if err != nil {
 		return nil, "", err
 	}
-	parent, err := os.OpenRoot(filepath.Dir(absolute))
+	identity, err := checkedExportParentIdentity(filepath.Dir(absolute))
+	if err != nil {
+		return nil, "", err
+	}
+	parent, err := open(filepath.Dir(absolute))
 	if err != nil {
 		return nil, "", exportFailure(err)
 	}
+	if err := verifyOpenedExportParent(parent, identity); err != nil {
+		_ = parent.Close()
+		return nil, "", err
+	}
 	return parent, filepath.Base(absolute), nil
+}
+
+func verifyOpenedExportParent(parent *os.Root, identity os.FileInfo) error {
+	opened, err := parent.Stat(".")
+	if err != nil {
+		return exportFailure(err)
+	}
+	if !os.SameFile(identity, opened) {
+		return &cli.RefusalError{Code: exportSymlink, Message: "HTML export parent changed while opening it"}
+	}
+	return nil
 }
 
 func checkedExportPath(dest string) (string, error) {
@@ -267,7 +291,7 @@ func exportPathComponent(name string, last bool) error {
 		return exportFailure(err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		return &cli.RefusalError{Code: "html-symlink", Message: "HTML export path must not contain a symlink"}
+		return &cli.RefusalError{Code: exportSymlink, Message: "HTML export path must not contain a symlink"}
 	}
 	return nil
 }
@@ -287,4 +311,15 @@ func staticExportIndex(markup string) string {
 	markup = strings.Replace(markup, `content="live"`, `content="static"`, 1)
 	policy := `<meta http-equiv="Content-Security-Policy" content="` + cspPolicy + `" />`
 	return strings.Replace(markup, `<meta charset="utf-8" />`, `<meta charset="utf-8" />`+"\n    "+policy, 1)
+}
+
+func checkedExportParentIdentity(name string) (os.FileInfo, error) {
+	identity, err := os.Lstat(name)
+	if err != nil {
+		return nil, exportFailure(err)
+	}
+	if identity.Mode()&os.ModeSymlink != 0 {
+		return nil, &cli.RefusalError{Code: exportSymlink, Message: "HTML export parent must not be a symlink"}
+	}
+	return identity, nil
 }
