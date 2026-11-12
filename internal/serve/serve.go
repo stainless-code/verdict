@@ -69,9 +69,12 @@ func (e startError) Error() string { return string(e) }
 
 // Start-up sentinels.
 var (
-	errNoRoot     error = startError("serve: no root to serve")
-	errNoListener error = startError("serve: listener is not bound")
-	errRange      error = startError("value out of range")
+	errNoRoot        error = startError("serve: no root to serve")
+	errNoListener    error = startError("serve: listener is not bound")
+	errRange         error = startError("value out of range")
+	errWatchInterval error = startError("serve: --interval must be at least 100ms")
+	errWatchSweep    error = startError("serve: --sweep must be at least 100ms")
+	errWatchOrder    error = startError("serve: --sweep must be at least --interval")
 )
 
 // Layer is the read model the transport serves. The query package implements
@@ -166,6 +169,15 @@ func applyServerDefaults(cfg *Config) {
 }
 
 func configuredLayer(cfg *Config) (Layer, error) {
+	if cfg.Interval < minWatchInterval {
+		return nil, errWatchInterval
+	}
+	if cfg.Sweep < minWatchInterval {
+		return nil, errWatchSweep
+	}
+	if cfg.Sweep < cfg.Interval {
+		return nil, errWatchOrder
+	}
 	if cfg.Layer != nil {
 		return cfg.Layer, nil
 	}

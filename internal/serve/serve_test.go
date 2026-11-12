@@ -401,6 +401,33 @@ func TestRouteTableIsGetOnly(t *testing.T) {
 	}
 }
 
+// TestConfigRejectsSubminimumWatchDurations protects programmatic Config users
+// from bypassing the watch bounds enforced by the CLI parser.
+func TestConfigRejectsSubminimumWatchDurations(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		interval time.Duration
+		sweep    time.Duration
+		want     error
+	}{
+		{name: "interval", interval: 50 * time.Millisecond, sweep: 100 * time.Millisecond, want: errWatchInterval},
+		{name: "sweep", interval: 100 * time.Millisecond, sweep: 50 * time.Millisecond, want: errWatchSweep},
+		{name: "order", interval: 200 * time.Millisecond, sweep: 100 * time.Millisecond, want: errWatchOrder},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := New(&Config{
+				Layer: testLayer(t.TempDir(), nil), Interval: tc.interval,
+				Sweep: tc.sweep, Now: fixedNow,
+			})
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("New error = %v for interval %v and sweep %v, want %v", err, tc.interval, tc.sweep, tc.want)
+			}
+		})
+	}
+}
+
 // syncBuffer is a goroutine-safe writer for the in-process Run test.
 type syncBuffer struct { //nolint:govet // mutex guards the builder beside it
 	mu sync.Mutex
