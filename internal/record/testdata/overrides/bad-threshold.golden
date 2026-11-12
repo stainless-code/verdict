@@ -3,7 +3,7 @@ exit: 1
 » anchors: 0 inline, 0 moved to body
 --- stderr ---
 warn: no fetch-time hunk snapshot (.verdict/state/local-ov/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
-warn: $.body: no basis line — inserted the computed counts (basis-replaced)
+warn: $.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)
 error: override .verdict/overrides/walkthrough-threshold.md violates locked invariant 'degenerate-guard' (unknown key in 'frobnicate: 3' — want only 'files: N' and 'bytes: N')
 try: re-run with one of the valid values named above
 re-enter: verdict record acme/app local-ov

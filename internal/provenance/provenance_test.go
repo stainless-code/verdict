@@ -267,6 +267,9 @@ func checkInsertedBasis(t *testing.T, expected string) {
 	if p == nil || p.Code != core.ProblemCodeBasisReplaced {
 		t.Fatalf("missing problem = %+v", p)
 	}
+	if p.Message != "no Basis line in the leading quote block — inserted the computed counts (basis-replaced)" {
+		t.Errorf("missing Basis message = %q", p.Message)
+	}
 	if got != "> ✅ body\n> Basis: "+expected {
 		t.Errorf("missing body = %q", got)
 	}

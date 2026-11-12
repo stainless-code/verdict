@@ -9,7 +9,7 @@ exit: 0
   "next": "report or triage the local bundle; post stays refused (no PR target)",
   "warnings": [
     "no fetch-time hunk snapshot (.verdict/state/local-dg/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
-    "$.body: no basis line — inserted the computed counts (basis-replaced)"
+    "$.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)"
   ],
   "data": {
     "dir": ".verdict/state/local-dg",
@@ -39,7 +39,7 @@ exit: 0
 --- stderr ---
 warn: no fetch-time hunk snapshot (.verdict/state/local-dg/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
 » anchors: 1 inline, 0 moved to body
-warn: $.body: no basis line — inserted the computed counts (basis-replaced)
+warn: $.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)
 » findings: 1 sigs -> .verdict/state/local-dg/findings.json
   f60aa3c1  open  true  notes.txt
 recorded: .verdict/state/local-dg/findings.json (1 open) + .verdict/state/local-dg/record.json — report/triage read it; post stays refused (no PR target)

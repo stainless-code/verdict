@@ -12,7 +12,7 @@ exit: 0
     "ignoring unknown kb rule 'rec-rule' (no .verdict/kb.jsonl yet)",
     "ignoring unknown kb rule 'rec-rule' (no .verdict/kb.jsonl yet)",
     "ignoring unknown kb rule 'rec-rule' (no .verdict/kb.jsonl yet)",
-    "$.body: no basis line — inserted the computed counts (basis-replaced)"
+    "$.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)"
   ],
   "data": {
     "dir": ".verdict/state/local-mx",
@@ -111,7 +111,7 @@ warn: no fetch-time hunk snapshot (.verdict/state/local-mx/hunks.tsv missing) �
 warn: ignoring unknown kb rule 'rec-rule' (no .verdict/kb.jsonl yet)
 warn: ignoring unknown kb rule 'rec-rule' (no .verdict/kb.jsonl yet)
 warn: ignoring unknown kb rule 'rec-rule' (no .verdict/kb.jsonl yet)
-warn: $.body: no basis line — inserted the computed counts (basis-replaced)
+warn: $.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)
 » findings: 12 sigs -> .verdict/state/local-mx/findings.json
   c7bc06e4  open  true  notes.txt
   63b8aa5b  open  true  notes.txt
