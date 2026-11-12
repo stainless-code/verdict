@@ -709,6 +709,38 @@ func mustAbs(t *testing.T, dir string) string {
 	return abs
 }
 
+// TestBundleRepoKeepsGitLabSubgroups proves the envelope names the full
+// project path on every host, not the first two URL segments.
+func TestBundleRepoKeepsGitLabSubgroups(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, url, want string }{
+		{
+			name: "gitlab subgroup",
+			url:  "https://gitlab.example.com/team/subgroup/project/-/merge_requests/9",
+			want: "team/subgroup/project",
+		},
+		{
+			name: "gitlab plain group",
+			url:  "https://gitlab.example.com/team/project/-/merge_requests/9",
+			want: "team/project",
+		},
+		{name: "github pull", url: "https://github.com/acme/app/pull/1234", want: "acme/app"},
+		{name: "forgejo pulls", url: "https://codeberg.org/acme/app/pulls/9", want: "acme/app"},
+		{name: "github issue", url: "https://github.com/acme/app/issues/9", want: "acme/app"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeFiles(t, dir, map[string]string{
+				".verdict/state/1234/PR.json": `{"state":"OPEN","headRefOid":"` + headA +
+					`","baseRefOid":"` + headB + `","author":{"login":"teammate"},"url":"` + tc.url + `"}`,
+			})
+			if got := bundleRepo(filepath.Join(dir, ".verdict", "state", "1234")); got != tc.want {
+				t.Errorf("bundleRepo = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestOverridesDirSeam proves the composed rRun judges the served root's
 // override fragments, not the launch directory's.
 func TestOverridesDirSeam(t *testing.T) {

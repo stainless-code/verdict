@@ -310,8 +310,8 @@ func (l *Layer) capBundles(names []string) ([]string, bool) {
 }
 
 // bundleRepo names the repository a bundle belongs to: a local source.json's
-// repo, else the first two path segments of the review URL (GitHub, GitLab,
-// and Forgejo all put owner/repo there).
+// repo, else the review URL's project path. GitHub and Forgejo put owner/repo
+// before /pull/, /pulls/, or /issues/; GitLab puts every subgroup before /-/.
 func bundleRepo(dir string) string {
 	if repo := readcommon.JSONStr(dir+"/source.json", "repo"); repo != "" {
 		return repo
@@ -328,7 +328,27 @@ func bundleRepo(dir string) string {
 	if len(parts) < 2 {
 		return ""
 	}
-	return path.Join(parts[0], parts[1])
+	for i := 2; i < len(parts); i++ {
+		if parts[i] == "-" && i+1 < len(parts) && parts[i+1] == "merge_requests" {
+			return path.Join(parts[:i]...)
+		}
+		if repoRouteSegment(parts[i]) {
+			if _, err := strconv.Atoi(parts[i+1]); err == nil {
+				return path.Join(parts[:i]...)
+			}
+		}
+	}
+	return path.Join(parts[:2]...)
+}
+
+// repoRouteSegment reports one host route segment that ends the project path.
+func repoRouteSegment(segment string) bool {
+	switch segment {
+	case "pull", "pulls", "issues", "merge_requests":
+		return true
+	default:
+		return false
+	}
 }
 
 // numericPr reads a bundle name as the envelope's numeric pr, null when the
