@@ -569,3 +569,18 @@ func assertIndexCallers(t *testing.T, data json.RawMessage) {
 		t.Errorf("row = %v, want a/a.go:6 exact", row)
 	}
 }
+
+// TestSDKReadDoesNotProbeGit reads a bundle when git cannot run.
+func TestSDKReadDoesNotProbeGit(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("PATH", t.TempDir())
+	if err := os.Mkdir(".git", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writePRBundle(t, "6101")
+	writeFindings(t, "6101", "[]")
+	c := newSDKClient(nil, nil)
+	defer c.Close()
+	_, err := c.Next(t.Context(), &verdict.NextRequest{Invocation: sdkInvocation("6101")})
+	requireNoError(t, err)
+}
