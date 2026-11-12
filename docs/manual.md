@@ -403,9 +403,11 @@ prompt, and the shipped prompt hash does not move.
 `verdict pack list [--json]` reports every loaded pack (built-in, org, repo)
 in precedence order: `name`, `version`, `layer`, `source` (`builtin`,
 `dir:<path>`, or `.verdict/packs/<name>`), the canonical tree `hash`, the
-declared `lenses` and `rules` ids, and `drift` (null until `verdict.lock`
-lands). It lists the packs in this checkout; a review reads repo packs from
-the PR's base, so a pack the PR adds or edits is listed here but not used.
+declared `lenses` and `rules` ids, and `drift` (null when a repo pack matches
+`.verdict/verdict.lock`, else `pack-lock-missing` or `pack-lock-drift`; the
+built-in and org rows are never locked). It lists the packs in this checkout;
+a review reads repo packs from the PR's base, so a pack the PR adds or edits
+is listed here but not used.
 A regular file directly under `.verdict/packs/` (a README, say) is not a
 pack: `pack list` skips it with one warning naming it, and `fetch` ignores
 it, so a stray regular file never refuses the run. A symlink or special file
@@ -415,6 +417,45 @@ as `controls-unavailable` — so neither surface calls one ignorable. Conflict
 refusals surface here too, so a bad layering fails before a review spends
 anything. The MCP `pack` tool serves the same read-only list and repeats the
 same warning list in its result.
+
+`verdict pack add <dir|git-url>[@ref]` vendors one pack and pins it. The
+source is validated by the same loader as every other layer (all `bad-pack`,
+`pack-too-large`, `pack-unsafe-path`, and `pack-conflict` refusals apply),
+then its manifest and loaded lens/rule bodies are copied through `os.Root`
+into `.verdict/packs/<slug>/` (the manifest name's part after the slash) and
+one row is written to `.verdict/verdict.lock`. A `dir:` source records the
+directory exactly as given on the command line, slash-separated. A
+`git:<url>@<sha>` source is cloned hermetically into a temporary directory:
+`GIT_CONFIG_NOSYSTEM=1`, `HOME` and every `XDG_*` directory scrubbed into
+that temporary tree, `GIT_TERMINAL_PROMPT=0`, `-c core.hooksPath=/dev/null`
+(an empty temporary directory on Windows), `-c protocol.file.allow=never`,
+`clone --depth=1 --no-tags --no-recurse-submodules` (plus `--branch <ref>`
+when `@ref` is given), then a detached checkout of the resolved 40-hex HEAD
+commit; that commit is what the lock records. The https and ssh remote forms
+are accepted. Re-adding a name replaces the vendored tree and the lock row,
+and prints the old and new tree hashes. A source inside `.verdict/packs/`
+refuses `bad-pack`: it is already vendored.
+
+`verdict.lock` is strict JSON (unknown or differently-cased keys refuse,
+exactly as `pack.json`), with `schema_version: "1"` and `packs` sorted by
+name: `{name, source, version, hash, sig}`. `hash` is the canonical tree hash
+`pack list` prints. `sig` is an integrity digest, not a signature: sha256
+over `name=`, `source=`, `version=`, and `hash=` lines in that order, so a
+hand-edited row is caught. The lock covers the repo layer only: the built-in
+pack is pinned by the binary, and org packs live in per-operator settings, so
+neither is locked. `pack add` writes the file atomically and keeps every
+other row.
+
+`fetch`, `fetch-local`, `post`, and `record` run one shared check where packs
+are resolved. With no repo packs and no lock, nothing changes. A repo pack
+with no lock row, or repo packs with no lock file, refuses
+`pack-lock-missing` naming the pack. A lock row whose tree hash differs from
+the vendored pack, a row whose pack directory is gone, or a `sig` that does
+not match its fields refuses `pack-lock-drift` naming the pack and both
+hashes. The check runs at fetch and again at post/record, with no bypass
+flag. `.verdict/verdict.lock` also joins the `controls` inventory, so it is
+read at the PR base: a PR cannot edit the lock that guards its own review,
+and editing the captured copy refuses `controls-stale` at post/record.
 
 ### Evidence ledger
 

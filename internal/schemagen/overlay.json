@@ -102,7 +102,8 @@
       "/$defs/fixAnchors": "The pass's anchor block, read verbatim from the record (line and start_line stay strings).",
       "/$defs/learnData": "learn --json data: exactly one of rule (one appended rule) or rules (the status listing).",
       "/$defs/packData": "pack list --json data: one row per loaded pack in precedence order (built-in, org, repo).",
-      "/$defs/packEntry": "One pack row: its manifest identity, layer, source, canonical tree hash, declared lens and rule ids, and drift (null until verdict.lock pins the pack).",
+      "/$defs/packEntry": "One pack row: its manifest identity, layer, source, canonical tree hash, declared lens and rule ids, and drift (null when a repo pack matches verdict.lock, else pack-lock-missing or pack-lock-drift; built-in and org rows are never locked).",
+      "/$defs/packAddData": "pack add --json data: the added pack row as it now lists from the repo layer, whether it replaced an existing entry, and the previous tree hash (null on a first add).",
       "/$defs/initData": "init --json data: the applied preset values and the files they were written to.",
       "/$defs/doctorData": "doctor --json data: every preflight row and the healthy verdict over them. Row values are environment-shaped, so the goldens, not this schema, pin them.",
       "/$defs/doctorCheck": "One preflight row: the check name, its severity, whether it passed, and the observed detail.",
@@ -243,6 +244,19 @@
       "/properties/raw_diff_sha256": "SHA-256 of the identity input (full.raw.diff when present, else full.diff).",
       "/properties/head_sha": "Bundle head SHA the diff was computed at.",
       "/properties/base_sha": "Bundle base SHA the diff was computed at."
+    }
+  },
+  "lock": {
+    "descriptions": {
+      "": "The repo layer's pin file at .verdict/verdict.lock: strict JSON with exactly one row per pack vendored under .verdict/packs/, sorted by name. The lock covers only the repo layer — the built-in pack is pinned by the binary and org packs live in per-operator settings. source is dir:<path as given> or git:<url>@<40-hex sha>; hash is the pack's canonical tree hash; sig is sha256 over name, source, version, and hash, so a hand edit is caught. fetch, post, and record refuse pack-lock-missing or pack-lock-drift from the trusted-base snapshot, and the file joins the controls inventory so an edited snapshot copy refuses controls-stale.",
+      "/properties/schema_version": "Lock format version; exactly \"1\".",
+      "/properties/packs": "One pinned pack row per vendored repo pack, sorted by name.",
+      "/$defs/pack": "One pinned pack: its manifest identity, where it was vendored from, the canonical tree hash, and an integrity digest over those fields.",
+      "/$defs/pack/properties/name": "Manifest pack identity as <namespace>/<slug>; the vendored directory is the slug.",
+      "/$defs/pack/properties/source": "dir:<path as given on the add command line> or git:<url>@<resolved 40-hex HEAD sha>.",
+      "/$defs/pack/properties/version": "Pinned pack semver, as the manifest declares it.",
+      "/$defs/pack/properties/hash": "The pack's canonical tree hash: sha256 over sorted slash paths, each fed as `== <path> ==`, its bytes, then a newline.",
+      "/$defs/pack/properties/sig": "sha256 over the entry's name, source, version, and hash in that order, one `key=value` line each. Integrity only: a hand edit breaks it; it is not a signature."
     }
   },
   "pack": {

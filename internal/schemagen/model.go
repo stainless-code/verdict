@@ -273,6 +273,15 @@ type PackData = pack.ListData
 // PackEntry is one pack list row.
 type PackEntry = pack.Entry
 
+// PackAddData is the pack add --json data profile.
+type PackAddData = pack.AddData
+
+// LockFile is schemas/lock.schema.json: the repo layer's pinned pack set.
+type LockFile = pack.Lock
+
+// LockPack is one pinned pack entry inside verdict.lock.
+type LockPack = pack.LockEntry
+
 // Record is core's completed-record artifact.
 type Record = core.Record
 

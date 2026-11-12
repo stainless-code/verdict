@@ -99,7 +99,11 @@ func RunList(ctx context.Context, req *Request) (*Response, *core.RefusalError) 
 	for _, warning := range warnings {
 		req.Warn(warning)
 	}
-	data := listData(set)
+	lock, ref := loadLock(req.RepoRootPath())
+	if ref != nil {
+		return nil, ref
+	}
+	data := listData(set, lock)
 	return &Response{
 		At:       req.TimeUTC(),
 		Next:     "add a repo pack under .verdict/packs/<name>/ or list an org pack path in settings packs",
@@ -332,8 +336,9 @@ func repoOrigin(dir, name string) (Origin, *core.RefusalError) {
 	return Origin{Layer: LayerRepo, Source: RepoPacksDir + "/" + name, Pack: p}, nil
 }
 
-// listData renders one row per loaded pack in layer order.
-func listData(set *Set) *ListData {
+// listData renders one row per loaded pack in layer order; a repo row carries
+// its lock verdict, while built-in and org rows are never locked.
+func listData(set *Set, lock *Lock) *ListData {
 	data := &ListData{Packs: make([]Entry, 0, len(set.Packs))}
 	for _, origin := range set.Packs {
 		if origin.Pack == nil {
@@ -342,18 +347,29 @@ func listData(set *Set) *ListData {
 		entry := Entry{
 			Name: origin.Pack.Name, Version: origin.Pack.Version,
 			Layer: string(origin.Layer), Source: origin.Source, Hash: origin.Pack.Hash,
-			Lenses: make([]string, 0, len(origin.Pack.Lenses)),
-			Rules:  make([]string, 0, len(origin.Pack.Rules)),
+			Lenses: lensIDsOf(origin.Pack), Rules: ruleIDsOf(origin.Pack),
 		}
-		for i := range origin.Pack.Lenses {
-			entry.Lenses = append(entry.Lenses, origin.Pack.Lenses[i].ID)
-		}
-		for i := range origin.Pack.Rules {
-			entry.Rules = append(entry.Rules, origin.Pack.Rules[i].ID)
+		if origin.Layer == LayerRepo {
+			entry.Drift = entryDrift(lock, origin.Pack)
 		}
 		data.Packs = append(data.Packs, entry)
 	}
 	return data
+}
+
+// entryDrift returns the refusal code a repo row would hit, or nil when the
+// lock entry matches the loaded tree.
+func entryDrift(lock *Lock, p *Pack) *string {
+	entry := lockEntry(lock, p.Name)
+	if entry == nil {
+		code := CodeLockMissing
+		return &code
+	}
+	if entry.Sig != LockSig(*entry) || entry.Hash != p.Hash {
+		code := CodeLockDrift
+		return &code
+	}
+	return nil
 }
 
 // humanRows renders one stable line per pack.
@@ -369,8 +385,12 @@ func humanRows(data *ListData) []string {
 		if rules == "" {
 			rules = "-"
 		}
-		rows = append(rows, fmt.Sprintf("%-7s  %s@%s  source=%s  sha256:%s  lenses=%s  rules=%s",
-			entry.Layer, entry.Name, entry.Version, entry.Source, shortHash(entry.Hash), lenses, rules))
+		row := fmt.Sprintf("%-7s  %s@%s  source=%s  sha256:%s  lenses=%s  rules=%s",
+			entry.Layer, entry.Name, entry.Version, entry.Source, shortHash(entry.Hash), lenses, rules)
+		if entry.Drift != nil {
+			row += "  drift=" + *entry.Drift
+		}
+		rows = append(rows, row)
 	}
 	return rows
 }

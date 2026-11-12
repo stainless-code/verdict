@@ -180,7 +180,7 @@ var publishedSemantics = map[string]string{
 	// a (target, partner) pair count; one description now names both units.
 	// Additions only; no existing property, required key, enum, or type
 	// changed.
-	"envelope.schema.json": "60782042feac7948f6152005b3eabea18e158bb6a78510fdee1bf0c6dc7d1cbe",
+	"envelope.schema.json": "b2889452c87001470ee28cc18aedb220bfcd59b903d2936d27d8ad2964a5d5e9",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -233,6 +233,11 @@ var publishedSemantics = map[string]string{
 	// empty replace: the replace array no longer carries minItems 1, because
 	// the loader accepts an empty list and the schema must not refuse a
 	// manifest that loads.
+	// lock: the new verdict.lock document joins the published set; no existing
+	// schema moved. The envelope gains an additive $defs/packAddData and a
+	// drift description on packEntry, with no existing property, required key,
+	// enum, or type changed.
+	"lock.schema.json": "8058bd369e89daff4d43dcfee1e856cde7896db9a7968138df916d263bf5c9e3",
 	"pack.schema.json": "fc8dc3ae76bfee94157f23e03ad2173f643d96974896c05307f89491f2a207b9",
 	// patch identity: additive optional patch_id/patch_id_kind plus the
 	// optional forced[] audit with $defs/forcedPost. No existing property,

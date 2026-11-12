@@ -59,8 +59,11 @@ const VerdictDir = ".verdict"
 
 // PacksPrefix is the repo pack tree's tracked root. Every regular file under
 // it is a control: the pack a PR is reviewed by is read at the PR base, never
-// from the head.
+// from the head. LockPath rides beside it as a fixed control.
 const PacksPrefix = VerdictDir + "/packs"
+
+// LockPath is the repo layer's pin file, in the fixed inventory.
+const LockPath = VerdictDir + "/verdict.lock"
 
 const (
 	packSep       = "/"
@@ -76,6 +79,7 @@ var Inventory = []string{
 	VerdictDir + "/overrides/footer-order.md",
 	VerdictDir + "/overrides/walkthrough-threshold.md",
 	VerdictDir + "/overrides/attribution.md",
+	LockPath,
 }
 
 // snapshotRel sheds the tracked directory prefix for the snapshot layout:

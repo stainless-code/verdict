@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/lock.schema.json",
+  "title": "verdict.lock — pinned repo lens packs",
+  "description": "The repo layer's pin file at .verdict/verdict.lock: strict JSON with exactly one row per pack vendored under .verdict/packs/, sorted by name. The lock covers only the repo layer — the built-in pack is pinned by the binary and org packs live in per-operator settings. source is dir:<path as given> or git:<url>@<40-hex sha>; hash is the pack's canonical tree hash; sig is sha256 over name, source, version, and hash, so a hand edit is caught. fetch, post, and record refuse pack-lock-missing or pack-lock-drift from the trusted-base snapshot, and the file joins the controls inventory so an edited snapshot copy refuses controls-stale.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "description": "Lock format version; exactly \"1\".",
+      "const": "1"
+    },
+    "packs": {
+      "description": "One pinned pack row per vendored repo pack, sorted by name.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/pack" }
+    }
+  },
+  "required": ["schema_version", "packs"],
+  "additionalProperties": false,
+  "$defs": {
+    "pack": {
+      "description": "One pinned pack: its manifest identity, where it was vendored from, the canonical tree hash, and an integrity digest over those fields.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "description": "Manifest pack identity as <namespace>/<slug>; the vendored directory is the slug.",
+          "type": "string"
+        },
+        "source": {
+          "description": "dir:<path as given on the add command line> or git:<url>@<resolved 40-hex HEAD sha>.",
+          "type": "string"
+        },
+        "version": {
+          "description": "Pinned pack semver, as the manifest declares it.",
+          "type": "string"
+        },
+        "hash": {
+          "description": "The pack's canonical tree hash: sha256 over sorted slash paths, each fed as `== <path> ==`, its bytes, then a newline.",
+          "type": "string"
+        },
+        "sig": {
+          "description": "sha256 over the entry's name, source, version, and hash in that order, one `key=value` line each. Integrity only: a hand edit breaks it; it is not a signature.",
+          "type": "string"
+        }
+      },
+      "required": ["name", "source", "version", "hash", "sig"],
+      "additionalProperties": false
+    }
+  }
+}

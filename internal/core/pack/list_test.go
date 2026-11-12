@@ -94,6 +94,69 @@ func TestListThreeLayers(t *testing.T) {
 	}
 }
 
+// TestListReportsLockDrift proves the repo row's drift is null for a matching
+// lock, pack-lock-drift for a changed hash, and pack-lock-missing with no lock.
+func TestListReportsLockDrift(t *testing.T) {
+	t.Parallel()
+	root, settings := listFixtures(t, `"replace":["acme/org"],`)
+	const repoHash = "6017f42729f688b65d17401a27200f0406c1cf8b75d588ce65788850d7817edf"
+	writeFixture(t, root, map[string]string{LockFile: `{"schema_version":"1","packs":[{` +
+		`"name":"acme/repo","source":"dir:repo-packs","version":"0.1.0",` +
+		`"hash":"` + repoHash + `","sig":"5fe15d0cf31807adf42f04605497cb6eac6d4d4c2339f3af9a80ecc0e636f182"}]}`})
+	resp, ref := RunList(t.Context(), &Request{
+		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
+		settings,
+		true,
+	})
+	if ref != nil {
+		t.Fatalf("RunList: %s: %s", ref.Code, ref.Message)
+	}
+	repo := resp.Data.Packs[len(resp.Data.Packs)-1]
+	if repo.Drift != nil {
+		t.Fatalf("matching lock drift = %q, want nil", *repo.Drift)
+	}
+	if got := resp.Human[len(resp.Human)-1]; strings.Contains(got, "drift=") {
+		t.Fatalf("matching human row = %q, want no drift suffix", got)
+	}
+
+	wrong := strings.Repeat("0", 64)
+	sig := LockSig(LockEntry{Name: "acme/repo", Source: "dir:repo-packs", Version: "0.1.0", Hash: wrong})
+	writeFixture(t, root, map[string]string{LockFile: `{"schema_version":"1","packs":[{` +
+		`"name":"acme/repo","source":"dir:repo-packs","version":"0.1.0",` +
+		`"hash":"` + wrong + `","sig":"` + sig + `"}]}`})
+	resp, ref = RunList(t.Context(), &Request{
+		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
+		settings,
+		true,
+	})
+	if ref != nil {
+		t.Fatalf("drifted RunList: %s: %s", ref.Code, ref.Message)
+	}
+	if got := resp.Data.Packs[len(resp.Data.Packs)-1].Drift; got == nil || *got != CodeLockDrift {
+		t.Fatalf("drifted row = %v, want %s", got, CodeLockDrift)
+	}
+	wantRow := "repo     acme/repo@0.1.0  source=.verdict/packs/repo  sha256:6017f42729f6  " +
+		"lenses=security,style  rules=repo-style  drift=" + CodeLockDrift
+	if got := resp.Human[len(resp.Human)-1]; got != wantRow {
+		t.Fatalf("drifted human row = %q, want %q", got, wantRow)
+	}
+
+	if err := os.Remove(filepath.Join(root, filepath.FromSlash(LockFile))); err != nil {
+		t.Fatal(err)
+	}
+	resp, ref = RunList(t.Context(), &Request{
+		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
+		settings,
+		true,
+	})
+	if ref != nil {
+		t.Fatalf("unlocked RunList: %s: %s", ref.Code, ref.Message)
+	}
+	if got := resp.Data.Packs[len(resp.Data.Packs)-1].Drift; got == nil || *got != CodeLockMissing {
+		t.Fatalf("unlocked row = %v, want %s", got, CodeLockMissing)
+	}
+}
+
 // TestListWithoutRuntime proves a caller with no injected runtime reads as an
 // absent built-in layer instead of dereferencing a nil Runtime.
 func TestListWithoutRuntime(t *testing.T) {

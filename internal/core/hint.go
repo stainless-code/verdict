@@ -115,6 +115,10 @@ var hintRules = []HintRule{
 		"(exact lowercase keys, every id paired with its markdown file), then re-run"},
 	{codes: []string{"pack-conflict"}, hint: "try: add \"replace\": [\"<lower pack name>\"] " +
 		"to the higher pack's manifest, or rename the conflicting id"},
+	{codes: []string{"pack-lock-drift"}, hint: "try: re-add the pack with " +
+		"'verdict pack add <dir|git-url>' so .verdict/verdict.lock records its current tree hash"},
+	{codes: []string{"pack-lock-missing"}, hint: "try: run 'verdict pack add <dir|git-url>' " +
+		"to vendor the pack and write its .verdict/verdict.lock entry"},
 	{codes: []string{"pack-too-large"}, hint: "try: trim the pack under 64 KiB per file, 1 MiB total, " +
 		"256 files, and 64 lenses, then re-run"},
 	{codes: []string{"pack-unsafe-path"}, hint: "try: keep every pack path relative with no symlink " +

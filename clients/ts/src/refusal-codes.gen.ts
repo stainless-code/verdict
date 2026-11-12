@@ -128,6 +128,8 @@ export type RefusalCode =
   | "not-retired"
   | "not-verdict-authored"
   | "pack-conflict"
+  | "pack-lock-drift"
+  | "pack-lock-missing"
   | "pack-too-large"
   | "pack-unsafe-path"
   | "post-failed"

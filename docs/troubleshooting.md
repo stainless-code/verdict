@@ -764,6 +764,18 @@ Cause: a higher-layer pack declares an id a lower-layer pack already declares, w
 
 Fix: add `"replace": ["<lower pack name>"]` to the higher pack's manifest (replacement is downward only), or rename the id. Then re-run.
 
+## `pack-lock-drift`
+
+Cause: `.verdict/verdict.lock` no longer matches the vendored repo pack: its tree hash differs, its pack directory is gone, or its `sig` does not match the entry's name, source, version, and hash.
+
+Fix: re-add the pack with `verdict pack add <dir|git-url>[@ref]` so the lock records the current tree, or restore the pack the lock pins, then re-run.
+
+## `pack-lock-missing`
+
+Cause: a repo pack under `.verdict/packs/` has no `.verdict/verdict.lock` entry, or the lock file is absent while repo packs exist.
+
+Fix: run `verdict pack add <dir|git-url>[@ref]` to vendor the pack and write its lock entry, commit both, then re-run.
+
 ## `pack-too-large`
 
 Cause: a lens pack exceeds the per-file (64 KiB), per-pack (1 MiB), file-count (256), or lens-count (64) cap.
