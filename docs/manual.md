@@ -444,8 +444,10 @@ remote forms are accepted with a bare user or no userinfo (`https://user@host/pa
 (`https://user:token@host/path`) refuses `bad-pack` before the clone and
 before any write, and no printed or recorded URL carries one. Re-adding a name
 replaces the vendored tree and the lock row, and prints the old and new tree
-hashes. A source inside `.verdict/packs/` refuses `bad-pack`: it is already
-vendored.
+hashes. A re-add builds and verifies the new tree in a temp sibling under
+`.verdict/packs/` and swaps it in, so a failed re-add leaves the previous tree
+and lock row intact. A source inside `.verdict/packs/` refuses `bad-pack`: it
+is already vendored.
 
 `verdict.lock` is strict JSON (unknown or differently-cased keys refuse,
 exactly as `pack.json`), with `schema_version: "1"` and `packs` sorted by

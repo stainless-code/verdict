@@ -107,6 +107,42 @@ func TestAddDirReplacesAndReportsOldToNew(t *testing.T) {
 	assertFile(t, LockFile, fmt.Sprintf(addLockFmt, "dir:src-packs/lenses", addHashV2, addSigV2))
 }
 
+// TestAddFailedReAddKeepsOldTree proves a re-add that fails after the source
+// is loaded leaves the previous vendored tree and its lock row intact.
+func TestAddFailedReAddKeepsOldTree(t *testing.T) {
+	repo := t.TempDir()
+	t.Chdir(repo)
+	lensesSource(t, repo, "src-packs/lenses", "old body\n")
+	if _, ref := RunAdd(context.Background(), &AddRequest{Source: "src-packs/lenses"}); ref != nil {
+		t.Fatalf("first RunAdd: %s: %s", ref.Code, ref.Message)
+	}
+	oldLock, err := os.ReadFile(LockFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lensesSource(t, repo, "src-packs/lenses", "new body\n")
+	p, ref := LoadDir(filepath.Join(repo, "src-packs", "lenses"))
+	if ref != nil || p == nil {
+		t.Fatalf("LoadDir = (%v, %v)", p, ref)
+	}
+	if err := os.Remove(filepath.Join(repo, "src-packs", "lenses", "pack.json")); err != nil {
+		t.Fatal(err)
+	}
+	if ref := vendorPack(repo, filepath.Join(repo, "src-packs", "lenses"), "lenses", p); ref == nil ||
+		ref.Code != CodeBadPack {
+		t.Fatalf("vendorPack = %v, want bad-pack", ref)
+	}
+	assertFile(t, ".verdict/packs/lenses/lenses/perf.md", "old body\n")
+	assertFile(t, LockFile, string(oldLock))
+	entries, err := os.ReadDir(filepath.Join(repo, ".verdict", "packs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "lenses" {
+		t.Fatalf("pack root = %v, want only lenses", entries)
+	}
+}
+
 // TestAddKeepsOtherEntriesSorted proves a second name joins the lock without
 // dropping the first, sorted by name.
 func TestAddKeepsOtherEntriesSorted(t *testing.T) {

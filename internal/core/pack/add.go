@@ -528,8 +528,9 @@ func checkCloneBounds(dir string) *core.RefusalError {
 	return badPack(fmt.Sprintf("inspect the git clone: %v", err))
 }
 
-// vendorPack copies the loaded pack tree into .verdict/packs/<slug>/, removing
-// any previous tree first. Every write stays under an [os.Root].
+// vendorPack stages the loaded pack beside its destination, proves the staged
+// tree hashes like the source, then swaps it in. A failed re-add leaves the
+// previous tree and lock row untouched.
 func vendorPack(root, srcDir, slug string, p *Pack) *core.RefusalError {
 	src, err := os.OpenRoot(srcDir)
 	if err != nil {
@@ -541,24 +542,85 @@ func vendorPack(root, srcDir, slug string, p *Pack) *core.RefusalError {
 		return ref
 	}
 	defer func() { _ = dest.Close() }()
-	if ref := replaceVendored(dest, src, slug, p); ref != nil {
+	stage, ref := stageVendored(src, packsDir, slug, p)
+	if ref != nil {
 		return ref
 	}
-	return verifyVendored(packsDir, slug, p)
+	defer func() { _ = os.RemoveAll(stage) }()
+	return swapVendored(dest, packsDir, slug, stage)
 }
 
-// replaceVendored removes any previous tree and writes the loaded pack.
-func replaceVendored(dest, src *os.Root, slug string, p *Pack) *core.RefusalError {
-	if err := dest.RemoveAll(slug); err != nil {
-		return badPack(fmt.Sprintf("replace %s/%s: %v", RepoPacksDir, slug, err))
+// stageVendored writes and verifies the new tree in a temp sibling inside the
+// pack root.
+func stageVendored(src *os.Root, packsDir, slug string, p *Pack) (string, *core.RefusalError) {
+	stage, err := os.MkdirTemp(packsDir, "."+slug+".tmp-")
+	if err != nil {
+		return "", badPack(fmt.Sprintf("create a staging directory under %s: %v", RepoPacksDir, err))
 	}
-	if ref := writeVendored(dest, src, slug, p); ref != nil {
-		if err := dest.RemoveAll(slug); err != nil {
-			return badPack(fmt.Sprintf("clean up %s/%s: %v", RepoPacksDir, slug, err))
-		}
+	stageRoot, err := os.OpenRoot(stage)
+	if err != nil {
+		_ = os.RemoveAll(stage)
+		return "", badPack(fmt.Sprintf("open the pack staging directory: %v", err))
+	}
+	defer func() { _ = stageRoot.Close() }()
+	if ref := writeVendored(stageRoot, src, rootSelf, p); ref != nil {
+		_ = os.RemoveAll(stage)
+		return "", ref
+	}
+	if ref := verifyVendored(stage, rootSelf, p); ref != nil {
+		_ = os.RemoveAll(stage)
+		return "", ref
+	}
+	if err := stageRoot.Close(); err != nil {
+		_ = os.RemoveAll(stage)
+		return "", badPack(fmt.Sprintf("close the pack staging directory: %v", err))
+	}
+	return stage, nil
+}
+
+// swapVendored moves the verified stage into slug, keeping a backup of any
+// previous tree until the new one is in place.
+func swapVendored(dest *os.Root, packsDir, slug, stage string) *core.RefusalError {
+	backup, ref := backupVendored(dest, packsDir, slug)
+	if ref != nil {
 		return ref
 	}
+	if err := dest.Rename(filepath.Base(stage), slug); err != nil {
+		if backup != "" {
+			_ = dest.Rename(backup, slug)
+		}
+		return badPack(fmt.Sprintf("install %s/%s: %v", RepoPacksDir, slug, err))
+	}
+	if backup == "" {
+		return nil
+	}
+	if err := dest.RemoveAll(backup); err != nil {
+		return badPack(fmt.Sprintf("remove the previous %s/%s: %v", RepoPacksDir, slug, err))
+	}
 	return nil
+}
+
+// backupVendored renames any previous tree aside and returns its name, or ""
+// when the slug is new.
+func backupVendored(dest *os.Root, packsDir, slug string) (string, *core.RefusalError) {
+	if _, err := dest.Lstat(slug); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return "", nil
+		}
+		return "", badPack(fmt.Sprintf("inspect %s/%s: %v", RepoPacksDir, slug, err))
+	}
+	holder, err := os.MkdirTemp(packsDir, "."+slug+".old-")
+	if err != nil {
+		return "", badPack(fmt.Sprintf("create a backup directory under %s: %v", RepoPacksDir, err))
+	}
+	backup := filepath.Base(holder)
+	if err := os.Remove(holder); err != nil {
+		return "", badPack(fmt.Sprintf("prepare the %s/%s backup: %v", RepoPacksDir, slug, err))
+	}
+	if err := dest.Rename(slug, backup); err != nil {
+		return "", badPack(fmt.Sprintf("move the previous %s/%s aside: %v", RepoPacksDir, slug, err))
+	}
+	return backup, nil
 }
 
 // verifyVendored reloads the copied tree and proves it hashes like the source.
