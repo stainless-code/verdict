@@ -295,19 +295,31 @@ func resolveRef(tgt target, samePkg bool, f *treeFile, r ref) (Row, bool) {
 }
 
 // resolveGoRef attributes one reference to a Go declaration: a bare name only
-// inside the declaring package, a qualified name by import path, and a
-// same-package method or unresolved qualifier as a counted candidate.
+// inside the declaring package, a qualified name by import path, and a selector
+// written on a value as a counted candidate.
 func resolveGoRef(tgt target, samePkg bool, f *treeFile, r ref) (Row, bool) {
 	if !r.Selector {
 		return resolveBareRef(samePkg, f, r)
 	}
 	if r.Qualifier == "" {
-		if samePkg && (r.Unresolved || r.Kind == KindMethod) {
-			return Row{Resolution: resolutionUnresolved}, true
-		}
-		return Row{}, false
+		return resolveValueSelector(tgt, samePkg, r)
 	}
 	return resolveQualifiedRef(tgt, f, r)
+}
+
+// resolveValueSelector classifies a selector written on a value (`s.Save`): no
+// import edge names the declaration's package, so the site is a candidate that
+// type information would settle, never a row. Only a method declaration can be
+// named this way from outside the declaring package: a value cannot carry a
+// package-level function.
+func resolveValueSelector(tgt target, samePkg bool, r ref) (Row, bool) {
+	if !samePkg && tgt.kind != wordMethod {
+		return Row{}, false
+	}
+	if r.Unresolved || r.Kind == KindMethod {
+		return Row{Resolution: resolutionUnresolved}, true
+	}
+	return Row{}, false
 }
 
 // resolveScannedRef classifies one reference a lexical scanner produced. A

@@ -64,7 +64,7 @@
       "kind": "callers",
       "symbol": "store.Save",
       "at": "internal/store",
-      "unresolved": 1,
+      "unresolved": 5,
       "callers": [
         {
           "path": "internal/store/store_test.go",
@@ -103,7 +103,7 @@
       "kind": "callers",
       "symbol": "store.Touch",
       "at": "internal/store",
-      "unresolved": 0,
+      "unresolved": 1,
       "callers": [
         {
           "path": "internal/app/app.go",

@@ -518,9 +518,10 @@ a measured gap on a fixture, not yet a finding a review lost.
 The 12 labeled sites split three ways, and only the first is reported: a
 qualified package call through an import edge (`store.Open`, `st.Open` with an
 alias) is a row; a method call on a value (`s.Save`, `a.Touch`, including an
-embed and an interface dispatch) is not attributed at all, and a call through a
-dot-import or a re-exported variable is not attributed at all. Type information
-does not settle all three. `go/types` answers a method call on a concrete value
+embed and an interface dispatch) is not a row but is counted in `unresolved`,
+because only the value's type says which method it carries; and a call through a
+dot-import or a re-exported variable is neither a row nor a candidate. Type
+information does not settle all three. `go/types` answers a method call on a concrete value
 — `s.Save` on a `*store.Store`, `a.Touch` on the promoted `*store.Base` — and
 the bare `Open` a dot-import leaves at `internal/dot/dot.go:8`. The re-exported
 variable is typed but its origin is a value, so the call at
@@ -537,15 +538,18 @@ label. A **design limit** is outside what a lexical index resolves: no resolver,
 no types, no object identity. A **documented limit** is a rule the manual
 states, so the fixture pins the rule rather than a defect.
 
-- **A cross-package method selector is neither a row nor an unresolved
-  candidate.** `resolveGoRef` (`internal/core/index/callers.go:297`) answers a
-  qualifier-less selector outside the declaring package with a bare `false`
-  (`internal/core/index/callers.go:301-306`). Neither `s.Save(1)` in
-  `internal/api/api.go:9` nor `a.Touch()` on an embedded `*store.Base`
-  (`internal/app/app.go:18`) is reported or counted: the `store.Touch` query
-  answers zero rows at `unresolved` 0, so the envelope claims nothing was left
-  unattributed. Inside the declaring package the same selector is counted
-  unresolved, which is the same limit stated honestly. **Scanner bug.**
+- **A cross-package method selector was neither a row nor an unresolved
+  candidate.** `resolveGoRef` (`internal/core/index/callers.go:297`) answered a
+  qualifier-less selector outside the declaring package with a bare `false`.
+  Neither `s.Save(1)` in `internal/api/api.go:9` nor `a.Touch()` on an embedded
+  `*store.Base` (`internal/app/app.go:18`) was reported or counted: the
+  `store.Touch` query answered zero rows at `unresolved` 0, so the envelope
+  claimed nothing was left unattributed. `resolveValueSelector` now counts such
+  a site in `unresolved` in every package — `store.Touch` answers 0 rows at 1
+  unresolved and `store.Save` 0 rows at 5 — and only when the declaration it
+  could name is a method, because a value cannot carry a package-level function.
+  `TestCallersValueSelectorIsUnresolved` pins both. Rows do not move: the site
+  still needs a type. **Scanner bug, fixed in the count.**
 - **A dot-import and a re-exported variable lose their calls.** `resolveBareRef`
   (`internal/core/index/callers.go:323`) attributes a bare name only inside the
   declaring package, so `Open("c")` in `internal/dot/dot.go:8` (package `dot`,

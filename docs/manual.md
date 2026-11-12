@@ -2873,7 +2873,9 @@ are **exact within a package** (object identity in that package's declarations)
 and **lexical across packages** (an exported name reached through an import
 edge); otherwise they are counted in `counts.unresolved`, never guessed.
 Methods, interface and dynamic dispatch, reflection, and generic instantiation
-are unresolved by construction. A bare symbol (`Target`) selects every package
+are unresolved by construction, and a selector on a value (`s.Save`) is counted
+unresolved in every package: only the value's type says whether the method
+belongs to the declaring package. A bare symbol (`Target`) selects every package
 declaring it; a qualified one (`app.Target`, or the import path) names the
 package. A qualifier that matches no package directory or import path refuses
 `bad-flags` naming it, as does an ambiguous one, so a mistyped qualifier never
