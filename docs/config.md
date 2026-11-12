@@ -18,7 +18,7 @@ lives in `docs/policy-contract.md`.
 .verdict/.gitignore             tracked-shape, carries /state/, /backtest/, and /index/
 .verdict/state/                 ignored, local review state
 .verdict/backtest/              ignored, mined backtest runs
-.verdict/index/                 ignored, local Go index
+.verdict/index/                 ignored, local code index
 ```
 
 Only `/state/` is ignored, through the nested file.

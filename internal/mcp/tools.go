@@ -171,7 +171,7 @@ func allTools(readOnly, operator bool) []*tool {
 			func(resp *fixcore.Response) *jq.Obj { return wireData(resp.Data) }),
 		directTool(&toolSpec{
 			name: "index",
-			description: "Query the local Go index under .verdict/index for callers, candidate tests, " +
+			description: "Query the local code index under .verdict/index for callers, candidate tests, " +
 				"co-change partners, CODEOWNERS owners, blast radius, or stored trees. Call before editing " +
 				"code to find callers and the tests to read. Reads the index and git objects only; never " +
 				"builds or prunes (those are CLI-only) and writes nothing.",

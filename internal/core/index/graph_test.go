@@ -172,7 +172,7 @@ func TestTestsForRefusals(t *testing.T) {
 		},
 		{
 			name: "missing file", path: "a/nope.go", code: "bad-flags",
-			message: "index tests-for: a/nope.go is not an indexed Go file at " + tree,
+			message: "index tests-for: a/nope.go is not an indexed source file at " + tree,
 		},
 		{
 			name: "bare symbol", symbol: "Target", code: "bad-flags",
