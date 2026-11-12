@@ -3611,10 +3611,11 @@ The prior record is passed by path to the next agent. Verdict never edits code,
 posts, pushes, or opens a PR. The recipe launches the printed argv itself so it
 can append the fix instructions; it does not produce `launcher.json`.
 
-Dirty local bundles currently have no HEAD for the coverage gate's receipt key.
-The recipe therefore explicitly uses `--coverage warn` — coverage is requested
-from the agent, but a pass here means the findings gate passed, with coverage
-advisory. This is not a merge authorization or a coverage guarantee.
+Each round records with `--require-coverage` and gates with `--coverage require`.
+Dirty local coverage receipts are bound to `source.json.diff_sha256`, verified
+against the bundle's `full.diff`, and must name that same diff hash. A missing,
+partial, or empty attestation cannot pass for a measurable change. A changed diff
+or mismatched receipt fails closed. This local gate is not merge authorization.
 
 `round-N.json` holds the round number, open findings count, gate boolean, and
 `cost: null` (cost is not measured). Missing observations remain null.
@@ -3633,5 +3634,6 @@ receipts, elapsed time, and measured agent cost. Repeat across seeds/tasks and
 report failures as well as passes. No benchmark numbers are claimed here.
 
 Verify the recipe with `./evals/one.sh self-review`; it runs stub binaries for
-all three agents, both fixing on round 2 and exhausting the round limit, offline.
+all three agents, fixing on round 2, exhausting the round limit, and refusing an empty review, offline.
+The eval requires `python3` (Python 3.9+).
 Unit checks run with `python3 -B -m unittest discover -s docs/recipes`.

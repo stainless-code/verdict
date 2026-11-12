@@ -11,7 +11,7 @@ done
 PATH="$EVAL_SANDBOX/agentbin:$(dirname "$EVAL_CLI"):$PATH"
 export PATH
 for agent in claude codex opencode; do
-  for mode in fix never; do
+  for mode in fix never empty; do
     repo="$EVAL_SANDBOX/repo-$agent-$mode"
     eval_fixture_repo "$repo"
     export LOOP_MODE="$mode" LOOP_LOG="$EVAL_SANDBOX/$agent-$mode.log"
@@ -22,6 +22,14 @@ for agent in claude codex opencode; do
     # shellcheck disable=SC2034 # assert_exit reads this status
     EVAL_STATUS=$?
     set -e
+    if [ "$mode" = empty ]; then
+      assert_exit "$agent empty review refuses" 1
+      assert_json_field "empty review is not a pass" false '.passed' "$output/summary.json"
+      assert_json_field "required record coverage refuses" coverage-incomplete '.stop' "$output/summary.json"
+      assert_json_field "empty review never reaches gate" null '.rounds[0].gate' "$output/summary.json"
+      assert_eq "empty review stops after one spawn" 1 "$(wc -l <"$LOOP_LOG" | tr -d ' ')"
+      continue
+    fi
     if [ "$mode" = fix ]; then
       assert_exit "$agent fixes and passes round 2" 0
       assert_json_field "pass on last gate" true '.rounds[-1].gate' "$output/summary.json"

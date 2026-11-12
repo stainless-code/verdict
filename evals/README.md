@@ -243,3 +243,5 @@ routes, and the call log live beside the case (`$EVAL_STUBBIN/..`), like
 ```sh
 shellcheck -S warning evals/run.sh evals/lib/*.sh evals/cases/*.sh
 ```
+
+The `self-review` eval requires `python3` (Python 3.9+).

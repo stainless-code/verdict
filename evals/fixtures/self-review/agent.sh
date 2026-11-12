@@ -4,6 +4,10 @@ prompt="${!#}"
 rest="${prompt#*Write }"
 artifact="${rest%% with \{*}"
 printf '%s\n' "$0" >>"$LOOP_LOG"
+if [ "$LOOP_MODE" = empty ]; then
+  printf '{"schema_version":"1","body":"No review performed on this change.","approved":true,"comments":[],"coverage":[]}\n' >"$artifact"
+  exit 0
+fi
 comments='[]'
 if grep -q 'new line' notes.txt; then
   comments='[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Incorrect line.","severity":"important","rigor":"walked"}]'

@@ -125,5 +125,5 @@ evidence does not support is not reported.
 
 A bounded local fetch → agent review and fix → record → gate recipe run before
 opening a PR. Each round retains a receipt; only a passing last gate produces a
-passing summary. See the manual's **Agent self-review loop** for its advisory
+passing summary. See the manual's **Agent self-review loop** for its required
 coverage posture and wall budget.
