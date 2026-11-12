@@ -194,6 +194,10 @@ func (l *pyLexer) lexString(prefix string, quote byte, line, col int) {
 // literal ended there.
 func (l *pyLexer) stringStep(raw, formatted, triple bool, quote byte, line, col int) bool {
 	c := l.src[l.pos]
+	if formatted && l.doubledBrace() {
+		l.advance(2)
+		return false
+	}
 	if l.fstringOpen(formatted) {
 		l.advance(1)
 		l.emit(pyValue, "", line, col)
@@ -218,8 +222,17 @@ func (l *pyLexer) stringStep(raw, formatted, triple bool, quote byte, line, col 
 }
 
 // fstringOpen reports whether the cursor sits on one f-string interpolation.
+// A doubled brace is the escape for a literal one and is consumed before this
+// is asked.
 func (l *pyLexer) fstringOpen(formatted bool) bool {
-	return formatted && l.src[l.pos] == '{' && l.next(1) != '{'
+	return formatted && l.src[l.pos] == '{'
+}
+
+// doubledBrace reports whether the cursor sits on the `{{` or `}}` escape an
+// f-string renders as one literal brace.
+func (l *pyLexer) doubledBrace() bool {
+	c := l.src[l.pos]
+	return (c == '{' || c == '}') && l.next(1) == c
 }
 
 // triple reports whether three copies of one quote start at the cursor.

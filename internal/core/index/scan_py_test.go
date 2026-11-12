@@ -172,10 +172,32 @@ func TestScanPythonRefCap(t *testing.T) {
 func FuzzScanPython(f *testing.F) {
 	f.Add(pyDeclSource)
 	f.Add("f\"{a(b)}\"\n")
+	f.Add("f\"{{a(b)}}\"\n")
 	f.Add("from . import (a,\n b)\n")
 	f.Add("class A:\n    def b(self):\n        return c(d)\n")
 	f.Fuzz(func(t *testing.T, src string) {
 		s := parseShard("blob", []byte(src), langPython, 64)
 		assertScannedPositions(t, &s, src)
+	})
+}
+
+// TestScanPythonFStringEscapedBraces proves `{{` and `}}` are literal text: an
+// escaped pair never opens an interpolation, and the pair around an expression
+// never swallows it.
+func TestScanPythonFStringEscapedBraces(t *testing.T) {
+	src := strings.Join([]string{
+		`def run():`,
+		`    a = f"{{escaped()}}"`,
+		`    b = f"{{can't {helper(1)}}}"`,
+		`    c = f"""{{"k": {helper(2)}}}"""`,
+		`    d = f"""{{it's {helper(3)}}}"""`,
+		`    e = f"{{{helper(4)}}}"`,
+	}, "\n")
+	s := scanFile(t, langPython, src)
+	assertRefs(t, s.Refs, []ref{
+		{Name: "helper", Kind: KindCall, Line: 3, Col: 20},
+		{Name: "helper", Kind: KindCall, Line: 4, Col: 21},
+		{Name: "helper", Kind: KindCall, Line: 5, Col: 21},
+		{Name: "helper", Kind: KindCall, Line: 6, Col: 14},
 	})
 }
