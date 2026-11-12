@@ -424,6 +424,8 @@ func TestReadsWriteNothing(t *testing.T) {
 	before := snapshotState(t, root)
 	ts := testServer(t, testLayer(root, nil))
 	headers := bearer()
+	call(t, ts, http.MethodGet, "/", "", nil)
+	call(t, ts, http.MethodGet, "/?token="+testToken, "", nil)
 	rootID := rootIDOf(t, ts, headers)
 	call(t, ts, http.MethodGet, "/v1/health", "", headers)
 	call(t, ts, http.MethodGet, "/v1/roots", "", headers)
