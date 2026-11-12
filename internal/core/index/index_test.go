@@ -863,3 +863,34 @@ func TestIndexRenderedPathsAreEscaped(t *testing.T) {
 		t.Errorf("human lines = %q; want one containing %q", resp.Human, want)
 	}
 }
+
+// TestIndexStatusNextFollowsTheBuildState proves status never sends the
+// operator back to a build that already happened: no tree for HEAD names the
+// build, an indexed HEAD names the query the index can answer.
+func TestIndexStatusNextFollowsTheBuildState(t *testing.T) {
+	f := newFixture(t)
+	f.write("go.mod", "module example.com/m\n")
+	f.write("a/a.go", "package a\n\nfunc A() {}\n")
+	f.commit("one")
+	before, ref := Run(context.Background(), f.request(QueryStatus, nil))
+	if ref != nil {
+		t.Fatalf("index status refused: %v", ref)
+	}
+	if before.Data.Built {
+		t.Fatal("Built = true before any build")
+	}
+	if before.Next != "build it with verdict index build" {
+		t.Errorf("unbuilt next = %q; want the build step", before.Next)
+	}
+	f.build()
+	after, ref := Run(context.Background(), f.request(QueryStatus, nil))
+	if ref != nil {
+		t.Fatalf("index status refused after build: %v", ref)
+	}
+	if !after.Data.Built {
+		t.Fatal("Built = false after a build of HEAD's tree")
+	}
+	if after.Next != "query it with verdict index callers <symbol>" {
+		t.Errorf("built next = %q; want the query step", after.Next)
+	}
+}
