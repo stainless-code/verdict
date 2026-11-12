@@ -180,6 +180,26 @@ func TestCheckLockRefusesMissingEntry(t *testing.T) {
 	}
 }
 
+// TestCheckLockRefusesUnlistedVendoredPack proves a lock file that exists and
+// names one pack still refuses a second vendored pack it does not list.
+func TestCheckLockRefusesUnlistedVendoredPack(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	lockFixture(t, root, lockBody(lockHash, lockSigDir))
+	writeFixture(t, root, map[string]string{
+		".verdict/packs/extra/pack.json": `{"schema_version":"1","name":"acme/extra",` +
+			`"version":"2.0.0","lenses":[{"id":"perf"}]}`,
+		".verdict/packs/extra/lenses/perf.md": "extra body\n",
+	})
+	ref := CheckLock(lockSnapshot(t, root))
+	if ref == nil || ref.Code != CodeLockMissing {
+		t.Fatalf("CheckLock = %v, want pack-lock-missing", ref)
+	}
+	if !strings.Contains(ref.Message, "acme/extra") {
+		t.Fatalf("message = %q, want it to name acme/extra", ref.Message)
+	}
+}
+
 // TestCheckLockRefusesTreeDrift proves a lock hash that differs from the
 // vendored tree refuses pack-lock-drift and names both hashes.
 func TestCheckLockRefusesTreeDrift(t *testing.T) {
