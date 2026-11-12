@@ -14,6 +14,10 @@ const tierStore = `[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,
 	`"sig":"1111111111111111111111111111111111111111","sig_version":"1",` +
 	`"firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]`
 
+// wantTierRefusal is the refusal every transport reports for an unpublished
+// gate tier.
+const wantTierRefusal = "report: unknown gate tier 'bogus' (want critical|important|informational)"
+
 // reportCall drives one report tool call and returns the decoded result.
 func reportCall(t *testing.T, flags string) callToolResult {
 	t.Helper()
@@ -31,6 +35,25 @@ func reportCall(t *testing.T, flags string) callToolResult {
 	return result
 }
 
+// assertTierRefusal proves one report call refused the tier.
+func assertTierRefusal(t *testing.T, flags string) {
+	t.Helper()
+	result := reportCall(t, flags)
+	if !result.IsError {
+		t.Fatalf("report %s is not an error result: %s", flags, result.Content[0].Text)
+	}
+	var refusal refusalContent
+	if err := json.Unmarshal(result.StructuredContent, &refusal); err != nil {
+		t.Fatalf("decode structuredContent: %v", err)
+	}
+	if refusal.Code != "bad-flags" {
+		t.Errorf("refusal code = %q, want bad-flags", refusal.Code)
+	}
+	if refusal.Message != wantTierRefusal {
+		t.Errorf("refusal message = %q, want %q", refusal.Message, wantTierRefusal)
+	}
+}
+
 // TestReportToolRefusesUnpublishedTier proves the MCP report tool shares the
 // core tier rule on both its advisory and its gated shape: the schema enum is
 // metadata only, so a client that ignores it must be refused rather than
@@ -40,21 +63,7 @@ func TestReportToolRefusesUnpublishedTier(t *testing.T) {
 	writeFile(t, ".verdict/state/5101/findings.json", tierStore)
 	for _, flags := range []string{`{"check":"bogus"}`, `{"check":"bogus","completeness":true}`} {
 		t.Run(flags, func(t *testing.T) {
-			result := reportCall(t, flags)
-			if !result.IsError {
-				t.Fatalf("report %s is not an error result: %s", flags, result.Content[0].Text)
-			}
-			var refusal refusalContent
-			if err := json.Unmarshal(result.StructuredContent, &refusal); err != nil {
-				t.Fatalf("decode structuredContent: %v", err)
-			}
-			if refusal.Code != "bad-flags" {
-				t.Errorf("refusal code = %q, want bad-flags", refusal.Code)
-			}
-			want := "report: unknown gate tier 'bogus' (want critical|important|informational)"
-			if refusal.Message != want {
-				t.Errorf("refusal message = %q, want %q", refusal.Message, want)
-			}
+			assertTierRefusal(t, flags)
 		})
 	}
 }
