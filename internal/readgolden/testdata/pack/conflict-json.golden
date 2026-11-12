@@ -1,0 +1,19 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "pack",
+  "repo": "",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "pack-conflict",
+    "message": "repo pack \"acme/repo\" overrides lens id \"perf\" from \"verdict/builtin\"; add \"replace\": [\"verdict/builtin\"] to the acme/repo pack manifest\ntry: add \"replace\": [\"<lower pack name>\"] to the higher pack's manifest, or rename the conflicting id"
+  }
+}
+--- stderr ---
+
+--- files ---

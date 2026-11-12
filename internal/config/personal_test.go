@@ -88,6 +88,21 @@ func TestParsePersonalSemantics(t *testing.T) {
 	checkPersonalRefusal(t, `{"spend":{"budget_usd":0}}`, CodeBadConfig, "budget_usd")
 }
 
+// TestParsePersonalPacks pins the explicit org pack list: a string array
+// only, no empty entries, and no implicit directory scan.
+func TestParsePersonalPacks(t *testing.T) {
+	got, ref := ParsePersonal([]byte(`{"packs":["org/security","/abs/team"]}`))
+	if ref != nil {
+		t.Fatalf("ParsePersonal: %v", ref)
+	}
+	if len(got.Packs) != 2 || got.Packs[0] != "org/security" || got.Packs[1] != "/abs/team" {
+		t.Fatalf("packs = %v, want [org/security /abs/team]", got.Packs)
+	}
+	checkPersonalRefusal(t, `{"packs":"org"}`, CodeBadConfig, "packs")
+	checkPersonalRefusal(t, `{"packs":[""]}`, CodeBadConfig, "packs[0]")
+	checkPersonalRefusal(t, `{"packs":[1]}`, CodeBadConfig, "packs[0]")
+}
+
 // TestLoadPersonalAbsent pins the no-create rule: a missing settings file
 // reads as an empty personal layer and never writes one.
 func TestLoadPersonalAbsent(t *testing.T) {

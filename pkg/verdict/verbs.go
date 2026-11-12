@@ -16,6 +16,7 @@ import (
 	indexcore "github.com/stainless-code/verdict/internal/core/index"
 	initcore "github.com/stainless-code/verdict/internal/core/init"
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
+	packcore "github.com/stainless-code/verdict/internal/core/pack"
 	postcore "github.com/stainless-code/verdict/internal/core/post"
 	readycore "github.com/stainless-code/verdict/internal/core/ready"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
@@ -904,6 +905,43 @@ type InitRequest struct {
 type InitResponse struct {
 	Outcome
 	ExitCode int
+}
+
+// PackRequest carries the pack options. List is the only served mode.
+type PackRequest struct {
+	Invocation
+	List bool
+}
+
+// PackResponse is the positionals-free pack list envelope.
+type PackResponse struct {
+	Outcome
+}
+
+// Pack lists the built-in, org, and repo lens packs with their layer,
+// source, hash, and declared ids. It makes no live calls and writes nothing.
+func (c *Client) Pack(ctx context.Context, req *PackRequest) (*PackResponse, error) {
+	rr, err := c.requestBare(ctx)
+	if err != nil {
+		return nil, err
+	}
+	resp, ref := packcore.RunList(ctx, &packcore.Request{
+		ReadRequest:  rr,
+		SettingsPath: config.SettingsPath(c.env["HOME"], c.env["XDG_CONFIG_HOME"]),
+		List:         req.List,
+	})
+	if ref != nil {
+		return nil, refusalErr(ref)
+	}
+	return &PackResponse{
+		Outcome: outcomeOf(resp.At, resp.Next, resp.Warnings, resp.Data),
+	}, nil
+}
+
+// ListPacks is the read-only pack list entry in the facade: the same result
+// as Pack with List set, named for the command it serves.
+func ListPacks(ctx context.Context, c *Client) (*PackResponse, error) {
+	return c.Pack(ctx, &PackRequest{List: true})
 }
 
 // Init scaffolds .verdict control files from a style preset.

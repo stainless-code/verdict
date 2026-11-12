@@ -2,6 +2,7 @@ package pack
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/stainless-code/verdict/internal/schemacheck"
 )
 
 const fixtureManifest = `{"schema_version":"1","name":"acme/lenses","version":"1.2.3","lenses":[{"id":"beta"},{"id":"alpha"}]}`
@@ -193,6 +196,88 @@ func TestPackOfferedFiltersGlobs(t *testing.T) {
 	}
 }
 
+// TestCheckOrgEntryRefusesOnlyRepoPacks proves an org packs[] entry is refused
+// exactly when it resolves inside the repo layer's tree; a sibling name with
+// the same prefix and an outside path stay legal.
+//
+//nolint:revive // the inside and outside arms read as one block
+func TestCheckOrgEntryRefusesOnlyRepoPacks(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	for _, listed := range []string{
+		".verdict/packs",
+		".verdict/packs/acme",
+		".verdict/other/../packs/acme",
+	} {
+		ref := CheckOrgEntry(root, listed)
+		if ref == nil || ref.Code != CodeBadPack {
+			t.Errorf("%s = %v, want bad-pack", listed, ref)
+			continue
+		}
+		if want := fmt.Sprintf("%q", listed); !strings.Contains(ref.Message, want) {
+			t.Errorf("message = %q, want it to name %s", ref.Message, want)
+		}
+	}
+	for _, listed := range []string{"org-packs", ".verdict/packs-extra/acme"} {
+		if ref := CheckOrgEntry(root, listed); ref != nil {
+			t.Errorf("%s = %s: %s, want no refusal", listed, ref.Code, ref.Message)
+		}
+	}
+}
+
+// TestCheckOrgEntryAllowsAbsoluteOutsidePath proves an absolute org entry
+// outside the repo stays legal: only the repo layer's tree is refused.
+func TestCheckOrgEntryAllowsAbsoluteOutsidePath(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	for _, listed := range []string{
+		filepath.Join(t.TempDir(), "packs", "team"),
+		filepath.Join(filepath.Dir(root), filepath.Base(root)+"-sibling", "packs"),
+	} {
+		if ref := CheckOrgEntry(root, listed); ref != nil {
+			t.Errorf("%s = %s: %s, want no refusal", listed, ref.Code, ref.Message)
+		}
+	}
+}
+
+// TestCheckOrgEntryRefusesSymlinkedEntryInsideRepoPacks proves the check
+// resolves symlinks: an entry spelled outside the tree that links into it
+// would still read the repo layer at head, so it refuses too.
+func TestCheckOrgEntryRefusesSymlinkedEntryInsideRepoPacks(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	packs := filepath.Join(root, ".verdict", "packs")
+	writeFixture(t, packs, map[string]string{"team/pack.json": "{}"})
+	link := filepath.Join(root, "linked")
+	if err := os.Symlink(packs, link); err != nil {
+		t.Skipf("this platform cannot create symlinks here: %v", err)
+	}
+	listed := filepath.Join(link, "team")
+	if ref := CheckOrgEntry(root, listed); ref == nil || ref.Code != CodeBadPack {
+		t.Fatalf("symlinked org entry = %v, want bad-pack", ref)
+	}
+}
+
+// TestInsideRelTreatsVolumeMismatchAsOutside proves a Rel failure reads as
+// outside: [filepath.Rel] fails only across volumes, and a legal absolute org
+// path on another drive must not refuse as unresolvable. The Windows-only
+// end-to-end case lives in orgentry_windows_test.go.
+func TestInsideRelTreatsVolumeMismatchAsOutside(t *testing.T) {
+	t.Parallel()
+	if insideRel("", errors.New(`Rel: can't make D:\packs\team relative to C:\repo\.verdict\packs`)) {
+		t.Fatal("a volume mismatch read as inside the repo layer")
+	}
+	if !insideRel("team", nil) {
+		t.Fatal(`rel "team" read as outside`)
+	}
+	if insideRel("..", nil) {
+		t.Fatal(`rel ".." read as inside`)
+	}
+	if insideRel(".."+string(filepath.Separator)+"team", nil) {
+		t.Fatal("a parent-relative rel read as inside")
+	}
+}
+
 // TestPackNoteLabelsBodies pins the lenses.txt body: every lens labeled with
 // its id and eight-hex body digest and delimited by its own end marker.
 func TestPackNoteLabelsBodies(t *testing.T) {
@@ -208,6 +293,94 @@ func TestPackNoteLabelsBodies(t *testing.T) {
 	if got := loadFixture(t, fixture()).Note(); got != want {
 		t.Fatalf("Note =\n%s\nwant\n%s", got, want)
 	}
+}
+
+// TestRefusedManifestsFailPublishedSchema proves the published schema rejects
+// the empty shapes the loader refuses — no rule globs, an empty rule severity
+// key, and a severity-map value outside the three levels — and that an empty
+// replace array is accepted by both the schema and the loader.
+//
+//nolint:revive // the refused-shape table and its loader arm read as one block
+func TestRefusedManifestsFailPublishedSchema(t *testing.T) {
+	t.Parallel()
+	checker, err := schemacheck.Load(
+		filepath.Join("..", "..", "..", "skills", "verdict", "schemas", "pack.schema.json"), "")
+	if err != nil {
+		t.Fatalf("load pack schema: %v", err)
+	}
+	valid := `{"schema_version":"1","name":"acme/lenses","version":"1.0.0",` +
+		`"replace":["verdict/builtin"],"severity":{"s":"critical"},` +
+		`"lenses":[{"id":"perf"}],"rules":[{"id":"r1","severity":"s","globs":["**/*.go"]}]}`
+	if failures := checker.Check(decodeJSON(t, valid)); len(failures) != 0 {
+		t.Fatalf("valid manifest rejected: %v", failures)
+	}
+	emptyReplace := `{"schema_version":"1","name":"acme/lenses","version":"1.0.0","replace":[],` +
+		`"lenses":[{"id":"perf"}]}`
+	if failures := checker.Check(decodeJSON(t, emptyReplace)); len(failures) != 0 {
+		t.Fatalf("empty replace rejected by the schema: %v", failures)
+	}
+	if _, ref := Load(fstest.MapFS{
+		"pack.json":      {Data: []byte(emptyReplace)},
+		"lenses/perf.md": {Data: []byte("perf body\n")},
+	}, "."); ref != nil {
+		t.Fatalf("empty replace refused by the loader: %s: %s", ref.Code, ref.Message)
+	}
+	cases := []struct {
+		name     string
+		manifest string
+		loader   bool
+	}{
+		{
+			name: "empty rule globs",
+			manifest: `{"schema_version":"1","name":"acme/lenses","version":"1.0.0",` +
+				`"severity":{"s":"critical"},"lenses":[{"id":"perf"}],` +
+				`"rules":[{"id":"r1","severity":"s","globs":[]}]}`,
+			loader: true,
+		},
+		{
+			name: "empty rule severity",
+			manifest: `{"schema_version":"1","name":"acme/lenses","version":"1.0.0",` +
+				`"severity":{"s":"critical"},"lenses":[{"id":"perf"}],` +
+				`"rules":[{"id":"r1","severity":"","globs":["**/*.go"]}]}`,
+			loader: true,
+		},
+		{
+			name: "unknown severity level",
+			manifest: `{"schema_version":"1","name":"acme/lenses","version":"1.0.0",` +
+				`"severity":{"s":"high"},"lenses":[{"id":"perf"}],` +
+				`"rules":[{"id":"r1","severity":"s","globs":["**/*.go"]}]}`,
+			loader: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if failures := checker.Check(decodeJSON(t, tc.manifest)); len(failures) == 0 {
+				t.Fatalf("schema accepted a refused manifest shape:\n%s", tc.manifest)
+			}
+			if !tc.loader {
+				return
+			}
+			fsys := fstest.MapFS{
+				"pack.json":      {Data: []byte(tc.manifest)},
+				"lenses/perf.md": {Data: []byte("perf body\n")},
+				"rules/r1.md":    {Data: []byte("rule body\n")},
+			}
+			if _, ref := Load(fsys, "."); ref == nil || ref.Code != CodeBadPack {
+				t.Fatalf("Load = %v, want bad-pack", ref)
+			}
+		})
+	}
+}
+
+// decodeJSON decodes one manifest with number fidelity for the schema checker.
+func decodeJSON(t *testing.T, raw string) any {
+	t.Helper()
+	value, err := schemacheck.Decode([]byte(raw))
+	if err != nil {
+		t.Fatalf("decode manifest: %v", err)
+	}
+	return value
 }
 
 // TestPackMissingIsNotARefusal pins the absent-pack posture the transports
@@ -243,12 +416,12 @@ func TestPackRejectsMalformedManifest(t *testing.T) {
 		{
 			name:     "unknown top-level field",
 			manifest: `{"schema_version":"1","name":"acme/lenses","version":"1.2.3","lenses":[{"id":"perf"}],"extra":true}`,
-			want:     `unknown field "extra"`,
+			want:     `carries key "extra"`,
 		},
 		{
 			name:     "unknown lens field",
 			manifest: `{"schema_version":"1","name":"acme/lenses","version":"1.2.3","lenses":[{"id":"perf","scope":"hot"}]}`,
-			want:     `unknown field "scope"`,
+			want:     `carries key "scope"`,
 		},
 		{
 			name:     "trailing data",
@@ -319,6 +492,113 @@ func TestPackRejectsMalformedManifest(t *testing.T) {
 	}
 }
 
+// TestPackRejectsMalformedRules pins the rule manifest rules: a KB id, a
+// severity key that exists in the pack map, required globs, unique ids, and a
+// body at rules/<id>.md.
+//
+//nolint:revive // the table is the rule manifest matrix
+func TestPackRejectsMalformedRules(t *testing.T) {
+	t.Parallel()
+	validHeader := `"schema_version":"1","name":"acme/rules","version":"1.0.0",` +
+		`"severity":{"secrets":"critical"},`
+	base := `, "lenses":[{"id":"perf"}]`
+	cases := []struct {
+		name     string
+		manifest string
+		want     string
+	}{
+		{
+			name:     "unknown severity key",
+			manifest: `{` + validHeader + `"rules":[{"id":"r1","severity":"missing","globs":["**/*.go"]}]` + base + `}`,
+			want:     `severity "missing" is not in the severity map`,
+		},
+		{
+			name:     "bad severity value",
+			manifest: `{"schema_version":"1","name":"acme/rules","version":"1.0.0","severity":{"s":"high"},"lenses":[{"id":"perf"}],"rules":[{"id":"r1","severity":"s","globs":["**/*.go"]}]}`,
+			want:     `severity "s" is "high"`,
+		},
+		{
+			name:     "no globs",
+			manifest: `{` + validHeader + `"rules":[{"id":"r1","severity":"secrets"}]` + base + `}`,
+			want:     `rule "r1" names no globs`,
+		},
+		{
+			name:     "empty glob",
+			manifest: `{` + validHeader + `"rules":[{"id":"r1","severity":"secrets","globs":[""]}]` + base + `}`,
+			want:     `rule "r1" carries an empty glob`,
+		},
+		{
+			name:     "duplicate id",
+			manifest: `{` + validHeader + `"rules":[{"id":"r1","severity":"secrets","globs":["**/*.go"]},{"id":"r1","severity":"secrets","globs":["**/*.go"]}]` + base + `}`,
+			want:     `repeats rule id "r1"`,
+		},
+		{
+			name:     "bad id",
+			manifest: `{` + validHeader + `"rules":[{"id":"R1","severity":"secrets","globs":["**/*.go"]}]` + base + `}`,
+			want:     `rule id "R1" is not a KB id`,
+		},
+		{
+			name:     "empty tool",
+			manifest: `{` + validHeader + `"rules":[{"id":"r1","severity":"secrets","globs":["**/*.go"],"tools":[""]}]` + base + `}`,
+			want:     `rule "r1" carries an empty tool name`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fsys := fstest.MapFS{
+				"pack.json":      {Data: []byte(tc.manifest)},
+				"lenses/perf.md": {Data: []byte("perf body\n")},
+				"rules/r1.md":    {Data: []byte("rule body\n")},
+			}
+			_, ref := Load(fsys, ".")
+			if ref == nil || ref.Code != CodeBadPack {
+				t.Fatalf("Load = %v, want bad-pack", ref)
+			}
+			if !strings.Contains(ref.Message, tc.want) {
+				t.Fatalf("message = %q, want it to contain %q", ref.Message, tc.want)
+			}
+		})
+	}
+}
+
+// TestPackRefusesMissingOrEmptyRuleBody proves a declared rule needs its own
+// non-empty markdown body.
+//
+//nolint:revive // the two-body matrix reads as one block
+func TestPackRefusesMissingOrEmptyRuleBody(t *testing.T) {
+	t.Parallel()
+	manifest := `{"schema_version":"1","name":"acme/rules","version":"1.0.0",` +
+		`"severity":{"s":"critical"},"lenses":[{"id":"perf"}],` +
+		`"rules":[{"id":"r1","severity":"s","globs":["**/*.go"]}]}`
+	for _, tc := range []struct {
+		name string
+		body string
+		want string
+	}{
+		{name: "missing", body: "", want: `rule "r1" has no rules/r1.md`},
+		{name: "empty", body: " \n\t\n", want: `rule "r1" has an empty body at rules/r1.md`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fsys := fstest.MapFS{
+				"pack.json":      {Data: []byte(manifest)},
+				"lenses/perf.md": {Data: []byte("perf body\n")},
+			}
+			if tc.body != "" {
+				fsys["rules/r1.md"] = &fstest.MapFile{Data: []byte(tc.body)}
+			}
+			_, ref := Load(fsys, ".")
+			if ref == nil || ref.Code != CodeBadPack {
+				t.Fatalf("Load = %v, want bad-pack", ref)
+			}
+			if ref.Message != tc.want {
+				t.Fatalf("message = %q, want %q", ref.Message, tc.want)
+			}
+		})
+	}
+}
+
 // TestPackRefusesEmptyLensBody pins the refusal for a body that carries no
 // content: a manifest row with only whitespace has nothing to dispatch.
 func TestPackRefusesEmptyLensBody(t *testing.T) {
@@ -342,8 +622,8 @@ func TestPackRefusesEmptyLensBody(t *testing.T) {
 // lensIDs extracts the ids from a lens slice.
 func lensIDs(lenses []Lens) []string {
 	ids := make([]string, len(lenses))
-	for i, lens := range lenses {
-		ids[i] = lens.ID
+	for i := range lenses {
+		ids[i] = lenses[i].ID
 	}
 	return ids
 }

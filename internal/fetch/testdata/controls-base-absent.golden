@@ -82,6 +82,7 @@ CALL: api repos/acme/app/contents/.verdict/overrides/preamble.md?ref=ccccccccccc
 CALL: api repos/acme/app/contents/.verdict/overrides/footer-order.md?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.verdict/overrides/walkthrough-threshold.md?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.verdict/overrides/attribution.md?ref=cccccccccccccccccccccccccccccccccccccccc
+CALL: api repos/acme/app/contents/.verdict/packs?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.verdict/config.json?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: pr view 4701 --repo acme/app --json files --jq .files[] | "\(.path) (+\(.additions)/-\(.deletions))"
 CALL: api repos/acme/app/pulls/4701/reviews --paginate

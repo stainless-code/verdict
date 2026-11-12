@@ -6,6 +6,7 @@ import (
 	"time"
 
 	skillfs "github.com/stainless-code/verdict"
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	adoptcore "github.com/stainless-code/verdict/internal/core/adopt"
 	calibratecore "github.com/stainless-code/verdict/internal/core/calibrate"
@@ -16,6 +17,7 @@ import (
 	indexcore "github.com/stainless-code/verdict/internal/core/index"
 	initcore "github.com/stainless-code/verdict/internal/core/init"
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
+	packcore "github.com/stainless-code/verdict/internal/core/pack"
 	readycore "github.com/stainless-code/verdict/internal/core/ready"
 	trendcore "github.com/stainless-code/verdict/internal/core/trend"
 	triagecore "github.com/stainless-code/verdict/internal/core/triage"
@@ -376,6 +378,18 @@ func wireThreads(ctx context.Context, b *bindings, req *fetchcore.ThreadsRequest
 		return err
 	}
 	req.Warnings = b.warningList()
+	return nil
+}
+
+func decodePack(req *packcore.Request, a *args) {
+	a.boolean("list", &req.List)
+}
+
+func wirePack(ctx context.Context, b *bindings, req *packcore.Request) error {
+	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
+		return err
+	}
+	req.SettingsPath = config.SettingsPath(b.env["HOME"], b.env["XDG_CONFIG_HOME"])
 	return nil
 }
 

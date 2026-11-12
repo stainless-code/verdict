@@ -39,6 +39,9 @@ func runGitHub(
 	if ref := resolveControls(ctx, ctx2, repo, req.RepoRootPath(), readcommon.PrField(dir, keyBaseSHA), f.HeadControls); ref != nil {
 		return nil, "", ref
 	}
+	if ref := resolveLensPacks(ctx2); ref != nil {
+		return nil, "", ref
+	}
 	if ref := phaseTwo(ctx, ctx2, req, f, dir, budget); ref != nil {
 		return nil, "", ref
 	}
@@ -168,7 +171,7 @@ func githubMiddle(ctx context.Context, ctx2 *fetchRunCtx, dir, repo, pr string) 
 	if ref := writeSensitiveManifest(r, dir, extra); ref != nil {
 		return ref
 	}
-	writeKBRecall(r, dir, extra)
+	writeKBRecall(ctx2, dir, extra)
 	writeLensBodies(ctx2)
 	if ref := githubReviews(ctx, r, dir, repo, pr); ref != nil {
 		return ref
@@ -298,9 +301,6 @@ func githubStat(ctx context.Context, ctx2 *fetchRunCtx) (string, []string) {
 }
 
 func fetchPrepare(ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags) (*budgetState, string, error) {
-	if ref := loadLensPack(ctx2); ref != nil {
-		return nil, "", ref
-	}
 	rc, ref := resolvePhaseOne(ctx2.env, req.SettingsPath, f.ChunkFlag)
 	if ref != nil {
 		return nil, "", ref

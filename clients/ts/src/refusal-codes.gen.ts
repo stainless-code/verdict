@@ -125,6 +125,7 @@ export type RefusalCode =
   | "not-local"
   | "not-retired"
   | "not-verdict-authored"
+  | "pack-conflict"
   | "pack-too-large"
   | "pack-unsafe-path"
   | "post-failed"

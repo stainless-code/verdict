@@ -5,8 +5,10 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -31,6 +33,9 @@ func (f *apiFake) Run(_ context.Context, cmd *core.Command) (core.Result, error)
 	endpoint := cmd.Argv[2]
 	f.calls = append(f.calls, endpoint)
 	path, _, _ := strings.Cut(strings.TrimPrefix(endpoint, "repos/acme/app/contents/"), "?")
+	if unescaped, uerr := url.PathUnescape(path); uerr == nil {
+		path = unescaped
+	}
 	if stderr, ok := f.fail[path]; ok {
 		return core.Result{Stderr: stderr, ExitCode: 1}, errors.New("exit status 1")
 	}
@@ -80,7 +85,7 @@ func TestResolveContentsFallback(t *testing.T) {
 // base SHA and the resulting snapshot passes the gate.
 func TestResolveContentsFallbackPinsBase(t *testing.T) {
 	f, snap, _ := contentsFallback(t)
-	if len(f.calls) != len(Inventory) || !strings.HasSuffix(f.calls[0], "?ref="+apiBase) {
+	if len(f.calls) != len(Inventory)+1 || !strings.HasSuffix(f.calls[0], "?ref="+apiBase) {
 		t.Errorf("calls = %q", f.calls)
 	}
 	if _, ref := Gate(filepath.Dir(snap.Dir), apiBase); ref != nil {
@@ -145,6 +150,105 @@ func TestResolveContentsRefusals(t *testing.T) {
 	if _, ref := apiResolve(t, f, ""); ref == nil || ref.Code != CodeUnavailable || len(f.calls) != 0 {
 		t.Errorf("no repo: ref = %+v, gh calls = %q", ref, f.calls)
 	}
+}
+
+// TestResolveContentsTreeBudget proves one shared bound spans the pack walk:
+// entries accumulate across sibling directories and descent stops at the depth
+// cap, so neither a wide nor a deep tree can make the fallback walk past it.
+//
+//nolint:revive // the two budget arms read as one block
+func TestResolveContentsTreeBudget(t *testing.T) {
+	t.Run("entries shared across directories", func(t *testing.T) {
+		f := &apiFake{bodies: map[string]string{
+			".verdict/packs":    `[{"type":"dir","name":"d1"},{"type":"dir","name":"d2"}]`,
+			".verdict/packs/d1": fileListing(600),
+			".verdict/packs/d2": fileListing(600),
+		}}
+		_, ref := apiResolve(t, f, "acme/app")
+		if ref == nil || ref.Code != CodeTooLarge {
+			t.Fatalf("wide pack tree = %v, want controls-too-large", ref)
+		}
+		if want := "lists more than 1024 entries across its tree"; !strings.Contains(ref.Message, want) {
+			t.Fatalf("message = %q, want it to contain %q", ref.Message, want)
+		}
+	})
+	t.Run("depth across directories", func(t *testing.T) {
+		bodies := map[string]string{}
+		path := ".verdict/packs"
+		for i := 1; i <= 9; i++ {
+			bodies[path] = fmt.Sprintf(`[{"type":"dir","name":"d%d"}]`, i)
+			path += fmt.Sprintf("/d%d", i)
+		}
+		f := &apiFake{bodies: bodies}
+		_, ref := apiResolve(t, f, "acme/app")
+		if ref == nil || ref.Code != CodeTooLarge {
+			t.Fatalf("deep pack tree = %v, want controls-too-large", ref)
+		}
+		if want := "nests deeper than 8 directories"; !strings.Contains(ref.Message, want) {
+			t.Fatalf("message = %q, want it to contain %q", ref.Message, want)
+		}
+	})
+}
+
+// TestEscapePathSegments pins the endpoint escaping: every segment is
+// percent-escaped and the separators stay separators.
+func TestEscapePathSegments(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, in, want string }{
+		{"plain", ".verdict/config.json", ".verdict/config.json"},
+		{"fragment", ".verdict/packs/a#1/pack.json", ".verdict/packs/a%231/pack.json"},
+		{"query", ".verdict/packs/a?1/pack.json", ".verdict/packs/a%3F1/pack.json"},
+		{"percent and space", ".verdict/packs/a%1 b/pack.json", ".verdict/packs/a%251%20b/pack.json"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := escapePath(tc.in); got != tc.want {
+				t.Fatalf("escapePath(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestResolveContentsEscapesPathSegments proves a pack name holding '#', '%',
+// or a space reaches the contents API escaped, and the snapshot still keeps
+// the raw path as the control row.
+func TestResolveContentsEscapesPathSegments(t *testing.T) {
+	dir := ".verdict/packs/p#q%r s"
+	f := &apiFake{bodies: map[string]string{
+		".verdict/config.json": fileBody(`{"schema_version":"1"}`),
+		".verdict/packs":       `[{"type":"dir","name":"p#q%r s"}]`,
+		dir:                    `[{"type":"file","name":"pack.json"}]`,
+		dir + "/pack.json":     fileBody(packManifest),
+	}}
+	snap, ref := apiResolve(t, f, "acme/app")
+	if ref != nil {
+		t.Fatalf("Resolve: %v", ref)
+	}
+	for _, want := range []string{
+		"repos/acme/app/contents/.verdict/packs/p%23q%25r%20s?ref=" + apiBase,
+		"repos/acme/app/contents/.verdict/packs/p%23q%25r%20s/pack.json?ref=" + apiBase,
+	} {
+		if !slices.Contains(f.calls, want) {
+			t.Errorf("endpoints = %q, want one to be %q", f.calls, want)
+		}
+	}
+	if got, ok := snap.ReadFile(dir + "/pack.json"); !ok || string(got) != packManifest {
+		t.Errorf("%s = %q (ok=%v), want the base bytes", dir+"/pack.json", got, ok)
+	}
+}
+
+// fileListing renders one contents-API directory answer with n file rows.
+func fileListing(n int) string {
+	var sb strings.Builder
+	sb.WriteByte('[')
+	for i := range n {
+		if i > 0 {
+			sb.WriteByte(',')
+		}
+		fmt.Fprintf(&sb, `{"type":"file","name":"f%d"}`, i)
+	}
+	sb.WriteByte(']')
+	return sb.String()
 }
 
 // TestResolveContentsLeavesNothingOnRefusal proves a refused API read writes

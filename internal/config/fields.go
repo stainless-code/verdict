@@ -32,7 +32,7 @@ var (
 	// the resolver.
 	personalTopFields = []string{
 		"$schema", personalSectionReview, personalSectionSpend, personalSectionPrivacy,
-		"output", "layout", "color", "publish",
+		"packs", "output", "layout", "color", "publish",
 	}
 	personalSpendFields   = []string{"budget_usd", "require_known_estimate", "enforce_cap"}
 	personalPrivacyFields = []string{"exclusions"}
@@ -44,6 +44,7 @@ const (
 	personalSectionReview  = "review"
 	personalSectionSpend   = "spend"
 	personalSectionPrivacy = "privacy"
+	personalSectionPacks   = "packs"
 )
 
 // checkUnknownFields refuses any key outside the contract on fixed-shape

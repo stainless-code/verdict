@@ -12,7 +12,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -55,6 +57,16 @@ const (
 // this prefix, so control "config.json" is the tracked ".verdict/config.json".
 const VerdictDir = ".verdict"
 
+// PacksPrefix is the repo pack tree's tracked root. Every regular file under
+// it is a control: the pack a PR is reviewed by is read at the PR base, never
+// from the head.
+const PacksPrefix = VerdictDir + "/packs"
+
+const (
+	packSep       = "/"
+	controlPrefix = "control "
+)
+
 // Inventory is the closed control set (v1); new controls add rows.
 var Inventory = []string{
 	VerdictDir + "/config.json",
@@ -88,10 +100,12 @@ type Request struct {
 	AllowHead bool
 }
 
-// Snapshot is one resolved control set plus its on-disk location.
+// Snapshot is one resolved control set plus its on-disk location and the
+// concrete inventory (fixed paths plus the pack files found at base).
 type Snapshot struct {
-	Dir  string
-	File core.ControlsFile
+	Dir       string
+	File      core.ControlsFile
+	Inventory []string
 }
 
 // Resolve reads every inventory path from the PR base commit (or the
@@ -127,22 +141,79 @@ func strictInput(env map[string]string) bool {
 }
 
 func (s *Snapshot) write(bundleDir string, contents map[string][]byte) *core.RefusalError {
-	for _, path := range Inventory {
-		raw, ok := contents[path]
-		entry := core.ControlsFileEntry{Path: path, Status: statusMissing}
-		if ok {
-			entry = core.ControlsFileEntry{Path: path, Status: statusUsed, Bytes: int64(len(raw)), SHA256: hash(raw)}
-			if ref := writeAt(filepath.Join(s.Dir, filepath.FromSlash(snapshotRel(path))), raw); ref != nil {
-				return ref
-			}
+	inventory, ref := inventoryFor(contents)
+	if ref != nil {
+		return ref
+	}
+	s.Inventory = inventory
+	// A reused bundle still holds the previous base's snapshot: clearing it is
+	// what stops a control (or a pack body) the new base dropped from loading
+	// off its old bytes.
+	if err := os.RemoveAll(s.Dir); err != nil {
+		return refuse(CodeUnavailable, fmt.Sprintf("could not clear %s: %v", s.Dir, err))
+	}
+	for _, path := range s.Inventory {
+		raw, used := contents[path]
+		if ref := s.record(path, raw, used); ref != nil {
+			return ref
 		}
-		s.File.Files = append(s.File.Files, entry)
 	}
 	doc, err := json.MarshalIndent(s.File, "", "  ")
 	if err != nil {
 		return refuse(CodeUnavailable, fmt.Sprintf("could not encode %s: %v", FileName, err))
 	}
 	return writeAt(filepath.Join(bundleDir, FileName), append(doc, '\n'))
+}
+
+// record appends one inventory row and materializes a used control's bytes.
+// A missing row stays in the inventory with no file behind it.
+func (s *Snapshot) record(path string, raw []byte, used bool) *core.RefusalError {
+	entry := core.ControlsFileEntry{Path: path, Status: statusMissing}
+	if used {
+		entry = core.ControlsFileEntry{Path: path, Status: statusUsed, Bytes: int64(len(raw)), SHA256: hash(raw)}
+		if ref := writeAt(filepath.Join(s.Dir, filepath.FromSlash(snapshotRel(path))), raw); ref != nil {
+			return ref
+		}
+	}
+	s.File.Files = append(s.File.Files, entry)
+	return nil
+}
+
+// inventoryFor keeps the fixed inventory order and appends every pack file
+// the read found, sorted, so controls.json rows are stable. A read path that
+// is neither the fixed set nor a representable pack file refuses: dropping it
+// would cost fetch the pack it belongs to and record no control row at all.
+func inventoryFor(contents map[string][]byte) ([]string, *core.RefusalError) {
+	paths := append([]string{}, Inventory...)
+	var packs []string
+	for path := range contents {
+		switch {
+		case slices.Contains(Inventory, path):
+		case validPackRel(path):
+			packs = append(packs, path)
+		default:
+			return nil, refuse(CodeUnavailable, controlPrefix+path+
+				" is not a path the snapshot can carry — rename it at base")
+		}
+	}
+	slices.Sort(packs)
+	return append(paths, packs...), nil
+}
+
+// validPackRel reports whether rel is one file under the tracked pack root:
+// a slash path with no empty, dot, or parent segment and no native drive or
+// backslash spelling.
+func validPackRel(rel string) bool {
+	tail, ok := strings.CutPrefix(rel, PacksPrefix+packSep)
+	if !ok || tail == "" || strings.ContainsAny(tail, `\:`) {
+		return false
+	}
+	for segment := range strings.SplitSeq(tail, packSep) {
+		if segment == "" || segment == "." || segment == ".." {
+			return false
+		}
+	}
+	return true
 }
 
 func writeAt(dest string, raw []byte) *core.RefusalError {
@@ -223,7 +294,7 @@ func (s *Snapshot) drifted(e core.ControlsFileEntry) bool {
 // Path maps an inventory path to its snapshot file, or "" when it is not a
 // used control (so no other name can escape the snapshot directory).
 func (s *Snapshot) Path(rel string) string {
-	if s == nil || !slices.Contains(Inventory, rel) {
+	if s == nil || (!slices.Contains(Inventory, rel) && !validPackRel(rel)) {
 		return ""
 	}
 	for _, e := range s.File.Files {
@@ -236,6 +307,42 @@ func (s *Snapshot) Path(rel string) string {
 
 // Has reports whether rel is a used control in this snapshot.
 func (s *Snapshot) Has(rel string) bool { return s.Path(rel) != "" }
+
+// PackNames lists the direct pack directories the snapshot carries, sorted.
+func (s *Snapshot) PackNames() []string {
+	if s == nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	for _, entry := range s.File.Files {
+		if name := packNameOf(entry); name != "" {
+			seen[name] = true
+		}
+	}
+	names := make([]string, 0, len(seen))
+	for name := range seen {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	return names
+}
+
+// packNameOf returns the pack directory one row sits under, or "" for a
+// non-pack row, a file directly under the pack root, and a missing row.
+func packNameOf(entry core.ControlsFileEntry) string {
+	if entry.Status != statusUsed {
+		return ""
+	}
+	tail, ok := strings.CutPrefix(entry.Path, PacksPrefix+packSep)
+	if !ok {
+		return ""
+	}
+	name, _, nested := strings.Cut(tail, packSep)
+	if !nested {
+		return ""
+	}
+	return name
+}
 
 // ReadFile reads one used control from the snapshot, capped like its source.
 func (s *Snapshot) ReadFile(rel string) ([]byte, bool) {
@@ -266,6 +373,18 @@ func (s *Snapshot) Used() int {
 }
 
 func readWorktree(root string) (map[string][]byte, *core.RefusalError) {
+	contents, total, ref := readWorktreeInventory(root)
+	if ref != nil {
+		return nil, ref
+	}
+	if ref := readWorktreePacks(root, contents, &total); ref != nil {
+		return nil, ref
+	}
+	return contents, nil
+}
+
+// readWorktreeInventory reads the fixed inventory from the head opt-out.
+func readWorktreeInventory(root string) (map[string][]byte, int, *core.RefusalError) {
 	contents, total := map[string][]byte{}, 0
 	for _, path := range Inventory {
 		full := filepath.Join(root, path)
@@ -274,11 +393,86 @@ func readWorktree(root string) (map[string][]byte, *core.RefusalError) {
 		}
 		raw, err := jq.CappedFile(full, MaxFileBytes)
 		if total += len(raw); err != nil || total > MaxTotalBytes {
-			return nil, refuse(CodeTooLarge, "control "+path+" is unreadable or the controls are over their size caps")
+			return nil, 0, refuse(CodeTooLarge, controlPrefix+path+" is unreadable or the controls are over their size caps")
 		}
 		contents[path] = raw
 	}
-	return contents, nil
+	return contents, total, nil
+}
+
+// readWorktreePacks walks the head opt-out's pack tree: every entry must be a
+// regular file, and the same entry, depth, and byte budget bounds it as the
+// contents-API fallback.
+func readWorktreePacks(root string, contents map[string][]byte, total *int) *core.RefusalError {
+	dir := filepath.Join(root, PacksPrefix)
+	if _, err := os.Lstat(dir); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return refuse(CodeUnavailable, "could not inspect "+PacksPrefix)
+	}
+	budget := treeBudget{root: PacksPrefix}
+	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, walkErr error) error {
+		return readWorktreePackEntry(root, contents, total, &budget, path, entry, walkErr)
+	})
+	if err == nil {
+		return nil
+	}
+	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
+		return ref
+	}
+	return refuse(CodeUnavailable, fmt.Sprintf("could not walk %s: %v", PacksPrefix, err))
+}
+
+// readWorktreePackEntry checks one walked head pack entry against the shared
+// budget and records a regular file's bytes.
+func readWorktreePackEntry(
+	root string, contents map[string][]byte, total *int, budget *treeBudget,
+	path string, entry fs.DirEntry, walkErr error,
+) error {
+	if walkErr != nil {
+		return refuse(CodeUnavailable, fmt.Sprintf("could not walk %s: %v", PacksPrefix, walkErr))
+	}
+	rel, relErr := filepath.Rel(root, path)
+	if relErr != nil {
+		return refuse(CodeUnavailable, controlPrefix+path+" is outside "+PacksPrefix)
+	}
+	tail, inside := strings.CutPrefix(filepath.ToSlash(rel), PacksPrefix+packSep)
+	if !inside {
+		return nil // the pack root itself, whose entries the walk charges
+	}
+	if ref := budget.charge(tail, entry.IsDir()); ref != nil {
+		return ref
+	}
+	if entry.IsDir() {
+		return nil
+	}
+	return recordWorktreePackFile(filepath.ToSlash(rel), path, entry, contents, total)
+}
+
+// recordWorktreePackFile records one regular head pack file's bytes.
+func recordWorktreePackFile(rel, path string, entry fs.DirEntry, contents map[string][]byte, total *int) error {
+	if !validPackRel(rel) {
+		return refuse(CodeUnavailable, controlPrefix+path+" is outside "+PacksPrefix)
+	}
+	if ref := regularPackEntry(path, entry); ref != nil {
+		return ref
+	}
+	raw, rerr := jq.CappedFile(path, MaxFileBytes)
+	if *total += len(raw); rerr != nil || *total > MaxTotalBytes {
+		return refuse(CodeTooLarge, controlPrefix+path+" is unreadable or the controls are over their size caps")
+	}
+	contents[rel] = raw
+	return nil
+}
+
+// regularPackEntry refuses a symlink or special file before it is opened.
+func regularPackEntry(path string, entry fs.DirEntry) *core.RefusalError {
+	info, err := entry.Info()
+	if entry.Type()&fs.ModeSymlink != 0 || err != nil || !info.Mode().IsRegular() {
+		return refuse(CodeUnavailable, controlPrefix+path+" is not a regular file — replace it with one")
+	}
+	return nil
 }
 
 func refuse(code, message string) *core.RefusalError {

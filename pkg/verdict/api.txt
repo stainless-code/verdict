@@ -135,6 +135,10 @@ func (c *Client) Learn(ctx context.Context, req *LearnRequest) (*Outcome, error)
 func (c *Client) Next(ctx context.Context, req *NextRequest) (*NextResponse, error)
     Next returns the top actionable finding for the bundle.
 
+func (c *Client) Pack(ctx context.Context, req *PackRequest) (*PackResponse, error)
+    Pack lists the built-in, org, and repo lens packs with their layer, source,
+    hash, and declared ids. It makes no live calls and writes nothing.
+
 func (c *Client) Post(ctx context.Context, req *PostRequest) (*Result, error)
     Post submits the review payload; DryRun renders without submitting.
 
@@ -376,6 +380,21 @@ type Outcome struct {
 	Data     json.RawMessage
 }
     Outcome carries the envelope fields for verbs without repo/PR positionals.
+
+type PackRequest struct {
+	Invocation
+	List bool
+}
+    PackRequest carries the pack options. List is the only served mode.
+
+type PackResponse struct {
+	Outcome
+}
+    PackResponse is the positionals-free pack list envelope.
+
+func ListPacks(ctx context.Context, c *Client) (*PackResponse, error)
+    ListPacks is the read-only pack list entry in the facade: the same result as
+    Pack with List set, named for the command it serves.
 
 type PostRequest struct {
 	Invocation

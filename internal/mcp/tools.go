@@ -21,6 +21,7 @@ import (
 	indexcore "github.com/stainless-code/verdict/internal/core/index"
 	initcore "github.com/stainless-code/verdict/internal/core/init"
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
+	packcore "github.com/stainless-code/verdict/internal/core/pack"
 	postcore "github.com/stainless-code/verdict/internal/core/post"
 	readycore "github.com/stainless-code/verdict/internal/core/ready"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
@@ -201,6 +202,16 @@ func allTools(readOnly, operator bool) []*tool {
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Next finding", readOnly: true, idempotent: true},
 		}, toolDeps{}, decodeNext, wireNext, invokeNext),
+		directTool(&toolSpec{
+			name: "pack",
+			description: "List lens packs: built-in, org (personal settings packs[]), and repo " +
+				"(.verdict/packs/), in precedence order, with lens/rule ids and drift. Lists the " +
+				"packs in this checkout; a review reads repo packs from the PR's base, so a pack " +
+				"the PR adds or edits is listed here but not used. Reads local files; writes nothing.",
+			omit:     omitPositionals,
+			required: []string{"list"},
+			meta:     toolMeta{title: "List lens packs", readOnly: true, idempotent: true},
+		}, toolDeps{}, decodePack, wirePack, invokePack),
 		dataTool(&toolSpec{
 			name: "post",
 			description: "Post exactly one review to GitHub, GitLab, or Forgejo, or preview with dryRun. " +
@@ -475,6 +486,19 @@ func invokeNext(ctx context.Context, req *core.NextRequest) (*jq.Obj, *core.Refu
 		item = resp.Item.Wire()
 	}
 	return jq.NewObj("item", item), nil
+}
+
+func invokePack(ctx context.Context, req *packcore.Request) (*jq.Obj, *core.RefusalError) {
+	if !req.List {
+		return nil, &core.RefusalError{Code: codeBadFlags, Message: "pack serves list; pass list=true"}
+	}
+	resp, ref := packcore.RunList(ctx, req)
+	if ref != nil {
+		return nil, ref
+	}
+	data := resp.Data.Wire()
+	data.Set("warnings", core.StringValues(resp.Warnings))
+	return data, nil
 }
 
 func invokeShow(ctx context.Context, req *core.ShowRequest) (*jq.Obj, *core.RefusalError) {

@@ -9,13 +9,61 @@ import (
 	"testing/fstest"
 
 	"github.com/stainless-code/verdict/internal/config"
+	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core/pack"
 )
+
+// TestRepoPackIgnoresReusedBundleStaleBody proves a fetch into a bundle
+// directory that already carries a snapshot does not load the previous base's
+// pack bodies: a lens file the new read dropped must not reach the review.
+func TestRepoPackIgnoresReusedBundleStaleBody(t *testing.T) {
+	root := t.TempDir()
+	writeFixtureFile(t, filepath.Join(root, filepath.FromSlash(".verdict/packs/acme/pack.json")),
+		`{"schema_version":"1","name":"acme/lenses","version":"1.0.0","lenses":[{"id":"perf"}]}`)
+	writeFixtureFile(t, filepath.Join(root, filepath.FromSlash(".verdict/packs/acme/lenses/perf.md")), "old body\n")
+	bundle := t.TempDir()
+	if _, ref := controls.Resolve(t.Context(), nil, &controls.Request{
+		BundleDir: bundle, AllowHead: true, Root: root,
+	}); ref != nil {
+		t.Fatalf("first resolve: %s: %s", ref.Code, ref.Message)
+	}
+	if err := os.Remove(filepath.Join(root, filepath.FromSlash(".verdict/packs/acme/lenses/perf.md"))); err != nil {
+		t.Fatal(err)
+	}
+	snap, ref := controls.Resolve(t.Context(), nil, &controls.Request{
+		BundleDir: bundle, AllowHead: true, Root: root,
+	})
+	if ref != nil {
+		t.Fatalf("second resolve: %s: %s", ref.Code, ref.Message)
+	}
+	if snap.Has(".verdict/packs/acme/lenses/perf.md") {
+		t.Fatal("the reused snapshot still carries the dropped lens file")
+	}
+	_, loadRef := repoPackOrigins(snap)
+	if loadRef == nil || loadRef.Code != pack.CodeBadPack {
+		t.Fatalf("repo pack from the reused bundle = %v, want bad-pack", loadRef)
+	}
+	if want := "lenses/perf.md"; !strings.Contains(loadRef.Message, want) {
+		t.Fatalf("message = %q, want it to name %s", loadRef.Message, want)
+	}
+}
 
 // lensTestManifest names three always-offered lenses plus one docs-only lens
 // the plan line must leave out for a Go group.
 const lensTestManifest = `{"schema_version":"1","name":"acme/lenses","version":"1.2.3","lenses":[` +
 	`{"id":"perf"},{"id":"api-contract"},{"id":"test"},{"id":"docs","globs":["docs/**"]}]}`
+
+// lensTestSet loads the fixture pack and wraps it as a one-layer set.
+func lensTestSet(t *testing.T) *pack.Set {
+	t.Helper()
+	set, ref := pack.Merge([]pack.Origin{{
+		Layer: pack.LayerBuiltin, Source: "builtin", Pack: lensTestPack(t),
+	}})
+	if ref != nil {
+		t.Fatalf("merge: %s: %s", ref.Code, ref.Message)
+	}
+	return set
+}
 
 // lensTestPack loads the fixture pack the fetch tests share.
 func lensTestPack(t *testing.T) *pack.Pack {
@@ -48,12 +96,26 @@ func TestPlanLineCarriesLensFields(t *testing.T) {
 	}
 	resolved.Defaults.Values.Effort = "standard"
 	var sb strings.Builder
-	dumpPlan(&fetchRunCtx{runCfg: &runConfig{resolved: resolved}, lensPack: lensTestPack(t)}, &sb, "NONCE")
+	dumpPlan(&fetchRunCtx{runCfg: &runConfig{resolved: resolved}, packs: lensTestSet(t)}, &sb, "NONCE")
 	want := "- group 1: id=g1 profile=- depth=standard max_lenses=unset checks=[] files=[a.go,b.go] " +
 		"scopes=[] panel=[] panel_from=- effort=standard cap_bytes=512000 cap_from=- chunk=false " +
 		"lens_pack=acme/lenses@1.2.3 lenses=[api-contract:887b27a0,perf:4927e908,test:94ceebc5]"
 	if got := planGroupString(t, sb.String()); got != want {
 		t.Fatalf("group line =\n%s\nwant\n%s", got, want)
+	}
+}
+
+// TestOrgPackOriginRefusesRepoPacksEntry proves the fetch org layer refuses a
+// settings entry inside .verdict/packs, which is read from the PR base.
+func TestOrgPackOriginRefusesRepoPacksEntry(t *testing.T) {
+	t.Parallel()
+	_, ref := orgPackOrigin(t.TempDir(), ".verdict/packs/repo")
+	if ref == nil || ref.Code != pack.CodeBadPack {
+		t.Fatalf("org entry inside repo packs = %v, want bad-pack", ref)
+	}
+	want := `org pack path ".verdict/packs/repo" is inside .verdict/packs`
+	if !strings.Contains(ref.Message, want) {
+		t.Fatalf("message = %q, want it to contain %q", ref.Message, want)
 	}
 }
 
@@ -71,7 +133,47 @@ func TestPlanLineCarriesEmptyLensList(t *testing.T) {
 		t.Fatalf("load pack: %s: %s", ref.Code, ref.Message)
 	}
 	group := &config.PlanGroup{ID: "g1", Depth: "standard", Files: []string{"a.go"}}
-	if got, want := lensPlanFields(p, group), " lens_pack=acme/lenses@1.2.3 lenses=[]"; got != want {
+	set, ref := pack.Merge([]pack.Origin{{Layer: pack.LayerBuiltin, Source: "builtin", Pack: p}})
+	if ref != nil {
+		t.Fatalf("merge: %s: %s", ref.Code, ref.Message)
+	}
+	if got, want := lensPlanFields(set, group), " lens_pack=acme/lenses@1.2.3 lenses=[]"; got != want {
+		t.Fatalf("plan fields = %q, want %q", got, want)
+	}
+}
+
+// TestPlanLineCarriesLayeredLensTags proves a layered set tags each lens with
+// its winning pack's full name and lists every pack identity in precedence
+// order.
+func TestPlanLineCarriesLayeredLensTags(t *testing.T) {
+	t.Parallel()
+	builtin, ref := pack.Load(fstest.MapFS{
+		"pack.json": {Data: []byte(
+			`{"schema_version":"1","name":"acme/lenses","version":"1.2.3","lenses":[{"id":"perf"}]}`)},
+		"lenses/perf.md": {Data: []byte("perf body\n")},
+	}, ".")
+	if ref != nil {
+		t.Fatalf("load builtin: %s: %s", ref.Code, ref.Message)
+	}
+	org, ref := pack.Load(fstest.MapFS{
+		"pack.json": {Data: []byte(
+			`{"schema_version":"1","name":"acme/security","version":"1.0.0","replace":["acme/lenses"],` +
+				`"lenses":[{"id":"perf"}]}`)},
+		"lenses/perf.md": {Data: []byte("security body\n")},
+	}, ".")
+	if ref != nil {
+		t.Fatalf("load org: %s: %s", ref.Code, ref.Message)
+	}
+	set, ref := pack.Merge([]pack.Origin{
+		{Layer: pack.LayerBuiltin, Source: "builtin", Pack: builtin},
+		{Layer: pack.LayerOrg, Source: "dir:org", Pack: org},
+	})
+	if ref != nil {
+		t.Fatalf("merge: %s: %s", ref.Code, ref.Message)
+	}
+	group := &config.PlanGroup{ID: "g1", Depth: "standard", Files: []string{"a.go"}}
+	want := " lens_pack=acme/lenses@1.2.3,acme/security@1.0.0 lenses=[perf@acme/security:e0760be4]"
+	if got := lensPlanFields(set, group); got != want {
 		t.Fatalf("plan fields = %q, want %q", got, want)
 	}
 }

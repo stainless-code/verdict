@@ -25,7 +25,9 @@ const (
 	keyMaximum              = "maximum"
 	keyItemsMinimum         = "items_min"
 	keyMinItems             = "minItems"
+	keyMinLength            = "minLength"
 	keyItemsEnum            = "items_enum"
+	keyValueEnum            = "value_enum"
 	keyExclusiveMinimum     = "exclusiveMinimum"
 	keyExclusiveMin         = "exclusiveMin"
 	keyNonNull              = "nonnull"
@@ -253,6 +255,7 @@ func documents() []document {
 			root:  reflect.TypeFor[PackManifest](),
 			defs: []definition{
 				{typ: reflect.TypeFor[PackLens](), name: "lens", closed: true},
+				{typ: reflect.TypeFor[PackRule](), name: "rule", closed: true},
 			},
 			additionalProperties: false,
 		},
@@ -389,6 +392,8 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[TrendProvenance](), name: "trendProvenance"},
 		{typ: reflect.TypeFor[TrendPeriod](), name: "trendPeriod"},
 		{typ: reflect.TypeFor[TrendBundleRow](), name: "trendBundleRow"},
+		{typ: reflect.TypeFor[PackData](), name: "packData"},
+		{typ: reflect.TypeFor[PackEntry](), name: "packEntry"},
 		{typ: reflect.TypeFor[IndexData](), name: "indexData"},
 		{typ: reflect.TypeFor[IndexShards](), name: "indexShards"},
 		{typ: reflect.TypeFor[IndexTreeRow](), name: "indexTreeRow"},
@@ -673,7 +678,7 @@ func (b *builder) baseNode(typ reflect.Type, tag reflect.StructTag) (*node, erro
 	case reflect.Slice:
 		return b.sliceNode(typ, tag)
 	case reflect.Map:
-		return b.mapNode(typ)
+		return b.mapNode(typ, tag)
 	case reflect.Struct:
 		if typ.Name() == "" {
 			return b.structNode(typ, true)
@@ -768,11 +773,11 @@ func arrayBound(tag reflect.StructTag) (string, bool, error) {
 	return bound, true, nil
 }
 
-func (b *builder) mapNode(typ reflect.Type) (*node, error) {
+func (b *builder) mapNode(typ reflect.Type, tag reflect.StructTag) (*node, error) {
 	if typ.Key().Kind() != reflect.String {
 		return nil, errorf("map key must be a string, got %s", typ.Key())
 	}
-	if ref, ok, err := b.valueRef(typ.Elem()); err != nil || ok {
+	if ref, ok, err := b.valueRef(typ.Elem(), tag); err != nil || ok {
 		if err != nil {
 			return nil, err
 		}
@@ -791,8 +796,11 @@ func (b *builder) mapNode(typ reflect.Type) (*node, error) {
 // registration validates through that reference, and a string value pins the
 // reason codes inside an open object. Every other element type keeps the
 // legacy open object, so previously published schemas do not move.
-func (b *builder) valueRef(elem reflect.Type) (*node, bool, error) {
+func (b *builder) valueRef(elem reflect.Type, tag reflect.StructTag) (*node, bool, error) {
 	if elem.Kind() == reflect.String {
+		if enum := tag.Get(keyValueEnum); enum != "" {
+			return enumNode(enum), true, nil
+		}
 		return object(false, member{keyType, stringNode(typeString)}), true, nil
 	}
 	if elem.Kind() != reflect.Struct || elem.Name() == "" {
@@ -871,6 +879,9 @@ func appendKeywords(schema *node, tag reflect.StructTag) {
 	}
 	if value := tag.Get(keyExclusiveMin); value != "" {
 		schema.members = append(schema.members, member{keyExclusiveMinimum, numberNode(value)})
+	}
+	if value := tag.Get(keyMinLength); value != "" {
+		schema.members = append(schema.members, member{keyMinLength, numberNode(value)})
 	}
 	if value := tag.Get(keyFormat); value != "" {
 		schema.members = append(schema.members, member{keyFormat, stringNode(value)})

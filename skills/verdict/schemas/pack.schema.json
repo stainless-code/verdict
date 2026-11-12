@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/pack.schema.json",
   "title": "pack.json — a lens pack manifest",
-  "description": "A lens pack manifest at skills/verdict/packs/builtin/pack.json: the published format fetch resolves into the bundle. The schema closes the shape; the loader also enforces the caps (64 KiB/file, 1 MiB/pack, 256 files, 64 lenses) and the rule that every lens id names lenses/<id>.md. A file no manifest row names is counted but never loaded.",
+  "description": "A lens pack manifest at skills/verdict/packs/builtin/pack.json: the published format fetch resolves into the bundle. The schema closes the shape; the loader also enforces the caps (64 KiB/file, 1 MiB/pack, 256 files, 64 lenses) and the rule that every lens and rule id names its own markdown file. A file no manifest row names is counted but never loaded. Manifest keys must be spelled exactly as published: the loader refuses any other case.",
   "type": "object",
   "properties": {
     "schema_version": {
@@ -19,11 +19,28 @@
       "type": "string",
       "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
     },
+    "replace": {
+      "description": "Lower-layer pack names this pack may override by id. Replacement is downward only: naming a pack at the same or a higher layer refuses pack-conflict.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "severity": {
+      "description": "The pack's severity names mapped to critical, important, or informational; every rule's severity key must exist here.",
+      "type": "object",
+      "additionalProperties": {
+        "enum": ["critical", "important", "informational"]
+      }
+    },
     "lenses": {
       "description": "One row per lens, at least one; the loader refuses more than 64 with pack-too-large. Each id names lenses/<id>.md.",
       "type": "array",
       "items": { "$ref": "#/$defs/lens" },
       "minItems": 1
+    },
+    "rules": {
+      "description": "One row per KB rule; each id names rules/<id>.md, globs are required, and the severity key resolves through this pack's severity map.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/rule" }
     }
   },
   "required": ["schema_version", "name", "version", "lenses"],
@@ -57,6 +74,35 @@
         }
       },
       "required": ["id"],
+      "additionalProperties": false
+    },
+    "rule": {
+      "description": "One rule row: a KB id, the severity-map key that resolves its level, required scope globs, and the tools it talks about.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "KB id grammar: a lowercase slug of at most 65 characters; the body is rules/<id>.md.",
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{0,64}$"
+        },
+        "severity": {
+          "description": "Key into the manifest severity map; the mapped value is the rule's published severity.",
+          "type": "string",
+          "minLength": 1
+        },
+        "globs": {
+          "description": "Required slash-path globs; a rule that matches no changed file is not recalled.",
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "tools": {
+          "description": "Optional tool names the rule talks about.",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["id", "severity", "globs"],
       "additionalProperties": false
     }
   }

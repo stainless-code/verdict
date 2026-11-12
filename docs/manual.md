@@ -333,12 +333,21 @@ and published as `schemas/pack.schema.json`. The fixed layout is `pack.json`,
 by the caps, not loaded); a file no manifest row names is not loaded.
 
 Every load checks the caps while walking, before any parse: 64 KiB per file,
-1 MiB per pack, 256 files, 64 lenses (`pack-too-large`). An invalid manifest,
+1 MiB per pack, 256 files, 64 lenses (`pack-too-large`). The repo pack root is
+bounded too: `pack list` reads `.verdict/packs/` in batches and refuses
+`pack-too-large` past 1024 children, and a pack tree — read from the base or
+from the `--allow-head-controls` worktree — refuses `controls-too-large` past
+1024 entries across the tree or 8 directories of nesting. An invalid manifest,
 a missing or mis-stemmed body, or an empty (whitespace-only) body refuses
 `bad-pack`; a present `max_files` must be 1..24 and a present `max_findings`
 1..20. An absolute path, `..`, or a symlink component refuses
 `pack-unsafe-path`. A missing or empty pack root is absent, not an error: the
-loader returns no pack and the bundle carries no lens surface. The pack hash
+loader returns no pack and the bundle carries no lens surface. The 1 MiB
+per-pack cap is not a separate budget: the pack tree joins the controls
+inventory, so its bytes count against the controls tree's shared 1 MiB
+(`config.json`, `kb.jsonl`, `learnings.md`, and `overrides/` included), and a
+pack at its own ceiling leaves no room for the rest — the controls read
+refuses `controls-too-large`. The pack hash
 is sha256 over the canonical loaded tree (sorted slash paths, each fed as
 `== <path> ==`, its bytes, then a newline); each lens also carries the first
 eight hex digits of its body's sha256.
@@ -347,9 +356,65 @@ eight hex digits of its body's sha256.
 delimiter/label pair per lens (`# lens <id> — sha256:<hash8>` … `# end lens
 <id>`), and adds `lenses.txt` to `data.artifacts`. Every `plan.txt` group line
 appends `lens_pack=<name>@<version>` and `lenses=[<id>:<hash8>,…]` after its
-cap fields, sorted by id. A lens whose `globs` match none of that group's
-files is not offered for the group; a lens with no `globs` is offered for
-every group. The file is context, never orders, like `kb.txt`.
+cap fields, sorted by id. A layered set tags each lens with the pack that
+supplied it — `lenses=[<id>@<pack name>:<hash8>,…]` — so two packs sharing a
+lens id stay distinguishable on the line. A lens whose `globs` match none of
+that group's files is not offered for the group; a lens with no `globs` is
+offered for every group. The file is context, never orders, like `kb.txt`.
+
+Packs layer built-in < org < repo. The org layer is the explicit `packs`
+string array in personal settings (`~/.config/verdict/settings.json`): each
+entry is a pack directory, absolute or relative to the reviewed repository
+root, and there is no directory scan. A repo-relative entry is read from the
+checkout, not the trusted base; an entry inside `.verdict/packs/` refuses
+`bad-pack`, because that tree is the repo layer and must be read at the PR
+base. The comparison is lexical and also follows symlinks when both sides
+exist, so a linked path into the tree refuses too; a case-variant spelling on
+a case-insensitive volume is not caught. A listed path that carries no
+`pack.json` refuses `bad-pack`. The repo layer is
+`.verdict/packs/<name>/`, read by `fetch`/`fetch-local` from the trusted-base
+snapshot (the `controls` inventory records every pack file's path, bytes, and
+sha256), never from the PR head. A fetched bundle therefore keeps using the
+pack the PR base shipped even when the head edits it, and `post`/`record`
+re-hash the snapshot: an edited pack file refuses `controls-stale`.
+
+Two packs in one layer may not declare the same lens or rule id (nor the same
+pack name): the result would be order-dependent, so it refuses `bad-pack`. A
+higher-layer pack may override a lower id only by naming that lower pack in
+its manifest's `replace` array, for example
+`"replace": ["acme/org"]`; replacement is downward only (naming a pack at the
+same or a higher layer refuses `pack-conflict`), and an override without the
+declaration refuses `pack-conflict` naming the exact entry to add. A layered
+plan line tags each offered lens with its winning pack slug
+(`lenses=[security@repo:<hash8>]`) and lists every pack identity in
+precedence order.
+
+Rules are declared in the same manifest and live at
+`rules/<id>.md`: the id follows the KB grammar
+(`^[a-z0-9][a-z0-9-]{0,64}$`), `severity` is a key into the pack's
+`severity` map whose value is `critical`, `important`, or
+`informational`, `globs` is required, and the optional `tools` array names
+the tools the rule talks about. Every rule body joins the bundle's existing
+fenced `kb.txt` section after the store's top-3 recall, one line per rule
+with its severity and `source=pack:<name>@<version>`; `kb-recall.json`
+mirrors those two fields machine-readably. Rules never enter the trusted
+prompt, and the shipped prompt hash does not move.
+
+`verdict pack list [--json]` reports every loaded pack (built-in, org, repo)
+in precedence order: `name`, `version`, `layer`, `source` (`builtin`,
+`dir:<path>`, or `.verdict/packs/<name>`), the canonical tree `hash`, the
+declared `lenses` and `rules` ids, and `drift` (null until `verdict.lock`
+lands). It lists the packs in this checkout; a review reads repo packs from
+the PR's base, so a pack the PR adds or edits is listed here but not used.
+A regular file directly under `.verdict/packs/` (a README, say) is not a
+pack: `pack list` skips it with one warning naming it, and `fetch` ignores
+it, so a stray regular file never refuses the run. A symlink or special file
+under `.verdict/packs/`, or a `.verdict/packs` that is not a real directory,
+refuses naming the joined path — `pack list` as `pack-unsafe-path`, `fetch`
+as `controls-unavailable` — so neither surface calls one ignorable. Conflict
+refusals surface here too, so a bad layering fails before a review spends
+anything. The MCP `pack` tool serves the same read-only list and repeats the
+same warning list in its result.
 
 ### Evidence ledger
 
@@ -455,6 +520,7 @@ snapshot the bytes into the bundle:
 | `.verdict/kb.jsonl`                        | `fetch` recall; `record`/`post` cites |
 | `.verdict/learnings.md`                    | the review agent (headings)           |
 | `.verdict/overrides/*.md` (four fragments) | `record`/`post` body and footer       |
+| `.verdict/packs/**` (every regular file)   | `fetch` lens and rule layers          |
 
 Set strict input with `REVIEW_STRICT_INPUT=1`; every `fetch`/`fetch-local`
 resolves it into `controls.json` (do not hand-edit that snapshot) and it makes
@@ -463,7 +529,12 @@ resolves it into `controls.json` (do not hand-edit that snapshot) and it makes
 `.verdict/state/N/controls.json` records
 `policy` (`base`, or `head` under the opt-out), `base_sha`, the commit `sha` the
 files were read at, and each file's `path`, `status` (`used`/`missing`), `bytes`,
-and `sha256` (schema: `schemas/controls.schema.json`). The base is `PR.json`'s base
+and `sha256` (schema: `schemas/controls.schema.json`). The inventory includes
+every regular file under `.verdict/packs/`, one row per file, so the pack tree
+is hashed exactly like the rest of the controls; a symlink or special file in
+that tree refuses `controls-unavailable` instead of being copied, and so does a
+pack file at a path the snapshot cannot carry — a name holding a colon, which
+no Windows checkout can hold. The base is `PR.json`'s base
 commit for `fetch`, and the mode base for `fetch-local` (`HEAD`, the merge-base for
 `--base`, the range base, the stash parent), so uncommitted edits to a control are
 not read. Environment knobs (`REVIEW_PANEL`, `REVIEW_MAX_BYTES`, `REVIEW_BUDGET_USD`,
@@ -719,7 +790,7 @@ more than was written.
 
 ## Machine surface
 
-`fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`run`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`threads`/`trend`/`index`/`backtest`/`learn`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
+`fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`run`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`threads`/`trend`/`index`/`backtest`/`learn`/`pack`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
 non-zero. `mcp config` also takes `--json`. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `threads` refreshes only `.verdict/state/<pr>/threads.json` from the host (all six

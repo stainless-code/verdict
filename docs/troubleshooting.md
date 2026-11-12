@@ -200,9 +200,9 @@ Fix: fix its permissions (or remove it), then re-run.
 
 ## `bad-pack`
 
-Cause: a lens pack manifest is malformed, missing a named lens body, carries an empty body, or its id and file stem disagree.
+Cause: a lens pack manifest is malformed, a key is spelled in any case but the published lowercase form, two packs in one layer share an id, or a named lens/rule body is missing, empty, or stem-mismatched.
 
-Fix: fix `pack.json` against `schemas/pack.schema.json` (every lens id equals `lenses/<id>.md`), then re-run.
+Fix: fix `pack.json` against `schemas/pack.schema.json` (exact lowercase keys; every lens id equals `lenses/<id>.md` and every rule id `rules/<id>.md`), then re-run.
 
 ## `bad-preset`
 
@@ -746,6 +746,12 @@ Cause: the thread is authored by someone (or something) else — only verdict-au
 
 Fix: resolve only verdict-authored threads (pass the ids from `threads.json`).
 
+## `pack-conflict`
+
+Cause: a higher-layer pack declares an id a lower-layer pack already declares, without naming that pack in `replace`; or `replace` names a pack that is not loaded or is not below the declaring pack.
+
+Fix: add `"replace": ["<lower pack name>"]` to the higher pack's manifest (replacement is downward only), or rename the id. Then re-run.
+
 ## `pack-too-large`
 
 Cause: a lens pack exceeds the per-file (64 KiB), per-pack (1 MiB), file-count (256), or lens-count (64) cap.
@@ -754,9 +760,9 @@ Fix: trim the pack under those caps, then re-run.
 
 ## `pack-unsafe-path`
 
-Cause: a lens pack root, file, or symlink escapes the pack directory.
+Cause: a lens pack root, file, or symlink escapes the pack directory, the pack root itself is a symlink, or a FIFO/device entry sits where a regular pack file belongs.
 
-Fix: keep every pack path relative with no symlink components, then re-run.
+Fix: keep the pack root a real directory, every body a regular file, and every path relative with no symlink components, then re-run.
 
 ## `post-failed`
 
