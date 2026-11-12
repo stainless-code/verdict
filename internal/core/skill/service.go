@@ -57,6 +57,9 @@ const (
 
 const skillsSlot = "skills"
 
+// targetRoot is the target directory itself, the root of every payload path.
+const targetRoot = "."
+
 const agentShared = "agents"
 
 const (
@@ -213,39 +216,32 @@ func prepare(req *Request, plan *Plan) *core.RefusalError {
 // target cannot take it: mkdir creates the target under the nearest existing
 // ancestor, so that ancestor decides whether the create can happen.
 func checkCreatable(target string) *core.RefusalError {
-	dir := target
-	for {
+	parent, found := nearestExistingDir(target)
+	if !found || writableDir(parent) {
+		return nil
+	}
+	return refuse(codeInstall, "cannot install into "+target+": "+parent+" is not writable")
+}
+
+// nearestExistingDir is the deepest ancestor of target that exists as a
+// directory.
+func nearestExistingDir(target string) (string, bool) {
+	for dir := filepath.Dir(target); ; {
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			return dir, true
+		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return nil
-		}
-		if info, err := os.Stat(parent); err == nil && info.IsDir() {
-			if !writableDir(parent) {
-				return refuse(codeInstall, "cannot install into "+target+": "+parent+" is not writable")
-			}
-			return nil
+			return "", false
 		}
 		dir = parent
 	}
 }
 
 // checkWritable refuses before a write when a directory the apply would write
-// into cannot take it. Every status writes the receipt at the target root, and
-// a create or update also writes each payload file, whose first mkdir or rename
-// lands in the deepest directory that already exists on its path.
+// into cannot take it.
 func checkWritable(root *os.Root, plan *Plan) *core.RefusalError {
-	dirs := []string{"."}
-	if plan.Status != StatusKeep {
-		for _, rel := range plan.Files {
-			dirs = append(dirs, existingAncestor(root, filepath.FromSlash(rel)))
-		}
-	}
-	checked := make(map[string]bool, len(dirs))
-	for _, dir := range dirs {
-		if checked[dir] {
-			continue
-		}
-		checked[dir] = true
+	for _, dir := range writeDirs(root, plan) {
 		path := filepath.Join(plan.Target, dir)
 		if !writableDir(path) {
 			return refuse(codeInstall, "cannot install into "+plan.Target+": "+path+" is not writable")
@@ -254,18 +250,39 @@ func checkWritable(root *os.Root, plan *Plan) *core.RefusalError {
 	return nil
 }
 
+// writeDirs is every directory an apply writes into, deduped, the target root
+// first: every status writes the receipt there, and a create or update also
+// writes each payload file, whose first mkdir or rename lands in the deepest
+// directory that already exists on its path.
+func writeDirs(root *os.Root, plan *Plan) []string {
+	dirs := []string{targetRoot}
+	if plan.Status == StatusKeep {
+		return dirs
+	}
+	seen := map[string]bool{targetRoot: true}
+	for _, rel := range plan.Files {
+		dir := existingAncestor(root, filepath.FromSlash(rel))
+		if seen[dir] {
+			continue
+		}
+		seen[dir] = true
+		dirs = append(dirs, dir)
+	}
+	return dirs
+}
+
 // existingAncestor is the deepest directory that already exists on name's path,
-// "." for the target root itself: the directory the first mkdir or rename
-// touches.
+// the target root for a path at the top, and therefore the directory the first
+// mkdir or rename touches.
 func existingAncestor(root *os.Root, name string) string {
 	dir := filepath.Dir(name)
-	for dir != "." {
+	for dir != targetRoot {
 		if info, err := root.Stat(dir); err == nil && info.IsDir() {
 			return dir
 		}
 		dir = filepath.Dir(dir)
 	}
-	return "."
+	return targetRoot
 }
 
 func planInstall(ctx context.Context, req *Request) (Plan, *core.RefusalError) {

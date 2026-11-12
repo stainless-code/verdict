@@ -264,14 +264,22 @@ func readOnly(t *testing.T, dir string) {
 	if err := os.Chmod(dir, 0o555); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	t.Cleanup(func() {
+		if err := os.Chmod(dir, 0o755); err != nil {
+			t.Errorf("restore %s permissions: %v", dir, err)
+		}
+	})
 	probe, err := os.CreateTemp(dir, "writable-*")
 	if err != nil {
 		return
 	}
 	name := probe.Name()
-	_ = probe.Close()
-	_ = os.Remove(name)
+	if err := probe.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(name); err != nil {
+		t.Fatal(err)
+	}
 	t.Skip("this filesystem still lets the process write into a 0555 directory")
 }
 
