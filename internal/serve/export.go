@@ -119,6 +119,9 @@ func snapshotData(ctx context.Context, layer Layer, now time.Time) ([]byte, erro
 }
 
 func exportHTML(ctx context.Context, dest string, layer Layer, now time.Time) error {
+	if err := exportDestination(dest); err != nil {
+		return err
+	}
 	body, err := snapshotData(ctx, layer, now)
 	if err != nil {
 		return &cli.RefusalError{Code: "report-failed", Message: err.Error()}
@@ -152,6 +155,43 @@ func exportHTML(ctx context.Context, dest string, layer Layer, now time.Time) er
 	}
 	if err := os.Rename(stage, dest); err != nil {
 		return &cli.RefusalError{Code: "report-failed", Message: err.Error()}
+	}
+	return nil
+}
+
+func exportDestination(dest string) error {
+	info, err := os.Lstat(dest)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return &cli.RefusalError{Code: "report-failed", Message: err.Error()}
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return &cli.RefusalError{Code: "html-symlink", Message: "HTML export destination must not be a symlink"}
+	}
+	if !info.IsDir() {
+		return &cli.RefusalError{Code: "html-not-export", Message: "HTML export destination is not a directory"}
+	}
+	entries, err := os.ReadDir(dest)
+	if err != nil {
+		return &cli.RefusalError{Code: "report-failed", Message: err.Error()}
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+	expected := map[string]bool{"index.html": true, "app.js": true, "app.css": true, "data.json": true}
+	if len(entries) != len(expected) {
+		return &cli.RefusalError{Code: "html-not-export", Message: "non-empty destination is not a previous HTML export"}
+	}
+	for _, entry := range entries {
+		if !expected[entry.Name()] || !entry.Type().IsRegular() {
+			return &cli.RefusalError{Code: "html-not-export", Message: "non-empty destination is not a previous HTML export"}
+		}
+	}
+	page, err := os.ReadFile(filepath.Join(dest, "index.html"))
+	if err != nil || !strings.Contains(string(page), `<meta name="verdict-mode" content="static" />`) {
+		return &cli.RefusalError{Code: "html-not-export", Message: "destination lacks the static export marker"}
 	}
 	return nil
 }

@@ -46,7 +46,7 @@ var hintRules = []HintRule{
 	{prefix: "missing-", hint: "try: run the fetch/record step named above first, then re-run"},
 	{
 		codes: []string{
-			"not-a-repo", "not-local", "no-pr-target", "no-threads", "no-verify-cmd", "report-failed",
+			"html-not-export", "html-symlink", "not-a-repo", "not-local", "no-pr-target", "no-threads", "no-verify-cmd", "report-failed",
 			"config-no-bundle",
 		},
 		hint: "try: run the fetch/record step named above first, then re-run",
