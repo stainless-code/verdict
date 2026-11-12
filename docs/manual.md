@@ -1574,7 +1574,10 @@ spot remains, and only for bundle artifacts larger than 64 KiB: a same-size,
 same-mtime in-place rewrite moves nothing until the periodic sweep, because
 those are fingerprinted by metadata, not content. An artifact or fragment the
 stamp cannot read bypasses the cache for that request, so the readers' own
-refusal shows. Refusals are never cached.
+refusal shows. Content hashing shares a 16 MiB budget across the bundle,
+its `chunks` directory, and override fragments — the same byte budget as the
+inventory. If another input exceeds the remaining budget, hashing stops and
+the request bypasses the cache. Refusals are never cached.
 
 ## Your agent, launched (`run --agent`)
 

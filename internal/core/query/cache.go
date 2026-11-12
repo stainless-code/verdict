@@ -3,7 +3,6 @@ package query
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"io/fs"
 	"os"
@@ -70,35 +69,37 @@ type entry struct {
 // bypasses the cache and the reader's own refusal shows.
 func bundleStamp(root Root, dir string) (stamp, bool) {
 	var out strings.Builder
-	cacheable := appendDirStamp(&out, dir, "")
+	remaining := maxInventoryBytes
+	if !appendDirStamp(&out, dir, "", &remaining) {
+		return stamp{}, false
+	}
 	for _, fragment := range overrideFragments {
-		if !appendOverrideStamp(&out, filepath.Join(root.Path, filepath.FromSlash(fragment))) {
-			cacheable = false
+		if !appendOverrideStamp(&out, filepath.Join(root.Path, filepath.FromSlash(fragment)), &remaining) {
+			return stamp{}, false
 		}
 	}
-	return sha256.Sum256([]byte(out.String())), cacheable
+	return sha256.Sum256([]byte(out.String())), true
 }
 
 // appendDirStamp fingerprints one directory's entries and recurses into the
 // chunks directory.
-func appendDirStamp(out *strings.Builder, dir, prefix string) bool {
+func appendDirStamp(out *strings.Builder, dir, prefix string, remaining *int64) bool {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		out.WriteString(prefix + unreadableMarker)
 		return false
 	}
-	cacheable := true
 	for _, entry := range entries {
-		if !appendEntryStamp(out, dir, prefix, entry) {
-			cacheable = false
+		if !appendEntryStamp(out, dir, prefix, entry, remaining) {
+			return false
 		}
 	}
-	return cacheable
+	return true
 }
 
 // appendEntryStamp fingerprints one directory entry. The stat follows a
 // symlink, so a target edit moves the stamp; the readers follow the same link.
-func appendEntryStamp(out *strings.Builder, dir, prefix string, entry os.DirEntry) bool {
+func appendEntryStamp(out *strings.Builder, dir, prefix string, entry os.DirEntry, remaining *int64) bool {
 	name := prefix + entry.Name()
 	path := filepath.Join(dir, entry.Name())
 	info, err := os.Stat(path)
@@ -108,15 +109,13 @@ func appendEntryStamp(out *strings.Builder, dir, prefix string, entry os.DirEntr
 	}
 	appendStatLine(out, name, info)
 	if info.Mode().IsRegular() && info.Size() <= overrideStampCap {
-		raw, err := readcommon.ReadRegularCapped(path, overrideStampCap)
-		if err != nil {
+		if !appendContentStamp(out, path, remaining) {
 			return false
 		}
-		out.WriteString(digestBytes(raw))
 	}
 
 	if prefix == "" && info.IsDir() && entry.Name() == chunksDirName {
-		return appendDirStamp(out, path, chunksDirName+"/")
+		return appendDirStamp(out, path, chunksDirName+"/", remaining)
 	}
 	return true
 }
@@ -127,7 +126,7 @@ func appendEntryStamp(out *strings.Builder, dir, prefix string, entry os.DirEntr
 // It reports false when the reader refused the fragment: the single marker
 // every refusal writes cannot tell one unreadable state from another, so
 // nothing built from it is cacheable.
-func appendOverrideStamp(out *strings.Builder, path string) bool {
+func appendOverrideStamp(out *strings.Builder, path string, remaining *int64) bool {
 	info, err := os.Stat(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		out.WriteString(path + missingMarker)
@@ -137,17 +136,23 @@ func appendOverrideStamp(out *strings.Builder, path string) bool {
 		out.WriteString(path + unreadableMarker)
 		return false
 	}
-	raw, err := readcommon.ReadRegularCapped(path, overrideStampCap)
-	if err != nil {
-		out.WriteString(path + unreadableMarker)
-		return false
-	}
-	sum := sha256.Sum256(raw)
 	out.WriteString(path)
 	out.WriteByte(' ')
 	appendMode(out, info)
-	out.WriteString(hex.EncodeToString(sum[:]))
+	if !appendContentStamp(out, path, remaining) {
+		return false
+	}
 	out.WriteByte('\n')
+	return true
+}
+
+func appendContentStamp(out *strings.Builder, path string, remaining *int64) bool {
+	raw, err := readcommon.ReadRegularCapped(path, min(overrideStampCap, *remaining))
+	if err != nil {
+		return false
+	}
+	*remaining -= int64(len(raw))
+	out.WriteString(digestBytes(raw))
 	return true
 }
 
