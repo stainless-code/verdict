@@ -333,7 +333,11 @@ and published as `schemas/pack.schema.json`. The fixed layout is `pack.json`,
 by the caps, not loaded); a file no manifest row names is not loaded.
 
 Every load checks the caps while walking, before any parse: 64 KiB per file,
-1 MiB per pack, 256 files, 64 lenses (`pack-too-large`). An invalid manifest,
+1 MiB per pack, 256 files, 64 lenses (`pack-too-large`). The repo pack root is
+bounded too: `pack list` reads `.verdict/packs/` in batches and refuses
+`pack-too-large` past 1024 children, and a pack tree — read from the base or
+from the `--allow-head-controls` worktree — refuses `controls-too-large` past
+1024 entries across the tree or 8 directories of nesting. An invalid manifest,
 a missing or mis-stemmed body, or an empty (whitespace-only) body refuses
 `bad-pack`; a present `max_files` must be 1..24 and a present `max_findings`
 1..20. An absolute path, `..`, or a symlink component refuses
@@ -528,7 +532,9 @@ files were read at, and each file's `path`, `status` (`used`/`missing`), `bytes`
 and `sha256` (schema: `schemas/controls.schema.json`). The inventory includes
 every regular file under `.verdict/packs/`, one row per file, so the pack tree
 is hashed exactly like the rest of the controls; a symlink or special file in
-that tree refuses `controls-unavailable` instead of being copied. The base is `PR.json`'s base
+that tree refuses `controls-unavailable` instead of being copied, and so does a
+pack file at a path the snapshot cannot carry — a name holding a colon, which
+no Windows checkout can hold. The base is `PR.json`'s base
 commit for `fetch`, and the mode base for `fetch-local` (`HEAD`, the merge-base for
 `--base`, the range base, the stash parent), so uncommitted edits to a control are
 not read. Environment knobs (`REVIEW_PANEL`, `REVIEW_MAX_BYTES`, `REVIEW_BUDGET_USD`,
