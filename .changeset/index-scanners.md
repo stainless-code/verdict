@@ -20,4 +20,6 @@ Python — and a test in another directory is a candidate only when it imports
 the queried file by a specifier that resolves to it. A blob two languages both
 claim is parsed per file and cached under neither, so a shared file never
 borrows another language's parse. Files over the 1 MiB cap or in an extension
-the index does not scan stay out of the tree and count as skipped.
+the index does not scan stay out of the tree and count as skipped. A store
+written by an earlier build (store version 2 now) reads as unbuilt in `index
+status` and is rebuilt once by the next `index build`.

@@ -253,7 +253,7 @@ func collectFileRefs(out *callerResults, seen map[Row]bool, tgt target, same boo
 			out.unresolved++
 			continue
 		}
-		row.Language = f.Language
+		row.Language = string(fileLanguage(f))
 		if !seen[row] {
 			seen[row] = true
 			out.rows = append(out.rows, row)
@@ -279,7 +279,7 @@ func sortRows(rows []Row) {
 // resolution is a candidate that needs type information, counted and not
 // rendered.
 func resolveRef(tgt target, samePkg bool, f *treeFile, r ref) (Row, bool) {
-	if language(f.Language) != langGo {
+	if fileLanguage(f) != langGo {
 		return resolveScannedRef(samePkg, f, r)
 	}
 	if !r.Selector {

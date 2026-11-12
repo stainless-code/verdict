@@ -402,7 +402,7 @@ func TestIndexVersionResetRebuilds(t *testing.T) {
 		t.Fatalf("first build parsed %d; want 3", first.Data.Parsed)
 	}
 	version := filepath.Join(f.dir, ".verdict", "index", "version")
-	if err := os.WriteFile(version, []byte("2\n"), 0o644); err != nil {
+	if err := os.WriteFile(version, []byte("1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	second := f.build()
@@ -413,8 +413,8 @@ func TestIndexVersionResetRebuilds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(raw) != "1\n" {
-		t.Errorf("version file = %q; want %q", raw, "1\n")
+	if string(raw) != "2\n" {
+		t.Errorf("version file = %q; want %q", raw, "2\n")
 	}
 	if got := storeFiles(t, f.dir, "trees"); got != 1 {
 		t.Errorf("tree files = %d; want 1", got)

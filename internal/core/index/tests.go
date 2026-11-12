@@ -192,7 +192,7 @@ func testMechanisms(t *treeIndex, plan *testPlan) (map[string]bool, map[string]b
 // importsTargetPath reports whether one scanned file imports the queried file
 // itself, by a specifier the scanner resolves against its own directory.
 func importsTargetPath(plan *testPlan, f *treeFile) bool {
-	lang := language(f.Language)
+	lang := fileLanguage(f)
 	if plan.path == "" || lang == langGo {
 		return false
 	}
@@ -250,7 +250,7 @@ func trimSourceExt(p string) string {
 // row: a readable test file in its language that is not the queried file
 // itself.
 func isCandidateFile(f *treeFile, queried string) bool {
-	return testPath(language(f.Language), f.Path) && !f.Oversize && f.Error == "" && f.Path != queried
+	return testPath(fileLanguage(f), f.Path) && !f.Oversize && f.Error == "" && f.Path != queried
 }
 
 // testVia classifies one test file: same package directory, a recorded

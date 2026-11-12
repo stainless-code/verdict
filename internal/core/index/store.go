@@ -22,7 +22,7 @@ const (
 	versionName   = "version"
 	treesDirName  = "trees"
 	shardsDirName = "shards"
-	storeVersion  = "1\n"
+	storeVersion  = "2\n"
 	storeDirPerm  = 0o755
 	jsonSuffix    = ".json"
 	colonSpace    = ": "

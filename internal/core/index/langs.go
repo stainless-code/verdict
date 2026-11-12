@@ -105,6 +105,16 @@ var sourceLanguages = map[string]language{
 // "" when the index does not scan it.
 func indexedLanguage(p string) language { return sourceLanguages[path.Ext(p)] }
 
+// fileLanguage reads one tree file's language. A tree document written before
+// the field existed omits it, and every file it holds is Go: such a store is
+// readable rather than silently misrouted through the scanned-language path.
+func fileLanguage(f *treeFile) language {
+	if f.Language == "" {
+		return langGo
+	}
+	return language(f.Language)
+}
+
 // scanShard parses one blob with its language's lexical scanner. A scanner
 // never fails: unknown syntax is skipped, not recorded as a parse error.
 func scanShard(blob string, src []byte, lang language, maxRefs int) shard {
