@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -69,6 +70,37 @@ func TestResolvePackNamesSkipStrayFile(t *testing.T) {
 	}
 	if !snap.Has(".verdict/packs/README.md") {
 		t.Error("the stray file is a control row and must stay snapshotted")
+	}
+}
+
+// colonPackBase commits one repo pack whose child directory name holds a
+// colon, which Windows forbids as a filename: the base tree is built from git
+// objects, so the fixture needs no such name on disk.
+func colonPackBase(t *testing.T) string {
+	t.Helper()
+	t.Chdir(t.TempDir())
+	gitRun(t, "init", "-q")
+	writeAll(t, map[string]string{".verdict/config.json": `{"schema_version":"1"}`, "manifest.json": packManifest})
+	gitRun(t, "add", "-f", "-A")
+	gitRun(t, "commit", "-qm", "base")
+	blob := gitRun(t, "rev-parse", "HEAD:manifest.json")
+	gitRun(t, "update-index", "--add", "--cacheinfo", "100644,"+blob+",.verdict/packs/team:qa/pack.json")
+	tree := gitRun(t, "write-tree")
+	return gitRun(t, "commit-tree", tree, "-p", gitRun(t, "rev-parse", "HEAD"), "-m", "colon pack")
+}
+
+// TestResolveRefusesUnrepresentablePackPath proves a pack file at base whose
+// path the snapshot cannot carry refuses naming that path, instead of dropping
+// the pack from the inventory with no control row and no refusal.
+func TestResolveRefusesUnrepresentablePackPath(t *testing.T) {
+	base := colonPackBase(t)
+	_, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: ".verdict/state/16", BaseSHA: base})
+	if ref == nil || ref.Code != CodeUnavailable {
+		t.Fatalf("colon pack path = %v, want controls-unavailable", ref)
+	}
+	want := "control .verdict/packs/team:qa/pack.json is not a path the snapshot can carry"
+	if !strings.Contains(ref.Message, want) {
+		t.Fatalf("message = %q, want it to contain %q", ref.Message, want)
 	}
 }
 

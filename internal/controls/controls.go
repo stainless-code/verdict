@@ -141,7 +141,11 @@ func strictInput(env map[string]string) bool {
 }
 
 func (s *Snapshot) write(bundleDir string, contents map[string][]byte) *core.RefusalError {
-	s.Inventory = inventoryFor(contents)
+	inventory, ref := inventoryFor(contents)
+	if ref != nil {
+		return ref
+	}
+	s.Inventory = inventory
 	for _, path := range s.Inventory {
 		raw, ok := contents[path]
 		entry := core.ControlsFileEntry{Path: path, Status: statusMissing}
@@ -161,17 +165,24 @@ func (s *Snapshot) write(bundleDir string, contents map[string][]byte) *core.Ref
 }
 
 // inventoryFor keeps the fixed inventory order and appends every pack file
-// the read found, sorted, so controls.json rows are stable.
-func inventoryFor(contents map[string][]byte) []string {
+// the read found, sorted, so controls.json rows are stable. A read path that
+// is neither the fixed set nor a representable pack file refuses: dropping it
+// would cost fetch the pack it belongs to and record no control row at all.
+func inventoryFor(contents map[string][]byte) ([]string, *core.RefusalError) {
 	paths := append([]string{}, Inventory...)
 	var packs []string
 	for path := range contents {
-		if validPackRel(path) {
+		switch {
+		case slices.Contains(Inventory, path):
+		case validPackRel(path):
 			packs = append(packs, path)
+		default:
+			return nil, refuse(CodeUnavailable, controlPrefix+path+
+				" is not a path the snapshot can carry — rename it at base")
 		}
 	}
 	slices.Sort(packs)
-	return append(paths, packs...)
+	return append(paths, packs...), nil
 }
 
 // validPackRel reports whether rel is one file under the tracked pack root:
