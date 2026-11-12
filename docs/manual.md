@@ -1637,19 +1637,21 @@ bundle's `.run.rounds/` files.
 
 ### Agents, arguments, and `--print`
 
+`run --print` accepts only `--model`, `-m`, `--max-budget-usd`, `--max-cost`, and `--max-turns` with simple model identifiers or numeric values. Other arguments refuse printing; launch them directly. Credentials belong in the environment. Provenance hides arguments outside this allowlist. Missing agent binaries are checked before directive assembly and report an install step.
+
 Agent definitions are data: a name, a binary, and the non-interactive argument
 shape (`claude -p`, `codex exec`, `cursor-agent -p`, `opencode run`). Adding an
 agent is a new table row, not a new code path; the launcher branches on none of
 it. The argv it builds is
 `<binary> <agent flags> [<your arguments>...] <directive>`.
 
-| Piece              | Meaning                                                                                                                                                         |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--agent <name>`   | Required. An unknown name refuses `unknown-agent` and lists the known ones.                                                                                     |
-| `--timeout <secs>` | Watchdog budget, default `300` (the same default `verify` uses). `--timeout` is per round.                                                                      |
-| `--rounds <n>`     | Total launch→check rounds, default `1` (today's one-shot), range 1–5. `-- <args>` passes through every round.                                                   |
-| `-- <args>`        | Everything after the bare `--` goes to the agent unchanged: its own model, cost, and turn flags are yours.                                                      |
-| `--print`          | Renders the exact command (POSIX-quoted) and exits `0` without resolving, spawning, or writing. The escape hatch for harnesses that build their own invocation. |
+| Piece              | Meaning                                                                                                                                             |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--agent <name>`   | Required. An unknown name refuses `unknown-agent` and lists the known ones.                                                                         |
+| `--timeout <secs>` | Watchdog budget, default `300` (the same default `verify` uses). `--timeout` is per round.                                                          |
+| `--rounds <n>`     | Total launch→check rounds, default `1` (today's one-shot), range 1–5. `-- <args>` passes through every round.                                       |
+| `-- <args>`        | Everything after the bare `--` goes to the agent unchanged: its own model, cost, and turn flags are yours.                                          |
+| `--print`          | Renders the exact command (POSIX-quoted) and exits `0` without spawning or writing. The escape hatch for harnesses that build their own invocation. |
 
 ### Refusals, exit codes, and provenance
 

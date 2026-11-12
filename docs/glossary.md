@@ -126,3 +126,5 @@ evidence does not support is not reported.
   is clean reviews divided by reviewed bundles.
 - **Calibration receipt** — the atomic `calibration.json` audit saved by a
   successful live calibration, with timestamp, outcome counts, and provenance.
+
+**Agent definition** — a data row mapping an agent name to its executable, noninteractive arguments, and installation step.
