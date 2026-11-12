@@ -201,3 +201,26 @@ func TestScanPythonFStringEscapedBraces(t *testing.T) {
 		{Name: "helper", Kind: KindCall, Line: 6, Col: 14},
 	})
 }
+
+// TestScanPythonRawStringEscapedQuote proves a backslash still guards the quote
+// in a raw string: `r'[\'"]'` is one literal, so the declarations and calls
+// after it are read at their own lines.
+func TestScanPythonRawStringEscapedQuote(t *testing.T) {
+	src := strings.Join([]string{
+		`import re`,
+		``,
+		`PATTERN = re.compile(r'[\'"]')`,
+		``,
+		``,
+		`def later():`,
+		`    return called()`,
+	}, "\n")
+	s := scanFile(t, langPython, src)
+	assertDecls(t, s.Decls, []decl{
+		{Name: "later", Kind: "func", Line: 6, Exported: true},
+	})
+	assertRefs(t, s.Refs, []ref{
+		{Name: "compile", Kind: "method", Line: 3, Col: 14, Selector: true},
+		{Name: "called", Kind: "call", Line: 7, Col: 12},
+	})
+}

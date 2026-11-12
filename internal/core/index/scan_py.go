@@ -191,14 +191,16 @@ func (l *pyLexer) lexString(prefix string, quote byte, line, col int) {
 }
 
 // stringStep consumes one piece of a string literal, reporting whether the
-// literal ended there.
+// literal ended there. A backslash stops the following quote or backslash from
+// ending the literal even in a raw string — Python forbids a raw string that
+// ends in an odd number of backslashes — so those pairs are consumed as one.
 func (l *pyLexer) stringStep(raw, formatted, triple bool, quote byte, line, col int) bool {
 	c := l.src[l.pos]
 	if l.braceStep(formatted, line, col) {
 		return false
 	}
 	switch {
-	case c == '\\' && !raw:
+	case c == '\\' && (!raw || l.next(1) == quote || l.next(1) == '\\'):
 		l.advance(2)
 		return false
 	case triple && l.triple(quote):
