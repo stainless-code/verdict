@@ -346,6 +346,58 @@ func TestInstallConflictRefusesBeforeWriting(t *testing.T) {
 	}
 }
 
+// TestInstallKeepsInSyncReadOnlyTarget pins that an in-sync keep writes
+// nothing, so a re-run over a read-only target stays a no-op instead of
+// refusing a write it would never make.
+func TestInstallKeepsInSyncReadOnlyTarget(t *testing.T) {
+	t.Parallel()
+	req := newRequest(t)
+	req.Dir = t.TempDir()
+	target := filepath.Join(req.Dir, "verdict")
+	if _, ref := skill.Install(context.Background(), req); ref != nil {
+		t.Fatalf("seed install: %v", ref)
+	}
+	readOnly(t, target)
+
+	plan, ref := skill.Install(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("in-sync keep on a read-only target: %v", ref)
+	}
+	if plan.Status != skill.StatusKeep || plan.Written != 0 || plan.ReceiptUpdated {
+		t.Fatalf("re-run plan = %+v, want an untouched keep", plan)
+	}
+}
+
+// TestInstallRefusesUnwritablePayloadDir pins the preflight for an owned
+// target: a read-only payload dir refuses typed, names the target, and stops
+// the update before the writable files ahead of it are rewritten.
+func TestInstallRefusesUnwritablePayloadDir(t *testing.T) {
+	t.Parallel()
+	req := newRequest(t)
+	req.Dir = t.TempDir()
+	target := filepath.Join(req.Dir, "verdict")
+	if _, ref := skill.Install(context.Background(), req); ref != nil {
+		t.Fatalf("seed install: %v", ref)
+	}
+	drifted := filepath.Join(target, "SKILL.md")
+	if err := os.WriteFile(drifted, []byte("stale"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	readOnly(t, filepath.Join(target, "prompts"))
+
+	_, ref := skill.Install(context.Background(), req)
+	if ref == nil || ref.Code != "skill-install-failed" {
+		t.Fatalf("unwritable payload dir refusal = %v, want skill-install-failed", ref)
+	}
+	if !strings.Contains(ref.Message, target) {
+		t.Errorf("refusal does not name the target %s: %q", target, ref.Message)
+	}
+	got, err := os.ReadFile(drifted)
+	if err != nil || string(got) != "stale" {
+		t.Fatalf("refused run rewrote SKILL.md (%d bytes, read err %v)", len(got), err)
+	}
+}
+
 // TestInstallRefusesFileWherePacksDirBelongsTo pins the directory-level
 // preflight for the pack payload: a regular file at <target>/packs refuses
 // skill-foreign-conflict before any write, not a raw ENOTDIR from a nested

@@ -57,6 +57,9 @@ const (
 
 const skillsSlot = "skills"
 
+// targetRoot is the target directory itself, the root of every payload path.
+const targetRoot = "."
+
 const agentShared = "agents"
 
 const (
@@ -152,9 +155,9 @@ func List(_ context.Context, req *Request) (Inventory, *core.RefusalError) {
 
 // Install plans one install and, unless DryRun, applies it. A foreign target
 // refuses typed unless Force; a target that is a symlink or not a directory,
-// and a payload path that escapes through one, refuse before anything is
-// written (nothing foreign is ever replaced). Keep refreshes only a skewed
-// receipt.
+// a payload path that escapes through one, and a directory that cannot take the
+// write all refuse before anything is written (nothing foreign is ever
+// replaced). Keep refreshes only a skewed receipt.
 func Install(ctx context.Context, req *Request) (Plan, *core.RefusalError) {
 	if err := ctx.Err(); err != nil {
 		return Plan{}, refuse(codeCanceled, "canceled before skill install completed")
@@ -166,7 +169,7 @@ func Install(ctx context.Context, req *Request) (Plan, *core.RefusalError) {
 	if req.DryRun {
 		return plan, nil
 	}
-	if ref := checkApply(req, &plan); ref != nil {
+	if ref := prepare(req, &plan); ref != nil {
 		return Plan{}, ref
 	}
 	if ref := apply(req, &plan); ref != nil {
@@ -175,7 +178,15 @@ func Install(ctx context.Context, req *Request) (Plan, *core.RefusalError) {
 	return plan, nil
 }
 
-func checkApply(req *Request, plan *Plan) *core.RefusalError {
+// prepare checks one planned target without writing anything: the plan-level
+// refusals, the path-shape preflight inside an existing target, and that every
+// directory apply writes into is writable. Multi-target installs prepare every
+// target before the first apply, so a target that cannot be installed refuses
+// before any target is written. A target that changes between prepare and apply
+// (made read-only, replaced by a symlink) still fails at write time with
+// skill-install-failed: closing that window would need a lock this command does
+// not take.
+func prepare(req *Request, plan *Plan) *core.RefusalError {
 	if plan.TargetFile {
 		return refuse(codeTargetFile, plan.Target+" exists and is not a directory; refusing to replace it")
 	}
@@ -183,7 +194,99 @@ func checkApply(req *Request, plan *Plan) *core.RefusalError {
 		return refuse(codeForeign, plan.Target+" is a non-verdict skill dir (no "+ReceiptName+
 			" receipt); re-run with --force to write only verdict's payload files")
 	}
+	kind, ref := inspectTarget(plan.Target)
+	if ref != nil {
+		return ref
+	}
+	if kind == targetMissing {
+		return checkCreatable(plan.Target)
+	}
+	root, ref := openTargetDir(plan.Target)
+	if ref != nil {
+		return ref
+	}
+	defer func() { _ = root.Close() }()
+	if ref := preflight(root, plan.Target, plan.Files); ref != nil {
+		return ref
+	}
+	return checkWritable(root, plan, req.version())
+}
+
+// checkCreatable refuses before a write when the directory that must hold a new
+// target cannot take it: mkdir creates the target under the nearest existing
+// ancestor, so that ancestor decides whether the create can happen.
+func checkCreatable(target string) *core.RefusalError {
+	parent, found := nearestExistingDir(target)
+	if !found || writableDir(parent) {
+		return nil
+	}
+	return refuse(codeInstall, "cannot install into "+target+": "+parent+" is not writable")
+}
+
+// nearestExistingDir is the deepest ancestor of target that exists as a
+// directory.
+func nearestExistingDir(target string) (string, bool) {
+	for dir := filepath.Dir(target); ; {
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			return dir, true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", false
+		}
+		dir = parent
+	}
+}
+
+// checkWritable refuses before a write when a directory the apply would write
+// into cannot take it.
+func checkWritable(root *os.Root, plan *Plan, version string) *core.RefusalError {
+	for _, dir := range writeDirs(root, plan, version) {
+		path := filepath.Join(plan.Target, dir)
+		if !writableDir(path) {
+			return refuse(codeInstall, "cannot install into "+plan.Target+": "+path+" is not writable")
+		}
+	}
 	return nil
+}
+
+// writeDirs is every directory an apply writes into for this plan, deduped,
+// the target root first: a create or update writes the receipt there and each
+// payload file, whose first mkdir or rename lands in the deepest directory that
+// already exists on its path; an out-of-date keep rewrites only the receipt,
+// and an in-sync keep writes nothing at all.
+func writeDirs(root *os.Root, plan *Plan, version string) []string {
+	if plan.Status == StatusKeep && plan.ReceiptVersion == version {
+		return nil
+	}
+	dirs := []string{targetRoot}
+	if plan.Status == StatusKeep {
+		return dirs
+	}
+	seen := map[string]bool{targetRoot: true}
+	for _, rel := range plan.Files {
+		dir := existingAncestor(root, filepath.FromSlash(rel))
+		if seen[dir] {
+			continue
+		}
+		seen[dir] = true
+		dirs = append(dirs, dir)
+	}
+	return dirs
+}
+
+// existingAncestor is the deepest directory that already exists on name's path,
+// the target root for a path at the top, and therefore the directory the first
+// mkdir or rename touches.
+func existingAncestor(root *os.Root, name string) string {
+	dir := filepath.Dir(name)
+	for dir != targetRoot {
+		if info, err := root.Stat(dir); err == nil && info.IsDir() {
+			return dir
+		}
+		dir = filepath.Dir(dir)
+	}
+	return targetRoot
 }
 
 func planInstall(ctx context.Context, req *Request) (Plan, *core.RefusalError) {
@@ -393,9 +496,6 @@ func apply(req *Request, plan *Plan) *core.RefusalError {
 		return ref
 	}
 	defer func() { _ = root.Close() }()
-	if ref := preflight(root, plan.Target, plan.Files); ref != nil {
-		return ref
-	}
 	for _, rel := range plan.Files {
 		if err := writePayload(root, plan.Target, rel); err != nil {
 			return err
@@ -442,11 +542,13 @@ func writePayload(root *os.Root, target, rel string) *core.RefusalError {
 	return nil
 }
 
+// preflight refuses before a write when the receipt or a payload path would
+// replace a directory or cannot be inspected inside the target root.
 func preflight(root *os.Root, target string, files []string) *core.RefusalError {
 	if ref := preflightDirs(root, target); ref != nil {
 		return ref
 	}
-	return preflightFiles(root, target, files)
+	return preflightFiles(root, target, append(slices.Clone(files), ReceiptName))
 }
 
 func preflightDirs(root *os.Root, target string) *core.RefusalError {
