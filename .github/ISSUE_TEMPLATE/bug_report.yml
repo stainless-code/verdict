@@ -44,6 +44,7 @@ body:
         - index
         - backtest
         - learn
+        - pack
         - init
         - install
         - skill

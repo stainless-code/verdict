@@ -446,7 +446,7 @@ func dumpPlan(ctx *fetchRunCtx, sb *strings.Builder, nonce string) {
 		group := &rc.resolved.Plan.Groups[i]
 		panel, panelFrom, effort := groupDispatch(rc.resolved, group)
 		fmt.Fprintln(&inner, planGroupLine(group, i, panel, panelFrom, effort)+
-			groupCapFields(rc.resolved, group)+lensPlanFields(ctx.lensPack, group))
+			groupCapFields(rc.resolved, group)+lensPlanFields(ctx.packs, group))
 	}
 	if rc.resolved.Plan.EffortTier != "" {
 		fmt.Fprintf(&inner, "effort: %s\n", rc.resolved.Plan.EffortTier)

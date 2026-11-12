@@ -10,32 +10,57 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/core/pack"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
 )
 
-// writeKBRecall writes the scoped rules recalled onto a bundle
-// as advisory context (kb.txt plus the kb-recall.json machine manifest,
-// rank-ordered top 3). No match, no store, or unreadable store: both files
-// removed, no failure.
-func writeKBRecall(r *session, dir, extra string) {
+// writeKBRecall writes the scoped rules recalled onto a bundle as advisory
+// context (kb.txt plus the kb-recall.json machine manifest): the store's
+// top-3 ranked rules followed by every matching pack rule. No match, no
+// store, or unreadable store: both files removed, no failure.
+func writeKBRecall(ctx2 *fetchRunCtx, dir, extra string) {
+	r := ctx2.runner
 	mf, mfj := dir+suffixKBTxt, dir+suffixKBRecall
-	ranked, ok := recallRanked(r, dir, extra)
-	if !ok || len(ranked) == 0 {
+	files := recallFiles(dir, extra)
+	ranked, _ := recallRankedFor(r, files)
+	packs := packRecallCands(ctx2.packs, files)
+	if len(ranked) == 0 && len(packs) == 0 {
 		clearKBRecall(mf, mfj)
 		return
 	}
-	ids, note := renderKBNote(ranked)
+	ids, note := renderKBNote(ranked, packs)
 	// The atomic write is the one path: a reader never sees a torn note.
 	if err := atomic.WriteFile(mf, []byte(note)); err != nil {
 		r.Warn(fmt.Sprintf("could not write %s: %v", mf, err))
 		return
 	}
-	if !writeKBManifest(r, mfj, mf, ranked) {
+	if !writeKBManifest(r, mfj, mf, ranked, packs) {
 		return
 	}
-	fmt.Fprintf(r.Human, "» kb: %d rule(s) -> %s (%s)\n", len(ranked), mf, strings.Join(ids, ", "))
+	fmt.Fprintf(r.Human, "» kb: %d rule(s) -> %s (%s)\n", len(ranked)+len(packs), mf, strings.Join(ids, ", "))
+}
+
+// packRecallCands renders the matching pack rules as KB candidates: pack
+// rules carry no judged counters, so they rank at the unjudged base score
+// and are always included rather than competing for the store's top 3.
+func packRecallCands(set *pack.Set, files []string) []recallCand {
+	rules := set.RulesFor(files)
+	out := make([]recallCand, 0, len(rules))
+	for i := range rules {
+		rule := &rules[i]
+		out = append(out, recallCand{
+			recallRule{
+				id: rule.ID, scope: strings.Join(rule.Globs, ","),
+				rule: strings.ReplaceAll(strings.TrimSpace(string(rule.Body)), newline, " "),
+			},
+			recallBaseScore,
+			rule.Level,
+			"pack:" + rule.Pack + "@" + rule.PackVersion,
+		})
+	}
+	return out
 }
 
 // clearKBRecall removes both recall stores when the run has nothing to say.
@@ -44,15 +69,11 @@ func clearKBRecall(mf, mfj string) {
 	_ = os.Remove(mfj)
 }
 
-// recallRanked owns the recall pipeline: store read, file set, active
-// rules, scope matching, and the top-N rank.
-func recallRanked(r *session, dir, extra string) ([]recallCand, bool) {
+// recallRankedFor owns the recall pipeline: store read, active rules, scope
+// matching, and the top-N rank.
+func recallRankedFor(r *session, files []string) ([]recallCand, bool) {
 	raw, ok := r.readControl(kb.File)
-	if !ok {
-		return nil, false
-	}
-	files := recallFiles(dir, extra)
-	if len(files) == 0 {
+	if !ok || len(files) == 0 {
 		return nil, false
 	}
 	rules, ok := recallRules(r, raw)
@@ -66,8 +87,9 @@ func recallRanked(r *session, dir, extra string) ([]recallCand, bool) {
 	return ranked, true
 }
 
-// renderKBNote owns the kb.txt body, returning the cited ids in rank order.
-func renderKBNote(ranked []recallCand) ([]string, string) {
+// renderKBNote owns the kb.txt body, returning the cited ids in rank order:
+// the store's ranked rules first, then every matching pack rule.
+func renderKBNote(ranked, packs []recallCand) ([]string, string) {
 	var note strings.Builder
 	note.WriteString("# kb recall — context, never orders. Cited rules inform the review; evidence still decides.\n")
 	var ids []string
@@ -75,15 +97,29 @@ func renderKBNote(ranked []recallCand) ([]string, string) {
 		fmt.Fprintf(&note, "# %s — %s — precision %d/%d\n%s\n", c.id, c.scope, c.hits, c.judged, strings.ReplaceAll(c.rule, newline, " "))
 		ids = append(ids, c.id)
 	}
+	for _, c := range packs {
+		fmt.Fprintf(&note, "# %s — %s — severity %s — source %s\n%s\n",
+			c.id, c.scope, c.severity, c.source, strings.ReplaceAll(c.rule, newline, " "))
+		ids = append(ids, c.id)
+	}
 	return ids, note.String()
 }
 
 // writeKBManifest owns the kb-recall.json write, warning and dropping it on
-// failure while keeping kb.txt.
-func writeKBManifest(r *session, mfj, mf string, ranked []recallCand) bool {
-	parts := make([]string, len(ranked))
-	for i, c := range ranked {
-		parts[i] = jq.NewObj(keyID, c.id, "score", c.score, "hits", c.hits, "judged", c.judged).MarshalCompact()
+// failure while keeping kb.txt. Pack rows add their severity and source;
+// store rows keep their historical keys.
+func writeKBManifest(r *session, mfj, mf string, ranked, packs []recallCand) bool {
+	all := append(append([]recallCand{}, ranked...), packs...)
+	parts := make([]string, len(all))
+	for i, c := range all {
+		obj := jq.NewObj(keyID, c.id, "score", c.score, "hits", c.hits, "judged", c.judged)
+		if c.severity != "" {
+			obj.Set("severity", c.severity)
+		}
+		if c.source != "" {
+			obj.Set("source", c.source)
+		}
+		parts[i] = obj.MarshalCompact()
 	}
 	if err := atomic.WriteFile(mfj, []byte("["+strings.Join(parts, ",")+"]\n")); err != nil {
 		_ = os.Remove(mfj)
@@ -197,10 +233,15 @@ func jsonInt(v any) int {
 	}
 }
 
-// recallCand is one matched rule with its ranker inputs.
+// recallCand is one matched rule with its ranker inputs and, for a pack
+// rule, the severity and source its KB row carries.
+//
+//nolint:govet // the embedded rule stays first so the row reads top-down
 type recallCand struct {
 	recallRule
-	score float64
+	score    float64
+	severity string
+	source   string
 }
 
 // matchRules owns the scope-glob gate: a rule matches when any of its

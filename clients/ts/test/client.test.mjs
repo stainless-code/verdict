@@ -173,6 +173,25 @@ describe("unit: fake binary exit paths", () => {
     ]);
   });
 
+  it("pack reaches the pack verb with list", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "verdict-argv-"));
+    const argvFile = join(dir, "argv.json");
+    const client = createClient({ bin: FAKE, stderr: "pipe" });
+    const env = await client.pack(["list"], {
+      env: {
+        ...process.env,
+        FAKE_MODE: "record-args",
+        FAKE_ARGV_FILE: argvFile,
+      },
+    });
+    assert.equal(env.schema_version, "1");
+    assert.deepEqual(JSON.parse(readFileSync(argvFile, "utf8")), [
+      "pack",
+      "list",
+      "--json",
+    ]);
+  });
+
   it("threads reaches the threads verb with its flags", async () => {
     const dir = mkdtempSync(join(tmpdir(), "verdict-argv-"));
     const argvFile = join(dir, "argv.json");

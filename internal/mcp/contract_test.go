@@ -28,6 +28,7 @@ var wantAnnotations = map[string]toolAnnotations{
 	},
 	"learn": {Title: "Manage knowledge base", IdempotentHint: true},
 	"next":  {Title: "Next finding", ReadOnlyHint: true, IdempotentHint: true},
+	"pack":  {Title: "List lens packs", ReadOnlyHint: true, IdempotentHint: true},
 	"post": {
 		Title: "Post review", DestructiveHint: true, IdempotentHint: true, OpenWorldHint: true,
 	},
@@ -99,14 +100,14 @@ func TestSurfaceSets(t *testing.T) {
 	defaults := names(allTools(false, false))
 	wantDefaults := []string{
 		"adopt", "calibrate", "check-tree", "config", "doctor", "fetch", "fetch-local", "fix",
-		"index", "init", "learn", "next", "post", "ready", "record", "report", "show",
+		"index", "init", "learn", "next", "pack", "post", "ready", "record", "report", "show",
 		"threads", "trend", "verify",
 	}
 	if !reflect.DeepEqual(defaults, wantDefaults) {
 		t.Errorf("default tools = %v, want %v", defaults, wantDefaults)
 	}
 	readOnly := names(allTools(true, false))
-	wantReadOnly := []string{"check-tree", "config", "doctor", "index", "next", "ready", "record", "report", "show", "trend"}
+	wantReadOnly := []string{"check-tree", "config", "doctor", "index", "next", "pack", "ready", "record", "report", "show", "trend"}
 	if !reflect.DeepEqual(readOnly, wantReadOnly) {
 		t.Errorf("read-only tools = %v, want %v", readOnly, wantReadOnly)
 	}

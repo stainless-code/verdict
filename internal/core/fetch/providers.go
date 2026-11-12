@@ -32,6 +32,9 @@ func runProvider(
 	if ref := resolveControls(ctx, ctx2, "", req.RepoRootPath(), readcommon.PrField(ctx2.dir, keyBaseSHA), f.HeadControls); ref != nil {
 		return nil, "", ref
 	}
+	if ref := resolveLensPacks(ctx2); ref != nil {
+		return nil, "", ref
+	}
 	if ref := phaseTwo(ctx, ctx2, req, f, ctx2.dir, budget); ref != nil {
 		return nil, "", ref
 	}
@@ -107,7 +110,7 @@ func writeProviderBundle(ctx2 *fetchRunCtx) error {
 	if ref := writeSensitiveManifest(r, dir, extra); ref != nil {
 		return ref
 	}
-	writeKBRecall(r, dir, extra)
+	writeKBRecall(ctx2, dir, extra)
 	writeLensBodies(ctx2)
 	return nil
 }

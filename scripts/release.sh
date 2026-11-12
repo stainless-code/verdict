@@ -115,6 +115,16 @@ release_assets() {
   die "gh api release $TAG failed: $out"
 }
 
+# has_asset <name> <newline-delimited list> reports whole-line membership in
+# bash alone. A pipeline into `grep -q` cannot: grep exits at the first match,
+# the producer takes SIGPIPE, and pipefail fails a present asset (STA-378).
+has_asset() {
+  case $'\n'"$2"$'\n' in
+    *$'\n'"$1"$'\n'*) return 0 ;;
+  esac
+  return 1
+}
+
 RELEASE_STATE=""
 RELEASE_MISSING=""
 detect_release() {
@@ -126,7 +136,7 @@ detect_release() {
   fi
   while IFS= read -r name; do
     [ -n "$name" ] || continue
-    if ! printf '%s\n' "$RELEASE_ASSETS" | grep -Fxq "$name"; then
+    if ! has_asset "$name" "$RELEASE_ASSETS"; then
       missing="$missing $name"
     fi
   done < <(expected_assets)

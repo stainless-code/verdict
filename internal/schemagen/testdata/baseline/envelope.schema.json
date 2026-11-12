@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/envelope.schema.json",
   "title": "verdict --json envelope",
-  "description": "Every --json stdout is exactly one envelope with these nine keys (schema_version \"1\"): error null on success with a data object, data null with a typed error object on refusal. Derived from the Go envelope renderer (RenderEnvelope) in the verdict CLI. data is additive per verb (chunk summaries, prompt_dump, cost, completeness ride inside data, never as new top-level keys), so data objects allow additional properties; every verb publishes its data profile here as a single <verb>Data $defs entry (reportData, postData, recordData, showData, fetchData, fetchLocalData, threadsData, verifyData, triageData, readyData, adoptData, nextData, fixData, learnData, initData, doctorData, checkTreeData, trendData, calibrateData, configData), each validated against the runtime writer and the committed goldens.",
+  "description": "Every --json stdout is exactly one envelope with these nine keys (schema_version \"1\"): error null on success with a data object, data null with a typed error object on refusal. Derived from the Go envelope renderer (RenderEnvelope) in the verdict CLI. data is additive per verb (chunk summaries, prompt_dump, cost, completeness ride inside data, never as new top-level keys), so data objects allow additional properties; every verb publishes its data profile here as a single <verb>Data $defs entry (reportData, postData, recordData, showData, fetchData, fetchLocalData, threadsData, verifyData, triageData, readyData, adoptData, nextData, fixData, learnData, packData, initData, doctorData, checkTreeData, trendData, calibrateData, configData), each validated against the runtime writer and the committed goldens.",
   "type": "object",
   "properties": {
     "schema_version": { "const": "1" },
@@ -1391,6 +1391,49 @@
         "by_status",
         "by_tier",
         "by_category"
+      ],
+      "additionalProperties": true
+    },
+    "packData": {
+      "description": "pack list --json data: one row per loaded pack in precedence order (built-in, org, repo).",
+      "type": "object",
+      "properties": {
+        "packs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/packEntry" }
+        }
+      },
+      "required": ["packs"],
+      "additionalProperties": true
+    },
+    "packEntry": {
+      "description": "One pack row: its manifest identity, layer, source, canonical tree hash, declared lens and rule ids, and drift (null until verdict.lock pins the pack).",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "string" },
+        "layer": { "enum": ["builtin", "org", "repo"] },
+        "source": { "type": "string" },
+        "hash": { "type": "string" },
+        "lenses": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "rules": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "drift": { "type": ["string", "null"] }
+      },
+      "required": [
+        "name",
+        "version",
+        "layer",
+        "source",
+        "hash",
+        "lenses",
+        "rules",
+        "drift"
       ],
       "additionalProperties": true
     },

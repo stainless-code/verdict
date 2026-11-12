@@ -111,7 +111,10 @@ var hintRules = []HintRule{
 	{codes: []string{"bad-since"}, hint: "try: pass --since <90d|12w|18mo|2y|ref> " +
 		"(a bare m is not a unit, and the ref must precede --until)"},
 	{codes: []string{"bad-until"}, hint: "try: pass --until <ref> that is an ancestor of HEAD"},
-	{codes: []string{"bad-pack"}, hint: "try: fix pack.json against schemas/pack.schema.json, then re-run"},
+	{codes: []string{"bad-pack"}, hint: "try: fix pack.json against schemas/pack.schema.json " +
+		"(exact lowercase keys, every id paired with its markdown file), then re-run"},
+	{codes: []string{"pack-conflict"}, hint: "try: add \"replace\": [\"<lower pack name>\"] " +
+		"to the higher pack's manifest, or rename the conflicting id"},
 	{codes: []string{"pack-too-large"}, hint: "try: trim the pack under 64 KiB per file, 1 MiB total, " +
 		"256 files, and 64 lenses, then re-run"},
 	{codes: []string{"pack-unsafe-path"}, hint: "try: keep every pack path relative with no symlink " +

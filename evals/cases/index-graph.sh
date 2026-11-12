@@ -123,12 +123,14 @@ assert_file_grep "human names the second partner" "$EVAL_OUT" '^c/c_test.go 2 co
 
 # The window cache is deterministic bytes: deleting it and re-running writes
 # the same file.
-cache="$(find "$EVAL_SANDBOX/.verdict/index/cochange" -name '*.json' | head -n 1)"
+# awk drains find's output; `head -n 1` exits early and pipefail would abort on
+# find's SIGPIPE (STA-378).
+cache="$(find "$EVAL_SANDBOX/.verdict/index/cochange" -name '*.json' | awk 'NR == 1')"
 cp "$cache" "$EVAL_SANDBOX/cache.before"
 rm -rf "$EVAL_SANDBOX/.verdict/index/cochange"
 run_review index co-changed a/a.go --json
 assert_exit "co-changed after a cache delete exits 0" 0
-cache_after="$(find "$EVAL_SANDBOX/.verdict/index/cochange" -name '*.json' | head -n 1)"
+cache_after="$(find "$EVAL_SANDBOX/.verdict/index/cochange" -name '*.json' | awk 'NR == 1')"
 if cmp -s "$EVAL_SANDBOX/cache.before" "$cache_after"; then
   good "the rebuilt window cache is byte-identical"
 else
