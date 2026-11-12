@@ -180,7 +180,7 @@ var publishedSemantics = map[string]string{
 	// a (target, partner) pair count; one description now names both units.
 	// Additions only; no existing property, required key, enum, or type
 	// changed.
-	"envelope.schema.json": "b2889452c87001470ee28cc18aedb220bfcd59b903d2936d27d8ad2964a5d5e9",
+	"envelope.schema.json": "338a9a5e8dfaa5988fc5002627c8e6f269c98fe25eee49417b3be737325f6d83",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

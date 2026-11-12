@@ -1442,10 +1442,10 @@
       "type": "object",
       "properties": {
         "pack": { "$ref": "#/$defs/packEntry" },
-        "replaced": { "type": "boolean" },
-        "previous_hash": { "type": ["string", "null"] }
+        "previous_hash": { "type": ["string", "null"] },
+        "replaced": { "type": "boolean" }
       },
-      "required": ["pack", "replaced", "previous_hash"],
+      "required": ["pack", "previous_hash", "replaced"],
       "additionalProperties": true
     },
     "indexData": {
