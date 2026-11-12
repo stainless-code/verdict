@@ -223,3 +223,12 @@ func TestServeDispatchShape(t *testing.T) {
 		t.Fatal("serve is not a bareVerbs entry; splitCommand would read --root as a positional")
 	}
 }
+
+// TestNextCoverageMissingPositionals pins the leading missing-argument error.
+func TestNextCoverageMissingPositionals(t *testing.T) {
+	hermeticEnv(t)
+	code, out, derr := runCapture(t, []string{"next", "--coverage"})
+	if code != 2 || out != "" || !strings.HasPrefix(derr, "error: next requires <owner/repo> and <pr|local-name>\n") {
+		t.Fatalf("next missing positionals: exit %d stdout %q stderr %q", code, out, derr)
+	}
+}
