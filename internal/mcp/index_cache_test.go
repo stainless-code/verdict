@@ -74,10 +74,52 @@ func TestIndexMCPReadsCoChangeCache(t *testing.T) {
 	}
 }
 
+// TestIndexMCPNeverWritesBlastRadiusCache proves a blast-radius call is
+// read-only too: it computes the git-derived lists and leaves the cache
+// byte-identical even though it reads a co-change window.
+//
+//nolint:revive // the fixture assertions read as one block
+func TestIndexMCPNeverWritesBlastRadiusCache(t *testing.T) {
+	dir := coChangeRepo(t)
+	cacheDir := filepath.Join(dir, ".verdict", "index", "cochange")
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"old-a.json", "old-b.json", "old-c.json"} {
+		if err := os.WriteFile(filepath.Join(cacheDir, name), []byte(name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := snapshotCache(t, cacheDir)
+
+	t.Chdir(dir)
+	cfg := testConfig()
+	frames := serve(t, &cfg, blastCall(1))
+
+	data := callIndex(t, frames["1"])
+	partners, ok := data["co_changed"].(map[string]any)
+	if !ok || partners["count"] != float64(1) {
+		t.Fatalf("co_changed = %v; want the one git-measured partner", data["co_changed"])
+	}
+	symbols, ok := data["symbols"].(map[string]any)
+	if !ok || symbols["count"] != nil {
+		t.Errorf("symbols = %v; want a null count without an index", data["symbols"])
+	}
+	if after := snapshotCache(t, cacheDir); !maps.Equal(before, after) {
+		t.Fatalf("cache after a read-only query:\nbefore: %q\nafter:  %q", before, after)
+	}
+}
+
 // coChangeCall builds one tools/call frame for index co-changed.
 func coChangeCall(id int) string {
 	return fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"method":"tools/call",`+
 		`"params":{"name":"index","arguments":{"query":"co-changed","path":"a/target.go"}}}`, id)
+}
+
+// blastCall builds one tools/call frame for index blast-radius.
+func blastCall(id int) string {
+	return fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"method":"tools/call",`+
+		`"params":{"name":"index","arguments":{"query":"blast-radius","paths":["a/target.go"]}}}`, id)
 }
 
 // callIndex decodes one index tool result and requires success.

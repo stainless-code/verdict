@@ -172,8 +172,8 @@ func allTools(readOnly, operator bool) []*tool {
 		directTool(&toolSpec{
 			name: "index",
 			description: "Query the local Go index under .verdict/index for callers, candidate tests, " +
-				"co-change partners, CODEOWNERS owners, or stored trees. Call before editing code to " +
-				"find callers and the tests to read. Reads the index and git objects only; never " +
+				"co-change partners, CODEOWNERS owners, blast radius, or stored trees. Call before editing " +
+				"code to find callers and the tests to read. Reads the index and git objects only; never " +
 				"builds or prunes (those are CLI-only) and writes nothing.",
 			omit: omitPositionals,
 			meta: toolMeta{title: "Query code index", readOnly: true, idempotent: true},
@@ -453,7 +453,7 @@ func invokeIndex(ctx context.Context, req *indexcore.Request) (*jq.Obj, *core.Re
 	if !slices.Contains(indexcore.MCPQueries, req.Query) {
 		return nil, &core.RefusalError{
 			Code:    codeBadFlags,
-			Message: "index serves callers, status, tests-for, co-changed, and owners; build and prune are CLI-only",
+			Message: "index serves callers, status, tests-for, co-changed, owners, and blast-radius; build and prune are CLI-only",
 		}
 	}
 	req.NoCache = true
