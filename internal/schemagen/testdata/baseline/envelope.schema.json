@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/envelope.schema.json",
   "title": "verdict --json envelope",
-  "description": "Every --json stdout is exactly one envelope with these nine keys (schema_version \"1\"): error null on success with a data object, data null with a typed error object on refusal. Derived from the Go envelope renderer (RenderEnvelope) in the verdict CLI. data is additive per verb (chunk summaries, prompt_dump, cost, completeness ride inside data, never as new top-level keys), so data objects allow additional properties; every verb publishes its data profile here as a single <verb>Data $defs entry (reportData, postData, recordData, showData, fetchData, fetchLocalData, threadsData, verifyData, triageData, readyData, adoptData, nextData, fixData, learnData, packData, initData, doctorData, checkTreeData, trendData, calibrateData, configData), each validated against the runtime writer and the committed goldens.",
+  "description": "Every --json stdout is exactly one envelope with these nine keys (schema_version \"1\"): error null on success with a data object, data null with a typed error object on refusal. Derived from the Go envelope renderer (RenderEnvelope) in the verdict CLI. data is additive per verb (chunk summaries, prompt_dump, cost, completeness ride inside data, never as new top-level keys), so data objects allow additional properties; every verb publishes its data profile here as a single <verb>Data $defs entry (reportData, postData, recordData, showData, fetchData, fetchLocalData, threadsData, verifyData, triageData, readyData, adoptData, nextData, fixData, learnData, packData, packTestData, initData, doctorData, checkTreeData, trendData, calibrateData, configData), each validated against the runtime writer and the committed goldens.",
   "type": "object",
   "properties": {
     "schema_version": { "const": "1" },
@@ -1882,6 +1882,43 @@
         "replaced": { "type": "boolean" }
       },
       "required": ["pack", "previous_hash", "replaced"],
+      "additionalProperties": true
+    },
+    "packTestData": {
+      "description": "pack test --json data: the resolved pack name, one PASS, SKIP, or FAIL row per sorted eval case, and the status counts.",
+      "type": "object",
+      "properties": {
+        "pack": { "type": "string" },
+        "cases": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/packTestCase" },
+          "minItems": 1
+        },
+        "summary": { "$ref": "#/$defs/packTestSummary" }
+      },
+      "required": ["pack", "cases", "summary"],
+      "additionalProperties": true
+    },
+    "packTestCase": {
+      "description": "One offline pack eval case and its result. A reason is present for SKIP and FAIL.",
+      "type": "object",
+      "properties": {
+        "case": { "type": "string" },
+        "status": { "enum": ["PASS", "SKIP", "FAIL"] },
+        "reason": { "type": "string" }
+      },
+      "required": ["case", "status"],
+      "additionalProperties": true
+    },
+    "packTestSummary": {
+      "description": "Counts the passing, skipped, and failing pack eval cases.",
+      "type": "object",
+      "properties": {
+        "pass": { "type": "integer", "minimum": 0 },
+        "skip": { "type": "integer", "minimum": 0 },
+        "fail": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["pass", "skip", "fail"],
       "additionalProperties": true
     },
     "indexData": {

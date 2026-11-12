@@ -85,6 +85,32 @@ func TestRunRefusalCarriesTheStrayFileWarning(t *testing.T) {
 	}
 }
 
+// TestRunPackTestSkipExitsNonzero pins the skip exit code and JSON summary.
+func TestRunPackTestSkipExitsNonzero(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	root := t.TempDir()
+	writePackFile(t, root, "pack.json", `{"schema_version":"1","name":"acme/test","version":"1.0.0",`+
+		`"severity":{"s":"important"},"lenses":[{"id":"test"}],`+
+		`"rules":[{"id":"rule-a","severity":"s","globs":["**/*.go"],"tools":["pack-test-tool-missing"]}]}`)
+	writePackFile(t, root, "lenses/test.md", "lens body\n")
+	writePackFile(t, root, "rules/rule-a.md", "rule body\n")
+	writePackFile(t, root, "evals/case/diff.patch",
+		"diff --git a/src/a.go b/src/a.go\n--- a/src/a.go\n+++ b/src/a.go\n@@ -1 +1 @@\n-old\n+new\n")
+	writePackFile(t, root, "evals/case/findings.json", "[]")
+	writePackFile(t, root, "evals/case/expect.json", `{"rules":[]}`)
+	var out, diag strings.Builder
+	r := &cli.Runner{Out: &out, Human: &out, Diag: &diag, JSONMode: true, Cmd: "pack"}
+	code := Run(t.Context(), r, []string{"test", "--dir", root}, Request{
+		Runtime: &core.Runtime{Env: map[string]string{"HOME": t.TempDir()}}, RepoRoot: root,
+	})
+	if code != cli.ExitRefused {
+		t.Fatalf("exit = %d, want %d; output=%s", code, cli.ExitRefused, out.String())
+	}
+	if !strings.Contains(out.String(), `"status": "SKIP"`) || !strings.Contains(out.String(), `"skip": 1`) {
+		t.Fatalf("envelope = %q; want SKIP and a skipped count", out.String())
+	}
+}
+
 // writePackFile writes one fixture file under root, creating parents.
 func writePackFile(t *testing.T, root, rel, body string) {
 	t.Helper()
