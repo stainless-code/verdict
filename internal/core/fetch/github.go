@@ -322,6 +322,7 @@ func fetchPrepare(ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags) 
 	budget := budgetState{}
 	dir, ref := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
 	if ref != nil {
+		//nolint:wrapcheck // typed refusal passes through untouched so the edge renders its code/message
 		return nil, "", ref
 	}
 	ctx2.dir = dir

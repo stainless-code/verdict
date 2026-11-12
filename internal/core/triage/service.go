@@ -98,12 +98,19 @@ func (st *state) response() *Response {
 	}
 }
 
-func (st *state) runTriage() *core.RefusalError {
+// openBundle resolves the request's bundle under the shared name guard and
+// proves its findings store exists before the pass reads anything.
+func (st *state) openBundle() (string, *core.RefusalError) {
 	dir, ref := readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
 	if ref != nil {
-		return st.refuse(ref.Code, ref.Message)
+		return "", st.refuse(ref.Code, ref.Message)
 	}
-	if ref := requireFindingsFile(dir); ref != nil {
+	return dir, requireFindingsFile(dir)
+}
+
+func (st *state) runTriage() *core.RefusalError {
+	dir, ref := st.openBundle()
+	if ref != nil {
 		return ref
 	}
 	run, ref := config.VerifyRunState(dir)

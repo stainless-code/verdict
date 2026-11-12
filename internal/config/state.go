@@ -126,6 +126,13 @@ const bundleNameProbe = StateDirName
 // positional is wrong.
 const msgBundleName = "bundle name must be one path element (a PR number or fetch-local name), not a path"
 
+// The byte range a bundle name may not carry: the C0 controls and DEL, which
+// no host or filesystem ever spells in a bundle's own name.
+const (
+	minControlByte = 0x20
+	maxControlByte = 0x7f
+)
+
 // BundleDir joins one bundle name under root's bundle home. It refuses a name
 // that is not exactly one path element, so no verb reads or writes outside the
 // bundle home however its positional was spelled.
@@ -146,7 +153,7 @@ func validBundleName(name string) bool {
 		return false
 	}
 	for i := range len(name) {
-		if name[i] < 0x20 || name[i] == 0x7f {
+		if name[i] < minControlByte || name[i] == maxControlByte {
 			return false
 		}
 	}

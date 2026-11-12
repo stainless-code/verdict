@@ -109,14 +109,25 @@ func (st *state) runAdopt(ctx context.Context) *core.RefusalError {
 	return st.finishAdopt(dir, fromDir, display, entries)
 }
 
-func (st *state) resolveAdoptDirs(ctx context.Context) (string, string, string, *core.RefusalError) {
-	root := st.req.RepoRootPath()
-	dir, ref := readcommon.ResolveBundleDir(root, st.req.Pr)
+// adoptTarget resolves the bundle a handoff targets under the shared name
+// guard, refusing a fetch-local name: a handoff adopts a review fetched from
+// the host, never a local twin.
+func (st *state) adoptTarget() (string, *core.RefusalError) {
+	dir, ref := readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
 	if ref != nil {
-		return "", "", "", st.refuse(ref.Code, ref.Message)
+		return "", st.refuse(ref.Code, ref.Message)
 	}
 	if strings.HasPrefix(st.req.Pr, localPrefix) {
-		return "", "", "", st.refuse("bad-target", msgBadTarget)
+		return "", st.refuse("bad-target", msgBadTarget)
+	}
+	return dir, nil
+}
+
+func (st *state) resolveAdoptDirs(ctx context.Context) (string, string, string, *core.RefusalError) {
+	root := st.req.RepoRootPath()
+	dir, ref := st.adoptTarget()
+	if ref != nil {
+		return "", "", "", ref
 	}
 	if st.req.From == "" {
 		return "", "", "", st.refuse("bad-from", msgBadFrom)

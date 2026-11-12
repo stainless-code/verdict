@@ -17,6 +17,10 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
+// skipWarn heads every warning a trend scan renders about an entry it passed
+// over: one bundle, one line, so the rollup never silently drops a review.
+const skipWarn = "trend skips "
+
 // Request carries the resolved trend invocation: the shared read runtime
 // plus the --overlap audit flag.
 type Request struct { //nolint:govet // field grouping documents the request surface
@@ -147,7 +151,7 @@ func collectRows(st *state) []row {
 		}
 	}
 	if replays > 0 {
-		st.warn(fmt.Sprintf("trend skips %d backtest bundle(s) (replay input, not your review history)", replays))
+		st.warn(fmt.Sprintf(skipWarn+"%d backtest bundle(s) (replay input, not your review history)", replays))
 	}
 	return rows
 }
@@ -181,7 +185,7 @@ func (st *state) walkEntry(e os.DirEntry) (row, bool, bool) {
 func (st *state) listedBundleDir(name string) (string, bool) {
 	dir, ref := readcommon.ResolveBundleDir(st.req.RepoRootPath(), name)
 	if ref != nil {
-		st.warn("trend skips " + name + " (" + ref.Message + ")")
+		st.warn(skipWarn + name + " (" + ref.Message + ")")
 		return "", false
 	}
 	return dir, true
@@ -191,17 +195,17 @@ func readBundleRow(st *state, dir, name string) (row, bool) {
 	bundle := dir + "/"
 	raw, err := jq.CappedFile(bundle+"findings.json", jq.MaxFindingsBytes)
 	if err != nil {
-		st.warn("trend skips " + bundle + " (findings.json unreadable or not a findings array)")
+		st.warn(skipWarn + bundle + " (findings.json unreadable or not a findings array)")
 		return row{}, false
 	}
 	doc, err := jq.DecodeOrdered(raw)
 	if err != nil {
-		st.warn("trend skips " + bundle + " (findings.json unreadable or not a findings array)")
+		st.warn(skipWarn + bundle + " (findings.json unreadable or not a findings array)")
 		return row{}, false
 	}
 	findings, ok := doc.([]any)
 	if !ok || !readcommon.ValidEntries(findings) {
-		st.warn("trend skips " + bundle + " (findings.json unreadable or not a findings array)")
+		st.warn(skipWarn + bundle + " (findings.json unreadable or not a findings array)")
 		return row{}, false
 	}
 	return buildRow(bundle, name, findings), true

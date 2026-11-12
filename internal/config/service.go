@@ -197,13 +197,20 @@ func Preview(root, name, proposedPath, settingsPath string, env map[string]strin
 	data.Mode = "preview"
 	data.Trusted = src.trusted
 	data.Source = src.label
+	return data, finishPreview(data, warns, src), nil
+}
+
+// finishPreview stamps the proposed file on every repository-layer value the
+// preview carries and returns the warnings it collects: the proposed file's
+// own caveat arrives last, after the layers it rewrote.
+func finishPreview(data *core.ConfigData, warns []string, src previewProvenance) []string {
 	if src.proposed != "" {
 		labelProposed(data, src.proposed)
 	}
 	if src.warning != "" {
-		warns = append(warns, src.warning)
+		return append(warns, src.warning)
 	}
-	return data, warns, nil
+	return warns
 }
 
 // previewProvenance is where a preview's repository layer came from and how

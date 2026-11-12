@@ -40,12 +40,12 @@ type corpusRollup struct {
 func (st *state) readCorpus(dir string) {
 	c, ref := corpuscore.Load(dir)
 	if ref != nil {
-		st.warn("trend skips corpus bundle " + dir + "/ (" + ref.Message + ")")
+		st.warn(skipWarn + "corpus bundle " + dir + "/ (" + ref.Message + ")")
 		return
 	}
 	entries, err := readcommon.LoadFindings(dir)
 	if err != nil {
-		st.warn("trend skips corpus bundle " + dir + "/ (" + err.Error() + ")")
+		st.warn(skipWarn + "corpus bundle " + dir + "/ (" + err.Error() + ")")
 		return
 	}
 	report := corpuscore.Evaluate(c, entries)

@@ -150,7 +150,7 @@ func recallManifest(st *state, bundle string) ([]any, bool) {
 }
 
 func warnManifest(st *state, dir string) ([]any, bool) {
-	st.warn("trend skips " + dir + "/kb-recall.json (unreadable or not a manifest array)")
+	st.warn(skipWarn + dir + "/kb-recall.json (unreadable or not a manifest array)")
 	return []any{}, false
 }
 

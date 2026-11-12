@@ -166,6 +166,7 @@ func localSetup(
 	}
 	dir, ref := readcommon.ResolveBundleDir(req.RepoRootPath(), "local-"+slug)
 	if ref != nil {
+		//nolint:wrapcheck // typed refusal passes through untouched so the edge renders its code/message
 		return localMode{}, "", "", ref
 	}
 	ctx2.dir = dir
