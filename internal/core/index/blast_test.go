@@ -95,7 +95,7 @@ func TestBlastPathsWalksDepthTwo(t *testing.T) {
 		CallerRow{Symbol: "example.com/m/a.B", Path: "a/top.go", Kind: "call", Resolution: "exact", Line: 5, Depth: 1},
 		CallerRow{Symbol: "example.com/m/a.A", Path: "b/b.go", Kind: "call", Resolution: "lexical", Line: 6, Depth: 1},
 		CallerRow{Symbol: "example.com/m/a.A", Path: "b/b_test.go", Kind: "call", Resolution: "lexical", Line: 10, Depth: 1},
-		CallerRow{Symbol: "example.com/m/b.UseA", Path: "c/c.go", Kind: "call", Resolution: "lexical", Line: 6, Depth: 2},
+		CallerRow{Symbol: "example.com/m/a.A", Path: "c/c.go", Kind: "call", Resolution: "lexical", Line: 6, Depth: 2},
 	)
 	if got := *blast.Counts.Callers; got != 6 {
 		t.Errorf("callers count = %d; want 6", got)

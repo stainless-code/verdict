@@ -143,10 +143,18 @@ type blastChange struct {
 // blastSymbol is one declaration whose span a change touched, with the query
 // target it resolves to.
 type blastSymbol struct {
-	key   string
-	label string
-	row   SymbolRow
-	tgt   target
+	key    string
+	label  string
+	origin string
+	row    SymbolRow
+	tgt    target
+}
+
+func (s *blastSymbol) reachedFrom() string {
+	if s.origin != "" {
+		return s.origin
+	}
+	return s.label
 }
 
 // blastRadius executes `index blast-radius`: the changed declarations, their
@@ -458,12 +466,13 @@ func enclosingDecl(decls []decl, line int) (decl, bool) {
 func blastRoots(symbols []blastSymbol) []blastSymbol {
 	var out []blastSymbol
 	seen := map[string]bool{}
-	for _, sym := range symbols {
+	for i := range symbols {
+		sym := &symbols[i]
 		if seen[sym.key] {
 			continue
 		}
 		seen[sym.key] = true
-		out = append(out, sym)
+		out = append(out, *sym)
 	}
 	return out
 }
@@ -486,8 +495,8 @@ func blastLabel(pkg *packageInfo, name string) string {
 // symbolRows publishes the changed declarations.
 func symbolRows(symbols []blastSymbol) []SymbolRow {
 	rows := make([]SymbolRow, 0, len(symbols))
-	for _, sym := range symbols {
-		rows = append(rows, sym.row)
+	for i := range symbols {
+		rows = append(rows, symbols[i].row)
 	}
 	return rows
 }
@@ -499,8 +508,8 @@ func blastCallers(pkgs map[string]*packageInfo, t *treeIndex, roots []blastSymbo
 		return nil, 0
 	}
 	visited := make(map[string]bool, len(roots))
-	for _, root := range roots {
-		visited[root.key] = true
+	for i := range roots {
+		visited[roots[i].key] = true
 	}
 	hits := map[string]callerHit{}
 	unresolved := 0
@@ -530,7 +539,7 @@ func blastDepthRows(
 	for _, row := range rows {
 		k := callerHitKey(depth, row)
 		if _, seen := hits[k]; !seen {
-			hits[k] = callerHit{symbol: root.label, row: row, depth: depth}
+			hits[k] = callerHit{symbol: root.reachedFrom(), row: row, depth: depth}
 		}
 		if depth >= blastDepth {
 			continue
@@ -540,6 +549,7 @@ func blastDepthRows(
 			continue
 		}
 		visited[sym.key] = true
+		sym.origin = root.reachedFrom()
 		next = append(next, sym)
 	}
 	return next

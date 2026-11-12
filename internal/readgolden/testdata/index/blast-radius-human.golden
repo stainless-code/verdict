@@ -11,7 +11,7 @@ a/top.go:5 call (exact, depth 1) example.com/m/a.B
 b/b.go:6 call (lexical, depth 1) example.com/m/a.A
 b/b_test.go:10 call (lexical, depth 1) example.com/m/a.A
 b/b_test.go:14 call (lexical, depth 1) example.com/m/a.A
-c/c.go:6 call (lexical, depth 2) example.com/m/b.UseA
+c/c.go:6 call (lexical, depth 2) example.com/m/a.A
 index: 2 candidate test(s)
 a/a_test.go (same-package)
 b/b_test.go (references)

@@ -10,6 +10,7 @@ along for the same paths. A diff section with no line hunks — a rename or a
 mode change — reads as every declaration in its new path and warns that it did.
 A `++` or `--` line inside a hunk is a content line, so its changed line and the
 hunk's anchors stay put.
+A depth-2 caller names the changed declaration it is reached from, not the depth-1 caller in between.
 Every list publishes its count and truncation count, `co_changed` publishes its
 distinct partner count beside the row count, and an absent index reads the
 symbol, caller, and test counts as `null`, never 0. The read-only MCP `index`
