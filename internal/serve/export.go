@@ -40,7 +40,11 @@ func RunHTML(ctx context.Context, r *cli.Runner, args []string, version string) 
 	if err != nil {
 		return r.Refuse(err)
 	}
-	if err := exportHTML(ctx, dest, layer, r.Now()); err != nil {
+	err = exportHTML(ctx, dest, layer, r.Now())
+	if code, done := r.Canceled(ctx, "report"); done {
+		return code
+	}
+	if err != nil {
 		return r.Refuse(err)
 	}
 	fmt.Fprintf(r.Human, "wrote %s\n", dest)
@@ -78,20 +82,24 @@ type htmlSnapshot map[string]string
 
 func (s htmlSnapshot) add(route string, view *query.View, err error) error {
 	if err != nil {
-		return s.refusal(route, err)
+		return s.refusal(route, view, err)
 	}
 	s[route] = jq.PrettyOrdered(core.RenderEnvelope(verbServe, view.Repo, view.Pr, view.At,
 		view.Next, view.Warnings, view.Data, nil))
 	return nil
 }
 
-func (s htmlSnapshot) refusal(route string, err error) error {
+func (s htmlSnapshot) refusal(route string, view *query.View, err error) error {
 	ref, ok := errors.AsType[*core.RefusalError](err)
 	if !ok {
 		return exportFailure(fmt.Errorf("compose %s: %w", route, err))
 	}
 	problem := jq.NewObj("code", ref.Code, "message", ref.Message+"\n"+core.HintFor(ref.Code))
-	s[route] = jq.PrettyOrdered(core.RenderEnvelope(verbServe, "", "", core.NowUTC(time.Unix(0, 0)), "", nil, nil, problem))
+	at, pr := core.NowUTC(time.Unix(0, 0)), ""
+	if view != nil {
+		at, pr = view.At, view.Pr
+	}
+	s[route] = jq.PrettyOrdered(core.RenderEnvelope(verbServe, "", pr, at, "", nil, nil, problem))
 	return nil
 }
 
@@ -144,6 +152,7 @@ func (s htmlSnapshot) details(ctx context.Context, layer Layer, bundles *query.V
 		bundle := exportString(row, "bundle")
 		route := "/v1/roots/" + url.PathEscape(root) + "/bundles/" + url.PathEscape(bundle)
 		view, err := layer.Detail(ctx, root, bundle)
+		view = detailExportView(view, bundles.At, bundle)
 		if err := s.add(route, view, err); err != nil {
 			return err
 		}
@@ -325,4 +334,11 @@ func exportString(row *jq.Obj, key string) string {
 		return ""
 	}
 	return value
+}
+
+func detailExportView(view *query.View, at, bundle string) *query.View {
+	if view == nil {
+		return &query.View{At: at, Pr: bundle}
+	}
+	return view
 }

@@ -730,19 +730,31 @@ if (process.env.VERDICT_EXPORT) {
       mode: "static",
       respond: async () => ({ body: data }),
     });
-    for (const [hash, title, caption] of [
-      ["#/bundles", "Inbox", "Review bundles"],
-      [base, "Review detail", "Review summary"],
-      [`${base}/threads`, "Threads", "Review threads"],
-      [`${base}/gate`, "Gate", "Gate dimensions"],
-      ["#/cost", "Cost", "Cost"],
-      ["#/precision", "Precision", "Precision"],
+    for (const [hash, title, caption, needle] of [
+      ["#/bundles", "Inbox", "Review bundles", "1234"],
+      [
+        base,
+        "Review detail",
+        "Review summary",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      ],
+      [`${base}/threads`, "Threads", "Review threads", "Exported discussion"],
+      [`${base}/gate`, "Gate", "Gate dimensions", "findings"],
+      ["#/cost", "Cost", "Cost", "acme/app"],
+      ["#/precision", "Precision", "Precision", "untagged"],
     ]) {
       await ui.navigate(hash);
       assert.equal(ui.elements.get("title").textContent, title);
       assert.ok(
         captionedTable(ui.elements.get("content"), caption),
         `missing ${caption}`,
+      );
+      assert.ok(
+        captionedTable(
+          ui.elements.get("content"),
+          caption,
+        ).textContent.includes(needle),
+        `missing data in ${title}`,
       );
     }
     assert.deepEqual(

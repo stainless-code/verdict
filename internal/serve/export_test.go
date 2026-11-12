@@ -2,6 +2,7 @@ package serve
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http/httptest"
@@ -46,7 +47,7 @@ func TestExportDestinationRefusals(t *testing.T) {
 
 func exportLayer(t *testing.T) *query.Layer {
 	t.Helper()
-	root := writeFixture(t, fixtureFiles())
+	root := writeFixture(t, htmlFixtureFiles())
 	return query.New(query.Snapshot{Version: "test", Roots: []query.Root{{Path: root}}, Runtime: &core.Runtime{Now: fixedNow}}, query.Options{Clock: fixedNow, NoWatch: true})
 }
 
@@ -217,4 +218,56 @@ func oldExport(t *testing.T, dest string) string {
 		t.Fatalf("old export missing after interruption: %v", entries)
 	}
 	return old
+}
+
+// TestHTMLRefusalParity preserves the bundle identity in refused envelopes.
+func TestHTMLRefusalParity(t *testing.T) {
+	files := fixtureFiles()
+	files[".verdict/state/1234/findings.json"] = "null"
+	root := writeFixture(t, files)
+	layer := query.New(query.Snapshot{Roots: []query.Root{{Path: root}}, Runtime: &core.Runtime{Now: fixedNow}},
+		query.Options{Clock: fixedNow, NoWatch: true})
+	body, err := snapshotData(t.Context(), layer, fixedNow())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var data map[string]json.RawMessage
+	if err := json.Unmarshal(body, &data); err != nil {
+		t.Fatal(err)
+	}
+	rootID := query.RootID(root)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/", nil)
+	req.SetPathValue("root", rootID)
+	req.SetPathValue("bundle", "1234")
+	recorder := httptest.NewRecorder()
+	server := &Server{layer: layer, now: fixedNow}
+	server.handleDetail(recorder, req)
+	if string(data["/v1/roots/"+rootID+"/bundles/1234"])+"\n" != recorder.Body.String() {
+		t.Fatalf("refused export differs from /v1: %s\n%s", body, recorder.Body.String())
+	}
+}
+
+// TestHTMLCancellation returns the shared cancellation exit code.
+func TestHTMLCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	var out bytes.Buffer
+	runner := &cli.Runner{Out: &out, Diag: &out, Human: &out, Now: fixedNow}
+	args := []string{"--html", filepath.Join(t.TempDir(), "export"), "--root", writeFixture(t, fixtureFiles())}
+	if code := RunHTML(ctx, runner, args, "test"); code != 3 {
+		t.Fatalf("canceled export exit = %d; want 3", code)
+	}
+}
+
+func htmlFixtureFiles() map[string]string {
+	files := fixtureFiles()
+	files[".verdict/state/1234/cost.json"] = `[{"models":[{"name":"alpha","input_tokens":10,"output_tokens":5}],"est_usd":0.25}]`
+	files[".verdict/state/local-1/cost.json"] = `[{"models":[{"name":"beta","input_tokens":3,"output_tokens":2}],"est_usd":0.1}]`
+	files[".verdict/state/1234/threads.json"] = `{"schema_version":"1","provider":"github","pr":1234,"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",` +
+		`"fetched_at":"2026-11-12T09:00:00Z","truncated":false,"threads":[{"id":"T_export","path":"notes.txt",` +
+		`"line":2,"start_line":null,"side":"RIGHT","resolved":false,"outdated":false,"url":null,` +
+		`"author":"reviewer","author_kind":"human","finding_sig":"c111111111111111111111111111111111111111",` +
+		`"kind":"review-comment","comments":[{"id":"C_export","author":"reviewer","author_kind":"human",` +
+		`"body":"Exported discussion","truncated":false,"created_at":"2026-11-12T09:00:00Z"}]}]}`
+	return files
 }
