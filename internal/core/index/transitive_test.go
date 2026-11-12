@@ -71,7 +71,7 @@ func TestTestsForDepthCapTruncates(t *testing.T) {
 	f.commit("one")
 	f.build()
 	t.Run("two hops", func(t *testing.T) {
-		assertDepthCap(t, f, 2, []TestRow{
+		assertDepthCap(t, f, "a/a.go", 2, []TestRow{
 			{Path: "a/a_test.go", Via: viaSamePackage},
 			{Path: "b/b_test.go", Via: viaReferences, Depth: 1},
 			{Path: "c/c_test.go", Via: viaTransitiveImport, Depth: 2},
@@ -79,13 +79,13 @@ func TestTestsForDepthCapTruncates(t *testing.T) {
 		}, 1, "index: depth cap 2 reached (1 candidate test(s) one import hop beyond; raise --depth up to 8)")
 	})
 	t.Run("one hop turns the walk off", func(t *testing.T) {
-		assertDepthCap(t, f, 1, []TestRow{
+		assertDepthCap(t, f, "a/a.go", 1, []TestRow{
 			{Path: "a/a_test.go", Via: viaSamePackage},
 			{Path: "b/b_test.go", Via: viaReferences, Depth: 1},
 		}, 2, "index: depth cap 1 reached (2 candidate test(s) one import hop beyond; raise --depth up to 8)")
 	})
 	t.Run("the c to d cycle terminates at the widest cap", func(t *testing.T) {
-		assertDepthCap(t, f, MaxDepth, []TestRow{
+		assertDepthCap(t, f, "a/a.go", MaxDepth, []TestRow{
 			{Path: "a/a_test.go", Via: viaSamePackage},
 			{Path: "b/b_test.go", Via: viaReferences, Depth: 1},
 			{Path: "c/c_test.go", Via: viaTransitiveImport, Depth: 2},
@@ -95,13 +95,13 @@ func TestTestsForDepthCapTruncates(t *testing.T) {
 	})
 }
 
-// assertDepthCap queries a/a.go at one depth and asserts the rows it kept, the
-// candidates it hid, and — when line is not empty — the human line naming that
-// count.
-func assertDepthCap(t *testing.T, f *fixture, depth int, rows []TestRow, hid int, line string) {
+// assertDepthCap queries one path at one depth and asserts the rows it kept,
+// the candidates it hid, and — when line is not empty — the human line naming
+// that count.
+func assertDepthCap(t *testing.T, f *fixture, p string, depth int, rows []TestRow, hid int, line string) {
 	t.Helper()
 	req := f.request(QueryTestsFor, nil)
-	req.Path, req.Depth = "a/a.go", depth
+	req.Path, req.Depth = p, depth
 	resp, ref := Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("index tests-for refused: %v", ref)
@@ -114,6 +114,67 @@ func assertDepthCap(t *testing.T, f *fixture, depth int, rows []TestRow, hid int
 	if line != "" && !slices.Contains(resp.Human, line) {
 		t.Errorf("human lines = %q; want one equal to %q", resp.Human, line)
 	}
+}
+
+// TestTestsForSiblingTestKeepsTransitiveCandidate proves a candidate's hop
+// count comes from its own imports, not its directory's shortest distance:
+// adding a sibling that imports the target directly leaves another file's
+// two-hop chain named at depth 2, in Go and in TypeScript, and a one-hop cap
+// counts that file instead of dropping it.
+func TestTestsForSiblingTestKeepsTransitiveCandidate(t *testing.T) {
+	t.Run("go", func(t *testing.T) {
+		f := newFixture(t)
+		f.write("go.mod", "module example.com/m\n\ngo 1.27\n")
+		f.write("a/a.go", "package a\n\nfunc Target() {}\n")
+		f.write("b/b.go", "package b\n\nimport \"example.com/m/a\"\n\nfunc UseA() {\n\ta.Target()\n}\n")
+		f.write("t/deep_test.go", "package t\n\nimport (\n\t\"testing\"\n\n\t\"example.com/m/b\"\n)\n\n"+
+			"func TestDeep(t *testing.T) {\n\tb.UseA()\n}\n")
+		f.commit("one")
+		f.build()
+		assertTestRows(t, f.queryPath(QueryTestsFor, "a/a.go").Data.TestRows, []TestRow{
+			{Path: "t/deep_test.go", Via: viaTransitiveImport, Depth: 2},
+		})
+		f.write("t/direct_test.go", "package t\n\nimport (\n\t\"testing\"\n\n\t\"example.com/m/a\"\n)\n\n"+
+			"func TestDirect(t *testing.T) {\n\ta.Target()\n}\n")
+		f.commit("two")
+		f.build()
+		resp := f.queryPath(QueryTestsFor, "a/a.go")
+		assertTestRows(t, resp.Data.TestRows, []TestRow{
+			{Path: "t/deep_test.go", Via: viaTransitiveImport, Depth: 2},
+			{Path: "t/direct_test.go", Via: viaReferences, Depth: 1},
+		})
+		if resp.Data.DepthTruncated != 0 {
+			t.Errorf("depth_truncated = %d; want 0", resp.Data.DepthTruncated)
+		}
+		assertDepthCap(t, f, "a/a.go", 1, []TestRow{
+			{Path: "t/direct_test.go", Via: viaReferences, Depth: 1},
+		}, 1, "index: depth cap 1 reached (1 candidate test(s) one import hop beyond; raise --depth up to 8)")
+	})
+	t.Run("typescript", func(t *testing.T) {
+		f := newFixture(t)
+		f.write("src/a.ts", "export function target(a: number) { return a; }\n")
+		f.write("lib/b.ts", "import { target } from '../src/a';\n\nexport function use() {\n  return target(1);\n}\n")
+		f.write("tests/deep.test.ts", "import { use } from '../lib/b';\n\nuse();\n")
+		f.commit("one")
+		f.build()
+		assertTestRows(t, f.queryPath(QueryTestsFor, "src/a.ts").Data.TestRows, []TestRow{
+			{Path: "tests/deep.test.ts", Via: viaTransitiveImport, Depth: 2},
+		})
+		f.write("tests/sibling.test.ts", "import { target } from '../src/a';\n\ntarget(2);\n")
+		f.commit("two")
+		f.build()
+		resp := f.queryPath(QueryTestsFor, "src/a.ts")
+		assertTestRows(t, resp.Data.TestRows, []TestRow{
+			{Path: "tests/deep.test.ts", Via: viaTransitiveImport, Depth: 2},
+			{Path: "tests/sibling.test.ts", Via: viaReferences, Depth: 1},
+		})
+		if resp.Data.DepthTruncated != 0 {
+			t.Errorf("depth_truncated = %d; want 0", resp.Data.DepthTruncated)
+		}
+		assertDepthCap(t, f, "src/a.ts", 1, []TestRow{
+			{Path: "tests/sibling.test.ts", Via: viaReferences, Depth: 1},
+		}, 1, "")
+	})
 }
 
 // TestTestsForDepthRefusesOutOfRange proves the depth bound refuses through the

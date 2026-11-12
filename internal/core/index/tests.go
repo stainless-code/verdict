@@ -172,28 +172,35 @@ func findIndexedFile(t *treeIndex, p string) *treeFile {
 // testWalk is one candidate walk: the rows, and the candidate files one import
 // hop past the depth cap that it counted instead of naming.
 type testWalk struct {
-	rows []TestRow
-	hid  int
+	rows   []TestRow
+	hidden []string
 }
 
 // walkTestRows walks the tree's test files once, labeling each candidate with
-// the strongest mechanism that reaches the target and the import hops it took.
+// the strongest mechanism that reaches the target and the import hops its own
+// imports took. The reverse walk runs one hop past the cap so a candidate's own
+// chain is readable at the depth that is counted rather than named.
 func walkTestRows(t *treeIndex, plan *testPlan, g *importGraph) testWalk {
 	dirs, importPaths := testMechanisms(t, plan)
-	depths, beyond := g.reverseDepth(planNodes(plan), plan.depth)
+	depths := g.reverseDepth(planNodes(plan), plan.depth+1)
 	var walk testWalk
 	for i := range t.Files {
 		f := &t.Files[i]
 		if !isCandidateFile(plan, f) {
 			continue
 		}
-		via, depth := testVia(plan, dirs, importPaths, depths, f)
+		via, depth := testVia(plan, dirs, importPaths, g, depths, f)
 		if via == "" {
+			continue
+		}
+		if via == viaTransitiveImport && depth > plan.depth {
+			if depth == plan.depth+1 {
+				walk.hidden = append(walk.hidden, f.Path)
+			}
 			continue
 		}
 		walk.rows = append(walk.rows, TestRow{Path: f.Path, Via: via, Depth: depth})
 	}
-	walk.hid = hiddenCandidates(t, plan, beyond)
 	slices.SortFunc(walk.rows, func(a, b TestRow) int {
 		if c := strings.Compare(a.Path, b.Path); c != 0 {
 			return c
@@ -211,28 +218,6 @@ func planNodes(plan *testPlan) []graphNode {
 		nodes = append(nodes, graphNode{family: plan.lang.family(), dir: dir})
 	}
 	return nodes
-}
-
-// hiddenCandidates counts the candidate tests the depth cap kept out of the
-// walk: the files in the directories one hop past it. A candidate already named
-// is never one of them — a direct mechanism reads an import edge out of that
-// file, which puts its own directory at the first hop, short of the cap.
-func hiddenCandidates(t *treeIndex, plan *testPlan, beyond []graphNode) int {
-	if len(beyond) == 0 {
-		return 0
-	}
-	hidden := make(map[graphNode]bool, len(beyond))
-	for _, node := range beyond {
-		hidden[node] = true
-	}
-	n := 0
-	for i := range t.Files {
-		f := &t.Files[i]
-		if hidden[fileNode(f)] && isCandidateFile(plan, f) {
-			n++
-		}
-	}
-	return n
 }
 
 // testMechanisms indexes the plan's package directories and import paths.
@@ -338,7 +323,7 @@ func isCandidateFile(plan *testPlan, f *treeFile) bool {
 // the declaring package, or a package that reaches the declaring package
 // through imports of its own.
 func testVia(
-	plan *testPlan, dirs, importPaths map[string]bool, depths map[graphNode]int, f *treeFile,
+	plan *testPlan, dirs, importPaths map[string]bool, g *importGraph, depths map[graphNode]int, f *treeFile,
 ) (string, int) {
 	switch {
 	case samePackageTest(dirs, f):
@@ -348,15 +333,15 @@ func testVia(
 	case importsAny(f, importPaths):
 		return viaImportsModule, 1
 	default:
-		return transitiveVia(depths, f)
+		return transitiveVia(g, depths, f)
 	}
 }
 
 // transitiveVia labels one file reached through its own package's imports, or
 // nothing: a file one hop out imports the declaring package itself, and the
 // direct mechanisms name that edge first.
-func transitiveVia(depths map[graphNode]int, f *treeFile) (string, int) {
-	if depth := depths[fileNode(f)]; depth >= minTransitiveDepth {
+func transitiveVia(g *importGraph, depths map[graphNode]int, f *treeFile) (string, int) {
+	if depth := g.candidateDepth(depths, f); depth >= minTransitiveDepth {
 		return viaTransitiveImport, depth
 	}
 	return "", 0
@@ -439,7 +424,7 @@ func (st *state) testsForResponse(
 			Tree: t.Tree, Commit: commit, Stale: stale, Built: true,
 			Files: cov.files, Skipped: cov.skipped,
 			Tests: len(all), TestRows: rows, Truncated: truncated, Limit: limit,
-			Depth: plan.depth, DepthTruncated: walk.hid,
+			Depth: plan.depth, DepthTruncated: len(walk.hidden),
 			Target: target,
 		},
 	}
@@ -458,8 +443,8 @@ func (st *state) testsForHuman(t *treeIndex, query string, all, rows []TestRow, 
 		st.line(fmt.Sprintf("index: showing %d of %d candidate tests (%d not shown; raise --limit up to %d)",
 			len(rows), len(all), truncated, MaxLimit))
 	}
-	if walk.hid > 0 {
-		st.line(fmt.Sprintf(testsDepthCapped, plan.depth, walk.hid, MaxDepth))
+	if len(walk.hidden) > 0 {
+		st.line(fmt.Sprintf(testsDepthCapped, plan.depth, len(walk.hidden), MaxDepth))
 	}
 }
 

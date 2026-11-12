@@ -146,19 +146,35 @@ func (g *importGraph) addNodes(family language, dir string) []graphNode {
 }
 
 // reverseDepth labels every node with its import distance from the roots,
-// walking at most limit hops, and returns the nodes one hop past the cap: they
-// are counted, not walked.
-func (g *importGraph) reverseDepth(roots []graphNode, limit int) (map[graphNode]int, []graphNode) {
+// walking at most limit hops.
+func (g *importGraph) reverseDepth(roots []graphNode, limit int) map[graphNode]int {
 	depth := make(map[graphNode]int, len(roots))
 	frontier := g.seed(roots, depth)
 	for hop := 1; hop <= limit && len(frontier) > 0; hop++ {
 		frontier = g.expand(frontier, hop, depth)
 	}
-	beyond := g.expand(frontier, limit+1, depth)
-	for _, node := range beyond {
-		delete(depth, node)
+	return depth
+}
+
+// candidateDepth counts the import hops one candidate test took from the
+// declaring package, read from its own imports: one more than the shortest
+// distance to a package it imports. A test that imports nothing the tree holds
+// is reached through the package it sits in, so it takes that package's
+// distance. Zero when no chain joins the file to the declaring package.
+func (g *importGraph) candidateDepth(depths map[graphNode]int, f *treeFile) int {
+	own := fileNode(f)
+	depth := 0
+	for _, imp := range f.Imports {
+		for _, node := range g.importTargets(fileLanguage(f), own.dir, imp) {
+			if d, ok := depths[node]; ok && (depth == 0 || d+1 < depth) {
+				depth = d + 1
+			}
+		}
 	}
-	return depth, beyond
+	if depth > 0 {
+		return depth
+	}
+	return depths[own]
 }
 
 // seed labels the roots at depth 0 and returns them as the first frontier.
