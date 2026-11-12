@@ -427,9 +427,10 @@ same warning list in its result.
 
 `verdict pack test <name>` runs the named installed pack's eval cases through
 the same built-in, org, and repo layering used by review. Use
-`verdict pack test --dir <path>` to test an unpacked pack. The case format is
-deliberately small: each `evals/<case>/` directory contains `diff.patch`,
-`findings.json`, and `expect.json`. `findings.json` is an array in the
+`verdict pack test --dir <path>` to test an unpacked pack. The pack case format
+is a pre-v1 design and may change before pack format v1. Each `evals/<case>/`
+directory contains `diff.patch`, `findings.json`, and `expect.json`.
+`findings.json` is an array in the
 `review.json` `comments[]` shape, including `kb` rule ids. `expect.json` has a
 required `rules` array and an optional `not_rules` array. Rule selection uses
 the changed paths and the pack's `globs`; the format has no separate language

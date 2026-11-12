@@ -44,10 +44,35 @@ func TestPackTestCases(t *testing.T) {
 		{name: "not rules hit", findings: validFinding, expect: `{"rules":[],"not_rules":["rule-a"]}`, want: "FAIL", reason: "not_rules hit: rule-a"},
 		{name: "missing coverage", findings: `[]`, expect: `{"rules":["rule-a"]}`, want: "FAIL", reason: "missing finding coverage for rule rule-a"},
 		{name: "invalid finding schema", findings: `[{"path":4}]`, expect: `{"rules":[]}`, want: "FAIL", reason: "invalid finding:"},
+		{name: "malformed findings JSON", findings: `[`, expect: `{"rules":[]}`, want: "FAIL", reason: "unexpected EOF"},
 		{name: "invalid not_rules shape", findings: validFinding, expect: `{"rules":[],"not_rules":null}`, want: "FAIL", reason: "not_rules must be an array"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) { checkPackTestCase(t, &tt) })
+	}
+}
+
+// TestPackTestNextActions pins the next step for each summary state.
+func TestPackTestNextActions(t *testing.T) {
+	tests := []struct {
+		name string
+		want string
+		data TestSummary
+	}{
+		{name: "pass", data: TestSummary{Pass: 1}, want: "add cases as pack rules change"},
+		{name: "fail", data: TestSummary{Fail: 1}, want: "fix failing pack eval cases and re-run"},
+		{name: "skip", data: TestSummary{Skip: 1}, want: "resolve skipped pack eval cases and re-run"},
+		{name: "fail and skip", data: TestSummary{Fail: 1, Skip: 1}, want: "fix failing and resolve skipped pack eval cases, then re-run"},
+	}
+	p := &packcore.Pack{}
+	p.Name = "acme/test"
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := testResponse(p, &TestData{Summary: tt.data}, "").Next
+			if got != tt.want {
+				t.Fatalf("next = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 

@@ -118,7 +118,16 @@ func testResponse(p *packcore.Pack, data *TestData, at string) *TestResponse {
 	}
 	lines = append(lines, fmt.Sprintf("%s: %d pass, %d skip, %d fail", p.Name,
 		data.Summary.Pass, data.Summary.Skip, data.Summary.Fail))
-	return &TestResponse{At: at, Next: "fix failing pack eval cases", Data: data, Human: lines}
+	next := "add cases as pack rules change"
+	switch {
+	case data.Summary.Fail > 0 && data.Summary.Skip > 0:
+		next = "fix failing and resolve skipped pack eval cases, then re-run"
+	case data.Summary.Fail > 0:
+		next = "fix failing pack eval cases and re-run"
+	case data.Summary.Skip > 0:
+		next = "resolve skipped pack eval cases and re-run"
+	}
+	return &TestResponse{At: at, Next: next, Data: data, Human: lines}
 }
 
 func oneLine(value string) string {
@@ -380,13 +389,20 @@ func decodeFindings(raw []byte) ([]map[string]any, string) {
 	var findings []map[string]any
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.UseNumber()
-	if err := decoder.Decode(&findings); err != nil || findings == nil {
-		return nil, "findings.json must be an array of review findings"
+	if err := decoder.Decode(&findings); err != nil {
+		return nil, fmt.Sprintf("findings.json must be a JSON array of review findings: %v", err)
 	}
-	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
-		return nil, "findings.json has trailing JSON"
+	if findings == nil {
+		return nil, "findings.json must be a JSON array of review findings, not null"
 	}
-	return findings, ""
+	err := decoder.Decode(new(any))
+	if errors.Is(err, io.EOF) {
+		return findings, ""
+	}
+	if err == nil {
+		return nil, "findings.json has a trailing JSON value"
+	}
+	return nil, fmt.Sprintf("findings.json has invalid trailing JSON: %v", err)
 }
 
 func validateFindings(findings []map[string]any, diff string) string {

@@ -48,6 +48,8 @@ assert_json_field "installed passing case passes" "PASS" '.data.cases[] | select
 assert_json_field "installed failing case fails" "FAIL" '.data.cases[] | select(.case == "failing") | .status'
 assert_json_field "installed case summary" "1:0:1" '.data.summary | "\(.pass):\(.skip):\(.fail)"'
 
+assert_file_grep "manual labels the pack case format pre-v1" "$EVAL_ROOT/docs/manual.md" 'pre-v1 design' "-F"
+
 stub_after="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 assert_eq "pack test makes no host calls" "$stub_before" "$stub_after"
 
