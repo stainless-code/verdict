@@ -9,7 +9,9 @@ the existing loader, vendors its tree under `.verdict/packs/<slug>/`
 so two packs that differ only in an eval case record different hashes. The lock is strict JSON with one row
 per repo pack, sorted by name: `name`, `source` (`dir:<path>` or
 `git:<url>@<sha>`), `version`, the canonical tree `hash`, and an integrity
-`sig` over those fields. Re-adding a name replaces its tree and entry and
+`sig` over those fields. A `dir:` source is a slash path with no control
+character, backslash, or leading `-`; neither spelling carries a userinfo
+password. Re-adding a name replaces its tree and entry and
 prints the old and new hash; a source inside `.verdict/packs/` refuses
 `bad-pack`. Git sources fetch hermetically (no system config, scrubbed
 `HOME`/`XDG_*`, no prompts, no hooks, file protocol disabled, shallow clone
@@ -27,5 +29,7 @@ pack directory, or `sig` disagrees, from one shared check with no bypass
 flag. `.verdict/verdict.lock` joins the controls inventory, so it is read at
 the PR base and an edited snapshot copy refuses `controls-stale`. `pack list`
 fills its `drift` column with null for a matching repo pack and the refusal
-code otherwise; the human rows show it. The built-in pack stays pinned by
-the binary and org packs stay in per-operator settings, so neither is locked.
+code otherwise; the human rows show it, and a lock row whose pack directory
+is gone lists with `drift: "pack-lock-drift"`. The built-in pack stays pinned
+by the binary and org packs stay in per-operator settings, so neither is
+locked.
