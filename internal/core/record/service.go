@@ -276,7 +276,7 @@ func (st *svc) merge(dir, prov, headFull string, review *jq.Obj) (MergeResult, *
 		Forces:          req.Forces,
 		Repo:            req.Repo,
 		Pr:              req.Pr,
-		Cmd:             "record",
+		Cmd:             recordCommand,
 		DryRun:          st.req.DryRun,
 		Controls:        st.controls,
 		Run:             st.run,

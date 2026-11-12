@@ -84,6 +84,10 @@ func TestDryRunWritesNothing(t *testing.T) {
 	if resp.Data.Findings.File != "" {
 		t.Errorf("dry-run findings.file = %q, want empty", resp.Data.Findings.File)
 	}
+	if !strings.Contains(strings.Join(c.human, "\n"),
+		"» findings: 1 sigs (dry run — no findings file written)") {
+		t.Errorf("dry-run progress = %q; want no findings-file destination", c.human)
+	}
 }
 
 // TestDryRunAndRecordShareProblems proves both modes refuse with byte-identical

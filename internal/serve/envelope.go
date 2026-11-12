@@ -39,9 +39,9 @@ func (s *Server) writeRefusal(w http.ResponseWriter, verb, repo, pr string, ref 
 
 // writeViewError maps a layer error: a typed refusal stays a 200 envelope, a
 // missing root or bundle is 404, and anything else is a 500 problem.
-func (s *Server) writeViewError(w http.ResponseWriter, verb, repo, pr string, err error) {
+func (s *Server) writeViewError(w http.ResponseWriter, verb, pr string, err error) {
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
-		s.writeRefusal(w, verb, repo, pr, ref)
+		s.writeRefusal(w, verb, "", pr, ref)
 		return
 	}
 	if errors.Is(err, query.ErrNotFound) {

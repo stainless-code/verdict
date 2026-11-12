@@ -1012,27 +1012,85 @@ type IndexRef struct {
 // start envelope, health, roots, inbox, and bundle detail, so every view's
 // fields are optional and the trio partial/sources/errors is always present.
 type ServeData struct { //nolint:govet // field order groups the view families
-	Version   string            `json:"version,omitempty"`
-	URL       string            `json:"url,omitempty"`
-	Listen    string            `json:"listen,omitempty"`
-	ReadOnly  *bool             `json:"read_only,omitempty" type:"boolean|null"`
-	Watch     *bool             `json:"watch,omitempty"     type:"boolean|null"`
-	Interval  string            `json:"interval,omitempty"`
-	Cache     *ServeCache       `anyOf:"null"               json:"cache,omitempty"`
-	Roots     []ServeRoot       `json:"roots,omitempty"`
-	Truncated *bool             `json:"truncated,omitempty" type:"boolean|null"`
-	Skipped   *ServeSkipped     `anyOf:"null"               json:"skipped,omitempty"`
-	Discovery *ServeDiscovery   `anyOf:"null"               json:"discovery,omitempty"`
-	Root      *string           `json:"root,omitempty"`
-	Rows      []ServeRow        `json:"rows,omitempty"`
-	Counts    *ServeCounts      `anyOf:"null"               json:"counts,omitempty"`
-	Report    *ReportData       `anyOf:"null"               json:"report,omitempty"`
-	Gate      *ReportGate       `anyOf:"null"               json:"gate,omitempty"`
-	Threads   *threadscore.File `anyOf:"null"               json:"threads,omitempty"`
-	Artifacts []ServeArtifact   `json:"artifacts,omitempty"`
-	Partial   bool              `json:"partial"`
-	Sources   []ServeSource     `json:"sources"`
-	Errors    []ServeErrorRow   `json:"errors"`
+	Version   string              `json:"version,omitempty"`
+	URL       string              `json:"url,omitempty"`
+	Listen    string              `json:"listen,omitempty"`
+	ReadOnly  *bool               `json:"read_only,omitempty" type:"boolean|null"`
+	Watch     *bool               `json:"watch,omitempty"     type:"boolean|null"`
+	Interval  string              `json:"interval,omitempty"`
+	Cache     *ServeCache         `anyOf:"null"               json:"cache,omitempty"`
+	Roots     []ServeRoot         `json:"roots,omitempty"`
+	Truncated *bool               `json:"truncated,omitempty" type:"boolean|null"`
+	Skipped   *ServeSkipped       `anyOf:"null"               json:"skipped,omitempty"`
+	Discovery *ServeDiscovery     `anyOf:"null"               json:"discovery,omitempty"`
+	Cost      *ServeCostData      `anyOf:"null"               json:"cost,omitempty"`
+	Precision *ServePrecisionData `anyOf:"null"               json:"precision,omitempty"`
+	Root      *string             `json:"root,omitempty"`
+	Rows      []ServeRow          `json:"rows,omitempty"`
+	Counts    *ServeCounts        `anyOf:"null"               json:"counts,omitempty"`
+	Report    *ReportData         `anyOf:"null"               json:"report,omitempty"`
+	Gate      *ReportGate         `anyOf:"null"               json:"gate,omitempty"`
+	Threads   *threadscore.File   `anyOf:"null"               json:"threads,omitempty"`
+	Artifacts []ServeArtifact     `json:"artifacts,omitempty"`
+	Partial   bool                `json:"partial"`
+	Sources   []ServeSource       `json:"sources"`
+	Errors    []ServeErrorRow     `json:"errors"`
+}
+
+// ServeCostData is one repository, week, or model cost rollup.
+type ServeCostData struct { //nolint:govet // field order is the published property order
+	By     string            `enum:"repo|week|model" json:"by"`
+	Rows   []ServeCostBucket `json:"rows"`
+	Totals *ServeCostTotals  `anyOf:"null"           json:"totals"`
+}
+
+// ServeCostBucket is one cost dimension row.
+type ServeCostBucket struct { //nolint:govet // field order is the published property order
+	Dimension    string   `json:"dimension"`
+	Runs         int      `json:"runs"          min:"0"`
+	ModelRuns    int      `json:"model_runs"    min:"0"`
+	InputTokens  *float64 `json:"input_tokens"  min:"0"`
+	OutputTokens *float64 `json:"output_tokens" min:"0"`
+	TotalTokens  *float64 `json:"total_tokens"  min:"0"`
+	EstUSD       *float64 `json:"est_usd"`
+}
+
+// ServeCostTotals is the all-bucket cost rollup.
+type ServeCostTotals struct { //nolint:govet // field order is the published property order
+	Runs         int      `json:"runs"          min:"0"`
+	ModelRuns    int      `json:"model_runs"    min:"0"`
+	InputTokens  *float64 `json:"input_tokens"  min:"0"`
+	OutputTokens *float64 `json:"output_tokens" min:"0"`
+	TotalTokens  *float64 `json:"total_tokens"  min:"0"`
+	EstUSD       *float64 `json:"est_usd"`
+}
+
+// ServePrecisionData is a stored-join precision view.
+type ServePrecisionData struct {
+	By       string                  `enum:"category|tier" json:"by"`
+	Outcomes *[]ServePrecisionBucket `json:"outcomes"`
+	Totals   *ServePrecisionTotals   `anyOf:"null"         json:"totals"`
+	Fixed    *int                    `json:"fixed"`
+	AsOf     *string                 `json:"as_of"`
+	Stale    *bool                   `json:"stale"`
+	Next     string                  `json:"next"`
+}
+
+// ServePrecisionTotals is the count across all dimensions.
+type ServePrecisionTotals struct { //nolint:govet // field order is the published property order
+	Open            int  `json:"open"             min:"0"`
+	ResolvedUnfixed int  `json:"resolved_unfixed" min:"0"`
+	Unknown         int  `json:"unknown"          min:"0"`
+	Fixed           *int `json:"fixed"`
+}
+
+// ServePrecisionBucket is one outcome-count dimension.
+type ServePrecisionBucket struct { //nolint:govet // field order is the published property order
+	Dimension       string `json:"dimension"`
+	Open            int    `json:"open"             min:"0"`
+	ResolvedUnfixed int    `json:"resolved_unfixed" min:"0"`
+	Unknown         int    `json:"unknown"          min:"0"`
+	Fixed           *int   `json:"fixed"`
 }
 
 // ServeSource is one artifact read a view was composed from.
