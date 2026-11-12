@@ -329,11 +329,14 @@ A lens pack is data, not a verb: `pack.json` names each lens and
 and `fetch`/`fetch-local` load it from the embedded skill payload. The format
 is strict JSON (unknown fields refuse), versioned by `schema_version: "1"`,
 and published as `schemas/pack.schema.json`. The fixed layout is `pack.json`,
-`lenses/` (loaded), and the reserved `rules/`, `examples/`, `evals/` (counted
-by the caps, not loaded); a file no manifest row names is not loaded.
+`lenses/` (loaded), `rules/` (loaded when the manifest declares a rule), and
+the reserved `examples/` and `evals/` payload trees: those two are capped,
+carried through vendoring, and folded into the canonical tree hash, but no
+loader parses their bodies. A file no manifest row names is not loaded.
 
 Every load checks the caps while walking, before any parse: 64 KiB per file,
-1 MiB per pack, 256 files, 64 lenses (`pack-too-large`). The repo pack root is
+1 MiB per pack, 256 files, 64 lenses, and 8 directory levels
+(`pack-too-large`). The repo pack root is
 bounded too: `pack list` reads `.verdict/packs/` in batches and refuses
 `pack-too-large` past 1024 children, and a pack tree — read from the base or
 from the `--allow-head-controls` worktree — refuses `controls-too-large` past
@@ -421,9 +424,11 @@ same warning list in its result.
 `verdict pack add <dir|git-url>[@ref]` vendors one pack and pins it. The
 source is validated by the same loader as every other layer (all `bad-pack`,
 `pack-too-large`, `pack-unsafe-path`, and `pack-conflict` refusals apply),
-then its manifest and loaded lens/rule bodies are copied through `os.Root`
-into `.verdict/packs/<slug>/` (the manifest name's part after the slash) and
-one row is written to `.verdict/verdict.lock`. A `dir:` source records the
+then its manifest, loaded lens/rule bodies, and `evals/`/`examples/` trees
+are copied through `os.Root` into `.verdict/packs/<slug>/` (the manifest
+name's part after the slash) and one row is written to
+`.verdict/verdict.lock`. The tree hash covers all of them, so a pack that
+differs only in an eval case records a different hash. A `dir:` source records the
 directory exactly as given on the command line, slash-separated. A
 `git:<url>@<sha>` source is cloned hermetically into a temporary directory:
 `GIT_CONFIG_NOSYSTEM=1`, `HOME` and every `XDG_*` directory scrubbed into

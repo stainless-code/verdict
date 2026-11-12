@@ -87,6 +87,56 @@ func TestPackHashIsStable(t *testing.T) {
 	}
 }
 
+// TestPackHashCoversReservedTrees proves evals/ and examples/ participate in
+// the canonical tree hash: two packs that differ only in one eval case hash
+// differently, pinned to hand-computed digests.
+func TestPackHashCoversReservedTrees(t *testing.T) {
+	t.Parallel()
+	manifest := `{"schema_version":"1","name":"acme/lenses","version":"1.2.3","lenses":[{"id":"perf"}]}`
+	base := fstest.MapFS{
+		"pack.json":       {Data: []byte(manifest)},
+		"lenses/perf.md":  {Data: []byte("perf body\n")},
+		"evals/case.sh":   {Data: []byte("echo ok\n")},
+		"examples/use.md": {Data: []byte("sample\n")},
+	}
+	changed := fstest.MapFS{
+		"pack.json":       {Data: []byte(manifest)},
+		"lenses/perf.md":  {Data: []byte("perf body\n")},
+		"evals/case.sh":   {Data: []byte("echo changed\n")},
+		"examples/use.md": {Data: []byte("sample\n")},
+	}
+	if got, want := loadFixture(t, base).Hash,
+		"737e72eea207e5d2805e28b18159adc8bb708c910ed00602da1e66b172c8a988"; got != want {
+		t.Fatalf("pack hash = %s, want %s", got, want)
+	}
+	first, second := loadFixture(t, base).Hash, loadFixture(t, changed).Hash
+	if first == second {
+		t.Fatalf("an eval-case edit left the pack hash unchanged at %s", first)
+	}
+	if got, want := second, "e4e2f52dcebc7bf6e6d3f19c5e6621acc5f5ca1d8547a376b5091c6eb817ee64"; got != want {
+		t.Fatalf("changed pack hash = %s, want %s", got, want)
+	}
+}
+
+// TestPackRefusesDeepTree proves the walk refuses a tree nested past the
+// depth cap before any body is loaded.
+func TestPackRefusesDeepTree(t *testing.T) {
+	t.Parallel()
+	deep := fstest.MapFS{
+		"pack.json":                     {Data: []byte(fixtureManifest)},
+		"lenses/alpha.md":               {Data: []byte("alpha body\n")},
+		"lenses/beta.md":                {Data: []byte("beta body\n")},
+		"evals/a/b/c/d/e/f/g/h/case.sh": {Data: []byte("run\n")},
+	}
+	_, ref := Load(deep, ".")
+	if ref == nil || ref.Code != CodePackTooLarge {
+		t.Fatalf("deep tree = %v, want pack-too-large", ref)
+	}
+	if want := "nests deeper than 8 directories"; !strings.Contains(ref.Message, want) {
+		t.Fatalf("message = %q, want it to contain %q", ref.Message, want)
+	}
+}
+
 // TestPackPathsConfined refuses roots that could escape, and a symlinked
 // lenses/ directory under the [os.Root] resolver.
 //

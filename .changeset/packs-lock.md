@@ -3,8 +3,10 @@
 ---
 
 Add `verdict pack add <dir|git-url>[@ref]`, which validates a lens pack with
-the existing loader, vendors its loaded tree under `.verdict/packs/<slug>/`,
-and pins it in `.verdict/verdict.lock`. The lock is strict JSON with one row
+the existing loader, vendors its tree under `.verdict/packs/<slug>/`
+(including the `evals/` and `examples/` payloads), and pins it in
+`.verdict/verdict.lock`. The lock's tree hash covers those payload trees too,
+so two packs that differ only in an eval case record different hashes. The lock is strict JSON with one row
 per repo pack, sorted by name: `name`, `source` (`dir:<path>` or
 `git:<url>@<sha>`), `version`, the canonical tree `hash`, and an integrity
 `sig` over those fields. Re-adding a name replaces its tree and entry and

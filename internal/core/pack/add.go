@@ -547,7 +547,10 @@ func writeVendored(dest, src *os.Root, slug string, p *Pack) *core.RefusalError 
 	if ref := writeVendoredLenses(dest, slug, p.Lenses); ref != nil {
 		return ref
 	}
-	return writeVendoredRules(dest, slug, p.Rules)
+	if ref := writeVendoredRules(dest, slug, p.Rules); ref != nil {
+		return ref
+	}
+	return writeVendoredExtras(dest, slug, p.files)
 }
 
 // writeVendoredLenses creates lenses/ and writes every loaded lens body.
@@ -578,6 +581,16 @@ func writeVendoredRules(dest *os.Root, slug string, rules []Rule) *core.RefusalE
 	return nil
 }
 
+// writeVendoredExtras copies the reserved examples/ and evals/ trees.
+func writeVendoredExtras(dest *os.Root, slug string, files []packFile) *core.RefusalError {
+	for i := range files {
+		if ref := writeVendoredFile(dest, slug, files[i].path, files[i].body); ref != nil {
+			return ref
+		}
+	}
+	return nil
+}
+
 // writeVendoredDir creates one fixed layout directory under slug.
 func writeVendoredDir(dest *os.Root, slug, dir string) *core.RefusalError {
 	if err := dest.MkdirAll(filepath.Join(slug, dir), packDirPerm); err != nil {
@@ -590,6 +603,9 @@ func writeVendoredDir(dest *os.Root, slug, dir string) *core.RefusalError {
 // destination root.
 func writeVendoredFile(dest *os.Root, slug, rel string, body []byte) *core.RefusalError {
 	name := filepath.Join(slug, filepath.FromSlash(rel))
+	if err := dest.MkdirAll(filepath.Dir(name), packDirPerm); err != nil {
+		return badPack(fmt.Sprintf("create %s/%s/%s: %v", RepoPacksDir, slug, rel, err))
+	}
 	if err := atomic.WriteFileIn(dest, name, body); err != nil {
 		return badPack(fmt.Sprintf("write %s/%s/%s: %v", RepoPacksDir, slug, rel, err))
 	}

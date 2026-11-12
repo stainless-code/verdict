@@ -144,6 +144,32 @@ func TestAddKeepsOtherEntriesSorted(t *testing.T) {
 `)
 }
 
+// TestAddVendorsReservedTrees proves pack add copies evals/ and examples/ and
+// folds them into the recorded hash.
+func TestAddVendorsReservedTrees(t *testing.T) {
+	repo := t.TempDir()
+	t.Chdir(repo)
+	sourcePack(t, repo, "src-packs/lenses", lockManifest, map[string]string{
+		"lenses/perf.md":  "perf body\n",
+		"evals/case.sh":   "echo ok\n",
+		"examples/use.md": "sample\n",
+	})
+	resp, ref := RunAdd(context.Background(), &AddRequest{Source: "src-packs/lenses"})
+	if ref != nil {
+		t.Fatalf("RunAdd: %s: %s", ref.Code, ref.Message)
+	}
+	const hash = "9605e0bb3cd21c42455debbf9bc1652e8b1f31fcbdde0fcb1c09aa8ff8b2e420"
+	if got, want := resp.Human, []string{
+		"added acme/lenses@1.0.0 source=dir:src-packs/lenses sha256:" + hash,
+	}; !slices.Equal(got, want) {
+		t.Fatalf("human = %q, want %q", got, want)
+	}
+	assertFile(t, ".verdict/packs/lenses/evals/case.sh", "echo ok\n")
+	assertFile(t, ".verdict/packs/lenses/examples/use.md", "sample\n")
+	assertFile(t, LockFile, fmt.Sprintf(addLockFmt, "dir:src-packs/lenses", hash,
+		"a5dd58a7c16d6fd25e5d3b90f652883bee209227f15bf9d6747821c6b4654729"))
+}
+
 // TestAddRefusesSourceInsideRepoPacks proves a path inside the vendored tree
 // refuses instead of copying a pack onto itself.
 func TestAddRefusesSourceInsideRepoPacks(t *testing.T) {
