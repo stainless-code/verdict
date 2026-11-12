@@ -20,6 +20,8 @@ const (
 	bundleKeySep = "\x00"
 	// decimalBase is the base every integer stamp component formats in.
 	decimalBase = 10
+	// modeBase is the base one entry's permission bits format in.
+	modeBase = 8
 	// overrideStampCap bounds one override fragment's content digest: a
 	// fragment is a paragraph, not an artifact.
 	overrideStampCap int64 = 64 << 10
@@ -123,7 +125,7 @@ func appendEntryStamp(out *strings.Builder, dir, prefix string, entry os.DirEntr
 // every refusal writes cannot tell one unreadable state from another, so
 // nothing built from it is cacheable.
 func appendOverrideStamp(out *strings.Builder, path string) bool {
-	_, err := os.Stat(path)
+	info, err := os.Stat(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		out.WriteString(path + missingMarker)
 		return true
@@ -140,19 +142,28 @@ func appendOverrideStamp(out *strings.Builder, path string) bool {
 	sum := sha256.Sum256(raw)
 	out.WriteString(path)
 	out.WriteByte(' ')
+	appendMode(out, info)
 	out.WriteString(hex.EncodeToString(sum[:]))
 	out.WriteByte('\n')
 	return true
 }
 
-// appendStatLine writes one name + size + mtime fingerprint row.
+// appendStatLine writes one name + mode + size + mtime fingerprint row.
 func appendStatLine(out *strings.Builder, name string, info os.FileInfo) {
 	out.WriteString(name)
 	out.WriteByte(' ')
+	appendMode(out, info)
 	out.WriteString(strconv.FormatInt(info.Size(), decimalBase))
 	out.WriteByte(' ')
 	out.WriteString(strconv.FormatInt(info.ModTime().UnixNano(), decimalBase))
 	out.WriteByte('\n')
+}
+
+// appendMode writes one entry's mode bits, so a permission-only change moves
+// the stamp.
+func appendMode(out *strings.Builder, info os.FileInfo) {
+	out.WriteString(strconv.FormatUint(uint64(info.Mode()), modeBase))
+	out.WriteByte(' ')
 }
 
 // cached composes one bundle's report, reusing the in-memory entry while its

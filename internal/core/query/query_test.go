@@ -749,8 +749,8 @@ func sourceBytes(t *testing.T, data map[string]any, name string) any {
 	return nil
 }
 
-// TestCacheDoesNotPinRefusals proves a refusal is never stored: a permission
-// fix that leaves the stamp untouched reads cleanly at the next request.
+// TestCacheDoesNotPinRefusals proves a refusal is never stored: the refused
+// request leaves the cache empty, and the permission fix composes cleanly.
 func TestCacheDoesNotPinRefusals(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {
@@ -764,19 +764,61 @@ func TestCacheDoesNotPinRefusals(t *testing.T) {
 	}
 	layer := newLayer(dir)
 	root := RootID(mustAbs(t, dir))
-	before := detailStamp(t, dir, root)
 	if err := os.Chmod(store, 0); err != nil {
 		t.Fatal(err)
 	}
+	restoreMode(t, store, info.Mode())
 	assertDetailRefusal(t, layer, root, "missing-findings")
-	if after := detailStamp(t, dir, root); after != before {
-		t.Fatalf("permission change moved the cache stamp; the test proves nothing")
+	if got := layer.cacheEntries(); got != 0 {
+		t.Fatalf("cache entries after the refusal = %d, want 0", got)
 	}
 	if err := os.Chmod(store, info.Mode()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := layer.Detail(context.Background(), root, "1234"); err != nil {
 		t.Errorf("Detail after the permission fix = %v, want success (refusal cached)", err)
+	}
+}
+
+// TestCacheStampIncludesModeBits proves a chmod that leaves a file's bytes
+// alone still moves the stamp, for a bundle artifact and for an override.
+func TestCacheStampIncludesModeBits(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("mode bits are not portable on Windows")
+	}
+	dir, _ := fixture(t)
+	writeFiles(t, dir, map[string]string{".verdict/overrides/preamble.md": "A preamble.\n"})
+	layer := newLayer(dir)
+	root := RootID(mustAbs(t, dir))
+	if _, err := layer.Detail(context.Background(), root, "1234"); err != nil {
+		t.Fatalf("first Detail: %v", err)
+	}
+	for _, rel := range []string{
+		".verdict/state/1234/full.diff",
+		".verdict/overrides/preamble.md",
+	} {
+		before := detailStamp(t, dir, root)
+		flipMode(t, filepath.Join(dir, filepath.FromSlash(rel)))
+		if after := detailStamp(t, dir, root); after == before {
+			t.Errorf("chmod on %s did not move the cache stamp", rel)
+		}
+		if _, err := layer.Detail(context.Background(), root, "1234"); err != nil {
+			t.Errorf("Detail after the chmod on %s = %v, want success", rel, err)
+		}
+	}
+}
+
+// flipMode toggles one file's group-read bit, so the new mode differs under any
+// umask.
+func flipMode(t *testing.T, path string) {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, info.Mode().Perm()^0o040); err != nil {
+		t.Fatal(err)
 	}
 }
 
