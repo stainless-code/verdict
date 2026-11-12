@@ -162,7 +162,7 @@
       "/$defs/trendData/properties/by_category": "Portfolio finding counts by observed category with untagged for null entries; only observed categories appear.",
       "/$defs/trendBundleRow/properties/by_category": "One bundle's finding counts by observed category with untagged for null entries.",
       "/$defs/calibrateData/properties/precision": "Live-join precision: totals plus by_tier counts and by_category cells (fixed, resolved_unfixed, open, unknown, judged, resolution_rate; a zero judged denominator reads null). Outcome rows carry the finding's category, null when untagged.",
-      "/$defs/indexData": "index --json data: one object across build, status, prune, callers, tests-for, co-changed, and owners, so kind names the subcommand and every other key is optional.",
+      "/$defs/indexData": "index --json data: one object across build, status, prune, callers, tests-for, co-changed, owners, and blast-radius, so kind names the subcommand and every other key is optional.",
       "/$defs/indexShards": "The local shard store: file count and byte total.",
       "/$defs/indexTreeRow": "One stored tree file: its tree SHA, file count, and bytes.",
       "/$defs/indexRemoved": "The prune receipt: trees and shards removed.",
@@ -172,7 +172,17 @@
       "/$defs/indexCounts": "The query counts for the kind: caller rows and candidates left unresolved, candidate tests, or co-change partners and the commits that touched the target.",
       "/$defs/indexRow": "One row of a caller, candidate-test, or co-change query: path plus the fields that kind measures (line/kind/resolution for callers, via for candidates, commits/jaccard for partners).",
       "/$defs/indexWindow": "The bounded history window a co-change query read: oldest and newest commit sha, and how many commits it counted (empty window names no bounds).",
-      "/$defs/indexTarget": "One queried path and its CODEOWNERS answer. owners is null when the tree has no CODEOWNERS file (owners_source is null too) or when no rule matches (owners_source names the file); a matching ownerless rule cleared an earlier match, so owners is [] with owners_source named. Never an owner named nobody."
+      "/$defs/indexTarget": "One queried path and its CODEOWNERS answer. owners is null when the tree has no CODEOWNERS file (owners_source is null too) or when no rule matches (owners_source names the file); a matching ownerless rule cleared an earlier match, so owners is [] with owners_source named. Never an owner named nobody.",
+      "/$defs/indexBlastInput": "blast-radius's query input: the fetched PR bundle slug and its head when --pr read one (both null for --paths), and the resolved changed paths — every path the bundle diff names, or every --paths entry.",
+      "/$defs/indexBlastSymbols": "The changed declarations: each declaration whose span the diff touched, or every declaration in a --paths file. count is how many were measured and truncated is how many the limit hid; both are null when no index answered, never 0.",
+      "/$defs/indexBlastSymbol": "One changed declaration: the indexed file, the declared name and kind, and its first line. A declaration owns its source from that line to the line before the next declaration.",
+      "/$defs/indexBlastCallers": "The callers of the changed declarations within depth 2, walked once per target and deduplicated by call site. count, unresolved, and truncated are null when no index answered.",
+      "/$defs/indexBlastCaller": "One caller row: the changed symbol it is reached from (import path and name), the call site, and the depth — 1 for a direct caller, 2 for a caller of a direct caller. resolution is exact within the declaring package and lexical through an import edge, as `index callers` defines it.",
+      "/$defs/indexBlastTests": "The candidate tests to read for the changed declarations, strongest mechanism per file. A candidate is never a coverage claim, and count/truncated are null when no index answered.",
+      "/$defs/indexBlastPartners": "The paths that moved with each changed path in one bounded co-change window, read at HEAD. count and truncated are always measured: history needs no index.",
+      "/$defs/indexBlastPartner": "One partner path, the changed path it moved with, its co-change count, and the Jaccard ratio.",
+      "/$defs/indexBlastOwners": "One ownership row per changed path, from the CODEOWNERS file at the queried tree. count and truncated are always measured.",
+      "/$defs/indexData/properties/index": "Present only when the queried tree has a stored index; blast-radius omits it when the symbol, caller, and test lists are unmeasured."
     }
   },
   "findings": {

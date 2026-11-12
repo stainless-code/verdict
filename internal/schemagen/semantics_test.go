@@ -164,7 +164,13 @@ var publishedSemantics = map[string]string{
 	// named). Description only; no property, required key, enum, or type
 	// changed. Pack list: additive $defs/packData and $defs/packEntry; the
 	// envelope data object was already open, so no existing shape moved.
-	"envelope.schema.json": "3ff6d6c063f2448eb2d24a8ee19a445777d493622b79a417b654e91536b0e685",
+	// blast radius: additive indexData properties input, symbols, callers,
+	// tests, co_changed, and owners with their $defs entries, an additive
+	// blast-radius kind enum value, and one optional description on the shared
+	// index property. count/unresolved/truncated are nullable integers on the
+	// new list objects, so an absent index reads null instead of 0; no existing
+	// property, required key, or type changed.
+	"envelope.schema.json": "0abfacb93a88d3eecbe5efe5b0794c7ab07011ccf6739e1b2a02618fd174913b",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
