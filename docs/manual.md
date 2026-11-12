@@ -1419,6 +1419,15 @@ to pin the port or `--host` to bind another interface. The server prints one
 tokenised start URL and stops on Ctrl-C (exit 3). It never fetches, posts, runs
 a model, or writes a store.
 
+The browser UI has an inbox, review detail with its evidence ledger, threads,
+cost, precision, and a gate panel. It reads the same `/v1` envelopes as other
+clients. Updates arrive as invalidations, so the page fetches the visible view
+again; reconnecting also refreshes it. With `--no-watch`, the live indicator is
+hidden and a refresh button is shown. The embedded files are plain HTML, CSS,
+and JavaScript with no build step. A static exporter can set
+`<meta name="verdict-mode" content="static">` and place `data.json` beside
+`index.html`; the app then reads that data file instead of `/v1`.
+
 ```bash
 verdict serve                    # the current repository
 verdict serve --root ~/work      # every repository below this directory
