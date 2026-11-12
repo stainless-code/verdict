@@ -48,8 +48,8 @@ func assertInventoryDoesNotBlock(t *testing.T, layer *Layer, root Root, bundleDi
 	t.Helper()
 	done := make(chan int, 1)
 	go func() {
-		sources, _ := layer.inventory(root, "1234", bundleDir)
-		done <- len(sources)
+		report := layer.inventory(root, "1234", bundleDir)
+		done <- len(report.sources)
 	}()
 	select {
 	case got := <-done:

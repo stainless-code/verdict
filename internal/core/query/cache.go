@@ -48,12 +48,11 @@ func keyFor(root Root, bundle string, flags *core.ReportFlags) cacheKey {
 // entry is one cached composition: the response or refusal plus the artifact
 // inventory it was built from.
 type entry struct { //nolint:govet // grouped as one cache row
-	resp      *core.ReportResponse
-	ref       *core.RefusalError
-	sources   []Source
-	stamp     stamp
-	used      uint64
-	truncated bool
+	resp  *core.ReportResponse
+	ref   *core.RefusalError
+	inv   inventoryReport
+	stamp stamp
+	used  uint64
 }
 
 // bundleStamp reads one bundle's cache fingerprint and the root policy inputs
@@ -122,21 +121,21 @@ func appendStatLine(out *strings.Builder, name string, info os.FileInfo) {
 // anywhere: a stale entry is a bug, not data loss.
 func (l *Layer) cached(
 	ctx context.Context, root Root, bundle, dir string, flags *core.ReportFlags,
-) (*core.ReportResponse, *core.RefusalError, []Source, bool) {
+) (*core.ReportResponse, *core.RefusalError, inventoryReport) {
 	key := keyFor(root, bundle, flags)
 	current := bundleStamp(root, dir)
 	l.mu.Lock()
 	if hit, ok := l.cache[key]; ok && hit.stamp == current {
 		l.touchLocked(key, &hit)
 		l.mu.Unlock()
-		return hit.resp, hit.ref, hit.sources, hit.truncated
+		return hit.resp, hit.ref, hit.inv
 	}
 	l.mu.Unlock()
 
 	resp, ref := l.compose(ctx, root, bundle, dir, flags)
-	sources, truncated := l.inventory(root, bundle, dir)
+	inv := l.inventory(root, bundle, dir)
 	if ref != nil && ref.Code == "canceled" {
-		return resp, ref, sources, truncated
+		return resp, ref, inv
 	}
 
 	l.mu.Lock()
@@ -144,11 +143,9 @@ func (l *Layer) cached(
 	if !bundlePresentLocked(l.cache, bundleID) && bundleCountLocked(l.cache) >= l.maxBundles {
 		evictOldestBundleLocked(l.cache)
 	}
-	l.touchLocked(key, &entry{
-		resp: resp, ref: ref, sources: sources, truncated: truncated, stamp: current,
-	})
+	l.touchLocked(key, &entry{resp: resp, ref: ref, inv: inv, stamp: current})
 	l.mu.Unlock()
-	return resp, ref, sources, truncated
+	return resp, ref, inv
 }
 
 // touchLocked stores one entry as the most recently used composition.

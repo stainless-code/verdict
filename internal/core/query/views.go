@@ -170,20 +170,21 @@ func (l *Layer) collectRows(
 	var sum totals
 	partial := false
 	for _, root := range l.roots {
-		rootRows, rootErrs, rootSum, sources, inventoryCut, cut, listErrs := l.collectRoot(ctx, root, pattern)
+		rootRows, rootErrs, rootSum, sources, inv, cut, listErrs := l.collectRoot(ctx, root, pattern)
 		rows = append(rows, rootRows...)
 		errs = append(errs, listErrs...)
 		errs = append(errs, rootErrs...)
 		sum.addTotals(rootSum)
 		view.Sources = mergeSources(view.Sources, sources)
-		partial = partial || cut || len(rootErrs) > 0 || len(listErrs) > 0
+		partial = partial || cut || inv.cut || len(rootErrs) > 0 || len(listErrs) > 0
 		if cut {
 			view.Warnings = append(view.Warnings,
 				fmt.Sprintf("serve: bundle cap %d reached under %s; listing truncated", l.maxBundles, root.Path))
 		}
-		if inventoryCut {
+		if inv.cut {
 			view.Warnings = append(view.Warnings, inventoryWarning(root.Path))
 		}
+		view.Warnings = append(view.Warnings, inv.notes...)
 	}
 	return rows, errs, sum, partial
 }
@@ -191,40 +192,40 @@ func (l *Layer) collectRows(
 // collectRoot lists and composes one root's bundles.
 func (l *Layer) collectRoot(
 	ctx context.Context, root Root, pattern string,
-) ([]any, []ErrRow, totals, []Source, bool, bool, []ErrRow) {
+) ([]any, []ErrRow, totals, []Source, inventoryReport, bool, []ErrRow) {
 	names, truncated, listErrs := l.listBundles(root)
-	rows, errs, sum, sources, inventoryCut := l.composeRows(ctx, root, names, pattern)
-	return rows, errs, sum, sources, inventoryCut, truncated, listErrs
+	rows, errs, sum, sources, inv := l.composeRows(ctx, root, names, pattern)
+	return rows, errs, sum, sources, inv, truncated, listErrs
 }
 
 // composeRows composes the matching bundles of one root.
 func (l *Layer) composeRows(
 	ctx context.Context, root Root, names []string, pattern string,
-) (rows []any, errs []ErrRow, sum totals, sources []Source, inventoryCut bool) {
+) (rows []any, errs []ErrRow, sum totals, sources []Source, inv inventoryReport) {
 	for _, bundle := range names {
 		item, ok := l.collectBundle(ctx, root, bundle, pattern)
 		if !ok {
 			continue
 		}
 		rows = append(rows, item.row)
-		sources = mergeSources(sources, item.sources)
-		inventoryCut = inventoryCut || item.truncated
+		sources = mergeSources(sources, item.inv.sources)
+		inv.cut = inv.cut || item.inv.cut
+		inv.notes = append(inv.notes, item.inv.notes...)
 		if len(item.errs) > 0 {
 			errs = append(errs, item.errs...)
 			continue
 		}
 		sum.add(item.resp)
 	}
-	return rows, errs, sum, sources, inventoryCut
+	return rows, errs, sum, sources, inv
 }
 
 // bundleItem is one composed inbox row and what it folded into the view.
 type bundleItem struct {
-	row       any
-	resp      *core.ReportResponse
-	errs      []ErrRow
-	sources   []Source
-	truncated bool
+	row  any
+	resp *core.ReportResponse
+	errs []ErrRow
+	inv  inventoryReport
 }
 
 // collectBundle composes one row; ok is false only for a name the listing
@@ -233,11 +234,11 @@ func (l *Layer) collectBundle(ctx context.Context, root Root, bundle, pattern st
 	if pattern != "" && !BundleMatches(pattern, bundle) {
 		return bundleItem{}, false
 	}
-	row, resp, rowErrs, rowSources, truncated := l.row(ctx, root, bundle)
+	row, resp, rowErrs, inv := l.row(ctx, root, bundle)
 	if row == nil {
 		return bundleItem{}, false
 	}
-	return bundleItem{row: row, resp: resp, errs: rowErrs, sources: rowSources, truncated: truncated}, true
+	return bundleItem{row: row, resp: resp, errs: rowErrs, inv: inv}, true
 }
 
 // row composes one inbox row: the report service's counts plus the post
@@ -245,7 +246,7 @@ func (l *Layer) collectBundle(ctx context.Context, root Root, bundle, pattern st
 // refuses.
 func (l *Layer) row(
 	ctx context.Context, root Root, bundle string,
-) (any, *core.ReportResponse, []ErrRow, []Source, bool) {
+) (any, *core.ReportResponse, []ErrRow, inventoryReport) {
 	dir, ok, ref := l.resolve(root, bundle)
 	if ref != nil {
 		row := jq.NewObj(
@@ -253,13 +254,13 @@ func (l *Layer) row(
 			keyRepo, "", keyPr, numericPr(bundle), keyModel, nil,
 			keyHead, nil, keyOpen, nil, keyDeferred, nil, keyAddressed, nil, keyTerminal, nil,
 		)
-		return row, nil, []ErrRow{errRow(root, bundle, ref.Code, ref.Message)}, nil, false
+		return row, nil, []ErrRow{errRow(root, bundle, ref.Code, ref.Message)}, inventoryReport{}
 	}
 	if !ok {
-		return nil, nil, nil, nil, false
+		return nil, nil, nil, inventoryReport{}
 	}
 	flags := inboxFlags()
-	resp, refusal, sources, truncated := l.cached(ctx, root, bundle, dir, &flags)
+	resp, refusal, inv := l.cached(ctx, root, bundle, dir, &flags)
 	row := jq.NewObj(
 		keyRoot, root.ID, keyBundle, bundle, keyDir, bundleDir(bundle),
 		keyRepo, bundleRepo(dir), keyPr, numericPr(bundle), keyModel, postModel(dir),
@@ -270,14 +271,14 @@ func (l *Layer) row(
 		row.Set(keyDeferred, nil)
 		row.Set(keyAddressed, nil)
 		row.Set(keyTerminal, nil)
-		return row, nil, []ErrRow{errRow(root, bundle, refusal.Code, refusal.Message)}, sources, truncated
+		return row, nil, []ErrRow{errRow(root, bundle, refusal.Code, refusal.Message)}, inv
 	}
 	row.Set(keyHead, nullableString(resp.Data.Head.Fetched))
 	row.Set(keyOpen, resp.Data.Verdict.Open)
 	row.Set(keyDeferred, resp.Data.Verdict.Deferred)
 	row.Set(keyAddressed, resp.Data.Verdict.Addressed)
 	row.Set(keyTerminal, resp.Data.Verdict.Terminal)
-	return row, resp, nil, sources, truncated
+	return row, resp, nil, inv
 }
 
 // Detail composes one bundle's review view: the report, its gate, the thread
@@ -296,7 +297,7 @@ func (l *Layer) Detail(ctx context.Context, rootID, bundle string) (*View, error
 		return nil, ErrNotFound
 	}
 	flags := l.detailFlags()
-	resp, refusal, sources, truncated := l.cached(ctx, root, bundle, dir, &flags)
+	resp, refusal, inv := l.cached(ctx, root, bundle, dir, &flags)
 	if refusal != nil {
 		return nil, refusal
 	}
@@ -312,36 +313,36 @@ func (l *Layer) Detail(ctx context.Context, rootID, bundle string) (*View, error
 		data.Set(keyGate, resp.Data.Gate.Wire())
 	}
 	data.Set(keyThreads, threadsData)
-	data.Set(keyArtifacts, artifacts(bundle, sources))
-	data.Set(keyPartial, len(errs) > 0 || truncated)
-	data.Set(keySources, sourcesWire(sources))
+	data.Set(keyArtifacts, artifacts(bundle, inv.sources))
+	data.Set(keyPartial, len(errs) > 0 || inv.cut)
+	data.Set(keySources, sourcesWire(inv.sources))
 	data.Set(keyErrors, errorsWire(errs))
 	view := &View{
 		At:       resp.At,
 		Next:     "run verdict show <repo> " + bundle + " --sig <sig> to read one finding",
 		Repo:     bundleRepo(dir),
 		Pr:       bundle,
-		Warnings: detailWarnings(resp.Warnings, bundle, truncated),
+		Warnings: detailWarnings(resp.Warnings, bundle, inv),
 		Data:     data,
-		Sources:  sources,
+		Sources:  inv.sources,
 		Errors:   errs,
 	}
 	return view, nil
 }
 
-// inventoryWarning names the source-inventory cap that truncated a view.
+// inventoryWarning names the source-inventory caps that truncated a view.
 func inventoryWarning(where string) string {
-	return fmt.Sprintf("serve: source inventory capped at %d entries or %d MiB under %s; sources[] is incomplete",
-		maxInventoryEntries, maxInventoryMiB, where)
+	return fmt.Sprintf("serve: source inventory capped at %d entries, %d MiB, or %d MiB per artifact under %s; sources[] is incomplete",
+		maxInventoryEntries, maxInventoryMiB, sourceCap>>20, where)
 }
 
-// detailWarnings adds the inventory warning to a detail's composed warnings.
-func detailWarnings(base []string, bundle string, truncated bool) []string {
+// detailWarnings adds the inventory warnings to a detail's composed warnings.
+func detailWarnings(base []string, bundle string, inv inventoryReport) []string {
 	warnings := append([]string{}, base...)
-	if truncated {
+	if inv.cut {
 		warnings = append(warnings, inventoryWarning("bundle "+bundle))
 	}
-	return warnings
+	return append(warnings, inv.notes...)
 }
 
 // Show returns one finding through the show service, byte-identical to

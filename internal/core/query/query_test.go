@@ -18,6 +18,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 const (
@@ -513,6 +514,127 @@ func assertSourcePresent(t *testing.T, view *View, path string) {
 	t.Errorf("sources = %v, want a row for %s", view.Sources, path)
 }
 
+// TestInventoryReportsAnOverCapArtifact proves a file past the per-artifact
+// cap is named in a warning and marks the view partial instead of vanishing.
+func TestInventoryReportsAnOverCapArtifact(t *testing.T) {
+	t.Parallel()
+	dir, _ := fixture(t)
+	oversized := int64(jq.MaxFindingsBytes) + 1024
+	path := filepath.Join(dir, ".verdict", "state", "1234", "full.diff")
+	if err := os.Truncate(path, oversized); err != nil {
+		t.Fatal(err)
+	}
+	layer := newLayer(dir)
+	view, err := layer.Detail(context.Background(), RootID(mustAbs(t, dir)), "1234")
+	if err != nil {
+		t.Fatalf("Detail: %v", err)
+	}
+	data := wireMap(t, view.Data)
+	if data["partial"] != true {
+		t.Errorf("partial = %v, want true for an over-cap artifact", data["partial"])
+	}
+	want := "serve: source inventory skipped .verdict/state/1234/full.diff: 8389632 bytes is over the 8 MiB read cap"
+	if !slices.Contains(view.Warnings, want) {
+		t.Errorf("warnings = %v, want %q", view.Warnings, want)
+	}
+	if got := sourceBytes(t, data, "full.diff"); got != nil {
+		t.Errorf("full.diff bytes = %v, want null for an unread artifact", got)
+	}
+}
+
+// TestInventoryChargesOverCapReadsToTheBudget proves many oversized artifacts
+// stop at the byte budget instead of being attempted one by one.
+func TestInventoryChargesOverCapReadsToTheBudget(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	names := []string{"findings.json", "full.diff", "patch.json"}
+	for _, name := range names {
+		sparseFile(t, filepath.Join(dir, name), sourceCap+1024)
+	}
+	c := &sourceCollector{
+		root: Root{Path: dir}, rootPath: dir,
+		maxEntries: maxInventoryEntries, maxBytes: maxInventoryBytes,
+	}
+	for _, name := range names {
+		c.add("1234", filepath.Join(dir, name))
+	}
+	if len(c.sources) != 0 {
+		t.Errorf("sources = %d, want none for over-cap files", len(c.sources))
+	}
+	if !c.truncated {
+		t.Error("truncated = false, want true past the per-file cap")
+	}
+	if c.bytes < maxInventoryBytes {
+		t.Errorf("bytes = %d, want the failed reads charged to the %d-byte budget", c.bytes, maxInventoryBytes)
+	}
+	if len(c.notes) != 2 {
+		t.Errorf("notes = %v, want two attempts before the budget stops the third", c.notes)
+	}
+}
+
+// TestInventoryBoundsAHugeDirectory proves enumeration reads only one batch:
+// a 10 000-entry chunks directory yields the source cap, reports truncation,
+// and never materializes the whole directory.
+func TestInventoryBoundsAHugeDirectory(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	chunks := filepath.Join(dir, "chunks")
+	if err := os.MkdirAll(chunks, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 10_000 {
+		name := fmt.Sprintf("%05d.cost.json", i)
+		if err := os.WriteFile(filepath.Join(chunks, name), []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	entries, more, err := readcommon.ReadDirLimit(chunks, maxInventoryEntries+1)
+	if err != nil {
+		t.Fatalf("ReadDirLimit: %v", err)
+	}
+	if len(entries) != maxInventoryEntries+1 || !more {
+		t.Errorf("ReadDirLimit = %d entries, more=%v; want one bounded batch of %d",
+			len(entries), more, maxInventoryEntries+1)
+	}
+	layer := newLayer(dir)
+	report := layer.inventory(Root{Path: dir}, "1234", dir)
+	if len(report.sources) != maxInventoryEntries {
+		t.Errorf("sources = %d, want the %d-entry cap", len(report.sources), maxInventoryEntries)
+	}
+	if !report.cut {
+		t.Error("cut = false, want truncation reported for a 10 000-entry directory")
+	}
+}
+
+// sparseFile creates a sparse regular file of size bytes.
+func sparseFile(t *testing.T, path string, size int64) {
+	t.Helper()
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Truncate(size); err != nil {
+		_ = f.Close()
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// sourceBytes reads one artifact row's bytes from a decoded detail view.
+func sourceBytes(t *testing.T, data map[string]any, name string) any {
+	t.Helper()
+	for _, row := range asList(t, data["artifacts"]) {
+		artifact := asMap(t, row)
+		if artifact["path"] == name {
+			return artifact["bytes"]
+		}
+	}
+	t.Fatalf("artifacts = %v, want a row for %s", data["artifacts"], name)
+	return nil
+}
+
 // TestCacheDoesNotPinCancellation proves a request-scoped cancellation is not
 // stored: the next request with a live context composes normally.
 func TestCacheDoesNotPinCancellation(t *testing.T) {
@@ -575,11 +697,11 @@ func TestCacheEvictsByBundleAtTheCap(t *testing.T) {
 		Runtime: &core.Runtime{Now: fixedNow},
 	}, Options{Check: "critical", MaxBundles: 1})
 	flags := inboxFlags()
-	if _, ref, _, _ := layer.cached(context.Background(), rootA, "1234",
+	if _, ref, _ := layer.cached(context.Background(), rootA, "1234",
 		filepath.Join(dirA, ".verdict", "state", "1234"), &flags); ref != nil {
 		t.Fatalf("cache root A: %v", ref)
 	}
-	if _, ref, _, _ := layer.cached(context.Background(), rootB, "1234",
+	if _, ref, _ := layer.cached(context.Background(), rootB, "1234",
 		filepath.Join(dirB, ".verdict", "state", "1234"), &flags); ref != nil {
 		t.Fatalf("cache root B: %v", ref)
 	}
@@ -639,7 +761,7 @@ func assertTruncatedInventory(t *testing.T, view *View) {
 	if data["partial"] != true {
 		t.Errorf("partial = %v, want true for a truncated inventory", data["partial"])
 	}
-	want := "serve: source inventory capped at 64 entries or 16 MiB under bundle 1234; sources[] is incomplete"
+	want := "serve: source inventory capped at 64 entries, 16 MiB, or 8 MiB per artifact under bundle 1234; sources[] is incomplete"
 	if !slices.Contains(view.Warnings, want) {
 		t.Errorf("warnings = %v, want %q", view.Warnings, want)
 	}
