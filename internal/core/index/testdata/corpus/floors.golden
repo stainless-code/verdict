@@ -1,11 +1,11 @@
 go/callers-open 1.0000 0.7500
 go/callers-save n/a 0.0000
 go/callers-touch n/a 0.0000
-go/tests-for-store 1.0000 0.8000
-go/tests-for-capped 1.0000 0.7500
+go/tests-for-store 1.0000 1.0000
+go/tests-for-capped 1.0000 1.0000
 go/callers 1.0000 0.4286
 go/callers-cross-package 1.0000 0.4167
-go/tests-for 1.0000 0.7778
+go/tests-for 1.0000 1.0000
 ts/callers-save 1.0000 0.5455
 ts/callers-audit 1.0000 0.5000
 ts/callers-namesake 1.0000 1.0000

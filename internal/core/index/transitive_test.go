@@ -63,6 +63,28 @@ func TestTestsForTransitiveScannedLanguages(t *testing.T) {
 	})
 }
 
+// TestTestsForPackageImportIsOneHop proves a test whose own package imports the
+// declaring package is a candidate at one hop even though its file imports only
+// `testing`, and that a test naming the declaring package itself keeps the
+// direct mechanism at that same hop.
+func TestTestsForPackageImportIsOneHop(t *testing.T) {
+	f := newFixture(t)
+	f.write("go.mod", "module example.com/m\n\ngo 1.27\n")
+	f.write("a/a.go", "package a\n\nfunc Target() {}\n")
+	f.write("b/b.go", "package b\n\nimport \"example.com/m/a\"\n\nfunc Use() {\n\ta.Target()\n}\n")
+	f.write("b/b_test.go", "package b\n\nimport \"testing\"\n\nfunc TestUse(t *testing.T) {\n\tUse()\n}\n")
+	f.write("c/c_test.go", "package c\n\nimport (\n\t\"testing\"\n\n\t\"example.com/m/a\"\n)\n\n"+
+		"func TestTarget(t *testing.T) {\n\ta.Target()\n}\n")
+	f.commit("one")
+	f.build()
+	rows := []TestRow{
+		{Path: "b/b_test.go", Via: viaTransitiveImport, Depth: 1},
+		{Path: "c/c_test.go", Via: viaReferences, Depth: 1},
+	}
+	assertTestRows(t, f.queryPath(QueryTestsFor, "a/a.go").Data.TestRows, rows)
+	assertDepthCap(t, f, "a/a.go", 1, rows, 0, "")
+}
+
 // TestTestsForDepthCapTruncates proves the depth cap bounds the rows and counts
 // the candidates one hop past it instead of dropping them silently.
 func TestTestsForDepthCapTruncates(t *testing.T) {
@@ -78,7 +100,7 @@ func TestTestsForDepthCapTruncates(t *testing.T) {
 			{Path: "c/more_test.go", Via: viaTransitiveImport, Depth: 2},
 		}, 1, "index: depth cap 2 reached (1 candidate test(s) one import hop beyond; raise --depth up to 8)")
 	})
-	t.Run("one hop turns the walk off", func(t *testing.T) {
+	t.Run("one hop keeps the immediate packages", func(t *testing.T) {
 		assertDepthCap(t, f, "a/a.go", 1, []TestRow{
 			{Path: "a/a_test.go", Via: viaSamePackage},
 			{Path: "b/b_test.go", Via: viaReferences, Depth: 1},

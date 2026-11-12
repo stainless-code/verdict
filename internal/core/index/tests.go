@@ -18,11 +18,6 @@ const (
 	viaTransitiveImport = "transitive-import"
 )
 
-// minTransitiveDepth is the first hop count that reads as transitive: a test
-// one hop out imports the declaring package itself, which the direct
-// mechanisms already name.
-const minTransitiveDepth = 2
-
 // testsDepthCapped names the candidates the depth cap hid.
 const testsDepthCapped = "index: depth cap %d reached (%d candidate test(s) one import hop beyond; raise --depth up to %d)"
 
@@ -352,11 +347,13 @@ func testVia(
 	}
 }
 
-// transitiveVia labels one file reached through its own package's imports, or
-// nothing: a file one hop out imports the declaring package itself, and the
-// direct mechanisms name that edge first.
+// transitiveVia labels one file reached through the imports its own package
+// holds, or nothing: depth 0 is the declaring package itself. A file one hop
+// out that names the declaring package is labeled by a direct mechanism first,
+// so what reaches here is a test whose own package imports the declaring one
+// while its own file imports nothing that reaches it.
 func transitiveVia(g *importGraph, depths map[graphNode]int, f *treeFile) (string, int) {
-	if depth := g.candidateDepth(depths, f); depth >= minTransitiveDepth {
+	if depth := g.candidateDepth(depths, f); depth > 0 {
 		return viaTransitiveImport, depth
 	}
 	return "", 0

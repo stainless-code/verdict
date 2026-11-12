@@ -86,7 +86,9 @@ func TestCallersPythonRows(t *testing.T) {
 
 // TestTestsForScannedLanguages proves the candidate test set for a TypeScript
 // and a Python source file: a test in the same directory, a test elsewhere that
-// imports the file, and a test that imports nothing of the sort.
+// imports the file, and a test that names nothing the tree holds — that one is
+// still a candidate at one hop, because its own package imports the declaring
+// one.
 func TestTestsForScannedLanguages(t *testing.T) {
 	f := newFixture(t)
 	f.write("util.ts", "export function target(a: number) { return a; }\n")
@@ -100,12 +102,25 @@ func TestTestsForScannedLanguages(t *testing.T) {
 	f.build()
 	assertTestRows(t, f.queryPath(QueryTestsFor, "util.ts").Data.TestRows, []TestRow{
 		{Path: "tests/extra.spec.ts", Via: viaReferences, Depth: 1},
+		{Path: "tests/unrelated.spec.ts", Via: viaTransitiveImport, Depth: 1},
 		{Path: "util.test.ts", Via: viaSamePackage},
 	})
 	assertTestRows(t, f.queryPath(QueryTestsFor, "pkg/mod.py").Data.TestRows, []TestRow{
 		{Path: "pkg/test_mod.py", Via: viaSamePackage},
 		{Path: "tests/test_use.py", Via: viaReferences, Depth: 1},
 	})
+}
+
+// TestTestsForUnresolvedSpecifierIsNoEdge proves a scanned specifier naming no
+// indexed directory or file contributes no import edge: a test whose only
+// import is missing is not a candidate for a package it never names.
+func TestTestsForUnresolvedSpecifierIsNoEdge(t *testing.T) {
+	f := newFixture(t)
+	f.write("util.ts", "export function target(a: number) { return a; }\n")
+	f.write("tests/deep.spec.ts", "import { other } from '../nowhere';\n\nother(1);\n")
+	f.commit("one")
+	f.build()
+	assertTestRows(t, f.queryPath(QueryTestsFor, "util.ts").Data.TestRows, nil)
 }
 
 // TestSharedBlobParsesPerLanguage proves two paths holding identical bytes in

@@ -24,6 +24,7 @@ func fileNode(f *treeFile) graphNode {
 type importGraph struct {
 	byImportPath map[string]string
 	dirs         map[string]bool
+	modules      map[string]bool
 	edges        map[graphNode][]graphNode
 }
 
@@ -31,7 +32,9 @@ type importGraph struct {
 // package directories, resolved by each language's own specifier rules.
 func newImportGraph(t *treeIndex) *importGraph {
 	dirs := indexedDirs(t)
-	g := &importGraph{dirs: dirs, byImportPath: importPathDirs(t.Module, dirs)}
+	g := &importGraph{
+		dirs: dirs, modules: indexedModules(t), byImportPath: importPathDirs(t.Module, dirs),
+	}
 	g.edges = g.reverseEdges(t)
 	return g
 }
@@ -46,6 +49,18 @@ func indexedDirs(t *treeIndex) map[string]bool {
 		}
 	}
 	return dirs
+}
+
+// indexedModules holds every indexed file's path without its source extension,
+// so a scanned specifier can name a module file as well as a package directory.
+func indexedModules(t *treeIndex) map[string]bool {
+	modules := make(map[string]bool, len(t.Files))
+	for i := range t.Files {
+		if f := &t.Files[i]; !f.unreadable() {
+			modules[trimSourceExt(f.Path)] = true
+		}
+	}
+	return modules
 }
 
 // unreadable reports an oversized or failed file: its imports were never
@@ -128,12 +143,18 @@ func (g *importGraph) importTargets(lang language, dir string, imp importEntry) 
 }
 
 // moduleDir resolves one module path to the directory it sits in: the path
-// itself for a package directory, otherwise its parent.
+// itself for a package directory, its parent for a module file, and nothing for
+// a path the tree does not hold — a specifier naming no file is not an edge to
+// the directory that would have contained it.
 func (g *importGraph) moduleDir(module string) string {
-	if g.dirs[module] {
+	switch {
+	case g.dirs[module]:
 		return module
+	case g.modules[module]:
+		return path.Dir(module)
+	default:
+		return ""
 	}
-	return path.Dir(module)
 }
 
 // addNodes returns dir as a node of one family, or nothing when the tree holds

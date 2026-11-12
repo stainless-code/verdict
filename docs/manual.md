@@ -2908,8 +2908,8 @@ indexed source file refuses `bad-flags`, and `--symbol` wants a qualified
 The list is **package-scoped, not file-scoped**: every test in a package whose
 imports reach the declaring package is named, whatever that individual test
 imports. One file's query therefore answers its whole well-connected
-neighbourhood — `tests-for internal/core/index/tests.go` answers 42 rows in this
-repository, 30 of them tests two imports away.
+neighbourhood — `tests-for internal/core/index/tests.go` answers 418 rows on
+this tree, 403 of them `transitive-import`.
 The transitive walk reads the reverse import graph breadth first from the
 declaring package to the packages that import it and on to theirs, using each
 language's own import data — a Go import path, a scanned specifier resolved
@@ -2917,11 +2917,13 @@ against the importing file's directory, and for Python the submodule a
 `from … import …` names. A visited set makes a cycle terminate. Edges never
 cross a language family, so a Python import cannot make a Go test reachable.
 Every row carries the import hops that reached it: none for a test in the
-declaring directory, 1 for a direct import edge, and 2 or more for
-`transitive-import`, so a direct candidate never reads as a transitive one. The
-walk stops at `--depth` hops (default 3, maximum 8) — `--depth 1` turns it
-off — and `depth_truncated` counts the candidates one hop past the cap, because
-a bounded walk that hid rows is not an empty one.
+declaring directory, 1 for a direct import edge or for a test whose own package
+imports the declaring one, and 2 or more for a package further out. A test that
+names the declaring package itself is never labelled `transitive-import`,
+whatever hop reached it: the direct mechanisms are tried first. The walk stops
+at `--depth` hops (default 3, maximum 8) — `--depth 1` keeps the one-hop
+neighbourhood — and `depth_truncated` counts the candidates one hop past the
+cap, because a bounded walk that hid rows is not an empty one.
 
 For a scanned language a test in another directory is a candidate only when it
 imports the queried file by a specifier that resolves to it (`./util`,
