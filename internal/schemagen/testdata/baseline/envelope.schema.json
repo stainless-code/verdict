@@ -1438,7 +1438,7 @@
       "additionalProperties": true
     },
     "indexData": {
-      "description": "index --json data: one object across build, status, prune, callers, tests-for, co-changed, and owners, so kind names the subcommand and every other key is optional.",
+      "description": "index --json data: one object across build, status, prune, callers, tests-for, co-changed, owners, and blast-radius, so kind names the subcommand and every other key is optional.",
       "type": "object",
       "properties": {
         "kind": {
@@ -1449,7 +1449,8 @@
             "callers",
             "tests-for",
             "co-changed",
-            "owners"
+            "owners",
+            "blast-radius"
           ]
         },
         "tree": { "type": "string" },
@@ -1472,7 +1473,10 @@
         },
         "removed": { "$ref": "#/$defs/indexRemoved" },
         "query": { "$ref": "#/$defs/indexQuery" },
-        "index": { "$ref": "#/$defs/indexStatus" },
+        "index": {
+          "description": "Present only when the queried tree has a stored index; blast-radius omits it when the symbol, caller, and test lists are unmeasured.",
+          "$ref": "#/$defs/indexStatus"
+        },
         "counts": { "$ref": "#/$defs/indexCounts" },
         "limit": { "type": "integer", "minimum": 1 },
         "truncated": { "type": "integer", "minimum": 0 },
@@ -1483,7 +1487,13 @@
         "window": { "$ref": "#/$defs/indexWindow" },
         "target": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/indexTarget" }]
-        }
+        },
+        "input": { "$ref": "#/$defs/indexBlastInput" },
+        "symbols": { "$ref": "#/$defs/indexBlastSymbols" },
+        "callers": { "$ref": "#/$defs/indexBlastCallers" },
+        "tests": { "$ref": "#/$defs/indexBlastTests" },
+        "co_changed": { "$ref": "#/$defs/indexBlastPartners" },
+        "owners": { "$ref": "#/$defs/indexBlastOwners" }
       },
       "required": ["kind"],
       "additionalProperties": true
@@ -1604,6 +1614,132 @@
         "owners_source": { "type": ["string", "null"] }
       },
       "required": ["path", "owners", "owners_source"],
+      "additionalProperties": true
+    },
+    "indexBlastInput": {
+      "description": "blast-radius's query input: the fetched PR bundle slug and its head when --pr read one (both null for --paths), and the resolved changed paths — every path the bundle diff names, or every --paths entry.",
+      "type": "object",
+      "properties": {
+        "pr": { "type": ["string", "null"] },
+        "head": { "type": ["string", "null"] },
+        "paths": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["pr", "head", "paths"],
+      "additionalProperties": true
+    },
+    "indexBlastSymbols": {
+      "description": "The changed declarations: each declaration whose span the diff touched, or every declaration in a --paths file. count is how many were measured and truncated is how many the limit hid; both are null when no index answered, never 0.",
+      "type": "object",
+      "properties": {
+        "count": { "type": ["integer", "null"], "minimum": 0 },
+        "truncated": { "type": ["integer", "null"], "minimum": 0 },
+        "rows": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/indexBlastSymbol" }
+        }
+      },
+      "required": ["count", "truncated", "rows"],
+      "additionalProperties": true
+    },
+    "indexBlastSymbol": {
+      "description": "One changed declaration: the indexed file, the declared name and kind, and its first line. A declaration owns its source from that line to the line before the next declaration.",
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "name": { "type": "string" },
+        "kind": { "enum": ["func", "method", "type", "var", "const"] },
+        "line": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["path", "name", "kind", "line"],
+      "additionalProperties": true
+    },
+    "indexBlastCallers": {
+      "description": "The callers of the changed declarations within depth 2, walked once per target and deduplicated by call site. count, unresolved, and truncated are null when no index answered.",
+      "type": "object",
+      "properties": {
+        "count": { "type": ["integer", "null"], "minimum": 0 },
+        "unresolved": { "type": ["integer", "null"], "minimum": 0 },
+        "truncated": { "type": ["integer", "null"], "minimum": 0 },
+        "rows": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/indexBlastCaller" }
+        }
+      },
+      "required": ["count", "unresolved", "truncated", "rows"],
+      "additionalProperties": true
+    },
+    "indexBlastCaller": {
+      "description": "One caller row: the changed symbol it is reached from (import path and name), the call site, and the depth — 1 for a direct caller, 2 for a caller of a direct caller. resolution is exact within the declaring package and lexical through an import edge, as `index callers` defines it.",
+      "type": "object",
+      "properties": {
+        "symbol": { "type": "string" },
+        "path": { "type": "string" },
+        "kind": {
+          "enum": ["call", "method", "type-ref", "value-ref", "embed"]
+        },
+        "resolution": { "enum": ["exact", "lexical"] },
+        "line": { "type": "integer", "minimum": 1 },
+        "depth": { "type": "integer", "minimum": 1, "maximum": 2 }
+      },
+      "required": ["symbol", "path", "kind", "resolution", "line", "depth"],
+      "additionalProperties": true
+    },
+    "indexBlastTests": {
+      "description": "The candidate tests to read for the changed declarations, strongest mechanism per file. A candidate is never a coverage claim, and count/truncated are null when no index answered.",
+      "type": "object",
+      "properties": {
+        "count": { "type": ["integer", "null"], "minimum": 0 },
+        "truncated": { "type": ["integer", "null"], "minimum": 0 },
+        "rows": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/indexRow" }
+        }
+      },
+      "required": ["count", "truncated", "rows"],
+      "additionalProperties": true
+    },
+    "indexBlastPartners": {
+      "description": "The paths that moved with each changed path in one bounded co-change window, read at HEAD. count is the number of (changed path, partner) rows and partners the distinct partner paths across them; truncated is always measured: history needs no index.",
+      "type": "object",
+      "properties": {
+        "count": { "type": "integer", "minimum": 0 },
+        "partners": { "type": "integer", "minimum": 0 },
+        "truncated": { "type": "integer", "minimum": 0 },
+        "rows": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/indexBlastPartner" }
+        }
+      },
+      "required": ["count", "partners", "truncated", "rows"],
+      "additionalProperties": true
+    },
+    "indexBlastPartner": {
+      "description": "One partner path, the changed path it moved with, its co-change count, and the Jaccard ratio.",
+      "type": "object",
+      "properties": {
+        "target": { "type": "string" },
+        "path": { "type": "string" },
+        "commits": { "type": "integer", "minimum": 0 },
+        "jaccard": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "required": ["target", "path", "commits", "jaccard"],
+      "additionalProperties": true
+    },
+    "indexBlastOwners": {
+      "description": "One ownership row per changed path, from the CODEOWNERS file at the queried tree. count and truncated are always measured.",
+      "type": "object",
+      "properties": {
+        "count": { "type": "integer", "minimum": 0 },
+        "truncated": { "type": "integer", "minimum": 0 },
+        "rows": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/indexTarget" }
+        }
+      },
+      "required": ["count", "truncated", "rows"],
       "additionalProperties": true
     },
     "calibrateData": {

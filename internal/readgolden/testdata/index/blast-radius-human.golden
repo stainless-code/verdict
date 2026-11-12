@@ -1,0 +1,27 @@
+exit: 0
+--- stdout ---
+index: 1 changed file(s), 3 changed symbol(s) at 40d865adf4bce4ae5595a9b09c3c9db07919b28e
+a/ab.go:3 func A
+a/ab.go:7 func B
+a/ab.go:9 func Third
+index: 7 caller(s) within depth 2 (1 unresolved)
+a/a_test.go:6 call (exact, depth 1) example.com/m/a.A
+a/top.go:4 call (exact, depth 1) example.com/m/a.A
+a/top.go:5 call (exact, depth 1) example.com/m/a.B
+b/b.go:6 call (lexical, depth 1) example.com/m/a.A
+b/b_test.go:10 call (lexical, depth 1) example.com/m/a.A
+b/b_test.go:14 call (lexical, depth 1) example.com/m/a.A
+c/c.go:6 call (lexical, depth 2) example.com/m/a.A
+index: 2 candidate test(s)
+a/a_test.go (same-package)
+b/b_test.go (references)
+index: 2 co-change pair(s) over 2 partner file(s)
+b/b_test.go (with a/ab.go, 2 commit(s))
+c/c.go (with a/ab.go, 2 commit(s))
+index: ownership for 1 changed path(s)
+a/ab.go @go-owner (.github/CODEOWNERS)
+--- stderr ---
+
+--- files ---
+--- file C/.verdict/index/cochange/92a6dcc6c0fb1cd1e1a9fa9070403fc9f2fe2824-2000.json ---
+{"schema_version":"2","head":"92a6dcc6c0fb1cd1e1a9fa9070403fc9f2fe2824","since":"","changes":[{"commit":"92a6dcc6c0fb1cd1e1a9fa9070403fc9f2fe2824","paths":["a/ab.go","c/c.go"]},{"commit":"3a340e7dc75cde7584539987485b18f67f2e9459","paths":["a/ab.go","b/b_test.go"]},{"commit":"1647310ab513f03bed87e79037dd6fa0fd99a9c7","paths":[".github/CODEOWNERS","a/a_test.go","a/ab.go","a/cycle.go","a/top.go","a/use.go","b/b.go","b/b_test.go","c/c.go","d/d.go","go.mod"]}],"commits":2000}

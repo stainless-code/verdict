@@ -728,7 +728,7 @@ export interface PackEntry {
   [key: string]: unknown;
 }
 
-/** index --json data: one object across build, status, prune, callers, tests-for, co-changed, and owners, so kind names the subcommand and every other key is optional. */
+/** index --json data: one object across build, status, prune, callers, tests-for, co-changed, owners, and blast-radius, so kind names the subcommand and every other key is optional. */
 export interface IndexData {
   kind:
     | "build"
@@ -737,7 +737,8 @@ export interface IndexData {
     | "callers"
     | "tests-for"
     | "co-changed"
-    | "owners";
+    | "owners"
+    | "blast-radius";
   tree?: string;
   commit?: string;
   built?: boolean;
@@ -752,6 +753,7 @@ export interface IndexData {
   kept?: Array<string>;
   removed?: IndexRemoved;
   query?: IndexQuery;
+  /** Present only when the queried tree has a stored index; blast-radius omits it when the symbol, caller, and test lists are unmeasured. */
   index?: IndexStatus;
   counts?: IndexCounts;
   limit?: number;
@@ -759,6 +761,12 @@ export interface IndexData {
   rows?: Array<IndexRow>;
   window?: IndexWindow;
   target?: IndexTarget | null;
+  input?: IndexBlastInput;
+  symbols?: IndexBlastSymbols;
+  callers?: IndexBlastCallers;
+  tests?: IndexBlastTests;
+  co_changed?: IndexBlastPartners;
+  owners?: IndexBlastOwners;
   [key: string]: unknown;
 }
 
@@ -842,6 +850,85 @@ export interface IndexTarget {
   path: string;
   owners: Array<string> | null;
   owners_source: string | null;
+  [key: string]: unknown;
+}
+
+/** blast-radius's query input: the fetched PR bundle slug and its head when --pr read one (both null for --paths), and the resolved changed paths — every path the bundle diff names, or every --paths entry. */
+export interface IndexBlastInput {
+  pr: string | null;
+  head: string | null;
+  paths: Array<string>;
+  [key: string]: unknown;
+}
+
+/** The changed declarations: each declaration whose span the diff touched, or every declaration in a --paths file. count is how many were measured and truncated is how many the limit hid; both are null when no index answered, never 0. */
+export interface IndexBlastSymbols {
+  count: number | null;
+  truncated: number | null;
+  rows: Array<IndexBlastSymbol>;
+  [key: string]: unknown;
+}
+
+/** One changed declaration: the indexed file, the declared name and kind, and its first line. A declaration owns its source from that line to the line before the next declaration. */
+export interface IndexBlastSymbol {
+  path: string;
+  name: string;
+  kind: "func" | "method" | "type" | "var" | "const";
+  line: number;
+  [key: string]: unknown;
+}
+
+/** The callers of the changed declarations within depth 2, walked once per target and deduplicated by call site. count, unresolved, and truncated are null when no index answered. */
+export interface IndexBlastCallers {
+  count: number | null;
+  unresolved: number | null;
+  truncated: number | null;
+  rows: Array<IndexBlastCaller>;
+  [key: string]: unknown;
+}
+
+/** One caller row: the changed symbol it is reached from (import path and name), the call site, and the depth — 1 for a direct caller, 2 for a caller of a direct caller. resolution is exact within the declaring package and lexical through an import edge, as `index callers` defines it. */
+export interface IndexBlastCaller {
+  symbol: string;
+  path: string;
+  kind: "call" | "method" | "type-ref" | "value-ref" | "embed";
+  resolution: "exact" | "lexical";
+  line: number;
+  depth: number;
+  [key: string]: unknown;
+}
+
+/** The candidate tests to read for the changed declarations, strongest mechanism per file. A candidate is never a coverage claim, and count/truncated are null when no index answered. */
+export interface IndexBlastTests {
+  count: number | null;
+  truncated: number | null;
+  rows: Array<IndexRow>;
+  [key: string]: unknown;
+}
+
+/** The paths that moved with each changed path in one bounded co-change window, read at HEAD. count is the number of (changed path, partner) rows and partners the distinct partner paths across them; truncated is always measured: history needs no index. */
+export interface IndexBlastPartners {
+  count: number;
+  partners: number;
+  truncated: number;
+  rows: Array<IndexBlastPartner>;
+  [key: string]: unknown;
+}
+
+/** One partner path, the changed path it moved with, its co-change count, and the Jaccard ratio. */
+export interface IndexBlastPartner {
+  target: string;
+  path: string;
+  commits: number;
+  jaccard: number;
+  [key: string]: unknown;
+}
+
+/** One ownership row per changed path, from the CODEOWNERS file at the queried tree. count and truncated are always measured. */
+export interface IndexBlastOwners {
+  count: number;
+  truncated: number;
+  rows: Array<IndexTarget>;
   [key: string]: unknown;
 }
 
