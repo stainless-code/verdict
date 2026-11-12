@@ -2,9 +2,9 @@
 "@stainless-code/verdict": patch
 ---
 
-`verdict skill install` no longer half-installs when a target cannot be written.
-On POSIX exactly the directories an install will write are probed before the
-first byte, so a read-only skills dir anywhere in a `--detect` set refuses with
+`verdict skill install` now checks its targets before the first write. On POSIX
+exactly the directories an install will write are probed before the first byte,
+so a read-only skills dir anywhere in a `--detect` set refuses with
 `skill-install-failed`, names that target, and leaves the earlier targets
 absent instead of already installed. A target that changes between that probe
 and the write still fails, at write time. Windows reports that failure at write
