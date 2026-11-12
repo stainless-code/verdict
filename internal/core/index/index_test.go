@@ -789,13 +789,18 @@ func TestIndexCapRefusal(t *testing.T) {
 		f.write("go.mod", "module example.com/m\n")
 		f.write("a/a.go", "package a\n\nfunc A() {}\n")
 		f.write("a/big.go", "package a\n\n//"+strings.Repeat(" pad", 600000)+"\n")
+		f.write("t.ts", "export const v = 1;\n")
 		f.commit("one")
 		resp := f.build()
 		if resp.Data.Skipped != 1 {
 			t.Errorf("skipped = %d; want 1", resp.Data.Skipped)
 		}
-		if resp.Data.Files != 1 {
-			t.Errorf("files_indexed = %d; want 1", resp.Data.Files)
+		if resp.Data.Files != 2 {
+			t.Errorf("files_indexed = %d; want 2", resp.Data.Files)
+		}
+		want := []LangRow{{Language: "go", Files: 1}, {Language: "typescript", Files: 1}}
+		if !slices.Equal(resp.Data.Languages, want) {
+			t.Errorf("languages = %+v; want %+v", resp.Data.Languages, want)
 		}
 	})
 }

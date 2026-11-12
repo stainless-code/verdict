@@ -352,11 +352,10 @@ func (st *state) callersResponse(t *treeIndex, commit string, stale bool, result
 		rows = rows[:limit]
 	}
 	cov := coverageOf(t)
-	languages := languageCounts(t)
 	symbol := st.req.Symbol
 	if results.rows == nil && results.unresolved == 0 {
 		st.line("index: no callers of " + symbol + " at " + t.Tree)
-		return st.callerData(t, commit, stale, cov, languages, results, rows, truncated, limit)
+		return st.callerData(t, commit, stale, cov, results, rows, truncated, limit)
 	}
 	st.line(fmt.Sprintf("index: %d caller(s) of %s at %s (%d unresolved)", len(results.rows), symbol, t.Tree, results.unresolved))
 	for _, row := range rows {
@@ -366,12 +365,12 @@ func (st *state) callersResponse(t *treeIndex, commit string, stale bool, result
 		st.line(fmt.Sprintf("index: showing %d of %d callers (%d not shown; raise --limit up to %d)",
 			len(rows), len(results.rows), truncated, MaxLimit))
 	}
-	return st.callerData(t, commit, stale, cov, languages, results, rows, truncated, limit)
+	return st.callerData(t, commit, stale, cov, results, rows, truncated, limit)
 }
 
 // callerData assembles the query's data profile.
 func (st *state) callerData(
-	t *treeIndex, commit string, stale bool, cov coverage, languages []LangRow, results callerResults,
+	t *treeIndex, commit string, stale bool, cov coverage, results callerResults,
 	rows []Row, truncated, limit int,
 ) *Response {
 	next := "narrow the query to one package, or raise --limit"
@@ -384,16 +383,21 @@ func (st *state) callerData(
 		Data: &Data{
 			Kind: QueryCallers, Symbol: st.req.Symbol, Tree: t.Tree, Commit: commit,
 			Stale: stale, Built: true, Files: cov.files, Skipped: cov.skipped,
-			Callers: len(results.rows), Unresolved: results.unresolved, Languages: languages,
+			Callers: len(results.rows), Unresolved: results.unresolved,
 			Rows: rows, Truncated: truncated, Limit: limit,
 		},
 	}
 }
 
-// languageCounts counts the tree's files per scanned language.
+// languageCounts counts the tree's indexed files per scanned language, so the
+// breakdown adds up to files_indexed: a file the index skipped is not a file any
+// language was read for.
 func languageCounts(t *treeIndex) []LangRow {
 	counts := map[string]int{}
 	for i := range t.Files {
+		if !indexedFile(&t.Files[i]) {
+			continue
+		}
 		counts[t.Files[i].Language]++
 	}
 	rows := make([]LangRow, 0, len(counts))
@@ -413,8 +417,7 @@ func languageCounts(t *treeIndex) []LangRow {
 func coverageOf(t *treeIndex) coverage {
 	var cov coverage
 	for i := range t.Files {
-		f := &t.Files[i]
-		if f.Oversize || f.Error != "" || f.RefsTruncated {
+		if !indexedFile(&t.Files[i]) {
 			cov.skipped++
 			continue
 		}

@@ -9,7 +9,8 @@ answer for those files too. Go stays parsed with `go/parser`; the other three
 are read by two dependency-free lexical scanners — no tree-sitter, no cgo, no
 third-party module — that tokenize the file and record declarations, imports,
 and call sites. Every scanned file publishes its `language`, a build publishes
-`data.languages` with one row per scanned language and its file count, and a
+`data.languages` with one row per scanned language and how many of the indexed
+files it holds, and a
 caller row names the language it came from. A scanned language resolves one way
 only: `exact` never appears, and a name is attributed as `lexical` inside the
 directory that declares it, so a caller list for a scanned symbol is a floor

@@ -53,6 +53,13 @@ type treeFile struct {
 	RefsTruncated bool          `json:"refs_truncated,omitempty"`
 }
 
+// indexedFile reports whether the index read the whole file: an oversize file is
+// left unparsed, a file with a read error contributes no references, and a file
+// whose references were truncated is a partial answer. Every count of indexed
+// files uses this one rule, so files_indexed, coverage.skipped, and the
+// per-language breakdown always agree.
+func indexedFile(f *treeFile) bool { return !f.Oversize && f.Error == "" && !f.RefsTruncated }
+
 // storePath returns the index store under one repository root.
 func storePath(root string) string { return filepath.Join(root, config.VerdictDir, storeDirName) }
 
@@ -501,14 +508,13 @@ func writeShards(store string, fresh map[string]*shard) *core.RefusalError {
 func buildCounts(t *treeIndex, parsed *parsedTree) (indexed, skipped, reused int) {
 	for i := range t.Files {
 		f := &t.Files[i]
-		switch {
-		case f.Oversize, f.Error != "", f.RefsTruncated:
+		if !indexedFile(f) {
 			skipped++
-		default:
-			indexed++
-			if !parsed.fresh[f.Blob] && !parsed.freshPath[f.Path] {
-				reused++
-			}
+			continue
+		}
+		indexed++
+		if !parsed.fresh[f.Blob] && !parsed.freshPath[f.Path] {
+			reused++
 		}
 	}
 	return indexed, skipped, reused

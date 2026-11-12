@@ -145,7 +145,7 @@ type Data struct { //nolint:govet // field order is the published property order
 	Limit         int
 	Callers       int
 	Unresolved    int
-	Languages     []LangRow
+	Languages     []LangRow // build only
 	Rows          []Row
 	Truncated     int
 	Kept          []string
