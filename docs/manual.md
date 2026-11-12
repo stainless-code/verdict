@@ -1438,7 +1438,8 @@ asks reviewers to name the path, never quote a flagged value.
 `app.css`, `data.json`, and `manifest.json`. The current repository is the default; `--root`
 uses the same bounded repository discovery as `serve --root`, with a fresh scan
 and no discovery registry. Inbox, review detail, threads, gate, cost, and
-precision read their envelopes from `data.json`. Copy the folder to a static
+precision read their envelopes from `data.json`. The exported page includes the
+served Content-Security-Policy in an early `<meta http-equiv>` tag. Copy the folder to a static
 host such as Pages — no Verdict process, listener, model, or host CLI is needed.
 The browser needs HTTP(S) access to the files; browser restrictions on fetching
 `file:` URLs can prevent opening `index.html` directly from disk.

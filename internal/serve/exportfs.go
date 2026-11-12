@@ -278,7 +278,13 @@ func exportAsset(name string) ([]byte, error) {
 		return nil, exportFailure(err)
 	}
 	if name == exportIndex {
-		asset = []byte(strings.Replace(string(asset), `content="live"`, `content="static"`, 1))
+		asset = []byte(staticExportIndex(string(asset)))
 	}
 	return asset, nil
+}
+
+func staticExportIndex(markup string) string {
+	markup = strings.Replace(markup, `content="live"`, `content="static"`, 1)
+	policy := `<meta http-equiv="Content-Security-Policy" content="` + cspPolicy + `" />`
+	return strings.Replace(markup, `<meta charset="utf-8" />`, `<meta charset="utf-8" />`+"\n    "+policy, 1)
 }
