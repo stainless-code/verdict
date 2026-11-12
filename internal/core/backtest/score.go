@@ -368,7 +368,7 @@ func (st *state) rowCandidate(run string, row *ReplayPRDoc, candidates []Candida
 // as a corpus manifest and never enters the corpus store.
 func (st *state) gradeReview(c *Candidate, bundle string) (*corpuscore.Report, *core.RefusalError) {
 	if bundle == "" {
-		return nil, st.refuse(codeCorruptStore, "a recorded review names no bundle; replay it again")
+		return nil, st.refuse(codeBacktestRowStale, "a recorded review names no bundle; delete its directory to replay this PR again")
 	}
 	dir := filepath.FromSlash(readcommon.ResolveBundleDir(st.root, bundle))
 	entries, err := readcommon.LoadFindings(dir)

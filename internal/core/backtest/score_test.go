@@ -128,6 +128,7 @@ func TestScoreRefusesBadRuns(t *testing.T) {
 		{name: "unreplayed", run: "s1", mutate: removeScoreRows, code: "missing-bundle", part: "no replayed reviews"},
 		{name: "corrupt row", run: "s1", mutate: corruptScoreRow, code: "backtest-row-stale", part: "unreadable"},
 		{name: "pre-signal mine", run: "s1", mutate: stripScoreSignal, code: "backtest-run-stale", part: "before bugs recorded a seed signal"},
+		{name: "row names no bundle", run: "s1", mutate: stripScoreBundle, code: "backtest-row-stale", part: "names no bundle"},
 		{name: "missing findings", run: "s1", mutate: removeScoreFindings, code: "backtest-row-stale", part: "missing or unreadable"},
 		{name: "corrupt findings", run: "s1", mutate: corruptScoreFindings, code: "backtest-row-stale", part: "missing or unreadable"},
 		{name: "re-mined candidate", run: "s1", mutate: remineScoreRow, code: "backtest-run-stale", part: "no longer carries"},
@@ -198,6 +199,14 @@ func stripScoreSignal(t *testing.T, root string) {
 	t.Helper()
 	path := filepath.Join(root, ".verdict", "backtest", scoreRun, "mine.json")
 	body := strings.Replace(readScoreFile(t, path), `"signal": "fix",`+"\n", "", 1)
+	writeTestFile(t, path, body)
+}
+
+// stripScoreBundle rewrites the first row so it names no bundle.
+func stripScoreBundle(t *testing.T, root string) {
+	t.Helper()
+	path := filepath.Join(root, ".verdict", "backtest", scoreRun, "prs", "001", "replay.json")
+	body := strings.Replace(readScoreFile(t, path), `"bundle": "local-bt-1-s1"`, `"bundle": ""`, 1)
 	writeTestFile(t, path, body)
 }
 
