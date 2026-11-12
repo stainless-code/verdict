@@ -47,6 +47,7 @@ const (
 	MaxPackBytes = 1 << 20
 	MaxFiles     = 256
 	MaxLenses    = 64
+	MaxDepth     = 8
 )
 
 // Rule severity values, the closed set the pack severity map resolves to.
@@ -60,6 +61,7 @@ const (
 	examplesDir = "examples"
 	evalsDir    = "evals"
 	rootSelf    = "."
+	pathSep     = "/"
 
 	namePattern    = `^[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$`
 	versionPattern = `^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$`
@@ -145,13 +147,19 @@ type Rule struct {
 
 // Pack is one loaded lens pack: its manifest, lenses and rules sorted by id,
 // and the sha256 of the canonical loaded tree.
-//
-//nolint:govet // the embedded manifest stays first so the published shape reads top-down
 type Pack struct {
 	Manifest
 	Lenses []Lens
 	Rules  []Rule
 	Hash   string
+	files  []packFile
+}
+
+// packFile is one evals/ or examples/ file: reserved payload carried through
+// vendoring and folded into the tree hash but never parsed as a body.
+type packFile struct {
+	path string
+	body []byte
 }
 
 // Load reads the pack rooted at root. A missing pack returns (nil, nil): the
@@ -188,7 +196,14 @@ func Load(fsys fs.FS, root string) (*Pack, *core.RefusalError) {
 	if ref != nil {
 		return nil, ref
 	}
-	return &Pack{Manifest: *manifest, Lenses: lenses, Rules: rules, Hash: treeHash(raw, lenses, rules)}, nil
+	extras, ref := loadExtras(fsys, root, files)
+	if ref != nil {
+		return nil, ref
+	}
+	return &Pack{
+		Manifest: *manifest, Lenses: lenses, Rules: rules,
+		Hash: treeHash(raw, lenses, rules, extras), files: extras,
+	}, nil
 }
 
 // LoadAt reads a pack under base, refusing a root that could escape it and
@@ -337,6 +352,9 @@ func (c *treeCounter) visit(root, name string, entry fs.DirEntry, err error) err
 		return unsafePath(name)
 	}
 	rel := relative(root, name)
+	if strings.Count(rel, pathSep) > MaxDepth {
+		return tooLarge(fmt.Sprintf("%s nests deeper than %d directories", name, MaxDepth))
+	}
 	if entry.IsDir() {
 		return checkLayoutDir(name, rel)
 	}
@@ -346,12 +364,19 @@ func (c *treeCounter) visit(root, name string, entry fs.DirEntry, err error) err
 	return c.addFile(name, rel, info)
 }
 
-// checkLayoutDir refuses a top-level directory outside the fixed layout.
+// checkLayoutDir refuses a directory outside the fixed layout. examples/ and
+// evals/ may nest; lenses/ and rules/ stay flat because their stems are ids.
 func checkLayoutDir(name, rel string) error {
-	if rel == rootSelf || layoutDir(rel) {
+	if rel == rootSelf || layoutDir(rel) || reservedDir(rel) {
 		return nil
 	}
 	return badPack(name + " is outside the closed pack layout")
+}
+
+// reservedDir reports whether rel sits under the nested examples/ or evals/
+// payload trees.
+func reservedDir(rel string) bool {
+	return strings.HasPrefix(rel, examplesDir+pathSep) || strings.HasPrefix(rel, evalsDir+pathSep)
 }
 
 // addFile checks one file's layout and size, then records it.
@@ -383,11 +408,12 @@ func relative(root, name string) string {
 	if name == root {
 		return rootSelf
 	}
-	return strings.TrimPrefix(name, root+"/")
+	return strings.TrimPrefix(name, root+pathSep)
 }
 
 // layoutDir reports whether a top-level directory is part of the fixed
-// layout. examples/ and evals/ are reserved and load nothing yet.
+// layout. examples/ and evals/ are carried through vendoring and the tree
+// hash, but no loader parses their bodies.
 func layoutDir(rel string) bool {
 	switch rel {
 	case LensesDir, RulesDir, examplesDir, evalsDir:
@@ -403,7 +429,7 @@ func layoutFile(rel string) bool {
 		return true
 	}
 	for _, dir := range []string{LensesDir, RulesDir, examplesDir, evalsDir} {
-		if strings.HasPrefix(rel, dir+"/") {
+		if strings.HasPrefix(rel, dir+pathSep) {
 			return true
 		}
 	}
@@ -774,7 +800,7 @@ func loadRules(fsys fs.FS, root string, files map[string]int, manifest *Manifest
 // missingBody names the missing body, or the differently-stemmed file that
 // sits where it should: a manifest id and its file stem must agree.
 func missingBody(files map[string]int, dir, kind, id string) *core.RefusalError {
-	prefix := dir + "/"
+	prefix := dir + pathSep
 	var found []string
 	for rel := range files {
 		stem, ok := strings.CutSuffix(strings.TrimPrefix(rel, prefix), mdExt)
@@ -790,16 +816,40 @@ func missingBody(files map[string]int, dir, kind, id string) *core.RefusalError 
 	return badPack(fmt.Sprintf("%s %q has no %s/%s.md", kind, id, dir, id))
 }
 
+// loadExtras reads every examples/ and evals/ file, sorted by path, so the
+// reserved trees ride the tree hash and vendoring without being parsed.
+func loadExtras(fsys fs.FS, root string, files map[string]int) ([]packFile, *core.RefusalError) {
+	paths := make([]string, 0)
+	for rel := range files {
+		if strings.HasPrefix(rel, examplesDir+pathSep) || strings.HasPrefix(rel, evalsDir+pathSep) {
+			paths = append(paths, rel)
+		}
+	}
+	slices.Sort(paths)
+	out := make([]packFile, 0, len(paths))
+	for _, rel := range paths {
+		body, ref := readFile(fsys, path.Join(root, rel), rel)
+		if ref != nil {
+			return nil, ref
+		}
+		out = append(out, packFile{path: rel, body: body})
+	}
+	return out, nil
+}
+
 // treeHash hashes the canonical loaded tree: sorted slash paths, each fed as
-// "== <path> ==\n" plus its bytes plus "\n" (the provenance.PromptsHash
-// idiom), so the digest is recomputable by hand.
-func treeHash(manifest []byte, lenses []Lens, rules []Rule) string {
+// "== <path-length>:<path> ==\n<body-length>\n" plus its bytes plus "\n", so
+// a body cannot forge the next file's boundary and two trees cannot collide.
+func treeHash(manifest []byte, lenses []Lens, rules []Rule, extras []packFile) string {
 	files := map[string][]byte{ManifestFile: manifest}
 	for i := range lenses {
 		files[path.Join(LensesDir, lenses[i].ID+mdExt)] = lenses[i].Body
 	}
 	for i := range rules {
 		files[path.Join(RulesDir, rules[i].ID+mdExt)] = rules[i].Body
+	}
+	for i := range extras {
+		files[extras[i].path] = extras[i].body
 	}
 	paths := make([]string, 0, len(files))
 	for rel := range files {
@@ -808,8 +858,9 @@ func treeHash(manifest []byte, lenses []Lens, rules []Rule) string {
 	slices.Sort(paths)
 	h := sha256.New()
 	for _, rel := range paths {
-		fmt.Fprintf(h, "== %s ==\n", rel)
-		h.Write(files[rel])
+		body := files[rel]
+		fmt.Fprintf(h, "== %d:%s ==\n%d\n", len(rel), rel, len(body))
+		h.Write(body)
 		h.Write([]byte("\n"))
 	}
 	return hex.EncodeToString(h.Sum(nil))

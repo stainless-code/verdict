@@ -196,7 +196,9 @@ var publishedSemantics = map[string]string{
 	// serve: additive $defs/serveData (and its source/error/root/counts/row/
 	// artifact/cache/skipped/discovery defs plus threadsFile/thread/comment).
 	// Additions only; the envelope's data slot stays free-form per verb.
-	"envelope.schema.json": "b625b05c9743c25b5bc51cb55757af93611cd371988bce42b1cb395be89b2876",
+	// pack lock/add: additive $defs/packAddData and the drift description on
+	// packEntry; no existing property, required key, enum, or type changed.
+	"envelope.schema.json": "5b0b1c927a1383cd739247d2366f92cb0630ad13c537379a95447ca79bd09769",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -252,6 +254,33 @@ var publishedSemantics = map[string]string{
 	// empty replace: the replace array no longer carries minItems 1, because
 	// the loader accepts an empty list and the schema must not refuse a
 	// manifest that loads.
+	// lock: the new verdict.lock document joins the published set; no existing
+	// schema moved. The envelope gains an additive $defs/packAddData and a
+	// drift description on packEntry, with no existing property, required key,
+	// enum, or type changed.
+	// source grammar: the lock row's source gains the pattern the loader
+	// enforces — a dir: payload with no control character, backslash, or
+	// leading "-", or a git: source pinned to a 40-hex sha with no http/https
+	// userinfo and only a bare ssh/scp user. The hash description now names
+	// the length-delimited tree framing. No property, required key, or type
+	// changed.
+	// source allowlist: the git: pattern narrows to the three accepted remote
+	// forms — https://host/path with no userinfo, ssh://user@host/path, and
+	// user@host:path — with a DNS/IPv4/bracketed-IPv6 host, the bare
+	// [A-Za-z0-9._-]{1,64} ssh user, no whitespace/control/@ in the path, and
+	// the lower-case scheme pack add stores. A row the old pattern accepted
+	// (any userinfo shape, http, a one-slash scheme) now refuses, so this is
+	// an intentional narrowing of one pattern; no property, required key, or
+	// type changed.
+	// source query: a ? or # in a git source refuses before any git call (a
+	// source is recorded in the committed lock), so the pattern's git paths
+	// exclude both and the description names them. One pattern narrowed
+	// further; nothing else changed.
+	// source agreement: the git: pattern bounds each DNS label at 63 bytes
+	// (the maxHostLabel cap the loader enforces) and refuses a "://" inside an
+	// scp path (the loader's scheme guard). One pattern narrowed to the
+	// loader's own grammar; no property, required key, enum, or type changed.
+	"lock.schema.json": "c88951e4ac18781f93881f6654493ad8a7345ea990fca44bbd1149c7eefc4714",
 	"pack.schema.json": "fc8dc3ae76bfee94157f23e03ad2173f643d96974896c05307f89491f2a207b9",
 	// patch identity: additive optional patch_id/patch_id_kind plus the
 	// optional forced[] audit with $defs/forcedPost. No existing property,

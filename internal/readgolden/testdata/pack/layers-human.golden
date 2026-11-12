@@ -1,8 +1,8 @@
 exit: 0
 --- stdout ---
-builtin  verdict/builtin@1.0.0  source=builtin  sha256:23dac5dead2e  lenses=api-contract,perf,test  rules=-
-org      acme/org@2.0.0  source=dir:org-packs  sha256:ec7b01d4ea7b  lenses=security  rules=no-secrets
-repo     acme/repo@0.1.0  source=.verdict/packs/repo  sha256:6017f42729f6  lenses=security,style  rules=repo-style
+builtin  verdict/builtin@1.0.0  source=builtin  sha256:06820abbd0a6  lenses=api-contract,perf,test  rules=-
+org      acme/org@2.0.0  source=dir:org-packs  sha256:eb88c75d4245  lenses=security  rules=no-secrets
+repo     acme/repo@0.1.0  source=.verdict/packs/repo  sha256:ae6c1dde5272  lenses=security,style  rules=repo-style  drift=pack-lock-missing
 --- stderr ---
 
 --- files ---

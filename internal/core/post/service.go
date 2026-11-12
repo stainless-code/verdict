@@ -11,6 +11,7 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
+	packcore "github.com/stainless-code/verdict/internal/core/pack"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/diagram"
 	"github.com/stainless-code/verdict/internal/identity"
@@ -301,9 +302,17 @@ func (st *state) checkBundle() *core.RefusalError {
 	default:
 		return &core.RefusalError{Code: "pr-not-open", Message: fmt.Sprintf(msgPRNotOpen, prState)}
 	}
+	return st.gateControls()
+}
+
+// gateControls verifies the captured controls and their repo pack lock.
+func (st *state) gateControls() *core.RefusalError {
 	snap, ref := controls.Gate(st.dir, recordcore.BundleBase(st.dir, st.store()))
 	st.controls = snap
-	return ref
+	if ref != nil {
+		return ref
+	}
+	return packcore.CheckLock(snap)
 }
 
 func (st *state) loadReview() *core.RefusalError {

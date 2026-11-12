@@ -74,6 +74,26 @@ func TestResolvePackNamesSkipStrayFile(t *testing.T) {
 	}
 }
 
+// TestResolvePackNamesSkipStagingSiblings proves a crashed re-add's
+// dot-prefixed temp or backup directory names no pack, so every verb that
+// reads the snapshot keeps working without a hand cleanup.
+func TestResolvePackNamesSkipStagingSiblings(t *testing.T) {
+	base := baseRepo(t, map[string]string{
+		".verdict/config.json":                          `{"schema_version":"1"}`,
+		".verdict/packs/acme/pack.json":                 packManifest,
+		".verdict/packs/acme/lenses/perf.md":            "perf body\n",
+		".verdict/packs/.acme.tmp-crash/pack.json":      packManifest,
+		".verdict/packs/.acme.old-crash/lenses/perf.md": "perf body\n",
+	})
+	snap, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: ".verdict/state/16", BaseSHA: base})
+	if ref != nil {
+		t.Fatalf("Resolve: %v", ref)
+	}
+	if got, want := snap.PackNames(), []string{"acme"}; !slices.Equal(got, want) {
+		t.Fatalf("pack dirs = %v, want %v", got, want)
+	}
+}
+
 // colonPackBase commits one repo pack whose child directory name holds a
 // colon, which Windows forbids as a filename: the base tree is built from git
 // objects, so the fixture needs no such name on disk.

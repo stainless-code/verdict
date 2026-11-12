@@ -29,6 +29,9 @@ func resolveLensPacks(ctx2 *fetchRunCtx) *core.RefusalError {
 	if ref != nil {
 		return ref
 	}
+	if ref := pack.CheckLock(ctx2.runner.controls); ref != nil {
+		return ref
+	}
 	origins = append(origins, org...)
 	origins = append(origins, repo...)
 	set, ref := pack.Merge(origins)

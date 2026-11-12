@@ -351,16 +351,31 @@ func usageText() string {
 		"    In a skill copy, scripts/verdict resolves VERDICT_BIN, then\n" +
 		"    <skill>/bin/verdict, then verdict on PATH; otherwise run the one-time\n" +
 		"    verified <skill>/scripts/verdict bootstrap (no review-time fetch).\n" +
-		"  pack list [--json]\n" +
-		"    read-only lens-pack inventory in precedence order: built-in, org\n" +
+		"  pack <list|add> [--json]\n" +
+		"    list: read-only lens-pack inventory in precedence order: built-in, org\n" +
 		"    (explicit packs[] paths in personal settings), and repo\n" +
 		"    (.verdict/packs/<name>/). Lists the packs in this checkout; a review\n" +
 		"    reads repo packs from the PR's base, so a pack the PR adds or edits\n" +
 		"    is listed here but not used. Rows carry name, version, layer,\n" +
-		"    source, tree hash, lens and rule ids, and drift (null until\n" +
-		"    verdict.lock). Duplicate ids inside one layer refuse bad-pack;\n" +
-		"    overriding a lower layer needs replace[] naming it, else\n" +
-		"    pack-conflict.\n" +
+		"    source, tree hash, lens and rule ids, and drift (null when the\n" +
+		"    pack matches .verdict/verdict.lock, else the refusal code).\n" +
+		"    Duplicate ids inside one layer refuse bad-pack; overriding a lower\n" +
+		"    layer needs replace[] naming it, else pack-conflict.\n" +
+		"    add <dir|git-url>[@ref]: validate with the same loader, vendor the\n" +
+		"    loaded tree under .verdict/packs/<slug>/, and pin it in\n" +
+		"    .verdict/verdict.lock (strict JSON, entries sorted by name).\n" +
+		"    dir:<path> records the directory as given; git:<url>@<sha> records\n" +
+		"    a hermetic shallow clone at the resolved HEAD commit. https URLs\n" +
+		"    carry no userinfo; use ssh://git@host/path, git@host:path, or a\n" +
+		"    public https URL. Re-adding a\n" +
+		"    name replaces its tree and prints old -> new. A source inside\n" +
+		"    .verdict/packs/ refuses: it is already vendored. fetch, post, and\n" +
+		"    record refuse pack-lock-missing (a repo pack with no entry) and\n" +
+		"    pack-lock-drift (a tree hash, gone entry, or sig mismatch) from the\n" +
+		"    trusted-base snapshot; the lock joins the controls inventory, so an\n" +
+		"    edited snapshot copy refuses controls-stale. Built-in packs are\n" +
+		"    pinned by the binary and org packs live in personal settings, so\n" +
+		"    neither is locked.\n" +
 		"  upgrade [--version <v>] [--dry-run] [--json]\n" +
 		"    explicit, channel-aware self-update. Installer-managed installs verify the\n" +
 		"    release (cosign bundle when present, SHA-256 always), smoke-test, and\n" +

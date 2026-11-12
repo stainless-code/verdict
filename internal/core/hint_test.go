@@ -37,6 +37,21 @@ func TestHintForSpendAndBudget(t *testing.T) {
 	}
 }
 
+// TestHintForPackSources proves a refused git source points at the allowlist
+// forms instead of pack.json, that it names the token rule, and that a refused
+// lock row points at pack add.
+func TestHintForPackSources(t *testing.T) {
+	assertHintFragments(t, HintFor("bad-pack-source"), "bad-pack-source",
+		[]string{
+			"https://host/path", "no userinfo", "ssh://user@host/path", "user@host:path",
+			"a token in the URL, ref, or path is recorded in the committed lock", "an ssh key",
+		},
+		[]string{"pack.json"})
+	assertHintFragments(t, HintFor("bad-lock-source"), "bad-lock-source",
+		[]string{"verdict pack add", "verdict.lock"},
+		[]string{"pack.json"})
+}
+
 // TestHintForPostSecretShaped proves the refusal's hint offers both ways out —
 // strip the value, or publish it on purpose — and prints nothing that could be
 // the value itself.

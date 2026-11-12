@@ -265,6 +265,15 @@ func documents() []document {
 			additionalProperties: false,
 		},
 		{
+			name:  "lock",
+			title: "verdict.lock — pinned repo lens packs",
+			root:  reflect.TypeFor[LockFile](),
+			defs: []definition{
+				{typ: reflect.TypeFor[LockPack](), name: "pack", closed: true},
+			},
+			additionalProperties: false,
+		},
+		{
 			name:  "post",
 			title: "post.json — completed-post record (PR bundles)",
 			root:  reflect.TypeFor[Post](),
@@ -412,6 +421,7 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[TrendBundleRow](), name: "trendBundleRow"},
 		{typ: reflect.TypeFor[PackData](), name: "packData"},
 		{typ: reflect.TypeFor[PackEntry](), name: "packEntry"},
+		{typ: reflect.TypeFor[PackAddData](), name: "packAddData"},
 		{typ: reflect.TypeFor[IndexData](), name: "indexData"},
 		{typ: reflect.TypeFor[IndexLangRow](), name: "indexLangRow"},
 		{typ: reflect.TypeFor[IndexShards](), name: "indexShards"},

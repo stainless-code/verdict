@@ -23,7 +23,9 @@ const (
 	// bundles carry 12–20 artifacts.
 	maxInventoryMiB = 16
 	// maxInventoryBytes is maxInventoryMiB in the byte unit the collector uses.
-	maxInventoryBytes int64 = maxInventoryMiB << 20
+	maxInventoryBytes int64 = maxInventoryMiB << mibShift
+	// mibShift converts a byte count to MiB for one refusal line.
+	mibShift = 20
 	// chunksDirName is the one bundle subdirectory the inventory descends into.
 	chunksDirName = "chunks"
 	// dirReadSlack reads one entry past the ledger cap, so a directory with
@@ -31,12 +33,12 @@ const (
 	dirReadSlack = 1
 )
 
-// inventoryReport is one bundle's ledger walk: the rows, whether either budget
-// cut coverage, and the artifact-specific reasons a read was skipped.
+// inventoryReport is one bundle's ledger walk: the rows, the artifact-specific
+// reasons a read was skipped, and whether either budget cut coverage.
 type inventoryReport struct {
 	sources []Source
-	cut     bool
 	notes   []string
+	cut     bool
 }
 
 // inventory collects the artifacts under one bundle and the serving root's
@@ -140,7 +142,7 @@ func regularFile(path string) (os.FileInfo, bool) {
 func (c *sourceCollector) read(abs, rel string, info os.FileInfo) ([]byte, bool) {
 	if info.Size() > sourceCap {
 		c.charge(info.Size())
-		c.skip(rel, fmt.Sprintf("%d bytes is over the %d MiB read cap", info.Size(), sourceCap>>20))
+		c.skip(rel, fmt.Sprintf("%d bytes is over the %d MiB read cap", info.Size(), sourceCap>>mibShift))
 		return nil, false
 	}
 	if c.maxBytes > 0 && c.bytes+info.Size() > c.maxBytes {
@@ -151,7 +153,7 @@ func (c *sourceCollector) read(abs, rel string, info os.FileInfo) ([]byte, bool)
 	if err != nil {
 		c.charge(info.Size())
 		if errors.Is(err, jq.ErrTooLarge) {
-			c.skip(rel, fmt.Sprintf("over the %d MiB read cap", sourceCap>>20))
+			c.skip(rel, fmt.Sprintf("over the %d MiB read cap", sourceCap>>mibShift))
 		} else {
 			c.skip(rel, err.Error())
 		}
@@ -167,7 +169,7 @@ func (c *sourceCollector) readArtifact(abs string, maxBytes int64) ([]byte, erro
 	if c.openArtifact != nil {
 		return c.openArtifact(abs, maxBytes)
 	}
-	return readcommon.ReadRegularCapped(abs, maxBytes)
+	return readcommon.ReadRegularCapped(abs, maxBytes) //nolint:wrapcheck // %w inside keeps ErrTooLarge visible
 }
 
 // charge folds an attempted read into the byte budget.

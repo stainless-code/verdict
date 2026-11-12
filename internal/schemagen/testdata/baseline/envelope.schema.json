@@ -1679,7 +1679,7 @@
       "additionalProperties": true
     },
     "packEntry": {
-      "description": "One pack row: its manifest identity, layer, source, canonical tree hash, declared lens and rule ids, and drift (null until verdict.lock pins the pack).",
+      "description": "One pack row: its manifest identity, layer, source, canonical tree hash, declared lens and rule ids, and drift (null when a repo pack matches verdict.lock, else pack-lock-missing or pack-lock-drift; built-in and org rows are never locked).",
       "type": "object",
       "properties": {
         "name": { "type": "string" },
@@ -1707,6 +1707,17 @@
         "rules",
         "drift"
       ],
+      "additionalProperties": true
+    },
+    "packAddData": {
+      "description": "pack add --json data: the added pack row as it now lists from the repo layer, whether it replaced an existing entry, and the previous tree hash (null on a first add).",
+      "type": "object",
+      "properties": {
+        "pack": { "$ref": "#/$defs/packEntry" },
+        "previous_hash": { "type": ["string", "null"] },
+        "replaced": { "type": "boolean" }
+      },
+      "required": ["pack", "previous_hash", "replaced"],
       "additionalProperties": true
     },
     "indexData": {

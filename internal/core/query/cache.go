@@ -50,7 +50,7 @@ func keyFor(root Root, bundle string, flags *core.ReportFlags) cacheKey {
 
 // entry is one cached composition: the response or refusal plus the artifact
 // inventory it was built from.
-type entry struct { //nolint:govet // grouped as one cache row
+type entry struct {
 	resp  *core.ReportResponse
 	ref   *core.RefusalError
 	inv   inventoryReport

@@ -21,19 +21,7 @@ func TestInventoryNeverBlocksOnSwapToFIFO(t *testing.T) {
 	if err := os.WriteFile(path, []byte("diff --git a b\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	c := &sourceCollector{
-		root: Root{Path: dir}, rootPath: dir,
-		maxEntries: maxInventoryEntries, maxBytes: maxInventoryBytes,
-	}
-	c.openArtifact = func(p string, max int64) ([]byte, error) {
-		if err := os.Remove(p); err != nil {
-			return nil, err
-		}
-		if err := syscall.Mkfifo(p, 0o600); err != nil {
-			return nil, err
-		}
-		return readcommon.ReadRegularCapped(p, max)
-	}
+	c := newSwappingCollector(dir)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -50,6 +38,29 @@ func TestInventoryNeverBlocksOnSwapToFIFO(t *testing.T) {
 	if len(c.sources) != 0 {
 		t.Errorf("sources = %d, want none for a FIFO", len(c.sources))
 	}
+}
+
+// newSwappingCollector returns a collector whose open seam swaps the regular
+// file for a FIFO before the descriptor open.
+func newSwappingCollector(dir string) *sourceCollector {
+	c := &sourceCollector{
+		root: Root{Path: dir}, rootPath: dir,
+		maxEntries: maxInventoryEntries, maxBytes: maxInventoryBytes,
+	}
+	c.openArtifact = swapToFIFO
+	return c
+}
+
+// swapToFIFO replaces path with a FIFO, then reads it through the race-free
+// reader.
+func swapToFIFO(path string, limit int64) ([]byte, error) {
+	if err := os.Remove(path); err != nil {
+		return nil, err
+	}
+	if err := syscall.Mkfifo(path, 0o600); err != nil {
+		return nil, err
+	}
+	return readcommon.ReadRegularCapped(path, limit)
 }
 
 // TestInventoryDoesNotOpenAFIFO proves both inventory paths refuse a special

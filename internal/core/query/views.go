@@ -333,7 +333,7 @@ func (l *Layer) Detail(ctx context.Context, rootID, bundle string) (*View, error
 // inventoryWarning names the source-inventory caps that truncated a view.
 func inventoryWarning(where string) string {
 	return fmt.Sprintf("serve: source inventory capped at %d entries, %d MiB, or %d MiB per artifact under %s; sources[] is incomplete",
-		maxInventoryEntries, maxInventoryMiB, sourceCap>>20, where)
+		maxInventoryEntries, maxInventoryMiB, sourceCap>>mibShift, where)
 }
 
 // detailWarnings adds the inventory warnings to a detail's composed warnings.

@@ -519,7 +519,7 @@ func assertSourcePresent(t *testing.T, view *View, path string) {
 func TestInventoryReportsAnOverCapArtifact(t *testing.T) {
 	t.Parallel()
 	dir, _ := fixture(t)
-	oversized := int64(jq.MaxFindingsBytes) + 1024
+	oversized := jq.MaxFindingsBytes + 1024
 	path := filepath.Join(dir, ".verdict", "state", "1234", "full.diff")
 	if err := os.Truncate(path, oversized); err != nil {
 		t.Fatal(err)
@@ -579,30 +579,41 @@ func TestInventoryBoundsAHugeDirectory(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	chunks := filepath.Join(dir, "chunks")
-	if err := os.MkdirAll(chunks, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for i := range 10_000 {
-		name := fmt.Sprintf("%05d.cost.json", i)
-		if err := os.WriteFile(filepath.Join(chunks, name), []byte("{}"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	entries, more, err := readcommon.ReadDirLimit(chunks, maxInventoryEntries+1)
-	if err != nil {
-		t.Fatalf("ReadDirLimit: %v", err)
-	}
-	if len(entries) != maxInventoryEntries+1 || !more {
-		t.Errorf("ReadDirLimit = %d entries, more=%v; want one bounded batch of %d",
-			len(entries), more, maxInventoryEntries+1)
-	}
-	layer := newLayer(dir)
-	report := layer.inventory(Root{Path: dir}, "1234", dir)
+	writeChunkEntries(t, chunks, 10_000)
+	assertBoundedBatch(t, chunks)
+	report := newLayer(dir).inventory(Root{Path: dir}, "1234", dir)
 	if len(report.sources) != maxInventoryEntries {
 		t.Errorf("sources = %d, want the %d-entry cap", len(report.sources), maxInventoryEntries)
 	}
 	if !report.cut {
 		t.Error("cut = false, want truncation reported for a 10 000-entry directory")
+	}
+}
+
+// writeChunkEntries fills chunks with count supported cost files.
+func writeChunkEntries(t *testing.T, chunks string, count int) {
+	t.Helper()
+	if err := os.MkdirAll(chunks, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for i := range count {
+		name := fmt.Sprintf("%05d.cost.json", i)
+		if err := os.WriteFile(filepath.Join(chunks, name), []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// assertBoundedBatch proves enumeration stops one entry past the cap.
+func assertBoundedBatch(t *testing.T, dir string) {
+	t.Helper()
+	entries, more, err := readcommon.ReadDirLimit(dir, maxInventoryEntries+dirReadSlack)
+	if err != nil {
+		t.Fatalf("ReadDirLimit: %v", err)
+	}
+	if len(entries) != maxInventoryEntries+dirReadSlack || !more {
+		t.Errorf("ReadDirLimit = %d entries, more=%v; want one bounded batch of %d",
+			len(entries), more, maxInventoryEntries+dirReadSlack)
 	}
 }
 
@@ -650,17 +661,12 @@ func TestCacheDoesNotPinRefusals(t *testing.T) {
 	}
 	layer := newLayer(dir)
 	root := RootID(mustAbs(t, dir))
-	bundleDirPath := filepath.Join(dir, ".verdict", "state", "1234")
-	before := bundleStamp(Root{ID: root, Path: mustAbs(t, dir)}, bundleDirPath)
+	before := detailStamp(t, dir, root)
 	if err := os.Chmod(store, 0); err != nil {
 		t.Fatal(err)
 	}
-	_, err = layer.Detail(context.Background(), root, "1234")
-	var ref *core.RefusalError
-	if !errors.As(err, &ref) || ref.Code != "missing-findings" {
-		t.Fatalf("Detail with an unreadable store = %v, want missing-findings", err)
-	}
-	if after := bundleStamp(Root{ID: root, Path: mustAbs(t, dir)}, bundleDirPath); after != before {
+	assertDetailRefusal(t, layer, root, "missing-findings")
+	if after := detailStamp(t, dir, root); after != before {
 		t.Fatalf("permission change moved the cache stamp; the test proves nothing")
 	}
 	if err := os.Chmod(store, info.Mode()); err != nil {
@@ -668,6 +674,25 @@ func TestCacheDoesNotPinRefusals(t *testing.T) {
 	}
 	if _, err := layer.Detail(context.Background(), root, "1234"); err != nil {
 		t.Errorf("Detail after the permission fix = %v, want success (refusal cached)", err)
+	}
+}
+
+// detailStamp reads the cache stamp for the fixture bundle.
+func detailStamp(t *testing.T, dir, root string) stamp {
+	t.Helper()
+	return bundleStamp(
+		Root{ID: root, Path: mustAbs(t, dir)},
+		filepath.Join(dir, ".verdict", "state", "1234"),
+	)
+}
+
+// assertDetailRefusal fails unless a detail refuses with code.
+func assertDetailRefusal(t *testing.T, layer *Layer, root, code string) {
+	t.Helper()
+	_, err := layer.Detail(context.Background(), root, "1234")
+	var ref *core.RefusalError
+	if !errors.As(err, &ref) || ref.Code != code {
+		t.Fatalf("Detail = %v, want %s", err, code)
 	}
 }
 

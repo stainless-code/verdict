@@ -17,15 +17,19 @@ var ErrNotRegular = errors.New("not a regular file")
 func ReadRegularCapped(path string, maxBytes int64) ([]byte, error) {
 	f, err := OpenNoBlock(path)
 	if err != nil {
-		return nil, fmt.Errorf("open regular input: %w", err)
+		return nil, err
 	}
 	defer func() { _ = f.Close() }()
 	info, err := f.Stat()
 	if err != nil {
-		return nil, fmt.Errorf("stat regular input: %w", err)
+		return nil, jq.Sealed("stat regular input", err)
 	}
 	if !info.Mode().IsRegular() {
-		return nil, ErrNotRegular
+		return nil, ErrNotRegular //nolint:wrapcheck // local sentinel for a non-regular descriptor
 	}
-	return jq.Capped(f, maxBytes)
+	raw, err := jq.Capped(f, maxBytes)
+	if err != nil {
+		return nil, fmt.Errorf("read regular input: %w", err) //nolint:wrapcheck // %w keeps ErrTooLarge visible
+	}
+	return raw, nil
 }

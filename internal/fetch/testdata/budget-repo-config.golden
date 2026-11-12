@@ -29,6 +29,7 @@ CALL: api repos/acme/app/contents/.verdict/overrides/preamble.md?ref=ccccccccccc
 CALL: api repos/acme/app/contents/.verdict/overrides/footer-order.md?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.verdict/overrides/walkthrough-threshold.md?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.verdict/overrides/attribution.md?ref=cccccccccccccccccccccccccccccccccccccccc
+CALL: api repos/acme/app/contents/.verdict/verdict.lock?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.verdict/packs?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.verdict/config.json?ref=cccccccccccccccccccccccccccccccccccccccc
 --- file C/.verdict/.gitignore ---
@@ -85,6 +86,12 @@ CALL: api repos/acme/app/contents/.verdict/config.json?ref=ccccccccccccccccccccc
     },
     {
       "path": ".verdict/overrides/attribution.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".verdict/verdict.lock",
       "status": "missing",
       "bytes": 0,
       "sha256": ""
