@@ -1,0 +1,8 @@
+package worker
+
+import "example.com/m/internal/store"
+
+func Run() error {
+	s := store.Open("w")
+	return s.Save(2)
+}

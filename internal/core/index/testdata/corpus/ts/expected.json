@@ -1,0 +1,143 @@
+{
+  "language": "ts",
+  "coverage": { "files": 22, "skipped": 0 },
+  "queries": [
+    {
+      "name": "callers-save",
+      "kind": "callers",
+      "symbol": "lib.save",
+      "at": "lib",
+      "unresolved": 0,
+      "callers": [
+        {
+          "path": "lib/callers.ts",
+          "line": 3,
+          "kind": "value-ref",
+          "resolution": "lexical"
+        },
+        {
+          "path": "lib/callers.ts",
+          "line": 6,
+          "kind": "call",
+          "resolution": "lexical"
+        },
+        {
+          "path": "lib/callers.ts",
+          "line": 7,
+          "kind": "call",
+          "resolution": "lexical"
+        },
+        {
+          "path": "lib/callers.ts",
+          "line": 9,
+          "kind": "method",
+          "resolution": "lexical"
+        },
+        {
+          "path": "lib/view.tsx",
+          "line": 4,
+          "kind": "call",
+          "resolution": "lexical"
+        },
+        {
+          "path": "lib/widget.jsx",
+          "line": 4,
+          "kind": "call",
+          "resolution": "lexical"
+        },
+        {
+          "path": "lib/save.test.ts",
+          "line": 4,
+          "kind": "call",
+          "resolution": "lexical"
+        },
+        {
+          "path": "app/main.ts",
+          "line": 4,
+          "kind": "call",
+          "resolution": "lexical"
+        },
+        {
+          "path": "app/screen.tsx",
+          "line": 4,
+          "kind": "call",
+          "resolution": "lexical"
+        },
+        {
+          "path": "app/save.spec.ts",
+          "line": 4,
+          "kind": "call",
+          "resolution": "lexical"
+        },
+        {
+          "path": "app/reports.ts",
+          "line": 4,
+          "kind": "call",
+          "resolution": "lexical"
+        }
+      ]
+    },
+    {
+      "name": "callers-audit",
+      "kind": "callers",
+      "symbol": "lib.audit",
+      "at": "lib",
+      "unresolved": 0,
+      "callers": [
+        {
+          "path": "lib/service.ts",
+          "line": 4,
+          "kind": "call",
+          "resolution": "lexical"
+        },
+        {
+          "path": "lib/service.ts",
+          "line": 7,
+          "kind": "value-ref",
+          "resolution": "lexical"
+        }
+      ]
+    },
+    {
+      "name": "callers-namesake",
+      "kind": "callers",
+      "symbol": "other.save",
+      "at": "other",
+      "unresolved": 0,
+      "callers": [
+        {
+          "path": "other/use.ts",
+          "line": 4,
+          "kind": "call",
+          "resolution": "lexical"
+        }
+      ]
+    },
+    {
+      "name": "tests-for-save",
+      "kind": "tests-for",
+      "path": "lib/save.ts",
+      "hidden": 0,
+      "tests": [
+        { "path": "lib/save.test.ts", "via": "same-package", "depth": 0 },
+        { "path": "app/save.spec.ts", "via": "references", "depth": 1 },
+        { "path": "app/tidy.spec.ts", "via": "imports-module", "depth": 1 },
+        {
+          "path": "views/screen.spec.ts",
+          "via": "transitive-import",
+          "depth": 2
+        }
+      ]
+    },
+    {
+      "name": "tests-for-two-families",
+      "kind": "tests-for",
+      "symbol": "shared.run",
+      "hidden": 0,
+      "tests": [
+        { "path": "shared/test_run.py", "via": "same-package", "depth": 0 },
+        { "path": "shared/run.test.ts", "via": "same-package", "depth": 0 }
+      ]
+    }
+  ]
+}

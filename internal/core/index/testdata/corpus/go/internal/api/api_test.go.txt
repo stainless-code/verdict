@@ -1,0 +1,13 @@
+package api
+
+import (
+	"testing"
+
+	"example.com/m/internal/store"
+)
+
+func TestOpenOne(t *testing.T) {
+	if store.Open("b") == nil {
+		t.Fatal("nil store")
+	}
+}

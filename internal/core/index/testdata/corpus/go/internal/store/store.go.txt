@@ -1,0 +1,25 @@
+package store
+
+// Store holds one opened store.
+type Store struct {
+	Name string
+}
+
+// Open returns a store for one name.
+func Open(name string) *Store {
+	return &Store{Name: name}
+}
+
+// Save records one value.
+func (s *Store) Save(v int) error {
+	s.Name = "saved"
+	return nil
+}
+
+// Base carries a method an embed promotes.
+type Base struct{}
+
+// Touch bumps the base.
+func (b *Base) Touch() error {
+	return nil
+}

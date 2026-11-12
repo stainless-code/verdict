@@ -1,0 +1,5 @@
+package reexport
+
+import "example.com/m/internal/store"
+
+var Open = store.Open

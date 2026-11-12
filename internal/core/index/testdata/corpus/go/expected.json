@@ -1,0 +1,161 @@
+{
+  "language": "go",
+  "coverage": { "files": 15, "skipped": 1 },
+  "queries": [
+    {
+      "name": "callers-open",
+      "kind": "callers",
+      "symbol": "store.Open",
+      "at": "internal/store",
+      "unresolved": 0,
+      "callers": [
+        {
+          "path": "internal/store/store_test.go",
+          "line": 6,
+          "kind": "call",
+          "resolution": "exact"
+        },
+        {
+          "path": "internal/api/api.go",
+          "line": 8,
+          "kind": "call",
+          "resolution": "lexical"
+        },
+        {
+          "path": "internal/api/api_test.go",
+          "line": 10,
+          "kind": "call",
+          "resolution": "lexical"
+        },
+        {
+          "path": "internal/worker/worker.go",
+          "line": 6,
+          "kind": "call",
+          "resolution": "lexical"
+        },
+        {
+          "path": "internal/reexport/reexport.go",
+          "line": 5,
+          "kind": "value-ref",
+          "resolution": "lexical"
+        },
+        {
+          "path": "internal/cli/cli.go",
+          "line": 9,
+          "kind": "value-ref",
+          "resolution": "lexical"
+        },
+        {
+          "path": "internal/cli/cli.go",
+          "line": 14,
+          "kind": "call",
+          "resolution": "lexical"
+        },
+        {
+          "path": "internal/dot/dot.go",
+          "line": 8,
+          "kind": "call",
+          "resolution": "lexical"
+        }
+      ]
+    },
+    {
+      "name": "callers-save",
+      "kind": "callers",
+      "symbol": "store.Save",
+      "at": "internal/store",
+      "unresolved": 1,
+      "callers": [
+        {
+          "path": "internal/store/store_test.go",
+          "line": 10,
+          "kind": "method",
+          "resolution": "exact"
+        },
+        {
+          "path": "internal/api/api.go",
+          "line": 9,
+          "kind": "method",
+          "resolution": "lexical"
+        },
+        {
+          "path": "internal/worker/worker.go",
+          "line": 7,
+          "kind": "method",
+          "resolution": "lexical"
+        },
+        {
+          "path": "internal/cli/cli.go",
+          "line": 11,
+          "kind": "method",
+          "resolution": "lexical"
+        },
+        {
+          "path": "internal/app/app.go",
+          "line": 14,
+          "kind": "method",
+          "resolution": "lexical"
+        }
+      ]
+    },
+    {
+      "name": "callers-touch",
+      "kind": "callers",
+      "symbol": "store.Touch",
+      "at": "internal/store",
+      "unresolved": 0,
+      "callers": [
+        {
+          "path": "internal/app/app.go",
+          "line": 18,
+          "kind": "method",
+          "resolution": "lexical"
+        }
+      ]
+    },
+    {
+      "name": "tests-for-store",
+      "kind": "tests-for",
+      "path": "internal/store/store.go",
+      "hidden": 0,
+      "tests": [
+        {
+          "path": "internal/store/store_test.go",
+          "via": "same-package",
+          "depth": 0
+        },
+        { "path": "internal/api/api_test.go", "via": "references", "depth": 1 },
+        {
+          "path": "internal/loader/loader_test.go",
+          "via": "imports-module",
+          "depth": 1
+        },
+        {
+          "path": "internal/handler/handler_test.go",
+          "via": "transitive-import",
+          "depth": 2
+        }
+      ]
+    },
+    {
+      "name": "tests-for-capped",
+      "kind": "tests-for",
+      "path": "internal/store/store.go",
+      "depth": 1,
+      "hidden": 1,
+      "tests": [
+        {
+          "path": "internal/store/store_test.go",
+          "via": "same-package",
+          "depth": 0
+        },
+        { "path": "internal/api/api_test.go", "via": "references", "depth": 1 },
+        {
+          "path": "internal/loader/loader_test.go",
+          "via": "imports-module",
+          "depth": 1
+        }
+      ]
+    }
+  ]
+}
