@@ -976,7 +976,7 @@ func (x *tsExtractor) imports() {
 			continue
 		}
 		switch t.text {
-		case "require":
+		case wordRequire:
 			x.requireEdge(i)
 		case wordImport:
 			x.esEdge(i + 1)
@@ -1022,7 +1022,7 @@ func (x *tsExtractor) reExportEdge(i int) {
 // form, whose edge the require call itself records.
 func (x *tsExtractor) requireAssign(i int) bool {
 	return i+2 < len(x.tokens) && x.tokens[i].kind == tsIdent && x.tokens[i+1].text == punctAssign &&
-		x.tokens[i+2].text == "require"
+		x.tokens[i+2].text == wordRequire
 }
 
 // requireEdge records one CommonJS `require(…)` edge and its binding.
@@ -1322,6 +1322,13 @@ func (x *tsExtractor) shadowed(name string, call int) bool {
 }
 
 func (x *tsExtractor) bindingActive(i, call int) bool {
+	assignment := i + 1
+	callee := assignment + 1
+	paren := callee + 1
+	if x.text(assignment) == punctAssign && x.text(callee) == wordRequire &&
+		x.text(paren) == punctParen && x.specifier(paren+1) != "" {
+		return false
+	}
 	binding := x.text(i+1) == punctAssign || x.text(i-1) == wordLet || x.text(i-1) == wordConst || x.text(i-1) == wordVar
 	scope := x.parameterBody(i)
 	if !binding && scope < 0 {

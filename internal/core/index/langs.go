@@ -58,6 +58,7 @@ const (
 	wordMethod    = "method"
 	wordNew       = "new"
 	wordReturn    = "return"
+	wordRequire   = "require"
 	wordType      = "type"
 	wordTypeof    = "typeof"
 	wordVar       = "var"
