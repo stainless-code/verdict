@@ -1413,20 +1413,39 @@ asks reviewers to name the path, never quote a flagged value.
 ## Serve (local HTTP surface)
 
 `verdict serve` starts one read-only HTTP surface over the current repository's
-bundles: the server binds `127.0.0.1` on a kernel-assigned port by default (pass
-`--port` to pin it, `--host` to bind another interface), prints one tokenised
-start URL, and stops on Ctrl-C (exit 3). It never fetches, posts, runs a model,
-or writes a store.
+bundles. With `--root`, it discovers every repository below that directory.
+The server binds `127.0.0.1` on a kernel-assigned port by default. Pass `--port`
+to pin the port or `--host` to bind another interface. The server prints one
+tokenised start URL and stops on Ctrl-C (exit 3). It never fetches, posts, runs
+a model, or writes a store.
 
 ```bash
 verdict serve                    # the current repository
-verdict serve --root ~/work      # one explicit repository root
+verdict serve --root ~/work      # every repository below this directory
 verdict serve --host 192.168.1.10 # bind one interface: warns, never a default
 verdict serve --token fixed      # tests/scripts: visible in argv and history
+verdict serve --root ~/work --rediscover # force a new walk
+verdict serve --root ~/work --no-registry # skip registry reads and writes
 ```
 
 Flags: `--root <dir>` (serve that directory as the root; refused `bad-root`
-when missing or not a directory), `--host <addr>` (default `127.0.0.1`; any
+when missing or not a directory, then discover `.verdict/` repositories below
+it), `--depth <n>` (default `6`, maximum `16`), `--max-visits <n>` (default
+`20000` directories), and `--max-repos <n>` (default `500`); reaching either
+walk cap sets `truncated` and adds a warning with the last visited path.
+Discovery skips `.git`, `node_modules`, `vendor`, and every encountered
+symlink entry; each symlink entry is counted without following it.
+`.gitignore` supports comments, `!` re-inclusion, leading and trailing `/`,
+`*`, and whole-segment `**`; unsupported patterns such as `?` are skipped and
+named in warnings. A rule that would require more than two effective
+whole-segment `**` terms is also skipped with a warning to bound matching work.
+The local registry is `~/.config/verdict/projects.json`, or
+`$XDG_CONFIG_HOME/verdict/projects.json` when `XDG_CONFIG_HOME` is set. The
+server writes it atomically with mode `0600`, and it expires after 24 hours.
+`--rediscover` forces a walk; `--no-registry` bypasses registry reads and writes. A warm start
+reports `discovery.cached: true` and `scanned_at` in `/v1/health`, `/v1/roots`,
+and the inbox response. The server warns and rebuilds when the registry is
+missing or corrupt. `--host <addr>` (default `127.0.0.1`; any
 other value warns that it exposes the surface beyond the machine over plain
 HTTP, with the token and session cookie unencrypted), `--port <n>` (default
 `0`, the kernel assigns one), `--token <s>` (default: a fresh 128-bit token per
@@ -1473,6 +1492,10 @@ The `bundles` SSE event carries one compact envelope with the root, detector
 carry invalidations only. Clients refetch `/v1/bundles` after a truncated
 event; reconnects do not replay events, so clients fetch the visible view again.
 The server coalesces changes for 250ms and caps each event at 100 bundle names.
+
+Discovery is a startup snapshot: a repository added below a cached root appears
+after `--rediscover` or registry expiry. `/v1/roots` reports `truncated` and
+the counts of skipped symlinks and unsupported ignore patterns.
 
 `{root}` is a 12-hex id derived from the absolute root path; `{bundle}` is a
 path-safe slug and `{sig}` a 4–40 hex prefix. A product refusal is always HTTP

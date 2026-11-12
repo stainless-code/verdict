@@ -1098,10 +1098,10 @@ type ServeCache struct {
 	Entries int `json:"entries" min:"0"`
 }
 
-// ServeSkipped counts the walk outcomes discovery will report: S1 has no
-// walk, so only the zero row is published.
+// ServeSkipped counts directories and patterns skipped during discovery.
 type ServeSkipped struct {
-	Symlinks int `json:"symlinks" min:"0"`
+	Symlinks          int `json:"symlinks"           min:"0"`
+	GitignorePatterns int `json:"gitignore_patterns" min:"0" optional:"true"`
 }
 
 // ServeDiscovery reports whether the root list came from the registry.

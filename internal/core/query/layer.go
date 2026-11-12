@@ -88,10 +88,11 @@ type Root struct {
 // Snapshot is the layer's fixed input: the roots this process serves, the
 // build version a health row reports, and the runtime seam every composed
 // service receives.
-type Snapshot struct { //nolint:govet // construction snapshot; field order follows the spec type
-	Version string
-	Roots   []Root
-	Runtime *core.Runtime
+type Snapshot struct {
+	Version   string
+	Roots     []Root
+	Runtime   *core.Runtime
+	Discovery Discovery
 }
 
 // Options are the layer's resolved serve flags.
@@ -110,6 +111,7 @@ type Options struct {
 // never a source of truth: the stamp comparison rebuilds a stale entry.
 type Layer struct { //nolint:govet // fields group by role (options, read seams, derived state), not alignment
 	version    string
+	discovery  Discovery
 	roots      []Root
 	runtime    *core.Runtime
 	check      string
@@ -129,9 +131,10 @@ type Layer struct { //nolint:govet // fields group by role (options, read seams,
 }
 
 // New builds the read model over a snapshot of roots.
-func New(s Snapshot, o Options) *Layer {
+func New(s Snapshot, o Options) *Layer { //nolint:gocritic // public API keeps the fixed construction snapshot as a value.
 	layer := &Layer{
 		version:    s.Version,
+		discovery:  s.Discovery,
 		runtime:    s.Runtime,
 		check:      o.Check,
 		maxBundles: o.MaxBundles,
@@ -261,18 +264,26 @@ func (l *Layer) rootByID(id string) (Root, bool) {
 // bundle-ambiguous instead of reading that sibling.
 func (l *Layer) resolve(root Root, bundle string) (string, bool, *core.RefusalError) {
 	names, _, _ := l.listBundles(root)
-	return resolveAmong(root, bundle, names)
+	return resolveAmong(root, bundle, bundleSet(names))
+}
+
+func bundleSet(names []string) map[string]bool {
+	set := make(map[string]bool, len(names))
+	for _, name := range names {
+		set[name] = true
+	}
+	return set
 }
 
 // resolveAmong maps one bundle name onto its directory against the names a
 // listing already discovered, so one request scans the state directory once
 // however many rows it composes.
-func resolveAmong(root Root, bundle string, names []string) (string, bool, *core.RefusalError) {
+func resolveAmong(root Root, bundle string, names map[string]bool) (string, bool, *core.RefusalError) {
 	dir, ref := readcommon.ResolveBundleDir(root.Path, bundle)
 	if ref != nil {
 		return "", false, ref
 	}
-	if !slices.Contains(names, bundle) {
+	if !names[bundle] {
 		return "", false, nil
 	}
 	want := filepath.ToSlash(filepath.Join(readcommon.StateDir(root.Path), bundle))

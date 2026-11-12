@@ -9,6 +9,15 @@ where you meet them; each definition matches how the verbs behave today.
 `.verdict/state/local-<name>/` for `fetch-local`. It holds the diff, TOC, roles, and
 normalized metadata; every later verb reads it and never re-fetches on its own.
 
+**Discovery registry.** The local, 24-hour cache of repository paths found below a
+`serve --root` directory. It stores no review data and is revalidated against each
+repository's `.verdict/` directory at startup. `--rediscover` bypasses the cache.
+
+**Discovery snapshot.** The bounded set of `.verdict/` repositories found when
+`serve` starts. Symlink entries and the documented ignored directories are not
+traversed; each encountered symlink entry is counted without following it.
+Either walk cap marks the result `truncated`.
+
 **Lens.** A read-only subagent dispatched to answer one falsifiable question
 whose answer could change the review's disposition. Lenses are staffed by
 domain (billing, auth, schema migration), not by file list; a review with no

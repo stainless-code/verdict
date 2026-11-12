@@ -20,3 +20,13 @@ func OpenNoBlock(path string) (*os.File, error) {
 	}
 	return f, nil
 }
+
+// OpenNoBlockIn opens a file below root without waiting for a writer. The
+// caller must fstat the descriptor and refuse anything but a regular file.
+func OpenNoBlockIn(root *os.Root, name string) (*os.File, error) {
+	f, err := root.OpenFile(name, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, jq.Sealed("open without blocking", err)
+	}
+	return f, nil
+}

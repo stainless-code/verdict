@@ -64,6 +64,7 @@ func (l *Layer) Health(_ context.Context) *View {
 		"interval", interval,
 		"cache", jq.NewObj("entries", l.cacheEntries()),
 		"read_only", true,
+		"discovery", l.discoveryWire(),
 		keyPartial, false,
 		keySources, []any{},
 		keyErrors, []any{},
@@ -71,8 +72,7 @@ func (l *Layer) Health(_ context.Context) *View {
 	return view
 }
 
-// Roots lists the served roots with their bundle counts. Discovery is S2:
-// every root here is the one the process was started with.
+// Roots lists the discovered roots with their bundle counts and scan state.
 func (l *Layer) Roots(_ context.Context) *View {
 	view := l.newView()
 	roots := make([]any, 0, len(l.roots))
@@ -90,15 +90,24 @@ func (l *Layer) Roots(_ context.Context) *View {
 	}
 	view.Data = jq.NewObj(
 		"roots", roots,
-		"truncated", truncated,
-		"skipped", jq.NewObj("symlinks", 0),
-		"discovery", jq.NewObj("cached", false, "scanned_at", ""),
-		keyPartial, truncated || len(errs) > 0,
+		"truncated", truncated || l.discovery.Truncated,
+		"skipped", jq.NewObj("symlinks", l.discovery.Symlinks, "gitignore_patterns", l.discovery.SkippedPatterns),
+		"discovery", l.discoveryWire(),
+		keyPartial, truncated || l.discovery.Truncated || len(errs) > 0,
 		keySources, []any{},
 		keyErrors, errorsWire(errs),
 	)
 	view.Errors = errs
+	view.Warnings = append(view.Warnings, l.discovery.Warnings...)
 	return view
+}
+
+func (l *Layer) discoveryWire() *jq.Obj {
+	stamp := ""
+	if !l.discovery.ScannedAt.IsZero() {
+		stamp = core.NowUTC(l.discovery.ScannedAt)
+	}
+	return jq.NewObj("cached", l.discovery.Cached, "scanned_at", stamp)
 }
 
 // totals is the portfolio rollup /v1/bundles publishes.
@@ -144,6 +153,7 @@ func (t *totals) wire() *jq.Obj {
 // any total over the set is then null, never a silently smaller sum.
 func (l *Layer) Bundles(ctx context.Context, pattern string) (*View, error) {
 	view := l.newView()
+	view.Warnings = append(view.Warnings, l.discovery.Warnings...)
 	rows, errs, sum, partial := l.collectRows(ctx, pattern, view)
 	rootID := ""
 	if len(l.roots) == 1 {
@@ -159,6 +169,7 @@ func (l *Layer) Bundles(ctx context.Context, pattern string) (*View, error) {
 		data.Set(keyCounts, sum.wire())
 	}
 	data.Set(keyPartial, partial)
+	data.Set("discovery", l.discoveryWire())
 	data.Set(keySources, sourcesWire(view.Sources))
 	data.Set(keyErrors, errorsWire(errs))
 	view.Data = data
@@ -175,7 +186,7 @@ func (l *Layer) collectRows(
 	var rows []any
 	var errs []ErrRow
 	var sum totals
-	partial := false
+	partial := l.discovery.Truncated
 	for _, root := range l.roots {
 		if ctx.Err() != nil {
 			break
@@ -221,11 +232,12 @@ func (l *Layer) composeRows(
 	ctx context.Context, root Root, names []string, pattern string,
 ) (rows []any, errs []ErrRow, sum totals, sources []Source, inv inventoryReport) {
 	var folded listing
+	known := bundleSet(names)
 	for _, bundle := range names {
 		if ctx.Err() != nil {
 			break
 		}
-		if item, ok := l.collectBundle(ctx, root, bundle, names, pattern); ok {
+		if item, ok := l.collectBundle(ctx, root, bundle, known, pattern); ok {
 			folded.add(&item)
 		}
 	}
@@ -266,7 +278,7 @@ type bundleItem struct {
 // collectBundle composes one row; ok is false only for a name the listing
 // raced away or the filter excluded.
 func (l *Layer) collectBundle(
-	ctx context.Context, root Root, bundle string, names []string, pattern string,
+	ctx context.Context, root Root, bundle string, names map[string]bool, pattern string,
 ) (bundleItem, bool) {
 	if pattern != "" && !BundleMatches(pattern, bundle) {
 		return bundleItem{}, false
@@ -282,7 +294,7 @@ func (l *Layer) collectBundle(
 // receipt's model name, or null counts and an error row when the bundle
 // refuses.
 func (l *Layer) row(
-	ctx context.Context, root Root, bundle string, names []string,
+	ctx context.Context, root Root, bundle string, names map[string]bool,
 ) (any, *core.ReportResponse, []ErrRow, inventoryReport) {
 	dir, ok, ref := resolveAmong(root, bundle, names)
 	if ref != nil {
