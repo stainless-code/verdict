@@ -31,16 +31,6 @@ const (
 	missingMarker = "!missing\n"
 )
 
-// stamp is the SHA-256 digest of every composition input: each bundle-directory
-// entry, the chunks directory, and the root override fragments. A 32-byte
-// digest keeps a cache row constant-size no matter how many files a bundle
-// holds, and every row carries its entry's mode bits, so a permission-only
-// change moves the stamp. A bundle entry contributes its size and mtime: an
-// atomic write moves it, and so does an in-place rewrite, except a same-size,
-// same-mtime rewrite of a bundle artifact, the one blind spot. An override
-// fragment contributes the digest of the bytes the capped reader returns, so
-// any rewrite of it moves the stamp. A symlink is fingerprinted through to its
-// target, the same file the readers open.
 type stamp [sha256.Size]byte
 
 // cacheKey names one composed view: the bundle plus the flags that change
@@ -80,8 +70,7 @@ type entry struct {
 // bypasses the cache and the reader's own refusal shows.
 func bundleStamp(root Root, dir string) (stamp, bool) {
 	var out strings.Builder
-	appendDirStamp(&out, dir, "")
-	cacheable := true
+	cacheable := appendDirStamp(&out, dir, "")
 	for _, fragment := range overrideFragments {
 		if !appendOverrideStamp(&out, filepath.Join(root.Path, filepath.FromSlash(fragment))) {
 			cacheable = false
@@ -92,31 +81,44 @@ func bundleStamp(root Root, dir string) (stamp, bool) {
 
 // appendDirStamp fingerprints one directory's entries and recurses into the
 // chunks directory.
-func appendDirStamp(out *strings.Builder, dir, prefix string) {
+func appendDirStamp(out *strings.Builder, dir, prefix string) bool {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		out.WriteString(prefix + unreadableMarker)
-		return
+		return false
 	}
+	cacheable := true
 	for _, entry := range entries {
-		appendEntryStamp(out, dir, prefix, entry)
+		if !appendEntryStamp(out, dir, prefix, entry) {
+			cacheable = false
+		}
 	}
+	return cacheable
 }
 
 // appendEntryStamp fingerprints one directory entry. The stat follows a
 // symlink, so a target edit moves the stamp; the readers follow the same link.
-func appendEntryStamp(out *strings.Builder, dir, prefix string, entry os.DirEntry) {
+func appendEntryStamp(out *strings.Builder, dir, prefix string, entry os.DirEntry) bool {
 	name := prefix + entry.Name()
 	path := filepath.Join(dir, entry.Name())
 	info, err := os.Stat(path)
 	if err != nil {
 		out.WriteString(name + unreadableMarker)
-		return
+		return false
 	}
 	appendStatLine(out, name, info)
-	if prefix == "" && info.IsDir() && entry.Name() == chunksDirName {
-		appendDirStamp(out, path, chunksDirName+"/")
+	if info.Mode().IsRegular() && info.Size() <= overrideStampCap {
+		raw, err := readcommon.ReadRegularCapped(path, overrideStampCap)
+		if err != nil {
+			return false
+		}
+		out.WriteString(digestBytes(raw))
 	}
+
+	if prefix == "" && info.IsDir() && entry.Name() == chunksDirName {
+		return appendDirStamp(out, path, chunksDirName+"/")
+	}
+	return true
 }
 
 // appendOverrideStamp fingerprints one override fragment by the bytes the

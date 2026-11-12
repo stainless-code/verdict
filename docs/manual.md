@@ -3607,3 +3607,6 @@ before writing artifacts, matching `fetch` and `fetch-local`.
 
 Serve inventory charges never exceed the 16 MiB per-bundle budget, including
 failed reads and artifacts larger than the per-file cap.
+
+Serve cache fingerprints include content for bundle artifacts up to 64 KiB.
+Larger artifacts use mode, size and mtime; the periodic sweep refreshes them.
