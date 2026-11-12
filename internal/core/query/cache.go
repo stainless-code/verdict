@@ -179,9 +179,10 @@ func (l *Layer) fingerprint(ctx context.Context, root Root, dir string) (stamp, 
 // cached composes one bundle's report, reusing the in-memory entry while its
 // stamp holds. A canceled request fingerprints no files. A request whose stamp
 // could not be built reads and writes no entry, so the next request still sees
-// the reader's refusal; a canceled request hashes no inventory. The cache is
-// bounded by the bundle cap and never written anywhere: a stale entry is a bug,
-// not data loss.
+// the reader's refusal. A composition whose inventory was skipped is never
+// stored, so a later request cannot read an incomplete sources[] from the
+// cache. The cache is bounded by the bundle cap and never written anywhere: a
+// stale entry is a bug, not data loss.
 func (l *Layer) cached(
 	ctx context.Context, root Root, bundle, dir string, flags *core.ReportFlags,
 ) (*core.ReportResponse, *core.RefusalError, inventoryReport) {
@@ -198,10 +199,12 @@ func (l *Layer) cached(
 
 	resp, ref := l.compose(ctx, root, bundle, dir, flags)
 	inv := inventoryReport{}
+	inventoried := false
 	if ctx.Err() == nil {
 		inv = l.inventory(root, bundle, dir)
+		inventoried = true
 	}
-	if ref != nil || !cacheable {
+	if ref != nil || !cacheable || !inventoried {
 		return resp, ref, inv
 	}
 

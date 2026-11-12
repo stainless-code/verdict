@@ -1053,6 +1053,36 @@ func TestCacheDoesNotPinCancellation(t *testing.T) {
 	}
 }
 
+// TestCacheDoesNotStoreACanceledInventory proves a successful composition whose
+// inventory was skipped is never cached: the next request walks its own ledger
+// instead of serving an empty sources[].
+func TestCacheDoesNotStoreACanceledInventory(t *testing.T) {
+	t.Parallel()
+	dir, _ := fixture(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	layer := New(Snapshot{
+		Version: "1.2.3",
+		Roots:   []Root{{Path: dir}},
+		Runtime: &core.Runtime{Now: func() time.Time {
+			cancel()
+			return fixedNow()
+		}},
+	}, Options{Check: "critical", MaxBundles: 10})
+	root := RootID(mustAbs(t, dir))
+	if _, err := layer.Detail(ctx, root, "1234"); err != nil {
+		t.Fatalf("Detail whose request died inside the composition = %v, want the composed report", err)
+	}
+	if got := layer.cacheEntries(); got != 0 {
+		t.Errorf("cache entries after a skipped inventory = %d, want 0", got)
+	}
+	view, err := layer.Detail(context.Background(), root, "1234")
+	if err != nil {
+		t.Fatalf("Detail after the canceled request = %v, want success", err)
+	}
+	assertSourcePresent(t, view, ".verdict/state/1234/findings.json")
+	assertSourcePresent(t, view, ".verdict/state/1234/full.diff")
+}
+
 // TestCacheKeepsCompositionsPerBundle proves the cap is counted in bundles,
 // not compositions: an inbox and a detail for one bundle coexist.
 func TestCacheKeepsCompositionsPerBundle(t *testing.T) {
