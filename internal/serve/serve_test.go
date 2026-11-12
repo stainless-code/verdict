@@ -694,3 +694,50 @@ func TestRootSkipsTheRepoProbe(t *testing.T) {
 		t.Errorf("url = %v, want the tokenised start URL", data["url"])
 	}
 }
+
+// TestBadRootIsRefused proves a missing --root is the pre-flight bad-root
+// refusal, never a listener over a directory that is not there.
+func TestBadRootIsRefused(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing")
+	out := &syncBuffer{}
+	runner := &cli.Runner{
+		Cmd: "serve", Out: out, Human: out, Diag: out, JSONMode: true,
+		Now: fixedNow, Effective: cli.Defaults(),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	code := Run(ctx, runner, []string{"--root", missing}, Request{})
+	if code != cli.ExitRefused {
+		t.Fatalf("exit = %d, want %d", code, cli.ExitRefused)
+	}
+	if got := asMap(t, decode(t, []byte(out.String()))["error"])["code"]; got != "bad-root" {
+		t.Errorf("error.code = %v, want bad-root", got)
+	}
+}
+
+// TestListenFailureIsRefused proves an unusable port is serve-listen-failed.
+func TestListenFailureIsRefused(t *testing.T) {
+	var listen net.ListenConfig
+	held, err := listen.Listen(t.Context(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = held.Close() })
+	_, port, err := net.SplitHostPort(held.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := writeFixture(t, fixtureFiles())
+	out := &syncBuffer{}
+	runner := &cli.Runner{
+		Cmd: "serve", Out: out, Human: out, Diag: out, JSONMode: true,
+		Now: fixedNow, Effective: cli.Defaults(),
+	}
+	code := Run(context.Background(), runner, []string{"--root", root, "--port", port}, Request{})
+	if code != cli.ExitRefused {
+		t.Fatalf("exit = %d, want %d", code, cli.ExitRefused)
+	}
+	if got := asMap(t, decode(t, []byte(out.String()))["error"])["code"]; got != "serve-listen-failed" {
+		t.Errorf("error.code = %v, want serve-listen-failed", got)
+	}
+}
