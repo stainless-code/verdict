@@ -913,6 +913,7 @@ export interface IndexBlastCaller {
 export interface IndexBlastTests {
   count: number | null;
   truncated: number | null;
+  depth_truncated: number | null;
   rows: Array<IndexRow>;
   [key: string]: unknown;
 }

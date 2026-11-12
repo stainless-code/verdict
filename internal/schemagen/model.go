@@ -829,10 +829,14 @@ type IndexBlastCaller struct {
 }
 
 // IndexBlastTests is the candidate-test list for the changed declarations.
+// count, truncated, and depth_truncated are null when the index could not
+// answer; depth_truncated counts the candidates one import hop past the
+// transitive walk's depth cap.
 type IndexBlastTests struct {
-	Count     *int       `json:"count"     min:"0"`
-	Truncated *int       `json:"truncated" min:"0"`
-	Rows      []IndexRow `json:"rows"`
+	Count          *int       `json:"count"           min:"0"`
+	Truncated      *int       `json:"truncated"       min:"0"`
+	DepthTruncated *int       `json:"depth_truncated" min:"0"`
+	Rows           []IndexRow `json:"rows"`
 }
 
 // IndexBlastPartners is the co-change list for the changed paths: count is the

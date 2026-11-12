@@ -189,7 +189,11 @@ var publishedSemantics = map[string]string{
 	// additive optional indexRow.depth and indexData.depth/depth_truncated
 	// integers. No existing property, required key, or type changed; the
 	// depth_truncated name keeps the row limit's `truncated` distinct.
-	"envelope.schema.json": "8e6eecfe0df4189f324bfada01a9301e4263f856a91abf352dab6f57cc555f84",
+	// blast-radius depth cap: the same integer added to indexBlastTests, whose
+	// count/truncated/rows are already all required, so it is required there
+	// too and reads null when no index answered. No existing property, required
+	// key, enum, or type changed.
+	"envelope.schema.json": "53a34014e8bce7fe67f63f0240fa9c4542615d9ce2b43e10d5d1eae38d673e24",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

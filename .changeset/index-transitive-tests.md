@@ -15,5 +15,6 @@ the candidates whose own chain is one hop past the cap. The walk uses each
 language's own import data (Go import paths, TypeScript
 and JavaScript specifiers, Python modules and the submodule a `from … import …`
 names) and never crosses a language family. `index blast-radius` reuses it, so
-its candidate-test list gains transitive rows; the read-only MCP `index` tool
+its candidate-test list gains transitive rows and a `tests.depth_truncated`
+count of the candidates its fixed depth cap hid; the read-only MCP `index` tool
 takes `depth` too.

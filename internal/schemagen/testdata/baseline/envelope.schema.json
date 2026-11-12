@@ -1717,12 +1717,13 @@
       "properties": {
         "count": { "type": ["integer", "null"], "minimum": 0 },
         "truncated": { "type": ["integer", "null"], "minimum": 0 },
+        "depth_truncated": { "type": ["integer", "null"], "minimum": 0 },
         "rows": {
           "type": "array",
           "items": { "$ref": "#/$defs/indexRow" }
         }
       },
-      "required": ["count", "truncated", "rows"],
+      "required": ["count", "truncated", "depth_truncated", "rows"],
       "additionalProperties": true
     },
     "indexBlastPartners": {

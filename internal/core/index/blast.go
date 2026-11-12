@@ -36,6 +36,7 @@ const (
 	blastNoSymbols   = "index: %d changed file(s), no indexed declarations at %s"
 	blastSymbolsHead = "index: %d changed file(s), %d changed symbol(s) at %s"
 	blastTestsHead   = "index: %d candidate test(s)"
+	blastTestsCapped = "index: depth cap %d reached (%d candidate test(s) one import hop beyond)"
 	blastPartnerHead = "index: %d co-change pair(s) over %d partner file(s)"
 	blastHunkless    = "» index: %s changed with no line hunks; every declaration in the new path is a changed symbol"
 	blastOwnerHead   = "index: ownership for %d changed path(s)"
@@ -104,18 +105,21 @@ type BlastTruncated struct {
 
 // Blast is the blast-radius result: the input, the measured lists, and whether
 // an index answered the symbol, caller, and test lists. unresolved counts the
-// candidate references the caller walk could not attribute.
+// candidate references the caller walk could not attribute, and DepthTruncated
+// the candidate tests the test walk's depth cap hid — nil when no index
+// answered.
 type Blast struct {
-	Symbols    []SymbolRow
-	Callers    []CallerRow
-	Tests      []TestRow
-	Partners   []BlastPartnerRow
-	Owners     []Target
-	Truncated  BlastTruncated
-	Input      BlastInput
-	Counts     BlastCounts
-	unresolved int
-	Indexed    bool
+	Symbols        []SymbolRow
+	Callers        []CallerRow
+	Tests          []TestRow
+	Partners       []BlastPartnerRow
+	Owners         []Target
+	Truncated      BlastTruncated
+	Input          BlastInput
+	Counts         BlastCounts
+	DepthTruncated *int
+	unresolved     int
+	Indexed        bool
 }
 
 // checkBlastPaths refuses a --paths entry the queried tree does not carry, so a
@@ -211,9 +215,10 @@ func (st *state) blastRadius(ctx context.Context) (*Response, *core.RefusalError
 	}
 	blast := &Blast{
 		Input: input, Indexed: t != nil,
-		Symbols: symbolRows(symbols), Callers: callers, Tests: blastTests(t, symbols),
-		Partners: partners, Owners: owners, unresolved: unresolved,
+		Symbols: symbolRows(symbols), Callers: callers, Partners: partners, Owners: owners,
+		unresolved: unresolved,
 	}
+	blast.Tests, blast.DepthTruncated = blastTests(t, symbols)
 	return st.blastResponse(t, tree, commit, stale, blast, limit), nil
 }
 
@@ -611,15 +616,17 @@ func callerRows(hits map[string]callerHit) []CallerRow {
 }
 
 // blastTests collects the candidate tests for every changed symbol, keeping the
-// strongest mechanism per file.
-func blastTests(t *treeIndex, symbols []blastSymbol) []TestRow {
+// strongest mechanism per file, and counts the distinct files the walk's depth
+// cap hid. Both are nil when no index answered.
+func blastTests(t *treeIndex, symbols []blastSymbol) ([]TestRow, *int) {
 	if t == nil {
-		return nil
+		return nil, nil
 	}
 	g := newImportGraph(t)
 	best := map[string]TestRow{}
+	capped := map[string]bool{}
 	for i := range symbols {
-		collectSymbolTests(best, t, g, &symbols[i])
+		collectSymbolTests(best, capped, t, g, &symbols[i])
 	}
 	rows := make([]TestRow, 0, len(best))
 	for _, row := range best {
@@ -631,21 +638,25 @@ func blastTests(t *treeIndex, symbols []blastSymbol) []TestRow {
 		}
 		return strings.Compare(a.Via, b.Via)
 	})
-	return rows
+	return rows, new(len(capped))
 }
 
 // collectSymbolTests keeps the strongest candidate mechanism per test file for
-// one changed symbol.
-func collectSymbolTests(best map[string]TestRow, t *treeIndex, g *importGraph, sym *blastSymbol) {
+// one changed symbol, and the files the depth cap hid from it.
+func collectSymbolTests(best map[string]TestRow, capped map[string]bool, t *treeIndex, g *importGraph, sym *blastSymbol) {
 	plan := &testPlan{
 		path: sym.row.Path, dirs: []string{sym.tgt.pkg.dir}, lang: sym.tgt.lang,
 		depth: DefaultDepth, targets: []target{sym.tgt},
 	}
-	for _, row := range walkTestRows(t, plan, g).rows {
+	walk := walkTestRows(t, plan, g)
+	for _, row := range walk.rows {
 		cur, seen := best[row.Path]
 		if !seen || strongerTestRow(row, cur) {
 			best[row.Path] = row
 		}
+	}
+	for _, path := range walk.hidden {
+		capped[path] = true
 	}
 }
 
@@ -857,6 +868,9 @@ func (st *state) blastTestLines(blast *Blast) {
 		st.line(testRowText(row))
 	}
 	st.showingRow("candidate tests", len(blast.Tests), *blast.Counts.Tests, *blast.Truncated.Tests)
+	if n := *blast.DepthTruncated; n > 0 {
+		st.line(fmt.Sprintf(blastTestsCapped, DefaultDepth, n))
+	}
 }
 
 // blastPartnerLines renders the co-change pairs and the files they name.

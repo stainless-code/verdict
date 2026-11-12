@@ -119,6 +119,32 @@ func TestBlastPathsWalksDepthTwo(t *testing.T) {
 	}
 }
 
+// TestBlastCountsTheDepthCappedTests proves the candidate-test list reports the
+// tests the transitive walk's depth cap hid instead of stopping at the last row:
+// the test four package hops out is counted once for every changed symbol of
+// its target file and never named.
+func TestBlastCountsTheDepthCappedTests(t *testing.T) {
+	f := newFixture(t)
+	writeBlastFixture(f)
+	f.write("e/e.go", "package e\n\nimport \"example.com/m/d\"\n\nfunc Beyond() {\n\td.Deeper()\n}\n")
+	f.write("e/e_test.go", "package e\n\nimport \"testing\"\n\nfunc TestBeyond(t *testing.T) {}\n")
+	f.commit("one")
+	f.build()
+	resp := blastRun(t, f, func(r *Request) { r.Paths = []string{"a/ab.go"} })
+	blast := resp.Data.Blast
+	assertTestRows(t, blast.Tests, []TestRow{
+		{Path: "a/a_test.go", Via: viaSamePackage},
+		{Path: "b/b_test.go", Via: viaReferences, Depth: 1},
+		{Path: "c/c_test.go", Via: viaTransitiveImport, Depth: 2},
+	})
+	if got := *blast.DepthTruncated; got != 1 {
+		t.Errorf("depth_truncated = %d; want 1", got)
+	}
+	if !slices.Contains(resp.Human, "index: depth cap 3 reached (1 candidate test(s) one import hop beyond)") {
+		t.Errorf("human lines = %q; want the depth cap line", resp.Human)
+	}
+}
+
 // TestBlastCycleTerminates proves a two-node call cycle answers once per edge
 // instead of growing a row chain.
 func TestBlastCycleTerminates(t *testing.T) {

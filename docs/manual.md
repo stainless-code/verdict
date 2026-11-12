@@ -2862,10 +2862,13 @@ and owners reuse the CODEOWNERS answer at the queried tree — one row per
 changed path.
 
 Every list is a measured object — `count`, `truncated`, and `rows` — so a
-truncated answer says how much it hid instead of looking complete. The result is
-a lower bound: a method value, a reflection call, an unparsed file, or a skipped
-oversize file is missing rather than invented. `data.input` echoes the PR slug
-or the resolved paths, and `data.limit` echoes the row limit.
+truncated answer says how much it hid instead of looking complete. The test list
+carries one count more: `tests.depth_truncated` names the candidate tests the
+transitive walk's depth cap hid, because `blast-radius` takes no `--depth` and
+a list cut by that cap is not an empty one. The result is a lower bound: a
+method value, a reflection call, an unparsed file, or a skipped oversize file is
+missing rather than invented. `data.input` echoes the PR slug or the resolved
+paths, and `data.limit` echoes the row limit.
 
 Caps: 20,000 source files, 1 MiB per file (an oversized file stays in the tree
 unparsed and counts in `coverage.skipped`), a 96 MiB tree file, and a 256 MiB
