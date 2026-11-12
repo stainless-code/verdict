@@ -411,6 +411,34 @@ test("renders all six views from schema-shaped envelopes", async () => {
   await ui.navigate("#/r/root-123/local-good");
   assert.equal(title(), "Review detail");
   assert.ok(content.textContent.includes(hostile));
+  assert.deepEqual(tableRows(captionedTable(content, "Findings"))[0], [
+    "sig-123",
+    "open",
+    "high",
+    "pointed",
+    "src/hostile.js",
+    "7",
+    hostile,
+    "Unknown",
+  ]);
+  assert.deepEqual(tableRows(captionedTable(content, "Evidence ledger"))[0], [
+    "review.json",
+    "true",
+    "abc123",
+    "30",
+  ]);
+  assert.deepEqual(tableRows(captionedTable(content, "Threads"))[0], [
+    "thread-1",
+    "src/hostile.js",
+    "7",
+    "open",
+    "reviewer",
+    hostile,
+  ]);
+  assert.equal(
+    descendants(content).filter((node) => node.tagName === "PRE").length,
+    0,
+  );
   assert.equal(
     descendants(content).filter((node) => ["IMG", "SVG"].includes(node.tagName))
       .length,
@@ -420,10 +448,22 @@ test("renders all six views from schema-shaped envelopes", async () => {
   await ui.navigate("#/r/root-123/local-good/threads");
   assert.equal(title(), "Threads");
   assert.ok(content.textContent.includes(hostile));
+  assert.deepEqual(tableRows(captionedTable(content, "Review threads"))[0], [
+    "thread-1",
+    "src/hostile.js",
+    "7",
+    "open",
+    "reviewer",
+    hostile,
+  ]);
 
   await ui.navigate("#/r/root-123/local-good/gate");
   assert.equal(title(), "Gate");
   assert.ok(content.textContent.includes("passed"));
+  assert.deepEqual(tableRows(captionedTable(content, "Gate"))[0], [
+    "passed",
+    "true",
+  ]);
 
   await ui.navigate("#/cost");
   assert.equal(title(), "Cost");
@@ -446,6 +486,10 @@ test("renders all six views from schema-shaped envelopes", async () => {
     "0",
     "Unknown",
   ]);
+  assert.equal(
+    descendants(content).filter((node) => node.tagName === "PRE").length,
+    0,
+  );
   assert.ok(content.textContent.includes("Run verdict calibrate"));
   assert.deepEqual(
     ui.fetches

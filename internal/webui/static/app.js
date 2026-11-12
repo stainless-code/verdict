@@ -86,6 +86,71 @@
     );
   }
 
+  function reviewSummary(report) {
+    return {
+      generated_at: report.generated_at,
+      bundle: report.dir,
+      fetched_head: report.head?.fetched,
+      stale: report.head?.stale,
+      open: report.verdict?.open,
+      deferred: report.verdict?.deferred,
+      addressed: report.verdict?.addressed,
+      terminal: report.verdict?.terminal,
+      inline_findings: report.counts?.inline,
+      section_findings: report.counts?.section,
+      anchored: report.counts?.anchored,
+      unanchored: report.counts?.unanchored,
+    };
+  }
+
+  function threadTable(caption, file) {
+    const rows = [];
+    for (const thread of file?.threads || []) {
+      const comments =
+        Array.isArray(thread.comments) && thread.comments.length
+          ? thread.comments
+          : [null];
+      for (const comment of comments) {
+        rows.push({
+          id: thread.id,
+          path: thread.path,
+          line: thread.line,
+          status: thread.resolved ? "resolved" : "open",
+          author: comment?.author || thread.author,
+          body: comment?.body,
+        });
+      }
+    }
+    return table(
+      caption,
+      [
+        { key: "id", label: "Thread" },
+        { key: "path", label: "Path" },
+        { key: "line", label: "Line" },
+        { key: "status", label: "Status" },
+        { key: "author", label: "Author" },
+        { key: "body", label: "Comment" },
+      ],
+      rows,
+    );
+  }
+
+  function renderGate(gate) {
+    content.append(objectPanel("Gate", { passed: gate?.passed }));
+    content.append(
+      table(
+        "Gate dimensions",
+        [
+          { key: "id", label: "Dimension" },
+          { key: "status", label: "Status" },
+          { key: "detail", label: "Details" },
+          { key: "count", label: "Count" },
+        ],
+        Array.isArray(gate?.dimensions) ? gate.dimensions : [],
+      ),
+    );
+  }
+
   function encodeHashSegment(segment) {
     let decoded = segment || "";
     try {
@@ -180,7 +245,7 @@
     const gate = data.gate;
     const items = Array.isArray(report.items) ? report.items : [];
     if (!gateOnly) {
-      content.append(objectPanel("Review summary", report));
+      content.append(objectPanel("Review summary", reviewSummary(report)));
       content.append(
         table(
           "Findings",
@@ -197,10 +262,21 @@
           items,
         ),
       );
-      content.append(objectPanel("Evidence ledger", data.artifacts));
-      content.append(objectPanel("Threads", data.threads));
+      content.append(
+        table(
+          "Evidence ledger",
+          [
+            { key: "path", label: "Path" },
+            { key: "present", label: "Present" },
+            { key: "sha256", label: "SHA-256" },
+            { key: "bytes", label: "Bytes" },
+          ],
+          Array.isArray(data.artifacts) ? data.artifacts : [],
+        ),
+      );
+      content.append(threadTable("Threads", data.threads));
     }
-    content.append(objectPanel("Gate", gate));
+    renderGate(gate);
     if (gate === null || gate === undefined)
       message.textContent = "Gate status is unknown.";
   }
@@ -221,7 +297,7 @@
             : "Review detail";
       content.append(detailNavigation(view));
       if (view === "threads") {
-        content.append(objectPanel("Review threads", data.threads));
+        content.append(threadTable("Review threads", data.threads));
       } else {
         renderDetail(data, view === "gate");
       }
