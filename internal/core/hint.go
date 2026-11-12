@@ -114,6 +114,7 @@ var hintRules = []HintRule{
 	{codes: []string{"controls-unavailable"}, hint: "try: check out the PR base (actions/checkout fetch-depth: 0, " +
 		"or git fetch --depth=1 origin <base>), then re-fetch; fetch --allow-head-controls is the explicit opt-out"},
 	{codes: []string{"controls-stale"}, hint: "try: re-fetch the bundle (controls changed under it), then re-run"},
+	{codes: []string{"coverage-stale"}, hint: "try: re-run fetch-local, review the new bundle, then record again"},
 	{codes: []string{"coverage-incomplete"}, hint: "try: stamp review.json " +
 		"\"coverage\": [{\"file\": \"...\", \"ranges\": \"1-240\"}] for every changed file, " +
 		"or re-run next --coverage to see the gaps, then post again"},

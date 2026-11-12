@@ -79,6 +79,7 @@ cost-models-not-array	try: rewrite models as an array of named entries, then re-
 cost-panel-unresolved	try: pass the panel that ran, in order: --cost-names=<lead>,<lens-1>,<lens-2>
 cost-unreadable	try: fix or delete the cost record named above, then re-run
 coverage-incomplete	try: stamp review.json "coverage": [{"file": "...", "ranges": "1-240"}] for every changed file, or re-run next --coverage to see the gaps, then post again
+coverage-stale	try: re-run fetch-local, review the new bundle, then record again
 degenerate-body	try: open with a verdict marker (see prompts/review.md), then re-run
 diff-failed	try: address the cause above, then re-run the same command
 diff-too-large	try: split the range (--range/--base/--base-sha) or narrow with a paths filter, then re-fetch

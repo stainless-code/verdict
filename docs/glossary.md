@@ -133,3 +133,10 @@ evidence does not support is not reported.
   successful live calibration, with timestamp, outcome counts, and provenance.
 
 **Agent definition** — a data row mapping an agent name to its executable, noninteractive arguments, and installation step.
+
+## Self-review loop
+
+A bounded local fetch → agent review and fix → record → gate recipe run before
+opening a PR. Each round retains a receipt; only a passing last gate produces a
+passing summary. See the manual's **Agent self-review loop** for its required
+coverage posture and wall budget.

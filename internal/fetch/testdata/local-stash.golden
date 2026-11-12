@@ -472,6 +472,7 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
   "head_sha": "6ef48874e2d2e17156b7a29d1b5ba124bcd7bfcc",
   "range": "stash@{0}",
   "dirty": false,
+  "worktree_diff_sha256": null,
   "diff_sha256": "428dea0b0ba9b784355e4e8ef8dab487b0d3398727b0c239d2cb57bb1adb1a77",
   "patch_id": "e3c92a668f7bee7655d0f8bf0bd541012710839f",
   "patch_id_kind": "git-patch-id",

@@ -492,6 +492,15 @@ Cause: `review.json` does not attest coverage for every changed file.
 
 Fix: stamp `review.json` `"coverage": [{"file": "...", "ranges": "1-240"}]` for every changed file, or re-run `next --coverage` to see the gaps, then post again.
 
+## `coverage-stale`
+
+Cause: the tracked working tree changed after `fetch-local`, or the dirty bundle
+has no verifiable tracked-tree fingerprint.
+
+Fix: re-run `fetch-local` to refresh `.verdict/state/local-<name>/`, review the
+new bundle, then record again. Coverage from the previous snapshot cannot
+certify the current tree.
+
 ## `degenerate-body`
 
 Cause: the published body carries no verdict marker.

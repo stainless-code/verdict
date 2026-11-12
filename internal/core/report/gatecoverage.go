@@ -1,8 +1,12 @@
 package reportcore
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"io"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/coverage"
@@ -21,6 +25,7 @@ const (
 	coverageWarn    = "warn"
 	coverageRequire = "require"
 	fieldHead       = "head"
+	fieldDiffSHA256 = "diff_sha256"
 	fieldCoverage   = "coverage"
 	fieldChunkCov   = "chunk_coverage"
 	fieldPercent    = "percent"
@@ -100,7 +105,7 @@ func receiptAt(path string) (storedCoverage, bool) {
 	if !ok {
 		return storedCoverage{}, false
 	}
-	out := storedCoverage{head: jq.Str(m[fieldHead])}
+	out := storedCoverage{head: receiptIdentity(m)}
 	if summary, ok := jq.AsMap(m[fieldCoverage]); ok {
 		out.sum = summaryOf(summary)
 	}
@@ -108,6 +113,17 @@ func receiptAt(path string) (storedCoverage, bool) {
 		out.chunks = chunkCoverageOf(chunks)
 	}
 	return out, true
+}
+
+func receiptIdentity(m map[string]any) string {
+	head := jq.Str(m[fieldHead])
+	if head != "" && head != "dirty" {
+		return head
+	}
+	if diff := jq.Str(m[fieldDiffSHA256]); diff != "" {
+		return "diff:" + diff
+	}
+	return head
 }
 
 // chunkCoverageOf reads the stored receipt's chunk attestation.
@@ -144,12 +160,36 @@ func intAt(m map[string]any, key string) int {
 	return int(f)
 }
 
+func coverageIdentity(st *state) string {
+	if st.headSHA != "" {
+		return st.headSHA
+	}
+	source := st.dir + "/source.json"
+	if readcommon.JSONStr(source, "kind") != "worktree" || readcommon.JSONRaw(source, "dirty") != "true" {
+		return ""
+	}
+	expected := readcommon.JSONStr(source, fieldDiffSHA256)
+	file, err := os.Open(st.dir + "/full.diff")
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = file.Close() }()
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return ""
+	}
+	if expected != hex.EncodeToString(hash.Sum(nil)) {
+		return ""
+	}
+	return "diff:" + expected
+}
+
 // gateCoverageCheck is the coverage dimension: the stored receipt for the
 // gated head, complete or not. The posture decides what a shortfall costs —
 // `require` (the default) fails the gate, `warn` prints one warning and leaves
 // the dimension neutral so it can never fail the gate.
 func gateCoverageCheck(st *state) gateCheck {
-	status, detail, count := coverageVerdict(st, readStoredCoverage(st.dir, st.headSHA))
+	status, detail, count := coverageVerdict(st, readStoredCoverage(st.dir, coverageIdentity(st)))
 	if status == dimFail || status == dimUnknown {
 		return coveragePosture(st, status, detail, count)
 	}
@@ -190,20 +230,22 @@ func coverageVerdict(st *state, cov storedCoverage) (string, string, *int) {
 	return rangeVerdict(st, cov)
 }
 
-// receiptShortfall names why the store holds no receipt for the gated head:
-// an empty string means one names it. Both attestations are keyed to the same
-// head, so both dimensions read the same shortfall.
+func coverageLabel(key string) string {
+	if digest, ok := strings.CutPrefix(key, "diff:"); ok {
+		return "diff " + readcommon.ShortSHA(digest)
+	}
+	return "HEAD " + readcommon.ShortSHA(key)
+}
+
 func receiptShortfall(st *state, cov storedCoverage) string {
-	short := readcommon.ShortSHA(st.headSHA)
+	key := coverageIdentity(st)
 	switch {
-	case st.headSHA == "":
+	case key == "":
 		return "stored coverage absent — the bundle records no HEAD to key it to"
 	case !cov.found && cov.head != "":
-		return "stored coverage is for HEAD " + readcommon.ShortSHA(cov.head) +
-			", not HEAD " + short
+		return "stored coverage is for " + coverageLabel(cov.head) + ", not " + coverageLabel(key)
 	case !cov.found:
-		return "stored coverage absent for HEAD " + short +
-			" — no completed post or record"
+		return "stored coverage absent for " + coverageLabel(key) + " — no completed post or record"
 	}
 	return ""
 }
@@ -214,7 +256,7 @@ func rangeVerdict(st *state, cov storedCoverage) (string, string, *int) {
 		return dimUnknown, gap, nil
 	}
 	if cov.sum == nil {
-		return dimUnknown, "stored coverage absent for HEAD " + readcommon.ShortSHA(st.headSHA) +
+		return dimUnknown, "stored coverage absent for " + coverageLabel(coverageIdentity(st)) +
 			" — the receipt carries no coverage[] attestation", nil
 	}
 	return receiptVerdict(cov.sum)
@@ -229,7 +271,7 @@ func chunkVerdict(st *state, cov storedCoverage) (string, string, *int) {
 		return dimUnknown, gap, nil
 	}
 	if cov.chunks == nil {
-		return dimUnknown, "stored coverage absent for HEAD " + readcommon.ShortSHA(st.headSHA) +
+		return dimUnknown, "stored coverage absent for " + coverageLabel(coverageIdentity(st)) +
 			" — the receipt predates the chunk attestation", nil
 	}
 	return chunkReceiptVerdict(cov.chunks)

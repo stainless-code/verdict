@@ -3664,3 +3664,60 @@ failed reads and artifacts larger than the per-file cap.
 
 A `threads.json` feed removed during a serve read is absent; malformed feeds
 still report `corrupt-store`.
+
+## Agent self-review loop
+
+Before opening a PR, run the checkout recipe from the repository being reviewed
+(Python 3.9+, POSIX, `verdict` and your agent on `PATH`):
+
+```sh
+python3 /path/to/verdict/docs/recipes/self-review.py owner/repo \
+  --agent codex --max-rounds 3 --budget 600 --output /outside/repo/review-001
+```
+
+`--agent` accepts `claude`, `codex`, or `opencode`. The recipe uses the shipped
+`run --print` agent table — no duplicated launch flags. Use a new output directory
+outside the reviewed repository for each invocation. Only tracked working-tree
+changes are reviewed, matching plain `fetch-local`; stage new files first.
+
+Each round fetches a fresh local bundle, spawns one non-interactive agent, records
+its review, and gates all finding severities with live host checks skipped. The
+agent writes its review of the fetched snapshot first, then fixes reported
+findings in the working tree. The next round fetches and reviews those fixes.
+The prior record is passed by path to the next agent. Verdict never edits code,
+posts, pushes, or opens a PR. The recipe launches the printed argv itself so it
+can append the fix instructions; it does not produce `launcher.json`.
+
+Each round records with `--require-coverage` and gates with `--coverage require`.
+Dirty local coverage receipts are bound to `source.json.diff_sha256`, verified
+against the bundle's `full.diff`, and must name that same diff hash. A missing,
+partial, or empty attestation cannot pass for a measurable change. A changed diff
+or mismatched receipt fails closed. `record` and coverage gates also compare the
+live tracked-tree fingerprint with `source.json.worktree_diff_sha256`; a change
+refuses with `coverage-stale` and asks for `fetch-local` again. This fingerprint
+covers all tracked changes, including paths outside a filtered review. Older
+dirty bundles without this fingerprint must be fetched again. This local gate is not merge authorization.
+
+`round-N.json` holds the round number, open findings count, gate boolean, and
+`cost: null` (cost is not measured). Missing observations remain null.
+`round-N.record.json` and `round-N.gate.json` retain the record and gate data.
+`summary.json` and stdout report the stop reason and all receipts. Exit 0 means
+the last gate passed; exit 1 means maximum rounds, wall budget, or a typed
+refusal stopped the loop. The wall budget covers all subprocesses and kills the
+POSIX process group on expiration. It is not a token or dollar budget. A refusal
+stops the loop, except `coverage-stale` on a review reporting findings: fixes
+make that round stale, so the loop retains the review, writes a stale receipt,
+and fetches again within the round and wall budgets. A stale clean review
+always stops failing. The loop does not invoke `run`'s structured-output repair loop.
+
+For a before/after benchmark, use two isolated copies of the same benchmark
+input and pinned agent/model: run the baseline coding task in one, then the
+same task followed by this recipe in the other. Grade both resulting diffs with
+the same benchmark command and retain task output, recipes, model settings,
+receipts, elapsed time, and measured agent cost. Repeat across seeds/tasks and
+report failures as well as passes. No benchmark numbers are claimed here.
+
+Verify the recipe with `./evals/one.sh self-review`; it runs stub binaries for
+all three agents, fixing on round 2, exhausting the round limit, and refusing an empty review, offline.
+The eval requires `python3` (Python 3.9+).
+Unit checks run with `python3 -B -m unittest discover -s docs/recipes`.

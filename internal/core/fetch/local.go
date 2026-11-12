@@ -235,9 +235,29 @@ func localDiff(ctx context.Context, r *session, dir string, mode *localMode, pat
 	if err != nil {
 		return localDiffFail(dir, diffRes.Stderr)
 	}
+	if err := captureWorktreeIdentity(ctx, r, mode, paths, diffRes); err != nil {
+		return err
+	}
+
 	if werr := atomic.WriteFile(dir+suffixFullDiff, []byte(diffRes.Stdout)); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteFullDiff, dir, werr)}
 	}
+	return nil
+}
+
+func captureWorktreeIdentity(ctx context.Context, r *session, mode *localMode, paths []string, live core.Result) error {
+	if !mode.dirty {
+		return nil
+	}
+	if len(paths) > 0 || r.iso != nil {
+		result, err := r.run(ctx, gitCmdDiff, gitHeadRef)
+		if err != nil {
+			return jq.Sealed("read tracked working tree", err)
+		}
+		live = result
+	}
+	sum := sha256.Sum256([]byte(live.Stdout))
+	mode.worktreeDiffSHA = hex.EncodeToString(sum[:])
 	return nil
 }
 
@@ -370,12 +390,13 @@ func slugKeep(c byte) bool {
 
 // localMode is one resolved fetch-local diff source.
 type localMode struct {
-	kind     string
-	baseSHA  string
-	headSHA  string
-	headRef  string
-	rangeVal string
-	dirty    bool
+	kind            string
+	baseSHA         string
+	headSHA         string
+	headRef         string
+	rangeVal        string
+	worktreeDiffSHA string
+	dirty           bool
 }
 
 // diffArgs owns the per-kind diff argv (paths appended by the caller).
@@ -795,6 +816,7 @@ func writeSourceJSON(
 		keyHeadSHA, nullStr(mode.headSHA),
 		modeRange, nullStr(mode.rangeVal),
 		"dirty", mode.dirty,
+		"worktree_diff_sha256", nullStr(mode.worktreeDiffSHA),
 		"diff_sha256", diffSHA,
 		"patch_id", core.Wire(ident.PatchID),
 		"patch_id_kind", ident.PatchIDKind,
