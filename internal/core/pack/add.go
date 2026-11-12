@@ -658,16 +658,45 @@ func vendorPack(root, srcDir, slug string, p *Pack) *core.RefusalError {
 		return ref
 	}
 	defer func() { _ = dest.Close() }()
+	if ref := sweepStaleVendored(packsDir, slug); ref != nil {
+		return ref
+	}
 	stage, ref := stageVendored(src, packsDir, slug, p)
 	if ref != nil {
 		return ref
 	}
-	defer func() { _ = os.RemoveAll(stage) }()
-	return swapVendored(dest, packsDir, slug, stage)
+	swapRef := swapVendored(dest, packsDir, slug, stage)
+	if cleanupErr := os.RemoveAll(stage); cleanupErr != nil {
+		if swapRef != nil {
+			return cleanupStageFailure(swapRef, cleanupErr)
+		}
+		return badPack(fmt.Sprintf("remove the %s staging tree: %v", RepoPacksDir, cleanupErr))
+	}
+	return swapRef
+}
+
+// sweepStaleVendored removes a crashed re-add's staging and backup siblings
+// for slug before a new stage is created.
+func sweepStaleVendored(packsDir, slug string) *core.RefusalError {
+	entries, err := os.ReadDir(packsDir)
+	if err != nil {
+		return badPack(fmt.Sprintf("read %s: %v", RepoPacksDir, err))
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if !strings.HasPrefix(name, "."+slug+".tmp-") && !strings.HasPrefix(name, "."+slug+".old-") {
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(packsDir, name)); err != nil {
+			return badPack(fmt.Sprintf("remove the stale %s/%s: %v", RepoPacksDir, name, err))
+		}
+	}
+	return nil
 }
 
 // stageVendored writes and verifies the new tree in a temp sibling inside the
-// pack root.
+// pack root. Every failure closes the staging root before removing the tree:
+// Windows refuses to delete a directory with an open handle.
 func stageVendored(src *os.Root, packsDir, slug string, p *Pack) (string, *core.RefusalError) {
 	stage, err := os.MkdirTemp(packsDir, "."+slug+".tmp-")
 	if err != nil {
@@ -675,23 +704,38 @@ func stageVendored(src *os.Root, packsDir, slug string, p *Pack) (string, *core.
 	}
 	stageRoot, err := os.OpenRoot(stage)
 	if err != nil {
-		_ = os.RemoveAll(stage)
-		return "", badPack(fmt.Sprintf("open the pack staging directory: %v", err))
+		return "", cleanupStageFailure(badPack(
+			fmt.Sprintf("open the pack staging directory: %v", err)), os.RemoveAll(stage))
 	}
-	defer func() { _ = stageRoot.Close() }()
 	if ref := writeVendored(stageRoot, src, rootSelf, p); ref != nil {
-		_ = os.RemoveAll(stage)
-		return "", ref
+		return "", cleanupStageFailure(ref, closeStage(stageRoot, stage))
 	}
 	if ref := verifyVendored(stage, rootSelf, p); ref != nil {
-		_ = os.RemoveAll(stage)
-		return "", ref
+		return "", cleanupStageFailure(ref, closeStage(stageRoot, stage))
 	}
 	if err := stageRoot.Close(); err != nil {
-		_ = os.RemoveAll(stage)
-		return "", badPack(fmt.Sprintf("close the pack staging directory: %v", err))
+		return "", cleanupStageFailure(badPack(
+			fmt.Sprintf("close the pack staging directory: %v", err)), os.RemoveAll(stage))
 	}
 	return stage, nil
+}
+
+// closeStage closes a staging root and removes its tree, joining both errors
+// so a caller can report either failure.
+func closeStage(root *os.Root, stage string) error {
+	return errors.Join(root.Close(), os.RemoveAll(stage))
+}
+
+// cleanupStageFailure keeps the original refusal and names a cleanup failure
+// that would otherwise be swallowed.
+func cleanupStageFailure(ref *core.RefusalError, err error) *core.RefusalError {
+	if err == nil {
+		return ref
+	}
+	return &core.RefusalError{
+		Code:    ref.Code,
+		Message: fmt.Sprintf("%s (staging cleanup failed: %v)", ref.Message, err),
+	}
 }
 
 // swapVendored moves the verified stage into slug, keeping a backup of any

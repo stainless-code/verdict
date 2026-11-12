@@ -321,6 +321,31 @@ func TestListIgnoresStrayFileUnderRepoPacks(t *testing.T) {
 	}
 }
 
+// TestListIgnoresStagingSiblings proves a crashed re-add's dot-prefixed temp
+// and backup trees are not read as pack roots.
+func TestListIgnoresStagingSiblings(t *testing.T) {
+	t.Parallel()
+	root, settings := listFixtures(t, `"replace":["acme/org"],`)
+	writeFixture(t, root, map[string]string{
+		".verdict/packs/.lenses.tmp-crash/junk": "tmp\n",
+		".verdict/packs/.lenses.old-crash/junk": "old\n",
+	})
+	resp, ref := RunList(t.Context(), &Request{
+		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
+		settings,
+		true,
+	})
+	if ref != nil {
+		t.Fatalf("RunList: %s: %s", ref.Code, ref.Message)
+	}
+	if got, want := len(resp.Data.Packs), 3; got != want {
+		t.Fatalf("rows = %d, want %d", got, want)
+	}
+	if len(resp.Warnings) != 0 {
+		t.Fatalf("warnings = %q, want none for a staging sibling", resp.Warnings)
+	}
+}
+
 // TestListRefusesSymlinkedPackRoot proves a symlink directly under the pack
 // root refuses pack-unsafe-path instead of reading as an ignored non-pack:
 // the controls read refuses a non-regular control file, so the list may not

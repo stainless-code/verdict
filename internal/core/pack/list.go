@@ -309,6 +309,9 @@ func repoEntries(ctx context.Context, dir string, entries []fs.DirEntry) ([]Orig
 // warning naming it, a symlink or special file refuses, and a directory is a
 // pack root.
 func repoOriginEntry(dir string, entry fs.DirEntry) (Origin, string, *core.RefusalError) {
+	if strings.HasPrefix(entry.Name(), ".") {
+		return Origin{}, "", nil
+	}
 	if entry.IsDir() {
 		origin, ref := repoOrigin(dir, entry.Name())
 		return origin, "", ref

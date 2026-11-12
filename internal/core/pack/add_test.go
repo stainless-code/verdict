@@ -208,6 +208,30 @@ func TestAddVendorsReservedTrees(t *testing.T) {
 		"a5dd58a7c16d6fd25e5d3b90f652883bee209227f15bf9d6747821c6b4654729"))
 }
 
+// TestAddSweepsStaleStagingSiblings proves a crashed re-add's temp and backup
+// trees do not block the next add and are removed.
+func TestAddSweepsStaleStagingSiblings(t *testing.T) {
+	repo := t.TempDir()
+	t.Chdir(repo)
+	lensesSource(t, repo, "src-packs/lenses", "perf body\n")
+	stale := []string{
+		".verdict/packs/.lenses.tmp-crash",
+		".verdict/packs/.lenses.old-crash",
+	}
+	writeFixture(t, repo, map[string]string{
+		stale[0] + "/junk": "tmp\n",
+		stale[1] + "/junk": "old\n",
+	})
+	if _, ref := RunAdd(context.Background(), &AddRequest{Source: "src-packs/lenses"}); ref != nil {
+		t.Fatalf("RunAdd: %s: %s", ref.Code, ref.Message)
+	}
+	for _, dir := range stale {
+		if _, err := os.Stat(filepath.Join(repo, filepath.FromSlash(dir))); !os.IsNotExist(err) {
+			t.Fatalf("stale %s survived the add (stat err %v)", dir, err)
+		}
+	}
+}
+
 // TestAddRefusesSourceInsideRepoPacks proves a path inside the vendored tree
 // refuses instead of copying a pack onto itself.
 func TestAddRefusesSourceInsideRepoPacks(t *testing.T) {

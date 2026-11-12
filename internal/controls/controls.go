@@ -342,7 +342,7 @@ func packNameOf(entry core.ControlsFileEntry) string {
 		return ""
 	}
 	name, _, nested := strings.Cut(tail, packSep)
-	if !nested {
+	if !nested || strings.HasPrefix(name, ".") {
 		return ""
 	}
 	return name
