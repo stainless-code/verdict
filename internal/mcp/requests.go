@@ -134,6 +134,7 @@ func decodeFetch(req *core.FetchRequest, a *args) {
 	a.flags(func(f *args) {
 		f.str("baseSHA", &req.Flags.BaseSHA)
 		f.str("provider", &req.Flags.Provider)
+		f.str("index", &req.Flags.Index)
 		f.boolean("budgetConsent", &req.Flags.BudgetConsent)
 		f.boolean("showPrompts", &req.Flags.ShowPrompts)
 		f.boolean("chunkFlag", &req.Flags.ChunkFlag)
@@ -161,6 +162,7 @@ func decodeFetchLocal(req *core.FetchLocalRequest, a *args) {
 		f.str("rangeSpec", &req.Flags.RangeSpec)
 		f.str("baseRef", &req.Flags.BaseRef)
 		f.str("stashN", &req.Flags.StashN)
+		f.str("index", &req.Flags.Index)
 		f.strings("paths", &req.Flags.Paths)
 		f.boolean("staged", &req.Flags.Staged)
 		f.boolean("worktree", &req.Flags.Worktree)

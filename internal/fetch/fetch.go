@@ -29,8 +29,9 @@ type Request struct {
 }
 
 // Run executes `fetch <owner/repo> <pr> [--base-sha|--since <sha>]
-// [--provider <name>] [--consent-over-budget] [--allow-head-controls]
-// [--show-prompts] [--chunk] [--json]`, returning the process exit code.
+// [--provider <name>] [--index <ref|dir>] [--consent-over-budget]
+// [--allow-head-controls] [--show-prompts] [--chunk] [--json]`, returning the
+// process exit code.
 // Human progress goes to the runner's human stream; --json mode prints
 // exactly one envelope to stdout.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
@@ -55,8 +56,9 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 
 // RunLocal executes `fetch-local <owner/repo> <name> [--staged]
 // [--range A[..|...]B] [--base R] [--stash [n]] [--worktree]
-// [--consent-over-budget] [--allow-head-controls] [--show-prompts] [--chunk]
-// [-- paths...] [--json]`, returning the process exit code.
+// [--index <ref|dir>] [--consent-over-budget] [--allow-head-controls]
+// [--show-prompts] [--chunk] [-- paths...] [--json]`, returning the process
+// exit code.
 func RunLocal(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
 	f, code, done := parseLocalFlags(r, args)
@@ -177,6 +179,7 @@ var fetchValueWants = map[string]string{
 	"--base-sha": "<sha>",
 	"--since":    "<sha>",
 	"--provider": "<name>",
+	flagIndex:    "<ref|dir>",
 }
 
 // parseFetchToken consumes one fetch argument, returning the next index plus a
@@ -202,7 +205,8 @@ func parseFetchToken(r *cli.Runner, f *core.FetchFlags, args []string, i int) (i
 		f.ChunkFlag = true
 	default:
 		msg := fmt.Sprintf("unknown flag '%s' for fetch (want --base-sha|--since <sha>, "+
-			"--provider <name>, --consent-over-budget, --allow-head-controls, --show-prompts, --chunk, --json)", a)
+			"--provider <name>, --index <ref|dir>, --consent-over-budget, --allow-head-controls, "+
+			"--show-prompts, --chunk, --json)", a)
 		return i, r.ReportUsage(&cli.UsageError{Message: msg}), true
 	}
 	return i, 0, false
@@ -252,8 +256,8 @@ func parseLocalToken(r *cli.Runner, f *core.FetchLocalFlags, args []string, i in
 	default:
 		if strings.HasPrefix(a, "-") {
 			msg := fmt.Sprintf("unknown flag '%s' for fetch-local (want --staged, "+
-				"--range <A..B>, --base <ref>, --stash [n], --worktree, --consent-over-budget, "+
-				"--allow-head-controls, --show-prompts, --chunk, -- <paths>, --json)", a)
+				"--range <A..B>, --base <ref>, --stash [n], --worktree, --index <ref|dir>, "+
+				"--consent-over-budget, --allow-head-controls, --show-prompts, --chunk, -- <paths>, --json)", a)
 			return i, r.ReportUsage(&cli.UsageError{Message: msg}), true
 		}
 		f.Paths = append(f.Paths, a)
@@ -283,6 +287,13 @@ func parseLocalValueFlag(f *core.FetchLocalFlags, a string, args []string, i int
 		f.HasStash = true
 		f.StashN, i = stashValue(args, i)
 		return i, nil, true
+	case flagIndex:
+		v, next, u := cli.FlagValue(args, i, a, "<ref|dir>")
+		if u != nil {
+			return i, u, true
+		}
+		f.Index = v
+		return next, nil, true
 	default:
 		return i, nil, false
 	}
@@ -299,11 +310,14 @@ func stashValue(args []string, i int) (string, int) {
 
 // setFetchValue applies one fetch value flag's operand.
 func setFetchValue(f *core.FetchFlags, name, value string) {
-	if name == "--provider" {
+	switch name {
+	case "--provider":
 		f.HasProvider, f.Provider = true, value
-		return
+	case flagIndex:
+		f.Index = value
+	default:
+		f.HasBase, f.BaseSHA = true, value
 	}
-	f.HasBase, f.BaseSHA = true, value
 }
 
 // providerGitHub and flagChunk mirror the fetchcore spellings the usage
@@ -311,4 +325,5 @@ func setFetchValue(f *core.FetchFlags, name, value string) {
 const (
 	providerGitHub = "github"
 	flagChunk      = "--chunk"
+	flagIndex      = "--index"
 )

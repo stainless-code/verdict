@@ -9,8 +9,11 @@ import (
 // FetchFlags carries the resolved fetch options: the adapter parses argv
 // and the service receives values only.
 type FetchFlags struct {
-	BaseSHA       string
-	Provider      string `enum:"github|gitlab|gitcafe|forgejo|bitbucket|azure"`
+	BaseSHA  string
+	Provider string `enum:"github|gitlab|gitcafe|forgejo|bitbucket|azure"`
+	// Index is the operator's explicit index hand-off (a ref or a directory);
+	// empty means no impact section is written.
+	Index         string
 	BudgetConsent bool
 	ShowPrompts   bool
 	ChunkFlag     bool
@@ -29,9 +32,12 @@ func (f *FetchFlags) Presences() []Presence {
 
 // FetchLocalFlags carries the resolved fetch-local options.
 type FetchLocalFlags struct {
-	RangeSpec     string
-	BaseRef       string
-	StashN        string
+	RangeSpec string
+	BaseRef   string
+	StashN    string
+	// Index is the operator's explicit index hand-off, exactly as fetch takes
+	// it; empty means no impact section is written.
+	Index         string
 	Paths         []string
 	Staged        bool
 	HasStash      bool `json:"-"`
