@@ -200,4 +200,27 @@ fi
 cp "$ASSETS.complete" "$ASSETS"
 clear_markers
 
+# Leg 7 — a present asset stays present when the list is larger than the pipe
+# buffer. The old membership test piped the list into `grep -q`: grep exits at
+# the first match, the writer takes SIGPIPE, and pipefail reported a shipped
+# asset as missing (STA-378). The match sits first and the filler pushes the
+# list past 64 KiB, so the old form loses every asset on every run, not only
+# under load.
+cp "$ASSETS" "$EVAL_SANDBOX/release-assets.big"
+i=0
+while [ "$i" -lt 8000 ]; do
+  printf 'filler-%05d\n' "$i"
+  i=$((i + 1))
+done >> "$EVAL_SANDBOX/release-assets.big"
+mv "$EVAL_SANDBOX/release-assets.big" "$ASSETS"
+if [ "$(wc -c < "$ASSETS")" -le 65536 ]; then
+  bail "the large asset list is not over 64 KiB; this leg would prove nothing"
+fi
+clear_markers
+: > "$BODY"
+before="$(edits)"
+run_body
+assert_exit "a present asset in a list over 64 KiB is found" 0
+assert_eq "the large-list run repairs the body exactly once" "$((before + 1))" "$(edits)"
+
 eval_end

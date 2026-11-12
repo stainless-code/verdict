@@ -28,10 +28,12 @@ func packLayers(t *testing.T, dir, home string) {
 }
 
 // packConflict plants a repo pack that overrides the built-in lens without a
-// replace declaration.
+// replace declaration, beside a stray file the repo layer warns about, so the
+// refusal's carried warning has a human surface to pin.
 func packConflict(t *testing.T, dir, _ string) {
 	t.Helper()
 	writeFiles(t, dir, map[string]string{
+		".verdict/packs/README.md": "docs\n",
 		".verdict/packs/repo/pack.json": `{"schema_version":"1","name":"acme/repo","version":"0.1.0",` +
 			`"lenses":[{"id":"perf"}]}`,
 		".verdict/packs/repo/lenses/perf.md": "repo perf\n",
@@ -45,4 +47,5 @@ func TestPackGolden(t *testing.T) {
 	goldenRead(t, "pack/layers-json", packLayers, nil, nil, "pack", "list", "--json")
 	goldenRead(t, "pack/layers-human", packLayers, nil, nil, "pack", "list")
 	goldenRead(t, "pack/conflict-json", packConflict, nil, nil, "pack", "list", "--json")
+	goldenRead(t, "pack/conflict-human", packConflict, nil, nil, "pack", "list")
 }

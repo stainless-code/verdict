@@ -89,9 +89,16 @@ type OutputCappedError struct {
 	Stream string
 	// Limit is the cap in bytes.
 	Limit int
+	// ReadBytes is how many bytes the stream delivered once the cap stopped
+	// the capture, named so a refusal can say how far over the cap the child
+	// ran. Zero means unmeasured: a scripted commander counts nothing.
+	ReadBytes int
 }
 
 // Error implements error.
 func (e *OutputCappedError) Error() string {
+	if e.ReadBytes > 0 {
+		return fmt.Sprintf("%s exceeded the %d-byte output cap after %d bytes", e.Stream, e.Limit, e.ReadBytes)
+	}
 	return fmt.Sprintf("%s exceeded the %d-byte output cap", e.Stream, e.Limit)
 }

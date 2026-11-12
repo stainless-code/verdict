@@ -7,6 +7,7 @@ import (
 	"os"
 	osexec "os/exec"
 	"path/filepath"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -37,9 +38,10 @@ func TestExecuteTimeoutKillsTree(t *testing.T) {
 // the suspended primary thread is resumed: a grandchild spawned at start is
 // already inside the job, and the child is running afterwards.
 func TestSpawnedChildIsInJobBeforeItRuns(t *testing.T) {
+	var expired atomic.Bool
 	proc, waitDone, _, err := spawnWatched(t.Context(), &core.Command{
 		Argv: []string{"bash", "-c", "exec sleep 30"}, Env: os.Environ(),
-	})
+	}, &expired)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -225,27 +225,29 @@ func TestRunPrintSpawnsNothing(t *testing.T) {
 	}
 }
 
-// blocking waits out the deadline the way a child that ignores it does, then
-// reports only the killed exit status: it never fills Result.TimedOut.
-type blocking struct{}
+// lateExit returns at the deadline without a kill, the way an agent that
+// exits non-zero just before the budget does when its result is read just
+// after: an ordinary exit status, no TimedOut.
+type lateExit struct{}
 
 // Run implements core.Commander.
-func (blocking) Run(ctx context.Context, _ *core.Command) (core.Result, error) {
+func (lateExit) Run(ctx context.Context, _ *core.Command) (core.Result, error) {
 	<-ctx.Done()
-	return core.Result{ExitCode: 137}, nil
+	return core.Result{ExitCode: 9}, nil
 }
 
-// TestRunInfersTheWatchdogTimeout proves a commander that blocks past the
-// deadline but sets no TimedOut still yields the timeout refusal: the budget
-// this call armed is the watchdog, and the operator did not cancel.
-func TestRunInfersTheWatchdogTimeout(t *testing.T) {
+// TestRunTrustsTheRecordedWatchdog proves the launcher reports the fact the
+// commander recorded: a non-zero exit read after the budget expired is that
+// exit, not a kill, because no watchdog recorded one. Inferring the timeout
+// from the expired context relabelled agent failures as agent-timeout.
+func TestRunTrustsTheRecordedWatchdog(t *testing.T) {
 	root := fixtureRoot(t)
 	req := request(root, nil)
-	req.Commander = blocking{}
+	req.Commander = lateExit{}
 	req.TimeoutRaw = "1"
 	_, ref := Run(t.Context(), req)
-	if ref == nil || ref.Code != codeAgentTimeout {
-		t.Fatalf("refusal = %v, want %s", ref, codeAgentTimeout)
+	if ref == nil || ref.Code != codeAgentFailed {
+		t.Fatalf("refusal = %v, want %s", ref, codeAgentFailed)
 	}
 }
 

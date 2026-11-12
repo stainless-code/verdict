@@ -9,9 +9,15 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stainless-code/verdict/internal/testenv"
 )
+
+// gitWaitDelay bounds the git commands these fixtures capture pipes from
+// (GO-CONC-06): a descendant that keeps the pipe open costs a wait, not a hung
+// test.
+const gitWaitDelay = time.Minute
 
 // TestIndexMCPNeverWritesCoChangeCache proves a co-changed call that misses the
 // cache computes its rows and leaves the cache byte-identical: no new file and
@@ -172,6 +178,7 @@ func coChangeRepo(t *testing.T) string {
 		cmd := exec.CommandContext(t.Context(), "git", args...)
 		cmd.Dir = dir
 		cmd.Env = testenv.Base(nil)
+		cmd.WaitDelay = gitWaitDelay
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
 		}
@@ -194,6 +201,7 @@ func gitOut(t *testing.T, dir string, args ...string) string {
 	cmd := exec.CommandContext(t.Context(), "git", args...)
 	cmd.Dir = dir
 	cmd.Env = testenv.Base(nil)
+	cmd.WaitDelay = gitWaitDelay
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("git %v: %v", args, err)

@@ -40,6 +40,7 @@ const (
 	codeMethodNotFound  = -32601
 	codeInvalidParams   = -32602
 	contentTypeText     = "text"
+	refusalTextLines    = 3
 	lineBreak           = "\n"
 	serverName          = "verdict"
 	scannerInitialBytes = 64 * 1024
@@ -535,12 +536,19 @@ func rootResolutionRefusal(err error) *core.RefusalError {
 
 func refusalResult(ref *core.RefusalError) callToolResult {
 	hint := core.HintFor(ref.Code)
-	text := ref.Code + ": " + ref.Message + lineBreak + hint
-	if ref.RetryAt != "" {
-		text += lineBreak + "retry_at: " + ref.RetryAt
+	// code, hint, and retry_at are joined beside one warn: line per warning.
+	lines := make([]string, 0, refusalTextLines+len(ref.Warnings))
+	lines = append(lines, ref.Code+": "+ref.Message, hint)
+	for _, w := range ref.Warnings {
+		lines = append(lines, "warn: "+w)
 	}
+	if ref.RetryAt != "" {
+		lines = append(lines, "retry_at: "+ref.RetryAt)
+	}
+	text := strings.Join(lines, lineBreak)
 	structured, err := json.Marshal(refusalContent{
 		Code: ref.Code, Message: ref.Message, Hint: hint, RetryAt: ref.RetryAt,
+		Warnings: ref.Warnings,
 		Problems: ref.Problems, ProblemsTruncated: ref.ProblemsTruncated,
 	})
 	if err != nil {
@@ -625,11 +633,16 @@ type callToolResult struct {
 	IsError           bool            `json:"isError"`
 }
 
+// refusalContent is the structuredContent every tool's refusal carries. It is
+// additive by contract: a field is dropped with omitempty rather than omitted,
+// and warnings ride along so the refusal does not lose what the verb already
+// warned about before it stopped.
 type refusalContent struct {
 	Code              string         `json:"code"`
 	Message           string         `json:"message"`
 	Hint              string         `json:"hint"`
 	RetryAt           string         `json:"retry_at,omitempty"`
+	Warnings          []string       `json:"warnings,omitempty"`
 	Problems          []core.Problem `json:"problems,omitempty"`
 	ProblemsTruncated int            `json:"problems_truncated,omitempty"`
 }

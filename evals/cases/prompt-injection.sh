@@ -61,7 +61,9 @@ for tok in $DIFF_TOKENS; do
   fi
 done
 
-dump_nonce() { sed -n 's/.*nonce=\([0-9a-f]\{16\}\).*/\1/p' "$1" | head -n 1; }
+# awk drains the pipe; `head -n 1` exits at the first match, and pipefail turns
+# the producer's SIGPIPE into a failed assignment (STA-378).
+dump_nonce() { sed -n 's/.*nonce=\([0-9a-f]\{16\}\).*/\1/p' "$1" | awk 'NR == 1'; }
 nonce="$(dump_nonce "$EVAL_SANDBOX/pinj-diff.txt")"
 if printf '%s' "$nonce" | matches '^[0-9a-f]\{16\}$' \
   && grep -q "this run's nonce: $nonce" "$EVAL_SANDBOX/pinj-diff.txt"; then

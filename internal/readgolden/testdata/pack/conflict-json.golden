@@ -7,7 +7,9 @@ exit: 1
   "pr": null,
   "at": "0000-00-00T00:00:00Z",
   "next": "",
-  "warnings": [],
+  "warnings": [
+    ".verdict/packs/README.md is not a pack directory — ignored"
+  ],
   "data": null,
   "error": {
     "code": "pack-conflict",
