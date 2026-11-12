@@ -75,6 +75,7 @@ var (
 	errWatchInterval error = startError("serve: --interval must be at least 100ms")
 	errWatchSweep    error = startError("serve: --sweep must be at least 100ms")
 	errWatchOrder    error = startError("serve: --sweep must be at least --interval")
+	errNoChanges     error = startError("serve: layer has no change stream; disable watch to serve it")
 )
 
 // Layer is the read model the transport serves. The query package implements
@@ -85,6 +86,10 @@ type Layer interface {
 	Bundles(ctx context.Context, pattern string) (*query.View, error)
 	Detail(ctx context.Context, rootID, bundle string) (*query.View, error)
 	Show(ctx context.Context, rootID, bundle, sig string) (*query.View, error)
+}
+
+type changeSource interface {
+	Changes(context.Context) <-chan query.Change
 }
 
 // Config is one server's resolved start state.
@@ -179,6 +184,11 @@ func configuredLayer(cfg *Config) (Layer, error) {
 		return nil, errWatchOrder
 	}
 	if cfg.Layer != nil {
+		if !cfg.NoWatch {
+			if _, ok := cfg.Layer.(changeSource); !ok {
+				return nil, errNoChanges
+			}
+		}
 		return cfg.Layer, nil
 	}
 	if cfg.Root == "" {

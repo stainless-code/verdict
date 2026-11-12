@@ -180,9 +180,7 @@ func (s *Server) writeSSE(w http.ResponseWriter, text string) bool {
 }
 
 func (s *Server) pumpChanges(ctx context.Context) {
-	watcher, ok := s.layer.(interface {
-		Changes(ctx context.Context) <-chan query.Change
-	})
+	watcher, ok := s.layer.(changeSource)
 	if !ok {
 		return
 	}

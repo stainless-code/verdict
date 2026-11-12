@@ -428,6 +428,18 @@ func TestConfigRejectsSubminimumWatchDurations(t *testing.T) {
 	}
 }
 
+// TestInjectedLayerMustProvideChangesWhenWatching protects the events route
+// from being advertised when an injected layer cannot produce invalidations.
+func TestInjectedLayerMustProvideChangesWhenWatching(t *testing.T) {
+	t.Parallel()
+	if _, err := New(&Config{Layer: newBlockingLayer(), Now: fixedNow}); !errors.Is(err, errNoChanges) {
+		t.Fatalf("New error = %v, want %v", err, errNoChanges)
+	}
+	if _, err := New(&Config{Layer: newBlockingLayer(), NoWatch: true, Now: fixedNow}); err != nil {
+		t.Fatalf("New with NoWatch and a layer without Changes: %v", err)
+	}
+}
+
 // syncBuffer is a goroutine-safe writer for the in-process Run test.
 type syncBuffer struct { //nolint:govet // mutex guards the builder beside it
 	mu sync.Mutex
@@ -1150,7 +1162,7 @@ func (l *blockingLayer) Show(context.Context, string, string, string) (*query.Vi
 func TestShutdownExpiryClosesActiveConnections(t *testing.T) {
 	t.Parallel()
 	layer := newBlockingLayer()
-	server, err := New(&Config{Layer: layer, Token: testToken, Now: fixedNow})
+	server, err := New(&Config{Layer: layer, Token: testToken, NoWatch: true, Now: fixedNow})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
