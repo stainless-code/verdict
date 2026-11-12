@@ -221,7 +221,7 @@ func refusalOrFailed(err error) *core.RefusalError {
 // openBundle resolves the request's bundle under the shared name guard and
 // proves its store complete before any other gate reads it.
 func (st *state) openBundle() *core.RefusalError {
-	dir, ref := readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
+	dir, ref := readcommon.ResolveWritableBundleDir(st.req.RepoRootPath(), st.req.Pr)
 	if ref != nil {
 		return ref
 	}

@@ -68,6 +68,19 @@ func ResolveBundleDir(root, pr string) (string, *core.RefusalError) {
 	return exact, nil
 }
 
+// ResolveWritableBundleDir resolves a bundle and refuses symlinked
+// managed paths.
+func ResolveWritableBundleDir(root, pr string) (string, *core.RefusalError) {
+	dir, ref := ResolveBundleDir(root, pr)
+	if ref != nil {
+		return "", ref
+	}
+	if err := config.NewLayout(root).RefuseBundleSymlink(filepath.Base(dir)); err != nil {
+		return "", &core.RefusalError{Code: "bad-config", Message: fmt.Sprintf("could not prepare %s: %v", dir, err)}
+	}
+	return dir, nil
+}
+
 // bundleDir resolves one already-chosen bundle name, in the slash form every
 // bundle path publishes.
 func bundleDir(root, name string) (string, *core.RefusalError) {

@@ -3601,3 +3601,6 @@ and the pinned panel. Missing or malformed audits warn and count as unmeasured.
 Each measured row prints its judged sample size. Plain `trend` reports review
 counts, clean rate, and findings per review. A clean review has no stored
 findings; addressing every finding does not make a review clean.
+
+`post` and `record` refuse a symlinked bundle directory with `bad-config`
+before writing artifacts, matching `fetch` and `fetch-local`.
