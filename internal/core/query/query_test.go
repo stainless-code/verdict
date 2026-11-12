@@ -1192,6 +1192,21 @@ func TestBundleAmbiguous(t *testing.T) {
 	if _, err := layer.Detail(context.Background(), root, "local-1234"); err != nil {
 		t.Fatalf("Detail(local-1234) = %v, want success", err)
 	}
+	view, err := layer.Bundles(context.Background(), "")
+	if err != nil {
+		t.Fatalf("Bundles: %v", err)
+	}
+	data := wireMap(t, view.Data)
+	errs := asList(t, data["errors"])
+	if len(errs) != 1 {
+		t.Fatalf("listing errors = %v, want one for the ambiguous name", errs)
+	}
+	if got := asMap(t, errs[0])["code"]; got != "bundle-ambiguous" {
+		t.Errorf("listing error code = %v, want bundle-ambiguous", got)
+	}
+	if rows := asList(t, data["rows"]); len(rows) != 2 {
+		t.Errorf("rows = %d, want the refused row kept beside the addressable one", len(rows))
+	}
 }
 
 // guardRefusedNames are bundle directories the shared guard refuses: the

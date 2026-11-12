@@ -220,7 +220,7 @@ func (l *Layer) composeRows(
 		if ctx.Err() != nil {
 			break
 		}
-		if item, ok := l.collectBundle(ctx, root, bundle, pattern); ok {
+		if item, ok := l.collectBundle(ctx, root, bundle, names, pattern); ok {
 			folded.add(&item)
 		}
 	}
@@ -259,12 +259,14 @@ type bundleItem struct {
 }
 
 // collectBundle composes one row; ok is false only for a name the listing
-// raced away.
-func (l *Layer) collectBundle(ctx context.Context, root Root, bundle, pattern string) (bundleItem, bool) {
+// raced away or the filter excluded.
+func (l *Layer) collectBundle(
+	ctx context.Context, root Root, bundle string, names []string, pattern string,
+) (bundleItem, bool) {
 	if pattern != "" && !BundleMatches(pattern, bundle) {
 		return bundleItem{}, false
 	}
-	row, resp, rowErrs, inv := l.row(ctx, root, bundle)
+	row, resp, rowErrs, inv := l.row(ctx, root, bundle, names)
 	if row == nil {
 		return bundleItem{}, false
 	}
@@ -275,9 +277,9 @@ func (l *Layer) collectBundle(ctx context.Context, root Root, bundle, pattern st
 // receipt's model name, or null counts and an error row when the bundle
 // refuses.
 func (l *Layer) row(
-	ctx context.Context, root Root, bundle string,
+	ctx context.Context, root Root, bundle string, names []string,
 ) (any, *core.ReportResponse, []ErrRow, inventoryReport) {
-	dir, ok, ref := l.resolve(root, bundle)
+	dir, ok, ref := resolveAmong(root, bundle, names)
 	if ref != nil {
 		row := jq.NewObj(
 			keyRoot, root.ID, keyBundle, bundle, keyDir, bundleDir(bundle),
