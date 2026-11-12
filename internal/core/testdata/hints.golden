@@ -14,6 +14,8 @@ ambiguous-sig	try: copy the full sig prefix from report output
 approve-blocked	try: triage the findings or re-run with --force
 auth-missing	try: export the credential named above, then re-run
 backtest-failed	try: confirm git works in this checkout, then re-run
+backtest-row-stale	try: delete the named prs/<NNN>/ directory, then replay the run so it records a fresh row
+backtest-run-stale	try: re-mine the run in place with the same --run and window, then replay it again
 bad-approve	try: pass --approve=true|false
 bad-at	try: re-run with one of the valid values named above
 bad-attribution	try: re-run with one of the valid values named above
