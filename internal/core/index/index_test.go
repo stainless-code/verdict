@@ -646,6 +646,26 @@ func TestCallersGenericInstantiationIsUnresolved(t *testing.T) {
 	}
 }
 
+// TestCallersSymbolTypoIsAnEmptyAnswer pins the manual's scope: only the
+// qualifier is checked, so a mistyped symbol answers zero rows instead of a
+// refusal and the reader has to check the name against the declarations.
+func TestCallersSymbolTypoIsAnEmptyAnswer(t *testing.T) {
+	f := newFixture(t)
+	writeCallFixture(f, "")
+	f.commit("one")
+	f.build()
+	req := f.request(QueryCallers, nil)
+	req.Symbol = "a.Nope"
+	resp, ref := Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("index callers refused a mistyped symbol: %v", ref)
+	}
+	if resp.Data.Callers != 0 || len(resp.Data.Rows) != 0 || resp.Data.Unresolved != 0 {
+		t.Errorf("callers = %d, rows = %d, unresolved = %d; want an empty answer",
+			resp.Data.Callers, len(resp.Data.Rows), resp.Data.Unresolved)
+	}
+}
+
 // TestCallersQualifierRefusals proves an unmatched package qualifier refuses
 // instead of reporting no callers, and an ambiguous one still refuses.
 func TestCallersQualifierRefusals(t *testing.T) {

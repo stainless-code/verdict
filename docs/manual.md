@@ -2593,9 +2593,11 @@ Methods, interface and dynamic dispatch, reflection, and generic instantiation
 are unresolved by construction. A bare symbol (`Target`) selects every package
 declaring it; a qualified one (`app.Target`, or the import path) names the
 package. A qualifier that matches no package directory or import path refuses
-`bad-flags` naming it, as does an ambiguous one, so a typo never reads as no
-callers. Rows sort by path, line, and kind, and truncate to `--limit` (default
-50, maximum 200) with `data.truncated` naming how many were not shown.
+`bad-flags` naming it, as does an ambiguous one, so a mistyped qualifier never
+reads as no callers. The symbol itself is not checked against the
+declarations: a mistyped one (`a.Nope`) answers zero rows, never a refusal.
+Rows sort by path, line, and kind, and truncate to `--limit` (default 50,
+maximum 200) with `data.truncated` naming how many were not shown.
 
 The honest limits are the contract: **exact within a package, lexical across
 packages, incomplete by construction**. Do not read a caller row as proof of
