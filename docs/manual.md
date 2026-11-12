@@ -1432,6 +1432,47 @@ path under `data.artifacts.sensitive.txt` (null when absent), and the prompt
 dump fences it when present. Nothing withholds or blocks on it, and its header
 asks reviewers to name the path, never quote a flagged value.
 
+## Static dashboard export
+
+`verdict report --html <dir> [--root <dir>]` writes `index.html`, `app.js`,
+`app.css`, and `data.json`. The current repository is the default; `--root`
+uses the same bounded repository discovery as `serve --root`, with a fresh scan
+and no discovery registry. Inbox, review detail, threads, gate, cost, and
+precision read their envelopes from `data.json`. Copy the folder to a static
+host such as Pages — no Verdict process, listener, model, or host CLI is needed.
+The browser needs HTTP(S) access to the files; browser restrictions on fetching
+`file:` URLs can prevent opening `index.html` directly from disk.
+
+`data.json` contains the published roots and bundle envelopes, every bundle's
+report, gate, threads, artifact ledger and source fingerprints, cost by repo,
+week and model, and precision by category and tier. It includes the review text,
+repository paths, provenance, errors and warnings those envelopes already
+publish. It does not copy raw artifacts, diffs, configuration files, environment
+variables, authentication cookies or server tokens. No additional absolute host
+paths are added. Review text and existing envelope fields retain their contents;
+the exporter does not redact secret values already present in those fields.
+
+Output bytes are deterministic for the same artifacts, root paths and binary,
+except the top-level `generated_at`. Envelope clocks and discovery scan times
+use the Unix epoch in export mode; report timestamps stored in artifacts remain
+unchanged. Static cost and precision selectors use the precomputed dimensions.
+
+A new export is written to sibling `<dir>.tmp-<random>` and published by rename.
+For refresh, the existing export is renamed to `<dir>.old-<random>`, then the
+staging directory is renamed to `<dir>` and the old directory is removed. If
+publication fails, Verdict attempts to rename the old directory back. There is
+a crash window between the two renames when `<dir>` is absent and the old
+snapshot survives under `.old-*`; replacement is not an atomic directory swap.
+These are process-crash recovery guarantees, not power-loss durability guarantees.
+
+A subsequent run refuses if any matching `.old-*` or `.tmp-*` sibling exists.
+Inspect the siblings first. If `<dir>` is absent, restore the desired `.old-*`
+directory to `<dir>`. Move remaining stale siblings away before retrying. Verdict
+never deletes those recovery artifacts automatically. A symlinked destination
+refuses `html-symlink`; a non-empty directory without the export file set and
+static-page marker refuses `html-not-export`. Recovery and I/O failures use
+`report-failed`. Empty destinations are accepted.
+
 ## Serve (local HTTP surface)
 
 `verdict serve` starts one read-only HTTP surface over the current repository's

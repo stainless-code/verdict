@@ -99,6 +99,8 @@ func usageText() string {
 		"  triage <owner/repo> <pr> --sig <sig> --status <open|addressed|wont-fix|false-positive|deferred>\n" +
 		"        --rationale \"...\" [--force] [--dry-run]\n" +
 		"    mutate .verdict/state/<pr>/findings.json directly. No network. Rationale required unless --force.\n" +
+		"  report --html <dir> [--root <dir>]\n" +
+		"    export the six dashboard views as static HTML and data.json; no listener or host calls.\n" +
 		"  report <owner/repo> <pr> [--status all|open|addressed|wont-fix|false-positive|deferred] " +
 		"[--kind inline|section|all]\n" +
 		"[--category logic|edge-case|security|performance|accidental-commit|style|docs|other]\n" +
