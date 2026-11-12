@@ -32,8 +32,9 @@ var publishedSemantics = map[string]string{
 	// the parser refuses with bad-scope.
 	// additive index caps: an optional top-level index object and its
 	// $defs/configIndex shape. Additions only; no existing property, required
-	// key, enum, or type changed.
-	"config.schema.json": "67da0f560b74df5a1dfef3a49f8887f9d76863ffc017161df65e9ad96eb0d54c",
+	// key, enum, or type changed. The configIndex description now calls the
+	// index a code index rather than a Go one.
+	"config.schema.json": "db98cce6cb648527523180d9011e324b8907d27fbf6880ab5c649a517e21d59d",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets

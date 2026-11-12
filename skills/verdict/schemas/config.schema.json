@@ -65,7 +65,7 @@
       "additionalProperties": false
     },
     "configIndex": {
-      "description": "The local Go index caps: file count, per-file bytes, tree bytes, shard-cache bytes, trees kept by prune, and references recorded per file. Absent keys keep the built-in defaults.",
+      "description": "The local code index caps: file count, per-file bytes, tree bytes, shard-cache bytes, trees kept by prune, and references recorded per file. Absent keys keep the built-in defaults.",
       "type": "object",
       "properties": {
         "files": { "type": "integer", "minimum": 1 },

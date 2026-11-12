@@ -66,7 +66,7 @@ type ConfigDefaults = core.ConfigDefaults
 // ConfigKBPolicy is the configuration's knowledge-base policy.
 type ConfigKBPolicy = core.ConfigKBPolicy
 
-// ConfigIndex is the configuration's local Go index caps.
+// ConfigIndex is the configuration's local code index caps.
 type ConfigIndex = core.ConfigIndex
 
 // ConfigRequirements is the configuration's conjunctive requirements.

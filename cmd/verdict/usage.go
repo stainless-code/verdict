@@ -228,7 +228,8 @@ func usageText() string {
 		"    zero) and stay out of both denominators. Default output is byte-identical\n" +
 		"    without the flag.\n" +
 		"  index build [--from <dir>] [--at <ref>] [--json]\n" +
-		"    build the Go index for one tree under .verdict/index/ (stdlib go/parser).\n" +
+		"    build the code index for one tree under .verdict/index/: Go parsed with\n" +
+		"    go/parser, TypeScript, JavaScript, and Python by two lexical scanners.\n" +
 		"    --from reads another checkout; --at names a ref (default HEAD). Shards are\n" +
 		"    content-addressed by blob, so a rename parses nothing and an edit parses one.\n" +
 		"  index status [--json]\n" +
@@ -243,7 +244,8 @@ func usageText() string {
 		"  index tests-for <path>|--symbol <pkg.Name> [--at <tree>] [--limit <n, default 50, max 200>] [--json]\n" +
 		"    candidate tests to read for one source file or qualified symbol, labeled\n" +
 		"    same-package, references, or imports-module. Candidates are not coverage:\n" +
-		"    only _test.go files appear, and a row is a test worth reading, not proof.\n" +
+		"    a row names a test worth reading, not proof, and only that language's own\n" +
+		"    test names appear.\n" +
 		"  index co-changed <path> [--commits <n, default 2000>] [--since <90d|12w|18mo|2y|ref>]\n" +
 		"    [--min-count <n, default 2>] [--limit <n, default 20, max 200>] [--json]\n" +
 		"    paths that moved with one path, with their co-change count and jaccard, from\n" +

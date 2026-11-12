@@ -2659,13 +2659,15 @@ one file. `--from` reads another checkout; `--at` names a ref (default
 The scanned languages are `go`; `typescript` (`.ts`, `.tsx`, `.mts`, `.cts`);
 `javascript` (`.js`, `.jsx`, `.mjs`, `.cjs`); and `python` (`.py`, `.pyi`).
 Every indexed file records its `language`, and a build publishes
-`data.languages`, one row per scanned language with its file count. Go is
+`data.languages`, one row per scanned language with how many of the indexed
+files it holds, so the rows always add up to `files_indexed`. Go is
 parsed, so its answers are exact within a package; the other three are read by
 `internal/core/index/scan_ts.go` and `scan_py.go`, which tokenize the file and
 record declarations, imports, and call sites without building a tree. A
 scanned language therefore resolves one way only: `exact` never appears, and a
-name is attributed as `lexical` only inside the directory that declares it. A
-match in another directory is not a row — without a type checker or a module
+name is attributed as `lexical` only inside the directory that declares it, in
+the declaration's own language family. A match in another directory, or in
+another language, is not a row — without a type checker or a module
 resolver the scanner cannot prove the name it saw is the declaration it
 matched — so `counts.unresolved` stays zero for those rows and a caller list
 for a scanned symbol is a floor, not a proof.
@@ -2684,8 +2686,23 @@ parameter called like a function is a call site; `__all__` is not read as a
 re-export list; a `try`/`except` import fallback records one import per
 statement. Both: a name is matched as written, so a re-export chain, an import
 renamed and then used under its original name, and a monkey patch are all
-invisible. A file over the size cap, or in an extension not listed above, is
-not scanned at all and counts in `coverage.skipped`.
+invisible.
+
+Each extension is read as the language it names and nothing else. A `.js` or
+`.jsx` file carrying Flow annotations is read as JavaScript, so the annotations
+are not resolved and a Flow-typed declaration is a plain declaration; a
+`.tsx`/`.jsx` file is read whole, JSX elements and all; `.py` is Python 3, so a
+Python 2 `print` statement is a bare name rather than a call site. Three
+formats are not scanned at all: Vue and Svelte single-file components (`.vue`,
+`.svelte`), whose `<script>` blocks are not extracted, and notebooks
+(`.ipynb`), which are JSON holding code rather than source.
+
+Two caps decide what a tree holds. A file over the 1 MiB per-file cap stays in
+the tree with `oversize: true` and nothing parsed from it, so it counts in
+`coverage.skipped` and in neither `files_indexed` nor `data.languages`. A file
+in an extension not listed above is not a source file at all: it never enters
+the tree and is not counted as skipped, so `coverage.skipped` names only files
+the build chose not to parse.
 
 `index status` reports the stored trees and shards and whether HEAD's tree is
 indexed. `index prune` keeps the newest four trees and the shards they
@@ -2711,7 +2728,7 @@ is counted unresolved, not found.
 `index tests-for <path>|--symbol <pkg.Name> [--at <tree>]` lists the candidate
 tests to read for one source file (or one qualified symbol), each labelled with
 the mechanism that reached it: `same-package` (a test in the declared file's
-directory), `references` (the test's recorded references name a symbol declared
+directory and language family), `references` (the test's recorded references name a symbol declared
 in the file, resolved exactly within the package and lexically only through an
 import edge), or `imports-module` (the test imports the declaring package). A
 test file is `_test.go` for Go; a `.test.` or `.spec.` name, or a `__tests__`
@@ -2725,8 +2742,10 @@ indexed source file refuses `bad-flags`, and `--symbol` wants a qualified
 `pkg.Name` — a bare name would fold unrelated packages together.
 For a scanned language a test in another directory is a candidate only when it
 imports the queried file by a specifier that resolves to it (`./util`,
-`../util`, `pkg.mod`), because that is the one edge the scanner can follow
-without a resolver. The path form also carries the file's CODEOWNERS `target`.
+`../util`, `pkg.mod`, and for Python also `from pkg import mod`), because that
+is the one edge the scanner can follow without a resolver. A candidate in
+another language family is never listed: a `.py` test in the directory says
+nothing about the Go file beside it. The path form also carries the file's CODEOWNERS `target`.
 
 `index co-changed <path> [--commits <n>] [--since <dur|ref>] [--min-count <n>]
 [--limit <n>]` reads one bounded `git log --no-merges --name-only -z` window
@@ -2830,8 +2849,9 @@ a lower bound: a method value, a reflection call, an unparsed file, or a skipped
 oversize file is missing rather than invented. `data.input` echoes the PR slug
 or the resolved paths, and `data.limit` echoes the row limit.
 
-Caps: 20,000 source files, 1 MiB per file (an oversized file is skipped and
-counted in `coverage.skipped`), a 96 MiB tree file, and a 256 MiB shard cache;
+Caps: 20,000 source files, 1 MiB per file (an oversized file stays in the tree
+unparsed and counts in `coverage.skipped`), a 96 MiB tree file, and a 256 MiB
+shard cache;
 a repo over a cap refuses `index-capped` naming the measured number. The typed
 `index` section of `.verdict/config.json` overrides each default. The 1 MiB
 file cap governs source parsing, whatever the language, and nothing else: a
