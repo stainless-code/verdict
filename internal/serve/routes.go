@@ -151,7 +151,7 @@ const indexHTML = `<!doctype html>
 <main id="main">
 <h1>verdict serve</h1>
 <p>This is the read-only loopback surface. Open the start URL the process
-printed in your terminal; it exchanges the one-time token for this browser's
+printed in your terminal; it exchanges the start token for this browser's
 session cookie.</p>
 <p><a href="/v1/health">/v1/health</a></p>
 </main>
