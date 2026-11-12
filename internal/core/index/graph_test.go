@@ -113,8 +113,8 @@ func TestTestsForCandidates(t *testing.T) {
 	f.build()
 	want := []TestRow{
 		{Path: "a/a_test.go", Via: viaSamePackage},
-		{Path: "b/b_test.go", Via: viaReferences},
-		{Path: "c/c_test.go", Via: viaImportsModule},
+		{Path: "b/b_test.go", Via: viaReferences, Depth: 1},
+		{Path: "c/c_test.go", Via: viaImportsModule, Depth: 1},
 	}
 	resp := f.queryPath(QueryTestsFor, "a/a.go")
 	assertTestRows(t, resp.Data.TestRows, want)
@@ -139,8 +139,8 @@ func TestTestsForSymbol(t *testing.T) {
 	resp := f.querySymbol("a.Target")
 	want := []TestRow{
 		{Path: "a/a_test.go", Via: viaSamePackage},
-		{Path: "b/b_test.go", Via: viaReferences},
-		{Path: "c/c_test.go", Via: viaImportsModule},
+		{Path: "b/b_test.go", Via: viaReferences, Depth: 1},
+		{Path: "c/c_test.go", Via: viaImportsModule, Depth: 1},
 	}
 	assertTestRows(t, resp.Data.TestRows, want)
 	if resp.Data.Path != "" || resp.Data.Symbol != "a.Target" {
@@ -515,8 +515,8 @@ func TestTestsForAtOldTreeMarksStale(t *testing.T) {
 	}
 	assertTestRows(t, resp.Data.TestRows, []TestRow{
 		{Path: "a/a_test.go", Via: viaSamePackage},
-		{Path: "b/b_test.go", Via: viaReferences},
-		{Path: "c/c_test.go", Via: viaImportsModule},
+		{Path: "b/b_test.go", Via: viaReferences, Depth: 1},
+		{Path: "c/c_test.go", Via: viaImportsModule, Depth: 1},
 	})
 	if !resp.Data.Stale || resp.Data.Tree != old {
 		t.Errorf("stale = %t, tree = %s; want true and %s", resp.Data.Stale, resp.Data.Tree, old)

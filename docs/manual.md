@@ -2725,12 +2725,15 @@ packages, incomplete by construction**. Do not read a caller row as proof of
 every call: a method value, a function stored in a variable, or a type argument
 is counted unresolved, not found.
 
-`index tests-for <path>|--symbol <pkg.Name> [--at <tree>]` lists the candidate
-tests to read for one source file (or one qualified symbol), each labelled with
-the mechanism that reached it: `same-package` (a test in the declared file's
-directory and language family), `references` (the test's recorded references name a symbol declared
+`index tests-for <path>|--symbol <pkg.Name> [--at <tree>] [--depth <n>]` lists
+the candidate tests to read for one source file (or one qualified symbol), each
+labelled with the mechanism that reached it: `same-package` (a test in the
+declared file's directory and language family), `references` (the test's
+recorded references name a symbol declared
 in the file, resolved exactly within the package and lexically only through an
-import edge), or `imports-module` (the test imports the declaring package). A
+import edge), `imports-module` (the test imports the declaring package), or
+`transitive-import` (the test's own package reaches the declaring package
+through imports of its own). A
 test file is `_test.go` for Go; a `.test.` or `.spec.` name, or a `__tests__`
 directory, for TypeScript and JavaScript; and `test_*.py`, `*_test.py`,
 `conftest.py`, or a `tests`/`test` directory, for Python. Nothing else appears.
@@ -2740,12 +2743,31 @@ attribute (a method value, a reflection call) is missing rather than guessed.
 Rows sort by path and truncate to `--limit` with a count. A path that names no
 indexed source file refuses `bad-flags`, and `--symbol` wants a qualified
 `pkg.Name` — a bare name would fold unrelated packages together.
+The list is **package-scoped, not file-scoped**: every test in a package whose
+imports reach the declaring package is named, whatever that individual test
+imports. One file's query therefore answers its whole well-connected
+neighbourhood — `tests-for internal/core/index/tests.go` answers 42 rows in this
+repository, 30 of them tests two imports away.
+The transitive walk reads the reverse import graph breadth first from the
+declaring package to the packages that import it and on to theirs, using each
+language's own import data — a Go import path, a scanned specifier resolved
+against the importing file's directory, and for Python the submodule a
+`from … import …` names. A visited set makes a cycle terminate. Edges never
+cross a language family, so a Python import cannot make a Go test reachable.
+Every row carries the import hops that reached it: none for a test in the
+declaring directory, 1 for a direct import edge, and 2 or more for
+`transitive-import`, so a direct candidate never reads as a transitive one. The
+walk stops at `--depth` hops (default 3, maximum 8) — `--depth 1` turns it
+off — and `depth_truncated` counts the candidates one hop past the cap, because
+a bounded walk that hid rows is not an empty one.
+
 For a scanned language a test in another directory is a candidate only when it
 imports the queried file by a specifier that resolves to it (`./util`,
 `../util`, `pkg.mod`, and for Python also `from pkg import mod`), because that
 is the one edge the scanner can follow without a resolver. A candidate in
 another language family is never listed: a `.py` test in the directory says
-nothing about the Go file beside it. The path form also carries the file's CODEOWNERS `target`.
+nothing about the Go file beside it. The path form also carries the file's
+CODEOWNERS `target`.
 
 `index co-changed <path> [--commits <n>] [--since <dur|ref>] [--min-count <n>]
 [--limit <n>]` reads one bounded `git log --no-merges --name-only -z` window
@@ -2839,15 +2861,19 @@ walk, and rows deduplicate by call site. A caller row names the changed symbol
 it is reached from, the file and line, `exact` or `lexical` under the same
 rules as `index callers`, and its depth; candidates the index cannot attribute
 are counted in `callers.unresolved`, never guessed. Candidate tests reuse
-`tests-for` (strongest mechanism per file), co-change partners reuse
-`co-changed`'s single bounded window at HEAD, and owners reuse the CODEOWNERS
-answer at the queried tree — one row per changed path.
+`tests-for` (strongest mechanism per file, the transitive walk at its default
+depth), co-change partners reuse `co-changed`'s single bounded window at HEAD,
+and owners reuse the CODEOWNERS answer at the queried tree — one row per
+changed path.
 
 Every list is a measured object — `count`, `truncated`, and `rows` — so a
-truncated answer says how much it hid instead of looking complete. The result is
-a lower bound: a method value, a reflection call, an unparsed file, or a skipped
-oversize file is missing rather than invented. `data.input` echoes the PR slug
-or the resolved paths, and `data.limit` echoes the row limit.
+truncated answer says how much it hid instead of looking complete. The test list
+carries one count more: `tests.depth_truncated` names the candidate tests the
+transitive walk's depth cap hid, because `blast-radius` takes no `--depth` and
+a list cut by that cap is not an empty one. The result is a lower bound: a
+method value, a reflection call, an unparsed file, or a skipped oversize file is
+missing rather than invented. `data.input` echoes the PR slug or the resolved
+paths, and `data.limit` echoes the row limit.
 
 Caps: 20,000 source files, 1 MiB per file (an oversized file stays in the tree
 unparsed and counts in `coverage.skipped`), a 96 MiB tree file, and a 256 MiB

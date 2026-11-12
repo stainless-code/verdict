@@ -323,6 +323,7 @@ var fieldDocs = map[string]string{
 	"index.Commits":  "Co-change window size in commits (1-100000; default 2000).",
 	"index.MinCount": "Minimum co-change count a partner needs (1-100000; default 2).",
 	"index.Limit":    "Maximum rows to return (1-200; default 50 for callers and tests-for, 20 for co-changed).",
+	"index.Depth":    "Import hops to walk for transitive candidate tests (1-8; default 3; 1 turns the walk off).",
 	"Sandbox": "Run under bwrap (Linux only) with no network, hidden credential dirs, " +
 		"a writable repo, and a private /tmp; refuses sandbox-unavailable when it cannot be enforced.",
 }

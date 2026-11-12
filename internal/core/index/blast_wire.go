@@ -61,11 +61,13 @@ func blastCallerDoc(b *Blast) *jq.Obj {
 	)
 }
 
-// blastTestDoc renders the candidate-test list.
+// blastTestDoc renders the candidate-test list and the candidates the depth cap
+// hid.
 func blastTestDoc(b *Blast) *jq.Obj {
 	return jq.NewObj(
 		keyCount, nullInt(b.Counts.Tests),
 		keyTruncated, nullInt(b.Truncated.Tests),
+		"depth_truncated", nullInt(b.DepthTruncated),
 		keyRows, testRowValues(b.Tests),
 	)
 }
