@@ -305,6 +305,9 @@ func TestSourcesCoverEveryRead(t *testing.T) {
 	got := map[string]string{}
 	for _, source := range view.Sources {
 		got[source.Path] = source.SHA256
+		if source.Bytes != int64(len(want[source.Path])) {
+			t.Errorf("source %s bytes = %d, want %d", source.Path, source.Bytes, len(want[source.Path]))
+		}
 	}
 	if !slices.Equal(slices.Sorted(maps.Keys(got)), slices.Sorted(maps.Keys(want))) {
 		t.Fatalf("sources = %v, want exactly %v", slices.Sorted(maps.Keys(got)), slices.Sorted(maps.Keys(want)))
