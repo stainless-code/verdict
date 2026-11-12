@@ -190,20 +190,27 @@ func assertCorpusLanguage(t *testing.T, lang string, c *fixtureCorpus) {
 // assertLabelled refuses one query whose labels cannot be scored as written.
 func assertLabelled(t *testing.T, dir string, q *corpusCase) {
 	t.Helper()
+	assertLabelKind(t, dir, q)
+	assertUniqueEdges(t, dir, q)
+}
+
+func assertLabelKind(t *testing.T, dir string, q *corpusCase) {
+	t.Helper()
 	switch q.Kind {
 	case QueryCallers:
 		if q.Symbol == "" || q.At == "" || len(q.Callers) == 0 {
 			t.Fatalf("%s: query %q wants a symbol, its declaring package, and its edges", dir, q.Name)
 		}
 	case QueryTestsFor:
-		if (q.Path == "") == (q.Symbol == "") || (len(q.Tests) == 0 && len(q.NotTests) == 0) {
+		if (q.Path == "") == (q.Symbol == "") || !hasTestLabels(q) {
 			t.Fatalf("%s: query %q wants exactly one of path and symbol, and its rows", dir, q.Name)
 		}
 	default:
 		t.Fatalf("%s: query %q has kind %q; want callers or tests-for", dir, q.Name, q.Kind)
 	}
-	assertUniqueEdges(t, dir, q)
 }
+
+func hasTestLabels(q *corpusCase) bool { return len(q.Tests) > 0 || len(q.NotTests) > 0 }
 
 // assertUniqueEdges refuses a query that labels one edge twice: comparison is
 // a set, so a repeat would shrink recall without saying so.
@@ -322,15 +329,7 @@ func assess(t *testing.T, f *fixture, q *corpusCase) caseScore {
 		if d.DepthTruncated != q.Hidden {
 			t.Errorf("%s: depth_truncated = %d; want %d", q.Name, d.DepthTruncated, q.Hidden)
 		}
-		got := make(map[string]bool, len(d.TestRows))
-		for _, row := range d.TestRows {
-			got[row.Path] = true
-		}
-		for _, p := range q.NotTests {
-			if got[p] {
-				t.Errorf("%s: excluded test %s was named", q.Name, p)
-			}
-		}
+		assertNotNamed(t, q, d.TestRows)
 		return caseScore{Name: q.Name, All: scoreTests(q, d.TestRows)}
 	}
 	if d.Unresolved != q.Unresolved {
@@ -341,6 +340,19 @@ func assess(t *testing.T, f *fixture, q *corpusCase) caseScore {
 		All:     scoreCallers(q, d.Rows, scopeAll),
 		Cross:   scoreCallers(q, d.Rows, scopeCrossPackage),
 		callers: true,
+	}
+}
+
+func assertNotNamed(t *testing.T, q *corpusCase, rows []TestRow) {
+	t.Helper()
+	got := make(map[string]bool, len(rows))
+	for _, row := range rows {
+		got[row.Path] = true
+	}
+	for _, p := range q.NotTests {
+		if got[p] {
+			t.Errorf("%s: excluded test %s was named", q.Name, p)
+		}
 	}
 }
 
