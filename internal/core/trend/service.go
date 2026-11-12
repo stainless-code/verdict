@@ -305,8 +305,10 @@ func bundleProvenance(bundle string) *jq.Obj {
 	return unmarkedProvenance()
 }
 
+// provenanceTriple reads one bundle record under PRE-01's cap, so an
+// oversized record is unmarked instead of allocated and decoded.
 func provenanceTriple(path string) *jq.Obj {
-	raw, err := os.ReadFile(path)
+	raw, err := jq.CappedFile(path, jq.MaxPRBytes)
 	if err != nil {
 		return nil
 	}

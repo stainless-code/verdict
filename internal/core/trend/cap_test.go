@@ -66,3 +66,21 @@ func TestCostRecordsStoreCap(t *testing.T) {
 		t.Errorf("costRecords over cap = %v, want nil", recs)
 	}
 }
+
+// TestProvenanceReadRefusesOversizedPost proves the bundle's provenance triple
+// comes from a capped read: post.json at the cap reads the recorded triple,
+// and one byte over reads unmarked instead of being allocated and decoded.
+func TestProvenanceReadRefusesOversizedPost(t *testing.T) {
+	bundle := filepath.Join(t.TempDir(), "5101") + "/"
+	post := `{"tool_version":"9.9.9","prompts_hash":"hash","model":"m"} `
+	writePaddedStore(t, bundle+"post.json", post, jq.MaxPRBytes)
+	if got, _ := bundleProvenance(bundle).Get("tool_version"); got != "9.9.9" {
+		t.Fatalf("post.json at cap: tool_version = %v, want 9.9.9", got)
+	}
+	writePaddedStore(t, bundle+"post.json", post, jq.MaxPRBytes+1)
+	for _, key := range []string{"tool_version", "prompts_hash", "model"} {
+		if got, _ := bundleProvenance(bundle).Get(key); got != nil {
+			t.Errorf("post.json over cap: %s = %v, want null", key, got)
+		}
+	}
+}
