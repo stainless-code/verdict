@@ -33,7 +33,7 @@ func TestPackTestCases(t *testing.T) {
 		{name: "unselected expected rule", findings: validFinding, expect: `{"rules":["rule-b"]}`, want: "FAIL", reason: "expected rule is not selected: rule-b"},
 		{name: "unknown expected rule", findings: validFinding, expect: `{"rules":["absent"]}`, want: "FAIL", reason: "unknown rule id absent"},
 		{name: "unknown cited rule", findings: strings.ReplaceAll(validFinding, "rule-a", "absent"), expect: `{"rules":[]}`, want: "FAIL", reason: "finding 1 cites unknown rule id absent"},
-		{name: "unanchored finding", findings: strings.Replace(validFinding, `"line":1`, `"line":99`, 1), expect: `{"rules":["rule-a"]}`, want: "FAIL", reason: "finding anchor is outside the diff"},
+		{name: "unanchored finding", findings: strings.Replace(validFinding, `"line":1`, `"line":99`, 1), expect: `{"rules":["rule-a"]}`, want: "FAIL", reason: "outside every reviewed hunk"},
 		{name: "not rules hit", findings: validFinding, expect: `{"rules":[],"not_rules":["rule-a"]}`, want: "FAIL", reason: "not_rules hit: rule-a"},
 		{name: "missing coverage", findings: `[]`, expect: `{"rules":["rule-a"]}`, want: "FAIL", reason: "missing finding coverage for rule rule-a"},
 		{name: "invalid finding schema", findings: `[{"path":4}]`, expect: `{"rules":[]}`, want: "FAIL", reason: "invalid finding:"},
@@ -41,6 +41,26 @@ func TestPackTestCases(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) { checkPackTestCase(t, &tt) })
+	}
+}
+
+// TestPackTestRejectsNonnumericAnchor reproduces the review finding that a
+// nonnumeric line was accepted as a passing inline finding.
+func TestPackTestRejectsNonnumericAnchor(t *testing.T) {
+	findings := `[{"path":"src/sample.go","line":"garbage","body":"The fixture rule matches this changed Go line.","rigor":"walked","kb":["rule-a"]}]`
+	files := testPackFiles(findings, `{"rules":["rule-a"]}`, "")
+	files["evals/case/diff.patch"] = &fstest.MapFile{Data: []byte("diff --git a/src/sample.go b/src/sample.go\n--- a/src/sample.go\n+++ b/src/sample.go\n@@ -1 +1 @@\n-var result = 1\n+var result = 2\n")}
+	p := loadTestPack(t, fstest.MapFS(files))
+	resp, ref := runTest(t, p, "2026-01-01T00:00:00Z")
+	if ref != nil {
+		t.Fatalf("Run() refusal = %s: %s", ref.Code, ref.Message)
+	}
+	got := resp.Data.Cases[0]
+	if got.Status != failStatus {
+		t.Fatalf("status = %q, want %q: %+v", got.Status, failStatus, got)
+	}
+	if !strings.Contains(got.Reason, "$.comments[0].line") {
+		t.Fatalf("reason = %q, want the invalid anchor field", got.Reason)
 	}
 }
 

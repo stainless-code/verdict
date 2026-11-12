@@ -396,13 +396,8 @@ func validateFindings(findings []map[string]any, diff string) string {
 }
 
 func reviewFindingProblem(checked recordcore.CheckResult) string {
-	if checked.Errors == 0 {
-		return ""
-	}
 	for _, problem := range checked.Problems {
-		if problem.Level == core.ProblemLevelError {
-			return "invalid finding: " + problem.Code
-		}
+		return fmt.Sprintf("invalid finding: %s: %s (%s)", problem.Path, problem.Message, problem.Fix)
 	}
 	return ""
 }
