@@ -328,17 +328,33 @@ func bundleRepo(dir string) string {
 	if len(parts) < 2 {
 		return ""
 	}
-	for i := 2; i < len(parts); i++ {
-		if parts[i] == "-" && i+1 < len(parts) && parts[i+1] == "merge_requests" {
-			return path.Join(parts[:i]...)
-		}
-		if repoRouteSegment(parts[i]) {
-			if _, err := strconv.Atoi(parts[i+1]); err == nil {
-				return path.Join(parts[:i]...)
-			}
-		}
+	if end := projectPathEnd(parts); end > 0 {
+		return path.Join(parts[:end]...)
 	}
 	return path.Join(parts[:2]...)
+}
+
+// projectPathEnd finds the segment that ends the project path: GitLab's /-/
+// separator or another host's PR route with its numeric id.
+func projectPathEnd(parts []string) int {
+	for i := 2; i+1 < len(parts); i++ {
+		if isProjectSeparator(parts, i) {
+			return i
+		}
+	}
+	return 0
+}
+
+// isProjectSeparator reports whether parts[i] starts a host route tail.
+func isProjectSeparator(parts []string, i int) bool {
+	if parts[i] == "-" {
+		return parts[i+1] == "merge_requests"
+	}
+	if !repoRouteSegment(parts[i]) {
+		return false
+	}
+	_, err := strconv.Atoi(parts[i+1])
+	return err == nil
 }
 
 // repoRouteSegment reports one host route segment that ends the project path.

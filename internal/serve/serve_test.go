@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -54,10 +55,10 @@ func finding(sig, status, severity, rigor string) string {
 }
 
 // prDoc renders a GitHub-shaped PR.json.
-func prDoc(head string) string {
+func prDoc() string {
 	return fmt.Sprintf(`{"state":"OPEN","headRefOid":%q,"baseRefOid":%q,`+
 		`"author":{"login":"teammate"},"url":"https://github.com/acme/app/pull/1234"}`,
-		head, headB)
+		headA, headB)
 }
 
 // postDoc renders a completed post receipt.
@@ -77,7 +78,7 @@ var guardRefusedBundleNames = []string{
 // fixtureFiles is the two-bundle root every view test reads.
 func fixtureFiles() map[string]string {
 	return map[string]string{
-		".verdict/state/1234/PR.json":   prDoc(headA),
+		".verdict/state/1234/PR.json":   prDoc(),
 		".verdict/state/1234/post.json": postDoc(headA, 7),
 		".verdict/state/1234/findings.json": "[" + strings.Join([]string{
 			finding(sigCrit, "open", "critical", "walked"),
@@ -379,12 +380,9 @@ func TestNonLoopbackWarningNamesPlainHTTP(t *testing.T) {
 	warnExposure(runner, &serveOptions{host: "0.0.0.0"})
 	const want = "serve: binding 0.0.0.0 exposes the read-only surface beyond loopback " +
 		"over plain HTTP; the token and session cookie are not encrypted"
-	for _, warning := range runner.Warnings {
-		if warning == want {
-			return
-		}
+	if !slices.Contains(runner.Warnings, want) {
+		t.Errorf("warnings = %v, want %q", runner.Warnings, want)
 	}
-	t.Errorf("warnings = %v, want %q", runner.Warnings, want)
 }
 
 // TestRouteTableIsGetOnly walks the one registration point: a non-GET row
@@ -702,13 +700,24 @@ func TestGuardRefusedBundlesAreRefusals(t *testing.T) {
 	files := map[string]string{}
 	for _, name := range guardRefusedBundleNames {
 		base := ".verdict/state/" + name + "/"
-		files[base+"PR.json"] = prDoc(headA)
+		files[base+"PR.json"] = prDoc()
 		files[base+"findings.json"] = "[" + finding(sigCrit, "open", "critical", "walked") + "]"
 	}
 	root := writeFixture(t, files)
 	ts := testServer(t, testLayer(root, nil))
 	headers := bearer()
 	rootID := rootIDOf(t, ts, headers)
+	assertGuardRefusedListing(t, ts, headers)
+	for _, name := range guardRefusedBundleNames {
+		t.Run(name, func(t *testing.T) {
+			assertGuardRefusedDetail(t, ts, rootID, headers, name)
+		})
+	}
+}
+
+// assertGuardRefusedListing proves the refused directories never become rows.
+func assertGuardRefusedListing(t *testing.T, ts *httptest.Server, headers map[string]string) {
+	t.Helper()
 	inbox := call(t, ts, http.MethodGet, "/v1/bundles", "", headers)
 	if inbox.status != http.StatusOK {
 		t.Fatalf("GET bundles = %d (%s)", inbox.status, inbox.body)
@@ -720,20 +729,21 @@ func TestGuardRefusedBundlesAreRefusals(t *testing.T) {
 	if data["partial"] != false {
 		t.Errorf("partial = %v, want false", data["partial"])
 	}
-	for _, name := range guardRefusedBundleNames {
-		t.Run(name, func(t *testing.T) {
-			got := call(t, ts, http.MethodGet, "/v1/roots/"+rootID+"/bundles/"+url.PathEscape(name), "", headers)
-			if got.status != http.StatusOK {
-				t.Fatalf("detail status = %d, want 200 (%s)", got.status, got.body)
-			}
-			envelope := decode(t, got.body)
-			if envelope["data"] != nil {
-				t.Errorf("data = %v, want null", envelope["data"])
-			}
-			if code := asMap(t, envelope["error"])["code"]; code != "bad-flags" {
-				t.Errorf("error.code = %v, want bad-flags (the CLI's own refusal)", code)
-			}
-		})
+}
+
+// assertGuardRefusedDetail proves the route returns the CLI's own refusal.
+func assertGuardRefusedDetail(t *testing.T, ts *httptest.Server, rootID string, headers map[string]string, name string) {
+	t.Helper()
+	got := call(t, ts, http.MethodGet, "/v1/roots/"+rootID+"/bundles/"+url.PathEscape(name), "", headers)
+	if got.status != http.StatusOK {
+		t.Fatalf("detail status = %d, want 200 (%s)", got.status, got.body)
+	}
+	envelope := decode(t, got.body)
+	if envelope["data"] != nil {
+		t.Errorf("data = %v, want null", envelope["data"])
+	}
+	if code := asMap(t, envelope["error"])["code"]; code != "bad-flags" {
+		t.Errorf("error.code = %v, want bad-flags (the CLI's own refusal)", code)
 	}
 }
 
@@ -744,7 +754,7 @@ func TestLongBundleNameIsAddressable(t *testing.T) {
 	longName := strings.Repeat("a", 140)
 	files := fixtureFiles()
 	base := ".verdict/state/" + longName + "/"
-	files[base+"PR.json"] = prDoc(headA)
+	files[base+"PR.json"] = prDoc()
 	files[base+"findings.json"] = "[" + finding(sigCrit, "open", "critical", "walked") + "]"
 	root := writeFixture(t, files)
 	ts := testServer(t, testLayer(root, nil))

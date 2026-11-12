@@ -447,6 +447,7 @@ func applyToken(r *cli.Runner, opts *serveOptions, value string) (int, bool) {
 	if value == "" {
 		return usage(r, "serve: --token wants a non-empty value (omit the flag for a random token)"), true
 	}
+	//nolint:gosec // the cookie is never written; Valid only checks the value grammar net/http will serialize.
 	if err := (&http.Cookie{Name: "verdict_session", Value: value}).Valid(); err != nil {
 		return usage(r, "serve: --token is not a valid session-cookie value "+
 			"(no quote, backslash, semicolon, or control byte)"), true

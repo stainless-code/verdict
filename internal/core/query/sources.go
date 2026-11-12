@@ -17,9 +17,13 @@ const (
 	// maxInventoryEntries bounds one bundle's ledger rows, so a hostile store
 	// cannot turn one request into tens of thousands of hashes.
 	maxInventoryEntries = 64
-	// maxInventoryBytes bounds the bytes one bundle's inventory reads. Real
+	// maxInventoryMiB bounds the bytes one bundle's inventory reads. Real
 	// bundles carry 12–20 artifacts.
-	maxInventoryBytes int64 = 16 << 20
+	maxInventoryMiB = 16
+	// maxInventoryBytes is maxInventoryMiB in the byte unit the collector uses.
+	maxInventoryBytes int64 = maxInventoryMiB << 20
+	// chunksDirName is the one bundle subdirectory the inventory descends into.
+	chunksDirName = "chunks"
 )
 
 // inventory collects the artifacts under one bundle and the serving root's
@@ -52,7 +56,7 @@ var overrideFragments = []string{
 }
 
 // sourceCollector accumulates deduped inventory rows under one budget.
-type sourceCollector struct {
+type sourceCollector struct { //nolint:govet // grouped as one collector
 	root       Root
 	rootPath   string
 	maxEntries int
@@ -76,16 +80,12 @@ func (c *sourceCollector) add(bundle, abs string) {
 		c.truncated = true
 		return
 	}
-	info, err := os.Lstat(abs)
-	if err != nil || !info.Mode().IsRegular() {
+	info, ok := regularFile(abs)
+	if !ok {
 		return
 	}
-	if c.maxBytes > 0 && c.bytes+info.Size() > c.maxBytes {
-		c.truncated = true
-		return
-	}
-	raw, err := jq.CappedFile(abs, sourceCap)
-	if err != nil {
+	raw, ok := c.read(abs, info)
+	if !ok {
 		return
 	}
 	rel, err := filepath.Rel(c.rootPath, abs)
@@ -102,6 +102,28 @@ func (c *sourceCollector) add(bundle, abs string) {
 	})
 }
 
+// regularFile reports one regular-file answer without following a symlink.
+func regularFile(path string) (os.FileInfo, bool) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, false
+	}
+	return info, info.Mode().IsRegular()
+}
+
+// read hashes one artifact unless its size would cross the byte budget.
+func (c *sourceCollector) read(abs string, info os.FileInfo) ([]byte, bool) {
+	if c.maxBytes > 0 && c.bytes+info.Size() > c.maxBytes {
+		c.truncated = true
+		return nil, false
+	}
+	raw, err := jq.CappedFile(abs, sourceCap)
+	if err != nil {
+		return nil, false
+	}
+	return raw, true
+}
+
 // walkBundle inventories one bundle directory: the supported artifacts at the
 // top level first, then the chunk files one directory down, so a chunk-heavy
 // bundle cannot starve the store row.
@@ -110,24 +132,42 @@ func walkBundle(c *sourceCollector, bundle, dir, rel string) {
 	if err != nil {
 		return
 	}
-	for _, entry := range entries {
-		if entry.Type()&fs.ModeSymlink != 0 || entry.IsDir() {
-			continue
-		}
-		if c.full() {
-			c.truncated = true
-			return
-		}
-		if entry.Type().IsRegular() && supportedArtifact(rel, entry.Name()) {
-			c.add(bundle, filepath.Join(dir, entry.Name()))
-		}
-	}
-	if rel != "" {
+	if !walkFiles(c, bundle, dir, rel, entries) || rel != "" {
 		return
 	}
+	walkChunks(c, bundle, dir, entries)
+}
+
+// walkFiles inventories the regular supported files in one directory.
+func walkFiles(c *sourceCollector, bundle, dir, rel string, entries []os.DirEntry) bool {
 	for _, entry := range entries {
-		if entry.Type()&fs.ModeSymlink == 0 && entry.IsDir() && entry.Name() == "chunks" {
-			walkBundle(c, bundle, filepath.Join(dir, entry.Name()), "chunks")
+		if !c.addEntry(bundle, dir, rel, entry) {
+			return false
+		}
+	}
+	return true
+}
+
+// addEntry inventories one regular supported file; false stops the walk.
+func (c *sourceCollector) addEntry(bundle, dir, rel string, entry os.DirEntry) bool {
+	if entry.Type()&fs.ModeSymlink != 0 || entry.IsDir() {
+		return true
+	}
+	if c.full() {
+		c.truncated = true
+		return false
+	}
+	if entry.Type().IsRegular() && supportedArtifact(rel, entry.Name()) {
+		c.add(bundle, filepath.Join(dir, entry.Name()))
+	}
+	return true
+}
+
+// walkChunks descends into the bundle's one chunks subdirectory.
+func walkChunks(c *sourceCollector, bundle, dir string, entries []os.DirEntry) {
+	for _, entry := range entries {
+		if entry.Type()&fs.ModeSymlink == 0 && entry.IsDir() && entry.Name() == chunksDirName {
+			walkBundle(c, bundle, filepath.Join(dir, entry.Name()), chunksDirName)
 		}
 	}
 }
@@ -135,7 +175,7 @@ func walkBundle(c *sourceCollector, bundle, dir, rel string) {
 // supportedArtifact keeps the walk to the names a reader can consume: the
 // documented bundle artifacts at the top level and the chunk cost files.
 func supportedArtifact(rel, name string) bool {
-	if rel == "chunks" {
+	if rel == chunksDirName {
 		return name == "manifest.json" || strings.HasSuffix(name, ".cost.json")
 	}
 	return slices.Contains(artifactNames, name)

@@ -15,6 +15,15 @@ import (
 // add's Lstat covers the root override fragment.
 func TestInventoryDoesNotOpenAFIFO(t *testing.T) {
 	t.Parallel()
+	dir, bundleDir := fifoFixture(t)
+	layer := newLayer(dir)
+	root := Root{ID: RootID(mustAbs(t, dir)), Path: mustAbs(t, dir)}
+	assertInventoryDoesNotBlock(t, layer, root, bundleDir)
+}
+
+// fifoFixture builds the two special files the inventory paths must skip.
+func fifoFixture(t *testing.T) (string, string) {
+	t.Helper()
 	dir := t.TempDir()
 	bundleDir := filepath.Join(dir, ".verdict", "state", "1234")
 	overrideDir := filepath.Join(dir, ".verdict", "overrides")
@@ -23,14 +32,20 @@ func TestInventoryDoesNotOpenAFIFO(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := syscall.Mkfifo(filepath.Join(bundleDir, "findings.json"), 0o600); err != nil {
-		t.Fatal(err)
+	for _, path := range []string{
+		filepath.Join(bundleDir, "findings.json"),
+		filepath.Join(overrideDir, "preamble.md"),
+	} {
+		if err := syscall.Mkfifo(path, 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := syscall.Mkfifo(filepath.Join(overrideDir, "preamble.md"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	layer := newLayer(dir)
-	root := Root{ID: RootID(mustAbs(t, dir)), Path: mustAbs(t, dir)}
+	return dir, bundleDir
+}
+
+// assertInventoryDoesNotBlock fails when the walk opens a FIFO.
+func assertInventoryDoesNotBlock(t *testing.T, layer *Layer, root Root, bundleDir string) {
+	t.Helper()
 	done := make(chan int, 1)
 	go func() {
 		sources, _ := layer.inventory(root, "1234", bundleDir)

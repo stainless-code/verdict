@@ -182,9 +182,7 @@ func (l *Layer) collectRows(
 				fmt.Sprintf("serve: bundle cap %d reached under %s; listing truncated", l.maxBundles, root.Path))
 		}
 		if inventoryCut {
-			view.Warnings = append(view.Warnings,
-				fmt.Sprintf("serve: source inventory capped at %d entries or %d MiB under %s; sources[] is incomplete",
-					maxInventoryEntries, maxInventoryBytes>>20, root.Path))
+			view.Warnings = append(view.Warnings, inventoryWarning(root.Path))
 		}
 	}
 	return rows, errs, sum, partial
@@ -318,23 +316,32 @@ func (l *Layer) Detail(ctx context.Context, rootID, bundle string) (*View, error
 	data.Set(keyPartial, len(errs) > 0 || truncated)
 	data.Set(keySources, sourcesWire(sources))
 	data.Set(keyErrors, errorsWire(errs))
-	warnings := append([]string{}, resp.Warnings...)
-	if truncated {
-		warnings = append(warnings, fmt.Sprintf(
-			"serve: source inventory capped at %d entries or %d MiB for bundle %s; sources[] is incomplete",
-			maxInventoryEntries, maxInventoryBytes>>20, bundle))
-	}
 	view := &View{
 		At:       resp.At,
 		Next:     "run verdict show <repo> " + bundle + " --sig <sig> to read one finding",
 		Repo:     bundleRepo(dir),
 		Pr:       bundle,
-		Warnings: warnings,
+		Warnings: detailWarnings(resp.Warnings, bundle, truncated),
 		Data:     data,
 		Sources:  sources,
 		Errors:   errs,
 	}
 	return view, nil
+}
+
+// inventoryWarning names the source-inventory cap that truncated a view.
+func inventoryWarning(where string) string {
+	return fmt.Sprintf("serve: source inventory capped at %d entries or %d MiB under %s; sources[] is incomplete",
+		maxInventoryEntries, maxInventoryMiB, where)
+}
+
+// detailWarnings adds the inventory warning to a detail's composed warnings.
+func detailWarnings(base []string, bundle string, truncated bool) []string {
+	warnings := append([]string{}, base...)
+	if truncated {
+		warnings = append(warnings, inventoryWarning("bundle "+bundle))
+	}
+	return warnings
 }
 
 // Show returns one finding through the show service, byte-identical to

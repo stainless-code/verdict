@@ -52,10 +52,10 @@ func finding(sig, status, severity, rigor string) string {
 }
 
 // prDoc renders a GitHub-shaped PR.json.
-func prDoc(head string) string {
+func prDoc() string {
 	return fmt.Sprintf(`{"state":"OPEN","headRefOid":%q,"baseRefOid":%q,`+
 		`"author":{"login":"teammate"},"url":"https://github.com/acme/app/pull/1234"}`,
-		head, headB)
+		headA, headB)
 }
 
 // sourceDoc renders a local bundle source.json.
@@ -101,7 +101,7 @@ func writeFiles(t *testing.T, dir string, files map[string]string) {
 func fixture(t *testing.T) (string, map[string]string) {
 	t.Helper()
 	files := map[string]string{
-		".verdict/state/1234/PR.json":        prDoc(headA),
+		".verdict/state/1234/PR.json":        prDoc(),
 		".verdict/state/1234/full.diff":      fullDiff,
 		".verdict/state/1234/post.json":      postDoc(headA, 7),
 		".verdict/state/local-1/source.json": sourceDoc(headB),
@@ -430,10 +430,14 @@ func TestCacheEvictsByBundleAtTheCap(t *testing.T) {
 		Runtime: &core.Runtime{Now: fixedNow},
 	}, Options{Check: "critical", MaxBundles: 1})
 	flags := inboxFlags()
-	layer.cached(context.Background(), rootA, "1234",
-		filepath.Join(dirA, ".verdict", "state", "1234"), &flags)
-	layer.cached(context.Background(), rootB, "1234",
-		filepath.Join(dirB, ".verdict", "state", "1234"), &flags)
+	if _, ref, _, _ := layer.cached(context.Background(), rootA, "1234",
+		filepath.Join(dirA, ".verdict", "state", "1234"), &flags); ref != nil {
+		t.Fatalf("cache root A: %v", ref)
+	}
+	if _, ref, _, _ := layer.cached(context.Background(), rootB, "1234",
+		filepath.Join(dirB, ".verdict", "state", "1234"), &flags); ref != nil {
+		t.Fatalf("cache root B: %v", ref)
+	}
 	if got := layer.cacheEntries(); got != 1 {
 		t.Fatalf("cache entries = %d, want 1 at a one-bundle cap", got)
 	}
@@ -461,12 +465,12 @@ func TestInventoryCapsAndReportsTruncation(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	files := map[string]string{
-		".verdict/state/1234/PR.json":     prDoc(headA),
+		".verdict/state/1234/PR.json":     prDoc(),
 		".verdict/state/1234/unknown.bin": "not an artifact",
 		".verdict/state/1234/findings.json": "[" +
 			finding(sigCrit, "open", "critical", "walked") + "]",
 	}
-	for i := 0; i < 70; i++ {
+	for i := range 70 {
 		files[fmt.Sprintf(".verdict/state/1234/chunks/%02d.cost.json", i)] = "{}"
 	}
 	writeFiles(t, dir, files)
@@ -479,11 +483,18 @@ func TestInventoryCapsAndReportsTruncation(t *testing.T) {
 	if len(view.Sources) != 64 {
 		t.Fatalf("sources = %d, want the 64-entry cap", len(view.Sources))
 	}
+	assertTruncatedInventory(t, view)
+}
+
+// assertTruncatedInventory pins the partial flag, warning, store row, and
+// supported-artifact filter of a capped inventory.
+func assertTruncatedInventory(t *testing.T, view *View) {
+	t.Helper()
 	data := wireMap(t, view.Data)
 	if data["partial"] != true {
 		t.Errorf("partial = %v, want true for a truncated inventory", data["partial"])
 	}
-	want := "serve: source inventory capped at 64 entries or 16 MiB for bundle 1234; sources[] is incomplete"
+	want := "serve: source inventory capped at 64 entries or 16 MiB under bundle 1234; sources[] is incomplete"
 	if !slices.Contains(view.Warnings, want) {
 		t.Errorf("warnings = %v, want %q", view.Warnings, want)
 	}
@@ -516,19 +527,25 @@ func TestSourceCollectorBudgets(t *testing.T) {
 		{name: "byte cap", maxEntries: 10, maxBytes: 10, wantSources: 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			c := &sourceCollector{
-				root: Root{Path: dir}, rootPath: dir,
-				maxEntries: tc.maxEntries, maxBytes: tc.maxBytes,
-			}
-			c.add("1234", path)
-			c.add("1234", path)
-			if len(c.sources) != tc.wantSources {
-				t.Errorf("sources = %d, want %d", len(c.sources), tc.wantSources)
-			}
-			if !c.truncated {
-				t.Error("truncated = false, want true past the budget")
-			}
+			assertSourceBudget(t, dir, path, tc.maxEntries, tc.maxBytes, tc.wantSources)
 		})
+	}
+}
+
+// assertSourceBudget pins one collector cut.
+func assertSourceBudget(t *testing.T, dir, path string, maxEntries int, maxBytes int64, wantSources int) {
+	t.Helper()
+	c := &sourceCollector{
+		root: Root{Path: dir}, rootPath: dir,
+		maxEntries: maxEntries, maxBytes: maxBytes,
+	}
+	c.add("1234", path)
+	c.add("1234", path)
+	if len(c.sources) != wantSources {
+		t.Errorf("sources = %d, want %d", len(c.sources), wantSources)
+	}
+	if !c.truncated {
+		t.Error("truncated = false, want true past the budget")
 	}
 }
 
@@ -613,24 +630,28 @@ func TestDetailRefusesNamesTheSharedGuardRefuses(t *testing.T) {
 	files := map[string]string{}
 	for _, name := range guardRefusedNames {
 		base := ".verdict/state/" + name + "/"
-		files[base+"PR.json"] = prDoc(headA)
+		files[base+"PR.json"] = prDoc()
 		files[base+"findings.json"] = "[" + finding(sigCrit, "open", "critical", "walked") + "]"
 	}
 	writeFiles(t, dir, files)
 	layer := newLayer(dir)
 	root := RootID(mustAbs(t, dir))
 	for _, name := range guardRefusedNames {
-		t.Run(name, func(t *testing.T) {
-			_, err := layer.Detail(context.Background(), root, name)
-			var ref *core.RefusalError
-			if !errors.As(err, &ref) || ref.Code != "bad-flags" {
-				t.Fatalf("Detail(%q) = %v, want bad-flags", name, err)
-			}
-			const want = "bundle name must be one path element (a PR number or fetch-local name), not a path"
-			if ref.Message != want {
-				t.Errorf("Detail(%q) message = %q, want %q", name, ref.Message, want)
-			}
-		})
+		t.Run(name, func(t *testing.T) { assertGuardRefusal(t, layer, root, name) })
+	}
+}
+
+// assertGuardRefusal pins the shared guard's code and line on the layer.
+func assertGuardRefusal(t *testing.T, layer *Layer, root, name string) {
+	t.Helper()
+	_, err := layer.Detail(context.Background(), root, name)
+	var ref *core.RefusalError
+	if !errors.As(err, &ref) || ref.Code != "bad-flags" {
+		t.Fatalf("Detail(%q) = %v, want bad-flags", name, err)
+	}
+	const want = "bundle name must be one path element (a PR number or fetch-local name), not a path"
+	if ref.Message != want {
+		t.Errorf("Detail(%q) message = %q, want %q", name, ref.Message, want)
 	}
 }
 
@@ -648,7 +669,7 @@ func TestBundleListingUsesTheSharedGuard(t *testing.T) {
 	files := map[string]string{}
 	for _, name := range append(append([]string{}, guardRefusedNames...), names...) {
 		base := ".verdict/state/" + name + "/"
-		files[base+"PR.json"] = prDoc(headA)
+		files[base+"PR.json"] = prDoc()
 		files[base+"findings.json"] = "[" + finding(sigCrit, "open", "critical", "walked") + "]"
 	}
 	writeFiles(t, dir, files)
@@ -684,7 +705,7 @@ func TestSharedGuardNamesAreAddressable(t *testing.T) {
 	files := map[string]string{}
 	for _, name := range names {
 		base := ".verdict/state/" + name + "/"
-		files[base+"PR.json"] = prDoc(headA)
+		files[base+"PR.json"] = prDoc()
 		files[base+"findings.json"] = "[" + finding(sigCrit, "open", "critical", "walked") + "]"
 	}
 	writeFiles(t, dir, files)

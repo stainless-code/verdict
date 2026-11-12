@@ -10,6 +10,13 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 )
 
+const (
+	// bundleKeySep separates the root id from the bundle name in a cache key.
+	bundleKeySep = "\x00"
+	// decimalBase is the base every integer stamp component formats in.
+	decimalBase = 10
+)
+
 // stamp fingerprints every composition input: each bundle-directory entry, the
 // chunks directory, and the root override fragments. An atomic write moves a
 // directory entry; an in-place rewrite moves the file's own size and mtime.
@@ -38,13 +45,13 @@ func keyFor(root Root, bundle string, flags *core.ReportFlags) cacheKey {
 
 // entry is one cached composition: the response or refusal plus the artifact
 // inventory it was built from.
-type entry struct {
+type entry struct { //nolint:govet // grouped as one cache row
 	resp      *core.ReportResponse
 	ref       *core.RefusalError
 	sources   []Source
-	truncated bool
 	stamp     stamp
 	used      uint64
+	truncated bool
 }
 
 // bundleStamp reads one bundle's cache fingerprint and the root policy inputs
@@ -67,21 +74,21 @@ func appendDirStamp(out *strings.Builder, dir, prefix string) {
 		return
 	}
 	for _, entry := range entries {
-		name := prefix + entry.Name()
-		info, err := entry.Info()
-		if err != nil {
-			out.WriteString(name + "!unreadable\n")
-			continue
-		}
-		out.WriteString(name)
-		out.WriteByte(' ')
-		out.WriteString(strconv.FormatInt(info.Size(), 10))
-		out.WriteByte(' ')
-		out.WriteString(strconv.FormatInt(info.ModTime().UnixNano(), 10))
-		out.WriteByte('\n')
-		if prefix == "" && entry.IsDir() && entry.Name() == "chunks" {
-			appendDirStamp(out, filepath.Join(dir, entry.Name()), "chunks/")
-		}
+		appendEntryStamp(out, dir, prefix, entry)
+	}
+}
+
+// appendEntryStamp fingerprints one directory entry.
+func appendEntryStamp(out *strings.Builder, dir, prefix string, entry os.DirEntry) {
+	name := prefix + entry.Name()
+	info, err := entry.Info()
+	if err != nil {
+		out.WriteString(name + "!unreadable\n")
+		return
+	}
+	appendStatLine(out, name, info)
+	if prefix == "" && entry.IsDir() && entry.Name() == chunksDirName {
+		appendDirStamp(out, filepath.Join(dir, entry.Name()), chunksDirName+"/")
 	}
 }
 
@@ -92,11 +99,16 @@ func appendFileStamp(out *strings.Builder, path string) {
 		out.WriteString(path + "!missing\n")
 		return
 	}
-	out.WriteString(path)
+	appendStatLine(out, path, info)
+}
+
+// appendStatLine writes one name + size + mtime fingerprint row.
+func appendStatLine(out *strings.Builder, name string, info os.FileInfo) {
+	out.WriteString(name)
 	out.WriteByte(' ')
-	out.WriteString(strconv.FormatInt(info.Size(), 10))
+	out.WriteString(strconv.FormatInt(info.Size(), decimalBase))
 	out.WriteByte(' ')
-	out.WriteString(strconv.FormatInt(info.ModTime().UnixNano(), 10))
+	out.WriteString(strconv.FormatInt(info.ModTime().UnixNano(), decimalBase))
 	out.WriteByte('\n')
 }
 
@@ -123,7 +135,7 @@ func (l *Layer) cached(
 	}
 
 	l.mu.Lock()
-	bundleID := key.root + "\x00" + key.bundle
+	bundleID := key.root + bundleKeySep + key.bundle
 	if !bundlePresentLocked(l.cache, bundleID) && bundleCountLocked(l.cache) >= l.maxBundles {
 		evictOldestBundleLocked(l.cache)
 	}
@@ -145,7 +157,7 @@ func (l *Layer) touchLocked(key cacheKey, item *entry) {
 // one bundle.
 func bundlePresentLocked(cache map[cacheKey]entry, bundle string) bool {
 	for key := range cache {
-		if key.root+"\x00"+key.bundle == bundle {
+		if key.root+bundleKeySep+key.bundle == bundle {
 			return true
 		}
 	}
@@ -157,7 +169,7 @@ func bundlePresentLocked(cache map[cacheKey]entry, bundle string) bool {
 func bundleCountLocked(cache map[cacheKey]entry) int {
 	bundles := map[string]bool{}
 	for key := range cache {
-		bundles[key.root+"\x00"+key.bundle] = true
+		bundles[key.root+bundleKeySep+key.bundle] = true
 	}
 	return len(bundles)
 }
@@ -165,9 +177,19 @@ func bundleCountLocked(cache map[cacheKey]entry) int {
 // evictOldestBundleLocked drops every composition of the least recently used
 // bundle, so a new bundle never clears unrelated hot entries.
 func evictOldestBundleLocked(cache map[cacheKey]entry) {
+	oldest := leastRecentlyUsedBundle(cache)
+	for key := range cache {
+		if key.root+bundleKeySep+key.bundle == oldest {
+			delete(cache, key)
+		}
+	}
+}
+
+// leastRecentlyUsedBundle names the bundle whose newest composition is oldest.
+func leastRecentlyUsedBundle(cache map[cacheKey]entry) string {
 	last := map[string]uint64{}
 	for key, item := range cache {
-		bundle := key.root + "\x00" + key.bundle
+		bundle := key.root + bundleKeySep + key.bundle
 		if item.used > last[bundle] {
 			last[bundle] = item.used
 		}
@@ -179,11 +201,7 @@ func evictOldestBundleLocked(cache map[cacheKey]entry) {
 			oldest, oldestUsed = bundle, used
 		}
 	}
-	for key := range cache {
-		if key.root+"\x00"+key.bundle == oldest {
-			delete(cache, key)
-		}
-	}
+	return oldest
 }
 
 // cacheEntries reports the cache size a health row publishes.

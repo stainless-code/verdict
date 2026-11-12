@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"unicode"
 )
 
 // contentTypeJSON is the one body shape a data or problem response carries.
@@ -88,7 +89,7 @@ func badPath(p string) bool {
 			return true
 		}
 	}
-	return strings.ContainsFunc(p, func(r rune) bool { return r < 0x20 || r == 0x7f })
+	return strings.ContainsFunc(p, unicode.IsControl)
 }
 
 // problem writes one transport error: status, reason, message.

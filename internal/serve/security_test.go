@@ -85,17 +85,21 @@ func TestBadPathIsTheEarlyRouteRefusal(t *testing.T) {
 		{name: "control byte", path: "/v1/roots/" + rootID + "/bundles/local%00"},
 		{name: "backslash", path: "/v1/roots/" + rootID + "/bundles/..%5C..%5Cetc"},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			got := call(t, ts, http.MethodGet, tc.path, "", headers)
-			if got.status != http.StatusNotFound {
-				t.Fatalf("status = %d, want 404 (%s)", got.status, got.body)
-			}
-			for _, want := range []string{`"reason":"not-found"`, `"message":"no such route"`} {
-				if !strings.Contains(string(got.body), want) {
-					t.Errorf("body = %s, want %s", got.body, want)
-				}
-			}
-		})
+		t.Run(tc.name, func(t *testing.T) { assertBadPath(t, ts, headers, tc.path) })
+	}
+}
+
+// assertBadPath pins the early gate's transport body.
+func assertBadPath(t *testing.T, ts *httptest.Server, headers map[string]string, path string) {
+	t.Helper()
+	got := call(t, ts, http.MethodGet, path, "", headers)
+	if got.status != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 (%s)", got.status, got.body)
+	}
+	for _, want := range []string{`"reason":"not-found"`, `"message":"no such route"`} {
+		if !strings.Contains(string(got.body), want) {
+			t.Errorf("body = %s, want %s", got.body, want)
+		}
 	}
 }
 
