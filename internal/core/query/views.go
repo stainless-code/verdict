@@ -148,6 +148,7 @@ func (t *totals) wire() *jq.Obj {
 // any total over the set is then null, never a silently smaller sum.
 func (l *Layer) Bundles(ctx context.Context, pattern string) (*View, error) {
 	view := l.newView()
+	view.Warnings = append(view.Warnings, l.discovery.Warnings...)
 	rows, errs, sum, partial := l.collectRows(ctx, pattern, view)
 	rootID := ""
 	if len(l.roots) == 1 {
@@ -180,7 +181,7 @@ func (l *Layer) collectRows(
 	var rows []any
 	var errs []ErrRow
 	var sum totals
-	partial := false
+	partial := l.discovery.Truncated
 	for _, root := range l.roots {
 		if ctx.Err() != nil {
 			break

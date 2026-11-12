@@ -322,6 +322,34 @@ func testDefaultRepositoryCapIsExact(t *testing.T) {
 	}
 }
 
+// TestTruncatedDiscoveryMakesInboxPartial keeps incomplete discovery out of totals.
+func TestTruncatedDiscoveryMakesInboxPartial(t *testing.T) {
+	workspace := t.TempDir()
+	makeRepo(t, workspace, "a")
+	makeRepo(t, workspace, "b")
+	discovery, err := Discover(workspace, DiscoveryOptions{Depth: 1, MaxRepos: 1, Now: discoveryNow()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !discovery.Truncated || len(discovery.Roots) != 1 {
+		t.Fatalf("discovery = %+v; want one root and truncation", discovery)
+	}
+	layer := New(Snapshot{
+		Version: "1.2.3", Roots: discovery.Roots, Runtime: &core.Runtime{Now: fixedNow}, Discovery: discovery,
+	}, Options{Check: "critical", MaxBundles: 10})
+	view, err := layer.Bundles(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := wireMap(t, view.Data)
+	if data["counts"] != nil || data["partial"] != true || len(asList(t, data["rows"])) != 0 {
+		t.Errorf("truncated inbox = counts %v, partial %v, rows %d; want null counts, partial true, and no bundles", data["counts"], data["partial"], len(asList(t, data["rows"])))
+	}
+	if len(view.Warnings) == 0 || !strings.Contains(view.Warnings[0], "max repos 1 reached") {
+		t.Errorf("inbox warnings = %q; want the discovery truncation warning", view.Warnings)
+	}
+}
+
 // TestWarmRegistryRestartDoesNotReadDirectories pins zero warm walk reads.
 func TestWarmRegistryRestartDoesNotReadDirectories(t *testing.T) {
 	root, registryPath, opts, reads := warmRegistryFixture(t)
