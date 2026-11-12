@@ -22,6 +22,7 @@ const (
 	sourceDirPrefix = "dir:"
 	sourceGitPrefix = "git:"
 	refSep          = "@"
+	userinfoSep     = ":"
 	schemeSep       = "://"
 	httpsPrefix     = "https://"
 	sshPrefix       = "ssh://"
@@ -231,7 +232,7 @@ func redactURL(raw string) string {
 		return raw
 	}
 	userinfo := authorityText[:at]
-	colon := strings.Index(userinfo, ":")
+	colon := strings.Index(userinfo, userinfoSep)
 	if colon < 0 {
 		return raw
 	}
@@ -252,9 +253,9 @@ func userinfoPassword(raw string) bool {
 		return false
 	}
 	if strings.Contains(raw, schemeSep) {
-		return strings.Contains(authorityText[:at], ":")
+		return strings.Contains(authorityText[:at], userinfoSep)
 	}
-	return strings.Contains(raw[at+1:], ":") && strings.Contains(authorityText[:at], ":")
+	return strings.Contains(raw[at+1:], userinfoSep) && strings.Contains(authorityText[:at], userinfoSep)
 }
 
 // authority returns the byte range of a source's URL authority (or its scp
@@ -308,7 +309,7 @@ func gitURL(url string) bool {
 	if rest, ok := strings.CutPrefix(url, sshPrefix); ok {
 		return rest != ""
 	}
-	at, colon := strings.Index(url, refSep), strings.Index(url, ":")
+	at, colon := strings.Index(url, refSep), strings.Index(url, userinfoSep)
 	return at > 0 && colon > at+1 && !strings.Contains(url, schemeSep)
 }
 
@@ -338,31 +339,36 @@ func cloneSource(
 		cleanup()
 		return nil, ref
 	}
-	sha, ref := runGitPack(gctx, cmdr, env, clone, tmp, "rev-parse", "HEAD")
+	sha, ref := resolveClone(gctx, cmdr, env, clone, tmp, url)
 	if ref != nil {
-		cleanup()
-		return nil, ref
-	}
-	if !hex40(sha) {
-		cleanup()
-		return nil, badPack(fmt.Sprintf("git remote %q resolved HEAD to %q, not a 40-hex commit",
-			redactURL(url), sha))
-	}
-	if ref := runGitPackOK(gctx, cmdr, env, clone, tmp, "checkout", "--detach", sha); ref != nil {
-		cleanup()
-		return nil, ref
-	}
-	if err := os.RemoveAll(filepath.Join(clone, ".git")); err != nil {
-		cleanup()
-		return nil, badPack(fmt.Sprintf("clean the pack clone metadata: %v", err))
-	}
-	if ref := checkCloneBounds(clone); ref != nil {
 		cleanup()
 		return nil, ref
 	}
 	return &packSource{
 		dir: clone, label: sourceGitPrefix + redactURL(url) + refSep + sha, cleanup: cleanup,
 	}, nil
+}
+
+// resolveClone pins the clone to its resolved HEAD and checks the working tree
+// before the loader walks it.
+func resolveClone(
+	ctx context.Context, cmdr core.Commander, env []string, clone, tmp, url string,
+) (string, *core.RefusalError) {
+	sha, ref := runGitPack(ctx, cmdr, env, clone, tmp, "rev-parse", "HEAD")
+	if ref != nil {
+		return "", ref
+	}
+	if !hex40(sha) {
+		return "", badPack(fmt.Sprintf("git remote %q resolved HEAD to %q, not a 40-hex commit",
+			redactURL(url), sha))
+	}
+	if ref := runGitPackOK(ctx, cmdr, env, clone, tmp, "checkout", "--detach", sha); ref != nil {
+		return "", ref
+	}
+	if err := os.RemoveAll(filepath.Join(clone, ".git")); err != nil {
+		return "", badPack(fmt.Sprintf("clean the pack clone metadata: %v", err))
+	}
+	return sha, checkCloneBounds(clone)
 }
 
 // prepareGitEnv creates the scrubbed HOME/XDG tree and the hooks directory a
@@ -496,28 +502,7 @@ func checkCloneBounds(dir string) *core.RefusalError {
 	count := 0
 	var total int64
 	err := filepath.WalkDir(dir, func(_ string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		if !info.Mode().IsRegular() {
-			return nil
-		}
-		count++
-		total += info.Size()
-		if count > MaxFiles {
-			return tooLarge(fmt.Sprintf("the git clone carries more than %d files", MaxFiles))
-		}
-		if total > MaxPackBytes {
-			return tooLarge(fmt.Sprintf("the git clone is over the %d-byte total cap", MaxPackBytes))
-		}
-		return nil
+		return chargeCloneEntry(entry, walkErr, &count, &total)
 	})
 	if err == nil {
 		return nil
@@ -526,6 +511,32 @@ func checkCloneBounds(dir string) *core.RefusalError {
 		return ref
 	}
 	return badPack(fmt.Sprintf("inspect the git clone: %v", err))
+}
+
+// chargeCloneEntry spends one walked clone entry against the pack caps.
+func chargeCloneEntry(entry fs.DirEntry, walkErr error, count *int, total *int64) error {
+	if walkErr != nil {
+		return walkErr
+	}
+	if entry.IsDir() {
+		return nil
+	}
+	info, err := entry.Info()
+	if err != nil {
+		return jq.Sealed("inspect "+entry.Name(), err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil
+	}
+	*count++
+	*total += info.Size()
+	if *count > MaxFiles {
+		return tooLarge(fmt.Sprintf("the git clone carries more than %d files", MaxFiles))
+	}
+	if *total > MaxPackBytes {
+		return tooLarge(fmt.Sprintf("the git clone is over the %d-byte total cap", MaxPackBytes))
+	}
+	return nil
 }
 
 // vendorPack stages the loaded pack beside its destination, proves the staged
@@ -587,7 +598,7 @@ func swapVendored(dest *os.Root, packsDir, slug, stage string) *core.RefusalErro
 	}
 	if err := dest.Rename(filepath.Base(stage), slug); err != nil {
 		if backup != "" {
-			_ = dest.Rename(backup, slug)
+			_ = dest.Rename(backup, slug) //nolint:errcheck // best-effort restore while the refusal is formed
 		}
 		return badPack(fmt.Sprintf("install %s/%s: %v", RepoPacksDir, slug, err))
 	}

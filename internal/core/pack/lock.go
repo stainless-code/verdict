@@ -35,6 +35,13 @@ const (
 
 const sigLen = 64
 
+// Control-character bounds for a lock source: C0 ends below 0x20 and DEL is
+// 0x7f.
+const (
+	controlEnd = 0x20
+	controlDEL = 0x7f
+)
+
 // LockEntry pins one vendored pack: the manifest identity, where it came from,
 // the canonical tree hash, and an integrity digest over those four fields.
 type LockEntry struct {
@@ -298,7 +305,7 @@ func validDirSource(dir string) bool {
 // cleanSource reports whether s carries no C0 or DEL control character.
 func cleanSource(s string) bool {
 	for _, r := range s {
-		if r < 0x20 || r == 0x7f {
+		if r < controlEnd || r == controlDEL {
 			return false
 		}
 	}

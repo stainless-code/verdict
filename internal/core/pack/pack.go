@@ -61,6 +61,7 @@ const (
 	examplesDir = "examples"
 	evalsDir    = "evals"
 	rootSelf    = "."
+	pathSep     = "/"
 
 	namePattern    = `^[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$`
 	versionPattern = `^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$`
@@ -146,8 +147,6 @@ type Rule struct {
 
 // Pack is one loaded lens pack: its manifest, lenses and rules sorted by id,
 // and the sha256 of the canonical loaded tree.
-//
-//nolint:govet // the embedded manifest stays first so the published shape reads top-down
 type Pack struct {
 	Manifest
 	Lenses []Lens
@@ -353,7 +352,7 @@ func (c *treeCounter) visit(root, name string, entry fs.DirEntry, err error) err
 		return unsafePath(name)
 	}
 	rel := relative(root, name)
-	if strings.Count(rel, "/") > MaxDepth {
+	if strings.Count(rel, pathSep) > MaxDepth {
 		return tooLarge(fmt.Sprintf("%s nests deeper than %d directories", name, MaxDepth))
 	}
 	if entry.IsDir() {
@@ -377,7 +376,7 @@ func checkLayoutDir(name, rel string) error {
 // reservedDir reports whether rel sits under the nested examples/ or evals/
 // payload trees.
 func reservedDir(rel string) bool {
-	return strings.HasPrefix(rel, examplesDir+"/") || strings.HasPrefix(rel, evalsDir+"/")
+	return strings.HasPrefix(rel, examplesDir+pathSep) || strings.HasPrefix(rel, evalsDir+pathSep)
 }
 
 // addFile checks one file's layout and size, then records it.
@@ -409,7 +408,7 @@ func relative(root, name string) string {
 	if name == root {
 		return rootSelf
 	}
-	return strings.TrimPrefix(name, root+"/")
+	return strings.TrimPrefix(name, root+pathSep)
 }
 
 // layoutDir reports whether a top-level directory is part of the fixed
@@ -430,7 +429,7 @@ func layoutFile(rel string) bool {
 		return true
 	}
 	for _, dir := range []string{LensesDir, RulesDir, examplesDir, evalsDir} {
-		if strings.HasPrefix(rel, dir+"/") {
+		if strings.HasPrefix(rel, dir+pathSep) {
 			return true
 		}
 	}
@@ -801,7 +800,7 @@ func loadRules(fsys fs.FS, root string, files map[string]int, manifest *Manifest
 // missingBody names the missing body, or the differently-stemmed file that
 // sits where it should: a manifest id and its file stem must agree.
 func missingBody(files map[string]int, dir, kind, id string) *core.RefusalError {
-	prefix := dir + "/"
+	prefix := dir + pathSep
 	var found []string
 	for rel := range files {
 		stem, ok := strings.CutSuffix(strings.TrimPrefix(rel, prefix), mdExt)
@@ -822,7 +821,7 @@ func missingBody(files map[string]int, dir, kind, id string) *core.RefusalError 
 func loadExtras(fsys fs.FS, root string, files map[string]int) ([]packFile, *core.RefusalError) {
 	paths := make([]string, 0)
 	for rel := range files {
-		if strings.HasPrefix(rel, examplesDir+"/") || strings.HasPrefix(rel, evalsDir+"/") {
+		if strings.HasPrefix(rel, examplesDir+pathSep) || strings.HasPrefix(rel, evalsDir+pathSep) {
 			paths = append(paths, rel)
 		}
 	}

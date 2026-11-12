@@ -64,6 +64,8 @@ func lockSourceBody(source string) string {
 // TestLockSourceSchemaMatchesLoader proves the published source pattern and
 // the loader agree on a clean dir: path and reject a leading dash, newline,
 // backslash, or control character.
+//
+//nolint:gocognit,revive // the source grammar matrix reads as one block
 func TestLockSourceSchemaMatchesLoader(t *testing.T) {
 	t.Parallel()
 	checker, err := schemacheck.Load(
@@ -136,7 +138,7 @@ func TestLockSigPinsEveryEntryField(t *testing.T) {
 // TestLockStrictJSONRefuses proves the lock refuses an unknown key, a
 // differently-cased key, an unsorted entry list, and a malformed source.
 //
-//nolint:revive // the strict-JSON matrix reads as one block
+//nolint:gocognit,revive // the strict-JSON matrix reads as one block
 func TestLockStrictJSONRefuses(t *testing.T) {
 	t.Parallel()
 	cases := []struct {

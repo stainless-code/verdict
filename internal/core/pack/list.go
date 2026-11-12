@@ -360,7 +360,7 @@ func listData(set *Set, lock *Lock) *ListData {
 }
 
 // appendMissingLocked adds one drift row for a lock entry whose pack directory
-// did not load, so a deleted vendored pack stays visible beside fetch's refusal.
+// did not load, so a deleted vendored pack stays visible beside the refusal.
 func appendMissingLocked(data *ListData, lock *Lock, listed map[string]bool) *ListData {
 	if lock == nil {
 		return data

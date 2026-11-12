@@ -109,6 +109,8 @@ func TestAddDirReplacesAndReportsOldToNew(t *testing.T) {
 
 // TestAddFailedReAddKeepsOldTree proves a re-add that fails after the source
 // is loaded leaves the previous vendored tree and its lock row intact.
+//
+//nolint:revive // the stage, fail, and assert sequence reads as one scenario
 func TestAddFailedReAddKeepsOldTree(t *testing.T) {
 	repo := t.TempDir()
 	t.Chdir(repo)
@@ -274,7 +276,7 @@ func (c *gitCommander) Run(ctx context.Context, cmd *core.Command) (core.Result,
 // carries every hermetic flag, the environment is scrubbed, and the lock
 // records the resolved HEAD commit.
 //
-//nolint:revive // the argv, env, and lock assertions read as one contract block
+//nolint:cyclop,revive // the argv, env, and lock assertions read as one contract block
 func TestAddGitPinsHermeticArgvEnvAndRecordsSha(t *testing.T) {
 	repo := t.TempDir()
 	t.Chdir(repo)
@@ -348,6 +350,8 @@ func TestAddGitPinsHermeticArgvEnvAndRecordsSha(t *testing.T) {
 
 // TestAddRefusesOversizedClone proves the clone's file count and total bytes
 // are checked against the pack caps before the loader sees the tree.
+//
+//nolint:revive // the two cap fixtures read as one block
 func TestAddRefusesOversizedClone(t *testing.T) {
 	repo := t.TempDir()
 	t.Chdir(repo)
@@ -448,6 +452,8 @@ func TestSplitGitSource(t *testing.T) {
 
 // TestAddRefusesCredentialedSource proves a URL password refuses before the
 // clone and before any write, and every rendered message masks the secret.
+//
+//nolint:gocognit,revive // the credential matrix reads as one block
 func TestAddRefusesCredentialedSource(t *testing.T) {
 	for _, source := range []string{
 		"https://oauth2:ghp_TOKEN@host/acme/packs.git",
