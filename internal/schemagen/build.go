@@ -405,6 +405,7 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[PackEntry](), name: "packEntry"},
 		{typ: reflect.TypeFor[PackAddData](), name: "packAddData"},
 		{typ: reflect.TypeFor[IndexData](), name: "indexData"},
+		{typ: reflect.TypeFor[IndexLangRow](), name: "indexLangRow"},
 		{typ: reflect.TypeFor[IndexShards](), name: "indexShards"},
 		{typ: reflect.TypeFor[IndexTreeRow](), name: "indexTreeRow"},
 		{typ: reflect.TypeFor[IndexRemoved](), name: "indexRemoved"},

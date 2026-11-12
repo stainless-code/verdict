@@ -416,7 +416,7 @@ func blastSymbols(pkgs map[string]*packageInfo, t *treeIndex, changes []blastCha
 			seen[key] = true
 			out = append(out, blastSymbol{
 				row: SymbolRow{Path: f.Path, Name: d.Name, Kind: d.Kind, Line: d.Line},
-				tgt: target{pkg: pkg, name: d.Name, exported: d.Exported},
+				tgt: target{pkg: pkg, name: d.Name, lang: fileLanguage(f), exported: d.Exported},
 				key: blastKey(pkg, d.Name), label: blastLabel(pkg, d.Name),
 			})
 		}
@@ -587,7 +587,7 @@ func callerSymbol(pkgs map[string]*packageInfo, t *treeIndex, row Row) (blastSym
 	}
 	return blastSymbol{
 		row: SymbolRow{Path: f.Path, Name: d.Name, Kind: d.Kind, Line: d.Line},
-		tgt: target{pkg: pkg, name: d.Name, exported: d.Exported},
+		tgt: target{pkg: pkg, name: d.Name, lang: fileLanguage(f), exported: d.Exported},
 		key: blastKey(pkg, d.Name), label: blastLabel(pkg, d.Name),
 	}, true
 }
@@ -636,7 +636,9 @@ func blastTests(t *treeIndex, symbols []blastSymbol) []TestRow {
 // collectSymbolTests keeps the strongest candidate mechanism per test file for
 // one changed symbol.
 func collectSymbolTests(best map[string]TestRow, t *treeIndex, sym *blastSymbol) {
-	plan := &testPlan{path: sym.row.Path, dirs: []string{sym.tgt.pkg.dir}, targets: []target{sym.tgt}}
+	plan := &testPlan{
+		path: sym.row.Path, dirs: []string{sym.tgt.pkg.dir}, lang: sym.tgt.lang, targets: []target{sym.tgt},
+	}
 	for _, row := range collectTestRows(t, plan) {
 		cur, seen := best[row.Path]
 		if !seen || viaRank(row.Via) < viaRank(cur.Via) {

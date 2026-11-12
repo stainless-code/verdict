@@ -228,7 +228,8 @@ func usageText() string {
 		"    zero) and stay out of both denominators. Default output is byte-identical\n" +
 		"    without the flag.\n" +
 		"  index build [--from <dir>] [--at <ref>] [--json]\n" +
-		"    build the Go index for one tree under .verdict/index/ (stdlib go/parser).\n" +
+		"    build the code index for one tree under .verdict/index/: Go parsed with\n" +
+		"    go/parser, TypeScript, JavaScript, and Python by two lexical scanners.\n" +
 		"    --from reads another checkout; --at names a ref (default HEAD). Shards are\n" +
 		"    content-addressed by blob, so a rename parses nothing and an edit parses one.\n" +
 		"  index status [--json]\n" +
@@ -243,7 +244,8 @@ func usageText() string {
 		"  index tests-for <path>|--symbol <pkg.Name> [--at <tree>] [--limit <n, default 50, max 200>] [--json]\n" +
 		"    candidate tests to read for one source file or qualified symbol, labeled\n" +
 		"    same-package, references, or imports-module. Candidates are not coverage:\n" +
-		"    only _test.go files appear, and a row is a test worth reading, not proof.\n" +
+		"    a row names a test worth reading, not proof, and only that language's own\n" +
+		"    test names appear.\n" +
 		"  index co-changed <path> [--commits <n, default 2000>] [--since <90d|12w|18mo|2y|ref>]\n" +
 		"    [--min-count <n, default 2>] [--limit <n, default 20, max 200>] [--json]\n" +
 		"    paths that moved with one path, with their co-change count and jaccard, from\n" +
@@ -360,7 +362,9 @@ func usageText() string {
 		"    loaded tree under .verdict/packs/<slug>/, and pin it in\n" +
 		"    .verdict/verdict.lock (strict JSON, entries sorted by name).\n" +
 		"    dir:<path> records the directory as given; git:<url>@<sha> records\n" +
-		"    a hermetic shallow clone at the resolved HEAD commit. Re-adding a\n" +
+		"    a hermetic shallow clone at the resolved HEAD commit. https URLs\n" +
+		"    carry no userinfo; use ssh://git@host/path, git@host:path, or a\n" +
+		"    public https URL. Re-adding a\n" +
 		"    name replaces its tree and prints old -> new. A source inside\n" +
 		"    .verdict/packs/ refuses: it is already vendored. fetch, post, and\n" +
 		"    record refuse pack-lock-missing (a repo pack with no entry) and\n" +

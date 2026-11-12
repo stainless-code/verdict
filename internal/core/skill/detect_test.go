@@ -256,6 +256,132 @@ func TestInstallDetectedPathConflictWritesNothing(t *testing.T) {
 	}
 }
 
+// readOnly drops the write bit on dir for this process, skipping when the
+// filesystem ignores the mode bits (root, or a platform where a directory has
+// no write bit to drop).
+func readOnly(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chmod(dir, 0o755); err != nil {
+			t.Errorf("restore %s permissions: %v", dir, err)
+		}
+	})
+	probe, err := os.CreateTemp(dir, "writable-*")
+	if err != nil {
+		return
+	}
+	name := probe.Name()
+	if err := probe.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(name); err != nil {
+		t.Fatal(err)
+	}
+	t.Skip("this filesystem still lets the process write into a 0555 directory")
+}
+
+// TestInstallDetectedUnwritableTargetWritesNothing pins the preflight across
+// targets: a second target that cannot be written refuses typed, names itself,
+// and leaves the first target absent instead of half-installed.
+func TestInstallDetectedUnwritableTargetWritesNothing(t *testing.T) {
+	t.Parallel()
+	req := newRequest(t)
+	home := req.Env["HOME"]
+	claude := seedSkillsDir(t, home, ".claude")
+	codex := seedSkillsDir(t, home, ".codex")
+	readOnly(t, codex)
+
+	_, ref := skill.InstallDetected(context.Background(), req)
+	if ref == nil || ref.Code != "skill-install-failed" {
+		t.Fatalf("unwritable-target refusal = %v, want skill-install-failed", ref)
+	}
+	unwritable := filepath.Join(codex, "verdict")
+	if !strings.Contains(ref.Message, unwritable) {
+		t.Errorf("refusal does not name the unwritable target %s: %q", unwritable, ref.Message)
+	}
+	if _, err := os.Stat(filepath.Join(claude, "verdict")); !os.IsNotExist(err) {
+		t.Fatalf("refused run wrote the first target: stat %v", err)
+	}
+	if _, err := os.Stat(unwritable); !os.IsNotExist(err) {
+		t.Fatalf("refused run created the unwritable target: stat %v", err)
+	}
+}
+
+// TestInstallDetectedKeepsInSyncReadOnlyTarget pins the same no-write rule
+// across targets: a seeded, in-sync, read-only claude target keeps, so the
+// clean codex target beside it still installs instead of the set refusing.
+func TestInstallDetectedKeepsInSyncReadOnlyTarget(t *testing.T) {
+	t.Parallel()
+	req := newRequest(t)
+	home := req.Env["HOME"]
+	seedSkillsDir(t, home, ".claude")
+	codex := seedSkillsDir(t, home, ".codex")
+	readOnly(t, seedClaudeInstall(t, req))
+
+	det, ref := skill.InstallDetected(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("detect over an in-sync read-only target: %v", ref)
+	}
+	if want := []string{"claude", "codex"}; !slices.Equal(det.Agents, want) {
+		t.Fatalf("detected agents = %v, want %v", det.Agents, want)
+	}
+	if det.Plans[0].Status != skill.StatusKeep || det.Plans[0].Written != 0 {
+		t.Fatalf("claude plan = %+v, want an untouched keep", det.Plans[0])
+	}
+	if det.Plans[1].Status != skill.StatusCreate || det.Plans[1].Written == 0 {
+		t.Fatalf("codex plan = %+v, want a create with bytes written", det.Plans[1])
+	}
+	if _, err := os.Stat(filepath.Join(codex, "verdict", "SKILL.md")); err != nil {
+		t.Fatalf("the kept claude target blocked the codex install: %v", err)
+	}
+}
+
+// seedClaudeInstall installs the payload through --agent claude, leaving that
+// target in sync with the request's version, and returns its path.
+func seedClaudeInstall(t *testing.T, req *skill.Request) string {
+	t.Helper()
+	own := *req
+	own.Agent = "claude"
+	if _, ref := skill.Install(context.Background(), &own); ref != nil {
+		t.Fatalf("seed claude install: %v", ref)
+	}
+	return filepath.Join(req.Env["HOME"], ".claude", "skills", "verdict")
+}
+
+// TestInstallDetectedRefusesReceiptDirWritesNothing pins the receipt in the
+// preflight: a receipt path that is a directory in a later target refuses
+// skill-foreign-conflict naming it, instead of landing the earlier target and
+// this target's payload before the receipt rename fails.
+func TestInstallDetectedRefusesReceiptDirWritesNothing(t *testing.T) {
+	t.Parallel()
+	req := newRequest(t)
+	req.Force = true
+	home := req.Env["HOME"]
+	claude := seedSkillsDir(t, home, ".claude")
+	codex := seedSkillsDir(t, home, ".codex")
+	receipt := filepath.Join(codex, "verdict", ".verdict-managed")
+	if err := os.MkdirAll(receipt, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, ref := skill.InstallDetected(context.Background(), req)
+	if ref == nil || ref.Code != "skill-foreign-conflict" {
+		t.Fatalf("receipt-dir refusal = %v, want skill-foreign-conflict", ref)
+	}
+	if want := receipt + " is a directory; refusing to replace it"; ref.Message != want {
+		t.Fatalf("message = %q, want %q", ref.Message, want)
+	}
+	if _, err := os.Stat(filepath.Join(claude, "verdict")); !os.IsNotExist(err) {
+		t.Fatalf("refused run wrote the first target: stat %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(codex, "verdict", "SKILL.md")); !os.IsNotExist(err) {
+		t.Fatalf("refused run wrote the second target's payload: stat %v", err)
+	}
+}
+
 // TestInstallDetectedHonorsEnvLayouts pins detection through CLAUDE_CONFIG_DIR
 // and XDG_CONFIG_HOME, the two overrides install-skill.sh also honors.
 func TestInstallDetectedHonorsEnvLayouts(t *testing.T) {

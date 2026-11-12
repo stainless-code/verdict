@@ -1473,6 +1473,10 @@
         "parsed": { "type": "integer", "minimum": 0 },
         "reused": { "type": "integer", "minimum": 0 },
         "tree_bytes": { "type": "integer", "minimum": 0 },
+        "languages": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/indexLangRow" }
+        },
         "shards": { "$ref": "#/$defs/indexShards" },
         "trees": {
           "type": "array",
@@ -1507,6 +1511,15 @@
         "owners": { "$ref": "#/$defs/indexBlastOwners" }
       },
       "required": ["kind"],
+      "additionalProperties": true
+    },
+    "indexLangRow": {
+      "type": "object",
+      "properties": {
+        "language": { "enum": ["go", "typescript", "javascript", "python"] },
+        "files": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["language", "files"],
       "additionalProperties": true
     },
     "indexShards": {
@@ -1595,6 +1608,7 @@
           "enum": ["call", "method", "type-ref", "value-ref", "embed"]
         },
         "resolution": { "enum": ["exact", "lexical"] },
+        "language": { "enum": ["go", "typescript", "javascript", "python"] },
         "via": { "enum": ["same-package", "references", "imports-module"] },
         "commits": { "type": "integer", "minimum": 0 },
         "jaccard": { "type": "number", "minimum": 0, "maximum": 1 }

@@ -46,7 +46,7 @@ const (
 	StateGitignorePath = ".verdict/state/.gitignore"
 	// gitignoreStateLine, gitignoreBacktestLine, and gitignoreIndexLine are
 	// the entire tracked ignore contract: review state, mined backtest
-	// artifacts, and the local Go index stay local.
+	// artifacts, and the local code index stay local.
 	gitignoreStateLine    = "/state/\n"
 	gitignoreBacktestLine = "/backtest/\n"
 	gitignoreIndexLine    = "/index/\n"

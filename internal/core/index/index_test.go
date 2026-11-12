@@ -402,7 +402,7 @@ func TestIndexVersionResetRebuilds(t *testing.T) {
 		t.Fatalf("first build parsed %d; want 3", first.Data.Parsed)
 	}
 	version := filepath.Join(f.dir, ".verdict", "index", "version")
-	if err := os.WriteFile(version, []byte("2\n"), 0o644); err != nil {
+	if err := os.WriteFile(version, []byte("1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	second := f.build()
@@ -413,8 +413,8 @@ func TestIndexVersionResetRebuilds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(raw) != "1\n" {
-		t.Errorf("version file = %q; want %q", raw, "1\n")
+	if string(raw) != "2\n" {
+		t.Errorf("version file = %q; want %q", raw, "2\n")
 	}
 	if got := storeFiles(t, f.dir, "trees"); got != 1 {
 		t.Errorf("tree files = %d; want 1", got)
@@ -590,8 +590,8 @@ func TestCallersExactnessLitmus(t *testing.T) {
 	f.build()
 	resp := f.callers()
 	assertRows(t, resp.Data.Rows, []Row{
-		{Path: "a/a.go", Line: 6, Kind: KindCall, Resolution: "exact"},
-		{Path: "b/b.go", Line: 6, Kind: KindCall, Resolution: "lexical"},
+		{Path: "a/a.go", Line: 6, Kind: KindCall, Resolution: "exact", Language: "go"},
+		{Path: "b/b.go", Line: 6, Kind: KindCall, Resolution: "lexical", Language: "go"},
 	})
 	if resp.Data.Callers != 2 {
 		t.Errorf("callers = %d; want 2", resp.Data.Callers)
@@ -727,8 +727,8 @@ func C() {
 			resp.Data.Callers, resp.Data.Truncated, resp.Data.Limit)
 	}
 	wantRows := []Row{
-		{Path: "a/a.go", Line: 6, Kind: KindCall, Resolution: "exact"},
-		{Path: "a/a.go", Line: 10, Kind: KindCall, Resolution: "exact"},
+		{Path: "a/a.go", Line: 6, Kind: KindCall, Resolution: "exact", Language: "go"},
+		{Path: "a/a.go", Line: 10, Kind: KindCall, Resolution: "exact", Language: "go"},
 	}
 	assertRows(t, resp.Data.Rows, wantRows)
 	wantLine := "index: showing 2 of 3 callers (1 not shown; raise --limit up to 200)"
@@ -752,8 +752,7 @@ func TestCallersLimitBoundsRefuse(t *testing.T) {
 	}
 }
 
-// TestIndexCapRefusal proves the file-count cap names the measured number and
-// an oversized file is skipped and counted.
+// TestIndexCapRefusal proves the file-count cap names the measured number.
 //
 //nolint:revive // the fixture walk reads as one block
 func TestIndexCapRefusal(t *testing.T) {
@@ -765,7 +764,7 @@ func TestIndexCapRefusal(t *testing.T) {
 		if ref == nil {
 			t.Fatal("over-cap build succeeded")
 		}
-		want := "3 package files exceeds the 2-file cap"
+		want := "3 source files exceeds the 2-file cap"
 		if ref.Code != "index-capped" || ref.Message != want {
 			t.Fatalf("refusal = %q: %q; want index-capped: %q", ref.Code, ref.Message, want)
 		}
@@ -779,25 +778,34 @@ func TestIndexCapRefusal(t *testing.T) {
 		if ref == nil {
 			t.Fatal("config-capped build succeeded")
 		}
-		want := "3 package files exceeds the 2-file cap"
+		want := "3 source files exceeds the 2-file cap"
 		if ref.Code != "index-capped" || ref.Message != want {
 			t.Fatalf("refusal = %q: %q; want index-capped: %q", ref.Code, ref.Message, want)
 		}
 	})
-	t.Run("oversized file skipped", func(t *testing.T) {
-		f := newFixture(t)
-		f.write("go.mod", "module example.com/m\n")
-		f.write("a/a.go", "package a\n\nfunc A() {}\n")
-		f.write("a/big.go", "package a\n\n//"+strings.Repeat(" pad", 600000)+"\n")
-		f.commit("one")
-		resp := f.build()
-		if resp.Data.Skipped != 1 {
-			t.Errorf("skipped = %d; want 1", resp.Data.Skipped)
-		}
-		if resp.Data.Files != 1 {
-			t.Errorf("files_indexed = %d; want 1", resp.Data.Files)
-		}
-	})
+}
+
+// TestIndexOversizeFileCountedOnce proves an oversize file counts as skipped
+// once and takes no language with it: the language breakdown lists only the
+// files the build indexed.
+func TestIndexOversizeFileCountedOnce(t *testing.T) {
+	f := newFixture(t)
+	f.write("go.mod", "module example.com/m\n")
+	f.write("a/a.go", "package a\n\nfunc A() {}\n")
+	f.write("a/big.go", "package a\n\n//"+strings.Repeat(" pad", 600000)+"\n")
+	f.write("t.ts", "export const v = 1;\n")
+	f.commit("one")
+	resp := f.build()
+	if resp.Data.Skipped != 1 {
+		t.Errorf("skipped = %d; want 1", resp.Data.Skipped)
+	}
+	if resp.Data.Files != 2 {
+		t.Errorf("files_indexed = %d; want 2", resp.Data.Files)
+	}
+	want := []LangRow{{Language: "go", Files: 1}, {Language: "typescript", Files: 1}}
+	if !slices.Equal(resp.Data.Languages, want) {
+		t.Errorf("languages = %+v; want %+v", resp.Data.Languages, want)
+	}
 }
 
 // TestIndexPruneKeepsNewestFour proves prune keeps the four newest trees and

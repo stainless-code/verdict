@@ -66,7 +66,7 @@ type ConfigDefaults = core.ConfigDefaults
 // ConfigKBPolicy is the configuration's knowledge-base policy.
 type ConfigKBPolicy = core.ConfigKBPolicy
 
-// ConfigIndex is the configuration's local Go index caps.
+// ConfigIndex is the configuration's local code index caps.
 type ConfigIndex = core.ConfigIndex
 
 // ConfigRequirements is the configuration's conjunctive requirements.
@@ -769,6 +769,7 @@ type IndexData struct { //nolint:govet // field order is the published property 
 	Parsed       int                `json:"parsed"        min:"0"         optional:"true"`
 	Reused       int                `json:"reused"        min:"0"         optional:"true"`
 	TreeBytes    int64              `json:"tree_bytes"    min:"0"         optional:"true"`
+	Languages    []IndexLangRow     `json:"languages"     optional:"true"`
 	Shards       IndexShards        `json:"shards"        optional:"true"`
 	Trees        []IndexTreeRow     `json:"trees"         optional:"true"`
 	Kept         []string           `json:"kept"          optional:"true"`
@@ -865,6 +866,12 @@ type IndexBlastOwners struct { //nolint:govet // field order is the published pr
 	Rows      []IndexTarget `json:"rows"`
 }
 
+// IndexLangRow is one scanned language and the files it covers.
+type IndexLangRow struct {
+	Language string `enum:"go|typescript|javascript|python" json:"language"`
+	Files    int    `json:"files"                           min:"0"`
+}
+
 // IndexShards is the local shard store's count and byte total.
 type IndexShards struct {
 	Count int   `json:"count" min:"0"`
@@ -938,6 +945,7 @@ type IndexRow struct { //nolint:govet // field order is the published property o
 	Line       int     `json:"line"                                   min:"1"           optional:"true"`
 	Kind       string  `enum:"call|method|type-ref|value-ref|embed"   json:"kind"       optional:"true"` //nolint:revive // published enum tag exceeds the line limit
 	Resolution string  `enum:"exact|lexical"                          json:"resolution" optional:"true"` //nolint:revive // published enum tag exceeds the line limit
+	Language   string  `enum:"go|typescript|javascript|python"        json:"language"   optional:"true"` //nolint:revive // published enum tag exceeds the line limit
 	Via        string  `enum:"same-package|references|imports-module" json:"via"        optional:"true"` //nolint:revive // published enum tag exceeds the line limit
 	Commits    int     `json:"commits"                                min:"0"           optional:"true"`
 	Jaccard    float64 `json:"jaccard"                                max:"1"           min:"0"         optional:"true"`
@@ -956,14 +964,15 @@ type IndexTree struct {
 type IndexTreeFile struct { //nolint:govet // field order is the published property order
 	Path          string        `json:"path"`
 	Blob          string        `json:"blob"`
-	Size          int64         `json:"size"                     min:"0"`
-	Oversize      bool          `json:"oversize,omitempty"       optional:"true"`
-	Package       string        `json:"package,omitempty"        optional:"true"`
-	Imports       []IndexImport `json:"imports,omitempty"        optional:"true"`
-	Decls         []IndexDecl   `json:"decls,omitempty"          optional:"true"`
-	Refs          []IndexRef    `json:"refs,omitempty"           optional:"true"`
-	Error         string        `json:"error,omitempty"          optional:"true"`
-	RefsTruncated bool          `json:"refs_truncated,omitempty" optional:"true"`
+	Language      string        `enum:"go|typescript|javascript|python" json:"language" optional:"true"` //nolint:revive // published enum tag exceeds the line limit
+	Size          int64         `json:"size"                            min:"0"`
+	Oversize      bool          `json:"oversize,omitempty"              optional:"true"`
+	Package       string        `json:"package,omitempty"               optional:"true"`
+	Imports       []IndexImport `json:"imports,omitempty"               optional:"true"`
+	Decls         []IndexDecl   `json:"decls,omitempty"                 optional:"true"`
+	Refs          []IndexRef    `json:"refs,omitempty"                  optional:"true"`
+	Error         string        `json:"error,omitempty"                 optional:"true"`
+	RefsTruncated bool          `json:"refs_truncated,omitempty"        optional:"true"`
 }
 
 // IndexImport is one import binding in an indexed file.

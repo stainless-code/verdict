@@ -33,8 +33,9 @@ dump's `plan.txt` section additionally exports each group's actually resolved
 roster (`panel=[...]`, `panel_from`) and accounting `effort`, and the shipped
 dispatcher uses those per-group values for that group's files.
 
-**Code index.** The local Go index under `.verdict/index/`, keyed by tree SHA
-and built from `go/parser` alone. `index callers` labels each row `exact`
+**Code index.** The local code index under `.verdict/index/`, keyed by tree
+SHA: Go built from `go/parser`, TypeScript, JavaScript, and Python from two
+lexical scanners. `index callers` labels each row `exact`
 (within the declaring package) or `lexical` (an exported name reached through
 an import edge); everything type-dependent stays counted as unresolved.
 `index tests-for` labels each candidate test `same-package`, `references`, or

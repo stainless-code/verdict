@@ -17,6 +17,7 @@ import (
 type shard struct {
 	SchemaVersion string        `json:"schema_version"`
 	Blob          string        `json:"blob"`
+	Language      string        `json:"language"`
 	Package       string        `json:"package,omitempty"`
 	Error         string        `json:"error,omitempty"`
 	Imports       []importEntry `json:"imports,omitempty"`
@@ -55,7 +56,7 @@ type ref struct {
 // Reference kinds.
 const (
 	KindCall     = "call"
-	KindMethod   = "method"
+	KindMethod   = wordMethod
 	KindTypeRef  = "type-ref"
 	KindValueRef = "value-ref"
 	KindEmbed    = "embed"
@@ -68,8 +69,8 @@ const (
 // declaration; recording them would bury real rows in noise.
 var builtins = map[string]bool{
 	"true": true, "false": true, "nil": true, "iota": true,
-	"len": true, "cap": true, "make": true, "new": true, "append": true,
-	"copy": true, "delete": true, "panic": true, "recover": true,
+	"len": true, "cap": true, "make": true, wordNew: true, "append": true,
+	"copy": true, wordDelete: true, "panic": true, "recover": true,
 	"print": true, "println": true, "close": true, "complex": true,
 	"real": true, "imag": true, "min": true, "max": true, "clear": true,
 	"bool": true, "byte": true, "complex64": true, "complex128": true,
@@ -80,25 +81,58 @@ var builtins = map[string]bool{
 	"any": true,
 }
 
-// parseShard parses one blob into its shard. A file that does not parse is a
-// shard carrying the parser's error: it stays content-addressed and truthful
-// instead of disappearing from the coverage count.
-func parseShard(blob string, src []byte, maxRefs int) shard {
-	out := shard{SchemaVersion: "1", Blob: blob, RefsPerFile: maxRefs}
+// parseShard parses one blob into its shard under its file's language. A file
+// that does not parse is a shard carrying the parser's error: it stays
+// content-addressed and truthful instead of disappearing from the coverage
+// count.
+func parseShard(blob string, src []byte, lang language, maxRefs int) shard {
+	if lang != langGo {
+		return scanShard(blob, src, lang, maxRefs)
+	}
+	out := newShard(blob, lang, maxRefs)
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "indexed.go", src, 0)
 	if err != nil {
 		out.Error = err.Error()
 		return out
 	}
-	c := &collector{fset: fset, out: &out, aliases: map[string]string{}, skip: map[token.Pos]bool{}, maxRefs: maxRefs}
+	c := &collector{
+		fset: fset, out: &out, aliases: map[string]string{}, skip: map[token.Pos]bool{},
+		refs: newRefBuffer(maxRefs),
+	}
 	c.out.Package = file.Name.Name
 	c.skip[file.Name.Pos()] = true
 	c.collectImports(file)
 	c.collectDecls(file)
 	c.collectTypeRefs(file)
 	c.walk(file)
+	out.Refs, out.RefsTruncated = c.refs.refs, c.refs.truncated
 	return out
+}
+
+// newShard starts one content-addressed parse result.
+func newShard(blob string, lang language, maxRefs int) shard {
+	return shard{SchemaVersion: "1", Blob: blob, Language: string(lang), RefsPerFile: maxRefs}
+}
+
+// refBuffer accumulates one file's references under the per-file cap: past it
+// every reference is dropped and the shard records that it is incomplete.
+type refBuffer struct {
+	refs      []ref
+	limit     int
+	truncated bool
+}
+
+// newRefBuffer starts one buffer under a cap.
+func newRefBuffer(limit int) refBuffer { return refBuffer{limit: limit} }
+
+// add appends one reference unless the cap is reached.
+func (b *refBuffer) add(r ref) {
+	if b.truncated || len(b.refs) >= b.limit {
+		b.truncated = true
+		return
+	}
+	b.refs = append(b.refs, r)
 }
 
 // collector walks one parsed file and records declarations and references.
@@ -108,7 +142,7 @@ type collector struct {
 	aliases    map[string]string
 	pkgObjects map[*ast.Object]bool //nolint:staticcheck // go/parser object resolution is the syntax-only local/package discriminator
 	skip       map[token.Pos]bool
-	maxRefs    int
+	refs       refBuffer
 }
 
 // collectImports records the file's imports and their bound names.
@@ -146,10 +180,10 @@ func (c *collector) collectDecls(file *ast.File) {
 	for _, d := range file.Decls {
 		switch decl := d.(type) {
 		case *ast.FuncDecl:
-			kind := "func"
+			kind := wordFunc
 			recv := ""
 			if decl.Recv != nil && len(decl.Recv.List) == 1 {
-				kind = "method"
+				kind = wordMethod
 				recv = typeName(decl.Recv.List[0].Type)
 			}
 			c.recordDecl(decl.Name, kind, recv)
@@ -167,12 +201,12 @@ func (c *collector) recordGenDecl(decl *ast.GenDecl) {
 	for _, spec := range decl.Specs {
 		switch s := spec.(type) {
 		case *ast.TypeSpec:
-			c.recordDecl(s.Name, "type", "")
+			c.recordDecl(s.Name, wordType, "")
 		case *ast.ValueSpec:
 			for _, name := range s.Names {
-				kind := "var"
+				kind := wordVar
 				if decl.Tok == token.CONST {
-					kind = "const"
+					kind = wordConst
 				}
 				c.recordDecl(name, kind, "")
 			}
@@ -509,12 +543,8 @@ func (c *collector) isLocal(ident *ast.Ident) bool {
 
 // record appends one reference under the per-file cap.
 func (c *collector) record(name, kind string, pos token.Pos, qualifier string, selector, unresolved bool) {
-	if c.out.RefsTruncated || len(c.out.Refs) >= c.maxRefs {
-		c.out.RefsTruncated = true
-		return
-	}
 	position := c.fset.Position(pos)
-	c.out.Refs = append(c.out.Refs, ref{
+	c.refs.add(ref{
 		Name: name, Kind: kind, Qualifier: qualifier, Line: position.Line, Col: position.Column,
 		Selector: selector, Unresolved: unresolved,
 	})

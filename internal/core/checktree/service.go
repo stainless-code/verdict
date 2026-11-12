@@ -155,7 +155,7 @@ const (
 	renameSep        = " -> "               // rename lines match on the post-arrow path
 	stateDir         = ".verdict/state/"    // review run scratch
 	backtestDir      = ".verdict/backtest/" // mined backtest artifacts
-	indexDir         = ".verdict/index/"    // local Go index
+	indexDir         = ".verdict/index/"    // local code index
 	newline          = "\n"
 )
 

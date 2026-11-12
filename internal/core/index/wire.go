@@ -26,6 +26,7 @@ func (d *Data) Wire() *jq.Obj {
 			"parsed", d.Parsed,
 			"reused", d.Reused,
 			"tree_bytes", d.TreeBytes,
+			"languages", languageValues(d.Languages),
 			keyShards, shardDoc(d),
 		)
 	case QueryStatus:
@@ -171,7 +172,17 @@ func rowValues(rows []Row) []any {
 			"line", row.Line,
 			"kind", row.Kind,
 			"resolution", row.Resolution,
+			"language", row.Language,
 		))
+	}
+	return out
+}
+
+// languageValues renders the scanned languages and their file counts.
+func languageValues(rows []LangRow) []any {
+	out := make([]any, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, jq.NewObj("language", row.Language, "files", row.Files))
 	}
 	return out
 }

@@ -33,31 +33,36 @@ exit: 0
         "path": "app/app.go",
         "line": 6,
         "kind": "call",
-        "resolution": "exact"
+        "resolution": "exact",
+        "language": "go"
       },
       {
         "path": "app/extra.go",
         "line": 3,
         "kind": "value-ref",
-        "resolution": "exact"
+        "resolution": "exact",
+        "language": "go"
       },
       {
         "path": "app/helper.go",
         "line": 4,
         "kind": "call",
-        "resolution": "exact"
+        "resolution": "exact",
+        "language": "go"
       },
       {
         "path": "cmd/main.go",
         "line": 6,
         "kind": "call",
-        "resolution": "lexical"
+        "resolution": "lexical",
+        "language": "go"
       },
       {
         "path": "lib/lib.go",
         "line": 6,
         "kind": "call",
-        "resolution": "lexical"
+        "resolution": "lexical",
+        "language": "go"
       }
     ]
   },
