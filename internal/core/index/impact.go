@@ -146,7 +146,7 @@ func impactStore(index, sourceRoot string) (root, store, at string, ref *core.Re
 	if !isDir(filepath.Join(store, impactStoreTrees)) {
 		return "", "", "", &core.RefusalError{
 			Code:    codeBadFlags,
-			Message: fmt.Sprintf(impactNotAStore, dir, filepath.Join(config.VerdictDir, storeDirName)),
+			Message: fmt.Sprintf(impactNotAStore, dir, config.VerdictDir+"/"+storeDirName),
 		}
 	}
 	return dir, store, impactHeadRef, nil
