@@ -1323,11 +1323,14 @@ func (x *tsExtractor) shadowed(name string, call int) bool {
 
 func (x *tsExtractor) bindingActive(i, call int) bool {
 	binding := x.text(i+1) == punctAssign || x.text(i-1) == wordLet || x.text(i-1) == wordConst || x.text(i-1) == wordVar
-	scope := x.bindingScope(i)
-	if body := x.parameterBody(i); body >= 0 {
-		binding, scope = true, body
+	scope := x.parameterBody(i)
+	if !binding && scope < 0 {
+		return false
 	}
-	return binding && (scope < 0 || x.match[scope] > call)
+	if scope < 0 {
+		scope = x.bindingScope(i)
+	}
+	return scope < 0 || x.match[scope] > call
 }
 
 func (x *tsExtractor) bindingScope(i int) int {
