@@ -4,11 +4,29 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
+
+// TestNewDefaultsRepoRootToTheGitProbe pins the resolver New installs. Every
+// other test that reaches it either overrides the seam or runs where a
+// constant is indistinguishable, so a default with no git top-level probe
+// would ship green.
+func TestNewDefaultsRepoRootToTheGitProbe(t *testing.T) {
+	c := New(Options{})
+	defer c.Close()
+	if c.repoRoot == nil {
+		t.Fatal("New left repoRoot nil")
+	}
+	got, want := reflect.ValueOf(c.repoRoot).Pointer(), reflect.ValueOf(readcommon.RepoRoot).Pointer()
+	if got != want {
+		t.Fatalf("repoRoot = %#x, want readcommon.RepoRoot at %#x", got, want)
+	}
+}
 
 // TestConvertErr proves the error conversion seam: nil stays nil, a core
 // refusal becomes the public typed refusal, a missing tool keeps its kind,
