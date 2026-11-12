@@ -1,0 +1,125 @@
+{
+  "language": "py",
+  "coverage": { "files": 14, "skipped": 0 },
+  "queries": [
+    {
+      "name": "callers-save",
+      "kind": "callers",
+      "symbol": "lib.save",
+      "at": "lib",
+      "unresolved": 0,
+      "callers": [
+        {
+          "path": "lib/uses.py",
+          "line": 8,
+          "kind": "call",
+          "resolution": "lexical"
+        },
+        {
+          "path": "lib/report.py",
+          "line": 5,
+          "kind": "call",
+          "resolution": "lexical"
+        },
+        {
+          "path": "lib/test_saver.py",
+          "line": 5,
+          "kind": "call",
+          "resolution": "lexical"
+        },
+        {
+          "path": "lib/alias.py",
+          "line": 5,
+          "kind": "call",
+          "resolution": "lexical"
+        },
+        {
+          "path": "tests/test_saver.py",
+          "line": 5,
+          "kind": "call",
+          "resolution": "lexical"
+        },
+        {
+          "path": "tests/helpers.py",
+          "line": 5,
+          "kind": "call",
+          "resolution": "lexical"
+        },
+        {
+          "path": "tests/test_imports.py",
+          "line": 5,
+          "kind": "method",
+          "resolution": "lexical"
+        }
+      ]
+    },
+    {
+      "name": "callers-write",
+      "kind": "callers",
+      "symbol": "lib.write",
+      "at": "lib",
+      "unresolved": 0,
+      "callers": [
+        {
+          "path": "lib/uses.py",
+          "line": 7,
+          "kind": "method",
+          "resolution": "lexical"
+        }
+      ]
+    },
+    {
+      "name": "callers-route",
+      "kind": "callers",
+      "symbol": "lib.route",
+      "at": "lib",
+      "unresolved": 0,
+      "callers": [
+        {
+          "path": "lib/views.py",
+          "line": 4,
+          "kind": "call",
+          "resolution": "lexical"
+        },
+        {
+          "path": "lib/views.py",
+          "line": 9,
+          "kind": "value-ref",
+          "resolution": "lexical"
+        }
+      ]
+    },
+    {
+      "name": "callers-namesake",
+      "kind": "callers",
+      "symbol": "other.save",
+      "at": "other",
+      "unresolved": 0,
+      "callers": [
+        {
+          "path": "other/use.py",
+          "line": 5,
+          "kind": "call",
+          "resolution": "lexical"
+        }
+      ]
+    },
+    {
+      "name": "tests-for-saver",
+      "kind": "tests-for",
+      "path": "lib/saver.py",
+      "hidden": 0,
+      "tests": [
+        { "path": "lib/test_saver.py", "via": "same-package", "depth": 0 },
+        { "path": "tests/helpers.py", "via": "references", "depth": 1 },
+        { "path": "tests/test_saver.py", "via": "references", "depth": 1 },
+        {
+          "path": "tests/test_imports.py",
+          "via": "imports-module",
+          "depth": 1
+        },
+        { "path": "tests/test_deep.py", "via": "transitive-import", "depth": 2 }
+      ]
+    }
+  ]
+}

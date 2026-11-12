@@ -1,0 +1,15 @@
+package cli
+
+import (
+	"example.com/m/internal/reexport"
+	"example.com/m/internal/store"
+)
+
+func Run() string {
+	factory := store.Open
+	s := factory("d")
+	if err := s.Save(3); err != nil {
+		return ""
+	}
+	return reexport.Open("e").Name
+}

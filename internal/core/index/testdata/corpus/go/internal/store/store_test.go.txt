@@ -1,0 +1,13 @@
+package store
+
+import "testing"
+
+func TestOpen(t *testing.T) {
+	s := Open("a")
+	if s == nil {
+		t.Fatal("nil store")
+	}
+	if err := s.Save(1); err != nil {
+		t.Fatal(err)
+	}
+}

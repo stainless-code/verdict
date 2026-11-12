@@ -1,0 +1,14 @@
+package loader
+
+import (
+	"testing"
+
+	"example.com/m/internal/store"
+)
+
+func TestLoad(t *testing.T) {
+	store.Reset()
+	if len(store.Defaults()) != 0 {
+		t.Fatal("unexpected defaults")
+	}
+}

@@ -1,0 +1,9 @@
+package dot
+
+import (
+	. "example.com/m/internal/store"
+)
+
+func Run() *Store {
+	return Open("c")
+}

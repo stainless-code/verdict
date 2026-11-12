@@ -1,0 +1,9 @@
+package worker
+
+import "testing"
+
+func TestRun(t *testing.T) {
+	if err := Run(); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -1,0 +1,7 @@
+package use
+
+import "example.com/m/internal/cache"
+
+func Miss() string {
+	return cache.Open("f")
+}

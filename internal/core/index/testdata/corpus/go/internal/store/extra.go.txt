@@ -1,0 +1,9 @@
+package store
+
+// Reset clears the package's defaults.
+func Reset() {}
+
+// Defaults returns the package's defaults.
+func Defaults() []string {
+	return nil
+}

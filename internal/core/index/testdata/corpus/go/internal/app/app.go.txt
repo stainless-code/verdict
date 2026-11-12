@@ -1,0 +1,19 @@
+package app
+
+import "example.com/m/internal/store"
+
+type Saver interface {
+	Save(v int) error
+}
+
+type App struct {
+	*store.Base
+}
+
+func Flush(s Saver) error {
+	return s.Save(1)
+}
+
+func Bump(a *App) error {
+	return a.Touch()
+}

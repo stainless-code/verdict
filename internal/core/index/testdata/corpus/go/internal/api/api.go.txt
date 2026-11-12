@@ -1,0 +1,11 @@
+package api
+
+import (
+	st "example.com/m/internal/store"
+)
+
+func OpenOne() *st.Store {
+	s := st.Open("a")
+	_ = s.Save(1)
+	return s
+}

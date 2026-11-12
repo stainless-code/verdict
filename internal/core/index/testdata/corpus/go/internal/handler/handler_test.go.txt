@@ -1,0 +1,13 @@
+package handler
+
+import (
+	"testing"
+
+	"example.com/m/internal/api"
+)
+
+func TestHandle(t *testing.T) {
+	if api.OpenOne() == nil {
+		t.Fatal("nil store")
+	}
+}
