@@ -818,6 +818,12 @@ Cause: a crashed re-add left a dot-prefixed `.verdict/packs/.<slug>.tmp-*` stagi
 
 Fix: delete the path the message names by hand (`rm -rf .verdict/packs/.<slug>.tmp-* .verdict/packs/.<slug>.old-*`), then re-run. The loader already ignores those siblings, so a listed pack is not affected.
 
+## `pack-test-cases`
+
+Cause: the lens pack has no eval cases under `evals/`.
+
+Fix: add `evals/<case>/diff.patch`, `findings.json`, and `expect.json` to the pack, then re-run `verdict pack test`.
+
 ## `pack-too-large`
 
 Cause: a lens pack exceeds the per-file (64 KiB), per-pack (1 MiB), file-count (256), or lens-count (64) cap.

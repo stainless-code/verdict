@@ -1,0 +1,20 @@
+{
+  "schema_version": "1",
+  "name": "acme/pack-test",
+  "version": "1.0.0",
+  "severity": {
+    "important": "important"
+  },
+  "lenses": [
+    {
+      "id": "fixture"
+    }
+  ],
+  "rules": [
+    {
+      "id": "fixture-rule",
+      "severity": "important",
+      "globs": ["**/*.go"]
+    }
+  ]
+}

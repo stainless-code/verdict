@@ -113,6 +113,23 @@ func RunList(ctx context.Context, req *Request) (*Response, *core.RefusalError) 
 	}, nil
 }
 
+// Resolve loads and merges the built-in, org, and repo layers.
+func Resolve(ctx context.Context, req *Request) (*Set, []string, *core.RefusalError) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, &core.RefusalError{Code: canceledCode, Message: "canceled before pack resolution completed"}
+	}
+	origins, warnings, ref := loadOrigins(ctx, req)
+	if ref != nil {
+		return nil, nil, ref
+	}
+	set, ref := Merge(origins)
+	if ref != nil {
+		ref.Warnings = warnings
+		return nil, warnings, ref
+	}
+	return set, warnings, nil
+}
+
 // loadOrigins reads the three layers in precedence order.
 func loadOrigins(ctx context.Context, req *Request) ([]Origin, []string, *core.RefusalError) {
 	origins := []Origin{}

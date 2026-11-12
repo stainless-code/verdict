@@ -162,6 +162,25 @@ type packFile struct {
 	body []byte
 }
 
+// PayloadFile is one reserved evals/ or examples/ file carried by a pack.
+type PayloadFile struct {
+	Path string
+	Body []byte
+}
+
+// PayloadFiles returns a sorted copy of the pack's reserved payload files.
+func (p *Pack) PayloadFiles() []PayloadFile {
+	if p == nil {
+		return nil
+	}
+	files := make([]PayloadFile, len(p.files))
+	for i, f := range p.files {
+		files[i] = PayloadFile{Path: f.path, Body: append([]byte(nil), f.body...)}
+	}
+	slices.SortFunc(files, func(a, b PayloadFile) int { return strings.Compare(a.Path, b.Path) })
+	return files
+}
+
 // Load reads the pack rooted at root. A missing pack returns (nil, nil): the
 // caller degrades without one. Every other failure is typed.
 //

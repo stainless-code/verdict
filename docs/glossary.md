@@ -33,6 +33,9 @@ vendors a directory or a hermetic git clone into the repo layer and pins it in
 that lower pack in `replace`, so an override is always a declaration rather
 than an accident.
 
+`verdict pack test` runs the pack's offline cases from `evals/` against a diff
+and checks that findings cite the expected rules.
+
 **Panel.** The pinned model roster a review runs with, from `REVIEW_PANEL` or
 the typed `panel` default in `.verdict/config.json`. `fetch` resolves it into `.verdict/state/<pr>/panel`;
 the first entry is the synthesizer, the rest staff lenses, used exactly in

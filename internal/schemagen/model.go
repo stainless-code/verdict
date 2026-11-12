@@ -276,6 +276,27 @@ type PackEntry = pack.Entry
 // PackAddData is the pack add --json data profile.
 type PackAddData = pack.AddData
 
+// PackTestData is the pack test --json data profile.
+type PackTestData struct {
+	Pack    string          `json:"pack"`
+	Cases   []PackTestCase  `json:"cases"   minItems:"1"`
+	Summary PackTestSummary `json:"summary"`
+}
+
+// PackTestCase is one offline pack eval result.
+type PackTestCase struct {
+	Case   string `json:"case"`
+	Status string `enum:"PASS|SKIP|FAIL" json:"status"`
+	Reason string `json:"reason"         optional:"true"`
+}
+
+// PackTestSummary counts the offline pack eval results.
+type PackTestSummary struct {
+	Pass int `json:"pass" min:"0"`
+	Skip int `json:"skip" min:"0"`
+	Fail int `json:"fail" min:"0"`
+}
+
 // LockFile is schemas/lock.schema.json: the repo layer's pinned pack set.
 type LockFile = pack.Lock
 

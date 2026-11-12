@@ -1,0 +1,7 @@
+diff --git a/src/sample.go b/src/sample.go
+index 1111111..2222222 100644
+--- a/src/sample.go
++++ b/src/sample.go
+@@ -1 +1 @@
+-var result = 1
++var result = 2

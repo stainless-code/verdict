@@ -156,6 +156,7 @@ var refusalCodes = []string{
 	"pack-lock-drift",
 	"pack-lock-missing",
 	"pack-staging-stale",
+	"pack-test-cases",
 	"pack-too-large",
 	"pack-unsafe-path",
 	"post-failed",
