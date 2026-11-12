@@ -1,0 +1,9 @@
+[
+  {
+    "path": "src/sample.go",
+    "line": 1,
+    "body": "The fixture rule matches this changed Go line.",
+    "rigor": "walked",
+    "kb": ["fixture-rule"]
+  }
+]

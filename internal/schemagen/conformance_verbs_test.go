@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/config"
@@ -19,11 +20,13 @@ import (
 	doctorcore "github.com/stainless-code/verdict/internal/core/doctor"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	indexcore "github.com/stainless-code/verdict/internal/core/index"
+	packcore "github.com/stainless-code/verdict/internal/core/pack"
 	"github.com/stainless-code/verdict/internal/core/query"
 	readycore "github.com/stainless-code/verdict/internal/core/ready"
 	trendcore "github.com/stainless-code/verdict/internal/core/trend"
 	triagecore "github.com/stainless-code/verdict/internal/core/triage"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/packtest"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/testenv"
 )
@@ -89,6 +92,40 @@ func TestRuntimeAdoptEnvelopeValidates(t *testing.T) {
 		"open":    json.Number("1"),
 	})
 	assertEnvelope(t, doc, "adopt", "4311", resp.At, resp.Next, resp.Warnings, data)
+}
+
+// TestRuntimePackTestEnvelopeValidates validates the pack test data against
+// the generated data and envelope schemas.
+func TestRuntimePackTestEnvelopeValidates(t *testing.T) {
+	doc := loadSchemaDocument(t, "envelope.schema.json")
+	files := fstest.MapFS{
+		"pack.json":                {Data: []byte(`{"schema_version":"1","name":"acme/test","version":"1.0.0","severity":{"s":"important"},"lenses":[{"id":"test"}],"rules":[{"id":"rule-a","severity":"s","globs":["src/*.go"]}]}`)},
+		"lenses/test.md":           {Data: []byte("lens body\n")},
+		"rules/rule-a.md":          {Data: []byte("rule body\n")},
+		"evals/case/diff.patch":    {Data: []byte("diff --git a/src/a.go b/src/a.go\n--- a/src/a.go\n+++ b/src/a.go\n@@ -1 +1 @@\n-old\n+new\n")},
+		"evals/case/findings.json": {Data: []byte(`[{"path":"src/a.go","line":1,"body":"This finding points to the changed line.","rigor":"walked","kb":["rule-a"]}]`)},
+		"evals/case/expect.json":   {Data: []byte(`{"rules":["rule-a"]}`)},
+	}
+	p, ref := packcore.Load(files, ".")
+	if ref != nil {
+		t.Fatal(ref)
+	}
+	set, ref := packcore.Merge([]packcore.Origin{{Layer: packcore.LayerBuiltin, Source: "fixture", Pack: p}})
+	if ref != nil {
+		t.Fatal(ref)
+	}
+	resp, ref := packtest.Run(context.Background(), p, set, "2026-11-02T12:00:00Z")
+	if ref != nil {
+		t.Fatal(ref)
+	}
+	wire := core.Wire(resp.Data)
+	defs, ok := doc["$defs"].(map[string]any)
+	if !ok {
+		t.Fatal("schema $defs is not an object")
+	}
+	validateWire(t, doc, "pack test data", defs["packTestData"], decodeWire(t, wire))
+	envelope := core.RenderEnvelope("pack", "", "", resp.At, resp.Next, nil, wire, nil)
+	validateWire(t, doc, "$", doc, decodeWire(t, envelope))
 }
 
 // assertEnvelope validates one rendered envelope against the generated

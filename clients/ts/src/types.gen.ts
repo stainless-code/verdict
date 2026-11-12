@@ -961,6 +961,30 @@ export interface PackAddData {
   [key: string]: unknown;
 }
 
+/** pack test --json data: the resolved pack name, one PASS, SKIP, or FAIL row per sorted eval case, and the status counts. */
+export interface PackTestData {
+  pack: string;
+  cases: Array<PackTestCase>;
+  summary: PackTestSummary;
+  [key: string]: unknown;
+}
+
+/** One offline pack eval case and its result. A reason is present for SKIP and FAIL. */
+export interface PackTestCase {
+  case: string;
+  status: "PASS" | "SKIP" | "FAIL";
+  reason?: string;
+  [key: string]: unknown;
+}
+
+/** Counts the passing, skipped, and failing pack eval cases. */
+export interface PackTestSummary {
+  pass: number;
+  skip: number;
+  fail: number;
+  [key: string]: unknown;
+}
+
 /** index --json data: one object across build, status, prune, callers, tests-for, co-changed, owners, and blast-radius, so kind names the subcommand and every other key is optional. */
 export interface IndexData {
   kind:

@@ -425,6 +425,28 @@ refusals surface here too, so a bad layering fails before a review spends
 anything. The MCP `pack` tool serves the same read-only list and repeats the
 same warning list in its result.
 
+`verdict pack test <name>` runs the named installed pack's eval cases through
+the same built-in, org, and repo layering used by review. Use
+`verdict pack test --dir <path>` to test an unpacked pack. The pack case format
+is a pre-v1 design and may change before pack format v1. Each `evals/<case>/`
+directory contains `diff.patch`, `findings.json`, and `expect.json`.
+`findings.json` is an array in the
+`review.json` `comments[]` shape, including `kb` rule ids. `expect.json` has a
+required `rules` array and an optional `not_rules` array. Rule selection uses
+the changed paths and the pack's `globs`; the format has no separate language
+field. Each finding must validate and anchor inside the diff, cite a rule in
+the pack selected for its path, and the cited ids must cover `rules`. The
+selected rules' `tools` entries are required command names; `pack test` checks
+that each is available on `PATH` without running it.
+
+The command prints one `PASS`, `SKIP`, or `FAIL` line per case and a summary.
+Incomplete cases and cases whose selected rules name a command missing from
+`PATH` are `SKIP`; a skip and failed expectation both make the run exit
+nonzero. `--json` returns those statuses and reasons in the envelope. A pack
+with no cases refuses with `pack-test-cases`. The existing pack loader caps
+every file at 64 KiB, the full pack at 1 MiB, and the tree at 256 files; pack
+tests also refuse more than 128 cases.
+
 `verdict pack add <dir|git-url>[@ref]` vendors one pack and pins it. The
 source is validated by the same loader as every other layer (all `bad-pack`,
 `pack-too-large`, `pack-unsafe-path`, and `pack-conflict` refusals apply),
