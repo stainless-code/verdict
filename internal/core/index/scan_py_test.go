@@ -71,7 +71,7 @@ func TestScanPythonCallSites(t *testing.T) {
 	assertRefs(t, s.Refs, []ref{
 		{Name: "decorator", Kind: KindCall, Line: 9, Col: 2},
 		{Name: "helper", Kind: KindCall, Line: 14, Col: 21},
-		{Name: "__init__", Kind: KindMethod, Line: 18, Col: 21, Selector: true},
+		{Name: "__init__", Kind: KindMethod, Qualifier: "self", Line: 18, Col: 21, Selector: true},
 		{Name: "outer", Kind: KindCall, Line: 18, Col: 35},
 		{Name: "helper", Kind: KindCall, Line: 21, Col: 25},
 		{Name: "thing", Kind: KindCall, Line: 29, Col: 12},
@@ -220,7 +220,7 @@ func TestScanPythonRawStringEscapedQuote(t *testing.T) {
 		{Name: "later", Kind: "func", Line: 6, Exported: true},
 	})
 	assertRefs(t, s.Refs, []ref{
-		{Name: "compile", Kind: "method", Line: 3, Col: 14, Selector: true},
+		{Name: "compile", Kind: "method", Qualifier: "re", Line: 3, Col: 14, Selector: true},
 		{Name: "called", Kind: "call", Line: 7, Col: 12},
 	})
 }

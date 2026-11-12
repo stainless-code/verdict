@@ -1,6 +1,6 @@
 {
   "language": "go",
-  "coverage": { "files": 15, "skipped": 1 },
+  "coverage": { "files": 16, "skipped": 1 },
   "queries": [
     {
       "name": "callers-open",
@@ -64,7 +64,7 @@
       "kind": "callers",
       "symbol": "store.Save",
       "at": "internal/store",
-      "unresolved": 1,
+      "unresolved": 5,
       "callers": [
         {
           "path": "internal/store/store_test.go",
@@ -103,7 +103,7 @@
       "kind": "callers",
       "symbol": "store.Touch",
       "at": "internal/store",
-      "unresolved": 0,
+      "unresolved": 2,
       "callers": [
         {
           "path": "internal/app/app.go",
@@ -118,6 +118,7 @@
       "kind": "tests-for",
       "path": "internal/store/store.go",
       "hidden": 0,
+      "not_tests": ["internal/probe/probe_test.go"],
       "tests": [
         {
           "path": "internal/store/store_test.go",

@@ -24,7 +24,7 @@ mkdir -p "$HOME"
   cd "$EVAL_SANDBOX" || exit 99
   git init -q -b main
   printf 'export function target(a: number) { return a; }\n' >util.ts
-  printf "import { target } from './util';\n\nconst v = target(1);\nobj.target(2);\n" >app.ts
+  printf "import { target } from './util';\nimport * as util from './util';\n\nconst v = target(1);\nutil.target(2);\nobj.target(3);\n" >app.ts
   printf "const fs = require('fs');\n\nfs.readFile(1);\n" >app.js
   mkdir -p pkg
   printf 'def helper(x):\n    return x\n' >pkg/mod.py
@@ -57,15 +57,15 @@ assert_envelope "callers envelope"
 assert_json_field "three call sites: two in the declaring directory, one in the second" 3 '.data.counts.callers'
 assert_json_field "the first row is lexical inside the directory" "lexical" '.data.rows[0].resolution'
 assert_json_field "the first row names its language" "typescript" '.data.rows[0].language'
-assert_json_field "the first row path and line" "app.ts:3" '.data.rows[0] | "\(.path):\(.line)"'
-assert_json_field "the second row is an attribute site" "app.ts:4 method" '.data.rows[1] | "\(.path):\(.line) \(.kind)"'
+assert_json_field "the first row path and line" "app.ts:4" '.data.rows[0] | "\(.path):\(.line)"'
+assert_json_field "the second row is an imported namespace attribute" "app.ts:5 method" '.data.rows[1] | "\(.path):\(.line) \(.kind)"'
 assert_json_field "the same name declared elsewhere is its own target" "other/pkg.ts:2" \
   '[.data.rows[] | select(.path | startswith("other/")) | "\(.path):\(.line)"] | join(",")'
 
 run_review index callers target
 assert_exit "human callers exits 0" 0
-assert_file_grep "human output names the call site" "$EVAL_OUT" '^app.ts:3 call (lexical)$'
-assert_file_grep "human output names the attribute site" "$EVAL_OUT" '^app.ts:4 method (lexical)$'
+assert_file_grep "human output names the call site" "$EVAL_OUT" '^app.ts:4 call (lexical)$'
+assert_file_grep "human output names the imported namespace attribute" "$EVAL_OUT" '^app.ts:5 method (lexical)$'
 
 run_review index callers pkg.helper --json
 assert_exit "python callers exits 0" 0

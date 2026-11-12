@@ -84,7 +84,7 @@ func TestScanTypeScriptCallSites(t *testing.T) {
 		{Name: "helper", Kind: "call", Line: 24, Col: 22},
 		{Name: "renamed", Kind: "call", Line: 24, Col: 49},
 		{Name: "test", Kind: "method", Line: 26, Col: 14, Selector: true},
-		{Name: "thing", Kind: "method", Line: 27, Col: 13, Selector: true},
+		{Name: "thing", Kind: "method", Qualifier: "ns", Line: 27, Col: 13, Selector: true},
 		{Name: "def", Kind: "call", Line: 27, Col: 24},
 		{Name: "cjs", Kind: "call", Line: 27, Col: 33},
 		{Name: "plain", Kind: "call", Line: 27, Col: 42},
@@ -194,8 +194,8 @@ func TestScanTypeScriptPrivateAndOptionalChain(t *testing.T) {
 		{Name: "v", Kind: "const", Line: 5},
 	})
 	assertRefs(t, s.Refs, []ref{
-		{Name: "#get", Kind: "method", Line: 2, Col: 26, Selector: true},
-		{Name: "load", Kind: "method", Line: 5, Col: 18, Selector: true},
+		{Name: "#get", Kind: "method", Qualifier: "this", Line: 2, Col: 26, Selector: true},
+		{Name: "load", Kind: "method", Qualifier: "store", Line: 5, Col: 18, Selector: true},
 	})
 }
 

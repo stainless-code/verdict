@@ -413,8 +413,8 @@ func TestIndexVersionResetRebuilds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(raw) != "2\n" {
-		t.Errorf("version file = %q; want %q", raw, "2\n")
+	if string(raw) != "3\n" {
+		t.Errorf("version file = %q; want %q", raw, "3\n")
 	}
 	if got := storeFiles(t, f.dir, "trees"); got != 1 {
 		t.Errorf("tree files = %d; want 1", got)
@@ -621,6 +621,62 @@ func TestCallersCrossPackageNeedsImport(t *testing.T) {
 	}
 	if resp.Data.Callers != 2 {
 		t.Errorf("callers = %d; want 2", resp.Data.Callers)
+	}
+}
+
+// TestCallersValueSelectorIsUnresolved proves a selector written on a value is
+// counted as a candidate that needs type information outside the declaring
+// package too: the `a.Touch` query answers no rows at one unresolved and says
+// so on the human line, while a selector naming a same-named function is not
+// a candidate at all.
+func TestCallersValueSelectorIsUnresolved(t *testing.T) {
+	f := newFixture(t)
+	f.write("go.mod", "module example.com/m\n\ngo 1.27\n")
+	f.write("a/a.go", "package a\n\ntype Base struct{}\n\nfunc (b *Base) Touch() {}\n\nfunc Target() {}\n")
+	f.write("b/b.go", "package b\n\nimport \"example.com/m/a\"\n\nfunc Bump(v *a.Base) {\n\tv.Touch()\n}\n\n"+
+		"func Value(h Holder) {\n\th.Target\n}\n\ntype Holder struct{ Target int }\n")
+	f.commit("one")
+	f.build()
+	touch := callersOf(t, f, "a.Touch")
+	if len(touch.Data.Rows) != 0 || touch.Data.Unresolved != 1 {
+		t.Errorf("rows = %+v, unresolved = %d; want none and 1", touch.Data.Rows, touch.Data.Unresolved)
+	}
+	want := "index: 0 caller(s) of a.Touch at " + touch.Data.Tree + " (1 unresolved)"
+	if !slices.Contains(touch.Human, want) {
+		t.Errorf("human lines = %q; want one equal to %q", touch.Human, want)
+	}
+	if got := callersOf(t, f, "a.Target"); got.Data.Unresolved != 0 || len(got.Data.Rows) != 0 {
+		t.Errorf("a.Target: rows = %+v, unresolved = %d; want none and 0", got.Data.Rows, got.Data.Unresolved)
+	}
+}
+
+// TestCallersUnexportedMethodIsNotCrossPackage proves a selector in another
+// package is no candidate for an unexported method, which it cannot name.
+func TestCallersUnexportedMethodIsNotCrossPackage(t *testing.T) {
+	f := newFixture(t)
+	f.write("go.mod", "module example.com/m\n\ngo 1.27\n")
+	f.write("a/a.go", "package a\n\ntype A struct{}\n\nfunc (A) save() {}\n")
+	f.write("b/b.go", "package b\n\ntype B struct{}\n\nfunc (B) save() {}\n\nfunc Use(v B) {\n\tv.save()\n}\n")
+	f.commit("one")
+	f.build()
+	if got := callersOf(t, f, "a.save"); len(got.Data.Rows) != 0 || got.Data.Unresolved != 0 {
+		t.Errorf("a.save: rows = %+v, unresolved = %d; want none and 0", got.Data.Rows, got.Data.Unresolved)
+	}
+}
+
+// TestCallersCountsEachUnresolvedSiteOnce proves one selector matching two
+// package declarations is one unresolved source site.
+func TestCallersCountsEachUnresolvedSiteOnce(t *testing.T) {
+	f := newFixture(t)
+	f.write("go.mod", "module example.com/m\n\ngo 1.27\n")
+	f.write("a/a.go", "package a\n\ntype A struct{}\nfunc (A) Touch() {}\n")
+	f.write("b/b.go", "package b\n\ntype B struct{}\nfunc (B) Touch() {}\n")
+	f.write("c/c.go", "package c\n\nfunc Use(v any) { v.Touch() }\n")
+	f.commit("one")
+	f.build()
+	resp := callersOf(t, f, "Touch")
+	if len(resp.Data.Rows) != 0 || resp.Data.Unresolved != 1 {
+		t.Errorf("rows = %+v, unresolved = %d; want none and 1", resp.Data.Rows, resp.Data.Unresolved)
 	}
 }
 

@@ -18,11 +18,6 @@ const (
 	viaTransitiveImport = "transitive-import"
 )
 
-// minTransitiveDepth is the first hop count that reads as transitive: a test
-// one hop out imports the declaring package itself, which the direct
-// mechanisms already name.
-const minTransitiveDepth = 2
-
 // testsDepthCapped names the candidates the depth cap hid.
 const testsDepthCapped = "index: depth cap %d reached (%d candidate test(s) one import hop beyond; raise --depth up to %d)"
 
@@ -123,7 +118,9 @@ func pathTestPlan(pkgs map[string]*packageInfo, t *treeIndex, rawPath string) (*
 	}
 	plan := &testPlan{path: p, dirs: []string{pkg.dir}, lang: fileLanguage(f)}
 	for _, d := range f.Decls {
-		plan.targets = append(plan.targets, target{pkg: pkg, name: d.Name, lang: plan.lang, exported: d.Exported})
+		plan.targets = append(plan.targets, target{
+			pkg: pkg, name: d.Name, kind: d.Kind, lang: plan.lang, exported: d.Exported,
+		})
 	}
 	return plan, nil
 }
@@ -224,15 +221,26 @@ func planNodes(plan *testPlan) []graphNode {
 	return nodes
 }
 
-// testMechanisms indexes the plan's package directories and import paths.
+// testMechanisms indexes the plan's package directories and import paths, each
+// rendered in the plan's own language.
 func testMechanisms(t *treeIndex, plan *testPlan) (map[string]bool, map[string]bool) {
 	dirs := make(map[string]bool, len(plan.dirs))
 	importPaths := make(map[string]bool, len(plan.dirs))
 	for _, dir := range plan.dirs {
 		dirs[dir] = true
-		importPaths[importPathOf(t.Module, dir)] = true
+		importPaths[packageImportPath(plan.lang, t.Module, dir)] = true
 	}
 	return dirs, importPaths
+}
+
+// packageImportPath renders one declaring directory's import path in the plan's
+// language: a Go package path joined onto the module, or the directory itself
+// for a scanned language, whose imports never carry a Go module path.
+func packageImportPath(lang language, module, dir string) string {
+	if lang.family() == langGo {
+		return importPathOf(module, dir)
+	}
+	return dir
 }
 
 // importsTargetPath reports whether one scanned file imports the queried file
@@ -341,11 +349,13 @@ func testVia(
 	}
 }
 
-// transitiveVia labels one file reached through its own package's imports, or
-// nothing: a file one hop out imports the declaring package itself, and the
-// direct mechanisms name that edge first.
+// transitiveVia labels one file reached through the imports its own package
+// holds, or nothing: depth 0 is the declaring package itself. A file one hop
+// out that names the declaring package is labeled by a direct mechanism first,
+// so what reaches here is a test whose own package imports the declaring one
+// while its own file imports nothing that reaches it.
 func transitiveVia(g *importGraph, depths map[graphNode]int, f *treeFile) (string, int) {
-	if depth := g.candidateDepth(depths, f); depth >= minTransitiveDepth {
+	if depth := g.candidateDepth(depths, f); depth > 0 {
 		return viaTransitiveImport, depth
 	}
 	return "", 0
@@ -386,14 +396,30 @@ func referencesOne(tgt target, samePackage bool, f *treeFile) bool {
 	return false
 }
 
-// importsAny reports whether the file imports one of the plan's packages.
+// importsAny reports whether the file imports one of the plan's packages,
+// resolving each specifier by its own language's rule: a Go import is the
+// package path itself, while a scanned one names the package only once joined
+// onto the importing file's directory.
 func importsAny(f *treeFile, importPaths map[string]bool) bool {
+	lang := fileLanguage(f)
+	dir := path.Dir(f.Path)
 	for _, imp := range f.Imports {
-		if importPaths[imp.Path] {
+		if importPaths[importedPackage(lang, dir, imp)] {
 			return true
 		}
 	}
 	return false
+}
+
+// importedPackage resolves one import entry to the package path its own
+// language names: a Go import path verbatim, or a scanned specifier joined onto
+// the importing file's directory. A specifier naming a module inside the
+// declaring package is not this mechanism: the file-level reference covers it.
+func importedPackage(lang language, dir string, imp importEntry) string {
+	if lang.family() == langGo {
+		return imp.Path
+	}
+	return scannedSpecifier(lang, dir, imp.Path)
 }
 
 // testsForResponse renders the candidate list, truncating rows with a count.

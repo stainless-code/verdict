@@ -10,7 +10,7 @@ parses nothing, and an edit parses one blob. `index status` reports the stored
 trees and shards, `index prune` keeps the newest four trees and the shards they
 reference, and `index callers <symbol> [--at <tree>] [--limit <n>]` returns
 call sites labelled `exact` within a package or `lexical` across an import
-edge; method values, dynamic dispatch, reflection, and generic instantiation
+edge; method values, cross-package value selectors that may be fields, dynamic dispatch, reflection, and generic instantiation
 are counted as unresolved, never guessed. A package qualifier that matches no
 package directory or import path refuses `bad-flags` rather than reading as no
 callers. Caps
