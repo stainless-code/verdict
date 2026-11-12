@@ -752,8 +752,7 @@ func TestCallersLimitBoundsRefuse(t *testing.T) {
 	}
 }
 
-// TestIndexCapRefusal proves the file-count cap names the measured number and
-// an oversized file is skipped and counted.
+// TestIndexCapRefusal proves the file-count cap names the measured number.
 //
 //nolint:revive // the fixture walk reads as one block
 func TestIndexCapRefusal(t *testing.T) {
@@ -784,25 +783,29 @@ func TestIndexCapRefusal(t *testing.T) {
 			t.Fatalf("refusal = %q: %q; want index-capped: %q", ref.Code, ref.Message, want)
 		}
 	})
-	t.Run("oversized file skipped", func(t *testing.T) {
-		f := newFixture(t)
-		f.write("go.mod", "module example.com/m\n")
-		f.write("a/a.go", "package a\n\nfunc A() {}\n")
-		f.write("a/big.go", "package a\n\n//"+strings.Repeat(" pad", 600000)+"\n")
-		f.write("t.ts", "export const v = 1;\n")
-		f.commit("one")
-		resp := f.build()
-		if resp.Data.Skipped != 1 {
-			t.Errorf("skipped = %d; want 1", resp.Data.Skipped)
-		}
-		if resp.Data.Files != 2 {
-			t.Errorf("files_indexed = %d; want 2", resp.Data.Files)
-		}
-		want := []LangRow{{Language: "go", Files: 1}, {Language: "typescript", Files: 1}}
-		if !slices.Equal(resp.Data.Languages, want) {
-			t.Errorf("languages = %+v; want %+v", resp.Data.Languages, want)
-		}
-	})
+}
+
+// TestIndexOversizeFileCountedOnce proves an oversize file counts as skipped
+// once and takes no language with it: the language breakdown lists only the
+// files the build indexed.
+func TestIndexOversizeFileCountedOnce(t *testing.T) {
+	f := newFixture(t)
+	f.write("go.mod", "module example.com/m\n")
+	f.write("a/a.go", "package a\n\nfunc A() {}\n")
+	f.write("a/big.go", "package a\n\n//"+strings.Repeat(" pad", 600000)+"\n")
+	f.write("t.ts", "export const v = 1;\n")
+	f.commit("one")
+	resp := f.build()
+	if resp.Data.Skipped != 1 {
+		t.Errorf("skipped = %d; want 1", resp.Data.Skipped)
+	}
+	if resp.Data.Files != 2 {
+		t.Errorf("files_indexed = %d; want 2", resp.Data.Files)
+	}
+	want := []LangRow{{Language: "go", Files: 1}, {Language: "typescript", Files: 1}}
+	if !slices.Equal(resp.Data.Languages, want) {
+		t.Errorf("languages = %+v; want %+v", resp.Data.Languages, want)
+	}
 }
 
 // TestIndexPruneKeepsNewestFour proves prune keeps the four newest trees and

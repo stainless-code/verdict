@@ -38,8 +38,10 @@ func (l language) sameFamily(other language) bool { return l.family() == other.f
 const (
 	wordAs        = "as"
 	wordAsync     = "async"
+	wordAbstract  = "abstract"
 	wordClass     = "class"
 	wordConst     = "const"
+	wordDeclare   = "declare"
 	wordDefault   = "default"
 	wordDef       = "def"
 	wordDelete    = "delete"
@@ -66,6 +68,7 @@ const (
 const (
 	punctArrow      = "=>"
 	punctAssign     = "="
+	punctAt         = "@"
 	punctBrace      = "{"
 	punctBraceEnd   = "}"
 	punctBracket    = "["

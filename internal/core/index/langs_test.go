@@ -118,14 +118,7 @@ func TestSharedBlobParsesPerLanguage(t *testing.T) {
 	f.write("same.py", "shared(1)\n")
 	f.write("other.ts", "other(1)\n")
 	f.commit("one")
-	counts := []struct{ parsed, reused int }{{3, 0}, {2, 1}}
-	for i, want := range counts {
-		resp := f.build()
-		if resp.Data.Parsed != want.parsed || resp.Data.Reused != want.reused {
-			t.Errorf("build %d parsed/reused = %d/%d; want %d/%d",
-				i+1, resp.Data.Parsed, resp.Data.Reused, want.parsed, want.reused)
-		}
-	}
+	assertBuildCounts(t, f, []buildCount{{3, 0}, {2, 1}})
 	tree, ref := readTree(storePath(f.dir), f.bodyTree())
 	if ref != nil {
 		t.Fatalf("readTree refused: %v", ref)
@@ -147,6 +140,22 @@ func TestSharedBlobParsesPerLanguage(t *testing.T) {
 	const sharedBlob = "2cf812485aef6b0f59dd7407debb4c6cd3476357"
 	if _, err := os.Stat(shardPath(storePath(f.dir), sharedBlob)); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("shard for the blob two languages share: err = %v; want it never written", err)
+	}
+}
+
+// buildCount is one build's expected parse and reuse counts.
+type buildCount struct{ parsed, reused int }
+
+// assertBuildCounts rebuilds the fixture once per expectation and compares the
+// reported counts.
+func assertBuildCounts(t *testing.T, f *fixture, want []buildCount) {
+	t.Helper()
+	for i, w := range want {
+		resp := f.build()
+		if resp.Data.Parsed != w.parsed || resp.Data.Reused != w.reused {
+			t.Errorf("build %d parsed/reused = %d/%d; want %d/%d",
+				i+1, resp.Data.Parsed, resp.Data.Reused, w.parsed, w.reused)
+		}
 	}
 }
 

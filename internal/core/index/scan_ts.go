@@ -28,6 +28,10 @@ const tsNonASCII = 0x80
 // constructor, as in `new a.b()`.
 const tsNewSelector = 3
 
+// tsDecoratorHead is the token distance from a decorator's `(` back to its `@`,
+// as in `@Get(…)`: the `@`, the name, and then the paren.
+const tsDecoratorHead = 3
+
 // tsToken is one lexical token of a TypeScript or JavaScript source file.
 type tsToken struct {
 	text string
@@ -73,7 +77,7 @@ var tsContextual = map[string]bool{
 // declaration of something else.
 var tsDeclPrefixes = map[string]bool{
 	wordEnum: true, wordType: true, wordInterface: true, wordClass: true,
-	wordFunction: true, wordAsync: true, "declare": true, "abstract": true,
+	wordFunction: true, wordAsync: true, wordDeclare: true, wordAbstract: true,
 	"namespace": true, "module": true,
 }
 
@@ -81,7 +85,7 @@ var tsDeclPrefixes = map[string]bool{
 var tsMemberModifiers = map[string]bool{
 	"static": true, wordAsync: true, "get": true, "set": true, "readonly": true,
 	"public": true, "private": true, "protected": true, "override": true,
-	"declare": true, "abstract": true, "accessor": true,
+	wordDeclare: true, wordAbstract: true, "accessor": true,
 }
 
 // tsPuncts are the punctuators the scanner joins, longest form first.
@@ -783,10 +787,17 @@ func tsBlockStart(tokens []tsToken, i int) bool {
 	if i+1 >= len(tokens) || tokens[i+1].kind != tsIdent || tsReserved[tokens[i+1].text] {
 		return false
 	}
-	if tokens[i].text == wordType && i > 0 && tokens[i-1].kind != tsPunct {
+	if tokens[i].text == wordType && i > 0 && !tsTypeAliasPrefix(tokens[i-1]) {
 		return false
 	}
 	return true
+}
+
+// tsTypeAliasPrefix reports whether the token before a `type` lets it open an
+// alias. The word is contextual, so `const type = …`, `as type`, and `x.type`
+// name something else; a punctuator, `export`, or `declare` opens one.
+func tsTypeAliasPrefix(prev tsToken) bool {
+	return prev.kind == tsPunct || prev.text == wordExport || prev.text == wordDeclare
 }
 
 // tsBlockBody finds the `{` that opens a declaration body, starting after the
@@ -910,13 +921,51 @@ func (x *tsExtractor) classMember(i int) *tsBlock {
 }
 
 // memberStart reports whether one token begins a class member statement rather
-// than sitting inside a member's initializer.
+// than sitting inside a member's initializer: after the previous member's
+// closing token, after a modifier, after a decorator, or on a new line once the
+// previous member's value is complete.
 func (x *tsExtractor) memberStart(i int) bool {
 	switch prev := x.prevText(i); prev {
 	case punctBrace, punctBraceEnd, punctSemi, "*":
 		return true
 	default:
-		return tsMemberModifiers[prev]
+		return tsMemberModifiers[prev] || x.afterDecorator(i) || x.afterMemberValue(i)
+	}
+}
+
+// afterDecorator reports whether the token before i closes a decorator's
+// argument list, as in `@Get(':id') findOne() {…}`.
+func (x *tsExtractor) afterDecorator(i int) bool {
+	if i < tsDecoratorHead || x.text(i-1) != punctParenEnd {
+		return false
+	}
+	open := x.match[i-1]
+	return open > 1 && x.tokens[open-1].kind == tsIdent && x.tokens[open-2].text == punctAt
+}
+
+// afterMemberValue reports whether the previous member's value ended on an
+// earlier line, so a member name on this line starts the next one: a class
+// written without semicolons, as in `count = 0` followed by `inc() {…}`.
+func (x *tsExtractor) afterMemberValue(i int) bool {
+	if i == 0 || x.tokens[i].line <= x.tokens[i-1].line {
+		return false
+	}
+	return x.memberValueEnd(i - 1)
+}
+
+// memberValueEnd reports whether one token can end a class member's value.
+// Keywords are left out: `return` or `this` before a name on the next line is
+// far more likely an unfinished expression than a member boundary.
+func (x *tsExtractor) memberValueEnd(j int) bool {
+	t := x.tokens[j]
+	switch t.kind {
+	case tsValue:
+		return true
+	case tsIdent:
+		return !tsReserved[t.text]
+	default:
+		return t.text == punctParenEnd || t.text == punctBracketEnd ||
+			t.text == punctBraceEnd || t.text == "++" || t.text == "--"
 	}
 }
 
@@ -1192,12 +1241,26 @@ func (x *tsExtractor) member(i int, class *tsBlock) {
 	x.buf.addDecl(x.tokens[i].text, wordMethod, class.name, x.tokens[i].line, !strings.HasPrefix(x.tokens[i].text, "#"))
 }
 
-// exported reports whether the declaration at i carries an `export`.
+// exported reports whether the declaration at i carries an `export`, walking
+// back over the modifiers that can sit between the two, as in
+// `export default async function`.
 func (x *tsExtractor) exported(i int) bool {
-	if x.text(i-1) == wordExport {
-		return true
+	j := i - 1
+	for j >= 0 && tsExportModifier(x.text(j)) {
+		j--
 	}
-	return x.text(i-1) == wordDefault && x.text(i-2) == wordExport
+	return x.text(j) == wordExport
+}
+
+// tsExportModifier reports whether one word can stand between `export` and the
+// declaration keyword it exports.
+func tsExportModifier(word string) bool {
+	switch word {
+	case wordAsync, wordDefault, wordDeclare, wordAbstract:
+		return true
+	default:
+		return false
+	}
 }
 
 // calls records every call and attribute site.

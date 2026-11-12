@@ -390,7 +390,7 @@ func (st *state) callerData(
 }
 
 // languageCounts counts the tree's indexed files per scanned language, so the
-// breakdown adds up to files_indexed: a file the index skipped is not a file any
+// breakdown adds up to files_indexed: a skipped file is not a file any
 // language was read for.
 func languageCounts(t *treeIndex) []LangRow {
 	counts := map[string]int{}

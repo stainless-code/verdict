@@ -77,18 +77,18 @@ func TestScanTypeScriptDeclarations(t *testing.T) {
 func TestScanTypeScriptCallSites(t *testing.T) {
 	s := scanFile(t, langTypeScript, tsDeclSource)
 	assertRefs(t, s.Refs, []ref{
-		{Name: "require", Kind: KindCall, Line: 5, Col: 13},
-		{Name: "Widget", Kind: KindCall, Line: 17, Col: 38},
-		{Name: "helper", Kind: KindCall, Line: 18, Col: 32},
-		{Name: "renamed", Kind: KindCall, Line: 20, Col: 19},
-		{Name: "helper", Kind: KindCall, Line: 24, Col: 22},
-		{Name: "renamed", Kind: KindCall, Line: 24, Col: 49},
-		{Name: "test", Kind: KindMethod, Line: 26, Col: 14, Selector: true},
-		{Name: "thing", Kind: KindMethod, Line: 27, Col: 13, Selector: true},
-		{Name: "def", Kind: KindCall, Line: 27, Col: 24},
-		{Name: "cjs", Kind: KindCall, Line: 27, Col: 33},
-		{Name: "plain", Kind: KindCall, Line: 27, Col: 42},
-		{Name: "helper", Kind: KindCall, Line: 29, Col: 32},
+		{Name: "require", Kind: "call", Line: 5, Col: 13},
+		{Name: "Widget", Kind: "call", Line: 17, Col: 38},
+		{Name: "helper", Kind: "call", Line: 18, Col: 32},
+		{Name: "renamed", Kind: "call", Line: 20, Col: 19},
+		{Name: "helper", Kind: "call", Line: 24, Col: 22},
+		{Name: "renamed", Kind: "call", Line: 24, Col: 49},
+		{Name: "test", Kind: "method", Line: 26, Col: 14, Selector: true},
+		{Name: "thing", Kind: "method", Line: 27, Col: 13, Selector: true},
+		{Name: "def", Kind: "call", Line: 27, Col: 24},
+		{Name: "cjs", Kind: "call", Line: 27, Col: 33},
+		{Name: "plain", Kind: "call", Line: 27, Col: 42},
+		{Name: "helper", Kind: "call", Line: 29, Col: 32},
 	})
 }
 
@@ -102,12 +102,12 @@ func TestScanTypeScriptTemplateNesting(t *testing.T) {
 	}, "\n")
 	s := scanFile(t, langTypeScript, src)
 	assertRefs(t, s.Refs, []ref{
-		{Name: "outer", Kind: KindCall, Line: 1, Col: 16},
-		{Name: "middle", Kind: KindCall, Line: 1, Col: 33},
-		{Name: "deep", Kind: KindCall, Line: 1, Col: 51},
-		{Name: "pick", Kind: KindCall, Line: 2, Col: 16},
-		{Name: "also", Kind: KindCall, Line: 2, Col: 29},
-		{Name: "next", Kind: KindCall, Line: 3, Col: 1},
+		{Name: "outer", Kind: "call", Line: 1, Col: 16},
+		{Name: "middle", Kind: "call", Line: 1, Col: 33},
+		{Name: "deep", Kind: "call", Line: 1, Col: 51},
+		{Name: "pick", Kind: "call", Line: 2, Col: 16},
+		{Name: "also", Kind: "call", Line: 2, Col: 29},
+		{Name: "next", Kind: "call", Line: 3, Col: 1},
 	})
 }
 
@@ -127,13 +127,13 @@ func TestScanTypeScriptRegexVersusDivision(t *testing.T) {
 	}, "\n")
 	s := scanFile(t, langTypeScript, src)
 	assertRefs(t, s.Refs, []ref{
-		{Name: "helper", Kind: KindCall, Line: 2, Col: 1},
-		{Name: "test", Kind: KindMethod, Line: 3, Col: 13, Selector: true},
-		{Name: "test", Kind: KindMethod, Line: 4, Col: 23, Selector: true},
-		{Name: "share", Kind: KindCall, Line: 6, Col: 19},
-		{Name: "box", Kind: KindCall, Line: 7, Col: 15},
-		{Name: "two", Kind: KindCall, Line: 7, Col: 24},
-		{Name: "last", Kind: KindCall, Line: 8, Col: 1},
+		{Name: "helper", Kind: "call", Line: 2, Col: 1},
+		{Name: "test", Kind: "method", Line: 3, Col: 13, Selector: true},
+		{Name: "test", Kind: "method", Line: 4, Col: 23, Selector: true},
+		{Name: "share", Kind: "call", Line: 6, Col: 19},
+		{Name: "box", Kind: "call", Line: 7, Col: 15},
+		{Name: "two", Kind: "call", Line: 7, Col: 24},
+		{Name: "last", Kind: "call", Line: 8, Col: 1},
 	})
 }
 
@@ -148,10 +148,10 @@ func TestScanTypeScriptJSX(t *testing.T) {
 	}, "\n")
 	s := scanFile(t, langTypeScript, src)
 	assertRefs(t, s.Refs, []ref{
-		{Name: "handler", Kind: KindCall, Line: 1, Col: 46},
-		{Name: "inner", Kind: KindCall, Line: 1, Col: 71},
-		{Name: "helper", Kind: KindCall, Line: 2, Col: 25},
-		{Name: "after", Kind: KindCall, Line: 4, Col: 1},
+		{Name: "handler", Kind: "call", Line: 1, Col: 46},
+		{Name: "inner", Kind: "call", Line: 1, Col: 71},
+		{Name: "helper", Kind: "call", Line: 2, Col: 25},
+		{Name: "after", Kind: "call", Line: 4, Col: 1},
 	})
 }
 
@@ -165,7 +165,7 @@ func TestScanTypeScriptTypeBodies(t *testing.T) {
 		`real();`,
 	}, "\n")
 	s := scanFile(t, langTypeScript, src)
-	assertRefs(t, s.Refs, []ref{{Name: "real", Kind: KindCall, Line: 4, Col: 1}})
+	assertRefs(t, s.Refs, []ref{{Name: "real", Kind: "call", Line: 4, Col: 1}})
 }
 
 // TestScanTypeScriptClassInTypeBlock proves the type-body rule follows the
@@ -194,8 +194,8 @@ func TestScanTypeScriptPrivateAndOptionalChain(t *testing.T) {
 		{Name: "v", Kind: "const", Line: 5},
 	})
 	assertRefs(t, s.Refs, []ref{
-		{Name: "#get", Kind: KindMethod, Line: 2, Col: 26, Selector: true},
-		{Name: "load", Kind: KindMethod, Line: 5, Col: 18, Selector: true},
+		{Name: "#get", Kind: "method", Line: 2, Col: 26, Selector: true},
+		{Name: "load", Kind: "method", Line: 5, Col: 18, Selector: true},
 	})
 }
 
@@ -205,8 +205,8 @@ func TestScanTypeScriptPrivateAndOptionalChain(t *testing.T) {
 func TestScanTypeScriptObjectMethodIsACallSite(t *testing.T) {
 	s := scanFile(t, langTypeScript, "const o = { m() { return inner(); } };\n")
 	assertRefs(t, s.Refs, []ref{
-		{Name: "m", Kind: KindCall, Line: 1, Col: 13},
-		{Name: "inner", Kind: KindCall, Line: 1, Col: 26},
+		{Name: "m", Kind: "call", Line: 1, Col: 13},
+		{Name: "inner", Kind: "call", Line: 1, Col: 26},
 	})
 }
 
@@ -295,4 +295,60 @@ func BenchmarkScanTypeScriptDenseBlocks(b *testing.B) {
 	for b.Loop() {
 		parseShard("blob", src, langTypeScript, defaultRefsPerFile)
 	}
+}
+
+// TestScanTypeScriptExportedModifiers proves an export is recorded through the
+// modifiers that can sit between `export` and the declaration keyword.
+func TestScanTypeScriptExportedModifiers(t *testing.T) {
+	src := "export async function handler() {}\n" +
+		"export declare const limit = 1;\n" +
+		"export abstract class Base {}\n" +
+		"export default async function main() {}\n" +
+		"async function plain() {}\n"
+	s := scanFile(t, langTypeScript, src)
+	assertDecls(t, s.Decls, []decl{
+		{Name: "handler", Kind: "func", Line: 1, Exported: true},
+		{Name: "limit", Kind: wordConst, Line: 2, Exported: true},
+		{Name: "Base", Kind: "type", Line: 3, Exported: true},
+		{Name: "main", Kind: "func", Line: 4, Exported: true},
+		{Name: "plain", Kind: "func", Line: 5, Exported: false},
+	})
+}
+
+// TestScanTypeScriptExportedTypeAlias proves an exported type alias opens a
+// type block, so its member signatures are not call sites.
+func TestScanTypeScriptExportedTypeAlias(t *testing.T) {
+	src := "export type Props = { onClick(): void };\nconst type = { a: handler() };\n"
+	s := scanFile(t, langTypeScript, src)
+	assertDecls(t, s.Decls, []decl{
+		{Name: "Props", Kind: "type", Line: 1, Exported: true},
+	})
+	assertRefs(t, s.Refs, []ref{
+		{Name: "handler", Kind: "call", Line: 2, Col: 19},
+	})
+}
+
+// TestScanTypeScriptDecoratedAndUnseparatedMembers proves a class member after
+// a decorator, and a member that starts a new line without a semicolon, is a
+// method declaration rather than a call site.
+func TestScanTypeScriptDecoratedAndUnseparatedMembers(t *testing.T) {
+	src := "class Routes {\n" +
+		"  count = 0\n" +
+		"  @Get(':id')\n" +
+		"  findOne(id) { return load(id); }\n" +
+		"  @HostListener('window:resize')\n" +
+		"  onResize() { return size(); }\n" +
+		"}\n"
+	s := scanFile(t, langTypeScript, src)
+	assertDecls(t, s.Decls, []decl{
+		{Name: "Routes", Kind: "type", Line: 1},
+		{Name: "findOne", Kind: "method", Recv: "Routes", Line: 4, Exported: true},
+		{Name: "onResize", Kind: "method", Recv: "Routes", Line: 6, Exported: true},
+	})
+	assertRefs(t, s.Refs, []ref{
+		{Name: "Get", Kind: "call", Line: 3, Col: 4},
+		{Name: "load", Kind: "call", Line: 4, Col: 24},
+		{Name: "HostListener", Kind: "call", Line: 5, Col: 4},
+		{Name: "size", Kind: "call", Line: 6, Col: 23},
+	})
 }

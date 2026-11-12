@@ -11,7 +11,10 @@ third-party module — that tokenize the file and record declarations, imports,
 and call sites. Every scanned file publishes its `language`, a build publishes
 `data.languages` with one row per scanned language and how many of the indexed
 files it holds, and a
-caller row names the language it came from. A scanned language resolves one way
+caller row names the language it came from. The JavaScript scanner reads
+`export` through its modifiers, an exported type alias as a type block, and a
+class member after a decorator or a newline, so a decorated handler is a
+method rather than a call site. A scanned language resolves one way
 only: `exact` never appears, and a name is attributed as `lexical` inside the
 directory that declares it, so a caller list for a scanned symbol is a floor
 rather than a proof. Languages never cross: a caller row, or a same-directory
