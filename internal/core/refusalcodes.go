@@ -44,6 +44,7 @@ var refusalCodes = []string{
 	"bad-attribution",
 	"bad-base",
 	"bad-budget",
+	"bad-by",
 	"bad-category",
 	"bad-color",
 	"bad-config",

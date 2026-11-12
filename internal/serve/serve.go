@@ -86,6 +86,8 @@ type Layer interface {
 	Bundles(ctx context.Context, pattern string) (*query.View, error)
 	Detail(ctx context.Context, rootID, bundle string) (*query.View, error)
 	Show(ctx context.Context, rootID, bundle, sig string) (*query.View, error)
+	Cost(ctx context.Context, by string) (*query.View, error)
+	Precision(ctx context.Context, by string) (*query.View, error)
 }
 
 type changeSource interface {

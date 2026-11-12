@@ -311,6 +311,8 @@ export interface ServeData {
   truncated?: boolean | null;
   skipped?: ServeSkipped | null;
   discovery?: ServeDiscovery | null;
+  cost?: ServeCostData | null;
+  precision?: ServePrecisionData | null;
   root?: string | null;
   /** The detector that found this invalidation: tick for directory stamps or sweep for entry fingerprints. */
   via?: "tick" | "sweep";
@@ -409,6 +411,74 @@ export interface ServeSkipped {
 export interface ServeDiscovery {
   cached: boolean;
   scanned_at: string;
+  [key: string]: unknown;
+}
+
+/** A cost view for one allowlisted dimension. Model rows carry tokens but no per-model price; corrupt inputs make totals null and partial true. */
+export interface ServeCostData {
+  by: "repo" | "week" | "model";
+  rows: Array<ServeCostBucket>;
+  totals: ServeCostTotals | null;
+  [key: string]: unknown;
+}
+
+/** One repository, ISO week, or model bucket. runs counts record membership; model_runs counts model entries, which can be greater than runs for by=model. */
+export interface ServeCostBucket {
+  dimension: string;
+  runs: number;
+  model_runs: number;
+  /** Null when any contributing model has no input-token measurement. */
+  input_tokens: number | null;
+  /** Null when any contributing model has no output-token measurement. */
+  output_tokens: number | null;
+  /** Null when either token measurement is unknown. */
+  total_tokens: number | null;
+  est_usd: number | null;
+  [key: string]: unknown;
+}
+
+/** The rollup for a cost view. est_usd is null for by=model because cost records price only the whole run. */
+export interface ServeCostTotals {
+  runs: number;
+  model_runs: number;
+  /** Null when any contributing bucket has an unknown input-token measurement. */
+  input_tokens: number | null;
+  /** Null when any contributing bucket has an unknown output-token measurement. */
+  output_tokens: number | null;
+  /** Null when any contributing bucket has an unknown token measurement. */
+  total_tokens: number | null;
+  est_usd: number | null;
+  [key: string]: unknown;
+}
+
+/** Precision from the stored threads feed. fixed is not measured and remains null; no rate is published. as_of comes from fetched_at. */
+export interface ServePrecisionData {
+  by: "category" | "tier";
+  outcomes: Array<ServePrecisionBucket> | null;
+  totals: ServePrecisionTotals | null;
+  fixed: number | null;
+  as_of: string | null;
+  stale: boolean | null;
+  next: string;
+  [key: string]: unknown;
+}
+
+/** Counts from the calibrate join. fixed stays null without changed-file evidence. */
+export interface ServePrecisionBucket {
+  dimension: string;
+  open: number;
+  resolved_unfixed: number;
+  unknown: number;
+  fixed: number | null;
+  [key: string]: unknown;
+}
+
+/** The stored-join outcome counts across all dimensions; fixed is always null. */
+export interface ServePrecisionTotals {
+  open: number;
+  resolved_unfixed: number;
+  unknown: number;
+  fixed: number | null;
   [key: string]: unknown;
 }
 

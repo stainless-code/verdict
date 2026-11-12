@@ -23,6 +23,8 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
+const recordCommand = "record"
+
 // MergeParams carries one shared merge invocation: the record and post
 // verbs run the same validate_and_merge core over different bodies (the
 // review body, or the drift-annotated post body with the hosting split
@@ -125,7 +127,7 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 	if err != nil {
 		return MergeResult{}, err
 	}
-	if !st.dryRun || st.cmd != "record" {
+	if !st.dryRun || st.cmd != recordCommand {
 		if err := writeFindings(st); err != nil {
 			return MergeResult{}, err
 		}
@@ -155,7 +157,11 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 }
 
 func reportFindings(st *state) {
-	st.human(fmt.Sprintf("» findings: %d sigs -> %s", len(st.entries), st.findingsFile))
+	line := fmt.Sprintf("» findings: %d sigs -> %s", len(st.entries), st.findingsFile)
+	if st.dryRun && st.cmd == recordCommand {
+		line = fmt.Sprintf("» findings: %d sigs (dry run — no findings file written)", len(st.entries))
+	}
+	st.human(line)
 	for _, e := range st.entries {
 		m, ok := e.(*jq.Obj)
 		if !ok || m == nil {
