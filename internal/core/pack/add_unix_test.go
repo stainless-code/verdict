@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stainless-code/verdict/internal/core"
 )
 
 // TestAddWarnsWhenBackupCleanupFails proves a re-add that cannot remove the
@@ -42,6 +44,36 @@ func TestAddWarnsWhenBackupCleanupFails(t *testing.T) {
 	}
 	assertFile(t, ".verdict/packs/lenses/lenses/perf.md", "perf body v2\n")
 	assertFile(t, LockFile, fmt.Sprintf(addLockFmt, "dir:src-packs/lenses", addHashV2, addSigV2))
+}
+
+// TestAddNamesTheStaleSweepFailure proves a leftover the sweep cannot remove
+// refuses as pack-staging-stale, names the path to delete, and carries the
+// staging hint instead of the generic pack.json one.
+func TestAddNamesTheStaleSweepFailure(t *testing.T) {
+	repo := t.TempDir()
+	t.Chdir(repo)
+	lensesSource(t, repo, "src-packs/lenses", "perf body\n")
+	const stale = ".verdict/packs/.lenses.old-locked"
+	if err := os.MkdirAll(filepath.Join(stale, "inner"), packDirPerm); err != nil {
+		t.Fatal(err)
+	}
+	writeFixture(t, repo, map[string]string{stale + "/inner/junk": "old\n"})
+	if err := os.Chmod(filepath.Join(stale, "inner"), 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { makeWritable(t, filepath.Join(repo, ".verdict", "packs", ".lenses.old-locked")) })
+	_, ref := RunAdd(context.Background(), &AddRequest{Source: "src-packs/lenses"})
+	if ref == nil || ref.Code != CodePackStagingStale {
+		t.Fatalf("RunAdd = %v, want pack-staging-stale", ref)
+	}
+	if !strings.Contains(ref.Message, stale) {
+		t.Fatalf("message = %q, want it to name %s", ref.Message, stale)
+	}
+	const wantHint = "try: delete the dot-prefixed sibling under .verdict/packs/ that the message " +
+		"names by hand (its permissions block the sweep), then re-run"
+	if got := core.HintFor(ref.Code); got != wantHint {
+		t.Fatalf("hint = %q, want %q", got, wantHint)
+	}
 }
 
 // makeWritable restores directory permissions under root so the test sandbox

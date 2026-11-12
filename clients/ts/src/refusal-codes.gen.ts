@@ -133,6 +133,7 @@ export type RefusalCode =
   | "pack-git-failed"
   | "pack-lock-drift"
   | "pack-lock-missing"
+  | "pack-staging-stale"
   | "pack-too-large"
   | "pack-unsafe-path"
   | "post-failed"

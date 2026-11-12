@@ -51,6 +51,10 @@ const CodeBadPackSource = "bad-pack-source"
 // complete: no network, no such repository or ref, or a refused credential.
 const CodePackGitFailed = "pack-git-failed"
 
+// CodePackStagingStale is the refusal for a crashed re-add's staging or
+// backup sibling the sweep cannot remove.
+const CodePackStagingStale = "pack-staging-stale"
+
 // AddRequest wires one `pack add <dir|git-url>[@ref]` run.
 type AddRequest struct {
 	core.ReadRequest
@@ -977,7 +981,11 @@ func sweepStaleVendored(packsDir, slug string) *core.RefusalError {
 			continue
 		}
 		if err := os.RemoveAll(filepath.Join(packsDir, name)); err != nil {
-			return badPack(fmt.Sprintf("remove the stale %s/%s: %v", RepoPacksDir, name, err))
+			return &core.RefusalError{
+				Code: CodePackStagingStale,
+				Message: fmt.Sprintf("remove the stale %s/%s: %v — delete that path by hand, then re-run",
+					RepoPacksDir, name, err),
+			}
 		}
 	}
 	return nil

@@ -794,6 +794,12 @@ Cause: a repo pack under `.verdict/packs/` has no `.verdict/verdict.lock` entry,
 
 Fix: run `verdict pack add <dir|git-url>[@ref]` to vendor the pack and write its lock entry, commit both, then re-run. A bundle keeps the lock controls captured at fetch, so repair the trusted base and fetch a fresh bundle before repeating `post` or `record`.
 
+## `pack-staging-stale`
+
+Cause: a crashed re-add left a dot-prefixed `.verdict/packs/.<slug>.tmp-*` staging tree or `.old-*` backup that the next add of that pack cannot remove (usually its permissions), so the add refuses rather than stage beside it.
+
+Fix: delete the path the message names by hand (`rm -rf .verdict/packs/.<slug>.tmp-* .verdict/packs/.<slug>.old-*`), then re-run. The loader already ignores those siblings, so a listed pack is not affected.
+
 ## `pack-too-large`
 
 Cause: a lens pack exceeds the per-file (64 KiB), per-pack (1 MiB), file-count (256), or lens-count (64) cap.
