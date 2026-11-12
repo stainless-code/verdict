@@ -741,6 +741,34 @@ func TestBundleRepoKeepsGitLabSubgroups(t *testing.T) {
 	}
 }
 
+// TestDetailRefusesSymlinkedThreadFeed proves a feed symlink reads as absence,
+// the same rule the inventory applies.
+func TestDetailRefusesSymlinkedThreadFeed(t *testing.T) {
+	t.Parallel()
+	dir, _ := fixture(t)
+	target := filepath.Join(t.TempDir(), "threads.json")
+	feed := `{"schema_version":"1","provider":"github","pr":1234,"head_sha":"` + headA + `",` +
+		`"fetched_at":"2026-01-01T00:00:00Z","truncated":false,"threads":[]}`
+	if err := os.WriteFile(target, []byte(feed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, ".verdict", "state", "1234", "threads.json")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks are unavailable: %v", err)
+	}
+	view, err := newLayer(dir).Detail(context.Background(), RootID(mustAbs(t, dir)), "1234")
+	if err != nil {
+		t.Fatalf("Detail: %v", err)
+	}
+	data := wireMap(t, view.Data)
+	if data["threads"] != nil {
+		t.Errorf("threads = %v, want null for a symlinked feed", data["threads"])
+	}
+	if data["partial"] != false {
+		t.Errorf("partial = %v, want false (absence, not an error)", data["partial"])
+	}
+}
+
 // TestOverridesDirSeam proves the composed rRun judges the served root's
 // override fragments, not the launch directory's.
 func TestOverridesDirSeam(t *testing.T) {

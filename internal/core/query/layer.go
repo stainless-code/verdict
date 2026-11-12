@@ -460,7 +460,8 @@ func mergeSources(left, right []Source) []Source {
 // an error; an unreadable or wrong-version feed is a tolerated error row.
 func (l *Layer) threadView(root Root, bundle, dir string) (any, *ErrRow) {
 	feedPath := dir + slashSep + threadscore.KeyThreadsJSON
-	if !readcommon.IsFile(feedPath) {
+	info, err := os.Lstat(feedPath)
+	if err != nil || !info.Mode().IsRegular() {
 		return nil, nil
 	}
 	feed, err := threadscore.ReadFile(feedPath)
