@@ -84,9 +84,9 @@ type sourceCollector struct { //nolint:govet // grouped as one collector
 	sources    []Source
 	truncated  bool
 	notes      []string
-	// openArtifact is the test seam between the pre-stat and the descriptor
-	// open; production leaves it nil.
-	openArtifact func(string, int64) ([]byte, error)
+	// beforeOpen runs between the size check and the descriptor open, the
+	// window a path can be swapped or grown in; production leaves it nil.
+	beforeOpen func(string)
 }
 
 // full reports whether either budget is spent.
@@ -164,10 +164,11 @@ func (c *sourceCollector) read(abs, rel string, info os.FileInfo) ([]byte, bool)
 
 // readArtifact opens one artifact through the race-free reader: the open is
 // non-blocking and the descriptor is fstat'd, so a path swapped for a FIFO
-// after the pre-stat cannot block the request.
+// after the pre-stat cannot block the request. The last size check has run, so
+// the test seam fires here, at the one production open.
 func (c *sourceCollector) readArtifact(abs string, maxBytes int64) ([]byte, error) {
-	if c.openArtifact != nil {
-		return c.openArtifact(abs, maxBytes)
+	if c.beforeOpen != nil {
+		c.beforeOpen(abs)
 	}
 	return readcommon.ReadRegularCapped(abs, maxBytes) //nolint:wrapcheck // %w inside keeps ErrTooLarge visible
 }

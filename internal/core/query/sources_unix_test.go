@@ -3,34 +3,37 @@
 package query
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"syscall"
 	"testing"
-	"time"
-
-	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// TestInventoryNeverBlocksOnSwapToFIFO proves the artifact open is the check:
-// a regular file swapped for a FIFO between the pre-stat and the open is
-// refused at once instead of waiting for a writer that never comes.
+// TestInventoryNeverBlocksOnSwapToFIFO proves the production artifact open is
+// the check: a regular file swapped for a FIFO between the pre-stat and that
+// open is refused at once instead of waiting for a writer that never comes.
 func TestInventoryNeverBlocksOnSwapToFIFO(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "full.diff")
 	if err := os.WriteFile(path, []byte("diff --git a b\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	c := newSwappingCollector(dir)
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		c.add("1234", path)
-	}()
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("inventory blocked after the swap: the open waited for a FIFO writer")
+	swapped := false
+	c := newSwappingCollector(dir, func(abs string) {
+		mkfifo(t, abs)
+		swapped = true
+	})
+	c.add("1234", path)
+	if !swapped {
+		t.Fatal("the seam did not run: the production open was never reached")
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Type() != fs.ModeNamedPipe {
+		t.Errorf("path mode = %v at open time, want a FIFO", info.Mode())
 	}
 	if !c.truncated {
 		t.Error("truncated = false, want true for the refused artifact")
@@ -40,27 +43,27 @@ func TestInventoryNeverBlocksOnSwapToFIFO(t *testing.T) {
 	}
 }
 
-// newSwappingCollector returns a collector whose open seam swaps the regular
-// file for a FIFO before the descriptor open.
-func newSwappingCollector(dir string) *sourceCollector {
+// newSwappingCollector returns a collector whose pre-open hook swaps the
+// regular file for a FIFO, leaving the production reader to be the one
+// exercised.
+func newSwappingCollector(dir string, swap func(string)) *sourceCollector {
 	c := &sourceCollector{
 		root: Root{Path: dir}, rootPath: dir,
 		maxEntries: maxInventoryEntries, maxBytes: maxInventoryBytes,
 	}
-	c.openArtifact = swapToFIFO
+	c.beforeOpen = swap
 	return c
 }
 
-// swapToFIFO replaces path with a FIFO, then reads it through the race-free
-// reader.
-func swapToFIFO(path string, limit int64) ([]byte, error) {
+// mkfifo replaces one path with a FIFO.
+func mkfifo(t *testing.T, path string) {
+	t.Helper()
 	if err := os.Remove(path); err != nil {
-		return nil, err
+		t.Fatal(err)
 	}
 	if err := syscall.Mkfifo(path, 0o600); err != nil {
-		return nil, err
+		t.Fatal(err)
 	}
-	return readcommon.ReadRegularCapped(path, limit)
 }
 
 // TestInventoryDoesNotOpenAFIFO proves both inventory paths refuse a special
@@ -71,7 +74,10 @@ func TestInventoryDoesNotOpenAFIFO(t *testing.T) {
 	dir, bundleDir := fifoFixture(t)
 	layer := newLayer(dir)
 	root := Root{ID: RootID(mustAbs(t, dir)), Path: mustAbs(t, dir)}
-	assertInventoryDoesNotBlock(t, layer, root, bundleDir)
+	report := layer.inventory(root, "1234", bundleDir)
+	if got := len(report.sources); got != 0 {
+		t.Errorf("sources = %d, want no row for a FIFO", got)
+	}
 }
 
 // fifoFixture builds the two special files the inventory paths must skip.
@@ -94,22 +100,4 @@ func fifoFixture(t *testing.T) (string, string) {
 		}
 	}
 	return dir, bundleDir
-}
-
-// assertInventoryDoesNotBlock fails when the walk opens a FIFO.
-func assertInventoryDoesNotBlock(t *testing.T, layer *Layer, root Root, bundleDir string) {
-	t.Helper()
-	done := make(chan int, 1)
-	go func() {
-		report := layer.inventory(root, "1234", bundleDir)
-		done <- len(report.sources)
-	}()
-	select {
-	case got := <-done:
-		if got != 0 {
-			t.Errorf("sources = %d, want no row for a FIFO", got)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("inventory blocked opening a FIFO")
-	}
 }
