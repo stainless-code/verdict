@@ -979,7 +979,10 @@ func (st *state) displayRun(run string) string {
 // a retry never trips over it, and a cancel during the add drops the
 // half-created tree and its administrative entry before reporting the cancel. A
 // checkout git refuses is that candidate's status and detail; only a cancel, a
-// missing git, or an uncreatable state directory ends the walk.
+// missing git, or an uncreatable state directory ends the walk. The joined name
+// needs no bundle-name guard: run is runIDSlug's output, which admits only the
+// bytes Slugify keeps (`[a-z0-9-]`), and n is an int, so `bt-<run>-<n>` is one
+// path element by construction.
 func (st *state) worktreeAdd(
 	ctx context.Context, run string, n int, head string,
 ) (string, string, string, *core.RefusalError) {
