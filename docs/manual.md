@@ -436,7 +436,9 @@ that temporary tree, `GIT_TERMINAL_PROMPT=0`, `-c core.hooksPath=/dev/null`
 (an empty temporary directory on Windows), `-c protocol.file.allow=never`,
 `clone --depth=1 --no-tags --no-recurse-submodules` (plus `--branch <ref>`
 when `@ref` is given), then a detached checkout of the resolved 40-hex HEAD
-commit; that commit is what the lock records. The https, ssh, and scp-like
+commit; that commit is what the lock records. The clone, rev-parse, and
+checkout share one five-minute budget, and the resulting working tree is
+checked against the pack file-count and byte caps before it is loaded. The https, ssh, and scp-like
 remote forms are accepted with a bare user or no userinfo (`https://user@host/path`,
 `ssh://user@host/path`, `user@host:path`). A userinfo password or token
 (`https://user:token@host/path`) refuses `bad-pack` before the clone and

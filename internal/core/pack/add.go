@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
@@ -30,6 +31,10 @@ const (
 	revParseArgs    = 3
 	revParseIndex   = 1
 )
+
+// packCloneTimeout bounds the clone, rev-parse, and checkout group so a slow
+// remote cannot hold pack add open indefinitely.
+const packCloneTimeout = 5 * time.Minute
 
 // gitRef gates the optional @ref before it reaches a git argv.
 var gitRef = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/+-]*$`)
@@ -327,11 +332,13 @@ func cloneSource(
 	}
 	env := gitEnv(runtimeEnv(req), tmp)
 	clone := filepath.Join(tmp, "repo")
-	if ref := gitClone(ctx, cmdr, env, tmp, url, refName, clone); ref != nil {
+	gctx, cancel := context.WithTimeout(ctx, packCloneTimeout)
+	defer cancel()
+	if ref := gitClone(gctx, cmdr, env, tmp, url, refName, clone); ref != nil {
 		cleanup()
 		return nil, ref
 	}
-	sha, ref := runGitPack(ctx, cmdr, env, clone, tmp, "rev-parse", "HEAD")
+	sha, ref := runGitPack(gctx, cmdr, env, clone, tmp, "rev-parse", "HEAD")
 	if ref != nil {
 		cleanup()
 		return nil, ref
@@ -341,13 +348,17 @@ func cloneSource(
 		return nil, badPack(fmt.Sprintf("git remote %q resolved HEAD to %q, not a 40-hex commit",
 			redactURL(url), sha))
 	}
-	if ref := runGitPackOK(ctx, cmdr, env, clone, tmp, "checkout", "--detach", sha); ref != nil {
+	if ref := runGitPackOK(gctx, cmdr, env, clone, tmp, "checkout", "--detach", sha); ref != nil {
 		cleanup()
 		return nil, ref
 	}
 	if err := os.RemoveAll(filepath.Join(clone, ".git")); err != nil {
 		cleanup()
 		return nil, badPack(fmt.Sprintf("clean the pack clone metadata: %v", err))
+	}
+	if ref := checkCloneBounds(clone); ref != nil {
+		cleanup()
+		return nil, ref
 	}
 	return &packSource{
 		dir: clone, label: sourceGitPrefix + redactURL(url) + refSep + sha, cleanup: cleanup,
@@ -476,6 +487,45 @@ func runGitPackOK(
 ) *core.RefusalError {
 	_, ref := runGitPack(ctx, cmdr, env, dir, tmp, sub, args...)
 	return ref
+}
+
+// checkCloneBounds refuses a clone that already exceeds the pack caps before
+// the loader walks it: the clone is on disk by then, but a hostile tree should
+// not reach the parse path at all.
+func checkCloneBounds(dir string) *core.RefusalError {
+	count := 0
+	var total int64
+	err := filepath.WalkDir(dir, func(_ string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+		count++
+		total += info.Size()
+		if count > MaxFiles {
+			return tooLarge(fmt.Sprintf("the git clone carries more than %d files", MaxFiles))
+		}
+		if total > MaxPackBytes {
+			return tooLarge(fmt.Sprintf("the git clone is over the %d-byte total cap", MaxPackBytes))
+		}
+		return nil
+	})
+	if err == nil {
+		return nil
+	}
+	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
+		return ref
+	}
+	return badPack(fmt.Sprintf("inspect the git clone: %v", err))
 }
 
 // vendorPack copies the loaded pack tree into .verdict/packs/<slug>/, removing

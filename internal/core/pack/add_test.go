@@ -212,13 +212,17 @@ type gitCommander struct {
 }
 
 type gitCall struct {
-	argv []string
-	dir  string
-	env  []string
+	argv     []string
+	dir      string
+	env      []string
+	deadline bool
 }
 
-func (c *gitCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
-	c.calls = append(c.calls, gitCall{argv: slices.Clone(cmd.Argv), dir: cmd.Dir, env: slices.Clone(cmd.Env)})
+func (c *gitCommander) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
+	_, deadline := ctx.Deadline()
+	c.calls = append(c.calls, gitCall{
+		argv: slices.Clone(cmd.Argv), dir: cmd.Dir, env: slices.Clone(cmd.Env), deadline: deadline,
+	})
 	if slices.Contains(cmd.Argv, "clone") {
 		dest := cmd.Argv[len(cmd.Argv)-1]
 		writeFixture(c.t, dest, c.files)
@@ -279,6 +283,11 @@ func TestAddGitPinsHermeticArgvEnvAndRecordsSha(t *testing.T) {
 	if clone.dir != "" || clone.env == nil {
 		t.Fatalf("clone dir=%q env=%v", clone.dir, clone.env)
 	}
+	for i, call := range cmdr.calls {
+		if !call.deadline {
+			t.Errorf("git call %d carries no deadline", i)
+		}
+	}
 	assertGitEnv(t, clone.env, tmp)
 	prefix := []string{"git", "-c", "core.hooksPath=" + hooks, "-c", "protocol.file.allow=never"}
 	wantRevParse := append(slices.Clone(prefix), "rev-parse", "HEAD")
@@ -299,6 +308,56 @@ func TestAddGitPinsHermeticArgvEnvAndRecordsSha(t *testing.T) {
 		t.Fatalf("human = %q, want %q", got, want)
 	}
 	assertFile(t, LockFile, fmt.Sprintf(addLockFmt, source, lockHash, addGitSig))
+}
+
+// TestAddRefusesOversizedClone proves the clone's file count and total bytes
+// are checked against the pack caps before the loader sees the tree.
+func TestAddRefusesOversizedClone(t *testing.T) {
+	repo := t.TempDir()
+	t.Chdir(repo)
+	tests := []struct {
+		name  string
+		files map[string]string
+		want  string
+	}{
+		{
+			name: "file count",
+			files: func() map[string]string {
+				files := map[string]string{"pack.json": lockManifest, "lenses/perf.md": "perf body\n"}
+				for i := range MaxFiles {
+					files[fmt.Sprintf("junk/%03d.txt", i)] = "x"
+				}
+				return files
+			}(),
+			want: "the git clone carries more than 256 files",
+		},
+		{
+			name: "total bytes",
+			files: func() map[string]string {
+				files := map[string]string{"pack.json": lockManifest, "lenses/perf.md": "perf body\n"}
+				for i := range 17 {
+					files[fmt.Sprintf("junk/%02d.bin", i)] = strings.Repeat("x", MaxFileBytes)
+				}
+				return files
+			}(),
+			want: "the git clone is over the 1048576-byte total cap",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cmdr := &gitCommander{t: t, files: tc.files}
+			_, ref := RunAdd(context.Background(), &AddRequest{
+				Runtime: &core.Runtime{Commander: cmdr},
+				Source:  "https://example.invalid/acme/packs.git",
+			})
+			if ref == nil || ref.Code != CodePackTooLarge {
+				t.Fatalf("RunAdd = %v, want pack-too-large", ref)
+			}
+			if !strings.Contains(ref.Message, tc.want) {
+				t.Fatalf("message = %q, want it to contain %q", ref.Message, tc.want)
+			}
+		})
+	}
 }
 
 // assertGitEnv proves the clone environment is exactly the scrubbed set.

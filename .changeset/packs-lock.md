@@ -13,7 +13,9 @@ per repo pack, sorted by name: `name`, `source` (`dir:<path>` or
 prints the old and new hash; a source inside `.verdict/packs/` refuses
 `bad-pack`. Git sources fetch hermetically (no system config, scrubbed
 `HOME`/`XDG_*`, no prompts, no hooks, file protocol disabled, shallow clone
-without tags or submodules) and record the resolved HEAD commit. A URL
+without tags or submodules) and record the resolved HEAD commit; the git calls
+share a five-minute budget and the clone is checked against the pack caps
+before it loads. A URL
 userinfo password or token refuses `bad-pack` before the clone and never
 reaches a printed line, a refusal message, or `verdict.lock`; the bare
 `user@host` forms keep working, and a hand-written lock row carrying one
