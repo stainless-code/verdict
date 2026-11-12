@@ -43,11 +43,11 @@ type tsToken struct {
 // tsReserved are the words that can never name a callee or a recorded
 // declaration.
 var tsReserved = map[string]bool{
-	"break": true, "case": true, "catch": true, wordClass: true, wordConst: true,
+	"break": true, "case": true, wordCatch: true, wordClass: true, wordConst: true,
 	"continue": true, "debugger": true, "default": true, wordDelete: true,
 	"do": true, wordElse: true, wordEnum: true, wordExport: true, "extends": true,
 	"false": true, "finally": true, wordFor: true, wordFunction: true, "if": true,
-	wordImport: true, "in": true, "instanceof": true, "let": true, wordNew: true,
+	wordImport: true, "in": true, "instanceof": true, wordLet: true, wordNew: true,
 	"null": true, wordReturn: true, "super": true, "switch": true, "this": true,
 	"throw": true, "try": true, wordTypeof: true, wordVar: true,
 	"void": true, wordWhile: true, wordWith: true,
@@ -63,7 +63,7 @@ var tsRegexAfter = map[string]bool{
 // tsControlParens are the keywords whose closing paren can be followed by a
 // regex literal rather than by a division.
 var tsControlParens = map[string]bool{
-	"if": true, wordFor: true, wordWhile: true, "switch": true, "catch": true, wordWith: true,
+	"if": true, wordFor: true, wordWhile: true, "switch": true, wordCatch: true, wordWith: true,
 }
 
 // tsContextual are the words that cannot end a class header, so a `{` after
@@ -976,7 +976,7 @@ func (x *tsExtractor) imports() {
 			continue
 		}
 		switch t.text {
-		case "require":
+		case wordRequire:
 			x.requireEdge(i)
 		case wordImport:
 			x.esEdge(i + 1)
@@ -1022,7 +1022,7 @@ func (x *tsExtractor) reExportEdge(i int) {
 // form, whose edge the require call itself records.
 func (x *tsExtractor) requireAssign(i int) bool {
 	return i+2 < len(x.tokens) && x.tokens[i].kind == tsIdent && x.tokens[i+1].text == punctAssign &&
-		x.tokens[i+2].text == "require"
+		x.tokens[i+2].text == wordRequire
 }
 
 // requireEdge records one CommonJS `require(…)` edge and its binding.
@@ -1168,7 +1168,7 @@ func tsDecl(tokens []tsToken, i int) (int, string, bool) {
 		return tsNamed(tokens, i, wordFunc)
 	case wordConst:
 		return tsNamed(tokens, i, wordConst)
-	case "let", wordVar:
+	case wordLet, wordVar:
 		return tsNamed(tokens, i, wordVar)
 	case wordClass, "enum":
 		return tsNamed(tokens, i, wordType)
@@ -1299,7 +1299,83 @@ func (x *tsExtractor) callQualifier(i int) string {
 	for start >= 2 && (x.text(start-1) == punctDot || x.text(start-1) == punctOptional) && x.tokens[start-2].kind == tsIdent {
 		start -= 2
 	}
-	return x.text(start)
+	name := x.text(start)
+	if x.shadowed(name, start) {
+		return ""
+	}
+	return name
+}
+
+func (x *tsExtractor) shadowed(name string, call int) bool {
+	if !x.buf.importsName(name) {
+		return false
+	}
+	for i := range call {
+		if x.text(i) != name || x.tokens[i].kind != tsIdent || x.text(i-1) == punctDot {
+			continue
+		}
+		if x.bindingActive(i, call) {
+			return true
+		}
+	}
+	return false
+}
+
+func (x *tsExtractor) bindingActive(i, call int) bool {
+	assignment := i + 1
+	callee := assignment + 1
+	paren := callee + 1
+	if x.text(assignment) == punctAssign && x.text(callee) == wordRequire &&
+		x.text(paren) == punctParen && x.specifier(paren+1) != "" {
+		return false
+	}
+	binding := x.text(i+1) == punctAssign || x.text(i-1) == wordLet || x.text(i-1) == wordConst || x.text(i-1) == wordVar
+	scope := x.parameterBody(i)
+	if !binding && scope < 0 {
+		return false
+	}
+	if scope < 0 {
+		scope = x.bindingScope(i)
+	}
+	return scope < 0 || x.match[scope] > call
+}
+
+func (x *tsExtractor) bindingScope(i int) int {
+	for j := i - 1; j >= 0; j-- {
+		if x.text(j) == punctBrace && x.match[j] > i {
+			return j
+		}
+	}
+	return -1
+}
+
+func (x *tsExtractor) parameterBody(i int) int {
+	if x.text(i-1) != punctParen && x.text(i-1) != "," {
+		return -1
+	}
+	for j := i - 1; j >= 0; j-- {
+		if !x.parameterOpen(j, i) {
+			continue
+		}
+		return x.bodyAfter(x.match[j])
+	}
+	return -1
+}
+
+func (x *tsExtractor) parameterOpen(open, parameter int) bool {
+	return x.text(open) == punctParen && x.match[open] >= parameter &&
+		(!tsControlParens[x.text(open-1)] || x.text(open-1) == wordCatch)
+}
+
+func (x *tsExtractor) bodyAfter(end int) int {
+	body := end + 1
+	if x.text(body) == punctArrow {
+		body++
+	}
+	if x.text(body) == punctBrace {
+		return body
+	}
+	return -1
 }
 
 // callParen reports whether the token after i opens a call's arguments, with

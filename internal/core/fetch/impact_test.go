@@ -105,6 +105,28 @@ func TestImpactSectionCapsWithACount(t *testing.T) {
 	}
 }
 
+// TestImpactCapPreservesEveryList checks that no list is starved.
+func TestImpactCapPreservesEveryList(t *testing.T) {
+	impact := impactFixture()
+	widenBlast(impact.Data.Blast)
+	for range 500 {
+		impact.Data.Blast.Callers = append(impact.Data.Blast.Callers, indexcore.CallerRow{Path: strings.Repeat("caller", 20)})
+		impact.Data.Blast.Tests = append(impact.Data.Blast.Tests, indexcore.TestRow{Path: strings.Repeat("test", 30)})
+	}
+	section := impactSection(impact)
+	for _, want := range []string{"symbols:\n- ", "callers:\n- ", "tests:\n- ", "- a/save_test.go (same-package, depth 0)\n"} {
+		if !strings.Contains(section, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	if strings.Count(section, "omitted: ") != 3 {
+		t.Errorf("want omitted counts for all three lists")
+	}
+	if len(section) > 8192 {
+		t.Errorf("section exceeds 8192 bytes: %d", len(section))
+	}
+}
+
 // TestImpactSectionEscapesHostileNames proves a path or symbol can neither
 // forge nor close a fence nor start a row of its own: the fence marker, the
 // nonce shape, and newlines all arrive as payload on one line.

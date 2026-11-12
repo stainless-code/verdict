@@ -234,23 +234,52 @@ func impactRowLines(b *indexcore.Blast) []string {
 	return out
 }
 
-// fitImpactRows keeps the row lines that fit the cap after head, reserving the
-// room the truncation line needs, and reports how many lines it dropped. The
-// truncation line is reserved before any row is kept, so the section can never
-// exceed the cap by the line that announces the cap.
 func fitImpactRows(rows []string, head int) ([]string, int) {
-	reserve := len(fmt.Sprintf("truncated: %d line(s) omitted to fit the %d KiB impact cap\n",
-		len(rows), impactCapKiB))
+	groups := groupImpactRows(rows)
+	reserve := len(fmt.Sprintf("truncated: %d line(s) omitted to fit the %d KiB impact cap\n", len(rows), impactCapKiB))
 	budget := impactSectionCap - head - reserve
-	var kept int
-	for _, row := range rows {
-		if len(row) > budget {
-			break
-		}
-		budget -= len(row)
-		kept++
+	kept := make([]int, len(groups))
+	for _, group := range groups {
+		budget -= len(group[0]) + len(fmt.Sprintf("omitted: %d row(s)\n", len(group)-1))
 	}
-	return rows[:kept], len(rows) - kept
+	allocateImpactRows(groups, kept, budget)
+	var out []string
+	hidden := 0
+	for i, group := range groups {
+		out = append(out, group[:kept[i]+1]...)
+		omitted := len(group) - 1 - kept[i]
+		hidden += omitted
+		if omitted > 0 {
+			out = append(out, fmt.Sprintf("omitted: %d row(s)\n", omitted))
+		}
+	}
+	return out, hidden
+}
+
+func groupImpactRows(rows []string) [][]string {
+	var groups [][]string
+	for _, row := range rows {
+		if row == impactHeadSymbol || row == impactHeadCaller || row == impactHeadTest {
+			groups = append(groups, []string{row})
+		} else {
+			groups[len(groups)-1] = append(groups[len(groups)-1], row)
+		}
+	}
+	return groups
+}
+
+func allocateImpactRows(groups [][]string, kept []int, budget int) {
+	for progress := true; progress; {
+		progress = false
+		for i, group := range groups {
+			next := kept[i] + 1
+			if next < len(group) && len(group[next]) <= budget {
+				budget -= len(group[next])
+				kept[i]++
+				progress = true
+			}
+		}
+	}
 }
 
 // impactCount renders one list's measured count with its hidden rows.
