@@ -21,9 +21,6 @@ import (
 type Request = readcommon.Request
 
 const (
-	tierCritical    = "critical"
-	tierImportant   = "important"
-	tierInfo        = "informational"
 	liveAuto        = "auto"
 	liveStrict      = "strict"
 	statusPass      = "pass"
@@ -302,7 +299,7 @@ func parseValueFlag(r *cli.Runner, flags *reportcore.Flags, gated *bool, args []
 }
 
 func applyTier(r *cli.Runner, flags *reportcore.Flags, gated *bool, v string, consumed int) (int, int, bool) {
-	if !validTier(v) {
+	if !core.ValidTier(v) {
 		return 0, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
 			"unknown --max-severity tier '%s' for gate (want critical|important|informational)", v)}), true
 	}
@@ -330,15 +327,6 @@ func applyCoverage(r *cli.Runner, flags *reportcore.Flags, v string, consumed in
 	}
 	flags.Coverage = v
 	return consumed, 0, false
-}
-
-func validTier(s string) bool {
-	switch s {
-	case tierCritical, tierImportant, tierInfo:
-		return true
-	default:
-		return false
-	}
 }
 
 func validLive(s string) bool {

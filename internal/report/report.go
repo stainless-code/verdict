@@ -28,7 +28,6 @@ const (
 	statusOpen     = "open"
 	kindInline     = "inline"
 	kindSection    = "section"
-	tierCritical   = "critical"
 	liveAuto       = "auto"
 	reportFilePerm = 0o600
 )
@@ -283,7 +282,7 @@ func parseCategoryFlag(r *cli.Runner, flags *reportcore.Flags, next string) (int
 // parseCheckFlag consumes --check, validating the gate tier.
 func parseCheckFlag(r *cli.Runner, flags *reportcore.Flags, next string) (int, int, bool) {
 	flags.Check = next
-	if !validTier(flags.Check) {
+	if !core.ValidTier(flags.Check) {
 		return 0, r.ReportUsage(usageErr(
 			"unknown --check tier '%s' for report (want critical|important|informational)",
 			flags.Check)), true
@@ -330,16 +329,6 @@ func validStatus(s string) bool {
 func validKind(s string) bool {
 	switch s {
 	case statusAll, kindInline, kindSection:
-		return true
-	default:
-		return false
-	}
-}
-
-// validTier reports whether s is a known gate tier.
-func validTier(s string) bool {
-	switch s {
-	case tierCritical, "important", "informational":
 		return true
 	default:
 		return false

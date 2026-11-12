@@ -818,6 +818,30 @@ func TestRunReportGateData(t *testing.T) {
 	})
 }
 
+// TestRunReportBadTierRefusal proves the service refuses an unpublished gate
+// tier in core, so the CLI, MCP, and Go SDK share one rule. Without it an
+// unknown tier read as "critical only" in the gate and as the untagged rank
+// everywhere else, so the same run passed and failed depending on the entry
+// point.
+func TestRunReportBadTierRefusal(t *testing.T) {
+	store := "[" + entryJSON("1111111111111111111111111111111111111111", "inline", "open", `"informational"`, "true") + "]"
+	req := fixture(t, store)
+	_, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+		ReadRequest: req,
+		Flags:       core.ReportFlags{Check: "bogus"},
+	})
+	if ref == nil {
+		t.Fatal("Run with Check bogus refused nothing, want bad-flags")
+	}
+	if ref.Code != "bad-flags" {
+		t.Errorf("refusal code = %q, want bad-flags", ref.Code)
+	}
+	want := "report: unknown gate tier 'bogus' (want critical|important|informational)"
+	if ref.Message != want {
+		t.Errorf("refusal message = %q, want %q", ref.Message, want)
+	}
+}
+
 // wantUntaggedCounts builds the expected whole-store counts for a fixture
 // whose entries carry no category: every published key zero, untagged holding
 // the whole store.
