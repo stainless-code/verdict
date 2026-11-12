@@ -345,6 +345,109 @@ func TestCacheInvalidatesOnOverrideEdit(t *testing.T) {
 	}
 }
 
+// TestCacheInvalidatesOnSameSizeOverrideRewrite proves an override fragment is
+// fingerprinted by its bytes: a rewrite that restores the old size and mtime
+// still re-composes instead of serving the entry built before it.
+func TestCacheInvalidatesOnSameSizeOverrideRewrite(t *testing.T) {
+	t.Parallel()
+	dir, _ := fixture(t)
+	path := filepath.Join(dir, ".verdict", "overrides", "footer-order.md")
+	writeFiles(t, dir, map[string]string{".verdict/overrides/footer-order.md": "tier\nlink\n"})
+	layer := newLayer(dir)
+	root := RootID(mustAbs(t, dir))
+	if _, err := layer.Detail(context.Background(), root, "1234"); err != nil {
+		t.Fatalf("first Detail: %v", err)
+	}
+	rewriteKeepingStat(t, path, "nope\nlink\n")
+	_, err := layer.Detail(context.Background(), root, "1234")
+	var ref *core.RefusalError
+	if !errors.As(err, &ref) || ref.Code != "bad-override" {
+		t.Fatalf("Detail after the same-size rewrite = %v, want bad-override", err)
+	}
+}
+
+// rewriteKeepingStat replaces one file's bytes in place and restores the
+// original mtime, so only the content differs from the file it replaces.
+func rewriteKeepingStat(t *testing.T, path, content string) {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Size() != info.Size() {
+		t.Fatalf("rewrite is %d bytes, want the original %d", after.Size(), info.Size())
+	}
+}
+
+// TestCacheBypassesUnreadableOverride proves a fragment the stamp cannot read
+// never serves the entry built while it was readable: the reader's own refusal
+// shows instead.
+func TestCacheBypassesUnreadableOverride(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("mode bits do not deny reads on Windows")
+	}
+	dir, _ := fixture(t)
+	path := filepath.Join(dir, ".verdict", "overrides", "preamble.md")
+	writeFiles(t, dir, map[string]string{".verdict/overrides/preamble.md": "A preamble.\n"})
+	layer := newLayer(dir)
+	root := RootID(mustAbs(t, dir))
+	if _, err := layer.Detail(context.Background(), root, "1234"); err != nil {
+		t.Fatalf("first Detail: %v", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0); err != nil {
+		t.Fatal(err)
+	}
+	restoreMode(t, path, info.Mode())
+	_, err = layer.Detail(context.Background(), root, "1234")
+	var ref *core.RefusalError
+	if !errors.As(err, &ref) || ref.Code != "bad-override" {
+		t.Fatalf("Detail over the unreadable override = %v, want bad-override", err)
+	}
+}
+
+// restoreMode puts one file's mode back when the test ends.
+func restoreMode(t *testing.T, path string, mode os.FileMode) {
+	t.Helper()
+	t.Cleanup(func() {
+		if err := os.Chmod(path, mode); err != nil {
+			t.Errorf("restore %s mode: %v", path, err)
+		}
+	})
+}
+
+// TestCacheSkipsOverCapOverride proves an over-cap fragment yields no stamp the
+// cache could trust: the request composes and stores nothing.
+func TestCacheSkipsOverCapOverride(t *testing.T) {
+	t.Parallel()
+	dir, _ := fixture(t)
+	writeFiles(t, dir, map[string]string{
+		".verdict/overrides/preamble.md": strings.Repeat("a", int(overrideStampCap)+1),
+	})
+	layer := newLayer(dir)
+	root := RootID(mustAbs(t, dir))
+	if _, err := layer.Detail(context.Background(), root, "1234"); err != nil {
+		t.Fatalf("first Detail: %v", err)
+	}
+	if got := layer.cacheEntries(); got != 0 {
+		t.Errorf("cache entries over an over-cap override = %d, want 0", got)
+	}
+}
+
 // TestCacheStampCoversBundleInputs proves the stamp moves for an in-place edit
 // of each artifact class the composition reads.
 func TestCacheStampCoversBundleInputs(t *testing.T) {
@@ -353,7 +456,7 @@ func TestCacheStampCoversBundleInputs(t *testing.T) {
 	root := Root{ID: RootID(mustAbs(t, dir)), Path: mustAbs(t, dir)}
 	bundleDir := filepath.Join(dir, ".verdict", "state", "1234")
 	writeFiles(t, dir, map[string]string{".verdict/state/1234/chunks/cost.json": "aa"})
-	before := bundleStamp(root, bundleDir)
+	before, _ := bundleStamp(root, bundleDir)
 	for rel, content := range map[string]string{
 		".verdict/state/1234/patch.json":       "x",
 		".verdict/state/1234/panel":            "x",
@@ -361,7 +464,7 @@ func TestCacheStampCoversBundleInputs(t *testing.T) {
 		".verdict/overrides/preamble.md":       "x",
 	} {
 		writeFiles(t, dir, map[string]string{rel: content})
-		after := bundleStamp(root, bundleDir)
+		after, _ := bundleStamp(root, bundleDir)
 		if after == before {
 			t.Errorf("%s did not move the cache stamp", rel)
 		}
@@ -680,10 +783,11 @@ func TestCacheDoesNotPinRefusals(t *testing.T) {
 // detailStamp reads the cache stamp for the fixture bundle.
 func detailStamp(t *testing.T, dir, root string) stamp {
 	t.Helper()
-	return bundleStamp(
+	s, _ := bundleStamp(
 		Root{ID: root, Path: mustAbs(t, dir)},
 		filepath.Join(dir, ".verdict", "state", "1234"),
 	)
+	return s
 }
 
 // assertDetailRefusal fails unless a detail refuses with code.

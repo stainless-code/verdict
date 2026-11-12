@@ -3,12 +3,16 @@ package query
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 const (
@@ -16,6 +20,13 @@ const (
 	bundleKeySep = "\x00"
 	// decimalBase is the base every integer stamp component formats in.
 	decimalBase = 10
+	// overrideStampCap bounds one override fragment's content digest: a
+	// fragment is a paragraph, not an artifact.
+	overrideStampCap int64 = 64 << 10
+	// unreadableMarker stamps an input whose bytes the stamp could not read.
+	unreadableMarker = "!unreadable\n"
+	// missingMarker stamps an absent input, which every reader treats as none.
+	missingMarker = "!missing\n"
 )
 
 // stamp is the SHA-256 digest of every composition input: each bundle-directory
@@ -23,8 +34,10 @@ const (
 // digest keeps a cache row constant-size no matter how many files a bundle
 // holds. An atomic write moves a directory entry; an in-place rewrite moves the
 // target file's own size and mtime. A symlink is fingerprinted through to its
-// target, the same file the readers open. The stamp is a stat fingerprint, not
-// a content hash: a same-size, same-mtime in-place rewrite does not move it.
+// target, the same file the readers open. An override fragment is fingerprinted
+// by the bytes the capped reader returns, so a rewrite moves the stamp whatever
+// it does to size and mtime. The stamp is a stat fingerprint for the bundle: a
+// same-size, same-mtime in-place rewrite of a bundle artifact does not move it.
 type stamp [sha256.Size]byte
 
 // cacheKey names one composed view: the bundle plus the flags that change
@@ -58,15 +71,20 @@ type entry struct {
 	used  uint64
 }
 
-// bundleStamp reads one bundle's cache fingerprint and the root policy inputs
-// the composed report validates.
-func bundleStamp(root Root, dir string) stamp {
+// bundleStamp reads one bundle's cache fingerprint, the root policy inputs the
+// composed report validates, and whether the cache may use it. A fragment the
+// stamp could not read gives no fingerprint worth trusting, so the request
+// bypasses the cache and the reader's own refusal shows.
+func bundleStamp(root Root, dir string) (stamp, bool) {
 	var out strings.Builder
 	appendDirStamp(&out, dir, "")
+	cacheable := true
 	for _, fragment := range overrideFragments {
-		appendFileStamp(&out, filepath.Join(root.Path, filepath.FromSlash(fragment)))
+		if !appendOverrideStamp(&out, filepath.Join(root.Path, filepath.FromSlash(fragment))) {
+			cacheable = false
+		}
 	}
-	return sha256.Sum256([]byte(out.String()))
+	return sha256.Sum256([]byte(out.String())), cacheable
 }
 
 // appendDirStamp fingerprints one directory's entries and recurses into the
@@ -74,7 +92,7 @@ func bundleStamp(root Root, dir string) stamp {
 func appendDirStamp(out *strings.Builder, dir, prefix string) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		out.WriteString(prefix + "!unreadable\n")
+		out.WriteString(prefix + unreadableMarker)
 		return
 	}
 	for _, entry := range entries {
@@ -89,7 +107,7 @@ func appendEntryStamp(out *strings.Builder, dir, prefix string, entry os.DirEntr
 	path := filepath.Join(dir, entry.Name())
 	info, err := os.Stat(path)
 	if err != nil {
-		out.WriteString(name + "!unreadable\n")
+		out.WriteString(name + unreadableMarker)
 		return
 	}
 	appendStatLine(out, name, info)
@@ -98,15 +116,33 @@ func appendEntryStamp(out *strings.Builder, dir, prefix string, entry os.DirEntr
 	}
 }
 
-// appendFileStamp fingerprints one root-level reader input, following a
-// symlink to the bytes the reader opens.
-func appendFileStamp(out *strings.Builder, path string) {
-	info, err := os.Stat(path)
-	if err != nil {
-		out.WriteString(path + "!missing\n")
-		return
+// appendOverrideStamp fingerprints one override fragment by the bytes the
+// capped, non-blocking reader returns, so a content edit moves the stamp
+// whatever it leaves size and mtime at. An absent fragment is a stable input.
+// It reports false when the reader refused the fragment: the single marker
+// every refusal writes cannot tell one unreadable state from another, so
+// nothing built from it is cacheable.
+func appendOverrideStamp(out *strings.Builder, path string) bool {
+	_, err := os.Stat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		out.WriteString(path + missingMarker)
+		return true
 	}
-	appendStatLine(out, path, info)
+	if err != nil {
+		out.WriteString(path + unreadableMarker)
+		return false
+	}
+	raw, err := readcommon.ReadRegularCapped(path, overrideStampCap)
+	if err != nil {
+		out.WriteString(path + unreadableMarker)
+		return false
+	}
+	sum := sha256.Sum256(raw)
+	out.WriteString(path)
+	out.WriteByte(' ')
+	out.WriteString(hex.EncodeToString(sum[:]))
+	out.WriteByte('\n')
+	return true
 }
 
 // appendStatLine writes one name + size + mtime fingerprint row.
@@ -120,15 +156,18 @@ func appendStatLine(out *strings.Builder, name string, info os.FileInfo) {
 }
 
 // cached composes one bundle's report, reusing the in-memory entry while its
-// stamp holds. The cache is bounded by the bundle cap and never written
-// anywhere: a stale entry is a bug, not data loss.
+// stamp holds. A request whose stamp could not be built reads and writes no
+// entry, so the next request still sees the reader's refusal. The cache is
+// bounded by the bundle cap and never written anywhere: a stale entry is a
+// bug, not data loss.
 func (l *Layer) cached(
 	ctx context.Context, root Root, bundle, dir string, flags *core.ReportFlags,
 ) (*core.ReportResponse, *core.RefusalError, inventoryReport) {
 	key := keyFor(root, bundle, flags)
-	current := bundleStamp(root, dir)
+	current, cacheable := bundleStamp(root, dir)
 	l.mu.Lock()
-	if hit, ok := l.cache[key]; ok && hit.stamp == current {
+	hit, ok := l.cache[key]
+	if cacheable && ok && hit.stamp == current {
 		l.touchLocked(key, &hit)
 		l.mu.Unlock()
 		return hit.resp, hit.ref, hit.inv
@@ -137,7 +176,7 @@ func (l *Layer) cached(
 
 	resp, ref := l.compose(ctx, root, bundle, dir, flags)
 	inv := l.inventory(root, bundle, dir)
-	if ref != nil {
+	if ref != nil || !cacheable {
 		return resp, ref, inv
 	}
 
