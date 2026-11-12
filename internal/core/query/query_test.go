@@ -842,6 +842,49 @@ func assertDetailRefusal(t *testing.T, layer *Layer, root, code string) {
 	}
 }
 
+// TestCanceledListingStopsWalking proves a canceled request composes no row and
+// reports partial, so its totals are null rather than a silently smaller sum.
+func TestCanceledListingStopsWalking(t *testing.T) {
+	t.Parallel()
+	dir, _ := fixture(t)
+	layer := newLayer(dir)
+	view, err := layer.Bundles(canceledContext(), "")
+	if err != nil {
+		t.Fatalf("Bundles on a canceled context = %v, want a partial view", err)
+	}
+	data := wireMap(t, view.Data)
+	if rows := asList(t, data["rows"]); len(rows) != 0 {
+		t.Errorf("rows = %d, want none after cancellation", len(rows))
+	}
+	if data["counts"] != nil || data["partial"] != true {
+		t.Errorf("counts = %v, partial = %v; want null counts and partial true", data["counts"], data["partial"])
+	}
+}
+
+// TestCanceledComposeSkipsInventory proves a canceled request hashes no
+// inventory: the report refuses and the bundle's files are never read.
+func TestCanceledComposeSkipsInventory(t *testing.T) {
+	t.Parallel()
+	dir, _ := fixture(t)
+	layer := newLayer(dir)
+	flags := layer.detailFlags()
+	_, ref, inv := layer.cached(canceledContext(), Root{ID: RootID(mustAbs(t, dir)), Path: mustAbs(t, dir)},
+		"1234", filepath.Join(dir, ".verdict", "state", "1234"), &flags)
+	if ref == nil || ref.Code != "canceled" {
+		t.Fatalf("canceled compose = %v, want canceled", ref)
+	}
+	if len(inv.sources) != 0 || len(inv.notes) != 0 {
+		t.Errorf("canceled inventory = %d sources, %d notes; want none", len(inv.sources), len(inv.notes))
+	}
+}
+
+// canceledContext is a context canceled before any request work starts.
+func canceledContext() context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	return ctx
+}
+
 // TestCacheDoesNotPinCancellation proves a request-scoped cancellation is not
 // stored: the next request with a live context composes normally.
 func TestCacheDoesNotPinCancellation(t *testing.T) {

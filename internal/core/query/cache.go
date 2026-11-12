@@ -169,9 +169,9 @@ func appendMode(out *strings.Builder, info os.FileInfo) {
 
 // cached composes one bundle's report, reusing the in-memory entry while its
 // stamp holds. A request whose stamp could not be built reads and writes no
-// entry, so the next request still sees the reader's refusal. The cache is
-// bounded by the bundle cap and never written anywhere: a stale entry is a
-// bug, not data loss.
+// entry, so the next request still sees the reader's refusal; a canceled
+// request hashes no inventory. The cache is bounded by the bundle cap and
+// never written anywhere: a stale entry is a bug, not data loss.
 func (l *Layer) cached(
 	ctx context.Context, root Root, bundle, dir string, flags *core.ReportFlags,
 ) (*core.ReportResponse, *core.RefusalError, inventoryReport) {
@@ -187,7 +187,10 @@ func (l *Layer) cached(
 	l.mu.Unlock()
 
 	resp, ref := l.compose(ctx, root, bundle, dir, flags)
-	inv := l.inventory(root, bundle, dir)
+	inv := inventoryReport{}
+	if ctx.Err() == nil {
+		inv = l.inventory(root, bundle, dir)
+	}
 	if ref != nil || !cacheable {
 		return resp, ref, inv
 	}

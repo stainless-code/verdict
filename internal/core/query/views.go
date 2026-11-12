@@ -161,7 +161,9 @@ func (l *Layer) Bundles(ctx context.Context, pattern string) (*View, error) {
 	return view, nil
 }
 
-// collectRows folds every root's listing into the inbox view.
+// collectRows folds every root's listing into the inbox view. A canceled
+// request stops at the next root boundary and reports partial, so its totals
+// are null rather than a silently smaller sum.
 func (l *Layer) collectRows(
 	ctx context.Context, pattern string, view *View,
 ) ([]any, []ErrRow, totals, bool) {
@@ -170,23 +172,33 @@ func (l *Layer) collectRows(
 	var sum totals
 	partial := false
 	for _, root := range l.roots {
-		rootRows, rootErrs, rootSum, sources, inv, cut, listErrs := l.collectRoot(ctx, root, pattern)
+		if ctx.Err() != nil {
+			break
+		}
+		rootRows, rootErrs, rootSum, rootPartial := l.foldRoot(ctx, root, pattern, view)
 		rows = append(rows, rootRows...)
-		errs = append(errs, listErrs...)
 		errs = append(errs, rootErrs...)
 		sum.addTotals(rootSum)
-		view.Sources = mergeSources(view.Sources, sources)
-		partial = partial || cut || inv.cut || len(rootErrs) > 0 || len(listErrs) > 0
-		if cut {
-			view.Warnings = append(view.Warnings,
-				fmt.Sprintf("serve: bundle cap %d reached under %s; listing truncated", l.maxBundles, root.Path))
-		}
-		if inv.cut {
-			view.Warnings = append(view.Warnings, inventoryWarning(root.Path))
-		}
-		view.Warnings = append(view.Warnings, inv.notes...)
+		partial = partial || rootPartial
 	}
-	return rows, errs, sum, partial
+	return rows, errs, sum, partial || ctx.Err() != nil
+}
+
+// foldRoot folds one root's listing into the inbox view and reports whether
+// that root left the view partial.
+func (l *Layer) foldRoot(ctx context.Context, root Root, pattern string, view *View) ([]any, []ErrRow, totals, bool) {
+	rows, rootErrs, sum, sources, inv, cut, listErrs := l.collectRoot(ctx, root, pattern)
+	errs := append(append([]ErrRow{}, listErrs...), rootErrs...)
+	view.Sources = mergeSources(view.Sources, sources)
+	if cut {
+		view.Warnings = append(view.Warnings,
+			fmt.Sprintf("serve: bundle cap %d reached under %s; listing truncated", l.maxBundles, root.Path))
+	}
+	if inv.cut {
+		view.Warnings = append(view.Warnings, inventoryWarning(root.Path))
+	}
+	view.Warnings = append(view.Warnings, inv.notes...)
+	return rows, errs, sum, cut || inv.cut || len(errs) > 0
 }
 
 // collectRoot lists and composes one root's bundles.
@@ -198,26 +210,44 @@ func (l *Layer) collectRoot(
 	return rows, errs, sum, sources, inv, truncated, listErrs
 }
 
-// composeRows composes the matching bundles of one root.
+// composeRows composes the matching bundles of one root, stopping when the
+// request is canceled: nothing reads a response the client stopped waiting for.
 func (l *Layer) composeRows(
 	ctx context.Context, root Root, names []string, pattern string,
 ) (rows []any, errs []ErrRow, sum totals, sources []Source, inv inventoryReport) {
+	var folded listing
 	for _, bundle := range names {
-		item, ok := l.collectBundle(ctx, root, bundle, pattern)
-		if !ok {
-			continue
+		if ctx.Err() != nil {
+			break
 		}
-		rows = append(rows, item.row)
-		sources = mergeSources(sources, item.inv.sources)
-		inv.cut = inv.cut || item.inv.cut
-		inv.notes = append(inv.notes, item.inv.notes...)
-		if len(item.errs) > 0 {
-			errs = append(errs, item.errs...)
-			continue
+		if item, ok := l.collectBundle(ctx, root, bundle, pattern); ok {
+			folded.add(&item)
 		}
-		sum.add(item.resp)
 	}
-	return rows, errs, sum, sources, inv
+	return folded.rows, folded.errs, folded.sum, folded.sources, folded.inv
+}
+
+// listing is one root's folded rows and what they contributed to the view.
+type listing struct {
+	rows    []any
+	errs    []ErrRow
+	sources []Source
+	inv     inventoryReport
+	sum     totals
+}
+
+// add records one composed row: a refused row keeps its errors and stays out
+// of the totals.
+func (l *listing) add(item *bundleItem) {
+	l.rows = append(l.rows, item.row)
+	l.sources = mergeSources(l.sources, item.inv.sources)
+	l.inv.cut = l.inv.cut || item.inv.cut
+	l.inv.notes = append(l.inv.notes, item.inv.notes...)
+	if len(item.errs) > 0 {
+		l.errs = append(l.errs, item.errs...)
+		return
+	}
+	l.sum.add(item.resp)
 }
 
 // bundleItem is one composed inbox row and what it folded into the view.
