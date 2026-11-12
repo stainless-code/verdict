@@ -27,6 +27,11 @@ func (l language) family() language {
 	return l
 }
 
+// sameFamily reports whether two files answer to one scanner's grammar, and so
+// can name each other's declarations. Go, Python, and the JavaScript family are
+// three separate worlds.
+func (l language) sameFamily(other language) bool { return l.family() == other.family() }
+
 // The words the index publishes as declaration kinds and compares as language
 // keywords, and the punctuators the scanners switch on. A kind and its keyword
 // spell the same word, so one constant serves both.

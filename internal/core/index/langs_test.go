@@ -185,3 +185,49 @@ func TestTestPathNamesEveryLanguageRule(t *testing.T) {
 		}
 	}
 }
+
+// writeMixedLanguageFixture writes one Go and one Python package in a single
+// directory, each declaring Target and each holding its own test and its own
+// call site.
+func writeMixedLanguageFixture(f *fixture) {
+	f.write("go.mod", "module example.com/m\n\ngo 1.27\n")
+	f.write("pkg/main.go", "package pkg\n\nfunc Target() {}\n")
+	f.write("pkg/main_test.go", "package pkg\n\nimport \"testing\"\n\nfunc TestTarget(t *testing.T) {\n\tTarget()\n}\n")
+	f.write("pkg/mod.py", "def Target():\n    return 1\n")
+	f.write("pkg/test_mod.py", "from .mod import Target\n\nTarget()\n")
+}
+
+// TestCandidatesStayInsideOneLanguage proves a mixed directory does not cross
+// languages: the Python test is not a candidate for the Go file beside it, nor
+// the Go test for the Python file.
+func TestCandidatesStayInsideOneLanguage(t *testing.T) {
+	f := newFixture(t)
+	writeMixedLanguageFixture(f)
+	f.commit("one")
+	f.build()
+	assertTestRows(t, f.queryPath(QueryTestsFor, "pkg/main.go").Data.TestRows, []TestRow{
+		{Path: "pkg/main_test.go", Via: viaSamePackage},
+	})
+	assertTestRows(t, f.queryPath(QueryTestsFor, "pkg/mod.py").Data.TestRows, []TestRow{
+		{Path: "pkg/test_mod.py", Via: viaSamePackage},
+	})
+}
+
+// TestCallersStayInsideOneLanguage proves a call in one language is not a
+// caller of another language's declaration that happens to share a directory.
+func TestCallersStayInsideOneLanguage(t *testing.T) {
+	f := newFixture(t)
+	f.write("go.mod", "module example.com/m\n\ngo 1.27\n")
+	f.write("pkg/main.go", "package pkg\n\nfunc Target() {}\n")
+	f.write("pkg/job.py", "def run():\n    Target()\n")
+	f.write("pkg2/mod.py", "def Target():\n    return 1\n")
+	f.commit("one")
+	f.build()
+	req := f.request(QueryCallers, nil)
+	req.Symbol = "pkg.Target"
+	resp, ref := Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("index callers refused: %v", ref)
+	}
+	assertRows(t, resp.Data.Rows, nil)
+}

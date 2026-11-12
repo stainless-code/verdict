@@ -132,6 +132,7 @@ func importPathOf(module, dir string) string {
 type target struct {
 	pkg      *packageInfo
 	name     string
+	lang     language
 	exported bool
 }
 
@@ -163,7 +164,7 @@ func resolveTargets(pkgs map[string]*packageInfo, symbol string) ([]target, *cor
 		for _, f := range pkg.files {
 			for _, d := range f.Decls {
 				if d.Name == name {
-					targets = append(targets, target{pkg: pkg, name: name, exported: d.Exported})
+					targets = append(targets, target{pkg: pkg, name: name, lang: fileLanguage(f), exported: d.Exported})
 				}
 			}
 		}
@@ -277,11 +278,23 @@ func sortRows(rows []Row) {
 // resolveRef classifies one matching reference. It reports false when the
 // reference cannot name the target at all; a true row with the unresolved
 // resolution is a candidate that needs type information, counted and not
-// rendered.
+// rendered. A file in another language family shares nothing but a directory
+// with the declaration, so it is not a candidate.
 func resolveRef(tgt target, samePkg bool, f *treeFile, r ref) (Row, bool) {
-	if fileLanguage(f) != langGo {
+	lang := fileLanguage(f)
+	if !lang.sameFamily(tgt.lang) {
+		return Row{}, false
+	}
+	if lang != langGo {
 		return resolveScannedRef(samePkg, f, r)
 	}
+	return resolveGoRef(tgt, samePkg, f, r)
+}
+
+// resolveGoRef attributes one reference to a Go declaration: a bare name only
+// inside the declaring package, a qualified name by import path, and a
+// same-package method or unresolved qualifier as a counted candidate.
+func resolveGoRef(tgt target, samePkg bool, f *treeFile, r ref) (Row, bool) {
 	if !r.Selector {
 		return resolveBareRef(samePkg, f, r)
 	}

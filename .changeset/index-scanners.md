@@ -13,7 +13,9 @@ and call sites. Every scanned file publishes its `language`, a build publishes
 caller row names the language it came from. A scanned language resolves one way
 only: `exact` never appears, and a name is attributed as `lexical` inside the
 directory that declares it, so a caller list for a scanned symbol is a floor
-rather than a proof. Test candidates follow the language's own naming — `.test.`
+rather than a proof. Languages never cross: a caller row, or a same-directory
+test candidate, must share the declaration's language family, so Go, Python, and
+the JavaScript family each answer only for themselves. Test candidates follow the language's own naming — `.test.`
 and `.spec.` names and `__tests__` directories for the JavaScript family,
 `test_*.py`, `*_test.py`, `conftest.py`, and `tests`/`test` directories for
 Python — and a test in another directory is a candidate only when it imports

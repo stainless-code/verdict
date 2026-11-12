@@ -17,11 +17,12 @@ const (
 	viaImportsModule = "imports-module"
 )
 
-// testPlan is the resolved tests-for input: the queried path, the declaring
-// package directories, and one resolution target per declared symbol.
+// testPlan is the resolved tests-for input: the queried path, its language, the
+// declaring package directories, and one resolution target per declared symbol.
 type testPlan struct {
 	path    string
 	dirs    []string
+	lang    language
 	targets []target
 }
 
@@ -105,9 +106,9 @@ func pathTestPlan(pkgs map[string]*packageInfo, t *treeIndex, rawPath string) (*
 			Message: "index tests-for: " + p + " is not an indexed source file at " + t.Tree,
 		}
 	}
-	plan := &testPlan{path: p, dirs: []string{pkg.dir}}
+	plan := &testPlan{path: p, dirs: []string{pkg.dir}, lang: fileLanguage(f)}
 	for _, d := range f.Decls {
-		plan.targets = append(plan.targets, target{pkg: pkg, name: d.Name, exported: d.Exported})
+		plan.targets = append(plan.targets, target{pkg: pkg, name: d.Name, lang: plan.lang, exported: d.Exported})
 	}
 	return plan, nil
 }
@@ -137,7 +138,7 @@ func symbolTestPlan(pkgs map[string]*packageInfo, symbol string) (*testPlan, *co
 		}
 	}
 	slices.Sort(dirs)
-	return &testPlan{dirs: dirs, targets: targets}, nil
+	return &testPlan{dirs: dirs, lang: targets[0].lang, targets: targets}, nil
 }
 
 // findIndexedFile finds one indexed file by its slash path.
@@ -257,7 +258,7 @@ func isCandidateFile(f *treeFile, queried string) bool {
 // reference to a declared symbol, or an import of the declaring package.
 func testVia(plan *testPlan, dirs, importPaths map[string]bool, f *treeFile) string {
 	switch {
-	case dirs[path.Dir(f.Path)]:
+	case samePackageTest(plan, dirs, f):
 		return viaSamePackage
 	case referencesTargets(plan.targets, f), importsTargetPath(plan, f):
 		return viaReferences
@@ -266,6 +267,14 @@ func testVia(plan *testPlan, dirs, importPaths map[string]bool, f *treeFile) str
 	default:
 		return ""
 	}
+}
+
+// samePackageTest reports whether one candidate is a test in a declaring
+// directory and in the queried declaration's language family: a `.py` test says
+// nothing about the Go file beside it, while a JavaScript test can cover a
+// TypeScript declaration.
+func samePackageTest(plan *testPlan, dirs map[string]bool, f *treeFile) bool {
+	return dirs[path.Dir(f.Path)] && plan.lang.sameFamily(fileLanguage(f))
 }
 
 // referencesTargets reports whether the file carries a reference the index can
