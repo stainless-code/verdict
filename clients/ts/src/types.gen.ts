@@ -747,6 +747,7 @@ export interface IndexData {
   parsed?: number;
   reused?: number;
   tree_bytes?: number;
+  languages?: Array<IndexLangRow>;
   shards?: IndexShards;
   trees?: Array<IndexTreeRow>;
   kept?: Array<string>;
@@ -759,6 +760,12 @@ export interface IndexData {
   rows?: Array<IndexRow>;
   window?: IndexWindow;
   target?: IndexTarget | null;
+  [key: string]: unknown;
+}
+
+export interface IndexLangRow {
+  language: "go" | "typescript" | "javascript" | "python";
+  files: number;
   [key: string]: unknown;
 }
 
@@ -823,6 +830,7 @@ export interface IndexRow {
   line?: number;
   kind?: "call" | "method" | "type-ref" | "value-ref" | "embed";
   resolution?: "exact" | "lexical";
+  language?: "go" | "typescript" | "javascript" | "python";
   via?: "same-package" | "references" | "imports-module";
   commits?: number;
   jaccard?: number;

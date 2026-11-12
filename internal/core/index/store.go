@@ -43,6 +43,7 @@ type treeFile struct {
 	Path          string        `json:"path"`
 	Blob          string        `json:"blob"`
 	Package       string        `json:"package,omitempty"`
+	Language      string        `json:"language,omitempty"`
 	Error         string        `json:"error,omitempty"`
 	Imports       []importEntry `json:"imports,omitempty"`
 	Decls         []decl        `json:"decls,omitempty"`
@@ -142,7 +143,7 @@ func dirStats(dir string) (int, int64) {
 // invalid shard refuses: it is never read as empty. A shard parsed under
 // another reference cap is a cache miss, not corruption: it is reparsed and
 // overwritten.
-func readShard(store, blob string, refsPerFile int) (*shard, bool, *core.RefusalError) {
+func readShard(store, blob string, lang language, refsPerFile int) (*shard, bool, *core.RefusalError) {
 	raw, err := os.ReadFile(shardPath(store, blob))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, false, nil
@@ -158,7 +159,7 @@ func readShard(store, blob string, refsPerFile int) (*shard, bool, *core.Refusal
 			Code: codeIndexCorrupt, Message: fmt.Sprintf("shard %s.json is truncated or invalid", blob),
 		}
 	}
-	if s.RefsPerFile != refsPerFile {
+	if s.RefsPerFile != refsPerFile || s.Language != string(lang) {
 		return nil, false, nil
 	}
 	return &s, true, nil
@@ -186,16 +187,16 @@ func readTree(store, tree string) (*treeIndex, *core.RefusalError) {
 	return &t, nil
 }
 
-// isGoEntry reports a regular Go source blob.
-func isGoEntry(e treeEntry) bool {
-	return strings.HasSuffix(e.Path, ".go") && (e.Mode == "100644" || e.Mode == "100755")
+// isSourceEntry reports a regular file the index scans.
+func isSourceEntry(e treeEntry) bool {
+	return indexedLanguage(e.Path) != "" && (e.Mode == "100644" || e.Mode == "100755")
 }
 
-// goEntries keeps the regular Go files, sorted by path.
-func goEntries(entries []treeEntry) []treeEntry {
+// sourceEntries keeps the scanned files, sorted by path.
+func sourceEntries(entries []treeEntry) []treeEntry {
 	out := make([]treeEntry, 0, len(entries))
 	for _, e := range entries {
-		if isGoEntry(e) {
+		if isSourceEntry(e) {
 			out = append(out, e)
 		}
 	}
@@ -229,11 +230,11 @@ func (st *state) build(ctx context.Context) (*Response, *core.RefusalError) {
 	if ref != nil {
 		return nil, ref
 	}
-	files := goEntries(entries)
+	files := sourceEntries(entries)
 	if len(files) > limits.Files {
 		return nil, &core.RefusalError{
 			Code:    codeIndexCapped,
-			Message: fmt.Sprintf("%d package files exceeds the %d-file cap", len(files), limits.Files),
+			Message: fmt.Sprintf("%d source files exceeds the %d-file cap", len(files), limits.Files),
 		}
 	}
 	module := st.readModule(ctx, dir, entries)
@@ -241,12 +242,12 @@ func (st *state) build(ctx context.Context) (*Response, *core.RefusalError) {
 	if ref != nil {
 		return nil, ref
 	}
-	parsed, fresh, ref := st.collectShards(ctx, dir, store, files, limits)
+	parsed, ref := st.collectShards(ctx, dir, store, files, limits)
 	if ref != nil {
 		return nil, ref
 	}
 	t := assembleTree(tree, module, files, limits, parsed)
-	if _, _, ref := checkShardCaps(store, freshShards(parsed, fresh), limits); ref != nil {
+	if _, _, ref := checkShardCaps(store, freshShards(parsed), limits); ref != nil {
 		return nil, ref
 	}
 	raw, err := json.Marshal(t)
@@ -259,69 +260,169 @@ func (st *state) build(ctx context.Context) (*Response, *core.RefusalError) {
 			Message: fmt.Sprintf("tree index is %d bytes, over the %d-byte cap", len(raw), limits.TreeBytes),
 		}
 	}
-	if ref := writeShards(store, freshShards(parsed, fresh)); ref != nil {
+	if ref := writeShards(store, freshShards(parsed)); ref != nil {
 		return nil, ref
 	}
 	if err := atomic.WriteFile(treePath(store, tree), raw); err != nil {
 		return nil, &core.RefusalError{Code: codeIndexFailed, Message: "could not write the tree index: " + err.Error()}
 	}
-	return st.buildResponse(t, commit, fresh), nil
+	return st.buildResponse(t, commit, parsed.fresh), nil
 }
 
-// collectShards reads every reusable shard and parses only missing blobs,
-// returning each blob's parse result and the set freshly parsed.
-//
-//nolint:revive // the store failure matrix reads as one block
+// parsedTree is one build's parse results: the reuse keyed by blob, the blobs
+// two languages both claim keyed by path, and the blobs freshly parsed.
+type parsedTree struct {
+	byBlob map[string]*shard
+	byPath map[string]*shard
+	fresh  map[string]bool
+}
+
+// shardFor returns one tree entry's parse result.
+func (p *parsedTree) shardFor(e treeEntry) *shard {
+	if s, ok := p.byPath[e.Path]; ok {
+		return s
+	}
+	return p.byBlob[e.Blob]
+}
+
+// collectShards reads every reusable shard and parses only missing blobs.
 func (st *state) collectShards(
 	ctx context.Context, dir, store string, files []treeEntry, limits Limits,
-) (map[string]*shard, map[string]bool, *core.RefusalError) {
-	parsed := make(map[string]*shard)
-	fresh := make(map[string]bool)
-	var missing []string
+) (*parsedTree, *core.RefusalError) {
+	p := &parsedTree{byBlob: map[string]*shard{}, byPath: map[string]*shard{}, fresh: map[string]bool{}}
+	wants := shardWants(files, limits)
+	missing, ref := missingBlobs(store, wants, limits, p)
+	if ref != nil {
+		return nil, ref
+	}
+	objects, ref := st.gitBatch(ctx, dir, missing)
+	if ref != nil {
+		return nil, ref
+	}
+	for i := range wants {
+		if ref := p.parse(&wants[i], objects, limits); ref != nil {
+			return nil, ref
+		}
+	}
+	return p, nil
+}
+
+// parse records one want's parse result from the blobs a build fetched.
+func (p *parsedTree) parse(w *shardWant, objects map[string][]byte, limits Limits) *core.RefusalError {
+	if _, done := p.byBlob[w.e.Blob]; done && !w.perPath {
+		return nil
+	}
+	src, ok := objects[w.e.Blob]
+	if !ok {
+		return &core.RefusalError{Code: codeIndexFailed, Message: "git cat-file did not return blob " + w.e.Blob}
+	}
+	s := parseShard(w.e.Blob, src, w.lang, limits.RefsPerFile)
+	if w.perPath {
+		p.byPath[w.e.Path] = &s
+		return nil
+	}
+	p.byBlob[w.e.Blob] = &s
+	p.fresh[w.e.Blob] = true
+	return nil
+}
+
+// shardWant is one parse a build needs: a blob reused by blob alone, or by
+// path when two languages claim the same bytes.
+type shardWant struct {
+	lang    language
+	e       treeEntry
+	perPath bool
+}
+
+// shardWants lists the parses a build needs, one per blob and one per shared
+// blob path.
+func shardWants(files []treeEntry, limits Limits) []shardWant {
+	shared := sharedBlobs(files)
+	seen := map[string]bool{}
+	var wants []shardWant
 	for _, e := range files {
 		if e.Size > limits.FileBytes {
 			continue
 		}
-		if _, done := parsed[e.Blob]; done {
+		lang := indexedLanguage(e.Path)
+		if shared[e.Blob] {
+			wants = append(wants, shardWant{e: e, lang: lang, perPath: true})
 			continue
 		}
-		s, found, ref := readShard(store, e.Blob, limits.RefsPerFile)
+		if seen[e.Blob] {
+			continue
+		}
+		seen[e.Blob] = true
+		wants = append(wants, shardWant{e: e, lang: lang})
+	}
+	return wants
+}
+
+// sharedBlobs reports the blobs two languages both claim in one tree. Such a
+// blob carries two parses, so it is parsed per file and never cached.
+func sharedBlobs(files []treeEntry) map[string]bool {
+	langs := make(map[string]language, len(files))
+	shared := map[string]bool{}
+	for _, e := range files {
+		lang := indexedLanguage(e.Path)
+		if prev, ok := langs[e.Blob]; ok && prev != lang {
+			shared[e.Blob] = true
+			continue
+		}
+		langs[e.Blob] = lang
+	}
+	return shared
+}
+
+// missingBlobs reads every reusable shard into p and returns the blobs that
+// still need parsing.
+func missingBlobs(store string, wants []shardWant, limits Limits, p *parsedTree) ([]string, *core.RefusalError) {
+	var missing []string
+	seen := map[string]bool{}
+	for i := range wants {
+		w := &wants[i]
+		if seen[w.e.Blob] {
+			continue
+		}
+		seen[w.e.Blob] = true
+		found, ref := p.reuse(store, w, limits)
 		if ref != nil {
-			return nil, nil, ref
+			return nil, ref
 		}
-		if found {
-			parsed[e.Blob] = s
-			continue
+		if !found {
+			missing = append(missing, w.e.Blob)
 		}
-		missing = append(missing, e.Blob)
 	}
-	objects, ref := st.gitBatch(ctx, dir, missing)
-	if ref != nil {
-		return nil, nil, ref
+	return missing, nil
+}
+
+// reuse reads one want's shard from the store, reporting whether it was there.
+func (p *parsedTree) reuse(store string, w *shardWant, limits Limits) (bool, *core.RefusalError) {
+	if w.perPath {
+		return false, nil
 	}
-	for _, blob := range missing {
-		src, ok := objects[blob]
-		if !ok {
-			return nil, nil, &core.RefusalError{Code: codeIndexFailed, Message: "git cat-file did not return blob " + blob}
-		}
-		s := parseShard(blob, src, limits.RefsPerFile)
-		parsed[blob] = &s
-		fresh[blob] = true
+	s, found, ref := readShard(store, w.e.Blob, w.lang, limits.RefsPerFile)
+	if ref != nil || !found {
+		return false, ref
 	}
-	return parsed, fresh, nil
+	p.byBlob[w.e.Blob] = s
+	return true, nil
 }
 
 // assembleTree builds the tree file from the parsed shards.
-func assembleTree(tree, module string, files []treeEntry, limits Limits, parsed map[string]*shard) *treeIndex {
+func assembleTree(tree, module string, files []treeEntry, limits Limits, parsed *parsedTree) *treeIndex {
 	t := &treeIndex{SchemaVersion: "1", Tree: tree, Module: module, Files: make([]treeFile, 0, len(files))}
 	for _, e := range files {
-		file := treeFile{Path: filepath.ToSlash(e.Path), Blob: e.Blob, Size: e.Size}
+		file := treeFile{
+			Path: filepath.ToSlash(e.Path), Blob: e.Blob, Size: e.Size,
+			Language: string(indexedLanguage(e.Path)),
+		}
 		if e.Size > limits.FileBytes {
 			file.Oversize = true
 			t.Files = append(t.Files, file)
 			continue
 		}
-		s := parsed[e.Blob]
+		s := parsed.shardFor(e)
 		file.Package = s.Package
 		file.Imports = s.Imports
 		file.Decls = s.Decls
@@ -334,10 +435,10 @@ func assembleTree(tree, module string, files []treeEntry, limits Limits, parsed 
 }
 
 // freshShards selects the shards that still need writing.
-func freshShards(parsed map[string]*shard, fresh map[string]bool) map[string]*shard {
-	out := make(map[string]*shard, len(fresh))
-	for blob := range fresh {
-		out[blob] = parsed[blob]
+func freshShards(parsed *parsedTree) map[string]*shard {
+	out := make(map[string]*shard, len(parsed.fresh))
+	for blob := range parsed.fresh {
+		out[blob] = parsed.byBlob[blob]
 	}
 	return out
 }
@@ -416,7 +517,7 @@ func (st *state) buildResponse(t *treeIndex, commit string, fresh map[string]boo
 		Data: &Data{
 			Kind: QueryBuild, Tree: t.Tree, Commit: commit, Built: true,
 			Files: indexed, Skipped: skipped, Parsed: len(fresh), Reused: reused,
-			TreeBytes: treeBytes, ShardCount: count, ShardBytes: bytes,
+			TreeBytes: treeBytes, Languages: languageCounts(t), ShardCount: count, ShardBytes: bytes,
 		},
 	}
 }

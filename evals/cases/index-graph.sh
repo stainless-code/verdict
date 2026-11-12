@@ -142,7 +142,7 @@ run_review index tests-for nope.go --json
 assert_exit "an unindexed path refuses" 1
 assert_refusal "tests-for names the refusal code" "bad-flags"
 assert_json_field "the refusal names the path and tree" 1 \
-  '[.error.message | select(test("nope.go is not an indexed Go file at "))] | length'
+  '[.error.message | select(test("nope.go is not an indexed source file at "))] | length'
 
 run_review index co-changed nope.go --json
 assert_exit "an unknown co-change path refuses" 1

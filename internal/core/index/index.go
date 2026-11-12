@@ -1,8 +1,9 @@
-// Package indexcore is the index verb's domain service: it builds a Go index
-// from a git tree with the standard library parser, stores it under
+// Package indexcore is the index verb's domain service: it builds a Go,
+// TypeScript, JavaScript, and Python index from a git tree, stores it under
 // .verdict/index/ keyed by tree SHA and content-addressed shards, and answers
-// caller queries. Parsing is go/parser and go/ast only. internal/index owns
-// argv parsing, envelope rendering, and exit mapping.
+// caller queries. Go files are parsed with go/parser and go/ast; the other
+// languages are read by the lexical scanners in scan_ts.go and scan_py.go.
+// internal/index owns argv parsing, envelope rendering, and exit mapping.
 package indexcore
 
 import (
@@ -65,7 +66,6 @@ const (
 	resolutionExact      = "exact"
 	resolutionLexical    = "lexical"
 	resolutionUnresolved = "unresolved"
-	goSuffix             = ".go"
 	testSuffix           = "_test.go"
 )
 
@@ -143,6 +143,7 @@ type Data struct { //nolint:govet // field order is the published property order
 	Limit         int
 	Callers       int
 	Unresolved    int
+	Languages     []LangRow
 	Rows          []Row
 	Truncated     int
 	Kept          []string
@@ -169,7 +170,14 @@ type Row struct {
 	Path       string
 	Kind       string
 	Resolution string
+	Language   string
 	Line       int
+}
+
+// LangRow is one source language the index scanned and the files it covers.
+type LangRow struct {
+	Language string
+	Files    int
 }
 
 // TestRow is one candidate test for a changed file or symbol.

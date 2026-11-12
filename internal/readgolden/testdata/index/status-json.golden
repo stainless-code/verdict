@@ -18,12 +18,12 @@ exit: 0
       {
         "tree": "7a4ae225bc9550e4ab70a5d4c08dedc668325f7c",
         "files": 6,
-        "bytes": 1614
+        "bytes": 1710
       }
     ],
     "shards": {
       "count": 6,
-      "bytes": 1565
+      "bytes": 1661
     }
   },
   "error": null

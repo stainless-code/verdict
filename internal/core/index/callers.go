@@ -248,6 +248,7 @@ func collectFileRefs(out *callerResults, seen map[Row]bool, tgt target, same boo
 			out.unresolved++
 			continue
 		}
+		row.Language = f.Language
 		if !seen[row] {
 			seen[row] = true
 			out.rows = append(out.rows, row)
@@ -273,6 +274,9 @@ func sortRows(rows []Row) {
 // resolution is a candidate that needs type information, counted and not
 // rendered.
 func resolveRef(tgt target, samePkg bool, f *treeFile, r ref) (Row, bool) {
+	if language(f.Language) != langGo {
+		return resolveScannedRef(samePkg, f, r)
+	}
 	if !r.Selector {
 		return resolveBareRef(samePkg, f, r)
 	}
@@ -283,6 +287,17 @@ func resolveRef(tgt target, samePkg bool, f *treeFile, r ref) (Row, bool) {
 		return Row{}, false
 	}
 	return resolveQualifiedRef(tgt, f, r)
+}
+
+// resolveScannedRef classifies one reference a lexical scanner produced. A
+// scanned language has no object identity to check and no module resolution to
+// follow, so a name found in the declaring directory is a lexical row and a
+// name found anywhere else is not attributed at all.
+func resolveScannedRef(samePkg bool, f *treeFile, r ref) (Row, bool) {
+	if !samePkg {
+		return Row{}, false
+	}
+	return Row{Path: f.Path, Line: r.Line, Kind: r.Kind, Resolution: resolutionLexical}, true
 }
 
 // resolveBareRef classifies a name written without a qualifier: only the
@@ -319,10 +334,11 @@ func (st *state) callersResponse(t *treeIndex, commit string, stale bool, result
 		rows = rows[:limit]
 	}
 	cov := coverageOf(t)
+	languages := languageCounts(t)
 	symbol := st.req.Symbol
 	if results.rows == nil && results.unresolved == 0 {
 		st.line("index: no callers of " + symbol + " at " + t.Tree)
-		return st.callerData(t, commit, stale, cov, results, rows, truncated, limit)
+		return st.callerData(t, commit, stale, cov, languages, results, rows, truncated, limit)
 	}
 	st.line(fmt.Sprintf("index: %d caller(s) of %s at %s (%d unresolved)", len(results.rows), symbol, t.Tree, results.unresolved))
 	for _, row := range rows {
@@ -332,12 +348,12 @@ func (st *state) callersResponse(t *treeIndex, commit string, stale bool, result
 		st.line(fmt.Sprintf("index: showing %d of %d callers (%d not shown; raise --limit up to %d)",
 			len(rows), len(results.rows), truncated, MaxLimit))
 	}
-	return st.callerData(t, commit, stale, cov, results, rows, truncated, limit)
+	return st.callerData(t, commit, stale, cov, languages, results, rows, truncated, limit)
 }
 
 // callerData assembles the query's data profile.
 func (st *state) callerData(
-	t *treeIndex, commit string, stale bool, cov coverage, results callerResults,
+	t *treeIndex, commit string, stale bool, cov coverage, languages []LangRow, results callerResults,
 	rows []Row, truncated, limit int,
 ) *Response {
 	next := "narrow the query to one package, or raise --limit"
@@ -350,10 +366,29 @@ func (st *state) callerData(
 		Data: &Data{
 			Kind: QueryCallers, Symbol: st.req.Symbol, Tree: t.Tree, Commit: commit,
 			Stale: stale, Built: true, Files: cov.files, Skipped: cov.skipped,
-			Callers: len(results.rows), Unresolved: results.unresolved,
+			Callers: len(results.rows), Unresolved: results.unresolved, Languages: languages,
 			Rows: rows, Truncated: truncated, Limit: limit,
 		},
 	}
+}
+
+// languageCounts counts the tree's files per scanned language.
+func languageCounts(t *treeIndex) []LangRow {
+	counts := map[string]int{}
+	for i := range t.Files {
+		counts[t.Files[i].Language]++
+	}
+	rows := make([]LangRow, 0, len(counts))
+	for name, files := range counts {
+		rows = append(rows, LangRow{Language: name, Files: files})
+	}
+	slices.SortFunc(rows, func(a, b LangRow) int {
+		if c := strings.Compare(a.Language, b.Language); c != 0 {
+			return c
+		}
+		return a.Files - b.Files
+	})
+	return rows
 }
 
 // coverageOf counts a tree's fully indexed and skipped files.

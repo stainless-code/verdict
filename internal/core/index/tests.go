@@ -95,14 +95,14 @@ func pathTestPlan(pkgs map[string]*packageInfo, t *treeIndex, rawPath string) (*
 	if f == nil || f.Oversize || f.Error != "" {
 		return nil, &core.RefusalError{
 			Code:    codeBadFlags,
-			Message: "index tests-for: " + p + " is not an indexed Go file at " + t.Tree,
+			Message: "index tests-for: " + p + " is not an indexed source file at " + t.Tree,
 		}
 	}
 	pkg := pkgs[path.Dir(p)]
 	if pkg == nil {
 		return nil, &core.RefusalError{
 			Code:    codeBadFlags,
-			Message: "index tests-for: " + p + " is not an indexed Go file at " + t.Tree,
+			Message: "index tests-for: " + p + " is not an indexed source file at " + t.Tree,
 		}
 	}
 	plan := &testPlan{path: p, dirs: []string{pkg.dir}}
@@ -140,9 +140,9 @@ func symbolTestPlan(pkgs map[string]*packageInfo, symbol string) (*testPlan, *co
 	return &testPlan{dirs: dirs, targets: targets}, nil
 }
 
-// findIndexedFile finds one indexed Go file by its slash path.
+// findIndexedFile finds one indexed file by its slash path.
 func findIndexedFile(t *treeIndex, p string) *treeFile {
-	if p == "" || !strings.HasSuffix(p, goSuffix) {
+	if indexedLanguage(p) == "" {
 		return nil
 	}
 	for i := range t.Files {
@@ -189,10 +189,68 @@ func testMechanisms(t *treeIndex, plan *testPlan) (map[string]bool, map[string]b
 	return dirs, importPaths
 }
 
+// importsTargetPath reports whether one scanned file imports the queried file
+// itself, by a specifier the scanner resolves against its own directory.
+func importsTargetPath(plan *testPlan, f *treeFile) bool {
+	lang := language(f.Language)
+	if plan.path == "" || lang == langGo {
+		return false
+	}
+	want := trimSourceExt(plan.path)
+	for _, imp := range f.Imports {
+		if trimSourceExt(scannedSpecifier(lang, path.Dir(f.Path), imp.Path)) == want {
+			return true
+		}
+	}
+	return false
+}
+
+// scannedSpecifier resolves one module specifier to a repository path as the
+// scanner can read it, or "" when the format offers no rule.
+func scannedSpecifier(lang language, dir, spec string) string {
+	switch lang.family() {
+	case langTypeScript:
+		if !strings.HasPrefix(spec, ".") {
+			return ""
+		}
+		return path.Join(dir, spec)
+	case langPython:
+		return pythonSpecifier(dir, spec)
+	default:
+		return ""
+	}
+}
+
+// pythonSpecifier resolves one Python import path to a repository path: a
+// relative one against the importing file's package, an absolute one against
+// the repository root.
+func pythonSpecifier(dir, spec string) string {
+	dots := 0
+	for dots < len(spec) && spec[dots] == '.' {
+		dots++
+	}
+	if dots == 0 {
+		return strings.ReplaceAll(spec, ".", "/")
+	}
+	for i := 1; i < dots; i++ {
+		dir = path.Dir(dir)
+	}
+	return path.Join(dir, strings.ReplaceAll(spec[dots:], ".", "/"))
+}
+
+// trimSourceExt drops one trailing source extension, and nothing else.
+func trimSourceExt(p string) string {
+	if ext := path.Ext(p); ext != "" && indexedLanguage(p) != "" {
+		return strings.TrimSuffix(p, ext)
+	}
+	return p
+}
+
 // isCandidateFile reports whether one indexed file can be a candidate test
-// row: a readable test file that is not the queried file itself.
+// row: a readable test file in its language that is not the queried file
+// itself.
 func isCandidateFile(f *treeFile, queried string) bool {
-	return strings.HasSuffix(f.Path, testSuffix) && !f.Oversize && f.Error == "" && f.Path != queried
+	return testPath(language(f.Language), f.Path) && !f.Oversize && f.Error == "" && f.Path != queried
 }
 
 // testVia classifies one test file: same package directory, a recorded
@@ -201,7 +259,7 @@ func testVia(plan *testPlan, dirs, importPaths map[string]bool, f *treeFile) str
 	switch {
 	case dirs[path.Dir(f.Path)]:
 		return viaSamePackage
-	case referencesTargets(plan.targets, f):
+	case referencesTargets(plan.targets, f), importsTargetPath(plan, f):
 		return viaReferences
 	case importsAny(f, importPaths):
 		return viaImportsModule

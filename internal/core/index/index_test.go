@@ -574,8 +574,8 @@ func TestCallersExactnessLitmus(t *testing.T) {
 	f.build()
 	resp := f.callers()
 	assertRows(t, resp.Data.Rows, []Row{
-		{Path: "a/a.go", Line: 6, Kind: KindCall, Resolution: "exact"},
-		{Path: "b/b.go", Line: 6, Kind: KindCall, Resolution: "lexical"},
+		{Path: "a/a.go", Line: 6, Kind: KindCall, Resolution: "exact", Language: "go"},
+		{Path: "b/b.go", Line: 6, Kind: KindCall, Resolution: "lexical", Language: "go"},
 	})
 	if resp.Data.Callers != 2 {
 		t.Errorf("callers = %d; want 2", resp.Data.Callers)
@@ -691,8 +691,8 @@ func C() {
 			resp.Data.Callers, resp.Data.Truncated, resp.Data.Limit)
 	}
 	wantRows := []Row{
-		{Path: "a/a.go", Line: 6, Kind: KindCall, Resolution: "exact"},
-		{Path: "a/a.go", Line: 10, Kind: KindCall, Resolution: "exact"},
+		{Path: "a/a.go", Line: 6, Kind: KindCall, Resolution: "exact", Language: "go"},
+		{Path: "a/a.go", Line: 10, Kind: KindCall, Resolution: "exact", Language: "go"},
 	}
 	assertRows(t, resp.Data.Rows, wantRows)
 	wantLine := "index: showing 2 of 3 callers (1 not shown; raise --limit up to 200)"
@@ -729,7 +729,7 @@ func TestIndexCapRefusal(t *testing.T) {
 		if ref == nil {
 			t.Fatal("over-cap build succeeded")
 		}
-		want := "3 package files exceeds the 2-file cap"
+		want := "3 source files exceeds the 2-file cap"
 		if ref.Code != "index-capped" || ref.Message != want {
 			t.Fatalf("refusal = %q: %q; want index-capped: %q", ref.Code, ref.Message, want)
 		}
@@ -743,7 +743,7 @@ func TestIndexCapRefusal(t *testing.T) {
 		if ref == nil {
 			t.Fatal("config-capped build succeeded")
 		}
-		want := "3 package files exceeds the 2-file cap"
+		want := "3 source files exceeds the 2-file cap"
 		if ref.Code != "index-capped" || ref.Message != want {
 			t.Fatalf("refusal = %q: %q; want index-capped: %q", ref.Code, ref.Message, want)
 		}

@@ -164,7 +164,11 @@ var publishedSemantics = map[string]string{
 	// named). Description only; no property, required key, enum, or type
 	// changed. Pack list: additive $defs/packData and $defs/packEntry; the
 	// envelope data object was already open, so no existing shape moved.
-	"envelope.schema.json": "3ff6d6c063f2448eb2d24a8ee19a445777d493622b79a417b654e91536b0e685",
+	// scanned languages: additive $defs/indexLangRow and the build branch's
+	// optional languages[] (required language enum, required file count), plus
+	// the caller row's optional language enum. No existing property, required
+	// key, enum, or type changed.
+	"envelope.schema.json": "dd316347f15a6da923ead54d81733603083abf3887a47aea41d00947e9f291bc",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -204,7 +208,10 @@ var publishedSemantics = map[string]string{
 	// required key, enum, or type changed.
 	// additive index.schema.json (new local-tree document; no existing
 	// schema property, required key, or type changed).
-	"index.schema.json": "2200ac9089a3bb4979964bbf44332dfaf00e7953d27c9d7c6faf9b590eb03a95",
+	// scanned languages: additive optional file.language enum, so a stored tree
+	// names the scanner that read each file. No existing property, required
+	// key, enum, or type changed.
+	"index.schema.json": "2104f9b00c2909f29e5cbd155931ba4765f4b6647f8bd602199a8761c57b9126",
 	// rules and layering: additive replace[], severity map, rules[] with a
 	// closed $defs/rule. No existing property, required key, enum, or type
 	// changed; the loader's exact-key, regular-file, and bounded-read rules

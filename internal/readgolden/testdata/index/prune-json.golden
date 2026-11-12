@@ -22,7 +22,7 @@ exit: 0
     },
     "shards": {
       "count": 10,
-      "bytes": 2273
+      "bytes": 2433
     }
   },
   "error": null
