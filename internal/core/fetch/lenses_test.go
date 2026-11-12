@@ -9,8 +9,54 @@ import (
 	"testing/fstest"
 
 	"github.com/stainless-code/verdict/internal/config"
+	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core/pack"
 )
+
+// TestRepoPackIgnoresReusedBundleStaleBody proves a fetch into a bundle
+// directory that already carries a snapshot does not load the previous base's
+// pack bodies: a lens file the new read dropped must not reach the review.
+func TestRepoPackIgnoresReusedBundleStaleBody(t *testing.T) {
+	root := t.TempDir()
+	for rel, body := range map[string]string{
+		".verdict/packs/acme/pack.json": `{"schema_version":"1","name":"acme/lenses",` +
+			`"version":"1.0.0","lenses":[{"id":"perf"}]}`,
+		".verdict/packs/acme/lenses/perf.md": "old body\n",
+	} {
+		path := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bundle := t.TempDir()
+	if _, ref := controls.Resolve(t.Context(), nil, &controls.Request{
+		BundleDir: bundle, AllowHead: true, Root: root,
+	}); ref != nil {
+		t.Fatalf("first resolve: %s: %s", ref.Code, ref.Message)
+	}
+	if err := os.Remove(filepath.Join(root, filepath.FromSlash(".verdict/packs/acme/lenses/perf.md"))); err != nil {
+		t.Fatal(err)
+	}
+	snap, ref := controls.Resolve(t.Context(), nil, &controls.Request{
+		BundleDir: bundle, AllowHead: true, Root: root,
+	})
+	if ref != nil {
+		t.Fatalf("second resolve: %s: %s", ref.Code, ref.Message)
+	}
+	if snap.Has(".verdict/packs/acme/lenses/perf.md") {
+		t.Fatal("the reused snapshot still carries the dropped lens file")
+	}
+	_, loadRef := repoPackOrigins(snap)
+	if loadRef == nil || loadRef.Code != pack.CodeBadPack {
+		t.Fatalf("repo pack from the reused bundle = %v, want bad-pack", loadRef)
+	}
+	if want := "lenses/perf.md"; !strings.Contains(loadRef.Message, want) {
+		t.Fatalf("message = %q, want it to name %s", loadRef.Message, want)
+	}
+}
 
 // lensTestManifest names three always-offered lenses plus one docs-only lens
 // the plan line must leave out for a Go group.

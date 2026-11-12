@@ -146,6 +146,12 @@ func (s *Snapshot) write(bundleDir string, contents map[string][]byte) *core.Ref
 		return ref
 	}
 	s.Inventory = inventory
+	// A reused bundle still holds the previous base's snapshot: clearing it is
+	// what stops a control (or a pack body) the new base dropped from loading
+	// off its old bytes.
+	if err := os.RemoveAll(s.Dir); err != nil {
+		return refuse(CodeUnavailable, fmt.Sprintf("could not clear %s: %v", s.Dir, err))
+	}
 	for _, path := range s.Inventory {
 		raw, ok := contents[path]
 		entry := core.ControlsFileEntry{Path: path, Status: statusMissing}
