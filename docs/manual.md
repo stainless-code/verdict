@@ -3604,3 +3604,6 @@ findings; addressing every finding does not make a review clean.
 
 `post` and `record` refuse a symlinked bundle directory with `bad-config`
 before writing artifacts, matching `fetch` and `fetch-local`.
+
+Serve inventory charges never exceed the 16 MiB per-bundle budget, including
+failed reads and artifacts larger than the per-file cap.
