@@ -153,7 +153,8 @@ func TestPlanLineCarriesEmptyLensList(t *testing.T) {
 }
 
 // TestPlanLineCarriesLayeredLensTags proves a layered set tags each lens with
-// its winning pack slug and lists every pack identity in precedence order.
+// its winning pack's full name and lists every pack identity in precedence
+// order.
 func TestPlanLineCarriesLayeredLensTags(t *testing.T) {
 	t.Parallel()
 	builtin, ref := pack.Load(fstest.MapFS{
@@ -181,7 +182,7 @@ func TestPlanLineCarriesLayeredLensTags(t *testing.T) {
 		t.Fatalf("merge: %s: %s", ref.Code, ref.Message)
 	}
 	group := &config.PlanGroup{ID: "g1", Depth: "standard", Files: []string{"a.go"}}
-	want := " lens_pack=acme/lenses@1.2.3,acme/security@1.0.0 lenses=[perf@security:e0760be4]"
+	want := " lens_pack=acme/lenses@1.2.3,acme/security@1.0.0 lenses=[perf@acme/security:e0760be4]"
 	if got := lensPlanFields(set, group); got != want {
 		t.Fatalf("plan fields = %q, want %q", got, want)
 	}

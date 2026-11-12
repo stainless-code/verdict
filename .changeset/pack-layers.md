@@ -10,7 +10,10 @@ the trusted-base controls snapshot, so a PR cannot edit the pack that reviews
 it; `post`/`record` re-hash the snapshot and refuse `controls-stale`. Duplicate
 ids in one layer refuse `bad-pack`; a cross-layer override needs
 `"replace": ["<lower pack name>"]` (downward only) and otherwise refuses
-`pack-conflict`. A settings `packs` entry inside `.verdict/packs/` refuses
+`pack-conflict`. A layered set tags each lens in a `plan.txt` group line with
+the full name of the pack that supplied it (`lenses=[<id>@<name>:<hash8>,…]`),
+so two packs sharing a lens id stay distinguishable on the line. A settings
+`packs` entry inside `.verdict/packs/` refuses
 `bad-pack`, because that tree is the repo layer read at the PR base. Packs may
 ship KB rules (`rules/<id>.md`, severity mapped through the manifest) that
 join the fenced `kb.txt` context, never the trusted prompt. Manifest keys must

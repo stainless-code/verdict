@@ -142,7 +142,7 @@ func writeLensBodies(ctx2 *fetchRunCtx) {
 
 // lensPlanFields appends the pack identities and the group's offered lens
 // ids with their eight-hex body hashes, sorted by id. A layered set tags each
-// lens with its pack slug so an override is visible on the plan line.
+// lens with its pack so an override is visible on the plan line.
 func lensPlanFields(set *pack.Set, group *config.PlanGroup) string {
 	if set == nil || len(set.Packs) == 0 {
 		return ""
@@ -157,12 +157,13 @@ func lensPlanFields(set *pack.Set, group *config.PlanGroup) string {
 }
 
 // lensField renders one offered lens: a single pack keeps the historical
-// id:hash form; a layered set adds the winning pack slug.
+// id:hash form; a layered set adds the winning pack's full name, so the tag
+// names the layer that supplied the body.
 func lensField(set *pack.Set, lens *pack.Lens) string {
 	if len(set.Packs) == 1 {
 		return lens.ID + ":" + lens.Hash8
 	}
-	return lens.ID + "@" + lens.PackSlug + ":" + lens.Hash8
+	return lens.ID + "@" + lens.Pack + ":" + lens.Hash8
 }
 
 // packIdentities renders the loaded packs in precedence order.

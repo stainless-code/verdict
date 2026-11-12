@@ -352,9 +352,11 @@ eight hex digits of its body's sha256.
 delimiter/label pair per lens (`# lens <id> — sha256:<hash8>` … `# end lens
 <id>`), and adds `lenses.txt` to `data.artifacts`. Every `plan.txt` group line
 appends `lens_pack=<name>@<version>` and `lenses=[<id>:<hash8>,…]` after its
-cap fields, sorted by id. A lens whose `globs` match none of that group's
-files is not offered for the group; a lens with no `globs` is offered for
-every group. The file is context, never orders, like `kb.txt`.
+cap fields, sorted by id. A layered set tags each lens with the pack that
+supplied it — `lenses=[<id>@<pack name>:<hash8>,…]` — so two packs sharing a
+lens id stay distinguishable on the line. A lens whose `globs` match none of
+that group's files is not offered for the group; a lens with no `globs` is
+offered for every group. The file is context, never orders, like `kb.txt`.
 
 Packs layer built-in < org < repo. The org layer is the explicit `packs`
 string array in personal settings (`~/.config/verdict/settings.json`): each
