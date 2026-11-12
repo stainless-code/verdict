@@ -209,6 +209,9 @@ func parseLock(raw []byte) (*Lock, *core.RefusalError) {
 	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return nil, badLock(LockFile + " carries trailing data after the lock object")
 	}
+	if lock.Packs == nil {
+		return nil, badLock(LockFile + " carries no packs array")
+	}
 	if ref := validateLock(&lock); ref != nil {
 		return nil, ref
 	}
@@ -364,19 +367,34 @@ func loadLock(root string) (*Lock, *core.RefusalError) {
 // writeLock writes the worktree's verdict.lock atomically with entries sorted
 // by name.
 func writeLock(root string, lock *Lock) *core.RefusalError {
-	slices.SortFunc(lock.Packs, func(a, b LockEntry) int { return strings.Compare(a.Name, b.Name) })
-	raw, err := json.MarshalIndent(lock, "", "  ")
-	if err != nil {
-		return badLock(fmt.Sprintf("encode %s: %v", LockFile, err))
+	raw, ref := encodeLock(lock)
+	if ref != nil {
+		return ref
 	}
 	path := filepath.Join(root, filepath.FromSlash(LockFile))
 	if err := os.MkdirAll(filepath.Dir(path), packDirPerm); err != nil {
 		return badLock(fmt.Sprintf("create %s: %v", filepath.Dir(LockFile), err))
 	}
-	if err := atomic.WriteFile(path, append(raw, '\n')); err != nil {
+	if err := atomic.WriteFile(path, raw); err != nil {
 		return badLock(fmt.Sprintf("write %s: %v", LockFile, err))
 	}
 	return nil
+}
+
+// encodeLock renders the sorted lock document and refuses one loadLock would
+// reject for size.
+func encodeLock(lock *Lock) ([]byte, *core.RefusalError) {
+	slices.SortFunc(lock.Packs, func(a, b LockEntry) int { return strings.Compare(a.Name, b.Name) })
+	raw, err := json.MarshalIndent(lock, "", "  ")
+	if err != nil {
+		return nil, badLock(fmt.Sprintf("encode %s: %v", LockFile, err))
+	}
+	raw = append(raw, '\n')
+	if len(raw) > MaxFileBytes {
+		return nil, badLock(fmt.Sprintf("%s would be %d bytes, over the %d-byte cap",
+			LockFile, len(raw), MaxFileBytes))
+	}
+	return raw, nil
 }
 
 // upsertLock returns the lock with entry added or replacing its same-name row.

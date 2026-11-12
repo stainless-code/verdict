@@ -286,6 +286,55 @@ func TestLockStrictJSONRefuses(t *testing.T) {
 	}
 }
 
+// TestLockRequiresPacksArray proves a missing or null packs field refuses while
+// an explicitly empty array stays a valid lock.
+func TestLockRequiresPacksArray(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		body string
+		ok   bool
+	}{
+		{`{"schema_version":"1"}`, false},
+		{`{"schema_version":"1","packs":null}`, false},
+		{`{"schema_version":"1","packs":[]}`, true},
+	} {
+		_, ref := parseLock([]byte(tc.body))
+		if tc.ok {
+			if ref != nil {
+				t.Fatalf("parseLock(%s) = %s: %s, want it accepted", tc.body, ref.Code, ref.Message)
+			}
+			continue
+		}
+		if ref == nil || ref.Code != CodeBadPack {
+			t.Fatalf("parseLock(%s) = %v, want bad-pack", tc.body, ref)
+		}
+		if want := "carries no packs array"; !strings.Contains(ref.Message, want) {
+			t.Fatalf("message = %q, want it to contain %q", ref.Message, want)
+		}
+	}
+}
+
+// TestWriteLockRefusesOversizedDocument proves an add cannot write a lock
+// loadLock would then refuse for size.
+func TestWriteLockRefusesOversizedDocument(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	lock := &Lock{SchemaVersion: LockSchemaVersion, Packs: []LockEntry{{
+		Name: "acme/lenses", Source: "dir:" + strings.Repeat("x", MaxFileBytes),
+		Version: "1.0.0", Hash: lockHash, Sig: lockSigDir,
+	}}}
+	ref := writeLock(root, lock)
+	if ref == nil || ref.Code != CodeBadPack {
+		t.Fatalf("writeLock = %v, want bad-pack", ref)
+	}
+	if want := "over the 65536-byte cap"; !strings.Contains(ref.Message, want) {
+		t.Fatalf("message = %q, want it to contain %q", ref.Message, want)
+	}
+	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(LockFile))); !os.IsNotExist(err) {
+		t.Fatalf("oversized write left %s (stat err %v)", LockFile, err)
+	}
+}
+
 // TestLockFileIsAControl proves the lock path stays in the fixed controls
 // inventory, so the snapshot can never stop carrying the file CheckLock reads.
 func TestLockFileIsAControl(t *testing.T) {

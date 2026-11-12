@@ -232,6 +232,122 @@ func TestAddSweepsStaleStagingSiblings(t *testing.T) {
 	}
 }
 
+// TestAddRefusesSlugCollision proves a second pack that maps to the same
+// vendored directory refuses before it overwrites the first row's tree.
+func TestAddRefusesSlugCollision(t *testing.T) {
+	repo := t.TempDir()
+	t.Chdir(repo)
+	lensesSource(t, repo, "src-packs/lenses", "perf body\n")
+	sourcePack(t, repo, "src-packs/other",
+		`{"schema_version":"1","name":"other/lenses","version":"1.0.0","lenses":[{"id":"perf"}]}`,
+		map[string]string{"lenses/perf.md": "other body\n"})
+	if _, ref := RunAdd(context.Background(), &AddRequest{Source: "src-packs/lenses"}); ref != nil {
+		t.Fatalf("first RunAdd: %s: %s", ref.Code, ref.Message)
+	}
+	_, ref := RunAdd(context.Background(), &AddRequest{Source: "src-packs/other"})
+	if ref == nil || ref.Code != CodeBadPack {
+		t.Fatalf("second RunAdd = %v, want bad-pack", ref)
+	}
+	if want := "would vendor over acme/lenses at .verdict/packs/lenses"; !strings.Contains(ref.Message, want) {
+		t.Fatalf("message = %q, want it to contain %q", ref.Message, want)
+	}
+	assertFile(t, ".verdict/packs/lenses/lenses/perf.md", "perf body\n")
+	lock, err := os.ReadFile(LockFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(lock), "other/lenses") {
+		t.Fatalf("lock = %s, carries the refused row", lock)
+	}
+}
+
+// TestAddRefusesUnlistedVendoredSlug proves a first add will not overwrite a
+// directory that no lock row owns.
+func TestAddRefusesUnlistedVendoredSlug(t *testing.T) {
+	repo := t.TempDir()
+	t.Chdir(repo)
+	lensesSource(t, repo, "src-packs/lenses", "perf body\n")
+	writeFixture(t, repo, map[string]string{
+		".verdict/packs/lenses/pack.json":      `{"schema_version":"1","name":"other/lenses","version":"1.0.0","lenses":[{"id":"perf"}]}`,
+		".verdict/packs/lenses/lenses/perf.md": "unlisted body\n",
+	})
+	_, ref := RunAdd(context.Background(), &AddRequest{Source: "src-packs/lenses"})
+	if ref == nil || ref.Code != CodeBadPack {
+		t.Fatalf("RunAdd = %v, want bad-pack", ref)
+	}
+	if want := ".verdict/packs/lenses is not named by .verdict/verdict.lock"; !strings.Contains(ref.Message, want) {
+		t.Fatalf("message = %q, want it to contain %q", ref.Message, want)
+	}
+	assertFile(t, ".verdict/packs/lenses/lenses/perf.md", "unlisted body\n")
+}
+
+// TestAddRefusesUnrecordableDirLabel proves a dir path the lock grammar cannot
+// spell refuses before the pack is vendored or any lock is written.
+func TestAddRefusesUnrecordableDirLabel(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows forbids a control character in a directory name")
+	}
+	repo := t.TempDir()
+	t.Chdir(repo)
+	const dir = "src-packs/bad\x7flabel"
+	lensesSource(t, repo, dir, "perf body\n")
+	_, ref := RunAdd(context.Background(), &AddRequest{Source: dir})
+	if ref == nil || ref.Code != CodeBadPack {
+		t.Fatalf("RunAdd = %v, want bad-pack", ref)
+	}
+	if want := "cannot be recorded in .verdict/verdict.lock"; !strings.Contains(ref.Message, want) {
+		t.Fatalf("message = %q, want it to contain %q", ref.Message, want)
+	}
+	if _, err := os.Stat(".verdict"); !os.IsNotExist(err) {
+		t.Fatalf("refused add wrote .verdict (stat err %v)", err)
+	}
+}
+
+// TestCommitAddRestoresTreeWhenLockFails proves a failed lock write rolls the
+// vendored tree back to the previous one and leaves the old lock intact.
+func TestCommitAddRestoresTreeWhenLockFails(t *testing.T) {
+	repo := t.TempDir()
+	t.Chdir(repo)
+	lensesSource(t, repo, "src-packs/lenses", "old body\n")
+	if _, ref := RunAdd(context.Background(), &AddRequest{Source: "src-packs/lenses"}); ref != nil {
+		t.Fatalf("first RunAdd: %s: %s", ref.Code, ref.Message)
+	}
+	oldLock, err := os.ReadFile(LockFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lensesSource(t, repo, "src-packs/lenses", "new body\n")
+	p, ref := LoadDir(filepath.Join(repo, "src-packs", "lenses"))
+	if ref != nil || p == nil {
+		t.Fatalf("LoadDir = (%v, %v)", p, ref)
+	}
+	backup, ref := vendorPack(repo, filepath.Join(repo, "src-packs", "lenses"), "lenses", p)
+	if ref != nil {
+		t.Fatalf("vendorPack: %s: %s", ref.Code, ref.Message)
+	}
+	if backup == "" {
+		t.Fatal("vendorPack returned no backup for a re-add")
+	}
+	assertFile(t, ".verdict/packs/lenses/lenses/perf.md", "new body\n")
+	big := &Lock{SchemaVersion: LockSchemaVersion, Packs: []LockEntry{{
+		Name: "acme/lenses", Source: "dir:" + strings.Repeat("x", MaxFileBytes),
+		Version: "1.0.0", Hash: p.Hash,
+	}}}
+	big.Packs[0].Sig = LockSig(&big.Packs[0])
+	if ref := commitAdd(repo, "lenses", backup, big); ref == nil || ref.Code != CodeBadPack {
+		t.Fatalf("commitAdd = %v, want bad-pack", ref)
+	}
+	assertFile(t, ".verdict/packs/lenses/lenses/perf.md", "old body\n")
+	assertFile(t, LockFile, string(oldLock))
+	entries, err := os.ReadDir(filepath.Join(repo, ".verdict", "packs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "lenses" {
+		t.Fatalf("pack root = %v, want only lenses", entries)
+	}
+}
+
 // TestAddRefusesSourceInsideRepoPacks proves a path inside the vendored tree
 // refuses instead of copying a pack onto itself.
 func TestAddRefusesSourceInsideRepoPacks(t *testing.T) {

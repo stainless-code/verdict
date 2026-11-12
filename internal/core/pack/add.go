@@ -92,17 +92,37 @@ func RunAdd(ctx context.Context, req *AddRequest) (*AddResponse, *core.RefusalEr
 		return nil, ref
 	}
 	slug := packSlug(p.Name)
-	if ref := vendorPack(root, src.dir, slug, p); ref != nil {
-		return nil, ref
-	}
 	entry := LockEntry{
 		Name: p.Name, Source: src.label, Version: p.Version, Hash: p.Hash,
 	}
 	entry.Sig = LockSig(&entry)
-	if ref := writeLock(root, upsertLock(lock, &entry)); ref != nil {
+	next := upsertLock(lock, &entry)
+	if _, ref := encodeLock(next); ref != nil {
+		return nil, ref
+	}
+	backup, ref := vendorPack(root, src.dir, slug, p)
+	if ref != nil {
+		return nil, ref
+	}
+	if ref := commitAdd(root, slug, backup, next); ref != nil {
 		return nil, ref
 	}
 	return addResponse(p, &entry, old, slug), nil
+}
+
+// commitAdd writes the new lock, restoring the previous tree when the write
+// fails, and drops the backup only after the lock is durable.
+func commitAdd(root, slug, backup string, lock *Lock) *core.RefusalError {
+	if ref := writeLock(root, lock); ref != nil {
+		if err := undoVendored(root, slug, backup); err != nil {
+			return cleanupStageFailure(ref, err)
+		}
+		return ref
+	}
+	if err := dropVendoredBackup(root, backup); err != nil {
+		return badPack(fmt.Sprintf("remove the previous %s/%s backup: %v", RepoPacksDir, slug, err))
+	}
+	return nil
 }
 
 // loadAdd validates the source and returns the current lock, the loaded pack,
@@ -123,12 +143,53 @@ func loadAdd(root string, src *packSource) (*Lock, *Pack, *LockEntry, *core.Refu
 	if ref != nil {
 		return nil, nil, nil, ref
 	}
+	slug := packSlug(p.Name)
+	if ref := checkSlugOwner(root, lock, p.Name, slug); ref != nil {
+		return nil, nil, nil, ref
+	}
 	var old *LockEntry
 	if existing := lockEntry(lock, p.Name); existing != nil {
 		previous := *existing
 		old = &previous
 	}
 	return lock, p, old, nil
+}
+
+// checkSlugOwner refuses a first add that would overwrite another pack's
+// vendored slug, or a directory no lock row owns.
+func checkSlugOwner(root string, lock *Lock, name, slug string) *core.RefusalError {
+	if lock != nil {
+		for i := range lock.Packs {
+			other := &lock.Packs[i]
+			if other.Name != name && packSlug(other.Name) == slug {
+				return badPack(fmt.Sprintf(
+					"pack %s would vendor over %s at %s/%s — rename one pack",
+					name, other.Name, RepoPacksDir, slug))
+			}
+		}
+	}
+	_, err := os.Lstat(filepath.Join(root, filepath.FromSlash(RepoPacksDir), slug))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return badPack(fmt.Sprintf("inspect %s/%s: %v", RepoPacksDir, slug, err))
+	}
+	if lockEntry(lock, name) != nil {
+		return nil
+	}
+	existing, ref := LoadDir(filepath.Join(root, filepath.FromSlash(RepoPacksDir), slug))
+	if ref != nil {
+		return badPack(fmt.Sprintf(
+			"%s/%s is not named by %s — remove it or re-add the pack it holds",
+			RepoPacksDir, slug, LockFile))
+	}
+	if existing != nil && existing.Name == name {
+		return nil
+	}
+	return badPack(fmt.Sprintf(
+		"%s/%s is not named by %s — remove it or re-add the pack it holds",
+		RepoPacksDir, slug, LockFile))
 }
 
 // addResponse renders the added row and its human line.
@@ -198,7 +259,11 @@ func addSource(ctx context.Context, req *AddRequest) (*packSource, *core.Refusal
 	if err != nil {
 		return nil, badPack(fmt.Sprintf("pack source %q cannot be resolved: %v", redactURL(source), err))
 	}
-	return &packSource{dir: dir, label: sourceDirPrefix + filepath.ToSlash(source), cleanup: func() {}}, nil
+	label := sourceDirPrefix + filepath.ToSlash(source)
+	if !validLockSource(label) {
+		return nil, badPack(fmt.Sprintf("pack source %q cannot be recorded in %s", redactURL(source), LockFile))
+	}
+	return &packSource{dir: dir, label: label, cleanup: func() {}}, nil
 }
 
 // splitGitSource recognizes the published https and ssh forms and the
@@ -646,32 +711,32 @@ func chargeCloneEntry(entry fs.DirEntry, walkErr error, count *int, total *int64
 // vendorPack stages the loaded pack beside its destination, proves the staged
 // tree hashes like the source, then swaps it in. A failed re-add leaves the
 // previous tree and lock row untouched.
-func vendorPack(root, srcDir, slug string, p *Pack) *core.RefusalError {
+func vendorPack(root, srcDir, slug string, p *Pack) (string, *core.RefusalError) {
 	src, err := os.OpenRoot(srcDir)
 	if err != nil {
-		return badPack(fmt.Sprintf("open pack source %s: %v", srcDir, err))
+		return "", badPack(fmt.Sprintf("open pack source %s: %v", srcDir, err))
 	}
 	defer func() { _ = src.Close() }()
 	dest, packsDir, ref := openPacksRoot(root)
 	if ref != nil {
-		return ref
+		return "", ref
 	}
 	defer func() { _ = dest.Close() }()
 	if ref := sweepStaleVendored(packsDir, slug); ref != nil {
-		return ref
+		return "", ref
 	}
 	stage, ref := stageVendored(src, packsDir, slug, p)
 	if ref != nil {
-		return ref
+		return "", ref
 	}
-	swapRef := swapVendored(dest, packsDir, slug, stage)
+	backup, swapRef := swapVendored(dest, packsDir, slug, stage)
 	if cleanupErr := os.RemoveAll(stage); cleanupErr != nil {
 		if swapRef != nil {
-			return cleanupStageFailure(swapRef, cleanupErr)
+			return "", cleanupStageFailure(swapRef, cleanupErr)
 		}
-		return badPack(fmt.Sprintf("remove the %s staging tree: %v", RepoPacksDir, cleanupErr))
+		return "", badPack(fmt.Sprintf("remove the %s staging tree: %v", RepoPacksDir, cleanupErr))
 	}
-	return swapRef
+	return backup, swapRef
 }
 
 // sweepStaleVendored removes a crashed re-add's staging and backup siblings
@@ -738,25 +803,49 @@ func cleanupStageFailure(ref *core.RefusalError, err error) *core.RefusalError {
 }
 
 // swapVendored moves the verified stage into slug, keeping a backup of any
-// previous tree until the new one is in place.
-func swapVendored(dest *os.Root, packsDir, slug, stage string) *core.RefusalError {
+// previous tree until RunAdd commits the new lock.
+func swapVendored(dest *os.Root, packsDir, slug, stage string) (string, *core.RefusalError) {
 	backup, ref := backupVendored(dest, packsDir, slug)
 	if ref != nil {
-		return ref
+		return "", ref
 	}
 	if err := dest.Rename(filepath.Base(stage), slug); err != nil {
 		if backup != "" {
 			_ = dest.Rename(backup, slug) //nolint:errcheck // best-effort restore while the refusal is formed
 		}
-		return badPack(fmt.Sprintf("install %s/%s: %v", RepoPacksDir, slug, err))
+		return "", badPack(fmt.Sprintf("install %s/%s: %v", RepoPacksDir, slug, err))
 	}
+	return backup, nil
+}
+
+// undoVendored restores the tree a failed lock write replaced, or removes the
+// tree a first add installed.
+func undoVendored(root, slug, backup string) error {
+	dest, err := os.OpenRoot(filepath.Join(root, filepath.FromSlash(RepoPacksDir)))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = dest.Close() }()
+	if backup == "" {
+		return dest.RemoveAll(slug)
+	}
+	if err := dest.RemoveAll(slug); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return dest.Rename(backup, slug)
+}
+
+// dropVendoredBackup removes the previous tree after the lock is durable.
+func dropVendoredBackup(root, backup string) error {
 	if backup == "" {
 		return nil
 	}
-	if err := dest.RemoveAll(backup); err != nil {
-		return badPack(fmt.Sprintf("remove the previous %s/%s: %v", RepoPacksDir, slug, err))
+	dest, err := os.OpenRoot(filepath.Join(root, filepath.FromSlash(RepoPacksDir)))
+	if err != nil {
+		return err
 	}
-	return nil
+	defer func() { _ = dest.Close() }()
+	return dest.RemoveAll(backup)
 }
 
 // backupVendored renames any previous tree aside and returns its name, or ""
