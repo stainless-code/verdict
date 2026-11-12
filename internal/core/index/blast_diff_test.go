@@ -7,7 +7,8 @@ import (
 
 // TestBlastChangesReadNewSideLines pins the diff scan: added lines, the two
 // sides of a deletion, context that moves the pointer without marking, a rename
-// with no hunk, a binary section, and a C-quoted path.
+// with no hunk, a binary section, a C-quoted path, a no-newline marker, CRLF
+// lines, a deleted file, and a new file.
 //
 //nolint:revive // the diff-fixture table reads as one block
 func TestBlastChangesReadNewSideLines(t *testing.T) {
@@ -75,6 +76,53 @@ Binary files /dev/null and b/img.png differ
 			diff: "diff --git \"a/h\\303\\251llo.go\" \"b/h\\303\\251llo.go\"\n" +
 				"--- \"a/h\\303\\251llo.go\"\n+++ \"b/h\\303\\251llo.go\"\n@@ -1 +1,2 @@\n package a\n+var x = 1\n",
 			want: []blastChange{{path: "héllo.go", lines: []int{2}}},
+		},
+		{
+			name: "a no-newline marker moves nothing",
+			diff: `diff --git a/n.go b/n.go
+--- a/n.go
++++ b/n.go
+@@ -1,2 +1,2 @@
+ package a
+-var x = 1
+\ No newline at end of file
++var x = 2
+`,
+			want: []blastChange{{path: "n.go", lines: []int{1, 2}}},
+		},
+		{
+			name: "CRLF content lines parse as line numbers",
+			diff: "diff --git a/w.go b/w.go\n--- a/w.go\n+++ b/w.go\n" +
+				"@@ -1,2 +1,3 @@\n package a\r\n+var x = 1\r\n+var y = 2\r\n",
+			want: []blastChange{{path: "w.go", lines: []int{2, 3}}},
+		},
+		{
+			name: "a deleted file keeps the new path",
+			diff: `diff --git a/gone.go b/gone.go
+deleted file mode 100644
+index 1234567..0000000
+--- a/gone.go
++++ /dev/null
+@@ -1,3 +0,0 @@
+-package a
+-
+-func A() {}
+`,
+			want: []blastChange{{path: "gone.go", lines: []int{1}}},
+		},
+		{
+			name: "a new file marks its added lines",
+			diff: `diff --git a/new.go b/new.go
+new file mode 100644
+index 0000000..1234567
+--- /dev/null
++++ b/new.go
+@@ -0,0 +1,3 @@
++package a
++
++func A() {}
+`,
+			want: []blastChange{{path: "new.go", lines: []int{1, 2, 3}}},
 		},
 	}
 	for _, tc := range cases {

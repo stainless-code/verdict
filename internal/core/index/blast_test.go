@@ -264,6 +264,40 @@ func TestBlastRenameOnlySectionNamesEveryDeclaration(t *testing.T) {
 	}
 }
 
+// TestBlastStaleBundleHead proves a bundle head whose tree is indexed answers
+// from that tree and reads stale when HEAD has moved past it.
+func TestBlastStaleBundleHead(t *testing.T) {
+	f := newFixture(t)
+	writeBlastFixture(f)
+	f.commit("one")
+	base := f.run("", "rev-parse", "HEAD")
+	f.write("a/ab.go", "package a\n\nfunc A() {\n\t_ = 1\n}\n\nfunc B() {}\n")
+	f.commit("two")
+	head := f.run("", "rev-parse", "HEAD")
+	diff := f.run("", "diff", base, head, "--", "a/ab.go")
+	f.build()
+	f.write("c/extra.go", "package c\n\nfunc Extra() {}\n")
+	f.commit("three")
+	f.write(".verdict/state/7/full.diff", diff+"\n")
+	f.write(".verdict/state/7/PR.json",
+		fmt.Sprintf(`{"state":"OPEN","headRefOid":%q,"baseRefOid":%q,"author":{"login":"t"}}`, head, base))
+	resp := blastRun(t, f, func(r *Request) { r.Pr = "7" })
+	blast := resp.Data.Blast
+	if !blast.Indexed {
+		t.Fatal("indexed = false; want the bundle head's stored index")
+	}
+	want := f.run("", "rev-parse", head+"^{tree}")
+	if resp.Data.Tree != want {
+		t.Errorf("tree = %q; want the bundle head's tree %s", resp.Data.Tree, want)
+	}
+	if !resp.Data.Stale {
+		t.Error("stale = false; want true when HEAD's tree differs from the queried one")
+	}
+	assertSymbolRows(t, blast.Symbols,
+		SymbolRow{Path: "a/ab.go", Name: "A", Kind: "func", Line: 3},
+	)
+}
+
 // TestBlastNullCountsWithoutIndex proves an absent index reads the symbol,
 // caller, and test counts as null (never 0) while the git-measured lists still
 // answer.
