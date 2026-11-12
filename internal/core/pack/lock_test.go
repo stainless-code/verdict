@@ -85,6 +85,7 @@ func TestLockStrictJSONRefuses(t *testing.T) {
 		name  string
 		body  string
 		want  string
+		hide  string
 		valid bool
 	}{
 		{
@@ -117,6 +118,13 @@ func TestLockStrictJSONRefuses(t *testing.T) {
 			valid: true,
 		},
 		{
+			name: "git password source",
+			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:https://user:tok@host/repo.git@` +
+				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
+			want: "user:***@host",
+			hide: "user:tok@host",
+		},
+		{
 			name: "bad source",
 			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"http://x",` +
 				`"version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
@@ -138,6 +146,9 @@ func TestLockStrictJSONRefuses(t *testing.T) {
 			}
 			if !strings.Contains(ref.Message, tc.want) {
 				t.Fatalf("message = %q, want it to contain %q", ref.Message, tc.want)
+			}
+			if tc.hide != "" && strings.Contains(ref.Message, tc.hide) {
+				t.Fatalf("message = %q, carries %q", ref.Message, tc.hide)
 			}
 		})
 	}

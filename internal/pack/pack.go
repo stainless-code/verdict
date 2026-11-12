@@ -29,7 +29,8 @@ const (
 )
 
 const packUsage = "usage: verdict pack <list|add> [--json]\n" +
-	"       verdict pack add <dir|git-url>[@ref] [--json]"
+	"       verdict pack add <dir|git-url>[@ref] [--json]\n" +
+	"       git userinfo allows a bare user only: https://user@host/path, ssh://user@host/path, user@host:path"
 
 // Run executes `pack list [--json]` or `pack add <dir|git-url>[@ref] [--json]`,
 // returning the process exit code.

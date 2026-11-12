@@ -11,7 +11,11 @@ per repo pack, sorted by name: `name`, `source` (`dir:<path>` or
 prints the old and new hash; a source inside `.verdict/packs/` refuses
 `bad-pack`. Git sources fetch hermetically (no system config, scrubbed
 `HOME`/`XDG_*`, no prompts, no hooks, file protocol disabled, shallow clone
-without tags or submodules) and record the resolved HEAD commit.
+without tags or submodules) and record the resolved HEAD commit. A URL
+userinfo password or token refuses `bad-pack` before the clone and never
+reaches a printed line, a refusal message, or `verdict.lock`; the bare
+`user@host` forms keep working, and a hand-written lock row carrying one
+refuses too.
 
 `fetch`, `fetch-local`, `post`, and `record` now refuse `pack-lock-missing`
 when a repo pack has no lock entry and `pack-lock-drift` when the tree hash,

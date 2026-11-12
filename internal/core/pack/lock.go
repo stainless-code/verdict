@@ -258,7 +258,7 @@ func validateLockEntry(entry *LockEntry) *core.RefusalError {
 	}
 	if !validLockSource(entry.Source) {
 		return badLock(fmt.Sprintf("%s pack %q source %q is not dir:<path> or git:<url>@<sha>",
-			LockFile, entry.Name, entry.Source))
+			LockFile, entry.Name, redactURL(entry.Source)))
 	}
 	if !versionRE.MatchString(entry.Version) {
 		return badLock(fmt.Sprintf("%s pack %q version %q is not semver", LockFile, entry.Name, entry.Version))
@@ -282,7 +282,7 @@ func validLockSource(source string) bool {
 		return false
 	}
 	at := strings.LastIndex(rest, "@")
-	return at > 0 && hex40(rest[at+1:])
+	return at > 0 && hex40(rest[at+1:]) && !userinfoPassword(rest[:at])
 }
 
 // hex64 reports whether s is a lowercase 64-hex digest.

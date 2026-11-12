@@ -135,13 +135,14 @@ func addResponse(p *Pack, entry *LockEntry, old *LockEntry, slug string) *AddRes
 			Lenses: lensIDsOf(p), Rules: ruleIDsOf(p),
 		},
 	}
-	line := fmt.Sprintf("added %s@%s source=%s sha256:%s", p.Name, p.Version, entry.Source, p.Hash)
+	source := redactURL(entry.Source)
+	line := fmt.Sprintf("added %s@%s source=%s sha256:%s", p.Name, p.Version, source, p.Hash)
 	if old != nil {
 		data.Replaced = true
 		previous := old.Hash
 		data.PreviousHash = &previous
 		line = fmt.Sprintf("updated %s@%s source=%s sha256:%s -> sha256:%s",
-			p.Name, p.Version, entry.Source, previous, p.Hash)
+			p.Name, p.Version, source, previous, p.Hash)
 	}
 	return &AddResponse{
 		Next:  "commit .verdict/verdict.lock with the vendored pack, then run 'verdict pack list'",
@@ -181,6 +182,14 @@ func addSource(ctx context.Context, req *AddRequest) (*packSource, *core.Refusal
 	if url, refName, ok := splitGitSource(source); ok {
 		return cloneSource(ctx, req, url, refName)
 	}
+	if userinfoPassword(source) {
+		return nil, badPack(fmt.Sprintf(
+			"pack source %q carries a userinfo password — use ssh, or a credential-free https URL",
+			redactURL(source)))
+	}
+	if strings.HasPrefix(source, "-") {
+		return nil, badPack(fmt.Sprintf("pack source %q starts with '-'", source))
+	}
 	dir, err := filepath.Abs(source)
 	if err != nil {
 		return nil, badPack(fmt.Sprintf("pack source %q cannot be resolved: %v", source, err))
@@ -198,10 +207,67 @@ func splitGitSource(source string) (string, string, bool) {
 			return "", "", false
 		}
 	}
-	if !gitURL(url) {
+	if !gitURL(url) || strings.HasPrefix(url, "-") || userinfoPassword(url) {
 		return "", "", false
 	}
 	return url, refName, true
+}
+
+// redactURL replaces the password part of a URL's userinfo with "***", for
+// every message and record that names a source.
+func redactURL(raw string) string {
+	start, end, ok := authority(raw)
+	if !ok {
+		return raw
+	}
+	authorityText := raw[start:end]
+	at := strings.Index(authorityText, refSep)
+	if at < 0 {
+		return raw
+	}
+	userinfo := authorityText[:at]
+	colon := strings.Index(userinfo, ":")
+	if colon < 0 {
+		return raw
+	}
+	return raw[:start] + userinfo[:colon+1] + "***" + authorityText[at:] + raw[end:]
+}
+
+// userinfoPassword reports whether a git source's userinfo carries a password
+// or token. A scp form only counts when its host also carries the ":path"
+// separator, so a plain directory name with a colon stays a directory.
+func userinfoPassword(raw string) bool {
+	start, end, ok := authority(raw)
+	if !ok {
+		return false
+	}
+	authorityText := raw[start:end]
+	at := strings.Index(authorityText, refSep)
+	if at < 0 {
+		return false
+	}
+	if strings.Contains(raw, schemeSep) {
+		return strings.Contains(authorityText[:at], ":")
+	}
+	return strings.Contains(raw[at+1:], ":") && strings.Contains(authorityText[:at], ":")
+}
+
+// authority returns the byte range of a source's URL authority (or its scp
+// user@host part), and false when the source carries no authority.
+func authority(raw string) (int, int, bool) {
+	if scheme := strings.Index(raw, schemeSep); scheme >= 0 {
+		start := scheme + len(schemeSep)
+		end := len(raw)
+		if slash := strings.IndexByte(raw[start:], '/'); slash >= 0 {
+			end = start + slash
+		}
+		return start, end, start < end
+	}
+	at := strings.Index(raw, refSep)
+	if at <= 0 || strings.Contains(raw[:at], "/") {
+		return 0, 0, false
+	}
+	return 0, len(raw), true
 }
 
 // refSplit cuts the @ref suffix. The first @ is URL userinfo, never the
@@ -272,14 +338,15 @@ func cloneSource(
 	}
 	if !hex40(sha) {
 		cleanup()
-		return nil, badPack(fmt.Sprintf("git remote %q resolved HEAD to %q, not a 40-hex commit", url, sha))
+		return nil, badPack(fmt.Sprintf("git remote %q resolved HEAD to %q, not a 40-hex commit",
+			redactURL(url), sha))
 	}
 	if ref := runGitPackOK(ctx, cmdr, env, clone, "checkout", "--detach", sha); ref != nil {
 		cleanup()
 		return nil, ref
 	}
 	return &packSource{
-		dir: clone, label: sourceGitPrefix + url + refSep + sha, cleanup: cleanup,
+		dir: clone, label: sourceGitPrefix + redactURL(url) + refSep + sha, cleanup: cleanup,
 	}, nil
 }
 

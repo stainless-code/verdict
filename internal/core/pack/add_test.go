@@ -299,6 +299,10 @@ func TestSplitGitSource(t *testing.T) {
 		{"git@github.com:a/b.git", "git@github.com:a/b.git", "", true},
 		{"git@github.com:a/b.git@release/1", "git@github.com:a/b.git", "release/1", true},
 		{"ssh://git@host/a/b@v1", "ssh://git@host/a/b", "v1", true},
+		{"https://user:tok@host/repo.git", "", "", false},
+		{"ssh://user:tok@host/repo.git", "", "", false},
+		{"user:tok@host:repo.git", "", "", false},
+		{"--upload-pack=x@y:z", "", "", false},
 		{"http://host/a", "", "", false},
 		{"https://host/a@-bad", "", "", false},
 		{"https://host/a@", "", "", false},
@@ -309,6 +313,41 @@ func TestSplitGitSource(t *testing.T) {
 			t.Errorf("splitGitSource(%q) = %q, %q, %v; want %q, %q, %v",
 				tc.source, url, ref, ok, tc.url, tc.ref, tc.ok)
 		}
+	}
+}
+
+// TestAddRefusesCredentialedSource proves a URL password refuses before the
+// clone and before any write, and every rendered message masks the secret.
+func TestAddRefusesCredentialedSource(t *testing.T) {
+	for _, source := range []string{
+		"https://oauth2:ghp_TOKEN@host/acme/packs.git",
+		"ssh://oauth2:ghp_TOKEN@host/acme/packs.git",
+		"oauth2:ghp_TOKEN@host:acme/packs.git",
+	} {
+		t.Run(source, func(t *testing.T) {
+			repo := t.TempDir()
+			t.Chdir(repo)
+			cmdr := &gitCommander{t: t}
+			_, ref := RunAdd(context.Background(), &AddRequest{
+				Runtime: &core.Runtime{Commander: cmdr},
+				Source:  source,
+			})
+			if ref == nil || ref.Code != CodeBadPack {
+				t.Fatalf("RunAdd(%q) = %v, want bad-pack", source, ref)
+			}
+			if strings.Contains(ref.Message, "ghp_TOKEN") {
+				t.Fatalf("message = %q, carries the token", ref.Message)
+			}
+			if !strings.Contains(ref.Message, "***") {
+				t.Fatalf("message = %q, want a masked credential", ref.Message)
+			}
+			if len(cmdr.calls) != 0 {
+				t.Fatalf("git calls = %d, want none before the refusal", len(cmdr.calls))
+			}
+			if _, err := os.Stat(".verdict"); !os.IsNotExist(err) {
+				t.Fatalf("refused add wrote .verdict (stat err %v)", err)
+			}
+		})
 	}
 }
 
