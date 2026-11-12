@@ -167,16 +167,26 @@ func appendMode(out *strings.Builder, info os.FileInfo) {
 	out.WriteByte(' ')
 }
 
+// fingerprint reads one bundle's cache stamp, skipping the read when the
+// request is already canceled.
+func (l *Layer) fingerprint(ctx context.Context, root Root, dir string) (stamp, bool) {
+	if ctx.Err() != nil {
+		return stamp{}, false
+	}
+	return l.stampFn(root, dir)
+}
+
 // cached composes one bundle's report, reusing the in-memory entry while its
-// stamp holds. A request whose stamp could not be built reads and writes no
-// entry, so the next request still sees the reader's refusal; a canceled
-// request hashes no inventory. The cache is bounded by the bundle cap and
-// never written anywhere: a stale entry is a bug, not data loss.
+// stamp holds. A canceled request fingerprints no files. A request whose stamp
+// could not be built reads and writes no entry, so the next request still sees
+// the reader's refusal; a canceled request hashes no inventory. The cache is
+// bounded by the bundle cap and never written anywhere: a stale entry is a bug,
+// not data loss.
 func (l *Layer) cached(
 	ctx context.Context, root Root, bundle, dir string, flags *core.ReportFlags,
 ) (*core.ReportResponse, *core.RefusalError, inventoryReport) {
 	key := keyFor(root, bundle, flags)
-	current, cacheable := bundleStamp(root, dir)
+	current, cacheable := l.fingerprint(ctx, root, dir)
 	l.mu.Lock()
 	hit, ok := l.cache[key]
 	if cacheable && ok && hit.stamp == current {

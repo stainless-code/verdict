@@ -100,15 +100,18 @@ type Options struct {
 
 // Layer is the in-memory read model. Its cache is a derived optimisation,
 // never a source of truth: the stamp comparison rebuilds a stale entry.
-type Layer struct { //nolint:govet // the mutex leads the derived-state fields for a readable grouping
+type Layer struct { //nolint:govet // fields group by role (options, read seams, derived state), not alignment
 	version    string
 	roots      []Root
 	runtime    *core.Runtime
 	check      string
 	maxBundles int
-	mu         sync.Mutex
-	cache      map[cacheKey]entry
-	seq        uint64
+	// stampFn reads a bundle's cache stamp; a test replaces it to observe the
+	// read a canceled request must never make.
+	stampFn func(Root, string) (stamp, bool)
+	mu      sync.Mutex
+	cache   map[cacheKey]entry
+	seq     uint64
 }
 
 // New builds the read model over a snapshot of roots.
@@ -118,6 +121,7 @@ func New(s Snapshot, o Options) *Layer {
 		runtime:    s.Runtime,
 		check:      o.Check,
 		maxBundles: o.MaxBundles,
+		stampFn:    bundleStamp,
 		cache:      map[cacheKey]entry{},
 	}
 	layer.applyDefaults()

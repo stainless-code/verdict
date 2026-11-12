@@ -989,6 +989,27 @@ func TestCanceledListingStopsWalking(t *testing.T) {
 	}
 }
 
+// TestCanceledDetailFingerprintsNothing proves a request canceled before the
+// call reads no cache stamp: the seam counts zero fingerprint calls.
+func TestCanceledDetailFingerprintsNothing(t *testing.T) {
+	t.Parallel()
+	dir, _ := fixture(t)
+	layer := newLayer(dir)
+	calls := 0
+	layer.stampFn = func(Root, string) (stamp, bool) {
+		calls++
+		return stamp{}, false
+	}
+	_, err := layer.Detail(canceledContext(), RootID(mustAbs(t, dir)), "1234")
+	var ref *core.RefusalError
+	if !errors.As(err, &ref) || ref.Code != "canceled" {
+		t.Fatalf("canceled Detail = %v, want canceled", err)
+	}
+	if calls != 0 {
+		t.Errorf("fingerprint calls = %d, want 0 for a canceled request", calls)
+	}
+}
+
 // TestCanceledComposeSkipsInventory proves a canceled request hashes no
 // inventory: the report refuses and the bundle's files are never read.
 func TestCanceledComposeSkipsInventory(t *testing.T) {
