@@ -327,7 +327,8 @@ func localFinish(
 	shown := r.display(dir)
 	fmt.Fprintf(r.Human, "done: %s/source.json %s/full.diff %s/toc.txt %s/roles.txt (%d files)\n", shown, shown, shown, shown, total)
 	fmt.Fprintf(r.Human, "next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + "+
-		"%s/source.json + %s to any agent; ask it to write %s/review.json\n", dir, diffFeed(dir, chunkActive, fullDiffFile), dir)
+		"%s/source.json + %s%s to any agent; ask it to write %s/review.json\n",
+		dir, diffFeed(dir, chunkActive, fullDiffFile), impactFeed(dir, f.Index), dir)
 	chunkJSON, ref := maybeWriteChunks(r.Diag, dir, fc.maxBytes, chunkActive,
 		groupLimits(ctx2.runCfg.resolved, f.ChunkFlag), mode.headSHA, mode.baseSHA, fc.source, r.privacy.Exclusions)
 	if ref != nil {

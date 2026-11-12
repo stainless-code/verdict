@@ -9,6 +9,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
+	"github.com/stainless-code/verdict/internal/fence"
 )
 
 const repairDiff = "diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n" +
@@ -290,7 +291,7 @@ func TestSanitizeFencesBreaksEveryAngleRun(t *testing.T) {
 		if strings.Contains(got, "<<<") {
 			t.Errorf("run of %d '<' leaves a fence marker: %q", n, got)
 		}
-		if unbroken := strings.ReplaceAll(got, fenceBreak, ""); unbroken != in {
+		if unbroken := strings.ReplaceAll(got, fence.Break, ""); unbroken != in {
 			t.Errorf("run of %d '<' changed the payload: %q, want %q", n, unbroken, in)
 		}
 	}
