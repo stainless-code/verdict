@@ -86,6 +86,10 @@ type Options struct { //nolint:govet // field order is the public API surface
 	Progress Progress
 	// Commander runs subprocesses; defaults to the production watchdog.
 	Commander Commander
+	// RepoRoot resolves the reviewed repository root that bundle paths and
+	// policy anchor on; defaults to the git top-level probe. A host that
+	// already knows its checkout answers here instead of paying that spawn.
+	RepoRoot func(ctx context.Context) (string, error)
 }
 
 // Client runs review operations in-process. It owns no behavior: every
@@ -99,7 +103,8 @@ type Client struct { //nolint:govet // field order is the public API surface
 	commander core.Commander
 	// fetch is the fetch verbs' runner: fetchcore needs Run plus LookPath,
 	// and it alone wants the fetch cap and the missing-tool pre-check.
-	fetch core.Commander
+	fetch    core.Commander
+	repoRoot func(context.Context) (string, error)
 }
 
 // New builds a Client. The zero Options yields a usable client with the wall
@@ -120,9 +125,13 @@ func New(o Options) *Client {
 		adapter := &commanderAdapter{c: o.Commander}
 		commander, fetch = adapter, adapter
 	}
+	repoRoot := o.RepoRoot
+	if repoRoot == nil {
+		repoRoot = readcommon.RepoRoot
+	}
 	return &Client{
 		dir: o.Dir, env: env, now: now, progress: o.Progress,
-		commander: commander, fetch: fetch,
+		commander: commander, fetch: fetch, repoRoot: repoRoot,
 	}
 }
 
@@ -181,7 +190,7 @@ func (c *Client) read(ctx context.Context, repo, pr string) (core.ReadRequest, e
 // readWith builds an invocation for a specific runner: fetch selects its own
 // posture, every other verb shares the client's.
 func (c *Client) readWith(ctx context.Context, commander core.Commander, repo, pr string) (core.ReadRequest, error) {
-	repoRoot, err := readcommon.RepoRoot(ctx)
+	repoRoot, err := c.repoRoot(ctx)
 	if err != nil {
 		return core.ReadRequest{}, jq.Sealed("resolve repository root", err)
 	}

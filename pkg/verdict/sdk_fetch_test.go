@@ -373,7 +373,10 @@ esac
 
 // TestClientFetchDefaultRunner proves the production fetch posture through the
 // SDK: a client with no injected commander must still fetch, which means New
-// selected a runner carrying the LookPath seam fetchcore requires.
+// selected a runner carrying the LookPath seam fetchcore requires. The repo
+// root is injected because the probe is not the runner under test: it spawns git
+// under its own 5s bound, which a loaded machine reaches (the pre-push run of
+// every package once did).
 func TestClientFetchDefaultRunner(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the default fetch runner spawns POSIX shell stubs")
@@ -384,6 +387,7 @@ func TestClientFetchDefaultRunner(t *testing.T) {
 	c := verdict.New(verdict.Options{
 		Now:      func() time.Time { return sdkNow },
 		Progress: progress,
+		RepoRoot: func(context.Context) (string, error) { return ".", nil },
 	})
 	defer c.Close()
 
@@ -396,6 +400,26 @@ func TestClientFetchDefaultRunner(t *testing.T) {
 	assertFetchedFiles(t, ".verdict/state/7", []string{"PR.json", "full.diff", "reviews.json", "threads.json"})
 	if !strings.Contains(progress.joinedHuman(), "» gh pr view acme/app#7") {
 		t.Errorf("human = %q, want the streamed reads", progress.joinedHuman())
+	}
+}
+
+// TestClientRepoRootSeam proves Options.RepoRoot replaces the git top-level
+// probe: a read verb reports the injected root's failure instead of resolving
+// a root of its own.
+func TestClientRepoRootSeam(t *testing.T) {
+	t.Chdir(t.TempDir())
+	c := verdict.New(verdict.Options{
+		Now:      func() time.Time { return sdkNow },
+		RepoRoot: func(context.Context) (string, error) { return "", errors.New("no checkout here") },
+	})
+	defer c.Close()
+
+	_, err := c.Fetch(context.Background(), &verdict.FetchRequest{
+		Invocation:    sdkInvocation("7"),
+		BudgetConsent: true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "resolve repository root: no checkout here") {
+		t.Fatalf("fetch error = %v, want the injected root's failure", err)
 	}
 }
 
