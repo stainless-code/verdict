@@ -2,6 +2,7 @@ package schemagen
 
 import (
 	"github.com/stainless-code/verdict/internal/core"
+	backtestcore "github.com/stainless-code/verdict/internal/core/backtest"
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	"github.com/stainless-code/verdict/internal/core/pack"
 	"github.com/stainless-code/verdict/internal/core/threads"
@@ -25,6 +26,17 @@ import (
 //   - named structs become $ref entries in $defs; anonymous structs inline;
 //   - map[string]any is an open object; any is an empty (accept-anything)
 //     schema; []any is an array without items.
+
+// BacktestData is the backtest score report: report.json and the score
+// envelope's data object, generated as schemas/backtest.schema.json. The two
+// are one shape, so a consumer reads one schema for both.
+type BacktestData = backtestcore.ScoreReport
+
+// BacktestSpend is the score's priced spend over the scored reviews.
+type BacktestSpend = backtestcore.ScoreSpend
+
+// BacktestSignal is one row of the score's fix/revert catch table.
+type BacktestSignal = backtestcore.ScoreSignal
 
 // CorpusCase is the benchmark corpus case manifest, generated as
 // schemas/corpus.schema.json.

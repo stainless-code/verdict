@@ -58,7 +58,7 @@ func TestMineLiteralGlobPaths(t *testing.T) {
 		HeadAt:         "2024-01-02T00:00:00Z",
 		Fixes:          []string{"90413c3e3c7dd9df9817cfe794467ccc2b6626b6"},
 		Bugs: []Bug{
-			{Path: "app/[id].tsx", Line: 1, Kind: "unclassified", Fix: "90413c3e3c7dd9df9817cfe794467ccc2b6626b6"},
+			{Path: "app/[id].tsx", Line: 1, Kind: "unclassified", Signal: "fix", Fix: "90413c3e3c7dd9df9817cfe794467ccc2b6626b6"},
 		},
 	})
 }
@@ -85,7 +85,7 @@ func TestMineLiteralColonPath(t *testing.T) {
 		HeadAt:         "2024-01-02T00:00:00Z",
 		Fixes:          []string{"e9a5f1bcb73d222fca5e6cfba4c582bcf345dccf"},
 		Bugs: []Bug{
-			{Path: ":colon.txt", Line: 1, Kind: "unclassified", Fix: "e9a5f1bcb73d222fca5e6cfba4c582bcf345dccf"},
+			{Path: ":colon.txt", Line: 1, Kind: "unclassified", Signal: "fix", Fix: "e9a5f1bcb73d222fca5e6cfba4c582bcf345dccf"},
 		},
 	})
 }

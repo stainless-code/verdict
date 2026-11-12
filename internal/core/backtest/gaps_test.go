@@ -64,6 +64,25 @@ func TestMineRevertOfRevertIsNotASeed(t *testing.T) {
 	}
 }
 
+// TestSeedSignalFollowsTheSeedRule proves the signal names the rule that
+// accepted the commit: a `Revert "Revert ..."` subject seeds only through its
+// body, so it is a fix, not a revert.
+func TestSeedSignalFollowsTheSeedRule(t *testing.T) {
+	tests := []struct{ subject, body, signal string }{
+		{`Revert "feat: x"`, "", signalRevert},
+		{`Revert "Revert "feat: x""`, "Fixes #123", signalFix},
+		{"fix: x", "", signalFix},
+	}
+	for _, tc := range tests {
+		if !isSeed(tc.subject, tc.body) {
+			t.Errorf("isSeed(%q, %q) = false; want a seed", tc.subject, tc.body)
+		}
+		if got := seedSignal(tc.subject); got != tc.signal {
+			t.Errorf("seedSignal(%q) = %q; want %q", tc.subject, got, tc.signal)
+		}
+	}
+}
+
 // TestMineMultiHunkFix proves one fix commit with two hunks anchors both
 // deleted lines at their own old-side positions.
 func TestMineMultiHunkFix(t *testing.T) {
@@ -74,8 +93,8 @@ func TestMineMultiHunkFix(t *testing.T) {
 	}
 	candidate := data.Mine.Candidates[0]
 	want := []Bug{
-		{Path: "a.txt", Line: 2, Kind: "unclassified", Fix: fix},
-		{Path: "a.txt", Line: 9, Kind: "unclassified", Fix: fix},
+		{Path: "a.txt", Line: 2, Kind: "unclassified", Signal: "fix", Fix: fix},
+		{Path: "a.txt", Line: 9, Kind: "unclassified", Signal: "fix", Fix: fix},
 	}
 	if !slices.EqualFunc(candidate.Bugs, want, func(a, b Bug) bool { return a == b }) {
 		t.Errorf("bugs = %+v; want %+v", candidate.Bugs, want)
@@ -106,7 +125,7 @@ func TestMineRenameOff(t *testing.T) {
 	if len(data.Mine.Candidates) != 1 {
 		t.Fatalf("candidates = %+v; skipped %+v; want one", data.Mine.Candidates, data.Mine.Skipped)
 	}
-	want := []Bug{{Path: "old.txt", Line: 1, Kind: "unclassified", Fix: fix}}
+	want := []Bug{{Path: "old.txt", Line: 1, Kind: "unclassified", Signal: "fix", Fix: fix}}
 	if !slices.EqualFunc(data.Mine.Candidates[0].Bugs, want, func(a, b Bug) bool { return a == b }) {
 		t.Errorf("bugs = %+v; want %+v", data.Mine.Candidates[0].Bugs, want)
 	}
@@ -129,7 +148,7 @@ func TestMineCRLFDeletion(t *testing.T) {
 	if len(data.Mine.Candidates) != 1 {
 		t.Fatalf("candidates = %+v; skipped %+v; want one", data.Mine.Candidates, data.Mine.Skipped)
 	}
-	want := []Bug{{Path: "w.txt", Line: 2, Kind: "unclassified", Fix: fix}}
+	want := []Bug{{Path: "w.txt", Line: 2, Kind: "unclassified", Signal: "fix", Fix: fix}}
 	if !slices.EqualFunc(data.Mine.Candidates[0].Bugs, want, func(a, b Bug) bool { return a == b }) {
 		t.Errorf("bugs = %+v; want %+v", data.Mine.Candidates[0].Bugs, want)
 	}
@@ -152,7 +171,7 @@ func TestMineDeletedLinePatternChars(t *testing.T) {
 	if len(data.Mine.Candidates) != 1 {
 		t.Fatalf("candidates = %+v; skipped %+v; want one", data.Mine.Candidates, data.Mine.Skipped)
 	}
-	want := []Bug{{Path: "notes.txt", Line: 2, Kind: "unclassified", Fix: fix}}
+	want := []Bug{{Path: "notes.txt", Line: 2, Kind: "unclassified", Signal: "fix", Fix: fix}}
 	if !slices.EqualFunc(data.Mine.Candidates[0].Bugs, want, func(a, b Bug) bool { return a == b }) {
 		t.Errorf("bugs = %+v; want %+v", data.Mine.Candidates[0].Bugs, want)
 	}

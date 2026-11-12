@@ -44,7 +44,7 @@ func TestMinePartialAnchorKeepsCandidateAndCountsDrops(t *testing.T) {
 		MergedAt:       "2024-01-03T00:00:00Z",
 		HeadAt:         "2024-01-02T00:00:00Z",
 		Fixes:          []string{"fc25e49b6336b4245e2f65f4fb398be30a034317"},
-		Bugs:           []Bug{{Path: "main.go", Line: 6, Kind: "missing-error-check", Fix: "fc25e49b6336b4245e2f65f4fb398be30a034317"}},
+		Bugs:           []Bug{{Path: "main.go", Line: 6, Kind: "missing-error-check", Signal: "fix", Fix: "fc25e49b6336b4245e2f65f4fb398be30a034317"}},
 	})
 	if fix != "fc25e49b6336b4245e2f65f4fb398be30a034317" {
 		t.Fatalf("fixture fix = %s; want the literal fix id", fix)

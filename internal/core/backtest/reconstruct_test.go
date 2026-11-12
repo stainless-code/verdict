@@ -38,6 +38,6 @@ func TestMineTitledFeatureCommitIsNotASquashLanding(t *testing.T) {
 		MergedAt:       "2024-01-03T00:00:00Z",
 		HeadAt:         "2024-01-02T00:00:00Z",
 		Fixes:          []string{"44344ea9b1123ed91014400065adedf44a6eae11"},
-		Bugs:           []Bug{{Path: "main.go", Line: 6, Kind: "missing-error-check", Fix: "44344ea9b1123ed91014400065adedf44a6eae11"}},
+		Bugs:           []Bug{{Path: "main.go", Line: 6, Kind: "missing-error-check", Signal: "fix", Fix: "44344ea9b1123ed91014400065adedf44a6eae11"}},
 	})
 }

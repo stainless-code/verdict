@@ -339,7 +339,7 @@ every attempt including invalid and adapter-failed rounds when spend is
 present. Missing spend stays unmeasured, never zero. Model attribution is
 preserved. Loop runs are never citable.
 
-## SZZ candidate mining
+## SZZ candidate mining, replay, and score
 
 `verdict backtest mine --since <duration|ref>` is the offline front half of
 06b: it blames each later `fix:` or `Revert "..."` commit's deleted lines back
@@ -347,9 +347,62 @@ to the merged or squash PR that introduced them and writes a deterministic
 `.verdict/backtest/<run>/mine.json` with zero model calls and zero network.
 The artifact is a candidate list, not a corpus, not a measurement, and not
 citable: SZZ blame is a hypothesis, every excluded fix is counted with a
-reason, and replay/score are later slices. Use it to pick the PRs worth
-turning into `real` corpus cases by hand, then verify each bug at the reviewed
-head before publishing it.
+reason, and a fix can touch cleanup adjacent to the real bug. Use it to pick
+the PRs worth turning into `real` corpus cases by hand, then verify each bug at
+the reviewed head before publishing it.
+
+`verdict backtest replay --run <id> --agent <name>` reviews the candidates at
+their own `base..head` with the operator's agent and records each review into a
+marked local bundle (`.verdict/state/local-bt-*`). `verdict backtest score
+--run <id>` then grades those recorded reviews against the lines the miner
+blamed, and writes `.verdict/backtest/<run>/report.json`. The score is a pure
+read of that run: it launches no agent, builds no bundle, and never writes into
+`.verdict/state/corpus-*`. Both replay and score are benchmark input — not
+citable, never posted.
+
+### What the backtest numbers mean
+
+Grading reuses the corpus rule (`corpuscore.Evaluate`): a finding matches a bug
+when it names the same `path`, its line is within ±1 of the bug's line, and its
+text names the defect (the bug's kind in hyphen or space form, or the published
+category vocabulary for that kind). A backtest case has no hand-written
+keywords: the kind is the miner's deterministic guess, so a finding must name
+what that guess calls the defect.
+
+- **`catch_rate = matched / bugs`** over the replayed PRs whose review was
+  graded. Read it as a **match rate over SZZ candidates**, not a measured catch
+  rate. A bug is visible only when a later fix deleted that exact line: a defect
+  fixed without touching its line, or never fixed at all, is invisible, and a
+  fix that rewrote the line will usually hide it (`unaligned`). In the other
+  direction, a fix that deletes cleanup beside the real bug turns a line that
+  was never defective into a candidate, so a match on it is not proof the
+  review caught a defect. "Findings on lines that later needed a fix" is the
+  numerator, and a hand-verification step is what separates a real catch from a
+  candidate that merely matched.
+- **`off_target_per_pr = (reported − matched) / prs`.** An unmatched finding is
+  not proven false — it may be a real defect on a line no later fix deleted —
+  so the report keeps the name "off target" instead of claiming a false
+  positive. It measures attention spent away from the blamed lines, not noise.
+- **`cost_per_review_usd`** is the priced spend divided by the reviews that
+  reported a price; null when none did. `spend.usd` is the sum of the reported
+  prices and is a **lower bound** whenever `spend.unpriced_reviews` is non-zero:
+  a review that reported no price is unknown spend, never zero.
+- **`unclassified`** counts graded bugs whose kind matched no miner rule. A
+  finding cannot name such a defect, so those bugs can only lower `catch_rate`;
+  the count discloses how much of the denominator is unreachable. It is a
+  classifier gap, not a review failure.
+- **`signals[]`** splits the same counts by the seed signal, `fix` then
+  `revert`. A revert that deletes the line is a stronger signal than a fix
+  commit that rewrites it, so the table publishes the two catch rates apart;
+  the overall `catch_rate` above stays the pooled rate over every graded bug.
+- Every zero denominator renders `null` (`n/a` in the human lines), never `0`.
+  `not_replayed` counts mined candidates the run never scored; their bugs stay
+  out of every denominator.
+
+The score is a starting measurement for picking corpus cases, not a model
+quality claim. To publish one, re-run the chosen cases through the corpus
+path above: the SZZ artifact is reproducible and deterministic, but the reviews
+are live model runs.
 
 ## What the comparison page may cite
 
