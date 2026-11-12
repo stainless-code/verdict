@@ -273,7 +273,11 @@ var publishedSemantics = map[string]string{
 	// source is recorded in the committed lock), so the pattern's git paths
 	// exclude both and the description names them. One pattern narrowed
 	// further; nothing else changed.
-	"lock.schema.json": "a4d34934cd3784b05607582684332c3a550dc05b410c128ddd212a01d270fb14",
+	// source agreement: the git: pattern bounds each DNS label at 63 bytes
+	// (the maxHostLabel cap the loader enforces) and refuses a "://" inside an
+	// scp path (the loader's scheme guard). One pattern narrowed to the
+	// loader's own grammar; no property, required key, enum, or type changed.
+	"lock.schema.json": "c88951e4ac18781f93881f6654493ad8a7345ea990fca44bbd1149c7eefc4714",
 	"pack.schema.json": "fc8dc3ae76bfee94157f23e03ad2173f643d96974896c05307f89491f2a207b9",
 	// patch identity: additive optional patch_id/patch_id_kind plus the
 	// optional forced[] audit with $defs/forcedPost. No existing property,

@@ -15,3 +15,6 @@ prints a parsed source and `<invalid source>` for anything else. git's own failu
 never rendered: a failed clone, rev-parse, or checkout refuses as `pack-git-failed` with
 fixed wording for the phase and its exit code, because that text can carry the source URL,
 its query, or the ref.
+The published lock pattern follows the same grammar: it bounds each DNS label at the 63
+bytes the loader enforces and refuses a `://` inside an scp path, so a schema check and
+`pack list` agree on every source shape.

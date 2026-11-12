@@ -86,6 +86,16 @@ func TestLockSourceSchemaMatchesLoader(t *testing.T) {
 		{"dir control", "dir:src\x7fpacks", false},
 		{"dir url label", "dir:https://user:tok@host/x", true},
 		{"uppercase git row", "git:HTTPS://host/x.git@" + sha, false},
+		{"scp path scheme", "git:git@host://acme/packs.git@" + sha, false},
+		{"scp path scheme alias", "git:h@ttps://host/x@" + sha, false},
+		{"scp trailing colon", "git:git@host:acme/x.git:@" + sha, true},
+		{"scp trailing colon slash", "git:git@host:acme/x.git:/@" + sha, true},
+		{"scp double colon", "git:git@host:acme::tok/x.git@" + sha, true},
+		{"scp absolute path", "git:git@host:/srv/x.git@" + sha, true},
+		{"host label 63", "git:https://" + strings.Repeat("a", 63) + ".example/x@" + sha, true},
+		{"host label 64", "git:https://" + strings.Repeat("a", 64) + ".example/x@" + sha, false},
+		{"host label 250", "git:https://" + strings.Repeat("a", 250) + ".example/x@" + sha, false},
+		{"ipv6 dotted", "git:https://[2001:db8::1.2.3.4]/x@" + sha, true},
 	}
 	for _, tc := range allowedGitSources {
 		cases = append(cases, sourceCase{
