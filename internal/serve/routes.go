@@ -27,7 +27,7 @@ type route struct { //nolint:govet // method/pattern/handler reads as the table 
 // routes is the only registration point in the package: a handler outside
 // this table cannot exist.
 func (s *Server) routes() []route {
-	return []route{
+	routes := []route{
 		{Method: http.MethodGet, Pattern: "/{$}", Handler: http.HandlerFunc(s.handleRoot)},
 		{Method: http.MethodGet, Pattern: "/v1/health", Handler: s.guard(s.handleHealth)},
 		{Method: http.MethodGet, Pattern: "/v1/roots", Handler: s.guard(s.handleRoots)},
@@ -43,6 +43,12 @@ func (s *Server) routes() []route {
 			Handler: s.guard(s.handleShow),
 		},
 	}
+	if !s.cfg.NoWatch {
+		routes = append(routes, route{
+			Method: http.MethodGet, Pattern: "/v1/events", Handler: s.guard(s.handleEvents),
+		})
+	}
+	return routes
 }
 
 // Handler builds the mux and wraps it in the security middleware.

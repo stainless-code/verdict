@@ -17,6 +17,7 @@ export {
   type RefusalEnvelope,
   type DataFor,
 } from "./envelope.js";
+export { refetchOnBundleEvent, type BundleEventSource } from "./live.js";
 export {
   VERDICT_REPAIR,
   VerdictRefusalError,
@@ -59,6 +60,7 @@ export type {
   ReportCost,
   ReportData,
   ReportGate,
+  ServeData,
   ShowData,
   ShowFix,
   ThreadsData,

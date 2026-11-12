@@ -1008,9 +1008,7 @@ type IndexRef struct {
 	Unresolved bool   `json:"unresolved,omitempty"                 optional:"true"`
 }
 
-// ServeData is `serve`'s composed data profile: one object shared by the
-// start envelope, health, roots, inbox, and bundle detail, so every view's
-// fields are optional and the trio partial/sources/errors is always present.
+// ServeData is the shared profile for `serve` views and bundle invalidations.
 type ServeData struct { //nolint:govet // field order groups the view families
 	Version   string            `json:"version,omitempty"`
 	URL       string            `json:"url,omitempty"`
@@ -1024,6 +1022,9 @@ type ServeData struct { //nolint:govet // field order groups the view families
 	Skipped   *ServeSkipped     `anyOf:"null"               json:"skipped,omitempty"`
 	Discovery *ServeDiscovery   `anyOf:"null"               json:"discovery,omitempty"`
 	Root      *string           `json:"root,omitempty"`
+	Via       string            `enum:"tick|sweep"          json:"via,omitempty"`
+	Changed   []string          `json:"changed,omitempty"`
+	Removed   []string          `json:"removed,omitempty"`
 	Rows      []ServeRow        `json:"rows,omitempty"`
 	Counts    *ServeCounts      `anyOf:"null"               json:"counts,omitempty"`
 	Report    *ReportData       `anyOf:"null"               json:"report,omitempty"`

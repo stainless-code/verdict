@@ -312,6 +312,12 @@ export interface ServeData {
   skipped?: ServeSkipped | null;
   discovery?: ServeDiscovery | null;
   root?: string | null;
+  /** The detector that found this invalidation: tick for directory stamps or sweep for entry fingerprints. */
+  via?: "tick" | "sweep";
+  /** Bundle names whose views should be fetched again; a truncated event requires refetching the full inbox. */
+  changed?: Array<string>;
+  /** Bundle names removed from the served root. */
+  removed?: Array<string>;
   rows?: Array<ServeRow>;
   counts?: ServeCounts | null;
   report?: ReportData | null;

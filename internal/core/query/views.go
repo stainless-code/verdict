@@ -43,8 +43,8 @@ func (notFoundError) Error() string { return "serve: not found" }
 // ErrNotFound addresses a root or bundle outside the served set.
 var ErrNotFound error = notFoundError{}
 
-// Health reports the process's fixed posture: the version, the roots it
-// serves, the (absent) watcher, the cache size, and read-only.
+// Health reports the version, served roots, watcher settings, cache size, and
+// read-only posture.
 func (l *Layer) Health(_ context.Context) *View {
 	view := l.newView()
 	roots := make([]any, 0, len(l.roots))
@@ -52,11 +52,16 @@ func (l *Layer) Health(_ context.Context) *View {
 		names, _, _ := l.listBundles(root)
 		roots = append(roots, jq.NewObj("id", root.ID, "path", root.Path, "bundles", len(names)))
 	}
+	watch := !l.noWatch
+	interval := l.interval.String()
+	if l.noWatch {
+		interval = "0s"
+	}
 	view.Data = jq.NewObj(
 		"version", l.version,
 		"roots", roots,
-		"watch", false,
-		"interval", "0s",
+		"watch", watch,
+		"interval", interval,
 		"cache", jq.NewObj("entries", l.cacheEntries()),
 		"read_only", true,
 		keyPartial, false,

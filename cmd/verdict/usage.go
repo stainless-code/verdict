@@ -392,7 +392,7 @@ func usageText() string {
 		"    also remove the marked PATH line. npm/brew/project-local/skill copies refuse\n" +
 		"    with the owning removal command.\n" +
 		"  serve [--root <dir>] [--host <addr>] [--port <n>] [--token <s>] [--check <tier>]\n" +
-		"      [--max-bundles <n>] [--json]\n" +
+		"      [--max-bundles <n>] [--interval <duration>] [--sweep <duration>] [--no-watch] [--json]\n" +
 		"    read-only loopback HTTP surface over the current repository's bundles (or --root).\n" +
 		"    Binds 127.0.0.1 on a kernel-assigned port and prints one tokenised start URL.\n" +
 		"    GET /?token=<t> sets verdict_session_<port> (HttpOnly, SameSite=Strict, Path=/v1)\n" +
