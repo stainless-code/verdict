@@ -340,6 +340,7 @@ func repoOrigin(dir, name string) (Origin, *core.RefusalError) {
 // its lock verdict, while built-in and org rows are never locked.
 func listData(set *Set, lock *Lock) *ListData {
 	data := &ListData{Packs: make([]Entry, 0, len(set.Packs))}
+	listed := map[string]bool{}
 	for _, origin := range set.Packs {
 		if origin.Pack == nil {
 			continue
@@ -351,8 +352,30 @@ func listData(set *Set, lock *Lock) *ListData {
 		}
 		if origin.Layer == LayerRepo {
 			entry.Drift = entryDrift(lock, origin.Pack)
+			listed[origin.Pack.Name] = true
 		}
 		data.Packs = append(data.Packs, entry)
+	}
+	return appendMissingLocked(data, lock, listed)
+}
+
+// appendMissingLocked adds one drift row for a lock entry whose pack directory
+// did not load, so a deleted vendored pack stays visible beside fetch's refusal.
+func appendMissingLocked(data *ListData, lock *Lock, listed map[string]bool) *ListData {
+	if lock == nil {
+		return data
+	}
+	for i := range lock.Packs {
+		entry := &lock.Packs[i]
+		if listed[entry.Name] {
+			continue
+		}
+		code := CodeLockDrift
+		data.Packs = append(data.Packs, Entry{
+			Name: entry.Name, Version: entry.Version, Layer: string(LayerRepo),
+			Source: entry.Source, Hash: entry.Hash,
+			Lenses: []string{}, Rules: []string{}, Drift: &code,
+		})
 	}
 	return data
 }

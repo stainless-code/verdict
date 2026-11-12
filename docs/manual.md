@@ -408,7 +408,9 @@ in precedence order: `name`, `version`, `layer`, `source` (`builtin`,
 `dir:<path>`, or `.verdict/packs/<name>`), the canonical tree `hash`, the
 declared `lenses` and `rules` ids, and `drift` (null when a repo pack matches
 `.verdict/verdict.lock`, else `pack-lock-missing` or `pack-lock-drift`; the
-built-in and org rows are never locked). It lists the packs in this checkout;
+built-in and org rows are never locked). A lock row whose pack directory is
+gone still lists as a repo row with `drift: "pack-lock-drift"`, matching the
+refusal `fetch`, `post`, and `record` raise for the same state. It lists the packs in this checkout;
 a review reads repo packs from the PR's base, so a pack the PR adds or edits
 is listed here but not used.
 A regular file directly under `.verdict/packs/` (a README, say) is not a

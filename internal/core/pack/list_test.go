@@ -159,6 +159,33 @@ func TestListReportsLockDrift(t *testing.T) {
 	}
 }
 
+// TestListShowsLockRowWithoutPack proves a lock row whose vendored directory
+// is gone still lists, with the same drift code fetch/post/record refuse.
+func TestListShowsLockRowWithoutPack(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeFixture(t, root, map[string]string{LockFile: lockBody(lockHash, lockSigDir)})
+	resp, ref := RunList(t.Context(), &Request{
+		core.ReadRequest{RepoRoot: root}, "", true,
+	})
+	if ref != nil {
+		t.Fatalf("RunList: %s: %s", ref.Code, ref.Message)
+	}
+	if len(resp.Data.Packs) != 1 {
+		t.Fatalf("rows = %+v, want the missing lock row", resp.Data.Packs)
+	}
+	row := resp.Data.Packs[0]
+	if row.Name != "acme/lenses" || row.Layer != "repo" || row.Source != "dir:src-packs/lenses" ||
+		row.Hash != lockHash || row.Drift == nil || *row.Drift != CodeLockDrift {
+		t.Fatalf("row = %+v, want the missing pack with %s", row, CodeLockDrift)
+	}
+	want := "repo     acme/lenses@1.0.0  source=dir:src-packs/lenses  sha256:" +
+		"96680942582c  lenses=  rules=-  drift=" + CodeLockDrift
+	if got := resp.Human; !slices.Equal(got, []string{want}) {
+		t.Fatalf("human = %q, want %q", got, want)
+	}
+}
+
 // TestListWithoutRuntime proves a caller with no injected runtime reads as an
 // absent built-in layer instead of dereferencing a nil Runtime.
 func TestListWithoutRuntime(t *testing.T) {
