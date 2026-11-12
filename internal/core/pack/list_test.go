@@ -159,6 +159,37 @@ func TestListReportsLockDrift(t *testing.T) {
 	}
 }
 
+// TestListReportsDriftOutsideLockedSlug proves a pack loaded from a
+// non-canonical directory reports the drift CheckLock raises, even when its
+// hash and sig match the lock row.
+func TestListReportsDriftOutsideLockedSlug(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeFixture(t, root, map[string]string{
+		".verdict/packs/custom/pack.json":      lockManifest,
+		".verdict/packs/custom/lenses/perf.md": "perf body\n",
+		LockFile:                               lockSourceBody("dir:src-packs/lenses"),
+	})
+	resp, ref := RunList(t.Context(), &Request{
+		core.ReadRequest{RepoRoot: root}, "", true,
+	})
+	if ref != nil {
+		t.Fatalf("RunList: %s: %s", ref.Code, ref.Message)
+	}
+	if len(resp.Data.Packs) != 1 {
+		t.Fatalf("rows = %+v, want the custom row", resp.Data.Packs)
+	}
+	row := resp.Data.Packs[0]
+	if row.Source != ".verdict/packs/custom" || row.Drift == nil || *row.Drift != CodeLockDrift {
+		t.Fatalf("row = %+v, want the custom row with %s", row, CodeLockDrift)
+	}
+	want := "repo     acme/lenses@1.0.0  source=.verdict/packs/custom  sha256:" +
+		"24e651328246  lenses=perf  rules=-  drift=" + CodeLockDrift
+	if got := resp.Human; !slices.Equal(got, []string{want}) {
+		t.Fatalf("human = %q, want %q", got, want)
+	}
+}
+
 // TestListShowsLockRowWithoutPack proves a lock row whose vendored directory
 // is gone still lists, with the same drift code fetch/post/record refuse.
 func TestListShowsLockRowWithoutPack(t *testing.T) {

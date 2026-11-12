@@ -354,7 +354,7 @@ func listData(set *Set, lock *Lock) *ListData {
 			Lenses: lensIDsOf(origin.Pack), Rules: ruleIDsOf(origin.Pack),
 		}
 		if origin.Layer == LayerRepo {
-			entry.Drift = entryDrift(lock, origin.Pack)
+			entry.Drift = entryDrift(lock, origin.Pack, origin.Source)
 			listed[origin.Pack.Name] = true
 		}
 		data.Packs = append(data.Packs, entry)
@@ -384,8 +384,12 @@ func appendMissingLocked(data *ListData, lock *Lock, listed map[string]bool) *Li
 }
 
 // entryDrift returns the refusal code a repo row would hit, or nil when the
-// lock entry matches the loaded tree.
-func entryDrift(lock *Lock, p *Pack) *string {
+// lock entry matches the loaded tree at its canonical slug.
+func entryDrift(lock *Lock, p *Pack, source string) *string {
+	if source != RepoPacksDir+"/"+packSlug(p.Name) {
+		code := CodeLockDrift
+		return &code
+	}
 	entry := lockEntry(lock, p.Name)
 	if entry == nil {
 		code := CodeLockMissing
