@@ -254,6 +254,13 @@ func usageText() string {
 		"    the worktree): GitHub's file order, last matching rule wins, no rule reads as\n" +
 		"    owners null, an ownerless rule reads as owners [] (it clears an earlier\n" +
 		"    match), never nobody.\n" +
+		"  index blast-radius --pr <n>|--paths <path> [--paths <path>...] [--at <tree>]\n" +
+		"      [--limit <n, default 50, max 200>] [--commits <n, default 2000>]\n" +
+		"      [--since <90d|12w|18mo|2y|ref>] [--min-count <n, default 2>] [--json]\n" +
+		"    the changed declarations and their callers to depth 2, plus candidate tests,\n" +
+		"    co-change partners, and owners. --pr reads the fetched bundle's full.diff (no\n" +
+		"    host call); --paths needs no bundle. Each list carries its count and truncation\n" +
+		"    count; without an index the symbol, caller, and test counts are null, never 0.\n" +
 		"  backtest mine --since <90d|12w|18mo|2y|<ref>> [--until <ref>] [--run <slug>] [--json]\n" +
 		"    mine SZZ bug-introducing PR candidates from the local clone: seeds are fix:,\n" +
 		"    bugfix:, hotfix:, Fixes #N, and Revert \"...\" commits in the window; each locked\n" +

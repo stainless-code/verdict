@@ -21,7 +21,7 @@ _verdict_flags() { # $1 = verb
     calibrate) printf '%s\n' --probe --judge --judge-file --json;;
     record) printf '%s\n' --dry-run --strict --cost-names --require-coverage --json;;
     trend) printf '%s\n' --overlap --json;;
-    index) printf '%s\n' build status prune callers tests-for co-changed owners --from --at --limit --commits --since --min-count --symbol --json;;
+    index) printf '%s\n' build status prune callers tests-for co-changed owners blast-radius --from --at --limit --commits --since --min-count --symbol --pr --paths --json;;
     backtest) printf '%s\n' --since --until --run --agent --max-reviews --budget-usd --timeout --rounds --json;;
     threads) printf '%s\n' --provider --thread --dry-run --json;;
     fetch-local) printf '%s\n' --staged --range --base --stash --worktree --consent-over-budget --show-prompts --chunk --json;;

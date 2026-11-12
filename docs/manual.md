@@ -2747,6 +2747,43 @@ reads `owners: []` with the source named. None ever reads as an owner named
 nobody. The same `target` object rides on `tests-for` (path form) and
 `co-changed`.
 
+`index blast-radius --pr <n>|--paths <path> [--at <tree>] [--limit <n>]
+[--commits <n>] [--since <dur|ref>] [--min-count <n>]` answers one change's
+reach. `--pr` reads the fetched bundle's `full.diff` — no host call — and takes
+the new-side lines it touched: every added line, and both sides of every
+deleted line, because the removed text sat between them. `--paths` names files
+directly (repeat the flag) and needs no bundle; each must exist at the queried
+tree (`bad-flags` otherwise) and every declaration in it is a changed symbol. A
+shard records a declaration's start line, so a declaration owns its source from
+that line to the line before the next declaration; a changed line before the
+first declaration (the package clause, imports) changes no symbol.
+
+The queried tree is `--at` when given. With `--pr` it is the bundle's PR head
+when the store already holds that tree; otherwise HEAD is queried and one
+warning names the head — the answer is a truthful lower bound for the tree it
+names, and `data.input.head` names the bundle's head. `--paths` queries HEAD. A
+tree with no stored index is not a refusal: `data.index` is absent and the
+symbol, caller, and test counts are `null`, never 0, because an unmeasured list
+is not an empty one. `co_changed` and `owners` are measured from git either
+way.
+
+Callers walk from every changed symbol to depth 2: depth 1 is a direct caller,
+depth 2 a caller of a direct caller. Each declaration is queried at most once
+per run (a visited set), so a recursive or mutual call cycle cannot grow the
+walk, and rows deduplicate by call site. A caller row names the changed symbol
+it is reached from, the file and line, `exact` or `lexical` under the same
+rules as `index callers`, and its depth; candidates the index cannot attribute
+are counted in `callers.unresolved`, never guessed. Candidate tests reuse
+`tests-for` (strongest mechanism per file), co-change partners reuse
+`co-changed`'s single bounded window at HEAD, and owners reuse the CODEOWNERS
+answer at the queried tree — one row per changed path.
+
+Every list is a measured object — `count`, `truncated`, and `rows` — so a
+truncated answer says how much it hid instead of looking complete. The result is
+a lower bound: a method value, a reflection call, an unparsed file, or a skipped
+oversize file is missing rather than invented. `data.input` echoes the PR slug
+or the resolved paths, and `data.limit` echoes the row limit.
+
 Caps: 20,000 Go files, 1 MiB per file (an oversized file is skipped and
 counted in `coverage.skipped`), a 96 MiB tree file, and a 256 MiB shard cache;
 a repo over a cap refuses `index-capped` naming the measured number. The typed
@@ -2766,10 +2803,10 @@ Querying a tree that is not HEAD's marks the envelope `stale: true` and warns
 `» index: built for <tree>, HEAD is <tree2>`. `callers`, `tests-for`, and
 `owners` take `--at`; `co-changed` always reads HEAD's tree and history. The
 MCP `index` tool is read-only and serves `callers`, `status`, `tests-for`,
-`co-changed`, and `owners`; it creates no workspace and no index store, writes
-nothing (a `co-changed` query reads a valid cache but never writes or prunes
-one), and it never builds or prunes — those stay on the CLI, and the SDK
-forwards every subcommand.
+`co-changed`, `owners`, and `blast-radius`; it creates no workspace and no index
+store, writes nothing (a `co-changed` or `blast-radius` query reads a valid
+cache but never writes or prunes one), and it never builds or prunes — those
+stay on the CLI, and the SDK forwards every subcommand.
 
 ## Backtest (SZZ candidates)
 
