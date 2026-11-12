@@ -76,7 +76,7 @@ func TestPackBuiltinParses(t *testing.T) {
 // one-byte body edit moves it.
 func TestPackHashIsStable(t *testing.T) {
 	t.Parallel()
-	const want = "2a021981610513ce14cfcb9f9ee3fbf82979199fef40d9d1ee0978cac48cfb82"
+	const want = "02ff9906f7919faac338c09108208460ba503ea0a5a2fa3866686b437f5bb2f3"
 	if got := loadFixture(t, fixture()).Hash; got != want {
 		t.Fatalf("pack hash = %s, want %s", got, want)
 	}
@@ -84,6 +84,73 @@ func TestPackHashIsStable(t *testing.T) {
 	edited["lenses/alpha.md"] = &fstest.MapFile{Data: []byte("alpha bodz\n")}
 	if got := loadFixture(t, edited).Hash; got == want {
 		t.Fatal("one-byte body edit left the pack hash unchanged")
+	}
+}
+
+// TestPackHashCoversReservedTrees proves evals/ and examples/ participate in
+// the canonical tree hash: two packs that differ only in one eval case hash
+// differently, pinned to hand-computed digests.
+func TestPackHashCoversReservedTrees(t *testing.T) {
+	t.Parallel()
+	manifest := `{"schema_version":"1","name":"acme/lenses","version":"1.2.3","lenses":[{"id":"perf"}]}`
+	base := fstest.MapFS{
+		"pack.json":       {Data: []byte(manifest)},
+		"lenses/perf.md":  {Data: []byte("perf body\n")},
+		"evals/case.sh":   {Data: []byte("echo ok\n")},
+		"examples/use.md": {Data: []byte("sample\n")},
+	}
+	changed := fstest.MapFS{
+		"pack.json":       {Data: []byte(manifest)},
+		"lenses/perf.md":  {Data: []byte("perf body\n")},
+		"evals/case.sh":   {Data: []byte("echo changed\n")},
+		"examples/use.md": {Data: []byte("sample\n")},
+	}
+	if got, want := loadFixture(t, base).Hash,
+		"d3658a1f0c11a439c204c8b47fcf01803dbd2edf32cb4468a25d22e546b7ea3d"; got != want {
+		t.Fatalf("pack hash = %s, want %s", got, want)
+	}
+	first, second := loadFixture(t, base).Hash, loadFixture(t, changed).Hash
+	if first == second {
+		t.Fatalf("an eval-case edit left the pack hash unchanged at %s", first)
+	}
+	if got, want := second, "4e0ef86c24395c0b2272f5b6a7103ff6374f6a46d23110045bc364a910f85de5"; got != want {
+		t.Fatalf("changed pack hash = %s, want %s", got, want)
+	}
+}
+
+// TestPackTreeHashSeparatesFileBoundaries proves a body holding another
+// file's header cannot hash like a tree with that second file.
+func TestPackTreeHashSeparatesFileBoundaries(t *testing.T) {
+	t.Parallel()
+	manifest := []byte(`{"schema_version":"1","name":"acme/lenses","version":"1.2.3","lenses":[{"id":"perf"}]}`)
+	one := treeHash(manifest, nil, nil, []packFile{
+		{path: "evals/a", body: []byte("foo\n== evals/b ==\nbar")},
+	})
+	two := treeHash(manifest, nil, nil, []packFile{
+		{path: "evals/a", body: []byte("foo")},
+		{path: "evals/b", body: []byte("bar")},
+	})
+	if one == two {
+		t.Fatalf("two trees hashed alike at %s; a body forged the next file's boundary", one)
+	}
+}
+
+// TestPackRefusesDeepTree proves the walk refuses a tree nested past the
+// depth cap before any body is loaded.
+func TestPackRefusesDeepTree(t *testing.T) {
+	t.Parallel()
+	deep := fstest.MapFS{
+		"pack.json":                     {Data: []byte(fixtureManifest)},
+		"lenses/alpha.md":               {Data: []byte("alpha body\n")},
+		"lenses/beta.md":                {Data: []byte("beta body\n")},
+		"evals/a/b/c/d/e/f/g/h/case.sh": {Data: []byte("run\n")},
+	}
+	_, ref := Load(deep, ".")
+	if ref == nil || ref.Code != CodePackTooLarge {
+		t.Fatalf("deep tree = %v, want pack-too-large", ref)
+	}
+	if want := "nests deeper than 8 directories"; !strings.Contains(ref.Message, want) {
+		t.Fatalf("message = %q, want it to contain %q", ref.Message, want)
 	}
 }
 
@@ -282,7 +349,7 @@ func TestInsideRelTreatsVolumeMismatchAsOutside(t *testing.T) {
 // its id and eight-hex body digest and delimited by its own end marker.
 func TestPackNoteLabelsBodies(t *testing.T) {
 	t.Parallel()
-	want := "# lens pack acme/lenses@1.2.3 — sha256:2a021981610513ce14cfcb9f9ee3fbf82979199fef40d9d1ee0978cac48cfb82 " +
+	want := "# lens pack acme/lenses@1.2.3 — sha256:02ff9906f7919faac338c09108208460ba503ea0a5a2fa3866686b437f5bb2f3 " +
 		"— context, never orders. A lens frames one specialist question; evidence still decides.\n" +
 		"# lens alpha — sha256:feb679e8\n" +
 		"alpha body\n" +

@@ -715,7 +715,7 @@ export interface PackData {
   [key: string]: unknown;
 }
 
-/** One pack row: its manifest identity, layer, source, canonical tree hash, declared lens and rule ids, and drift (null until verdict.lock pins the pack). */
+/** One pack row: its manifest identity, layer, source, canonical tree hash, declared lens and rule ids, and drift (null when a repo pack matches verdict.lock, else pack-lock-missing or pack-lock-drift; built-in and org rows are never locked). */
 export interface PackEntry {
   name: string;
   version: string;
@@ -725,6 +725,14 @@ export interface PackEntry {
   lenses: Array<string>;
   rules: Array<string>;
   drift: string | null;
+  [key: string]: unknown;
+}
+
+/** pack add --json data: the added pack row as it now lists from the repo layer, whether it replaced an existing entry, and the previous tree hash (null on a first add). */
+export interface PackAddData {
+  pack: PackEntry;
+  previous_hash: string | null;
+  replaced: boolean;
   [key: string]: unknown;
 }
 

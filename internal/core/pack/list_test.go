@@ -68,17 +68,17 @@ func TestListThreeLayers(t *testing.T) {
 	want := []Entry{
 		{
 			Name: "verdict/builtin", Version: "1.0.0", Layer: "builtin", Source: "builtin",
-			Hash:   "0fd2392e7627c05b9589946f78037d7c9dd3feeb61bb43b846c5f3bb529767d2",
+			Hash:   "d1587acf8bf270b485702e00a32c2d41f322c042078a358fead5b783c05ffa46",
 			Lenses: []string{"perf", "test"}, Rules: []string{},
 		},
 		{
 			Name: "acme/org", Version: "2.0.0", Layer: "org", Source: "dir:org-packs",
-			Hash:   "ec7b01d4ea7b319a383c633bb8c30b464ec5c9734c9b06c6db0ef6dec8218d7b",
+			Hash:   "eb88c75d42456dfedbe79b87c9b5dfdf918ddc7a116e8940b28b9372a1061aa1",
 			Lenses: []string{"security"}, Rules: []string{"no-secrets"},
 		},
 		{
 			Name: "acme/repo", Version: "0.1.0", Layer: "repo", Source: ".verdict/packs/repo",
-			Hash:   "6017f42729f688b65d17401a27200f0406c1cf8b75d588ce65788850d7817edf",
+			Hash:   "ae6c1dde5272f074fb9c4c70c63da86019018a34497315fad9e25f35ddaa70a3",
 			Lenses: []string{"security", "style"}, Rules: []string{"repo-style"},
 		},
 	}
@@ -89,8 +89,159 @@ func TestListThreeLayers(t *testing.T) {
 		requirePackRow(t, i, &resp.Data.Packs[i], &want[i])
 	}
 	if got, want := resp.Human[0], "builtin  verdict/builtin@1.0.0  source=builtin  "+
-		"sha256:0fd2392e7627  lenses=perf,test  rules=-"; got != want {
+		"sha256:d1587acf8bf2  lenses=perf,test  rules=-"; got != want {
 		t.Errorf("human row = %q, want %q", got, want)
+	}
+}
+
+// TestListReportsLockDrift proves the repo row's drift is null for a matching
+// lock, pack-lock-drift for a changed hash, and pack-lock-missing with no lock.
+//
+//nolint:revive // the match, drift, and missing legs read as one block
+func TestListReportsLockDrift(t *testing.T) {
+	t.Parallel()
+	root, settings := listFixtures(t, `"replace":["acme/org"],`)
+	const repoHash = "ae6c1dde5272f074fb9c4c70c63da86019018a34497315fad9e25f35ddaa70a3"
+	writeFixture(t, root, map[string]string{LockFile: `{"schema_version":"1","packs":[{` +
+		`"name":"acme/repo","source":"dir:repo-packs","version":"0.1.0",` +
+		`"hash":"` + repoHash + `","sig":"8173ff898f6e93caad0be4881981b27eefcdf7e1263aaec47d95957798c25735"}]}`})
+	resp, ref := RunList(t.Context(), &Request{
+		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
+		settings,
+		true,
+	})
+	if ref != nil {
+		t.Fatalf("RunList: %s: %s", ref.Code, ref.Message)
+	}
+	repo := resp.Data.Packs[len(resp.Data.Packs)-1]
+	if repo.Drift != nil {
+		t.Fatalf("matching lock drift = %q, want nil", *repo.Drift)
+	}
+	if got := resp.Human[len(resp.Human)-1]; strings.Contains(got, "drift=") {
+		t.Fatalf("matching human row = %q, want no drift suffix", got)
+	}
+
+	wrong := strings.Repeat("0", 64)
+	sig := LockSig(&LockEntry{Name: "acme/repo", Source: "dir:repo-packs", Version: "0.1.0", Hash: wrong})
+	writeFixture(t, root, map[string]string{LockFile: `{"schema_version":"1","packs":[{` +
+		`"name":"acme/repo","source":"dir:repo-packs","version":"0.1.0",` +
+		`"hash":"` + wrong + `","sig":"` + sig + `"}]}`})
+	resp, ref = RunList(t.Context(), &Request{
+		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
+		settings,
+		true,
+	})
+	if ref != nil {
+		t.Fatalf("drifted RunList: %s: %s", ref.Code, ref.Message)
+	}
+	if got := resp.Data.Packs[len(resp.Data.Packs)-1].Drift; got == nil || *got != CodeLockDrift {
+		t.Fatalf("drifted row = %v, want %s", got, CodeLockDrift)
+	}
+	wantRow := "repo     acme/repo@0.1.0  source=.verdict/packs/repo  sha256:ae6c1dde5272  " +
+		"lenses=security,style  rules=repo-style  drift=" + CodeLockDrift
+	if got := resp.Human[len(resp.Human)-1]; got != wantRow {
+		t.Fatalf("drifted human row = %q, want %q", got, wantRow)
+	}
+
+	if err := os.Remove(filepath.Join(root, filepath.FromSlash(LockFile))); err != nil {
+		t.Fatal(err)
+	}
+	resp, ref = RunList(t.Context(), &Request{
+		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
+		settings,
+		true,
+	})
+	if ref != nil {
+		t.Fatalf("unlocked RunList: %s: %s", ref.Code, ref.Message)
+	}
+	if got := resp.Data.Packs[len(resp.Data.Packs)-1].Drift; got == nil || *got != CodeLockMissing {
+		t.Fatalf("unlocked row = %v, want %s", got, CodeLockMissing)
+	}
+}
+
+// TestListReportsDriftOutsideLockedSlug proves a pack loaded from a
+// non-canonical directory reports the drift CheckLock raises, even when its
+// hash and sig match the lock row.
+func TestListReportsDriftOutsideLockedSlug(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeFixture(t, root, map[string]string{
+		".verdict/packs/custom/pack.json":      lockManifest,
+		".verdict/packs/custom/lenses/perf.md": "perf body\n",
+		LockFile:                               lockSourceBody("dir:src-packs/lenses"),
+	})
+	resp, ref := RunList(t.Context(), &Request{
+		core.ReadRequest{RepoRoot: root}, "", true,
+	})
+	if ref != nil {
+		t.Fatalf("RunList: %s: %s", ref.Code, ref.Message)
+	}
+	if len(resp.Data.Packs) != 1 {
+		t.Fatalf("rows = %+v, want the custom row", resp.Data.Packs)
+	}
+	row := resp.Data.Packs[0]
+	if row.Source != ".verdict/packs/custom" || row.Drift == nil || *row.Drift != CodeLockDrift {
+		t.Fatalf("row = %+v, want the custom row with %s", row, CodeLockDrift)
+	}
+	want := "repo     acme/lenses@1.0.0  source=.verdict/packs/custom  sha256:" +
+		"24e651328246  lenses=perf  rules=-  drift=" + CodeLockDrift
+	if got := resp.Human; !slices.Equal(got, []string{want}) {
+		t.Fatalf("human = %q, want %q", got, want)
+	}
+}
+
+// TestListShowsLockRowWithoutPack proves a lock row whose vendored directory
+// is gone still lists, with the same drift code fetch/post/record refuse.
+func TestListShowsLockRowWithoutPack(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeFixture(t, root, map[string]string{LockFile: lockBody(lockHash, lockSigDir)})
+	resp, ref := RunList(t.Context(), &Request{
+		core.ReadRequest{RepoRoot: root}, "", true,
+	})
+	if ref != nil {
+		t.Fatalf("RunList: %s: %s", ref.Code, ref.Message)
+	}
+	if len(resp.Data.Packs) != 1 {
+		t.Fatalf("rows = %+v, want the missing lock row", resp.Data.Packs)
+	}
+	row := resp.Data.Packs[0]
+	if row.Name != "acme/lenses" || row.Layer != "repo" || row.Source != "dir:src-packs/lenses" ||
+		row.Hash != lockHash || row.Drift == nil || *row.Drift != CodeLockDrift {
+		t.Fatalf("row = %+v, want the missing pack with %s", row, CodeLockDrift)
+	}
+	want := "repo     acme/lenses@1.0.0  source=dir:src-packs/lenses  sha256:" +
+		"24e651328246  lenses=  rules=-  drift=" + CodeLockDrift
+	if got := resp.Human; !slices.Equal(got, []string{want}) {
+		t.Fatalf("human = %q, want %q", got, want)
+	}
+}
+
+// TestListMasksDirURLSource proves a lock row whose dir: payload looks like a
+// URL prints the fixed placeholder on both surfaces.
+func TestListMasksDirURLSource(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeFixture(t, root, map[string]string{
+		LockFile: lockSourceBody("dir:http://user:S3CRET@host/x"),
+	})
+	resp, ref := RunList(t.Context(), &Request{
+		core.ReadRequest{RepoRoot: root}, "", true,
+	})
+	if ref != nil {
+		t.Fatalf("RunList: %s: %s", ref.Code, ref.Message)
+	}
+	if len(resp.Data.Packs) != 1 {
+		t.Fatalf("rows = %+v, want the missing lock row", resp.Data.Packs)
+	}
+	const wantSource = "<invalid source>"
+	if got := resp.Data.Packs[0].Source; got != wantSource {
+		t.Fatalf("source = %q, want %q", got, wantSource)
+	}
+	want := "repo     acme/lenses@1.0.0  source=" + wantSource + "  sha256:" +
+		"24e651328246  lenses=  rules=-  drift=" + CodeLockDrift
+	if got := resp.Human; !slices.Equal(got, []string{want}) {
+		t.Fatalf("human = %q, want %q", got, want)
 	}
 }
 
@@ -198,6 +349,31 @@ func TestListIgnoresStrayFileUnderRepoPacks(t *testing.T) {
 	}
 	if got, want := len(resp.Data.Packs), 3; got != want {
 		t.Fatalf("rows = %d, want %d", got, want)
+	}
+}
+
+// TestListIgnoresStagingSiblings proves a crashed re-add's dot-prefixed temp
+// and backup trees are not read as pack roots.
+func TestListIgnoresStagingSiblings(t *testing.T) {
+	t.Parallel()
+	root, settings := listFixtures(t, `"replace":["acme/org"],`)
+	writeFixture(t, root, map[string]string{
+		".verdict/packs/.lenses.tmp-crash/junk": "tmp\n",
+		".verdict/packs/.lenses.old-crash/junk": "old\n",
+	})
+	resp, ref := RunList(t.Context(), &Request{
+		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
+		settings,
+		true,
+	})
+	if ref != nil {
+		t.Fatalf("RunList: %s: %s", ref.Code, ref.Message)
+	}
+	if got, want := len(resp.Data.Packs), 3; got != want {
+		t.Fatalf("rows = %d, want %d", got, want)
+	}
+	if len(resp.Warnings) != 0 {
+		t.Fatalf("warnings = %q, want none for a staging sibling", resp.Warnings)
 	}
 }
 

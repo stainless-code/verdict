@@ -329,11 +329,14 @@ A lens pack is data, not a verb: `pack.json` names each lens and
 and `fetch`/`fetch-local` load it from the embedded skill payload. The format
 is strict JSON (unknown fields refuse), versioned by `schema_version: "1"`,
 and published as `schemas/pack.schema.json`. The fixed layout is `pack.json`,
-`lenses/` (loaded), and the reserved `rules/`, `examples/`, `evals/` (counted
-by the caps, not loaded); a file no manifest row names is not loaded.
+`lenses/` (loaded), `rules/` (loaded when the manifest declares a rule), and
+the reserved `examples/` and `evals/` payload trees: those two are capped,
+carried through vendoring, and folded into the canonical tree hash, but no
+loader parses their bodies. A file no manifest row names is not loaded.
 
 Every load checks the caps while walking, before any parse: 64 KiB per file,
-1 MiB per pack, 256 files, 64 lenses (`pack-too-large`). The repo pack root is
+1 MiB per pack, 256 files, 64 lenses, and 8 directory levels
+(`pack-too-large`). The repo pack root is
 bounded too: `pack list` reads `.verdict/packs/` in batches and refuses
 `pack-too-large` past 1024 children, and a pack tree — read from the base or
 from the `--allow-head-controls` worktree — refuses `controls-too-large` past
@@ -349,7 +352,8 @@ inventory, so its bytes count against the controls tree's shared 1 MiB
 pack at its own ceiling leaves no room for the rest — the controls read
 refuses `controls-too-large`. The pack hash
 is sha256 over the canonical loaded tree (sorted slash paths, each fed as
-`== <path> ==`, its bytes, then a newline); each lens also carries the first
+`== <path-length>:<path> ==`, the body's byte length, its bytes, then a
+newline); each lens also carries the first
 eight hex digits of its body's sha256.
 
 `fetch` writes the loaded bodies to `.verdict/state/<bundle>/lenses.txt`, one
@@ -403,9 +407,13 @@ prompt, and the shipped prompt hash does not move.
 `verdict pack list [--json]` reports every loaded pack (built-in, org, repo)
 in precedence order: `name`, `version`, `layer`, `source` (`builtin`,
 `dir:<path>`, or `.verdict/packs/<name>`), the canonical tree `hash`, the
-declared `lenses` and `rules` ids, and `drift` (null until `verdict.lock`
-lands). It lists the packs in this checkout; a review reads repo packs from
-the PR's base, so a pack the PR adds or edits is listed here but not used.
+declared `lenses` and `rules` ids, and `drift` (null when a repo pack matches
+`.verdict/verdict.lock`, else `pack-lock-missing` or `pack-lock-drift`; the
+built-in and org rows are never locked). A lock row whose pack directory is
+gone still lists as a repo row with `drift: "pack-lock-drift"`, matching the
+refusal `fetch`, `post`, and `record` raise for the same state. It lists the packs in this checkout;
+a review reads repo packs from the PR's base, so a pack the PR adds or edits
+is listed here but not used.
 A regular file directly under `.verdict/packs/` (a README, say) is not a
 pack: `pack list` skips it with one warning naming it, and `fetch` ignores
 it, so a stray regular file never refuses the run. A symlink or special file
@@ -415,6 +423,81 @@ as `controls-unavailable` — so neither surface calls one ignorable. Conflict
 refusals surface here too, so a bad layering fails before a review spends
 anything. The MCP `pack` tool serves the same read-only list and repeats the
 same warning list in its result.
+
+`verdict pack add <dir|git-url>[@ref]` vendors one pack and pins it. The
+source is validated by the same loader as every other layer (all `bad-pack`,
+`pack-too-large`, `pack-unsafe-path`, and `pack-conflict` refusals apply),
+then its manifest, loaded lens/rule bodies, and `evals/`/`examples/` trees
+are copied through `os.Root` into `.verdict/packs/<slug>/` (the manifest
+name's part after the slash) and one row is written to
+`.verdict/verdict.lock`. The tree hash covers all of them, so a pack that
+differs only in an eval case records a different hash. A `dir:` source records the
+directory exactly as given on the command line, slash-separated. A
+`git:<url>@<sha>` source is cloned hermetically into a temporary directory:
+`GIT_CONFIG_NOSYSTEM=1`, `HOME` and every `XDG_*` directory scrubbed into
+that temporary tree, `GIT_TERMINAL_PROMPT=0`, `-c core.hooksPath=/dev/null`
+(an empty temporary directory on Windows), `-c protocol.file.allow=never`,
+`clone --depth=1 --no-tags --no-recurse-submodules` (plus `--branch <ref>`
+when `@ref` is given), then a detached checkout of the resolved 40-hex HEAD
+commit; that commit is what the lock records. The clone, rev-parse, and
+checkout share one five-minute budget, and the resulting working tree is
+checked against the pack file-count and byte caps before it is loaded. Exactly
+three remote forms are accepted, and nothing else is a git source:
+`https://HOST[:PORT]/PATH` with no userinfo at all, `ssh://USER@HOST[:PORT]/PATH`,
+or `USER@HOST:PATH`. `USER` is 1–64 of `[A-Za-z0-9._-]`; `HOST` is a DNS name,
+an IPv4 address, or a bracketed IPv6 literal; `PATH` carries no control
+character, whitespace, or leading `-`. The scheme is matched
+case-insensitively and stored lower-case. A string that names a remote but
+fails this grammar refuses `bad-pack-source` before the clone and before any
+write:
+the one-slash scheme, a `%`-escaped password (`ssh://user%3ATOK@host/x`), a
+token-only or two-`@` https URL, `http://`, `git+https://`, a query or
+fragment (`?private_token=…`, `#…`), and an IPv6 literal with userinfo are all
+the same refusal. A token never belongs in a source — URL, `@ref`, or path —
+because the source is recorded in the committed lock; use ssh with a key, or a
+public https URL. No source is ever echoed raw: every
+refusal, human line, and `pack list` row renders through one display that
+prints only a parsed source, and prints `<invalid source>` for anything else.
+git's own failure text is never rendered: a failed clone, rev-parse, or
+checkout refuses `pack-git-failed` with fixed wording for the phase and its
+exit code, because that text can carry the source URL, its query, or the ref.
+Re-adding a name replaces the vendored tree and the lock row, and prints the
+old and new tree hashes. A re-add builds and verifies the new tree in a temp
+sibling under `.verdict/packs/` and swaps it in, so a failed re-add leaves the
+previous tree and lock row intact; a crashed re-add's dot-prefixed staging and
+backup siblings are ignored by the loader and swept by the next add of that
+pack. Once the new tree and lock are durable, a failure to remove the old
+backup is a warning that names the leftover path, not a refusal: the add has
+succeeded and the loader skips the dotted sibling. A source inside
+`.verdict/packs/` refuses `bad-pack`: it is already vendored.
+
+`verdict.lock` is strict JSON (unknown or differently-cased keys refuse,
+exactly as `pack.json`), with `schema_version: "1"` and `packs` sorted by
+name: `{name, source, version, hash, sig}`. `source` is `dir:<path>` or
+`git:<url>@<sha>`; a `dir:` payload is a slash path with no control
+character, backslash, or leading `-`, and a `git:` URL is exactly the three
+accepted remote forms above, stored with the lower-case scheme and pinned to
+the resolved 40-hex sha — a hand-written row with an upper-case scheme, a
+one-slash scheme, or any userinfo password refuses `bad-lock-source`. A
+`dir:` label that looks
+like a URL is listed as `<invalid source>`. `hash` is the canonical tree hash
+`pack list` prints. `sig` is an integrity digest, not a signature: sha256
+over `name=`, `source=`, `version=`, and `hash=` lines in that order, so a
+hand-edited row is caught. The lock covers the repo layer only: the built-in
+pack is pinned by the binary, and org packs live in per-operator settings, so
+neither is locked. `pack add` writes the file atomically and keeps every
+other row.
+
+`fetch`, `fetch-local`, `post`, and `record` run one shared check where packs
+are resolved. With no repo packs and no lock, nothing changes. A repo pack
+with no lock row, or repo packs with no lock file, refuses
+`pack-lock-missing` naming the pack. A lock row whose tree hash differs from
+the vendored pack, a row whose pack directory is gone, or a `sig` that does
+not match its fields refuses `pack-lock-drift` naming the pack and both
+hashes. The check runs at fetch and again at post/record, with no bypass
+flag. `.verdict/verdict.lock` also joins the `controls` inventory, so it is
+read at the PR base: a PR cannot edit the lock that guards its own review,
+and editing the captured copy refuses `controls-stale` at post/record.
 
 ### Evidence ledger
 

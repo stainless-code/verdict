@@ -30,9 +30,11 @@ bad-from	try: re-run with one of the valid values named above
 bad-group-validation	try: re-run with one of the valid values named above
 bad-id	try: re-run with one of the valid values named above
 bad-judgment	try: re-run with one of the valid values named above
+bad-lock-source	try: re-run 'verdict pack add <dir|git-url>' from the pack source so .verdict/verdict.lock records a valid source
 bad-max-bytes	try: re-run with one of the valid values named above
 bad-override	try: re-run with one of the valid values named above
 bad-pack	try: fix pack.json against schemas/pack.schema.json (exact lowercase keys, every id paired with its markdown file), then re-run
+bad-pack-source	try: use https://host/path with no userinfo, ssh://user@host/path, or user@host:path — a token in the URL, ref, or path is recorded in the committed lock; use an ssh key or a public https URL
 bad-preset	try: re-run with one of the valid values named above
 bad-provider	try: re-run with one of the valid values named above
 bad-range	try: re-run with one of the valid values named above
@@ -124,6 +126,10 @@ not-local	try: run the fetch/record step named above first, then re-run
 not-retired	try: check the rule status with learn --status, then re-run
 not-verdict-authored	try: address the cause above, then re-run the same command
 pack-conflict	try: add "replace": ["<lower pack name>"] to the higher pack's manifest, or rename the conflicting id
+pack-git-failed	try: check the source URL, the ref, your access, and the network, then re-run
+pack-lock-drift	try: re-add the pack with 'verdict pack add <dir|git-url>' so .verdict/verdict.lock records its current tree hash
+pack-lock-missing	try: run 'verdict pack add <dir|git-url>' to vendor the pack and write its .verdict/verdict.lock entry
+pack-staging-stale	try: delete the dot-prefixed sibling under .verdict/packs/ that the message names by hand (its permissions block the sweep), then re-run
 pack-too-large	try: trim the pack under 64 KiB per file, 1 MiB total, 256 files, and 64 lenses, then re-run
 pack-unsafe-path	try: keep every pack path relative with no symlink components, then re-run
 post-failed	try: narrow anchor drift or body size (see above), then re-run

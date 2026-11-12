@@ -113,8 +113,21 @@ var hintRules = []HintRule{
 	{codes: []string{"bad-until"}, hint: "try: pass --until <ref> that is an ancestor of HEAD"},
 	{codes: []string{"bad-pack"}, hint: "try: fix pack.json against schemas/pack.schema.json " +
 		"(exact lowercase keys, every id paired with its markdown file), then re-run"},
+	{codes: []string{"bad-pack-source"}, hint: "try: use https://host/path with no userinfo, " +
+		"ssh://user@host/path, or user@host:path — a token in the URL, ref, or path is recorded " +
+		"in the committed lock; use an ssh key or a public https URL"},
+	{codes: []string{"bad-lock-source"}, hint: "try: re-run 'verdict pack add <dir|git-url>' " +
+		"from the pack source so .verdict/verdict.lock records a valid source"},
 	{codes: []string{"pack-conflict"}, hint: "try: add \"replace\": [\"<lower pack name>\"] " +
 		"to the higher pack's manifest, or rename the conflicting id"},
+	{codes: []string{"pack-git-failed"}, hint: "try: check the source URL, the ref, " +
+		"your access, and the network, then re-run"},
+	{codes: []string{"pack-lock-drift"}, hint: "try: re-add the pack with " +
+		"'verdict pack add <dir|git-url>' so .verdict/verdict.lock records its current tree hash"},
+	{codes: []string{"pack-lock-missing"}, hint: "try: run 'verdict pack add <dir|git-url>' " +
+		"to vendor the pack and write its .verdict/verdict.lock entry"},
+	{codes: []string{"pack-staging-stale"}, hint: "try: delete the dot-prefixed sibling under " +
+		".verdict/packs/ that the message names by hand (its permissions block the sweep), then re-run"},
 	{codes: []string{"pack-too-large"}, hint: "try: trim the pack under 64 KiB per file, 1 MiB total, " +
 		"256 files, and 64 lenses, then re-run"},
 	{codes: []string{"pack-unsafe-path"}, hint: "try: keep every pack path relative with no symlink " +

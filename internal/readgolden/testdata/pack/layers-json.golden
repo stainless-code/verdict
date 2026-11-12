@@ -15,7 +15,7 @@ exit: 0
         "version": "1.0.0",
         "layer": "builtin",
         "source": "builtin",
-        "hash": "23dac5dead2eb78613332103b244cafe21c6031bb8469c73bb1c5b1f1ed42cd5",
+        "hash": "06820abbd0a6d3c6090a3e82d0fbbbd9f658ca7fee7a67dd58e54785c72e125b",
         "lenses": [
           "api-contract",
           "perf",
@@ -29,7 +29,7 @@ exit: 0
         "version": "2.0.0",
         "layer": "org",
         "source": "dir:org-packs",
-        "hash": "ec7b01d4ea7b319a383c633bb8c30b464ec5c9734c9b06c6db0ef6dec8218d7b",
+        "hash": "eb88c75d42456dfedbe79b87c9b5dfdf918ddc7a116e8940b28b9372a1061aa1",
         "lenses": [
           "security"
         ],
@@ -43,7 +43,7 @@ exit: 0
         "version": "0.1.0",
         "layer": "repo",
         "source": ".verdict/packs/repo",
-        "hash": "6017f42729f688b65d17401a27200f0406c1cf8b75d588ce65788850d7817edf",
+        "hash": "ae6c1dde5272f074fb9c4c70c63da86019018a34497315fad9e25f35ddaa70a3",
         "lenses": [
           "security",
           "style"
@@ -51,7 +51,7 @@ exit: 0
         "rules": [
           "repo-style"
         ],
-        "drift": null
+        "drift": "pack-lock-missing"
       }
     ]
   },

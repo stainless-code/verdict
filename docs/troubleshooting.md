@@ -198,6 +198,12 @@ Cause: the `calibrate --probe` judge file is missing or unreadable.
 
 Fix: write one `{"sig": ..., "agent_verdict": ...}` object per line (or a JSON array of them), then re-run.
 
+## `bad-lock-source`
+
+Cause: a `.verdict/verdict.lock` row's `source` is neither a clean `dir:` path nor one of the three allowlisted git remotes pinned to a 40-hex sha. A hand-written row with a one-slash scheme, an upper-case scheme, a `%`-escaped password, or https userinfo refuses here; the message prints the fixed `<invalid source>` placeholder, never the row.
+
+Fix: re-run `verdict pack add <dir|git-url>` from the pack's source so the lock records a valid source, then commit the lock.
+
 ## `bad-max-bytes`
 
 Cause: `REVIEW_MAX_BYTES` is not a positive byte count.
@@ -215,6 +221,12 @@ Fix: fix its permissions (or remove it), then re-run.
 Cause: a lens pack manifest is malformed, a key is spelled in any case but the published lowercase form, two packs in one layer share an id, or a named lens/rule body is missing, empty, or stem-mismatched.
 
 Fix: fix `pack.json` against `schemas/pack.schema.json` (exact lowercase keys; every lens id equals `lenses/<id>.md` and every rule id `rules/<id>.md`), then re-run.
+
+## `bad-pack-source`
+
+Cause: `verdict pack add` named a remote-shaped source the git allowlist rejects. Only `https://host/path` with no userinfo, `ssh://user@host/path`, and `user@host:path` are git sources; a one-slash scheme, `http://`, `git+https://`, a `%`-escaped password, a token-only https user, a second `@`, a query or fragment (`?private_token=…`, `#…`), or userinfo on a bracketed IPv6 host refuses before any git call. The message prints `<invalid source>`, never the bytes supplied.
+
+Fix: use one of the three forms with a bare ssh user and a public https URL, and put no token in the URL, ref, or path — the source is recorded in the committed lock. Use an ssh key instead. Then re-run.
 
 ## `bad-preset`
 
@@ -763,6 +775,30 @@ Fix: resolve only verdict-authored threads (pass the ids from `threads.json`).
 Cause: a higher-layer pack declares an id a lower-layer pack already declares, without naming that pack in `replace`; or `replace` names a pack that is not loaded or is not below the declaring pack.
 
 Fix: add `"replace": ["<lower pack name>"]` to the higher pack's manifest (replacement is downward only), or rename the id. Then re-run.
+
+## `pack-git-failed`
+
+Cause: the hermetic `git clone`, the HEAD resolution, or the detached checkout `pack add` runs could not complete: the remote or the ref was not found, the credential was refused, the network is down, or the five-minute clone budget ran out. git's own error text is never printed, because it can carry the source URL, its query, or the ref.
+
+Fix: check the source spelling, the `@ref`, your access (an ssh key for an ssh source), and the network, then re-run. For a private remote, use ssh with a key rather than a token in the URL.
+
+## `pack-lock-drift`
+
+Cause: `.verdict/verdict.lock` no longer matches the vendored repo pack: its tree hash differs, its pack directory is gone, or its `sig` does not match the entry's name, source, version, and hash.
+
+Fix: re-add the pack with `verdict pack add <dir|git-url>[@ref]` so the lock records the current tree, or restore the pack the lock pins, then re-run. A bundle keeps the lock controls captured at fetch, so repair the trusted base and fetch a fresh bundle before repeating `post` or `record`.
+
+## `pack-lock-missing`
+
+Cause: a repo pack under `.verdict/packs/` has no `.verdict/verdict.lock` entry, or the lock file is absent while repo packs exist.
+
+Fix: run `verdict pack add <dir|git-url>[@ref]` to vendor the pack and write its lock entry, commit both, then re-run. A bundle keeps the lock controls captured at fetch, so repair the trusted base and fetch a fresh bundle before repeating `post` or `record`.
+
+## `pack-staging-stale`
+
+Cause: a crashed re-add left a dot-prefixed `.verdict/packs/.<slug>.tmp-*` staging tree or `.old-*` backup that the next add of that pack cannot remove (usually its permissions), so the add refuses rather than stage beside it.
+
+Fix: delete the path the message names by hand (`rm -rf .verdict/packs/.<slug>.tmp-* .verdict/packs/.<slug>.old-*`), then re-run. The loader already ignores those siblings, so a listed pack is not affected.
 
 ## `pack-too-large`
 
