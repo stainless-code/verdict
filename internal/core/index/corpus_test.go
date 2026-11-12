@@ -60,6 +60,7 @@ type corpusCase struct {
 	At         string       `json:"at"`
 	Callers    []callerEdge `json:"callers"`
 	Tests      []testEdge   `json:"tests"`
+	NotTests   []string     `json:"not_tests,omitempty"`
 	Hidden     int          `json:"hidden"`
 	Unresolved int          `json:"unresolved"`
 	Depth      int          `json:"depth"`
@@ -195,7 +196,7 @@ func assertLabelled(t *testing.T, dir string, q *corpusCase) {
 			t.Fatalf("%s: query %q wants a symbol, its declaring package, and its edges", dir, q.Name)
 		}
 	case QueryTestsFor:
-		if (q.Path == "") == (q.Symbol == "") || len(q.Tests) == 0 {
+		if (q.Path == "") == (q.Symbol == "") || (len(q.Tests) == 0 && len(q.NotTests) == 0) {
 			t.Fatalf("%s: query %q wants exactly one of path and symbol, and its rows", dir, q.Name)
 		}
 	default:
@@ -214,6 +215,9 @@ func assertUniqueEdges(t *testing.T, dir string, q *corpusCase) {
 	}
 	for _, e := range q.Tests {
 		assertFreshEdge(t, dir, q.Name, testKey(e.Path, e.Via, e.Depth), seen)
+	}
+	for _, p := range q.NotTests {
+		assertFreshEdge(t, dir, q.Name, "not-test "+p, seen)
 	}
 }
 
@@ -274,6 +278,9 @@ func assertLabelledPaths(t *testing.T, q *corpusCase, files map[string]bool) {
 	for _, e := range q.Tests {
 		assertHeld(t, q.Name, e.Path, files)
 	}
+	for _, p := range q.NotTests {
+		assertHeld(t, q.Name, p, files)
+	}
 }
 
 // assertHeld refuses one labeled path the fixture does not hold.
@@ -314,6 +321,15 @@ func assess(t *testing.T, f *fixture, q *corpusCase) caseScore {
 	if q.Kind == QueryTestsFor {
 		if d.DepthTruncated != q.Hidden {
 			t.Errorf("%s: depth_truncated = %d; want %d", q.Name, d.DepthTruncated, q.Hidden)
+		}
+		got := make(map[string]bool, len(d.TestRows))
+		for _, row := range d.TestRows {
+			got[row.Path] = true
+		}
+		for _, p := range q.NotTests {
+			if got[p] {
+				t.Errorf("%s: excluded test %s was named", q.Name, p)
+			}
 		}
 		return caseScore{Name: q.Name, All: scoreTests(q, d.TestRows)}
 	}
