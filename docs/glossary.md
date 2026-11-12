@@ -120,3 +120,10 @@ evidence does not support is not reported.
 `kb-grades.jsonl` file. Renames and tighter shapes require a version bump.
 
 **Agent definition** — a data row mapping an agent name to its executable, noninteractive arguments, and installation step.
+
+## Self-review loop
+
+A bounded local fetch → agent review and fix → record → gate recipe run before
+opening a PR. Each round retains a receipt; only a passing last gate produces a
+passing summary. See the manual's **Agent self-review loop** for its advisory
+coverage posture and wall budget.

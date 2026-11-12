@@ -3587,3 +3587,51 @@ Drift rule: additive within `schema_version`/`sig_version` `"1"` — new
 optional keys pass through the stores and the schemas alike; renames,
 tighter types, and newly required keys never happen without a version bump,
 and a bump ships only by operator decision.
+
+## Agent self-review loop
+
+Before opening a PR, run the checkout recipe from the repository being reviewed
+(Python 3.9+, POSIX, `verdict` and your agent on `PATH`):
+
+```sh
+python3 /path/to/verdict/docs/recipes/self-review.py owner/repo \
+  --agent codex --max-rounds 3 --budget 600 --output /outside/repo/review-001
+```
+
+`--agent` accepts `claude`, `codex`, or `opencode`. The recipe uses the shipped
+`run --print` agent table — no duplicated launch flags. Use a new output directory
+outside the reviewed repository for each invocation. Only tracked working-tree
+changes are reviewed, matching plain `fetch-local`; stage new files first.
+
+Each round fetches a fresh local bundle, spawns one non-interactive agent, records
+its review, and gates all finding severities with live host checks skipped. The
+agent writes its review of the fetched snapshot first, then fixes reported
+findings in the working tree. The next round fetches and reviews those fixes.
+The prior record is passed by path to the next agent. Verdict never edits code,
+posts, pushes, or opens a PR. The recipe launches the printed argv itself so it
+can append the fix instructions; it does not produce `launcher.json`.
+
+Dirty local bundles currently have no HEAD for the coverage gate's receipt key.
+The recipe therefore explicitly uses `--coverage warn` — coverage is requested
+from the agent, but a pass here means the findings gate passed, with coverage
+advisory. This is not a merge authorization or a coverage guarantee.
+
+`round-N.json` holds the round number, open findings count, gate boolean, and
+`cost: null` (cost is not measured). Missing observations remain null.
+`round-N.record.json` and `round-N.gate.json` retain the record and gate data.
+`summary.json` and stdout report the stop reason and all receipts. Exit 0 means
+the last gate passed; exit 1 means maximum rounds, wall budget, or a typed
+refusal stopped the loop. The wall budget covers all subprocesses and kills the
+POSIX process group on expiration. It is not a token or dollar budget. A refusal
+never retries. The loop does not invoke `run`'s structured-output repair loop.
+
+For a before/after benchmark, use two isolated copies of the same benchmark
+input and pinned agent/model: run the baseline coding task in one, then the
+same task followed by this recipe in the other. Grade both resulting diffs with
+the same benchmark command and retain task output, recipes, model settings,
+receipts, elapsed time, and measured agent cost. Repeat across seeds/tasks and
+report failures as well as passes. No benchmark numbers are claimed here.
+
+Verify the recipe with `./evals/one.sh self-review`; it runs stub binaries for
+all three agents, both fixing on round 2 and exhausting the round limit, offline.
+Unit checks run with `python3 -B -m unittest discover -s docs/recipes`.
