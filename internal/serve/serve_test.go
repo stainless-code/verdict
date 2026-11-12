@@ -655,3 +655,40 @@ func TestShowDataIsTheShowShape(t *testing.T) {
 		t.Error("show data lacks fix")
 	}
 }
+
+// TestRootSkipsTheRepoProbe proves --root is resolved before the repository
+// probe: a failing git in a checkout-shaped cwd would refuse not-a-repo, but
+// the explicit root reaches the listener instead.
+func TestRootSkipsTheRepoProbe(t *testing.T) {
+	stub := t.TempDir()
+	gitStub := "#!/bin/sh\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(stub, "git"), []byte(gitStub), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	work := t.TempDir()
+	if err := os.Mkdir(filepath.Join(work, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(work)
+	t.Setenv("PATH", stub+string(os.PathListSeparator)+os.Getenv("PATH"))
+	root := writeFixture(t, fixtureFiles())
+	out := &syncBuffer{}
+	runner := &cli.Runner{
+		Cmd: "serve", Out: out, Human: out, Diag: out, JSONMode: true,
+		Now: fixedNow, Effective: cli.Defaults(),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	code := Run(ctx, runner, []string{"--root", root}, Request{})
+	if code != cli.ExitBroke {
+		t.Fatalf("exit = %d, want %d (a not-a-repo refusal means the root lost the ordering)", code, cli.ExitBroke)
+	}
+	envelope := decode(t, []byte(out.String()))
+	if envelope["error"] != nil {
+		t.Fatalf("error = %v, want the start envelope", envelope["error"])
+	}
+	data := asMap(t, envelope["data"])
+	if !strings.Contains(asString(t, data["url"]), "?token=") {
+		t.Errorf("url = %v, want the tokenised start URL", data["url"])
+	}
+}
