@@ -118,6 +118,23 @@ func TestPackHashCoversReservedTrees(t *testing.T) {
 	}
 }
 
+// TestPackTreeHashSeparatesFileBoundaries proves a body holding another
+// file's header cannot hash like a tree with that second file.
+func TestPackTreeHashSeparatesFileBoundaries(t *testing.T) {
+	t.Parallel()
+	manifest := []byte(`{"schema_version":"1","name":"acme/lenses","version":"1.2.3","lenses":[{"id":"perf"}]}`)
+	one := treeHash(manifest, nil, nil, []packFile{
+		{path: "evals/a", body: []byte("foo\n== evals/b ==\nbar")},
+	})
+	two := treeHash(manifest, nil, nil, []packFile{
+		{path: "evals/a", body: []byte("foo")},
+		{path: "evals/b", body: []byte("bar")},
+	})
+	if one == two {
+		t.Fatalf("two trees hashed alike at %s; a body forged the next file's boundary", one)
+	}
+}
+
 // TestPackRefusesDeepTree proves the walk refuses a tree nested past the
 // depth cap before any body is loaded.
 func TestPackRefusesDeepTree(t *testing.T) {
