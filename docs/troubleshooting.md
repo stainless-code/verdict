@@ -144,6 +144,12 @@ Cause: `REVIEW_BUDGET_USD` (or the typed `budget_usd` default) is not above 0, o
 
 Fix: export a positive `REVIEW_BUDGET_USD` (or set a positive `budget_usd`), then re-run.
 
+## `bad-by`
+
+Cause: a `serve` cost or precision route received an unsupported `by` dimension.
+
+Fix: use `repo|week|model` for cost or `category|tier` for precision.
+
 ## `bad-category`
 
 Cause: `report --category` names an unknown category.

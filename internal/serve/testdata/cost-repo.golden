@@ -1,0 +1,73 @@
+{
+  "schema_version": "1",
+  "verb": "serve",
+  "repo": "",
+  "pr": null,
+  "at": "2026-11-12T09:00:00Z",
+  "next": "write measured spend to the bundle's cost.json, then re-run",
+  "warnings": [],
+  "data": {
+    "cost": {
+      "by": "repo",
+      "rows": [
+        {
+          "dimension": "acme/app",
+          "runs": 1,
+          "model_runs": 1,
+          "input_tokens": 10,
+          "output_tokens": 5,
+          "total_tokens": 15,
+          "est_usd": 0.25
+        }
+      ],
+      "totals": {
+        "runs": 1,
+        "model_runs": 1,
+        "input_tokens": 10,
+        "output_tokens": 5,
+        "total_tokens": 15,
+        "est_usd": 0.25
+      }
+    },
+    "partial": false,
+    "sources": [
+      {
+        "root": "root-id",
+        "bundle": "1234",
+        "path": ".verdict/state/1234/PR.json",
+        "sha256": "1c5633ee13471d4e212af2be6a7ce332fa9527f8c242c464948499c071262e73",
+        "bytes": 61
+      },
+      {
+        "root": "root-id",
+        "bundle": "1234",
+        "path": ".verdict/state/1234/cost.json",
+        "sha256": "f4cb87f5bd347b5c61b9109c74722fafb536f222193b369c1fbe34c6e4a5edb4",
+        "bytes": 82
+      },
+      {
+        "root": "root-id",
+        "bundle": "1234",
+        "path": ".verdict/state/1234/findings.json",
+        "sha256": "a93b888bc797a018622507ea0e02e71b237e1f0bfafc373177e9774d1e28ef6e",
+        "bytes": 257
+      },
+      {
+        "root": "root-id",
+        "bundle": "1234",
+        "path": ".verdict/state/1234/post.json",
+        "sha256": "807c86dbb4ee004a978197f74649bd0155678bfe3927cf07eee9860f831ec354",
+        "bytes": 104
+      },
+      {
+        "root": "root-id",
+        "bundle": "1234",
+        "path": ".verdict/state/1234/threads.json",
+        "sha256": "fcd17c8e11ae9fd211ec95e04708e4f3d7c1881298abc978fa25b03f74e29719",
+        "bytes": 586
+      }
+    ],
+    "errors": []
+  },
+  "error": null
+}

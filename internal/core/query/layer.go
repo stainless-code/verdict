@@ -481,18 +481,29 @@ func errorsWire(rows []ErrRow) []any {
 	return out
 }
 
-// mergeSources dedupes two source lists by path and sorts the result.
 func mergeSources(left, right []Source) []Source {
-	seen := make(map[string]bool, len(left)+len(right))
+	type sourceIdentity struct {
+		root, bundle, path string
+	}
+	seen := make(map[sourceIdentity]bool, len(left)+len(right))
 	out := make([]Source, 0, len(left)+len(right))
 	for _, source := range append(append([]Source{}, left...), right...) {
-		if seen[source.Path] {
+		key := sourceIdentity{root: source.Root, bundle: source.Bundle, path: source.Path}
+		if seen[key] {
 			continue
 		}
-		seen[source.Path] = true
+		seen[key] = true
 		out = append(out, source)
 	}
-	slices.SortFunc(out, func(a, b Source) int { return strings.Compare(a.Path, b.Path) })
+	slices.SortFunc(out, func(a, b Source) int {
+		if order := strings.Compare(a.Root, b.Root); order != 0 {
+			return order
+		}
+		if order := strings.Compare(a.Bundle, b.Bundle); order != 0 {
+			return order
+		}
+		return strings.Compare(a.Path, b.Path)
+	})
 	return out
 }
 

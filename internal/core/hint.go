@@ -147,6 +147,7 @@ var hintRules = []HintRule{
 		"256 files, and 64 lenses, then re-run"},
 	{codes: []string{"pack-unsafe-path"}, hint: "try: keep every pack path relative with no symlink " +
 		"components, then re-run"},
+	{codes: []string{"bad-by"}, hint: "try: use one of the dimensions named in the message"},
 	{prefix: "bad-", hint: "try: re-run with one of the valid values named above"},
 	{codes: []string{"already-learned"}, hint: "try: cite the existing rule id instead of learning it twice"},
 	{codes: []string{"verify-destructive"}, hint: "try: rewrite verifyCmd to stay in-repo and " +

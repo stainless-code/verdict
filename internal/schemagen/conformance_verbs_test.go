@@ -797,6 +797,14 @@ func TestRuntimeConfigEnvelopeValidates(t *testing.T) {
 // profile byte-for-byte.
 func TestRuntimeServeEnvelopeValidates(t *testing.T) {
 	doc := loadSchemaDocument(t, "envelope.schema.json")
+	assertServeSchemaDefinitions(t, doc)
+	abs, layer := serveConformanceLayer(t)
+	assertServeCoreViews(t, doc, layer, abs)
+	assertServeAggregateViews(t, doc, layer)
+}
+
+func assertServeSchemaDefinitions(t *testing.T, doc map[string]any) {
+	t.Helper()
 	defs, ok := doc["$defs"].(map[string]any)
 	if !ok {
 		t.Fatal("envelope schema has no $defs")
@@ -804,6 +812,15 @@ func TestRuntimeServeEnvelopeValidates(t *testing.T) {
 	if _, ok := defs["serveData"]; !ok {
 		t.Fatal("envelope schema lacks $defs/serveData")
 	}
+	for _, name := range []string{"serveCostData", "serveCostBucket", "serveCostTotals", "servePrecisionData", "servePrecisionBucket", "servePrecisionTotals"} {
+		if _, ok := defs[name]; !ok {
+			t.Fatalf("envelope schema lacks $defs/%s", name)
+		}
+	}
+}
+
+func serveConformanceLayer(t *testing.T) (string, *query.Layer) {
+	t.Helper()
 	dir := t.TempDir()
 	bundle := filepath.Join(dir, ".verdict", "state", "4232")
 	writeFixture(t, filepath.Join(bundle, "PR.json"),
@@ -813,6 +830,8 @@ func TestRuntimeServeEnvelopeValidates(t *testing.T) {
 		`{"schema_version":"1","review":{"id":9},"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
 			`"model":"m1","posted_at":"2026-01-01T00:00:00Z"}`)
 	writeFixture(t, filepath.Join(bundle, "findings.json"), "["+fixtureFinding()+"]")
+	writeFixture(t, filepath.Join(bundle, "cost.json"),
+		`{"models":[{"name":"alpha","input_tokens":null,"output_tokens":null}],"est_usd":1.25}`)
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -822,7 +841,11 @@ func TestRuntimeServeEnvelopeValidates(t *testing.T) {
 		Roots:   []query.Root{{Path: abs}},
 		Runtime: fixedRuntime(),
 	}, query.Options{Check: "critical", MaxBundles: 10})
+	return abs, layer
+}
 
+func assertServeCoreViews(t *testing.T, doc map[string]any, layer *query.Layer, abs string) {
+	t.Helper()
 	health := layer.Health(t.Context())
 	assertEnvelope(t, doc, "serve", "", health.At, health.Next, health.Warnings, health.Data)
 	roots := layer.Roots(t.Context())
@@ -842,4 +865,18 @@ func TestRuntimeServeEnvelopeValidates(t *testing.T) {
 		t.Fatalf("Show: %v", err)
 	}
 	assertEnvelope(t, doc, "show", "4232", show.At, show.Next, show.Warnings, show.Data)
+}
+
+func assertServeAggregateViews(t *testing.T, doc map[string]any, layer *query.Layer) {
+	t.Helper()
+	cost, err := layer.Cost(t.Context(), "repo")
+	if err != nil {
+		t.Fatalf("Cost: %v", err)
+	}
+	assertEnvelope(t, doc, "serve", "", cost.At, cost.Next, cost.Warnings, cost.Data)
+	precision, err := layer.Precision(t.Context(), "category")
+	if err != nil {
+		t.Fatalf("Precision: %v", err)
+	}
+	assertEnvelope(t, doc, "serve", "", precision.At, precision.Next, precision.Warnings, precision.Data)
 }

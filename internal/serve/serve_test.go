@@ -151,6 +151,38 @@ func testServer(t *testing.T, layer Layer) *httptest.Server {
 	return ts
 }
 
+// TestAggregateRoutes checks aggregate responses and query refusals.
+func TestAggregateRoutes(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, fixtureFiles())
+	ts := testServer(t, testLayer(root, nil))
+	assertAggregateRoutesSucceed(t, ts)
+	assertAggregateRoutesRefuseUnknownDimensions(t, ts)
+}
+
+func assertAggregateRoutesSucceed(t *testing.T, ts *httptest.Server) {
+	t.Helper()
+	for _, path := range []string{"/v1/cost?by=repo", "/v1/precision?by=category"} {
+		got := call(t, ts, http.MethodGet, path, "", bearer())
+		if got.status != http.StatusOK || !strings.Contains(string(got.body), `"error": null`) {
+			t.Errorf("GET %s = %d %s; want 200 success envelope", path, got.status, got.body)
+		}
+	}
+}
+
+func assertAggregateRoutesRefuseUnknownDimensions(t *testing.T, ts *httptest.Server) {
+	t.Helper()
+	for _, path := range []string{
+		"/v1/cost?by=unexpected", "/v1/precision?by=unexpected",
+		"/v1/cost?by=repo&unexpected=1", "/v1/precision?by=category&by=tier",
+	} {
+		got := call(t, ts, http.MethodGet, path, "", bearer())
+		if got.status != http.StatusOK || !strings.Contains(string(got.body), `"code": "bad-by"`) {
+			t.Errorf("GET %s = %d %s; want 200 typed bad-by refusal", path, got.status, got.body)
+		}
+	}
+}
+
 // result is one closed response: status, headers, and body.
 type result struct { //nolint:govet // test result grouping
 	status int
@@ -1114,6 +1146,14 @@ func (l *blockingLayer) Detail(context.Context, string, string) (*query.View, er
 
 // Show reports the finding missing.
 func (l *blockingLayer) Show(context.Context, string, string, string) (*query.View, error) {
+	return nil, query.ErrNotFound
+}
+
+func (l *blockingLayer) Cost(context.Context, string) (*query.View, error) {
+	return nil, query.ErrNotFound
+}
+
+func (l *blockingLayer) Precision(context.Context, string) (*query.View, error) {
 	return nil, query.ErrNotFound
 }
 
