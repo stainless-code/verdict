@@ -1,6 +1,7 @@
 package pack
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -312,6 +313,44 @@ func requirePackRow(t *testing.T, i int, got, want *Entry) {
 	}
 	if !slices.Equal(got.Rules, want.Rules) {
 		t.Errorf("row %d rules = %v, want %v", i, got.Rules, want.Rules)
+	}
+}
+
+// TestListRefusesOversizedPackRoot proves the repo pack scan stops at the same
+// 1024-entry budget the controls pack walk carries, instead of reading and
+// keeping an unbounded directory.
+func TestListRefusesOversizedPackRoot(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	stray := map[string]string{}
+	for i := range maxRepoPackEntries + 1 {
+		stray[fmt.Sprintf(".verdict/packs/stray-%04d.md", i)] = "not a pack\n"
+	}
+	writeFixture(t, root, stray)
+	_, ref := RunList(t.Context(), &Request{
+		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
+		"",
+		true,
+	})
+	if ref == nil || ref.Code != CodePackTooLarge {
+		t.Fatalf("oversized pack root = %v, want pack-too-large", ref)
+	}
+	if want := ".verdict/packs holds more than 1024 entries"; !strings.Contains(ref.Message, want) {
+		t.Fatalf("message = %q, want it to contain %q", ref.Message, want)
+	}
+}
+
+// TestPackRootScanChecksContext proves the pack-root scan stops when the
+// caller cancels, instead of listing the whole directory first.
+func TestPackRootScanChecksContext(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeFixture(t, root, map[string]string{".verdict/packs/acme/pack.json": "{}\n"})
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	entries, ref := readPackRoot(ctx, filepath.Join(root, ".verdict", "packs"))
+	if ref == nil || ref.Code != canceledCode {
+		t.Fatalf("canceled scan = %v (entries %d), want canceled", ref, len(entries))
 	}
 }
 

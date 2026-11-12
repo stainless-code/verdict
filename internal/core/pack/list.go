@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/config"
@@ -20,6 +22,14 @@ const RepoPacksDir = ".verdict/packs"
 
 // listSep joins the row's id lists.
 const listSep = ","
+
+// maxRepoPackEntries bounds one pack-root scan at the same 1024 entries the
+// controls pack budget allows, and readDirBatch is how many it reads at a time.
+const (
+	maxRepoPackEntries = 1024
+	readDirBatch       = 256
+	canceledCode       = "canceled"
+)
 
 // Request wires one pack list read. List is the only served mode.
 type Request struct {
@@ -71,12 +81,12 @@ type Response struct {
 // reports every pack. It writes nothing.
 func RunList(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if err := ctx.Err(); err != nil {
-		return nil, &core.RefusalError{Code: "canceled", Message: "canceled before pack list completed"}
+		return nil, &core.RefusalError{Code: canceledCode, Message: "canceled before pack list completed"}
 	}
 	if !req.List {
 		return nil, &core.RefusalError{Code: "bad-flags", Message: "pack serves list; pass list"}
 	}
-	origins, warnings, ref := loadOrigins(req)
+	origins, warnings, ref := loadOrigins(ctx, req)
 	if ref != nil {
 		return nil, ref
 	}
@@ -99,7 +109,7 @@ func RunList(ctx context.Context, req *Request) (*Response, *core.RefusalError) 
 }
 
 // loadOrigins reads the three layers in precedence order.
-func loadOrigins(req *Request) ([]Origin, []string, *core.RefusalError) {
+func loadOrigins(ctx context.Context, req *Request) ([]Origin, []string, *core.RefusalError) {
 	origins := []Origin{}
 	if packFS := req.builtinFS(); packFS != nil {
 		p, ref := Load(packFS, BuiltinRoot)
@@ -114,7 +124,7 @@ func loadOrigins(req *Request) ([]Origin, []string, *core.RefusalError) {
 	if ref != nil {
 		return nil, nil, ref
 	}
-	repo, warnings, ref := repoOrigins(req.RepoRootPath())
+	repo, warnings, ref := repoOrigins(ctx, req.RepoRootPath())
 	if ref != nil {
 		return nil, nil, ref
 	}
@@ -175,19 +185,52 @@ func orgOrigin(root, listed string) (Origin, *core.RefusalError) {
 
 // repoOrigins reads one pack per child directory of .verdict/packs. A file at
 // that level is not a pack: the walk names it in one warning and reads on.
-func repoOrigins(root string) ([]Origin, []string, *core.RefusalError) {
+func repoOrigins(ctx context.Context, root string) ([]Origin, []string, *core.RefusalError) {
 	dir := filepath.Join(root, RepoPacksDir)
 	if ref := checkPacksRoot(dir); ref != nil {
 		return nil, nil, ref
 	}
-	entries, err := os.ReadDir(dir)
+	entries, ref := readPackRoot(ctx, dir)
+	if ref != nil {
+		return nil, nil, ref
+	}
+	if entries == nil {
+		return nil, nil, nil
+	}
+	return repoEntries(ctx, dir, entries)
+}
+
+// readPackRoot reads the pack root's children in bounded batches: the
+// directory is never listed in one unbounded allocation, and a root holding
+// more than maxRepoPackEntries children refuses instead of keeping them all.
+func readPackRoot(ctx context.Context, dir string) ([]fs.DirEntry, *core.RefusalError) {
+	f, err := os.Open(dir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil, nil
+			return nil, nil
 		}
-		return nil, nil, badPack(fmt.Sprintf("read %s: %v", RepoPacksDir, err))
+		return nil, badPack(fmt.Sprintf("read %s: %v", RepoPacksDir, err))
 	}
-	return repoEntries(dir, entries)
+	defer func() { _ = f.Close() }()
+	var entries []fs.DirEntry
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, &core.RefusalError{Code: canceledCode, Message: "canceled while scanning " + RepoPacksDir}
+		}
+		batch, rerr := f.ReadDir(readDirBatch)
+		entries = append(entries, batch...)
+		if len(entries) > maxRepoPackEntries {
+			return nil, tooLarge(fmt.Sprintf("%s holds more than %d entries — trim it",
+				RepoPacksDir, maxRepoPackEntries))
+		}
+		if errors.Is(rerr, io.EOF) {
+			slices.SortFunc(entries, func(a, b fs.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
+			return entries, nil
+		}
+		if rerr != nil {
+			return nil, badPack(fmt.Sprintf("read %s: %v", RepoPacksDir, rerr))
+		}
+	}
 }
 
 // checkPacksRoot refuses a pack root that is not a real directory: following a
@@ -207,11 +250,15 @@ func checkPacksRoot(dir string) *core.RefusalError {
 	return nil
 }
 
-// repoEntries reads each child of the pack root.
-func repoEntries(dir string, entries []fs.DirEntry) ([]Origin, []string, *core.RefusalError) {
+// repoEntries reads each child of the pack root, so a cancel mid-scan stops
+// before the next pack is loaded.
+func repoEntries(ctx context.Context, dir string, entries []fs.DirEntry) ([]Origin, []string, *core.RefusalError) {
 	out := make([]Origin, 0, len(entries))
 	var warnings []string
 	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return nil, nil, &core.RefusalError{Code: canceledCode, Message: "canceled while scanning " + RepoPacksDir}
+		}
 		origin, warning, ref := repoOriginEntry(dir, entry)
 		if ref != nil {
 			ref.Warnings = warnings
