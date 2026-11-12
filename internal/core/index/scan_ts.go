@@ -43,7 +43,7 @@ type tsToken struct {
 // tsReserved are the words that can never name a callee or a recorded
 // declaration.
 var tsReserved = map[string]bool{
-	"break": true, "case": true, "catch": true, wordClass: true, wordConst: true,
+	"break": true, "case": true, wordCatch: true, wordClass: true, wordConst: true,
 	"continue": true, "debugger": true, "default": true, wordDelete: true,
 	"do": true, wordElse: true, wordEnum: true, wordExport: true, "extends": true,
 	"false": true, "finally": true, wordFor: true, wordFunction: true, "if": true,
@@ -63,7 +63,7 @@ var tsRegexAfter = map[string]bool{
 // tsControlParens are the keywords whose closing paren can be followed by a
 // regex literal rather than by a division.
 var tsControlParens = map[string]bool{
-	"if": true, wordFor: true, wordWhile: true, "switch": true, "catch": true, wordWith: true,
+	"if": true, wordFor: true, wordWhile: true, "switch": true, wordCatch: true, wordWith: true,
 }
 
 // tsContextual are the words that cannot end a class header, so a `{` after
@@ -1354,12 +1354,17 @@ func (x *tsExtractor) parameterBody(i int) int {
 		return -1
 	}
 	for j := i - 1; j >= 0; j-- {
-		if x.text(j) != punctParen || x.match[j] < i {
+		if !x.parameterOpen(j, i) {
 			continue
 		}
 		return x.bodyAfter(x.match[j])
 	}
 	return -1
+}
+
+func (x *tsExtractor) parameterOpen(open, parameter int) bool {
+	return x.text(open) == punctParen && x.match[open] >= parameter &&
+		(!tsControlParens[x.text(open-1)] || x.text(open-1) == wordCatch)
 }
 
 func (x *tsExtractor) bodyAfter(end int) int {

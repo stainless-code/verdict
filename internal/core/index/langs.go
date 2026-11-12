@@ -40,6 +40,7 @@ const (
 	wordAsync     = "async"
 	wordAbstract  = "abstract"
 	wordClass     = "class"
+	wordCatch     = "catch"
 	wordConst     = "const"
 	wordDeclare   = "declare"
 	wordDefault   = "default"
