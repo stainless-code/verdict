@@ -21,10 +21,10 @@ export HOME="$EVAL_SANDBOX/home"
 mkdir -p "$HOME/.config/verdict"
 
 MANIFEST='{"schema_version":"1","name":"acme/lenses","version":"1.0.0","replace":["verdict/builtin"],"lenses":[{"id":"perf"}]}'
-HASH=9c3212f38c42adef87365072cf069492544eeb43c9825880acd1aac69a826e23
+HASH=7f53f7b36f0b2a75aea39e43fcb0c9fce11b9c76b57aeb2bef8991676ddf9d35
 HEAD_SHA=cccccccccccccccccccccccccccccccccccccccc
 URL=https://example.invalid/acme/packs.git
-SIG=b8ee6d1cc08e7bfe076481e111b3716e18644b7fc27ceb86c0b41390a15e85ef
+SIG=0b68116bbd0463cebbae2370cc5202ff4659b52417e00bbd94e0ef63cfd8ac41
 GIT_LOG="$EVAL_SANDBOX/git-calls.log"
 REAL_GIT="$(command -v git)"
 : >"$GIT_LOG"
@@ -121,7 +121,7 @@ assert_json_field "the repo row is not drifted" "null" \
 run_review pack list
 assert_exit "human pack list after the stand-in clone" 0
 assert_file_grep "the human row names the vendored tree" "$EVAL_OUT" \
-  "^repo     acme/lenses@1.0.0  source=.verdict/packs/lenses  sha256:9c3212f38c42  lenses=perf  rules=-\$"
+  "^repo     acme/lenses@1.0.0  source=.verdict/packs/lenses  sha256:7f53f7b36f0b  lenses=perf  rules=-\$"
 
 stub_after="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 assert_eq "no host calls" "$stub_before" "$stub_after"

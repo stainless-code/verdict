@@ -45,25 +45,25 @@ assert_json_field "verb" "pack" '.verb'
 assert_json_field "three layers" 3 '.data.packs | length'
 assert_json_field "builtin row" "verdict/builtin" '.data.packs[0].name'
 assert_json_field "builtin layer" "builtin" '.data.packs[0].layer'
-assert_json_field "builtin hash" "23dac5dead2eb78613332103b244cafe21c6031bb8469c73bb1c5b1f1ed42cd5" '.data.packs[0].hash'
+assert_json_field "builtin hash" "06820abbd0a6d3c6090a3e82d0fbbbd9f658ca7fee7a67dd58e54785c72e125b" '.data.packs[0].hash'
 assert_json_field "builtin lenses" "api-contract,perf,test" '.data.packs[0].lenses | join(",")'
 assert_json_field "builtin drift is null" "null" '.data.packs[0].drift'
 assert_json_field "org row" "acme/org" '.data.packs[1].name'
 assert_json_field "org source" "dir:org-packs" '.data.packs[1].source'
-assert_json_field "org hash" "ec7b01d4ea7b319a383c633bb8c30b464ec5c9734c9b06c6db0ef6dec8218d7b" '.data.packs[1].hash'
+assert_json_field "org hash" "eb88c75d42456dfedbe79b87c9b5dfdf918ddc7a116e8940b28b9372a1061aa1" '.data.packs[1].hash'
 assert_json_field "org rule" "no-secrets" '.data.packs[1].rules | join(",")'
 assert_json_field "repo row" "acme/repo" '.data.packs[2].name'
 assert_json_field "repo layer" "repo" '.data.packs[2].layer'
 assert_json_field "repo source" ".verdict/packs/repo" '.data.packs[2].source'
-assert_json_field "repo hash" "6017f42729f688b65d17401a27200f0406c1cf8b75d588ce65788850d7817edf" '.data.packs[2].hash'
+assert_json_field "repo hash" "ae6c1dde5272f074fb9c4c70c63da86019018a34497315fad9e25f35ddaa70a3" '.data.packs[2].hash'
 assert_json_field "repo declares both lenses" "security,style" '.data.packs[2].lenses | join(",")'
 assert_json_field "repo drift is missing until locked" "pack-lock-missing" '.data.packs[2].drift'
 
 run_review pack list
 assert_exit "human pack list exits 0" 0
-assert_file_grep "human line names the builtin layer" "$EVAL_OUT" '^builtin  verdict/builtin@1.0.0  source=builtin  sha256:23dac5dead2e  lenses=api-contract,perf,test  rules=-$'
-assert_file_grep "human line names the org layer" "$EVAL_OUT" '^org      acme/org@2.0.0  source=dir:org-packs  sha256:ec7b01d4ea7b  lenses=security  rules=no-secrets$'
-assert_file_grep "human line names the repo layer" "$EVAL_OUT" '^repo     acme/repo@0.1.0  source=.verdict/packs/repo  sha256:6017f42729f6  lenses=security,style  rules=repo-style  drift=pack-lock-missing$'
+assert_file_grep "human line names the builtin layer" "$EVAL_OUT" '^builtin  verdict/builtin@1.0.0  source=builtin  sha256:06820abbd0a6  lenses=api-contract,perf,test  rules=-$'
+assert_file_grep "human line names the org layer" "$EVAL_OUT" '^org      acme/org@2.0.0  source=dir:org-packs  sha256:eb88c75d4245  lenses=security  rules=no-secrets$'
+assert_file_grep "human line names the repo layer" "$EVAL_OUT" '^repo     acme/repo@0.1.0  source=.verdict/packs/repo  sha256:ae6c1dde5272  lenses=security,style  rules=repo-style  drift=pack-lock-missing$'
 
 # An undeclared override of a built-in lens refuses pack-conflict and names
 # the exact declaration to add.

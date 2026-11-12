@@ -352,7 +352,8 @@ inventory, so its bytes count against the controls tree's shared 1 MiB
 pack at its own ceiling leaves no room for the rest — the controls read
 refuses `controls-too-large`. The pack hash
 is sha256 over the canonical loaded tree (sorted slash paths, each fed as
-`== <path> ==`, its bytes, then a newline); each lens also carries the first
+`== <path-length>:<path> ==`, the body's byte length, its bytes, then a
+newline); each lens also carries the first
 eight hex digits of its body's sha256.
 
 `fetch` writes the loaded bodies to `.verdict/state/<bundle>/lenses.txt`, one

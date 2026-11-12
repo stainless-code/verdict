@@ -15,12 +15,12 @@ import (
 )
 
 const (
-	addHashV2  = "be3ac14b258cbe5fc3a59669a4aa203a262e288373e3a7e4f0b33624adfdaca5"
-	addSigV2   = "7183f516f81c92324e31f8035bf3d468996c65f94dfdf468d9e3bcd86c333e6a"
+	addHashV2  = "760382c944542247a5c7c2937e1e1e209c5c23a8daa2598f8133ccd7e8a1b5e1"
+	addSigV2   = "5ebf006e0f2a7773d9381af302d6ca83d7e26b71995c0b7c0d39bb61ed86e69b"
 	addGitSha  = "cccccccccccccccccccccccccccccccccccccccc"
-	addGitSig  = "daf043b46f622c293594a1d33960e9a388750629ef8c7268b74ad46a2771e42f"
-	addExtraH  = "cb4224ee81794294d3cabed7fe50695d4411430fdb1284cdeda734e934c01edc"
-	addExtraS  = "9065e725220c100118273d61b9ec1b94a4ac543f44d02dbc5f057446814b06eb"
+	addGitSig  = "7fbcf52aeb6842352ac1df61542361567b1cf9a3c31a8005698382e43edc9c71"
+	addExtraH  = "0bc46f5b5eebba69ae13fe8eb2c7774f2c2e72329f906c30a1604011edaf98e1"
+	addExtraS  = "d448b96ba0413753159a84e10dbd9c7eb6c984c4d43a078a95b3a9ae0864b8c8"
 	addNext    = "commit .verdict/verdict.lock with the vendored pack, then run 'verdict pack list'"
 	addLockFmt = `{
   "schema_version": "1",
@@ -130,7 +130,7 @@ func TestAddFailedReAddKeepsOldTree(t *testing.T) {
 	if err := os.Remove(filepath.Join(repo, "src-packs", "lenses", "pack.json")); err != nil {
 		t.Fatal(err)
 	}
-	if ref := vendorPack(repo, filepath.Join(repo, "src-packs", "lenses"), "lenses", p); ref == nil ||
+	if _, ref := vendorPack(repo, filepath.Join(repo, "src-packs", "lenses"), "lenses", p); ref == nil ||
 		ref.Code != CodeBadPack {
 		t.Fatalf("vendorPack = %v, want bad-pack", ref)
 	}
@@ -196,7 +196,7 @@ func TestAddVendorsReservedTrees(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("RunAdd: %s: %s", ref.Code, ref.Message)
 	}
-	const hash = "9605e0bb3cd21c42455debbf9bc1652e8b1f31fcbdde0fcb1c09aa8ff8b2e420"
+	const hash = "d91258841b4589e1c2f67cfa1351181c9f0eb1525250bc30341a70e8eaf54b1c"
 	if got, want := resp.Human, []string{
 		"added acme/lenses@1.0.0 source=dir:src-packs/lenses sha256:" + hash,
 	}; !slices.Equal(got, want) {
@@ -205,7 +205,7 @@ func TestAddVendorsReservedTrees(t *testing.T) {
 	assertFile(t, ".verdict/packs/lenses/evals/case.sh", "echo ok\n")
 	assertFile(t, ".verdict/packs/lenses/examples/use.md", "sample\n")
 	assertFile(t, LockFile, fmt.Sprintf(addLockFmt, "dir:src-packs/lenses", hash,
-		"a5dd58a7c16d6fd25e5d3b90f652883bee209227f15bf9d6747821c6b4654729"))
+		"e1043904f8319891d6ff9537fd8628c70b455f0a9de1bc59f6897c72c75d0126"))
 }
 
 // TestAddSweepsStaleStagingSiblings proves a crashed re-add's temp and backup

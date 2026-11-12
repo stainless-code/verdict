@@ -67,7 +67,7 @@ func TestRecordRefusesLockDrift(t *testing.T) {
 func TestRecordRefusesEditedLockSnapshot(t *testing.T) {
 	bundle(t, "local-lock-tamper", reviewJSON(""))
 	writeRecordLockPack(t, lockBodyFor(
-		"96680942582c5c2639601918eabe079884e86e5b00a040b6a209e5681be88d41"))
+		"24e651328246cb30fd8e65893deb92d3136036b466daa9615f92a7110c592b0c"))
 	req := recordRequest(t, &collector{}, "local-lock-tamper")
 	writeFile(t, filepath.Join(".verdict", "state", "local-lock-tamper", "controls", "verdict.lock"),
 		`{"schema_version":"1","packs":[]}`)

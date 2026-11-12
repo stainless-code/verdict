@@ -838,8 +838,8 @@ func loadExtras(fsys fs.FS, root string, files map[string]int) ([]packFile, *cor
 }
 
 // treeHash hashes the canonical loaded tree: sorted slash paths, each fed as
-// "== <path> ==\n" plus its bytes plus "\n" (the provenance.PromptsHash
-// idiom), so the digest is recomputable by hand.
+// "== <path-length>:<path> ==\n<body-length>\n" plus its bytes plus "\n", so
+// a body cannot forge the next file's boundary and two trees cannot collide.
 func treeHash(manifest []byte, lenses []Lens, rules []Rule, extras []packFile) string {
 	files := map[string][]byte{ManifestFile: manifest}
 	for i := range lenses {
@@ -858,8 +858,9 @@ func treeHash(manifest []byte, lenses []Lens, rules []Rule, extras []packFile) s
 	slices.Sort(paths)
 	h := sha256.New()
 	for _, rel := range paths {
-		fmt.Fprintf(h, "== %s ==\n", rel)
-		h.Write(files[rel])
+		body := files[rel]
+		fmt.Fprintf(h, "== %d:%s ==\n%d\n", len(rel), rel, len(body))
+		h.Write(body)
 		h.Write([]byte("\n"))
 	}
 	return hex.EncodeToString(h.Sum(nil))

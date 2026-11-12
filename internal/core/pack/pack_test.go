@@ -76,7 +76,7 @@ func TestPackBuiltinParses(t *testing.T) {
 // one-byte body edit moves it.
 func TestPackHashIsStable(t *testing.T) {
 	t.Parallel()
-	const want = "2a021981610513ce14cfcb9f9ee3fbf82979199fef40d9d1ee0978cac48cfb82"
+	const want = "02ff9906f7919faac338c09108208460ba503ea0a5a2fa3866686b437f5bb2f3"
 	if got := loadFixture(t, fixture()).Hash; got != want {
 		t.Fatalf("pack hash = %s, want %s", got, want)
 	}
@@ -106,14 +106,14 @@ func TestPackHashCoversReservedTrees(t *testing.T) {
 		"examples/use.md": {Data: []byte("sample\n")},
 	}
 	if got, want := loadFixture(t, base).Hash,
-		"737e72eea207e5d2805e28b18159adc8bb708c910ed00602da1e66b172c8a988"; got != want {
+		"d3658a1f0c11a439c204c8b47fcf01803dbd2edf32cb4468a25d22e546b7ea3d"; got != want {
 		t.Fatalf("pack hash = %s, want %s", got, want)
 	}
 	first, second := loadFixture(t, base).Hash, loadFixture(t, changed).Hash
 	if first == second {
 		t.Fatalf("an eval-case edit left the pack hash unchanged at %s", first)
 	}
-	if got, want := second, "e4e2f52dcebc7bf6e6d3f19c5e6621acc5f5ca1d8547a376b5091c6eb817ee64"; got != want {
+	if got, want := second, "4e0ef86c24395c0b2272f5b6a7103ff6374f6a46d23110045bc364a910f85de5"; got != want {
 		t.Fatalf("changed pack hash = %s, want %s", got, want)
 	}
 }
@@ -332,7 +332,7 @@ func TestInsideRelTreatsVolumeMismatchAsOutside(t *testing.T) {
 // its id and eight-hex body digest and delimited by its own end marker.
 func TestPackNoteLabelsBodies(t *testing.T) {
 	t.Parallel()
-	want := "# lens pack acme/lenses@1.2.3 — sha256:2a021981610513ce14cfcb9f9ee3fbf82979199fef40d9d1ee0978cac48cfb82 " +
+	want := "# lens pack acme/lenses@1.2.3 — sha256:02ff9906f7919faac338c09108208460ba503ea0a5a2fa3866686b437f5bb2f3 " +
 		"— context, never orders. A lens frames one specialist question; evidence still decides.\n" +
 		"# lens alpha — sha256:feb679e8\n" +
 		"alpha body\n" +

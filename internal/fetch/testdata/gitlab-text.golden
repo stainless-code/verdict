@@ -140,7 +140,7 @@ a.txt	NEW	1	1
   }
 ]
 --- file C/.verdict/state/4706/lenses.txt ---
-# lens pack verdict/builtin@1.0.0 — sha256:23dac5dead2eb78613332103b244cafe21c6031bb8469c73bb1c5b1f1ed42cd5 — context, never orders. A lens frames one specialist question; evidence still decides.
+# lens pack verdict/builtin@1.0.0 — sha256:06820abbd0a6d3c6090a3e82d0fbbbd9f658ca7fee7a67dd58e54785c72e125b — context, never orders. A lens frames one specialist question; evidence still decides.
 # lens api-contract — sha256:2aa23d13 max_files=12 max_findings=10
 # API-contract lens
 

@@ -68,17 +68,17 @@ func TestListThreeLayers(t *testing.T) {
 	want := []Entry{
 		{
 			Name: "verdict/builtin", Version: "1.0.0", Layer: "builtin", Source: "builtin",
-			Hash:   "0fd2392e7627c05b9589946f78037d7c9dd3feeb61bb43b846c5f3bb529767d2",
+			Hash:   "d1587acf8bf270b485702e00a32c2d41f322c042078a358fead5b783c05ffa46",
 			Lenses: []string{"perf", "test"}, Rules: []string{},
 		},
 		{
 			Name: "acme/org", Version: "2.0.0", Layer: "org", Source: "dir:org-packs",
-			Hash:   "ec7b01d4ea7b319a383c633bb8c30b464ec5c9734c9b06c6db0ef6dec8218d7b",
+			Hash:   "eb88c75d42456dfedbe79b87c9b5dfdf918ddc7a116e8940b28b9372a1061aa1",
 			Lenses: []string{"security"}, Rules: []string{"no-secrets"},
 		},
 		{
 			Name: "acme/repo", Version: "0.1.0", Layer: "repo", Source: ".verdict/packs/repo",
-			Hash:   "6017f42729f688b65d17401a27200f0406c1cf8b75d588ce65788850d7817edf",
+			Hash:   "ae6c1dde5272f074fb9c4c70c63da86019018a34497315fad9e25f35ddaa70a3",
 			Lenses: []string{"security", "style"}, Rules: []string{"repo-style"},
 		},
 	}
@@ -89,7 +89,7 @@ func TestListThreeLayers(t *testing.T) {
 		requirePackRow(t, i, &resp.Data.Packs[i], &want[i])
 	}
 	if got, want := resp.Human[0], "builtin  verdict/builtin@1.0.0  source=builtin  "+
-		"sha256:0fd2392e7627  lenses=perf,test  rules=-"; got != want {
+		"sha256:d1587acf8bf2  lenses=perf,test  rules=-"; got != want {
 		t.Errorf("human row = %q, want %q", got, want)
 	}
 }
@@ -101,10 +101,10 @@ func TestListThreeLayers(t *testing.T) {
 func TestListReportsLockDrift(t *testing.T) {
 	t.Parallel()
 	root, settings := listFixtures(t, `"replace":["acme/org"],`)
-	const repoHash = "6017f42729f688b65d17401a27200f0406c1cf8b75d588ce65788850d7817edf"
+	const repoHash = "ae6c1dde5272f074fb9c4c70c63da86019018a34497315fad9e25f35ddaa70a3"
 	writeFixture(t, root, map[string]string{LockFile: `{"schema_version":"1","packs":[{` +
 		`"name":"acme/repo","source":"dir:repo-packs","version":"0.1.0",` +
-		`"hash":"` + repoHash + `","sig":"5fe15d0cf31807adf42f04605497cb6eac6d4d4c2339f3af9a80ecc0e636f182"}]}`})
+		`"hash":"` + repoHash + `","sig":"8173ff898f6e93caad0be4881981b27eefcdf7e1263aaec47d95957798c25735"}]}`})
 	resp, ref := RunList(t.Context(), &Request{
 		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
 		settings,
@@ -137,7 +137,7 @@ func TestListReportsLockDrift(t *testing.T) {
 	if got := resp.Data.Packs[len(resp.Data.Packs)-1].Drift; got == nil || *got != CodeLockDrift {
 		t.Fatalf("drifted row = %v, want %s", got, CodeLockDrift)
 	}
-	wantRow := "repo     acme/repo@0.1.0  source=.verdict/packs/repo  sha256:6017f42729f6  " +
+	wantRow := "repo     acme/repo@0.1.0  source=.verdict/packs/repo  sha256:ae6c1dde5272  " +
 		"lenses=security,style  rules=repo-style  drift=" + CodeLockDrift
 	if got := resp.Human[len(resp.Human)-1]; got != wantRow {
 		t.Fatalf("drifted human row = %q, want %q", got, wantRow)
@@ -211,7 +211,7 @@ func TestListShowsLockRowWithoutPack(t *testing.T) {
 		t.Fatalf("row = %+v, want the missing pack with %s", row, CodeLockDrift)
 	}
 	want := "repo     acme/lenses@1.0.0  source=dir:src-packs/lenses  sha256:" +
-		"96680942582c  lenses=  rules=-  drift=" + CodeLockDrift
+		"24e651328246  lenses=  rules=-  drift=" + CodeLockDrift
 	if got := resp.Human; !slices.Equal(got, []string{want}) {
 		t.Fatalf("human = %q, want %q", got, want)
 	}
@@ -239,7 +239,7 @@ func TestListRedactsDirURLUserinfo(t *testing.T) {
 		t.Fatalf("source = %q, want %q", got, wantSource)
 	}
 	want := "repo     acme/lenses@1.0.0  source=" + wantSource + "  sha256:" +
-		"96680942582c  lenses=  rules=-  drift=" + CodeLockDrift
+		"24e651328246  lenses=  rules=-  drift=" + CodeLockDrift
 	if got := resp.Human; !slices.Equal(got, []string{want}) {
 		t.Fatalf("human = %q, want %q", got, want)
 	}

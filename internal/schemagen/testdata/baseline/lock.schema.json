@@ -36,7 +36,7 @@
           "type": "string"
         },
         "hash": {
-          "description": "The pack's canonical tree hash: sha256 over sorted slash paths, each fed as `== <path> ==`, its bytes, then a newline.",
+          "description": "The pack's canonical tree hash: sha256 over sorted slash paths, each fed as `== <path-length>:<path> ==`, the body's byte length, the body's bytes, then a newline.",
           "type": "string"
         },
         "sig": {

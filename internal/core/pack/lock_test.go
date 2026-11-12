@@ -3,6 +3,7 @@ package pack
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -14,9 +15,9 @@ import (
 
 const (
 	lockManifest = `{"schema_version":"1","name":"acme/lenses","version":"1.0.0","lenses":[{"id":"perf"}]}`
-	lockHash     = "96680942582c5c2639601918eabe079884e86e5b00a040b6a209e5681be88d41"
-	lockHashV2   = "be3ac14b258cbe5fc3a59669a4aa203a262e288373e3a7e4f0b33624adfdaca5"
-	lockSigDir   = "16084c3131b76e2c546ea22d1afe5d50ae83c612da2ca039b638551244a37677"
+	lockHash     = "24e651328246cb30fd8e65893deb92d3136036b466daa9615f92a7110c592b0c"
+	lockHashV2   = "760382c944542247a5c7c2937e1e1e209c5c23a8daa2598f8133ccd7e8a1b5e1"
+	lockSigDir   = "b9e1cce2648ab8ea1bafe1eeaed0e9103bdf91b547f82806748bc6f1471cbe8c"
 )
 
 // lockFixture writes one repo pack under root, plus the given lock body when

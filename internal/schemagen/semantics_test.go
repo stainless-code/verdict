@@ -240,9 +240,10 @@ var publishedSemantics = map[string]string{
 	// source grammar: the lock row's source gains the pattern the loader
 	// enforces — a dir: payload with no control character, backslash, or
 	// leading "-", or a git: source pinned to a 40-hex sha with no http/https
-	// userinfo and only a bare ssh/scp user. No property, required key, or
-	// type changed.
-	"lock.schema.json": "ff3385a326d5772c266f04f0a9caa6c8a8c600d55df9a9b36e2f0c13f0a0d7a1",
+	// userinfo and only a bare ssh/scp user. The hash description now names
+	// the length-delimited tree framing. No property, required key, or type
+	// changed.
+	"lock.schema.json": "152662502915eb9d63d1a439f8eb80784ae2ba2b57ca4bafd35e47926b6b2609",
 	"pack.schema.json": "fc8dc3ae76bfee94157f23e03ad2173f643d96974896c05307f89491f2a207b9",
 	// patch identity: additive optional patch_id/patch_id_kind plus the
 	// optional forced[] audit with $defs/forcedPost. No existing property,

@@ -1,5 +1,5 @@
 exit: 0
---- stdout (size=1005006 sha256=c01ae5a74e53efdd2ecc2dee6b71d54a280c39944dc877acf5738d117c9513a1) ---
+--- stdout (size=1005006 sha256=88aa7d0805bcf7e24fb8d93fdc11b8e4f2c7d6ca99476babab08eaa647f2cb9a) ---
 --- stderr ---
 » estimate: no comparable past runs — cost unknown (no usable .verdict/state/*/cost.json records yet)
 » chunking opted in for group a3c3b326fa11f4d8f2610a59546c67c805a5e08133c7adaa66e483ce775356f9 — slicing that group's over-cap diff (999309 bytes, cap 512000)
@@ -182,7 +182,7 @@ c.txt	NEW	1	3000
   "base_sha": "6291d3de99996b81f26373b134ff500bfad4888f"
 }
 --- file C/.verdict/state/local-demo/lenses.txt ---
-# lens pack verdict/builtin@1.0.0 — sha256:23dac5dead2eb78613332103b244cafe21c6031bb8469c73bb1c5b1f1ed42cd5 — context, never orders. A lens frames one specialist question; evidence still decides.
+# lens pack verdict/builtin@1.0.0 — sha256:06820abbd0a6d3c6090a3e82d0fbbbd9f658ca7fee7a67dd58e54785c72e125b — context, never orders. A lens frames one specialist question; evidence still decides.
 # lens api-contract — sha256:2aa23d13 max_files=12 max_findings=10
 # API-contract lens
 

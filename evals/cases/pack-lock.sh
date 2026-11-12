@@ -22,10 +22,10 @@ export HOME="$EVAL_SANDBOX/home"
 mkdir -p "$HOME/.config/verdict"
 
 MANIFEST='{"schema_version":"1","name":"acme/lenses","version":"1.0.0","replace":["verdict/builtin"],"lenses":[{"id":"perf"}]}'
-HASH_V1=9c3212f38c42adef87365072cf069492544eeb43c9825880acd1aac69a826e23
-SIG_V1=c5445ca251d13315eed47a494f331f62169604873c333f55f975eabcaa06e11e
-HASH_V2=6c56942b22e4bc3e000b9c68b317029690ce7433476afa5cf7f5ffe0ed2677ec
-SIG_V2=32784acbd7bb21010a0802d61a608a18defc599ecfa2a091706c985ea3d254c3
+HASH_V1=7f53f7b36f0b2a75aea39e43fcb0c9fce11b9c76b57aeb2bef8991676ddf9d35
+SIG_V1=29cecaecc9760d50cfc5c54bf13a5cfbec43c0464165ec534c73c28c2501e87c
+HASH_V2=ef9184633096867f4a27af6b719188baa0a1813f74b105d24358bd7fd593ac96
+SIG_V2=457d68cda9e45e3017a84acc4313e187ef604f66fe19e589e182e870708a74d8
 
 stub_before="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 
