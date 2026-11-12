@@ -4,8 +4,6 @@ package readcommon
 
 import (
 	"os"
-
-	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // OpenNoBlock opens path. A non-unix filesystem carries no FIFO namespace
@@ -14,7 +12,7 @@ import (
 func OpenNoBlock(path string) (*os.File, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, jq.Sealed("open", err)
+		return nil, openError("open", err)
 	}
 	return f, nil
 }
@@ -24,7 +22,7 @@ func OpenNoBlock(path string) (*os.File, error) {
 func OpenNoBlockIn(root *os.Root, name string) (*os.File, error) {
 	f, err := root.OpenFile(name, os.O_RDONLY, 0)
 	if err != nil {
-		return nil, jq.Sealed("open", err)
+		return nil, openError("open", err)
 	}
 	return f, nil
 }

@@ -124,10 +124,11 @@ type Layer struct { //nolint:govet // fields group by role (options, read seams,
 	clock      func() time.Time
 	// stampFn reads a bundle's cache stamp; a test replaces it to observe the
 	// read a canceled request must never make.
-	stampFn func(Root, string) (stamp, bool)
-	mu      sync.Mutex
-	cache   map[cacheKey]entry
-	seq     uint64
+	beforeThreadRead func(string)
+	stampFn          func(Root, string) (stamp, bool)
+	mu               sync.Mutex
+	cache            map[cacheKey]entry
+	seq              uint64
 }
 
 // New builds the read model over a snapshot of roots.
@@ -554,7 +555,13 @@ func (l *Layer) threadView(root Root, bundle, dir string) (any, *ErrRow) {
 	if err != nil || !info.Mode().IsRegular() {
 		return nil, nil
 	}
+	if l.beforeThreadRead != nil {
+		l.beforeThreadRead(feedPath)
+	}
 	feed, err := threadscore.ReadFile(feedPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
 	if err != nil {
 		row := errRow(root, bundle, "corrupt-store", err.Error())
 		return nil, &row

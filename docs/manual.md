@@ -3610,3 +3610,6 @@ failed reads and artifacts larger than the per-file cap.
 
 Serve cache fingerprints include content for bundle artifacts up to 64 KiB.
 Larger artifacts use mode, size and mtime; the periodic sweep refreshes them.
+
+A `threads.json` feed removed during a serve read is absent; malformed feeds
+still report `corrupt-store`.
