@@ -212,6 +212,30 @@ func TestBlastPRFallsBackToHEAD(t *testing.T) {
 	}
 }
 
+// TestBlastDeletionAnchorsStayAboveTheRemovedLine proves a deletion marks the
+// declaration it emptied, never the one that follows: deleting A's last body
+// line must not name B.
+func TestBlastDeletionAnchorsStayAboveTheRemovedLine(t *testing.T) {
+	f := newFixture(t)
+	f.write("go.mod", "module example.com/m\n\ngo 1.27\n")
+	f.write("a/x.go", "package a\n\nfunc A() {\n\t_ = 1\n}\nfunc B() {}\n")
+	f.commit("one")
+	base := f.run("", "rev-parse", "HEAD")
+	f.write("a/x.go", "package a\n\nfunc A() {\n}\nfunc B() {}\n")
+	f.git("add", "-A")
+	f.git("commit", "-qm", "two")
+	head := f.run("", "rev-parse", "HEAD")
+	diff := f.run("", "diff", base, head, "--", "a/x.go")
+	f.write(".verdict/state/7/full.diff", diff+"\n")
+	f.write(".verdict/state/7/PR.json",
+		fmt.Sprintf(`{"state":"OPEN","headRefOid":%q,"baseRefOid":%q,"author":{"login":"t"}}`, head, base))
+	f.build()
+	resp := blastRun(t, f, func(r *Request) { r.Pr = "7" })
+	assertSymbolRows(t, resp.Data.Blast.Symbols,
+		SymbolRow{Path: "a/x.go", Name: "A", Kind: "func", Line: 3},
+	)
+}
+
 // TestBlastNullCountsWithoutIndex proves an absent index reads the symbol,
 // caller, and test counts as null (never 0) while the git-measured lists still
 // answer.

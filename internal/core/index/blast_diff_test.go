@@ -50,7 +50,7 @@ func TestBlastChangesReadNewSideLines(t *testing.T) {
  three
 +four
 `,
-			want: []blastChange{{path: "c.go", lines: []int{2, 3, 4}}},
+			want: []blastChange{{path: "c.go", lines: []int{1, 2, 4}}},
 		},
 		{
 			name: "a rename with no hunk keeps the new path",
@@ -83,21 +83,23 @@ rename to new.go
 	}
 }
 
-// TestBlastHunkStart pins the new-side start reader, including a header the
-// parser cannot read.
-func TestBlastHunkStart(t *testing.T) {
+// TestBlastHunkSeed pins the new-side seed reader, including the zero-count
+// header whose change sits after its start line, and a header the parser
+// cannot read.
+func TestBlastHunkSeed(t *testing.T) {
 	cases := []struct {
 		header string
 		want   int
 	}{
 		{"@@ -1,3 +1,4 @@", 1},
 		{"@@ -5 +9 @@", 9},
-		{"@@ -1 +1,0 @@", 1},
+		{"@@ -1 +1,0 @@", 2},
+		{"@@ -5,2 +4,0 @@", 5},
 		{"@@ nonsense", 0},
 	}
 	for _, tc := range cases {
-		if got := blastHunkStart(tc.header); got != tc.want {
-			t.Errorf("blastHunkStart(%q) = %d; want %d", tc.header, got, tc.want)
+		if got := blastHunkSeed(tc.header); got != tc.want {
+			t.Errorf("blastHunkSeed(%q) = %d; want %d", tc.header, got, tc.want)
 		}
 	}
 }

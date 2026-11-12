@@ -22,8 +22,6 @@ const (
 // every added line, and both sides of every deleted line because the removed
 // text sat between them. A file with no content change (a rename, a binary)
 // keeps its path and no lines.
-//
-
 func blastChanges(diff string) []blastChange {
 	var out []blastChange
 	cur := -1
@@ -40,14 +38,14 @@ func blastChanges(diff string) []blastChange {
 			cur, newLine = len(out)-1, 0
 		case cur < 0:
 		case strings.HasPrefix(ln, blastHunk):
-			newLine = blastHunkStart(ln)
+			newLine = blastHunkSeed(ln)
 		case strings.HasPrefix(ln, "+++"), strings.HasPrefix(ln, "---"):
 		case strings.HasPrefix(ln, blastNoEOL):
 		case strings.HasPrefix(ln, blastAdded):
 			out[cur].lines = append(out[cur].lines, newLine)
 			newLine++
 		case strings.HasPrefix(ln, blastDeleted):
-			out[cur].lines = append(out[cur].lines, max(newLine, 1), newLine+1)
+			out[cur].lines = append(out[cur].lines, max(newLine-1, 1), max(newLine, 1))
 		default:
 			newLine++
 		}
@@ -55,8 +53,10 @@ func blastChanges(diff string) []blastChange {
 	return finishBlastChanges(out)
 }
 
-// blastHunkStart reads one hunk header's new-side start line.
-func blastHunkStart(ln string) int {
+// blastHunkSeed reads the new-side line number a hunk's first content line
+// carries. A header whose new-side count is zero names the line before the
+// change, so that hunk's content starts one line later.
+func blastHunkSeed(ln string) int {
 	fields := strings.Fields(ln)
 	if len(fields) < blastHunkParts {
 		return 0
@@ -65,12 +65,22 @@ func blastHunkStart(ln string) int {
 	if !ok {
 		return 0
 	}
-	start, _, _ := strings.Cut(spec, ",")
-	n, err := strconv.Atoi(start)
+	startRaw, countRaw, _ := strings.Cut(spec, ",")
+	start, err := strconv.Atoi(startRaw)
 	if err != nil {
 		return 0
 	}
-	return n
+	if countRaw == "" {
+		return start
+	}
+	count, err := strconv.Atoi(countRaw)
+	if err != nil {
+		return 0
+	}
+	if count == 0 {
+		return start + 1
+	}
+	return start
 }
 
 // finishBlastChanges orders the files and their lines deterministically.
