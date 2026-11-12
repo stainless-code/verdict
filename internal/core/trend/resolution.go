@@ -8,8 +8,11 @@ import (
 	"slices"
 	"strings"
 
+	skillfs "github.com/stainless-code/verdict"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/schemacheck"
 )
 
 type resolutionCell struct{ reviews, fixed, judged int }
@@ -76,21 +79,16 @@ func readResolution(dir string) (int, int, bool) {
 	if err != nil {
 		return 0, 0, false
 	}
-	var receipt struct {
-		Precision *struct {
-			Fixed  *int `json:"fixed"`
-			Judged *int `json:"judged"`
-		} `json:"precision"`
-		Version string `json:"schema_version"`
-	}
-	if json.Unmarshal(raw, &receipt) != nil || receipt.Version != "1" || receipt.Precision == nil {
+
+	value, err := schemacheck.Decode(raw)
+	if err != nil || !validCalibrationSchema(value) {
 		return 0, 0, false
 	}
-	p := receipt.Precision
-	if p.Fixed == nil || p.Judged == nil {
+	var receipt core.Calibration
+	if json.Unmarshal(raw, &receipt) != nil || !consistentPrecision(&receipt.Precision) {
 		return 0, 0, false
 	}
-	return *p.Fixed, *p.Judged, *p.Fixed >= 0 && *p.Judged >= *p.Fixed
+	return receipt.Precision.Fixed, receipt.Precision.Judged, true
 }
 
 func resolutionPanel(dir string) string {
@@ -113,4 +111,26 @@ func addModelResolution(models map[string]*resolutionCell, r *row, fixed, judged
 	for _, name := range names {
 		addResolution(models, jq.Str(name), fixed, judged)
 	}
+}
+
+func validCalibrationSchema(value any) bool {
+	raw, err := skillfs.Read("schemas/calibration.schema.json")
+	if err != nil {
+		return false
+	}
+	schema, err := schemacheck.Decode(raw)
+	return err == nil && len(schemacheck.Validate(schema, schema, value)) == 0
+}
+
+func consistentPrecision(p *core.CalibrationPrecision) bool {
+	if p.Fixed > p.Judged || p.ResolvedUnfixed > p.Judged-p.Fixed {
+		return false
+	}
+	if p.Open != p.Judged-p.Fixed-p.ResolvedUnfixed || p.Unknown > p.SampleSize || p.Judged != p.SampleSize-p.Unknown {
+		return false
+	}
+	if p.Judged == 0 {
+		return p.ResolutionRate == nil
+	}
+	return p.ResolutionRate != nil && *p.ResolutionRate == rateOrNil(p.Fixed, p.Judged)
 }

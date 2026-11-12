@@ -3,6 +3,7 @@ package trendcore
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/jq"
@@ -65,10 +66,58 @@ func writeResolutionFixture(t *testing.T, root string) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "calibration.json"), []byte(`{"schema_version":"1","precision":{"fixed":3,"judged":5}}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "calibration.json"), []byte(validResolutionReceipt), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "panel"), []byte("a\nb\n"), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+const validResolutionReceipt = `{
+ "schema_version":"1","bundle":"measured","as_of":"2026-11-03T12:00:00Z",
+ "review_id":7,"head":{},"pr":{},"outcomes":[],"provenance":{},
+ "precision":{"fixed":3,"resolved_unfixed":1,"open":1,"unknown":1,
+ "judged":5,"sample_size":6,"resolution_rate":0.6,"judge":"human",
+ "as_of":"2026-11-03T12:00:00Z","by_judge":{},"by_tier":{},
+ "by_severity":{},"by_rule":{},"by_category":{}}
+}`
+
+// TestTrendResolutionMalformedReceipt keeps invalid audits out of every rate.
+func TestTrendResolutionMalformedReceipt(t *testing.T) {
+	for _, receipt := range []string{
+		`{"schema_version":"1","precision":{"fixed":3,"judged":5,"open":"broken","resolution_rate":"broken"}}`,
+		strings.Replace(validResolutionReceipt, `"fixed":3`, `"fixed":"broken"`, 1),
+		strings.Replace(validResolutionReceipt, `"open":1`, `"open":"broken"`, 1),
+		strings.Replace(validResolutionReceipt, `"resolution_rate":0.6`, `"resolution_rate":"broken"`, 1),
+		strings.Replace(validResolutionReceipt, `"judged":5`, `"judged":4`, 1),
+		strings.Replace(validResolutionReceipt, `"sample_size":6`, `"sample_size":7`, 1),
+		strings.Replace(validResolutionReceipt, `"resolution_rate":0.6`, `"resolution_rate":0.5`, 1),
+	} {
+		t.Run(receipt, func(t *testing.T) { checkMalformedReceipt(t, receipt) })
+	}
+}
+
+func checkMalformedReceipt(t *testing.T, receipt string) {
+	t.Helper()
+	root := t.TempDir()
+	writeResolutionFixture(t, root)
+	dir := filepath.Join(root, ".verdict", "state", "malformed")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "calibration.json"), []byte(receipt), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	request := &Request{}
+	request.RepoRoot = root
+	st := state{req: request}
+	got := resolutionAudit(&st, []row{{bundle: "measured"}, {bundle: "malformed"}})
+	want := `{"by_model":{"unmarked":{"reviews":1,"judged":5,"fixed":3,"resolution_rate":0.6,"n":5}},"by_panel":{"a,b":{"reviews":1,"judged":5,"fixed":3,"resolution_rate":0.6,"n":5}},"unmeasured":1}`
+	if doc, ok := got.(*jq.Obj); !ok || doc.MarshalCompact() != want {
+		t.Fatalf("resolution = %s, want one measured and one unmeasured review", jq.PrettyOrdered(got))
+	}
+	if len(st.warnings) != 1 || st.warnings[0] != "resolution unmeasured: malformed (missing or malformed calibration.json)" {
+		t.Fatalf("warnings = %v, want exactly one malformed receipt warning", st.warnings)
 	}
 }
