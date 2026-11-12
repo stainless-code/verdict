@@ -1,6 +1,7 @@
 package pack
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -151,6 +152,15 @@ func TestLockStrictJSONRefuses(t *testing.T) {
 				t.Fatalf("message = %q, carries %q", ref.Message, tc.hide)
 			}
 		})
+	}
+}
+
+// TestLockFileIsAControl proves the lock path stays in the fixed controls
+// inventory, so the snapshot can never stop carrying the file CheckLock reads.
+func TestLockFileIsAControl(t *testing.T) {
+	t.Parallel()
+	if !slices.Contains(controls.Inventory, LockFile) {
+		t.Fatalf("controls inventory %v does not carry %s", controls.Inventory, LockFile)
 	}
 }
 

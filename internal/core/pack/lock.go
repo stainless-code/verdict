@@ -20,8 +20,9 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// LockFile is the repo layer's pin file: one entry per vendored pack.
-const LockFile = ".verdict/verdict.lock"
+// LockFile is the repo layer's pin file: one entry per vendored pack. It is
+// the controls inventory spelling, so the two cannot diverge.
+const LockFile = controls.LockPath
 
 // LockSchemaVersion is the only accepted verdict.lock format.
 const LockSchemaVersion = "1"
