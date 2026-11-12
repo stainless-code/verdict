@@ -96,6 +96,11 @@ func securityCases(rootID string, session map[string]string) []securityCase {
 			headers: map[string]string{"Cookie": cookieName + "="}, status: http.StatusUnauthorized,
 		},
 		{
+			name: "cookie from another port", method: http.MethodGet, path: "/v1/health",
+			headers: map[string]string{"Cookie": "verdict_session_9999=" + testToken},
+			status:  http.StatusUnauthorized,
+		},
+		{
 			name: "token in query on v1", method: http.MethodGet,
 			path: "/v1/health?token=" + testToken, headers: bearer(),
 			status: http.StatusBadRequest, reason: "token-in-query",
