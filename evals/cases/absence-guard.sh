@@ -8,6 +8,13 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 CASES="$EVAL_ROOT/evals/cases"
 COMMON="$EVAL_ROOT/evals/lib/common.sh"
 
+# The one transform evals/lib does to a string, pinned to its literal output:
+# curl refuses a path with a space and reads [ ] { } as URL globs, so the
+# encoding is the contract, not an implementation detail (STA-379).
+assert_eq "file_url encodes a TMPDIR-shaped path" \
+  'file:///tmp/a%20b/%25%23%3F%5Bx%5D%7By%7D/ü' \
+  "$(file_url '/tmp/a b/%#?[x]{y}/ü')"
+
 bare_neg="$(grep -rn '! grep' "$CASES"/*.sh | grep -v "/$(basename "${0%.sh}").sh:" || true)"
 if [ -z "$bare_neg" ]; then
   good "no case negates grep directly (absence goes through the guarded helpers)"

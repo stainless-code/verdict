@@ -263,7 +263,24 @@ func usageText() string {
 		"    byte-identical. --until defaults to HEAD and must be an ancestor of HEAD;\n" +
 		"    --since takes a duration against --until's commit date or a ref. Skipped fixes are\n" +
 		"    counted with reasons, never refused. Candidates are not citable: SZZ-derived,\n" +
-		"    unverified. replay/score land later.\n" +
+		"    unverified.\n" +
+		"  backtest replay --run <id> --agent <name> [--max-reviews <n>] [--budget-usd <usd>]\n" +
+		"        [--timeout <secs>] [--rounds <n>] [-- <agent args>] [--json]\n" +
+		"    replay the mined candidates, newest merge first: each one gets a fresh local\n" +
+		"    bundle at its own base...head, a detached checkout of that head, one agent\n" +
+		"    launch (the same table run uses; everything after -- goes to it), and a\n" +
+		"    record pass, so findings.json carries the historical review. This is the one\n" +
+		"    backtest mode that spends: the ceiling is --max-reviews, --budget-usd (stops\n" +
+		"    before a review whose projected cost would cross it), and --timeout (stops a\n" +
+		"    review that runs too long).\n" +
+		"    A priced review is the agent-reported estimate; an agent that reports none is\n" +
+		"    unknown spend, never $0. Writes .verdict/backtest/<run>/prs/<NNN>/replay.json\n" +
+		"    plus a backtest.json marker in every bundle it builds: trend skips a marked\n" +
+		"    bundle and names the count, so the rollup stays your own history. Rerunning\n" +
+		"    the same --run replays only what produced no review; a stored PR replayed\n" +
+		"    with another agent or other pass-through arguments refuses run-mismatch.\n" +
+		"    Checkouts live under .verdict/state and are removed after each review.\n" +
+		"    Replays are not citable.\n" +
 		"  learn --rule <text> --scope <globs> [--id <id>] [--provenance <s>] [--rigor <level>] [--json]\n" +
 		"    append one rule to .verdict/kb.jsonl (zeros + status active; provenance\n" +
 		"    defaults to manual, rigor defaults to pointed). Refuses exact-duplicate\n" +

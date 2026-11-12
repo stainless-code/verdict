@@ -72,6 +72,9 @@ assert_exit() {
     good "$label (exit $want)"
   else
     bad "$label: exit $EVAL_STATUS, want $want"
+    # The die that ended the command writes to stderr, and the status alone
+    # named nothing the one time this bit CI (STA-378: release-body leg 1).
+    sed -e 's/^/    | /' "$EVAL_ERR" 2>/dev/null || true
   fi
 }
 
@@ -172,6 +175,24 @@ assert_stream_nogrep() {
   else
     good "$label"
   fi
+}
+
+# file_url <path> is the file:// URL for a local path, with the bytes a URL
+# cannot carry raw percent-encoded. curl refuses a path holding a space (a
+# sandbox under a TMPDIR with one) rather than reading the file (STA-379).
+file_url() {
+  local p="$1"
+  p="${p//%/%25}"
+  p="${p// /%20}"
+  p="${p//\#/%23}"
+  p="${p//\?/%3F}"
+  # curl reads [ ] { } as its own URL globs, so a path holding one never
+  # reaches the file it names.
+  p="${p//\[/%5B}"
+  p="${p//\]/%5D}"
+  p="${p//\{/%7B}"
+  p="${p//\}/%7D}"
+  printf 'file://%s' "$p"
 }
 
 # eval_fixture_repo <dir> readies the throwaway checkout the fixture

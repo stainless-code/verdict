@@ -7,6 +7,7 @@ package trendcore
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"slices"
 
@@ -135,16 +136,35 @@ func collectRows(st *state) []row {
 		return nil
 	}
 	var rows []row
+	replays := 0
 	for _, e := range entries {
-		if corpuscore.IsDir(readcommon.StateDir(st.req.RepoRootPath()) + "/" + e.Name()) {
-			st.readCorpus(e)
-			continue
-		}
-		if bundleRow, ok := readBundleRow(st, e); ok {
+		bundleRow, replay, ok := st.walkEntry(e)
+		switch {
+		case replay:
+			replays++
+		case ok:
 			rows = append(rows, bundleRow)
 		}
 	}
+	if replays > 0 {
+		st.warn(fmt.Sprintf("trend skips %d backtest bundle(s) (replay input, not your review history)", replays))
+	}
 	return rows
+}
+
+// walkEntry folds one state-directory entry: a corpus is read for its
+// measurement, a replay bundle is reported as skipped, and anything else is a
+// history row when its findings store is readable.
+func (st *state) walkEntry(e os.DirEntry) (row, bool, bool) {
+	if corpuscore.IsDir(readcommon.StateDir(st.req.RepoRootPath()) + "/" + e.Name()) {
+		st.readCorpus(e)
+		return row{}, false, false
+	}
+	if isRegular(readcommon.ResolveBundleDir(st.req.RepoRootPath(), e.Name()) + "/" + readcommon.BacktestMarkerFile) {
+		return row{}, true, false
+	}
+	bundleRow, ok := readBundleRow(st, e)
+	return bundleRow, false, ok
 }
 
 func readBundleRow(st *state, e os.DirEntry) (row, bool) {

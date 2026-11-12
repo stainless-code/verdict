@@ -148,7 +148,7 @@ assert_file_grep "the directive arrived whole as the last argument" "$STUB_AGENT
 assert_file_grep "the directive named the one artifact to write" "$STUB_AGENT_LOG" \
   '^arg\[3\]=.*Write .verdict/state/local-launch/review.json with '
 assert_file_grep "nothing follows the directive" "$STUB_AGENT_LOG" '^argc=4$'
-assert_file_grep "the agent ran in the repository root" "$STUB_AGENT_LOG" "^cwd=$SANDBOX$"
+assert_file_grep "the agent ran in the repository root" "$STUB_AGENT_LOG" "cwd=$SANDBOX" "-Fx"
 
 assert_json_field "launcher.json carries its own schema_version" "1" '.schema_version' "$LAUNCHER"
 assert_json_field "launcher.json records the agent name" "claude" '.agent' "$LAUNCHER"

@@ -200,7 +200,7 @@ type RunDoc struct {
 //
 //nolint:revive // the resolution ladder is one refusal check per step
 func Run(ctx context.Context, req *Request) (resp *Response, ref *core.RefusalError) {
-	st := &state{req: req, warnings: append([]string{}, req.Warnings...)}
+	st := &state{req: req, rt: req.Runtime, warnings: append([]string{}, req.Warnings...)}
 	defer st.carry(&resp, &ref)
 	if err := ctx.Err(); err != nil {
 		return nil, st.refuse(codeCanceled, msgCanceled)
@@ -251,13 +251,17 @@ func Run(ctx context.Context, req *Request) (resp *Response, ref *core.RefusalEr
 	}, nil
 }
 
-// state carries the request, the resolved repository root, the user's
-// forwarded safe.directory list, and the warnings.
+// state carries the injected runtime, the resolved repository root, the user's
+// forwarded safe.directory list, the verb's cancel text, and the warnings. The
+// mine and replay modes share it: everything git-facing reads these fields and
+// nothing here is mine-specific.
 type state struct {
-	req      *Request
-	root     string
-	trust    []string
-	warnings []string
+	req       *Request
+	rt        *core.Runtime
+	cancelMsg string
+	root      string
+	trust     []string
+	warnings  []string
 }
 
 // carry replays the warnings onto the response or the refusal.
@@ -281,22 +285,31 @@ func (st *state) canceled(ctx context.Context) *core.RefusalError {
 	if ctx.Err() == nil {
 		return nil
 	}
-	return st.refuse(codeCanceled, msgCanceled)
+	return st.refuse(codeCanceled, st.cancelText())
+}
+
+// cancelText is the mode's frozen cancel message: the miner's unless the caller
+// set the mode's own.
+func (st *state) cancelText() string {
+	if st.cancelMsg != "" {
+		return st.cancelMsg
+	}
+	return msgCanceled
 }
 
 // gitFailure refuses a failed git step: a canceled run reports the cancel,
 // never the killed child's message.
 func (st *state) gitFailure(ctx context.Context, msg string) *core.RefusalError {
 	if ctx.Err() != nil {
-		return st.refuse(codeCanceled, msgCanceled)
+		return st.refuse(codeCanceled, st.cancelText())
 	}
 	return st.refuse(codeBacktestFail, msg)
 }
 
 // now reads the injected clock.
 func (st *state) now() time.Time {
-	if st.req.Runtime != nil && st.req.Runtime.Now != nil {
-		return st.req.Runtime.Now()
+	if st.rt != nil && st.rt.Now != nil {
+		return st.rt.Now()
 	}
 	return time.Now()
 }
@@ -309,16 +322,16 @@ func (st *state) timeUTC() string {
 // commander returns the injected commander, falling back to the separated
 // read runner so a direct caller still runs and stderr stays out of stdout.
 func (st *state) commander() core.Commander {
-	if st.req.Runtime != nil && st.req.Runtime.Commander != nil {
-		return st.req.Runtime.Commander
+	if st.rt != nil && st.rt.Commander != nil {
+		return st.rt.Commander
 	}
 	return coreexec.Runner{MissingTool: true}
 }
 
 // human writes one human line through the injected observer.
 func (st *state) humanLine(line string) {
-	if st.req.Runtime != nil {
-		st.req.Runtime.Human(line)
+	if st.rt != nil {
+		st.rt.Human(line)
 	}
 }
 
@@ -332,7 +345,11 @@ const notARepoStderr = "not a git repository"
 // backtest-failed carrying git's first stderr line, so the cause is named
 // instead of hidden behind not-a-repo.
 func (st *state) repoRoot(ctx context.Context) (string, *core.RefusalError) {
-	root := st.req.RepoRoot
+	return st.resolveRoot(ctx, st.req.RepoRoot)
+}
+
+// resolveRoot resolves one candidate repository path to its git top level.
+func (st *state) resolveRoot(ctx context.Context, root string) (string, *core.RefusalError) {
 	if root == "" {
 		root = "."
 	}
@@ -350,11 +367,16 @@ func (st *state) repoRoot(ctx context.Context) (string, *core.RefusalError) {
 }
 
 // warn records one warning on the envelope and streams it through the
-// injected progress observer, whose adapter adds the `warn: ` prefix.
+// injected progress observer, whose adapter adds the `warn: ` prefix. The
+// same message is recorded once: nested services (a replay's fetch, run, and
+// record) report the same fact through their own warning lists.
 func (st *state) warn(msg string) {
+	if slices.Contains(st.warnings, msg) {
+		return
+	}
 	st.warnings = append(st.warnings, msg)
-	if st.req.Runtime != nil {
-		st.req.Runtime.Warn(msg)
+	if st.rt != nil {
+		st.rt.Warn(msg)
 	}
 }
 
@@ -549,12 +571,30 @@ func (s span) back(at time.Time) time.Time {
 	}
 }
 
+// runIDSlug is the one --run rule both verbs apply: the id is one path segment
+// under .verdict/backtest, so it must already be slug-shaped, and it must leave
+// the frame for the bundle name inside fetch-local's name cap — a longer id
+// would let two runs sharing a prefix be cut onto the same bundle.
+func runIDSlug(run string) *core.RefusalError {
+	if readcommon.Slugify(run) != run {
+		return &core.RefusalError{
+			Code:    codeBadSlug,
+			Message: "--run must be lowercase letters, digits, and dashes: '" + run + "'",
+		}
+	}
+	if len(run) > runIDMax {
+		return &core.RefusalError{Code: codeBadSlug, Message: fmt.Sprintf(
+			"--run must be at most %d bytes: 'bt-<n>-' plus the id must fit the %d-byte bundle name cap, got %d",
+			runIDMax, replaySlugMax, len(run))}
+	}
+	return nil
+}
+
 // runID resolves the default `<until7>-<since-slug>` id, or validates --run.
 func (st *state) runID(since, until Resolution) (string, *core.RefusalError) {
 	if st.req.Run != "" {
-		if readcommon.Slugify(st.req.Run) != st.req.Run {
-			return "", st.refuse(codeBadSlug,
-				"--run must be lowercase letters, digits, and dashes: '"+st.req.Run+"'")
+		if ref := runIDSlug(st.req.Run); ref != nil {
+			return "", ref
 		}
 		return st.req.Run, nil
 	}
@@ -562,7 +602,17 @@ func (st *state) runID(since, until Resolution) (string, *core.RefusalError) {
 	if slug == "" {
 		slug = since.SHA[:shortSHA]
 	}
-	return until.SHA[:shortSHA] + "-" + slug, nil
+	id := until.SHA[:shortSHA] + "-" + slug
+	// A derived id is refused rather than clipped: clipping would silently merge
+	// two windows onto one id. The operator chose the ref, not the id, so the
+	// refusal names --run as the way out.
+	if len(id) > runIDMax {
+		return "", st.refuse(codeBadSlug, fmt.Sprintf(
+			"the run id '%s' from --since is %d bytes; pass --run with at most %d bytes "+
+				"('bt-<n>-' plus the id must fit the %d-byte bundle name cap)",
+			id, len(id), runIDMax, replaySlugMax))
+	}
+	return id, nil
 }
 
 // hexRe matches a commit id the operator may have passed as --since.

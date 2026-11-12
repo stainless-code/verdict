@@ -24,6 +24,12 @@ const prSuffix = "/PR.json"
 
 const postSuffix = "/post.json"
 
+// BacktestMarkerFile marks a bundle a backtest replay built. The marker keeps
+// the bundle out of the operator's history rollups: it is benchmark input, not
+// a review of their work. It sits in the bundle root so a reader finds it with
+// one stat, the way cost.json and record.json are found.
+const BacktestMarkerFile = "backtest.json"
+
 const (
 	fieldHeadSHA = "head_sha"
 	fieldBaseSHA = "base_sha"

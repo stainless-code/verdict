@@ -1,19 +1,38 @@
 // Package backtest is the backtest verb's CLI adapter: argv parsing, one call
-// into the core mining service, and envelope rendering. It is CLI-only on
-// purpose — replay will spend on model runs, so neither the MCP surface nor
-// the SDK exposes it.
+// into the core mining or replay service, and envelope rendering. It is
+// CLI-only on purpose — replay spends on model runs, so neither the MCP
+// surface nor the SDK exposes it.
 package backtest
 
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/exec"
 	"strings"
 
+	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
 	corebacktest "github.com/stainless-code/verdict/internal/core/backtest"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/jq"
+	runverb "github.com/stainless-code/verdict/internal/run"
+)
+
+// The two shipped modes. `mine` is free and local; `replay` spawns the
+// operator's own agent, one review per candidate.
+const (
+	modeMine   = "mine"
+	modeReplay = "replay"
+)
+
+// Defaults the replay mode hands the core service: the same 300-second
+// watchdog `run` gives one launch, one round, and a ten-review cap.
+const (
+	defaultTimeoutS   = "300"
+	defaultRounds     = "1"
+	defaultMaxReviews = "10"
 )
 
 // Request carries the resolved invocation.
@@ -23,25 +42,37 @@ type Request struct {
 	RepoRoot string
 }
 
-// wanted is the flag list an unknown-flag usage error names.
-const wanted = "--since <90d|12w|18mo|2y|ref>, --until <ref>, --run <slug>, --json"
+// wanted names the flag list a per-mode usage error publishes.
+var wanted = map[string]string{
+	modeMine: "--since <90d|12w|18mo|2y|ref>, --until <ref>, --run <slug>, --json",
+	modeReplay: "--run <id>, --agent <name>, --max-reviews <n>, --budget-usd <usd>, " +
+		"--timeout <secs>, --rounds <n>, -- <agent args>, --json",
+}
 
-// Run executes `backtest mine --since ... [--until ...] [--run ...] [--json]`.
+// Run executes one `backtest <mode>` invocation.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
-	mode, flags, uerr := parseFlags(args)
+	f, uerr := parseFlags(args)
 	if uerr != nil {
 		return r.ReportUsage(uerr)
 	}
-	r.Rentry = rentry(flags, r.JSONMode)
+	r.Rentry = rentry(f, r.JSONMode)
 	if code, done := r.Canceled(ctx, "backtest"); done {
 		return code
 	}
+	if f.mode == modeReplay {
+		return runReplay(ctx, r, req, f)
+	}
+	return runMine(ctx, r, req, f)
+}
+
+// runMine executes `backtest mine`: the SZZ candidate miner.
+func runMine(ctx context.Context, r *cli.Runner, req Request, f *flags) int {
 	resp, ref := corebacktest.Run(ctx, &corebacktest.Request{
 		Runtime: &core.Runtime{
 			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r}, Commander: coreexec.Runner{MissingTool: true},
 		},
-		RepoRoot: req.RepoRoot, Mode: mode, Since: flags.since, Until: flags.until,
-		Run: flags.run, Warnings: append([]string{}, r.Warnings...),
+		RepoRoot: req.RepoRoot, Mode: f.mode, Since: f.since, Until: f.until,
+		Run: f.run, Warnings: append([]string{}, r.Warnings...),
 	})
 	if ref != nil {
 		return r.RefuseTyped(ref)
@@ -54,87 +85,155 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	return cli.ExitOK
 }
 
-// flags is the parsed mine surface.
-type flags struct {
-	since string
-	until string
-	run   string
+// runReplay executes `backtest replay`: the candidate-by-candidate agent run.
+// The commander is the same split-stream runner fetch-local uses, because the
+// bundle build inside the service is a fetch-local build.
+func runReplay(ctx context.Context, r *cli.Runner, req Request, f *flags) int {
+	resp, ref := corebacktest.RunReplay(ctx, &corebacktest.ReplayRequest{
+		Runtime: &core.Runtime{
+			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r},
+			Commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true},
+			PackFS:    skillfs.FS,
+		},
+		LookPath:      exec.LookPath,
+		Effective:     r.Effective,
+		PassThrough:   f.pass,
+		Environ:       os.Environ(),
+		RepoRoot:      req.RepoRoot,
+		Root:          req.Root,
+		Run:           f.run,
+		Agent:         f.agent,
+		MaxReviewsRaw: f.maxReviews,
+		BudgetRaw:     f.budgetUSD,
+		TimeoutRaw:    f.timeout,
+		RoundsRaw:     f.rounds,
+		SettingsPath:  cli.SettingsPath(req.Env["HOME"], req.Env["XDG_CONFIG_HOME"]),
+		JSONMode:      r.JSONMode,
+		Warnings:      append([]string{}, r.Warnings...),
+	})
+	if ref != nil {
+		return r.RefuseTyped(ref)
+	}
+	r.Warnings = resp.Warnings
+	if r.JSONMode {
+		fmt.Fprint(r.Out, jq.PrettyOrdered(core.RenderEnvelope("backtest", "", "", resp.At,
+			resp.Next, resp.Warnings, resp.Data.Wire(), nil)))
+	}
+	return cli.ExitOK
 }
 
-// parseFlags reads the positional mode and the verb's flags.
-func parseFlags(args []string) (string, flags, *cli.UsageError) {
-	f := flags{until: "HEAD"}
-	mode := ""
-	for i := 0; i < len(args); i++ {
-		next, uerr := consume(&f, &mode, args, i)
+// flags is the parsed surface of both modes. pass is everything after `--`,
+// verbatim, and only the replay mode accepts one.
+type flags struct {
+	mode       string
+	since      string
+	until      string
+	run        string
+	agent      string
+	timeout    string
+	rounds     string
+	maxReviews string
+	budgetUSD  string
+	pass       []string
+}
+
+// parseFlags reads the positional mode and the flags that mode accepts.
+func parseFlags(args []string) (*flags, *cli.UsageError) {
+	f := &flags{until: "HEAD", timeout: defaultTimeoutS, rounds: defaultRounds, maxReviews: defaultMaxReviews}
+	i := 0
+	if i < len(args) && !strings.HasPrefix(args[i], "-") {
+		f.mode = args[i]
+		i++
+	}
+	if uerr := checkMode(f.mode); uerr != nil {
+		return f, uerr
+	}
+	for ; i < len(args); i++ {
+		next, uerr := parseToken(f, args, i)
 		if uerr != nil {
-			return "", f, uerr
+			return f, uerr
 		}
 		i = next
 	}
-	if mode == "" {
-		return "", f, usage("backtest needs the 'mine' mode")
-	}
-	return mode, f, checkMode(mode)
+	return f, nil
 }
 
-// consume reads one position or flag, returning the next argv index.
-func consume(f *flags, mode *string, args []string, i int) (int, *cli.UsageError) {
-	a := args[i]
-	if !strings.HasPrefix(a, "-") {
-		var uerr *cli.UsageError
-		if *mode, uerr = takeMode(*mode, a); uerr != nil {
-			return i, uerr
-		}
-		return i, nil
-	}
-	return parseToken(f, args, i)
-}
-
-// checkMode accepts the one shipped mode.
+// checkMode accepts the shipped modes.
 func checkMode(mode string) *cli.UsageError {
-	if mode == "mine" {
+	if mode == modeMine || mode == modeReplay {
 		return nil
 	}
-	return usage("unknown mode '" + mode + "' for backtest (want mine)")
-}
-
-// takeMode accepts the one positional mode.
-func takeMode(mode, arg string) (string, *cli.UsageError) {
-	if mode != "" {
-		return mode, usage("unexpected argument '" + arg + "' for backtest")
+	if mode == "" {
+		return usage("backtest needs a mode ('mine' or 'replay')")
 	}
-	return arg, nil
+	return usage("unknown mode '" + mode + "' for backtest (want mine or replay)")
 }
 
-// parseToken consumes one flag and its operand, returning the next index.
+// parseToken consumes one flag and its operand, returning the next index. A
+// bare `--` ends replay's own flags; everything after it is the operator's.
 func parseToken(f *flags, args []string, i int) (int, *cli.UsageError) {
 	a := args[i]
-	switch a {
-	case "--since":
-		v, next, uerr := cli.FlagValue(args, i, a, "<duration|ref>")
-		if uerr != nil {
-			return i, uerr
+	if a == "--" {
+		if f.mode != modeReplay {
+			return i, f.unknown(a)
 		}
-		f.since = v
-		return next, nil
-	case "--until":
-		v, next, uerr := cli.FlagValue(args, i, a, "<ref>")
-		if uerr != nil {
-			return i, uerr
-		}
-		f.until = v
-		return next, nil
-	case "--run":
-		v, next, uerr := cli.FlagValue(args, i, a, "<slug>")
-		if uerr != nil {
-			return i, uerr
-		}
-		f.run = v
-		return next, nil
-	default:
-		return i, usage("unknown flag '" + a + "' for backtest (want " + wanted + ")")
+		f.pass = append([]string{}, args[i+1:]...)
+		return len(args), nil
 	}
+	if !strings.HasPrefix(a, "-") {
+		return i, usage("unexpected argument '" + a + "' for backtest " + f.mode)
+	}
+	if next, ok, uerr := parseValueFlag(f, args, i); ok {
+		return next, uerr
+	}
+	if f.mode == modeReplay && (a == "--print") {
+		return i, usage("backtest replay always launches: --print belongs to 'verdict run'")
+	}
+	return i, f.unknown(a)
+}
+
+// valueFlag is one flag that takes an operand, with the one mode that accepts
+// it ("" for both).
+type valueFlag struct {
+	field       *string
+	name        string
+	placeholder string
+	mode        string
+}
+
+// valueFlags lists both modes' operand flags.
+func (f *flags) valueFlags() []valueFlag {
+	return []valueFlag{
+		{&f.since, "--since", "<duration|ref>", modeMine},
+		{&f.until, "--until", "<ref>", modeMine},
+		{&f.run, "--run", "<id|slug>", ""},
+		{&f.agent, "--agent", "<name>", modeReplay},
+		{&f.maxReviews, "--max-reviews", "<n>", modeReplay},
+		{&f.budgetUSD, "--budget-usd", "<usd>", modeReplay},
+		{&f.timeout, "--timeout", "<secs>", modeReplay},
+		{&f.rounds, "--rounds", "<n>", modeReplay},
+	}
+}
+
+// parseValueFlag consumes one known operand flag for the active mode.
+func parseValueFlag(f *flags, args []string, i int) (int, bool, *cli.UsageError) {
+	for _, vf := range f.valueFlags() {
+		if vf.name != args[i] || (vf.mode != "" && vf.mode != f.mode) {
+			continue
+		}
+		v, next, uerr := cli.FlagValue(args, i, vf.name, vf.placeholder)
+		if uerr != nil {
+			return i, true, uerr
+		}
+		*vf.field = v
+		return next, true, nil
+	}
+	return i, false, nil
+}
+
+// unknown builds the per-mode unknown-flag usage error.
+func (f *flags) unknown(flag string) *cli.UsageError {
+	return usage("unknown flag '" + flag + "' for backtest " + f.mode + " (want " + wanted[f.mode] + ")")
 }
 
 // usage builds the exit-2 flag error.
@@ -142,9 +241,31 @@ func usage(msg string) *cli.UsageError {
 	return &cli.UsageError{Message: msg}
 }
 
-// rentry rebuilds the re-run command after flag parsing.
-func rentry(f flags, jsonMode bool) string {
-	s := "verdict backtest mine"
+// rentry rebuilds the re-run command after flag parsing: the flags the operator
+// changed, json mode, and replay's pass-through tail after the bare `--`.
+func rentry(f *flags, jsonMode bool) string {
+	s := "verdict backtest " + f.mode + modeRentry(f)
+	if jsonMode {
+		s += " --json"
+	}
+	if f.mode == modeReplay && len(f.pass) > 0 {
+		s += " -- " + runverb.RenderCommand(f.pass)
+	}
+	return s
+}
+
+// modeRentry renders the flags the active mode accepted.
+func modeRentry(f *flags) string {
+	if f.mode == modeMine {
+		return mineRentry(f)
+	}
+	return replayRentry(f)
+}
+
+// mineRentry renders the mining flags, skipping the ones left at their
+// defaults.
+func mineRentry(f *flags) string {
+	s := ""
 	if f.since != "" {
 		s += " --since " + f.since
 	}
@@ -154,8 +275,30 @@ func rentry(f flags, jsonMode bool) string {
 	if f.run != "" {
 		s += " --run " + f.run
 	}
-	if jsonMode {
-		s += " --json"
+	return s
+}
+
+// replayRentry renders the replay flags, skipping the ones left at their
+// defaults.
+func replayRentry(f *flags) string {
+	s := ""
+	if f.run != "" {
+		s += " --run " + f.run
+	}
+	if f.agent != "" {
+		s += " --agent " + f.agent
+	}
+	if f.maxReviews != defaultMaxReviews {
+		s += " --max-reviews " + f.maxReviews
+	}
+	if f.budgetUSD != "" {
+		s += " --budget-usd " + f.budgetUSD
+	}
+	if f.timeout != defaultTimeoutS {
+		s += " --timeout " + f.timeout
+	}
+	if f.rounds != defaultRounds {
+		s += " --rounds " + f.rounds
 	}
 	return s
 }

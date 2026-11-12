@@ -528,8 +528,14 @@ jobs:
         # rather than silently grading nothing), then runs every case
         # against it via $EVAL_CLI. Same hermeticity locally and here
         # (stub gh first on PATH, fixtures in a temp sandbox, tree-clean
-        # assertion).
-        run: make evals
+        # assertion). The sandbox TMPDIR carries a space on purpose: that is
+        # the shape an unquoted expansion or an unencoded file:// URL breaks
+        # on (STA-379), and the whole suite therefore grades it. macOS keeps
+        # its own `.../T/...` shape.
+        run: |
+          spaced="$RUNNER_TEMP/eval space dir"
+          mkdir -p "$spaced"
+          TMPDIR="$spaced" make evals
 
       - name: Prove the run --agent recipe case ran
         shell: bash
