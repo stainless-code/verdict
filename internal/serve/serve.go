@@ -90,15 +90,16 @@ type Config struct { //nolint:govet // start snapshot; field order mirrors the f
 // Server is one bound (or about-to-bind) listener. Its route table is the
 // only registration point: a handler outside it cannot exist.
 type Server struct { //nolint:govet // grouped by listener, allowlists, and injected seams
-	cfg      Config
-	token    string
-	now      func() time.Time
-	layer    Layer
-	mu       sync.RWMutex
-	listener net.Listener
-	port     int
-	hosts    map[string]bool
-	origins  map[string]bool
+	cfg          Config
+	token        string
+	now          func() time.Time
+	layer        Layer
+	mu           sync.RWMutex
+	listener     net.Listener
+	port         int
+	drainTimeout time.Duration
+	hosts        map[string]bool
+	origins      map[string]bool
 }
 
 // New builds a server over one root (or the injected layer) and mints its
@@ -129,11 +130,12 @@ func New(cfg *Config) (*Server, error) {
 		token = newToken()
 	}
 	server := &Server{
-		cfg:   *cfg,
-		token: token,
-		now:   cfg.Now,
-		layer: layer,
-		port:  cfg.Port,
+		cfg:          *cfg,
+		token:        token,
+		now:          cfg.Now,
+		layer:        layer,
+		port:         cfg.Port,
+		drainTimeout: shutdownTimeout,
 	}
 	server.refreshAllowlists()
 	return server, nil
@@ -200,18 +202,28 @@ func (s *Server) Serve(ctx context.Context) error {
 	go func() { serveErr <- server.Serve(listener) }()
 	select {
 	case <-ctx.Done():
-		drain, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
-		defer cancel()
-		if err := server.Shutdown(drain); err != nil {
-			return jq.Sealed("serve: shutdown", err)
-		}
-		return nil
+		return s.drain(ctx, server)
 	case err := <-serveErr:
 		if errors.Is(err, http.ErrServerClosed) {
 			return nil
 		}
 		return jq.Sealed("serve: http listener", err)
 	}
+}
+
+// drain stops accepting and waits for the active requests within the bound. A
+// drain that outlasts it leaves connections open, so the server is closed:
+// the handler must not run on behind a listener the process already left.
+func (s *Server) drain(ctx context.Context, server *http.Server) error {
+	timeout, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.drainTimeout)
+	defer cancel()
+	if err := server.Shutdown(timeout); err != nil {
+		if cerr := server.Close(); cerr != nil {
+			return jq.Sealed("serve: close after a failed shutdown", cerr)
+		}
+		return jq.Sealed("serve: shutdown", err)
+	}
+	return nil
 }
 
 // newHTTPServer bounds every connection: header and request reads, and an idle
@@ -264,12 +276,21 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	}
 	defer func() { _ = server.Close() }()
 	announce(r, server)
-	if err := server.Serve(ctx); err != nil {
+	err := server.Serve(ctx)
+	if err != nil {
 		fmt.Fprintln(r.Diag, err)
-		return cli.ExitRefused
 	}
+	return serveExit(ctx, err)
+}
+
+// serveExit maps one Serve result onto the documented exit code: a canceled
+// root context leaves through 3, even when the drain itself failed.
+func serveExit(ctx context.Context, err error) int {
 	if ctx.Err() != nil {
 		return cli.ExitBroke
+	}
+	if err != nil {
+		return cli.ExitRefused
 	}
 	return cli.ExitOK
 }

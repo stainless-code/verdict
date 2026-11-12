@@ -929,3 +929,126 @@ func TestListenFailureIsRefused(t *testing.T) {
 		t.Errorf("error.code = %v, want serve-listen-failed", got)
 	}
 }
+
+// TestServeExitKeepsTheCancelCode proves the exit mapping: a canceled root
+// context leaves 3 even when the drain itself failed.
+func TestServeExitKeepsTheCancelCode(t *testing.T) {
+	t.Parallel()
+	shutdownErr := errors.New("serve: shutdown: context deadline exceeded") //nolint:err113 // test-only error value
+	for _, tc := range []struct {
+		err      error
+		name     string
+		want     int
+		canceled bool
+	}{
+		{name: "clean", want: cli.ExitOK},
+		{name: "canceled", want: cli.ExitBroke, canceled: true},
+		{name: "failed drain", err: shutdownErr, want: cli.ExitRefused},
+		{name: "canceled failed drain", err: shutdownErr, want: cli.ExitBroke, canceled: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := serveExit(contextOf(tc.canceled), tc.err); got != tc.want {
+				t.Errorf("serveExit(%v) = %d, want %d", tc.err, got, tc.want)
+			}
+		})
+	}
+}
+
+// contextOf is a live context, or one already canceled.
+func contextOf(canceled bool) context.Context {
+	if !canceled {
+		return context.Background()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	return ctx
+}
+
+// blockingLayer holds one health request open until its context ends.
+type blockingLayer struct {
+	entered chan struct{}
+	ended   chan struct{}
+}
+
+// newBlockingLayer builds the layer with both of its signals.
+func newBlockingLayer() *blockingLayer {
+	return &blockingLayer{entered: make(chan struct{}, 1), ended: make(chan struct{})}
+}
+
+// Health blocks until the request's own context ends.
+func (l *blockingLayer) Health(ctx context.Context) *query.View {
+	l.entered <- struct{}{}
+	<-ctx.Done()
+	close(l.ended)
+	return &query.View{Data: jq.NewObj("ok", true)}
+}
+
+// Roots renders an empty view.
+func (l *blockingLayer) Roots(context.Context) *query.View {
+	return &query.View{Data: jq.NewObj()}
+}
+
+// Bundles renders an empty view.
+func (l *blockingLayer) Bundles(context.Context, string) (*query.View, error) {
+	return &query.View{Data: jq.NewObj()}, nil
+}
+
+// Detail reports the bundle missing.
+func (l *blockingLayer) Detail(context.Context, string, string) (*query.View, error) {
+	return nil, query.ErrNotFound
+}
+
+// Show reports the finding missing.
+func (l *blockingLayer) Show(context.Context, string, string, string) (*query.View, error) {
+	return nil, query.ErrNotFound
+}
+
+// TestShutdownExpiryClosesActiveConnections proves a drain that outlasts its
+// bound terminates the in-flight request, so Serve returns instead of leaving
+// the handler running behind a closed listener.
+func TestShutdownExpiryClosesActiveConnections(t *testing.T) {
+	t.Parallel()
+	layer := newBlockingLayer()
+	server, err := New(&Config{Layer: layer, Token: testToken, Now: fixedNow})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	server.drainTimeout = 20 * time.Millisecond
+	if err := server.Listen(t.Context()); err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	t.Cleanup(func() { _ = server.Close() })
+	ctx, cancel := context.WithCancel(context.Background())
+	served := make(chan error, 1)
+	go func() { served <- server.Serve(ctx) }()
+	getHealth(t, server.Addr(), testToken)
+	<-layer.entered
+	cancel()
+	serveErr := <-served
+	if serveErr == nil || !strings.Contains(serveErr.Error(), "serve: shutdown") {
+		t.Fatalf("Serve = %v, want the drained shutdown error", serveErr)
+	}
+	<-layer.ended
+	if got := serveExit(ctx, serveErr); got != cli.ExitBroke {
+		t.Errorf("exit after the failed drain = %d, want %d", got, cli.ExitBroke)
+	}
+}
+
+// getHealth fires one authenticated health request and drops the outcome: the
+// server closes it when the drain expires.
+func getHealth(t *testing.T, addr, token string) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://"+addr+"/v1/health", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	go func() {
+		resp, derr := (&http.Client{}).Do(req)
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
+		_ = derr
+	}()
+}
