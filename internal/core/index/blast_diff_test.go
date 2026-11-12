@@ -54,6 +54,18 @@ func TestBlastChangesReadNewSideLines(t *testing.T) {
 			want: []blastChange{{path: "c.go", lines: []int{1, 2, 4}}},
 		},
 		{
+			name: "an added content line that starts with ++ still counts its line",
+			diff: "diff --git a/p.go b/p.go\n--- a/p.go\n+++ b/p.go\n" +
+				"@@ -1 +1,3 @@\n package a\n+++x\n+var y = 2\n",
+			want: []blastChange{{path: "p.go", lines: []int{2, 3}}},
+		},
+		{
+			name: "a deleted content line that starts with -- keeps its anchor",
+			diff: "diff --git a/s.sql b/s.sql\n--- a/s.sql\n+++ b/s.sql\n" +
+				"@@ -1,3 +1,2 @@\n select 1\n--- old comment\n select 2\n",
+			want: []blastChange{{path: "s.sql", lines: []int{1, 2}}},
+		},
+		{
 			name: "a rename with no hunk keeps the new path and every declaration",
 			diff: `diff --git a/old.go b/new.go
 similarity index 100%

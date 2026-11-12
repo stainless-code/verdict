@@ -27,15 +27,18 @@ func blastChanges(diff string) []blastChange {
 	var out []blastChange
 	cur := -1
 	newLine := 0
+	inHunk := false
 	for ln := range strings.SplitSeq(diff, "\n") {
 		switch {
 		case strings.HasPrefix(ln, blastDiffGit):
 			out, cur = openBlastChange(out, ln)
 			newLine = 0
+			inHunk = false
 		case cur < 0:
 		case strings.HasPrefix(ln, blastHunk):
+			inHunk = true
 			newLine = blastHunkSeed(ln)
-		case strings.HasPrefix(ln, "+++"), strings.HasPrefix(ln, "---"):
+		case !inHunk && blastFileHeader(ln):
 		case strings.HasPrefix(ln, blastNoEOL):
 		case strings.HasPrefix(ln, blastAdded):
 			out[cur].lines = append(out[cur].lines, newLine)
@@ -48,6 +51,12 @@ func blastChanges(diff string) []blastChange {
 		}
 	}
 	return finishBlastChanges(out)
+}
+
+// blastFileHeader reports a "---" or "+++" file header, which only precedes a
+// section's first hunk; inside a hunk the same prefixes are content lines.
+func blastFileHeader(ln string) bool {
+	return strings.HasPrefix(ln, "+++") || strings.HasPrefix(ln, "---")
 }
 
 // openBlastChange appends the section a "diff --git" line names and returns its
