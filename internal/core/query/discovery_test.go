@@ -184,7 +184,7 @@ func assertRegistryMode(t *testing.T, registryPath string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Errorf("registry mode = %04o, want 0600", info.Mode().Perm())
 	}
 }
