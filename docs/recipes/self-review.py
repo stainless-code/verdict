@@ -76,8 +76,9 @@ def loop(repo, agent, rounds, budget, output, verdict="verdict", call=execute,
             recorded = invoke([verdict, "record", repo, local, "--json"])
             receipt["findings"] = recorded["findings"]["open"]
             gate = invoke([verdict, "gate", repo, local, "--max-severity",
-                           "informational", "--live", "skip", "--json"])
+                           "informational", "--coverage", "warn", "--live", "skip", "--json"])
             receipt["gate"] = gate["passed"]
+            (output / f"round-{number}.gate.json").write_text(json.dumps(gate) + "\n")
             previous = output / f"round-{number}.record.json"
             previous.write_text(json.dumps(recorded) + "\n")
             if gate["passed"]:
