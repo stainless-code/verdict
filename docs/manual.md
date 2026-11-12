@@ -1041,7 +1041,8 @@ agent sees it before its first call. Each
 `tools/call` returns the CLI `--json` envelope's `data` as one text block plus
 `structuredContent`; a typed refusal sets `isError: true` with
 `{code, message, hint}` in both places, plus `retry_at` when the refusal is
-retryable. The text block is budgeted at 256 KiB:
+retryable and `warnings` when the verb warned before it stopped (the text
+block renders each as a `warn:` line). The text block is budgeted at 256 KiB:
 a larger result keeps `structuredContent` whole and replaces the text with a
 JSON summary carrying `truncated: true`, the measured `bytes` and `limit`, the
 on-disk `artifact` (the bundle directory when the verb reports one) and a
