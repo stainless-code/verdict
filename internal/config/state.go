@@ -313,14 +313,16 @@ func ensureManagedDir(root, name string) *stateError {
 }
 
 // anchoredManagedPath resolves one managed repository-relative path and
-// refuses a symlinked leaf, creating nothing.
+// refuses symlinks in every managed component, creating nothing.
 func anchoredManagedPath(root, name string) (string, *stateError) {
 	full, serr := confineJoin(root, name)
 	if serr != nil {
 		return "", serr
 	}
-	if serr := refuseSymlinkLeaf(full, name); serr != nil {
-		return "", serr
+	for component := full; component != root; component = filepath.Dir(component) {
+		if serr := refuseSymlinkLeaf(component, name); serr != nil {
+			return "", serr
+		}
 	}
 	return full, nil
 }
