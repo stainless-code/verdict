@@ -9,9 +9,11 @@ import (
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
 )
 
-const dirtyCoverageDigest = "318d35b3738f5e9aadfdaef4e9c0f2b1772e60605db9a0b29f7008fd67c6e268"
-const dirtyCoverageDir = ".verdict/state/local-cov"
-const dirtyCoverageSource = `{"kind":"worktree","dirty":true,"head_sha":null,"base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","diff_sha256":"318d35b3738f5e9aadfdaef4e9c0f2b1772e60605db9a0b29f7008fd67c6e268"}`
+const (
+	dirtyCoverageDigest = "318d35b3738f5e9aadfdaef4e9c0f2b1772e60605db9a0b29f7008fd67c6e268"
+	dirtyCoverageDir    = ".verdict/state/local-cov"
+	dirtyCoverageSource = `{"kind":"worktree","dirty":true,"head_sha":null,"base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","diff_sha256":"318d35b3738f5e9aadfdaef4e9c0f2b1772e60605db9a0b29f7008fd67c6e268"}`
+)
 
 func dirtyCoverageBundle(t *testing.T, attestation string) {
 	t.Helper()
@@ -20,6 +22,8 @@ func dirtyCoverageBundle(t *testing.T, attestation string) {
 	writeFile(t, dirtyCoverageDir+"/source.json", dirtyCoverageSource)
 }
 
+// TestRequiredCoverageDirtyLocalEmptyReview requires attestation before
+// a dirty review can be recorded.
 func TestRequiredCoverageDirtyLocalEmptyReview(t *testing.T) {
 	dirtyCoverageBundle(t, `[]`)
 	ref := runCoverage(t, true, false)
@@ -28,6 +32,8 @@ func TestRequiredCoverageDirtyLocalEmptyReview(t *testing.T) {
 	}
 }
 
+// TestRequiredCoverageDirtyLocalBundle binds required coverage to matching
+// bundle and receipt diff identities.
 func TestRequiredCoverageDirtyLocalBundle(t *testing.T) {
 	dirtyCoverageBundle(t, `[{"file":"notes.txt","ranges":"all"}]`)
 	if ref := runCoverage(t, true, false); ref != nil {
