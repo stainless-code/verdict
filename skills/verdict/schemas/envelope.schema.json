@@ -251,6 +251,8 @@
     "reportCounts": {
       "type": "object",
       "properties": {
+        "clean": { "type": "boolean" },
+        "checked_files": { "type": "integer", "minimum": 0 },
         "inline": { "type": "integer", "minimum": 0 },
         "section": { "type": "integer", "minimum": 0 },
         "anchored": { "type": "integer", "minimum": 0 },

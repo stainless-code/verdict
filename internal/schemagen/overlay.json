@@ -477,5 +477,10 @@
       "/$defs/spend/properties/unpriced_reviews": "Graded reviews that reported none; non-zero makes usd a lower bound.",
       "/$defs/signal": "One seed-signal row: bugs a fix or a revert introduced, and the matched count."
     }
+  },
+  "calibration": {
+    "descriptions": {
+      "": "Saved live calibration audit. Unknown outcomes are excluded from judged; resolution_rate is null without a judged denominator."
+    }
   }
 }

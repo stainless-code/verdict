@@ -119,6 +119,14 @@ evidence does not support is not reported.
 `"1"`; history is append-only; the calibration probe writes only its one
 `kb-grades.jsonl` file. Renames and tighter shapes require a version bump.
 
+- **Resolution rate** — fixed outcomes divided by judged outcomes (fixed,
+  resolved-unfixed, and open). Unknown outcomes abstain from the denominator;
+  a zero denominator is unmeasured.
+- **Clean review** — a readable findings store with zero entries. Clean rate
+  is clean reviews divided by reviewed bundles.
+- **Calibration receipt** — the atomic `calibration.json` audit saved by a
+  successful live calibration, with timestamp, outcome counts, and provenance.
+
 **Agent definition** — a data row mapping an agent name to its executable, noninteractive arguments, and installation step.
 
 ## Self-review loop

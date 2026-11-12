@@ -1,6 +1,7 @@
 exit: 0
 --- stdout ---
 trend: acme/app — 3 bundle(s), 9 findings (open=6 addressed=2 closed=1)
+reviews: 3 (0 clean) — findings/review 3.0000, clean rate 0.0% (n=3)
 2026-01-01  bundles=1 findings=6 open=4 addressed=1 closed=1 tiers critical=2 important=2 informational=2 untagged=0
 2026-02-01  bundles=1 findings=2 open=1 addressed=1 closed=0 tiers critical=0 important=1 informational=1 untagged=0
 2026-03-01  bundles=1 findings=1 open=1 addressed=0 closed=0 tiers critical=1 important=0 informational=0 untagged=0

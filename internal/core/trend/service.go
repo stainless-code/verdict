@@ -27,8 +27,9 @@ const skipWarn = "trend skips "
 // plus the --overlap audit flag.
 type Request struct { //nolint:govet // field grouping documents the request surface
 	core.ReadRequest
-	Overlap  bool
-	Warnings []string
+	Resolution bool
+	Overlap    bool
+	Warnings   []string
 }
 
 // Response carries the completed rollup: the envelope fields and the
@@ -49,11 +50,13 @@ type Response struct { //nolint:govet // field grouping documents the response s
 // join, and the optional corpus measurement. Field order is the published
 // envelope construction order.
 type Data struct { //nolint:govet // field order is the published property order
-	GeneratedAt string
-	Rollup      rollup
-	Rows        []row
-	Overlap     *overlapRollup
-	Corpus      *corpusRollup
+	Resolution          any
+	ResolutionRequested bool
+	GeneratedAt         string
+	Rollup              rollup
+	Rows                []row
+	Overlap             *overlapRollup
+	Corpus              *corpusRollup
 }
 
 // Wire renders the profile in published wire order.
@@ -69,6 +72,9 @@ func (d *Data) Wire() *jq.Obj {
 		perBundle = append(perBundle, rowDoc(&d.Rows[i]))
 	}
 	data.Set("per_bundle", perBundle)
+	if d.ResolutionRequested {
+		data.Set("resolution", d.Resolution)
+	}
 	if d.Overlap != nil {
 		data.Set("overlap", overlapDoc(d.Overlap))
 	}
@@ -100,6 +106,10 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 		overlap = overlapAudit(st, rows)
 	}
 	st.emitHuman(&rollup, overlap, corpus)
+	var resolution any
+	if req.Resolution {
+		resolution = resolutionAudit(st, rows)
+	}
 	next := "calibrate recent bundles for per-model tier precision"
 	if rollup.bundles == 0 {
 		next = "no reviewed bundles yet — fetch + post/record first"
@@ -110,7 +120,10 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 		Next:     next,
 		Warnings: st.warnings,
 		Human:    st.lines,
-		Data:     &Data{GeneratedAt: now, Rollup: rollup, Rows: rows, Overlap: overlap, Corpus: corpus},
+		Data: &Data{
+			Resolution: resolution, ResolutionRequested: req.Resolution,
+			GeneratedAt: now, Rollup: rollup, Rows: rows, Overlap: overlap, Corpus: corpus,
+		},
 	}, nil
 }
 

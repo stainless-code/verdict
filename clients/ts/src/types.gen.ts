@@ -134,6 +134,8 @@ export interface ReportVerdict {
 }
 
 export interface ReportCounts {
+  clean?: boolean;
+  checked_files?: number;
   inline: number;
   section: number;
   anchored: number;

@@ -11,6 +11,11 @@ exit: 0
   "data": {
     "generated_at": "0000-00-00T00:00:00Z",
     "bundles": 0,
+    "reviews": 0,
+    "reviews_with_findings": 0,
+    "reviews_clean": 0,
+    "findings_per_review": null,
+    "clean_rate": null,
     "findings": 0,
     "open": 0,
     "addressed": 0,
