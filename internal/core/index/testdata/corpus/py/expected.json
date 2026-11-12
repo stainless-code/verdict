@@ -48,7 +48,7 @@
         {
           "path": "tests/test_imports.py",
           "line": 5,
-          "kind": "call",
+          "kind": "method",
           "resolution": "lexical"
         }
       ]

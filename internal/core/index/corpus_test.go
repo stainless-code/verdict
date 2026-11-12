@@ -139,6 +139,7 @@ func runCorpus(t *testing.T, lang string) []scoreCard {
 	t.Helper()
 	dir := filepath.Join(corpusRoot, lang)
 	c := loadCorpus(t, dir)
+	assertCorpusLanguage(t, lang, c)
 	f := newFixture(t)
 	files := seedCorpus(t, f, dir)
 	f.commit("corpus")
@@ -172,6 +173,17 @@ func loadCorpus(t *testing.T, dir string) *fixtureCorpus {
 		assertLabelled(t, dir, &c.Queries[i])
 	}
 	return &c
+}
+
+// assertCorpusLanguage refuses a label file that declares a language other than
+// the directory it sits in: every label in it is a path relative to that
+// directory, so a copied label set would grade the wrong repository.
+func assertCorpusLanguage(t *testing.T, lang string, c *fixtureCorpus) {
+	t.Helper()
+	if c.Language != lang {
+		t.Fatalf("%s/%s/%s: labels language %q; want %q",
+			corpusRoot, lang, corpusLabels, c.Language, lang)
+	}
 }
 
 // assertLabelled refuses one query whose labels cannot be scored as written.
