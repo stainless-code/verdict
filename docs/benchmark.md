@@ -465,34 +465,41 @@ changing the scanner it measures.
 
 Measured with `go test ./internal/core/index/ -run TestCorpusAccuracy -v` on the
 corpus in this commit. `labeled` is the recall denominator, `reported` the
-precision denominator.
+precision denominator. The block between the markers is pinned: the test
+compares it cell by cell, and `-update` republishes it. The counts sit beside
+the rates so a deleted label or a rate that rose without a note cannot pass as
+an unchanged scorecard.
+
+<!-- scorecard:begin -->
 
 | row                         | precision | recall | matched | reported | labeled |
 | --------------------------- | --------- | ------ | ------- | -------- | ------- |
 | `go/callers-open`           | 1.0000    | 0.7500 | 6       | 6        | 8       |
 | `go/callers-save`           | n/a       | 0.0000 | 0       | 0        | 5       |
 | `go/callers-touch`          | n/a       | 0.0000 | 0       | 0        | 1       |
-| `go/callers`                | 1.0000    | 0.4286 | 6       | 6        | 14      |
-| `go/callers-cross-package`  | 1.0000    | 0.4167 | 5       | 5        | 12      |
 | `go/tests-for-store`        | 1.0000    | 1.0000 | 4       | 4        | 4       |
 | `go/tests-for-capped`       | 1.0000    | 1.0000 | 3       | 3        | 3       |
+| `go/callers`                | 1.0000    | 0.4286 | 6       | 6        | 14      |
+| `go/callers-cross-package`  | 1.0000    | 0.4167 | 5       | 5        | 12      |
 | `go/tests-for`              | 1.0000    | 1.0000 | 7       | 7        | 7       |
 | `ts/callers-save`           | 1.0000    | 0.5455 | 6       | 6        | 11      |
 | `ts/callers-audit`          | 1.0000    | 0.5000 | 1       | 1        | 2       |
 | `ts/callers-namesake`       | 1.0000    | 1.0000 | 1       | 1        | 1       |
-| `ts/callers`                | 1.0000    | 0.5714 | 8       | 8        | 14      |
-| `ts/callers-cross-package`  | n/a       | 0.0000 | 0       | 0        | 4       |
 | `ts/tests-for-save`         | 1.0000    | 0.7500 | 3       | 3        | 4       |
 | `ts/tests-for-two-families` | 1.0000    | 0.5000 | 1       | 1        | 2       |
+| `ts/callers`                | 1.0000    | 0.5714 | 8       | 8        | 14      |
+| `ts/callers-cross-package`  | n/a       | 0.0000 | 0       | 0        | 4       |
 | `ts/tests-for`              | 1.0000    | 0.6667 | 4       | 4        | 6       |
 | `py/callers-save`           | 0.7500    | 0.4286 | 3       | 4        | 7       |
 | `py/callers-write`          | 1.0000    | 1.0000 | 1       | 1        | 1       |
 | `py/callers-route`          | 1.0000    | 0.5000 | 1       | 1        | 2       |
 | `py/callers-namesake`       | 1.0000    | 1.0000 | 1       | 1        | 1       |
+| `py/tests-for-saver`        | 1.0000    | 1.0000 | 5       | 5        | 5       |
 | `py/callers`                | 0.8571    | 0.5455 | 6       | 7        | 11      |
 | `py/callers-cross-package`  | n/a       | 0.0000 | 0       | 0        | 3       |
-| `py/tests-for-saver`        | 1.0000    | 1.0000 | 5       | 5        | 5       |
 | `py/tests-for`              | 1.0000    | 1.0000 | 5       | 5        | 5       |
+
+<!-- scorecard:end -->
 
 ### The `go/types` gate
 

@@ -130,6 +130,7 @@ func TestCorpusAccuracy(t *testing.T) {
 	}
 	t.Logf("index accuracy scorecard (fixture corpus, not a real-world rate):\n%s", renderScorecard(rows))
 	assertFloors(t, rows)
+	assertDocsScorecard(t, rows)
 }
 
 // runCorpus seeds one labeled repository into a scratch git repository, builds
