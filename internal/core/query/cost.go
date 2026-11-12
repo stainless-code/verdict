@@ -28,6 +28,7 @@ type costBucket struct {
 	inputUnknown  bool
 	outputUnknown bool
 	estKnown      bool
+	estUnknown    bool
 }
 
 // Cost composes cost records from every served bundle by repository, ISO week,
@@ -88,7 +89,7 @@ func (a *costAggregate) result() *View {
 		totals = nil
 		rows = []any{}
 	}
-	partial := a.partial || a.unknownTokens()
+	partial := a.partial || a.unknownMeasurements()
 	a.view.Data = jq.NewObj(
 		"cost", jq.NewObj("by", a.by, "rows", rows, "totals", totals),
 		keyPartial, partial,
@@ -148,15 +149,17 @@ func addRollupBucket(buckets map[string]*costBucket, label string, rollup *jq.Ob
 	bucket := costBucketFor(buckets, label)
 	runs, _ := jq.IntOf(field(rollup, "runs"))
 	bucket.runs += runs
-	est, ok := readcommon.NumVal(field(rollup, "est_usd"))
-	if ok {
-		bucket.est += est
-		bucket.estKnown = true
-	}
 	for _, record := range records {
 		models, _ := readcommon.CostModels(record)
 		bucket.modelRuns += len(models)
 		addCostMeasurements(bucket, models)
+		est, ok := readcommon.CostEstimate(record)
+		if ok {
+			bucket.est += est
+			bucket.estKnown = true
+		} else {
+			bucket.estUnknown = true
+		}
 	}
 }
 
@@ -233,7 +236,7 @@ func costRows(buckets map[string]*costBucket, by string) []any {
 }
 
 func costEstimate(by string, bucket *costBucket) any {
-	if by == keyModel || !bucket.estKnown {
+	if by == keyModel || !bucket.estKnown || bucket.estUnknown {
 		return nil
 	}
 	return roundCost(bucket.est)
@@ -257,9 +260,10 @@ func costTotals(buckets map[string]*costBucket, by string) *jq.Obj {
 		total.inputUnknown = total.inputUnknown || bucket.inputUnknown
 		total.outputUnknown = total.outputUnknown || bucket.outputUnknown
 		total.estKnown = total.estKnown || bucket.estKnown
+		total.estUnknown = total.estUnknown || bucket.estUnknown
 	}
 	var est any
-	if by != keyModel && total.estKnown {
+	if by != keyModel && total.estKnown && !total.estUnknown {
 		est = roundCost(total.est)
 	}
 	return jq.NewObj(
@@ -272,9 +276,9 @@ func costTotals(buckets map[string]*costBucket, by string) *jq.Obj {
 	)
 }
 
-func (a *costAggregate) unknownTokens() bool {
+func (a *costAggregate) unknownMeasurements() bool {
 	for _, bucket := range a.buckets {
-		if bucket.inputUnknown || bucket.outputUnknown {
+		if bucket.inputUnknown || bucket.outputUnknown || (a.by != keyModel && bucket.estUnknown) {
 			return true
 		}
 	}
