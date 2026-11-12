@@ -23,6 +23,7 @@ func writeBlastFixture(f *fixture) {
 	f.write("b/b.go", "package b\n\nimport \"example.com/m/a\"\n\nfunc UseA() {\n\ta.A()\n}\n")
 	f.write("b/b_test.go", "package b\n\nimport (\n\t\"testing\"\n\n\t\"example.com/m/a\"\n)\n\nfunc TestUsesA(t *testing.T) {\n\ta.A()\n}\n")
 	f.write("c/c.go", "package c\n\nimport \"example.com/m/b\"\n\nfunc Deep() {\n\tb.UseA()\n}\n")
+	f.write("c/c_test.go", "package c\n\nimport \"testing\"\n\nfunc TestDeep(t *testing.T) {\n\tDeep()\n}\n")
 	f.write("d/d.go", "package d\n\nimport \"example.com/m/c\"\n\nfunc Deeper() {\n\tc.Deep()\n}\n")
 	f.write(".github/CODEOWNERS", "*       @everyone\n/a/*    @a-owner\na/*.go  @go-owner\n")
 }
@@ -105,7 +106,8 @@ func TestBlastPathsWalksDepthTwo(t *testing.T) {
 	}
 	assertTestRows(t, blast.Tests, []TestRow{
 		{Path: "a/a_test.go", Via: viaSamePackage},
-		{Path: "b/b_test.go", Via: viaReferences},
+		{Path: "b/b_test.go", Via: viaReferences, Depth: 1},
+		{Path: "c/c_test.go", Via: viaTransitiveImport, Depth: 2},
 	})
 	if blast.Indexed != true || resp.Data.Tree == "" {
 		t.Fatalf("indexed = %t, tree %q; want the built HEAD tree", blast.Indexed, resp.Data.Tree)
@@ -114,6 +116,32 @@ func TestBlastPathsWalksDepthTwo(t *testing.T) {
 		blast.Owners[0].OwnersSource != ".github/CODEOWNERS" ||
 		!slices.Equal(blast.Owners[0].Owners, []string{"@go-owner"}) {
 		t.Errorf("owners = %+v; want @go-owner from .github/CODEOWNERS", blast.Owners)
+	}
+}
+
+// TestBlastCountsTheDepthCappedTests proves the candidate-test list reports
+// the tests the transitive walk's depth cap hid instead of stopping at the
+// last row: the test four package hops out is counted once for every changed
+// symbol of its target file and never named.
+func TestBlastCountsTheDepthCappedTests(t *testing.T) {
+	f := newFixture(t)
+	writeBlastFixture(f)
+	f.write("e/e.go", "package e\n\nimport \"example.com/m/d\"\n\nfunc Beyond() {\n\td.Deeper()\n}\n")
+	f.write("e/e_test.go", "package e\n\nimport \"testing\"\n\nfunc TestBeyond(t *testing.T) {}\n")
+	f.commit("one")
+	f.build()
+	resp := blastRun(t, f, func(r *Request) { r.Paths = []string{"a/ab.go"} })
+	blast := resp.Data.Blast
+	assertTestRows(t, blast.Tests, []TestRow{
+		{Path: "a/a_test.go", Via: viaSamePackage},
+		{Path: "b/b_test.go", Via: viaReferences, Depth: 1},
+		{Path: "c/c_test.go", Via: viaTransitiveImport, Depth: 2},
+	})
+	if got := *blast.DepthTruncated; got != 1 {
+		t.Errorf("depth_truncated = %d; want 1", got)
+	}
+	if !slices.Contains(resp.Human, "index: depth cap 3 reached (1 candidate test(s) one import hop beyond)") {
+		t.Errorf("human lines = %q; want the depth cap line", resp.Human)
 	}
 }
 
@@ -151,8 +179,8 @@ func TestBlastTruncatesEveryList(t *testing.T) {
 		t.Errorf("callers = %d rows, count %d, truncated %d; want 2, 6, 4",
 			len(blast.Callers), *blast.Counts.Callers, *blast.Truncated.Callers)
 	}
-	if len(blast.Tests) != 2 || *blast.Truncated.Tests != 0 {
-		t.Errorf("tests = %d rows, truncated %d; want 2 and 0",
+	if len(blast.Tests) != 2 || *blast.Truncated.Tests != 1 {
+		t.Errorf("tests = %d rows, truncated %d; want 2 and 1",
 			len(blast.Tests), *blast.Truncated.Tests)
 	}
 }
@@ -433,23 +461,23 @@ func TestBlastRefusals(t *testing.T) {
 		},
 		{
 			name: "--pr ../x", mut: func(r *Request) { r.Pr = `../x` },
-			code: "bad-flags", part: "names a bundle (a PR number or fetch-local name), not a path",
+			code: "bad-flags", part: "bundle name must be one path element (a PR number or fetch-local name), not a path",
 		},
 		{
 			name: "--pr a/b", mut: func(r *Request) { r.Pr = `a/b` },
-			code: "bad-flags", part: "names a bundle (a PR number or fetch-local name), not a path",
+			code: "bad-flags", part: "bundle name must be one path element (a PR number or fetch-local name), not a path",
 		},
 		{
 			name: "--pr a\b", mut: func(r *Request) { r.Pr = `a\b` },
-			code: "bad-flags", part: "names a bundle (a PR number or fetch-local name), not a path",
+			code: "bad-flags", part: "bundle name must be one path element (a PR number or fetch-local name), not a path",
 		},
 		{
 			name: "--pr ..", mut: func(r *Request) { r.Pr = `..` },
-			code: "bad-flags", part: "names a bundle (a PR number or fetch-local name), not a path",
+			code: "bad-flags", part: "bundle name must be one path element (a PR number or fetch-local name), not a path",
 		},
 		{
 			name: "--pr .", mut: func(r *Request) { r.Pr = `.` },
-			code: "bad-flags", part: "names a bundle (a PR number or fetch-local name), not a path",
+			code: "bad-flags", part: "bundle name must be one path element (a PR number or fetch-local name), not a path",
 		},
 	}
 	for _, tc := range cases {
@@ -485,4 +513,21 @@ func TestBlastWindowBounds(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestBlastTestsKeepStrongestMechanism proves one test file reached two ways
+// keeps the strongest mechanism: a same-package test of one changed package
+// stays same-package even when the other changed package reaches it only
+// transitively.
+func TestBlastTestsKeepStrongestMechanism(t *testing.T) {
+	f := newFixture(t)
+	writeBlastFixture(f)
+	f.commit("one")
+	f.build()
+	resp := blastRun(t, f, func(r *Request) { r.Paths = []string{"a/ab.go", "c/c.go"} })
+	assertTestRows(t, resp.Data.Blast.Tests, []TestRow{
+		{Path: "a/a_test.go", Via: viaSamePackage},
+		{Path: "b/b_test.go", Via: viaReferences, Depth: 1},
+		{Path: "c/c_test.go", Via: viaSamePackage},
+	})
 }

@@ -28,6 +28,10 @@ const (
 	// CodeCanceled refuses a canceled read before it touches the bundle:
 	// the shared vocabulary's cancellation code, mapped to the broke exit.
 	CodeCanceled = "canceled"
+	// CodeBadBundleName refuses a positional that is not one bundle name:
+	// a path, a dot-dot, or a control byte would resolve outside the
+	// bundle home.
+	CodeBadBundleName = "bad-flags"
 )
 
 // refuse builds the layer's sealed refusal. The message always names the

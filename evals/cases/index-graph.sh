@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 #
 # index graph: tests-for, co-changed, and owners answer from the built index
-# and the git objects, not the worktree. Candidate tests cover all three via
-# kinds, co-change rows carry literal counts and jaccard with an echoed
-# window, the CODEOWNERS last match wins, an uncommitted CODEOWNERS edit
+# and the git objects, not the worktree. Candidate tests cover all four via
+# kinds with their import hops (a depth-2 transitive hit, and --depth 1 hiding
+# and counting it), co-change rows carry literal counts and jaccard with an
+# echoed window, the CODEOWNERS last match wins, an uncommitted CODEOWNERS edit
 # changes nothing, and a co-changed query on a checkout with no index store
 # writes nothing at all. No network.
 set -euo pipefail
@@ -27,13 +28,15 @@ mkdir -p "$HOME"
   cd "$EVAL_SANDBOX" || exit 99
   git init -q -b main
   printf 'module example.com/m\n\ngo 1.27\n' >go.mod
-  mkdir -p a b c .github
+  mkdir -p a b c d .github
   printf 'package a\n\nfunc Target() {}\n\nfunc Caller() {\n\tTarget()\n}\n' >a/a.go
   printf 'package a\n\nfunc Other() {}\n' >a/other.go
   printf 'package a\n\nimport "testing"\n\nfunc TestTarget(t *testing.T) {\n\tTarget()\n}\n' >a/a_test.go
   printf 'package b\n\nimport (\n\t"testing"\n\n\t"example.com/m/a"\n)\n\nfunc TestUses(t *testing.T) {\n\ta.Target()\n}\n' >b/b_test.go
   printf 'package c\n\nfunc Local() {}\n' >c/c.go
   printf 'package c\n\nimport (\n\t"testing"\n\n\t"example.com/m/a"\n)\n\nfunc TestLocal(t *testing.T) {\n\ta.Other()\n}\n' >c/c_test.go
+  printf 'package d\n\nimport "example.com/m/b"\n\nfunc Uses() {}\n' >d/d.go
+  printf 'package d\n\nimport "testing"\n\nfunc TestUses(t *testing.T) {}\n' >d/d_test.go
   printf '# global owner\n*       @everyone\n/a/*    @a-owner\na/*.go  @go-owner\n' >.github/CODEOWNERS
   git add -A
   GIT_AUTHOR_DATE=2024-04-01T00:00:00Z GIT_COMMITTER_DATE=2024-04-01T00:00:00Z \
@@ -62,19 +65,25 @@ stub_before="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 
 run_review index build --json
 assert_exit "index build exits 0" 0
-assert_json_field "four commits build one tree" 6 '.data.files_indexed'
+assert_json_field "four commits build one tree" 8 '.data.files_indexed'
 
 run_review index tests-for a/a.go --json
 assert_exit "index tests-for exits 0" 0
 assert_envelope "tests-for envelope"
 assert_json_field "tests-for kind" "tests-for" '.data.kind'
-assert_json_field "three candidate tests" 3 '.data.counts.tests'
-assert_json_field "candidates in path order" "a/a_test.go,b/b_test.go,c/c_test.go" \
+assert_json_field "four candidate tests" 4 '.data.counts.tests'
+assert_json_field "candidates in path order" "a/a_test.go,b/b_test.go,c/c_test.go,d/d_test.go" \
   '[.data.rows[].path] | join(",")'
-assert_json_field "one via kind per candidate" "same-package,references,imports-module" \
+assert_json_field "one via kind per candidate" "same-package,references,imports-module,transitive-import" \
   '[.data.rows[].via] | join(",")'
 assert_json_field "a non-test file is never a candidate" 0 \
   '[.data.rows[] | select(.path | endswith("_test.go") | not)] | length'
+assert_json_field "the depth cap is echoed" 3 '.data.depth'
+assert_json_field "a direct import edge is one hop" "b/b_test.go 1" \
+  '[.data.rows[] | select(.via == "references") | "\(.path) \(.depth)"] | join(",")'
+assert_json_field "a test two packages out is transitive" "d/d_test.go 2" \
+  '[.data.rows[] | select(.via == "transitive-import") | "\(.path) \(.depth)"] | join(",")'
+assert_json_field "nothing is hidden under the default cap" 0 '.data.depth_truncated'
 assert_json_field "target owners are the last matching rule" "@go-owner" \
   '[.data.target.owners[]] | join(",")'
 assert_json_field "target names the CODEOWNERS source" ".github/CODEOWNERS" '.data.target.owners_source'
@@ -82,15 +91,26 @@ assert_json_field "target names the CODEOWNERS source" ".github/CODEOWNERS" '.da
 run_review index tests-for a/a.go
 assert_exit "human tests-for exits 0" 0
 assert_file_grep "human names the same-package test" "$EVAL_OUT" '^a/a_test.go (same-package)$'
-assert_file_grep "human names the referencing test" "$EVAL_OUT" '^b/b_test.go (references)$'
-assert_file_grep "human names the importing test" "$EVAL_OUT" '^c/c_test.go (imports-module)$'
+assert_file_grep "human names the referencing test and its hop" "$EVAL_OUT" '^b/b_test.go (references, depth 1)$'
+assert_file_grep "human names the importing test and its hop" "$EVAL_OUT" '^c/c_test.go (imports-module, depth 1)$'
+assert_file_grep "human names the transitive test and its hops" "$EVAL_OUT" '^d/d_test.go (transitive-import, depth 2)$'
 assert_file_nogrep "the non-test source file is absent" "$EVAL_OUT" '^c/c.go '
+
+run_review index tests-for a/a.go --depth 1 --json
+assert_exit "a one-hop depth exits 0" 0
+assert_json_field "one hop turns the transitive walk off" "a/a_test.go,b/b_test.go,c/c_test.go" \
+  '[.data.rows[].path] | join(",")'
+assert_json_field "the cap counts the candidate it hid" 1 '.data.depth_truncated'
 
 run_review index tests-for --symbol a.Target --json
 assert_exit "symbol tests-for exits 0" 0
-assert_json_field "symbol query finds the same three candidates" "a/a_test.go,b/b_test.go,c/c_test.go" \
+assert_json_field "symbol query finds the same four candidates" \
+  "a/a_test.go,b/b_test.go,c/c_test.go,d/d_test.go" \
   '[.data.rows[].path] | join(",")'
 assert_json_field "symbol query publishes the symbol" "a.Target" '.data.query.symbol'
+
+run_review index tests-for a/a.go --depth 9 --json
+assert_exit "an out-of-range depth exits 2" 2
 
 run_review index owners a/a.go --json
 assert_exit "index owners exits 0" 0

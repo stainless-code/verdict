@@ -47,15 +47,35 @@ const (
 // human contract. Filesystem probes inside stay native, and every caller
 // opens the returned path through the OS, which accepts the slash form on
 // Windows exactly like the native one.
-func ResolveBundleDir(root, pr string) string {
-	state := filepath.Join(root, config.VerdictDir, config.StateDirName)
+//
+// It refuses a name that is not exactly one path element, so no verb reads or
+// writes outside the bundle home however its positional was spelled.
+func ResolveBundleDir(root, pr string) (string, *core.RefusalError) {
+	local, ref := bundleDir(root, localPrefix+pr)
+	if ref != nil {
+		return "", ref
+	}
 	if strings.HasPrefix(pr, localPrefix) || strings.HasPrefix(pr, corpusPrefix) {
-		return filepath.ToSlash(filepath.Join(state, pr))
+		return bundleDir(root, pr)
 	}
-	if IsDir(filepath.Join(state, localPrefix+pr)) && !Exists(filepath.Join(state, pr, "PR.json")) {
-		return filepath.ToSlash(filepath.Join(state, localPrefix+pr))
+	exact, ref := bundleDir(root, pr)
+	if ref != nil {
+		return "", ref
 	}
-	return filepath.ToSlash(filepath.Join(state, pr))
+	if IsDir(local) && !Exists(exact+prSuffix) {
+		return local, nil
+	}
+	return exact, nil
+}
+
+// bundleDir resolves one already-chosen bundle name, in the slash form every
+// bundle path publishes.
+func bundleDir(root, name string) (string, *core.RefusalError) {
+	dir, ref := config.BundleDir(root, name)
+	if ref != nil {
+		return "", ref
+	}
+	return filepath.ToSlash(dir), nil
 }
 
 // repoRootTimeout bounds the git top-level probe: a hung git must not hang

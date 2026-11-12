@@ -219,7 +219,10 @@ func (l *Layer) resolve(root Root, bundle string) (string, bool, *core.RefusalEr
 	if !slices.Contains(names, bundle) {
 		return "", false, nil
 	}
-	dir := readcommon.ResolveBundleDir(root.Path, bundle)
+	dir, ref := readcommon.ResolveBundleDir(root.Path, bundle)
+	if ref != nil {
+		return "", false, ref
+	}
 	want := filepath.ToSlash(filepath.Join(readcommon.StateDir(root.Path), bundle))
 	if dir != want {
 		return "", false, &core.RefusalError{

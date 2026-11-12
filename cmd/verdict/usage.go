@@ -241,9 +241,12 @@ func usageText() string {
 		"    only through an import edge. A qualified symbol names the package (a.Target);\n" +
 		"    rows are truncated with a count, never silently, and unresolved candidates\n" +
 		"    (methods, dynamic dispatch, generic instantiation) are counted, never guessed.\n" +
-		"  index tests-for <path>|--symbol <pkg.Name> [--at <tree>] [--limit <n, default 50, max 200>] [--json]\n" +
+		"  index tests-for <path>|--symbol <pkg.Name> [--at <tree>] [--depth <n, default 3, max 8>]\n" +
+		"    [--limit <n, default 50, max 200>] [--json]\n" +
 		"    candidate tests to read for one source file or qualified symbol, labeled\n" +
-		"    same-package, references, or imports-module. Candidates are not coverage:\n" +
+		"    same-package, references, imports-module, or transitive-import (a test whose\n" +
+		"    own package reaches the declaring package through imports of its own, within\n" +
+		"    --depth import hops and counted past the cap). Candidates are not coverage:\n" +
 		"    a row names a test worth reading, not proof, and only that language's own\n" +
 		"    test names appear.\n" +
 		"  index co-changed <path> [--commits <n, default 2000>] [--since <90d|12w|18mo|2y|ref>]\n" +

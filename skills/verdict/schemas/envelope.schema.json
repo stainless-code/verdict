@@ -1755,7 +1755,9 @@
         },
         "counts": { "$ref": "#/$defs/indexCounts" },
         "limit": { "type": "integer", "minimum": 1 },
+        "depth": { "type": "integer", "minimum": 1 },
         "truncated": { "type": "integer", "minimum": 0 },
+        "depth_truncated": { "type": "integer", "minimum": 0 },
         "rows": {
           "type": "array",
           "items": { "$ref": "#/$defs/indexRow" }
@@ -1870,7 +1872,15 @@
         },
         "resolution": { "enum": ["exact", "lexical"] },
         "language": { "enum": ["go", "typescript", "javascript", "python"] },
-        "via": { "enum": ["same-package", "references", "imports-module"] },
+        "via": {
+          "enum": [
+            "same-package",
+            "references",
+            "imports-module",
+            "transitive-import"
+          ]
+        },
+        "depth": { "type": "integer", "minimum": 1 },
         "commits": { "type": "integer", "minimum": 0 },
         "jaccard": { "type": "number", "minimum": 0, "maximum": 1 }
       },
@@ -1979,12 +1989,13 @@
       "properties": {
         "count": { "type": ["integer", "null"], "minimum": 0 },
         "truncated": { "type": ["integer", "null"], "minimum": 0 },
+        "depth_truncated": { "type": ["integer", "null"], "minimum": 0 },
         "rows": {
           "type": "array",
           "items": { "$ref": "#/$defs/indexRow" }
         }
       },
-      "required": ["count", "truncated", "rows"],
+      "required": ["count", "truncated", "depth_truncated", "rows"],
       "additionalProperties": true
     },
     "indexBlastPartners": {

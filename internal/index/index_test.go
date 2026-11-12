@@ -57,8 +57,8 @@ func TestParseGraphSubcommands(t *testing.T) {
 			},
 		},
 		{
-			name: "tests-for path", args: []string{"tests-for", "a/a.go", "--at", "HEAD~1", "--limit", "2"},
-			want: invocation{query: "tests-for", path: "a/a.go", at: "HEAD~1", limit: 2},
+			name: "tests-for path", args: []string{"tests-for", "a/a.go", "--at", "HEAD~1", "--depth", "2", "--limit", "2"},
+			want: invocation{query: "tests-for", path: "a/a.go", at: "HEAD~1", limit: 2, depth: 2},
 		},
 		{
 			name: "tests-for symbol", args: []string{"tests-for", "--symbol", "a.Target"},
@@ -102,7 +102,7 @@ func sameInvocation(a, b *invocation) bool {
 	return a.query == b.query && a.from == b.from && a.at == b.at &&
 		a.symbol == b.symbol && a.path == b.path && a.since == b.since &&
 		a.pr == b.pr && a.commits == b.commits && a.minCount == b.minCount &&
-		a.limit == b.limit && slices.Equal(a.paths, b.paths)
+		a.limit == b.limit && a.depth == b.depth && slices.Equal(a.paths, b.paths)
 }
 
 // parseAccepted parses one accepted argv and fails on any refusal.
@@ -145,16 +145,24 @@ func TestParseGraphRefusals(t *testing.T) {
 		{
 			name: "tests-for neither", args: []string{"tests-for"},
 			code: cli.ExitUsage,
-			diag: "usage: verdict index tests-for <path>|--symbol <pkg.Name> [--at <tree>] [--limit <n>]\n",
+			diag: "usage: verdict index tests-for <path>|--symbol <pkg.Name> [--at <tree>] [--depth <n>] [--limit <n>]\n",
 		},
 		{
 			name: "tests-for both", args: []string{"tests-for", "a/a.go", "--symbol", "a.Target"},
 			code: cli.ExitUsage,
-			diag: "usage: verdict index tests-for <path>|--symbol <pkg.Name> [--at <tree>] [--limit <n>]\n",
+			diag: "usage: verdict index tests-for <path>|--symbol <pkg.Name> [--at <tree>] [--depth <n>] [--limit <n>]\n",
 		},
 		{
 			name: "tests-for limit bound", args: []string{"tests-for", "a/a.go", "--limit", "0"},
 			code: cli.ExitUsage, diag: "index tests-for wants --limit from 1 to 200\n",
+		},
+		{
+			name: "tests-for depth bound", args: []string{"tests-for", "a/a.go", "--depth", "9"},
+			code: cli.ExitUsage, diag: "index tests-for wants --depth from 1 to 8\n",
+		},
+		{
+			name: "tests-for depth is not a number", args: []string{"tests-for", "a/a.go", "--depth", "deep"},
+			code: cli.ExitUsage, diag: "index tests-for wants --depth from 1 to 8\n",
 		},
 		{
 			name: "owners missing path", args: []string{"owners"},

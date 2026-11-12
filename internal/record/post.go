@@ -20,7 +20,10 @@ import (
 // --json mode prints exactly one envelope to stdout.
 func RunPost(ctx context.Context, r *cli.Runner, args []string, req *Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
-	dir := readcommon.ResolveBundleDir(req.RepoRoot, req.Pr)
+	dir, ref := readcommon.ResolveBundleDir(req.RepoRoot, req.Pr)
+	if ref != nil {
+		return r.RefuseTyped(ref)
+	}
 	f, code, done := parsePostFlags(r, args, dir)
 	if done {
 		return code

@@ -117,6 +117,85 @@ func (l Layout) StateDir() string {
 // GitignoreFile returns the nested ignore file path.
 func (l Layout) GitignoreFile() string { return filepath.Join(l.Root, GitignorePath) }
 
+// msgBundleName refuses a bundle name that is not one path element. Every
+// bundle verb renders this one line, so the refusal reads the same wherever a
+// positional is wrong.
+const msgBundleName = "bundle name must be one path element (a PR number or fetch-local name), not a path"
+
+// The byte range a bundle name may not carry: the C0 controls and DEL, which
+// no host or filesystem ever spells in a bundle's own name.
+const (
+	minControlByte = 0x20
+	maxControlByte = 0x7f
+)
+
+// BundleDir joins one bundle name under root's bundle home. It refuses a name
+// that is not exactly one path element, so no verb reads or writes outside the
+// bundle home however its positional was spelled.
+func BundleDir(root, name string) (string, *core.RefusalError) {
+	if !validBundleName(name) {
+		return "", &core.RefusalError{Code: CodeBadBundleName, Message: msgBundleName}
+	}
+	return filepath.Join(ifEmpty(root), VerdictDir, StateDirName, name), nil
+}
+
+// validBundleName reports whether name is exactly one path element that keeps
+// its own spelling on every platform: joining it under the bundle home adds no
+// level and lands nowhere else, and no other host's path rule reads it as a
+// different name. A separator, dot-dot, the dot itself, an empty name, and a
+// control byte refuse, as do the three spellings Windows re-reads: a colon
+// (an alternate data stream or a volume-relative path), a trailing dot or
+// space (trimmed, so `7.` is `7` and `.. ` is `..`), and a DOS device basename
+// (`NUL`, `CON`, `PRN`, `AUX`, `COM1`-`COM9`, `LPT1`-`LPT9`, also before a
+// dot), which opens the device instead of the bundle. Every rule applies on
+// every OS, so one operator spelling refuses everywhere.
+func validBundleName(name string) bool {
+	if !filepath.IsLocal(name) || strings.ContainsAny(name, `/\`) {
+		return false
+	}
+	return !rereadAsAnotherPath(name) && printableName(name)
+}
+
+// rereadAsAnotherPath reports whether another host's path rule reads name as a
+// different path: a colon, a trailing dot or space, or a DOS device basename.
+func rereadAsAnotherPath(name string) bool {
+	return strings.ContainsRune(name, ':') || strings.HasSuffix(name, ".") ||
+		strings.HasSuffix(name, " ") || reservedBundleName(name)
+}
+
+// printableName reports whether name carries no control byte.
+func printableName(name string) bool {
+	for i := range len(name) {
+		if name[i] < minControlByte || name[i] == maxControlByte {
+			return false
+		}
+	}
+	return true
+}
+
+// The DOS device families that number their names: `COM1`-`COM9` and
+// `LPT1`-`LPT9`.
+const (
+	devicePrefixCOM = "COM"
+	devicePrefixLPT = "LPT"
+)
+
+// reservedBundleName reports whether name is a DOS device name, which Windows
+// resolves in every directory and before any extension: `NUL` and `nul.txt`
+// both name the device.
+func reservedBundleName(name string) bool {
+	stem, _, _ := strings.Cut(strings.ToUpper(name), ".")
+	switch stem {
+	case "CON", "PRN", "AUX", "NUL":
+		return true
+	}
+	if len(stem) != len(devicePrefixCOM)+1 {
+		return false
+	}
+	prefix, digit := stem[:len(devicePrefixCOM)], stem[len(devicePrefixCOM)]
+	return (prefix == devicePrefixCOM || prefix == devicePrefixLPT) && digit >= '1' && digit <= '9'
+}
+
 // EnsureStateIgnore creates the `.verdict` directory and its `.gitignore`
 // with the `/state/`, `/backtest/`, and `/index/` lines before any generated
 // file is written, so review state, mined artifacts, and the local index are
@@ -192,21 +271,58 @@ func ensureIgnoreLine(ignorePath string, raw []byte, want string) ([]byte, error
 	return raw, nil
 }
 
+// bundleDirPath is the managed repository-relative path one bundle name
+// resolves to under the state home.
+func bundleDirPath(name string) string { return filepath.Join(VerdictDir, StateDirName, name) }
+
+// RefuseBundleSymlink refuses a bundle directory that is already a symlink and
+// creates nothing: a write through the link lands in its target, which is
+// outside the bundle home even when it resolves inside the repository. name is
+// a bundle name, the last element of the path BundleDir returns.
+func (l Layout) RefuseBundleSymlink(name string) *stateError {
+	root, serr := confineRoot(l.Root)
+	if serr != nil {
+		return serr
+	}
+	_, serr = anchoredManagedPath(root, bundleDirPath(name))
+	return serr
+}
+
+// EnsureBundleDir creates one bundle's directory under the state home after
+// the same refusal: no bundle write follows a symlinked leaf.
+func (l Layout) EnsureBundleDir(name string) *stateError {
+	root, serr := confineRoot(l.Root)
+	if serr != nil {
+		return serr
+	}
+	return ensureManagedDir(root, bundleDirPath(name))
+}
+
 // ensureManagedDir resolves one managed repository-relative directory,
 // proves it stays anchored inside the root, refuses a symlinked leaf,
 // and creates it: every managed write goes through this one gate.
 func ensureManagedDir(root, name string) *stateError {
-	full, serr := confineJoin(root, name)
+	full, serr := anchoredManagedPath(root, name)
 	if serr != nil {
-		return serr
-	}
-	if serr := refuseSymlinkLeaf(full, name); serr != nil {
 		return serr
 	}
 	if err := os.MkdirAll(full, stateDirPerm); err != nil {
 		return &stateError{msg: "could not create " + full, cause: err}
 	}
 	return nil
+}
+
+// anchoredManagedPath resolves one managed repository-relative path and
+// refuses a symlinked leaf, creating nothing.
+func anchoredManagedPath(root, name string) (string, *stateError) {
+	full, serr := confineJoin(root, name)
+	if serr != nil {
+		return "", serr
+	}
+	if serr := refuseSymlinkLeaf(full, name); serr != nil {
+		return "", serr
+	}
+	return full, nil
 }
 
 // EnsureStateDir creates the ignored local state directory with its

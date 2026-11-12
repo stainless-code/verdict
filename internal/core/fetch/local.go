@@ -155,6 +155,16 @@ func localModeCount(f *core.FetchLocalFlags) int {
 	return modes
 }
 
+// localBundleDir resolves the fetch-local bundle directory and refuses a
+// symlinked leaf before controls.json or the diff is written into it.
+func localBundleDir(root, slug string) (string, *core.RefusalError) {
+	dir, ref := readcommon.ResolveBundleDir(root, "local-"+slug)
+	if ref != nil {
+		return "", ref
+	}
+	return dir, refuseSymlinkedBundleDir(root, dir)
+}
+
 // localSetup owns the fetch-local preamble: slug gate, worktree check,
 // mode resolution, and the bundle directory.
 func localSetup(
@@ -164,7 +174,10 @@ func localSetup(
 	if ref := localSlugGate(req.Pr, slug); ref != nil {
 		return localMode{}, "", "", ref
 	}
-	dir := readcommon.ResolveBundleDir(req.RepoRootPath(), "local-"+slug)
+	dir, ref := localBundleDir(req.RepoRootPath(), slug)
+	if ref != nil {
+		return localMode{}, "", "", ref
+	}
 	ctx2.dir = dir
 	if res, err := ctx2.runner.run(ctx, gitCmdRevParse, "--is-inside-work-tree"); err != nil {
 		_ = res
@@ -200,8 +213,8 @@ func localBudgetGates(ctx2 *fetchRunCtx, f *core.FetchLocalFlags, root, dir stri
 	if ref := ensureBundleState(root); ref != nil {
 		return budget, ref
 	}
-	if err := os.MkdirAll(dir, dirPerm); err != nil {
-		return budget, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not create %s: %v", dir, err)}
+	if ref := ensureBundleDir(root, dir); ref != nil {
+		return budget, ref
 	}
 	return budget, nil
 }

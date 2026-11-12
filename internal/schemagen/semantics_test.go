@@ -185,10 +185,18 @@ var publishedSemantics = map[string]string{
 	// optional languages[] (required language enum, required file count), plus
 	// the caller row's optional language enum. No existing property, required
 	// key, enum, or type changed.
+	// transitive tests: additive indexRow.via enum value "transitive-import",
+	// additive optional indexRow.depth and indexData.depth/depth_truncated
+	// integers. No existing property, required key, or type changed; the
+	// depth_truncated name keeps the row limit's `truncated` distinct.
+	// blast-radius depth cap: the same integer added to indexBlastTests, whose
+	// count/truncated/rows are already all required, so it is required there
+	// too and reads null when no index answered. No existing property, required
+	// key, enum, or type changed.
 	// serve: additive $defs/serveData (and its source/error/root/counts/row/
 	// artifact/cache/skipped/discovery defs plus threadsFile/thread/comment).
 	// Additions only; the envelope's data slot stays free-form per verb.
-	"envelope.schema.json": "c9f077d6d866568065eaa7daaca8c2a58fbd67f3de15b7789603cdf4e57c3371",
+	"envelope.schema.json": "b625b05c9743c25b5bc51cb55757af93611cd371988bce42b1cb395be89b2876",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

@@ -134,6 +134,7 @@ func TestScoreRefusesBadRuns(t *testing.T) {
 		{name: "re-mined candidate", run: "s1", mutate: remineScoreRow, code: "backtest-run-stale", part: "no longer carries"},
 		{name: "foreign row", run: "s1", mutate: foreignScoreRow, code: "backtest-row-stale", part: "not 's1'"},
 		{name: "repeated row", run: "s1", mutate: repeatScoreRow, code: "backtest-row-stale", part: "already scored"},
+		{name: "row names a path", run: "s1", mutate: stripScoreBundleToPath, code: "backtest-row-stale", part: "not one path element"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) { checkScoreRefusal(t, tc) })
@@ -207,6 +208,15 @@ func stripScoreBundle(t *testing.T, root string) {
 	t.Helper()
 	path := filepath.Join(root, ".verdict", "backtest", scoreRun, "prs", "001", "replay.json")
 	body := strings.Replace(readScoreFile(t, path), `"bundle": "local-bt-1-s1"`, `"bundle": ""`, 1)
+	writeTestFile(t, path, body)
+}
+
+// stripScoreBundleToPath rewrites the first row so the bundle it names is a
+// traversal instead of one path element.
+func stripScoreBundleToPath(t *testing.T, root string) {
+	t.Helper()
+	path := filepath.Join(root, ".verdict", "backtest", scoreRun, "prs", "001", "replay.json")
+	body := strings.Replace(readScoreFile(t, path), `"bundle": "local-bt-1-s1"`, `"bundle": "../escaped"`, 1)
 	writeTestFile(t, path, body)
 }
 
