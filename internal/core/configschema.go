@@ -24,7 +24,7 @@ type Config struct { //nolint:govet // field order is the published property ord
 	Index          *ConfigIndex             `json:"index,omitempty"           nonnull:"true"`
 }
 
-// ConfigIndex holds the local Go index caps; absent keys keep the built-in
+// ConfigIndex holds the local code index caps; absent keys keep the built-in
 // defaults.
 type ConfigIndex struct {
 	Files       *int   `json:"files,omitempty"         min:"1" nonnull:"true"`

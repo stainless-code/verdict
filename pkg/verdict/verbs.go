@@ -615,7 +615,7 @@ func (c *Client) Trend(ctx context.Context, req *TrendRequest) (*TrendResponse, 
 	}, nil
 }
 
-// IndexRequest queries the local Go index. Query is any index subcommand —
+// IndexRequest queries the local code index. Query is any index subcommand —
 // callers, status, tests-for, co-changed, owners, build, or prune; Symbol is
 // the caller or tests-for symbol, Path the tests-for, co-changed, or owners
 // path, At names a tree or ref, From overrides the checkout, Since,

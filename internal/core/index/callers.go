@@ -132,6 +132,7 @@ func importPathOf(module, dir string) string {
 type target struct {
 	pkg      *packageInfo
 	name     string
+	lang     language
 	exported bool
 }
 
@@ -163,7 +164,7 @@ func resolveTargets(pkgs map[string]*packageInfo, symbol string) ([]target, *cor
 		for _, f := range pkg.files {
 			for _, d := range f.Decls {
 				if d.Name == name {
-					targets = append(targets, target{pkg: pkg, name: name, exported: d.Exported})
+					targets = append(targets, target{pkg: pkg, name: name, lang: fileLanguage(f), exported: d.Exported})
 				}
 			}
 		}
@@ -253,6 +254,7 @@ func collectFileRefs(out *callerResults, seen map[Row]bool, tgt target, same boo
 			out.unresolved++
 			continue
 		}
+		row.Language = string(fileLanguage(f))
 		if !seen[row] {
 			seen[row] = true
 			out.rows = append(out.rows, row)
@@ -276,8 +278,23 @@ func sortRows(rows []Row) {
 // resolveRef classifies one matching reference. It reports false when the
 // reference cannot name the target at all; a true row with the unresolved
 // resolution is a candidate that needs type information, counted and not
-// rendered.
+// rendered. A file in another language family shares nothing but a directory
+// with the declaration, so it is not a candidate.
 func resolveRef(tgt target, samePkg bool, f *treeFile, r ref) (Row, bool) {
+	lang := fileLanguage(f)
+	if !lang.sameFamily(tgt.lang) {
+		return Row{}, false
+	}
+	if lang != langGo {
+		return resolveScannedRef(samePkg, f, r)
+	}
+	return resolveGoRef(tgt, samePkg, f, r)
+}
+
+// resolveGoRef attributes one reference to a Go declaration: a bare name only
+// inside the declaring package, a qualified name by import path, and a
+// same-package method or unresolved qualifier as a counted candidate.
+func resolveGoRef(tgt target, samePkg bool, f *treeFile, r ref) (Row, bool) {
 	if !r.Selector {
 		return resolveBareRef(samePkg, f, r)
 	}
@@ -288,6 +305,17 @@ func resolveRef(tgt target, samePkg bool, f *treeFile, r ref) (Row, bool) {
 		return Row{}, false
 	}
 	return resolveQualifiedRef(tgt, f, r)
+}
+
+// resolveScannedRef classifies one reference a lexical scanner produced. A
+// scanned language has no object identity to check and no module resolution to
+// follow, so a name found in the declaring directory is a lexical row and a
+// name found anywhere else is not attributed at all.
+func resolveScannedRef(samePkg bool, f *treeFile, r ref) (Row, bool) {
+	if !samePkg {
+		return Row{}, false
+	}
+	return Row{Path: f.Path, Line: r.Line, Kind: r.Kind, Resolution: resolutionLexical}, true
 }
 
 // resolveBareRef classifies a name written without a qualifier: only the
@@ -361,12 +389,35 @@ func (st *state) callerData(
 	}
 }
 
+// languageCounts counts the tree's indexed files per scanned language, so the
+// breakdown adds up to files_indexed: a skipped file is not a file any
+// language was read for.
+func languageCounts(t *treeIndex) []LangRow {
+	counts := map[string]int{}
+	for i := range t.Files {
+		if !indexedFile(&t.Files[i]) {
+			continue
+		}
+		counts[t.Files[i].Language]++
+	}
+	rows := make([]LangRow, 0, len(counts))
+	for name, files := range counts {
+		rows = append(rows, LangRow{Language: name, Files: files})
+	}
+	slices.SortFunc(rows, func(a, b LangRow) int {
+		if c := strings.Compare(a.Language, b.Language); c != 0 {
+			return c
+		}
+		return a.Files - b.Files
+	})
+	return rows
+}
+
 // coverageOf counts a tree's fully indexed and skipped files.
 func coverageOf(t *treeIndex) coverage {
 	var cov coverage
 	for i := range t.Files {
-		f := &t.Files[i]
-		if f.Oversize || f.Error != "" || f.RefsTruncated {
+		if !indexedFile(&t.Files[i]) {
 			cov.skipped++
 			continue
 		}

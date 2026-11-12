@@ -32,8 +32,9 @@ var publishedSemantics = map[string]string{
 	// the parser refuses with bad-scope.
 	// additive index caps: an optional top-level index object and its
 	// $defs/configIndex shape. Additions only; no existing property, required
-	// key, enum, or type changed.
-	"config.schema.json": "67da0f560b74df5a1dfef3a49f8887f9d76863ffc017161df65e9ad96eb0d54c",
+	// key, enum, or type changed. The configIndex description now calls the
+	// index a code index rather than a Go one.
+	"config.schema.json": "db98cce6cb648527523180d9011e324b8907d27fbf6880ab5c649a517e21d59d",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets
@@ -180,7 +181,11 @@ var publishedSemantics = map[string]string{
 	// a (target, partner) pair count; one description now names both units.
 	// Additions only; no existing property, required key, enum, or type
 	// changed.
-	"envelope.schema.json": "60782042feac7948f6152005b3eabea18e158bb6a78510fdee1bf0c6dc7d1cbe",
+	// scanned languages: additive $defs/indexLangRow and the build branch's
+	// optional languages[] (required language enum, required file count), plus
+	// the caller row's optional language enum. No existing property, required
+	// key, enum, or type changed.
+	"envelope.schema.json": "a5a9fca3a4ec11cad62861de922a9b31d2bb6c6f9989d6582a7122a15372cb46",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -220,7 +225,10 @@ var publishedSemantics = map[string]string{
 	// required key, enum, or type changed.
 	// additive index.schema.json (new local-tree document; no existing
 	// schema property, required key, or type changed).
-	"index.schema.json": "2200ac9089a3bb4979964bbf44332dfaf00e7953d27c9d7c6faf9b590eb03a95",
+	// scanned languages: additive optional file.language enum, so a stored tree
+	// names the scanner that read each file. No existing property, required
+	// key, enum, or type changed.
+	"index.schema.json": "2104f9b00c2909f29e5cbd155931ba4765f4b6647f8bd602199a8761c57b9126",
 	// rules and layering: additive replace[], severity map, rules[] with a
 	// closed $defs/rule. No existing property, required key, enum, or type
 	// changed; the loader's exact-key, regular-file, and bounded-read rules

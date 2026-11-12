@@ -17,11 +17,12 @@ const (
 	viaImportsModule = "imports-module"
 )
 
-// testPlan is the resolved tests-for input: the queried path, the declaring
-// package directories, and one resolution target per declared symbol.
+// testPlan is the resolved tests-for input: the queried path, its language, the
+// declaring package directories, and one resolution target per declared symbol.
 type testPlan struct {
 	path    string
 	dirs    []string
+	lang    language
 	targets []target
 }
 
@@ -95,19 +96,19 @@ func pathTestPlan(pkgs map[string]*packageInfo, t *treeIndex, rawPath string) (*
 	if f == nil || f.Oversize || f.Error != "" {
 		return nil, &core.RefusalError{
 			Code:    codeBadFlags,
-			Message: "index tests-for: " + p + " is not an indexed Go file at " + t.Tree,
+			Message: "index tests-for: " + p + " is not an indexed source file at " + t.Tree,
 		}
 	}
 	pkg := pkgs[path.Dir(p)]
 	if pkg == nil {
 		return nil, &core.RefusalError{
 			Code:    codeBadFlags,
-			Message: "index tests-for: " + p + " is not an indexed Go file at " + t.Tree,
+			Message: "index tests-for: " + p + " is not an indexed source file at " + t.Tree,
 		}
 	}
-	plan := &testPlan{path: p, dirs: []string{pkg.dir}}
+	plan := &testPlan{path: p, dirs: []string{pkg.dir}, lang: fileLanguage(f)}
 	for _, d := range f.Decls {
-		plan.targets = append(plan.targets, target{pkg: pkg, name: d.Name, exported: d.Exported})
+		plan.targets = append(plan.targets, target{pkg: pkg, name: d.Name, lang: plan.lang, exported: d.Exported})
 	}
 	return plan, nil
 }
@@ -137,12 +138,12 @@ func symbolTestPlan(pkgs map[string]*packageInfo, symbol string) (*testPlan, *co
 		}
 	}
 	slices.Sort(dirs)
-	return &testPlan{dirs: dirs, targets: targets}, nil
+	return &testPlan{dirs: dirs, lang: targets[0].lang, targets: targets}, nil
 }
 
-// findIndexedFile finds one indexed Go file by its slash path.
+// findIndexedFile finds one indexed file by its slash path.
 func findIndexedFile(t *treeIndex, p string) *treeFile {
-	if p == "" || !strings.HasSuffix(p, goSuffix) {
+	if indexedLanguage(p) == "" {
 		return nil
 	}
 	for i := range t.Files {
@@ -160,7 +161,7 @@ func collectTestRows(t *treeIndex, plan *testPlan) []TestRow {
 	var rows []TestRow
 	for i := range t.Files {
 		f := &t.Files[i]
-		if !isCandidateFile(f, plan.path) {
+		if !isCandidateFile(plan, f) {
 			continue
 		}
 		via := testVia(plan, dirs, importPaths, f)
@@ -189,25 +190,114 @@ func testMechanisms(t *treeIndex, plan *testPlan) (map[string]bool, map[string]b
 	return dirs, importPaths
 }
 
+// importsTargetPath reports whether one scanned file imports the queried file
+// itself, by a specifier the scanner resolves against its own directory. A
+// Python `from lib import mod` names the module and the submodule it takes from
+// it, so the imported name is joined on: that statement is how a test outside
+// the module's directory imports the module.
+func importsTargetPath(plan *testPlan, f *treeFile) bool {
+	lang := fileLanguage(f)
+	if plan.path == "" || lang == langGo {
+		return false
+	}
+	want := trimSourceExt(plan.path)
+	for _, imp := range f.Imports {
+		if importNamesPath(lang, path.Dir(f.Path), imp, want) {
+			return true
+		}
+	}
+	return false
+}
+
+// importNamesPath reports whether one recorded import resolves to the wanted
+// path: the module itself, or for Python the submodule a `from … import …`
+// statement takes out of that module.
+func importNamesPath(lang language, dir string, imp importEntry, want string) bool {
+	module := scannedSpecifier(lang, dir, imp.Path)
+	switch {
+	case module == "":
+		return false
+	case trimSourceExt(module) == want:
+		return true
+	case lang.family() == langPython:
+		return trimSourceExt(path.Join(module, imp.Name)) == want
+	default:
+		return false
+	}
+}
+
+// scannedSpecifier resolves one module specifier to a repository path as the
+// scanner can read it, or "" when the format offers no rule.
+func scannedSpecifier(lang language, dir, spec string) string {
+	switch lang.family() {
+	case langTypeScript:
+		if !strings.HasPrefix(spec, ".") {
+			return ""
+		}
+		return path.Join(dir, spec)
+	case langPython:
+		return pythonSpecifier(dir, spec)
+	default:
+		return ""
+	}
+}
+
+// pythonSpecifier resolves one Python import path to a repository path: a
+// relative one against the importing file's package, an absolute one against
+// the repository root.
+func pythonSpecifier(dir, spec string) string {
+	dots := 0
+	for dots < len(spec) && spec[dots] == '.' {
+		dots++
+	}
+	if dots == 0 {
+		return strings.ReplaceAll(spec, ".", "/")
+	}
+	for i := 1; i < dots; i++ {
+		dir = path.Dir(dir)
+	}
+	return path.Join(dir, strings.ReplaceAll(spec[dots:], ".", "/"))
+}
+
+// trimSourceExt drops one trailing source extension, and nothing else.
+func trimSourceExt(p string) string {
+	if ext := path.Ext(p); ext != "" && indexedLanguage(p) != "" {
+		return strings.TrimSuffix(p, ext)
+	}
+	return p
+}
+
 // isCandidateFile reports whether one indexed file can be a candidate test
-// row: a readable test file that is not the queried file itself.
-func isCandidateFile(f *treeFile, queried string) bool {
-	return strings.HasSuffix(f.Path, testSuffix) && !f.Oversize && f.Error == "" && f.Path != queried
+// row at all: a readable test file in the plan's language family that is not
+// the queried file itself. Every mechanism that reaches a candidate passes
+// here first, so no edge can list a test from another family.
+func isCandidateFile(plan *testPlan, f *treeFile) bool {
+	lang := fileLanguage(f)
+	return testPath(lang, f.Path) && plan.lang.sameFamily(lang) &&
+		!f.Oversize && f.Error == "" && f.Path != plan.path
 }
 
 // testVia classifies one test file: same package directory, a recorded
 // reference to a declared symbol, or an import of the declaring package.
 func testVia(plan *testPlan, dirs, importPaths map[string]bool, f *treeFile) string {
 	switch {
-	case dirs[path.Dir(f.Path)]:
+	case samePackageTest(dirs, f):
 		return viaSamePackage
-	case referencesTargets(plan.targets, f):
+	case referencesTargets(plan.targets, f), importsTargetPath(plan, f):
 		return viaReferences
 	case importsAny(f, importPaths):
 		return viaImportsModule
 	default:
 		return ""
 	}
+}
+
+// samePackageTest reports whether one candidate is a test in a declaring
+// directory. The language family is already settled by isCandidateFile: a `.py`
+// test says nothing about the Go file beside it, while a JavaScript test can
+// cover a TypeScript declaration.
+func samePackageTest(dirs map[string]bool, f *treeFile) bool {
+	return dirs[path.Dir(f.Path)]
 }
 
 // referencesTargets reports whether the file carries a reference the index can
