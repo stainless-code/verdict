@@ -32,7 +32,10 @@ func Run(ctx context.Context, req *core.ConfigRequest) (*core.ConfigResponse, *c
 		}
 		data, warnings, ref = Explain(root, name)
 	} else {
-		name, _ = lookupBundleName(root, req.Pr)
+		name, _, ref = lookupBundleName(root, req.Pr)
+		if ref != nil {
+			return nil, ref
+		}
 		data, warnings, ref = Preview(root, name, req.Flags.File, req.SettingsPath, reqEnvMap(req))
 	}
 	if ref != nil {
@@ -66,28 +69,39 @@ func nextStep(flags core.ConfigFlags) string {
 // exact name wins, else the fetch-local local- form. Neither existing
 // refuses with the typed no-bundle code naming both paths.
 func ResolveBundleName(root, pr string) (string, *core.RefusalError) {
-	if name, found := lookupBundleName(root, pr); found {
+	name, found, ref := lookupBundleName(root, pr)
+	if ref != nil {
+		return "", ref
+	}
+	if found {
 		return name, nil
 	}
-	return "", refuse(CodeNoBundle, "no run bundle %s (fetch the run first, then explain it)", RunBundlePath(bundleDir(root, pr)))
+	dir, ref := BundleDir(root, name)
+	if ref != nil {
+		return "", ref
+	}
+	return "", refuse(CodeNoBundle, "no run bundle %s (fetch the run first, then explain it)", RunBundlePath(dir))
 }
 
-// lookupBundleName resolves the bundle without refusing: the exact name
+// lookupBundleName resolves the positional without refusing: the exact name
 // wins, else the fetch-local local- form, else the raw positional (the
 // preview paths read inventory beside it when one exists).
-func lookupBundleName(root, pr string) (string, bool) {
-	if _, err := os.Stat(filepath.Join(ifEmpty(root), VerdictDir, StateDirName, pr)); err == nil {
-		return pr, true
+func lookupBundleName(root, pr string) (string, bool, *core.RefusalError) {
+	exact, ref := BundleDir(root, pr)
+	if ref != nil {
+		return "", false, ref
 	}
-	if _, err := os.Stat(filepath.Join(ifEmpty(root), VerdictDir, StateDirName, "local-"+pr)); err == nil {
-		return "local-" + pr, true
+	if _, err := os.Stat(exact); err == nil {
+		return pr, true, nil
 	}
-	return pr, false
-}
-
-// bundleDir joins the bundle directory under root.
-func bundleDir(root, name string) string {
-	return filepath.Join(ifEmpty(root), VerdictDir, StateDirName, name)
+	local, ref := BundleDir(root, "local-"+pr)
+	if ref != nil {
+		return "", false, ref
+	}
+	if _, err := os.Stat(local); err == nil {
+		return "local-" + pr, true, nil
+	}
+	return pr, false, nil
 }
 
 // clockNow reads the request clock, defaulting to the wall clock.
@@ -107,7 +121,10 @@ func clockNow(req *core.ConfigRequest) (t time.Time) {
 // tampered bundle refuses controls-stale through the same integrity
 // check record and post enforce.
 func Explain(root, name string) (*core.ConfigData, []string, *core.RefusalError) {
-	dir := filepath.Join(ifEmpty(root), VerdictDir, StateDirName, name)
+	dir, ref := BundleDir(root, name)
+	if ref != nil {
+		return nil, nil, ref
+	}
 	rs, ref := VerifyRunState(dir)
 	if ref != nil {
 		return nil, nil, ref
@@ -144,6 +161,10 @@ const (
 // every prospective requirement stays pending because a preview has no
 // evidence.
 func Preview(root, name, proposedPath, settingsPath string, env map[string]string) (*core.ConfigData, []string, *core.RefusalError) {
+	dir, ref := BundleDir(root, name)
+	if ref != nil {
+		return nil, nil, ref
+	}
 	personal, ref := LoadPersonal(settingsPath)
 	if ref != nil {
 		return nil, nil, ref
@@ -156,7 +177,7 @@ func Preview(root, name, proposedPath, settingsPath string, env map[string]strin
 	if ref != nil {
 		return nil, nil, ref
 	}
-	files, ref := previewFiles(filepath.Join(ifEmpty(root), VerdictDir, StateDirName, name))
+	files, ref := previewFiles(dir)
 	if ref != nil {
 		return nil, nil, ref
 	}
@@ -310,7 +331,10 @@ func relabelRequirementSources(reqs []core.ConfigRequirement, from, to string) {
 // policy. Absence is reported only when it is proven, and an absent bundle is
 // distinguished from an absent configuration.
 func previewInventory(root, name string) (*controls.Snapshot, []byte, previewBaseState, *core.RefusalError) {
-	dir := filepath.Join(ifEmpty(root), VerdictDir, StateDirName, name)
+	dir, ref := BundleDir(root, name)
+	if ref != nil {
+		return nil, nil, baseNeverRead, ref
+	}
 	snap, ref := controls.GateRecorded(dir)
 	if ref != nil {
 		if missingBundle(dir) {

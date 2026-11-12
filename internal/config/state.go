@@ -117,6 +117,43 @@ func (l Layout) StateDir() string {
 // GitignoreFile returns the nested ignore file path.
 func (l Layout) GitignoreFile() string { return filepath.Join(l.Root, GitignorePath) }
 
+// bundleNameProbe is any non-empty parent: the guard only cares that joining a
+// name under it lands one level down, under the same parent.
+const bundleNameProbe = StateDirName
+
+// msgBundleName refuses a bundle name that is not one path element. Every
+// bundle verb renders this one line, so the refusal reads the same wherever a
+// positional is wrong.
+const msgBundleName = "bundle name must be one path element (a PR number or fetch-local name), not a path"
+
+// BundleDir joins one bundle name under root's bundle home. It refuses a name
+// that is not exactly one path element, so no verb reads or writes outside the
+// bundle home however its positional was spelled.
+func BundleDir(root, name string) (string, *core.RefusalError) {
+	if !validBundleName(name) {
+		return "", &core.RefusalError{Code: CodeBadBundleName, Message: msgBundleName}
+	}
+	return filepath.Join(ifEmpty(root), VerdictDir, StateDirName, name), nil
+}
+
+// validBundleName reports whether name is exactly one path element: a value
+// that joins under the bundle home without adding a level or landing outside
+// it. A separator, dot-dot, the dot itself, an empty name, and a name carrying
+// a control byte are all refused, whatever the platform's separator happens to
+// be, so one operator spelling refuses everywhere.
+func validBundleName(name string) bool {
+	if name == "" || strings.ContainsAny(name, `/\`) {
+		return false
+	}
+	for i := range len(name) {
+		if name[i] < 0x20 || name[i] == 0x7f {
+			return false
+		}
+	}
+	joined := filepath.Join(bundleNameProbe, name)
+	return filepath.Dir(joined) == bundleNameProbe && filepath.Base(joined) == name
+}
+
 // EnsureStateIgnore creates the `.verdict` directory and its `.gitignore`
 // with the `/state/`, `/backtest/`, and `/index/` lines before any generated
 // file is written, so review state, mined artifacts, and the local index are
