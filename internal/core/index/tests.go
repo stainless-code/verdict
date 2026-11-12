@@ -224,15 +224,26 @@ func planNodes(plan *testPlan) []graphNode {
 	return nodes
 }
 
-// testMechanisms indexes the plan's package directories and import paths.
+// testMechanisms indexes the plan's package directories and import paths, each
+// rendered in the plan's own language.
 func testMechanisms(t *treeIndex, plan *testPlan) (map[string]bool, map[string]bool) {
 	dirs := make(map[string]bool, len(plan.dirs))
 	importPaths := make(map[string]bool, len(plan.dirs))
 	for _, dir := range plan.dirs {
 		dirs[dir] = true
-		importPaths[importPathOf(t.Module, dir)] = true
+		importPaths[packageImportPath(plan.lang, t.Module, dir)] = true
 	}
 	return dirs, importPaths
+}
+
+// packageImportPath renders one declaring directory's import path in the plan's
+// language: a Go package path joined onto the module, or the directory itself
+// for a scanned language, whose imports never carry a Go module path.
+func packageImportPath(lang language, module, dir string) string {
+	if lang.family() == langGo {
+		return importPathOf(module, dir)
+	}
+	return dir
 }
 
 // importsTargetPath reports whether one scanned file imports the queried file

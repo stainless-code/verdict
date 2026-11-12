@@ -330,7 +330,8 @@ func TestCallersStayInsideOneLanguage(t *testing.T) {
 
 // TestTestsForPythonSubmoduleImport proves `from lib import mod`, which names
 // the module and the submodule in one statement, is an import of `lib/mod.py`,
-// and that the same statement naming another submodule is not.
+// and that the same statement naming another submodule is only an import of the
+// declaring package: a candidate test, never a reference to this file.
 func TestTestsForPythonSubmoduleImport(t *testing.T) {
 	f := newFixture(t)
 	f.write("go.mod", "module example.com/m\n\ngo 1.27\n")
@@ -342,6 +343,7 @@ func TestTestsForPythonSubmoduleImport(t *testing.T) {
 	f.build()
 	assertTestRows(t, f.queryPath(QueryTestsFor, "lib/mod.py").Data.TestRows, []TestRow{
 		{Path: "tests/test_mod.py", Via: viaReferences, Depth: 1},
+		{Path: "tests/test_other.py", Via: viaImportsModule, Depth: 1},
 	})
 }
 
