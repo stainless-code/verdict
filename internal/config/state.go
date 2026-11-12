@@ -150,12 +150,21 @@ func BundleDir(root, name string) (string, *core.RefusalError) {
 // dot), which opens the device instead of the bundle. Every rule applies on
 // every OS, so one operator spelling refuses everywhere.
 func validBundleName(name string) bool {
-	if !filepath.IsLocal(name) || strings.ContainsAny(name, `/\`) || strings.ContainsRune(name, ':') {
+	if !filepath.IsLocal(name) || strings.ContainsAny(name, `/\`) {
 		return false
 	}
-	if strings.HasSuffix(name, ".") || strings.HasSuffix(name, " ") || reservedBundleName(name) {
-		return false
-	}
+	return !rereadAsAnotherPath(name) && printableName(name)
+}
+
+// rereadAsAnotherPath reports whether another host's path rule reads name as a
+// different path: a colon, a trailing dot or space, or a DOS device basename.
+func rereadAsAnotherPath(name string) bool {
+	return strings.ContainsRune(name, ':') || strings.HasSuffix(name, ".") ||
+		strings.HasSuffix(name, " ") || reservedBundleName(name)
+}
+
+// printableName reports whether name carries no control byte.
+func printableName(name string) bool {
 	for i := range len(name) {
 		if name[i] < minControlByte || name[i] == maxControlByte {
 			return false
@@ -164,20 +173,27 @@ func validBundleName(name string) bool {
 	return true
 }
 
+// The DOS device families that number their names: `COM1`-`COM9` and
+// `LPT1`-`LPT9`.
+const (
+	devicePrefixCOM = "COM"
+	devicePrefixLPT = "LPT"
+)
+
 // reservedBundleName reports whether name is a DOS device name, which Windows
 // resolves in every directory and before any extension: `NUL` and `nul.txt`
 // both name the device.
 func reservedBundleName(name string) bool {
-	base, _, _ := strings.Cut(name, ".")
-	switch strings.ToUpper(base) {
+	stem, _, _ := strings.Cut(strings.ToUpper(name), ".")
+	switch stem {
 	case "CON", "PRN", "AUX", "NUL":
 		return true
 	}
-	if len(base) != len("COM1") {
+	if len(stem) != len(devicePrefixCOM)+1 {
 		return false
 	}
-	prefix := strings.ToUpper(base[:len("COM")])
-	return (prefix == "COM" || prefix == "LPT") && base[len("COM")] >= '1' && base[len("COM")] <= '9'
+	prefix, digit := stem[:len(devicePrefixCOM)], stem[len(devicePrefixCOM)]
+	return (prefix == devicePrefixCOM || prefix == devicePrefixLPT) && digit >= '1' && digit <= '9'
 }
 
 // EnsureStateIgnore creates the `.verdict` directory and its `.gitignore`
@@ -255,21 +271,58 @@ func ensureIgnoreLine(ignorePath string, raw []byte, want string) ([]byte, error
 	return raw, nil
 }
 
+// bundleDirPath is the managed repository-relative path one bundle name
+// resolves to under the state home.
+func bundleDirPath(name string) string { return filepath.Join(VerdictDir, StateDirName, name) }
+
+// RefuseBundleSymlink refuses a bundle directory that is already a symlink and
+// creates nothing: a write through the link lands in its target, which is
+// outside the bundle home even when it resolves inside the repository. name is
+// a bundle name, the last element of the path BundleDir returns.
+func (l Layout) RefuseBundleSymlink(name string) *stateError {
+	root, serr := confineRoot(l.Root)
+	if serr != nil {
+		return serr
+	}
+	_, serr = anchoredManagedPath(root, bundleDirPath(name))
+	return serr
+}
+
+// EnsureBundleDir creates one bundle's directory under the state home after
+// the same refusal: no bundle write follows a symlinked leaf.
+func (l Layout) EnsureBundleDir(name string) *stateError {
+	root, serr := confineRoot(l.Root)
+	if serr != nil {
+		return serr
+	}
+	return ensureManagedDir(root, bundleDirPath(name))
+}
+
 // ensureManagedDir resolves one managed repository-relative directory,
 // proves it stays anchored inside the root, refuses a symlinked leaf,
 // and creates it: every managed write goes through this one gate.
 func ensureManagedDir(root, name string) *stateError {
-	full, serr := confineJoin(root, name)
+	full, serr := anchoredManagedPath(root, name)
 	if serr != nil {
-		return serr
-	}
-	if serr := refuseSymlinkLeaf(full, name); serr != nil {
 		return serr
 	}
 	if err := os.MkdirAll(full, stateDirPerm); err != nil {
 		return &stateError{msg: "could not create " + full, cause: err}
 	}
 	return nil
+}
+
+// anchoredManagedPath resolves one managed repository-relative path and
+// refuses a symlinked leaf, creating nothing.
+func anchoredManagedPath(root, name string) (string, *stateError) {
+	full, serr := confineJoin(root, name)
+	if serr != nil {
+		return "", serr
+	}
+	if serr := refuseSymlinkLeaf(full, name); serr != nil {
+		return "", serr
+	}
+	return full, nil
 }
 
 // EnsureStateDir creates the ignored local state directory with its

@@ -326,11 +326,11 @@ func fetchPrepare(ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags) 
 		return nil, "", ref
 	}
 	ctx2.dir = dir
-	if ref := ensureBundleState(req.RepoRootPath()); ref != nil {
+	if ref := ensureBundleDir(req.RepoRootPath(), dir); ref != nil {
 		return nil, "", ref
 	}
-	if err := os.MkdirAll(dir, dirPerm); err != nil {
-		return nil, "", &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not create %s: %v", dir, err)}
+	if ref := ensureBundleState(req.RepoRootPath()); ref != nil {
+		return nil, "", ref
 	}
 	return &budget, dir, nil
 }
