@@ -473,43 +473,48 @@ func failAllRows(t *testing.T, root string) {
 // carries a missing findings file, so grading it would refuse with
 // backtest-row-stale unless the per-row cancel check fires first.
 func TestScoreHonorsCancellationDuringThePass(t *testing.T) {
-	tests := []struct {
-		name   string
-		after  int
-		mutate func(t *testing.T, root string)
-	}{
-		{name: "between reviews", after: 2, mutate: removeScoreFindings},
-		{name: "before the report", after: 4},
+	t.Run("between reviews", func(t *testing.T) { checkScoreCanceled(t, 2, removeScoreFindings) })
+	t.Run("before the report", func(t *testing.T) { checkScoreCanceled(t, 4, nil) })
+}
+
+// checkScoreCanceled proves one mid-pass cancel refuses with the frozen score
+// text and writes no report.
+func checkScoreCanceled(t *testing.T, after int, mutate func(t *testing.T, root string)) {
+	t.Helper()
+	root := scoreFixture(t)
+	if mutate != nil {
+		mutate(t, root)
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			root := scoreFixture(t)
-			if tc.mutate != nil {
-				tc.mutate(t, root)
-			}
-			ctx := &cancelAfterContext{Context: t.Context(), after: tc.after}
-			_, ref := RunScore(ctx, &ScoreRequest{
-				Runtime: &core.Runtime{Now: scoreClock}, RepoRoot: root, Run: scoreRun,
-			})
-			if ref == nil || ref.Code != "canceled" || ref.Message != msgScoreCanceled {
-				t.Fatalf("refusal = %+v; want the frozen score cancel", ref)
-			}
-			if _, err := os.Stat(scoreReportPath(root, scoreRun)); !os.IsNotExist(err) {
-				t.Errorf("a canceled score wrote report.json: %v", err)
-			}
-		})
+	ctx := &cancelAfterContext{after: after}
+	_, ref := RunScore(ctx, &ScoreRequest{
+		Runtime: &core.Runtime{Now: scoreClock}, RepoRoot: root, Run: scoreRun,
+	})
+	if ref == nil || ref.Code != "canceled" || ref.Message != msgScoreCanceled {
+		t.Fatalf("refusal = %+v; want the frozen score cancel", ref)
+	}
+	if _, err := os.Stat(scoreReportPath(root, scoreRun)); !os.IsNotExist(err) {
+		t.Errorf("a canceled score wrote report.json: %v", err)
 	}
 }
 
 // cancelAfterContext reports cancellation on the Nth Err call, so a test can
-// interrupt a pass without racing a goroutine.
+// interrupt a pass without racing a goroutine. It is [context.Background]
+// with Err overridden; no pass in the test reads the other three methods.
 type cancelAfterContext struct {
-	context.Context
 	after int
 	calls int
 }
 
-// Err implements context.Context.
+// Deadline implements [context.Context].
+func (c *cancelAfterContext) Deadline() (time.Time, bool) { return time.Time{}, false }
+
+// Done implements [context.Context].
+func (c *cancelAfterContext) Done() <-chan struct{} { return nil }
+
+// Value implements [context.Context].
+func (c *cancelAfterContext) Value(any) any { return nil }
+
+// Err implements [context.Context].
 func (c *cancelAfterContext) Err() error {
 	c.calls++
 	if c.calls >= c.after {

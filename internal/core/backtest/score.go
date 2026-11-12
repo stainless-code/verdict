@@ -159,8 +159,9 @@ func RunScore(ctx context.Context, req *ScoreRequest) (resp *ScoreResponse, ref 
 	return &ScoreResponse{
 		Data:     data,
 		Warnings: st.warnings,
-		Next:     "inspect .verdict/backtest/" + run + "/report.json; a score is a match rate over blame-derived candidates, not a citable measurement",
-		At:       st.timeUTC(),
+		Next: "inspect .verdict/backtest/" + run +
+			"/report.json; a score is a match rate over blame-derived candidates, not a citable measurement",
+		At: st.timeUTC(),
 	}, nil
 }
 
@@ -212,12 +213,7 @@ func (st *state) scoreRows(run string, mined int) ([]ReplayPRDoc, *core.RefusalE
 	dir := filepath.Join(st.root, artifactDir, run, replayPRsDir)
 	entries, err := os.ReadDir(dir)
 	if errors.Is(err, fs.ErrNotExist) {
-		if mined == 0 {
-			return nil, nil
-		}
-		return nil, st.refuse(codeMissingBundle, fmt.Sprintf(
-			"backtest run '%s' has no replayed reviews — replay it first (verdict backtest replay --run %s --agent <name>)",
-			run, run))
+		return st.noRows(run, mined)
 	}
 	if err != nil {
 		return nil, st.refuse(codeBacktestFail, "cannot read "+display(st.root, dir)+labelSep+err.Error())
@@ -234,6 +230,17 @@ func (st *state) scoreRows(run string, mined int) ([]ReplayPRDoc, *core.RefusalE
 		rows = append(rows, *doc)
 	}
 	return rows, nil
+}
+
+// noRows separates an empty candidate list from a run never replayed: only
+// the latter is missing work.
+func (st *state) noRows(run string, mined int) ([]ReplayPRDoc, *core.RefusalError) {
+	if mined == 0 {
+		return nil, nil
+	}
+	return nil, st.refuse(codeMissingBundle, fmt.Sprintf(
+		"backtest run '%s' has no replayed reviews — replay it first (verdict backtest replay --run %s --agent <name>)",
+		run, run))
 }
 
 // scoreRow reads one candidate's resume record.
