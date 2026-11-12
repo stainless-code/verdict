@@ -3,6 +3,8 @@ package core
 import (
 	"strings"
 	"testing"
+
+	"github.com/stainless-code/verdict/internal/golden"
 )
 
 // TestHintForSpendAndBudget proves the two spend refusals keep distinct
@@ -58,6 +60,22 @@ func assertHintFragments(t *testing.T, hint, code string, want, deny []string) {
 			t.Errorf("HintFor(%q) = %q, must not name %q", code, hint, frag)
 		}
 	}
+}
+
+// TestHintGoldenPinsEveryRefusalCode walks the registry and pins what each
+// code resolves to: an exact row, an open family, or the generic fallback.
+// Deleting a row — `bad-since` included, whose family would otherwise absorb
+// it — moves the golden instead of silently degrading the operator's hint.
+func TestHintGoldenPinsEveryRefusalCode(t *testing.T) {
+	codes := RefusalCodes()
+	if len(codes) == 0 {
+		t.Fatal("RefusalCodes returned nothing; the golden would pin no code")
+	}
+	var sb strings.Builder
+	for _, code := range codes {
+		sb.WriteString(code + "\t" + HintFor(code) + "\n")
+	}
+	golden.Check(t, "hints", sb.String())
 }
 
 // TestHintForUnknownCodeIsTheFallback proves a code outside the table and

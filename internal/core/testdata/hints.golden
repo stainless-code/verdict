@@ -1,0 +1,183 @@
+adopt-failed	try: address the cause above, then re-run the same command
+agent-failed	try: read the recorded tail in launcher.json, fix the invocation (the agent's own flags go after '--'), then re-run
+agent-missing	try: install the agent CLI (or put it on PATH), or re-run with --agent <name> for one you have
+agent-record-failed	try: make the bundle directory writable (or re-fetch the bundle), then re-run
+agent-spawn-failed	try: check the binary runs from your shell (permissions, shebang), then re-run
+agent-timeout	try: re-run with a larger --timeout, or pass the agent's faster flags after '--'
+already-adopted	try: use the verb named above for this bundle kind
+already-learned	try: cite the existing rule id instead of learning it twice
+already-posted	try: re-run with --force to override, or fetch --base-sha <posted-head> for the delta and review it instead — re-fetch if the earlier review was deleted
+already-retired	try: check the rule status with learn --status, then re-run
+already-reviewed-patch	try: re-run with --force to post the same change again, or fetch the delta/base for a new review
+ambiguous-patch-match	try: pass the exact --from <local-slug> named above
+ambiguous-sig	try: copy the full sig prefix from report output
+approve-blocked	try: triage the findings or re-run with --force
+auth-missing	try: export the credential named above, then re-run
+backtest-failed	try: confirm git works in this checkout, then re-run
+bad-approve	try: pass --approve=true|false
+bad-at	try: re-run with one of the valid values named above
+bad-attribution	try: re-run with one of the valid values named above
+bad-base	try: re-run with one of the valid values named above
+bad-budget	try: re-run with one of the valid values named above
+bad-category	try: re-run with one of the valid values named above
+bad-color	try: re-run with one of the valid values named above
+bad-config	try: re-run with one of the valid values named above
+bad-config-credentials	try: re-run with one of the valid values named above
+bad-flags	try: re-run with one of the valid values named above
+bad-from	try: re-run with one of the valid values named above
+bad-group-validation	try: re-run with one of the valid values named above
+bad-id	try: re-run with one of the valid values named above
+bad-judgment	try: re-run with one of the valid values named above
+bad-max-bytes	try: re-run with one of the valid values named above
+bad-override	try: re-run with one of the valid values named above
+bad-pack	try: fix pack.json against schemas/pack.schema.json, then re-run
+bad-preset	try: re-run with one of the valid values named above
+bad-provider	try: re-run with one of the valid values named above
+bad-range	try: re-run with one of the valid values named above
+bad-reason	try: re-run with one of the valid values named above
+bad-requirement	try: re-run with one of the valid values named above
+bad-review-input	try: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run
+bad-review-schema	try: set "schema_version": "1" in review.json
+bad-rigor	try: re-run with one of the valid values named above
+bad-rule	try: re-run with one of the valid values named above
+bad-scope	try: re-run with one of the valid values named above
+bad-settings	try: keep only output/layout/color/publish/review/spend/privacy keys (see docs/manual.md), then re-run
+bad-settings-credentials	try: remove the credential key from the settings file (credentials never live there), then re-run
+bad-sig	try: list open inline sigs with report --status open --kind inline, then re-run with the full prefix
+bad-since	try: pass --since <90d|12w|18mo|2y|ref> (a bare m is not a unit, and the ref must precede --until)
+bad-slug	try: re-run with one of the valid values named above
+bad-stash	try: re-run with one of the valid values named above
+bad-target	try: re-run with one of the valid values named above
+bad-timeout	try: pass --timeout <positive-seconds> (default 300)
+bad-triage-status	try: re-run with one of the valid values named above
+bad-until	try: pass --until <ref> that is an ancestor of HEAD
+bad-usage	try: fix the usage record named above to match schemas/usage.schema.json, then re-run
+bind-required	try: address the cause above, then re-run the same command
+budget-exceeded	try: re-run with --consent-over-budget once the spend is approved, or raise REVIEW_BUDGET_USD/the typed budget_usd default
+budget-unknown	try: address the cause above, then re-run the same command
+calibrate-failed	try: address the cause above, then re-run the same command
+canceled	try: address the cause above, then re-run the same command
+chunk-write-failed	try: address the cause above, then re-run the same command
+config-no-bundle	try: run the fetch/record step named above first, then re-run
+config-too-large	try: address the cause above, then re-run the same command
+conflicted-tree	try: resolve the conflicts (or abort the merge), then re-run
+controls-stale	try: re-fetch the bundle (controls changed under it), then re-run
+controls-too-large	try: trim the named control file under its cap, commit it at base, then re-fetch
+controls-unavailable	try: check out the PR base (actions/checkout fetch-depth: 0, or git fetch --depth=1 origin <base>), then re-fetch; fetch --allow-head-controls is the explicit opt-out
+corpus-invalid	try: address the cause above, then re-run the same command
+corrupt-store	try: re-run post/record to rebuild the store, or restore findings.json from backup, then re-run
+cost-entry-contradicts-panel	try: pass the panel in the order it ran (synthesizer first), or fix the entry's name, then re-run
+cost-entry-unnamed	try: pass every model that ran: --cost-names=<lead>,<lens-1>,<lens-2>
+cost-models-not-array	try: rewrite models as an array of named entries, then re-run
+cost-panel-unresolved	try: pass the panel that ran, in order: --cost-names=<lead>,<lens-1>,<lens-2>
+cost-unreadable	try: fix or delete the cost record named above, then re-run
+coverage-incomplete	try: stamp review.json "coverage": [{"file": "...", "ranges": "1-240"}] for every changed file, or re-run next --coverage to see the gaps, then post again
+degenerate-body	try: open with a verdict marker (see prompts/review.md), then re-run
+diff-failed	try: address the cause above, then re-run the same command
+diff-too-large	try: split the range (--range/--base/--base-sha) or narrow with a paths filter, then re-fetch
+download-failed	try: address the cause above, then re-run the same command
+duplicate-payload	try: re-run with --force to repost the identical payload — re-fetch if the earlier review was deleted
+fetch-failed	try: run 'gh auth status', confirm the repo/PR spelling, then re-run
+fix-ceiling	try: triage the sig or split the fix — the 3-pass ceiling is hard-coded
+fix-failed	try: address the cause above, then re-run the same command
+head-mismatch	try: address the cause above, then re-run the same command
+id-taken	try: pass a different --id
+index-capped	try: narrow --from/--at to a smaller tree, or raise the index caps
+index-corrupt	try: delete .verdict/index and rebuild with 'verdict index build'
+index-failed	try: delete .verdict/index and rebuild with 'verdict index build'
+init-failed	try: address the cause above, then re-run the same command
+internal	try: address the cause above, then re-run the same command
+learn-failed	try: address the cause above, then re-run the same command
+manager-failed	try: address the cause above, then re-run the same command
+manager-missing	try: address the cause above, then re-run the same command
+mcp-config-backup-failed	try: check the config path and permissions named above, then re-run
+mcp-config-foreign	try: remove the existing MCP entry by hand, then re-run
+mcp-config-no-home	try: set HOME (or CODEX_HOME), then re-run
+mcp-config-read-failed	try: check the config path and permissions named above, then re-run
+mcp-config-unknown-agent	try: check the config path and permissions named above, then re-run
+mcp-config-unmergeable	try: remove the existing MCP entry by hand, then re-run
+mcp-config-unparseable	try: fix the JSON/TOML syntax (or move the file aside), then re-run
+mcp-config-write-failed	try: check the config path and permissions named above, then re-run
+missing-bundle	try: run the fetch/record step named above first, then re-run
+missing-chunk-coverage	try: re-fetch the bundle with --chunk, then re-synthesize across all chunks and re-run
+missing-chunk-snapshot	try: re-fetch the bundle with --chunk, then re-synthesize across all chunks and re-run
+missing-diff	try: run the fetch/record step named above first, then re-run
+missing-findings	try: run the fetch/record step named above first, then re-run
+missing-index	try: run 'verdict index build' first
+missing-patch	try: run the fetch/record step named above first, then re-run
+missing-post	try: run the fetch/record step named above first, then re-run
+missing-review-file	try: run the fetch/record step named above first, then re-run
+missing-sig	try: run the fetch/record step named above first, then re-run
+missing-source	try: run the fetch/record step named above first, then re-run
+missing-tool	try: run the fetch/record step named above first, then re-run
+needs-confirm	try: re-run with --yes after reviewing the preview, then re-run
+no-patch-match	try: pass --from <local-slug>, or re-fetch the target bundle so identity.json exists
+no-pr-target	try: run the fetch/record step named above first, then re-run
+no-review-artifact	try: run the printed command yourself (--print) to see why no review.json appeared, then re-run
+no-run-bundle	try: address the cause above, then re-run the same command
+no-threads	try: run the fetch/record step named above first, then re-run
+no-verify-cmd	try: run the fetch/record step named above first, then re-run
+not-a-repo	try: run the fetch/record step named above first, then re-run
+not-local	try: run the fetch/record step named above first, then re-run
+not-retired	try: check the rule status with learn --status, then re-run
+not-verdict-authored	try: address the cause above, then re-run the same command
+pack-too-large	try: trim the pack under 64 KiB per file, 1 MiB total, 256 files, and 64 lenses, then re-run
+pack-unsafe-path	try: keep every pack path relative with no symlink components, then re-run
+post-failed	try: narrow anchor drift or body size (see above), then re-run
+post-secret-shaped	try: remove the value from review.json and re-run, or pass --allow-secret-values to publish it anyway
+pr-not-open	try: re-fetch the PR (bundle may be stale)
+pr-read-failed	try: run 'gh auth status', confirm the repo/PR spelling, then re-run
+privacy-unavailable	try: address the cause above, then re-run the same command
+prompt-dump-failed	try: run from a checkout carrying SKILL.md/prompts, then re-run
+provider-unimplemented	try: use the verb named above for this bundle kind
+rationale-required	try: add --rationale with 30+ chars, or --force
+record-failed	try: address the cause above, then re-run the same command
+repair-exhausted	try: fix every error named in error.problems, then re-run (when the cap was hit, raise --rounds up to 5; for no progress check the round files)
+report-failed	try: run the fetch/record step named above first, then re-run
+requirement-blocked	try: address the cause above, then re-run the same command
+requirement-unmet	try: address the cause above, then re-run the same command
+rounds-path-unsafe	try: remove the named path from the bundle (verdict owns it as a plain directory), then re-run
+run-mismatch	try: pick another --run, or delete the existing run directory
+sandbox-unavailable	try: install bubblewrap on Linux and allow unprivileged user namespaces, or re-run without --sandbox on a command you trust
+scope-escape	try: revert or stash files outside the anchor path, then re-run fix
+skill-bad-dir	try: address the cause above, then re-run the same command
+skill-dir-foreign	try: address the cause above, then re-run the same command
+skill-foreign-conflict	try: address the cause above, then re-run the same command
+skill-install-failed	try: address the cause above, then re-run the same command
+skill-no-detected-agent	try: name the agent explicitly with 'verdict skill install --agent <name>'
+skill-no-home	try: address the cause above, then re-run the same command
+skill-not-installed	try: install first with 'verdict skill install --dir <skills-dir>', or check the target
+skill-path-not-inventory	try: run 'verdict skill files' to list every embedded path
+skill-read-failed	try: address the cause above, then re-run the same command
+skill-target-file	try: address the cause above, then re-run the same command
+skill-unknown-agent	try: address the cause above, then re-run the same command
+spend-capped	try: re-run with --consent-over-budget once the spend is approved, or raise the personal spend ceiling (spend.budget_usd) in the operator settings, then re-run
+stale-review-artifact	try: delete the stale review.json (or let the agent overwrite it), then re-run
+threads-failed	try: run 'gh auth status', confirm the repo/PR spelling, then re-run
+triage-failed	try: address the cause above, then re-run the same command
+uninstall-foreign	try: address the cause above, then re-run the same command
+uninstall-no-receipt	try: address the cause above, then re-run the same command
+unknown-agent	try: re-run with one of the known agent names listed above
+unknown-group	try: address the cause above, then re-run the same command
+unknown-judgment	try: copy the full sig prefix from report output
+unknown-rule	try: list rules with learn --status, then re-run
+unknown-sig	try: copy the full sig prefix from report output
+unknown-thread	try: address the cause above, then re-run the same command
+unsupported-cap	try: address the cause above, then re-run the same command
+unsupported-platform	try: address the cause above, then re-run the same command
+upgrade-bad-method	try: address the cause above, then re-run the same command
+upgrade-bad-version	try: address the cause above, then re-run the same command
+upgrade-failed	try: address the cause above, then re-run the same command
+upgrade-needs-privilege	try: address the cause above, then re-run the same command
+upgrade-project-local	try: address the cause above, then re-run the same command
+upgrade-skill-copy	try: address the cause above, then re-run the same command
+upgrade-unidentified	try: address the cause above, then re-run the same command
+upgrade-version-unsupported	try: address the cause above, then re-run the same command
+upstream-diff-too-large	try: re-fetch narrowed to a range via --base-sha/--since, or narrow with a paths filter, then re-run
+verify-credential-read	try: rewrite verifyCmd without reading credential paths or piping env into the network, then re-run
+verify-destructive	try: rewrite verifyCmd to stay in-repo and non-destructive (run the test runner, not rm/mkfs/dd), then re-run
+verify-failed	try: address the cause above, then re-run the same command
+verify-networked	try: rewrite verifyCmd without network fetches or pipe-to-shell (fetch fixtures first, run offline), then re-run
+verify-repo-escape	try: rewrite verifyCmd with repo-relative paths (/tmp for scratch), then re-run
+window-too-large	try: narrow --since (a shorter span or a later ref), then re-run
+worktree-failed	try: address the cause above, then re-run the same command
