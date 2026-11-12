@@ -274,4 +274,9 @@ else
   bad "no gh invocation was intercepted, so the post legs prove nothing"
 fi
 
+
+run_review next --coverage
+assert_exit "next --coverage requires positionals" 2
+assert_file_grep "missing positionals lead with an error" "$EVAL_ERR" '^error: next requires <owner/repo> and <pr\|local-name>$'
+
 eval_end

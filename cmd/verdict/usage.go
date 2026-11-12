@@ -474,3 +474,10 @@ func arityUsage(cmd, repo, pr string) bool {
 func unknownCmdMessage(cmd string) string {
 	return "unknown cmd '" + cmd + "' (want " + verbsHint + ")"
 }
+
+func arityText(cmd string) string {
+	if cmd == "next" {
+		return "error: next requires <owner/repo> and <pr|local-name>\n" + usageText()
+	}
+	return usageText()
+}
