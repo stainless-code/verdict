@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -28,6 +29,11 @@ const (
 	defaultCheck = "critical"
 	// readHeaderTimeout bounds one request's header read.
 	readHeaderTimeout = 5 * time.Second
+	// readTimeout bounds one request's read, so a slow client cannot hold a
+	// connection open.
+	readTimeout = 30 * time.Second
+	// idleTimeout bounds a keep-alive connection between requests.
+	idleTimeout = 60 * time.Second
 	// shutdownTimeout bounds the graceful drain on cancellation.
 	shutdownTimeout = 5 * time.Second
 
@@ -163,7 +169,7 @@ func (s *Server) Addr() string {
 // URL is the token-bearing start URL. It is the only place the capability is
 // printed.
 func (s *Server) URL() string {
-	return "http://" + s.Addr() + "/?token=" + s.token
+	return "http://" + s.Addr() + "/?token=" + url.QueryEscape(s.token)
 }
 
 // Close releases the listener; an already-closed listener is not an error.
@@ -189,10 +195,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	if listener == nil {
 		return errNoListener
 	}
-	server := &http.Server{
-		Handler:           s.Handler(),
-		ReadHeaderTimeout: readHeaderTimeout,
-	}
+	server := newHTTPServer(s.Handler())
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- server.Serve(listener) }()
 	select {
@@ -208,6 +211,18 @@ func (s *Server) Serve(ctx context.Context) error {
 			return nil
 		}
 		return jq.Sealed("serve: http listener", err)
+	}
+}
+
+// newHTTPServer bounds every connection: header and request reads, and an idle
+// keep-alive. No WriteTimeout: the SSE route will stream for as long as a
+// client stays connected.
+func newHTTPServer(handler http.Handler) *http.Server {
+	return &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		IdleTimeout:       idleTimeout,
 	}
 }
 
@@ -265,7 +280,8 @@ func warnExposure(r *cli.Runner, opts *serveOptions) {
 		r.Warn("serve: --token is visible in your process list and shell history")
 	}
 	if !isLoopback(opts.host) {
-		r.Warn("serve: binding " + opts.host + " exposes the read-only surface beyond loopback")
+		r.Warn("serve: binding " + opts.host + " exposes the read-only surface beyond loopback " +
+			"over plain HTTP; the token and session cookie are not encrypted")
 	}
 }
 
@@ -336,6 +352,9 @@ func resolveGivenRoot(given string) (string, *cli.RefusalError) {
 func resolveProbeRoot(ctx context.Context) (string, *cli.RefusalError) {
 	root, err := readcommon.RepoRoot(ctx)
 	if err != nil {
+		if ctx.Err() != nil {
+			return "", &cli.RefusalError{Code: cli.CodeCanceled, Message: "canceled before serve completed"}
+		}
 		return "", &cli.RefusalError{Code: "not-a-repo", Message: err.Error()}
 	}
 	abs, aerr := filepath.Abs(root)
@@ -427,6 +446,10 @@ func applyHost(r *cli.Runner, opts *serveOptions, value string) (int, bool) {
 func applyToken(r *cli.Runner, opts *serveOptions, value string) (int, bool) {
 	if value == "" {
 		return usage(r, "serve: --token wants a non-empty value (omit the flag for a random token)"), true
+	}
+	if err := (&http.Cookie{Name: "verdict_session", Value: value}).Valid(); err != nil {
+		return usage(r, "serve: --token is not a valid session-cookie value "+
+			"(no quote, backslash, semicolon, or control byte)"), true
 	}
 	opts.token = value
 	opts.tokenSet = true

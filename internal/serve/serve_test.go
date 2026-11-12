@@ -286,6 +286,107 @@ func assertListen(t *testing.T, server *Server) {
 	}
 }
 
+// TestStartURLEscapesAndExchangesTheToken proves a token with query
+// metacharacters survives the printed URL and the session cookie.
+func TestStartURLEscapesAndExchangesTheToken(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, fixtureFiles())
+	server, err := New(&Config{
+		Port: testPort, Token: "a&b=c", Now: fixedNow, Layer: testLayer(root, nil),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if got, want := server.URL(), "http://127.0.0.1:47123/?token=a%26b%3Dc"; got != want {
+		t.Fatalf("URL = %q, want %q", got, want)
+	}
+	ts := httptest.NewServer(server.Handler())
+	ts.Client().CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	t.Cleanup(ts.Close)
+	exchange := call(t, ts, http.MethodGet, "/?token="+url.QueryEscape("a&b=c"), "", nil)
+	if exchange.status != http.StatusSeeOther {
+		t.Fatalf("exchange = %d, want 303 (%s)", exchange.status, exchange.body)
+	}
+	health := call(t, ts, http.MethodGet, "/v1/health", "",
+		map[string]string{"Cookie": cookieName + "=a&b=c"})
+	if health.status != http.StatusOK {
+		t.Fatalf("health with the cookie = %d, want 200 (%s)", health.status, health.body)
+	}
+}
+
+// TestTokenValueMustSurviveTheCookie proves a configured token net/http would
+// rewrite is refused before the listener starts.
+func TestTokenValueMustSurviveTheCookie(t *testing.T) {
+	t.Parallel()
+	for _, token := range []string{`a;b`, `a"b`, `a\b`} {
+		t.Run(token, func(t *testing.T) {
+			out := &syncBuffer{}
+			runner := &cli.Runner{
+				Cmd: "serve", Out: out, Human: out, Diag: out,
+				Now: fixedNow, Effective: cli.Defaults(),
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			if code := Run(ctx, runner, []string{"--token", token}, Request{}); code != cli.ExitUsage {
+				t.Fatalf("exit = %d, want %d for token %q", code, cli.ExitUsage, token)
+			}
+		})
+	}
+}
+
+// TestHTTPServerTimeoutsAreBounded pins finite read and idle deadlines.
+func TestHTTPServerTimeoutsAreBounded(t *testing.T) {
+	t.Parallel()
+	server := newHTTPServer(http.NotFoundHandler())
+	if server.ReadHeaderTimeout != 5*time.Second {
+		t.Errorf("ReadHeaderTimeout = %v, want 5s", server.ReadHeaderTimeout)
+	}
+	if server.ReadTimeout != 30*time.Second {
+		t.Errorf("ReadTimeout = %v, want 30s", server.ReadTimeout)
+	}
+	if server.IdleTimeout != 60*time.Second {
+		t.Errorf("IdleTimeout = %v, want 60s", server.IdleTimeout)
+	}
+}
+
+// TestCanceledProbeExitsBroke proves a cancel during the repository probe
+// keeps the documented exit 3 instead of turning into not-a-repo.
+func TestCanceledProbeExitsBroke(t *testing.T) {
+	t.Chdir(t.TempDir())
+	out := &syncBuffer{}
+	runner := &cli.Runner{
+		Cmd: "serve", Out: out, Human: out, Diag: out, JSONMode: true,
+		Now: fixedNow, Effective: cli.Defaults(),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if code := Run(ctx, runner, nil, Request{}); code != cli.ExitBroke {
+		t.Fatalf("exit = %d, want %d", code, cli.ExitBroke)
+	}
+	if got := asMap(t, decode(t, []byte(out.String()))["error"])["code"]; got != "canceled" {
+		t.Errorf("error.code = %v, want canceled", got)
+	}
+}
+
+// TestNonLoopbackWarningNamesPlainHTTP pins the exposure warning, including
+// the unencrypted token and cookie.
+func TestNonLoopbackWarningNamesPlainHTTP(t *testing.T) {
+	t.Parallel()
+	out := &syncBuffer{}
+	runner := &cli.Runner{Out: out, Human: out, Diag: out, Effective: cli.Defaults()}
+	warnExposure(runner, &serveOptions{host: "0.0.0.0"})
+	const want = "serve: binding 0.0.0.0 exposes the read-only surface beyond loopback " +
+		"over plain HTTP; the token and session cookie are not encrypted"
+	for _, warning := range runner.Warnings {
+		if warning == want {
+			return
+		}
+	}
+	t.Errorf("warnings = %v, want %q", runner.Warnings, want)
+}
+
 // TestRouteTableIsGetOnly walks the one registration point: a non-GET row
 // must fail the table's contract.
 func TestRouteTableIsGetOnly(t *testing.T) {
