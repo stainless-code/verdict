@@ -568,9 +568,11 @@ row can only add a path the diff did not change, and both misses are changed
 paths the index cannot parse at all. The caller gap is real one step out — the
 method-call fixture loses `internal/api/api.go` from the section entirely
 (`TestImpactProxyCallerReach`), the same 0.4167 measured above — but a lost
-caller file is lost reach, not a lost finding. Every fixture blames the changed
-line the diff already names, so **the backtest arm is not met** on this
-fixture, and the spike stays closed on the corpus arm alone.
+caller file is lost reach, not a lost finding. Every fixture blames a line the
+diff already changes, so a missing caller row cannot turn into a missed finding
+here: **the backtest arm is unmeasured**, not met and not cleared. Measuring it
+needs ground truth that blames a caller outside the diff. Until then the spike
+stays closed, because ADR-0003 opens it only when both arms are met.
 
 The 12 labeled sites split three ways, and only the first is reported: a
 qualified package call through an import edge (`store.Open`, `st.Open` with an
