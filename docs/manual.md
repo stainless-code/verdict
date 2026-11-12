@@ -3603,8 +3603,10 @@ Each measured row prints its judged sample size. Plain `trend` reports review
 counts, clean rate, and findings per review. A clean review has no stored
 findings; addressing every finding does not make a review clean.
 
-`post` and `record` refuse a symlinked bundle directory with `bad-config`
-before writing artifacts, matching `fetch` and `fetch-local`.
+`post` and `record` refuse a symlink at any managed bundle component —
+`.verdict`, `.verdict/state`, or the bundle directory — with `bad-config`
+before writing artifacts, matching `fetch` and `fetch-local`. A symlinked
+repository root remains supported.
 
 Serve inventory charges never exceed the 16 MiB per-bundle budget, including
 failed reads and artifacts larger than the per-file cap.
