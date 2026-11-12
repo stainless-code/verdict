@@ -224,9 +224,9 @@ Fix: fix `pack.json` against `schemas/pack.schema.json` (exact lowercase keys; e
 
 ## `bad-pack-source`
 
-Cause: `verdict pack add` named a remote-shaped source the git allowlist rejects. Only `https://host/path` with no userinfo, `ssh://user@host/path`, and `user@host:path` are git sources; a one-slash scheme, `http://`, `git+https://`, a `%`-escaped password, a token-only https user, a second `@`, or userinfo on a bracketed IPv6 host refuses before any git call. The message prints `<invalid source>`, never the bytes supplied.
+Cause: `verdict pack add` named a remote-shaped source the git allowlist rejects. Only `https://host/path` with no userinfo, `ssh://user@host/path`, and `user@host:path` are git sources; a one-slash scheme, `http://`, `git+https://`, a `%`-escaped password, a token-only https user, a second `@`, a query or fragment (`?private_token=…`, `#…`), or userinfo on a bracketed IPv6 host refuses before any git call. The message prints `<invalid source>`, never the bytes supplied.
 
-Fix: use one of the three forms with a bare ssh user and a public https URL, then re-run.
+Fix: use one of the three forms with a bare ssh user and a public https URL, and put no token in the URL, ref, or path — the source is recorded in the committed lock. Use an ssh key instead. Then re-run.
 
 ## `bad-preset`
 

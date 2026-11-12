@@ -34,7 +34,7 @@ bad-lock-source	try: re-run 'verdict pack add <dir|git-url>' from the pack sourc
 bad-max-bytes	try: re-run with one of the valid values named above
 bad-override	try: re-run with one of the valid values named above
 bad-pack	try: fix pack.json against schemas/pack.schema.json (exact lowercase keys, every id paired with its markdown file), then re-run
-bad-pack-source	try: use https://host/path with no userinfo, ssh://user@host/path, or user@host:path, then re-run
+bad-pack-source	try: use https://host/path with no userinfo, ssh://user@host/path, or user@host:path — a token in the URL, ref, or path is recorded in the committed lock; use an ssh key or a public https URL
 bad-preset	try: re-run with one of the valid values named above
 bad-provider	try: re-run with one of the valid values named above
 bad-range	try: re-run with one of the valid values named above

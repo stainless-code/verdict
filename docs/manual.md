@@ -451,8 +451,11 @@ case-insensitively and stored lower-case. A string that names a remote but
 fails this grammar refuses `bad-pack-source` before the clone and before any
 write:
 the one-slash scheme, a `%`-escaped password (`ssh://user%3ATOK@host/x`), a
-token-only or two-`@` https URL, `http://`, `git+https://`, and an IPv6 literal
-with userinfo are all the same refusal. No source is ever echoed raw: every
+token-only or two-`@` https URL, `http://`, `git+https://`, a query or
+fragment (`?private_token=…`, `#…`), and an IPv6 literal with userinfo are all
+the same refusal. A token never belongs in a source — URL, `@ref`, or path —
+because the source is recorded in the committed lock; use ssh with a key, or a
+public https URL. No source is ever echoed raw: every
 refusal, human line, and `pack list` row renders through one display that
 prints only a parsed source, and prints `<invalid source>` for anything else.
 git's own failure text is never rendered: a failed clone, rev-parse, or

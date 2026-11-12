@@ -114,7 +114,8 @@ var hintRules = []HintRule{
 	{codes: []string{"bad-pack"}, hint: "try: fix pack.json against schemas/pack.schema.json " +
 		"(exact lowercase keys, every id paired with its markdown file), then re-run"},
 	{codes: []string{"bad-pack-source"}, hint: "try: use https://host/path with no userinfo, " +
-		"ssh://user@host/path, or user@host:path, then re-run"},
+		"ssh://user@host/path, or user@host:path — a token in the URL, ref, or path is recorded " +
+		"in the committed lock; use an ssh key or a public https URL"},
 	{codes: []string{"bad-lock-source"}, hint: "try: re-run 'verdict pack add <dir|git-url>' " +
 		"from the pack source so .verdict/verdict.lock records a valid source"},
 	{codes: []string{"pack-conflict"}, hint: "try: add \"replace\": [\"<lower pack name>\"] " +
