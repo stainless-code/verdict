@@ -386,7 +386,8 @@ func readWorktreeInventory(root string) (map[string][]byte, int, *core.RefusalEr
 }
 
 // readWorktreePacks walks the head opt-out's pack tree: every entry must be a
-// regular file, and the same caps apply.
+// regular file, and the same entry, depth, and byte budget bounds it as the
+// contents-API fallback.
 func readWorktreePacks(root string, contents map[string][]byte, total *int) *core.RefusalError {
 	dir := filepath.Join(root, PacksPrefix)
 	if _, err := os.Lstat(dir); err != nil {
@@ -395,8 +396,9 @@ func readWorktreePacks(root string, contents map[string][]byte, total *int) *cor
 		}
 		return refuse(CodeUnavailable, "could not inspect "+PacksPrefix)
 	}
+	budget := treeBudget{root: PacksPrefix}
 	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, walkErr error) error {
-		return readWorktreePackEntry(root, contents, total, path, entry, walkErr)
+		return readWorktreePackEntry(root, contents, total, &budget, path, entry, walkErr)
 	})
 	if err == nil {
 		return nil
@@ -407,13 +409,28 @@ func readWorktreePacks(root string, contents map[string][]byte, total *int) *cor
 	return refuse(CodeUnavailable, fmt.Sprintf("could not walk %s: %v", PacksPrefix, err))
 }
 
-// readWorktreePackEntry checks and records one walked head pack file.
+// readWorktreePackEntry checks one walked head pack entry against the shared
+// budget and records a regular file's bytes.
 func readWorktreePackEntry(
-	root string, contents map[string][]byte, total *int,
+	root string, contents map[string][]byte, total *int, budget *treeBudget,
 	path string, entry fs.DirEntry, walkErr error,
 ) error {
 	if walkErr != nil {
 		return refuse(CodeUnavailable, fmt.Sprintf("could not walk %s: %v", PacksPrefix, walkErr))
+	}
+	rel, relErr := filepath.Rel(root, path)
+	if relErr != nil {
+		return refuse(CodeUnavailable, controlPrefix+path+" is outside "+PacksPrefix)
+	}
+	tail, inside := strings.CutPrefix(filepath.ToSlash(rel), PacksPrefix+packSep)
+	if !inside {
+		return nil // the pack root itself, whose entries the walk charges
+	}
+	if ref := budget.checkDepth(packDepth(tail, entry.IsDir())); ref != nil {
+		return ref
+	}
+	if ref := budget.spend(1); ref != nil {
+		return ref
 	}
 	if entry.IsDir() {
 		return nil
@@ -425,12 +442,22 @@ func readWorktreePackEntry(
 	if *total += len(raw); rerr != nil || *total > MaxTotalBytes {
 		return refuse(CodeTooLarge, controlPrefix+path+" is unreadable or the controls are over their size caps")
 	}
-	rel, relErr := filepath.Rel(root, path)
-	if relErr != nil || !validPackRel(filepath.ToSlash(rel)) {
+	if !validPackRel(filepath.ToSlash(rel)) {
 		return refuse(CodeUnavailable, controlPrefix+path+" is outside "+PacksPrefix)
 	}
 	contents[filepath.ToSlash(rel)] = raw
 	return nil
+}
+
+// packDepth renders one walked pack entry's depth in the same count the
+// contents fallback charges: a directory is one level deeper than the files
+// it lists.
+func packDepth(tail string, isDir bool) int {
+	depth := strings.Count(tail, packSep)
+	if isDir {
+		depth++
+	}
+	return depth
 }
 
 // regularPackEntry refuses a symlink or special file before it is opened.

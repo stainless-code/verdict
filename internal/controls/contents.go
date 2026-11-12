@@ -111,8 +111,9 @@ func (r *contentsReader) readTreeEntry(
 	}
 }
 
-// treeBudget bounds one recursive pack walk: every listing's entries spend one
-// running total, and descent stops at the depth cap.
+// treeBudget bounds one recursive pack walk — the contents fallback's or the
+// head opt-out's: every listing's entries spend one running total, and
+// descent stops at the depth cap.
 type treeBudget struct {
 	root    string
 	entries int
@@ -124,7 +125,7 @@ func (b *treeBudget) checkDepth(depth int) *core.RefusalError {
 		return nil
 	}
 	return refuse(CodeTooLarge, fmt.Sprintf(
-		"control %s nests deeper than %d directories — trim it at base", b.root, maxTreeDepth))
+		"control %s nests deeper than %d directories — trim it", b.root, maxTreeDepth))
 }
 
 // spend charges one listing's entries against the shared total.
@@ -134,7 +135,7 @@ func (b *treeBudget) spend(listed int) *core.RefusalError {
 		return nil
 	}
 	return refuse(CodeTooLarge, fmt.Sprintf(
-		"control %s lists more than %d entries across its tree — trim it at base", b.root, maxTreeEntries))
+		"control %s lists more than %d entries across its tree — trim it", b.root, maxTreeEntries))
 }
 
 // escapePath percent-escapes each slash-separated segment of a repository
