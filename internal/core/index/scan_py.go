@@ -627,6 +627,10 @@ func (x *pyExtractor) statementStart(i int) int {
 }
 
 func (x *pyExtractor) bindingAt(i int) bool {
+	start := x.statementStart(i)
+	if x.text(start) == wordImport || x.text(start) == wordFrom {
+		return false
+	}
 	if x.text(i+1) == punctAssign || x.text(i+1) == ":=" || x.text(i-1) == wordFor || x.text(i-1) == wordAs {
 		return true
 	}
