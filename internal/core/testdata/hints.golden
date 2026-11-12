@@ -132,6 +132,7 @@ pack-git-failed	try: check the source URL, the ref, your access, and the network
 pack-lock-drift	try: re-add the pack with 'verdict pack add <dir|git-url>' so .verdict/verdict.lock records its current tree hash
 pack-lock-missing	try: run 'verdict pack add <dir|git-url>' to vendor the pack and write its .verdict/verdict.lock entry
 pack-staging-stale	try: delete the dot-prefixed sibling under .verdict/packs/ that the message names by hand (its permissions block the sweep), then re-run
+pack-test-cases	try: add evals/<case>/diff.patch, findings.json, and expect.json to the pack, then re-run 'verdict pack test'
 pack-too-large	try: trim the pack under 64 KiB per file, 1 MiB total, 256 files, and 64 lenses, then re-run
 pack-unsafe-path	try: keep every pack path relative with no symlink components, then re-run
 post-failed	try: narrow anchor drift or body size (see above), then re-run

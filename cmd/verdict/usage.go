@@ -354,7 +354,7 @@ func usageText() string {
 		"    In a skill copy, scripts/verdict resolves VERDICT_BIN, then\n" +
 		"    <skill>/bin/verdict, then verdict on PATH; otherwise run the one-time\n" +
 		"    verified <skill>/scripts/verdict bootstrap (no review-time fetch).\n" +
-		"  pack <list|add> [--json]\n" +
+		"  pack <list|add|test> [--json]\n" +
 		"    list: read-only lens-pack inventory in precedence order: built-in, org\n" +
 		"    (explicit packs[] paths in personal settings), and repo\n" +
 		"    (.verdict/packs/<name>/). Lists the packs in this checkout; a review\n" +
@@ -379,6 +379,11 @@ func usageText() string {
 		"    edited snapshot copy refuses controls-stale. Built-in packs are\n" +
 		"    pinned by the binary and org packs live in personal settings, so\n" +
 		"    neither is locked.\n" +
+		"    test <name> runs the pack's offline eval cases. Use --dir <path> for an\n" +
+		"    unpacked pack. Each evals/<case>/ directory has diff.patch,\n" +
+		"    findings.json (review comments[]), and expect.json with rules[] and\n" +
+		"    optional not_rules[]. A missing case file or required command skips\n" +
+		"    the case; any skip or failure makes the command exit 1.\n" +
 		"  upgrade [--version <v>] [--dry-run] [--json]\n" +
 		"    explicit, channel-aware self-update. Installer-managed installs verify the\n" +
 		"    release (cosign bundle when present, SHA-256 always), smoke-test, and\n" +

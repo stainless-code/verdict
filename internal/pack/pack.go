@@ -6,6 +6,7 @@ package pack
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/cli"
@@ -14,6 +15,7 @@ import (
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	packcore "github.com/stainless-code/verdict/internal/core/pack"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/packtest"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -24,16 +26,19 @@ const verbPack = "pack"
 type Request = readcommon.Request
 
 const (
-	subList = "list"
-	subAdd  = "add"
+	subList         = "list"
+	subAdd          = "add"
+	subTest         = "test"
+	testDirArgCount = 3
 )
 
-const packUsage = "usage: verdict pack <list|add> [--json]\n" +
+const packUsage = "usage: verdict pack <list|add|test> [--json]\n" +
 	"       verdict pack add <dir|git-url>[@ref] [--json]\n" +
+	"       verdict pack test <name> [--json]\n" +
+	"       verdict pack test --dir <path> [--json]\n" +
 	"       git sources: https://host/path (no userinfo), ssh://user@host/path, or user@host:path"
 
-// Run executes `pack list [--json]` or `pack add <dir|git-url>[@ref] [--json]`,
-// returning the process exit code.
+// Run executes a pack command and renders its result.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	inv, code, done := checkArgs(r, args)
 	if done {
@@ -51,6 +56,9 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if inv.sub == subList {
 		return runList(ctx, r, read)
 	}
+	if inv.sub == subTest {
+		return runTest(ctx, r, read, inv.name, inv.dir)
+	}
 	return runAdd(ctx, r, read, inv.source)
 }
 
@@ -58,6 +66,8 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 type invocation struct {
 	sub    string
 	source string
+	name   string
+	dir    string
 }
 
 // runList executes the read-only inventory.
@@ -102,25 +112,125 @@ func runAdd(ctx context.Context, r *cli.Runner, read Request, source string) int
 	return cli.ExitOK
 }
 
-// checkArgs accepts exactly `list` or `add <source>`.
 func checkArgs(r *cli.Runner, args []string) (invocation, int, bool) {
 	if len(args) == 0 {
-		return invocation{}, r.ReportUsage(&cli.UsageError{Message: packUsage}), true
+		return packUsageError(r)
 	}
 	switch args[0] {
 	case subList:
-		if len(args) != 1 {
-			return invocation{}, r.ReportUsage(&cli.UsageError{Message: packUsage}), true
-		}
-		return invocation{sub: subList}, 0, false
+		return checkListArgs(r, args)
 	case subAdd:
-		if len(args) != 2 || args[1] == "" {
-			return invocation{}, r.ReportUsage(&cli.UsageError{Message: packUsage}), true
-		}
-		return invocation{sub: subAdd, source: args[1]}, 0, false
+		return checkAddArgs(r, args)
+	case subTest:
+		return checkTestArgs(r, args)
 	default:
 		return invocation{}, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
-			"unknown pack subcommand '%s' (want list or add)", args[0])}), true
+			"unknown pack subcommand '%s' (want list, add, or test)", args[0])}), true
+	}
+}
+
+func packUsageError(r *cli.Runner) (invocation, int, bool) {
+	return invocation{}, r.ReportUsage(&cli.UsageError{Message: packUsage}), true
+}
+
+func checkListArgs(r *cli.Runner, args []string) (invocation, int, bool) {
+	if len(args) != 1 {
+		return packUsageError(r)
+	}
+	return invocation{sub: subList}, 0, false
+}
+
+func checkAddArgs(r *cli.Runner, args []string) (invocation, int, bool) {
+	if len(args) != 2 || args[1] == "" {
+		return packUsageError(r)
+	}
+	return invocation{sub: subAdd, source: args[1]}, 0, false
+}
+
+func checkTestArgs(r *cli.Runner, args []string) (invocation, int, bool) {
+	if len(args) == 2 && args[1] != "" && !strings.HasPrefix(args[1], "-") {
+		return invocation{sub: subTest, name: args[1]}, 0, false
+	}
+	if len(args) == testDirArgCount && args[1] == "--dir" && args[2] != "" {
+		return invocation{sub: subTest, dir: args[2]}, 0, false
+	}
+	return packUsageError(r)
+}
+
+func runTest(ctx context.Context, r *cli.Runner, read Request, name, dir string) int {
+	p, set, warnings, ref := resolveTestPack(ctx, read, name, dir)
+	if ref != nil {
+		return r.RefuseTyped(ref)
+	}
+	for _, warning := range warnings {
+		r.Warn(warning)
+	}
+	resp, ref := packtest.Run(ctx, p, set, read.TimeUTC())
+	if ref != nil {
+		return r.RefuseTyped(ref)
+	}
+	renderTestResponse(r, resp)
+	if resp.Data.Summary.Fail > 0 || resp.Data.Summary.Skip > 0 {
+		return cli.ExitRefused
+	}
+	return cli.ExitOK
+}
+
+func resolveTestPack(ctx context.Context, read Request, name, dir string) (*packcore.Pack, *packcore.Set, []string, *core.RefusalError) {
+	read.PackFS = skillfs.FS
+	if dir != "" {
+		return resolveDirectoryPack(dir)
+	}
+	return resolveInstalledPack(ctx, read, name)
+}
+
+func resolveDirectoryPack(dir string) (*packcore.Pack, *packcore.Set, []string, *core.RefusalError) {
+	p, ref := packcore.LoadDir(dir)
+	if ref != nil {
+		return nil, nil, nil, ref
+	}
+	if p == nil {
+		return nil, nil, nil, &core.RefusalError{
+			Code: packcore.CodeBadPack,
+			Message: fmt.Sprintf("pack directory %q carries no %s", dir,
+				packcore.ManifestFile),
+		}
+	}
+	set, ref := packcore.Merge([]packcore.Origin{{Layer: packcore.LayerBuiltin, Source: "dir:" + dir, Pack: p}})
+	return p, set, nil, ref
+}
+
+func resolveInstalledPack(ctx context.Context, read Request, name string) (*packcore.Pack, *packcore.Set, []string, *core.RefusalError) {
+	set, warnings, ref := packcore.Resolve(ctx, &packcore.Request{
+		ReadRequest: read, SettingsPath: settingsPath(read),
+	})
+	if ref != nil {
+		return nil, nil, nil, ref
+	}
+	var p *packcore.Pack
+	for i := range set.Packs {
+		origin := &set.Packs[i]
+		if origin.Pack != nil && origin.Pack.Name == name {
+			p = origin.Pack
+		}
+	}
+	if p == nil {
+		return nil, nil, nil, &core.RefusalError{
+			Code:    packcore.CodeBadPack,
+			Message: fmt.Sprintf("pack %q is not installed", name),
+		}
+	}
+	return p, set, warnings, nil
+}
+
+func renderTestResponse(r *cli.Runner, resp *packtest.TestResponse) {
+	if r.JSONMode {
+		env := core.RenderEnvelope(verbPack, "", "", resp.At, resp.Next, r.Warnings, core.Wire(resp.Data), nil)
+		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+	} else {
+		for _, line := range resp.Human {
+			fmt.Fprintln(r.Human, line)
+		}
 	}
 }
 

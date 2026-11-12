@@ -199,7 +199,10 @@ var publishedSemantics = map[string]string{
 	// the envelope's data slot stays free-form per verb.
 	// pack lock/add: additive $defs/packAddData and the drift description on
 	// packEntry; no existing property, required key, enum, or type changed.
-	"envelope.schema.json": "1ad42f01e23aa377e91011a56b6d95b4745f45ee25593d8de31939b2894bff64",
+	// pack test: additive $defs/packTestData, packTestCase, and
+	// packTestSummary, plus the generated envelope description. Existing shapes
+	// remain unchanged.
+	"envelope.schema.json": "a7cda92f72624d0b7be5170863149069808e364a41a58145ddf1b53fd9ef4a18",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
