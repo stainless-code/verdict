@@ -223,24 +223,24 @@ object the checker read) and `data.repairs`; verdict never rewrites
 replaces a disagreeing line, or inserts a missing one, with the counts computed
 from the review and reports `basis-replaced`.
 
-| Code                   | Level   | Meaning                                                                                                  |
-| ---------------------- | ------- | -------------------------------------------------------------------------------------------------------- |
-| `invalid-json`         | error   | The file is not one JSON document; the message carries line:col, and the fix is to emit only the object. |
-| `wrong-type`           | mixed   | Error for a wrong type; warning for a non-numeric line/start_line or a fenced suggestion.                |
-| `missing-field`        | mixed   | Error for a required field; warning for missing schema_version, comments, or line/start_line.            |
-| `bad-enum`             | mixed   | Error for an unknown closed-set value; warning for a malformed KB id or unknown chunk name.              |
-| `out-of-range`         | error   | A length or numeric bound is outside its published range (confidence, brief approach/question, caps).    |
-| `path-not-in-diff`     | mixed   | Error for a comment path; warning for a brief site outside the diff.                                     |
-| `unknown-field`        | warning | A key is not in the published shape; the fix names the nearest known key.                                |
-| `anchor-outside-hunk`  | warning | The line is provably outside every hunk; `record` moves the comment into the body.                       |
-| `rigor-unset`          | warning | A comment carries no evidence rung; it records as `said` with `rigor_source: default`.                   |
-| `normalized-fence`     | warning | One whole-document code fence was unwrapped.                                                             |
-| `normalized-extracted` | warning | Prose around exactly one balanced JSON object was dropped.                                               |
-| `scalar-to-array`      | warning | A scalar where a string array belongs was wrapped in a one-element array.                                |
-| `key-alias`            | warning | A known alias (`inBounds`, `rung`, `file`) was renamed to its canonical key.                             |
-| `enum-synonym`         | warning | A rigor synonym or a case-folded enum value was rewritten to the published value.                        |
-| `normalized-trivia`    | warning | A BOM, an explicit null on an optional key, or an exact-duplicate comment was removed.                   |
-| `basis-replaced`       | warning | The body's `> Basis:` line disagreed with the computed counts, or was missing, and the CLI replaced it.  |
+| Code                   | Level   | Meaning                                                                                                                              |
+| ---------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `invalid-json`         | error   | The file is not one JSON document; the message carries line:col, and the fix is to emit only the object.                             |
+| `wrong-type`           | mixed   | Error for a wrong type; warning for a non-numeric line/start_line or a fenced suggestion.                                            |
+| `missing-field`        | mixed   | Error for a required field; warning for missing schema_version, comments, or line/start_line.                                        |
+| `bad-enum`             | mixed   | Error for an unknown closed-set value; warning for a malformed KB id or unknown chunk name.                                          |
+| `out-of-range`         | error   | A length or numeric bound is outside its published range (confidence, brief approach/question, caps).                                |
+| `path-not-in-diff`     | mixed   | Error for a comment path; warning for a brief site outside the diff.                                                                 |
+| `unknown-field`        | warning | A key is not in the published shape; the fix names the nearest known key.                                                            |
+| `anchor-outside-hunk`  | warning | The line is provably outside every hunk; `record` moves the comment into the body.                                                   |
+| `rigor-unset`          | warning | A comment carries no evidence rung; it records as `said` with `rigor_source: default`.                                               |
+| `normalized-fence`     | warning | One whole-document code fence was unwrapped.                                                                                         |
+| `normalized-extracted` | warning | Prose around exactly one balanced JSON object was dropped.                                                                           |
+| `scalar-to-array`      | warning | A scalar where a string array belongs was wrapped in a one-element array.                                                            |
+| `key-alias`            | warning | A known alias (`inBounds`, `rung`, `file`) was renamed to its canonical key.                                                         |
+| `enum-synonym`         | warning | A rigor synonym or a case-folded enum value was rewritten to the published value.                                                    |
+| `normalized-trivia`    | warning | A BOM, an explicit null on an optional key, or an exact-duplicate comment was removed.                                               |
+| `basis-replaced`       | warning | The body's `> Basis:` line disagreed with the computed counts, or was missing from the leading quote block, and the CLI replaced it. |
 
 ### Sig contract (sig_version 1)
 
@@ -1440,6 +1440,15 @@ The server binds `127.0.0.1` on a kernel-assigned port by default. Pass `--port`
 to pin the port or `--host` to bind another interface. The server prints one
 tokenised start URL and stops on Ctrl-C (exit 3). It never fetches, posts, runs
 a model, or writes a store.
+
+The browser UI has an inbox, review detail with its evidence ledger, threads,
+cost, precision, and a gate panel. It reads the same `/v1` envelopes as other
+clients. Updates arrive as invalidations, so the page fetches the visible view
+again; reconnecting also refreshes it. With `--no-watch`, the live indicator is
+hidden and a refresh button is shown. The embedded files are plain HTML, CSS,
+and JavaScript with no build step. A static exporter can set
+`<meta name="verdict-mode" content="static">` and place `data.json` beside
+`index.html`; the app then reads that data file instead of `/v1`.
 
 ```bash
 verdict serve                    # the current repository

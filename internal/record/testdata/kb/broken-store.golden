@@ -7,7 +7,7 @@ recorded: .verdict/state/local-kb/findings.json (1 open) + .verdict/state/local-
 --- stderr ---
 warn: no fetch-time hunk snapshot (.verdict/state/local-kb/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
 warn: kb store .verdict/kb.jsonl unreadable — citations ignored for this run (fix the bad line)
-warn: $.body: no basis line — inserted the computed counts (basis-replaced)
+warn: $.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)
 --- files ---
 --- file C/.verdict/state/local-kb/findings.json ---
 [

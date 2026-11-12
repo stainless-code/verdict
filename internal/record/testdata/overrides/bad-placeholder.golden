@@ -3,7 +3,7 @@ exit: 1
 » anchors: 0 inline, 0 moved to body
 --- stderr ---
 warn: no fetch-time hunk snapshot (.verdict/state/local-ov/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
-warn: $.body: no basis line — inserted the computed counts (basis-replaced)
+warn: $.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)
 error: override .verdict/overrides/preamble.md carries unknown placeholder '{frobnicate}' (want one of {version}, {tier}, {product_url}, {files_reviewed}, {head_sha_short}, {model}, {cost}, {attribution})
 try: keep only output/layout/color/publish/review/spend/privacy keys (see docs/manual.md), then re-run
 re-enter: verdict record acme/app local-ov

@@ -6,7 +6,7 @@ recorded: .verdict/state/local-ch/findings.json (0 open) + .verdict/state/local-
 --- stderr ---
 warn: $.chunks[2]: unknown chunk "zzz" in the chunks attestation
 warn: no fetch-time hunk snapshot (.verdict/state/local-ch/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
-warn: $.body: no basis line — inserted the computed counts (basis-replaced)
+warn: $.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)
 --- files ---
 --- file C/.verdict/state/local-ch/findings.json ---
 []
