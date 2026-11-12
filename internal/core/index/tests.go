@@ -191,7 +191,10 @@ func testMechanisms(t *treeIndex, plan *testPlan) (map[string]bool, map[string]b
 }
 
 // importsTargetPath reports whether one scanned file imports the queried file
-// itself, by a specifier the scanner resolves against its own directory.
+// itself, by a specifier the scanner resolves against its own directory. A
+// Python `from lib import mod` names the module and the submodule it takes from
+// it, so the imported name is joined on: that statement is how a test outside
+// the module's directory imports the module.
 func importsTargetPath(plan *testPlan, f *treeFile) bool {
 	lang := fileLanguage(f)
 	if plan.path == "" || lang == langGo {
@@ -199,7 +202,14 @@ func importsTargetPath(plan *testPlan, f *treeFile) bool {
 	}
 	want := trimSourceExt(plan.path)
 	for _, imp := range f.Imports {
-		if trimSourceExt(scannedSpecifier(lang, path.Dir(f.Path), imp.Path)) == want {
+		module := scannedSpecifier(lang, path.Dir(f.Path), imp.Path)
+		if module == "" {
+			continue
+		}
+		if trimSourceExt(module) == want {
+			return true
+		}
+		if lang.family() == langPython && trimSourceExt(path.Join(module, imp.Name)) == want {
 			return true
 		}
 	}
