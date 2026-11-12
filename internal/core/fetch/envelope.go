@@ -27,6 +27,9 @@ func fetchTail(
 	if ref := finalizeRemoteRun(ctx, ctx2, req, f); ref != nil {
 		return nil, "", ref
 	}
+	if ierr := writeImpact(ctx, ctx2, impactInput{index: f.Index, head: readcommon.PrField(ctx2.dir, keyHeadSHA)}); ierr != nil {
+		return nil, "", ierr
+	}
 	writeTailReceipt(ctx2, budget)
 	s, dir := ctx2.runner, ctx2.dir
 	next := "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + " +
@@ -249,6 +252,7 @@ func fetchData(
 		artifacts.Set("kb-recall.json", ctx2.dir+suffixKBRecall)
 	}
 	addArtifactIfPresent(artifacts, ctx2.dir, "lenses.txt", suffixLensesTxt)
+	impactArtifactRow(artifacts, ctx2.dir)
 	data := &core.FetchData{
 		Dir:        ctx2.dir,
 		HeadSHA:    readcommon.PrField(ctx2.dir, keyHeadSHA),
@@ -364,6 +368,7 @@ func localArtifacts(dir string) *jq.Obj {
 	addArtifactIfPresent(artifacts, dir, "kb.txt", suffixKBTxt)
 	addArtifactIfPresent(artifacts, dir, "kb-recall.json", suffixKBRecall)
 	addArtifactIfPresent(artifacts, dir, "lenses.txt", suffixLensesTxt)
+	impactArtifactRow(artifacts, dir)
 	return artifacts
 }
 
@@ -385,6 +390,9 @@ func fetchTailLocal(
 ) (*core.FetchData, string, error) {
 	if ref := finalizeLocalRun(ctx, ctx2, req, f, mode.baseSHA, listed); ref != nil {
 		return nil, "", ref
+	}
+	if ierr := writeImpact(ctx, ctx2, impactInput{index: f.Index, head: mode.headSHA}); ierr != nil {
+		return nil, "", ierr
 	}
 	writeTailReceipt(ctx2, budget)
 	next := "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + " +
