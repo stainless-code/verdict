@@ -28,7 +28,6 @@ const (
 	sshPrefix       = "ssh://"
 	packDirPerm     = 0o755
 	shaHexLen       = 40
-	gitEnvFixed     = 11
 	revParseArgs    = 3
 	revParseIndex   = 1
 )
@@ -534,7 +533,7 @@ func hooksPath(tmp string) string {
 // gitEnv builds the scrubbed clone environment: the caller's entries minus
 // every HOME/XDG/GIT override, then the hermetic values a clone needs.
 func gitEnv(base []string, tmp string) []string {
-	out := make([]string, 0, len(base)+gitEnvFixed)
+	out := make([]string, 0, len(base))
 	for _, pair := range base {
 		key, _, _ := strings.Cut(pair, "=")
 		if scrubGitEnv(key) {
