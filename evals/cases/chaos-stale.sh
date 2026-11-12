@@ -60,7 +60,7 @@ printf '{"id":"check-error-paths","rule":"Check error paths on every await","sco
   > "$EVAL_SANDBOX/.verdict-kb.jsonl"
 mkdir -p "$EVAL_SANDBOX/.verdict"
 cp "$EVAL_SANDBOX/.verdict-kb.jsonl" "$EVAL_SANDBOX/.verdict/kb.jsonl"
-(cd "$EVAL_SANDBOX" && git add -A && git -c commit.gpgsign=false commit -qm chaos-base)
+(cd "$EVAL_SANDBOX" && git add -- notes.txt .verdict-kb.jsonl .verdict/kb.jsonl && git -c commit.gpgsign=false commit -qm chaos-base)
 printf 'top\nnew line\nbottom\nextra line\n' > "$EVAL_SANDBOX/notes.txt"
 
 LB="$EVAL_SANDBOX/.verdict/state/local-chaos-stale"

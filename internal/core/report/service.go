@@ -126,20 +126,26 @@ func Run(ctx context.Context, req *core.ReportRequest) (*core.ReportResponse, *c
 	if err := loadState(ctx, st); err != nil {
 		return nil, err
 	}
-	if ref := loadRunPolicy(st); ref != nil {
+	if ref := loadGatePolicy(ctx, st); ref != nil {
 		return nil, ref
 	}
-	if st.flags.Coverage != "" {
-		if ref := readcommon.CheckLocalFresh(ctx, req.Commander, req.RepoRootPath(), st.dir); ref != nil {
-			return nil, ref
-		}
-	}
+
 	evaluateCompliance(st)
 	applyDisplayFloor(st)
 	warnLensUsage(st)
 	warnDeepValidation(st)
 	runLiveProbe(ctx, st)
 	return buildResponse(st), nil
+}
+
+func loadGatePolicy(ctx context.Context, st *state) *core.RefusalError {
+	if ref := loadRunPolicy(st); ref != nil {
+		return ref
+	}
+	if st.flags.Coverage == "" {
+		return nil
+	}
+	return readcommon.CheckLocalFresh(ctx, st.req.Commander, st.req.RepoRootPath(), st.dir)
 }
 
 func normalizeFlags(req *core.ReportRequest) Flags {

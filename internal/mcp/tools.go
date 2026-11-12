@@ -237,7 +237,7 @@ func allTools(readOnly, operator bool) []*tool {
 				"Set dry_run to repeat every check without writing, fix each problem, and after 3 rounds report any that remain instead of recording.",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Record review", idempotent: true, servedWhenReadOnly: true, readOnlyDryRun: true},
-		}, toolDeps{}, decodeRecord, wireRecord, recordcore.Run,
+		}, toolDeps{commander: fetchRunner}, decodeRecord, wireRecord, recordcore.Run,
 			func(resp *core.RecordResponse) *jq.Obj { return wireData(resp.Data) }),
 		directTool(&toolSpec{
 			name: "report",

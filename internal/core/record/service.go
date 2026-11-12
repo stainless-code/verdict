@@ -66,11 +66,8 @@ func Run(ctx context.Context, req *core.RecordRequest) (*core.RecordResponse, *c
 	if ref := reviewRefusal(check, strictRecord(st.req, snap)); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	review, ref := st.loadInputs(dir)
+	review, ref := st.loadInputs(ctx, dir)
 	if ref != nil {
-		return nil, st.withWarnings(ref)
-	}
-	if ref := readcommon.CheckLocalFresh(ctx, st.identityCommander(), st.req.RepoRootPath(), dir); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
 	res, names, ref := st.mergeAndName(dir, prov, headFull, review)
@@ -224,7 +221,11 @@ func (st *svc) bundle() (dir, prov, headFull, now string, ref *core.RefusalError
 	return dir, prov, resolveHead(dir, st.store, prov), req.TimeUTC(), nil
 }
 
-func (st *svc) loadInputs(dir string) (*jq.Obj, *core.RefusalError) {
+func (st *svc) loadInputs(ctx context.Context, dir string) (*jq.Obj, *core.RefusalError) {
+	if ref := readcommon.CheckLocalFresh(ctx, st.identityCommander(), st.req.RepoRootPath(), dir); ref != nil {
+		return nil, st.withWarnings(ref)
+	}
+
 	if st.req.DryRun {
 		raw, err := os.ReadFile(dir + diffSuffix)
 		if err != nil {
