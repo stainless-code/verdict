@@ -346,24 +346,9 @@ func tierCounts(findings []any) map[string]int {
 		tierCritical: 0, tierImportant: 0, tierInformational: 0, tierUntagged: 0,
 	}
 	for _, e := range findings {
-		counts[tierOf(e)]++
+		counts[core.TierOf(e)]++
 	}
 	return counts
-}
-
-func tierOf(entry any) string {
-	m, ok := entry.(*jq.Obj)
-	if !ok || m == nil {
-		return tierUntagged
-	}
-	sev, _ := m.Get("severity")
-	if s, ok := sev.(string); ok {
-		switch s {
-		case tierCritical, tierImportant, tierInformational:
-			return s
-		}
-	}
-	return tierUntagged
 }
 
 // categoryCounts buckets one bundle's findings by published category,
