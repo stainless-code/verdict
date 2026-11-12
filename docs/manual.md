@@ -1439,8 +1439,11 @@ that captures it captures a capability that dies with the process.
 **The exchange.** `GET /?token=<t>` is the only URL-borne token: a valid token
 sets `verdict_session_<port>` (`HttpOnly`, `SameSite=Strict`, `Path=/v1`, no
 `Max-Age`, no `Secure` — plain HTTP; the default bind keeps it on loopback) and
-`303`s to `/`, so browser
-history and bookmarks hold a token-free URL. An invalid token is `401` with no
+`303`s to `/`, so the page
+a browser lands on keeps a token-free URL. The start URL itself is a bearer
+credential for `/v1` until the process exits, and a browser that visited it can
+keep that URL in its history; a history entry is therefore a live capability,
+not a bookmark. An invalid token is `401` with no
 cookie. Every `/v1` route accepts that cookie or `Authorization: Bearer <t>`
 and refuses `?token=` with a `400` `token-in-query` transport error. `/`
 carries no data and needs no credential. A stale cookie after a restart is a
