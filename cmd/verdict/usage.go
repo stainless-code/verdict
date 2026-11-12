@@ -269,8 +269,8 @@ func usageText() string {
 		"    replay the mined candidates, newest merge first: each one gets a fresh local\n" +
 		"    bundle at its own base...head, a detached checkout of that head, one agent\n" +
 		"    launch (the same table run uses; everything after -- goes to it), and a\n" +
-		"    record pass, so findings.json carries the historical review. This is the one\n" +
-		"    backtest mode that spends: the ceiling is --max-reviews, --budget-usd (stops\n" +
+		"    record pass, so findings.json carries the historical review. This is the\n" +
+		"    backtest step that spends: the ceiling is --max-reviews, --budget-usd (stops\n" +
 		"    before a review whose projected cost would cross it), and --timeout (stops a\n" +
 		"    review that runs too long).\n" +
 		"    A priced review is the agent-reported estimate; an agent that reports none is\n" +
@@ -281,6 +281,19 @@ func usageText() string {
 		"    with another agent or other pass-through arguments refuses run-mismatch.\n" +
 		"    Checkouts live under .verdict/state and are removed after each review.\n" +
 		"    Replays are not citable.\n" +
+		"  backtest score --run <id> [--json]\n" +
+		"    grade a replay's bundles against the SZZ bugs the run mined: catch rate,\n" +
+		"    off-target findings per PR, cost per review, and a fix/revert signal table.\n" +
+		"    A pure read of the run directory and the bundles it names: no agent, no\n" +
+		"    bundle build, no corpus store. Writes .verdict/backtest/<run>/report.json.\n" +
+		"    Catch rate is a match rate over SZZ candidates, not a measured catch rate:\n" +
+		"    a deleted cleanup line beside the real bug is a candidate that was never\n" +
+		"    defective, and an unmatched finding is not proven false. Scores are not\n" +
+		"    citable.\n" +
+		"  backtest --since <90d|12w|18mo|2y|<ref>> --agent <name> [replay flags] [--json]\n" +
+		"    mine, replay, and score in one run: the miner resolves --run (or derives it),\n" +
+		"    then the replay and the score read that id. --agent is required because the\n" +
+		"    composed run replays; every replay flag and the bare -- pass-through apply.\n" +
 		"  learn --rule <text> --scope <globs> [--id <id>] [--provenance <s>] [--rigor <level>] [--json]\n" +
 		"    append one rule to .verdict/kb.jsonl (zeros + status active; provenance\n" +
 		"    defaults to manual, rigor defaults to pointed). Refuses exact-duplicate\n" +

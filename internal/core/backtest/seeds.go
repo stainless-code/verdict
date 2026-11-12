@@ -78,15 +78,38 @@ type prUnit struct {
 	skip           string
 }
 
+// The two seed signals a bug records: the commit that deleted the anchored
+// line was a revert or an ordinary fix.
+const (
+	signalFix    = "fix"
+	signalRevert = "revert"
+)
+
+// seedSignal names the seed rule one commit matched: only a revert seed is a
+// revert, so a `Revert "Revert ..."` commit that seeded through its body is an
+// ordinary fix.
+func seedSignal(subject string) string {
+	if revertSubject(subject) {
+		return signalRevert
+	}
+	return signalFix
+}
+
 // isSeed reports whether one commit is a seed by subject, body, or revert.
 func isSeed(subject, body string) bool {
 	if seedSubjectRe.MatchString(subject) {
 		return true
 	}
-	if strings.HasPrefix(subject, `Revert "`) && !strings.HasPrefix(subject, `Revert "Revert`) {
+	if revertSubject(subject) {
 		return true
 	}
 	return seedBodyRe.MatchString(body)
+}
+
+// revertSubject reports a revert seed: a `Revert "..."` subject that is not
+// itself a revert of a revert.
+func revertSubject(subject string) bool {
+	return strings.HasPrefix(subject, `Revert "`) && !strings.HasPrefix(subject, `Revert "Revert`)
 }
 
 // consider checks one commit in the window: a seed is mined, a merge seed is
@@ -140,18 +163,18 @@ func (ss *seedState) processFix(ctx context.Context, fix, subject string) *core.
 		return nil
 	}
 	kind := classifyKind(subject, diffTexts(diff.Deleted), diff.Added)
-	return ss.anchorFix(ctx, fix, kind, ss.eligibleLines(fix, diff.Deleted))
+	return ss.anchorFix(ctx, fix, kind, seedSignal(subject), ss.eligibleLines(fix, diff.Deleted))
 }
 
 // anchorFix anchors each eligible deleted line; a line that does not anchor
 // records its own skipped row. The context is checked per line so a cancel
 // stops between blames instead of after the next git failure.
-func (ss *seedState) anchorFix(ctx context.Context, fix, kind string, lines []diffLine) *core.RefusalError {
+func (ss *seedState) anchorFix(ctx context.Context, fix, kind, signal string, lines []diffLine) *core.RefusalError {
 	for _, line := range lines {
 		if ref := ss.st.canceled(ctx); ref != nil {
 			return ref
 		}
-		if ref := ss.anchorLine(ctx, fix, kind, line); ref != nil {
+		if ref := ss.anchorLine(ctx, fix, kind, signal, line); ref != nil {
 			return ref
 		}
 	}
@@ -161,7 +184,7 @@ func (ss *seedState) anchorFix(ctx context.Context, fix, kind string, lines []di
 // anchorLine blames one deleted line, maps the introducer to a PR, and anchors
 // the text at the PR head. A line that fails at any step records one skipped
 // row naming that step's reason and the line's own position.
-func (ss *seedState) anchorLine(ctx context.Context, fix, kind string, line diffLine) *core.RefusalError {
+func (ss *seedState) anchorLine(ctx context.Context, fix, kind, signal string, line diffLine) *core.RefusalError {
 	introducer, ok, ref := ss.st.blame(ctx, fix+"^", line.Path, line.Line)
 	if ref != nil {
 		return ref
@@ -186,7 +209,7 @@ func (ss *seedState) anchorLine(ctx context.Context, fix, kind string, line diff
 		ss.skipLine(reasonUnaligned, fix, unit.head, line)
 		return nil
 	}
-	ss.add(&unit, fix, Bug{Path: line.Path, Line: at, Kind: kind, Fix: fix})
+	ss.add(&unit, fix, Bug{Path: line.Path, Line: at, Kind: kind, Signal: signal, Fix: fix})
 	return nil
 }
 

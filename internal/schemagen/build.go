@@ -138,6 +138,16 @@ const keyScopeDefaults = "defaults"
 func documents() []document {
 	return []document{
 		{
+			name:  "backtest",
+			title: "report.json — backtest score report",
+			root:  reflect.TypeFor[BacktestData](),
+			defs: []definition{
+				{typ: reflect.TypeFor[BacktestSpend](), name: "spend"},
+				{typ: reflect.TypeFor[BacktestSignal](), name: "signal"},
+			},
+			additionalProperties: false,
+		},
+		{
 			name:  "config",
 			title: "config.json — typed repository configuration",
 			root:  reflect.TypeFor[Config](),

@@ -165,6 +165,10 @@ var hintRules = []HintRule{
 	{prefix: "mcp-config-", hint: "try: check the config path and permissions named above, then re-run"},
 	{codes: []string{"run-mismatch"}, hint: "try: pick another --run, or delete the existing run directory"},
 	{codes: []string{"backtest-failed"}, hint: "try: confirm git works in this checkout, then re-run"},
+	{codes: []string{"backtest-row-stale"}, hint: "try: delete the named prs/<NNN>/ directory, " +
+		"then replay the run so it records a fresh row"},
+	{codes: []string{"backtest-run-stale"}, hint: "try: re-mine the run in place with the same " +
+		"--run and window, then replay it again"},
 	{codes: []string{"window-too-large"}, hint: "try: narrow --since (a shorter span or a later ref), then re-run"},
 }
 

@@ -29,6 +29,7 @@ not citable — SZZ-derived: candidates are blame-derived guesses, not verified 
           "path": "main.go",
           "line": 6,
           "kind": "missing-error-check",
+          "signal": "fix",
           "fix": "29320a6e9fac8488fb678921021d68af35843beb"
         }
       ]

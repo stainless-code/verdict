@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/backtest.schema.json",
+  "title": "report.json — backtest score report",
+  "description": "The backtest score report, written to .verdict/backtest/<run>/report.json and echoed as the score envelope's data object: the same object, so one schema covers both. It grades each replayed PR's recorded findings against the bug lines the run's own SZZ candidate records, through the corpus matcher (+/-1 line, one finding per bug, text that names the defect kind). catch_rate is a match rate over blame-derived candidates, not a measured catch rate: a line a later fix deleted is a hypothesis about where a defect was, a deleted cleanup line beside the real bug is a candidate that was never defective, and an unmatched finding is not proven false.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "const": "1" },
+    "run": { "type": "string" },
+    "mode": { "type": "string" },
+    "prs": {
+      "description": "Replayed PRs whose recorded review was graded: the denominator of off_target_per_pr.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "not_replayed": {
+      "description": "Mined candidates the run never scored (no resume row, or a row that recorded no review). Their bugs stay out of the denominators.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "bugs": {
+      "description": "Ground-truth bug lines over the graded PRs: the denominator of catch_rate.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "reported": { "type": "integer", "minimum": 0 },
+    "matched": { "type": "integer", "minimum": 0 },
+    "unclassified": {
+      "description": "Graded bugs whose kind matched no rule, so no finding can name the defect and their lines can only lower catch_rate.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "catch_rate": {
+      "description": "matched / bugs, rounded to four decimals; null when no PR was graded.",
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "off_target_per_pr": {
+      "description": "(reported - matched) / prs, rounded to four decimals; null when no PR was graded. An unmatched finding is off target, never proven false.",
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "cost_per_review_usd": {
+      "description": "Priced spend over the priced reviews; null when no review reported a price. The mean of the priced reviews only.",
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "spend": {
+      "description": "The priced spend: usd is the sum of the reported prices, null when none was priced, and a lower bound whenever unpriced_reviews is non-zero.",
+      "$ref": "#/$defs/spend"
+    },
+    "signals": {
+      "description": "One row per seed signal, fix first: the bugs a fix or a revert produced and how many a review named.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/signal" }
+    }
+  },
+  "required": [
+    "schema_version",
+    "run",
+    "mode",
+    "prs",
+    "not_replayed",
+    "bugs",
+    "reported",
+    "matched",
+    "unclassified",
+    "catch_rate",
+    "off_target_per_pr",
+    "cost_per_review_usd",
+    "spend",
+    "signals"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "spend": {
+      "type": "object",
+      "properties": {
+        "usd": {
+          "description": "Sum of the prices the graded reviews reported; null when none was priced, never zero.",
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "priced_reviews": {
+          "description": "Graded reviews that reported a price.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "unpriced_reviews": {
+          "description": "Graded reviews that reported none; non-zero makes usd a lower bound.",
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": ["usd", "priced_reviews", "unpriced_reviews"],
+      "additionalProperties": true
+    },
+    "signal": {
+      "description": "One seed-signal row: bugs a fix or a revert introduced, and the matched count.",
+      "type": "object",
+      "properties": {
+        "signal": { "enum": ["fix", "revert"] },
+        "bugs": { "type": "integer", "minimum": 0 },
+        "matched": { "type": "integer", "minimum": 0 },
+        "catch_rate": { "type": ["number", "null"], "minimum": 0 }
+      },
+      "required": ["signal", "bugs", "matched", "catch_rate"],
+      "additionalProperties": true
+    }
+  }
+}

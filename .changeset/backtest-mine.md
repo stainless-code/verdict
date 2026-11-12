@@ -12,5 +12,5 @@ for one, so a mined run is always replayable. Candidates carry the PR head, base
 and the union of anchored `path:line:kind` bugs; exclusions are counted by
 reason and never refused. `mine.json` is timestamp-free, so a rerun over the
 same window is byte-identical. The artifact is not citable: SZZ blame is a
-hypothesis, and replay/score land in later slices. The verb is CLI-only
-because replay will spend on model runs.
+hypothesis. Replay and score read it. The verb is CLI-only because replay
+spends on model runs.
