@@ -216,11 +216,12 @@ func (l *Layer) composeRows(
 	ctx context.Context, root Root, names []string, pattern string,
 ) (rows []any, errs []ErrRow, sum totals, sources []Source, inv inventoryReport) {
 	var folded listing
+	known := bundleSet(names)
 	for _, bundle := range names {
 		if ctx.Err() != nil {
 			break
 		}
-		if item, ok := l.collectBundle(ctx, root, bundle, names, pattern); ok {
+		if item, ok := l.collectBundle(ctx, root, bundle, known, pattern); ok {
 			folded.add(&item)
 		}
 	}
@@ -261,7 +262,7 @@ type bundleItem struct {
 // collectBundle composes one row; ok is false only for a name the listing
 // raced away or the filter excluded.
 func (l *Layer) collectBundle(
-	ctx context.Context, root Root, bundle string, names []string, pattern string,
+	ctx context.Context, root Root, bundle string, names map[string]bool, pattern string,
 ) (bundleItem, bool) {
 	if pattern != "" && !BundleMatches(pattern, bundle) {
 		return bundleItem{}, false
@@ -277,7 +278,7 @@ func (l *Layer) collectBundle(
 // receipt's model name, or null counts and an error row when the bundle
 // refuses.
 func (l *Layer) row(
-	ctx context.Context, root Root, bundle string, names []string,
+	ctx context.Context, root Root, bundle string, names map[string]bool,
 ) (any, *core.ReportResponse, []ErrRow, inventoryReport) {
 	dir, ok, ref := resolveAmong(root, bundle, names)
 	if ref != nil {

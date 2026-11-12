@@ -222,18 +222,26 @@ func (l *Layer) rootByID(id string) (Root, bool) {
 // bundle-ambiguous instead of reading that sibling.
 func (l *Layer) resolve(root Root, bundle string) (string, bool, *core.RefusalError) {
 	names, _, _ := l.listBundles(root)
-	return resolveAmong(root, bundle, names)
+	return resolveAmong(root, bundle, bundleSet(names))
+}
+
+func bundleSet(names []string) map[string]bool {
+	set := make(map[string]bool, len(names))
+	for _, name := range names {
+		set[name] = true
+	}
+	return set
 }
 
 // resolveAmong maps one bundle name onto its directory against the names a
 // listing already discovered, so one request scans the state directory once
 // however many rows it composes.
-func resolveAmong(root Root, bundle string, names []string) (string, bool, *core.RefusalError) {
+func resolveAmong(root Root, bundle string, names map[string]bool) (string, bool, *core.RefusalError) {
 	dir, ref := readcommon.ResolveBundleDir(root.Path, bundle)
 	if ref != nil {
 		return "", false, ref
 	}
-	if !slices.Contains(names, bundle) {
+	if !names[bundle] {
 		return "", false, nil
 	}
 	want := filepath.ToSlash(filepath.Join(readcommon.StateDir(root.Path), bundle))
