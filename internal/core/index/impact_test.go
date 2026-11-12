@@ -142,6 +142,9 @@ func TestImpactUnresolvedHeadWarns(t *testing.T) {
 	if !slices.Equal(got.Warnings, want) {
 		t.Errorf("warnings = %v, want %v", got.Warnings, want)
 	}
+	if !got.Data.Stale {
+		t.Error("impact answered an unresolved head as fresh; want stale")
+	}
 }
 
 // TestImpactTruncatesEachList proves the row cap reaches every list and the

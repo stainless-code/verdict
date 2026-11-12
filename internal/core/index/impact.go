@@ -94,7 +94,7 @@ func ImpactOf(ctx context.Context, req *ImpactRequest) (*Impact, *core.RefusalEr
 		return nil, ref
 	}
 	headTree, headKnown := st.impactHead(ctx, root, req.Head)
-	st.impactStale(tree, req.Head, headTree, headKnown)
+	stale := st.impactStale(tree, req.Head, headTree, headKnown)
 	changes := blastChanges(req.Diff)
 	pkgs := packageMap(t)
 	symbols := blastSymbols(pkgs, t, changes)
@@ -109,7 +109,7 @@ func ImpactOf(ctx context.Context, req *ImpactRequest) (*Impact, *core.RefusalEr
 	if limit == 0 {
 		limit = DefaultLimit
 	}
-	data := impactData(t, tree, commit, headKnown && headTree != tree, blast, limit)
+	data := impactData(t, tree, commit, stale, blast, limit)
 	return &Impact{Data: data, Index: impactSource(tree), Warnings: st.warnings}, nil
 }
 
@@ -172,15 +172,19 @@ func (st *state) impactHead(ctx context.Context, root, head string) (string, boo
 }
 
 // impactStale warns when the named index does not answer for the bundle head,
-// naming which tree the rows describe.
-func (st *state) impactStale(tree, head, headTree string, headKnown bool) {
+// naming which tree the rows describe, and reports whether it does not.
+func (st *state) impactStale(tree, head, headTree string, headKnown bool) bool {
 	switch {
 	case head == "":
+		return false
 	case !headKnown:
 		st.warn(fmt.Sprintf(impactUnresolved, head, tree))
 	case headTree != tree:
 		st.warn(fmt.Sprintf(impactHeadStale, tree, headTree))
+	default:
+		return false
 	}
+	return true
 }
 
 // changedPaths lists the diff's changed paths in diff order, deduplicated.
