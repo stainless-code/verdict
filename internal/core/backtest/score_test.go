@@ -294,6 +294,37 @@ func addUnclassifiedFinding(t *testing.T, root string) {
 	writeTestFile(t, path, body)
 }
 
+// TestScoreEmptyMineReportsZero proves a mined run with no candidates scores
+// as a zero report instead of refusing: replay writes no prs directory for an
+// empty candidate list, so "never replayed" would misread a completed run.
+func TestScoreEmptyMineReportsZero(t *testing.T) {
+	root := t.TempDir()
+	runDir := filepath.Join(root, ".verdict", "backtest", "empty")
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, filepath.Join(runDir, "mine.json"),
+		`{"schema_version":"1","method":"szz-blame-v1","candidates":[],"skipped":[]}`)
+	rec := &recorder{}
+	resp, ref := RunScore(t.Context(), &ScoreRequest{
+		Runtime: &core.Runtime{Now: scoreClock, Progress: rec}, RepoRoot: root, Run: "empty",
+	})
+	if ref != nil {
+		t.Fatalf("refusal %s: %s", ref.Code, ref.Message)
+	}
+	data := resp.Data
+	if data.PRs != 0 || data.NotReplayed != 0 || data.Bugs != 0 {
+		t.Errorf("counts = %+v; want zero everywhere", data)
+	}
+	checkUnmeasured(t, data)
+	if _, err := os.Stat(scoreReportPath(root, "empty")); err != nil {
+		t.Errorf("an empty run wrote no report.json: %v", err)
+	}
+	if want := "backtest score empty  (0 PRs, 0 bugs)"; len(rec.lines) == 0 || rec.lines[0] != want {
+		t.Errorf("header = %v; want %q", rec.lines, want)
+	}
+}
+
 // TestScoreNoReviewsReportsUnmeasured proves a run whose every row failed
 // writes a report of nulls and counts the candidates it could not score.
 func TestScoreNoReviewsReportsUnmeasured(t *testing.T) {

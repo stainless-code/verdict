@@ -141,7 +141,7 @@ func RunScore(ctx context.Context, req *ScoreRequest) (resp *ScoreResponse, ref 
 	if ref != nil {
 		return nil, ref
 	}
-	rows, ref := st.scoreRows(run)
+	rows, ref := st.scoreRows(run, len(candidates))
 	if ref != nil {
 		return nil, ref
 	}
@@ -206,11 +206,15 @@ func (st *state) scoreCandidates(run string) ([]Candidate, *core.RefusalError) {
 
 // scoreRows reads every candidate's resume record. A run with no prs
 // directory was never replayed, which is the one thing scoring cannot recover
-// from: nothing was reviewed.
-func (st *state) scoreRows(run string) ([]ReplayPRDoc, *core.RefusalError) {
+// from — unless mining found no candidates at all: there is nothing to record,
+// and the zero report is the honest result.
+func (st *state) scoreRows(run string, mined int) ([]ReplayPRDoc, *core.RefusalError) {
 	dir := filepath.Join(st.root, artifactDir, run, replayPRsDir)
 	entries, err := os.ReadDir(dir)
 	if errors.Is(err, fs.ErrNotExist) {
+		if mined == 0 {
+			return nil, nil
+		}
 		return nil, st.refuse(codeMissingBundle, fmt.Sprintf(
 			"backtest run '%s' has no replayed reviews — replay it first (verdict backtest replay --run %s --agent <name>)",
 			run, run))
