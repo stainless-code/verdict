@@ -186,6 +186,15 @@ func assertResponseHeaders(t *testing.T, got result) {
 	if policy := got.header.Get("Content-Security-Policy"); policy != wantCSP {
 		t.Errorf("CSP = %q, want the exact policy", policy)
 	}
+	if referrer := got.header.Get("Referrer-Policy"); referrer != "no-referrer" {
+		t.Errorf("Referrer-Policy = %q, want no-referrer", referrer)
+	}
+	if nosniff := got.header.Get("X-Content-Type-Options"); nosniff != "nosniff" {
+		t.Errorf("X-Content-Type-Options = %q, want nosniff", nosniff)
+	}
+	if cache := got.header.Get("Cache-Control"); cache != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store", cache)
+	}
 }
 
 // assertSessionCookie pins the exchange cookie's attributes.
