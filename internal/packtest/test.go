@@ -156,7 +156,7 @@ func testCase(p *packcore.Pack, set *packcore.Set, payload []packcore.PayloadFil
 		return TestCase{Case: name, Status: skipStatus, Reason: "incomplete case: missing " + missing}
 	}
 	diff := string(files["diff.patch"])
-	selected := selectRules(set, diffPaths(diff))
+	selected := selectRules(p, set, diffPaths(diff))
 	expect, reason := parseExpect(files["expect.json"])
 	if reason != "" {
 		return failedCase(name, reason)
@@ -171,7 +171,7 @@ func testCase(p *packcore.Pack, set *packcore.Set, payload []packcore.PayloadFil
 	if reason != "" {
 		return failedCase(name, reason)
 	}
-	if reason := checkFindingCitations(findings, p.Rules, set, expect); reason != "" {
+	if reason := checkFindingCitations(findings, p, set, expect); reason != "" {
 		return failedCase(name, reason)
 	}
 	return TestCase{Case: name, Status: passStatus}
@@ -197,10 +197,13 @@ func missingCaseFile(files map[string][]byte) string {
 	return ""
 }
 
-func selectRules(set *packcore.Set, paths []string) map[string]*packcore.Rule {
+func selectRules(p *packcore.Pack, set *packcore.Set, paths []string) map[string]*packcore.Rule {
 	rules := set.RulesFor(paths)
 	selected := make(map[string]*packcore.Rule, len(rules))
 	for i := range rules {
+		if rules[i].Pack != p.Name {
+			continue
+		}
 		selected[rules[i].ID] = &rules[i]
 	}
 	return selected
@@ -241,14 +244,14 @@ func checkForbiddenRules(ids []string, allRules map[string]bool, selected map[st
 	return ""
 }
 
-func checkFindingCitations(findings []map[string]any, rules []packcore.Rule, set *packcore.Set, expect testExpect) string {
-	allRules := make(map[string]bool, len(rules))
-	for i := range rules {
-		allRules[rules[i].ID] = true
+func checkFindingCitations(findings []map[string]any, p *packcore.Pack, set *packcore.Set, expect testExpect) string {
+	allRules := make(map[string]bool, len(p.Rules))
+	for i := range p.Rules {
+		allRules[p.Rules[i].ID] = true
 	}
 	cited := map[string]bool{}
 	for i := range findings {
-		if reason := checkOneFinding(findings[i], i+1, allRules, set, expect, cited); reason != "" {
+		if reason := checkOneFinding(findings[i], i+1, allRules, p, set, expect, cited); reason != "" {
 			return reason
 		}
 	}
@@ -259,6 +262,7 @@ func checkOneFinding(
 	finding map[string]any,
 	number int,
 	allRules map[string]bool,
+	p *packcore.Pack,
 	set *packcore.Set,
 	expect testExpect,
 	cited map[string]bool,
@@ -272,7 +276,7 @@ func checkOneFinding(
 		return reason
 	}
 	for _, id := range ids {
-		if reason := validateCitation(id, number, pathValue, allRules, set, expect.NotRules); reason != "" {
+		if reason := validateCitation(id, number, pathValue, allRules, p, set, expect.NotRules); reason != "" {
 			return reason
 		}
 		cited[id] = true
@@ -296,11 +300,19 @@ func findingRuleIDs(finding map[string]any, number int) ([]string, string) {
 	return ids, ""
 }
 
-func validateCitation(id string, number int, pathValue string, allRules map[string]bool, set *packcore.Set, denied []string) string {
+func validateCitation(
+	id string,
+	number int,
+	pathValue string,
+	allRules map[string]bool,
+	p *packcore.Pack,
+	set *packcore.Set,
+	denied []string,
+) string {
 	if !allRules[id] {
 		return fmt.Sprintf("finding %d cites unknown rule id %s", number, id)
 	}
-	if !selectedForPath(set, id, pathValue) {
+	if !selectedForPath(p, set, id, pathValue) {
 		return fmt.Sprintf("finding %d cites unselected rule %s for %s", number, id, pathValue)
 	}
 	if slices.Contains(denied, id) {
@@ -402,10 +414,10 @@ func reviewFindingProblem(checked recordcore.CheckResult) string {
 	return ""
 }
 
-func selectedForPath(set *packcore.Set, id, path string) bool {
+func selectedForPath(p *packcore.Pack, set *packcore.Set, id, path string) bool {
 	rules := set.RulesFor([]string{path})
 	for i := range rules {
-		if rules[i].ID == id {
+		if rules[i].ID == id && rules[i].Pack == p.Name {
 			return true
 		}
 	}

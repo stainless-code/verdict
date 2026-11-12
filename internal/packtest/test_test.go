@@ -26,6 +26,13 @@ type caseFixture struct {
 	tool     string
 }
 
+type layeredCaseFixture struct {
+	name     string
+	findings string
+	expect   string
+	reason   string
+}
+
 // TestPackTestCases checks each case expectation against a fixture pack.
 func TestPackTestCases(t *testing.T) {
 	tests := []caseFixture{
@@ -61,6 +68,47 @@ func TestPackTestRejectsNonnumericAnchor(t *testing.T) {
 	}
 	if !strings.Contains(got.Reason, "$.comments[0].line") {
 		t.Fatalf("reason = %q, want the invalid anchor field", got.Reason)
+	}
+}
+
+// TestPackTestScopesRulesToTestedPack checks that a higher-layer replacement
+// cannot satisfy the tested pack's expectations or finding citations.
+func TestPackTestScopesRulesToTestedPack(t *testing.T) {
+	tests := []layeredCaseFixture{
+		{
+			name:     "expected rule selection",
+			findings: `[]`,
+			expect:   `{"rules":["rule-a"]}`,
+			reason:   "expected rule is not selected: rule-a",
+		},
+		{
+			name:     "finding citation selection",
+			findings: validFinding,
+			expect:   `{"rules":[]}`,
+			reason:   "finding 1 cites unselected rule rule-a for src/a.go",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			checkLayeredPackTestCase(t, tt)
+		})
+	}
+}
+
+func checkLayeredPackTestCase(t *testing.T, tt layeredCaseFixture) {
+	t.Helper()
+	p := testPack(t, tt.findings, tt.expect, "")
+	set := layeredTestSet(t, p)
+	resp, ref := Run(context.Background(), p, set, "2026-01-01T00:00:00Z")
+	if ref != nil {
+		t.Fatalf("Run() refusal = %s: %s", ref.Code, ref.Message)
+	}
+	got := resp.Data.Cases[0]
+	if got.Status != failStatus {
+		t.Fatalf("status = %q, want %q: %+v", got.Status, failStatus, got)
+	}
+	if !strings.Contains(got.Reason, tt.reason) {
+		t.Fatalf("reason = %q, want substring %q", got.Reason, tt.reason)
 	}
 }
 
@@ -196,6 +244,23 @@ func loadTestPack(t *testing.T, files fs.FS) *packcore.Pack {
 		t.Fatalf("Load() = %v, %v", p, ref)
 	}
 	return p
+}
+
+func layeredTestSet(t *testing.T, tested *packcore.Pack) *packcore.Set {
+	t.Helper()
+	override := loadTestPack(t, fstest.MapFS{
+		"pack.json":          {Data: []byte(`{"schema_version":"1","name":"acme/override","version":"1.0.0","replace":["acme/test"],"severity":{"s":"important"},"lenses":[{"id":"override"}],"rules":[{"id":"rule-a","severity":"s","globs":["src/*.go"]}]}`)},
+		"lenses/override.md": {Data: []byte("replacement lens\n")},
+		"rules/rule-a.md":    {Data: []byte("replacement rule body\n")},
+	})
+	set, ref := packcore.Merge([]packcore.Origin{
+		{Layer: packcore.LayerBuiltin, Source: "fixture", Pack: tested},
+		{Layer: packcore.LayerRepo, Source: "repo fixture", Pack: override},
+	})
+	if ref != nil {
+		t.Fatalf("Merge() refusal = %s: %s", ref.Code, ref.Message)
+	}
+	return set
 }
 
 func runTest(t *testing.T, p *packcore.Pack, at string) (*TestResponse, *core.RefusalError) {
