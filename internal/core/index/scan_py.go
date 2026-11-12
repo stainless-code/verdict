@@ -631,6 +631,9 @@ func (x *pyExtractor) bindingAt(i int) bool {
 	if x.text(start) == wordImport || x.text(start) == wordFrom {
 		return false
 	}
+	if x.identityAssignment(i) {
+		return false
+	}
 	if x.text(i+1) == punctAssign || x.text(i+1) == ":=" || x.text(i-1) == wordFor || x.text(i-1) == wordAs {
 		return true
 	}
@@ -685,4 +688,14 @@ func (x *pyExtractor) kind(i int) int {
 		return -1
 	}
 	return x.tokens[i].kind
+}
+
+func (x *pyExtractor) identityAssignment(i int) bool {
+	if x.text(i+1) != punctAssign || x.text(i+2) != x.text(i) {
+		return false
+	}
+	assignment := i + 1
+	value := assignment + 1
+	end := value + 1
+	return end == len(x.tokens) || x.tokens[end].logical || x.text(end) == punctSemi
 }
