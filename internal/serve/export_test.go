@@ -114,7 +114,11 @@ func TestHTMLRollback(t *testing.T) {
 // TestHTMLInterruptedRefresh kills a publisher between the two renames.
 func TestHTMLInterruptedRefresh(t *testing.T) {
 	layer := exportLayer(t)
-	dest := filepath.Join(exportTempDir(t), "export")
+	parent := filepath.Join(exportTempDir(t), "ancestor.tmp-dir")
+	if err := os.Mkdir(parent, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(parent, "export")
 	if err := exportHTML(t.Context(), dest, layer, fixedNow()); err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +188,7 @@ func TestHTMLCrashChild(t *testing.T) {
 }
 
 func crashRename(from, to string) error {
-	if !strings.Contains(from, ".tmp-") {
+	if !strings.HasPrefix(filepath.Base(from), filepath.Base(to)+".tmp-") {
 		return os.Rename(from, to)
 	}
 	process, err := os.FindProcess(os.Getpid())

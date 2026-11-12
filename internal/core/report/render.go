@@ -142,6 +142,7 @@ func viewRanked(st *state) []readcommon.Ranked {
 // the human summary line; gates keep their own full-set tallies.
 func viewOpen(view []readcommon.Ranked) int {
 	n := 0
+
 	for _, item := range view {
 		if readcommon.StatusOf(item.Entry) == statusOpen {
 			n++
@@ -245,6 +246,7 @@ func buildHuman(st *state) []string {
 	view := viewRanked(st)
 	lines := []string{fmt.Sprintf("report: %s (%d shown) open=%d head=%s",
 		st.dir, len(view), viewOpen(view), readcommon.ShortSHA(st.headSHA))}
+	lines = append(lines, cleanHeadline(st)...)
 	for _, item := range view {
 		lines = append(lines, fmt.Sprintf("%d. [%s] %s (%s)",
 			item.Rank, jq.Str(readcommon.FieldOf(item.Entry, "status")),
@@ -726,4 +728,20 @@ func completenessFailLines(st *state) []string {
 			"(stale-head: re-run %s, then review + post, then re-check)",
 			short, readcommon.ShortSHA(st.compPosted), refetch)}
 	}
+}
+
+func cleanHeadline(st *state) []string {
+	if len(st.entries) == 0 {
+		return []string{fmt.Sprintf("no findings — checked %d files", st.counts.CheckedFiles)}
+	}
+	if readcommon.CountOpen(st.entries) > 0 {
+		return nil
+	}
+	addressed := 0
+	for _, e := range st.entries {
+		if readcommon.StatusOf(e) == statusAddressed {
+			addressed++
+		}
+	}
+	return []string{fmt.Sprintf("no open findings — %d addressed, %d terminal", addressed, len(st.entries)-addressed)}
 }

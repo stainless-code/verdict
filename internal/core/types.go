@@ -105,11 +105,13 @@ type ReportVerdict struct {
 
 // ReportCounts counts finding kinds, anchoring, and categories.
 type ReportCounts struct { //nolint:govet // field order is the published property order
-	Inline     int            `json:"inline"      min:"0"`
-	Section    int            `json:"section"     min:"0"`
-	Anchored   int            `json:"anchored"    min:"0"`
-	Unanchored int            `json:"unanchored"  min:"0"`
-	ByCategory map[string]int `json:"by_category"`
+	Clean        bool           `json:"clean"         optional:"true"`
+	CheckedFiles int            `json:"checked_files" min:"0"         optional:"true"`
+	Inline       int            `json:"inline"        min:"0"`
+	Section      int            `json:"section"       min:"0"`
+	Anchored     int            `json:"anchored"      min:"0"`
+	Unanchored   int            `json:"unanchored"    min:"0"`
+	ByCategory   map[string]int `json:"by_category"`
 }
 
 // ReportPanel is the panel source plus its member list.

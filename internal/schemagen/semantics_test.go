@@ -18,6 +18,7 @@ import (
 // skill) re-pinned all ten hashes: only each $id URL moved; no property,
 // required key, enum, or type changed.
 var publishedSemantics = map[string]string{
+	"calibration.schema.json": "9e061b60ab7c2252b86146af16742a3e59c64a28e9f6441fd0f30f1f5e2f9581",
 	// additive backtest.schema.json (new run-artifact document for the backtest
 	// score report; no existing schema property, required key, or type changed).
 	// The catch_rate description now calls the rate a match rate over
@@ -198,7 +199,7 @@ var publishedSemantics = map[string]string{
 	// pack test: additive $defs/packTestData, packTestCase, and
 	// packTestSummary, plus the generated envelope description. Existing shapes
 	// remain unchanged.
-	"envelope.schema.json": "1034e4fc3493ae992e974c182842a64669fc3dd6d6f852b6246cf16a951648cd",
+	"envelope.schema.json": "1e11dbf8c279fdf2b5a5710ccd41cb8a707af8aa3c90fb041785199e06068fb1",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

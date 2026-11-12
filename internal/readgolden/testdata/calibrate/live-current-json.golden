@@ -22,6 +22,7 @@ exit: 0
       {
         "sig": "c111111111111111111111111111111111111111",
         "status": "open",
+        "judge": "human",
         "severity": "critical",
         "category": null,
         "locator": "notes.txt:2",
@@ -34,6 +35,7 @@ exit: 0
       {
         "sig": "b222222222222222222222222222222222222222",
         "status": "open",
+        "judge": "none",
         "severity": "important",
         "category": null,
         "locator": "notes.txt:2",
@@ -43,6 +45,7 @@ exit: 0
       {
         "sig": "d444444444444444444444444444444444444444",
         "status": "addressed",
+        "judge": "none",
         "severity": "important",
         "category": null,
         "locator": "notes.txt:2",
@@ -55,6 +58,7 @@ exit: 0
       {
         "sig": "f666666666666666666666666666666666666666",
         "status": "open",
+        "judge": "none",
         "severity": "informational",
         "category": null,
         "locator": "?",
@@ -97,6 +101,68 @@ exit: 0
           "judged": 2,
           "resolution_rate": 0
         }
+      },
+      "resolution_rate": 0,
+      "sample_size": 4,
+      "as_of": "0000-00-00T00:00:00Z",
+      "judge": "human",
+      "by_judge": {
+        "human": 1,
+        "agent": 0,
+        "mixed": 0,
+        "none": 3
+      },
+      "by_severity": {
+        "critical": {
+          "fixed": 0,
+          "resolved_unfixed": 1,
+          "open": 0,
+          "unknown": 0,
+          "judged": 1,
+          "resolution_rate": 0
+        },
+        "important": {
+          "fixed": 0,
+          "resolved_unfixed": 0,
+          "open": 1,
+          "unknown": 1,
+          "judged": 1,
+          "resolution_rate": 0
+        },
+        "informational": {
+          "fixed": 0,
+          "resolved_unfixed": 0,
+          "open": 0,
+          "unknown": 1,
+          "judged": 0,
+          "resolution_rate": null
+        },
+        "untagged": {
+          "fixed": 0,
+          "resolved_unfixed": 0,
+          "open": 0,
+          "unknown": 0,
+          "judged": 0,
+          "resolution_rate": null
+        }
+      },
+      "by_rule": {
+        "r-a1": {
+          "fixed": 0,
+          "resolved_unfixed": 1,
+          "open": 0,
+          "unknown": 0,
+          "judged": 1,
+          "resolution_rate": 0
+        },
+        "r-a2": {
+          "fixed": 0,
+          "resolved_unfixed": 0,
+          "open": 0,
+          "unknown": 1,
+          "judged": 0,
+          "resolution_rate": null
+        }
       }
     },
     "provenance": {
@@ -114,5 +180,173 @@ b2222222 [open] notes.txt:2 — thread still open kb:b22222222222222222222222222
 d4444444 [unknown] notes.txt:2 — comment not found live kb:d444444444444444444444444444444444444444,addressed,important,notes.txt:2,unknown,comment not found live,["r-a2"]
 f6666666 [unknown] ? — body section — not a thread comment kb:f666666666666666666666666666666666666666,open,informational,?,unknown,body section — not a thread comment
 precision: fixed=0 resolved-unfixed=1 open=1 unknown=2 (judged 2)
+resolution: 0/2 (0.0%) — judge human (human 1, agent 0, none 3)
 provenance: tool v0.0.1-test prompts abc123def456 model m
 --- files ---
+--- file C/.verdict/state/5101/calibration.json ---
+{
+  "review_id": 424242,
+  "head": {
+    "reviewed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "live": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "pr": {
+    "state": "OPEN",
+    "merged_at": null
+  },
+  "outcomes": [
+    {
+      "sig": "c111111111111111111111111111111111111111",
+      "status": "open",
+      "judge": "human",
+      "severity": "critical",
+      "category": null,
+      "locator": "notes.txt:2",
+      "outcome": "resolved-unfixed",
+      "detail": "thread resolved but cited file unchanged since review head",
+      "kb": [
+        "r-a1"
+      ]
+    },
+    {
+      "sig": "b222222222222222222222222222222222222222",
+      "status": "open",
+      "judge": "none",
+      "severity": "important",
+      "category": null,
+      "locator": "notes.txt:2",
+      "outcome": "open",
+      "detail": "thread still open"
+    },
+    {
+      "sig": "d444444444444444444444444444444444444444",
+      "status": "addressed",
+      "judge": "none",
+      "severity": "important",
+      "category": null,
+      "locator": "notes.txt:2",
+      "outcome": "unknown",
+      "detail": "comment not found live",
+      "kb": [
+        "r-a2"
+      ]
+    },
+    {
+      "sig": "f666666666666666666666666666666666666666",
+      "status": "open",
+      "judge": "none",
+      "severity": "informational",
+      "category": null,
+      "locator": "?",
+      "outcome": "unknown",
+      "detail": "body section — not a thread comment"
+    }
+  ],
+  "precision": {
+    "fixed": 0,
+    "resolved_unfixed": 1,
+    "open": 1,
+    "unknown": 2,
+    "judged": 2,
+    "by_tier": {
+      "critical": {
+        "fixed": 0,
+        "resolved_unfixed": 1,
+        "open": 0,
+        "unknown": 0
+      },
+      "important": {
+        "fixed": 0,
+        "resolved_unfixed": 0,
+        "open": 1,
+        "unknown": 1
+      },
+      "informational": {
+        "fixed": 0,
+        "resolved_unfixed": 0,
+        "open": 0,
+        "unknown": 1
+      }
+    },
+    "by_category": {
+      "untagged": {
+        "fixed": 0,
+        "resolved_unfixed": 1,
+        "open": 1,
+        "unknown": 2,
+        "judged": 2,
+        "resolution_rate": 0
+      }
+    },
+    "resolution_rate": 0,
+    "sample_size": 4,
+    "as_of": "0000-00-00T00:00:00Z",
+    "judge": "human",
+    "by_judge": {
+      "human": 1,
+      "agent": 0,
+      "mixed": 0,
+      "none": 3
+    },
+    "by_severity": {
+      "critical": {
+        "fixed": 0,
+        "resolved_unfixed": 1,
+        "open": 0,
+        "unknown": 0,
+        "judged": 1,
+        "resolution_rate": 0
+      },
+      "important": {
+        "fixed": 0,
+        "resolved_unfixed": 0,
+        "open": 1,
+        "unknown": 1,
+        "judged": 1,
+        "resolution_rate": 0
+      },
+      "informational": {
+        "fixed": 0,
+        "resolved_unfixed": 0,
+        "open": 0,
+        "unknown": 1,
+        "judged": 0,
+        "resolution_rate": null
+      },
+      "untagged": {
+        "fixed": 0,
+        "resolved_unfixed": 0,
+        "open": 0,
+        "unknown": 0,
+        "judged": 0,
+        "resolution_rate": null
+      }
+    },
+    "by_rule": {
+      "r-a1": {
+        "fixed": 0,
+        "resolved_unfixed": 1,
+        "open": 0,
+        "unknown": 0,
+        "judged": 1,
+        "resolution_rate": 0
+      },
+      "r-a2": {
+        "fixed": 0,
+        "resolved_unfixed": 0,
+        "open": 0,
+        "unknown": 1,
+        "judged": 0,
+        "resolution_rate": null
+      }
+    }
+  },
+  "provenance": {
+    "tool_version": "0.0.1-test",
+    "prompts_hash": "abc123def456",
+    "model": "m"
+  },
+  "schema_version": "1",
+  "bundle": "5101",
+  "as_of": "0000-00-00T00:00:00Z"
+}

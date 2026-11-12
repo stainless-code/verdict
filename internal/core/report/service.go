@@ -21,6 +21,7 @@ import (
 const (
 	statusAll         = "all"
 	statusOpen        = "open"
+	statusAddressed   = "addressed"
 	kindInline        = "inline"
 	kindSection       = "section"
 	tierCritical      = "critical"
@@ -218,6 +219,8 @@ func loadState(ctx context.Context, st *state) *core.RefusalError {
 	st.nOpen = readcommon.CountStatus(st.ranked, statusOpen)
 	st.nAllOpen = readcommon.CountOpen(entries)
 	st.counts = storeCounts(entries)
+	st.counts.Clean = len(entries) == 0
+	st.counts.CheckedFiles = countNonEmpty(strings.Split(checkedFiles(st.dir), newline))
 	loadStateCost(st)
 	loadStateCompleteness(ctx, st)
 	return nil
