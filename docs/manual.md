@@ -2705,8 +2705,11 @@ forwards every subcommand.
 `backtest mine --since <90d|12w|18mo|2y|ref> [--until <ref>] [--run <slug>] [--json]`
 mines bug-introducing PR candidates from the local clone. It makes zero model
 calls and zero network calls: everything comes from git objects already on
-disk. `replay` (run the review) and `score` (join findings to the later fix)
-are later slices; this release ships `mine` alone.
+disk. `backtest replay --run <id> --agent <name> [--max-reviews <n>]
+[--budget-usd <usd>] [--timeout <secs>] [--rounds <n>] [-- <agent args>]` then
+reviews those candidates with the operator's own agent, one launch per
+candidate; it is the one mode that spends. `score` (join the replayed findings
+to the later fix) is a later slice.
 
 Every mining git call runs with the system and user config nulled — the artifact
 never depends on a formatting knob — with one exception: the user's
@@ -2859,6 +2862,99 @@ A candidate carries `head`, `base`, `landed_by`, `pr` (number or null),
 `repo` is empty and `pr` is null: mining targets the checkout, not a bundle.
 Human output is one header line, one line per candidate, a skipped-by-reason
 footer, and the `not citable — SZZ-derived` line.
+
+### Replay
+
+`backtest replay --run <id> --agent <name>` reads the run's `mine.json` and
+walks the candidates newest merge first. Each candidate is reviewed at its own
+resolution, never at `HEAD`: the bundle is a fresh local build of
+`<base>..<head>` through fetch-local's range mode, so `source.json`,
+`full.diff`, `toc.txt`, and `roles.txt` describe the historical PR exactly as
+the miner recorded it. The agent runs in a detached `git worktree` of that
+head under `.verdict/state/.worktree-bt-<run>-<n>`, so its reads of the source
+tree are the historical files, not today's checkout. The worktree is removed
+after the review, on the failure paths too. `record` then validates and merges
+what the agent wrote, so `findings.json` in the bundle is a recorded review.
+
+The agent is `run`'s table (`claude`, `codex`, `cursor`, `opencode`); the
+binary is resolved from `PATH` at launch. Everything after a bare `--` is
+passed to the agent after its own flags, so a per-run model override is
+`backtest replay ... -- --model <id>`. Replay never chooses a model itself.
+
+Budgets bound the spend, and each one is a real refusal path, not a warning:
+
+- `--max-reviews <n>` (default 10) caps the number of reviews. It is a whole
+  number from 1 to 99 — the ceiling keeps the candidate index two digits, which
+  is what the bundle name cap budgets for (below) — and the stop reason is
+  `max-reviews`.
+- `--budget-usd <usd>` caps the agent-reported estimate. The run stops before a
+  review whose projected cost (the median of the reviews already priced) would
+  cross the ceiling; the stop reason is `budget-usd`. A review that reported no
+  price contributes no projection sample, so unknown spend is never projected
+  as zero.
+- `--timeout <secs>` (default 300) and `--rounds <n>` (default 1) are `run`'s
+  watchdog and repair-round flags, applied to each review. `--rounds` is
+  checked here (1–5) before any worktree or bundle exists, so an unsupported
+  count refuses `bad-flags` without spending anything.
+
+A review that fails is that candidate's row, not the run's refusal: an agent
+that exits non-zero, times out, leaves no artifact, or writes one the record
+path rejects is recorded with that refusal code as its `status`, its bundle
+kept for inspection, and the walk continues. The timeout row carries
+`agent-timeout`, the same refusal `verdict run --timeout` reports. A candidate
+whose checkout or range cannot be materialized is likewise one failed row —
+`backtest-failed` for a head git cannot check out, the range's own code for a
+bundle build — with an empty `bundle`, and the walk continues.
+
+Five failures end the whole walk instead, because every later candidate would
+fail the same way: `agent-missing` (the binary is not on `PATH`),
+`agent-spawn-failed`, and `canceled`, plus `backtest-failed` when git vanishes
+mid-run — a repository whose git has already resolved and then disappears
+refuses with the install hint rather than a row — and `backtest-failed` again
+when the state directory that holds the checkouts cannot be created. Those
+refuse the run itself: the rows already walked stay on disk, no further
+candidate starts, and no agent is launched.
+
+Rerunning the same `--run` resumes: a candidate whose `replay.json` says `ok`
+is reported from that record and the agent is not launched again — as long as
+the bundle and its `findings.json` still exist. A row whose bundle was deleted
+or pruned is replayed again. A stored row is bound to the agent and
+pass-through arguments that produced it, and to the candidate's resolution —
+replaying it with another agent, other pass-through arguments, or a re-mined
+head/base refuses `run-mismatch` instead of silently rewriting a priced
+review. Delete the run directory to start over. Candidates that failed are
+retried.
+
+Spend is the agent-reported estimate from each bundle's `cost.json`, never a
+price verdict computes. A row with no price carries `cost_usd: null`, and the
+footer reads `unknown` (or a `≥` lower bound) instead of `$0.00`: a run that
+could not price itself must not look free.
+
+Artifacts: `.verdict/backtest/<run>/prs/<NNN>/replay.json` per candidate (the
+resume record: `run`, `n`, `pr`, `head`, `base`, `agent`, `pass_through`,
+`status`, `bundle`, `cost_usd`, `detail`, `at`), the bundle under
+`.verdict/state/local-bt-<n>-<run>`, and a `backtest.json` marker inside every
+bundle replay builds. The candidate index leads the bundle name because
+fetch-local caps a bundle name at 48 bytes: `bt-<n>-` spends at most 6 of them
+(`bt-99-`), which leaves 42 for the run id. A `--run` id longer than 42 bytes
+refuses `bad-slug` before anything is built — by `backtest mine` too, so a run
+that exists is always replayable — because two longer ids sharing a 43-byte
+prefix would be cut onto one bundle: the second run would overwrite the first's
+diff, and resuming the first would report `ok` against the second's review. A
+run id longer than 42 bytes derived from `--since` refuses the same way and asks
+for a shorter `--run`. The marker is what keeps these bundles out of the
+operator's own history: `trend` skips a marked bundle and names the count it
+skipped. `backtest mine` never writes a marker.
+
+`--json` `data` is `{run, mode, agent, budgets, stop_reason, prs}`. `mode` is
+`replay`; `budgets` is `{max_reviews, budget_usd, timeout_s, spent_usd,
+unpriced_reviews}` with null caps and a null `spent_usd` when no review was
+priced; `stop_reason` is `complete`, `max-reviews`, or `budget-usd`; `prs[]`
+carries `n`, `pr` (number or null), `status`, `bundle`, and `cost_usd` (number
+or null). The envelope's `repo` is empty and `pr` is null. Human output is the
+plan header, one row per review as it finishes, the stop reason, the spend
+footer, and the `not citable — SZZ-derived` line. Replayed findings are
+benchmark input: not citable, never posted.
 
 ## Out of scope by design
 

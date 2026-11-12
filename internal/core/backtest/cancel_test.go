@@ -135,10 +135,8 @@ func (truncatingCommander) Run(context.Context, *core.Command) (core.Result, err
 // TestMineWindowTooLarge proves a capped commit list refuses by name with the
 // narrowing hint, not as a generic git failure.
 func TestMineWindowTooLarge(t *testing.T) {
-	st := &state{
-		req:  &Request{Runtime: &core.Runtime{Commander: truncatingCommander{}}},
-		root: t.TempDir(),
-	}
+	rt := &core.Runtime{Commander: truncatingCommander{}}
+	st := &state{req: &Request{Runtime: rt}, rt: rt, root: t.TempDir()}
 	_, ref := st.rangeCommits(t.Context(), "aaaaaaa", "bbbbbbb")
 	if ref == nil || ref.Code != "window-too-large" {
 		t.Fatalf("refusal = %+v; want window-too-large", ref)
@@ -173,10 +171,8 @@ func TestGitFailureReportsCancel(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
-			st := &state{
-				req:  &Request{Runtime: &core.Runtime{Commander: cancelingCommander{cancel: cancel, err: tc.err}}},
-				root: t.TempDir(),
-			}
+			rt := &core.Runtime{Commander: cancelingCommander{cancel: cancel, err: tc.err}}
+			st := &state{req: &Request{Runtime: rt}, rt: rt, root: t.TempDir()}
 			_, ref := st.parents(ctx, "abcdef0")
 			if ref == nil || ref.Code != "canceled" {
 				t.Fatalf("refusal = %+v; want canceled", ref)

@@ -85,13 +85,36 @@ func Run(ctx context.Context, req *core.RunRequest) (resp *core.RunResponse, ref
 		def:      def,
 		dir:      dir,
 		bundle:   readcommon.DisplayPath(st.req.RepoRootPath(), dir),
-		artifact: readcommon.DisplayPath(st.req.RepoRootPath(), dir+"/"+reviewFile),
-		abs:      dir + "/" + reviewFile,
+		artifact: readcommon.DisplayPath(st.req.RepoRootPath(), filepath.Join(dir, reviewFile)),
+		abs:      filepath.Join(dir, reviewFile),
 		timeout:  timeout,
 	}
-	args.prompt = directive(st.req.Repo, st.req.Pr, args.bundle, args.artifact, readcommon.IsLocalBundleDir(dir))
+	args.prompt = directive(st.req.Repo, st.req.Pr, st.promptBundle(dir), st.promptArtifact(dir),
+		readcommon.IsLocalBundleDir(dir))
 	args.argv = argvFor(def, st.req.PassThrough, args.prompt)
 	return st.invoke(ctx, &args, rounds)
+}
+
+// promptBundle is the bundle path the directive names: the repository-relative
+// display path, or the absolute one when the agent starts in another checkout.
+func (st *state) promptBundle(dir string) string {
+	return st.promptPath(dir, readcommon.DisplayPath(st.req.RepoRootPath(), dir))
+}
+
+// promptArtifact is the review path the directive names, resolved the same way.
+func (st *state) promptArtifact(dir string) string {
+	path := filepath.Join(dir, reviewFile)
+	return st.promptPath(path, readcommon.DisplayPath(st.req.RepoRootPath(), path))
+}
+
+// promptPath keeps the display path for a launch in the repository root. A
+// launch from another checkout names the path absolutely, because the bundle
+// lives under the repository root, outside that checkout.
+func (st *state) promptPath(abs, display string) string {
+	if st.req.Checkout != "" {
+		return abs
+	}
+	return display
 }
 
 // invoke runs the print escape hatch, the repair loop, or the one-shot,
@@ -255,7 +278,7 @@ func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunRespons
 		Timeout:       args.timeout,
 	}
 	rec.Argv, st.argSecrets = recordArgv(args.argv, args.prompt, st.req.Environ)
-	launched, ref := writeLauncher(args.dir+"/"+launcherFile, rec)
+	launched, ref := writeLauncher(filepath.Join(args.dir, launcherFile), rec)
 	if ref != nil {
 		return nil, ref
 	}
@@ -294,18 +317,38 @@ func (st *state) spawn(ctx context.Context, argv []string, timeout int) (*core.R
 	res, err := commander.Run(tctx, &core.Command{
 		Argv:      argv,
 		Env:       st.childEnv(),
-		Dir:       st.req.RepoRootPath(),
+		Dir:       st.workDir(),
 		OutputCap: coreexec.VerifyOutputCap,
 	})
 	if err != nil {
 		return nil, err //nolint:wrapcheck // spawn failures are mapped by the caller, never reworded
 	}
+	if watchdogFired(ctx, tctx, &res) {
+		res.TimedOut = true
+	}
 	return &res, nil
+}
+
+// watchdogFired reports a kill this call's own budget made: the budget
+// expired, the operator did not cancel, and the child did not exit clean. A
+// commander that never sets Result.TimedOut still owes the launcher the
+// timeout refusal, because the deadline this call armed is the watchdog.
+func watchdogFired(ctx, tctx context.Context, res *core.Result) bool {
+	return res.ExitCode != 0 && !res.TimedOut && tctx.Err() != nil && ctx.Err() == nil
 }
 
 // errNoCommander is the launcher's own wiring failure: no scripted or
 // production commander reached the service.
 var errNoCommander = jq.NewErr("no commander in runtime")
+
+// workDir is the directory the agent process starts in: the caller's checkout
+// when it named one, the reviewed repository root otherwise.
+func (st *state) workDir() string {
+	if st.req.Checkout != "" {
+		return st.req.Checkout
+	}
+	return st.req.RepoRootPath()
+}
 
 func (st *state) commander() core.Commander {
 	if st.req.Runtime == nil {

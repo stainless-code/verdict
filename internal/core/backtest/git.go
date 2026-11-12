@@ -224,10 +224,10 @@ func (st *state) gitCapped(
 // A direct caller that injects no runtime gets an empty snapshot, so the pins
 // alone decide the child's environment.
 func (st *state) snapshot() map[string]string {
-	if st.req.Runtime == nil {
+	if st.rt == nil {
 		return nil
 	}
-	return st.req.Runtime.Env
+	return st.rt.Env
 }
 
 // revParse resolves one revision to a full commit id.

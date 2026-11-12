@@ -18,12 +18,20 @@ import (
 // resolution has to answer before the watchdog can spawn, and a binary that
 // does not resolve is a typed refusal (agent-missing) rather than a spawn
 // error. Nil falls back to the host's exec.LookPath.
+//
+// Checkout is the working directory the agent process starts in, for callers
+// whose review target is a historical tree (backtest replay) rather than the
+// live one: an empty value keeps RepoRoot. It moves the child's cwd only —
+// the bundle, its artifact, and every recorded path stay anchored to
+// RepoRoot, and the directive names them absolutely so a relative path can
+// never resolve inside the checkout.
 type RunRequest struct { //nolint:govet // field grouping documents the request surface
 	ReadRequest
 	LookPath    func(string) (string, error)
 	PassThrough []string
 	Environ     []string
 	Agent       string
+	Checkout    string
 	TimeoutRaw  string
 	RoundsRaw   string
 	Print       bool
