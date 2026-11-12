@@ -186,7 +186,7 @@ clients-ts: build
 	go run ./cmd/tsgen
 	node clients/ts/scripts/gen-ts-types.mjs --check
 	node_modules/.bin/tsc -p clients/ts/tsconfig.json
-	VERDICT_BIN="$(CURDIR)/$(BIN)" node --test clients/ts/test/client.test.mjs
+	VERDICT_BIN="$(CURDIR)/$(BIN)" node --test clients/ts/test/*.test.mjs
 	node_modules/.bin/tsc --noEmit -p clients/ts/tsconfig.types.json
 
 # clients-python runs the dependency-free Python example against the built

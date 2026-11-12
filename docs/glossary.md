@@ -64,6 +64,13 @@ carries `sources: ["index:<tree>"]` naming the tree that answered.
 
 ## Evidence
 
+**Invalidation.** A live `serve` event that names bundles whose views changed
+or disappeared. It carries no view data; clients fetch the view again, and a
+truncated event means refetch the inbox.
+
+**Sweep.** The slower `serve` pass that fingerprints directory entries to
+catch in-place edits the faster directory-stamp tick cannot see.
+
 **Evidence rung.** The proof behind a finding: `said`, `pointed`, `walked`,
 `ran`, or `reproduced` (default `pointed`). The rung decides how far a finding
 travels; `said`-only findings ship labeled `unproven` or die in triage. Nothing

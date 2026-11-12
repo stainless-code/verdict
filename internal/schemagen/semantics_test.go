@@ -195,7 +195,7 @@ var publishedSemantics = map[string]string{
 	// key, enum, or type changed.
 	// pack lock/add: additive $defs/packAddData and the drift description on
 	// packEntry; no existing property, required key, enum, or type changed.
-	"envelope.schema.json": "9803265fbd2f4f030461766c98c2db7b2e39399e17adc869d3a5d5800e9f0d43",
+	"envelope.schema.json": "727daa05ce6c75c6217d2ade73248694bcddca4b41f6778c5c6ee84898c1ff0e",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

@@ -643,6 +643,20 @@
           ]
         },
         "root": { "type": ["string", "null"] },
+        "via": {
+          "description": "The detector that found this invalidation: tick for directory stamps or sweep for entry fingerprints.",
+          "enum": ["tick", "sweep"]
+        },
+        "changed": {
+          "description": "Bundle names whose views should be fetched again; a truncated event requires refetching the full inbox.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "removed": {
+          "description": "Bundle names removed from the served root.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
         "rows": {
           "type": "array",
           "items": { "$ref": "#/$defs/serveRow" }
