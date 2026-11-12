@@ -156,6 +156,21 @@ assert_exit "composed without --agent refuses" 1
 assert_refusal "composed without --agent" "bad-flags"
 assert_file_grep "composed refusal names --agent" "$EVAL_OUT" "--agent <name>"
 
+# Positional completion offers the backtest subcommands, so `backtest sc<TAB>`
+# reaches score instead of returning with no candidates.
+(
+  set +u
+  # shellcheck source=../../scripts/verdict-complete.sh
+  . "$EVAL_ROOT/scripts/verdict-complete.sh"
+  COMP_WORDS=(verdict backtest sc)
+  COMP_CWORD=2
+  _verdict_bash_complete
+  printf '%s\n' "${COMPREPLY[@]}"
+) >"$EVAL_SANDBOX/completion.txt"
+printf 'score\n' >"$EVAL_SANDBOX/completion.want"
+assert_file_eq "completion offers the score subcommand" \
+  "$EVAL_SANDBOX/completion.want" "$EVAL_SANDBOX/completion.txt"
+
 stub_after="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 assert_eq "zero host CLI calls" "$stub_before" "$stub_after"
 

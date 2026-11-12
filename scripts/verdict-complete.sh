@@ -110,6 +110,13 @@ _verdict_bash_complete() {
     done <<<"$(_verdict_flags "$verb")"
     return 0
   fi
+  if [[ "$COMP_CWORD" -eq 2 ]]; then
+    while IFS= read -r v; do
+      [[ "$v" == -* ]] && continue
+      if [[ "$v" == "$cur"* ]]; then COMPREPLY+=("$v"); fi
+    done <<<"$(_verdict_flags "$verb")"
+    return 0
+  fi
   return 0
 }
 
@@ -138,6 +145,13 @@ _verdict_zsh_complete() {
   fi
   if [[ "$cur" == -* ]]; then
     while IFS= read -r v; do
+      case "$v" in "$cur"*) compadd -- "$v";; esac
+    done <<<"$(_verdict_flags "$verb")"
+    return 0
+  fi
+  if [[ "$CURRENT" -eq 3 ]]; then
+    while IFS= read -r v; do
+      [[ "$v" == -* ]] && continue
       case "$v" in "$cur"*) compadd -- "$v";; esac
     done <<<"$(_verdict_flags "$verb")"
     return 0
