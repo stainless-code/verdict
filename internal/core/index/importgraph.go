@@ -163,18 +163,32 @@ func (g *importGraph) reverseDepth(roots []graphNode, limit int) map[graphNode]i
 // distance. Zero when no chain joins the file to the declaring package.
 func (g *importGraph) candidateDepth(depths map[graphNode]int, f *treeFile) int {
 	own := fileNode(f)
-	depth := 0
-	for _, imp := range f.Imports {
-		for _, node := range g.importTargets(fileLanguage(f), own.dir, imp) {
-			if d, ok := depths[node]; ok && (depth == 0 || d+1 < depth) {
-				depth = d + 1
-			}
-		}
-	}
-	if depth > 0 {
+	if depth := g.ownImportDepth(depths, f, own); depth > 0 {
 		return depth
 	}
 	return depths[own]
+}
+
+// ownImportDepth returns one more than the shortest distance to a package the
+// file itself imports, or 0 when none of its imports joins the chain.
+func (g *importGraph) ownImportDepth(depths map[graphNode]int, f *treeFile, own graphNode) int {
+	depth := 0
+	for _, imp := range f.Imports {
+		for _, node := range g.importTargets(fileLanguage(f), own.dir, imp) {
+			if d, ok := depths[node]; ok {
+				depth = nearer(depth, d+1)
+			}
+		}
+	}
+	return depth
+}
+
+// nearer returns the shorter of two hop counts, reading 0 as unset.
+func nearer(depth, next int) int {
+	if depth == 0 || next < depth {
+		return next
+	}
+	return depth
 }
 
 // seed labels the roots at depth 0 and returns them as the first frontier.

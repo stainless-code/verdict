@@ -185,21 +185,9 @@ func walkTestRows(t *treeIndex, plan *testPlan, g *importGraph) testWalk {
 	depths := g.reverseDepth(planNodes(plan), plan.depth+1)
 	var walk testWalk
 	for i := range t.Files {
-		f := &t.Files[i]
-		if !isCandidateFile(plan, f) {
-			continue
+		if f := &t.Files[i]; isCandidateFile(plan, f) {
+			walk.add(plan, dirs, importPaths, g, depths, f)
 		}
-		via, depth := testVia(plan, dirs, importPaths, g, depths, f)
-		if via == "" {
-			continue
-		}
-		if via == viaTransitiveImport && depth > plan.depth {
-			if depth == plan.depth+1 {
-				walk.hidden = append(walk.hidden, f.Path)
-			}
-			continue
-		}
-		walk.rows = append(walk.rows, TestRow{Path: f.Path, Via: via, Depth: depth})
 	}
 	slices.SortFunc(walk.rows, func(a, b TestRow) int {
 		if c := strings.Compare(a.Path, b.Path); c != 0 {
@@ -208,6 +196,22 @@ func walkTestRows(t *treeIndex, plan *testPlan, g *importGraph) testWalk {
 		return strings.Compare(a.Via, b.Via)
 	})
 	return walk
+}
+
+// add records one candidate file: the row it is named on, the hidden path it is
+// counted on when a transitive chain lands one hop past the cap, or nothing
+// when no mechanism reaches it or its chain lands further out than that.
+func (w *testWalk) add(plan *testPlan, dirs, importPaths map[string]bool, g *importGraph, depths map[graphNode]int, f *treeFile) {
+	via, depth := testVia(plan, dirs, importPaths, g, depths, f)
+	switch {
+	case via == "":
+	case via == viaTransitiveImport && depth > plan.depth:
+		if depth == plan.depth+1 {
+			w.hidden = append(w.hidden, f.Path)
+		}
+	default:
+		w.rows = append(w.rows, TestRow{Path: f.Path, Via: via, Depth: depth})
+	}
 }
 
 // planNodes names the plan's directories in its own language family, where the

@@ -119,10 +119,10 @@ func TestBlastPathsWalksDepthTwo(t *testing.T) {
 	}
 }
 
-// TestBlastCountsTheDepthCappedTests proves the candidate-test list reports the
-// tests the transitive walk's depth cap hid instead of stopping at the last row:
-// the test four package hops out is counted once for every changed symbol of
-// its target file and never named.
+// TestBlastCountsTheDepthCappedTests proves the candidate-test list reports
+// the tests the transitive walk's depth cap hid instead of stopping at the
+// last row: the test four package hops out is counted once for every changed
+// symbol of its target file and never named.
 func TestBlastCountsTheDepthCappedTests(t *testing.T) {
 	f := newFixture(t)
 	writeBlastFixture(f)

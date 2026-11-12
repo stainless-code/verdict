@@ -114,10 +114,10 @@ type Blast struct {
 	Tests          []TestRow
 	Partners       []BlastPartnerRow
 	Owners         []Target
+	DepthTruncated *int
 	Truncated      BlastTruncated
 	Input          BlastInput
 	Counts         BlastCounts
-	DepthTruncated *int
 	unresolved     int
 	Indexed        bool
 }
@@ -655,8 +655,8 @@ func collectSymbolTests(best map[string]TestRow, capped map[string]bool, t *tree
 			best[row.Path] = row
 		}
 	}
-	for _, path := range walk.hidden {
-		capped[path] = true
+	for _, hidden := range walk.hidden {
+		capped[hidden] = true
 	}
 }
 
