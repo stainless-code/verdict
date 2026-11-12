@@ -6,7 +6,12 @@ import (
 	"github.com/stainless-code/verdict/internal/webui"
 )
 
-const contentTypeHTML = "text/html; charset=utf-8"
+const (
+	contentTypeHTML       = "text/html; charset=utf-8"
+	contentTypeHeader     = "Content-Type"
+	contentTypeJavaScript = "text/javascript; charset=utf-8"
+	contentTypeCSS        = "text/css; charset=utf-8"
+)
 
 func (s *Server) serveIndex(w http.ResponseWriter) {
 	body, err := webui.Asset("index.html")
@@ -14,7 +19,7 @@ func (s *Server) serveIndex(w http.ResponseWriter) {
 		s.problem(w, http.StatusInternalServerError, "asset-error", "the embedded UI is unavailable")
 		return
 	}
-	w.Header().Set("Content-Type", contentTypeHTML)
+	w.Header().Set(contentTypeHeader, contentTypeHTML)
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(body); err != nil {
 		return
@@ -39,11 +44,11 @@ func (s *Server) serveAsset(w http.ResponseWriter, name string) {
 	}
 	switch name {
 	case "index.html":
-		w.Header().Set("Content-Type", contentTypeHTML)
+		w.Header().Set(contentTypeHeader, contentTypeHTML)
 	case "app.js":
-		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		w.Header().Set(contentTypeHeader, contentTypeJavaScript)
 	case "app.css":
-		w.Header().Set("Content-Type", "text/css; charset=utf-8")
+		w.Header().Set(contentTypeHeader, contentTypeCSS)
 	}
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(body); err != nil {
