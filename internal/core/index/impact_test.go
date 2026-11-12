@@ -22,20 +22,18 @@ const impactDiff = "diff --git a/a/ab.go b/a/ab.go\n" +
 	"+func A() { _ = 1 }\n"
 
 // impactReq builds one impact hand-off against the fixture.
-func (f *fixture) impactReq(index, head, diff string) *ImpactRequest {
+func (f *fixture) impactReq(index, head string) *ImpactRequest {
 	return &ImpactRequest{
-		ReadRequest: core.ReadRequest{
-			Runtime:  &core.Runtime{Commander: f.request(QueryBuild, nil).Commander, Env: envMap()},
-			RepoRoot: f.dir,
-		},
-		Index: index, Head: head, Diff: diff,
+		Runtime:  &core.Runtime{Commander: f.request(QueryBuild, nil).Commander, Env: envMap()},
+		RepoRoot: f.dir,
+		Index:    index, Head: head, Diff: impactDiff,
 	}
 }
 
 // impact runs one impact hand-off and requires success.
-func (f *fixture) impact(index, head, diff string) *Impact {
+func (f *fixture) impact(index, head string) *Impact {
 	f.t.Helper()
-	got, ref := ImpactOf(context.Background(), f.impactReq(index, head, diff))
+	got, ref := ImpactOf(context.Background(), f.impactReq(index, head))
 	if ref != nil {
 		f.t.Fatalf("impact refused: %s: %s", ref.Code, ref.Message)
 	}
@@ -43,9 +41,9 @@ func (f *fixture) impact(index, head, diff string) *Impact {
 }
 
 // impactRefuse runs one impact hand-off and returns its refusal.
-func (f *fixture) impactRefuse(index, head, diff string) *core.RefusalError {
+func (f *fixture) impactRefuse(index string) *core.RefusalError {
 	f.t.Helper()
-	_, ref := ImpactOf(context.Background(), f.impactReq(index, head, diff))
+	_, ref := ImpactOf(context.Background(), f.impactReq(index, ""))
 	if ref == nil {
 		f.t.Fatal("impact answered; want a refusal")
 	}
@@ -60,7 +58,7 @@ func TestImpactNamedRefAnswers(t *testing.T) {
 	writeBlastFixture(f)
 	f.commit("one")
 	f.build()
-	got := f.impact("HEAD", "", impactDiff)
+	got := f.impact("HEAD", "")
 	if got.Data.Kind != QueryBlastRadius {
 		t.Errorf("kind = %q, want %q", got.Data.Kind, QueryBlastRadius)
 	}
@@ -100,7 +98,7 @@ func TestImpactDirFormAnswers(t *testing.T) {
 	writeBlastFixture(f)
 	f.commit("one")
 	f.build()
-	got := f.impact(f.dir, "", impactDiff)
+	got := f.impact(f.dir, "")
 	if len(got.Data.Blast.Symbols) != 1 || got.Data.Blast.Symbols[0].Name != "A" {
 		t.Errorf("symbols = %+v, want the one changed declaration", got.Data.Blast.Symbols)
 	}
@@ -119,7 +117,7 @@ func TestImpactStaleNamesTheAnsweredTree(t *testing.T) {
 	f.commit("two")
 	head := f.run("", "rev-parse", "HEAD")
 	headTree := f.run("", "rev-parse", "HEAD^{tree}")
-	got := f.impact(named, head, impactDiff)
+	got := f.impact(named, head)
 	if !got.Data.Stale {
 		t.Error("impact answered fresh; want the stale flag for a tree that is not the bundle head")
 	}
@@ -138,7 +136,7 @@ func TestImpactUnresolvedHeadWarns(t *testing.T) {
 	f.commit("one")
 	f.build()
 	head := strings.Repeat("abc123", 6) + "abcd"
-	got := f.impact("HEAD", head, impactDiff)
+	got := f.impact("HEAD", head)
 	want := []string{"» impact: the bundle head " + head + " is not in this clone; impact rows describe " +
 		got.Data.Tree + ", not the reviewed head"}
 	if !slices.Equal(got.Warnings, want) {
@@ -153,7 +151,7 @@ func TestImpactTruncatesEachList(t *testing.T) {
 	writeBlastFixture(f)
 	f.commit("one")
 	f.build()
-	req := f.impactReq("HEAD", "", impactDiff)
+	req := f.impactReq("HEAD", "")
 	req.Limit = 1
 	got, ref := ImpactOf(context.Background(), req)
 	if ref != nil {
@@ -181,29 +179,29 @@ func TestImpactRefusals(t *testing.T) {
 	writeBlastFixture(f)
 	f.commit("one")
 	f.build()
-	built := f.impact("HEAD", "", impactDiff)
+	built := f.impact("HEAD", "")
 
 	bare := filepath.Join(t.TempDir(), "bare")
 	if err := os.MkdirAll(bare, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	assertRefusal(t, f.impactRefuse("  ", "", impactDiff), codeBadFlags, impactNoIndex)
-	assertRefusal(t, f.impactRefuse(bare, "", impactDiff), codeBadFlags,
+	assertRefusal(t, f.impactRefuse("  "), codeBadFlags, impactNoIndex)
+	assertRefusal(t, f.impactRefuse(bare), codeBadFlags,
 		"impact: "+bare+" carries no index store (no .verdict/index directory)")
-	if ref := f.impactRefuse("nosuchref", "", impactDiff); ref.Code != "bad-at" ||
+	if ref := f.impactRefuse("nosuchref"); ref.Code != "bad-at" ||
 		!strings.HasPrefix(ref.Message, "cannot resolve nosuchref^{tree}: ") {
 		t.Errorf("unresolvable ref refusal = %q: %q, want bad-at naming the revision spec", ref.Code, ref.Message)
 	}
 
 	f.write("a/ab.go", "package a\n\nfunc A() {}\n\nfunc B() {}\n\n// later\n")
 	f.commit("two")
-	assertRefusal(t, f.impactRefuse("HEAD", "", impactDiff), codeMissingIndex,
+	assertRefusal(t, f.impactRefuse("HEAD"), codeMissingIndex,
 		"no index for tree "+f.run("", "rev-parse", "HEAD^{tree}")+"; run verdict index build")
 
 	if err := os.WriteFile(filepath.Join(f.dir, ".verdict", "index", "trees", built.Data.Tree+".json"),
 		[]byte("{truncated"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	assertRefusal(t, f.impactRefuse("HEAD~1", "", impactDiff), codeIndexCorrupt,
+	assertRefusal(t, f.impactRefuse("HEAD~1"), codeIndexCorrupt,
 		"tree "+built.Data.Tree+".json is truncated or invalid")
 }

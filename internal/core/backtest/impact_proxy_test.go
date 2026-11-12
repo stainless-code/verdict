@@ -70,24 +70,49 @@ func measureImpactProxy(t *testing.T) []impactProxy {
 	var out []impactProxy
 	for _, c := range impactProxyCases() {
 		t.Run(c.name, func(t *testing.T) {
-			r, since := c.build(t)
-			data := runMine(t, r, since)
-			if len(data.Mine.Candidates) == 0 {
-				t.Fatal("the miner produced no candidate; the proxy measures nothing")
-			}
-			for i := range data.Mine.Candidates {
-				cand := &data.Mine.Candidates[i]
-				out = append(out, measureCandidate(t, r, cand)...)
-			}
+			out = append(out, measureSeed(t, c)...)
 		})
 	}
 	return out
 }
 
+// measureSeed measures one fixture family: the miner names its bugs, and each
+// candidate's diff is answered by an index built at its head.
+func measureSeed(t *testing.T, c proxyCase) []impactProxy {
+	t.Helper()
+	seed := c.build(t)
+	data := runMine(t, seed.r, seed.since)
+	if len(data.Mine.Candidates) == 0 {
+		t.Fatal("the miner produced no candidate; the proxy measures nothing")
+	}
+	var out []impactProxy
+	for i := range data.Mine.Candidates {
+		cand := &data.Mine.Candidates[i]
+		assertSeedCandidate(t, cand, seed)
+		out = append(out, measureCandidate(t, seed.r, cand)...)
+	}
+	return out
+}
+
+// assertSeedCandidate anchors the ground truth to the fixture: every blamed
+// line names the fixture's own fix, and a fixture that pins its PR head is
+// reconstructed at exactly that commit.
+func assertSeedCandidate(t *testing.T, cand *Candidate, seed proxySeed) {
+	t.Helper()
+	for _, bug := range cand.Bugs {
+		if bug.Fix != seed.fix {
+			t.Errorf("mined bug %s:%d blames fix %s; want the fixture's fix %s", bug.Path, bug.Line, bug.Fix, seed.fix)
+		}
+	}
+	if seed.head != "" && cand.Head != seed.head {
+		t.Errorf("mined head = %s; want the fixture's PR head %s", cand.Head, seed.head)
+	}
+}
+
 // TestImpactProxyCallerReach pins the two cross-package shapes: the hand-off
 // names the caller file for a qualified package call and cannot for a method
-// call, which is the corpus's cross-package method-caller gap showing up as lost
-// reach rather than as a missed ground-truth path.
+// call, which is the corpus's method-caller gap showing up as lost reach rather
+// than as a missed ground-truth path.
 func TestImpactProxyCallerReach(t *testing.T) {
 	for _, c := range []struct {
 		name  string
@@ -98,16 +123,23 @@ func TestImpactProxyCallerReach(t *testing.T) {
 		{"method-call", crossPackageMethod, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			r, since := newCrossPackageRepo(t, c.kind)
-			data := runMine(t, r, since)
-			if len(data.Mine.Candidates) != 1 {
-				t.Fatalf("candidates = %d; want 1", len(data.Mine.Candidates))
-			}
-			paths := impactPaths(impactFor(t, r, &data.Mine.Candidates[0]).Data.Blast)
-			if got := slices.Contains(paths, "internal/api/api.go"); got != c.named {
-				t.Errorf("caller file named = %v; want %v (paths: %v)", got, c.named, paths)
-			}
+			assertCallerReach(t, c.kind, c.named)
 		})
+	}
+}
+
+// assertCallerReach requires one cross-package shape to name (or not name) the
+// caller file the diff never touches.
+func assertCallerReach(t *testing.T, kind crossPackageKind, named bool) {
+	t.Helper()
+	r, since, _ := newCrossPackageRepo(t, kind)
+	data := runMine(t, r, since)
+	if len(data.Mine.Candidates) != 1 {
+		t.Fatalf("candidates = %d; want 1", len(data.Mine.Candidates))
+	}
+	paths := impactPaths(impactFor(t, r, &data.Mine.Candidates[0]).Data.Blast)
+	if got := slices.Contains(paths, "internal/api/api.go"); got != named {
+		t.Errorf("caller file named = %v; want %v (paths: %v)", got, named, paths)
 	}
 }
 
@@ -139,13 +171,12 @@ func impactFor(t *testing.T, r *repo, cand *Candidate) *indexcore.Impact {
 	tree := strings.TrimSpace(r.git("rev-parse", cand.Head+"^{tree}"))
 	rt := &core.Runtime{Commander: coreexec.Runner{MissingTool: true}, Env: userEnv(t, nil)}
 	if _, ref := indexcore.Run(context.Background(), &indexcore.Request{
-		Query: indexcore.QueryBuild, ReadRequest: core.ReadRequest{Runtime: rt, RepoRoot: r.dir}, At: cand.Head,
+		Query: indexcore.QueryBuild, Runtime: rt, RepoRoot: r.dir, At: cand.Head,
 	}); ref != nil {
 		t.Fatalf("index build refused: %s: %s", ref.Code, ref.Message)
 	}
 	impact, ref := indexcore.ImpactOf(context.Background(), &indexcore.ImpactRequest{
-		ReadRequest: core.ReadRequest{Runtime: rt, RepoRoot: r.dir},
-		Index:       tree, Diff: diff, Head: cand.Head,
+		Runtime: rt, RepoRoot: r.dir, Index: tree, Diff: diff, Head: cand.Head,
 	})
 	if ref != nil {
 		t.Fatalf("impact refused: %s: %s", ref.Code, ref.Message)
@@ -198,54 +229,91 @@ func impactLanguage(p string) string {
 func tallyImpactProxy(rows []impactProxy) []impactProxyDoc {
 	var out []impactProxyDoc
 	for _, row := range rows {
-		at := slices.IndexFunc(out, func(d impactProxyDoc) bool { return d.Language == row.Language })
-		if at < 0 {
-			out = append(out, impactProxyDoc{Language: row.Language})
-			at = len(out) - 1
-		}
-		out[at].Bugs++
-		if row.Named {
-			out[at].Named++
-		}
-		if row.Beyond {
-			out[at].Beyond++
-		}
+		out = tallyRow(out, row)
 	}
 	return out
 }
 
-// impactProxyCases are the fixture families the proxy measures: the miner
-// reads them like any other backtest seed, so the ground truth is the backtest's
-// own, not a second hand-written list.
-func impactProxyCases() []struct {
+// tallyRow adds one measured finding to its language's row, opening the row on
+// first sight so the table keeps the languages in fixture order.
+func tallyRow(out []impactProxyDoc, row impactProxy) []impactProxyDoc {
+	at := slices.IndexFunc(out, func(d impactProxyDoc) bool { return d.Language == row.Language })
+	if at < 0 {
+		out = append(out, impactProxyDoc{Language: row.Language})
+		at = len(out) - 1
+	}
+	out[at].Bugs++
+	if row.Named {
+		out[at].Named++
+	}
+	if row.Beyond {
+		out[at].Beyond++
+	}
+	return out
+}
+
+// proxySeed is one fixture family's starting point: the repository, the seed
+// ref the miner starts at, the fix commit that later rewrites the blamed line,
+// and the PR head the miner must reconstruct when the fixture pins one.
+type proxySeed struct {
+	r     *repo
+	since string
+	fix   string
+	head  string
+}
+
+// proxyCase is one ground-truth fixture family: a name for the subtest and the
+// builder that lays its seed out.
+type proxyCase struct {
+	build func(t *testing.T) proxySeed
 	name  string
-	build func(t *testing.T) (*repo, string)
-} {
-	return []struct {
-		name  string
-		build func(t *testing.T) (*repo, string)
-	}{
-		{"go-merged-fix", func(t *testing.T) (*repo, string) {
-			b, _ := newMergedFixRepo(t)
-			return b.r, b.base
+}
+
+// impactProxyCases are the fixture families the proxy measures: the miner reads
+// them like any other backtest seed, so the ground truth is the backtest's own,
+// not a second hand-written list.
+func impactProxyCases() []proxyCase {
+	return []proxyCase{
+		{name: "go-merged-fix", build: func(t *testing.T) proxySeed {
+			t.Helper()
+			b, fix := newMergedFixRepo(t)
+			return proxySeed{r: b.r, since: b.base, fix: fix}
 		}},
-		{"go-revert", func(t *testing.T) (*repo, string) {
-			b, _ := newRevertRepo(t)
-			return b.r, b.base
+		{name: "go-revert", build: func(t *testing.T) proxySeed {
+			t.Helper()
+			b, fix := newRevertRepo(t)
+			return proxySeed{r: b.r, since: b.base, fix: fix}
 		}},
-		{"go-package-call", func(t *testing.T) (*repo, string) {
-			return newCrossPackageRepo(t, crossPackageCall)
+		{name: "go-package-call", build: func(t *testing.T) proxySeed {
+			t.Helper()
+			r, base, fix := newCrossPackageRepo(t, crossPackageCall)
+			return proxySeed{r: r, since: base, fix: fix}
 		}},
-		{"go-method-call", func(t *testing.T) (*repo, string) {
-			return newCrossPackageRepo(t, crossPackageMethod)
+		{name: "go-method-call", build: func(t *testing.T) proxySeed {
+			t.Helper()
+			r, base, fix := newCrossPackageRepo(t, crossPackageMethod)
+			return proxySeed{r: r, since: base, fix: fix}
 		}},
-		{"text-squash", func(t *testing.T) (*repo, string) {
-			r, base, _, _ := newSquashRepo(t)
-			return r, base
+		{name: "text-squash", build: func(t *testing.T) proxySeed {
+			t.Helper()
+			r, base, squash, fix := newSquashRepo(t)
+			return proxySeed{r: r, since: base, fix: fix, head: squash}
 		}},
-		{"text-merged", func(t *testing.T) (*repo, string) { return newTextMergedRepo(t) }},
-		{"ts-save", func(t *testing.T) (*repo, string) { return newLangRepo(t, langTS) }},
-		{"py-save", func(t *testing.T) (*repo, string) { return newLangRepo(t, langPy) }},
+		{name: "text-merged", build: func(t *testing.T) proxySeed {
+			t.Helper()
+			r, base, fix := newTextMergedRepo(t)
+			return proxySeed{r: r, since: base, fix: fix}
+		}},
+		{name: "ts-save", build: func(t *testing.T) proxySeed {
+			t.Helper()
+			r, base, fix := newLangRepo(t, langTS)
+			return proxySeed{r: r, since: base, fix: fix}
+		}},
+		{name: "py-save", build: func(t *testing.T) proxySeed {
+			t.Helper()
+			r, base, fix := newLangRepo(t, langPy)
+			return proxySeed{r: r, since: base, fix: fix}
+		}},
 	}
 }
 
@@ -261,10 +329,10 @@ const (
 
 // newCrossPackageRepo builds a merged PR that edits one declaration in
 // internal/store with a caller in internal/api, plus a later fix that removes
-// the blamed line so the miner blames it. The two shapes are the whole point of
-// the pair: a qualified package function call is attributed and a method call on
-// a value is not.
-func newCrossPackageRepo(t *testing.T, kind crossPackageKind) (*repo, string) {
+// the blamed line so the miner blames it. The two shapes are the point of the
+// pair: a qualified package function call is attributed, and a method call on a
+// value is not.
+func newCrossPackageRepo(t *testing.T, kind crossPackageKind) (*repo, string, string) {
 	t.Helper()
 	r := newRepo(t)
 	r.write("go.mod", "module example.com/m\n\ngo 1.27\n")
@@ -277,8 +345,8 @@ func newCrossPackageRepo(t *testing.T, kind crossPackageKind) (*repo, string) {
 	r.switchMain()
 	r.merge("feature", "Merge pull request #3 from acme/feature")
 	r.write("internal/store/store.go", crossPackageDecl(kind, false))
-	r.commit("fix: drop the announcement")
-	return r, base
+	fix := r.commit("fix: drop the announcement")
+	return r, base, fix
 }
 
 // crossPackageDecl renders the declaring file for one cross-package shape; with
@@ -308,7 +376,7 @@ func crossPackageCaller(kind crossPackageKind) string {
 // newTextMergedRepo builds a merged PR that edits a file the index does not
 // read, plus a later fix that rewrites the blamed line: a changed path with no
 // declaration is the one ground-truth shape the hand-off cannot name.
-func newTextMergedRepo(t *testing.T) (*repo, string) {
+func newTextMergedRepo(t *testing.T) (*repo, string, string) {
 	t.Helper()
 	r := newRepo(t)
 	r.write("notes.txt", "one\n")
@@ -319,8 +387,8 @@ func newTextMergedRepo(t *testing.T) (*repo, string) {
 	r.switchMain()
 	r.merge("feature", "Merge pull request #6 from acme/feature")
 	r.write("notes.txt", "fixed\n")
-	r.commit("fix: repair the notes")
-	return r, base
+	fix := r.commit("fix: repair the notes")
+	return r, base, fix
 }
 
 // langKind selects the scanned-language fixture's source.
@@ -333,7 +401,7 @@ const (
 
 // newLangRepo builds a merged PR whose blamed line sits in a scanned-language
 // declaration, with a test beside it, and a later fix that rewrites the line.
-func newLangRepo(t *testing.T, kind langKind) (*repo, string) {
+func newLangRepo(t *testing.T, kind langKind) (*repo, string, string) {
 	t.Helper()
 	r := newRepo(t)
 	files := langFiles(kind)
@@ -351,8 +419,8 @@ func newLangRepo(t *testing.T, kind langKind) (*repo, string) {
 	for name, body := range files.base {
 		r.write(name, body)
 	}
-	r.commit("fix: restore the body")
-	return r, base
+	fix := r.commit("fix: restore the body")
+	return r, base, fix
 }
 
 // langBodies carries one scanned-language fixture: the base tree, the changed
@@ -402,14 +470,7 @@ func assertImpactProxyDocs(t *testing.T, rows []impactProxyDoc) {
 		return
 	}
 	if *updateImpactProxy {
-		beg, end := impactProxySpan(t, string(body))
-		updated := string(body)[:beg+len(impactProxyBegin)] + measured + string(body)[end:]
-		if werr := os.WriteFile(p, []byte(updated), 0o644); werr != nil {
-			t.Fatalf("write %s: %v", benchmarkDocs, werr)
-		}
-		for _, line := range impactProxyDiff(published, measured) {
-			t.Logf("%s: %s", benchmarkDocs, line)
-		}
+		republishImpactProxy(t, p, string(body), measured)
 		return
 	}
 	for _, line := range impactProxyDiff(published, measured) {
@@ -417,9 +478,23 @@ func assertImpactProxyDocs(t *testing.T, rows []impactProxyDoc) {
 	}
 }
 
+// republishImpactProxy rewrites the published table and logs the lines that
+// moved, so a re-pin is reviewed like code.
+func republishImpactProxy(t *testing.T, p, body, table string) {
+	t.Helper()
+	beg, end := impactProxySpan(t, body)
+	updated := body[:beg+len(impactProxyBegin)] + table + body[end:]
+	if err := os.WriteFile(p, []byte(updated), 0o644); err != nil {
+		t.Fatalf("write %s: %v", benchmarkDocs, err)
+	}
+	for _, line := range impactProxyDiff(impactProxyBlock(t, body), table) {
+		t.Logf("%s: %s", benchmarkDocs, line)
+	}
+}
+
 // renderImpactProxy renders the measured rows as the published markdown block,
-// carrying the blank line the markdown formatter keeps after the begin marker so
-// a republish is byte-identical to the document the formatter leaves.
+// carrying the blank line the markdown formatter keeps after the begin marker,
+// so a republish is byte-identical to the document the formatter leaves.
 func renderImpactProxy(rows []impactProxyDoc) string {
 	var out strings.Builder
 	out.WriteString("\n\n" + impactProxyHeader + "\n")

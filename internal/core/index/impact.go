@@ -15,6 +15,16 @@ import (
 
 // Impact hand-off messages. Every one is a rule fetch's manual entry repeats,
 // so the refusal and warning text stays one literal.
+// impactHeadRef and impactCanceled name the revision a directory hand-off
+// reads and the refusal code a canceled context emits; the build and blast
+// paths carry the same literals, and this file's uses go through the constants
+// so the package keeps one occurrence of each.
+const (
+	impactHeadRef         = "HEAD"
+	impactCanceled        = "canceled"
+	impactCanceledMessage = "canceled before index completed"
+)
+
 const (
 	impactNoIndex    = "impact wants an index: --index <ref|dir>"
 	impactNotAStore  = "impact: %s carries no index store (no %s directory)"
@@ -65,7 +75,7 @@ type Impact struct {
 func ImpactOf(ctx context.Context, req *ImpactRequest) (*Impact, *core.RefusalError) {
 	st := &state{req: &Request{ReadRequest: req.ReadRequest, Warnings: req.Warnings}}
 	if err := ctx.Err(); err != nil {
-		return nil, &core.RefusalError{Code: "canceled", Message: "canceled before index completed"}
+		return nil, &core.RefusalError{Code: impactCanceled, Message: impactCanceledMessage}
 	}
 	if strings.TrimSpace(req.Index) == "" {
 		return nil, &core.RefusalError{Code: codeBadFlags, Message: impactNoIndex}
@@ -84,7 +94,7 @@ func ImpactOf(ctx context.Context, req *ImpactRequest) (*Impact, *core.RefusalEr
 		return nil, ref
 	}
 	headTree, headKnown := st.impactHead(ctx, root, req.Head)
-	st.impactStale(root, tree, req.Head, headTree, headKnown)
+	st.impactStale(tree, req.Head, headTree, headKnown)
 	changes := blastChanges(req.Diff)
 	pkgs := packageMap(t)
 	symbols := blastSymbols(pkgs, t, changes)
@@ -99,7 +109,7 @@ func ImpactOf(ctx context.Context, req *ImpactRequest) (*Impact, *core.RefusalEr
 	if limit == 0 {
 		limit = DefaultLimit
 	}
-	data := impactData(st, t, tree, commit, headKnown && headTree != tree, blast, limit)
+	data := impactData(t, tree, commit, headKnown && headTree != tree, blast, limit)
 	return &Impact{Data: data, Index: impactSource(tree), Warnings: st.warnings}, nil
 }
 
@@ -139,7 +149,7 @@ func impactStore(index, sourceRoot string) (root, store, at string, ref *core.Re
 			Message: fmt.Sprintf(impactNotAStore, dir, filepath.Join(config.VerdictDir, storeDirName)),
 		}
 	}
-	return dir, store, "HEAD", nil
+	return dir, store, impactHeadRef, nil
 }
 
 // isDir reports a readable directory.
@@ -163,7 +173,7 @@ func (st *state) impactHead(ctx context.Context, root, head string) (string, boo
 
 // impactStale warns when the named index does not answer for the bundle head,
 // naming which tree the rows describe.
-func (st *state) impactStale(root, tree, head, headTree string, headKnown bool) {
+func (st *state) impactStale(tree, head, headTree string, headKnown bool) {
 	switch {
 	case head == "":
 	case !headKnown:
@@ -186,7 +196,7 @@ func changedPaths(changes []blastChange) []string {
 
 // impactData assembles the published profile: the blast-radius data the index
 // verb already renders, with the hand-off's own limit and input.
-func impactData(st *state, t *treeIndex, tree, commit string, stale bool, blast *Blast, limit int) *Data {
+func impactData(t *treeIndex, tree, commit string, stale bool, blast *Blast, limit int) *Data {
 	blast.Counts = blastCounts(blast, t)
 	blast.Truncated = blastTruncated(blast, limit)
 	cov := coverageOf(t)

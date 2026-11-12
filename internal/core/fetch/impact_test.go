@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -67,12 +68,8 @@ func TestImpactSectionRenders(t *testing.T) {
 	}
 }
 
-// TestImpactSectionCapsWithACount proves the 8 KiB cap: a wide blast radius is
-// cut, the section stays under the cap byte for byte, and the truncation line
-// names how many row lines it hid.
-func TestImpactSectionCapsWithACount(t *testing.T) {
-	impact := impactFixture()
-	blast := impact.Data.Blast
+// widenBlast gives the fixture a blast radius far wider than the section cap.
+func widenBlast(blast *indexcore.Blast) {
 	for i := range 500 {
 		blast.Symbols = append(blast.Symbols, indexcore.SymbolRow{
 			Path: "internal/a/very/long/directory/name/file.go", Name: "Declared" + strings.Repeat("x", 20),
@@ -80,6 +77,14 @@ func TestImpactSectionCapsWithACount(t *testing.T) {
 		})
 	}
 	blast.Counts.ChangedSymbols = new(len(blast.Symbols))
+}
+
+// TestImpactSectionCapsWithACount proves the 8 KiB cap: a wide blast radius is
+// cut, the section stays under the cap byte for byte, and the truncation line
+// names how many row lines it hid.
+func TestImpactSectionCapsWithACount(t *testing.T) {
+	impact := impactFixture()
+	widenBlast(impact.Data.Blast)
 	section := impactSection(impact)
 	if len(section) > impactSectionCap {
 		t.Fatalf("section is %d bytes, want at most %d", len(section), impactSectionCap)
@@ -142,7 +147,13 @@ func TestImpactJSONSourcesRow(t *testing.T) {
 	}
 	unanswered := impactFixture()
 	unanswered.Data.Blast.Counts = indexcore.BlastCounts{}
-	raw = []byte(jq.PrettyOrdered(impactJSON(unanswered)))
+	assertNullLists(t, []byte(jq.PrettyOrdered(impactJSON(unanswered))))
+}
+
+// assertNullLists proves every measured count of an unanswered list is null
+// rather than 0.
+func assertNullLists(t *testing.T, raw []byte) {
+	t.Helper()
 	var nulls struct {
 		Symbols map[string]any `json:"symbols"`
 		Callers map[string]any `json:"callers"`
@@ -191,7 +202,7 @@ func impactRepo(t *testing.T) (dir string) {
 		t.Fatal("git is required: the impact hand-off reads a real index")
 	}
 	dir = t.TempDir()
-	git := func(args ...string) string {
+	git := func(args ...string) {
 		t.Helper()
 		cmd := exec.CommandContext(t.Context(), "git", args...)
 		cmd.Dir = dir
@@ -203,7 +214,6 @@ func impactRepo(t *testing.T) (dir string) {
 		if err != nil {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
 		}
-		return string(out)
 	}
 	writeTestFile(t, dir+"/go.mod", "module example.com/m\n\ngo 1.27\n")
 	writeTestFile(t, dir+"/a/save.go", "package a\n\nfunc Save() {}\n")
@@ -213,11 +223,9 @@ func impactRepo(t *testing.T) (dir string) {
 	git("add", "-A")
 	git("commit", "-qm", "one")
 	if _, ref := indexcore.Run(context.Background(), &indexcore.Request{
-		Query: indexcore.QueryBuild,
-		ReadRequest: core.ReadRequest{
-			Runtime:  &core.Runtime{Commander: coreexec.Runner{}, Env: envOf()},
-			RepoRoot: dir,
-		},
+		Query:    indexcore.QueryBuild,
+		Runtime:  &core.Runtime{Commander: coreexec.Runner{}, Env: envOf()},
+		RepoRoot: dir,
 	}); ref != nil {
 		t.Fatalf("index build refused: %s: %s", ref.Code, ref.Message)
 	}
@@ -242,19 +250,7 @@ func TestWriteImpactAnswersThroughANamedIndex(t *testing.T) {
 	if !impactPresent(dir) {
 		t.Fatal("impact.json missing after a named index answered")
 	}
-	toc := readOptional(dir + "/toc.txt")
-	if !strings.HasPrefix(toc, "# TOC\n\n## stat\na/save.go (+1/-1)\n\n## impact\n") {
-		t.Errorf("toc.txt does not carry the appended section:\n%s", toc)
-	}
-	for _, want := range []string{
-		"- a/save.go:3 Save (func)\n",
-		"- b/use.go:6 example.com/m/a.Save (lexical, depth 1)\n",
-		"- a/save_test.go (same-package, depth 0)\n",
-	} {
-		if !strings.Contains(toc, want) {
-			t.Errorf("toc.txt is missing %q:\n%s", want, toc)
-		}
-	}
+	assertImpactToc(t, readOptional(dir+"/toc.txt"))
 	if len(*warns) != 0 {
 		t.Errorf("warnings = %v, want none for a head-less hand-off", *warns)
 	}
@@ -270,6 +266,24 @@ func TestWriteImpactAnswersThroughANamedIndex(t *testing.T) {
 	}
 }
 
+// assertImpactToc proves the bundle's toc.txt carries the appended section,
+// row for row, after the sections the fetch already wrote.
+func assertImpactToc(t *testing.T, toc string) {
+	t.Helper()
+	if !strings.HasPrefix(toc, "# TOC\n\n## stat\na/save.go (+1/-1)\n\n## impact\n") {
+		t.Errorf("toc.txt does not carry the appended section:\n%s", toc)
+	}
+	for _, want := range []string{
+		"- a/save.go:3 Save (func)\n",
+		"- b/use.go:6 example.com/m/a.Save (lexical, depth 1)\n",
+		"- a/save_test.go (same-package, depth 0)\n",
+	} {
+		if !strings.Contains(toc, want) {
+			t.Errorf("toc.txt is missing %q:\n%s", want, toc)
+		}
+	}
+}
+
 // TestWriteImpactRefusesAMissingTree proves a named index that never built the
 // bundle's tree refuses typed instead of writing an empty section.
 func TestWriteImpactRefusesAMissingTree(t *testing.T) {
@@ -281,8 +295,11 @@ func TestWriteImpactRefusesAMissingTree(t *testing.T) {
 	ctx2.runner.repoRoot = repo
 	if err := writeImpact(context.Background(), ctx2, impactInput{index: "HEAD~0--nope"}); err == nil {
 		t.Fatal("writeImpact answered for an unresolvable index; want a refusal")
-	} else if ref, ok := err.(*core.RefusalError); !ok || ref.Code != "bad-at" {
-		t.Fatalf("refusal = %v, want bad-at", err)
+	} else {
+		var ref *core.RefusalError
+		if !errors.As(err, &ref) || ref.Code != "bad-at" {
+			t.Fatalf("refusal = %v, want bad-at", err)
+		}
 	}
 	if impactPresent(dir) {
 		t.Error("impact.json written after a refused index")

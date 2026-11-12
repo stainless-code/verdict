@@ -179,7 +179,7 @@ var fetchValueWants = map[string]string{
 	"--base-sha": "<sha>",
 	"--since":    "<sha>",
 	"--provider": "<name>",
-	"--index":    "<ref|dir>",
+	flagIndex:    "<ref|dir>",
 }
 
 // parseFetchToken consumes one fetch argument, returning the next index plus a
@@ -287,7 +287,7 @@ func parseLocalValueFlag(f *core.FetchLocalFlags, a string, args []string, i int
 		f.HasStash = true
 		f.StashN, i = stashValue(args, i)
 		return i, nil, true
-	case "--index":
+	case flagIndex:
 		v, next, u := cli.FlagValue(args, i, a, "<ref|dir>")
 		if u != nil {
 			return i, u, true
@@ -313,7 +313,7 @@ func setFetchValue(f *core.FetchFlags, name, value string) {
 	switch name {
 	case "--provider":
 		f.HasProvider, f.Provider = true, value
-	case "--index":
+	case flagIndex:
 		f.Index = value
 	default:
 		f.HasBase, f.BaseSHA = true, value
@@ -325,4 +325,5 @@ func setFetchValue(f *core.FetchFlags, name, value string) {
 const (
 	providerGitHub = "github"
 	flagChunk      = "--chunk"
+	flagIndex      = "--index"
 )

@@ -23,6 +23,8 @@ const (
 	// a blast radius over a wide diff would otherwise spend the review budget
 	// on rows. The cap counts bytes of the whole "## impact" section.
 	impactSectionCap = 8192
+	// impactCapKiB is the same cap in the unit the truncation line names.
+	impactCapKiB     = impactSectionCap / 1024
 	impactHeadSymbol = "symbols:\n"
 	impactHeadCaller = "callers:\n"
 	impactHeadTest   = "tests:\n"
@@ -42,38 +44,67 @@ type impactInput struct {
 // impact section for an index this fetch did not name.
 func writeImpact(ctx context.Context, ctx2 *fetchRunCtx, in impactInput) error {
 	if in.index == "" {
-		if err := os.Remove(ctx2.dir + suffixImpact); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not remove %s: %v", ctx2.dir+suffixImpact, err)}
-		}
-		return nil
+		return discardImpact(ctx2)
 	}
-	raw, err := os.ReadFile(ctx2.dir + suffixFullDiff)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			ctx2.runner.Warn(fmt.Sprintf(impactNoDiffWarn, fullDiffFile, ctx2.runner.display(ctx2.dir), suffixImpact))
-			return nil
-		}
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgReadFailed, ctx2.dir+suffixFullDiff, err)}
+	raw, found, err := impactDiff(ctx2)
+	if !found || err != nil {
+		return err
 	}
 	impact, ref := indexcore.ImpactOf(ctx, &indexcore.ImpactRequest{
 		ReadRequest: ctx2.readRequest(), Index: in.index, Diff: string(raw), Head: in.head,
 	})
 	if ref != nil {
+		//nolint:wrapcheck // the typed refusal crosses packages intact; the edge renders Code/Message
 		return ref
 	}
 	for _, w := range impact.Warnings {
 		ctx2.runner.Warn(w)
 	}
+	if werr := writeImpactFiles(ctx2, impact); werr != nil {
+		return werr
+	}
+	impactLine(ctx2, impact)
+	return nil
+}
+
+// discardImpact removes an earlier run's artifact when this fetch names no
+// index, so a section and a file always appear and disappear together.
+func discardImpact(ctx2 *fetchRunCtx) error {
+	if err := os.Remove(ctx2.dir + suffixImpact); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not remove %s: %v", ctx2.dir+suffixImpact, err)}
+	}
+	return nil
+}
+
+// impactDiff reads the bundle's full diff. A fetch that wrote none leaves the
+// hand-off unanswered with one warning rather than a refusal: the bundle is
+// still reviewable, and the section is what is missing.
+func impactDiff(ctx2 *fetchRunCtx) (raw []byte, found bool, err error) {
+	raw, err = os.ReadFile(ctx2.dir + suffixFullDiff)
+	if errors.Is(err, os.ErrNotExist) {
+		ctx2.runner.Warn(fmt.Sprintf(impactNoDiffWarn, fullDiffFile, ctx2.runner.display(ctx2.dir), suffixImpact))
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgReadFailed, ctx2.dir+suffixFullDiff, err)}
+	}
+	return raw, true, nil
+}
+
+// writeImpactFiles writes the artifact and appends the section, in that order:
+// a bundle with a section always carries the file the section came from.
+func writeImpactFiles(ctx2 *fetchRunCtx, impact *indexcore.Impact) error {
 	if werr := atomic.WriteFile(ctx2.dir+suffixImpact, []byte(jq.PrettyOrdered(impactJSON(impact)))); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/impact.json: %v", ctx2.dir, werr)}
 	}
-	if werr := appendImpactSection(ctx2.dir, impactSection(impact)); werr != nil {
-		return werr
-	}
+	return appendImpactSection(ctx2.dir, impactSection(impact))
+}
+
+// impactLine names the hand-off on the human surface.
+func impactLine(ctx2 *fetchRunCtx, impact *indexcore.Impact) {
 	fmt.Fprintf(ctx2.runner.Human, "» impact: %d symbol(s), %d caller(s), %d test(s) from %s -> %s/impact.json\n",
 		len(impact.Data.Blast.Symbols), len(impact.Data.Blast.Callers), len(impact.Data.Blast.Tests),
 		impact.Index, ctx2.runner.display(ctx2.dir))
-	return nil
 }
 
 // readRequest builds the index hand-off's read request: the run's command seam
@@ -172,7 +203,7 @@ func impactSection(impact *indexcore.Impact) string {
 	kept, hidden := fitImpactRows(rows, len(strings.Join(lines, "")))
 	lines = append(lines, kept...)
 	if hidden > 0 {
-		lines = append(lines, fmt.Sprintf("truncated: %d line(s) omitted to fit the %d KiB impact cap\n", hidden, impactSectionCap>>10))
+		lines = append(lines, fmt.Sprintf("truncated: %d line(s) omitted to fit the %d KiB impact cap\n", hidden, impactCapKiB))
 	}
 	return strings.Join(lines, "")
 }
@@ -209,7 +240,7 @@ func impactRowLines(b *indexcore.Blast) []string {
 // exceed the cap by the line that announces the cap.
 func fitImpactRows(rows []string, head int) ([]string, int) {
 	reserve := len(fmt.Sprintf("truncated: %d line(s) omitted to fit the %d KiB impact cap\n",
-		len(rows), impactSectionCap>>10))
+		len(rows), impactCapKiB))
 	budget := impactSectionCap - head - reserve
 	var kept int
 	for _, row := range rows {
@@ -234,9 +265,9 @@ func impactCount(count, truncated *int) string {
 	return out
 }
 
-// impactSafe renders one attacker-influenced path or symbol so it cannot forge a
-// fence or a row: control characters become their backslash escapes, then the
-// shared fence rule breaks any run of "<" that could spell a marker.
+// impactSafe renders one attacker-influenced path or symbol so it cannot forge
+// a fence or a row: control characters become their backslash escapes, then
+// the shared fence rule breaks any run of "<" that could spell a marker.
 func impactSafe(s string) string {
 	if !strings.ContainsAny(s, "\n\r\t") {
 		return fence.Safe(s)
