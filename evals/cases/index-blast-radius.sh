@@ -106,7 +106,7 @@ assert_exit "the human blast-radius exits 0" 0
 assert_file_grep "the human header counts the changed declarations" "$EVAL_OUT" \
   '^index: 1 changed file(s), 3 changed symbol(s) at '
 assert_file_grep "the human caller row names the depth" "$EVAL_OUT" \
-  '^c/c.go:6 call (lexical, depth 2) example.com/m/b.UseA$'
+  '^c/c.go:6 call (lexical, depth 2) example.com/m/a.A$'
 
 run_review index blast-radius --paths a/ab.go --limit 2
 assert_exit "the truncated human blast-radius exits 0" 0
