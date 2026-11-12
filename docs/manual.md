@@ -2743,6 +2743,11 @@ attribute (a method value, a reflection call) is missing rather than guessed.
 Rows sort by path and truncate to `--limit` with a count. A path that names no
 indexed source file refuses `bad-flags`, and `--symbol` wants a qualified
 `pkg.Name` — a bare name would fold unrelated packages together.
+The list is **package-scoped, not file-scoped**: every test in a package whose
+imports reach the declaring package is named, whatever that individual test
+imports. One file's query therefore answers its whole well-connected
+neighbourhood — `tests-for internal/core/index/tests.go` answers 42 rows in this
+repository, 30 of them tests two imports away.
 The transitive walk reads the reverse import graph breadth first from the
 declaring package to the packages that import it and on to theirs, using each
 language's own import data — a Go import path, a scanned specifier resolved
