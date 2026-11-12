@@ -79,6 +79,16 @@ assert_refusal "already-vendored source keeps the envelope contract" "bad-pack"
 assert_json_field "already-vendored refusal says so" "1" \
   '[.error.message | select(contains("already vendored"))] | length'
 
+# A URL credential refuses before the clone and never reaches the output.
+TOKEN=ghp_SUPERSECRET_C5A2
+run_review pack add "https://oauth2:$TOKEN@host/acme/packs.git" --json
+assert_exit "credentialed source refuses" 1
+assert_refusal "credential refusal keeps the envelope contract" "bad-pack"
+assert_json_field "credential refusal masks the secret" "1" \
+  '[.error.message | select(contains("***"))] | length'
+assert_stream_nogrep "the token is not on stdout" "$EVAL_OUT" "$TOKEN"
+assert_stream_nogrep "the token is not on stderr" "$EVAL_ERR" "$TOKEN"
+
 # Commit the locked pack: fetch resolves it at base and uses it.
 (
   cd "$EVAL_SANDBOX" || exit 99
