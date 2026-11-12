@@ -256,6 +256,52 @@ func TestInstallDetectedPathConflictWritesNothing(t *testing.T) {
 	}
 }
 
+// readOnly drops the write bit on dir for this process, skipping when the
+// filesystem ignores the mode bits (root, or a platform where a directory has
+// no write bit to drop).
+func readOnly(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	probe, err := os.CreateTemp(dir, "writable-*")
+	if err != nil {
+		return
+	}
+	name := probe.Name()
+	_ = probe.Close()
+	_ = os.Remove(name)
+	t.Skip("this filesystem still lets the process write into a 0555 directory")
+}
+
+// TestInstallDetectedUnwritableTargetWritesNothing pins the preflight across
+// targets: a second target that cannot be written refuses typed, names itself,
+// and leaves the first target absent instead of half-installed.
+func TestInstallDetectedUnwritableTargetWritesNothing(t *testing.T) {
+	t.Parallel()
+	req := newRequest(t)
+	home := req.Env["HOME"]
+	claude := seedSkillsDir(t, home, ".claude")
+	codex := seedSkillsDir(t, home, ".codex")
+	readOnly(t, codex)
+
+	_, ref := skill.InstallDetected(context.Background(), req)
+	if ref == nil || ref.Code != "skill-install-failed" {
+		t.Fatalf("unwritable-target refusal = %v, want skill-install-failed", ref)
+	}
+	unwritable := filepath.Join(codex, "verdict")
+	if !strings.Contains(ref.Message, unwritable) {
+		t.Errorf("refusal does not name the unwritable target %s: %q", unwritable, ref.Message)
+	}
+	if _, err := os.Stat(filepath.Join(claude, "verdict")); !os.IsNotExist(err) {
+		t.Fatalf("refused run wrote the first target: stat %v", err)
+	}
+	if _, err := os.Stat(unwritable); !os.IsNotExist(err) {
+		t.Fatalf("refused run created the unwritable target: stat %v", err)
+	}
+}
+
 // TestInstallDetectedHonorsEnvLayouts pins detection through CLAUDE_CONFIG_DIR
 // and XDG_CONFIG_HOME, the two overrides install-skill.sh also honors.
 func TestInstallDetectedHonorsEnvLayouts(t *testing.T) {

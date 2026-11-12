@@ -152,9 +152,9 @@ func List(_ context.Context, req *Request) (Inventory, *core.RefusalError) {
 
 // Install plans one install and, unless DryRun, applies it. A foreign target
 // refuses typed unless Force; a target that is a symlink or not a directory,
-// and a payload path that escapes through one, refuse before anything is
-// written (nothing foreign is ever replaced). Keep refreshes only a skewed
-// receipt.
+// a payload path that escapes through one, and a directory that cannot take the
+// write all refuse before anything is written (nothing foreign is ever
+// replaced). Keep refreshes only a skewed receipt.
 func Install(ctx context.Context, req *Request) (Plan, *core.RefusalError) {
 	if err := ctx.Err(); err != nil {
 		return Plan{}, refuse(codeCanceled, "canceled before skill install completed")
@@ -166,7 +166,7 @@ func Install(ctx context.Context, req *Request) (Plan, *core.RefusalError) {
 	if req.DryRun {
 		return plan, nil
 	}
-	if ref := checkApply(req, &plan); ref != nil {
+	if ref := prepare(req, &plan); ref != nil {
 		return Plan{}, ref
 	}
 	if ref := apply(req, &plan); ref != nil {
@@ -175,7 +175,15 @@ func Install(ctx context.Context, req *Request) (Plan, *core.RefusalError) {
 	return plan, nil
 }
 
-func checkApply(req *Request, plan *Plan) *core.RefusalError {
+// prepare checks one planned target without writing anything: the plan-level
+// refusals, the path-shape preflight inside an existing target, and that every
+// directory apply writes into is writable. Multi-target installs prepare every
+// target before the first apply, so a target that cannot be installed refuses
+// before any target is written. A target that changes between prepare and apply
+// (made read-only, replaced by a symlink) still fails at write time with
+// skill-install-failed: closing that window would need a lock this command does
+// not take.
+func prepare(req *Request, plan *Plan) *core.RefusalError {
 	if plan.TargetFile {
 		return refuse(codeTargetFile, plan.Target+" exists and is not a directory; refusing to replace it")
 	}
@@ -183,7 +191,81 @@ func checkApply(req *Request, plan *Plan) *core.RefusalError {
 		return refuse(codeForeign, plan.Target+" is a non-verdict skill dir (no "+ReceiptName+
 			" receipt); re-run with --force to write only verdict's payload files")
 	}
+	kind, ref := inspectTarget(plan.Target)
+	if ref != nil {
+		return ref
+	}
+	if kind == targetMissing {
+		return checkCreatable(plan.Target)
+	}
+	root, ref := openTargetDir(plan.Target)
+	if ref != nil {
+		return ref
+	}
+	defer func() { _ = root.Close() }()
+	if ref := preflight(root, plan.Target, plan.Files); ref != nil {
+		return ref
+	}
+	return checkWritable(root, plan)
+}
+
+// checkCreatable refuses before a write when the directory that must hold a new
+// target cannot take it: mkdir creates the target under the nearest existing
+// ancestor, so that ancestor decides whether the create can happen.
+func checkCreatable(target string) *core.RefusalError {
+	dir := target
+	for {
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return nil
+		}
+		if info, err := os.Stat(parent); err == nil && info.IsDir() {
+			if !writableDir(parent) {
+				return refuse(codeInstall, "cannot install into "+target+": "+parent+" is not writable")
+			}
+			return nil
+		}
+		dir = parent
+	}
+}
+
+// checkWritable refuses before a write when a directory the apply would write
+// into cannot take it. Every status writes the receipt at the target root, and
+// a create or update also writes each payload file, whose first mkdir or rename
+// lands in the deepest directory that already exists on its path.
+func checkWritable(root *os.Root, plan *Plan) *core.RefusalError {
+	dirs := []string{"."}
+	if plan.Status != StatusKeep {
+		for _, rel := range plan.Files {
+			dirs = append(dirs, existingAncestor(root, filepath.FromSlash(rel)))
+		}
+	}
+	checked := make(map[string]bool, len(dirs))
+	for _, dir := range dirs {
+		if checked[dir] {
+			continue
+		}
+		checked[dir] = true
+		path := filepath.Join(plan.Target, dir)
+		if !writableDir(path) {
+			return refuse(codeInstall, "cannot install into "+plan.Target+": "+path+" is not writable")
+		}
+	}
 	return nil
+}
+
+// existingAncestor is the deepest directory that already exists on name's path,
+// "." for the target root itself: the directory the first mkdir or rename
+// touches.
+func existingAncestor(root *os.Root, name string) string {
+	dir := filepath.Dir(name)
+	for dir != "." {
+		if info, err := root.Stat(dir); err == nil && info.IsDir() {
+			return dir
+		}
+		dir = filepath.Dir(dir)
+	}
+	return "."
 }
 
 func planInstall(ctx context.Context, req *Request) (Plan, *core.RefusalError) {
@@ -393,9 +475,6 @@ func apply(req *Request, plan *Plan) *core.RefusalError {
 		return ref
 	}
 	defer func() { _ = root.Close() }()
-	if ref := preflight(root, plan.Target, plan.Files); ref != nil {
-		return ref
-	}
 	for _, rel := range plan.Files {
 		if err := writePayload(root, plan.Target, rel); err != nil {
 			return err

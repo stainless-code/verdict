@@ -898,7 +898,9 @@ Fix: remove the colliding path by hand, then re-run.
 
 ## `skill-install-failed`
 
-Cause: the skill payload could not be inspected, created, or written.
+Cause: the skill payload could not be inspected, created, or written — including a
+target or payload dir that is not writable, which `skill install` reports before
+it writes anything.
 
 Fix: check the target path and permissions named above, then re-run.
 

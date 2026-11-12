@@ -26,9 +26,9 @@ type Detection struct {
 // exists and is not empty. The agent table is the same one --agent resolves.
 //
 // Every target keeps the single-target safety rules: the receipt check, a
-// typed refusal without --force, and foreign files left untouched. All targets
-// are classified before the first byte is written, so a refused target leaves
-// no half-installed set behind.
+// typed refusal without --force, and foreign files left untouched. Every target
+// is also prepared before the first byte is written, so a refused or
+// unwritable target leaves no half-installed set behind.
 func InstallDetected(ctx context.Context, req *Request) (Detection, *core.RefusalError) {
 	if err := ctx.Err(); err != nil {
 		return Detection{}, refuse(codeCanceled, "canceled before skill install completed")
@@ -51,8 +51,8 @@ func InstallDetected(ctx context.Context, req *Request) (Detection, *core.Refusa
 }
 
 // InstallAgents plans and applies one install per named agent, in argv order
-// and deduped. Every target keeps the single-target safety rules, and all
-// targets are classified before the first byte is written.
+// and deduped. Every target keeps the single-target safety rules, and every
+// target is prepared before the first byte is written.
 func InstallAgents(ctx context.Context, req *Request, agents []string) (Detection, *core.RefusalError) {
 	if err := ctx.Err(); err != nil {
 		return Detection{}, refuse(codeCanceled, "canceled before skill install completed")
@@ -113,9 +113,12 @@ func dedupeAgents(agents []string) []string {
 	return out
 }
 
+// applyDetected prepares every target, then applies them: a target that cannot
+// be installed refuses before the first write, so no earlier target is left
+// half-installed.
 func applyDetected(req *Request, plans []Plan) *core.RefusalError {
 	for i := range plans {
-		if ref := checkApply(req, &plans[i]); ref != nil {
+		if ref := prepare(req, &plans[i]); ref != nil {
 			return ref
 		}
 	}
