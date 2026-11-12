@@ -228,12 +228,13 @@ func matchingPackages(pkgs map[string]*packageInfo, dirs []string, qualifier str
 func queryCallers(pkgs map[string]*packageInfo, targets []target) callerResults {
 	var out callerResults
 	seen := map[Row]bool{}
+	seenUnresolved := map[referenceSite]bool{}
 	dirs := sortedDirs(pkgs)
 	for _, tgt := range targets {
 		for _, dir := range dirs {
 			pkg := pkgs[dir]
 			for _, f := range pkg.files {
-				collectFileRefs(&out, seen, tgt, pkg.dir == tgt.pkg.dir, f)
+				collectFileRefs(&out, seen, seenUnresolved, tgt, pkg.dir == tgt.pkg.dir, f)
 			}
 		}
 	}
@@ -241,10 +242,16 @@ func queryCallers(pkgs map[string]*packageInfo, targets []target) callerResults 
 	return out
 }
 
+type referenceSite struct {
+	path string
+	line int
+	col  int
+}
+
 // collectFileRefs folds one file's matching references into the result set.
 //
 //nolint:revive // the query resolution matrix reads as one block
-func collectFileRefs(out *callerResults, seen map[Row]bool, tgt target, same bool, f *treeFile) {
+func collectFileRefs(out *callerResults, seen map[Row]bool, seenUnresolved map[referenceSite]bool, tgt target, same bool, f *treeFile) {
 	for _, r := range f.Refs {
 		if r.Name != tgt.name {
 			continue
@@ -254,7 +261,11 @@ func collectFileRefs(out *callerResults, seen map[Row]bool, tgt target, same boo
 			continue
 		}
 		if row.Resolution == resolutionUnresolved {
-			out.unresolved++
+			site := referenceSite{path: f.Path, line: r.Line, col: r.Col}
+			if !seenUnresolved[site] {
+				seenUnresolved[site] = true
+				out.unresolved++
+			}
 			continue
 		}
 		row.Language = string(fileLanguage(f))

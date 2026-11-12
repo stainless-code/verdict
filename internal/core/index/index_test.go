@@ -650,6 +650,22 @@ func TestCallersValueSelectorIsUnresolved(t *testing.T) {
 	}
 }
 
+// TestCallersCountsEachUnresolvedSiteOnce proves one selector matching two
+// package declarations is one unresolved source site.
+func TestCallersCountsEachUnresolvedSiteOnce(t *testing.T) {
+	f := newFixture(t)
+	f.write("go.mod", "module example.com/m\n\ngo 1.27\n")
+	f.write("a/a.go", "package a\n\ntype A struct{}\nfunc (A) Touch() {}\n")
+	f.write("b/b.go", "package b\n\ntype B struct{}\nfunc (B) Touch() {}\n")
+	f.write("c/c.go", "package c\n\nfunc Use(v any) { v.Touch() }\n")
+	f.commit("one")
+	f.build()
+	resp := callersOf(t, f, "Touch")
+	if len(resp.Data.Rows) != 0 || resp.Data.Unresolved != 1 {
+		t.Errorf("rows = %+v, unresolved = %d; want none and 1", resp.Data.Rows, resp.Data.Unresolved)
+	}
+}
+
 // TestCallersGenericInstantiationIsUnresolved proves a generic instantiation
 // is counted unresolved on both tiers: in the declaring package and through
 // an import edge.
