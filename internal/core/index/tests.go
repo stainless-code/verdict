@@ -161,7 +161,7 @@ func collectTestRows(t *treeIndex, plan *testPlan) []TestRow {
 	var rows []TestRow
 	for i := range t.Files {
 		f := &t.Files[i]
-		if !isCandidateFile(f, plan.path) {
+		if !isCandidateFile(plan, f) {
 			continue
 		}
 		via := testVia(plan, dirs, importPaths, f)
@@ -268,17 +268,20 @@ func trimSourceExt(p string) string {
 }
 
 // isCandidateFile reports whether one indexed file can be a candidate test
-// row: a readable test file in its language that is not the queried file
-// itself.
-func isCandidateFile(f *treeFile, queried string) bool {
-	return testPath(fileLanguage(f), f.Path) && !f.Oversize && f.Error == "" && f.Path != queried
+// row at all: a readable test file in the plan's language family that is not
+// the queried file itself. Every mechanism that reaches a candidate passes
+// here first, so no edge can list a test from another family.
+func isCandidateFile(plan *testPlan, f *treeFile) bool {
+	lang := fileLanguage(f)
+	return testPath(lang, f.Path) && plan.lang.sameFamily(lang) &&
+		!f.Oversize && f.Error == "" && f.Path != plan.path
 }
 
 // testVia classifies one test file: same package directory, a recorded
 // reference to a declared symbol, or an import of the declaring package.
 func testVia(plan *testPlan, dirs, importPaths map[string]bool, f *treeFile) string {
 	switch {
-	case samePackageTest(plan, dirs, f):
+	case samePackageTest(dirs, f):
 		return viaSamePackage
 	case referencesTargets(plan.targets, f), importsTargetPath(plan, f):
 		return viaReferences
@@ -290,11 +293,11 @@ func testVia(plan *testPlan, dirs, importPaths map[string]bool, f *treeFile) str
 }
 
 // samePackageTest reports whether one candidate is a test in a declaring
-// directory and in the queried declaration's language family: a `.py` test says
-// nothing about the Go file beside it, while a JavaScript test can cover a
-// TypeScript declaration.
-func samePackageTest(plan *testPlan, dirs map[string]bool, f *treeFile) bool {
-	return dirs[path.Dir(f.Path)] && plan.lang.sameFamily(fileLanguage(f))
+// directory. The language family is already settled by isCandidateFile: a `.py`
+// test says nothing about the Go file beside it, while a JavaScript test can
+// cover a TypeScript declaration.
+func samePackageTest(dirs map[string]bool, f *treeFile) bool {
+	return dirs[path.Dir(f.Path)]
 }
 
 // referencesTargets reports whether the file carries a reference the index can

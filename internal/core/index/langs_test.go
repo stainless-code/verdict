@@ -239,6 +239,76 @@ func TestCandidatesStayInsideOneLanguage(t *testing.T) {
 	})
 }
 
+// TestImportEdgeStaysInsideOneLanguage proves the language-family gate holds
+// for every mechanism a candidate can arrive by, not only the same-package arm:
+// a test file importing the queried one across a language family is never a
+// candidate, in either directory, and blast-radius inherits the answer.
+func TestImportEdgeStaysInsideOneLanguage(t *testing.T) {
+	const goTarget = "package pkg\n\nfunc Target() {}\n"
+	const tsTarget = "export function Target() {\n  return 1;\n}\n"
+	cases := []struct {
+		name, target, targetBody, test, testBody string
+		want                                     []TestRow
+	}{
+		{
+			name:   "go target, same directory javascript test",
+			target: "pkg/app.go", targetBody: goTarget,
+			test: "pkg/app.test.js", testBody: "import \"./app\";\nexport const x = 1;\n",
+		},
+		{
+			name:   "go target, same directory typescript test",
+			target: "pkg/app.go", targetBody: goTarget,
+			test: "pkg/app.test.ts", testBody: "import \"./app\";\nexport const x = 1;\n",
+		},
+		{
+			name:   "go target, same directory python test",
+			target: "pkg/app.go", targetBody: goTarget,
+			test: "pkg/test_app.py", testBody: "from .app import Target\n",
+		},
+		{
+			name:   "go target, other directory javascript test",
+			target: "pkg/app.go", targetBody: goTarget,
+			test: "checks/app.test.js", testBody: "import \"../pkg/app\";\nexport const x = 1;\n",
+		},
+		{
+			name:   "go target, other directory typescript test",
+			target: "pkg/app.go", targetBody: goTarget,
+			test: "checks/app.test.ts", testBody: "import \"../pkg/app\";\nexport const x = 1;\n",
+		},
+		{
+			name:   "go target, other directory python test",
+			target: "pkg/app.go", targetBody: goTarget,
+			test: "checks/test_app.py", testBody: "from pkg import app\n",
+		},
+		{
+			name:   "go target, same directory go test",
+			target: "pkg/app.go", targetBody: goTarget,
+			test:     "pkg/app_test.go",
+			testBody: "package pkg\n\nimport \"testing\"\n\nfunc TestTarget(t *testing.T) {\n\tTarget()\n}\n",
+			want:     []TestRow{{Path: "pkg/app_test.go", Via: viaSamePackage}},
+		},
+		{
+			name:   "typescript target, other directory typescript test",
+			target: "web/app.ts", targetBody: tsTarget,
+			test: "checks/app.test.ts", testBody: "import \"../web/app\";\nexport const x = 1;\n",
+			want: []TestRow{{Path: "checks/app.test.ts", Via: viaReferences}},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t)
+			f.write("go.mod", "module example.com/m\n\ngo 1.27\n")
+			f.write(tc.target, tc.targetBody)
+			f.write(tc.test, tc.testBody)
+			f.commit("one")
+			f.build()
+			assertTestRows(t, f.queryPath(QueryTestsFor, tc.target).Data.TestRows, tc.want)
+			resp := blastRun(t, f, func(r *Request) { r.Paths = []string{tc.target} })
+			assertTestRows(t, resp.Data.Blast.Tests, tc.want)
+		})
+	}
+}
+
 // TestCallersStayInsideOneLanguage proves a call in one language is not a
 // caller of another language's declaration that happens to share a directory.
 func TestCallersStayInsideOneLanguage(t *testing.T) {
