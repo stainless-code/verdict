@@ -34,35 +34,53 @@ func readBase(ctx context.Context, cmd core.Commander, repo, root, base string) 
 }
 
 // readPaths reads the fixed inventory plus, when trees is set, every regular
-// file under the repo pack directory. The recursive ls-tree lists the pack
-// tree in the same call, so one base object supplies both.
+// file under the repo pack directory. The fixed paths are listed without
+// recursion so a directory squatting a control path stays visible and refuses
+// as a non-regular control; only the pack tree recurses.
 func readPaths(
 	ctx context.Context, cmd core.Commander, repo, root, base string, paths []string, trees bool,
 ) (map[string][]byte, *core.RefusalError) {
-	argv := []string{"ls-tree"}
-	if trees {
-		argv = append(argv, "-r")
-	}
-	argv = append(argv, "-lz", base, "--")
-	argv = append(argv, paths...)
-	if trees {
-		argv = append(argv, PacksPrefix)
+	if !fullSHA.MatchString(base) {
+		return nil, refuse(CodeUnavailable, "the bundle does not name a full PR base commit")
 	}
 	read := append([]string{}, paths...)
 	if trees {
 		read = append(read, PacksPrefix)
 	}
-	if !fullSHA.MatchString(base) {
-		return nil, refuse(CodeUnavailable, "the bundle does not name a full PR base commit")
-	}
-	tree, err := runGit(ctx, cmd, 0, root, argv...)
+	fixed, err := lsTree(ctx, cmd, root, base, false, paths...)
 	if err != nil && repo != "" {
 		return readContents(ctx, cmd, repo, base, read)
 	}
 	if err != nil {
 		return nil, refuse(CodeUnavailable, fmt.Sprintf("PR base %s is not readable here (shallow checkout?): %v", base[:shortLen], err))
 	}
-	return readBlobs(ctx, cmd, root, base, tree)
+	blobs := &blobReader{cmd: cmd, root: root, base: base, contents: map[string][]byte{}}
+	if ref := blobs.read(ctx, fixed); ref != nil {
+		return nil, ref
+	}
+	if !trees {
+		return blobs.contents, nil
+	}
+	packTree, err := lsTree(ctx, cmd, root, base, true, PacksPrefix)
+	if err != nil {
+		return nil, refuse(CodeUnavailable, fmt.Sprintf("PR base %s is not readable here (shallow checkout?): %v", base[:shortLen], err))
+	}
+	if ref := blobs.read(ctx, packTree); ref != nil {
+		return nil, ref
+	}
+	return blobs.contents, nil
+}
+
+// lsTree lists one or more paths at base: with recurse it descends into
+// directories, without it a directory answers as a tree entry of its own.
+func lsTree(ctx context.Context, cmd core.Commander, root, base string, recurse bool, paths ...string) (string, error) {
+	argv := []string{"ls-tree"}
+	if recurse {
+		argv = append(argv, "-r")
+	}
+	argv = append(argv, "-lz", base, "--")
+	argv = append(argv, paths...)
+	return runGit(ctx, cmd, 0, root, argv...)
 }
 
 // ReadPaths reads arbitrary inventory paths at the PR base commit through
@@ -75,24 +93,33 @@ func ReadPaths(ctx context.Context, cmd core.Commander, repo, root, base string,
 	return readPaths(ctx, cmd, repo, root, base, paths, false)
 }
 
-// readBlobs reads every regular blob the ls-tree output lists.
-func readBlobs(ctx context.Context, cmd core.Commander, root, base, tree string) (map[string][]byte, *core.RefusalError) {
-	contents, total := map[string][]byte{}, 0
+// blobReader reads every regular blob one ls-tree listing names, with the
+// total cap spanning every listing of the same base read.
+type blobReader struct {
+	cmd      core.Commander
+	root     string
+	base     string
+	contents map[string][]byte
+	total    int
+}
+
+// read reads one ls-tree listing.
+func (b *blobReader) read(ctx context.Context, tree string) *core.RefusalError {
 	for entry := range strings.FieldsFuncSeq(tree, func(r rune) bool { return r == 0 }) {
 		path, size, ref := parseEntry(entry)
 		if ref != nil {
-			return nil, ref
+			return ref
 		}
-		if total += size; total > MaxTotalBytes {
-			return nil, refuse(CodeTooLarge, fmt.Sprintf("controls exceed the %d-byte total cap — trim them at base", MaxTotalBytes))
+		if b.total += size; b.total > MaxTotalBytes {
+			return refuse(CodeTooLarge, fmt.Sprintf("controls exceed the %d-byte total cap — trim them at base", MaxTotalBytes))
 		}
-		body, err := runGit(ctx, cmd, size+1, root, "show", base+":"+path)
+		body, err := runGit(ctx, b.cmd, size+1, b.root, "show", b.base+":"+path)
 		if err != nil {
-			return nil, refuse(CodeUnavailable, fmt.Sprintf("could not read %s at %s: %v", path, base[:shortLen], err))
+			return refuse(CodeUnavailable, fmt.Sprintf("could not read %s at %s: %v", path, b.base[:shortLen], err))
 		}
-		contents[path] = []byte(body)
+		b.contents[path] = []byte(body)
 	}
-	return contents, nil
+	return nil
 }
 
 // parseEntry validates one `ls-tree -l` entry: a regular blob under the

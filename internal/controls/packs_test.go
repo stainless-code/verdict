@@ -144,6 +144,25 @@ func TestResolveWorktreePackBudget(t *testing.T) {
 	})
 }
 
+// TestResolveRefusesDirectoryAtControlPath proves a directory squatting a
+// fixed control path refuses as a non-regular control: the fixed paths are
+// listed without recursion, so the tree entry is visible to validation instead
+// of being replaced by the files beneath it.
+func TestResolveRefusesDirectoryAtControlPath(t *testing.T) {
+	base := baseRepo(t, map[string]string{
+		".verdict/config.json/inner.json": `{"schema_version":"1"}`,
+		".verdict/kb.jsonl":               `{"id":"rule"}` + "\n",
+	})
+	_, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: ".verdict/state/17", BaseSHA: base})
+	if ref == nil || ref.Code != CodeUnavailable {
+		t.Fatalf("directory at the config path = %v, want controls-unavailable", ref)
+	}
+	want := "control .verdict/config.json is not a regular file"
+	if !strings.Contains(ref.Message, want) {
+		t.Fatalf("message = %q, want it to contain %q", ref.Message, want)
+	}
+}
+
 // TestResolveRefusesUnrepresentablePackPath proves a pack file at base whose
 // path the snapshot cannot carry refuses naming that path, instead of dropping
 // the pack from the inventory with no control row and no refusal.
