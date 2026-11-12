@@ -157,6 +157,12 @@ CALL: api graphql -F owner=acme -F name=app -F pr=4701 -f query=
       "status": "missing",
       "bytes": 0,
       "sha256": ""
+    },
+    {
+      "path": ".verdict/verdict.lock",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
     }
   ]
 }

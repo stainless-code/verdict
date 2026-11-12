@@ -161,6 +161,12 @@ a.txt
       "status": "missing",
       "bytes": 0,
       "sha256": ""
+    },
+    {
+      "path": ".verdict/verdict.lock",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
     }
   ]
 }
