@@ -399,7 +399,7 @@ func usageText() string {
 		"    GET /?token=<t> sets verdict_session_<port> (HttpOnly, SameSite=Strict, Path=/v1)\n" +
 		"    and 303s to /; /v1 refuses ?token= and requires that cookie or Authorization: Bearer.\n" +
 		"    Routes: /v1/health, /v1/roots, /v1/bundles, /v1/roots/{root}/bundles/{bundle},\n" +
-		"    .../findings/{sig}. GET only, no CORS, no writes; Ctrl-C exits 3.\n" +
+		"    .../findings/{sig}, /v1/events (--no-watch removes it). GET only, no CORS, no writes; Ctrl-C exits 3.\n" +
 		"    Discovery defaults to depth 6, 20000 directory visits, 500 repositories;\n" +
 		"    --rediscover forces a walk, --no-registry skips the 24-hour local cache.\n" +
 		"  mcp [--read-only | --operator] (experimental)\n" +

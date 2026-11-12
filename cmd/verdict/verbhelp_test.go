@@ -51,3 +51,12 @@ func TestVerifyHelpNamesGroupValidationFlags(t *testing.T) {
 		}
 	}
 }
+
+// TestServeUsageListsEventsRoute documents that watch exposes the SSE route
+// and that --no-watch removes it.
+func TestServeUsageListsEventsRoute(t *testing.T) {
+	const want = "    .../findings/{sig}, /v1/events (--no-watch removes it). GET only, no CORS, no writes; Ctrl-C exits 3.\n"
+	if !strings.Contains(usageText(), want) {
+		t.Fatalf("serve usage route line = %q, want %q", usageText(), want)
+	}
+}
