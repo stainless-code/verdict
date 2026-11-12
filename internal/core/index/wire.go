@@ -68,6 +68,8 @@ func (d *Data) Wire() *jq.Obj {
 			"stale", d.Stale,
 			"target", targetDoc(d.Target),
 		)
+	case QueryBlastRadius:
+		return blastRadiusDoc(d)
 	default:
 		return jq.NewObj()
 	}
