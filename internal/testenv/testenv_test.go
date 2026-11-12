@@ -102,6 +102,29 @@ func TestGitConfigPinsRepositories(t *testing.T) {
 	}
 }
 
+// TestGitConfigPinsTheSystemScope proves the system scope names an empty file
+// rather than the host's /etc/gitconfig: GIT_CONFIG_NOSYSTEM is one line a
+// child can lose, and the pinned path still reads nothing.
+func TestGitConfigPinsTheSystemScope(t *testing.T) {
+	var system string
+	for _, kv := range testenv.GitConfig() {
+		if name, value, _ := strings.Cut(kv, "="); name == "GIT_CONFIG_SYSTEM" {
+			system = value
+		}
+	}
+	if system == "" {
+		t.Fatal("GitConfig leaves GIT_CONFIG_SYSTEM unset; a child without GIT_CONFIG_NOSYSTEM reads the host's system config")
+	}
+	fi, err := os.Stat(system)
+	if err != nil {
+		t.Fatalf("GIT_CONFIG_SYSTEM = %q: %v", system, err)
+	}
+	if !fi.Mode().IsRegular() || fi.Size() != 0 {
+		t.Errorf("GIT_CONFIG_SYSTEM = %q (mode %v, %d bytes); want an empty regular file",
+			system, fi.Mode(), fi.Size())
+	}
+}
+
 // TestEvalsHelperMatchesGo proves the shell twin (evals/lib/testenv.sh) drops
 // the same names and exports the same git config as testenv.Base, so the Go
 // harnesses and the evals cannot drift into two policies.
@@ -127,17 +150,17 @@ func checkEvalsGitConfig(t *testing.T, got map[string]string) {
 	t.Helper()
 	for _, kv := range testenv.GitConfig() {
 		name, value, _ := strings.Cut(kv, "=")
-		if name == "GIT_CONFIG_GLOBAL" {
-			checkGlobalSet(t, got, name)
+		if name == "GIT_CONFIG_GLOBAL" || name == "GIT_CONFIG_SYSTEM" {
+			checkEmptyConfigPath(t, got, name)
 			continue
 		}
 		checkEnvValue(t, got, name, value)
 	}
 }
 
-// checkGlobalSet accepts any path: both point at an empty file, but the
-// eval harness owns its sandbox copy.
-func checkGlobalSet(t *testing.T, got map[string]string, name string) {
+// checkEmptyConfigPath accepts any path: both sides point at an empty file,
+// but the eval harness owns its sandbox copy.
+func checkEmptyConfigPath(t *testing.T, got map[string]string, name string) {
 	t.Helper()
 	if got[name] == "" {
 		t.Errorf("evals helper left %s unset", name)

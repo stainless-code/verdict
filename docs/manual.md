@@ -1112,7 +1112,8 @@ agent sees it before its first call. Each
 `tools/call` returns the CLI `--json` envelope's `data` as one text block plus
 `structuredContent`; a typed refusal sets `isError: true` with
 `{code, message, hint}` in both places, plus `retry_at` when the refusal is
-retryable. The text block is budgeted at 256 KiB:
+retryable and `warnings` when the verb warned before it stopped (the text
+block renders each as a `warn:` line). The text block is budgeted at 256 KiB:
 a larger result keeps `structuredContent` whole and replaces the text with a
 JSON summary carrying `truncated: true`, the measured `bytes` and `limit`, the
 on-disk `artifact` (the bundle directory when the verb reports one) and a
@@ -2664,9 +2665,11 @@ Methods, interface and dynamic dispatch, reflection, and generic instantiation
 are unresolved by construction. A bare symbol (`Target`) selects every package
 declaring it; a qualified one (`app.Target`, or the import path) names the
 package. A qualifier that matches no package directory or import path refuses
-`bad-flags` naming it, as does an ambiguous one, so a typo never reads as no
-callers. Rows sort by path, line, and kind, and truncate to `--limit` (default
-50, maximum 200) with `data.truncated` naming how many were not shown.
+`bad-flags` naming it, as does an ambiguous one, so a mistyped qualifier never
+reads as no callers. The symbol itself is not checked against the
+declarations: a mistyped one (`a.Nope`) answers zero rows, never a refusal.
+Rows sort by path, line, and kind, and truncate to `--limit` (default 50,
+maximum 200) with `data.truncated` naming how many were not shown.
 
 The honest limits are the contract: **exact within a package, lexical across
 packages, incomplete by construction**. Do not read a caller row as proof of
@@ -2759,8 +2762,9 @@ and GitHub requests none of them. One build reads every parseable blob through
 a single `git cat-file` capture capped at 97 MiB including record framing, so
 the total source size parsed in one build is the effective ceiling. It binds
 before the nominal 20,000 × 1 MiB file caps; an over-cap capture refuses
-`index-capped` naming the cap, and the capture cap is not configurable. A
-truncated or invalid shard refuses `index-corrupt` and is never read as empty.
+`index-capped` naming the cap and the bytes read, and the capture cap is not
+configurable. A truncated or invalid shard refuses `index-corrupt` and is
+never read as empty.
 
 Querying a tree that is not HEAD's marks the envelope `stale: true` and warns
 `» index: built for <tree>, HEAD is <tree2>`. `callers`, `tests-for`, and

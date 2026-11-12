@@ -1009,3 +1009,38 @@ func TestConcurrentCallsAreIsolated(t *testing.T) {
 		}
 	}
 }
+
+// TestRefusalResultWarnings proves a refusal that carries warnings serializes
+// them in both MCP representations, and one that carries none stays unchanged:
+// the payload is additive per field, never a reshuffle of the keys already
+// there.
+func TestRefusalResultWarnings(t *testing.T) {
+	t.Parallel()
+	res := refusalResult(&core.RefusalError{
+		Code:     "pack-unsafe-path",
+		Message:  "the pack carries a file outside the closed layout",
+		Warnings: []string{"skipped notes.md: not listed in the manifest"},
+	})
+	if !strings.Contains(res.Content[0].Text, "warn: skipped notes.md: not listed in the manifest") {
+		t.Errorf("text = %q, want the warning line", res.Content[0].Text)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(res.StructuredContent, &got); err != nil {
+		t.Fatalf("structuredContent: %v", err)
+	}
+	warnings, ok := got["warnings"].([]any)
+	if !ok || len(warnings) != 1 || warnings[0] != "skipped notes.md: not listed in the manifest" {
+		t.Errorf("structured warnings = %v, want the one warning", got["warnings"])
+	}
+	plain := refusalResult(&core.RefusalError{Code: "post-failed", Message: "post failed"})
+	if strings.Contains(plain.Content[0].Text, "warn:") {
+		t.Errorf("plain text carries a warning line: %q", plain.Content[0].Text)
+	}
+	var plainMap map[string]any
+	if err := json.Unmarshal(plain.StructuredContent, &plainMap); err != nil {
+		t.Fatalf("plain structuredContent: %v", err)
+	}
+	if _, ok := plainMap["warnings"]; ok {
+		t.Error("plain structuredContent carries warnings")
+	}
+}
