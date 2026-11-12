@@ -431,6 +431,26 @@ func TestBlastRefusals(t *testing.T) {
 			name: "missing bundle", mut: func(r *Request) { r.Pr = "99" },
 			code: "missing-bundle", part: ".verdict/state/99",
 		},
+		{
+			name: "--pr ../x", mut: func(r *Request) { r.Pr = `../x` },
+			code: "bad-flags", part: "names a bundle (a PR number or fetch-local name), not a path",
+		},
+		{
+			name: "--pr a/b", mut: func(r *Request) { r.Pr = `a/b` },
+			code: "bad-flags", part: "names a bundle (a PR number or fetch-local name), not a path",
+		},
+		{
+			name: "--pr a\b", mut: func(r *Request) { r.Pr = `a\b` },
+			code: "bad-flags", part: "names a bundle (a PR number or fetch-local name), not a path",
+		},
+		{
+			name: "--pr ..", mut: func(r *Request) { r.Pr = `..` },
+			code: "bad-flags", part: "names a bundle (a PR number or fetch-local name), not a path",
+		},
+		{
+			name: "--pr .", mut: func(r *Request) { r.Pr = `.` },
+			code: "bad-flags", part: "names a bundle (a PR number or fetch-local name), not a path",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -29,6 +29,8 @@ const (
 	blastMissingDiff = "index blast-radius: no %s/full.diff (run fetch first)"
 	blastUnknownPath = "index blast-radius: %s is not a file at %s"
 	blastEmptyPath   = "index blast-radius wants a repository path after --paths"
+	blastDotSeg      = "."
+	blastPrNotBundle = "index blast-radius: --pr names a bundle (a PR number or fetch-local name), not a path"
 	blastCallerDepth = "index: %d caller(s) within depth %d (%d unresolved)"
 	blastShowing     = "index: showing %d of %d %s (%d not shown; raise --limit up to %d)"
 	blastNoSymbols   = "index: %d changed file(s), no indexed declarations at %s"
@@ -282,6 +284,9 @@ func (st *state) pathsInput() (BlastInput, []blastChange, *core.RefusalError) {
 func (st *state) bundleInput(ctx context.Context) (BlastInput, []blastChange, *core.RefusalError) {
 	if err := ctx.Err(); err != nil {
 		return BlastInput{}, nil, &core.RefusalError{Code: "canceled", Message: "canceled before index completed"}
+	}
+	if strings.ContainsAny(st.req.Pr, `/\`) || st.req.Pr == blastDotSeg || st.req.Pr == ".." {
+		return BlastInput{}, nil, &core.RefusalError{Code: codeBadFlags, Message: blastPrNotBundle}
 	}
 	dir := readcommon.ResolveBundleDir(st.sourceRoot(), st.req.Pr)
 	if !readcommon.IsDir(dir) {
