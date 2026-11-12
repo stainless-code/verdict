@@ -46,6 +46,13 @@ window and echoes that window. `index owners` answers the CODEOWNERS rule at the
 tree (GitHub file order, last match wins), with a null owner list when no rule
 matches rather than an owner named nobody.
 
+**Impact hand-off.** The blast-radius section a bundle gains when the operator
+names an index: `fetch` or `fetch-local --index <ref|dir>` writes
+`.verdict/state/<bundle>/impact.json` and appends a capped `## impact` section
+to `toc.txt`. It is a hand-off, never a discovery: nothing builds, refreshes, or
+crawls an index, and a fetch without the flag writes no section. `impact.json`
+carries `sources: ["index:<tree>"]` naming the tree that answered.
+
 ## Evidence
 
 **Evidence rung.** The proof behind a finding: `said`, `pointed`, `walked`,
