@@ -30,13 +30,8 @@ func blastChanges(diff string) []blastChange {
 	for ln := range strings.SplitSeq(diff, "\n") {
 		switch {
 		case strings.HasPrefix(ln, blastDiffGit):
-			_, p := hunks.HeaderPaths(ln)
-			if p == "" {
-				cur = -1
-				continue
-			}
-			out = append(out, blastChange{path: p})
-			cur, newLine = len(out)-1, 0
+			out, cur = openBlastChange(out, ln)
+			newLine = 0
 		case cur < 0:
 		case strings.HasPrefix(ln, blastHunk):
 			newLine = blastHunkSeed(ln)
@@ -48,13 +43,22 @@ func blastChanges(diff string) []blastChange {
 		case strings.HasPrefix(ln, blastDeleted):
 			out[cur].lines = append(out[cur].lines, max(newLine-1, 1), max(newLine, 1))
 		default:
-			if strings.HasPrefix(ln, blastBinary) {
-				out[cur].binary = true
-			}
+			out[cur].binary = out[cur].binary || strings.HasPrefix(ln, blastBinary)
 			newLine++
 		}
 	}
 	return finishBlastChanges(out)
+}
+
+// openBlastChange appends the section a "diff --git" line names and returns its
+// index; a header with no path opens no section, so its lines are skipped.
+func openBlastChange(out []blastChange, ln string) ([]blastChange, int) {
+	_, p := hunks.HeaderPaths(ln)
+	if p == "" {
+		return out, -1
+	}
+	out = append(out, blastChange{path: p})
+	return out, len(out) - 1
 }
 
 // blastHunkSeed reads the new-side line number a hunk's first content line

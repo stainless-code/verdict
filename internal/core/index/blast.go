@@ -104,16 +104,16 @@ type BlastTruncated struct {
 // an index answered the symbol, caller, and test lists. unresolved counts the
 // candidate references the caller walk could not attribute.
 type Blast struct {
-	Input      BlastInput
 	Symbols    []SymbolRow
 	Callers    []CallerRow
 	Tests      []TestRow
 	Partners   []BlastPartnerRow
 	Owners     []Target
-	Counts     BlastCounts
 	Truncated  BlastTruncated
-	Indexed    bool
+	Input      BlastInput
+	Counts     BlastCounts
 	unresolved int
+	Indexed    bool
 }
 
 // checkBlastPaths refuses a --paths entry the queried tree does not carry, so a
@@ -188,11 +188,7 @@ func (st *state) blastRadius(ctx context.Context) (*Response, *core.RefusalError
 	} else {
 		st.warn(fmt.Sprintf(blastNoIndexWarn, tree))
 	}
-	for _, ch := range changes {
-		if ch.hunkless {
-			st.warn(fmt.Sprintf(blastHunkless, ch.path))
-		}
-	}
+	st.warnHunkless(changes)
 	symbols := blastSymbols(pkgs, t, changes)
 	callers, unresolved := blastCallers(pkgs, t, blastRoots(symbols))
 	partners, ref := st.blastPartners(ctx, root, input.Paths, commits, minCount)
@@ -209,6 +205,15 @@ func (st *state) blastRadius(ctx context.Context) (*Response, *core.RefusalError
 		Partners: partners, Owners: owners, unresolved: unresolved,
 	}
 	return st.blastResponse(t, tree, commit, stale, blast, limit), nil
+}
+
+// warnHunkless warns about each changed file whose diff named no line hunks.
+func (st *state) warnHunkless(changes []blastChange) {
+	for _, ch := range changes {
+		if ch.hunkless {
+			st.warn(fmt.Sprintf(blastHunkless, ch.path))
+		}
+	}
 }
 
 // blastWindowBounds resolves and bounds --commits and --min-count.
