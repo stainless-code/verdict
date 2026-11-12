@@ -9,10 +9,10 @@ if [ "$LOOP_MODE" = empty ]; then
   exit 0
 fi
 comments='[]'
-if grep -q 'new line' notes.txt; then
+if [ "$LOOP_MODE" != stale ] && grep -q 'new line' notes.txt; then
   comments='[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Incorrect line.","severity":"important","rigor":"walked"}]'
 fi
 printf '{"schema_version":"1","body":"Reviewed the complete notes change.","approved":false,"comments":%s,"coverage":[{"file":"notes.txt","ranges":"1-3"}]}\n' "$comments" >"$artifact"
-if [ "$LOOP_MODE" = fix ]; then
+if [ "$LOOP_MODE" = fix ] || [ "$LOOP_MODE" = stale ]; then
   printf 'top\nfixed line\nbottom\n' >notes.txt
 fi

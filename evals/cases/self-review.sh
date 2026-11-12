@@ -11,7 +11,7 @@ done
 PATH="$EVAL_SANDBOX/agentbin:$(dirname "$EVAL_CLI"):$PATH"
 export PATH
 for agent in claude codex opencode; do
-  for mode in fix never empty; do
+  for mode in fix never empty stale; do
     repo="$EVAL_SANDBOX/repo-$agent-$mode"
     eval_fixture_repo "$repo"
     export LOOP_MODE="$mode" LOOP_LOG="$EVAL_SANDBOX/$agent-$mode.log"
@@ -22,6 +22,12 @@ for agent in claude codex opencode; do
     # shellcheck disable=SC2034 # assert_exit reads this status
     EVAL_STATUS=$?
     set -e
+    if [ "$mode" = stale ]; then
+      assert_exit "$agent edit after fetch refuses" 1
+      assert_json_field "stale review cannot pass" false '.passed' "$output/summary.json"
+      assert_json_field "edit after fetch is typed" coverage-stale '.stop' "$output/summary.json"
+      continue
+    fi
     if [ "$mode" = empty ]; then
       assert_exit "$agent empty review refuses" 1
       assert_json_field "empty review is not a pass" false '.passed' "$output/summary.json"

@@ -71,6 +71,7 @@ func TestRunLocalWorktreeDirty(t *testing.T) {
 			"git\x00worktree\x00remove\x00--force\x00" + wt:                                                                      {stdout: ""},
 		},
 	}
+	cmdr.out["git\x00diff\x00HEAD"] = scriptResult{stdout: worktreeTestDiff}
 	scriptEmptyBasePolicy(cmdr, worktreeTestHead)
 	var human, diag bytes.Buffer
 	var streamed []string

@@ -70,6 +70,9 @@ func Run(ctx context.Context, req *core.RecordRequest) (*core.RecordResponse, *c
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
+	if ref := readcommon.CheckLocalFresh(ctx, st.identityCommander(), st.req.RepoRootPath(), dir); ref != nil {
+		return nil, st.withWarnings(ref)
+	}
 	res, names, ref := st.mergeAndName(dir, prov, headFull, review)
 	if ref != nil {
 		return nil, st.withWarnings(ref)

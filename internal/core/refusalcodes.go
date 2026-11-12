@@ -102,6 +102,7 @@ var refusalCodes = []string{
 	"cost-panel-unresolved",
 	"cost-unreadable",
 	"coverage-incomplete",
+	"coverage-stale",
 	"degenerate-body",
 	"diff-failed",
 	"diff-too-large",

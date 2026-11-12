@@ -3629,7 +3629,11 @@ Each round records with `--require-coverage` and gates with `--coverage require`
 Dirty local coverage receipts are bound to `source.json.diff_sha256`, verified
 against the bundle's `full.diff`, and must name that same diff hash. A missing,
 partial, or empty attestation cannot pass for a measurable change. A changed diff
-or mismatched receipt fails closed. This local gate is not merge authorization.
+or mismatched receipt fails closed. `record` and coverage gates also compare the
+live tracked-tree fingerprint with `source.json.worktree_diff_sha256`; a change
+refuses with `coverage-stale` and asks for `fetch-local` again. This fingerprint
+covers all tracked changes, including paths outside a filtered review. Older
+dirty bundles without this fingerprint must be fetched again. This local gate is not merge authorization.
 
 `round-N.json` holds the round number, open findings count, gate boolean, and
 `cost: null` (cost is not measured). Missing observations remain null.
@@ -3638,7 +3642,10 @@ or mismatched receipt fails closed. This local gate is not merge authorization.
 the last gate passed; exit 1 means maximum rounds, wall budget, or a typed
 refusal stopped the loop. The wall budget covers all subprocesses and kills the
 POSIX process group on expiration. It is not a token or dollar budget. A refusal
-never retries. The loop does not invoke `run`'s structured-output repair loop.
+stops the loop, except `coverage-stale` on a review reporting findings: fixes
+make that round stale, so the loop retains the review, writes a stale receipt,
+and fetches again within the round and wall budgets. A stale clean review
+always stops failing. The loop does not invoke `run`'s structured-output repair loop.
 
 For a before/after benchmark, use two isolated copies of the same benchmark
 input and pinned agent/model: run the baseline coding task in one, then the

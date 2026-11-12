@@ -129,6 +129,11 @@ func Run(ctx context.Context, req *core.ReportRequest) (*core.ReportResponse, *c
 	if ref := loadRunPolicy(st); ref != nil {
 		return nil, ref
 	}
+	if st.flags.Coverage != "" {
+		if ref := readcommon.CheckLocalFresh(ctx, req.Commander, req.RepoRootPath(), st.dir); ref != nil {
+			return nil, ref
+		}
+	}
 	evaluateCompliance(st)
 	applyDisplayFloor(st)
 	warnLensUsage(st)
