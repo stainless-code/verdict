@@ -289,6 +289,20 @@ func TestApplyGlobalForcesKitchenSink(t *testing.T) {
 	}
 }
 
+// TestSettingsPacksKeyAccepted proves the shared settings loader accepts the
+// explicit org pack array beside the presentation and personal sections.
+func TestSettingsPacksKeyAccepted(t *testing.T) {
+	t.Parallel()
+	env := map[string]string{"HOME": "/home/operator"}
+	body := []byte(`{"packs":["org/security"]}`)
+	_, err := cli.ResolvePrefs(&cli.Runner{}, env, func(string) ([]byte, error) {
+		return body, nil
+	})
+	if err != nil {
+		t.Fatalf("ResolvePrefs refused packs: %v", err)
+	}
+}
+
 // TestApplyGlobalForcesPlaceholders pins the one refusal ApplyGlobalForces can
 // return, in both directions: an inventory placeholder is accepted, an unknown
 // one is refused naming the source and the placeholder, and the field keeps

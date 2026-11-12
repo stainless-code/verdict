@@ -252,6 +252,15 @@ type PackManifest = pack.Manifest
 // PackLens is one lens row inside a pack manifest.
 type PackLens = pack.LensSpec
 
+// PackRule is one rule row inside a pack manifest.
+type PackRule = pack.RuleSpec
+
+// PackData is the pack verb's --json data profile: one row per layer pack.
+type PackData = pack.ListData
+
+// PackEntry is one pack list row.
+type PackEntry = pack.Entry
+
 // Record is core's completed-record artifact.
 type Record = core.Record
 

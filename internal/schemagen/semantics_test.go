@@ -162,8 +162,9 @@ var publishedSemantics = map[string]string{
 	// no CODEOWNERS file (source null too), no matching rule (source named),
 	// and an ownerless rule that cleared ownership ([] with the source
 	// named). Description only; no property, required key, enum, or type
-	// changed.
-	"envelope.schema.json": "349de8e0045f0f95461b46cdb7a8c9b41ee9343b4a9c3a301375fcc2a1145279",
+	// changed. Pack list: additive $defs/packData and $defs/packEntry; the
+	// envelope data object was already open, so no existing shape moved.
+	"envelope.schema.json": "3ff6d6c063f2448eb2d24a8ee19a445777d493622b79a417b654e91536b0e685",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -204,7 +205,19 @@ var publishedSemantics = map[string]string{
 	// additive index.schema.json (new local-tree document; no existing
 	// schema property, required key, or type changed).
 	"index.schema.json": "2200ac9089a3bb4979964bbf44332dfaf00e7953d27c9d7c6faf9b590eb03a95",
-	"pack.schema.json":  "7525f56b2c60ae932397adf9546e8f34640247ec5a38ed21854f8cda9ee2f7c4",
+	// rules and layering: additive replace[], severity map, rules[] with a
+	// closed $defs/rule. No existing property, required key, enum, or type
+	// changed; the loader's exact-key, regular-file, and bounded-read rules
+	// are prose only. The rule id carries the KB-id pattern the loader
+	// enforces.
+	// refused manifests: minItems 1 on rule globs, minLength 1 on a rule
+	// severity key, and the three-value enum on the severity map's values, so
+	// the published schema rejects the empty shapes the loader already
+	// refuses instead of accepting a manifest that cannot load.
+	// empty replace: the replace array no longer carries minItems 1, because
+	// the loader accepts an empty list and the schema must not refuse a
+	// manifest that loads.
+	"pack.schema.json": "fc8dc3ae76bfee94157f23e03ad2173f643d96974896c05307f89491f2a207b9",
 	// patch identity: additive optional patch_id/patch_id_kind plus the
 	// optional forced[] audit with $defs/forcedPost. No existing property,
 	// required key, or type changed.

@@ -16,6 +16,12 @@ disposition-changing question dispatches none. The synthesizing agent still
 owns the read, validation, and the written review — never delegate
 understanding.
 
+**Lens pack.** A directory holding `pack.json`, `lenses/<id>.md`, and
+`rules/<id>.md`. Packs layer built-in < org < repo; `verdict pack list`
+reports each pack's layer, source, and canonical tree hash. A higher pack
+overrides a lower id only when it names that lower pack in `replace`, so an
+override is always a declaration rather than an accident.
+
 **Panel.** The pinned model roster a review runs with, from `REVIEW_PANEL` or
 the typed `panel` default in `.verdict/config.json`. `fetch` resolves it into `.verdict/state/<pr>/panel`;
 the first entry is the synthesizer, the rest staff lenses, used exactly in

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"path/filepath"
 	"regexp"
 
 	"github.com/stainless-code/verdict/internal/config"
@@ -11,13 +10,7 @@ import (
 )
 
 // SettingsPath returns the settings file path from HOME/XDG_CONFIG_HOME.
-func SettingsPath(home, xdg string) string {
-	base := home + "/.config"
-	if xdg != "" {
-		base = xdg
-	}
-	return filepath.Join(base, "verdict", "settings.json")
-}
+func SettingsPath(home, xdg string) string { return config.SettingsPath(home, xdg) }
 
 var credRe = regexp.MustCompile(`token|secret|passwd|password|pwd|auth|bearer|credential|pat|key`)
 
@@ -136,7 +129,7 @@ func resolveSettingsFile(r *Runner, path string, obj map[string]any, doc any, ef
 func checkTopKeys(path string, obj map[string]any) error {
 	for _, k := range SortedKeys(obj) {
 		switch k {
-		case "$schema", "output", "layout", "color", "publish", "review", "spend", "privacy":
+		case "$schema", "output", "layout", "color", "publish", "review", "spend", "privacy", "packs":
 		default:
 			return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgTopKey, path, k)}
 		}

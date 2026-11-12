@@ -1,0 +1,62 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "pack",
+  "repo": "",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "add a repo pack under .verdict/packs/<name>/ or list an org pack path in settings packs",
+  "warnings": [],
+  "data": {
+    "packs": [
+      {
+        "name": "verdict/builtin",
+        "version": "1.0.0",
+        "layer": "builtin",
+        "source": "builtin",
+        "hash": "23dac5dead2eb78613332103b244cafe21c6031bb8469c73bb1c5b1f1ed42cd5",
+        "lenses": [
+          "api-contract",
+          "perf",
+          "test"
+        ],
+        "rules": [],
+        "drift": null
+      },
+      {
+        "name": "acme/org",
+        "version": "2.0.0",
+        "layer": "org",
+        "source": "dir:org-packs",
+        "hash": "ec7b01d4ea7b319a383c633bb8c30b464ec5c9734c9b06c6db0ef6dec8218d7b",
+        "lenses": [
+          "security"
+        ],
+        "rules": [
+          "no-secrets"
+        ],
+        "drift": null
+      },
+      {
+        "name": "acme/repo",
+        "version": "0.1.0",
+        "layer": "repo",
+        "source": ".verdict/packs/repo",
+        "hash": "6017f42729f688b65d17401a27200f0406c1cf8b75d588ce65788850d7817edf",
+        "lenses": [
+          "security",
+          "style"
+        ],
+        "rules": [
+          "repo-style"
+        ],
+        "drift": null
+      }
+    ]
+  },
+  "error": null
+}
+--- stderr ---
+
+--- files ---

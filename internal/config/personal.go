@@ -3,15 +3,26 @@ package config
 import (
 	"errors"
 	"os"
+	"path/filepath"
 
 	"github.com/stainless-code/verdict/internal/core"
 )
 
+// SettingsPath returns the operator settings file path from HOME and
+// XDG_CONFIG_HOME: the one spelling the prefs layer and the pack reader use.
+func SettingsPath(home, xdg string) string {
+	base := home + "/.config"
+	if xdg != "" {
+		base = xdg
+	}
+	return filepath.Join(base, "verdict", "settings.json")
+}
+
 // Personal settings keep the existing file path (the operator settings
-// file) and gain three optional sections. This foundation slice models and
-// parses those sections and wires them into the resolver; the CLI prefs
-// layer keeps its existing behavior and adopts these sections in a later
-// consumer slice.
+// file) and gain four optional sections: review, spend, privacy, and the
+// explicit org pack list. This foundation slice models and parses those
+// sections and wires them into the resolver; the CLI prefs layer keeps its
+// existing behavior and adopts these sections in a later consumer slice.
 
 // PersonalSpend holds the operator authorization limit and the strictness
 // guards. The repository can never raise the personal limit: spend is a
@@ -31,15 +42,21 @@ type PersonalPrivacy struct {
 
 // PersonalSettings is the parsed personal layer: review defaults (every
 // defaults key except budget_usd, which lives in spend), the spend
-// constraint, and the privacy constraint.
+// constraint, the privacy constraint, and the explicit org pack paths.
+//
+//nolint:govet // the sections read in resolver order
 type PersonalSettings struct {
+	Review  Partial
 	Spend   PersonalSpend
 	Privacy PersonalPrivacy
-	Review  Partial
+	Packs   []string
 }
 
 // spendPath addresses the personal spend constraint section.
 const spendPath = "$.spend"
+
+// packsPath addresses the explicit org pack list: directories, never a scan.
+const packsPath = "$.packs"
 
 // ParsePersonal reads the personal sections in the same fixed order as
 // the repository parser: size, JSON shape, credential scan, unknown
@@ -148,6 +165,10 @@ func buildPersonal(root map[string]any) (*PersonalSettings, *core.RefusalError) 
 			val, ref := buildPersonalPrivacy(raw)
 			return assignSection(&out.Privacy, val, ref)
 		}},
+		{key: personalSectionPacks, build: func(raw any) *core.RefusalError {
+			val, ref := buildPersonalPacks(raw)
+			return assignSection(&out.Packs, val, ref)
+		}},
 	}
 	// The section order is fixed: it decides which refusal a document
 	// with several violations reports first.
@@ -226,6 +247,24 @@ func presentBool(obj map[string]any, key, path string) (bool, *core.RefusalError
 	return *val, nil
 }
 
+// buildPersonalPacks validates the explicit org pack directory list. An
+// absent key reads as no org layer; there is no directory scan.
+func buildPersonalPacks(raw any) ([]string, *core.RefusalError) {
+	items, ref := asArray(raw, packsPath)
+	if ref != nil {
+		return nil, ref
+	}
+	out := make([]string, 0, len(items))
+	for i, item := range items {
+		path, ref := nonEmptyString(item, arrayPath(packsPath, i))
+		if ref != nil {
+			return nil, ref
+		}
+		out = append(out, path)
+	}
+	return out, nil
+}
+
 // buildPersonalPrivacy validates the privacy exclusion globs. Absent
 // reads as no exclusions.
 func buildPersonalPrivacy(raw any) (PersonalPrivacy, *core.RefusalError) {
@@ -259,10 +298,12 @@ func LoadPersonal(path string) (*PersonalSettings, *core.RefusalError) {
 }
 
 // personalSections are the settings sections this parser owns.
-var personalSections = []string{personalSectionReview, personalSectionSpend, personalSectionPrivacy}
+var personalSections = []string{
+	personalSectionReview, personalSectionSpend, personalSectionPrivacy, personalSectionPacks,
+}
 
-// ValidatePersonalSections checks the three typed personal sections of
-// an already-decoded settings document: unknown fields inside them, a
+// ValidatePersonalSections checks the four typed personal sections of an
+// already-decoded settings document: unknown fields inside them, a
 // misplaced budget_usd, and semantic violations refuse with the typed
 // configuration codes. Presentation sections and unknown top-level
 // sections are the caller's concern. The parse owns the contract so the
