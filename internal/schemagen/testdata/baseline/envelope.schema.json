@@ -769,10 +769,11 @@
       "additionalProperties": true
     },
     "serveSkipped": {
-      "description": "Walk outcomes discovery reports; S1 has no walk, so only the zero row is published.",
+      "description": "Discovery counts directory symlinks not followed and unsupported .gitignore patterns skipped.",
       "type": "object",
       "properties": {
-        "symlinks": { "type": "integer", "minimum": 0 }
+        "symlinks": { "type": "integer", "minimum": 0 },
+        "gitignore_patterns": { "type": "integer", "minimum": 0 }
       },
       "required": ["symlinks"],
       "additionalProperties": true

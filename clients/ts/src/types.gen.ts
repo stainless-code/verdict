@@ -392,9 +392,10 @@ export interface ServeCache {
   [key: string]: unknown;
 }
 
-/** Walk outcomes discovery reports; S1 has no walk, so only the zero row is published. */
+/** Discovery counts directory symlinks not followed and unsupported .gitignore patterns skipped. */
 export interface ServeSkipped {
   symlinks: number;
+  gitignore_patterns?: number;
   [key: string]: unknown;
 }
 
