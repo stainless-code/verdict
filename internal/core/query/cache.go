@@ -34,12 +34,13 @@ const (
 // stamp is the SHA-256 digest of every composition input: each bundle-directory
 // entry, the chunks directory, and the root override fragments. A 32-byte
 // digest keeps a cache row constant-size no matter how many files a bundle
-// holds. An atomic write moves a directory entry; an in-place rewrite moves the
-// target file's own size and mtime. A symlink is fingerprinted through to its
-// target, the same file the readers open. An override fragment is fingerprinted
-// by the bytes the capped reader returns, so a rewrite moves the stamp whatever
-// it does to size and mtime. The stamp is a stat fingerprint for the bundle: a
-// same-size, same-mtime in-place rewrite of a bundle artifact does not move it.
+// holds, and every row carries its entry's mode bits, so a permission-only
+// change moves the stamp. A bundle entry contributes its size and mtime: an
+// atomic write moves it, and so does an in-place rewrite, except a same-size,
+// same-mtime rewrite of a bundle artifact, the one blind spot. An override
+// fragment contributes the digest of the bytes the capped reader returns, so
+// any rewrite of it moves the stamp. A symlink is fingerprinted through to its
+// target, the same file the readers open.
 type stamp [sha256.Size]byte
 
 // cacheKey names one composed view: the bundle plus the flags that change

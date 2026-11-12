@@ -1472,11 +1472,17 @@ still allowlists only the loopback names, so a LAN client needs a concrete
 interface address such as `--host 192.168.1.10`. `/v1` is the only version: a
 breaking change becomes `/v2`.
 
-Composed views are cached in memory, keyed by a stat stamp of their inputs
-(each file's size and mtime, with symlinks followed to the target). The stamp
-catches an atomic write and an ordinary in-place rewrite, but not a same-size,
-same-mtime in-place rewrite: it is an invalidation fingerprint, not a content
-hash. Refusals are never cached.
+Composed views are cached in memory, keyed by a stamp of their inputs. Each
+bundle-directory entry contributes its mode bits, size, and mtime, with a
+symlink followed to its target; each `.verdict/overrides/` fragment contributes
+its mode bits and the SHA-256 of its bytes, read through the shared capped,
+non-blocking reader at a 64 KiB cap. The stamp catches an atomic
+write, an ordinary in-place rewrite, and a permission-only change. One blind
+spot remains, and only for bundle artifacts: a same-size, same-mtime in-place
+rewrite moves nothing, because the bundle side is an invalidation fingerprint,
+not a content hash. A fragment the stamp cannot read (unreadable, or past the
+64 KiB cap) bypasses the cache for that request, so the readers' own refusal
+shows. Refusals are never cached.
 
 ## Your agent, launched (`run --agent`)
 
