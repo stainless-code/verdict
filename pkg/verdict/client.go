@@ -86,10 +86,6 @@ type Options struct { //nolint:govet // field order is the public API surface
 	Progress Progress
 	// Commander runs subprocesses; defaults to the production watchdog.
 	Commander Commander
-	// RepoRoot resolves the reviewed repository root that bundle paths and
-	// policy anchor on; defaults to the git top-level probe. A host that
-	// already knows its checkout answers here instead of paying that spawn.
-	RepoRoot func(ctx context.Context) (string, error)
 }
 
 // Client runs review operations in-process. It owns no behavior: every
@@ -125,10 +121,7 @@ func New(o Options) *Client {
 		adapter := &commanderAdapter{c: o.Commander}
 		commander, fetch = adapter, adapter
 	}
-	repoRoot := o.RepoRoot
-	if repoRoot == nil {
-		repoRoot = readcommon.RepoRoot
-	}
+	repoRoot := readcommon.RepoRoot
 	return &Client{
 		dir: o.Dir, env: env, now: now, progress: o.Progress,
 		commander: commander, fetch: fetch, repoRoot: repoRoot,

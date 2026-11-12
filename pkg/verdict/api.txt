@@ -370,10 +370,6 @@ type Options struct {
 	Progress Progress
 	// Commander runs subprocesses; defaults to the production watchdog.
 	Commander Commander
-	// RepoRoot resolves the reviewed repository root that bundle paths and
-	// policy anchor on; defaults to the git top-level probe. A host that
-	// already knows its checkout answers here instead of paying that spawn.
-	RepoRoot func(ctx context.Context) (string, error)
 }
     Options configures a Client.
 
