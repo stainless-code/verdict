@@ -436,6 +436,57 @@ func failAllRows(t *testing.T, root string) {
 	}
 }
 
+// TestScoreHonorsCancellationDuringThePass proves a cancel after the start
+// check stops the pass: the first row is refused before its review is graded,
+// and a cancel after the last review suppresses the report. The first case
+// carries a missing findings file, so grading it would refuse with
+// backtest-row-stale unless the per-row cancel check fires first.
+func TestScoreHonorsCancellationDuringThePass(t *testing.T) {
+	tests := []struct {
+		name   string
+		after  int
+		mutate func(t *testing.T, root string)
+	}{
+		{name: "between reviews", after: 2, mutate: removeScoreFindings},
+		{name: "before the report", after: 4},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			root := scoreFixture(t)
+			if tc.mutate != nil {
+				tc.mutate(t, root)
+			}
+			ctx := &cancelAfterContext{Context: t.Context(), after: tc.after}
+			_, ref := RunScore(ctx, &ScoreRequest{
+				Runtime: &core.Runtime{Now: scoreClock}, RepoRoot: root, Run: scoreRun,
+			})
+			if ref == nil || ref.Code != "canceled" || ref.Message != msgScoreCanceled {
+				t.Fatalf("refusal = %+v; want the frozen score cancel", ref)
+			}
+			if _, err := os.Stat(scoreReportPath(root, scoreRun)); !os.IsNotExist(err) {
+				t.Errorf("a canceled score wrote report.json: %v", err)
+			}
+		})
+	}
+}
+
+// cancelAfterContext reports cancellation on the Nth Err call, so a test can
+// interrupt a pass without racing a goroutine.
+type cancelAfterContext struct {
+	context.Context
+	after int
+	calls int
+}
+
+// Err implements context.Context.
+func (c *cancelAfterContext) Err() error {
+	c.calls++
+	if c.calls >= c.after {
+		return context.Canceled
+	}
+	return nil
+}
+
 // TestScoreCancelReportsTheScoreVerb proves an interrupted pass reports the
 // score's own cancel text and writes no report.
 func TestScoreCancelReportsTheScoreVerb(t *testing.T) {

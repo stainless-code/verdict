@@ -145,8 +145,11 @@ func RunScore(ctx context.Context, req *ScoreRequest) (resp *ScoreResponse, ref 
 	if ref != nil {
 		return nil, ref
 	}
-	data, ref := st.score(run, candidates, rows)
+	data, ref := st.score(ctx, run, candidates, rows)
 	if ref != nil {
+		return nil, ref
+	}
+	if ref := st.canceled(ctx); ref != nil {
 		return nil, ref
 	}
 	if ref := st.writeReport(run, data); ref != nil {
@@ -248,11 +251,17 @@ func (st *state) scoreRow(run, dir string) (*ReplayPRDoc, *core.RefusalError) {
 }
 
 // score grades every review that recorded one. A row the replay marked as ok
-// but whose candidate the mine no longer carries refuses run-mismatch: the
-// review would be graded against ground truth that is not this run's.
-func (st *state) score(run string, candidates []Candidate, rows []ReplayPRDoc) (*ScoreReport, *core.RefusalError) {
+// but whose candidate the mine no longer carries refuses backtest-run-stale:
+// the review would be graded against ground truth that is not this run's. The
+// context is checked between reviews so a cancel stops before the next read.
+func (st *state) score(
+	ctx context.Context, run string, candidates []Candidate, rows []ReplayPRDoc,
+) (*ScoreReport, *core.RefusalError) {
 	totals := &scoreTotals{scored: map[*Candidate]bool{}}
 	for i := range rows {
+		if ref := st.canceled(ctx); ref != nil {
+			return nil, ref
+		}
 		if ref := st.scoreOne(totals, run, &rows[i], candidates); ref != nil {
 			return nil, ref
 		}
