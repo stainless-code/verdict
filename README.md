@@ -4,7 +4,7 @@
   <img src="apps/docs/public/logo.svg" alt="Verdict" height="48" />
 </p>
 
-Verdict splits code review into steps your agent runs on your machine: fetch, review, gate, post. It fetches the change, your agent writes the findings, and `verdict post` submits exactly one review. No remote servers, no accounts, no daemon; `verdict serve` is an opt-in, read-only surface on `127.0.0.1`.
+Verdict splits code review into steps your agent runs on your machine: fetch, review, gate, post. It fetches the change, your agent writes the findings, and `verdict post` submits exactly one review. No remote servers, no accounts, no daemon; `verdict serve` is an opt-in, read-only surface, loopback by default.
 
 - **Evidence-graded findings.** Every finding carries an evidence rung, from `said` to `reproduced`, plus a severity. Unproven claims are labeled, never posted as fact.
 - **Guarded posting.** Anchors are validated before posting. One bad anchor never fails a post. Stale-SHA and duplicate-post guards refuse to post over a moved head or a repeat.

@@ -6,7 +6,8 @@
 request; it reads the complete diff, investigates with evidence-graded findings, and posts
 exactly one GitHub review — then stops. The agent reviews; `gh` does GitHub I/O. No remote
 servers, no external services, no daemons, no accounts. A local, read-only view is opt-in
-(`verdict serve`), and nothing leaves the machine.
+(`verdict serve`): it binds loopback by default, and `--host` is the only way it leaves the
+machine.
 
 One sentence: **PR reviews with receipts.**
 

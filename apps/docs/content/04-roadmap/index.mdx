@@ -43,10 +43,11 @@ client (`@stainless-code/verdict/client`), the JSON schemas in `skills/verdict/s
 **A local dashboard.** One command that opens a read-only view over `.verdict/state/`:
 the bundles, every finding with its evidence rung and anchor, the gate result,
 cost per run, and the trend line. Started by a human who wants to look, or by an
-agent that needs to show its work. Bound to localhost, reading the same files the
-CLI writes, so nothing new is stored and nothing leaves the machine. The first
-slice is shipped: `verdict serve` exposes `/v1` over one repository with the token
-exchange; the dashboard UI follows.
+agent that needs to show its work. Bound to localhost by default, reading the same
+files the CLI writes, so nothing new is stored; `--host` is the explicit opt-in
+that lets the surface leave the machine. The first slice is shipped: `verdict
+serve` exposes `/v1` over one repository with the token exchange; the dashboard
+UI follows.
 
 **Incremental re-review on the remaining hosts.** `fetch --since` re-reviews
 only new commits today on GitHub and GitLab. GitCafe, Forgejo, Bitbucket, and
