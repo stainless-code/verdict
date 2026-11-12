@@ -18,3 +18,10 @@ own message and now renders the shared one. A PR number, a `local-` slug, and a
 The MCP `next` tool answers a findings store it cannot read with the typed
 `corrupt-store` refusal instead of `{"item": null}`, so a caller no longer
 reads a broken store as "nothing to act on".
+
+`fetch` and `fetch-local` refuse a bundle directory that is a symlink, with the
+`bad-config` refusal, before the first write: a link's target is an unrelated
+location even when it resolves inside the repository. `trend` reads each listed
+bundle directory it finds instead of resolving the listed name through the
+bare-name fallback, so a `42` beside a `local-42` is no longer counted twice, and
+`42` keeps its own findings.
