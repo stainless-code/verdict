@@ -13,7 +13,7 @@ import (
 func writeScannedFixture(f *fixture) {
 	f.write("go.mod", "module example.com/m\n\ngo 1.27\n")
 	f.write("util.ts", "export function target(a: number) { return a; }\n")
-	f.write("app.ts", "import { target } from './util';\nconst v = target(1);\nobj.target(2);\n")
+	f.write("app.ts", "import { target } from './util';\nimport * as util from './util';\nconst v = target(1);\nutil.target(2);\nobj.target(3);\n")
 	f.write("app.js", "const fs = require('fs');\nfs.readFile(1);\n")
 	f.write("pkg/mod.py", "def helper(x):\n    return x\n")
 	f.write("pkg/use.py", "from .mod import helper\n\nhelper(1)\n")
@@ -61,8 +61,8 @@ func TestCallersTypeScriptRows(t *testing.T) {
 		t.Fatalf("index callers refused: %v", ref)
 	}
 	assertRows(t, resp.Data.Rows, []Row{
-		{Path: "app.ts", Line: 2, Kind: KindCall, Resolution: "lexical", Language: "typescript"},
-		{Path: "app.ts", Line: 3, Kind: KindMethod, Resolution: "lexical", Language: "typescript"},
+		{Path: "app.ts", Line: 3, Kind: KindCall, Resolution: "lexical", Language: "typescript"},
+		{Path: "app.ts", Line: 4, Kind: KindMethod, Resolution: "lexical", Language: "typescript"},
 	})
 }
 
@@ -84,9 +84,48 @@ func TestCallersPythonRows(t *testing.T) {
 	})
 }
 
+// callersOf runs one caller query for a symbol.
+func callersOf(t *testing.T, f *fixture, symbol string) *Response {
+	t.Helper()
+	req := f.request(QueryCallers, nil)
+	req.Symbol = symbol
+	resp, ref := Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("index callers %s refused: %v", symbol, ref)
+	}
+	return resp
+}
+
+// TestCallersPythonRespectsDeclarationKind proves an attribute site is
+// attributed by declaration kind, not by name: `log.save(...)` on a receiver is
+// not a caller of the module-level `save`, `log.write(...)` still names the
+// method `write`, and an attribute site naming a class is still a row.
+func TestCallersPythonRespectsDeclarationKind(t *testing.T) {
+	f := newFixture(t)
+	f.write("lib/saver.py", "def save(value):\n    return value\n")
+	f.write("lib/store.py", "class Log:\n    def write(self, text):\n        return text\n")
+	f.write("lib/uses.py", "import saver\nfrom .saver import save\nfrom .store import Log\n\n\n"+
+		"def flush(value, log: Log):\n    log.save(value)\n    log.write(value)\n    saver.save(value)\n    return save(value)\n")
+	f.write("lib/make.py", "import lib.store\n\n\ndef build():\n    return lib.store.Log()\n")
+	f.commit("one")
+	f.build()
+	assertRows(t, callersOf(t, f, "lib.save").Data.Rows, []Row{
+		{Path: "lib/uses.py", Line: 9, Kind: KindMethod, Resolution: "lexical", Language: "python"},
+		{Path: "lib/uses.py", Line: 10, Kind: KindCall, Resolution: "lexical", Language: "python"},
+	})
+	assertRows(t, callersOf(t, f, "lib.write").Data.Rows, []Row{
+		{Path: "lib/uses.py", Line: 8, Kind: KindMethod, Resolution: "lexical", Language: "python"},
+	})
+	assertRows(t, callersOf(t, f, "lib.Log").Data.Rows, []Row{
+		{Path: "lib/make.py", Line: 5, Kind: KindMethod, Resolution: "lexical", Language: "python"},
+	})
+}
+
 // TestTestsForScannedLanguages proves the candidate test set for a TypeScript
 // and a Python source file: a test in the same directory, a test elsewhere that
-// imports the file, and a test that imports nothing of the sort.
+// imports the file, and a test that names nothing the tree holds — that one is
+// still a candidate at one hop, because its own package imports the declaring
+// one.
 func TestTestsForScannedLanguages(t *testing.T) {
 	f := newFixture(t)
 	f.write("util.ts", "export function target(a: number) { return a; }\n")
@@ -100,12 +139,25 @@ func TestTestsForScannedLanguages(t *testing.T) {
 	f.build()
 	assertTestRows(t, f.queryPath(QueryTestsFor, "util.ts").Data.TestRows, []TestRow{
 		{Path: "tests/extra.spec.ts", Via: viaReferences, Depth: 1},
+		{Path: "tests/unrelated.spec.ts", Via: viaTransitiveImport, Depth: 1},
 		{Path: "util.test.ts", Via: viaSamePackage},
 	})
 	assertTestRows(t, f.queryPath(QueryTestsFor, "pkg/mod.py").Data.TestRows, []TestRow{
 		{Path: "pkg/test_mod.py", Via: viaSamePackage},
 		{Path: "tests/test_use.py", Via: viaReferences, Depth: 1},
 	})
+}
+
+// TestTestsForUnresolvedSpecifierIsNoEdge proves a scanned specifier naming no
+// indexed directory or file contributes no import edge: a test whose only
+// import is missing is not a candidate for a package it never names.
+func TestTestsForUnresolvedSpecifierIsNoEdge(t *testing.T) {
+	f := newFixture(t)
+	f.write("util.ts", "export function target(a: number) { return a; }\n")
+	f.write("tests/deep.spec.ts", "import { other } from '../nowhere';\n\nother(1);\n")
+	f.commit("one")
+	f.build()
+	assertTestRows(t, f.queryPath(QueryTestsFor, "util.ts").Data.TestRows, nil)
 }
 
 // TestSharedBlobParsesPerLanguage proves two paths holding identical bytes in
@@ -330,7 +382,8 @@ func TestCallersStayInsideOneLanguage(t *testing.T) {
 
 // TestTestsForPythonSubmoduleImport proves `from lib import mod`, which names
 // the module and the submodule in one statement, is an import of `lib/mod.py`,
-// and that the same statement naming another submodule is not.
+// and that the same statement naming another submodule is only an import of the
+// declaring package: a candidate test, never a reference to this file.
 func TestTestsForPythonSubmoduleImport(t *testing.T) {
 	f := newFixture(t)
 	f.write("go.mod", "module example.com/m\n\ngo 1.27\n")
@@ -342,6 +395,7 @@ func TestTestsForPythonSubmoduleImport(t *testing.T) {
 	f.build()
 	assertTestRows(t, f.queryPath(QueryTestsFor, "lib/mod.py").Data.TestRows, []TestRow{
 		{Path: "tests/test_mod.py", Via: viaReferences, Depth: 1},
+		{Path: "tests/test_other.py", Via: viaImportsModule, Depth: 1},
 	})
 }
 

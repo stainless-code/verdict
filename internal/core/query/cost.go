@@ -48,8 +48,8 @@ type costAggregate struct {
 	aggregateState
 }
 
-func (a *costAggregate) addBundle(layer *Layer, root Root, bundle string, names []string) {
-	dir, ok, ref := resolveAmong(root, bundle, names)
+func (a *costAggregate) addBundle(layer *Layer, root Root, bundle string, known map[string]bool) {
+	dir, ok, ref := resolveAmong(root, bundle, known)
 	if ref != nil || !ok {
 		a.fail(root, bundle, "corrupt-store", "bundle could not be resolved")
 		return

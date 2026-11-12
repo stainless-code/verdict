@@ -129,6 +129,38 @@ func TestTestsForCandidates(t *testing.T) {
 	}
 }
 
+// TestTestsForRelativeSpecifierImportsPackage proves `imports-module` resolves
+// a relative specifier before comparing it with the declaring package: a test
+// that imports the package directory itself, never the queried file, is a
+// candidate one hop out.
+func TestTestsForRelativeSpecifierImportsPackage(t *testing.T) {
+	f := newFixture(t)
+	f.write("lib/save.ts", "export function save(id: string): void {}\n")
+	f.write("lib/index.ts", "export * from \"./save\";\n")
+	f.write("app/tidy.spec.ts", "import { save } from \"../lib\";\n\nsave(\"a\");\n")
+	f.commit("one")
+	f.build()
+	assertTestRows(t, f.queryPath(QueryTestsFor, "lib/save.ts").Data.TestRows, []TestRow{
+		{Path: "app/tidy.spec.ts", Via: viaImportsModule, Depth: 1},
+	})
+}
+
+// TestTestsForScannedImportPathIgnoresGoModule proves a scanned language's
+// package path is its directory: a TypeScript test importing the declaring
+// package is `imports-module` even when the tree also carries a Go module path,
+// which no TypeScript import names.
+func TestTestsForScannedImportPathIgnoresGoModule(t *testing.T) {
+	f := newFixture(t)
+	f.write("go.mod", "module example.com/m\n\ngo 1.27\n")
+	f.write("lib/save.ts", "export function save(id: string): void {}\n")
+	f.write("app/tidy.spec.ts", "import { save } from \"../lib\";\n\nsave(\"a\");\n")
+	f.commit("one")
+	f.build()
+	assertTestRows(t, f.queryPath(QueryTestsFor, "lib/save.ts").Data.TestRows, []TestRow{
+		{Path: "app/tidy.spec.ts", Via: viaImportsModule, Depth: 1},
+	})
+}
+
 // TestTestsForSymbol proves the symbol form resolves the declaring package and
 // answers the same candidates as the path form.
 func TestTestsForSymbol(t *testing.T) {

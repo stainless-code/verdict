@@ -3,7 +3,7 @@ package query
 import "context"
 
 type aggregateCollector interface {
-	addBundle(layer *Layer, root Root, bundle string, names []string)
+	addBundle(layer *Layer, root Root, bundle string, known map[string]bool)
 	addCollectionIssue(partial bool, errs []ErrRow)
 }
 
@@ -35,11 +35,12 @@ func collectRoot(ctx context.Context, layer *Layer, collector aggregateCollector
 	}
 	names, cut, errs := layer.listBundles(root)
 	collector.addCollectionIssue(cut || len(errs) > 0, errs)
+	known := bundleSet(names)
 	for _, bundle := range names {
 		if ctx.Err() != nil {
 			collector.addCollectionIssue(true, nil)
 			break
 		}
-		collector.addBundle(layer, root, bundle, names)
+		collector.addBundle(layer, root, bundle, known)
 	}
 }

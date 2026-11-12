@@ -1,6 +1,6 @@
 {
   "language": "py",
-  "coverage": { "files": 14, "skipped": 0 },
+  "coverage": { "files": 15, "skipped": 0 },
   "queries": [
     {
       "name": "callers-save",
@@ -11,8 +11,14 @@
       "callers": [
         {
           "path": "lib/uses.py",
-          "line": 8,
+          "line": 10,
           "kind": "call",
+          "resolution": "lexical"
+        },
+        {
+          "path": "lib/uses.py",
+          "line": 9,
+          "kind": "method",
           "resolution": "lexical"
         },
         {
@@ -62,7 +68,7 @@
       "callers": [
         {
           "path": "lib/uses.py",
-          "line": 7,
+          "line": 8,
           "kind": "method",
           "resolution": "lexical"
         }
@@ -109,6 +115,7 @@
       "kind": "tests-for",
       "path": "lib/saver.py",
       "hidden": 0,
+      "not_tests": ["isolated/test_unrelated.py"],
       "tests": [
         { "path": "lib/test_saver.py", "via": "same-package", "depth": 0 },
         { "path": "tests/helpers.py", "via": "references", "depth": 1 },

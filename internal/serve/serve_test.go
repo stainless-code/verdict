@@ -458,6 +458,7 @@ var urlPattern = regexp.MustCompile(`http://[^\s]+`)
 // TestRunAnnouncesTokenAndExitsBroke proves the CLI adapter binds a kernel
 // port, prints the tokenised URL, serves the API, and exits 3 on cancel.
 func TestRunAnnouncesTokenAndExitsBroke(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	root := writeFixture(t, fixtureFiles())
 	out := &syncBuffer{}
 	cancel, done := startRun(t, root, out)
@@ -465,6 +466,76 @@ func TestRunAnnouncesTokenAndExitsBroke(t *testing.T) {
 	assertLoopbackHealth(t, match)
 	cancel()
 	assertCanceled(t, done)
+}
+
+// TestServeRootDiscoversEveryRepository serves repositories found below --root.
+func TestServeRootDiscoversEveryRepository(t *testing.T) {
+	assertServeRootInbox(t, serveRootInbox(t))
+}
+
+func serveRootInbox(t *testing.T) map[string]any {
+	t.Helper()
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	workspace := t.TempDir()
+	for _, name := range []string{"a", "b"} {
+		writeFixtureAt(t, filepath.Join(workspace, name), fixtureFiles())
+	}
+	out := &syncBuffer{}
+	cancel, done := startRun(t, workspace, out)
+	startURL := waitForURL(t, out)
+	data := fetchServeInbox(t, startURL)
+	cancel()
+	assertCanceled(t, done)
+	return data
+}
+
+func fetchServeInbox(t *testing.T, startURL string) map[string]any {
+	t.Helper()
+	parsed, err := url.Parse(startURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+parsed.Host+"/v1/bundles", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Host = parsed.Host
+	request.Header.Set("Authorization", "Bearer tok")
+	response, err := (&http.Client{Timeout: 5 * time.Second}).Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/bundles = %d (%s)", response.StatusCode, body)
+	}
+	return asMap(t, decode(t, body)["data"])
+}
+
+func assertServeRootInbox(t *testing.T, data map[string]any) {
+	t.Helper()
+	rows := asList(t, data["rows"])
+	if len(rows) != 4 {
+		t.Fatalf("inbox rows = %d, want four bundles across two roots", len(rows))
+	}
+	counts := asMap(t, data["counts"])
+	wantCounts := map[string]json.Number{
+		"bundles": json.Number("4"), "open": json.Number("6"), "deferred": json.Number("0"),
+		"addressed": json.Number("2"), "terminal": json.Number("0"),
+	}
+	if !maps.Equal(counts, map[string]any{
+		"bundles": wantCounts["bundles"], "open": wantCounts["open"], "deferred": wantCounts["deferred"],
+		"addressed": wantCounts["addressed"], "terminal": wantCounts["terminal"],
+	}) {
+		t.Errorf("inbox counts = %v, want literal %v", counts, wantCounts)
+	}
+	if asMap(t, data["discovery"])["cached"] != false {
+		t.Errorf("discovery = %v, want uncached initial scan", data["discovery"])
+	}
 }
 
 // startRun launches the adapter in the background.
@@ -821,6 +892,46 @@ func TestDetailCarriesTheLedgerAndThreads(t *testing.T) {
 	assertDetailReport(t, data)
 }
 
+// TestDiscoveryMetadataIsServedForRootsAndInbox pins metadata on both views.
+func TestDiscoveryMetadataIsServedForRootsAndInbox(t *testing.T) {
+	root := writeFixture(t, fixtureFiles())
+	discovery := query.Discovery{Cached: true, ScannedAt: fixedNow()}
+	layer := query.New(query.Snapshot{
+		Version: "1.2.3", Roots: []query.Root{{Path: root}},
+		Runtime: &core.Runtime{Now: fixedNow}, Discovery: discovery,
+	}, query.Options{Check: "critical", MaxBundles: 10})
+	ts := testServer(t, layer)
+	headers := bearer()
+	for _, route := range []string{"/v1/roots", "/v1/bundles"} {
+		response := call(t, ts, http.MethodGet, route, "", headers)
+		if response.status != http.StatusOK {
+			t.Fatalf("GET %s = %d", route, response.status)
+		}
+		data := asMap(t, decode(t, response.body)["data"])
+		metadata := asMap(t, data["discovery"])
+		if metadata["cached"] != true || metadata["scanned_at"] != "2026-11-12T09:00:00Z" {
+			t.Errorf("%s discovery = %v, want cached at the literal scan time", route, metadata)
+		}
+	}
+}
+
+// TestDiscoveryFlagsParseAndValidate pins the discovery flag bounds.
+func TestDiscoveryFlagsParseAndValidate(t *testing.T) {
+	out := &syncBuffer{}
+	runner := &cli.Runner{Cmd: "serve", Out: out, Human: out, Diag: out, Effective: cli.Defaults()}
+	opts, code, done := parseFlags(runner, []string{
+		"--root", "~/work", "--depth", "0", "--max-visits", "17", "--max-repos", "4",
+		"--rediscover", "--no-registry",
+	})
+	if done || code != 0 || opts.root != "~/work" || opts.depth != 0 || opts.maxVisits != 17 || opts.maxRepos != 4 || !opts.rediscover || !opts.noRegistry {
+		t.Fatalf("parsed discovery flags = %+v, code=%d, done=%v", opts, code, done)
+	}
+	_, code, done = parseFlags(runner, []string{"--depth", "17"})
+	if !done || code != cli.ExitUsage {
+		t.Errorf("--depth 17 = code %d, done %v, want usage refusal", code, done)
+	}
+}
+
 // assertDetailKeys pins the documented data object's key set.
 func assertDetailKeys(t *testing.T, data map[string]any) {
 	t.Helper()
@@ -882,6 +993,7 @@ func TestShowDataIsTheShowShape(t *testing.T) {
 // probe: a failing git in a checkout-shaped cwd would refuse not-a-repo, but
 // the explicit root reaches the listener instead.
 func TestRootSkipsTheRepoProbe(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	stub := t.TempDir()
 	gitStub := "#!/bin/sh\nexit 1\n"
 	if err := os.WriteFile(filepath.Join(stub, "git"), []byte(gitStub), 0o755); err != nil {
@@ -937,6 +1049,7 @@ func TestBadRootIsRefused(t *testing.T) {
 
 // TestListenFailureIsRefused proves an unusable port is serve-listen-failed.
 func TestListenFailureIsRefused(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	var listen net.ListenConfig
 	held, err := listen.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {

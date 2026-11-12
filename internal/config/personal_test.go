@@ -33,6 +33,27 @@ func TestParsePersonal(t *testing.T) {
 	}
 }
 
+// TestRegistryPathUsesSettingsDirectory pins platform paths and XDG precedence.
+func TestRegistryPathUsesSettingsDirectory(t *testing.T) {
+	tests := []struct {
+		name string
+		home string
+		xdg  string
+		want string
+	}{
+		{name: "default", home: `/home/alice`, want: `/home/alice/.config/verdict/projects.json`},
+		{name: "windows home", home: filepath.FromSlash(`C:/Users/Alice`), want: `C:/Users/Alice/.config/verdict/projects.json`},
+		{name: "xdg with space", home: `~`, xdg: filepath.FromSlash(`C:/Shared Config`), want: `C:/Shared Config/verdict/projects.json`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := RegistryPath(tt.home, tt.xdg); filepath.ToSlash(got) != tt.want {
+				t.Errorf("RegistryPath(%q, %q) = %q, want %q", tt.home, tt.xdg, got, tt.want)
+			}
+		})
+	}
+}
+
 // TestParsePersonalPrefsKeys pins the shared-file rule: the CLI prefs keys
 // a real operator settings file carries parse but never feed the resolver.
 func TestParsePersonalPrefsKeys(t *testing.T) {

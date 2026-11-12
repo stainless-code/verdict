@@ -1,6 +1,6 @@
 {
   "language": "ts",
-  "coverage": { "files": 22, "skipped": 0 },
+  "coverage": { "files": 23, "skipped": 0 },
   "queries": [
     {
       "name": "callers-save",
@@ -118,6 +118,7 @@
       "kind": "tests-for",
       "path": "lib/save.ts",
       "hidden": 0,
+      "not_tests": ["isolated/unrelated.spec.ts"],
       "tests": [
         { "path": "lib/save.test.ts", "via": "same-package", "depth": 0 },
         { "path": "app/save.spec.ts", "via": "references", "depth": 1 },

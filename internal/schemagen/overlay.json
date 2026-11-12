@@ -69,7 +69,7 @@
       "/$defs/serveRow": "One inbox row: the bundle identity, its post receipt's model, and the verdict counts. Every numeric count is null for a refused bundle, never zero-for-unknown.",
       "/$defs/serveArtifact": "One evidence-ledger row: the bundle-relative path, its presence, and the hash and size when present.",
       "/$defs/serveCache": "The in-memory composition cache's size; derived state only, never written to disk.",
-      "/$defs/serveSkipped": "Walk outcomes discovery reports; S1 has no walk, so only the zero row is published.",
+      "/$defs/serveSkipped": "Discovery counts directory symlinks not followed and unsupported .gitignore patterns skipped.",
       "/$defs/serveDiscovery": "Whether the root list came from the registry. S1 reports cached false with an empty scanned_at.",
       "/$defs/serveCostData": "A cost view for one allowlisted dimension. Model rows carry tokens but no per-model price; corrupt inputs make totals null and partial true.",
       "/$defs/serveCostBucket": "One repository, ISO week, or model bucket. runs counts record membership; model_runs counts model entries, which can be greater than runs for by=model.",

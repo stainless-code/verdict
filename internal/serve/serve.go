@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/query"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -44,6 +45,11 @@ const (
 	flagCheck      = "--check"
 	flagMaxBundles = "--max-bundles"
 	flagJSON       = "--json"
+	flagDepth      = "--depth"
+	flagMaxVisits  = "--max-visits"
+	flagMaxRepos   = "--max-repos"
+	flagRediscover = "--rediscover"
+	flagNoRegistry = "--no-registry"
 
 	codeBadRoot           = "bad-root"
 	codeServeListenFailed = "serve-listen-failed"
@@ -146,8 +152,8 @@ func New(cfg *Config) (*Server, error) {
 // Listen binds the configured address and records the kernel-assigned port.
 func (s *Server) Listen(ctx context.Context) error {
 	address := net.JoinHostPort(s.cfg.Host, strconv.Itoa(s.cfg.Port))
-	var config net.ListenConfig
-	listener, err := config.Listen(ctx, "tcp", address)
+	var listenConfig net.ListenConfig
+	listener, err := listenConfig.Listen(ctx, "tcp", address)
 	if err != nil {
 		return jq.Sealed("serve: listen on "+address, err)
 	}
@@ -246,17 +252,18 @@ type Request struct {
 	Version string
 }
 
-// serveOptions are the S1 flag values. Discovery, watch, and registry flags
-// arrive with their slices; an unknown flag stays a usage error rather than a
-// silently ignored promise.
+// serveOptions contains the resolved server and discovery flags.
 type serveOptions struct { //nolint:govet // field order mirrors the flag table
-	root       string
-	host       string
-	port       int
-	token      string
-	tokenSet   bool
-	check      string
-	maxBundles int
+	root                       string
+	host                       string
+	port                       int
+	token                      string
+	tokenSet                   bool
+	check                      string
+	maxBundles                 int
+	depth, maxVisits, maxRepos int
+	rediscover, noRegistry     bool
+	layer                      Layer
 }
 
 // Run executes `serve [flags]`, returning the process exit code: 0 after a
@@ -272,6 +279,13 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 		return r.Refuse(ref)
 	}
 	warnExposure(r, &opts)
+	if opts.root != "" {
+		layer, err := discoveryLayer(root, r.Now, req, &opts)
+		if err != nil {
+			return r.Refuse(&cli.RefusalError{Code: codeBadRoot, Message: err.Error()})
+		}
+		opts.layer = layer
+	}
 	server, code, ok := start(ctx, r, &opts, root, req)
 	if !ok {
 		return code
@@ -283,6 +297,31 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 		fmt.Fprintln(r.Diag, err)
 	}
 	return serveExit(ctx, err)
+}
+
+func discoveryLayer(root string, now func() time.Time, req Request, opts *serveOptions) (*query.Layer, error) {
+	discoveryOptions := query.DiscoveryOptions{
+		Depth: opts.depth, MaxVisits: opts.maxVisits, MaxRepos: opts.maxRepos, Now: now(),
+	}
+	var discovery query.Discovery
+	var err error
+	if opts.noRegistry {
+		discovery, err = query.DiscoverCached(root, discoveryOptions, "", opts.rediscover, true)
+	} else if home, homeErr := os.UserHomeDir(); homeErr != nil {
+		discovery, err = query.Discover(root, discoveryOptions)
+		if err == nil {
+			discovery.Warnings = append(discovery.Warnings, "serve: home directory unavailable; discovery registry disabled")
+		}
+	} else {
+		registryPath := config.RegistryPath(home, os.Getenv("XDG_CONFIG_HOME"))
+		discovery, err = query.DiscoverCached(root, discoveryOptions, registryPath, opts.rediscover, false)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("serve: discover repositories: %w", err) //nolint:wrapcheck // adds serve context and preserves the cause.
+	}
+	return query.New(query.Snapshot{
+		Version: req.Version, Roots: discovery.Roots, Runtime: &core.Runtime{Now: now}, Discovery: discovery,
+	}, query.Options{Check: opts.check, MaxBundles: opts.maxBundles}), nil
 }
 
 // serveExit maps one Serve result onto the documented exit code: a canceled
@@ -315,6 +354,7 @@ func start(
 	server, err := New(&Config{
 		Root: root, Host: opts.host, Port: opts.port, Token: opts.token,
 		Check: opts.check, MaxBundles: opts.maxBundles, Version: req.Version, Now: r.Now,
+		Layer: opts.layer,
 	})
 	if err != nil {
 		return nil, r.Refuse(&cli.RefusalError{Code: codeServeListenFailed, Message: err.Error()}), false
@@ -387,9 +427,12 @@ func resolveProbeRoot(ctx context.Context) (string, *cli.RefusalError) {
 	return abs, nil
 }
 
-// parseFlags reads the S1 flag set left to right.
+// parseFlags reads the serve flags left to right.
 func parseFlags(r *cli.Runner, args []string) (serveOptions, int, bool) {
-	opts := serveOptions{host: defaultHost, check: defaultCheck, maxBundles: query.DefaultMaxBundles}
+	opts := serveOptions{
+		host: defaultHost, check: defaultCheck, maxBundles: query.DefaultMaxBundles,
+		depth: query.DefaultDiscoveryDepth, maxVisits: query.DefaultMaxVisits, maxRepos: query.DefaultMaxRepos,
+	}
 	for i := 0; i < len(args); i++ {
 		next, code, done := parseFlag(r, &opts, args, i)
 		if done {
@@ -406,7 +449,13 @@ func parseFlag(r *cli.Runner, opts *serveOptions, args []string, i int) (int, in
 	switch name {
 	case flagJSON:
 		return i, 0, false
-	case flagRoot, flagHost, flagPort, flagToken, flagCheck, flagMaxBundles:
+	case flagRediscover:
+		opts.rediscover = true
+		return i, 0, false
+	case flagNoRegistry:
+		opts.noRegistry = true
+		return i, 0, false
+	case flagRoot, flagHost, flagPort, flagToken, flagCheck, flagMaxBundles, flagDepth, flagMaxVisits, flagMaxRepos:
 		value, next, uerr := cli.FlagValue(args, i, name, flagWants(name))
 		if uerr != nil {
 			return i, r.ReportUsage(uerr), true
@@ -415,15 +464,15 @@ func parseFlag(r *cli.Runner, opts *serveOptions, args []string, i int) (int, in
 		return next, code, done
 	default:
 		return i, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
-			"unknown flag '%s' for serve (want --root, --host, --port, --token, --check, "+
-				"--max-bundles, --json)", name)}), true
+			"unknown flag '%s' for serve (want --root, --depth, --max-visits, --max-repos, "+
+				"--rediscover, --no-registry, --host, --port, --token, --check, --max-bundles, --json)", name)}), true
 	}
 }
 
 // flagWants names one value flag's operand for the missing-value message.
 func flagWants(name string) string {
 	switch name {
-	case flagPort:
+	case flagPort, flagDepth, flagMaxVisits, flagMaxRepos:
 		return "<n>"
 	case flagMaxBundles:
 		return "<n>"
@@ -452,6 +501,29 @@ func applyFlag(r *cli.Runner, opts *serveOptions, name, value string) (int, bool
 		return applyMaxBundles(r, opts, value)
 	case flagCheck:
 		return applyCheck(r, opts, value)
+	case flagDepth, flagMaxVisits, flagMaxRepos:
+		return applyDiscoveryFlag(r, opts, name, value)
+	}
+	return 0, false
+}
+
+func applyDiscoveryFlag(r *cli.Runner, opts *serveOptions, name, value string) (int, bool) {
+	minimum := 1
+	maximum := 0
+	if name == flagDepth {
+		minimum, maximum = 0, query.MaxDiscoveryDepth
+	}
+	n, err := parseNumber(value, minimum, maximum)
+	if err != nil {
+		return usage(r, "serve: invalid "+name+" value "+value), true
+	}
+	switch name {
+	case flagDepth:
+		opts.depth = n
+	case flagMaxVisits:
+		opts.maxVisits = n
+	case flagMaxRepos:
+		opts.maxRepos = n
 	}
 	return 0, false
 }

@@ -1,0 +1,8 @@
+package probe
+
+import "testing"
+
+func TestUnrelated(t *testing.T) {
+	var value any
+	value.Touch()
+}
