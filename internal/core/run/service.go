@@ -89,6 +89,9 @@ func Run(ctx context.Context, req *core.RunRequest) (resp *core.RunResponse, ref
 		abs:      filepath.Join(dir, reviewFile),
 		timeout:  timeout,
 	}
+	if _, ref := st.resolve(def); ref != nil {
+		return nil, ref
+	}
 	args.prompt = directive(st.req.Repo, st.req.Pr, st.promptBundle(dir), st.promptArtifact(dir),
 		readcommon.IsLocalBundleDir(dir))
 	args.argv = argvFor(def, st.req.PassThrough, args.prompt)
@@ -124,6 +127,10 @@ func (st *state) invoke(ctx context.Context, args *launchArgs, rounds int) (*cor
 		if rounds > 1 {
 			return nil, st.refuse(codeBadFlags, "run --print renders one command: re-run without --print "+
 				"to launch --rounds "+st.req.RoundsRaw)
+		}
+		if !printablePassThrough(st.req.PassThrough, st.req.Environ) {
+			return nil, st.refuse(codeBadFlags, "--print accepts only model and cost options with safe values; "+
+				"supply credentials through the environment")
 		}
 		return st.printed(args), nil
 	}
@@ -243,8 +250,6 @@ func digits(s string) bool {
 	return true
 }
 
-// printed builds the print-only response: the exact command this run would
-// spawn, rendered by the adapter, with nothing resolved, spawned, or written.
 func (st *state) printed(args *launchArgs) *core.RunResponse {
 	return &core.RunResponse{
 		Repo: st.req.Repo,
@@ -280,7 +285,7 @@ func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunRespons
 		StartedAt:     core.NowUTC(started),
 		Timeout:       args.timeout,
 	}
-	rec.Argv, st.argSecrets = recordArgv(args.argv, args.prompt, st.req.Environ)
+	rec.Argv, st.argSecrets = st.displayArgv(args)
 	launched, ref := writeLauncher(filepath.Join(args.dir, launcherFile), rec)
 	if ref != nil {
 		return nil, ref
@@ -301,7 +306,7 @@ func (st *state) resolve(def agentDef) (string, *core.RefusalError) {
 	bin, err := look(def.Binary)
 	if err != nil {
 		return "", st.refuse(codeAgentMissing, fmt.Sprintf(
-			"agent '%s' is not installed: no '%s' on PATH", def.Name, def.Binary))
+			"agent '%s' is not installed: no '%s' on PATH", def.Name, def.Binary)+"; "+def.Install)
 	}
 	return bin, nil
 }
