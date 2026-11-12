@@ -89,6 +89,23 @@ assert_json_field "credential refusal masks the secret" "1" \
 assert_stream_nogrep "the token is not on stdout" "$EVAL_OUT" "$TOKEN"
 assert_stream_nogrep "the token is not on stderr" "$EVAL_ERR" "$TOKEN"
 
+# A token-only userinfo and a second @ are the same credential class.
+run_review pack add "https://$TOKEN@host/acme/packs.git" --json
+assert_exit "token-only source refuses" 1
+assert_refusal "token-only refusal keeps the envelope contract" "bad-pack"
+assert_json_field "token-only refusal masks the whole userinfo" "1" \
+  '[.error.message | select(contains("https://***@host"))] | length'
+assert_stream_nogrep "the token-only token is not on stdout" "$EVAL_OUT" "$TOKEN"
+assert_stream_nogrep "the token-only token is not on stderr" "$EVAL_ERR" "$TOKEN"
+
+run_review pack add "https://us@er:$TOKEN@host/x.git" --json
+assert_exit "second-at source refuses" 1
+assert_refusal "second-at refusal keeps the envelope contract" "bad-pack"
+assert_json_field "second-at refusal masks from the last @" "1" \
+  '[.error.message | select(contains("https://***@host"))] | length'
+assert_stream_nogrep "the second-at token is not on stdout" "$EVAL_OUT" "$TOKEN"
+assert_stream_nogrep "the second-at token is not on stderr" "$EVAL_ERR" "$TOKEN"
+
 # Commit the locked pack: fetch resolves it at base and uses it.
 (
   cd "$EVAL_SANDBOX" || exit 99

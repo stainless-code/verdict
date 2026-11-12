@@ -292,7 +292,10 @@ func validLockSource(source string) bool {
 		return false
 	}
 	at := strings.LastIndex(rest, "@")
-	return at > 0 && hex40(rest[at+1:]) && !userinfoPassword(rest[:at])
+	if at <= 0 || !hex40(rest[at+1:]) {
+		return false
+	}
+	return userinfoRefusal(rest[:at]) == nil
 }
 
 // validDirSource constrains one dir: payload: non-empty, not an option, and a

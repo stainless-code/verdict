@@ -244,9 +244,11 @@ func TestAddRefusesInvalidPack(t *testing.T) {
 // gitCommander scripts the three git calls a hermetic add makes and plants the
 // fixture tree in the clone destination.
 type gitCommander struct {
-	t     *testing.T
-	files map[string]string
-	calls []gitCall
+	t           *testing.T
+	files       map[string]string
+	calls       []gitCall
+	cloneStderr string
+	cloneExit   int
 }
 
 type gitCall struct {
@@ -264,7 +266,7 @@ func (c *gitCommander) Run(ctx context.Context, cmd *core.Command) (core.Result,
 	if slices.Contains(cmd.Argv, "clone") {
 		dest := cmd.Argv[len(cmd.Argv)-1]
 		writeFixture(c.t, dest, c.files)
-		return core.Result{}, nil
+		return core.Result{Stderr: c.cloneStderr, ExitCode: c.cloneExit}, nil
 	}
 	if slices.Contains(cmd.Argv, "rev-parse") {
 		return core.Result{Stdout: addGitSha + "\n"}, nil
@@ -429,7 +431,13 @@ func TestSplitGitSource(t *testing.T) {
 	}{
 		{"https://github.com/a/b.git", "https://github.com/a/b.git", "", true},
 		{"https://github.com/a/b.git@v1", "https://github.com/a/b.git", "v1", true},
-		{"https://user@github.com/a/b.git", "https://user@github.com/a/b.git", "", true},
+		{"https://user@github.com/a/b.git", "", "", false},
+		{"https://ghp_SUPERSECRET@host/a/b.git", "", "", false},
+		{"https://us@er:S3CRET@host/x.git", "", "", false},
+		{"https://user:p@ss@host/x.git", "", "", false},
+		{"https://user%3AS3CRET@host/x.git", "", "", false},
+		{"https://us%40er:S3CRET@host/x.git", "", "", false},
+		{"http://user@host/a", "", "", false},
 		{"git@github.com:a/b.git", "git@github.com:a/b.git", "", true},
 		{"git@github.com:a/b.git@release/1", "git@github.com:a/b.git", "release/1", true},
 		{"ssh://git@host/a/b@v1", "ssh://git@host/a/b", "v1", true},
@@ -450,32 +458,44 @@ func TestSplitGitSource(t *testing.T) {
 	}
 }
 
-// TestAddRefusesCredentialedSource proves a URL password refuses before the
-// clone and before any write, and every rendered message masks the secret.
+// TestAddRefusesCredentialedSource proves every URL userinfo shape refuses
+// before the clone and before any write, and every rendered message masks the
+// whole userinfo.
 //
 //nolint:gocognit,revive // the credential matrix reads as one block
 func TestAddRefusesCredentialedSource(t *testing.T) {
-	for _, source := range []string{
-		"https://oauth2:ghp_TOKEN@host/acme/packs.git",
-		"ssh://oauth2:ghp_TOKEN@host/acme/packs.git",
-		"oauth2:ghp_TOKEN@host:acme/packs.git",
+	for _, tc := range []struct {
+		name   string
+		source string
+		secret string
+	}{
+		{"https password", "https://oauth2:ghp_TOKEN@host/acme/packs.git", "ghp_TOKEN"},
+		{"https token only", "https://ghp_SUPERSECRET@host/acme/packs.git", "ghp_SUPERSECRET"},
+		{"second at", "https://us@er:S3CRET@host/x.git", "S3CRET"},
+		{"at in password", "https://user:p@ss@host/x.git", "p@ss"},
+		{"bare https user", "https://ghp_BAREUSER@host/x.git", "ghp_BAREUSER"},
+		{"ssh password", "ssh://user:S3CRET@host/x", "S3CRET"},
+		{"percent colon", "https://user%3AS3CRET@host/x.git", "S3CRET"},
+		{"percent at", "https://us%40er:S3CRET@host/x.git", "S3CRET"},
+		{"http userinfo", "http://ghp_SUPERSECRET@host/x.git", "ghp_SUPERSECRET"},
+		{"scp password", "oauth2:S3CRET@host:acme/packs.git", "S3CRET"},
 	} {
-		t.Run(source, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			repo := t.TempDir()
 			t.Chdir(repo)
 			cmdr := &gitCommander{t: t}
 			_, ref := RunAdd(context.Background(), &AddRequest{
 				Runtime: &core.Runtime{Commander: cmdr},
-				Source:  source,
+				Source:  tc.source,
 			})
 			if ref == nil || ref.Code != CodeBadPack {
-				t.Fatalf("RunAdd(%q) = %v, want bad-pack", source, ref)
+				t.Fatalf("RunAdd(%q) = %v, want bad-pack", tc.source, ref)
 			}
-			if strings.Contains(ref.Message, "ghp_TOKEN") {
-				t.Fatalf("message = %q, carries the token", ref.Message)
+			if strings.Contains(ref.Message, tc.secret) {
+				t.Fatalf("message = %q, carries %q", ref.Message, tc.secret)
 			}
 			if !strings.Contains(ref.Message, "***") {
-				t.Fatalf("message = %q, want a masked credential", ref.Message)
+				t.Fatalf("message = %q, want a fully masked userinfo", ref.Message)
 			}
 			if len(cmdr.calls) != 0 {
 				t.Fatalf("git calls = %d, want none before the refusal", len(cmdr.calls))
@@ -484,6 +504,47 @@ func TestAddRefusesCredentialedSource(t *testing.T) {
 				t.Fatalf("refused add wrote .verdict (stat err %v)", err)
 			}
 		})
+	}
+}
+
+// TestAddRedactsFailedCloneStderr proves a clone failure never renders the
+// URL git echoed back with its userinfo intact.
+func TestAddRedactsFailedCloneStderr(t *testing.T) {
+	repo := t.TempDir()
+	t.Chdir(repo)
+	cmdr := &gitCommander{
+		t:           t,
+		cloneStderr: "fatal: unable to access 'https://er:S3CRET@example.invalid/acme/packs.git/': refused\n",
+		cloneExit:   128,
+	}
+	_, ref := RunAdd(context.Background(), &AddRequest{
+		Runtime: &core.Runtime{Commander: cmdr},
+		Source:  "https://example.invalid/acme/packs.git",
+	})
+	if ref == nil || ref.Code != CodeBadPack {
+		t.Fatalf("RunAdd = %v, want bad-pack", ref)
+	}
+	if strings.Contains(ref.Message, "S3CRET") {
+		t.Fatalf("message = %q, carries the clone credential", ref.Message)
+	}
+	if want := "https://***@example.invalid/acme/packs.git"; !strings.Contains(ref.Message, want) {
+		t.Fatalf("message = %q, want it to contain %q", ref.Message, want)
+	}
+}
+
+// TestRedactURLTextMasksEveryURLUserinfo proves a whole userinfo, including a
+// second @, is masked in a free-form message.
+func TestRedactURLTextMasksEveryURLUserinfo(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ text, want string }{
+		{"access 'https://user:tok@host/x'", "access 'https://***@host/x'"},
+		{"access 'https://us@er:tok@host/x'", "access 'https://***@host/x'"},
+		{"access 'https://user:p@ss@host/x'", "access 'https://***@host/x'"},
+		{"no URL here", "no URL here"},
+	} {
+		if got := redactURLText(tc.text); got != tc.want {
+			t.Errorf("redactURLText(%q) = %q, want %q", tc.text, got, tc.want)
+		}
 	}
 }
 

@@ -239,9 +239,10 @@ var publishedSemantics = map[string]string{
 	// enum, or type changed.
 	// source grammar: the lock row's source gains the pattern the loader
 	// enforces — a dir: payload with no control character, backslash, or
-	// leading "-", or a git: URL pinned to a 40-hex sha. No property, required
-	// key, or type changed.
-	"lock.schema.json": "45dc36c961bd4f0c7f15c800793cfc9be0cad1bb9716dda4266cdbe5f9bd9300",
+	// leading "-", or a git: source pinned to a 40-hex sha with no http/https
+	// userinfo and only a bare ssh/scp user. No property, required key, or
+	// type changed.
+	"lock.schema.json": "ff3385a326d5772c266f04f0a9caa6c8a8c600d55df9a9b36e2f0c13f0a0d7a1",
 	"pack.schema.json": "fc8dc3ae76bfee94157f23e03ad2173f643d96974896c05307f89491f2a207b9",
 	// patch identity: additive optional patch_id/patch_id_kind plus the
 	// optional forced[] audit with $defs/forcedPost. No existing property,

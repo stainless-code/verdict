@@ -111,14 +111,14 @@ func RunAdd(ctx context.Context, req *AddRequest) (*AddResponse, *core.RefusalEr
 func loadAdd(root string, src *packSource) (*Lock, *Pack, *LockEntry, *core.RefusalError) {
 	if sameTree(filepath.Join(root, filepath.FromSlash(RepoPacksDir)), src.dir) {
 		return nil, nil, nil, badPack(fmt.Sprintf(
-			"pack source %q is inside %s — it is already vendored", src.label, RepoPacksDir))
+			"pack source %q is inside %s — it is already vendored", redactURL(src.label), RepoPacksDir))
 	}
 	p, ref := LoadDir(src.dir)
 	if ref != nil {
 		return nil, nil, nil, ref
 	}
 	if p == nil {
-		return nil, nil, nil, badPack(fmt.Sprintf("pack source %q carries no %s", src.label, ManifestFile))
+		return nil, nil, nil, badPack(fmt.Sprintf("pack source %q carries no %s", redactURL(src.label), ManifestFile))
 	}
 	lock, ref := loadLock(root)
 	if ref != nil {
@@ -185,27 +185,25 @@ type packSource struct {
 // addSource resolves a directory or a hermetic git clone.
 func addSource(ctx context.Context, req *AddRequest) (*packSource, *core.RefusalError) {
 	source := strings.TrimSpace(req.Source)
+	sourceURL, _, _ := refSplit(source)
+	if ref := userinfoRefusal(sourceURL); ref != nil {
+		return nil, ref
+	}
 	if url, refName, ok := splitGitSource(source); ok {
 		return cloneSource(ctx, req, url, refName)
 	}
-	if userinfoPassword(source) {
-		return nil, badPack(fmt.Sprintf(
-			"pack source %q carries a userinfo password — use ssh, or a credential-free https URL",
-			redactURL(source)))
-	}
 	if strings.HasPrefix(source, "-") {
-		return nil, badPack(fmt.Sprintf("pack source %q starts with '-'", source))
+		return nil, badPack(fmt.Sprintf("pack source %q starts with '-'", redactURL(source)))
 	}
 	dir, err := filepath.Abs(source)
 	if err != nil {
-		return nil, badPack(fmt.Sprintf("pack source %q cannot be resolved: %v", source, err))
+		return nil, badPack(fmt.Sprintf("pack source %q cannot be resolved: %v", redactURL(source), err))
 	}
 	return &packSource{dir: dir, label: sourceDirPrefix + filepath.ToSlash(source), cleanup: func() {}}, nil
 }
 
 // splitGitSource recognizes the published https and ssh forms and the
-// optional @ref suffix. A ref is the last @ after the last slash, so URL
-// userinfo such as git@host stays part of the URL.
+// optional @ref suffix.
 func splitGitSource(source string) (string, string, bool) {
 	url, refName, hasRef := refSplit(source)
 	if hasRef {
@@ -213,92 +211,199 @@ func splitGitSource(source string) (string, string, bool) {
 			return "", "", false
 		}
 	}
-	if !gitURL(url) || strings.HasPrefix(url, "-") || userinfoPassword(url) {
+	if !gitURL(url) || strings.HasPrefix(url, "-") || userinfoRefusal(url) != nil {
 		return "", "", false
 	}
 	return url, refName, true
 }
 
-// redactURL replaces the password part of a URL's userinfo with "***", for
-// every message and record that names a source.
+// userinfoRefusal reports the refusal a source's userinfo earns: http and
+// https sources carry none at all, and ssh and scp sources carry a bare user
+// only.
+func userinfoRefusal(raw string) *core.RefusalError {
+	auth, ok := parseSourceAuthority(raw)
+	if !ok || auth.at < 0 {
+		return nil
+	}
+	scheme := strings.ToLower(auth.scheme)
+	if scheme == "http" || scheme == "https" {
+		return badPack(fmt.Sprintf(
+			"pack source %q carries userinfo — %s URLs must carry no userinfo; "+
+				"use ssh (ssh://git@host/path or git@host:path) or a public https URL",
+			redactURL(raw), scheme))
+	}
+	if strings.Contains(auth.userinfo, userinfoSep) {
+		return badPack(fmt.Sprintf(
+			"pack source %q carries a userinfo password — use a bare ssh user, or a public https URL",
+			redactURL(raw)))
+	}
+	return nil
+}
+
+// redactURL masks each source's whole userinfo, keeping a dir:/git: wrapper
+// and a git lock's @<sha> suffix intact.
 func redactURL(raw string) string {
-	start, end, ok := authority(raw)
-	if !ok {
-		return raw
+	if dir, ok := strings.CutPrefix(raw, sourceDirPrefix); ok {
+		return sourceDirPrefix + redactURL(dir)
 	}
-	authorityText := raw[start:end]
-	at := strings.Index(authorityText, refSep)
-	if at < 0 {
-		return raw
+	if rest, ok := strings.CutPrefix(raw, sourceGitPrefix); ok {
+		if at := strings.LastIndex(rest, refSep); at > 0 && hex40(rest[at+1:]) {
+			return sourceGitPrefix + redactSourceURL(rest[:at]) + rest[at:]
+		}
+		return sourceGitPrefix + redactSourceURL(rest)
 	}
-	userinfo := authorityText[:at]
-	colon := strings.Index(userinfo, userinfoSep)
-	if colon < 0 {
-		return raw
-	}
-	return raw[:start] + userinfo[:colon+1] + "***" + authorityText[at:] + raw[end:]
+	return redactSourceURL(raw)
 }
 
-// userinfoPassword reports whether a git source's userinfo carries a password
-// or token. A scp form only counts when its host also carries the ":path"
-// separator, so a plain directory name with a colon stays a directory.
-func userinfoPassword(raw string) bool {
-	start, end, ok := authority(raw)
-	if !ok {
-		return false
+// redactSourceURL masks the userinfo one URL or scp source carries.
+func redactSourceURL(raw string) string {
+	auth, ok := parseSourceAuthority(raw)
+	if !ok || auth.at < 0 {
+		return raw
 	}
-	authorityText := raw[start:end]
-	at := strings.Index(authorityText, refSep)
-	if at < 0 {
-		return false
-	}
-	if strings.Contains(raw, schemeSep) {
-		return strings.Contains(authorityText[:at], userinfoSep)
-	}
-	return strings.Contains(raw[at+1:], userinfoSep) && strings.Contains(authorityText[:at], userinfoSep)
+	return raw[:auth.start] + "***" + raw[auth.at:]
 }
 
-// authority returns the byte range of a source's URL authority (or its scp
-// user@host part), and false when the source carries no authority.
-func authority(raw string) (int, int, bool) {
-	if scheme := strings.Index(raw, schemeSep); scheme >= 0 {
-		start := scheme + len(schemeSep)
+// sourceAuthority is one source's authority split at the last @ before the
+// host, the delimiter git itself uses.
+type sourceAuthority struct {
+	scheme   string
+	userinfo string
+	at       int
+	start    int
+	end      int
+}
+
+// parseSourceAuthority splits a URL authority or an scp user@host at git's
+// last @. A scheme-less string counts only when a host:path colon follows the
+// @, so a local path with an @ stays a path.
+func parseSourceAuthority(raw string) (sourceAuthority, bool) {
+	if scheme, rest, ok := strings.Cut(raw, schemeSep); ok && validScheme(scheme) {
+		start := len(raw) - len(rest)
 		end := len(raw)
-		if slash := strings.IndexByte(raw[start:], '/'); slash >= 0 {
+		if slash := strings.IndexByte(rest, '/'); slash >= 0 {
 			end = start + slash
 		}
-		return start, end, start < end
+		if start >= end {
+			return sourceAuthority{}, false
+		}
+		return splitLastAt(raw, sourceAuthority{scheme: scheme, start: start, end: end})
 	}
-	at := strings.Index(raw, refSep)
-	if at <= 0 || strings.Contains(raw[:at], "/") {
-		return 0, 0, false
+	at := strings.LastIndex(raw, refSep)
+	if at <= 0 || strings.Contains(raw[:at], "/") || !strings.Contains(raw[at+1:], userinfoSep) {
+		return sourceAuthority{}, false
 	}
-	return 0, len(raw), true
+	return splitLastAt(raw, sourceAuthority{start: 0, end: len(raw)})
 }
 
-// refSplit cuts the @ref suffix. The first @ is URL userinfo, never the
-// separator; the first @ after the authority (or after the scp user) is.
+// splitLastAt fills the userinfo fields from the last @ inside bounds.
+func splitLastAt(raw string, auth sourceAuthority) (sourceAuthority, bool) {
+	authorityText := raw[auth.start:auth.end]
+	at := strings.LastIndexByte(authorityText, '@')
+	if at < 0 {
+		auth.at = -1
+		return auth, true
+	}
+	auth.at = auth.start + at
+	auth.userinfo = authorityText[:at]
+	return auth, true
+}
+
+// validScheme reports whether s is an RFC 3986 URL scheme.
+func validScheme(s string) bool {
+	if s == "" || !isSchemeLetter(s[0]) {
+		return false
+	}
+	for i := 1; i < len(s); i++ {
+		if !isSchemeByte(s[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func isSchemeLetter(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
+}
+
+func isSchemeByte(c byte) bool {
+	return isSchemeLetter(c) || c >= '0' && c <= '9' || c == '+' || c == '-' || c == '.'
+}
+
+// refSplit cuts the @ref suffix at the last @ outside the source's authority.
 func refSplit(source string) (string, string, bool) {
-	var start int
-	if scheme := strings.Index(source, schemeSep); scheme >= 0 {
-		rest := source[scheme+len(schemeSep):]
-		slash := strings.Index(rest, "/")
-		if slash < 0 {
-			return source, "", false
+	auth, ok := parseSourceAuthority(source)
+	if ok && auth.scheme != "" {
+		start := auth.end
+		if at := strings.Index(source[start:], refSep); at >= 0 {
+			split := start + at
+			return source[:split], source[split+1:], true
 		}
-		start = scheme + len(schemeSep) + slash
-	} else {
-		at := strings.Index(source, refSep)
-		if at < 0 {
-			return source, "", false
+		return source, "", false
+	}
+	at := strings.LastIndex(source, refSep)
+	if at <= 0 {
+		return source, "", false
+	}
+	if !hasSCPForm(source[:at]) {
+		return source, "", false
+	}
+	return source[:at], source[at+1:], true
+}
+
+// hasSCPForm reports whether raw is an scp user@host:path source.
+func hasSCPForm(raw string) bool {
+	auth, ok := parseSourceAuthority(raw)
+	return ok && auth.scheme == ""
+}
+
+// redactURLText masks the userinfo of every scheme:// URL in text, so a
+// failed clone cannot echo a credential git was handed.
+func redactURLText(text string) string {
+	var out strings.Builder
+	last := 0
+	for from := 0; ; {
+		i := strings.Index(text[from:], schemeSep)
+		if i < 0 {
+			break
 		}
-		start = at + 1
+		i += from
+		start := i
+		for start > 0 && isSchemeByte(text[start-1]) {
+			start--
+		}
+		authStart := i + len(schemeSep)
+		end := authStart
+		for end < len(text) && !urlTextStop(text[end]) {
+			end++
+		}
+		at := strings.LastIndexByte(text[authStart:end], '@')
+		if at < 0 || at == 0 {
+			from = end
+			continue
+		}
+		at += authStart
+		out.WriteString(text[last:start])
+		out.WriteString(text[start:authStart])
+		out.WriteString("***")
+		last = at
+		from = end
 	}
-	if at := strings.Index(source[start:], refSep); at >= 0 {
-		split := start + at
-		return source[:split], source[split+1:], true
+	if last == 0 {
+		return text
 	}
-	return source, "", false
+	out.WriteString(text[last:])
+	return out.String()
+}
+
+// urlTextStop bounds a URL in a message: git quotes the URL, and a path,
+// query, or fragment starts at the first of these.
+func urlTextStop(c byte) bool {
+	switch c {
+	case '/', '?', '#', '\'', '"', '<', '>', ' ', '\t', '\n', '\r':
+		return true
+	}
+	return false
 }
 
 // gitURL reports whether url is an https or ssh git remote.
@@ -476,10 +581,10 @@ func runGitPack(
 		if _, ok := errors.AsType[*core.MissingToolError](err); ok {
 			return "", &core.RefusalError{Code: "missing-tool", Message: "git is not on PATH"}
 		}
-		return "", badPack(fmt.Sprintf("git %s failed: %v", sub, jq.Sealed(res.Stderr, err)))
+		return "", badPack(fmt.Sprintf("git %s failed: %s", sub, redactURLText(jq.Sealed(res.Stderr, err).Error())))
 	}
 	if res.ExitCode != 0 {
-		return "", badPack(fmt.Sprintf("git %s failed: %s", sub, strings.TrimSpace(res.Stderr)))
+		return "", badPack(fmt.Sprintf("git %s failed: %s", sub, redactURLText(strings.TrimSpace(res.Stderr))))
 	}
 	if res.StdoutTruncated {
 		return "", tooLarge("git " + sub + " output is over its cap")

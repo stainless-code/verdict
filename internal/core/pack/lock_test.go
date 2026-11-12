@@ -79,7 +79,13 @@ func TestLockSourceSchemaMatchesLoader(t *testing.T) {
 	}{
 		{"dir:../packs", true},
 		{"dir:src-packs/lenses", true},
-		{"git:https://user@host/repo.git@" + strings.Repeat("c", 40), true},
+		{"git:ssh://git@host/repo.git@" + strings.Repeat("c", 40), true},
+		{"git:git@host:path@" + strings.Repeat("c", 40), true},
+		{"git:https://host/repo.git@" + strings.Repeat("c", 40), true},
+		{"git:https://user@host/repo.git@" + strings.Repeat("c", 40), false},
+		{"git:https://user:tok@host/repo.git@" + strings.Repeat("c", 40), false},
+		{"git:ssh://user:pw@host/repo.git@" + strings.Repeat("c", 40), false},
+		{"git:oauth2:tok@host:path@" + strings.Repeat("c", 40), false},
 		{"dir:-src", false},
 		{"dir:src\npacks", false},
 		{`dir:src\packs`, false},
@@ -172,16 +178,78 @@ func TestLockStrictJSONRefuses(t *testing.T) {
 			want: "not sorted",
 		},
 		{
-			name: "git userinfo source",
-			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:https://user@host/repo.git@` +
+			name: "git ssh bare user source",
+			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:ssh://git@host/repo.git@` +
 				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
 			valid: true,
+		},
+		{
+			name: "git scp source",
+			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:git@host:path@` +
+				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
+			valid: true,
+		},
+		{
+			name: "git bare https user source",
+			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:https://user@host/repo.git@` +
+				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
+			want: "https://***@host/repo.git",
+			hide: "user@host",
+		},
+		{
+			name: "git second at source",
+			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:https://us@er:S3CRET@host/x.git@` +
+				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
+			want: "https://***@host/x.git",
+			hide: "S3CRET",
+		},
+		{
+			name: "git at in password source",
+			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:https://user:p@ss@host/x.git@` +
+				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
+			want: "https://***@host/x.git",
+			hide: "p@ss",
+		},
+		{
+			name: "git token only source",
+			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:https://ghp_SUPERSECRET@host/x.git@` +
+				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
+			want: "https://***@host/x.git",
+			hide: "ghp_SUPERSECRET",
+		},
+		{
+			name: "git ssh password source",
+			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:ssh://user:S3CRET@host/x@` +
+				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
+			want: "ssh://***@host/x",
+			hide: "S3CRET",
+		},
+		{
+			name: "git percent colon source",
+			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:https://user%3AS3CRET@host/x.git@` +
+				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
+			want: "https://***@host/x.git",
+			hide: "S3CRET",
+		},
+		{
+			name: "git percent at source",
+			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:https://us%40er:S3CRET@host/x.git@` +
+				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
+			want: "https://***@host/x.git",
+			hide: "S3CRET",
+		},
+		{
+			name: "git http userinfo source",
+			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:http://ghp_SUPERSECRET@host/x.git@` +
+				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
+			want: "http://***@host/x.git",
+			hide: "ghp_SUPERSECRET",
 		},
 		{
 			name: "git password source",
 			body: `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:https://user:tok@host/repo.git@` +
 				strings.Repeat("c", 40) + `","version":"1.0.0","hash":"` + lockHash + `","sig":"` + lockSigDir + `"}]}`,
-			want: "user:***@host",
+			want: "https://***@host/repo.git",
 			hide: "user:tok@host",
 		},
 		{

@@ -441,22 +441,28 @@ when `@ref` is given), then a detached checkout of the resolved 40-hex HEAD
 commit; that commit is what the lock records. The clone, rev-parse, and
 checkout share one five-minute budget, and the resulting working tree is
 checked against the pack file-count and byte caps before it is loaded. The https, ssh, and scp-like
-remote forms are accepted with a bare user or no userinfo (`https://user@host/path`,
-`ssh://user@host/path`, `user@host:path`). A userinfo password or token
-(`https://user:token@host/path`) refuses `bad-pack` before the clone and
-before any write, and no printed or recorded URL carries one. Re-adding a name
+remote forms are accepted (`https://host/path`, `ssh://user@host/path`,
+`user@host:path`). An https URL must carry no userinfo at all — the hermetic
+clone has no credential source, so a URL user is only ever a token
+(`https://user@host/path`, `https://token@host/path`) and refuses `bad-pack`
+before the clone and before any write. An ssh or scp source accepts a bare
+user only: `ssh://user:password@host/path` refuses the same way. No printed or
+recorded URL carries userinfo — every message, lock line, and `pack list` row
+masks it as `***@host`. Re-adding a name
 replaces the vendored tree and the lock row, and prints the old and new tree
 hashes. A re-add builds and verifies the new tree in a temp sibling under
 `.verdict/packs/` and swaps it in, so a failed re-add leaves the previous tree
-and lock row intact. A source inside `.verdict/packs/` refuses `bad-pack`: it
+and lock row intact; a crashed re-add's dot-prefixed staging and backup
+siblings are ignored by the loader and swept by the next add of that pack. A
+source inside `.verdict/packs/` refuses `bad-pack`: it
 is already vendored.
 
 `verdict.lock` is strict JSON (unknown or differently-cased keys refuse,
 exactly as `pack.json`), with `schema_version: "1"` and `packs` sorted by
 name: `{name, source, version, hash, sig}`. `source` is `dir:<path>` or
 `git:<url>@<sha>`; a `dir:` payload is a slash path with no control
-character, backslash, or leading `-`, and neither spelling carries a
-userinfo password. `hash` is the canonical tree hash
+character, backslash, or leading `-`, and a `git:` source carries no https
+userinfo and only a bare user on ssh or scp. `hash` is the canonical tree hash
 `pack list` prints. `sig` is an integrity digest, not a signature: sha256
 over `name=`, `source=`, `version=`, and `hash=` lines in that order, so a
 hand-edited row is caught. The lock covers the repo layer only: the built-in

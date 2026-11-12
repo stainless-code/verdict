@@ -186,6 +186,34 @@ func TestListShowsLockRowWithoutPack(t *testing.T) {
 	}
 }
 
+// TestListRedactsDirURLUserinfo proves a lock row whose dir: payload looks
+// like a URL prints its whole userinfo masked, on both surfaces.
+func TestListRedactsDirURLUserinfo(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeFixture(t, root, map[string]string{
+		LockFile: lockSourceBody("dir:http://user:S3CRET@host/x"),
+	})
+	resp, ref := RunList(t.Context(), &Request{
+		core.ReadRequest{RepoRoot: root}, "", true,
+	})
+	if ref != nil {
+		t.Fatalf("RunList: %s: %s", ref.Code, ref.Message)
+	}
+	if len(resp.Data.Packs) != 1 {
+		t.Fatalf("rows = %+v, want the missing lock row", resp.Data.Packs)
+	}
+	const wantSource = "dir:http://***@host/x"
+	if got := resp.Data.Packs[0].Source; got != wantSource {
+		t.Fatalf("source = %q, want %q", got, wantSource)
+	}
+	want := "repo     acme/lenses@1.0.0  source=" + wantSource + "  sha256:" +
+		"96680942582c  lenses=  rules=-  drift=" + CodeLockDrift
+	if got := resp.Human; !slices.Equal(got, []string{want}) {
+		t.Fatalf("human = %q, want %q", got, want)
+	}
+}
+
 // TestListWithoutRuntime proves a caller with no injected runtime reads as an
 // absent built-in layer instead of dereferencing a nil Runtime.
 func TestListWithoutRuntime(t *testing.T) {
