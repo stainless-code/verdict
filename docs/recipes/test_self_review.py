@@ -2,6 +2,7 @@ import importlib.util
 import json
 from pathlib import Path
 import tempfile
+import sys
 import unittest
 
 spec = importlib.util.spec_from_file_location("recipe", Path(__file__).with_name("self-review.py"))
@@ -34,6 +35,18 @@ class LoopTest(unittest.TestCase):
         result = recipe.loop("acme/app", "claude", 2, budget, output,
                              call=call, clock=lambda: 0)
         return result, output, calls
+
+    def test_process_refusals(self):
+        scenarios = [
+            ("print('broken')", False, "invalid-envelope"),
+            ("raise SystemExit(7)", True, "agent-failed"),
+            ('print(\'{"error":null,"data":{}}\'); raise SystemExit(3)', False, "tool-failed"),
+            ("import time; time.sleep(10)", True, "budget"),
+        ]
+        for code, agent, expected in scenarios:
+            with self.subTest(expected=expected):
+                with self.assertRaisesRegex(recipe.Stop, "^" + expected + "$"):
+                    recipe.execute([sys.executable, "-c", code], 0.1 if expected == "budget" else 10, agent)
 
     def test_pass_and_receipts(self):
         result, output, calls = self.scenario([False, True])
