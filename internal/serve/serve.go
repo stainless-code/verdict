@@ -89,7 +89,7 @@ type Layer interface {
 }
 
 type changeSource interface {
-	Changes(context.Context) <-chan query.Change
+	Changes(ctx context.Context) <-chan query.Change
 }
 
 // Config is one server's resolved start state.
@@ -177,20 +177,12 @@ func applyServerDefaults(cfg *Config) {
 }
 
 func configuredLayer(cfg *Config) (Layer, error) {
-	if cfg.Interval < minWatchInterval {
-		return nil, errWatchInterval
-	}
-	if cfg.Sweep < minWatchInterval {
-		return nil, errWatchSweep
-	}
-	if cfg.Sweep < cfg.Interval {
-		return nil, errWatchOrder
+	if err := validateWatchConfig(cfg); err != nil {
+		return nil, err
 	}
 	if cfg.Layer != nil {
-		if !cfg.NoWatch {
-			if _, ok := cfg.Layer.(changeSource); !ok {
-				return nil, errNoChanges
-			}
+		if err := validateLayerWatch(cfg.Layer, cfg.NoWatch); err != nil {
+			return nil, err
 		}
 		return cfg.Layer, nil
 	}
@@ -205,6 +197,29 @@ func configuredLayer(cfg *Config) (Layer, error) {
 		Check: cfg.Check, MaxBundles: cfg.MaxBundles, NoWatch: cfg.NoWatch,
 		Interval: cfg.Interval, Sweep: cfg.Sweep, Clock: cfg.Now,
 	}), nil
+}
+
+func validateWatchConfig(cfg *Config) error {
+	if cfg.Interval < minWatchInterval {
+		return errWatchInterval
+	}
+	if cfg.Sweep < minWatchInterval {
+		return errWatchSweep
+	}
+	if cfg.Sweep < cfg.Interval {
+		return errWatchOrder
+	}
+	return nil
+}
+
+func validateLayerWatch(layer Layer, noWatch bool) error {
+	if noWatch {
+		return nil
+	}
+	if _, ok := layer.(changeSource); !ok {
+		return errNoChanges
+	}
+	return nil
 }
 
 // Listen binds the configured address and records the kernel-assigned port.

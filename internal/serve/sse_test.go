@@ -312,8 +312,7 @@ func TestServerShutdownBounded(t *testing.T) {
 	}
 }
 
-// TestShutdownStopsOpenEventsStream proves cancellation ends long-lived SSE
-// handlers before HTTP Shutdown waits for active requests to drain.
+// TestShutdownStopsOpenEventsStream stops the stream during shutdown.
 func TestShutdownStopsOpenEventsStream(t *testing.T) {
 	root := writeFixture(t, fixtureFiles())
 	server, err := New(&Config{Root: root, Port: 0, Token: testToken, Now: fixedNow})
@@ -327,6 +326,19 @@ func TestShutdownStopsOpenEventsStream(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(ctx) }()
+	response := openLiveEventStream(t, server)
+	t.Cleanup(func() { _ = response.Body.Close() })
+	cancel()
+	if serveErr := awaitServe(t, done); serveErr != nil {
+		t.Fatalf("Serve() with an open event stream = %v, want nil", serveErr)
+	}
+	if _, err := io.ReadAll(response.Body); err != nil {
+		t.Fatalf("read stopped event stream: %v", err)
+	}
+}
+
+func openLiveEventStream(t *testing.T, server *Server) *http.Response {
+	t.Helper()
 	request, err := http.NewRequestWithContext(
 		t.Context(), http.MethodGet, "http://"+server.Addr()+"/v1/events", nil,
 	)
@@ -338,11 +350,14 @@ func TestShutdownStopsOpenEventsStream(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /v1/events: %v", err)
 	}
-	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("GET /v1/events = %d, want 200", response.StatusCode)
 	}
-	cancel()
+	return response
+}
+
+func awaitServe(t *testing.T, done <-chan error) error {
+	t.Helper()
 	var serveErr error
 	testenv.Until(t, func() bool {
 		select {
@@ -352,10 +367,5 @@ func TestShutdownStopsOpenEventsStream(t *testing.T) {
 			return false
 		}
 	})
-	if serveErr != nil {
-		t.Fatalf("Serve() with an open event stream = %v, want nil", serveErr)
-	}
-	if _, err := io.ReadAll(response.Body); err != nil {
-		t.Fatalf("read stopped event stream: %v", err)
-	}
+	return serveErr
 }

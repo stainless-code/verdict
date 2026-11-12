@@ -401,15 +401,14 @@ func TestRouteTableIsGetOnly(t *testing.T) {
 	}
 }
 
-// TestConfigRejectsSubminimumWatchDurations protects programmatic Config users
-// from bypassing the watch bounds enforced by the CLI parser.
+// TestConfigRejectsSubminimumWatchDurations covers the resolved Config bounds.
 func TestConfigRejectsSubminimumWatchDurations(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
+		want     error
 		name     string
 		interval time.Duration
 		sweep    time.Duration
-		want     error
 	}{
 		{name: "interval", interval: 50 * time.Millisecond, sweep: 100 * time.Millisecond, want: errWatchInterval},
 		{name: "sweep", interval: 100 * time.Millisecond, sweep: 50 * time.Millisecond, want: errWatchSweep},
@@ -428,8 +427,7 @@ func TestConfigRejectsSubminimumWatchDurations(t *testing.T) {
 	}
 }
 
-// TestInjectedLayerMustProvideChangesWhenWatching protects the events route
-// from being advertised when an injected layer cannot produce invalidations.
+// TestInjectedLayerMustProvideChangesWhenWatching covers missing Sources.
 func TestInjectedLayerMustProvideChangesWhenWatching(t *testing.T) {
 	t.Parallel()
 	if _, err := New(&Config{Layer: newBlockingLayer(), Now: fixedNow}); !errors.Is(err, errNoChanges) {
@@ -480,10 +478,22 @@ func TestServeRootDiscoversEveryRepository(t *testing.T) {
 	assertServeRootInbox(t, serveRootInbox(t))
 }
 
-// TestDiscoveryLayerWatchOptionsReachEveryRoot proves --root discovery keeps
-// the watch settings and emits a sweep invalidation from the second repo.
+// TestDiscoveryLayerWatchOptionsReachEveryRoot covers event propagation.
 func TestDiscoveryLayerWatchOptionsReachEveryRoot(t *testing.T) {
 	t.Parallel()
+	rootA, rootB, layer := newDiscoveredWatchLayer(t)
+	assertDiscoveredWatchHealth(t, layer)
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	changes := layer.Changes(ctx)
+	rootAID, rootBID := query.RootID(rootA), query.RootID(rootB)
+	waitForDiscoveredTick(t, changes, rootA, rootAID)
+	rewritePR(t, rootB, "1234")
+	waitForDiscoveredSweep(t, changes, rootBID, "1234")
+}
+
+func newDiscoveredWatchLayer(t *testing.T) (string, string, *query.Layer) {
+	t.Helper()
 	workspace := t.TempDir()
 	rootA, rootB := filepath.Join(workspace, "a"), filepath.Join(workspace, "b")
 	writeFixtureAt(t, rootA, fixtureFiles())
@@ -497,6 +507,11 @@ func TestDiscoveryLayerWatchOptionsReachEveryRoot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("discoveryLayer: %v", err)
 	}
+	return rootA, rootB, layer
+}
+
+func assertDiscoveredWatchHealth(t *testing.T, layer *query.Layer) {
+	t.Helper()
 	health := wire(t, layer.Health(t.Context()).Data)
 	if health["watch"] != true || health["interval"] != "100ms" {
 		t.Fatalf("discovery health watch/interval = %v/%v, want true/100ms", health["watch"], health["interval"])
@@ -504,31 +519,27 @@ func TestDiscoveryLayerWatchOptionsReachEveryRoot(t *testing.T) {
 	if roots := asList(t, health["roots"]); len(roots) != 2 {
 		t.Fatalf("discovered roots = %d, want two", len(roots))
 	}
+}
 
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
-	changes := layer.Changes(ctx)
-	rootAID, rootBID := query.RootID(rootA), query.RootID(rootB)
+func waitForDiscoveredTick(t *testing.T, changes <-chan query.Change, root, rootID string) {
+	t.Helper()
 	syncWrites := 0
 	testenv.Until(t, func() bool {
-		select {
-		case change, open := <-changes:
-			if !open {
-				t.Fatal("watch stream closed before the synchronization invalidation")
-			}
-			if change.Root == rootAID {
-				return true
-			}
-		default:
+		change, ready := nextWatchChange(t, changes)
+		if ready && change.Root == rootID {
+			return true
 		}
 		syncWrites++
-		writeFixtureAt(t, rootA, map[string]string{
+		writeFixtureAt(t, root, map[string]string{
 			".verdict/state/" + fmt.Sprintf("%04d", 6000+syncWrites) + "/PR.json": prDoc(),
 		})
 		return false
 	})
+}
 
-	prPath := filepath.Join(rootB, filepath.FromSlash(".verdict/state/1234/PR.json"))
+func rewritePR(t *testing.T, root, bundle string) {
+	t.Helper()
+	prPath := filepath.Join(root, filepath.FromSlash(".verdict/state/"+bundle+"/PR.json"))
 	pr, err := os.ReadFile(prPath)
 	if err != nil {
 		t.Fatalf("read second repo PR fixture: %v", err)
@@ -536,17 +547,27 @@ func TestDiscoveryLayerWatchOptionsReachEveryRoot(t *testing.T) {
 	if err := os.WriteFile(prPath, append(pr, '\n'), 0o644); err != nil {
 		t.Fatalf("write second repo PR fixture: %v", err)
 	}
+}
+
+func waitForDiscoveredSweep(t *testing.T, changes <-chan query.Change, rootID, bundle string) {
+	t.Helper()
 	testenv.Until(t, func() bool {
-		select {
-		case change, open := <-changes:
-			if !open {
-				t.Fatal("watch stream closed before the second-repo invalidation")
-			}
-			return change.Root == rootBID && change.Via == "sweep" && slices.Contains(change.Changed, "1234")
-		default:
-			return false
-		}
+		change, ready := nextWatchChange(t, changes)
+		return ready && change.Root == rootID && change.Via == "sweep" && slices.Contains(change.Changed, bundle)
 	})
+}
+
+func nextWatchChange(t *testing.T, changes <-chan query.Change) (query.Change, bool) {
+	t.Helper()
+	select {
+	case change, open := <-changes:
+		if !open {
+			t.Fatal("watch stream closed before the expected invalidation")
+		}
+		return change, true
+	default:
+		return query.Change{}, false
+	}
 }
 
 func serveRootInbox(t *testing.T) map[string]any {
