@@ -133,6 +133,8 @@ func (s *Server) streamEvent(
 	select {
 	case <-r.Context().Done():
 		return false
+	case <-s.streamsDone:
+		return false
 	case frame, open := <-events:
 		return s.flushEvent(w, flusher, &frame, open)
 	case <-heartbeat:

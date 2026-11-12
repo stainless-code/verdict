@@ -121,6 +121,8 @@ type Server struct { //nolint:govet // grouped by listener, allowlists, and inje
 	port         int
 	drainTimeout time.Duration
 	heartbeat    time.Duration
+	streamsDone  chan struct{}
+	streamsStop  sync.Once
 	events       *eventBroker
 	hosts        map[string]bool
 	origins      map[string]bool
@@ -146,6 +148,7 @@ func New(cfg *Config) (*Server, error) {
 		port:         cfg.Port,
 		drainTimeout: shutdownTimeout,
 		heartbeat:    cfg.Heartbeat,
+		streamsDone:  make(chan struct{}),
 		events:       newEventBroker(),
 	}
 	server.refreshAllowlists()
@@ -261,6 +264,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		return errNoListener
 	}
 	server := newHTTPServer(s.Handler())
+	server.RegisterOnShutdown(s.stopEventStreams)
 	watchCtx, cancelWatch := context.WithCancel(ctx)
 	watchDone := make(chan struct{})
 	if s.cfg.NoWatch {
@@ -286,6 +290,10 @@ func (s *Server) Serve(ctx context.Context) error {
 		}
 		return jq.Sealed("serve: http listener", err)
 	}
+}
+
+func (s *Server) stopEventStreams() {
+	s.streamsStop.Do(func() { close(s.streamsDone) })
 }
 
 // drain stops accepting and waits for the active requests within the bound. A

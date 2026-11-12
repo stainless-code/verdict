@@ -311,3 +311,51 @@ func TestServerShutdownBounded(t *testing.T) {
 		t.Fatalf("Serve() after cancel = %v, want nil", serveErr)
 	}
 }
+
+// TestShutdownStopsOpenEventsStream proves cancellation ends long-lived SSE
+// handlers before HTTP Shutdown waits for active requests to drain.
+func TestShutdownStopsOpenEventsStream(t *testing.T) {
+	root := writeFixture(t, fixtureFiles())
+	server, err := New(&Config{Root: root, Port: 0, Token: testToken, Now: fixedNow})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	server.drainTimeout = 100 * time.Millisecond
+	if err := server.Listen(t.Context()); err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- server.Serve(ctx) }()
+	request, err := http.NewRequestWithContext(
+		t.Context(), http.MethodGet, "http://"+server.Addr()+"/v1/events", nil,
+	)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	request.Header.Set("Authorization", "Bearer "+testToken)
+	response, err := (&http.Client{}).Do(request)
+	if err != nil {
+		t.Fatalf("GET /v1/events: %v", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/events = %d, want 200", response.StatusCode)
+	}
+	cancel()
+	var serveErr error
+	testenv.Until(t, func() bool {
+		select {
+		case serveErr = <-done:
+			return true
+		default:
+			return false
+		}
+	})
+	if serveErr != nil {
+		t.Fatalf("Serve() with an open event stream = %v, want nil", serveErr)
+	}
+	if _, err := io.ReadAll(response.Body); err != nil {
+		t.Fatalf("read stopped event stream: %v", err)
+	}
+}
