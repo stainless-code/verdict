@@ -5,8 +5,10 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -31,6 +33,9 @@ func (f *apiFake) Run(_ context.Context, cmd *core.Command) (core.Result, error)
 	endpoint := cmd.Argv[2]
 	f.calls = append(f.calls, endpoint)
 	path, _, _ := strings.Cut(strings.TrimPrefix(endpoint, "repos/acme/app/contents/"), "?")
+	if unescaped, uerr := url.PathUnescape(path); uerr == nil {
+		path = unescaped
+	}
 	if stderr, ok := f.fail[path]; ok {
 		return core.Result{Stderr: stderr, ExitCode: 1}, errors.New("exit status 1")
 	}
@@ -183,6 +188,53 @@ func TestResolveContentsTreeBudget(t *testing.T) {
 			t.Fatalf("message = %q, want it to contain %q", ref.Message, want)
 		}
 	})
+}
+
+// TestEscapePathSegments pins the endpoint escaping: every segment is
+// percent-escaped and the separators stay separators.
+func TestEscapePathSegments(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, in, want string }{
+		{"plain", ".verdict/config.json", ".verdict/config.json"},
+		{"fragment", ".verdict/packs/a#1/pack.json", ".verdict/packs/a%231/pack.json"},
+		{"query", ".verdict/packs/a?1/pack.json", ".verdict/packs/a%3F1/pack.json"},
+		{"percent and space", ".verdict/packs/a%1 b/pack.json", ".verdict/packs/a%251%20b/pack.json"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := escapePath(tc.in); got != tc.want {
+				t.Fatalf("escapePath(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestResolveContentsEscapesPathSegments proves a pack name holding '#', '%',
+// or a space reaches the contents API escaped, and the snapshot still keeps
+// the raw path as the control row.
+func TestResolveContentsEscapesPathSegments(t *testing.T) {
+	dir := ".verdict/packs/p#q%r s"
+	f := &apiFake{bodies: map[string]string{
+		".verdict/config.json": fileBody(`{"schema_version":"1"}`),
+		".verdict/packs":       `[{"type":"dir","name":"p#q%r s"}]`,
+		dir:                    `[{"type":"file","name":"pack.json"}]`,
+		dir + "/pack.json":     fileBody(packManifest),
+	}}
+	snap, ref := apiResolve(t, f, "acme/app")
+	if ref != nil {
+		t.Fatalf("Resolve: %v", ref)
+	}
+	for _, want := range []string{
+		"repos/acme/app/contents/.verdict/packs/p%23q%25r%20s?ref=" + apiBase,
+		"repos/acme/app/contents/.verdict/packs/p%23q%25r%20s/pack.json?ref=" + apiBase,
+	} {
+		if !slices.Contains(f.calls, want) {
+			t.Errorf("endpoints = %q, want one to be %q", f.calls, want)
+		}
+	}
+	if got, ok := snap.ReadFile(dir + "/pack.json"); !ok || string(got) != packManifest {
+		t.Errorf("%s = %q (ok=%v), want the base bytes", dir+"/pack.json", got, ok)
+	}
 }
 
 // fileListing renders one contents-API directory answer with n file rows.

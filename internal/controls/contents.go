@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -136,9 +137,21 @@ func (b *treeBudget) spend(listed int) *core.RefusalError {
 		"control %s lists more than %d entries across its tree — trim it at base", b.root, maxTreeEntries))
 }
 
+// escapePath percent-escapes each slash-separated segment of a repository
+// path, so a name holding '#', '?', or '%' reaches the contents API as that
+// name instead of being parsed as a fragment, a query, or already-escaped
+// bytes. The caller keeps the stored key and every message on the raw path.
+func escapePath(p string) string {
+	segments := strings.Split(p, packSep)
+	for i, segment := range segments {
+		segments[i] = url.PathEscape(segment)
+	}
+	return strings.Join(segments, packSep)
+}
+
 // listContents asks the contents API for one directory: nil, nil is a 404.
 func listContents(ctx context.Context, cmd core.Commander, repo, base, path string) ([]contentsEntry, *core.RefusalError) {
-	endpoint := "repos/" + repo + "/contents/" + path + "?ref=" + base
+	endpoint := "repos/" + repo + "/contents/" + escapePath(path) + "?ref=" + base
 	res, err := cmd.Run(ctx, &core.Command{Argv: []string{binGH, "api", endpoint}, OutputCap: contentsCap})
 	if err == nil && res.ExitCode != 0 {
 		err = res.ExitFailure(binGH)
@@ -198,7 +211,7 @@ func contentAt(ctx context.Context, cmd core.Commander, repo, base, path string)
 
 // fetchContent asks the contents API for one path: nil, nil is a 404.
 func fetchContent(ctx context.Context, cmd core.Commander, repo, base, path string) (*contentsDoc, *core.RefusalError) {
-	endpoint := "repos/" + repo + "/contents/" + path + "?ref=" + base
+	endpoint := "repos/" + repo + "/contents/" + escapePath(path) + "?ref=" + base
 	res, err := cmd.Run(ctx, &core.Command{Argv: []string{binGH, "api", endpoint}, OutputCap: contentsCap})
 	if err == nil && res.ExitCode != 0 {
 		err = res.ExitFailure(binGH)
