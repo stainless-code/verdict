@@ -113,7 +113,9 @@ func (w *discoveryWalk) run() Discovery {
 		if w.visitLimitReached(item) {
 			break
 		}
-		w.visit(item, &stack)
+		if w.visit(item, &stack) {
+			break
+		}
 	}
 	if w.result.SkippedPatterns > maxIgnoreWarnings {
 		w.result.Warnings = append(w.result.Warnings, fmt.Sprintf(
@@ -133,14 +135,14 @@ func (w *discoveryWalk) visitLimitReached(item walkItem) bool {
 	return true
 }
 
-func (w *discoveryWalk) visit(item walkItem, stack *[]walkItem) {
+func (w *discoveryWalk) visit(item walkItem, stack *[]walkItem) bool {
 	entries, err := w.opts.ReadDir(w.root, item.rel)
 	w.result.Visits++
 	if err != nil {
 		if !errors.Is(err, fs.ErrNotExist) {
 			addDiscoveryWarning(&w.result, fmt.Sprintf("serve: cannot read %s: %v", displayPath(w.rootPath, item.rel), err))
 		}
-		return
+		return false
 	}
 	rules := append([]ignoreRule(nil), item.rules...)
 	ignorePath := relativePath(item.rel, ".gitignore")
@@ -149,12 +151,13 @@ func (w *discoveryWalk) visit(item walkItem, stack *[]walkItem) {
 		&w.result.Warnings, &w.result.SkippedPatterns,
 	)...)
 	if w.recordRepositories(item, entries) {
-		return
+		return true
 	}
 	if w.result.Truncated || item.depth >= w.opts.Depth {
-		return
+		return false
 	}
 	w.enqueueDirectories(item, entries, rules, stack)
+	return false
 }
 
 func (w *discoveryWalk) recordRepositories(item walkItem, entries []os.DirEntry) bool {

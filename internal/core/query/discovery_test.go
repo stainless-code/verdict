@@ -287,6 +287,41 @@ func TestWalkCapsTruncateVisibly(t *testing.T) {
 	}
 }
 
+// TestRepositoryCapsAreExact checks both the explicit and default repo caps.
+func TestRepositoryCapsAreExact(t *testing.T) {
+	t.Run("explicit", testExplicitRepositoryCapIsExact)
+	t.Run("default", testDefaultRepositoryCapIsExact)
+}
+
+func testExplicitRepositoryCapIsExact(t *testing.T) {
+	t.Helper()
+	root := t.TempDir()
+	want := makeRepo(t, root, "a")
+	makeRepo(t, root, "b")
+	got, err := Discover(root, DiscoveryOptions{Depth: 2, MaxRepos: 1, Now: discoveryNow()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Roots) != 1 || got.Roots[0].Path != want || !got.Truncated || len(got.Warnings) != 1 || !strings.Contains(got.Warnings[0], "max repos 1 reached") {
+		t.Fatalf("explicit repo cap = %+v; want only %q and a truncation warning", got, want)
+	}
+}
+
+func testDefaultRepositoryCapIsExact(t *testing.T) {
+	t.Helper()
+	root := t.TempDir()
+	for i := range DefaultMaxRepos + 1 {
+		makeRepo(t, root, fmt.Sprintf("repo-%03d", i))
+	}
+	got, err := Discover(root, DiscoveryOptions{Depth: 1, Now: discoveryNow()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Roots) != DefaultMaxRepos || !got.Truncated || len(got.Warnings) != 1 || !strings.Contains(got.Warnings[0], "max repos 500 reached") {
+		t.Fatalf("default repo cap = roots %d, truncated %v, warnings %q; want exactly 500 and a truncation warning", len(got.Roots), got.Truncated, got.Warnings)
+	}
+}
+
 // TestWarmRegistryRestartDoesNotReadDirectories pins zero warm walk reads.
 func TestWarmRegistryRestartDoesNotReadDirectories(t *testing.T) {
 	root, registryPath, opts, reads := warmRegistryFixture(t)
