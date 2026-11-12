@@ -486,6 +486,69 @@ test("decodes a bundle hash segment once before requesting and linking it", asyn
   ]);
 });
 
+test("clears a passing gate and identifies the target after every request failure", async () => {
+  const failingPath = "/v1/roots/root-123/bundles/local-corrupt";
+  const failures = [
+    {
+      name: "typed refusal",
+      response: {
+        body: {
+          data: null,
+          error: { code: "corrupt-store", message: "bundle is corrupt" },
+        },
+      },
+      message: "bundle is corrupt",
+    },
+    {
+      name: "HTTP status",
+      response: { status: 503, body: {} },
+      message: "Request returned 503",
+    },
+    {
+      name: "rejected request",
+      response: new Error("network disconnected"),
+      message: "network disconnected",
+    },
+  ];
+
+  for (const failure of failures) {
+    const ui = await createUI({
+      hash: "#/r/root-123/local-good/gate",
+      respond: async (path) => {
+        if (path === "/v1/roots/root-123/bundles/local-good")
+          return { body: detail };
+        if (path === failingPath) return failure.response;
+        return { body: envelope({}) };
+      },
+    });
+    assert.ok(ui.elements.get("content").textContent.includes("passed"));
+    assert.ok(
+      descendants(ui.elements.get("content")).some(
+        (element) =>
+          element.tagName === "A" && element.href.includes("local-good"),
+      ),
+    );
+
+    await ui.navigate("#/r/root-123/local-corrupt/gate");
+    assert.equal(
+      ui.elements.get("title").textContent,
+      "Unable to load view",
+      failure.name,
+    );
+    assert.equal(ui.elements.get("content").textContent, "", failure.name);
+    assert.equal(ui.elements.get("content").children.length, 0, failure.name);
+    assert.equal(ui.elements.get("message").className, "error", failure.name);
+    assert.ok(
+      ui.elements.get("message").textContent.includes(failingPath),
+      failure.name,
+    );
+    assert.ok(
+      ui.elements.get("message").textContent.includes(failure.message),
+      failure.name,
+    );
+  }
+});
+
 test("no-watch mode exposes a manual refresh that refetches the active view", async () => {
   const ui = await createUI({
     watch: false,

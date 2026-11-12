@@ -132,10 +132,7 @@
 
   function envelopeData(body) {
     if (!body || body.error) {
-      message.textContent =
-        body?.error?.message || "The server returned no view.";
-      message.className = "error";
-      return null;
+      throw new Error(body?.error?.message || "The server returned no view.");
     }
     return body.data || {};
   }
@@ -351,9 +348,10 @@
       const data = envelopeData(body);
       if (data) render(current.view, data);
     } catch (error) {
+      content.replaceChildren();
       title.textContent = "Unable to load view";
-      message.textContent =
-        error instanceof Error ? error.message : String(error);
+      const detail = error instanceof Error ? error.message : String(error);
+      message.textContent = `${current.path}: ${detail}`;
       message.className = "error";
     }
   }
