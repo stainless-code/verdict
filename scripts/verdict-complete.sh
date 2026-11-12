@@ -25,7 +25,7 @@ _verdict_flags() { # $1 = verb
     backtest) printf '%s\n' mine replay score --since --until --run --agent --max-reviews --budget-usd --timeout --rounds --json;;
     threads) printf '%s\n' --provider --thread --dry-run --json;;
     fetch-local) printf '%s\n' --staged --range --base --stash --worktree --index --consent-over-budget --show-prompts --chunk --json;;
-    run) printf '%s\n' --agent --timeout --rounds --print --json;;
+    run) printf '%s\n' --agent --timeout --rounds --print --json --;;
     learn) printf '%s\n' --rule --scope --id --provenance --rigor --status --retire --restore --reason --json;;
     pack) printf '%s\n' list add test --dir --json;;
     adopt) printf '%s\n' --from --json;;

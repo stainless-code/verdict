@@ -59,6 +59,7 @@ func usageText() string {
 		"    .verdict/state/<bundle>/launcher.json (agent, binary, argv shape, timings, exit)\n" +
 		"    and the full child output in .run.out. --print renders the exact command and\n" +
 		"    exits 0 without spawning; everything after '--' goes to the agent unchanged.\n" +
+		"    --print refuses options outside the safe model/cost display allowlist.\n" +
 		"    run passes a short tool-generated directive, never bundle bytes.\n" +
 		"  config <owner/repo> <pr> (--explain | --preview [--file <path>]) [--json]\n" +
 		"    read-only policy surface: --explain renders the stored effective policy of a fetched run\n" +

@@ -20,18 +20,19 @@ import (
 // tool-generated directive is the last argument. A binary that wants its prompt
 // somewhere else (a file path, stdin) does not fit this shape yet.
 type agentDef struct {
-	Name   string
-	Binary string
-	Args   []string
+	Name    string
+	Binary  string
+	Install string
+	Args    []string
 }
 
 // agentDefs is the shipped agent table, sorted by name. Every row is data: a
 // new agent is a new entry here, and nothing else in the launcher changes.
 var agentDefs = []agentDef{
-	{Name: "claude", Binary: "claude", Args: []string{"-p"}},
-	{Name: "codex", Binary: "codex", Args: []string{"exec"}},
-	{Name: "cursor", Binary: "cursor-agent", Args: []string{"-p"}},
-	{Name: "opencode", Binary: "opencode", Args: []string{"run"}},
+	{Name: "claude", Binary: "claude", Args: []string{"-p"}, Install: "install claude using its official installer"},
+	{Name: "codex", Binary: "codex", Args: []string{"exec"}, Install: "npm install -g @openai/codex"},
+	{Name: "cursor", Binary: "cursor-agent", Args: []string{"-p"}, Install: "install cursor-agent using the Cursor CLI installer"},
+	{Name: "opencode", Binary: "opencode", Args: []string{"run"}, Install: "npm install -g opencode-ai"},
 }
 
 // lookupAgent resolves one --agent name against the table.
