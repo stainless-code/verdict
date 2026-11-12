@@ -150,7 +150,7 @@ func (g *importGraph) moduleDir(module string) string {
 	switch {
 	case g.dirs[module]:
 		return module
-	case g.modules[module]:
+	case g.modules[trimSourceExt(module)]:
 		return path.Dir(module)
 	default:
 		return ""

@@ -48,8 +48,8 @@ func TestTestsForTransitiveImportDepth(t *testing.T) {
 func TestTestsForTransitiveScannedLanguages(t *testing.T) {
 	f := newFixture(t)
 	f.write("src/a.ts", "export function target(a: number) { return a; }\n")
-	f.write("lib/b.ts", "import { target } from '../src/a';\n\nexport function use() {\n  return target(1);\n}\n")
-	f.write("tests/deep.test.ts", "import { use } from '../lib/b';\n\nuse();\n")
+	f.write("lib/b.ts", "import { target } from '../src/a.js';\n\nexport function use() {\n  return target(1);\n}\n")
+	f.write("tests/deep.test.ts", "import { use } from '../lib/b.ts';\n\nuse();\n")
 	f.write("pkg/mod.py", "def helper(x):\n    return x\n")
 	f.write("pkg2/use.py", "from pkg.mod import helper\n\nhelper(1)\n")
 	f.write("checks/test_deep.py", "from pkg2.use import helper\n\nhelper(2)\n")
