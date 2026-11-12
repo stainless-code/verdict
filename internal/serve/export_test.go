@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -314,5 +315,89 @@ func assertExportEmpty(t *testing.T, target string) {
 	}
 	if len(entries) != 0 {
 		t.Fatalf("symlink target was modified: %v", entries)
+	}
+}
+
+// TestHTMLConcurrentAddition preserves files planted at both rename boundaries.
+func TestHTMLConcurrentAddition(t *testing.T) {
+	for _, boundary := range []int{1, 2} {
+		t.Run(strconv.Itoa(boundary), func(t *testing.T) { checkConcurrentExportAddition(t, boundary) })
+	}
+}
+
+func checkConcurrentExportAddition(t *testing.T, boundary int) {
+	t.Helper()
+	layer := exportLayer(t)
+	dest := filepath.Join(exportTempDir(t), "export")
+	if err := exportHTML(t.Context(), dest, layer, fixedNow()); err != nil {
+		t.Fatal(err)
+	}
+	before := readExport(t, filepath.Join(dest, "data.json"))
+	seam, planted := exportPlantSeam(dest, boundary)
+	err := exportWithRename(t.Context(), dest, layer, fixedNow(), seam)
+	ref, ok := errors.AsType[*cli.RefusalError](err)
+	if !ok || ref.Code != "html-not-export" {
+		t.Fatalf("concurrent addition refusal = %v; want html-not-export", err)
+	}
+	if got := string(readExport(t, filepath.Join(*planted, "keep.txt"))); got != "operator file" {
+		t.Fatalf("planted file changed: %q", got)
+	}
+	if !bytes.Equal(before, readExport(t, filepath.Join(*planted, "data.json"))) {
+		t.Fatal("old export changed")
+	}
+}
+
+func exportPlantSeam(dest string, boundary int) (func(string, string) error, *string) {
+	calls := 0
+	location := dest
+	rename := func(from, to string) error {
+		calls++
+		if err := plantExportAddition(location, calls == boundary); err != nil {
+			return err
+		}
+		if err := os.Rename(from, to); err != nil {
+			return err
+		}
+		if from == location {
+			location = to
+		}
+		return nil
+	}
+	return rename, &location
+}
+
+// TestHTMLModifiedAsset preserves an asset changed after initial validation.
+func TestHTMLModifiedAsset(t *testing.T) {
+	layer := exportLayer(t)
+	dest := filepath.Join(exportTempDir(t), "export")
+	if err := exportHTML(t.Context(), dest, layer, fixedNow()); err != nil {
+		t.Fatal(err)
+	}
+	seam := modifiedAssetSeam(dest)
+	err := exportWithRename(t.Context(), dest, layer, fixedNow(), seam)
+	ref, ok := errors.AsType[*cli.RefusalError](err)
+	if !ok || ref.Code != "html-not-export" {
+		t.Fatalf("modified asset refusal = %v; want html-not-export", err)
+	}
+	if got := string(readExport(t, filepath.Join(dest, "app.css"))); got != "operator style" {
+		t.Fatalf("modified asset was lost: %q", got)
+	}
+}
+
+func plantExportAddition(location string, plant bool) error {
+	if !plant {
+		return nil
+	}
+	return os.WriteFile(filepath.Join(location, "keep.txt"), []byte("operator file"), 0o600)
+}
+
+func modifiedAssetSeam(dest string) func(string, string) error {
+	return func(from, to string) error {
+		if from == dest {
+			if err := os.WriteFile(filepath.Join(dest, "app.css"), []byte("operator style"), 0o600); err != nil {
+				return err
+			}
+		}
+		return os.Rename(from, to)
 	}
 }

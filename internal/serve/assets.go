@@ -45,9 +45,9 @@ func (s *Server) serveAsset(w http.ResponseWriter, name string) {
 	switch name {
 	case exportIndex:
 		w.Header().Set(contentTypeHeader, contentTypeHTML)
-	case "app.js":
+	case exportScript:
 		w.Header().Set(contentTypeHeader, contentTypeJavaScript)
-	case "app.css":
+	case exportStyles:
 		w.Header().Set(contentTypeHeader, contentTypeCSS)
 	}
 	w.WriteHeader(http.StatusOK)

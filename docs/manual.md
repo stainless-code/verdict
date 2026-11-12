@@ -1435,7 +1435,7 @@ asks reviewers to name the path, never quote a flagged value.
 ## Static dashboard export
 
 `verdict report --html <dir> [--root <dir>]` writes `index.html`, `app.js`,
-`app.css`, and `data.json`. The current repository is the default; `--root`
+`app.css`, `data.json`, and `manifest.json`. The current repository is the default; `--root`
 uses the same bounded repository discovery as `serve --root`, with a fresh scan
 and no discovery registry. Inbox, review detail, threads, gate, cost, and
 precision read their envelopes from `data.json`. Copy the folder to a static
@@ -1459,7 +1459,12 @@ unchanged. Static cost and precision selectors use the precomputed dimensions.
 
 A new export is written to sibling `<dir>.tmp-<random>` and published by rename.
 For refresh, the existing export is renamed to `<dir>.old-<random>`, then the
-staging directory is renamed to `<dir>` and the old directory is removed. If
+staging directory is renamed to `<dir>` and only files listed in the old export’s digest manifest are removed.
+Refresh revalidates the old directory after renaming it aside and again before
+cleanup. Unlisted or modified contents refuse `html-not-export` and remain
+intact. Files added during cleanup keep the old directory from being removed;
+Verdict never recursively deletes it. Exports from before manifests were added
+refuse refresh — choose a new directory for those. If
 publication fails, Verdict attempts to rename the old directory back. There is
 a crash window between the two renames when `<dir>` is absent and the old
 snapshot survives under `.old-*`; replacement is not an atomic directory swap.

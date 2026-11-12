@@ -17,6 +17,8 @@ import (
 
 const (
 	exportIndex     = "index.html"
+	exportScript    = "app.js"
+	exportStyles    = "app.css"
 	exportNotExport = "html-not-export"
 	exportPerm      = 0o600
 	exportDirPerm   = 0o700
@@ -90,7 +92,10 @@ func writeExport(parent *os.Root, stage string, body []byte) error {
 			return err
 		}
 	}
-	return root.WriteFile("data.json", body, exportPerm)
+	if err := root.WriteFile("data.json", body, exportPerm); err != nil {
+		return exportFailure(err)
+	}
+	return writeExportManifest(root)
 }
 
 func publishExport(parent *os.Root, stage, dest string, rename func(string, string) error) error {
@@ -105,13 +110,13 @@ func publishExport(parent *os.Root, stage, dest string, rename func(string, stri
 	if err := rename(dest, old); err != nil {
 		return exportFailure(err)
 	}
+	if err := validateExport(parent, old); err != nil {
+		return rollbackExport(old, dest, err, rename)
+	}
 	if err := rename(stage, dest); err != nil {
 		return rollbackExport(old, dest, err, rename)
 	}
-	if err := parent.RemoveAll(old); err != nil {
-		return exportFailure(err)
-	}
-	return nil
+	return removeOldExport(parent, old)
 }
 
 func publishNew(stage, dest string, rename func(string, string) error) error {
@@ -169,11 +174,11 @@ func validateExport(parent *os.Root, dest string) error {
 	if err != nil || !strings.Contains(string(page), `<meta name="verdict-mode" content="static" />`) {
 		return notExport()
 	}
-	return nil
+	return validateExportManifest(parent, dest)
 }
 
 func exportEntries(entries []os.DirEntry) bool {
-	expected := map[string]bool{exportIndex: true, "app.js": true, "app.css": true, "data.json": true}
+	expected := map[string]bool{exportIndex: true, exportScript: true, exportStyles: true, "data.json": true, exportManifestName: true}
 	if len(entries) != len(expected) {
 		return false
 	}
@@ -190,6 +195,9 @@ func notExport() error {
 }
 
 func exportFailure(err error) error {
+	if ref, ok := errors.AsType[*cli.RefusalError](err); ok {
+		return ref
+	}
 	return &cli.RefusalError{Code: "report-failed", Message: err.Error()}
 }
 
