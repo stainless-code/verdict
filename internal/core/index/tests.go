@@ -386,14 +386,30 @@ func referencesOne(tgt target, samePackage bool, f *treeFile) bool {
 	return false
 }
 
-// importsAny reports whether the file imports one of the plan's packages.
+// importsAny reports whether the file imports one of the plan's packages,
+// resolving each specifier by its own language's rule: a Go import is the
+// package path itself, while a scanned one names the package only once joined
+// onto the importing file's directory.
 func importsAny(f *treeFile, importPaths map[string]bool) bool {
+	lang := fileLanguage(f)
+	dir := path.Dir(f.Path)
 	for _, imp := range f.Imports {
-		if importPaths[imp.Path] {
+		if importPaths[importedPackage(lang, dir, imp)] {
 			return true
 		}
 	}
 	return false
+}
+
+// importedPackage resolves one import entry to the package path its own
+// language names: a Go import path verbatim, or a scanned specifier joined onto
+// the importing file's directory. A specifier naming a module inside the
+// declaring package is not this mechanism: the file-level reference covers it.
+func importedPackage(lang language, dir string, imp importEntry) string {
+	if lang.family() == langGo {
+		return imp.Path
+	}
+	return scannedSpecifier(lang, dir, imp.Path)
 }
 
 // testsForResponse renders the candidate list, truncating rows with a count.

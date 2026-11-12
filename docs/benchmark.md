@@ -485,11 +485,11 @@ an unchanged scorecard.
 | `ts/callers-save`           | 1.0000    | 0.5455 | 6       | 6        | 11      |
 | `ts/callers-audit`          | 1.0000    | 0.5000 | 1       | 1        | 2       |
 | `ts/callers-namesake`       | 1.0000    | 1.0000 | 1       | 1        | 1       |
-| `ts/tests-for-save`         | 1.0000    | 0.7500 | 3       | 3        | 4       |
+| `ts/tests-for-save`         | 1.0000    | 1.0000 | 4       | 4        | 4       |
 | `ts/tests-for-two-families` | 1.0000    | 0.5000 | 1       | 1        | 2       |
 | `ts/callers`                | 1.0000    | 0.5714 | 8       | 8        | 14      |
 | `ts/callers-cross-package`  | n/a       | 0.0000 | 0       | 0        | 4       |
-| `ts/tests-for`              | 1.0000    | 0.6667 | 4       | 4        | 6       |
+| `ts/tests-for`              | 1.0000    | 0.8333 | 5       | 5        | 6       |
 | `py/callers-save`           | 0.7500    | 0.4286 | 3       | 4        | 7       |
 | `py/callers-write`          | 1.0000    | 1.0000 | 1       | 1        | 1       |
 | `py/callers-route`          | 1.0000    | 0.5000 | 1       | 1        | 2       |
@@ -531,10 +531,11 @@ variable is typed but its origin is a value, so the call at
 
 Each item is a measured drop in the table above, not a guess, and each names its
 class. A **scanner bug** is a fact the scanner already holds and drops, so fixing
-it would move the rate. A **design limit** is outside what a lexical index
-resolves: no resolver, no types, no object identity. A **documented limit** is a
-rule the manual states, so the fixture pins the rule rather than a defect. None
-of them is fixed here: the scanners are frozen.
+it moves the rate: those are fixed below, each naming the test that pins it, and
+ADR-0003's freeze otherwise holds, so no rate rises by tuning a scanner to a
+label. A **design limit** is outside what a lexical index resolves: no resolver,
+no types, no object identity. A **documented limit** is a rule the manual
+states, so the fixture pins the rule rather than a defect.
 
 - **A cross-package method selector is neither a row nor an unresolved
   candidate.** `resolveGoRef` (`internal/core/index/callers.go:297`) answers a
@@ -571,14 +572,15 @@ of them is fixed here: the scanners are frozen.
   (`internal/core/index/scan_py.go:587`); the resolution keeps that kind as a
   row label and never checks it against the declaration it matches, so a method
   site lands on a function. **Scanner bug.**
-- **`imports-module` cannot fire for a relative specifier.**
-  `importsAny` (`internal/core/index/tests.go:390`) compares the raw specifier
-  with the declaring package's import path, so `import { tidy } from "../lib"`
-  in `ts/app/tidy.spec.ts` matches neither `"../lib"` nor the resolved `lib`;
-  the file is then not a candidate at all, because the transitive walk starts at
-  depth 2. Its label is `imports-module, depth 1` and the walk reports nothing
-  (`ts/tests-for-save` recall 0.7500). `scannedSpecifier` already resolves that
-  same specifier for the other mechanisms. **Scanner bug.**
+- **`imports-module` did not fire for a relative specifier.** `importsAny`
+  (`internal/core/index/tests.go:390`) compared the raw specifier with the
+  declaring package's import path, so `import { tidy } from "../lib"` in
+  `ts/app/tidy.spec.ts` matched neither `"../lib"` nor the resolved `lib`, and
+  the file was not a candidate at all. `importedPackage` now resolves each
+  specifier by its own language's rule — the same `scannedSpecifier` the other
+  mechanisms use — so the file is a candidate at `imports-module, depth 1` and
+  `ts/tests-for-save` recall is 1.0000, pinned by
+  `TestTestsForRelativeSpecifierImportsPackage`. **Scanner bug, fixed.**
 - **A test whose package imports the target is not a candidate.**
   `internal/worker/worker_test.go` imports only `testing`; its package imports
   `internal/store` in `worker.go:3`, which is one hop from the declaring
