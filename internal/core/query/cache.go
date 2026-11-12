@@ -19,7 +19,9 @@ const (
 
 // stamp fingerprints every composition input: each bundle-directory entry, the
 // chunks directory, and the root override fragments. An atomic write moves a
-// directory entry; an in-place rewrite moves the file's own size and mtime.
+// directory entry; an in-place rewrite moves the file's own size and mtime. A
+// symlink is fingerprinted through to its target, the same file the readers
+// open.
 type stamp string
 
 // cacheKey names one composed view: the bundle plus the flags that change
@@ -78,23 +80,26 @@ func appendDirStamp(out *strings.Builder, dir, prefix string) {
 	}
 }
 
-// appendEntryStamp fingerprints one directory entry.
+// appendEntryStamp fingerprints one directory entry. The stat follows a
+// symlink, so a target edit moves the stamp; the readers follow the same link.
 func appendEntryStamp(out *strings.Builder, dir, prefix string, entry os.DirEntry) {
 	name := prefix + entry.Name()
-	info, err := entry.Info()
+	path := filepath.Join(dir, entry.Name())
+	info, err := os.Stat(path)
 	if err != nil {
 		out.WriteString(name + "!unreadable\n")
 		return
 	}
 	appendStatLine(out, name, info)
-	if prefix == "" && entry.IsDir() && entry.Name() == chunksDirName {
-		appendDirStamp(out, filepath.Join(dir, entry.Name()), chunksDirName+"/")
+	if prefix == "" && info.IsDir() && entry.Name() == chunksDirName {
+		appendDirStamp(out, path, chunksDirName+"/")
 	}
 }
 
-// appendFileStamp fingerprints one root-level reader input.
+// appendFileStamp fingerprints one root-level reader input, following a
+// symlink to the bytes the reader opens.
 func appendFileStamp(out *strings.Builder, path string) {
-	info, err := os.Lstat(path)
+	info, err := os.Stat(path)
 	if err != nil {
 		out.WriteString(path + "!missing\n")
 		return

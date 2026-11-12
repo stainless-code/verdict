@@ -368,6 +368,151 @@ func TestCacheStampCoversBundleInputs(t *testing.T) {
 	}
 }
 
+// TestCacheInvalidatesThroughSymlinkedStore proves the stamp follows a
+// symlinked findings.json to the bytes the report reader opens.
+func TestCacheInvalidatesThroughSymlinkedStore(t *testing.T) {
+	t.Parallel()
+	dir, files := fixture(t)
+	store := filepath.Join(t.TempDir(), "findings.json")
+	if err := os.WriteFile(store, []byte(files[".verdict/state/1234/findings.json"]), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, ".verdict/state/1234/findings.json")
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	symlinkOrSkip(t, store, link)
+
+	layer := newLayer(dir)
+	root := RootID(mustAbs(t, dir))
+	first, err := layer.Detail(context.Background(), root, "1234")
+	if err != nil {
+		t.Fatalf("first Detail: %v", err)
+	}
+	if got := reportValue(t, first, "verdict", "addressed"); got != json.Number("1") {
+		t.Fatalf("addressed before the target edit = %v, want 1", got)
+	}
+	assertSourcePresent(t, first, ".verdict/state/1234/findings.json")
+
+	rewritten := "[" + strings.Join([]string{
+		finding(sigCrit, "open", "critical", "walked"),
+		finding(sigImp, "addressed", "important", "pointed"),
+		finding(sigAddr, "addressed", "important", "walked"),
+	}, ",") + "]"
+	if err := os.WriteFile(store, []byte(rewritten), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	second, err := layer.Detail(context.Background(), root, "1234")
+	if err != nil {
+		t.Fatalf("Detail after the target edit: %v", err)
+	}
+	if got := reportValue(t, second, "verdict", "addressed"); got != json.Number("2") {
+		t.Errorf("addressed after the target edit = %v, want 2 (stale cache)", got)
+	}
+}
+
+// TestCacheInvalidatesThroughSymlinkedChunks proves a linked chunks directory
+// is recursed into by both the stamp and the inventory.
+func TestCacheInvalidatesThroughSymlinkedChunks(t *testing.T) {
+	t.Parallel()
+	dir, _ := fixture(t)
+	store := t.TempDir()
+	cost := filepath.Join(store, "chunks", "chunk-a.cost.json")
+	if err := os.MkdirAll(filepath.Dir(cost), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeCostTokens(t, cost, 7)
+	symlinkOrSkip(t, filepath.Dir(cost), filepath.Join(dir, ".verdict/state/1234/chunks"))
+
+	layer := newLayer(dir)
+	root := RootID(mustAbs(t, dir))
+	first, err := layer.Detail(context.Background(), root, "1234")
+	if err != nil {
+		t.Fatalf("first Detail: %v", err)
+	}
+	if got := reportValue(t, first, "cost", "input_tokens"); got != json.Number("7") {
+		t.Fatalf("input_tokens before the chunk edit = %v, want 7", got)
+	}
+	assertSourcePresent(t, first, ".verdict/state/1234/chunks/chunk-a.cost.json")
+
+	writeCostTokens(t, cost, 99)
+	second, err := layer.Detail(context.Background(), root, "1234")
+	if err != nil {
+		t.Fatalf("Detail after the chunk edit: %v", err)
+	}
+	if got := reportValue(t, second, "cost", "input_tokens"); got != json.Number("99") {
+		t.Errorf("input_tokens after the chunk edit = %v, want 99 (stale cache)", got)
+	}
+}
+
+// TestCacheInvalidatesThroughSymlinkedOverride proves a linked override
+// fragment's target edit re-composes instead of serving the old stamp.
+func TestCacheInvalidatesThroughSymlinkedOverride(t *testing.T) {
+	t.Parallel()
+	dir, _ := fixture(t)
+	target := filepath.Join(t.TempDir(), "preamble.md")
+	if err := os.WriteFile(target, []byte("A preamble.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, ".verdict", "overrides"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	symlinkOrSkip(t, target, filepath.Join(dir, ".verdict", "overrides", "preamble.md"))
+
+	layer := newLayer(dir)
+	root := RootID(mustAbs(t, dir))
+	if _, err := layer.Detail(context.Background(), root, "1234"); err != nil {
+		t.Fatalf("first Detail: %v", err)
+	}
+	if err := os.WriteFile(target, []byte("### not allowed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := layer.Detail(context.Background(), root, "1234")
+	var ref *core.RefusalError
+	if !errors.As(err, &ref) || ref.Code != "bad-override" {
+		t.Errorf("Detail after the linked override edit = %v, want bad-override", err)
+	}
+}
+
+// symlinkOrSkip links target at link, skipping the test where the platform
+// refuses symlinks.
+func symlinkOrSkip(t *testing.T, target, link string) {
+	t.Helper()
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks are unavailable: %v", err)
+	}
+}
+
+// writeCostTokens writes one chunk cost record with the given input tokens.
+func writeCostTokens(t *testing.T, path string, tokens int) {
+	t.Helper()
+	body := fmt.Sprintf(`[{"models":[{"input_tokens":%d,"output_tokens":1}]}]`, tokens)
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// reportValue walks one decoded detail report field.
+func reportValue(t *testing.T, view *View, keys ...string) any {
+	t.Helper()
+	current := wireMap(t, view.Data)["report"]
+	for _, key := range keys {
+		current = asMap(t, current)[key]
+	}
+	return current
+}
+
+// assertSourcePresent fails unless the view ledgered path.
+func assertSourcePresent(t *testing.T, view *View, path string) {
+	t.Helper()
+	for _, source := range view.Sources {
+		if source.Path == path {
+			return
+		}
+	}
+	t.Errorf("sources = %v, want a row for %s", view.Sources, path)
+}
+
 // TestCacheDoesNotPinCancellation proves a request-scoped cancellation is not
 // stored: the next request with a live context composes normally.
 func TestCacheDoesNotPinCancellation(t *testing.T) {

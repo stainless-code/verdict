@@ -1,7 +1,6 @@
 package query
 
 import (
-	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -72,9 +71,10 @@ func (c *sourceCollector) full() bool {
 		(c.maxBytes > 0 && c.bytes >= c.maxBytes)
 }
 
-// add reads and hashes one artifact. A missing, symlinked, or special file
-// contributes no row: no view consumed its bytes, and opening a FIFO would
-// block the request. A file past either budget sets truncated.
+// add reads and hashes one artifact. A symlink is followed, because the
+// reader follows it and the row must name the bytes the view consumed. A
+// missing or special file contributes no row: opening a FIFO would block the
+// request. A file past either budget sets truncated.
 func (c *sourceCollector) add(bundle, abs string) {
 	if c.full() {
 		c.truncated = true
@@ -102,9 +102,10 @@ func (c *sourceCollector) add(bundle, abs string) {
 	})
 }
 
-// regularFile reports one regular-file answer without following a symlink.
+// regularFile reports one regular-file answer, following a symlink so the
+// inventory agrees with the reader that opens the target.
 func regularFile(path string) (os.FileInfo, bool) {
-	info, err := os.Lstat(path)
+	info, err := os.Stat(path)
 	if err != nil {
 		return nil, false
 	}
@@ -148,26 +149,39 @@ func walkFiles(c *sourceCollector, bundle, dir, rel string, entries []os.DirEntr
 	return true
 }
 
-// addEntry inventories one regular supported file; false stops the walk.
+// addEntry inventories one supported regular file; false stops the walk. A
+// symlink is followed before the regular-file check, so a linked artifact is
+// ledgered while a linked FIFO or device is still skipped.
 func (c *sourceCollector) addEntry(bundle, dir, rel string, entry os.DirEntry) bool {
-	if entry.Type()&fs.ModeSymlink != 0 || entry.IsDir() {
+	if entry.IsDir() {
 		return true
 	}
 	if c.full() {
 		c.truncated = true
 		return false
 	}
-	if entry.Type().IsRegular() && supportedArtifact(rel, entry.Name()) {
-		c.add(bundle, filepath.Join(dir, entry.Name()))
+	if !supportedArtifact(rel, entry.Name()) {
+		return true
 	}
+	info, err := os.Stat(filepath.Join(dir, entry.Name()))
+	if err != nil || !info.Mode().IsRegular() {
+		return true
+	}
+	c.add(bundle, filepath.Join(dir, entry.Name()))
 	return true
 }
 
-// walkChunks descends into the bundle's one chunks subdirectory.
+// walkChunks descends into the bundle's one chunks subdirectory, following a
+// directory symlink because the cost reader follows it.
 func walkChunks(c *sourceCollector, bundle, dir string, entries []os.DirEntry) {
 	for _, entry := range entries {
-		if entry.Type()&fs.ModeSymlink == 0 && entry.IsDir() && entry.Name() == chunksDirName {
-			walkBundle(c, bundle, filepath.Join(dir, entry.Name()), chunksDirName)
+		if entry.Name() != chunksDirName {
+			continue
+		}
+		path := filepath.Join(dir, entry.Name())
+		info, err := os.Stat(path)
+		if err == nil && info.IsDir() {
+			walkBundle(c, bundle, path, chunksDirName)
 		}
 	}
 }
