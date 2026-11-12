@@ -22,15 +22,27 @@ func (s *Server) serveIndex(w http.ResponseWriter) {
 }
 
 func (s *Server) handleAsset(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
+	s.serveAsset(w, r.PathValue("name"))
+}
+
+func (s *Server) assetHandler(name string) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		s.serveAsset(w, name)
+	}
+}
+
+func (s *Server) serveAsset(w http.ResponseWriter, name string) {
 	body, err := webui.Asset(name)
 	if err != nil {
 		s.problem(w, http.StatusNotFound, "not-found", "no such asset")
 		return
 	}
-	if name == "app.js" {
+	switch name {
+	case "index.html":
+		w.Header().Set("Content-Type", contentTypeHTML)
+	case "app.js":
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
-	} else {
+	case "app.css":
 		w.Header().Set("Content-Type", "text/css; charset=utf-8")
 	}
 	w.WriteHeader(http.StatusOK)

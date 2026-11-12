@@ -8,6 +8,10 @@ const appSource = readFileSync(
   new URL("../static/app.js", import.meta.url),
   "utf8",
 );
+const pageSource = readFileSync(
+  new URL("../static/index.html", import.meta.url),
+  "utf8",
+);
 
 class Element {
   constructor(tagName) {
@@ -223,6 +227,7 @@ async function createUI({
   mode = "live",
   watch = true,
   hash = "",
+  baseURL = "https://example.test/",
   respond,
 } = {}) {
   const elements = new Map(
@@ -266,6 +271,7 @@ async function createUI({
     },
   };
   const document = {
+    baseURI: baseURL,
     getElementById(id) {
       return elements.get(id);
     },
@@ -277,12 +283,14 @@ async function createUI({
     },
   };
   const fetch = async (path, options) => {
-    fetches.push({ path, options });
-    if (path === "/v1/health")
+    const url = new URL(path, document.baseURI);
+    const requestPath = `${url.pathname}${url.search}`;
+    fetches.push({ path: requestPath, options });
+    if (requestPath === "/v1/health")
       return { ok: true, json: async () => ({ data: { watch } }) };
     const response = await respond(
-      path,
-      fetches.filter((item) => item.path === path).length,
+      requestPath,
+      fetches.filter((item) => item.path === requestPath).length,
     );
     if (response instanceof Error) throw response;
     return {
@@ -336,6 +344,38 @@ function tableRows(table) {
     []
   );
 }
+
+function htmlAttribute(tagName, attributeName) {
+  const tag = pageSource.match(new RegExp(`<${tagName}\\b[^>]*>`, "i"))?.[0];
+  return tag?.match(new RegExp(`\\b${attributeName}="([^"]+)"`, "i"))?.[1];
+}
+
+test("exported page resolves its assets and data beside index.html", async () => {
+  const baseURL = "https://example.test/export/index.html";
+  assert.equal(
+    new URL(htmlAttribute("link", "href"), baseURL).pathname,
+    "/export/app.css",
+  );
+  assert.equal(
+    new URL(htmlAttribute("script", "src"), baseURL).pathname,
+    "/export/app.js",
+  );
+  assert.equal(new URL("data.json", baseURL).pathname, "/export/data.json");
+
+  const ui = await createUI({
+    mode: "static",
+    baseURL,
+    respond: async (path) => ({
+      body:
+        path === "/export/data.json" ? { "/v1/bundles": inbox } : envelope({}),
+    }),
+  });
+  assert.deepEqual(
+    ui.fetches.map((item) => item.path),
+    ["/export/data.json"],
+  );
+  assert.equal(ui.elements.get("title").textContent, "Inbox");
+});
 
 test("renders all six views from schema-shaped envelopes", async () => {
   const fixtures = new Map([
@@ -577,13 +617,14 @@ test("static mode reads data.json and renders the selected envelope", async () =
   };
   const ui = await createUI({
     mode: "static",
+    baseURL: "https://example.test/export/index.html",
     respond: async (path) => ({
-      body: path === "data.json" ? staticFile : envelope({}),
+      body: path === "/export/data.json" ? staticFile : envelope({}),
     }),
   });
   assert.deepEqual(
     ui.fetches.map((item) => item.path),
-    ["data.json"],
+    ["/export/data.json"],
   );
   assert.equal(ui.elements.get("title").textContent, "Inbox");
   assert.ok(ui.elements.get("content").textContent.includes("local-corrupt"));

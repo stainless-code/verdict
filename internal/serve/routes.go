@@ -28,6 +28,8 @@ type route struct { //nolint:govet // method/pattern/handler reads as the table 
 func (s *Server) routes() []route {
 	routes := []route{
 		{Method: http.MethodGet, Pattern: "/{$}", Handler: http.HandlerFunc(s.handleRoot)},
+		{Method: http.MethodGet, Pattern: "/app.js", Handler: s.assetHandler("app.js")},
+		{Method: http.MethodGet, Pattern: "/app.css", Handler: s.assetHandler("app.css")},
 		{Method: http.MethodGet, Pattern: "/assets/{name}", Handler: http.HandlerFunc(s.handleAsset)},
 		{Method: http.MethodGet, Pattern: "/v1/health", Handler: s.guard(s.handleHealth)},
 		{Method: http.MethodGet, Pattern: "/v1/roots", Handler: s.guard(s.handleRoots)},

@@ -70,7 +70,7 @@ func TestCSPAssetsContainNoInlineCode(t *testing.T) {
 
 func assertNoInlineMarkup(t *testing.T, assets string) {
 	t.Helper()
-	externalScript := `<script defer src="/assets/app.js"></script>`
+	externalScript := `<script defer src="app.js"></script>`
 	if strings.Count(assets, externalScript) != 1 {
 		t.Error("page must load exactly one external script")
 	}

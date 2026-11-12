@@ -240,8 +240,11 @@ func TestCSP(t *testing.T) {
 	ts := testServer(t, testLayer(writeFixture(t, fixtureFiles()), nil))
 	for _, test := range []struct{ path, contentType, body string }{
 		{path: "/", contentType: "text/html; charset=utf-8", body: `id="main"`},
+		{path: "/app.js", contentType: "text/javascript; charset=utf-8", body: "function render("},
+		{path: "/app.css", contentType: "text/css; charset=utf-8", body: "prefers-color-scheme: dark"},
 		{path: "/assets/app.js", contentType: "text/javascript; charset=utf-8", body: "function render("},
 		{path: "/assets/app.css", contentType: "text/css; charset=utf-8", body: "prefers-color-scheme: dark"},
+		{path: "/assets/index.html", contentType: "text/html; charset=utf-8", body: "<!doctype html>"},
 		{path: "/v1/health", contentType: "application/json; charset=utf-8", body: `"watch"`},
 	} {
 		assertCSPRoute(t, ts, test.path, test.contentType, test.body)
