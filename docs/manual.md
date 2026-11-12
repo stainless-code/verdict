@@ -3079,7 +3079,8 @@ and `tests` (`depth_truncated` beside `count`) — each with `count`,
 came from; `data.artifacts["impact.json"]` names the file in the envelope.
 
 `toc.txt` gains a `## impact` section: the index and tree, the coverage and
-count heads, then one line per row. The section is capped at **8 KiB** so a
+count heads, then one line per row, and the printed `next:` step adds
+`toc.txt` to the files to feed. The section is capped at **8 KiB** so a
 wide blast radius cannot spend the review budget on rows; when rows do not fit,
 the section ends `truncated: <n> line(s) omitted to fit the 8 KiB impact cap`,
 and the per-list `--limit` truncation stays visible in the heads (default 50

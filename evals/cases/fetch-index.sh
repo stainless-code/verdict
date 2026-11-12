@@ -46,6 +46,8 @@ tree="$(jq -r '.data.tree' "$EVAL_OUT")"
 # The local leg: a named index answers the worktree diff.
 run_review fetch-local acme/app impact-local --index HEAD --json
 assert_exit "fetch-local --index exits 0" 0
+assert_json_field "the next step feeds toc.txt, where the impact section lives" \
+  "true" '.next | endswith("local-impact-local/toc.txt to any agent; ask it to write .verdict/state/local-impact-local/review.json")'
 assert_json_field "the impact artifact is named in the envelope" \
   ".verdict/state/local-impact-local/impact.json" '.data.artifacts["impact.json"]'
 assert_file_grep "impact.json names the answering tree as its source" \
@@ -71,6 +73,7 @@ assert_file_nogrep "no hostile fence marker reaches the section" \
 # The same bundle fetched again without the flag loses the whole hand-off.
 run_review fetch-local acme/app impact-local
 assert_exit "the twin fetch without --index exits 0" 0
+assert_file_nogrep "the next step names no toc.txt without --index" "$EVAL_OUT" 'toc\.txt to any agent'
 if [ -e "$EVAL_SANDBOX/.verdict/state/local-impact-local/impact.json" ]; then
   bad "impact.json survived a fetch without --index"
 else
@@ -109,6 +112,7 @@ chmod +x "$EVAL_SANDBOX/fakebin/gh"
 
 EVAL_STUBBIN="$EVAL_SANDBOX/fakebin:$EVAL_STUBBIN" run_review fetch acme/app 4701 --index HEAD --json
 assert_exit "fetch --index exits 0" 0
+assert_json_field "the remote next step feeds toc.txt" "true" '.next | contains("4701/toc.txt to any agent")'
 assert_json_field "the remote bundle names the impact artifact" \
   ".verdict/state/4701/impact.json" '.data.artifacts["impact.json"]'
 assert_file_grep "the remote section names the changed declaration" \
