@@ -134,6 +134,11 @@
           "path": "internal/handler/handler_test.go",
           "via": "transitive-import",
           "depth": 2
+        },
+        {
+          "path": "internal/worker/worker_test.go",
+          "via": "transitive-import",
+          "depth": 1
         }
       ]
     },
@@ -153,6 +158,11 @@
         {
           "path": "internal/loader/loader_test.go",
           "via": "imports-module",
+          "depth": 1
+        },
+        {
+          "path": "internal/worker/worker_test.go",
+          "via": "transitive-import",
           "depth": 1
         }
       ]

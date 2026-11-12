@@ -477,11 +477,11 @@ an unchanged scorecard.
 | `go/callers-open`           | 1.0000    | 0.7500 | 6       | 6        | 8       |
 | `go/callers-save`           | n/a       | 0.0000 | 0       | 0        | 5       |
 | `go/callers-touch`          | n/a       | 0.0000 | 0       | 0        | 1       |
-| `go/tests-for-store`        | 1.0000    | 1.0000 | 4       | 4        | 4       |
-| `go/tests-for-capped`       | 1.0000    | 1.0000 | 3       | 3        | 3       |
+| `go/tests-for-store`        | 1.0000    | 0.8000 | 4       | 4        | 5       |
+| `go/tests-for-capped`       | 1.0000    | 0.7500 | 3       | 3        | 4       |
 | `go/callers`                | 1.0000    | 0.4286 | 6       | 6        | 14      |
 | `go/callers-cross-package`  | 1.0000    | 0.4167 | 5       | 5        | 12      |
-| `go/tests-for`              | 1.0000    | 1.0000 | 7       | 7        | 7       |
+| `go/tests-for`              | 1.0000    | 0.7778 | 7       | 7        | 9       |
 | `ts/callers-save`           | 1.0000    | 0.5455 | 6       | 6        | 11      |
 | `ts/callers-audit`          | 1.0000    | 0.5000 | 1       | 1        | 2       |
 | `ts/callers-namesake`       | 1.0000    | 1.0000 | 1       | 1        | 1       |
@@ -556,6 +556,16 @@ fixed here: the scanners are frozen.
   the file is then not a candidate at all, because the transitive walk starts at
   depth 2. Its label is `imports-module, depth 1` and the walk reports nothing
   (`ts/tests-for-save` recall 0.7500).
+- **A test whose package imports the target is not a candidate.**
+  `internal/worker/worker_test.go` imports only `testing`; its package imports
+  `internal/store` in `worker.go:3`, which is one hop from the declaring
+  package. `minTransitiveDepth` (`internal/core/index/tests.go:24`) drops a
+  depth-1 candidate, and `importsAny` (`internal/core/index/tests.go:390`) reads
+  the test file's own imports only, so no mechanism reaches it: the walk counts
+  its one hop and discards it. Its label is `transitive-import, depth 1` — the
+  manual's `2 or more` sentence rests on the same assumption — and the walk
+  reports nothing (`go/tests-for-store` recall 0.8000, `go/tests-for-capped`
+  0.7500, `go/tests-for` 0.7778).
 - **A symbol's `tests-for` language is the first target's.** With `run` declared
   in both `shared/run.py` and `shared/run.ts`, `tests-for --symbol shared.run`
   reads `internal/core/index/tests.go:156` and answers in Python only, so the
