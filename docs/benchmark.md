@@ -482,20 +482,20 @@ an unchanged scorecard.
 | `go/callers`                | 1.0000    | 0.4286 | 6       | 6        | 14      |
 | `go/callers-cross-package`  | 1.0000    | 0.4167 | 5       | 5        | 12      |
 | `go/tests-for`              | 1.0000    | 1.0000 | 9       | 9        | 9       |
-| `ts/callers-save`           | 1.0000    | 0.5455 | 6       | 6        | 11      |
+| `ts/callers-save`           | 1.0000    | 0.4545 | 5       | 5        | 11      |
 | `ts/callers-audit`          | 1.0000    | 0.5000 | 1       | 1        | 2       |
 | `ts/callers-namesake`       | 1.0000    | 1.0000 | 1       | 1        | 1       |
 | `ts/tests-for-save`         | 1.0000    | 1.0000 | 4       | 4        | 4       |
 | `ts/tests-for-two-families` | 1.0000    | 0.5000 | 1       | 1        | 2       |
-| `ts/callers`                | 1.0000    | 0.5714 | 8       | 8        | 14      |
+| `ts/callers`                | 1.0000    | 0.5000 | 7       | 7        | 14      |
 | `ts/callers-cross-package`  | n/a       | 0.0000 | 0       | 0        | 4       |
 | `ts/tests-for`              | 1.0000    | 0.8333 | 5       | 5        | 6       |
-| `py/callers-save`           | 1.0000    | 0.4286 | 3       | 3        | 7       |
+| `py/callers-save`           | 1.0000    | 0.5000 | 4       | 4        | 8       |
 | `py/callers-write`          | 1.0000    | 1.0000 | 1       | 1        | 1       |
 | `py/callers-route`          | 1.0000    | 0.5000 | 1       | 1        | 2       |
 | `py/callers-namesake`       | 1.0000    | 1.0000 | 1       | 1        | 1       |
 | `py/tests-for-saver`        | 1.0000    | 1.0000 | 5       | 5        | 5       |
-| `py/callers`                | 1.0000    | 0.5455 | 6       | 6        | 11      |
+| `py/callers`                | 1.0000    | 0.5833 | 7       | 7        | 12      |
 | `py/callers-cross-package`  | n/a       | 0.0000 | 0       | 0        | 3       |
 | `py/tests-for`              | 1.0000    | 1.0000 | 5       | 5        | 5       |
 
@@ -521,7 +521,7 @@ alias) is a row; a method call on a value (`s.Save`, `a.Touch`, including an
 embed and an interface dispatch) is not a row but is counted in `unresolved`,
 because only the value's type says which method it carries; and a call through a
 dot-import or a re-exported variable is neither a row nor a candidate. Type
-information does not settle all three. `go/types` answers a method call on a concrete value
+information does not settle every case. `go/types` answers a method call on a concrete value
 — `s.Save` on a `*store.Store`, `a.Touch` on the promoted `*store.Base` — and
 the bare `Open` a dot-import leaves at `internal/dot/dot.go:8`. The re-exported
 variable is typed but its origin is a value, so the call at
@@ -568,16 +568,27 @@ states, so the fixture pins the rule rather than a defect.
   them. Only a call or an attribute site is recorded
   (`internal/core/index/scan_ts.go:1267`,
   `internal/core/index/scan_py.go:576`). **Design limit.**
-- **An attribute call was attributed to a declaration of the wrong kind.**
-  `py/lib/uses.py:6` calls `log.save(value)` on a `Log` that declares `write`
-  and no `save`, and the row was reported for `lib.save`, a module function: the
-  one false positive the table carried (`py/callers-save` precision 0.7500). The
-  scanner knows the callee follows a dot and records the site as `method`
-  (`internal/core/index/scan_py.go:587`), and Python also records each
-  declaration's kind; resolution now compares the two, so an attribute site
-  names a method or a class and never a module-level function. Both precision
-  cells are 1.0000 now, pinned by
-  `TestCallersPythonRespectsDeclarationKind`. **Scanner bug, fixed.**
+- **An attribute call was attributed to a declaration of the wrong kind, while
+  an imported module attribute was dropped.**
+  `py/lib/uses.py:7` calls `log.save(value)` on a `Log` that declares `write`
+  and no `save`. The previous corpus reported that row for `lib.save`, a module
+  function, lowering `py/callers-save` precision to 0.7500. The scanner records
+  the receiver qualifier
+  (`internal/core/index/scan_py.go:587`), and Python records each declaration's
+  kind. A module-level function attribute is accepted only when its receiver is
+  bound by an import in that file; `saver.save(value)` is kept while
+  `log.save(value)` is dropped. TypeScript applies the same imported-qualifier
+  rule to module-level functions. Both precision cells are 1.0000, pinned by
+  `TestCallersPythonRespectsDeclarationKind` and `TestCallersTypeScriptRows`.
+  **Scanner bug, fixed.**
+- **TypeScript value aliases are not resolved as module attributes.** The
+  previous `ts/callers-save` row at `lib/callers.ts:9` used `handlers.save`,
+  where `handlers` is a local object made from the imported `save` function.
+  The scanner now accepts a function attribute only when its receiver is bound
+  by an import, which also drops `obj.target` in `TestCallersTypeScriptRows`.
+  It cannot trace the local object's property back to the import, so this true
+  caller is now a known false negative; the table's recall moves from 0.5455 to
+  0.4545. **Design limit.**
 - **`imports-module` did not fire for a relative specifier.** `importsAny`
   (`internal/core/index/tests.go:403`) compared the raw specifier with the
   declaring package's import path, so `import { tidy } from "../lib"` in

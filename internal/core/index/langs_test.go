@@ -13,7 +13,7 @@ import (
 func writeScannedFixture(f *fixture) {
 	f.write("go.mod", "module example.com/m\n\ngo 1.27\n")
 	f.write("util.ts", "export function target(a: number) { return a; }\n")
-	f.write("app.ts", "import { target } from './util';\nconst v = target(1);\nobj.target(2);\n")
+	f.write("app.ts", "import { target } from './util';\nimport * as util from './util';\nconst v = target(1);\nutil.target(2);\nobj.target(3);\n")
 	f.write("app.js", "const fs = require('fs');\nfs.readFile(1);\n")
 	f.write("pkg/mod.py", "def helper(x):\n    return x\n")
 	f.write("pkg/use.py", "from .mod import helper\n\nhelper(1)\n")
@@ -61,8 +61,8 @@ func TestCallersTypeScriptRows(t *testing.T) {
 		t.Fatalf("index callers refused: %v", ref)
 	}
 	assertRows(t, resp.Data.Rows, []Row{
-		{Path: "app.ts", Line: 2, Kind: KindCall, Resolution: "lexical", Language: "typescript"},
-		{Path: "app.ts", Line: 3, Kind: KindMethod, Resolution: "lexical", Language: "typescript"},
+		{Path: "app.ts", Line: 3, Kind: KindCall, Resolution: "lexical", Language: "typescript"},
+		{Path: "app.ts", Line: 4, Kind: KindMethod, Resolution: "lexical", Language: "typescript"},
 	})
 }
 
@@ -104,16 +104,17 @@ func TestCallersPythonRespectsDeclarationKind(t *testing.T) {
 	f := newFixture(t)
 	f.write("lib/saver.py", "def save(value):\n    return value\n")
 	f.write("lib/store.py", "class Log:\n    def write(self, text):\n        return text\n")
-	f.write("lib/uses.py", "from .saver import save\nfrom .store import Log\n\n\n"+
-		"def flush(value, log: Log):\n    log.save(value)\n    log.write(value)\n    return save(value)\n")
+	f.write("lib/uses.py", "import saver\nfrom .saver import save\nfrom .store import Log\n\n\n"+
+		"def flush(value, log: Log):\n    log.save(value)\n    log.write(value)\n    saver.save(value)\n    return save(value)\n")
 	f.write("lib/make.py", "import lib.store\n\n\ndef build():\n    return lib.store.Log()\n")
 	f.commit("one")
 	f.build()
 	assertRows(t, callersOf(t, f, "lib.save").Data.Rows, []Row{
-		{Path: "lib/uses.py", Line: 8, Kind: KindCall, Resolution: "lexical", Language: "python"},
+		{Path: "lib/uses.py", Line: 9, Kind: KindMethod, Resolution: "lexical", Language: "python"},
+		{Path: "lib/uses.py", Line: 10, Kind: KindCall, Resolution: "lexical", Language: "python"},
 	})
 	assertRows(t, callersOf(t, f, "lib.write").Data.Rows, []Row{
-		{Path: "lib/uses.py", Line: 7, Kind: KindMethod, Resolution: "lexical", Language: "python"},
+		{Path: "lib/uses.py", Line: 8, Kind: KindMethod, Resolution: "lexical", Language: "python"},
 	})
 	assertRows(t, callersOf(t, f, "lib.Log").Data.Rows, []Row{
 		{Path: "lib/make.py", Line: 5, Kind: KindMethod, Resolution: "lexical", Language: "python"},

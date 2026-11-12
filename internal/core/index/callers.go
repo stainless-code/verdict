@@ -331,7 +331,10 @@ func resolveScannedRef(lang language, tgt target, samePkg bool, f *treeFile, r r
 	if !samePkg {
 		return Row{}, false
 	}
-	if lang.family() == langPython && !pySiteNamesDecl(r.Kind, tgt.kind) {
+	if lang.family() == langPython && !pySiteNamesDecl(r, tgt.kind, importedQualifier(f, r)) {
+		return Row{}, false
+	}
+	if lang.family() == langTypeScript && !tsSiteNamesDecl(r, tgt.kind, importedQualifier(f, r)) {
 		return Row{}, false
 	}
 	return Row{Path: f.Path, Line: r.Line, Kind: r.Kind, Resolution: resolutionLexical}, true
@@ -341,11 +344,33 @@ func resolveScannedRef(lang language, tgt target, samePkg bool, f *treeFile, r r
 // declaration of the target's kind: an attribute site is written on a receiver,
 // so it names a method or a class, never a module-level function, while a bare
 // call never names a method, which needs that receiver.
-func pySiteNamesDecl(site, decl string) bool {
-	if site == KindMethod {
-		return decl == KindMethod || decl == wordType
+func pySiteNamesDecl(site ref, decl string, imported bool) bool {
+	if site.Kind == KindMethod {
+		return decl == KindMethod || decl == wordType || (decl == wordFunc && imported)
 	}
 	return decl != KindMethod
+}
+
+// tsSiteNamesDecl reports whether a TypeScript site can name the declaration.
+func tsSiteNamesDecl(site ref, decl string, imported bool) bool {
+	if site.Kind == KindMethod {
+		return decl == KindMethod || decl == wordType || (decl == wordFunc && imported)
+	}
+	return decl != KindMethod
+}
+
+// importedQualifier reports whether a dotted site's receiver is bound by an
+// import in the source file.
+func importedQualifier(f *treeFile, site ref) bool {
+	if site.Qualifier == "" {
+		return false
+	}
+	for _, imp := range f.Imports {
+		if imp.Name == site.Qualifier {
+			return true
+		}
+	}
+	return false
 }
 
 // resolveBareRef classifies a name written without a qualifier: only the

@@ -11,8 +11,14 @@
       "callers": [
         {
           "path": "lib/uses.py",
-          "line": 8,
+          "line": 10,
           "kind": "call",
+          "resolution": "lexical"
+        },
+        {
+          "path": "lib/uses.py",
+          "line": 9,
+          "kind": "method",
           "resolution": "lexical"
         },
         {
@@ -62,7 +68,7 @@
       "callers": [
         {
           "path": "lib/uses.py",
-          "line": 7,
+          "line": 8,
           "kind": "method",
           "resolution": "lexical"
         }
