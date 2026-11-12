@@ -19,6 +19,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 const (
@@ -172,11 +173,13 @@ func WriteFile(path string, f *File) error {
 	return nil
 }
 
-// ReadFile reads one bundle's threads.json. A missing, oversized, undecodable,
-// or wrong-version document is an error, never an empty feed: a resolve run
-// must not read a failed load as "nothing to close".
+// ReadFile reads one bundle's threads.json through the capped, non-blocking
+// reader, so a feed path swapped for a FIFO cannot wait for a writer. A
+// missing, oversized, undecodable, or wrong-version document is an error,
+// never an empty feed: a resolve run must not read a failed load as "nothing
+// to close".
 func ReadFile(path string) (*File, error) {
-	raw, err := jq.CappedFile(path, jq.MaxPRBytes)
+	raw, err := readcommon.ReadRegularCapped(path, jq.MaxPRBytes)
 	if err != nil {
 		return nil, jq.Sealed("read "+path, err)
 	}
