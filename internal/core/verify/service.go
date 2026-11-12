@@ -56,7 +56,10 @@ func Run(ctx context.Context, req *core.VerifyRequest) (*core.VerifyResponse, *c
 	if err := ctx.Err(); err != nil {
 		return nil, &core.RefusalError{Code: codeCanceled, Message: msgCanceled}
 	}
-	dir := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
+	dir, ref := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
+	if ref != nil {
+		return nil, st.withWarnings(ref)
+	}
 	if req.Group != "" || req.Command != "" {
 		return RunGroup(ctx, req, dir, req.TimeUTC())
 	}

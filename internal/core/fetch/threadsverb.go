@@ -93,7 +93,10 @@ func RunThreads(ctx context.Context, req *ThreadsRequest) (*ThreadsResponse, *co
 		return nil, st.withWarnings(&core.RefusalError{Code: codeBadProvider, Message: fmt.Sprintf(
 			"unknown --provider '%s' (want github|gitlab|gitcafe|forgejo|bitbucket|azure)", req.Provider)})
 	}
-	dir := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
+	dir, ref := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
+	if ref != nil {
+		return nil, st.withWarnings(ref)
+	}
 	if !fileExists(dir + suffixPRJSON) {
 		return nil, st.withWarnings(&core.RefusalError{
 			Code:    CodeFetchFailed,

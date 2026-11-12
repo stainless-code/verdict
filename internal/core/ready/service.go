@@ -219,7 +219,10 @@ func (st *state) data() *Data {
 }
 
 func loadState(ctx context.Context, st *state) *core.RefusalError {
-	dir := readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.pr)
+	dir, ref := readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.pr)
+	if ref != nil {
+		return st.withWarnings(ref)
+	}
 	if isLocalDir(dir) {
 		return st.withWarnings(&core.RefusalError{
 			Code:    "no-pr-target",

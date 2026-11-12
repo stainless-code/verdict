@@ -164,7 +164,10 @@ func localSetup(
 	if ref := localSlugGate(req.Pr, slug); ref != nil {
 		return localMode{}, "", "", ref
 	}
-	dir := readcommon.ResolveBundleDir(req.RepoRootPath(), "local-"+slug)
+	dir, ref := readcommon.ResolveBundleDir(req.RepoRootPath(), "local-"+slug)
+	if ref != nil {
+		return localMode{}, "", "", ref
+	}
 	ctx2.dir = dir
 	if res, err := ctx2.runner.run(ctx, gitCmdRevParse, "--is-inside-work-tree"); err != nil {
 		_ = res

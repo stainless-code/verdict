@@ -22,6 +22,18 @@ const corpusPrefix = "corpus-"
 
 const prSuffix = "/PR.json"
 
+// codeBadFlags is the refusal code for an unusable invocation value.
+const codeBadFlags = "bad-flags"
+
+// msgBundleName refuses a bundle name that is not one path element. Every
+// bundle verb renders this one line, so the refusal reads the same wherever a
+// positional is wrong.
+const msgBundleName = "bundle name must be one path element (a PR number or fetch-local name), not a path"
+
+// bundleNameProbe is any non-empty parent: the guard only cares that joining a
+// name under it lands one level down, under the same parent.
+const bundleNameProbe = "state"
+
 const postSuffix = "/post.json"
 
 // BacktestMarkerFile marks a bundle a backtest replay built. The marker keeps
@@ -47,15 +59,52 @@ const (
 // human contract. Filesystem probes inside stay native, and every caller
 // opens the returned path through the OS, which accepts the slash form on
 // Windows exactly like the native one.
-func ResolveBundleDir(root, pr string) string {
-	state := filepath.Join(root, config.VerdictDir, config.StateDirName)
+//
+// It refuses a name that is not exactly one path element, so no verb reads or
+// writes outside the bundle home however its positional was spelled.
+func ResolveBundleDir(root, pr string) (string, *core.RefusalError) {
+	local, ref := BundleDir(root, localPrefix+pr)
+	if ref != nil {
+		return "", ref
+	}
 	if strings.HasPrefix(pr, localPrefix) || strings.HasPrefix(pr, corpusPrefix) {
-		return filepath.ToSlash(filepath.Join(state, pr))
+		return BundleDir(root, pr)
 	}
-	if IsDir(filepath.Join(state, localPrefix+pr)) && !Exists(filepath.Join(state, pr, "PR.json")) {
-		return filepath.ToSlash(filepath.Join(state, localPrefix+pr))
+	exact, ref := BundleDir(root, pr)
+	if ref != nil {
+		return "", ref
 	}
-	return filepath.ToSlash(filepath.Join(state, pr))
+	if IsDir(local) && !Exists(exact+prSuffix) {
+		return local, nil
+	}
+	return exact, nil
+}
+
+// BundleDir resolves one already-chosen bundle name under root's bundle home,
+// with the same slash-form and the same name guard as [ResolveBundleDir].
+func BundleDir(root, name string) (string, *core.RefusalError) {
+	if !validBundleName(name) {
+		return "", &core.RefusalError{Code: codeBadFlags, Message: msgBundleName}
+	}
+	return filepath.ToSlash(filepath.Join(root, config.VerdictDir, config.StateDirName, name)), nil
+}
+
+// validBundleName reports whether name is exactly one path element: a value
+// that joins under the bundle home without adding a level or landing outside
+// it. A separator, dot-dot, the dot itself, an empty name, and a name carrying
+// a control byte are all refused, whatever the platform's separator happens to
+// be, so one operator spelling refuses everywhere.
+func validBundleName(name string) bool {
+	if name == "" || strings.ContainsAny(name, `/\`) {
+		return false
+	}
+	for i := range len(name) {
+		if name[i] < 0x20 || name[i] == 0x7f {
+			return false
+		}
+	}
+	joined := filepath.Join(bundleNameProbe, name)
+	return filepath.Dir(joined) == bundleNameProbe && filepath.Base(joined) == name
 }
 
 // repoRootTimeout bounds the git top-level probe: a hung git must not hang

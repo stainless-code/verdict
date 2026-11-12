@@ -433,23 +433,23 @@ func TestBlastRefusals(t *testing.T) {
 		},
 		{
 			name: "--pr ../x", mut: func(r *Request) { r.Pr = `../x` },
-			code: "bad-flags", part: "names a bundle (a PR number or fetch-local name), not a path",
+			code: "bad-flags", part: "bundle name must be one path element (a PR number or fetch-local name), not a path",
 		},
 		{
 			name: "--pr a/b", mut: func(r *Request) { r.Pr = `a/b` },
-			code: "bad-flags", part: "names a bundle (a PR number or fetch-local name), not a path",
+			code: "bad-flags", part: "bundle name must be one path element (a PR number or fetch-local name), not a path",
 		},
 		{
 			name: "--pr a\b", mut: func(r *Request) { r.Pr = `a\b` },
-			code: "bad-flags", part: "names a bundle (a PR number or fetch-local name), not a path",
+			code: "bad-flags", part: "bundle name must be one path element (a PR number or fetch-local name), not a path",
 		},
 		{
 			name: "--pr ..", mut: func(r *Request) { r.Pr = `..` },
-			code: "bad-flags", part: "names a bundle (a PR number or fetch-local name), not a path",
+			code: "bad-flags", part: "bundle name must be one path element (a PR number or fetch-local name), not a path",
 		},
 		{
 			name: "--pr .", mut: func(r *Request) { r.Pr = `.` },
-			code: "bad-flags", part: "names a bundle (a PR number or fetch-local name), not a path",
+			code: "bad-flags", part: "bundle name must be one path element (a PR number or fetch-local name), not a path",
 		},
 	}
 	for _, tc := range cases {

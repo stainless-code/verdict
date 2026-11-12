@@ -218,7 +218,11 @@ func refusalOrFailed(err error) *core.RefusalError {
 }
 
 func (st *state) prepare(ctx context.Context) *core.RefusalError {
-	st.dir = readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
+	dir, ref := readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
+	if ref != nil {
+		return ref
+	}
+	st.dir = dir
 	st.event = eventComment
 	if ref := st.checkBundle(); ref != nil {
 		return ref

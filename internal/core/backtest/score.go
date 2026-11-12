@@ -370,7 +370,12 @@ func (st *state) gradeReview(c *Candidate, bundle string) (*corpuscore.Report, *
 	if bundle == "" {
 		return nil, st.refuse(codeBacktestRowStale, "a recorded review names no bundle; delete its directory to replay this PR again")
 	}
-	dir := filepath.FromSlash(readcommon.ResolveBundleDir(st.root, bundle))
+	dir, ref := readcommon.ResolveBundleDir(st.root, bundle)
+	if ref != nil {
+		return nil, st.refuse(codeBacktestRowStale,
+			"recorded review names bundle '"+bundle+"', which is not one path element; "+
+				"delete its prs/<NNN>/ directory and replay the run")
+	}
 	entries, err := readcommon.LoadFindings(dir)
 	if err != nil {
 		return nil, st.refuse(codeBacktestRowStale,

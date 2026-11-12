@@ -113,7 +113,10 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if err := ctx.Err(); err != nil {
 		return nil, &core.RefusalError{Code: "canceled", Message: "canceled before calibrate completed"}
 	}
-	dir := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
+	dir, ref := readcommon.ResolveBundleDir(st.req.RepoRootPath(), req.Pr)
+	if ref != nil {
+		return nil, st.withWarnings(ref)
+	}
 	if req.Probe {
 		if ref := st.runProbe(dir); ref != nil {
 			return nil, ref

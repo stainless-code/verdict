@@ -11,7 +11,10 @@ import (
 // RunShow executes the show service: one full finding record selected by a
 // sig (short prefix ok).
 func RunShow(_ context.Context, req *core.ShowRequest) (*core.ShowResponse, *core.RefusalError) {
-	dir := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
+	dir, ref := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
+	if ref != nil {
+		return nil, ref
+	}
 	entries, err := readcommon.LoadFindings(dir)
 	if err != nil {
 		return nil, loadRefusal(err)

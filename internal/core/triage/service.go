@@ -99,7 +99,10 @@ func (st *state) response() *Response {
 }
 
 func (st *state) runTriage() *core.RefusalError {
-	dir := readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
+	dir, ref := readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
+	if ref != nil {
+		return st.refuse(ref.Code, ref.Message)
+	}
 	if ref := requireFindingsFile(dir); ref != nil {
 		return ref
 	}

@@ -173,7 +173,11 @@ func (st *state) withWarnings(ref *core.RefusalError) *core.RefusalError {
 }
 
 func loadState(ctx context.Context, st *state) *core.RefusalError {
-	st.dir = readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
+	dir, ref := readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
+	if ref != nil {
+		return st.withWarnings(ref)
+	}
+	st.dir = dir
 	entries, err := readcommon.LoadFindings(st.dir)
 	if err != nil {
 		return st.withWarnings(loadRefusal(err))

@@ -58,7 +58,10 @@ type resolveSelection struct {
 // [--dry-run]`: close self-authored review threads whose finding the local
 // store marks addressed, or only the named ids, and write the receipt.
 func (st *threadsRun) resolve(ctx context.Context) (*ThreadsResponse, *core.RefusalError) {
-	dir := readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
+	dir, ref := readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
+	if ref != nil {
+		return nil, st.withWarnings(ref)
+	}
 	if ref := st.resolveBundle(dir); ref != nil {
 		return nil, ref
 	}

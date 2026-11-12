@@ -320,7 +320,10 @@ func fetchPrepare(ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags) 
 	// the whole-run guard would silently not arm. phaseTwo fills this state in
 	// over the resolved plan before gating.
 	budget := budgetState{}
-	dir := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
+	dir, ref := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
+	if ref != nil {
+		return nil, "", ref
+	}
 	ctx2.dir = dir
 	if ref := ensureBundleState(req.RepoRootPath()); ref != nil {
 		return nil, "", ref

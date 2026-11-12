@@ -187,7 +187,10 @@ func (st *state) runFix(ctx context.Context) *core.RefusalError {
 }
 
 func (st *state) fixBundleDir() (string, *core.RefusalError) {
-	dir := readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
+	dir, ref := readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
+	if ref != nil {
+		return "", st.refuse(ref.Code, ref.Message)
+	}
 	if !readcommon.IsLocalBundleDir(dir) {
 		return "", st.refuse("not-local", "fix works on local bundles; fetch-local first")
 	}

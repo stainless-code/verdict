@@ -193,7 +193,10 @@ func (st *state) now() time.Time {
 // bundle resolves the existing bundle directory. The launcher never fetches: an
 // absent bundle is a typed refusal naming the command that writes one.
 func (st *state) bundle() (string, *core.RefusalError) {
-	dir := readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
+	dir, ref := readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
+	if ref != nil {
+		return "", st.refuse(ref.Code, ref.Message)
+	}
 	if readcommon.IsDir(dir) {
 		return dir, nil
 	}

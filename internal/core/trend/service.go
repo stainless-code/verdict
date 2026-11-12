@@ -156,23 +156,39 @@ func collectRows(st *state) []row {
 // measurement, a replay bundle is reported as skipped, and anything else is a
 // history row when its findings store is readable.
 func (st *state) walkEntry(e os.DirEntry) (row, bool, bool) {
-	if corpuscore.IsDir(readcommon.StateDir(st.req.RepoRootPath()) + "/" + e.Name()) {
-		st.readCorpus(e)
+	if !e.IsDir() {
 		return row{}, false, false
 	}
-	if isRegular(readcommon.ResolveBundleDir(st.req.RepoRootPath(), e.Name()) + "/" + readcommon.BacktestMarkerFile) {
+	name := e.Name()
+	dir, ok := st.listedBundleDir(name)
+	if !ok {
+		return row{}, false, false
+	}
+	if corpuscore.IsDir(dir) {
+		st.readCorpus(dir)
+		return row{}, false, false
+	}
+	if isRegular(dir + "/" + readcommon.BacktestMarkerFile) {
 		return row{}, true, false
 	}
-	bundleRow, ok := readBundleRow(st, e)
+	bundleRow, ok := readBundleRow(st, dir, name)
 	return bundleRow, false, ok
 }
 
-func readBundleRow(st *state, e os.DirEntry) (row, bool) {
-	if !e.IsDir() {
-		return row{}, false
+// listedBundleDir resolves one state-directory entry's bundle dir. A name the
+// shared guard refuses is skipped with a warning: a listing carries names, not
+// paths, so nothing outside the bundle home is ever read.
+func (st *state) listedBundleDir(name string) (string, bool) {
+	dir, ref := readcommon.ResolveBundleDir(st.req.RepoRootPath(), name)
+	if ref != nil {
+		st.warn("trend skips " + name + " (" + ref.Message + ")")
+		return "", false
 	}
-	name := e.Name()
-	bundle := readcommon.ResolveBundleDir(st.req.RepoRootPath(), name) + "/"
+	return dir, true
+}
+
+func readBundleRow(st *state, dir, name string) (row, bool) {
+	bundle := dir + "/"
 	raw, err := jq.CappedFile(bundle+"findings.json", jq.MaxFindingsBytes)
 	if err != nil {
 		st.warn("trend skips " + bundle + " (findings.json unreadable or not a findings array)")

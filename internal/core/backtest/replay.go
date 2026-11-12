@@ -642,8 +642,11 @@ func (s *replaySession) kept(doc *ReplayPRDoc) bool {
 	if doc.Bundle == "" {
 		return false
 	}
-	dir := filepath.FromSlash(readcommon.ResolveBundleDir(s.st.root, doc.Bundle))
-	info, err := os.Stat(filepath.Join(dir, findingsFile))
+	dir, ref := readcommon.ResolveBundleDir(s.st.root, doc.Bundle)
+	if ref != nil {
+		return false
+	}
+	info, err := os.Stat(filepath.Join(filepath.FromSlash(dir), findingsFile))
 	return err == nil && info.Mode().IsRegular()
 }
 
