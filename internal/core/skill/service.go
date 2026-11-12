@@ -209,7 +209,7 @@ func prepare(req *Request, plan *Plan) *core.RefusalError {
 	if ref := preflight(root, plan.Target, plan.Files); ref != nil {
 		return ref
 	}
-	return checkWritable(root, plan)
+	return checkWritable(root, plan, req.version())
 }
 
 // checkCreatable refuses before a write when the directory that must hold a new
@@ -240,8 +240,8 @@ func nearestExistingDir(target string) (string, bool) {
 
 // checkWritable refuses before a write when a directory the apply would write
 // into cannot take it.
-func checkWritable(root *os.Root, plan *Plan) *core.RefusalError {
-	for _, dir := range writeDirs(root, plan) {
+func checkWritable(root *os.Root, plan *Plan, version string) *core.RefusalError {
+	for _, dir := range writeDirs(root, plan, version) {
 		path := filepath.Join(plan.Target, dir)
 		if !writableDir(path) {
 			return refuse(codeInstall, "cannot install into "+plan.Target+": "+path+" is not writable")
@@ -250,11 +250,15 @@ func checkWritable(root *os.Root, plan *Plan) *core.RefusalError {
 	return nil
 }
 
-// writeDirs is every directory an apply writes into, deduped, the target root
-// first: every status writes the receipt there, and a create or update also
-// writes each payload file, whose first mkdir or rename lands in the deepest
-// directory that already exists on its path.
-func writeDirs(root *os.Root, plan *Plan) []string {
+// writeDirs is every directory an apply writes into for this plan, deduped,
+// the target root first: a create or update writes the receipt there and each
+// payload file, whose first mkdir or rename lands in the deepest directory that
+// already exists on its path; an out-of-date keep rewrites only the receipt,
+// and an in-sync keep writes nothing at all.
+func writeDirs(root *os.Root, plan *Plan, version string) []string {
+	if plan.Status == StatusKeep && plan.ReceiptVersion == version {
+		return nil
+	}
 	dirs := []string{targetRoot}
 	if plan.Status == StatusKeep {
 		return dirs

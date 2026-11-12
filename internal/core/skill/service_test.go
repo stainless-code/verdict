@@ -346,6 +346,28 @@ func TestInstallConflictRefusesBeforeWriting(t *testing.T) {
 	}
 }
 
+// TestInstallKeepsInSyncReadOnlyTarget pins that an in-sync keep writes
+// nothing, so a re-run over a read-only target stays a no-op instead of
+// refusing a write it would never make.
+func TestInstallKeepsInSyncReadOnlyTarget(t *testing.T) {
+	t.Parallel()
+	req := newRequest(t)
+	req.Dir = t.TempDir()
+	target := filepath.Join(req.Dir, "verdict")
+	if _, ref := skill.Install(context.Background(), req); ref != nil {
+		t.Fatalf("seed install: %v", ref)
+	}
+	readOnly(t, target)
+
+	plan, ref := skill.Install(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("in-sync keep on a read-only target: %v", ref)
+	}
+	if plan.Status != skill.StatusKeep || plan.Written != 0 || plan.ReceiptUpdated {
+		t.Fatalf("re-run plan = %+v, want an untouched keep", plan)
+	}
+}
+
 // TestInstallRefusesUnwritablePayloadDir pins the preflight for an owned
 // target: a read-only payload dir refuses typed, names the target, and stops
 // the update before the writable files ahead of it are rewritten.

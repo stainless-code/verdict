@@ -310,6 +310,47 @@ func TestInstallDetectedUnwritableTargetWritesNothing(t *testing.T) {
 	}
 }
 
+// TestInstallDetectedKeepsInSyncReadOnlyTarget pins the same no-write rule
+// across targets: a seeded, in-sync, read-only claude target keeps, so the
+// clean codex target beside it still installs instead of the set refusing.
+func TestInstallDetectedKeepsInSyncReadOnlyTarget(t *testing.T) {
+	t.Parallel()
+	req := newRequest(t)
+	home := req.Env["HOME"]
+	seedSkillsDir(t, home, ".claude")
+	codex := seedSkillsDir(t, home, ".codex")
+	readOnly(t, seedClaudeInstall(t, req))
+
+	det, ref := skill.InstallDetected(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("detect over an in-sync read-only target: %v", ref)
+	}
+	if want := []string{"claude", "codex"}; !slices.Equal(det.Agents, want) {
+		t.Fatalf("detected agents = %v, want %v", det.Agents, want)
+	}
+	if det.Plans[0].Status != skill.StatusKeep || det.Plans[0].Written != 0 {
+		t.Fatalf("claude plan = %+v, want an untouched keep", det.Plans[0])
+	}
+	if det.Plans[1].Status != skill.StatusCreate || det.Plans[1].Written == 0 {
+		t.Fatalf("codex plan = %+v, want a create with bytes written", det.Plans[1])
+	}
+	if _, err := os.Stat(filepath.Join(codex, "verdict", "SKILL.md")); err != nil {
+		t.Fatalf("the kept claude target blocked the codex install: %v", err)
+	}
+}
+
+// seedClaudeInstall installs the payload through --agent claude, leaving that
+// target in sync with the request's version, and returns its path.
+func seedClaudeInstall(t *testing.T, req *skill.Request) string {
+	t.Helper()
+	own := *req
+	own.Agent = "claude"
+	if _, ref := skill.Install(context.Background(), &own); ref != nil {
+		t.Fatalf("seed claude install: %v", ref)
+	}
+	return filepath.Join(req.Env["HOME"], ".claude", "skills", "verdict")
+}
+
 // TestInstallDetectedHonorsEnvLayouts pins detection through CLAUDE_CONFIG_DIR
 // and XDG_CONFIG_HOME, the two overrides install-skill.sh also honors.
 func TestInstallDetectedHonorsEnvLayouts(t *testing.T) {
