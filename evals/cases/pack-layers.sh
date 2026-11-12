@@ -57,12 +57,13 @@ assert_json_field "repo layer" "repo" '.data.packs[2].layer'
 assert_json_field "repo source" ".verdict/packs/repo" '.data.packs[2].source'
 assert_json_field "repo hash" "6017f42729f688b65d17401a27200f0406c1cf8b75d588ce65788850d7817edf" '.data.packs[2].hash'
 assert_json_field "repo declares both lenses" "security,style" '.data.packs[2].lenses | join(",")'
+assert_json_field "repo drift is missing until locked" "pack-lock-missing" '.data.packs[2].drift'
 
 run_review pack list
 assert_exit "human pack list exits 0" 0
 assert_file_grep "human line names the builtin layer" "$EVAL_OUT" '^builtin  verdict/builtin@1.0.0  source=builtin  sha256:23dac5dead2e  lenses=api-contract,perf,test  rules=-$'
 assert_file_grep "human line names the org layer" "$EVAL_OUT" '^org      acme/org@2.0.0  source=dir:org-packs  sha256:ec7b01d4ea7b  lenses=security  rules=no-secrets$'
-assert_file_grep "human line names the repo layer" "$EVAL_OUT" '^repo     acme/repo@0.1.0  source=.verdict/packs/repo  sha256:6017f42729f6  lenses=security,style  rules=repo-style$'
+assert_file_grep "human line names the repo layer" "$EVAL_OUT" '^repo     acme/repo@0.1.0  source=.verdict/packs/repo  sha256:6017f42729f6  lenses=security,style  rules=repo-style  drift=pack-lock-missing$'
 
 # An undeclared override of a built-in lens refuses pack-conflict and names
 # the exact declaration to add.
