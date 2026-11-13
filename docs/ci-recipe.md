@@ -11,12 +11,14 @@ into your repo as `.github/workflows/verdict-review.yml`.
 
 1. **Install** — the `setup-verdict` action installs a pinned, signature-
    verified binary and adds it to `PATH` (set `vars.VERDICT_VERSION` to a release containing `run --agent`).
-2. **Fetch** — `verdict fetch <repo> <pr>` builds `.verdict/state/<pr>/` (PR record,
+2. **Install the review skill** — `verdict skill install --agent "$VERDICT_AGENT"`
+   installs the skill for the selected agent before review.
+3. **Fetch** — `verdict fetch <repo> <pr>` builds `.verdict/state/<pr>/` (PR record,
    `full.diff`, `toc.txt`, `roles.txt`).
-3. **Readiness pre-check** — `verdict ready <repo> <pr> --check` fails fast
+4. **Readiness pre-check** — `verdict ready <repo> <pr> --check` fails fast
    when the PR is not reviewable (failing CI, open threads, draft), saving
    agent spend before the expensive steps.
-4. **Agent review** — `verdict run <repo> <pr> --agent "$VERDICT_AGENT"`
+5. **Agent review** — `verdict run <repo> <pr> --agent "$VERDICT_AGENT"`
    spawns your agent once against the fetched bundle. The Action's `agent` input chooses the
    agent: it sets `VERDICT_AGENT` in the step's `env:` (one of `claude`, `codex`,
    `cursor`, `opencode` — the shipped `run --agent` table) and the `--agent`
@@ -28,9 +30,9 @@ into your repo as `.github/workflows/verdict-review.yml`.
    unless that file is fresh: `run` refuses `no-review-artifact` when the agent
    wrote nothing and `stale-review-artifact` when it left an earlier run's
    file, so a silent agent cannot reach `post`.
-5. **Post** — `verdict post <repo> <pr>` validates anchors, merges
+6. **Post** — `verdict post <repo> <pr>` validates anchors, merges
    `findings.json`, and submits exactly one review.
-6. **Merge gate** — one composed exit code:
+7. **Merge gate** — one composed exit code:
    `verdict gate <repo> <pr> --max-severity critical --require-head --live auto`
    exits 0 only when no open `critical` findings stand, the fetched HEAD is
    the posted HEAD, the stored diff-coverage receipt for that HEAD attests the

@@ -52,6 +52,13 @@ runs:
       with:
         version: ${{ inputs.version }}
 
+    - name: Install the review skill
+      env:
+        VERDICT_AGENT: ${{ inputs.agent }}
+      shell: bash
+      run: |
+        verdict skill install --agent "$VERDICT_AGENT"
+
     - name: Fetch the PR bundle
       env:
         VERDICT_REPOSITORY: ${{ inputs.repository }}

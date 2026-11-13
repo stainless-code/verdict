@@ -230,6 +230,38 @@ done
 # and a symlink target resolves against the link's own directory.
 EVAL_CLI_ABS="$(cd "$(dirname "$EVAL_CLI")" && pwd)/$(basename "$EVAL_CLI")"
 ln -sf "$EVAL_CLI_ABS" "$VERDICTBIN/verdict"
+SKILLSTEP="$EVAL_SANDBOX/install-skill.sh"
+awk '
+  /^    - name: / { want = (index($0, "Install the review skill") > 0) }
+  want && /^      run: \|$/ { body = 1; next }
+  body && /^    - name: / { exit }
+  body { sub(/^        /, ""); print }
+' "$WORKFLOW" > "$SKILLSTEP"
+if python3 - "$WORKFLOW" <<'PYSKILL'
+import sys
+from pathlib import Path
+text = Path(sys.argv[1]).read_text()
+start = text.index('    - name: Install the review skill')
+end = text.index('    - name:', start + 1)
+step = text[start:end]
+assert '        VERDICT_AGENT: ${{ inputs.agent }}\n' in step
+assert text.index('    - name: Install verdict') < start < text.index('    - name: Fetch the PR bundle')
+PYSKILL
+then
+  good "skill installation uses the agent input after installing verdict"
+else
+  bad "skill installation must bind the agent input after installing verdict"
+fi
+SKILLHOME="$EVAL_SANDBOX/skill-home"
+mkdir -p "$SKILLHOME"
+if HOME="$SKILLHOME" USERPROFILE="$SKILLHOME" PATH="$VERDICTBIN:$PATH" \
+  VERDICT_AGENT=claude bash -eo pipefail "$SKILLSTEP" >"$EVAL_OUT" 2>"$EVAL_ERR"; then
+  assert_file_grep "Action installs the review skill before agent spend" \
+    "$SKILLHOME/.claude/skills/verdict/SKILL.md" 'verdict' "-F"
+else
+  bad "Action review skill installation failed"
+fi
+
 export STUB_AGENT_LOG="$SANDBOX/agent-argv.log"
 
 # runs the extracted step with the stub agent, the verdict shim, and the stub
