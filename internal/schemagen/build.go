@@ -5,10 +5,12 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
+	panelcore "github.com/stainless-code/verdict/internal/core/panel"
 	"github.com/stainless-code/verdict/internal/core/threads"
 )
 
 const (
+	verificationSummaryType = "verificationSummary"
 	keySchema               = "$schema"
 	keyID                   = "$id"
 	keyTitle                = "title"
@@ -29,6 +31,7 @@ const (
 	keyItemsMinimum         = "items_min"
 	keyMinItems             = "minItems"
 	keyMinLength            = "minLength"
+	keyMaxLength            = "maxLength"
 	keyItemsEnum            = "items_enum"
 	keyValueEnum            = "value_enum"
 	keyExclusiveMinimum     = "exclusiveMinimum"
@@ -230,6 +233,7 @@ func documents() []document {
 			root:  reflect.TypeFor[[]FindingEntry](),
 			defs: []definition{
 				{typ: reflect.TypeFor[FindingEntry](), name: "entry"},
+				{typ: reflect.TypeFor[core.Verification](), name: "panelVerification"},
 				{typ: reflect.TypeFor[Brief](), name: defsBrief},
 				{typ: reflect.TypeFor[BriefSite](), name: defsBriefSite},
 				{typ: reflect.TypeFor[HistoryEvent](), name: "historyEvent"},
@@ -283,6 +287,7 @@ func documents() []document {
 				{typ: reflect.TypeFor[FloorScope](), name: "floorScope"},
 				{typ: reflect.TypeFor[WithheldCapability](), name: "withheldCapability"},
 				{typ: reflect.TypeFor[CoverageSummary](), name: coverageSummaryType},
+				{typ: reflect.TypeFor[core.PanelSummary](), name: verificationSummaryType},
 				{typ: reflect.TypeFor[ChunkCoverage](), name: chunkCoverageType},
 			},
 			additionalProperties: true,
@@ -304,10 +309,24 @@ func documents() []document {
 			defs: []definition{
 				{typ: reflect.TypeFor[Repair](), name: "repair"},
 				{typ: reflect.TypeFor[CoverageSummary](), name: coverageSummaryType},
+				{typ: reflect.TypeFor[core.PanelSummary](), name: verificationSummaryType},
 				{typ: reflect.TypeFor[ChunkCoverage](), name: chunkCoverageType},
 			},
 			additionalProperties: true,
 		},
+		{
+			name:  "panel",
+			title: "verification/verdicts.json — independent verifier receipts", root: reflect.TypeFor[panelcore.File](),
+			additionalProperties: true,
+			defs:                 panelDefinitions(true),
+		},
+		{
+			name:  "panel-plan",
+			title: "verification/plan.json — independent dispatch plan", root: reflect.TypeFor[panelcore.PlanDocument](),
+			additionalProperties: false,
+			defs:                 panelDefinitions(false),
+		},
+
 		{
 			name:                 "review",
 			title:                "review.json — agent-written review input",
@@ -358,6 +377,7 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[FindingItem](), name: "findingItem"},
 		{typ: reflect.TypeFor[Provenance](), name: "provenance"},
 		{typ: reflect.TypeFor[CoverageSummary](), name: coverageSummaryType},
+		{typ: reflect.TypeFor[core.PanelSummary](), name: verificationSummaryType},
 		{typ: reflect.TypeFor[ReportData](), name: "reportData"},
 		{typ: reflect.TypeFor[ReportHead](), name: "reportHead"},
 		{typ: reflect.TypeFor[ReportVerdict](), name: "reportVerdict"},
@@ -938,10 +958,24 @@ func appendKeywords(schema *node, tag reflect.StructTag) {
 	if value := tag.Get(keyExclusiveMin); value != "" {
 		schema.members = append(schema.members, member{keyExclusiveMinimum, numberNode(value)})
 	}
+	if value := tag.Get(keyMaxLength); value != "" {
+		schema.members = append(schema.members, member{keyMaxLength, numberNode(value)})
+	}
 	if value := tag.Get(keyMinLength); value != "" {
 		schema.members = append(schema.members, member{keyMinLength, numberNode(value)})
 	}
 	if value := tag.Get(keyFormat); value != "" {
 		schema.members = append(schema.members, member{keyFormat, stringNode(value)})
+	}
+}
+
+func panelDefinitions(receipt bool) []definition {
+	if receipt {
+		return []definition{{typ: reflect.TypeFor[panelcore.Result](), name: "result"}}
+	}
+	return []definition{
+		{typ: reflect.TypeFor[panelcore.Verifier](), name: "verifier"},
+		{typ: reflect.TypeFor[panelcore.Finding](), name: "finding"},
+		{typ: reflect.TypeFor[panelcore.Totals](), name: "totals"},
 	}
 }

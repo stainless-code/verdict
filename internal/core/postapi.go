@@ -52,6 +52,7 @@ type PostResponse struct { //nolint:govet // field grouping documents the respon
 // the dry-run findings carry the file while the real findings carry the
 // accepted review. Review rides before provenance on the real-post wire.
 type PostData struct { //nolint:govet // field order is the published property order
+	Verification    *PanelSummary    `anyOf:"null"            json:"verification,omitempty" optional:"true"`
 	DryRun          bool             `json:"dry_run"`
 	Event           string           `json:"event"`
 	CommitID        string           `json:"commit_id"`
@@ -60,12 +61,12 @@ type PostData struct { //nolint:govet // field order is the published property o
 	Suggestions     Suggestions      `inline:"true"           json:"suggestions"`
 	Findings        PostFindings     `inline:"true"           json:"findings"`
 	Items           []FindingItem    `json:"items"`
-	Confidence      *int             `json:"confidence"       max:"5"                   min:"1"`
+	Confidence      *int             `json:"confidence"       max:"5"                       min:"1"`
 	SecuritySummary *string          `json:"security_summary"`
 	PayloadHash     string           `json:"payload_hash"`
 	Review          map[string]any   `json:"review,omitempty"`
 	Provenance      Provenance       `json:"provenance"       optional:"true"`
-	Coverage        *CoverageSummary `anyOf:"null"            json:"coverage,omitempty" optional:"true"`
+	Coverage        *CoverageSummary `anyOf:"null"            json:"coverage,omitempty"     optional:"true"`
 	ItemsRaw        []any            `json:"-"`
 	ReviewRaw       any              `json:"-"`
 }
@@ -92,11 +93,12 @@ type PostFindings struct { //nolint:govet // field order is the published proper
 
 // Post is schemas/post.schema.json: the completed-post record.
 type Post struct { //nolint:govet // field order is the published property order
+	Verification    *PanelSummary  `anyOf:"null"                      json:"verification,omitempty" optional:"true"`
 	SchemaVersion   string         `const:"1"                         json:"schema_version"`
 	Review          map[string]any `json:"review"`
 	Head            string         `json:"head"`
 	PostedAt        string         `format:"date-time"                json:"posted_at"`
-	Confidence      *int           `json:"confidence,omitempty"       max:"5"               min:"1"`
+	Confidence      *int           `json:"confidence,omitempty"       max:"5"                       min:"1"`
 	SecuritySummary *string        `json:"security_summary,omitempty"`
 	ToolVersion     string         `json:"tool_version,omitempty"`
 	PromptsHash     string         `json:"prompts_hash,omitempty"`
@@ -187,6 +189,9 @@ func (d *PostData) Wire() *jq.Obj {
 			"suggestions", jq.NewObj("embedded", d.Suggestions.Embedded),
 			"findings", d.Findings.Wire(),
 		}
+		if d.Verification != nil {
+			pairs = append(pairs, "verification", d.Verification)
+		}
 		pairs = appendCoverageWire(pairs, d.Coverage)
 		return jq.NewObj(append(pairs,
 			"confidence", Wire(d.Confidence),
@@ -204,6 +209,9 @@ func (d *PostData) Wire() *jq.Obj {
 		"anchors", jq.NewObj("kept", d.Anchors.Kept, "moved", d.Anchors.Moved),
 		"suggestions", jq.NewObj("embedded", d.Suggestions.Embedded),
 		"findings", d.Findings.Wire(),
+	}
+	if d.Verification != nil {
+		pairs = append(pairs, "verification", d.Verification)
 	}
 	pairs = appendCoverageWire(pairs, d.Coverage)
 	o := jq.NewObj(append(pairs,
@@ -266,6 +274,9 @@ func (p *Post) Wire() *jq.Obj {
 	setPostWithheldWire(o, p)
 	setPostSecretWire(o, p)
 	setPostFloorWire(o, p)
+	if p.Verification != nil {
+		o.Set("verification", p.Verification)
+	}
 	setPostCoverageWire(o, p)
 	return o
 }

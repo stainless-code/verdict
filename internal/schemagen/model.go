@@ -165,6 +165,7 @@ type Provenance = core.Provenance
 
 // ReportData is the report verb's --json data profile.
 type ReportData struct { //nolint:govet // field order is the published property order
+	Verification *core.PanelSummary `anyOf:"null"        json:"verification,omitempty" optional:"true"`
 	GeneratedAt  string             `format:"date-time"  json:"generated_at"`
 	Dir          string             `json:"dir"`
 	Head         ReportHead         `json:"head"`
@@ -177,8 +178,8 @@ type ReportData struct { //nolint:govet // field order is the published property
 	Items        []FindingItem      `json:"items"`
 	Cost         ReportCost         `json:"cost"         optional:"true"`
 	Completeness ReportCompleteness `json:"completeness" optional:"true"`
-	Compliance   *ReportCompliance  `anyOf:"null"        json:"compliance"   optional:"true"`
-	Gate         *ReportGate        `anyOf:"null"        json:"gate"         optional:"true"`
+	Compliance   *ReportCompliance  `anyOf:"null"        json:"compliance"             optional:"true"`
+	Gate         *ReportGate        `anyOf:"null"        json:"gate"                   optional:"true"`
 }
 
 // ReportHead is core's fetched/base/live head triple.

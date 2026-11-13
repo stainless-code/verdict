@@ -223,6 +223,7 @@ func (d *GateDimension) wire() *jq.Obj {
 // the published insertion order; CostRaw carries the ordered rollup
 // (including receipts and unknown keys) so the envelope re-emits it verbatim.
 type ReportData struct { //nolint:govet // field order is the published property order
+	Verification *PanelSummary       `anyOf:"null"                  json:"verification,omitempty" optional:"true"`
 	GeneratedAt  string              `format:"date-time"            json:"generated_at"`
 	Dir          string              `json:"dir"`
 	Head         ReportHead          `json:"head"`
@@ -246,6 +247,9 @@ func (d *ReportData) Wire() *jq.Obj {
 	o := structObj(reflect.ValueOf(d).Elem())
 	if d.CostRaw != nil {
 		o.Set("cost", d.CostRaw)
+	}
+	if d.Verification != nil {
+		o.Set("verification", d.Verification)
 	}
 	return o
 }

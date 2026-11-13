@@ -371,3 +371,6 @@ link is unknown — never invent a review id or URL.
 Two levers: callout intensity + `approved` (non-approving renders a Fix affordance;
 `approved:true` suppresses it). Wrapping mergeable feedback in `IMPORTANT` trains
 authors to click Fix unnecessarily.
+
+After writing the review, run `verdict panel` when a verifier roster is pinned.
+Dispatch each section independently — do not self-certify verification.

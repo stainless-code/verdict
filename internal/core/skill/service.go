@@ -49,10 +49,11 @@ const (
 )
 
 const (
-	payloadPromptsDir = "prompts"
-	payloadSchemasDir = "schemas"
-	payloadPacksDir   = "packs"
-	payloadScriptsDir = "scripts"
+	payloadPromptsDir    = "prompts"
+	payloadReferencesDir = "references"
+	payloadSchemasDir    = "schemas"
+	payloadPacksDir      = "packs"
+	payloadScriptsDir    = "scripts"
 )
 
 const skillsSlot = "skills"
@@ -552,7 +553,7 @@ func preflight(root *os.Root, target string, files []string) *core.RefusalError 
 }
 
 func preflightDirs(root *os.Root, target string) *core.RefusalError {
-	for _, dir := range []string{payloadPromptsDir, payloadSchemasDir, payloadPacksDir, payloadScriptsDir} {
+	for _, dir := range []string{payloadPromptsDir, payloadSchemasDir, payloadPacksDir, payloadScriptsDir, payloadReferencesDir} {
 		info, ref := payloadStat(root, target, dir)
 		if ref != nil {
 			return ref

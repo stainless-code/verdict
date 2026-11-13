@@ -84,6 +84,11 @@
         "firstSeen": { "type": "string" },
         "lastSeen": { "type": "string" },
         "rationale": { "type": "string" },
+        "verification": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/panelVerification" }
+        },
+        "confidence": { "enum": ["single", "confirmed", "contested"] },
         "triagedAt": { "type": "string" },
         "triagedBy": { "type": "string" },
         "history": {
@@ -101,6 +106,18 @@
         "lastSeen",
         "history"
       ],
+      "additionalProperties": true
+    },
+    "panelVerification": {
+      "type": "object",
+      "properties": {
+        "model": { "type": "string", "minLength": 1 },
+        "provider": { "type": "string" },
+        "verdict": { "enum": ["confirmed", "refuted", "insufficient"] },
+        "evidence": { "type": "string", "maxLength": 500, "minLength": 10 },
+        "at": { "type": "string" }
+      },
+      "required": ["model", "verdict", "evidence"],
       "additionalProperties": true
     },
     "brief": {

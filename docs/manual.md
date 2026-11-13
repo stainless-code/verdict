@@ -3743,6 +3743,43 @@ identical stored bytes. Commit the KB file: fetch records its exact bytes and
 hash in the existing `controls.json` inventory. `learn --status --json` exposes
 these fields; retirement and restoration use the existing store controls.
 
+## Panel verification
+
+`verdict panel <owner/repo> <pr|local-name> [--json]` plans independent attempts
+to disprove inline findings. It calls no model and makes no network requests.
+Configure `defaults.panel` before fetching; the pinned bundle `panel` file lists
+the synthesizer first and verifiers afterward. The planner preserves that file.
+Use at least two verifiers from independent providers for cross-provider review;
+provider identity is operator-supplied, never inferred by Verdict.
+
+After writing `review.json`, run `panel` and dispatch each section of
+`.verdict/state/<bundle>/verification/dispatch.md` to its named verifier.
+The machine plan is `verification/plan.json`. The invoker collects results in
+`verification/verdicts.json`: `schema_version: "1"`, the bundle `head_sha`, and
+`results[]` containing `sig`, `model`, optional `provider` and `at`, `verdict`
+(`confirmed|refuted|insufficient`), and `evidence` (10–500 characters).
+`schemas/panel.schema.json` describes verdicts; `schemas/panel-plan.schema.json`
+describes the plan. Extra input keys warn and are discarded.
+
+Then run `record` or `post`. Results attach to findings as `verification[]`;
+`confidence` is `contested` if any result refutes, otherwise `confirmed` if any
+confirms, otherwise `single`. There is no vote. Missing verifiers never block,
+and a refutation never drops or downgrades a finding. A later confirmation
+cannot erase a recorded refutation. Re-run `panel` for second-look dispatches
+with the prior refutation quoted as untrusted evidence. Revise the finding or
+triage it to resolve a counterexample.
+
+The planner writes only `verification/plan.json` and `verification/dispatch.md`.
+`verification/verdicts.json` is invoker-written; executable-proof
+`verification.json` remains a separate channel and can mark a finding addressed.
+Record/post summaries appear only when a verdict file was read. Report displays
+stored confidence counts. The posted body receives at most one count-only line;
+it never receives verifier evidence. Plans cap work at 100 findings, 4 verifiers,
+and 400 dispatches. Section findings have no inline anchor and are not dispatched.
+
+The verifier prompt joins the provenance hash in this release. Existing receipts
+keep their historical hashes; new receipts use the updated prompt set.
+
 ## The runner is your CI
 
 The first-party [GitHub Action](../action.yml) runs the review and merge gate

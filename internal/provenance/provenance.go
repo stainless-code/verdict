@@ -20,7 +20,7 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-var promptFiles = []string{"SKILL.md", "prompts/diagrams.md", "prompts/review.md", "prompts/system.md"}
+var promptFiles = []string{"SKILL.md", "prompts/diagrams.md", "prompts/review.md", "prompts/system.md", "prompts/verifier.md"}
 
 // checkoutSkillDir is where a source checkout keeps the skill payload (the
 // directory `npx skills add` installs); skillfs.Dir names the same path.

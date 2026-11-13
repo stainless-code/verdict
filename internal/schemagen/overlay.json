@@ -482,5 +482,15 @@
     "descriptions": {
       "": "Saved live calibration audit. Unknown outcomes are excluded from judged; resolution_rate is null without a judged denominator."
     }
+  },
+  "panel": {
+    "descriptions": {
+      "": "Invoker-written verification/verdicts.json: head-bound independent opinions. Duplicate (sig, model) and unknown or ambiguous signatures are refused by the runtime; a refutation never deletes a finding."
+    }
+  },
+  "panel-plan": {
+    "descriptions": {
+      "": "Local planner output at verification/plan.json; verifiers follow the synthesizer in the pinned panel roster. No model or network call occurs."
+    }
   }
 }
