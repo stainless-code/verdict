@@ -318,6 +318,10 @@ func usageText() string {
 		"    append one rule to .verdict/kb.jsonl (zeros + status active; provenance\n" +
 		"    defaults to manual, rigor defaults to pointed). Refuses exact-duplicate\n" +
 		"    rule text and taken ids.\n" +
+		"  learn --propose --from-bundle <repo> <pr|local-name> [--dry-run] [--json]\n" +
+		"  learn --accept <id> [--dry-run] [--json]\n" +
+		"  learn --reject <id> --reason <text> [--dry-run] [--json]\n" +
+		"    propose inactive rule packs; accept into KB; reject permanently (30+ char reason).\n" +
 		"  learn --pack <directory> --id <rule-id> [--json]\n" +
 		"  learn --status [--json]\n" +
 		"    list rules with counters + precision. No kb.jsonl reads as no rules.\n" +

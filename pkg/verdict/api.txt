@@ -328,7 +328,9 @@ type Invocation struct {
     Invocation carries the repo/PR positionals shared by most requests.
 
 type LearnRequest struct {
+	FromBundle, Pr, Accept, Reject                                    string
 	Pack, Rule, Scope, ID, Provenance, Rigor, Reason, Retire, Restore string
+	Propose, DryRun                                                   bool
 	Status                                                            bool
 }
     LearnRequest reads or updates the local knowledge base. It takes no repo/PR
