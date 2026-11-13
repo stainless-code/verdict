@@ -184,3 +184,20 @@ func TestWaitCheckRunConclusions(t *testing.T) {
 		})
 	}
 }
+
+func TestWaitRejectsPagedChecks(t *testing.T) {
+	live := map[string]any{"head": map[string]any{"sha": "abc"}}
+	makeDetail := func(count int) string {
+		items := make([]string, count)
+		for i := range items {
+			items[i] = `{"__typename":"CheckRun","status":"COMPLETED","conclusion":"SUCCESS"}`
+		}
+		return `{"headRefOid":"abc","statusCheckRollup":[` + strings.Join(items, ",") + `],"reviews":[]}`
+	}
+	if _, ref := decodeWaitDetail(makeDetail(99), live); ref != nil {
+		t.Fatalf("99 checks refused: %v", ref)
+	}
+	if _, ref := decodeWaitDetail(makeDetail(100), live); ref == nil || ref.Code != "pr-read-failed" {
+		t.Fatalf("100 checks got ref=%v; want pr-read-failed", ref)
+	}
+}

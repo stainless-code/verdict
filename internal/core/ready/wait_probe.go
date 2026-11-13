@@ -212,7 +212,7 @@ func decodeWaitDetail(raw string, live map[string]any) (*waitDetail, *core.Refus
 	if json.Unmarshal([]byte(raw), detail) != nil {
 		return nil, waitReadFailed()
 	}
-	if detail.Reviews == nil || len(detail.Reviews) >= waitPageLimit {
+	if detail.Reviews == nil || len(detail.Reviews) >= waitPageLimit || len(detail.Checks) >= waitPageLimit {
 		return nil, waitReadFailed()
 	}
 	head, ok := live["head"].(map[string]any)
