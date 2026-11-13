@@ -104,11 +104,19 @@ func (p *WaitProbe) pull(ctx context.Context, req *core.ReadRequest) (map[string
 		return nil, waitReadFailed()
 	}
 	raw := result.Stdout
-	if result.ExitCode != 0 && !strings.Contains(strings.SplitN(raw, "\n", 2)[0], " 304 ") {
+	if result.ExitCode != 0 && httpStatusCode(strings.SplitN(raw, "\n", 2)[0]) != "304" {
 		return nil, waitReadFailed()
 	}
 
 	return p.parsePull(raw)
+}
+
+func httpStatusCode(statusLine string) string {
+	fields := strings.Fields(statusLine)
+	if len(fields) < 2 || !strings.HasPrefix(fields[0], "HTTP/") {
+		return ""
+	}
+	return fields[1]
 }
 
 func (p *WaitProbe) parsePull(raw string) (map[string]any, *core.RefusalError) {
@@ -121,10 +129,11 @@ func (p *WaitProbe) parsePull(raw string) (map[string]any, *core.RefusalError) {
 	if err != nil {
 		return nil, waitReadFailed()
 	}
-	if strings.Contains(status, " 304 ") && p.cached != nil {
+	code := httpStatusCode(status)
+	if code == "304" && p.cached != nil {
 		return p.cached, nil
 	}
-	if !strings.Contains(status, " 200 ") {
+	if code != "200" {
 		return nil, waitReadFailed()
 	}
 	var doc map[string]any

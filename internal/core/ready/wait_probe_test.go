@@ -115,3 +115,44 @@ func TestWaitRejectsHeadRace(t *testing.T) {
 		t.Fatalf("head race ref %v", ref)
 	}
 }
+
+func TestWaitParsePullStatusLines(t *testing.T) {
+	body := `{"state":"open","head":{"sha":"abc"}}`
+	cached := map[string]any{"state": "open", "head": map[string]any{"sha": "cached"}}
+	cases := []struct {
+		name    string
+		status  string
+		body    string
+		cached  map[string]any
+		wantSHA string
+		wantErr bool
+	}{
+		{name: "http2 reasonless 200", status: "HTTP/2 200", body: body, wantSHA: "abc"},
+		{name: "http2.0 200 OK", status: "HTTP/2.0 200 OK", body: body, wantSHA: "abc"},
+		{name: "http1.1 304 Not Modified", status: "HTTP/1.1 304 Not Modified", cached: cached, wantSHA: "cached"},
+		{name: "http2 reasonless 304", status: "HTTP/2 304", cached: cached, wantSHA: "cached"},
+		{name: "304 without cache fails", status: "HTTP/1.1 304 Not Modified", wantErr: true},
+		{name: "500 fails", status: "HTTP/2 500", body: body, wantErr: true},
+		{name: "missing http prefix fails", status: "200 OK", body: body, wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			probe := &WaitProbe{cached: tc.cached}
+			raw := tc.status + "\r\nETag: \"v1\"\r\n\r\n" + tc.body
+			got, ref := probe.parsePull(raw)
+			if tc.wantErr {
+				if ref == nil || ref.Code != "pr-read-failed" {
+					t.Fatalf("got doc=%v ref=%v; want pr-read-failed", got, ref)
+				}
+				return
+			}
+			if ref != nil {
+				t.Fatalf("unexpected refusal: %v", ref)
+			}
+			head, ok := got["head"].(map[string]any)
+			if !ok || head["sha"] != tc.wantSHA {
+				t.Fatalf("got head %v; want %s", got["head"], tc.wantSHA)
+			}
+		})
+	}
+}
