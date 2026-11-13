@@ -34,13 +34,17 @@ func (st *state) buildPayloads() {
 	st.payload = st.payloads[0]
 }
 
-func postPayload(body, event string, commitID any, comments []any) string {
-	return jq.NewObj(
+func postPayload(body any, event string, commitID any, comments []any) string {
+	obj := jq.NewObj(
 		"body", body,
 		"event", event,
 		"commit_id", commitID,
 		"comments", comments,
-	).MarshalPretty()
+	)
+	if body == nil {
+		obj.Delete("body")
+	}
+	return obj.MarshalPretty()
 }
 
 func commitIDValue(commitID string) any {

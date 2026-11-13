@@ -106,6 +106,7 @@ func (st *state) missingPayload(payload string, comments []any) string {
 		return ""
 	}
 	body := orderedString(obj, "body")
+	var summary any = body
 	event := orderedString(obj, "event")
 	if bindingEvent(event) && !st.bindingPending(event) {
 		event = eventComment
@@ -114,9 +115,9 @@ func (st *state) missingPayload(payload string, comments []any) string {
 		if len(comments) == 0 && !st.bindingPending(event) {
 			return ""
 		}
-		body = ""
+		summary = nil
 	}
-	return postPayload(body, event, commitIDValue(st.commitID), comments)
+	return postPayload(summary, event, commitIDValue(st.commitID), comments)
 }
 
 func (st *state) remoteEvidence() ([]commentIdentity, string) {

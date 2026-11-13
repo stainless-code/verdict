@@ -98,6 +98,7 @@ type gitlabNoteReceipt struct {
 // the summary body, the binding event, the reviewed head, and the inline
 // findings in payload order.
 type gitlabPostPayload struct {
+	summary  bool
 	body     string
 	event    string
 	commitID string
@@ -309,6 +310,9 @@ func gitlabSummaryNote(
 	ctx context.Context, cmdr Commander, repo, pr string, part *gitlabPostPayload,
 	posted int, dir string, warnings []string,
 ) (gitlabNoteReceipt, postAttempt, bool) {
+	if !part.summary {
+		return gitlabNoteReceipt{}, postAttempt{}, true
+	}
 	res, err := gitlabCall(ctx, cmdr, gitlabWriteArgv(repo, pr, "/notes"), jq.NewObj(fieldBody, part.body).MarshalPretty())
 	if err != nil || res.ExitCode != 0 {
 		reason := failureReason(res, err)
@@ -483,7 +487,9 @@ func parseGitLabPayload(payload string) (gitlabPostPayload, bool) {
 		return gitlabPostPayload{}, false
 	}
 	comments, _ := obj.Get(fieldComments)
+	_, hasSummary := obj.Get(fieldBody)
 	out := gitlabPostPayload{
+		summary:  hasSummary,
 		body:     orderedString(obj, fieldBody),
 		event:    orderedString(obj, "event"),
 		commitID: orderedString(obj, "commit_id"),
