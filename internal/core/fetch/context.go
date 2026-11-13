@@ -14,6 +14,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/fence"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 const (
@@ -62,23 +63,26 @@ func collectContext(inputs []string) ([]contextFile, error) {
 }
 
 func (r *contextReader) read(input string) error {
-	input = filepath.Clean(input)
-	info, err := os.Lstat(input)
+	root, name, err := readcommon.OpenParentWith(input, os.OpenRoot)
+	if err != nil {
+		return contextFailure("context root: %s", err.Error())
+	}
+	defer root.Close()
+	info, err := root.Lstat(name)
 	if err != nil {
 		return contextFailure("context input: %s", err.Error())
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
 		return contextFailure("context symlink refused")
 	}
-	parent, name := filepath.Dir(input), filepath.Base(input)
 	if info.IsDir() {
-		parent, name = input, "."
+		directory, err := readcommon.OpenDirectoryIn(root, name)
+		if err != nil {
+			return contextFailure("context directory: %s", err.Error())
+		}
+		defer directory.Close()
+		root, name = directory, "."
 	}
-	root, err := os.OpenRoot(parent)
-	if err != nil {
-		return contextFailure("context root: %s", err.Error())
-	}
-	defer root.Close()
 	r.root, r.input, r.directory = root, input, info.IsDir()
 	if err := fs.WalkDir(root.FS(), name, r.visit); err != nil {
 		return contextFailure("context collection: %s", err.Error())
@@ -106,7 +110,7 @@ func (r *contextReader) readFile(p string, d fs.DirEntry) error {
 	if err := r.checkFile(p, d); err != nil {
 		return err
 	}
-	f, err := r.root.Open(p)
+	f, err := readcommon.OpenRegularNoSymlinkIn(r.root, p)
 	if err != nil {
 		return contextFailure("context open: %s", err.Error())
 	}

@@ -29,3 +29,11 @@ func OpenNoBlockIn(root *os.Root, name string) (*os.File, error) {
 	}
 	return f, nil
 }
+
+func openNoFollowIn(root *os.Root, name string) (*os.File, error) {
+	f, err := root.OpenFile(name, os.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return nil, openError("open without following symlinks", err)
+	}
+	return f, nil
+}
