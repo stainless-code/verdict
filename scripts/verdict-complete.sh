@@ -3,7 +3,7 @@
 #
 
 _verdict_verbs() {
-  printf '%s\n' fetch post triage report next show verify doctor calibrate fetch-local run record adopt fix check-tree ready gate threads trend index backtest learn pack init skill upgrade uninstall serve config
+  printf '%s\n' fetch post triage report next show verify doctor calibrate fetch-local run panel record adopt fix check-tree ready gate threads trend index backtest learn pack init skill upgrade uninstall serve config
 }
 
 _verdict_flags() { # $1 = verb

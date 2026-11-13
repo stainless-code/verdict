@@ -66,3 +66,10 @@ run.json instead does not free the existing `<bundle>/panel` filesystem path.
 
 No models, host CLIs, posts, network tests, pushes, or delegates were invoked.
 No implementation tests or mutation proofs are claimed.
+
+## Operator decision — blocker resolved
+
+Keep `<bundle>/panel` unchanged. Use `<bundle>/verification/plan.json`,
+`verification/dispatch.md`, and `verification/verdicts.json` everywhere.
+This explicitly supersedes the spec artifact paths and the suggested
+`panel-verification/` name above. The command remains `verdict panel`.

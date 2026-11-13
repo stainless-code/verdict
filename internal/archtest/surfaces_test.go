@@ -26,6 +26,7 @@ import (
 // is the boundary the run guardrail draws — the operator asks for one
 // process, from their own terminal or CI, not from inside a model's turn.
 var mcpOmittedVerbs = map[string]string{
+	"panel":     "CLI-only invoker dispatch contract (STA-91)",
 	"mcp":       "the MCP transport entry point itself",
 	"skill":     "distribution surface (pkg/verdict/doc.go)",
 	"uninstall": "distribution surface (pkg/verdict/doc.go)",
@@ -44,6 +45,7 @@ var mcpOmittedVerbs = map[string]string{
 // process launcher belongs to the operator's CLI (a program that wants it can
 // run the same argv the --print output renders).
 var sdkOmittedVerbs = map[string]string{
+	"panel":     "CLI-only invoker dispatch contract (STA-91)",
 	"mcp":       "the MCP transport entry point itself",
 	"skill":     "distribution surface (pkg/verdict/doc.go)",
 	"uninstall": "distribution surface (pkg/verdict/doc.go)",
