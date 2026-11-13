@@ -83,6 +83,7 @@ type NextRequest struct { //nolint:govet // field order is the published propert
 // classification. ReportRefusal is non-nil when the underlying report
 // refused; its envelope (verb "report") is what the CLI prints in JSON mode.
 type NextResponse struct { //nolint:govet // field grouping documents the response surface
+	Receipt         *Truncation
 	Repo            string
 	Pr              string
 	At              string
@@ -123,6 +124,7 @@ type ShowRequest struct {
 // ShowResponse carries one full finding record (Raw keeps the store key
 // order), its read-only repair directive, and the envelope fields.
 type ShowResponse struct { //nolint:govet // field grouping documents the response surface
+	Receipt  *Truncation
 	Repo     string
 	Pr       string
 	At       string

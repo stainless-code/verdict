@@ -13,3 +13,13 @@ func ScanCut(cut bool, returned int) *Truncation {
 	}
 	return ResultCut("scan_cap", returned, nil, nil)
 }
+
+// ForResult carries source incompleteness into a different result domain.
+// Its total and continuation are unknown in the new domain. A nil or complete
+// source receipt stays nil.
+func (t *Truncation) ForResult(returned int) *Truncation {
+	if t == nil || !t.Truncated {
+		return nil
+	}
+	return ResultCut(t.TruncationReason, returned, nil, nil)
+}

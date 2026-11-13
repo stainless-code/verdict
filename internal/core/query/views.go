@@ -441,16 +441,20 @@ func (l *Layer) Show(ctx context.Context, rootID, bundle, sig string) (*View, er
 	if resp.Item != nil {
 		record = resp.Item.Raw
 	}
-	data := jq.NewObj("item", record)
+	data := jq.NewObj("item", record, "fix", nil)
 	if resp.Fix != nil {
 		data.Set("fix", resp.Fix.Wire())
 	}
+	next := "address via address-reviews mode, then post"
+	if resp.Item == nil {
+		next = "partial results — a miss is not proof of absence"
+	}
 	return &View{
 		At:       resp.At,
-		Next:     "address via address-reviews mode, then post",
+		Next:     next,
 		Repo:     resp.Repo,
 		Pr:       resp.Pr,
 		Warnings: append([]string{}, resp.Warnings...),
-		Data:     data,
+		Data:     resp.Receipt.Apply(data),
 	}, nil
 }

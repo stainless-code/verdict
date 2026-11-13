@@ -1260,6 +1260,30 @@ func TestShowDoesNotInventoryTheBundle(t *testing.T) {
 	}
 }
 
+// TestShowTruncatedMissCarriesPartialNext proves a show miss over a truncated
+// bundle emits null item/fix, the receipt, and the partial-results next hint.
+func TestShowTruncatedMissCarriesPartialNext(t *testing.T) {
+	t.Parallel()
+	dir, _ := fixture(t)
+	receipt := `{"truncated":true,"truncation_reason":"scan_cap","returned":100,"total":null,"next_offset":null}`
+	if err := os.WriteFile(filepath.Join(dir, ".verdict", "state", "1234", "truncation.json"), []byte(receipt), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	view, err := newLayer(dir).Show(context.Background(), RootID(mustAbs(t, dir)), "1234", "deadbeef")
+	if err != nil {
+		t.Fatalf("Show: %v", err)
+	}
+	if view.Next != "partial results — a miss is not proof of absence" {
+		t.Errorf("Next = %q, want partial-results hint", view.Next)
+	}
+	if view.Data.Fields["item"] != nil || view.Data.Fields["fix"] != nil {
+		t.Errorf("miss data = %v, want item:nil fix:nil", view.Data.Fields)
+	}
+	if view.Data.Fields["truncated"] != true || view.Data.Fields["returned"] != int64(0) {
+		t.Errorf("miss receipt = %v, want truncated:true returned:0", view.Data.Fields)
+	}
+}
+
 // TestDetailReportDirIsRootRelative proves the served report data keeps the
 // CLI's portable bundle path.
 func TestDetailReportDirIsRootRelative(t *testing.T) {

@@ -1,0 +1,24 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "next",
+  "repo": "acme/app",
+  "pr": 5101,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "partial results — a miss is not proof of absence",
+  "warnings": [],
+  "data": {
+    "item": null,
+    "truncated": true,
+    "truncation_reason": "scan_cap",
+    "returned": 0,
+    "total": null,
+    "next_offset": null
+  },
+  "error": null
+}
+--- stderr ---
+warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
+next: no matching finding in partial results — a miss is not proof of absence
+--- files ---

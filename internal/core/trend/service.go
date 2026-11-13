@@ -7,6 +7,7 @@ package trendcore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -51,6 +52,7 @@ type Response struct { //nolint:govet // field grouping documents the response s
 // join, and the optional corpus measurement. Field order is the published
 // envelope construction order.
 type Data struct { //nolint:govet // field order is the published property order
+	Receipt             *core.Truncation
 	Rules               *jq.Obj
 	Resolution          any
 	ResolutionRequested bool
@@ -86,10 +88,11 @@ func (d *Data) Wire() *jq.Obj {
 	if d.Corpus != nil {
 		data.Set("corpus", corpusDoc(d.Corpus))
 	}
-	return data
+	return d.Receipt.Apply(data)
 }
 
 type state struct {
+	receipt  *core.Truncation
 	req      *Request
 	warnings []string
 	lines    []string
@@ -130,7 +133,8 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 		Warnings: st.warnings,
 		Human:    st.lines,
 		Data: &Data{
-			Rules: rules, Resolution: resolution, ResolutionRequested: req.Resolution,
+			Receipt: st.receipt.ForResult(len(rows)),
+			Rules:   rules, Resolution: resolution, ResolutionRequested: req.Resolution,
 			GeneratedAt: now, Rollup: rollup, Rows: rows, Overlap: overlap, Corpus: corpus,
 		},
 	}, nil
@@ -220,8 +224,14 @@ func (st *state) listedBundleDir(name string) (string, bool) {
 
 func readBundleRow(st *state, dir, name string) (row, bool) {
 	bundle := dir + "/"
+	if receipt := readcommon.BundleTruncation(dir); receipt != nil {
+		st.receipt = receipt
+	}
 	raw, err := jq.CappedFile(bundle+"findings.json", jq.MaxFindingsBytes)
 	if err != nil {
+		if errors.Is(err, jq.ErrTooLarge) {
+			st.receipt = core.ScanCut(true, 0)
+		}
 		st.warn(skipWarn + bundle + " (findings.json unreadable or not a findings array)")
 		return row{}, false
 	}

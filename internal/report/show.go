@@ -33,14 +33,22 @@ func RunShow(ctx context.Context, r *cli.Runner, args []string, req Request) int
 		rec = resp.Item.Raw
 	}
 	if r.JSONMode {
-		data := jq.NewObj("item", rec)
+		data := jq.NewObj("item", rec, "fix", nil)
 		if resp.Fix != nil {
 			data.Set("fix", resp.Fix.Wire())
 		}
+		next := "address via address-reviews mode, then post"
+		if resp.Item == nil {
+			next = "partial results — a miss is not proof of absence"
+		}
 		env := core.RenderEnvelope("show", req.Repo, req.Pr, resp.At,
-			"address via address-reviews mode, then post", resp.Warnings,
-			data, nil)
+			next, resp.Warnings,
+			resp.Receipt.Apply(data), nil)
 		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+		return cli.ExitOK
+	}
+	if resp.Item == nil {
+		fmt.Fprintln(r.Human, "show: sig not in partial results — a miss is not proof of absence")
 		return cli.ExitOK
 	}
 	fmt.Fprint(r.Human, jq.PrettyOrdered(rec))

@@ -761,7 +761,7 @@ func verificationHuman(entries []any) []string {
 
 func reportReceipt(st *state) *core.Truncation {
 	if st.truncation != nil {
-		return st.truncation
+		return st.truncation.ForResult(len(viewRanked(st)))
 	}
 	if st.flags.Output != "" && st.nAllOpen == 0 {
 		total := countNonEmpty(strings.Split(checkedFiles(st.dir), newline))
@@ -769,5 +769,5 @@ func reportReceipt(st *state) *core.Truncation {
 			return core.ResultCut("response_cap", checkedShown, new(total), nil)
 		}
 	}
-	return readcommon.BundleTruncation(st.dir)
+	return readcommon.BundleTruncation(st.dir).ForResult(len(viewRanked(st)))
 }
