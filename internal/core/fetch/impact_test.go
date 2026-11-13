@@ -172,8 +172,8 @@ func TestImpactJSONSourcesRow(t *testing.T) {
 	assertNullLists(t, []byte(jq.PrettyOrdered(impactJSON(unanswered))))
 }
 
-// assertNullLists proves every measured count of an unanswered list is null
-// rather than 0.
+// assertNullLists proves every measured count of an unanswered list is present
+// as null rather than 0, and un-truncated lists omit receipt keys.
 func assertNullLists(t *testing.T, raw []byte) {
 	t.Helper()
 	var nulls struct {
@@ -184,16 +184,19 @@ func assertNullLists(t *testing.T, raw []byte) {
 	if err := json.Unmarshal(raw, &nulls); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"count", "truncated"} {
-		if nulls.Symbols[key] != nil {
-			t.Errorf("unanswered symbols.%s = %v, want null", key, nulls.Symbols[key])
+	for name, m := range map[string]map[string]any{"symbols": nulls.Symbols, "callers": nulls.Callers, "tests": nulls.Tests} {
+		if v, ok := m["count"]; !ok || v != nil {
+			t.Errorf("unanswered %s.count = %v (present %v), want null", name, v, ok)
+		}
+		if v, ok := m["truncated"]; ok {
+			t.Errorf("unanswered %s.truncated = %v, want absent", name, v)
 		}
 	}
-	if nulls.Callers["unresolved"] != nil {
-		t.Errorf("unanswered callers.unresolved = %v, want null", nulls.Callers["unresolved"])
+	if v, ok := nulls.Callers["unresolved"]; !ok || v != nil {
+		t.Errorf("unanswered callers.unresolved = %v (present %v), want null", v, ok)
 	}
-	if nulls.Tests["depth_truncated"] != nil {
-		t.Errorf("unanswered tests.depth_truncated = %v, want null", nulls.Tests["depth_truncated"])
+	if v, ok := nulls.Tests["depth_truncated"]; ok {
+		t.Errorf("unanswered tests.depth_truncated = %v, want absent", v)
 	}
 }
 
