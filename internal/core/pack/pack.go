@@ -111,10 +111,13 @@ type LensSpec struct {
 // resolves its level, the scope globs that decide when it applies, and the
 // tools it talks about.
 type RuleSpec struct {
-	ID       string   `json:"id"`
-	Severity string   `json:"severity"        minLength:"1"`
-	Globs    []string `json:"globs"           minItems:"1"`
-	Tools    []string `json:"tools,omitempty"`
+	Category    string   `json:"category,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Examples    []string `json:"examples,omitempty"`
+	ID          string   `json:"id"`
+	Severity    string   `json:"severity"        minLength:"1"`
+	Globs       []string `json:"globs"           minItems:"1"`
+	Tools       []string `json:"tools,omitempty"`
 }
 
 // Lens is one loaded lens: its manifest row plus the body and its eight-hex
@@ -545,7 +548,7 @@ func checkManifestKeys(raw []byte, name string) *core.RefusalError {
 		}
 	}
 	for _, row := range shape.Rules {
-		if ref := checkExactKeys(row, []string{"id", "severity", "globs", "tools"}, name); ref != nil {
+		if ref := checkExactKeys(row, []string{"id", "severity", "globs", "tools", "category", "description", "examples"}, name); ref != nil {
 			return ref
 		}
 	}

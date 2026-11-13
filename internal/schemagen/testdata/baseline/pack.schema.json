@@ -80,6 +80,12 @@
       "description": "One rule row: a KB id, the severity-map key that resolves its level, required scope globs, and the tools it talks about.",
       "type": "object",
       "properties": {
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "examples": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
         "id": {
           "description": "KB id grammar: a lowercase slug of at most 65 characters; the body is rules/<id>.md.",
           "type": "string",
