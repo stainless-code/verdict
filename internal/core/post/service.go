@@ -97,6 +97,7 @@ type state struct { //nolint:govet // field grouping documents the post run stat
 	merged       recordcore.MergeResult
 	event        string
 	liveSHA      string
+	previousHead string
 	phash        string
 	dir          string
 	body         string
@@ -244,9 +245,7 @@ func (st *state) prepare(ctx context.Context) *core.RefusalError {
 		return ref
 	}
 	st.commitID = st.store().Head()
-	if ref := st.runGuards(ctx); ref != nil {
-		return ref
-	}
+
 	st.checkDrift(ctx)
 	if err := recordcore.EnsureHunksSnapshot(st.mergeRuntime(), st.dir); err != nil {
 		return refusalOrFailed(err)
@@ -270,7 +269,7 @@ func (st *state) publish(ctx context.Context) (*core.PostResponse, *core.Refusal
 	if st.req.JSONMode {
 		st.human("dry-run flag missing with --json on a real post is allowed; envelope follows the post")
 	}
-	if ref := st.duplicateGuard(); ref != nil {
+	if ref := st.remoteDiff(); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
 	return st.submit(ctx)

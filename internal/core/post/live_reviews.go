@@ -76,8 +76,12 @@ func parseReviewPage(items []any) []liveReview {
 			// a real post and treat a draft as landed feedback.
 			continue
 		}
+		head := jq.StrOf(m["commit_id"])
+		if head == "" {
+			_, head, _ = reviewMarker(jq.StrOf(m["body"]))
+		}
 		out = append(out, liveReview{
-			body: jq.StrOf(m["body"]), commitID: jq.StrOf(m["commit_id"]),
+			body: jq.StrOf(m["body"]), commitID: head,
 			submittedAt: jq.StrOf(m["submitted_at"]),
 		})
 	}

@@ -1,8 +1,9 @@
 package postcore
 
 import (
-	"github.com/stainless-code/verdict/internal/jq"
 	"testing"
+
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 func TestMissingCommentsIdentity(t *testing.T) {

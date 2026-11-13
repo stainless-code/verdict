@@ -1,8 +1,10 @@
 package postcore
 
 import (
+	"slices"
 	"strings"
 
+	threadscore "github.com/stainless-code/verdict/internal/core/threads"
 	"github.com/stainless-code/verdict/internal/jq"
 	sigsum "github.com/stainless-code/verdict/internal/sig"
 )
@@ -16,10 +18,13 @@ func identifyComment(head string, comment *jq.Obj) commentIdentity {
 	line, _ := comment.Get("line")
 	n, _ := jq.IntOf(line)
 	body := orderedString(comment, "body")
-	if before, _, found := strings.Cut(body, "\n\n<!-- verdict-finding"); found {
-		body = before
+	if _, valid := threadscore.FindingSig(body); valid {
+		body, _, _ = strings.CutLast(strings.TrimRight(body, " \t\r\n"), "\n\n")
 	}
-	return commentIdentity{head: head, path: orderedString(comment, "path"), side: orderedString(comment, "side"), line: n, body: sigsum.Sum([]byte(body))}
+	return commentIdentity{
+		head: head, path: orderedString(comment, "path"),
+		side: orderedString(comment, "side"), line: n, body: sigsum.Sum([]byte(body)),
+	}
 }
 
 func (key commentIdentity) sameFinding(other commentIdentity) bool {
@@ -34,13 +39,7 @@ func missingComments(head string, comments []any, remote []commentIdentity) []an
 			continue
 		}
 		key := identifyComment(head, comment)
-		found := false
-		for _, previous := range remote {
-			if key.sameFinding(previous) {
-				found = true
-				break
-			}
-		}
+		found := slices.ContainsFunc(remote, key.sameFinding)
 		if !found {
 			missing = append(missing, comment)
 		}
