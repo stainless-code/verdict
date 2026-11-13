@@ -50,6 +50,12 @@ func (st *state) corpusResponse() *Response {
 // Wire renders the corpus data in published key order.
 func (r *corpusResult) Wire() *jq.Obj {
 	rep := r.report
+	hits := make([]any, 0)
+	for _, o := range rep.Outcomes {
+		if o.HasBugHit {
+			hits = append(hits, o.BugIndex)
+		}
+	}
 	outcomes := make([]any, 0, len(rep.Outcomes))
 	for i := range rep.Outcomes {
 		outcomes = append(outcomes, outcomeCorpusDoc(&rep.Outcomes[i]))
@@ -77,6 +83,7 @@ func (r *corpusResult) Wire() *jq.Obj {
 		"precision", corpuscore.RateOrNil(rep.Matched, rep.Reported),
 		"recall", corpuscore.RateOrNil(rep.Matched, len(rep.Case.Bugs)),
 		"false_positive_rate", corpuscore.RateOrNil(rep.FalsePositives, rep.Reported),
+		"sampling_hits", hits,
 		"outcomes", outcomes,
 		"missed_bugs", missed,
 	)

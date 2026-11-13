@@ -719,3 +719,13 @@ is refused for a control; bug cases still require at least one defect.
 Every finding on a control is a false positive. Recall has no denominator
 and renders `null`. The two seeded clean cases, `control-comment` and
 `control-rename`, are **not a model-quality claim**.
+
+## Ordered sampling
+
+The runner accepts `-repeats N` (`-runs` is its existing alias) and `-k K`,
+with `1 <= K <= N`. Each bundle's `corpus_run.json` snapshots run identity,
+sample index, k, repeats, and resolved severity weights. Only the first k
+ordered samples contribute to `any_of_k_recall`: union their matched bug
+indices, then divide by the unique ground-truth bugs in complete cohorts.
+Incomplete cohorts have no recall denominator and are counted explicitly.
+Per-case sample rates publish median/min/max and the non-null sample count n.

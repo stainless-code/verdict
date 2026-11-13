@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
@@ -36,6 +37,8 @@ type Config struct {
 	Panel    []string
 	Cases    []string
 	Timeout  time.Duration
+	K        int
+	Weights  core.SeverityWeights
 	Runs     int
 	Loop     int
 	Internal bool
@@ -56,6 +59,12 @@ const (
 )
 
 func (cfg *Config) validate() error {
+	if cfg.K == 0 {
+		cfg.K = 1
+	}
+	if cfg.K < 1 || cfg.K > cfg.Runs {
+		return jq.NewErr("-k must be between 1 and repeats")
+	}
 	switch {
 	case strings.TrimSpace(cfg.Model) == "":
 		return jq.NewErr("-model is required: every bundle is attributed to exactly one model")
@@ -139,6 +148,19 @@ func newRunner(ctx context.Context, cfg *Config, g grader) (*runner, error) {
 	if err := resolvePaths(&resolved); err != nil {
 		return nil, err
 	}
+	raw, readErr := os.ReadFile(filepath.Join(resolved.Root, reviewConfig))
+	if readErr != nil && !os.IsNotExist(readErr) {
+		return nil, jq.NewErrf("weights: %s", readErr)
+	}
+	var policy *core.Config
+	if readErr == nil {
+		var ref *core.RefusalError
+		policy, ref = config.Parse(raw)
+		if ref != nil {
+			return nil, ref
+		}
+	}
+	resolved.Weights = config.SeverityWeights(policy)
 	work, err := prepareWork(resolved.WorkDir)
 	if err != nil {
 		return nil, err

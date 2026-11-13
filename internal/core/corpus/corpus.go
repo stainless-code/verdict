@@ -243,6 +243,8 @@ func Tolerance(c *core.CorpusCase) int {
 // Outcome is one reported finding graded against the ground truth. Reason
 // names why a false positive failed; a true positive carries none.
 type Outcome struct {
+	BugIndex  int
+	Severity  string
 	Sig       string
 	Path      string
 	Result    string
@@ -310,10 +312,13 @@ func collectMissed(rep *Report, bugs []core.CorpusBug, used []bool) {
 }
 
 func grade(e any, bugs []core.CorpusBug, used []bool, tol int) (Outcome, int) {
-	out := Outcome{Result: ResultFalsePositive, Reason: ReasonUnanchored}
+	out := Outcome{Result: ResultFalsePositive, Reason: ReasonUnanchored, BugIndex: -1}
 	m, ok := e.(*jq.Obj)
 	if !ok || m == nil {
 		return out, -1
+	}
+	if severity, ok := m.Get("severity"); ok {
+		out.Severity = jq.StrOf(severity)
 	}
 	if sig, ok := m.Get("sig"); ok {
 		out.Sig = jq.StrOf(sig)
@@ -333,6 +338,7 @@ func grade(e any, bugs []core.CorpusBug, used []bool, tol int) (Outcome, int) {
 	out.Result = ResultTruePositive
 	out.Reason = ""
 	out.BugLine, out.HasBugHit = bugs[i].Line, true
+	out.BugIndex = i
 	return out, i
 }
 

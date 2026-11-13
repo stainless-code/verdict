@@ -62,7 +62,9 @@ func parseFlags(args []string) (Config, error) {
 	fs.StringVar(&cfg.WorkDir, "workdir", "", "run directory; must be empty or absent (default: a fresh temp dir)")
 	fs.StringVar(&cfg.Out, "out", "", "publication JSON (default <root>/bench/results[/pilot]/<run-id>.json)")
 	fs.BoolVar(&cfg.Internal, "internal", false, "mark the run an internal pilot: never citable, kept out of bench/results")
-	fs.IntVar(&cfg.Runs, "runs", 1, "samples per case")
+	fs.IntVar(&cfg.Runs, "runs", 1, "samples per case (alias of -repeats)")
+	fs.IntVar(&cfg.Runs, "repeats", 1, "samples per case")
+	fs.IntVar(&cfg.K, "k", 1, "first k samples used for any-of-k recall; 1 <= k <= repeats")
 	fs.IntVar(&cfg.Loop, "loop", 1, "repair rounds per sample (1 keeps the single-shot path)")
 	fs.DurationVar(&cfg.Timeout, "timeout", defaultTimeout, "budget for one sample")
 	if err := fs.Parse(args); err != nil {
