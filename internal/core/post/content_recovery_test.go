@@ -22,20 +22,7 @@ type failingDiscussionHost struct {
 //nolint:revive // one scripted host exchange keeps the injected failure and accepted writes together
 func (host *failingDiscussionHost) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	if strings.HasSuffix(cmd.Argv[2], "/discussions?per_page=100") {
-		if host.readFail {
-			return core.Result{ExitCode: 1, Stderr: "read unavailable"}, nil
-		}
-		if host.readBody != "" {
-			return core.Result{Stdout: host.readBody}, nil
-		}
-		if len(host.accepted) == 0 {
-			return core.Result{Stdout: "[]"}, nil
-		}
-		raw, err := json.Marshal([]any{map[string]any{"notes": host.accepted}})
-		if err != nil {
-			return core.Result{}, err
-		}
-		return core.Result{Stdout: string(raw)}, nil
+		return host.readDiscussions()
 	}
 	if len(cmd.Argv) == 3 {
 		return core.Result{Stdout: gitlabMRJSON}, nil
@@ -162,4 +149,21 @@ func assertProducedRecovery(t *testing.T, host *failingDiscussionHost) {
 			t.Fatalf("published body %d = %q", i, body)
 		}
 	}
+}
+
+func (host *failingDiscussionHost) readDiscussions() (core.Result, error) {
+	if host.readFail {
+		return core.Result{ExitCode: 1, Stderr: "read unavailable"}, nil
+	}
+	if host.readBody != "" {
+		return core.Result{Stdout: host.readBody}, nil
+	}
+	if len(host.accepted) == 0 {
+		return core.Result{Stdout: "[]"}, nil
+	}
+	raw, err := json.Marshal([]any{map[string]any{"notes": host.accepted}})
+	if err != nil {
+		return core.Result{}, err
+	}
+	return core.Result{Stdout: string(raw)}, nil
 }

@@ -98,12 +98,12 @@ type gitlabNoteReceipt struct {
 // the summary body, the binding event, the reviewed head, and the inline
 // findings in payload order.
 type gitlabPostPayload struct {
-	summary  bool
 	body     string
 	event    string
 	commitID string
 	comments []gitlabPostComment
 	dropped  int
+	summary  bool
 }
 
 // gitlabPostComment is one inline finding reduced to what a discussion

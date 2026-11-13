@@ -162,10 +162,8 @@ func publicationPage(doc any) ([]map[string]any, error) {
 		if !ok {
 			return nil, shapeError("live publication item is not an object")
 		}
-		if notes, has := m["notes"]; has {
-			if _, err := publicationPage(notes); err != nil {
-				return nil, err
-			}
+		if err := validatePublicationNotes(m); err != nil {
+			return nil, err
 		}
 		out = append(out, m)
 	}
@@ -178,4 +176,13 @@ func stampReviewHead(comments []map[string]any, review map[string]any) {
 			comment["commit_id"] = review["commit_id"]
 		}
 	}
+}
+
+func validatePublicationNotes(m map[string]any) error {
+	notes, has := m["notes"]
+	if !has {
+		return nil
+	}
+	_, err := publicationPage(notes)
+	return err
 }

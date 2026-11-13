@@ -149,6 +149,13 @@ Sources and suggestions are part of the rendered body. A new head deliberately
 re-arms publication: the output and `post.json` carry `rearmed: true` and
 `previous_head`. `--force` explicitly republishes all content.
 
+Binding events are reconciled independently of rendered content. An existing
+summary does not prove that approval succeeded. A retry submits an unfinished
+approval without rewriting the summary; inline-only GitLab updates omit the
+summary note. Submitted remote review states establish completed verdicts;
+Forgejo drafts never count as published feedback. Verified patch identity
+remains recorded as provenance, without a local same-patch refusal.
+
 Live remote content is authoritative; fetched snapshots are a cache. `.posted_*`, `post.json`, and
 posted-body markers cannot suppress missing remote content. If every summary
 part and comment is already present, `duplicate-payload` reports that there is

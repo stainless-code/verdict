@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
-	"github.com/stainless-code/verdict/internal/jq"
 )
 
 func crVerdictState(t *testing.T, event string) *state {
@@ -26,12 +25,11 @@ func TestCRBindingVerdictSurvivesContentDedupe(t *testing.T) {
 		if ref := st.remoteDiff(); ref != nil {
 			t.Fatalf("%s swallowed: %v", event, ref)
 		}
-		doc, err := jq.DecodeOrdered([]byte(st.payloads[0]))
-		obj, ok := doc.(*jq.Obj)
-		if err != nil || !ok || orderedString(obj, "event") != event {
-			t.Fatalf("binding payload = %v, %v", doc, err)
+		obj := decodePostedPayload(t, st.payloads[0])
+		if obj["event"] != event {
+			t.Fatalf("binding payload = %v", obj)
 		}
-		if orderedString(obj, "body") != "" {
+		if _, has := obj["body"]; has {
 			t.Fatal("binding retry duplicated summary")
 		}
 	}
@@ -39,16 +37,17 @@ func TestCRBindingVerdictSurvivesContentDedupe(t *testing.T) {
 
 func TestCRApprovalRequiresRemoteState(t *testing.T) {
 	t.Parallel()
-	for _, remoteState := range []string{"COMMENTED", "", "APPROVED"} {
+	for _, example := range []struct{ state, want string }{{"COMMENTED", ""}, {"", ""}, {"APPROVED", "duplicate-payload"}} {
+		remoteState := example.state
 		st := crVerdictState(t, "APPROVE")
 		st.live = publicationReviews([]map[string]any{{"body": st.body, "commit_id": st.commitID, "state": remoteState}})
 		ref := st.remoteDiff()
-		if remoteState == "APPROVED" {
-			if ref == nil || ref.Code != "duplicate-payload" {
-				t.Fatalf("confirmed approval reposted: %v", ref)
-			}
-		} else if ref != nil {
-			t.Fatalf("summary swallowed unfinished approval: %v", ref)
+		got := ""
+		if ref != nil {
+			got = ref.Code
+		}
+		if got != example.want {
+			t.Fatalf("state %s: reconciliation %s, want %s", remoteState, got, example.want)
 		}
 	}
 }

@@ -107,10 +107,7 @@ func (st *state) missingPayload(payload string, comments []any) string {
 	}
 	body := orderedString(obj, "body")
 	var summary any = body
-	event := orderedString(obj, "event")
-	if bindingEvent(event) && !st.bindingPending(event) {
-		event = eventComment
-	}
+	event := st.remainingEvent(orderedString(obj, "event"))
 	if st.remoteBodyPresent(body) {
 		if len(comments) == 0 && !st.bindingPending(event) {
 			return ""
@@ -148,7 +145,7 @@ func priorHead(current, candidate, previous string) string {
 	return previous
 }
 
-func bindingEvent(event string) bool { return event == eventApprove || event == "REQUEST_CHANGES" }
+func bindingEvent(event string) bool { return event == eventApprove || event == eventRequestChanges }
 
 func (st *state) bindingPending(event string) bool {
 	if !bindingEvent(event) {
@@ -166,8 +163,8 @@ func verdictStateMatches(event, state string) bool {
 	switch strings.ToUpper(state) {
 	case "APPROVED":
 		return event == eventApprove
-	case "REQUEST_CHANGES", "CHANGES_REQUESTED":
-		return event == "REQUEST_CHANGES"
+	case eventRequestChanges, "CHANGES_REQUESTED":
+		return event == eventRequestChanges
 	default:
 		return false
 	}
@@ -190,4 +187,11 @@ func mapNumericPosition(m map[string]any, obj *jq.Obj) {
 		obj.Set(fieldLine, original)
 		obj.Set(fieldSide, "LEFT")
 	}
+}
+
+func (st *state) remainingEvent(event string) string {
+	if bindingEvent(event) && !st.bindingPending(event) {
+		return eventComment
+	}
+	return event
 }
