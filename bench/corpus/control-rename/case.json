@@ -1,0 +1,12 @@
+{
+  "schema_version": "1",
+  "id": "control-rename",
+  "kind": "control",
+  "language": "go",
+  "provenance": {
+    "kind": "seeded",
+    "injected": "Clean isolated control-rename change; no injected defect.",
+    "note": "not a model-quality claim"
+  },
+  "bugs": []
+}

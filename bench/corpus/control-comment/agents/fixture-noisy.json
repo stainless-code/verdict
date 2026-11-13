@@ -1,0 +1,19 @@
+{
+  "model": "fixture-noisy",
+  "panel": ["panel-alpha"],
+  "review": {
+    "schema_version": "1",
+    "body": "> \ud83e\udd16 Seeded clean control \u2014 not a model-quality claim.",
+    "approved": false,
+    "comments": [
+      {
+        "path": "sample.go",
+        "line": 3,
+        "side": "RIGHT",
+        "body": "Unnecessary rename could cause a regression.",
+        "rigor": "walked",
+        "severity": "informational"
+      }
+    ]
+  }
+}

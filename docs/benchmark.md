@@ -710,3 +710,12 @@ denominators and rationale.
 
 Until 06b publishes a measurement, the comparison page has no measured
 claim to cite; keep unmeasured equivalence wording softened or removed.
+
+## Clean controls
+
+`kind: "control"` records a clean change with `bugs: []`. Its provenance
+still identifies a `seeded` or `real` origin. Null or nonempty ground truth
+is refused for a control; bug cases still require at least one defect.
+Every finding on a control is a false positive. Recall has no denominator
+and renders `null`. The two seeded clean cases, `control-comment` and
+`control-rename`, are **not a model-quality claim**.

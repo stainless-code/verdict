@@ -53,6 +53,7 @@ bundles=0
 for case_dir in "$EVAL_ROOT"/bench/corpus/*/; do
   [ -d "$case_dir" ] || continue
   case_id="$(basename "$case_dir")"
+  [ "$(jq -r .kind "$case_dir/case.json")" != control ] || continue
   for agent in "$case_dir"agents/*.json; do
     [ -f "$agent" ] || continue
     model="$(jq -r '.model' "$agent")"
@@ -182,5 +183,27 @@ if [ "$stub_before" = "$stub_after" ]; then
 else
   bad "corpus path touched the network ($stub_before -> $stub_after)"
 fi
+
+for case_id in control-comment control-rename; do
+  slug="corpus-$case_id"
+  dir="$EVAL_SANDBOX/.verdict/state/$slug"
+  eval_mk_bundle "$slug"
+  cp "$EVAL_ROOT/bench/corpus/$case_id/case.json" "$dir/corpus.json"
+  cp "$EVAL_ROOT/bench/corpus/$case_id/full.diff" "$dir/full.diff"
+  rm -f "$dir/hunks.tsv"
+  jq '.review' "$EVAL_ROOT/bench/corpus/$case_id/agents/fixture-good.json" >"$dir/review.json"
+  run_review record acme/bench "$slug" --json
+  if [ "$EVAL_STATUS" -eq 0 ]; then
+    run_review calibrate acme/bench "$slug" --json
+    if [ "$EVAL_STATUS" -eq 0 ] && jq -e '.data | .ground_truth == 0 and .reported == 0 and .false_positives == 0 and .recall == null' <"$EVAL_OUT" >/dev/null; then
+      good "$case_id: clean review has zero findings and undefined recall"
+    else
+      bad "$case_id: clean control calibration failed"
+    fi
+  else
+    bad "$case_id: clean review record failed"
+  fi
+  rm -rf "$dir"
+done
 
 eval_end

@@ -340,7 +340,9 @@ func readCase(dir, id string) (corpusCase, error) {
 		return corpusCase{}, jq.NewErrf("case %s: schema_version %q, want \"1\"", id, m.SchemaVersion)
 	case m.ID != id:
 		return corpusCase{}, jq.NewErrf("case %s: manifest id %q does not match its directory", id, m.ID)
-	case len(m.Bugs) == 0:
+	case m.Kind == "control" && (m.Bugs == nil || len(m.Bugs) != 0):
+		return corpusCase{}, jq.NewErrf("case %s: control requires bugs: []", id)
+	case len(m.Bugs) == 0 && m.Kind != "control":
 		return corpusCase{}, jq.NewErrf("case %s: manifest carries no ground-truth bug", id)
 	}
 	diff, err := os.ReadFile(filepath.Join(dir, id, fullDiffName))

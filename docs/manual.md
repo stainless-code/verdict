@@ -3827,3 +3827,8 @@ The tombstone permanently blocks reproposal and acceptance. `--dry-run` previews
 without writing. An accepted rule instead needs `learn --retire` to veto it.
 Precision measurement with a real reviewer belongs to the STA-344 benchmark;
 acceptance alone changes recall context, not a suppression predicate.
+
+Benchmark corpus manifests accept `kind: "control"` with `bugs: []` for clean
+changes. Every reported finding is a false positive; recall is `null`.
+`provenance.kind` records whether the control is seeded or real. See
+[benchmark controls](benchmark.md#clean-controls).

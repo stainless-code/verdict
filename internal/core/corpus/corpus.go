@@ -66,6 +66,12 @@ const (
 // refusal code for an invalid case manifest.
 const codeCorpusInvalid = "corpus-invalid"
 
+const (
+	kindControl = "control"
+	kindSeeded  = "seeded"
+	kindReal    = "real"
+)
+
 // IsDir reports whether dir names a marked corpus bundle: the last
 // segment carries the corpus- prefix, whatever root anchors it.
 func IsDir(dir string) bool {
@@ -103,7 +109,7 @@ func Load(dir string) (*core.CorpusCase, *core.RefusalError) {
 func invalid(path, reason string) *core.RefusalError {
 	return &core.RefusalError{Code: codeCorpusInvalid, Message: fmt.Sprintf(
 		"corpus manifest %s is %s (write a schemas/corpus.schema.json case: id, kind, "+
-			"provenance, and at least one bug; try: copy bench/corpus/<id>/case.json)", path, reason)}
+			"provenance, bugs (empty for controls); try: copy bench/corpus/<id>/case.json)", path, reason)}
 }
 
 // validate enforces the semantic rules the JSON Schema cannot express.
@@ -114,26 +120,47 @@ func validate(c *core.CorpusCase, path string) *core.RefusalError {
 	if strings.TrimSpace(c.ID) == "" {
 		return invalid(path, "missing id")
 	}
-	if c.Kind != "seeded" && c.Kind != "real" {
-		return invalid(path, "kind must be seeded or real")
-	}
-	if c.Provenance.Kind != c.Kind {
-		return invalid(path, "provenance.kind must match kind")
+	if ref := validateKind(c, path); ref != nil {
+		return ref
 	}
 	if ref := validateProvenance(c, path); ref != nil {
 		return ref
 	}
+	if c.Kind == kindControl {
+		return validateControl(c, path)
+	}
+
 	return validateBugs(c.Bugs, path)
+}
+
+func validateKind(c *core.CorpusCase, path string) *core.RefusalError {
+	if c.Kind != kindSeeded && c.Kind != kindReal && c.Kind != kindControl {
+		return invalid(path, "kind must be seeded, real, or control")
+	}
+	if c.Provenance.Kind != c.Kind && c.Kind != kindControl {
+		return invalid(path, "provenance.kind must match kind")
+	}
+	return nil
+}
+
+func validateControl(c *core.CorpusCase, path string) *core.RefusalError {
+	if c.Bugs == nil || len(c.Bugs) != 0 {
+		return invalid(path, "control cases require bugs: []")
+	}
+	if c.Provenance.Kind != kindSeeded && c.Provenance.Kind != kindReal {
+		return invalid(path, "control provenance.kind must be seeded or real")
+	}
+	return nil
 }
 
 // validateProvenance enforces the per-kind origin requirements.
 func validateProvenance(c *core.CorpusCase, path string) *core.RefusalError {
-	switch c.Kind {
-	case "seeded":
+	switch c.Provenance.Kind {
+	case kindSeeded:
 		if strings.TrimSpace(c.Provenance.Injected) == "" {
 			return invalid(path, "seeded cases need provenance.injected (what was injected)")
 		}
-	case "real":
+	case kindReal:
 		if strings.TrimSpace(c.Provenance.Repo) == "" || c.Provenance.PR == nil ||
 			strings.TrimSpace(c.Provenance.FixCommit) == "" {
 			return invalid(path, "real cases need provenance.repo, provenance.pr, and provenance.fix_commit")

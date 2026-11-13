@@ -1,0 +1,9 @@
+diff --git a/sample.go b/sample.go
+--- a/sample.go
++++ b/sample.go
+@@ -1,4 +1,4 @@
+ package sample
+ 
+-// size
++// Number of rows
+ const Rows = 1
