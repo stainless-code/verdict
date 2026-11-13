@@ -351,7 +351,7 @@ func (s *Server) call(ctx context.Context, t *tool, request any) any {
 	}
 	if t.wire != nil {
 		if err := t.wire(ctx, s.bindings(t), request); err != nil {
-			return refusalResult(rootResolutionRefusal(err))
+			return refusalResult(wireRefusal(err))
 		}
 	}
 	data, ref := t.invoke(ctx, request)
@@ -538,9 +538,19 @@ func truncationSummary(tool string, data *jq.Obj, size int) string {
 	return receipt.Apply(jq.NewObj(pairs...)).MarshalCompact()
 }
 
-// rootResolutionRefusal reports a failed repository-root resolution as a
-// served refusal: a tool call must not receive a request anchored at the
-// working directory when the probe could not verify the root.
+// wireRefusal maps a wiring error to its typed refusal: parameter errors become
+// bad-flags, typed refusals pass through, and failed repository-root probes
+// become not-a-repo so a call never falls back to cwd.
+func wireRefusal(err error) *core.RefusalError {
+	if _, ok := errors.AsType[*paramError](err); ok {
+		return &core.RefusalError{Code: codeBadFlags, Message: err.Error()}
+	}
+	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
+		return ref
+	}
+	return rootResolutionRefusal(err)
+}
+
 func rootResolutionRefusal(err error) *core.RefusalError {
 	return &core.RefusalError{Code: "not-a-repo", Message: err.Error()}
 }

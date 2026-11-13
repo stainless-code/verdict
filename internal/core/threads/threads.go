@@ -304,6 +304,23 @@ var findingMarkerRe = regexp.MustCompile(`^<!-- verdict-finding sig=([0-9a-f]{40
 // final line), which identifies a verdict-authored review summary.
 var reviewMarkerRe = regexp.MustCompile(`^<!-- verdict-review payload=[0-9a-f]{40} head=[0-9a-f]{0,40} -->$`)
 
+// summaryMarkerFormat renders the hidden marker on a PR-level summary comment.
+const summaryMarkerFormat = "<!-- verdict-summary head=%s -->"
+
+// summaryMarkerRe matches the final line of a PR-level verdict summary comment,
+// distinct from both finding and review markers.
+var summaryMarkerRe = regexp.MustCompile(`^<!-- verdict-summary head=[0-9a-f]{0,40} -->$`)
+
+// SummaryMarker renders the hidden final line of a PR-level summary comment.
+func SummaryMarker(head string) string {
+	return fmt.Sprintf(summaryMarkerFormat, head)
+}
+
+// HasSummaryMarker reports whether body ends with the verdict summary marker.
+func HasSummaryMarker(body string) bool {
+	return summaryMarkerRe.MatchString(finalLine(body))
+}
+
 // FindingMarker renders the hidden final line carrying a finding sig.
 func FindingMarker(sig string) string {
 	return fmt.Sprintf(findingMarkerFormat, sig)
@@ -319,11 +336,11 @@ func FindingSig(body string) (string, bool) {
 }
 
 // IsVerdictBody reports whether a body carries a verdict marker as its final
-// line: a finding marker on an inline comment or the review marker on a
-// summary. Used only for the advisory author_kind label.
+// line: a finding marker on an inline comment, the review marker, or the
+// summary comment marker. Used only for the advisory author_kind label.
 func IsVerdictBody(body string) bool {
 	last := finalLine(body)
-	return findingMarkerRe.MatchString(last) || reviewMarkerRe.MatchString(last)
+	return findingMarkerRe.MatchString(last) || reviewMarkerRe.MatchString(last) || summaryMarkerRe.MatchString(last)
 }
 
 // AuthorKind classifies one comment author: verdict when its own marker is the

@@ -11,16 +11,17 @@ type ReportFlags struct {
 	// all, which is what keeps `report` advisory. It stays out of the MCP tool
 	// schema (`json:"-"`) for the same reason: gate composes the dimension,
 	// and the MCP report tool is the advisory read.
-	Coverage     string `enum:"require|warn"                                                            json:"-"`
-	Status       string `enum:"all|open|addressed|wont-fix|false-positive|deferred"`
-	Kind         string `enum:"all|inline|section"`
-	Category     string `enum:"logic|edge-case|security|performance|accidental-commit|style|docs|other"`
-	Output       string
-	Sarif        string
-	Check        string `enum:"critical|important|informational"`
-	Live         string `enum:"auto|strict|skip"`
-	Cost         bool
-	Completeness bool
+	Coverage        string `enum:"require|warn"                                                            json:"-"`
+	Status          string `enum:"all|open|addressed|wont-fix|false-positive|deferred"`
+	Kind            string `enum:"all|inline|section"`
+	Category        string `enum:"logic|edge-case|security|performance|accidental-commit|style|docs|other"`
+	Output          string
+	Sarif           string
+	Check           string `enum:"critical|important|informational"`
+	Live            string `enum:"auto|strict|skip"`
+	IncludeWithheld bool
+	Cost            bool
+	Completeness    bool
 }
 
 // ReportRequest is the report service invocation: the read runtime and

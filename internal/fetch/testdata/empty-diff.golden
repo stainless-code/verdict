@@ -22,6 +22,7 @@ exit: 0
       "notes.txt"
     ],
     "diff_bytes": 0,
+    "raw_diff_bytes": 0,
     "panel": {
       "source": null,
       "members": []
@@ -53,7 +54,9 @@ exit: 0
       "threads.json": ".verdict/state/4701/threads.json",
       "sensitive.txt": null,
       "incremental.diff": null,
-      "lenses.txt": ".verdict/state/4701/lenses.txt"
+      "lenses.txt": ".verdict/state/4701/lenses.txt",
+      "full.raw.diff": ".verdict/state/4701/full.raw.diff",
+      "excluded.json": ".verdict/state/4701/excluded.json"
     },
     "incremental_base": null
   },
@@ -134,6 +137,18 @@ CALL: api graphql -F owner=acme -F name=app -F pr=4701 -f query=
   "sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
   "files": [
     {
+      "path": ".verdict/ignore",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".gitattributes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
       "path": ".verdict/config.json",
       "status": "missing",
       "bytes": 0,
@@ -183,7 +198,25 @@ CALL: api graphql -F owner=acme -F name=app -F pr=4701 -f query=
     }
   ]
 }
+--- file C/.verdict/state/4701/excluded.json ---
+{
+  "schema_version": "1",
+  "patterns_source": ".verdict/ignore@base",
+  "defaults": [
+    "default:generated",
+    "default:attribute"
+  ],
+  "ignore": [],
+  "no_default_excludes": false,
+  "excluded": [],
+  "excluded_bytes": 0,
+  "kept_bytes": 0,
+  "raw_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}
 --- file C/.verdict/state/4701/full.diff ---
+
+--- file C/.verdict/state/4701/full.raw.diff ---
 
 --- file C/.verdict/state/4701/hunks.tsv ---
 

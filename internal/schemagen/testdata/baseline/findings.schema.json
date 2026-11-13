@@ -76,6 +76,9 @@
             null
           ]
         },
+        "withheld": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/withheld" }]
+        },
         "status": {
           "enum": [
             "open",
@@ -110,6 +113,19 @@
         "lastSeen",
         "history"
       ],
+      "additionalProperties": true
+    },
+    "withheld": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "enum": ["exclusion", "agent", "below-severity", "validation"]
+        },
+        "reason": { "type": "string" },
+        "exclusion_id": { "type": "string" },
+        "at": { "type": "string" }
+      },
+      "required": ["source", "reason", "at"],
       "additionalProperties": true
     },
     "panelVerification": {
@@ -173,7 +189,8 @@
             "reopened",
             "revalidation",
             "addressed",
-            "triaged"
+            "triaged",
+            "withheld"
           ]
         },
         "actor": { "type": "string" },

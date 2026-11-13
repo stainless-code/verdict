@@ -56,6 +56,7 @@ type Verb =
   | "next"
   | "show"
   | "ready"
+  | "pr-wait"
   | "triage"
   | "fetch"
   | "fetch-local"

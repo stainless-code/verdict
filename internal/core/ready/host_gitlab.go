@@ -33,7 +33,7 @@ func gitlabLive(ctx context.Context, st *state, dir string) *core.RefusalError {
 	writeErrFile(st, dir+"/.ready.err", stderr)
 	if !ok {
 		return st.withWarnings(&core.RefusalError{
-			Code:    "pr-read-failed",
+			Code:    waitReadCode,
 			Message: "could not read live merge request state for " + st.repo + hashSep + st.pr + ": " + firstLine(stderr),
 		})
 	}
@@ -104,10 +104,10 @@ func gitlabState(m map[string]any) string {
 	switch gitlabStr(m, "state") {
 	case "opened":
 		return stateOpen
-	case "merged":
-		return "MERGED"
-	case "closed", "locked":
-		return "CLOSED"
+	case untilMerged:
+		return waitMerged
+	case untilClosed, "locked":
+		return stateClosed
 	default:
 		return mergeUnknown
 	}
@@ -175,7 +175,7 @@ func countFailPipeline(st *state, m map[string]any, failNames []string) []string
 // isFailingPipeline owns the failing-pipeline vocabulary: a failed or
 // canceled pipeline is one failing check.
 func isFailingPipeline(status string) bool {
-	return status == "failed" || status == "canceled"
+	return status == "failed" || status == codeCanceled
 }
 
 func pipelineName(m map[string]any) string {

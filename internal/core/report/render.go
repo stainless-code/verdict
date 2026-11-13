@@ -58,12 +58,15 @@ func buildData(st *state) *core.ReportData {
 			Addressed: countStatus(viewEntries(st), "addressed"),
 			Terminal:  countTerminal(viewEntries(st)),
 		},
-		Counts:  st.counts,
-		Panel:   panelValue(st),
-		Patch:   st.patch,
-		Output:  outputVal(st.flags.Output),
-		Filters: core.ReportFilters{Status: st.flags.Status, Kind: st.flags.Kind, Category: outputVal(st.flags.Category)},
-		Items:   envelopeItems(viewRanked(st)),
+		Counts: st.counts,
+		Panel:  panelValue(st),
+		Patch:  st.patch,
+		Output: outputVal(st.flags.Output),
+		Filters: core.ReportFilters{
+			Status: st.flags.Status, Kind: st.flags.Kind, Category: outputVal(st.flags.Category), IncludeWithheld: st.flags.IncludeWithheld,
+		},
+		QuietByPolicy: quietEntries(st),
+		Items:         envelopeItems(viewRanked(st)),
 	}
 	if st.cost != nil {
 		data.Cost = costFromObj(st.cost)
@@ -266,6 +269,7 @@ func buildHuman(st *state) []string {
 	if st.flags.Cost {
 		lines = append(lines, costHuman(st)...)
 	}
+	lines = append(lines, quietLines(st)...)
 	lines = append(lines, extraHuman(st)...)
 	if st.flags.Output != "" {
 		return append(lines, "wrote "+st.flags.Output)
@@ -551,7 +555,7 @@ func complianceLineSuffix(status string) string {
 }
 
 func gateTierCheck(st *state) gateCheck {
-	n := tierHits(st.entries, st.flags.Check, st.flags.Category)
+	n := tierHits(readcommon.VisibleFindings(st.entries), st.flags.Check, st.flags.Category)
 	if n > 0 {
 		return gateCheck{
 			dim: core.GateDimension{

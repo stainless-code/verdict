@@ -76,7 +76,10 @@ func (st *state) dispatch(ctx context.Context, s *session, req *core.FetchReques
 	if ref != nil {
 		return nil, ref
 	}
-	ctx2 := &fetchRunCtx{runner: s, env: s.env, repo: req.Repo, pr: req.Pr, root: req.RootPath()}
+	ctx2 := &fetchRunCtx{
+		runner: s, env: s.env, repo: req.Repo, pr: req.Pr, root: req.RootPath(),
+		ignore: req.Flags.Ignore, noDefaultExcludes: req.Flags.NoDefaultExcludes,
+	}
 	budget, _, err := fetchPrepare(ctx2, req, f)
 	if err != nil {
 		return nil, st.fail(ctx, err, s)
@@ -121,7 +124,10 @@ func RunLocal(ctx context.Context, req *core.FetchLocalRequest) (*core.FetchResp
 	if ref != nil {
 		return nil, ref
 	}
-	ctx2 := &fetchRunCtx{runner: s, env: s.env, repo: req.Repo, pr: req.Pr, root: req.RootPath()}
+	ctx2 := &fetchRunCtx{
+		runner: s, env: s.env, repo: req.Repo, pr: req.Pr, root: req.RootPath(),
+		ignore: req.Flags.Ignore, noDefaultExcludes: req.Flags.NoDefaultExcludes,
+	}
 	data, next, err := runLocalTail(ctx, ctx2, req)
 	if err != nil {
 		return nil, st.fail(ctx, err, s)

@@ -1,0 +1,21 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "pr-wait",
+  "repo": "acme/app",
+  "pr": 42,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "inspect the wait outcome",
+  "warnings": [],
+  "data": {
+    "outcome": "condition-unmet",
+    "until": "merged",
+    "snapshot": {"state":"OPEN","head":"abc","reviews":"[]","threads":"[]","checks":"[{\"__typename\":\"CheckRun\",\"conclusion\":\"SUCCESS\",\"status\":\"COMPLETED\"}]","checks_known":true,"checks_done":true,"checks_green":true},
+    "observations": 1
+  },
+  "error": null
+}
+--- stderr ---
+
+--- files ---

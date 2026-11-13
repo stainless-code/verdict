@@ -105,13 +105,15 @@ type ReportVerdict struct {
 
 // ReportCounts counts finding kinds, anchoring, and categories.
 type ReportCounts struct { //nolint:govet // field order is the published property order
-	Clean        bool           `json:"clean"         optional:"true"`
-	CheckedFiles int            `json:"checked_files" min:"0"         optional:"true"`
-	Inline       int            `json:"inline"        min:"0"`
-	Section      int            `json:"section"       min:"0"`
-	Anchored     int            `json:"anchored"      min:"0"`
-	Unanchored   int            `json:"unanchored"    min:"0"`
-	ByCategory   map[string]int `json:"by_category"`
+	Clean            bool           `json:"clean"                        optional:"true"`
+	CheckedFiles     int            `json:"checked_files"                min:"0"         optional:"true"`
+	Inline           int            `json:"inline"                       min:"0"`
+	Section          int            `json:"section"                      min:"0"`
+	Anchored         int            `json:"anchored"                     min:"0"`
+	Unanchored       int            `json:"unanchored"                   min:"0"`
+	ByCategory       map[string]int `json:"by_category"`
+	Withheld         int            `json:"withheld,omitempty"           min:"0"         optional:"true"`
+	WithheldBySource map[string]int `json:"withheld_by_source,omitempty" optional:"true"`
 }
 
 // ReportPanel is the panel source plus its member list.
@@ -122,9 +124,10 @@ type ReportPanel struct {
 
 // ReportFilters echoes the active status/kind/category filters.
 type ReportFilters struct { //nolint:govet // field order is the published property order
-	Status   string  `json:"status"`
-	Kind     string  `json:"kind"`
-	Category *string `json:"category"`
+	Status          string  `json:"status"`
+	Kind            string  `json:"kind"`
+	Category        *string `json:"category"`
+	IncludeWithheld bool    `json:"include_withheld,omitempty" optional:"true"`
 }
 
 // ReportCost is the summed cost rollup carried by report --cost.
@@ -223,23 +226,24 @@ func (d *GateDimension) wire() *jq.Obj {
 // the published insertion order; CostRaw carries the ordered rollup
 // (including receipts and unknown keys) so the envelope re-emits it verbatim.
 type ReportData struct { //nolint:govet // field order is the published property order
-	Receipt      *Truncation         `json:"-"                      receipt:"true"`
-	Verification *PanelSummary       `anyOf:"null"                  json:"verification,omitempty" optional:"true"`
-	GeneratedAt  string              `format:"date-time"            json:"generated_at"`
-	Dir          string              `json:"dir"`
-	Head         ReportHead          `json:"head"`
-	Verdict      ReportVerdict       `json:"verdict"`
-	Counts       ReportCounts        `json:"counts"`
-	Panel        ReportPanel         `json:"panel"`
-	Patch        any                 `json:"patch"`
-	Output       *string             `json:"output"`
-	Filters      ReportFilters       `json:"filters"`
-	Items        []FindingItem       `json:"items"`
-	Cost         *ReportCost         `json:"cost,omitempty"`
-	Completeness *ReportCompleteness `json:"completeness,omitempty"`
-	Compliance   *ReportCompliance   `json:"compliance,omitempty"`
-	Gate         *ReportGate         `json:"gate,omitempty"`
-	CostRaw      *jq.Obj             `json:"-"`
+	Receipt       *Truncation         `json:"-"                        receipt:"true"`
+	Verification  *PanelSummary       `anyOf:"null"                     json:"verification,omitempty" optional:"true"`
+	GeneratedAt   string              `format:"date-time"               json:"generated_at"`
+	Dir           string              `json:"dir"`
+	Head          ReportHead          `json:"head"`
+	Verdict       ReportVerdict       `json:"verdict"`
+	QuietByPolicy []any               `json:"quiet_by_policy,omitempty" optional:"true"`
+	Counts        ReportCounts        `json:"counts"`
+	Panel         ReportPanel         `json:"panel"`
+	Patch         any                 `json:"patch"`
+	Output        *string             `json:"output"`
+	Filters       ReportFilters       `json:"filters"`
+	Items         []FindingItem       `json:"items"`
+	Cost          *ReportCost         `json:"cost,omitempty"`
+	Completeness  *ReportCompleteness `json:"completeness,omitempty"`
+	Compliance    *ReportCompliance   `json:"compliance,omitempty"`
+	Gate          *ReportGate         `json:"gate,omitempty"`
+	CostRaw       *jq.Obj             `json:"-"`
 }
 
 // Wire renders the data object in wire order. CostRaw wins over the typed

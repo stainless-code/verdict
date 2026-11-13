@@ -232,8 +232,8 @@ func TestDocumentsCarryStableIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	if len(files) != 20 {
-		t.Fatalf("generated %d schemas, want 20", len(files))
+	if len(files) != 21 {
+		t.Fatalf("generated %d schemas, want 21", len(files))
 	}
 	seen := map[string]bool{}
 	for _, file := range files {

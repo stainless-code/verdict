@@ -7,8 +7,12 @@ import (
 // PostFlags carries the resolved post options: the adapter parses argv and
 // the service receives values only.
 type PostFlags struct {
-	Approve        string `enum:"true|false"`
-	ReviewFile     string
+	Approve     string `enum:"true|false"`
+	MinSeverity string `enum:"critical|important|informational|off"`
+	ReviewFile  string
+	// Summary opts into maintaining one separate PR-level summary comment
+	// (comment) updated in place across posts, or keeps it disabled (off).
+	Summary        string `enum:"off|comment"`
 	RequestChanges bool
 	Bind           bool
 	Force          bool
@@ -21,6 +25,17 @@ type PostFlags struct {
 	// post-secret-shaped without it, and the receipt records what it let
 	// through.
 	AllowSecretValues bool
+}
+
+// PostSummary records the planned (on dry-run) or executed (on real post)
+// PR-level summary comment action.
+type PostSummary struct { //nolint:govet // field order is the published property order
+	Action         string `enum:"create|update|none|failed" json:"action"`
+	CommentID      string `json:"comment_id,omitempty"      optional:"true"`
+	URL            string `json:"url,omitempty"             optional:"true"`
+	Marker         string `json:"marker,omitempty"          optional:"true"`
+	DuplicateCount int    `json:"duplicate_count,omitempty" min:"0"         optional:"true"`
+	Note           string `json:"note,omitempty"            optional:"true"`
 }
 
 // PostRequest is the post service invocation: the read runtime and
@@ -70,6 +85,8 @@ type PostData struct { //nolint:govet // field order is the published property o
 	Review          map[string]any   `json:"review,omitempty"`
 	Provenance      Provenance       `json:"provenance"       optional:"true"`
 	Coverage        *CoverageSummary `anyOf:"null"            json:"coverage,omitempty"     optional:"true"`
+	Withheld        *WithheldSummary `anyOf:"null"            json:"withheld,omitempty"     optional:"true"`
+	Summary         *PostSummary     `anyOf:"null"            json:"summary,omitempty"      optional:"true"`
 	ItemsRaw        []any            `json:"-"`
 	ReviewRaw       any              `json:"-"`
 }
@@ -132,6 +149,7 @@ type Post struct { //nolint:govet // field order is the published property order
 	PostFloorScoped    []FloorScope     `json:"post_floor_scoped,omitempty"`
 	Coverage           *CoverageSummary `anyOf:"null"                            json:"coverage,omitempty"          optional:"true"`
 	ChunkCoverage      *ChunkCoverage   `anyOf:"null"                            json:"chunk_coverage,omitempty"    optional:"true"`
+	Summary            *PostSummary     `anyOf:"null"                            json:"summary,omitempty"           optional:"true"`
 	ReviewRaw          any              `json:"-"`
 }
 
@@ -186,40 +204,20 @@ func (d *PostData) Wire() *jq.Obj {
 	body := d.Body.Wire(d.DryRun)
 	provenance := Wire(&d.Provenance)
 	if d.DryRun {
-		pairs := []any{
-			"dry_run", d.DryRun,
-			"event", d.Event,
-			"commit_id", d.CommitID,
-			keyBody, body,
-			"anchors", jq.NewObj("kept", d.Anchors.Kept, "moved", d.Anchors.Moved),
-			"suggestions", jq.NewObj("embedded", d.Suggestions.Embedded),
-			"findings", d.Findings.Wire(),
-		}
-		if d.Verification != nil {
-			pairs = append(pairs, "verification", d.Verification)
-		}
-		pairs = appendCoverageWire(pairs, d.Coverage)
-		return jq.NewObj(append(pairs,
+		pairs := d.leadPairs(body)
+		o := jq.NewObj(append(pairs,
 			"confidence", Wire(d.Confidence),
 			"security_summary", Wire(d.SecuritySummary),
 			"items", items,
 			"payload_hash", d.PayloadHash,
 			"provenance", provenance,
 		)...)
+		if d.Summary != nil {
+			o.Set("summary", d.Summary)
+		}
+		return o
 	}
-	pairs := []any{
-		"dry_run", d.DryRun,
-		"event", d.Event,
-		"commit_id", d.CommitID,
-		keyBody, body,
-		"anchors", jq.NewObj("kept", d.Anchors.Kept, "moved", d.Anchors.Moved),
-		"suggestions", jq.NewObj("embedded", d.Suggestions.Embedded),
-		"findings", d.Findings.Wire(),
-	}
-	if d.Verification != nil {
-		pairs = append(pairs, "verification", d.Verification)
-	}
-	pairs = appendCoverageWire(pairs, d.Coverage)
+	pairs := d.leadPairs(body)
 	o := jq.NewObj(append(pairs,
 		"items", items,
 		"confidence", Wire(d.Confidence),
@@ -233,8 +231,31 @@ func (d *PostData) Wire() *jq.Obj {
 		o.Set("rearmed", true)
 		o.Set("previous_head", d.PreviousHead)
 	}
+	if d.Summary != nil {
+		o.Set("summary", d.Summary)
+	}
 	o.Set("provenance", provenance)
 	return o
+}
+
+func (d *PostData) leadPairs(body *jq.Obj) []any {
+	pairs := []any{
+		"dry_run", d.DryRun,
+		"event", d.Event,
+		"commit_id", d.CommitID,
+		keyBody, body,
+		"anchors", jq.NewObj("kept", d.Anchors.Kept, "moved", d.Anchors.Moved),
+		"suggestions", jq.NewObj("embedded", d.Suggestions.Embedded),
+		"findings", d.Findings.Wire(),
+	}
+	if d.Verification != nil {
+		pairs = append(pairs, "verification", d.Verification)
+	}
+	pairs = appendCoverageWire(pairs, d.Coverage)
+	if d.Withheld != nil {
+		pairs = append(pairs, "withheld", d.Withheld)
+	}
+	return pairs
 }
 
 // Wire renders the post body: the dry-run wire always carries
@@ -301,6 +322,9 @@ func setPostCoverageWire(o *jq.Obj, p *Post) {
 	}
 	if p.ChunkCoverage != nil {
 		o.Set("chunk_coverage", p.ChunkCoverage)
+	}
+	if p.Summary != nil {
+		o.Set("summary", p.Summary)
 	}
 }
 
@@ -371,6 +395,13 @@ func appendCoverageWire(pairs []any, c *CoverageSummary) []any {
 		return pairs
 	}
 	return append(pairs, "coverage", c)
+}
+
+// WithheldSummary counts policy silence and findings without a severity.
+type WithheldSummary struct {
+	ByReason   map[string]int `json:"by_reason"`
+	Total      int            `json:"total"      min:"0"`
+	Unlabelled int            `json:"unlabelled" min:"0"`
 }
 
 func setRearmWire(o *jq.Obj, rearmed bool, previous string) {

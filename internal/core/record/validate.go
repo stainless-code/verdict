@@ -9,6 +9,9 @@ import (
 )
 
 func (st *state) validateInputs() error {
+	if _, err := st.parseSuppressions(); err != nil {
+		return err
+	}
 	if err := checkVerificationShape(st.dir); err != nil {
 		return err
 	}
