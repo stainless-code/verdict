@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
+	panelcore "github.com/stainless-code/verdict/internal/core/panel"
 	"github.com/stainless-code/verdict/internal/core/threads"
 )
 
@@ -230,6 +231,7 @@ func documents() []document {
 			root:  reflect.TypeFor[[]FindingEntry](),
 			defs: []definition{
 				{typ: reflect.TypeFor[FindingEntry](), name: "entry"},
+				{typ: reflect.TypeFor[core.PanelVerification](), name: "panelVerification"},
 				{typ: reflect.TypeFor[Brief](), name: defsBrief},
 				{typ: reflect.TypeFor[BriefSite](), name: defsBriefSite},
 				{typ: reflect.TypeFor[HistoryEvent](), name: "historyEvent"},
@@ -283,6 +285,7 @@ func documents() []document {
 				{typ: reflect.TypeFor[FloorScope](), name: "floorScope"},
 				{typ: reflect.TypeFor[WithheldCapability](), name: "withheldCapability"},
 				{typ: reflect.TypeFor[CoverageSummary](), name: coverageSummaryType},
+				{typ: reflect.TypeFor[core.VerificationSummary](), name: "verificationSummary"},
 				{typ: reflect.TypeFor[ChunkCoverage](), name: chunkCoverageType},
 			},
 			additionalProperties: true,
@@ -304,10 +307,16 @@ func documents() []document {
 			defs: []definition{
 				{typ: reflect.TypeFor[Repair](), name: "repair"},
 				{typ: reflect.TypeFor[CoverageSummary](), name: coverageSummaryType},
+				{typ: reflect.TypeFor[core.VerificationSummary](), name: "verificationSummary"},
 				{typ: reflect.TypeFor[ChunkCoverage](), name: chunkCoverageType},
 			},
 			additionalProperties: true,
 		},
+		{name: "panel", title: "verification/verdicts.json — independent verifier receipts", root: reflect.TypeFor[panelcore.File](), additionalProperties: true,
+			defs: []definition{{typ: reflect.TypeFor[panelcore.Result](), name: "result"}, {typ: reflect.TypeFor[panelcore.PlanDocument](), name: "plan"}, {typ: reflect.TypeFor[panelcore.Verifier](), name: "verifier"}, {typ: reflect.TypeFor[panelcore.Finding](), name: "finding"}, {typ: reflect.TypeFor[panelcore.Totals](), name: "totals"}}},
+		{name: "panel-plan", title: "verification/plan.json — independent dispatch plan", root: reflect.TypeFor[panelcore.PlanDocument](), additionalProperties: false,
+			defs: []definition{{typ: reflect.TypeFor[panelcore.Verifier](), name: "verifier"}, {typ: reflect.TypeFor[panelcore.Finding](), name: "finding"}, {typ: reflect.TypeFor[panelcore.Totals](), name: "totals"}}},
+
 		{
 			name:                 "review",
 			title:                "review.json — agent-written review input",
@@ -358,6 +367,7 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[FindingItem](), name: "findingItem"},
 		{typ: reflect.TypeFor[Provenance](), name: "provenance"},
 		{typ: reflect.TypeFor[CoverageSummary](), name: coverageSummaryType},
+		{typ: reflect.TypeFor[core.VerificationSummary](), name: "verificationSummary"},
 		{typ: reflect.TypeFor[ReportData](), name: "reportData"},
 		{typ: reflect.TypeFor[ReportHead](), name: "reportHead"},
 		{typ: reflect.TypeFor[ReportVerdict](), name: "reportVerdict"},

@@ -172,3 +172,6 @@ guessed. Harness exports (Claude Code transcripts, opencode exports) are
 outside the binary — convert them with
 [`examples/usage-adapters/`](https://github.com/stainless-code/verdict/tree/main/examples/usage-adapters)
 first; `verdict` never reads those files itself.
+
+For independent cross-provider verification after review, follow
+[panel verification](references/panel.md) and `prompts/verifier.md`.

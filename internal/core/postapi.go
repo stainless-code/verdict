@@ -52,7 +52,7 @@ type PostResponse struct { //nolint:govet // field grouping documents the respon
 // the dry-run findings carry the file while the real findings carry the
 // accepted review. Review rides before provenance on the real-post wire.
 type PostData struct {
-	Verification    *VerificationSummary `json:"verification,omitempty" optional:"true"` //nolint:govet // field order is the published property order
+	Verification    *VerificationSummary `anyOf:"null" json:"verification,omitempty" optional:"true"` //nolint:govet // field order is the published property order
 	DryRun          bool                 `json:"dry_run"`
 	Event           string               `json:"event"`
 	CommitID        string               `json:"commit_id"`
@@ -93,7 +93,7 @@ type PostFindings struct { //nolint:govet // field order is the published proper
 
 // Post is schemas/post.schema.json: the completed-post record.
 type Post struct {
-	Verification    *VerificationSummary `json:"verification,omitempty" optional:"true"` //nolint:govet // field order is the published property order
+	Verification    *VerificationSummary `anyOf:"null" json:"verification,omitempty" optional:"true"` //nolint:govet // field order is the published property order
 	SchemaVersion   string               `const:"1"                         json:"schema_version"`
 	Review          map[string]any       `json:"review"`
 	Head            string               `json:"head"`

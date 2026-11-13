@@ -153,7 +153,7 @@ type Repair struct {
 // shell passes through raw) re-emits byte-identically; ItemsRaw wins over
 // the typed items so the envelope re-emits the ordered summaries verbatim.
 type RecordData struct {
-	Verification    *VerificationSummary `json:"verification,omitempty" optional:"true"` //nolint:govet // field order is the published property order
+	Verification    *VerificationSummary `anyOf:"null" json:"verification,omitempty" optional:"true"` //nolint:govet // field order is the published property order
 	Dir             string               `json:"dir"`
 	Anchors         AnchorsSummary       `json:"anchors"`
 	Findings        RecordFindings       `inline:"true"               json:"findings"`
@@ -201,7 +201,7 @@ type ChunkCoverage struct {
 // Record is schemas/record.schema.json: the completed-record artifact.
 // ConfidenceRaw wins over the typed confidence like RecordData does.
 type Record struct {
-	Verification    *VerificationSummary `json:"verification,omitempty" optional:"true"` //nolint:govet // field order is the published property order
+	Verification    *VerificationSummary `anyOf:"null" json:"verification,omitempty" optional:"true"` //nolint:govet // field order is the published property order
 	SchemaVersion   string               `const:"1"                         json:"schema_version"`
 	Status          string               `json:"status"`
 	Head            string               `json:"head"`

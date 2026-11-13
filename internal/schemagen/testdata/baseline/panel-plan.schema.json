@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/panel-plan.schema.json",
+  "title": "verification/plan.json — independent dispatch plan",
+  "description": "Local planner output at verification/plan.json; verifiers follow the synthesizer in the pinned panel roster. No model or network call occurs.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "const": "1" },
+    "head_sha": { "type": "string" },
+    "generated_at": { "type": "string" },
+    "panel_source": { "type": "string" },
+    "verifiers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/verifier" }
+    },
+    "findings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "second_look": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "dispatch": { "type": "string" },
+    "totals": { "$ref": "#/$defs/totals" }
+  },
+  "required": [
+    "schema_version",
+    "head_sha",
+    "generated_at",
+    "panel_source",
+    "verifiers",
+    "findings",
+    "second_look",
+    "dispatch",
+    "totals"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "verifier": {
+      "type": "object",
+      "properties": {
+        "model": { "type": "string" },
+        "provider": { "type": ["string", "null"] }
+      },
+      "required": ["model", "provider"],
+      "additionalProperties": true
+    },
+    "finding": {
+      "type": "object",
+      "properties": {
+        "sig": { "type": "string" },
+        "path": { "type": "string" },
+        "line": { "type": ["integer", "string", "null"] },
+        "severity": { "type": ["string", "null"] },
+        "kind": { "const": "inline" }
+      },
+      "required": ["sig", "path", "line", "severity", "kind"],
+      "additionalProperties": true
+    },
+    "totals": {
+      "type": "object",
+      "properties": {
+        "findings": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "verifiers": { "type": "integer", "minimum": 1, "maximum": 4 },
+        "dispatches": { "type": "integer", "minimum": 0, "maximum": 400 }
+      },
+      "required": ["findings", "verifiers", "dispatches"],
+      "additionalProperties": true
+    }
+  }
+}
