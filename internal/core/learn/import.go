@@ -28,11 +28,11 @@ func (st *state) runImport() *core.RefusalError {
 }
 
 func (st *state) importRule(p *pack.Pack, rule *pack.Rule) *core.RefusalError {
-	if strings.TrimSpace(rule.Category) == "" || strings.TrimSpace(rule.Description) == "" || len(rule.Examples) == 0 {
-		return st.refuse(codeBadRule, "import requires category, description and examples")
+	if ref := st.checkImportMetadata(rule); ref != nil {
+		return ref
 	}
-	if st.req.Provenance != "" && st.req.Provenance != defaultProvenance {
-		return st.refuse(codeBadFlags, "pack import determines provenance")
+	if ref := st.checkImportGlobs(rule.Globs); ref != nil {
+		return ref
 	}
 	st.req.Rule = rule.Description
 	st.req.Scope = strings.Join(rule.Globs, ",")
@@ -57,5 +57,24 @@ func (st *state) importRule(p *pack.Pack, rule *pack.Rule) *core.RefusalError {
 	st.data = &Data{Rule: row}
 	st.next = nextAppend
 	st.humanf("imported %s from %s@%s sha256:%s\n", rule.ID, p.Name, p.Version, p.Hash)
+	return nil
+}
+
+func (st *state) checkImportGlobs(globs []string) *core.RefusalError {
+	for _, glob := range globs {
+		if strings.Contains(glob, ",") {
+			return st.refuse(codeBadScope, "pack rule glob contains a comma; KB scopes cannot represent it without changing its meaning")
+		}
+	}
+	return nil
+}
+
+func (st *state) checkImportMetadata(rule *pack.Rule) *core.RefusalError {
+	if strings.TrimSpace(rule.Category) == "" || strings.TrimSpace(rule.Description) == "" || len(rule.Examples) == 0 {
+		return st.refuse(codeBadRule, "import requires category, description and examples")
+	}
+	if st.req.Provenance != "" && st.req.Provenance != defaultProvenance {
+		return st.refuse(codeBadFlags, "pack import determines provenance")
+	}
 	return nil
 }

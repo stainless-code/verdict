@@ -3733,6 +3733,8 @@ An importable rule declares `category`, `description`, and a nonempty `examples`
 array in its manifest row, alongside `id`, `severity`, and `globs`. Its Markdown
 body remains required. Severity resolves through the pack severity map.
 Unknown IDs, missing metadata, duplicate descriptions, and taken IDs refuse.
+Globs containing commas refuse with `bad-scope` because KB scopes use commas
+as separators; importing them would change their meaning.
 
 The imported `.verdict/kb.jsonl` object preserves the description, category,
 examples, resolved severity, body and full `pack_hash`, with
