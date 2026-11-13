@@ -71,7 +71,7 @@ run_review threads acme/app 7 --json
 if [ "$EVAL_STATUS" -eq 0 ] && [ "$(stdout_docs)" = "1" ] \
   && jq -e --arg head "$HEAD" '
     .verb == "threads" and .repo == "acme/app" and .pr == 7 and .error == null
-    and (.data | .provider == "github" and .head_sha == $head and .truncated == true and .truncation_reason == "response_cap"
+    and (.data | .provider == "github" and .head_sha == $head and (has("truncated") | not)
       and .threads == 3 and .open == 2 and .outdated == 1 and .verdict == 1)
     and (.next | contains("address open threads"))' <"$EVAL_OUT" >/dev/null; then
   good "T1 refresh emits the threads envelope with the feed tally"
@@ -94,7 +94,7 @@ fi
 FEED="$EVAL_SANDBOX/.verdict/state/7/threads.json"
 if jq -e --arg head "$HEAD" --arg sig "$SIG" '
   .schema_version == "1" and .provider == "github" and .pr == 7 and .head_sha == $head
-  and .truncated == true and .truncation_reason == "response_cap" and (.threads | length) == 3
+  and (has("truncated") | not) and (.threads | length) == 3
   and (.threads[0] | .id == "PRRT_1" and .resolved == false and .outdated == false
     and .path == "notes.txt" and .line == 2 and .side == "RIGHT"
     and .author_kind == "verdict" and .finding_sig == $sig

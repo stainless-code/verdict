@@ -112,9 +112,6 @@ func (f *File) Wire() *jq.Obj {
 		"threads", threads,
 	)
 	receipt := core.ScanCut(f.Truncated, len(f.Threads))
-	if receipt == nil && feedBodyCut(f.Threads) {
-		receipt = core.ResultCut("response_cap", len(f.Threads), nil, nil)
-	}
 	return receipt.Apply(o)
 }
 
@@ -362,15 +359,4 @@ func CapBody(body string) (string, bool) {
 		cut = cut[:len(cut)-1]
 	}
 	return strings.TrimRight(cut, "\r\n"), true
-}
-
-func feedBodyCut(threads []Thread) bool {
-	for i := range threads {
-		for _, comment := range threads[i].Comments {
-			if comment.Truncated {
-				return true
-			}
-		}
-	}
-	return false
 }
