@@ -50,7 +50,7 @@ func fetchTailAfterSource(ctx context.Context, ctx2 *fetchRunCtx, req *core.Fetc
 	if req.JSONMode {
 		return writeFetchTailJSON(ctx2, f, budget, fcap, chunkJSON, incBase, next)
 	}
-	stats, err := readFetchStats(dir)
+	stats, err := readFetchStats(ctx2)
 	if err != nil {
 		return nil, "", err
 	}
@@ -75,7 +75,7 @@ func writeFetchTailJSON(
 	if err != nil {
 		return nil, "", err
 	}
-	stats, err := readFetchStats(ctx2.dir)
+	stats, err := readFetchStats(ctx2)
 	if err != nil {
 		return nil, "", err
 	}
@@ -153,7 +153,8 @@ type fetchStats struct {
 // readFetchStats reads the tail measurements, refusing fetch-failed when
 // the record is undecodable (no envelope can be built —
 // the typed refusal is the documented divergence).
-func readFetchStats(dir string) (fetchStats, error) {
+func readFetchStats(ctx2 *fetchRunCtx) (fetchStats, error) {
+	dir := ctx2.dir
 	var st fetchStats
 	raw, err := os.ReadFile(dir + suffixPRJSON)
 	if err != nil {
@@ -180,7 +181,7 @@ func readFetchStats(dir string) (fetchStats, error) {
 	}
 	st.adds, st.dels = adds, dels
 	st.hunks = countHunkLines(dir + suffixFullDiff)
-	st.omitted = toJSONArray(joinLines(omittedPaths(prPaths(m), readDiffHunks(dir))))
+	st.omitted = omittedJSON(ctx2, omittedPaths(prPaths(m), readDiffHunks(dir)))
 	if fi, err := os.Stat(dir + suffixFullDiff); err == nil {
 		st.diffSize = fi.Size()
 	}
@@ -351,6 +352,10 @@ func readDiffHunks(dir string) []string {
 	return out
 }
 
+func omittedJSON(fc *fetchRunCtx, omitted []string) []any {
+	return toJSONArray(withoutExcluded(fc, joinLines(omitted)))
+}
+
 func localFetchData(ctx2 *fetchRunCtx, mode *localMode, listed string, total, adds, dels int, dump *string) *core.FetchData {
 	dir := ctx2.dir
 	withHunks := readDiffHunks(dir)
@@ -371,7 +376,7 @@ func localFetchData(ctx2 *fetchRunCtx, mode *localMode, listed string, total, ad
 		Additions:    adds,
 		Deletions:    dels,
 		Hunks:        countHunkLines(dir + suffixFullDiff),
-		Omitted:      toJSONArray(joinLines(omitted)),
+		Omitted:      omittedJSON(ctx2, omitted),
 		DiffBytes:    diffSize,
 		RawDiffBytes: rawDiffSize(dir),
 		Panel:        panelVal(ctx2),
