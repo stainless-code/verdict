@@ -186,10 +186,27 @@
       "required": ["percent", "attested", "total", "files", "exempt", "gaps"],
       "additionalProperties": true
     },
+    "verificationSummary": {
+      "type": "object",
+      "properties": {
+        "verifiers": { "type": "integer", "minimum": 0 },
+        "confirmed": { "type": "integer", "minimum": 0 },
+        "contested": { "type": "integer", "minimum": 0 },
+        "single": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["verifiers", "confirmed", "contested", "single"],
+      "additionalProperties": true
+    },
     "reportData": {
       "description": "report --json data: ranked read over the store. cost appears only with --cost, completeness only with --completeness, gate only when a gating flag (--max-severity, --require-head, --live) is set (gate itself always carries the coverage dimension), receipt keys only when budget.json parses.",
       "type": "object",
       "properties": {
+        "verification": {
+          "anyOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/verificationSummary" }
+          ]
+        },
         "generated_at": { "type": "string", "format": "date-time" },
         "dir": { "type": "string" },
         "head": { "$ref": "#/$defs/reportHead" },
@@ -451,6 +468,12 @@
       "description": "post --dry-run --json data (dry_run true, findings carry the dry-run file) and real-post data (dry_run false, findings carry counts plus the accepted review object).",
       "type": "object",
       "properties": {
+        "verification": {
+          "anyOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/verificationSummary" }
+          ]
+        },
         "dry_run": { "type": "boolean" },
         "event": { "type": "string" },
         "commit_id": { "type": "string" },
@@ -543,6 +566,12 @@
           "maximum": 5
         },
         "security_summary": { "type": ["string", "null"] },
+        "verification": {
+          "anyOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/verificationSummary" }
+          ]
+        },
         "items": {
           "type": "array",
           "items": { "$ref": "#/$defs/findingItem" }

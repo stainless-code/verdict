@@ -45,6 +45,7 @@ var forbiddenDeps = []string{
 	"internal/ready",
 	"internal/threads",
 	"internal/trend",
+	"internal/panel",
 	"internal/calibrate",
 	"internal/index",
 	"internal/doctor",
@@ -80,6 +81,7 @@ var facadeAllowedDeps = map[string]bool{
 	"internal/core/index":     true,
 	"internal/core/learn":     true,
 	"internal/core/pack":      true,
+	"internal/core/panel":     true,
 	"internal/core/post":      true,
 	"internal/core/ready":     true,
 	"internal/core/record":    true,
@@ -111,7 +113,7 @@ var facadeAllowedDeps = map[string]bool{
 // unnoticed.
 var coreSubpackages = []string{
 	"adopt", "backtest", "calibrate", "checktree", "corpus", "coverage", "doctor", "exec", "fetch", "fix",
-	"index", "init", "learn", "pack", "post", "query", "ready", "record", "repair", "report", "run", "skill",
+	"index", "init", "learn", "pack", "panel", "post", "query", "ready", "record", "repair", "report", "run", "skill",
 	"threads", "trend", "triage", "upgrade", "verify",
 }
 

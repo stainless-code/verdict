@@ -234,6 +234,12 @@ Cause: `verdict pack add` named a remote-shaped source the git allowlist rejects
 
 Fix: use one of the three forms with a bare ssh user and a public https URL, and put no token in the URL, ref, or path — the source is recorded in the committed lock. Use an ssh key instead. Then re-run.
 
+## `bad-panel`
+
+Cause: `verification/verdicts.json` has malformed results, duplicate `(sig, model)` pairs, unknown or ambiguous sigs, or evidence outside 10–500 characters.
+
+Fix: use schema version `1`, unique full signatures, named models, and verdicts `confirmed`, `refuted`, or `insufficient` with evidence. Correct `verification/verdicts.json` and retry.
+
 ## `bad-preset`
 
 Cause: `--preset` is not a known preset.
@@ -858,6 +864,24 @@ Fix: trim the pack under those caps, then re-run.
 Cause: a lens pack root, file, or symlink escapes the pack directory, the pack root itself is a symlink, or a FIFO/device entry sits where a regular pack file belongs.
 
 Fix: keep the pack root a real directory, every body a regular file, and every path relative with no symlink components, then re-run.
+
+## `panel-empty`
+
+Cause: the bundle has no pinned `panel` roster, fewer than two members, or no known head.
+
+Fix: configure `defaults.panel` with the synthesizer first, re-fetch, then run `verdict panel`.
+
+## `panel-stale`
+
+Cause: `verification/verdicts.json` names a different head from the current bundle.
+
+Fix: dispatch `verification/dispatch.md` against the current head and rewrite `verification/verdicts.json`; then retry `record` or `post`.
+
+## `panel-too-large`
+
+Cause: more than 100 inline findings or 4 verifiers would exceed the 400-dispatch limit.
+
+Fix: narrow the review or pinned roster, re-fetch if the roster changed, then run `verdict panel`.
 
 ## `post-failed`
 

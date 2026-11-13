@@ -60,6 +60,9 @@
       "type": "array",
       "items": { "$ref": "#/$defs/repair" }
     },
+    "verification": {
+      "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/verificationSummary" }]
+    },
     "coverage": {
       "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/coverageSummary" }]
     },
@@ -107,6 +110,17 @@
         "gaps": { "type": "integer", "minimum": 0 }
       },
       "required": ["percent", "attested", "total", "files", "exempt", "gaps"],
+      "additionalProperties": true
+    },
+    "verificationSummary": {
+      "type": "object",
+      "properties": {
+        "verifiers": { "type": "integer", "minimum": 0 },
+        "confirmed": { "type": "integer", "minimum": 0 },
+        "contested": { "type": "integer", "minimum": 0 },
+        "single": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["verifiers", "confirmed", "contested", "single"],
       "additionalProperties": true
     },
     "chunkCoverage": {

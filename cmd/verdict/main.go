@@ -31,6 +31,7 @@ import (
 	"github.com/stainless-code/verdict/internal/index"
 	"github.com/stainless-code/verdict/internal/learn"
 	"github.com/stainless-code/verdict/internal/pack"
+	"github.com/stainless-code/verdict/internal/panel"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/ready"
@@ -58,7 +59,7 @@ const (
 	verbDoctor = "doctor"
 )
 
-const verbsHint = "fetch|fetch-local|run|record|adopt|fix|post|triage|report|next|show|" +
+const verbsHint = "fetch|fetch-local|run|panel|record|adopt|fix|post|triage|report|next|show|" +
 	"check-tree|verify|doctor|calibrate|ready|gate|threads|trend|index|backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|config"
 
 func main() {
@@ -166,6 +167,7 @@ const cmdBacktest = "backtest"
 
 var readVerbs = map[string]readHandler{
 	"config":     configcmd.Run,
+	"panel":      panel.Run,
 	"report":     report.Run,
 	"next":       report.RunNext,
 	cmdShow:      report.RunShow,

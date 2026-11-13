@@ -2,7 +2,7 @@ package main
 
 func usageText() string {
 	return "usage: verdict fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
-		"fetch-local|run|record|adopt|fix|check-tree|ready|gate|threads|trend|index|" +
+		"fetch-local|run|panel|record|adopt|fix|check-tree|ready|gate|threads|trend|index|" +
 		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|config [opts]\n" +
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
 		"[--index <ref|dir>] [--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
@@ -67,6 +67,8 @@ func usageText() string {
 		"    --preview resolves a proposed file (or the trusted inventory, else the no-policy layers)\n" +
 		"    with current personal settings and environment — no live calls, no writes, and\n" +
 		"    never an approval. One git rev-parse root probe runs outside the caller commander.\n" +
+		"  panel <owner/repo> <pr> [--json]\n" +
+		"    plan independent verification in verification/; never calls a model.\n" +
 		"  record <owner/repo> <local-slug> [--dry-run] [--strict] [--cost-names[=<names>]]\n" +
 		"         [--require-coverage] [--json]\n" +
 		"    validate + merge a local review.json into findings.json + record.json. No GitHub, no post.\n" +

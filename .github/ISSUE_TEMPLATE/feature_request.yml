@@ -19,6 +19,7 @@ body:
         - calibrate
         - fetch-local
         - run
+        - panel
         - record
         - adopt
         - fix

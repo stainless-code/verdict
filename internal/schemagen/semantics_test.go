@@ -18,6 +18,8 @@ import (
 // skill) re-pinned all ten hashes: only each $id URL moved; no property,
 // required key, enum, or type changed.
 var publishedSemantics = map[string]string{
+	"panel-plan.schema.json":  "c4ac13bb03fb5918bc5b60ff9eba10776f10b999fdc88049409792439b1c043a",
+	"panel.schema.json":       "60fee20b395837e41c0bb8044dcaed55fa7a38d8d8a504a9f228be95b28319ef",
 	"calibration.schema.json": "9e061b60ab7c2252b86146af16742a3e59c64a28e9f6441fd0f30f1f5e2f9581",
 	// additive backtest.schema.json (new run-artifact document for the backtest
 	// score report; no existing schema property, required key, or type changed).
@@ -199,7 +201,7 @@ var publishedSemantics = map[string]string{
 	// pack test: additive $defs/packTestData, packTestCase, and
 	// packTestSummary, plus the generated envelope description. Existing shapes
 	// remain unchanged.
-	"envelope.schema.json": "93debac67abbad65df1b18fa715a4bc1193a2c727393e900e349d80a38eff5a9",
+	"envelope.schema.json": "12677606ec3c2b3deb6c22c70fe1b35b1c88fcae05c69f3848c968cc01de64ff",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -208,7 +210,7 @@ var publishedSemantics = map[string]string{
 	// finding categories: additive optional entry.category enum (absent and
 	// null group as untagged; never part of the sig). No existing property,
 	// required key, or type changed.
-	"findings.schema.json": "aa0f9fc9500bb90f2c0d7582225633e53d81b56808f5903d96d8764f0239eced",
+	"findings.schema.json": "a4f50dcfb2456c5f4b5ba5f66e540cb8cf6ef18086e4d31e298ca5d8be417726",
 	// post_floor_scoped: additive optional per-path posting floor list with its
 	// $defs/floorScope entry (required path, enum floor). No existing
 	// property, required key, or type changed.
@@ -225,7 +227,7 @@ var publishedSemantics = map[string]string{
 	// $defs/chunkCoverage (required attested and total), the chunked
 	// bundle's stored chunk[] attestation. No existing property, required
 	// key, enum, or type changed.
-	"post.schema.json": "9427aab9df7a862b173089506d63fdf86bf2929fd16cbb507c81d8939ebc10c1",
+	"post.schema.json": "f3ca9187045c2f9ebafe2e9baa6557fbf99e6ef5c30b90cca0b2eb17a217e90e",
 	// patch identity: additive $defs/identity root (new bundle document) —
 	// no existing property, required key, or type changed.
 	"identity.schema.json": "efe9a7b331e41715bc55b8824e95154add584c2d63f670811ef03c350d2e5bdb",
@@ -294,7 +296,7 @@ var publishedSemantics = map[string]string{
 	// $defs/chunkCoverage (required attested and total), the chunked
 	// bundle's stored chunk[] attestation. No existing property, required
 	// key, enum, or type changed.
-	"record.schema.json": "467a9c5b0d2b6040d301e99dddb10d84f3d3bc8c68dc0d01f3c6fc9d786751e6",
+	"record.schema.json": "db998c9865ae0f9bdd948b83eefeacd97421d80420688a98eade523fec9a3626",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable comment.brief
 	// (optional; no existing property, required key, or type changed). The
 	// descriptions now state the checker's exact error/warning split; shape
