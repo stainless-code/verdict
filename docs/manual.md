@@ -642,6 +642,7 @@ snapshot the bytes into the bundle:
 | `.verdict/config.json` (typed defaults)    | `fetch` panel, budget, cap, chunking  |
 | `.verdict/kb.jsonl`                        | `fetch` recall; `record`/`post` cites |
 | `.verdict/learnings.md`                    | the review agent (headings)           |
+| `.verdict/verify-env` (env allowlist)      | `verify` child environment opt-ins    |
 | `.verdict/overrides/*.md` (four fragments) | `record`/`post` body and footer       |
 | `.verdict/packs/**` (every regular file)   | `fetch` lens and rule layers          |
 
@@ -2662,10 +2663,30 @@ environment, and the split is deliberate (the security rationale is in
   `doctor`, and the base-owned control reads) **inherit your environment**.
   That is the point: they must use your `gh` auth and your git config,
   because verdict is a local CLI working on your behalf.
-- The **agent-written `verifyCmd`** runs under `bash -c` with an **explicit**
-  environment — the ordered snapshot the CLI hands `verify`, not a silent
-  inheritance. The same snapshot is the redaction list for the recorded tail,
-  so a token you exported is scrubbed from `.verify.out` and `patch.json`.
+- The **agent-written `verifyCmd`** (and deep-group `--command`) runs under
+  `bash -c` with a **default-deny allowlist** over the caller's environment —
+  never an unfiltered inheritance. By default, only baseline locale, terminal,
+  shell, XDG, and toolchain variables pass (`PATH`, `HOME`, `LANG`, `LC_*`,
+  `TERM`, `TMPDIR`, `TZ`, `CI`, `USER`, `LOGNAME`, `SHELL`, `COLORTERM`,
+  `NO_COLOR`, `FORCE_COLOR`, `CLICOLOR`, `CLICOLOR_FORCE`, `XDG_CACHE_HOME`,
+  `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `GOPATH`, `GOCACHE`,
+  `GOMODCACHE`, `GOROOT`, `GOTOOLCHAIN`, `GOPROXY`, `GOPRIVATE`, `GONOPROXY`,
+  `GONOSUMDB`, `CGO_ENABLED`, `CC`, `CXX`, `CARGO_HOME`, `RUSTUP_HOME`,
+  `NPM_CONFIG_CACHE`, `PNPM_HOME`, `BUN_INSTALL`, `DENO_DIR`, `VIRTUAL_ENV`,
+  `UV_CACHE_DIR`, `PIP_CACHE_DIR`, plus Windows runtime variables `TEMP`,
+  `TMP`, `PATHEXT`, `COMSPEC`, `SYSTEMROOT`, `WINDIR`, `USERPROFILE`,
+  `APPDATA`, `LOCALAPPDATA`, `PROGRAMDATA`, `PROGRAMFILES`, `PROGRAMFILES(X86)`,
+  `COMMONPROGRAMFILES`, `OS`, `NUMBER_OF_PROCESSORS`, `PROCESSOR_ARCHITECTURE`
+  on `GOOS=windows`). Any variable matching `envsecret.IsSecret` (`*_TOKEN`,
+  `*_SECRET`, `*_KEY`, `AWS_*`, `GH_*`, `GITHUB_*`, `SSH_AUTH_SOCK`, including
+  `LC_TOKEN`) is dropped even when it matches an allowlist prefix. Operators
+  opt extra variable names in with `--env-allowlist <name[,name...]>` (repeatable)
+  or `.verdict/verify-env` (one variable name per line, `#` comments and blank
+  lines ignored, read from the verified base-commit `controls` snapshot so an
+  untrusted PR head cannot widen its own environment). Dropped variable names
+  — never values — are listed in deterministic sorted order in `warnings[]`,
+  and the full parent environment remains the redaction list for `verifiedTail`
+  in `patch.json`.
 - The **agent `run` launches** inherits your environment for the same reason
   `gh` and `git` do: it authenticates with your key, on your machine. `--json`
   adds `NO_COLOR=1`. The recorded tail in `launcher.json` scrubs the values of
