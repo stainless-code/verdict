@@ -235,7 +235,7 @@ func TestSummaryCommentPerHostCreateUpdateOtherAuthorPagination(t *testing.T) {
 			provider:      providerForgejo,
 			wantReviewURL: "https://fj.example/acme/app/pulls/7#pullrequestreview-901",
 			wantInlineURL: "https://fj.example/acme/app/pulls/7#issuecomment-77",
-			inlineJSON:    `[{"path":"notes.txt","line":2,"body":"Consider clarifying this line.","html_url":"https://fj.example/acme/app/pulls/7#issuecomment-77"}]`,
+			inlineJSON:    `[{"path":"notes.txt","position":1,"body":"Unrelated note.","html_url":"https://fj.example/acme/app/pulls/7#issuecomment-76"},{"path":"notes.txt","position":2,"body":"Consider clarifying this line.","html_url":"https://fj.example/acme/app/pulls/7#issuecomment-77"}]`,
 			page2Route:    forgejoReadPrefix + "https://forgejo.invalid/api/v1/repos/acme/app/issues/7/comments?limit=50&page=2",
 			page1Raw:      forgejoPage1,
 			page2Raw:      "[" + markedOwn401 + "]",
@@ -540,5 +540,20 @@ func verifySummaryMarkerDistinctness(t *testing.T) {
 	}
 	if !threadscore.IsVerdictBody(sm) {
 		t.Errorf("IsVerdictBody rejected summary marker %q", sm)
+	}
+}
+
+func TestInlineLinksFromMapsForgejoPositionAndOriginalPosition(t *testing.T) {
+	t.Parallel()
+	items, err := publicationList(`[
+		{"path":"notes.txt","position":7,"original_position":3,"body":"active","html_url":"https://fj.example/c/1"},
+		{"path":"notes.txt","position":0,"original_position":4,"body":"outdated","html_url":"https://fj.example/c/2"}
+	]`)
+	if err != nil {
+		t.Fatalf("publicationList: %v", err)
+	}
+	got := inlineLinksFromMaps(items)
+	if len(got) != 2 || got[0].Line != 7 || got[1].Line != 4 {
+		t.Fatalf("inlineLinksFromMaps = %+v, want Line 7 and Line 4", got)
 	}
 }

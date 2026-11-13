@@ -622,18 +622,23 @@ func inlineLinksFromMaps(items []map[string]any) []summaryInlineLink {
 		if url == "" {
 			url = jq.StrOf(m["web_url"])
 		}
-		line := intFromAny(m[fieldLine])
-		if line <= 0 {
-			line = intFromAny(m["original_line"])
-		}
 		out = append(out, summaryInlineLink{
 			Path: jq.StrOf(m[fieldPath]),
 			Body: jq.StrOf(m[fieldBody]),
 			URL:  url,
-			Line: line,
+			Line: inlineCommentLine(m),
 		})
 	}
 	return out
+}
+
+func inlineCommentLine(m map[string]any) int {
+	for _, key := range []string{fieldLine, "original_line", "position", "original_position"} {
+		if line := intFromAny(m[key]); line > 0 {
+			return line
+		}
+	}
+	return 0
 }
 
 func intFromAny(v any) int {
