@@ -1,6 +1,7 @@
 package postcore
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -53,5 +54,27 @@ func TestCRMalformedNotesFailClosed(t *testing.T) {
 				t.Fatalf("malformed notes caused %d writes", host.attempts)
 			}
 		})
+	}
+}
+
+func TestCRFollowupRetryAdvice(t *testing.T) {
+	t.Parallel()
+	var warnings []string
+	st := postTestState(t.TempDir(), liveGuardHead, core.PostFlags{}, &warnings)
+	st.event = "COMMENT"
+	st.body = "The first rendered review summary."
+	st.extraParts = []string{"Remaining follow-up text."}
+	st.buildPayloads()
+	st.liveLoaded = true
+	st.live = []liveReview{{body: st.body, commitID: st.commitID}}
+	if ref := st.remoteDiff(); ref != nil {
+		t.Fatal(ref)
+	}
+	if len(st.payloads) != 1 || !strings.Contains(st.payloads[0], "Remaining follow-up text.") {
+		t.Fatal("retry failed to skip the published first part")
+	}
+	message := st.followRefusal(2, 2, `{"id":101}`, "").Message
+	if !strings.Contains(message, "re-run skips parts already posted") || !strings.Contains(message, "--force") {
+		t.Fatalf("misleading retry advice: %s", message)
 	}
 }

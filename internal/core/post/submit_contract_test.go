@@ -580,7 +580,7 @@ func TestRunSplitFollowUpFailure(t *testing.T) {
 		t.Fatalf("ref = %v, want post-failed", ref)
 	}
 	want := "post failed: follow-up part 2/2 not posted (review 101 landed part 1 — " +
-		"fix the cause and re-run; part 1 reposts as a duplicate)"
+		"fix the cause and re-run; re-run skips parts already posted, and --force reposts part 1 as a duplicate)"
 	if ref.Message != want {
 		t.Errorf("message = %q, want %q", ref.Message, want)
 	}
