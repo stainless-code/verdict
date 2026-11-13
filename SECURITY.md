@@ -86,8 +86,9 @@ Do not "fix" the inherited side: it is the documented local posture.
   `USER`, `LOGNAME`, `SHELL`, color flags, `XDG_*_HOME`, Go/C/Rust/JS/Python
   cache and home variables, plus Windows OS runtime variables on
   `GOOS=windows`) pass by default; any variable whose name matches
-  `envsecret.IsSecret` (`*_TOKEN`, `*_SECRET`, `*_KEY`, `AWS_*`, `GH_*`,
-  `GITHUB_*`, `SSH_AUTH_SOCK`, including `LC_TOKEN`) is dropped even when it
+  `envsecret.IsSecret` (credential-shaped endings such as `*_TOKEN`,
+  `*_SECRET`, `*_KEY`, `*_PASSWORD`, plus `AWS_ACCESS_KEY_ID` and
+  `SSH_AUTH_SOCK`, including `LC_TOKEN`) is dropped even when it
   matches an allowlist prefix. Operators opt additional variable names in with
   `--env-allowlist NAME[,NAME...]` or `.verdict/verify-env` (one variable name
   per line, `#` comments and blank lines ignored, read exclusively from the

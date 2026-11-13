@@ -2751,10 +2751,10 @@ environment, and the split is deliberate (the security rationale is in
   `UV_CACHE_DIR`, `PIP_CACHE_DIR`, plus Windows runtime variables `TEMP`,
   `TMP`, `PATHEXT`, `COMSPEC`, `SYSTEMROOT`, `WINDIR`, `USERPROFILE`,
   `APPDATA`, `LOCALAPPDATA`, `PROGRAMDATA`, `PROGRAMFILES`, `PROGRAMFILES(X86)`,
-  `COMMONPROGRAMFILES`, `OS`, `NUMBER_OF_PROCESSORS`, `PROCESSOR_ARCHITECTURE`
-  on `GOOS=windows`). Any variable matching `envsecret.IsSecret` (`*_TOKEN`,
-  `*_SECRET`, `*_KEY`, `AWS_*`, `GH_*`, `GITHUB_*`, `SSH_AUTH_SOCK`, including
-  `LC_TOKEN`) is dropped even when it matches an allowlist prefix. Operators
+  `COMMONPROGRAMFILES`, `OS`, `NUMBER_OF_PROCESSORS`, `PROCESSOR_ARCHITECTURE`,
+  `SYSTEMDRIVE`, `HOMEDRIVE`, `HOMEPATH`, `MSYSTEM` on `GOOS=windows`). Any variable matching `envsecret.IsSecret` (credential-shaped
+  endings such as `*_TOKEN`, `*_SECRET`, `*_KEY`, `*_PASSWORD`, plus
+  `AWS_ACCESS_KEY_ID` and `SSH_AUTH_SOCK`, including `LC_TOKEN`) is dropped even when it matches an allowlist prefix. Operators
   opt extra variable names in with `--env-allowlist <name[,name...]>` (repeatable)
   or `.verdict/verify-env` (one variable name per line, `#` comments and blank
   lines ignored, read from the verified base-commit `controls` snapshot so an

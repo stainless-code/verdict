@@ -3,6 +3,7 @@ package verifycore
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -32,6 +33,7 @@ var windowsAllowlistNames = []string{
 	"USERPROFILE", "APPDATA", "LOCALAPPDATA", "PROGRAMDATA",
 	"PROGRAMFILES", "PROGRAMFILES(X86)", "COMMONPROGRAMFILES",
 	"OS", "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE",
+	"SYSTEMDRIVE", "HOMEDRIVE", "HOMEPATH", "MSYSTEM",
 }
 
 func defaultAllowlistSet(isWindows bool) map[string]bool {
@@ -199,19 +201,10 @@ func filterChildEnv(environ, explicit []string, jsonMode, isWindows bool) (kept,
 			droppedSet[name] = true
 		}
 	}
-	return appendDefaultNoColor(kept, jsonMode, isWindows), sortedKeys(droppedSet)
-}
-
-func sortedKeys(m map[string]bool) []string {
-	if len(m) == 0 {
-		return nil
+	if len(droppedSet) == 0 {
+		return appendDefaultNoColor(kept, jsonMode, isWindows), nil
 	}
-	keys := make([]string, 0, len(m))
-	for name := range m {
-		keys = append(keys, name)
-	}
-	slices.Sort(keys)
-	return keys
+	return appendDefaultNoColor(kept, jsonMode, isWindows), slices.Sorted(maps.Keys(droppedSet))
 }
 
 func formatDroppedWarning(dropped []string) string {
