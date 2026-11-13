@@ -137,3 +137,29 @@ func TestHiddenMovedSectionDoesNotInventFinding(t *testing.T) {
 		t.Fatalf("withheld move invented %d findings; want one original", len(st.entries))
 	}
 }
+
+func TestExcludedPathsReusesLoadedReceipt(t *testing.T) {
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile("testdata/suppression/excluded.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir+"/excluded.json", raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st := &state{dir: dir}
+	review := []byte(`{"suppressed":[{"path":"vendor/.env","source":"exclusion","exclusion_id":"ignore:1","reason":"Excluded at trusted base."}]}`)
+	if ref := st.validateSuppressionBytes(review); ref != nil {
+		t.Fatalf("validateSuppressionBytes: %v", ref)
+	}
+	if err := os.Remove(dir + "/excluded.json"); err != nil {
+		t.Fatal(err)
+	}
+	got := st.excludedPaths()
+	if !got["vendor/.env"] {
+		t.Fatalf("excludedPaths = %v; want cached vendor/.env", got)
+	}
+}

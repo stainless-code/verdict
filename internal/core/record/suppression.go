@@ -314,8 +314,8 @@ func loadExclusions(dir string) *core.ExcludedFile {
 	return &receipt
 }
 
-func excludedPaths(dir string) map[string]bool {
-	receipt := loadExclusions(dir)
+func (st *state) excludedPaths() map[string]bool {
+	receipt := st.exclusions()
 	out := map[string]bool{}
 	if receipt == nil {
 		return out
@@ -343,7 +343,7 @@ func (st *state) autoExclusion(e *jq.Obj) bool {
 	return false
 }
 
-func validateSuppressionBytes(dir string, raw []byte) *core.RefusalError {
+func (st *state) validateSuppressionBytes(raw []byte) *core.RefusalError {
 	doc, err := jq.DecodeOrdered(raw)
 	if err != nil {
 		return refusalOrFailed(err)
@@ -352,7 +352,7 @@ func validateSuppressionBytes(dir string, raw []byte) *core.RefusalError {
 	if !ok {
 		return nil
 	}
-	st := &state{dir: dir, review: review}
+	st.review = review
 	if _, err := st.parseSuppressions(); err != nil {
 		return refusalOrFailed(err)
 	}
