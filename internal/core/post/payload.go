@@ -12,7 +12,10 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/overrides"
 	"github.com/stainless-code/verdict/internal/provenance"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
+
+const paragraphBreak = "\n\n"
 
 func (st *state) buildPayloads() {
 	st.comments = buildPostComments(st.merged.Kept, st.merged.KeptSigs)
@@ -25,7 +28,7 @@ func (st *state) buildPayloads() {
 	}
 	st.phash = contentDigest(strings.Join(append([]string{st.body}, st.extraParts...), "\n"), st.commitID, st.comments)
 	if !st.flags.DryRun {
-		st.body += "\n\n" + fmt.Sprintf(reviewMarkerFormat, st.phash, st.commitID)
+		st.body += paragraphBreak + fmt.Sprintf(reviewMarkerFormat, st.phash, st.commitID)
 		st.payloads[0] = postPayload(st.body, st.event, commitIDValue(st.commitID), st.comments)
 	}
 	st.payload = st.payloads[0]
@@ -58,7 +61,7 @@ const maxSplitParts = 999
 var splitNoteReserve = max(len(splitFirstNote(maxSplitParts+1)), len(splitFollowHead(maxSplitParts, maxSplitParts)))
 
 const (
-	paraSep = "\n\n"
+	paraSep = paragraphBreak
 )
 
 func splitFirstNote(n int) string {
@@ -79,7 +82,7 @@ func (st *state) splitPreFooter(body string) string {
 	}
 	sep := ""
 	if block != "" {
-		sep = "\n\n"
+		sep = paragraphBreak
 	}
 	reserve := len(sep) + len(block) + reviewMarkerReserve
 	if len(body)+reserve <= hostingBodyLimit {
@@ -184,9 +187,13 @@ func projectComment(m *jq.Obj, sig string) *jq.Obj {
 		bd, _ := m.Get(fieldBody)
 		out.Set(fieldBody, jq.R(jq.Alt(bd, ""))+"\n\n```suggestion\n"+jq.R(sugg)+"\n```")
 	}
+	if line := readcommon.SourcesLine(m); line != "" {
+		body, _ := out.Get(fieldBody)
+		out.Set(fieldBody, jq.R(body)+paragraphBreak+line)
+	}
 	if sig != "" {
 		body, _ := out.Get(fieldBody)
-		out.Set(fieldBody, jq.R(jq.Alt(body, ""))+"\n\n"+threadscore.FindingMarker(sig))
+		out.Set(fieldBody, jq.R(jq.Alt(body, ""))+paragraphBreak+threadscore.FindingMarker(sig))
 	}
 	return out
 }

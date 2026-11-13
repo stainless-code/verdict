@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/webui"
 )
 
@@ -232,68 +233,14 @@ func openExportParent(dest string) (*os.Root, string, error) {
 }
 
 func openExportParentWith(dest string, open func(string) (*os.Root, error)) (*os.Root, string, error) {
-	absolute, err := checkedExportPath(dest)
+	root, name, err := readcommon.OpenParentWith(dest, open)
 	if err != nil {
-		return nil, "", err
-	}
-	identity, err := checkedExportParentIdentity(filepath.Dir(absolute))
-	if err != nil {
-		return nil, "", err
-	}
-	parent, err := open(filepath.Dir(absolute))
-	if err != nil {
+		if errors.Is(err, readcommon.ErrSymlinkPath) {
+			return nil, "", &cli.RefusalError{Code: exportSymlink, Message: "HTML export path must not contain a symlink"}
+		}
 		return nil, "", exportFailure(err)
 	}
-	if err := verifyOpenedExportParent(parent, identity); err != nil {
-		_ = parent.Close()
-		return nil, "", err
-	}
-	return parent, filepath.Base(absolute), nil
-}
-
-func verifyOpenedExportParent(parent *os.Root, identity os.FileInfo) error {
-	opened, err := parent.Stat(".")
-	if err != nil {
-		return exportFailure(err)
-	}
-	if !os.SameFile(identity, opened) {
-		return &cli.RefusalError{Code: exportSymlink, Message: "HTML export parent changed while opening it"}
-	}
-	return nil
-}
-
-func checkedExportPath(dest string) (string, error) {
-	if !filepath.IsAbs(dest) {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return "", exportFailure(err)
-		}
-		dest = cwd + string(filepath.Separator) + dest
-	}
-	volume := filepath.VolumeName(dest)
-	current := volume + string(filepath.Separator)
-	parts := strings.Split(strings.TrimRight(filepath.ToSlash(dest[len(volume):]), "/"), "/")
-	for i, part := range parts {
-		current = filepath.Join(current, part)
-		if err := exportPathComponent(current, i == len(parts)-1); err != nil {
-			return "", err
-		}
-	}
-	return current, nil
-}
-
-func exportPathComponent(name string, last bool) error {
-	info, err := os.Lstat(name)
-	if os.IsNotExist(err) && last {
-		return nil
-	}
-	if err != nil {
-		return exportFailure(err)
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return &cli.RefusalError{Code: exportSymlink, Message: "HTML export path must not contain a symlink"}
-	}
-	return nil
+	return root, name, nil
 }
 
 func exportAsset(name string) ([]byte, error) {
@@ -311,15 +258,4 @@ func staticExportIndex(markup string) string {
 	markup = strings.Replace(markup, `content="live"`, `content="static"`, 1)
 	policy := `<meta http-equiv="Content-Security-Policy" content="` + cspPolicy + `" />`
 	return strings.Replace(markup, `<meta charset="utf-8" />`, `<meta charset="utf-8" />`+"\n    "+policy, 1)
-}
-
-func checkedExportParentIdentity(name string) (os.FileInfo, error) {
-	identity, err := os.Lstat(name)
-	if err != nil {
-		return nil, exportFailure(err)
-	}
-	if identity.Mode()&os.ModeSymlink != 0 {
-		return nil, &cli.RefusalError{Code: exportSymlink, Message: "HTML export parent must not be a symlink"}
-	}
-	return identity, nil
 }

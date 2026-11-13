@@ -114,6 +114,10 @@
           "description": "Hyphenated in agent input; absent reads true, a non-boolean refuses.",
           "type": ["boolean", "null"]
         },
+        "sources": {
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        },
         "kb": {
           "description": "Cited knowledge-base rule ids; a non-array or non-string entry refuses, and a malformed id warns and drops.",
           "type": ["array", "null"],

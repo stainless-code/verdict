@@ -66,7 +66,7 @@ var (
 	//nolint:goconst // schema keys are published literals
 	knownCommentKeys = []string{
 		fieldPath, fieldLine, "start_line", fieldSide, "body",
-		"suggestion", fieldBrief, fieldRigor, fieldSeverity, fieldCategory, fieldInBoundsInput, "kb",
+		fieldSources, "suggestion", fieldBrief, fieldRigor, fieldSeverity, fieldCategory, fieldInBoundsInput, "kb",
 	}
 	knownTriageKeys   = []string{fieldSig, fieldStatus, problemRationale}
 	knownSectionKeys  = []string{"heading", fieldSeverity}
@@ -349,6 +349,8 @@ func (c *checker) checkComment(i int, item any) {
 			if _, ok := v.(bool); !ok {
 				c.wrongType(base+".in-bounds", "in-bounds must be a boolean", "use true or false", true)
 			}
+		case fieldSources:
+			c.checkSources(base, v)
 		case fieldKB:
 			c.checkKB(base+".kb", v)
 		default:
@@ -958,4 +960,17 @@ func editDistance(a, b string) int {
 		prev = cur
 	}
 	return prev[len(b)]
+}
+
+func (c *checker) checkSources(base string, v any) {
+	items, ok := v.([]any)
+	if !ok {
+		c.wrongType(base+".sources", "sources must be an array", "use an array of source names")
+		return
+	}
+	for _, item := range items {
+		if _, ok := item.(string); !ok {
+			c.wrongType(base+".sources", "source must be a string", "use a source name")
+		}
+	}
 }

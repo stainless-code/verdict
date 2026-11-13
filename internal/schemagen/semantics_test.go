@@ -210,7 +210,7 @@ var publishedSemantics = map[string]string{
 	// finding categories: additive optional entry.category enum (absent and
 	// null group as untagged; never part of the sig). No existing property,
 	// required key, or type changed.
-	"findings.schema.json": "a4f50dcfb2456c5f4b5ba5f66e540cb8cf6ef18086e4d31e298ca5d8be417726",
+	"findings.schema.json": "ea7691dc806023b4dab04345e07e57d196920dd7b0f3ef57024719bc8ac76c82",
 	// post_floor_scoped: additive optional per-path posting floor list with its
 	// $defs/floorScope entry (required path, enum floor). No existing
 	// property, required key, or type changed.
@@ -308,7 +308,7 @@ var publishedSemantics = map[string]string{
 	// checker warns (never refuses) on unknown or non-string values and the
 	// normalizer lowercases case variants. No existing property, required key,
 	// or type changed.
-	"review.schema.json": "25d13e382b0aac5cfb146909f388603895506aa4491dbc39b22608621d715a6f",
+	"review.schema.json": "27696bf46879b4ebe0af59db4e7ba2c461404658b78c230572563efa405f1344",
 	// additive threads.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed). The PR-conversation
 	// contract extends the first cut with the thread's host id, PR/head/time

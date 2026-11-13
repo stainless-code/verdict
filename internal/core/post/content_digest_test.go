@@ -41,3 +41,18 @@ func TestContentDigestHeadBodyAndPositions(t *testing.T) {
 		t.Fatal("diff position or range metadata changed content digest")
 	}
 }
+
+func TestContentDigestRenderedSources(t *testing.T) {
+	t.Parallel()
+	finding := jq.NewObj("path", "a.go", "side", "RIGHT", "line", 10, "body", "broken", "sources", []any{"docs/auth.md"})
+	rendered := projectComment(finding, "")
+	body, _ := rendered.Get("body")
+	if body != "broken\n\nSources used: docs/auth.md" {
+		t.Fatalf("posted body = %q", body)
+	}
+	digest := contentDigest("summary", "head-a", []any{rendered})
+	rendered.Set("body", "broken")
+	if contentDigest("summary", "head-a", []any{rendered}) == digest {
+		t.Fatal("digest ignored rendered Sources used line")
+	}
+}

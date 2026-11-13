@@ -14,6 +14,7 @@ type FetchFlags struct {
 	// Index is the operator's explicit index hand-off (a ref or a directory);
 	// empty means no impact section is written.
 	Index         string
+	Context       []string
 	BudgetConsent bool
 	ShowPrompts   bool
 	ChunkFlag     bool
@@ -38,6 +39,7 @@ type FetchLocalFlags struct {
 	// Index is the operator's explicit index hand-off, exactly as fetch takes
 	// it; empty means no impact section is written.
 	Index         string
+	Context       []string
 	Paths         []string
 	Staged        bool
 	HasStash      bool `json:"-"`
@@ -132,6 +134,7 @@ func (p FetchPanel) Wire() *jq.Obj {
 // the local verb emits kind second and no incremental_base, while fetch
 // emits incremental_base last among the fixed keys.
 type FetchData struct { //nolint:govet // field order is the published property order
+	Sources         []string
 	Local           bool `json:"-"`
 	Dir             string
 	Kind            string `json:"-"`
@@ -183,6 +186,13 @@ func (d *FetchData) Wire() *jq.Obj {
 		o.Set("controls", d.Controls)
 	}
 	o.Set("artifacts", d.Artifacts)
+	if len(d.Sources) > 0 {
+		sources := make([]any, 0, len(d.Sources))
+		for _, source := range d.Sources {
+			sources = append(sources, source)
+		}
+		o.Set("sources", sources)
+	}
 	d.wireTail(o)
 	return o
 }
