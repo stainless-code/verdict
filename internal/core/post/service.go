@@ -149,6 +149,11 @@ type state struct { //nolint:govet // field grouping documents the post run stat
 	// secretShapes is what --allow-secret-values let through, in first-seen
 	// order; the receipt records it so an overridden post stays legible.
 	secretShapes []string
+	me           string
+	meErr        error
+	meLoaded     bool
+	inlineLinks  []summaryInlineLink
+	summary      *core.PostSummary
 }
 
 func (st *state) withWarnings(ref *core.RefusalError) *core.RefusalError {
@@ -285,7 +290,7 @@ func (st *state) publish(ctx context.Context) (*core.PostResponse, *core.Refusal
 	st.buildPayloads()
 	st.eventLine()
 	if st.flags.DryRun {
-		return st.dryRunResponse()
+		return st.dryRunResponse(ctx)
 	}
 	if st.req.JSONMode {
 		st.human("dry-run flag missing with --json on a real post is allowed; envelope follows the post")
@@ -603,7 +608,7 @@ func (st *state) downgradeStale() {
 
 func (st *state) authorGate(ctx context.Context) *core.RefusalError {
 	author := st.store().Author()
-	me, rerr := st.selfLogin(ctx)
+	me, rerr := st.cachedSelfLogin(ctx)
 	if rerr != nil {
 		me = ""
 	}

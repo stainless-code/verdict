@@ -265,12 +265,13 @@ const recheckReasonBytes = 120
 // whole payload would duplicate it. warnings are the progress notes the
 // refusal carries back to the operator.
 type postAttempt struct {
-	posted   string
-	errText  string
-	message  string
-	warnings []string
-	partial  bool
-	ok       bool
+	posted      string
+	errText     string
+	message     string
+	warnings    []string
+	inlineLinks []summaryInlineLink
+	partial     bool
+	ok          bool
 }
 
 // postFailure records one failed attempt: the reason lands in the .post.err
@@ -367,6 +368,13 @@ func (st *state) submit(ctx context.Context) (*core.PostResponse, *core.RefusalE
 	if err := atomic.WriteFile(st.dir+"/.posted_"+st.phash, []byte{}); err != nil {
 		return nil, st.withWarnings(refusalOrFailed(err))
 	}
+	if st.summaryMode() == summaryComment {
+		sum, sref := st.publishSummary(ctx, cmdr, obj)
+		if sref != nil {
+			return nil, st.withWarnings(sref)
+		}
+		st.summary = sum
+	}
 	if err := writePostReceipt(st, obj); err != nil {
 		return nil, st.withWarnings(refusalOrFailed(err))
 	}
@@ -396,6 +404,7 @@ func (st *state) postOneWithRetry(ctx context.Context, cmdr Commander, payload s
 		last = postOnce(ctx, cmdr, st.provider(), st.env(), st.req.Repo, st.req.Pr, st.dir, payload)
 		st.warnings = append(st.warnings, last.warnings...)
 		if last.ok {
+			st.inlineLinks = append(st.inlineLinks, last.inlineLinks...)
 			return last.posted, nil
 		}
 		if last.message != "" {
@@ -531,6 +540,7 @@ func writePostReceipt(st *state, obj *jq.Obj) error {
 	}
 	receipt.Coverage = st.merged.Coverage.Receipt()
 	receipt.ChunkCoverage = st.merged.Coverage.ChunkReceipt()
+	receipt.Summary = st.summary
 	if len(withheld) > 0 {
 		receipt.BelowFloorExcluded = len(withheld)
 		receipt.PostFloorScoped = scopedFloors(withheld)
@@ -606,6 +616,7 @@ func (st *state) successResponse(obj *jq.Obj, posted string) *core.PostResponse 
 		},
 		Items:           typedPostItems(payload),
 		Coverage:        st.merged.Coverage.Receipt(),
+		Summary:         st.summary,
 		Confidence:      intOrNilPost(st.merged.Confidence),
 		SecuritySummary: strOrNilPost(st.merged.Security),
 		PayloadHash:     st.phash,

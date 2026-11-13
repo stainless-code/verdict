@@ -2,6 +2,7 @@ package postcore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -253,8 +254,12 @@ func parseForgejoResponse(raw string) (forgejoHTTP, bool) {
 // the host's own error body on stdout where `-f` would throw both away on 4xx.
 // The credential comes from a 0600 file because stdin already carries the body.
 func forgejoWriteArgv(auth curlauth.Credential, url string) (argv []string, cleanup func(), err error) {
+	return forgejoMethodArgv(auth, methodPost, url)
+}
+
+func forgejoMethodArgv(auth curlauth.Credential, method, url string) (argv []string, cleanup func(), err error) {
 	argv, cleanup, err = auth.FileArgv(curlShowStatus, curlInclude, "-H", curlJSONHeader,
-		curlRequest, methodPost, curlDataBinary, curlStdin, url)
+		curlRequest, method, curlDataBinary, curlStdin, url)
 	if err != nil {
 		return nil, nil, jq.Sealed("forgejo credential file", err)
 	}
@@ -618,4 +623,96 @@ func forgejoOpenInReview(ctx context.Context, cmdr Commander, auth curlauth.Cred
 		}
 	}
 	return open, stderr, nil
+}
+
+func (forgejoHost) listSummaryComments(ctx context.Context, cmdr Commander, env map[string]string,
+	repo, pr string,
+) ([]summaryRemoteComment, error) {
+	auth, api, ref := forgejo.APIBase(env)
+	if ref != nil {
+		return nil, forgejoRefusal(ref)
+	}
+	endpoint := api + "/repos/" + repo + "/issues/" + pr + "/comments"
+	read := func(url string) ([]map[string]any, error) {
+		raw, _, err := forgejoRead(ctx, cmdr, auth, url)
+		if err != nil {
+			return nil, err
+		}
+		return publicationList(raw)
+	}
+	items, err := readPages(endpoint, read)
+	if err != nil {
+		return nil, err
+	}
+	return summaryCommentsFromMaps(items, ""), nil
+}
+
+func (forgejoHost) createSummaryComment(ctx context.Context, cmdr Commander, env map[string]string,
+	repo, pr, body string,
+) (summaryRemoteComment, error) {
+	auth, api, ref := forgejo.APIBase(env)
+	if ref != nil {
+		return summaryRemoteComment{}, forgejoRefusal(ref)
+	}
+	return forgejoSummaryWrite(ctx, cmdr, auth, methodPost, api+"/repos/"+repo+"/issues/"+pr+"/comments", body)
+}
+
+func (forgejoHost) updateSummaryComment(ctx context.Context, cmdr Commander, env map[string]string,
+	repo, _, commentID, body string,
+) (summaryRemoteComment, error) {
+	auth, api, ref := forgejo.APIBase(env)
+	if ref != nil {
+		return summaryRemoteComment{}, forgejoRefusal(ref)
+	}
+	return forgejoSummaryWrite(ctx, cmdr, auth, methodPatch, api+"/repos/"+repo+"/issues/comments/"+commentID, body)
+}
+
+func forgejoSummaryWrite(ctx context.Context, cmdr Commander, auth curlauth.Credential,
+	method, url, body string,
+) (summaryRemoteComment, error) {
+	if strings.TrimSpace(body) == "" {
+		return summaryRemoteComment{}, errors.New(errEmptySummary)
+	}
+	if cmdr == nil {
+		return summaryRemoteComment{}, errNoCommander
+	}
+	argv, cleanup, err := forgejoMethodArgv(auth, method, url)
+	if err != nil {
+		return summaryRemoteComment{}, err
+	}
+	defer cleanup()
+	res, callErr := forgejoCall(ctx, cmdr, argv, jq.NewObj(fieldBody, body).MarshalPretty())
+	if callErr != nil {
+		return summaryRemoteComment{}, callErr
+	}
+	answer, ok := parseForgejoResponse(res.Stdout)
+	if !ok {
+		return summaryRemoteComment{}, errors.New(msgForgejoLost)
+	}
+	if answer.status != http.StatusOK && answer.status != http.StatusCreated {
+		return summaryRemoteComment{}, errors.New(forgejoFailureReason(res, answer))
+	}
+	return decodeSummaryCommentObject(answer.body, "")
+}
+
+func (forgejoHost) postedInlineURLs(ctx context.Context, cmdr Commander, env map[string]string,
+	repo, pr string, review *jq.Obj,
+) ([]summaryInlineLink, error) {
+	id := summaryReviewID(review)
+	if id == "" || cmdr == nil {
+		return nil, nil
+	}
+	auth, base, ref := forgejo.Resolve(env, repo, pr)
+	if ref != nil {
+		return nil, nil
+	}
+	raw, _, err := forgejoRead(ctx, cmdr, auth, forgejo.CommentsURL(base, id))
+	if err != nil {
+		return nil, nil
+	}
+	links, err := decodeSummaryInlineComments(raw)
+	if err != nil {
+		return nil, nil
+	}
+	return links, nil
 }

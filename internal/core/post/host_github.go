@@ -2,6 +2,7 @@ package postcore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -96,4 +97,65 @@ func githubResolved(stdout string) bool {
 	}
 	resolved, ok := navField(v, "isResolved")
 	return ok && resolved == true
+}
+
+func (githubHost) listSummaryComments(ctx context.Context, cmdr Commander, _ map[string]string,
+	repo, pr string,
+) ([]summaryRemoteComment, error) {
+	items, err := readPublicationList(ctx, cmdr, []string{
+		toolGH, cmdAPI, "repos/" + repo + "/issues/" + pr + "/comments", flagPaginate,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return summaryCommentsFromMaps(items, ""), nil
+}
+
+func (githubHost) createSummaryComment(ctx context.Context, cmdr Commander, _ map[string]string,
+	repo, pr, body string,
+) (summaryRemoteComment, error) {
+	return ghSummaryWrite(ctx, cmdr, "repos/"+repo+"/issues/"+pr+"/comments", methodPost, body)
+}
+
+func (githubHost) updateSummaryComment(ctx context.Context, cmdr Commander, _ map[string]string,
+	repo, _, commentID, body string,
+) (summaryRemoteComment, error) {
+	return ghSummaryWrite(ctx, cmdr, "repos/"+repo+"/issues/comments/"+commentID, methodPatch, body)
+}
+
+func ghSummaryWrite(ctx context.Context, cmdr Commander, endpoint, method, body string) (summaryRemoteComment, error) {
+	if strings.TrimSpace(body) == "" {
+		return summaryRemoteComment{}, errors.New(errEmptySummary)
+	}
+	if cmdr == nil {
+		return summaryRemoteComment{}, errNoCommander
+	}
+	payload := strings.TrimRight(jq.NewObj(fieldBody, body).MarshalPretty(), newline) + newline
+	res, err := cmdr.Run(ctx, &core.Command{
+		Argv:  []string{toolGH, cmdAPI, endpoint, flagMethod, method, flagInput, "-"},
+		Stdin: strings.NewReader(payload),
+	})
+	if err != nil {
+		return summaryRemoteComment{}, err
+	}
+	if res.ExitCode != 0 {
+		return summaryRemoteComment{}, errors.New(failureReason(res, nil))
+	}
+	return decodeSummaryCommentObject(res.Stdout, "")
+}
+
+func (githubHost) postedInlineURLs(ctx context.Context, cmdr Commander, _ map[string]string,
+	repo, pr string, review *jq.Obj,
+) ([]summaryInlineLink, error) {
+	id := summaryReviewID(review)
+	if id == "" || cmdr == nil {
+		return nil, nil
+	}
+	items, err := readPublicationList(ctx, cmdr, []string{
+		toolGH, cmdAPI, "repos/" + repo + "/pulls/" + pr + "/reviews/" + id + "/comments", flagPaginate,
+	})
+	if err != nil {
+		return nil, nil
+	}
+	return inlineLinksFromMaps(items), nil
 }
