@@ -38,6 +38,7 @@ usage: install.sh [ARCHIVE] [--no-modify-path] [--uninstall [--remove-path]] [--
   --help            this text
   VERDICT_VERSION (default latest), VERDICT_INSTALL (~/.verdict/bin),
   VERDICT_DOWNLOAD_URL (release base), VERDICT_REQUIRE_SIGNATURE=1,
+  VERDICT_ARCHIVE_CACHE (optional archive cache; metadata is always refreshed),
   VERDICT_COSIGN (cosign override). cosign identity: $COSIGN_IDENTITY
 EOF
 }
@@ -169,8 +170,16 @@ else
   CHECKSUMS_PATH="$TMP/$CHECKSUMS"; BUNDLE_PATH="$TMP/$BUNDLE"
   COMMIT_PATH="$TMP/$COMMIT"
   echo "install: downloading verdict $VERSION ($os/$arch)" >&2
-  fetch_file "$base/v$VERSION/$archive_name" "$archive_path" \
-    || die "download failed: $base/v$VERSION/$archive_name (is $os/$arch published?)"
+  cached_archive=''
+  if [ -n "${VERDICT_ARCHIVE_CACHE:-}" ]; then
+    cached_archive="$VERDICT_ARCHIVE_CACHE/$archive_name"
+  fi
+  if [ -n "$cached_archive" ] && [ -f "$cached_archive" ]; then
+    cp "$cached_archive" "$archive_path"
+  else
+    fetch_file "$base/v$VERSION/$archive_name" "$archive_path" \
+      || die "download failed: $base/v$VERSION/$archive_name (is $os/$arch published?)"
+  fi
   fetch_file "$base/v$VERSION/$CHECKSUMS" "$CHECKSUMS_PATH" \
     || die "download failed: $base/v$VERSION/$CHECKSUMS"
   fetch_file "$base/v$VERSION/$COMMIT" "$COMMIT_PATH" \
@@ -223,6 +232,10 @@ tar -tzf "$archive_path" > "$TMP/members" 2>/dev/null || die "not a valid tar.gz
 bad="$(grep -Ev '^(verdict|LICENSE|README\.md|NOTICE\.md)$' "$TMP/members" || true)"
 [ -z "$bad" ] || die "archive has unexpected member(s): $bad"
 grep -qx verdict "$TMP/members" || die "archive does not contain the verdict binary"
+if [ -z "$ARCHIVE" ] && [ -n "$cached_archive" ]; then
+  mkdir -p "$VERDICT_ARCHIVE_CACHE"
+  cp "$archive_path" "$cached_archive"
+fi
 mkdir -p "$INSTALL" || die "cannot create $INSTALL"
 [ -w "$INSTALL" ] || die "$INSTALL is not writable (set VERDICT_INSTALL; no root needed)"
 STAGE="$(mktemp -d "$INSTALL/.verdict-stage.XXXXXX")" || die "cannot stage in $INSTALL"

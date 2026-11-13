@@ -146,7 +146,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           (Get-FileHash -LiteralPath '${{ steps.first.outputs.path }}' -Algorithm SHA256).Hash | Out-File -FilePath "$env:RUNNER_TEMP/hash.before" -NoNewline
 
-      - name: Install again (must reuse, no download)
+      - name: Install again (must re-verify)
         id: second
         uses: ./setup-verdict
         with:
@@ -164,8 +164,8 @@ jobs:
             second_hash="$(shasum -a 256 "${{ steps.second.outputs.path }}" | awk '{print $1}')"
           fi
           [ "$second_hash" = "$(cat "$RUNNER_TEMP/hash.before")" ]
-          [ "$(wc -l < "$FAKE_CURL_LOG" | tr -d ' ')" = "$(cat "$RUNNER_TEMP/curl.before")" ]
-          echo "reuse ok: no new download on second invocation"
+          [ "$(wc -l < "$FAKE_CURL_LOG" | tr -d ' ')" -gt "$(cat "$RUNNER_TEMP/curl.before")" ]
+          echo "reuse ok: release metadata refreshed for verification"
 
       - name: Assert reuse (Windows)
         if: runner.os == 'Windows'
