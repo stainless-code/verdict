@@ -341,10 +341,12 @@ type ConfigSpend = core.ConfigSpend
 type ConfigCheck = core.ConfigCheck
 
 // ShowData is the show verb's --json data profile: the raw finding record
-// plus the read-only fix block.
+// plus the read-only fix block. Both are null when a truncated scan did not
+// reach the requested sig.
 type ShowData struct {
-	Item any     `json:"item"`
-	Fix  ShowFix `json:"fix"`
+	Receipt *core.Truncation `json:"-" receipt:"true"`
+	Item    any              `json:"item"`
+	Fix     ShowFix          `anyOf:"null" json:"fix"`
 }
 
 // TriageData is the triage verb's --json data profile: the flipped finding's
@@ -395,7 +397,8 @@ type AdoptData struct {
 // NextData is the next verb's --json data profile: the ranked finding to fix
 // next, or null when the store has nothing open.
 type NextData struct {
-	Item *FindingItem `anyOf:"null" json:"item"`
+	Receipt *core.Truncation `json:"-" receipt:"true"`
+	Item    *FindingItem     `anyOf:"null" json:"item"`
 }
 
 // FixData is the fix verb's --json data profile. The pass and completion
@@ -483,6 +486,7 @@ type VerifyData = core.VerifyData
 // TrendData is the trend verb's --json data profile: the portfolio rollup,
 // one row per reviewed bundle, and the opt-in overlap and corpus joins.
 type TrendData struct { //nolint:govet // field order is the published property order
+	Receipt     *core.Truncation `json:"-" receipt:"true"`
 	Rules       any              `json:"rules"       optional:"true"`
 	GeneratedAt string           `format:"date-time" json:"generated_at"`
 	Bundles     int              `json:"bundles"     min:"0"`

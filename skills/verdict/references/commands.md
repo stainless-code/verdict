@@ -7,7 +7,10 @@ values from `context.json` in finding `sources` arrays. Do not invent source nam
 
 ### Truncation receipts
 
-A miss under truncation is not proof of absence. For MCP response-cap results, read
-`truncated`, `truncation_reason`, `returned`, `total`, and `next_offset`. Unknown totals and unavailable continuations are null.
-MCP response-cap summaries count JSON bytes; their structured result retains
-the full payload.
+A miss under truncation is not proof of absence (`next` and `show` return null
+items with the receipt instead of claiming nothing exists). For truncated CLI
+`--json` `data` envelopes and MCP results, read `truncated`,
+`truncation_reason`, `returned`, `total`, and `next_offset`. Unknown totals and
+unavailable continuations are null; complete results omit the receipt. MCP
+response-cap summaries count JSON bytes while `structuredContent` retains the
+full payload (or preserves an upstream producer receipt).

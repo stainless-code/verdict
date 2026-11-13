@@ -318,8 +318,14 @@ export interface Repair {
 
 /** show --json data: item is the raw finding record in store key order; fix is the read-only machine repair directive built from that record plus the bundle's patch/verification history. Neither key adds execution, flags, or store writes. */
 export interface ShowData {
+  truncated?: boolean;
+  truncation_reason?:
+    "work_budget" | "response_cap" | "time_budget" | "scan_cap" | "chunk_cap";
+  returned?: number;
+  total?: number | null;
+  next_offset?: number | null;
   item: unknown;
-  fix: ShowFix;
+  fix: ShowFix | null;
   [key: string]: unknown;
 }
 
@@ -771,6 +777,12 @@ export interface AdoptData {
 
 /** next --json data: the ranked finding to fix next, or null when the store has nothing open. item keeps every stored record key beside the ranked locator. */
 export interface NextData {
+  truncated?: boolean;
+  truncation_reason?:
+    "work_budget" | "response_cap" | "time_budget" | "scan_cap" | "chunk_cap";
+  returned?: number;
+  total?: number | null;
+  next_offset?: number | null;
   item: FindingItem | null;
   [key: string]: unknown;
 }
@@ -904,6 +916,12 @@ export interface VerifyData {
 
 /** trend --json data: the portfolio rollup, one row per reviewed bundle, and the opt-in overlap and corpus joins. Every tally key is always present. */
 export interface TrendData {
+  truncated?: boolean;
+  truncation_reason?:
+    "work_budget" | "response_cap" | "time_budget" | "scan_cap" | "chunk_cap";
+  returned?: number;
+  total?: number | null;
+  next_offset?: number | null;
   rules?: unknown;
   generated_at: string;
   bundles: number;

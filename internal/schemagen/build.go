@@ -644,7 +644,23 @@ func (b *builder) fieldNode(parent reflect.Type, field *reflect.StructField) (me
 	if err != nil {
 		return member{}, false, false, wrapError(parent.String()+"."+field.Name, err)
 	}
+	if parent == reflect.TypeFor[core.Envelope]() && field.Name == "Data" {
+		if schema, err = b.envelopeData(); err != nil {
+			return member{}, false, false, err
+		}
+	}
 	return member{name, schema}, !optional, false, nil
+}
+
+// envelopeData types the envelope's data slot with the optional truncation
+// receipt keys every verb's data may carry.
+func (b *builder) envelopeData() (*node, error) {
+	props, _, err := b.fieldNodes(reflect.TypeFor[core.Truncation]())
+	if err != nil {
+		return nil, err
+	}
+	return object(true, member{keyType, array(stringNode("object"), stringNode("null"))},
+		member{keyProperties, props}, member{keyAdditionalProperties, boolNode(true)}), nil
 }
 
 func jsonFieldName(field *reflect.StructField) (name string, optional bool, err error) {

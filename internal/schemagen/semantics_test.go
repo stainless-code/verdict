@@ -201,7 +201,11 @@ var publishedSemantics = map[string]string{
 	// pack test: additive $defs/packTestData, packTestCase, and
 	// packTestSummary, plus the generated envelope description. Existing shapes
 	// remain unchanged.
-	"envelope.schema.json": "808044be7581c418f1e604da6b0935d95a1d227a716d8bf9ca78d9a5e71172ef",
+	// truncation receipts: additive optional truncated/truncation_reason/
+	// returned/total/next_offset on envelope data, showData, nextData, and
+	// trendData; showData.fix widened with null so a truncated-miss show
+	// response emits item: null, fix: null with the receipt.
+	"envelope.schema.json": "5b558c112745809051268bd9825477bcca54fbf801c9f05df0850f8a106110cb",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

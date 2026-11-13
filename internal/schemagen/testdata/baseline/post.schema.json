@@ -5,6 +5,8 @@
   "description": "Written only by the real-post path in the verdict CLI (dry runs, attempts and failures write nothing), so a present head matching the bundle HEAD proves a completed post. review is raw GitHub output (GitHub's schema, unversioned) — this schema passes it through. confidence/security_summary are absent-stays-absent: null when the review carried none. additionalProperties stays open for additive provenance fields.",
   "type": "object",
   "properties": {
+    "rearmed": { "type": "boolean" },
+    "previous_head": { "type": "string" },
     "verification": {
       "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/verificationSummary" }]
     },
