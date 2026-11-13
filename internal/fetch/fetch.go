@@ -162,7 +162,7 @@ func refuseFetch(r *cli.Runner, err error) int {
 // parseFetchFlags strips fetch's flags, reporting unknown ones. A value flag
 // with no operand is a usage error.
 func parseFetchFlags(r *cli.Runner, args []string) (core.FetchFlags, int, bool) {
-	f := core.FetchFlags{Provider: providerGitHub}
+	var f core.FetchFlags
 	for i := 0; i < len(args); i++ {
 		next, code, done := parseFetchToken(r, &f, args, i)
 		if done {
@@ -327,11 +327,10 @@ func setFetchValue(f *core.FetchFlags, name, value string) {
 	}
 }
 
-// providerGitHub and flagChunk mirror the fetchcore spellings the usage
+// flagChunk mirrors the fetchcore spelling the usage
 // text names.
 const (
-	flagContext    = "--context"
-	providerGitHub = "github"
-	flagChunk      = "--chunk"
-	flagIndex      = "--index"
+	flagContext = "--context"
+	flagChunk   = "--chunk"
+	flagIndex   = "--index"
 )

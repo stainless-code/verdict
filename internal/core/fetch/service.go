@@ -66,6 +66,12 @@ func Run(ctx context.Context, req *core.FetchRequest) (*core.FetchResponse, erro
 }
 
 func (st *state) dispatch(ctx context.Context, s *session, req *core.FetchRequest) (*core.FetchResponse, error) {
+	provider, source, ref := core.ResolveProvider(ctx, s.commander, req.RepoRootPath(), req.Flags.Provider, s.env)
+	if ref != nil {
+		return nil, st.withWarnings(ref)
+	}
+	req.Flags.Provider = provider
+	s.providerSource = source
 	f, ref := st.provider(&req.Flags)
 	if ref != nil {
 		return nil, ref
@@ -298,16 +304,17 @@ func discardNil(w io.Writer) io.Writer {
 }
 
 type session struct {
-	Human     io.Writer
-	Diag      io.Writer
-	progress  core.Progress
-	commander Commander
-	warnings  *[]string
-	env       map[string]string
-	Now       func() time.Time
-	iso       *isolation
-	controls  *controls.Snapshot
-	Effective core.Effective
+	providerSource string
+	Human          io.Writer
+	Diag           io.Writer
+	progress       core.Progress
+	commander      Commander
+	warnings       *[]string
+	env            map[string]string
+	Now            func() time.Time
+	iso            *isolation
+	controls       *controls.Snapshot
+	Effective      core.Effective
 	// repoRoot is the reviewed repository root every bundle path
 	// anchors to, resolved once per run from the request.
 	repoRoot string

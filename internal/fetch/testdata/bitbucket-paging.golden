@@ -124,7 +124,8 @@ b.txt
     }
   ],
   "additions": 2,
-  "deletions": 1
+  "deletions": 1,
+  "provider_source": "flag"
 }
 --- file C/.verdict/state/4717/controls.json ---
 {

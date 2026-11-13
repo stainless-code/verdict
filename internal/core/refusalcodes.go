@@ -173,6 +173,7 @@ var refusalCodes = []string{
 	"privacy-unavailable",
 	"prompt-dump-failed",
 	"provider-unimplemented",
+	codeProviderUnknown,
 	"rationale-required",
 	"read-only-tool",
 	"record-failed",

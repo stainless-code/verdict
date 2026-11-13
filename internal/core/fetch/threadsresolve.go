@@ -91,7 +91,7 @@ func (st *threadsRun) resolve(ctx context.Context) (*ThreadsResponse, *core.Refu
 func (st *threadsRun) resolvePlan(
 	ctx context.Context, dir string,
 ) (string, *threadscore.File, resolveSelection, *core.RefusalError) {
-	provider, ref := st.resolveProvider(dir)
+	provider, ref := st.resolveProvider(ctx, dir)
 	if ref != nil {
 		return "", nil, resolveSelection{}, st.withWarnings(ref)
 	}
@@ -149,17 +149,10 @@ func (st *threadsRun) resolveFeed(dir string) (*threadscore.File, *core.RefusalE
 
 // resolveProvider reads the provider from the bundle unless the request names
 // one, and refuses a host whose capability table carries no resolve call.
-func (st *threadsRun) resolveProvider(dir string) (string, *core.RefusalError) {
-	provider := threadsProvider(st.req.Provider)
-	if provider == "" {
-		return "", st.withWarnings(&core.RefusalError{Code: codeBadProvider, Message: fmt.Sprintf(
-			"unknown --provider '%s' (want github|gitlab|gitcafe|forgejo|bitbucket|azure)", st.req.Provider)})
-	}
-	if st.req.Provider == "" {
-		provider = readcommon.ProviderOf(dir)
-		if provider == "" {
-			provider = providerGitHub
-		}
+func (st *threadsRun) resolveProvider(ctx context.Context, dir string) (string, *core.RefusalError) {
+	provider, ref := st.selectProvider(ctx, dir)
+	if ref != nil {
+		return "", ref
 	}
 	caps := core.CapabilitiesFor(provider)
 	if !caps.ThreadResolution {
