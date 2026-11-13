@@ -93,3 +93,18 @@ func TestContextDepth(t *testing.T) {
 		t.Fatal("accepted excessive depth")
 	}
 }
+
+func TestContextDirectorySymlinkWithTrailingSeparator(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+	if err := os.Mkdir(target, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skip("symlinks unavailable")
+	}
+	if _, err := collectContext([]string{link + string(os.PathSeparator)}); err == nil {
+		t.Fatal("accepted directory symlink with trailing separator")
+	}
+}

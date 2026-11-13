@@ -62,6 +62,7 @@ func collectContext(inputs []string) ([]contextFile, error) {
 }
 
 func (r *contextReader) read(input string) error {
+	input = filepath.Clean(input)
 	info, err := os.Lstat(input)
 	if err != nil {
 		return contextFailure("context input: %s", err.Error())
