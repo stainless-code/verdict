@@ -172,7 +172,7 @@
       "description": "Executed PR-level summary comment outcome (create or update) and duplicate note if multiple prior marked comments existed.",
       "type": "object",
       "properties": {
-        "action": { "enum": ["create", "update", "none"] },
+        "action": { "enum": ["create", "update", "none", "failed"] },
         "comment_id": { "type": "string" },
         "url": { "type": "string" },
         "marker": { "type": "string" },

@@ -1487,7 +1487,10 @@ the summary comment linking to the submitted review and inline comments where
 the host supplies URLs, and a later post updates that comment in place (`PATCH`
 on GitHub and Forgejo, `PUT` on GitLab) with empty bodies refused.
 `--dry-run` reports the planned summary action (`create`, `update`, or `none`)
-without writing.
+without writing. The summary is best effort: if its write fails after the
+review is accepted, `post` still records the review in `post.json`, sets
+`summary.action` to `failed` with the host's reason in `note`, and warns; the
+next post updates the summary in place.
 
 `triage --dry-run` computes one status flip and writes nothing: it resolves
 the sig, applies the rationale rule, and prints `would set <sig> -> <status>`

@@ -30,7 +30,7 @@ type PostFlags struct {
 // PostSummary records the planned (on dry-run) or executed (on real post)
 // PR-level summary comment action.
 type PostSummary struct { //nolint:govet // field order is the published property order
-	Action         string `enum:"create|update|none"        json:"action"`
+	Action         string `enum:"create|update|none|failed" json:"action"`
 	CommentID      string `json:"comment_id,omitempty"      optional:"true"`
 	URL            string `json:"url,omitempty"             optional:"true"`
 	Marker         string `json:"marker,omitempty"          optional:"true"`

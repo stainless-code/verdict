@@ -368,25 +368,26 @@ func (st *state) submit(ctx context.Context) (*core.PostResponse, *core.RefusalE
 	if err := atomic.WriteFile(st.dir+"/.posted_"+st.phash, []byte{}); err != nil {
 		return nil, st.withWarnings(refusalOrFailed(err))
 	}
-	if sref := st.finishSummary(ctx, cmdr, obj); sref != nil {
-		return nil, st.withWarnings(sref)
-	}
+	st.finishSummary(ctx, cmdr, obj)
 	if err := writePostReceipt(st, obj); err != nil {
 		return nil, st.withWarnings(refusalOrFailed(err))
 	}
 	return st.successResponse(obj, posted), nil
 }
 
-func (st *state) finishSummary(ctx context.Context, cmdr Commander, obj *jq.Obj) *core.RefusalError {
+// finishSummary never refuses: the review is already accepted, and losing its
+// receipt would force a duplicate review on the retry.
+func (st *state) finishSummary(ctx context.Context, cmdr Commander, obj *jq.Obj) {
 	if st.summaryMode() != summaryComment {
-		return nil
+		return
 	}
 	sum, ref := st.publishSummary(ctx, cmdr, obj)
 	if ref != nil {
-		return ref
+		st.summary = &core.PostSummary{Action: summaryActionFailed, Note: ref.Message}
+		st.warn(fmt.Sprintf(msgSummaryFailed, ref.Message))
+		return
 	}
 	st.summary = sum
-	return nil
 }
 
 func (st *state) postWithRetry(ctx context.Context, cmdr Commander) (string, *core.RefusalError) {

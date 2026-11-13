@@ -15,6 +15,8 @@ const (
 	msgGitLabNoDiffRefs = "gitlab merge request read carries no diff refs — a diff discussion needs the " +
 		"base, start, and head SHAs to anchor to (re-fetch and retry)"
 
+	msgSummaryFailed = "summary comment not written: %s — the review is posted and recorded; the next post updates the summary"
+
 	msgNoChangesEvent = "%s has no request-changes review event — posting the discussions and summary note only"
 
 	msgNoApproveEvent = "%s has no approve review event — posting as COMMENT instead"
@@ -100,6 +102,7 @@ const (
 	summaryActionCreate       = "create"
 	summaryActionUpdate       = "update"
 	summaryActionNone         = "none"
+	summaryActionFailed       = "failed"
 	msgBadSummary             = "unknown --summary %q (want comment|off)"
 )
 

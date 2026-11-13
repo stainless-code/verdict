@@ -278,7 +278,7 @@ export interface PostData {
 
 /** PR-level summary comment action and metadata. */
 export interface PostSummary {
-  action: "create" | "update" | "none";
+  action: "create" | "update" | "none" | "failed";
   comment_id?: string;
   url?: string;
   marker?: string;

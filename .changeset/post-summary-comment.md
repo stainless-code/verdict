@@ -11,4 +11,6 @@ authors, updating the existing comment in place across GitHub (`PATCH`),
 GitLab (`PUT`), and Forgejo (`PATCH`), linking to the submitted review and
 posted inline comments where hosts supply URLs, and reporting duplicate matches
 in the receipt without deleting older comments. `--dry-run` reports the planned
-summary action (`create`, `update`, or `none`) without writing.
+summary action (`create`, `update`, or `none`) without writing. A failed summary
+write never loses the accepted review's receipt: `summary.action` is `failed`
+with the reason, and the next post updates the summary.

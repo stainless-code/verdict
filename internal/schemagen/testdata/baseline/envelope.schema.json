@@ -559,7 +559,7 @@
       "description": "PR-level summary comment action and metadata.",
       "type": "object",
       "properties": {
-        "action": { "enum": ["create", "update", "none"] },
+        "action": { "enum": ["create", "update", "none", "failed"] },
         "comment_id": { "type": "string" },
         "url": { "type": "string" },
         "marker": { "type": "string" },

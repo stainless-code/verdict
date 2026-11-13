@@ -204,7 +204,7 @@ var publishedSemantics = map[string]string{
 	// remain unchanged.
 	// summary comment: additive nullable postData.summary and $defs/postSummary
 	// (optional; no existing property, required key, enum, or type changed).
-	"envelope.schema.json": "6826f0219d951ff5be576162fb5f2bbdc608d5bd1c5ef92347de6f870ec51826",
+	"envelope.schema.json": "d89c78f578624cb0bb94bff161be835a755d6ac85b736938d7de78eab5433bf7",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -233,7 +233,7 @@ var publishedSemantics = map[string]string{
 	// summary comment: additive optional nullable summary object with
 	// $defs/postSummary recording create/update/none outcome for --summary
 	// comment. No existing property, required key, enum, or type changed.
-	"post.schema.json": "4e5e9df22977c26748ab95562b7b987dccf3282f67a0cde1c2c3b8df8d08ca07",
+	"post.schema.json": "7a4672e6b084f89b9d2884cf997c8025d600c016dda890e6778afd925633d8d1",
 	// patch identity: additive $defs/identity root (new bundle document) —
 	// no existing property, required key, or type changed.
 	"identity.schema.json": "efe9a7b331e41715bc55b8824e95154add584c2d63f670811ef03c350d2e5bdb",

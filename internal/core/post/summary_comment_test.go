@@ -400,7 +400,7 @@ func TestSummaryCommentDryRunAndOffModes(t *testing.T) {
 	marker := "<!-- verdict-summary head=" + summaryTestHead + " -->"
 	existing := `[{"id":401,"user":{"login":"someone-else"},"html_url":"https://gh.example/c/401","updated_at":"2026-01-01T00:00:00Z","body":"Prior\n\n` + marker + `"}]`
 
-	t.Run("dry_run_off_reports_none_without_summary_calls", func(t *testing.T) {
+	t.Run("dry_run_off_omits_summary_without_summary_calls", func(t *testing.T) {
 		verifyDryRunOff(t)
 	})
 	t.Run("dry_run_comment_create_and_update_write_nothing", func(t *testing.T) {
@@ -426,13 +426,40 @@ func verifyDryRunOff(t *testing.T) {
 	}, &warnings, &human)
 	req.JSONMode = false
 	resp, ref := Run(context.Background(), req)
-	if ref != nil || resp.Data.Summary == nil || resp.Data.Summary.Action != "none" {
-		t.Fatalf("ref=%v summary=%+v, want action=none", ref, resp)
+	if ref != nil || resp.Data.Summary != nil {
+		t.Fatalf("ref=%v summary=%+v, want no summary when --summary is off", ref, resp)
 	}
-	if !strings.Contains(strings.Join(human, "\n"), "summary: none") {
-		t.Errorf("human dry-run missing summary: none: %q", human)
+	if strings.Contains(strings.Join(human, "\n"), "summary:") {
+		t.Errorf("human dry-run mentions a summary with --summary off: %q", human)
+	}
+	if envJSON := jq.PrettyOrdered(RenderPostEnvelope(resp)); strings.Contains(envJSON, `"summary"`) {
+		t.Errorf("dry-run envelope carries a summary key with --summary off:\n%s", envJSON)
 	}
 	assertNoCallContaining(t, cmdr.calls, "/issues/")
+}
+
+func TestSummaryCommentFailureKeepsReviewReceipt(t *testing.T) {
+	t.Chdir(t.TempDir())
+	seedSummaryBundle(t, providerGitHub)
+	cmdr := hostBaseCommander(t, providerGitHub, "[]", "[]")
+	cmdr.out["gh\x00api\x00repos/acme/app/issues/7/comments\x00--method\x00POST\x00--input\x00-"] = scriptResult{
+		fail: true, stderr: "HTTP 502",
+	}
+	var warnings, human []string
+	req := summaryReq(cmdr, providerGitHub, core.PostFlags{
+		Approve: "false", ReviewFile: ".verdict/state/7/review.json", Summary: "comment",
+	}, &warnings, &human)
+	resp, ref := Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("summary failure refused the accepted review: %v", ref)
+	}
+	if resp.Data.Summary == nil || resp.Data.Summary.Action != "failed" || resp.Data.Summary.Note == "" {
+		t.Fatalf("summary = %+v, want action=failed with a note", resp.Data.Summary)
+	}
+	if !strings.Contains(strings.Join(resp.Warnings, "\n"), "summary comment not written") {
+		t.Errorf("warnings = %q, want the summary failure", resp.Warnings)
+	}
+	assertPostReceiptSummary(t, "failed", "")
 }
 
 func verifyDryRunComment(t *testing.T, listJSON, wantAct, wantLine string) {
