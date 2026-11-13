@@ -169,3 +169,54 @@ func TestInitializeInstructions(t *testing.T) {
 		})
 	}
 }
+
+func TestMutationDeclarations(t *testing.T) {
+	t.Parallel()
+	want := map[string]mutationClass{
+		"adopt": localWrites, "calibrate": localWrites, "check-tree": noLocalWrites,
+		"config": noLocalWrites, "doctor": noLocalWrites, "fetch": localWrites,
+		"fetch-local": localWrites, "fix": localWrites, "index": noLocalWrites,
+		"init": localWrites, "learn": localWrites, "next": noLocalWrites,
+		"pack": noLocalWrites, "post": localWrites, "ready": noLocalWrites,
+		"record": localWrites, "report": localWrites, "show": noLocalWrites,
+		"threads": localWrites, "trend": noLocalWrites, "triage": localWrites,
+		"verify": localWrites,
+	}
+	for _, tool := range allTools(false, true) {
+		t.Run(tool.name, func(t *testing.T) {
+			assertMutationDeclaration(t, tool, want[tool.name])
+		})
+	}
+}
+
+func TestReadOnlyUsesMutationClass(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		mutates  mutationClass
+		readOnly bool
+		want     bool
+	}{
+		{name: "local writer with read hint", mutates: localWrites, readOnly: true, want: false},
+		{name: "reader without hint", mutates: noLocalWrites, want: true},
+		{name: "undeclared fails closed", want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := exposed(&tool{mutates: tc.mutates, readOnly: tc.readOnly}, true, false); got != tc.want {
+				t.Fatalf("exposed = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func assertMutationDeclaration(t *testing.T, tool *tool, want mutationClass) {
+	t.Helper()
+
+	if tool.mutates == mutationUnspecified {
+		t.Fatal("missing explicit mutation declaration")
+	}
+	if tool.mutates != want {
+		t.Fatalf("mutates = %v, want %v", tool.mutates, want)
+	}
+}
