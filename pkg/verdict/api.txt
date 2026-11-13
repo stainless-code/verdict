@@ -231,10 +231,12 @@ type DoctorResponse struct {
 type FetchLocalRequest struct {
 	Invocation
 	Context                                             []string
+	Ignore                                              []string
 	Range, BaseRef, Stash                               string
 	Paths                                               []string
 	Staged, HasStash, BudgetConsent, ShowPrompts, Chunk bool
 	Worktree, HeadControls                              bool
+	NoDefaultExcludes                                   bool
 }
     FetchLocalRequest carries the local-diff fetch options. Worktree builds
     the bundle from a temporary isolated checkout of the review target,
@@ -245,6 +247,8 @@ type FetchRequest struct {
 	Invocation
 	BaseSHA, Provider                 string
 	Context                           []string
+	Ignore                            []string
+	NoDefaultExcludes                 bool
 	BudgetConsent, ShowPrompts, Chunk bool
 	HeadControls                      bool
 }
@@ -420,7 +424,7 @@ func ListPacks(ctx context.Context, c *Client) (*PackResponse, error)
 
 type PostRequest struct {
 	Invocation
-	Approve, ReviewFile                 string
+	Approve, ReviewFile, MinSeverity    string
 	RequestChanges, Bind, Force, DryRun bool
 	AllowSecretValues                   bool
 }
@@ -491,7 +495,7 @@ func (e *RefusalError) Error() string
 type ReportRequest struct {
 	Invocation
 	Status, Kind, Output, Sarif, Check, Live string
-	Cost, Completeness                       bool
+	Cost, Completeness, IncludeWithheld      bool
 }
     ReportRequest carries the report options. Output/Sarif name files whose
     bytes return in the response instead of being written.

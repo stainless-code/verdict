@@ -32,19 +32,12 @@ func sarifDoc(st *state) *jq.Obj {
 	for _, item := range st.ranked {
 		results = append(results, sarifResult(item.Entry))
 	}
-	return jq.NewObj(
-		"version", "2.1.0",
-		"$schema", "https://json.schemastore.org/sarif-2.1.0.json",
-		"runs", []any{jq.NewObj(
-			"tool", jq.NewObj("driver", jq.NewObj(
-				"name", "verdict",
-				"version", "1",
-				"informationUri", "https://github.com",
-				"rules", rules,
-			)),
-			"results", results,
-		)},
+	run := jq.NewObj(
+		"tool", jq.NewObj("driver", jq.NewObj("name", "verdict", "version", "1", "informationUri", "https://github.com", "rules", rules)),
+		"results", results,
 	)
+	sarifWithheld(st, run)
+	return jq.NewObj("version", "2.1.0", "$schema", "https://json.schemastore.org/sarif-2.1.0.json", "runs", []any{run})
 }
 
 func sarifKinds(ranked []readcommon.Ranked) []string {

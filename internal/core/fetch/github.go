@@ -42,7 +42,7 @@ func runGitHub(
 	if ref := resolveLensPacks(ctx2); ref != nil {
 		return nil, "", ref
 	}
-	if ref := phaseTwo(ctx, ctx2, req, f, dir, budget); ref != nil {
+	if ref := phaseTwoFiltered(ctx, ctx2, req, f, dir, budget); ref != nil {
 		return nil, "", ref
 	}
 	fc := resolveFetchCap(r, ctx2.runCfg.resolved)

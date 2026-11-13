@@ -226,11 +226,12 @@ func loadState(ctx context.Context, st *state) *core.RefusalError {
 		}
 		st.patch = patch
 	}
-	st.ranked = readcommon.Rank(filterCategory(st.entries, st.flags.Category), st.flags.Status, st.flags.Kind)
+	st.ranked = readcommon.Rank(filterCategory(readcommon.VisibleFindings(st.entries), st.flags.Category), st.flags.Status, st.flags.Kind)
 	st.nOpen = readcommon.CountStatus(st.ranked, statusOpen)
-	st.nAllOpen = readcommon.CountOpen(entries)
-	st.counts = storeCounts(entries)
-	st.counts.Clean = len(entries) == 0
+	st.nAllOpen = readcommon.CountOpen(readcommon.VisibleFindings(entries))
+	st.counts = storeCounts(readcommon.VisibleFindings(entries))
+	withholdCounts(st)
+	st.counts.Clean = len(readcommon.VisibleFindings(entries)) == 0
 	st.counts.CheckedFiles = countNonEmpty(strings.Split(checkedFiles(st.dir), newline))
 	loadStateCost(st)
 	loadStateCompleteness(ctx, st)

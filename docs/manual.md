@@ -3997,6 +3997,29 @@ per control. `severity_weighted_pooled_f1` computes
 outcomes. It differs from averaging per-severity F1 by class support. See
 [metric denominators](benchmark.md#metric-denominators).
 
+## Exclusions and policy silence
+
+Fetch filters the review diff using trusted `.verdict/ignore`, root linguist
+attributes, and generated-path defaults. `full.raw.diff` retains the input;
+`excluded.json` and the TOC account for removed bytes. Sensitive scanning keeps
+using the raw diff. Tests remain reviewable by default.
+
+`review.json.suppressed[]` records agent or exclusion receipts. Withheld findings
+keep their status. `post --min-severity important` also withholds explicitly
+informational findings. Null severity remains visible. `--force` can bypass the
+open-finding approval guard but does not bypass the floor.
+
+`report --include-withheld` shows `Quiet by policy`; the tier check and SARIF
+results exclude withheld findings. Trend records source counts, including zero
+for stores without receipts. See [exclusions and withholding](exclusions.md) for the
+patterns, receipt fields, limits, precedence, and JSON output.
+
+`fetch` and `fetch-local` accept repeatable `--ignore <glob>` rules. They run
+last, above the base ignore file; `!` re-includes. `--no-default-excludes`
+disables generated and attribute defaults while the ignore file still applies.
+`excluded.json` records `ignore`, `no_default_excludes`, and `patterns_source`
+(`cli` when run overrides are present).
+
 When `--provider` is absent, `fetch` and `doctor` infer the provider
 from `git remote get-url origin`. Recognized hosts are `github.com`, `gitlab.com`,
 `gitcafe.com`, `codeberg.org` (Forgejo), `bitbucket.org`, `dev.azure.com`, and

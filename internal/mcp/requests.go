@@ -138,6 +138,8 @@ func decodeFetch(req *core.FetchRequest, a *args) {
 		f.str(argProvider, &req.Flags.Provider)
 		f.str("index", &req.Flags.Index)
 		f.strings("context", &req.Flags.Context)
+		f.strings("ignore", &req.Flags.Ignore)
+		f.boolean("noDefaultExcludes", &req.Flags.NoDefaultExcludes)
 		f.boolean("budgetConsent", &req.Flags.BudgetConsent)
 		f.boolean("showPrompts", &req.Flags.ShowPrompts)
 		f.boolean("chunkFlag", &req.Flags.ChunkFlag)
@@ -167,6 +169,8 @@ func decodeFetchLocal(req *core.FetchLocalRequest, a *args) {
 		f.str("stashN", &req.Flags.StashN)
 		f.str("index", &req.Flags.Index)
 		f.strings("context", &req.Flags.Context)
+		f.strings("ignore", &req.Flags.Ignore)
+		f.boolean("noDefaultExcludes", &req.Flags.NoDefaultExcludes)
 		f.strings("paths", &req.Flags.Paths)
 		f.boolean("staged", &req.Flags.Staged)
 		f.boolean("worktree", &req.Flags.Worktree)
@@ -290,6 +294,7 @@ func decodePost(req *core.PostRequest, a *args) {
 	a.flags(func(f *args) {
 		f.str("approve", &req.Flags.Approve)
 		f.str("reviewFile", &req.Flags.ReviewFile)
+		f.str("minSeverity", &req.Flags.MinSeverity)
 		f.boolean("requestChanges", &req.Flags.RequestChanges)
 		f.boolean("bind", &req.Flags.Bind)
 		f.boolean("force", &req.Flags.Force)
@@ -362,6 +367,7 @@ func decodeReport(req *core.ReportRequest, a *args) {
 		f.str("check", &req.Flags.Check)
 		f.str("live", &req.Flags.Live)
 		f.boolean("cost", &req.Flags.Cost)
+		f.boolean("includeWithheld", &req.Flags.IncludeWithheld)
 		f.boolean("completeness", &req.Flags.Completeness)
 	})
 }

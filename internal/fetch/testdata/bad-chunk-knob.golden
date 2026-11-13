@@ -38,6 +38,18 @@ CALL: pr diff 4703 --repo acme/app
   "sha": "022aa9e174be9c28594fa0ff344dc57c56a89250",
   "files": [
     {
+      "path": ".verdict/ignore",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".gitattributes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
       "path": ".verdict/config.json",
       "status": "used",
       "bytes": 52,

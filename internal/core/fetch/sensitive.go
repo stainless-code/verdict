@@ -135,7 +135,10 @@ func sensExtraHits(extra string) []sensHit {
 func writeSensitiveManifest(r *session, dir, extra string) *core.RefusalError {
 	// A missing or empty diff carries no sensitive paths; the manifest
 	// from a previous run (if any) is stale and goes.
-	raw := readOptional(dir + suffixFullDiff)
+	raw := readOptional(dir + suffixRawDiff)
+	if raw == "" {
+		raw = readOptional(dir + suffixFullDiff)
+	}
 	if raw == "" {
 		_ = os.Remove(dir + "/sensitive.txt")
 		return nil

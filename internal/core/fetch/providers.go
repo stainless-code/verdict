@@ -35,7 +35,7 @@ func runProvider(
 	if ref := resolveLensPacks(ctx2); ref != nil {
 		return nil, "", ref
 	}
-	if ref := phaseTwo(ctx, ctx2, req, f, ctx2.dir, budget); ref != nil {
+	if ref := phaseTwoFiltered(ctx, ctx2, req, f, ctx2.dir, budget); ref != nil {
 		return nil, "", ref
 	}
 	fc, chunkActive, err := providerCap(ctx2.runner, ctx2.runCfg.resolved, ctx2.dir, f.ChunkFlag)
@@ -1782,6 +1782,7 @@ func writeTocRoles(ctx2 *fetchRunCtx, title, total string, statLines []string, w
 	}
 	sb.WriteString("\n## coverage manifest\n")
 	fmt.Fprintf(&sb, "files in PR: %s | files with diff hunks: %d\n", total, len(withHunks))
+	omitted = splitLines(withoutExcluded(ctx2, strings.Join(omitted, "\n")))
 	if len(omitted) > 0 {
 		sb.WriteString("omitted (no hunks — binary, renamed without changes, or mode-only):\n")
 		for _, p := range omitted {
@@ -1790,11 +1791,11 @@ func writeTocRoles(ctx2 *fetchRunCtx, title, total string, statLines []string, w
 	} else {
 		sb.WriteString("omitted: (none)\n")
 	}
-	if werr := atomic.WriteFile(ctx2.dir+"/toc.txt", []byte(sb.String())); werr != nil {
+	if werr := atomic.WriteFile(ctx2.dir+"/toc.txt", []byte(sb.String()+exclusionTOC(ctx2))); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/toc.txt: %v", ctx2.dir, werr)}
 	}
 	fmt.Fprintf(ctx2.runner.Human, "» roles -> %s/roles.txt (heuristic file roles for triage)\n", ctx2.dir)
-	paths := prFilePaths(ctx2.dir + suffixPRJSON)
+	paths := splitLines(withoutExcluded(ctx2, strings.Join(prFilePaths(ctx2.dir+suffixPRJSON), "\n")))
 	if werr := atomic.WriteFile(ctx2.dir+"/roles.txt", []byte(rolesTextEmpty(paths))); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/roles.txt: %v", ctx2.dir, werr)}
 	}

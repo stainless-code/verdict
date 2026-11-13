@@ -181,6 +181,7 @@ var fetchValueWants = map[string]string{
 	"--provider": "<name>",
 	flagIndex:    "<ref|dir>",
 	flagContext:  "<file|dir>",
+	flagIgnore:   "<glob>",
 }
 
 // parseFetchToken consumes one fetch argument, returning the next index plus a
@@ -198,6 +199,8 @@ func parseFetchToken(r *cli.Runner, f *core.FetchFlags, args []string, i int) (i
 	switch a {
 	case "--consent-over-budget":
 		f.BudgetConsent = true
+	case "--no-default-excludes":
+		f.NoDefaultExcludes = true
 	case "--allow-head-controls":
 		f.HeadControls = true
 	case "--show-prompts":
@@ -207,7 +210,7 @@ func parseFetchToken(r *cli.Runner, f *core.FetchFlags, args []string, i int) (i
 	default:
 		msg := fmt.Sprintf("unknown flag '%s' for fetch (want --base-sha|--since <sha>, "+
 			"--provider <name>, --index <ref|dir>, --consent-over-budget, --allow-head-controls, "+
-			"--show-prompts, --chunk, --json)", a)
+			"--ignore <glob>, --no-default-excludes, --show-prompts, --chunk, --json)", a)
 		return i, r.ReportUsage(&cli.UsageError{Message: msg}), true
 	}
 	return i, 0, false
@@ -232,7 +235,7 @@ func parseLocalFlags(r *cli.Runner, args []string) (core.FetchLocalFlags, int, b
 // index plus a usage refusal when the token is an unknown flag.
 func parseLocalToken(r *cli.Runner, f *core.FetchLocalFlags, args []string, i int) (int, int, bool) {
 	a := args[i]
-	if next, u, ok := parseLocalValueFlag(f, a, args, i); ok {
+	if next, u, ok := parseLocalOption(f, a, args, i); ok {
 		if u != nil {
 			return i, r.ReportUsage(u), true
 		}
@@ -258,7 +261,8 @@ func parseLocalToken(r *cli.Runner, f *core.FetchLocalFlags, args []string, i in
 		if strings.HasPrefix(a, "-") {
 			msg := fmt.Sprintf("unknown flag '%s' for fetch-local (want --staged, "+
 				"--range <A..B>, --base <ref>, --stash [n], --worktree, --index <ref|dir>, "+
-				"--consent-over-budget, --allow-head-controls, --show-prompts, --chunk, -- <paths>, --json)", a)
+				"--consent-over-budget, --allow-head-controls, --ignore <glob>, --no-default-excludes, "+
+				"--show-prompts, --chunk, -- <paths>, --json)", a)
 			return i, r.ReportUsage(&cli.UsageError{Message: msg}), true
 		}
 		f.Paths = append(f.Paths, a)
@@ -266,10 +270,17 @@ func parseLocalToken(r *cli.Runner, f *core.FetchLocalFlags, args []string, i in
 	return i, 0, false
 }
 
-// parseLocalValueFlag consumes fetch-local's value flags, returning the next
-// index, a missing-value usage error, and whether the flag matched.
-func parseLocalValueFlag(f *core.FetchLocalFlags, a string, args []string, i int) (int, *cli.UsageError, bool) {
+// parseLocalOption consumes fetch-local's value and default-exclusion flags.
+// It returns the next index, a missing-value usage error, and a match flag.
+func parseLocalOption(f *core.FetchLocalFlags, a string, args []string, i int) (int, *cli.UsageError, bool) {
 	switch a {
+	case "--no-default-excludes":
+		f.NoDefaultExcludes = true
+		return i, nil, true
+	case flagIgnore:
+		v, next, u := cli.FlagValue(args, i, a, "<glob>")
+		f.Ignore = append(f.Ignore, v)
+		return next, u, true
 	case flagContext:
 		v, next, u := cli.FlagValue(args, i, a, "<file|dir>")
 		f.Context = append(f.Context, v)
@@ -316,6 +327,8 @@ func stashValue(args []string, i int) (string, int) {
 // setFetchValue applies one fetch value flag's operand.
 func setFetchValue(f *core.FetchFlags, name, value string) {
 	switch name {
+	case flagIgnore:
+		f.Ignore = append(f.Ignore, value)
 	case flagContext:
 		f.Context = append(f.Context, value)
 	case "--provider":
@@ -327,10 +340,12 @@ func setFetchValue(f *core.FetchFlags, name, value string) {
 	}
 }
 
-// flagChunk mirrors the fetchcore spelling the usage
+// providerGitHub and the flag names mirror the fetchcore spellings the usage
 // text names.
 const (
-	flagContext = "--context"
-	flagChunk   = "--chunk"
-	flagIndex   = "--index"
+	flagIgnore     = "--ignore"
+	flagContext    = "--context"
+	providerGitHub = "github"
+	flagChunk      = "--chunk"
+	flagIndex      = "--index"
 )

@@ -495,5 +495,10 @@
     "descriptions": {
       "": "Local planner output at verification/plan.json; verifiers follow the synthesizer in the pinned panel roster. No model or network call occurs."
     }
+  },
+  "excluded": {
+    "descriptions": {
+      "": "Byte-accounted exclusion receipt. Paths and rule ids identify removed raw diff sections; both hashes bind the reviewed subset to its raw input."
+    }
   }
 }

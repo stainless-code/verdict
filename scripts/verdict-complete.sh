@@ -8,10 +8,10 @@ _verdict_verbs() {
 
 _verdict_flags() { # $1 = verb
   case "$1" in
-    fetch) printf '%s\n' --base-sha --since --provider --context --index --consent-over-budget --show-prompts --chunk --json;;
-    post) printf '%s\n' --approve --request-changes --bind --force --review-file --dry-run --require-coverage --allow-secret-values --json;;
+    fetch) printf '%s\n' --base-sha --since --provider --context --ignore --no-default-excludes --index --consent-over-budget --show-prompts --chunk --json;;
+    post) printf '%s\n' --approve --request-changes --bind --force --review-file --dry-run --require-coverage --min-severity --allow-secret-values --json;;
     triage) printf '%s\n' --sig --status --rationale --force --dry-run --json;;
-    report) printf '%s\n' --html --root --status --kind --category --output --sarif --cost --check --completeness --live --json;;
+    report) printf '%s\n' --html --root --status --kind --category --output --sarif --include-withheld --cost --check --completeness --live --json;;
     next) printf '%s\n' --status --coverage --json;;
     show) printf '%s\n' --sig --json;;
     check-tree) printf '%s\n' --expect --json;;
@@ -25,7 +25,7 @@ _verdict_flags() { # $1 = verb
     index) printf '%s\n' build status prune callers tests-for co-changed owners blast-radius --from --at --depth --limit --commits --since --min-count --symbol --pr --paths --json;;
     backtest) printf '%s\n' mine replay score --since --until --run --agent --max-reviews --budget-usd --timeout --rounds --json;;
     threads) printf '%s\n' --provider --thread --dry-run --json;;
-    fetch-local) printf '%s\n' --staged --range --base --stash --worktree --context --index --consent-over-budget --show-prompts --chunk --json;;
+    fetch-local) printf '%s\n' --staged --range --base --stash --worktree --context --ignore --no-default-excludes --index --consent-over-budget --show-prompts --chunk --json;;
     run) printf '%s\n' --agent --timeout --rounds --print --json --;;
     learn) printf '%s\n' --propose --from-bundle --accept --reject --dry-run --pack --rule --scope --id --provenance --rigor --status --retire --restore --reason --json;;
     pack) printf '%s\n' list add test --dir --json;;

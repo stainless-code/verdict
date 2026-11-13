@@ -32,3 +32,23 @@ with `provider-unimplemented`. Saved provider metadata is honored, or select
 These are bounded foreground reads — no watch feed, daemon, persisted cursor,
 webhook, or subscription. Empty/unknown check rollups stay pending; incomplete
 review history or a head changing during a read refuses `pr-read-failed`.
+
+## Suppression receipts
+
+Read `excluded.json` and the TOC exclusion section before judging review coverage.
+To withhold a known finding, write `review.json.suppressed[]` with `path`, optional
+`line` or unambiguous `sig`, `source`, and `reason`. Use `source: exclusion` only
+with that path's `exclusion_id` from `excluded.json`. Use `source: agent` only with
+a concrete reason of at least 30 characters. The tool owns `below-severity` and
+`validation`. Suppression keeps the finding in the store and removes it from
+publication. A suppression that matches no finding only warns.
+
+Use `post --min-severity important` for a publication floor. `off` overrides a
+configured floor. `report --include-withheld` exposes withheld findings under
+`Quiet by policy`; `report --check` still ignores them.
+
+`fetch` and `fetch-local` accept repeatable `--ignore <glob>` rules. They run
+last, above the base ignore file; `!` re-includes. `--no-default-excludes`
+disables generated and attribute defaults while the ignore file still applies.
+`excluded.json` records `ignore`, `no_default_excludes`, and `patterns_source`
+(`cli` when run overrides are present).

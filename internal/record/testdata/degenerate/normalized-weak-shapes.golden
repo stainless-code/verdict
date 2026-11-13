@@ -112,7 +112,7 @@ other.txt	NEW	1	3
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "99025fed80a842c6d1c2316f06771ec8bb9931443de0dc67f0e9e4d01b177ee9",
+  "prompts_hash": "49f5c99439cc65f9faab329e78a460aba14420500afb5100ad75d321fcfd3912",
   "model": null,
   "repairs": [{"code":"scalar-to-array","path":"$.resolved"},{"code":"key-alias","path":"$.comments[0].path"},{"code":"key-alias","path":"$.comments[0].rigor"},{"code":"enum-synonym","path":"$.comments[0].rigor"},{"code":"enum-synonym","path":"$.comments[0].severity"},{"code":"key-alias","path":"$.comments[0].in-bounds"},{"code":"normalized-trivia","path":"$.comments[0].suggestion"}]
 }

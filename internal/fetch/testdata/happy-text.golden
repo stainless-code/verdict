@@ -76,6 +76,18 @@ notes.txt
   "sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
   "files": [
     {
+      "path": ".verdict/ignore",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".gitattributes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
       "path": ".verdict/config.json",
       "status": "missing",
       "bytes": 0,
@@ -125,7 +137,33 @@ notes.txt
     }
   ]
 }
+--- file C/.verdict/state/4701/excluded.json ---
+{
+  "schema_version": "1",
+  "patterns_source": ".verdict/ignore@base",
+  "defaults": [
+    "default:generated",
+    "default:attribute"
+  ],
+  "ignore": [],
+  "no_default_excludes": false,
+  "excluded": [],
+  "excluded_bytes": 0,
+  "kept_bytes": 146,
+  "raw_diff_sha256": "318d35b3738f5e9aadfdaef4e9c0f2b1772e60605db9a0b29f7008fd67c6e268",
+  "diff_sha256": "318d35b3738f5e9aadfdaef4e9c0f2b1772e60605db9a0b29f7008fd67c6e268"
+}
 --- file C/.verdict/state/4701/full.diff ---
+diff --git a/notes.txt b/notes.txt
+index 1111111..2222222 100644
+--- a/notes.txt
++++ b/notes.txt
+@@ -1,3 +1,3 @@
+ top
+-old line
++new line
+ bottom
+--- file C/.verdict/state/4701/full.raw.diff ---
 diff --git a/notes.txt b/notes.txt
 index 1111111..2222222 100644
 --- a/notes.txt
