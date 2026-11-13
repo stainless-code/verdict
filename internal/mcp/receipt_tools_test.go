@@ -9,10 +9,8 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// truncationReceipt is the exact bytes fetch writes when a source scan stops
-// at its page cap: 100 files listed, 12 expected, no continuation.
-const truncationReceipt = "{\n  \"truncated\": true,\n  \"truncation_reason\": \"scan_cap\",\n" +
-	"  \"returned\": 100,\n  \"total\": 12,\n  \"next_offset\": null\n}\n"
+// truncationReceipt is the exact bytes ScanCut emits on a capped source scan.
+var truncationReceipt = jq.PrettyOrdered(core.Wire(core.ScanCut(true, 100)))
 
 const mcpOpenFinding = `{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,` +
 	`"anchored":true,"body":"Usable body.","suggestion":null,` +
