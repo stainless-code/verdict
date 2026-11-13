@@ -577,3 +577,11 @@ func TestCapSummaryWithMarkerOver64KiB(t *testing.T) {
 		t.Fatal("HasSummaryMarker rejected capped summary")
 	}
 }
+
+func TestRenderSummaryInlineSectionEmptyCommentsIgnoresOrphanLinks(t *testing.T) {
+	t.Parallel()
+	links := []summaryInlineLink{{Path: "notes.txt", Line: 2, Body: "orphan", URL: "https://ex.invalid/1"}}
+	if got := renderSummaryInlineSection(nil, links); got != "" {
+		t.Fatalf("renderSummaryInlineSection(nil, links) = %q, want empty", got)
+	}
+}

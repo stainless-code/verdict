@@ -106,7 +106,7 @@ func (gitlabHost) listSummaryComments(ctx context.Context, cmdr Commander, _ map
 	if err != nil {
 		return nil, err
 	}
-	return summaryCommentsFromMaps(items, ""), nil
+	return summaryCommentsFromMaps(items), nil
 }
 
 func (gitlabHost) createSummaryComment(ctx context.Context, cmdr Commander, _ map[string]string,
@@ -135,7 +135,7 @@ func gitlabSummaryWrite(ctx context.Context, cmdr Commander, repo, pr, method, s
 	if res.ExitCode != 0 {
 		return summaryRemoteComment{}, shapeError(failureReason(res, nil))
 	}
-	return decodeSummaryCommentObject(res.Stdout, "")
+	return decodeSummaryCommentObject(res.Stdout)
 }
 
 func (gitlabHost) postedInlineURLs(context.Context, Commander, map[string]string,

@@ -109,7 +109,7 @@ func (githubHost) listSummaryComments(ctx context.Context, cmdr Commander, _ map
 	if err != nil {
 		return nil, err
 	}
-	return summaryCommentsFromMaps(items, ""), nil
+	return summaryCommentsFromMaps(items), nil
 }
 
 func (githubHost) createSummaryComment(ctx context.Context, cmdr Commander, _ map[string]string,
@@ -142,7 +142,7 @@ func ghSummaryWrite(ctx context.Context, cmdr Commander, endpoint, method, body 
 	if res.ExitCode != 0 {
 		return summaryRemoteComment{}, shapeError(failureReason(res, nil))
 	}
-	return decodeSummaryCommentObject(res.Stdout, "")
+	return decodeSummaryCommentObject(res.Stdout)
 }
 
 func (githubHost) postedInlineURLs(ctx context.Context, cmdr Commander, _ map[string]string,

@@ -242,7 +242,7 @@ func summaryReviewURL(obj *jq.Obj) string {
 	if obj == nil {
 		return ""
 	}
-	return strings.TrimSpace(strVal(obj, "html_url"))
+	return strings.TrimSpace(orderedString(obj, "html_url"))
 }
 
 func formatSummaryDryRun(s *core.PostSummary) string {
@@ -391,17 +391,10 @@ func cleanSummaryProse(raw string) string {
 }
 
 func renderSummaryInlineSection(comments []any, links []summaryInlineLink) string {
-	if len(comments) == 0 && len(links) == 0 {
+	if len(comments) == 0 {
 		return ""
 	}
-	lines := []string{"### Inline Comments"}
-	if len(comments) > 0 {
-		lines = appendCommentBullets(lines, comments, links)
-	} else {
-		for _, link := range links {
-			lines = append(lines, formatInlineLinkBullet(link.Path, link.Line, link.Body, link.URL))
-		}
-	}
+	lines := appendCommentBullets([]string{"### Inline Comments"}, comments, links)
 	if len(lines) == 1 {
 		return ""
 	}
@@ -415,46 +408,13 @@ func appendCommentBullets(lines []string, comments []any, links []summaryInlineL
 		if !ok || c == nil {
 			continue
 		}
-		path := strVal(c, fieldPath)
-		line := intVal(c, fieldLine)
-		body := strVal(c, fieldBody)
+		path := orderedString(c, fieldPath)
+		line := orderedInt(c, fieldLine)
+		body := orderedString(c, fieldBody)
 		url := matchInlineLink(path, line, body, links, used)
 		lines = append(lines, formatInlineLinkBullet(path, line, body, url))
 	}
 	return lines
-}
-
-func strVal(obj *jq.Obj, key string) string {
-	v, ok := obj.Get(key)
-	if !ok {
-		return ""
-	}
-	s, ok := v.(string)
-	if !ok {
-		return ""
-	}
-	return s
-}
-
-func intVal(obj *jq.Obj, key string) int {
-	v, ok := obj.Get(key)
-	if !ok {
-		return 0
-	}
-	switch n := v.(type) {
-	case int:
-		return n
-	case int64:
-		return int(n)
-	case float64:
-		return int(n)
-	default:
-		parsed, err := strconv.Atoi(jq.Interp(v))
-		if err != nil {
-			return 0
-		}
-		return parsed
-	}
 }
 
 func matchInlineLink(path string, line int, body string, links []summaryInlineLink, used []bool) string {
@@ -553,15 +513,15 @@ func capSummaryWithMarker(content, marker string, limit int) string {
 	return content + suffix
 }
 
-func summaryCommentsFromMaps(items []map[string]any, fallbackPRURL string) []summaryRemoteComment {
+func summaryCommentsFromMaps(items []map[string]any) []summaryRemoteComment {
 	out := make([]summaryRemoteComment, 0, len(items))
 	for _, m := range items {
-		out = append(out, decodeSummaryCommentMap(m, fallbackPRURL))
+		out = append(out, decodeSummaryCommentMap(m))
 	}
 	return out
 }
 
-func decodeSummaryCommentObject(raw string, fallbackPRURL string) (summaryRemoteComment, error) {
+func decodeSummaryCommentObject(raw string) (summaryRemoteComment, error) {
 	docs, err := jq.DecodeSlurp(strings.NewReader(raw))
 	if err != nil {
 		return summaryRemoteComment{}, jq.Sealed("decode summary comment JSON", err)
@@ -573,10 +533,10 @@ func decodeSummaryCommentObject(raw string, fallbackPRURL string) (summaryRemote
 	if !ok {
 		return summaryRemoteComment{}, shapeError("summary comment response is not an object")
 	}
-	return decodeSummaryCommentMap(m, fallbackPRURL), nil
+	return decodeSummaryCommentMap(m), nil
 }
 
-func decodeSummaryCommentMap(m map[string]any, fallbackPRURL string) summaryRemoteComment {
+func decodeSummaryCommentMap(m map[string]any) summaryRemoteComment {
 	id := jq.Interp(m["id"])
 	author := nestedLogin(m["user"], "login")
 	if author == "" {
@@ -588,9 +548,6 @@ func decodeSummaryCommentMap(m map[string]any, fallbackPRURL string) summaryRemo
 	url := jq.StrOf(m["html_url"])
 	if url == "" {
 		url = jq.StrOf(m["web_url"])
-	}
-	if url == "" && fallbackPRURL != "" && id != "" {
-		url = fallbackPRURL + "#note_" + id
 	}
 	system, ok := m["system"].(bool)
 	if !ok {

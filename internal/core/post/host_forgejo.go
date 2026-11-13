@@ -643,7 +643,7 @@ func (forgejoHost) listSummaryComments(ctx context.Context, cmdr Commander, env 
 	if err != nil {
 		return nil, err
 	}
-	return summaryCommentsFromMaps(items, ""), nil
+	return summaryCommentsFromMaps(items), nil
 }
 
 func (forgejoHost) createSummaryComment(ctx context.Context, cmdr Commander, env map[string]string,
@@ -691,7 +691,7 @@ func forgejoSummaryWrite(ctx context.Context, cmdr Commander, auth curlauth.Cred
 	if answer.status != http.StatusOK && answer.status != http.StatusCreated {
 		return summaryRemoteComment{}, shapeError(forgejoFailureReason(res, answer))
 	}
-	return decodeSummaryCommentObject(answer.body, "")
+	return decodeSummaryCommentObject(answer.body)
 }
 
 func (forgejoHost) postedInlineURLs(ctx context.Context, cmdr Commander, env map[string]string,
