@@ -104,12 +104,11 @@ func RunThreads(ctx context.Context, req *ThreadsRequest) (*ThreadsResponse, *co
 	if req.Resolve {
 		return st.resolve(ctx)
 	}
-	provider, ref := st.selectProvider(ctx)
+	dir, ref := st.openBundle()
 	if ref != nil {
 		return nil, ref
 	}
-
-	dir, ref := st.openBundle()
+	provider, ref := st.selectProvider(ctx, dir)
 	if ref != nil {
 		return nil, ref
 	}
@@ -377,15 +376,40 @@ func asRefusal(err error) (*core.RefusalError, bool) {
 	return errors.AsType[*core.RefusalError](err)
 }
 
-func (st *threadsRun) selectProvider(ctx context.Context) (string, *core.RefusalError) {
-	selected, _, selectionRef := core.ResolveProvider(ctx, st.req.Commander, st.req.RepoRootPath(), st.req.Provider, st.req.Env)
-	if selectionRef != nil {
-		return "", st.withWarnings(selectionRef)
+func (st *threadsRun) selectProvider(ctx context.Context, dir string) (string, *core.RefusalError) {
+	selected := st.req.Provider
+	if selected == "" {
+		selected = bundleProvider(dir)
+		if ref := st.checkOriginProvider(ctx, selected); ref != nil {
+			return "", ref
+		}
 	}
-	provider := threadsProvider(selected)
-	if provider == "" {
+	if selected == "" || threadsProvider(selected) == "" {
 		return "", st.withWarnings(&core.RefusalError{Code: codeBadProvider, Message: fmt.Sprintf(
-			"unknown --provider '%s' (want github|gitlab|gitcafe|forgejo|bitbucket|azure)", st.req.Provider)})
+			"unknown --provider '%s' (want github|gitlab|gitcafe|forgejo|bitbucket|azure)", selected)})
 	}
-	return provider, nil
+	return selected, nil
+}
+
+func bundleProvider(dir string) string {
+	if provider, present := readcommon.OpenBundle(dir).ProviderMarker(); present {
+		return provider
+	}
+	return providerGitHub
+}
+
+func (st *threadsRun) checkOriginProvider(ctx context.Context, provider string) *core.RefusalError {
+	inferred, source, ref := core.ResolveProvider(ctx, st.req.Commander, st.req.RepoRootPath(), "", st.req.Env)
+	if ref != nil {
+		if ref.Code == "provider-unknown" {
+			return nil
+		}
+		return st.withWarnings(ref)
+	}
+	if source == "remote" && inferred != provider {
+		return st.withWarnings(&core.RefusalError{Code: codeBadProvider, Message: fmt.Sprintf(
+			"origin provider %q disagrees with bundle provider %q — "+
+				"pass --provider %s to select the bundle explicitly", inferred, provider, provider)})
+	}
+	return nil
 }

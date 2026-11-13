@@ -3922,7 +3922,7 @@ per control. `severity_weighted_pooled_f1` computes
 outcomes. It differs from averaging per-severity F1 by class support. See
 [metric denominators](benchmark.md#metric-denominators).
 
-When `--provider` is absent, `fetch`, `threads`, and `doctor` infer the provider
+When `--provider` is absent, `fetch` and `doctor` infer the provider
 from `git remote get-url origin`. Recognized hosts are `github.com`, `gitlab.com`,
 `gitcafe.com`, `codeberg.org` (Forgejo), `bitbucket.org`, `dev.azure.com`, and
 `ssh.dev.azure.com`. Self-hosted GitLab and Forgejo use `GITLAB_HOST` and
@@ -3931,3 +3931,10 @@ with `provider-unknown` — pass `--provider` explicitly. Without an origin,
 GitHub remains the default. Fetch records `provider_source` as `flag`, `remote`,
 or `default` in `.verdict/state/<pr>/PR.json`; remote credentials are never
 included in this selection record. Bundle-based verbs use the fetched provider.
+
+`threads` refresh and resolution use the existing bundle's provider marker when
+`--provider` is omitted; an absent marker means `github`. A known origin that
+selects a different provider refuses before live reads or writes — pass
+`--provider <bundle-provider>` explicitly to confirm the intended host.
+`post`, `adopt`, live `calibrate`, and `ready` also select the bundle marker,
+with `github` as the default when the marker is absent.

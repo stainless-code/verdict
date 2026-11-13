@@ -71,7 +71,8 @@ func resolveAuthorThreadJSON(id, author, kind, sig string, resolved bool) string
 }
 
 // resolveRequest builds a resolve request over a scripted commander.
-func resolveRequest(cmdr Commander, named []string, dry bool) *ThreadsRequest {
+func resolveRequest(cmdr *scriptCommander, named []string, dry bool) *ThreadsRequest {
+	cmdr.out["git\x00remote\x00get-url\x00origin"] = scriptResult{fail: true}
 	req := threadsRequest(cmdr, "acme/app", "7")
 	req.Resolve = true
 	req.Provider = ""
@@ -99,8 +100,8 @@ func TestRunThreadsResolveDefault(t *testing.T) {
 	if got := strings.Join(resp.Resolve.Resolved, ","); got != "t1" {
 		t.Errorf("resolved = %q, want t1", got)
 	}
-	if len(cmdr.calls) != 2 || strings.Join(cmdr.calls[0], "\x00") != resolveGitHubSelf ||
-		strings.Join(cmdr.calls[1], "\x00") != resolveGitHubArgv {
+	if len(cmdr.calls) != 3 || strings.Join(cmdr.calls[1], "\x00") != resolveGitHubSelf ||
+		strings.Join(cmdr.calls[2], "\x00") != resolveGitHubArgv {
 		t.Errorf("calls = %q, want self login then the one literal resolve argv", cmdr.calls)
 	}
 	receipt := decodeReceipt(t, ".verdict/state/7/"+threadscore.KeyResolveReceipt)
@@ -127,8 +128,8 @@ func TestRunThreadsResolveDefault(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("second RunThreads refusal: %s: %s", ref.Code, ref.Message)
 	}
-	if len(resp.Resolve.Resolved) != 0 || len(second.calls) != 1 {
-		t.Errorf("second run resolved %v with %d call(s), want one self-login read and no write", resp.Resolve.Resolved, len(second.calls))
+	if len(resp.Resolve.Resolved) != 0 || len(second.calls) != 2 {
+		t.Errorf("second run resolved %v with %d call(s), want origin and self-login reads with no write", resp.Resolve.Resolved, len(second.calls))
 	}
 	if !hasSkip(resp.Resolve.Skipped, "t1", "already-resolved") {
 		t.Errorf("second run skipped = %+v, want t1 already-resolved", resp.Resolve.Skipped)
@@ -151,8 +152,8 @@ func TestRunThreadsResolveDryRun(t *testing.T) {
 	if !resp.Resolve.DryRun || strings.Join(resp.Resolve.Resolved, ",") != "t1" {
 		t.Errorf("dry-run data = %+v", resp.Resolve)
 	}
-	if len(cmdr.calls) != 1 || strings.Join(cmdr.calls[0], "\x00") != resolveGitHubSelf {
-		t.Errorf("dry run fired %d call(s): %q, want only the self-login read", len(cmdr.calls), cmdr.calls)
+	if len(cmdr.calls) != 2 || strings.Join(cmdr.calls[1], "\x00") != resolveGitHubSelf {
+		t.Errorf("dry run fired %d call(s): %q, want origin and self-login reads", len(cmdr.calls), cmdr.calls)
 	}
 	assertDryRunClean(t)
 }
@@ -184,8 +185,8 @@ func TestRunThreadsResolveHumanRefuses(t *testing.T) {
 	if ref == nil || ref.Code != "not-verdict-authored" {
 		t.Fatalf("refusal = %+v, want not-verdict-authored", ref)
 	}
-	if len(cmdr.calls) != 1 || strings.Join(cmdr.calls[0], "\x00") != resolveGitHubSelf {
-		t.Errorf("refused run fired %d call(s): %q, want only the self-login read", len(cmdr.calls), cmdr.calls)
+	if len(cmdr.calls) != 2 || strings.Join(cmdr.calls[1], "\x00") != resolveGitHubSelf {
+		t.Errorf("refused run fired %d call(s): %q, want origin and self-login reads", len(cmdr.calls), cmdr.calls)
 	}
 }
 
@@ -213,7 +214,7 @@ func TestRunThreadsResolveForgejoRefuses(t *testing.T) {
 	if ref == nil || ref.Code != "provider-unimplemented" {
 		t.Fatalf("refusal = %+v, want provider-unimplemented", ref)
 	}
-	if len(cmdr.calls) != 0 {
+	if len(cmdr.calls) != 1 {
 		t.Errorf("refused run fired %d call(s): %q", len(cmdr.calls), cmdr.calls)
 	}
 }
@@ -233,8 +234,8 @@ func TestRunThreadsResolveNamedSkipsResolved(t *testing.T) {
 	if len(resp.Resolve.Resolved) != 0 || !hasSkip(resp.Resolve.Skipped, "t3", "already-resolved") {
 		t.Errorf("named resolved thread = %+v", resp.Resolve)
 	}
-	if len(cmdr.calls) != 1 {
-		t.Errorf("skipped thread fired %d call(s), want only the self-login read", len(cmdr.calls))
+	if len(cmdr.calls) != 2 {
+		t.Errorf("skipped thread fired %d call(s), want origin and self-login reads", len(cmdr.calls))
 	}
 }
 
