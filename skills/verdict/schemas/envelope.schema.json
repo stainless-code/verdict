@@ -201,6 +201,12 @@
       "description": "report --json data: ranked read over the store. cost appears only with --cost, completeness only with --completeness, gate only when a gating flag (--max-severity, --require-head, --live) is set (gate itself always carries the coverage dimension), receipt keys only when budget.json parses.",
       "type": "object",
       "properties": {
+        "verification": {
+          "anyOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/verificationSummary" }
+          ]
+        },
         "generated_at": { "type": "string", "format": "date-time" },
         "dir": { "type": "string" },
         "head": { "$ref": "#/$defs/reportHead" },

@@ -108,6 +108,7 @@ export interface VerificationSummary {
 
 /** report --json data: ranked read over the store. cost appears only with --cost, completeness only with --completeness, gate only when a gating flag (--max-severity, --require-head, --live) is set (gate itself always carries the coverage dimension), receipt keys only when budget.json parses. */
 export interface ReportData {
+  verification?: VerificationSummary | null;
   generated_at: string;
   dir: string;
   head: ReportHead;

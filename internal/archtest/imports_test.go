@@ -81,6 +81,7 @@ var facadeAllowedDeps = map[string]bool{
 	"internal/core/index":     true,
 	"internal/core/learn":     true,
 	"internal/core/pack":      true,
+	"internal/core/panel":     true,
 	"internal/core/post":      true,
 	"internal/core/ready":     true,
 	"internal/core/record":    true,

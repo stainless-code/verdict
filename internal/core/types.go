@@ -222,23 +222,23 @@ func (d *GateDimension) wire() *jq.Obj {
 // ReportData is the report verb's typed --json data profile. Field order is
 // the published insertion order; CostRaw carries the ordered rollup
 // (including receipts and unknown keys) so the envelope re-emits it verbatim.
-type ReportData struct {
-	Verification *VerificationSummary `anyOf:"null" json:"verification,omitempty" optional:"true"` //nolint:govet // field order is the published property order
-	GeneratedAt  string               `format:"date-time"            json:"generated_at"`
-	Dir          string               `json:"dir"`
-	Head         ReportHead           `json:"head"`
-	Verdict      ReportVerdict        `json:"verdict"`
-	Counts       ReportCounts         `json:"counts"`
-	Panel        ReportPanel          `json:"panel"`
-	Patch        any                  `json:"patch"`
-	Output       *string              `json:"output"`
-	Filters      ReportFilters        `json:"filters"`
-	Items        []FindingItem        `json:"items"`
-	Cost         *ReportCost          `json:"cost,omitempty"`
-	Completeness *ReportCompleteness  `json:"completeness,omitempty"`
-	Compliance   *ReportCompliance    `json:"compliance,omitempty"`
-	Gate         *ReportGate          `json:"gate,omitempty"`
-	CostRaw      *jq.Obj              `json:"-"`
+type ReportData struct { //nolint:govet // field order is the published property order
+	Verification *PanelSummary       `anyOf:"null"                  json:"verification,omitempty" optional:"true"`
+	GeneratedAt  string              `format:"date-time"            json:"generated_at"`
+	Dir          string              `json:"dir"`
+	Head         ReportHead          `json:"head"`
+	Verdict      ReportVerdict       `json:"verdict"`
+	Counts       ReportCounts        `json:"counts"`
+	Panel        ReportPanel         `json:"panel"`
+	Patch        any                 `json:"patch"`
+	Output       *string             `json:"output"`
+	Filters      ReportFilters       `json:"filters"`
+	Items        []FindingItem       `json:"items"`
+	Cost         *ReportCost         `json:"cost,omitempty"`
+	Completeness *ReportCompleteness `json:"completeness,omitempty"`
+	Compliance   *ReportCompliance   `json:"compliance,omitempty"`
+	Gate         *ReportGate         `json:"gate,omitempty"`
+	CostRaw      *jq.Obj             `json:"-"`
 }
 
 // Wire renders the data object in wire order. CostRaw wins over the typed

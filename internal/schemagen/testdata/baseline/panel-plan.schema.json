@@ -40,10 +40,10 @@
     "verifier": {
       "type": "object",
       "properties": {
-        "model": { "type": "string" },
-        "provider": { "type": ["string", "null"] }
+        "provider": { "type": ["string", "null"] },
+        "model": { "type": "string" }
       },
-      "required": ["model", "provider"],
+      "required": ["provider", "model"],
       "additionalProperties": true
     },
     "finding": {

@@ -111,10 +111,10 @@
     "panelVerification": {
       "type": "object",
       "properties": {
-        "model": { "type": "string" },
+        "model": { "type": "string", "minLength": 1 },
         "provider": { "type": "string" },
         "verdict": { "enum": ["confirmed", "refuted", "insufficient"] },
-        "evidence": { "type": "string", "minLength": 10 },
+        "evidence": { "type": "string", "maxLength": 500, "minLength": 10 },
         "at": { "type": "string" }
       },
       "required": ["model", "verdict", "evidence"],

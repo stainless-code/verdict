@@ -182,6 +182,9 @@ guessed. Harness exports (Claude Code transcripts, opencode exports) are
 outside the binary — convert them with
 [`examples/usage-adapters/`](https://github.com/stainless-code/verdict/tree/main/examples/usage-adapters)
 first; `verdict` never reads those files itself.
+
+For independent cross-provider verification after review, follow
+[panel verification](references/panel.md) and `prompts/verifier.md`.
 # SYSTEM — orchestrator prompt
 
 ---
@@ -526,6 +529,9 @@ link is unknown — never invent a review id or URL.
 Two levers: callout intensity + `approved` (non-approving renders a Fix affordance;
 `approved:true` suppresses it). Wrapping mergeable feedback in `IMPORTANT` trains
 authors to click Fix unnecessarily.
+
+After writing the review, run `verdict panel` when a verifier roster is pinned.
+Dispatch each section independently — do not self-certify verification.
 # Behavioral diagram contract (opt-in, agent-drawn)
 
 Read this file before drawing a diagram. The diagram is optional: draw at

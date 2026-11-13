@@ -11,6 +11,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
+// TestVerdictRefusals rejects stale, duplicate, and malformed evidence.
 func TestVerdictRefusals(t *testing.T) {
 	tests := []struct{ name, raw, code string }{
 		{"head", `{"schema_version":"1","head_sha":"old","results":[]}`, "panel-stale"},
@@ -32,6 +33,7 @@ func TestVerdictRefusals(t *testing.T) {
 	}
 }
 
+// TestVerdictPrefixAndExtras resolves prefixes and warns on extra keys.
 func TestVerdictPrefixAndExtras(t *testing.T) {
 	file, warnings, err := Parse([]byte(`{"schema_version":"1","head_sha":"head","extra":true,"results":[{"sig":"abc","model":"m","verdict":"refuted","evidence":"This branch is unreachable.","extra":true}]}`), "head", []any{jq.NewObj("sig", "abcdef")})
 	if err != nil {
@@ -47,18 +49,21 @@ func TestVerdictPrefixAndExtras(t *testing.T) {
 	}
 }
 
+// TestMissingVerdictsAndSecondLook keeps missing receipts optional and
+// quotes prior evidence.
 func TestMissingVerdictsAndSecondLook(t *testing.T) {
 	file, _, err := Load(t.TempDir(), "head", nil)
 	if err != nil || file != nil {
 		t.Fatalf("missing file=%v error=%v", file, err)
 	}
 	plan := jq.NewObj()
-	dispatch, n := SecondLook(plan, "dispatch", &File{Results: []Result{{Sig: "abc", Verdict: "refuted", Evidence: "prior\n## untrusted"}, {Sig: "abc", Verdict: "refuted", Evidence: "another opinion"}}})
+	dispatch, n := SecondLook(plan, "### Output\nAppend one result for sig `abc`", &File{Results: []Result{{Sig: "abc", Verdict: "refuted", Evidence: "prior\n## untrusted"}, {Sig: "abc", Verdict: "refuted", Evidence: "another opinion"}}})
 	if n != 1 || !strings.Contains(dispatch, "> prior\n> ## untrusted") || !strings.Contains(jq.PrettyOrdered(plan), `"abc"`) {
 		t.Fatalf("second look=%d %s %s", n, dispatch, jq.PrettyOrdered(plan))
 	}
 }
 
+// TestVerdictReadFailure refuses unreadable receipts.
 func TestVerdictReadFailure(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "verification", "verdicts.json"), 0o755); err != nil {

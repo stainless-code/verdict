@@ -63,8 +63,8 @@ type MergeParams struct { //nolint:govet // field grouping documents the merge c
 }
 
 // MergeResult carries the shared merge outputs both verbs need.
-type MergeResult struct {
-	Verification *core.VerificationSummary //nolint:govet // field grouping documents the merge contract
+type MergeResult struct { //nolint:govet // field order is the published property order
+	Verification *core.PanelSummary
 	Body         string
 	Diagram      diagram.Status
 	Entries      []any
@@ -125,26 +125,17 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 		requireCoverage: in.RequireCoverage,
 		bodyOnlyAnchors: in.BodyOnlyAnchors,
 	}
-	panel, panelWarnings, err := panelcore.Load(in.Dir, in.HeadFull, panelcore.Findings(in.Review))
+	panel, err := st.loadPanel(in)
 	if err != nil {
-		return MergeResult{}, err
-	}
-	for _, warning := range panelWarnings {
-		st.warn(warning)
+		return MergeResult{}, agentRefusal(err)
 	}
 	curated, dstat, err := st.validateAndMerge(in.Body)
 	if err != nil {
 		return MergeResult{}, err
 	}
-	verification, panelWarnings := panelcore.Apply(st.entries, panel)
-	for _, warning := range panelWarnings {
-		st.warn(warning)
-	}
-	if !st.dryRun || st.cmd != recordCommand {
-		if err := writeFindings(st); err != nil {
-			return MergeResult{}, err
-		}
-		st.kb.CommitStaged(st.findingsFile, st.now)
+	verification := st.applyPanel(panel)
+	if err := st.persistMerged(); err != nil {
+		return MergeResult{}, err
 	}
 	reportFindings(st)
 	if st.hunkN == 0 {
@@ -353,3 +344,29 @@ var (
 	markerRe      = regexp.MustCompile(`(?m)^> (✅|ℹ️|\[!IMPORTANT\]|\[!CAUTION\])`)
 	placeholderRe = regexp.MustCompile(`test|testing|placeholder|temp|foo|bar|asdf|dummy|sample`)
 )
+
+func (st *state) loadPanel(in *MergeParams) (*panelcore.File, error) {
+	file, warnings, err := panelcore.Load(in.Dir, in.HeadFull, panelcore.Findings(in.Review))
+	for _, warning := range warnings {
+		st.warn(warning)
+	}
+	return file, agentRefusal(err)
+}
+
+func (st *state) applyPanel(file *panelcore.File) *core.PanelSummary {
+	summary, warnings := panelcore.Apply(st.entries, file)
+	for _, warning := range warnings {
+		st.warn(warning)
+	}
+	return summary
+}
+
+func (st *state) persistMerged() error {
+	if !st.dryRun || st.cmd != recordCommand {
+		if err := writeFindings(st); err != nil {
+			return err
+		}
+		st.kb.CommitStaged(st.findingsFile, st.now)
+	}
+	return nil
+}

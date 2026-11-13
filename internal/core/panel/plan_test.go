@@ -9,6 +9,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
+// TestPlanDispatch pins verifier order, quoting, and literal artifact paths.
 func TestPlanDispatch(t *testing.T) {
 	review := jq.NewObj("comments", []any{jq.NewObj("path", "src/db.go", "line", 42, "body", "claim\n## hostile")}, "body", "## section only")
 	plan, dispatch, warnings, err := Plan("bundle", "head", "now", "synth\na\nb", "trusted", review)
@@ -26,20 +27,21 @@ func TestPlanDispatch(t *testing.T) {
 	}
 }
 
+// TestPlanBounds rejects missing inputs and work above fixed caps.
 func TestPlanBounds(t *testing.T) {
 	tests := []struct {
 		name, head, roster, code string
 		n                        int
 	}{
-		{"no roster", "head", "", "panel-empty", 0}, {"synth only", "head", "synth", "panel-empty", 0}, {"no head", "", "synth a", "panel-empty", 0},
-		{"findings", "head", "synth a", "panel-too-large", 101}, {"verifiers", "head", "synth a b c d e", "panel-too-large", 1},
+		{"no roster", "head", "", "panel-empty", 0},
+		{"synth only", "head", "synth", "panel-empty", 0},
+		{"no head", "", "synth a", "panel-empty", 0},
+		{"findings", "head", "synth a", "panel-too-large", 101},
+		{"verifiers", "head", "synth a b c d e", "panel-too-large", 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cs := make([]any, tt.n)
-			for i := range cs {
-				cs[i] = jq.NewObj("path", "x", "body", "finding")
-			}
+			cs := planComments(tt.n)
 			_, _, _, err := Plan("bundle", tt.head, "now", tt.roster, "prompt", jq.NewObj("comments", cs))
 			var ref *core.RefusalError
 			if !errors.As(err, &ref) || ref.Code != tt.code {
@@ -49,6 +51,7 @@ func TestPlanBounds(t *testing.T) {
 	}
 }
 
+// TestPlanEmptyAndOneVerifier plans zero work and warns on a lone verifier.
 func TestPlanEmptyAndOneVerifier(t *testing.T) {
 	plan, dispatch, warnings, err := Plan("bundle", "head", "now", "synth a", "prompt", jq.NewObj("comments", []any{}))
 	if err != nil {
@@ -57,4 +60,12 @@ func TestPlanEmptyAndOneVerifier(t *testing.T) {
 	if len(warnings) != 1 || !strings.Contains(dispatch, "Nothing to verify") || !strings.Contains(jq.PrettyOrdered(plan), `"dispatches": 0`) {
 		t.Fatalf("plan=%v dispatch=%s warnings=%v", plan, dispatch, warnings)
 	}
+}
+
+func planComments(n int) []any {
+	cs := make([]any, n)
+	for i := range cs {
+		cs[i] = jq.NewObj("path", "x", "body", "finding")
+	}
+	return cs
 }

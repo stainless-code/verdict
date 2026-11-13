@@ -5,7 +5,7 @@ license instead of depending on the repository root.
 
 ## Adapted review prompts
 
-The prompts under `prompts/` are adapted from [Pullfrog](https://github.com/pullfrog/pullfrog), an
+The review prompts listed below under `prompts/` are adapted from [Pullfrog](https://github.com/pullfrog/pullfrog), an
 MIT-licensed open-source GitHub Action.
 
 - Upstream repository: <https://github.com/pullfrog/pullfrog>
@@ -28,6 +28,8 @@ Adapted from Pullfrog:
 First-party, no upstream text:
 
 - `SKILL.md`
+- `prompts/verifier.md`
+- `references/`
 - `schemas/`
 - `scripts/`
 - `NOTICE.md`

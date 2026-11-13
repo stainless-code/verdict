@@ -32,6 +32,7 @@ const Dir = "skills/verdict"
 //
 //go:embed skills/verdict/SKILL.md skills/verdict/NOTICE.md skills/verdict/prompts
 //go:embed skills/verdict/schemas skills/verdict/packs skills/verdict/scripts/verdict
+//go:embed skills/verdict/references
 var payload embed.FS
 
 // FS is the payload rooted at the skill directory: paths read "SKILL.md",

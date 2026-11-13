@@ -51,24 +51,24 @@ type PostResponse struct { //nolint:govet // field grouping documents the respon
 // confidence/security before items (a shell quirk preserved in Wire), and
 // the dry-run findings carry the file while the real findings carry the
 // accepted review. Review rides before provenance on the real-post wire.
-type PostData struct {
-	Verification    *VerificationSummary `anyOf:"null" json:"verification,omitempty" optional:"true"` //nolint:govet // field order is the published property order
-	DryRun          bool                 `json:"dry_run"`
-	Event           string               `json:"event"`
-	CommitID        string               `json:"commit_id"`
-	Body            PostBody             `inline:"true"           json:"body"`
-	Anchors         AnchorsSummary       `json:"anchors"`
-	Suggestions     Suggestions          `inline:"true"           json:"suggestions"`
-	Findings        PostFindings         `inline:"true"           json:"findings"`
-	Items           []FindingItem        `json:"items"`
-	Confidence      *int                 `json:"confidence"       max:"5"                   min:"1"`
-	SecuritySummary *string              `json:"security_summary"`
-	PayloadHash     string               `json:"payload_hash"`
-	Review          map[string]any       `json:"review,omitempty"`
-	Provenance      Provenance           `json:"provenance"       optional:"true"`
-	Coverage        *CoverageSummary     `anyOf:"null"            json:"coverage,omitempty" optional:"true"`
-	ItemsRaw        []any                `json:"-"`
-	ReviewRaw       any                  `json:"-"`
+type PostData struct { //nolint:govet // field order is the published property order
+	Verification    *PanelSummary    `anyOf:"null"            json:"verification,omitempty" optional:"true"`
+	DryRun          bool             `json:"dry_run"`
+	Event           string           `json:"event"`
+	CommitID        string           `json:"commit_id"`
+	Body            PostBody         `inline:"true"           json:"body"`
+	Anchors         AnchorsSummary   `json:"anchors"`
+	Suggestions     Suggestions      `inline:"true"           json:"suggestions"`
+	Findings        PostFindings     `inline:"true"           json:"findings"`
+	Items           []FindingItem    `json:"items"`
+	Confidence      *int             `json:"confidence"       max:"5"                       min:"1"`
+	SecuritySummary *string          `json:"security_summary"`
+	PayloadHash     string           `json:"payload_hash"`
+	Review          map[string]any   `json:"review,omitempty"`
+	Provenance      Provenance       `json:"provenance"       optional:"true"`
+	Coverage        *CoverageSummary `anyOf:"null"            json:"coverage,omitempty"     optional:"true"`
+	ItemsRaw        []any            `json:"-"`
+	ReviewRaw       any              `json:"-"`
 }
 
 // PostBody is the rendered post body summary.
@@ -92,20 +92,20 @@ type PostFindings struct { //nolint:govet // field order is the published proper
 }
 
 // Post is schemas/post.schema.json: the completed-post record.
-type Post struct {
-	Verification    *VerificationSummary `anyOf:"null" json:"verification,omitempty" optional:"true"` //nolint:govet // field order is the published property order
-	SchemaVersion   string               `const:"1"                         json:"schema_version"`
-	Review          map[string]any       `json:"review"`
-	Head            string               `json:"head"`
-	PostedAt        string               `format:"date-time"                json:"posted_at"`
-	Confidence      *int                 `json:"confidence,omitempty"       max:"5"               min:"1"`
-	SecuritySummary *string              `json:"security_summary,omitempty"`
-	ToolVersion     string               `json:"tool_version,omitempty"`
-	PromptsHash     string               `json:"prompts_hash,omitempty"`
-	Model           *string              `json:"model,omitempty"`
-	PatchID         *string              `json:"patch_id,omitempty"`
-	PatchIDKind     string               `json:"patch_id_kind,omitempty"`
-	Forced          []ForcedPost         `json:"forced,omitempty"`
+type Post struct { //nolint:govet // field order is the published property order
+	Verification    *PanelSummary  `anyOf:"null"                      json:"verification,omitempty" optional:"true"`
+	SchemaVersion   string         `const:"1"                         json:"schema_version"`
+	Review          map[string]any `json:"review"`
+	Head            string         `json:"head"`
+	PostedAt        string         `format:"date-time"                json:"posted_at"`
+	Confidence      *int           `json:"confidence,omitempty"       max:"5"                       min:"1"`
+	SecuritySummary *string        `json:"security_summary,omitempty"`
+	ToolVersion     string         `json:"tool_version,omitempty"`
+	PromptsHash     string         `json:"prompts_hash,omitempty"`
+	Model           *string        `json:"model,omitempty"`
+	PatchID         *string        `json:"patch_id,omitempty"`
+	PatchIDKind     string         `json:"patch_id_kind,omitempty"`
+	Forced          []ForcedPost   `json:"forced,omitempty"`
 	// Withheld names each capability the host could not carry for this post,
 	// in the order the run discovered it, so a degraded write is legible after
 	// the envelope is gone: a GitLab post whose requested REQUEST_CHANGES

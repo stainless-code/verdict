@@ -27,8 +27,10 @@ type HintRule struct {
 var hintRules = []HintRule{
 	{codes: []string{"panel-empty"}, hint: "try: configure defaults.panel with a synthesizer and verifiers, re-fetch, then re-run panel"},
 	{codes: []string{"panel-too-large"}, hint: "try: narrow the review or roster (100 findings, 4 verifiers maximum), then re-run panel"},
-	{codes: []string{"bad-panel"}, hint: "try: fix verification/verdicts.json: one result per (sig, model), a known verdict, evidence 10–500 characters"},
-	{codes: []string{"panel-stale"}, hint: "try: re-run verification/dispatch.md against the current bundle head and rewrite verification/verdicts.json"},
+	{codes: []string{"bad-panel"}, hint: "try: fix verification/verdicts.json: " +
+		"one result per (sig, model), a known verdict, evidence 10–500 characters"},
+	{codes: []string{"panel-stale"}, hint: "try: re-run verification/dispatch.md against the current " +
+		"bundle head and rewrite verification/verdicts.json"},
 	{codes: []string{"auth-missing"}, hint: "try: export the credential named above, then re-run"},
 	{
 		codes: []string{"fetch-failed", "pr-read-failed", "threads-failed"},

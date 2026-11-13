@@ -299,16 +299,17 @@ func RenderPostEnvelope(resp *core.PostResponse) *jq.Obj {
 		resp.Warnings, resp.Data.Wire(), nil)
 }
 
-func panelBody(body string, summary *core.VerificationSummary) string {
+func panelBody(body string, summary *core.PanelSummary) string {
 	if summary == nil || summary.Confirmed+summary.Contested == 0 {
 		return body
 	}
-	line := fmt.Sprintf("> ℹ️ %d findings · %d contested by a verifier", summary.Single+summary.Confirmed+summary.Contested, summary.Contested)
+	line := fmt.Sprintf("> ℹ️ %d findings · %d contested by a verifier",
+		summary.Single+summary.Confirmed+summary.Contested, summary.Contested)
 	lines := strings.Split(body, "\n")
 	for i, s := range lines {
 		if strings.HasPrefix(s, "> ") {
 			return strings.Join(append(append(lines[:i+1:i+1], line), lines[i+1:]...), "\n")
 		}
 	}
-	return line + "\n\n" + body
+	return line + paraSep + body
 }

@@ -273,6 +273,7 @@ func pruneEmptyDirs(root *os.Root) {
 		filepath.Join(payloadPacksDir, "builtin"),
 		payloadPacksDir,
 		payloadPromptsDir,
+		payloadReferencesDir,
 		payloadSchemasDir,
 		payloadScriptsDir,
 	} {
