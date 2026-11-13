@@ -9,7 +9,7 @@
 #       build commit), installs verdict, writes a versioned receipt.
 #   A2  `verdict --version` runs; the install dir is the action's
 #       RUNNER_TOOL_CACHE layout and PATH-ready (no rc files touched).
-#   A3  cached binaries are re-verified before execution.
+#   A3  cached archives are re-verified without another archive download.
 #   A4  corrupt checksums fail closed; the previous binary is untouched.
 #   A5  require-signature=false without cosign installs checksum-only.
 #   A6  a release that publishes no commit.txt fails closed.
@@ -47,6 +47,7 @@ export VERDICT_DOWNLOAD_URL="file://$SANDBOX/fake"
 export VERDICT_NO_MODIFY_PATH=1 VERDICT_REQUIRE_SIGNATURE=1
 export VERDICT_COSIGN="$FAKEBIN/cosign"
 export VERDICT_INSTALL="$INSTALL"
+export VERDICT_ARCHIVE_CACHE="$SANDBOX/archives"
 PATH="$FAKEBIN:$PATH"
 
 # --- A1: pinned install through the real installer, as the action runs it ---
@@ -101,20 +102,28 @@ for step in ('resolve-nix', 'install-nix'):
 PYTHON
 export ACTION_PATH="$HERE" VERDICT_VERSION="$GOOD"
 export GITHUB_OUTPUT="$SANDBOX/output" GITHUB_PATH="$SANDBOX/path"
+archive_before="$(grep -c '\.tar.gz' "$FAKE_CURL_LOG")"
+metadata_before="$(grep -c '/checksums.txt ' "$FAKE_CURL_LOG")"
 cosign_before="$(wc -l < "$FAKE_COSIGN_LOG")"
 bash "$SANDBOX/install-nix.sh" > /dev/null
 cosign_after="$(wc -l < "$FAKE_COSIGN_LOG")"
 [ "$cosign_after" -gt "$cosign_before" ] && good "cache hit re-verifies signature" || bad "cache hit skipped signature"
-cp "$INSTALL/verdict" "$SANDBOX/original"
-printf '#!/bin/sh\ntouch "%s"\n' "$SANDBOX/cached-executed" > "$INSTALL/verdict"
+archive_after="$(grep -c '\.tar.gz' "$FAKE_CURL_LOG")"
+metadata_after="$(grep -c '/checksums.txt ' "$FAKE_CURL_LOG")"
+[ "$archive_before" -gt 0 ] && [ "$archive_before" = "$archive_after" ] \
+  && good "valid cache reused with no archive download" || bad "cache hit downloaded archive"
+[ "$metadata_after" -gt "$metadata_before" ] \
+  && good "cache hit refreshed manifest" || bad "cache hit reused stale manifest"
+archive="$(find "$VERDICT_ARCHIVE_CACHE" -type f -name '*.tar.gz' | sort | head -1)"
+cp "$archive" "$SANDBOX/original-archive"
+printf 'tampered' >> "$archive"
 if bash "$SANDBOX/install-nix.sh" > "$SANDBOX/cache.log" 2>&1; then
-  bad "tampered cache accepted"
+  bad "tampered cached archive accepted"
 else
-  grep -q 'cached binary differs from verified release' "$SANDBOX/cache.log" \
-    && good "tampered cache refused" || bad "unexpected cache refusal"
+  grep -q 'SHA-256 mismatch' "$SANDBOX/cache.log" \
+    && good "tampered cached archive refused" || bad "unexpected archive refusal"
 fi
-[ ! -e "$SANDBOX/cached-executed" ] && good "tampered cache never executed" || bad "tampered cache executed"
-cp "$SANDBOX/original" "$INSTALL/verdict"
+cp "$SANDBOX/original-archive" "$archive"
 export RUNNER_TOOL_CACHE="$SANDBOX/toolcache" INPUT_REQUIRE_SIGNATURE=true
 export INPUT_VERSION="1.0.0'; touch pwned; #\""
 if (cd "$SANDBOX" && bash ./resolve-nix.sh) > "$SANDBOX/injection.log" 2>&1; then

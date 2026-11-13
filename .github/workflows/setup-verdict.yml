@@ -165,7 +165,7 @@ jobs:
           fi
           [ "$second_hash" = "$(cat "$RUNNER_TEMP/hash.before")" ]
           [ "$(wc -l < "$FAKE_CURL_LOG" | tr -d ' ')" -gt "$(cat "$RUNNER_TEMP/curl.before")" ]
-          echo "reuse ok: release downloaded again for verification"
+          echo "reuse ok: release metadata refreshed for verification"
 
       - name: Assert reuse (Windows)
         if: runner.os == 'Windows'

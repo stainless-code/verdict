@@ -116,22 +116,22 @@ runs:
     # Cross-job cache for PINNED versions only. `latest` is deliberately
     # excluded: a cache key containing "latest" would pin whichever build was
     # cached first and silently reinstall it forever. Within a job the install
-    # step below re-verifies cached bytes against a freshly verified release.
-    - name: Cache the verified binary (macOS/Linux)
+    # step below refreshes signed metadata and verifies the cached archive.
+    - name: Cache the release archive (macOS/Linux)
       if: runner.os != 'Windows' && inputs.version != 'latest'
       uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
-        path: ${{ steps.resolve-nix.outputs.install-dir }}
+        path: ${{ steps.resolve-nix.outputs.install-dir }}/archives
         # The install dir is version-scoped (see resolve), so the key only
         # needs version + platform to be unambiguous.
-        key: setup-verdict-${{ runner.os }}-${{ runner.arch }}-${{ steps.resolve-nix.outputs.version }}
+        key: setup-verdict-archive-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.resolve-nix.outputs.version }}
 
-    - name: Cache the verified binary (Windows)
+    - name: Cache the release archive (Windows)
       if: runner.os == 'Windows' && inputs.version != 'latest'
       uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
-        path: ${{ steps.resolve-win.outputs.install-dir }}
-        key: setup-verdict-${{ runner.os }}-${{ runner.arch }}-${{ steps.resolve-win.outputs.version }}
+        path: ${{ steps.resolve-win.outputs.install-dir }}/archives
+        key: setup-verdict-archive-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.resolve-win.outputs.version }}
 
     # The installers (10) own download + verify; the action only sets their
     # env. VERDICT_NO_MODIFY_PATH=1 always: PATH goes through $GITHUB_PATH,
@@ -143,22 +143,14 @@ runs:
       env:
         ACTION_PATH: ${{ github.action_path }}
         VERDICT_VERSION: ${{ inputs.version }}
+        VERDICT_ARCHIVE_CACHE: ${{ steps.resolve-nix.outputs.install-dir }}/archives
         VERDICT_INSTALL: ${{ steps.resolve-nix.outputs.install-dir }}
         VERDICT_NO_MODIFY_PATH: "1"
         VERDICT_REQUIRE_SIGNATURE: ${{ inputs.require-signature == 'true' && '1' || '0' }}
       run: |
         set -eu
         installer="$ACTION_PATH/../install.sh"
-        if [ -x "$VERDICT_INSTALL/verdict" ]; then
-          verified="$(mktemp -d "${TMPDIR:-/tmp}/setup-verdict-verify.XXXXXX")"
-          trap 'rm -rf "$verified"' EXIT
-          VERDICT_INSTALL="$verified" sh "$installer"
-          cmp -s "$verified/verdict" "$VERDICT_INSTALL/verdict" || {
-            echo 'setup-verdict: cached binary differs from verified release' >&2; exit 1;
-          }
-        else
-          sh "$installer"
-        fi
+        sh "$installer"
         version="$(sed -n 's/.*"version":"\([^"]*\)".*/\1/p' "$VERDICT_INSTALL/.verdict-installer" | head -1)"
         [ -n "$version" ] || { echo 'setup-verdict: installer left no receipt' >&2; exit 1; }
         echo "path=$VERDICT_INSTALL/verdict" >> "$GITHUB_OUTPUT"
@@ -173,6 +165,7 @@ runs:
       env:
         ACTION_PATH: ${{ github.action_path }}
         VERDICT_VERSION: ${{ inputs.version }}
+        VERDICT_ARCHIVE_CACHE: ${{ steps.resolve-win.outputs.install-dir }}/archives
         VERDICT_INSTALL: ${{ steps.resolve-win.outputs.install-dir }}
         VERDICT_NO_MODIFY_PATH: "1"
         VERDICT_REQUIRE_SIGNATURE: ${{ inputs.require-signature == 'true' && '1' || '0' }}
@@ -180,20 +173,7 @@ runs:
         $ErrorActionPreference = 'Stop'
         $installer = Join-Path $env:ACTION_PATH '../install.ps1'
         $binary = Join-Path $env:VERDICT_INSTALL 'verdict.exe'
-        if (Test-Path -LiteralPath $binary) {
-          $verified = Join-Path ([System.IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString('N'))
-          try {
-            & $installer -InstallDir $verified
-            $expected = (Get-FileHash -LiteralPath (Join-Path $verified 'verdict.exe') -Algorithm SHA256).Hash
-            if ((Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash -ne $expected) {
-              throw 'setup-verdict: cached binary differs from verified release'
-            }
-          } finally {
-            if (Test-Path -LiteralPath $verified) { Remove-Item -LiteralPath $verified -Recurse -Force }
-          }
-        } else {
-          & $installer
-        }
+        & $installer
         $receipt = Get-Content -LiteralPath (Join-Path $env:VERDICT_INSTALL '.verdict-installer') -Raw
         if ($receipt -notmatch '"version":"([^"]+)"') { throw 'setup-verdict: installer left no receipt' }
         "path=$binary" >> $env:GITHUB_OUTPUT
