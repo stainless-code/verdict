@@ -67,7 +67,7 @@ func importFixture(t *testing.T) string {
 
 func checkImportedMetadata(t *testing.T, raw []byte) {
 	t.Helper()
-	for _, literal := range []string{`"category":"safety"`, `"description":"Check errors"`, `"examples":["return err"]`, `"severity":"important"`, `"provenance":"pack:test/rules@1.0.0"`, `"hits":0`, `"pack_hash":`} {
+	for _, literal := range []string{`"category":"safety"`, `"description":"Check errors"`, `"examples":["return err"]`, `"severity":"important"`, `"provenance":"pack:test/rules@1.0.0"`, `"hits":0`, `"pack_hash":"7e4f4f91e50dbff307c1f8a2e1bf2faace2ecf0667f58964aee13c0e6771f8ef"`} {
 		if !strings.Contains(string(raw), literal) {
 			t.Fatalf("missing %s in %s", literal, raw)
 		}
