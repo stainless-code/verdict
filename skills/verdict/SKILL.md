@@ -9,6 +9,10 @@ The agent does the review; `gh` does GitHub I/O. `gh` must be authenticated —
 its own `gh auth login` or `GH_TOKEN`; `verdict doctor` checks. The model is
 whatever agent you invoke.
 
+For PR or CI waits, use MCP `pr_wait` instead of sleep loops; see
+[bounded waits](references/commands.md#pr-wait-and-bounded-ci-waits) for conditions,
+timeouts, one-shot observations, and `ready --wait-for build`.
+
 ## Where commands run
 
 Run the CLI from the repo under review: `.verdict/state/` is created in the current
@@ -33,6 +37,12 @@ the global binary (primary) or run the one-time verified `scripts/verdict
 bootstrap` — it fetches and verifies once, then works offline; a review never
 downloads. `npx skills` manages the skill copy only: `npx skills update`
 refreshes it.
+
+## Policy silence
+
+When a finding must be withheld, read the suppression receipt contract in
+`references/commands.md` before filling `review.json.suppressed[]`. Inspect
+`excluded.json` for excluded bytes; the raw diff remains in `full.raw.diff`.
 
 ## Workflow
 

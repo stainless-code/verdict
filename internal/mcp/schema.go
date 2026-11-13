@@ -273,6 +273,14 @@ func inputSchema(t *tool) map[string]any {
 }
 
 var fieldDocs = map[string]string{
+	"pr_wait.Until":    "Condition to await; review-changed compares with this call's first observation.",
+	"pr_wait.Timeout":  "Foreground wait duration, 1s–50s; defaults to 50s.",
+	"pr_wait.Interval": "Initial poll interval, at least 1s and at most timeout; defaults to 1s.",
+	"pr_wait.Once":     "Observe once without sleeping; an unmet condition returns condition-unmet data.",
+	"pr_wait.Provider": "Host override; defaults to saved provider or github. GitLab and Forgejo refuse explicitly.",
+	"ready.WaitFor":    "Wait for build completion before reporting readiness; timeout returns not-ready data.",
+	"ready.Timeout":    "Build wait duration, 1s–50s; defaults to 50s when wait_for is build.",
+
 	"Repo":       "Repository as owner/name.",
 	"Pr":         "Pull-request number or bundle slug (local-<name> for local bundles).",
 	"Sig":        "Finding signature or unique prefix.",
@@ -288,6 +296,7 @@ var fieldDocs = map[string]string{
 	"Overlap":    "Join overlapping findings across bundles.",
 	"Probe":      "Grade the offline probe instead of joining live state.",
 	"Specs":      "Judge specs to grade (probe mode).",
+	"Summary":    "PR-level summary comment mode: comment (create or update in place) or off (default).",
 	"JudgeFile":  "Path to a judge spec file (probe mode).",
 	"Rule":       "Rule text to append (learn).",
 	"Scope":      "Rule scope (repo, path, or language).",

@@ -27,8 +27,11 @@ import (
 // plus the --check gate flag.
 type Request struct { //nolint:govet // field grouping documents the request surface
 	core.ReadRequest
-	Check    bool
-	Warnings []string
+	WaitFor     string `enum:"build" json:"wait_for"`
+	Timeout     string
+	PollRuntime PollRuntime `json:"-"`
+	Check       bool
+	Warnings    []string
 }
 
 // Response carries the completed advisory: the envelope fields, the gate
@@ -48,6 +51,7 @@ type Response struct { //nolint:govet // field grouping documents the response s
 // Data is the ready verb's --json data profile. Field order is the published
 // jq construction order.
 type Data struct { //nolint:govet // field order is the published property order
+	Wait             *WaitData
 	Ready            bool
 	Recommendation   string
 	Blockers         []Blocker
@@ -83,7 +87,7 @@ func (d *Data) Wire() *jq.Obj {
 			"action", b.Action,
 		))
 	}
-	return jq.NewObj(
+	out := jq.NewObj(
 		"ready", d.Ready,
 		"recommendation", d.Recommendation,
 		"blockers", blockers,
@@ -95,6 +99,10 @@ func (d *Data) Wire() *jq.Obj {
 		"threads_open", d.ThreadsOpen,
 		"description_chars", d.DescriptionChars,
 	)
+	if d.Wait != nil {
+		out.Set("wait", d.Wait.Wire())
+	}
+	return out
 }
 
 type state struct {
@@ -131,8 +139,7 @@ const (
 	commentClose = "-->"
 )
 
-// Run executes the readiness advisory over live PR state.
-func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
+func runNow(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	st := &state{
 		req:      req,
 		repo:     req.Repo,
@@ -140,7 +147,7 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 		warnings: append([]string{}, req.Warnings...),
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, &core.RefusalError{Code: "canceled", Message: "canceled before ready completed"}
+		return nil, &core.RefusalError{Code: codeCanceled, Message: "canceled before ready completed"}
 	}
 	if ref := loadState(ctx, st); ref != nil {
 		return nil, ref
@@ -225,7 +232,7 @@ func loadState(ctx context.Context, st *state) *core.RefusalError {
 	}
 	if isLocalDir(dir) {
 		return st.withWarnings(&core.RefusalError{
-			Code:    "no-pr-target",
+			Code:    codeNoPRTarget,
 			Message: "ready needs a PR bundle (fetch owner/repo N first); local bundles have no live checks to advise on",
 		})
 	}
@@ -268,7 +275,7 @@ func githubLive(ctx context.Context, st *state, dir string) *core.RefusalError {
 	writeErrFile(st, dir+"/.ready.err", stderr)
 	if !ok {
 		return st.withWarnings(&core.RefusalError{
-			Code:    "pr-read-failed",
+			Code:    waitReadCode,
 			Message: "could not read live PR state for " + st.repo + hashSep + st.pr + ": " + firstLine(stderr),
 		})
 	}

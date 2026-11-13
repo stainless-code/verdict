@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -92,4 +93,55 @@ func gitlabDiscussionResolved(stdout string) bool {
 		return nm["resolved"] == true
 	}
 	return false
+}
+
+const gitlabNotesPath = "/notes"
+
+func (gitlabHost) listSummaryComments(ctx context.Context, cmdr Commander, _ map[string]string,
+	repo, pr string,
+) ([]summaryRemoteComment, error) {
+	items, err := readPublicationList(ctx, cmdr, append(
+		gitlabReadArgv(repo, pr, gitlabNotesPath+gitlabPageQuery), flagPaginate,
+	))
+	if err != nil {
+		return nil, err
+	}
+	return summaryCommentsFromMaps(items), nil
+}
+
+func (gitlabHost) createSummaryComment(ctx context.Context, cmdr Commander, _ map[string]string,
+	repo, pr, body string,
+) (summaryRemoteComment, error) {
+	return gitlabSummaryWrite(ctx, cmdr, repo, pr, methodPost, gitlabNotesPath, body)
+}
+
+func (gitlabHost) updateSummaryComment(ctx context.Context, cmdr Commander, _ map[string]string,
+	repo, pr, commentID, body string,
+) (summaryRemoteComment, error) {
+	return gitlabSummaryWrite(ctx, cmdr, repo, pr, methodPut, gitlabNotesPath+"/"+commentID, body)
+}
+
+func gitlabSummaryWrite(ctx context.Context, cmdr Commander, repo, pr, method, suffix, body string) (summaryRemoteComment, error) {
+	if strings.TrimSpace(body) == "" {
+		return summaryRemoteComment{}, shapeError(errEmptySummary)
+	}
+	if cmdr == nil {
+		return summaryRemoteComment{}, errNoCommander
+	}
+	res, err := gitlabCall(ctx, cmdr, gitlabMethodWriteArgv(repo, pr, method, suffix), jq.NewObj(fieldBody, body).MarshalPretty())
+	if err != nil {
+		return summaryRemoteComment{}, err
+	}
+	if res.ExitCode != 0 {
+		return summaryRemoteComment{}, shapeError(failureReason(res, nil))
+	}
+	return decodeSummaryCommentObject(res.Stdout)
+}
+
+func (gitlabHost) postedInlineURLs(context.Context, Commander, map[string]string,
+	string, string, *jq.Obj,
+) ([]summaryInlineLink, error) {
+	// GitLab inline discussion URLs come directly from POST /discussions responses
+	// and ride on postAttempt.inlineLinks.
+	return nil, nil
 }

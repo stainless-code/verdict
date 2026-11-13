@@ -388,3 +388,10 @@ func assertListedRule(t *testing.T, rules []any) {
 		"precision": "n/a",
 	})
 }
+
+func TestClientPostMinSeverityParity(t *testing.T) {
+	c := newSDKClient(nil, nil)
+	defer c.Close()
+	_, err := c.Post(t.Context(), &verdict.PostRequest{Invocation: sdkInvocation("7"), Approve: "false", MinSeverity: "typo"})
+	requireRefusal(t, err, "bad-min-severity", "try: pass critical|important|informational|off")
+}

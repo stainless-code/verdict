@@ -90,6 +90,47 @@ function runFake(mode, verb = "report", args = [], opts = {}, env = {}) {
 }
 
 describe("unit: fake binary exit paths", () => {
+  it("prWait uses the PR wait verb", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "verdict-prwait-"));
+    const argvFile = join(dir, "argv.json");
+    const client = createClient({
+      bin: FAKE,
+      stderr: "pipe",
+      env: {
+        ...process.env,
+        FAKE_MODE: "record-args",
+        FAKE_ARGV_FILE: argvFile,
+      },
+    });
+    await client.prWait([
+      "acme/app",
+      "4243",
+      "--until",
+      "merged",
+      "--timeout",
+      "5s",
+    ]);
+    assert.deepEqual(JSON.parse(readFileSync(argvFile, "utf8")), [
+      "pr-wait",
+      "acme/app",
+      "4243",
+      "--until",
+      "merged",
+      "--timeout",
+      "5s",
+      "--json",
+    ]);
+  });
+  it("prWait returns exit-1 outcome data", async () => {
+    const client = createClient({
+      bin: FAKE,
+      stderr: "pipe",
+      env: { ...process.env, FAKE_MODE: "wait-timeout" },
+    });
+    const result = await client.prWait([]);
+    assert.equal(result.error, null);
+    assert.equal(result.data.outcome, "wait-timeout");
+  });
   it("success returns the envelope", async () => {
     const env = await runFake("success");
     assert.equal(env.schema_version, "1");

@@ -584,3 +584,17 @@ func TestSDKReadDoesNotProbeGit(t *testing.T) {
 	_, err := c.Next(t.Context(), &verdict.NextRequest{Invocation: sdkInvocation("6101")})
 	requireNoError(t, err)
 }
+
+func TestClientPRWaitOnce(t *testing.T) {
+	t.Chdir(t.TempDir())
+	cmdr := &fakeCommander{t: t, rules: []cannedRule{
+		{tokens: []string{"api", "repos/acme/app/pulls/42", "--include"}, result: verdict.CommandResult{Stdout: "HTTP/2.0 200 OK\r\n\r\n" + `{"state":"open","head":{"sha":"abc"}}`}},
+		{tokens: []string{"gh pr view"}, result: verdict.CommandResult{Stdout: `{"headRefOid":"abc","statusCheckRollup":[],"reviews":[]}`}},
+		{tokens: []string{"gh api graphql"}, result: verdict.CommandResult{Stdout: `{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}`}},
+	}}
+	client := newSDKClient(nil, cmdr)
+	defer client.Close()
+	resp, err := client.PRWait(t.Context(), &verdict.PRWaitRequest{Invocation: sdkInvocation("42"), Until: "merged", Timeout: "1s", Once: true})
+	requireNoError(t, err)
+	assertFields(t, decodeData(t, resp.Data), map[string]any{"outcome": "condition-unmet", "until": "merged"})
+}

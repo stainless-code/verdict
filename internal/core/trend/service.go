@@ -223,7 +223,9 @@ func readBundleRow(st *state, dir, name string) (row, bool) {
 	if !ok {
 		return row{}, false
 	}
-	return buildRow(dir+"/", name, findings), true
+	bundle := dir + "/"
+	warnMalformedWithheld(st, findings, bundle)
+	return buildRow(bundle, name, findings), true
 }
 
 func buildRow(bundle, name string, findings []any) row {
@@ -401,4 +403,12 @@ func categoryCounts(findings []any) map[string]int {
 func isRegular(path string) bool {
 	fi, err := os.Stat(path)
 	return err == nil && fi.Mode().IsRegular()
+}
+
+func warnMalformedWithheld(st *state, entries []any, bundle string) {
+	for _, e := range entries {
+		if readcommon.FieldOf(e, "withheld") != nil && readcommon.WithheldSource(e) == "" {
+			st.warn("malformed withheld receipt ignored: " + bundle)
+		}
+	}
 }
