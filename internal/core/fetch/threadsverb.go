@@ -104,11 +104,11 @@ func RunThreads(ctx context.Context, req *ThreadsRequest) (*ThreadsResponse, *co
 	if req.Resolve {
 		return st.resolve(ctx)
 	}
-	provider := threadsProvider(req.Provider)
-	if provider == "" {
-		return nil, st.withWarnings(&core.RefusalError{Code: codeBadProvider, Message: fmt.Sprintf(
-			"unknown --provider '%s' (want github|gitlab|gitcafe|forgejo|bitbucket|azure)", req.Provider)})
+	provider, ref := st.selectProvider(ctx)
+	if ref != nil {
+		return nil, ref
 	}
+
 	dir, ref := st.openBundle()
 	if ref != nil {
 		return nil, ref
@@ -375,4 +375,17 @@ func fileExists(path string) bool {
 
 func asRefusal(err error) (*core.RefusalError, bool) {
 	return errors.AsType[*core.RefusalError](err)
+}
+
+func (st *threadsRun) selectProvider(ctx context.Context) (string, *core.RefusalError) {
+	selected, _, selectionRef := core.ResolveProvider(ctx, st.req.Commander, st.req.RepoRootPath(), st.req.Provider, st.req.Env)
+	if selectionRef != nil {
+		return "", st.withWarnings(selectionRef)
+	}
+	provider := threadsProvider(selected)
+	if provider == "" {
+		return "", st.withWarnings(&core.RefusalError{Code: codeBadProvider, Message: fmt.Sprintf(
+			"unknown --provider '%s' (want github|gitlab|gitcafe|forgejo|bitbucket|azure)", st.req.Provider)})
+	}
+	return provider, nil
 }

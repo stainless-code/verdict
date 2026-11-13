@@ -15,7 +15,7 @@ import (
 // threadsRequest builds a refresh request over a scripted commander.
 func threadsRequest(cmdr Commander, repo, pr string) *ThreadsRequest {
 	root := ""
-	req := &ThreadsRequest{}
+	req := &ThreadsRequest{Provider: "github"}
 	req.ReadRequest = core.ReadRequest{
 		Runtime: &core.Runtime{
 			Env:       map[string]string{},

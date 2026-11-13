@@ -74,6 +74,7 @@ func resolveAuthorThreadJSON(id, author, kind, sig string, resolved bool) string
 func resolveRequest(cmdr Commander, named []string, dry bool) *ThreadsRequest {
 	req := threadsRequest(cmdr, "acme/app", "7")
 	req.Resolve = true
+	req.Provider = ""
 	req.Threads = named
 	req.DryRun = dry
 	return req

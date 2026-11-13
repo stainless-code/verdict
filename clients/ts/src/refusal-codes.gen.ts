@@ -43,6 +43,7 @@ export type RefusalCode =
   | "bad-panel"
   | "bad-preset"
   | "bad-provider"
+  | "provider-unknown"
   | "bad-range"
   | "bad-reason"
   | "bad-requirement"

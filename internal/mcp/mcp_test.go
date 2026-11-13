@@ -916,6 +916,9 @@ type threadsCommander struct {
 }
 
 func (c *threadsCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
+	if strings.Join(cmd.Argv, " ") == "git remote get-url origin" {
+		return core.Result{Stdout: "https://github.com/acme/app.git"}, nil
+	}
 	if strings.Contains(strings.Join(cmd.Argv, " "), "api graphql") {
 		return core.Result{Stdout: c.page}, nil
 	}
