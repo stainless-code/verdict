@@ -51,14 +51,28 @@ func TestFloorFiltersBeforeSplitHook(t *testing.T) {
 	if err := os.WriteFile(dir+"/full.diff", nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	body := "### Low\nprivate finding\n### High\npublic finding\n"
+	body := "### Low\nprivate finding\n```text\n## example heading\nPRIVATE_AFTER_FENCE\n```\n### High\npublic finding\n"
 	review := jq.NewObj("schema_version", "1", "body", body, "comments", []any{}, "sections", []any{jq.NewObj("heading", "### Low", "severity", "informational"), jq.NewObj("heading", "### High", "severity", "critical")})
 	captured := ""
 	st := &state{dir: dir, review: review, cmd: "post", minSeverity: "important", controls: &controls.Snapshot{}, now: "2026-11-13T12:00:00Z", preFooter: func(body string) string { captured = body; return body }}
 	if _, _, err := st.validateAndMerge(body); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(captured, "private finding") || !strings.Contains(captured, "public finding") {
+	if strings.Contains(captured, "PRIVATE_AFTER_FENCE") || strings.Contains(captured, "private finding") || !strings.Contains(captured, "public finding") {
 		t.Fatalf("split hook received %q", captured)
+	}
+}
+
+func TestWithheldSectionNestedFences(t *testing.T) {
+	for _, code := range []string{
+		"````text\n```\n## fake\nPRIVATE\n```\n### fake\nPRIVATE\n````\n",
+		"~~~~text\n~~~\n## fake\nPRIVATE\n```\n### fake\nPRIVATE\n~~~~\n",
+	} {
+		e := jq.NewObj("heading", "### Low", "withheld", jq.NewObj("source", "agent", "reason", "An intentional compatibility exception.", "at", "2026-11-13T12:00:00Z"))
+		st := &state{entries: []any{e}}
+		got := st.hideWithheldSections("### Low\n" + code + "### High\npublic finding\n")
+		if got != "### High\npublic finding\n" {
+			t.Fatalf("fenced section leaked: %q", got)
+		}
 	}
 }
