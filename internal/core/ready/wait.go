@@ -109,8 +109,8 @@ func waitProvider(req *WaitRequest) (string, *core.RefusalError) {
 	if ref != nil {
 		return "", ref
 	}
-	provider := readcommon.ProviderOf(dir)
-	if provider == "" {
+	provider, present := readcommon.OpenBundle(dir).ProviderMarker()
+	if !present {
 		provider = providerGitHub
 	}
 	if req.Provider != "" {

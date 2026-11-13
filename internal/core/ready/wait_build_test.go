@@ -105,3 +105,15 @@ func TestReadyWaitRequiresBundleAndBuild(t *testing.T) {
 		t.Fatalf("got %v; want missing-bundle", ref)
 	}
 }
+
+func TestWaitKeepsPresentEmptyProviderMarker(t *testing.T) {
+	req, host, _ := buildRequest(t)
+	file := filepath.Join(req.RepoRoot, ".verdict", "state", "42", "PR.json")
+	if err := os.WriteFile(file, []byte(`{"provider":""}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, ref := Wait(t.Context(), &WaitRequest{ReadRequest: req.ReadRequest, Until: "merged", Timeout: "1s", Once: true})
+	if ref == nil || ref.Code != "provider-unimplemented" || host.polls != 0 {
+		t.Fatalf("ref=%v polls=%d", ref, host.polls)
+	}
+}
