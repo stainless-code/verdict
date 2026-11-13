@@ -61,7 +61,8 @@ const (
 )
 
 const verbsHint = "fetch|fetch-local|run|panel|record|adopt|fix|post|triage|report|next|show|" +
-	"check-tree|verify|doctor|calibrate|ready|pr-wait|gate|threads|trend|index|backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|config"
+	"check-tree|verify|doctor|calibrate|ready|pr-wait|gate|threads|trend|index|backtest|" +
+	"learn|pack|init|skill|upgrade|uninstall|mcp|serve|config"
 
 func main() {
 	//nolint:forbidigo // GO-LAYOUT-02: main is the only os.Exit caller by design
