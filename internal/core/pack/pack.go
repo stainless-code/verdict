@@ -93,7 +93,7 @@ type Manifest struct {
 	Version       string            `json:"version"`
 	Replace       []string          `json:"replace,omitempty"`
 	Severity      map[string]string `json:"severity,omitempty" value_enum:"critical|important|informational"`
-	Lenses        []LensSpec        `json:"lenses"             minItems:"1"`
+	Lenses        []LensSpec        `json:"lenses,omitempty"`
 	Rules         []RuleSpec        `json:"rules,omitempty"`
 }
 
@@ -111,10 +111,13 @@ type LensSpec struct {
 // resolves its level, the scope globs that decide when it applies, and the
 // tools it talks about.
 type RuleSpec struct {
-	ID       string   `json:"id"`
-	Severity string   `json:"severity"        minLength:"1"`
-	Globs    []string `json:"globs"           minItems:"1"`
-	Tools    []string `json:"tools,omitempty"`
+	Category    string   `json:"category,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Examples    []string `json:"examples,omitempty"`
+	ID          string   `json:"id"`
+	Severity    string   `json:"severity"              minLength:"1"`
+	Globs       []string `json:"globs"                 minItems:"1"`
+	Tools       []string `json:"tools,omitempty"`
 }
 
 // Lens is one loaded lens: its manifest row plus the body and its eight-hex
@@ -545,7 +548,7 @@ func checkManifestKeys(raw []byte, name string) *core.RefusalError {
 		}
 	}
 	for _, row := range shape.Rules {
-		if ref := checkExactKeys(row, []string{"id", "severity", "globs", "tools"}, name); ref != nil {
+		if ref := checkExactKeys(row, []string{"id", "severity", "globs", "tools", "category", "description", "examples"}, name); ref != nil {
 			return ref
 		}
 	}
@@ -589,7 +592,7 @@ func validate(manifest *Manifest, lensRowSet []map[string]json.RawMessage, name 
 	if ref := validateSeverity(manifest, name); ref != nil {
 		return ref
 	}
-	if len(manifest.Lenses) == 0 {
+	if len(manifest.Lenses) == 0 && len(manifest.Rules) == 0 {
 		return badPack(name + " names no lenses")
 	}
 	if len(manifest.Lenses) > MaxLenses {

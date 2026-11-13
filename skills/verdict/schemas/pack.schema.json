@@ -32,10 +32,9 @@
       }
     },
     "lenses": {
-      "description": "One row per lens, at least one; the loader refuses more than 64 with pack-too-large. Each id names lenses/<id>.md.",
+      "description": "One row per lens; a pack must declare lenses or rules. The loader refuses more than 64 lenses with pack-too-large. Each id names lenses/<id>.md.",
       "type": "array",
-      "items": { "$ref": "#/$defs/lens" },
-      "minItems": 1
+      "items": { "$ref": "#/$defs/lens" }
     },
     "rules": {
       "description": "One row per KB rule; each id names rules/<id>.md, globs are required, and the severity key resolves through this pack's severity map.",
@@ -43,7 +42,7 @@
       "items": { "$ref": "#/$defs/rule" }
     }
   },
-  "required": ["schema_version", "name", "version", "lenses"],
+  "required": ["schema_version", "name", "version"],
   "additionalProperties": false,
   "$defs": {
     "lens": {
@@ -80,6 +79,12 @@
       "description": "One rule row: a KB id, the severity-map key that resolves its level, required scope globs, and the tools it talks about.",
       "type": "object",
       "properties": {
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "examples": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
         "id": {
           "description": "KB id grammar: a lowercase slug of at most 65 characters; the body is rules/<id>.md.",
           "type": "string",

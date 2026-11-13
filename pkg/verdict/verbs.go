@@ -868,8 +868,8 @@ func (c *Client) Fix(ctx context.Context, req *FixRequest) (*Outcome, error) {
 // LearnRequest reads or updates the local knowledge base. It takes no
 // repo/PR positionals; the base lives under .verdict/.
 type LearnRequest struct {
-	Rule, Scope, ID, Provenance, Rigor, Reason, Retire, Restore string
-	Status                                                      bool
+	Pack, Rule, Scope, ID, Provenance, Rigor, Reason, Retire, Restore string
+	Status                                                            bool
 }
 
 // Learn reads or updates the local structured knowledge base.
@@ -880,6 +880,7 @@ func (c *Client) Learn(ctx context.Context, req *LearnRequest) (*Outcome, error)
 	}
 	resp, ref := learncore.Run(ctx, &learncore.Request{
 		ReadRequest: rr,
+		Pack:        req.Pack,
 		Rule:        req.Rule,
 		Scope:       req.Scope,
 		ID:          req.ID,
