@@ -49,8 +49,12 @@ type File struct {
 // Load reads a capped optional receipt and resolves signatures against the
 // review.
 func Load(dir, head string, findings []any) (*File, []string, error) {
-	path := filepath.Join(dir, "verification", "verdicts.json")
-	f, err := os.Open(path)
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, nil, bad(fmt.Sprintf("cannot open bundle for verification/verdicts.json: %v", err))
+	}
+	defer func() { _ = root.Close() }()
+	f, err := root.Open(filepath.Join("verification", "verdicts.json"))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil, nil
 	}

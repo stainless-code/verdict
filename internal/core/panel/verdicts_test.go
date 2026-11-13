@@ -75,3 +75,30 @@ func TestVerdictReadFailure(t *testing.T) {
 		t.Fatalf("unreadable verdicts: %v", err)
 	}
 }
+
+func TestLoadConfinesReceipt(t *testing.T) {
+	for _, component := range []string{"file", "directory"} {
+		t.Run(component, func(t *testing.T) {
+			dir, outside := t.TempDir(), t.TempDir()
+			receipt := filepath.Join(outside, "verdicts.json")
+			if err := os.WriteFile(receipt, []byte(`{"schema_version":"1","head_sha":"head","results":[{"sig":"abc","model":"m","verdict":"refuted","evidence":"external counterexample"}]}`), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			target, link := outside, filepath.Join(dir, "verification")
+			if component == "file" {
+				if err := os.Mkdir(link, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				target, link = receipt, filepath.Join(link, "verdicts.json")
+			}
+			if err := os.Symlink(target, link); err != nil {
+				t.Skipf("symlinks unavailable: %v", err)
+			}
+			file, _, err := Load(dir, "head", []any{jq.NewObj("sig", "abcdef")})
+			var ref *core.RefusalError
+			if !errors.As(err, &ref) || ref.Code != "bad-panel" || file != nil {
+				t.Fatalf("escaped %s symlink: file=%+v, error=%v", component, file, err)
+			}
+		})
+	}
+}
