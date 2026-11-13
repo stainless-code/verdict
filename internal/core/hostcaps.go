@@ -88,22 +88,22 @@ type CapabilityGap struct {
 // no documented resolve endpoint, so it reads false there and on every
 // fetch-only host.
 var hostCapabilities = map[string]HostCapabilities{
-	"github": {
-		Provider: "github", Fetch: true, Post: true,
+	providerGitHub: {
+		Provider: providerGitHub, Fetch: true, Post: true,
 		InlineAnchors: true, Approve: true, RequestChanges: true,
 		ThreadResolution: true,
 	},
-	"gitlab": {
-		Provider: "gitlab", Fetch: true, Post: true, InlineAnchors: true,
+	providerGitLab: {
+		Provider: providerGitLab, Fetch: true, Post: true, InlineAnchors: true,
 		Approve: true, ThreadResolution: true,
 	},
-	"gitcafe": {Provider: "gitcafe", Fetch: true},
-	"forgejo": {
-		Provider: "forgejo", Fetch: true, Post: true,
+	providerGitCafe: {Provider: providerGitCafe, Fetch: true},
+	providerForgejo: {
+		Provider: providerForgejo, Fetch: true, Post: true,
 		InlineAnchors: true, Approve: true, RequestChanges: true,
 	},
-	"bitbucket": {Provider: "bitbucket", Fetch: true},
-	"azure":     {Provider: "azure", Fetch: true},
+	providerBitbucket: {Provider: providerBitbucket, Fetch: true},
+	providerAzure:     {Provider: providerAzure, Fetch: true},
 }
 
 // CapabilitiesFor returns the declared capabilities for provider. Unknown

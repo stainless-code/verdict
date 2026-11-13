@@ -275,3 +275,15 @@ func TestGitLabRowsFollowTheGLabReads(t *testing.T) {
 		}
 	}
 }
+
+func TestDoctorWithoutCommanderDefaultsToGitHub(t *testing.T) {
+	req := &Request{}
+	req.Runtime = &core.Runtime{}
+	resp, ref := Run(t.Context(), req)
+	if ref != nil {
+		t.Fatal(ref)
+	}
+	if got := strings.Join(rowNames(resp.Data.Checks), ","); got != "gh-cli,gh-auth,token-scopes,ps,git,api-reachable,storage-writable" {
+		t.Fatalf("default provider checks = %q", got)
+	}
+}

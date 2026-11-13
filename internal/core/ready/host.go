@@ -60,8 +60,8 @@ func readyHostNames() string {
 // readyHost gates the advisory on the bundle kind: a host outside the
 // table refuses typed naming the host.
 func (st *state) readyHost(dir string) (readyHost, *core.RefusalError) {
-	prov := readcommon.ProviderOf(dir)
-	if prov == "" {
+	prov, present := readcommon.OpenBundle(dir).ProviderMarker()
+	if !present {
 		prov = providerGitHub
 	}
 	if host, ok := readyHostFor(prov); ok {

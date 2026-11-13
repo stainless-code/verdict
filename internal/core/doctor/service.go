@@ -88,11 +88,15 @@ func (d *Data) Counts() (ok, warn, fail int) {
 
 // Run executes the harness preflight for the requested host.
 func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
-	host := hostOf(req)
+	st := &state{req: req}
+	host, _, ref := core.ResolveProvider(ctx, st.commander(), req.RepoRootPath(), req.Provider, req.Env)
+	if ref != nil {
+		return nil, ref
+	}
 	if _, known := hostChecks[host]; !known {
 		return nil, &core.RefusalError{Code: codeBadProvider, Message: fmt.Sprintf(msgBadProvider, host)}
 	}
-	st := &state{req: req, host: host, warnings: append([]string{}, req.Warnings...)}
+	st = &state{req: req, host: host, warnings: append([]string{}, req.Warnings...)}
 	if err := ctx.Err(); err != nil {
 		return nil, &core.RefusalError{Code: "canceled", Message: "canceled before doctor completed"}
 	}
@@ -203,15 +207,6 @@ var hostChecks = map[string]struct{ head, tail []hostProbe }{
 	providerForgejo:   {head: []hostProbe{checkCurl, checkForgejoAuth}},
 	providerBitbucket: {head: []hostProbe{checkCurl, checkBitbucketAuth}},
 	providerAzure:     {head: []hostProbe{checkAzCLI, checkAzureAuth}},
-}
-
-// hostOf resolves the host to preflight: an unset flag keeps today's GitHub
-// posture.
-func hostOf(req *Request) string {
-	if req.Provider == "" {
-		return providerGitHub
-	}
-	return req.Provider
 }
 
 // examine runs the preflight: the host's own probes, the shared tool rows, the

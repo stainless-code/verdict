@@ -1017,7 +1017,7 @@ Distinct from `prompts/ci.md`'s agent-written
 markers, the agent's does not. Severity is stored at write time (unknown → null,
 prose emoji never parsed) — rank uses status, then severity, then rigor, then
 anchored/inBounds, then path/line/sig. `doctor` preflights one code host (the
-one `--provider` names, `github` by default); `calibrate`
+one `--provider` names, otherwise inferred from origin; without an origin, `github`); `calibrate`
 joins findings against live ground truth, read-only.
 
 `show --json` returns the finding in `data.item` (the raw store record in key
@@ -3996,3 +3996,20 @@ per control. `severity_weighted_pooled_f1` computes
 `2*WTP / (2*WTP + WFP + WFN)` after applying severity weights to individual
 outcomes. It differs from averaging per-severity F1 by class support. See
 [metric denominators](benchmark.md#metric-denominators).
+
+When `--provider` is absent, `fetch` and `doctor` infer the provider
+from `git remote get-url origin`. Recognized hosts are `github.com`, `gitlab.com`,
+`gitcafe.com`, `codeberg.org` (Forgejo), `bitbucket.org`, `dev.azure.com`, and
+`ssh.dev.azure.com`. Self-hosted GitLab and Forgejo use `GITLAB_HOST` and
+`FORGEJO_HOST`. Explicit `--provider` wins. Unknown or conflicting hosts refuse
+with `provider-unknown` — pass `--provider` explicitly. Without an origin,
+GitHub remains the default. Fetch records `provider_source` as `flag`, `remote`,
+or `default` in `.verdict/state/<pr>/PR.json`; remote credentials are never
+included in this selection record. Bundle-based verbs use the fetched provider.
+
+`threads` refresh and resolution use the existing bundle's provider marker when
+`--provider` is omitted; an absent marker means `github`. A known origin that
+selects a different provider refuses before live reads or writes — pass
+`--provider <bundle-provider>` explicitly to confirm the intended host.
+`post`, `adopt`, live `calibrate`, and `ready` also select the bundle marker,
+with `github` as the default when the marker is absent.
