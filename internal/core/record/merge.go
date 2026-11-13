@@ -110,6 +110,7 @@ func (st *state) validateAndMerge(body string) (string, diagram.Status, error) {
 	st.kb.Broken = false
 	st.kb.QuietShape = st.inputChecked
 	st.loadKB()
+	readcommon.WarnContextSources(st.dir, st.review, st.warn)
 	st.kb.Staged = []map[string]any{}
 	if err := checkReviewSchema(st.warnInput, st.review); err != nil {
 		return "", diagram.Status{}, err
@@ -632,6 +633,9 @@ func buildInline(st *state, m *jq.Obj) freshEntry {
 		CategorySet: hasCat,
 	}
 	entry.Brief = briefOf(st, m)
+	if v, ok := m.Get(fieldSources); ok {
+		entry.Sources = kbStrings(v)
+	}
 	return freshEntry{entry: entry, kbRaw: jq.Alt(kbc, nil)}
 }
 
@@ -886,6 +890,9 @@ func mergeFields(st *state, pm, n *jq.Obj) *jq.Obj {
 	overlayAlt(m, n, pm, fieldSeverity)
 	mergeCategory(m, n)
 	overlayAlt(m, n, pm, fieldSuggestion)
+	if v, ok := n.Get(fieldSources); ok {
+		m.Set(fieldSources, v)
+	}
 	nib, _ := n.Get(fieldInBounds)
 	if nib == nil {
 		pib, _ := pm.Get(fieldInBounds)

@@ -483,6 +483,7 @@ type VerifyData = core.VerifyData
 // TrendData is the trend verb's --json data profile: the portfolio rollup,
 // one row per reviewed bundle, and the opt-in overlap and corpus joins.
 type TrendData struct { //nolint:govet // field order is the published property order
+	Rules       any              `json:"rules"       optional:"true"`
 	GeneratedAt string           `format:"date-time" json:"generated_at"`
 	Bundles     int              `json:"bundles"     min:"0"`
 	Findings    int              `json:"findings"    min:"0"`
@@ -555,6 +556,9 @@ type TrendBundleRow struct { //nolint:govet // field order is the published prop
 // (live join, corpus join, probe) share one object, so every mode-specific key
 // is optional and a consumer narrows on the keys it asked for.
 type CalibrateData struct { //nolint:govet // field order is the published property order
+	Unmatched         int                `json:"unmatched"           min:"0"           optional:"true"`
+	Excluded          map[string]int     `json:"excluded"            optional:"true"`
+	Proposals         []any              `json:"proposals"           optional:"true"`
 	Metrics           any                `json:"metrics"             optional:"true"`
 	Sampling          any                `json:"sampling"            optional:"true"`
 	SamplingHits      []int              `json:"sampling_hits"       optional:"true"`

@@ -66,7 +66,7 @@ func Run(ctx context.Context, req *core.FetchRequest) (*core.FetchResponse, erro
 }
 
 func (st *state) dispatch(ctx context.Context, s *session, req *core.FetchRequest) (*core.FetchResponse, error) {
-	f, ref := st.provider(req.Flags)
+	f, ref := st.provider(&req.Flags)
 	if ref != nil {
 		return nil, ref
 	}
@@ -82,7 +82,7 @@ func (st *state) dispatch(ctx context.Context, s *session, req *core.FetchReques
 	return st.response(req, data, next), nil
 }
 
-func (st *state) provider(f core.FetchFlags) (core.FetchFlags, *core.RefusalError) {
+func (st *state) provider(f *core.FetchFlags) (*core.FetchFlags, *core.RefusalError) {
 	if f.Provider == "" {
 		f.Provider = providerGitHub
 	}
@@ -96,7 +96,7 @@ func (st *state) provider(f core.FetchFlags) (core.FetchFlags, *core.RefusalErro
 }
 
 func (st *state) backend(
-	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags, budget *budgetState,
+	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f *core.FetchFlags, budget *budgetState,
 ) (*core.FetchData, string, error) {
 	if f.Provider != providerGitHub {
 		return runProvider(ctx, ctx2, req, f, budget)

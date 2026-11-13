@@ -5,7 +5,7 @@ func usageText() string {
 		"fetch-local|run|panel|record|adopt|fix|check-tree|ready|gate|threads|trend|index|" +
 		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|config [opts]\n" +
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
-		"[--index <ref|dir>] [--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
+		"[--index <ref|dir>] [--context <file|dir>] [--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
 		"    write .verdict/state/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
 		"(PR.json normalized for non-github providers)\n" +
 		"    --index <ref|dir> hands one index the operator built to the bundle: impact.json plus a\n" +
@@ -27,7 +27,8 @@ func usageText() string {
 		"    runs unless --consent-over-budget is given (consent lands in budget.json,\n" +
 		"    surfaced by report --cost). Unset: estimate off, fetch as today.\n" +
 		"  fetch-local <owner/repo> <name> [--staged] [--range A[..|...]B] [--base R]\n" +
-		"        [--stash [n]] [--worktree] [--index <ref|dir>] [--consent-over-budget] [--show-prompts] [--chunk]\n" +
+		"        [--stash [n]] [--worktree] [--index <ref|dir>] [--context <file|dir>]\n" +
+		"        [--consent-over-budget] [--show-prompts] [--chunk]\n" +
 		"        [-- paths...] [--json]\n" +
 		"    local review bundle from git (no GitHub, no PR): writes\n" +
 		"    .verdict/state/local-<name>/{source.json,full.diff,toc.txt,roles.txt}.\n" +
@@ -172,7 +173,8 @@ func usageText() string {
 		"    more than runs need warns on a token-scopes-excess row naming the excess\n" +
 		"    scopes. Exit 0 unless a hard check fails. No repo/PR args, no writes, no\n" +
 		"    network beyond the host CLI reads.\n" +
-		"  calibrate <owner/repo> <pr> [--probe [--judge SIG:VERDICT[:HELPFUL]]... [--judge-file PATH]] [--json]\n" +
+		"  calibrate <owner/repo> <pr> [--reactions [--reaction-reason TEXT]] " +
+		"[--probe [--judge SIG:VERDICT[:HELPFUL]]... [--judge-file PATH]] [--json]\n" +
 		"    join findings against live ground truth (thread states + files changed since the\n" +
 		"    review head). Read-only; reports outcomes + tier precision, never auto-tunes.\n" +
 		"    --probe grades closed findings offline against recorded triage dispositions\n" +
@@ -222,7 +224,7 @@ func usageText() string {
 		"    --dry-run lists what would be resolved and makes zero writes; a real run\n" +
 		"    makes one host write per thread and writes threads-resolve.json. GitHub and\n" +
 		"    GitLab carry it; Forgejo refuses typed (no documented resolve endpoint).\n" +
-		"  trend <owner/repo> [--overlap] [--resolution] [--json]\n" +
+		"  trend <owner/repo> [--rules] [--overlap] [--resolution] [--json]\n" +
 		"    portfolio rollup over existing bundle stores (no network, writes nothing):\n" +
 		"    findings opened/addressed/closed over time, broken down by severity tier\n" +
 		"    and status, with per-bundle models/effort for the calibration join.\n" +

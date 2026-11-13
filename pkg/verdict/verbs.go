@@ -409,6 +409,7 @@ func (c *Client) Verify(ctx context.Context, req *VerifyRequest) (*VerifyRespons
 type FetchRequest struct {
 	Invocation
 	BaseSHA, Provider                 string
+	Context                           []string
 	BudgetConsent, ShowPrompts, Chunk bool
 	HeadControls                      bool
 }
@@ -422,6 +423,7 @@ func (c *Client) Fetch(ctx context.Context, req *FetchRequest) (*Result, error) 
 	resp, err := fetchcore.Run(ctx, &core.FetchRequest{
 		ReadRequest: rr,
 		Flags: core.FetchFlags{
+			Context: req.Context,
 			BaseSHA: req.BaseSHA, Provider: req.Provider, BudgetConsent: req.BudgetConsent,
 			ShowPrompts: req.ShowPrompts, ChunkFlag: req.Chunk, HeadControls: req.HeadControls,
 			HasBase: req.BaseSHA != "", HasProvider: req.Provider != "",
@@ -442,6 +444,7 @@ func (c *Client) Fetch(ctx context.Context, req *FetchRequest) (*Result, error) 
 // the base commit.
 type FetchLocalRequest struct {
 	Invocation
+	Context                                             []string
 	Range, BaseRef, Stash                               string
 	Paths                                               []string
 	Staged, HasStash, BudgetConsent, ShowPrompts, Chunk bool
@@ -457,6 +460,7 @@ func (c *Client) FetchLocal(ctx context.Context, req *FetchLocalRequest) (*Resul
 	resp, err := fetchcore.RunLocal(ctx, &core.FetchLocalRequest{
 		ReadRequest: rr,
 		Flags: core.FetchLocalFlags{
+			Context:   req.Context,
 			RangeSpec: req.Range, BaseRef: req.BaseRef, StashN: req.Stash, Paths: req.Paths,
 			Staged: req.Staged, HasStash: req.HasStash, BudgetConsent: req.BudgetConsent,
 			ShowPrompts: req.ShowPrompts, ChunkFlag: req.Chunk, Worktree: req.Worktree,
@@ -585,6 +589,7 @@ func (c *Client) Ready(ctx context.Context, req *ReadyRequest) (*ReadyResponse, 
 // PR is unused; trend scopes by repo.
 type TrendRequest struct {
 	Repo       string
+	Rules      bool
 	Resolution bool
 	Overlap    bool
 }
@@ -606,6 +611,7 @@ func (c *Client) Trend(ctx context.Context, req *TrendRequest) (*TrendResponse, 
 	resp, ref := trendcore.Run(ctx, &trendcore.Request{
 		ReadRequest: rr,
 		Overlap:     req.Overlap,
+		Rules:       req.Rules,
 		Resolution:  req.Resolution,
 	})
 	if ref != nil {
@@ -661,9 +667,11 @@ func (c *Client) Index(ctx context.Context, req *IndexRequest) (*IndexResponse, 
 // ground-truth join.
 type CalibrateRequest struct { //nolint:govet // field order is the public API surface
 	Invocation
-	Probe     bool
-	Specs     []string
-	JudgeFile string
+	Reactions      bool
+	ReactionReason string
+	Probe          bool
+	Specs          []string
+	JudgeFile      string
 }
 
 // Calibrate compares stored findings against ground truth.
@@ -674,9 +682,10 @@ func (c *Client) Calibrate(ctx context.Context, req *CalibrateRequest) (*Result,
 	}
 	resp, ref := calibratecore.Run(ctx, &calibratecore.Request{
 		ReadRequest: rr,
-		Probe:       req.Probe,
-		Specs:       req.Specs,
-		JudgeFile:   req.JudgeFile,
+		Reactions:   req.Reactions, ReactionReason: req.ReactionReason,
+		Probe:     req.Probe,
+		Specs:     req.Specs,
+		JudgeFile: req.JudgeFile,
 	})
 	if ref != nil {
 		return nil, refusalErr(ref)

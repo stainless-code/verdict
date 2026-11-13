@@ -19,3 +19,11 @@ func TestSamplingFlagsThreeRepeats(t *testing.T) {
 		t.Fatalf("k=%d repeats=%d; want 3,3", cfg.K, cfg.Runs)
 	}
 }
+
+func TestSampleSpreadPreservesMicroUSD(t *testing.T) {
+	one, two, three := 0.000001, 0.000002, 0.000003
+	got := stat([]*float64{&three, &one, &two})
+	if *got.Min != 0.000001 || *got.Median != 0.000002 || *got.Max != 0.000003 {
+		t.Fatalf("cost spread min=%g median=%g max=%g; want .000001/.000002/.000003", *got.Min, *got.Median, *got.Max)
+	}
+}

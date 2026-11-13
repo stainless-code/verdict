@@ -142,7 +142,7 @@ func renderPromptDump(ctx *fetchRunCtx) (string, error) {
 	if ref := dumpChunkDiffs(ctx, &sb, nonce); ref != nil {
 		return "", ref
 	}
-	dumpFencedList(&sb, ctx.dir, nonce, []string{"kb.txt", "lenses.txt", "sensitive.txt", "panel"})
+	dumpFencedList(&sb, ctx.dir, nonce, []string{"context.txt", "kb.txt", "lenses.txt", "sensitive.txt", "panel"})
 	return sb.String(), nil
 }
 

@@ -26,3 +26,7 @@ func OpenNoBlockIn(root *os.Root, name string) (*os.File, error) {
 	}
 	return f, nil
 }
+
+func openNoFollowIn(root *os.Root, name string) (*os.File, error) {
+	return OpenNoBlockIn(root, name)
+}

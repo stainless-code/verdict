@@ -171,7 +171,6 @@ const (
 	// tolerancePoints is the runbook's same-measurement band: a shift within
 	// it is the same result.
 	tolerancePoints = 5
-	round4          = 1e4
 	round6          = 1e6
 )
 
@@ -408,7 +407,7 @@ func stat(vals []*float64) Stat {
 	kept := make([]float64, 0, len(vals))
 	for _, v := range vals {
 		if v != nil {
-			kept = append(kept, math.Round(*v*round4)/round4)
+			kept = append(kept, math.Round(*v*round6)/round6)
 		}
 	}
 	if len(kept) == 0 {

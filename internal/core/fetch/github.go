@@ -27,7 +27,7 @@ const providerFileCeiling = 3000
 const upstreamFileLimit = 300
 
 func runGitHub(
-	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags, budget *budgetState,
+	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f *core.FetchFlags, budget *budgetState,
 ) (*core.FetchData, string, error) {
 	r, dir, repo, pr := ctx2.runner, ctx2.dir, req.Repo, req.Pr
 	if err := r.needTool("gh"); err != nil {
@@ -125,7 +125,7 @@ func githubAPIDiff(ctx context.Context, r *session, dir, repo, pr, cliStderr str
 }
 
 func githubBundle(
-	ctx context.Context, ctx2 *fetchRunCtx, _ *core.FetchRequest, f core.FetchFlags,
+	ctx context.Context, ctx2 *fetchRunCtx, _ *core.FetchRequest, f *core.FetchFlags,
 	dir, repo, pr string, fc fetchCap, chunkActive bool,
 ) (any, string, error) {
 	r := ctx2.runner
@@ -215,7 +215,7 @@ func githubReviews(ctx context.Context, r *session, dir, repo, pr string) *core.
 
 // githubIncremental owns the --base-sha compare: the incremental diff
 // and its note land beside the bundle, or the run continues without one.
-func githubIncremental(ctx context.Context, r *session, dir, repo string, f core.FetchFlags) (string, error) {
+func githubIncremental(ctx context.Context, r *session, dir, repo string, f *core.FetchFlags) (string, error) {
 	incBase := nullStr
 	if !f.HasBase || f.BaseSHA == "" {
 		return incBase, nil
@@ -300,7 +300,7 @@ func githubStat(ctx context.Context, ctx2 *fetchRunCtx) (string, []string) {
 	return total, lines
 }
 
-func fetchPrepare(ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags) (*budgetState, string, error) {
+func fetchPrepare(ctx2 *fetchRunCtx, req *core.FetchRequest, f *core.FetchFlags) (*budgetState, string, error) {
 	rc, ref := resolvePhaseOne(ctx2.env, req.SettingsPath, f.ChunkFlag)
 	if ref != nil {
 		return nil, "", ref
@@ -340,7 +340,7 @@ func fetchPrepare(ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags) 
 // on the shared budget state. Group caps and chunking read this resolution,
 // and the tail receipt reuses the same state instead of a discarded shadow.
 func phaseTwo(
-	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags,
+	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f *core.FetchFlags,
 	dir string, budget *budgetState,
 ) *core.RefusalError {
 	baseSHA := readcommon.PrField(dir, keyBaseSHA)

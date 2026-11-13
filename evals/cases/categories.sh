@@ -20,6 +20,23 @@ if [ "${1:-}" = "pr" ] && [ "${2:-}" = "view" ]; then
   printf '%s' '{"headRefOid":"cccccccccccccccccccccccccccccccccccccccc","state":"OPEN","mergedAt":null}'
   exit 0
 fi
+if [ "$*" = "api repos/acme/app/pulls/4960 --paginate --slurp" ]; then
+  printf '%s' '[{"user":{"login":"alice","type":"User"}}]'
+  exit 0
+fi
+if [ "$*" = "api repos/acme/app/pulls/comments/71/reactions --paginate --slurp" ]; then
+  printf '%s' '[[{"content":"+1","user":{"login":"bob","type":"User"}},{"content":"-1","user":{"login":"alice","type":"User"}},{"content":"+1","user":{"login":"poster","type":"User"}},{"content":"+1","user":{"login":"ci[bot]","type":"Bot"}}]]'
+  exit 0
+fi
+if [ "$*" = "api repos/acme/app/pulls/4960/comments --paginate --slurp" ]; then
+  sig="$(jq -r '.[] | select(.category == "security") | .sig' "$EVAL_SANDBOX/.verdict/state/4960/findings.json")"
+  jq -n --arg sig "$sig" '[[{id:71,user:{login:"poster",type:"User"},pull_request_review_id:7,
+    body:("Security boundary bug here with enough substance.\n\n<!-- verdict-finding sig=" + $sig + " -->"),path:"notes.txt"},
+    {id:72,user:{login:"poster",type:"User"},pull_request_review_id:7,body:"unmarked comment",path:"notes.txt"},
+    {id:73,user:{login:"poster",type:"User"},pull_request_review_id:8,
+    body:("Foreign review\n\n<!-- verdict-finding sig=" + $sig + " -->"),path:"notes.txt"}]]'
+  exit 0
+fi
 if [ "${1:-}" = "api" ]; then
   printf '%s' '["notes.txt"]'
   exit 0
@@ -138,7 +155,7 @@ else
 fi
 
 # 6. trend carries the map on the rollup and the per-bundle row.
-run_review trend acme/app --json
+run_review trend acme/app --rules --json
 assert_exit "trend --json exits 0" 0
 if jq -e --arg pr "$PR" '.data.per_bundle[] | select(.bundle == $pr) | .by_category.security == 1' <"$EVAL_OUT" >/dev/null; then
   good "trend per-bundle row carries the security count"
@@ -149,6 +166,34 @@ if jq -e '.data.by_category | type == "object"' <"$EVAL_OUT" >/dev/null; then
   good "trend rollup carries by_category"
 else
   bad "trend rollup misses by_category"
+fi
+
+
+if jq -e '.data.rules | type == "object"' <"$EVAL_OUT" >/dev/null; then
+  good "trend --rules publishes rule buckets"
+else
+  bad "trend --rules missing rule buckets"
+fi
+
+run_review calibrate acme/app "$PR" --reactions --json
+assert_exit "reaction read exits 0" 0
+if jq -e '.data.proposals | length == 1 and .[0].proposed == "helpful"' <"$EVAL_OUT" >/dev/null; then
+  good "unreasoned downvote never becomes a claim"
+else
+  bad "unexpected unreasoned reaction proposals"
+fi
+run_review calibrate acme/app "$PR" --reactions --reaction-reason 'The cited branch is unreachable.' --json
+assert_exit "reasoned reaction read exits 0" 0
+if jq -e '.data.proposals | map(select(.proposed == "false-positive"))[0] | .claim.rationale == "The cited branch is unreachable." and .reactor == "alice" and .role == "pr-author"' <"$EVAL_OUT" >/dev/null; then
+  good "reasoned downvote proposes an existing triage claim"
+else
+  bad "missing reasoned triage claim"
+fi
+
+if jq -e '.data.excluded == {bot:1,self:1} and .data.unmatched == 2' <"$EVAL_OUT" >/dev/null; then
+  good "excluded bot and self counts are visible"
+else
+  bad "missing reaction exclusions"
 fi
 
 eval_end

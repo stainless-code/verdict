@@ -29,4 +29,5 @@ publishing a page adds a route in `apps/docs/sources/`, not a second copy.
 - [Go rules](go-rules.md): the adopted rules, one per line with their `GO-<TOPIC>-<NN>` IDs and enforcement markers.
 - [Landing claims](landing-claims.md): every factual claim on the home page, and the manual line that checks it.
 - [Policy contract](policy-contract.md): requirement gates, evidence, consent, privacy constraints, and publication outcomes.
+- [Reactions and rule trends](reactions-trend.md): `calibrate --reactions` proposals from votes on posted comments, and `trend --rules` per-rule acceptance and false-hit rates.
 - [Vision](vision.md): what Verdict is, what it refuses to be, and where its craft comes from.

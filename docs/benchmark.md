@@ -730,6 +730,7 @@ ordered samples contribute to `any_of_k_recall`: union their matched bug
 indices, then divide by the unique ground-truth bugs in complete cohorts.
 Incomplete cohorts have no recall denominator and are counted explicitly.
 Per-case sample rates publish median/min/max and the non-null sample count n.
+Sample inputs retain six decimal places before spread calculation.
 
 ## Metric denominators
 

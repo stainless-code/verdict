@@ -372,7 +372,7 @@ func normalizeComment(m *jq.Obj, base string) []Problem {
 			repairs = append(repairs, normalizeEnum(m, key, v, base, core.CategoryValues)...)
 		case fieldSide:
 			repairs = append(repairs, normalizeSide(m, key, v, base)...)
-		case "kb":
+		case "kb", fieldSources:
 			repairs = append(repairs, scalarToStringArray(m, key, base+pathDot+key)...)
 		case fieldBrief:
 			if brief, ok := v.(*jq.Obj); ok {
@@ -636,7 +636,7 @@ var (
 	}
 	commentOptionalKeys = map[string]bool{
 		fieldLine: true, "start_line": true, fieldSide: true, "suggestion": true,
-		fieldBrief: true, fieldRigor: true, fieldSeverity: true, fieldInBoundsInput: true, "kb": true,
+		fieldBrief: true, fieldRigor: true, fieldSeverity: true, fieldInBoundsInput: true, "kb": true, fieldSources: true,
 	}
 	commentNullAliases = map[string]bool{"rung": true, "inBounds": true}
 	briefOptionalKeys  = map[string]bool{

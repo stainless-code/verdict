@@ -74,6 +74,8 @@ func decodeCalibrate(req *calibratecore.Request, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.str(argPr, &req.Pr)
 	a.boolean("probe", &req.Probe)
+	a.boolean("reactions", &req.Reactions)
+	a.str("reactionReason", &req.ReactionReason)
 	a.strings("specs", &req.Specs)
 	a.str("judgeFile", &req.JudgeFile)
 }
@@ -135,6 +137,7 @@ func decodeFetch(req *core.FetchRequest, a *args) {
 		f.str("baseSHA", &req.Flags.BaseSHA)
 		f.str("provider", &req.Flags.Provider)
 		f.str("index", &req.Flags.Index)
+		f.strings("context", &req.Flags.Context)
 		f.boolean("budgetConsent", &req.Flags.BudgetConsent)
 		f.boolean("showPrompts", &req.Flags.ShowPrompts)
 		f.boolean("chunkFlag", &req.Flags.ChunkFlag)
@@ -163,6 +166,7 @@ func decodeFetchLocal(req *core.FetchLocalRequest, a *args) {
 		f.str("baseRef", &req.Flags.BaseRef)
 		f.str("stashN", &req.Flags.StashN)
 		f.str("index", &req.Flags.Index)
+		f.strings("context", &req.Flags.Context)
 		f.strings("paths", &req.Flags.Paths)
 		f.boolean("staged", &req.Flags.Staged)
 		f.boolean("worktree", &req.Flags.Worktree)
@@ -408,6 +412,7 @@ func wirePack(ctx context.Context, b *bindings, req *packcore.Request) error {
 func decodeTrend(req *trendcore.Request, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.boolean("overlap", &req.Overlap)
+	a.boolean("rules", &req.Rules)
 	a.boolean("resolution", &req.Resolution)
 }
 
