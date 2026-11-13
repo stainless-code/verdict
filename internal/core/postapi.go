@@ -84,7 +84,7 @@ type PostData struct { //nolint:govet // field order is the published property o
 	Review          map[string]any   `json:"review,omitempty"`
 	Provenance      Provenance       `json:"provenance"       optional:"true"`
 	Coverage        *CoverageSummary `anyOf:"null"            json:"coverage,omitempty"     optional:"true"`
-	Summary         *PostSummary     `json:"summary,omitempty" optional:"true"`
+	Summary         *PostSummary     `anyOf:"null"            json:"summary,omitempty"      optional:"true"`
 	ItemsRaw        []any            `json:"-"`
 	ReviewRaw       any              `json:"-"`
 }
@@ -147,7 +147,7 @@ type Post struct { //nolint:govet // field order is the published property order
 	PostFloorScoped    []FloorScope     `json:"post_floor_scoped,omitempty"`
 	Coverage           *CoverageSummary `anyOf:"null"                            json:"coverage,omitempty"          optional:"true"`
 	ChunkCoverage      *ChunkCoverage   `anyOf:"null"                            json:"chunk_coverage,omitempty"    optional:"true"`
-	Summary            *PostSummary     `json:"summary,omitempty"                 optional:"true"`
+	Summary            *PostSummary     `anyOf:"null"                            json:"summary,omitempty"           optional:"true"`
 	ReviewRaw          any              `json:"-"`
 }
 

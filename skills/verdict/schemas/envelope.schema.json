@@ -528,6 +528,10 @@
         "provenance": { "$ref": "#/$defs/provenance" },
         "coverage": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/coverageSummary" }]
+        },
+        "summary": {
+          "description": "Planned (on dry-run) or executed (when --summary comment is active) PR-level summary comment action.",
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/postSummary" }]
         }
       },
       "required": [
@@ -543,6 +547,20 @@
         "security_summary",
         "payload_hash"
       ],
+      "additionalProperties": true
+    },
+    "postSummary": {
+      "description": "PR-level summary comment action and metadata.",
+      "type": "object",
+      "properties": {
+        "action": { "enum": ["create", "update", "none"] },
+        "comment_id": { "type": "string" },
+        "url": { "type": "string" },
+        "marker": { "type": "string" },
+        "duplicate_count": { "type": "integer", "minimum": 0 },
+        "note": { "type": "string" }
+      },
+      "required": ["action"],
       "additionalProperties": true
     },
     "recordData": {

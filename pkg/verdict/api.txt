@@ -405,6 +405,7 @@ func ListPacks(ctx context.Context, c *Client) (*PackResponse, error)
 type PostRequest struct {
 	Invocation
 	Approve, ReviewFile                 string
+	Summary                             string
 	RequestChanges, Bind, Force, DryRun bool
 	AllowSecretValues                   bool
 }

@@ -73,6 +73,10 @@
     },
     "chunk_coverage": {
       "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/chunkCoverage" }]
+    },
+    "summary": {
+      "description": "PR-level summary comment receipt when --summary comment ran; absent when --summary off.",
+      "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/postSummary" }]
     }
   },
   "required": ["schema_version", "review", "head", "posted_at"],
@@ -162,6 +166,20 @@
         "total": { "type": "integer", "minimum": 0 }
       },
       "required": ["attested", "total"],
+      "additionalProperties": true
+    },
+    "postSummary": {
+      "description": "Executed PR-level summary comment outcome (create or update) and duplicate note if multiple prior marked comments existed.",
+      "type": "object",
+      "properties": {
+        "action": { "enum": ["create", "update", "none"] },
+        "comment_id": { "type": "string" },
+        "url": { "type": "string" },
+        "marker": { "type": "string" },
+        "duplicate_count": { "type": "integer", "minimum": 0 },
+        "note": { "type": "string" }
+      },
+      "required": ["action"],
       "additionalProperties": true
     }
   }
