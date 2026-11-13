@@ -186,7 +186,7 @@ func summarizeThreads(
 	data := &ThreadsData{
 		Dir: dir, File: dir + suffixThreadsJSON, Provider: provider,
 		HeadSHA: head, FetchedAt: at, Truncated: truncated, Threads: len(feed),
-		Receipt: readcommon.BundleTruncation(dir),
+		Receipt: core.ScanCut(truncated, len(feed)),
 	}
 	for i := range feed {
 		if !feed[i].Resolved {

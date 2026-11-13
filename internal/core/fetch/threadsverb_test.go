@@ -422,3 +422,27 @@ func TestThreadsBundleKeepsMarkerWithUnknownOrigin(t *testing.T) {
 	got, ref := st.selectProvider(t.Context(), dir)
 	assertBundleProviderChoice(t, got, "gitlab", ref)
 }
+
+func TestRunThreadsRefreshIgnoresStaleBundleTruncation(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writeThreadsBundle(t, "7", strings.Repeat("a", 40))
+	stale := jq.PrettyOrdered(core.Wire(core.ScanCut(true, 100)))
+	if err := os.WriteFile(filepath.Join(".verdict", "state", "7", "truncation.json"), []byte(stale), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{
+		githubThreadCall(""): {
+			stdout: graphQLPage(graphQLThread("t1", "a.go", 2, false, false, "open note"), false, ""),
+		},
+	}}
+	resp, ref := RunThreads(context.Background(), threadsRequest(cmdr, "o/r", "7"))
+	if ref != nil {
+		t.Fatalf("RunThreads refusal: %v", ref)
+	}
+	if resp.Data.Receipt != nil {
+		t.Fatalf("clean threads receipt = %+v, want nil despite stale bundle truncation.json", resp.Data.Receipt)
+	}
+	if v, ok := resp.Data.Wire().Get("truncated"); ok {
+		t.Fatalf("clean threads wire truncated = %v, want omitted", v)
+	}
+}
