@@ -409,7 +409,7 @@ func budgetRefusal(err error) *core.RefusalError {
 // bundle plus the trusted-base inventory snapshot persist inside the
 // bundle directory. Later verbs append check outcomes by reference
 // without reconstructing these inputs.
-func finalizeRemoteRun(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags) *core.RefusalError {
+func finalizeRemoteRun(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f *core.FetchFlags) *core.RefusalError {
 	rc := ctx2.runCfg
 	if rc == nil {
 		return nil

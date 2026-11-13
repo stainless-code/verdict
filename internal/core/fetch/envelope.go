@@ -21,19 +21,20 @@ import (
 // bundle persists first, so the prompt dump already carries the combined
 // plan and every model-facing export already withholds privacy paths.
 func fetchTail(
-	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f core.FetchFlags, budget *budgetState,
+	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f *core.FetchFlags, budget *budgetState,
 	fcap *fetchCap, chunkJSON any, incBase string,
 ) (*core.FetchData, string, error) {
 	if ref := finalizeRemoteRun(ctx, ctx2, req, f); ref != nil {
 		return nil, "", ref
 	}
-	if ierr := writeImpact(ctx, ctx2, impactInput{index: f.Index, head: readcommon.PrField(ctx2.dir, keyHeadSHA)}); ierr != nil {
-		return nil, "", ierr
+	in := impactInput{index: f.Index, head: readcommon.PrField(ctx2.dir, keyHeadSHA)}
+	if err := writeEvidence(ctx, ctx2, in, f.Context, req.TimeUTC()); err != nil {
+		return nil, "", err
 	}
 	writeTailReceipt(ctx2, budget)
 	s, dir := ctx2.runner, ctx2.dir
 	next := "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + " +
-		dir + "/PR.json + " + diffFeed(dir, chunkJSON != nil, fullDiffFile) + impactFeed(dir, f.Index) +
+		dir + "/PR.json + " + diffFeed(dir, chunkJSON != nil, fullDiffFile) + impactFeed(dir, f.Index) + contextFeed(dir, f.Context) +
 		" to any agent; ask it to write " + dir + "/review.json" +
 		threadsHint(dir)
 	if req.JSONMode {
@@ -57,7 +58,7 @@ func fetchTail(
 }
 
 func writeFetchTailJSON(
-	ctx2 *fetchRunCtx, f core.FetchFlags, budget *budgetState,
+	ctx2 *fetchRunCtx, f *core.FetchFlags, budget *budgetState,
 	fcap *fetchCap, chunkJSON any, incBase, next string,
 ) (*core.FetchData, string, error) {
 	dump, hasDump, err := stageDump(ctx2, f.ShowPrompts)
@@ -263,7 +264,9 @@ func fetchData(
 	}
 	addArtifactIfPresent(artifacts, ctx2.dir, "lenses.txt", suffixLensesTxt)
 	impactArtifactRow(artifacts, ctx2.dir)
+	contextArtifacts(artifacts, ctx2.dir)
 	data := &core.FetchData{
+		Sources:    readcommon.ContextSources(ctx2.dir),
 		Dir:        ctx2.dir,
 		HeadSHA:    readcommon.PrField(ctx2.dir, keyHeadSHA),
 		BaseSHA:    readcommon.PrField(ctx2.dir, keyBaseSHA),
@@ -346,6 +349,7 @@ func localFetchData(ctx2 *fetchRunCtx, mode *localMode, listed string, total, ad
 		diffSize = fi.Size()
 	}
 	return &core.FetchData{
+		Sources:    readcommon.ContextSources(dir),
 		Local:      true,
 		Dir:        dir,
 		Kind:       mode.kind,
@@ -379,6 +383,7 @@ func localArtifacts(dir string) *jq.Obj {
 	addArtifactIfPresent(artifacts, dir, "kb-recall.json", suffixKBRecall)
 	addArtifactIfPresent(artifacts, dir, "lenses.txt", suffixLensesTxt)
 	impactArtifactRow(artifacts, dir)
+	contextArtifacts(artifacts, dir)
 	return artifacts
 }
 
@@ -401,12 +406,13 @@ func fetchTailLocal(
 	if ref := finalizeLocalRun(ctx, ctx2, req, f, mode.baseSHA, listed); ref != nil {
 		return nil, "", ref
 	}
-	if ierr := writeImpact(ctx, ctx2, impactInput{index: f.Index, head: mode.headSHA}); ierr != nil {
-		return nil, "", ierr
+	if err := writeEvidence(ctx, ctx2, impactInput{index: f.Index, head: mode.headSHA}, f.Context, req.TimeUTC()); err != nil {
+		return nil, "", err
 	}
 	writeTailReceipt(ctx2, budget)
 	next := "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + " +
 		ctx2.dir + "/source.json + " + diffFeed(ctx2.dir, chunkJSON != nil, fullDiffFile) + impactFeed(ctx2.dir, f.Index) +
+		contextFeed(ctx2.dir, f.Context) +
 		" to any agent; ask it to write " + ctx2.dir + "/review.json"
 	dump, hasDump, err := localDumpPtr(ctx2, req, f)
 	if err != nil {
@@ -437,4 +443,16 @@ func localDumpPtr(
 		return dump, true, nil
 	}
 	return stageDump(ctx2, f.ShowPrompts)
+}
+
+func writeEvidence(ctx context.Context, ctx2 *fetchRunCtx, in impactInput, inputs []string, at string) error {
+	if err := writeImpact(ctx, ctx2, in); err != nil {
+		return err
+	}
+	return writeContext(ctx2.dir, inputs, at)
+}
+
+func contextArtifacts(artifacts *jq.Obj, dir string) {
+	addArtifactIfPresent(artifacts, dir, "context.json", "/context.json")
+	addArtifactIfPresent(artifacts, dir, "context.txt", "/context.txt")
 }

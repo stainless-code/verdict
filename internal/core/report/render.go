@@ -248,9 +248,11 @@ func buildHuman(st *state) []string {
 	view := viewRanked(st)
 	lines := []string{fmt.Sprintf("report: %s (%d shown) open=%d head=%s",
 		st.dir, len(view), viewOpen(view), readcommon.ShortSHA(st.headSHA))}
+	lines = append(lines, readcommon.ContextLine(st.dir)...)
 	lines = append(lines, cleanHeadline(st)...)
 	lines = append(lines, verificationHuman(st.entries)...)
 	for _, item := range view {
+		lines = append(lines, readcommon.CitationLines(item.Entry)...)
 		lines = append(lines, fmt.Sprintf("%d. [%s] %s (%s)",
 			item.Rank, jq.Str(readcommon.FieldOf(item.Entry, "status")),
 			readcommon.Locator(item.Entry), sigHuman(item.Entry)))

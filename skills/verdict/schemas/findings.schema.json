@@ -38,6 +38,10 @@
           "description": "Optional machine brief; excluded from the sig, and preserved across re-record when the fresh comment carries none.",
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/brief" }]
         },
+        "sources": {
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        },
         "kb": {
           "description": "Cited knowledge-base rule ids; [] when uncited.",
           "type": ["array", "null"],
