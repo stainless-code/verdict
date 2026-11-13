@@ -3743,6 +3743,6 @@ variable `VERDICT_VERSION` to a release containing `run --agent` before enabling
 the workflow — the `v0.6.1` tag predates that command. The Action
 reuses `setup-verdict` for checksum and signature verification and exports the
 installed `version`. Pin the Action to a full commit SHA, as the example does.
-The Action owns ready → fetch → run → post → report → gate; `run` makes no
+The Action owns fetch → ready → run → post → report → gate; `run` makes no
 network call of its own and refuses missing or stale `review.json`. A successful
 review is posted to GitHub before the merge gate runs.

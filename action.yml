@@ -52,15 +52,6 @@ runs:
       with:
         version: ${{ inputs.version }}
 
-    - name: Readiness pre-check (saves agent spend)
-      env:
-        VERDICT_REPOSITORY: ${{ inputs.repository }}
-        VERDICT_PR: ${{ inputs.pull-request }}
-        GH_TOKEN: ${{ inputs.github-token }}
-      shell: bash
-      run: |
-        verdict ready "$VERDICT_REPOSITORY" "$VERDICT_PR" --check
-
     - name: Fetch the PR bundle
       env:
         VERDICT_REPOSITORY: ${{ inputs.repository }}
@@ -69,6 +60,15 @@ runs:
       shell: bash
       run: |
         verdict fetch "$VERDICT_REPOSITORY" "$VERDICT_PR"
+
+    - name: Readiness pre-check (saves agent spend)
+      env:
+        VERDICT_REPOSITORY: ${{ inputs.repository }}
+        VERDICT_PR: ${{ inputs.pull-request }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      shell: bash
+      run: |
+        verdict ready "$VERDICT_REPOSITORY" "$VERDICT_PR" --check
 
     - name: Agent review (verdict run --agent, your agent + your key)
       env:

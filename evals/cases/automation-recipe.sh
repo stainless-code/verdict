@@ -85,6 +85,18 @@ else
   bad "Action input declarations drift from pipeline bindings"
 fi
 
+if python3 - "$WORKFLOW" <<'PYORDER'
+import sys
+from pathlib import Path
+text = Path(sys.argv[1]).read_text()
+assert text.index('verdict fetch ') < text.index('verdict ready ') < text.index('verdict run '), "fetch must precede readiness, and readiness must precede agent spend"
+PYORDER
+then
+  good "fetch precedes readiness before agent spend"
+else
+  bad "fetch must precede readiness before agent spend"
+fi
+
 VALIDATE="$EVAL_SANDBOX/validate-inputs.sh"
 awk '
   /^    - name: / { want = (index($0, "Validate inputs") > 0) }
