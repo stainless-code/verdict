@@ -1476,6 +1476,23 @@ refuses what it cannot post. `--allow-secret-values` publishes the review
 anyway, and `post.json` records the shapes it let through in
 `secret_shapes_allowed[]` — the receipt proves the override and what it cost.
 
+`post --summary comment|off` (default `off`) opts into maintaining one
+separate PR-level summary comment (`<!-- verdict-summary head=<sha> -->`,
+distinct from `<!-- verdict-review ... -->` and `<!-- verdict-finding ... -->`,
+never editing the PR description). `--summary off` keeps the default output
+and wire bytes identical. With `--summary comment`, a live paginated read of
+the PR's issue comments or notes ignores comments by other authors and picks
+the newest matching comment authored by the authenticated token user (noting
+any duplicates in `post.json` without deleting them): a first post creates
+the summary comment linking to the submitted review and inline comments where
+the host supplies URLs, and a later post updates that comment in place (`PATCH`
+on GitHub and Forgejo, `PUT` on GitLab) with empty bodies refused.
+`--dry-run` reports the planned summary action (`create`, `update`, or `none`)
+without writing. The summary is best effort: if its write fails after the
+review is accepted, `post` still records the review in `post.json`, sets
+`summary.action` to `failed` with the host's reason in `note`, and warns; the
+next post updates the summary in place.
+
 `triage --dry-run` computes one status flip and writes nothing: it resolves
 the sig, applies the rationale rule, and prints `would set <sig> -> <status>`
 (`data.dry_run: true` in `--json`, and a `next` that says nothing was written).
