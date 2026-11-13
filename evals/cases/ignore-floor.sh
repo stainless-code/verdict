@@ -38,6 +38,18 @@ assert_eq 'base exclusions use no host calls' 0 "$(wc -l < "$EVAL_STUBLOG" | tr 
 assert_file_grep 'TOC names receipt' "$BUNDLE/toc.txt" 'vendor/.env (ignore:1,'
 cat "$BUNDLE"/chunks/*.diff > concatenated.diff
 if cmp -s concatenated.diff "$BUNDLE/full.diff"; then good 'chunks concatenate byte-exactly'; else bad 'chunks differ'; fi
+run_review fetch-local acme/app defaults-off --staged --chunk --no-default-excludes --json
+assert_exit 'disable defaults preserves file rules' 0
+assert_eq 'base ignore still applies without defaults' ignore:1 "$(jq -r '.excluded[]|select(.path=="vendor/.env")|.rule_id' .verdict/state/local-defaults-off/excluded.json)"
+assert_file_grep 'attribute defaults disabled alone' .verdict/state/local-defaults-off/full.diff 'b/types.gen.go'
+run_review fetch-local acme/app overrides --staged --chunk --ignore '!vendor/**' --ignore notes.txt --no-default-excludes --json
+assert_exit 'run overrides fetch' 0
+OVERRIDES=.verdict/state/local-overrides
+assert_file_grep 'CLI negation overrides base ignore' "$OVERRIDES/full.diff" 'b/vendor/.env'
+assert_file_grep 'no defaults disables attributes' "$OVERRIDES/full.diff" 'b/types.gen.go'
+assert_eq 'CLI exclusion receipt' cli:2 "$(jq -r '.excluded[]|select(.path=="notes.txt")|.rule_id' "$OVERRIDES/excluded.json")"
+assert_eq 'CLI source receipt' cli "$(jq -r '.patterns_source' "$OVERRIDES/excluded.json")"
+assert_eq 'disabled default receipt' true "$(jq -r '.no_default_excludes' "$OVERRIDES/excluded.json")"
 jq -n --slurpfile manifest "$BUNDLE/chunks/manifest.json" '{schema_version:"1",body:"> Review complete. Policy exceptions are recorded.",chunks:($manifest[0].chunks|map(.name)),comments:[{path:"notes.txt",line:2,body:"Intentional compatibility behavior.",severity:"critical"},{path:"vendor/.env",line:1,body:"Keep credential material out of the review body.",severity:"important"}],suppressed:[{path:"notes.txt",line:2,source:"agent",reason:"An intentional compatibility exception for the legacy parser."},{path:"vendor/.env",source:"exclusion",exclusion_id:"ignore:1",reason:"This path is excluded at the trusted base."}]}' > "$BUNDLE/review.json"
 run_review record acme/app local-silence --json
 assert_exit 'record suppression receipts' 0

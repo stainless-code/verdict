@@ -184,6 +184,9 @@ CALL: api graphql -F owner=acme -F name=app -F pr=4701 -f query=
 --- file C/.verdict/state/4701/excluded.json ---
 {
   "schema_version": "1",
+  "patterns_source": ".verdict/ignore@base",
+  "ignore": [],
+  "no_default_excludes": false,
   "excluded": [],
   "excluded_bytes": 0,
   "kept_bytes": 0,

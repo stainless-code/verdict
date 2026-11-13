@@ -1,5 +1,8 @@
 {
   "schema_version": "1",
+  "patterns_source": ".verdict/ignore@base",
+  "ignore": [],
+  "no_default_excludes": false,
   "excluded": [
     {
       "path": "vendor/.env",

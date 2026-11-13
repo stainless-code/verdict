@@ -5,7 +5,8 @@ func usageText() string {
 		"fetch-local|run|panel|record|adopt|fix|check-tree|ready|gate|threads|trend|index|" +
 		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|config [opts]\n" +
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
-		"[--index <ref|dir>] [--context <file|dir>] [--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
+		"[--index <ref|dir>] [--context <file|dir>] [--ignore <glob>] [--no-default-excludes] " +
+		"[--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
 		"    write .verdict/state/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
 		"(PR.json normalized for non-github providers)\n" +
 		"    --index <ref|dir> hands one index the operator built to the bundle: impact.json plus a\n" +
@@ -27,7 +28,7 @@ func usageText() string {
 		"    runs unless --consent-over-budget is given (consent lands in budget.json,\n" +
 		"    surfaced by report --cost). Unset: estimate off, fetch as today.\n" +
 		"  fetch-local <owner/repo> <name> [--staged] [--range A[..|...]B] [--base R]\n" +
-		"        [--stash [n]] [--worktree] [--index <ref|dir>] [--context <file|dir>]\n" +
+		"        [--stash [n]] [--worktree] [--index <ref|dir>] [--context <file|dir>] [--ignore <glob>] [--no-default-excludes]\n" +
 		"        [--consent-over-budget] [--show-prompts] [--chunk]\n" +
 		"        [-- paths...] [--json]\n" +
 		"    local review bundle from git (no GitHub, no PR): writes\n" +

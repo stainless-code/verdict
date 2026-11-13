@@ -6,6 +6,12 @@
   "type": "object",
   "properties": {
     "schema_version": { "const": "1" },
+    "patterns_source": { "type": "string" },
+    "ignore": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "no_default_excludes": { "type": "boolean" },
     "excluded": {
       "type": "array",
       "items": { "$ref": "#/$defs/excludedPath" }
@@ -17,6 +23,9 @@
   },
   "required": [
     "schema_version",
+    "patterns_source",
+    "ignore",
+    "no_default_excludes",
     "excluded",
     "excluded_bytes",
     "kept_bytes",

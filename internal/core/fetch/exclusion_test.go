@@ -1,6 +1,7 @@
 package fetchcore
 
 import (
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -112,5 +113,52 @@ func physicalTempDir(t *testing.T) string {
 func TestIgnoreTooLargeRefusal(t *testing.T) {
 	if ref := ignoreRefusal(exclude.ErrTooLarge); ref.Code != "ignore-too-large" {
 		t.Fatalf("refusal = %v; want ignore-too-large", ref)
+	}
+}
+
+func TestFetchExclusionOverrides(t *testing.T) {
+	for _, tc := range []struct {
+		name, want string
+		ignore     []string
+		off        bool
+	}{
+		{name: "no-defaults", want: generatedSection + keptSection, off: true},
+		{name: "ordered-cli", ignore: []string{"**", "!app_test.go"}, want: keptSection},
+		{name: "cli-without-defaults", ignore: []string{"app_test.go"}, off: true, want: generatedSection},
+	} {
+		t.Run(tc.name, func(t *testing.T) { checkFetchExclusionOverride(t, tc.ignore, tc.off, tc.want) })
+	}
+}
+
+func checkFetchExclusionOverride(t *testing.T, ignore []string, off bool, want string) {
+	t.Helper()
+	dir := physicalTempDir(t)
+	if err := os.WriteFile(dir+"/full.diff", []byte(generatedSection+keptSection), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	warnings := []string{}
+	fc := &fetchRunCtx{dir: dir, runner: &session{warnings: &warnings}, ignore: ignore, noDefaultExcludes: off}
+	if err := filterExcluded(fc); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(dir + "/full.diff")
+	if err != nil || string(raw) != want {
+		t.Fatalf("filtered = %q, %v; want %q", raw, err, want)
+	}
+	assertOverrideReceipt(t, dir, ignore, off)
+}
+
+func assertOverrideReceipt(t *testing.T, dir string, ignore []string, off bool) {
+	t.Helper()
+	raw, err := os.ReadFile(dir + "/excluded.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var receipt ExcludedFile
+	if err := json.Unmarshal(raw, &receipt); err != nil {
+		t.Fatal(err)
+	}
+	if receipt.NoDefaultExcludes != off || strings.Join(receipt.Ignore, "|") != strings.Join(ignore, "|") {
+		t.Fatalf("override receipt = %+v", receipt)
 	}
 }

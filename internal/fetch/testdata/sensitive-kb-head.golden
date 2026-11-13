@@ -191,6 +191,9 @@ notes.txt
 --- file C/.verdict/state/4715/excluded.json ---
 {
   "schema_version": "1",
+  "patterns_source": ".verdict/ignore@head",
+  "ignore": [],
+  "no_default_excludes": false,
   "excluded": [],
   "excluded_bytes": 0,
   "kept_bytes": 175,

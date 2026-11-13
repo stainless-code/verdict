@@ -145,8 +145,11 @@ func TestClientFetch(t *testing.T) {
 	out, err := c.Fetch(context.Background(), &verdict.FetchRequest{
 		Invocation:    sdkInvocation("7"),
 		BudgetConsent: true,
+		Ignore:        []string{"!**", "!notes.txt"}, NoDefaultExcludes: true,
 	})
 	requireNoError(t, err)
+	assertFetchOverrideReceipt(t, ".verdict/state/7/excluded.json")
+
 	if out.Repo != "acme/app" || out.PR != "7" || out.At != sdkAt {
 		t.Errorf("envelope = repo %q pr %q at %q", out.Repo, out.PR, out.At)
 	}
@@ -437,8 +440,11 @@ func TestClientFetchLocal(t *testing.T) {
 	out, err := c.FetchLocal(context.Background(), &verdict.FetchLocalRequest{
 		Invocation:    sdkInvocation("probe"),
 		BudgetConsent: true,
+		Ignore:        []string{"!**", "!notes.txt"}, NoDefaultExcludes: true,
 	})
 	requireNoError(t, err)
+	assertFetchOverrideReceipt(t, ".verdict/state/local-probe/excluded.json")
+
 	if out.Repo != "acme/app" || out.At != sdkAt {
 		t.Errorf("envelope = repo %q at %q", out.Repo, out.At)
 	}
@@ -582,5 +588,13 @@ func TestClientFetchProviderReachesValidation(t *testing.T) {
 	}
 	if len(cmdr.calls) != 0 {
 		t.Errorf("unknown provider spawned commands: %q", cmdr.calls)
+	}
+}
+
+func assertFetchOverrideReceipt(t *testing.T, path string) {
+	t.Helper()
+	receipt := readText(t, path)
+	if !strings.Contains(receipt, `"no_default_excludes": true`) || !strings.Contains(receipt, `"!notes.txt"`) {
+		t.Fatalf("missing SDK overrides: %s", receipt)
 	}
 }

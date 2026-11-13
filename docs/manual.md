@@ -3938,3 +3938,9 @@ open-finding approval guard but does not bypass the floor.
 results exclude withheld findings. Trend records source counts, including zero
 for stores without receipts. See [exclusions and withholding](exclusions.md) for the
 patterns, receipt fields, limits, precedence, and JSON output.
+
+`fetch` and `fetch-local` accept repeatable `--ignore <glob>` rules. They run
+last, above the base ignore file; `!` re-includes. `--no-default-excludes`
+disables generated and attribute defaults while the ignore file still applies.
+`excluded.json` records `ignore`, `no_default_excludes`, and `patterns_source`
+(`cli` when run overrides are present).

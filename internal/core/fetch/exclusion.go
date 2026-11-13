@@ -45,29 +45,23 @@ func readConfinedFile(name string) ([]byte, error) {
 
 func filterExcluded(ctx2 *fetchRunCtx) error {
 	r, dir := ctx2.runner, ctx2.dir
-	rules := exclude.Defaults()
-	rawIgnore, readErr := exclusionControl(r, ".verdict/ignore")
-	if readErr != nil {
-		return readErr
-	}
-	explicit, err := exclude.ParseIgnore(rawIgnore, "ignore")
+	policy, err := loadExclusionPolicy(ctx2)
 	if err != nil {
-		return ignoreRefusal(err)
+		return err
 	}
 	raw, err := readConfinedFile(dir + suffixFullDiff)
 	if err != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: err.Error()}
 	}
-	attrs, attrErr := exclusionControl(r, ".gitattributes")
-	if attrErr != nil {
-		return attrErr
-	}
-	filtered, receipt := excludedDiff(string(raw), rules, explicit, attrs)
+	filtered, receipt := excludedDiff(string(raw), policy.defaults, policy.explicit, policy.attrs)
+	receipt.Ignore = append([]string{}, ctx2.ignore...)
+	receipt.NoDefaultExcludes = ctx2.noDefaultExcludes
+	receipt.PatternsSource = exclusionSource(ctx2)
 	if err := writeExcludedDiff(dir, raw, filtered, &receipt); err != nil {
 		return err
 	}
 	if len(raw) > 0 && filtered == "" {
-		r.Warn("all changed files excluded — review diff is empty (re-include with !)")
+		r.Warn("all changed files excluded — review diff is empty (re-include with ! or --no-default-excludes)")
 	}
 	return nil
 }
@@ -222,4 +216,44 @@ func ignoreRefusal(err error) *core.RefusalError {
 		return &core.RefusalError{Code: "ignore-too-large", Message: err.Error()}
 	}
 	return &core.RefusalError{Code: "bad-ignore", Message: err.Error()}
+}
+
+type diffExclusions struct {
+	defaults, explicit []exclude.Rule
+	attrs              []byte
+}
+
+func loadExclusionPolicy(fc *fetchRunCtx) (*diffExclusions, error) {
+	raw, err := exclusionControl(fc.runner, ".verdict/ignore")
+	if err != nil {
+		return nil, err
+	}
+	explicit, err := exclude.ParseIgnore(raw, "ignore")
+	if err != nil {
+		return nil, ignoreRefusal(err)
+	}
+	cli, err := exclude.ParseIgnore([]byte(strings.Join(fc.ignore, newline)), "cli")
+	if err != nil {
+		return nil, ignoreRefusal(err)
+	}
+	attrs, err := exclusionControl(fc.runner, ".gitattributes")
+	if err != nil {
+		return nil, err
+	}
+	out := &diffExclusions{defaults: exclude.Defaults(), explicit: append(explicit, cli...), attrs: attrs}
+	if fc.noDefaultExcludes {
+		out.defaults = nil
+		out.attrs = nil
+	}
+	return out, nil
+}
+
+func exclusionSource(fc *fetchRunCtx) string {
+	if len(fc.ignore) > 0 {
+		return "cli"
+	}
+	if fc.runner.controls != nil && fc.runner.controls.File.Policy == "head" {
+		return ".verdict/ignore@head"
+	}
+	return ".verdict/ignore@base"
 }

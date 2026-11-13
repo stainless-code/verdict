@@ -91,3 +91,9 @@ findings as unknown and excludes them from judged precision.
 
 See [refusal codes](troubleshooting.md) for `bad-ignore`, `bad-suppression`, and
 `bad-min-severity`, and `ignore-too-large`.
+
+`fetch` and `fetch-local` accept repeatable `--ignore <glob>` rules. They run
+last, above the base ignore file; `!` re-includes. `--no-default-excludes`
+disables generated and attribute defaults while the ignore file still applies.
+`excluded.json` records `ignore`, `no_default_excludes`, and `patterns_source`
+(`cli` when run overrides are present).

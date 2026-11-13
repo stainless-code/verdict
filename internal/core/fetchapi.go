@@ -13,14 +13,16 @@ type FetchFlags struct {
 	Provider string `enum:"github|gitlab|gitcafe|forgejo|bitbucket|azure"`
 	// Index is the operator's explicit index hand-off (a ref or a directory);
 	// empty means no impact section is written.
-	Index         string
-	Context       []string
-	BudgetConsent bool
-	ShowPrompts   bool
-	ChunkFlag     bool
-	HeadControls  bool
-	HasBase       bool `json:"-"`
-	HasProvider   bool `json:"-"`
+	Index             string
+	Context           []string
+	Ignore            []string
+	NoDefaultExcludes bool
+	BudgetConsent     bool
+	ShowPrompts       bool
+	ChunkFlag         bool
+	HeadControls      bool
+	HasBase           bool `json:"-"`
+	HasProvider       bool `json:"-"`
 }
 
 // Presences lists the presence bits JSON transports derive for fetch.
@@ -38,16 +40,18 @@ type FetchLocalFlags struct {
 	StashN    string
 	// Index is the operator's explicit index hand-off, exactly as fetch takes
 	// it; empty means no impact section is written.
-	Index         string
-	Context       []string
-	Paths         []string
-	Staged        bool
-	HasStash      bool `json:"-"`
-	Worktree      bool
-	BudgetConsent bool
-	ShowPrompts   bool
-	ChunkFlag     bool
-	HeadControls  bool
+	Index             string
+	Context           []string
+	Ignore            []string
+	Paths             []string
+	Staged            bool
+	HasStash          bool `json:"-"`
+	Worktree          bool
+	BudgetConsent     bool
+	ShowPrompts       bool
+	ChunkFlag         bool
+	HeadControls      bool
+	NoDefaultExcludes bool
 }
 
 // Presences lists the presence bits JSON transports derive for fetch-local.
