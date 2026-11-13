@@ -44,7 +44,8 @@ func Run(ctx context.Context, r *cli.Runner, args []string, repoRoot string) int
 // typed service request.
 func learnRequest(r *cli.Runner, f *flags, repoRoot string) *learncore.Request {
 	out := &learncore.Request{
-		Pack:       f.pack,
+		Pack:    f.pack,
+		Propose: f.propose, FromBundle: f.fromBundle, Accept: f.accept, Reject: f.reject, DryRun: f.dryRun,
 		Rule:       f.rule,
 		Scope:      f.scope,
 		ID:         f.id,
@@ -58,13 +59,17 @@ func learnRequest(r *cli.Runner, f *flags, repoRoot string) *learncore.Request {
 	}
 	out.ReadRequest = core.ReadRequest{
 		Runtime:  &core.Runtime{Now: r.Now, Progress: cli.Progress{R: r}},
-		RepoRoot: repoRoot,
+		RepoRoot: repoRoot, Repo: f.fromBundle, Pr: f.pr,
 	}
 	return out
 }
 
 // flags carries the parsed learn options.
 type flags struct {
+	fromBundle string
+	pr         string
+	accept     string
+	reject     string
 	pack       string
 	rule       string
 	scope      string
@@ -74,6 +79,8 @@ type flags struct {
 	reason     string
 	retire     string
 	restore    string
+	propose    bool
+	dryRun     bool
 	status     bool
 }
 
@@ -94,6 +101,17 @@ func parseFlags(r *cli.Runner, args []string) (flags, int, bool) {
 // usage refusal when the token is unknown or a value flag lost its operand.
 func parseToken(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) {
 	a := args[i]
+	if a == "--from-bundle" {
+		return parseBundle(r, f, args, i)
+	}
+	if a == "--propose" {
+		f.propose = true
+		return i, 0, false
+	}
+	if a == "--dry-run" {
+		f.dryRun = true
+		return i, 0, false
+	}
 	if want, ok := learnWants[a]; ok {
 		v, next, u := cli.FlagValue(args, i, a, want)
 		if u != nil {
@@ -120,6 +138,7 @@ const learnIDWant = "<id>"
 // learnWants names each value flag's accepted operand for the missing-value
 // usage error.
 var learnWants = map[string]string{
+	"--accept": learnIDWant, "--reject": learnIDWant,
 	"--pack":       "<directory>",
 	"--rule":       "<text>",
 	"--scope":      "<globs>",
@@ -134,6 +153,10 @@ var learnWants = map[string]string{
 // setFlag stores one value-taking flag.
 func setFlag(f *flags, name, val string) {
 	switch name {
+	case "--accept":
+		f.accept = val
+	case "--reject":
+		f.reject = val
 	case "--pack":
 		f.pack = val
 	case "--rule":
@@ -157,6 +180,7 @@ func setFlag(f *flags, name, val string) {
 
 // appendRentry owns the rentry_cmd build (flag order fixed, values elided).
 func appendRentry(r *cli.Runner, f *flags) {
+	appendLearningRentry(r, f)
 	if f.pack != "" {
 		r.Rentry += " --pack ... --id ..."
 	}
@@ -187,5 +211,30 @@ const (
 	// rigorPointed is the --rigor default.
 	rigorPointed = "pointed"
 	// usageFlags lists the accepted flags for the unknown-flag message.
-	usageFlags = "--pack, --rule, --scope, --id, --provenance, --rigor, --status, --retire, --restore, --reason, --json"
+	usageFlags = "--propose, --from-bundle, --accept, --reject, --dry-run, " +
+		"--pack, --rule, --scope, --id, --provenance, --rigor, --status, --retire, --restore, --reason, --json"
 )
+
+func parseBundle(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) {
+	if i+2 >= len(args) {
+		return i, r.ReportUsage(&cli.UsageError{Message: "--from-bundle needs <repo> <pr|local-name>"}), true
+	}
+	f.fromBundle = args[i+1]
+	f.pr = args[i+2]
+	return i + 2, 0, false
+}
+
+func appendLearningRentry(r *cli.Runner, f *flags) {
+	if f.propose {
+		r.Rentry += " --propose --from-bundle ... ..."
+	}
+	if f.accept != "" {
+		r.Rentry += " --accept ..."
+	}
+	if f.reject != "" {
+		r.Rentry += " --reject ... --reason ..."
+	}
+	if f.dryRun {
+		r.Rentry += " --dry-run"
+	}
+}

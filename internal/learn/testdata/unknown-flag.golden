@@ -2,5 +2,5 @@ exit: 2
 --- stdout ---
 
 --- stderr ---
-unknown flag '--bogus' for learn (want --pack, --rule, --scope, --id, --provenance, --rigor, --status, --retire, --restore, --reason, --json)
+unknown flag '--bogus' for learn (want --propose, --from-bundle, --accept, --reject, --dry-run, --pack, --rule, --scope, --id, --provenance, --rigor, --status, --retire, --restore, --reason, --json)
 --- files ---

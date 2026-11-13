@@ -302,9 +302,9 @@ Fix: pass the one-line rule text to `--rule`.
 
 ## `bad-scope`
 
-Cause: `--scope` is empty, malformed, or belongs to a different mode (or the scope config key is invalid).
+Cause: `--scope` is empty, malformed, or belongs to a different mode (or the scope config key is invalid). Learning proposals also refuse unsafe cited paths or comment identifiers.
 
-Fix: pass a comma-separated glob list (e.g. `src/*.ts`) together with `--rule`, or fix the named scope key.
+Fix: pass a comma-separated glob list (e.g. `src/*.ts`) together with `--rule`, or fix the named scope key. For learnings, use a clean repo-relative cited path of at most 4096 bytes — no controls, parent components, absolute paths, backslashes, colons, commas or glob syntax. Comment IDs allow 1–256 ASCII letters, digits, underscores, hyphens or equals signs. Unsafe metadata is refused before proposing or accepting.
 
 ## `bad-settings`
 
@@ -1246,3 +1246,16 @@ Fix: narrow `--since` to a shorter span or a later ref, then re-run.
 Cause: the isolated worktree checkout failed — the message carries the git error.
 
 Fix: fix the git state named above and re-run `fetch-local`.
+
+### Learning proposal lifecycle
+
+`bad-flags` means the lifecycle modes were combined, the bundle operands were
+missing, or `--dry-run` was used outside propose/accept/reject. Choose one mode.
+`bad-reason` requires at least 30 characters for rejection. `bad-id` requires a
+KB slug. `bad-rule` refuses acceptance of a rejected learning or rejection of an
+already accepted rule; use `learn --retire` for the latter. `unknown-rule` means
+there is no matching one-rule proposal pack. `learn-failed` can mean a missing or
+invalid normalized `threads.json`, or a failed local write. Fetch the bundle
+first and check local permissions. Pack validation refusals apply to edited
+proposal packs exactly as they do to `learn --pack`. `corrupt-store` refuses
+mining or rejection when the KB cannot be read safely; repair the store first.

@@ -190,8 +190,8 @@ func allTools(readOnly, operator bool) []*tool {
 		dataTool(&toolSpec{
 			name: "learn",
 			description: "Read or update the local knowledge base. Call to list rules or " +
-				"add, retire, or restore one. Writes .verdict/kb.jsonl.",
-			omit: omitPositionals,
+				"add, retire, restore, propose, accept, or reject one. Proposals are inactive until accepted. Supports dry_run for the proposal lifecycle.",
+			omit: map[string]bool{"Repo": true},
 			meta: toolMeta{title: "Manage knowledge base", idempotent: true},
 		}, toolDeps{}, decodeLearn, wireLearn, learncore.Run,
 			func(resp *learncore.Response) *jq.Obj { return wireData(resp.Data) }),

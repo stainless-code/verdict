@@ -111,6 +111,7 @@ type LensSpec struct {
 // resolves its level, the scope globs that decide when it applies, and the
 // tools it talks about.
 type RuleSpec struct {
+	Provenance  string   `json:"provenance,omitempty"`
 	Category    string   `json:"category,omitempty"`
 	Description string   `json:"description,omitempty"`
 	Examples    []string `json:"examples,omitempty"`
@@ -548,7 +549,7 @@ func checkManifestKeys(raw []byte, name string) *core.RefusalError {
 		}
 	}
 	for _, row := range shape.Rules {
-		if ref := checkExactKeys(row, []string{"id", "severity", "globs", "tools", "category", "description", "examples"}, name); ref != nil {
+		if ref := checkExactKeys(row, []string{"id", "severity", "globs", "tools", "category", "description", "examples", "provenance"}, name); ref != nil {
 			return ref
 		}
 	}
