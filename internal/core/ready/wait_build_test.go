@@ -14,11 +14,16 @@ import (
 
 type buildHost struct {
 	sequenceHost
-	stall bool
+	stall       bool
+	stallOnPoll int
 }
 
 func (h *buildHost) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
 	argv := strings.Join(cmd.Argv, " ")
+	if h.stallOnPoll > 0 && h.polls >= h.stallOnPoll && strings.Contains(argv, "pr view") {
+		<-ctx.Done()
+		return core.Result{ExitCode: 1}, nil
+	}
 	if strings.Contains(argv, "isDraft,mergeable") {
 		if h.stall {
 			<-ctx.Done()
@@ -87,6 +92,27 @@ func TestReadyWaitBoundsReportingReads(t *testing.T) {
 		}
 		if resp.Ready || resp.Data.Wait.Outcome != "wait-timeout" || time.Since(start) != time.Second {
 			t.Fatalf("response %+v wait=%+v elapsed=%v", resp, resp.Data.Wait, time.Since(start))
+		}
+	})
+}
+
+func TestReadyWaitWallClockTimeoutPreservesWaitData(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		req, host, _ := buildRequest(t)
+		host.field = "never"
+		host.stallOnPoll = 2
+		req.PollRuntime = PollRuntime{}
+		req.Timeout = "2s"
+		start := time.Now()
+		resp, ref := Run(t.Context(), req)
+		if ref != nil {
+			t.Fatal(ref)
+		}
+		if resp.Ready || resp.Data.Wait.Outcome != "wait-timeout" || time.Since(start) != 2*time.Second {
+			t.Fatalf("response %+v wait=%+v elapsed=%v", resp, resp.Data.Wait, time.Since(start))
+		}
+		if resp.Data.Wait.Observations != 1 || resp.Data.Wait.Snapshot == nil || resp.Data.Wait.Snapshot.Head != "abc" {
+			t.Fatalf("lost wait data on wall-clock timeout: %+v", resp.Data.Wait)
 		}
 	})
 }

@@ -101,7 +101,7 @@ func TestWaitInvalidBoundsAndCondition(t *testing.T) {
 
 func (h *sequenceHost) detail() core.Result {
 	status, conclusion, review := "IN_PROGRESS", "", "APPROVED"
-	if h.polls >= 2 {
+	if h.polls >= 2 && h.field != "never" {
 		status = "COMPLETED"
 		conclusion = "SUCCESS"
 		if h.field == "failed" {

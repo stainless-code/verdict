@@ -51,12 +51,17 @@ func (d *WaitData) Wire() *jq.Obj {
 
 // Wait runs a foreground poll, returning timeout as data rather than a refusal.
 func Wait(ctx context.Context, req *WaitRequest) (*WaitResponse, *core.RefusalError) {
+	resp, _, ref := waitSessionRun(ctx, req)
+	return resp, ref
+}
+
+func waitSessionRun(ctx context.Context, req *WaitRequest) (*WaitResponse, *WaitData, *core.RefusalError) {
 	timeout, interval, ref := WaitDurations(req.Timeout, req.Interval)
 	if ref != nil {
-		return nil, ref
+		return nil, nil, ref
 	}
 	if !validUntil(req.Until) {
-		return nil, &core.RefusalError{Code: waitBadFlags, Message: "--until must be merged, closed, checks-green, " +
+		return nil, nil, &core.RefusalError{Code: waitBadFlags, Message: "--until must be merged, closed, checks-green, " +
 			"checks-done, or review-changed"}
 	}
 	if req.Runtime == nil {
@@ -64,7 +69,7 @@ func Wait(ctx context.Context, req *WaitRequest) (*WaitResponse, *core.RefusalEr
 	}
 	provider, ref := waitProvider(req)
 	if ref != nil {
-		return nil, ref
+		return nil, nil, ref
 	}
 	data := &WaitData{Until: req.Until}
 	session := &waitSession{req: req, data: data, provider: provider}
@@ -75,13 +80,13 @@ func Wait(ctx context.Context, req *WaitRequest) (*WaitResponse, *core.RefusalEr
 	}
 	completed, err := Poll(ctx, timeout, interval, runtime, session.observe)
 	if err != nil {
-		return nil, waitRefusal(ctx, err)
+		return nil, data, waitRefusal(ctx, err)
 	}
 	data.Outcome = session.outcome(completed)
 	return &WaitResponse{
 		Repo: req.Repo, Pr: req.Pr, At: req.TimeUTC(),
 		Next: "inspect the wait outcome", Warnings: []string{}, Data: data,
-	}, nil
+	}, data, nil
 }
 
 // WaitDurations validates timeout and interval for all wait transports.

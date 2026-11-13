@@ -29,7 +29,7 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 func runBuildWait(ctx context.Context, req *Request, timeout time.Duration) (*Response, *core.RefusalError) {
 	bounded, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	waited, ref := Wait(bounded, &WaitRequest{
+	waited, partial, ref := waitSessionRun(bounded, &WaitRequest{
 		ReadRequest: req.ReadRequest, Until: untilChecksDone,
 		Timeout: req.Timeout, PollRuntime: req.PollRuntime,
 	})
@@ -37,7 +37,11 @@ func runBuildWait(ctx context.Context, req *Request, timeout time.Duration) (*Re
 		return nil, &core.RefusalError{Code: codeCanceled, Message: "ready wait canceled"}
 	}
 	if bounded.Err() != nil {
-		return readyWaitTimeout(req, nil), nil
+		data := partial
+		if waited != nil {
+			data = waited.Data
+		}
+		return readyWaitTimeout(req, data), nil
 	}
 	if ref != nil {
 		return nil, ref
@@ -68,7 +72,11 @@ func readyWaitTimeout(req *Request, wait *WaitData) *Response {
 		wait = &WaitData{Until: untilChecksDone}
 	}
 	wait.Outcome = outcomeTimeout
-	st := &state{req: req, repo: req.Repo, pr: req.Pr, rec: recWait, prState: stateOpen, warnings: append([]string{}, req.Warnings...)}
+	prState := stateOpen
+	if wait.Snapshot != nil && wait.Snapshot.State != "" {
+		prState = wait.Snapshot.State
+	}
+	st := &state{req: req, repo: req.Repo, pr: req.Pr, rec: recWait, prState: prState, warnings: append([]string{}, req.Warnings...)}
 	st.blockers = []Blocker{{
 		Kind: outcomeTimeout, Detail: "CI did not finish within " + req.Timeout,
 		Action: "inspect CI and re-run ready with a bounded timeout",
