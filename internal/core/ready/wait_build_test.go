@@ -105,16 +105,21 @@ func TestReadyWaitWallClockTimeoutPreservesWaitData(t *testing.T) {
 		req.Timeout = "2s"
 		start := time.Now()
 		resp, ref := Run(t.Context(), req)
-		if ref != nil {
-			t.Fatal(ref)
-		}
-		if resp.Ready || resp.Data.Wait.Outcome != "wait-timeout" || time.Since(start) != 2*time.Second {
-			t.Fatalf("response %+v wait=%+v elapsed=%v", resp, resp.Data.Wait, time.Since(start))
-		}
-		if resp.Data.Wait.Observations != 1 || resp.Data.Wait.Snapshot == nil || resp.Data.Wait.Snapshot.Head != "abc" {
-			t.Fatalf("lost wait data on wall-clock timeout: %+v", resp.Data.Wait)
-		}
+		assertWallClockTimeout(t, resp, ref, start)
 	})
+}
+
+func assertWallClockTimeout(t *testing.T, resp *Response, ref *core.RefusalError, start time.Time) {
+	t.Helper()
+	if ref != nil {
+		t.Fatal(ref)
+	}
+	if resp.Ready || resp.Data.Wait.Outcome != "wait-timeout" || time.Since(start) != 2*time.Second {
+		t.Fatalf("response %+v wait=%+v elapsed=%v", resp, resp.Data.Wait, time.Since(start))
+	}
+	if resp.Data.Wait.Observations != 1 || resp.Data.Wait.Snapshot == nil || resp.Data.Wait.Snapshot.Head != "abc" {
+		t.Fatalf("lost wait data on wall-clock timeout: %+v", resp.Data.Wait)
+	}
 }
 
 func TestReadyWaitRequiresBundleAndBuild(t *testing.T) {

@@ -137,23 +137,27 @@ func TestWaitParsePullStatusLines(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			probe := &WaitProbe{cached: tc.cached}
-			raw := tc.status + "\r\nETag: \"v1\"\r\n\r\n" + tc.body
-			got, ref := probe.parsePull(raw)
-			if tc.wantErr {
-				if ref == nil || ref.Code != "pr-read-failed" {
-					t.Fatalf("got doc=%v ref=%v; want pr-read-failed", got, ref)
-				}
-				return
-			}
-			if ref != nil {
-				t.Fatalf("unexpected refusal: %v", ref)
-			}
-			head, ok := got["head"].(map[string]any)
-			if !ok || head["sha"] != tc.wantSHA {
-				t.Fatalf("got head %v; want %s", got["head"], tc.wantSHA)
-			}
+			assertPullStatusLine(t, tc.status, tc.body, tc.cached, tc.wantSHA, tc.wantErr)
 		})
+	}
+}
+
+func assertPullStatusLine(t *testing.T, status, body string, cached map[string]any, wantSHA string, wantErr bool) {
+	t.Helper()
+	probe := &WaitProbe{cached: cached}
+	got, ref := probe.parsePull(status + "\r\nETag: \"v1\"\r\n\r\n" + body)
+	if wantErr {
+		if ref == nil || ref.Code != "pr-read-failed" {
+			t.Fatalf("got doc=%v ref=%v; want pr-read-failed", got, ref)
+		}
+		return
+	}
+	if ref != nil {
+		t.Fatalf("unexpected refusal: %v", ref)
+	}
+	head, ok := got["head"].(map[string]any)
+	if !ok || head["sha"] != wantSHA {
+		t.Fatalf("got head %v; want %s", got["head"], wantSHA)
 	}
 }
 

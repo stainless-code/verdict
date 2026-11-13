@@ -92,7 +92,7 @@ func readyWaitBundle(req *Request) *core.RefusalError {
 		return ref
 	}
 	if isLocalDir(dir) {
-		return &core.RefusalError{Code: "no-pr-target", Message: "ready build waits require a PR bundle"}
+		return &core.RefusalError{Code: codeNoPRTarget, Message: "ready build waits require a PR bundle"}
 	}
 	if !isRegular(dir + "/PR.json") {
 		return &core.RefusalError{Code: "missing-bundle", Message: "ready build waits require a fetched PR bundle"}

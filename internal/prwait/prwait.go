@@ -15,22 +15,12 @@ import (
 
 // Run executes pr-wait and returns 1 when its condition remains unmet.
 func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Request) int {
-	q := &readycore.WaitRequest{ReadRequest: req, Warnings: append([]string{}, r.Warnings...)}
+	q := waitRequest(r, req)
 	if ref := Parse(args, q); ref != nil {
 		return r.Refuse(ref)
 	}
 	if code, done := r.Canceled(ctx, "pr-wait"); done {
 		return code
-	}
-	if q.Runtime == nil {
-		q.Runtime = &core.Runtime{}
-	}
-	q.Now = r.Now
-	if q.Commander == nil {
-		q.Commander = coreexec.Runner{}
-	}
-	if !r.JSONMode {
-		q.Observe = func(s *readycore.WaitSnapshot) { fmt.Fprintln(r.Out, jq.Compact(s)) }
 	}
 	resp, ref := readycore.Wait(ctx, q)
 	if ref != nil {
@@ -41,6 +31,21 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Reque
 		return 1
 	}
 	return 0
+}
+
+func waitRequest(r *cli.Runner, req readcommon.Request) *readycore.WaitRequest {
+	q := &readycore.WaitRequest{ReadRequest: req, Warnings: append([]string{}, r.Warnings...)}
+	if q.Runtime == nil {
+		q.Runtime = &core.Runtime{}
+	}
+	q.Now = r.Now
+	if q.Commander == nil {
+		q.Commander = coreexec.Runner{}
+	}
+	if !r.JSONMode {
+		q.Observe = func(s *readycore.WaitSnapshot) { fmt.Fprintln(r.Out, jq.Compact(s)) }
+	}
+	return q
 }
 
 // Parse decodes the wait flags; validation is shared with the service.

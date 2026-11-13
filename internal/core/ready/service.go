@@ -232,7 +232,7 @@ func loadState(ctx context.Context, st *state) *core.RefusalError {
 	}
 	if isLocalDir(dir) {
 		return st.withWarnings(&core.RefusalError{
-			Code:    "no-pr-target",
+			Code:    codeNoPRTarget,
 			Message: "ready needs a PR bundle (fetch owner/repo N first); local bundles have no live checks to advise on",
 		})
 	}

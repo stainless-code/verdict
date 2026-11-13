@@ -19,8 +19,8 @@ type WaitRequest struct {
 	Timeout  string
 	Interval string
 	Provider string `enum:"github|gitlab|forgejo"`
-	Once     bool
 	Warnings []string
+	Once     bool
 }
 
 // WaitResponse carries the final observation and typed wait outcome.
@@ -119,7 +119,7 @@ func waitProvider(req *WaitRequest) (string, *core.RefusalError) {
 		return "", ref
 	}
 	if isLocalDir(dir) {
-		return "", &core.RefusalError{Code: "no-pr-target", Message: "pr-wait requires a PR target, not a local bundle"}
+		return "", &core.RefusalError{Code: codeNoPRTarget, Message: "pr-wait requires a PR target, not a local bundle"}
 	}
 	provider, present := readcommon.OpenBundle(dir).ProviderMarker()
 	if !present {
@@ -222,6 +222,7 @@ const (
 	waitBadFlags    = "bad-flags"
 	untilChecksDone = "checks-done"
 	outcomeTimeout  = "wait-timeout"
+	codeNoPRTarget  = "no-pr-target"
 )
 
 func (s *waitSession) outcome(completed bool) string {

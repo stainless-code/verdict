@@ -12,8 +12,8 @@ import (
 
 type sequenceHost struct {
 	field string
-	polls int
 	calls []string
+	polls int
 }
 
 func (h *sequenceHost) Run(_ context.Context, cmd *core.Command) (core.Result, error) {

@@ -16,17 +16,7 @@ func TestServerWaitBoundRefusal(t *testing.T) {
 		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"pr_wait","arguments":{"repo":"acme/app","pr":"42","until":"merged","timeout":"0s"}}}`,
 	)
 	for _, id := range []string{"1", "2", "3"} {
-		var res callToolResult
-		if err := json.Unmarshal(frames[id].Result, &res); err != nil {
-			t.Fatalf("id %s unmarshal: %v", id, err)
-		}
-		var got map[string]any
-		if err := json.Unmarshal(res.StructuredContent, &got); err != nil {
-			t.Fatalf("id %s structuredContent: %v", id, err)
-		}
-		if !res.IsError || got["code"] != "bad-flags" {
-			t.Fatalf("id %s got isError=%v code=%v body=%s; want bad-flags", id, res.IsError, got["code"], res.StructuredContent)
-		}
+		assertToolRefusalCode(t, id, frames[id], "bad-flags")
 	}
 
 	broken := t.TempDir()
@@ -37,15 +27,20 @@ func TestServerWaitBoundRefusal(t *testing.T) {
 	rootFrames := serve(t, &cfg,
 		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"pr_wait","arguments":{"repo":"acme/app","pr":"42","until":"merged","timeout":"51s"}}}`,
 	)
-	var rootRes callToolResult
-	if err := json.Unmarshal(rootFrames["4"].Result, &rootRes); err != nil {
-		t.Fatal(err)
+	assertToolRefusalCode(t, "4", rootFrames["4"], "not-a-repo")
+}
+
+func assertToolRefusalCode(t *testing.T, id string, f frame, wantCode string) {
+	t.Helper()
+	var res callToolResult
+	if err := json.Unmarshal(f.Result, &res); err != nil {
+		t.Fatalf("id %s unmarshal: %v", id, err)
 	}
-	var rootGot map[string]any
-	if err := json.Unmarshal(rootRes.StructuredContent, &rootGot); err != nil {
-		t.Fatal(err)
+	var got map[string]any
+	if err := json.Unmarshal(res.StructuredContent, &got); err != nil {
+		t.Fatalf("id %s structuredContent: %v", id, err)
 	}
-	if !rootRes.IsError || rootGot["code"] != "not-a-repo" {
-		t.Fatalf("broken checkout got isError=%v code=%v; want not-a-repo", rootRes.IsError, rootGot["code"])
+	if !res.IsError || got["code"] != wantCode {
+		t.Fatalf("id %s got isError=%v code=%v body=%s; want %s", id, res.IsError, got["code"], res.StructuredContent, wantCode)
 	}
 }
