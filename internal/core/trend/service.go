@@ -224,9 +224,6 @@ func (st *state) listedBundleDir(name string) (string, bool) {
 
 func readBundleRow(st *state, dir, name string) (row, bool) {
 	bundle := dir + "/"
-	if receipt := readcommon.BundleTruncation(dir); receipt != nil {
-		st.receipt = receipt
-	}
 	raw, err := jq.CappedFile(bundle+"findings.json", jq.MaxFindingsBytes)
 	if err != nil {
 		if errors.Is(err, jq.ErrTooLarge) {
@@ -244,6 +241,9 @@ func readBundleRow(st *state, dir, name string) (row, bool) {
 	if !ok || !readcommon.ValidEntries(findings) {
 		st.warn(skipWarn + bundle + " (findings.json unreadable or not a findings array)")
 		return row{}, false
+	}
+	if receipt := readcommon.BundleTruncation(dir); receipt != nil {
+		st.receipt = receipt
 	}
 	return buildRow(bundle, name, findings), true
 }

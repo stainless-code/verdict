@@ -90,3 +90,26 @@ func TestTrendWithoutReceiptStaysLegacy(t *testing.T) {
 		t.Fatalf("untruncated trend grew a receipt: %+v", resp.Data.Receipt)
 	}
 }
+
+func TestTrendIgnoresUnreviewedBundleTruncation(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	state := readcommon.StateDir(root)
+	writeListedStore(t, filepath.Join(state, "42"), "["+trendOpenFinding+"]")
+	unreviewed := filepath.Join(state, "43")
+	if err := os.MkdirAll(unreviewed, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	receipt := jq.PrettyOrdered(core.Wire(core.ScanCut(true, 100)))
+	if err := os.WriteFile(filepath.Join(unreviewed, "truncation.json"), []byte(receipt), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	read := core.ReadRequest{Runtime: &core.Runtime{Progress: &progressLog{}}, RepoRoot: root}
+	resp, ref := Run(t.Context(), &Request{ReadRequest: read})
+	if ref != nil {
+		t.Fatalf("refusal %s: %s", ref.Code, ref.Message)
+	}
+	if resp.Data.Receipt != nil {
+		t.Fatalf("trend receipt = %+v, want nil when only an unreviewed bundle carries truncation.json", resp.Data.Receipt)
+	}
+}
