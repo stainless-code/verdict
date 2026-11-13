@@ -47,7 +47,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 		// The dump owns stdout; progress moves to stderr.
 		r.Human = r.Diag
 	}
-	resp, err := fetchcore.Run(ctx, fetchRequest(r, req, f))
+	resp, err := fetchcore.Run(ctx, fetchRequest(r, req, &f))
 	if err != nil {
 		return refuseFetch(r, err)
 	}
@@ -83,7 +83,7 @@ func RunLocal(ctx context.Context, r *cli.Runner, args []string, req Request) in
 // invocation: the injected runtime (environment, clock, progress, and the
 // production split-stream commander), the render configuration, and the
 // adapter-routed streams.
-func fetchRequest(r *cli.Runner, req Request, f core.FetchFlags) *core.FetchRequest {
+func fetchRequest(r *cli.Runner, req Request, f *core.FetchFlags) *core.FetchRequest {
 	root := req.Root
 	read := core.ReadRequest{
 		Runtime: &core.Runtime{
@@ -95,7 +95,7 @@ func fetchRequest(r *cli.Runner, req Request, f core.FetchFlags) *core.FetchRequ
 	}
 	return &core.FetchRequest{
 		ReadRequest:  read,
-		Flags:        f,
+		Flags:        *f,
 		SettingsPath: cli.SettingsPath(req.Env["HOME"], req.Env["XDG_CONFIG_HOME"]),
 		Effective:    r.Effective,
 		JSONMode:     r.JSONMode,
@@ -180,6 +180,7 @@ var fetchValueWants = map[string]string{
 	"--since":    "<sha>",
 	"--provider": "<name>",
 	flagIndex:    "<ref|dir>",
+	flagContext:  "<file|dir>",
 }
 
 // parseFetchToken consumes one fetch argument, returning the next index plus a
@@ -269,6 +270,10 @@ func parseLocalToken(r *cli.Runner, f *core.FetchLocalFlags, args []string, i in
 // index, a missing-value usage error, and whether the flag matched.
 func parseLocalValueFlag(f *core.FetchLocalFlags, a string, args []string, i int) (int, *cli.UsageError, bool) {
 	switch a {
+	case flagContext:
+		v, next, u := cli.FlagValue(args, i, a, "<file|dir>")
+		f.Context = append(f.Context, v)
+		return next, u, true
 	case "--range":
 		v, next, u := cli.FlagValue(args, i, a, "A[..|...]B")
 		if u != nil {
@@ -311,6 +316,8 @@ func stashValue(args []string, i int) (string, int) {
 // setFetchValue applies one fetch value flag's operand.
 func setFetchValue(f *core.FetchFlags, name, value string) {
 	switch name {
+	case flagContext:
+		f.Context = append(f.Context, value)
 	case "--provider":
 		f.HasProvider, f.Provider = true, value
 	case flagIndex:
@@ -323,6 +330,7 @@ func setFetchValue(f *core.FetchFlags, name, value string) {
 // providerGitHub and flagChunk mirror the fetchcore spellings the usage
 // text names.
 const (
+	flagContext    = "--context"
 	providerGitHub = "github"
 	flagChunk      = "--chunk"
 	flagIndex      = "--index"

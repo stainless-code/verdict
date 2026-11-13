@@ -322,6 +322,7 @@ func (st *state) loadReview() *core.RefusalError {
 	}
 	bodyRaw, _ := review.Get("body")
 	st.review, st.body = review, jq.R(jq.Alt(bodyRaw, ""))
+	readcommon.WarnContextSources(st.dir, review, st.warn)
 	if err := recordcore.CheckDegenerate(st.body); err != nil {
 		return refusalOrFailed(err)
 	}

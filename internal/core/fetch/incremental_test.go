@@ -70,7 +70,7 @@ func TestGitLabIncrementalWritesCompare(t *testing.T) {
 	}}
 	s, _ := newTestSession(cmdr)
 	got, err := gitlabIncremental(context.Background(), s, dir, "11",
-		core.FetchFlags{BaseSHA: incrementalBase, HasBase: true})
+		&core.FetchFlags{BaseSHA: incrementalBase, HasBase: true})
 	if err != nil {
 		t.Fatalf("gitlabIncremental: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestGitLabIncrementalFailWritesNote(t *testing.T) {
 	}}
 	s, _ := newTestSession(cmdr)
 	got, err := gitlabIncremental(context.Background(), s, dir, "11",
-		core.FetchFlags{BaseSHA: incrementalBase, HasBase: true})
+		&core.FetchFlags{BaseSHA: incrementalBase, HasBase: true})
 	if err != nil {
 		t.Fatalf("gitlabIncremental: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestGitLabIncrementalUnreadableWritesNote(t *testing.T) {
 	}}
 	s, _ := newTestSession(cmdr)
 	got, err := gitlabIncremental(context.Background(), s, dir, "11",
-		core.FetchFlags{BaseSHA: incrementalBase, HasBase: true})
+		&core.FetchFlags{BaseSHA: incrementalBase, HasBase: true})
 	if err != nil {
 		t.Fatalf("gitlabIncremental: %v", err)
 	}

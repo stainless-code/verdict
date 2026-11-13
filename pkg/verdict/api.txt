@@ -227,6 +227,7 @@ type DoctorResponse struct {
 
 type FetchLocalRequest struct {
 	Invocation
+	Context                                             []string
 	Range, BaseRef, Stash                               string
 	Paths                                               []string
 	Staged, HasStash, BudgetConsent, ShowPrompts, Chunk bool
@@ -240,6 +241,7 @@ type FetchLocalRequest struct {
 type FetchRequest struct {
 	Invocation
 	BaseSHA, Provider                 string
+	Context                           []string
 	BudgetConsent, ShowPrompts, Chunk bool
 	HeadControls                      bool
 }
