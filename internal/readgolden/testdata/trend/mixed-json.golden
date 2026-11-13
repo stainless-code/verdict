@@ -36,6 +36,10 @@ exit: 0
     "by_category": {
       "untagged": 9
     },
+    "by_source": {
+      "model": 9,
+      "tool": 0
+    },
     "withheld": {"agent":0,"below-severity":0,"exclusion":0,"validation":0},
     "provenance": {
       "tools": [
@@ -124,6 +128,10 @@ exit: 0
         "by_category": {
           "untagged": 6
         },
+        "by_source": {
+          "model": 6,
+          "tool": 0
+        },
         "withheld": {"agent":0,"below-severity":0,"exclusion":0,"validation":0}
       },
       {
@@ -161,6 +169,10 @@ exit: 0
         "by_category": {
           "untagged": 2
         },
+        "by_source": {
+          "model": 2,
+          "tool": 0
+        },
         "withheld": {"agent":0,"below-severity":0,"exclusion":0,"validation":0}
       },
       {
@@ -193,6 +205,10 @@ exit: 0
         },
         "by_category": {
           "untagged": 1
+        },
+        "by_source": {
+          "model": 1,
+          "tool": 0
         },
         "withheld": {"agent":0,"below-severity":0,"exclusion":0,"validation":0}
       }

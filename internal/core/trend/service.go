@@ -150,6 +150,7 @@ type row struct {
 	byStatus   map[string]int
 	byTier     map[string]int
 	byCategory map[string]int
+	bySource   map[string]int
 	bundle     string
 	at         string
 	models     []any
@@ -252,6 +253,7 @@ func buildRow(bundle, name string, findings []any) row {
 		byStatus:   statusCounts(findings),
 		byTier:     tierCounts(findings),
 		byCategory: categoryCounts(findings),
+		bySource:   readcommon.SourceCounts(findings),
 	}
 }
 

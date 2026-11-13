@@ -114,6 +114,7 @@ type ReportCounts struct { //nolint:govet // field order is the published proper
 	ByCategory       map[string]int `json:"by_category"`
 	Withheld         int            `json:"withheld,omitempty"           min:"0"         optional:"true"`
 	WithheldBySource map[string]int `json:"withheld_by_source,omitempty" optional:"true"`
+	BySource         map[string]int `json:"by_source,omitempty"          optional:"true"`
 }
 
 // ReportPanel is the panel source plus its member list.

@@ -57,6 +57,10 @@ var hintRules = []HintRule{
 	{codes: []string{"html-not-export"}, hint: "try: choose a new, empty, or previous HTML export directory"},
 	{codes: []string{"html-symlink"}, hint: "try: choose an HTML export directory that is not a symlink"},
 	{codes: []string{"missing-index"}, hint: "try: run 'verdict index build' first"},
+	{codes: []string{"missing-sarif"}, hint: "try: pass an existing SARIF 2.1.0 file with --sarif <file|->"},
+	{codes: []string{"bad-sarif"}, hint: "try: pass a valid UTF-8 SARIF 2.1.0 JSON file with repository-relative URIs"},
+	{codes: []string{"sarif-too-large"}, hint: "try: split or trim the SARIF report under 8 MiB before ingesting"},
+	{codes: []string{"ingest-failed"}, hint: "try: confirm the bundle path and SARIF file readability, then re-run"},
 	{prefix: "missing-", hint: "try: run the fetch/record step named above first, then re-run"},
 	{
 		codes: []string{

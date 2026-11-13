@@ -49,6 +49,7 @@ bad-review-schema	try: set "schema_version": "1" in review.json
 bad-rigor	try: re-run with one of the valid values named above
 bad-root	try: pass --root <existing-directory>, or run serve inside a checkout
 bad-rule	try: re-run with one of the valid values named above
+bad-sarif	try: pass a valid UTF-8 SARIF 2.1.0 JSON file with repository-relative URIs
 bad-scope	try: re-run with one of the valid values named above
 bad-settings	try: keep only output/layout/color/publish/review/spend/privacy keys (see docs/manual.md), then re-run
 bad-settings-credentials	try: remove the credential key from the settings file (credentials never live there), then re-run
@@ -100,6 +101,7 @@ ignore-too-large	try: keep .verdict/ignore under 64 KiB and 1,000 patterns, then
 index-capped	try: narrow --from/--at to a smaller tree (the 97 MiB git capture cap is fixed; the typed caps cover file, tree and shard bytes only)
 index-corrupt	try: delete .verdict/index and rebuild with 'verdict index build'
 index-failed	try: delete .verdict/index and rebuild with 'verdict index build'
+ingest-failed	try: confirm the bundle path and SARIF file readability, then re-run
 init-failed	try: address the cause above, then re-run the same command
 internal	try: address the cause above, then re-run the same command
 learn-failed	try: address the cause above, then re-run the same command
@@ -122,6 +124,7 @@ missing-index	try: run 'verdict index build' first
 missing-patch	try: run the fetch/record step named above first, then re-run
 missing-post	try: run the fetch/record step named above first, then re-run
 missing-review-file	try: run the fetch/record step named above first, then re-run
+missing-sarif	try: pass an existing SARIF 2.1.0 file with --sarif <file|->
 missing-sig	try: run the fetch/record step named above first, then re-run
 missing-source	try: run the fetch/record step named above first, then re-run
 missing-tool	try: run the fetch/record step named above first, then re-run
@@ -165,6 +168,7 @@ requirement-unmet	try: address the cause above, then re-run the same command
 rounds-path-unsafe	try: remove the named path from the bundle (verdict owns it as a plain directory), then re-run
 run-mismatch	try: pick another --run, or delete the existing run directory
 sandbox-unavailable	try: install bubblewrap on Linux and allow unprivileged user namespaces, or re-run without --sandbox on a command you trust
+sarif-too-large	try: split or trim the SARIF report under 8 MiB before ingesting
 scope-escape	try: revert or stash files outside the anchor path, then re-run fix
 serve-listen-failed	try: pass --port 0 for a kernel-assigned port, or free the named address, then re-run
 skill-bad-dir	try: address the cause above, then re-run the same command

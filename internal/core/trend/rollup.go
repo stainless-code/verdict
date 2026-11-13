@@ -28,6 +28,7 @@ type rollup struct {
 	byStatus   map[string]int
 	byTier     map[string]int
 	byCategory map[string]int
+	bySource   map[string]int
 	tools      []any
 	models     []any
 	hashes     []any
@@ -61,10 +62,12 @@ func rollupRows(rows []row) rollup {
 			tierCritical: 0, tierImportant: 0, tierInformational: 0, tierUntagged: 0,
 		},
 		byCategory: map[string]int{},
+		bySource:   map[string]int{"model": 0, "tool": 0},
 	}
 	for i := range rows {
 		r := &rows[i]
 		addWithheld(out.withheld, r.findings)
+		addSources(out.bySource, r)
 		out.bundles++
 		out.clean += cleanCount(r)
 		out.findings += len(r.findings)
@@ -195,6 +198,7 @@ func rollupDoc(out *rollup) *jq.Obj {
 		),
 		"by_tier", tierDoc(out.byTier),
 		"by_category", categoryDoc(out.byCategory),
+		"by_source", sourceDoc(out.bySource),
 		"withheld", out.withheld,
 		"provenance", jq.NewObj(
 			"tools", anyList(out.tools),
@@ -229,6 +233,23 @@ func categoryDoc(counts map[string]int) *jq.Obj {
 	return o
 }
 
+func rowSources(r *row) map[string]int {
+	if len(r.bySource) > 0 {
+		return r.bySource
+	}
+	return readcommon.SourceCounts(r.findings)
+}
+
+func addSources(dst map[string]int, r *row) {
+	for k, v := range rowSources(r) {
+		dst[k] += v
+	}
+}
+
+func sourceDoc(counts map[string]int) *jq.Obj {
+	return jq.NewObj("model", counts["model"], "tool", counts["tool"])
+}
+
 func anyList(vals []any) []any {
 	if vals == nil {
 		return []any{}
@@ -261,6 +282,7 @@ func rowDoc(r *row) *jq.Obj {
 		),
 		"by_tier", tierDoc(r.byTier),
 		"by_category", categoryDoc(r.byCategory),
+		"by_source", sourceDoc(rowSources(r)),
 		"withheld", readcommon.WithheldCounts(r.findings),
 	)
 }
@@ -285,6 +307,9 @@ func (st *state) emitRollupHuman(out *rollup) {
 	} else {
 		st.human(fmt.Sprintf("trend: %s — %d bundle(s), %d findings (open=%d addressed=%d closed=%d)",
 			st.req.Repo, out.bundles, out.findings, out.open, out.addressed, out.closed))
+		if out.bySource["tool"] > 0 {
+			st.human(fmt.Sprintf("by source: model %d, tool %d", out.bySource["model"], out.bySource["tool"]))
+		}
 		st.emitReviewHuman(out)
 		for i := range out.periods {
 			p := &out.periods[i]
