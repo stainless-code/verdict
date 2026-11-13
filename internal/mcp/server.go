@@ -507,7 +507,7 @@ func successResult(tool string, data *jq.Obj) callToolResult {
 		}
 	}
 	total := len(raw)
-	receipt := &core.Truncation{Truncated: true, TruncationReason: "response_cap", Returned: 0, Total: &total}
+	receipt := core.ResultCut("response_cap", 0, new(total), nil)
 	if cut, _ := data.Get("truncated"); cut != true {
 		data = receipt.Apply(data.Clone())
 	}
@@ -534,8 +534,7 @@ func truncationSummary(tool string, data *jq.Obj, size int) string {
 		pairs = append(pairs, "next", "structuredContent carries the full result; "+
 			"narrow the call to get a smaller text block")
 	}
-	total := size
-	receipt := &core.Truncation{Truncated: true, TruncationReason: "response_cap", Returned: 0, Total: &total}
+	receipt := core.ResultCut("response_cap", 0, new(size), nil)
 	return receipt.Apply(jq.NewObj(pairs...)).MarshalCompact()
 }
 
