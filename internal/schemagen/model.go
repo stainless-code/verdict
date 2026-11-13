@@ -66,6 +66,9 @@ type ConfigDefaults = core.ConfigDefaults
 // ConfigKBPolicy is the configuration's knowledge-base policy.
 type ConfigKBPolicy = core.ConfigKBPolicy
 
+// ConfigSeverityWeights is the benchmark weighting configuration.
+type ConfigSeverityWeights = core.ConfigSeverityWeights
+
 // ConfigIndex is the configuration's local code index caps.
 type ConfigIndex = core.ConfigIndex
 
@@ -553,32 +556,35 @@ type TrendBundleRow struct { //nolint:govet // field order is the published prop
 // (live join, corpus join, probe) share one object, so every mode-specific key
 // is optional and a consumer narrows on the keys it asked for.
 type CalibrateData struct { //nolint:govet // field order is the published property order
-	Unmatched         int                `json:"unmatched"           min:"0"           optional:"true"`
-	Excluded          map[string]int     `json:"excluded"            optional:"true"`
-	Proposals         []any              `json:"proposals"           optional:"true"`
-	ReviewID          any                `json:"review_id"           optional:"true"`
-	Head              *CalibrateHead     `anyOf:"null"               json:"head"       optional:"true"`
-	PR                *CalibratePR       `anyOf:"null"               json:"pr"         optional:"true"`
-	Outcomes          []any              `json:"outcomes"            optional:"true"`
-	Precision         any                `json:"precision"           optional:"true"`
-	Provenance        *ProvenanceTriple  `anyOf:"null"               json:"provenance" optional:"true"`
-	Bundle            string             `json:"bundle"              optional:"true"`
-	Case              string             `json:"case"                optional:"true"`
-	Kind              string             `json:"kind"                optional:"true"`
-	Model             string             `json:"model"               optional:"true"`
-	Panel             []string           `json:"panel"               optional:"true"`
-	LineTolerance     int                `json:"line_tolerance"      min:"0"           optional:"true"`
-	GroundTruth       int                `json:"ground_truth"        min:"0"           optional:"true"`
-	Reported          int                `json:"reported"            min:"0"           optional:"true"`
-	Matched           int                `json:"matched"             min:"0"           optional:"true"`
-	FalsePositives    int                `json:"false_positives"     min:"0"           optional:"true"`
-	Missed            int                `json:"missed"              min:"0"           optional:"true"`
-	Recall            *float64           `json:"recall"              min:"0"           optional:"true"`
-	FalsePositiveRate *float64           `json:"false_positive_rate" min:"0"           optional:"true"`
-	Grades            []any              `json:"grades"              optional:"true"`
-	Counts            *CalibrateCounts   `anyOf:"null"               json:"counts"     optional:"true"`
-	Judgment          *CalibrateJudgment `anyOf:"null"               json:"judgment"   optional:"true"`
-	MissedBugs        []any              `json:"missed_bugs"         optional:"true"`
+	Unmatched          int                `json:"unmatched"            min:"0"           optional:"true"`
+	Excluded           map[string]int     `json:"excluded"             optional:"true"`
+	Proposals          []any              `json:"proposals"            optional:"true"`
+	Metrics            any                `json:"metrics"              optional:"true"`
+	Sampling           any                `json:"sampling"             optional:"true"`
+	SamplingHits       []int              `json:"sampling_hits"        optional:"true"`
+	ReviewID           any                `json:"review_id"            optional:"true"`
+	Head               *CalibrateHead     `anyOf:"null"                json:"head"       optional:"true"`
+	PR                 *CalibratePR       `anyOf:"null"                json:"pr"         optional:"true"`
+	Outcomes           []any              `json:"outcomes"             optional:"true"`
+	Precision          any                `json:"precision"            optional:"true"`
+	Provenance         *ProvenanceTriple  `anyOf:"null"                json:"provenance" optional:"true"`
+	Bundle             string             `json:"bundle"               optional:"true"`
+	Case               string             `json:"case"                 optional:"true"`
+	Kind               string             `json:"kind"                 optional:"true"`
+	Model              string             `json:"model"                optional:"true"`
+	Panel              []string           `json:"panel"                optional:"true"`
+	LineTolerance      int                `json:"line_tolerance"       min:"0"           optional:"true"`
+	GroundTruth        int                `json:"ground_truth"         min:"0"           optional:"true"`
+	Reported           int                `json:"reported"             min:"0"           optional:"true"`
+	Matched            int                `json:"matched"              min:"0"           optional:"true"`
+	FalsePositives     int                `json:"false_positives"      min:"0"           optional:"true"`
+	Missed             int                `json:"missed"               min:"0"           optional:"true"`
+	Recall             *float64           `json:"recall"               min:"0"           optional:"true"`
+	FalseDiscoveryRate *float64           `json:"false_discovery_rate" min:"0"           optional:"true"`
+	Grades             []any              `json:"grades"               optional:"true"`
+	Counts             *CalibrateCounts   `anyOf:"null"                json:"counts"     optional:"true"`
+	Judgment           *CalibrateJudgment `anyOf:"null"                json:"judgment"   optional:"true"`
+	MissedBugs         []any              `json:"missed_bugs"          optional:"true"`
 }
 
 // CalibrateHead is the reviewed and live head the live join compared.

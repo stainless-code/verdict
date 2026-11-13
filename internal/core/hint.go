@@ -25,6 +25,7 @@ type HintRule struct {
 // scans the fewest pointer bytes (govet fieldalignment), which is why the
 // literal keys do not follow the declaration order.
 var hintRules = []HintRule{
+	{codes: []string{"read-only-tool"}, hint: "try: restart the MCP server without --read-only; use --operator for operator-only tools"},
 	{codes: []string{"panel-empty"}, hint: "try: configure defaults.panel with a synthesizer and verifiers, re-fetch, then re-run panel"},
 	{codes: []string{"panel-too-large"}, hint: "try: narrow the review or roster (100 findings, 4 verifiers maximum), then re-run panel"},
 	{codes: []string{"bad-panel"}, hint: "try: fix verification/verdicts.json: " +

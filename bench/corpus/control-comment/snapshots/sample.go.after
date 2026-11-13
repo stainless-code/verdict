@@ -1,0 +1,4 @@
+package sample
+
+// Number of rows
+const Rows = 1

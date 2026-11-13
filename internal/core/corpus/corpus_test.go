@@ -58,7 +58,7 @@ func checkCase(t *testing.T, root, name string) {
 	}
 	var entries []any
 	for _, agent := range agents {
-		entries = append(entries, checkAgent(t, filepath.Join(dir, "agents", agent.Name()), index)...)
+		entries = append(entries, checkAgent(t, filepath.Join(dir, "agents", agent.Name()), index, c.Kind == "control")...)
 	}
 	checkTolerance(t, name, c, index)
 	checkNamedBugs(t, name, c, entries)
@@ -138,7 +138,7 @@ type agentOutput struct {
 }
 
 // checkAgent validates one fake output and returns the findings it reports.
-func checkAgent(t *testing.T, path string, index []hunks.Hunk) []any {
+func checkAgent(t *testing.T, path string, index []hunks.Hunk, control bool) []any {
 	t.Helper()
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -151,7 +151,7 @@ func checkAgent(t *testing.T, path string, index []hunks.Hunk) []any {
 	if a.Model == "" || len(a.Panel) == 0 {
 		t.Errorf("%s: needs model and panel", path)
 	}
-	if len(a.Review.Comments) == 0 {
+	if len(a.Review.Comments) == 0 && !control {
 		t.Errorf("%s: no comments", path)
 	}
 	bodies := map[string]bool{}

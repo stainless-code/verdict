@@ -8,7 +8,7 @@ package core
 type CorpusCase struct {
 	SchemaVersion string           `const:"1"                       json:"schema_version"`
 	ID            string           `json:"id"`
-	Kind          string           `enum:"seeded|real"              json:"kind"`
+	Kind          string           `enum:"seeded|real|control"      json:"kind"`
 	Language      string           `json:"language,omitempty"`
 	LineTolerance *int             `json:"line_tolerance,omitempty" min:"0"`
 	Provenance    CorpusProvenance `json:"provenance"`

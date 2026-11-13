@@ -1,0 +1,10 @@
+{
+  "model": "fixture-good",
+  "panel": ["panel-alpha"],
+  "review": {
+    "schema_version": "1",
+    "body": "> \ud83e\udd16 Seeded clean control \u2014 not a model-quality claim.",
+    "approved": true,
+    "comments": []
+  }
+}

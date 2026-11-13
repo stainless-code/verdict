@@ -14,6 +14,7 @@ type corpusPoint struct {
 	id             string
 	model          string
 	panel          string
+	sample         corpuscore.Sample
 	bugs           int
 	reported       int
 	matched        int
@@ -22,6 +23,7 @@ type corpusPoint struct {
 }
 
 type corpusCounts struct {
+	samples        []corpuscore.Sample
 	bundles        int
 	bugs           int
 	reported       int
@@ -49,7 +51,13 @@ func (st *state) readCorpus(dir string) {
 		return
 	}
 	report := corpuscore.Evaluate(c, entries)
+	sample, ref := corpuscore.LoadSample(dir, report)
+	if ref != nil {
+		st.warn(skipWarn + "corpus bundle " + dir + "/ (" + ref.Message + ")")
+		return
+	}
 	st.corpora = append(st.corpora, corpusPoint{
+		sample:         sample,
 		id:             c.ID,
 		model:          corpuscore.ModelOf(dir),
 		panel:          corpuscore.PanelLabel(corpuscore.PanelOf(dir)),
@@ -81,6 +89,9 @@ func corpusRollupOf(points []corpusPoint) *corpusRollup {
 }
 
 func (c *corpusCounts) add(p *corpusPoint) {
+	if p.sample.Report != nil {
+		c.samples = append(c.samples, p.sample)
+	}
 	c.bundles++
 	c.bugs += p.bugs
 	c.reported += p.reported
@@ -109,6 +120,7 @@ func corpusDoc(r *corpusRollup) *jq.Obj {
 		panels = append(panels, corpusCountsDoc("panel", key, r.byPanel[key]))
 	}
 	return jq.NewObj(
+		"metrics", corpuscore.Measure(r.total.samples).Wire(),
 		"cases", len(r.cases),
 		"bundles", r.total.bundles,
 		"ground_truth", r.total.bugs,
@@ -118,7 +130,7 @@ func corpusDoc(r *corpusRollup) *jq.Obj {
 		"missed", r.total.missed,
 		"precision", corpuscore.RateOrNil(r.total.matched, r.total.reported),
 		"recall", corpuscore.RateOrNil(r.total.matched, r.total.bugs),
-		"false_positive_rate", corpuscore.RateOrNil(r.total.falsePositives, r.total.reported),
+		"false_discovery_rate", corpuscore.RateOrNil(r.total.falsePositives, r.total.reported),
 		"by_model", models,
 		"by_panel", panels,
 	)
@@ -127,6 +139,7 @@ func corpusDoc(r *corpusRollup) *jq.Obj {
 func corpusCountsDoc(key, label string, c *corpusCounts) *jq.Obj {
 	return jq.NewObj(
 		key, label,
+		"metrics", corpuscore.Measure(c.samples).Wire(),
 		"bundles", c.bundles,
 		"ground_truth", c.bugs,
 		"reported", c.reported,
@@ -135,19 +148,20 @@ func corpusCountsDoc(key, label string, c *corpusCounts) *jq.Obj {
 		"missed", c.missed,
 		"precision", corpuscore.RateOrNil(c.matched, c.reported),
 		"recall", corpuscore.RateOrNil(c.matched, c.bugs),
-		"false_positive_rate", corpuscore.RateOrNil(c.falsePositives, c.reported),
+		"false_discovery_rate", corpuscore.RateOrNil(c.falsePositives, c.reported),
 	)
 }
 
 func (st *state) emitCorpusHuman(r *corpusRollup) {
+	st.human(corpuscore.Measure(r.total.samples).Summary())
 	st.human(fmt.Sprintf("corpus: %d bundle(s) over %d case(s) — ground_truth=%d reported=%d "+
 		"matched=%d false_positives=%d missed=%d",
 		r.total.bundles, len(r.cases), r.total.bugs, r.total.reported,
 		r.total.matched, r.total.falsePositives, r.total.missed))
-	st.human(fmt.Sprintf("corpus rates: precision=%s recall=%s false-positive-rate=%s",
-		corpuscore.RateText(corpuscore.RateOrNil(r.total.matched, r.total.reported)),
-		corpuscore.RateText(corpuscore.RateOrNil(r.total.matched, r.total.bugs)),
-		corpuscore.RateText(corpuscore.RateOrNil(r.total.falsePositives, r.total.reported))))
+	st.human(fmt.Sprintf("corpus rates: precision=%s (n=%d) recall=%s (n=%d) false-discovery-rate=%s (n=%d)",
+		corpuscore.RateText(corpuscore.RateOrNil(r.total.matched, r.total.reported)), r.total.reported,
+		corpuscore.RateText(corpuscore.RateOrNil(r.total.matched, r.total.bugs)), r.total.bugs,
+		corpuscore.RateText(corpuscore.RateOrNil(r.total.falsePositives, r.total.reported)), r.total.reported))
 	for _, key := range slices.Sorted(maps.Keys(r.byModel)) {
 		st.human(corpusCountsLine("model", key, r.byModel[key]))
 	}
@@ -158,9 +172,9 @@ func (st *state) emitCorpusHuman(r *corpusRollup) {
 
 func corpusCountsLine(key, label string, c *corpusCounts) string {
 	return fmt.Sprintf("corpus %s %s: bundles=%d ground_truth=%d reported=%d matched=%d "+
-		"false_positives=%d missed=%d precision=%s recall=%s false-positive-rate=%s",
+		"false_positives=%d missed=%d precision=%s (n=%d) recall=%s (n=%d) false-discovery-rate=%s (n=%d)",
 		key, label, c.bundles, c.bugs, c.reported, c.matched, c.falsePositives, c.missed,
-		corpuscore.RateText(corpuscore.RateOrNil(c.matched, c.reported)),
-		corpuscore.RateText(corpuscore.RateOrNil(c.matched, c.bugs)),
-		corpuscore.RateText(corpuscore.RateOrNil(c.falsePositives, c.reported)))
+		corpuscore.RateText(corpuscore.RateOrNil(c.matched, c.reported)), c.reported,
+		corpuscore.RateText(corpuscore.RateOrNil(c.matched, c.bugs)), c.bugs,
+		corpuscore.RateText(corpuscore.RateOrNil(c.falsePositives, c.reported)), c.reported)
 }

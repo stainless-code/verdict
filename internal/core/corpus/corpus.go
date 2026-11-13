@@ -66,6 +66,12 @@ const (
 // refusal code for an invalid case manifest.
 const codeCorpusInvalid = "corpus-invalid"
 
+const (
+	kindControl = "control"
+	kindSeeded  = "seeded"
+	kindReal    = "real"
+)
+
 // IsDir reports whether dir names a marked corpus bundle: the last
 // segment carries the corpus- prefix, whatever root anchors it.
 func IsDir(dir string) bool {
@@ -103,7 +109,7 @@ func Load(dir string) (*core.CorpusCase, *core.RefusalError) {
 func invalid(path, reason string) *core.RefusalError {
 	return &core.RefusalError{Code: codeCorpusInvalid, Message: fmt.Sprintf(
 		"corpus manifest %s is %s (write a schemas/corpus.schema.json case: id, kind, "+
-			"provenance, and at least one bug; try: copy bench/corpus/<id>/case.json)", path, reason)}
+			"provenance, bugs (empty for controls); try: copy bench/corpus/<id>/case.json)", path, reason)}
 }
 
 // validate enforces the semantic rules the JSON Schema cannot express.
@@ -114,26 +120,47 @@ func validate(c *core.CorpusCase, path string) *core.RefusalError {
 	if strings.TrimSpace(c.ID) == "" {
 		return invalid(path, "missing id")
 	}
-	if c.Kind != "seeded" && c.Kind != "real" {
-		return invalid(path, "kind must be seeded or real")
-	}
-	if c.Provenance.Kind != c.Kind {
-		return invalid(path, "provenance.kind must match kind")
+	if ref := validateKind(c, path); ref != nil {
+		return ref
 	}
 	if ref := validateProvenance(c, path); ref != nil {
 		return ref
 	}
+	if c.Kind == kindControl {
+		return validateControl(c, path)
+	}
+
 	return validateBugs(c.Bugs, path)
+}
+
+func validateKind(c *core.CorpusCase, path string) *core.RefusalError {
+	if c.Kind != kindSeeded && c.Kind != kindReal && c.Kind != kindControl {
+		return invalid(path, "kind must be seeded, real, or control")
+	}
+	if c.Provenance.Kind != c.Kind && c.Kind != kindControl {
+		return invalid(path, "provenance.kind must match kind")
+	}
+	return nil
+}
+
+func validateControl(c *core.CorpusCase, path string) *core.RefusalError {
+	if c.Bugs == nil || len(c.Bugs) != 0 {
+		return invalid(path, "control cases require bugs: []")
+	}
+	if c.Provenance.Kind != kindSeeded && c.Provenance.Kind != kindReal {
+		return invalid(path, "control provenance.kind must be seeded or real")
+	}
+	return nil
 }
 
 // validateProvenance enforces the per-kind origin requirements.
 func validateProvenance(c *core.CorpusCase, path string) *core.RefusalError {
-	switch c.Kind {
-	case "seeded":
+	switch c.Provenance.Kind {
+	case kindSeeded:
 		if strings.TrimSpace(c.Provenance.Injected) == "" {
 			return invalid(path, "seeded cases need provenance.injected (what was injected)")
 		}
-	case "real":
+	case kindReal:
 		if strings.TrimSpace(c.Provenance.Repo) == "" || c.Provenance.PR == nil ||
 			strings.TrimSpace(c.Provenance.FixCommit) == "" {
 			return invalid(path, "real cases need provenance.repo, provenance.pr, and provenance.fix_commit")
@@ -216,10 +243,12 @@ func Tolerance(c *core.CorpusCase) int {
 // Outcome is one reported finding graded against the ground truth. Reason
 // names why a false positive failed; a true positive carries none.
 type Outcome struct {
+	Severity  string
 	Sig       string
 	Path      string
 	Result    string
 	Reason    string
+	BugIndex  int
 	Line      int
 	BugLine   int
 	HasPath   bool
@@ -283,10 +312,13 @@ func collectMissed(rep *Report, bugs []core.CorpusBug, used []bool) {
 }
 
 func grade(e any, bugs []core.CorpusBug, used []bool, tol int) (Outcome, int) {
-	out := Outcome{Result: ResultFalsePositive, Reason: ReasonUnanchored}
+	out := Outcome{Result: ResultFalsePositive, Reason: ReasonUnanchored, BugIndex: -1}
 	m, ok := e.(*jq.Obj)
 	if !ok || m == nil {
 		return out, -1
+	}
+	if severity, ok := m.Get("severity"); ok {
+		out.Severity = jq.StrOf(severity)
 	}
 	if sig, ok := m.Get("sig"); ok {
 		out.Sig = jq.StrOf(sig)
@@ -306,6 +338,7 @@ func grade(e any, bugs []core.CorpusBug, used []bool, tol int) (Outcome, int) {
 	out.Result = ResultTruePositive
 	out.Reason = ""
 	out.BugLine, out.HasBugHit = bugs[i].Line, true
+	out.BugIndex = i
 	return out, i
 }
 
@@ -541,11 +574,17 @@ func RateOrNil(n, d int) any {
 // RateText renders a JSON rate at the published precision, n/a when
 // unmeasured.
 func RateText(rate any) string {
-	f, ok := rate.(float64)
-	if !ok {
+	switch v := rate.(type) {
+	case *float64:
+		if v == nil {
+			return "n/a"
+		}
+		return strconv.FormatFloat(*v, 'f', RateDecimals, rateBits)
+	case float64:
+		return strconv.FormatFloat(v, 'f', RateDecimals, rateBits)
+	default:
 		return "n/a"
 	}
-	return strconv.FormatFloat(f, 'f', RateDecimals, rateBits)
 }
 
 const rateBits = 64

@@ -163,6 +163,7 @@ func documents() []document {
 			defs: []definition{
 				{typ: reflect.TypeFor[ConfigDefaults](), name: "defaults", closed: true},
 				{typ: reflect.TypeFor[ConfigKBPolicy](), name: "kbPolicy", closed: true},
+				{typ: reflect.TypeFor[ConfigSeverityWeights](), name: "configSeverityWeights", closed: true},
 				{typ: reflect.TypeFor[ConfigIndex](), name: "configIndex", closed: true},
 				{typ: reflect.TypeFor[ConfigRequirements](), name: "requirements", closed: true},
 				{typ: reflect.TypeFor[BlockClause](), name: "blockClause", closed: true},

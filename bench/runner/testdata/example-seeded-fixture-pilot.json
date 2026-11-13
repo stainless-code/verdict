@@ -4,7 +4,7 @@
   "generated_at": "2026-11-04T23:12:24Z",
   "internal": true,
   "citable": false,
-  "citable_reason": "internal pilot",
+  "citable_reason": "not a model-quality claim; seeded example; internal pilot",
   "corpus": {
     "commit": "d2dd5ce49e3f731480ede9b8e719871b39ed85fe",
     "dirty": false,
@@ -53,7 +53,7 @@
         "min": 1,
         "max": 1
       },
-      "false_positive_rate": {
+      "false_discovery_rate": {
         "median": 0,
         "min": 0,
         "max": 0
@@ -72,7 +72,7 @@
         "min": 1,
         "max": 1
       },
-      "false_positive_rate": {
+      "false_discovery_rate": {
         "median": 0,
         "min": 0,
         "max": 0
@@ -91,7 +91,7 @@
         "min": 1,
         "max": 1
       },
-      "false_positive_rate": {
+      "false_discovery_rate": {
         "median": 0,
         "min": 0,
         "max": 0
@@ -110,7 +110,7 @@
         "min": 1,
         "max": 1
       },
-      "false_positive_rate": {
+      "false_discovery_rate": {
         "median": 0.3333,
         "min": 0.3333,
         "max": 0.3333
@@ -129,7 +129,7 @@
         "min": 1,
         "max": 1
       },
-      "false_positive_rate": {
+      "false_discovery_rate": {
         "median": 0,
         "min": 0,
         "max": 0
@@ -148,7 +148,7 @@
         "min": 1,
         "max": 1
       },
-      "false_positive_rate": {
+      "false_discovery_rate": {
         "median": 0,
         "min": 0,
         "max": 0
@@ -167,7 +167,7 @@
         "min": 1,
         "max": 1
       },
-      "false_positive_rate": {
+      "false_discovery_rate": {
         "median": 0,
         "min": 0,
         "max": 0
@@ -186,7 +186,7 @@
         "min": 1,
         "max": 1
       },
-      "false_positive_rate": {
+      "false_discovery_rate": {
         "median": 0,
         "min": 0,
         "max": 0
@@ -217,7 +217,7 @@
         "missed": 0,
         "precision": 1,
         "recall": 1,
-        "false_positive_rate": 0,
+        "false_discovery_rate": 0,
         "outcomes": [
           {
             "sig": "9476ce24f2a38e852807dcacc7fa7fc2e1d060f6",
@@ -253,7 +253,7 @@
         "missed": 0,
         "precision": 1,
         "recall": 1,
-        "false_positive_rate": 0,
+        "false_discovery_rate": 0,
         "outcomes": [
           {
             "sig": "9476ce24f2a38e852807dcacc7fa7fc2e1d060f6",
@@ -289,7 +289,7 @@
         "missed": 0,
         "precision": 1,
         "recall": 1,
-        "false_positive_rate": 0,
+        "false_discovery_rate": 0,
         "outcomes": [
           {
             "sig": "9476ce24f2a38e852807dcacc7fa7fc2e1d060f6",
@@ -325,7 +325,7 @@
         "missed": 0,
         "precision": 1,
         "recall": 1,
-        "false_positive_rate": 0,
+        "false_discovery_rate": 0,
         "outcomes": [
           {
             "sig": "67a18fa8fb81cf8bd513bad83f270d15f41675fb",
@@ -361,7 +361,7 @@
         "missed": 0,
         "precision": 1,
         "recall": 1,
-        "false_positive_rate": 0,
+        "false_discovery_rate": 0,
         "outcomes": [
           {
             "sig": "67a18fa8fb81cf8bd513bad83f270d15f41675fb",
@@ -397,7 +397,7 @@
         "missed": 0,
         "precision": 1,
         "recall": 1,
-        "false_positive_rate": 0,
+        "false_discovery_rate": 0,
         "outcomes": [
           {
             "sig": "67a18fa8fb81cf8bd513bad83f270d15f41675fb",
@@ -433,7 +433,7 @@
         "missed": 0,
         "precision": 1,
         "recall": 1,
-        "false_positive_rate": 0,
+        "false_discovery_rate": 0,
         "outcomes": [
           {
             "sig": "91a3639958dc32da5ff709a480a95126428a8939",
@@ -469,7 +469,7 @@
         "missed": 0,
         "precision": 1,
         "recall": 1,
-        "false_positive_rate": 0,
+        "false_discovery_rate": 0,
         "outcomes": [
           {
             "sig": "91a3639958dc32da5ff709a480a95126428a8939",
@@ -505,7 +505,7 @@
         "missed": 0,
         "precision": 1,
         "recall": 1,
-        "false_positive_rate": 0,
+        "false_discovery_rate": 0,
         "outcomes": [
           {
             "sig": "91a3639958dc32da5ff709a480a95126428a8939",
@@ -541,7 +541,7 @@
         "missed": 0,
         "precision": 0.6667,
         "recall": 1,
-        "false_positive_rate": 0.3333,
+        "false_discovery_rate": 0.3333,
         "outcomes": [
           {
             "sig": "49d74c8e98076267d9d04adcbf2c73aa2dc6b54f",
@@ -591,7 +591,7 @@
         "missed": 0,
         "precision": 0.6667,
         "recall": 1,
-        "false_positive_rate": 0.3333,
+        "false_discovery_rate": 0.3333,
         "outcomes": [
           {
             "sig": "49d74c8e98076267d9d04adcbf2c73aa2dc6b54f",
@@ -641,7 +641,7 @@
         "missed": 0,
         "precision": 0.6667,
         "recall": 1,
-        "false_positive_rate": 0.3333,
+        "false_discovery_rate": 0.3333,
         "outcomes": [
           {
             "sig": "49d74c8e98076267d9d04adcbf2c73aa2dc6b54f",
@@ -691,7 +691,7 @@
         "missed": 0,
         "precision": 1,
         "recall": 1,
-        "false_positive_rate": 0,
+        "false_discovery_rate": 0,
         "outcomes": [
           {
             "sig": "3a7dad1b90f116715506979a403ea79d07206b7c",
@@ -727,7 +727,7 @@
         "missed": 0,
         "precision": 1,
         "recall": 1,
-        "false_positive_rate": 0,
+        "false_discovery_rate": 0,
         "outcomes": [
           {
             "sig": "3a7dad1b90f116715506979a403ea79d07206b7c",
@@ -763,7 +763,7 @@
         "missed": 0,
         "precision": 1,
         "recall": 1,
-        "false_positive_rate": 0,
+        "false_discovery_rate": 0,
         "outcomes": [
           {
             "sig": "3a7dad1b90f116715506979a403ea79d07206b7c",
@@ -799,7 +799,7 @@
         "missed": 0,
         "precision": 1,
         "recall": 1,
-        "false_positive_rate": 0,
+        "false_discovery_rate": 0,
         "outcomes": [
           {
             "sig": "1ad40a6764f648ca247df02f9d68ff36140454e7",
@@ -835,7 +835,7 @@
         "missed": 0,
         "precision": 1,
         "recall": 1,
-        "false_positive_rate": 0,
+        "false_discovery_rate": 0,
         "outcomes": [
           {
             "sig": "1ad40a6764f648ca247df02f9d68ff36140454e7",
@@ -871,7 +871,7 @@
         "missed": 0,
         "precision": 1,
         "recall": 1,
-        "false_positive_rate": 0,
+        "false_discovery_rate": 0,
         "outcomes": [
           {
             "sig": "1ad40a6764f648ca247df02f9d68ff36140454e7",
@@ -907,7 +907,7 @@
         "missed": 0,
         "precision": 1,
         "recall": 1,
-        "false_positive_rate": 0,
+        "false_discovery_rate": 0,
         "outcomes": [
           {
             "sig": "e9855662cf9f56105ae68110965115e3c6ddd1aa",
@@ -943,7 +943,7 @@
         "missed": 0,
         "precision": 1,
         "recall": 1,
-        "false_positive_rate": 0,
+        "false_discovery_rate": 0,
         "outcomes": [
           {
             "sig": "e9855662cf9f56105ae68110965115e3c6ddd1aa",
@@ -979,7 +979,7 @@
         "missed": 0,
         "precision": 1,
         "recall": 1,
-        "false_positive_rate": 0,
+        "false_discovery_rate": 0,
         "outcomes": [
           {
             "sig": "e9855662cf9f56105ae68110965115e3c6ddd1aa",
@@ -1015,7 +1015,7 @@
         "missed": 0,
         "precision": 1,
         "recall": 1,
-        "false_positive_rate": 0,
+        "false_discovery_rate": 0,
         "outcomes": [
           {
             "sig": "be9b714d9b4f81b2c26e7107c1496796e4e396d9",
@@ -1051,7 +1051,7 @@
         "missed": 0,
         "precision": 1,
         "recall": 1,
-        "false_positive_rate": 0,
+        "false_discovery_rate": 0,
         "outcomes": [
           {
             "sig": "be9b714d9b4f81b2c26e7107c1496796e4e396d9",
@@ -1087,7 +1087,7 @@
         "missed": 0,
         "precision": 1,
         "recall": 1,
-        "false_positive_rate": 0,
+        "false_discovery_rate": 0,
         "outcomes": [
           {
             "sig": "be9b714d9b4f81b2c26e7107c1496796e4e396d9",
@@ -1111,7 +1111,7 @@
     "missed": 0,
     "precision": 0.9,
     "recall": 1,
-    "false_positive_rate": 0.1,
+    "false_discovery_rate": 0.1,
     "by_model": [
       {
         "model": "fixture-good",
@@ -1123,7 +1123,7 @@
         "missed": 0,
         "precision": 0.9,
         "recall": 1,
-        "false_positive_rate": 0.1
+        "false_discovery_rate": 0.1
       }
     ],
     "by_panel": [
@@ -1137,7 +1137,7 @@
         "missed": 0,
         "precision": 0.9,
         "recall": 1,
-        "false_positive_rate": 0.1
+        "false_discovery_rate": 0.1
       }
     ]
   },
@@ -1149,5 +1149,6 @@
   },
   "failures": [],
   "elapsed_seconds": 27.049,
-  "tolerance_points": 5
+  "tolerance_points": 5,
+  "seeded": true
 }

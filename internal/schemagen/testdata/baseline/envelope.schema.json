@@ -2284,13 +2284,19 @@
       "additionalProperties": true
     },
     "calibrateData": {
-      "description": "calibrate --json data: one object shared by the three modes, so every mode-specific key is optional. The live join fills review_id, head, pr, outcomes, precision (an object with by_tier), and provenance; the corpus join fills bundle, case, kind, model, panel, line_tolerance, ground_truth, reported, matched, false_positives, missed, precision (a rate or null), recall, false_positive_rate, outcomes, and missed_bugs; the probe fills bundle, grades, counts, and judgment.",
+      "description": "calibrate --json data: one object shared by the three modes, so every mode-specific key is optional. The live join fills review_id, head, pr, outcomes, precision (an object with by_tier), and provenance; the corpus join fills bundle, case, kind, model, panel, line_tolerance, ground_truth, reported, matched, false_positives, missed, precision (a rate or null), recall, false_discovery_rate, outcomes, and missed_bugs; the probe fills bundle, grades, counts, and judgment.",
       "type": "object",
       "properties": {
         "unmatched": { "type": "integer", "minimum": 0 },
         "excluded": { "type": "object", "additionalProperties": true },
         "proposals": {
           "type": "array"
+        },
+        "metrics": {},
+        "sampling": {},
+        "sampling_hits": {
+          "type": "array",
+          "items": { "type": "integer" }
         },
         "review_id": {},
         "head": {
@@ -2323,7 +2329,7 @@
         "false_positives": { "type": "integer", "minimum": 0 },
         "missed": { "type": "integer", "minimum": 0 },
         "recall": { "type": ["number", "null"], "minimum": 0 },
-        "false_positive_rate": { "type": ["number", "null"], "minimum": 0 },
+        "false_discovery_rate": { "type": ["number", "null"], "minimum": 0 },
         "grades": {
           "type": "array"
         },

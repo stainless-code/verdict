@@ -3,10 +3,74 @@
   "by_model": [
     {
       "bundles": 8,
-      "false_positive_rate": 0.1,
+      "false_discovery_rate": 0.1,
       "false_positives": 1,
       "ground_truth": 9,
       "matched": 9,
+      "metrics": {
+        "any_of_k_recall": {
+          "denominator": 9,
+          "n": 9,
+          "numerator": 9,
+          "unit": "unique bugs in complete first-k cohorts",
+          "value": 1
+        },
+        "control_findings_per_case": {
+          "denominator": 0,
+          "n": 0,
+          "numerator": 0,
+          "unit": "false-positive findings per control case sample",
+          "value": null
+        },
+        "control_fp_rate": {
+          "denominator": 0,
+          "n": 0,
+          "numerator": 0,
+          "unit": "control case samples with at least one finding",
+          "value": null
+        },
+        "cost_n": 8,
+        "cost_usd": 0.08,
+        "false_discovery_rate": {
+          "denominator": 10,
+          "n": 10,
+          "numerator": 1,
+          "unit": "reported findings",
+          "value": 0.1
+        },
+        "incomplete_cohorts": 0,
+        "latency_n": 0,
+        "latency_s": null,
+        "precision": {
+          "denominator": 10,
+          "n": 10,
+          "numerator": 9,
+          "unit": "reported findings",
+          "value": 0.9
+        },
+        "recall": {
+          "denominator": 9,
+          "n": 9,
+          "numerator": 9,
+          "unit": "bug samples",
+          "value": 1
+        },
+        "samples": 8,
+        "severity_weighted_pooled_f1": {
+          "denominator": 291,
+          "n": 10,
+          "numerator": 290,
+          "unit": "weighted F1; n=bug samples plus false-positive findings",
+          "value": 0.9966
+        },
+        "signal_to_noise": {
+          "denominator": 1,
+          "n": 10,
+          "numerator": 9,
+          "unit": "false-positive findings; n=reported findings",
+          "value": 9
+        }
+      },
       "missed": 0,
       "model": "fixture-good",
       "precision": 0.9,
@@ -15,10 +79,74 @@
     },
     {
       "bundles": 8,
-      "false_positive_rate": 0.4,
+      "false_discovery_rate": 0.4,
       "false_positives": 4,
       "ground_truth": 9,
       "matched": 6,
+      "metrics": {
+        "any_of_k_recall": {
+          "denominator": 9,
+          "n": 9,
+          "numerator": 6,
+          "unit": "unique bugs in complete first-k cohorts",
+          "value": 0.6667
+        },
+        "control_findings_per_case": {
+          "denominator": 0,
+          "n": 0,
+          "numerator": 0,
+          "unit": "false-positive findings per control case sample",
+          "value": null
+        },
+        "control_fp_rate": {
+          "denominator": 0,
+          "n": 0,
+          "numerator": 0,
+          "unit": "control case samples with at least one finding",
+          "value": null
+        },
+        "cost_n": 8,
+        "cost_usd": 0.08,
+        "false_discovery_rate": {
+          "denominator": 10,
+          "n": 10,
+          "numerator": 4,
+          "unit": "reported findings",
+          "value": 0.4
+        },
+        "incomplete_cohorts": 0,
+        "latency_n": 0,
+        "latency_s": null,
+        "precision": {
+          "denominator": 10,
+          "n": 10,
+          "numerator": 6,
+          "unit": "reported findings",
+          "value": 0.6
+        },
+        "recall": {
+          "denominator": 9,
+          "n": 9,
+          "numerator": 6,
+          "unit": "bug samples",
+          "value": 0.6667
+        },
+        "samples": 8,
+        "severity_weighted_pooled_f1": {
+          "denominator": 239,
+          "n": 13,
+          "numerator": 180,
+          "unit": "weighted F1; n=bug samples plus false-positive findings",
+          "value": 0.7531
+        },
+        "signal_to_noise": {
+          "denominator": 4,
+          "n": 10,
+          "numerator": 6,
+          "unit": "false-positive findings; n=reported findings",
+          "value": 1.5
+        }
+      },
       "missed": 3,
       "model": "fixture-noisy",
       "precision": 0.6,
@@ -29,10 +157,74 @@
   "by_panel": [
     {
       "bundles": 8,
-      "false_positive_rate": 0.2,
+      "false_discovery_rate": 0.2,
       "false_positives": 2,
       "ground_truth": 10,
       "matched": 8,
+      "metrics": {
+        "any_of_k_recall": {
+          "denominator": 10,
+          "n": 10,
+          "numerator": 8,
+          "unit": "unique bugs in complete first-k cohorts",
+          "value": 0.8
+        },
+        "control_findings_per_case": {
+          "denominator": 0,
+          "n": 0,
+          "numerator": 0,
+          "unit": "false-positive findings per control case sample",
+          "value": null
+        },
+        "control_fp_rate": {
+          "denominator": 0,
+          "n": 0,
+          "numerator": 0,
+          "unit": "control case samples with at least one finding",
+          "value": null
+        },
+        "cost_n": 8,
+        "cost_usd": 0.08,
+        "false_discovery_rate": {
+          "denominator": 10,
+          "n": 10,
+          "numerator": 2,
+          "unit": "reported findings",
+          "value": 0.2
+        },
+        "incomplete_cohorts": 0,
+        "latency_n": 0,
+        "latency_s": null,
+        "precision": {
+          "denominator": 10,
+          "n": 10,
+          "numerator": 8,
+          "unit": "reported findings",
+          "value": 0.8
+        },
+        "recall": {
+          "denominator": 10,
+          "n": 10,
+          "numerator": 8,
+          "unit": "bug samples",
+          "value": 0.8
+        },
+        "samples": 8,
+        "severity_weighted_pooled_f1": {
+          "denominator": 352,
+          "n": 12,
+          "numerator": 320,
+          "unit": "weighted F1; n=bug samples plus false-positive findings",
+          "value": 0.9091
+        },
+        "signal_to_noise": {
+          "denominator": 2,
+          "n": 10,
+          "numerator": 8,
+          "unit": "false-positive findings; n=reported findings",
+          "value": 4
+        }
+      },
       "missed": 2,
       "panel": "panel-alpha",
       "precision": 0.8,
@@ -41,10 +233,74 @@
     },
     {
       "bundles": 8,
-      "false_positive_rate": 0.3,
+      "false_discovery_rate": 0.3,
       "false_positives": 3,
       "ground_truth": 8,
       "matched": 7,
+      "metrics": {
+        "any_of_k_recall": {
+          "denominator": 8,
+          "n": 8,
+          "numerator": 7,
+          "unit": "unique bugs in complete first-k cohorts",
+          "value": 0.875
+        },
+        "control_findings_per_case": {
+          "denominator": 0,
+          "n": 0,
+          "numerator": 0,
+          "unit": "false-positive findings per control case sample",
+          "value": null
+        },
+        "control_fp_rate": {
+          "denominator": 0,
+          "n": 0,
+          "numerator": 0,
+          "unit": "control case samples with at least one finding",
+          "value": null
+        },
+        "cost_n": 8,
+        "cost_usd": 0.08,
+        "false_discovery_rate": {
+          "denominator": 10,
+          "n": 10,
+          "numerator": 3,
+          "unit": "reported findings",
+          "value": 0.3
+        },
+        "incomplete_cohorts": 0,
+        "latency_n": 0,
+        "latency_s": null,
+        "precision": {
+          "denominator": 10,
+          "n": 10,
+          "numerator": 7,
+          "unit": "reported findings",
+          "value": 0.7
+        },
+        "recall": {
+          "denominator": 8,
+          "n": 8,
+          "numerator": 7,
+          "unit": "bug samples",
+          "value": 0.875
+        },
+        "samples": 8,
+        "severity_weighted_pooled_f1": {
+          "denominator": 178,
+          "n": 11,
+          "numerator": 150,
+          "unit": "weighted F1; n=bug samples plus false-positive findings",
+          "value": 0.8427
+        },
+        "signal_to_noise": {
+          "denominator": 3,
+          "n": 10,
+          "numerator": 7,
+          "unit": "false-positive findings; n=reported findings",
+          "value": 2.3333
+        }
+      },
       "missed": 1,
       "panel": "panel-beta",
       "precision": 0.7,
@@ -53,10 +309,74 @@
     }
   ],
   "cases": 8,
-  "false_positive_rate": 0.25,
+  "false_discovery_rate": 0.25,
   "false_positives": 5,
   "ground_truth": 18,
   "matched": 15,
+  "metrics": {
+    "any_of_k_recall": {
+      "denominator": 18,
+      "n": 18,
+      "numerator": 15,
+      "unit": "unique bugs in complete first-k cohorts",
+      "value": 0.8333
+    },
+    "control_findings_per_case": {
+      "denominator": 0,
+      "n": 0,
+      "numerator": 0,
+      "unit": "false-positive findings per control case sample",
+      "value": null
+    },
+    "control_fp_rate": {
+      "denominator": 0,
+      "n": 0,
+      "numerator": 0,
+      "unit": "control case samples with at least one finding",
+      "value": null
+    },
+    "cost_n": 16,
+    "cost_usd": 0.16,
+    "false_discovery_rate": {
+      "denominator": 20,
+      "n": 20,
+      "numerator": 5,
+      "unit": "reported findings",
+      "value": 0.25
+    },
+    "incomplete_cohorts": 0,
+    "latency_n": 0,
+    "latency_s": null,
+    "precision": {
+      "denominator": 20,
+      "n": 20,
+      "numerator": 15,
+      "unit": "reported findings",
+      "value": 0.75
+    },
+    "recall": {
+      "denominator": 18,
+      "n": 18,
+      "numerator": 15,
+      "unit": "bug samples",
+      "value": 0.8333
+    },
+    "samples": 16,
+    "severity_weighted_pooled_f1": {
+      "denominator": 530,
+      "n": 23,
+      "numerator": 470,
+      "unit": "weighted F1; n=bug samples plus false-positive findings",
+      "value": 0.8868
+    },
+    "signal_to_noise": {
+      "denominator": 5,
+      "n": 20,
+      "numerator": 15,
+      "unit": "false-positive findings; n=reported findings",
+      "value": 3
+    }
+  },
   "missed": 3,
   "precision": 0.75,
   "recall": 0.8333,
