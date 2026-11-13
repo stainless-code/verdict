@@ -118,7 +118,29 @@ CALL: api graphql -F owner=acme -F name=app -F pr=4715 -f query=
 .env
 notes.txt
 --- file C/.verdict/state/4715/PR.json ---
-{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"29c13ae939537f329d09b5f53a8fcb28260c815e","author":{"login":"teammate"},"files":[{"path":".env","additions":1,"deletions":0},{"path":"notes.txt","additions":1,"deletions":1}],"additions":2,"deletions":1}
+{
+  "state": "OPEN",
+  "headRefOid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "baseRefOid": "29c13ae939537f329d09b5f53a8fcb28260c815e",
+  "author": {
+    "login": "teammate"
+  },
+  "files": [
+    {
+      "path": ".env",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "notes.txt",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "additions": 2,
+  "deletions": 1,
+  "provider_source": "default"
+}
 --- file C/.verdict/state/4715/controls.json ---
 {
   "schema_version": "1",

@@ -65,8 +65,8 @@ func (st *state) liveHost(dir string) (liveHost, *core.RefusalError) {
 				"(adopt + post first, then calibrate the PR)",
 		})
 	}
-	prov := readcommon.ProviderOf(dir)
-	if prov == "" {
+	prov, present := readcommon.OpenBundle(dir).ProviderMarker()
+	if !present {
 		prov = providerGitHub
 	}
 	if host, ok := liveHostFor(prov); ok {

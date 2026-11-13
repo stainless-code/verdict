@@ -132,7 +132,24 @@ f11.txt
 f12.txt
 f13.txt
 --- file C/.verdict/state/4703/PR.json ---
-{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"2f1e8b7357838ae80128e21908a5069031b1dfb7","author":{"login":"teammate"},"files":[{"path":"f00.txt","additions":1,"deletions":1}],"additions":1,"deletions":1}
+{
+  "state": "OPEN",
+  "headRefOid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "baseRefOid": "2f1e8b7357838ae80128e21908a5069031b1dfb7",
+  "author": {
+    "login": "teammate"
+  },
+  "files": [
+    {
+      "path": "f00.txt",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "additions": 1,
+  "deletions": 1,
+  "provider_source": "default"
+}
 --- file C/.verdict/state/4703/chunks/chunk-01.diff (size=475816 sha256=d2fed71287ec06ad98f41fbebb22ab2ee2d5b20b468151f06166d7293c26cd62) ---
 --- file C/.verdict/state/4703/chunks/chunk-01.roles.txt ---
 ## docs

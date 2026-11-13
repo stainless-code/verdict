@@ -104,12 +104,11 @@ func RunThreads(ctx context.Context, req *ThreadsRequest) (*ThreadsResponse, *co
 	if req.Resolve {
 		return st.resolve(ctx)
 	}
-	provider := threadsProvider(req.Provider)
-	if provider == "" {
-		return nil, st.withWarnings(&core.RefusalError{Code: codeBadProvider, Message: fmt.Sprintf(
-			"unknown --provider '%s' (want github|gitlab|gitcafe|forgejo|bitbucket|azure)", req.Provider)})
-	}
 	dir, ref := st.openBundle()
+	if ref != nil {
+		return nil, ref
+	}
+	provider, ref := st.selectProvider(ctx, dir)
 	if ref != nil {
 		return nil, ref
 	}
@@ -375,4 +374,42 @@ func fileExists(path string) bool {
 
 func asRefusal(err error) (*core.RefusalError, bool) {
 	return errors.AsType[*core.RefusalError](err)
+}
+
+func (st *threadsRun) selectProvider(ctx context.Context, dir string) (string, *core.RefusalError) {
+	selected := st.req.Provider
+	if selected == "" {
+		selected = bundleProvider(dir)
+		if ref := st.checkOriginProvider(ctx, selected); ref != nil {
+			return "", ref
+		}
+	}
+	if selected == "" || threadsProvider(selected) == "" {
+		return "", st.withWarnings(&core.RefusalError{Code: codeBadProvider, Message: fmt.Sprintf(
+			"unknown --provider '%s' (want github|gitlab|gitcafe|forgejo|bitbucket|azure)", selected)})
+	}
+	return selected, nil
+}
+
+func bundleProvider(dir string) string {
+	if provider, present := readcommon.OpenBundle(dir).ProviderMarker(); present {
+		return provider
+	}
+	return providerGitHub
+}
+
+func (st *threadsRun) checkOriginProvider(ctx context.Context, provider string) *core.RefusalError {
+	inferred, source, ref := core.ResolveProvider(ctx, st.req.Commander, st.req.RepoRootPath(), "", st.req.Env)
+	if ref != nil {
+		if ref.Code == "provider-unknown" {
+			return nil
+		}
+		return st.withWarnings(ref)
+	}
+	if source == "remote" && inferred != provider {
+		return st.withWarnings(&core.RefusalError{Code: codeBadProvider, Message: fmt.Sprintf(
+			"origin provider %q disagrees with bundle provider %q — "+
+				"pass --provider %s to select the bundle explicitly", inferred, provider, provider)})
+	}
+	return nil
 }

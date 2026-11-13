@@ -120,7 +120,24 @@ CALL: api graphql -F owner=acme -F name=app -F pr=4705 -f query=
 --- file C/.verdict/state/4705/.difffiles ---
 notes.txt
 --- file C/.verdict/state/4705/PR.json ---
-{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"488310afbc29fb48fbd84cf16c89d3726158a444","author":{"login":"teammate"},"files":[{"path":"notes.txt","additions":3,"deletions":1}],"additions":3,"deletions":1}
+{
+  "state": "OPEN",
+  "headRefOid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "baseRefOid": "488310afbc29fb48fbd84cf16c89d3726158a444",
+  "author": {
+    "login": "teammate"
+  },
+  "files": [
+    {
+      "path": "notes.txt",
+      "additions": 3,
+      "deletions": 1
+    }
+  ],
+  "additions": 3,
+  "deletions": 1,
+  "provider_source": "default"
+}
 --- file C/.verdict/state/4705/controls.json ---
 {
   "schema_version": "1",

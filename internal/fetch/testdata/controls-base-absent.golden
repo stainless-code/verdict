@@ -127,7 +127,24 @@ CALL: api repos/acme/app/contents/.verdict/config.json?ref=ccccccccccccccccccccc
 --- file C/.verdict/state/4701/.difffiles ---
 notes.txt
 --- file C/.verdict/state/4701/PR.json ---
-{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"cccccccccccccccccccccccccccccccccccccccc","author":{"login":"teammate"},"files":[{"path":"notes.txt","additions":3,"deletions":1}],"additions":3,"deletions":1}
+{
+  "state": "OPEN",
+  "headRefOid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "baseRefOid": "cccccccccccccccccccccccccccccccccccccccc",
+  "author": {
+    "login": "teammate"
+  },
+  "files": [
+    {
+      "path": "notes.txt",
+      "additions": 3,
+      "deletions": 1
+    }
+  ],
+  "additions": 3,
+  "deletions": 1,
+  "provider_source": "default"
+}
 --- file C/.verdict/state/4701/controls.json ---
 {
   "schema_version": "1",

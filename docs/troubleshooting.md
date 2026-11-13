@@ -952,6 +952,12 @@ Cause: the provider documents no path for this verb.
 
 Fix: use the verb named above for this bundle kind (`post` reaches GitHub, GitLab, and Forgejo; the other hosts use `record` and `report`).
 
+## `provider-unknown`
+
+Cause: origin names an unknown or ambiguously configured host. Supported public hosts are `github.com`, `gitlab.com`, `gitcafe.com`, `codeberg.org`, `bitbucket.org`, `dev.azure.com`, and `ssh.dev.azure.com`.
+
+Fix: pass `--provider github|gitlab|gitcafe|forgejo|bitbucket|azure`, or configure `GITLAB_HOST` / `FORGEJO_HOST` for a self-hosted installation. Remote URLs are withheld to protect embedded credentials.
+
 ## `rationale-required`
 
 Cause: the veto needs a human rationale on the record.

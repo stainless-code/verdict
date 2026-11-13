@@ -136,7 +136,8 @@ f00.txt
     }
   ],
   "additions": 3,
-  "deletions": 1
+  "deletions": 1,
+  "provider_source": "default"
 }
 --- file C/.verdict/state/4712/controls.json ---
 {

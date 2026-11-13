@@ -100,6 +100,7 @@ const sdkThreadsJSON = `{"data":{"repository":{"pullRequest":{"reviewThreads":` 
 func fetchCommander(t *testing.T) *fakeCommander {
 	t.Helper()
 	return &fakeCommander{t: t, rules: []cannedRule{
+		{tokens: []string{"git remote get-url origin"}, result: verdict.CommandResult{Stdout: "https://github.com/acme/app.git"}},
 		{tokens: []string{"gh pr view", "--jq"}, result: verdict.CommandResult{Stdout: "notes.txt (+1/-1)\n"}},
 		{tokens: []string{"gh pr view"}, result: verdict.CommandResult{Stdout: sdkPRJSON}},
 		{tokens: []string{"gh pr diff"}, result: verdict.CommandResult{Stdout: sdkDiff}},
@@ -119,6 +120,7 @@ func fetchCommander(t *testing.T) *fakeCommander {
 func localCommander(t *testing.T) *fakeCommander {
 	t.Helper()
 	return &fakeCommander{t: t, rules: []cannedRule{
+		{tokens: []string{"git remote get-url origin"}, result: verdict.CommandResult{Stdout: "https://github.com/acme/app.git"}},
 		{tokens: []string{"rev-parse", "--is-inside-work-tree"}, result: verdict.CommandResult{Stdout: "true\n"}},
 		{tokens: []string{"branch", "--show-current"}, result: verdict.CommandResult{Stdout: "work\n"}},
 		{tokens: []string{"rev-parse", "HEAD"}, result: verdict.CommandResult{Stdout: sdkHeadA + "\n"}},
@@ -216,6 +218,7 @@ func threadsCommander(t *testing.T) *fakeCommander {
 		`"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[` +
 		sdkThreadNode("t1", false, false) + `,` + sdkThreadNode("t2", true, true) + `]}}}}}`
 	return &fakeCommander{t: t, rules: []cannedRule{
+		{tokens: []string{"git remote get-url origin"}, result: verdict.CommandResult{Stdout: "https://github.com/acme/app.git"}},
 		{tokens: []string{"api", "graphql"}, result: verdict.CommandResult{Stdout: page}},
 	}}
 }
@@ -368,7 +371,7 @@ case "$*" in
 *) printf '{}' ;;
 esac
 `, 0o755)
-	write("git", "#!/bin/sh\nexit 0\n", 0o755)
+	write("git", "#!/bin/sh\ncase \"$*\" in \"remote get-url origin\") echo https://github.com/acme/app.git ;; esac\nexit 0\n", 0o755)
 	// The stubs shadow the host tools; the host PATH stays behind them so the
 	// scripts keep their own plumbing (cat, printf).
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
