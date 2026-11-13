@@ -26,3 +26,5 @@ __pycache__/
 # match), and a bootstrapped copy writes bin/ and a receipt.
 skills/verdict/bin
 skills/verdict/.verdict-managed
+
+.scratch/
