@@ -37,11 +37,11 @@ type Request struct {
 	Restore    string
 	Accept     string
 	Reject     string
-	FromBundle string
-	Propose    bool
-	DryRun     bool
+	FromBundle string `json:"from_bundle"`
 	Pack       string
 	Status     bool
+	Propose    bool
+	DryRun     bool `json:"dry_run"`
 	JSONMode   bool
 }
 
@@ -153,11 +153,8 @@ func (st *state) runLearn() *core.RefusalError {
 }
 
 func (st *state) checkModes() *core.RefusalError {
-	if st.req.FromBundle != "" && !st.req.Propose {
-		return st.refuse(codeBadFlags, "--from-bundle requires --propose")
-	}
-	if st.req.DryRun && !st.req.Propose && st.req.Accept == "" && st.req.Reject == "" {
-		return st.refuse(codeBadFlags, "--dry-run requires a learning lifecycle mode")
+	if ref := st.checkLifecycleFlags(); ref != nil {
+		return ref
 	}
 	if st.countModes() != 1 {
 		return st.refuse(codeBadFlags, msgNeedOneMode)
@@ -173,30 +170,15 @@ func (st *state) checkModes() *core.RefusalError {
 
 func (st *state) countModes() int {
 	modes := 0
-	if st.req.Accept != "" {
-		modes++
+	for _, enabled := range []bool{
+		st.req.Accept != "", st.req.Reject != "", st.req.Propose, st.req.Pack != "", st.req.Rule != "",
+		st.req.Status, st.req.Retire != "", st.req.Restore != "",
+	} {
+		if enabled {
+			modes++
+		}
 	}
-	if st.req.Reject != "" {
-		modes++
-	}
-	if st.req.Propose {
-		modes++
-	}
-	if st.req.Pack != "" {
-		modes++
-	}
-	if st.req.Rule != "" {
-		modes++
-	}
-	if st.req.Status {
-		modes++
-	}
-	if st.req.Retire != "" {
-		modes++
-	}
-	if st.req.Restore != "" {
-		modes++
-	}
+
 	return modes
 }
 
@@ -627,3 +609,13 @@ const (
 )
 
 var jsonZero = jq.Number("0")
+
+func (st *state) checkLifecycleFlags() *core.RefusalError {
+	if st.req.FromBundle != "" && !st.req.Propose {
+		return st.refuse(codeBadFlags, "--from-bundle requires --propose")
+	}
+	if st.req.DryRun && !st.req.Propose && st.req.Accept == "" && st.req.Reject == "" {
+		return st.refuse(codeBadFlags, "--dry-run requires a learning lifecycle mode")
+	}
+	return nil
+}

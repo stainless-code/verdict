@@ -79,6 +79,7 @@
       "description": "One rule row: a KB id, the severity-map key that resolves its level, required scope globs, and the tools it talks about.",
       "type": "object",
       "properties": {
+        "provenance": { "type": "string" },
         "category": { "type": "string" },
         "description": { "type": "string" },
         "examples": {

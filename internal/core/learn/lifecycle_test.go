@@ -22,6 +22,7 @@ func seedProposal(t *testing.T) (string, string) {
 	return root, dirs[0].Name()
 }
 
+// TestAcceptLearning pins import provenance, preview, and duplicate prevention.
 func TestAcceptLearning(t *testing.T) {
 	root, id := seedProposal(t)
 	req := &Request{Accept: id, DryRun: true, JSONMode: true}
@@ -41,11 +42,7 @@ func TestAcceptLearning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`"provenance":"threads#71"`, `"source":"learning:`, `"scope":"src/main.go"`, `"status":"active"`, `"hits":0`} {
-		if !strings.Contains(string(raw), want) {
-			t.Fatalf("missing %s in %s", want, raw)
-		}
-	}
+	checkLearningRow(t, raw)
 	resp, ref := Run(t.Context(), proposeRequest(root, false))
 	if ref != nil {
 		t.Fatal(ref)
@@ -55,6 +52,7 @@ func TestAcceptLearning(t *testing.T) {
 	}
 }
 
+// TestRejectLearning pins the human veto and permanent exclusion.
 func TestRejectLearning(t *testing.T) {
 	root, id := seedProposal(t)
 	req := &Request{Reject: id, Reason: "short", JSONMode: true}
@@ -77,6 +75,20 @@ func TestRejectLearning(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, learningsDir, id)); !os.IsNotExist(err) {
 		t.Fatalf("proposal not removed: %v", err)
 	}
+	checkRejectedLearning(t, root, id)
+}
+
+func checkLearningRow(t *testing.T, raw []byte) {
+	t.Helper()
+	for _, want := range []string{`"provenance":"threads#71"`, `"source":"learning:`, `"scope":"src/main.go"`, `"status":"active"`, `"hits":0`} {
+		if !strings.Contains(string(raw), want) {
+			t.Fatalf("missing %s in %s", want, raw)
+		}
+	}
+}
+
+func checkRejectedLearning(t *testing.T, root, id string) {
+	t.Helper()
 	resp, ref := Run(t.Context(), proposeRequest(root, false))
 	if ref != nil {
 		t.Fatal(ref)
@@ -84,7 +96,7 @@ func TestRejectLearning(t *testing.T) {
 	if !strings.Contains(resp.Data.Wire().MarshalCompact(), "skipped-rejected") {
 		t.Fatalf("rejected candidate reproposed: %s", resp.Data.Wire().MarshalCompact())
 	}
-	req = &Request{Accept: id, JSONMode: true}
+	req := &Request{Accept: id, JSONMode: true}
 	req.RepoRoot = root
 	if _, ref := Run(t.Context(), req); ref == nil || ref.Code != "bad-rule" {
 		t.Fatalf("accepted rejection: %v", ref)

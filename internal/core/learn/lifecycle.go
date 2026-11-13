@@ -60,6 +60,40 @@ func (st *state) runReject() *core.RefusalError {
 	if utf8.RuneCountInString(st.req.Reason) < reasonMin {
 		return st.refuse(codeBadReason, "learn --reject needs --reason with 30+ chars")
 	}
+	if ref := st.checkRejectable(id); ref != nil {
+		return ref
+	}
+	row := jq.NewObj("id", id, "status", "rejected", "reason", st.req.Reason)
+	st.data = &Data{Rule: row}
+	st.next = "rejected learning ids are never proposed again"
+	st.humanf("reject %s (dry_run=%t)", id, st.req.DryRun)
+	if st.req.DryRun {
+		return nil
+	}
+	return st.persistRejection(id, row)
+}
+
+func (st *state) persistRejection(id string, row *jq.Obj) *core.RefusalError {
+	root, err := os.OpenRoot(st.root)
+	if err != nil {
+		return st.refuse(codeLearnFailed, err.Error())
+	}
+	defer root.Close()
+	if err := root.MkdirAll(rejectionDir, proposalDirMode); err != nil {
+		return st.refuse(codeLearnFailed, err.Error())
+	}
+	if !st.rejected(id) {
+		if err := atomic.WriteFileIn(root, path.Join(rejectionDir, id+".json"), []byte(row.MarshalCompact()+"\n")); err != nil {
+			return st.refuse(codeLearnFailed, err.Error())
+		}
+	}
+	if err := root.RemoveAll(path.Join(learningsDir, id)); err != nil {
+		return st.refuse(codeLearnFailed, err.Error())
+	}
+	return nil
+}
+
+func (st *state) checkRejectable(id string) *core.RefusalError {
 	rows, err := kb.ReadRows(st.root)
 	if err != nil && !errors.Is(err, kb.ErrMissing) {
 		return st.corruptStore()
@@ -71,29 +105,6 @@ func (st *state) runReject() *core.RefusalError {
 		if _, ref := st.loadProposal(id); ref != nil {
 			return ref
 		}
-	}
-	row := jq.NewObj("id", id, "status", "rejected", "reason", st.req.Reason)
-	st.data = &Data{Rule: row}
-	st.next = "rejected learning ids are never proposed again"
-	st.humanf("reject %s (dry_run=%t)", id, st.req.DryRun)
-	if st.req.DryRun {
-		return nil
-	}
-	root, err := os.OpenRoot(st.root)
-	if err != nil {
-		return st.refuse(codeLearnFailed, err.Error())
-	}
-	defer root.Close()
-	if err := root.MkdirAll(rejectionDir, 0o755); err != nil {
-		return st.refuse(codeLearnFailed, err.Error())
-	}
-	if !st.rejected(id) {
-		if err := atomic.WriteFileIn(root, path.Join(rejectionDir, id+".json"), []byte(row.MarshalCompact()+"\n")); err != nil {
-			return st.refuse(codeLearnFailed, err.Error())
-		}
-	}
-	if err := root.RemoveAll(path.Join(learningsDir, id)); err != nil {
-		return st.refuse(codeLearnFailed, err.Error())
 	}
 	return nil
 }
