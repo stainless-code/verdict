@@ -57,6 +57,7 @@ var refusalCodes = []string{
 	"bad-judgment",
 	"bad-lock-source",
 	"bad-max-bytes",
+	"bad-min-severity",
 	"bad-override",
 	"bad-pack",
 	"bad-pack-source",

@@ -34,6 +34,7 @@ type state struct { //nolint:govet // field grouping documents the merge dimensi
 	preFooter       func(string) string
 	progress        core.Progress
 	effective       core.Effective
+	minSeverity     string
 	cmd             string
 	repo            string
 	pr              string
@@ -142,7 +143,7 @@ func (st *state) validateAndMerge(body string) (string, diagram.Status, error) {
 	if err != nil {
 		return "", diagram.Status{}, err
 	}
-	curated = st.hideWithheldMoved(curated)
+	curated = st.hideWithheldSections(st.hideWithheldMoved(curated))
 	st.setMarker(curated)
 	st.countHunks()
 	removeDerivedSnapshot(st)
@@ -155,7 +156,7 @@ func (st *state) mergeEntries() error {
 	}
 	st.backfill()
 	st.autoReopen()
-	return st.applySuppressions()
+	return st.applySilence()
 }
 
 func (st *state) applyClaims(body string) (string, diagram.Status, error) {

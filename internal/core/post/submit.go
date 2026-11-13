@@ -590,6 +590,7 @@ func (st *state) successResponse(obj *jq.Obj, posted string) *core.PostResponse 
 	}
 	data := &core.PostData{
 		Verification: st.merged.Verification,
+		Withheld:     st.withholdingSummary(),
 		DryRun:       false,
 		Event:        st.event,
 		CommitID:     st.commitID,

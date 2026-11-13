@@ -320,7 +320,7 @@ func (c *Client) Record(ctx context.Context, req *RecordRequest) (*Result, error
 // value; the pre-submit scan refuses post-secret-shaped without it.
 type PostRequest struct {
 	Invocation
-	Approve, ReviewFile                 string
+	Approve, ReviewFile, MinSeverity    string
 	RequestChanges, Bind, Force, DryRun bool
 	AllowSecretValues                   bool
 }
@@ -337,6 +337,7 @@ func (c *Client) Post(ctx context.Context, req *PostRequest) (*Result, error) {
 			Approve: req.Approve, ReviewFile: req.ReviewFile, RequestChanges: req.RequestChanges,
 			Bind: req.Bind, Force: req.Force, DryRun: req.DryRun,
 			AllowSecretValues: req.AllowSecretValues,
+			MinSeverity:       req.MinSeverity,
 		},
 		Effective: core.Defaults(),
 	})

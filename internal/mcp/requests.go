@@ -290,6 +290,7 @@ func decodePost(req *core.PostRequest, a *args) {
 	a.flags(func(f *args) {
 		f.str("approve", &req.Flags.Approve)
 		f.str("reviewFile", &req.Flags.ReviewFile)
+		f.str("minSeverity", &req.Flags.MinSeverity)
 		f.boolean("requestChanges", &req.Flags.RequestChanges)
 		f.boolean("bind", &req.Flags.Bind)
 		f.boolean("force", &req.Flags.Force)

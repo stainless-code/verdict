@@ -222,6 +222,12 @@ Cause: `REVIEW_MAX_BYTES` is not a positive byte count.
 
 Fix: export a positive byte count and re-run.
 
+## `bad-min-severity`
+
+Cause: the post severity floor is not a supported value.
+
+Fix: pass `--min-severity critical|important|informational|off`, then re-run.
+
 ## `bad-override`
 
 Cause: the named overview/walkthrough override file is unreadable.

@@ -268,6 +268,7 @@ func (st *state) dryRunResponse() (*core.PostResponse, *core.RefusalError) {
 	nOpen, nDeferred, nAddressed := postCounts(payload)
 	data := &core.PostData{
 		Verification: st.merged.Verification,
+		Withheld:     st.withholdingSummary(),
 		DryRun:       true,
 		Event:        st.event,
 		CommitID:     st.commitID,

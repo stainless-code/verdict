@@ -185,7 +185,7 @@ func (st *state) stampSuppression(e, s *jq.Obj) {
 
 func (st *state) clearSuppression(e *jq.Obj) {
 	source := readcommon.WithheldSource(e)
-	if source == "below-severity" || source == "validation" {
+	if source == sourceBelowSeverity || source == "validation" {
 		return
 	}
 	if source == "" {

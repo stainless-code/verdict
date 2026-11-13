@@ -490,6 +490,7 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[ProvenanceTriple](), name: "provenanceTriple"},
 		{typ: reflect.TypeFor[CalibrateCounts](), name: "calibrateCounts"},
 		{typ: reflect.TypeFor[CalibrateJudgment](), name: "calibrateJudgment"},
+		{typ: reflect.TypeFor[core.WithheldSummary](), name: "withheldSummary"},
 		{typ: reflect.TypeFor[FetchData](), name: "fetchData"},
 		{typ: reflect.TypeFor[FetchLocalData](), name: "fetchLocalData"},
 		{typ: reflect.TypeFor[FetchCapabilities](), name: "fetchCapabilities"},

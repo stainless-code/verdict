@@ -526,6 +526,9 @@
         "provenance": { "$ref": "#/$defs/provenance" },
         "coverage": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/coverageSummary" }]
+        },
+        "withheld": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/withheldSummary" }]
         }
       },
       "required": [
@@ -2400,6 +2403,16 @@
         "disagreed",
         "agreement_rate"
       ],
+      "additionalProperties": true
+    },
+    "withheldSummary": {
+      "type": "object",
+      "properties": {
+        "by_reason": { "type": "object", "additionalProperties": true },
+        "total": { "type": "integer", "minimum": 0 },
+        "unlabelled": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["by_reason", "total", "unlabelled"],
       "additionalProperties": true
     },
     "fetchData": {

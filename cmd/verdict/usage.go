@@ -87,7 +87,7 @@ func usageText() string {
 		"    touching files outside the anchor stops the loop (scope-escape).\n" +
 		"  post  <owner/repo> <pr> [--approve=true|false] [--request-changes] [--bind] [--force]\n" +
 		"        [--review-file .verdict/state/<pr>/review.json] [--dry-run] [--require-coverage]\n" +
-		"        [--allow-secret-values] [--json]\n" +
+		"        [--min-severity critical|important|informational|off] [--allow-secret-values] [--json]\n" +
 		"    validate anchors (partitioned, keep-biased), embed suggestions, merge findings.json,\n" +
 		"    guard stale-SHA + duplicates, post exactly one review.\n" +
 		"    Binding APPROVE/REQUEST_CHANGES needs --bind (else downgraded to COMMENT);\n" +

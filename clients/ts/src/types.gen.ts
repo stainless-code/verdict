@@ -265,6 +265,7 @@ export interface PostData {
   review?: unknown;
   provenance?: Provenance;
   coverage?: CoverageSummary | null;
+  withheld?: WithheldSummary | null;
   [key: string]: unknown;
 }
 
@@ -1285,6 +1286,13 @@ export interface CalibrateJudgment {
   agreed: number;
   disagreed: number;
   agreement_rate: number | null;
+  [key: string]: unknown;
+}
+
+export interface WithheldSummary {
+  by_reason: unknown;
+  total: number;
+  unlabelled: number;
   [key: string]: unknown;
 }
 
