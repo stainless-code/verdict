@@ -327,18 +327,30 @@ func (st *state) excludedPaths() map[string]bool {
 	return out
 }
 
-func (st *state) autoExclusion(e *jq.Obj) bool {
-	receipt := st.exclusions()
-	if receipt == nil {
-		return false
+// ExclusionForPath returns the rule id and withheld reason for the first row
+// in dir/excluded.json matching path, or ok == false when path is not excluded.
+func ExclusionForPath(dir, path string) (ruleID, reason string, ok bool) {
+	return matchExclusion(loadExclusions(dir), path)
+}
+
+func matchExclusion(receipt *core.ExcludedFile, path string) (ruleID, reason string, ok bool) {
+	if receipt == nil || path == "" {
+		return "", "", false
 	}
 	for i := range receipt.Excluded {
 		row := &receipt.Excluded[i]
-		if exclusionRowMatches(row, suppressionString(e, fieldPath)) {
-			st.stampSuppression(e, jq.NewObj(
-				sourceKey, "exclusion", reasonKey, "Path excluded from the reviewed diff by "+row.RuleID, exclusionKey, row.RuleID))
-			return true
+		if exclusionRowMatches(row, path) {
+			return row.RuleID, "Path excluded from the reviewed diff by " + row.RuleID, true
 		}
+	}
+	return "", "", false
+}
+
+func (st *state) autoExclusion(e *jq.Obj) bool {
+	if ruleID, reason, ok := matchExclusion(st.exclusions(), suppressionString(e, fieldPath)); ok {
+		st.stampSuppression(e, jq.NewObj(
+			sourceKey, "exclusion", reasonKey, reason, exclusionKey, ruleID))
+		return true
 	}
 	return false
 }

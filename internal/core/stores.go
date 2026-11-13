@@ -107,6 +107,10 @@ type FindingEntry struct { //nolint:govet // field order is the published proper
 	Confidence   string         `enum:"single|confirmed|contested"                                                   json:"confidence,omitempty"` //nolint:revive // confidence enum aligns with the published finding tags
 	TriagedAt    string         `json:"triagedAt,omitempty"`
 	TriagedBy    string         `json:"triagedBy,omitempty"`
+	Source       string         `enum:"model|tool"                                                               json:"source,omitempty"      optional:"true"` //nolint:revive // tag column aligns with FindingEntry schema tags
+	Tool         string         `json:"tool,omitempty"                                                            optional:"true"`                             //nolint:revive // tag column aligns with FindingEntry schema tags
+	RuleID       string         `json:"rule_id,omitempty"                                                         optional:"true"`                             //nolint:revive // tag column aligns with FindingEntry schema tags
+	Fingerprint  string         `json:"fingerprint,omitempty"                                                     optional:"true"`                             //nolint:revive // tag column aligns with FindingEntry schema tags
 	History      []HistoryEvent `json:"history"`
 	Extra        *jq.Obj        `json:"-"`
 }
@@ -270,6 +274,18 @@ func wireTail(e *FindingEntry, o *jq.Obj) {
 	}
 	if e.TriagedBy != "" {
 		o.Set("triagedBy", e.TriagedBy)
+	}
+	if e.Source != "" {
+		o.Set("source", e.Source)
+	}
+	if e.Tool != "" {
+		o.Set("tool", e.Tool)
+	}
+	if e.RuleID != "" {
+		o.Set("rule_id", e.RuleID)
+	}
+	if e.Fingerprint != "" {
+		o.Set("fingerprint", e.Fingerprint)
 	}
 	o.Set("history", historyWire(e.History))
 	wireExtra(e, o)
@@ -536,6 +552,7 @@ var findingKeys = map[string]bool{
 	keyBody: true, "suggestion": true, "kb": true, "sources": true, "inBounds": true,
 	"rigor": true, "rigor_source": true, "severity": true, keyCategory: true, keyStatus: true, "firstSeen": true,
 	"lastSeen": true, "rationale": true, "triagedAt": true, "triagedBy": true,
+	"source": true, "tool": true, "rule_id": true, "fingerprint": true,
 	"history": true,
 }
 
@@ -580,6 +597,10 @@ func entryOptions(e *FindingEntry, obj *jq.Obj) {
 	e.Severity, _ = obj.Get("severity")
 	e.Category, _ = obj.Get(keyCategory)
 	e.CategorySet = obj.Has(keyCategory)
+	e.Source, _ = fieldString(obj, "source")
+	e.Tool, _ = fieldString(obj, "tool")
+	e.RuleID, _ = fieldString(obj, "rule_id")
+	e.Fingerprint, _ = fieldString(obj, "fingerprint")
 }
 
 // entryStamps decodes identity, lifecycle, and history: sig, version,

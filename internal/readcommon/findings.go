@@ -144,3 +144,32 @@ func entrySig(e any) (string, bool) {
 	}
 	return s, true
 }
+
+// SourceOf returns the finding entry's provenance ("tool" when ingested from
+// static analysis, "model" otherwise, preserving backward compatibility for
+// entries written before the source field existed).
+func SourceOf(e any) string {
+	m, ok := e.(*jq.Obj)
+	if !ok || m == nil {
+		return "model"
+	}
+	v, _ := m.Get("source")
+	if s, ok := v.(string); ok && s == "tool" {
+		return "tool"
+	}
+	return "model"
+}
+
+// SourceCounts returns counts keyed by "model" and "tool" across non-nil
+// entries.
+func SourceCounts(entries []any) map[string]int {
+	counts := map[string]int{"model": 0, "tool": 0}
+	for _, e := range entries {
+		m, ok := e.(*jq.Obj)
+		if !ok || m == nil {
+			continue
+		}
+		counts[SourceOf(m)]++
+	}
+	return counts
+}
