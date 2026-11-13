@@ -45,6 +45,9 @@ func (st *state) runAccept() *core.RefusalError {
 	if ref != nil {
 		return ref
 	}
+	if ref := checkLearningRule(&p.Rules[0]); ref != nil {
+		return ref
+	}
 	st.req.ID = st.req.Accept
 	if st.req.Rigor == "" {
 		st.req.Rigor = rigorPointed

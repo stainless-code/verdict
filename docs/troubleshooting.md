@@ -302,9 +302,9 @@ Fix: pass the one-line rule text to `--rule`.
 
 ## `bad-scope`
 
-Cause: `--scope` is empty, malformed, or belongs to a different mode (or the scope config key is invalid).
+Cause: `--scope` is empty, malformed, or belongs to a different mode (or the scope config key is invalid). Learning proposals also refuse unsafe cited paths or comment identifiers.
 
-Fix: pass a comma-separated glob list (e.g. `src/*.ts`) together with `--rule`, or fix the named scope key.
+Fix: pass a comma-separated glob list (e.g. `src/*.ts`) together with `--rule`, or fix the named scope key. For learnings, use a clean repo-relative cited path of at most 4096 bytes — no controls, parent components, absolute paths, backslashes, colons, commas or glob syntax. Comment IDs allow 1–256 ASCII letters, digits, underscores, hyphens or equals signs. Unsafe metadata is refused before proposing or accepting.
 
 ## `bad-settings`
 
