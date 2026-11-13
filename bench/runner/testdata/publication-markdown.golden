@@ -1,0 +1,56 @@
+# Benchmark 2040-02-03
+
+**not a model-quality claim**
+
+**Citable: no — eligibility not recorded**
+
+Selected cases: 1; total corpus cases: not recorded. Successful samples: 0.
+
+Corpus commit: `abcdef` (dirty: false)  
+Prompts hash: `fixture-prompts-hash`  
+Tool version: `verdict fixture-version`  
+Date: 2040-02-03T04:05:06Z  
+Sampling: k=3, repeats=3  
+Severity weights: critical=25, important=5, informational=1
+
+Failed or incomplete samples: 3.
+
+<!-- prettier-ignore -->
+| Case | Sample | Reason |
+| --- | ---: | --- |
+| clean | 1 | sample result missing |
+| clean | 2 | sample result missing |
+| clean | 3 | sample result missing |
+
+## Metrics
+
+<!-- prettier-ignore -->
+| Metric | Value | Numerator | Denominator | n | Unit |
+| --- | ---: | ---: | ---: | ---: | --- |
+| precision | null | 0 | 0 | 0 | reported findings |
+| recall | null | 0 | 0 | 0 | bug samples |
+| false_discovery_rate | null | 0 | 0 | 0 | reported findings |
+| any_of_k_recall | 0.6667 | 2 | 3 | 3 | unique bugs |
+| control_fp_rate | null | 0 | 0 | 0 | control case samples with at least one finding |
+| control_findings_per_case | null | 0 | 0 | 0 | false-positive findings per control case sample |
+| severity_weighted_pooled_f1 | null | 0 | 0 | 0 | weighted F1; n=bug samples plus false-positive findings |
+| signal_to_noise | null | 0 | 0 | 0 | false-positive findings; n=reported findings |
+
+Incomplete first-k cohorts: 0.
+
+Cost USD: null (n=0/0 samples).  
+Latency seconds: null (n=0/0 samples).
+
+## Per-case sample spreads
+
+<!-- prettier-ignore -->
+| Case | Metric | Median | Min | Max | n |
+| --- | --- | ---: | ---: | ---: | ---: |
+
+## Commands
+
+Argv arrays preserve argument boundaries.
+
+```json
+["verdict","trend","acme/bench","--json"]
+```

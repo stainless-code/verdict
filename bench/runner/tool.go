@@ -19,6 +19,7 @@ import (
 // Every number the report publishes comes back through it, so a runner change
 // cannot quietly invent a rate.
 type grader interface {
+	version(ctx context.Context) (string, error)
 	// promptPrefix renders the trusted half of an agent prompt: the shipped
 	// prompt files and the tool-generated trust boundary, cut at the first
 	// fence so a case can append its own. The nonce is the run's.
@@ -197,7 +198,7 @@ func (t tool) trend(ctx context.Context) (json.RawMessage, error) {
 // refusal as the case's failure instead of scoring around it.
 func (t tool) json(ctx context.Context, argv ...string) (envelope, error) {
 	full := append([]string{t.bin}, argv...)
-	full = append(full, "--json")
+	full = append(full, jsonFlag)
 	res, err := coreexec.Runner{}.Run(ctx, &core.Command{Argv: full, Env: toolEnv()})
 	if err != nil {
 		return envelope{}, jq.NewErrf("%s: %s", argv[0], err)
@@ -263,3 +264,16 @@ func excerpt(s string) string {
 	}
 	return s
 }
+
+func (t tool) version(ctx context.Context) (string, error) {
+	res, err := coreexec.Runner{}.Run(ctx, &core.Command{Argv: []string{t.bin, "--version"}, Env: toolEnv()})
+	if err != nil {
+		return "", jq.NewErrf("tool version: %s", err)
+	}
+	if res.ExitCode != 0 || strings.TrimSpace(res.Stdout) == "" {
+		return "", jq.NewErr("tool version was not recorded")
+	}
+	return strings.TrimSpace(res.Stdout), nil
+}
+
+const jsonFlag = "--json"

@@ -305,13 +305,13 @@ func (f *fakeGrader) calibrate(_ context.Context, slug string) (json.RawMessage,
 	return json.Marshal(map[string]any{
 		"bundle": slug, "case": "off-by-one", "kind": "seeded", "model": f.model, "panel": f.panel,
 		"line_tolerance": 3, "ground_truth": 2, "reported": 3, "matched": 2,
-		"false_positives": 1, "missed": 0, "precision": 0.6667, "recall": 1, "false_positive_rate": 0.3333,
+		"false_positives": 1, "missed": 0, "precision": 0.6667, "recall": 1, "false_discovery_rate": 0.3333,
 	})
 }
 
 func (f *fakeGrader) trend(context.Context) (json.RawMessage, error) {
 	f.calls = append(f.calls, "trend")
-	return json.RawMessage(`{"cases":1,"bundles":1,"ground_truth":2,"reported":3,"matched":2,"false_positives":1,"missed":0,"precision":0.6667,"recall":1,"false_positive_rate":0.3333,"by_model":[{"model":"fixture-good"}]}`), nil
+	return json.RawMessage(`{"cases":1,"bundles":1,"ground_truth":2,"reported":3,"matched":2,"false_positives":1,"missed":0,"precision":0.6667,"recall":1,"false_discovery_rate":0.3333,"by_model":[{"model":"fixture-good"}]}`), nil
 }
 
 const reviewBody = `{"schema_version":"1","body":"ok","approved":false,"comments":[{"path":"pagination.go","line":42,"body":"off by one"}]}`
@@ -358,6 +358,7 @@ func runRefusal(cfg *Config) error {
 func benchConfig(t *testing.T, root, agent string) *Config {
 	t.Helper()
 	return &Config{
+		K:       1,
 		Root:    root,
 		Corpus:  filepath.Join(root, "corpus"),
 		Verdict: os.Args[0],
@@ -535,9 +536,11 @@ func checkEvidenceLog(t *testing.T, rep *Report) {
 
 // TestRunRefusesAMissingModel refuses a run no bundle could be attributed to.
 func TestRunRefusesAMissingModel(t *testing.T) {
-	cfg := &Config{Agent: "true", Runs: 1}
+	cfg := &Config{K: 1, Agent: "true", Runs: 1}
 	err := runRefusal(cfg)
 	if err == nil || !strings.Contains(err.Error(), "-model is required") {
 		t.Fatalf("Run error = %v, want a model refusal", err)
 	}
 }
+
+func (f *fakeGrader) version(context.Context) (string, error) { return "fixture-tool", nil }

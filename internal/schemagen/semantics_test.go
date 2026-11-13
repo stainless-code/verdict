@@ -38,7 +38,7 @@ var publishedSemantics = map[string]string{
 	// $defs/configIndex shape. Additions only; no existing property, required
 	// key, enum, or type changed. The configIndex description now calls the
 	// index a code index rather than a Go one.
-	"config.schema.json": "db98cce6cb648527523180d9011e324b8907d27fbf6880ab5c649a517e21d59d",
+	"config.schema.json": "69bc0562a8f17a7f5107c859b3641c48277cb4b1457f653e673839bc7db7ab23",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets
@@ -61,7 +61,7 @@ var publishedSemantics = map[string]string{
 	// unchanged.
 	// typed state: the manifest description names the .verdict/state run
 	// bundle path. Prose only.
-	"corpus.schema.json": "2439162a90d51d8ce33fe819df64dbbcfc32f7eaf45ed888326950a433310189",
+	"corpus.schema.json": "fe91633ff5196a5149c3c3ef6bdfdb73ea132cf204e1b0ede7d54be207566f17",
 	// intentional pre-v1 break: lenses items become per-group
 	// {group,labels[]} entries (an empty labels list is that group's explicit
 	// zero) and schema_version pins 2. No other property, required key, or
@@ -202,7 +202,7 @@ var publishedSemantics = map[string]string{
 	// pack test: additive $defs/packTestData, packTestCase, and
 	// packTestSummary, plus the generated envelope description. Existing shapes
 	// remain unchanged.
-	"envelope.schema.json": "b0e2b1e7403a78dcc6cb4eebc612e6e02664301373da35979321ee03f0be3d3f",
+	"envelope.schema.json": "14098b5db020afa9e89850076371d44b99533c6950103ee51dcae55cc3a62022",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

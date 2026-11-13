@@ -151,6 +151,7 @@ privacy-unavailable	try: address the cause above, then re-run the same command
 prompt-dump-failed	try: run from a checkout carrying SKILL.md/prompts, then re-run
 provider-unimplemented	try: use the verb named above for this bundle kind
 rationale-required	try: add --rationale with 30+ chars, or --force
+read-only-tool	try: restart the MCP server without --read-only; use --operator for operator-only tools
 record-failed	try: address the cause above, then re-run the same command
 repair-exhausted	try: fix every error named in error.problems, then re-run (when the cap was hit, raise --rounds up to 5; for no progress check the round files)
 report-failed	try: run the fetch/record step named above first, then re-run

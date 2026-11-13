@@ -9,47 +9,60 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/core"
+	corpuscore "github.com/stainless-code/verdict/internal/core/corpus"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // Report is the publication JSON: the fields the runbook requires, plus the
 // per-sample blocks they rest on.
 type Report struct {
-	PromptSHA       map[string]string `json:"prompt_sha256"`
-	PromptsHash     string            `json:"prompts_hash,omitempty"`
-	RunID           string            `json:"run_id"`
-	GeneratedAt     string            `json:"generated_at"`
-	SchemaVersion   string            `json:"schema_version"`
-	CitableReason   string            `json:"citable_reason,omitempty"`
-	Panel           []string          `json:"panel"`
-	Cases           []CaseSpread      `json:"cases"`
-	Bundles         []BundleRun       `json:"bundles"`
-	Loops           []LoopSummary     `json:"loops,omitempty"`
-	FixRates        []FixRate         `json:"fix_rates,omitempty"`
-	LoopCost        *LoopCost         `json:"loop_cost,omitempty"`
-	TrendCorpus     json.RawMessage   `json:"trend_corpus"`
-	Failures        []Failure         `json:"failures"`
-	Agent           AgentRef          `json:"agent"`
-	Corpus          CorpusRef         `json:"corpus"`
-	Cost            CostRollup        `json:"cost"`
-	Samples         int               `json:"samples"`
-	ElapsedSeconds  float64           `json:"elapsed_seconds"`
-	TolerancePoints int               `json:"tolerance_points"`
-	Citable         bool              `json:"citable"`
-	Internal        bool              `json:"internal"`
+	LoopCost          *LoopCost              `json:"loop_cost,omitempty"`
+	PromptSHA         map[string]string      `json:"prompt_sha256"`
+	GeneratedAt       string                 `json:"generated_at"`
+	CitableReason     string                 `json:"citable_reason,omitempty"`
+	RunID             string                 `json:"run_id"`
+	PromptsHash       string                 `json:"prompts_hash,omitempty"`
+	Date              string                 `json:"date"`
+	ToolVersion       string                 `json:"tool_version"`
+	SchemaVersion     string                 `json:"schema_version"`
+	FixRates          []FixRate              `json:"fix_rates,omitempty"`
+	Commands          [][]string             `json:"commands"`
+	Loops             []LoopSummary          `json:"loops,omitempty"`
+	TrendCorpus       json.RawMessage        `json:"trend_corpus"`
+	Bundles           []BundleRun            `json:"bundles"`
+	Failures          []Failure              `json:"failures"`
+	Panel             []string               `json:"panel"`
+	Cases             []CaseSpread           `json:"cases"`
+	AnyOfKRecall      corpuscore.Measurement `json:"any_of_k_recall"`
+	Agent             AgentRef               `json:"agent"`
+	Corpus            CorpusRef              `json:"corpus"`
+	Cost              CostRollup             `json:"cost"`
+	SeverityWeights   core.SeverityWeights   `json:"severity_weights"`
+	K                 int                    `json:"k"`
+	Repeats           int                    `json:"repeats"`
+	IncompleteCohorts int                    `json:"incomplete_cohorts"`
+	Samples           int                    `json:"samples"`
+	ElapsedSeconds    float64                `json:"elapsed_seconds"`
+	TolerancePoints   int                    `json:"tolerance_points"`
+	Seeded            bool                   `json:"seeded"`
+	Citable           bool                   `json:"citable"`
+	Internal          bool                   `json:"internal"`
 }
 
 // CorpusRef pins what was measured: the checkout the cases came from.
 type CorpusRef struct {
-	Commit  string   `json:"commit,omitempty"`
-	CaseIDs []string `json:"case_ids"`
-	Cases   int      `json:"cases"`
-	Dirty   bool     `json:"dirty"`
+	Commit     string   `json:"commit,omitempty"`
+	CaseIDs    []string `json:"case_ids"`
+	Cases      int      `json:"cases"`
+	TotalCases int      `json:"total_cases"`
+	Dirty      bool     `json:"dirty"`
 }
 
 // AgentRef pins who measured it and how long one sample may take.
@@ -75,11 +88,12 @@ type BundleRun struct {
 // CaseSpread is one case over its samples: the runbook publishes median, min,
 // and max so a reader can see the noise floor.
 type CaseSpread struct {
-	Precision         Stat   `json:"precision"`
-	Recall            Stat   `json:"recall"`
-	FalsePositiveRate Stat   `json:"false_positive_rate"`
-	Case              string `json:"case"`
-	Runs              int    `json:"runs"`
+	Metrics            map[string]Stat `json:"metrics"`
+	Precision          Stat            `json:"precision"`
+	Recall             Stat            `json:"recall"`
+	FalseDiscoveryRate Stat            `json:"false_discovery_rate"`
+	Case               string          `json:"case"`
+	Runs               int             `json:"runs"`
 }
 
 // Stat is one rate across samples; null when no sample had a denominator.
@@ -87,6 +101,7 @@ type Stat struct {
 	Median *float64 `json:"median"`
 	Min    *float64 `json:"min"`
 	Max    *float64 `json:"max"`
+	N      int      `json:"n"`
 }
 
 // CostRollup is the spend the bundles report, measured or absent.
@@ -111,17 +126,19 @@ type Failure struct {
 // calibration is the calibrate data block's numbers; the block itself is what
 // the report publishes.
 type calibration struct {
-	Precision         *float64 `json:"precision"`
-	Recall            *float64 `json:"recall"`
-	FalsePositiveRate *float64 `json:"false_positive_rate"`
-	Case              string   `json:"case"`
-	Model             string   `json:"model"`
-	Panel             []string `json:"panel"`
-	GroundTruth       int      `json:"ground_truth"`
-	Reported          int      `json:"reported"`
-	Matched           int      `json:"matched"`
-	FalsePositives    int      `json:"false_positives"`
-	Missed            int      `json:"missed"`
+	Recall             *float64            `json:"recall"`
+	FalseDiscoveryRate *float64            `json:"false_discovery_rate"`
+	Precision          *float64            `json:"precision"`
+	Metrics            *corpuscore.Metrics `json:"metrics"`
+	Model              string              `json:"model"`
+	Case               string              `json:"case"`
+	Panel              []string            `json:"panel"`
+	Hits               []int               `json:"sampling_hits"`
+	GroundTruth        int                 `json:"ground_truth"`
+	Reported           int                 `json:"reported"`
+	Matched            int                 `json:"matched"`
+	FalsePositives     int                 `json:"false_positives"`
+	Missed             int                 `json:"missed"`
 }
 
 // score is one sample's measurement, in memory only: the published form is the
@@ -138,16 +155,16 @@ type score struct {
 
 // trendRates is the aggregate the tool computed over every corpus bundle.
 type trendRates struct {
-	Precision         *float64 `json:"precision"`
-	Recall            *float64 `json:"recall"`
-	FalsePositiveRate *float64 `json:"false_positive_rate"`
-	Cases             int      `json:"cases"`
-	Bundles           int      `json:"bundles"`
-	GroundTruth       int      `json:"ground_truth"`
-	Reported          int      `json:"reported"`
-	Matched           int      `json:"matched"`
-	FalsePositives    int      `json:"false_positives"`
-	Missed            int      `json:"missed"`
+	Precision          *float64 `json:"precision"`
+	Recall             *float64 `json:"recall"`
+	FalseDiscoveryRate *float64 `json:"false_discovery_rate"`
+	Cases              int      `json:"cases"`
+	Bundles            int      `json:"bundles"`
+	GroundTruth        int      `json:"ground_truth"`
+	Reported           int      `json:"reported"`
+	Matched            int      `json:"matched"`
+	FalsePositives     int      `json:"false_positives"`
+	Missed             int      `json:"missed"`
 }
 
 const (
@@ -155,7 +172,6 @@ const (
 	// tolerancePoints is the runbook's same-measurement band: a shift within
 	// it is the same result.
 	tolerancePoints = 5
-	round4          = 1e4
 	round6          = 1e6
 )
 
@@ -169,15 +185,19 @@ func (r *runner) newReport() *Report {
 		agent.Loop = r.cfg.Loop
 	}
 	return &Report{
-		SchemaVersion: "1",
-		RunID:         runID(r.cfg),
-		GeneratedAt:   r.cfg.Now.Format(time.RFC3339),
-		Internal:      r.cfg.Internal,
-		Corpus:        CorpusRef{Commit: r.commit, Dirty: r.dirty, Cases: len(r.cases), CaseIDs: ids},
-		Agent:         agent,
-		Panel:         r.cfg.Panel,
-		PromptSHA:     map[string]string{},
-		Failures:      []Failure{},
+		SchemaVersion:   "1",
+		Date:            r.cfg.Now.Format("2006-01-02"),
+		SeverityWeights: r.cfg.Weights,
+		Seeded:          seededCorpus(r.cases),
+		K:               r.cfg.K, Repeats: r.cfg.Runs,
+		RunID:       runID(r.cfg),
+		GeneratedAt: r.cfg.Now.Format(time.RFC3339),
+		Internal:    r.cfg.Internal,
+		Corpus:      CorpusRef{Commit: r.commit, Dirty: r.dirty, Cases: len(r.cases), TotalCases: r.total, CaseIDs: ids},
+		Agent:       agent,
+		Panel:       r.cfg.Panel,
+		PromptSHA:   map[string]string{},
+		Failures:    []Failure{},
 
 		TolerancePoints: tolerancePoints,
 	}
@@ -191,7 +211,30 @@ func (r *runner) finish(ctx context.Context, rep *Report) error {
 		return err
 	}
 	rep.TrendCorpus = corpus
+	version, err := r.grader.version(ctx)
+	if err != nil {
+		return err
+	}
+	rep.ToolVersion = version
+	rep.Commands = r.commands()
 	rep.PromptsHash = r.prompts
+	samples := make([]corpuscore.Sample, 0, len(r.scores))
+	for _, s := range r.scores {
+		samples = append(samples,
+			corpuscore.Sample{
+				CaseID: s.caseID,
+				Bugs:   s.cal.GroundTruth,
+				Hits:   s.cal.Hits,
+				Sampling: corpuscore.Sampling{
+					RunID:   rep.RunID,
+					K:       rep.K,
+					Repeats: rep.Repeats,
+					Sample:  s.run,
+				},
+			},
+		)
+	}
+	rep.AnyOfKRecall, rep.IncompleteCohorts = corpuscore.AnyOfKRecall(samples)
 	rep.Cases = r.spread()
 	rep.Bundles = r.bundles()
 	rep.Cost = r.cost()
@@ -226,26 +269,32 @@ func (r *runner) bundles() []BundleRun {
 func (r *runner) spread() []CaseSpread {
 	out := make([]CaseSpread, 0, len(r.cases))
 	for _, c := range r.cases {
-		var precision, recall, fpr []*float64
-		runs := 0
-		for _, s := range r.scores {
-			if s.caseID != c.id {
-				continue
-			}
-			runs++
-			precision = append(precision, s.cal.Precision)
-			recall = append(recall, s.cal.Recall)
-			fpr = append(fpr, s.cal.FalsePositiveRate)
-		}
-		out = append(out, CaseSpread{
-			Case:              c.id,
-			Runs:              runs,
-			Precision:         stat(precision),
-			Recall:            stat(recall),
-			FalsePositiveRate: stat(fpr),
-		})
+		out = append(out, r.caseSpread(c.id))
 	}
 	return out
+}
+
+func (r *runner) caseSpread(id string) CaseSpread {
+	var precision, recall, fdr []*float64
+	metrics := map[string][]*float64{}
+	runs := 0
+	for _, s := range r.scores {
+		if s.caseID != id {
+			continue
+		}
+		runs++
+		for key, value := range sampleMetricValues(s.cal.Metrics) {
+			metrics[key] = append(metrics[key], value)
+		}
+		precision = append(precision, s.cal.Precision)
+		recall = append(recall, s.cal.Recall)
+		fdr = append(fdr, s.cal.FalseDiscoveryRate)
+	}
+	stats := map[string]Stat{}
+	for key, values := range metrics {
+		stats[key] = stat(values)
+	}
+	return CaseSpread{Case: id, Runs: runs, Precision: stat(precision), Recall: stat(recall), FalseDiscoveryRate: stat(fdr), Metrics: stats}
 }
 
 // cost sums the est_usd each bundle reports. Nothing here prices a token: a
@@ -287,6 +336,9 @@ func costEstimate(path string) (float64, bool, bool) {
 // whole corpus, no failures, and not an internal pilot.
 func (r *runner) citable(rep *Report) (bool, string) {
 	var reasons []string
+	if rep.Seeded {
+		reasons = append(reasons, "not a model-quality claim")
+	}
 	if rep.Internal {
 		reasons = append(reasons, "internal pilot")
 	}
@@ -345,6 +397,9 @@ func (rep *Report) write(out string) error {
 	if err := atomic.WriteFile(out, append(doc, '\n')); err != nil {
 		return jq.NewErrf("report %s: %s", out, err)
 	}
+	if err := atomic.WriteFile(strings.TrimSuffix(out, filepath.Ext(out))+".md", []byte(renderMarkdown(rep))); err != nil {
+		return jq.NewErrf("Markdown report: %s", err)
+	}
 	return nil
 }
 
@@ -353,7 +408,7 @@ func stat(vals []*float64) Stat {
 	kept := make([]float64, 0, len(vals))
 	for _, v := range vals {
 		if v != nil {
-			kept = append(kept, math.Round(*v*round4)/round4)
+			kept = append(kept, math.Round(*v*round6)/round6)
 		}
 	}
 	if len(kept) == 0 {
@@ -365,7 +420,7 @@ func stat(vals []*float64) Stat {
 	if len(kept)%2 == 0 {
 		median = (kept[mid-1] + kept[mid]) / 2
 	}
-	return Stat{Median: &median, Min: &kept[0], Max: &kept[len(kept)-1]}
+	return Stat{N: len(kept), Median: &median, Min: &kept[0], Max: &kept[len(kept)-1]}
 }
 
 // render prints the shape of the run an operator needs before opening the
@@ -374,12 +429,13 @@ func (r *runner) render(w io.Writer, rep *Report) {
 	fmt.Fprintf(w, "bench: %s, %d case(s) x %d run(s), panel %s\n",
 		rep.Agent.Model, rep.Corpus.Cases, rep.Agent.Runs, strings.Join(rep.Panel, "+"))
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "case\truns\tprecision\trecall\tfpr\twall(med)")
-	for _, c := range rep.Cases {
+	fmt.Fprintln(tw, "case\truns\tprecision\trecall\tfdr\twall(med)")
+	for i := range rep.Cases {
+		c := &rep.Cases[i]
 		wall := r.caseWall(c.Case)
 		fmt.Fprintf(tw, "%s\t%d\t%s\t%s\t%s\t%.1fs\n",
-			c.Case, c.Runs, rate(c.Precision.Median), rate(c.Recall.Median),
-			rate(c.FalsePositiveRate.Median), wall)
+			c.Case, c.Runs, sampleRate(c.Precision), sampleRate(c.Recall),
+			sampleRate(c.FalseDiscoveryRate), wall)
 	}
 	if err := tw.Flush(); err != nil {
 		fmt.Fprintf(w, "table: %v\n", err)
@@ -402,9 +458,11 @@ func (r *runner) renderTotals(w io.Writer, rep *Report) {
 		fmt.Fprintln(w, "corpus: no recorded bundle")
 	} else {
 		fmt.Fprintf(w,
-			"corpus: %d bundle(s), %d bug-runs, %d reported, %d matched, %d false positives, %d missed — precision %s, recall %s, fpr %s\n",
+			"corpus: %d bundle(s), %d bug-runs, %d reported, %d matched, %d false positives, %d missed — "+
+				"precision %s (n=%d), recall %s (n=%d), fdr %s (n=%d)\n",
 			totals.Bundles, totals.GroundTruth, totals.Reported, totals.Matched, totals.FalsePositives, totals.Missed,
-			rate(totals.Precision), rate(totals.Recall), rate(totals.FalsePositiveRate))
+			rate(totals.Precision), totals.Reported, rate(totals.Recall), totals.GroundTruth,
+			rate(totals.FalseDiscoveryRate), totals.Reported)
 	}
 	if rep.Cost.Measured {
 		fmt.Fprintf(w, "cost: measured %.6f USD over %d bundle(s)\n", rep.Cost.Usd, rep.Cost.Bundles)
@@ -436,3 +494,58 @@ func rate(v *float64) string {
 	}
 	return fmt.Sprintf("%.4f", *v)
 }
+
+func sampleMetricValues(m *corpuscore.Metrics) map[string]*float64 {
+	if m == nil {
+		return nil
+	}
+	return map[string]*float64{
+		"precision":                   m.Precision.Value,
+		"recall":                      m.Recall.Value,
+		"control_findings_per_case":   m.ControlFindingsPerCase.Value,
+		"control_fp_rate":             m.ControlFPRate.Value,
+		"severity_weighted_pooled_f1": m.SeverityWeightedPooledF1.Value,
+		"signal_to_noise":             m.SignalToNoise.Value,
+		"cost_usd":                    m.CostUSD,
+		"latency_s":                   m.LatencyS,
+	}
+}
+
+func seededCorpus(cases []corpusCase) bool {
+	for _, c := range cases {
+		var manifest struct {
+			Kind       string `json:"kind"`
+			Provenance struct {
+				Kind string `json:"kind"`
+			} `json:"provenance"`
+		}
+		if json.Unmarshal(c.manifest, &manifest) != nil || manifest.Kind == "seeded" || manifest.Provenance.Kind == "seeded" {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *runner) commands() [][]string {
+	c := r.cfg
+	command := []string{
+		"go", "run", "./bench/runner", "-model", c.Model, "-agent", c.Agent,
+		"-repeats", strconv.Itoa(c.Runs), "-k", strconv.Itoa(c.K), "-panel", strings.Join(c.Panel, ","),
+		"-root", c.Root, "-corpus", c.Corpus, "-verdict", c.Verdict, "-out", c.Out, "-timeout", c.Timeout.String(),
+		"-loop", strconv.Itoa(c.Loop),
+	}
+	if len(c.Cases) > 0 {
+		command = append(command, "-cases", strings.Join(c.Cases, ","))
+	}
+	if c.Internal {
+		command = append(command, "-internal")
+	}
+	commands := [][]string{command}
+	for _, s := range r.scores {
+		commands = append(commands, []string{c.Verdict, "record", c.Repo, s.slug, jsonFlag},
+			[]string{c.Verdict, "calibrate", c.Repo, s.slug, jsonFlag})
+	}
+	return append(commands, []string{c.Verdict, "trend", c.Repo, jsonFlag})
+}
+
+func sampleRate(s Stat) string { return fmt.Sprintf("%s (n=%d)", rate(s.Median), s.N) }

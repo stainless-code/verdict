@@ -11,8 +11,8 @@
       "type": "string"
     },
     "kind": {
-      "description": "seeded for deterministic injected fixtures, real for a published PR with a later fix.",
-      "enum": ["seeded", "real"]
+      "description": "seeded for deterministic injected fixtures, real for a published PR with a later fix, control for a clean change with bugs: []. Control provenance independently records seeded or real origin.",
+      "enum": ["seeded", "real", "control"]
     },
     "language": { "type": "string" },
     "line_tolerance": {
@@ -25,7 +25,7 @@
       "$ref": "#/$defs/provenance"
     },
     "bugs": {
-      "description": "At least one known defect. path, line, kind, and severity are the published ground truth; matching uses path, the line window, and the defect the finding names, not severity.",
+      "description": "Empty for a clean control; otherwise at least one known defect. path, line, kind, and severity are the published ground truth; matching uses path, the line window, and the defect the finding names, not severity.",
       "type": "array",
       "items": { "$ref": "#/$defs/bug" }
     }

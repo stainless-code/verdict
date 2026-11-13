@@ -958,6 +958,12 @@ Cause: the veto needs a human rationale on the record.
 
 Fix: add `--rationale` with 30+ chars, or `--force`.
 
+## `read-only-tool`
+
+Cause: an MCP call names a tool hidden by `--read-only` because it writes local state.
+
+Fix: restart the server without `--read-only`; operator-only tools also require `--operator`.
+
 ## `record-failed`
 
 Cause: `record` could not write its capture (the message names the file and the error).

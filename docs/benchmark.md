@@ -6,7 +6,8 @@ of real and seeded pull requests with known bugs, graded offline by
 the 06b operator runbook, and the citation contract for the comparison page.
 
 The checked-in starter corpus is [`bench/corpus/`](../bench/corpus/README.md):
-eight seeded cases and two fake agent outputs per case. It proves the
+eight seeded bug cases, two seeded clean controls, and two fake agent outputs
+per case. It proves the
 reporting path with exact, reproducible numbers; it is not a model-quality
 claim.
 
@@ -44,7 +45,7 @@ deliberately simple and published:
   not counted.
 - A ground-truth bug with no matching finding is **missed**.
 - `precision = matched / reported`; `recall = matched / ground_truth`;
-  `false_positive_rate = false_positives / reported`. Rates are rounded to
+  `false_discovery_rate = false_positives / reported`. Rates are rounded to
   four decimals; a zero denominator renders `null`, never `0`.
 
 The window is deliberately narrow. On a 4-7-line hunk a `line_tolerance` of
@@ -166,7 +167,7 @@ It assembles all eight cases for both fake models through the existing
   bundles, and every fixture byte is unchanged after the reads.
 
 The seeded numbers are exact: overall precision 0.75, recall 0.8333,
-false-positive rate 0.25 over 16 runs (18 bug-runs, 20 findings, 15 matched,
+false-discovery rate 0.25 over 16 runs (18 bug-runs, 20 findings, 15 matched,
 5 false positives, 3 missed). `fixture-good` is 0.9/1/0.1; `fixture-noisy` is
 0.6/0.6667/0.4. Panel splits are 0.8/0.8/0.2 for `panel-alpha` and
 0.7/0.875/0.3 for `panel-beta`. These grade the reporting path, not model
@@ -695,7 +696,7 @@ something the corpus can measure.
 
 Once 06b has run, the comparison page may cite:
 
-- overall precision, recall, and false-positive rate with the denominators
+- overall precision, recall, and false-discovery rate with the denominators
   (`cases`, bug-runs, reported findings) and the corpus commit/date;
 - the per-model and per-panel table from `data.corpus`, including the
   reproducibility spread;
@@ -710,3 +711,111 @@ denominators and rationale.
 
 Until 06b publishes a measurement, the comparison page has no measured
 claim to cite; keep unmeasured equivalence wording softened or removed.
+
+## Clean controls
+
+`kind: "control"` records a clean change with `bugs: []`. Its provenance
+still identifies a `seeded` or `real` origin. Null or nonempty ground truth
+is refused for a control; bug cases still require at least one defect.
+Every finding on a control is a false positive. Recall has no denominator
+and renders `null`. The two seeded clean cases, `control-comment` and
+`control-rename`, are **not a model-quality claim**.
+
+## Ordered sampling
+
+The runner accepts `-repeats N` (`-runs` is its existing alias) and `-k K`,
+with `1 <= K <= N`. Each bundle's `corpus_run.json` snapshots run identity,
+sample index, k, repeats, and resolved severity weights. Only the first k
+ordered samples contribute to `any_of_k_recall`: union their matched bug
+indices, then divide by the unique ground-truth bugs in complete cohorts.
+Incomplete cohorts have no recall denominator and are counted explicitly.
+Per-case sample rates publish median/min/max and the non-null sample count n.
+Sample inputs retain six decimal places before spread calculation.
+
+## Metric denominators
+
+`calibrate` and `trend` publish a `metrics` object. Each rate carries `value`,
+`numerator`, `denominator`, `n`, and its observation `unit`; zero denominators
+produce `null`. The human report also prints counts beside rates.
+
+| Metric                      | Numerator / denominator                                         | n                                     |
+| --------------------------- | --------------------------------------------------------------- | ------------------------------------- |
+| precision                   | matched findings / reported findings                            | reported findings                     |
+| recall                      | matched bugs / ground-truth bug samples                         | bug samples                           |
+| false_discovery_rate        | false-positive findings / reported findings                     | reported findings                     |
+| any_of_k_recall             | union of matched bugs / unique bugs in complete first-k cohorts | unique bugs                           |
+| control_fp_rate             | controls with at least one finding / control case samples       | control case samples                  |
+| control_findings_per_case   | false-positive findings on controls / control case samples      | control case samples                  |
+| severity_weighted_pooled_f1 | 2 weighted TP / (2 weighted TP + weighted FP + weighted FN)     | bug samples + false-positive findings |
+| signal_to_noise             | matched findings / false-positive findings                      | reported findings                     |
+
+`control_fp_rate` is the fraction of control case samples with at least one
+finding. It is bounded between zero and one. `control_findings_per_case`
+reports the raw number of findings per control and can exceed one.
+
+`severity_weighted_pooled_f1` is `2*WTP / (2*WTP + WFP + WFN)`: apply the
+configured severity weights to individual true positives, false positives,
+and false negatives, then compute one pooled F1. TP and FN use ground-truth
+severity; FP uses reported severity, falling back to informational when absent.
+Every sample uses its snapshotted weights. This differs from support-weighted
+per-class F1, which computes an F1 separately for each severity and averages
+those scores by class support. In the four-sample fixture, WTP=30, WFP=9,
+WFN=32, so pooled F1 is 60/101=.5941; support-weighted per-class F1 is
+7/18=.3889. Neither formula is substituted for the other.
+
+Legacy bundles without `corpus_run.json` are independent k=1 runs and resolve
+weights from the repository's typed config, falling back to 25/5/1.
+`calibrate` reads sibling samples for its any-of-k rate only; its other rates
+describe the selected sample. `trend` groups by run, case, model, and panel.
+Duplicate or inconsistent first-k cohorts contribute no recall denominator.
+
+`cost_usd` sums recorded `cost.json` estimates; `latency_s` sums recorded
+sample wall times. Either total is `null` if any sample lacks that evidence.
+`cost_n`, `latency_n`, and `samples` expose completeness. A measured zero
+stays zero. The runner publishes per-case median/min/max/n for these metrics.
+
+## Publish and render a run
+
+Build the CLI, then run three samples per case. Set `-k` explicitly and keep
+controls out of prompt tuning.
+
+```sh
+make build
+go run ./bench/runner -model fixture-good -repeats 3 -k 3 \
+  -agent 'sh "$VERDICT_BENCH_ROOT/bench/agents/fixture.sh"' \
+  -out bench/runner/testdata/example-seeded-run.json
+go run ./bench/runner -render bench/runner/testdata/example-seeded-run.json \
+  > bench/runner/testdata/example-seeded-run.md
+```
+
+The runner writes both files when the run finishes. `-render` reads only the
+JSON and launches no agent. The JSON records the corpus commit and dirty
+state, UTC date, `prompts_hash`, CLI version, command argv, k, repeats, resolved
+severity weights, individual calibration blocks, and per-case sample spreads.
+The Markdown renders the same denominators and sample counts, with cases and
+metric names sorted. Its date comes from the publication. Tests inject the
+run clock; rendering never reads the wall clock.
+
+Seeded runs always print **not a model-quality claim** and cannot be citable.
+The fixture run above proves scoring and publication plumbing. It contains
+no real model reviews. Real corpus growth and real model runs remain operator
+work under STA-28 and STA-325. Preserve failed samples and incomplete cohorts
+when publishing a run. A default output name includes UTC time and model;
+`-out` selects a dated publication path explicitly.
+
+The hand-computed four-sample metric fixture has 2 TP, 5 FP, 6 bug samples,
+and two control samples. One control has two findings; the other has none.
+
+| Metric                      | Calculation          | n   |
+| --------------------------- | -------------------- | --- |
+| false_discovery_rate        | 5/7 = .7143          | 7   |
+| control_fp_rate             | 1/2 = .5             | 2   |
+| control_findings_per_case   | 2/2 = 1              | 2   |
+| severity_weighted_pooled_f1 | 60/(60+9+32) = .5941 | 11  |
+
+This fixture differs from the dedicated k=3 union-recall fixture.
+
+Checked-in seeded outputs live under `bench/runner/testdata/example-seeded-*`
+as examples. Machine-specific paths are placeholders, not executable argv.
+`bench/results/` is reserved for non-seeded publications; a seeded example
+never supplies the real-corpus benchmark exit criterion.

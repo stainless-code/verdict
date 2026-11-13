@@ -30,6 +30,7 @@ var hintRules = []HintRule{
 	{codes: []string{"bad-ignore"}, hint: "try: use one glob per line, # comments and ! to re-include, then re-fetch"},
 	{codes: []string{"bad-suppression"}, hint: "try: give each suppression a path, source, " +
 		"reason (30+ characters for agent) and matching exclusion_id"},
+	{codes: []string{"read-only-tool"}, hint: "try: restart the MCP server without --read-only; use --operator for operator-only tools"},
 	{codes: []string{"panel-empty"}, hint: "try: configure defaults.panel with a synthesizer and verifiers, re-fetch, then re-run panel"},
 	{codes: []string{"panel-too-large"}, hint: "try: narrow the review or roster (100 findings, 4 verifiers maximum), then re-run panel"},
 	{codes: []string{"bad-panel"}, hint: "try: fix verification/verdicts.json: " +

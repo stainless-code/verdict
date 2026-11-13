@@ -19,21 +19,31 @@ func (st *state) runCorpus(dir string) *core.RefusalError {
 		return st.loadRefusal(err)
 	}
 	report := corpuscore.Evaluate(c, entries)
+	sample, ref := corpuscore.LoadSample(dir, report)
+	if ref != nil {
+		return st.withWarnings(ref)
+	}
+	metrics := corpuscore.Measure([]corpuscore.Sample{sample})
+	metrics.AnyOfKRecall, metrics.IncompleteCohorts = corpuscore.AnyOfKRecall(corpuscore.Cohort(dir, &sample))
 	st.corpus = &corpusResult{
-		dir:    dir,
-		report: report,
-		model:  corpuscore.ModelOf(dir),
-		panel:  corpuscore.PanelOf(dir),
+		metrics:  metrics,
+		sampling: sample.Sampling,
+		dir:      dir,
+		report:   report,
+		model:    corpuscore.ModelOf(dir),
+		panel:    corpuscore.PanelOf(dir),
 	}
 	st.emitCorpusHuman(st.corpus)
 	return nil
 }
 
 type corpusResult struct {
-	dir    string
-	report *corpuscore.Report
-	model  string
-	panel  []string
+	report   *corpuscore.Report
+	dir      string
+	model    string
+	panel    []string
+	metrics  *corpuscore.Metrics
+	sampling corpuscore.Sampling
 }
 
 func (st *state) corpusResponse() *Response {
@@ -50,6 +60,12 @@ func (st *state) corpusResponse() *Response {
 // Wire renders the corpus data in published key order.
 func (r *corpusResult) Wire() *jq.Obj {
 	rep := r.report
+	hits := make([]any, 0)
+	for _, o := range rep.Outcomes {
+		if o.HasBugHit {
+			hits = append(hits, o.BugIndex)
+		}
+	}
 	outcomes := make([]any, 0, len(rep.Outcomes))
 	for i := range rep.Outcomes {
 		outcomes = append(outcomes, outcomeCorpusDoc(&rep.Outcomes[i]))
@@ -63,6 +79,8 @@ func (r *corpusResult) Wire() *jq.Obj {
 		panel = append(panel, p)
 	}
 	return jq.NewObj(
+		"metrics", r.metrics.Wire(),
+		"sampling", r.sampling.Wire(),
 		"bundle", readcommon.BundleName(r.dir),
 		"case", rep.Case.ID,
 		"kind", rep.Case.Kind,
@@ -76,7 +94,8 @@ func (r *corpusResult) Wire() *jq.Obj {
 		"missed", len(rep.Missed),
 		"precision", corpuscore.RateOrNil(rep.Matched, rep.Reported),
 		"recall", corpuscore.RateOrNil(rep.Matched, len(rep.Case.Bugs)),
-		"false_positive_rate", corpuscore.RateOrNil(rep.FalsePositives, rep.Reported),
+		"false_discovery_rate", corpuscore.RateOrNil(rep.FalsePositives, rep.Reported),
+		"sampling_hits", hits,
 		"outcomes", outcomes,
 		"missed_bugs", missed,
 	)
@@ -120,6 +139,7 @@ func corpusBugDoc(b *core.CorpusBug) *jq.Obj {
 
 func (st *state) emitCorpusHuman(r *corpusResult) {
 	rep := r.report
+	st.human(r.metrics.Summary())
 	st.human(fmt.Sprintf("calibrate: corpus %s — %s (model %s, panel %s)",
 		rep.Case.ID, readcommon.BundleName(r.dir), r.model, corpuscore.PanelLabel(r.panel)))
 	tol := corpuscore.Tolerance(rep.Case)
@@ -135,11 +155,11 @@ func (st *state) emitCorpusHuman(r *corpusResult) {
 		st.human(fmt.Sprintf("missed: %s:%d %s (%s)", b.Path, b.Line, b.Kind, b.Severity))
 	}
 	st.human(fmt.Sprintf("rates: bugs=%d reported=%d matched=%d missed=%d false-positives=%d "+
-		"precision=%s recall=%s false-positive-rate=%s",
+		"precision=%s (n=%d) recall=%s (n=%d) false-discovery-rate=%s (n=%d)",
 		len(rep.Case.Bugs), rep.Reported, rep.Matched, len(rep.Missed), rep.FalsePositives,
-		corpuscore.RateText(corpuscore.RateOrNil(rep.Matched, rep.Reported)),
-		corpuscore.RateText(corpuscore.RateOrNil(rep.Matched, len(rep.Case.Bugs))),
-		corpuscore.RateText(corpuscore.RateOrNil(rep.FalsePositives, rep.Reported))))
+		corpuscore.RateText(corpuscore.RateOrNil(rep.Matched, rep.Reported)), rep.Reported,
+		corpuscore.RateText(corpuscore.RateOrNil(rep.Matched, len(rep.Case.Bugs))), len(rep.Case.Bugs),
+		corpuscore.RateText(corpuscore.RateOrNil(rep.FalsePositives, rep.Reported)), rep.Reported))
 }
 
 func corpusLocator(o *corpuscore.Outcome) string {

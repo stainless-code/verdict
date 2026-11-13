@@ -51,8 +51,17 @@ var (
 	omitPositionals = map[string]bool{fieldRepo: true, fieldPr: true}
 )
 
+type mutationClass uint8
+
+const (
+	mutationUnspecified mutationClass = iota
+	noLocalWrites
+	localWrites
+)
+
 type toolMeta struct {
 	title              string
+	mutates            mutationClass
 	readOnly           bool
 	destructive        bool
 	idempotent         bool
@@ -83,6 +92,7 @@ type tool struct { //nolint:govet // the grouping documents the descriptor; alig
 	required           []string
 	deps               toolDeps
 	readOnly           bool
+	mutates            mutationClass
 	servedWhenReadOnly bool
 	readOnlyDryRun     bool
 	requireDryRun      bool
@@ -107,7 +117,7 @@ func allTools(readOnly, operator bool) []*tool {
 				"and re-anchor them. Call after a local review to post it on a PR. " +
 				"Writes the target bundle's findings store.",
 			required: []string{argRepo, argPr, "from"},
-			meta:     toolMeta{title: "Adopt findings", idempotent: true},
+			meta:     toolMeta{title: "Adopt findings", mutates: localWrites, idempotent: true},
 		}, toolDeps{}, decodeAdopt, wireAdopt, adoptcore.Run,
 			func(resp *adoptcore.Response) *jq.Obj { return wireData(resp.Data) }),
 		dataTool(&toolSpec{
@@ -116,7 +126,7 @@ func allTools(readOnly, operator bool) []*tool {
 				"or grade the offline probe. Call after posting to measure precision. " +
 				"Reads GitHub live; the probe rewrites kb-grades.jsonl.",
 			required: requiredRepoPr,
-			meta:     toolMeta{title: "Calibrate findings", idempotent: true, openWorld: true},
+			meta:     toolMeta{title: "Calibrate findings", mutates: localWrites, idempotent: true, openWorld: true},
 		}, toolDeps{commander: coreexec.Runner{}}, decodeCalibrate, wireCalibrate, calibratecore.Run,
 			func(resp *calibratecore.Response) *jq.Obj { return wireData(resp.Data) }),
 		directTool(&toolSpec{
@@ -125,7 +135,7 @@ func allTools(readOnly, operator bool) []*tool {
 				"Call before finalizing when stray edits must fail the review. " +
 				"Reads git only; writes nothing.",
 			omit: omitPositionals,
-			meta: toolMeta{title: "Check worktree", readOnly: true, idempotent: true},
+			meta: toolMeta{title: "Check worktree", mutates: noLocalWrites, readOnly: true, idempotent: true},
 		}, toolDeps{commander: coreexec.Runner{}}, decodeCheckTree, wireCheckTree, invokeCheckTree),
 		directTool(&toolSpec{
 			name: "config",
@@ -134,7 +144,7 @@ func allTools(readOnly, operator bool) []*tool {
 				"Call before acting on policy to see values, requirements, plan, and spend. " +
 				"Reads the run bundle only; writes nothing and never approves.",
 			required: requiredRepoPr,
-			meta:     toolMeta{title: "Explain policy", readOnly: true, idempotent: true},
+			meta:     toolMeta{title: "Explain policy", mutates: noLocalWrites, readOnly: true, idempotent: true},
 		}, toolDeps{}, decodeConfig, wireConfig, invokeConfig),
 		dataTool(&toolSpec{
 			name: "doctor",
@@ -142,7 +152,7 @@ func allTools(readOnly, operator bool) []*tool {
 				"Call first when a verb fails for environmental reasons; provider picks the host " +
 				"(default github). Reads local tools and config; writes nothing.",
 			omit: omitPositionals,
-			meta: toolMeta{title: "Preflight environment", readOnly: true, idempotent: true},
+			meta: toolMeta{title: "Preflight environment", mutates: noLocalWrites, readOnly: true, idempotent: true},
 		}, toolDeps{commander: coreexec.Runner{}}, decodeDoctor, wireDoctor, doctorcore.Run,
 			func(resp *doctorcore.Response) *jq.Obj { return wireData(resp.Data) }),
 		directTool(&toolSpec{
@@ -151,14 +161,14 @@ func allTools(readOnly, operator bool) []*tool {
 				"Call first for any PR review; an over-cap diff refuses, so re-run with chunk=true. " +
 				"Writes the bundle and calls the PR's host.",
 			required: requiredRepoPr,
-			meta:     toolMeta{title: "Fetch pull request", idempotent: true, openWorld: true},
+			meta:     toolMeta{title: "Fetch pull request", mutates: localWrites, idempotent: true, openWorld: true},
 		}, toolDeps{commander: fetchRunner}, decodeFetch, wireFetch, invokeFetch),
 		directTool(&toolSpec{
 			name: "fetch-local",
 			description: "Fetch a local git diff into .verdict/state/local-<name>. Call to review " +
 				"uncommitted or branch changes without a PR. Writes the bundle; no network.",
 			required: requiredRepoPr,
-			meta:     toolMeta{title: "Fetch local diff", idempotent: true},
+			meta:     toolMeta{title: "Fetch local diff", mutates: localWrites, idempotent: true},
 		}, toolDeps{commander: fetchRunner}, decodeFetchLocal, wireFetchLocal, invokeFetchLocal),
 		dataTool(&toolSpec{
 			name: "fix",
@@ -166,7 +176,7 @@ func allTools(readOnly, operator bool) []*tool {
 				"Call after review to prepare one finding's patch; the ledger caps passes. " +
 				"Writes the fix ledger and runs the recorded verify command.",
 			required: requiredRepoPr,
-			meta:     toolMeta{title: "Prepare a fix"},
+			meta:     toolMeta{title: "Prepare a fix", mutates: localWrites},
 		}, toolDeps{commander: fetchRunner}, decodeFix, wireFix, fixcore.Run,
 			func(resp *fixcore.Response) *jq.Obj { return wireData(resp.Data) }),
 		directTool(&toolSpec{
@@ -176,7 +186,7 @@ func allTools(readOnly, operator bool) []*tool {
 				"code to find callers and the tests to read. Reads the index and git objects only; never " +
 				"builds or prunes (those are CLI-only) and writes nothing.",
 			omit: map[string]bool{fieldRepo: true},
-			meta: toolMeta{title: "Query code index", readOnly: true, idempotent: true},
+			meta: toolMeta{title: "Query code index", mutates: noLocalWrites, readOnly: true, idempotent: true},
 		}, toolDeps{commander: coreexec.Runner{}}, decodeIndex, wireIndex, invokeIndex),
 		dataTool(&toolSpec{
 			name: "init",
@@ -184,7 +194,7 @@ func allTools(readOnly, operator bool) []*tool {
 				"new repository; yes=true overwrites existing controls. Writes controls and " +
 				"runs a tree check.",
 			omit: omitPositionals,
-			meta: toolMeta{title: "Scaffold controls", destructive: true, idempotent: true},
+			meta: toolMeta{title: "Scaffold controls", mutates: localWrites, destructive: true, idempotent: true},
 		}, toolDeps{commander: fetchRunner}, decodeInit, wireInit, initcore.Run,
 			func(resp *initcore.Response) *jq.Obj { return wireData(resp.Data) }),
 		dataTool(&toolSpec{
@@ -192,7 +202,7 @@ func allTools(readOnly, operator bool) []*tool {
 			description: "Read or update the local knowledge base. Call to list rules or " +
 				"add, retire, restore, propose, accept, or reject one. Proposals are inactive until accepted. Supports dry_run for the proposal lifecycle.",
 			omit: map[string]bool{"Repo": true},
-			meta: toolMeta{title: "Manage knowledge base", idempotent: true},
+			meta: toolMeta{title: "Manage knowledge base", mutates: localWrites, idempotent: true},
 		}, toolDeps{}, decodeLearn, wireLearn, learncore.Run,
 			func(resp *learncore.Response) *jq.Obj { return wireData(resp.Data) }),
 		directTool(&toolSpec{
@@ -200,7 +210,7 @@ func allTools(readOnly, operator bool) []*tool {
 			description: "Return the top actionable finding. Call after fetch to pick the next " +
 				"review or fix target. Reads the bundle; writes nothing.",
 			required: requiredRepoPr,
-			meta:     toolMeta{title: "Next finding", readOnly: true, idempotent: true},
+			meta:     toolMeta{title: "Next finding", mutates: noLocalWrites, readOnly: true, idempotent: true},
 		}, toolDeps{}, decodeNext, wireNext, invokeNext),
 		directTool(&toolSpec{
 			name: "pack",
@@ -210,7 +220,7 @@ func allTools(readOnly, operator bool) []*tool {
 				"the PR adds or edits is listed here but not used. Reads local files; writes nothing.",
 			omit:     omitPositionals,
 			required: []string{"list"},
-			meta:     toolMeta{title: "List lens packs", readOnly: true, idempotent: true},
+			meta:     toolMeta{title: "List lens packs", mutates: noLocalWrites, readOnly: true, idempotent: true},
 		}, toolDeps{}, decodePack, wirePack, invokePack),
 		dataTool(&toolSpec{
 			name: "post",
@@ -219,7 +229,7 @@ func allTools(readOnly, operator bool) []*tool {
 				"value refuses post-secret-shaped (allowSecretValues publishes it). Writes post.json; " +
 				"GitLab posts a bound request-changes as a comment, recorded in withheld[].",
 			required: requiredRepoPr,
-			meta:     toolMeta{title: "Post review", destructive: true, idempotent: true, openWorld: true},
+			meta:     toolMeta{title: "Post review", mutates: localWrites, destructive: true, idempotent: true, openWorld: true},
 		}, toolDeps{commander: fetchRunner}, decodePost, wirePost, postcore.Run,
 			func(resp *core.PostResponse) *jq.Obj { return wireData(resp.Data) }),
 		dataTool(&toolSpec{
@@ -227,7 +237,7 @@ func allTools(readOnly, operator bool) []*tool {
 			description: "Report merge readiness (checks, threads, draft, conflict) or gate on " +
 				"it. Call before merging. Reads GitHub; writes nothing.",
 			required: requiredRepoPr,
-			meta:     toolMeta{title: "Merge readiness", readOnly: true, idempotent: true, openWorld: true},
+			meta:     toolMeta{title: "Merge readiness", mutates: noLocalWrites, readOnly: true, idempotent: true, openWorld: true},
 		}, toolDeps{commander: coreexec.Runner{}}, decodeReady, wireReady, readycore.Run,
 			func(resp *readycore.Response) *jq.Obj { return wireData(resp.Data) }),
 		dataTool(&toolSpec{
@@ -236,7 +246,7 @@ func allTools(readOnly, operator bool) []*tool {
 				"Call for local bundles that cannot post; writes findings.json and record.json. " +
 				"Set dry_run to repeat every check without writing, fix each problem, and after 3 rounds report any that remain instead of recording.",
 			required: requiredRepoPr,
-			meta:     toolMeta{title: "Record review", idempotent: true, servedWhenReadOnly: true, readOnlyDryRun: true},
+			meta:     toolMeta{title: "Record review", mutates: localWrites, idempotent: true, servedWhenReadOnly: true, readOnlyDryRun: true},
 		}, toolDeps{commander: fetchRunner}, decodeRecord, wireRecord, recordcore.Run,
 			func(resp *core.RecordResponse) *jq.Obj { return wireData(resp.Data) }),
 		directTool(&toolSpec{
@@ -246,14 +256,14 @@ func allTools(readOnly, operator bool) []*tool {
 				"only artifacts you request.",
 			writeArgs: map[string]string{"Output": "output", "Sarif": "sarif"},
 			required:  requiredRepoPr,
-			meta:      toolMeta{title: "Render report", idempotent: true, servedWhenReadOnly: true},
+			meta:      toolMeta{title: "Render report", mutates: localWrites, idempotent: true, servedWhenReadOnly: true},
 		}, toolDeps{}, decodeReport, wireReport, invokeReport),
 		directTool(&toolSpec{
 			name: "show",
 			description: "Return one full finding by signature or unique prefix. Call to inspect " +
 				"a finding named by report or next. Reads the bundle; writes nothing.",
 			required: []string{argRepo, argPr, "sig"},
-			meta:     toolMeta{title: "Show finding", readOnly: true, idempotent: true},
+			meta:     toolMeta{title: "Show finding", mutates: noLocalWrites, readOnly: true, idempotent: true},
 		}, toolDeps{}, decodeShow, wireShow, invokeShow),
 		dataTool(&toolSpec{
 			name: "threads",
@@ -262,7 +272,7 @@ func allTools(readOnly, operator bool) []*tool {
 				"threads. Call after pushing fixes to re-read resolution state before a re-review or merge readiness. " +
 				"Reads the host; writes threads.json and, on resolve, threads-resolve.json.",
 			required: requiredRepoPr,
-			meta:     toolMeta{title: "Refresh review threads", idempotent: true, openWorld: true},
+			meta:     toolMeta{title: "Refresh review threads", mutates: localWrites, idempotent: true, openWorld: true},
 		}, toolDeps{commander: fetchRunner}, decodeThreads, wireThreads, fetchcore.RunThreads,
 			wireThreadsData),
 		dataTool(&toolSpec{
@@ -271,7 +281,7 @@ func allTools(readOnly, operator bool) []*tool {
 				"summary. Reads local bundles; writes nothing.",
 			omit:     map[string]bool{fieldPr: true},
 			required: []string{argRepo},
-			meta:     toolMeta{title: "Review trend", readOnly: true, idempotent: true},
+			meta:     toolMeta{title: "Review trend", mutates: noLocalWrites, readOnly: true, idempotent: true},
 		}, toolDeps{}, decodeTrend, wireTrend, trendcore.Run,
 			func(resp *trendcore.Response) *jq.Obj { return wireData(resp.Data) }),
 		operatorTool(dataTool(&toolSpec{
@@ -280,7 +290,7 @@ func allTools(readOnly, operator bool) []*tool {
 				"rationale. Never call while reviewing a PR; propose triage[] in review.json " +
 				"instead. Writes findings.json and stages KB credit.",
 			required: []string{argRepo, argPr, "sig", argStatus},
-			meta:     toolMeta{title: "Triage finding", destructive: true},
+			meta:     toolMeta{title: "Triage finding", mutates: localWrites, destructive: true},
 		}, toolDeps{}, decodeTriage, wireTriage, triagecore.Run,
 			func(resp *triagecore.Response) *jq.Obj { return wireData(resp.Data) })),
 		dataTool(&toolSpec{
@@ -290,7 +300,7 @@ func allTools(readOnly, operator bool) []*tool {
 				"or set sandbox true for enforced bubblewrap isolation on Linux (refused where unenforceable). " +
 				"Never fabricates a patch or a command from configuration.",
 			required: requiredRepoPr,
-			meta:     toolMeta{title: "Run verification", destructive: true, openWorld: true},
+			meta:     toolMeta{title: "Run verification", mutates: localWrites, destructive: true, openWorld: true},
 		}, toolDeps{commander: coreexec.Watchdog{}}, decodeVerify, wireVerify, verifycore.Run,
 			func(resp *core.VerifyResponse) *jq.Obj { return wireData(resp.Data) }),
 	}
@@ -329,7 +339,7 @@ func (t *tool) narrowReadOnly() {
 }
 
 func exposed(t *tool, readOnly, operator bool) bool {
-	if readOnly && !t.readOnly && !t.servedWhenReadOnly {
+	if readOnly && t.mutates != noLocalWrites && !t.servedWhenReadOnly {
 		return false
 	}
 	return !t.operatorOnly || (!readOnly && operator)
@@ -374,6 +384,7 @@ func newTool[Req any](
 		required:           spec.required,
 		deps:               deps,
 		readOnly:           spec.meta.readOnly,
+		mutates:            spec.meta.mutates,
 		servedWhenReadOnly: spec.meta.servedWhenReadOnly,
 		readOnlyDryRun:     spec.meta.readOnlyDryRun,
 		destructive:        spec.meta.destructive,

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
@@ -23,6 +24,7 @@ import (
 // Config is one benchmark run's inputs. Everything an operator can vary is
 // here; everything a run derives from the corpus stays derived.
 type Config struct {
+	Render   string
 	Now      time.Time
 	Summary  io.Writer
 	Out      string
@@ -36,6 +38,8 @@ type Config struct {
 	Panel    []string
 	Cases    []string
 	Timeout  time.Duration
+	K        int
+	Weights  core.SeverityWeights
 	Runs     int
 	Loop     int
 	Internal bool
@@ -56,6 +60,9 @@ const (
 )
 
 func (cfg *Config) validate() error {
+	if err := cfg.validateSampling(); err != nil {
+		return err
+	}
 	switch {
 	case strings.TrimSpace(cfg.Model) == "":
 		return jq.NewErr("-model is required: every bundle is attributed to exactly one model")
@@ -207,7 +214,9 @@ func absolutize(cfg *Config) error {
 		}
 		*p.path = abs
 	}
-	return nil
+	var err error
+	cfg.Weights, err = rootWeights(cfg.Root)
+	return err
 }
 
 // prepareWork makes the run dir and refuses to reuse one: trend scores every
@@ -340,7 +349,9 @@ func readCase(dir, id string) (corpusCase, error) {
 		return corpusCase{}, jq.NewErrf("case %s: schema_version %q, want \"1\"", id, m.SchemaVersion)
 	case m.ID != id:
 		return corpusCase{}, jq.NewErrf("case %s: manifest id %q does not match its directory", id, m.ID)
-	case len(m.Bugs) == 0:
+	case m.Kind == "control" && (m.Bugs == nil || len(m.Bugs) != 0):
+		return corpusCase{}, jq.NewErrf("case %s: control requires bugs: []", id)
+	case len(m.Bugs) == 0 && m.Kind != "control":
 		return corpusCase{}, jq.NewErrf("case %s: manifest carries no ground-truth bug", id)
 	}
 	diff, err := os.ReadFile(filepath.Join(dir, id, fullDiffName))
@@ -701,4 +712,26 @@ func (r *runner) fail(rep *Report, cr *caseRun, err error) {
 // roundMillis keeps the published wall clock readable and diff-stable.
 func roundMillis(seconds float64) float64 {
 	return float64(int64(seconds*millis+rounding)) / millis
+}
+
+func (cfg *Config) validateSampling() error {
+	if cfg.K < 1 || cfg.K > cfg.Runs {
+		return jq.NewErr("-k must be between 1 and repeats")
+	}
+	return nil
+}
+
+func rootWeights(root string) (core.SeverityWeights, error) {
+	raw, err := os.ReadFile(filepath.Join(root, reviewConfig))
+	if os.IsNotExist(err) {
+		return config.SeverityWeights(nil), nil
+	}
+	if err != nil {
+		return core.SeverityWeights{}, jq.NewErrf("weights: %s", err)
+	}
+	policy, ref := config.Parse(raw)
+	if ref != nil {
+		return core.SeverityWeights{}, jq.NewErrf("weights: %s", ref)
+	}
+	return config.SeverityWeights(policy), nil
 }

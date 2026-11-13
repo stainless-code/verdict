@@ -13,6 +13,7 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
+	corpuscore "github.com/stainless-code/verdict/internal/core/corpus"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -33,7 +34,21 @@ func (r *runner) writeBundle(ctx context.Context, cr *caseRun, bundle string, so
 	if err != nil {
 		return err
 	}
+	sampling,
+		err := json.Marshal(corpuscore.Sampling{
+		RunID:    runID(r.cfg),
+		K:        r.cfg.K,
+		Repeats:  r.cfg.Runs,
+		Sample:   cr.index,
+		Weights:  r.cfg.Weights,
+		LatencyS: &cr.wall,
+	},
+	)
+	if err != nil {
+		return jq.NewErrf("sampling: %s", err)
+	}
 	files := []bundleFile{
+		{"corpus_run.json", sampling},
 		{fullDiffName, cr.corpus.diff},
 		{hunksTSVName, []byte(hunks.Snapshot(string(cr.corpus.diff)))},
 		{corpusJSONName, cr.corpus.manifest},

@@ -15,6 +15,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -28,14 +29,21 @@ import (
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "bench:", err)
-		os.Exit(1) //nolint:forbidigo // a command's exit status is its only failure channel.
+		status := 1
+		if _, ok := errors.AsType[*usageError](err); ok {
+			status = 2
+		}
+		os.Exit(status) //nolint:forbidigo // a command's exit status is its only failure channel.
 	}
 }
 
 func run() error {
 	cfg, err := parseFlags(os.Args[1:])
 	if err != nil {
-		return err
+		return &usageError{err}
+	}
+	if cfg.Render != "" {
+		return renderFile(cfg.Render, os.Stdout)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
@@ -51,6 +59,7 @@ func parseFlags(args []string) (Config, error) {
 		panel string
 		root  string
 	)
+	fs.StringVar(&cfg.Render, "render", "", "render a publication JSON as static Markdown; launches nothing")
 	fs.StringVar(&cfg.Model, "model", "", "model id every bundle is attributed to (required)")
 	fs.StringVar(&cfg.Agent, "agent", "", "agent command line, run with sh -c per sample (required)")
 	fs.StringVar(&panel, "panel", "", "panel the samples run under (default bench-<model>)")
@@ -62,7 +71,9 @@ func parseFlags(args []string) (Config, error) {
 	fs.StringVar(&cfg.WorkDir, "workdir", "", "run directory; must be empty or absent (default: a fresh temp dir)")
 	fs.StringVar(&cfg.Out, "out", "", "publication JSON (default <root>/bench/results[/pilot]/<run-id>.json)")
 	fs.BoolVar(&cfg.Internal, "internal", false, "mark the run an internal pilot: never citable, kept out of bench/results")
-	fs.IntVar(&cfg.Runs, "runs", 1, "samples per case")
+	fs.IntVar(&cfg.Runs, "runs", 1, "samples per case (alias of -repeats)")
+	fs.IntVar(&cfg.Runs, "repeats", 1, "samples per case")
+	fs.IntVar(&cfg.K, "k", 1, "first k samples used for any-of-k recall; 1 <= k <= repeats")
 	fs.IntVar(&cfg.Loop, "loop", 1, "repair rounds per sample (1 keeps the single-shot path)")
 	fs.DurationVar(&cfg.Timeout, "timeout", defaultTimeout, "budget for one sample")
 	if err := fs.Parse(args); err != nil {
@@ -70,6 +81,12 @@ func parseFlags(args []string) (Config, error) {
 	}
 	if fs.NArg() > 0 {
 		return Config{}, jq.NewErrf("unexpected argument %q", fs.Arg(0))
+	}
+	if err := cfg.validateSampling(); err != nil {
+		return Config{}, err
+	}
+	if cfg.Render != "" {
+		return cfg, nil
 	}
 	cfg.Cases = splitCSV(cases)
 	cfg.Panel = splitCSV(panel)
@@ -114,3 +131,5 @@ func moduleRoot() (string, error) {
 		dir = parent
 	}
 }
+
+type usageError struct{ error }

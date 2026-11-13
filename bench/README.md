@@ -6,7 +6,7 @@ it with the shipped binary: the same `record`, `calibrate`, and `trend` verbs
 produces the publication JSON that runbook asks for.
 
 It is not shipped. Nothing in the release build, `release/contract.json`, or
-goreleaser imports `bench/`, so `make size` does not move.
+goreleaser imports `bench/`, while the shared scoring code is part of the shipped CLI.
 
 ## Run one
 
@@ -16,7 +16,7 @@ go run ./bench/runner -model fixture-good -runs 3 -internal \
   -agent 'sh "$VERDICT_BENCH_ROOT/bench/agents/fixture.sh"'
 ```
 
-That plays the checked-in fixture reviews over all eight seeded cases, three
+That plays the checked-in fixture reviews over all ten seeded cases (eight bug cases and two clean controls), three
 samples each, and writes `bench/results/pilot/<date>-<model>-pilot.json`. The
 fixture agent never reads the prompt: a run through it proves the runner and
 the scoring path, never model judgment, and it spends nothing.
@@ -110,8 +110,8 @@ assistant message, including `cost.total`, and the adapter sums those into
 provider reports no price it omits `est_usd`, which reads `unmeasured` in the
 report rather than free.
 
-[`bench/results/pilot/2026-11-04-deepseek-flash-pilot.json`](results/pilot/2026-11-04-deepseek-flash-pilot.json)
-is the first such run: eight cases, three samples each, `internal`, never
+[`example-seeded-model-pilot.json`](runner/testdata/example-seeded-model-pilot.json)
+is an archived seeded example: eight cases, three samples each, `internal`, never
 citable.
 
 ## Flags
@@ -181,3 +181,12 @@ calibrate blocks, the raw `trend --json` `data.corpus` block, the cost rollup
 only for three samples per case, the whole corpus, no failures, and no
 `-internal`; otherwise the report names what is missing. Publish it as the
 runbook says, or leave it a pilot.
+
+## Static publication
+
+Use `-repeats 3 -k 3` to pin ordered sampling. Every run writes JSON and a
+Markdown report beside it. Run `go run ./bench/runner -render <report.json>`
+to print the same Markdown without launching an agent. Rates include their
+numerators, denominators, and n; missing cost or latency stays null. Seeded
+runs are labelled "not a model-quality claim". See the
+[publication runbook](../docs/benchmark.md#publish-and-render-a-run).

@@ -1,0 +1,3 @@
+package sample
+
+func count() int { return 1 }

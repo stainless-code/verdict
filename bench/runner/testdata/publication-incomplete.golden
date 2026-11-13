@@ -1,0 +1,52 @@
+# Benchmark 2040-01-01
+
+**Citable: no — 1 failed sample(s); selected subset**
+
+Selected cases: 2; total corpus cases: 10. Successful samples: 0.
+
+Corpus commit: `` (dirty: false)  
+Prompts hash: ``  
+Tool version: ``  
+Date:   
+Sampling: k=0, repeats=1  
+Severity weights: critical=0, important=0, informational=0
+
+Failed or incomplete samples: 2.
+
+<!-- prettier-ignore -->
+| Case | Sample | Reason |
+| --- | ---: | --- |
+| hard | 1 | agent timeout |
+| missing | 1 | sample result missing |
+
+## Metrics
+
+<!-- prettier-ignore -->
+| Metric | Value | Numerator | Denominator | n | Unit |
+| --- | ---: | ---: | ---: | ---: | --- |
+| precision | null | 0 | 0 | 0 | reported findings |
+| recall | null | 0 | 0 | 0 | bug samples |
+| false_discovery_rate | null | 0 | 0 | 0 | reported findings |
+| any_of_k_recall | null | 0 | 0 | 0 |  |
+| control_fp_rate | null | 0 | 0 | 0 | control case samples with at least one finding |
+| control_findings_per_case | null | 0 | 0 | 0 | false-positive findings per control case sample |
+| severity_weighted_pooled_f1 | null | 0 | 0 | 0 | weighted F1; n=bug samples plus false-positive findings |
+| signal_to_noise | null | 0 | 0 | 0 | false-positive findings; n=reported findings |
+
+Incomplete first-k cohorts: 0.
+
+Cost USD: null (n=0/0 samples).  
+Latency seconds: null (n=0/0 samples).
+
+## Per-case sample spreads
+
+<!-- prettier-ignore -->
+| Case | Metric | Median | Min | Max | n |
+| --- | --- | ---: | ---: | ---: | ---: |
+
+## Commands
+
+Argv arrays preserve argument boundaries.
+
+```json
+```
