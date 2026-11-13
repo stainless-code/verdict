@@ -15,9 +15,12 @@ import (
 
 // Run executes pr-wait and returns 1 when its condition remains unmet.
 func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Request) int {
-	q := &readycore.WaitRequest{ReadRequest: req}
+	q := &readycore.WaitRequest{ReadRequest: req, Warnings: append([]string{}, r.Warnings...)}
 	if ref := Parse(args, q); ref != nil {
 		return r.Refuse(ref)
+	}
+	if code, done := r.Canceled(ctx, "pr-wait"); done {
+		return code
 	}
 	if q.Runtime == nil {
 		q.Runtime = &core.Runtime{}

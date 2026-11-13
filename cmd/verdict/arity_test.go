@@ -19,7 +19,7 @@ func TestArityMatrix(t *testing.T) {
 	checkPositionalVerbs(t, []string{
 		"fetch", "fetch-local", "run", "record", "adopt", "fix", "post",
 		"triage", "report", "next", "show", "verify", "calibrate",
-		"ready", "gate",
+		"ready", "pr-wait", "gate",
 	})
 	checkBareVerbs(t, []string{"check-tree", "doctor", "learn", "init", "skill", "upgrade", "uninstall", "serve"})
 	checkTrendArity(t)

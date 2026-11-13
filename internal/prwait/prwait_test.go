@@ -84,3 +84,41 @@ func TestCLIWaitJSONLines(t *testing.T) {
 		t.Fatalf("result %s", lines[1])
 	}
 }
+
+func TestCLIWaitForwardsWarningsAndPreCancel(t *testing.T) {
+	out, diag := &bytes.Buffer{}, &bytes.Buffer{}
+	runner := &cli.Runner{
+		Out: out, Diag: diag, Human: diag, JSONMode: true,
+		Now: time.Now, Cmd: "pr-wait", Warnings: []string{"settings-warn"},
+	}
+	code := Run(t.Context(), runner, []string{"--until", "merged", "--timeout", "1s", "--once"}, core.ReadRequest{
+		Repo: "acme/app", Pr: "42", RepoRoot: t.TempDir(), Runtime: &core.Runtime{Commander: pendingHost{}},
+	})
+	var env struct {
+		Warnings []string `json:"warnings"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	if code != 1 || len(env.Warnings) != 1 || env.Warnings[0] != "settings-warn" {
+		t.Fatalf("code=%d warnings=%v stdout=%s", code, env.Warnings, out)
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	out.Reset()
+	diag.Reset()
+	runner.Warnings = nil
+	code = Run(ctx, runner, nil, core.ReadRequest{Repo: "acme/app", Pr: "42"})
+	var cancelEnv struct {
+		Error *struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &cancelEnv); err != nil {
+		t.Fatalf("canceled stdout %q: %v", out.String(), err)
+	}
+	if code != cli.ExitBroke || cancelEnv.Error == nil || cancelEnv.Error.Code != "canceled" {
+		t.Fatalf("pre-canceled exit=%d env=%s", code, out)
+	}
+}

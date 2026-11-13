@@ -145,3 +145,12 @@ func TestWaitOnceDeadlineStillTimeout(t *testing.T) {
 		t.Fatalf("late one-shot outcome %s; want wait-timeout", resp.Data.Outcome)
 	}
 }
+
+func TestWaitRefusesLocalBundle(t *testing.T) {
+	req, host, _ := waitTestRequest(t, "merged")
+	req.Pr = "local-branch"
+	_, ref := Wait(t.Context(), req)
+	if ref == nil || ref.Code != "no-pr-target" || host.polls != 0 {
+		t.Fatalf("local-branch ref=%v polls=%d; want no-pr-target", ref, host.polls)
+	}
+}

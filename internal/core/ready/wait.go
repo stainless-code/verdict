@@ -20,6 +20,7 @@ type WaitRequest struct {
 	Interval string
 	Provider string `enum:"github|gitlab|forgejo"`
 	Once     bool
+	Warnings []string
 }
 
 // WaitResponse carries the final observation and typed wait outcome.
@@ -56,6 +57,9 @@ func Wait(ctx context.Context, req *WaitRequest) (*WaitResponse, *core.RefusalEr
 }
 
 func waitSessionRun(ctx context.Context, req *WaitRequest) (*WaitResponse, *WaitData, *core.RefusalError) {
+	if ctx.Err() != nil {
+		return nil, nil, &core.RefusalError{Code: codeCanceled, Message: "PR wait canceled"}
+	}
 	timeout, interval, ref := WaitDurations(req.Timeout, req.Interval)
 	if ref != nil {
 		return nil, nil, ref
@@ -85,7 +89,7 @@ func waitSessionRun(ctx context.Context, req *WaitRequest) (*WaitResponse, *Wait
 	data.Outcome = session.outcome(completed)
 	return &WaitResponse{
 		Repo: req.Repo, Pr: req.Pr, At: req.TimeUTC(),
-		Next: "inspect the wait outcome", Warnings: []string{}, Data: data,
+		Next: "inspect the wait outcome", Warnings: append([]string{}, req.Warnings...), Data: data,
 	}, data, nil
 }
 
@@ -113,6 +117,9 @@ func waitProvider(req *WaitRequest) (string, *core.RefusalError) {
 	dir, ref := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
 	if ref != nil {
 		return "", ref
+	}
+	if isLocalDir(dir) {
+		return "", &core.RefusalError{Code: "no-pr-target", Message: "pr-wait requires a PR target, not a local bundle"}
 	}
 	provider, present := readcommon.OpenBundle(dir).ProviderMarker()
 	if !present {

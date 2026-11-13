@@ -480,6 +480,7 @@ func wirePRWait(ctx context.Context, b *bindings, req *readycore.WaitRequest) er
 	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
 		return err
 	}
+	req.Warnings = b.warningList()
 	return capPRWait(req)
 }
 
