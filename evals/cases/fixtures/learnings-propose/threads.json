@@ -1,0 +1,24 @@
+{
+  "schema_version": "1",
+  "threads": [
+    {
+      "id": "thread-71",
+      "path": "src/main.go",
+      "resolved": true,
+      "comments": [
+        {
+          "id": "71",
+          "body": "Check the error returned by Close before reporting success."
+        }
+      ]
+    },
+    {
+      "id": "thread-72",
+      "path": "src/main.go",
+      "resolved": true,
+      "comments": [
+        { "id": "72", "body": "A separate concern that the operator rejects." }
+      ]
+    }
+  ]
+}
