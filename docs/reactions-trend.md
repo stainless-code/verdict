@@ -21,3 +21,9 @@ reactions remain eligible. Every proposal records `reactor` (the login) and
 `role`: `pr-author`, `reviewer` for a known review-comment author, or `other`.
 Roles describe the available evidence — they do not grant approval. Identity
 reads are paginated; failed reads refuse instead of falling back to totals.
+
+`--reaction-reason` applies the same rationale to **every eligible 👎 proposal**
+in that run. Check each claim before submitting it. Matching uses the posted
+review ID, the sig parsed from the comment's final finding marker, and its path.
+Markerless comments, foreign review IDs, and other unmatched comments are
+counted in `unmatched`; comment prose is not used as identity.

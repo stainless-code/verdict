@@ -29,7 +29,12 @@ if [ "$*" = "api repos/acme/app/pulls/comments/71/reactions --paginate --slurp" 
   exit 0
 fi
 if [ "$*" = "api repos/acme/app/pulls/4960/comments --paginate --slurp" ]; then
-  printf '%s' '[[{"id":71,"user":{"login":"poster","type":"User"},"pull_request_review_id":7,"body":"Security boundary bug here with enough substance.","path":"notes.txt"}]]'
+  sig="$(jq -r '.[] | select(.category == "security") | .sig' "$EVAL_SANDBOX/.verdict/state/4960/findings.json")"
+  jq -n --arg sig "$sig" '[[{id:71,user:{login:"poster",type:"User"},pull_request_review_id:7,
+    body:("Security boundary bug here with enough substance.\n\n<!-- verdict-finding sig=" + $sig + " -->"),path:"notes.txt"},
+    {id:72,user:{login:"poster",type:"User"},pull_request_review_id:7,body:"unmarked comment",path:"notes.txt"},
+    {id:73,user:{login:"poster",type:"User"},pull_request_review_id:8,
+    body:("Foreign review\n\n<!-- verdict-finding sig=" + $sig + " -->"),path:"notes.txt"}]]'
   exit 0
 fi
 if [ "${1:-}" = "api" ]; then
@@ -185,7 +190,7 @@ else
   bad "missing reasoned triage claim"
 fi
 
-if jq -e '.data.excluded == {bot:1,self:1}' <"$EVAL_OUT" >/dev/null; then
+if jq -e '.data.excluded == {bot:1,self:1} and .data.unmatched == 2' <"$EVAL_OUT" >/dev/null; then
   good "excluded bot and self counts are visible"
 else
   bad "missing reaction exclusions"

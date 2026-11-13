@@ -121,11 +121,8 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if err := ctx.Err(); err != nil {
 		return nil, &core.RefusalError{Code: "canceled", Message: "canceled before calibrate completed"}
 	}
-	if req.invalidReactionMode() {
-		return nil, &core.RefusalError{
-			Code:    codeBadJudgment,
-			Message: "reactions require a separate live run; reaction reasons need --reactions",
-		}
+	if ref := req.reactionModeRefusal(); ref != nil {
+		return nil, ref
 	}
 
 	dir, ref := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
@@ -231,4 +228,20 @@ func (st *state) persistCalibration(dir string) {
 
 func (req *Request) invalidReactionMode() bool {
 	return req.Reactions && req.Probe || req.ReactionReason != "" && !req.Reactions
+}
+
+func (req *Request) reactionModeRefusal() *core.RefusalError {
+	if req.Reactions && (len(req.Specs) > 0 || req.JudgeFile != "") {
+		return &core.RefusalError{
+			Code:    codeBadJudgment,
+			Message: "--judge and --judge-file need --probe (judgments only merge on a probe run)",
+		}
+	}
+	if req.invalidReactionMode() {
+		return &core.RefusalError{
+			Code:    codeBadJudgment,
+			Message: "reactions require a separate live run; reaction reasons need --reactions",
+		}
+	}
+	return nil
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
+	threadscore "github.com/stainless-code/verdict/internal/core/threads"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -133,13 +134,16 @@ func matchedReactionComment(m map[string]any, entries []any, reviewID string) bo
 }
 
 func reactionCommentMatches(m map[string]any, entry any, reviewID string) bool {
-	return readcommon.FieldOf(entry, "kind") == "inline" && jq.R(m["pull_request_review_id"]) == reviewID &&
-		m["body"] == postedBody(entry) && readcommon.Cmp(m["path"], readcommon.FieldOf(entry, "path")) == 0
+	sig, ok := threadscore.FindingSig(jq.StrOf(m["body"]))
+	return ok && sig == readcommon.FieldOf(entry, keySig) && readcommon.FieldOf(entry, "kind") == "inline" &&
+		jq.R(m["pull_request_review_id"]) == reviewID &&
+		readcommon.Cmp(m["path"], readcommon.FieldOf(entry, "path")) == 0
 }
 
 type reactionSignals struct {
 	proposals []any
 	bot, self int
+	unmatched int
 }
 
 func reactionProposals(entries, comments []any, reviewID, reason, author string) *jq.Obj {
@@ -150,7 +154,8 @@ func reactionProposals(entries, comments []any, reviewID, reason, author string)
 	}
 
 	slices.SortStableFunc(result.proposals, func(a, b any) int { return strings.Compare(jq.PrettyOrdered(a), jq.PrettyOrdered(b)) })
-	return jq.NewObj("proposals", result.proposals, "excluded", jq.NewObj("bot", result.bot, "self", result.self))
+	return jq.NewObj("proposals", result.proposals, "excluded", jq.NewObj("bot", result.bot, "self", result.self),
+		"unmatched", result.unmatched)
 }
 
 func reactionReviewers(comments []any) map[string]bool {
@@ -204,7 +209,7 @@ func (r *reactionSignals) addReaction(reaction map[string]any, entry any, poster
 		return
 	}
 	role := reactionRole(login, author, reviewers)
-	r.proposals = append(r.proposals, jq.NewObj("sig", readcommon.FieldOf(entry, "sig"), "proposed", proposed,
+	r.proposals = append(r.proposals, jq.NewObj(keySig, readcommon.FieldOf(entry, keySig), "proposed", proposed,
 		"claim", claim, "reactor", login, "role", role))
 }
 
@@ -225,7 +230,7 @@ func reactionClaim(content any, entry any, reason string) (string, any) {
 	case "-1":
 		if reason != "" {
 			return "false-positive", core.TriageClaim{
-				Sig: jq.StrOf(readcommon.FieldOf(entry, "sig")), Status: "false-positive", Rationale: reason,
+				Sig: jq.StrOf(readcommon.FieldOf(entry, keySig)), Status: "false-positive", Rationale: reason,
 			}
 		}
 	}
@@ -248,11 +253,14 @@ func (st *state) attachMatchedReactions(ctx context.Context, base string, commen
 func (r *reactionSignals) matchEntries(comment any, entries []any, reviewID, reason, author string, reviewers map[string]bool) {
 	m, ok := comment.(map[string]any)
 	if !ok {
+		r.unmatched++
 		return
 	}
 	for _, entry := range entries {
 		if reactionCommentMatches(m, entry, reviewID) {
 			r.addComment(m, entry, reason, author, reviewers)
+			return
 		}
 	}
+	r.unmatched++
 }

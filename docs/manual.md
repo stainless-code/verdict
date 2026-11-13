@@ -3808,7 +3808,7 @@ review is posted to GitHub before the merge gate runs.
 ### Reaction proposals and rule rates
 
 `calibrate <owner/repo> <pr> --reactions [--reaction-reason TEXT] --json`
-reads GitHub reactions on comments matching the posted review ID, body, and
+reads GitHub reactions on comments matching the posted review ID, parsed finding-marker sig, and
 path. It returns helpful proposals for `+1`. A `-1` produces a false-positive
 proposal only with a nonblank operator reason. Conflicting votes produce both
 signals. Nothing changes finding status or KB counters. Review each `claim`
@@ -3858,3 +3858,9 @@ The tombstone permanently blocks reproposal and acceptance. `--dry-run` previews
 without writing. An accepted rule instead needs `learn --retire` to veto it.
 Precision measurement with a real reviewer belongs to the STA-344 benchmark;
 acceptance alone changes recall context, not a suppression predicate.
+
+`--reaction-reason` applies the same rationale to **every eligible 👎 proposal**
+in that run. Check each claim before submitting it. Matching uses the posted
+review ID, the sig parsed from the comment's final finding marker, and its path.
+Markerless comments, foreign review IDs, and other unmatched comments are
+counted in `unmatched`; comment prose is not used as identity.
