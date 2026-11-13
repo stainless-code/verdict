@@ -705,9 +705,16 @@ func (forgejoHost) postedInlineURLs(ctx context.Context, cmdr Commander, env map
 	if ref != nil {
 		return nil, forgejoRefusal(ref)
 	}
-	raw, _, err := forgejoRead(ctx, cmdr, auth, forgejo.CommentsURL(base, id))
+	read := func(url string) ([]map[string]any, error) {
+		raw, _, err := forgejoRead(ctx, cmdr, auth, url)
+		if err != nil {
+			return nil, err
+		}
+		return publicationList(raw)
+	}
+	items, err := readPages(forgejo.CommentsURL(base, id), read)
 	if err != nil {
 		return nil, err
 	}
-	return decodeSummaryInlineComments(raw)
+	return inlineLinksFromMaps(items), nil
 }

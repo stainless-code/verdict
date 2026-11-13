@@ -615,14 +615,6 @@ func nestedLogin(v any, key string) string {
 	return jq.StrOf(m[key])
 }
 
-func decodeSummaryInlineComments(raw string) ([]summaryInlineLink, error) {
-	items, err := publicationList(raw)
-	if err != nil {
-		return nil, err
-	}
-	return inlineLinksFromMaps(items), nil
-}
-
 func inlineLinksFromMaps(items []map[string]any) []summaryInlineLink {
 	out := make([]summaryInlineLink, 0, len(items))
 	for _, m := range items {

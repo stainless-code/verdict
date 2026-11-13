@@ -88,6 +88,10 @@ func hostBaseCommander(t *testing.T, provider, listJSON, inlineJSON string) *scr
 		}
 		return &scriptCommander{t: t, out: out}
 	case providerForgejo:
+		var inlinePage1 []string
+		for i := range 50 {
+			inlinePage1 = append(inlinePage1, fmt.Sprintf(`{"id":%d,"path":"other.txt","position":%d,"body":"noise %d","html_url":"https://fj.example/acme/app/pulls/7#issuecomment-%d"}`, 200+i, i+1, i, 200+i))
+		}
 		fjCreateRoute := "curl\x00--config\x00" + configPlaceholder + "\x00-sS\x00-i\x00" +
 			"-H\x00Content-Type: application/json\x00-X\x00POST\x00--data-binary\x00@-\x00" +
 			"https://forgejo.invalid/api/v1/repos/acme/app/issues/7/comments"
@@ -105,7 +109,10 @@ func hostBaseCommander(t *testing.T, provider, listJSON, inlineJSON string) *scr
 			forgejoWriteRoute: {
 				stdout: forgejoAnswer("200 OK", `{"id":901,"state":"COMMENT","html_url":"https://fj.example/acme/app/pulls/7#pullrequestreview-901","submitted_at":"2026-01-01T00:00:00Z"}`),
 			},
-			forgejoReadPrefix + "https://forgejo.invalid/api/v1/repos/acme/app/pulls/7/reviews/901/comments": {
+			forgejoReadPrefix + "https://forgejo.invalid/api/v1/repos/acme/app/pulls/7/reviews/901/comments?limit=50&page=1": {
+				stdout: "[" + strings.Join(inlinePage1, ",") + "]",
+			},
+			forgejoReadPrefix + "https://forgejo.invalid/api/v1/repos/acme/app/pulls/7/reviews/901/comments?limit=50&page=2": {
 				stdout: inlineJSON,
 			},
 			forgejoReadPrefix + "https://forgejo.invalid/api/v1/repos/acme/app/issues/7/comments?limit=50&page=1": {
