@@ -452,7 +452,6 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[FixData](), name: "fixData"},
 		{typ: reflect.TypeFor[FixAnchors](), name: "fixAnchors"},
 		{typ: reflect.TypeFor[LearnData](), name: "learnData"},
-		{typ: reflect.TypeFor[LearnRule](), name: "learnRule"},
 		{typ: reflect.TypeFor[InitData](), name: "initData"},
 		{typ: reflect.TypeFor[DoctorData](), name: "doctorData"},
 		{typ: reflect.TypeFor[DoctorCheck](), name: "doctorCheck"},

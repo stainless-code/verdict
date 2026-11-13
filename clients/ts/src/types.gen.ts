@@ -825,30 +825,7 @@ export interface FixAnchors {
 /** learn --json data: exactly one of rule (one appended rule) or rules (the status listing). */
 export interface LearnData {
   rule?: unknown;
-  rules?: Array<LearnRule>;
-  [key: string]: unknown;
-}
-
-/** One knowledge-base rule row from learn --status (or a proposal outcome row from learn --propose). */
-export interface LearnRule {
-  id: string;
-  rule?: string;
-  scope?: string;
-  provenance?: string;
-  rigor?: string;
-  hits?: number;
-  false_hits?: number;
-  judged?: number;
-  status?: string;
-  precision?: string;
-  /** Count of measured bundles whose kb-recall.json manifest listed this rule, or null when no recall manifests exist in the repository. */
-  recalled_in?: number | null;
-  /** Count of reviewed bundles with at least one finding citing this rule. */
-  cited_in?: number;
-  /** Citation-to-recall exposure rate (cited_in / recalled_in), or null when unmeasured or recalled_in is zero. */
-  exposure?: number | null;
-  /** Addressed share of findings citing this rule (addressed / cited), or null when no findings cite it. */
-  acceptance?: number | null;
+  rules?: unknown[];
   [key: string]: unknown;
 }
 

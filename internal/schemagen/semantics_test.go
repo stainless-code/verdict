@@ -204,7 +204,7 @@ var publishedSemantics = map[string]string{
 	// remain unchanged.
 	// summary comment: additive nullable postData.summary and $defs/postSummary
 	// (optional; no existing property, required key, enum, or type changed).
-	"envelope.schema.json": "ffa9f730f27a6ba5301da5cd87108814b7a43923df6cb44b13af799137d03d45",
+	"envelope.schema.json": "d89c78f578624cb0bb94bff161be835a755d6ac85b736938d7de78eab5433bf7",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

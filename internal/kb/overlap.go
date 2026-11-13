@@ -86,6 +86,9 @@ type OverlapRollup struct {
 func ScanBundleFindings(root, skipPrefix string, warn func(string)) []BundleFindings {
 	entries, err := os.ReadDir(readcommon.StateDir(root))
 	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			emitWarn(warn, skipPrefix+readcommon.StateDir(root)+" (bundle state unreadable — exposure counts are incomplete)")
+		}
 		return nil
 	}
 	var out []BundleFindings
@@ -293,9 +296,9 @@ func recallManifest(root, skipPrefix, bundle string, warn func(string)) ([]any, 
 	if !isFile(path) {
 		return []any{}, false
 	}
-	raw, err := os.ReadFile(path)
+	raw, err := jq.CappedFile(path, jq.MaxKBBytes)
 	if err != nil {
-		return []any{}, false
+		return warnManifest(dir, skipPrefix, warn)
 	}
 	doc, derr := jq.Decode(raw)
 	if derr != nil {
