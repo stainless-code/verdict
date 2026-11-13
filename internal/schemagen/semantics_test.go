@@ -282,7 +282,7 @@ var publishedSemantics = map[string]string{
 	// scp path (the loader's scheme guard). One pattern narrowed to the
 	// loader's own grammar; no property, required key, enum, or type changed.
 	"lock.schema.json": "c88951e4ac18781f93881f6654493ad8a7345ea990fca44bbd1149c7eefc4714",
-	"pack.schema.json": "230c6eb2fcf74127193e6ace610db224209ec2f9e11dea4233cca05a28e50055",
+	"pack.schema.json": "be5fbfe989cf2dbae0b4a3ba67be5e8512e3784db734896b7f142d7df579ae73",
 	// patch identity: additive optional patch_id/patch_id_kind plus the
 	// optional forced[] audit with $defs/forcedPost. No existing property,
 	// required key, or type changed.

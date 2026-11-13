@@ -22,8 +22,8 @@ import (
 )
 
 type proposal struct {
-	Body     string
-	Manifest pack.Manifest
+	Body     string        `json:"body"`
+	Manifest pack.Manifest `json:"manifest"`
 }
 
 const (
