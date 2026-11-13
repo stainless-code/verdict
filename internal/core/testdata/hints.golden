@@ -150,6 +150,7 @@ pr-read-failed	try: run 'gh auth status', confirm the repo/PR spelling, then re-
 privacy-unavailable	try: address the cause above, then re-run the same command
 prompt-dump-failed	try: run from a checkout carrying SKILL.md/prompts, then re-run
 provider-unimplemented	try: use the verb named above for this bundle kind
+provider-unknown	try: pass --provider github|gitlab|gitcafe|forgejo|bitbucket|azure
 rationale-required	try: add --rationale with 30+ chars, or --force
 read-only-tool	try: restart the MCP server without --read-only; use --operator for operator-only tools
 record-failed	try: address the cause above, then re-run the same command

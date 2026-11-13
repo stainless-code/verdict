@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/threads"
 	"github.com/stainless-code/verdict/internal/hunks"
@@ -22,6 +23,15 @@ import (
 // plan and every model-facing export already withholds privacy paths.
 func fetchTail(
 	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f *core.FetchFlags, budget *budgetState,
+	fcap *fetchCap, chunkJSON any, incBase string,
+) (*core.FetchData, string, error) {
+	if err := writeProviderSource(ctx2.dir, ctx2.runner.providerSource); err != nil {
+		return nil, "", err
+	}
+	return fetchTailAfterSource(ctx, ctx2, req, f, budget, fcap, chunkJSON, incBase)
+}
+
+func fetchTailAfterSource(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f *core.FetchFlags, budget *budgetState,
 	fcap *fetchCap, chunkJSON any, incBase string,
 ) (*core.FetchData, string, error) {
 	if ref := finalizeRemoteRun(ctx, ctx2, req, f); ref != nil {
@@ -457,4 +467,21 @@ func writeEvidence(ctx context.Context, ctx2 *fetchRunCtx, in impactInput, input
 func contextArtifacts(artifacts *jq.Obj, dir string) {
 	addArtifactIfPresent(artifacts, dir, "context.json", "/context.json")
 	addArtifactIfPresent(artifacts, dir, "context.txt", "/context.txt")
+}
+
+func writeProviderSource(dir, source string) error {
+	raw, err := os.ReadFile(dir + suffixPRJSON)
+	if err != nil {
+		return internalErrorf("read provider source: %v", err)
+	}
+	value, err := jq.DecodeOrdered(raw)
+	if err != nil {
+		return internalErrorf("decode provider source: %v", err)
+	}
+	doc, ok := value.(*jq.Obj)
+	if !ok {
+		return internalErrorf("PR is not an object")
+	}
+	doc.Set("provider_source", source)
+	return atomic.WriteFile(dir+suffixPRJSON, []byte(doc.MarshalPretty()+"\n"))
 }

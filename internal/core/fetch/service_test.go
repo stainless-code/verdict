@@ -181,7 +181,7 @@ func fetchTestReq(cmdr Commander, human, diag *bytes.Buffer, warnings *[]string)
 	}
 	return &core.FetchRequest{
 		ReadRequest: read,
-		Flags:       core.FetchFlags{HeadControls: true},
+		Flags:       core.FetchFlags{HeadControls: true, Provider: "github"},
 		Effective:   core.Defaults(),
 		Warnings:    []string{},
 		Human:       human,
@@ -307,7 +307,7 @@ func assertIdentityFile(t *testing.T) {
 // assertFetchFiles proves the canned bundle bodies landed verbatim.
 func assertFetchFiles(t *testing.T) {
 	t.Helper()
-	if raw, err := os.ReadFile(".verdict/state/7/PR.json"); err != nil || string(raw) != fetchTestPR() {
+	if raw, err := os.ReadFile(".verdict/state/7/PR.json"); err != nil || !strings.Contains(string(raw), `"provider_source": "flag"`) || !strings.Contains(string(raw), `"number": 7`) {
 		t.Errorf("PR.json = %q, %v", raw, err)
 	}
 	if raw, err := os.ReadFile(".verdict/state/7/full.diff"); err != nil || string(raw) != fetchTestDiff() {
@@ -608,5 +608,57 @@ func TestWriteIdentityFileRawUnreadable(t *testing.T) {
 		if !errors.As(err, &ref) || ref.Code != CodeFetchFailed {
 			t.Fatalf("error = %v, want fetch-failed", err)
 		}
+	}
+}
+
+func TestRemoteCredentialsStayOutOfBundle(t *testing.T) {
+	t.Chdir(t.TempDir())
+	cmdr := fetchHappyCommander(t)
+	cmdr.out["git\x00remote\x00get-url\x00origin"] = scriptResult{stdout: "https://remote-user:remote-password@github.com/o/r.git"}
+	var human, diag bytes.Buffer
+	var warnings []string
+	req := fetchTestReq(cmdr, &human, &diag, &warnings)
+	req.Flags.Provider = ""
+	if _, err := Run(t.Context(), req); err != nil {
+		t.Fatal(err)
+	}
+	for _, output := range append(warnings, human.String(), diag.String()) {
+		assertNoRemoteCredentials(t, []byte(output))
+	}
+	assertBundleHasNoRemoteCredentials(t)
+	raw, err := os.ReadFile(".verdict/state/7/PR.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(raw, []byte(`"provider_source": "remote"`)) {
+		t.Fatalf("missing remote source: %s", raw)
+	}
+}
+
+func assertNoRemoteCredentials(t *testing.T, raw []byte) {
+	t.Helper()
+	if bytes.Contains(raw, []byte("remote-user")) || bytes.Contains(raw, []byte("remote-password")) {
+		t.Fatal("remote credentials leaked into output or bundle artifact")
+	}
+}
+
+func assertBundleHasNoRemoteCredentials(t *testing.T) {
+	t.Helper()
+	err := filepath.WalkDir(".verdict/state/7", func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		assertNoRemoteCredentials(t, raw)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

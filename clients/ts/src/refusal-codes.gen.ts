@@ -154,6 +154,7 @@ export type RefusalCode =
   | "privacy-unavailable"
   | "prompt-dump-failed"
   | "provider-unimplemented"
+  | "provider-unknown"
   | "rationale-required"
   | "read-only-tool"
   | "record-failed"

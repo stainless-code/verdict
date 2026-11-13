@@ -112,6 +112,7 @@ var hintRules = []HintRule{
 	{codes: []string{"fix-ceiling"}, hint: "try: triage the sig or split the fix — the 3-pass ceiling is hard-coded"},
 	{codes: []string{"scope-escape"}, hint: "try: revert or stash files outside the anchor path, then re-run fix"},
 	{codes: []string{"rationale-required"}, hint: "try: add --rationale with 30+ chars, or --force"},
+	{codes: []string{codeProviderUnknown}, hint: "try: pass --provider github|gitlab|gitcafe|forgejo|bitbucket|azure"},
 	{codes: []string{"already-adopted", "provider-unimplemented"}, hint: "try: use the verb named above for this bundle kind"},
 	{codes: []string{"needs-confirm"}, hint: "try: re-run with --yes after reviewing the preview, then re-run"},
 	{codes: []string{"bad-settings-credentials"}, hint: "try: remove the credential key from the settings file " +

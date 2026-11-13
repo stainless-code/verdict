@@ -1,6 +1,7 @@
 package fetchcore
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -15,7 +16,7 @@ import (
 // threadsRequest builds a refresh request over a scripted commander.
 func threadsRequest(cmdr Commander, repo, pr string) *ThreadsRequest {
 	root := ""
-	req := &ThreadsRequest{}
+	req := &ThreadsRequest{Provider: "github"}
 	req.ReadRequest = core.ReadRequest{
 		Runtime: &core.Runtime{
 			Env:       map[string]string{},
@@ -320,4 +321,104 @@ func TestThreadsHint(t *testing.T) {
 	if got := threadsHint(".verdict/state/7"); !strings.Contains(got, ".verdict/state/7/threads.json") {
 		t.Errorf("feed hint = %q", got)
 	}
+}
+
+func TestThreadsUsesBundleProvider(t *testing.T) {
+	for _, tc := range []struct{ name, pr, flag, want string }{
+		{"legacy", `{}`, "", "github"},
+		{"marked", `{"provider":"gitlab"}`, "", "gitlab"},
+		{"override", `{"provider":"gitlab"}`, "github", "github"},
+		{"empty marker", `{"provider":""}`, "", ""},
+		{"numeric marker", `{"provider":17}`, "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "PR.json"), []byte(tc.pr), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			req := threadsRequest(nil, "o/r", "7")
+			req.Provider = tc.flag
+			st := &threadsRun{req: req}
+			got, ref := st.selectProvider(t.Context(), dir)
+			assertBundleProviderChoice(t, got, tc.want, ref)
+		})
+	}
+}
+
+func TestThreadsOriginMismatchPreservesBundle(t *testing.T) {
+	for _, resolve := range []bool{false, true} {
+		t.Run(boolLit(resolve), func(t *testing.T) { assertThreadsMismatch(t, resolve) })
+	}
+}
+
+func assertBundleProviderChoice(t *testing.T, got, want string, ref *core.RefusalError) {
+	t.Helper()
+	if got != want {
+		t.Fatalf("provider = %q, want %q", got, want)
+	}
+	if want == "" {
+		if ref == nil || ref.Code != "bad-provider" {
+			t.Fatalf("marker refusal = %+v", ref)
+		}
+		return
+	}
+	if ref != nil {
+		t.Fatal(ref)
+	}
+}
+
+func assertThreadsMismatch(t *testing.T, resolve bool) {
+	t.Helper()
+	t.Chdir(t.TempDir())
+	writeResolveBundle(t, providerGitHub)
+	before := readThreadsFixture(t)
+	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{
+		"git\x00remote\x00get-url\x00origin": {stdout: "git@gitlab.com:o/r.git"},
+	}}
+	req := threadsRequest(cmdr, "o/r", "7")
+	req.Provider, req.Resolve = "", resolve
+	_, ref := RunThreads(t.Context(), req)
+	assertProviderMismatchRef(t, ref)
+	if after := readThreadsFixture(t); !bytes.Equal(after, before) {
+		t.Fatalf("threads changed after refusal: %s", after)
+	}
+	if len(cmdr.calls) != 1 {
+		t.Fatalf("calls = %q, want only origin lookup", cmdr.calls)
+	}
+}
+
+func readThreadsFixture(t *testing.T) []byte {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(".verdict", "state", "7", "threads.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+func assertProviderMismatchRef(t *testing.T, ref *core.RefusalError) {
+	t.Helper()
+	if ref == nil || ref.Code != "bad-provider" {
+		t.Fatalf("mismatch refusal = %+v", ref)
+	}
+	for _, text := range []string{`origin provider "gitlab"`, `bundle provider "github"`, "--provider github"} {
+		if !strings.Contains(ref.Message, text) {
+			t.Errorf("refusal %q misses %q", ref.Message, text)
+		}
+	}
+}
+
+func TestThreadsBundleKeepsMarkerWithUnknownOrigin(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "PR.json"), []byte(`{"provider":"gitlab"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{
+		"git\x00remote\x00get-url\x00origin": {stdout: "git@unknown.invalid:o/r.git"},
+	}}
+	req := threadsRequest(cmdr, "o/r", "7")
+	req.Provider = ""
+	st := &threadsRun{req: req}
+	got, ref := st.selectProvider(t.Context(), dir)
+	assertBundleProviderChoice(t, got, "gitlab", ref)
 }

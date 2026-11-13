@@ -110,8 +110,12 @@ esac
 EOF
 chmod +x "$EVAL_SANDBOX/fakebin/gh"
 
+git -C "$EVAL_SANDBOX" remote add origin https://github.com/acme/app.git
+
 EVAL_STUBBIN="$EVAL_SANDBOX/fakebin:$EVAL_STUBBIN" run_review fetch acme/app 4701 --index HEAD --json
 assert_exit "fetch --index exits 0" 0
+assert_file_grep "provider inferred from github origin" \
+  "$EVAL_SANDBOX/.verdict/state/4701/PR.json" '"provider_source": "remote"'
 assert_json_field "the remote next step feeds toc.txt" "true" '.next | contains("4701/toc.txt to any agent")'
 assert_json_field "the remote bundle names the impact artifact" \
   ".verdict/state/4701/impact.json" '.data.artifacts["impact.json"]'
