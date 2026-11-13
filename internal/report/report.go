@@ -8,6 +8,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/cli"
@@ -188,6 +190,25 @@ var reportValueWants = map[string]string{
 	"--category": "logic|edge-case|security|performance|accidental-commit|style|docs|other",
 }
 
+var reportBoolSetters = map[string]func(*reportcore.Flags){
+	"--include-withheld": func(f *reportcore.Flags) { f.IncludeWithheld = true },
+	"--cost":             func(f *reportcore.Flags) { f.Cost = true },
+	"--completeness":     func(f *reportcore.Flags) { f.Completeness = true },
+}
+
+func reportWantedFlags() string {
+	names := make([]string, 0, len(reportValueWants)+len(reportBoolSetters)+1)
+	for k := range reportValueWants {
+		names = append(names, k)
+	}
+	for k := range reportBoolSetters {
+		names = append(names, k)
+	}
+	names = append(names, "--json")
+	slices.Sort(names)
+	return strings.Join(names, ", ")
+}
+
 // parseFlag handles one report flag, returning how many args it consumed.
 // An unknown flag or a missing/invalid value is a usage error (exit 2, no
 // envelope).
@@ -196,22 +217,11 @@ func parseFlag(r *cli.Runner, flags *reportcore.Flags, args []string, i int) (in
 	if want, ok := reportValueWants[a]; ok {
 		return parseReportValue(r, flags, args, i, want)
 	}
-	switch a {
-	case "--include-withheld":
-		flags.IncludeWithheld = true
+	if set, ok := reportBoolSetters[a]; ok {
+		set(flags)
 		return 1, 0, false
-	case "--cost":
-		flags.Cost = true
-		return 1, 0, false
-	case "--completeness":
-		flags.Completeness = true
-		return 1, 0, false
-	default:
-		return 0, r.ReportUsage(usageErr(
-			"unknown flag '%s' for report (want --status, --kind, --category, --output, "+
-				"--sarif, --cost, --check, --completeness, --live, --json)",
-			a)), true
 	}
+	return 0, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf("unknown flag '%s' for report (want %s)", a, reportWantedFlags())}), true
 }
 
 // parseReportValue consumes one report value flag and applies its validation.
