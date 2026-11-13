@@ -741,8 +741,19 @@ func refetchThenRepost(t *testing.T, note string, warnings, human *[]string) *co
 	}
 	dropLocalRecord(t)
 	second := gitlabCommander(t)
+	live, err := json.Marshal([]any{map[string]any{"notes": []any{map[string]any{fieldBody: note}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second.out[gitlabRecheckArgv] = scriptResult{stdout: string(live)}
 	req := postTestReq(second, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, warnings, human)
 	_, ref := Run(context.Background(), req)
+	if got := countCalls(second, gitlabNotesArgv); got != 0 {
+		t.Errorf("retry reposted summary %d times, want 0", got)
+	}
+	if got := countCalls(second, gitlabDiscussionsArgv); got != 1 {
+		t.Errorf("retry published %d inline discussions, want 1", got)
+	}
 
 	return ref
 }
