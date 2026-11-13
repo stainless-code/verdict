@@ -10,16 +10,17 @@ into your repo as `.github/workflows/verdict-review.yml`.
 ## The pipeline
 
 1. **Install** — the `setup-verdict` action installs a pinned, signature-
-   verified binary and adds it to `PATH` (`version: latest` in the example;
-   pin a released version for a frozen gate).
-2. **Readiness pre-check** — `verdict ready <repo> <pr> --check` fails fast
-   when the PR is not reviewable (failing CI, open threads, draft), saving
-   agent spend before the expensive steps.
+   verified binary and adds it to `PATH` (set `vars.VERDICT_VERSION` to a release containing `run --agent`).
+2. **Install the review skill** — `verdict skill install --agent "$VERDICT_AGENT"`
+   installs the skill for the selected agent before review.
 3. **Fetch** — `verdict fetch <repo> <pr>` builds `.verdict/state/<pr>/` (PR record,
    `full.diff`, `toc.txt`, `roles.txt`).
-4. **Agent review** — `verdict run <repo> <pr> --agent "$VERDICT_AGENT"`
-   spawns your agent once against the fetched bundle. Two lines choose the
-   agent: `VERDICT_AGENT` in the step's `env:` (one of `claude`, `codex`,
+4. **Readiness pre-check** — `verdict ready <repo> <pr> --check` fails fast
+   when the PR is not reviewable (failing CI, open threads, draft), saving
+   agent spend before the expensive steps.
+5. **Agent review** — `verdict run <repo> <pr> --agent "$VERDICT_AGENT"`
+   spawns your agent once against the fetched bundle. The Action's `agent` input chooses the
+   agent: it sets `VERDICT_AGENT` in the step's `env:` (one of `claude`, `codex`,
    `cursor`, `opencode` — the shipped `run --agent` table) and the `--agent`
    argument that reads it. Install that CLI on the runner in an earlier step;
    the recipe never downloads it. The agent reads `full.diff` via `toc.txt`
@@ -29,9 +30,9 @@ into your repo as `.github/workflows/verdict-review.yml`.
    unless that file is fresh: `run` refuses `no-review-artifact` when the agent
    wrote nothing and `stale-review-artifact` when it left an earlier run's
    file, so a silent agent cannot reach `post`.
-5. **Post** — `verdict post <repo> <pr>` validates anchors, merges
+6. **Post** — `verdict post <repo> <pr>` validates anchors, merges
    `findings.json`, and submits exactly one review.
-6. **Merge gate** — one composed exit code:
+7. **Merge gate** — one composed exit code:
    `verdict gate <repo> <pr> --max-severity critical --require-head --live auto`
    exits 0 only when no open `critical` findings stand, the fetched HEAD is
    the posted HEAD, the stored diff-coverage receipt for that HEAD attests the
@@ -42,7 +43,7 @@ into your repo as `.github/workflows/verdict-review.yml`.
 
 ## Merge gating
 
-Branch protection should require the recipe's job (`review` in the
+Branch protection should require the recipe's job name (`review + merge gate` in the
 example). The gate composes two machine exits, both documented in the
 operator manual:
 
@@ -111,13 +112,21 @@ so `contents: read` is enough); other providers refuse `controls-unavailable`
 empty; `gh` authenticates from `GH_TOKEN` only. `GH_TOKEN` is scoped to the
 steps that call `gh`, so the agent step never inherits the write token.
 
-Fork PRs have no secrets. Without a guard, the shipped job fails at the agent
-step: `ANTHROPIC_API_KEY` is empty, `verdict run` reports `agent-missing` or a
-non-zero agent exit, and the job goes red instead of silently skipping review.
-That is the intended default, because a skipped review reads as a pass. If you
-would rather skip than fail, gate the agent and `post` steps on
-`github.event.pull_request.head.repo.full_name == github.repository` and run
-only `fetch`, `report`, and `gate` on forks.
+Fork PRs have no repository secrets or write-enabled `GITHUB_TOKEN`. Without
+a guard, the Action fails when the review needs a model key or posting needs
+write permission. That is the intended default, because a skipped review reads
+as a pass. To skip fork reviews, put this condition on the `Review and gate`
+Action step:
+
+```yaml
+if: github.event.pull_request.head.repo.full_name == github.repository
+```
+
+This skips the entire pipeline on forks, including `fetch`, `report`, and
+`gate`. The agent and `post` steps live inside the composite Action and cannot
+be gated individually by the caller. If fork reviews must block merging, use
+a separate required workflow that can review forks with the appropriate
+credentials.
 
 ## Pin policy
 

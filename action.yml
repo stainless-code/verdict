@@ -1,0 +1,120 @@
+name: Verdict review and merge gate
+description: Run verdict with your agent and keys on your CI runner.
+branding:
+  icon: check-circle
+  color: purple
+inputs:
+  version:
+    description: "String — pinned verdict release (X.Y.Z)."
+    required: true
+  repository:
+    description: "String — owner/repository to review."
+    required: true
+  pull-request:
+    description: "String — pull request number."
+    required: true
+  github-token:
+    description: "Secret string — token with contents read and pull-requests write."
+    required: true
+  agent:
+    description: "String enum — claude, codex, cursor, or opencode; install the CLI first."
+    default: claude
+  anthropic-api-key:
+    description: "Secret string — caller's Anthropic key, only for the agent step."
+    default: ""
+  openai-api-key:
+    description: "Secret string — caller's OpenAI key, only for the agent step."
+    default: ""
+outputs:
+  version:
+    description: "String — installed verdict version."
+    value: ${{ steps.install.outputs.version }}
+runs:
+  using: composite
+  steps:
+    - name: Validate inputs
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        AGENT: ${{ inputs.agent }}
+        REPOSITORY: ${{ inputs.repository }}
+        PR: ${{ inputs.pull-request }}
+        TOKEN: ${{ inputs.github-token }}
+      run: |
+        [[ "$VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 2
+        [[ "$AGENT" =~ ^(claude|codex|cursor|opencode)$ ]] || exit 2
+        [[ "$REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || exit 2
+        [[ "$PR" =~ ^[1-9][0-9]*$ ]] || exit 2
+        [[ -n "$TOKEN" ]] || exit 2
+    - name: Install verdict
+      id: install
+      uses: stainless-code/verdict/setup-verdict@471d2985b29060caa90036fefac565e97a12bb2c # action as introduced; re-pin to a release commit
+      with:
+        version: ${{ inputs.version }}
+
+    - name: Install the review skill
+      env:
+        VERDICT_AGENT: ${{ inputs.agent }}
+      shell: bash
+      run: |
+        verdict skill install --agent "$VERDICT_AGENT"
+
+    - name: Fetch the PR bundle
+      env:
+        VERDICT_REPOSITORY: ${{ inputs.repository }}
+        VERDICT_PR: ${{ inputs.pull-request }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      shell: bash
+      run: |
+        verdict fetch "$VERDICT_REPOSITORY" "$VERDICT_PR"
+
+    - name: Readiness pre-check (saves agent spend)
+      env:
+        VERDICT_REPOSITORY: ${{ inputs.repository }}
+        VERDICT_PR: ${{ inputs.pull-request }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      shell: bash
+      run: |
+        verdict ready "$VERDICT_REPOSITORY" "$VERDICT_PR" --check
+
+    - name: Agent review (verdict run --agent, your agent + your key)
+      env:
+        VERDICT_REPOSITORY: ${{ inputs.repository }}
+        VERDICT_PR: ${{ inputs.pull-request }}
+        VERDICT_AGENT: ${{ inputs.agent }}
+        GH_TOKEN: ""
+        GITHUB_TOKEN: ""
+        OPENAI_API_KEY: ${{ inputs.openai-api-key }}
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+      shell: bash
+      run: |
+        verdict run "$VERDICT_REPOSITORY" "$VERDICT_PR" \
+          --agent "$VERDICT_AGENT"
+
+    - name: Post the review
+      env:
+        VERDICT_REPOSITORY: ${{ inputs.repository }}
+        VERDICT_PR: ${{ inputs.pull-request }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      shell: bash
+      run: |
+        verdict post "$VERDICT_REPOSITORY" "$VERDICT_PR"
+
+    - name: Review summary (advisory, never gates)
+      env:
+        VERDICT_REPOSITORY: ${{ inputs.repository }}
+        VERDICT_PR: ${{ inputs.pull-request }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      shell: bash
+      run: |
+        verdict report "$VERDICT_REPOSITORY" "$VERDICT_PR"
+
+    - name: Merge gate (findings + freshness + coverage + live threads)
+      env:
+        VERDICT_REPOSITORY: ${{ inputs.repository }}
+        VERDICT_PR: ${{ inputs.pull-request }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      shell: bash
+      run: |
+        verdict gate "$VERDICT_REPOSITORY" "$VERDICT_PR" \
+          --max-severity critical --require-head --live auto

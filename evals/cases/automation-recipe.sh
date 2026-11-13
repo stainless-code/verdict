@@ -13,7 +13,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/../lib/common.sh"
 
 RECIPE="$EVAL_ROOT/docs/ci-recipe.md"
-WORKFLOW="$EVAL_ROOT/examples/verdict-review.yml"
+WORKFLOW="$EVAL_ROOT/action.yml"
 # The stub agent the recipe case launches: a cooperating script with no model,
 # no credential, and no host, copied onto PATH under every shipped binary name.
 STUB_SRC="$EVAL_ROOT/evals/fixtures/run-agent/agent-stub.sh"
@@ -44,11 +44,18 @@ if [ -f "$WORKFLOW" ]; then
 else
   bad "examples/verdict-review.yml missing"
 fi
+for doc in README.md docs/manual.md docs/ci-recipe.md; do
+  assert_file_grep "required check name in $doc" "$EVAL_ROOT/$doc" \
+    '`review + merge gate`' "-F"
+done
+assert_file_grep "example names the required check" \
+  "$EVAL_ROOT/examples/verdict-review.yml" '    name: review + merge gate' "-Fx"
+
 uses_total="$(grep -c -E '^[[:space:]-]*uses:' "$WORKFLOW" 2>/dev/null || true)"
 uses_pinned="$(grep -c -E 'uses:[^#]*@[0-9a-f]{40}([[:space:]]|$)' "$WORKFLOW" 2>/dev/null || true)"
 case "$uses_total" in ''|0) uses_total=0;; esac
 case "$uses_pinned" in ''|0) uses_pinned=0;; esac
-if [ "$uses_total" -ge 2 ] && [ "$uses_pinned" = "$uses_total" ]; then
+if [ "$uses_total" -ge 1 ] && [ "$uses_pinned" = "$uses_total" ]; then
   good "workflow pins all $uses_total uses: entries by full SHA"
 else
   bad "workflow has $uses_total uses: entries but only $uses_pinned pinned by full SHA"
@@ -69,38 +76,96 @@ assert_file_grep "the workflow still has its Agent review step" "$WORKFLOW" \
   "- name: Agent review" "-F"
 assert_file_nogrep "the workflow never ships the placeholder agent step" "$WORKFLOW" \
   "wire your agent CLI here" "-F"
-for anchor in "no network call of its own" "never proxies your key" \
-  "no-review-artifact" "stale-review-artifact"; do
-  assert_file_grep "the workflow states $anchor" "$WORKFLOW" "$anchor" "-F"
+if python3 - "$WORKFLOW" <<'PYTEST'
+import re
+import sys
+from pathlib import Path
+text = Path(sys.argv[1]).read_text()
+inputs = text.split("inputs:\n", 1)[1].split("outputs:\n", 1)[0]
+declared = set(re.findall(r"^  ([a-z-]+):$", inputs, re.M))
+used = set(re.findall(r"inputs\.([a-z-]+)", text))
+assert declared == used, f"Action inputs drift: declared={sorted(declared)}, used={sorted(used)}"
+PYTEST
+then
+  good "Action input declarations match the pipeline bindings"
+else
+  bad "Action input declarations drift from pipeline bindings"
+fi
+
+if python3 - "$WORKFLOW" <<'PYORDER'
+import sys
+from pathlib import Path
+text = Path(sys.argv[1]).read_text()
+assert text.index('verdict fetch ') < text.index('verdict ready ') < text.index('verdict run '), "fetch must precede readiness, and readiness must precede agent spend"
+PYORDER
+then
+  good "fetch precedes readiness before agent spend"
+else
+  bad "fetch must precede readiness before agent spend"
+fi
+
+VALIDATE="$EVAL_SANDBOX/validate-inputs.sh"
+awk '
+  /^    - name: / { want = (index($0, "Validate inputs") > 0) }
+  want && /^      run: \|$/ { body = 1; next }
+  body && /^    - name: / { exit }
+  body { sub(/^        /, ""); print }
+' "$WORKFLOW" > "$VALIDATE"
+VERSION=1.2.3 AGENT=claude REPOSITORY=acme/app PR=42 TOKEN=fake \
+  bash -e "$VALIDATE" || bad "Action rejects valid explicit inputs"
+for invalid in VERSION=latest AGENT=unknown REPOSITORY=bad PR=zero TOKEN=; do
+  if env VERSION=1.2.3 AGENT=claude REPOSITORY=acme/app PR=42 TOKEN=fake \
+    "$invalid" bash -e "$VALIDATE"; then
+    bad "Action accepted invalid input $invalid"
+  else
+    good "Action rejects invalid input $invalid"
+  fi
 done
+
+EXAMPLE="$EVAL_ROOT/examples/verdict-review.yml"
+assert_file_grep "example calls the root Action" "$EXAMPLE" \
+  'uses: stainless-code/verdict@[0-9a-f]{40} ' "-E"
+for mapping in \
+  'repository: ${{ github.repository }}' \
+  'pull-request: ${{ github.event.pull_request.number }}' \
+  'github-token: ${{ secrets.GITHUB_TOKEN }}' \
+  'agent: claude' \
+  'anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}'; do
+  assert_file_grep "example passes $mapping" "$EXAMPLE" "$mapping" "-F"
+done
+assert_file_nogrep "example delegates pipeline commands to Action" "$EXAMPLE" 'verdict run' "-F"
 
 # agent_step_body prints the Agent review step's `run:` script, dedented, so
 # the case executes the shipped body instead of a copy of it.
 agent_step_body() {
   awk '
-    /^      - name: / { want = (index($0, "Agent review") > 0); next }
-    want && /^        run: \|$/ { body = 1; next }
-    body && /^      - name: / { exit }
-    body && /^        [a-z]/ { exit }
-    body { sub(/^          /, ""); print }
+    /^    - name: / { want = (index($0, "Agent review") > 0); next }
+    want && /^      run: \|$/ { body = 1; next }
+    body && /^    - name: / { exit }
+    body && /^      [a-z]/ { exit }
+    body { sub(/^        /, ""); print }
   ' "$WORKFLOW"
 }
 
 # agent_step_env prints the step's `env:` mapping as KEY=VALUE lines. A GitHub
 # expression becomes a placeholder: the case never holds a real credential.
 agent_step_env() {
-  awk '
-    /^      - name: / { want = (index($0, "Agent review") > 0); next }
-    want && /^        env:$/ { env = 1; next }
-    env && /^        [a-z]/ { env = 0 }
-    env && /^          [A-Za-z_][A-Za-z0-9_]*:/ {
+  awk -v resolve="${1:-true}" '
+    /^    - name: / { want = (index($0, "Agent review") > 0); next }
+    want && /^      env:$/ { env = 1; next }
+    env && /^      [a-z]/ { env = 0 }
+    env && /^        [A-Za-z_][A-Za-z0-9_]*:/ {
       line = $0
       sub(/^ +/, "", line)
       key = line
       sub(/:.*$/, "", key)
       value = line
       sub(/^[^:]*: */, "", value)
-      if (value ~ /^\$\{\{/) value = "eval-placeholder"
+      if (resolve == "false") { print key "=" value; next }
+      if (key == "VERDICT_AGENT") value = "claude"
+      else if (key == "VERDICT_PR") value = "4242"
+      else if (key == "VERDICT_REPOSITORY") value = "acme/app"
+      else if (value ~ /^\$\{\{/) value = "eval-placeholder"
       print key "=" value
     }
   ' "$WORKFLOW"
@@ -130,11 +195,19 @@ sed -e 's/\${{ github\.event\.pull_request\.number }}/'"$PR_BUNDLE"'/g' \
 if grep -q -F '${{' "$STEPSH"; then
   bail "the agent step carries a GitHub expression this case cannot expand: $(grep -F -m1 '${{' "$STEPSH")"
 fi
+STEPRAW="$EVAL_SANDBOX/agent-step.raw.env"
+agent_step_env false >"$STEPRAW"
+for binding in \
+  'VERDICT_AGENT=${{ inputs.agent }}' \
+  'VERDICT_REPOSITORY=${{ inputs.repository }}' \
+  'VERDICT_PR=${{ inputs.pull-request }}'; do
+  assert_file_grep "agent step input binding $binding" "$STEPRAW" "$binding" "-Fx"
+done
 agent_step_env >"$STEPENV"
 # The agent gets the diff and its own model key, never the workflow's write
 # token: GH_TOKEN is scoped to the steps that call gh.
 assert_file_nogrep "the Agent review step never receives the workflow token" \
-  "$STEPENV" "GH_TOKEN=" "-F"
+  "$STEPENV" "GH_TOKEN=eval-placeholder" "-F"
 assert_stream_nogrep "the job sets no job-level GH_TOKEN for the agent to inherit" \
   "$WORKFLOW" '^ {6}GH_TOKEN:' "-E"
 set -a
@@ -164,6 +237,38 @@ done
 # and a symlink target resolves against the link's own directory.
 EVAL_CLI_ABS="$(cd "$(dirname "$EVAL_CLI")" && pwd)/$(basename "$EVAL_CLI")"
 ln -sf "$EVAL_CLI_ABS" "$VERDICTBIN/verdict"
+SKILLSTEP="$EVAL_SANDBOX/install-skill.sh"
+awk '
+  /^    - name: / { want = (index($0, "Install the review skill") > 0) }
+  want && /^      run: \|$/ { body = 1; next }
+  body && /^    - name: / { exit }
+  body { sub(/^        /, ""); print }
+' "$WORKFLOW" > "$SKILLSTEP"
+if python3 - "$WORKFLOW" <<'PYSKILL'
+import sys
+from pathlib import Path
+text = Path(sys.argv[1]).read_text()
+start = text.index('    - name: Install the review skill')
+end = text.index('    - name:', start + 1)
+step = text[start:end]
+assert '        VERDICT_AGENT: ${{ inputs.agent }}\n' in step
+assert text.index('    - name: Install verdict') < start < text.index('    - name: Fetch the PR bundle')
+PYSKILL
+then
+  good "skill installation uses the agent input after installing verdict"
+else
+  bad "skill installation must bind the agent input after installing verdict"
+fi
+SKILLHOME="$EVAL_SANDBOX/skill-home"
+mkdir -p "$SKILLHOME"
+if HOME="$SKILLHOME" USERPROFILE="$SKILLHOME" PATH="$VERDICTBIN:$PATH" \
+  VERDICT_AGENT=claude bash -eo pipefail "$SKILLSTEP" >"$EVAL_OUT" 2>"$EVAL_ERR"; then
+  assert_file_grep "Action installs the review skill before agent spend" \
+    "$SKILLHOME/.claude/skills/verdict/SKILL.md" 'verdict' "-F"
+else
+  bad "Action review skill installation failed"
+fi
+
 export STUB_AGENT_LOG="$SANDBOX/agent-argv.log"
 
 # runs the extracted step with the stub agent, the verdict shim, and the stub

@@ -3742,3 +3742,28 @@ examples, resolved severity, body and full `pack_hash`, with
 identical stored bytes. Commit the KB file: fetch records its exact bytes and
 hash in the existing `controls.json` inventory. `learn --status --json` exposes
 these fields; retirement and restoration use the existing store controls.
+
+## The runner is your CI
+
+The first-party [GitHub Action](../action.yml) runs the review and merge gate
+on your runner with the keys you pass. Copy [the workflow](../examples/verdict-review.yml),
+install your agent CLI before the Action, and keep checkout `fetch-depth: 0` and
+`persist-credentials: false`. Give the job `contents: read` and
+`pull-requests: write`, then require its `review + merge gate` check in branch protection.
+
+Pass `repository`, `pull-request`, and `github-token` explicitly. Choose `agent`
+(`claude`, `codex`, `cursor`, or `opencode`) and pass `anthropic-api-key` or
+`openai-api-key` from your secrets. Inputs are strings — Actions composite
+metadata does not support input `type` declarations. Empty key inputs overwrite
+ambient provider key variables; the agent step clears `GH_TOKEN` and `GITHUB_TOKEN`.
+Use a clean CI runner without preconfigured agent login credentials. Verdict
+never proxies your key; the agent contacts its model provider directly.
+
+`version` is required and accepts only pinned stable releases. Set the repository
+variable `VERDICT_VERSION` to a release containing `run --agent` before enabling
+the workflow — the `v0.6.1` tag predates that command. The Action
+reuses `setup-verdict` for checksum and signature verification and exports the
+installed `version`. Pin the Action to a full commit SHA, as the example does.
+The Action owns fetch → ready → run → post → report → gate; `run` makes no
+network call of its own and refuses missing or stale `review.json`. A successful
+review is posted to GitHub before the merge gate runs.
