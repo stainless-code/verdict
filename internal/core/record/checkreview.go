@@ -60,7 +60,7 @@ const (
 var (
 	//nolint:goconst // published schema literals
 	knownReviewKeys = []string{
-		"schema_version", fieldBody, problemApproved, fieldComments,
+		"schema_version", fieldBody, problemApproved, fieldComments, suppressedKey,
 		fieldResolved, fieldTriage, fieldSections, fieldChunks, fieldCoverage, fieldConfidence, fieldSecuritySummary,
 	}
 	//nolint:goconst // schema keys are published literals
@@ -207,6 +207,7 @@ func (c *checker) checkReview(obj *jq.Obj) {
 			if _, ok := v.(bool); !ok {
 				c.wrongType("$."+problemApproved, "approved must be a boolean", "use true or false", false)
 			}
+		case suppressedKey:
 		case fieldComments:
 			c.checkComments(v)
 		case fieldResolved:

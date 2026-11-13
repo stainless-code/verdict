@@ -233,6 +233,7 @@ func documents() []document {
 			root:  reflect.TypeFor[[]FindingEntry](),
 			defs: []definition{
 				{typ: reflect.TypeFor[FindingEntry](), name: "entry"},
+				{typ: reflect.TypeFor[core.Withheld](), name: "withheld"},
 				{typ: reflect.TypeFor[core.Verification](), name: "panelVerification"},
 				{typ: reflect.TypeFor[Brief](), name: defsBrief},
 				{typ: reflect.TypeFor[BriefSite](), name: defsBriefSite},
@@ -499,6 +500,7 @@ func envelopeDefs() []definition {
 func reviewDefs() []definition {
 	return []definition{
 		{typ: reflect.TypeFor[Comment](), name: "comment"},
+		{typ: reflect.TypeFor[core.Suppression](), name: "suppression"},
 		{typ: reflect.TypeFor[Brief](), name: defsBrief},
 		{typ: reflect.TypeFor[BriefSite](), name: defsBriefSite},
 		{typ: reflect.TypeFor[TriageClaim](), name: "triageClaim"},

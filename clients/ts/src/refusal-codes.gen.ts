@@ -59,6 +59,7 @@ export type RefusalCode =
   | "bad-since"
   | "bad-slug"
   | "bad-stash"
+  | "bad-suppression"
   | "bad-target"
   | "bad-timeout"
   | "bad-triage-status"

@@ -485,7 +485,7 @@ func (st *state) floorPayload() ([]any, string, []core.FloorScope) {
 	}
 	kept := make([]any, 0, len(st.merged.Entries))
 	withheld := make([]core.FloorScope, 0, len(st.merged.Entries))
-	for _, entry := range st.merged.Entries {
+	for _, entry := range readcommon.VisibleFindings(st.merged.Entries) {
 		if !config.BelowPostFloor(rs, entry) {
 			kept = append(kept, entry)
 			continue

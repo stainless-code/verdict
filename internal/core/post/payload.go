@@ -19,7 +19,8 @@ import (
 const paragraphBreak = "\n\n"
 
 func (st *state) buildPayloads() {
-	st.comments = buildPostComments(st.merged.Kept, st.merged.KeptSigs)
+	kept, sigs := recordcore.PublicComments(st.merged.Entries, st.merged.Kept, st.merged.KeptSigs)
+	st.comments = buildPostComments(kept, sigs)
 	st.embedded = countEmbedded(st.merged.Kept)
 	st.payloads = []string{postPayload(st.body, st.event, commitIDValue(st.commitID), st.comments)}
 	n := len(st.extraParts) + 1

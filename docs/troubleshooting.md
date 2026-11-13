@@ -348,6 +348,12 @@ Cause: the named `stash@{N}` does not exist.
 
 Fix: pick one from `git stash list` and re-run with `--stash <N>`.
 
+## `bad-suppression`
+
+Cause: a suppression has an invalid source or locator, no matching exclusion receipt, or an agent reason shorter than 30 characters.
+
+Fix: use source `agent` with a 30-character reason, or `exclusion` with the path and rule id from `excluded.json`, then re-run.
+
 ## `bad-target`
 
 Cause: `adopt --from` points at a PR bundle instead of a local one.

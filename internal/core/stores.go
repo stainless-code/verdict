@@ -32,6 +32,7 @@ type Review struct { //nolint:govet // field order is the published property ord
 	Confidence      *int            `json:"confidence,omitempty"       max:"5"                         min:"1"`
 	SecuritySummary *string         `json:"security_summary,omitempty"`
 	Chunks          []string        `json:"chunks,omitempty"`
+	Suppressed      []Suppression   `json:"suppressed,omitempty"`
 	Coverage        []CoverageClaim `json:"coverage,omitempty"`
 }
 
@@ -96,6 +97,7 @@ type FindingEntry struct { //nolint:govet // field order is the published proper
 	RigorSource  string         `enum:"model|default|verified"                                                       json:"rigor_source,omitempty"` //nolint:revive // tag column widened by the published category enum
 	Severity     any            `enum:"critical|important|informational|null"                                        json:"severity,omitempty"`     //nolint:revive // tag column widened by the published category enum
 	Category     any            `enum:"logic|edge-case|security|performance|accidental-commit|style|docs|other|null" json:"category,omitempty"`     //nolint:revive // published enum tag exceeds the line limit
+	Withheld     *Withheld      `anyOf:"null"                                                                        json:"withheld,omitempty"`     //nolint:revive // published tag alignment exceeds line limit
 	CategorySet  bool           `json:"-"`
 	Status       string         `enum:"open|addressed|wont-fix|false-positive|deferred"                              json:"status"`
 	FirstSeen    string         `json:"firstSeen"`
@@ -129,7 +131,7 @@ type BriefSite struct { //nolint:govet // field order is the published property 
 // HistoryEvent is one append-only findings history entry.
 type HistoryEvent struct {
 	At       string     `json:"at"`
-	Event    string     `enum:"reported|claim|reopened|revalidation|addressed|triaged" json:"event"`
+	Event    string     `enum:"reported|claim|reopened|revalidation|addressed|triaged|withheld" json:"event"`
 	Actor    string     `json:"actor,omitempty"`
 	Note     string     `json:"note,omitempty"`
 	SHA      string     `json:"sha,omitempty"`
@@ -238,6 +240,9 @@ func (e *FindingEntry) Wire() *jq.Obj {
 	o.Set("sig_version", e.SigVersion)
 	o.Set("firstSeen", e.FirstSeen)
 	o.Set("lastSeen", e.LastSeen)
+	if e.Withheld != nil {
+		o.Set("withheld", e.Withheld)
+	}
 	o.Set(keyStatus, e.Status)
 	o.Set("rationale", e.Rationale)
 	wireTail(e, o)
@@ -703,4 +708,23 @@ func kbCreditOf(v any) []KBCredit {
 		out = append(out, KBCredit{Rule: rule, To: to})
 	}
 	return out
+}
+
+// Suppression requests policy withholding with an auditable reason.
+type Suppression struct { //nolint:govet // published property order
+	Path        string  `json:"path"`
+	Source      string  `enum:"exclusion|agent"        json:"source"`
+	Reason      string  `json:"reason"`
+	ExclusionID string  `json:"exclusion_id,omitempty"`
+	Sig         string  `json:"sig,omitempty"`
+	Line        *int    `json:"line,omitempty"`
+	Category    *string `json:"category,omitempty"`
+}
+
+// Withheld records policy silence independently of a finding's status.
+type Withheld struct {
+	Source      string `enum:"exclusion|agent|below-severity|validation" json:"source"`
+	Reason      string `json:"reason"`
+	ExclusionID string `json:"exclusion_id,omitempty"`
+	At          string `json:"at"`
 }

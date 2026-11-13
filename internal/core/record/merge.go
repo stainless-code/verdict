@@ -142,6 +142,7 @@ func (st *state) validateAndMerge(body string) (string, diagram.Status, error) {
 	if err != nil {
 		return "", diagram.Status{}, err
 	}
+	curated = st.hideWithheldMoved(curated)
 	st.setMarker(curated)
 	st.countHunks()
 	removeDerivedSnapshot(st)
@@ -154,7 +155,7 @@ func (st *state) mergeEntries() error {
 	}
 	st.backfill()
 	st.autoReopen()
-	return nil
+	return st.applySuppressions()
 }
 
 func (st *state) applyClaims(body string) (string, diagram.Status, error) {
