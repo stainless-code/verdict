@@ -238,6 +238,7 @@ func wireInit(ctx context.Context, b *bindings, req *initcore.Request) error {
 }
 
 func decodeLearn(req *learncore.Request, a *args) {
+	a.str("pack", &req.Pack)
 	a.str("rule", &req.Rule)
 	a.str("scope", &req.Scope)
 	a.str("id", &req.ID)

@@ -27,6 +27,8 @@ Adapted from Pullfrog:
 
 First-party, no upstream text:
 
+- `prompts/rule-packs.md`
+
 - `SKILL.md`
 - `schemas/`
 - `scripts/`

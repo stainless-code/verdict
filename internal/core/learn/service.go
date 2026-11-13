@@ -35,6 +35,7 @@ type Request struct {
 	Reason     string
 	Retire     string
 	Restore    string
+	Pack       string
 	Status     bool
 	JSONMode   bool
 }
@@ -127,6 +128,8 @@ func (st *state) runLearn() *core.RefusalError {
 		return ref
 	}
 	switch {
+	case st.req.Pack != "":
+		return st.runImport()
 	case st.req.Status:
 		return st.runStatus()
 	case st.req.Rule != "":
@@ -153,6 +156,9 @@ func (st *state) checkModes() *core.RefusalError {
 
 func (st *state) countModes() int {
 	modes := 0
+	if st.req.Pack != "" {
+		modes++
+	}
 	if st.req.Rule != "" {
 		modes++
 	}
@@ -560,8 +566,9 @@ const (
 )
 
 const (
-	msgCanceled        = "canceled before learn completed"
-	msgNeedOneMode     = "learn needs exactly one of --rule <text>, --status, --retire <id>, --restore <id>"
+	msgCanceled    = "canceled before learn completed"
+	msgNeedOneMode = "learn needs exactly one of --rule <text>, --pack <directory> --id <rule-id>, " +
+		"--status, --retire <id>, --restore <id>"
 	msgScopeNeedsRule  = "learn: --scope belongs to --rule (append mode)"
 	msgReasonNeedsVeto = "learn: --reason belongs to --retire/--restore"
 	msgEmptyRule       = "refusing learn: --rule is empty (pass the one-line rule text)"
