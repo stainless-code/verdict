@@ -30,9 +30,11 @@ bad-flags	try: re-run with one of the valid values named above
 bad-from	try: re-run with one of the valid values named above
 bad-group-validation	try: re-run with one of the valid values named above
 bad-id	try: re-run with one of the valid values named above
+bad-ignore	try: use one glob per line, # comments and ! to re-include, then re-fetch
 bad-judgment	try: re-run with one of the valid values named above
 bad-lock-source	try: re-run 'verdict pack add <dir|git-url>' from the pack source so .verdict/verdict.lock records a valid source
 bad-max-bytes	try: re-run with one of the valid values named above
+bad-min-severity	try: pass critical|important|informational|off
 bad-override	try: re-run with one of the valid values named above
 bad-pack	try: fix pack.json against schemas/pack.schema.json (exact lowercase keys, every id paired with its markdown file), then re-run
 bad-pack-source	try: use https://host/path with no userinfo, ssh://user@host/path, or user@host:path — a token in the URL, ref, or path is recorded in the committed lock; use an ssh key or a public https URL
@@ -54,6 +56,7 @@ bad-sig	try: list open inline sigs with report --status open --kind inline, then
 bad-since	try: pass --since <90d|12w|18mo|2y|ref> (a bare m is not a unit, and the ref must precede --until)
 bad-slug	try: re-run with one of the valid values named above
 bad-stash	try: re-run with one of the valid values named above
+bad-suppression	try: give each suppression a path, source, reason (30+ characters for agent) and matching exclusion_id
 bad-target	try: re-run with one of the valid values named above
 bad-timeout	try: pass --timeout <positive-seconds> (default 300)
 bad-triage-status	try: re-run with one of the valid values named above
@@ -93,6 +96,7 @@ head-mismatch	try: address the cause above, then re-run the same command
 html-not-export	try: choose a new, empty, or previous HTML export directory
 html-symlink	try: choose an HTML export directory that is not a symlink
 id-taken	try: pass a different --id
+ignore-too-large	try: keep .verdict/ignore under 64 KiB and 1,000 patterns, then re-fetch
 index-capped	try: narrow --from/--at to a smaller tree (the 97 MiB git capture cap is fixed; the typed caps cover file, tree and shard bytes only)
 index-corrupt	try: delete .verdict/index and rebuild with 'verdict index build'
 index-failed	try: delete .verdict/index and rebuild with 'verdict index build'
