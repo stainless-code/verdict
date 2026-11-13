@@ -152,20 +152,21 @@ type Repair struct {
 // over the typed confidence so an exotic agent value (a numeric string the
 // shell passes through raw) re-emits byte-identically; ItemsRaw wins over
 // the typed items so the envelope re-emits the ordered summaries verbatim.
-type RecordData struct { //nolint:govet // field order is the published property order
-	Dir             string           `json:"dir"`
-	Anchors         AnchorsSummary   `json:"anchors"`
-	Findings        RecordFindings   `inline:"true"               json:"findings"`
-	Confidence      *int             `json:"confidence"           max:"5"                   min:"1"`
-	SecuritySummary *string          `json:"security_summary"`
-	Items           []FindingItem    `json:"items"`
-	DryRun          bool             `json:"dry_run,omitempty"`
-	Check           *CheckSummary    `anyOf:"null"                json:"check,omitempty"`
-	Coverage        *CoverageSummary `anyOf:"null"                json:"coverage,omitempty" optional:"true"`
-	Normalized      any              `json:"normalized,omitempty" type:"object"`
-	Repairs         []Repair         `json:"repairs,omitempty"`
-	ConfidenceRaw   any              `json:"-"`
-	ItemsRaw        []any            `json:"-"`
+type RecordData struct {
+	Verification    *VerificationSummary `json:"verification,omitempty" optional:"true"` //nolint:govet // field order is the published property order
+	Dir             string               `json:"dir"`
+	Anchors         AnchorsSummary       `json:"anchors"`
+	Findings        RecordFindings       `inline:"true"               json:"findings"`
+	Confidence      *int                 `json:"confidence"           max:"5"                   min:"1"`
+	SecuritySummary *string              `json:"security_summary"`
+	Items           []FindingItem        `json:"items"`
+	DryRun          bool                 `json:"dry_run,omitempty"`
+	Check           *CheckSummary        `anyOf:"null"                json:"check,omitempty"`
+	Coverage        *CoverageSummary     `anyOf:"null"                json:"coverage,omitempty" optional:"true"`
+	Normalized      any                  `json:"normalized,omitempty" type:"object"`
+	Repairs         []Repair             `json:"repairs,omitempty"`
+	ConfidenceRaw   any                  `json:"-"`
+	ItemsRaw        []any                `json:"-"`
 }
 
 // RecordFindings counts the findings a record run merged.
@@ -199,25 +200,26 @@ type ChunkCoverage struct {
 
 // Record is schemas/record.schema.json: the completed-record artifact.
 // ConfidenceRaw wins over the typed confidence like RecordData does.
-type Record struct { //nolint:govet // field order is the published property order
-	SchemaVersion   string           `const:"1"                         json:"schema_version"`
-	Status          string           `json:"status"`
-	Head            string           `json:"head"`
-	DiffSHA256      string           `json:"diff_sha256"`
-	RecordedAt      string           `format:"date-time"                json:"recorded_at"`
-	Findings        int              `json:"findings"                   min:"0"`
-	Open            int              `json:"open"                       min:"0"`
-	Confidence      *int             `json:"confidence,omitempty"       max:"5"                         min:"1"`
-	SecuritySummary *string          `json:"security_summary,omitempty"`
-	ToolVersion     string           `json:"tool_version,omitempty"`
-	PromptsHash     string           `json:"prompts_hash,omitempty"`
-	Model           *string          `json:"model,omitempty"`
-	PatchID         *string          `json:"patch_id,omitempty"`
-	PatchIDKind     string           `json:"patch_id_kind,omitempty"`
-	Repairs         []Repair         `json:"repairs,omitempty"`
-	Coverage        *CoverageSummary `anyOf:"null"                      json:"coverage,omitempty"       optional:"true"`
-	ChunkCoverage   *ChunkCoverage   `anyOf:"null"                      json:"chunk_coverage,omitempty" optional:"true"`
-	ConfidenceRaw   any              `json:"-"`
+type Record struct {
+	Verification    *VerificationSummary `json:"verification,omitempty" optional:"true"` //nolint:govet // field order is the published property order
+	SchemaVersion   string               `const:"1"                         json:"schema_version"`
+	Status          string               `json:"status"`
+	Head            string               `json:"head"`
+	DiffSHA256      string               `json:"diff_sha256"`
+	RecordedAt      string               `format:"date-time"                json:"recorded_at"`
+	Findings        int                  `json:"findings"                   min:"0"`
+	Open            int                  `json:"open"                       min:"0"`
+	Confidence      *int                 `json:"confidence,omitempty"       max:"5"                         min:"1"`
+	SecuritySummary *string              `json:"security_summary,omitempty"`
+	ToolVersion     string               `json:"tool_version,omitempty"`
+	PromptsHash     string               `json:"prompts_hash,omitempty"`
+	Model           *string              `json:"model,omitempty"`
+	PatchID         *string              `json:"patch_id,omitempty"`
+	PatchIDKind     string               `json:"patch_id_kind,omitempty"`
+	Repairs         []Repair             `json:"repairs,omitempty"`
+	Coverage        *CoverageSummary     `anyOf:"null"                      json:"coverage,omitempty"       optional:"true"`
+	ChunkCoverage   *ChunkCoverage       `anyOf:"null"                      json:"chunk_coverage,omitempty" optional:"true"`
+	ConfidenceRaw   any                  `json:"-"`
 }
 
 // Wire renders one finding entry in wire order: the fixed construction order
@@ -402,6 +404,9 @@ func (d *RecordData) Wire() *jq.Obj {
 		"confidence", d.ConfidenceRaw,
 		"security_summary", strOrNull(d.SecuritySummary),
 	)
+	if d.Verification != nil {
+		o.Set("verification", d.Verification)
+	}
 	if d.Coverage != nil {
 		o.Set("coverage", d.Coverage)
 	}
@@ -461,6 +466,9 @@ func (r *Record) Wire() *jq.Obj {
 	}
 	if len(r.Repairs) > 0 {
 		o.Set("repairs", r.Repairs)
+	}
+	if r.Verification != nil {
+		o.Set("verification", r.Verification)
 	}
 	if r.Coverage != nil {
 		o.Set("coverage", r.Coverage)

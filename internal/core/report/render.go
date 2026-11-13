@@ -7,6 +7,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
+	panelcore "github.com/stainless-code/verdict/internal/core/panel"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -41,8 +42,9 @@ func reportNext(st *state) string {
 
 func buildData(st *state) *core.ReportData {
 	data := &core.ReportData{
-		GeneratedAt: st.now,
-		Dir:         st.dir,
+		Verification: panelcore.Summarize(st.entries),
+		GeneratedAt:  st.now,
+		Dir:          st.dir,
 		Head: core.ReportHead{
 			Fetched: new(st.headSHA),
 			Base:    new(st.baseSHA),
@@ -247,6 +249,9 @@ func buildHuman(st *state) []string {
 	lines := []string{fmt.Sprintf("report: %s (%d shown) open=%d head=%s",
 		st.dir, len(view), viewOpen(view), readcommon.ShortSHA(st.headSHA))}
 	lines = append(lines, cleanHeadline(st)...)
+	if v := panelcore.Summarize(st.entries); v != nil {
+		lines = append(lines, fmt.Sprintf("verification: %d confirmed · %d contested · %d single", v.Confirmed, v.Contested, v.Single))
+	}
 	for _, item := range view {
 		lines = append(lines, fmt.Sprintf("%d. [%s] %s (%s)",
 			item.Rank, jq.Str(readcommon.FieldOf(item.Entry, "status")),

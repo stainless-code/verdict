@@ -516,6 +516,7 @@ func orderedStringPtr(obj *jq.Obj, key string) *string {
 func writePostReceipt(st *state, obj *jq.Obj) error {
 	_, floor, withheld := st.floorPayload()
 	receipt := &core.Post{
+		Verification:    st.merged.Verification,
 		SchemaVersion:   "1",
 		Head:            st.commitID,
 		PostedAt:        st.now,
@@ -588,11 +589,12 @@ func (st *state) successResponse(obj *jq.Obj, posted string) *core.PostResponse 
 		next = "none open — nothing to address"
 	}
 	data := &core.PostData{
-		DryRun:   false,
-		Event:    st.event,
-		CommitID: st.commitID,
-		Body:     core.PostBody{Marker: st.merged.Marker},
-		Anchors:  core.AnchorsSummary{Kept: st.merged.NKept, Moved: st.merged.NMoved},
+		Verification: st.merged.Verification,
+		DryRun:       false,
+		Event:        st.event,
+		CommitID:     st.commitID,
+		Body:         core.PostBody{Marker: st.merged.Marker},
+		Anchors:      core.AnchorsSummary{Kept: st.merged.NKept, Moved: st.merged.NMoved},
 		Suggestions: core.Suggestions{
 			Embedded: st.embedded,
 		},

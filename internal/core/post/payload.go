@@ -257,9 +257,10 @@ func (st *state) dryRunResponse() (*core.PostResponse, *core.RefusalError) {
 	payload, _, _ := st.floorPayload()
 	nOpen, nDeferred, nAddressed := postCounts(payload)
 	data := &core.PostData{
-		DryRun:   true,
-		Event:    st.event,
-		CommitID: st.commitID,
+		Verification: st.merged.Verification,
+		DryRun:       true,
+		Event:        st.event,
+		CommitID:     st.commitID,
 		Body: core.PostBody{
 			Marker:  st.merged.Marker,
 			Footer:  footerVal,
@@ -296,4 +297,18 @@ func (st *state) dryRunResponse() (*core.PostResponse, *core.RefusalError) {
 func RenderPostEnvelope(resp *core.PostResponse) *jq.Obj {
 	return core.RenderEnvelope("post", resp.Repo, resp.Pr, resp.At, resp.Next,
 		resp.Warnings, resp.Data.Wire(), nil)
+}
+
+func panelBody(body string, summary *core.VerificationSummary) string {
+	if summary == nil || summary.Confirmed+summary.Contested == 0 {
+		return body
+	}
+	line := fmt.Sprintf("> ℹ️ %d findings · %d contested by a verifier", summary.Single+summary.Confirmed+summary.Contested, summary.Contested)
+	lines := strings.Split(body, "\n")
+	for i, s := range lines {
+		if strings.HasPrefix(s, "> ") {
+			return strings.Join(append(append(lines[:i+1:i+1], line), lines[i+1:]...), "\n")
+		}
+	}
+	return line + "\n\n" + body
 }
