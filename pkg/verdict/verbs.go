@@ -983,3 +983,32 @@ func (c *Client) Init(ctx context.Context, req *InitRequest) (*InitResponse, err
 		ExitCode: resp.ExitCode,
 	}, nil
 }
+
+// PRWaitRequest requests a bounded foreground PR wait.
+type PRWaitRequest struct {
+	Invocation
+	Until    string
+	Timeout  string
+	Interval string
+	Provider string
+	Once     bool
+}
+
+// PRWaitResponse carries the final observation and typed outcome.
+type PRWaitResponse struct{ Result }
+
+// PRWait waits for a PR condition; timeout remains successful response data.
+func (c *Client) PRWait(ctx context.Context, req *PRWaitRequest) (*PRWaitResponse, error) {
+	rr, err := c.request(ctx, req.Repo, req.PR)
+	if err != nil {
+		return nil, err
+	}
+	resp, ref := readycore.Wait(ctx, &readycore.WaitRequest{
+		ReadRequest: rr, Until: req.Until, Timeout: req.Timeout,
+		Interval: req.Interval, Provider: req.Provider, Once: req.Once,
+	})
+	if ref != nil {
+		return nil, refusalErr(ref)
+	}
+	return &PRWaitResponse{Result: resultOf(resp.Repo, resp.Pr, resp.At, resp.Next, resp.Warnings, resp.Data)}, nil
+}

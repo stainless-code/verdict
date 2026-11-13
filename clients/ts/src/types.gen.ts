@@ -720,6 +720,25 @@ export interface ReadyData {
   [key: string]: unknown;
 }
 
+export interface PrWaitData {
+  snapshot: PrWaitSnapshot | null;
+  outcome: string;
+  until: string;
+  observations: number;
+  [key: string]: unknown;
+}
+
+export interface PrWaitSnapshot {
+  state: string;
+  head: string;
+  reviews: string;
+  threads: string;
+  checks_known: boolean;
+  checks_done: boolean;
+  checks_green: boolean;
+  [key: string]: unknown;
+}
+
 /** One readiness blocker: the rule that fired, the detail that fired it, and the action that clears it. */
 export interface ReadyBlocker {
   kind: string;

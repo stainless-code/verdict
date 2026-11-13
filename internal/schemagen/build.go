@@ -436,6 +436,8 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[FetchGroupPersonal](), name: "fetchGroupPersonal"},
 		{typ: reflect.TypeFor[TriageData](), name: "triageData"},
 		{typ: reflect.TypeFor[ReadyData](), name: "readyData"},
+		{typ: reflect.TypeFor[PRWaitData](), name: "prWaitData"},
+		{typ: reflect.TypeFor[PRWaitSnapshot](), name: "prWaitSnapshot"},
 		{typ: reflect.TypeFor[ReadyBlocker](), name: "readyBlocker"},
 		{typ: reflect.TypeFor[ReadyCI](), name: "readyCI"},
 		{typ: reflect.TypeFor[AdoptData](), name: "adoptData"},

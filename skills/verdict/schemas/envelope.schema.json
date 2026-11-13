@@ -1440,6 +1440,41 @@
       ],
       "additionalProperties": true
     },
+    "prWaitData": {
+      "type": "object",
+      "properties": {
+        "snapshot": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/prWaitSnapshot" }]
+        },
+        "outcome": { "type": "string" },
+        "until": { "type": "string" },
+        "observations": { "type": "integer" }
+      },
+      "required": ["snapshot", "outcome", "until", "observations"],
+      "additionalProperties": true
+    },
+    "prWaitSnapshot": {
+      "type": "object",
+      "properties": {
+        "state": { "type": "string" },
+        "head": { "type": "string" },
+        "reviews": { "type": "string" },
+        "threads": { "type": "string" },
+        "checks_known": { "type": "boolean" },
+        "checks_done": { "type": "boolean" },
+        "checks_green": { "type": "boolean" }
+      },
+      "required": [
+        "state",
+        "head",
+        "reviews",
+        "threads",
+        "checks_known",
+        "checks_done",
+        "checks_green"
+      ],
+      "additionalProperties": true
+    },
     "readyBlocker": {
       "description": "One readiness blocker: the rule that fired, the detail that fired it, and the action that clears it.",
       "type": "object",

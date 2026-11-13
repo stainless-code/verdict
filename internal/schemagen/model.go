@@ -5,6 +5,7 @@ import (
 	backtestcore "github.com/stainless-code/verdict/internal/core/backtest"
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	"github.com/stainless-code/verdict/internal/core/pack"
+	readycore "github.com/stainless-code/verdict/internal/core/ready"
 	"github.com/stainless-code/verdict/internal/core/threads"
 	"github.com/stainless-code/verdict/internal/identity"
 )
@@ -1199,3 +1200,9 @@ type ServeDiscovery struct { //nolint:govet // field order is the published prop
 	Cached    bool   `json:"cached"`
 	ScannedAt string `json:"scanned_at"`
 }
+
+// PRWaitData is the foreground PR wait result.
+type PRWaitData = readycore.WaitData
+
+// PRWaitSnapshot is a complete observed PR state.
+type PRWaitSnapshot = readycore.WaitSnapshot

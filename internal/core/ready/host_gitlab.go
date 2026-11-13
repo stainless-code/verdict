@@ -104,10 +104,10 @@ func gitlabState(m map[string]any) string {
 	switch gitlabStr(m, "state") {
 	case "opened":
 		return stateOpen
-	case "merged":
+	case untilMerged:
 		return waitMerged
-	case "closed", "locked":
-		return "CLOSED"
+	case untilClosed, "locked":
+		return stateClosed
 	default:
 		return mergeUnknown
 	}
@@ -175,7 +175,7 @@ func countFailPipeline(st *state, m map[string]any, failNames []string) []string
 // isFailingPipeline owns the failing-pipeline vocabulary: a failed or
 // canceled pipeline is one failing check.
 func isFailingPipeline(status string) bool {
-	return status == "failed" || status == "canceled"
+	return status == "failed" || status == codeCanceled
 }
 
 func pipelineName(m map[string]any) string {

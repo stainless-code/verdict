@@ -140,7 +140,7 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 		warnings: append([]string{}, req.Warnings...),
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, &core.RefusalError{Code: "canceled", Message: "canceled before ready completed"}
+		return nil, &core.RefusalError{Code: codeCanceled, Message: "canceled before ready completed"}
 	}
 	if ref := loadState(ctx, st); ref != nil {
 		return nil, ref

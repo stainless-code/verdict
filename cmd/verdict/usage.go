@@ -2,7 +2,7 @@ package main
 
 func usageText() string {
 	return "usage: verdict fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
-		"fetch-local|run|panel|record|adopt|fix|check-tree|ready|gate|threads|trend|index|" +
+		"fetch-local|run|panel|record|adopt|fix|check-tree|ready|pr-wait|gate|threads|trend|index|" +
 		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|config [opts]\n" +
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
 		"[--index <ref|dir>] [--context <file|dir>] [--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
@@ -186,6 +186,11 @@ func usageText() string {
 		"    sigs (unknown sigs refuse typed), and merge as agent_verdict/agent_helpful/\n" +
 		"    agreement columns that may diverge from the baseline — the agreement rate\n" +
 		"    over judged rows is the evidence number.\n" +
+		"  pr-wait <owner/repo> <N> --until merged|closed|checks-green|checks-done|review-changed --timeout D\n" +
+		"    [--once] [--interval D] [--json] [--provider github|gitlab|forgejo]\n" +
+		"    Foreground wait: timeout 1s–30m; interval >=1s. Exit 0 on condition,\n" +
+		"    exit 1 with wait-timeout or condition-unmet data; no local writes.\n" +
+		"\n" +
 		"  ready <owner/repo> <pr> [--json] [--check]\n" +
 		"    advisory only (exit 0, never a gate): CI state, open threads, draft/conflict,\n" +
 		"    description completeness. Prints blockers with actions + recommendation\n" +

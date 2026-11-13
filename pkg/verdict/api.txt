@@ -137,6 +137,9 @@ func (c *Client) Learn(ctx context.Context, req *LearnRequest) (*Outcome, error)
 func (c *Client) Next(ctx context.Context, req *NextRequest) (*NextResponse, error)
     Next returns the top actionable finding for the bundle.
 
+func (c *Client) PRWait(ctx context.Context, req *PRWaitRequest) (*PRWaitResponse, error)
+    PRWait waits for a PR condition; timeout remains successful response data.
+
 func (c *Client) Pack(ctx context.Context, req *PackRequest) (*PackResponse, error)
     Pack lists the built-in, org, and repo lens packs with their layer, source,
     hash, and declared ids. It makes no live calls and writes nothing.
@@ -386,6 +389,19 @@ type Outcome struct {
 	Data     json.RawMessage
 }
     Outcome carries the envelope fields for verbs without repo/PR positionals.
+
+type PRWaitRequest struct {
+	Invocation
+	Until    string
+	Timeout  string
+	Interval string
+	Provider string
+	Once     bool
+}
+    PRWaitRequest requests a bounded foreground PR wait.
+
+type PRWaitResponse struct{ Result }
+    PRWaitResponse carries the final observation and typed outcome.
 
 type PackRequest struct {
 	Invocation

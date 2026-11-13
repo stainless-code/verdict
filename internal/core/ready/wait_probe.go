@@ -89,7 +89,7 @@ func waitSnapshot(live map[string]any, checks []map[string]any, reviews, threads
 }
 
 func validWaitState(snapshot *WaitSnapshot) bool {
-	return snapshot.Head != "" && (snapshot.State == stateOpen || snapshot.State == "CLOSED" || snapshot.State == waitMerged)
+	return snapshot.Head != "" && (snapshot.State == stateOpen || snapshot.State == stateClosed || snapshot.State == waitMerged)
 }
 
 func (p *WaitProbe) pull(ctx context.Context, req *core.ReadRequest) (map[string]any, *core.RefusalError) {
