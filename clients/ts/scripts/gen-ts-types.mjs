@@ -71,6 +71,7 @@ function toTS(node, defs) {
     const values = node.enum.map((v) => JSON.stringify(v));
     const inline = values.join(" | ");
     if (inline.length <= 70) return inline;
+    if (inline.length <= 76) return "\n    " + inline;
     return "\n" + values.map((value) => `    | ${value}`).join("\n");
   }
   // anyOf on a node that declares its own shape carries structural

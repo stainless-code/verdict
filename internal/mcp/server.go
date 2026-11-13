@@ -506,8 +506,12 @@ func successResult(tool string, data *jq.Obj) callToolResult {
 			IsError:           false,
 		}
 	}
+	total := len(raw)
+	receipt := &core.Truncation{Truncated: true, TruncationReason: "response_cap", Returned: 0, Total: &total}
+	data = receipt.Apply(data.Clone())
+	raw = rawMarshal(data)
 	return callToolResult{
-		Content:           []contentBlock{{Type: contentTypeText, Text: truncationSummary(tool, data, len(raw))}},
+		Content:           []contentBlock{{Type: contentTypeText, Text: truncationSummary(tool, data, total)}},
 		StructuredContent: raw,
 		IsError:           false,
 	}
@@ -515,7 +519,6 @@ func successResult(tool string, data *jq.Obj) callToolResult {
 
 func truncationSummary(tool string, data *jq.Obj, size int) string {
 	pairs := []any{
-		"truncated", true,
 		"tool", tool,
 		"bytes", size,
 		"limit", maxResultTextBytes,
@@ -531,7 +534,9 @@ func truncationSummary(tool string, data *jq.Obj, size int) string {
 		pairs = append(pairs, "next", "structuredContent carries the full result; "+
 			"narrow the call to get a smaller text block")
 	}
-	return jq.NewObj(pairs...).MarshalCompact()
+	total := size
+	receipt := &core.Truncation{Truncated: true, TruncationReason: "response_cap", Returned: 0, Total: &total}
+	return receipt.Apply(jq.NewObj(pairs...)).MarshalCompact()
 }
 
 // rootResolutionRefusal reports a failed repository-root resolution as a

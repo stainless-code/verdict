@@ -915,6 +915,14 @@ more than was written.
 
 `fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`run`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`threads`/`trend`/`index`/`backtest`/`learn`/`pack`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
+MCP results whose text exceeds the response cap carry `truncated: true`, `truncation_reason`
+(`work_budget`, `response_cap`, `time_budget`, `scan_cap`, or `chunk_cap`),
+`returned`, `total` (null when unknown), and `next_offset` (null when no
+continuation exists). Counts use the producer's unit. MCP text-cap receipts
+count original JSON bytes: zero payload bytes appear in the summary, while
+`structuredContent` retains the full payload. A miss under truncation is not
+proof of absence. Complete results omit the receipt.
+
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
 non-zero. `mcp config` also takes `--json`. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `threads` refreshes only `.verdict/state/<pr>/threads.json` from the host (all six
 hosts; GitHub reads GraphQL `reviewThreads`) and returns the feed tally — it

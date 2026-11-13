@@ -41,13 +41,21 @@ func TestResultSizeBudgetTruncatesLargeResults(t *testing.T) {
 		t.Errorf("text block = %d bytes, want under the %d budget",
 			len(over.Content[0].Text), maxResultTextBytes)
 	}
-	assertTruncationSummary(t, over.Content[0].Text, ".verdict/state/5101", len(over.StructuredContent))
+	assertTruncationSummary(t, over.Content[0].Text, ".verdict/state/5101", maxResultTextBytes+len(`{"dir":".verdict/state/5101","findings":[""]}`))
 
 	var content struct {
-		Findings []string `json:"findings"`
+		Reason     string   `json:"truncation_reason"`
+		Total      *int     `json:"total"`
+		NextOffset *int     `json:"next_offset"`
+		Findings   []string `json:"findings"`
+		Returned   int      `json:"returned"`
+		Truncated  bool     `json:"truncated"`
 	}
 	if err := json.Unmarshal(over.StructuredContent, &content); err != nil {
 		t.Fatalf("structuredContent: %v", err)
+	}
+	if !content.Truncated || content.Reason != "response_cap" || content.Returned != 0 || content.Total == nil || *content.Total != maxResultTextBytes+len(`{"dir":".verdict/state/5101","findings":[""]}`) || content.NextOffset != nil {
+		t.Fatalf("structured receipt: truncated=%v reason=%q returned=%d total=%v next_offset=%v", content.Truncated, content.Reason, content.Returned, content.Total, content.NextOffset)
 	}
 	if len(content.Findings) != 1 || len(content.Findings[0]) != maxResultTextBytes {
 		t.Error("structuredContent lost data")
@@ -74,11 +82,15 @@ func assertTruncationSummary(t *testing.T, text, artifact string, full int) {
 	t.Helper()
 	summary := decodeSummary(t, text)
 	want := map[string]any{
-		"truncated": true,
-		"tool":      "report",
-		"bytes":     float64(full),
-		"limit":     float64(maxResultTextBytes),
-		"artifact":  artifact,
+		"truncated":         true,
+		"truncation_reason": "response_cap",
+		"returned":          float64(0),
+		"total":             float64(full),
+		"next_offset":       nil,
+		"tool":              "report",
+		"bytes":             float64(full),
+		"limit":             float64(maxResultTextBytes),
+		"artifact":          artifact,
 	}
 	for key, value := range want {
 		if summary[key] != value {

@@ -261,4 +261,28 @@ else
   bad "post bad approve did not refuse typed"
 fi
 
+SLUG=local-truncation
+eval_mk_bundle "$SLUG"
+jq -n '{schema_version:"1", body:"> Review receipt for the truncation eval.", approved:false,
+  comments:[{path:"notes.txt", line:2, side:"RIGHT", rigor:"walked",
+    body:("A bounded response must retain the whole finding. " + ("x" * 300000))}]}' \
+  >"$EVAL_SANDBOX/.verdict/state/$SLUG/review.json"
+run_review record acme/app "$SLUG" --json
+assert_exit "large review records through the real producer" 0
+cat >"$FRAMES" <<EOF
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"report","arguments":{"repo":"acme/app","pr":"$SLUG"}}}
+EOF
+run_mcp_input "$FRAMES"
+if jq -e 'select(.id == 1).result |
+  (.content[0].text | fromjson) as $summary |
+  (.isError == false) and
+  ($summary.truncated == true) and ($summary.truncation_reason == "response_cap") and
+  ($summary.returned == 0) and ($summary.total > 300000) and ($summary.next_offset == null) and
+  (.structuredContent.truncated == true) and (.structuredContent.truncation_reason == "response_cap") and
+  (.structuredContent.items[0].body | length > 300000)' <"$MCP_OUT" >/dev/null; then
+  good "MCP cap has a typed receipt and preserves the producer's finding"
+else
+  bad "MCP cap receipt or retained finding is missing"
+fi
+
 eval_end

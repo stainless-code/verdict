@@ -1,4 +1,14 @@
 // GENERATED from skills/verdict/schemas/envelope.schema.json ($defs) by clients/ts/scripts/gen-ts-types.mjs. Do not edit.
+export interface Truncation {
+  truncated: boolean;
+  truncation_reason:
+    "work_budget" | "response_cap" | "time_budget" | "scan_cap" | "chunk_cap";
+  returned: number;
+  total: number | null;
+  next_offset: number | null;
+  [key: string]: unknown;
+}
+
 /** Refusal shape from fail(): data is null, message carries the cause plus a try: hint, candidates rides only on the oversize-fetch refusal. */
 export interface RefusalErrorBody {
   code: string;

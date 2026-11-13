@@ -369,6 +369,7 @@ func documents() []document {
 
 func envelopeDefs() []definition {
 	return []definition{
+		{typ: reflect.TypeFor[core.Truncation](), name: "truncation"},
 		{typ: reflect.TypeFor[SchemaError](), name: "error"},
 		{typ: reflect.TypeFor[Candidate](), name: "candidate"},
 		{typ: reflect.TypeFor[Problem](), name: "problem"},
