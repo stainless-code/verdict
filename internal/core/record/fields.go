@@ -1,6 +1,7 @@
 package recordcore
 
 const (
+	fieldSources    = "sources"
 	fieldAnchored   = "anchored"
 	fieldAt         = "at"
 	fieldBody       = "body"

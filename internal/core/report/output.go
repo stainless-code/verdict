@@ -30,6 +30,14 @@ func buildDocument(st *state) string {
 		basisOutputLine(st.entries),
 		"## Counts — open " + strconv.Itoa(st.nAllOpen) + " · head " + readcommon.ShortSHA(st.headSHA),
 	}
+	if sources := readcommon.ContextSources(st.dir); len(sources) > 0 {
+		lines = append(lines, "Context used: "+strings.Join(sources, ", "))
+	}
+	for _, item := range viewRanked(st) {
+		if line := readcommon.SourcesLine(item.Entry); line != "" {
+			lines = append(lines, line)
+		}
+	}
 	lines = append(lines, rankedLines(st)...)
 	lines = append(lines, linkDefs(st)...)
 	if overview := renderOverview(st); overview != "" {

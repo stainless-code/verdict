@@ -56,6 +56,7 @@ type Comment struct { //nolint:govet // field order is the published property or
 	Severity   any       `enum:"critical|important|informational|null"                                        json:"severity,omitempty"`
 	Category   any       `enum:"logic|edge-case|security|performance|accidental-commit|style|docs|other|null" json:"category,omitempty"`
 	InBounds   *bool     `json:"in-bounds,omitempty"`
+	Sources    *[]string `json:"sources,omitempty"`
 	KB         *[]string `json:"kb,omitempty"`
 }
 
@@ -88,6 +89,7 @@ type FindingEntry struct { //nolint:govet // field order is the published proper
 	Body         string         `json:"body,omitempty"`
 	Suggestion   *string        `json:"suggestion,omitempty"`
 	Brief        *Brief         `anyOf:"null"                                                                        json:"brief,omitempty"`
+	Sources      *[]string      `json:"sources,omitempty"`
 	KB           *[]string      `json:"kb,omitempty"`
 	InBounds     any            `json:"inBounds,omitempty"                                                           type:"boolean|null"`
 	Rigor        any            `enum:"said|pointed|walked|ran|reproduced|null"                                      json:"rigor,omitempty"`
@@ -246,6 +248,9 @@ func (e *FindingEntry) Wire() *jq.Obj {
 // section kb rides here (after rationale), then triage attribution,
 // history, then Extra in file order.
 func wireTail(e *FindingEntry, o *jq.Obj) {
+	if e.Sources != nil {
+		o.Set("sources", kbWire(e.Sources))
+	}
 	if len(e.Verification) > 0 {
 		o.Set("verification", e.Verification)
 	}
@@ -523,7 +528,7 @@ func kbCreditWire(credits []KBCredit) []any {
 var findingKeys = map[string]bool{
 	"sig": true, "sig_version": true, "kind": true, "path": true,
 	"heading": true, "line": true, "side": true, keyAnchored: true,
-	keyBody: true, "suggestion": true, "kb": true, "inBounds": true,
+	keyBody: true, "suggestion": true, "kb": true, "sources": true, "inBounds": true,
 	"rigor": true, "rigor_source": true, "severity": true, keyCategory: true, keyStatus: true, "firstSeen": true,
 	"lastSeen": true, "rationale": true, "triagedAt": true, "triagedBy": true,
 	"history": true,
@@ -563,6 +568,7 @@ func entryLocator(e *FindingEntry, obj *jq.Obj) {
 func entryOptions(e *FindingEntry, obj *jq.Obj) {
 	e.Suggestion = fieldOptString(obj, "suggestion")
 	e.KB = fieldOptStrings(obj, "kb")
+	e.Sources = fieldOptStrings(obj, "sources")
 	e.InBounds, _ = obj.Get("inBounds")
 	e.Rigor, _ = obj.Get("rigor")
 	e.RigorSource, _ = fieldString(obj, "rigor_source")
