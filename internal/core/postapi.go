@@ -204,22 +204,7 @@ func (d *PostData) Wire() *jq.Obj {
 	body := d.Body.Wire(d.DryRun)
 	provenance := Wire(&d.Provenance)
 	if d.DryRun {
-		pairs := []any{
-			"dry_run", d.DryRun,
-			"event", d.Event,
-			"commit_id", d.CommitID,
-			keyBody, body,
-			"anchors", jq.NewObj("kept", d.Anchors.Kept, "moved", d.Anchors.Moved),
-			"suggestions", jq.NewObj("embedded", d.Suggestions.Embedded),
-			"findings", d.Findings.Wire(),
-		}
-		if d.Verification != nil {
-			pairs = append(pairs, "verification", d.Verification)
-		}
-		pairs = appendCoverageWire(pairs, d.Coverage)
-		if d.Withheld != nil {
-			pairs = append(pairs, "withheld", d.Withheld)
-		}
+		pairs := d.leadPairs(body)
 		o := jq.NewObj(append(pairs,
 			"confidence", Wire(d.Confidence),
 			"security_summary", Wire(d.SecuritySummary),
@@ -232,22 +217,7 @@ func (d *PostData) Wire() *jq.Obj {
 		}
 		return o
 	}
-	pairs := []any{
-		"dry_run", d.DryRun,
-		"event", d.Event,
-		"commit_id", d.CommitID,
-		keyBody, body,
-		"anchors", jq.NewObj("kept", d.Anchors.Kept, "moved", d.Anchors.Moved),
-		"suggestions", jq.NewObj("embedded", d.Suggestions.Embedded),
-		"findings", d.Findings.Wire(),
-	}
-	if d.Verification != nil {
-		pairs = append(pairs, "verification", d.Verification)
-	}
-	pairs = appendCoverageWire(pairs, d.Coverage)
-	if d.Withheld != nil {
-		pairs = append(pairs, "withheld", d.Withheld)
-	}
+	pairs := d.leadPairs(body)
 	o := jq.NewObj(append(pairs,
 		"items", items,
 		"confidence", Wire(d.Confidence),
@@ -266,6 +236,26 @@ func (d *PostData) Wire() *jq.Obj {
 	}
 	o.Set("provenance", provenance)
 	return o
+}
+
+func (d *PostData) leadPairs(body *jq.Obj) []any {
+	pairs := []any{
+		"dry_run", d.DryRun,
+		"event", d.Event,
+		"commit_id", d.CommitID,
+		keyBody, body,
+		"anchors", jq.NewObj("kept", d.Anchors.Kept, "moved", d.Anchors.Moved),
+		"suggestions", jq.NewObj("embedded", d.Suggestions.Embedded),
+		"findings", d.Findings.Wire(),
+	}
+	if d.Verification != nil {
+		pairs = append(pairs, "verification", d.Verification)
+	}
+	pairs = appendCoverageWire(pairs, d.Coverage)
+	if d.Withheld != nil {
+		pairs = append(pairs, "withheld", d.Withheld)
+	}
+	return pairs
 }
 
 // Wire renders the post body: the dry-run wire always carries
