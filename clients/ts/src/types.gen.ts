@@ -252,6 +252,8 @@ export interface GateDimension {
 
 /** post --dry-run --json data (dry_run true, findings carry the dry-run file) and real-post data (dry_run false, findings carry counts plus the accepted review object). */
 export interface PostData {
+  rearmed?: boolean;
+  previous_head?: string;
   verification?: VerificationSummary | null;
   dry_run: boolean;
   event: string;

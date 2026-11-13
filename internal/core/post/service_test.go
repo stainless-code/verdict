@@ -65,7 +65,7 @@ func (s *scriptCommander) Run(_ context.Context, cmd *core.Command) (core.Result
 	s.stdin = append(s.stdin, stdin)
 	s.configs = append(s.configs, s.readConfig(cmd.Argv))
 	key := routeKey(cmd.Argv)
-	res, ok := s.out[key]
+	res, ok := s.result(key)
 	if !ok {
 		s.t.Errorf("unexpected argv: %q", cmd.Argv)
 		return core.Result{}, errors.New("unexpected argv")
@@ -624,9 +624,11 @@ func postCommander(t *testing.T) *scriptCommander {
 	t.Helper()
 	threads := "gh\x00api\x00graphql\x00--paginate\x00-F\x00owner=acme\x00-F\x00name=app\x00-F\x00pr=7\x00-f\x00query=" + queryLiveCount
 	out := map[string]scriptResult{
-		"gh\x00api\x00repos/acme/app/pulls/7\x00--jq\x00.head.sha": {stdout: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"},
-		"gh\x00api\x00user\x00--jq\x00.login":                      {stdout: "someone-else\n"},
-		threads:                                                    {stdout: `{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}`},
+		"gh\x00api\x00repos/acme/app/pulls/7/reviews\x00--paginate":  {stdout: "[]"},
+		"gh\x00api\x00repos/acme/app/pulls/7/comments\x00--paginate": {stdout: "[]"},
+		"gh\x00api\x00repos/acme/app/pulls/7\x00--jq\x00.head.sha":   {stdout: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"},
+		"gh\x00api\x00user\x00--jq\x00.login":                        {stdout: "someone-else\n"},
+		threads:                                                      {stdout: `{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}`},
 		"gh\x00api\x00repos/acme/app/pulls/7/reviews\x00--method\x00POST\x00--input\x00-\x00--jq\x00" + postJQFilter: {
 			stdout: `{"id":101,"state":"commented","html_url":"https://example.invalid/r/101","submitted_at":"2026-01-01T00:00:00Z"}`,
 		},
@@ -672,7 +674,7 @@ func TestRunDryRun(t *testing.T) {
 		}
 	}
 	for _, c := range cmdr.calls {
-		if strings.Contains(strings.Join(c, " "), "/reviews") {
+		if strings.Contains(strings.Join(c, " "), "--method POST") {
 			t.Errorf("dry-run posted: %q", c)
 		}
 	}
@@ -775,7 +777,7 @@ func TestRunSubmit(t *testing.T) {
 	}
 	var posted []string
 	for i, c := range cmdr.calls {
-		if strings.Contains(strings.Join(c, " "), "/reviews") {
+		if strings.Contains(strings.Join(c, " "), "--method POST") {
 			posted = append(posted, cmdr.stdin[i])
 		}
 	}
@@ -817,4 +819,16 @@ func TestRunSubmit(t *testing.T) {
 	if resp.Data.Review == nil {
 		t.Errorf("data misses the accepted review")
 	}
+}
+
+func (s *scriptCommander) result(key string) (scriptResult, bool) {
+	res, ok := s.out[key]
+	if !ok && strings.HasSuffix(key, "/comments?limit=50&page=1") {
+		res, ok = s.out[strings.TrimSuffix(key, "?limit=50&page=1")]
+	}
+	if !ok && (key == "gh\x00api\x00repos/acme/app/pulls/7/reviews\x00--paginate" || key == "gh\x00api\x00repos/acme/app/pulls/7/comments\x00--paginate") {
+		res = scriptResult{stdout: "[]"}
+		ok = true
+	}
+	return res, ok
 }

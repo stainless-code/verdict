@@ -56,7 +56,7 @@ Fix: cite the existing rule id instead of learning it twice.
 
 ## `already-posted`
 
-Cause: a completed post already exists on this bundle (an exact payload replay or a second completed post).
+Cause: an older version used a completed local receipt to refuse a second post. Current `post` compares live remote content and uses `duplicate-payload` only when nothing is missing.
 
 Fix: re-run with `--force` to override, or `fetch --base-sha <posted-head>` for the delta and review that instead — re-fetch if the earlier review was deleted.
 
@@ -68,7 +68,7 @@ Fix: check the rule status with `learn --status`, then re-run (`learn --restore`
 
 ## `already-reviewed-patch`
 
-Cause: this exact patch was already reviewed and posted.
+Cause: an older version refused publication based on a same-patch local receipt. Current `post` records a new-head re-arm and compares live remote content instead.
 
 Fix: re-run with `--force` to post the same change again, or fetch the delta/base for a new review.
 
@@ -551,9 +551,9 @@ Fix: pass a concrete `X.Y.Z` (or `vX.Y.Z`) version with a writable download dir,
 
 ## `duplicate-payload`
 
-Cause: the exact payload (same body, comments, and SHA) was already posted.
+Cause: every rendered summary part and comment is present in the live remote lists for this reviewed head.
 
-Fix: re-run with `--force` to repost the identical payload — re-fetch if the earlier review was deleted.
+Fix: re-fetch to refresh remote evidence, or use `--force` to deliberately republish. Retry a partially published review directly; `post` refreshes live remote evidence and writes only missing content.
 
 ## `fetch-failed`
 

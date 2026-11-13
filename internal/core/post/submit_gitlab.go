@@ -103,6 +103,7 @@ type gitlabPostPayload struct {
 	commitID string
 	comments []gitlabPostComment
 	dropped  int
+	summary  bool
 }
 
 // gitlabPostComment is one inline finding reduced to what a discussion
@@ -309,6 +310,9 @@ func gitlabSummaryNote(
 	ctx context.Context, cmdr Commander, repo, pr string, part *gitlabPostPayload,
 	posted int, dir string, warnings []string,
 ) (gitlabNoteReceipt, postAttempt, bool) {
+	if !part.summary {
+		return gitlabNoteReceipt{}, postAttempt{}, true
+	}
 	res, err := gitlabCall(ctx, cmdr, gitlabWriteArgv(repo, pr, "/notes"), jq.NewObj(fieldBody, part.body).MarshalPretty())
 	if err != nil || res.ExitCode != 0 {
 		reason := failureReason(res, err)
@@ -483,7 +487,9 @@ func parseGitLabPayload(payload string) (gitlabPostPayload, bool) {
 		return gitlabPostPayload{}, false
 	}
 	comments, _ := obj.Get(fieldComments)
+	_, hasSummary := obj.Get(fieldBody)
 	out := gitlabPostPayload{
+		summary:  hasSummary,
 		body:     orderedString(obj, fieldBody),
 		event:    orderedString(obj, "event"),
 		commitID: orderedString(obj, "commit_id"),

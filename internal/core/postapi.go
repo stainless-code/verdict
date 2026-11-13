@@ -53,6 +53,9 @@ type PostResponse struct { //nolint:govet // field grouping documents the respon
 // the dry-run findings carry the file while the real findings carry the
 // accepted review. Review rides before provenance on the real-post wire.
 type PostData struct { //nolint:govet // field order is the published property order
+	Rearmed      bool   `json:"rearmed,omitempty"`
+	PreviousHead string `json:"previous_head,omitempty"`
+
 	Verification    *PanelSummary    `anyOf:"null"            json:"verification,omitempty" optional:"true"`
 	DryRun          bool             `json:"dry_run"`
 	Event           string           `json:"event"`
@@ -95,6 +98,9 @@ type PostFindings struct { //nolint:govet // field order is the published proper
 
 // Post is schemas/post.schema.json: the completed-post record.
 type Post struct { //nolint:govet // field order is the published property order
+	Rearmed      bool   `json:"rearmed,omitempty"`
+	PreviousHead string `json:"previous_head,omitempty"`
+
 	Verification    *PanelSummary  `anyOf:"null"                      json:"verification,omitempty" optional:"true"`
 	SchemaVersion   string         `const:"1"                         json:"schema_version"`
 	Review          map[string]any `json:"review"`
@@ -231,6 +237,10 @@ func (d *PostData) Wire() *jq.Obj {
 	if review != nil {
 		o.Set("review", review)
 	}
+	if d.Rearmed {
+		o.Set("rearmed", true)
+		o.Set("previous_head", d.PreviousHead)
+	}
 	o.Set("provenance", provenance)
 	return o
 }
@@ -275,6 +285,7 @@ func (p *Post) Wire() *jq.Obj {
 		"prompts_hash", p.PromptsHash,
 		"model", Wire(p.Model),
 	)
+	setRearmWire(o, p.Rearmed, p.PreviousHead)
 	setPostPatchWire(o, p)
 	if p.Forced != nil {
 		o.Set("forced", p.Forced)
@@ -375,4 +386,11 @@ type WithheldSummary struct {
 	ByReason   map[string]int `json:"by_reason"`
 	Total      int            `json:"total"      min:"0"`
 	Unlabelled int            `json:"unlabelled" min:"0"`
+}
+
+func setRearmWire(o *jq.Obj, rearmed bool, previous string) {
+	if rearmed {
+		o.Set("rearmed", true)
+		o.Set("previous_head", previous)
+	}
 }

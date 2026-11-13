@@ -457,7 +457,8 @@ func (st *state) followPosted(k, n int, part string) {
 
 func (st *state) followRefusal(k, n int, posted, retryAt string) *core.RefusalError {
 	return &core.RefusalError{Code: codePostFailed, RetryAt: retryAt, Message: fmt.Sprintf(
-		"post failed: follow-up part %d/%d not posted (review %s landed part 1 — fix the cause and re-run; part 1 reposts as a duplicate)",
+		"post failed: follow-up part %d/%d not posted (review %s landed part 1 — fix the cause and re-run; "+
+			"re-run skips parts already posted, and --force reposts part 1 as a duplicate)",
 		k, n, reviewID(posted))}
 }
 
@@ -516,6 +517,7 @@ func orderedStringPtr(obj *jq.Obj, key string) *string {
 func writePostReceipt(st *state, obj *jq.Obj) error {
 	_, floor, withheld := st.floorPayload()
 	receipt := &core.Post{
+		Rearmed: st.previousHead != "", PreviousHead: st.previousHead,
 		Verification:    st.merged.Verification,
 		SchemaVersion:   "1",
 		Head:            st.commitID,
@@ -589,6 +591,7 @@ func (st *state) successResponse(obj *jq.Obj, posted string) *core.PostResponse 
 		next = "none open — nothing to address"
 	}
 	data := &core.PostData{
+		Rearmed: st.previousHead != "", PreviousHead: st.previousHead,
 		Verification: st.merged.Verification,
 		Withheld:     st.withholdingSummary(),
 		DryRun:       false,

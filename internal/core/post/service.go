@@ -100,6 +100,8 @@ type state struct { //nolint:govet // field grouping documents the post run stat
 	merged       recordcore.MergeResult
 	event        string
 	liveSHA      string
+	remoteInline []map[string]any
+	previousHead string
 	phash        string
 	dir          string
 	body         string
@@ -247,9 +249,7 @@ func (st *state) prepare(ctx context.Context) *core.RefusalError {
 		return ref
 	}
 	st.commitID = st.store().Head()
-	if ref := st.runGuards(ctx); ref != nil {
-		return ref
-	}
+
 	st.checkDrift(ctx)
 	if err := recordcore.EnsureHunksSnapshot(st.mergeRuntime(), st.dir); err != nil {
 		return refusalOrFailed(err)
@@ -273,7 +273,11 @@ func (st *state) publish(ctx context.Context) (*core.PostResponse, *core.Refusal
 	if st.req.JSONMode {
 		st.human("dry-run flag missing with --json on a real post is allowed; envelope follows the post")
 	}
-	if ref := st.duplicateGuard(); ref != nil {
+	st.collectIdentity(ctx)
+	if ref := st.refreshRemote(ctx); ref != nil {
+		return nil, st.withWarnings(ref)
+	}
+	if ref := st.remoteDiff(); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
 	return st.submit(ctx)
@@ -896,4 +900,18 @@ func (st *state) postedAt() string {
 func exists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+func (st *state) collectIdentity(ctx context.Context) {
+	if _, err := os.Lstat(st.dir + "/identity.json"); errors.Is(err, os.ErrNotExist) {
+		return
+	}
+	current, ok := identity.Verify(ctx, st.identityCommander(), st.dir, st.commitID, recordcore.BundleBase(st.dir, st.store()))
+	if !ok {
+		st.warn("patch identity unavailable — provenance omitted")
+		return
+	}
+	if current.PatchID != nil {
+		st.identity = current
+	}
 }

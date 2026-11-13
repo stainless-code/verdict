@@ -54,3 +54,34 @@ func TestWithheldFindingAbsentFromPayload(t *testing.T) {
 		t.Fatalf("payload = %s; want no inline comments", st.payload)
 	}
 }
+
+func TestWithheldAbsentBeforeRemoteDedupeButStillBlocksApproval(t *testing.T) {
+	for _, source := range []string{"agent", "exclusion", "below-severity"} {
+		t.Run(source, func(t *testing.T) {
+			entry := jq.NewObj("sig", "abc", "status", "open", "withheld", jq.NewObj("source", source,
+				"reason", "An intentional compatibility exception.", "at", "2026-11-13T12:00:00Z"))
+			st := policyTestState([]any{entry}, nil)
+			st.flags.DryRun = true
+			st.body, st.event = "Review complete.", eventComment
+			st.merged.Kept = []any{jq.NewObj("path", "a.go", "line", 2, "body", "PRIVATE FINDING")}
+			st.merged.KeptSigs = []string{"abc"}
+			st.buildPayloads()
+			st.liveLoaded = true
+			st.live = []liveReview{{body: "Review complete.", commitID: st.commitID, state: "COMMENTED"}}
+			if ref := st.remoteDiff(); ref == nil || ref.Code != "duplicate-payload" {
+				t.Fatalf("withheld comment treated as missing: %v; want duplicate-payload", ref)
+			}
+			if len(st.comments) != 0 {
+				t.Fatalf("dedupe retained %d withheld comments; want zero", len(st.comments))
+			}
+			st.flags.Approve = approveTrue
+			if ref := st.approveGate(); ref == nil || ref.Code != "approve-blocked" {
+				t.Fatalf("dedupe changed approval gate: %v; want approve-blocked", ref)
+			}
+			st.flags.Force = true
+			if ref := st.approveGate(); ref != nil {
+				t.Fatalf("forced approval refused: %v", ref)
+			}
+		})
+	}
+}

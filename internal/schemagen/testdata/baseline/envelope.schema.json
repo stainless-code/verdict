@@ -471,6 +471,8 @@
       "description": "post --dry-run --json data (dry_run true, findings carry the dry-run file) and real-post data (dry_run false, findings carry counts plus the accepted review object).",
       "type": "object",
       "properties": {
+        "rearmed": { "type": "boolean" },
+        "previous_head": { "type": "string" },
         "verification": {
           "anyOf": [
             { "type": "null" },

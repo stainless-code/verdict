@@ -133,20 +133,36 @@ with `--force`). An unreachable recheck downgrades to `COMMENT` with the reason
 in the body and warnings — never a silent `APPROVE`, never a hard failure.
 `COMMENT`, `REQUEST_CHANGES`, dry runs, and local bundles never pay this lookup.
 
-Two dedup layers keep "exactly one terminal write" mechanical: the fine guard
-refuses exact payload replays (same body+comments+SHA hash, dot-marker
-`.posted_<hash>` — legit re-reviews hash differently and pass), while the
-coarse single-review finalizer refuses any second completed post on the same
-reviewed SHA — even with different content — with typed `already-posted`
-(pass `--force` to override the wedged case). Any new commit SHA re-arms
-automatically (the next post refreshes the `post.json` head); attempts, dry
-runs, and failures never write the key, so only a real post arms it.
+After all approval and policy gates have run, posting reads the live remote
+reviews and comments through the host client immediately before deciding what
+to write. Only missing comments and summary parts are submitted. A partial
+publish can be retried directly — no re-fetch is needed. If either live read
+fails or returns an unreadable response, posting refuses without writing,
+including with `--force`.
 
-Finalizer loop (one shape end to end — refuse → advance → delta review →
-post → gate): the `already-posted` refusal names both exits — `--force` to
-override, or the forward path `verdict fetch owner/repo 123
---base-sha <short-posted-head>` (the 7-char reviewed SHA) and review the
-delta per `prompts/incremental-review.md` step 2. A push that lands after
+Comment identity includes the reviewed head, path, side, line, and rendered
+body digest. Matching consumes remote occurrences one-to-one: exact anchors
+first, then moved-line matches among the remaining comments. Identical text
+on distinct lines therefore retains its multiplicity.
+Diff positions and hidden finding-signature receipts do not identify content.
+Sources and suggestions are part of the rendered body. A new head deliberately
+re-arms publication: the output and `post.json` carry `rearmed: true` and
+`previous_head`. `--force` explicitly republishes all content.
+
+Binding events are reconciled independently of rendered content. An existing
+summary does not prove that approval succeeded. A retry submits an unfinished
+approval without rewriting the summary; inline-only GitLab updates omit the
+summary note. Submitted remote review states establish completed verdicts;
+Forgejo drafts never count as published feedback. Verified patch identity
+remains recorded as provenance, without a local same-patch refusal.
+
+Live remote content is authoritative; fetched snapshots are a cache. `.posted_*`, `post.json`, and
+posted-body markers cannot suppress missing remote content. If every summary
+part and comment is already present, `duplicate-payload` reports that there is
+nothing to write. Suppression never bypasses an approval or policy gate and
+never removes findings from the gate's input or reported finding counts.
+
+A push that lands after
 fetch never fails the run: `post` warns on stderr and appends the `> ⚠️`
 body note, both naming `verdict fetch owner/repo 123
 --base-sha <short-fetched-sha>` — copy-paste it, review the delta, post,

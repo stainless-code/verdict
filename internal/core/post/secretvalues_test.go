@@ -89,7 +89,7 @@ func TestRunDryRunWarnsOnSecretShaped(t *testing.T) {
 		t.Errorf("warning republished the value: %q", joined)
 	}
 	for _, c := range cmdr.calls {
-		if strings.Contains(strings.Join(c, " "), "/reviews") {
+		if strings.Contains(strings.Join(c, " "), "--method POST") {
 			t.Errorf("dry run posted: %q", c)
 		}
 	}
@@ -117,7 +117,7 @@ func TestRunAllowSecretValuesRecordsOverride(t *testing.T) {
 	}
 	posted := 0
 	for _, c := range cmdr.calls {
-		if strings.Contains(strings.Join(c, " "), "/reviews") {
+		if strings.Contains(strings.Join(c, " "), "--method POST") {
 			posted++
 		}
 	}
