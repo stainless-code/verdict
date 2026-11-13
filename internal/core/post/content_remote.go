@@ -106,7 +106,7 @@ func (st *state) missingPayload(payload string, comments []any) string {
 	}
 	body := orderedString(obj, "body")
 	if st.remoteBodyPresent(body) {
-		if len(comments) == 0 {
+		if len(comments) == 0 && !bindingEvent(orderedString(obj, "event")) {
 			return ""
 		}
 		body = ""
@@ -141,3 +141,5 @@ func priorHead(current, candidate, previous string) string {
 	}
 	return previous
 }
+
+func bindingEvent(event string) bool { return event == eventApprove || event == "REQUEST_CHANGES" }
