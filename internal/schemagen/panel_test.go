@@ -7,7 +7,6 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 )
 
-// TestPanelReceiptSchema validates required evidence and the verdict enum.
 func TestPanelReceiptSchema(t *testing.T) {
 	schema := loadSchemaDocument(t, "panel.schema.json")
 	tests := []struct {
@@ -29,7 +28,6 @@ func TestPanelReceiptSchema(t *testing.T) {
 	}
 }
 
-// TestPanelReportSummarySchema pins the report's generated verifier profile.
 func TestPanelReportSummarySchema(t *testing.T) {
 	schema := loadSchemaDocument(t, "envelope.schema.json")
 	response := runReportFixture(t)

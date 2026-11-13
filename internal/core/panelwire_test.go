@@ -6,7 +6,6 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// TestPanelSummaryWire pins summary counts and legacy omission.
 func TestPanelSummaryWire(t *testing.T) {
 	sum := &PanelSummary{Verifiers: 2, Confirmed: 1, Contested: 1, Single: 2}
 	cases := []struct {

@@ -1,7 +1,6 @@
 package panelcore
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +18,8 @@ import (
 )
 
 const (
+	fieldModel      = "model"
+	fieldEvidence   = "evidence"
 	maxReceiptBytes = 32 * 1024 * 1024
 	minEvidence     = 10
 	maxEvidence     = 500
@@ -148,14 +149,10 @@ func parseResult(item any, findings []any, warnings *[]string) (Result, error) {
 	if !ok {
 		return Result{}, bad("verification/verdicts.json result must be an object")
 	}
-	warnExtras(m, []string{fieldSig, "model", "provider", fieldVerdict, "evidence", "at"}, warnings)
-	encoded, err := json.Marshal(m)
+	warnExtras(m, []string{fieldSig, fieldModel, "provider", fieldVerdict, fieldEvidence, "at"}, warnings)
+	r, err := decodeResult(m)
 	if err != nil {
-		return Result{}, bad("verification/verdicts.json cannot encode result")
-	}
-	var r Result
-	if err := json.Unmarshal(encoded, &r); err != nil {
-		return r, bad("verification/verdicts.json result fields must be strings")
+		return r, err
 	}
 	if !validResult(&r) {
 		return r, bad("verification/verdicts.json needs sig, model, a known verdict and evidence of 10–500 characters")
@@ -236,9 +233,23 @@ func storedRefutations(entry map[string]any) []Result {
 	for _, item := range jq.Elements(entry["verification"]) {
 		m, _ := object(item)
 		if m[fieldVerdict] == refuted {
-			results = append(results, Result{Sig: jq.StrOf(entry[fieldSig]),
-				Model: jq.StrOf(m["model"]), Verdict: refuted, Evidence: jq.StrOf(m["evidence"])})
+			results = append(results, Result{
+				Sig:   jq.StrOf(entry[fieldSig]),
+				Model: jq.StrOf(m[fieldModel]), Verdict: refuted, Evidence: jq.StrOf(m[fieldEvidence]),
+			})
 		}
 	}
 	return results
+}
+
+func decodeResult(m map[string]any) (Result, error) {
+	for _, key := range []string{fieldSig, fieldModel, "provider", fieldVerdict, fieldEvidence, "at"} {
+		if _, ok := m[key].(string); !ok && m[key] != nil {
+			return Result{}, bad("verification/verdicts.json result fields must be strings")
+		}
+	}
+	return Result{
+		Sig: jq.StrOf(m[fieldSig]), Model: jq.StrOf(m[fieldModel]), Provider: jq.StrOf(m["provider"]),
+		Verdict: jq.StrOf(m[fieldVerdict]), Evidence: jq.StrOf(m[fieldEvidence]), At: jq.StrOf(m["at"]),
+	}, nil
 }

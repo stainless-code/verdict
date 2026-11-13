@@ -7,8 +7,6 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// TestConfidenceKeepsFindings derives confidence without voting or dropping
-// findings.
 func TestConfidenceKeepsFindings(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -28,8 +26,6 @@ func TestConfidenceKeepsFindings(t *testing.T) {
 	}
 }
 
-// TestRepostPreservesAndReplaces preserves refutations and replaces current
-// opinions.
 func TestRepostPreservesAndReplaces(t *testing.T) {
 	entry := jq.NewObj("sig", "abc", "status", "open", "verification", []any{jq.NewObj("model", "a", "verdict", "refuted", "evidence", "original counterexample")})
 	Apply([]any{entry}, &File{Results: []Result{{Sig: "abc", Model: "b", Verdict: "confirmed", Evidence: "later confirmation"}}})
@@ -48,7 +44,6 @@ func TestRepostPreservesAndReplaces(t *testing.T) {
 	}
 }
 
-// TestTerminalAndLegacy keeps terminal and legacy findings unchanged.
 func TestTerminalAndLegacy(t *testing.T) {
 	entry := jq.NewObj("sig", "abc", "status", "addressed")
 	before := jq.PrettyOrdered(entry)

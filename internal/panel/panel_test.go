@@ -15,7 +15,6 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// TestPanelArtifacts pins artifact writes and flat installs.
 func TestPanelArtifacts(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "review repo")
 	dir := filepath.Join(root, ".verdict/state/local-test")
@@ -56,7 +55,6 @@ func TestPanelArtifacts(t *testing.T) {
 	assertFile(t, filepath.Join(dir, "post.json"), "untouched receipt\n")
 }
 
-// TestPanelRefusesSymlink keeps planner writes inside the bundle.
 func TestPanelRefusesSymlink(t *testing.T) {
 	dir, target := t.TempDir(), t.TempDir()
 	if err := os.Symlink(target, filepath.Join(dir, "verification")); err != nil {

@@ -15,37 +15,6 @@
   "required": ["schema_version", "head_sha", "results"],
   "additionalProperties": true,
   "$defs": {
-    "verifier": {
-      "type": "object",
-      "properties": {
-        "provider": { "type": ["string", "null"] },
-        "model": { "type": "string" }
-      },
-      "required": ["provider", "model"],
-      "additionalProperties": true
-    },
-    "finding": {
-      "type": "object",
-      "properties": {
-        "sig": { "type": "string" },
-        "path": { "type": "string" },
-        "line": { "type": ["integer", "string", "null"] },
-        "severity": { "type": ["string", "null"] },
-        "kind": { "const": "inline" }
-      },
-      "required": ["sig", "path", "line", "severity", "kind"],
-      "additionalProperties": true
-    },
-    "totals": {
-      "type": "object",
-      "properties": {
-        "findings": { "type": "integer", "minimum": 0, "maximum": 100 },
-        "verifiers": { "type": "integer", "minimum": 1, "maximum": 4 },
-        "dispatches": { "type": "integer", "minimum": 0, "maximum": 400 }
-      },
-      "required": ["findings", "verifiers", "dispatches"],
-      "additionalProperties": true
-    },
     "result": {
       "type": "object",
       "properties": {
@@ -57,42 +26,6 @@
         "at": { "type": "string" }
       },
       "required": ["sig", "model", "verdict", "evidence"],
-      "additionalProperties": true
-    },
-    "plan": {
-      "description": "Planner output at verification/plan.json; dispatch text is verification/dispatch.md.",
-      "type": "object",
-      "properties": {
-        "schema_version": { "const": "1" },
-        "head_sha": { "type": "string" },
-        "generated_at": { "type": "string" },
-        "panel_source": { "type": "string" },
-        "verifiers": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/verifier" }
-        },
-        "findings": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/finding" }
-        },
-        "second_look": {
-          "type": "array",
-          "items": { "type": "string" }
-        },
-        "dispatch": { "type": "string" },
-        "totals": { "$ref": "#/$defs/totals" }
-      },
-      "required": [
-        "schema_version",
-        "head_sha",
-        "generated_at",
-        "panel_source",
-        "verifiers",
-        "findings",
-        "second_look",
-        "dispatch",
-        "totals"
-      ],
       "additionalProperties": true
     }
   }

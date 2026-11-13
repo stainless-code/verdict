@@ -970,14 +970,12 @@ func appendKeywords(schema *node, tag reflect.StructTag) {
 }
 
 func panelDefinitions(receipt bool) []definition {
-	defs := []definition{
+	if receipt {
+		return []definition{{typ: reflect.TypeFor[panelcore.Result](), name: "result"}}
+	}
+	return []definition{
 		{typ: reflect.TypeFor[panelcore.Verifier](), name: "verifier"},
 		{typ: reflect.TypeFor[panelcore.Finding](), name: "finding"},
 		{typ: reflect.TypeFor[panelcore.Totals](), name: "totals"},
 	}
-	if receipt {
-		defs = append(defs, definition{typ: reflect.TypeFor[panelcore.Result](), name: "result"},
-			definition{typ: reflect.TypeFor[panelcore.PlanDocument](), name: "plan"})
-	}
-	return defs
 }

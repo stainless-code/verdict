@@ -11,7 +11,6 @@ import (
 	"github.com/stainless-code/verdict/internal/core/skill"
 )
 
-// TestPanelSkillLifecycle removes the installed panel reference directory.
 func TestPanelSkillLifecycle(t *testing.T) {
 	req := newRequest(t)
 	req.Dir = t.TempDir()

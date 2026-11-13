@@ -11,7 +11,6 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// TestVerdictRefusals rejects stale, duplicate, and malformed evidence.
 func TestVerdictRefusals(t *testing.T) {
 	tests := []struct{ name, raw, code string }{
 		{"head", `{"schema_version":"1","head_sha":"old","results":[]}`, "panel-stale"},
@@ -33,7 +32,6 @@ func TestVerdictRefusals(t *testing.T) {
 	}
 }
 
-// TestVerdictPrefixAndExtras resolves prefixes and warns on extra keys.
 func TestVerdictPrefixAndExtras(t *testing.T) {
 	file, warnings, err := Parse([]byte(`{"schema_version":"1","head_sha":"head","extra":true,"results":[{"sig":"abc","model":"m","verdict":"refuted","evidence":"This branch is unreachable.","extra":true}]}`), "head", []any{jq.NewObj("sig", "abcdef")})
 	if err != nil {
@@ -49,8 +47,6 @@ func TestVerdictPrefixAndExtras(t *testing.T) {
 	}
 }
 
-// TestMissingVerdictsAndSecondLook keeps missing receipts optional and
-// quotes prior evidence.
 func TestMissingVerdictsAndSecondLook(t *testing.T) {
 	file, _, err := Load(t.TempDir(), "head", nil)
 	if err != nil || file != nil {
@@ -63,7 +59,6 @@ func TestMissingVerdictsAndSecondLook(t *testing.T) {
 	}
 }
 
-// TestVerdictReadFailure refuses unreadable receipts.
 func TestVerdictReadFailure(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "verification", "verdicts.json"), 0o755); err != nil {
@@ -79,25 +74,45 @@ func TestVerdictReadFailure(t *testing.T) {
 func TestLoadConfinesReceipt(t *testing.T) {
 	for _, component := range []string{"file", "directory"} {
 		t.Run(component, func(t *testing.T) {
-			dir, outside := t.TempDir(), t.TempDir()
-			receipt := filepath.Join(outside, "verdicts.json")
-			if err := os.WriteFile(receipt, []byte(`{"schema_version":"1","head_sha":"head","results":[{"sig":"abc","model":"m","verdict":"refuted","evidence":"external counterexample"}]}`), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			target, link := outside, filepath.Join(dir, "verification")
-			if component == "file" {
-				if err := os.Mkdir(link, 0o755); err != nil {
-					t.Fatal(err)
-				}
-				target, link = receipt, filepath.Join(link, "verdicts.json")
-			}
-			if err := os.Symlink(target, link); err != nil {
-				t.Skipf("symlinks unavailable: %v", err)
-			}
+			dir := receiptSymlinkFixture(t, component)
 			file, _, err := Load(dir, "head", []any{jq.NewObj("sig", "abcdef")})
 			var ref *core.RefusalError
 			if !errors.As(err, &ref) || ref.Code != "bad-panel" || file != nil {
 				t.Fatalf("escaped %s symlink: file=%+v, error=%v", component, file, err)
+			}
+		})
+	}
+}
+
+func receiptSymlinkFixture(t *testing.T, component string) string {
+	t.Helper()
+	dir, outside := t.TempDir(), t.TempDir()
+	receipt := filepath.Join(outside, "verdicts.json")
+	if err := os.WriteFile(receipt, []byte(`{"schema_version":"1","head_sha":"head","results":[{"sig":"abc","model":"m","verdict":"refuted","evidence":"external counterexample"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	target, link := outside, filepath.Join(dir, "verification")
+	if component == "file" {
+		if err := os.Mkdir(link, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		target, link = receipt, filepath.Join(link, "verdicts.json")
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	return dir
+}
+
+func TestResultFieldTypes(t *testing.T) {
+	const receipt = `{"schema_version":"1","head_sha":"head","results":[{"sig":"abc","model":"m","provider":"p","verdict":"confirmed","evidence":"literal evidence","at":"now"}]}`
+	for _, field := range []struct{ key, value string }{{"sig", "abc"}, {"model", "m"}, {"provider", "p"}, {"verdict", "confirmed"}, {"evidence", "literal evidence"}, {"at", "now"}} {
+		t.Run(field.key, func(t *testing.T) {
+			raw := strings.Replace(receipt, `"`+field.key+`":"`+field.value+`"`, `"`+field.key+`":42`, 1)
+			_, _, err := Parse([]byte(raw), "head", []any{jq.NewObj("sig", "abcdef")})
+			var ref *core.RefusalError
+			if !errors.As(err, &ref) || ref.Code != "bad-panel" || ref.Message != "verification/verdicts.json result fields must be strings" {
+				t.Fatalf("field type refusal=%v", err)
 			}
 		})
 	}

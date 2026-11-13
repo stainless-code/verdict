@@ -62,7 +62,9 @@ const maxSplitParts = 999
 
 var splitNoteReserve = max(len(splitFirstNote(maxSplitParts+1)), len(splitFollowHead(maxSplitParts, maxSplitParts)))
 
-const paraSep = "\n\n"
+const (
+	paraSep = "\n\n"
+)
 
 func splitFirstNote(n int) string {
 	return fmt.Sprintf("\n\n> ⚠️ Note: this review continues in %d follow-up "+
@@ -312,17 +314,17 @@ func panelBody(body string, summary *core.PanelSummary) string {
 	if found || line == "" {
 		return body
 	}
-	lines := strings.Split(body, "\n")
+	lines := strings.Split(body, newline)
 	for i, s := range lines {
 		if strings.HasPrefix(s, "> ") {
-			return strings.Join(append(append(lines[:i+1:i+1], line), lines[i+1:]...), "\n")
+			return strings.Join(append(append(lines[:i+1:i+1], line), lines[i+1:]...), newline)
 		}
 	}
 	return line + paraSep + body
 }
 
 func replacePanelSummary(body, line string) (string, bool) {
-	lines := strings.Split(body, "\n")
+	lines := strings.Split(body, newline)
 	out := lines[:0]
 	found := false
 	for _, existing := range lines {
@@ -335,7 +337,7 @@ func replacePanelSummary(body, line string) (string, bool) {
 		}
 		found = true
 	}
-	return strings.Join(out, "\n"), found
+	return strings.Join(out, newline), found
 }
 
 func isPanelSummary(line string) bool {

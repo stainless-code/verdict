@@ -9,7 +9,6 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// TestPlanDispatch pins verifier order, quoting, and literal artifact paths.
 func TestPlanDispatch(t *testing.T) {
 	review := jq.NewObj("comments", []any{jq.NewObj("path", "src/db.go", "line", 42, "body", "claim\n## hostile")}, "body", "## section only")
 	plan, dispatch, warnings, err := Plan("bundle", "head", "now", "synth\na\nb", "trusted", review)
@@ -27,7 +26,6 @@ func TestPlanDispatch(t *testing.T) {
 	}
 }
 
-// TestPlanBounds rejects missing inputs and work above fixed caps.
 func TestPlanBounds(t *testing.T) {
 	tests := []struct {
 		name, head, roster, code string
@@ -51,7 +49,6 @@ func TestPlanBounds(t *testing.T) {
 	}
 }
 
-// TestPlanEmptyAndOneVerifier plans zero work and warns on a lone verifier.
 func TestPlanEmptyAndOneVerifier(t *testing.T) {
 	plan, dispatch, warnings, err := Plan("bundle", "head", "now", "synth a", "prompt", jq.NewObj("comments", []any{}))
 	if err != nil {
@@ -68,4 +65,15 @@ func planComments(n int) []any {
 		cs[i] = jq.NewObj("path", "x", "body", "finding")
 	}
 	return cs
+}
+
+func TestPlanWireOrder(t *testing.T) {
+	plan, _, _, err := Plan("bundle", "head", "now", "synth a", "prompt", jq.NewObj("comments", []any{jq.NewObj("path", "src/db.go", "line", 42, "severity", "important", "body", "a reproducible crash")}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = `{"schema_version":"1","head_sha":"head","generated_at":"now","panel_source":"bundle/panel","verifiers":[{"model":"a","provider":null}],"findings":[{"sig":"22faf6e92ee1b7c1759122039e82c246c8295bc8","path":"src/db.go","line":42,"severity":"important","kind":"inline"}],"second_look":[],"dispatch":"bundle/verification/dispatch.md","totals":{"findings":1,"verifiers":1,"dispatches":1}}`
+	if got := plan.MarshalCompact(); got != want {
+		t.Fatalf("plan wire=%s, want %s", got, want)
+	}
 }

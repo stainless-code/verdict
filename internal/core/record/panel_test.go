@@ -11,7 +11,6 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// TestRecordPanelReceipt drives receipt validation and merge through record.
 func TestRecordPanelReceipt(t *testing.T) {
 	coverageBundle(t, coverageDiff, coverageReview("notes.txt", ""))
 	writeFile(t, ".verdict/state/local-cov/verification/verdicts.json", `{"schema_version":"1","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","results":[{"sig":"101d0761051f365731b9b857810c9b3603c50208","model":"verifier","verdict":"refuted","evidence":"The caller already validates this input."}]}`)
@@ -28,7 +27,6 @@ func TestRecordPanelReceipt(t *testing.T) {
 	}
 }
 
-// TestPostPanelDryRun keeps contested findings and posts only summary counts.
 func TestPostPanelDryRun(t *testing.T) {
 	postCoverageBundle(t, coverageReview("notes.txt", ""))
 	writeFile(t, ".verdict/state/7/verification/verdicts.json", `{"schema_version":"1","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","results":[{"sig":"101d0761051f365731b9b857810c9b3603c50208","model":"verifier","verdict":"refuted","evidence":"PRIVATE_VERIFIER_EVIDENCE: caller already validates."}]}`)

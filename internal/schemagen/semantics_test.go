@@ -19,7 +19,7 @@ import (
 // required key, enum, or type changed.
 var publishedSemantics = map[string]string{
 	"panel-plan.schema.json":  "c4ac13bb03fb5918bc5b60ff9eba10776f10b999fdc88049409792439b1c043a",
-	"panel.schema.json":       "a218e4f4f3f75e3583c7712217d26265bd0a9e0c4291f8ac8e87b53ea8f507cf",
+	"panel.schema.json":       "60fee20b395837e41c0bb8044dcaed55fa7a38d8d8a504a9f228be95b28319ef",
 	"calibration.schema.json": "9e061b60ab7c2252b86146af16742a3e59c64a28e9f6441fd0f30f1f5e2f9581",
 	// additive backtest.schema.json (new run-artifact document for the backtest
 	// score report; no existing schema property, required key, or type changed).

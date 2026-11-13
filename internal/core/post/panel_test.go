@@ -7,7 +7,6 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 )
 
-// TestPanelBodySummary pins the single evidence-free callout.
 func TestPanelBodySummary(t *testing.T) {
 	body := "> [!IMPORTANT]\n> Review finding\n\nDetails."
 	got := panelBody(body, &core.PanelSummary{Confirmed: 1, Contested: 1, Single: 2})

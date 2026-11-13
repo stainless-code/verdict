@@ -485,8 +485,7 @@
   },
   "panel": {
     "descriptions": {
-      "": "Invoker-written verification/verdicts.json: head-bound independent opinions. Duplicate (sig, model) and unknown or ambiguous signatures are refused by the runtime; a refutation never deletes a finding.",
-      "/$defs/plan": "Planner output at verification/plan.json; dispatch text is verification/dispatch.md."
+      "": "Invoker-written verification/verdicts.json: head-bound independent opinions. Duplicate (sig, model) and unknown or ambiguous signatures are refused by the runtime; a refutation never deletes a finding."
     }
   },
   "panel-plan": {
