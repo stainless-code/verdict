@@ -38,7 +38,7 @@ type WaitProbe struct {
 
 // Read reads a complete GitHub observation without writing local files.
 // Other providers refuse explicitly, before executing any host command.
-func (p *WaitProbe) Read(ctx context.Context, req *core.ReadRequest, provider string) (*WaitSnapshot, *core.RefusalError) {
+func (p *WaitProbe) Read(ctx context.Context, req *core.ReadRequest, provider, until string) (*WaitSnapshot, *core.RefusalError) {
 	if provider != providerGitHub {
 		return nil, &core.RefusalError{Code: "provider-unimplemented", Message: "pr-wait on " + provider + " is unsupported; " +
 			"supported hosts: github"}
@@ -57,9 +57,12 @@ func (p *WaitProbe) Read(ctx context.Context, req *core.ReadRequest, provider st
 		return nil, ref
 	}
 
-	threads, ref := waitThreads(ctx, req)
-	if ref != nil {
-		return nil, ref
+	var threads []any
+	if until == untilReviewChanged {
+		threads, ref = waitThreads(ctx, req)
+		if ref != nil {
+			return nil, ref
+		}
 	}
 
 	return waitSnapshot(live, detail.Checks, detail.Reviews, threads)

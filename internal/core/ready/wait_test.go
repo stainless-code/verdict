@@ -13,10 +13,12 @@ import (
 type sequenceHost struct {
 	field string
 	polls int
+	calls []string
 }
 
 func (h *sequenceHost) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	argv := strings.Join(cmd.Argv, " ")
+	h.calls = append(h.calls, argv)
 	switch {
 	case strings.Contains(argv, "--include"):
 		h.polls++
@@ -152,5 +154,18 @@ func TestWaitRefusesLocalBundle(t *testing.T) {
 	_, ref := Wait(t.Context(), req)
 	if ref == nil || ref.Code != "no-pr-target" || host.polls != 0 {
 		t.Fatalf("local-branch ref=%v polls=%d; want no-pr-target", ref, host.polls)
+	}
+}
+
+func TestWaitSkipsThreadsUnlessReviewChanged(t *testing.T) {
+	req, host, _ := waitTestRequest(t, "merged")
+	req.Once = true
+	if _, ref := Wait(t.Context(), req); ref != nil {
+		t.Fatal(ref)
+	}
+	for _, call := range host.calls {
+		if strings.Contains(call, "graphql") {
+			t.Fatalf("merged wait queried threads: %q", host.calls)
+		}
 	}
 }

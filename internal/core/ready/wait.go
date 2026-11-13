@@ -132,15 +132,16 @@ func waitProvider(req *WaitRequest) (string, *core.RefusalError) {
 }
 
 const (
-	untilMerged  = "merged"
-	untilClosed  = "closed"
-	stateClosed  = "CLOSED"
-	codeCanceled = "canceled"
+	untilMerged        = "merged"
+	untilClosed        = "closed"
+	untilReviewChanged = "review-changed"
+	stateClosed        = "CLOSED"
+	codeCanceled       = "canceled"
 )
 
 func validUntil(until string) bool {
 	switch until {
-	case untilMerged, untilClosed, "checks-green", untilChecksDone, "review-changed":
+	case untilMerged, untilClosed, "checks-green", untilChecksDone, untilReviewChanged:
 		return true
 	}
 	return false
@@ -156,7 +157,7 @@ func waitMatches(until string, baseline, snapshot *WaitSnapshot) bool {
 		return snapshot.ChecksKnown && snapshot.ChecksGreen
 	case untilChecksDone:
 		return snapshot.ChecksKnown && snapshot.ChecksDone
-	case "review-changed":
+	case untilReviewChanged:
 		return baseline != nil && (snapshot.Reviews != baseline.Reviews || snapshot.Threads != baseline.Threads)
 	}
 	return false
@@ -193,7 +194,7 @@ type waitSession struct {
 }
 
 func (s *waitSession) observe(ctx context.Context) (bool, error) {
-	snapshot, ref := s.probe.Read(ctx, &s.req.ReadRequest, s.provider)
+	snapshot, ref := s.probe.Read(ctx, &s.req.ReadRequest, s.provider, s.req.Until)
 	if ref != nil {
 		return false, ref
 	}

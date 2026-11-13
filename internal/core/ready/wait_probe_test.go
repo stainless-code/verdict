@@ -38,7 +38,7 @@ func TestWaitProbeConditionalAndFailedChecks(t *testing.T) {
 	req := &core.ReadRequest{Repo: "acme/app", Pr: "42", Runtime: &core.Runtime{Commander: host}}
 	probe := &WaitProbe{}
 	for range 2 {
-		snapshot, ref := probe.Read(t.Context(), req, "github")
+		snapshot, ref := probe.Read(t.Context(), req, "github", "review-changed")
 		if ref != nil {
 			t.Fatalf("%v calls %q", ref, host.calls)
 		}
@@ -52,7 +52,7 @@ func TestWaitProbeConditionalAndFailedChecks(t *testing.T) {
 func TestWaitProbeUnsupported(t *testing.T) {
 	for _, provider := range []string{"gitlab", "forgejo"} {
 		host := &waitHost{}
-		_, ref := (&WaitProbe{}).Read(t.Context(), &core.ReadRequest{Runtime: &core.Runtime{Commander: host}}, provider)
+		_, ref := (&WaitProbe{}).Read(t.Context(), &core.ReadRequest{Runtime: &core.Runtime{Commander: host}}, provider, "merged")
 		if ref == nil || ref.Code != "provider-unimplemented" || !strings.Contains(ref.Message, provider) || len(host.calls) != 0 {
 			t.Fatalf("provider %s: ref=%v calls=%v", provider, ref, host.calls)
 		}

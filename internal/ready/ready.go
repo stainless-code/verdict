@@ -21,7 +21,7 @@ type Request = readcommon.Request
 // Run executes `ready <owner/repo> <pr> [--json, --check]`, returning the
 // exit code.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
-	q := readyRequest(r, req, false)
+	q := readyRequest(r, req)
 	if err := parseFlags(args, q); err != nil {
 		return r.ReportUsage(err)
 	}
@@ -49,7 +49,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 
 // readyRequest injects the runner's clock, progress observer, and command
 // runner into the typed service request.
-func readyRequest(r *cli.Runner, req Request, check bool) *readycore.Request {
+func readyRequest(r *cli.Runner, req Request) *readycore.Request {
 	read := req
 	if read.Runtime == nil {
 		read.Runtime = &core.Runtime{}
@@ -61,7 +61,6 @@ func readyRequest(r *cli.Runner, req Request, check bool) *readycore.Request {
 	}
 	return &readycore.Request{
 		ReadRequest: read,
-		Check:       check,
 		Warnings:    append([]string{}, r.Warnings...),
 	}
 }
