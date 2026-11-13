@@ -111,7 +111,7 @@ func localPolicy(
 func localResolve(
 	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest,
 	f *core.FetchLocalFlags, mode *localMode, listed string,
-) *core.RefusalError {
+) error {
 	rc := ctx2.runCfg
 	if err := rc.resolveLocalPhaseTwo(
 		ctx, ctx2.runner.commander, mode.baseSHA, f.ChunkFlag, listedInputs(ctx2.dir, listed), req.SettingsPath,
@@ -119,7 +119,7 @@ func localResolve(
 		return err
 	}
 	ctx2.runner.privacy = rc.resolved.Privacy
-	return nil
+	return filterExcluded(ctx2)
 }
 
 // localSlugGate owns the fetch-local name gate: empty, numeric, and
@@ -309,7 +309,7 @@ func localStores(ctx2 *fetchRunCtx, r *session, dir, slug, listed, numstat strin
 		return err
 	}
 	fmt.Fprintf(r.Human, "» roles -> %s/roles.txt (heuristic file roles for triage)\n", r.display(dir))
-	if err := atomic.WriteFile(dir+"/roles.txt", []byte(rolesForPathsText(listed))); err != nil {
+	if err := atomic.WriteFile(dir+"/roles.txt", []byte(rolesForPathsText(withoutExcluded(dir, listed)))); err != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/roles.txt: %v", dir, err)}
 	}
 	if ref := emitContext(ctx2); ref != nil {
@@ -757,6 +757,7 @@ func writeLocalTOC(ctx2 *fetchRunCtx, slug, listed, numstat string) error {
 	}
 	sb.WriteString("\n## coverage manifest\n")
 	fmt.Fprintf(&sb, "files changed: %d | files with diff hunks: %d\n", countNonEmptyLines(listed), len(withHunks))
+	omitted = splitLines(withoutExcluded(ctx2.dir, strings.Join(omitted, "\n")))
 	if len(omitted) > 0 {
 		sb.WriteString("omitted (no hunks — binary, renamed without changes, or mode-only):\n")
 		for _, p := range omitted {
@@ -765,7 +766,7 @@ func writeLocalTOC(ctx2 *fetchRunCtx, slug, listed, numstat string) error {
 	} else {
 		sb.WriteString("omitted: (none)\n")
 	}
-	return atomic.WriteFile(ctx2.dir+"/toc.txt", []byte(sb.String()))
+	return atomic.WriteFile(ctx2.dir+"/toc.txt", []byte(sb.String()+exclusionTOC(ctx2.dir)))
 }
 
 // omittedLocal owns the local omitted computation: file_list paths absent

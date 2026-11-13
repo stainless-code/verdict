@@ -198,6 +198,12 @@ Cause: `--id` breaks the id shape.
 
 Fix: pass an `--id` matching `^[a-z0-9][a-z0-9-]{0,64}$`, or omit `--id`.
 
+## `bad-ignore`
+
+Cause: the trusted exclusion control is unreadable or malformed.
+
+Fix: keep `.verdict/ignore` UTF-8, under 64 KiB and 1,000 patterns. Use one shell glob per line, `#` comments and `!` to re-include, then re-fetch.
+
 ## `bad-judgment`
 
 Cause: the `calibrate --probe` judge file is missing or unreadable.

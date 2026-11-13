@@ -75,6 +75,8 @@ next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.m
 --- file C/.gh-calls.log ---
 CALL: pr view 4701 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,url,commits,files,additions,deletions,isDraft,reviewDecision,state
 CALL: pr diff 4701 --repo acme/app
+CALL: api repos/acme/app/contents/.verdict/ignore?ref=cccccccccccccccccccccccccccccccccccccccc
+CALL: api repos/acme/app/contents/.gitattributes?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.verdict/config.json?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.verdict/kb.jsonl?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.verdict/learnings.md?ref=cccccccccccccccccccccccccccccccccccccccc
@@ -131,6 +133,18 @@ notes.txt
   "sha": "cccccccccccccccccccccccccccccccccccccccc",
   "files": [
     {
+      "path": ".verdict/ignore",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".gitattributes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
       "path": ".verdict/config.json",
       "status": "used",
       "bytes": 63,
@@ -182,7 +196,26 @@ notes.txt
 }
 --- file C/.verdict/state/4701/controls/config.json ---
 {"schema_version":"1","defaults":{"panel":["api-base-panel"]}}
+--- file C/.verdict/state/4701/excluded.json ---
+{
+  "schema_version": "1",
+  "excluded": [],
+  "excluded_bytes": 0,
+  "kept_bytes": 146,
+  "raw_diff_sha256": "318d35b3738f5e9aadfdaef4e9c0f2b1772e60605db9a0b29f7008fd67c6e268",
+  "diff_sha256": "318d35b3738f5e9aadfdaef4e9c0f2b1772e60605db9a0b29f7008fd67c6e268"
+}
 --- file C/.verdict/state/4701/full.diff ---
+diff --git a/notes.txt b/notes.txt
+index 1111111..2222222 100644
+--- a/notes.txt
++++ b/notes.txt
+@@ -1,3 +1,3 @@
+ top
+-old line
++new line
+ bottom
+--- file C/.verdict/state/4701/full.raw.diff ---
 diff --git a/notes.txt b/notes.txt
 index 1111111..2222222 100644
 --- a/notes.txt

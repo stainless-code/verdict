@@ -53,6 +53,7 @@ var refusalCodes = []string{
 	"bad-from",
 	"bad-group-validation",
 	"bad-id",
+	"bad-ignore",
 	"bad-judgment",
 	"bad-lock-source",
 	"bad-max-bytes",

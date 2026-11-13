@@ -125,6 +125,18 @@ a.txt
   "sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
   "files": [
     {
+      "path": ".verdict/ignore",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".gitattributes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
       "path": ".verdict/config.json",
       "status": "missing",
       "bytes": 0,
@@ -174,7 +186,21 @@ a.txt
     }
   ]
 }
+--- file C/.verdict/state/4707/excluded.json ---
+{
+  "schema_version": "1",
+  "excluded": [],
+  "excluded_bytes": 0,
+  "kept_bytes": 45,
+  "raw_diff_sha256": "2c9b2f1cce239dd825be072716fb8c7e57b9b932877ca4866e9b665a741db5c1",
+  "diff_sha256": "2c9b2f1cce239dd825be072716fb8c7e57b9b932877ca4866e9b665a741db5c1"
+}
 --- file C/.verdict/state/4707/full.diff ---
+diff --git a/a.txt b/a.txt
+@@ -1 +1 @@
+-a
++b
+--- file C/.verdict/state/4707/full.raw.diff ---
 diff --git a/a.txt b/a.txt
 @@ -1 +1 @@
 -a
