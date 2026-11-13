@@ -156,3 +156,31 @@ func TestWaitParsePullStatusLines(t *testing.T) {
 		})
 	}
 }
+
+func TestWaitCheckRunConclusions(t *testing.T) {
+	cases := []struct {
+		conclusion string
+		wantKnown  bool
+		wantDone   bool
+		wantGreen  bool
+	}{
+		{conclusion: "SUCCESS", wantKnown: true, wantDone: true, wantGreen: true},
+		{conclusion: "NEUTRAL", wantKnown: true, wantDone: true, wantGreen: true},
+		{conclusion: "SKIPPED", wantKnown: true, wantDone: true, wantGreen: true},
+		{conclusion: "FAILURE", wantKnown: true, wantDone: true, wantGreen: false},
+		{conclusion: "", wantKnown: false, wantDone: false, wantGreen: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.conclusion, func(t *testing.T) {
+			known, done, green := waitChecks([]map[string]any{{
+				"__typename": "CheckRun",
+				"status":     "COMPLETED",
+				"conclusion": tc.conclusion,
+			}})
+			if known != tc.wantKnown || done != tc.wantDone || green != tc.wantGreen {
+				t.Fatalf("conclusion %q = (%v,%v,%v); want (%v,%v,%v)",
+					tc.conclusion, known, done, green, tc.wantKnown, tc.wantDone, tc.wantGreen)
+			}
+		})
+	}
+}
