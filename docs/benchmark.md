@@ -783,9 +783,9 @@ controls out of prompt tuning.
 make build
 go run ./bench/runner -model fixture-good -repeats 3 -k 3 \
   -agent 'sh "$VERDICT_BENCH_ROOT/bench/agents/fixture.sh"' \
-  -out bench/results/2026-11-13.json
-go run ./bench/runner -render bench/results/2026-11-13.json \
-  > bench/results/2026-11-13.md
+  -out bench/runner/testdata/example-seeded-run.json
+go run ./bench/runner -render bench/runner/testdata/example-seeded-run.json \
+  > bench/runner/testdata/example-seeded-run.md
 ```
 
 The runner writes both files when the run finishes. `-render` reads only the
@@ -814,3 +814,8 @@ and two control samples. One control has two findings; the other has none.
 | severity_weighted_pooled_f1 | 60/(60+9+32) = .5941 | 11  |
 
 This fixture differs from the dedicated k=3 union-recall fixture.
+
+Checked-in seeded outputs live under `bench/runner/testdata/example-seeded-*`
+as examples. Machine-specific paths are placeholders, not executable argv.
+`bench/results/` is reserved for non-seeded publications; a seeded example
+never supplies the real-corpus benchmark exit criterion.

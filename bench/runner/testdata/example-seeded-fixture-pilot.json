@@ -4,7 +4,7 @@
   "generated_at": "2026-11-04T23:12:24Z",
   "internal": true,
   "citable": false,
-  "citable_reason": "internal pilot",
+  "citable_reason": "not a model-quality claim; seeded example; internal pilot",
   "corpus": {
     "commit": "d2dd5ce49e3f731480ede9b8e719871b39ed85fe",
     "dirty": false,
@@ -1149,5 +1149,6 @@
   },
   "failures": [],
   "elapsed_seconds": 27.049,
-  "tolerance_points": 5
+  "tolerance_points": 5,
+  "seeded": true
 }

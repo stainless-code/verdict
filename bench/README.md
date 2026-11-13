@@ -110,8 +110,8 @@ assistant message, including `cost.total`, and the adapter sums those into
 provider reports no price it omits `est_usd`, which reads `unmeasured` in the
 report rather than free.
 
-[`bench/results/pilot/2026-11-04-deepseek-flash-pilot.json`](results/pilot/2026-11-04-deepseek-flash-pilot.json)
-is the first such run: eight cases, three samples each, `internal`, never
+[`example-seeded-model-pilot.json`](runner/testdata/example-seeded-model-pilot.json)
+is an archived seeded example: eight cases, three samples each, `internal`, never
 citable.
 
 ## Flags

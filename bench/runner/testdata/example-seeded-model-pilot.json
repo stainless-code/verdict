@@ -13,7 +13,7 @@
   "run_id": "2026-11-04-deepseek-deepseek-flash-pilot",
   "generated_at": "2026-11-04T23:47:40Z",
   "schema_version": "1",
-  "citable_reason": "internal pilot",
+  "citable_reason": "not a model-quality claim; seeded example; internal pilot",
   "panel": ["bench-deepseek-deepseek-flash"],
   "cases": [
     {
@@ -1132,5 +1132,6 @@
   "elapsed_seconds": 811.867,
   "tolerance_points": 5,
   "citable": false,
-  "internal": true
+  "internal": true,
+  "seeded": true
 }

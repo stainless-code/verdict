@@ -4,7 +4,7 @@
     "off-by-one": "924807c81860721cd082d95584fc9a419a2fd29f7a2887895ded615de8c1b2ec"
   },
   "generated_at": "2026-11-13T12:31:24Z",
-  "citable_reason": "not a model-quality claim; 2 of 10 cases: a subset is a new publication",
+  "citable_reason": "not a model-quality claim; seeded example; not a model-quality claim; 2 of 10 cases: a subset is a new publication",
   "run_id": "2026-11-13-fixture-good",
   "prompts_hash": "1ab11a40d5636e6d444cdcded1f23ad3bfe5c3ae90c83a3380ef4e082a364010",
   "date": "2026-11-13",
@@ -26,13 +26,13 @@
       "-panel",
       "panel-alpha",
       "-root",
-      "/Users/sutusebastian/.t3/worktrees/verdict/t3-c6a7b44f-0a9242e385156c2b",
+      "<CHECKOUT>",
       "-corpus",
-      "/Users/sutusebastian/.t3/worktrees/verdict/t3-c6a7b44f-0a9242e385156c2b/bench/corpus",
+      "<CORPUS_DIR>",
       "-verdict",
-      "/Users/sutusebastian/.t3/worktrees/verdict/t3-c6a7b44f-0a9242e385156c2b/bin/verdict",
+      "<VERDICT_BIN>",
       "-out",
-      "/Users/sutusebastian/.t3/worktrees/verdict/t3-c6a7b44f-0a9242e385156c2b/bench/results/2026-11-13.json",
+      "<REPORT_JSON>",
       "-timeout",
       "15m0s",
       "-loop",
@@ -41,95 +41,90 @@
       "off-by-one,control-comment"
     ],
     [
-      "/Users/sutusebastian/.t3/worktrees/verdict/t3-c6a7b44f-0a9242e385156c2b/bin/verdict",
+      "<VERDICT_BIN>",
       "record",
       "acme/bench",
       "corpus-control-comment-fixture-good-run1",
       "--json"
     ],
     [
-      "/Users/sutusebastian/.t3/worktrees/verdict/t3-c6a7b44f-0a9242e385156c2b/bin/verdict",
+      "<VERDICT_BIN>",
       "calibrate",
       "acme/bench",
       "corpus-control-comment-fixture-good-run1",
       "--json"
     ],
     [
-      "/Users/sutusebastian/.t3/worktrees/verdict/t3-c6a7b44f-0a9242e385156c2b/bin/verdict",
+      "<VERDICT_BIN>",
       "record",
       "acme/bench",
       "corpus-control-comment-fixture-good-run2",
       "--json"
     ],
     [
-      "/Users/sutusebastian/.t3/worktrees/verdict/t3-c6a7b44f-0a9242e385156c2b/bin/verdict",
+      "<VERDICT_BIN>",
       "calibrate",
       "acme/bench",
       "corpus-control-comment-fixture-good-run2",
       "--json"
     ],
     [
-      "/Users/sutusebastian/.t3/worktrees/verdict/t3-c6a7b44f-0a9242e385156c2b/bin/verdict",
+      "<VERDICT_BIN>",
       "record",
       "acme/bench",
       "corpus-control-comment-fixture-good-run3",
       "--json"
     ],
     [
-      "/Users/sutusebastian/.t3/worktrees/verdict/t3-c6a7b44f-0a9242e385156c2b/bin/verdict",
+      "<VERDICT_BIN>",
       "calibrate",
       "acme/bench",
       "corpus-control-comment-fixture-good-run3",
       "--json"
     ],
     [
-      "/Users/sutusebastian/.t3/worktrees/verdict/t3-c6a7b44f-0a9242e385156c2b/bin/verdict",
+      "<VERDICT_BIN>",
       "record",
       "acme/bench",
       "corpus-off-by-one-fixture-good-run1",
       "--json"
     ],
     [
-      "/Users/sutusebastian/.t3/worktrees/verdict/t3-c6a7b44f-0a9242e385156c2b/bin/verdict",
+      "<VERDICT_BIN>",
       "calibrate",
       "acme/bench",
       "corpus-off-by-one-fixture-good-run1",
       "--json"
     ],
     [
-      "/Users/sutusebastian/.t3/worktrees/verdict/t3-c6a7b44f-0a9242e385156c2b/bin/verdict",
+      "<VERDICT_BIN>",
       "record",
       "acme/bench",
       "corpus-off-by-one-fixture-good-run2",
       "--json"
     ],
     [
-      "/Users/sutusebastian/.t3/worktrees/verdict/t3-c6a7b44f-0a9242e385156c2b/bin/verdict",
+      "<VERDICT_BIN>",
       "calibrate",
       "acme/bench",
       "corpus-off-by-one-fixture-good-run2",
       "--json"
     ],
     [
-      "/Users/sutusebastian/.t3/worktrees/verdict/t3-c6a7b44f-0a9242e385156c2b/bin/verdict",
+      "<VERDICT_BIN>",
       "record",
       "acme/bench",
       "corpus-off-by-one-fixture-good-run3",
       "--json"
     ],
     [
-      "/Users/sutusebastian/.t3/worktrees/verdict/t3-c6a7b44f-0a9242e385156c2b/bin/verdict",
+      "<VERDICT_BIN>",
       "calibrate",
       "acme/bench",
       "corpus-off-by-one-fixture-good-run3",
       "--json"
     ],
-    [
-      "/Users/sutusebastian/.t3/worktrees/verdict/t3-c6a7b44f-0a9242e385156c2b/bin/verdict",
-      "trend",
-      "acme/bench",
-      "--json"
-    ]
+    ["<VERDICT_BIN>", "trend", "acme/bench", "--json"]
   ],
   "trend_corpus": {
     "metrics": {
@@ -151,7 +146,7 @@
       },
       "control_fp_rate": {
         "value": 0,
-        "unit": "control case samples; false-positive findings per control",
+        "unit": "control case samples with at least one finding",
         "numerator": 0,
         "denominator": 3,
         "n": 3
@@ -187,7 +182,14 @@
       "cost_n": 0,
       "latency_n": 6,
       "samples": 6,
-      "incomplete_cohorts": 0
+      "incomplete_cohorts": 0,
+      "control_findings_per_case": {
+        "value": 0,
+        "unit": "false-positive findings per control case sample",
+        "numerator": 0,
+        "denominator": 3,
+        "n": 3
+      }
     },
     "cases": 2,
     "bundles": 6,
@@ -221,7 +223,7 @@
           },
           "control_fp_rate": {
             "value": 0,
-            "unit": "control case samples; false-positive findings per control",
+            "unit": "control case samples with at least one finding",
             "numerator": 0,
             "denominator": 3,
             "n": 3
@@ -257,7 +259,14 @@
           "cost_n": 0,
           "latency_n": 6,
           "samples": 6,
-          "incomplete_cohorts": 0
+          "incomplete_cohorts": 0,
+          "control_findings_per_case": {
+            "value": 0,
+            "unit": "false-positive findings per control case sample",
+            "numerator": 0,
+            "denominator": 3,
+            "n": 3
+          }
         },
         "bundles": 6,
         "ground_truth": 6,
@@ -292,7 +301,7 @@
           },
           "control_fp_rate": {
             "value": 0,
-            "unit": "control case samples; false-positive findings per control",
+            "unit": "control case samples with at least one finding",
             "numerator": 0,
             "denominator": 3,
             "n": 3
@@ -328,7 +337,14 @@
           "cost_n": 0,
           "latency_n": 6,
           "samples": 6,
-          "incomplete_cohorts": 0
+          "incomplete_cohorts": 0,
+          "control_findings_per_case": {
+            "value": 0,
+            "unit": "false-positive findings per control case sample",
+            "numerator": 0,
+            "denominator": 3,
+            "n": 3
+          }
         },
         "bundles": 6,
         "ground_truth": 6,
@@ -369,7 +385,7 @@
           },
           "control_fp_rate": {
             "value": 0,
-            "unit": "control case samples; false-positive findings per control",
+            "unit": "control case samples with at least one finding",
             "numerator": 0,
             "denominator": 1,
             "n": 1
@@ -405,7 +421,14 @@
           "cost_n": 0,
           "latency_n": 1,
           "samples": 1,
-          "incomplete_cohorts": 1
+          "incomplete_cohorts": 1,
+          "control_findings_per_case": {
+            "value": 0,
+            "unit": "false-positive findings per control case sample",
+            "numerator": 0,
+            "denominator": 1,
+            "n": 1
+          }
         },
         "sampling": {
           "run_id": "2026-11-13-fixture-good",
@@ -465,7 +488,7 @@
           },
           "control_fp_rate": {
             "value": 0,
-            "unit": "control case samples; false-positive findings per control",
+            "unit": "control case samples with at least one finding",
             "numerator": 0,
             "denominator": 1,
             "n": 1
@@ -501,7 +524,14 @@
           "cost_n": 0,
           "latency_n": 1,
           "samples": 1,
-          "incomplete_cohorts": 1
+          "incomplete_cohorts": 1,
+          "control_findings_per_case": {
+            "value": 0,
+            "unit": "false-positive findings per control case sample",
+            "numerator": 0,
+            "denominator": 1,
+            "n": 1
+          }
         },
         "sampling": {
           "run_id": "2026-11-13-fixture-good",
@@ -561,7 +591,7 @@
           },
           "control_fp_rate": {
             "value": 0,
-            "unit": "control case samples; false-positive findings per control",
+            "unit": "control case samples with at least one finding",
             "numerator": 0,
             "denominator": 1,
             "n": 1
@@ -597,7 +627,14 @@
           "cost_n": 0,
           "latency_n": 1,
           "samples": 1,
-          "incomplete_cohorts": 0
+          "incomplete_cohorts": 0,
+          "control_findings_per_case": {
+            "value": 0,
+            "unit": "false-positive findings per control case sample",
+            "numerator": 0,
+            "denominator": 1,
+            "n": 1
+          }
         },
         "sampling": {
           "run_id": "2026-11-13-fixture-good",
@@ -657,7 +694,7 @@
           },
           "control_fp_rate": {
             "value": null,
-            "unit": "control case samples; false-positive findings per control",
+            "unit": "control case samples with at least one finding",
             "numerator": 0,
             "denominator": 0,
             "n": 0
@@ -693,7 +730,14 @@
           "cost_n": 0,
           "latency_n": 1,
           "samples": 1,
-          "incomplete_cohorts": 1
+          "incomplete_cohorts": 1,
+          "control_findings_per_case": {
+            "value": null,
+            "unit": "false-positive findings per control case sample",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          }
         },
         "sampling": {
           "run_id": "2026-11-13-fixture-good",
@@ -775,7 +819,7 @@
           },
           "control_fp_rate": {
             "value": null,
-            "unit": "control case samples; false-positive findings per control",
+            "unit": "control case samples with at least one finding",
             "numerator": 0,
             "denominator": 0,
             "n": 0
@@ -811,7 +855,14 @@
           "cost_n": 0,
           "latency_n": 1,
           "samples": 1,
-          "incomplete_cohorts": 1
+          "incomplete_cohorts": 1,
+          "control_findings_per_case": {
+            "value": null,
+            "unit": "false-positive findings per control case sample",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          }
         },
         "sampling": {
           "run_id": "2026-11-13-fixture-good",
@@ -893,7 +944,7 @@
           },
           "control_fp_rate": {
             "value": null,
-            "unit": "control case samples; false-positive findings per control",
+            "unit": "control case samples with at least one finding",
             "numerator": 0,
             "denominator": 0,
             "n": 0
@@ -929,7 +980,14 @@
           "cost_n": 0,
           "latency_n": 1,
           "samples": 1,
-          "incomplete_cohorts": 0
+          "incomplete_cohorts": 0,
+          "control_findings_per_case": {
+            "value": null,
+            "unit": "false-positive findings per control case sample",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          }
         },
         "sampling": {
           "run_id": "2026-11-13-fixture-good",
@@ -1032,6 +1090,12 @@
           "min": null,
           "max": null,
           "n": 0
+        },
+        "control_findings_per_case": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 3
         }
       },
       "precision": {
@@ -1098,6 +1162,12 @@
           "min": 2,
           "max": 2,
           "n": 3
+        },
+        "control_findings_per_case": {
+          "median": null,
+          "min": null,
+          "max": null,
+          "n": 0
         }
       },
       "precision": {
@@ -1139,7 +1209,8 @@
     "commit": "1a4a2bb7d8fbfdb2fea2ad8ca44146be10a476e4",
     "case_ids": ["control-comment", "off-by-one"],
     "cases": 2,
-    "dirty": false
+    "dirty": false,
+    "total_cases": 10
   },
   "cost": {
     "bundles": 6,

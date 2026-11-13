@@ -86,3 +86,25 @@ func TestPublicationPreservesIncompleteRunEvidence(t *testing.T) {
 	}
 	golden.Check(t, "publication-incomplete", text)
 }
+
+func TestSeededExampleIsPortableAndRendersExactly(t *testing.T) {
+	path := filepath.Join("testdata", "example-seeded-run.json")
+	rep := readJSON[Report](t, path)
+	if !rep.Seeded || rep.Citable {
+		t.Fatal("example must be seeded and non-citable")
+	}
+	for _, command := range rep.Commands {
+		for _, arg := range command {
+			if filepath.IsAbs(arg) {
+				t.Errorf("absolute example command argument %q", arg)
+			}
+		}
+	}
+	want, err := os.ReadFile(filepath.Join("testdata", "example-seeded-run.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := renderMarkdown(&rep); got != string(want) {
+		t.Fatal("example Markdown differs from JSON render")
+	}
+}
