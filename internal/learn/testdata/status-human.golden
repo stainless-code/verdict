@@ -1,7 +1,7 @@
 exit: 0
 --- stdout ---
-await-err [active] walked hits=3 false_hits=1 judged=4 precision=3/4
-no-secrets [active] pointed hits=0 false_hits=0 judged=0 precision=n/a
+await-err [active] walked hits=3 false_hits=1 judged=4 precision=3/4 recalled_in=unmeasured cited_in=0 exposure=unmeasured acceptance=n/a
+no-secrets [active] pointed hits=0 false_hits=0 judged=0 precision=n/a recalled_in=unmeasured cited_in=0 exposure=unmeasured acceptance=n/a
 --- stderr ---
 
 --- files ---

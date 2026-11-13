@@ -20,7 +20,11 @@ exit: 0
         "false_hits": 1,
         "judged": 4,
         "status": "active",
-        "precision": "3/4"
+        "precision": "3/4",
+        "recalled_in": null,
+        "cited_in": 0,
+        "exposure": null,
+        "acceptance": null
       },
       {
         "id": "no-secrets",
@@ -32,7 +36,11 @@ exit: 0
         "false_hits": 0,
         "judged": 0,
         "status": "active",
-        "precision": "n/a"
+        "precision": "n/a",
+        "recalled_in": null,
+        "cited_in": 0,
+        "exposure": null,
+        "acceptance": null
       }
     ]
   },
