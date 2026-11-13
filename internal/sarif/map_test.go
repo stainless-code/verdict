@@ -7,13 +7,7 @@ import (
 
 func TestTierForResultTable(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
-		name     string
-		level    string
-		secSev   any
-		wantTier string
-		wantWarn bool
-	}{
+	cases := []tierCase{
 		{name: "error", level: "error", wantTier: "critical"},
 		{name: "warning", level: "warning", wantTier: "important"},
 		{name: "note", level: "note", wantTier: "informational"},
@@ -31,14 +25,27 @@ func TestTierForResultTable(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, warn := TierForResult(tc.level, tc.secSev)
-			if got != tc.wantTier {
-				t.Errorf("TierForResult(%q, %v) = %q, want %q", tc.level, tc.secSev, got, tc.wantTier)
-			}
-			if (warn != "") != tc.wantWarn {
-				t.Errorf("warn = %q, wantWarn = %v", warn, tc.wantWarn)
-			}
+			assertTierCase(t, tc)
 		})
+	}
+}
+
+type tierCase struct {
+	secSev   any
+	name     string
+	level    string
+	wantTier string
+	wantWarn bool
+}
+
+func assertTierCase(t *testing.T, tc tierCase) {
+	t.Helper()
+	got, warn := TierForResult(tc.level, tc.secSev)
+	if got != tc.wantTier {
+		t.Errorf("TierForResult(%q, %v) = %q, want %q", tc.level, tc.secSev, got, tc.wantTier)
+	}
+	if (warn != "") != tc.wantWarn {
+		t.Errorf("warn = %q, wantWarn = %v", warn, tc.wantWarn)
 	}
 }
 
@@ -61,7 +68,7 @@ func TestLevelForTier(t *testing.T) {
 	}
 }
 
-func TestCleanURI(t *testing.T) {
+func TestCleanURIValid(t *testing.T) {
 	t.Parallel()
 	valid := []struct {
 		in   string
@@ -81,7 +88,10 @@ func TestCleanURI(t *testing.T) {
 			t.Errorf("CleanURI(%q) = %q, want %q", tc.in, got, tc.want)
 		}
 	}
+}
 
+func TestCleanURIUnsafe(t *testing.T) {
+	t.Parallel()
 	unsafe := []string{
 		"/etc/passwd",
 		"../secret",

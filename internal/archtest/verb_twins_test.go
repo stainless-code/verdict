@@ -64,7 +64,7 @@ func dispatchVerbs(t *testing.T, root string) []string {
 	path := filepath.Join(dir, "main.go")
 	consts := dirStringConsts(t, dir)
 	verbs := readVerbMapKeys(t, path, consts)
-	for _, name := range []string{"dispatch", "dispatchMutating", "dispatchFetch", "dispatchLocal"} {
+	for _, name := range []string{"dispatch", "dispatchMutating", "dispatchFetch", "dispatchLocal", "dispatchStoreVerbs"} {
 		verbs = append(verbs, switchCaseVerbs(t, path, name, consts)...)
 	}
 	if len(verbs) == 0 {

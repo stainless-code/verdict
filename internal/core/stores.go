@@ -107,10 +107,10 @@ type FindingEntry struct { //nolint:govet // field order is the published proper
 	Confidence   string         `enum:"single|confirmed|contested"                                                   json:"confidence,omitempty"` //nolint:revive // confidence enum aligns with the published finding tags
 	TriagedAt    string         `json:"triagedAt,omitempty"`
 	TriagedBy    string         `json:"triagedBy,omitempty"`
-	Source       string         `enum:"model|tool"                                                               json:"source,omitempty"      optional:"true"` //nolint:revive // tag column aligns with FindingEntry schema tags
-	Tool         string         `json:"tool,omitempty"                                                            optional:"true"`                             //nolint:revive // tag column aligns with FindingEntry schema tags
-	RuleID       string         `json:"rule_id,omitempty"                                                         optional:"true"`                             //nolint:revive // tag column aligns with FindingEntry schema tags
-	Fingerprint  string         `json:"fingerprint,omitempty"                                                     optional:"true"`                             //nolint:revive // tag column aligns with FindingEntry schema tags
+	Source       string         `enum:"model|tool"                                                                   json:"source,omitempty"       optional:"true"` //nolint:revive // tag column aligns with FindingEntry schema tags
+	Tool         string         `json:"tool,omitempty"                                                               optional:"true"`                               //nolint:revive // tag column aligns with FindingEntry schema tags
+	RuleID       string         `json:"rule_id,omitempty"                                                            optional:"true"`                               //nolint:revive // tag column aligns with FindingEntry schema tags
+	Fingerprint  string         `json:"fingerprint,omitempty"                                                        optional:"true"`                               //nolint:revive // tag column aligns with FindingEntry schema tags
 	History      []HistoryEvent `json:"history"`
 	Extra        *jq.Obj        `json:"-"`
 }
@@ -257,6 +257,13 @@ func (e *FindingEntry) Wire() *jq.Obj {
 // section kb rides here (after rationale), then triage attribution,
 // history, then Extra in file order.
 func wireTail(e *FindingEntry, o *jq.Obj) {
+	wireVerificationAndTriage(e, o)
+	wireProvenance(e, o)
+	o.Set("history", historyWire(e.History))
+	wireExtra(e, o)
+}
+
+func wireVerificationAndTriage(e *FindingEntry, o *jq.Obj) {
 	if e.Sources != nil {
 		o.Set("sources", kbWire(e.Sources))
 	}
@@ -275,6 +282,9 @@ func wireTail(e *FindingEntry, o *jq.Obj) {
 	if e.TriagedBy != "" {
 		o.Set("triagedBy", e.TriagedBy)
 	}
+}
+
+func wireProvenance(e *FindingEntry, o *jq.Obj) {
 	if e.Source != "" {
 		o.Set("source", e.Source)
 	}
@@ -287,8 +297,6 @@ func wireTail(e *FindingEntry, o *jq.Obj) {
 	if e.Fingerprint != "" {
 		o.Set("fingerprint", e.Fingerprint)
 	}
-	o.Set("history", historyWire(e.History))
-	wireExtra(e, o)
 }
 
 // wireExtra appends unknown store keys in file order so a re-emit keeps

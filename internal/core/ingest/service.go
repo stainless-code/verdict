@@ -34,8 +34,11 @@ const (
 	rigorSaid          = "said"
 	rigorSourceDefault = "default"
 	sourceTool         = "tool"
+	sourceExclusion    = "exclusion"
+	eventWithheld      = "withheld"
 	statusOpen         = "open"
 	actorPrefix        = "sarif:"
+	newlineSep         = "\n"
 )
 
 // Request carries the resolved ingest invocation: target bundle, SARIF source
@@ -101,66 +104,73 @@ type ingestState struct {
 	existed   bool
 }
 
-// Run executes the ingest verb end to end: resolve bundle, ensure hunks and
-// store, validate and parse SARIF, anchor against hunks.tsv, apply path
-// exclusions, deduplicate and merge idempotently into findings.json, and write
-// atomically.
+// Run validates and ingests a SARIF 2.1.0 document into the bundle's
+// findings.json store, keeping idempotency across re-runs, preserving model
+// entries, and resolving anchors and path exclusions uniformly with record.
 func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
-	if ctx.Err() != nil {
-		return nil, &core.RefusalError{Code: codeCanceled, Message: "ingest canceled"}
-	}
-	dir, ref := readcommon.ResolveWritableBundleDir(req.RepoRootPath(), req.Pr)
+	st, parsed, ref := prepareIngest(ctx, req)
 	if ref != nil {
 		return nil, ref
 	}
-	raw, ref := readSARIFInput(req)
-	if ref != nil {
-		return nil, ref
-	}
-	parsed, ref := parseSARIF(raw)
-	if ref != nil {
-		return nil, ref
-	}
-	st, ref := initState(req, dir, parsed.Warnings)
-	if ref != nil {
-		return nil, ref
-	}
-	if ctx.Err() != nil {
+	if ctx != nil && ctx.Err() != nil {
 		return nil, &core.RefusalError{Code: codeCanceled, Message: "ingest canceled"}
 	}
 	data := st.mergeResults(parsed)
-	if data.Added > 0 || data.Updated > 0 || !st.existed {
-		if err := atomic.WriteFile(filepath.Join(dir, "findings.json"), []byte(jq.PrettyOrdered(st.entries))); err != nil {
-			return nil, &core.RefusalError{Code: codeIngestFailed, Message: fmt.Sprintf("writing %s/findings.json: %v", dir, err)}
-		}
+	if err := persistStore(st, data); err != nil {
+		return nil, &core.RefusalError{Code: codeIngestFailed, Message: fmt.Sprintf("writing %s/findings.json: %v", st.dir, err)}
 	}
 	return &Response{
 		At:       st.now,
 		Next:     renderNext(req.Pr, data.Open),
-		Human:    renderHuman(dir, data),
+		Human:    renderHuman(st.dir, data),
 		Data:     data,
 		Warnings: st.warnings,
 	}, nil
 }
 
+func prepareIngest(ctx context.Context, req *Request) (*ingestState, *parseOutput, *core.RefusalError) {
+	if ctx != nil && ctx.Err() != nil {
+		return nil, nil, &core.RefusalError{Code: codeCanceled, Message: "ingest canceled"}
+	}
+	dir, ref := readcommon.ResolveWritableBundleDir(req.RepoRootPath(), req.Pr)
+	if ref != nil {
+		return nil, nil, ref
+	}
+	raw, ref := readSARIFInput(req)
+	if ref != nil {
+		return nil, nil, ref
+	}
+	parsed, ref := parseSARIF(raw)
+	if ref != nil {
+		return nil, nil, ref
+	}
+	st, ref := initState(req, dir, parsed.Warnings)
+	if ref != nil {
+		return nil, nil, ref
+	}
+	return st, parsed, nil
+}
+
+func persistStore(st *ingestState, data *Data) error {
+	if data.Added == 0 && data.Updated == 0 && st.existed {
+		return nil
+	}
+	payload := jq.PrettyOrdered(st.entries)
+	if !strings.HasSuffix(payload, newlineSep) {
+		payload += newlineSep
+	}
+	return atomic.WriteFile(filepath.Join(st.dir, "findings.json"), []byte(payload))
+}
+
 func readSARIFInput(req *Request) ([]byte, *core.RefusalError) {
 	if req.SARIFInline {
-		if len(req.SARIFData) > MaxSARIFBytes {
-			return nil, &core.RefusalError{
-				Code:    codeSARIFTooLarge,
-				Message: fmt.Sprintf("SARIF input exceeds maximum size of %d bytes", MaxSARIFBytes),
-			}
-		}
-		if len(req.SARIFData) == 0 {
-			return nil, &core.RefusalError{Code: codeMissingSARIF, Message: "SARIF input is empty"}
-		}
-		return req.SARIFData, nil
+		return validateInlineSARIF(req.SARIFData)
 	}
 	path := strings.TrimSpace(req.SARIF)
 	if path == "" {
 		return nil, &core.RefusalError{Code: codeMissingSARIF, Message: "--sarif <file|-> is required"}
 	}
-	if linfo, err := os.Lstat(path); err == nil && linfo.Mode()&os.ModeSymlink != 0 {
+	if isSymlinkPath(path) {
 		return nil, &core.RefusalError{
 			Code:    codeBadSARIF,
 			Message: fmt.Sprintf("SARIF path %s must be a regular file (not a symlink or directory)", path),
@@ -168,55 +178,57 @@ func readSARIFInput(req *Request) ([]byte, *core.RefusalError) {
 	}
 	raw, err := readcommon.ReadRegularCapped(path, MaxSARIFBytes)
 	if err != nil {
-		switch {
-		case errors.Is(err, jq.ErrTooLarge):
-			return nil, &core.RefusalError{
-				Code:    codeSARIFTooLarge,
-				Message: fmt.Sprintf("SARIF file %s exceeds maximum size of %d bytes", path, MaxSARIFBytes),
-			}
-		case errors.Is(err, readcommon.ErrNotRegular):
-			return nil, &core.RefusalError{
-				Code:    codeBadSARIF,
-				Message: fmt.Sprintf("SARIF path %s must be a regular file (not a symlink or directory)", path),
-			}
-		case errors.Is(err, fs.ErrNotExist):
-			return nil, &core.RefusalError{
-				Code:    codeMissingSARIF,
-				Message: fmt.Sprintf("missing SARIF file %s", path),
-			}
-		default:
-			return nil, &core.RefusalError{
-				Code:    codeIngestFailed,
-				Message: fmt.Sprintf("reading SARIF file %s: %v", path, err),
-			}
-		}
+		return nil, classifySARIFReadErr(path, err)
 	}
 	return raw, nil
 }
 
+func validateInlineSARIF(raw []byte) ([]byte, *core.RefusalError) {
+	if len(raw) > MaxSARIFBytes {
+		return nil, &core.RefusalError{
+			Code:    codeSARIFTooLarge,
+			Message: fmt.Sprintf("SARIF input exceeds maximum size of %d bytes", MaxSARIFBytes),
+		}
+	}
+	if len(raw) == 0 {
+		return nil, &core.RefusalError{Code: codeMissingSARIF, Message: "SARIF input is empty"}
+	}
+	return raw, nil
+}
+
+func isSymlinkPath(path string) bool {
+	linfo, err := os.Lstat(path)
+	return err == nil && linfo.Mode()&os.ModeSymlink != 0
+}
+
+func classifySARIFReadErr(path string, err error) *core.RefusalError {
+	switch {
+	case errors.Is(err, jq.ErrTooLarge):
+		return &core.RefusalError{
+			Code:    codeSARIFTooLarge,
+			Message: fmt.Sprintf("SARIF file %s exceeds maximum size of %d bytes", path, MaxSARIFBytes),
+		}
+	case errors.Is(err, readcommon.ErrNotRegular):
+		return &core.RefusalError{
+			Code:    codeBadSARIF,
+			Message: fmt.Sprintf("SARIF path %s must be a regular file (not a symlink or directory)", path),
+		}
+	case errors.Is(err, fs.ErrNotExist):
+		return &core.RefusalError{
+			Code:    codeMissingSARIF,
+			Message: "missing SARIF file " + path,
+		}
+	default:
+		return &core.RefusalError{
+			Code:    codeIngestFailed,
+			Message: fmt.Sprintf("reading SARIF file %s: %v", path, err),
+		}
+	}
+}
+
 func initState(req *Request, dir string, parseWarnings []string) (*ingestState, *core.RefusalError) {
-	if _, err := os.Stat(dir); err != nil {
-		return nil, &core.RefusalError{
-			Code:    codeMissingBundle,
-			Message: fmt.Sprintf("missing bundle directory %s (run fetch first)", dir),
-		}
-	}
-	if _, err := os.Stat(filepath.Join(dir, "full.diff")); err != nil {
-		return nil, &core.RefusalError{
-			Code:    codeMissingDiff,
-			Message: fmt.Sprintf("missing %s/full.diff (run fetch first)", dir),
-		}
-	}
-	var rt core.Runtime
-	if req.Runtime != nil {
-		rt = *req.Runtime
-	}
-	if err := recordcore.EnsureHunksSnapshot(rt, dir); err != nil {
-		var ref *core.RefusalError
-		if errors.As(err, &ref) {
-			return nil, ref
-		}
-		return nil, &core.RefusalError{Code: codeIngestFailed, Message: err.Error()}
+	if ref := checkBundleFiles(req, dir); ref != nil {
+		return nil, ref
 	}
 	hs, ref := loadHunks(dir)
 	if ref != nil {
@@ -225,6 +237,10 @@ func initState(req *Request, dir string, parseWarnings []string) (*ingestState, 
 	entries, existed, ref := loadStore(dir)
 	if ref != nil {
 		return nil, ref
+	}
+	var rt core.Runtime
+	if req.Runtime != nil {
+		rt = *req.Runtime
 	}
 	st := &ingestState{
 		dir:       dir,
@@ -237,6 +253,32 @@ func initState(req *Request, dir string, parseWarnings []string) (*ingestState, 
 	}
 	st.buildIndexes()
 	return st, nil
+}
+
+func checkBundleFiles(req *Request, dir string) *core.RefusalError {
+	if _, err := os.Stat(dir); err != nil {
+		return &core.RefusalError{
+			Code:    codeMissingBundle,
+			Message: fmt.Sprintf("missing bundle directory %s (run fetch first)", dir),
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "full.diff")); err != nil {
+		return &core.RefusalError{
+			Code:    codeMissingDiff,
+			Message: fmt.Sprintf("missing %s/full.diff (run fetch first)", dir),
+		}
+	}
+	var rt core.Runtime
+	if req.Runtime != nil {
+		rt = *req.Runtime
+	}
+	if err := recordcore.EnsureHunksSnapshot(rt, dir); err != nil {
+		if ref, ok := errors.AsType[*core.RefusalError](err); ok {
+			return ref
+		}
+		return &core.RefusalError{Code: codeIngestFailed, Message: err.Error()}
+	}
+	return nil
 }
 
 func loadHunks(dir string) ([]hunks.Hunk, *core.RefusalError) {
@@ -262,33 +304,47 @@ func loadStore(dir string) (entries []any, existed bool, ref *core.RefusalError)
 	}
 	loaded, err := readcommon.LoadFindings(dir)
 	if err != nil {
-		if errors.As(err, &ref) {
-			return nil, true, ref
+		if rerr, ok := errors.AsType[*core.RefusalError](err); ok {
+			return nil, true, rerr
 		}
 		return nil, true, &core.RefusalError{Code: codeCorruptStore, Message: err.Error()}
 	}
-	for _, item := range loaded {
+	backfillStoreEntries(loaded)
+	return loaded, true, nil
+}
+
+func backfillStoreEntries(entries []any) {
+	for _, item := range entries {
 		if m, ok := item.(*jq.Obj); ok && m != nil {
 			recordcore.BackfillEntry(m)
 		}
 	}
-	return loaded, true, nil
 }
 
 func resolveHeadShort(dir string) string {
 	if sha := readcommon.PrField(dir, "head_sha"); sha != "" {
 		return readcommon.ShortSHA(sha)
 	}
-	if raw, err := jq.CappedFile(filepath.Join(dir, "source.json"), jq.MaxPRBytes); err == nil {
-		if doc, err := jq.Decode(raw); err == nil {
-			if m, ok := jq.AsMap(doc); ok {
-				if sha := jq.StrOf(m["head_sha"]); sha != "" {
-					return readcommon.ShortSHA(sha)
-				}
-			}
-		}
+	if sha := readSourceHeadSHA(dir); sha != "" {
+		return readcommon.ShortSHA(sha)
 	}
 	return "unknown"
+}
+
+func readSourceHeadSHA(dir string) string {
+	raw, err := jq.CappedFile(filepath.Join(dir, "source.json"), jq.MaxPRBytes)
+	if err != nil {
+		return ""
+	}
+	doc, err := jq.Decode(raw)
+	if err != nil {
+		return ""
+	}
+	m, ok := jq.AsMap(doc)
+	if !ok {
+		return ""
+	}
+	return jq.StrOf(m["head_sha"])
 }
 
 func (st *ingestState) buildIndexes() {
@@ -299,14 +355,22 @@ func (st *ingestState) buildIndexes() {
 		if !ok || m == nil {
 			continue
 		}
-		if sv, has := m.Get("sig"); has {
-			if s := jq.StrOf(sv); s != "" {
-				if _, exists := st.bySig[s]; !exists {
-					st.bySig[s] = i
-				}
-			}
-		}
+		st.indexSig(i, m)
 		st.indexToolFP(i, m)
+	}
+}
+
+func (st *ingestState) indexSig(idx int, m *jq.Obj) {
+	sv, has := m.Get("sig")
+	if !has {
+		return
+	}
+	s := jq.StrOf(sv)
+	if s == "" {
+		return
+	}
+	if _, exists := st.bySig[s]; !exists {
+		st.bySig[s] = idx
 	}
 }
 
@@ -315,11 +379,12 @@ func (st *ingestState) indexToolFP(idx int, m *jq.Obj) {
 	fv, _ := m.Get("fingerprint")
 	tool := jq.StrOf(tv)
 	fp := jq.StrOf(fv)
-	if tool != "" && fp != "" {
-		key := toolFPKey(tool, fp)
-		if _, exists := st.byToolFP[key]; !exists {
-			st.byToolFP[key] = idx
-		}
+	if tool == "" || fp == "" {
+		return
+	}
+	key := toolFPKey(tool, fp)
+	if _, exists := st.byToolFP[key]; !exists {
+		st.byToolFP[key] = idx
 	}
 }
 
@@ -333,44 +398,47 @@ func (st *ingestState) mergeResults(parsed *parseOutput) *Data {
 	if tools == nil {
 		tools = []string{}
 	}
-	data := &Data{
-		Dir:      st.dir,
-		Tools:    tools,
-		Ingested: len(deduped),
-	}
+	data := &Data{Dir: st.dir, Tools: tools, Ingested: len(deduped)}
 	for i := range deduped {
-		cand := st.buildCandidate(&deduped[i])
-		if cand.Anchored {
-			data.Anchored++
-		}
-		if cand.Withheld != nil {
-			data.Withheld++
-		}
-		idx, found := st.lookupExisting(deduped[i].VerdictSig, cand.Entry.Sig, deduped[i].Tool, deduped[i].Fingerprint)
-		if !found {
-			wire := cand.Entry.Wire()
-			newIdx := len(st.entries)
-			st.entries = append(st.entries, wire)
-			st.bySig[cand.Entry.Sig] = newIdx
-			if deduped[i].Tool != "" && deduped[i].Fingerprint != "" {
-				st.byToolFP[toolFPKey(deduped[i].Tool, deduped[i].Fingerprint)] = newIdx
-			}
-			data.Added++
-			continue
-		}
-		changed := st.updateExisting(idx, cand)
-		if changed {
-			data.Updated++
-		} else {
-			data.Unchanged++
-		}
+		st.mergeOne(&deduped[i], data)
 	}
 	data.Open = countOpen(st.entries)
 	return data
 }
 
+func (st *ingestState) mergeOne(res *parsedResult, data *Data) {
+	cand := st.buildCandidate(res)
+	if cand.Anchored {
+		data.Anchored++
+	}
+	if cand.Withheld != nil {
+		data.Withheld++
+	}
+	idx, found := st.lookupExisting(res.VerdictSig, cand.Entry.Sig, res.Tool, res.Fingerprint)
+	if !found {
+		st.appendCandidate(res, cand)
+		data.Added++
+		return
+	}
+	if st.updateExisting(idx, cand) {
+		data.Updated++
+	} else {
+		data.Unchanged++
+	}
+}
+
+func (st *ingestState) appendCandidate(res *parsedResult, cand candidate) {
+	wire := cand.Entry.Wire()
+	newIdx := len(st.entries)
+	st.entries = append(st.entries, wire)
+	st.bySig[cand.Entry.Sig] = newIdx
+	if res.Tool != "" && res.Fingerprint != "" {
+		st.byToolFP[toolFPKey(res.Tool, res.Fingerprint)] = newIdx
+	}
+}
+
 // deduplicateBatch keeps the first occurrence per (tool, fingerprint) within a
-// single SARIF document so intra-file duplicates do not create duplicate entries.
+// single SARIF document so intra-file duplicates stay idempotent.
 func deduplicateBatch(results []parsedResult) []parsedResult {
 	seen := make(map[string]bool, len(results))
 	out := make([]parsedResult, 0, len(results))
@@ -412,8 +480,6 @@ func (st *ingestState) buildCandidate(r *parsedResult) candidate {
 			line = r.StartLine
 			anchored = hunks.Contains(st.hunks, r.Path, "NEW", r.StartLine, r.EndLine)
 			inBounds = anchored
-		} else {
-			inBounds = false
 		}
 		sigKey = r.Path + "\n\n" + r.Body
 	} else {
@@ -421,7 +487,7 @@ func (st *ingestState) buildCandidate(r *parsedResult) candidate {
 		h := sectionHeading(r.Tool, r.RuleID)
 		heading = h
 		inBounds = true
-		sigKey = "\n" + h + "\n" + r.Body
+		sigKey = newlineSep + h + newlineSep + r.Body
 	}
 	entrySig := sig.Of(sigKey)
 	kb := []string{}
@@ -432,23 +498,7 @@ func (st *ingestState) buildCandidate(r *parsedResult) candidate {
 		Note:  r.RuleID,
 		SHA:   st.headShort,
 	}}
-	var withheld *core.Withheld
-	if r.Path != "" {
-		if ruleID, reason, excluded := recordcore.ExclusionForPath(st.dir, r.Path); excluded {
-			withheld = &core.Withheld{
-				Source:      "exclusion",
-				Reason:      reason,
-				ExclusionID: ruleID,
-				At:          st.now,
-			}
-			history = append(history, core.HistoryEvent{
-				At:    st.now,
-				Event: "withheld",
-				Actor: actorPrefix + r.Tool,
-				Note:  reason,
-			})
-		}
-	}
+	withheld, history := st.buildExclusionWithheld(r, history)
 	entry := &core.FindingEntry{
 		Sig:         entrySig,
 		SigVersion:  "1",
@@ -477,6 +527,29 @@ func (st *ingestState) buildCandidate(r *parsedResult) candidate {
 	return candidate{Entry: entry, Withheld: withheld, Anchored: anchored}
 }
 
+func (st *ingestState) buildExclusionWithheld(r *parsedResult, history []core.HistoryEvent) (*core.Withheld, []core.HistoryEvent) {
+	if r.Path == "" {
+		return nil, history
+	}
+	ruleID, reason, excluded := recordcore.ExclusionForPath(st.dir, r.Path)
+	if !excluded {
+		return nil, history
+	}
+	withheld := &core.Withheld{
+		Source:      sourceExclusion,
+		Reason:      reason,
+		ExclusionID: ruleID,
+		At:          st.now,
+	}
+	history = append(history, core.HistoryEvent{
+		At:    st.now,
+		Event: eventWithheld,
+		Actor: actorPrefix + r.Tool,
+		Note:  reason,
+	})
+	return withheld, history
+}
+
 func sectionHeading(tool, ruleID string) string {
 	if ruleID != "" {
 		return "### " + ruleID + " (" + tool + ")"
@@ -485,20 +558,26 @@ func sectionHeading(tool, ruleID string) string {
 }
 
 func (st *ingestState) lookupExisting(verdictSig, entrySig, tool, fp string) (int, bool) {
-	if verdictSig != "" {
-		if idx, ok := st.bySig[verdictSig]; ok {
-			return idx, true
-		}
+	if idx, ok := lookupByKey(st.bySig, verdictSig); ok {
+		return idx, true
 	}
-	if idx, ok := st.bySig[entrySig]; ok {
+	if idx, ok := lookupByKey(st.bySig, entrySig); ok {
 		return idx, true
 	}
 	if tool != "" && fp != "" {
-		if idx, ok := st.byToolFP[toolFPKey(tool, fp)]; ok {
+		if idx, ok := lookupByKey(st.byToolFP, toolFPKey(tool, fp)); ok {
 			return idx, true
 		}
 	}
 	return 0, false
+}
+
+func lookupByKey(m map[string]int, key string) (int, bool) {
+	if key == "" {
+		return 0, false
+	}
+	idx, ok := m[key]
+	return idx, ok
 }
 
 func (st *ingestState) updateExisting(idx int, cand candidate) bool {
@@ -550,33 +629,43 @@ func (st *ingestState) updateExisting(idx int, cand candidate) bool {
 }
 
 func syncExclusionWithheld(m *jq.Obj, desired *core.Withheld, now, actor string) {
-	priorRaw, _ := m.Get("withheld")
-	prior, hasPrior := priorRaw.(*jq.Obj)
-	priorSrc := ""
-	if hasPrior {
-		priorSrc = jq.StrOf(altGet(prior, "source"))
-	}
+	prior, priorSrc := priorWithheld(m)
 	if desired == nil {
-		if hasPrior && priorSrc == "exclusion" {
-			m.Delete("withheld")
+		if priorSrc == sourceExclusion {
+			m.Delete(eventWithheld)
 		}
 		return
 	}
-	at := now
-	sameExclusion := hasPrior && priorSrc == "exclusion" &&
-		jq.StrOf(altGet(prior, "exclusion_id")) == desired.ExclusionID &&
-		jq.StrOf(altGet(prior, "reason")) == desired.Reason
-	if sameExclusion {
-		if priorAt := jq.StrOf(altGet(prior, "at")); priorAt != "" {
-			at = priorAt
-		}
-		if priorSrc == desired.Source {
-			return
-		}
+	at := resolveWithheldTimestamp(prior, priorSrc, desired, now)
+	if priorSrc == desired.Source && jq.StrOf(altGet(prior, "exclusion_id")) == desired.ExclusionID &&
+		jq.StrOf(altGet(prior, "reason")) == desired.Reason {
+		return
 	}
 	w := jq.NewObj("source", desired.Source, "reason", desired.Reason, "exclusion_id", desired.ExclusionID, "at", at)
-	appendObjHistory(m, jq.NewObj("at", now, "event", "withheld", "actor", actor, "note", desired.Reason))
-	m.Set("withheld", w)
+	appendObjHistory(m, jq.NewObj("at", now, "event", eventWithheld, "actor", actor, "note", desired.Reason))
+	m.Set(eventWithheld, w)
+}
+
+func priorWithheld(m *jq.Obj) (*jq.Obj, string) {
+	raw, _ := m.Get(eventWithheld)
+	prior, ok := raw.(*jq.Obj)
+	if !ok || prior == nil {
+		return nil, ""
+	}
+	return prior, jq.StrOf(altGet(prior, "source"))
+}
+
+func resolveWithheldTimestamp(prior *jq.Obj, priorSrc string, desired *core.Withheld, now string) string {
+	if prior == nil || priorSrc != sourceExclusion {
+		return now
+	}
+	if jq.StrOf(altGet(prior, "exclusion_id")) != desired.ExclusionID || jq.StrOf(altGet(prior, "reason")) != desired.Reason {
+		return now
+	}
+	if priorAt := jq.StrOf(altGet(prior, "at")); priorAt != "" {
+		return priorAt
+	}
+	return now
 }
 
 func appendObjHistory(m, ev *jq.Obj) {

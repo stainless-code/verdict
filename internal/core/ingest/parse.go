@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -31,8 +30,8 @@ const (
 )
 
 type sarifDocument struct {
-	Schema  *string    `json:"$schema"`
 	Version any        `json:"version"`
+	Schema  *string    `json:"$schema"`
 	Runs    []sarifRun `json:"runs"`
 }
 
@@ -51,9 +50,9 @@ type sarifDriver struct {
 }
 
 type sarifRule struct {
-	ID                   string                  `json:"id"`
 	DefaultConfiguration *sarifRuleConfiguration `json:"defaultConfiguration"`
 	Properties           map[string]any          `json:"properties"`
+	ID                   string                  `json:"id"`
 }
 
 type sarifRuleConfiguration struct {
@@ -61,14 +60,14 @@ type sarifRuleConfiguration struct {
 }
 
 type sarifResult struct {
-	RuleID              string            `json:"ruleId"`
 	RuleIndex           *int              `json:"ruleIndex"`
-	Level               string            `json:"level"`
 	Message             *sarifMessage     `json:"message"`
-	Locations           []sarifLocation   `json:"locations"`
 	PartialFingerprints map[string]string `json:"partialFingerprints"`
 	Fingerprints        map[string]string `json:"fingerprints"`
 	Properties          map[string]any    `json:"properties"`
+	RuleID              string            `json:"ruleId"`
+	Level               string            `json:"level"`
+	Locations           []sarifLocation   `json:"locations"`
 }
 
 type sarifMessage struct {
@@ -100,11 +99,12 @@ type parsedResult struct {
 	RuleID      string
 	Severity    string
 	Path        string
-	StartLine   int
-	EndLine     int
 	Body        string
 	Fingerprint string
 	VerdictSig  string
+	StartLine   int
+	EndLine     int
+	StartColumn int
 }
 
 type parseOutput struct {
@@ -131,24 +131,33 @@ func parseSARIF(raw []byte) (*parseOutput, *core.RefusalError) {
 	seenTools := map[string]bool{}
 	seenWarnings := map[string]bool{}
 	for i := range doc.Runs {
-		tool, results, warns, ref := parseRun(i, &doc.Runs[i])
-		if ref != nil {
+		if ref := appendRunResults(i, &doc.Runs[i], out, seenTools, seenWarnings); ref != nil {
 			return nil, ref
 		}
-		if !seenTools[tool] {
-			seenTools[tool] = true
-			out.Tools = append(out.Tools, tool)
-		}
-		for _, w := range warns {
-			if !seenWarnings[w] {
-				seenWarnings[w] = true
-				out.Warnings = append(out.Warnings, w)
-			}
-		}
-		out.Results = append(out.Results, results...)
 	}
 	slices.Sort(out.Tools)
 	return out, nil
+}
+
+func appendRunResults(
+	idx int, run *sarifRun, out *parseOutput, seenTools, seenWarnings map[string]bool,
+) *core.RefusalError {
+	tool, results, warns, ref := parseRun(idx, run)
+	if ref != nil {
+		return ref
+	}
+	if !seenTools[tool] {
+		seenTools[tool] = true
+		out.Tools = append(out.Tools, tool)
+	}
+	for _, w := range warns {
+		if !seenWarnings[w] {
+			seenWarnings[w] = true
+			out.Warnings = append(out.Warnings, w)
+		}
+	}
+	out.Results = append(out.Results, results...)
+	return nil
 }
 
 func decodeSARIFDoc(raw []byte) (*sarifDocument, *core.RefusalError) {
@@ -184,21 +193,17 @@ func rejectTrailingTokens(dec *json.Decoder) *core.RefusalError {
 	return badSARIF("SARIF input has unexpected trailing data after the root object")
 }
 
-func parseRun(idx int, run *sarifRun) (string, []parsedResult, []string, *core.RefusalError) {
-	if run.Tool == nil || run.Tool.Driver == nil {
-		return "", nil, nil, badSARIF(fmt.Sprintf("SARIF runs[%d] must contain tool.driver.name", idx))
-	}
-	tool := strings.TrimSpace(run.Tool.Driver.Name)
-	if tool == "" {
-		return "", nil, nil, badSARIF(fmt.Sprintf("SARIF runs[%d].tool.driver.name must not be empty", idx))
+func parseRun(idx int, run *sarifRun) (tool string, results []parsedResult, warns []string, ref *core.RefusalError) {
+	tool, ref = extractToolName(idx, run)
+	if ref != nil {
+		return "", nil, nil, ref
 	}
 	rawResults, ref := decodeRunResults(idx, run.Results)
 	if ref != nil {
 		return "", nil, nil, ref
 	}
 	rules := run.Tool.Driver.Rules
-	out := make([]parsedResult, 0, len(rawResults))
-	var warns []string
+	results = make([]parsedResult, 0, len(rawResults))
 	for j := range rawResults {
 		res, warn, ref := parseResultItem(idx, j, tool, rules, &rawResults[j])
 		if ref != nil {
@@ -207,17 +212,25 @@ func parseRun(idx int, run *sarifRun) (string, []parsedResult, []string, *core.R
 		if warn != "" {
 			warns = append(warns, warn)
 		}
-		out = append(out, res)
+		results = append(results, res)
 	}
-	return tool, out, warns, nil
+	return tool, results, warns, nil
+}
+
+func extractToolName(idx int, run *sarifRun) (string, *core.RefusalError) {
+	if run.Tool == nil || run.Tool.Driver == nil {
+		return "", badSARIF(fmt.Sprintf("SARIF runs[%d] must contain tool.driver.name", idx))
+	}
+	tool := strings.TrimSpace(run.Tool.Driver.Name)
+	if tool == "" {
+		return "", badSARIF(fmt.Sprintf("SARIF runs[%d].tool.driver.name must not be empty", idx))
+	}
+	return tool, nil
 }
 
 func decodeRunResults(idx int, raw *json.RawMessage) ([]sarifResult, *core.RefusalError) {
-	if raw == nil {
-		return nil, nil
-	}
-	trimmed := bytes.TrimSpace(*raw)
-	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+	trimmed, skip := trimResultsRaw(raw)
+	if skip {
 		return nil, nil
 	}
 	if trimmed[0] != '[' {
@@ -235,6 +248,14 @@ func decodeRunResults(idx int, raw *json.RawMessage) ([]sarifResult, *core.Refus
 		}
 	}
 	return results, nil
+}
+
+func trimResultsRaw(raw *json.RawMessage) ([]byte, bool) {
+	if raw == nil {
+		return nil, true
+	}
+	trimmed := bytes.TrimSpace(*raw)
+	return trimmed, len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null"))
 }
 
 func parseResultItem(runIdx, resIdx int, tool string, rules []sarifRule, raw *sarifResult) (parsedResult, string, *core.RefusalError) {
@@ -258,35 +279,41 @@ func parseResultItem(runIdx, resIdx int, tool string, rules []sarifRule, raw *sa
 		RuleID:      ruleID,
 		Severity:    tier,
 		Path:        cleanPath,
-		StartLine:   startLine,
-		EndLine:     endLine,
 		Body:        body,
 		Fingerprint: fp,
 		VerdictSig:  verdictSig,
+		StartLine:   startLine,
+		EndLine:     endLine,
+		StartColumn: startCol,
 	}, warn, nil
 }
 
 func resolveRule(runIdx, resIdx int, rules []sarifRule, raw *sarifResult) (*sarifRule, string, *core.RefusalError) {
 	ruleID := strings.TrimSpace(raw.RuleID)
-	var rule *sarifRule
 	if raw.RuleIndex != nil {
 		ri := *raw.RuleIndex
 		if ri < 0 || ri >= len(rules) {
 			return nil, "", badSARIF(fmt.Sprintf("SARIF runs[%d].results[%d].ruleIndex %d out of range", runIdx, resIdx, ri))
 		}
-		rule = &rules[ri]
+		rule := &rules[ri]
 		if ruleID == "" {
 			ruleID = strings.TrimSpace(rule.ID)
 		}
-	} else if ruleID != "" {
-		for i := range rules {
-			if strings.TrimSpace(rules[i].ID) == ruleID {
-				rule = &rules[i]
-				break
-			}
+		return rule, ruleID, nil
+	}
+	return findRuleByID(rules, ruleID), ruleID, nil
+}
+
+func findRuleByID(rules []sarifRule, ruleID string) *sarifRule {
+	if ruleID == "" {
+		return nil
+	}
+	for i := range rules {
+		if strings.TrimSpace(rules[i].ID) == ruleID {
+			return &rules[i]
 		}
 	}
-	return rule, ruleID, nil
+	return nil
 }
 
 func extractMessage(runIdx, resIdx int, msg *sarifMessage) (string, *core.RefusalError) {
@@ -303,30 +330,43 @@ func extractMessage(runIdx, resIdx int, msg *sarifMessage) (string, *core.Refusa
 	return recordcore.NeutralizeMentions(text), nil
 }
 
-func extractLocation(runIdx, resIdx int, locs []sarifLocation) (cleanPath string, startLine, endLine, startCol int, ref *core.RefusalError) {
+func extractLocation(
+	runIdx, resIdx int, locs []sarifLocation,
+) (cleanPath string, startLine, endLine, startCol int, ref *core.RefusalError) {
 	if len(locs) == 0 || locs[0].PhysicalLocation == nil {
 		return "", 0, 0, 0, nil
 	}
 	pl := locs[0].PhysicalLocation
-	if pl.ArtifactLocation != nil && strings.TrimSpace(pl.ArtifactLocation.URI) != "" {
-		cleaned, err := sarif.CleanURI(pl.ArtifactLocation.URI)
-		if err != nil {
-			return "", 0, 0, 0, badSARIF(fmt.Sprintf("SARIF runs[%d].results[%d]: %v", runIdx, resIdx, err))
-		}
-		cleanPath = cleaned
+	cleanPath, ref = cleanPhysicalURI(runIdx, resIdx, pl.ArtifactLocation)
+	if ref != nil {
+		return "", 0, 0, 0, ref
 	}
-	if pl.Region != nil {
-		if pl.Region.StartLine < 0 || pl.Region.EndLine < 0 || pl.Region.StartColumn < 0 {
-			return "", 0, 0, 0, badSARIF(fmt.Sprintf("SARIF runs[%d].results[%d].region line/column must be non-negative", runIdx, resIdx))
-		}
-		startLine = pl.Region.StartLine
-		endLine = pl.Region.EndLine
-		if endLine < startLine {
-			endLine = startLine
-		}
-		startCol = pl.Region.StartColumn
+	startLine, endLine, startCol, ref = extractRegionBounds(runIdx, resIdx, pl.Region)
+	if ref != nil {
+		return "", 0, 0, 0, ref
 	}
 	return cleanPath, startLine, endLine, startCol, nil
+}
+
+func cleanPhysicalURI(runIdx, resIdx int, loc *sarifArtifactLocation) (string, *core.RefusalError) {
+	if loc == nil || strings.TrimSpace(loc.URI) == "" {
+		return "", nil
+	}
+	cleaned, err := sarif.CleanURI(loc.URI)
+	if err != nil {
+		return "", badSARIF(fmt.Sprintf("SARIF runs[%d].results[%d]: %v", runIdx, resIdx, err))
+	}
+	return cleaned, nil
+}
+
+func extractRegionBounds(runIdx, resIdx int, reg *sarifRegion) (startLine, endLine, startCol int, ref *core.RefusalError) {
+	if reg == nil {
+		return 0, 0, 0, nil
+	}
+	if reg.StartLine < 0 || reg.EndLine < 0 || reg.StartColumn < 0 {
+		return 0, 0, 0, badSARIF(fmt.Sprintf("SARIF runs[%d].results[%d].region line/column must be non-negative", runIdx, resIdx))
+	}
+	return reg.StartLine, max(reg.EndLine, reg.StartLine), reg.StartColumn, nil
 }
 
 func effectiveSeverityInputs(raw *sarifResult, rule *sarifRule) (level string, secSev any) {
@@ -334,23 +374,28 @@ func effectiveSeverityInputs(raw *sarifResult, rule *sarifRule) (level string, s
 	if level == "" && rule != nil && rule.DefaultConfiguration != nil {
 		level = strings.TrimSpace(rule.DefaultConfiguration.Level)
 	}
-	if raw.Properties != nil {
-		if v, ok := raw.Properties["security-severity"]; ok && v != nil {
-			secSev = v
-		}
-	}
-	if secSev == nil && rule != nil && rule.Properties != nil {
-		if v, ok := rule.Properties["security-severity"]; ok && v != nil {
-			secSev = v
-		}
+	secSev = lookupSecSeverity(raw.Properties)
+	if secSev == nil && rule != nil {
+		secSev = lookupSecSeverity(rule.Properties)
 	}
 	return level, secSev
 }
 
-func deriveFingerprint(tool, ruleID, cleanPath string, startLine, startCol int, body string, partial, full map[string]string) (verdictSig, fp string) {
-	if s := strings.TrimSpace(partial["verdict/sig"]); s != "" {
-		verdictSig = s
+func lookupSecSeverity(props map[string]any) any {
+	if props == nil {
+		return nil
 	}
+	if v, ok := props["security-severity"]; ok && v != nil {
+		return v
+	}
+	return nil
+}
+
+func deriveFingerprint(
+	tool, ruleID, cleanPath string, startLine, startCol int,
+	body string, partial, full map[string]string,
+) (verdictSig, fp string) {
+	verdictSig = strings.TrimSpace(partial["verdict/sig"])
 	if canon := canonicalFP(partial); canon != "" {
 		return verdictSig, canon
 	}
@@ -370,19 +415,11 @@ func deriveFingerprint(tool, ruleID, cleanPath string, startLine, startCol int, 
 }
 
 func canonicalFP(m map[string]string) string {
-	if len(m) == 0 {
-		return ""
-	}
-	keys := make([]string, 0, len(m))
-	for k, v := range m {
-		if strings.TrimSpace(k) != "" && strings.TrimSpace(v) != "" {
-			keys = append(keys, k)
-		}
-	}
+	keys := nonEmptyMapKeys(m)
 	if len(keys) == 0 {
 		return ""
 	}
-	sort.Strings(keys)
+	slices.Sort(keys)
 	if len(keys) == 1 {
 		return strings.TrimSpace(m[keys[0]])
 	}
@@ -391,4 +428,17 @@ func canonicalFP(m map[string]string) string {
 		parts = append(parts, k+"="+strings.TrimSpace(m[k]))
 	}
 	return jq.StrOf(strings.Join(parts, ";"))
+}
+
+func nonEmptyMapKeys(m map[string]string) []string {
+	if len(m) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(m))
+	for k, v := range m {
+		if strings.TrimSpace(k) != "" && strings.TrimSpace(v) != "" {
+			keys = append(keys, k)
+		}
+	}
+	return keys
 }

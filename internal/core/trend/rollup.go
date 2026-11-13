@@ -246,8 +246,13 @@ func addSources(dst map[string]int, r *row) {
 	}
 }
 
+const (
+	sourceModel = "model"
+	sourceTool  = "tool"
+)
+
 func sourceDoc(counts map[string]int) *jq.Obj {
-	return jq.NewObj("model", counts["model"], "tool", counts["tool"])
+	return jq.NewObj(sourceModel, counts[sourceModel], sourceTool, counts[sourceTool])
 }
 
 func anyList(vals []any) []any {
@@ -304,30 +309,34 @@ func (st *state) emitRollupHuman(out *rollup) {
 	}
 	if out.bundles == 0 {
 		st.human("trend: " + st.req.Repo + " — no reviewed bundles (no .verdict/state/*/findings.json yet)")
-	} else {
-		st.human(fmt.Sprintf("trend: %s — %d bundle(s), %d findings (open=%d addressed=%d closed=%d)",
-			st.req.Repo, out.bundles, out.findings, out.open, out.addressed, out.closed))
-		if out.bySource["tool"] > 0 {
-			st.human(fmt.Sprintf("by source: model %d, tool %d", out.bySource["model"], out.bySource["tool"]))
+		return
+	}
+	st.human(fmt.Sprintf("trend: %s — %d bundle(s), %d findings (open=%d addressed=%d closed=%d)",
+		st.req.Repo, out.bundles, out.findings, out.open, out.addressed, out.closed))
+	if out.bySource[sourceTool] > 0 {
+		st.human(fmt.Sprintf("by source: model %d, tool %d", out.bySource[sourceModel], out.bySource[sourceTool]))
+	}
+	st.emitReviewHuman(out)
+	st.emitPeriodLines(out.periods)
+	st.human(fmt.Sprintf("tiers: critical=%d important=%d informational=%d untagged=%d",
+		out.byTier[tierCritical], out.byTier[tierImportant], out.byTier[tierInformational], out.byTier[tierUntagged]))
+	st.human(fmt.Sprintf("status: open=%d addressed=%d wont-fix=%d false-positive=%d deferred=%d",
+		out.byStatus[statusOpen], out.byStatus[statusAddressed], out.byStatus[statusWontFix],
+		out.byStatus[statusFalsePositive], out.byStatus[statusDeferred]))
+	st.human("provenance: " + provenanceLine(out))
+}
+
+func (st *state) emitPeriodLines(periods []period) {
+	for i := range periods {
+		p := &periods[i]
+		name := "undated"
+		if p.hasName {
+			name = p.name
 		}
-		st.emitReviewHuman(out)
-		for i := range out.periods {
-			p := &out.periods[i]
-			name := "undated"
-			if p.hasName {
-				name = p.name
-			}
-			st.human(fmt.Sprintf("%s  bundles=%d findings=%d open=%d addressed=%d closed=%d "+
-				"tiers critical=%d important=%d informational=%d untagged=%d",
-				name, p.bundles, p.findings, p.open, p.addressed, p.closed,
-				p.byTier[tierCritical], p.byTier[tierImportant], p.byTier[tierInformational], p.byTier[tierUntagged]))
-		}
-		st.human(fmt.Sprintf("tiers: critical=%d important=%d informational=%d untagged=%d",
-			out.byTier[tierCritical], out.byTier[tierImportant], out.byTier[tierInformational], out.byTier[tierUntagged]))
-		st.human(fmt.Sprintf("status: open=%d addressed=%d wont-fix=%d false-positive=%d deferred=%d",
-			out.byStatus[statusOpen], out.byStatus[statusAddressed], out.byStatus[statusWontFix],
-			out.byStatus[statusFalsePositive], out.byStatus[statusDeferred]))
-		st.human("provenance: " + provenanceLine(out))
+		st.human(fmt.Sprintf("%s  bundles=%d findings=%d open=%d addressed=%d closed=%d "+
+			"tiers critical=%d important=%d informational=%d untagged=%d",
+			name, p.bundles, p.findings, p.open, p.addressed, p.closed,
+			p.byTier[tierCritical], p.byTier[tierImportant], p.byTier[tierInformational], p.byTier[tierUntagged]))
 	}
 }
 

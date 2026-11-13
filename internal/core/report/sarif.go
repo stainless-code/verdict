@@ -100,7 +100,10 @@ func sarifMessage(entry any) string {
 }
 
 func sarifLevel(sev any) string {
-	s, _ := sev.(string)
+	s, ok := sev.(string)
+	if !ok {
+		return sarif.LevelForTier("")
+	}
 	return sarif.LevelForTier(s)
 }
 

@@ -395,3 +395,36 @@ func TestClientPostMinSeverityParity(t *testing.T) {
 	_, err := c.Post(t.Context(), &verdict.PostRequest{Invocation: sdkInvocation("7"), Approve: "false", MinSeverity: "typo"})
 	requireRefusal(t, err, "bad-min-severity", "try: pass critical|important|informational|off")
 }
+
+// TestClientIngest proves SARIF 2.1.0 ingest through the SDK: inline payload
+// anchoring, store metadata, and the missing-sarif refusal.
+func TestClientIngest(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writePRBundle(t, "4312")
+	c := newSDKClient(nil, nil)
+	defer c.Close()
+
+	payload := `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"gosec"}},` +
+		`"results":[{"ruleId":"G101","level":"warning","message":{"text":"Potential credential."},` +
+		`"locations":[{"physicalLocation":{"artifactLocation":{"uri":"notes.txt"},"region":{"startLine":2}}}]}]}]}`
+	resp, err := c.Ingest(t.Context(), &verdict.IngestRequest{
+		Invocation: sdkInvocation("4312"),
+		SARIFData:  []byte(payload),
+	})
+	requireNoError(t, err)
+	if resp.At != sdkAt || !strings.Contains(resp.Human, "ingested 1 result(s) from gosec into .verdict/state/4312") {
+		t.Errorf("envelope = at %q human %q", resp.At, resp.Human)
+	}
+	doc := decodeData(t, resp.Data)
+	assertFields(t, doc, map[string]any{"dir": ".verdict/state/4312"})
+	assertNumbers(t, doc, map[string]float64{"ingested": 1, "added": 1, "anchored": 1, "open": 1})
+	if store := readText(t, ".verdict/state/4312/findings.json"); !strings.Contains(store, `"source": "tool"`) ||
+		!strings.Contains(store, `"tool": "gosec"`) {
+		t.Errorf("findings.json = %s, want tool metadata", store)
+	}
+
+	_, err = c.Ingest(t.Context(), &verdict.IngestRequest{
+		Invocation: sdkInvocation("4312"),
+	})
+	requireRefusal(t, err, "missing-sarif", "try: pass an existing SARIF 2.1.0 file with --sarif <file|->")
+}

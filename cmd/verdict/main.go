@@ -276,12 +276,22 @@ func dispatchMutating(
 		return record.RunPost(ctx, r, rest, &record.Request{
 			Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env, Forces: forces,
 		}), true
+	default:
+		return dispatchStoreVerbs(ctx, cmd, r, repo, pr, root, repoRoot, env, rest)
+	}
+}
+
+func dispatchStoreVerbs(
+	ctx context.Context, cmd string, r *cli.Runner, repo, pr, root, repoRoot string,
+	env map[string]string, rest []string,
+) (int, bool) {
+	switch cmd {
 	case "triage":
 		return triage.Run(ctx, r, rest, triage.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}), true
 	case "adopt":
 		return adopt.Run(ctx, r, rest, adopt.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}), true
 	case "ingest":
-		return ingest.Run(ctx, r, rest, ingest.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}), true
+		return ingest.Run(ctx, r, rest, &ingest.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}), true
 	case "fix":
 		return fix.Run(ctx, r, rest, fix.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}), true
 	case "learn":

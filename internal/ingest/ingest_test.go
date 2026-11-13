@@ -14,10 +14,10 @@ import (
 	ingestcore "github.com/stainless-code/verdict/internal/core/ingest"
 )
 
-func setupCLIBundle(t *testing.T, pr string) (repoRoot, dir string) {
+func setupCLIBundle(t *testing.T, pr string) string {
 	t.Helper()
-	repoRoot = t.TempDir()
-	dir = filepath.Join(repoRoot, ".verdict", "state", pr)
+	repoRoot := t.TempDir()
+	dir := filepath.Join(repoRoot, ".verdict", "state", pr)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -28,11 +28,11 @@ func setupCLIBundle(t *testing.T, pr string) (repoRoot, dir string) {
 	if err := os.WriteFile(filepath.Join(dir, "full.diff"), []byte(diff), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	return repoRoot, dir
+	return repoRoot
 }
 
 func TestRun_StdinAndJSONEnvelope(t *testing.T) {
-	repoRoot, _ := setupCLIBundle(t, "12")
+	repoRoot := setupCLIBundle(t, "12")
 	var out, diag, human bytes.Buffer
 	r := &cli.Runner{
 		Cmd:      "ingest",
@@ -43,7 +43,7 @@ func TestRun_StdinAndJSONEnvelope(t *testing.T) {
 		Now:      func() time.Time { return time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC) },
 	}
 	sarif := `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"gosec"}},"results":[{"ruleId":"G101","level":"error","message":{"text":"Hardcoded secret"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"app.go"},"region":{"startLine":2}}}]}]}]}`
-	code := Run(context.Background(), r, []string{"--sarif", "-"}, Request{
+	code := Run(context.Background(), r, []string{"--sarif", "-"}, &Request{
 		Repo:     "o/r",
 		Pr:       "12",
 		RepoRoot: repoRoot,
@@ -59,14 +59,17 @@ func TestRun_StdinAndJSONEnvelope(t *testing.T) {
 	if env["verb"] != "ingest" || env["error"] != nil {
 		t.Fatalf("unexpected envelope: %+v", env)
 	}
-	data := env["data"].(map[string]any)
+	data, ok := env["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("data not object: %T", env["data"])
+	}
 	if data["ingested"] != float64(1) || data["added"] != float64(1) || data["anchored"] != float64(1) {
 		t.Fatalf("unexpected data: %+v", data)
 	}
 }
 
 func TestRun_StdinTooLargeRefused(t *testing.T) {
-	repoRoot, _ := setupCLIBundle(t, "13")
+	repoRoot := setupCLIBundle(t, "13")
 	var out, diag, human bytes.Buffer
 	r := &cli.Runner{
 		Cmd:      "ingest",
@@ -77,7 +80,7 @@ func TestRun_StdinTooLargeRefused(t *testing.T) {
 		Now:      func() time.Time { return time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC) },
 	}
 	oversize := make([]byte, ingestcore.MaxSARIFBytes+5)
-	code := Run(context.Background(), r, []string{"--sarif", "-"}, Request{
+	code := Run(context.Background(), r, []string{"--sarif", "-"}, &Request{
 		Repo:     "o/r",
 		Pr:       "13",
 		RepoRoot: repoRoot,

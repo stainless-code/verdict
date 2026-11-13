@@ -22,7 +22,7 @@ func fixedRuntime() *core.Runtime {
 	}
 }
 
-func setupBundle(t *testing.T, pr, headSHA, diff string) (repoRoot, dir string) {
+func setupBundle(t *testing.T, pr, headSHA string) (repoRoot, dir string) {
 	t.Helper()
 	repoRoot = t.TempDir()
 	dir = filepath.Join(repoRoot, ".verdict", "state", pr)
@@ -32,10 +32,37 @@ func setupBundle(t *testing.T, pr, headSHA, diff string) (repoRoot, dir string) 
 	if err := os.WriteFile(filepath.Join(dir, "PR.json"), []byte(`{"headRefOid":"`+headSHA+`"}`+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "full.diff"), []byte(diff), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "full.diff"), []byte(sampleDiff), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return repoRoot, dir
+}
+
+func newReadReq(repoRoot, pr string) core.ReadRequest {
+	return core.ReadRequest{
+		Runtime:  fixedRuntime(),
+		RepoRoot: repoRoot,
+		Pr:       pr,
+	}
+}
+
+func runIngestFile(t *testing.T, repoRoot, pr, sarifPath string) *Response {
+	t.Helper()
+	req := Request{ReadRequest: newReadReq(repoRoot, pr), SARIF: sarifPath}
+	resp, ref := Run(context.Background(), &req)
+	if ref != nil {
+		t.Fatalf("unexpected refusal: %+v", ref)
+	}
+	return resp
+}
+
+func runIngestBytes(repoRoot, pr string, body []byte) (*Response, *core.RefusalError) {
+	req := Request{
+		ReadRequest: newReadReq(repoRoot, pr),
+		SARIFData:   body,
+		SARIFInline: true,
+	}
+	return Run(context.Background(), &req)
 }
 
 func loadStoreEntries(t *testing.T, dir string) []map[string]any {
@@ -49,6 +76,30 @@ func loadStoreEntries(t *testing.T, dir string) []map[string]any {
 		t.Fatalf("unmarshal findings.json: %v", err)
 	}
 	return entries
+}
+
+func markFirstFalsePositive(t *testing.T, dir string) {
+	t.Helper()
+	rawStore, err := os.ReadFile(filepath.Join(dir, "findings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := jq.DecodeOrdered(rawStore)
+	if err != nil {
+		t.Fatal(err)
+	}
+	arr, ok := doc.([]any)
+	if !ok || len(arr) == 0 {
+		t.Fatalf("unexpected decoded findings array: %T", doc)
+	}
+	first, ok := arr[0].(*jq.Obj)
+	if !ok {
+		t.Fatalf("unexpected first finding element: %T", arr[0])
+	}
+	first.Set("status", "false-positive")
+	if err := os.WriteFile(filepath.Join(dir, "findings.json"), []byte(jq.PrettyOrdered(arr)), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 const sampleDiff = "" +
@@ -67,20 +118,7 @@ const sampleDiff = "" +
 	"@@ -0,0 +1,2 @@\n" +
 	"+package gen\n"
 
-func TestRun_MappingAnchoringExclusionsAndIdempotency(t *testing.T) {
-	repoRoot, dir := setupBundle(t, "42", "abc1234567890", sampleDiff)
-	excluded := `{
-  "schema_version": "1",
-  "excluded": [
-    {"path": "vendor/gen.go", "rule_id": "builtin:vendor", "bytes": 120}
-  ]
-}
-`
-	if err := os.WriteFile(filepath.Join(dir, "excluded.json"), []byte(excluded), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	sarifBody := `{
+const testSARIFDoc = `{
   "version": "2.1.0",
   "runs": [
     {
@@ -134,22 +172,110 @@ func TestRun_MappingAnchoringExclusionsAndIdempotency(t *testing.T) {
     }
   ]
 }`
+
+func assertInitialEntries(t *testing.T, entries []map[string]any) {
+	t.Helper()
+	if len(entries) != 4 {
+		t.Fatalf("findings count = %d, want 4", len(entries))
+	}
+	assertEntry0(t, entries[0])
+	assertSecondaryEntries(t, entries[1], entries[2], entries[3])
+}
+
+func assertEntry0(t *testing.T, e0 map[string]any) {
+	t.Helper()
+	assertEntryFields(t, e0, map[string]any{
+		"source":       "tool",
+		"tool":         "semgrep",
+		"rule_id":      "go.jwt.none",
+		"fingerprint":  "fp-jwt-1",
+		"severity":     "critical",
+		"anchored":     true,
+		"inBounds":     true,
+		"rigor":        "said",
+		"rigor_source": "default",
+	})
+	body0, ok := e0["body"].(string)
+	if !ok || !strings.Contains(body0, "@\u200bteam") {
+		t.Fatalf("expected mention neutralization in body, got %q", e0["body"])
+	}
+}
+
+func assertEntryFields(t *testing.T, got, want map[string]any) {
+	t.Helper()
+	for k, w := range want {
+		if got[k] != w {
+			t.Fatalf("entry[%q] = %v, want %v (full=%+v)", k, got[k], w, got)
+		}
+	}
+}
+
+func assertSecondaryEntries(t *testing.T, e1, e2, e3 map[string]any) {
+	t.Helper()
+	if e1["anchored"] != false || e1["inBounds"] != false || e1["severity"] != "important" {
+		t.Fatalf("unexpected out-of-diff entry 1: %+v", e1)
+	}
+	if e1["rigor_source"] == "verified" {
+		t.Fatalf("tool finding must never get verified rigor: %+v", e1)
+	}
+	w, ok := e2["withheld"].(map[string]any)
+	if !ok || w["source"] != "exclusion" || w["exclusion_id"] != "builtin:vendor" {
+		t.Fatalf("expected exclusion withheld on entry 2, got %+v", e2)
+	}
+	if e3["kind"] != "section" || e3["anchored"] != false || e3["severity"] != "informational" {
+		t.Fatalf("unexpected section entry 3: %+v", e3)
+	}
+}
+
+func TestRun_MappingAnchoringExclusionsAndIdempotency(t *testing.T) {
+	repoRoot, dir := setupBundle(t, "42", "abc1234567890")
+	mustWriteTestFile(t, filepath.Join(dir, "excluded.json"), `{"schema_version": "1", "excluded": [{"path": "vendor/gen.go", "rule_id": "builtin:vendor", "bytes": 120}]}`+"\n")
 	sarifPath := filepath.Join(t.TempDir(), "scan.sarif")
-	if err := os.WriteFile(sarifPath, []byte(sarifBody), 0o644); err != nil {
+	mustWriteTestFile(t, sarifPath, testSARIFDoc)
+
+	resp := runIngestFile(t, repoRoot, "42", sarifPath)
+	assertFirstIngestSummary(t, resp)
+	assertInitialEntries(t, loadStoreEntries(t, dir))
+
+	markFirstFalsePositive(t, dir)
+	assertReingestIdempotent(t, repoRoot, dir, sarifPath)
+	assertUpdatedSARIFInPlace(t, repoRoot, dir, sarifPath)
+}
+
+func mustWriteTestFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
 
-	resp, ref := Run(context.Background(), &Request{
-		ReadRequest: core.ReadRequest{
-			Runtime:  fixedRuntime(),
-			RepoRoot: repoRoot,
-			Pr:       "42",
-		},
-		SARIF: sarifPath,
-	})
-	if ref != nil {
-		t.Fatalf("unexpected refusal: %+v", ref)
+func assertReingestIdempotent(t *testing.T, repoRoot, dir, sarifPath string) {
+	t.Helper()
+	resp := runIngestFile(t, repoRoot, "42", sarifPath)
+	if resp.Data.Added != 0 || resp.Data.Updated != 0 || resp.Data.Unchanged != 4 || resp.Data.Open != 3 {
+		t.Fatalf("re-ingest not idempotent: %+v", resp.Data)
 	}
+	afterReingest := loadStoreEntries(t, dir)
+	if len(afterReingest) != 4 || afterReingest[0]["status"] != "false-positive" {
+		t.Fatalf("status or count drifted on re-ingest: len=%d status=%v", len(afterReingest), afterReingest[0]["status"])
+	}
+}
+
+func assertUpdatedSARIFInPlace(t *testing.T, repoRoot, dir, sarifPath string) {
+	t.Helper()
+	mustWriteTestFile(t, sarifPath, strings.Replace(testSARIFDoc, "JWT signature skipped for @team", "JWT none algorithm accepted", 2))
+	resp := runIngestFile(t, repoRoot, "42", sarifPath)
+	if resp.Data.Added != 0 || resp.Data.Updated != 1 || resp.Data.Unchanged != 3 {
+		t.Fatalf("unexpected counts on updated result: %+v", resp.Data)
+	}
+	afterUpdate := loadStoreEntries(t, dir)
+	if len(afterUpdate) != 4 || afterUpdate[0]["body"] != "JWT none algorithm accepted" || afterUpdate[0]["status"] != "false-positive" {
+		t.Fatalf("updated entry mismatch: len=%d body=%v status=%v", len(afterUpdate), afterUpdate[0]["body"], afterUpdate[0]["status"])
+	}
+}
+
+func assertFirstIngestSummary(t *testing.T, resp *Response) {
+	t.Helper()
 	if resp.Data.Ingested != 4 || resp.Data.Added != 4 || resp.Data.Updated != 0 || resp.Data.Unchanged != 0 {
 		t.Fatalf("unexpected counts after first ingest: %+v", resp.Data)
 	}
@@ -159,113 +285,10 @@ func TestRun_MappingAnchoringExclusionsAndIdempotency(t *testing.T) {
 	if len(resp.Data.Tools) != 1 || resp.Data.Tools[0] != "semgrep" {
 		t.Fatalf("tools = %v, want [semgrep]", resp.Data.Tools)
 	}
-
-	entries := loadStoreEntries(t, dir)
-	if len(entries) != 4 {
-		t.Fatalf("findings count = %d, want 4", len(entries))
-	}
-
-	// Verify in-diff anchored finding (security-severity 8.5 -> critical, @team neutralized).
-	e0 := entries[0]
-	if e0["source"] != "tool" || e0["tool"] != "semgrep" || e0["rule_id"] != "go.jwt.none" || e0["fingerprint"] != "fp-jwt-1" {
-		t.Fatalf("unexpected tool metadata on entry 0: %+v", e0)
-	}
-	if e0["severity"] != "critical" || e0["anchored"] != true || e0["inBounds"] != true {
-		t.Fatalf("unexpected severity/anchor on entry 0: %+v", e0)
-	}
-	if e0["rigor"] != "said" || e0["rigor_source"] != "default" {
-		t.Fatalf("unexpected rigor on entry 0: %+v", e0)
-	}
-	if !strings.Contains(e0["body"].(string), "@\u200bteam") {
-		t.Fatalf("expected mention neutralization in body, got %q", e0["body"])
-	}
-
-	// Verify out-of-diff finding is unanchored and never posted inline.
-	e1 := entries[1]
-	if e1["anchored"] != false || e1["inBounds"] != false || e1["severity"] != "important" {
-		t.Fatalf("unexpected out-of-diff entry 1: %+v", e1)
-	}
-	if e1["rigor_source"] == "verified" {
-		t.Fatalf("tool finding must never get verified rigor: %+v", e1)
-	}
-
-	// Verify excluded path finding is kept with withheld: {source: "exclusion", ...}.
-	e2 := entries[2]
-	w, ok := e2["withheld"].(map[string]any)
-	if !ok || w["source"] != "exclusion" || w["exclusion_id"] != "builtin:vendor" {
-		t.Fatalf("expected exclusion withheld on entry 2, got %+v", e2)
-	}
-
-	// Verify locationless finding becomes section entry.
-	e3 := entries[3]
-	if e3["kind"] != "section" || e3["anchored"] != false || e3["severity"] != "informational" {
-		t.Fatalf("unexpected section entry 3: %+v", e3)
-	}
-
-	// Mark entry 0 false-positive via ordered store edit to verify triage persists across re-ingest.
-	rawStore, err := os.ReadFile(filepath.Join(dir, "findings.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	doc, err := jq.DecodeOrdered(rawStore)
-	if err != nil {
-		t.Fatal(err)
-	}
-	arr := doc.([]any)
-	arr[0].(*jq.Obj).Set("status", "false-positive")
-	if err := os.WriteFile(filepath.Join(dir, "findings.json"), []byte(jq.PrettyOrdered(arr)), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	// Re-ingest same SARIF -> must be completely idempotent.
-	resp2, ref := Run(context.Background(), &Request{
-		ReadRequest: core.ReadRequest{
-			Runtime:  fixedRuntime(),
-			RepoRoot: repoRoot,
-			Pr:       "42",
-		},
-		SARIF: sarifPath,
-	})
-	if ref != nil {
-		t.Fatalf("re-ingest refusal: %+v", ref)
-	}
-	if resp2.Data.Added != 0 || resp2.Data.Updated != 0 || resp2.Data.Unchanged != 4 || resp2.Data.Open != 3 {
-		t.Fatalf("re-ingest not idempotent: %+v", resp2.Data)
-	}
-	afterReingest := loadStoreEntries(t, dir)
-	if len(afterReingest) != 4 || afterReingest[0]["status"] != "false-positive" {
-		t.Fatalf("status or count drifted on re-ingest: len=%d status=%v", len(afterReingest), afterReingest[0]["status"])
-	}
-
-	// Changed message with same partialFingerprint updates existing entry in place without duplicating.
-	changedSARIF := strings.Replace(sarifBody, "JWT signature skipped for @team", "JWT none algorithm accepted", 2)
-	if err := os.WriteFile(sarifPath, []byte(changedSARIF), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	resp3, ref := Run(context.Background(), &Request{
-		ReadRequest: core.ReadRequest{
-			Runtime:  fixedRuntime(),
-			RepoRoot: repoRoot,
-			Pr:       "42",
-		},
-		SARIF: sarifPath,
-	})
-	if ref != nil {
-		t.Fatalf("update ingest refusal: %+v", ref)
-	}
-	if resp3.Data.Added != 0 || resp3.Data.Updated != 1 || resp3.Data.Unchanged != 3 {
-		t.Fatalf("unexpected counts on updated result: %+v", resp3.Data)
-	}
-	afterUpdate := loadStoreEntries(t, dir)
-	if len(afterUpdate) != 4 || afterUpdate[0]["body"] != "JWT none algorithm accepted" || afterUpdate[0]["status"] != "false-positive" {
-		t.Fatalf("updated entry mismatch: len=%d body=%v status=%v", len(afterUpdate), afterUpdate[0]["body"], afterUpdate[0]["status"])
-	}
 }
 
 func TestRun_PreservesModelFindingOnVerdictSigMatchAndBackfillClampsVerified(t *testing.T) {
-	repoRoot, dir := setupBundle(t, "43", "deadbeef1234", sampleDiff)
-	// Seed store with one model finding (by sig) and one tool finding whose
-	// legacy rigor_source was somehow "verified" (must clamp back to "default").
+	repoRoot, dir := setupBundle(t, "43", "deadbeef1234")
 	seed := `[
   {
     "sig": "modelsig111",
@@ -344,17 +367,18 @@ func TestRun_PreservesModelFindingOnVerdictSigMatchAndBackfillClampsVerified(t *
     }
   ]
 }`
-	resp, ref := Run(context.Background(), &Request{
-		ReadRequest: core.ReadRequest{Runtime: fixedRuntime(), RepoRoot: repoRoot, Pr: "43"},
-		SARIFData:   []byte(sarifPayload),
-		SARIFInline: true,
-	})
+	resp, ref := runIngestBytes(repoRoot, "43", []byte(sarifPayload))
 	if ref != nil {
 		t.Fatalf("unexpected refusal: %+v", ref)
 	}
 	if resp.Data.Added != 0 || resp.Data.Unchanged < 1 {
 		t.Fatalf("expected dedupe against verdict/sig and fp, got %+v", resp.Data)
 	}
+	assertPreservedModelAndClampedTool(t, dir)
+}
+
+func assertPreservedModelAndClampedTool(t *testing.T, dir string) {
+	t.Helper()
 	entries := loadStoreEntries(t, dir)
 	if len(entries) != 2 {
 		t.Fatalf("len(entries) = %d, want 2", len(entries))
@@ -366,7 +390,6 @@ func TestRun_PreservesModelFindingOnVerdictSigMatchAndBackfillClampsVerified(t *
 		t.Fatalf("tool finding must clamp verified rigor_source to default, got %+v", entries[1])
 	}
 
-	// Direct check on BackfillEntry for tool entries with missing rigor_source.
 	obj := jq.NewObj("source", "tool", "rigor", "walked")
 	recordcore.BackfillEntry(obj)
 	if rs, _ := obj.Get("rigor_source"); rs != "default" {
@@ -374,90 +397,60 @@ func TestRun_PreservesModelFindingOnVerdictSigMatchAndBackfillClampsVerified(t *
 	}
 }
 
-func TestRun_UntrustedSecurityAndRefusals(t *testing.T) {
+func TestRun_MissingSARIFAndBundleRefusals(t *testing.T) {
 	validMinimal := `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"t"}},"results":[]}]}`
 
-	t.Run("missing-sarif flag", func(t *testing.T) {
-		repoRoot, _ := setupBundle(t, "50", "abc1234", sampleDiff)
-		_, ref := Run(context.Background(), &Request{
-			ReadRequest: core.ReadRequest{Runtime: fixedRuntime(), RepoRoot: repoRoot, Pr: "50"},
-		})
-		if ref == nil || ref.Code != "missing-sarif" {
-			t.Fatalf("got %+v, want missing-sarif", ref)
-		}
-	})
+	repoRoot, _ := setupBundle(t, "50", "abc1234")
+	req := Request{ReadRequest: newReadReq(repoRoot, "50")}
+	if _, ref := Run(context.Background(), &req); ref == nil || ref.Code != "missing-sarif" {
+		t.Fatalf("got %+v, want missing-sarif", ref)
+	}
 
-	t.Run("missing-bundle and missing-diff", func(t *testing.T) {
-		repoRoot := t.TempDir()
-		_, ref := Run(context.Background(), &Request{
-			ReadRequest: core.ReadRequest{Runtime: fixedRuntime(), RepoRoot: repoRoot, Pr: "999"},
-			SARIFData:   []byte(validMinimal),
-			SARIFInline: true,
-		})
-		if ref == nil || ref.Code != "missing-bundle" {
-			t.Fatalf("got %+v, want missing-bundle", ref)
-		}
+	missingRoot := t.TempDir()
+	if _, ref := runIngestBytes(missingRoot, "999", []byte(validMinimal)); ref == nil || ref.Code != "missing-bundle" {
+		t.Fatalf("got %+v, want missing-bundle", ref)
+	}
+	if err := os.MkdirAll(filepath.Join(missingRoot, ".verdict", "state", "999"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, ref := runIngestBytes(missingRoot, "999", []byte(validMinimal)); ref == nil || ref.Code != "missing-diff" {
+		t.Fatalf("got %+v, want missing-diff", ref)
+	}
+}
 
-		bundleDir := filepath.Join(repoRoot, ".verdict", "state", "999")
-		if err := os.MkdirAll(bundleDir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		_, ref = Run(context.Background(), &Request{
-			ReadRequest: core.ReadRequest{Runtime: fixedRuntime(), RepoRoot: repoRoot, Pr: "999"},
-			SARIFData:   []byte(validMinimal),
-			SARIFInline: true,
-		})
-		if ref == nil || ref.Code != "missing-diff" {
-			t.Fatalf("got %+v, want missing-diff", ref)
-		}
-	})
+func TestRun_OversizeRefusal(t *testing.T) {
+	repoRoot, _ := setupBundle(t, "51", "abc1234")
+	oversize := make([]byte, MaxSARIFBytes+1)
+	copy(oversize, `{"version":"2.1.0","runs":[]}`)
+	p := filepath.Join(t.TempDir(), "big.sarif")
+	mustWriteTestFile(t, p, string(oversize))
 
-	t.Run("oversize sarif-too-large", func(t *testing.T) {
-		repoRoot, _ := setupBundle(t, "51", "abc1234", sampleDiff)
-		oversize := make([]byte, MaxSARIFBytes+1)
-		copy(oversize, `{"version":"2.1.0","runs":[]}`)
-		p := filepath.Join(t.TempDir(), "big.sarif")
-		if err := os.WriteFile(p, oversize, 0o644); err != nil {
-			t.Fatal(err)
-		}
-		_, ref := Run(context.Background(), &Request{
-			ReadRequest: core.ReadRequest{Runtime: fixedRuntime(), RepoRoot: repoRoot, Pr: "51"},
-			SARIF:       p,
-		})
-		if ref == nil || ref.Code != "sarif-too-large" {
-			t.Fatalf("got %+v, want sarif-too-large", ref)
-		}
+	req := Request{ReadRequest: newReadReq(repoRoot, "51"), SARIF: p}
+	if _, ref := Run(context.Background(), &req); ref == nil || ref.Code != "sarif-too-large" {
+		t.Fatalf("got %+v, want sarif-too-large", ref)
+	}
+	if _, ref := runIngestBytes(repoRoot, "51", oversize); ref == nil || ref.Code != "sarif-too-large" {
+		t.Fatalf("inline oversize got %+v, want sarif-too-large", ref)
+	}
+}
 
-		_, ref = Run(context.Background(), &Request{
-			ReadRequest: core.ReadRequest{Runtime: fixedRuntime(), RepoRoot: repoRoot, Pr: "51"},
-			SARIFData:   oversize,
-			SARIFInline: true,
-		})
-		if ref == nil || ref.Code != "sarif-too-large" {
-			t.Fatalf("inline oversize got %+v, want sarif-too-large", ref)
-		}
-	})
+func TestRun_SymlinkRefusal(t *testing.T) {
+	validMinimal := `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"t"}},"results":[]}]}`
+	repoRoot, _ := setupBundle(t, "51", "abc1234")
+	tmp := t.TempDir()
+	target := filepath.Join(tmp, "real.sarif")
+	mustWriteTestFile(t, target, validMinimal)
+	link := filepath.Join(tmp, "link.sarif")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	linkReq := Request{ReadRequest: newReadReq(repoRoot, "51"), SARIF: link}
+	if _, ref := Run(context.Background(), &linkReq); ref == nil || ref.Code != "bad-sarif" {
+		t.Fatalf("got %+v, want bad-sarif", ref)
+	}
+}
 
-	t.Run("symlink sarif rejected", func(t *testing.T) {
-		repoRoot, _ := setupBundle(t, "52", "abc1234", sampleDiff)
-		tmp := t.TempDir()
-		target := filepath.Join(tmp, "real.sarif")
-		if err := os.WriteFile(target, []byte(validMinimal), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		link := filepath.Join(tmp, "link.sarif")
-		if err := os.Symlink(target, link); err != nil {
-			t.Fatal(err)
-		}
-		_, ref := Run(context.Background(), &Request{
-			ReadRequest: core.ReadRequest{Runtime: fixedRuntime(), RepoRoot: repoRoot, Pr: "52"},
-			SARIF:       link,
-		})
-		if ref == nil || ref.Code != "bad-sarif" {
-			t.Fatalf("got %+v, want bad-sarif", ref)
-		}
-	})
-
+func TestRun_BadSARIFInputs(t *testing.T) {
 	badDocs := []struct {
 		name string
 		body string
@@ -475,13 +468,8 @@ func TestRun_UntrustedSecurityAndRefusals(t *testing.T) {
 	}
 	for _, tc := range badDocs {
 		t.Run(tc.name, func(t *testing.T) {
-			repoRoot, _ := setupBundle(t, "53", "abc1234", sampleDiff)
-			_, ref := Run(context.Background(), &Request{
-				ReadRequest: core.ReadRequest{Runtime: fixedRuntime(), RepoRoot: repoRoot, Pr: "53"},
-				SARIFData:   []byte(tc.body),
-				SARIFInline: true,
-			})
-			if ref == nil || ref.Code != "bad-sarif" {
+			repoRoot, _ := setupBundle(t, "53", "abc1234")
+			if _, ref := runIngestBytes(repoRoot, "53", []byte(tc.body)); ref == nil || ref.Code != "bad-sarif" {
 				t.Fatalf("%s: got %+v, want bad-sarif", tc.name, ref)
 			}
 		})

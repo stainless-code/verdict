@@ -1,5 +1,5 @@
-// Package ingest is the ingest verb's CLI adapter: argv parsing, bounded stdin
-// reading when --sarif -, one call into the ingestcore service, warning routing,
+// Package ingest is the ingest verb's CLI adapter: argv parsing, bounded
+// stdin reading when --sarif -, one call into ingestcore, warning routing,
 // envelope rendering, and exit mapping. Domain logic lives in
 // internal/core/ingest.
 package ingest
@@ -30,7 +30,7 @@ type Request struct {
 // Run executes `ingest <owner/repo> <pr> --sarif <file|-> [--json]`, returning
 // the process exit code. Human progress goes to the runner's human stream;
 // --json mode prints one envelope to stdout.
-func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
+func Run(ctx context.Context, r *cli.Runner, args []string, req *Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
 	r.Rentry = ""
 	sarifFlag, code, done := parseFlags(r, args)
@@ -58,7 +58,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	return cli.ExitOK
 }
 
-func ingestRequest(r *cli.Runner, req Request, sarifFlag string) (*ingestcore.Request, *core.RefusalError) {
+func ingestRequest(r *cli.Runner, req *Request, sarifFlag string) (*ingestcore.Request, *core.RefusalError) {
 	read := core.ReadRequest{
 		Runtime:  &core.Runtime{Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r}},
 		Repo:     req.Repo,

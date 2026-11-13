@@ -13,8 +13,32 @@ import (
 
 func TestReportCountsBySourceAndGateIncludesToolFindings(t *testing.T) {
 	t.Parallel()
-	repoRoot := t.TempDir()
-	dir := filepath.Join(repoRoot, ".verdict", "state", "77")
+	dir := filepath.Join(t.TempDir(), ".verdict", "state", "77")
+	writeSourceFixture(t, dir)
+	rt := &core.Runtime{Now: func() time.Time { return time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC) }}
+	repoRoot := filepath.Dir(filepath.Dir(filepath.Dir(dir)))
+	base := core.ReadRequest{Runtime: rt, RepoRoot: repoRoot, Repo: "o/r", Pr: "77"}
+	resp, ref := Run(context.Background(), &core.ReportRequest{
+		ReadRequest: base,
+		Flags:       core.ReportFlags{Check: "important", Coverage: "warn"},
+		Effective:   core.Defaults(),
+	})
+	if ref != nil {
+		t.Fatalf("unexpected refusal: %+v", ref)
+	}
+	if resp.Data.Counts.BySource["model"] != 1 || resp.Data.Counts.BySource["tool"] != 1 {
+		t.Fatalf("by_source = %v, want model=1 tool=1", resp.Data.Counts.BySource)
+	}
+	if !strings.Contains(strings.Join(resp.Human, "\n"), "by source: model 1, tool 1") {
+		t.Fatalf("expected human by source line in %v", resp.Human)
+	}
+	if !resp.GateFailed || resp.Data.Gate == nil || resp.Data.Gate.Passed {
+		t.Fatalf("expected report --check important to fail on tool finding: gateFailed=%v gate=%+v", resp.GateFailed, resp.Data.Gate)
+	}
+}
+
+func writeSourceFixture(t *testing.T, dir string) {
+	t.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -64,24 +88,5 @@ func TestReportCountsBySourceAndGateIncludesToolFindings(t *testing.T) {
 `
 	if err := os.WriteFile(filepath.Join(dir, "findings.json"), []byte(findings), 0o644); err != nil {
 		t.Fatal(err)
-	}
-
-	rt := &core.Runtime{Now: func() time.Time { return time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC) }}
-	resp, ref := Run(context.Background(), &core.ReportRequest{
-		ReadRequest: core.ReadRequest{Runtime: rt, RepoRoot: repoRoot, Repo: "o/r", Pr: "77"},
-		Flags:       core.ReportFlags{Check: "important", Coverage: "warn"},
-		Effective:   core.Defaults(),
-	})
-	if ref != nil {
-		t.Fatalf("unexpected refusal: %+v", ref)
-	}
-	if resp.Data.Counts.BySource["model"] != 1 || resp.Data.Counts.BySource["tool"] != 1 {
-		t.Fatalf("by_source = %v, want model=1 tool=1", resp.Data.Counts.BySource)
-	}
-	if !strings.Contains(strings.Join(resp.Human, "\n"), "by source: model 1, tool 1") {
-		t.Fatalf("expected human by source line in %v", resp.Human)
-	}
-	if !resp.GateFailed || resp.Data.Gate == nil || resp.Data.Gate.Passed {
-		t.Fatalf("expected report --check important to fail on tool finding: gateFailed=%v gate=%+v", resp.GateFailed, resp.Data.Gate)
 	}
 }

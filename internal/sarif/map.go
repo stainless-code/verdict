@@ -3,13 +3,14 @@
 package sarif
 
 import (
+	"cmp"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/url"
 	"path"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,16 +18,21 @@ import (
 	skillfs "github.com/stainless-code/verdict"
 )
 
-const mapAssetPath = "schemas/sarif-map.json"
+const (
+	tierMapFile      = "schemas/sarif-map.json"
+	defaultTier      = "important"
+	floatBitSize     = 64
+	maxSecurityScore = 10
+)
 
 // Table describes schemas/sarif-map.json: level -> tier, numeric
 // security-severity thresholds -> tier, and verdict tier -> SARIF level.
 type Table struct {
+	Levels                     map[string]string   `json:"levels"`
+	TierToLevel                map[string]string   `json:"tier_to_level"`
 	SchemaVersion              string              `json:"schema_version"`
 	DefaultTier                string              `json:"default_tier"`
-	Levels                     map[string]string   `json:"levels"`
 	SecuritySeverityThresholds []SeverityThreshold `json:"security_severity_thresholds"`
-	TierToLevel                map[string]string   `json:"tier_to_level"`
 }
 
 // SeverityThreshold maps a minimum numeric security-severity score to a tier.
@@ -36,21 +42,22 @@ type SeverityThreshold struct {
 }
 
 var loadTableOnce = sync.OnceValues(func() (*Table, error) {
-	raw, err := skillfs.Read(mapAssetPath)
+	raw, err := skillfs.Read(tierMapFile)
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %v", mapAssetPath, err)
+		return nil, fmt.Errorf("read %s: %w", tierMapFile, err)
 	}
 	var tbl Table
 	if err := json.Unmarshal(raw, &tbl); err != nil {
-		return nil, fmt.Errorf("decode %s: %v", mapAssetPath, err)
+		return nil, fmt.Errorf("decode %s: %w", tierMapFile, err)
 	}
-	sort.SliceStable(tbl.SecuritySeverityThresholds, func(i, j int) bool {
-		return tbl.SecuritySeverityThresholds[i].Min > tbl.SecuritySeverityThresholds[j].Min
+	slices.SortStableFunc(tbl.SecuritySeverityThresholds, func(a, b SeverityThreshold) int {
+		return cmp.Compare(b.Min, a.Min)
 	})
 	return &tbl, nil
 })
 
-// Mapping returns the loaded SARIF tier/level mapping table from schemas/sarif-map.json.
+// Mapping returns the loaded SARIF tier/level mapping table from
+// schemas/sarif-map.json.
 func Mapping() (*Table, error) {
 	return loadTableOnce()
 }
@@ -70,20 +77,34 @@ func LevelForTier(sev any) string {
 }
 
 // TierForResult maps a SARIF result's security-severity (optional float or
-// numeric string) and level to a verdict severity tier via schemas/sarif-map.json.
-// Valid finite security-severity in [0, 10] takes precedence over level.
-func TierForResult(level string, secSev any) (tier string, warn string) {
+// numeric string) and level to a verdict severity tier via
+// schemas/sarif-map.json. Valid finite security-severity in [0, 10] takes
+// precedence over level.
+func TierForResult(level string, secSev any) (tier, warn string) {
 	tbl, err := Mapping()
 	if err != nil {
-		return "important", err.Error()
+		return defaultTier, err.Error()
 	}
-	if score, ok := parseSecuritySeverity(secSev); ok {
-		for _, th := range tbl.SecuritySeverityThresholds {
-			if score >= th.Min {
-				return th.Tier, ""
-			}
+	if tier, ok := tierFromScore(tbl, secSev); ok {
+		return tier, ""
+	}
+	return tierFromLevel(tbl, level)
+}
+
+func tierFromScore(tbl *Table, secSev any) (string, bool) {
+	score, ok := parseSecuritySeverity(secSev)
+	if !ok {
+		return "", false
+	}
+	for _, th := range tbl.SecuritySeverityThresholds {
+		if score >= th.Min {
+			return th.Tier, true
 		}
 	}
+	return "", false
+}
+
+func tierFromLevel(tbl *Table, level string) (tier, warn string) {
 	norm := strings.ToLower(strings.TrimSpace(level))
 	if norm == "" {
 		return tbl.DefaultTier, ""
@@ -95,42 +116,36 @@ func TierForResult(level string, secSev any) (tier string, warn string) {
 }
 
 func parseSecuritySeverity(v any) (float64, bool) {
-	if v == nil || v == false {
+	score, ok := decodeScore(v)
+	if !ok || math.IsNaN(score) || math.IsInf(score, 0) || score < 0 || score > maxSecurityScore {
 		return 0, false
 	}
-	var score float64
+	return score, true
+}
+
+func decodeScore(v any) (float64, bool) {
 	switch n := v.(type) {
 	case float64:
-		score = n
+		return n, true
 	case float32:
-		score = float64(n)
+		return float64(n), true
 	case int:
-		score = float64(n)
+		return float64(n), true
 	case int64:
-		score = float64(n)
+		return float64(n), true
 	case json.Number:
 		parsed, err := n.Float64()
-		if err != nil {
-			return 0, false
-		}
-		score = parsed
+		return parsed, err == nil
 	case string:
 		trimmed := strings.TrimSpace(n)
 		if trimmed == "" {
 			return 0, false
 		}
-		parsed, err := strconv.ParseFloat(trimmed, 64)
-		if err != nil {
-			return 0, false
-		}
-		score = parsed
+		parsed, err := strconv.ParseFloat(trimmed, floatBitSize)
+		return parsed, err == nil
 	default:
 		return 0, false
 	}
-	if math.IsNaN(score) || math.IsInf(score, 0) || score < 0 || score > 10 {
-		return 0, false
-	}
-	return score, true
 }
 
 // CleanURI validates and normalizes a SARIF artifactLocation.uri into a
@@ -141,47 +156,54 @@ func CleanURI(raw string) (string, error) {
 	if raw == "" {
 		return "", nil
 	}
-	if err := checkRawURISafety(raw); err != nil {
-		return "", err
+	if reason := unsafeURIReason(raw); reason != "" {
+		return "", unsafeURIError(raw, reason)
 	}
 	unescaped, err := url.PathUnescape(raw)
 	if err != nil {
-		return "", fmt.Errorf("invalid SARIF URI escape in %q", raw)
+		//nolint:wrapcheck // local URI syntax rejection
+		return "", fmt.Errorf("invalid SARIF URI escape in %q: %w", raw, err)
 	}
-	if err := checkRawURISafety(unescaped); err != nil {
-		return "", err
+	if reason := unsafeURIReason(unescaped); reason != "" {
+		return "", unsafeURIError(unescaped, reason)
 	}
-	cleaned := path.Clean(unescaped)
-	cleaned = strings.TrimPrefix(cleaned, "./")
+	cleaned := strings.TrimPrefix(path.Clean(unescaped), "./")
 	if cleaned == "." || cleaned == "" || strings.HasPrefix(cleaned, "/") || strings.HasPrefix(cleaned, "..") {
-		return "", fmt.Errorf("unsafe SARIF artifact URI %q", raw)
+		return "", errors.New("unsafe SARIF artifact URI " + strconv.Quote(raw)) //nolint:wrapcheck // local validation failure
 	}
 	return cleaned, nil
 }
 
-func checkRawURISafety(s string) error {
-	if strings.ContainsRune(s, 0) {
-		return fmt.Errorf("unsafe SARIF artifact URI %q (NUL byte)", s)
+func unsafeURIError(uri, reason string) error {
+	//nolint:wrapcheck // local validation failure
+	return errors.New("unsafe SARIF artifact URI " + strconv.Quote(uri) + " (" + reason + ")")
+}
+
+func unsafeURIReason(s string) string {
+	switch {
+	case strings.ContainsRune(s, 0):
+		return "NUL byte"
+	case strings.Contains(s, "\\"):
+		return "backslash"
+	case strings.HasPrefix(s, "/"):
+		return "absolute path"
+	case len(s) >= 2 && isASCIIAlpha(s[0]) && s[1] == ':':
+		return "drive path"
+	case hasURIScheme(s):
+		return "URI scheme"
+	case slices.Contains(strings.Split(s, "/"), ".."):
+		return "parent traversal"
+	default:
+		return ""
 	}
-	if strings.Contains(s, "\\") {
-		return fmt.Errorf("unsafe SARIF artifact URI %q (backslash)", s)
-	}
-	if strings.HasPrefix(s, "/") {
-		return fmt.Errorf("unsafe SARIF artifact URI %q (absolute path)", s)
-	}
-	if len(s) >= 2 && isASCIIAlpha(s[0]) && s[1] == ':' {
-		return fmt.Errorf("unsafe SARIF artifact URI %q (drive path)", s)
-	}
-	if u, err := url.Parse(s); err == nil && u.Scheme != "" {
-		return fmt.Errorf("unsafe SARIF artifact URI %q (URI scheme %q)", s, u.Scheme)
-	}
+}
+
+func hasURIScheme(s string) bool {
 	if strings.Contains(s, "://") {
-		return fmt.Errorf("unsafe SARIF artifact URI %q (URI scheme)", s)
+		return true
 	}
-	if slices.Contains(strings.Split(s, "/"), "..") {
-		return fmt.Errorf("unsafe SARIF artifact URI %q (parent traversal)", s)
-	}
-	return nil
+	u, err := url.Parse(s)
+	return err == nil && u.Scheme != ""
 }
 
 func isASCIIAlpha(b byte) bool {
