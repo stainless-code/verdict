@@ -37,6 +37,9 @@ func (st *state) importRule(p *pack.Pack, rule *pack.Rule) *core.RefusalError {
 	st.req.Rule = rule.Description
 	st.req.Scope = strings.Join(rule.Globs, ",")
 	st.req.Provenance = "pack:" + p.Name + "@" + p.Version
+	if st.req.Accept != "" {
+		st.req.Provenance = rule.Provenance
+	}
 	in, ref := st.validateAppend()
 	if ref != nil {
 		return ref
@@ -51,6 +54,15 @@ func (st *state) importRule(p *pack.Pack, rule *pack.Rule) *core.RefusalError {
 	row.Set("severity", rule.Level)
 	row.Set("pack_hash", p.Hash)
 	row.Set("body", string(rule.Body))
+	if st.req.Accept != "" {
+		row.Set("source", "learning:"+st.req.Accept)
+	}
+	if st.req.DryRun {
+		st.data = &Data{Rule: row}
+		st.next = "preview only; run without --dry-run to accept"
+		st.humanf("would import %s", rule.ID)
+		return nil
+	}
 	if err := kb.AppendRow(st.root, row.MarshalCompact()+"\n"); err != nil {
 		return st.refuse(codeLearnFailed, fmt.Sprintf(msgWriteKB, st.kbDisplay(), err))
 	}

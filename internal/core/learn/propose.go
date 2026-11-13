@@ -67,7 +67,7 @@ func proposalCandidates(repo, pr string, feed *threads.File) []proposal {
 			}
 			sum := sha256.Sum256([]byte(repo + "\x00" + pr + "\x00" + comment.ID))
 			id := fmt.Sprintf("learning-%x", sum[:12])
-			rule := pack.RuleSpec{ID: id, Category: "review-learning", Severity: "candidate", Globs: []string{thread.Path}, Description: "Review the resolved concern in " + thread.Path + " against the quoted evidence before reporting it again.", Examples: []string{"Check the cited concern against current code; a resolved thread alone does not establish a defect."}}
+			rule := pack.RuleSpec{ID: id, Provenance: "threads#" + comment.ID, Category: "review-learning", Severity: "candidate", Globs: []string{thread.Path}, Description: "Review the resolved concern in " + thread.Path + " (" + id + ") against the quoted evidence before reporting it again.", Examples: []string{"Check the cited concern against current code; a resolved thread alone does not establish a defect."}}
 			candidates[id] = proposal{Manifest: pack.Manifest{SchemaVersion: "1", Name: "learning/" + id, Version: "1.0.0", Severity: map[string]string{"candidate": "informational"}, Rules: []pack.RuleSpec{rule}}, body: quoteEvidence(comment.ID, comment.Body)}
 		}
 	}
@@ -87,11 +87,16 @@ func (st *state) proposeCandidate(candidate proposal, rows []*jq.Obj) *core.Refu
 	id := candidate.Rules[0].ID
 	rel := path.Join(learningsDir, id)
 	action := "proposed"
+	if st.rejected(id) {
+		action = "skipped-rejected"
+	}
 	if kb.FindRow(rows, id) != nil {
 		action = "skipped-kb"
 	}
 	if _, err := os.Lstat(filepath.Join(st.root, rel)); err == nil {
-		action = "skipped-existing"
+		if action == "proposed" {
+			action = "skipped-existing"
+		}
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return st.refuse(codeLearnFailed, err.Error())
 	}
