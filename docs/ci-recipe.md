@@ -10,16 +10,15 @@ into your repo as `.github/workflows/verdict-review.yml`.
 ## The pipeline
 
 1. **Install** — the `setup-verdict` action installs a pinned, signature-
-   verified binary and adds it to `PATH` (`version: latest` in the example;
-   pin a released version for a frozen gate).
+   verified binary and adds it to `PATH` (set `vars.VERDICT_VERSION` to a release containing `run --agent`).
 2. **Readiness pre-check** — `verdict ready <repo> <pr> --check` fails fast
    when the PR is not reviewable (failing CI, open threads, draft), saving
    agent spend before the expensive steps.
 3. **Fetch** — `verdict fetch <repo> <pr>` builds `.verdict/state/<pr>/` (PR record,
    `full.diff`, `toc.txt`, `roles.txt`).
 4. **Agent review** — `verdict run <repo> <pr> --agent "$VERDICT_AGENT"`
-   spawns your agent once against the fetched bundle. Two lines choose the
-   agent: `VERDICT_AGENT` in the step's `env:` (one of `claude`, `codex`,
+   spawns your agent once against the fetched bundle. The Action's `agent` input chooses the
+   agent: it sets `VERDICT_AGENT` in the step's `env:` (one of `claude`, `codex`,
    `cursor`, `opencode` — the shipped `run --agent` table) and the `--agent`
    argument that reads it. Install that CLI on the runner in an earlier step;
    the recipe never downloads it. The agent reads `full.diff` via `toc.txt`
