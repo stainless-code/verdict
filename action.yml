@@ -6,7 +6,7 @@ branding:
 inputs:
   version:
     description: "String — pinned verdict release (X.Y.Z)."
-    default: "0.6.1"
+    required: true
   repository:
     description: "String — owner/repository to review."
     required: true
