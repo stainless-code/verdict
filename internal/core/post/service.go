@@ -426,7 +426,7 @@ func (st *state) merge() *core.RefusalError {
 	if err != nil {
 		return refusalOrFailed(err)
 	}
-	st.merged, st.body, st.diagram = res, res.Body, res.Diagram
+	st.merged, st.body, st.diagram = res, panelBody(res.Body, res.Verification), res.Diagram
 	st.recordAnchorGap(caps, res.NMoved)
 	return nil
 }

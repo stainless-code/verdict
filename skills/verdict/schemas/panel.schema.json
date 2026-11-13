@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/panel.schema.json",
+  "title": "verification/verdicts.json — independent verifier receipts",
+  "description": "Invoker-written verification/verdicts.json: head-bound independent opinions. Duplicate (sig, model) and unknown or ambiguous signatures are refused by the runtime; a refutation never deletes a finding.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "const": "1" },
+    "head_sha": { "type": "string", "minLength": 1 },
+    "results": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/result" }
+    }
+  },
+  "required": ["schema_version", "head_sha", "results"],
+  "additionalProperties": true,
+  "$defs": {
+    "result": {
+      "type": "object",
+      "properties": {
+        "sig": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "provider": { "type": "string" },
+        "verdict": { "enum": ["confirmed", "refuted", "insufficient"] },
+        "evidence": { "type": "string", "maxLength": 500, "minLength": 10 },
+        "at": { "type": "string" }
+      },
+      "required": ["sig", "model", "verdict", "evidence"],
+      "additionalProperties": true
+    }
+  }
+}

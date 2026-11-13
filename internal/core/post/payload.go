@@ -62,7 +62,9 @@ const maxSplitParts = 999
 
 var splitNoteReserve = max(len(splitFirstNote(maxSplitParts+1)), len(splitFollowHead(maxSplitParts, maxSplitParts)))
 
-const paraSep = "\n\n"
+const (
+	paraSep = "\n\n"
+)
 
 func splitFirstNote(n int) string {
 	return fmt.Sprintf("\n\n> ⚠️ Note: this review continues in %d follow-up "+
@@ -257,9 +259,10 @@ func (st *state) dryRunResponse() (*core.PostResponse, *core.RefusalError) {
 	payload, _, _ := st.floorPayload()
 	nOpen, nDeferred, nAddressed := postCounts(payload)
 	data := &core.PostData{
-		DryRun:   true,
-		Event:    st.event,
-		CommitID: st.commitID,
+		Verification: st.merged.Verification,
+		DryRun:       true,
+		Event:        st.event,
+		CommitID:     st.commitID,
 		Body: core.PostBody{
 			Marker:  st.merged.Marker,
 			Footer:  footerVal,
@@ -296,4 +299,61 @@ func (st *state) dryRunResponse() (*core.PostResponse, *core.RefusalError) {
 func RenderPostEnvelope(resp *core.PostResponse) *jq.Obj {
 	return core.RenderEnvelope("post", resp.Repo, resp.Pr, resp.At, resp.Next,
 		resp.Warnings, resp.Data.Wire(), nil)
+}
+
+func panelBody(body string, summary *core.PanelSummary) string {
+	if summary == nil {
+		return body
+	}
+	line := ""
+	if summary.Confirmed+summary.Contested != 0 {
+		line = fmt.Sprintf("> ℹ️ %d findings · %d contested by a verifier",
+			summary.Single+summary.Confirmed+summary.Contested, summary.Contested)
+	}
+	body, found := replacePanelSummary(body, line)
+	if found || line == "" {
+		return body
+	}
+	lines := strings.Split(body, newline)
+	for i, s := range lines {
+		if strings.HasPrefix(s, "> ") {
+			return strings.Join(append(append(lines[:i+1:i+1], line), lines[i+1:]...), newline)
+		}
+	}
+	return line + paraSep + body
+}
+
+func replacePanelSummary(body, line string) (string, bool) {
+	lines := strings.Split(body, newline)
+	out := lines[:0]
+	found := false
+	for _, existing := range lines {
+		if !isPanelSummary(existing) {
+			out = append(out, existing)
+			continue
+		}
+		if !found && line != "" {
+			out = append(out, line)
+		}
+		found = true
+	}
+	return strings.Join(out, newline), found
+}
+
+func isPanelSummary(line string) bool {
+	counts, ok := strings.CutPrefix(line, "> ℹ️ ")
+	if !ok {
+		return false
+	}
+	findings, rest, ok := strings.Cut(counts, " findings · ")
+	if !ok {
+		return false
+	}
+	contested, ok := strings.CutSuffix(rest, " contested by a verifier")
+	return ok && decimalCount(findings) && decimalCount(contested)
+}
+
+func decimalCount(s string) bool {
+	n, err := strconv.Atoi(s)
+	return err == nil && n >= 0 && strconv.Itoa(n) == s
 }

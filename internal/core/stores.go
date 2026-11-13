@@ -77,32 +77,34 @@ type SectionTag struct { //nolint:govet // field order is the published property
 // bytes and positions; the merge itself preserves prior order through the
 // ordered clone-and-overlay path.
 type FindingEntry struct { //nolint:govet // field order is the published property order
-	Sig         string         `json:"sig"`
-	SigVersion  string         `const:"1"                                                                           json:"sig_version"`
-	Kind        string         `enum:"inline|section"                                                               json:"kind"`
-	Path        any            `json:"path,omitempty"                                                               type:"string|null"`
-	Heading     any            `json:"heading,omitempty"                                                            type:"string|null"`
-	Line        any            `json:"line,omitempty"                                                               type:"integer|null"`
-	Side        any            `json:"side,omitempty"                                                               type:"string|null"`
-	Anchored    any            `json:"anchored,omitempty"                                                           type:"boolean|string|null"` //nolint:revive // tag column widened by the published category enum
-	Body        string         `json:"body,omitempty"`
-	Suggestion  *string        `json:"suggestion,omitempty"`
-	Brief       *Brief         `anyOf:"null"                                                                        json:"brief,omitempty"`
-	KB          *[]string      `json:"kb,omitempty"`
-	InBounds    any            `json:"inBounds,omitempty"                                                           type:"boolean|null"`
-	Rigor       any            `enum:"said|pointed|walked|ran|reproduced|null"                                      json:"rigor,omitempty"`
-	RigorSource string         `enum:"model|default|verified"                                                       json:"rigor_source,omitempty"` //nolint:revive // tag column widened by the published category enum
-	Severity    any            `enum:"critical|important|informational|null"                                        json:"severity,omitempty"`     //nolint:revive // tag column widened by the published category enum
-	Category    any            `enum:"logic|edge-case|security|performance|accidental-commit|style|docs|other|null" json:"category,omitempty"`     //nolint:revive // published enum tag exceeds the line limit
-	CategorySet bool           `json:"-"`
-	Status      string         `enum:"open|addressed|wont-fix|false-positive|deferred"                              json:"status"`
-	FirstSeen   string         `json:"firstSeen"`
-	LastSeen    string         `json:"lastSeen"`
-	Rationale   string         `json:"rationale,omitempty"`
-	TriagedAt   string         `json:"triagedAt,omitempty"`
-	TriagedBy   string         `json:"triagedBy,omitempty"`
-	History     []HistoryEvent `json:"history"`
-	Extra       *jq.Obj        `json:"-"`
+	Sig          string         `json:"sig"`
+	SigVersion   string         `const:"1"                                                                           json:"sig_version"`
+	Kind         string         `enum:"inline|section"                                                               json:"kind"`
+	Path         any            `json:"path,omitempty"                                                               type:"string|null"`
+	Heading      any            `json:"heading,omitempty"                                                            type:"string|null"`
+	Line         any            `json:"line,omitempty"                                                               type:"integer|null"`
+	Side         any            `json:"side,omitempty"                                                               type:"string|null"`
+	Anchored     any            `json:"anchored,omitempty"                                                           type:"boolean|string|null"` //nolint:revive // tag column widened by the published category enum
+	Body         string         `json:"body,omitempty"`
+	Suggestion   *string        `json:"suggestion,omitempty"`
+	Brief        *Brief         `anyOf:"null"                                                                        json:"brief,omitempty"`
+	KB           *[]string      `json:"kb,omitempty"`
+	InBounds     any            `json:"inBounds,omitempty"                                                           type:"boolean|null"`
+	Rigor        any            `enum:"said|pointed|walked|ran|reproduced|null"                                      json:"rigor,omitempty"`
+	RigorSource  string         `enum:"model|default|verified"                                                       json:"rigor_source,omitempty"` //nolint:revive // tag column widened by the published category enum
+	Severity     any            `enum:"critical|important|informational|null"                                        json:"severity,omitempty"`     //nolint:revive // tag column widened by the published category enum
+	Category     any            `enum:"logic|edge-case|security|performance|accidental-commit|style|docs|other|null" json:"category,omitempty"`     //nolint:revive // published enum tag exceeds the line limit
+	CategorySet  bool           `json:"-"`
+	Status       string         `enum:"open|addressed|wont-fix|false-positive|deferred"                              json:"status"`
+	FirstSeen    string         `json:"firstSeen"`
+	LastSeen     string         `json:"lastSeen"`
+	Rationale    string         `json:"rationale,omitempty"`
+	Verification []Verification `json:"verification,omitempty"`
+	Confidence   string         `enum:"single|confirmed|contested"                                                   json:"confidence,omitempty"` //nolint:revive // confidence enum aligns with the published finding tags
+	TriagedAt    string         `json:"triagedAt,omitempty"`
+	TriagedBy    string         `json:"triagedBy,omitempty"`
+	History      []HistoryEvent `json:"history"`
+	Extra        *jq.Obj        `json:"-"`
 }
 
 // Brief is the per-finding repair brief: the affected sites plus the outcome,
@@ -154,12 +156,13 @@ type RecordData struct { //nolint:govet // field order is the published property
 	Dir             string           `json:"dir"`
 	Anchors         AnchorsSummary   `json:"anchors"`
 	Findings        RecordFindings   `inline:"true"               json:"findings"`
-	Confidence      *int             `json:"confidence"           max:"5"                   min:"1"`
+	Confidence      *int             `json:"confidence"           max:"5"                       min:"1"`
 	SecuritySummary *string          `json:"security_summary"`
+	Verification    *PanelSummary    `anyOf:"null"                json:"verification,omitempty" optional:"true"`
 	Items           []FindingItem    `json:"items"`
 	DryRun          bool             `json:"dry_run,omitempty"`
 	Check           *CheckSummary    `anyOf:"null"                json:"check,omitempty"`
-	Coverage        *CoverageSummary `anyOf:"null"                json:"coverage,omitempty" optional:"true"`
+	Coverage        *CoverageSummary `anyOf:"null"                json:"coverage,omitempty"     optional:"true"`
 	Normalized      any              `json:"normalized,omitempty" type:"object"`
 	Repairs         []Repair         `json:"repairs,omitempty"`
 	ConfidenceRaw   any              `json:"-"`
@@ -213,6 +216,7 @@ type Record struct { //nolint:govet // field order is the published property ord
 	PatchID         *string          `json:"patch_id,omitempty"`
 	PatchIDKind     string           `json:"patch_id_kind,omitempty"`
 	Repairs         []Repair         `json:"repairs,omitempty"`
+	Verification    *PanelSummary    `anyOf:"null"                      json:"verification,omitempty"   optional:"true"`
 	Coverage        *CoverageSummary `anyOf:"null"                      json:"coverage,omitempty"       optional:"true"`
 	ChunkCoverage   *ChunkCoverage   `anyOf:"null"                      json:"chunk_coverage,omitempty" optional:"true"`
 	ConfidenceRaw   any              `json:"-"`
@@ -242,6 +246,12 @@ func (e *FindingEntry) Wire() *jq.Obj {
 // section kb rides here (after rationale), then triage attribution,
 // history, then Extra in file order.
 func wireTail(e *FindingEntry, o *jq.Obj) {
+	if len(e.Verification) > 0 {
+		o.Set("verification", e.Verification)
+	}
+	if e.Confidence != "" {
+		o.Set("confidence", e.Confidence)
+	}
 	if e.Kind == "section" {
 		o.Set("kb", kbWire(e.KB))
 	}
@@ -394,6 +404,9 @@ func (d *RecordData) Wire() *jq.Obj {
 		"confidence", d.ConfidenceRaw,
 		"security_summary", strOrNull(d.SecuritySummary),
 	)
+	if d.Verification != nil {
+		o.Set("verification", d.Verification)
+	}
 	if d.Coverage != nil {
 		o.Set("coverage", d.Coverage)
 	}
@@ -453,6 +466,9 @@ func (r *Record) Wire() *jq.Obj {
 	}
 	if len(r.Repairs) > 0 {
 		o.Set("repairs", r.Repairs)
+	}
+	if r.Verification != nil {
+		o.Set("verification", r.Verification)
 	}
 	if r.Coverage != nil {
 		o.Set("coverage", r.Coverage)

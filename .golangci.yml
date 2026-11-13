@@ -96,6 +96,10 @@ linters:
           - forbidigo
           - gosec
           - wrapcheck
+      - path: .*_test\.go
+        text: "symbol should have a godoc"
+        linters:
+          - godoclint
       # Fixture data in tests legitimately repeats slugs, flags, and JSON
       # keys; the named-constant discipline applies to production code.
       - path: .*_test\.go

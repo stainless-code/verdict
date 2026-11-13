@@ -61,7 +61,7 @@ other.txt	NEW	1	3
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "259fa2dc6d63fc600a2fc94a6b70bc16399031bbf62dbf524366bd1b53db700b",
+  "prompts_hash": "1ab11a40d5636e6d444cdcded1f23ad3bfe5c3ae90c83a3380ef4e082a364010",
   "model": null
 }
 --- file C/.verdict/state/local-kb/store.json ---

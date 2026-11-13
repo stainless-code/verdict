@@ -98,8 +98,17 @@ export interface CoverageSummary {
   [key: string]: unknown;
 }
 
+export interface VerificationSummary {
+  verifiers: number;
+  confirmed: number;
+  contested: number;
+  single: number;
+  [key: string]: unknown;
+}
+
 /** report --json data: ranked read over the store. cost appears only with --cost, completeness only with --completeness, gate only when a gating flag (--max-severity, --require-head, --live) is set (gate itself always carries the coverage dimension), receipt keys only when budget.json parses. */
 export interface ReportData {
+  verification?: VerificationSummary | null;
   generated_at: string;
   dir: string;
   head: ReportHead;
@@ -240,6 +249,7 @@ export interface GateDimension {
 
 /** post --dry-run --json data (dry_run true, findings carry the dry-run file) and real-post data (dry_run false, findings carry counts plus the accepted review object). */
 export interface PostData {
+  verification?: VerificationSummary | null;
   dry_run: boolean;
   event: string;
   commit_id: string;
@@ -265,6 +275,7 @@ export interface RecordData {
   findings: RecordDataFindings;
   confidence: number | null;
   security_summary: string | null;
+  verification?: VerificationSummary | null;
   items: Array<FindingItem>;
   /** True only on record --dry-run; the run wrote no findings.json, record.json, or any new file. */
   dry_run?: boolean;
