@@ -38,7 +38,7 @@ const (
 type ReportRequest struct {
 	Invocation
 	Status, Kind, Output, Sarif, Check, Live string
-	Cost, Completeness                       bool
+	Cost, Completeness, IncludeWithheld      bool
 }
 
 // ReportResponse is the offline review report with render inputs and the
@@ -63,6 +63,7 @@ func (c *Client) Report(ctx context.Context, req *ReportRequest) (*ReportRespons
 		Flags: core.ReportFlags{
 			Status: req.Status, Kind: req.Kind, Output: req.Output, Sarif: req.Sarif,
 			Check: req.Check, Live: req.Live, Cost: req.Cost, Completeness: req.Completeness,
+			IncludeWithheld: req.IncludeWithheld,
 		},
 		Effective: core.Defaults(),
 	})
@@ -320,7 +321,7 @@ func (c *Client) Record(ctx context.Context, req *RecordRequest) (*Result, error
 // value; the pre-submit scan refuses post-secret-shaped without it.
 type PostRequest struct {
 	Invocation
-	Approve, ReviewFile                 string
+	Approve, ReviewFile, MinSeverity    string
 	RequestChanges, Bind, Force, DryRun bool
 	AllowSecretValues                   bool
 }
@@ -337,6 +338,7 @@ func (c *Client) Post(ctx context.Context, req *PostRequest) (*Result, error) {
 			Approve: req.Approve, ReviewFile: req.ReviewFile, RequestChanges: req.RequestChanges,
 			Bind: req.Bind, Force: req.Force, DryRun: req.DryRun,
 			AllowSecretValues: req.AllowSecretValues,
+			MinSeverity:       req.MinSeverity,
 		},
 		Effective: core.Defaults(),
 	})
@@ -414,6 +416,8 @@ type FetchRequest struct {
 	Invocation
 	BaseSHA, Provider                 string
 	Context                           []string
+	Ignore                            []string
+	NoDefaultExcludes                 bool
 	BudgetConsent, ShowPrompts, Chunk bool
 	HeadControls                      bool
 }
@@ -427,7 +431,7 @@ func (c *Client) Fetch(ctx context.Context, req *FetchRequest) (*Result, error) 
 	resp, err := fetchcore.Run(ctx, &core.FetchRequest{
 		ReadRequest: rr,
 		Flags: core.FetchFlags{
-			Context: req.Context,
+			Context: req.Context, Ignore: req.Ignore, NoDefaultExcludes: req.NoDefaultExcludes,
 			BaseSHA: req.BaseSHA, Provider: req.Provider, BudgetConsent: req.BudgetConsent,
 			ShowPrompts: req.ShowPrompts, ChunkFlag: req.Chunk, HeadControls: req.HeadControls,
 			HasBase: req.BaseSHA != "", HasProvider: req.Provider != "",
@@ -449,10 +453,12 @@ func (c *Client) Fetch(ctx context.Context, req *FetchRequest) (*Result, error) 
 type FetchLocalRequest struct {
 	Invocation
 	Context                                             []string
+	Ignore                                              []string
 	Range, BaseRef, Stash                               string
 	Paths                                               []string
 	Staged, HasStash, BudgetConsent, ShowPrompts, Chunk bool
 	Worktree, HeadControls                              bool
+	NoDefaultExcludes                                   bool
 }
 
 // FetchLocal fetches a local git diff into .verdict/state/local-<name>.
@@ -464,7 +470,7 @@ func (c *Client) FetchLocal(ctx context.Context, req *FetchLocalRequest) (*Resul
 	resp, err := fetchcore.RunLocal(ctx, &core.FetchLocalRequest{
 		ReadRequest: rr,
 		Flags: core.FetchLocalFlags{
-			Context:   req.Context,
+			Context: req.Context, Ignore: req.Ignore, NoDefaultExcludes: req.NoDefaultExcludes,
 			RangeSpec: req.Range, BaseRef: req.BaseRef, StashN: req.Stash, Paths: req.Paths,
 			Staged: req.Staged, HasStash: req.HasStash, BudgetConsent: req.BudgetConsent,
 			ShowPrompts: req.ShowPrompts, ChunkFlag: req.Chunk, Worktree: req.Worktree,
@@ -560,7 +566,9 @@ func resolveResponseOf(resp *fetchcore.ThreadsResponse) *ThreadsResponse {
 // ReadyRequest gates on merge readiness.
 type ReadyRequest struct {
 	Invocation
-	Check bool
+	WaitFor string
+	Timeout string
+	Check   bool
 }
 
 // ReadyResponse carries the merge-readiness advisory and gate outcome.
@@ -578,6 +586,7 @@ func (c *Client) Ready(ctx context.Context, req *ReadyRequest) (*ReadyResponse, 
 	resp, ref := readycore.Run(ctx, &readycore.Request{
 		ReadRequest: rr,
 		Check:       req.Check,
+		WaitFor:     req.WaitFor, Timeout: req.Timeout,
 	})
 	if ref != nil {
 		return nil, refusalErr(ref)
@@ -986,4 +995,33 @@ func (c *Client) Init(ctx context.Context, req *InitRequest) (*InitResponse, err
 		Outcome:  outcomeOf(resp.At, resp.Next, resp.Warnings, resp.Data),
 		ExitCode: resp.ExitCode,
 	}, nil
+}
+
+// PRWaitRequest requests a bounded foreground PR wait.
+type PRWaitRequest struct {
+	Invocation
+	Until    string
+	Timeout  string
+	Interval string
+	Provider string
+	Once     bool
+}
+
+// PRWaitResponse carries the final observation and typed outcome.
+type PRWaitResponse struct{ Result }
+
+// PRWait waits for a PR condition; timeout remains successful response data.
+func (c *Client) PRWait(ctx context.Context, req *PRWaitRequest) (*PRWaitResponse, error) {
+	rr, err := c.request(ctx, req.Repo, req.PR)
+	if err != nil {
+		return nil, err
+	}
+	resp, ref := readycore.Wait(ctx, &readycore.WaitRequest{
+		ReadRequest: rr, Until: req.Until, Timeout: req.Timeout,
+		Interval: req.Interval, Provider: req.Provider, Once: req.Once,
+	})
+	if ref != nil {
+		return nil, refusalErr(ref)
+	}
+	return &PRWaitResponse{Result: resultOf(resp.Repo, resp.Pr, resp.At, resp.Next, resp.Warnings, resp.Data)}, nil
 }

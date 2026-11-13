@@ -29,6 +29,20 @@ function emit(value) {
 }
 
 switch (mode) {
+  case "wait-timeout":
+    emit(
+      envelope({
+        verb: "pr-wait",
+        data: {
+          outcome: "wait-timeout",
+          until: "merged",
+          snapshot: null,
+          observations: 0,
+        },
+      }),
+    );
+    process.exit(1);
+
   case "success": {
     emit(envelope());
     break;

@@ -235,6 +235,7 @@ func readBundleRow(st *state, dir, name string) (row, bool) {
 		st.warn(skipWarn + bundle + " (findings.json unreadable or not a findings array)")
 		return row{}, false
 	}
+	warnMalformedWithheld(st, findings, bundle)
 	return buildRow(bundle, name, findings), true
 }
 
@@ -431,4 +432,12 @@ func dedupeSorted(vals []any) []any {
 func isRegular(path string) bool {
 	fi, err := os.Stat(path)
 	return err == nil && fi.Mode().IsRegular()
+}
+
+func warnMalformedWithheld(st *state, entries []any, bundle string) {
+	for _, e := range entries {
+		if readcommon.FieldOf(e, "withheld") != nil && readcommon.WithheldSource(e) == "" {
+			st.warn("malformed withheld receipt ignored: " + bundle)
+		}
+	}
 }

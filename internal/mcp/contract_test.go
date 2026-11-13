@@ -8,7 +8,8 @@ import (
 )
 
 var wantAnnotations = map[string]toolAnnotations{
-	"adopt": {Title: "Adopt findings", IdempotentHint: true},
+	"pr_wait": {Title: "Wait for PR", ReadOnlyHint: true, IdempotentHint: true, OpenWorldHint: true},
+	"adopt":   {Title: "Adopt findings", IdempotentHint: true},
 	"calibrate": {
 		Title: "Calibrate findings", IdempotentHint: true, OpenWorldHint: true,
 	},
@@ -100,14 +101,14 @@ func TestSurfaceSets(t *testing.T) {
 	defaults := names(allTools(false, false))
 	wantDefaults := []string{
 		"adopt", "calibrate", "check-tree", "config", "doctor", "fetch", "fetch-local", "fix",
-		"index", "init", "learn", "next", "pack", "post", "ready", "record", "report", "show",
+		"index", "init", "learn", "next", "pack", "post", "pr_wait", "ready", "record", "report", "show",
 		"threads", "trend", "verify",
 	}
 	if !reflect.DeepEqual(defaults, wantDefaults) {
 		t.Errorf("default tools = %v, want %v", defaults, wantDefaults)
 	}
 	readOnly := names(allTools(true, false))
-	wantReadOnly := []string{"check-tree", "config", "doctor", "index", "next", "pack", "ready", "record", "report", "show", "trend"}
+	wantReadOnly := []string{"check-tree", "config", "doctor", "index", "next", "pack", "pr_wait", "ready", "record", "report", "show", "trend"}
 	if !reflect.DeepEqual(readOnly, wantReadOnly) {
 		t.Errorf("read-only tools = %v, want %v", readOnly, wantReadOnly)
 	}
@@ -173,7 +174,8 @@ func TestInitializeInstructions(t *testing.T) {
 func TestMutationDeclarations(t *testing.T) {
 	t.Parallel()
 	want := map[string]mutationClass{
-		"adopt": localWrites, "calibrate": localWrites, "check-tree": noLocalWrites,
+		"pr_wait": noLocalWrites,
+		"adopt":   localWrites, "calibrate": localWrites, "check-tree": noLocalWrites,
 		"config": noLocalWrites, "doctor": noLocalWrites, "fetch": localWrites,
 		"fetch-local": localWrites, "fix": localWrites, "index": noLocalWrites,
 		"init": localWrites, "learn": localWrites, "next": noLocalWrites,

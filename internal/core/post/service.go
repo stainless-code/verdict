@@ -83,6 +83,9 @@ func (st *state) runGates(ctx context.Context) *core.RefusalError {
 
 // checkApproveFlag refuses an --approve value outside the documented pair.
 func (st *state) checkApproveFlag() *core.RefusalError {
+	if ref := st.validateFloor(); ref != nil {
+		return ref
+	}
 	if st.flags.Approve == approveTrue || st.flags.Approve == approveFalse {
 		return nil
 	}
@@ -414,6 +417,10 @@ func (st *state) applyApprovedFlag() {
 func (st *state) merge() *core.RefusalError {
 	caps := core.CapabilitiesFor(st.provider())
 	rt := st.mergeRuntime()
+	rs, ref := config.VerifyRunState(st.dir)
+	if ref != nil {
+		return ref
+	}
 	res, err := recordcore.Merge(&rt, &recordcore.MergeParams{
 		Dir: st.dir, Prov: st.provider(),
 		HeadFull: st.commitID,
@@ -424,6 +431,7 @@ func (st *state) merge() *core.RefusalError {
 		Effective: st.req.Effective, Forces: st.req.Forces,
 		Repo: st.req.Repo, Pr: st.req.Pr, Cmd: "post", Controls: st.controls,
 		RequireCoverage: st.flags.RequireCoverage,
+		Run:             rs, MinSeverity: st.flags.MinSeverity,
 		// A host that advertises no inline anchors sends none: the merge keeps
 		// every finding in the body instead of an anchor the host would refuse.
 		BodyOnlyAnchors: !caps.InlineAnchors,

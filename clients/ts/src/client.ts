@@ -237,6 +237,7 @@ function throwForExit<T>(
     // instead of arriving as a typed envelope nobody checked.
     if (isGateEnvelope(parsed)) {
       assertEnvelope<T>(parsed, stdout);
+      if (verb === "pr-wait") return parsed;
       throw new VerdictGateError(parsed);
     }
     assertRefusalEnvelope(parsed, stdout);
@@ -281,6 +282,10 @@ export interface VerdictClient {
   ): Promise<Envelope<DataFor["record"]>>;
   next(args?: string[], opts?: RunOptions): Promise<Envelope<DataFor["next"]>>;
   show(args?: string[], opts?: RunOptions): Promise<Envelope<DataFor["show"]>>;
+  prWait(
+    args?: string[],
+    opts?: RunOptions,
+  ): Promise<Envelope<DataFor["pr-wait"]>>;
   ready(
     args?: string[],
     opts?: RunOptions,
@@ -386,6 +391,7 @@ export function createClient(defaults: ClientOptions = {}): VerdictClient {
     record: (args, opts) => run<DataFor["record"]>("record", args, opts),
     next: (args, opts) => run<DataFor["next"]>("next", args, opts),
     show: (args, opts) => run<DataFor["show"]>("show", args, opts),
+    prWait: (args, opts) => run<DataFor["pr-wait"]>("pr-wait", args, opts),
     ready: (args, opts) => run<DataFor["ready"]>("ready", args, opts),
     triage: (args, opts) => run<DataFor["triage"]>("triage", args, opts),
     fetch: (args, opts) => run<DataFor["fetch"]>("fetch", args, opts),

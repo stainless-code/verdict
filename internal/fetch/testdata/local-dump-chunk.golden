@@ -104,7 +104,11 @@ c.txt
       "toc": ".verdict/state/local-demo/chunks/chunk-03.toc.txt",
       "roles": ".verdict/state/local-demo/chunks/chunk-03.roles.txt"
     }
-  ]
+  ],
+  "excluded_count": 0,
+  "excluded_bytes": 0,
+  "raw_diff_sha256": "6be0f6ab7fddf8db183954a832e4fb33dd8e97290871780933018e373a1b4c0c",
+  "diff_sha256": "6be0f6ab7fddf8db183954a832e4fb33dd8e97290871780933018e373a1b4c0c"
 }
 --- file C/.verdict/state/local-demo/controls.json ---
 {
@@ -113,6 +117,18 @@ c.txt
   "base_sha": "6291d3de99996b81f26373b134ff500bfad4888f",
   "sha": "6291d3de99996b81f26373b134ff500bfad4888f",
   "files": [
+    {
+      "path": ".verdict/ignore",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".gitattributes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
     {
       "path": ".verdict/config.json",
       "status": "missing",
@@ -169,7 +185,24 @@ c.txt
     }
   ]
 }
+--- file C/.verdict/state/local-demo/excluded.json ---
+{
+  "schema_version": "1",
+  "patterns_source": ".verdict/ignore@base",
+  "defaults": [
+    "default:generated",
+    "default:attribute"
+  ],
+  "ignore": [],
+  "no_default_excludes": false,
+  "excluded": [],
+  "excluded_bytes": 0,
+  "kept_bytes": 999309,
+  "raw_diff_sha256": "6be0f6ab7fddf8db183954a832e4fb33dd8e97290871780933018e373a1b4c0c",
+  "diff_sha256": "6be0f6ab7fddf8db183954a832e4fb33dd8e97290871780933018e373a1b4c0c"
+}
 --- file C/.verdict/state/local-demo/full.diff (size=999309 sha256=6be0f6ab7fddf8db183954a832e4fb33dd8e97290871780933018e373a1b4c0c) ---
+--- file C/.verdict/state/local-demo/full.raw.diff (size=999309 sha256=6be0f6ab7fddf8db183954a832e4fb33dd8e97290871780933018e373a1b4c0c) ---
 --- file C/.verdict/state/local-demo/hunks.tsv ---
 a.txt	OLD	1	3000
 a.txt	NEW	1	3000

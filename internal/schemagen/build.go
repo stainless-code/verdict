@@ -229,11 +229,16 @@ func documents() []document {
 			additionalProperties: false,
 		},
 		{
+			name: "excluded", title: "excluded.json — excluded diff bytes", root: reflect.TypeFor[ExcludedFile](),
+			defs: []definition{{typ: reflect.TypeFor[ExcludedPath](), name: "excludedPath"}},
+		},
+		{
 			name:  "findings",
 			title: "findings.json — merged findings store",
 			root:  reflect.TypeFor[[]FindingEntry](),
 			defs: []definition{
 				{typ: reflect.TypeFor[FindingEntry](), name: "entry"},
+				{typ: reflect.TypeFor[core.Withheld](), name: "withheld"},
 				{typ: reflect.TypeFor[core.Verification](), name: "panelVerification"},
 				{typ: reflect.TypeFor[Brief](), name: defsBrief},
 				{typ: reflect.TypeFor[BriefSite](), name: defsBriefSite},
@@ -436,6 +441,8 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[FetchGroupPersonal](), name: "fetchGroupPersonal"},
 		{typ: reflect.TypeFor[TriageData](), name: "triageData"},
 		{typ: reflect.TypeFor[ReadyData](), name: "readyData"},
+		{typ: reflect.TypeFor[PRWaitData](), name: "prWaitData"},
+		{typ: reflect.TypeFor[PRWaitSnapshot](), name: "prWaitSnapshot"},
 		{typ: reflect.TypeFor[ReadyBlocker](), name: "readyBlocker"},
 		{typ: reflect.TypeFor[ReadyCI](), name: "readyCI"},
 		{typ: reflect.TypeFor[AdoptData](), name: "adoptData"},
@@ -490,6 +497,7 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[ProvenanceTriple](), name: "provenanceTriple"},
 		{typ: reflect.TypeFor[CalibrateCounts](), name: "calibrateCounts"},
 		{typ: reflect.TypeFor[CalibrateJudgment](), name: "calibrateJudgment"},
+		{typ: reflect.TypeFor[core.WithheldSummary](), name: "withheldSummary"},
 		{typ: reflect.TypeFor[FetchData](), name: "fetchData"},
 		{typ: reflect.TypeFor[FetchLocalData](), name: "fetchLocalData"},
 		{typ: reflect.TypeFor[FetchCapabilities](), name: "fetchCapabilities"},
@@ -500,6 +508,7 @@ func envelopeDefs() []definition {
 func reviewDefs() []definition {
 	return []definition{
 		{typ: reflect.TypeFor[Comment](), name: "comment"},
+		{typ: reflect.TypeFor[core.Suppression](), name: "suppression"},
 		{typ: reflect.TypeFor[Brief](), name: defsBrief},
 		{typ: reflect.TypeFor[BriefSite](), name: defsBriefSite},
 		{typ: reflect.TypeFor[TriageClaim](), name: "triageClaim"},

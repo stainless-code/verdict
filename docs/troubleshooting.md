@@ -198,6 +198,12 @@ Cause: `--id` breaks the id shape.
 
 Fix: pass an `--id` matching `^[a-z0-9][a-z0-9-]{0,64}$`, or omit `--id`.
 
+## `bad-ignore`
+
+Cause: the trusted exclusion control is unreadable or malformed.
+
+Fix: keep `.verdict/ignore` UTF-8, under 64 KiB and 1,000 patterns. Use one shell glob per line, `#` comments and `!` to re-include, then re-fetch.
+
 ## `bad-judgment`
 
 Cause: the `calibrate --probe` judge file is missing or unreadable.
@@ -215,6 +221,12 @@ Fix: re-run `verdict pack add <dir|git-url>` from the pack's source so the lock 
 Cause: `REVIEW_MAX_BYTES` is not a positive byte count.
 
 Fix: export a positive byte count and re-run.
+
+## `bad-min-severity`
+
+Cause: the post severity floor is not a supported value.
+
+Fix: pass `--min-severity critical|important|informational|off`, then re-run.
 
 ## `bad-override`
 
@@ -341,6 +353,12 @@ Fix: pass a usable bundle name — `fetch-local` adds `local-` itself.
 Cause: the named `stash@{N}` does not exist.
 
 Fix: pick one from `git stash list` and re-run with `--stash <N>`.
+
+## `bad-suppression`
+
+Cause: a suppression has an invalid source or locator, no matching exclusion receipt, or an agent reason shorter than 30 characters.
+
+Fix: use source `agent` with a 30-character reason, or `exclusion` with the path and rule id from `excluded.json`, then re-run.
 
 ## `bad-target`
 
@@ -583,6 +601,12 @@ export destination link.
 Cause: `--id` is already taken.
 
 Fix: pass a different `--id`.
+
+## `ignore-too-large`
+
+Cause: the trusted `.verdict/ignore` exceeds 64 KiB or 1,000 patterns.
+
+Fix: reduce the file below both limits, then re-fetch.
 
 ## `index-capped`
 
@@ -1271,3 +1295,24 @@ invalid normalized `threads.json`, or a failed local write. Fetch the bundle
 first and check local permissions. Pack validation refusals apply to edited
 proposal packs exactly as they do to `learn --pack`. `corrupt-store` refuses
 mining or rejection when the KB cannot be read safely; repair the store first.
+
+## `wait-timeout` (data outcome)
+
+Cause: a bounded `pr-wait` or `ready --wait-for build` call exhausted its budget.
+This is a result in `data`, not an envelope refusal code. `pr-wait` exits 1
+with `error: null`; `ready` reports not-ready and a `wait-timeout` blocker,
+exiting 0 unless `--check` requests exit 1.
+
+Fix: inspect the last snapshot and CI state, then make another bounded call if
+needed. Use MCP `pr_wait` instead of an agent sleep loop. A missing or unreadable
+check rollup never counts as complete. GitLab and Forgejo waits refuse
+`provider-unimplemented`; GitHub incomplete or inconsistent reads refuse
+`pr-read-failed`. CLI timeouts accept 1s–30m; MCP timeouts cannot exceed 50s.
+
+## `condition-unmet` (data outcome)
+
+Cause: `pr-wait --once` returned its single observation before the requested
+condition held. Exit 1 carries data with `error: null`.
+
+Fix: inspect the snapshot, or remove `--once` and supply a bounded timeout.
+For `review-changed`, each invocation starts a new baseline.

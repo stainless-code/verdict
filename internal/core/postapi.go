@@ -8,6 +8,7 @@ import (
 // the service receives values only.
 type PostFlags struct {
 	Approve        string `enum:"true|false"`
+	MinSeverity    string `enum:"critical|important|informational|off"`
 	ReviewFile     string
 	RequestChanges bool
 	Bind           bool
@@ -70,6 +71,7 @@ type PostData struct { //nolint:govet // field order is the published property o
 	Review          map[string]any   `json:"review,omitempty"`
 	Provenance      Provenance       `json:"provenance"       optional:"true"`
 	Coverage        *CoverageSummary `anyOf:"null"            json:"coverage,omitempty"     optional:"true"`
+	Withheld        *WithheldSummary `anyOf:"null"            json:"withheld,omitempty"     optional:"true"`
 	ItemsRaw        []any            `json:"-"`
 	ReviewRaw       any              `json:"-"`
 }
@@ -199,6 +201,9 @@ func (d *PostData) Wire() *jq.Obj {
 			pairs = append(pairs, "verification", d.Verification)
 		}
 		pairs = appendCoverageWire(pairs, d.Coverage)
+		if d.Withheld != nil {
+			pairs = append(pairs, "withheld", d.Withheld)
+		}
 		return jq.NewObj(append(pairs,
 			"confidence", Wire(d.Confidence),
 			"security_summary", Wire(d.SecuritySummary),
@@ -220,6 +225,9 @@ func (d *PostData) Wire() *jq.Obj {
 		pairs = append(pairs, "verification", d.Verification)
 	}
 	pairs = appendCoverageWire(pairs, d.Coverage)
+	if d.Withheld != nil {
+		pairs = append(pairs, "withheld", d.Withheld)
+	}
 	o := jq.NewObj(append(pairs,
 		"items", items,
 		"confidence", Wire(d.Confidence),
@@ -371,6 +379,13 @@ func appendCoverageWire(pairs []any, c *CoverageSummary) []any {
 		return pairs
 	}
 	return append(pairs, "coverage", c)
+}
+
+// WithheldSummary counts policy silence and findings without a severity.
+type WithheldSummary struct {
+	ByReason   map[string]int `json:"by_reason"`
+	Total      int            `json:"total"      min:"0"`
+	Unlabelled int            `json:"unlabelled" min:"0"`
 }
 
 func setRearmWire(o *jq.Obj, rearmed bool, previous string) {

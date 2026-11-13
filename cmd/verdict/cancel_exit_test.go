@@ -13,6 +13,7 @@ import (
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/doctor"
+	"github.com/stainless-code/verdict/internal/prwait"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/ready"
 	"github.com/stainless-code/verdict/internal/report"
@@ -72,6 +73,7 @@ var cancellationVerbs = []struct {
 	name string
 }{
 	{name: "ready", run: ready.Run},
+	{name: "pr-wait", run: prwait.Run},
 	{name: "trend", run: trend.Run},
 	{name: "threads", run: threads.Run},
 	{name: "calibrate", run: calibrate.Run},

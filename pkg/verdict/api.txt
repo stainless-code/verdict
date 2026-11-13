@@ -137,6 +137,9 @@ func (c *Client) Learn(ctx context.Context, req *LearnRequest) (*Outcome, error)
 func (c *Client) Next(ctx context.Context, req *NextRequest) (*NextResponse, error)
     Next returns the top actionable finding for the bundle.
 
+func (c *Client) PRWait(ctx context.Context, req *PRWaitRequest) (*PRWaitResponse, error)
+    PRWait waits for a PR condition; timeout remains successful response data.
+
 func (c *Client) Pack(ctx context.Context, req *PackRequest) (*PackResponse, error)
     Pack lists the built-in, org, and repo lens packs with their layer, source,
     hash, and declared ids. It makes no live calls and writes nothing.
@@ -228,10 +231,12 @@ type DoctorResponse struct {
 type FetchLocalRequest struct {
 	Invocation
 	Context                                             []string
+	Ignore                                              []string
 	Range, BaseRef, Stash                               string
 	Paths                                               []string
 	Staged, HasStash, BudgetConsent, ShowPrompts, Chunk bool
 	Worktree, HeadControls                              bool
+	NoDefaultExcludes                                   bool
 }
     FetchLocalRequest carries the local-diff fetch options. Worktree builds
     the bundle from a temporary isolated checkout of the review target,
@@ -242,6 +247,8 @@ type FetchRequest struct {
 	Invocation
 	BaseSHA, Provider                 string
 	Context                           []string
+	Ignore                            []string
+	NoDefaultExcludes                 bool
 	BudgetConsent, ShowPrompts, Chunk bool
 	HeadControls                      bool
 }
@@ -387,6 +394,19 @@ type Outcome struct {
 }
     Outcome carries the envelope fields for verbs without repo/PR positionals.
 
+type PRWaitRequest struct {
+	Invocation
+	Until    string
+	Timeout  string
+	Interval string
+	Provider string
+	Once     bool
+}
+    PRWaitRequest requests a bounded foreground PR wait.
+
+type PRWaitResponse struct{ Result }
+    PRWaitResponse carries the final observation and typed outcome.
+
 type PackRequest struct {
 	Invocation
 	List bool
@@ -404,7 +424,7 @@ func ListPacks(ctx context.Context, c *Client) (*PackResponse, error)
 
 type PostRequest struct {
 	Invocation
-	Approve, ReviewFile                 string
+	Approve, ReviewFile, MinSeverity    string
 	RequestChanges, Bind, Force, DryRun bool
 	AllowSecretValues                   bool
 }
@@ -434,7 +454,9 @@ type Progress interface {
 
 type ReadyRequest struct {
 	Invocation
-	Check bool
+	WaitFor string
+	Timeout string
+	Check   bool
 }
     ReadyRequest gates on merge readiness.
 
@@ -473,7 +495,7 @@ func (e *RefusalError) Error() string
 type ReportRequest struct {
 	Invocation
 	Status, Kind, Output, Sarif, Check, Live string
-	Cost, Completeness                       bool
+	Cost, Completeness, IncludeWithheld      bool
 }
     ReportRequest carries the report options. Output/Sarif name files whose
     bytes return in the response instead of being written.

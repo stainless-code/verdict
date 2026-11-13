@@ -23,6 +23,7 @@ publishing a page adds a route in `apps/docs/sources/`, not a second copy.
 - [CI and test rules](ci-and-tests.md): the skip-token ban on commit messages, and the rules that keep the suite deterministic.
 - [CI recipe](ci-recipe.md): the copy-paste workflow that runs fetch, review, gate and post on your own runner.
 - [Typed configuration](config.md): strict parsing, cascading defaults, scoped plans, captured provenance, and configuration explain/preview.
+- [Exclusions and withholding](exclusions.md): trusted ignore patterns, byte receipts, finding suppression, severity floors, and quiet reports.
 - [Glossary](glossary.md): the vocabulary the help, prompts and reports use, grouped by where you meet it.
 - [Go KB index](go-kb/README.md): what the knowledge base is, and where the `go-*` skills embed a copy of it.
 - [Go knowledge base](go-kb/knowledge-base.md): the 131 cards the `go-*` skills are built from: Rule, Why, Enforce, Since, Sources.

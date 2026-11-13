@@ -1,0 +1,39 @@
+[
+  {
+    "kind": "inline",
+    "path": "notes.txt",
+    "side": "RIGHT",
+    "line": 2,
+    "anchored": true,
+    "body": "Keep this compatibility constraint visible to maintainers.",
+    "suggestion": null,
+    "kb": [],
+    "inBounds": true,
+    "rigor": "said",
+    "rigor_source": "default",
+    "severity": "critical",
+    "sig": "4fb4f35e3de72993bddb78fa4f470b938abdbe93",
+    "sig_version": "1",
+    "firstSeen": "7aa1eea",
+    "lastSeen": "7aa1eea",
+    "status": "open",
+    "rationale": "",
+    "history": [
+      {
+        "at": "2026-11-13T13:24:03Z",
+        "event": "reported"
+      },
+      {
+        "at": "2026-11-13T13:24:03Z",
+        "event": "withheld",
+        "actor": "record",
+        "note": "An intentional compatibility exception for the legacy parser."
+      }
+    ],
+    "withheld": {
+      "source": "agent",
+      "reason": "An intentional compatibility exception for the legacy parser.",
+      "at": "2026-11-13T13:24:03Z"
+    }
+  }
+]

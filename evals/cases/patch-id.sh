@@ -377,6 +377,7 @@ mk_head 4436 "$HEADB"
 printf '[]' | eval_write_findings 4436
 mk_identity 4436 "$HEADB"
 mk_posted 4436 "$HEADA" "$(real_patch 4436)"
+rm "$EVAL_SANDBOX/.verdict/state/4436/full.raw.diff"
 mkdir "$EVAL_SANDBOX/.verdict/state/4436/full.raw.diff"
 run_review report acme/app 4436 --completeness
 if [ "$EVAL_STATUS" -eq 1 ] && grep -q "patch identity unavailable" "$EVAL_ERR"; then

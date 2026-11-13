@@ -273,6 +273,14 @@ func inputSchema(t *tool) map[string]any {
 }
 
 var fieldDocs = map[string]string{
+	"pr_wait.Until":    "Condition to await; review-changed compares with this call's first observation.",
+	"pr_wait.Timeout":  "Foreground wait duration, 1s–50s; defaults to 50s.",
+	"pr_wait.Interval": "Initial poll interval, at least 1s and at most timeout; defaults to 1s.",
+	"pr_wait.Once":     "Observe once without sleeping; an unmet condition returns condition-unmet data.",
+	"pr_wait.Provider": "Host override; defaults to saved provider or github. GitLab and Forgejo refuse explicitly.",
+	"ready.WaitFor":    "Wait for build completion before reporting readiness; timeout returns not-ready data.",
+	"ready.Timeout":    "Build wait duration, 1s–50s; defaults to 50s when wait_for is build.",
+
 	"Repo":       "Repository as owner/name.",
 	"Pr":         "Pull-request number or bundle slug (local-<name> for local bundles).",
 	"Sig":        "Finding signature or unique prefix.",

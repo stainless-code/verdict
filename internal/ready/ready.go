@@ -21,16 +21,16 @@ type Request = readcommon.Request
 // Run executes `ready <owner/repo> <pr> [--json, --check]`, returning the
 // exit code.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
-	check, code, done := parseFlags(r, args)
-	if done {
-		return code
+	q := readyRequest(r, req)
+	if err := parseFlags(args, q); err != nil {
+		return r.ReportUsage(err)
 	}
 	if code, done := r.Canceled(ctx, "ready"); done {
 		return code
 	}
-	resp, ref := readycore.Run(ctx, readyRequest(r, req, check))
+	resp, ref := readycore.Run(ctx, q)
 	if ref != nil {
-		if check {
+		if q.Check {
 			return r.RefuseExit(ref, cli.ExitBroke)
 		}
 		return r.Refuse(ref)
@@ -49,32 +49,43 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 
 // readyRequest injects the runner's clock, progress observer, and command
 // runner into the typed service request.
-func readyRequest(r *cli.Runner, req Request, check bool) *readycore.Request {
+func readyRequest(r *cli.Runner, req Request) *readycore.Request {
 	read := req
 	if read.Runtime == nil {
 		read.Runtime = &core.Runtime{}
 	}
 	read.Now = r.Now
 	read.Progress = cli.Progress{R: r}
-	read.Commander = coreexec.Runner{}
+	if read.Commander == nil {
+		read.Commander = coreexec.Runner{}
+	}
 	return &readycore.Request{
 		ReadRequest: read,
-		Check:       check,
 		Warnings:    append([]string{}, r.Warnings...),
 	}
 }
 
-// parseFlags parses the ready flags.
-func parseFlags(r *cli.Runner, args []string) (bool, int, bool) {
-	check := false
-	for _, a := range args {
-		switch a {
-		case "--check":
-			check = true
+func parseFlags(args []string, q *readycore.Request) *cli.UsageError {
+	for len(args) > 0 {
+		flag := args[0]
+		if flag == "--check" {
+			q.Check = true
+			args = args[1:]
+			continue
+		}
+		if len(args) < 2 {
+			return &cli.UsageError{Message: "missing ready flag operand: " + flag}
+		}
+		value := args[1]
+		args = args[2:]
+		switch flag {
+		case "--wait-for":
+			q.WaitFor = value
+		case "--timeout":
+			q.Timeout = value
 		default:
-			return false, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
-				"unknown flag '%s' for ready (want --json, --check)", a)}), true
+			return &cli.UsageError{Message: "unknown ready flag: " + flag}
 		}
 	}
-	return check, 0, false
+	return nil
 }

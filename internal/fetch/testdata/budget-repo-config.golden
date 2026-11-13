@@ -22,6 +22,8 @@ exit: 1
 --- file C/.gh-calls.log ---
 CALL: pr view 4705 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,url,commits,files,additions,deletions,isDraft,reviewDecision,state
 CALL: pr diff 4705 --repo acme/app
+CALL: api repos/acme/app/contents/.verdict/ignore?ref=cccccccccccccccccccccccccccccccccccccccc
+CALL: api repos/acme/app/contents/.gitattributes?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.verdict/config.json?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.verdict/kb.jsonl?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.verdict/learnings.md?ref=cccccccccccccccccccccccccccccccccccccccc
@@ -49,6 +51,18 @@ CALL: api repos/acme/app/contents/.verdict/config.json?ref=ccccccccccccccccccccc
   "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
   "sha": "cccccccccccccccccccccccccccccccccccccccc",
   "files": [
+    {
+      "path": ".verdict/ignore",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".gitattributes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
     {
       "path": ".verdict/config.json",
       "status": "used",

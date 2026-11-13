@@ -76,6 +76,8 @@ const (
 
 // Inventory is the closed control set (v1); new controls add rows.
 var Inventory = []string{
+	VerdictDir + "/ignore",
+	".gitattributes",
 	VerdictDir + "/config.json",
 	VerdictDir + "/kb.jsonl",
 	VerdictDir + "/learnings.md",

@@ -72,7 +72,7 @@ func parsePostFlags(r *cli.Runner, args []string, dir string) (core.PostFlags, i
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
-		case a == postApproveFlag, a == "--review-file":
+		case a == postApproveFlag, a == "--review-file", a == postMinSeverityFlag:
 			v, next, u := cli.FlagValue(args, i, a, postWants[a])
 			if u != nil {
 				return f, r.ReportUsage(u), true
@@ -108,20 +108,26 @@ func parsePostFlags(r *cli.Runner, args []string, dir string) (core.PostFlags, i
 // the re-entry line share.
 const postApproveFlag = "--approve"
 
+const postMinSeverityFlag = "--min-severity"
+
 const postDryRunFlag = "--dry-run"
 
 // postWants names each value flag's accepted operand for the missing-value
 // usage error.
 var postWants = map[string]string{
-	postApproveFlag: "true|false",
-	"--review-file": "<path>",
+	postApproveFlag:     "true|false",
+	"--review-file":     "<path>",
+	postMinSeverityFlag: "critical|important|informational|off",
 }
 
 // setPostValue stores one value-taking post flag's value.
 func setPostValue(f *core.PostFlags, name, val string) {
-	if name == postApproveFlag {
+	switch name {
+	case postApproveFlag:
 		f.Approve = val
-	} else {
+	case postMinSeverityFlag:
+		f.MinSeverity = val
+	default:
 		f.ReviewFile = val
 	}
 }
@@ -150,6 +156,7 @@ func postRentryFlags(f core.PostFlags, dir string, jsonMode bool) []string {
 		{"--force", f.Force},
 		{"--review-file " + f.ReviewFile, f.ReviewFile != dir+"/review.json"},
 		{postDryRunFlag, f.DryRun},
+		{"--min-severity " + f.MinSeverity, f.MinSeverity != ""},
 		{postcore.AllowSecretValuesFlag, f.AllowSecretValues},
 		{"--json", jsonMode},
 	}

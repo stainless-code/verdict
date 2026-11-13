@@ -26,6 +26,18 @@ Use '--' to separate paths from revisions, like this:
   "sha": "e379897b82c6a9586a0c8f13b612a022eb952230",
   "files": [
     {
+      "path": ".verdict/ignore",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".gitattributes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
       "path": ".verdict/config.json",
       "status": "missing",
       "bytes": 0,

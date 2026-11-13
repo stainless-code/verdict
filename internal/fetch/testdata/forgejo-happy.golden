@@ -18,6 +18,7 @@ exit: 0
     "hunks": 1,
     "omitted": [],
     "diff_bytes": 99,
+    "raw_diff_bytes": 99,
     "panel": {
       "source": null,
       "members": []
@@ -51,7 +52,9 @@ exit: 0
       "threads.json": ".verdict/state/4708/threads.json",
       "sensitive.txt": null,
       "incremental.diff": null,
-      "lenses.txt": ".verdict/state/4708/lenses.txt"
+      "lenses.txt": ".verdict/state/4708/lenses.txt",
+      "full.raw.diff": ".verdict/state/4708/full.raw.diff",
+      "excluded.json": ".verdict/state/4708/excluded.json"
     },
     "incremental_base": null,
     "estimate": {
@@ -122,6 +125,18 @@ a.txt
   "sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
   "files": [
     {
+      "path": ".verdict/ignore",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".gitattributes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
       "path": ".verdict/config.json",
       "status": "missing",
       "bytes": 0,
@@ -177,7 +192,31 @@ a.txt
     }
   ]
 }
+--- file C/.verdict/state/4708/excluded.json ---
+{
+  "schema_version": "1",
+  "patterns_source": ".verdict/ignore@base",
+  "defaults": [
+    "default:generated",
+    "default:attribute"
+  ],
+  "ignore": [],
+  "no_default_excludes": false,
+  "excluded": [],
+  "excluded_bytes": 0,
+  "kept_bytes": 99,
+  "raw_diff_sha256": "f0f76c0faeee81b8bbd6f88f80b3c71ec86118bc30c380816727eedb265448e3",
+  "diff_sha256": "f0f76c0faeee81b8bbd6f88f80b3c71ec86118bc30c380816727eedb265448e3"
+}
 --- file C/.verdict/state/4708/full.diff ---
+diff --git a/a.txt b/a.txt
+index 1111111..2222222 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1 +1 @@
+-a
++b
+--- file C/.verdict/state/4708/full.raw.diff ---
 diff --git a/a.txt b/a.txt
 index 1111111..2222222 100644
 --- a/a.txt

@@ -34,6 +34,7 @@ exit: 0
       "untagged": 0
     },
     "by_category": {},
+    "withheld": {"agent":0,"below-severity":0,"exclusion":0,"validation":0},
     "provenance": {
       "tools": [],
       "models": [],

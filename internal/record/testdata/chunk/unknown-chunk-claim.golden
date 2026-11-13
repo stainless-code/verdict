@@ -27,7 +27,7 @@ c1.txt	NEW	1	2
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "ca5b0c32a867965a47f7d3caecb5cb30a8bf82833e205e5d412882ff15dd1dd1",
+  "prompts_hash": "49f5c99439cc65f9faab329e78a460aba14420500afb5100ad75d321fcfd3912",
   "model": null,
   "chunk_coverage": {"attested":2,"total":2}
 }

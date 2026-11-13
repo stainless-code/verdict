@@ -160,9 +160,9 @@ func joinOne(entry any, threads, changed []any, host liveHost) outcome {
 	if !ok {
 		kind = ""
 	}
-	if kind != "inline" {
+	if detail := unpublishedDetail(entry, kind); detail != "" {
 		out.result = outcomeUnknown
-		out.detail = "body section — not a thread comment"
+		out.detail = detail
 		withKb(&out, entry)
 		return out
 	}
@@ -697,4 +697,14 @@ func provValue(dir, key string) any {
 		return nil
 	}
 	return v
+}
+
+func unpublishedDetail(entry any, kind string) string {
+	if readcommon.WithheldSource(entry) != "" {
+		return "withheld by policy"
+	}
+	if kind != "inline" {
+		return "body section — not a thread comment"
+	}
+	return ""
 }
