@@ -71,3 +71,18 @@ func TestSampleSpreadsSortCasesAndMetrics(t *testing.T) {
 		t.Fatalf("sorted output lacks %q", want)
 	}
 }
+
+func TestPublicationPreservesIncompleteRunEvidence(t *testing.T) {
+	rep := &Report{
+		SchemaVersion: "1", Date: "2040-01-01", Seeded: true, CitableReason: "1 failed sample(s); selected subset",
+		Corpus: CorpusRef{Cases: 2, TotalCases: 10, CaseIDs: []string{"hard", "missing"}}, Repeats: 1,
+		Failures: []Failure{{Case: "hard", Run: 1, Error: "agent timeout"}},
+	}
+	text := renderMarkdown(rep)
+	for _, want := range []string{"**Citable: no — 1 failed sample(s); selected subset**", "Selected cases: 2; total corpus cases: 10.", "| hard | 1 | agent timeout |", "| missing | 1 | sample result missing |"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("Markdown omits %q", want)
+		}
+	}
+	golden.Check(t, "publication-incomplete", text)
+}

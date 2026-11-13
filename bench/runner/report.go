@@ -58,10 +58,11 @@ type Report struct {
 
 // CorpusRef pins what was measured: the checkout the cases came from.
 type CorpusRef struct {
-	Commit  string   `json:"commit,omitempty"`
-	CaseIDs []string `json:"case_ids"`
-	Cases   int      `json:"cases"`
-	Dirty   bool     `json:"dirty"`
+	Commit     string   `json:"commit,omitempty"`
+	CaseIDs    []string `json:"case_ids"`
+	Cases      int      `json:"cases"`
+	TotalCases int      `json:"total_cases"`
+	Dirty      bool     `json:"dirty"`
 }
 
 // AgentRef pins who measured it and how long one sample may take.
@@ -192,7 +193,7 @@ func (r *runner) newReport() *Report {
 		RunID:       runID(r.cfg),
 		GeneratedAt: r.cfg.Now.Format(time.RFC3339),
 		Internal:    r.cfg.Internal,
-		Corpus:      CorpusRef{Commit: r.commit, Dirty: r.dirty, Cases: len(r.cases), CaseIDs: ids},
+		Corpus:      CorpusRef{Commit: r.commit, Dirty: r.dirty, Cases: len(r.cases), TotalCases: r.total, CaseIDs: ids},
 		Agent:       agent,
 		Panel:       r.cfg.Panel,
 		PromptSHA:   map[string]string{},

@@ -2,12 +2,25 @@
 
 **not a model-quality claim**
 
+**Citable: no — eligibility not recorded**
+
+Selected cases: 1; total corpus cases: not recorded. Successful samples: 0.
+
 Corpus commit: `abcdef` (dirty: false)  
 Prompts hash: `fixture-prompts-hash`  
 Tool version: `verdict fixture-version`  
 Date: 2040-02-03T04:05:06Z  
 Sampling: k=3, repeats=3  
 Severity weights: critical=25, important=5, informational=1
+
+Failed or incomplete samples: 3.
+
+<!-- prettier-ignore -->
+| Case | Sample | Reason |
+| --- | ---: | --- |
+| clean | 1 | sample result missing |
+| clean | 2 | sample result missing |
+| clean | 3 | sample result missing |
 
 ## Metrics
 

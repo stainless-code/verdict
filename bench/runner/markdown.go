@@ -6,6 +6,7 @@ import (
 	"io"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 
 	corpuscore "github.com/stainless-code/verdict/internal/core/corpus"
@@ -41,11 +42,13 @@ func renderMarkdown(rep *Report) string {
 	if rep.Seeded {
 		out.WriteString("**not a model-quality claim**\n\n")
 	}
+	renderEligibility(&out, rep)
 	fmt.Fprintf(&out, "Corpus commit: `%s` (dirty: %t)  \n"+
 		"Prompts hash: `%s`  \nTool version: `%s`  \nDate: %s  \nSampling: k=%d, repeats=%d  \n",
 		cell(rep.Corpus.Commit), rep.Corpus.Dirty, cell(rep.PromptsHash), cell(rep.ToolVersion), cell(rep.GeneratedAt), rep.K, rep.Repeats)
 	fmt.Fprintf(&out, "Severity weights: critical=%d, important=%d, informational=%d\n\n",
 		rep.SeverityWeights.Critical, rep.SeverityWeights.Important, rep.SeverityWeights.Informational)
+	renderFailedSamples(&out, rep)
 	renderMetricTable(&out, rep)
 	renderSampleSpreads(&out, rep.Cases)
 	out.WriteString("\n## Commands\n\nArgv arrays preserve argument boundaries.\n\n```json\n")
@@ -122,4 +125,86 @@ func recordedValue(v *float64) string {
 
 func cell(s string) string {
 	return strings.NewReplacer("|", "\\|", "\n", " ", "\r", " ", "`", "'").Replace(s)
+}
+
+func renderEligibility(out *strings.Builder, rep *Report) {
+	if rep.Citable {
+		out.WriteString("**Citable: yes**\n\n")
+	} else {
+		reason := rep.CitableReason
+		if reason == "" {
+			reason = "eligibility not recorded"
+		}
+		fmt.Fprintf(out, "**Citable: no — %s**\n\n", cell(reason))
+	}
+	total := "not recorded"
+	if rep.Corpus.TotalCases > 0 {
+		total = strconv.Itoa(rep.Corpus.TotalCases)
+	}
+	fmt.Fprintf(out, "Selected cases: %d; total corpus cases: %s. Successful samples: %d.\n\n",
+		rep.Corpus.Cases, total, len(rep.Bundles))
+}
+
+func renderFailedSamples(out *strings.Builder, rep *Report) {
+	failures := publicationFailures(rep)
+	fmt.Fprintf(out, "Failed or incomplete samples: %d.\n\n", len(failures))
+	if len(failures) == 0 {
+		return
+	}
+	out.WriteString("<!-- prettier-ignore -->\n| Case | Sample | Reason |\n| --- | ---: | --- |\n")
+	for _, f := range failures {
+		fmt.Fprintf(out, "| %s | %d | %s |\n", cell(f.Case), f.Run, cell(f.Error))
+	}
+	out.WriteByte('\n')
+}
+
+func publicationFailures(rep *Report) []Failure {
+	failures := slices.Clone(rep.Failures)
+	seen := map[string]int{}
+	for _, b := range rep.Bundles {
+		seen[sampleKey(b.Case, b.Run)]++
+	}
+	failed := map[string]bool{}
+	for _, f := range failures {
+		failed[sampleKey(f.Case, f.Run)] = true
+	}
+	repeats := rep.Repeats
+	if repeats == 0 {
+		repeats = rep.Agent.Runs
+	}
+	for _, id := range rep.Corpus.CaseIDs {
+		failures = append(failures, missingSamples(id, repeats, seen, failed)...)
+	}
+	slices.SortFunc(failures, func(a, b Failure) int {
+		if n := strings.Compare(a.Case, b.Case); n != 0 {
+			return n
+		}
+		return a.Run - b.Run
+	})
+	return failures
+}
+
+func sampleKey(id string, sample int) string { return id + "\x00" + strconv.Itoa(sample) }
+func sampleProblem(count int) string {
+	if count == 0 {
+		return "sample result missing"
+	}
+	if count > 1 {
+		return "duplicate sample results; cohort is incomplete"
+	}
+	return ""
+}
+
+func missingSamples(id string, repeats int, seen map[string]int, failed map[string]bool) []Failure {
+	var out []Failure
+	for sample := 1; sample <= repeats; sample++ {
+		key := sampleKey(id, sample)
+		if failed[key] {
+			continue
+		}
+		if reason := sampleProblem(seen[key]); reason != "" {
+			out = append(out, Failure{Case: id, Run: sample, Error: reason})
+		}
+	}
+	return out
 }
