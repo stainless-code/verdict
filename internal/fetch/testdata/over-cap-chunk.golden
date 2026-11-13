@@ -61,7 +61,12 @@ exit: 0
       "count": 2,
       "manifest": ".verdict/state/4703/chunks/manifest.json",
       "total_bytes": 832678
-    }
+    },
+    "truncated": true,
+    "truncation_reason": "chunk_cap",
+    "returned": 2,
+    "total": 2,
+    "next_offset": null
   },
   "error": null
 }

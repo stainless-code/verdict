@@ -335,6 +335,13 @@ func addFetchExtras(data *core.FetchData, budget *budgetState, fcap *fetchCap, c
 	}
 	if chunkJSON != nil {
 		data.Chunk = chunkJSON
+		if obj, ok := chunkJSON.(*jq.Obj); ok && data.Receipt == nil {
+			if v, has := obj.Get("count"); has {
+				if count := int(readcommon.NumOr(v)); count > 1 {
+					data.Receipt = core.ResultCut("chunk_cap", count, new(count), nil)
+				}
+			}
+		}
 	}
 }
 

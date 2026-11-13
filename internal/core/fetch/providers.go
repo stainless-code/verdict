@@ -514,7 +514,7 @@ func fetchGitCafe(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest
 	}
 	warnPaging(r, providerGitCafe, "comments", cmtErr, cmtTruncated)
 	feed := threadscore.FromGitCafe(decodeThreadPayload(revs), decodeThreadPayload(cmts))
-	truncated := revTruncated || cmtTruncated
+	truncated := revTruncated || revErr != nil || cmtTruncated || cmtErr != nil
 	if ref := writeThreadsJSON(dir, providerGitCafe, pr, cafeHeadSHA(metaRes.Stdout), r.nowUTC(), truncated, feed); ref != nil {
 		return ref
 	}
@@ -949,7 +949,16 @@ func forgejoDiffFallback(ctx context.Context, r *session, dir string, auth curla
 
 // forgejoFiles owns the paged file-list read, defaulting to [] on failure.
 func forgejoFiles(ctx context.Context, r *session, auth curlauth.Credential, api string) string {
-	return forgejoList(ctx, r, auth, api+"/files", "file list")
+	body, truncated, err := forgejoListRead(ctx, r, auth, api+"/files")
+	warnPaging(r, providerForgejo, "file list", err, truncated)
+	if err != nil || truncated {
+		count := 0
+		if items, decErr := jsonArray(body); decErr == nil {
+			count = len(items)
+		}
+		r.observePaging(true, count)
+	}
+	return body
 }
 
 // forgejoList pages one Forgejo list endpoint (limit=50, stop on a short
@@ -994,7 +1003,7 @@ func forgejoThreads(ctx context.Context, r *session, dir string, auth curlauth.C
 	if werr := atomic.WriteFile(dir+suffixInlineJSON, []byte(inline)); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteInline, dir, werr)}
 	}
-	truncated := revTruncated || !complete
+	truncated := revTruncated || revErr != nil || !complete
 	feed := threadscore.FromForgejo(decodeThreadPayload(revs), decodeThreadPayload(inline), forgejoHeadSHA(meta))
 	if ref := writeThreadsJSON(dir, providerForgejo, pr, forgejoHeadSHA(meta), r.nowUTC(), truncated, feed); ref != nil {
 		return ref
@@ -1236,10 +1245,11 @@ func bitbucketDiff(ctx context.Context, r *session, dir string, auth curlauth.Cr
 func bitbucketThreads(
 	ctx context.Context, r *session, dir string, auth curlauth.Credential, base, pr, head string,
 ) ([]any, *core.RefusalError) {
-	ds, _, ref := bitbucketPages(ctx, r, auth, base+"/diffstat?pagelen=100")
+	ds, dsTruncated, ref := bitbucketPages(ctx, r, auth, base+"/diffstat?pagelen=100")
 	if ref != nil {
 		return nil, ref
 	}
+	r.observePaging(dsTruncated, len(ds))
 	cm, truncated, ref := bitbucketPages(ctx, r, auth, base+"/comments?pagelen=100")
 	if ref != nil {
 		return nil, ref
@@ -1284,7 +1294,6 @@ func bitbucketPages(ctx context.Context, r *session, auth curlauth.Credential, f
 
 // bitbucketWarnPaging surfaces a partial or early-stopped page walk.
 func bitbucketWarnPaging(r *session, err error, truncated bool) {
-	r.observePaging(truncated || err != nil)
 	switch {
 	case err != nil:
 		r.Warn("bitbucket paging stopped on an unreadable page (" +
@@ -1572,6 +1581,7 @@ func azureChanges(ctx context.Context, r *session, conn *azureConn, pr string) s
 			return azureChangePage(ctx, r, conn, pr, iid, cursor)
 		})
 	warnPaging(r, providerAzure, "change entries", err, truncated)
+	r.observePaging(truncated || err != nil, len(items))
 	if items == nil {
 		items = []any{}
 	}

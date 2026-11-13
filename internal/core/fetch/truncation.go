@@ -14,8 +14,6 @@ import (
 func finishTruncation(data *core.FetchData) error {
 	if source := readcommon.SourceTruncation(data.Dir); source != nil {
 		data.Receipt = source
-	} else if data.Receipt != nil && data.Receipt.TruncationReason != "chunk_cap" {
-		data.Receipt = core.ResultCut(data.Receipt.TruncationReason, int(readcommon.NumOr(data.Files)), nil, nil)
 	}
 	path := filepath.Join(data.Dir, "truncation.json")
 	if data.Receipt == nil || data.Receipt.TruncationReason == "chunk_cap" {
@@ -47,8 +45,8 @@ func truncationWriteError(err error) error {
 	return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not update truncation.json: %v", err)}
 }
 
-func (s *session) observePaging(cut bool) {
+func (s *session) observePaging(cut bool, returned int) {
 	if cut {
-		s.receipt = core.ScanCut(true, 0)
+		s.receipt = core.ScanCut(true, returned)
 	}
 }

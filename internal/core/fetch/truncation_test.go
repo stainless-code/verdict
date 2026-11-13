@@ -2,6 +2,8 @@ package fetchcore
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -78,7 +80,7 @@ func TestPagingReceiptPersistsAndClears(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	s := &session{}
-	s.observePaging(true)
+	s.observePaging(true, 0)
 	if err := finishTruncation(&core.FetchData{Dir: dir, Receipt: s.receipt}); err != nil {
 		t.Fatal(err)
 	}
@@ -91,5 +93,65 @@ func TestPagingReceiptPersistsAndClears(t *testing.T) {
 	}
 	if receipt := readcommon.BundleTruncation(dir); receipt != nil {
 		t.Fatalf("stale receipt retained: %+v", receipt)
+	}
+}
+
+func TestHostPagingTruncationPreservesReturnedCount(t *testing.T) {
+	t.Parallel()
+	const base = "https://api.bitbucket.org/2.0/repos/o/r/pullrequests/7"
+	dir := t.TempDir()
+	s, _ := newTestSession(&scriptCommander{t: t, out: map[string]scriptResult{
+		bitbucketCall(base + "/diffstat?pagelen=100"): {stdout: `{"values":[{"new":{"path":"a.go"}},{"new":{"path":"b.go"}}]}`},
+		bitbucketCall(base + "/comments?pagelen=100"): {stdout: `{"values":[{"id":1,"content":{"raw":"first"},"user":{"display_name":"ana"}}],"next":"` + base + `/comments?cursor=2"}`},
+		bitbucketCall(base + "/comments?cursor=2"):    {stderr: "curl: (22) 500", fail: true},
+	}})
+	if _, ref := bitbucketThreads(context.Background(), s, dir, bitbucketBearer(t), base, hostPR, "head111"); ref != nil {
+		t.Fatalf("bitbucketThreads: %v", ref)
+	}
+	data := &core.FetchData{Dir: dir, Files: 2, Receipt: s.receipt}
+	if err := finishTruncation(data); err != nil {
+		t.Fatal(err)
+	}
+	if data.Receipt == nil || data.Receipt.TruncationReason != "scan_cap" || data.Receipt.Returned != 1 {
+		t.Fatalf("bitbucket degraded threads receipt = %+v, want scan_cap returned=1 (1 thread fetched before page 2 failed)", data.Receipt)
+	}
+
+	const fgCapBase = "https://example.invalid/api/v1/repos/o/r/pulls/8"
+	fgOut := map[string]scriptResult{}
+	for page := 1; page <= providerMaxPages; page++ {
+		fgOut[forgejoCall(fmt.Sprintf("%s/files?limit=%d&page=%d", fgCapBase, forgejoPageSize, page))] = scriptResult{
+			stdout: jsonRows(forgejoPageSize, func(int) string { return `{"id":1}` }),
+		}
+	}
+	fgCap, _ := newTestSession(&scriptCommander{t: t, out: fgOut})
+	_ = forgejoFiles(context.Background(), fgCap, forgejoCred(t), fgCapBase)
+	if fgCap.receipt == nil || fgCap.receipt.Returned != providerMaxPages*forgejoPageSize {
+		t.Fatalf("forgejo file-list paging receipt = %+v, want returned=%d", fgCap.receipt, providerMaxPages*forgejoPageSize)
+	}
+}
+
+func TestChunkedFetchSetsEnvelopeChunkCapReceipt(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	diff := "diff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n@@ -1 +1 @@\n-a\n+aa\n" +
+		"diff --git a/b.go b/b.go\n--- a/b.go\n+++ b/b.go\n@@ -1 +1 @@\n-b\n+bb\n"
+	if err := os.WriteFile(filepath.Join(dir, "full.diff"), []byte(diff), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	chunkJSON, err := maybeWriteChunks(io.Discard, dir, 60, true, nil, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "test", nil)
+	if err != nil {
+		t.Fatalf("maybeWriteChunks: %v", err)
+	}
+	data := &core.FetchData{Dir: dir, Files: 2}
+	addFetchExtras(data, &budgetState{}, &fetchCap{}, chunkJSON)
+	if ferr := finishTruncation(data); ferr != nil {
+		t.Fatal(ferr)
+	}
+	if data.Receipt == nil || !data.Receipt.Truncated || data.Receipt.TruncationReason != "chunk_cap" ||
+		data.Receipt.Returned != 2 || data.Receipt.Total == nil || *data.Receipt.Total != 2 {
+		t.Fatalf("chunked fetch receipt = %+v, want chunk_cap returned=2 total=2", data.Receipt)
+	}
+	if readcommon.BundleTruncation(dir) != nil {
+		t.Fatalf("chunked fetch should not write bundle truncation.json: %+v", readcommon.BundleTruncation(dir))
 	}
 }
