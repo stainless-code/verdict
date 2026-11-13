@@ -8,6 +8,9 @@ func TestSeverityWeights25Plus5Plus1Equals31(t *testing.T) {
 		t.Fatal(ref)
 	}
 	w := SeverityWeights(nil)
+	if w.Critical != 25 || w.Important != 5 || w.Informational != 1 {
+		t.Fatalf("default weights=%+v; want 25/5/1", w)
+	}
 	if got := w.Weight("critical") + w.Weight("important") + w.Weight("informational"); got != 31 {
 		t.Fatalf("default sum = %d, want 31", got)
 	}

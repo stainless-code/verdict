@@ -541,3 +541,5 @@ func TestRunRefusesAMissingModel(t *testing.T) {
 		t.Fatalf("Run error = %v, want a model refusal", err)
 	}
 }
+
+func (f *fakeGrader) version(context.Context) (string, error) { return "fixture-tool", nil }

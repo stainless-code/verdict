@@ -3832,3 +3832,8 @@ Benchmark corpus manifests accept `kind: "control"` with `bugs: []` for clean
 changes. Every reported finding is a false positive; recall is `null`.
 `provenance.kind` records whether the control is seeded or real. See
 [benchmark controls](benchmark.md#clean-controls).
+
+The development benchmark runner accepts `-repeats N`, `-k K`, and
+`-render <publication.json>`. It writes JSON plus static Markdown with
+explicit metric denominators, sample counts, weights, and provenance.
+`-render` launches no agent. See [benchmark publication](benchmark.md#publish-and-render-a-run).

@@ -6,7 +6,8 @@ of real and seeded pull requests with known bugs, graded offline by
 the 06b operator runbook, and the citation contract for the comparison page.
 
 The checked-in starter corpus is [`bench/corpus/`](../bench/corpus/README.md):
-eight seeded cases and two fake agent outputs per case. It proves the
+eight seeded bug cases, two seeded clean controls, and two fake agent outputs
+per case. It proves the
 reporting path with exact, reproducible numbers; it is not a model-quality
 claim.
 
@@ -759,3 +760,32 @@ Duplicate or inconsistent first-k cohorts contribute no recall denominator.
 sample wall times. Either total is `null` if any sample lacks that evidence.
 `cost_n`, `latency_n`, and `samples` expose completeness. A measured zero
 stays zero. The runner publishes per-case median/min/max/n for these metrics.
+
+## Publish and render a run
+
+Build the CLI, then run three samples per case. Set `-k` explicitly and keep
+controls out of prompt tuning.
+
+```sh
+make build
+go run ./bench/runner -model fixture-good -repeats 3 -k 3 \
+  -agent 'sh "$VERDICT_BENCH_ROOT/bench/agents/fixture.sh"' \
+  -out bench/results/2026-11-13.json
+go run ./bench/runner -render bench/results/2026-11-13.json \
+  > bench/results/2026-11-13.md
+```
+
+The runner writes both files when the run finishes. `-render` reads only the
+JSON and launches no agent. The JSON records the corpus commit and dirty
+state, UTC date, `prompts_hash`, CLI version, command argv, k, repeats, resolved
+severity weights, individual calibration blocks, and per-case sample spreads.
+The Markdown renders the same denominators and sample counts, with cases and
+metric names sorted. Its date comes from the publication. Tests inject the
+run clock; rendering never reads the wall clock.
+
+Seeded runs always print **not a model-quality claim** and cannot be citable.
+The fixture run above proves scoring and publication plumbing. It contains
+no real model reviews. Real corpus growth and real model runs remain operator
+work under STA-28 and STA-325. Preserve failed samples and incomplete cohorts
+when publishing a run. A default output name includes UTC time and model;
+`-out` selects a dated publication path explicitly.

@@ -1216,6 +1216,9 @@ export interface IndexBlastOwners {
 
 /** calibrate --json data: one object shared by the three modes, so every mode-specific key is optional. The live join fills review_id, head, pr, outcomes, precision (an object with by_tier), and provenance; the corpus join fills bundle, case, kind, model, panel, line_tolerance, ground_truth, reported, matched, false_positives, missed, precision (a rate or null), recall, false_positive_rate, outcomes, and missed_bugs; the probe fills bundle, grades, counts, and judgment. */
 export interface CalibrateData {
+  metrics?: unknown;
+  sampling?: unknown;
+  sampling_hits?: Array<number>;
   review_id?: unknown;
   head?: CalibrateHead | null;
   pr?: CalibratePR | null;

@@ -37,6 +37,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	if cfg.Render != "" {
+		return renderFile(cfg.Render, os.Stdout)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	_, err = Run(ctx, &cfg)
@@ -51,6 +54,7 @@ func parseFlags(args []string) (Config, error) {
 		panel string
 		root  string
 	)
+	fs.StringVar(&cfg.Render, "render", "", "render a publication JSON as static Markdown; launches nothing")
 	fs.StringVar(&cfg.Model, "model", "", "model id every bundle is attributed to (required)")
 	fs.StringVar(&cfg.Agent, "agent", "", "agent command line, run with sh -c per sample (required)")
 	fs.StringVar(&panel, "panel", "", "panel the samples run under (default bench-<model>)")
@@ -72,6 +76,9 @@ func parseFlags(args []string) (Config, error) {
 	}
 	if fs.NArg() > 0 {
 		return Config{}, jq.NewErrf("unexpected argument %q", fs.Arg(0))
+	}
+	if cfg.Render != "" {
+		return cfg, nil
 	}
 	cfg.Cases = splitCSV(cases)
 	cfg.Panel = splitCSV(panel)

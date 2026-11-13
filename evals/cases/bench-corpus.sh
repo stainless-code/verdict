@@ -119,7 +119,7 @@ if [ "$EVAL_STATUS" -eq 0 ]; then
 else
   bad "trend with corpus bundles: exit $EVAL_STATUS $(jq -c '.error // empty' <"$EVAL_OUT" 2>/dev/null)"
 fi
-rate_line="corpus rates: precision=0.7500 recall=0.8333 false-positive-rate=0.2500"
+rate_line="corpus rates: precision=0.7500 (n=20) recall=0.8333 (n=18) false-positive-rate=0.2500 (n=20)"
 if run_review trend acme/bench && grep -q "$rate_line" <"$EVAL_OUT"; then
   good "human trend prints the exact overall corpus rates"
 else

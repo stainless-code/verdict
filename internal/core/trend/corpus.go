@@ -158,10 +158,10 @@ func (st *state) emitCorpusHuman(r *corpusRollup) {
 		"matched=%d false_positives=%d missed=%d",
 		r.total.bundles, len(r.cases), r.total.bugs, r.total.reported,
 		r.total.matched, r.total.falsePositives, r.total.missed))
-	st.human(fmt.Sprintf("corpus rates: precision=%s recall=%s false-positive-rate=%s",
-		corpuscore.RateText(corpuscore.RateOrNil(r.total.matched, r.total.reported)),
-		corpuscore.RateText(corpuscore.RateOrNil(r.total.matched, r.total.bugs)),
-		corpuscore.RateText(corpuscore.RateOrNil(r.total.falsePositives, r.total.reported))))
+	st.human(fmt.Sprintf("corpus rates: precision=%s (n=%d) recall=%s (n=%d) false-positive-rate=%s (n=%d)",
+		corpuscore.RateText(corpuscore.RateOrNil(r.total.matched, r.total.reported)), r.total.reported,
+		corpuscore.RateText(corpuscore.RateOrNil(r.total.matched, r.total.bugs)), r.total.bugs,
+		corpuscore.RateText(corpuscore.RateOrNil(r.total.falsePositives, r.total.reported)), r.total.reported))
 	for _, key := range slices.Sorted(maps.Keys(r.byModel)) {
 		st.human(corpusCountsLine("model", key, r.byModel[key]))
 	}
@@ -172,9 +172,9 @@ func (st *state) emitCorpusHuman(r *corpusRollup) {
 
 func corpusCountsLine(key, label string, c *corpusCounts) string {
 	return fmt.Sprintf("corpus %s %s: bundles=%d ground_truth=%d reported=%d matched=%d "+
-		"false_positives=%d missed=%d precision=%s recall=%s false-positive-rate=%s",
+		"false_positives=%d missed=%d precision=%s (n=%d) recall=%s (n=%d) false-positive-rate=%s (n=%d)",
 		key, label, c.bundles, c.bugs, c.reported, c.matched, c.falsePositives, c.missed,
-		corpuscore.RateText(corpuscore.RateOrNil(c.matched, c.reported)),
-		corpuscore.RateText(corpuscore.RateOrNil(c.matched, c.bugs)),
-		corpuscore.RateText(corpuscore.RateOrNil(c.falsePositives, c.reported)))
+		corpuscore.RateText(corpuscore.RateOrNil(c.matched, c.reported)), c.reported,
+		corpuscore.RateText(corpuscore.RateOrNil(c.matched, c.bugs)), c.bugs,
+		corpuscore.RateText(corpuscore.RateOrNil(c.falsePositives, c.reported)), c.reported)
 }

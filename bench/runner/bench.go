@@ -24,6 +24,7 @@ import (
 // Config is one benchmark run's inputs. Everything an operator can vary is
 // here; everything a run derives from the corpus stays derived.
 type Config struct {
+	Render   string
 	Now      time.Time
 	Summary  io.Writer
 	Out      string
