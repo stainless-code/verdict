@@ -66,7 +66,7 @@ mark() { wc -l <"$EVAL_STUBLOG" | tr -d ' '; }
 m="$(mark)"
 run_review post acme/app "$PR" --dry-run --json
 assert_exit "dry-run with default --summary off succeeds" 0
-assert_json_field "default dry-run reports summary action none" "none" '.data.summary.action'
+assert_json_field "default dry-run carries no summary" "false" '.data | has("summary")'
 if tail -n +"$(( m + 1 ))" "$EVAL_STUBLOG" | matches '/issues/'; then
   bad "--summary off dry-run queried issue comments"
 else

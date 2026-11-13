@@ -258,8 +258,6 @@ func (st *state) dryRunResponse(ctx context.Context) (*core.PostResponse, *core.
 			return nil, st.withWarnings(ref)
 		}
 		st.summary = sum
-	} else {
-		st.summary = &core.PostSummary{Action: summaryActionNone}
 	}
 	footerText, ferr := provenance.RenderFooter(recordcore.FooterOpts(
 		&st.req.Effective, st.req.Forces, st.req.RootPath(), st.dir, overrides.At(st.controls.OverridesDir())))
