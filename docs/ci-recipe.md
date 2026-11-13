@@ -43,7 +43,7 @@ into your repo as `.github/workflows/verdict-review.yml`.
 
 ## Merge gating
 
-Branch protection should require the recipe's job (`review` in the
+Branch protection should require the recipe's job name (`review + merge gate` in the
 example). The gate composes two machine exits, both documented in the
 operator manual:
 

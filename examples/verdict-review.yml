@@ -39,7 +39,7 @@ jobs:
           persist-credentials: false
 
       - name: Review and gate
-        uses: stainless-code/verdict@a368d6a7a3ad33d5cd7db2d2eeaecc40899d51f9 # composite action
+        uses: stainless-code/verdict@307677c5acf73f7ffd6932d7b8bf1885360d33af # composite action
         with:
           version: ${{ vars.VERDICT_VERSION }}
           repository: ${{ github.repository }}

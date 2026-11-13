@@ -3728,7 +3728,7 @@ The first-party [GitHub Action](../action.yml) runs the review and merge gate
 on your runner with the keys you pass. Copy [the workflow](../examples/verdict-review.yml),
 install your agent CLI before the Action, and keep checkout `fetch-depth: 0` and
 `persist-credentials: false`. Give the job `contents: read` and
-`pull-requests: write`, then require its `review` check in branch protection.
+`pull-requests: write`, then require its `review + merge gate` check in branch protection.
 
 Pass `repository`, `pull-request`, and `github-token` explicitly. Choose `agent`
 (`claude`, `codex`, `cursor`, or `opencode`) and pass `anthropic-api-key` or

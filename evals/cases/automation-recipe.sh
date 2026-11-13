@@ -44,6 +44,13 @@ if [ -f "$WORKFLOW" ]; then
 else
   bad "examples/verdict-review.yml missing"
 fi
+for doc in README.md docs/manual.md docs/ci-recipe.md; do
+  assert_file_grep "required check name in $doc" "$EVAL_ROOT/$doc" \
+    '`review + merge gate`' "-F"
+done
+assert_file_grep "example names the required check" \
+  "$EVAL_ROOT/examples/verdict-review.yml" '    name: review + merge gate' "-Fx"
+
 uses_total="$(grep -c -E '^[[:space:]-]*uses:' "$WORKFLOW" 2>/dev/null || true)"
 uses_pinned="$(grep -c -E 'uses:[^#]*@[0-9a-f]{40}([[:space:]]|$)' "$WORKFLOW" 2>/dev/null || true)"
 case "$uses_total" in ''|0) uses_total=0;; esac
