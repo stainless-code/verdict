@@ -300,11 +300,18 @@ func RenderPostEnvelope(resp *core.PostResponse) *jq.Obj {
 }
 
 func panelBody(body string, summary *core.PanelSummary) string {
-	if summary == nil || summary.Confirmed+summary.Contested == 0 {
+	if summary == nil {
 		return body
 	}
-	line := fmt.Sprintf("> ℹ️ %d findings · %d contested by a verifier",
-		summary.Single+summary.Confirmed+summary.Contested, summary.Contested)
+	line := ""
+	if summary.Confirmed+summary.Contested != 0 {
+		line = fmt.Sprintf("> ℹ️ %d findings · %d contested by a verifier",
+			summary.Single+summary.Confirmed+summary.Contested, summary.Contested)
+	}
+	body, found := replacePanelSummary(body, line)
+	if found || line == "" {
+		return body
+	}
 	lines := strings.Split(body, "\n")
 	for i, s := range lines {
 		if strings.HasPrefix(s, "> ") {
@@ -312,4 +319,39 @@ func panelBody(body string, summary *core.PanelSummary) string {
 		}
 	}
 	return line + paraSep + body
+}
+
+func replacePanelSummary(body, line string) (string, bool) {
+	lines := strings.Split(body, "\n")
+	out := lines[:0]
+	found := false
+	for _, existing := range lines {
+		if !isPanelSummary(existing) {
+			out = append(out, existing)
+			continue
+		}
+		if !found && line != "" {
+			out = append(out, line)
+		}
+		found = true
+	}
+	return strings.Join(out, "\n"), found
+}
+
+func isPanelSummary(line string) bool {
+	counts, ok := strings.CutPrefix(line, "> ℹ️ ")
+	if !ok {
+		return false
+	}
+	findings, rest, ok := strings.Cut(counts, " findings · ")
+	if !ok {
+		return false
+	}
+	contested, ok := strings.CutSuffix(rest, " contested by a verifier")
+	return ok && decimalCount(findings) && decimalCount(contested)
+}
+
+func decimalCount(s string) bool {
+	n, err := strconv.Atoi(s)
+	return err == nil && n >= 0 && strconv.Itoa(n) == s
 }
