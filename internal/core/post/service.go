@@ -270,6 +270,7 @@ func (st *state) publish(ctx context.Context) (*core.PostResponse, *core.Refusal
 	if st.req.JSONMode {
 		st.human("dry-run flag missing with --json on a real post is allowed; envelope follows the post")
 	}
+	st.collectIdentity(ctx)
 	if ref := st.refreshRemote(ctx); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
@@ -891,4 +892,18 @@ func (st *state) postedAt() string {
 func exists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+func (st *state) collectIdentity(ctx context.Context) {
+	if _, err := os.Lstat(st.dir + "/identity.json"); errors.Is(err, os.ErrNotExist) {
+		return
+	}
+	current, ok := identity.Verify(ctx, st.identityCommander(), st.dir, st.commitID, recordcore.BundleBase(st.dir, st.store()))
+	if !ok {
+		st.warn("patch identity unavailable — provenance omitted")
+		return
+	}
+	if current.PatchID != nil {
+		st.identity = current
+	}
 }
