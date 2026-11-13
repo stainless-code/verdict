@@ -201,7 +201,11 @@ var publishedSemantics = map[string]string{
 	// pack test: additive $defs/packTestData, packTestCase, and
 	// packTestSummary, plus the generated envelope description. Existing shapes
 	// remain unchanged.
-	"envelope.schema.json": "9e43f8e066e70a00bf5490d58aebeac28973b2faf10261cd2ff2103fbed7ac79",
+	// learn exposure: additive $defs/learnRule (recalled_in, cited_in, exposure,
+	// acceptance alongside existing status fields; all status-only fields stay
+	// optional so learn --propose continues validating). Existing shapes remain
+	// unchanged.
+	"envelope.schema.json": "6f434570afdc2161516c4ff6cb3ebd84c866f92ed162586484ee8637313d78c2",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

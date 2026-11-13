@@ -468,6 +468,8 @@
       "description": "post --dry-run --json data (dry_run true, findings carry the dry-run file) and real-post data (dry_run false, findings carry counts plus the accepted review object).",
       "type": "object",
       "properties": {
+        "rearmed": { "type": "boolean" },
+        "previous_head": { "type": "string" },
         "verification": {
           "anyOf": [
             { "type": "null" },
@@ -1542,10 +1544,49 @@
       "properties": {
         "rule": {},
         "rules": {
-          "type": "array"
+          "type": "array",
+          "items": { "$ref": "#/$defs/learnRule" }
         }
       },
       "required": [],
+      "additionalProperties": true
+    },
+    "learnRule": {
+      "description": "One knowledge-base rule row from learn --status (or a proposal outcome row from learn --propose).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "rule": { "type": "string" },
+        "scope": { "type": "string" },
+        "provenance": { "type": "string" },
+        "rigor": { "type": "string" },
+        "hits": { "type": "integer", "minimum": 0 },
+        "false_hits": { "type": "integer", "minimum": 0 },
+        "judged": { "type": "integer", "minimum": 0 },
+        "status": { "type": "string" },
+        "precision": { "type": "string" },
+        "recalled_in": {
+          "description": "Count of measured bundles whose kb-recall.json manifest listed this rule, or null when no recall manifests exist in the repository.",
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "cited_in": {
+          "description": "Count of reviewed bundles with at least one finding citing this rule.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "exposure": {
+          "description": "Citation-to-recall exposure rate (cited_in / recalled_in), or null when unmeasured or recalled_in is zero.",
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "acceptance": {
+          "description": "Addressed share of findings citing this rule (addressed / cited), or null when no findings cite it.",
+          "type": ["number", "null"],
+          "minimum": 0
+        }
+      },
+      "required": ["id"],
       "additionalProperties": true
     },
     "initData": {

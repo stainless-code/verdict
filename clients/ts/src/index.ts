@@ -49,6 +49,7 @@ export type {
   FixData,
   InitData,
   LearnData,
+  LearnRule,
   NextData,
   PostData,
   ProvenanceTriple,

@@ -430,8 +430,27 @@ type FixAnchors struct {
 // LearnData is the learn verb's --json data profile: one appended rule, or
 // the status listing of every rule in the knowledge base.
 type LearnData struct {
-	Rule  any   `json:"rule"  optional:"true"`
-	Rules []any `json:"rules" optional:"true"`
+	Rule  any         `json:"rule"  optional:"true"`
+	Rules []LearnRule `json:"rules" optional:"true"`
+}
+
+// LearnRule is one KB rule row on `learn --status` (or one proposal row on
+// `learn --propose`). Status fields stay optional so proposals validate.
+type LearnRule struct { //nolint:govet // field order matches the KB status wire contract
+	ID         string   `json:"id"`
+	Rule       string   `json:"rule"        optional:"true"`
+	Scope      string   `json:"scope"       optional:"true"`
+	Provenance string   `json:"provenance"  optional:"true"`
+	Rigor      string   `json:"rigor"       optional:"true"`
+	Hits       int      `json:"hits"        min:"0"         optional:"true"`
+	FalseHits  int      `json:"false_hits"  min:"0"         optional:"true"`
+	Judged     int      `json:"judged"      min:"0"         optional:"true"`
+	Status     string   `json:"status"      optional:"true"`
+	Precision  string   `json:"precision"   optional:"true"`
+	RecalledIn *int     `json:"recalled_in" min:"0"         optional:"true"`
+	CitedIn    int      `json:"cited_in"    min:"0"         optional:"true"`
+	Exposure   *float64 `json:"exposure"    min:"0"         optional:"true"`
+	Acceptance *float64 `json:"acceptance"  min:"0"         optional:"true"`
 }
 
 // InitData is the init verb's --json data profile: the applied preset values

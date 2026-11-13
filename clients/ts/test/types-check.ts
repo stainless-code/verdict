@@ -14,6 +14,7 @@ import {
   type FixData,
   type InitData,
   type LearnData,
+  type LearnRule,
   type NextData,
   type PostData,
   type ReadyData,
@@ -227,8 +228,11 @@ export async function typeChecks(): Promise<void> {
   void complete;
 
   const learn: Envelope<LearnData> = await client.learn([]);
-  const rules: number = learn.data.rules?.length ?? 0;
-  void rules;
+  const firstRule: LearnRule | undefined = learn.data.rules?.[0];
+  const exposure: number | null | undefined = firstRule?.exposure;
+  const acceptance: number | null | undefined = firstRule?.acceptance;
+  void exposure;
+  void acceptance;
 
   const init: Envelope<InitData> = await client.init([]);
   const preset: string = init.data.preset;
