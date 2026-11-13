@@ -1,0 +1,1235 @@
+{
+  "prompt_sha256": {
+    "control-comment": "34b12279537094a5d21b28d3f78cbec665a065565ff99e7a082bbb71c51a550b",
+    "off-by-one": "924807c81860721cd082d95584fc9a419a2fd29f7a2887895ded615de8c1b2ec"
+  },
+  "generated_at": "2026-11-13T12:31:24Z",
+  "citable_reason": "not a model-quality claim; seeded example; not a model-quality claim; 2 of 10 cases: a subset is a new publication",
+  "run_id": "2026-11-13-fixture-good",
+  "prompts_hash": "1ab11a40d5636e6d444cdcded1f23ad3bfe5c3ae90c83a3380ef4e082a364010",
+  "date": "2026-11-13",
+  "tool_version": "0.6.1",
+  "schema_version": "1",
+  "commands": [
+    [
+      "go",
+      "run",
+      "./bench/runner",
+      "-model",
+      "fixture-good",
+      "-agent",
+      "sh \"$VERDICT_BENCH_ROOT/bench/agents/fixture.sh\"",
+      "-repeats",
+      "3",
+      "-k",
+      "3",
+      "-panel",
+      "panel-alpha",
+      "-root",
+      "<CHECKOUT>",
+      "-corpus",
+      "<CORPUS_DIR>",
+      "-verdict",
+      "<VERDICT_BIN>",
+      "-out",
+      "<REPORT_JSON>",
+      "-timeout",
+      "15m0s",
+      "-loop",
+      "1",
+      "-cases",
+      "off-by-one,control-comment"
+    ],
+    [
+      "<VERDICT_BIN>",
+      "record",
+      "acme/bench",
+      "corpus-control-comment-fixture-good-run1",
+      "--json"
+    ],
+    [
+      "<VERDICT_BIN>",
+      "calibrate",
+      "acme/bench",
+      "corpus-control-comment-fixture-good-run1",
+      "--json"
+    ],
+    [
+      "<VERDICT_BIN>",
+      "record",
+      "acme/bench",
+      "corpus-control-comment-fixture-good-run2",
+      "--json"
+    ],
+    [
+      "<VERDICT_BIN>",
+      "calibrate",
+      "acme/bench",
+      "corpus-control-comment-fixture-good-run2",
+      "--json"
+    ],
+    [
+      "<VERDICT_BIN>",
+      "record",
+      "acme/bench",
+      "corpus-control-comment-fixture-good-run3",
+      "--json"
+    ],
+    [
+      "<VERDICT_BIN>",
+      "calibrate",
+      "acme/bench",
+      "corpus-control-comment-fixture-good-run3",
+      "--json"
+    ],
+    [
+      "<VERDICT_BIN>",
+      "record",
+      "acme/bench",
+      "corpus-off-by-one-fixture-good-run1",
+      "--json"
+    ],
+    [
+      "<VERDICT_BIN>",
+      "calibrate",
+      "acme/bench",
+      "corpus-off-by-one-fixture-good-run1",
+      "--json"
+    ],
+    [
+      "<VERDICT_BIN>",
+      "record",
+      "acme/bench",
+      "corpus-off-by-one-fixture-good-run2",
+      "--json"
+    ],
+    [
+      "<VERDICT_BIN>",
+      "calibrate",
+      "acme/bench",
+      "corpus-off-by-one-fixture-good-run2",
+      "--json"
+    ],
+    [
+      "<VERDICT_BIN>",
+      "record",
+      "acme/bench",
+      "corpus-off-by-one-fixture-good-run3",
+      "--json"
+    ],
+    [
+      "<VERDICT_BIN>",
+      "calibrate",
+      "acme/bench",
+      "corpus-off-by-one-fixture-good-run3",
+      "--json"
+    ],
+    ["<VERDICT_BIN>", "trend", "acme/bench", "--json"]
+  ],
+  "trend_corpus": {
+    "metrics": {
+      "cost_usd": null,
+      "latency_s": 6.059,
+      "signal_to_noise": {
+        "value": 2,
+        "unit": "false-positive findings; n=reported findings",
+        "numerator": 6,
+        "denominator": 3,
+        "n": 9
+      },
+      "any_of_k_recall": {
+        "value": 1,
+        "unit": "unique bugs in complete first-k cohorts",
+        "numerator": 2,
+        "denominator": 2,
+        "n": 2
+      },
+      "control_fp_rate": {
+        "value": 0,
+        "unit": "control case samples with at least one finding",
+        "numerator": 0,
+        "denominator": 3,
+        "n": 3
+      },
+      "severity_weighted_pooled_f1": {
+        "value": 0.9836,
+        "unit": "weighted F1; n=bug samples plus false-positive findings",
+        "numerator": 180,
+        "denominator": 183,
+        "n": 9
+      },
+      "precision": {
+        "value": 0.6667,
+        "unit": "reported findings",
+        "numerator": 6,
+        "denominator": 9,
+        "n": 9
+      },
+      "false_discovery_rate": {
+        "value": 0.3333,
+        "unit": "reported findings",
+        "numerator": 3,
+        "denominator": 9,
+        "n": 9
+      },
+      "recall": {
+        "value": 1,
+        "unit": "bug samples",
+        "numerator": 6,
+        "denominator": 6,
+        "n": 6
+      },
+      "cost_n": 0,
+      "latency_n": 6,
+      "samples": 6,
+      "incomplete_cohorts": 0,
+      "control_findings_per_case": {
+        "value": 0,
+        "unit": "false-positive findings per control case sample",
+        "numerator": 0,
+        "denominator": 3,
+        "n": 3
+      }
+    },
+    "cases": 2,
+    "bundles": 6,
+    "ground_truth": 6,
+    "reported": 9,
+    "matched": 6,
+    "false_positives": 3,
+    "missed": 0,
+    "precision": 0.6667,
+    "recall": 1,
+    "false_discovery_rate": 0.3333,
+    "by_model": [
+      {
+        "model": "fixture-good",
+        "metrics": {
+          "cost_usd": null,
+          "latency_s": 6.059,
+          "signal_to_noise": {
+            "value": 2,
+            "unit": "false-positive findings; n=reported findings",
+            "numerator": 6,
+            "denominator": 3,
+            "n": 9
+          },
+          "any_of_k_recall": {
+            "value": 1,
+            "unit": "unique bugs in complete first-k cohorts",
+            "numerator": 2,
+            "denominator": 2,
+            "n": 2
+          },
+          "control_fp_rate": {
+            "value": 0,
+            "unit": "control case samples with at least one finding",
+            "numerator": 0,
+            "denominator": 3,
+            "n": 3
+          },
+          "severity_weighted_pooled_f1": {
+            "value": 0.9836,
+            "unit": "weighted F1; n=bug samples plus false-positive findings",
+            "numerator": 180,
+            "denominator": 183,
+            "n": 9
+          },
+          "precision": {
+            "value": 0.6667,
+            "unit": "reported findings",
+            "numerator": 6,
+            "denominator": 9,
+            "n": 9
+          },
+          "false_discovery_rate": {
+            "value": 0.3333,
+            "unit": "reported findings",
+            "numerator": 3,
+            "denominator": 9,
+            "n": 9
+          },
+          "recall": {
+            "value": 1,
+            "unit": "bug samples",
+            "numerator": 6,
+            "denominator": 6,
+            "n": 6
+          },
+          "cost_n": 0,
+          "latency_n": 6,
+          "samples": 6,
+          "incomplete_cohorts": 0,
+          "control_findings_per_case": {
+            "value": 0,
+            "unit": "false-positive findings per control case sample",
+            "numerator": 0,
+            "denominator": 3,
+            "n": 3
+          }
+        },
+        "bundles": 6,
+        "ground_truth": 6,
+        "reported": 9,
+        "matched": 6,
+        "false_positives": 3,
+        "missed": 0,
+        "precision": 0.6667,
+        "recall": 1,
+        "false_discovery_rate": 0.3333
+      }
+    ],
+    "by_panel": [
+      {
+        "panel": "panel-alpha",
+        "metrics": {
+          "cost_usd": null,
+          "latency_s": 6.059,
+          "signal_to_noise": {
+            "value": 2,
+            "unit": "false-positive findings; n=reported findings",
+            "numerator": 6,
+            "denominator": 3,
+            "n": 9
+          },
+          "any_of_k_recall": {
+            "value": 1,
+            "unit": "unique bugs in complete first-k cohorts",
+            "numerator": 2,
+            "denominator": 2,
+            "n": 2
+          },
+          "control_fp_rate": {
+            "value": 0,
+            "unit": "control case samples with at least one finding",
+            "numerator": 0,
+            "denominator": 3,
+            "n": 3
+          },
+          "severity_weighted_pooled_f1": {
+            "value": 0.9836,
+            "unit": "weighted F1; n=bug samples plus false-positive findings",
+            "numerator": 180,
+            "denominator": 183,
+            "n": 9
+          },
+          "precision": {
+            "value": 0.6667,
+            "unit": "reported findings",
+            "numerator": 6,
+            "denominator": 9,
+            "n": 9
+          },
+          "false_discovery_rate": {
+            "value": 0.3333,
+            "unit": "reported findings",
+            "numerator": 3,
+            "denominator": 9,
+            "n": 9
+          },
+          "recall": {
+            "value": 1,
+            "unit": "bug samples",
+            "numerator": 6,
+            "denominator": 6,
+            "n": 6
+          },
+          "cost_n": 0,
+          "latency_n": 6,
+          "samples": 6,
+          "incomplete_cohorts": 0,
+          "control_findings_per_case": {
+            "value": 0,
+            "unit": "false-positive findings per control case sample",
+            "numerator": 0,
+            "denominator": 3,
+            "n": 3
+          }
+        },
+        "bundles": 6,
+        "ground_truth": 6,
+        "reported": 9,
+        "matched": 6,
+        "false_positives": 3,
+        "missed": 0,
+        "precision": 0.6667,
+        "recall": 1,
+        "false_discovery_rate": 0.3333
+      }
+    ]
+  },
+  "bundles": [
+    {
+      "slug": "corpus-control-comment-fixture-good-run1",
+      "case": "control-comment",
+      "warnings": [
+        "$.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)"
+      ],
+      "calibrate": {
+        "metrics": {
+          "cost_usd": null,
+          "latency_s": 1.005,
+          "signal_to_noise": {
+            "value": null,
+            "unit": "false-positive findings; n=reported findings",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          },
+          "any_of_k_recall": {
+            "value": null,
+            "unit": "unique bugs in complete first-k cohorts",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          },
+          "control_fp_rate": {
+            "value": 0,
+            "unit": "control case samples with at least one finding",
+            "numerator": 0,
+            "denominator": 1,
+            "n": 1
+          },
+          "severity_weighted_pooled_f1": {
+            "value": null,
+            "unit": "weighted F1; n=bug samples plus false-positive findings",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          },
+          "precision": {
+            "value": null,
+            "unit": "reported findings",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          },
+          "false_discovery_rate": {
+            "value": null,
+            "unit": "reported findings",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          },
+          "recall": {
+            "value": null,
+            "unit": "bug samples",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          },
+          "cost_n": 0,
+          "latency_n": 1,
+          "samples": 1,
+          "incomplete_cohorts": 1,
+          "control_findings_per_case": {
+            "value": 0,
+            "unit": "false-positive findings per control case sample",
+            "numerator": 0,
+            "denominator": 1,
+            "n": 1
+          }
+        },
+        "sampling": {
+          "run_id": "2026-11-13-fixture-good",
+          "k": 3,
+          "repeats": 3,
+          "sample": 1,
+          "severity_weights": {
+            "critical": 25,
+            "important": 5,
+            "informational": 1
+          }
+        },
+        "bundle": "corpus-control-comment-fixture-good-run1",
+        "case": "control-comment",
+        "kind": "control",
+        "model": "fixture-good",
+        "panel": ["panel-alpha"],
+        "line_tolerance": 1,
+        "ground_truth": 0,
+        "reported": 0,
+        "matched": 0,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": null,
+        "recall": null,
+        "false_discovery_rate": null,
+        "sampling_hits": [],
+        "outcomes": [],
+        "missed_bugs": []
+      },
+      "run": 1,
+      "wall_seconds": 1.005
+    },
+    {
+      "slug": "corpus-control-comment-fixture-good-run2",
+      "case": "control-comment",
+      "warnings": [
+        "$.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)"
+      ],
+      "calibrate": {
+        "metrics": {
+          "cost_usd": null,
+          "latency_s": 1.012,
+          "signal_to_noise": {
+            "value": null,
+            "unit": "false-positive findings; n=reported findings",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          },
+          "any_of_k_recall": {
+            "value": null,
+            "unit": "unique bugs in complete first-k cohorts",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          },
+          "control_fp_rate": {
+            "value": 0,
+            "unit": "control case samples with at least one finding",
+            "numerator": 0,
+            "denominator": 1,
+            "n": 1
+          },
+          "severity_weighted_pooled_f1": {
+            "value": null,
+            "unit": "weighted F1; n=bug samples plus false-positive findings",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          },
+          "precision": {
+            "value": null,
+            "unit": "reported findings",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          },
+          "false_discovery_rate": {
+            "value": null,
+            "unit": "reported findings",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          },
+          "recall": {
+            "value": null,
+            "unit": "bug samples",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          },
+          "cost_n": 0,
+          "latency_n": 1,
+          "samples": 1,
+          "incomplete_cohorts": 1,
+          "control_findings_per_case": {
+            "value": 0,
+            "unit": "false-positive findings per control case sample",
+            "numerator": 0,
+            "denominator": 1,
+            "n": 1
+          }
+        },
+        "sampling": {
+          "run_id": "2026-11-13-fixture-good",
+          "k": 3,
+          "repeats": 3,
+          "sample": 2,
+          "severity_weights": {
+            "critical": 25,
+            "important": 5,
+            "informational": 1
+          }
+        },
+        "bundle": "corpus-control-comment-fixture-good-run2",
+        "case": "control-comment",
+        "kind": "control",
+        "model": "fixture-good",
+        "panel": ["panel-alpha"],
+        "line_tolerance": 1,
+        "ground_truth": 0,
+        "reported": 0,
+        "matched": 0,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": null,
+        "recall": null,
+        "false_discovery_rate": null,
+        "sampling_hits": [],
+        "outcomes": [],
+        "missed_bugs": []
+      },
+      "run": 2,
+      "wall_seconds": 1.012
+    },
+    {
+      "slug": "corpus-control-comment-fixture-good-run3",
+      "case": "control-comment",
+      "warnings": [
+        "$.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)"
+      ],
+      "calibrate": {
+        "metrics": {
+          "cost_usd": null,
+          "latency_s": 1.006,
+          "signal_to_noise": {
+            "value": null,
+            "unit": "false-positive findings; n=reported findings",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          },
+          "any_of_k_recall": {
+            "value": null,
+            "unit": "unique bugs in complete first-k cohorts",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          },
+          "control_fp_rate": {
+            "value": 0,
+            "unit": "control case samples with at least one finding",
+            "numerator": 0,
+            "denominator": 1,
+            "n": 1
+          },
+          "severity_weighted_pooled_f1": {
+            "value": null,
+            "unit": "weighted F1; n=bug samples plus false-positive findings",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          },
+          "precision": {
+            "value": null,
+            "unit": "reported findings",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          },
+          "false_discovery_rate": {
+            "value": null,
+            "unit": "reported findings",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          },
+          "recall": {
+            "value": null,
+            "unit": "bug samples",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          },
+          "cost_n": 0,
+          "latency_n": 1,
+          "samples": 1,
+          "incomplete_cohorts": 0,
+          "control_findings_per_case": {
+            "value": 0,
+            "unit": "false-positive findings per control case sample",
+            "numerator": 0,
+            "denominator": 1,
+            "n": 1
+          }
+        },
+        "sampling": {
+          "run_id": "2026-11-13-fixture-good",
+          "k": 3,
+          "repeats": 3,
+          "sample": 3,
+          "severity_weights": {
+            "critical": 25,
+            "important": 5,
+            "informational": 1
+          }
+        },
+        "bundle": "corpus-control-comment-fixture-good-run3",
+        "case": "control-comment",
+        "kind": "control",
+        "model": "fixture-good",
+        "panel": ["panel-alpha"],
+        "line_tolerance": 1,
+        "ground_truth": 0,
+        "reported": 0,
+        "matched": 0,
+        "false_positives": 0,
+        "missed": 0,
+        "precision": null,
+        "recall": null,
+        "false_discovery_rate": null,
+        "sampling_hits": [],
+        "outcomes": [],
+        "missed_bugs": []
+      },
+      "run": 3,
+      "wall_seconds": 1.006
+    },
+    {
+      "slug": "corpus-off-by-one-fixture-good-run1",
+      "case": "off-by-one",
+      "warnings": [
+        "$.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)"
+      ],
+      "calibrate": {
+        "metrics": {
+          "cost_usd": null,
+          "latency_s": 1.008,
+          "signal_to_noise": {
+            "value": 2,
+            "unit": "false-positive findings; n=reported findings",
+            "numerator": 2,
+            "denominator": 1,
+            "n": 3
+          },
+          "any_of_k_recall": {
+            "value": null,
+            "unit": "unique bugs in complete first-k cohorts",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          },
+          "control_fp_rate": {
+            "value": null,
+            "unit": "control case samples with at least one finding",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          },
+          "severity_weighted_pooled_f1": {
+            "value": 0.9836,
+            "unit": "weighted F1; n=bug samples plus false-positive findings",
+            "numerator": 60,
+            "denominator": 61,
+            "n": 3
+          },
+          "precision": {
+            "value": 0.6667,
+            "unit": "reported findings",
+            "numerator": 2,
+            "denominator": 3,
+            "n": 3
+          },
+          "false_discovery_rate": {
+            "value": 0.3333,
+            "unit": "reported findings",
+            "numerator": 1,
+            "denominator": 3,
+            "n": 3
+          },
+          "recall": {
+            "value": 1,
+            "unit": "bug samples",
+            "numerator": 2,
+            "denominator": 2,
+            "n": 2
+          },
+          "cost_n": 0,
+          "latency_n": 1,
+          "samples": 1,
+          "incomplete_cohorts": 1,
+          "control_findings_per_case": {
+            "value": null,
+            "unit": "false-positive findings per control case sample",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          }
+        },
+        "sampling": {
+          "run_id": "2026-11-13-fixture-good",
+          "k": 3,
+          "repeats": 3,
+          "sample": 1,
+          "severity_weights": {
+            "critical": 25,
+            "important": 5,
+            "informational": 1
+          }
+        },
+        "bundle": "corpus-off-by-one-fixture-good-run1",
+        "case": "off-by-one",
+        "kind": "seeded",
+        "model": "fixture-good",
+        "panel": ["panel-alpha"],
+        "line_tolerance": 1,
+        "ground_truth": 2,
+        "reported": 3,
+        "matched": 2,
+        "false_positives": 1,
+        "missed": 0,
+        "precision": 0.6667,
+        "recall": 1,
+        "false_discovery_rate": 0.3333,
+        "sampling_hits": [0, 1],
+        "outcomes": [
+          {
+            "sig": "3177b4b275836597ad8f84a3c2ad1d4c76b17962",
+            "path": "pagination.go",
+            "line": 11,
+            "result": "false-positive",
+            "matched_line": null
+          },
+          {
+            "sig": "bfd34553aacdc14dfce5297ebee718f1c8795149",
+            "path": "pagination.go",
+            "line": 42,
+            "result": "true-positive",
+            "matched_line": 42
+          },
+          {
+            "sig": "5feaf873e5056518f2928a52236b5812e0b8917c",
+            "path": "pagination.go",
+            "line": 51,
+            "result": "true-positive",
+            "matched_line": 51
+          }
+        ],
+        "missed_bugs": []
+      },
+      "run": 1,
+      "wall_seconds": 1.008
+    },
+    {
+      "slug": "corpus-off-by-one-fixture-good-run2",
+      "case": "off-by-one",
+      "warnings": [
+        "$.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)"
+      ],
+      "calibrate": {
+        "metrics": {
+          "cost_usd": null,
+          "latency_s": 1.016,
+          "signal_to_noise": {
+            "value": 2,
+            "unit": "false-positive findings; n=reported findings",
+            "numerator": 2,
+            "denominator": 1,
+            "n": 3
+          },
+          "any_of_k_recall": {
+            "value": null,
+            "unit": "unique bugs in complete first-k cohorts",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          },
+          "control_fp_rate": {
+            "value": null,
+            "unit": "control case samples with at least one finding",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          },
+          "severity_weighted_pooled_f1": {
+            "value": 0.9836,
+            "unit": "weighted F1; n=bug samples plus false-positive findings",
+            "numerator": 60,
+            "denominator": 61,
+            "n": 3
+          },
+          "precision": {
+            "value": 0.6667,
+            "unit": "reported findings",
+            "numerator": 2,
+            "denominator": 3,
+            "n": 3
+          },
+          "false_discovery_rate": {
+            "value": 0.3333,
+            "unit": "reported findings",
+            "numerator": 1,
+            "denominator": 3,
+            "n": 3
+          },
+          "recall": {
+            "value": 1,
+            "unit": "bug samples",
+            "numerator": 2,
+            "denominator": 2,
+            "n": 2
+          },
+          "cost_n": 0,
+          "latency_n": 1,
+          "samples": 1,
+          "incomplete_cohorts": 1,
+          "control_findings_per_case": {
+            "value": null,
+            "unit": "false-positive findings per control case sample",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          }
+        },
+        "sampling": {
+          "run_id": "2026-11-13-fixture-good",
+          "k": 3,
+          "repeats": 3,
+          "sample": 2,
+          "severity_weights": {
+            "critical": 25,
+            "important": 5,
+            "informational": 1
+          }
+        },
+        "bundle": "corpus-off-by-one-fixture-good-run2",
+        "case": "off-by-one",
+        "kind": "seeded",
+        "model": "fixture-good",
+        "panel": ["panel-alpha"],
+        "line_tolerance": 1,
+        "ground_truth": 2,
+        "reported": 3,
+        "matched": 2,
+        "false_positives": 1,
+        "missed": 0,
+        "precision": 0.6667,
+        "recall": 1,
+        "false_discovery_rate": 0.3333,
+        "sampling_hits": [0, 1],
+        "outcomes": [
+          {
+            "sig": "3177b4b275836597ad8f84a3c2ad1d4c76b17962",
+            "path": "pagination.go",
+            "line": 11,
+            "result": "false-positive",
+            "matched_line": null
+          },
+          {
+            "sig": "bfd34553aacdc14dfce5297ebee718f1c8795149",
+            "path": "pagination.go",
+            "line": 42,
+            "result": "true-positive",
+            "matched_line": 42
+          },
+          {
+            "sig": "5feaf873e5056518f2928a52236b5812e0b8917c",
+            "path": "pagination.go",
+            "line": 51,
+            "result": "true-positive",
+            "matched_line": 51
+          }
+        ],
+        "missed_bugs": []
+      },
+      "run": 2,
+      "wall_seconds": 1.016
+    },
+    {
+      "slug": "corpus-off-by-one-fixture-good-run3",
+      "case": "off-by-one",
+      "warnings": [
+        "$.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)"
+      ],
+      "calibrate": {
+        "metrics": {
+          "cost_usd": null,
+          "latency_s": 1.012,
+          "signal_to_noise": {
+            "value": 2,
+            "unit": "false-positive findings; n=reported findings",
+            "numerator": 2,
+            "denominator": 1,
+            "n": 3
+          },
+          "any_of_k_recall": {
+            "value": 1,
+            "unit": "unique bugs in complete first-k cohorts",
+            "numerator": 2,
+            "denominator": 2,
+            "n": 2
+          },
+          "control_fp_rate": {
+            "value": null,
+            "unit": "control case samples with at least one finding",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          },
+          "severity_weighted_pooled_f1": {
+            "value": 0.9836,
+            "unit": "weighted F1; n=bug samples plus false-positive findings",
+            "numerator": 60,
+            "denominator": 61,
+            "n": 3
+          },
+          "precision": {
+            "value": 0.6667,
+            "unit": "reported findings",
+            "numerator": 2,
+            "denominator": 3,
+            "n": 3
+          },
+          "false_discovery_rate": {
+            "value": 0.3333,
+            "unit": "reported findings",
+            "numerator": 1,
+            "denominator": 3,
+            "n": 3
+          },
+          "recall": {
+            "value": 1,
+            "unit": "bug samples",
+            "numerator": 2,
+            "denominator": 2,
+            "n": 2
+          },
+          "cost_n": 0,
+          "latency_n": 1,
+          "samples": 1,
+          "incomplete_cohorts": 0,
+          "control_findings_per_case": {
+            "value": null,
+            "unit": "false-positive findings per control case sample",
+            "numerator": 0,
+            "denominator": 0,
+            "n": 0
+          }
+        },
+        "sampling": {
+          "run_id": "2026-11-13-fixture-good",
+          "k": 3,
+          "repeats": 3,
+          "sample": 3,
+          "severity_weights": {
+            "critical": 25,
+            "important": 5,
+            "informational": 1
+          }
+        },
+        "bundle": "corpus-off-by-one-fixture-good-run3",
+        "case": "off-by-one",
+        "kind": "seeded",
+        "model": "fixture-good",
+        "panel": ["panel-alpha"],
+        "line_tolerance": 1,
+        "ground_truth": 2,
+        "reported": 3,
+        "matched": 2,
+        "false_positives": 1,
+        "missed": 0,
+        "precision": 0.6667,
+        "recall": 1,
+        "false_discovery_rate": 0.3333,
+        "sampling_hits": [0, 1],
+        "outcomes": [
+          {
+            "sig": "3177b4b275836597ad8f84a3c2ad1d4c76b17962",
+            "path": "pagination.go",
+            "line": 11,
+            "result": "false-positive",
+            "matched_line": null
+          },
+          {
+            "sig": "bfd34553aacdc14dfce5297ebee718f1c8795149",
+            "path": "pagination.go",
+            "line": 42,
+            "result": "true-positive",
+            "matched_line": 42
+          },
+          {
+            "sig": "5feaf873e5056518f2928a52236b5812e0b8917c",
+            "path": "pagination.go",
+            "line": 51,
+            "result": "true-positive",
+            "matched_line": 51
+          }
+        ],
+        "missed_bugs": []
+      },
+      "run": 3,
+      "wall_seconds": 1.012
+    }
+  ],
+  "failures": [],
+  "panel": ["panel-alpha"],
+  "cases": [
+    {
+      "metrics": {
+        "control_fp_rate": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 3
+        },
+        "cost_usd": {
+          "median": null,
+          "min": null,
+          "max": null,
+          "n": 0
+        },
+        "latency_s": {
+          "median": 1.006,
+          "min": 1.005,
+          "max": 1.012,
+          "n": 3
+        },
+        "precision": {
+          "median": null,
+          "min": null,
+          "max": null,
+          "n": 0
+        },
+        "recall": {
+          "median": null,
+          "min": null,
+          "max": null,
+          "n": 0
+        },
+        "severity_weighted_pooled_f1": {
+          "median": null,
+          "min": null,
+          "max": null,
+          "n": 0
+        },
+        "signal_to_noise": {
+          "median": null,
+          "min": null,
+          "max": null,
+          "n": 0
+        },
+        "control_findings_per_case": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 3
+        }
+      },
+      "precision": {
+        "median": null,
+        "min": null,
+        "max": null,
+        "n": 0
+      },
+      "recall": {
+        "median": null,
+        "min": null,
+        "max": null,
+        "n": 0
+      },
+      "false_discovery_rate": {
+        "median": null,
+        "min": null,
+        "max": null,
+        "n": 0
+      },
+      "case": "control-comment",
+      "runs": 3
+    },
+    {
+      "metrics": {
+        "control_fp_rate": {
+          "median": null,
+          "min": null,
+          "max": null,
+          "n": 0
+        },
+        "cost_usd": {
+          "median": null,
+          "min": null,
+          "max": null,
+          "n": 0
+        },
+        "latency_s": {
+          "median": 1.012,
+          "min": 1.008,
+          "max": 1.016,
+          "n": 3
+        },
+        "precision": {
+          "median": 0.6667,
+          "min": 0.6667,
+          "max": 0.6667,
+          "n": 3
+        },
+        "recall": {
+          "median": 1,
+          "min": 1,
+          "max": 1,
+          "n": 3
+        },
+        "severity_weighted_pooled_f1": {
+          "median": 0.9836,
+          "min": 0.9836,
+          "max": 0.9836,
+          "n": 3
+        },
+        "signal_to_noise": {
+          "median": 2,
+          "min": 2,
+          "max": 2,
+          "n": 3
+        },
+        "control_findings_per_case": {
+          "median": null,
+          "min": null,
+          "max": null,
+          "n": 0
+        }
+      },
+      "precision": {
+        "median": 0.6667,
+        "min": 0.6667,
+        "max": 0.6667,
+        "n": 3
+      },
+      "recall": {
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "n": 3
+      },
+      "false_discovery_rate": {
+        "median": 0.3333,
+        "min": 0.3333,
+        "max": 0.3333,
+        "n": 3
+      },
+      "case": "off-by-one",
+      "runs": 3
+    }
+  ],
+  "any_of_k_recall": {
+    "value": 1,
+    "unit": "unique bugs in complete first-k cohorts",
+    "numerator": 2,
+    "denominator": 2,
+    "n": 2
+  },
+  "agent": {
+    "command": "sh \"$VERDICT_BENCH_ROOT/bench/agents/fixture.sh\"",
+    "model": "fixture-good",
+    "runs": 3,
+    "timeout_seconds": 900
+  },
+  "corpus": {
+    "commit": "1a4a2bb7d8fbfdb2fea2ad8ca44146be10a476e4",
+    "case_ids": ["control-comment", "off-by-one"],
+    "cases": 2,
+    "dirty": false,
+    "total_cases": 10
+  },
+  "cost": {
+    "bundles": 6,
+    "bundles_with_estimate": 0,
+    "measured_usd": 0,
+    "measured": false
+  },
+  "severity_weights": {
+    "critical": 25,
+    "important": 5,
+    "informational": 1
+  },
+  "k": 3,
+  "repeats": 3,
+  "incomplete_cohorts": 0,
+  "samples": 6,
+  "elapsed_seconds": 10.398,
+  "tolerance_points": 5,
+  "seeded": true,
+  "citable": false,
+  "internal": false
+}

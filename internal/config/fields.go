@@ -15,7 +15,10 @@ const defaultsKey = "defaults"
 const requirementsKey = "requirements"
 
 var (
-	topFields      = []string{"$schema", "schema_version", "defaults", "requirements", "scopes", "profiles", "default_profile", "index"}
+	topFields = []string{
+		"$schema", "schema_version", "defaults", "requirements", "scopes", "profiles", "default_profile",
+		"index", "severity_weights",
+	}
 	defaultsFields = []string{
 		keyPanel, keyBudgetUSD, keyMaxBytes, keyChunk, keyKBPolicy, keyEffort,
 		keyDisplayFloor, keyPostFloor,
@@ -67,6 +70,7 @@ func checkUnknownFields(root map[string]any) *core.RefusalError {
 		{key: requirementsKey, check: checkRequirementsKeys},
 		{key: "scopes", check: checkScopeListKeys},
 		{key: "profiles", check: checkProfilesKeys},
+		{key: "severity_weights", check: checkKeysSection(severityEnum)},
 		{key: "index", check: checkKeysSection(indexFields)},
 	} {
 		if ref := checkSectionUnknown(root, section.key, section.check); ref != nil {

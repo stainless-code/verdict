@@ -67,6 +67,7 @@ func shippedFixture(t *testing.T) *Config {
 	}](t, filepath.Join(root, "bench", "corpus", "off-by-one", "agents", "fixture-good.json"))
 	t.Setenv("BENCH_TEST_REVIEW", string(fixture.Review))
 	return &Config{
+		K:       1,
 		Root:    root,
 		Corpus:  filepath.Join(root, "bench", "corpus"),
 		Verdict: bin,
@@ -195,6 +196,7 @@ func outOfHunkFixture(t *testing.T) *Config {
 	restoreWD(t)
 	t.Setenv("BENCH_TEST_REVIEW", outOfHunkReview)
 	return &Config{
+		K:       1,
 		Root:    root,
 		Corpus:  corpus,
 		Verdict: bin,
@@ -332,6 +334,7 @@ func shippedLoopBadFixed(t *testing.T, bad, fixed string) (*Report, *Config) {
 	agent := `if [ "${VERDICT_BENCH_ROUND:-1}" = "1" ]; then printf '%s' "$BENCH_TEST_BAD" > "$VERDICT_BENCH_OUT"; ` +
 		`else printf '%s' "$BENCH_TEST_FIXED" > "$VERDICT_BENCH_OUT"; fi`
 	cfg := &Config{
+		K:       1,
 		Root:    root,
 		Corpus:  filepath.Join(root, "bench", "corpus"),
 		Verdict: bin,

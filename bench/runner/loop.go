@@ -185,7 +185,7 @@ func buildFeedback(round, maxRounds int, dry *DryRunResult) string {
 
 // dryRun invokes record dry-run.
 func (t tool) dryRun(ctx context.Context, slug string) (DryRunResult, error) {
-	full := []string{t.bin, "record", t.repo, slug, "--dry-run", "--json"}
+	full := []string{t.bin, "record", t.repo, slug, "--dry-run", jsonFlag}
 	res, err := coreexec.Runner{}.Run(ctx, &core.Command{Argv: full, Env: toolEnv()})
 	if err != nil {
 		return DryRunResult{}, jq.NewErrf("record --dry-run: %s", err)

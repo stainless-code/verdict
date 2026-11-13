@@ -24,12 +24,8 @@ const rootLocation = "$"
 
 func buildConfig(root map[string]any) (*core.Config, *core.RefusalError) {
 	cfg := &core.Config{SchemaVersion: "1"}
-	if raw, ok := root["$schema"]; ok {
-		str, isStr := raw.(string)
-		if !isStr {
-			return nil, refuse(CodeBadConfig, "$schema: want a string, got %s", jsonKind(raw))
-		}
-		cfg.SchemaRef = str
+	if schemaRef, ok := root["$schema"].(string); ok {
+		cfg.SchemaRef = schemaRef
 	}
 	var ref *core.RefusalError
 	if cfg.Defaults, ref = presentNested(root, defaultsKey, rootLocation, buildDefaults); ref != nil {
@@ -39,6 +35,9 @@ func buildConfig(root map[string]any) (*core.Config, *core.RefusalError) {
 		return nil, ref
 	}
 	if cfg.Index, ref = presentNested(root, "index", rootLocation, buildIndex); ref != nil {
+		return nil, ref
+	}
+	if cfg.SeverityWeights, ref = presentNested(root, "severity_weights", rootLocation, buildSeverityWeights); ref != nil {
 		return nil, ref
 	}
 	if ref = buildConfigTail(cfg, root); ref != nil {

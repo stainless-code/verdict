@@ -25,6 +25,7 @@
       "additionalProperties": { "$ref": "#/$defs/profile" }
     },
     "default_profile": { "type": "string" },
+    "severity_weights": { "$ref": "#/$defs/configSeverityWeights" },
     "index": { "$ref": "#/$defs/configIndex" }
   },
   "required": ["schema_version"],
@@ -60,6 +61,16 @@
       "properties": {
         "min_judged": { "type": "integer", "minimum": 1 },
         "max_fp_rate": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "configSeverityWeights": {
+      "type": "object",
+      "properties": {
+        "critical": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+        "important": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+        "informational": { "type": "integer", "minimum": 1, "maximum": 1000000 }
       },
       "required": [],
       "additionalProperties": false

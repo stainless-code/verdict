@@ -1,0 +1,3 @@
+package sample
+
+func total() int { return 1 }
