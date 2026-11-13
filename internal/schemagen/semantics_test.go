@@ -205,7 +205,10 @@ var publishedSemantics = map[string]string{
 	// returned/total/next_offset on envelope data, showData, nextData, and
 	// trendData; showData.fix widened with null so a truncated-miss show
 	// response emits item: null, fix: null with the receipt.
-	"envelope.schema.json": "5b558c112745809051268bd9825477bcca54fbf801c9f05df0850f8a106110cb",
+	// indexBlast* overlay prose: describe truncated as boolean receipt (true
+	// only when capped) rather than an integer count; prose only, no property,
+	// required key, enum, or type changed.
+	"envelope.schema.json": "34e4061d332e14348931631a9177bf9347c275b21893f641124468bf8cb37b73",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

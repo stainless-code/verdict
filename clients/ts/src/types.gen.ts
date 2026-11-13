@@ -1197,7 +1197,7 @@ export interface IndexBlastInput {
   [key: string]: unknown;
 }
 
-/** The changed declarations: each declaration whose span the diff touched, or every declaration in a --paths file. count is how many were measured and truncated is how many the limit hid; both are null when no index answered, never 0. */
+/** The changed declarations: each declaration whose span the diff touched, or every declaration in a --paths file. count is how many were measured (null when no index answered, never 0); truncated is true only when the result list was capped. */
 export interface IndexBlastSymbols {
   truncated?: boolean;
   truncation_reason?:
@@ -1219,7 +1219,7 @@ export interface IndexBlastSymbol {
   [key: string]: unknown;
 }
 
-/** The callers of the changed declarations within depth 2, walked once per target and deduplicated by call site. count, unresolved, and truncated are null when no index answered. */
+/** The callers of the changed declarations within depth 2, walked once per target and deduplicated by call site. count and unresolved are null when no index answered; truncated is true only when the result list was capped. */
 export interface IndexBlastCallers {
   truncated?: boolean;
   truncation_reason?:
@@ -1244,7 +1244,7 @@ export interface IndexBlastCaller {
   [key: string]: unknown;
 }
 
-/** The candidate tests to read for the changed declarations, strongest mechanism per file. A candidate is never a coverage claim, and count/truncated are null when no index answered. */
+/** The candidate tests to read for the changed declarations, strongest mechanism per file. A candidate is never a coverage claim; count is null when no index answered and truncated is true only when the result list was capped. */
 export interface IndexBlastTests {
   truncated?: boolean;
   truncation_reason?:
@@ -1257,7 +1257,7 @@ export interface IndexBlastTests {
   [key: string]: unknown;
 }
 
-/** The paths that moved with each changed path in one bounded co-change window, read at HEAD. count is the number of (changed path, partner) rows and partners the distinct partner paths across them; truncated is always measured: history needs no index. */
+/** The paths that moved with each changed path in one bounded co-change window, read at HEAD. count is the number of (changed path, partner) rows and partners the distinct partner paths across them: history needs no index; truncated is true only when the result list was capped. */
 export interface IndexBlastPartners {
   truncated?: boolean;
   truncation_reason?:
@@ -1280,7 +1280,7 @@ export interface IndexBlastPartner {
   [key: string]: unknown;
 }
 
-/** One ownership row per changed path, from the CODEOWNERS file at the queried tree. count and truncated are always measured. */
+/** One ownership row per changed path, from the CODEOWNERS file at the queried tree. count is always measured; truncated is true only when the result list was capped. */
 export interface IndexBlastOwners {
   truncated?: boolean;
   truncation_reason?:
