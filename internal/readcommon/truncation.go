@@ -12,23 +12,19 @@ import (
 // BundleTruncation reads the producer's receipt from bounded source artifacts.
 // Missing artifacts have no receipt; an oversized artifact is incomplete.
 func BundleTruncation(dir string) *core.Truncation {
-	if receipt := artifactTruncation(filepath.Join(dir, "truncation.json")); receipt != nil {
+	if receipt := ArtifactTruncation(filepath.Join(dir, "truncation.json")); receipt != nil {
 		return receipt
 	}
 	return SourceTruncation(dir)
 }
 
-// SourceTruncation reads source receipts without a prior fetch summary.
+// SourceTruncation reads diff/file-list receipts without a prior fetch summary.
 func SourceTruncation(dir string) *core.Truncation {
-	for _, name := range []string{"filesource.json", "threads.json", "impact.json"} {
-		if receipt := artifactTruncation(filepath.Join(dir, name)); receipt != nil {
-			return receipt
-		}
-	}
-	return nil
+	return ArtifactTruncation(filepath.Join(dir, "filesource.json"))
 }
 
-func artifactTruncation(path string) *core.Truncation {
+// ArtifactTruncation reads one artifact's truncation receipt.
+func ArtifactTruncation(path string) *core.Truncation {
 	raw, err := jq.CappedFile(path, jq.MaxFindingsBytes)
 	if errors.Is(err, jq.ErrTooLarge) {
 		return core.ScanCut(true, 0)

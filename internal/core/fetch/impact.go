@@ -136,18 +136,12 @@ func impactJSON(impact *indexcore.Impact) *jq.Obj {
 		value, _ := indexed.Get(key)
 		o.Set(key, value)
 	}
-	_, receipt := impactSectionReceipt(impact)
-	return receipt.Apply(o)
+	return o
 }
 
 // impactSection renders the capped "## impact" section: the heads and counts,
 // then the rows, fitted to [impactSectionCap] with the omitted line count.
 func impactSection(impact *indexcore.Impact) string {
-	section, _ := impactSectionReceipt(impact)
-	return section
-}
-
-func impactSectionReceipt(impact *indexcore.Impact) (string, *core.Truncation) {
 	b := impact.Data.Blast
 	lines := []string{
 		"## impact\n",
@@ -165,12 +159,7 @@ func impactSectionReceipt(impact *indexcore.Impact) (string, *core.Truncation) {
 	if hidden > 0 {
 		lines = append(lines, fmt.Sprintf("truncated: %d line(s) omitted to fit the %d KiB impact cap\n", hidden, impactCapKiB))
 	}
-	var receipt *core.Truncation
-	if hidden > 0 {
-		total := len(b.Symbols) + len(b.Callers) + len(b.Tests)
-		receipt = core.ResultCut("response_cap", total-hidden, new(total), nil)
-	}
-	return strings.Join(lines, ""), receipt
+	return strings.Join(lines, "")
 }
 
 // impactRowLines renders every row line, in list order, with each section head

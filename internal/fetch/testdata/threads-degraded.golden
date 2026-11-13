@@ -53,8 +53,7 @@ exit: 0
       "threads.json": ".verdict/state/4701/threads.json",
       "sensitive.txt": null,
       "incremental.diff": null,
-      "lenses.txt": ".verdict/state/4701/lenses.txt",
-      "truncation.json": ".verdict/state/4701/truncation.json"
+      "lenses.txt": ".verdict/state/4701/lenses.txt"
     },
     "incremental_base": null,
     "estimate": {
@@ -570,11 +569,3 @@ notes.txt (+3/-1)
 ## coverage manifest
 files in PR: 1 | files with diff hunks: 1
 omitted: (none)
---- file C/.verdict/state/4701/truncation.json ---
-{
-  "truncated": true,
-  "truncation_reason": "scan_cap",
-  "returned": 0,
-  "total": null,
-  "next_offset": null
-}

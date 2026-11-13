@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
-	indexcore "github.com/stainless-code/verdict/internal/core/index"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -32,15 +31,28 @@ func TestChunkReceipt(t *testing.T) {
 	}
 }
 
-func TestImpactCapReceipt(t *testing.T) {
+func TestImpactSectionCapDoesNotTruncateImpactJSONOrBundle(t *testing.T) {
 	t.Parallel()
-	impact := impactFixture()
-	for range 1000 {
-		impact.Data.Blast.Tests = append(impact.Data.Blast.Tests, indexcore.TestRow{Path: "candidate_test.go", Via: "same-package"})
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "toc.txt"), []byte("# TOC\n"), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	_, receipt := impactSectionReceipt(impact)
-	if receipt == nil || receipt.TruncationReason != "response_cap" || receipt.Total == nil || *receipt.Total != 1003 || receipt.Returned >= 1003 {
-		t.Fatalf("impact receipt = %+v", receipt)
+	impact := impactFixture()
+	widenBlast(impact.Data.Blast)
+	ctx2, _, _ := impactRunCtx(t, dir)
+	if err := writeImpactFiles(ctx2, impact); err != nil {
+		t.Fatal(err)
+	}
+	doc := impactJSON(impact)
+	if v, ok := doc.Get("truncated"); ok {
+		t.Fatalf("impact.json truncated = %v, want omitted when only toc.txt section capped", v)
+	}
+	data := &core.FetchData{Dir: dir, Files: 3}
+	if err := finishTruncation(data); err != nil {
+		t.Fatal(err)
+	}
+	if data.Receipt != nil || readcommon.BundleTruncation(dir) != nil {
+		t.Fatalf("bundle receipt = %+v / %+v, want nil when only impact section or sub-list is capped", data.Receipt, readcommon.BundleTruncation(dir))
 	}
 }
 

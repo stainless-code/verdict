@@ -133,3 +133,19 @@ func TestShowUnknownSigWithoutReceiptRefuses(t *testing.T) {
 		t.Fatalf("refusal = %+v, want unknown-sig", ref)
 	}
 }
+
+func TestReadersIgnoreAuxiliaryArtifactTruncation(t *testing.T) {
+	req := fixture(t, "["+openFinding+"]")
+	writeFile(t, ".verdict/state/5101/impact.json", truncationReceipt)
+	writeFile(t, ".verdict/state/5101/threads.json", truncationReceipt)
+	nextResp, ref := reportcore.RunNext(context.Background(), &core.NextRequest{ReadRequest: req})
+	if ref != nil {
+		t.Fatalf("RunNext refusal: %v", ref)
+	}
+	if nextResp.Receipt != nil {
+		t.Fatalf("next receipt = %+v, want nil when only impact.json/threads.json carry truncation", nextResp.Receipt)
+	}
+	if _, ref := reportcore.RunShow(context.Background(), &core.ShowRequest{ReadRequest: req, Sig: "deadbeef"}); ref == nil || ref.Code != "unknown-sig" {
+		t.Fatalf("show refusal = %+v, want unknown-sig when findings store is complete", ref)
+	}
+}

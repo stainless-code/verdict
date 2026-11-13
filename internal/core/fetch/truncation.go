@@ -14,12 +14,18 @@ import (
 func finishTruncation(data *core.FetchData) error {
 	if source := readcommon.SourceTruncation(data.Dir); source != nil {
 		data.Receipt = source
-	} else if data.Receipt != nil {
+	} else if data.Receipt != nil && data.Receipt.TruncationReason != "chunk_cap" {
 		data.Receipt = core.ResultCut(data.Receipt.TruncationReason, int(readcommon.NumOr(data.Files)), nil, nil)
 	}
 	path := filepath.Join(data.Dir, "truncation.json")
-	if data.Receipt == nil {
-		return removeTruncation(path)
+	if data.Receipt == nil || data.Receipt.TruncationReason == "chunk_cap" {
+		if err := removeTruncation(path); err != nil {
+			return err
+		}
+		if data.Receipt == nil {
+			data.Receipt = readcommon.ArtifactTruncation(filepath.Join(data.Dir, "threads.json"))
+		}
+		return nil
 	}
 	if err := atomic.WriteFile(path, []byte(jq.PrettyOrdered(core.Wire(data.Receipt)))); err != nil {
 		return truncationWriteError(err)
