@@ -20,6 +20,10 @@ if [ "${1:-}" = "pr" ] && [ "${2:-}" = "view" ]; then
   printf '%s' '{"headRefOid":"cccccccccccccccccccccccccccccccccccccccc","state":"OPEN","mergedAt":null}'
   exit 0
 fi
+if [ "$*" = "api repos/acme/app/pulls/4960/comments --paginate --slurp" ]; then
+  printf '%s' '[[{"pull_request_review_id":7,"body":"Security boundary bug here with enough substance.","path":"notes.txt","reactions":{"+1":1,"-1":1}}]]'
+  exit 0
+fi
 if [ "${1:-}" = "api" ]; then
   printf '%s' '["notes.txt"]'
   exit 0
@@ -138,7 +142,7 @@ else
 fi
 
 # 6. trend carries the map on the rollup and the per-bundle row.
-run_review trend acme/app --json
+run_review trend acme/app --rules --json
 assert_exit "trend --json exits 0" 0
 if jq -e --arg pr "$PR" '.data.per_bundle[] | select(.bundle == $pr) | .by_category.security == 1' <"$EVAL_OUT" >/dev/null; then
   good "trend per-bundle row carries the security count"
@@ -149,6 +153,28 @@ if jq -e '.data.by_category | type == "object"' <"$EVAL_OUT" >/dev/null; then
   good "trend rollup carries by_category"
 else
   bad "trend rollup misses by_category"
+fi
+
+
+if jq -e '.data.rules | type == "object"' <"$EVAL_OUT" >/dev/null; then
+  good "trend --rules publishes rule buckets"
+else
+  bad "trend --rules missing rule buckets"
+fi
+
+run_review calibrate acme/app "$PR" --reactions --json
+assert_exit "reaction read exits 0" 0
+if jq -e '.data.proposals | length == 1 and .[0].proposed == "helpful"' <"$EVAL_OUT" >/dev/null; then
+  good "unreasoned downvote never becomes a claim"
+else
+  bad "unexpected unreasoned reaction proposals"
+fi
+run_review calibrate acme/app "$PR" --reactions --reaction-reason 'The cited branch is unreachable.' --json
+assert_exit "reasoned reaction read exits 0" 0
+if jq -e '.data.proposals | map(select(.proposed == "false-positive"))[0].claim.rationale == "The cited branch is unreachable."' <"$EVAL_OUT" >/dev/null; then
+  good "reasoned downvote proposes an existing triage claim"
+else
+  bad "missing reasoned triage claim"
 fi
 
 eval_end

@@ -121,6 +121,13 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if err := ctx.Err(); err != nil {
 		return nil, &core.RefusalError{Code: "canceled", Message: "canceled before calibrate completed"}
 	}
+	if req.invalidReactionMode() {
+		return nil, &core.RefusalError{
+			Code:    codeBadJudgment,
+			Message: "reactions require a separate live run; reaction reasons need --reactions",
+		}
+	}
+
 	dir, ref := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
 	if ref != nil {
 		return nil, st.withWarnings(ref)
@@ -128,7 +135,11 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if req.Reactions {
 		return st.runReactions(ctx, dir)
 	}
-	if req.Probe {
+	return st.runCalibration(ctx, dir)
+}
+
+func (st *state) runCalibration(ctx context.Context, dir string) (*Response, *core.RefusalError) {
+	if st.req.Probe {
 		if ref := st.runProbe(dir); ref != nil {
 			return nil, ref
 		}
@@ -216,4 +227,8 @@ func (st *state) persistCalibration(dir string) {
 	if err := atomic.WriteFile(filepath.Join(dir, "calibration.json"), []byte(jq.PrettyOrdered(doc))); err != nil {
 		st.warn("cannot save calibration.json: " + err.Error())
 	}
+}
+
+func (req *Request) invalidReactionMode() bool {
+	return req.Reactions && req.Probe || req.ReactionReason != "" && !req.Reactions
 }

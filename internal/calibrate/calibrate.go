@@ -29,14 +29,8 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if code, done := r.Canceled(ctx, "calibrate"); done {
 		return code
 	}
-	if st.reactions && st.probe {
-		return usage(r, "--reactions and --probe are mutually exclusive")
-	}
-	if st.reason != "" && !st.reactions {
-		return usage(r, "--reaction-reason needs --reactions")
-	}
-	if !st.probe && (len(st.specs) > 0 || st.judgeFile != "") {
-		return r.ReportUsage(&cli.UsageError{Message: "--judge and --judge-file need --probe (judgments only merge on a probe run)"})
+	if msg := st.validationMessage(); msg != "" {
+		return usage(r, msg)
 	}
 	resp, ref := calibratecore.Run(ctx, calibrateRequest(r, req, st))
 	if ref != nil {
@@ -73,11 +67,11 @@ func calibrateRequest(r *cli.Runner, req Request, st flagState) *calibratecore.R
 
 // flagState carries the calibrate flag parse.
 type flagState struct {
-	reactions bool
 	reason    string
 	judgeFile string
 	specs     []string
 	probe     bool
+	reactions bool
 }
 
 // parseFlags parses the calibrate flags, in shell order: missing values
@@ -188,4 +182,17 @@ func takeJudgeFileEq(st *flagState, r *cli.Runner, value string, i int) (int, in
 	}
 	st.judgeFile = value
 	return i + 1, 0, false
+}
+
+func (st flagState) validationMessage() string {
+	if st.reactions && st.probe {
+		return "--reactions and --probe are mutually exclusive"
+	}
+	if st.reason != "" && !st.reactions {
+		return "--reaction-reason needs --reactions"
+	}
+	if !st.probe && (len(st.specs) > 0 || st.judgeFile != "") {
+		return "--judge and --judge-file need --probe (judgments only merge on a probe run)"
+	}
+	return ""
 }

@@ -18,9 +18,9 @@ _verdict_flags() { # $1 = verb
     verify) printf '%s\n' --timeout --group --command --sandbox --json;;
     config) printf '%s\n' --explain --preview --file --json;;
     doctor) printf '%s\n' --provider --json;;
-    calibrate) printf '%s\n' --probe --judge --judge-file --json;;
+    calibrate) printf '%s\n' --reactions --reaction-reason --probe --judge --judge-file --json;;
     record) printf '%s\n' --dry-run --strict --cost-names --require-coverage --json;;
-    trend) printf '%s\n' --overlap --resolution --json;;
+    trend) printf '%s\n' --rules --overlap --resolution --json;;
     index) printf '%s\n' build status prune callers tests-for co-changed owners blast-radius --from --at --depth --limit --commits --since --min-count --symbol --pr --paths --json;;
     backtest) printf '%s\n' mine replay score --since --until --run --agent --max-reviews --budget-usd --timeout --rounds --json;;
     threads) printf '%s\n' --provider --thread --dry-run --json;;

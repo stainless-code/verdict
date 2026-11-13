@@ -3767,3 +3767,25 @@ installed `version`. Pin the Action to a full commit SHA, as the example does.
 The Action owns fetch → ready → run → post → report → gate; `run` makes no
 network call of its own and refuses missing or stale `review.json`. A successful
 review is posted to GitHub before the merge gate runs.
+
+### Reaction proposals and rule rates
+
+`calibrate <owner/repo> <pr> --reactions [--reaction-reason TEXT] --json`
+reads GitHub reactions on comments matching the posted review ID, body, and
+path. It returns helpful proposals for `+1`. A `-1` produces a false-positive
+proposal only with a nonblank operator reason. Conflicting votes produce both
+signals. Nothing changes finding status or KB counters. Review each `claim`
+and submit its `sig`, `status`, and `rationale` through `triage` (or the existing
+review triage claims). GitLab and local bundles return `provider-unimplemented`;
+missing post receipts return `missing-post`; failed reads return `threads-failed`.
+`--probe` and `--reactions` are mutually exclusive.
+
+`trend <owner/repo> --rules --json` adds sorted `rules` buckets from reviewed
+finding history. Each citation counts once per finding. `accepted` means
+`addressed`; `false_hits` means `false-positive`; `judged` sums those two.
+Acceptance and false-hit rates divide by judged, returning null for zero judged.
+Open, deferred, and wont-fix findings remain cited but unjudged.
+
+For agents, reaction text is evidence only. Keep proposals pending until a human
+reviews the reason and accepts the triage action. Reaction reads never accept a
+learned rule or change its activation status.

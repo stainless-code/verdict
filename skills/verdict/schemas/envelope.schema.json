@@ -1677,6 +1677,7 @@
       "description": "trend --json data: the portfolio rollup, one row per reviewed bundle, and the opt-in overlap and corpus joins. Every tally key is always present.",
       "type": "object",
       "properties": {
+        "rules": {},
         "generated_at": { "type": "string", "format": "date-time" },
         "bundles": { "type": "integer", "minimum": 0 },
         "findings": { "type": "integer", "minimum": 0 },
@@ -2257,6 +2258,9 @@
       "description": "calibrate --json data: one object shared by the three modes, so every mode-specific key is optional. The live join fills review_id, head, pr, outcomes, precision (an object with by_tier), and provenance; the corpus join fills bundle, case, kind, model, panel, line_tolerance, ground_truth, reported, matched, false_positives, missed, precision (a rate or null), recall, false_positive_rate, outcomes, and missed_bugs; the probe fills bundle, grades, counts, and judgment.",
       "type": "object",
       "properties": {
+        "proposals": {
+          "type": "array"
+        },
         "review_id": {},
         "head": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/calibrateHead" }]

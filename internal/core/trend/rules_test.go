@@ -1,10 +1,12 @@
 package trendcore
 
 import (
-	"github.com/stainless-code/verdict/internal/jq"
 	"testing"
+
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
+// TestRuleAudit pins the published reaction or rule contract.
 func TestRuleAudit(t *testing.T) {
 	st := &state{}
 	finding := func(status string, ids ...any) any { return jq.NewObj("status", status, "kb", ids) }
