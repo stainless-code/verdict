@@ -31,8 +31,8 @@ func TestPanelReceiptSchema(t *testing.T) {
 
 // TestPanelReportSummarySchema pins the report's generated verifier profile.
 func TestPanelReportSummarySchema(t *testing.T) {
+	schema := loadSchemaDocument(t, "envelope.schema.json")
 	response := runReportFixture(t)
 	response.Data.Verification = &core.PanelSummary{Verifiers: 2, Confirmed: 1, Contested: 1, Single: 0}
-	schema := loadSchemaDocument(t, "envelope.schema.json")
 	validateWire(t, schema, "$", defOf(t, schema, "reportData"), decodeWire(t, response.Data.Wire()))
 }
