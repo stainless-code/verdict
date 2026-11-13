@@ -273,7 +273,7 @@ func assertThreadsTally(t *testing.T, out *verdict.ThreadsResponse) {
 func assertThreadsData(t *testing.T, out *verdict.ThreadsResponse) {
 	t.Helper()
 	want := `{"dir":".verdict/state/7","file":".verdict/state/7/threads.json","provider":"github",` +
-		`"head_sha":"` + sdkHeadA + `","fetched_at":"` + sdkAt + `","truncated":false,` +
+		`"head_sha":"` + sdkHeadA + `","fetched_at":"` + sdkAt + `",` +
 		`"threads":2,"open":1,"outdated":1,"verdict":0}`
 	if got := string(out.Data); got != want {
 		t.Errorf("data = %s\nwant   %s", got, want)
