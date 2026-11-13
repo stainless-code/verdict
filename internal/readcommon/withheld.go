@@ -4,6 +4,8 @@ import (
 	"io"
 	"os"
 
+	"github.com/stainless-code/verdict/internal/config"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -63,4 +65,13 @@ func VisibleFindings(entries []any) []any {
 		}
 	}
 	return out
+}
+
+// UnlabelledUnderFloor reports whether entry is a visible, non-moved finding
+// with no severity under an active floor.
+func UnlabelledUnderFloor(entry any, floor string) bool {
+	return FieldOf(entry, "heading") != core.MovedSectionHeading &&
+		WithheldSource(entry) == "" &&
+		config.SeverityRank(floor) > 0 &&
+		config.SeverityRank(jq.StrOf(FieldOf(entry, "severity"))) == 0
 }

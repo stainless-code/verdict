@@ -85,7 +85,7 @@ func (st *state) floorFinding(entry any) int {
 	severity := suppressionString(e, fieldSeverity)
 	rank := config.SeverityRank(severity)
 	st.floorEntry(e, floor, severity, rank)
-	if config.SeverityRank(floor) > 0 && rank == 0 {
+	if readcommon.UnlabelledUnderFloor(e, floor) {
 		return 1
 	}
 	return 0

@@ -33,6 +33,18 @@ func TestWithheldSummaryCountsNullSeverity(t *testing.T) {
 	}
 }
 
+func TestWithheldSummarySkipsAlreadyWithheldNullSeverity(t *testing.T) {
+	st := policyTestState([]any{
+		jq.NewObj("severity", nil, "withheld", jq.NewObj("source", "agent", "reason", "An intentional compatibility exception.", "at", "2026-11-13T12:00:00Z")),
+		jq.NewObj("severity", nil, "withheld", jq.NewObj("source", "exclusion", "reason", "excluded path", "at", "2026-11-13T12:00:00Z")),
+	}, nil)
+	st.flags.MinSeverity = "important"
+	got := st.withholdingSummary()
+	if got == nil || got.Total != 2 || got.Unlabelled != 0 {
+		t.Fatalf("summary = %+v; want Total=2 Unlabelled=0", got)
+	}
+}
+
 func TestWithheldFindingAbsentFromPayload(t *testing.T) {
 	e := jq.NewObj("sig", "abc", "withheld", jq.NewObj("source", "agent", "reason", "An intentional compatibility exception.", "at", "2026-11-13T12:00:00Z"))
 	st := policyTestState([]any{e}, nil)

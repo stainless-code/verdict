@@ -76,3 +76,15 @@ func TestWithheldSectionNestedFences(t *testing.T) {
 		}
 	}
 }
+
+func TestFloorDoesNotWarnForAlreadyWithheldNullSeverity(t *testing.T) {
+	agentWithheld := jq.NewObj("sig", "a1", "path", "a.go", "severity", nil, "status", "open",
+		"withheld", jq.NewObj("source", "agent", "reason", "An intentional compatibility exception.", "at", "2026-11-13T12:00:00Z"))
+	exclWithheld := jq.NewObj("sig", "a2", "path", "vendor/a.go", "severity", nil, "status", "open",
+		"withheld", jq.NewObj("source", "exclusion", "reason", "excluded path", "at", "2026-11-13T12:00:00Z"))
+	st := &state{cmd: "post", minSeverity: "important", entries: []any{agentWithheld, exclWithheld}, now: "2026-11-13T12:00:00Z"}
+	st.applyPostFloor()
+	if len(st.warnings) != 0 {
+		t.Fatalf("warnings = %q; want none for already-withheld unlabelled findings", st.warnings)
+	}
+}
