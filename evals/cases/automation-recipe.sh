@@ -131,7 +131,7 @@ agent_step_body() {
 # agent_step_env prints the step's `env:` mapping as KEY=VALUE lines. A GitHub
 # expression becomes a placeholder: the case never holds a real credential.
 agent_step_env() {
-  awk '
+  awk -v resolve="${1:-true}" '
     /^    - name: / { want = (index($0, "Agent review") > 0); next }
     want && /^      env:$/ { env = 1; next }
     env && /^      [a-z]/ { env = 0 }
@@ -142,6 +142,7 @@ agent_step_env() {
       sub(/:.*$/, "", key)
       value = line
       sub(/^[^:]*: */, "", value)
+      if (resolve == "false") { print key "=" value; next }
       if (key == "VERDICT_AGENT") value = "claude"
       else if (key == "VERDICT_PR") value = "4242"
       else if (key == "VERDICT_REPOSITORY") value = "acme/app"
@@ -175,6 +176,14 @@ sed -e 's/\${{ github\.event\.pull_request\.number }}/'"$PR_BUNDLE"'/g' \
 if grep -q -F '${{' "$STEPSH"; then
   bail "the agent step carries a GitHub expression this case cannot expand: $(grep -F -m1 '${{' "$STEPSH")"
 fi
+STEPRAW="$EVAL_SANDBOX/agent-step.raw.env"
+agent_step_env false >"$STEPRAW"
+for binding in \
+  'VERDICT_AGENT=${{ inputs.agent }}' \
+  'VERDICT_REPOSITORY=${{ inputs.repository }}' \
+  'VERDICT_PR=${{ inputs.pull-request }}'; do
+  assert_file_grep "agent step input binding $binding" "$STEPRAW" "$binding" "-Fx"
+done
 agent_step_env >"$STEPENV"
 # The agent gets the diff and its own model key, never the workflow's write
 # token: GH_TOKEN is scoped to the steps that call gh.
