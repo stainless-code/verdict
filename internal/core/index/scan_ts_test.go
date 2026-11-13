@@ -3,7 +3,6 @@ package indexcore
 import (
 	"strings"
 	"testing"
-	"time"
 )
 
 // tsDeclSource is one TypeScript file carrying every declaration form the
@@ -247,41 +246,31 @@ func denseBlocks(size int) []byte {
 	return src[:size-1]
 }
 
-// TestScanTypeScriptDenseBlocksIsLinear proves the block lookup costs the
-// file's size: eight times the input scans in about eight times the time, where
-// the per-token block rescan it replaced took sixty-four. The check compares
-// two runs of one machine rather than an absolute second count, so a slow or
-// loaded runner cannot fail a correct scan.
 func TestScanTypeScriptDenseBlocksIsLinear(t *testing.T) {
-	const runs = 2
 	small := denseBlocks(defaultFileBytes / 8)
 	big := denseBlocks(defaultFileBytes)
 	if len(big) != defaultFileBytes-1 {
 		t.Fatalf("fixture is %d bytes; want the 1 MiB cap", len(big))
 	}
-	one, eight := scanCost(t, small, runs), scanCost(t, big, runs)
-	if eight > 16*one {
-		t.Fatalf("%d KiB of class bodies took %s, %.1fx the %s of %d KiB: want linear, not tokens times blocks",
-			len(big)>>10, eight, float64(eight)/float64(one), one, len(small)>>10)
+	one, eight := scanBlockVisits(t, small, 14562), scanBlockVisits(t, big, 116508)
+	if one == 0 || eight > 16*one {
+		t.Fatalf("block inspections = %d for 127 KiB, %d for 1023 KiB; want nonzero work growing at most 16x, not tokens times blocks", one, eight)
 	}
+	t.Logf("block inspections: 127 KiB = %d; 1023 KiB = %d", one, eight)
 }
 
-// scanCost returns the fastest of runs scans of one file, so a single scheduler
-// stall or collection cycle cannot decide a linearity check.
-func scanCost(t *testing.T, src []byte, runs int) time.Duration {
+func scanBlockVisits(t *testing.T, src []byte, wantDecls int) int {
 	t.Helper()
-	var best time.Duration
-	for i := range runs {
-		start := time.Now()
-		s := parseShard("blob", src, langTypeScript, defaultRefsPerFile)
-		if len(s.Decls) < 1000 {
-			t.Fatalf("fixture read %d decls; want every class and method", len(s.Decls))
-		}
-		if d := time.Since(start); i == 0 || d < best {
-			best = d
-		}
+	lexer := &tsLexer{src: src, line: 1}
+	for lexer.pos < len(src) {
+		lexer.lex()
 	}
-	return best
+	buf := newFileBuf(defaultRefsPerFile)
+	visits := tsExtract(lexer.tokens, &buf)
+	if len(buf.decls) != wantDecls {
+		t.Fatalf("fixture read %d decls; want %d", len(buf.decls), wantDecls)
+	}
+	return visits
 }
 
 // BenchmarkScanTypeScriptDenseBlocks measures one declaration-dense file built
