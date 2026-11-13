@@ -29,6 +29,12 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if code, done := r.Canceled(ctx, "calibrate"); done {
 		return code
 	}
+	if st.reactions && st.probe {
+		return usage(r, "--reactions and --probe are mutually exclusive")
+	}
+	if st.reason != "" && !st.reactions {
+		return usage(r, "--reaction-reason needs --reactions")
+	}
 	if !st.probe && (len(st.specs) > 0 || st.judgeFile != "") {
 		return r.ReportUsage(&cli.UsageError{Message: "--judge and --judge-file need --probe (judgments only merge on a probe run)"})
 	}
@@ -57,15 +63,18 @@ func calibrateRequest(r *cli.Runner, req Request, st flagState) *calibratecore.R
 	read.Commander = coreexec.Runner{}
 	return &calibratecore.Request{
 		ReadRequest: read,
-		Probe:       st.probe,
-		Specs:       st.specs,
-		JudgeFile:   st.judgeFile,
-		Warnings:    append([]string{}, r.Warnings...),
+		Reactions:   st.reactions, ReactionReason: st.reason,
+		Probe:     st.probe,
+		Specs:     st.specs,
+		JudgeFile: st.judgeFile,
+		Warnings:  append([]string{}, r.Warnings...),
 	}
 }
 
 // flagState carries the calibrate flag parse.
 type flagState struct {
+	reactions bool
+	reason    string
 	judgeFile string
 	specs     []string
 	probe     bool
@@ -92,6 +101,16 @@ func parseFlags(r *cli.Runner, args []string) (flagState, int, bool) {
 func parseArg(r *cli.Runner, st *flagState, args []string, i int) (int, int, bool) {
 	a := args[i]
 	switch {
+	case a == "--reactions":
+		st.reactions = true
+		return i + 1, 0, false
+	case a == "--reaction-reason":
+		v, next, u := cli.FlagValue(args, i, "--reaction-reason", "TEXT")
+		if u != nil {
+			return 0, r.ReportUsage(u), true
+		}
+		st.reason = v
+		return next + 1, 0, false
 	case a == "--probe":
 		st.probe = true
 		return i + 1, 0, false

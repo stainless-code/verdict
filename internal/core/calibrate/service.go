@@ -62,10 +62,12 @@ const (
 // path.
 type Request struct { //nolint:govet // field grouping documents the request surface
 	core.ReadRequest
-	Probe     bool
-	Specs     []string
-	JudgeFile string
-	Warnings  []string
+	Reactions      bool
+	ReactionReason string
+	Probe          bool
+	Specs          []string
+	JudgeFile      string
+	Warnings       []string
 }
 
 // Response carries the completed calibration: the envelope fields and the
@@ -84,13 +86,17 @@ type Response struct { //nolint:govet // field grouping documents the response s
 // Data is the calibrate verb's --json data profile: exactly one of the
 // live join, the offline corpus join, or the probe grades renders.
 type Data struct {
-	live   *liveResult
-	corpus *corpusResult
-	probe  *probeResult
+	reactions *jq.Obj
+	live      *liveResult
+	corpus    *corpusResult
+	probe     *probeResult
 }
 
 // Wire renders the profile in published wire order.
 func (d *Data) Wire() *jq.Obj {
+	if d.reactions != nil {
+		return d.reactions
+	}
 	if d.probe != nil {
 		return d.probe.Wire()
 	}
@@ -118,6 +124,9 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	dir, ref := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
 	if ref != nil {
 		return nil, st.withWarnings(ref)
+	}
+	if req.Reactions {
+		return st.runReactions(ctx, dir)
 	}
 	if req.Probe {
 		if ref := st.runProbe(dir); ref != nil {
