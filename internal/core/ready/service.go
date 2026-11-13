@@ -268,7 +268,7 @@ func githubLive(ctx context.Context, st *state, dir string) *core.RefusalError {
 	writeErrFile(st, dir+"/.ready.err", stderr)
 	if !ok {
 		return st.withWarnings(&core.RefusalError{
-			Code:    "pr-read-failed",
+			Code:    waitReadCode,
 			Message: "could not read live PR state for " + st.repo + hashSep + st.pr + ": " + firstLine(stderr),
 		})
 	}

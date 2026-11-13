@@ -33,7 +33,7 @@ func gitlabLive(ctx context.Context, st *state, dir string) *core.RefusalError {
 	writeErrFile(st, dir+"/.ready.err", stderr)
 	if !ok {
 		return st.withWarnings(&core.RefusalError{
-			Code:    "pr-read-failed",
+			Code:    waitReadCode,
 			Message: "could not read live merge request state for " + st.repo + hashSep + st.pr + ": " + firstLine(stderr),
 		})
 	}
@@ -105,7 +105,7 @@ func gitlabState(m map[string]any) string {
 	case "opened":
 		return stateOpen
 	case "merged":
-		return "MERGED"
+		return waitMerged
 	case "closed", "locked":
 		return "CLOSED"
 	default:
