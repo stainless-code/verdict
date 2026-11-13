@@ -35,6 +35,9 @@ type Request struct {
 	Reason     string
 	Retire     string
 	Restore    string
+	FromBundle string
+	Propose    bool
+	DryRun     bool
 	Pack       string
 	Status     bool
 	JSONMode   bool
@@ -128,6 +131,8 @@ func (st *state) runLearn() *core.RefusalError {
 		return ref
 	}
 	switch {
+	case st.req.Propose:
+		return st.runPropose()
 	case st.req.Pack != "":
 		return st.runImport()
 	case st.req.Status:
@@ -142,6 +147,12 @@ func (st *state) runLearn() *core.RefusalError {
 }
 
 func (st *state) checkModes() *core.RefusalError {
+	if st.req.FromBundle != "" && !st.req.Propose {
+		return st.refuse(codeBadFlags, "--from-bundle requires --propose")
+	}
+	if st.req.DryRun && !st.req.Propose {
+		return st.refuse(codeBadFlags, "--dry-run requires a learning lifecycle mode")
+	}
 	if st.countModes() != 1 {
 		return st.refuse(codeBadFlags, msgNeedOneMode)
 	}
@@ -156,6 +167,9 @@ func (st *state) checkModes() *core.RefusalError {
 
 func (st *state) countModes() int {
 	modes := 0
+	if st.req.Propose {
+		modes++
+	}
 	if st.req.Pack != "" {
 		modes++
 	}
