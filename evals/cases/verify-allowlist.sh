@@ -152,4 +152,56 @@ else
   bad "V6 second record exits $EVAL_STATUS (gate leaked into record?)"
 fi
 
+# V7: Default-deny child environment filtering + --env-allowlist + .verdict/verify-env
+eval_mk_patch 5210 'env'
+FOO_TOKEN="supersecret_eval_val_12345" \
+  LC_TOKEN="lc_secret_eval_val_11111" \
+  UNLISTED_VAR="unlisted_eval_val_67890" \
+  run_review verify acme/app 5210 --json --timeout 10
+assert_exit "V7 default-deny env run" 0
+if ! grep -q "FOO_TOKEN=" "$EVAL_SANDBOX/.verdict/state/5210/.verify.out" \
+  && ! grep -q "LC_TOKEN=" "$EVAL_SANDBOX/.verdict/state/5210/.verify.out" \
+  && ! grep -q "UNLISTED_VAR=" "$EVAL_SANDBOX/.verdict/state/5210/.verify.out" \
+  && grep -q "^PATH=" "$EVAL_SANDBOX/.verdict/state/5210/.verify.out"; then
+  good "V7 default-deny drops secret and unlisted vars while keeping PATH in child env"
+else
+  bad "V7 child env leaked dropped vars or lost PATH"
+fi
+if jq -e '.warnings | any(contains("FOO_TOKEN") and contains("LC_TOKEN") and contains("UNLISTED_VAR"))' <"$EVAL_OUT" >/dev/null 2>&1 \
+  && ! grep -q "supersecret_eval_val_12345" "$EVAL_OUT" "$EVAL_ERR" \
+  && ! grep -q "lc_secret_eval_val_11111" "$EVAL_OUT" "$EVAL_ERR" \
+  && ! grep -q "unlisted_eval_val_67890" "$EVAL_OUT" "$EVAL_ERR"; then
+  good "V7 warnings list dropped variable names only, never values"
+else
+  bad "V7 warnings missing dropped names or leaked values: $(cat "$EVAL_OUT")"
+fi
+
+FOO_TOKEN="supersecret_eval_val_12345" \
+  run_review verify acme/app 5210 --env-allowlist FOO_TOKEN --json --timeout 10
+assert_exit "V7 --env-allowlist opt-in run" 0
+if grep -q "^FOO_TOKEN=supersecret_eval_val_12345$" "$EVAL_SANDBOX/.verdict/state/5210/.verify.out" \
+  && ! grep -q "supersecret_eval_val_12345" "$EVAL_OUT" \
+  && grep -q '\*\*\*REDACTED\*\*\*' "$EVAL_OUT"; then
+  good "V7 --env-allowlist forwards FOO_TOKEN to child while redacting its value in outputTail"
+else
+  bad "V7 --env-allowlist failed to forward FOO_TOKEN or leaked value in envelope"
+fi
+
+mkdir -p "$EVAL_SANDBOX/.verdict"
+printf '# base allowlist\nUNLISTED_VAR\n' > "$EVAL_SANDBOX/.verdict/verify-env"
+eval_mk_bundle 5211
+printf 'FOO_TOKEN\n' > "$EVAL_SANDBOX/.verdict/verify-env"
+jq -n '{verifyCmd:"env"}' > "$EVAL_SANDBOX/.verdict/state/5211/patch.json"
+FOO_TOKEN="supersecret_eval_val_12345" \
+  UNLISTED_VAR="unlisted_eval_val_67890" \
+  run_review verify acme/app 5211 --json --timeout 10
+assert_exit "V7 base-snapshotted .verdict/verify-env run" 0
+if grep -q "^UNLISTED_VAR=unlisted_eval_val_67890$" "$EVAL_SANDBOX/.verdict/state/5211/.verify.out" \
+  && ! grep -q "FOO_TOKEN=" "$EVAL_SANDBOX/.verdict/state/5211/.verify.out"; then
+  good "V7 base-snapshotted .verdict/verify-env passes UNLISTED_VAR while ignoring worktree head"
+else
+  bad "V7 .verdict/verify-env snapshot boundary failed"
+fi
+rm -f "$EVAL_SANDBOX/.verdict/verify-env"
+
 eval_end

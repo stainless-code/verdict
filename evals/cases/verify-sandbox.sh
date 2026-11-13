@@ -167,7 +167,7 @@ export PORT
 mkpatch 'curl -s http://127.0.0.1:$PORT/hit >/dev/null && printf reached > sandbox-net.txt'
 rm -f "$EVAL_SANDBOX/sandbox-net.txt"
 : > "$HITS"
-run_review verify acme/app 5201 --json --timeout 10
+run_review verify acme/app 5201 --env-allowlist PORT --json --timeout 10
 assert_exit "unsandboxed control" 0
 assert_eq "unsandboxed control reaches the listener" 1 "$(hits)"
 if [ -f "$EVAL_SANDBOX/sandbox-net.txt" ]; then
@@ -180,7 +180,7 @@ fi
 # its own loopback, so the connection fails and the marker is never written.
 rm -f "$EVAL_SANDBOX/sandbox-net.txt"
 : > "$HITS"
-run_review verify acme/app 5201 --sandbox --json --timeout 10
+run_review verify acme/app 5201 --sandbox --env-allowlist PORT --json --timeout 10
 assert_exit "sandboxed listener run" 0
 if jq -e '.error == null and .data.sandboxed == true and .data.exit != 0' <"$EVAL_OUT" >/dev/null 2>&1; then
   good "sandboxed listener run fails to connect (exit $(jq -r '.data.exit' <"$EVAL_OUT"))"
@@ -244,7 +244,7 @@ export VERDICT_SANDBOX_PROC=/proc
 export VERDICT_SANDBOX_HOSTPID=$$
 mkpatch "c=\"\$VERDICT_SANDBOX_PROC/$CANARY_PID\"; s=\"\$VERDICT_SANDBOX_PROC/self\"; h=\"\$VERDICT_SANDBOX_PROC/\$VERDICT_SANDBOX_HOSTPID\"; if grep -q sandbox-sentinel \"\$c/environ\" 2>/dev/null; then printf leak > sandbox-proc.txt; elif [ -e \"\$h\" ]; then printf leak > sandbox-proc.txt; elif [ -r \"\$s/environ\" ] && [ -d \"\$VERDICT_SANDBOX_PROC/1\" ]; then printf hidden > sandbox-proc.txt; else printf broken > sandbox-proc.txt; fi"
 rm -f "$EVAL_SANDBOX/sandbox-proc.txt"
-run_review verify acme/app 5201 --sandbox --json --timeout 10
+run_review verify acme/app 5201 --sandbox --env-allowlist VERDICT_SANDBOX_PROC,VERDICT_SANDBOX_HOSTPID --json --timeout 10
 assert_exit "sandboxed /proc run" 0
 if [ -f "$EVAL_SANDBOX/sandbox-proc.txt" ] && [ "$(cat "$EVAL_SANDBOX/sandbox-proc.txt")" = "hidden" ]; then
   good "no host PID or environment is visible in /proc"
@@ -332,7 +332,7 @@ EOF
     mkpatch 'curl -s --noproxy "*" --unix-socket "$VERDICT_SANDBOX_SOCK" http://localhost/hit >/dev/null && printf reached > sandbox-sock.txt'
     rm -f "$EVAL_SANDBOX/sandbox-sock.txt"
     : > "$SOCKHITS"
-    run_review verify acme/app 5201 --json --timeout 10
+    run_review verify acme/app 5201 --env-allowlist VERDICT_SANDBOX_SOCK --json --timeout 10
     assert_exit "unsandboxed unix-socket control" 0
     assert_eq "unsandboxed unix-socket control reaches the listener" 1 "$(wc -l <"$SOCKHITS" | tr -d ' ')"
     if [ -f "$EVAL_SANDBOX/sandbox-sock.txt" ]; then
@@ -343,7 +343,7 @@ EOF
 
     rm -f "$EVAL_SANDBOX/sandbox-sock.txt"
     : > "$SOCKHITS"
-    run_review verify acme/app 5201 --sandbox --json --timeout 10
+    run_review verify acme/app 5201 --sandbox --env-allowlist VERDICT_SANDBOX_SOCK --json --timeout 10
     assert_exit "sandboxed unix-socket run" 0
     if jq -e '.error == null and .data.sandboxed == true and .data.exit != 0' <"$EVAL_OUT" >/dev/null 2>&1; then
       good "sandboxed unix-socket run fails to connect (exit $(jq -r '.data.exit' <"$EVAL_OUT"))"

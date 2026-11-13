@@ -251,7 +251,7 @@ eval_mk_bundle() {
   # Control files the case wrote at the repo root are the fixture's base
   # controls: commit them so the producer pins them into the snapshot.
   mkdir -p "$repo/.verdict"
-  for rel in config.json kb.jsonl kb-joins.jsonl learnings.md overrides; do
+  for rel in config.json kb.jsonl kb-joins.jsonl learnings.md overrides verify-env; do
     rm -rf "$repo/.verdict/$rel"
     [ -e "$EVAL_SANDBOX/.verdict/$rel" ] || continue
     cp -R "$EVAL_SANDBOX/.verdict/$rel" "$repo/.verdict/$rel"
@@ -324,7 +324,7 @@ eval_seed_base() {
 eval_commit_controls() {
   (
     cd "$EVAL_SANDBOX" || exit 99
-    for f in config.json kb.jsonl learnings.md overrides/preamble.md overrides/footer-order.md \
+    for f in config.json kb.jsonl learnings.md verify-env overrides/preamble.md overrides/footer-order.md \
       overrides/walkthrough-threshold.md overrides/attribution.md; do
       if [ -f ".verdict/$f" ]; then
         git add -f ".verdict/$f"
