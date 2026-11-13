@@ -121,6 +121,9 @@ func (forgejoHost) publication(ctx context.Context, cmdr Commander, env map[stri
 func forgejoPublication(base string, reviews []map[string]any, read func(string) ([]map[string]any, error)) (remotePublication, error) {
 	remote := remotePublication{reviews: publicationReviews(reviews)}
 	for _, review := range reviews {
+		if jq.StrOf(review["state"]) == forgejo.StatePending {
+			continue
+		}
 		comments, err := readPages(base+"/"+jq.Interp(review["id"])+"/comments", read)
 		if err != nil {
 			return remotePublication{}, err

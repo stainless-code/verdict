@@ -32,3 +32,28 @@ func TestCRForgejoPositionPairsExactOccurrence(t *testing.T) {
 		}
 	}
 }
+
+func TestCRForgejoDraftCommentsExcluded(t *testing.T) {
+	t.Parallel()
+	st := crVerdictState(t, "COMMENT")
+	finding := projectComment(jq.NewObj("path", "a.go", "line", 10, "body", "Draft finding."), "")
+	body, _ := finding.Get("body")
+	calls := 0
+	read := func(url string) ([]map[string]any, error) {
+		calls++
+		if url != "reviews/2/comments?limit=50&page=1" {
+			t.Fatalf("draft comments read: %s", url)
+		}
+		return []map[string]any{{"path": "a.go", "position": 10, "body": body}}, nil
+	}
+	remote, err := forgejoPublication("reviews", []map[string]any{
+		{"id": 1, "state": "PENDING", "body": st.body, "commit_id": st.commitID},
+		{"id": 2, "state": "COMMENT", "body": st.body, "commit_id": st.commitID},
+	}, read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 || len(remote.comments) != 1 || len(remote.reviews) != 1 {
+		t.Fatalf("publication = %+v, calls %d", remote, calls)
+	}
+}
