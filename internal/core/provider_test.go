@@ -24,6 +24,18 @@ func TestProviderRemoteForms(t *testing.T) {
 	for _, tc := range []struct{ remote, want string }{
 		{"https://github.com/a/b.git", "github"},
 		{"git@gitlab.com:a/b", "gitlab"},
+		{"gitlab.com:a/b.git", "gitlab"},
+		{"git+ssh://git@gitlab.com/a/b.git", "gitlab"},
+		{"ssh+git://git@gitlab.com/a/b.git", "gitlab"},
+		{"ssh://gitlab.com:2222/a/b", "gitlab"},
+		{"https://GITLAB.COM/a/b/", "gitlab"},
+		{"./gitlab.com:a/b.git", ""},
+		{"/gitlab.com:a/b.git", ""},
+		{`C:\gitlab.com\a\b.git`, ""},
+		{"file://gitlab.com/a/b.git", ""},
+		{"https://www.gitlab.com/a/b.git", ""},
+		{"https://gitlab.com/a/b.git?token=secret", ""},
+		{"https://gitlab.com/a/b.git#secret", ""},
 		{"ssh://git@codeberg.org:2222/a/b.git", "forgejo"},
 		{"https://user:secret@bitbucket.org:443/a/b", "bitbucket"},
 		{"https://dev.azure.com/org/project/_git/repo", "azure"},
@@ -94,5 +106,18 @@ func assertUnknownSource(t *testing.T, remote string, ref *RefusalError) {
 	}
 	if strings.Contains(ref.Message, remote) || strings.Contains(ref.Message, "secret") {
 		t.Fatal("remote leaked")
+	}
+}
+
+func TestProviderIPv6RemoteForms(t *testing.T) {
+	env := map[string]string{"GITLAB_HOST": "https://[2001:db8::1]:8443"}
+	for _, remote := range []string{
+		"ssh://git@[2001:db8::1]:2222/a/b.git",
+		"git@[2001:db8::1]:a/b.git",
+		"[2001:db8::1]:a/b.git",
+	} {
+		if got := providerFromRemote(remote, env); got != "gitlab" {
+			t.Errorf("%q: provider = %q, want gitlab", remote, got)
+		}
 	}
 }

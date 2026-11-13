@@ -31,12 +31,14 @@ func ResolveProvider(ctx context.Context, cmdr Commander, root, explicit string,
 }
 
 func scpRemote(raw string) string {
-	at := strings.IndexByte(raw, '@')
-	colon := strings.IndexByte(raw, ':')
-	if at < 1 || colon <= at+1 || colon == len(raw)-1 {
+	authority, path, ok := strings.Cut(raw, ":")
+	if closing := strings.Index(raw, "]:"); closing >= 0 {
+		authority, path, ok = raw[:closing+1], raw[closing+2:], true
+	}
+	if !ok || len(authority) <= 1 || path == "" || strings.ContainsAny(authority, "/\\") {
 		return ""
 	}
-	return "ssh://" + raw[:colon] + "/" + raw[colon+1:]
+	return "ssh://" + authority + "/" + path
 }
 
 func remoteHost(raw string) string {
@@ -44,8 +46,8 @@ func remoteHost(raw string) string {
 		raw = scpRemote(raw)
 	}
 	u, err := url.Parse(raw)
-	if err != nil || !slices.Contains([]string{"https", "http", "ssh"}, u.Scheme) || u.Hostname() == "" || u.Path == "" ||
-		u.RawQuery != "" || u.Fragment != "" {
+	if err != nil || !slices.Contains([]string{"https", "http", "ssh", "git+ssh", "ssh+git"}, u.Scheme) ||
+		u.Hostname() == "" || u.Path == "" || u.RawQuery != "" || u.Fragment != "" {
 		return ""
 	}
 	return strings.ToLower(u.Hostname())
