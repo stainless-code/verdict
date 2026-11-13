@@ -80,6 +80,6 @@ func render(r *cli.Runner, req readcommon.Request, resp *readycore.WaitResponse)
 		env := core.RenderEnvelope("pr-wait", req.Repo, req.Pr, resp.At, resp.Next, resp.Warnings, resp.Data.Wire(), nil)
 		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
 	} else {
-		fmt.Fprintln(r.Out, jq.Compact(resp.Data.Wire()))
+		fmt.Fprintln(r.Out, resp.Data.Wire().MarshalCompact())
 	}
 }

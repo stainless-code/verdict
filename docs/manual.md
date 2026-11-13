@@ -806,6 +806,7 @@ missing or stale receipt as required work without executing anything.
 
 | Kind                  | Blocker                                                                                |
 | --------------------- | -------------------------------------------------------------------------------------- |
+| `wait-timeout`        | The bounded build wait expired; readiness remains false.                               |
 | `ci-failing`          | N failing checks (the failing names are listed).                                       |
 | `threads-open`        | N unresolved review threads.                                                           |
 | `draft`               | The PR is still a draft.                                                               |
@@ -911,9 +912,83 @@ claimed, keyed to the same head. A claim the manifest cannot name never counts,
 and a review with no `chunks[]` key stores `0`, so the receipt never attests
 more than was written.
 
+## Bounded foreground waits
+
+```sh
+verdict pr-wait owner/repo 42 --until merged --timeout 50s --json
+verdict pr-wait owner/repo 42 --until checks-done --timeout 20m --interval 5s
+verdict pr-wait owner/repo 42 --until review-changed --timeout 50s --once --json
+verdict ready owner/repo 42 --wait-for build --timeout 20m --check --json
+```
+
+`pr-wait` reads a PR without creating a bundle or writing local files. It exits
+when `--until` holds, `--once` finishes one observation, the timeout fires, or
+its context is canceled. The timeout is required and accepts Go durations from
+`1s` through `30m`. `--interval` defaults to `1s`, must be at least `1s`, and
+cannot exceed the timeout. Backoff doubles up to the larger of `30s` and the
+initial interval, with up to 25% additional jitter. Each delay is clamped to
+the remaining budget. SIGINT and SIGTERM cancel host subprocesses as well.
+
+| `--until`        | Condition                                                                                     |
+| ---------------- | --------------------------------------------------------------------------------------------- |
+| `merged`         | The PR is merged.                                                                             |
+| `closed`         | The PR is closed or merged.                                                                   |
+| `checks-green`   | A nonempty, readable check rollup is complete with only success, neutral, or skipped results. |
+| `checks-done`    | A nonempty, readable check rollup is complete, including failed or canceled checks.           |
+| `review-changed` | Reviews or review threads differ from the first observation in this invocation.               |
+
+An empty or unknown check rollup remains pending. `review-changed --once`
+returns its baseline immediately with `condition-unmet`; no baseline is saved
+between invocations. A head change during a read or incomplete review data
+refuses `pr-read-failed` rather than claiming an unchanged or finished review.
+The GitHub view's 100-review window and thread comment pages are checked:
+100 or more reviews, truncated comments, or excessive/repeated thread pages
+refuse rather than silently dropping history.
+
+Without `--json`, stdout contains one compact JSON snapshot per observed
+change, followed by a final result line. Snapshots contain state, head, check
+completion flags, and canonical JSON strings for checks, reviews and threads.
+With `--json`, stdout is exactly one standard envelope; its `data` contains
+`outcome`, `until`, the last `snapshot` (or null), and `observations`.
+
+| Outcome           | CLI exit | Meaning                                                   |
+| ----------------- | -------- | --------------------------------------------------------- |
+| `condition-met`   | 0        | The requested condition holds.                            |
+| `condition-unmet` | 1        | `--once` observed the PR but the condition does not hold. |
+| `wait-timeout`    | 1        | The budget expired. This is data — `error` remains null.  |
+
+Refusals retain their normal exit codes; cancellation exits 3. The Go SDK's
+`PRWait` and the TypeScript client's `prWait` return typed outcome data for
+unmet conditions and timeouts. For waits longer than the TypeScript client's
+default process budget, set `timeoutMs` above the requested wait duration.
+
+MCP `pr_wait` exposes the same conditions and outcomes, with timeout defaulting
+to `50s` and capped at `50s`, below a typical 60-second client timeout. It is
+read-only with mutation class `noLocalWrites` and is available in read-only
+mode. `ready` accepts `wait_for: "build"` and `timeout` through MCP with the
+same 50-second cap.
+
+| Host    | `pr-wait` and `ready --wait-for build`                                                                                                         |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| GitHub  | Supported through `gh`; PR REST reads send `If-None-Match` when an ETag is returned. GraphQL view/thread reads do not support conditional GET. |
+| GitLab  | Explicit `provider-unimplemented` refusal; ordinary `ready` remains supported.                                                                 |
+| Forgejo | Explicit `provider-unimplemented` refusal.                                                                                                     |
+
+The saved bundle's provider is used when present; otherwise `pr-wait` defaults
+to GitHub. `--provider` selects a host explicitly. A build wait in `ready`
+requires a fetched PR bundle. It waits for completion, then computes readiness
+as usual — a failed build becomes a `ci-failing` blocker. A timeout returns
+`ready: false`, a `wait-timeout` blocker, and `data.wait.outcome: "wait-timeout"`.
+The advisory exits 0; `--check` exits 1. The same deadline bounds subsequent
+readiness reads, so reporting cannot extend the wait indefinitely.
+
+These are foreground calls, consistent with [Out of scope by design](#out-of-scope-by-design):
+watch feeds remain out of scope. There is no daemon, watcher, persisted cursor,
+webhook, listener, or MCP subscription. Killing a wait leaves no background work.
+
 ## Machine surface
 
-`fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`run`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`threads`/`trend`/`index`/`backtest`/`learn`/`pack`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
+`fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`run`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`pr-wait`/`threads`/`trend`/`index`/`backtest`/`learn`/`pack`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
 non-zero. `mcp config` also takes `--json`. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `threads` refreshes only `.verdict/state/<pr>/threads.json` from the host (all six

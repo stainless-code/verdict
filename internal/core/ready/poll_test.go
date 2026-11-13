@@ -70,3 +70,22 @@ func TestPollConditionAndError(t *testing.T) {
 		}
 	}
 }
+
+func TestPollLargeIntervalDoesNotShrink(t *testing.T) {
+	now := time.Unix(0, 0)
+	calls := 0
+	done, err := Poll(t.Context(), 3*time.Minute, time.Minute, PollRuntime{
+		Now: func() time.Time { return now },
+		Sleep: func(_ context.Context, d time.Duration) error {
+			if d != time.Minute {
+				t.Fatalf("delay %v; want 1m", d)
+			}
+			now = now.Add(d)
+			return nil
+		},
+		Jitter: func(time.Duration) time.Duration { return 0 },
+	}, func(context.Context) (bool, error) { calls++; return false, nil })
+	if done || err != nil || calls != 3 {
+		t.Fatalf("done %v err %v calls %d", done, err, calls)
+	}
+}

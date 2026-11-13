@@ -39,7 +39,7 @@ func (pendingHost) Run(_ context.Context, cmd *core.Command) (core.Result, error
 	case strings.Contains(argv, "--include"):
 		return core.Result{Stdout: "HTTP/2.0 200 OK\r\n\r\n" + `{"state":"open","head":{"sha":"abc"}}`}, nil
 	case strings.Contains(argv, "pr view"):
-		return core.Result{Stdout: `{"statusCheckRollup":[{"__typename":"CheckRun","status":"IN_PROGRESS"}],"reviews":[]}`}, nil
+		return core.Result{Stdout: `{"headRefOid":"abc","statusCheckRollup":[{"__typename":"CheckRun","status":"IN_PROGRESS"}],"reviews":[]}`}, nil
 	case strings.Contains(argv, "graphql"):
 		return core.Result{Stdout: `{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}`}, nil
 	}
@@ -64,4 +64,23 @@ func TestCLIWaitTimeoutEnvelope(t *testing.T) {
 			t.Fatalf("exit=%d stdout=%s", code, out)
 		}
 	})
+}
+
+func TestCLIWaitJSONLines(t *testing.T) {
+	out, diag := &bytes.Buffer{}, &bytes.Buffer{}
+	runner := &cli.Runner{Out: out, Diag: diag, Human: diag, Now: time.Now}
+	code := Run(t.Context(), runner, []string{"--until", "merged", "--timeout", "1s", "--once"}, core.ReadRequest{Repo: "acme/app", Pr: "42", RepoRoot: t.TempDir(), Runtime: &core.Runtime{Commander: pendingHost{}}})
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if code != 1 || len(lines) != 2 {
+		t.Fatalf("code %d stdout %s", code, out)
+	}
+	var result struct {
+		Outcome string `json:"outcome"`
+	}
+	if err := json.Unmarshal([]byte(lines[1]), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Outcome != "condition-unmet" {
+		t.Fatalf("result %s", lines[1])
+	}
 }

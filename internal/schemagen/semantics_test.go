@@ -201,7 +201,7 @@ var publishedSemantics = map[string]string{
 	// pack test: additive $defs/packTestData, packTestCase, and
 	// packTestSummary, plus the generated envelope description. Existing shapes
 	// remain unchanged.
-	"envelope.schema.json": "9e43f8e066e70a00bf5490d58aebeac28973b2faf10261cd2ff2103fbed7ac79",
+	"envelope.schema.json": "e211b10fedadd3f9a68435011c168ae41e7e0fdad0182256b69ca57d4eebd450",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

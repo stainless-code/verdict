@@ -11,7 +11,6 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/jq"
-	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 const (
@@ -25,6 +24,7 @@ type WaitSnapshot struct {
 	Head        string `json:"head"`
 	Reviews     string `json:"reviews"`
 	Threads     string `json:"threads"`
+	Checks      string `json:"checks"`
 	ChecksKnown bool   `json:"checks_known"`
 	ChecksDone  bool   `json:"checks_done"`
 	ChecksGreen bool   `json:"checks_green"`
@@ -47,22 +47,21 @@ func (p *WaitProbe) Read(ctx context.Context, req *core.ReadRequest, provider st
 	if ref != nil {
 		return nil, ref
 	}
-	raw, _, ok := coreexec.Gh(ctx, req.Commander, "pr", "view", req.Pr, "--repo", req.Repo, "--json", "statusCheckRollup,reviews")
+	raw, _, ok := coreexec.Gh(ctx, req.Commander, "pr", "view", req.Pr, "--repo", req.Repo, "--json",
+		"headRefOid,statusCheckRollup,reviews")
 	if !ok {
 		return nil, waitReadFailed()
 	}
-	var detail struct {
-		Checks  []map[string]any `json:"statusCheckRollup"`
-		Reviews []any            `json:"reviews"`
+	detail, ref := decodeWaitDetail(raw, live)
+	if ref != nil {
+		return nil, ref
 	}
-	if json.Unmarshal([]byte(raw), &detail) != nil {
-		return nil, waitReadFailed()
+
+	threads, ref := waitThreads(ctx, req)
+	if ref != nil {
+		return nil, ref
 	}
-	owner, name := readcommon.SplitOwner(req.Repo)
-	threads, _, err := readcommon.Threads(ctx, req.Commander, owner, name, req.Pr, true)
-	if err != nil {
-		return nil, waitReadFailed()
-	}
+
 	return waitSnapshot(live, detail.Checks, detail.Reviews, threads)
 }
 
@@ -76,7 +75,7 @@ func waitSnapshot(live map[string]any, checks []map[string]any, reviews, threads
 	}
 	snapshot := &WaitSnapshot{
 		State: strings.ToUpper(jq.StrOf(live["state"])), Head: jq.StrOf(head["sha"]),
-		Reviews: jq.Compact(reviews), Threads: jq.Compact(threads),
+		Reviews: jq.Compact(reviews), Threads: jq.Compact(threads), Checks: jq.Compact(checks),
 	}
 	if live["merged_at"] != nil {
 		snapshot.State = waitMerged
@@ -97,10 +96,18 @@ func (p *WaitProbe) pull(ctx context.Context, req *core.ReadRequest) (map[string
 	if p.etag != "" {
 		argv = append(argv, "-H", "If-None-Match: "+p.etag)
 	}
-	raw, _, ok := coreexec.Gh(ctx, req.Commander, argv...)
-	if !ok {
+	if req.Commander == nil {
 		return nil, waitReadFailed()
 	}
+	result, err := req.Commander.Run(ctx, &core.Command{Argv: append([]string{"gh"}, argv...)})
+	if err != nil || result.StdoutTruncated {
+		return nil, waitReadFailed()
+	}
+	raw := result.Stdout
+	if result.ExitCode != 0 && !strings.Contains(strings.SplitN(raw, "\n", 2)[0], " 304 ") {
+		return nil, waitReadFailed()
+	}
+
 	return p.parsePull(raw)
 }
 
@@ -183,4 +190,25 @@ func waitStatus(check map[string]any) (bool, bool, bool) {
 		return true, false, true
 	}
 	return false, false, false
+}
+
+type waitDetail struct {
+	Head    string           `json:"headRefOid"`
+	Checks  []map[string]any `json:"statusCheckRollup"`
+	Reviews []any            `json:"reviews"`
+}
+
+func decodeWaitDetail(raw string, live map[string]any) (*waitDetail, *core.RefusalError) {
+	detail := &waitDetail{}
+	if json.Unmarshal([]byte(raw), detail) != nil {
+		return nil, waitReadFailed()
+	}
+	if detail.Reviews == nil || len(detail.Reviews) >= waitPageLimit {
+		return nil, waitReadFailed()
+	}
+	head, ok := live["head"].(map[string]any)
+	if !ok || detail.Head != jq.StrOf(head["sha"]) {
+		return nil, waitReadFailed()
+	}
+	return detail, nil
 }

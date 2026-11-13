@@ -34,9 +34,9 @@ type WaitResponse struct {
 
 // WaitData is the bounded wait outcome, including its last observation.
 type WaitData struct {
-	Snapshot     *WaitSnapshot `anyOf:"null"        json:"snapshot"`
-	Outcome      string        `json:"outcome"`
-	Until        string        `json:"until"`
+	Snapshot     *WaitSnapshot `anyOf:"null"                                                 json:"snapshot"`
+	Outcome      string        `enum:"condition-met|condition-unmet|wait-timeout"            json:"outcome"`
+	Until        string        `enum:"merged|closed|checks-green|checks-done|review-changed" json:"until"`
 	Observations int           `json:"observations"`
 }
 
@@ -77,7 +77,7 @@ func Wait(ctx context.Context, req *WaitRequest) (*WaitResponse, *core.RefusalEr
 	if err != nil {
 		return nil, waitRefusal(ctx, err)
 	}
-	data.Outcome = waitOutcome(completed && session.matched, req.Once)
+	data.Outcome = session.outcome(completed)
 	return &WaitResponse{
 		Repo: req.Repo, Pr: req.Pr, At: req.TimeUTC(),
 		Next: "inspect the wait outcome", Warnings: []string{}, Data: data,
@@ -210,3 +210,7 @@ const (
 	untilChecksDone = "checks-done"
 	outcomeTimeout  = "wait-timeout"
 )
+
+func (s *waitSession) outcome(completed bool) string {
+	return waitOutcome(completed && s.matched, completed && s.req.Once)
+}

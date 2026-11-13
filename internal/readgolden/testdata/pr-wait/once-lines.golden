@@ -1,0 +1,7 @@
+exit: 0
+--- stdout ---
+{"state":"OPEN","head":"abc","reviews":"[]","threads":"[]","checks":"[{\"__typename\":\"CheckRun\",\"conclusion\":\"SUCCESS\",\"status\":\"COMPLETED\"}]","checks_known":true,"checks_done":true,"checks_green":true}
+{"outcome":"condition-met","until":"checks-done","snapshot":{"state":"OPEN","head":"abc","reviews":"[]","threads":"[]","checks":"[{\"__typename\":\"CheckRun\",\"conclusion\":\"SUCCESS\",\"status\":\"COMPLETED\"}]","checks_known":true,"checks_done":true,"checks_green":true},"observations":1}
+--- stderr ---
+
+--- files ---

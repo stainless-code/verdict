@@ -51,6 +51,7 @@ func Poll(ctx context.Context, timeout, interval time.Duration, runtime PollRunt
 func pollLoop(ctx, parent context.Context, deadline time.Time, delay time.Duration, runtime PollRuntime,
 	condition func(context.Context) (bool, error),
 ) (bool, error) {
+	maxDelay := max(delay, pollMaxDelay)
 	for {
 		done, stop, err := pollProbe(ctx, parent, deadline, runtime, condition)
 		if stop {
@@ -59,7 +60,7 @@ func pollLoop(ctx, parent context.Context, deadline time.Time, delay time.Durati
 		if err := pollDelay(ctx, parent, deadline, delay, runtime); err != nil {
 			return false, err
 		}
-		delay = min(delay*2, pollMaxDelay)
+		delay = min(delay*2, maxDelay)
 	}
 }
 

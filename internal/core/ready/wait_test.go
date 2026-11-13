@@ -109,7 +109,7 @@ func (h *sequenceHost) detail() core.Result {
 		}
 		review = "CHANGES_REQUESTED"
 	}
-	return core.Result{Stdout: fmt.Sprintf(`{"statusCheckRollup":[{"__typename":"CheckRun","status":%q,"conclusion":%q}],"reviews":[{"state":%q}]}`, status, conclusion, review)}
+	return core.Result{Stdout: fmt.Sprintf(`{"headRefOid":"abc","statusCheckRollup":[{"__typename":"CheckRun","status":%q,"conclusion":%q}],"reviews":[{"state":%q}]}`, status, conclusion, review)}
 }
 
 func assertWaitCondition(t *testing.T, until string) {
@@ -126,5 +126,22 @@ func assertWaitCondition(t *testing.T, until string) {
 	}
 	if resp.Data.Outcome != "condition-met" || host.polls != 2 || *elapsed != time.Second || observed != 2 {
 		t.Fatalf("outcome=%s polls=%d elapsed=%v observed=%d", resp.Data.Outcome, host.polls, *elapsed, observed)
+	}
+}
+
+func TestWaitOnceDeadlineStillTimeout(t *testing.T) {
+	req, _, _ := waitTestRequest(t, "merged")
+	req.Once = true
+	req.Observe = func(*WaitSnapshot) {
+		if err := req.PollRuntime.Sleep(t.Context(), 5*time.Second); err != nil {
+			t.Fatal(err)
+		}
+	}
+	resp, ref := Wait(t.Context(), req)
+	if ref != nil {
+		t.Fatal(ref)
+	}
+	if resp.Data.Outcome != "wait-timeout" {
+		t.Fatalf("late one-shot outcome %s; want wait-timeout", resp.Data.Outcome)
 	}
 }

@@ -1265,3 +1265,24 @@ invalid normalized `threads.json`, or a failed local write. Fetch the bundle
 first and check local permissions. Pack validation refusals apply to edited
 proposal packs exactly as they do to `learn --pack`. `corrupt-store` refuses
 mining or rejection when the KB cannot be read safely; repair the store first.
+
+## `wait-timeout` (data outcome)
+
+Cause: a bounded `pr-wait` or `ready --wait-for build` call exhausted its budget.
+This is a result in `data`, not an envelope refusal code. `pr-wait` exits 1
+with `error: null`; `ready` reports not-ready and a `wait-timeout` blocker,
+exiting 0 unless `--check` requests exit 1.
+
+Fix: inspect the last snapshot and CI state, then make another bounded call if
+needed. Use MCP `pr_wait` instead of an agent sleep loop. A missing or unreadable
+check rollup never counts as complete. GitLab and Forgejo waits refuse
+`provider-unimplemented`; GitHub incomplete or inconsistent reads refuse
+`pr-read-failed`. CLI timeouts accept 1s–30m; MCP timeouts cannot exceed 50s.
+
+## `condition-unmet` (data outcome)
+
+Cause: `pr-wait --once` returned its single observation before the requested
+condition held. Exit 1 carries data with `error: null`.
+
+Fix: inspect the snapshot, or remove `--once` and supply a bounded timeout.
+For `review-changed`, each invocation starts a new baseline.
