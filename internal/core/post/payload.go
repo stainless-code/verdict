@@ -13,7 +13,6 @@ import (
 	"github.com/stainless-code/verdict/internal/overrides"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
-	sigsum "github.com/stainless-code/verdict/internal/sig"
 )
 
 const paragraphBreak = "\n\n"
@@ -27,7 +26,7 @@ func (st *state) buildPayloads() {
 		st.payloads = append(st.payloads, postPayload(
 			splitFollowHead(i+2, n)+extra, eventComment, commitIDValue(st.commitID), []any{}))
 	}
-	st.phash = sigsum.Sum(st.payloadBytes())
+	st.phash = contentDigest(strings.Join(append([]string{st.body}, st.extraParts...), "\n"), st.commitID, st.comments)
 	if !st.flags.DryRun {
 		st.body += paragraphBreak + fmt.Sprintf(reviewMarkerFormat, st.phash, st.commitID)
 		st.payloads[0] = postPayload(st.body, st.event, commitIDValue(st.commitID), st.comments)
@@ -35,17 +34,17 @@ func (st *state) buildPayloads() {
 	st.payload = st.payloads[0]
 }
 
-func postPayload(body, event string, commitID any, comments []any) string {
-	return jq.NewObj(
+func postPayload(body any, event string, commitID any, comments []any) string {
+	obj := jq.NewObj(
 		"body", body,
 		"event", event,
 		"commit_id", commitID,
 		"comments", comments,
-	).MarshalPretty()
-}
-
-func (st *state) payloadBytes() []byte {
-	return []byte(strings.Join(st.payloads, "\n"))
+	)
+	if body == nil {
+		obj.Delete("body")
+	}
+	return obj.MarshalPretty()
 }
 
 func commitIDValue(commitID string) any {

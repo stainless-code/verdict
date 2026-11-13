@@ -558,8 +558,8 @@ func TestRunPostGitLabRefusesRepostFromFetchedMarker(t *testing.T) {
 	if !strings.Contains(note, "<!-- verdict-review payload=") {
 		t.Fatalf("posted note carries no review marker: %q", note)
 	}
-	if ref := refetchThenRepost(t, note, &warnings, &human); ref == nil || ref.Code != codeAlreadyPosted {
-		t.Fatalf("second Run ref = %v, want already-posted", ref)
+	if ref := refetchThenRepost(t, note, &warnings, &human); ref != nil {
+		t.Fatalf("second Run ref = %v, want missing inline published", ref)
 	}
 }
 
@@ -703,8 +703,8 @@ func assertGitLabRunWrites(t *testing.T, cmdr *scriptCommander) {
 // makes, once each, all of them on glab.
 func assertGitLabApprovalCalls(t *testing.T, cmdr *scriptCommander) {
 	t.Helper()
-	for _, key := range []string{gitlabRecheckArgv, gitlabUserArgv, gitlabApproveArgv} {
-		if got := countCalls(cmdr, key); got != 1 {
+	for key, want := range map[string]int{gitlabRecheckArgv: 2, gitlabUserArgv: 1, gitlabApproveArgv: 1} {
+		if got := countCalls(cmdr, key); got != want {
 			t.Errorf("%q fired %d times, want 1 (%q)", key, got, callKeys(cmdr))
 		}
 	}
@@ -741,12 +741,19 @@ func refetchThenRepost(t *testing.T, note string, warnings, human *[]string) *co
 	}
 	dropLocalRecord(t)
 	second := gitlabCommander(t)
+	live, err := json.Marshal([]any{map[string]any{"notes": []any{map[string]any{fieldBody: note}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second.out[gitlabRecheckArgv] = scriptResult{stdout: string(live)}
 	req := postTestReq(second, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, warnings, human)
 	_, ref := Run(context.Background(), req)
-	for _, key := range []string{gitlabDiscussionsArgv, gitlabNotesArgv, gitlabApproveArgv} {
-		if got := countCalls(second, key); got != 0 {
-			t.Errorf("a refused repost fired %q %d times: %q", key, got, callKeys(second))
-		}
+	if got := countCalls(second, gitlabNotesArgv); got != 0 {
+		t.Errorf("retry reposted summary %d times, want 0", got)
 	}
+	if got := countCalls(second, gitlabDiscussionsArgv); got != 1 {
+		t.Errorf("retry published %d inline discussions, want 1", got)
+	}
+
 	return ref
 }

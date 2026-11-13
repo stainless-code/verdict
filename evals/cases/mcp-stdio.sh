@@ -207,6 +207,15 @@ if [ "${1:-}" = "api" ] && [ "${2:-}" = "graphql" ]; then
   printf '%s' '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}'; exit 0
 fi
 case "$*" in
+  'api repos/'*'/reviews --paginate'|'api repos/'*'/comments --paginate')
+    part="${2#*/pulls/}"
+    pr="${part%%/*}"
+    file="${2##*/}"
+    if [ "$file" = comments ]; then file=inline; fi
+    snapshot=".verdict/state/$pr/$file.json"
+    if [ -f "$snapshot" ]; then cat "$snapshot"; else echo '[]'; fi
+    exit 0;;
+
   *reviews*) echo "unexpected reviews POST" >&2; exit 1;;
   *pulls*) printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; exit 0;;
   *user*) printf 'someone-else'; exit 0;;
@@ -241,7 +250,7 @@ if [ -f "$EVAL_SANDBOX/.verdict/state/$PR/findings.dryrun.json" ] \
 else
   bad "post dry-run wrote the wrong artifacts"
 fi
-if [ "$(tail -n +"$(( mark + 1 ))" "$EVAL_STUBLOG" | grep -c "reviews" || true)" -eq 0 ]; then
+if [ "$(tail -n +"$(( mark + 1 ))" "$EVAL_STUBLOG" | grep -c "reviews.*--method POST" || true)" -eq 0 ]; then
   good "post dry-run never called the reviews POST"
 else
   bad "post dry-run reached the reviews POST"
