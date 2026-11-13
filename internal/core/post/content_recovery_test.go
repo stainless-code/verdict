@@ -28,6 +28,9 @@ func (host *failingDiscussionHost) Run(_ context.Context, cmd *core.Command) (co
 		if host.readBody != "" {
 			return core.Result{Stdout: host.readBody}, nil
 		}
+		if len(host.accepted) == 0 {
+			return core.Result{Stdout: "[]"}, nil
+		}
 		raw, err := json.Marshal([]any{map[string]any{"notes": host.accepted}})
 		if err != nil {
 			return core.Result{}, err

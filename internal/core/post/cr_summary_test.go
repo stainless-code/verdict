@@ -37,3 +37,21 @@ func TestCROmittedGitLabSummary(t *testing.T) {
 		t.Fatalf("inline-only receipt = %v, %v", doc, err)
 	}
 }
+
+func TestCRMalformedNotesFailClosed(t *testing.T) {
+	for _, raw := range []string{`[{"notes":[null]}]`, `[{"notes":null}]`, `[{"notes":"bad"}]`, `[{"notes":[{"notes":[42]}]}]`} {
+		t.Run(raw, func(t *testing.T) {
+			t.Chdir(t.TempDir())
+			writeGitLabBundle(t, "gitlab", gitlabBundleReview)
+			host := &failingDiscussionHost{readBody: raw}
+			var warnings, human []string
+			req := postTestReq(host, core.PostFlags{Approve: "false", Force: true, ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+			if _, ref := Run(t.Context(), req); ref == nil || ref.Code != codePostFailed {
+				t.Fatalf("malformed nested notes accepted: %v", ref)
+			}
+			if host.attempts != 0 {
+				t.Fatalf("malformed notes caused %d writes", host.attempts)
+			}
+		})
+	}
+}

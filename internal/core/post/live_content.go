@@ -162,6 +162,11 @@ func publicationPage(doc any) ([]map[string]any, error) {
 		if !ok {
 			return nil, shapeError("live publication item is not an object")
 		}
+		if notes, has := m["notes"]; has {
+			if _, err := publicationPage(notes); err != nil {
+				return nil, err
+			}
+		}
 		out = append(out, m)
 	}
 	return out, nil
