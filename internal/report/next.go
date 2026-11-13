@@ -65,7 +65,7 @@ func callNext(ctx context.Context, r *cli.Runner, req Request, statusF string, c
 func renderNextJSON(r *cli.Runner, req Request, resp *core.NextResponse, covMode bool) int {
 	if covMode {
 		env := core.RenderEnvelope("next", req.Repo, req.Pr, resp.At, coverageNextLine(resp.Coverage),
-			resp.Warnings, resp.Receipt.Apply(jq.NewObj("coverage", resp.Coverage)), nil)
+			resp.Warnings, jq.NewObj("coverage", resp.Coverage), nil)
 		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
 		return cli.ExitOK
 	}
