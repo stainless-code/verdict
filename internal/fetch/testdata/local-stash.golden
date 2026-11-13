@@ -19,6 +19,7 @@ exit: 0
     "hunks": 1,
     "omitted": [],
     "diff_bytes": 150,
+    "raw_diff_bytes": 150,
     "panel": {
       "source": null,
       "members": []
@@ -35,7 +36,9 @@ exit: 0
       "toc.txt": ".verdict/state/local-demo/toc.txt",
       "roles.txt": ".verdict/state/local-demo/roles.txt",
       "sensitive.txt": null,
-      "lenses.txt": ".verdict/state/local-demo/lenses.txt"
+      "lenses.txt": ".verdict/state/local-demo/lenses.txt",
+      "full.raw.diff": ".verdict/state/local-demo/full.raw.diff",
+      "excluded.json": ".verdict/state/local-demo/excluded.json"
     },
     "estimate": {
       "tier": null,
@@ -70,6 +73,18 @@ notes.txt
   "base_sha": "e379897b82c6a9586a0c8f13b612a022eb952230",
   "sha": "e379897b82c6a9586a0c8f13b612a022eb952230",
   "files": [
+    {
+      "path": ".verdict/ignore",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".gitattributes",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
     {
       "path": ".verdict/config.json",
       "status": "missing",
@@ -120,7 +135,33 @@ notes.txt
     }
   ]
 }
+--- file C/.verdict/state/local-demo/excluded.json ---
+{
+  "schema_version": "1",
+  "patterns_source": ".verdict/ignore@base",
+  "defaults": [
+    "default:generated",
+    "default:attribute"
+  ],
+  "ignore": [],
+  "no_default_excludes": false,
+  "excluded": [],
+  "excluded_bytes": 0,
+  "kept_bytes": 150,
+  "raw_diff_sha256": "428dea0b0ba9b784355e4e8ef8dab487b0d3398727b0c239d2cb57bb1adb1a77",
+  "diff_sha256": "428dea0b0ba9b784355e4e8ef8dab487b0d3398727b0c239d2cb57bb1adb1a77"
+}
 --- file C/.verdict/state/local-demo/full.diff ---
+diff --git a/notes.txt b/notes.txt
+index 163ed5c..81d7421 100644
+--- a/notes.txt
++++ b/notes.txt
+@@ -1,3 +1,3 @@
+ top
+-old line
++stashed line
+ bottom
+--- file C/.verdict/state/local-demo/full.raw.diff ---
 diff --git a/notes.txt b/notes.txt
 index 163ed5c..81d7421 100644
 --- a/notes.txt

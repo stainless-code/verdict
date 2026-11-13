@@ -238,7 +238,7 @@ func mcpToolNames(t *testing.T, root string) []string {
 	file := parseGo(t, filepath.Join(root, "internal", "mcp", "tools.go"))
 	ast.Inspect(file, func(n ast.Node) bool {
 		if name, ok := toolName(n); ok {
-			names = append(names, name)
+			names = append(names, strings.ReplaceAll(name, "_", "-"))
 		}
 		return true
 	})
@@ -373,7 +373,7 @@ func kebabCase(name string) string {
 	var out strings.Builder
 	for i, r := range name {
 		if unicode.IsUpper(r) {
-			if i > 0 {
+			if kebabBoundary(name, i) {
 				out.WriteByte('-')
 			}
 			r = unicode.ToLower(r)
@@ -381,6 +381,18 @@ func kebabCase(name string) string {
 		out.WriteRune(r)
 	}
 	return out.String()
+}
+
+// kebabBoundary reports whether the uppercase rune at i starts a new word: it
+// follows a non-uppercase rune, or it ends an uppercase run.
+func kebabBoundary(name string, i int) bool {
+	if i == 0 {
+		return false
+	}
+	if !unicode.IsUpper(rune(name[i-1])) {
+		return true
+	}
+	return i+1 < len(name) && unicode.IsLower(rune(name[i+1]))
 }
 
 // names returns the allowlist keys in a stable order.

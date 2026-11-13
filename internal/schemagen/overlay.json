@@ -216,7 +216,10 @@
       "/$defs/indexBlastPartners": "The paths that moved with each changed path in one bounded co-change window, read at HEAD. count is the number of (changed path, partner) rows and partners the distinct partner paths across them; truncated is always measured: history needs no index.",
       "/$defs/indexBlastPartner": "One partner path, the changed path it moved with, its co-change count, and the Jaccard ratio.",
       "/$defs/indexBlastOwners": "One ownership row per changed path, from the CODEOWNERS file at the queried tree. count and truncated are always measured.",
-      "/$defs/indexData/properties/index": "Present only when the queried tree has a stored index; blast-radius omits it when the symbol, caller, and test lists are unmeasured."
+      "/$defs/indexData/properties/index": "Present only when the queried tree has a stored index; blast-radius omits it when the symbol, caller, and test lists are unmeasured.",
+      "/$defs/prWaitData": "Bounded foreground PR wait outcome; timeout is data with error null.",
+      "/$defs/prWaitSnapshot": "One observed PR state, including canonical JSON evidence for checks, reviews, and threads.",
+      "/$defs/readyData/properties/wait": "Present when a bounded build wait was requested; timeout leaves readiness false."
     }
   },
   "findings": {
@@ -495,6 +498,11 @@
   "panel-plan": {
     "descriptions": {
       "": "Local planner output at verification/plan.json; verifiers follow the synthesizer in the pinned panel roster. No model or network call occurs."
+    }
+  },
+  "excluded": {
+    "descriptions": {
+      "": "Byte-accounted exclusion receipt. Paths and rule ids identify removed raw diff sections; both hashes bind the reviewed subset to its raw input."
     }
   }
 }

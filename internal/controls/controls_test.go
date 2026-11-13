@@ -237,3 +237,20 @@ func TestStrictInputSources(t *testing.T) {
 		t.Error("REVIEW_STRICT_INPUT=0 armed the control")
 	}
 }
+
+func TestExclusionControlsReadBase(t *testing.T) {
+	base := baseRepo(t, map[string]string{".verdict/ignore": "vendor/**\n", ".gitattributes": "*.pb.go linguist-generated\n"})
+	writeAll(t, map[string]string{".verdict/ignore": "**\n", ".gitattributes": "* linguist-generated\n"})
+	snap, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: "bundle", BaseSHA: base})
+	if ref != nil {
+		t.Fatal(ref)
+	}
+	raw, ok := snap.ReadFile(".verdict/ignore")
+	if !ok || string(raw) != "vendor/**\n" {
+		t.Fatalf("ignore = %q; want base bytes", raw)
+	}
+	raw, ok = snap.ReadFile(".gitattributes")
+	if !ok || string(raw) != "*.pb.go linguist-generated\n" {
+		t.Fatalf("attributes = %q; want base bytes", raw)
+	}
+}

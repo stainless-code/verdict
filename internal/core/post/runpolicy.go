@@ -476,22 +476,20 @@ func (st *state) bindRequiredGate() *core.RefusalError {
 // severities are never withheld, so the filter cannot silently drop
 // what the vocabulary does not know.
 func (st *state) floorPayload() ([]any, string, []core.FloorScope) {
-	rs := postRunState(st)
-	floor := ""
-	if rs != nil && rs.Resolved != nil {
-		if f := rs.Resolved.Defaults.Values.PostMinSeverity; f != nil {
-			floor = *f
-		}
-	}
+	floor := st.globalPostFloor()
 	kept := make([]any, 0, len(st.merged.Entries))
 	withheld := make([]core.FloorScope, 0, len(st.merged.Entries))
 	for _, entry := range st.merged.Entries {
-		if !config.BelowPostFloor(rs, entry) {
-			kept = append(kept, entry)
+		source := readcommon.WithheldSource(entry)
+		if st.belowFloor(entry) || source == "below-severity" {
+			withheld = append(withheld, st.floorScope(entry, floor))
 			continue
 		}
-		withheld = append(withheld, scopedFloorOf(rs, entry, floor))
+		if source == "" {
+			kept = append(kept, entry)
+		}
 	}
+
 	return kept, floor, withheld
 }
 

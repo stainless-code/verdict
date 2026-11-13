@@ -111,6 +111,7 @@ func writeChunkManifest(
 		"chunk_count", n,
 		"chunks", chunksJSON(dir, plan),
 	)
+	exclusionManifest(dir, manifest)
 	cdir := dir + "/chunks"
 	if werr := atomic.WriteFile(cdir+"/manifest.json", []byte(jq.PrettyOrdered(manifest))); werr != nil {
 		return nil, internalErrorf("could not write %s/manifest.json: %v", cdir, werr)
@@ -227,20 +228,16 @@ func chunkIndex(plan []chunkEntry) map[string]int {
 func sliceLines(raw string, chunkOf map[string]int, n int) [][]string {
 	byChunk := make([][]string, n)
 	current := 0
-	for _, line := range splitLines(raw) {
-		if _, isHeader := strings.CutPrefix(line, "diff --git "); isHeader {
-			_, path := hunks.HeaderPaths(line)
-			if idx, ok := chunkOf[path]; ok && idx != current {
-				current = idx
-			}
+	for line := range strings.SplitAfterSeq(raw, "\n") {
+		if line == "" {
+			continue
 		}
+		current = chunkForLine(line, chunkOf, current)
 		byChunk[current] = append(byChunk[current], line)
 	}
 	return byChunk
 }
 
-// writeChunkFile writes one chunk diff: the run lines joined with the
-// unterminated-source-line newline guard the builder keeps.
 func writeChunkFile(cdir string, ch chunkEntry, lines []string) error {
 	name := cdir + pathSep + ch.name + diffSuffix
 	if len(lines) == 0 {
@@ -248,7 +245,7 @@ func writeChunkFile(cdir string, ch chunkEntry, lines []string) error {
 	}
 	var sb strings.Builder
 	for _, l := range lines {
-		sb.WriteString(l + newline)
+		sb.WriteString(l)
 	}
 	if err := atomic.WriteFile(name, []byte(sb.String())); err != nil {
 		return internalErrorf("could not write %s: %v", name, err)
@@ -343,4 +340,14 @@ func chunkActualBytes(dir, name string) int64 {
 		return 0
 	}
 	return fi.Size()
+}
+
+func chunkForLine(line string, chunkOf map[string]int, current int) int {
+	if strings.HasPrefix(line, "diff --git ") {
+		_, file := hunks.HeaderPaths(strings.TrimSuffix(line, "\n"))
+		if idx, ok := chunkOf[file]; ok {
+			return idx
+		}
+	}
+	return current
 }

@@ -52,6 +52,10 @@
       "type": "array",
       "items": { "type": "string" }
     },
+    "suppressed": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/suppression" }
+    },
     "coverage": {
       "type": "array",
       "items": { "$ref": "#/$defs/coverageClaim" }
@@ -125,6 +129,20 @@
         }
       },
       "required": ["path", "body"],
+      "additionalProperties": true
+    },
+    "suppression": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "source": { "enum": ["exclusion", "agent"] },
+        "reason": { "type": "string" },
+        "exclusion_id": { "type": "string" },
+        "sig": { "type": "string" },
+        "line": { "type": ["integer", "null"] },
+        "category": { "type": ["string", "null"] }
+      },
+      "required": ["path", "source", "reason"],
       "additionalProperties": true
     },
     "brief": {

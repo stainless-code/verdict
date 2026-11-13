@@ -2,10 +2,11 @@ package main
 
 func usageText() string {
 	return "usage: verdict fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
-		"fetch-local|run|panel|record|adopt|fix|check-tree|ready|gate|threads|trend|index|" +
+		"fetch-local|run|panel|record|adopt|fix|check-tree|ready|pr-wait|gate|threads|trend|index|" +
 		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|config [opts]\n" +
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
-		"[--index <ref|dir>] [--context <file|dir>] [--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
+		"[--index <ref|dir>] [--context <file|dir>] [--ignore <glob>] [--no-default-excludes] " +
+		"[--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
 		"    write .verdict/state/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
 		"(PR.json normalized for non-github providers)\n" +
 		"    --index <ref|dir> hands one index the operator built to the bundle: impact.json plus a\n" +
@@ -27,7 +28,7 @@ func usageText() string {
 		"    runs unless --consent-over-budget is given (consent lands in budget.json,\n" +
 		"    surfaced by report --cost). Unset: estimate off, fetch as today.\n" +
 		"  fetch-local <owner/repo> <name> [--staged] [--range A[..|...]B] [--base R]\n" +
-		"        [--stash [n]] [--worktree] [--index <ref|dir>] [--context <file|dir>]\n" +
+		"        [--stash [n]] [--worktree] [--index <ref|dir>] [--context <file|dir>] [--ignore <glob>] [--no-default-excludes]\n" +
 		"        [--consent-over-budget] [--show-prompts] [--chunk]\n" +
 		"        [-- paths...] [--json]\n" +
 		"    local review bundle from git (no GitHub, no PR): writes\n" +
@@ -87,7 +88,8 @@ func usageText() string {
 		"    touching files outside the anchor stops the loop (scope-escape).\n" +
 		"  post  <owner/repo> <pr> [--approve=true|false] [--request-changes] [--bind] [--force]\n" +
 		"        [--review-file .verdict/state/<pr>/review.json] [--summary comment|off] [--dry-run]\n" +
-		"        [--require-coverage] [--allow-secret-values] [--json]\n" +
+		"        [--require-coverage] [--min-severity critical|important|informational|off]\n" +
+		"        [--allow-secret-values] [--json]\n" +
 		"    validate anchors (partitioned, keep-biased), embed suggestions, merge findings.json,\n" +
 		"    guard stale-SHA + duplicates, post exactly one review.\n" +
 		"    --summary comment maintains one separate PR-level summary comment (updated in place).\n" +
@@ -109,7 +111,8 @@ func usageText() string {
 		"  report <owner/repo> <pr> [--status all|open|addressed|wont-fix|false-positive|deferred] " +
 		"[--kind inline|section|all]\n" +
 		"[--category logic|edge-case|security|performance|accidental-commit|style|docs|other]\n" +
-		"        [--output <path>] [--sarif <path>] [--cost] [--check <critical|important|informational>] [--completeness] " +
+		"        [--output <path>] [--sarif <path>] [--include-withheld] [--cost] " +
+		"[--check <critical|important|informational>] [--completeness] " +
 		"[--live auto|strict|skip] [--json]\n" +
 		"    pure read over the store: ranked findings + verdict + counts. Advisory runs\n" +
 		"    touch no network; gate runs (--check/--completeness) end with one live-thread recheck read.\n" +
@@ -187,7 +190,12 @@ func usageText() string {
 		"    sigs (unknown sigs refuse typed), and merge as agent_verdict/agent_helpful/\n" +
 		"    agreement columns that may diverge from the baseline — the agreement rate\n" +
 		"    over judged rows is the evidence number.\n" +
-		"  ready <owner/repo> <pr> [--json] [--check]\n" +
+		"  pr-wait <owner/repo> <N> --until merged|closed|checks-green|checks-done|review-changed --timeout D\n" +
+		"    [--once] [--interval D] [--json] [--provider github|gitlab|forgejo]\n" +
+		"    Foreground wait: timeout 1s–30m; interval >=1s. Exit 0 on condition,\n" +
+		"    exit 1 with wait-timeout or condition-unmet data; no local writes.\n" +
+		"\n" +
+		"  ready <owner/repo> <pr> [--json] [--check] [--wait-for build --timeout D]\n" +
 		"    advisory only (exit 0, never a gate): CI state, open threads, draft/conflict,\n" +
 		"    description completeness. Prints blockers with actions + recommendation\n" +
 		"    (review/wait/nudge-author). GitHub and GitLab PR bundles; local bundles refuse\n" +

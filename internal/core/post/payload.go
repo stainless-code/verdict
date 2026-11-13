@@ -19,8 +19,9 @@ import (
 const paragraphBreak = "\n\n"
 
 func (st *state) buildPayloads() {
-	st.comments = buildPostComments(st.merged.Kept, st.merged.KeptSigs)
-	st.embedded = countEmbedded(st.merged.Kept)
+	kept, sigs := recordcore.PublicComments(st.merged.Entries, st.merged.Kept, st.merged.KeptSigs)
+	st.comments = buildPostComments(kept, sigs)
+	st.embedded = countEmbedded(kept)
 	st.payloads = []string{postPayload(st.body, st.event, commitIDValue(st.commitID), st.comments)}
 	n := len(st.extraParts) + 1
 	for i, extra := range st.extraParts {
@@ -279,6 +280,7 @@ func (st *state) dryRunResponse(ctx context.Context) (*core.PostResponse, *core.
 	nOpen, nDeferred, nAddressed := postCounts(payload)
 	data := &core.PostData{
 		Verification: st.merged.Verification,
+		Withheld:     st.withholdingSummary(),
 		DryRun:       true,
 		Event:        st.event,
 		CommitID:     st.commitID,

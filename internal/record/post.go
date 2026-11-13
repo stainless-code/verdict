@@ -72,7 +72,7 @@ func parsePostFlags(r *cli.Runner, args []string, dir string) (core.PostFlags, i
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
-		case a == postApproveFlag, a == "--review-file", a == postSummaryFlag:
+		case a == postApproveFlag, a == "--review-file", a == postSummaryFlag, a == postMinSeverityFlag:
 			v, next, u := cli.FlagValue(args, i, a, postWants[a])
 			if u != nil {
 				return f, r.ReportUsage(u), true
@@ -135,6 +135,8 @@ func applyPostSwitchFlag(f *core.PostFlags, arg string) bool {
 
 const postEqSep = "="
 
+const postMinSeverityFlag = "--min-severity"
+
 const postDryRunFlag = "--dry-run"
 
 const postSummaryFlag = "--summary"
@@ -142,9 +144,10 @@ const postSummaryFlag = "--summary"
 // postWants names each value flag's accepted operand for the missing-value
 // usage error.
 var postWants = map[string]string{
-	postApproveFlag: "true|false",
-	"--review-file": "<path>",
-	postSummaryFlag: "comment|off",
+	postApproveFlag:     "true|false",
+	"--review-file":     "<path>",
+	postSummaryFlag:     "comment|off",
+	postMinSeverityFlag: "critical|important|informational|off",
 }
 
 // setPostValue stores one value-taking post flag's value.
@@ -154,6 +157,8 @@ func setPostValue(f *core.PostFlags, name, val string) {
 		f.Approve = val
 	case postSummaryFlag:
 		f.Summary = val
+	case postMinSeverityFlag:
+		f.MinSeverity = val
 	default:
 		f.ReviewFile = val
 	}
@@ -184,6 +189,7 @@ func postRentryFlags(f core.PostFlags, dir string, jsonMode bool) []string {
 		{"--review-file " + f.ReviewFile, f.ReviewFile != dir+"/review.json"},
 		{postSummaryFlag + " " + f.Summary, f.Summary != "" && f.Summary != "off"},
 		{postDryRunFlag, f.DryRun},
+		{"--min-severity " + f.MinSeverity, f.MinSeverity != ""},
 		{postcore.AllowSecretValuesFlag, f.AllowSecretValues},
 		{"--json", jsonMode},
 	}

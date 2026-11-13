@@ -18,6 +18,7 @@ import (
 // skill) re-pinned all ten hashes: only each $id URL moved; no property,
 // required key, enum, or type changed.
 var publishedSemantics = map[string]string{
+	"excluded.schema.json":    "da38e86c8f27bc41b8255f7fc12cbf0a81fa181eee2be172c46b4ae015b041ac",
 	"panel-plan.schema.json":  "c4ac13bb03fb5918bc5b60ff9eba10776f10b999fdc88049409792439b1c043a",
 	"panel.schema.json":       "60fee20b395837e41c0bb8044dcaed55fa7a38d8d8a504a9f228be95b28319ef",
 	"calibration.schema.json": "9e061b60ab7c2252b86146af16742a3e59c64a28e9f6441fd0f30f1f5e2f9581",
@@ -203,7 +204,7 @@ var publishedSemantics = map[string]string{
 	// remain unchanged.
 	// summary comment: additive nullable postData.summary and $defs/postSummary
 	// (optional; no existing property, required key, enum, or type changed).
-	"envelope.schema.json": "236e4baa88f97584619f2349bcc76182fe82d20be7adad211ef4d570bfdc2727",
+	"envelope.schema.json": "6826f0219d951ff5be576162fb5f2bbdc608d5bd1c5ef92347de6f870ec51826",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -212,7 +213,7 @@ var publishedSemantics = map[string]string{
 	// finding categories: additive optional entry.category enum (absent and
 	// null group as untagged; never part of the sig). No existing property,
 	// required key, or type changed.
-	"findings.schema.json": "ea7691dc806023b4dab04345e07e57d196920dd7b0f3ef57024719bc8ac76c82",
+	"findings.schema.json": "b529440d679f4fc15af3dd0bd3d2bea0e6805d82f4c1aac859aea13963346380",
 	// post_floor_scoped: additive optional per-path posting floor list with its
 	// $defs/floorScope entry (required path, enum floor). No existing
 	// property, required key, or type changed.
@@ -313,7 +314,7 @@ var publishedSemantics = map[string]string{
 	// checker warns (never refuses) on unknown or non-string values and the
 	// normalizer lowercases case variants. No existing property, required key,
 	// or type changed.
-	"review.schema.json": "27696bf46879b4ebe0af59db4e7ba2c461404658b78c230572563efa405f1344",
+	"review.schema.json": "8275d74c29a079ec7827d75170f86aad58121ed714e45e6de441e13b46947a16",
 	// additive threads.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed). The PR-conversation
 	// contract extends the first cut with the thread's host id, PR/head/time

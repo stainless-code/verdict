@@ -11,7 +11,7 @@ exit: 1
   "data": null,
   "error": {
     "code": "controls-unavailable",
-    "message": "could not read .verdict/config.json at cccccccccccc through the contents API: gh: Server Error (HTTP 500): gh: exit status 1\ntry: check out the PR base (actions/checkout fetch-depth: 0, or git fetch --depth=1 origin <base>), then re-fetch; fetch --allow-head-controls is the explicit opt-out"
+    "message": "could not read .verdict/ignore at cccccccccccc through the contents API: gh: Server Error (HTTP 500): gh: exit status 1\ntry: check out the PR base (actions/checkout fetch-depth: 0, or git fetch --depth=1 origin <base>), then re-fetch; fetch --allow-head-controls is the explicit opt-out"
   }
 }
 --- stderr ---
@@ -21,7 +21,7 @@ exit: 1
 --- file C/.gh-calls.log ---
 CALL: pr view 4701 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,url,commits,files,additions,deletions,isDraft,reviewDecision,state
 CALL: pr diff 4701 --repo acme/app
-CALL: api repos/acme/app/contents/.verdict/config.json?ref=cccccccccccccccccccccccccccccccccccccccc
+CALL: api repos/acme/app/contents/.verdict/ignore?ref=cccccccccccccccccccccccccccccccccccccccc
 --- file C/.verdict/.gitignore ---
 /state/
 /backtest/

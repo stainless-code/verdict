@@ -245,6 +245,9 @@ func verifyConfigBytes(rs *RunState, snap *controls.Snapshot) *core.RefusalError
 func verifyInventory(dir string, rs *RunState, snap *controls.Snapshot) *core.RefusalError {
 	for _, path := range sortedKeys(rs.Inventory) {
 		entry := snap.Entry(VerdictDir + "/" + path)
+		if entry == nil {
+			entry = snap.Entry(path)
+		}
 		if entry == nil || entry.SHA256 != rs.Inventory[path] {
 			return stale(dir, "support snapshot "+path+" no longer matches the captured hash")
 		}

@@ -98,6 +98,7 @@ func writeTocRolesGitHub(ctx *fetchRunCtx, total string, statLines []string, wit
 	}
 	sb.WriteString("\n## coverage manifest\n")
 	fmt.Fprintf(&sb, "files in PR: %s | files with diff hunks: %d\n", total, len(withHunks))
+	omitted = splitLines(withoutExcluded(ctx, strings.Join(omitted, "\n")))
 	if len(omitted) > 0 {
 		sb.WriteString("omitted (no hunks — binary, renamed without changes, or mode-only):\n")
 		for _, p := range omitted {
@@ -106,11 +107,11 @@ func writeTocRolesGitHub(ctx *fetchRunCtx, total string, statLines []string, wit
 	} else {
 		sb.WriteString("omitted: (none)\n")
 	}
-	if werr := atomic.WriteFile(ctx.dir+"/toc.txt", []byte(sb.String())); werr != nil {
+	if werr := atomic.WriteFile(ctx.dir+"/toc.txt", []byte(sb.String()+exclusionTOC(ctx))); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/toc.txt: %v", ctx.dir, werr)}
 	}
 	fmt.Fprintf(ctx.runner.Human, "» roles -> %s/roles.txt (heuristic file roles for triage)\n", ctx.runner.display(ctx.dir))
-	paths := prFilePaths(ctx.dir + suffixPRJSON)
+	paths := splitLines(withoutExcluded(ctx, strings.Join(prFilePaths(ctx.dir+suffixPRJSON), "\n")))
 	if werr := atomic.WriteFile(ctx.dir+"/roles.txt", []byte(rolesTextEmpty(paths))); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/roles.txt: %v", ctx.dir, werr)}
 	}
@@ -367,14 +368,18 @@ func writeIdentityFile(ctx context.Context, cmdr Commander, dir, head, base stri
 
 // fetchRunCtx carries the shared fetch run state across the bundle writers.
 type fetchRunCtx struct {
-	runner    *session
-	env       map[string]string
-	runCfg    *runConfig
-	packs     *pack.Set
-	repo      string
-	pr        string
-	dir       string
-	root      string
-	panelSrc  string
-	panelList []string
+	runner            *session
+	env               map[string]string
+	runCfg            *runConfig
+	packs             *pack.Set
+	receipt           *ExcludedFile
+	repo              string
+	pr                string
+	dir               string
+	root              string
+	panelSrc          string
+	ignore            []string
+	panelList         []string
+	noDefaultExcludes bool
+	receiptLoaded     bool
 }
