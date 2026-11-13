@@ -85,7 +85,7 @@ func assertOneHoistedReview(t *testing.T, cmdr *scriptCommander) {
 	t.Helper()
 	posted := 0
 	for i, call := range cmdr.calls {
-		if !strings.Contains(strings.Join(call, " "), "/reviews") {
+		if !strings.Contains(strings.Join(call, " "), "--method POST") {
 			continue
 		}
 		posted++

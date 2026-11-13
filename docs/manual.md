@@ -133,19 +133,23 @@ with `--force`). An unreachable recheck downgrades to `COMMENT` with the reason
 in the body and warnings — never a silent `APPROVE`, never a hard failure.
 `COMMENT`, `REQUEST_CHANGES`, dry runs, and local bundles never pay this lookup.
 
-Posting compares rendered content with the fetched `reviews.json` and
-`inline.json` snapshots after all approval and policy gates have run. Only
-missing comments and summary parts are submitted. Re-fetch before retrying a
-partial publish so the snapshots include the writes the host accepted.
+After all approval and policy gates have run, posting reads the live remote
+reviews and comments through the host client immediately before deciding what
+to write. Only missing comments and summary parts are submitted. A partial
+publish can be retried directly — no re-fetch is needed. If either live read
+fails or returns an unreadable response, posting refuses without writing,
+including with `--force`.
 
 Comment identity includes the reviewed head, path, side, line, and rendered
-body digest; matching also recognizes identical content at a moved line.
+body digest. Matching consumes remote occurrences one-to-one: exact anchors
+first, then moved-line matches among the remaining comments. Identical text
+on distinct lines therefore retains its multiplicity.
 Diff positions and hidden finding-signature receipts do not identify content.
 Sources and suggestions are part of the rendered body. A new head deliberately
 re-arms publication: the output and `post.json` carry `rearmed: true` and
 `previous_head`. `--force` explicitly republishes all content.
 
-The fetched remote content is authoritative. `.posted_*`, `post.json`, and
+Live remote content is authoritative; fetched snapshots are a cache. `.posted_*`, `post.json`, and
 posted-body markers cannot suppress missing remote content. If every summary
 part and comment is already present, `duplicate-payload` reports that there is
 nothing to write. Suppression never bypasses an approval or policy gate and

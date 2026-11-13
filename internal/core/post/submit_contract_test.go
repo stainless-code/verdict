@@ -605,7 +605,7 @@ type splitFailCommander struct {
 
 // first.
 func (s *splitFailCommander) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
-	if strings.Contains(strings.Join(cmd.Argv, " "), "/reviews") {
+	if strings.Contains(strings.Join(cmd.Argv, " "), "--method POST") {
 		s.posts++
 		if s.posts > 1 {
 			s.calls = append(s.calls, append([]string{}, cmd.Argv...))

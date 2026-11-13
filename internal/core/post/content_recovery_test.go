@@ -12,13 +12,28 @@ import (
 )
 
 type failingDiscussionHost struct {
+	readBody string
 	accepted []map[string]any
 	attempts int
 	failAt   int
+	readFail bool
 }
 
 //nolint:revive // one scripted host exchange keeps the injected failure and accepted writes together
 func (host *failingDiscussionHost) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
+	if strings.HasSuffix(cmd.Argv[2], "/discussions?per_page=100") {
+		if host.readFail {
+			return core.Result{ExitCode: 1, Stderr: "read unavailable"}, nil
+		}
+		if host.readBody != "" {
+			return core.Result{Stdout: host.readBody}, nil
+		}
+		raw, err := json.Marshal([]any{map[string]any{"notes": host.accepted}})
+		if err != nil {
+			return core.Result{}, err
+		}
+		return core.Result{Stdout: string(raw)}, nil
+	}
 	if len(cmd.Argv) == 3 {
 		return core.Result{Stdout: gitlabMRJSON}, nil
 	}
@@ -73,6 +88,7 @@ func TestPartialPublishRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	st = newState()
+	st.remoteInline = remoteObjects(dir, "inline.json")
 	if ref := st.remoteDiff(); ref != nil {
 		t.Fatal(ref)
 	}
@@ -94,6 +110,53 @@ func assertRecoveredComments(t *testing.T, host *failingDiscussionHost) {
 	for i, want := range []string{"first bug", "second bug", "third bug"} {
 		if host.accepted[i]["body"] != want {
 			t.Fatalf("comment %d = %v, want %s", i, host.accepted[i]["body"], want)
+		}
+	}
+}
+
+func TestReviewRetryWithoutFetch(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writeGitLabBundle(t, "gitlab", `{"schema_version":"1","body":"> ⚠️ Three findings need attention.","approved":false,"comments":[{"path":"notes.txt","line":2,"body":"first bug"},{"path":"notes.txt","line":3,"body":"second bug"},{"path":"notes.txt","line":2,"body":"third bug"}]}`)
+	host := &failingDiscussionHost{failAt: 2}
+	var warnings, human []string
+	req := postTestReq(host, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+	if _, ref := Run(t.Context(), req); ref == nil || ref.Code != codePostFailed {
+		t.Fatalf("first run = %v, want partial failure", ref)
+	}
+	if _, ref := Run(t.Context(), req); ref != nil {
+		t.Fatal(ref)
+	}
+	if len(host.accepted) != 3 {
+		t.Fatalf("published %d comments, want exactly 3", len(host.accepted))
+	}
+	assertProducedRecovery(t, host)
+}
+
+//nolint:revive // each failing read must independently prove zero writes
+func TestLivePublicationFailsClosed(t *testing.T) {
+	for _, body := range []string{"failure", "{bad json}", "{}"} {
+		t.Run(body, func(t *testing.T) {
+			t.Chdir(t.TempDir())
+			writeGitLabBundle(t, "gitlab", gitlabBundleReview)
+			host := &failingDiscussionHost{readFail: body == "failure", readBody: body}
+			var warnings, human []string
+			req := postTestReq(host, core.PostFlags{Approve: "false", Force: true, ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+			if _, ref := Run(t.Context(), req); ref == nil || ref.Code != codePostFailed {
+				t.Fatalf("read failure = %v", ref)
+			}
+			if host.attempts != 0 || exists(".verdict/state/7/post.json") {
+				t.Fatal("live read failure wrote to host or receipt")
+			}
+		})
+	}
+}
+
+func assertProducedRecovery(t *testing.T, host *failingDiscussionHost) {
+	t.Helper()
+	for i, want := range []string{"first bug", "second bug", "third bug"} {
+		body, ok := host.accepted[i]["body"].(string)
+		if !ok || !strings.HasPrefix(body, want+"\n\n<!-- verdict-finding sig=") {
+			t.Fatalf("published body %d = %q", i, body)
 		}
 	}
 }

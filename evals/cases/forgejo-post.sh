@@ -28,6 +28,7 @@ fetch_routes() {
   hoststub_route curl "--config - -sf $PULL/files?limit=50&page=1" "$FIX/files.json" 0 "$CONFIG"
   hoststub_route curl "--config - -sf $PULL/reviews?limit=50&page=1" "$FIX/reviews.json" 0 "$CONFIG"
   hoststub_route curl "--config - -sf $PULL/reviews/301/comments" "$FIX/comments.json" 0 "$CONFIG"
+  hoststub_route curl "--config - -sf $PULL/reviews/301/comments?limit=50&page=1" "$FIX/comments.json" 0 "$CONFIG"
 }
 
 # post_routes swaps the one write answer, so each post leg grades the status
@@ -38,6 +39,7 @@ post_routes() {
   hoststub_route curl "--config - -sf $PULL" "$FIX/PR.json" 0 "$CONFIG"
   hoststub_route curl "--config - -sf $PULL/reviews?limit=50&page=1" "$FIX/reviews.json" 0 "$CONFIG"
   hoststub_route curl "--config - -sf $PULL/reviews/301/comments" "$FIX/comments.json" 0 "$CONFIG"
+  hoststub_route curl "--config - -sf $PULL/reviews/301/comments?limit=50&page=1" "$FIX/comments.json" 0 "$CONFIG"
   hoststub_route curl "--config - -sf https://forgejo.invalid/api/v1/user" "$FIX/user.json" 0 "$CONFIG"
   hoststub_route curl "$WANT_WRITE" "$write" 0 "$CONFIG"
 }
@@ -128,7 +130,7 @@ assert_file_nogrep "no post curl argv carries the fixture token" "$EVAL_SANDBOX/
 run_review post acme/app "$PR" --json
 assert_exit "empty remote permits publication despite local receipt" 0
 assert_json_field "second post still records accepted review" 901 '.data.review.id'
-assert_eq "second post makes its reads and write" 8 "$(hoststub_count curl)"
+assert_eq "second post makes its reads and write" 12 "$(hoststub_count curl)"
 assert_eq "second post adds one write" 2 "$(write_calls)"
 
 eval_write_review "$PR" <<'EOF'
@@ -140,7 +142,7 @@ assert_exit "a bound forgejo approval posts" 0
 assert_json_field "the approval reaches the host" APPROVED '.review.state' "$DIR/post.json"
 assert_json_field "the approval receipt is the created review" 902 '.review.id' "$DIR/post.json"
 assert_eq "the approval makes one write" 1 "$(write_calls)"
-assert_eq "the approval reads the user, the reviews, the comments, and the user again" 7 "$(hoststub_count curl)"
+assert_eq "the approval includes live publication reads" 9 "$(hoststub_count curl)"
 
 cp "$DIR/post.json" "$EVAL_SANDBOX/post-before-pending.json"
 eval_write_review "$PR" <<'EOF'

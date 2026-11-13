@@ -92,6 +92,14 @@ cat >"$EVAL_STUBBIN/glab" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 case "$*" in
+  'api projects/acme%2Fapp/merge_requests/7/discussions?per_page=100 --paginate')
+    printf 'stub-glab %s\n' "$*" >>"$HOSTSTUB_LOG"
+    if [ -f "$RECOVERY_STATE/accepted.jsonl" ]; then
+      jq -s '[{notes:.}]' "$RECOVERY_STATE/accepted.jsonl"
+    else
+      echo '[]'
+    fi
+    ;;
   'api projects/4242/merge_requests/7/notes?per_page=100&page=1')
     printf 'stub-glab %s\n' "$*" >>"$HOSTSTUB_LOG"
     jq -s 'map(. + {type:"DiffNote"})' "$RECOVERY_STATE/accepted.jsonl"
@@ -129,9 +137,8 @@ printf '[]\n' >"$DIR/findings.json"
 run_review post acme/app "$PR" --json
 assert_exit "partial host failure" 1
 assert_json_field "partial failure is typed" post-failed '.error.code'
-run_review fetch acme/app "$PR" --provider gitlab --json
-assert_exit "re-fetch accepted remote discussion" 0
-assert_json_field "one comment landed before failure" 1 'length' "$DIR/inline.json"
+jq -s . "$RECOVERY_STATE/accepted.jsonl" >"$RECOVERY_STATE/landed.json"
+assert_json_field "one comment landed before failure" 1 'length' "$RECOVERY_STATE/landed.json"
 run_review post acme/app "$PR" --json
 assert_exit "partial rerun" 0
 jq -s . "$RECOVERY_STATE/accepted.jsonl" >"$RECOVERY_STATE/accepted.json"

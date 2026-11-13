@@ -703,8 +703,8 @@ func assertGitLabRunWrites(t *testing.T, cmdr *scriptCommander) {
 // makes, once each, all of them on glab.
 func assertGitLabApprovalCalls(t *testing.T, cmdr *scriptCommander) {
 	t.Helper()
-	for _, key := range []string{gitlabRecheckArgv, gitlabUserArgv, gitlabApproveArgv} {
-		if got := countCalls(cmdr, key); got != 1 {
+	for key, want := range map[string]int{gitlabRecheckArgv: 2, gitlabUserArgv: 1, gitlabApproveArgv: 1} {
+		if got := countCalls(cmdr, key); got != want {
 			t.Errorf("%q fired %d times, want 1 (%q)", key, got, callKeys(cmdr))
 		}
 	}

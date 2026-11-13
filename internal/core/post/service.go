@@ -97,6 +97,7 @@ type state struct { //nolint:govet // field grouping documents the post run stat
 	merged       recordcore.MergeResult
 	event        string
 	liveSHA      string
+	remoteInline []map[string]any
 	previousHead string
 	phash        string
 	dir          string
@@ -268,6 +269,9 @@ func (st *state) publish(ctx context.Context) (*core.PostResponse, *core.Refusal
 	}
 	if st.req.JSONMode {
 		st.human("dry-run flag missing with --json on a real post is allowed; envelope follows the post")
+	}
+	if ref := st.refreshRemote(ctx); ref != nil {
+		return nil, st.withWarnings(ref)
 	}
 	if ref := st.remoteDiff(); ref != nil {
 		return nil, st.withWarnings(ref)

@@ -1,29 +1,12 @@
 package postcore
 
 import (
-	"bytes"
 	"fmt"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 )
-
-func remoteObjects(dir, file string) []map[string]any {
-	raw, err := jq.CappedFile(dir+"/"+file, jq.MaxPRBytes)
-	if err != nil {
-		return nil
-	}
-	docs, err := jq.DecodeSlurp(bytes.NewReader(raw))
-	if err != nil {
-		return nil
-	}
-	var out []map[string]any
-	for _, doc := range docs {
-		out = append(out, remotePage(jq.Elements(doc))...)
-	}
-	return out
-}
 
 func remotePage(items []any) []map[string]any {
 	var out []map[string]any
@@ -135,7 +118,8 @@ func (st *state) remoteEvidence() ([]commentIdentity, string) {
 	var remote []commentIdentity
 	previous := ""
 	seenCurrent := false
-	for _, m := range remoteObjects(st.dir, "inline.json") {
+	items := st.remoteInline
+	for _, m := range items {
 		head, obj := remoteComment(m)
 		seenCurrent = seenCurrent || head == st.commitID
 		remote = append(remote, identifyComment(head, obj))

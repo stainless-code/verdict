@@ -28,6 +28,15 @@ if [ "${1:-}" = "api" ] && [ "${2:-}" = "graphql" ]; then
   printf '%s' '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}'; exit 0
 fi
 case "$*" in
+  'api repos/'*'/reviews --paginate'|'api repos/'*'/comments --paginate')
+    part="${2#*/pulls/}"
+    pr="${part%%/*}"
+    file="${2##*/}"
+    if [ "$file" = comments ]; then file=inline; fi
+    snapshot=".verdict/state/$pr/$file.json"
+    if [ -f "$snapshot" ]; then cat "$snapshot"; else echo '[]'; fi
+    exit 0;;
+
   *reviews*)
     printf '%s' '{"id":101,"state":"commented","html_url":"https://example.invalid/r/101","submitted_at":"2026-01-01T00:00:00Z"}'
     exit 0;;
@@ -43,7 +52,7 @@ chmod +x "$EVAL_STUBBIN/gh"
 
 reviews_posts_since() {
   local n
-  n=$(tail -n +"$(($1 + 1))" "$EVAL_STUBLOG" 2>/dev/null | grep -c "reviews" || true)
+  n=$(tail -n +"$(($1 + 1))" "$EVAL_STUBLOG" 2>/dev/null | grep -c "reviews.*--method POST" || true)
   printf '%s' "$n"
 }
 mark() { wc -l <"$EVAL_STUBLOG" | tr -d ' '; }

@@ -1,6 +1,7 @@
 package postcore
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -41,6 +42,7 @@ func TestRemoteMissingOnlyAndRearm(t *testing.T) {
 	if err := writeTestFile(st.dir+"/inline.json", "["+first.MarshalPretty()+"]"); err != nil {
 		t.Fatal(err)
 	}
+	st.remoteInline = remoteObjects(st.dir, "inline.json")
 	if ref := st.remoteDiff(); ref != nil {
 		t.Fatal(ref)
 	}
@@ -50,6 +52,7 @@ func TestRemoteMissingOnlyAndRearm(t *testing.T) {
 	}
 	st.commitID = liveGuardOther
 	st.comments = []any{first, second}
+	st.remoteInline = remoteObjects(st.dir, "inline.json")
 	if ref := st.remoteDiff(); ref != nil {
 		t.Fatal(ref)
 	}
@@ -69,7 +72,9 @@ func TestRearmRecorded(t *testing.T) {
 		t.Fatal(err)
 	}
 	var warnings, human []string
-	req := postTestReq(gitlabCommander(t), core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+	cmdr := gitlabCommander(t)
+	cmdr.out[gitlabRecheckArgv] = scriptResult{stdout: "[{\"notes\":[" + prior.MarshalPretty() + "]}]"}
+	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	response, ref := Run(t.Context(), req)
 	if ref != nil {
 		t.Fatal(ref)
@@ -89,4 +94,20 @@ func TestRearmRecorded(t *testing.T) {
 	if !ok || m["rearmed"] != true || m["previous_head"] != "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" {
 		t.Fatalf("rearm receipt = %v", doc)
 	}
+}
+
+func remoteObjects(dir, file string) []map[string]any {
+	raw, err := jq.CappedFile(dir+"/"+file, jq.MaxPRBytes)
+	if err != nil {
+		return nil
+	}
+	docs, err := jq.DecodeSlurp(bytes.NewReader(raw))
+	if err != nil {
+		return nil
+	}
+	var out []map[string]any
+	for _, doc := range docs {
+		out = append(out, remotePage(jq.Elements(doc))...)
+	}
+	return out
 }
