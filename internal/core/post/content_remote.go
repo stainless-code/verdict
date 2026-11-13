@@ -33,6 +33,7 @@ func remoteComment(m map[string]any) (string, *jq.Obj) {
 		head = jq.StrOf(m["original_commit_id"])
 	}
 	obj := jq.NewObj(fieldPath, m[fieldPath], fieldSide, m[fieldSide], fieldLine, m[fieldLine], "body", m["body"])
+	mapNumericPosition(m, obj)
 	if pos, ok := m["position"].(map[string]any); ok {
 		head = jq.StrOf(pos["head_sha"])
 		obj.Set(fieldPath, pos["new_path"])
@@ -168,5 +169,24 @@ func verdictStateMatches(event, state string) bool {
 		return event == "REQUEST_CHANGES"
 	default:
 		return false
+	}
+}
+
+func mapNumericPosition(m map[string]any, obj *jq.Obj) {
+	if _, hasLine := m[fieldLine]; hasLine {
+		return
+	}
+	position, ok := jq.IntOf(m["position"])
+	if !ok {
+		return
+	}
+	if position > 0 {
+		obj.Set(fieldLine, position)
+		return
+	}
+	original, ok := jq.IntOf(m["original_position"])
+	if position == 0 && ok && original > 0 {
+		obj.Set(fieldLine, original)
+		obj.Set(fieldSide, "LEFT")
 	}
 }
