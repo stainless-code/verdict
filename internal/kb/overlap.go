@@ -2,6 +2,8 @@ package kb
 
 import (
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -104,7 +106,7 @@ func scanBundleEntry(root, skipPrefix string, e os.DirEntry, warn func(string)) 
 	if !ok {
 		return BundleFindings{}, false
 	}
-	if readcommon.IsCorpusBundleDir(dir) || isRegular(dir+"/"+readcommon.BacktestMarkerFile) {
+	if readcommon.IsCorpusBundleDir(dir) || isFile(dir+"/"+readcommon.BacktestMarkerFile) {
 		return BundleFindings{}, false
 	}
 	findings, ok := ReadBundleFindings(dir, skipPrefix, warn)
@@ -152,8 +154,12 @@ func ComputeOverlap(root, skipPrefix string, bundles []BundleFindings, warn func
 // ReadJoins reads every object line from .verdict/kb-joins.jsonl, warning once
 // and returning an empty slice when the file is corrupt.
 func ReadJoins(root string, warn func(string)) []any {
-	raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(Joins)))
+	raw, err := jq.CappedFile(filepath.Join(root, filepath.FromSlash(Joins)), jq.MaxKBBytes)
+	if errors.Is(err, fs.ErrNotExist) {
+		return []any{}
+	}
 	if err != nil {
+		emitWarn(warn, "kb joins "+Joins+" unreadable — joins counts off for this rollup (fix or remove the file)")
 		return []any{}
 	}
 	dec := json.NewDecoder(strings.NewReader(string(raw)))
@@ -284,7 +290,7 @@ func recallManifest(root, skipPrefix, bundle string, warn func(string)) ([]any, 
 		return []any{}, false
 	}
 	path := dir + "/kb-recall.json"
-	if !isRegular(path) {
+	if !isFile(path) {
 		return []any{}, false
 	}
 	raw, err := os.ReadFile(path)
@@ -328,16 +334,11 @@ func manifestIDs(list []any) []any {
 func CitedIDs(findings []any) []any {
 	var ids []any
 	for _, e := range findings {
-		ids = appendCitedIDs(ids, e)
+		for _, s := range FindingRuleIDs(e) {
+			ids = append(ids, s)
+		}
 	}
 	return DedupeSorted(ids)
-}
-
-func appendCitedIDs(ids []any, e any) []any {
-	for _, s := range FindingRuleIDs(e) {
-		ids = append(ids, s)
-	}
-	return ids
 }
 
 // FindingRuleIDs returns unique rule IDs listed in one finding's kb array.
@@ -355,7 +356,7 @@ func FindingRuleIDs(e any) []string {
 	var out []string
 	for _, id := range list {
 		s, ok := id.(string)
-		if !ok || seen[s] {
+		if !ok || s == "" || seen[s] {
 			continue
 		}
 		seen[s] = true
@@ -468,7 +469,7 @@ func calibrateEligible(root, skipPrefix, bundle string, warn func(string)) bool 
 	if !ok {
 		return false
 	}
-	if !isRegular(dir + "/post.json") {
+	if !isFile(dir + "/post.json") {
 		return false
 	}
 	if readcommon.JSONRaw(dir+"/post.json", "head") == "" {
@@ -587,9 +588,4 @@ func DedupeSorted(vals []any) []any {
 		return []any{}
 	}
 	return out
-}
-
-func isRegular(path string) bool {
-	fi, err := os.Stat(path)
-	return err == nil && fi.Mode().IsRegular()
 }
