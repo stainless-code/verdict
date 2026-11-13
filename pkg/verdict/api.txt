@@ -39,9 +39,11 @@ type Artifact struct {
 
 type CalibrateRequest struct {
 	Invocation
-	Probe     bool
-	Specs     []string
-	JudgeFile string
+	Reactions      bool
+	ReactionReason string
+	Probe          bool
+	Specs          []string
+	JudgeFile      string
 }
     CalibrateRequest carries the calibration options: offline probe or live
     ground-truth join.
@@ -543,6 +545,7 @@ type ThreadsResponse struct {
 
 type TrendRequest struct {
 	Repo       string
+	Rules      bool
 	Resolution bool
 	Overlap    bool
 }

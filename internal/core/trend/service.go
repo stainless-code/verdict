@@ -27,6 +27,7 @@ const skipWarn = "trend skips "
 // plus the --overlap audit flag.
 type Request struct { //nolint:govet // field grouping documents the request surface
 	core.ReadRequest
+	Rules      bool
 	Resolution bool
 	Overlap    bool
 	Warnings   []string
@@ -50,6 +51,7 @@ type Response struct { //nolint:govet // field grouping documents the response s
 // join, and the optional corpus measurement. Field order is the published
 // envelope construction order.
 type Data struct { //nolint:govet // field order is the published property order
+	Rules               *jq.Obj
 	Resolution          any
 	ResolutionRequested bool
 	GeneratedAt         string
@@ -72,6 +74,9 @@ func (d *Data) Wire() *jq.Obj {
 		perBundle = append(perBundle, rowDoc(&d.Rows[i]))
 	}
 	data.Set("per_bundle", perBundle)
+	if d.Rules != nil {
+		data.Set("rules", d.Rules)
+	}
 	if d.ResolutionRequested {
 		data.Set("resolution", d.Resolution)
 	}
@@ -110,6 +115,10 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if req.Resolution {
 		resolution = resolutionAudit(st, rows)
 	}
+	var rules *jq.Obj
+	if req.Rules {
+		rules = ruleAudit(st, rows)
+	}
 	next := "calibrate recent bundles for per-model tier precision"
 	if rollup.bundles == 0 {
 		next = "no reviewed bundles yet — fetch + post/record first"
@@ -121,7 +130,7 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 		Warnings: st.warnings,
 		Human:    st.lines,
 		Data: &Data{
-			Resolution: resolution, ResolutionRequested: req.Resolution,
+			Rules: rules, Resolution: resolution, ResolutionRequested: req.Resolution,
 			GeneratedAt: now, Rollup: rollup, Rows: rows, Overlap: overlap, Corpus: corpus,
 		},
 	}, nil

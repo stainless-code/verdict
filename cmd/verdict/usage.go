@@ -173,7 +173,8 @@ func usageText() string {
 		"    more than runs need warns on a token-scopes-excess row naming the excess\n" +
 		"    scopes. Exit 0 unless a hard check fails. No repo/PR args, no writes, no\n" +
 		"    network beyond the host CLI reads.\n" +
-		"  calibrate <owner/repo> <pr> [--probe [--judge SIG:VERDICT[:HELPFUL]]... [--judge-file PATH]] [--json]\n" +
+		"  calibrate <owner/repo> <pr> [--reactions [--reaction-reason TEXT]] " +
+		"[--probe [--judge SIG:VERDICT[:HELPFUL]]... [--judge-file PATH]] [--json]\n" +
 		"    join findings against live ground truth (thread states + files changed since the\n" +
 		"    review head). Read-only; reports outcomes + tier precision, never auto-tunes.\n" +
 		"    --probe grades closed findings offline against recorded triage dispositions\n" +
@@ -223,7 +224,7 @@ func usageText() string {
 		"    --dry-run lists what would be resolved and makes zero writes; a real run\n" +
 		"    makes one host write per thread and writes threads-resolve.json. GitHub and\n" +
 		"    GitLab carry it; Forgejo refuses typed (no documented resolve endpoint).\n" +
-		"  trend <owner/repo> [--overlap] [--resolution] [--json]\n" +
+		"  trend <owner/repo> [--rules] [--overlap] [--resolution] [--json]\n" +
 		"    portfolio rollup over existing bundle stores (no network, writes nothing):\n" +
 		"    findings opened/addressed/closed over time, broken down by severity tier\n" +
 		"    and status, with per-bundle models/effort for the calibration join.\n" +
