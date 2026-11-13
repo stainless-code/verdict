@@ -296,6 +296,7 @@ func decodePost(req *core.PostRequest, a *args) {
 		f.boolean("dryRun", &req.Flags.DryRun)
 		f.boolean("requireCoverage", &req.Flags.RequireCoverage)
 		f.boolean("allowSecretValues", &req.Flags.AllowSecretValues)
+		f.str("summary", &req.Flags.Summary)
 	})
 }
 

@@ -321,6 +321,7 @@ func (c *Client) Record(ctx context.Context, req *RecordRequest) (*Result, error
 type PostRequest struct {
 	Invocation
 	Approve, ReviewFile                 string
+	Summary                             string
 	RequestChanges, Bind, Force, DryRun bool
 	AllowSecretValues                   bool
 }
@@ -334,8 +335,8 @@ func (c *Client) Post(ctx context.Context, req *PostRequest) (*Result, error) {
 	resp, ref := postcore.Run(ctx, &core.PostRequest{
 		ReadRequest: rr,
 		Flags: core.PostFlags{
-			Approve: req.Approve, ReviewFile: req.ReviewFile, RequestChanges: req.RequestChanges,
-			Bind: req.Bind, Force: req.Force, DryRun: req.DryRun,
+			Approve: req.Approve, ReviewFile: req.ReviewFile, Summary: req.Summary,
+			RequestChanges: req.RequestChanges, Bind: req.Bind, Force: req.Force, DryRun: req.DryRun,
 			AllowSecretValues: req.AllowSecretValues,
 		},
 		Effective: core.Defaults(),

@@ -94,6 +94,12 @@ const (
 	eventRequestChanges = "REQUEST_CHANGES"
 	approveTrue         = "true"
 	approveFalse        = "false"
+	summaryOff          = "off"
+	summaryComment      = "comment"
+	summaryActionCreate = "create"
+	summaryActionUpdate = "update"
+	summaryActionNone   = "none"
+	msgBadSummary       = "unknown --summary %q (want comment|off)"
 )
 
 const msgReviewMissing = "missing %s (agent must write {body, approved, comments[]})"

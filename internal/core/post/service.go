@@ -53,6 +53,9 @@ func Run(ctx context.Context, req *core.PostRequest) (*core.PostResponse, *core.
 	if ref := st.checkApproveFlag(); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
+	if ref := st.checkSummaryFlag(); ref != nil {
+		return nil, st.withWarnings(ref)
+	}
 	if ref := st.prepare(ctx); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
@@ -87,6 +90,23 @@ func (st *state) checkApproveFlag() *core.RefusalError {
 		return nil
 	}
 	return &core.RefusalError{Code: "bad-approve", Message: fmt.Sprintf(msgBadApprove, st.flags.Approve)}
+}
+
+// checkSummaryFlag refuses a --summary value outside comment|off (empty defaults to off).
+func (st *state) checkSummaryFlag() *core.RefusalError {
+	switch st.flags.Summary {
+	case "", summaryOff, summaryComment:
+		return nil
+	default:
+		return &core.RefusalError{Code: "bad-flags", Message: fmt.Sprintf(msgBadSummary, st.flags.Summary)}
+	}
+}
+
+func (st *state) summaryMode() string {
+	if st.flags.Summary == "" {
+		return summaryOff
+	}
+	return st.flags.Summary
 }
 
 type state struct { //nolint:govet // field grouping documents the post run state

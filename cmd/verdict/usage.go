@@ -86,10 +86,11 @@ func usageText() string {
 		"    instructions. Max 3 passes per sig (ledger .verdict/state/<bundle>/fix.json);\n" +
 		"    touching files outside the anchor stops the loop (scope-escape).\n" +
 		"  post  <owner/repo> <pr> [--approve=true|false] [--request-changes] [--bind] [--force]\n" +
-		"        [--review-file .verdict/state/<pr>/review.json] [--dry-run] [--require-coverage]\n" +
-		"        [--allow-secret-values] [--json]\n" +
+		"        [--review-file .verdict/state/<pr>/review.json] [--summary comment|off] [--dry-run]\n" +
+		"        [--require-coverage] [--allow-secret-values] [--json]\n" +
 		"    validate anchors (partitioned, keep-biased), embed suggestions, merge findings.json,\n" +
 		"    guard stale-SHA + duplicates, post exactly one review.\n" +
+		"    --summary comment maintains one separate PR-level summary comment (updated in place).\n" +
 		"    Binding APPROVE/REQUEST_CHANGES needs --bind (else downgraded to COMMENT);\n" +
 		"    APPROVE is refused with open or deferred findings unless --force.\n" +
 		"    Agent status claims (resolved[]/triage[]) are proposals: addressed flips only on\n" +

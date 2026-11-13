@@ -288,6 +288,7 @@ var fieldDocs = map[string]string{
 	"Overlap":    "Join overlapping findings across bundles.",
 	"Probe":      "Grade the offline probe instead of joining live state.",
 	"Specs":      "Judge specs to grade (probe mode).",
+	"Summary":    "PR-level summary comment mode: comment (create or update in place) or off (default).",
 	"JudgeFile":  "Path to a judge spec file (probe mode).",
 	"Rule":       "Rule text to append (learn).",
 	"Scope":      "Rule scope (repo, path, or language).",

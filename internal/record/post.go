@@ -72,7 +72,7 @@ func parsePostFlags(r *cli.Runner, args []string, dir string) (core.PostFlags, i
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
-		case a == postApproveFlag, a == "--review-file":
+		case a == postApproveFlag, a == "--review-file", a == postSummaryFlag:
 			v, next, u := cli.FlagValue(args, i, a, postWants[a])
 			if u != nil {
 				return f, r.ReportUsage(u), true
@@ -81,6 +81,8 @@ func parsePostFlags(r *cli.Runner, args []string, dir string) (core.PostFlags, i
 			i = next
 		case strings.HasPrefix(a, postApproveFlag+"="):
 			f.Approve = strings.TrimPrefix(a, postApproveFlag+"=")
+		case strings.HasPrefix(a, postSummaryFlag+"="):
+			f.Summary = strings.TrimPrefix(a, postSummaryFlag+"=")
 		case a == "--request-changes":
 			f.RequestChanges = true
 		case a == "--bind":
@@ -95,7 +97,7 @@ func parsePostFlags(r *cli.Runner, args []string, dir string) (core.PostFlags, i
 			f.AllowSecretValues = true
 		default:
 			msg := fmt.Sprintf("unknown flag '%s' for post (want --approve[=bool], --request-changes, "+
-				"--bind, --force, --review-file <path>, --dry-run, --require-coverage, "+
+				"--bind, --force, --review-file <path>, --summary comment|off, --dry-run, --require-coverage, "+
 				"--allow-secret-values, --json)", a)
 			return f, r.ReportUsage(&cli.UsageError{Message: msg}), true
 		}
@@ -110,18 +112,24 @@ const postApproveFlag = "--approve"
 
 const postDryRunFlag = "--dry-run"
 
+const postSummaryFlag = "--summary"
+
 // postWants names each value flag's accepted operand for the missing-value
 // usage error.
 var postWants = map[string]string{
 	postApproveFlag: "true|false",
 	"--review-file": "<path>",
+	postSummaryFlag: "comment|off",
 }
 
 // setPostValue stores one value-taking post flag's value.
 func setPostValue(f *core.PostFlags, name, val string) {
-	if name == postApproveFlag {
+	switch name {
+	case postApproveFlag:
 		f.Approve = val
-	} else {
+	case postSummaryFlag:
+		f.Summary = val
+	default:
 		f.ReviewFile = val
 	}
 }
@@ -149,6 +157,7 @@ func postRentryFlags(f core.PostFlags, dir string, jsonMode bool) []string {
 		{"--bind", f.Bind},
 		{"--force", f.Force},
 		{"--review-file " + f.ReviewFile, f.ReviewFile != dir+"/review.json"},
+		{postSummaryFlag + " " + f.Summary, f.Summary != "" && f.Summary != "off"},
 		{postDryRunFlag, f.DryRun},
 		{postcore.AllowSecretValuesFlag, f.AllowSecretValues},
 		{"--json", jsonMode},
