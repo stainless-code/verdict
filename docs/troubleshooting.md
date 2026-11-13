@@ -539,9 +539,12 @@ Fix: re-run with `--force` to repost the identical payload — re-fetch if the e
 
 ## `fetch-failed`
 
-Cause: the provider CLI call failed.
+Cause: the provider CLI call failed, or an explicit context input was unreadable,
+unsupported, a symlink, or over its file, byte or depth limit.
 
-Fix: run `gh auth status`, confirm the repo/PR spelling, then re-run.
+Fix: for provider failures, run `gh auth status` and confirm the repo/PR spelling.
+For context failures, hand over regular Markdown, JSON or `.txt` files — at most
+64 files, 1 MiB total and eight path levels — then re-run.
 
 ## `fix-ceiling`
 
