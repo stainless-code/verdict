@@ -1186,8 +1186,8 @@ error the model sees before calling instead of a runtime refusal. `post` writes
 a review and sends it to the host (GitHub, GitLab, or Forgejo), so it is not
 exposed under `--read-only`.
 
-`--read-only` exposes eight read tools (`report`, `next`, `show`, `trend`,
-`ready`, `doctor`, `check-tree`, `config`) plus `record` limited to its `dry_run: true`
+`--read-only` exposes ten read tools (`report`, `next`, `show`, `trend`,
+`ready`, `doctor`, `check-tree`, `config`, `index`, `pack`) plus `record` limited to its `dry_run: true`
 form, and is mutually exclusive with `--operator`. A non-dry `record` call
 there is an `isError` `bad-flags` result naming `dry_run`; the tool keeps
 `readOnlyHint: false` because the same tool writes by default. `report` writes
@@ -1197,9 +1197,13 @@ refuses them as unknown. `threads` is not exposed at all, because it rewrites
 operator-only, because it closes host threads, and a server started without
 `--operator` refuses that call naming the flag. Every review verb except the
 human-owned `triage` is exposed by default because the host already authorizes
-the binary and its credentials. A call to a tool the flags hide is a JSON-RPC
+the binary and its credentials. The registry explicitly declares each tool’s local-write mutation class,
+separately from MCP behavior hints. Read-only exposure derives from that class,
+with the constrained `record` and `report` forms above. A tool hidden by
+`--read-only` returns an `isError: true` tool result with
+`{code:"read-only-tool", message, hint}`. A call hidden only by the operator flag is a JSON-RPC
 `-32602` error whose message and `data` name the tool and the flag combination
-that exposes it (`post` under `--read-only`, `triage` without `--operator`), so
+that exposes it (`triage` without `--operator`), so
 a hidden verb is never reported as an unknown one; a truly unknown name still
 answers `unknown tool`.
 `--operator` adds `triage` (20 tools) for an operator's own assistant that is

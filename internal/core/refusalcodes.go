@@ -174,6 +174,7 @@ var refusalCodes = []string{
 	"prompt-dump-failed",
 	"provider-unimplemented",
 	"rationale-required",
+	"read-only-tool",
 	"record-failed",
 	"repair-exhausted",
 	"report-failed",

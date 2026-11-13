@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"encoding/json"
 	"testing"
 )
 
@@ -180,10 +181,6 @@ func TestInvalidParamsContract(t *testing.T) {
 	}
 }
 
-// TestHiddenToolErrorContract pins the protocol error a call to a known tool
-// hidden by the server flags returns: -32602 like an unknown name, but the
-// message and data name the tool and the flag combination that exposes it,
-// so an agent can tell a forbidden verb from a typo.
 func TestHiddenToolErrorContract(t *testing.T) {
 	t.Parallel()
 	cases := []hiddenCase{
@@ -210,7 +207,11 @@ func TestHiddenToolErrorContract(t *testing.T) {
 			cfg.Operator = tc.operator
 			frames := serve(t, &cfg,
 				`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"`+tc.call+`","arguments":{}}}`)
-			assertHiddenToolError(t, frames["1"], tc.call, tc.requires)
+			if !tc.readOnly {
+				assertHiddenToolError(t, frames["1"], tc.call, tc.requires)
+				return
+			}
+			assertReadOnlyToolRefusal(t, frames["1"], tc.call, tc.requires)
 		})
 	}
 }
@@ -256,5 +257,26 @@ func assertHiddenToolError(t *testing.T, got frame, call, requires string) {
 	}
 	if data["tool"] != call || data["hidden"] != true || data["requires"] != requires {
 		t.Errorf("error data = %v", data)
+	}
+}
+
+func assertReadOnlyToolRefusal(t *testing.T, got frame, call, requires string) {
+	t.Helper()
+
+	if got.Error != nil {
+		t.Fatalf("hidden tool returned protocol error: %+v", got.Error)
+	}
+	var result callToolResult
+	if err := json.Unmarshal(got.Result, &result); err != nil {
+		t.Fatal(err)
+	}
+	var content refusalContent
+	if err := json.Unmarshal(result.StructuredContent, &content); err != nil {
+		t.Fatal(err)
+	}
+	wantMessage := "tool \"" + call + "\" writes local state; it requires " + requires
+	if !result.IsError || content.Code != "read-only-tool" || content.Message != wantMessage ||
+		content.Hint != "try: restart the MCP server without --read-only; use --operator for operator-only tools" {
+		t.Fatalf("hidden tool refusal = %+v, isError=%v", content, result.IsError)
 	}
 }
