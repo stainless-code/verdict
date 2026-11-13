@@ -198,6 +198,12 @@ Cause: `--id` breaks the id shape.
 
 Fix: pass an `--id` matching `^[a-z0-9][a-z0-9-]{0,64}$`, or omit `--id`.
 
+## `bad-ignore`
+
+Cause: the trusted exclusion control is unreadable or malformed.
+
+Fix: keep `.verdict/ignore` UTF-8, under 64 KiB and 1,000 patterns. Use one shell glob per line, `#` comments and `!` to re-include, then re-fetch.
+
 ## `bad-judgment`
 
 Cause: the `calibrate --probe` judge file is missing or unreadable.
@@ -215,6 +221,12 @@ Fix: re-run `verdict pack add <dir|git-url>` from the pack's source so the lock 
 Cause: `REVIEW_MAX_BYTES` is not a positive byte count.
 
 Fix: export a positive byte count and re-run.
+
+## `bad-min-severity`
+
+Cause: the post severity floor is not a supported value.
+
+Fix: pass `--min-severity critical|important|informational|off`, then re-run.
 
 ## `bad-override`
 
@@ -341,6 +353,12 @@ Fix: pass a usable bundle name — `fetch-local` adds `local-` itself.
 Cause: the named `stash@{N}` does not exist.
 
 Fix: pick one from `git stash list` and re-run with `--stash <N>`.
+
+## `bad-suppression`
+
+Cause: a suppression has an invalid source or locator, no matching exclusion receipt, or an agent reason shorter than 30 characters.
+
+Fix: use source `agent` with a 30-character reason, or `exclusion` with the path and rule id from `excluded.json`, then re-run.
 
 ## `bad-target`
 
@@ -583,6 +601,12 @@ export destination link.
 Cause: `--id` is already taken.
 
 Fix: pass a different `--id`.
+
+## `ignore-too-large`
+
+Cause: the trusted `.verdict/ignore` exceeds 64 KiB or 1,000 patterns.
+
+Fix: reduce the file below both limits, then re-fetch.
 
 ## `index-capped`
 

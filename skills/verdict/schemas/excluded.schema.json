@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/excluded.schema.json",
+  "title": "excluded.json — excluded diff bytes",
+  "description": "Byte-accounted exclusion receipt. Paths and rule ids identify removed raw diff sections; both hashes bind the reviewed subset to its raw input.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "const": "1" },
+    "patterns_source": { "type": "string" },
+    "defaults": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "ignore": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "no_default_excludes": { "type": "boolean" },
+    "excluded": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/excludedPath" }
+    },
+    "excluded_bytes": { "type": "integer", "minimum": 0 },
+    "kept_bytes": { "type": "integer", "minimum": 0 },
+    "raw_diff_sha256": { "type": "string" },
+    "diff_sha256": { "type": "string" }
+  },
+  "required": [
+    "schema_version",
+    "patterns_source",
+    "defaults",
+    "ignore",
+    "no_default_excludes",
+    "excluded",
+    "excluded_bytes",
+    "kept_bytes",
+    "raw_diff_sha256",
+    "diff_sha256"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "excludedPath": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "old_path": { "type": "string" },
+        "rule_id": { "type": "string" },
+        "pattern": { "type": "string" },
+        "reason": { "enum": ["default", "attribute", "ignore", "cli"] },
+        "bytes": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["path", "rule_id", "pattern", "reason", "bytes"],
+      "additionalProperties": true
+    }
+  }
+}

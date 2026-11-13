@@ -44,6 +44,12 @@ bootstrap` — it fetches and verifies once, then works offline; a review never
 downloads. `npx skills` manages the skill copy only: `npx skills update`
 refreshes it.
 
+## Policy silence
+
+When a finding must be withheld, read the suppression receipt contract in
+`references/commands.md` before filling `review.json.suppressed[]`. Inspect
+`excluded.json` for excluded bytes; the raw diff remains in `full.raw.diff`.
+
 ## Workflow
 
 ```bash

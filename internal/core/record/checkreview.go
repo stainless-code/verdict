@@ -28,6 +28,7 @@ type CheckResult struct {
 // review.json: the fetched diff, the chunk manifest's names, and the optional
 // verification claims. Empty fields leave that check out.
 type CheckInput struct {
+	ExcludedPaths   map[string]bool
 	Diff            string
 	ChunkNames      []string
 	ChunkManifest   string
@@ -60,7 +61,7 @@ const (
 var (
 	//nolint:goconst // published schema literals
 	knownReviewKeys = []string{
-		"schema_version", fieldBody, problemApproved, fieldComments,
+		"schema_version", fieldBody, problemApproved, fieldComments, suppressedKey,
 		fieldResolved, fieldTriage, fieldSections, fieldChunks, fieldCoverage, fieldConfidence, fieldSecuritySummary,
 	}
 	//nolint:goconst // schema keys are published literals
@@ -91,6 +92,7 @@ func CheckReviewInput(review []byte, in CheckInput) CheckResult {
 	c := &checker{
 		res:             CheckResult{Problems: []Problem{}},
 		hunks:           hunks.Parse(in.Diff),
+		excludedPaths:   in.ExcludedPaths,
 		chunkNames:      in.ChunkNames,
 		chunkManifest:   in.ChunkManifest,
 		hasChunks:       in.ChunkNames != nil,
@@ -121,6 +123,7 @@ func CheckReviewInput(review []byte, in CheckInput) CheckResult {
 //nolint:govet // the fields group one check pass
 type checker struct {
 	res             CheckResult
+	excludedPaths   map[string]bool
 	hunks           []hunks.Hunk
 	chunkNames      []string
 	chunkManifest   string
@@ -207,6 +210,7 @@ func (c *checker) checkReview(obj *jq.Obj) {
 			if _, ok := v.(bool); !ok {
 				c.wrongType("$."+problemApproved, "approved must be a boolean", "use true or false", false)
 			}
+		case suppressedKey:
 		case fieldComments:
 			c.checkComments(v)
 		case fieldResolved:
@@ -535,6 +539,9 @@ func (c *checker) checkAnchor(base string, m *jq.Obj, path string, pathOK bool) 
 		return
 	}
 	key := stripDiffPrefix(path)
+	if c.excludedPaths[key] {
+		return
+	}
 	if !hunks.Indexed(c.hunks, key) {
 		c.add(c.problem(base+problemPathSuffix, core.ProblemCodePathNotInDiff, core.ProblemLevelError,
 			fmt.Sprintf("path %q is not in the fetched diff", path),

@@ -41,6 +41,7 @@ type MergeParams struct { //nolint:govet // field grouping documents the merge c
 	RepoRoot     string
 	Body         string
 	DryRun       bool
+	MinSeverity  string
 	FindingsFile string
 	PreFooter    func(string) string
 	Effective    core.Effective
@@ -120,6 +121,7 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 		dryRun:          in.DryRun,
 		controls:        in.Controls,
 		run:             in.Run,
+		minSeverity:     in.MinSeverity,
 		hunkRows:        in.HunkRows,
 		inputChecked:    in.InputChecked,
 		requireCoverage: in.RequireCoverage,

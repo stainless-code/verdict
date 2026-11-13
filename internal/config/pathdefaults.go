@@ -18,6 +18,14 @@ func PostFloorFor(rs *RunState, path string) string {
 	return floorFor(rs, path, postFloorOf)
 }
 
+// EffectiveFloor prefers an explicit run override to the path-scoped default.
+func EffectiveFloor(override string, rs *RunState, path string) string {
+	if override != "" {
+		return override
+	}
+	return PostFloorFor(rs, path)
+}
+
 // BelowDisplayFloor reports whether one stored entry sits under the display
 // floor applying to its own path: a legible severity under the floor rank is
 // withheld, while a missing or unknown severity stays visible so the filter

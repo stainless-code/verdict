@@ -1,0 +1,21 @@
+{
+  "schema_version": "1",
+  "patterns_source": ".verdict/ignore@base",
+  "defaults": ["default:generated", "default:attribute"],
+  "ignore": [],
+  "no_default_excludes": false,
+  "excluded": [
+    {
+      "path": "vendor/.env",
+      "old_path": "vendor/.env",
+      "rule_id": "ignore:1",
+      "pattern": "vendor/**",
+      "reason": "ignore",
+      "bytes": 123
+    }
+  ],
+  "excluded_bytes": 123,
+  "kept_bytes": 0,
+  "raw_diff_sha256": "7c694511e98420efde208e404cc279e76061ad9bf54dfc50e869348edd5801c6",
+  "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}
