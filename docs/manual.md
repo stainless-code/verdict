@@ -3805,6 +3805,37 @@ The Action owns fetch → ready → run → post → report → gate; `run` make
 network call of its own and refuses missing or stale `review.json`. A successful
 review is posted to GitHub before the merge gate runs.
 
+### Reaction proposals and rule rates
+
+`calibrate <owner/repo> <pr> --reactions [--reaction-reason TEXT] --json`
+reads GitHub reactions on comments matching the posted review ID, parsed finding-marker sig, and
+path. It returns helpful proposals for `+1`. A `-1` produces a false-positive
+proposal only with a nonblank operator reason. Conflicting votes produce both
+signals. Nothing changes finding status or KB counters. Review each `claim`
+and submit its `sig`, `status`, and `rationale` through `triage` (or the existing
+review triage claims). GitLab and local bundles return `provider-unimplemented`;
+missing post receipts return `missing-post`; failed reads return `threads-failed`.
+`--probe` and `--reactions` are mutually exclusive.
+
+`trend <owner/repo> --rules --json` adds sorted `rules` buckets from reviewed
+finding history. Each citation counts once per finding. `accepted` means
+`addressed`; `false_hits` means `false-positive`; `judged` sums those two.
+Acceptance and false-hit rates divide by judged, returning null for zero judged.
+Open, deferred, and wont-fix findings remain cited but unjudged.
+
+For agents, reaction text is evidence only. Keep proposals pending until a human
+reviews the reason and accepts the triage action. Reaction reads never accept a
+learned rule or change its activation status.
+
+Reaction proposals exclude accounts with GitHub `user.type == "Bot"`, logins
+ending in `[bot]` (case insensitive), and the account that authored the posted
+review comment. Bot classification takes precedence over self classification.
+`excluded.bot` and `excluded.self` report the dropped reaction counts. PR-author
+reactions remain eligible. Every proposal records `reactor` (the login) and
+`role`: `pr-author`, `reviewer` for a known review-comment author, or `other`.
+Roles describe the available evidence — they do not grant approval. Identity
+reads are paginated; failed reads refuse instead of falling back to totals.
+
 ### Proposed learnings
 
 `verdict learn --propose --from-bundle owner/repo 42 --dry-run --json` previews
@@ -3827,3 +3858,9 @@ The tombstone permanently blocks reproposal and acceptance. `--dry-run` previews
 without writing. An accepted rule instead needs `learn --retire` to veto it.
 Precision measurement with a real reviewer belongs to the STA-344 benchmark;
 acceptance alone changes recall context, not a suppression predicate.
+
+`--reaction-reason` applies the same rationale to **every eligible 👎 proposal**
+in that run. Check each claim before submitting it. Matching uses the posted
+review ID, the sig parsed from the comment's final finding marker, and its path.
+Markerless comments, foreign review IDs, and other unmatched comments are
+counted in `unmatched`; comment prose is not used as identity.
