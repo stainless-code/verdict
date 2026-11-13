@@ -77,8 +77,6 @@ type SectionTag struct { //nolint:govet // field order is the published property
 // bytes and positions; the merge itself preserves prior order through the
 // ordered clone-and-overlay path.
 type FindingEntry struct { //nolint:govet // field order is the published property order
-	Verification []Verification `json:"verification,omitempty"`
-	Confidence   string         `enum:"single|confirmed|contested"                                                   json:"confidence,omitempty"` //nolint:revive // confidence enum aligns with the published finding tags
 	Sig          string         `json:"sig"`
 	SigVersion   string         `const:"1"                                                                           json:"sig_version"`
 	Kind         string         `enum:"inline|section"                                                               json:"kind"`
@@ -101,6 +99,8 @@ type FindingEntry struct { //nolint:govet // field order is the published proper
 	FirstSeen    string         `json:"firstSeen"`
 	LastSeen     string         `json:"lastSeen"`
 	Rationale    string         `json:"rationale,omitempty"`
+	Verification []Verification `json:"verification,omitempty"`
+	Confidence   string         `enum:"single|confirmed|contested"                                                   json:"confidence,omitempty"` //nolint:revive // confidence enum aligns with the published finding tags
 	TriagedAt    string         `json:"triagedAt,omitempty"`
 	TriagedBy    string         `json:"triagedBy,omitempty"`
 	History      []HistoryEvent `json:"history"`
@@ -153,12 +153,12 @@ type Repair struct {
 // shell passes through raw) re-emits byte-identically; ItemsRaw wins over
 // the typed items so the envelope re-emits the ordered summaries verbatim.
 type RecordData struct { //nolint:govet // field order is the published property order
-	Verification    *PanelSummary    `anyOf:"null"                json:"verification,omitempty" optional:"true"`
 	Dir             string           `json:"dir"`
 	Anchors         AnchorsSummary   `json:"anchors"`
 	Findings        RecordFindings   `inline:"true"               json:"findings"`
 	Confidence      *int             `json:"confidence"           max:"5"                       min:"1"`
 	SecuritySummary *string          `json:"security_summary"`
+	Verification    *PanelSummary    `anyOf:"null"                json:"verification,omitempty" optional:"true"`
 	Items           []FindingItem    `json:"items"`
 	DryRun          bool             `json:"dry_run,omitempty"`
 	Check           *CheckSummary    `anyOf:"null"                json:"check,omitempty"`
@@ -201,7 +201,6 @@ type ChunkCoverage struct {
 // Record is schemas/record.schema.json: the completed-record artifact.
 // ConfidenceRaw wins over the typed confidence like RecordData does.
 type Record struct { //nolint:govet // field order is the published property order
-	Verification    *PanelSummary    `anyOf:"null"                      json:"verification,omitempty"   optional:"true"`
 	SchemaVersion   string           `const:"1"                         json:"schema_version"`
 	Status          string           `json:"status"`
 	Head            string           `json:"head"`
@@ -217,6 +216,7 @@ type Record struct { //nolint:govet // field order is the published property ord
 	PatchID         *string          `json:"patch_id,omitempty"`
 	PatchIDKind     string           `json:"patch_id_kind,omitempty"`
 	Repairs         []Repair         `json:"repairs,omitempty"`
+	Verification    *PanelSummary    `anyOf:"null"                      json:"verification,omitempty"   optional:"true"`
 	Coverage        *CoverageSummary `anyOf:"null"                      json:"coverage,omitempty"       optional:"true"`
 	ChunkCoverage   *ChunkCoverage   `anyOf:"null"                      json:"chunk_coverage,omitempty" optional:"true"`
 	ConfidenceRaw   any              `json:"-"`

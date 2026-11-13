@@ -270,12 +270,12 @@ export interface PostData {
 
 /** record --json data: the local-bundle merge (post stays refused, no PR target). */
 export interface RecordData {
-  verification?: VerificationSummary | null;
   dir: string;
   anchors: AnchorsSummary;
   findings: RecordDataFindings;
   confidence: number | null;
   security_summary: string | null;
+  verification?: VerificationSummary | null;
   items: Array<FindingItem>;
   /** True only on record --dry-run; the run wrote no findings.json, record.json, or any new file. */
   dry_run?: boolean;

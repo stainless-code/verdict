@@ -547,12 +547,6 @@
       "description": "record --json data: the local-bundle merge (post stays refused, no PR target).",
       "type": "object",
       "properties": {
-        "verification": {
-          "anyOf": [
-            { "type": "null" },
-            { "$ref": "#/$defs/verificationSummary" }
-          ]
-        },
         "dir": { "type": "string" },
         "anchors": { "$ref": "#/$defs/anchorsSummary" },
         "findings": {
@@ -572,6 +566,12 @@
           "maximum": 5
         },
         "security_summary": { "type": ["string", "null"] },
+        "verification": {
+          "anyOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/verificationSummary" }
+          ]
+        },
         "items": {
           "type": "array",
           "items": { "$ref": "#/$defs/findingItem" }
