@@ -84,4 +84,60 @@ assert_file_eq "every glab call is a registered argv in order" "$FIX/expected-ar
 assert_eq "the dry run adds one live-SHA read" 7 "$(hoststub_count glab)"
 hoststub_assert_all_routed
 
+# Exercise the real CLI against a host that accepts one discussion, then fails.
+export RECOVERY_STATE="$EVAL_SANDBOX/recovery"
+mkdir -p "$RECOVERY_STATE"
+mv "$EVAL_STUBBIN/glab" "$EVAL_STUBBIN/glab-read"
+cat >"$EVAL_STUBBIN/glab" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+case "$*" in
+  'api projects/4242/merge_requests/7/notes?per_page=100&page=1')
+    printf 'stub-glab %s\n' "$*" >>"$HOSTSTUB_LOG"
+    jq -s 'map(. + {type:"DiffNote"})' "$RECOVERY_STATE/accepted.jsonl"
+    ;;
+  'api projects/acme%2Fapp/merge_requests/7/discussions --method POST --header Content-Type: application/json --input -')
+    printf 'stub-glab %s\n' "$*" >>"$HOSTSTUB_LOG"
+    n=0
+    if [ -f "$RECOVERY_STATE/count" ]; then n=$(cat "$RECOVERY_STATE/count"); fi
+    n=$((n+1))
+    echo "$n" >"$RECOVERY_STATE/count"
+    if [ "$n" -eq 2 ]; then
+      cat >/dev/null
+      echo 'injected partial publish failure' >&2
+      exit 1
+    fi
+    jq -c . >>"$RECOVERY_STATE/accepted.jsonl"
+    echo '{"id":99}'
+    ;;
+  'api projects/acme%2Fapp/merge_requests/7/notes --method POST --header Content-Type: application/json --input -')
+    printf 'stub-glab %s\n' "$*" >>"$HOSTSTUB_LOG"
+    cat >"$RECOVERY_STATE/summary.json"
+    echo '{"id":100,"created_at":"2026-01-01T00:00:00Z"}'
+    ;;
+  *) exec "$EVAL_STUBBIN/glab-read" "$@" ;;
+esac
+STUB
+chmod +x "$EVAL_STUBBIN/glab"
+eval_write_review "$PR" <<'EOF'
+{"schema_version":"1","body":"> ⚠️ Two issues.","approved":false,"comments":[{"path":"notes.txt","line":2,"body":"First recovery finding needs a fix."},{"path":"notes.txt","line":2,"body":"Second recovery finding needs a fix."}]}
+EOF
+# Existing fetched findings are unrelated to this recovery scenario.
+printf '[]\n' >"$DIR/inline.json"
+printf '[]\n' >"$DIR/reviews.json"
+printf '[]\n' >"$DIR/findings.json"
+run_review post acme/app "$PR" --json
+assert_exit "partial host failure" 1
+assert_json_field "partial failure is typed" post-failed '.error.code'
+run_review fetch acme/app "$PR" --provider gitlab --json
+assert_exit "re-fetch accepted remote discussion" 0
+assert_json_field "one comment landed before failure" 1 'length' "$DIR/inline.json"
+run_review post acme/app "$PR" --json
+assert_exit "partial rerun" 0
+jq -s . "$RECOVERY_STATE/accepted.jsonl" >"$RECOVERY_STATE/accepted.json"
+assert_json_field "rerun publishes exactly the missing comment" 2 'length' "$RECOVERY_STATE/accepted.json"
+assert_json_field "each rendered body lands once" 2 '[.[].body] | unique | length' "$RECOVERY_STATE/accepted.json"
+assert_eq "one failure plus two successful discussions" 3 "$(cat "$RECOVERY_STATE/count")"
+hoststub_assert_all_routed
+
 eval_end

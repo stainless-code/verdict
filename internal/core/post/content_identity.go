@@ -21,9 +21,13 @@ func identifyComment(head string, comment *jq.Obj) commentIdentity {
 	if _, valid := threadscore.FindingSig(body); valid {
 		body, _, _ = strings.CutLast(strings.TrimRight(body, " \t\r\n"), "\n\n")
 	}
+	side := orderedString(comment, "side")
+	if side == "" {
+		side = "RIGHT"
+	}
 	return commentIdentity{
 		head: head, path: orderedString(comment, "path"),
-		side: orderedString(comment, "side"), line: n, body: sigsum.Sum([]byte(body)),
+		side: side, line: n, body: sigsum.Sum([]byte(body)),
 	}
 }
 

@@ -133,22 +133,25 @@ with `--force`). An unreachable recheck downgrades to `COMMENT` with the reason
 in the body and warnings — never a silent `APPROVE`, never a hard failure.
 `COMMENT`, `REQUEST_CHANGES`, dry runs, and local bundles never pay this lookup.
 
-Two dedup layers keep "exactly one terminal write" mechanical: the fine guard
-refuses exact payload replays (rendered body, each comment’s `path`, `side`,
-`line`, and `body`, plus the reviewed head — excluding diff positions,
-range metadata, and event selection — form the hash; dot-marker
-`.posted_<hash>` — legit re-reviews hash differently and pass), while the
-coarse single-review finalizer refuses any second completed post on the same
-reviewed SHA — even with different content — with typed `already-posted`
-(pass `--force` to override the wedged case). Any new commit SHA re-arms
-automatically (the next post refreshes the `post.json` head); attempts, dry
-runs, and failures never write the key, so only a real post arms it.
+Posting compares rendered content with the fetched `reviews.json` and
+`inline.json` snapshots after all approval and policy gates have run. Only
+missing comments and summary parts are submitted. Re-fetch before retrying a
+partial publish so the snapshots include the writes the host accepted.
 
-Finalizer loop (one shape end to end — refuse → advance → delta review →
-post → gate): the `already-posted` refusal names both exits — `--force` to
-override, or the forward path `verdict fetch owner/repo 123
---base-sha <short-posted-head>` (the 7-char reviewed SHA) and review the
-delta per `prompts/incremental-review.md` step 2. A push that lands after
+Comment identity includes the reviewed head, path, side, line, and rendered
+body digest; matching also recognizes identical content at a moved line.
+Diff positions and hidden finding-signature receipts do not identify content.
+Sources and suggestions are part of the rendered body. A new head deliberately
+re-arms publication: the output and `post.json` carry `rearmed: true` and
+`previous_head`. `--force` explicitly republishes all content.
+
+The fetched remote content is authoritative. `.posted_*`, `post.json`, and
+posted-body markers cannot suppress missing remote content. If every summary
+part and comment is already present, `duplicate-payload` reports that there is
+nothing to write. Suppression never bypasses an approval or policy gate and
+never removes findings from the gate's input or reported finding counts.
+
+A push that lands after
 fetch never fails the run: `post` warns on stderr and appends the `> ⚠️`
 body note, both naming `verdict fetch owner/repo 123
 --base-sha <short-fetched-sha>` — copy-paste it, review the delta, post,

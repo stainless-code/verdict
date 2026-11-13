@@ -20,6 +20,7 @@ func hoistPostRecord(t *testing.T) {
 	}
 }
 
+//nolint:revive // compare the same gate with publication evidence present and absent
 func TestSuppressionDoesNotChangeGate(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)

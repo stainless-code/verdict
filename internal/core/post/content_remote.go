@@ -105,7 +105,7 @@ func (st *state) missingPayloads() []string {
 	var pending []string
 	for i, payload := range st.payloads {
 		comments := []any{}
-		if i == 0 {
+		if i == 0 && len(st.comments) > 0 {
 			comments = st.comments
 		}
 		if part := st.missingPayload(payload, comments); part != "" {
@@ -128,19 +128,25 @@ func (st *state) missingPayload(payload string, comments []any) string {
 		}
 		body = ""
 	}
-	return postPayload(body, st.event, commitIDValue(st.commitID), comments)
+	return postPayload(body, orderedString(obj, "event"), commitIDValue(st.commitID), comments)
 }
 
 func (st *state) remoteEvidence() ([]commentIdentity, string) {
 	var remote []commentIdentity
 	previous := ""
+	seenCurrent := false
 	for _, m := range remoteObjects(st.dir, "inline.json") {
 		head, obj := remoteComment(m)
+		seenCurrent = seenCurrent || head == st.commitID
 		remote = append(remote, identifyComment(head, obj))
 		previous = priorHead(st.commitID, head, previous)
 	}
 	for _, rev := range st.liveReviews() {
+		seenCurrent = seenCurrent || rev.commitID == st.commitID
 		previous = priorHead(st.commitID, rev.commitID, previous)
+	}
+	if seenCurrent {
+		previous = ""
 	}
 	return remote, previous
 }
