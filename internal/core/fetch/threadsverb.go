@@ -43,32 +43,36 @@ type ThreadsResponse struct {
 // ThreadsData is the threads verb's --json data profile: what was refreshed
 // and a machine-readable tally over the feed.
 type ThreadsData struct {
-	Dir       string `json:"dir"`
-	File      string `json:"file"`
-	Provider  string `json:"provider"`
-	HeadSHA   string `json:"head_sha"`
-	FetchedAt string `json:"fetched_at"`
-	Truncated bool   `json:"truncated"`
-	Threads   int    `json:"threads"`
-	Open      int    `json:"open"`
-	Outdated  int    `json:"outdated"`
-	Verdict   int    `json:"verdict"`
+	Receipt   *core.Truncation `json:"-"`
+	Dir       string           `json:"dir"`
+	File      string           `json:"file"`
+	Provider  string           `json:"provider"`
+	HeadSHA   string           `json:"head_sha"`
+	FetchedAt string           `json:"fetched_at"`
+	Truncated bool             `json:"truncated,omitempty" receipt:"true"`
+	Threads   int              `json:"threads"`
+	Open      int              `json:"open"`
+	Outdated  int              `json:"outdated"`
+	Verdict   int              `json:"verdict"`
 }
 
 // Wire renders the profile in published wire order.
 func (d *ThreadsData) Wire() *jq.Obj {
-	return jq.NewObj(
+	receipt := d.Receipt
+	if receipt == nil {
+		receipt = core.ScanCut(d.Truncated, d.Threads)
+	}
+	return receipt.Apply(jq.NewObj(
 		"dir", d.Dir,
 		"file", d.File,
 		"provider", d.Provider,
 		"head_sha", d.HeadSHA,
 		"fetched_at", d.FetchedAt,
-		"truncated", d.Truncated,
 		"threads", d.Threads,
 		"open", d.Open,
 		"outdated", d.Outdated,
 		"verdict", d.Verdict,
-	)
+	))
 }
 
 type threadsRun struct {
@@ -183,6 +187,7 @@ func summarizeThreads(
 	data := &ThreadsData{
 		Dir: dir, File: dir + suffixThreadsJSON, Provider: provider,
 		HeadSHA: head, FetchedAt: at, Truncated: truncated, Threads: len(feed),
+		Receipt: readcommon.BundleTruncation(dir),
 	}
 	for i := range feed {
 		if !feed[i].Resolved {

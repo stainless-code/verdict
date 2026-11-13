@@ -1180,6 +1180,7 @@ func TestInventoryCapsAndReportsTruncation(t *testing.T) {
 		t.Fatalf("sources = %d, want the 64-entry cap", len(view.Sources))
 	}
 	assertTruncatedInventory(t, view)
+	assertInventoryReceipt(t, view)
 }
 
 // assertTruncatedInventory pins the partial flag, warning, store row, and
@@ -1586,5 +1587,15 @@ func TestBundleFilterIsPortable(t *testing.T) {
 	}
 	if BundleMatches("local-*", "1234") {
 		t.Error("a local glob matched a PR bundle")
+	}
+}
+
+func assertInventoryReceipt(t *testing.T, view *View) {
+	t.Helper()
+	data := wireMap(t, view.Data)
+	for key, want := range map[string]any{"truncated": true, "truncation_reason": "scan_cap", "returned": json.Number("64"), "total": nil, "next_offset": nil} {
+		if got := data[key]; got != want {
+			t.Errorf("inventory receipt %s = %v, want %v", key, got, want)
+		}
 	}
 }

@@ -201,7 +201,7 @@ var publishedSemantics = map[string]string{
 	// pack test: additive $defs/packTestData, packTestCase, and
 	// packTestSummary, plus the generated envelope description. Existing shapes
 	// remain unchanged.
-	"envelope.schema.json": "9829736f1dbde162257b1a271b2f00b80d2e01420c17abde123caea4a21686da",
+	"envelope.schema.json": "808044be7581c418f1e604da6b0935d95a1d227a716d8bf9ca78d9a5e71172ef",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -314,7 +314,7 @@ var publishedSemantics = map[string]string{
 	// contract extends the first cut with the thread's host id, PR/head/time
 	// envelope, root author kind, finding_sig, and the comments[] array: all
 	// additions to the new document, no previously published shape changed.
-	"threads.schema.json": "0dfe2a58cc8e51beede189ccc676fee3446e847336e2b72270539eb4c4eed3bc",
+	"threads.schema.json": "e24857002ee5c60fb38a3a2a0867eb453526dd35c075b4b4adde33f41ebe69dc",
 	// additive threads-resolve.schema.json (new bundle document; no existing
 	// schema property, required key, or type changed). The receipt proves the
 	// resolve mutation: provider, repo, pr, head, timestamp, dry_run, the

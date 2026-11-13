@@ -94,6 +94,7 @@ func cursorPage(cursor string) (int, bool) {
 }
 
 func warnPaging(r *session, provider, what string, err error, truncated bool) {
+	r.observePaging(truncated || err != nil)
 	switch {
 	case err != nil:
 		r.Warn(provider + " " + what + " paging stopped on a failed page (" +

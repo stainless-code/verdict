@@ -266,6 +266,7 @@ func fetchData(
 	impactArtifactRow(artifacts, ctx2.dir)
 	contextArtifacts(artifacts, ctx2.dir)
 	data := &core.FetchData{
+		Receipt:    ctx2.runner.receipt,
 		Sources:    readcommon.ContextSources(ctx2.dir),
 		Dir:        ctx2.dir,
 		HeadSHA:    readcommon.PrField(ctx2.dir, keyHeadSHA),
@@ -349,6 +350,7 @@ func localFetchData(ctx2 *fetchRunCtx, mode *localMode, listed string, total, ad
 		diffSize = fi.Size()
 	}
 	return &core.FetchData{
+		Receipt:    ctx2.runner.receipt,
 		Sources:    readcommon.ContextSources(dir),
 		Local:      true,
 		Dir:        dir,

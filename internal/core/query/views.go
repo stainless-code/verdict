@@ -51,8 +51,8 @@ func (l *Layer) Health(_ context.Context) *View {
 	view := l.newView()
 	roots := make([]any, 0, len(l.roots))
 	for _, root := range l.roots {
-		names, _, _ := l.listBundles(root)
-		roots = append(roots, jq.NewObj("id", root.ID, "path", root.Path, "bundles", len(names)))
+		names, cut, _ := l.listBundles(root)
+		roots = append(roots, core.ScanCut(cut, len(names)).Apply(jq.NewObj("id", root.ID, "path", root.Path, "bundles", len(names))))
 	}
 	watch := !l.noWatch
 	interval := l.interval.String()
@@ -71,6 +71,7 @@ func (l *Layer) Health(_ context.Context) *View {
 		keySources, []any{},
 		keyErrors, []any{},
 	)
+	core.ScanCut(l.discovery.Truncated, len(roots)).Apply(view.Data)
 	return view
 }
 

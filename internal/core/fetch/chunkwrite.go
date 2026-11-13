@@ -317,12 +317,17 @@ func dirBase(dir string) string {
 // chunksJSON owns the manifest chunk entries in index order.
 func chunksJSON(dir string, plan []chunkEntry) []any {
 	out := make([]any, 0, len(plan))
+	total := 0
+	for _, ch := range plan {
+		total += len(ch.members)
+	}
+	offset := 0
 	for i, ch := range plan {
 		files := make([]any, len(ch.members))
 		for j, m := range ch.members {
 			files[j] = m.path
 		}
-		out = append(out, jq.NewObj(
+		entry := jq.NewObj(
 			keyIndex, i+1,
 			"name", ch.name,
 			keyFiles, files,
@@ -331,7 +336,10 @@ func chunksJSON(dir string, plan []chunkEntry) []any {
 			gitCmdDiff, dir+suffixChunks+ch.name+diffSuffix,
 			"toc", dir+suffixChunks+ch.name+".toc.txt",
 			"roles", dir+suffixChunks+ch.name+".roles.txt",
-		))
+		)
+		offset += len(files)
+		chunkReceipt(len(plan) > 1, len(files), total, offset).Apply(entry)
+		out = append(out, entry)
 	}
 	return out
 }
@@ -343,4 +351,15 @@ func chunkActualBytes(dir, name string) int64 {
 		return 0
 	}
 	return fi.Size()
+}
+
+func chunkReceipt(cut bool, returned, total, offset int) *core.Truncation {
+	if !cut {
+		return nil
+	}
+	var next *int
+	if offset < total {
+		next = new(offset)
+	}
+	return core.ResultCut("chunk_cap", returned, new(total), next)
 }

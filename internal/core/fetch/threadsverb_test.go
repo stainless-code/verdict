@@ -130,7 +130,7 @@ func TestRunThreadsRefreshPagesAndWrites(t *testing.T) {
 		t.Fatalf("decode feed: %v", derr)
 	}
 	m, _ := jq.AsMap(doc)
-	if len(jq.Elements(m["threads"])) != 2 || m["truncated"] != false {
+	if len(jq.Elements(m["threads"])) != 2 || m["truncated"] != nil {
 		t.Errorf("feed = %s", raw)
 	}
 }

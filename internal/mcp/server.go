@@ -508,7 +508,9 @@ func successResult(tool string, data *jq.Obj) callToolResult {
 	}
 	total := len(raw)
 	receipt := &core.Truncation{Truncated: true, TruncationReason: "response_cap", Returned: 0, Total: &total}
-	data = receipt.Apply(data.Clone())
+	if cut, _ := data.Get("truncated"); cut != true {
+		data = receipt.Apply(data.Clone())
+	}
 	raw = rawMarshal(data)
 	return callToolResult{
 		Content:           []contentBlock{{Type: contentTypeText, Text: truncationSummary(tool, data, total)}},
@@ -520,8 +522,6 @@ func successResult(tool string, data *jq.Obj) callToolResult {
 func truncationSummary(tool string, data *jq.Obj, size int) string {
 	pairs := []any{
 		"tool", tool,
-		"bytes", size,
-		"limit", maxResultTextBytes,
 	}
 	artifact, _ := data.Get("dir")
 	path, ok := artifact.(string)

@@ -16,7 +16,7 @@ import (
 func pageFileList(ctx context.Context, ctx2 *fetchRunCtx, dir, repo, pr string) error {
 	files, ordered, ok := prFilesOrdered(dir + suffixPRJSON)
 	if !ok || len(files) != cliFileCap {
-		return nil
+		return discardFileSource(dir)
 	}
 	paged, truncated, perr := fetchAllFiles(ctx, ctx2.runner, repo, pr)
 	if perr != nil {
@@ -30,6 +30,7 @@ func pageFileList(ctx context.Context, ctx2 *fetchRunCtx, dir, repo, pr string) 
 			"count", len(files),
 			"paging_error", headBytes(perr.Error(), numExcerptShort),
 		)
+		core.ScanCut(true, len(files)).Apply(note)
 		if err := atomic.WriteFile(dir+"/filesource.json", []byte(jq.PrettyOrdered(note))); err != nil {
 			return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/filesource.json: %v", dir, err)}
 		}
@@ -44,8 +45,8 @@ func pageFileList(ctx context.Context, ctx2 *fetchRunCtx, dir, repo, pr string) 
 		"cli_cap", cliFileCap,
 		"provider_ceiling", providerFileCeiling,
 		"count", len(paged),
-		"truncated", truncated,
 	)
+	core.ScanCut(truncated, len(paged)).Apply(note)
 	if err := atomic.WriteFile(dir+"/filesource.json", []byte(jq.PrettyOrdered(note))); err != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/filesource.json: %v", dir, err)}
 	}
@@ -214,4 +215,11 @@ func replaceFiles(ordered *jq.Obj, paged []any) {
 	}
 	ordered.Set(keyAdditions, adds)
 	ordered.Set(keyDeletions, dels)
+}
+
+func discardFileSource(dir string) error {
+	if err := os.Remove(dir + "/filesource.json"); err != nil && !os.IsNotExist(err) {
+		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not remove filesource.json: %v", err)}
+	}
+	return nil
 }

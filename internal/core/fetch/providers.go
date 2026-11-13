@@ -1284,6 +1284,7 @@ func bitbucketPages(ctx context.Context, r *session, auth curlauth.Credential, f
 
 // bitbucketWarnPaging surfaces a partial or early-stopped page walk.
 func bitbucketWarnPaging(r *session, err error, truncated bool) {
+	r.observePaging(truncated || err != nil)
 	switch {
 	case err != nil:
 		r.Warn("bitbucket paging stopped on an unreadable page (" +

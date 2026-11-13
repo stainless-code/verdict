@@ -519,7 +519,12 @@ export interface ThreadsFile {
   pr: number;
   head_sha: string;
   fetched_at: string;
-  truncated: boolean;
+  truncated?: boolean;
+  truncation_reason?:
+    "work_budget" | "response_cap" | "time_budget" | "scan_cap" | "chunk_cap";
+  returned?: number;
+  total?: number | null;
+  next_offset?: number | null;
   threads: Array<Thread>;
   [key: string]: unknown;
 }
@@ -548,7 +553,12 @@ export interface Comment {
   author: string;
   author_kind: "human" | "bot" | "verdict";
   body: string;
-  truncated: boolean;
+  truncated?: boolean;
+  truncation_reason?:
+    "work_budget" | "response_cap" | "time_budget" | "scan_cap" | "chunk_cap";
+  returned?: number;
+  total?: number | null;
+  next_offset?: number | null;
   created_at: string;
   [key: string]: unknown;
 }
@@ -846,7 +856,12 @@ export interface ThreadsData {
   provider: string;
   head_sha: string;
   fetched_at: string;
-  truncated: boolean;
+  truncated?: boolean;
+  truncation_reason?:
+    "work_budget" | "response_cap" | "time_budget" | "scan_cap" | "chunk_cap";
+  returned?: number;
+  total?: number | null;
+  next_offset?: number | null;
   threads: number;
   open: number;
   outdated: number;
@@ -1338,6 +1353,12 @@ export interface CalibrateJudgment {
 
 /** fetch --json data: the bundle location, the diff statistics the toc counted, the panel, and the conditional summaries the run armed. estimate and budget travel together, cap and chunk follow only when armed, and prompt_dump lands last when staged. */
 export interface FetchData {
+  truncated?: boolean;
+  truncation_reason?:
+    "work_budget" | "response_cap" | "time_budget" | "scan_cap" | "chunk_cap";
+  returned?: number;
+  total?: number | null;
+  next_offset?: number | null;
   dir: string;
   head_sha: string;
   base_sha: string;
@@ -1368,6 +1389,12 @@ export interface FetchData {
 
 /** fetch-local --json data: the same statistics without a remote base, plus the worktree kind and no incremental_base. */
 export interface FetchLocalData {
+  truncated?: boolean;
+  truncation_reason?:
+    "work_budget" | "response_cap" | "time_budget" | "scan_cap" | "chunk_cap";
+  returned?: number;
+  total?: number | null;
+  next_offset?: number | null;
   dir: string;
   kind: string;
   head_sha: string;

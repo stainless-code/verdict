@@ -88,8 +88,6 @@ func assertTruncationSummary(t *testing.T, text, artifact string, full int) {
 		"total":             float64(full),
 		"next_offset":       nil,
 		"tool":              "report",
-		"bytes":             float64(full),
-		"limit":             float64(maxResultTextBytes),
 		"artifact":          artifact,
 	}
 	for key, value := range want {
@@ -109,4 +107,23 @@ func decodeSummary(t *testing.T, text string) map[string]any {
 		t.Fatalf("truncation summary is not JSON: %v", err)
 	}
 	return summary
+}
+
+func TestTextCapPreservesProducerReceipt(t *testing.T) {
+	t.Parallel()
+	data := jq.NewObj("truncated", true, "truncation_reason", "scan_cap", "returned", 0, "total", nil, "next_offset", nil, "note", strings.Repeat("x", maxResultTextBytes))
+	result := successResult("report", data)
+	var receipt struct {
+		Reason string `json:"truncation_reason"`
+	}
+	if err := json.Unmarshal(result.StructuredContent, &receipt); err != nil {
+		t.Fatal(err)
+	}
+	if receipt.Reason != "scan_cap" {
+		t.Fatalf("producer reason = %q, want scan_cap", receipt.Reason)
+	}
+	summary := decodeSummary(t, result.Content[0].Text)
+	if summary["truncation_reason"] != "response_cap" {
+		t.Fatalf("text reason = %v, want response_cap", summary["truncation_reason"])
+	}
 }

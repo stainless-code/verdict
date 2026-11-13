@@ -134,6 +134,7 @@ func (p FetchPanel) Wire() *jq.Obj {
 // the local verb emits kind second and no incremental_base, while fetch
 // emits incremental_base last among the fixed keys.
 type FetchData struct { //nolint:govet // field order is the published property order
+	Receipt         *Truncation `json:"-" receipt:"true"`
 	Sources         []string
 	Local           bool `json:"-"`
 	Dir             string
@@ -194,7 +195,7 @@ func (d *FetchData) Wire() *jq.Obj {
 		o.Set("sources", sources)
 	}
 	d.wireTail(o)
-	return o
+	return d.Receipt.Apply(o)
 }
 
 // wireCosts renders the cost summary pair: the estimate whenever one exists (a

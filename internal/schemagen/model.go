@@ -683,6 +683,7 @@ type FetchCapabilities struct { //nolint:govet // field order is the published p
 // diff statistics the toc counted, and the conditional summaries the run
 // armed (estimate and budget, cap, chunk, prompt dump).
 type FetchData struct { //nolint:govet // field order is the published property order
+	Receipt         *core.Truncation  `json:"-"                receipt:"true"`
 	Dir             string            `json:"dir"`
 	HeadSHA         string            `json:"head_sha"`
 	BaseSHA         string            `json:"base_sha"`
@@ -708,6 +709,7 @@ type FetchData struct { //nolint:govet // field order is the published property 
 // statistics without a remote base, plus the worktree kind and no
 // incremental base.
 type FetchLocalData struct { //nolint:govet // field order is the published property order
+	Receipt      *core.Truncation  `json:"-"            receipt:"true"`
 	Dir          string            `json:"dir"`
 	Kind         string            `json:"kind"`
 	HeadSHA      string            `json:"head_sha"`
