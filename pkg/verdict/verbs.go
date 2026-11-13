@@ -556,7 +556,9 @@ func resolveResponseOf(resp *fetchcore.ThreadsResponse) *ThreadsResponse {
 // ReadyRequest gates on merge readiness.
 type ReadyRequest struct {
 	Invocation
-	Check bool
+	WaitFor string
+	Timeout string
+	Check   bool
 }
 
 // ReadyResponse carries the merge-readiness advisory and gate outcome.
@@ -574,6 +576,7 @@ func (c *Client) Ready(ctx context.Context, req *ReadyRequest) (*ReadyResponse, 
 	resp, ref := readycore.Run(ctx, &readycore.Request{
 		ReadRequest: rr,
 		Check:       req.Check,
+		WaitFor:     req.WaitFor, Timeout: req.Timeout,
 	})
 	if ref != nil {
 		return nil, refusalErr(ref)

@@ -359,6 +359,7 @@ type TriageData struct {
 // ReadyData is the ready verb's --json data profile: the gate verdict, every
 // blocker with its recovery action, and the live PR state the gate read.
 type ReadyData struct { //nolint:govet // field order is the published property order
+	Wait             PRWaitData     `json:"wait" optional:"true"`
 	Ready            bool           `json:"ready"`
 	Recommendation   string         `json:"recommendation"`
 	Blockers         []ReadyBlocker `json:"blockers"`

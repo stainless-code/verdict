@@ -32,7 +32,7 @@ _verdict_flags() { # $1 = verb
     adopt) printf '%s\n' --from --json;;
     fix) printf '%s\n' --sig --json;;
     pr-wait) printf '%s\n' --until --timeout --once --interval --json --provider ;;
-    ready) printf '%s\n' --json --check;;
+    ready) printf '%s\n' --json --check --wait-for --timeout;;
     gate) printf '%s\n' --max-severity --require-head --live --coverage --json;;
     mcp) printf '%s\n' --read-only --operator --agent --write --dry-run --json;;
     serve) printf '%s\n' --root --depth --max-visits --max-repos --rediscover --no-registry --host --port --token --check --max-bundles --interval --sweep --no-watch --json;;

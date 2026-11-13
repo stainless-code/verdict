@@ -191,7 +191,7 @@ func usageText() string {
 		"    Foreground wait: timeout 1s–30m; interval >=1s. Exit 0 on condition,\n" +
 		"    exit 1 with wait-timeout or condition-unmet data; no local writes.\n" +
 		"\n" +
-		"  ready <owner/repo> <pr> [--json] [--check]\n" +
+		"  ready <owner/repo> <pr> [--json] [--check] [--wait-for build --timeout D]\n" +
 		"    advisory only (exit 0, never a gate): CI state, open threads, draft/conflict,\n" +
 		"    description completeness. Prints blockers with actions + recommendation\n" +
 		"    (review/wait/nudge-author). GitHub and GitLab PR bundles; local bundles refuse\n" +

@@ -56,7 +56,7 @@ func Wait(ctx context.Context, req *WaitRequest) (*WaitResponse, *core.RefusalEr
 		return nil, ref
 	}
 	if !validUntil(req.Until) {
-		return nil, &core.RefusalError{Code: "bad-flags", Message: "--until must be merged, closed, checks-green, " +
+		return nil, &core.RefusalError{Code: waitBadFlags, Message: "--until must be merged, closed, checks-green, " +
 			"checks-done, or review-changed"}
 	}
 	if req.Runtime == nil {
@@ -101,7 +101,7 @@ func WaitDurations(timeoutText, intervalText string) (time.Duration, time.Durati
 }
 
 func badWaitBounds() *core.RefusalError {
-	return &core.RefusalError{Code: "bad-flags", Message: "wait timeout must be 1s–30m; interval must be 1s–timeout"}
+	return &core.RefusalError{Code: waitBadFlags, Message: "wait timeout must be 1s–30m; interval must be 1s–timeout"}
 }
 
 func waitProvider(req *WaitRequest) (string, *core.RefusalError) {
@@ -128,7 +128,7 @@ const (
 
 func validUntil(until string) bool {
 	switch until {
-	case untilMerged, untilClosed, "checks-green", "checks-done", "review-changed":
+	case untilMerged, untilClosed, "checks-green", untilChecksDone, "review-changed":
 		return true
 	}
 	return false
@@ -142,7 +142,7 @@ func waitMatches(until string, baseline, snapshot *WaitSnapshot) bool {
 		return snapshot.State == stateClosed || snapshot.State == waitMerged
 	case "checks-green":
 		return snapshot.ChecksKnown && snapshot.ChecksGreen
-	case "checks-done":
+	case untilChecksDone:
 		return snapshot.ChecksKnown && snapshot.ChecksDone
 	case "review-changed":
 		return baseline != nil && (snapshot.Reviews != baseline.Reviews || snapshot.Threads != baseline.Threads)
@@ -157,7 +157,7 @@ func waitOutcome(matched, once bool) string {
 	if once {
 		return "condition-unmet"
 	}
-	return "wait-timeout"
+	return outcomeTimeout
 }
 
 func waitRefusal(ctx context.Context, err error) *core.RefusalError {
@@ -204,3 +204,9 @@ func (s *waitSession) changed(snapshot *WaitSnapshot, encoded string) {
 		s.req.Observe(snapshot)
 	}
 }
+
+const (
+	waitBadFlags    = "bad-flags"
+	untilChecksDone = "checks-done"
+	outcomeTimeout  = "wait-timeout"
+)

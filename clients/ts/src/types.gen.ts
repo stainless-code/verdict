@@ -707,6 +707,7 @@ export interface TriageData {
 
 /** ready --json data: the gate verdict, every blocker with the action that clears it, and the live PR state the gate read. recommendation is review when nothing blocks, hold otherwise. */
 export interface ReadyData {
+  wait?: PrWaitData;
   ready: boolean;
   recommendation: string;
   blockers: Array<ReadyBlocker>;

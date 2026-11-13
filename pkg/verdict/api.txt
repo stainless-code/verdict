@@ -450,7 +450,9 @@ type Progress interface {
 
 type ReadyRequest struct {
 	Invocation
-	Check bool
+	WaitFor string
+	Timeout string
+	Check   bool
 }
     ReadyRequest gates on merge readiness.
 

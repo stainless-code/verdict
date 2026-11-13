@@ -313,11 +313,20 @@ func decodeReady(req *readycore.Request, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.str(argPr, &req.Pr)
 	a.boolean("check", &req.Check)
+	a.str("wait_for", &req.WaitFor)
+	a.str("timeout", &req.Timeout)
 }
 
 func wireReady(ctx context.Context, b *bindings, req *readycore.Request) error {
 	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
 		return err
+	}
+	if req.WaitFor != "" {
+		wait := &readycore.WaitRequest{Timeout: req.Timeout}
+		if err := capPRWait(wait); err != nil {
+			return err
+		}
+		req.Timeout = wait.Timeout
 	}
 	req.Warnings = b.warningList()
 	return nil
@@ -471,6 +480,10 @@ func wirePRWait(ctx context.Context, b *bindings, req *readycore.WaitRequest) er
 	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
 		return err
 	}
+	return capPRWait(req)
+}
+
+func capPRWait(req *readycore.WaitRequest) error {
 	if req.Timeout == "" {
 		req.Timeout = "50s"
 	}

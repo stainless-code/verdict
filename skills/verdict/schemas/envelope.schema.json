@@ -1412,6 +1412,7 @@
       "description": "ready --json data: the gate verdict, every blocker with the action that clears it, and the live PR state the gate read. recommendation is review when nothing blocks, hold otherwise.",
       "type": "object",
       "properties": {
+        "wait": { "$ref": "#/$defs/prWaitData" },
         "ready": { "type": "boolean" },
         "recommendation": { "type": "string" },
         "blockers": {
