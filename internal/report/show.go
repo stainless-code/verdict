@@ -33,18 +33,7 @@ func RunShow(ctx context.Context, r *cli.Runner, args []string, req Request) int
 		rec = resp.Item.Raw
 	}
 	if r.JSONMode {
-		data := jq.NewObj("item", rec, "fix", nil)
-		if resp.Fix != nil {
-			data.Set("fix", resp.Fix.Wire())
-		}
-		next := "address via address-reviews mode, then post"
-		if resp.Item == nil {
-			next = "partial results — a miss is not proof of absence"
-		}
-		env := core.RenderEnvelope("show", req.Repo, req.Pr, resp.At,
-			next, resp.Warnings,
-			resp.Receipt.Apply(data), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+		renderShowJSON(r, req, resp, rec)
 		return cli.ExitOK
 	}
 	if resp.Item == nil {
@@ -53,6 +42,21 @@ func RunShow(ctx context.Context, r *cli.Runner, args []string, req Request) int
 	}
 	fmt.Fprint(r.Human, jq.PrettyOrdered(rec))
 	return cli.ExitOK
+}
+
+func renderShowJSON(r *cli.Runner, req Request, resp *core.ShowResponse, rec any) {
+	data := jq.NewObj("item", rec, "fix", nil)
+	if resp.Fix != nil {
+		data.Set("fix", resp.Fix.Wire())
+	}
+	next := "address via address-reviews mode, then post"
+	if resp.Item == nil {
+		next = "partial results — a miss is not proof of absence"
+	}
+	env := core.RenderEnvelope("show", req.Repo, req.Pr, resp.At,
+		next, resp.Warnings,
+		resp.Receipt.Apply(data), nil)
+	fmt.Fprint(r.Out, jq.PrettyOrdered(env))
 }
 
 // parseShowFlags parses the show flags.

@@ -73,13 +73,16 @@ func TestNextToolCarriesReceipt(t *testing.T) {
 // TestShowToolCarriesReceipt proves the show tool keeps fix beside item and
 // restates the receipt: a found sig counts itself, an unknown sig is a
 // truncated empty result instead of a false unknown-sig refusal.
+func showReq(sig string) *core.ShowRequest {
+	req := &core.ShowRequest{Sig: sig}
+	req.ReadRequest = core.ReadRequest{Repo: "acme/app", Pr: "5101"}
+	return req
+}
+
 func TestShowToolCarriesReceipt(t *testing.T) {
 	writeTruncatedBundle(t)
 	registered := findTool(t, "show")
-	hit, ref := registered.invoke(context.Background(), &core.ShowRequest{
-		ReadRequest: core.ReadRequest{Repo: "acme/app", Pr: "5101"},
-		Sig:         "c1111111",
-	})
+	hit, ref := registered.invoke(context.Background(), showReq("c1111111"))
 	if ref != nil {
 		t.Fatalf("show invoke refusal: %v", ref)
 	}
@@ -91,10 +94,7 @@ func TestShowToolCarriesReceipt(t *testing.T) {
 		t.Fatalf("show hit receipt = %s, want %s", got, wantHit)
 	}
 
-	miss, ref := registered.invoke(context.Background(), &core.ShowRequest{
-		ReadRequest: core.ReadRequest{Repo: "acme/app", Pr: "5101"},
-		Sig:         "deadbeef",
-	})
+	miss, ref := registered.invoke(context.Background(), showReq("deadbeef"))
 	if ref != nil {
 		t.Fatalf("unknown sig under truncation refused: %v", ref)
 	}

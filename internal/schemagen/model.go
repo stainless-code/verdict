@@ -344,7 +344,7 @@ type ConfigCheck = core.ConfigCheck
 // plus the read-only fix block. Both are null when a truncated scan did not
 // reach the requested sig.
 type ShowData struct {
-	Receipt *core.Truncation `json:"-" receipt:"true"`
+	Receipt *core.Truncation `json:"-"     receipt:"true"`
 	Item    any              `json:"item"`
 	Fix     ShowFix          `anyOf:"null" json:"fix"`
 }
@@ -397,7 +397,7 @@ type AdoptData struct {
 // NextData is the next verb's --json data profile: the ranked finding to fix
 // next, or null when the store has nothing open.
 type NextData struct {
-	Receipt *core.Truncation `json:"-" receipt:"true"`
+	Receipt *core.Truncation `json:"-"     receipt:"true"`
 	Item    *FindingItem     `anyOf:"null" json:"item"`
 }
 
@@ -486,7 +486,7 @@ type VerifyData = core.VerifyData
 // TrendData is the trend verb's --json data profile: the portfolio rollup,
 // one row per reviewed bundle, and the opt-in overlap and corpus joins.
 type TrendData struct { //nolint:govet // field order is the published property order
-	Receipt     *core.Truncation `json:"-" receipt:"true"`
+	Receipt     *core.Truncation `json:"-"           receipt:"true"`
 	Rules       any              `json:"rules"       optional:"true"`
 	GeneratedAt string           `format:"date-time" json:"generated_at"`
 	Bundles     int              `json:"bundles"     min:"0"`

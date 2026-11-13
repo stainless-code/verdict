@@ -12,24 +12,27 @@ import (
 )
 
 func finishTruncation(data *core.FetchData) error {
-	source := readcommon.SourceTruncation(data.Dir)
-	if source != nil {
+	if source := readcommon.SourceTruncation(data.Dir); source != nil {
 		data.Receipt = source
 	} else if data.Receipt != nil {
 		data.Receipt = core.ResultCut(data.Receipt.TruncationReason, int(readcommon.NumOr(data.Files)), nil, nil)
 	}
 	path := filepath.Join(data.Dir, "truncation.json")
 	if data.Receipt == nil {
-		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-			return truncationWriteError(err)
-		}
-		return nil
+		return removeTruncation(path)
 	}
 	if err := atomic.WriteFile(path, []byte(jq.PrettyOrdered(core.Wire(data.Receipt)))); err != nil {
 		return truncationWriteError(err)
 	}
 	if data.Artifacts != nil {
 		data.Artifacts.Set("truncation.json", path)
+	}
+	return nil
+}
+
+func removeTruncation(path string) error {
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return truncationWriteError(err)
 	}
 	return nil
 }

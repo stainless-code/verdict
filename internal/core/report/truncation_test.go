@@ -91,30 +91,37 @@ func TestNextWithoutReceiptStaysLegacy(t *testing.T) {
 // TestShowReceiptUnderTruncation proves show under a truncated store says so:
 // an unknown sig is a success envelope with truncated:true returned:0 (the
 // sig may exist past the scan cap), and a found sig counts itself.
-func TestShowReceiptUnderTruncation(t *testing.T) {
+func TestShowMissUnderTruncation(t *testing.T) {
 	req := fixture(t, "["+openFinding+"]")
 	writeTruncation(t)
-	miss, ref := reportcore.RunShow(context.Background(), &core.ShowRequest{ReadRequest: req, Sig: "deadbeef"})
-	if ref != nil {
-		t.Fatalf("unknown sig under truncation refused: %v", ref)
-	}
+	miss := mustShow(t, req, "deadbeef")
 	if miss.Item != nil || miss.Fix != nil {
 		t.Fatalf("miss carried data: %+v", miss)
 	}
-	r := miss.Receipt
-	if r == nil || !r.Truncated || r.TruncationReason != "scan_cap" || r.Returned != 0 {
+	if r := miss.Receipt; r == nil || !r.Truncated || r.TruncationReason != "scan_cap" || r.Returned != 0 {
 		t.Fatalf("show miss receipt = %+v", r)
 	}
-	hit, ref := reportcore.RunShow(context.Background(), &core.ShowRequest{ReadRequest: req, Sig: "c1111111"})
-	if ref != nil {
-		t.Fatalf("RunShow refusal: %v", ref)
-	}
+}
+
+func TestShowHitUnderTruncation(t *testing.T) {
+	req := fixture(t, "["+openFinding+"]")
+	writeTruncation(t)
+	hit := mustShow(t, req, "c1111111")
 	if hit.Item == nil || hit.Fix == nil {
 		t.Fatal("hit lost its record")
 	}
 	if r := hit.Receipt; r == nil || r.Returned != 1 || r.TruncationReason != "scan_cap" {
 		t.Fatalf("show hit receipt = %+v", r)
 	}
+}
+
+func mustShow(t *testing.T, req core.ReadRequest, sig string) *core.ShowResponse {
+	t.Helper()
+	resp, ref := reportcore.RunShow(context.Background(), &core.ShowRequest{ReadRequest: req, Sig: sig})
+	if ref != nil {
+		t.Fatalf("RunShow(%q) refusal: %v", sig, ref)
+	}
+	return resp
 }
 
 // TestShowUnknownSigWithoutReceiptRefuses proves the legacy refusal survives
