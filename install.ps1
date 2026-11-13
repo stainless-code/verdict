@@ -124,8 +124,14 @@ try {
   $BundlePath = Join-Path $Tmp $BundleName
   $CommitPath = Join-Path $Tmp $CommitName
   Write-Host "install: downloading verdict $Version (windows/$Arch)"
-  try { Save-Url "$ReleaseUrl/$ArchiveName" $ArchivePath } catch {
-    throw "download failed: $ReleaseUrl/$ArchiveName (is windows/$Arch published?)"
+  $CachedArchive = $null
+  if ($env:VERDICT_ARCHIVE_CACHE) { $CachedArchive = Join-Path $env:VERDICT_ARCHIVE_CACHE $ArchiveName }
+  if ($CachedArchive -and (Test-Path -LiteralPath $CachedArchive)) {
+    Copy-Item -LiteralPath $CachedArchive -Destination $ArchivePath
+  } else {
+    try { Save-Url "$ReleaseUrl/$ArchiveName" $ArchivePath } catch {
+      throw "download failed: $ReleaseUrl/$ArchiveName (is windows/$Arch published?)"
+    }
   }
   try { Save-Url "$ReleaseUrl/$ChecksumsName" $ChecksumsPath } catch { throw "download failed: $ReleaseUrl/$ChecksumsName" }
   try { Save-Url "$ReleaseUrl/$CommitName" $CommitPath } catch {
@@ -163,6 +169,11 @@ try {
   $Actual = (Get-FileHash -LiteralPath $ArchivePath -Algorithm SHA256).Hash.ToLowerInvariant()
   if ($Actual -ne $Expected.ToLowerInvariant()) {
     throw "SHA-256 mismatch for $ArchiveName (expected $Expected, got $Actual); nothing installed"
+  }
+
+  if ($CachedArchive) {
+    $null = New-Item -ItemType Directory -Path $env:VERDICT_ARCHIVE_CACHE -Force
+    Copy-Item -LiteralPath $ArchivePath -Destination $CachedArchive -Force
   }
 
   $null = New-Item -ItemType Directory -Path $InstallDir -Force

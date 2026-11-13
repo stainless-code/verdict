@@ -6,7 +6,7 @@
 #
 # Pin policy: every `uses:` below pins the full 40-hex commit SHA, never a
 # moving tag; the trailing `# vX` comment names the release the SHA
-# resolves to so bumps stay reviewable. Re-pin setup-verdict to the newest
+# resolves to so bumps stay reviewable. Re-pin verdict to the newest
 # release commit periodically.
 name: verdict review
 
@@ -38,71 +38,12 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Install verdict
-        uses: stainless-code/verdict/setup-verdict@471d2985b29060caa90036fefac565e97a12bb2c # action as introduced; re-pin to a release commit
+      - name: Review and gate
+        uses: stainless-code/verdict@307677c5acf73f7ffd6932d7b8bf1885360d33af # composite action
         with:
-          # Pin a released version for a frozen gate; latest tracks the
-          # newest release (see docs/ci-recipe.md).
-          version: latest
-
-      - name: Readiness pre-check (saves agent spend)
-        env:
-          # The token is scoped to the steps that call gh. The agent step below
-          # must not inherit it: a review agent needs the diff, not write access.
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          verdict ready "$GITHUB_REPOSITORY" "${{ github.event.pull_request.number }}" --check
-
-      - name: Fetch the PR bundle
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          verdict fetch "$GITHUB_REPOSITORY" "${{ github.event.pull_request.number }}"
-
-      - name: Agent review (verdict run --agent, your agent + your key)
-        env:
-          # Two lines choose the agent: this name — one of claude, codex,
-          # cursor, opencode (the shipped `verdict run --agent` table) — and
-          # the --agent line in the script below that reads it. Put that CLI
-          # on PATH in an earlier step; verdict never downloads it for you.
-          VERDICT_AGENT: claude
-          # Your key, from your repo's secrets. verdict never proxies it.
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          # verdict run spawns the agent once against the fetched bundle and
-          # checks the artifact. It makes no network call of its own and
-          # never proxies your key: the model traffic in this step is the
-          # agent's, with the key above, on your runner.
-          # The step fails typed (no-review-artifact / stale-review-artifact)
-          # unless the agent writes a fresh .verdict/state/<pr>/review.json, so
-          # a silent agent fails this job instead of handing post a review
-          # nobody wrote.
-          verdict run "$GITHUB_REPOSITORY" "${{ github.event.pull_request.number }}" \
-            --agent "$VERDICT_AGENT"
-
-      - name: Post the review
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          verdict post "$GITHUB_REPOSITORY" "${{ github.event.pull_request.number }}"
-
-      - name: Review summary (advisory, never gates)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # The ranked findings, for the human reading the job log. Without
-          # a gate flag report never sets an exit code on findings.
-          verdict report "$GITHUB_REPOSITORY" "${{ github.event.pull_request.number }}"
-
-      - name: Merge gate (findings + freshness + coverage + live threads)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # One composed exit code: 0 pass, 1 fail-or-unknown, 2 usage,
-          # 3 tool error. --live auto keeps an unreachable lookup neutral;
-          # use --live strict to fail closed instead (see docs/ci-recipe.md).
-          # --coverage defaults to require: the post above stored the review's
-          # coverage[] receipt, and a partial one fails here. Pass
-          # --coverage warn to keep a partial attestation advisory.
-          verdict gate "$GITHUB_REPOSITORY" "${{ github.event.pull_request.number }}" \
-            --max-severity critical --require-head --live auto
+          version: ${{ vars.VERDICT_VERSION }}
+          repository: ${{ github.repository }}
+          pull-request: ${{ github.event.pull_request.number }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          agent: claude
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
