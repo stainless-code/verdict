@@ -1,4 +1,6 @@
 --config - -sf https://forgejo.invalid/api/v1/repos/acme/app/pulls/7
+--config - -sf https://forgejo.invalid/api/v1/repos/acme/app/pulls/7/reviews?limit=50&page=1
+--config - -sf https://forgejo.invalid/api/v1/repos/acme/app/pulls/7/reviews/301/comments?limit=50&page=1
 --config - -sf https://forgejo.invalid/api/v1/user
 --config - -sf https://forgejo.invalid/api/v1/repos/acme/app/pulls/7/reviews?limit=50&page=1
 --config FILE -sS -i -H Content-Type: application/json -X POST --data-binary @- https://forgejo.invalid/api/v1/repos/acme/app/pulls/7/reviews

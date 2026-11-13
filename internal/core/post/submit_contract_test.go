@@ -580,7 +580,7 @@ func TestRunSplitFollowUpFailure(t *testing.T) {
 		t.Fatalf("ref = %v, want post-failed", ref)
 	}
 	want := "post failed: follow-up part 2/2 not posted (review 101 landed part 1 — " +
-		"fix the cause and re-run; part 1 reposts as a duplicate)"
+		"fix the cause and re-run; re-run skips parts already posted, and --force reposts part 1 as a duplicate)"
 	if ref.Message != want {
 		t.Errorf("message = %q, want %q", ref.Message, want)
 	}
@@ -605,7 +605,7 @@ type splitFailCommander struct {
 
 // first.
 func (s *splitFailCommander) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
-	if strings.Contains(strings.Join(cmd.Argv, " "), "/reviews") {
+	if strings.Contains(strings.Join(cmd.Argv, " "), "--method POST") {
 		s.posts++
 		if s.posts > 1 {
 			s.calls = append(s.calls, append([]string{}, cmd.Argv...))

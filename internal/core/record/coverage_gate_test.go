@@ -352,6 +352,8 @@ func (c *postCommanderStub) Run(_ context.Context, cmd *core.Command) (core.Resu
 	c.t.Helper()
 	argv := strings.Join(cmd.Argv, " ")
 	switch {
+	case strings.Contains(argv, "--paginate") && (strings.Contains(argv, "/reviews") || strings.Contains(argv, "/comments")):
+		return core.Result{Stdout: "[]"}, nil
 	case strings.Contains(argv, "/reviews"):
 		return core.Result{Stdout: `{"id":101,"state":"commented","html_url":"https://example.invalid/r/101",` +
 			`"submitted_at":"2026-01-01T00:00:00Z"}`}, nil

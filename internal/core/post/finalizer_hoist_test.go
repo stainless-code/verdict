@@ -2,10 +2,12 @@ package postcore
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 const hoistHead = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -18,41 +20,8 @@ func hoistPostRecord(t *testing.T) {
 	}
 }
 
-// TestRunAlreadyPostedZeroNetwork proves the same-SHA finalizer guard runs
-// before drift's live lookup: a repeat post refuses typed with zero Commander
-// calls and zero warnings from the skipped network reads.
-func TestRunAlreadyPostedZeroNetwork(t *testing.T) {
-	dir := t.TempDir()
-	t.Chdir(dir)
-	postBundle(t, `{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[]}`)
-	hoistPostRecord(t)
-	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{}}
-	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
-	_, ref := Run(context.Background(), req)
-	assertAlreadyPostedZeroCalls(t, ref, cmdr, warnings)
-}
-
-// TestRunLiveAlreadyPostedZeroNetwork proves the fetched-reviews leg keeps
-// the same hoist: a fresh bundle (no post.json) refuses from reviews.json
-// before drift's live lookup, with zero Commander calls.
-func TestRunLiveAlreadyPostedZeroNetwork(t *testing.T) {
-	dir := t.TempDir()
-	t.Chdir(dir)
-	postBundle(t, `{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[]}`)
-	writeLiveReview(t, ".verdict/state/7", markedReview(hoistHead), hoistHead)
-	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{}}
-	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
-	_, ref := Run(context.Background(), req)
-	assertAlreadyPostedZeroCalls(t, ref, cmdr, warnings)
-}
-
-// TestRunAlreadyPostedBeatsApproveBlocked proves the hoist's precedence: with
-// an open finding and a binding APPROVE, the local finalizer refusal wins
-// over approve-blocked, still with zero Commander calls (and therefore before
-// the live-thread recheck that sets up approve-blocked-live).
-func TestRunAlreadyPostedBeatsApproveBlocked(t *testing.T) {
+//nolint:revive // compare the same gate with publication evidence present and absent
+func TestSuppressionDoesNotChangeGate(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	postBundle(t, `{"schema_version":"1","body":"> ✅ Ship it.","approved":true,"comments":[]}`)
@@ -64,70 +33,34 @@ func TestRunAlreadyPostedBeatsApproveBlocked(t *testing.T) {
 		t.Fatal(err)
 	}
 	hoistPostRecord(t)
-	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{}}
+	remote := projectComment(jq.NewObj("path", "notes.txt", "line", 2, "side", "RIGHT",
+		"body", "Usable body here with enough substance."), "")
+	remote.Set("commit_id", hoistHead)
+	if err := writeTestFile(".verdict/state/7/inline.json", "["+remote.MarshalPretty()+"]"); err != nil {
+		t.Fatal(err)
+	}
+
+	cmdr := postCommander(t)
 	var warnings, human []string
 	req := postTestReq(cmdr, core.PostFlags{
 		Approve: "true", Bind: true, ReviewFile: ".verdict/state/7/review.json",
 	}, &warnings, &human)
 	_, ref := Run(context.Background(), req)
-	assertAlreadyPostedZeroCalls(t, ref, cmdr, warnings)
-}
-
-// assertAlreadyPostedZeroCalls proves the typed already-posted refusal and
-// that no network read (or its warning) ran first.
-func assertAlreadyPostedZeroCalls(t *testing.T, ref *core.RefusalError, cmdr *scriptCommander, warnings []string) {
-	t.Helper()
-	if ref == nil {
-		t.Fatal("already-posted repost proceeded")
+	if ref == nil || ref.Code != "approve-blocked" {
+		t.Fatalf("gate = %v, want approve-blocked", ref)
 	}
-	if ref.Code != "already-posted" {
-		t.Fatalf("code = %q, want already-posted (message: %s)", ref.Code, ref.Message)
+	if err := os.Remove(".verdict/state/7/post.json"); err != nil {
+		t.Fatal(err)
 	}
-	if len(cmdr.calls) != 0 {
-		t.Errorf("repost made %d Commander call(s): %q", len(cmdr.calls), cmdr.calls)
+	if err := os.Remove(".verdict/state/7/inline.json"); err != nil {
+		t.Fatal(err)
 	}
-	if len(warnings) != 0 {
-		t.Errorf("skipped-network warnings = %q, want none", warnings)
+	_, without := Run(context.Background(), req)
+	if without == nil || without.Code != ref.Code {
+		t.Fatalf("gate without suppression evidence = %v; with = %v", without, ref)
 	}
 }
 
-const hoistBadSchemaReview = `{"schema_version":"9","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[]}`
-
-// TestRunSameSHAPrecedence pins the hoist's refusal precedence over the two
-// later gates: the merge's schema validation and duplicateGuard's
-// duplicate-payload marker. A same-SHA repeat wins both with zero Commander
-// calls, so the hoist's zero-network property survives the precedence flip.
-func TestRunSameSHAPrecedence(t *testing.T) {
-	cases := []struct {
-		name   string
-		review string
-		marker bool // mint a completed post first (post.json + .posted_<hash>)
-	}{
-		{name: "invalid-schema-masks-validation", review: hoistBadSchemaReview},
-		{name: "store-marker-masks-duplicate-payload", review: postReview, marker: true},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			dir := t.TempDir()
-			t.Chdir(dir)
-			postBundle(t, tc.review)
-			if tc.marker {
-				seedPostedOnce(t)
-			} else {
-				hoistPostRecord(t)
-			}
-			cmdr := &scriptCommander{t: t, out: map[string]scriptResult{}}
-			var warnings, human []string
-			req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
-			_, ref := Run(context.Background(), req)
-			assertAlreadyPostedZeroCalls(t, ref, cmdr, warnings)
-		})
-	}
-}
-
-// TestRunForceSameSHAFallsThrough proves --force bypasses both same-SHA
-// guards: the bundle that just refused as already-posted validates and posts
-// again, with the identical payload, through the full merge tail.
 func TestRunForceSameSHAFallsThrough(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -148,13 +81,11 @@ func TestRunForceSameSHAFallsThrough(t *testing.T) {
 	assertOneHoistedReview(t, cmdr)
 }
 
-// assertOneHoistedReview requires exactly one reviews POST, carrying the
-// hoisted commit id.
 func assertOneHoistedReview(t *testing.T, cmdr *scriptCommander) {
 	t.Helper()
 	posted := 0
 	for i, call := range cmdr.calls {
-		if !strings.Contains(strings.Join(call, " "), "/reviews") {
+		if !strings.Contains(strings.Join(call, " "), "--method POST") {
 			continue
 		}
 		posted++
@@ -168,8 +99,6 @@ func assertOneHoistedReview(t *testing.T, cmdr *scriptCommander) {
 	}
 }
 
-// seedPostedOnce runs the full post path once, minting post.json and the
-// duplicate-payload marker, and returns the payload hash.
 func seedPostedOnce(t *testing.T) string {
 	t.Helper()
 	cmdr := postCommander(t)

@@ -13,6 +13,15 @@ cat > "$EVAL_STUBBIN/gh" <<'EOF'
 #!/usr/bin/env bash
 echo "stub-gh $*" >> "${EVAL_STUBLOG:-/dev/null}"
 case "$*" in
+  'api repos/'*'/reviews --paginate'|'api repos/'*'/comments --paginate')
+    part="${2#*/pulls/}"
+    pr="${part%%/*}"
+    file="${2##*/}"
+    if [ "$file" = comments ]; then file=inline; fi
+    snapshot=".verdict/state/$pr/$file.json"
+    if [ -f "$snapshot" ]; then cat "$snapshot"; else echo '[]'; fi
+    exit 0;;
+
   *reviews*)
     if [ -n "${EVAL_SAVE_PAYLOAD:-}" ]; then cat > "$EVAL_SAVE_PAYLOAD"; fi
     printf '%s' '{"id":101,"state":"commented","html_url":"https://example.invalid/r/101","submitted_at":"2026-01-01T00:00:00Z"}'

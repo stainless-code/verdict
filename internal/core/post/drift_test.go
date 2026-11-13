@@ -207,7 +207,7 @@ func postedPayloads(t *testing.T, cmdr *scriptCommander) []map[string]any {
 	t.Helper()
 	var out []map[string]any
 	for i, call := range cmdr.calls {
-		if !strings.Contains(strings.Join(call, " "), "/reviews") {
+		if !strings.Contains(strings.Join(call, " "), "--method POST") {
 			continue
 		}
 		out = append(out, decodePostedPayload(t, cmdr.stdin[i]))

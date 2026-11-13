@@ -24,6 +24,7 @@ type hostWriter interface {
 // authenticated login the authorship gate compares, the open-thread recheck
 // the approval guard counts, and the local gate that runs before any call.
 type hostReader interface {
+	publication(ctx context.Context, cmdr Commander, env map[string]string, repo, pr string) (remotePublication, error)
 	liveSHA(ctx context.Context, cmdr Commander, env map[string]string, repo, pr string) (string, error)
 	selfLogin(ctx context.Context, cmdr Commander, env map[string]string) (string, error)
 	recheck(ctx context.Context, cmdr Commander, env map[string]string, repo, pr, dir string) (int, string, error)
