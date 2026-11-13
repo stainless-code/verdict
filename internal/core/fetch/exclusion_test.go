@@ -73,7 +73,7 @@ func TestRawDiffPreservedAndFilteredChunks(t *testing.T) {
 	if err != nil || string(got) != keptSection {
 		t.Fatalf("filtered = %q, %v", got, err)
 	}
-	if !strings.Contains(exclusionTOC(dir), "vendor/.env (default:generated, 93 bytes)") {
+	if !strings.Contains(exclusionTOC(fc), "vendor/.env (default:generated, 93 bytes)") {
 		t.Fatal("TOC lacks receipt")
 	}
 	checkFilteredChunks(t, dir)

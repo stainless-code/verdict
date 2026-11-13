@@ -104,30 +104,26 @@ func (st *state) suppressionReceipt(m *jq.Obj) bool {
 	if id == "" {
 		return false
 	}
-	raw, err := readcommon.ReadConfined(st.dir+"/excluded.json", maxAgentBytes)
-	if err != nil {
+	receipt := st.exclusions()
+	if receipt == nil {
 		return false
 	}
-	return receiptContains(raw, id, suppressionString(m, fieldPath))
-}
-
-func receiptContains(raw []byte, id, file string) bool {
-	var receipt struct {
-		Excluded []struct {
-			Path    string `json:"path"`
-			OldPath string `json:"old_path"`
-			RuleID  string `json:"rule_id"`
-		} `json:"excluded"`
-	}
-	if json.Unmarshal(raw, &receipt) != nil {
-		return false
-	}
-	for _, e := range receipt.Excluded {
-		if e.RuleID == id && (e.Path == file || e.OldPath == file) {
+	file := suppressionString(m, fieldPath)
+	for i := range receipt.Excluded {
+		row := &receipt.Excluded[i]
+		if row.RuleID == id && exclusionRowMatches(row, file) {
 			return true
 		}
 	}
 	return false
+}
+
+func (st *state) exclusions() *core.ExcludedFile {
+	if !st.receiptLoaded {
+		st.receipt = loadExclusions(st.dir)
+		st.receiptLoaded = true
+	}
+	return st.receipt
 }
 
 func suppressionMatches(s, e *jq.Obj) bool {
@@ -332,12 +328,13 @@ func excludedPaths(dir string) map[string]bool {
 }
 
 func (st *state) autoExclusion(e *jq.Obj) bool {
-	receipt := loadExclusions(st.dir)
+	receipt := st.exclusions()
 	if receipt == nil {
 		return false
 	}
-	for _, row := range receipt.Excluded {
-		if exclusionRowMatches(&row, suppressionString(e, fieldPath)) {
+	for i := range receipt.Excluded {
+		row := &receipt.Excluded[i]
+		if exclusionRowMatches(row, suppressionString(e, fieldPath)) {
 			st.stampSuppression(e, jq.NewObj(
 				sourceKey, "exclusion", reasonKey, "Path excluded from the reviewed diff by "+row.RuleID, exclusionKey, row.RuleID))
 			return true

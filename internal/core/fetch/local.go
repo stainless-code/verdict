@@ -309,7 +309,7 @@ func localStores(ctx2 *fetchRunCtx, r *session, dir, slug, listed, numstat strin
 		return err
 	}
 	fmt.Fprintf(r.Human, "» roles -> %s/roles.txt (heuristic file roles for triage)\n", r.display(dir))
-	if err := atomic.WriteFile(dir+"/roles.txt", []byte(rolesForPathsText(withoutExcluded(dir, listed)))); err != nil {
+	if err := atomic.WriteFile(dir+"/roles.txt", []byte(rolesForPathsText(withoutExcluded(ctx2, listed)))); err != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/roles.txt: %v", dir, err)}
 	}
 	if ref := emitContext(ctx2); ref != nil {
@@ -757,7 +757,7 @@ func writeLocalTOC(ctx2 *fetchRunCtx, slug, listed, numstat string) error {
 	}
 	sb.WriteString("\n## coverage manifest\n")
 	fmt.Fprintf(&sb, "files changed: %d | files with diff hunks: %d\n", countNonEmptyLines(listed), len(withHunks))
-	omitted = splitLines(withoutExcluded(ctx2.dir, strings.Join(omitted, "\n")))
+	omitted = splitLines(withoutExcluded(ctx2, strings.Join(omitted, "\n")))
 	if len(omitted) > 0 {
 		sb.WriteString("omitted (no hunks — binary, renamed without changes, or mode-only):\n")
 		for _, p := range omitted {
@@ -766,7 +766,7 @@ func writeLocalTOC(ctx2 *fetchRunCtx, slug, listed, numstat string) error {
 	} else {
 		sb.WriteString("omitted: (none)\n")
 	}
-	return atomic.WriteFile(ctx2.dir+"/toc.txt", []byte(sb.String()+exclusionTOC(ctx2.dir)))
+	return atomic.WriteFile(ctx2.dir+"/toc.txt", []byte(sb.String()+exclusionTOC(ctx2)))
 }
 
 // omittedLocal owns the local omitted computation: file_list paths absent

@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"os"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
@@ -17,7 +15,10 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-const excludedSuffix = "/excluded.json"
+const (
+	excludedSuffix = "/excluded.json"
+	maxFetchRead   = 1 << 30
+)
 
 // ExcludedPath is the domain's removed diff section.
 type ExcludedPath = core.ExcludedPath
@@ -25,31 +26,13 @@ type ExcludedPath = core.ExcludedPath
 // ExcludedFile is the domain's exclusion receipt.
 type ExcludedFile = core.ExcludedFile
 
-func readConfinedFile(name string) ([]byte, error) {
-	root, leaf, err := readcommon.OpenParentWith(name, os.OpenRoot)
-	if err != nil {
-		return nil, jq.Sealed("open bundle", err)
-	}
-	defer root.Close()
-	f, err := readcommon.OpenRegularNoSymlinkIn(root, leaf)
-	if err != nil {
-		return nil, jq.Sealed("open bundle", err)
-	}
-	defer f.Close()
-	raw, err := io.ReadAll(f)
-	if err != nil {
-		return nil, jq.Sealed("read bundle", err)
-	}
-	return raw, nil
-}
-
 func filterExcluded(ctx2 *fetchRunCtx) error {
 	r, dir := ctx2.runner, ctx2.dir
 	policy, err := loadExclusionPolicy(ctx2)
 	if err != nil {
 		return err
 	}
-	raw, err := readConfinedFile(dir + suffixFullDiff)
+	raw, err := readcommon.ReadConfined(dir+suffixFullDiff, maxFetchRead)
 	if err != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: err.Error()}
 	}
@@ -97,25 +80,34 @@ func excludedDiff(raw string, defaults, explicit []exclude.Rule, attrs []byte) (
 	return kept.String(), receipt
 }
 
-func excludedSet(dir string) map[string]bool {
-	raw, err := readConfinedFile(dir + excludedSuffix)
-	set := map[string]bool{}
+func (fc *fetchRunCtx) exclusions() *ExcludedFile {
+	if !fc.receiptLoaded {
+		fc.receipt = loadExcludedReceipt(fc.dir)
+		fc.receiptLoaded = true
+	}
+	return fc.receipt
+}
+
+func loadExcludedReceipt(dir string) *ExcludedFile {
+	raw, err := readcommon.ReadConfined(dir+excludedSuffix, maxFetchRead)
 	if err != nil {
-		return set
+		return nil
 	}
 	var receipt ExcludedFile
 	if json.Unmarshal(raw, &receipt) != nil {
-		return set
+		return nil
 	}
-	for _, e := range receipt.Excluded {
-		set[e.Path] = true
-		set[e.OldPath] = true
-	}
-	return set
+	return &receipt
 }
 
-func withoutExcluded(dir, paths string) string {
-	set := excludedSet(dir)
+func withoutExcluded(fc *fetchRunCtx, paths string) string {
+	set := map[string]bool{}
+	if receipt := fc.exclusions(); receipt != nil {
+		for _, e := range receipt.Excluded {
+			set[e.Path] = true
+			set[e.OldPath] = true
+		}
+	}
 	var kept []string
 	for line := range strings.SplitSeq(paths, "\n") {
 		if !set[line] {
@@ -125,13 +117,9 @@ func withoutExcluded(dir, paths string) string {
 	return strings.Join(kept, "\n")
 }
 
-func exclusionTOC(dir string) string {
-	raw, err := readConfinedFile(dir + excludedSuffix)
-	if err != nil {
-		return ""
-	}
-	var receipt ExcludedFile
-	if json.Unmarshal(raw, &receipt) != nil || len(receipt.Excluded) == 0 {
+func exclusionTOC(fc *fetchRunCtx) string {
+	receipt := fc.exclusions()
+	if receipt == nil || len(receipt.Excluded) == 0 {
 		return ""
 	}
 	var out strings.Builder
@@ -182,7 +170,7 @@ func exclusionControl(r *session, name string) ([]byte, error) {
 	if r.controls == nil || !r.controls.Has(name) {
 		return nil, nil
 	}
-	raw, err := readConfinedFile(r.controls.Path(name))
+	raw, err := readcommon.ReadConfined(r.controls.Path(name), maxFetchRead)
 	if err != nil {
 		return nil, &core.RefusalError{Code: "bad-ignore", Message: "cannot read exclusion control: " + err.Error()}
 	}
@@ -190,12 +178,8 @@ func exclusionControl(r *session, name string) ([]byte, error) {
 }
 
 func exclusionManifest(dir string, manifest *jq.Obj) {
-	raw, err := readConfinedFile(dir + excludedSuffix)
-	if err != nil {
-		return
-	}
-	var receipt ExcludedFile
-	if json.Unmarshal(raw, &receipt) != nil {
+	receipt := loadExcludedReceipt(dir)
+	if receipt == nil {
 		return
 	}
 	manifest.Set("excluded_count", len(receipt.Excluded))

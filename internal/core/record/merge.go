@@ -43,6 +43,7 @@ type state struct { //nolint:govet // field grouping documents the merge dimensi
 	findingsFile    string
 	marker          string
 	dir             string
+	receipt         *core.ExcludedFile
 	reviewFile      string
 	root            string
 	repoRoot        string
@@ -62,6 +63,7 @@ type state struct { //nolint:govet // field grouping documents the merge dimensi
 	inputChecked    bool
 	requireCoverage bool
 	bodyOnlyAnchors bool
+	receiptLoaded   bool
 	warnings        []string
 }
 

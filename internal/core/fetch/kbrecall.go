@@ -24,7 +24,7 @@ import (
 func writeKBRecall(ctx2 *fetchRunCtx, dir, extra string) {
 	r := ctx2.runner
 	mf, mfj := dir+suffixKBTxt, dir+suffixKBRecall
-	files := recallFiles(dir, withoutExcluded(dir, extra))
+	files := recallFiles(dir, withoutExcluded(ctx2, extra))
 	ranked, _ := recallRankedFor(r, files)
 	packs := packRecallCands(ctx2.packs, files)
 	if len(ranked) == 0 && len(packs) == 0 {

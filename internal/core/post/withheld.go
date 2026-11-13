@@ -16,10 +16,7 @@ func (st *state) validateFloor() *core.RefusalError {
 }
 
 func (st *state) postFloor(entry any) string {
-	if st.flags.MinSeverity != "" {
-		return st.flags.MinSeverity
-	}
-	return config.PostFloorFor(postRunState(st), jq.StrOf(readcommon.FieldOf(entry, "path")))
+	return config.EffectiveFloor(st.flags.MinSeverity, postRunState(st), jq.StrOf(readcommon.FieldOf(entry, "path")))
 }
 
 func (st *state) globalPostFloor() string {

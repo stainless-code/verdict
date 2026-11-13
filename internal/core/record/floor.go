@@ -27,10 +27,7 @@ func (st *state) applySilence() error {
 }
 
 func (st *state) findingFloor(e *jq.Obj) string {
-	if st.minSeverity != "" {
-		return st.minSeverity
-	}
-	return config.PostFloorFor(st.run, suppressionString(e, fieldPath))
+	return config.EffectiveFloor(st.minSeverity, st.run, suppressionString(e, fieldPath))
 }
 
 func (st *state) applyPostFloor() {
