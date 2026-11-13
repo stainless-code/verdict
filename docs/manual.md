@@ -134,7 +134,9 @@ in the body and warnings — never a silent `APPROVE`, never a hard failure.
 `COMMENT`, `REQUEST_CHANGES`, dry runs, and local bundles never pay this lookup.
 
 Two dedup layers keep "exactly one terminal write" mechanical: the fine guard
-refuses exact payload replays (same body+comments+SHA hash, dot-marker
+refuses exact payload replays (rendered body, each comment’s `path`, `side`,
+`line`, and `body`, plus the reviewed head — excluding diff positions,
+range metadata, and event selection — form the hash; dot-marker
 `.posted_<hash>` — legit re-reviews hash differently and pass), while the
 coarse single-review finalizer refuses any second completed post on the same
 reviewed SHA — even with different content — with typed `already-posted`
