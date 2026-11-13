@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/kb"
 )
 
 const (
@@ -80,9 +81,9 @@ func rollupRows(rows []row) rollup {
 		out.models = append(out.models, provField(r.prov, "model"))
 		out.hashes = append(out.hashes, provField(r.prov, "prompts_hash"))
 	}
-	out.tools = dedupeSorted(out.tools)
-	out.models = dedupeSorted(out.models)
-	out.hashes = dedupeSorted(out.hashes)
+	out.tools = kb.DedupeSorted(out.tools)
+	out.models = kb.DedupeSorted(out.models)
+	out.hashes = kb.DedupeSorted(out.hashes)
 	out.periods = periodize(rows)
 	return out
 }
