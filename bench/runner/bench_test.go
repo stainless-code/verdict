@@ -358,6 +358,7 @@ func runRefusal(cfg *Config) error {
 func benchConfig(t *testing.T, root, agent string) *Config {
 	t.Helper()
 	return &Config{
+		K:       1,
 		Root:    root,
 		Corpus:  filepath.Join(root, "corpus"),
 		Verdict: os.Args[0],
@@ -535,7 +536,7 @@ func checkEvidenceLog(t *testing.T, rep *Report) {
 
 // TestRunRefusesAMissingModel refuses a run no bundle could be attributed to.
 func TestRunRefusesAMissingModel(t *testing.T) {
-	cfg := &Config{Agent: "true", Runs: 1}
+	cfg := &Config{K: 1, Agent: "true", Runs: 1}
 	err := runRefusal(cfg)
 	if err == nil || !strings.Contains(err.Error(), "-model is required") {
 		t.Fatalf("Run error = %v, want a model refusal", err)

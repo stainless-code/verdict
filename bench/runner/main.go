@@ -15,6 +15,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -28,14 +29,19 @@ import (
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "bench:", err)
-		os.Exit(1) //nolint:forbidigo // a command's exit status is its only failure channel.
+		status := 1
+		var usage *usageError
+		if errors.As(err, &usage) {
+			status = 2
+		}
+		os.Exit(status) //nolint:forbidigo // a command's exit status is its only failure channel.
 	}
 }
 
 func run() error {
 	cfg, err := parseFlags(os.Args[1:])
 	if err != nil {
-		return err
+		return &usageError{err}
 	}
 	if cfg.Render != "" {
 		return renderFile(cfg.Render, os.Stdout)
@@ -123,3 +129,5 @@ func moduleRoot() (string, error) {
 		dir = parent
 	}
 }
+
+type usageError struct{ error }

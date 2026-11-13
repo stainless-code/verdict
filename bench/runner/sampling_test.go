@@ -27,3 +27,23 @@ func TestSampleSpreadPreservesMicroUSD(t *testing.T) {
 		t.Fatalf("cost spread min=%g median=%g max=%g; want .000001/.000002/.000003", *got.Min, *got.Median, *got.Max)
 	}
 }
+
+func TestExplicitInvalidKIsUsageError(t *testing.T) {
+	for _, k := range []string{"0", "-1", "1.5", "oops"} {
+		t.Run(k, func(t *testing.T) {
+			if cfg, err := parseFlags([]string{"-model", "fixture", "-agent", "true", "-repeats", "3", "-k", k}); err == nil {
+				t.Fatalf("accepted explicit k=%s as %d", k, cfg.K)
+			}
+		})
+	}
+}
+
+func TestAbsentKDefaultsToOne(t *testing.T) {
+	cfg, err := parseFlags([]string{"-model", "fixture", "-agent", "true", "-repeats", "3"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.K != 1 {
+		t.Fatalf("absent k = %d; want 1", cfg.K)
+	}
+}

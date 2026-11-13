@@ -715,9 +715,6 @@ func roundMillis(seconds float64) float64 {
 }
 
 func (cfg *Config) validateSampling() error {
-	if cfg.K == 0 {
-		cfg.K = 1
-	}
 	if cfg.K < 1 || cfg.K > cfg.Runs {
 		return jq.NewErr("-k must be between 1 and repeats")
 	}
