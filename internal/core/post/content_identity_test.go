@@ -22,3 +22,30 @@ func TestMissingCommentsIdentity(t *testing.T) {
 		t.Fatalf("new finding: missing %d, want 1", got)
 	}
 }
+
+func TestMissingCommentsMultiset(t *testing.T) {
+	t.Parallel()
+	at := func(line int) *jq.Obj {
+		return projectComment(jq.NewObj("path", "a.go", "side", "RIGHT", "line", line, "body", "same finding"), "")
+	}
+	remote := []commentIdentity{identifyComment("head", at(10))}
+	for _, example := range []struct {
+		lines []int
+		want  int
+	}{{[]int{90, 10}, 90}, {[]int{20, 90}, 90}} {
+		lines := example.lines
+		missing := missingComments("head", []any{at(lines[0]), at(lines[1])}, remote)
+		if len(missing) != 1 {
+			t.Fatalf("lines %v: missing %d, want 1", lines, len(missing))
+		}
+		obj, ok := missing[0].(*jq.Obj)
+		if !ok {
+			t.Fatal("missing comment shape")
+		}
+		got, _ := obj.Get("line")
+		want := example.want
+		if got != want {
+			t.Fatalf("missing line = %v, want %d", got, want)
+		}
+	}
+}

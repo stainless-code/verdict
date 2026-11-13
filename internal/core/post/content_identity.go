@@ -1,7 +1,6 @@
 package postcore
 
 import (
-	"slices"
 	"strings"
 
 	threadscore "github.com/stainless-code/verdict/internal/core/threads"
@@ -36,17 +35,45 @@ func (key commentIdentity) sameFinding(other commentIdentity) bool {
 }
 
 func missingComments(head string, comments []any, remote []commentIdentity) []any {
+	used := make([]bool, len(remote))
+	paired := make([]bool, len(comments))
+	pairComments(head, comments, remote, used, paired, true)
+	pairComments(head, comments, remote, used, paired, false)
 	var missing []any
-	for _, value := range comments {
-		comment, ok := value.(*jq.Obj)
-		if !ok || comment == nil {
-			continue
-		}
-		key := identifyComment(head, comment)
-		found := slices.ContainsFunc(remote, key.sameFinding)
-		if !found {
-			missing = append(missing, comment)
+	for i, value := range comments {
+		if !paired[i] {
+			missing = append(missing, value)
 		}
 	}
 	return missing
+}
+
+func matchOccurrence(key commentIdentity, remote []commentIdentity, used []bool, exact bool) int {
+	for i, previous := range remote {
+		if !used[i] && key.sameFinding(previous) && (!exact || key.line == previous.line) {
+			return i
+		}
+	}
+	return -1
+}
+
+func pairComments(head string, comments []any, remote []commentIdentity, used, paired []bool, exact bool) {
+	for i, value := range comments {
+		if paired[i] {
+			continue
+		}
+		j := matchComment(head, value, remote, used, exact)
+		if j >= 0 {
+			paired[i] = true
+			used[j] = true
+		}
+	}
+}
+
+func matchComment(head string, value any, remote []commentIdentity, used []bool, exact bool) int {
+	comment, ok := value.(*jq.Obj)
+	if !ok || comment == nil {
+		return -1
+	}
+	return matchOccurrence(identifyComment(head, comment), remote, used, exact)
 }
