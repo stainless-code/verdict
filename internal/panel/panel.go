@@ -45,6 +45,12 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Reque
 	if err != nil {
 		return refuse(r, err)
 	}
+	file, moreWarnings, err := panelcore.Load(dir, readcommon.OpenBundle(dir).Head(), panelcore.Findings(review))
+	if err != nil {
+		return refuse(r, err)
+	}
+	warnings = append(warnings, moreWarnings...)
+	dispatch, second := panelcore.SecondLook(plan, dispatch, file)
 	output := filepath.Join(dir, "verification")
 	if err = os.MkdirAll(output, 0o755); err == nil {
 		err = atomic.WriteFile(filepath.Join(output, "plan.json"), []byte(jq.PrettyOrdered(plan)))
@@ -61,7 +67,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Reque
 	for _, key := range []string{"verifiers", "findings", "dispatches"} {
 		data.Set(key, tm[key])
 	}
-	data.Set("second_look", 0)
+	data.Set("second_look", second)
 	r.Warnings = append(r.Warnings, warnings...)
 	if r.JSONMode {
 		fmt.Fprint(r.Out, jq.PrettyOrdered(core.RenderEnvelope("panel", req.Repo, req.Pr, req.TimeUTC(), "dispatch the plan; write verification/verdicts.json; then record or post", r.Warnings, data, nil)))
