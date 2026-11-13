@@ -30,7 +30,6 @@ exit: 0
       "target_commits": 4
     },
     "limit": 20,
-    "truncated": 0,
     "rows": [
       {
         "path": "b/b_test.go",

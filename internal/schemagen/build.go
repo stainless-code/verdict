@@ -610,6 +610,14 @@ func (b *builder) fieldNodes(typ reflect.Type) (*node, *node, error) {
 }
 
 func (b *builder) appendField(parent reflect.Type, field *reflect.StructField, props, required *node) error {
+	if field.Tag.Get("receipt") == "true" {
+		receipt, _, err := b.fieldNodes(reflect.TypeFor[core.Truncation]())
+		if err != nil {
+			return err
+		}
+		props.members = append(props.members, receipt.members...)
+		return nil
+	}
 	prop, isRequired, skip, err := b.fieldNode(parent, field)
 	if err != nil {
 		return err

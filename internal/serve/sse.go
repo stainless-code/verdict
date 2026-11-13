@@ -164,8 +164,10 @@ func (s *Server) writeEvent(w http.ResponseWriter, frame *eventFrame) bool {
 		"via", frame.change.Via,
 		"changed", frame.change.Changed,
 		"removed", frame.change.Removed,
-		"truncated", frame.change.Truncated,
 	)
+	if frame.change.Truncated {
+		core.ResultCut("response_cap", len(frame.change.Changed)+len(frame.change.Removed), nil, nil).Apply(data)
+	}
 	envelope := core.RenderEnvelope("serve", "", "", core.NowUTC(frame.change.At), "", nil, data, nil)
 	return s.writeSSE(w, fmt.Sprintf("event: bundles\nid: %d\nretry: 2000\ndata: %s\n\n",
 		frame.id, envelope.MarshalCompact()))

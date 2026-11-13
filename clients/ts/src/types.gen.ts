@@ -325,6 +325,12 @@ export interface ShowData {
 
 /** serve --json data (and the start envelope): one profile across health, roots, inbox, detail, and the start line, so every view-specific key is optional while partial, sources, and errors are always present. A product refusal is data null with the typed error; a corrupt bundle in a listing keeps its row with null counts and an errors[] entry, and any total over it is null and partial. */
 export interface ServeData {
+  truncated?: boolean;
+  truncation_reason?:
+    "work_budget" | "response_cap" | "time_budget" | "scan_cap" | "chunk_cap";
+  returned?: number;
+  total?: number | null;
+  next_offset?: number | null;
   version?: string;
   url?: string;
   listen?: string;
@@ -333,7 +339,6 @@ export interface ServeData {
   interval?: string;
   cache?: ServeCache | null;
   roots?: Array<ServeRoot>;
-  truncated?: boolean | null;
   skipped?: ServeSkipped | null;
   discovery?: ServeDiscovery | null;
   cost?: ServeCostData | null;
@@ -1013,6 +1018,12 @@ export interface PackTestSummary {
 
 /** index --json data: one object across build, status, prune, callers, tests-for, co-changed, owners, and blast-radius, so kind names the subcommand and every other key is optional. */
 export interface IndexData {
+  truncated?: boolean;
+  truncation_reason?:
+    "work_budget" | "response_cap" | "time_budget" | "scan_cap" | "chunk_cap";
+  returned?: number;
+  total?: number | null;
+  next_offset?: number | null;
   kind:
     | "build"
     | "status"
@@ -1042,8 +1053,6 @@ export interface IndexData {
   counts?: IndexCounts;
   limit?: number;
   depth?: number;
-  truncated?: number;
-  depth_truncated?: number;
   rows?: Array<IndexRow>;
   window?: IndexWindow;
   target?: IndexTarget | null;
@@ -1157,8 +1166,13 @@ export interface IndexBlastInput {
 
 /** The changed declarations: each declaration whose span the diff touched, or every declaration in a --paths file. count is how many were measured and truncated is how many the limit hid; both are null when no index answered, never 0. */
 export interface IndexBlastSymbols {
+  truncated?: boolean;
+  truncation_reason?:
+    "work_budget" | "response_cap" | "time_budget" | "scan_cap" | "chunk_cap";
+  returned?: number;
+  total?: number | null;
+  next_offset?: number | null;
   count: number | null;
-  truncated: number | null;
   rows: Array<IndexBlastSymbol>;
   [key: string]: unknown;
 }
@@ -1174,9 +1188,14 @@ export interface IndexBlastSymbol {
 
 /** The callers of the changed declarations within depth 2, walked once per target and deduplicated by call site. count, unresolved, and truncated are null when no index answered. */
 export interface IndexBlastCallers {
+  truncated?: boolean;
+  truncation_reason?:
+    "work_budget" | "response_cap" | "time_budget" | "scan_cap" | "chunk_cap";
+  returned?: number;
+  total?: number | null;
+  next_offset?: number | null;
   count: number | null;
   unresolved: number | null;
-  truncated: number | null;
   rows: Array<IndexBlastCaller>;
   [key: string]: unknown;
 }
@@ -1194,18 +1213,27 @@ export interface IndexBlastCaller {
 
 /** The candidate tests to read for the changed declarations, strongest mechanism per file. A candidate is never a coverage claim, and count/truncated are null when no index answered. */
 export interface IndexBlastTests {
+  truncated?: boolean;
+  truncation_reason?:
+    "work_budget" | "response_cap" | "time_budget" | "scan_cap" | "chunk_cap";
+  returned?: number;
+  total?: number | null;
+  next_offset?: number | null;
   count: number | null;
-  truncated: number | null;
-  depth_truncated: number | null;
   rows: Array<IndexRow>;
   [key: string]: unknown;
 }
 
 /** The paths that moved with each changed path in one bounded co-change window, read at HEAD. count is the number of (changed path, partner) rows and partners the distinct partner paths across them; truncated is always measured: history needs no index. */
 export interface IndexBlastPartners {
+  truncated?: boolean;
+  truncation_reason?:
+    "work_budget" | "response_cap" | "time_budget" | "scan_cap" | "chunk_cap";
+  returned?: number;
+  total?: number | null;
+  next_offset?: number | null;
   count: number;
   partners: number;
-  truncated: number;
   rows: Array<IndexBlastPartner>;
   [key: string]: unknown;
 }
@@ -1221,8 +1249,13 @@ export interface IndexBlastPartner {
 
 /** One ownership row per changed path, from the CODEOWNERS file at the queried tree. count and truncated are always measured. */
 export interface IndexBlastOwners {
+  truncated?: boolean;
+  truncation_reason?:
+    "work_budget" | "response_cap" | "time_budget" | "scan_cap" | "chunk_cap";
+  returned?: number;
+  total?: number | null;
+  next_offset?: number | null;
   count: number;
-  truncated: number;
   rows: Array<IndexTarget>;
   [key: string]: unknown;
 }

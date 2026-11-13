@@ -92,13 +92,15 @@ func (l *Layer) Roots(_ context.Context) *View {
 	}
 	view.Data = jq.NewObj(
 		"roots", roots,
-		"truncated", truncated || l.discovery.Truncated,
 		"skipped", jq.NewObj("symlinks", l.discovery.Symlinks, "gitignore_patterns", l.discovery.SkippedPatterns),
 		"discovery", l.discoveryWire(),
 		keyPartial, truncated || l.discovery.Truncated || len(errs) > 0,
 		keySources, []any{},
 		keyErrors, errorsWire(errs),
 	)
+	if truncated || l.discovery.Truncated {
+		core.ScanCut(true, len(roots)).Apply(view.Data)
+	}
 	view.Errors = errs
 	view.Warnings = append(view.Warnings, l.discovery.Warnings...)
 	return view
@@ -174,6 +176,13 @@ func (l *Layer) Bundles(ctx context.Context, pattern string) (*View, error) {
 	data.Set("discovery", l.discoveryWire())
 	data.Set(keySources, sourcesWire(view.Sources))
 	data.Set(keyErrors, errorsWire(errs))
+	if ctx.Err() != nil {
+		view.Truncation = core.ResultCut("time_budget", 0, nil, nil)
+	}
+	if view.Truncation != nil {
+		view.Truncation.Returned = len(rows)
+		view.Truncation.Apply(data)
+	}
 	view.Data = data
 	view.Errors = errs
 	return view, nil
@@ -189,6 +198,9 @@ func (l *Layer) collectRows(
 	var errs []ErrRow
 	var sum totals
 	partial := l.discovery.Truncated
+	if partial {
+		view.Truncation = core.ScanCut(true, 0)
+	}
 	for _, root := range l.roots {
 		if ctx.Err() != nil {
 			break
@@ -209,10 +221,12 @@ func (l *Layer) foldRoot(ctx context.Context, root Root, pattern string, view *V
 	errs := append(append([]ErrRow{}, listErrs...), rootErrs...)
 	view.Sources = mergeSources(view.Sources, sources)
 	if cut {
+		view.Truncation = core.ScanCut(true, 0)
 		view.Warnings = append(view.Warnings,
 			fmt.Sprintf("serve: bundle cap %d reached under %s; listing truncated", l.maxBundles, root.Path))
 	}
 	if inv.cut {
+		view.Truncation = core.ScanCut(true, 0)
 		view.Warnings = append(view.Warnings, inventoryWarning(root.Path))
 	}
 	view.Warnings = append(view.Warnings, inv.notes...)
@@ -368,6 +382,7 @@ func (l *Layer) Detail(ctx context.Context, rootID, bundle string) (*View, error
 	data.Set(keyPartial, len(errs) > 0 || inv.cut)
 	data.Set(keySources, sourcesWire(inv.sources))
 	data.Set(keyErrors, errorsWire(errs))
+	core.ScanCut(inv.cut, len(inv.sources)).Apply(data)
 	view := &View{
 		At:       resp.At,
 		Next:     "run verdict show <repo> " + bundle + " --sig <sig> to read one finding",

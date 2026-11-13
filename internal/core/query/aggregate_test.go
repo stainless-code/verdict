@@ -87,11 +87,13 @@ func assertAggregateDiscoveryPartial(t *testing.T, layer *Layer) {
 	if costData["partial"] != true || asMap(t, costData["cost"])["totals"] != nil {
 		t.Errorf("truncated cost = %v; want partial with null totals", costData)
 	}
+	assertEmptyScanReceipt(t, costData)
 	precision, err := layer.Precision(context.Background(), "category")
 	if err != nil {
 		t.Fatal(err)
 	}
 	precisionData := wireMap(t, precision.Data)
+	assertEmptyScanReceipt(t, precisionData)
 	if precisionData["partial"] != true || asMap(t, precisionData["precision"])["totals"] != nil {
 		t.Errorf("truncated precision = %v; want partial with null totals", precisionData)
 	}
@@ -498,5 +500,15 @@ func assertAggregateError(t *testing.T, value any, bundle string) {
 	rows := asList(t, value)
 	if len(rows) != 1 || asMap(t, rows[0])["bundle"] != bundle {
 		t.Fatalf("errors = %v, want corrupt bundle %q", rows, bundle)
+	}
+}
+
+func assertEmptyScanReceipt(t *testing.T, data map[string]any) {
+	t.Helper()
+	want := map[string]any{"truncated": true, "truncation_reason": "scan_cap", "returned": json.Number("0"), "total": nil, "next_offset": nil}
+	for key, value := range want {
+		if data[key] != value {
+			t.Errorf("receipt %s = %v, want %v", key, data[key], value)
+		}
 	}
 }
