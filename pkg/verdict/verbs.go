@@ -409,6 +409,7 @@ func (c *Client) Verify(ctx context.Context, req *VerifyRequest) (*VerifyRespons
 type FetchRequest struct {
 	Invocation
 	BaseSHA, Provider                 string
+	Context                           []string
 	BudgetConsent, ShowPrompts, Chunk bool
 	HeadControls                      bool
 }
@@ -422,6 +423,7 @@ func (c *Client) Fetch(ctx context.Context, req *FetchRequest) (*Result, error) 
 	resp, err := fetchcore.Run(ctx, &core.FetchRequest{
 		ReadRequest: rr,
 		Flags: core.FetchFlags{
+			Context: req.Context,
 			BaseSHA: req.BaseSHA, Provider: req.Provider, BudgetConsent: req.BudgetConsent,
 			ShowPrompts: req.ShowPrompts, ChunkFlag: req.Chunk, HeadControls: req.HeadControls,
 			HasBase: req.BaseSHA != "", HasProvider: req.Provider != "",
@@ -442,6 +444,7 @@ func (c *Client) Fetch(ctx context.Context, req *FetchRequest) (*Result, error) 
 // the base commit.
 type FetchLocalRequest struct {
 	Invocation
+	Context                                             []string
 	Range, BaseRef, Stash                               string
 	Paths                                               []string
 	Staged, HasStash, BudgetConsent, ShowPrompts, Chunk bool
@@ -457,6 +460,7 @@ func (c *Client) FetchLocal(ctx context.Context, req *FetchLocalRequest) (*Resul
 	resp, err := fetchcore.RunLocal(ctx, &core.FetchLocalRequest{
 		ReadRequest: rr,
 		Flags: core.FetchLocalFlags{
+			Context:   req.Context,
 			RangeSpec: req.Range, BaseRef: req.BaseRef, StashN: req.Stash, Paths: req.Paths,
 			Staged: req.Staged, HasStash: req.HasStash, BudgetConsent: req.BudgetConsent,
 			ShowPrompts: req.ShowPrompts, ChunkFlag: req.Chunk, Worktree: req.Worktree,

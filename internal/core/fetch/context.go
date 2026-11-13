@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/fence"
 )
 
@@ -19,6 +20,8 @@ const (
 	contextMaxFiles = 64
 	contextMaxBytes = 1 << 20
 	contextMaxDepth = 8
+	contextDirMode  = 0o700
+	contextFileMode = 0o600
 )
 
 type contextEntry struct {
@@ -33,84 +36,109 @@ type contextFile struct {
 	body   []byte
 }
 
+type contextReader struct {
+	root      *os.Root
+	input     string
+	files     []contextFile
+	total     int
+	directory bool
+}
+
+func contextFailure(format string, args ...any) error {
+	return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(format, args...)}
+}
+
 func collectContext(inputs []string) ([]contextFile, error) {
-	var files []contextFile
-	total := 0
+	reader := new(contextReader)
 	inputs = slices.Clone(inputs)
 	slices.Sort(inputs)
 	for _, input := range slices.Compact(inputs) {
-		info, err := os.Lstat(input)
-		if err != nil {
-			return nil, fmt.Errorf("context input: %v", err)
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return nil, fmt.Errorf("context symlink refused")
-		}
-		parent, name := filepath.Dir(input), filepath.Base(input)
-		if info.IsDir() {
-			parent, name = input, "."
-		}
-		root, err := os.OpenRoot(parent)
-		if err != nil {
-			return nil, fmt.Errorf("context root: %v", err)
-		}
-		err = fs.WalkDir(root.FS(), name, func(p string, d fs.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return fmt.Errorf("context walk: %v", walkErr)
-			}
-			if d.Type()&os.ModeSymlink != 0 {
-				return fmt.Errorf("context symlink refused")
-			}
-			if strings.Count(p, "/") >= contextMaxDepth {
-				return fmt.Errorf("context depth exceeds %d", contextMaxDepth)
-			}
-			if d.IsDir() {
-				return nil
-			}
-			if !d.Type().IsRegular() {
-				return fmt.Errorf("context requires regular files")
-			}
-			switch strings.ToLower(filepath.Ext(p)) {
-			case ".md", ".markdown", ".json", ".txt":
-			default:
-				return fmt.Errorf("context requires Markdown, JSON or text")
-			}
-			if len(files) >= contextMaxFiles {
-				return fmt.Errorf("context exceeds %d files", contextMaxFiles)
-			}
-			f, openErr := root.Open(p)
-			if openErr != nil {
-				return fmt.Errorf("context open: %v", openErr)
-			}
-			body, readErr := io.ReadAll(io.LimitReader(f, int64(contextMaxBytes-total+1)))
-			closeErr := f.Close()
-			if readErr != nil {
-				return fmt.Errorf("context read: %v", readErr)
-			}
-			if closeErr != nil {
-				return fmt.Errorf("context close: %v", closeErr)
-			}
-			total += len(body)
-			if total > contextMaxBytes {
-				return fmt.Errorf("context exceeds %d bytes", contextMaxBytes)
-			}
-			source := input
-			if info.IsDir() {
-				source = filepath.Join(input, filepath.FromSlash(p))
-			}
-			files = append(files, contextFile{source: filepath.ToSlash(source), body: body})
-			return nil
-		})
-		closeErr := root.Close()
-		if err != nil {
+		if err := reader.read(input); err != nil {
 			return nil, err
 		}
-		if closeErr != nil {
-			return nil, fmt.Errorf("context root close: %v", closeErr)
-		}
 	}
-	slices.SortFunc(files, func(a, b contextFile) int { return strings.Compare(a.source, b.source) })
-	return slices.CompactFunc(files, func(a, b contextFile) bool { return a.source == b.source }), nil
+	slices.SortFunc(reader.files, func(a, b contextFile) int { return strings.Compare(a.source, b.source) })
+	return slices.CompactFunc(reader.files, func(a, b contextFile) bool { return a.source == b.source }), nil
+}
+
+func (r *contextReader) read(input string) error {
+	info, err := os.Lstat(input)
+	if err != nil {
+		return contextFailure("context input: %s", err.Error())
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return contextFailure("context symlink refused")
+	}
+	parent, name := filepath.Dir(input), filepath.Base(input)
+	if info.IsDir() {
+		parent, name = input, "."
+	}
+	root, err := os.OpenRoot(parent)
+	if err != nil {
+		return contextFailure("context root: %s", err.Error())
+	}
+	defer root.Close()
+	r.root, r.input, r.directory = root, input, info.IsDir()
+	if err := fs.WalkDir(root.FS(), name, r.visit); err != nil {
+		return contextFailure("context collection: %s", err.Error())
+	}
+	return nil
+}
+
+func (r *contextReader) visit(p string, d fs.DirEntry, walkErr error) error {
+	if walkErr != nil {
+		return contextFailure("context walk: %s", walkErr.Error())
+	}
+	if d.Type()&os.ModeSymlink != 0 {
+		return contextFailure("context symlink refused")
+	}
+	if strings.Count(p, "/") >= contextMaxDepth {
+		return contextFailure("context depth exceeds %d", contextMaxDepth)
+	}
+	if d.IsDir() {
+		return nil
+	}
+	return r.readFile(p, d)
+}
+
+func (r *contextReader) readFile(p string, d fs.DirEntry) error {
+	if err := r.checkFile(p, d); err != nil {
+		return err
+	}
+	f, err := r.root.Open(p)
+	if err != nil {
+		return contextFailure("context open: %s", err.Error())
+	}
+	defer f.Close()
+	body, err := io.ReadAll(io.LimitReader(f, int64(contextMaxBytes-r.total+1)))
+	if err != nil {
+		return contextFailure("context read: %s", err.Error())
+	}
+	r.total += len(body)
+	if r.total > contextMaxBytes {
+		return contextFailure("context exceeds %d bytes", contextMaxBytes)
+	}
+	source := r.input
+	if r.directory {
+		source = filepath.Join(r.input, filepath.FromSlash(p))
+	}
+	r.files = append(r.files, contextFile{source: filepath.ToSlash(source), body: body})
+	return nil
+}
+
+func (r *contextReader) checkFile(p string, d fs.DirEntry) error {
+	if !d.Type().IsRegular() {
+		return contextFailure("context requires regular files")
+	}
+	switch strings.ToLower(filepath.Ext(p)) {
+	case ".md", ".markdown", ".json", ".txt":
+	default:
+		return contextFailure("context requires Markdown, JSON or text")
+	}
+	if len(r.files) >= contextMaxFiles {
+		return contextFailure("context exceeds %d files", contextMaxFiles)
+	}
+	return nil
 }
 
 func renderContext(files []contextFile, at string) ([]contextEntry, string) {
@@ -120,7 +148,9 @@ func renderContext(files []contextFile, at string) ([]contextEntry, string) {
 	nonce := promptNonce()
 	for _, file := range files {
 		sum := sha256.Sum256(file.body)
-		entries = append(entries, contextEntry{Source: file.source, RetrievedAt: at, SHA256: hex.EncodeToString(sum[:]), Trust: "untrusted"})
+		entries = append(entries, contextEntry{
+			Source: file.source, RetrievedAt: at, SHA256: hex.EncodeToString(sum[:]), Trust: "untrusted",
+		})
 		text.WriteString(fenceOpen(nonce, "context"))
 		text.WriteString(fence.Safe(file.source + "\n" + string(file.body)))
 		text.WriteByte('\n')
@@ -137,35 +167,53 @@ func writeContext(dir string, inputs []string, at string) error {
 
 	root, err := os.OpenRoot(dir)
 	if err != nil {
-		return fmt.Errorf("context bundle: %v", err)
+		return contextFailure("context bundle: %s", err.Error())
 	}
 	defer root.Close()
-	for _, name := range []string{"context", "context.json", "context.txt"} {
-		if err := root.RemoveAll(name); err != nil {
-			return fmt.Errorf("context cleanup: %v", err)
-		}
+	if err := clearContext(root); err != nil {
+		return err
 	}
 	if len(inputs) == 0 {
 		return nil
 	}
-	if err := root.Mkdir("context", 0o700); err != nil && !os.IsExist(err) {
-		return fmt.Errorf("context directory: %v", err)
+	if err := root.Mkdir("context", contextDirMode); err != nil && !os.IsExist(err) {
+		return contextFailure("context directory: %s", err.Error())
 	}
+	return saveContext(root, files, at)
+}
+
+func clearContext(root *os.Root) error {
+	for _, name := range []string{"context", "context.json", "context.txt"} {
+		if err := root.RemoveAll(name); err != nil {
+			return contextFailure("context cleanup: %s", err.Error())
+		}
+	}
+	return nil
+}
+
+func saveContext(root *os.Root, files []contextFile, at string) error {
 	entries, text := renderContext(files, at)
 	for i, file := range files {
-		if err := root.WriteFile(fmt.Sprintf("context/%03d%s", i, filepath.Ext(file.source)), file.body, 0o600); err != nil {
-			return fmt.Errorf("context copy: %v", err)
+		if err := root.WriteFile(fmt.Sprintf("context/%03d%s", i, filepath.Ext(file.source)), file.body, contextFileMode); err != nil {
+			return contextFailure("context copy: %s", err.Error())
 		}
 	}
 	raw, err := json.MarshalIndent(entries, "", "  ")
 	if err != nil {
-		return fmt.Errorf("context manifest: %v", err)
+		return contextFailure("context manifest: %s", err.Error())
 	}
-	if err := root.WriteFile("context.json", append(raw, '\n'), 0o600); err != nil {
-		return fmt.Errorf("context manifest: %v", err)
+	if err := root.WriteFile("context.json", append(raw, '\n'), contextFileMode); err != nil {
+		return contextFailure("context manifest: %s", err.Error())
 	}
-	if err := root.WriteFile("context.txt", []byte(text), 0o600); err != nil {
-		return fmt.Errorf("context text: %v", err)
+	if err := root.WriteFile("context.txt", []byte(text), contextFileMode); err != nil {
+		return contextFailure("context text: %s", err.Error())
 	}
 	return nil
+}
+
+func contextFeed(dir string, inputs []string) string {
+	if len(inputs) == 0 {
+		return ""
+	}
+	return " + " + dir + "/context.txt"
 }
