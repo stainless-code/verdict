@@ -9,9 +9,7 @@
 #       build commit), installs verdict, writes a versioned receipt.
 #   A2  `verdict --version` runs; the install dir is the action's
 #       RUNNER_TOOL_CACHE layout and PATH-ready (no rc files touched).
-#   A3  second invocation with the same version reuses the binary: the
-#       action's `[ -x binary ]` guard (copied below; see action.yml)
-#       means zero new curl calls.
+#   A3  cached binaries are re-verified before execution.
 #   A4  corrupt checksums fail closed; the previous binary is untouched.
 #   A5  require-signature=false without cosign installs checksum-only.
 #   A6  a release that publishes no commit.txt fails closed.
@@ -87,19 +85,44 @@ grep -qFx "export PATH=\"$INSTALL:\$PATH\"" ~/.bashrc 2>/dev/null \
   && bad "PATH line leaked into ~/.bashrc" \
   || good "no shell rc file modified"
 
-# --- A3: the action's reuse guard means no second download ---
-curl_before="$(wc -l <"$FAKE_CURL_LOG" | tr -d ' ')"
-# Copied from setup-verdict/action.yml (install verdict step): reuse when the
-# version-scoped binary is already present.
-if [ -x "$VERDICT_INSTALL/verdict" ]; then
-  echo "setup-verdict: reusing $VERDICT_INSTALL/verdict (already installed; no download)"
+# Extract the shipped shell bodies so these tests exercise the action itself.
+python3 - "$HERE/action.yml" "$SANDBOX" <<'PYTHON'
+import pathlib, sys
+source = pathlib.Path(sys.argv[1]).read_text()
+for step in ('resolve-nix', 'install-nix'):
+    body = source.split('      id: ' + step + '\n', 1)[1]
+    body = body.split('      run: |\n', 1)[1].split('\n    - name:', 1)[0]
+    lines = []
+    for line in body.splitlines():
+        if line and not line.startswith('        '):
+            break
+        lines.append(line[8:])
+    pathlib.Path(sys.argv[2], step + '.sh').write_text('\n'.join(lines) + '\n')
+PYTHON
+export ACTION_PATH="$HERE" VERDICT_VERSION="$GOOD"
+export GITHUB_OUTPUT="$SANDBOX/output" GITHUB_PATH="$SANDBOX/path"
+cosign_before="$(wc -l < "$FAKE_COSIGN_LOG")"
+bash "$SANDBOX/install-nix.sh" > /dev/null
+cosign_after="$(wc -l < "$FAKE_COSIGN_LOG")"
+[ "$cosign_after" -gt "$cosign_before" ] && good "cache hit re-verifies signature" || bad "cache hit skipped signature"
+cp "$INSTALL/verdict" "$SANDBOX/original"
+printf '#!/bin/sh\ntouch "%s"\n' "$SANDBOX/cached-executed" > "$INSTALL/verdict"
+if bash "$SANDBOX/install-nix.sh" > "$SANDBOX/cache.log" 2>&1; then
+  bad "tampered cache accepted"
 else
-  VERDICT_VERSION="$GOOD" sh "$ROOT/install.sh" >/dev/null
+  grep -q 'cached binary differs from verified release' "$SANDBOX/cache.log" \
+    && good "tampered cache refused" || bad "unexpected cache refusal"
 fi
-curl_after="$(wc -l <"$FAKE_CURL_LOG" | tr -d ' ')"
-[ "$curl_before" = "$curl_after" ] \
-  && good "second invocation made no download ($curl_before curl calls)" \
-  || bad "second invocation downloaded again ($curl_before -> $curl_after)"
+[ ! -e "$SANDBOX/cached-executed" ] && good "tampered cache never executed" || bad "tampered cache executed"
+cp "$SANDBOX/original" "$INSTALL/verdict"
+export RUNNER_TOOL_CACHE="$SANDBOX/toolcache" INPUT_REQUIRE_SIGNATURE=true
+export INPUT_VERSION="1.0.0'; touch pwned; #\""
+if (cd "$SANDBOX" && bash ./resolve-nix.sh) > "$SANDBOX/injection.log" 2>&1; then
+  bad "injection-shaped version accepted"
+else
+  good "injection-shaped version rejected"
+fi
+[ ! -e "$SANDBOX/pwned" ] && good "injection created no file" || bad "injection executed"
 
 # --- A4: corrupt checksums fail closed, old binary untouched ---
 sum_before="$(shasum -a 256 "$INSTALL/verdict" | awk '{print $1}')"
@@ -117,12 +140,13 @@ sum_after="$(shasum -a 256 "$INSTALL/verdict" | awk '{print $1}')"
 
 # --- A5: checksum-only leg (require-signature=false, no cosign) ---
 PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -v "^$FAKEBIN\$" | paste -sd: -)"
-unset VERDICT_COSIGN
+export VERDICT_COSIGN="$SANDBOX/no-cosign"
 export VERDICT_INSTALL="$SANDBOX/toolcache/setup-verdict/$NOSIG" VERDICT_REQUIRE_SIGNATURE=0
 if VERDICT_VERSION="$NOSIG" sh "$ROOT/install.sh" >"$SANDBOX/nosig.log" 2>&1; then
   grep -q 'WARNING' "$SANDBOX/nosig.log" && good "checksum-only warns" || bad "no checksum warning"
   [ -x "$VERDICT_INSTALL/verdict" ] && good "checksum-only installed" || bad "checksum-only missing binary"
 else
+  cat "$SANDBOX/nosig.log" >&2
   bad "checksum-only install failed"
 fi
 

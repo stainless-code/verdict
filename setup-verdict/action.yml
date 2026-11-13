@@ -36,18 +36,21 @@ runs:
       id: resolve-nix
       if: runner.os != 'Windows'
       shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_REQUIRE_SIGNATURE: ${{ inputs.require-signature }}
       run: |
         set -eu
-        ver='${{ inputs.version }}'
+        ver="$INPUT_VERSION"
         case "$ver" in
           latest) ver=latest ;;
           v*) ver="${ver#v}" ;;
         esac
         case "$ver" in
           latest | *[!0-9A-Za-z.+-]* | '')
-            [ "$ver" = latest ] || { echo "setup-verdict: bad version: '${{ inputs.version }}' (use X.Y.Z or vX.Y.Z)" >&2; exit 1; } ;;
+            [ "$ver" = latest ] || { echo "setup-verdict: bad version: $INPUT_VERSION (use X.Y.Z or vX.Y.Z)" >&2; exit 1; } ;;
         esac
-        case '${{ inputs.require-signature }}' in
+        case "$INPUT_REQUIRE_SIGNATURE" in
           true | false) ;;
           *) echo "setup-verdict: require-signature must be 'true' or 'false'" >&2; exit 1 ;;
         esac
@@ -60,14 +63,17 @@ runs:
       id: resolve-win
       if: runner.os == 'Windows'
       shell: pwsh
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_REQUIRE_SIGNATURE: ${{ inputs.require-signature }}
       run: |
         $ErrorActionPreference = 'Stop'
-        $ver = '${{ inputs.version }}'
+        $ver = $env:INPUT_VERSION
         if ($ver -eq 'latest') { $ver = 'latest' } else { $ver = $ver.TrimStart('v') }
         if ($ver -ne 'latest' -and ($ver -eq '' -or $ver -match '[^0-9A-Za-z.+-]')) {
-          throw "setup-verdict: bad version: '${{ inputs.version }}' (use X.Y.Z or vX.Y.Z)"
+          throw "setup-verdict: bad version: $env:INPUT_VERSION (use X.Y.Z or vX.Y.Z)"
         }
-        if ('${{ inputs.require-signature }}' -notin @('true', 'false')) {
+        if ($env:INPUT_REQUIRE_SIGNATURE -cnotin @('true', 'false')) {
           throw "setup-verdict: require-signature must be 'true' or 'false'"
         }
         $dir = Join-Path $env:RUNNER_TOOL_CACHE "setup-verdict/$ver"
@@ -110,7 +116,7 @@ runs:
     # Cross-job cache for PINNED versions only. `latest` is deliberately
     # excluded: a cache key containing "latest" would pin whichever build was
     # cached first and silently reinstall it forever. Within a job the install
-    # step below is already idempotent (receipt-checked, no network on reuse).
+    # step below re-verifies cached bytes against a freshly verified release.
     - name: Cache the verified binary (macOS/Linux)
       if: runner.os != 'Windows' && inputs.version != 'latest'
       uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
@@ -135,15 +141,21 @@ runs:
       if: runner.os != 'Windows'
       shell: bash
       env:
+        ACTION_PATH: ${{ github.action_path }}
         VERDICT_VERSION: ${{ inputs.version }}
         VERDICT_INSTALL: ${{ steps.resolve-nix.outputs.install-dir }}
         VERDICT_NO_MODIFY_PATH: "1"
         VERDICT_REQUIRE_SIGNATURE: ${{ inputs.require-signature == 'true' && '1' || '0' }}
       run: |
         set -eu
-        installer='${{ github.action_path }}/../install.sh'
+        installer="$ACTION_PATH/../install.sh"
         if [ -x "$VERDICT_INSTALL/verdict" ]; then
-          echo "setup-verdict: reusing $VERDICT_INSTALL/verdict (already installed; no download)"
+          verified="$(mktemp -d "${TMPDIR:-/tmp}/setup-verdict-verify.XXXXXX")"
+          trap 'rm -rf "$verified"' EXIT
+          VERDICT_INSTALL="$verified" sh "$installer"
+          cmp -s "$verified/verdict" "$VERDICT_INSTALL/verdict" || {
+            echo 'setup-verdict: cached binary differs from verified release' >&2; exit 1;
+          }
         else
           sh "$installer"
         fi
@@ -159,16 +171,26 @@ runs:
       if: runner.os == 'Windows'
       shell: pwsh
       env:
+        ACTION_PATH: ${{ github.action_path }}
         VERDICT_VERSION: ${{ inputs.version }}
         VERDICT_INSTALL: ${{ steps.resolve-win.outputs.install-dir }}
         VERDICT_NO_MODIFY_PATH: "1"
         VERDICT_REQUIRE_SIGNATURE: ${{ inputs.require-signature == 'true' && '1' || '0' }}
       run: |
         $ErrorActionPreference = 'Stop'
-        $installer = Join-Path '${{ github.action_path }}' '../install.ps1'
+        $installer = Join-Path $env:ACTION_PATH '../install.ps1'
         $binary = Join-Path $env:VERDICT_INSTALL 'verdict.exe'
         if (Test-Path -LiteralPath $binary) {
-          Write-Host "setup-verdict: reusing $binary (already installed; no download)"
+          $verified = Join-Path ([System.IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString('N'))
+          try {
+            & $installer -InstallDir $verified
+            $expected = (Get-FileHash -LiteralPath (Join-Path $verified 'verdict.exe') -Algorithm SHA256).Hash
+            if ((Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash -ne $expected) {
+              throw 'setup-verdict: cached binary differs from verified release'
+            }
+          } finally {
+            if (Test-Path -LiteralPath $verified) { Remove-Item -LiteralPath $verified -Recurse -Force }
+          }
         } else {
           & $installer
         }
