@@ -38,6 +38,7 @@ body:
         - panel
         - record
         - adopt
+        - ingest
         - fix
         - check-tree
         - ready

@@ -312,6 +312,12 @@ Cause: `learn --rule` got an empty rule.
 
 Fix: pass the one-line rule text to `--rule`.
 
+## `bad-sarif`
+
+Cause: the SARIF input is not valid UTF-8 JSON conforming to SARIF 2.1.0, or carries an unsafe or unparseable `artifactLocation.uri`.
+
+Fix: supply valid SARIF 2.1.0 JSON (`"version": "2.1.0"`, `runs[]` array) with relative repository file paths, then re-run `verdict ingest`.
+
 ## `bad-scope`
 
 Cause: `--scope` is empty, malformed, or belongs to a different mode (or the scope config key is invalid). Learning proposals also refuse unsafe cited paths or comment identifiers.
@@ -628,6 +634,12 @@ Cause: an index store read or write failed, or git could not be run.
 Fix: confirm git works in the checkout, make `.verdict/index` writable, then
 re-run.
 
+## `ingest-failed`
+
+Cause: reading the SARIF input or writing the updated `findings.json` failed (for example, a symlinked or unreadable SARIF file, or a non-writable bundle directory).
+
+Fix: confirm the `--sarif` path is a readable regular file (not a symlink) or valid stdin stream and that `.verdict/state/<bundle>` is writable, then re-run `verdict ingest`.
+
 ## `init-failed`
 
 Cause: `init` could not create `.verdict` or write a control file (storage not writable).
@@ -759,6 +771,12 @@ Fix: `post` for real first, then re-run `calibrate`.
 Cause: the review file is absent.
 
 Fix: have the agent write `{body, approved, comments[]}` to the review file first, then re-run.
+
+## `missing-sarif`
+
+Cause: `ingest` was invoked without `--sarif <file|->` or with an empty SARIF path.
+
+Fix: pass `--sarif <file>` (or `--sarif -` to read stdin), then re-run `verdict ingest`.
 
 ## `missing-sig`
 
@@ -1017,6 +1035,12 @@ Fix: pick another `--run <slug>`, or delete the existing run directory and mine 
 Cause: the sandbox cannot be enforced (no bubblewrap, or no unprivileged user namespaces).
 
 Fix: install bubblewrap on Linux and allow unprivileged user namespaces, or re-run without `--sandbox` on a command you trust.
+
+## `sarif-too-large`
+
+Cause: the SARIF input exceeds the 8 MiB size cap.
+
+Fix: split or filter the SARIF output per tool or target under 8 MiB, then re-run `verdict ingest`.
 
 ## `scope-escape`
 
