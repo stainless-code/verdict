@@ -555,6 +555,9 @@ type TrendBundleRow struct { //nolint:govet // field order is the published prop
 // (live join, corpus join, probe) share one object, so every mode-specific key
 // is optional and a consumer narrows on the keys it asked for.
 type CalibrateData struct { //nolint:govet // field order is the published property order
+	Metrics           any                `json:"metrics"             optional:"true"`
+	Sampling          any                `json:"sampling"            optional:"true"`
+	SamplingHits      []int              `json:"sampling_hits"       optional:"true"`
 	ReviewID          any                `json:"review_id"           optional:"true"`
 	Head              *CalibrateHead     `anyOf:"null"               json:"head"       optional:"true"`
 	PR                *CalibratePR       `anyOf:"null"               json:"pr"         optional:"true"`

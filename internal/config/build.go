@@ -38,10 +38,7 @@ func buildConfig(root map[string]any) (*core.Config, *core.RefusalError) {
 	if cfg.Requirements, ref = presentNested(root, requirementsKey, rootLocation, buildRequirements); ref != nil {
 		return nil, ref
 	}
-	if cfg.Index, ref = presentNested(root, "index", rootLocation, buildIndex); ref != nil {
-		return nil, ref
-	}
-	if cfg.SeverityWeights, ref = presentNested(root, "severity_weights", rootLocation, buildSeverityWeights); ref != nil {
+	if ref = buildBenchmarkAndIndex(cfg, root); ref != nil {
 		return nil, ref
 	}
 	if ref = buildConfigTail(cfg, root); ref != nil {
@@ -567,4 +564,13 @@ func remap(_ any, _ string, ref *core.RefusalError, code string) *core.RefusalEr
 		return ref
 	}
 	return refuse(code, "%s", ref.Message)
+}
+
+func buildBenchmarkAndIndex(cfg *core.Config, root map[string]any) *core.RefusalError {
+	var ref *core.RefusalError
+	if cfg.Index, ref = presentNested(root, "index", rootLocation, buildIndex); ref != nil {
+		return ref
+	}
+	cfg.SeverityWeights, ref = presentNested(root, "severity_weights", rootLocation, buildSeverityWeights)
+	return ref
 }

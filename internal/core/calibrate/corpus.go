@@ -19,21 +19,31 @@ func (st *state) runCorpus(dir string) *core.RefusalError {
 		return st.loadRefusal(err)
 	}
 	report := corpuscore.Evaluate(c, entries)
+	sample, ref := corpuscore.LoadSample(dir, report)
+	if ref != nil {
+		return st.withWarnings(ref)
+	}
+	metrics := corpuscore.Measure([]corpuscore.Sample{sample})
+	metrics.AnyOfKRecall, metrics.IncompleteCohorts = corpuscore.AnyOfKRecall(corpuscore.Cohort(dir, &sample))
 	st.corpus = &corpusResult{
-		dir:    dir,
-		report: report,
-		model:  corpuscore.ModelOf(dir),
-		panel:  corpuscore.PanelOf(dir),
+		metrics:  metrics,
+		sampling: sample.Sampling,
+		dir:      dir,
+		report:   report,
+		model:    corpuscore.ModelOf(dir),
+		panel:    corpuscore.PanelOf(dir),
 	}
 	st.emitCorpusHuman(st.corpus)
 	return nil
 }
 
 type corpusResult struct {
-	dir    string
-	report *corpuscore.Report
-	model  string
-	panel  []string
+	report   *corpuscore.Report
+	dir      string
+	model    string
+	panel    []string
+	metrics  *corpuscore.Metrics
+	sampling corpuscore.Sampling
 }
 
 func (st *state) corpusResponse() *Response {
@@ -69,6 +79,8 @@ func (r *corpusResult) Wire() *jq.Obj {
 		panel = append(panel, p)
 	}
 	return jq.NewObj(
+		"metrics", r.metrics.Wire(),
+		"sampling", samplingDoc(r.sampling),
 		"bundle", readcommon.BundleName(r.dir),
 		"case", rep.Case.ID,
 		"kind", rep.Case.Kind,
@@ -127,6 +139,7 @@ func corpusBugDoc(b *core.CorpusBug) *jq.Obj {
 
 func (st *state) emitCorpusHuman(r *corpusResult) {
 	rep := r.report
+	st.human(r.metrics.Summary())
 	st.human(fmt.Sprintf("calibrate: corpus %s — %s (model %s, panel %s)",
 		rep.Case.ID, readcommon.BundleName(r.dir), r.model, corpuscore.PanelLabel(r.panel)))
 	tol := corpuscore.Tolerance(rep.Case)
@@ -186,3 +199,22 @@ func corpusSig(sig string) string {
 }
 
 const corpusSigNull = "null"
+
+func samplingDoc(s corpuscore.Sampling) *jq.Obj {
+	return jq.NewObj("run_id",
+		s.RunID,
+		"k",
+		s.K,
+		"repeats",
+		s.Repeats,
+		"sample",
+		s.Sample,
+		"severity_weights",
+		jq.NewObj("critical",
+			s.Weights.Critical,
+			"important",
+			s.Weights.Important,
+			"informational",
+			s.Weights.Informational),
+	)
+}

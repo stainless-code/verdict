@@ -729,3 +729,33 @@ ordered samples contribute to `any_of_k_recall`: union their matched bug
 indices, then divide by the unique ground-truth bugs in complete cohorts.
 Incomplete cohorts have no recall denominator and are counted explicitly.
 Per-case sample rates publish median/min/max and the non-null sample count n.
+
+## Metric denominators
+
+`calibrate` and `trend` publish a `metrics` object. Each rate carries `value`,
+`numerator`, `denominator`, `n`, and its observation `unit`; zero denominators
+produce `null`. The human report also prints counts beside rates.
+
+| Metric               | Numerator / denominator                                         | n                                     |
+| -------------------- | --------------------------------------------------------------- | ------------------------------------- |
+| precision            | matched findings / reported findings                            | reported findings                     |
+| recall               | matched bugs / ground-truth bug samples                         | bug samples                           |
+| false_positive_rate  | false-positive findings / reported findings                     | reported findings                     |
+| any_of_k_recall      | union of matched bugs / unique bugs in complete first-k cohorts | unique bugs                           |
+| control_fp_rate      | false-positive findings on controls / control case samples      | control case samples                  |
+| severity_weighted_f1 | 2 weighted TP / (2 weighted TP + weighted FP + weighted FN)     | bug samples + false-positive findings |
+| signal_to_noise      | matched findings / false-positive findings                      | reported findings                     |
+
+Control FP rate is findings per control, so it can exceed one. Weighted TP
+and FN use ground-truth severity; weighted FP uses reported severity, falling
+back to informational when absent. Every sample uses its snapshotted weights.
+Legacy bundles without `corpus_run.json` are independent k=1 runs and resolve
+weights from the repository's typed config, falling back to 25/5/1.
+`calibrate` reads sibling samples for its any-of-k rate only; its other rates
+describe the selected sample. `trend` groups by run, case, model, and panel.
+Duplicate or inconsistent first-k cohorts contribute no recall denominator.
+
+`cost_usd` sums recorded `cost.json` estimates; `latency_s` sums recorded
+sample wall times. Either total is `null` if any sample lacks that evidence.
+`cost_n`, `latency_n`, and `samples` expose completeness. A measured zero
+stays zero. The runner publishes per-case median/min/max/n for these metrics.

@@ -9,22 +9,15 @@ func buildSeverityWeights(raw any, path string) (*core.ConfigSeverityWeights, *c
 	}
 	out := &core.ConfigSeverityWeights{}
 	fields := []struct {
-		name string
 		dst  **int
+		name string
 	}{
-		{"critical", &out.Critical}, {"important", &out.Important}, {"informational", &out.Informational},
+		{name: severityEnum[0], dst: &out.Critical},
+		{name: severityEnum[1], dst: &out.Important},
+		{name: severityEnum[2], dst: &out.Informational},
 	}
 	for _, f := range fields {
-		value, ref := presentValue(obj, f.name, path, func(v any, at string) (int, *core.RefusalError) {
-			n, ref := boundedCount(v, at, 1)
-			if ref != nil {
-				return 0, ref
-			}
-			if n > 1000000 {
-				return 0, refuse(CodeBadConfig, "%s: weight exceeds 1000000", at)
-			}
-			return n, nil
-		})
+		value, ref := presentValue(obj, f.name, path, weightValue)
 		if ref != nil {
 			return nil, ref
 		}
@@ -35,7 +28,7 @@ func buildSeverityWeights(raw any, path string) (*core.ConfigSeverityWeights, *c
 
 // SeverityWeights resolves repository overrides over the benchmark defaults.
 func SeverityWeights(cfg *core.Config) core.SeverityWeights {
-	w := core.SeverityWeights{Critical: 25, Important: 5, Informational: 1}
+	w := core.SeverityWeights{Critical: defaultCriticalWeight, Important: defaultImportantWeight, Informational: 1}
 	if cfg == nil || cfg.SeverityWeights == nil {
 		return w
 	}
@@ -50,4 +43,21 @@ func SeverityWeights(cfg *core.Config) core.SeverityWeights {
 		w.Informational = *c.Informational
 	}
 	return w
+}
+
+const (
+	defaultCriticalWeight  = 25
+	defaultImportantWeight = 5
+	maxSeverityWeight      = 1000000
+)
+
+func weightValue(v any, at string) (int, *core.RefusalError) {
+	n, ref := boundedCount(v, at, 1)
+	if ref != nil {
+		return 0, ref
+	}
+	if n > maxSeverityWeight {
+		return 0, refuse(CodeBadConfig, "%s: weight exceeds 1000000", at)
+	}
+	return n, nil
 }

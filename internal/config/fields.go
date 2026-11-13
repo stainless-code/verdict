@@ -15,7 +15,10 @@ const defaultsKey = "defaults"
 const requirementsKey = "requirements"
 
 var (
-	topFields      = []string{"$schema", "schema_version", "defaults", "requirements", "scopes", "profiles", "default_profile", "index", "severity_weights"}
+	topFields = []string{
+		"$schema", "schema_version", "defaults", "requirements", "scopes", "profiles", "default_profile",
+		"index", "severity_weights",
+	}
 	defaultsFields = []string{
 		keyPanel, keyBudgetUSD, keyMaxBytes, keyChunk, keyKBPolicy, keyEffort,
 		keyDisplayFloor, keyPostFloor,

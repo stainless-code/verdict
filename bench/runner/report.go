@@ -21,27 +21,27 @@ import (
 // Report is the publication JSON: the fields the runbook requires, plus the
 // per-sample blocks they rest on.
 type Report struct {
-	K                 int                    `json:"k"`
-	Repeats           int                    `json:"repeats"`
-	AnyOfKRecall      corpuscore.Measurement `json:"any_of_k_recall"`
-	IncompleteCohorts int                    `json:"incomplete_cohorts"`
+	LoopCost          *LoopCost              `json:"loop_cost,omitempty"`
 	PromptSHA         map[string]string      `json:"prompt_sha256"`
+	AnyOfKRecall      corpuscore.Measurement `json:"any_of_k_recall"`
+	SchemaVersion     string                 `json:"schema_version"`
+	CitableReason     string                 `json:"citable_reason,omitempty"`
 	PromptsHash       string                 `json:"prompts_hash,omitempty"`
 	RunID             string                 `json:"run_id"`
 	GeneratedAt       string                 `json:"generated_at"`
-	SchemaVersion     string                 `json:"schema_version"`
-	CitableReason     string                 `json:"citable_reason,omitempty"`
+	Bundles           []BundleRun            `json:"bundles"`
+	Failures          []Failure              `json:"failures"`
 	Panel             []string               `json:"panel"`
 	Cases             []CaseSpread           `json:"cases"`
-	Bundles           []BundleRun            `json:"bundles"`
+	TrendCorpus       json.RawMessage        `json:"trend_corpus"`
 	Loops             []LoopSummary          `json:"loops,omitempty"`
 	FixRates          []FixRate              `json:"fix_rates,omitempty"`
-	LoopCost          *LoopCost              `json:"loop_cost,omitempty"`
-	TrendCorpus       json.RawMessage        `json:"trend_corpus"`
-	Failures          []Failure              `json:"failures"`
 	Agent             AgentRef               `json:"agent"`
 	Corpus            CorpusRef              `json:"corpus"`
 	Cost              CostRollup             `json:"cost"`
+	Repeats           int                    `json:"repeats"`
+	K                 int                    `json:"k"`
+	IncompleteCohorts int                    `json:"incomplete_cohorts"`
 	Samples           int                    `json:"samples"`
 	ElapsedSeconds    float64                `json:"elapsed_seconds"`
 	TolerancePoints   int                    `json:"tolerance_points"`
@@ -80,19 +80,20 @@ type BundleRun struct {
 // CaseSpread is one case over its samples: the runbook publishes median, min,
 // and max so a reader can see the noise floor.
 type CaseSpread struct {
-	Precision         Stat   `json:"precision"`
-	Recall            Stat   `json:"recall"`
-	FalsePositiveRate Stat   `json:"false_positive_rate"`
-	Case              string `json:"case"`
-	Runs              int    `json:"runs"`
+	Metrics           map[string]Stat `json:"metrics"`
+	Precision         Stat            `json:"precision"`
+	Recall            Stat            `json:"recall"`
+	FalsePositiveRate Stat            `json:"false_positive_rate"`
+	Case              string          `json:"case"`
+	Runs              int             `json:"runs"`
 }
 
 // Stat is one rate across samples; null when no sample had a denominator.
 type Stat struct {
-	N      int      `json:"n"`
 	Median *float64 `json:"median"`
 	Min    *float64 `json:"min"`
 	Max    *float64 `json:"max"`
+	N      int      `json:"n"`
 }
 
 // CostRollup is the spend the bundles report, measured or absent.
@@ -117,18 +118,19 @@ type Failure struct {
 // calibration is the calibrate data block's numbers; the block itself is what
 // the report publishes.
 type calibration struct {
-	Hits              []int    `json:"sampling_hits"`
-	Precision         *float64 `json:"precision"`
-	Recall            *float64 `json:"recall"`
-	FalsePositiveRate *float64 `json:"false_positive_rate"`
-	Case              string   `json:"case"`
-	Model             string   `json:"model"`
-	Panel             []string `json:"panel"`
-	GroundTruth       int      `json:"ground_truth"`
-	Reported          int      `json:"reported"`
-	Matched           int      `json:"matched"`
-	FalsePositives    int      `json:"false_positives"`
-	Missed            int      `json:"missed"`
+	Recall            *float64            `json:"recall"`
+	FalsePositiveRate *float64            `json:"false_positive_rate"`
+	Precision         *float64            `json:"precision"`
+	Metrics           *corpuscore.Metrics `json:"metrics"`
+	Model             string              `json:"model"`
+	Case              string              `json:"case"`
+	Panel             []string            `json:"panel"`
+	Hits              []int               `json:"sampling_hits"`
+	GroundTruth       int                 `json:"ground_truth"`
+	Reported          int                 `json:"reported"`
+	Matched           int                 `json:"matched"`
+	FalsePositives    int                 `json:"false_positives"`
+	Missed            int                 `json:"missed"`
 }
 
 // score is one sample's measurement, in memory only: the published form is the
@@ -202,7 +204,19 @@ func (r *runner) finish(ctx context.Context, rep *Report) error {
 	rep.PromptsHash = r.prompts
 	samples := make([]corpuscore.Sample, 0, len(r.scores))
 	for _, s := range r.scores {
-		samples = append(samples, corpuscore.Sample{CaseID: s.caseID, Bugs: s.cal.GroundTruth, Hits: s.cal.Hits, Sampling: corpuscore.Sampling{RunID: rep.RunID, K: rep.K, Repeats: rep.Repeats, Sample: s.run}})
+		samples = append(samples,
+			corpuscore.Sample{
+				CaseID: s.caseID,
+				Bugs:   s.cal.GroundTruth,
+				Hits:   s.cal.Hits,
+				Sampling: corpuscore.Sampling{
+					RunID:   rep.RunID,
+					K:       rep.K,
+					Repeats: rep.Repeats,
+					Sample:  s.run,
+				},
+			},
+		)
 	}
 	rep.AnyOfKRecall, rep.IncompleteCohorts = corpuscore.AnyOfKRecall(samples)
 	rep.Cases = r.spread()
@@ -239,26 +253,32 @@ func (r *runner) bundles() []BundleRun {
 func (r *runner) spread() []CaseSpread {
 	out := make([]CaseSpread, 0, len(r.cases))
 	for _, c := range r.cases {
-		var precision, recall, fpr []*float64
-		runs := 0
-		for _, s := range r.scores {
-			if s.caseID != c.id {
-				continue
-			}
-			runs++
-			precision = append(precision, s.cal.Precision)
-			recall = append(recall, s.cal.Recall)
-			fpr = append(fpr, s.cal.FalsePositiveRate)
-		}
-		out = append(out, CaseSpread{
-			Case:              c.id,
-			Runs:              runs,
-			Precision:         stat(precision),
-			Recall:            stat(recall),
-			FalsePositiveRate: stat(fpr),
-		})
+		out = append(out, r.caseSpread(c.id))
 	}
 	return out
+}
+
+func (r *runner) caseSpread(id string) CaseSpread {
+	var precision, recall, fpr []*float64
+	metrics := map[string][]*float64{}
+	runs := 0
+	for _, s := range r.scores {
+		if s.caseID != id {
+			continue
+		}
+		runs++
+		for key, value := range sampleMetricValues(s.cal.Metrics) {
+			metrics[key] = append(metrics[key], value)
+		}
+		precision = append(precision, s.cal.Precision)
+		recall = append(recall, s.cal.Recall)
+		fpr = append(fpr, s.cal.FalsePositiveRate)
+	}
+	stats := map[string]Stat{}
+	for key, values := range metrics {
+		stats[key] = stat(values)
+	}
+	return CaseSpread{Case: id, Runs: runs, Precision: stat(precision), Recall: stat(recall), FalsePositiveRate: stat(fpr), Metrics: stats}
 }
 
 // cost sums the est_usd each bundle reports. Nothing here prices a token: a
@@ -388,7 +408,8 @@ func (r *runner) render(w io.Writer, rep *Report) {
 		rep.Agent.Model, rep.Corpus.Cases, rep.Agent.Runs, strings.Join(rep.Panel, "+"))
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "case\truns\tprecision\trecall\tfpr\twall(med)")
-	for _, c := range rep.Cases {
+	for i := range rep.Cases {
+		c := &rep.Cases[i]
 		wall := r.caseWall(c.Case)
 		fmt.Fprintf(tw, "%s\t%d\t%s\t%s\t%s\t%.1fs\n",
 			c.Case, c.Runs, rate(c.Precision.Median), rate(c.Recall.Median),
@@ -448,4 +469,26 @@ func rate(v *float64) string {
 		return "-"
 	}
 	return fmt.Sprintf("%.4f", *v)
+}
+
+func sampleMetricValues(m *corpuscore.Metrics) map[string]*float64 {
+	if m == nil {
+		return nil
+	}
+	number := func(v any) *float64 {
+		f, ok := v.(float64)
+		if !ok {
+			return nil
+		}
+		return &f
+	}
+	return map[string]*float64{
+		"precision":            number(m.Precision.Value),
+		"recall":               number(m.Recall.Value),
+		"control_fp_rate":      number(m.ControlFPRate.Value),
+		"severity_weighted_f1": number(m.SeverityWeightedF1.Value),
+		"signal_to_noise":      number(m.SignalToNoise.Value),
+		"cost_usd":             m.CostUSD,
+		"latency_s":            m.LatencyS,
+	}
 }

@@ -59,11 +59,8 @@ const (
 )
 
 func (cfg *Config) validate() error {
-	if cfg.K == 0 {
-		cfg.K = 1
-	}
-	if cfg.K < 1 || cfg.K > cfg.Runs {
-		return jq.NewErr("-k must be between 1 and repeats")
+	if err := cfg.validateSampling(); err != nil {
+		return err
 	}
 	switch {
 	case strings.TrimSpace(cfg.Model) == "":
@@ -148,19 +145,6 @@ func newRunner(ctx context.Context, cfg *Config, g grader) (*runner, error) {
 	if err := resolvePaths(&resolved); err != nil {
 		return nil, err
 	}
-	raw, readErr := os.ReadFile(filepath.Join(resolved.Root, reviewConfig))
-	if readErr != nil && !os.IsNotExist(readErr) {
-		return nil, jq.NewErrf("weights: %s", readErr)
-	}
-	var policy *core.Config
-	if readErr == nil {
-		var ref *core.RefusalError
-		policy, ref = config.Parse(raw)
-		if ref != nil {
-			return nil, ref
-		}
-	}
-	resolved.Weights = config.SeverityWeights(policy)
 	work, err := prepareWork(resolved.WorkDir)
 	if err != nil {
 		return nil, err
@@ -229,7 +213,9 @@ func absolutize(cfg *Config) error {
 		}
 		*p.path = abs
 	}
-	return nil
+	var err error
+	cfg.Weights, err = rootWeights(cfg.Root)
+	return err
 }
 
 // prepareWork makes the run dir and refuses to reuse one: trend scores every
@@ -725,4 +711,29 @@ func (r *runner) fail(rep *Report, cr *caseRun, err error) {
 // roundMillis keeps the published wall clock readable and diff-stable.
 func roundMillis(seconds float64) float64 {
 	return float64(int64(seconds*millis+rounding)) / millis
+}
+
+func (cfg *Config) validateSampling() error {
+	if cfg.K == 0 {
+		cfg.K = 1
+	}
+	if cfg.K < 1 || cfg.K > cfg.Runs {
+		return jq.NewErr("-k must be between 1 and repeats")
+	}
+	return nil
+}
+
+func rootWeights(root string) (core.SeverityWeights, error) {
+	raw, err := os.ReadFile(filepath.Join(root, reviewConfig))
+	if os.IsNotExist(err) {
+		return config.SeverityWeights(nil), nil
+	}
+	if err != nil {
+		return core.SeverityWeights{}, jq.NewErrf("weights: %s", err)
+	}
+	policy, ref := config.Parse(raw)
+	if ref != nil {
+		return core.SeverityWeights{}, jq.NewErrf("weights: %s", ref)
+	}
+	return config.SeverityWeights(policy), nil
 }

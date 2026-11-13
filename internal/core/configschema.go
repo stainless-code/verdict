@@ -14,15 +14,15 @@ package core
 // present null refuses exactly like the parser. Closed `closed:true` $defs
 // keep fixed-shape objects exact.
 type Config struct { //nolint:govet // field order is the published property order
-	SchemaRef       string                   `json:"$schema,omitempty"         nonnull:"true"`
-	SchemaVersion   string                   `const:"1"                        json:"schema_version"`
-	Defaults        *ConfigDefaults          `json:"defaults,omitempty"        nonnull:"true"`
-	Requirements    *ConfigRequirements      `json:"requirements,omitempty"    nonnull:"true"`
+	SchemaRef       string                   `json:"$schema,omitempty"          nonnull:"true"`
+	SchemaVersion   string                   `const:"1"                         json:"schema_version"`
+	Defaults        *ConfigDefaults          `json:"defaults,omitempty"         nonnull:"true"`
+	Requirements    *ConfigRequirements      `json:"requirements,omitempty"     nonnull:"true"`
 	Scopes          []ConfigScope            `json:"scopes,omitempty"`
 	Profiles        map[string]ConfigProfile `json:"profiles,omitempty"`
-	DefaultProfile  string                   `json:"default_profile,omitempty" nonnull:"true"`
+	DefaultProfile  string                   `json:"default_profile,omitempty"  nonnull:"true"`
 	SeverityWeights *ConfigSeverityWeights   `json:"severity_weights,omitempty" nonnull:"true"`
-	Index           *ConfigIndex             `json:"index,omitempty"           nonnull:"true"`
+	Index           *ConfigIndex             `json:"index,omitempty"            nonnull:"true"`
 }
 
 // ConfigIndex holds the local code index caps; absent keys keep the built-in
@@ -101,9 +101,9 @@ type ConfigProfile struct { //nolint:govet // field order is the published prope
 
 // ConfigSeverityWeights overrides benchmark severity weights per field.
 type ConfigSeverityWeights struct {
-	Critical      *int `json:"critical,omitempty" min:"1" max:"1000000" nonnull:"true"`
-	Important     *int `json:"important,omitempty" min:"1" max:"1000000" nonnull:"true"`
-	Informational *int `json:"informational,omitempty" min:"1" max:"1000000" nonnull:"true"`
+	Critical      *int `json:"critical,omitempty"      max:"1000000" min:"1" nonnull:"true"`
+	Important     *int `json:"important,omitempty"     max:"1000000" min:"1" nonnull:"true"`
+	Informational *int `json:"informational,omitempty" max:"1000000" min:"1" nonnull:"true"`
 }
 
 // SeverityWeights is the resolved, reproducible benchmark weighting policy.
@@ -113,7 +113,7 @@ type SeverityWeights struct {
 	Informational int `json:"informational"`
 }
 
-// Weight returns the severity weight; unspecified finding severities use informational.
+// Weight returns a severity weight, defaulting to informational.
 func (w SeverityWeights) Weight(severity string) int {
 	switch severity {
 	case "critical":

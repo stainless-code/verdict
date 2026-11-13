@@ -243,12 +243,12 @@ func Tolerance(c *core.CorpusCase) int {
 // Outcome is one reported finding graded against the ground truth. Reason
 // names why a false positive failed; a true positive carries none.
 type Outcome struct {
-	BugIndex  int
 	Severity  string
 	Sig       string
 	Path      string
 	Result    string
 	Reason    string
+	BugIndex  int
 	Line      int
 	BugLine   int
 	HasPath   bool

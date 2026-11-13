@@ -34,7 +34,16 @@ func (r *runner) writeBundle(ctx context.Context, cr *caseRun, bundle string, so
 	if err != nil {
 		return err
 	}
-	sampling, err := json.Marshal(corpuscore.Sampling{RunID: runID(r.cfg), K: r.cfg.K, Repeats: r.cfg.Runs, Sample: cr.index, Weights: r.cfg.Weights})
+	sampling,
+		err := json.Marshal(corpuscore.Sampling{
+		RunID:    runID(r.cfg),
+		K:        r.cfg.K,
+		Repeats:  r.cfg.Runs,
+		Sample:   cr.index,
+		Weights:  r.cfg.Weights,
+		LatencyS: &cr.wall,
+	},
+	)
 	if err != nil {
 		return jq.NewErrf("sampling: %s", err)
 	}
