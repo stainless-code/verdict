@@ -86,6 +86,10 @@ func completePlan(dir, head string, plan *jq.Obj, dispatch string, warnings []st
 	if err != nil {
 		return nil, panelError(err)
 	}
+	file, err = withStoredRefutations(dir, review, file)
+	if err != nil {
+		return nil, panelError(err)
+	}
 	dispatch, second := panelcore.SecondLook(plan, dispatch, file)
 	return &planned{dir: dir, plan: plan, dispatch: dispatch, warnings: append(warnings, more...), second: second}, nil
 }
@@ -152,4 +156,15 @@ func panelError(err error) error {
 		return ref
 	}
 	return jq.Sealed(verb, err)
+}
+
+func withStoredRefutations(dir string, review *jq.Obj, file *panelcore.File) (*panelcore.File, error) {
+	if _, err := os.Stat(filepath.Join(dir, "findings.json")); errors.Is(err, os.ErrNotExist) {
+		return file, nil
+	}
+	entries, err := readcommon.LoadFindings(dir)
+	if err != nil {
+		return nil, panelError(err)
+	}
+	return panelcore.WithStored(file, entries, panelcore.Findings(review)), nil
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
+	panelcore "github.com/stainless-code/verdict/internal/core/panel"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -21,7 +22,7 @@ func TestPanelArtifacts(t *testing.T) {
 	for name, body := range map[string]string{
 		"panel": "synth\na\nb\n", "source.json": `{"head_sha":"head"}`,
 		"review.json":   `{"schema_version":"1","body":"review","comments":[{"path":"src/db.go","line":42,"body":"a reproducible crash"}]}`,
-		"findings.json": "untouched store\n", "post.json": "untouched receipt\n",
+		"findings.json": "[]\n", "post.json": "untouched receipt\n",
 	} {
 		writeFixture(t, filepath.Join(dir, name), body)
 	}
@@ -51,7 +52,7 @@ func TestPanelArtifacts(t *testing.T) {
 		t.Fatal("dispatch appended instead of rewriting")
 	}
 	assertFile(t, filepath.Join(dir, "panel"), "synth\na\nb\n")
-	assertFile(t, filepath.Join(dir, "findings.json"), "untouched store\n")
+	assertFile(t, filepath.Join(dir, "findings.json"), "[]\n")
 	assertFile(t, filepath.Join(dir, "post.json"), "untouched receipt\n")
 }
 
@@ -92,5 +93,34 @@ func assertFile(t *testing.T, path, want string) {
 	}
 	if string(raw) != want {
 		t.Fatalf("%s=%q, want %q", path, raw, want)
+	}
+}
+
+func TestPersistedRefutationPlan(t *testing.T) {
+	dir := t.TempDir()
+	review := jq.NewObj("comments", []any{jq.NewObj("path", "src/db.go", "line", 42, "body", "a reproducible crash")})
+	writeFixture(t, filepath.Join(dir, "findings.json"), `[{"sig":"22faf6e92ee1b7c1759122039e82c246c8295bc8","status":"open","verification":[{"model":"a","verdict":"refuted","evidence":"original counterexample"},{"model":"a","verdict":"confirmed","evidence":"later confirmation"}]}]`)
+	receipt := `{"schema_version":"1","head_sha":"head","results":[{"sig":"22faf6e92ee1b7c1759122039e82c246c8295bc8","model":"a","verdict":"confirmed","evidence":"later confirmation"}]}`
+	writeFixture(t, filepath.Join(dir, "verification/verdicts.json"), receipt)
+	assertPersistedPlan(t, dir, review)
+	assertFile(t, filepath.Join(dir, "verification/verdicts.json"), receipt)
+	if err := os.Remove(filepath.Join(dir, "verification/verdicts.json")); err != nil {
+		t.Fatal(err)
+	}
+	assertPersistedPlan(t, dir, review)
+}
+
+func assertPersistedPlan(t *testing.T, dir string, review *jq.Obj) {
+	t.Helper()
+	plan, dispatch, warnings, err := panelcore.Plan(dir, "head", "now", "synth a b", "prompt", review)
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := completePlan(dir, "head", plan, dispatch, warnings, review)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if output.second != 1 || !strings.Contains(output.dispatch, "> original counterexample") {
+		t.Fatalf("persisted second look=%d, dispatch=%s", output.second, output.dispatch)
 	}
 }

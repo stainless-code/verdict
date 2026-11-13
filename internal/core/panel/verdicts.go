@@ -189,7 +189,10 @@ func priorRefutations(file *File) ([]any, map[string]string) {
 		if evidence[r.Sig] == "" {
 			second = append(second, r.Sig)
 		}
-		evidence[r.Sig] += Quote(r.Evidence) + "\n"
+		quoted := Quote(r.Evidence) + "\n"
+		if !strings.Contains(evidence[r.Sig], quoted) {
+			evidence[r.Sig] += quoted
+		}
 	}
 	return second, evidence
 }
@@ -201,4 +204,37 @@ func candidateSigs(findings []any) string {
 		ids = append(ids, jq.StrOf(m[fieldSig]))
 	}
 	return strings.Join(ids, ", ")
+}
+
+// WithStored carries current findings' persisted refutations into planning.
+func WithStored(file *File, entries, findings []any) *File {
+	out := &File{}
+	if file != nil {
+		out.Results = append(out.Results, file.Results...)
+	}
+	current := make(map[string]bool, len(findings))
+	for _, item := range findings {
+		m, _ := object(item)
+		current[jq.StrOf(m[fieldSig])] = true
+	}
+	for _, item := range entries {
+		m, _ := object(item)
+		if !live(m) || !current[jq.StrOf(m[fieldSig])] {
+			continue
+		}
+		out.Results = append(out.Results, storedRefutations(m)...)
+	}
+	return out
+}
+
+func storedRefutations(entry map[string]any) []Result {
+	var results []Result
+	for _, item := range jq.Elements(entry["verification"]) {
+		m, _ := object(item)
+		if m[fieldVerdict] == refuted {
+			results = append(results, Result{Sig: jq.StrOf(entry[fieldSig]),
+				Model: jq.StrOf(m["model"]), Verdict: refuted, Evidence: jq.StrOf(m["evidence"])})
+		}
+	}
+	return results
 }
