@@ -121,3 +121,10 @@ func TestProviderIPv6RemoteForms(t *testing.T) {
 		}
 	}
 }
+
+func TestProviderWithoutCommander(t *testing.T) {
+	got, source, ref := ResolveProvider(t.Context(), nil, "", "", nil)
+	if got != "github" || source != "default" || ref != nil {
+		t.Fatalf("nil commander: %q %q %+v", got, source, ref)
+	}
+}

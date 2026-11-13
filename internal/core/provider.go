@@ -14,6 +14,9 @@ func ResolveProvider(ctx context.Context, cmdr Commander, root, explicit string,
 	if explicit != "" {
 		return explicit, "flag", nil
 	}
+	if cmdr == nil {
+		return providerGitHub, "default", nil
+	}
 	ctx, cancel := context.WithTimeout(ctx, providerTimeout)
 	defer cancel()
 	res, err := cmdr.Run(ctx, &Command{Dir: root, Argv: []string{"git", "remote", "get-url", "origin"}})
