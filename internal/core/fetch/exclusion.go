@@ -3,6 +3,7 @@ package fetchcore
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -18,24 +19,11 @@ import (
 
 const excludedSuffix = "/excluded.json"
 
-// ExcludedPath is one removed raw diff section.
-type ExcludedPath struct {
-	Path    string `json:"path"`
-	OldPath string `json:"old_path,omitempty"`
-	RuleID  string `json:"rule_id"`
-	Bytes   int    `json:"bytes"`
-}
+// ExcludedPath is the domain's removed diff section.
+type ExcludedPath = core.ExcludedPath
 
-// ExcludedFile records every removed byte and both diff hashes.
-type ExcludedFile struct { //nolint:govet // published property order
-
-	SchemaVersion string         `json:"schema_version"`
-	Excluded      []ExcludedPath `json:"excluded"`
-	ExcludedBytes int            `json:"excluded_bytes"`
-	KeptBytes     int            `json:"kept_bytes"`
-	RawDiffSHA256 string         `json:"raw_diff_sha256"`
-	DiffSHA256    string         `json:"diff_sha256"`
-}
+// ExcludedFile is the domain's exclusion receipt.
+type ExcludedFile = core.ExcludedFile
 
 func readConfinedFile(name string) ([]byte, error) {
 	root, leaf, err := readcommon.OpenParentWith(name, os.OpenRoot)
@@ -64,7 +52,7 @@ func filterExcluded(ctx2 *fetchRunCtx) error {
 	}
 	explicit, err := exclude.ParseIgnore(rawIgnore, "ignore")
 	if err != nil {
-		return &core.RefusalError{Code: "bad-ignore", Message: err.Error()}
+		return ignoreRefusal(err)
 	}
 	raw, err := readConfinedFile(dir + suffixFullDiff)
 	if err != nil {
@@ -227,4 +215,11 @@ func writeExcludedDiff(dir string, raw []byte, filtered string, receipt *Exclude
 		return err
 	}
 	return nil
+}
+
+func ignoreRefusal(err error) *core.RefusalError {
+	if errors.Is(err, exclude.ErrTooLarge) {
+		return &core.RefusalError{Code: "ignore-too-large", Message: err.Error()}
+	}
+	return &core.RefusalError{Code: "bad-ignore", Message: err.Error()}
 }

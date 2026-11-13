@@ -39,6 +39,7 @@ func buildDocument(st *state) string {
 		}
 	}
 	lines = append(lines, rankedLines(st)...)
+	lines = append(lines, quietLines(st)...)
 	lines = append(lines, linkDefs(st)...)
 	if overview := renderOverview(st); overview != "" {
 		lines = append(lines, overviewLines(overview)...)

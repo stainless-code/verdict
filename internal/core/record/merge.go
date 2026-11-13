@@ -139,11 +139,11 @@ func (st *state) validateAndMerge(body string) (string, diagram.Status, error) {
 	if err := st.mergeEntries(); err != nil {
 		return "", diagram.Status{}, err
 	}
+	body = st.hideWithheldSections(st.hideWithheldMoved(body))
 	curated, dstat, err := st.applyClaims(body)
 	if err != nil {
 		return "", diagram.Status{}, err
 	}
-	curated = st.hideWithheldSections(st.hideWithheldMoved(curated))
 	st.setMarker(curated)
 	st.countHunks()
 	removeDerivedSnapshot(st)

@@ -228,6 +228,10 @@ func documents() []document {
 			additionalProperties: false,
 		},
 		{
+			name: "excluded", title: "excluded.json — excluded diff bytes", root: reflect.TypeFor[ExcludedFile](),
+			defs: []definition{{typ: reflect.TypeFor[ExcludedPath](), name: "excludedPath"}},
+		},
+		{
 			name:  "findings",
 			title: "findings.json — merged findings store",
 			root:  reflect.TypeFor[[]FindingEntry](),

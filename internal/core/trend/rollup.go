@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 const (
@@ -23,6 +24,7 @@ const (
 )
 
 type rollup struct {
+	withheld   map[string]int
 	byStatus   map[string]int
 	byTier     map[string]int
 	byCategory map[string]int
@@ -51,6 +53,7 @@ type period struct {
 
 func rollupRows(rows []row) rollup {
 	out := rollup{
+		withheld: readcommon.WithheldCounts(nil),
 		byStatus: map[string]int{
 			statusOpen: 0, statusAddressed: 0, statusWontFix: 0, statusFalsePositive: 0, statusDeferred: 0,
 		},
@@ -61,6 +64,7 @@ func rollupRows(rows []row) rollup {
 	}
 	for i := range rows {
 		r := &rows[i]
+		addWithheld(out.withheld, r.findings)
 		out.bundles++
 		out.clean += cleanCount(r)
 		out.findings += len(r.findings)
@@ -191,6 +195,7 @@ func rollupDoc(out *rollup) *jq.Obj {
 		),
 		"by_tier", tierDoc(out.byTier),
 		"by_category", categoryDoc(out.byCategory),
+		"withheld", out.withheld,
 		"provenance", jq.NewObj(
 			"tools", anyList(out.tools),
 			"models", anyList(out.models),
@@ -256,6 +261,7 @@ func rowDoc(r *row) *jq.Obj {
 		),
 		"by_tier", tierDoc(r.byTier),
 		"by_category", categoryDoc(r.byCategory),
+		"withheld", readcommon.WithheldCounts(r.findings),
 	)
 }
 
@@ -270,6 +276,10 @@ func (st *state) emitHuman(out *rollup, overlap *overlapRollup, corpus *corpusRo
 }
 
 func (st *state) emitRollupHuman(out *rollup) {
+	if withheldTotal(out.withheld) > 0 {
+		st.human(fmt.Sprintf("withheld: exclusion=%d agent=%d below-severity=%d validation=%d",
+			out.withheld["exclusion"], out.withheld["agent"], out.withheld["below-severity"], out.withheld["validation"]))
+	}
 	if out.bundles == 0 {
 		st.human("trend: " + st.req.Repo + " — no reviewed bundles (no .verdict/state/*/findings.json yet)")
 	} else {
@@ -372,5 +382,19 @@ func (st *state) emitReviewHuman(out *rollup) {
 	if out.bundles > 0 {
 		st.human(fmt.Sprintf("reviews: %d (%d clean) — findings/review %.4f, clean rate %.1f%% (n=%d)", out.bundles, out.clean,
 			rateOrNil(out.findings, out.bundles), percentScale*float64(out.clean)/float64(out.bundles), out.bundles))
+	}
+}
+
+func withheldTotal(counts map[string]int) int {
+	n := 0
+	for _, v := range counts {
+		n += v
+	}
+	return n
+}
+
+func addWithheld(counts map[string]int, entries []any) {
+	for source, n := range readcommon.WithheldCounts(entries) {
+		counts[source] += n
 	}
 }

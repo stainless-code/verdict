@@ -98,3 +98,42 @@ func TestSuppressionMovedBodyHidden(t *testing.T) {
 		t.Fatalf("body leaked withheld finding: %q", got)
 	}
 }
+
+func TestExcludedPathCommentGetsImplicitReceipt(t *testing.T) {
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile("testdata/suppression/excluded.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir+"/excluded.json", raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	entry := jq.NewObj("path", "vendor/.env", "status", "open", "history", []any{})
+	st := &state{dir: dir, review: jq.NewObj(), entries: []any{entry}, now: "2026-11-13T12:00:00Z"}
+	applySuppressionForTest(t, st)
+	if readcommon.WithheldSource(entry) != "exclusion" {
+		t.Fatalf("entry = %s", entry.MarshalCompact())
+	}
+}
+
+func TestCheckerAllowsReceiptedExclusion(t *testing.T) {
+	raw := []byte(`{"schema_version":"1","body":"> Review complete. Policy exceptions recorded.","comments":[{"path":"vendor/.env","line":1,"body":"Credential policy exception.","rigor":"pointed"}]}`)
+	result := CheckReviewInput(raw, CheckInput{Diff: "diff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n@@ -1 +1 @@\n-a\n+b\n", ExcludedPaths: map[string]bool{"vendor/.env": true}})
+	if result.Errors != 0 {
+		t.Fatalf("receipted path refused: %+v", result.Problems)
+	}
+}
+
+func TestHiddenMovedSectionDoesNotInventFinding(t *testing.T) {
+	moved := jq.NewObj("path", "a.go", "line", 2, "body", "finding")
+	entry := jq.NewObj("path", "a.go", "line", 2, "body", "finding", "withheld", jq.NewObj("source", "agent", "reason", "An intentional compatibility exception.", "at", "2026-11-13T12:00:00Z"))
+	derived := jq.NewObj("kind", "section", "heading", core.MovedSectionHeading)
+	st := &state{entries: []any{entry, derived}, moved: []any{moved}}
+	st.hideWithheldMoved(appendMoveSection("Review", st.moved))
+	if len(st.entries) != 1 {
+		t.Fatalf("withheld move invented %d findings; want one original", len(st.entries))
+	}
+}

@@ -22,6 +22,7 @@ exit: 0
       "notes.txt"
     ],
     "diff_bytes": 0,
+    "raw_diff_bytes": 0,
     "panel": {
       "source": null,
       "members": []
@@ -53,7 +54,9 @@ exit: 0
       "threads.json": ".verdict/state/4701/threads.json",
       "sensitive.txt": null,
       "incremental.diff": null,
-      "lenses.txt": ".verdict/state/4701/lenses.txt"
+      "lenses.txt": ".verdict/state/4701/lenses.txt",
+      "full.raw.diff": ".verdict/state/4701/full.raw.diff",
+      "excluded.json": ".verdict/state/4701/excluded.json"
     },
     "incremental_base": null
   },

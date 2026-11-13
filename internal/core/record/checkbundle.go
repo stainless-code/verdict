@@ -22,11 +22,16 @@ func CheckBundle(dir string, review []byte) (CheckResult, *core.RefusalError) {
 // normalizer's repairs into the result: the caller normalized once and keeps
 // the normalized bytes for its own output.
 func checkNormalized(dir string, normalized []byte, repairs []Problem) (CheckResult, *core.RefusalError) {
+	if invalidJSON(normalized) == nil {
+		if ref := validateSuppressionBytes(dir, normalized); ref != nil {
+			return CheckResult{}, ref
+		}
+	}
 	diff, err := os.ReadFile(dir + diffSuffix)
 	if err != nil {
 		return CheckResult{}, &core.RefusalError{Code: codeMissingDiff, Message: fmt.Sprintf(msgMissingDiff, dir)}
 	}
-	in := CheckInput{Diff: string(diff)}
+	in := CheckInput{Diff: string(diff), ExcludedPaths: excludedPaths(dir)}
 	in.ChunkNames, in.ChunkManifest = chunkCheckNames(dir)
 	if verification, ok := ReadOptional(dir + "/verification.json"); ok {
 		in.Verification, in.HasVerification = verification, true

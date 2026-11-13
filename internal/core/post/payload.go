@@ -21,7 +21,7 @@ const paragraphBreak = "\n\n"
 func (st *state) buildPayloads() {
 	kept, sigs := recordcore.PublicComments(st.merged.Entries, st.merged.Kept, st.merged.KeptSigs)
 	st.comments = buildPostComments(kept, sigs)
-	st.embedded = countEmbedded(st.merged.Kept)
+	st.embedded = countEmbedded(kept)
 	st.payloads = []string{postPayload(st.body, st.event, commitIDValue(st.commitID), st.comments)}
 	n := len(st.extraParts) + 1
 	for i, extra := range st.extraParts {

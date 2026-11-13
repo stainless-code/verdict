@@ -11,7 +11,7 @@ _verdict_flags() { # $1 = verb
     fetch) printf '%s\n' --base-sha --since --provider --context --index --consent-over-budget --show-prompts --chunk --json;;
     post) printf '%s\n' --approve --request-changes --bind --force --review-file --dry-run --require-coverage --min-severity --allow-secret-values --json;;
     triage) printf '%s\n' --sig --status --rationale --force --dry-run --json;;
-    report) printf '%s\n' --html --root --status --kind --category --output --sarif --cost --check --completeness --live --json;;
+    report) printf '%s\n' --html --root --status --kind --category --output --sarif --include-withheld --cost --check --completeness --live --json;;
     next) printf '%s\n' --status --coverage --json;;
     show) printf '%s\n' --sig --json;;
     check-tree) printf '%s\n' --expect --json;;

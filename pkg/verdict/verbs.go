@@ -38,7 +38,7 @@ const (
 type ReportRequest struct {
 	Invocation
 	Status, Kind, Output, Sarif, Check, Live string
-	Cost, Completeness                       bool
+	Cost, Completeness, IncludeWithheld      bool
 }
 
 // ReportResponse is the offline review report with render inputs and the
@@ -63,6 +63,7 @@ func (c *Client) Report(ctx context.Context, req *ReportRequest) (*ReportRespons
 		Flags: core.ReportFlags{
 			Status: req.Status, Kind: req.Kind, Output: req.Output, Sarif: req.Sarif,
 			Check: req.Check, Live: req.Live, Cost: req.Cost, Completeness: req.Completeness,
+			IncludeWithheld: req.IncludeWithheld,
 		},
 		Effective: core.Defaults(),
 	})

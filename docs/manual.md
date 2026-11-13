@@ -3883,3 +3883,20 @@ in that run. Check each claim before submitting it. Matching uses the posted
 review ID, the sig parsed from the comment's final finding marker, and its path.
 Markerless comments, foreign review IDs, and other unmatched comments are
 counted in `unmatched`; comment prose is not used as identity.
+
+## Exclusions and policy silence
+
+Fetch filters the review diff using trusted `.verdict/ignore`, root linguist
+attributes, and generated-path defaults. `full.raw.diff` retains the input;
+`excluded.json` and the TOC account for removed bytes. Sensitive scanning keeps
+using the raw diff. Tests remain reviewable by default.
+
+`review.json.suppressed[]` records agent or exclusion receipts. Withheld findings
+keep their status. `post --min-severity important` also withholds explicitly
+informational findings. Null severity remains visible. `--force` can bypass the
+open-finding approval guard but does not bypass the floor.
+
+`report --include-withheld` shows `Quiet by policy`; the tier check and SARIF
+results exclude withheld findings. Trend records source counts, including zero
+for stores without receipts. See [exclusions and withholding](exclusions.md) for the
+patterns, receipt fields, limits, precedence, and JSON output.

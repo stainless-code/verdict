@@ -602,6 +602,12 @@ Cause: `--id` is already taken.
 
 Fix: pass a different `--id`.
 
+## `ignore-too-large`
+
+Cause: the trusted `.verdict/ignore` exceeds 64 KiB or 1,000 patterns.
+
+Fix: reduce the file below both limits, then re-fetch.
+
 ## `index-capped`
 
 Cause: the tree or shard store crossed the index caps (20,000 files, a 96 MiB

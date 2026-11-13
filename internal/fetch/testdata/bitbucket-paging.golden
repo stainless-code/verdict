@@ -18,6 +18,7 @@ exit: 0
     "hunks": 2,
     "omitted": [],
     "diff_bytes": 138,
+    "raw_diff_bytes": 138,
     "panel": {
       "source": null,
       "members": []
@@ -55,7 +56,9 @@ exit: 0
       "threads.json": ".verdict/state/4717/threads.json",
       "sensitive.txt": null,
       "incremental.diff": null,
-      "lenses.txt": ".verdict/state/4717/lenses.txt"
+      "lenses.txt": ".verdict/state/4717/lenses.txt",
+      "full.raw.diff": ".verdict/state/4717/full.raw.diff",
+      "excluded.json": ".verdict/state/4717/excluded.json"
     },
     "incremental_base": null,
     "estimate": {

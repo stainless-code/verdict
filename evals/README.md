@@ -250,3 +250,5 @@ shellcheck -S warning evals/run.sh evals/lib/*.sh evals/cases/*.sh
 ```
 
 The `self-review` eval requires `python3` (Python 3.9+).
+
+`ignore-floor` exercises trusted ignore and attributes, raw bytes and chunks, suppression receipts, post floors, quiet reports, SARIF, and trend through the real CLI.

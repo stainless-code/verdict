@@ -145,6 +145,7 @@ type FetchData struct { //nolint:govet // field order is the published property 
 	Deletions       any
 	Hunks           int
 	Omitted         []any
+	RawDiffBytes    *int64
 	DiffBytes       int64
 	Panel           FetchPanel
 	Capabilities    *jq.Obj `json:"-"`
@@ -178,6 +179,7 @@ func (d *FetchData) Wire() *jq.Obj {
 	}
 	o.Set("omitted", omitted)
 	o.Set("diff_bytes", d.DiffBytes)
+	d.wireRawDiff(o)
 	o.Set("panel", d.Panel.Wire())
 	if d.Capabilities != nil {
 		o.Set("capabilities", d.Capabilities)
@@ -230,5 +232,11 @@ func (d *FetchData) wireTail(o *jq.Obj) {
 	}
 	if d.PromptDump != nil {
 		o.Set("prompt_dump", *d.PromptDump)
+	}
+}
+
+func (d *FetchData) wireRawDiff(o *jq.Obj) {
+	if d.RawDiffBytes != nil {
+		o.Set("raw_diff_bytes", *d.RawDiffBytes)
 	}
 }

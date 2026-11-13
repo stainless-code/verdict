@@ -197,6 +197,9 @@ func parseFlag(r *cli.Runner, flags *reportcore.Flags, args []string, i int) (in
 		return parseReportValue(r, flags, args, i, want)
 	}
 	switch a {
+	case "--include-withheld":
+		flags.IncludeWithheld = true
+		return 1, 0, false
 	case "--cost":
 		flags.Cost = true
 		return 1, 0, false

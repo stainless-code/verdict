@@ -119,6 +119,7 @@ var refusalCodes = []string{
 	"html-not-export",
 	"html-symlink",
 	"id-taken",
+	"ignore-too-large",
 	"index-capped",
 	"index-corrupt",
 	"index-failed",

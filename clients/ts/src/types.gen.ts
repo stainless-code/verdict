@@ -151,6 +151,8 @@ export interface ReportCounts {
   unanchored: number;
   /** Whole-store finding counts by published category plus untagged; every key is always present with zero defaults. */
   by_category: unknown;
+  withheld?: number;
+  withheld_by_source?: unknown;
   [key: string]: unknown;
 }
 
@@ -165,6 +167,7 @@ export interface ReportFilters {
   kind: string;
   /** The active --category filter, or null when the run did not filter by category. */
   category: string | null;
+  include_withheld?: boolean;
   [key: string]: unknown;
 }
 
@@ -884,6 +887,7 @@ export interface TrendData {
   by_tier: TrendTiers;
   /** Portfolio finding counts by observed category with untagged for null entries; only observed categories appear. */
   by_category: unknown;
+  withheld?: unknown;
   provenance: TrendProvenance;
   periods: Array<TrendPeriod>;
   per_bundle: Array<TrendBundleRow>;
@@ -946,6 +950,7 @@ export interface TrendBundleRow {
   by_tier: TrendTiers;
   /** One bundle's finding counts by observed category with untagged for null entries. */
   by_category: unknown;
+  withheld?: unknown;
   [key: string]: unknown;
 }
 
@@ -1306,6 +1311,7 @@ export interface FetchData {
   deletions: number;
   hunks: number;
   omitted: unknown[];
+  raw_diff_bytes?: number | null;
   diff_bytes: number;
   panel: FetchPanel;
   capabilities?: FetchCapabilities;
@@ -1337,6 +1343,7 @@ export interface FetchLocalData {
   deletions: number;
   hunks: number;
   omitted: unknown[];
+  raw_diff_bytes?: number | null;
   diff_bytes: number;
   panel: FetchPanel;
   capabilities?: FetchCapabilities;

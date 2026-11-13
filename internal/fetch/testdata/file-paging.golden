@@ -20,6 +20,7 @@ exit: 0
       "f101.txt"
     ],
     "diff_bytes": 77,
+    "raw_diff_bytes": 77,
     "panel": {
       "source": null,
       "members": []
@@ -51,7 +52,9 @@ exit: 0
       "threads.json": ".verdict/state/4712/threads.json",
       "sensitive.txt": null,
       "incremental.diff": null,
-      "lenses.txt": ".verdict/state/4712/lenses.txt"
+      "lenses.txt": ".verdict/state/4712/lenses.txt",
+      "full.raw.diff": ".verdict/state/4712/full.raw.diff",
+      "excluded.json": ".verdict/state/4712/excluded.json"
     },
     "incremental_base": null,
     "estimate": {

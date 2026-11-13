@@ -11,7 +11,10 @@ func Defaults() []Rule {
 		"vendor/**", "node_modules/**", "dist/**", "build/**", "out/**", "target/**",
 		"*.min.js", "*.min.css", "*.pb.go", "*.g.dart", "*.generated.*", "*__snapshots__/*", "*.snap",
 	}
-	for _, name := range []string{"package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "Cargo.lock", "Gemfile.lock", "poetry.lock", "go.sum"} {
+	for _, name := range []string{
+		"package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock",
+		"Cargo.lock", "Gemfile.lock", "poetry.lock", "go.sum",
+	} {
 		patterns = append(patterns, name, "*/"+name)
 	}
 

@@ -266,20 +266,21 @@ func fetchData(
 	impactArtifactRow(artifacts, ctx2.dir)
 	contextArtifacts(artifacts, ctx2.dir)
 	data := &core.FetchData{
-		Sources:    readcommon.ContextSources(ctx2.dir),
-		Dir:        ctx2.dir,
-		HeadSHA:    readcommon.PrField(ctx2.dir, keyHeadSHA),
-		BaseSHA:    readcommon.PrField(ctx2.dir, keyBaseSHA),
-		Files:      st.files,
-		Additions:  st.adds,
-		Deletions:  st.dels,
-		Hunks:      st.hunks,
-		Omitted:    st.omitted,
-		DiffBytes:  st.diffSize,
-		Panel:      panelVal(ctx2),
-		Controls:   controlsWire(ctx2),
-		Artifacts:  artifacts,
-		PromptDump: dump,
+		Sources:      readcommon.ContextSources(ctx2.dir),
+		Dir:          ctx2.dir,
+		HeadSHA:      readcommon.PrField(ctx2.dir, keyHeadSHA),
+		BaseSHA:      readcommon.PrField(ctx2.dir, keyBaseSHA),
+		Files:        st.files,
+		Additions:    st.adds,
+		Deletions:    st.dels,
+		Hunks:        st.hunks,
+		Omitted:      st.omitted,
+		DiffBytes:    st.diffSize,
+		RawDiffBytes: rawDiffSize(ctx2.dir),
+		Panel:        panelVal(ctx2),
+		Controls:     controlsWire(ctx2),
+		Artifacts:    artifacts,
+		PromptDump:   dump,
 	}
 	if incBase != nullStr {
 		base := incBase
@@ -349,22 +350,23 @@ func localFetchData(ctx2 *fetchRunCtx, mode *localMode, listed string, total, ad
 		diffSize = fi.Size()
 	}
 	return &core.FetchData{
-		Sources:    readcommon.ContextSources(dir),
-		Local:      true,
-		Dir:        dir,
-		Kind:       mode.kind,
-		HeadSHA:    mode.headSHA,
-		BaseSHA:    mode.baseSHA,
-		Controls:   controlsWire(ctx2),
-		Files:      total,
-		Additions:  adds,
-		Deletions:  dels,
-		Hunks:      countHunkLines(dir + suffixFullDiff),
-		Omitted:    toJSONArray(joinLines(omitted)),
-		DiffBytes:  diffSize,
-		Panel:      panelVal(ctx2),
-		Artifacts:  localArtifacts(dir),
-		PromptDump: dump,
+		Sources:      readcommon.ContextSources(dir),
+		Local:        true,
+		Dir:          dir,
+		Kind:         mode.kind,
+		HeadSHA:      mode.headSHA,
+		BaseSHA:      mode.baseSHA,
+		Controls:     controlsWire(ctx2),
+		Files:        total,
+		Additions:    adds,
+		Deletions:    dels,
+		Hunks:        countHunkLines(dir + suffixFullDiff),
+		Omitted:      toJSONArray(joinLines(omitted)),
+		DiffBytes:    diffSize,
+		RawDiffBytes: rawDiffSize(dir),
+		Panel:        panelVal(ctx2),
+		Artifacts:    localArtifacts(dir),
+		PromptDump:   dump,
 	}
 }
 
@@ -453,6 +455,17 @@ func writeEvidence(ctx context.Context, ctx2 *fetchRunCtx, in impactInput, input
 }
 
 func contextArtifacts(artifacts *jq.Obj, dir string) {
+	addArtifactIfPresent(artifacts, dir, "full.raw.diff", suffixRawDiff)
+	addArtifactIfPresent(artifacts, dir, "excluded.json", excludedSuffix)
 	addArtifactIfPresent(artifacts, dir, "context.json", "/context.json")
 	addArtifactIfPresent(artifacts, dir, "context.txt", "/context.txt")
+}
+
+func rawDiffSize(dir string) *int64 {
+	fi, err := os.Stat(dir + suffixRawDiff)
+	if err != nil {
+		return nil
+	}
+	size := fi.Size()
+	return &size
 }

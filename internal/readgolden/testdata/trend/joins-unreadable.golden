@@ -38,6 +38,7 @@ exit: 0
     "by_category": {
       "untagged": 9
     },
+    "withheld": {"agent":0,"below-severity":0,"exclusion":0,"validation":0},
     "provenance": {
       "tools": [
         null
@@ -124,7 +125,8 @@ exit: 0
         },
         "by_category": {
           "untagged": 6
-        }
+        },
+        "withheld": {"agent":0,"below-severity":0,"exclusion":0,"validation":0}
       },
       {
         "bundle": "5102",
@@ -160,7 +162,8 @@ exit: 0
         },
         "by_category": {
           "untagged": 2
-        }
+        },
+        "withheld": {"agent":0,"below-severity":0,"exclusion":0,"validation":0}
       },
       {
         "bundle": "local-x",
@@ -192,7 +195,8 @@ exit: 0
         },
         "by_category": {
           "untagged": 1
-        }
+        },
+        "withheld": {"agent":0,"below-severity":0,"exclusion":0,"validation":0}
       }
     ],
     "overlap": {

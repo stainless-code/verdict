@@ -108,7 +108,8 @@ func usageText() string {
 		"  report <owner/repo> <pr> [--status all|open|addressed|wont-fix|false-positive|deferred] " +
 		"[--kind inline|section|all]\n" +
 		"[--category logic|edge-case|security|performance|accidental-commit|style|docs|other]\n" +
-		"        [--output <path>] [--sarif <path>] [--cost] [--check <critical|important|informational>] [--completeness] " +
+		"        [--output <path>] [--sarif <path>] [--include-withheld] [--cost] " +
+		"[--check <critical|important|informational>] [--completeness] " +
 		"[--live auto|strict|skip] [--json]\n" +
 		"    pure read over the store: ranked findings + verdict + counts. Advisory runs\n" +
 		"    touch no network; gate runs (--check/--completeness) end with one live-thread recheck read.\n" +

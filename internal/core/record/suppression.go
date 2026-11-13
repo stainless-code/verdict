@@ -157,11 +157,11 @@ func (st *state) applySuppressions() error {
 		chosen := chooseSuppression(e, suppressions, matched)
 		if chosen >= 0 {
 			st.stampSuppression(e, suppressions[chosen])
-		} else {
+		} else if !st.autoExclusion(e) {
 			st.clearSuppression(e)
 		}
 	}
-	st.warnUnmatchedSuppressions(suppressions, matched)
+	st.warnSuppressionMatches(suppressions, matched)
 	return nil
 }
 
@@ -224,6 +224,9 @@ func (st *state) hideWithheldMoved(body string) string {
 	if len(visible) == len(st.moved) {
 		return body
 	}
+	if len(visible) == 0 {
+		st.dropDerivedMoveHeading()
+	}
 	return strings.Replace(body, appendMoveSection("", st.moved), appendMoveSection("", visible), 1)
 }
 
@@ -269,10 +272,12 @@ func withheldIndex(entries []any, key func(*jq.Obj) string) map[string]bool {
 	return hidden
 }
 
-func (st *state) warnUnmatchedSuppressions(suppressions []*jq.Obj, matched []bool) {
+func (st *state) warnSuppressionMatches(suppressions []*jq.Obj, matched []bool) {
 	for i, yes := range matched {
 		if !yes {
 			st.warn("suppression matched no finding: " + suppressionString(suppressions[i], fieldPath))
+		} else {
+			st.warn("suppression takes precedence over finding: " + suppressionString(suppressions[i], fieldPath))
 		}
 	}
 }
@@ -296,4 +301,86 @@ func (st *state) suppressionCategory(m *jq.Obj) {
 		st.warn("unknown suppression category — using null")
 		m.Set(fieldCategory, nil)
 	}
+}
+
+func loadExclusions(dir string) *core.ExcludedFile {
+	if dir == "" {
+		return nil
+	}
+	raw, err := readcommon.ReadConfined(dir+"/excluded.json", maxAgentBytes)
+	if err != nil {
+		return nil
+	}
+	var receipt core.ExcludedFile
+	if json.Unmarshal(raw, &receipt) != nil || receipt.SchemaVersion != "1" || !validExclusionRows(receipt.Excluded) {
+		return nil
+	}
+	return &receipt
+}
+
+func excludedPaths(dir string) map[string]bool {
+	receipt := loadExclusions(dir)
+	out := map[string]bool{}
+	if receipt == nil {
+		return out
+	}
+	for _, e := range receipt.Excluded {
+		out[e.Path] = true
+		out[e.OldPath] = true
+	}
+	return out
+}
+
+func (st *state) autoExclusion(e *jq.Obj) bool {
+	receipt := loadExclusions(st.dir)
+	if receipt == nil {
+		return false
+	}
+	for _, row := range receipt.Excluded {
+		if exclusionRowMatches(row, suppressionString(e, fieldPath)) {
+			st.stampSuppression(e, jq.NewObj(
+				sourceKey, "exclusion", reasonKey, "Path excluded from the reviewed diff by "+row.RuleID, exclusionKey, row.RuleID))
+			return true
+		}
+	}
+	return false
+}
+
+func validateSuppressionBytes(dir string, raw []byte) *core.RefusalError {
+	doc, err := jq.DecodeOrdered(raw)
+	if err != nil {
+		return refusalOrFailed(err)
+	}
+	review, ok := doc.(*jq.Obj)
+	if !ok {
+		return nil
+	}
+	st := &state{dir: dir, review: review}
+	if _, err := st.parseSuppressions(); err != nil {
+		return refusalOrFailed(err)
+	}
+	return nil
+}
+
+func validExclusionRows(rows []core.ExcludedPath) bool {
+	for _, row := range rows {
+		if row.Path == "" || row.RuleID == "" || row.Bytes <= 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func exclusionRowMatches(row core.ExcludedPath, file string) bool {
+	return file != "" && (row.Path == file || row.OldPath == file)
+}
+
+func (st *state) dropDerivedMoveHeading() {
+	var entries []any
+	for _, entry := range st.entries {
+		if readcommon.FieldOf(entry, fieldHeading) != core.MovedSectionHeading {
+			entries = append(entries, entry)
+		}
+	}
+	st.entries = entries
 }

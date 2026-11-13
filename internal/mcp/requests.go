@@ -354,6 +354,7 @@ func decodeReport(req *core.ReportRequest, a *args) {
 		f.str("check", &req.Flags.Check)
 		f.str("live", &req.Flags.Live)
 		f.boolean("cost", &req.Flags.Cost)
+		f.boolean("includeWithheld", &req.Flags.IncludeWithheld)
 		f.boolean("completeness", &req.Flags.Completeness)
 	})
 }

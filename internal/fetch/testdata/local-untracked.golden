@@ -21,6 +21,7 @@ exit: 0
     "hunks": 1,
     "omitted": [],
     "diff_bytes": 146,
+    "raw_diff_bytes": 146,
     "panel": {
       "source": null,
       "members": []
@@ -37,7 +38,9 @@ exit: 0
       "toc.txt": ".verdict/state/local-demo/toc.txt",
       "roles.txt": ".verdict/state/local-demo/roles.txt",
       "sensitive.txt": null,
-      "lenses.txt": ".verdict/state/local-demo/lenses.txt"
+      "lenses.txt": ".verdict/state/local-demo/lenses.txt",
+      "full.raw.diff": ".verdict/state/local-demo/full.raw.diff",
+      "excluded.json": ".verdict/state/local-demo/excluded.json"
     },
     "estimate": {
       "tier": null,

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/config"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -35,18 +36,9 @@ func (st *state) findingFloor(e *jq.Obj) string {
 func (st *state) applyPostFloor() {
 	unlabelled := 0
 	for _, entry := range st.entries {
-		e, ok := entry.(*jq.Obj)
-		if !ok {
-			continue
-		}
-		floor := st.findingFloor(e)
-		severity := suppressionString(e, fieldSeverity)
-		rank := config.SeverityRank(severity)
-		if config.SeverityRank(floor) > 0 && rank == 0 {
-			unlabelled++
-		}
-		st.floorEntry(e, floor, severity, rank)
+		unlabelled += st.floorFinding(entry)
 	}
+
 	if unlabelled > 0 {
 		st.warn(fmt.Sprintf("%d finding(s) carry no severity; the floor does not apply", unlabelled))
 	}
@@ -82,8 +74,23 @@ func dropSectionLine(line string, hidden map[string]bool, dropping bool) bool {
 	if strings.HasPrefix(line, "### ") {
 		return hidden[strings.TrimSpace(line)]
 	}
-	if strings.HasPrefix(line, "## ") || strings.HasPrefix(line, "---") {
+	if strings.HasPrefix(line, "## ") {
 		return false
 	}
 	return dropping
+}
+
+func (st *state) floorFinding(entry any) int {
+	e, ok := entry.(*jq.Obj)
+	if !ok || suppressionString(e, fieldHeading) == core.MovedSectionHeading {
+		return 0
+	}
+	floor := st.findingFloor(e)
+	severity := suppressionString(e, fieldSeverity)
+	rank := config.SeverityRank(severity)
+	st.floorEntry(e, floor, severity, rank)
+	if config.SeverityRank(floor) > 0 && rank == 0 {
+		return 1
+	}
+	return 0
 }

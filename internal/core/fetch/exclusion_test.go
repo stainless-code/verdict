@@ -108,3 +108,9 @@ func physicalTempDir(t *testing.T) string {
 	}
 	return dir
 }
+
+func TestIgnoreTooLargeRefusal(t *testing.T) {
+	if ref := ignoreRefusal(exclude.ErrTooLarge); ref.Code != "ignore-too-large" {
+		t.Fatalf("refusal = %v; want ignore-too-large", ref)
+	}
+}

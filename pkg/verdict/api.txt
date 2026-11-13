@@ -473,7 +473,7 @@ func (e *RefusalError) Error() string
 type ReportRequest struct {
 	Invocation
 	Status, Kind, Output, Sarif, Check, Live string
-	Cost, Completeness                       bool
+	Cost, Completeness, IncludeWithheld      bool
 }
     ReportRequest carries the report options. Output/Sarif name files whose
     bytes return in the response instead of being written.

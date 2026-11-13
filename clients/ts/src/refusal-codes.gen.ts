@@ -100,6 +100,7 @@ export type RefusalCode =
   | "html-not-export"
   | "html-symlink"
   | "id-taken"
+  | "ignore-too-large"
   | "index-capped"
   | "index-corrupt"
   | "index-failed"

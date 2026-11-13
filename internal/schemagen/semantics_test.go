@@ -18,6 +18,7 @@ import (
 // skill) re-pinned all ten hashes: only each $id URL moved; no property,
 // required key, enum, or type changed.
 var publishedSemantics = map[string]string{
+	"excluded.schema.json":    "0ef7a6222ede2fd019e824d1362a6efadabdf7ab78d7af5eb7863052e9c916e6",
 	"panel-plan.schema.json":  "c4ac13bb03fb5918bc5b60ff9eba10776f10b999fdc88049409792439b1c043a",
 	"panel.schema.json":       "60fee20b395837e41c0bb8044dcaed55fa7a38d8d8a504a9f228be95b28319ef",
 	"calibration.schema.json": "9e061b60ab7c2252b86146af16742a3e59c64a28e9f6441fd0f30f1f5e2f9581",
@@ -201,7 +202,7 @@ var publishedSemantics = map[string]string{
 	// pack test: additive $defs/packTestData, packTestCase, and
 	// packTestSummary, plus the generated envelope description. Existing shapes
 	// remain unchanged.
-	"envelope.schema.json": "9d5bf68584e0a903edc28577a10c868075269d1fbe4e6263bb369b0818d7ba6a",
+	"envelope.schema.json": "b0e2b1e7403a78dcc6cb4eebc612e6e02664301373da35979321ee03f0be3d3f",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

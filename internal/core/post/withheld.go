@@ -36,7 +36,7 @@ func (st *state) withholdingSummary() *core.WithheldSummary {
 		out.Total += n
 	}
 	for _, e := range st.merged.Entries {
-		if config.SeverityRank(st.postFloor(e)) > 0 && config.SeverityRank(jq.StrOf(readcommon.FieldOf(e, "severity"))) == 0 {
+		if st.unlabelledFinding(e) {
 			out.Unlabelled++
 		}
 	}
@@ -56,4 +56,9 @@ func (st *state) floorScope(entry any, floor string) core.FloorScope {
 func (st *state) belowFloor(entry any) bool {
 	severity := config.SeverityRank(jq.StrOf(readcommon.FieldOf(entry, "severity")))
 	return severity > 0 && severity < config.SeverityRank(st.postFloor(entry))
+}
+
+func (st *state) unlabelledFinding(e any) bool {
+	return readcommon.FieldOf(e, "heading") != core.MovedSectionHeading &&
+		config.SeverityRank(st.postFloor(e)) > 0 && config.SeverityRank(jq.StrOf(readcommon.FieldOf(e, "severity"))) == 0
 }

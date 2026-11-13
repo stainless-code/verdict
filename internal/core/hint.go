@@ -25,6 +25,7 @@ type HintRule struct {
 // scans the fewest pointer bytes (govet fieldalignment), which is why the
 // literal keys do not follow the declaration order.
 var hintRules = []HintRule{
+	{codes: []string{"ignore-too-large"}, hint: "try: keep .verdict/ignore under 64 KiB and 1,000 patterns, then re-fetch"},
 	{codes: []string{"bad-min-severity"}, hint: "try: pass critical|important|informational|off"},
 	{codes: []string{"bad-ignore"}, hint: "try: use one glob per line, # comments and ! to re-include, then re-fetch"},
 	{codes: []string{"bad-suppression"}, hint: "try: give each suppression a path, source, " +
