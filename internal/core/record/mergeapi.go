@@ -17,6 +17,7 @@ import (
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/coverage"
+	panelcore "github.com/stainless-code/verdict/internal/core/panel"
 	"github.com/stainless-code/verdict/internal/diagram"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -62,7 +63,8 @@ type MergeParams struct { //nolint:govet // field grouping documents the merge c
 }
 
 // MergeResult carries the shared merge outputs both verbs need.
-type MergeResult struct { //nolint:govet // field grouping documents the merge contract
+type MergeResult struct {
+	Verification *core.VerificationSummary //nolint:govet // field grouping documents the merge contract
 	Body         string
 	Diagram      diagram.Status
 	Entries      []any
@@ -123,9 +125,20 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 		requireCoverage: in.RequireCoverage,
 		bodyOnlyAnchors: in.BodyOnlyAnchors,
 	}
+	panel, panelWarnings, err := panelcore.Load(in.Dir, in.HeadFull, panelcore.Findings(in.Review))
+	if err != nil {
+		return MergeResult{}, err
+	}
+	for _, warning := range panelWarnings {
+		st.warn(warning)
+	}
 	curated, dstat, err := st.validateAndMerge(in.Body)
 	if err != nil {
 		return MergeResult{}, err
+	}
+	verification, panelWarnings := panelcore.Apply(st.entries, panel)
+	for _, warning := range panelWarnings {
+		st.warn(warning)
 	}
 	if !st.dryRun || st.cmd != recordCommand {
 		if err := writeFindings(st); err != nil {
@@ -139,6 +152,7 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 	}
 	return MergeResult{
 		Body:         curated,
+		Verification: verification,
 		Diagram:      dstat,
 		Entries:      st.entries,
 		Kept:         st.kept,
