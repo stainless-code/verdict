@@ -36,3 +36,19 @@ func TestCRBindingVerdictSurvivesContentDedupe(t *testing.T) {
 		}
 	}
 }
+
+func TestCRApprovalRequiresRemoteState(t *testing.T) {
+	t.Parallel()
+	for _, remoteState := range []string{"COMMENTED", "", "APPROVED"} {
+		st := crVerdictState(t, "APPROVE")
+		st.live = publicationReviews([]map[string]any{{"body": st.body, "commit_id": st.commitID, "state": remoteState}})
+		ref := st.remoteDiff()
+		if remoteState == "APPROVED" {
+			if ref == nil || ref.Code != "duplicate-payload" {
+				t.Fatalf("confirmed approval reposted: %v", ref)
+			}
+		} else if ref != nil {
+			t.Fatalf("summary swallowed unfinished approval: %v", ref)
+		}
+	}
+}

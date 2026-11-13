@@ -105,13 +105,17 @@ func (st *state) missingPayload(payload string, comments []any) string {
 		return ""
 	}
 	body := orderedString(obj, "body")
+	event := orderedString(obj, "event")
+	if bindingEvent(event) && !st.bindingPending(event) {
+		event = eventComment
+	}
 	if st.remoteBodyPresent(body) {
-		if len(comments) == 0 && !bindingEvent(orderedString(obj, "event")) {
+		if len(comments) == 0 && !st.bindingPending(event) {
 			return ""
 		}
 		body = ""
 	}
-	return postPayload(body, orderedString(obj, "event"), commitIDValue(st.commitID), comments)
+	return postPayload(body, event, commitIDValue(st.commitID), comments)
 }
 
 func (st *state) remoteEvidence() ([]commentIdentity, string) {
@@ -143,3 +147,26 @@ func priorHead(current, candidate, previous string) string {
 }
 
 func bindingEvent(event string) bool { return event == eventApprove || event == "REQUEST_CHANGES" }
+
+func (st *state) bindingPending(event string) bool {
+	if !bindingEvent(event) {
+		return false
+	}
+	for _, rev := range st.liveReviews() {
+		if rev.commitID == st.commitID && verdictStateMatches(event, rev.state) {
+			return false
+		}
+	}
+	return true
+}
+
+func verdictStateMatches(event, state string) bool {
+	switch strings.ToUpper(state) {
+	case "APPROVED":
+		return event == eventApprove
+	case "REQUEST_CHANGES", "CHANGES_REQUESTED":
+		return event == "REQUEST_CHANGES"
+	default:
+		return false
+	}
+}

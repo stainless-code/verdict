@@ -36,7 +36,7 @@ func reviewMarker(body string) (payloadHash, head string, ok bool) {
 }
 
 type liveReview struct {
-	body, commitID, submittedAt string
+	body, commitID, submittedAt, state string
 }
 
 func (st *state) liveReviews() []liveReview {
@@ -82,7 +82,7 @@ func parseReviewPage(items []any) []liveReview {
 		}
 		out = append(out, liveReview{
 			body: jq.StrOf(m["body"]), commitID: head,
-			submittedAt: jq.StrOf(m["submitted_at"]),
+			submittedAt: jq.StrOf(m["submitted_at"]), state: jq.StrOf(m["state"]),
 		})
 	}
 	return out
