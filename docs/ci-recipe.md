@@ -110,13 +110,21 @@ so `contents: read` is enough); other providers refuse `controls-unavailable`
 empty; `gh` authenticates from `GH_TOKEN` only. `GH_TOKEN` is scoped to the
 steps that call `gh`, so the agent step never inherits the write token.
 
-Fork PRs have no secrets. Without a guard, the shipped job fails at the agent
-step: `ANTHROPIC_API_KEY` is empty, `verdict run` reports `agent-missing` or a
-non-zero agent exit, and the job goes red instead of silently skipping review.
-That is the intended default, because a skipped review reads as a pass. If you
-would rather skip than fail, gate the agent and `post` steps on
-`github.event.pull_request.head.repo.full_name == github.repository` and run
-only `fetch`, `report`, and `gate` on forks.
+Fork PRs have no repository secrets or write-enabled `GITHUB_TOKEN`. Without
+a guard, the Action fails when the review needs a model key or posting needs
+write permission. That is the intended default, because a skipped review reads
+as a pass. To skip fork reviews, put this condition on the `Review and gate`
+Action step:
+
+```yaml
+if: github.event.pull_request.head.repo.full_name == github.repository
+```
+
+This skips the entire pipeline on forks, including `fetch`, `report`, and
+`gate`. The agent and `post` steps live inside the composite Action and cannot
+be gated individually by the caller. If fork reviews must block merging, use
+a separate required workflow that can review forks with the appropriate
+credentials.
 
 ## Pin policy
 
