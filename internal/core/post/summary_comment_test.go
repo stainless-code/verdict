@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/core"
 	threadscore "github.com/stainless-code/verdict/internal/core/threads"
@@ -555,5 +556,24 @@ func TestInlineLinksFromMapsForgejoPositionAndOriginalPosition(t *testing.T) {
 	got := inlineLinksFromMaps(items)
 	if len(got) != 2 || got[0].Line != 7 || got[1].Line != 4 {
 		t.Fatalf("inlineLinksFromMaps = %+v, want Line 7 and Line 4", got)
+	}
+}
+
+func TestCapSummaryWithMarkerOver64KiB(t *testing.T) {
+	t.Parallel()
+	marker := "<!-- verdict-summary head=" + summaryTestHead + " -->"
+	oversized := strings.Repeat("🔥", 18000)
+	got := capSummaryWithMarker(oversized, marker, summaryBodyLimit)
+	if len(got) > summaryBodyLimit {
+		t.Fatalf("len(got) = %d, want <= %d", len(got), summaryBodyLimit)
+	}
+	if !utf8.ValidString(got) {
+		t.Fatal("capped summary is not valid UTF-8")
+	}
+	if !strings.HasSuffix(got, "\n\n_(truncated)_\n\n"+marker) {
+		t.Fatalf("capped summary missing truncation notice and marker suffix")
+	}
+	if !threadscore.HasSummaryMarker(got) {
+		t.Fatal("HasSummaryMarker rejected capped summary")
 	}
 }
