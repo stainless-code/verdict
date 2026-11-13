@@ -329,6 +329,8 @@ var fieldDocs = map[string]string{
 		"impact section.",
 	"Sandbox": "Run under bwrap (Linux only) with no network, hidden credential dirs, " +
 		"a writable repo, and a private /tmp; refuses sandbox-unavailable when it cannot be enforced.",
+	"EnvAllowlist": "Additional parent environment variable names to pass through to the verification child process, " +
+		"overriding default-deny filtering and secret-name dropping.",
 }
 
 func fieldDescription(toolName, field string) string {

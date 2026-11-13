@@ -354,6 +354,9 @@ type VerifyRequest struct {
 	Group   string
 	Command string
 	Env     []string
+	// EnvAllowlist passes explicit parent environment variable names through
+	// default-deny filtering and secret-name dropping.
+	EnvAllowlist []string
 	// Sandbox wraps the command in the enforced Linux bwrap sandbox: no
 	// network, empty credential dirs, a writable reviewed root, and a private
 	// /tmp. The call refuses with sandbox-unavailable when the host cannot
@@ -380,12 +383,13 @@ func (c *Client) Verify(ctx context.Context, req *VerifyRequest) (*VerifyRespons
 		return nil, err
 	}
 	resp, ref := verifycore.Run(ctx, &core.VerifyRequest{
-		ReadRequest: rr,
-		TimeoutRaw:  req.Timeout,
-		Group:       req.Group,
-		Command:     req.Command,
-		Sandbox:     req.Sandbox,
-		Environ:     req.Env,
+		ReadRequest:  rr,
+		TimeoutRaw:   req.Timeout,
+		Group:        req.Group,
+		Command:      req.Command,
+		Sandbox:      req.Sandbox,
+		EnvAllowlist: req.EnvAllowlist,
+		Environ:      req.Env,
 	})
 	if ref != nil {
 		return nil, refusalErr(ref)

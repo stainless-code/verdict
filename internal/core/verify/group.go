@@ -55,6 +55,9 @@ func RunGroup(ctx context.Context, req *core.VerifyRequest, dir, now string) (*c
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
+	if ref := st.prepareEnv(dir); ref != nil {
+		return nil, st.withWarnings(ref)
+	}
 	if ref := st.bindSandbox(ctx, run); ref != nil {
 		return nil, st.withWarnings(ref)
 	}

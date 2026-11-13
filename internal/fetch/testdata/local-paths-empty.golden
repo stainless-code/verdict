@@ -68,6 +68,12 @@ Use '--' to separate paths from revisions, like this:
       "sha256": ""
     },
     {
+      "path": ".verdict/verify-env",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
       "path": ".verdict/verdict.lock",
       "status": "missing",
       "bytes": 0,
