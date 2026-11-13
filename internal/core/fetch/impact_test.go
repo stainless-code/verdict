@@ -185,18 +185,24 @@ func assertNullLists(t *testing.T, raw []byte) {
 		t.Fatal(err)
 	}
 	for name, m := range map[string]map[string]any{"symbols": nulls.Symbols, "callers": nulls.Callers, "tests": nulls.Tests} {
-		if v, ok := m["count"]; !ok || v != nil {
-			t.Errorf("unanswered %s.count = %v (present %v), want null", name, v, ok)
-		}
-		if v, ok := m["truncated"]; ok {
-			t.Errorf("unanswered %s.truncated = %v, want absent", name, v)
-		}
+		assertNullKey(t, name, "count", m)
+		assertAbsentKey(t, name, "truncated", m)
 	}
-	if v, ok := nulls.Callers["unresolved"]; !ok || v != nil {
-		t.Errorf("unanswered callers.unresolved = %v (present %v), want null", v, ok)
+	assertNullKey(t, "callers", "unresolved", nulls.Callers)
+	assertAbsentKey(t, "tests", "depth_truncated", nulls.Tests)
+}
+
+func assertNullKey(t *testing.T, obj, key string, m map[string]any) {
+	t.Helper()
+	if v, ok := m[key]; !ok || v != nil {
+		t.Errorf("unanswered %s.%s = %v (present %v), want null", obj, key, v, ok)
 	}
-	if v, ok := nulls.Tests["depth_truncated"]; ok {
-		t.Errorf("unanswered tests.depth_truncated = %v, want absent", v)
+}
+
+func assertAbsentKey(t *testing.T, obj, key string, m map[string]any) {
+	t.Helper()
+	if v, ok := m[key]; ok {
+		t.Errorf("unanswered %s.%s = %v, want absent", obj, key, v)
 	}
 }
 

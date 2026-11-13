@@ -96,7 +96,7 @@ func TestPagingReceiptPersistsAndClears(t *testing.T) {
 	}
 }
 
-func TestHostPagingTruncationPreservesReturnedCount(t *testing.T) {
+func TestBitbucketPagingTruncationPreservesReturnedCount(t *testing.T) {
 	t.Parallel()
 	const base = "https://api.bitbucket.org/2.0/repos/o/r/pullrequests/7"
 	dir := t.TempDir()
@@ -115,7 +115,10 @@ func TestHostPagingTruncationPreservesReturnedCount(t *testing.T) {
 	if data.Receipt == nil || data.Receipt.TruncationReason != "scan_cap" || data.Receipt.Returned != 1 {
 		t.Fatalf("bitbucket degraded threads receipt = %+v, want scan_cap returned=1 (1 thread fetched before page 2 failed)", data.Receipt)
 	}
+}
 
+func TestForgejoFilePagingPreservesReturnedCount(t *testing.T) {
+	t.Parallel()
 	const fgCapBase = "https://example.invalid/api/v1/repos/o/r/pulls/8"
 	fgOut := map[string]scriptResult{}
 	for page := 1; page <= providerMaxPages; page++ {

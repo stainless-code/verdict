@@ -335,14 +335,26 @@ func addFetchExtras(data *core.FetchData, budget *budgetState, fcap *fetchCap, c
 	}
 	if chunkJSON != nil {
 		data.Chunk = chunkJSON
-		if obj, ok := chunkJSON.(*jq.Obj); ok && data.Receipt == nil {
-			if v, has := obj.Get("count"); has {
-				if count := int(readcommon.NumOr(v)); count > 1 {
-					data.Receipt = core.ResultCut("chunk_cap", count, new(count), nil)
-				}
-			}
+		if data.Receipt == nil {
+			data.Receipt = chunkEnvelopeReceipt(chunkJSON)
 		}
 	}
+}
+
+func chunkEnvelopeReceipt(chunkJSON any) *core.Truncation {
+	obj, ok := chunkJSON.(*jq.Obj)
+	if !ok {
+		return nil
+	}
+	v, has := obj.Get("count")
+	if !has {
+		return nil
+	}
+	count := int(readcommon.NumOr(v))
+	if count <= 1 {
+		return nil
+	}
+	return core.ResultCut("chunk_cap", count, new(count), nil)
 }
 
 // readDiffHunks reads the coverage-manifest hunked set from .difffiles

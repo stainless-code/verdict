@@ -17,19 +17,23 @@ func finishTruncation(data *core.FetchData) error {
 	}
 	path := filepath.Join(data.Dir, "truncation.json")
 	if data.Receipt == nil || data.Receipt.TruncationReason == "chunk_cap" {
-		if err := removeTruncation(path); err != nil {
-			return err
-		}
-		if data.Receipt == nil {
-			data.Receipt = readcommon.ArtifactTruncation(filepath.Join(data.Dir, "threads.json"))
-		}
-		return nil
+		return clearBundleTruncation(data, path)
 	}
 	if err := atomic.WriteFile(path, []byte(jq.PrettyOrdered(core.Wire(data.Receipt)))); err != nil {
 		return truncationWriteError(err)
 	}
 	if data.Artifacts != nil {
 		data.Artifacts.Set("truncation.json", path)
+	}
+	return nil
+}
+
+func clearBundleTruncation(data *core.FetchData, path string) error {
+	if err := removeTruncation(path); err != nil {
+		return err
+	}
+	if data.Receipt == nil {
+		data.Receipt = readcommon.ArtifactTruncation(filepath.Join(data.Dir, "threads.json"))
 	}
 	return nil
 }
