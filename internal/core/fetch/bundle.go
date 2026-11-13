@@ -368,18 +368,18 @@ func writeIdentityFile(ctx context.Context, cmdr Commander, dir, head, base stri
 
 // fetchRunCtx carries the shared fetch run state across the bundle writers.
 type fetchRunCtx struct {
-	ignore            []string
 	runner            *session
 	env               map[string]string
 	runCfg            *runConfig
 	packs             *pack.Set
+	receipt           *ExcludedFile
 	repo              string
 	pr                string
 	dir               string
 	root              string
 	panelSrc          string
+	ignore            []string
 	panelList         []string
-	receipt           *ExcludedFile
 	noDefaultExcludes bool
 	receiptLoaded     bool
 }

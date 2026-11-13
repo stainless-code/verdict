@@ -80,12 +80,12 @@ func excludedDiff(raw string, defaults, explicit []exclude.Rule, attrs []byte) (
 	return kept.String(), receipt
 }
 
-func (fc *fetchRunCtx) exclusions() *ExcludedFile {
-	if !fc.receiptLoaded {
-		fc.receipt = loadExcludedReceipt(fc.dir)
-		fc.receiptLoaded = true
+func (c *fetchRunCtx) exclusions() *ExcludedFile {
+	if !c.receiptLoaded {
+		c.receipt = loadExcludedReceipt(c.dir)
+		c.receiptLoaded = true
 	}
-	return fc.receipt
+	return c.receipt
 }
 
 func loadExcludedReceipt(dir string) *ExcludedFile {
