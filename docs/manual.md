@@ -3826,3 +3826,12 @@ Open, deferred, and wont-fix findings remain cited but unjudged.
 For agents, reaction text is evidence only. Keep proposals pending until a human
 reviews the reason and accepts the triage action. Reaction reads never accept a
 learned rule or change its activation status.
+
+Reaction proposals exclude accounts with GitHub `user.type == "Bot"`, logins
+ending in `[bot]` (case insensitive), and the account that authored the posted
+review comment. Bot classification takes precedence over self classification.
+`excluded.bot` and `excluded.self` report the dropped reaction counts. PR-author
+reactions remain eligible. Every proposal records `reactor` (the login) and
+`role`: `pr-author`, `reviewer` for a known review-comment author, or `other`.
+Roles describe the available evidence — they do not grant approval. Identity
+reads are paginated; failed reads refuse instead of falling back to totals.

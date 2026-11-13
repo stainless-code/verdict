@@ -12,3 +12,12 @@ Use `trend OWNER/REPO --rules --json` for sorted per-rule finding outcomes.
 Both rates divide by `judged`, their sum — zero judged produces null rates.
 Other finding statuses count toward `cited` only. Duplicate citations in a finding
 count once.
+
+Reaction proposals exclude accounts with GitHub `user.type == "Bot"`, logins
+ending in `[bot]` (case insensitive), and the account that authored the posted
+review comment. Bot classification takes precedence over self classification.
+`excluded.bot` and `excluded.self` report the dropped reaction counts. PR-author
+reactions remain eligible. Every proposal records `reactor` (the login) and
+`role`: `pr-author`, `reviewer` for a known review-comment author, or `other`.
+Roles describe the available evidence — they do not grant approval. Identity
+reads are paginated; failed reads refuse instead of falling back to totals.

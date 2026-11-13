@@ -20,8 +20,16 @@ if [ "${1:-}" = "pr" ] && [ "${2:-}" = "view" ]; then
   printf '%s' '{"headRefOid":"cccccccccccccccccccccccccccccccccccccccc","state":"OPEN","mergedAt":null}'
   exit 0
 fi
+if [ "$*" = "api repos/acme/app/pulls/4960 --paginate --slurp" ]; then
+  printf '%s' '[{"user":{"login":"alice","type":"User"}}]'
+  exit 0
+fi
+if [ "$*" = "api repos/acme/app/pulls/comments/71/reactions --paginate --slurp" ]; then
+  printf '%s' '[[{"content":"+1","user":{"login":"bob","type":"User"}},{"content":"-1","user":{"login":"alice","type":"User"}},{"content":"+1","user":{"login":"poster","type":"User"}},{"content":"+1","user":{"login":"ci[bot]","type":"Bot"}}]]'
+  exit 0
+fi
 if [ "$*" = "api repos/acme/app/pulls/4960/comments --paginate --slurp" ]; then
-  printf '%s' '[[{"pull_request_review_id":7,"body":"Security boundary bug here with enough substance.","path":"notes.txt","reactions":{"+1":1,"-1":1}}]]'
+  printf '%s' '[[{"id":71,"user":{"login":"poster","type":"User"},"pull_request_review_id":7,"body":"Security boundary bug here with enough substance.","path":"notes.txt"}]]'
   exit 0
 fi
 if [ "${1:-}" = "api" ]; then
@@ -171,10 +179,16 @@ else
 fi
 run_review calibrate acme/app "$PR" --reactions --reaction-reason 'The cited branch is unreachable.' --json
 assert_exit "reasoned reaction read exits 0" 0
-if jq -e '.data.proposals | map(select(.proposed == "false-positive"))[0].claim.rationale == "The cited branch is unreachable."' <"$EVAL_OUT" >/dev/null; then
+if jq -e '.data.proposals | map(select(.proposed == "false-positive"))[0] | .claim.rationale == "The cited branch is unreachable." and .reactor == "alice" and .role == "pr-author"' <"$EVAL_OUT" >/dev/null; then
   good "reasoned downvote proposes an existing triage claim"
 else
   bad "missing reasoned triage claim"
+fi
+
+if jq -e '.data.excluded == {bot:1,self:1}' <"$EVAL_OUT" >/dev/null; then
+  good "excluded bot and self counts are visible"
+else
+  bad "missing reaction exclusions"
 fi
 
 eval_end
