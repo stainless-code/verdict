@@ -72,30 +72,18 @@ func parsePostFlags(r *cli.Runner, args []string, dir string) (core.PostFlags, i
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
-		case a == postApproveFlag, a == "--review-file", a == postMinSeverityFlag:
+		case a == postApproveFlag, a == "--review-file", a == postSummaryFlag, a == postMinSeverityFlag:
 			v, next, u := cli.FlagValue(args, i, a, postWants[a])
 			if u != nil {
 				return f, r.ReportUsage(u), true
 			}
 			setPostValue(&f, a, v)
 			i = next
-		case strings.HasPrefix(a, postApproveFlag+"="):
-			f.Approve = strings.TrimPrefix(a, postApproveFlag+"=")
-		case a == "--request-changes":
-			f.RequestChanges = true
-		case a == "--bind":
-			f.Bind = true
-		case a == "--force":
-			f.Force = true
-		case a == postDryRunFlag:
-			f.DryRun = true
-		case a == "--require-coverage":
-			f.RequireCoverage = true
-		case a == postcore.AllowSecretValuesFlag:
-			f.AllowSecretValues = true
+		case parsePostEqFlag(&f, a):
+		case applyPostSwitchFlag(&f, a):
 		default:
 			msg := fmt.Sprintf("unknown flag '%s' for post (want --approve[=bool], --request-changes, "+
-				"--bind, --force, --review-file <path>, --dry-run, --require-coverage, "+
+				"--bind, --force, --review-file <path>, --summary comment|off, --dry-run, --require-coverage, "+
 				"--allow-secret-values, --json)", a)
 			return f, r.ReportUsage(&cli.UsageError{Message: msg}), true
 		}
@@ -108,15 +96,57 @@ func parsePostFlags(r *cli.Runner, args []string, dir string) (core.PostFlags, i
 // the re-entry line share.
 const postApproveFlag = "--approve"
 
+func parsePostEqFlag(f *core.PostFlags, arg string) bool {
+	name, val, ok := strings.Cut(arg, postEqSep)
+	if !ok {
+		return false
+	}
+	switch name {
+	case postApproveFlag:
+		f.Approve = val
+		return true
+	case postSummaryFlag:
+		f.Summary = val
+		return true
+	default:
+		return false
+	}
+}
+
+func applyPostSwitchFlag(f *core.PostFlags, arg string) bool {
+	switch arg {
+	case "--request-changes":
+		f.RequestChanges = true
+	case "--bind":
+		f.Bind = true
+	case "--force":
+		f.Force = true
+	case postDryRunFlag:
+		f.DryRun = true
+	case "--require-coverage":
+		f.RequireCoverage = true
+	case postcore.AllowSecretValuesFlag:
+		f.AllowSecretValues = true
+	default:
+		return false
+	}
+	return true
+}
+
+const postEqSep = "="
+
 const postMinSeverityFlag = "--min-severity"
 
 const postDryRunFlag = "--dry-run"
+
+const postSummaryFlag = "--summary"
 
 // postWants names each value flag's accepted operand for the missing-value
 // usage error.
 var postWants = map[string]string{
 	postApproveFlag:     "true|false",
 	"--review-file":     "<path>",
+	postSummaryFlag:     "comment|off",
 	postMinSeverityFlag: "critical|important|informational|off",
 }
 
@@ -125,6 +155,8 @@ func setPostValue(f *core.PostFlags, name, val string) {
 	switch name {
 	case postApproveFlag:
 		f.Approve = val
+	case postSummaryFlag:
+		f.Summary = val
 	case postMinSeverityFlag:
 		f.MinSeverity = val
 	default:
@@ -155,6 +187,7 @@ func postRentryFlags(f core.PostFlags, dir string, jsonMode bool) []string {
 		{"--bind", f.Bind},
 		{"--force", f.Force},
 		{"--review-file " + f.ReviewFile, f.ReviewFile != dir+"/review.json"},
+		{postSummaryFlag + " " + f.Summary, f.Summary != "" && f.Summary != "off"},
 		{postDryRunFlag, f.DryRun},
 		{"--min-severity " + f.MinSeverity, f.MinSeverity != ""},
 		{postcore.AllowSecretValuesFlag, f.AllowSecretValues},

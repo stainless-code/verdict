@@ -53,6 +53,9 @@ func Run(ctx context.Context, req *core.PostRequest) (*core.PostResponse, *core.
 	if ref := st.checkApproveFlag(); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
+	if ref := st.checkSummaryFlag(); ref != nil {
+		return nil, st.withWarnings(ref)
+	}
 	if ref := st.prepare(ctx); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
@@ -90,6 +93,23 @@ func (st *state) checkApproveFlag() *core.RefusalError {
 		return nil
 	}
 	return &core.RefusalError{Code: "bad-approve", Message: fmt.Sprintf(msgBadApprove, st.flags.Approve)}
+}
+
+// checkSummaryFlag refuses --summary values outside comment|off.
+func (st *state) checkSummaryFlag() *core.RefusalError {
+	switch st.flags.Summary {
+	case "", summaryOff, summaryComment:
+		return nil
+	default:
+		return &core.RefusalError{Code: "bad-flags", Message: fmt.Sprintf(msgBadSummary, st.flags.Summary)}
+	}
+}
+
+func (st *state) summaryMode() string {
+	if st.flags.Summary == "" {
+		return summaryOff
+	}
+	return st.flags.Summary
 }
 
 type state struct { //nolint:govet // field grouping documents the post run state
@@ -132,6 +152,11 @@ type state struct { //nolint:govet // field grouping documents the post run stat
 	// secretShapes is what --allow-secret-values let through, in first-seen
 	// order; the receipt records it so an overridden post stays legible.
 	secretShapes []string
+	me           string
+	meErr        error
+	meLoaded     bool
+	inlineLinks  []summaryInlineLink
+	summary      *core.PostSummary
 }
 
 func (st *state) withWarnings(ref *core.RefusalError) *core.RefusalError {
@@ -268,7 +293,7 @@ func (st *state) publish(ctx context.Context) (*core.PostResponse, *core.Refusal
 	st.buildPayloads()
 	st.eventLine()
 	if st.flags.DryRun {
-		return st.dryRunResponse()
+		return st.dryRunResponse(ctx)
 	}
 	if st.req.JSONMode {
 		st.human("dry-run flag missing with --json on a real post is allowed; envelope follows the post")
@@ -288,7 +313,7 @@ func (st *state) checkBundle() *core.RefusalError {
 		return &core.RefusalError{Code: "no-pr-target", Message: msgNoPRTarget}
 	}
 	if prov := st.provider(); !core.CapabilitiesFor(prov).Post {
-		return &core.RefusalError{Code: "provider-unimplemented", Message: fmt.Sprintf(msgProviderUnimplemented, prov)}
+		return &core.RefusalError{Code: codeProviderUnimplemented, Message: fmt.Sprintf(msgProviderUnimplemented, prov)}
 	}
 	if !readcommon.IsDir(st.dir) {
 		return &core.RefusalError{Code: codeMissingBundle, Message: fmt.Sprintf(msgMissingBundlePost, st.dir, st.req.Repo, st.req.Pr)}
@@ -591,7 +616,7 @@ func (st *state) downgradeStale() {
 
 func (st *state) authorGate(ctx context.Context) *core.RefusalError {
 	author := st.store().Author()
-	me, rerr := st.selfLogin(ctx)
+	me, rerr := st.cachedSelfLogin(ctx)
 	if rerr != nil {
 		me = ""
 	}

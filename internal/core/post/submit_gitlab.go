@@ -147,9 +147,13 @@ func gitlabReadArgv(repo, pr, suffix string) []string {
 // stdin exactly like the GitHub review POST, with the content type pinned on
 // the argv so the wire shape does not depend on the glab version.
 func gitlabWriteArgv(repo, pr, suffix string) []string {
+	return gitlabMethodWriteArgv(repo, pr, methodPost, suffix)
+}
+
+func gitlabMethodWriteArgv(repo, pr, method, suffix string) []string {
 	return []string{
 		toolGlab, cmdAPI, gitlabEndpoint(repo, pr, suffix),
-		flagMethod, methodPost, flagHeader, gitlabContentType, flagInput, "-",
+		flagMethod, method, flagHeader, gitlabContentType, flagInput, "-",
 	}
 }
 
@@ -289,7 +293,7 @@ func gitlabPost(ctx context.Context, cmdr Commander, caps core.HostCapabilities,
 	if len(part.comments) > 0 && !mr.diffRefsComplete() {
 		return postFailure(dir, msgGitLabNoDiffRefs, false, warnings)
 	}
-	posted, attempt, ok := gitlabDiscussions(ctx, cmdr, repo, pr, &mr, gitlabDiffIndex(dir), &part, dir, warnings)
+	posted, links, attempt, ok := gitlabDiscussions(ctx, cmdr, repo, pr, &mr, gitlabDiffIndex(dir), &part, dir, warnings)
 	if !ok {
 		return attempt
 	}
@@ -301,7 +305,9 @@ func gitlabPost(ctx context.Context, cmdr Commander, caps core.HostCapabilities,
 	if !ok {
 		return attempt
 	}
-	return postAccepted(dir, gitlabReceiptObject(&mr, note, approved), "", warnings)
+	resAttempt := postAccepted(dir, gitlabReceiptObject(&mr, note, approved), "", warnings)
+	resAttempt.inlineLinks = links
+	return resAttempt
 }
 
 // gitlabSummaryNote posts the summary note that carries the review body, after
@@ -345,16 +351,37 @@ func gitlabApproveLeg(
 func gitlabDiscussions(
 	ctx context.Context, cmdr Commander, repo, pr string, mr *gitlabMR,
 	diff map[string]gitlabDiff, part *gitlabPostPayload, dir string, warnings []string,
-) (int, postAttempt, bool) {
+) (int, []summaryInlineLink, postAttempt, bool) {
+	links := make([]summaryInlineLink, 0, len(part.comments))
 	for k, c := range part.comments {
 		body := jq.NewObj(fieldBody, c.body, "position", gitlabPosition(mr, diff[c.path], c)).MarshalPretty()
 		res, err := gitlabCall(ctx, cmdr, gitlabWriteArgv(repo, pr, gitlabDiscussionsPath), body)
 		if err != nil || res.ExitCode != 0 {
 			reason := failureReason(res, err)
-			return k, postFailure(dir, reason, k > 0, append(warnings, gitlabProgress(k, len(part.comments))...)), false
+			return k, nil, postFailure(dir, reason, k > 0, append(warnings, gitlabProgress(k, len(part.comments))...)), false
+		}
+		links = append(links, gitlabDiscussionInlineLink(mr.WebURL, c, res.Stdout))
+	}
+	return len(part.comments), links, postAttempt{}, true
+}
+
+func gitlabDiscussionInlineLink(mrURL string, c gitlabPostComment, raw string) summaryInlineLink {
+	link := summaryInlineLink{Path: c.path, Line: c.line, Body: c.body}
+	var resp struct {
+		Notes []struct {
+			WebURL string `json:"web_url"`
+			ID     int    `json:"id"`
+		} `json:"notes"`
+	}
+	if err := json.Unmarshal([]byte(raw), &resp); err == nil && len(resp.Notes) > 0 {
+		switch {
+		case resp.Notes[0].WebURL != "":
+			link.URL = resp.Notes[0].WebURL
+		case mrURL != "" && resp.Notes[0].ID > 0:
+			link.URL = mrURL + "#note_" + strconv.Itoa(resp.Notes[0].ID)
 		}
 	}
-	return len(part.comments), postAttempt{}, true
+	return link
 }
 
 // gitlabApprove submits the binding approval for the reviewed head, so a

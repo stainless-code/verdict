@@ -1,6 +1,7 @@
 package postcore
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -245,9 +246,19 @@ func (st *state) previewDryRun(footerText string) {
 	if st.diagram.State != "absent" {
 		st.human("diagram: " + st.diagram.State + " — " + st.diagram.Detail)
 	}
+	if st.summary != nil {
+		st.human(formatSummaryDryRun(st.summary))
+	}
 }
 
-func (st *state) dryRunResponse() (*core.PostResponse, *core.RefusalError) {
+func (st *state) dryRunResponse(ctx context.Context) (*core.PostResponse, *core.RefusalError) {
+	if st.summaryMode() == summaryComment {
+		sum, ref := st.planSummary(ctx)
+		if ref != nil {
+			return nil, st.withWarnings(ref)
+		}
+		st.summary = sum
+	}
 	footerText, ferr := provenance.RenderFooter(recordcore.FooterOpts(
 		&st.req.Effective, st.req.Forces, st.req.RootPath(), st.dir, overrides.At(st.controls.OverridesDir())))
 	if ferr != nil {
@@ -283,6 +294,7 @@ func (st *state) dryRunResponse() (*core.PostResponse, *core.RefusalError) {
 		},
 		Items:           typedPostItems(payload),
 		Coverage:        st.merged.Coverage.Receipt(),
+		Summary:         st.summary,
 		Confidence:      intOrNilPost(st.merged.Confidence),
 		SecuritySummary: strOrNilPost(st.merged.Security),
 		PayloadHash:     payloadHash,

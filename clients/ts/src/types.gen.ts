@@ -271,6 +271,19 @@ export interface PostData {
   provenance?: Provenance;
   coverage?: CoverageSummary | null;
   withheld?: WithheldSummary | null;
+  /** Planned (on dry-run) or executed (when --summary comment is active) PR-level summary comment action. */
+  summary?: PostSummary | null;
+  [key: string]: unknown;
+}
+
+/** PR-level summary comment action and metadata. */
+export interface PostSummary {
+  action: "create" | "update" | "none" | "failed";
+  comment_id?: string;
+  url?: string;
+  marker?: string;
+  duplicate_count?: number;
+  note?: string;
   [key: string]: unknown;
 }
 

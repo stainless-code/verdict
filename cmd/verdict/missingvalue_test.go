@@ -31,6 +31,7 @@ func TestVerbMissingValue(t *testing.T) {
 		{"fix sig", "--sig needs a value (want <sig>)", []string{"fix", "acme/app", "local-x", "--sig"}},
 		{"post approve", "--approve needs a value (want true|false)", []string{"post", "acme/app", "7", "--approve"}},
 		{"post review-file", "--review-file needs a value (want <path>)", []string{"post", "acme/app", "7", "--review-file"}},
+		{"post summary", "--summary needs a value (want comment|off)", []string{"post", "acme/app", "7", "--summary"}},
 		{"triage sig", "--sig needs a value (want <sig>)", []string{"triage", "acme/app", "7", "--sig"}},
 		{"triage status", "--status needs a value (want <status>)", []string{"triage", "acme/app", "7", "--status"}},
 		{"triage rationale", "--rationale needs a value (want <text>)", []string{"triage", "acme/app", "7", "--rationale"}},
