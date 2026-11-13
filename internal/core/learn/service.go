@@ -566,8 +566,9 @@ const (
 )
 
 const (
-	msgCanceled        = "canceled before learn completed"
-	msgNeedOneMode     = "learn needs exactly one of --rule <text>, --status, --retire <id>, --restore <id>"
+	msgCanceled    = "canceled before learn completed"
+	msgNeedOneMode = "learn needs exactly one of --rule <text>, --pack <directory> --id <rule-id>, " +
+		"--status, --retire <id>, --restore <id>"
 	msgScopeNeedsRule  = "learn: --scope belongs to --rule (append mode)"
 	msgReasonNeedsVeto = "learn: --reason belongs to --retire/--restore"
 	msgEmptyRule       = "refusing learn: --rule is empty (pass the one-line rule text)"
