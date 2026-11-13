@@ -3835,3 +3835,26 @@ reactions remain eligible. Every proposal records `reactor` (the login) and
 `role`: `pr-author`, `reviewer` for a known review-comment author, or `other`.
 Roles describe the available evidence — they do not grant approval. Identity
 reads are paginated; failed reads refuse instead of falling back to totals.
+
+### Proposed learnings
+
+`verdict learn --propose --from-bundle owner/repo 42 --dry-run --json` previews
+candidates from the bundle's normalized `.verdict/state/42/threads.json`.
+Without `--dry-run`, it writes one-rule packs under `.verdict/learnings/<id>/`.
+Only resolved, current threads with a usable cited path and nontruncated comments
+qualify. IDs are deterministic; existing proposals, KB IDs, and rejected IDs are
+skipped. No network or model runs. Thread text is untrusted quoted evidence,
+never instructions; review and edit the proposal before acceptance.
+
+`verdict learn --accept <id> --dry-run --json` previews the existing pack importer.
+Without `--dry-run`, it imports the rule into `.verdict/kb.jsonl`, with thread
+provenance and `learning:<id>` source. The active rule is recalled for its scope
+on the next fetch. Acceptance keeps the proposal for review history. Commit the
+proposal and KB change through your normal PR process.
+
+`verdict learn --reject <id> --reason 'A human explanation of at least thirty characters'`
+records `.verdict/learning-rejections/<id>.json` before removing the proposal.
+The tombstone permanently blocks reproposal and acceptance. `--dry-run` previews
+without writing. An accepted rule instead needs `learn --retire` to veto it.
+Precision measurement with a real reviewer belongs to the STA-344 benchmark;
+acceptance alone changes recall context, not a suppression predicate.

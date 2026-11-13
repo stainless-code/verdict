@@ -240,6 +240,12 @@ func wireInit(ctx context.Context, b *bindings, req *initcore.Request) error {
 }
 
 func decodeLearn(req *learncore.Request, a *args) {
+	a.str("from_bundle", &req.FromBundle)
+	a.str(argPr, &req.Pr)
+	a.str("accept", &req.Accept)
+	a.str("reject", &req.Reject)
+	a.boolean("propose", &req.Propose)
+	a.boolean("dry_run", &req.DryRun)
 	a.str("pack", &req.Pack)
 	a.str("rule", &req.Rule)
 	a.str("scope", &req.Scope)

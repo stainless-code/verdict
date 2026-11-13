@@ -35,8 +35,13 @@ type Request struct {
 	Reason     string
 	Retire     string
 	Restore    string
+	Accept     string
+	Reject     string
+	FromBundle string `json:"from_bundle"`
 	Pack       string
 	Status     bool
+	Propose    bool
+	DryRun     bool `json:"dry_run"`
 	JSONMode   bool
 }
 
@@ -128,6 +133,12 @@ func (st *state) runLearn() *core.RefusalError {
 		return ref
 	}
 	switch {
+	case st.req.Accept != "":
+		return st.runAccept()
+	case st.req.Reject != "":
+		return st.runReject()
+	case st.req.Propose:
+		return st.runPropose()
 	case st.req.Pack != "":
 		return st.runImport()
 	case st.req.Status:
@@ -142,13 +153,16 @@ func (st *state) runLearn() *core.RefusalError {
 }
 
 func (st *state) checkModes() *core.RefusalError {
+	if ref := st.checkLifecycleFlags(); ref != nil {
+		return ref
+	}
 	if st.countModes() != 1 {
 		return st.refuse(codeBadFlags, msgNeedOneMode)
 	}
 	if st.req.Rule == "" && st.req.Scope != "" {
 		return st.refuse(codeBadFlags, msgScopeNeedsRule)
 	}
-	if st.req.Retire == "" && st.req.Restore == "" && st.req.Reason != "" {
+	if st.req.Retire == "" && st.req.Restore == "" && st.req.Reject == "" && st.req.Reason != "" {
 		return st.refuse(codeBadFlags, msgReasonNeedsVeto)
 	}
 	return nil
@@ -156,21 +170,15 @@ func (st *state) checkModes() *core.RefusalError {
 
 func (st *state) countModes() int {
 	modes := 0
-	if st.req.Pack != "" {
-		modes++
+	for _, enabled := range []bool{
+		st.req.Accept != "", st.req.Reject != "", st.req.Propose, st.req.Pack != "", st.req.Rule != "",
+		st.req.Status, st.req.Retire != "", st.req.Restore != "",
+	} {
+		if enabled {
+			modes++
+		}
 	}
-	if st.req.Rule != "" {
-		modes++
-	}
-	if st.req.Status {
-		modes++
-	}
-	if st.req.Retire != "" {
-		modes++
-	}
-	if st.req.Restore != "" {
-		modes++
-	}
+
 	return modes
 }
 
@@ -337,8 +345,10 @@ func (st *state) newAppendInput(ruleT, scopeT string) (*appendInput, *core.Refus
 }
 
 func (st *state) rejectAppendDup(ruleT, lid string) *core.RefusalError {
-	if err := os.MkdirAll(st.storeDir(), reviewDirPerm); err != nil {
-		return st.refuse(codeLearnFailed, fmt.Sprintf(msgMkdirReview, err))
+	if !st.req.DryRun {
+		if err := os.MkdirAll(st.storeDir(), reviewDirPerm); err != nil {
+			return st.refuse(codeLearnFailed, fmt.Sprintf(msgMkdirReview, err))
+		}
 	}
 	if !readcommon.IsFile(st.kbFile()) {
 		return nil
@@ -599,3 +609,13 @@ const (
 )
 
 var jsonZero = jq.Number("0")
+
+func (st *state) checkLifecycleFlags() *core.RefusalError {
+	if st.req.FromBundle != "" && !st.req.Propose {
+		return st.refuse(codeBadFlags, "--from-bundle requires --propose")
+	}
+	if st.req.DryRun && !st.req.Propose && st.req.Accept == "" && st.req.Reject == "" {
+		return st.refuse(codeBadFlags, "--dry-run requires a learning lifecycle mode")
+	}
+	return nil
+}
