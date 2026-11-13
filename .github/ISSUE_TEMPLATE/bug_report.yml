@@ -41,6 +41,7 @@ body:
         - fix
         - check-tree
         - ready
+        - pr-wait
         - trend
         - index
         - backtest

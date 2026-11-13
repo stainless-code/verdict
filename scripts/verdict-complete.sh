@@ -3,7 +3,7 @@
 #
 
 _verdict_verbs() {
-  printf '%s\n' fetch post triage report next show verify doctor calibrate fetch-local run panel record adopt fix check-tree ready gate threads trend index backtest learn pack init skill upgrade uninstall serve config
+  printf '%s\n' fetch post triage report next show verify doctor calibrate fetch-local run panel record adopt fix check-tree ready pr-wait gate threads trend index backtest learn pack init skill upgrade uninstall serve config
 }
 
 _verdict_flags() { # $1 = verb
@@ -31,7 +31,8 @@ _verdict_flags() { # $1 = verb
     pack) printf '%s\n' list add test --dir --json;;
     adopt) printf '%s\n' --from --json;;
     fix) printf '%s\n' --sig --json;;
-    ready) printf '%s\n' --json --check;;
+    pr-wait) printf '%s\n' --until --timeout --once --interval --json --provider ;;
+    ready) printf '%s\n' --json --check --wait-for --timeout;;
     gate) printf '%s\n' --max-severity --require-head --live --coverage --json;;
     mcp) printf '%s\n' --read-only --operator --agent --write --dry-run --json;;
     serve) printf '%s\n' --root --depth --max-visits --max-repos --rediscover --no-registry --host --port --token --check --max-bundles --interval --sweep --no-watch --json;;

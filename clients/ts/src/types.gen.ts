@@ -711,6 +711,8 @@ export interface TriageData {
 
 /** ready --json data: the gate verdict, every blocker with the action that clears it, and the live PR state the gate read. recommendation is review when nothing blocks, hold otherwise. */
 export interface ReadyData {
+  /** Present when a bounded build wait was requested; timeout leaves readiness false. */
+  wait?: PrWaitData;
   ready: boolean;
   recommendation: string;
   blockers: Array<ReadyBlocker>;
@@ -721,6 +723,29 @@ export interface ReadyData {
   ci: ReadyCI;
   threads_open: number;
   description_chars: number;
+  [key: string]: unknown;
+}
+
+/** Bounded foreground PR wait outcome; timeout is data with error null. */
+export interface PrWaitData {
+  snapshot: PrWaitSnapshot | null;
+  outcome: "condition-met" | "condition-unmet" | "wait-timeout";
+  until:
+    "merged" | "closed" | "checks-green" | "checks-done" | "review-changed";
+  observations: number;
+  [key: string]: unknown;
+}
+
+/** One observed PR state, including canonical JSON evidence for checks, reviews, and threads. */
+export interface PrWaitSnapshot {
+  state: string;
+  head: string;
+  reviews: string;
+  threads: string;
+  checks: string;
+  checks_known: boolean;
+  checks_done: boolean;
+  checks_green: boolean;
   [key: string]: unknown;
 }
 

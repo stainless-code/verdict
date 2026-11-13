@@ -14,6 +14,7 @@ import type {
   PackData,
   PostData,
   ReadyData,
+  PrWaitData,
   RecordData,
   RefusalErrorBody,
   ReportData,
@@ -65,6 +66,7 @@ export interface DataFor {
   next: NextData;
   show: ShowData;
   ready: ReadyData;
+  "pr-wait": PrWaitData;
   triage: TriageData;
   fetch: FetchData;
   "fetch-local": FetchLocalData;

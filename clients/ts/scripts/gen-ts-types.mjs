@@ -70,7 +70,7 @@ function toTS(node, defs) {
   if (Array.isArray(node.enum)) {
     const values = node.enum.map((v) => JSON.stringify(v));
     const inline = values.join(" | ");
-    if (inline.length <= 70) return inline;
+    if (inline.length <= 76) return inline;
     return "\n" + values.map((value) => `    | ${value}`).join("\n");
   }
   // anyOf on a node that declares its own shape carries structural
@@ -162,7 +162,14 @@ function objectTS(node, defs) {
     const key = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)
       ? name
       : JSON.stringify(name);
-    const rendered = toTS(sub, defs);
+    let rendered = toTS(sub, defs);
+    if (
+      !rendered.startsWith("\n") &&
+      rendered.includes(" | ") &&
+      key.length + optional.length + rendered.length + 5 > 80
+    ) {
+      rendered = "\n    " + rendered;
+    }
     const separator = rendered.startsWith("\n") ? ":" : ": ";
     lines.push(
       `  ${docComment((sub && sub.description) || "").replaceAll("\n", "\n  ")}${key}${optional}${separator}${rendered};`,

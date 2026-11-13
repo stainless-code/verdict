@@ -43,6 +43,7 @@ var forbiddenDeps = []string{
 	"internal/learn",
 	"internal/pack",
 	"internal/ready",
+	"internal/prwait",
 	"internal/threads",
 	"internal/trend",
 	"internal/panel",

@@ -119,7 +119,7 @@ func wireConfig(ctx context.Context, b *bindings, req *core.ConfigRequest) error
 }
 
 func decodeDoctor(req *doctorcore.Request, a *args) {
-	a.str("provider", &req.Provider)
+	a.str(argProvider, &req.Provider)
 }
 
 func wireDoctor(ctx context.Context, b *bindings, req *doctorcore.Request) error {
@@ -135,7 +135,7 @@ func decodeFetch(req *core.FetchRequest, a *args) {
 	a.str(argPr, &req.Pr)
 	a.flags(func(f *args) {
 		f.str("baseSHA", &req.Flags.BaseSHA)
-		f.str("provider", &req.Flags.Provider)
+		f.str(argProvider, &req.Flags.Provider)
 		f.str("index", &req.Flags.Index)
 		f.strings("context", &req.Flags.Context)
 		f.strings("ignore", &req.Flags.Ignore)
@@ -318,11 +318,20 @@ func decodeReady(req *readycore.Request, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.str(argPr, &req.Pr)
 	a.boolean("check", &req.Check)
+	a.str("wait_for", &req.WaitFor)
+	a.str("timeout", &req.Timeout)
 }
 
 func wireReady(ctx context.Context, b *bindings, req *readycore.Request) error {
 	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
 		return err
+	}
+	if req.WaitFor != "" {
+		wait := &readycore.WaitRequest{Timeout: req.Timeout}
+		if err := capPRWait(wait); err != nil {
+			return err
+		}
+		req.Timeout = wait.Timeout
 	}
 	req.Warnings = b.warningList()
 	return nil
@@ -389,7 +398,7 @@ func wireShow(ctx context.Context, b *bindings, req *core.ShowRequest) error {
 func decodeThreads(req *fetchcore.ThreadsRequest, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.str(argPr, &req.Pr)
-	a.str("provider", &req.Provider)
+	a.str(argProvider, &req.Provider)
 	a.strings("thread", &req.Threads)
 	a.boolean("resolve", &req.Resolve)
 	a.boolean("dryRun", &req.DryRun)
@@ -462,3 +471,40 @@ func wireVerify(ctx context.Context, b *bindings, req *core.VerifyRequest) error
 	req.Warnings = b.warningList()
 	return nil
 }
+
+func decodePRWait(req *readycore.WaitRequest, a *args) {
+	a.str(argRepo, &req.Repo)
+	a.str(argPr, &req.Pr)
+	a.str("until", &req.Until)
+	a.str("timeout", &req.Timeout)
+	a.str("interval", &req.Interval)
+	a.str(argProvider, &req.Provider)
+	a.boolean("once", &req.Once)
+}
+
+func wirePRWait(ctx context.Context, b *bindings, req *readycore.WaitRequest) error {
+	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
+		return err
+	}
+	req.Warnings = b.warningList()
+	return capPRWait(req)
+}
+
+func capPRWait(req *readycore.WaitRequest) error {
+	if req.Timeout == "" {
+		req.Timeout = "50s"
+	}
+	timeout, _, ref := readycore.WaitDurations(req.Timeout, req.Interval)
+	if ref != nil {
+		return paramErrorf("%s", ref.Message)
+	}
+	if timeout > mcpWaitLimit {
+		return paramErrorf("pr_wait timeout cannot exceed 50s")
+	}
+	return nil
+}
+
+const (
+	argProvider  = "provider"
+	mcpWaitLimit = 50 * time.Second
+)

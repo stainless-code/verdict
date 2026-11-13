@@ -1418,6 +1418,10 @@
       "description": "ready --json data: the gate verdict, every blocker with the action that clears it, and the live PR state the gate read. recommendation is review when nothing blocks, hold otherwise.",
       "type": "object",
       "properties": {
+        "wait": {
+          "description": "Present when a bounded build wait was requested; timeout leaves readiness false.",
+          "$ref": "#/$defs/prWaitData"
+        },
         "ready": { "type": "boolean" },
         "recommendation": { "type": "string" },
         "blockers": {
@@ -1443,6 +1447,55 @@
         "ci",
         "threads_open",
         "description_chars"
+      ],
+      "additionalProperties": true
+    },
+    "prWaitData": {
+      "description": "Bounded foreground PR wait outcome; timeout is data with error null.",
+      "type": "object",
+      "properties": {
+        "snapshot": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/prWaitSnapshot" }]
+        },
+        "outcome": {
+          "enum": ["condition-met", "condition-unmet", "wait-timeout"]
+        },
+        "until": {
+          "enum": [
+            "merged",
+            "closed",
+            "checks-green",
+            "checks-done",
+            "review-changed"
+          ]
+        },
+        "observations": { "type": "integer" }
+      },
+      "required": ["snapshot", "outcome", "until", "observations"],
+      "additionalProperties": true
+    },
+    "prWaitSnapshot": {
+      "description": "One observed PR state, including canonical JSON evidence for checks, reviews, and threads.",
+      "type": "object",
+      "properties": {
+        "state": { "type": "string" },
+        "head": { "type": "string" },
+        "reviews": { "type": "string" },
+        "threads": { "type": "string" },
+        "checks": { "type": "string" },
+        "checks_known": { "type": "boolean" },
+        "checks_done": { "type": "boolean" },
+        "checks_green": { "type": "boolean" }
+      },
+      "required": [
+        "state",
+        "head",
+        "reviews",
+        "threads",
+        "checks",
+        "checks_known",
+        "checks_done",
+        "checks_green"
       ],
       "additionalProperties": true
     },

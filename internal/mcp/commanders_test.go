@@ -16,6 +16,7 @@ import (
 func TestToolCommanders(t *testing.T) {
 	t.Parallel()
 	want := map[string]string{
+		"pr_wait":     "exec.Runner{cap=4194304 missing=false}",
 		"adopt":       "<nil>",
 		"calibrate":   "exec.Runner{cap=4194304 missing=false}",
 		"check-tree":  "exec.Runner{cap=4194304 missing=false}",
