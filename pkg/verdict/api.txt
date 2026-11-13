@@ -128,6 +128,10 @@ func (c *Client) Index(ctx context.Context, req *IndexRequest) (*IndexResponse, 
     Index runs one index query. The MCP tool serves callers and status only;
     this method forwards every query, build and prune included.
 
+func (c *Client) Ingest(ctx context.Context, req *IngestRequest) (*IngestResponse, error)
+    Ingest maps SARIF 2.1.0 results into the bundle's findings store, sharing
+    the deduplication, hunk anchoring, and path-exclusion withholding paths.
+
 func (c *Client) Init(ctx context.Context, req *InitRequest) (*InitResponse, error)
     Init scaffolds .verdict control files from a style preset.
 
@@ -318,6 +322,20 @@ type IndexResponse struct {
 	Data     json.RawMessage
 }
     IndexResponse carries the index data profile and its human lines.
+
+type IngestRequest struct {
+	Invocation
+	SARIF     string
+	SARIFData []byte
+}
+    IngestRequest imports SARIF 2.1.0 tool results into the target bundle's
+    findings store. Set SARIF to a file path, or SARIFData for in-memory bytes.
+
+type IngestResponse struct {
+	Outcome
+	Human string
+}
+    IngestResponse carries the ingest summary and the human line.
 
 type InitRequest struct {
 	Preset string

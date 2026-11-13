@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/envelope.schema.json",
   "title": "verdict --json envelope",
-  "description": "Every --json stdout is exactly one envelope with these nine keys (schema_version \"1\"): error null on success with a data object, data null with a typed error object on refusal. Derived from the Go envelope renderer (RenderEnvelope) in the verdict CLI. data is additive per verb (chunk summaries, prompt_dump, cost, completeness ride inside data, never as new top-level keys), so data objects allow additional properties; every verb publishes its data profile here as a single <verb>Data $defs entry (reportData, postData, recordData, showData, fetchData, fetchLocalData, threadsData, verifyData, triageData, readyData, adoptData, nextData, fixData, learnData, packData, packTestData, initData, doctorData, checkTreeData, trendData, calibrateData, configData), each validated against the runtime writer and the committed goldens.",
+  "description": "Every --json stdout is exactly one envelope with these nine keys (schema_version \"1\"): error null on success with a data object, data null with a typed error object on refusal. Derived from the Go envelope renderer (RenderEnvelope) in the verdict CLI. data is additive per verb (chunk summaries, prompt_dump, cost, completeness ride inside data, never as new top-level keys), so data objects allow additional properties; every verb publishes its data profile here as a single <verb>Data $defs entry (reportData, postData, recordData, showData, fetchData, fetchLocalData, threadsData, verifyData, triageData, readyData, adoptData, ingestData, nextData, fixData, learnData, packData, packTestData, initData, doctorData, checkTreeData, trendData, calibrateData, configData), each validated against the runtime writer and the committed goldens.",
   "type": "object",
   "properties": {
     "schema_version": { "const": "1" },
@@ -280,7 +280,15 @@
           "additionalProperties": true
         },
         "withheld": { "type": "integer", "minimum": 0 },
-        "withheld_by_source": { "type": "object", "additionalProperties": true }
+        "withheld_by_source": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "by_source": {
+          "description": "Whole-store finding counts by provenance source (model and tool).",
+          "type": "object",
+          "additionalProperties": true
+        }
       },
       "required": [
         "inline",
@@ -1550,6 +1558,36 @@
       "required": ["dir", "from", "adopted", "open"],
       "additionalProperties": true
     },
+    "ingestData": {
+      "description": "ingest --json data: the target bundle, distinct tool names ingested, and per-run finding counts.",
+      "type": "object",
+      "properties": {
+        "dir": { "type": "string" },
+        "tools": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "ingested": { "type": "integer", "minimum": 0 },
+        "added": { "type": "integer", "minimum": 0 },
+        "updated": { "type": "integer", "minimum": 0 },
+        "unchanged": { "type": "integer", "minimum": 0 },
+        "anchored": { "type": "integer", "minimum": 0 },
+        "withheld": { "type": "integer", "minimum": 0 },
+        "open": { "type": "integer", "minimum": 0 }
+      },
+      "required": [
+        "dir",
+        "tools",
+        "ingested",
+        "added",
+        "updated",
+        "unchanged",
+        "anchored",
+        "withheld",
+        "open"
+      ],
+      "additionalProperties": true
+    },
     "nextData": {
       "description": "next --json data: the ranked finding to fix next, or null when the store has nothing open. item keeps every stored record key beside the ranked locator.",
       "type": "object",
@@ -1799,6 +1837,10 @@
           "type": "object",
           "additionalProperties": true
         },
+        "by_source": {
+          "description": "Portfolio finding counts by provenance source (model and tool).",
+          "$ref": "#/$defs/trendSources"
+        },
         "withheld": { "type": "object", "additionalProperties": true },
         "provenance": { "$ref": "#/$defs/trendProvenance" },
         "periods": {
@@ -1857,6 +1899,16 @@
         "untagged": { "type": "integer" }
       },
       "required": ["critical", "important", "informational", "untagged"],
+      "additionalProperties": true
+    },
+    "trendSources": {
+      "description": "A two-source finding tally: model and tool.",
+      "type": "object",
+      "properties": {
+        "model": { "type": "integer", "minimum": 0 },
+        "tool": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["model", "tool"],
       "additionalProperties": true
     },
     "trendProvenance": {
@@ -1924,6 +1976,10 @@
           "description": "One bundle's finding counts by observed category with untagged for null entries.",
           "type": "object",
           "additionalProperties": true
+        },
+        "by_source": {
+          "description": "One bundle's finding counts by provenance source (model and tool).",
+          "$ref": "#/$defs/trendSources"
         },
         "withheld": { "type": "object", "additionalProperties": true }
       },

@@ -338,6 +338,10 @@ export interface VerdictClient {
     args?: string[],
     opts?: RunOptions,
   ): Promise<Envelope<DataFor["adopt"]>>;
+  ingest(
+    args?: string[],
+    opts?: RunOptions,
+  ): Promise<Envelope<DataFor["ingest"]>>;
   fix(args?: string[], opts?: RunOptions): Promise<Envelope<DataFor["fix"]>>;
   learn(
     args?: string[],
@@ -408,6 +412,7 @@ export function createClient(defaults: ClientOptions = {}): VerdictClient {
     trend: (args, opts) => run<DataFor["trend"]>("trend", args, opts),
     index: (args, opts) => run<DataFor["index"]>("index", args, opts),
     adopt: (args, opts) => run<DataFor["adopt"]>("adopt", args, opts),
+    ingest: (args, opts) => run<DataFor["ingest"]>("ingest", args, opts),
     fix: (args, opts) => run<DataFor["fix"]>("fix", args, opts),
     learn: (args, opts) => run<DataFor["learn"]>("learn", args, opts),
     pack: (args, opts) => run<DataFor["pack"]>("pack", args, opts),

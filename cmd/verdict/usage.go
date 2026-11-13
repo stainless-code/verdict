@@ -2,7 +2,7 @@ package main
 
 func usageText() string {
 	return "usage: verdict fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
-		"fetch-local|run|panel|record|adopt|fix|check-tree|ready|pr-wait|gate|threads|trend|index|" +
+		"fetch-local|run|panel|record|adopt|ingest|fix|check-tree|ready|pr-wait|gate|threads|trend|index|" +
 		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|config [opts]\n" +
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
 		"[--index <ref|dir>] [--context <file|dir>] [--ignore <glob>] [--no-default-excludes] " +
@@ -81,6 +81,11 @@ func usageText() string {
 		"    carry a local bundle's findings into a fresh PR fetch for posting (re-anchors, stamps handoff).\n" +
 		"    Adopt-into needs a bundle verdict can post to (forgejo, github, gitlab): other hosts refuse\n" +
 		"    typed (provider-unimplemented, naming the host).\n" +
+		"  ingest <owner/repo> <pr> --sarif <file|-> [--json]\n" +
+		"    import SARIF 2.1.0 tool findings into .verdict/state/<pr>/findings.json using the shared\n" +
+		"    dedupe, hunk anchoring, and path-exclusion withholding paths. No network. Tool findings\n" +
+		"    carry said rigor with default provenance (never verified); results outside the diff stay\n" +
+		"    unanchored and never post inline.\n" +
 		"  fix <owner/repo> <local-slug> [--sig <s>] [--json]\n" +
 		"    one bounded pass over a local bundle: picks the top open inline sig\n" +
 		"    (or --sig), prints finding + kb.txt context with verify/land/re-run\n" +

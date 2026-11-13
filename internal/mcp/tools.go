@@ -19,6 +19,7 @@ import (
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	fixcore "github.com/stainless-code/verdict/internal/core/fix"
 	indexcore "github.com/stainless-code/verdict/internal/core/index"
+	ingestcore "github.com/stainless-code/verdict/internal/core/ingest"
 	initcore "github.com/stainless-code/verdict/internal/core/init"
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
 	packcore "github.com/stainless-code/verdict/internal/core/pack"
@@ -188,6 +189,15 @@ func allTools(readOnly, operator bool) []*tool {
 			omit: map[string]bool{fieldRepo: true},
 			meta: toolMeta{title: "Query code index", mutates: noLocalWrites, readOnly: true, idempotent: true},
 		}, toolDeps{commander: coreexec.Runner{}}, decodeIndex, wireIndex, invokeIndex),
+		dataTool(&toolSpec{
+			name: "ingest",
+			description: "Import SARIF 2.1.0 tool results into the target bundle's findings store. " +
+				"Call after a static scanner run to merge results with review findings. " +
+				"Writes findings.json; no network.",
+			required: []string{argRepo, argPr, "sarif"},
+			meta:     toolMeta{title: "Ingest SARIF findings", mutates: localWrites, idempotent: true},
+		}, toolDeps{}, decodeIngest, wireIngest, ingestcore.Run,
+			func(resp *ingestcore.Response) *jq.Obj { return wireData(resp.Data) }),
 		dataTool(&toolSpec{
 			name: "init",
 			description: "Scaffold .verdict control files from a style preset. Call once in a " +

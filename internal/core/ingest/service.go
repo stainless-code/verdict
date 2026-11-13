@@ -43,9 +43,9 @@ const (
 // and clock/runtime overrides.
 type Request struct {
 	core.ReadRequest
-	SARIF       string
-	SARIFData   []byte
-	SARIFInline bool
+	SARIF       string `json:"sarif"`
+	SARIFData   []byte `json:"-"`
+	SARIFInline bool   `json:"-"`
 }
 
 // Data is the ingest envelope's data profile.

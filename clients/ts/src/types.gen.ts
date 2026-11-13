@@ -153,6 +153,8 @@ export interface ReportCounts {
   by_category: unknown;
   withheld?: number;
   withheld_by_source?: unknown;
+  /** Whole-store finding counts by provenance source (model and tool). */
+  by_source?: unknown;
   [key: string]: unknown;
 }
 
@@ -786,6 +788,20 @@ export interface AdoptData {
   [key: string]: unknown;
 }
 
+/** ingest --json data: the target bundle, distinct tool names ingested, and per-run finding counts. */
+export interface IngestData {
+  dir: string;
+  tools: Array<string>;
+  ingested: number;
+  added: number;
+  updated: number;
+  unchanged: number;
+  anchored: number;
+  withheld: number;
+  open: number;
+  [key: string]: unknown;
+}
+
 /** next --json data: the ranked finding to fix next, or null when the store has nothing open. item keeps every stored record key beside the ranked locator. */
 export interface NextData {
   item: FindingItem | null;
@@ -927,6 +943,8 @@ export interface TrendData {
   by_tier: TrendTiers;
   /** Portfolio finding counts by observed category with untagged for null entries; only observed categories appear. */
   by_category: unknown;
+  /** Portfolio finding counts by provenance source (model and tool). */
+  by_source?: TrendSources;
   withheld?: unknown;
   provenance: TrendProvenance;
   periods: Array<TrendPeriod>;
@@ -952,6 +970,13 @@ export interface TrendTiers {
   important: number;
   informational: number;
   untagged: number;
+  [key: string]: unknown;
+}
+
+/** A two-source finding tally: model and tool. */
+export interface TrendSources {
+  model: number;
+  tool: number;
   [key: string]: unknown;
 }
 
@@ -990,6 +1015,8 @@ export interface TrendBundleRow {
   by_tier: TrendTiers;
   /** One bundle's finding counts by observed category with untagged for null entries. */
   by_category: unknown;
+  /** One bundle's finding counts by provenance source (model and tool). */
+  by_source?: TrendSources;
   withheld?: unknown;
   [key: string]: unknown;
 }

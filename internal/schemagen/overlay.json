@@ -40,7 +40,7 @@
   },
   "envelope": {
     "descriptions": {
-      "": "Every --json stdout is exactly one envelope with these nine keys (schema_version \"1\"): error null on success with a data object, data null with a typed error object on refusal. Derived from the Go envelope renderer (RenderEnvelope) in the verdict CLI. data is additive per verb (chunk summaries, prompt_dump, cost, completeness ride inside data, never as new top-level keys), so data objects allow additional properties; every verb publishes its data profile here as a single <verb>Data $defs entry (reportData, postData, recordData, showData, fetchData, fetchLocalData, threadsData, verifyData, triageData, readyData, adoptData, nextData, fixData, learnData, packData, packTestData, initData, doctorData, checkTreeData, trendData, calibrateData, configData), each validated against the runtime writer and the committed goldens.",
+      "": "Every --json stdout is exactly one envelope with these nine keys (schema_version \"1\"): error null on success with a data object, data null with a typed error object on refusal. Derived from the Go envelope renderer (RenderEnvelope) in the verdict CLI. data is additive per verb (chunk summaries, prompt_dump, cost, completeness ride inside data, never as new top-level keys), so data objects allow additional properties; every verb publishes its data profile here as a single <verb>Data $defs entry (reportData, postData, recordData, showData, fetchData, fetchLocalData, threadsData, verifyData, triageData, readyData, adoptData, ingestData, nextData, fixData, learnData, packData, packTestData, initData, doctorData, checkTreeData, trendData, calibrateData, configData), each validated against the runtime writer and the committed goldens.",
       "/properties/pr": "Numeric PR, else null (local slugs never coerce).",
       "/$defs/error": "Refusal shape from fail(): data is null, message carries the cause plus a try: hint, candidates rides only on the oversize-fetch refusal.",
       "/$defs/findingItem": "Ranked or merged finding locator shared by report items and post/record items.",
@@ -127,6 +127,7 @@
       "/$defs/readyBlocker": "One readiness blocker: the rule that fired, the detail that fired it, and the action that clears it.",
       "/$defs/readyCI": "The live CI check tally: failing rows out of every check the head reported.",
       "/$defs/adoptData": "adopt --json data: the target bundle, its source, and how many findings were adopted and left open.",
+      "/$defs/ingestData": "ingest --json data: the target bundle, distinct tool names ingested, and per-run finding counts.",
       "/$defs/nextData": "next --json data: the ranked finding to fix next, or null when the store has nothing open. item keeps every stored record key beside the ranked locator.",
       "/$defs/fixData": "fix --json data: one pass over the named finding, or the completion shape. The pass carries the finding identity, its anchors, the pass budget, and the open/fixed/stopped tallies; completion leaves those null and sets complete.",
       "/$defs/fixAnchors": "The pass's anchor block, read verbatim from the record (line and start_line stay strings).",
@@ -145,6 +146,7 @@
       "/$defs/trendData": "trend --json data: the portfolio rollup, one row per reviewed bundle, and the opt-in overlap and corpus joins. Every tally key is always present.",
       "/$defs/trendStatuses": "A five-status finding tally: open, addressed, wont-fix, false-positive, deferred.",
       "/$defs/trendTiers": "A four-tier finding tally: critical, important, informational, untagged.",
+      "/$defs/trendSources": "A two-source finding tally: model and tool.",
       "/$defs/trendProvenance": "The distinct tools, models, and prompt hashes behind the rollup; a bundle that recorded none contributes a null entry.",
       "/$defs/trendPeriod": "One time bucket of the rollup, with the same tallies as the whole.",
       "/$defs/trendBundleRow": "One reviewed bundle's contribution: its model/effort inventory, provenance triple, status and tier tallies, and bundle-local counts.",
@@ -192,9 +194,12 @@
       "/$defs/repair/properties/code": "The repair family: fence unwrap, prose extraction, scalar-to-array, key alias, enum synonym, or trivia removal.",
       "/$defs/repair/properties/path": "JSONPath of the repaired value in the normalized review.",
       "/$defs/reportCounts/properties/by_category": "Whole-store finding counts by published category plus untagged; every key is always present with zero defaults.",
+      "/$defs/reportCounts/properties/by_source": "Whole-store finding counts by provenance source (model and tool).",
       "/$defs/reportFilters/properties/category": "The active --category filter, or null when the run did not filter by category.",
       "/$defs/trendData/properties/by_category": "Portfolio finding counts by observed category with untagged for null entries; only observed categories appear.",
+      "/$defs/trendData/properties/by_source": "Portfolio finding counts by provenance source (model and tool).",
       "/$defs/trendBundleRow/properties/by_category": "One bundle's finding counts by observed category with untagged for null entries.",
+      "/$defs/trendBundleRow/properties/by_source": "One bundle's finding counts by provenance source (model and tool).",
       "/$defs/calibrateData/properties/precision": "Live-join precision: totals plus by_tier counts and by_category cells (fixed, resolved_unfixed, open, unknown, judged, resolution_rate; a zero judged denominator reads null). Outcome rows carry the finding's category, null when untagged.",
       "/$defs/indexData": "index --json data: one object across build, status, prune, callers, tests-for, co-changed, owners, and blast-radius, so kind names the subcommand and every other key is optional.",
       "/$defs/indexShards": "The local shard store: file count and byte total.",
@@ -243,7 +248,11 @@
       "/$defs/briefSite/properties/path": "A changed file path.",
       "/$defs/briefSite/properties/line": "Reviewed line inside a hunk; absent means the whole file.",
       "/$defs/entry/properties/rigor_source": "Where the recorded rung came from: model when the review set it, default when the checker filled said, verified reserved for later.",
-      "/$defs/entry/properties/category": "Optional agent-supplied taxonomy; absent and null group as untagged in report, calibrate, and trend. Never part of the sig."
+      "/$defs/entry/properties/category": "Optional agent-supplied taxonomy; absent and null group as untagged in report, calibrate, and trend. Never part of the sig.",
+      "/$defs/entry/properties/source": "Finding provenance: model for agent review findings, tool for ingested SARIF findings. Absent reads as model.",
+      "/$defs/entry/properties/tool": "Originating analysis tool name recorded when source is tool.",
+      "/$defs/entry/properties/rule_id": "Tool rule identifier recorded when source is tool.",
+      "/$defs/entry/properties/fingerprint": "Deterministic tool result fingerprint used for idempotent SARIF re-ingestion."
     }
   },
   "post": {
