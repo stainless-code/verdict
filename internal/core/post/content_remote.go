@@ -137,15 +137,17 @@ func (st *state) remoteEvidence() ([]commentIdentity, string) {
 	for _, m := range remoteObjects(st.dir, "inline.json") {
 		head, obj := remoteComment(m)
 		remote = append(remote, identifyComment(head, obj))
-		if head != "" && head != st.commitID {
-			previous = head
-		}
+		previous = priorHead(st.commitID, head, previous)
 	}
 	for _, rev := range st.liveReviews() {
-		if rev.commitID != "" && rev.commitID != st.commitID {
-			previous = rev.commitID
-		}
+		previous = priorHead(st.commitID, rev.commitID, previous)
 	}
-
 	return remote, previous
+}
+
+func priorHead(current, candidate, previous string) string {
+	if candidate != "" && candidate != current {
+		return candidate
+	}
+	return previous
 }
