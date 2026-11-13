@@ -183,6 +183,10 @@ c.txt
 {
   "schema_version": "1",
   "patterns_source": ".verdict/ignore@base",
+  "defaults": [
+    "default:generated",
+    "default:attribute"
+  ],
   "ignore": [],
   "no_default_excludes": false,
   "excluded": [],

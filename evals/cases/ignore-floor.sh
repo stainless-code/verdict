@@ -31,7 +31,11 @@ assert_exit 'trusted exclusions fetch' 0
 BUNDLE=.verdict/state/local-silence
 if cmp -s expected.raw.diff "$BUNDLE/full.raw.diff"; then good 'raw bytes preserved'; else bad 'raw bytes changed'; fi
 assert_eq 'ignore receipt' ignore:1 "$(jq -r '.excluded[] | select(.path=="vendor/.env") | .rule_id' "$BUNDLE/excluded.json")"
-assert_eq 'attribute receipt' default:attribute "$(jq -r '.excluded[] | select(.path=="types.gen.go") | .rule_id' "$BUNDLE/excluded.json")"
+assert_eq 'attribute receipt' 'attribute:*.gen.go' "$(jq -r '.excluded[] | select(.path=="types.gen.go") | .rule_id' "$BUNDLE/excluded.json")"
+assert_eq 'base pattern source' '.verdict/ignore@base' "$(jq -r '.patterns_source' "$BUNDLE/excluded.json")"
+assert_eq 'defaults in effect' 'default:generated,default:attribute' "$(jq -r '.defaults|join(",")' "$BUNDLE/excluded.json")"
+assert_eq 'attribute matched pattern' '*.gen.go' "$(jq -r '.excluded[]|select(.path=="types.gen.go")|.pattern' "$BUNDLE/excluded.json")"
+assert_eq 'attribute reason' attribute "$(jq -r '.excluded[]|select(.path=="types.gen.go")|.reason' "$BUNDLE/excluded.json")"
 assert_file_grep 'hostile head controls did not exclude notes' "$BUNDLE/full.diff" 'b/notes.txt'
 assert_file_grep 'sensitive path survives exclusion' "$BUNDLE/sensitive.txt" 'vendor/.env'
 assert_eq 'base exclusions use no host calls' 0 "$(wc -l < "$EVAL_STUBLOG" | tr -d ' ')"
@@ -50,6 +54,7 @@ assert_file_grep 'no defaults disables attributes' "$OVERRIDES/full.diff" 'b/typ
 assert_eq 'CLI exclusion receipt' cli:2 "$(jq -r '.excluded[]|select(.path=="notes.txt")|.rule_id' "$OVERRIDES/excluded.json")"
 assert_eq 'CLI source receipt' cli "$(jq -r '.patterns_source' "$OVERRIDES/excluded.json")"
 assert_eq 'disabled default receipt' true "$(jq -r '.no_default_excludes' "$OVERRIDES/excluded.json")"
+assert_eq 'disabled defaults recorded' 0 "$(jq '.defaults|length' "$OVERRIDES/excluded.json")"
 jq -n --slurpfile manifest "$BUNDLE/chunks/manifest.json" '{schema_version:"1",body:"> Review complete. Policy exceptions are recorded.",chunks:($manifest[0].chunks|map(.name)),comments:[{path:"notes.txt",line:2,body:"Intentional compatibility behavior.",severity:"critical"},{path:"vendor/.env",line:1,body:"Keep credential material out of the review body.",severity:"important"}],suppressed:[{path:"notes.txt",line:2,source:"agent",reason:"An intentional compatibility exception for the legacy parser."},{path:"vendor/.env",source:"exclusion",exclusion_id:"ignore:1",reason:"This path is excluded at the trusted base."}]}' > "$BUNDLE/review.json"
 run_review record acme/app local-silence --json
 assert_exit 'record suppression receipts' 0

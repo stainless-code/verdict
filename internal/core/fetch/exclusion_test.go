@@ -41,7 +41,7 @@ func TestAttributeExclusionsAndReinclude(t *testing.T) {
 		t.Fatal("false attribute did not override true")
 	}
 	filtered, receipt = excludedDiff(keptSection, nil, nil, []byte("*.go linguist-vendored\n"))
-	if filtered != "" || len(receipt.Excluded) != 1 || receipt.Excluded[0].RuleID != "default:attribute" {
+	if filtered != "" || len(receipt.Excluded) != 1 || receipt.Excluded[0].RuleID != "attribute:*.go" {
 		t.Fatal("attribute not excluded")
 	}
 	rules, err := exclude.ParseIgnore([]byte("!vendor/**"), "ignore")
@@ -158,7 +158,45 @@ func assertOverrideReceipt(t *testing.T, dir string, ignore []string, off bool) 
 	if err := json.Unmarshal(raw, &receipt); err != nil {
 		t.Fatal(err)
 	}
+	wantDefaults := "default:generated,default:attribute"
+	if off {
+		wantDefaults = ""
+	}
+	if strings.Join(receipt.Defaults, ",") != wantDefaults {
+		t.Fatalf("defaults = %v; want %s", receipt.Defaults, wantDefaults)
+	}
 	if receipt.NoDefaultExcludes != off || strings.Join(receipt.Ignore, "|") != strings.Join(ignore, "|") {
 		t.Fatalf("override receipt = %+v", receipt)
+	}
+}
+
+func TestExclusionRuleExplanation(t *testing.T) {
+	cases := []exclusionExample{
+		{"default", generatedSection, "", "ignore", "", "default:generated", "vendor/**", "default"},
+		{"ignore", generatedSection, "vendor/*", "ignore", "", "ignore:1", "vendor/*", "ignore"},
+		{"cli", generatedSection, "vendor/*", "cli", "", "cli:1", "vendor/*", "cli"},
+		{"attribute", keptSection, "", "ignore", "*.go linguist-generated\napp_test.go linguist-vendored\n*.go -linguist-generated\n", "attribute:app_test.go", "app_test.go", "attribute"},
+	}
+	for i := range cases {
+		tc := &cases[i]
+		t.Run(tc.name, func(t *testing.T) { checkExclusionExplanation(t, tc) })
+	}
+}
+
+type exclusionExample struct{ name, raw, patterns, source, attrs, id, pattern, reason string }
+
+func checkExclusionExplanation(t *testing.T, tc *exclusionExample) {
+	t.Helper()
+	rules, err := exclude.ParseIgnore([]byte(tc.patterns), tc.source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, receipt := excludedDiff(tc.raw, exclude.Defaults(), rules, []byte(tc.attrs))
+	if len(receipt.Excluded) != 1 {
+		t.Fatalf("receipt = %+v", receipt)
+	}
+	row := receipt.Excluded[0]
+	if row.RuleID != tc.id || row.Pattern != tc.pattern || row.Reason != tc.reason {
+		t.Fatalf("explanation = %+v; want %s %s %s", row, tc.id, tc.pattern, tc.reason)
 	}
 }

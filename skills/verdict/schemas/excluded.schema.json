@@ -7,6 +7,10 @@
   "properties": {
     "schema_version": { "const": "1" },
     "patterns_source": { "type": "string" },
+    "defaults": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
     "ignore": {
       "type": "array",
       "items": { "type": "string" }
@@ -24,6 +28,7 @@
   "required": [
     "schema_version",
     "patterns_source",
+    "defaults",
     "ignore",
     "no_default_excludes",
     "excluded",
@@ -40,9 +45,11 @@
         "path": { "type": "string" },
         "old_path": { "type": "string" },
         "rule_id": { "type": "string" },
+        "pattern": { "type": "string" },
+        "reason": { "enum": ["default", "attribute", "ignore", "cli"] },
         "bytes": { "type": "integer", "minimum": 0 }
       },
-      "required": ["path", "rule_id", "bytes"],
+      "required": ["path", "rule_id", "pattern", "reason", "bytes"],
       "additionalProperties": true
     }
   }

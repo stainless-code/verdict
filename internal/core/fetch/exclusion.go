@@ -57,6 +57,10 @@ func filterExcluded(ctx2 *fetchRunCtx) error {
 	receipt.Ignore = append([]string{}, ctx2.ignore...)
 	receipt.NoDefaultExcludes = ctx2.noDefaultExcludes
 	receipt.PatternsSource = exclusionSource(ctx2)
+	receipt.Defaults = []string{}
+	if !ctx2.noDefaultExcludes {
+		receipt.Defaults = []string{"default:generated", "default:attribute"}
+	}
 	if err := writeExcludedDiff(dir, raw, filtered, &receipt); err != nil {
 		return err
 	}
@@ -80,7 +84,7 @@ func excludedDiff(raw string, defaults, explicit []exclude.Rule, attrs []byte) (
 		rule, drop := exclusionRule(defaults, explicit, attrs, f.Path, f.OldPath)
 		if drop {
 			receipt.Excluded = append(receipt.Excluded, ExcludedPath{
-				Path: f.Path, OldPath: f.OldPath, RuleID: rule.ID, Bytes: len(section),
+				Path: f.Path, OldPath: f.OldPath, RuleID: rule.ID, Pattern: rule.Pattern, Reason: rule.Reason, Bytes: len(section),
 			})
 			receipt.ExcludedBytes += len(section)
 		} else {
@@ -154,8 +158,10 @@ func writeExcludedReceipt(dir string, receipt *ExcludedFile) error {
 
 func exclusionRule(defaults, explicit []exclude.Rule, attrs []byte, file, old string) (exclude.Rule, bool) {
 	rule, drop := exclude.Excluded(defaults, file, old)
-	if exclude.Attributes(attrs, file) || exclude.Attributes(attrs, old) {
-		rule, drop = exclude.Rule{ID: "default:attribute"}, true
+	if attr, ok := exclude.AttributeRule(attrs, file); ok {
+		rule, drop = attr, true
+	} else if attr, ok := exclude.AttributeRule(attrs, old); old != "" && ok {
+		rule, drop = attr, true
 	}
 	if match, yes := exclude.Excluded(explicit, file, old); match.ID != "" {
 		return match, yes

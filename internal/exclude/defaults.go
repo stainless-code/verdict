@@ -25,25 +25,34 @@ func Defaults() []Rule {
 	return rules
 }
 
-// Attributes reads root linguist attributes without discovering nested files.
+// AttributeRule identifies an active root linguist attribute for a path.
 // Each attribute is independently last-match-wins, including explicit false.
-func Attributes(raw []byte, file string) bool {
-	values := map[string]bool{}
+func AttributeRule(raw []byte, file string) (Rule, bool) {
+	values := map[string]Rule{}
 	for line := range strings.SplitSeq(string(raw), "\n") {
 		fields := strings.Fields(line)
 		if !attributeMatch(fields, file) {
 			continue
 		}
-		applyAttributes(values, fields[1:])
+		applyAttributes(values, fields[0], fields[1:])
 	}
-	return values["linguist-generated"] || values["linguist-vendored"]
+	for _, key := range []string{"linguist-generated", "linguist-vendored"} {
+		if rule, ok := values[key]; ok {
+			return rule, true
+		}
+	}
+	return Rule{}, false
 }
 
-func applyAttributes(values map[string]bool, attrs []string) {
+func applyAttributes(values map[string]Rule, pattern string, attrs []string) {
 	for _, attr := range attrs {
 		key, value, _ := strings.Cut(strings.TrimLeft(attr, "-!"), "=")
-		if key == "linguist-generated" || key == "linguist-vendored" {
-			values[key] = attributeValue(attr, value)
+		if key != "linguist-generated" && key != "linguist-vendored" {
+			continue
+		}
+		delete(values, key)
+		if attributeValue(attr, value) {
+			values[key] = Rule{ID: "attribute:" + pattern, Pattern: pattern, Reason: "attribute"}
 		}
 	}
 }

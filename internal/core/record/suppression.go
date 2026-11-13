@@ -337,7 +337,7 @@ func (st *state) autoExclusion(e *jq.Obj) bool {
 		return false
 	}
 	for _, row := range receipt.Excluded {
-		if exclusionRowMatches(row, suppressionString(e, fieldPath)) {
+		if exclusionRowMatches(&row, suppressionString(e, fieldPath)) {
 			st.stampSuppression(e, jq.NewObj(
 				sourceKey, "exclusion", reasonKey, "Path excluded from the reviewed diff by "+row.RuleID, exclusionKey, row.RuleID))
 			return true
@@ -371,7 +371,7 @@ func validExclusionRows(rows []core.ExcludedPath) bool {
 	return true
 }
 
-func exclusionRowMatches(row core.ExcludedPath, file string) bool {
+func exclusionRowMatches(row *core.ExcludedPath, file string) bool {
 	return file != "" && (row.Path == file || row.OldPath == file)
 }
 

@@ -28,7 +28,7 @@ still appears there.
 `excluded.json` records each removed section's path, rule id, and byte count.
 `toc.txt` lists exclusions separately from files with no hunks. The receipt
 exists even when its exclusion list is empty. Rule ids are `default:generated`,
-`default:attribute`, or `ignore:<physical-line-number>`.
+`attribute:<matching-pattern>`, `ignore:<physical-line-number>`, or `cli:<n>`.
 
 ## Finding suppression
 
@@ -97,3 +97,9 @@ last, above the base ignore file; `!` re-includes. `--no-default-excludes`
 disables generated and attribute defaults while the ignore file still applies.
 `excluded.json` records `ignore`, `no_default_excludes`, and `patterns_source`
 (`cli` when run overrides are present).
+
+Each receipt row carries the matched `pattern` and a `reason` of `default`,
+`attribute`, `ignore`, or `cli`. `defaults` lists the active built-in rule ids
+(or an empty array when disabled). `patterns_source` records `.verdict/ignore@base`,
+`.verdict/ignore@head` for the recorded opt-out, or `cli` when CLI rules win.
+Attribute rows retain the active pattern after false/negated settings are applied.

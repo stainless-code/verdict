@@ -1,6 +1,7 @@
 {
   "schema_version": "1",
   "patterns_source": ".verdict/ignore@base",
+  "defaults": ["default:generated", "default:attribute"],
   "ignore": [],
   "no_default_excludes": false,
   "excluded": [
@@ -8,6 +9,8 @@
       "path": "vendor/.env",
       "old_path": "vendor/.env",
       "rule_id": "ignore:1",
+      "pattern": "vendor/**",
+      "reason": "ignore",
       "bytes": 123
     }
   ],
