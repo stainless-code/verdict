@@ -15,6 +15,9 @@ var harness *golden.Harness
 
 // TestMain builds the CLI once for the parity legs and runs the suite.
 func TestMain(m *testing.M) {
+	if os.Getenv("VERDICT_CRASH_EXPORT") != "" {
+		os.Exit(m.Run())
+	}
 	os.Exit(golden.RunMain(m, &harness))
 }
 

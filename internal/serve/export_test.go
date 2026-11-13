@@ -1,10 +1,12 @@
 package serve
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -123,7 +125,7 @@ func TestHTMLInterruptedRefresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := readExport(t, filepath.Join(dest, "data.json"))
-	interruptExport(t, dest, layer)
+	interruptExport(t, dest)
 	old := oldExport(t, dest)
 	after := readExport(t, filepath.Join(filepath.Dir(dest), old, "data.json"))
 	if !bytes.Equal(before, after) {
@@ -159,7 +161,7 @@ func runExportUI(t *testing.T, dest string) {
 	}
 }
 
-func interruptExport(t *testing.T, dest string, _ Layer) {
+func interruptExport(t *testing.T, dest string) {
 	t.Helper()
 	exe, err := os.Executable()
 	if err != nil {
@@ -168,11 +170,51 @@ func interruptExport(t *testing.T, dest string, _ Layer) {
 	cmd := exec.CommandContext(t.Context(), exe, "-test.run=^TestHTMLCrashChild$")
 	cmd.Env = testenv.Base(map[string]string{"VERDICT_CRASH_EXPORT": dest, "HOME": exportTempDir(t)})
 	cmd.WaitDelay = time.Second
-	out, err := cmd.CombinedOutput()
-	if err == nil {
-		t.Fatalf("publisher did not crash: %s", out)
+	var diag bytes.Buffer
+	cmd.Stderr = &diag
+	scanner := startExportPublisher(t, cmd)
+	if !scanner.Scan() || scanner.Text() != "export publication seam" {
+		t.Fatalf("publisher did not reach seam: %q; %v", scanner.Text(), scanner.Err())
 	}
-	t.Logf("publisher termination: %v; %s", err, out)
+	if err := cmd.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Wait(); err == nil {
+		t.Fatalf("publisher did not crash: %s", diag.String())
+	} else {
+		t.Logf("publisher termination at seam: %v; %s", err, diag.String())
+	}
+}
+
+func startExportPublisher(t *testing.T, cmd *exec.Cmd) *bufio.Scanner {
+	t.Helper()
+	input, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = input.Close() })
+	output, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { reapExportPublisher(t, cmd) })
+	return bufio.NewScanner(output)
+}
+
+func reapExportPublisher(t *testing.T, cmd *exec.Cmd) {
+	t.Helper()
+	if cmd.ProcessState != nil {
+		return
+	}
+	if err := cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+		t.Errorf("kill publisher: %v", err)
+	}
+	if err := cmd.Wait(); err != nil {
+		t.Logf("publisher cleanup: %v", err)
+	}
 }
 
 // TestHTMLCrashChild is the isolated publisher killed at the publication seam.
@@ -191,11 +233,14 @@ func crashRename(from, to string) error {
 	if !strings.HasPrefix(filepath.Base(from), filepath.Base(to)+".tmp-") {
 		return os.Rename(from, to)
 	}
-	process, err := os.FindProcess(os.Getpid())
-	if err != nil {
+	if _, err := fmt.Fprintln(os.Stdout, "export publication seam"); err != nil {
 		return err
 	}
-	return process.Kill()
+	var release [1]byte
+	if _, err := os.Stdin.Read(release[:]); err != nil {
+		return err
+	}
+	return errors.New("publisher released without being killed")
 }
 
 func readExport(t *testing.T, path string) []byte {

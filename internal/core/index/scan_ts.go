@@ -661,7 +661,7 @@ func (l *tsLexer) eat(prefix string) bool {
 
 // tsExtract records the declarations, imports, and call sites of one token
 // stream.
-func tsExtract(tokens []tsToken, buf *fileBuf) {
+func tsExtract(tokens []tsToken, buf *fileBuf) int {
 	x := &tsExtractor{
 		tokens: tokens, buf: buf, skip: map[int]bool{},
 		match: tsPairs(tokens), depth: tsBraceDepths(tokens),
@@ -671,18 +671,20 @@ func tsExtract(tokens []tsToken, buf *fileBuf) {
 	x.imports()
 	x.declarations()
 	x.calls()
+	return x.blockVisits
 }
 
 // tsExtractor walks one token stream.
 type tsExtractor struct {
-	skip   map[int]bool
-	buf    *fileBuf
-	tokens []tsToken
-	match  []int
-	depth  []int
-	blocks []tsBlock
-	inside []int
-	outer  []int
+	skip        map[int]bool
+	buf         *fileBuf
+	tokens      []tsToken
+	match       []int
+	depth       []int
+	blocks      []tsBlock
+	inside      []int
+	outer       []int
+	blockVisits int
 }
 
 // tsBlock is one declaration body: a class, interface, enum, or type literal.
@@ -905,9 +907,14 @@ func negIndex(n int) []int {
 // index.
 func (x *tsExtractor) enclosingBlock(i int) *tsBlock {
 	if b := x.inside[i]; b >= 0 {
-		return &x.blocks[b]
+		return x.blockAt(b)
 	}
 	return nil
+}
+
+func (x *tsExtractor) blockAt(i int) *tsBlock {
+	x.blockVisits++
+	return &x.blocks[i]
 }
 
 // classMember returns the class one token index is a direct member of, when the
@@ -1392,7 +1399,7 @@ func (x *tsExtractor) callParen(i int) bool {
 // rather than executable code, where a `name(` is a signature, not a call.
 func (x *tsExtractor) inTypeBlock(i int) bool {
 	for b := x.inside[i]; b >= 0; b = x.outer[b] {
-		if x.blocks[b].kind != blockClass {
+		if x.blockAt(b).kind != blockClass {
 			return true
 		}
 	}
