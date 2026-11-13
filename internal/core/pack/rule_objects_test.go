@@ -5,6 +5,7 @@ import (
 	"testing/fstest"
 )
 
+// TestStructuredRuleObject pins the manifest metadata and resolved severity.
 func TestStructuredRuleObject(t *testing.T) {
 	p, ref := Load(fstest.MapFS{
 		"pack.json":          {Data: []byte(`{"schema_version":"1","name":"test/rules","version":"1.0.0","lenses":[{"id":"check"}],"severity":{"must":"important"},"rules":[{"id":"safe-rule","severity":"must","globs":["*.go"],"category":"safety","description":"Check errors","examples":["return err"]}]}`)},

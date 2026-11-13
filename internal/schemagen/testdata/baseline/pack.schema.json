@@ -32,10 +32,9 @@
       }
     },
     "lenses": {
-      "description": "One row per lens, at least one; the loader refuses more than 64 with pack-too-large. Each id names lenses/<id>.md.",
+      "description": "One row per lens; a pack must declare lenses or rules. The loader refuses more than 64 lenses with pack-too-large. Each id names lenses/<id>.md.",
       "type": "array",
-      "items": { "$ref": "#/$defs/lens" },
-      "minItems": 1
+      "items": { "$ref": "#/$defs/lens" }
     },
     "rules": {
       "description": "One row per KB rule; each id names rules/<id>.md, globs are required, and the severity key resolves through this pack's severity map.",
@@ -43,7 +42,7 @@
       "items": { "$ref": "#/$defs/rule" }
     }
   },
-  "required": ["schema_version", "name", "version", "lenses"],
+  "required": ["schema_version", "name", "version"],
   "additionalProperties": false,
   "$defs": {
     "lens": {

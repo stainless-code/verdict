@@ -301,7 +301,7 @@
       "/properties/version": "Pack semver; fetch prints <name>@<version> on every plan group line.",
       "/properties/replace": "Lower-layer pack names this pack may override by id. Replacement is downward only: naming a pack at the same or a higher layer refuses pack-conflict.",
       "/properties/severity": "The pack's severity names mapped to critical, important, or informational; every rule's severity key must exist here.",
-      "/properties/lenses": "One row per lens, at least one; the loader refuses more than 64 with pack-too-large. Each id names lenses/<id>.md.",
+      "/properties/lenses": "One row per lens; a pack must declare lenses or rules. The loader refuses more than 64 lenses with pack-too-large. Each id names lenses/<id>.md.",
       "/properties/rules": "One row per KB rule; each id names rules/<id>.md, globs are required, and the severity key resolves through this pack's severity map.",
       "/$defs/lens": "One lens row: its id, optional group-file globs, and the dispatch caps. A lens with no globs is offered for every plan group; a lens whose globs match none of a group's files is not offered for that group.",
       "/$defs/rule": "One rule row: a KB id, the severity-map key that resolves its level, required scope globs, and the tools it talks about.",

@@ -93,7 +93,7 @@ type Manifest struct {
 	Version       string            `json:"version"`
 	Replace       []string          `json:"replace,omitempty"`
 	Severity      map[string]string `json:"severity,omitempty" value_enum:"critical|important|informational"`
-	Lenses        []LensSpec        `json:"lenses"             minItems:"1"`
+	Lenses        []LensSpec        `json:"lenses,omitempty"`
 	Rules         []RuleSpec        `json:"rules,omitempty"`
 }
 
@@ -115,8 +115,8 @@ type RuleSpec struct {
 	Description string   `json:"description,omitempty"`
 	Examples    []string `json:"examples,omitempty"`
 	ID          string   `json:"id"`
-	Severity    string   `json:"severity"        minLength:"1"`
-	Globs       []string `json:"globs"           minItems:"1"`
+	Severity    string   `json:"severity"              minLength:"1"`
+	Globs       []string `json:"globs"                 minItems:"1"`
 	Tools       []string `json:"tools,omitempty"`
 }
 
@@ -592,7 +592,7 @@ func validate(manifest *Manifest, lensRowSet []map[string]json.RawMessage, name 
 	if ref := validateSeverity(manifest, name); ref != nil {
 		return ref
 	}
-	if len(manifest.Lenses) == 0 {
+	if len(manifest.Lenses) == 0 && len(manifest.Rules) == 0 {
 		return badPack(name + " names no lenses")
 	}
 	if len(manifest.Lenses) > MaxLenses {

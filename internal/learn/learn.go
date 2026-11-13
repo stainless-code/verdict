@@ -44,6 +44,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, repoRoot string) int
 // typed service request.
 func learnRequest(r *cli.Runner, f *flags, repoRoot string) *learncore.Request {
 	out := &learncore.Request{
+		Pack:       f.pack,
 		Rule:       f.rule,
 		Scope:      f.scope,
 		ID:         f.id,
@@ -64,6 +65,7 @@ func learnRequest(r *cli.Runner, f *flags, repoRoot string) *learncore.Request {
 
 // flags carries the parsed learn options.
 type flags struct {
+	pack       string
 	rule       string
 	scope      string
 	id         string
@@ -118,6 +120,7 @@ const learnIDWant = "<id>"
 // learnWants names each value flag's accepted operand for the missing-value
 // usage error.
 var learnWants = map[string]string{
+	"--pack":       "<directory>",
 	"--rule":       "<text>",
 	"--scope":      "<globs>",
 	"--id":         learnIDWant,
@@ -131,6 +134,8 @@ var learnWants = map[string]string{
 // setFlag stores one value-taking flag.
 func setFlag(f *flags, name, val string) {
 	switch name {
+	case "--pack":
+		f.pack = val
 	case "--rule":
 		f.rule = val
 	case "--scope":
@@ -152,6 +157,9 @@ func setFlag(f *flags, name, val string) {
 
 // appendRentry owns the rentry_cmd build (flag order fixed, values elided).
 func appendRentry(r *cli.Runner, f *flags) {
+	if f.pack != "" {
+		r.Rentry += " --pack ... --id ..."
+	}
 	if f.rule != "" {
 		r.Rentry += " --rule ..."
 	}
@@ -179,5 +187,5 @@ const (
 	// rigorPointed is the --rigor default.
 	rigorPointed = "pointed"
 	// usageFlags lists the accepted flags for the unknown-flag message.
-	usageFlags = "--rule, --scope, --id, --provenance, --rigor, --status, --retire, --restore, --reason, --json"
+	usageFlags = "--pack, --rule, --scope, --id, --provenance, --rigor, --status, --retire, --restore, --reason, --json"
 )
