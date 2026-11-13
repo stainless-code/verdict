@@ -30,8 +30,7 @@ func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "bench:", err)
 		status := 1
-		var usage *usageError
-		if errors.As(err, &usage) {
+		if _, ok := errors.AsType[*usageError](err); ok {
 			status = 2
 		}
 		os.Exit(status) //nolint:forbidigo // a command's exit status is its only failure channel.

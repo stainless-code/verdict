@@ -3893,3 +3893,11 @@ The development benchmark runner accepts `-repeats N`, `-k K`, and
 `-render <publication.json>`. It writes JSON plus static Markdown with
 explicit metric denominators, sample counts, weights, and provenance.
 `-render` launches no agent. See [benchmark publication](benchmark.md#publish-and-render-a-run).
+
+Corpus metrics use `false_discovery_rate` for false-positive findings divided
+by reported findings. `control_fp_rate` is the fraction of clean control case
+samples with any finding; `control_findings_per_case` reports the raw findings
+per control. `severity_weighted_pooled_f1` computes
+`2*WTP / (2*WTP + WFP + WFN)` after applying severity weights to individual
+outcomes. It differs from averaging per-severity F1 by class support. See
+[metric denominators](benchmark.md#metric-denominators).

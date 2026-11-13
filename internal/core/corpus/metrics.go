@@ -11,22 +11,23 @@ import (
 
 // Metrics keeps the denominator and observation count beside every corpus rate.
 type Metrics struct {
-	CostUSD            *float64    `json:"cost_usd"`
-	LatencyS           *float64    `json:"latency_s"`
-	SignalToNoise      Measurement `json:"signal_to_noise"`
-	AnyOfKRecall       Measurement `json:"any_of_k_recall"`
-	ControlFPRate      Measurement `json:"control_fp_rate"`
-	SeverityWeightedF1 Measurement `json:"severity_weighted_f1"`
-	Precision          Measurement `json:"precision"`
-	FalsePositiveRate  Measurement `json:"false_positive_rate"`
-	Recall             Measurement `json:"recall"`
-	CostN              int         `json:"cost_n"`
-	LatencyN           int         `json:"latency_n"`
-	Samples            int         `json:"samples"`
-	IncompleteCohorts  int         `json:"incomplete_cohorts"`
+	ControlFindingsPerCase   Measurement `json:"control_findings_per_case"`
+	CostUSD                  *float64    `json:"cost_usd"`
+	LatencyS                 *float64    `json:"latency_s"`
+	SignalToNoise            Measurement `json:"signal_to_noise"`
+	AnyOfKRecall             Measurement `json:"any_of_k_recall"`
+	ControlFPRate            Measurement `json:"control_fp_rate"`
+	SeverityWeightedPooledF1 Measurement `json:"severity_weighted_pooled_f1"`
+	Precision                Measurement `json:"precision"`
+	FalseDiscoveryRate       Measurement `json:"false_discovery_rate"`
+	Recall                   Measurement `json:"recall"`
+	CostN                    int         `json:"cost_n"`
+	LatencyN                 int         `json:"latency_n"`
+	Samples                  int         `json:"samples"`
+	IncompleteCohorts        int         `json:"incomplete_cohorts"`
 }
 
-type metricCounts struct{ bugs, reported, tp, fp, controls, controlFP, weightedTP, weightedFP, weightedFN int }
+type metricCounts struct{ bugs, reported, tp, fp, controls, controlFP, controlsFlagged, weightedTP, weightedFP, weightedFN int }
 
 func (c *metricCounts) add(s *Sample) {
 	r, w := s.Report, s.Sampling.Weights
@@ -34,10 +35,7 @@ func (c *metricCounts) add(s *Sample) {
 	c.reported += r.Reported
 	c.tp += r.Matched
 	c.fp += r.FalsePositives
-	if r.Case.Kind == kindControl {
-		c.controls++
-		c.controlFP += r.FalsePositives
-	}
+	c.addControl(r)
 	for _, o := range r.Outcomes {
 		if o.HasBugHit {
 			c.weightedTP += w.Weight(r.Case.Bugs[o.BugIndex].Severity)
@@ -62,9 +60,10 @@ func Measure(samples []Sample) *Metrics {
 	}
 	m.Precision = measurement(c.tp, c.reported, c.reported, "reported findings")
 	m.Recall = measurement(c.tp, c.bugs, c.bugs, "bug samples")
-	m.FalsePositiveRate = measurement(c.fp, c.reported, c.reported, "reported findings")
-	m.ControlFPRate = measurement(c.controlFP, c.controls, c.controls, "control case samples; false-positive findings per control")
-	m.SeverityWeightedF1 = measurement(2*c.weightedTP,
+	m.FalseDiscoveryRate = measurement(c.fp, c.reported, c.reported, "reported findings")
+	m.ControlFPRate = measurement(c.controlsFlagged, c.controls, c.controls, "control case samples with at least one finding")
+	m.ControlFindingsPerCase = measurement(c.controlFP, c.controls, c.controls, "false-positive findings per control case sample")
+	m.SeverityWeightedPooledF1 = measurement(2*c.weightedTP,
 		2*c.weightedTP+c.weightedFP+c.weightedFN,
 		c.bugs+c.fp,
 		"weighted F1; n=bug samples plus false-positive findings",
@@ -101,10 +100,11 @@ func (m *Metrics) Summary() string {
 	}{
 		{"precision", m.Precision},
 		{"recall", m.Recall},
-		{"false_positive_rate", m.FalsePositiveRate},
+		{"false_discovery_rate", m.FalseDiscoveryRate},
 		{"any_of_k_recall", m.AnyOfKRecall},
 		{"control_fp_rate", m.ControlFPRate},
-		{"severity_weighted_f1", m.SeverityWeightedF1},
+		{"control_findings_per_case", m.ControlFindingsPerCase},
+		{"severity_weighted_pooled_f1", m.SeverityWeightedPooledF1},
 		{"signal_to_noise", m.SignalToNoise},
 	}
 	var text strings.Builder
@@ -136,4 +136,15 @@ func completeTotal(total float64, n, samples int) *float64 {
 	}
 	v := math.Round(total*measurementScale) / measurementScale
 	return &v
+}
+
+func (c *metricCounts) addControl(r *Report) {
+	if r.Case.Kind != kindControl {
+		return
+	}
+	c.controls++
+	c.controlFP += r.FalsePositives
+	if r.Reported > 0 {
+		c.controlsFlagged++
+	}
 }

@@ -77,10 +77,11 @@ func renderMetricTable(out *strings.Builder, rep *Report) {
 	}{
 		{"precision", m.Precision},
 		{"recall", m.Recall},
-		{"false_positive_rate", m.FalsePositiveRate},
+		{"false_discovery_rate", m.FalseDiscoveryRate},
 		{"any_of_k_recall", rep.AnyOfKRecall},
 		{"control_fp_rate", m.ControlFPRate},
-		{"severity_weighted_f1", m.SeverityWeightedF1},
+		{"control_findings_per_case", m.ControlFindingsPerCase},
+		{"severity_weighted_pooled_f1", m.SeverityWeightedPooledF1},
 		{"signal_to_noise", m.SignalToNoise},
 	}
 	out.WriteString("## Metrics\n\n<!-- prettier-ignore -->\n" +

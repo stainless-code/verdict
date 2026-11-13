@@ -21,7 +21,7 @@ if jq -e '.k == 3 and .repeats == 3 and .any_of_k_recall.value == 1 and
   (.tool_version | length > 0) and (.commands | length > 0) and
   .trend_corpus.metrics.precision.value == 0.6667 and
   .trend_corpus.metrics.control_fp_rate.denominator == 3 and
-  .trend_corpus.metrics.severity_weighted_f1.value == 0.9836 and
+  .trend_corpus.metrics.severity_weighted_pooled_f1.value == 0.9836 and
   .trend_corpus.metrics.cost_usd == null and .trend_corpus.metrics.latency_n == 6' "$report" >/dev/null; then
   good "k=3, precision 6/9, control FP 0/3, weighted F1 180/183 and metadata match"
 else

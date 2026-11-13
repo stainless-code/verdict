@@ -94,7 +94,7 @@ func (r *corpusResult) Wire() *jq.Obj {
 		"missed", len(rep.Missed),
 		"precision", corpuscore.RateOrNil(rep.Matched, rep.Reported),
 		"recall", corpuscore.RateOrNil(rep.Matched, len(rep.Case.Bugs)),
-		"false_positive_rate", corpuscore.RateOrNil(rep.FalsePositives, rep.Reported),
+		"false_discovery_rate", corpuscore.RateOrNil(rep.FalsePositives, rep.Reported),
 		"sampling_hits", hits,
 		"outcomes", outcomes,
 		"missed_bugs", missed,
@@ -155,7 +155,7 @@ func (st *state) emitCorpusHuman(r *corpusResult) {
 		st.human(fmt.Sprintf("missed: %s:%d %s (%s)", b.Path, b.Line, b.Kind, b.Severity))
 	}
 	st.human(fmt.Sprintf("rates: bugs=%d reported=%d matched=%d missed=%d false-positives=%d "+
-		"precision=%s (n=%d) recall=%s (n=%d) false-positive-rate=%s (n=%d)",
+		"precision=%s (n=%d) recall=%s (n=%d) false-discovery-rate=%s (n=%d)",
 		len(rep.Case.Bugs), rep.Reported, rep.Matched, len(rep.Missed), rep.FalsePositives,
 		corpuscore.RateText(corpuscore.RateOrNil(rep.Matched, rep.Reported)), rep.Reported,
 		corpuscore.RateText(corpuscore.RateOrNil(rep.Matched, len(rep.Case.Bugs))), len(rep.Case.Bugs),

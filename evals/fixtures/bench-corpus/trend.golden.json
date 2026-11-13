@@ -3,7 +3,7 @@
   "by_model": [
     {
       "bundles": 8,
-      "false_positive_rate": 0.1,
+      "false_discovery_rate": 0.1,
       "false_positives": 1,
       "ground_truth": 9,
       "matched": 9,
@@ -15,16 +15,23 @@
           "unit": "unique bugs in complete first-k cohorts",
           "value": 1
         },
+        "control_findings_per_case": {
+          "denominator": 0,
+          "n": 0,
+          "numerator": 0,
+          "unit": "false-positive findings per control case sample",
+          "value": null
+        },
         "control_fp_rate": {
           "denominator": 0,
           "n": 0,
           "numerator": 0,
-          "unit": "control case samples; false-positive findings per control",
+          "unit": "control case samples with at least one finding",
           "value": null
         },
         "cost_n": 8,
         "cost_usd": 0.08,
-        "false_positive_rate": {
+        "false_discovery_rate": {
           "denominator": 10,
           "n": 10,
           "numerator": 1,
@@ -49,7 +56,7 @@
           "value": 1
         },
         "samples": 8,
-        "severity_weighted_f1": {
+        "severity_weighted_pooled_f1": {
           "denominator": 291,
           "n": 10,
           "numerator": 290,
@@ -72,7 +79,7 @@
     },
     {
       "bundles": 8,
-      "false_positive_rate": 0.4,
+      "false_discovery_rate": 0.4,
       "false_positives": 4,
       "ground_truth": 9,
       "matched": 6,
@@ -84,16 +91,23 @@
           "unit": "unique bugs in complete first-k cohorts",
           "value": 0.6667
         },
+        "control_findings_per_case": {
+          "denominator": 0,
+          "n": 0,
+          "numerator": 0,
+          "unit": "false-positive findings per control case sample",
+          "value": null
+        },
         "control_fp_rate": {
           "denominator": 0,
           "n": 0,
           "numerator": 0,
-          "unit": "control case samples; false-positive findings per control",
+          "unit": "control case samples with at least one finding",
           "value": null
         },
         "cost_n": 8,
         "cost_usd": 0.08,
-        "false_positive_rate": {
+        "false_discovery_rate": {
           "denominator": 10,
           "n": 10,
           "numerator": 4,
@@ -118,7 +132,7 @@
           "value": 0.6667
         },
         "samples": 8,
-        "severity_weighted_f1": {
+        "severity_weighted_pooled_f1": {
           "denominator": 239,
           "n": 13,
           "numerator": 180,
@@ -143,7 +157,7 @@
   "by_panel": [
     {
       "bundles": 8,
-      "false_positive_rate": 0.2,
+      "false_discovery_rate": 0.2,
       "false_positives": 2,
       "ground_truth": 10,
       "matched": 8,
@@ -155,16 +169,23 @@
           "unit": "unique bugs in complete first-k cohorts",
           "value": 0.8
         },
+        "control_findings_per_case": {
+          "denominator": 0,
+          "n": 0,
+          "numerator": 0,
+          "unit": "false-positive findings per control case sample",
+          "value": null
+        },
         "control_fp_rate": {
           "denominator": 0,
           "n": 0,
           "numerator": 0,
-          "unit": "control case samples; false-positive findings per control",
+          "unit": "control case samples with at least one finding",
           "value": null
         },
         "cost_n": 8,
         "cost_usd": 0.08,
-        "false_positive_rate": {
+        "false_discovery_rate": {
           "denominator": 10,
           "n": 10,
           "numerator": 2,
@@ -189,7 +210,7 @@
           "value": 0.8
         },
         "samples": 8,
-        "severity_weighted_f1": {
+        "severity_weighted_pooled_f1": {
           "denominator": 352,
           "n": 12,
           "numerator": 320,
@@ -212,7 +233,7 @@
     },
     {
       "bundles": 8,
-      "false_positive_rate": 0.3,
+      "false_discovery_rate": 0.3,
       "false_positives": 3,
       "ground_truth": 8,
       "matched": 7,
@@ -224,16 +245,23 @@
           "unit": "unique bugs in complete first-k cohorts",
           "value": 0.875
         },
+        "control_findings_per_case": {
+          "denominator": 0,
+          "n": 0,
+          "numerator": 0,
+          "unit": "false-positive findings per control case sample",
+          "value": null
+        },
         "control_fp_rate": {
           "denominator": 0,
           "n": 0,
           "numerator": 0,
-          "unit": "control case samples; false-positive findings per control",
+          "unit": "control case samples with at least one finding",
           "value": null
         },
         "cost_n": 8,
         "cost_usd": 0.08,
-        "false_positive_rate": {
+        "false_discovery_rate": {
           "denominator": 10,
           "n": 10,
           "numerator": 3,
@@ -258,7 +286,7 @@
           "value": 0.875
         },
         "samples": 8,
-        "severity_weighted_f1": {
+        "severity_weighted_pooled_f1": {
           "denominator": 178,
           "n": 11,
           "numerator": 150,
@@ -281,7 +309,7 @@
     }
   ],
   "cases": 8,
-  "false_positive_rate": 0.25,
+  "false_discovery_rate": 0.25,
   "false_positives": 5,
   "ground_truth": 18,
   "matched": 15,
@@ -293,16 +321,23 @@
       "unit": "unique bugs in complete first-k cohorts",
       "value": 0.8333
     },
+    "control_findings_per_case": {
+      "denominator": 0,
+      "n": 0,
+      "numerator": 0,
+      "unit": "false-positive findings per control case sample",
+      "value": null
+    },
     "control_fp_rate": {
       "denominator": 0,
       "n": 0,
       "numerator": 0,
-      "unit": "control case samples; false-positive findings per control",
+      "unit": "control case samples with at least one finding",
       "value": null
     },
     "cost_n": 16,
     "cost_usd": 0.16,
-    "false_positive_rate": {
+    "false_discovery_rate": {
       "denominator": 20,
       "n": 20,
       "numerator": 5,
@@ -327,7 +362,7 @@
       "value": 0.8333
     },
     "samples": 16,
-    "severity_weighted_f1": {
+    "severity_weighted_pooled_f1": {
       "denominator": 530,
       "n": 23,
       "numerator": 470,

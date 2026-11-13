@@ -29,10 +29,11 @@ Failed or incomplete samples: 3.
 | --- | ---: | ---: | ---: | ---: | --- |
 | precision | null | 0 | 0 | 0 | reported findings |
 | recall | null | 0 | 0 | 0 | bug samples |
-| false_positive_rate | null | 0 | 0 | 0 | reported findings |
+| false_discovery_rate | null | 0 | 0 | 0 | reported findings |
 | any_of_k_recall | 0.6667 | 2 | 3 | 3 | unique bugs |
-| control_fp_rate | null | 0 | 0 | 0 | control case samples; false-positive findings per control |
-| severity_weighted_f1 | null | 0 | 0 | 0 | weighted F1; n=bug samples plus false-positive findings |
+| control_fp_rate | null | 0 | 0 | 0 | control case samples with at least one finding |
+| control_findings_per_case | null | 0 | 0 | 0 | false-positive findings per control case sample |
+| severity_weighted_pooled_f1 | null | 0 | 0 | 0 | weighted F1; n=bug samples plus false-positive findings |
 | signal_to_noise | null | 0 | 0 | 0 | false-positive findings; n=reported findings |
 
 Incomplete first-k cohorts: 0.

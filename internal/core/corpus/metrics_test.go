@@ -42,9 +42,10 @@ func TestMetricsHandComputed(t *testing.T) {
 	}{
 		{"precision_2_over_7", m.Precision, 0.2857, 2, 7, 7},
 		{"recall_2_over_6", m.Recall, 0.3333, 2, 6, 6},
-		{"false_positive_rate_5_over_7", m.FalsePositiveRate, 0.7143, 5, 7, 7},
-		{"control_fp_2_over_2", m.ControlFPRate, 1, 2, 2, 2},
-		{"weighted_f1_2times30_over_60plus9plus32", m.SeverityWeightedF1, 0.5941, 60, 101, 11},
+		{"false_discovery_rate_5_over_7", m.FalseDiscoveryRate, 0.7143, 5, 7, 7},
+		{"control_fp_1_over_2", m.ControlFPRate, 0.5, 1, 2, 2},
+		{"control_findings_2_over_2", m.ControlFindingsPerCase, 1, 2, 2, 2},
+		{"weighted_f1_2times30_over_60plus9plus32", m.SeverityWeightedPooledF1, 0.5941, 60, 101, 11},
 		{"signal_to_noise_2_over_5", m.SignalToNoise, 0.4, 2, 5, 7},
 	}
 	for _, tt := range tests {
@@ -65,7 +66,7 @@ func TestUnknownMetricsStayNull(t *testing.T) {
 		t.Fatalf("partial measurement = %+v; want null totals, n=3", m)
 	}
 	m = Measure(nil)
-	if m.Precision.Value != nil || m.ControlFPRate.Value != nil || m.SignalToNoise.Value != nil || m.SeverityWeightedF1.Value != nil {
+	if m.Precision.Value != nil || m.ControlFPRate.Value != nil || m.SignalToNoise.Value != nil || m.SeverityWeightedPooledF1.Value != nil {
 		t.Fatalf("empty metrics = %+v; want null rates", m)
 	}
 }
@@ -84,5 +85,22 @@ func checkRecordedTotal(t *testing.T, got *float64, n int, want float64) {
 	}
 	if *got != want || n != 4 {
 		t.Fatalf("total=%v n=%d; want %v n=4", *got, n, want)
+	}
+}
+
+func TestMetricWireUsesExactDefinitions(t *testing.T) {
+	doc, ok := Measure(measuredFixture()).Wire().(*jq.Obj)
+	if !ok {
+		t.Fatal("metrics wire is not an object")
+	}
+	for _, key := range []string{"false_discovery_rate", "control_fp_rate", "control_findings_per_case", "severity_weighted_pooled_f1"} {
+		if !doc.Has(key) {
+			t.Errorf("missing metric %q", key)
+		}
+	}
+	for _, key := range []string{"false_positive_rate", "severity_weighted_f1"} {
+		if doc.Has(key) {
+			t.Errorf("obsolete metric %q remains", key)
+		}
 	}
 }

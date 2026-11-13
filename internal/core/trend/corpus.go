@@ -130,7 +130,7 @@ func corpusDoc(r *corpusRollup) *jq.Obj {
 		"missed", r.total.missed,
 		"precision", corpuscore.RateOrNil(r.total.matched, r.total.reported),
 		"recall", corpuscore.RateOrNil(r.total.matched, r.total.bugs),
-		"false_positive_rate", corpuscore.RateOrNil(r.total.falsePositives, r.total.reported),
+		"false_discovery_rate", corpuscore.RateOrNil(r.total.falsePositives, r.total.reported),
 		"by_model", models,
 		"by_panel", panels,
 	)
@@ -148,7 +148,7 @@ func corpusCountsDoc(key, label string, c *corpusCounts) *jq.Obj {
 		"missed", c.missed,
 		"precision", corpuscore.RateOrNil(c.matched, c.reported),
 		"recall", corpuscore.RateOrNil(c.matched, c.bugs),
-		"false_positive_rate", corpuscore.RateOrNil(c.falsePositives, c.reported),
+		"false_discovery_rate", corpuscore.RateOrNil(c.falsePositives, c.reported),
 	)
 }
 
@@ -158,7 +158,7 @@ func (st *state) emitCorpusHuman(r *corpusRollup) {
 		"matched=%d false_positives=%d missed=%d",
 		r.total.bundles, len(r.cases), r.total.bugs, r.total.reported,
 		r.total.matched, r.total.falsePositives, r.total.missed))
-	st.human(fmt.Sprintf("corpus rates: precision=%s (n=%d) recall=%s (n=%d) false-positive-rate=%s (n=%d)",
+	st.human(fmt.Sprintf("corpus rates: precision=%s (n=%d) recall=%s (n=%d) false-discovery-rate=%s (n=%d)",
 		corpuscore.RateText(corpuscore.RateOrNil(r.total.matched, r.total.reported)), r.total.reported,
 		corpuscore.RateText(corpuscore.RateOrNil(r.total.matched, r.total.bugs)), r.total.bugs,
 		corpuscore.RateText(corpuscore.RateOrNil(r.total.falsePositives, r.total.reported)), r.total.reported))
@@ -172,7 +172,7 @@ func (st *state) emitCorpusHuman(r *corpusRollup) {
 
 func corpusCountsLine(key, label string, c *corpusCounts) string {
 	return fmt.Sprintf("corpus %s %s: bundles=%d ground_truth=%d reported=%d matched=%d "+
-		"false_positives=%d missed=%d precision=%s (n=%d) recall=%s (n=%d) false-positive-rate=%s (n=%d)",
+		"false_positives=%d missed=%d precision=%s (n=%d) recall=%s (n=%d) false-discovery-rate=%s (n=%d)",
 		key, label, c.bundles, c.bugs, c.reported, c.matched, c.falsePositives, c.missed,
 		corpuscore.RateText(corpuscore.RateOrNil(c.matched, c.reported)), c.reported,
 		corpuscore.RateText(corpuscore.RateOrNil(c.matched, c.bugs)), c.bugs,

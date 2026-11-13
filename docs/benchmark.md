@@ -45,7 +45,7 @@ deliberately simple and published:
   not counted.
 - A ground-truth bug with no matching finding is **missed**.
 - `precision = matched / reported`; `recall = matched / ground_truth`;
-  `false_positive_rate = false_positives / reported`. Rates are rounded to
+  `false_discovery_rate = false_positives / reported`. Rates are rounded to
   four decimals; a zero denominator renders `null`, never `0`.
 
 The window is deliberately narrow. On a 4-7-line hunk a `line_tolerance` of
@@ -167,7 +167,7 @@ It assembles all eight cases for both fake models through the existing
   bundles, and every fixture byte is unchanged after the reads.
 
 The seeded numbers are exact: overall precision 0.75, recall 0.8333,
-false-positive rate 0.25 over 16 runs (18 bug-runs, 20 findings, 15 matched,
+false-discovery rate 0.25 over 16 runs (18 bug-runs, 20 findings, 15 matched,
 5 false positives, 3 missed). `fixture-good` is 0.9/1/0.1; `fixture-noisy` is
 0.6/0.6667/0.4. Panel splits are 0.8/0.8/0.2 for `panel-alpha` and
 0.7/0.875/0.3 for `panel-beta`. These grade the reporting path, not model
@@ -696,7 +696,7 @@ something the corpus can measure.
 
 Once 06b has run, the comparison page may cite:
 
-- overall precision, recall, and false-positive rate with the denominators
+- overall precision, recall, and false-discovery rate with the denominators
   (`cases`, bug-runs, reported findings) and the corpus commit/date;
 - the per-model and per-panel table from `data.corpus`, including the
   reproducibility spread;
@@ -738,19 +738,31 @@ Sample inputs retain six decimal places before spread calculation.
 `numerator`, `denominator`, `n`, and its observation `unit`; zero denominators
 produce `null`. The human report also prints counts beside rates.
 
-| Metric               | Numerator / denominator                                         | n                                     |
-| -------------------- | --------------------------------------------------------------- | ------------------------------------- |
-| precision            | matched findings / reported findings                            | reported findings                     |
-| recall               | matched bugs / ground-truth bug samples                         | bug samples                           |
-| false_positive_rate  | false-positive findings / reported findings                     | reported findings                     |
-| any_of_k_recall      | union of matched bugs / unique bugs in complete first-k cohorts | unique bugs                           |
-| control_fp_rate      | false-positive findings on controls / control case samples      | control case samples                  |
-| severity_weighted_f1 | 2 weighted TP / (2 weighted TP + weighted FP + weighted FN)     | bug samples + false-positive findings |
-| signal_to_noise      | matched findings / false-positive findings                      | reported findings                     |
+| Metric                      | Numerator / denominator                                         | n                                     |
+| --------------------------- | --------------------------------------------------------------- | ------------------------------------- |
+| precision                   | matched findings / reported findings                            | reported findings                     |
+| recall                      | matched bugs / ground-truth bug samples                         | bug samples                           |
+| false_discovery_rate        | false-positive findings / reported findings                     | reported findings                     |
+| any_of_k_recall             | union of matched bugs / unique bugs in complete first-k cohorts | unique bugs                           |
+| control_fp_rate             | controls with at least one finding / control case samples       | control case samples                  |
+| control_findings_per_case   | false-positive findings on controls / control case samples      | control case samples                  |
+| severity_weighted_pooled_f1 | 2 weighted TP / (2 weighted TP + weighted FP + weighted FN)     | bug samples + false-positive findings |
+| signal_to_noise             | matched findings / false-positive findings                      | reported findings                     |
 
-Control FP rate is findings per control, so it can exceed one. Weighted TP
-and FN use ground-truth severity; weighted FP uses reported severity, falling
-back to informational when absent. Every sample uses its snapshotted weights.
+`control_fp_rate` is the fraction of control case samples with at least one
+finding. It is bounded between zero and one. `control_findings_per_case`
+reports the raw number of findings per control and can exceed one.
+
+`severity_weighted_pooled_f1` is `2*WTP / (2*WTP + WFP + WFN)`: apply the
+configured severity weights to individual true positives, false positives,
+and false negatives, then compute one pooled F1. TP and FN use ground-truth
+severity; FP uses reported severity, falling back to informational when absent.
+Every sample uses its snapshotted weights. This differs from support-weighted
+per-class F1, which computes an F1 separately for each severity and averages
+those scores by class support. In the four-sample fixture, WTP=30, WFP=9,
+WFN=32, so pooled F1 is 60/101=.5941; support-weighted per-class F1 is
+7/18=.3889. Neither formula is substituted for the other.
+
 Legacy bundles without `corpus_run.json` are independent k=1 runs and resolve
 weights from the repository's typed config, falling back to 25/5/1.
 `calibrate` reads sibling samples for its any-of-k rate only; its other rates
@@ -790,3 +802,15 @@ no real model reviews. Real corpus growth and real model runs remain operator
 work under STA-28 and STA-325. Preserve failed samples and incomplete cohorts
 when publishing a run. A default output name includes UTC time and model;
 `-out` selects a dated publication path explicitly.
+
+The hand-computed four-sample metric fixture has 2 TP, 5 FP, 6 bug samples,
+and two control samples. One control has two findings; the other has none.
+
+| Metric                      | Calculation          | n   |
+| --------------------------- | -------------------- | --- |
+| false_discovery_rate        | 5/7 = .7143          | 7   |
+| control_fp_rate             | 1/2 = .5             | 2   |
+| control_findings_per_case   | 2/2 = 1              | 2   |
+| severity_weighted_pooled_f1 | 60/(60+9+32) = .5941 | 11  |
+
+This fixture differs from the dedicated k=3 union-recall fixture.

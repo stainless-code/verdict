@@ -333,7 +333,8 @@ func shippedLoopBadFixed(t *testing.T, bad, fixed string) (*Report, *Config) {
 	t.Setenv("BENCH_TEST_FIXED", fixed)
 	agent := `if [ "${VERDICT_BENCH_ROUND:-1}" = "1" ]; then printf '%s' "$BENCH_TEST_BAD" > "$VERDICT_BENCH_OUT"; ` +
 		`else printf '%s' "$BENCH_TEST_FIXED" > "$VERDICT_BENCH_OUT"; fi`
-	cfg := &Config{K: 1,
+	cfg := &Config{
+		K:       1,
 		Root:    root,
 		Corpus:  filepath.Join(root, "bench", "corpus"),
 		Verdict: bin,
