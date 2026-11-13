@@ -499,20 +499,13 @@ func sampleMetricValues(m *corpuscore.Metrics) map[string]*float64 {
 	if m == nil {
 		return nil
 	}
-	number := func(v any) *float64 {
-		f, ok := v.(float64)
-		if !ok {
-			return nil
-		}
-		return &f
-	}
 	return map[string]*float64{
-		"precision":                   number(m.Precision.Value),
-		"recall":                      number(m.Recall.Value),
-		"control_findings_per_case":   number(m.ControlFindingsPerCase.Value),
-		"control_fp_rate":             number(m.ControlFPRate.Value),
-		"severity_weighted_pooled_f1": number(m.SeverityWeightedPooledF1.Value),
-		"signal_to_noise":             number(m.SignalToNoise.Value),
+		"precision":                   m.Precision.Value,
+		"recall":                      m.Recall.Value,
+		"control_findings_per_case":   m.ControlFindingsPerCase.Value,
+		"control_fp_rate":             m.ControlFPRate.Value,
+		"severity_weighted_pooled_f1": m.SeverityWeightedPooledF1.Value,
+		"signal_to_noise":             m.SignalToNoise.Value,
 		"cost_usd":                    m.CostUSD,
 		"latency_s":                   m.LatencyS,
 	}

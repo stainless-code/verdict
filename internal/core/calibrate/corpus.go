@@ -80,7 +80,7 @@ func (r *corpusResult) Wire() *jq.Obj {
 	}
 	return jq.NewObj(
 		"metrics", r.metrics.Wire(),
-		"sampling", samplingDoc(r.sampling),
+		"sampling", r.sampling.Wire(),
 		"bundle", readcommon.BundleName(r.dir),
 		"case", rep.Case.ID,
 		"kind", rep.Case.Kind,
@@ -199,22 +199,3 @@ func corpusSig(sig string) string {
 }
 
 const corpusSigNull = "null"
-
-func samplingDoc(s corpuscore.Sampling) *jq.Obj {
-	return jq.NewObj("run_id",
-		s.RunID,
-		"k",
-		s.K,
-		"repeats",
-		s.Repeats,
-		"sample",
-		s.Sample,
-		"severity_weights",
-		jq.NewObj("critical",
-			s.Weights.Critical,
-			"important",
-			s.Weights.Important,
-			"informational",
-			s.Weights.Informational),
-	)
-}

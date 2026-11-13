@@ -110,11 +110,11 @@ func renderSampleSpreads(out *strings.Builder, cases []CaseSpread) {
 	}
 }
 
-func metricValue(v any) string {
+func metricValue(v *float64) string {
 	if v == nil {
 		return jsonNullValue
 	}
-	return corpuscore.RateText(v)
+	return corpuscore.RateText(*v)
 }
 
 func recordedValue(v *float64) string {

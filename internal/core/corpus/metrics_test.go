@@ -73,7 +73,7 @@ func TestUnknownMetricsStayNull(t *testing.T) {
 
 func checkMetric(t *testing.T, got Measurement, value float64, numerator, denominator, n int) {
 	t.Helper()
-	if got.Value != value || got.Numerator != numerator || got.Denominator != denominator || got.N != n {
+	if got.Value == nil || *got.Value != value || got.Numerator != numerator || got.Denominator != denominator || got.N != n {
 		t.Fatalf("metric = %+v; want value=%v numerator=%d denominator=%d n=%d", got, value, numerator, denominator, n)
 	}
 }

@@ -76,20 +76,26 @@ func Measure(samples []Sample) *Metrics {
 }
 
 func measurement(numerator, denominator, n int, unit string) Measurement {
-	return Measurement{Value: RateOrNil(numerator, denominator), Numerator: numerator, Denominator: denominator, N: n, Unit: unit}
+	var value *float64
+	if rate, ok := Rate(numerator, denominator); ok {
+		value = &rate
+	}
+	return Measurement{Value: value, Numerator: numerator, Denominator: denominator, N: n, Unit: unit}
 }
 
 // Wire renders metrics as ordered JSON.
-func (m *Metrics) Wire() any {
-	raw, err := json.Marshal(m)
+func (m *Metrics) Wire() any { return wireValue(m) }
+
+func wireValue(value any) any {
+	raw, err := json.Marshal(value)
 	if err != nil {
 		return nil
 	}
-	out, err := jq.DecodeOrdered(raw)
+	doc, err := jq.DecodeOrdered(raw)
 	if err != nil {
 		return nil
 	}
-	return out
+	return doc
 }
 
 // Summary renders the same denominators in the human corpus report.

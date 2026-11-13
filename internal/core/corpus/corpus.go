@@ -574,11 +574,17 @@ func RateOrNil(n, d int) any {
 // RateText renders a JSON rate at the published precision, n/a when
 // unmeasured.
 func RateText(rate any) string {
-	f, ok := rate.(float64)
-	if !ok {
+	switch v := rate.(type) {
+	case *float64:
+		if v == nil {
+			return "n/a"
+		}
+		return strconv.FormatFloat(*v, 'f', RateDecimals, rateBits)
+	case float64:
+		return strconv.FormatFloat(v, 'f', RateDecimals, rateBits)
+	default:
 		return "n/a"
 	}
-	return strconv.FormatFloat(f, 'f', RateDecimals, rateBits)
 }
 
 const rateBits = 64

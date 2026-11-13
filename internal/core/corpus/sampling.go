@@ -2,6 +2,7 @@ package corpuscore
 
 import (
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // Sampling pins the run cohort and the ordered samples considered for recall.
@@ -28,11 +29,11 @@ type Sample struct {
 
 // Measurement publishes a value with its observations and exact denominator.
 type Measurement struct {
-	Value       any    `json:"value"`
-	Unit        string `json:"unit"`
-	Numerator   int    `json:"numerator"`
-	Denominator int    `json:"denominator"`
-	N           int    `json:"n"`
+	Value       *float64 `json:"value"`
+	Unit        string   `json:"unit"`
+	Numerator   int      `json:"numerator"`
+	Denominator int      `json:"denominator"`
+	N           int      `json:"n"`
 }
 
 // AnyOfKRecall counts each bug once in complete first-k cohorts.
@@ -87,4 +88,16 @@ func recallOfCohorts(groups map[string]*sampleCohort) (Measurement, int) {
 		denominator += g.bugs
 	}
 	return measurement(numerator, denominator, denominator, "unique bugs in complete first-k cohorts"), incomplete
+}
+
+// Wire preserves the calibration sampling shape and key order.
+func (s Sampling) Wire() *jq.Obj {
+	s.LatencyS = nil
+	doc, ok := wireValue(s).(*jq.Obj)
+	if !ok {
+		return nil
+	}
+	doc.Delete("latency_s")
+	doc.Keys = []string{"run_id", "k", "repeats", "sample", "severity_weights"}
+	return doc
 }

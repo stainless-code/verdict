@@ -82,6 +82,9 @@ func parseFlags(args []string) (Config, error) {
 	if fs.NArg() > 0 {
 		return Config{}, jq.NewErrf("unexpected argument %q", fs.Arg(0))
 	}
+	if err := cfg.validateSampling(); err != nil {
+		return Config{}, err
+	}
 	if cfg.Render != "" {
 		return cfg, nil
 	}

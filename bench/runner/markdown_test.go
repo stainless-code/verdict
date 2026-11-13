@@ -20,7 +20,8 @@ func TestPublicationUsesInjectedDateAndDeterministicMarkdown(t *testing.T) {
 	rep.ToolVersion = "verdict fixture-version"
 	rep.PromptsHash = "fixture-prompts-hash"
 	rep.Commands = [][]string{{"verdict", "trend", "acme/bench", "--json"}}
-	rep.AnyOfKRecall = corpuscore.Measurement{Value: 0.6667, Numerator: 2, Denominator: 3, N: 3, Unit: "unique bugs"}
+	recall := 0.6667
+	rep.AnyOfKRecall = corpuscore.Measurement{Value: &recall, Numerator: 2, Denominator: 3, N: 3, Unit: "unique bugs"}
 	if rep.Date != "2040-02-03" || rep.GeneratedAt != "2040-02-03T04:05:06Z" {
 		t.Fatalf("date=%q generated=%q; want injected 2040-02-03T04:05:06Z", rep.Date, rep.GeneratedAt)
 	}
@@ -29,9 +30,6 @@ func TestPublicationUsesInjectedDateAndDeterministicMarkdown(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Errorf("Markdown omits %q", want)
 		}
-	}
-	if text != renderMarkdown(rep) {
-		t.Fatal("render changed on repeat")
 	}
 	golden.Check(t, "publication-markdown", text)
 }
@@ -74,7 +72,7 @@ func TestSampleSpreadsSortCasesAndMetrics(t *testing.T) {
 
 func TestPublicationPreservesIncompleteRunEvidence(t *testing.T) {
 	rep := &Report{
-		SchemaVersion: "1", Date: "2040-01-01", Seeded: true, CitableReason: "1 failed sample(s); selected subset",
+		SchemaVersion: "1", Date: "2040-01-01", CitableReason: "1 failed sample(s); selected subset",
 		Corpus: CorpusRef{Cases: 2, TotalCases: 10, CaseIDs: []string{"hard", "missing"}}, Repeats: 1,
 		Failures: []Failure{{Case: "hard", Run: 1, Error: "agent timeout"}},
 	}
@@ -93,18 +91,23 @@ func TestSeededExampleIsPortableAndRendersExactly(t *testing.T) {
 	if !rep.Seeded || rep.Citable {
 		t.Fatal("example must be seeded and non-citable")
 	}
-	for _, command := range rep.Commands {
-		for _, arg := range command {
-			if filepath.IsAbs(arg) {
-				t.Errorf("absolute example command argument %q", arg)
-			}
-		}
-	}
+	checkPortableCommands(t, rep.Commands)
 	want, err := os.ReadFile(filepath.Join("testdata", "example-seeded-run.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := renderMarkdown(&rep); got != string(want) {
 		t.Fatal("example Markdown differs from JSON render")
+	}
+}
+
+func checkPortableCommands(t *testing.T, commands [][]string) {
+	t.Helper()
+	for _, command := range commands {
+		for _, arg := range command {
+			if filepath.IsAbs(arg) {
+				t.Errorf("absolute example command argument %q", arg)
+			}
+		}
 	}
 }

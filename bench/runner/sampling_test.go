@@ -47,3 +47,9 @@ func TestAbsentKDefaultsToOne(t *testing.T) {
 		t.Fatalf("absent k = %d; want 1", cfg.K)
 	}
 }
+
+func TestRenderCannotBypassExplicitInvalidK(t *testing.T) {
+	if _, err := parseFlags([]string{"-render", "unused.json", "-k", "0"}); err == nil {
+		t.Fatal("render accepted explicit k=0")
+	}
+}
