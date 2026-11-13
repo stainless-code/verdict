@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 const hoistHead = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -31,6 +32,13 @@ func TestSuppressionDoesNotChangeGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	hoistPostRecord(t)
+	remote := projectComment(jq.NewObj("path", "notes.txt", "line", 2, "side", "RIGHT",
+		"body", "Usable body here with enough substance."), "")
+	remote.Set("commit_id", hoistHead)
+	if err := writeTestFile(".verdict/state/7/inline.json", "["+remote.MarshalPretty()+"]"); err != nil {
+		t.Fatal(err)
+	}
+
 	cmdr := postCommander(t)
 	var warnings, human []string
 	req := postTestReq(cmdr, core.PostFlags{
@@ -41,6 +49,9 @@ func TestSuppressionDoesNotChangeGate(t *testing.T) {
 		t.Fatalf("gate = %v, want approve-blocked", ref)
 	}
 	if err := os.Remove(".verdict/state/7/post.json"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(".verdict/state/7/inline.json"); err != nil {
 		t.Fatal(err)
 	}
 	_, without := Run(context.Background(), req)
