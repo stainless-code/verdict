@@ -37,7 +37,7 @@ var publishedSemantics = map[string]string{
 	// $defs/configIndex shape. Additions only; no existing property, required
 	// key, enum, or type changed. The configIndex description now calls the
 	// index a code index rather than a Go one.
-	"config.schema.json": "db98cce6cb648527523180d9011e324b8907d27fbf6880ab5c649a517e21d59d",
+	"config.schema.json": "69bc0562a8f17a7f5107c859b3641c48277cb4b1457f653e673839bc7db7ab23",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets

@@ -41,6 +41,9 @@ func buildConfig(root map[string]any) (*core.Config, *core.RefusalError) {
 	if cfg.Index, ref = presentNested(root, "index", rootLocation, buildIndex); ref != nil {
 		return nil, ref
 	}
+	if cfg.SeverityWeights, ref = presentNested(root, "severity_weights", rootLocation, buildSeverityWeights); ref != nil {
+		return nil, ref
+	}
 	if ref = buildConfigTail(cfg, root); ref != nil {
 		return nil, ref
 	}

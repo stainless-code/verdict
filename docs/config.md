@@ -180,3 +180,12 @@ and the selected typed checks, appending one observation per scope and
 reviewed head; `report` enforces the display floor and records no check
 evidence; `verdict config` explains and previews. MCP, TypeScript, and the
 Go facade expose the same `configData` profile.
+
+## Benchmark severity weights
+
+Root `severity_weights` configures benchmark scoring. Each optional integer
+field overrides its built-in value: `critical: 25`, `important: 5`,
+`informational: 1`. Values must be in `1..1000000`; null and unknown keys
+refuse. These are global benchmark settings, independent of review scopes.
+A run snapshots the resolved weights so later configuration edits cannot
+change a published score. Missing finding severity uses informational weight.

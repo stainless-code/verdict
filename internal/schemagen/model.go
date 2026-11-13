@@ -66,6 +66,9 @@ type ConfigDefaults = core.ConfigDefaults
 // ConfigKBPolicy is the configuration's knowledge-base policy.
 type ConfigKBPolicy = core.ConfigKBPolicy
 
+// ConfigSeverityWeights is the benchmark weighting configuration.
+type ConfigSeverityWeights = core.ConfigSeverityWeights
+
 // ConfigIndex is the configuration's local code index caps.
 type ConfigIndex = core.ConfigIndex
 
