@@ -92,7 +92,7 @@ func (st *state) checkApproveFlag() *core.RefusalError {
 	return &core.RefusalError{Code: "bad-approve", Message: fmt.Sprintf(msgBadApprove, st.flags.Approve)}
 }
 
-// checkSummaryFlag refuses a --summary value outside comment|off (empty defaults to off).
+// checkSummaryFlag refuses --summary values outside comment|off.
 func (st *state) checkSummaryFlag() *core.RefusalError {
 	switch st.flags.Summary {
 	case "", summaryOff, summaryComment:
@@ -310,7 +310,7 @@ func (st *state) checkBundle() *core.RefusalError {
 		return &core.RefusalError{Code: "no-pr-target", Message: msgNoPRTarget}
 	}
 	if prov := st.provider(); !core.CapabilitiesFor(prov).Post {
-		return &core.RefusalError{Code: "provider-unimplemented", Message: fmt.Sprintf(msgProviderUnimplemented, prov)}
+		return &core.RefusalError{Code: codeProviderUnimplemented, Message: fmt.Sprintf(msgProviderUnimplemented, prov)}
 	}
 	if !readcommon.IsDir(st.dir) {
 		return &core.RefusalError{Code: codeMissingBundle, Message: fmt.Sprintf(msgMissingBundlePost, st.dir, st.req.Repo, st.req.Pr)}

@@ -176,6 +176,27 @@ func extractSummaryStdinBody(t *testing.T, raw string) string {
 	return doc.Body
 }
 
+type summaryHostCase struct {
+	provider      string
+	wantReviewURL string
+	wantInlineURL string
+	inlineJSON    string
+	page2Route    string
+	page1Raw      string
+	page2Raw      string
+}
+
+func runSummaryPostCase(t *testing.T, provider string, cmdr *scriptCommander, flags core.PostFlags) *core.PostResponse {
+	t.Helper()
+	var warnings, human []string
+	req := summaryReq(cmdr, provider, flags, &warnings, &human)
+	resp, ref := Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	return resp
+}
+
 func TestSummaryCommentPerHostCreateUpdateOtherAuthorPagination(t *testing.T) {
 	marker := "<!-- verdict-summary head=" + summaryTestHead + " -->"
 	markedOwn401 := `{"id":401,"user":{"login":"someone-else"},"author":{"username":"someone-else"},"html_url":"https://ex.invalid/c/401","updated_at":"2026-01-01T00:00:00Z","body":"Prior summary\n\n` + marker + `"}`
@@ -183,23 +204,13 @@ func TestSummaryCommentPerHostCreateUpdateOtherAuthorPagination(t *testing.T) {
 	reviewMarkerComment := `{"id":302,"user":{"login":"someone-else"},"author":{"username":"someone-else"},"body":"Review note\n\n<!-- verdict-review payload=` + summaryTestHead + ` head=` + summaryTestHead + ` -->"}`
 	systemNote := `{"id":303,"system":true,"author":{"username":"someone-else"},"body":"system\n\n` + marker + `"}`
 
-	// Build a 50-item page 1 for Forgejo pagination test cleanly.
 	var page50 []string
 	for i := range 50 {
 		page50 = append(page50, fmt.Sprintf(`{"id":%d,"user":{"login":"someone-else"},"body":"noise %d"}`, 100+i, i))
 	}
 	forgejoPage1 := "[" + strings.Join(page50, ",") + "]"
 
-	providers := []struct {
-		provider      string
-		wantReviewURL string
-		wantInlineURL string
-		inlineJSON    string
-		paginatedArgv string
-		page2Route    string
-		page1Raw      string
-		page2Raw      string
-	}{
+	providers := []summaryHostCase{
 		{
 			provider:      providerGitHub,
 			wantReviewURL: "https://example.invalid/r/101",
@@ -224,128 +235,122 @@ func TestSummaryCommentPerHostCreateUpdateOtherAuthorPagination(t *testing.T) {
 		},
 	}
 
-	for _, p := range providers {
+	for i := range providers {
+		p := &providers[i]
 		t.Run(p.provider+"/create", func(t *testing.T) {
-			t.Chdir(t.TempDir())
-			seedSummaryBundle(t, p.provider)
-			cmdr := hostBaseCommander(t, p.provider, "["+reviewMarkerComment+"]", p.inlineJSON)
-			var warnings, human []string
-			req := summaryReq(cmdr, p.provider, core.PostFlags{
-				Approve:    "false",
-				ReviewFile: ".verdict/state/7/review.json",
-				Summary:    "comment",
-			}, &warnings, &human)
-			resp, ref := Run(context.Background(), req)
-			if ref != nil {
-				t.Fatalf("Run refusal: %v", ref)
-			}
-			if resp.Data.Summary == nil || resp.Data.Summary.Action != "create" {
-				t.Fatalf("summary = %+v, want create", resp.Data.Summary)
-			}
-			if resp.Data.Summary.Marker != marker {
-				t.Errorf("marker = %q, want %q", resp.Data.Summary.Marker, marker)
-			}
-			// GitLab shares /notes for review summary note and PR summary comment;
-			// create should post 1 extra note on GitLab, 1 on GitHub/Forgejo.
-			createBodies := callStdinForRoute(cmdr, expectedCreateRoute(p.provider))
-			wantCreateCount := 1
-			if p.provider == providerGitLab {
-				wantCreateCount = 2
-			}
-			if len(createBodies) != wantCreateCount {
-				t.Fatalf("create calls = %d, want %d; calls=%q", len(createBodies), wantCreateCount, cmdr.calls)
-			}
-			if upd := callStdinForRoute(cmdr, expectedUpdateRoute(p.provider)); len(upd) != 0 {
-				t.Errorf("unexpected update calls: %d", len(upd))
-			}
-			summaryBody := extractSummaryStdinBody(t, createBodies[len(createBodies)-1])
-			if !strings.HasSuffix(strings.TrimSpace(summaryBody), marker) {
-				t.Errorf("summary body missing trailing marker %q:\n%s", marker, summaryBody)
-			}
-			if !strings.Contains(summaryBody, "Looks good — minor note below.") {
-				t.Errorf("summary body missing rendered review prose:\n%s", summaryBody)
-			}
-			if !strings.Contains(summaryBody, p.wantReviewURL) {
-				t.Errorf("summary body missing review URL %q:\n%s", p.wantReviewURL, summaryBody)
-			}
-			if !strings.Contains(summaryBody, p.wantInlineURL) {
-				t.Errorf("summary body missing inline URL %q:\n%s", p.wantInlineURL, summaryBody)
-			}
-			rawPost, err := os.ReadFile(".verdict/state/7/post.json")
-			if err != nil {
-				t.Fatalf("read post.json: %v", err)
-			}
-			var receipt map[string]any
-			if err := json.Unmarshal(rawPost, &receipt); err != nil {
-				t.Fatalf("decode post.json: %v", err)
-			}
-			sumMap, ok := receipt["summary"].(map[string]any)
-			if !ok || sumMap["action"] != "create" {
-				t.Errorf("post.json summary = %v, want action=create", receipt["summary"])
-			}
+			verifyHostSummaryCreate(t, p, marker, reviewMarkerComment)
 		})
-
 		t.Run(p.provider+"/update_in_place_and_pagination", func(t *testing.T) {
-			t.Chdir(t.TempDir())
-			seedSummaryBundle(t, p.provider)
-			cmdr := hostBaseCommander(t, p.provider, p.page1Raw, p.inlineJSON)
-			if p.page2Route != "" {
-				cmdr.out[p.page2Route] = scriptResult{stdout: p.page2Raw}
-			}
-			var warnings, human []string
-			req := summaryReq(cmdr, p.provider, core.PostFlags{
-				Approve:    "false",
-				ReviewFile: ".verdict/state/7/review.json",
-				Summary:    "comment",
-			}, &warnings, &human)
-			resp, ref := Run(context.Background(), req)
-			if ref != nil {
-				t.Fatalf("Run refusal: %v", ref)
-			}
-			if resp.Data.Summary == nil || resp.Data.Summary.Action != "update" || resp.Data.Summary.CommentID != "401" {
-				t.Fatalf("summary = %+v, want update comment_id=401", resp.Data.Summary)
-			}
-			updBodies := callStdinForRoute(cmdr, expectedUpdateRoute(p.provider))
-			if len(updBodies) != 1 {
-				t.Fatalf("update calls = %d, want 1; calls=%q", len(updBodies), cmdr.calls)
-			}
-			// GitHub and Forgejo must issue ZERO issue/note POSTs when updating in place;
-			// GitLab only posts the review note once (NOT a second summary note POST).
-			createBodies := callStdinForRoute(cmdr, expectedCreateRoute(p.provider))
-			wantCreateOnUpdate := 0
-			if p.provider == providerGitLab {
-				wantCreateOnUpdate = 1
-			}
-			if len(createBodies) != wantCreateOnUpdate {
-				t.Fatalf("create calls during update = %d, want %d", len(createBodies), wantCreateOnUpdate)
-			}
-			body := extractSummaryStdinBody(t, updBodies[0])
-			if !strings.HasSuffix(strings.TrimSpace(body), marker) {
-				t.Errorf("updated body missing marker:\n%s", body)
-			}
+			verifyHostSummaryUpdate(t, p, marker)
 		})
-
 		t.Run(p.provider+"/ignores_other_author_marker", func(t *testing.T) {
-			t.Chdir(t.TempDir())
-			seedSummaryBundle(t, p.provider)
-			cmdr := hostBaseCommander(t, p.provider, "["+markedOther+"]", p.inlineJSON)
-			var warnings, human []string
-			req := summaryReq(cmdr, p.provider, core.PostFlags{
-				Approve:    "false",
-				ReviewFile: ".verdict/state/7/review.json",
-				Summary:    "comment",
-			}, &warnings, &human)
-			resp, ref := Run(context.Background(), req)
-			if ref != nil {
-				t.Fatalf("Run refusal: %v", ref)
-			}
-			if resp.Data.Summary == nil || resp.Data.Summary.Action != "create" {
-				t.Fatalf("summary = %+v, want create when only other author posted marker", resp.Data.Summary)
-			}
-			if len(callStdinForRoute(cmdr, expectedUpdateRoute(p.provider))) != 0 {
-				t.Errorf("modified another author's summary comment")
-			}
+			verifyHostSummaryIgnoresOther(t, p, markedOther)
 		})
+	}
+}
+
+func verifyHostSummaryCreate(t *testing.T, p *summaryHostCase, marker, reviewMarkerComment string) {
+	t.Helper()
+	t.Chdir(t.TempDir())
+	seedSummaryBundle(t, p.provider)
+	cmdr := hostBaseCommander(t, p.provider, "["+reviewMarkerComment+"]", p.inlineJSON)
+	resp := runSummaryPostCase(t, p.provider, cmdr, core.PostFlags{
+		Approve: "false", ReviewFile: ".verdict/state/7/review.json", Summary: "comment",
+	})
+	if resp.Data.Summary == nil || resp.Data.Summary.Action != "create" || resp.Data.Summary.Marker != marker {
+		t.Fatalf("summary = %+v, want create with marker %q", resp.Data.Summary, marker)
+	}
+	createBodies := callStdinForRoute(cmdr, expectedCreateRoute(p.provider))
+	wantCreateCount := 1
+	if p.provider == providerGitLab {
+		wantCreateCount = 2
+	}
+	if len(createBodies) != wantCreateCount {
+		t.Fatalf("create calls = %d, want %d; calls=%q", len(createBodies), wantCreateCount, cmdr.calls)
+	}
+	if upd := callStdinForRoute(cmdr, expectedUpdateRoute(p.provider)); len(upd) != 0 {
+		t.Errorf("unexpected update calls: %d", len(upd))
+	}
+	assertSummaryBodyContains(t, createBodies[len(createBodies)-1], marker, p.wantReviewURL, p.wantInlineURL)
+	assertPostReceiptSummary(t, "create", "")
+}
+
+func assertSummaryBodyContains(t *testing.T, rawStdin, marker, reviewURL, inlineURL string) {
+	t.Helper()
+	body := extractSummaryStdinBody(t, rawStdin)
+	if !strings.HasSuffix(strings.TrimSpace(body), marker) {
+		t.Errorf("summary body missing trailing marker %q:\n%s", marker, body)
+	}
+	for _, want := range []string{"Looks good — minor note below.", reviewURL, inlineURL} {
+		if !strings.Contains(body, want) {
+			t.Errorf("summary body missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func assertPostReceiptSummary(t *testing.T, wantAction, wantID string) {
+	t.Helper()
+	rawPost, err := os.ReadFile(".verdict/state/7/post.json")
+	if err != nil {
+		t.Fatalf("read post.json: %v", err)
+	}
+	var receipt struct {
+		Summary *core.PostSummary `json:"summary"`
+	}
+	if err := json.Unmarshal(rawPost, &receipt); err != nil {
+		t.Fatalf("decode post.json: %v", err)
+	}
+	if receipt.Summary == nil || receipt.Summary.Action != wantAction {
+		t.Errorf("post.json summary = %+v, want action=%s", receipt.Summary, wantAction)
+	}
+	if wantID != "" && (receipt.Summary == nil || receipt.Summary.CommentID != wantID || receipt.Summary.DuplicateCount != 2) {
+		t.Errorf("post.json summary = %+v, want comment_id=%s duplicate_count=2", receipt.Summary, wantID)
+	}
+}
+
+func verifyHostSummaryUpdate(t *testing.T, p *summaryHostCase, marker string) {
+	t.Helper()
+	t.Chdir(t.TempDir())
+	seedSummaryBundle(t, p.provider)
+	cmdr := hostBaseCommander(t, p.provider, p.page1Raw, p.inlineJSON)
+	if p.page2Route != "" {
+		cmdr.out[p.page2Route] = scriptResult{stdout: p.page2Raw}
+	}
+	resp := runSummaryPostCase(t, p.provider, cmdr, core.PostFlags{
+		Approve: "false", ReviewFile: ".verdict/state/7/review.json", Summary: "comment",
+	})
+	if resp.Data.Summary == nil || resp.Data.Summary.Action != "update" || resp.Data.Summary.CommentID != "401" {
+		t.Fatalf("summary = %+v, want update comment_id=401", resp.Data.Summary)
+	}
+	updBodies := callStdinForRoute(cmdr, expectedUpdateRoute(p.provider))
+	if len(updBodies) != 1 {
+		t.Fatalf("update calls = %d, want 1; calls=%q", len(updBodies), cmdr.calls)
+	}
+	wantCreateOnUpdate := 0
+	if p.provider == providerGitLab {
+		wantCreateOnUpdate = 1
+	}
+	if len(callStdinForRoute(cmdr, expectedCreateRoute(p.provider))) != wantCreateOnUpdate {
+		t.Fatalf("create calls during update != %d", wantCreateOnUpdate)
+	}
+	if body := extractSummaryStdinBody(t, updBodies[0]); !strings.HasSuffix(strings.TrimSpace(body), marker) {
+		t.Errorf("updated body missing marker:\n%s", body)
+	}
+}
+
+func verifyHostSummaryIgnoresOther(t *testing.T, p *summaryHostCase, markedOther string) {
+	t.Helper()
+	t.Chdir(t.TempDir())
+	seedSummaryBundle(t, p.provider)
+	cmdr := hostBaseCommander(t, p.provider, "["+markedOther+"]", p.inlineJSON)
+	resp := runSummaryPostCase(t, p.provider, cmdr, core.PostFlags{
+		Approve: "false", ReviewFile: ".verdict/state/7/review.json", Summary: "comment",
+	})
+	if resp.Data.Summary == nil || resp.Data.Summary.Action != "create" {
+		t.Fatalf("summary = %+v, want create when only other author posted marker", resp.Data.Summary)
+	}
+	if len(callStdinForRoute(cmdr, expectedUpdateRoute(p.provider))) != 0 {
+		t.Errorf("modified another author's summary comment")
 	}
 }
 
@@ -360,16 +365,9 @@ func TestSummaryCommentMultipleMatchesUpdatesNewestNeverDeletes(t *testing.T) {
 	cmdr.out["gh\x00api\x00repos/acme/app/issues/comments/402\x00--method\x00PATCH\x00--input\x00-"] = scriptResult{
 		stdout: `{"id":402,"html_url":"https://gh.example/c/402","user":{"login":"someone-else"},"body":"updated newest"}`,
 	}
-	var warnings, human []string
-	req := summaryReq(cmdr, providerGitHub, core.PostFlags{
-		Approve:    "false",
-		ReviewFile: ".verdict/state/7/review.json",
-		Summary:    "comment",
-	}, &warnings, &human)
-	resp, ref := Run(context.Background(), req)
-	if ref != nil {
-		t.Fatalf("Run refusal: %v", ref)
-	}
+	resp := runSummaryPostCase(t, providerGitHub, cmdr, core.PostFlags{
+		Approve: "false", ReviewFile: ".verdict/state/7/review.json", Summary: "comment",
+	})
 	if resp.Data.Summary == nil || resp.Data.Summary.Action != "update" ||
 		resp.Data.Summary.CommentID != "402" || resp.Data.Summary.DuplicateCount != 2 {
 		t.Fatalf("summary = %+v, want update id=402 duplicate_count=2", resp.Data.Summary)
@@ -377,23 +375,16 @@ func TestSummaryCommentMultipleMatchesUpdatesNewestNeverDeletes(t *testing.T) {
 	if !strings.Contains(resp.Data.Summary.Note, "updated newest (402) without deleting") {
 		t.Errorf("summary.Note = %q, want duplicate explanation", resp.Data.Summary.Note)
 	}
-	for _, call := range cmdr.calls {
-		if strings.Contains(strings.Join(call, " "), "DELETE") {
-			t.Errorf("issued DELETE call: %q", call)
+	assertNoCallContaining(t, cmdr.calls, "DELETE")
+	assertPostReceiptSummary(t, "update", "402")
+}
+
+func assertNoCallContaining(t *testing.T, calls [][]string, needle string) {
+	t.Helper()
+	for _, call := range calls {
+		if strings.Contains(strings.Join(call, " "), needle) {
+			t.Errorf("unexpected %s call: %q", needle, call)
 		}
-	}
-	rawPost, err := os.ReadFile(".verdict/state/7/post.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var receipt struct {
-		Summary *core.PostSummary `json:"summary"`
-	}
-	if err := json.Unmarshal(rawPost, &receipt); err != nil {
-		t.Fatalf("decode post.json: %v", err)
-	}
-	if receipt.Summary == nil || receipt.Summary.DuplicateCount != 2 || receipt.Summary.CommentID != "402" {
-		t.Errorf("post.json summary = %+v, want comment_id=402 duplicate_count=2", receipt.Summary)
 	}
 }
 
@@ -402,132 +393,111 @@ func TestSummaryCommentDryRunAndOffModes(t *testing.T) {
 	existing := `[{"id":401,"user":{"login":"someone-else"},"html_url":"https://gh.example/c/401","updated_at":"2026-01-01T00:00:00Z","body":"Prior\n\n` + marker + `"}]`
 
 	t.Run("dry_run_off_reports_none_without_summary_calls", func(t *testing.T) {
-		t.Chdir(t.TempDir())
-		seedSummaryBundle(t, providerGitHub)
-		cmdr := postCommander(t)
-		var warnings, human []string
-		req := summaryReq(cmdr, providerGitHub, core.PostFlags{
-			Approve:    "false",
-			ReviewFile: ".verdict/state/7/review.json",
-			DryRun:     true,
-		}, &warnings, &human)
-		req.JSONMode = false
-		resp, ref := Run(context.Background(), req)
-		if ref != nil {
-			t.Fatalf("Run refusal: %v", ref)
-		}
-		if resp.Data.Summary == nil || resp.Data.Summary.Action != "none" {
-			t.Fatalf("summary = %+v, want action=none", resp.Data.Summary)
-		}
-		if !strings.Contains(strings.Join(human, "\n"), "summary: none") {
-			t.Errorf("human dry-run missing summary: none: %q", human)
-		}
-		for _, c := range cmdr.calls {
-			if strings.Contains(strings.Join(c, " "), "/issues/") {
-				t.Errorf("--summary off made issue-comment call: %q", c)
-			}
-		}
+		verifyDryRunOff(t)
 	})
-
 	t.Run("dry_run_comment_create_and_update_write_nothing", func(t *testing.T) {
-		for _, tc := range []struct {
-			name     string
-			listJSON string
-			wantAct  string
-			wantLine string
-		}{
-			{name: "create", listJSON: "[]", wantAct: "create", wantLine: "summary: create"},
-			{name: "update", listJSON: existing, wantAct: "update", wantLine: "summary: update 401"},
-		} {
-			t.Run(tc.name, func(t *testing.T) {
-				t.Chdir(t.TempDir())
-				seedSummaryBundle(t, providerGitHub)
-				cmdr := hostBaseCommander(t, providerGitHub, tc.listJSON, "[]")
-				var warnings, human []string
-				req := summaryReq(cmdr, providerGitHub, core.PostFlags{
-					Approve:    "false",
-					ReviewFile: ".verdict/state/7/review.json",
-					Summary:    "comment",
-					DryRun:     true,
-				}, &warnings, &human)
-				req.JSONMode = false
-				resp, ref := Run(context.Background(), req)
-				if ref != nil {
-					t.Fatalf("Run refusal: %v", ref)
-				}
-				if resp.Data.Summary == nil || resp.Data.Summary.Action != tc.wantAct {
-					t.Fatalf("summary = %+v, want %q", resp.Data.Summary, tc.wantAct)
-				}
-				if !strings.Contains(strings.Join(human, "\n"), tc.wantLine) {
-					t.Errorf("human = %q, want substring %q", human, tc.wantLine)
-				}
-				envJSON := jq.PrettyOrdered(RenderPostEnvelope(resp))
-				if !strings.Contains(envJSON, `"action":"`+tc.wantAct+`"`) {
-					t.Errorf("envelope JSON missing summary action %q:\n%s", tc.wantAct, envJSON)
-				}
-				for _, c := range cmdr.calls {
-					s := strings.Join(c, " ")
-					if strings.Contains(s, "POST") || strings.Contains(s, "PATCH") || strings.Contains(s, "PUT") {
-						t.Errorf("dry-run wrote to host: %q", c)
-					}
-				}
-			})
-		}
+		t.Run("create", func(t *testing.T) { verifyDryRunComment(t, "[]", "create", "summary: create") })
+		t.Run("update", func(t *testing.T) { verifyDryRunComment(t, existing, "update", "summary: update 401") })
 	})
-
 	t.Run("real_post_off_omits_summary_and_keeps_wire_unchanged", func(t *testing.T) {
-		t.Chdir(t.TempDir())
-		seedSummaryBundle(t, providerGitHub)
-		cmdr := postCommander(t)
-		var warnings, human []string
-		req := summaryReq(cmdr, providerGitHub, core.PostFlags{
-			Approve:    "false",
-			ReviewFile: ".verdict/state/7/review.json",
-		}, &warnings, &human)
-		resp, ref := Run(context.Background(), req)
-		if ref != nil {
-			t.Fatalf("Run refusal: %v", ref)
-		}
-		if resp.Data.Summary != nil {
-			t.Fatalf("expected nil Summary when --summary off, got %+v", resp.Data.Summary)
-		}
-		envJSON := jq.PrettyOrdered(RenderPostEnvelope(resp))
-		if strings.Contains(envJSON, `"summary"`) {
-			t.Errorf("envelope unexpectedly contains summary key:\n%s", envJSON)
-		}
-		rawPost, err := os.ReadFile(".verdict/state/7/post.json")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if strings.Contains(string(rawPost), `"summary"`) {
-			t.Errorf("post.json unexpectedly contains summary key:\n%s", rawPost)
-		}
-		for _, c := range cmdr.calls {
-			if strings.Contains(strings.Join(c, " "), "/issues/") {
-				t.Errorf("--summary off made issue-comment call: %q", c)
-			}
-		}
+		verifyRealPostOff(t)
 	})
-
 	t.Run("bad_summary_flag_refused", func(t *testing.T) {
-		t.Chdir(t.TempDir())
-		seedSummaryBundle(t, providerGitHub)
-		cmdr := postCommander(t)
-		var warnings, human []string
-		req := summaryReq(cmdr, providerGitHub, core.PostFlags{
-			Approve:    "false",
-			ReviewFile: ".verdict/state/7/review.json",
-			Summary:    "description",
-		}, &warnings, &human)
-		_, ref := Run(context.Background(), req)
-		if ref == nil || ref.Code != "bad-flags" {
-			t.Fatalf("ref = %v, want bad-flags", ref)
-		}
+		verifyBadSummaryFlag(t)
 	})
+}
+
+func verifyDryRunOff(t *testing.T) {
+	t.Helper()
+	t.Chdir(t.TempDir())
+	seedSummaryBundle(t, providerGitHub)
+	cmdr := postCommander(t)
+	var warnings, human []string
+	req := summaryReq(cmdr, providerGitHub, core.PostFlags{
+		Approve: "false", ReviewFile: ".verdict/state/7/review.json", DryRun: true,
+	}, &warnings, &human)
+	req.JSONMode = false
+	resp, ref := Run(context.Background(), req)
+	if ref != nil || resp.Data.Summary == nil || resp.Data.Summary.Action != "none" {
+		t.Fatalf("ref=%v summary=%+v, want action=none", ref, resp)
+	}
+	if !strings.Contains(strings.Join(human, "\n"), "summary: none") {
+		t.Errorf("human dry-run missing summary: none: %q", human)
+	}
+	assertNoCallContaining(t, cmdr.calls, "/issues/")
+}
+
+func verifyDryRunComment(t *testing.T, listJSON, wantAct, wantLine string) {
+	t.Helper()
+	t.Chdir(t.TempDir())
+	seedSummaryBundle(t, providerGitHub)
+	cmdr := hostBaseCommander(t, providerGitHub, listJSON, "[]")
+	var warnings, human []string
+	req := summaryReq(cmdr, providerGitHub, core.PostFlags{
+		Approve: "false", ReviewFile: ".verdict/state/7/review.json", Summary: "comment", DryRun: true,
+	}, &warnings, &human)
+	req.JSONMode = false
+	resp, ref := Run(context.Background(), req)
+	if ref != nil || resp.Data.Summary == nil || resp.Data.Summary.Action != wantAct {
+		t.Fatalf("ref=%v summary=%+v, want %q", ref, resp, wantAct)
+	}
+	if !strings.Contains(strings.Join(human, "\n"), wantLine) {
+		t.Errorf("human = %q, want substring %q", human, wantLine)
+	}
+	if envJSON := jq.PrettyOrdered(RenderPostEnvelope(resp)); !strings.Contains(envJSON, `"action":"`+wantAct+`"`) {
+		t.Errorf("envelope JSON missing summary action %q:\n%s", wantAct, envJSON)
+	}
+	for _, verb := range []string{"POST", "PATCH", "PUT"} {
+		assertNoCallContaining(t, cmdr.calls, verb)
+	}
+}
+
+func verifyRealPostOff(t *testing.T) {
+	t.Helper()
+	t.Chdir(t.TempDir())
+	seedSummaryBundle(t, providerGitHub)
+	cmdr := postCommander(t)
+	resp := runSummaryPostCase(t, providerGitHub, cmdr, core.PostFlags{
+		Approve: "false", ReviewFile: ".verdict/state/7/review.json",
+	})
+	if resp.Data.Summary != nil {
+		t.Fatalf("expected nil Summary when --summary off, got %+v", resp.Data.Summary)
+	}
+	if envJSON := jq.PrettyOrdered(RenderPostEnvelope(resp)); strings.Contains(envJSON, `"summary"`) {
+		t.Errorf("envelope unexpectedly contains summary key:\n%s", envJSON)
+	}
+	rawPost, err := os.ReadFile(".verdict/state/7/post.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(rawPost), `"summary"`) {
+		t.Errorf("post.json unexpectedly contains summary key:\n%s", rawPost)
+	}
+	assertNoCallContaining(t, cmdr.calls, "/issues/")
+}
+
+func verifyBadSummaryFlag(t *testing.T) {
+	t.Helper()
+	t.Chdir(t.TempDir())
+	seedSummaryBundle(t, providerGitHub)
+	cmdr := postCommander(t)
+	var warnings, human []string
+	req := summaryReq(cmdr, providerGitHub, core.PostFlags{
+		Approve: "false", ReviewFile: ".verdict/state/7/review.json", Summary: "description",
+	}, &warnings, &human)
+	if _, ref := Run(context.Background(), req); ref == nil || ref.Code != "bad-flags" {
+		t.Fatalf("ref = %v, want bad-flags", ref)
+	}
 }
 
 func TestSummaryCommentEmptyBodyGuardAndMarkerDistinctness(t *testing.T) {
 	t.Parallel()
+	verifyHostEmptyBodyGuards(t)
+	verifySummaryMarkerDistinctness(t)
+}
+
+func verifyHostEmptyBodyGuards(t *testing.T) {
+	t.Helper()
 	for _, host := range []hostSummary{githubHost{}, gitlabHost{}, forgejoHost{}} {
 		cmdr := &scriptCommander{t: t, out: map[string]scriptResult{}}
 		if _, err := host.createSummaryComment(context.Background(), cmdr, forgejoEnv(), "acme/app", "7", "   \n\t "); err == nil {
@@ -540,21 +510,20 @@ func TestSummaryCommentEmptyBodyGuardAndMarkerDistinctness(t *testing.T) {
 			t.Errorf("%T issued host calls on empty body: %q", host, cmdr.calls)
 		}
 	}
+}
 
+func verifySummaryMarkerDistinctness(t *testing.T) {
+	t.Helper()
 	sm := threadscore.SummaryMarker(summaryTestHead)
 	rm := "<!-- verdict-review payload=" + summaryTestHead + " head=" + summaryTestHead + " -->"
 	fm := threadscore.FindingMarker(summaryTestHead)
 	if !threadscore.HasSummaryMarker("body\n\n" + sm) {
 		t.Errorf("HasSummaryMarker failed on valid marker")
 	}
-	if threadscore.HasSummaryMarker("body\n\n" + rm) {
-		t.Errorf("HasSummaryMarker matched verdict-review marker")
-	}
-	if threadscore.HasSummaryMarker("body\n\n" + fm) {
-		t.Errorf("HasSummaryMarker matched verdict-finding marker")
-	}
-	if threadscore.HasSummaryMarker("quoted:\n" + sm + "\nmore") {
-		t.Errorf("HasSummaryMarker matched mid-body marker")
+	for _, badBody := range []string{"body\n\n" + rm, "body\n\n" + fm, "quoted:\n" + sm + "\nmore"} {
+		if threadscore.HasSummaryMarker(badBody) {
+			t.Errorf("HasSummaryMarker unexpectedly matched %q", badBody)
+		}
 	}
 	if reviewMarkerRe.MatchString(sm) {
 		t.Errorf("reviewMarkerRe matched summary marker %q", sm)

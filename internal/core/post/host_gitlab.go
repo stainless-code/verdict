@@ -2,7 +2,6 @@ package postcore
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -124,7 +123,7 @@ func (gitlabHost) updateSummaryComment(ctx context.Context, cmdr Commander, _ ma
 
 func gitlabSummaryWrite(ctx context.Context, cmdr Commander, repo, pr, method, suffix, body string) (summaryRemoteComment, error) {
 	if strings.TrimSpace(body) == "" {
-		return summaryRemoteComment{}, errors.New(errEmptySummary)
+		return summaryRemoteComment{}, shapeError(errEmptySummary)
 	}
 	if cmdr == nil {
 		return summaryRemoteComment{}, errNoCommander
@@ -134,7 +133,7 @@ func gitlabSummaryWrite(ctx context.Context, cmdr Commander, repo, pr, method, s
 		return summaryRemoteComment{}, err
 	}
 	if res.ExitCode != 0 {
-		return summaryRemoteComment{}, errors.New(failureReason(res, nil))
+		return summaryRemoteComment{}, shapeError(failureReason(res, nil))
 	}
 	return decodeSummaryCommentObject(res.Stdout, "")
 }

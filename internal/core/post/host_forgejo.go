@@ -2,7 +2,6 @@ package postcore
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -671,7 +670,7 @@ func forgejoSummaryWrite(ctx context.Context, cmdr Commander, auth curlauth.Cred
 	method, url, body string,
 ) (summaryRemoteComment, error) {
 	if strings.TrimSpace(body) == "" {
-		return summaryRemoteComment{}, errors.New(errEmptySummary)
+		return summaryRemoteComment{}, shapeError(errEmptySummary)
 	}
 	if cmdr == nil {
 		return summaryRemoteComment{}, errNoCommander
@@ -687,10 +686,10 @@ func forgejoSummaryWrite(ctx context.Context, cmdr Commander, auth curlauth.Cred
 	}
 	answer, ok := parseForgejoResponse(res.Stdout)
 	if !ok {
-		return summaryRemoteComment{}, errors.New(msgForgejoLost)
+		return summaryRemoteComment{}, shapeError(msgForgejoLost)
 	}
 	if answer.status != http.StatusOK && answer.status != http.StatusCreated {
-		return summaryRemoteComment{}, errors.New(forgejoFailureReason(res, answer))
+		return summaryRemoteComment{}, shapeError(forgejoFailureReason(res, answer))
 	}
 	return decodeSummaryCommentObject(answer.body, "")
 }
@@ -704,15 +703,11 @@ func (forgejoHost) postedInlineURLs(ctx context.Context, cmdr Commander, env map
 	}
 	auth, base, ref := forgejo.Resolve(env, repo, pr)
 	if ref != nil {
-		return nil, nil
+		return nil, forgejoRefusal(ref)
 	}
 	raw, _, err := forgejoRead(ctx, cmdr, auth, forgejo.CommentsURL(base, id))
 	if err != nil {
-		return nil, nil
+		return nil, err
 	}
-	links, err := decodeSummaryInlineComments(raw)
-	if err != nil {
-		return nil, nil
-	}
-	return links, nil
+	return decodeSummaryInlineComments(raw)
 }

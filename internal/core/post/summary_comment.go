@@ -2,6 +2,7 @@ package postcore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -18,6 +19,8 @@ import (
 const (
 	summaryBodyLimit   = 65536
 	summarySnippetCap  = 120
+	summaryIDBase      = 10
+	summaryIDBitSize   = 64
 	methodPatch        = "PATCH"
 	errEmptySummary    = "refusing to write an empty summary comment body"
 	msgSummaryNoAuthor = "cannot manage summary comment: failed to resolve authenticated login"
@@ -68,7 +71,7 @@ func summaryHostFor(provider string) (hostSummary, error) {
 		return forgejoHost{}, nil
 	default:
 		return nil, &core.RefusalError{
-			Code:    "provider-unimplemented",
+			Code:    codeProviderUnimplemented,
 			Message: fmt.Sprintf("summary comment is not supported for provider %q", provider),
 		}
 	}
@@ -87,8 +90,7 @@ func (st *state) cachedSelfLogin(ctx context.Context) (string, error) {
 	return st.me, st.meErr
 }
 
-// resolveSummaryTarget reads the live PR-level comments and selects the existing
-// verdict summary comment owned by the authenticated user.
+// resolveSummaryTarget picks the existing summary comment authored by self.
 func (st *state) resolveSummaryTarget(ctx context.Context, host hostSummary) (summaryTarget, *core.RefusalError) {
 	me, err := st.cachedSelfLogin(ctx)
 	if err != nil || me == "" {
@@ -114,13 +116,10 @@ func (st *state) resolveSummaryTarget(ctx context.Context, host hostSummary) (su
 func (st *state) planSummary(ctx context.Context) (*core.PostSummary, *core.RefusalError) {
 	host, err := summaryHostFor(st.provider())
 	if err != nil {
-		var ref *core.RefusalError
-		if asRef, ok := err.(*core.RefusalError); ok {
-			ref = asRef
-		} else {
-			ref = refusalOrFailed(err)
+		if asRef, ok := errors.AsType[*core.RefusalError](err); ok {
+			return nil, asRef
 		}
-		return nil, ref
+		return nil, refusalOrFailed(err)
 	}
 	target, ref := st.resolveSummaryTarget(ctx, host)
 	if ref != nil {
@@ -131,7 +130,7 @@ func (st *state) planSummary(ctx context.Context) (*core.PostSummary, *core.Refu
 	if strings.TrimSpace(body) == "" {
 		return &core.PostSummary{Action: summaryActionNone, Marker: marker}, nil
 	}
-	return st.buildSummaryOutcome(target, marker, summaryRemoteComment{}, true), nil
+	return st.buildSummaryOutcome(target, marker, nil, true), nil
 }
 
 // publishSummary writes or updates the single PR-level summary comment after
@@ -169,7 +168,7 @@ func (st *state) publishSummary(ctx context.Context, cmdr Commander, reviewObj *
 	if written.URL == "" {
 		written.URL = summaryCommentURLFallback(st.provider(), reviewURL, target.comment, written.ID)
 	}
-	return st.buildSummaryOutcome(target, marker, written, false), nil
+	return st.buildSummaryOutcome(target, marker, &written, false), nil
 }
 
 func summaryCommentURLFallback(provider, reviewURL string, prior *summaryRemoteComment, writtenID string) string {
@@ -186,7 +185,7 @@ func summaryCommentURLFallback(provider, reviewURL string, prior *summaryRemoteC
 }
 
 func (st *state) buildSummaryOutcome(
-	target summaryTarget, marker string, written summaryRemoteComment, dryRun bool,
+	target summaryTarget, marker string, written *summaryRemoteComment, dryRun bool,
 ) *core.PostSummary {
 	out := &core.PostSummary{
 		Action: summaryActionCreate,
@@ -197,30 +196,33 @@ func (st *state) buildSummaryOutcome(
 		out.CommentID = target.comment.ID
 		out.URL = target.comment.URL
 	}
-	if !dryRun {
-		if written.ID != "" {
-			out.CommentID = written.ID
-		}
-		if written.URL != "" {
-			out.URL = written.URL
-		}
-	}
+	applyWrittenSummary(out, written, dryRun)
 	if target.duplicateCount > 1 {
 		out.DuplicateCount = target.duplicateCount
-		if dryRun {
-			out.Note = fmt.Sprintf(
-				"found %d marked summary comments by %s; would update newest (%s) without deleting",
-				target.duplicateCount, st.me, out.CommentID,
-			)
-		} else {
-			out.Note = fmt.Sprintf(
-				"found %d marked summary comments by %s; updated newest (%s) without deleting",
-				target.duplicateCount, st.me, out.CommentID,
-			)
-		}
+		out.Note = duplicateSummaryNote(target.duplicateCount, st.me, out.CommentID, dryRun)
 		st.warn(out.Note)
 	}
 	return out
+}
+
+func applyWrittenSummary(out *core.PostSummary, written *summaryRemoteComment, dryRun bool) {
+	if dryRun || written == nil {
+		return
+	}
+	if written.ID != "" {
+		out.CommentID = written.ID
+	}
+	if written.URL != "" {
+		out.URL = written.URL
+	}
+}
+
+func duplicateSummaryNote(count int, author, commentID string, dryRun bool) string {
+	verb := "updated"
+	if dryRun {
+		verb = "would update"
+	}
+	return fmt.Sprintf("found %d marked summary comments by %s; %s newest (%s) without deleting", count, author, verb, commentID)
 }
 
 func (st *state) collectInlineLinks(ctx context.Context, host hostSummary, reviewObj *jq.Obj) []summaryInlineLink {
@@ -240,12 +242,7 @@ func summaryReviewURL(obj *jq.Obj) string {
 	if obj == nil {
 		return ""
 	}
-	v, ok := obj.Get("html_url")
-	if !ok {
-		return ""
-	}
-	s, _ := v.(string)
-	return strings.TrimSpace(s)
+	return strings.TrimSpace(strVal(obj, "html_url"))
 }
 
 func formatSummaryDryRun(s *core.PostSummary) string {
@@ -275,42 +272,44 @@ func pickSummaryTarget(comments []summaryRemoteComment, me string) summaryTarget
 		return summaryTarget{}
 	}
 	var matches []summaryRemoteComment
-	for _, c := range comments {
-		if c.System || c.ID == "" {
-			continue
+	for i := range comments {
+		if matchesSelfSummary(&comments[i], me) {
+			matches = append(matches, comments[i])
 		}
-		if !strings.EqualFold(c.Author, me) {
-			continue
-		}
-		if !threadscore.HasSummaryMarker(c.Body) {
-			continue
-		}
-		matches = append(matches, c)
 	}
 	if len(matches) == 0 {
 		return summaryTarget{}
 	}
-	best := matches[0]
-	for _, cand := range matches[1:] {
-		if isNewerSummaryComment(cand, best) {
-			best = cand
-		}
-	}
+	best := newestSummaryComment(matches)
 	return summaryTarget{comment: &best, duplicateCount: len(matches)}
 }
 
-func isNewerSummaryComment(cand, best summaryRemoteComment) bool {
+func matchesSelfSummary(c *summaryRemoteComment, me string) bool {
+	if c.System || c.ID == "" {
+		return false
+	}
+	return strings.EqualFold(c.Author, me) && threadscore.HasSummaryMarker(c.Body)
+}
+
+func newestSummaryComment(matches []summaryRemoteComment) summaryRemoteComment {
+	best := matches[0]
+	for i := range matches[1:] {
+		cand := &matches[i+1]
+		if isNewerSummaryComment(cand, &best) {
+			best = *cand
+		}
+	}
+	return best
+}
+
+func isNewerSummaryComment(cand, best *summaryRemoteComment) bool {
 	ct, cOK := parseSummaryTimestamp(cand.UpdatedAt, cand.CreatedAt)
 	bt, bOK := parseSummaryTimestamp(best.UpdatedAt, best.CreatedAt)
-	if cOK && bOK {
-		if ct.After(bt) {
-			return true
-		}
-		if ct.Before(bt) {
-			return false
-		}
-	} else if cOK != bOK {
+	if cOK != bOK {
 		return cOK
+	}
+	if cOK && !ct.Equal(bt) {
+		return ct.After(bt)
 	}
 	ci, ciOK := parseCommentNumericID(cand.ID)
 	bi, biOK := parseCommentNumericID(best.ID)
@@ -337,7 +336,7 @@ func parseSummaryTimestamp(updated, created string) (time.Time, bool) {
 }
 
 func parseCommentNumericID(id string) (int64, bool) {
-	n, err := strconv.ParseInt(strings.TrimSpace(id), 10, 64)
+	n, err := strconv.ParseInt(strings.TrimSpace(id), summaryIDBase, summaryIDBitSize)
 	return n, err == nil
 }
 
@@ -379,7 +378,7 @@ func cleanSummaryProse(raw string) string {
 	if trimmed == "" {
 		return ""
 	}
-	lines := strings.Split(trimmed, "\n")
+	lines := strings.Split(trimmed, newline)
 	for len(lines) > 0 {
 		last := strings.TrimSpace(lines[len(lines)-1])
 		if strings.HasPrefix(last, "<!-- verdict-") && strings.HasSuffix(last, "-->") {
@@ -388,28 +387,17 @@ func cleanSummaryProse(raw string) string {
 		}
 		break
 	}
-	return strings.TrimSpace(recordcore.NeutralizeMentions(strings.Join(lines, "\n")))
+	return strings.TrimSpace(recordcore.NeutralizeMentions(strings.Join(lines, newline)))
 }
 
 func renderSummaryInlineSection(comments []any, links []summaryInlineLink) string {
 	if len(comments) == 0 && len(links) == 0 {
 		return ""
 	}
-	used := make([]bool, len(links))
-	var lines []string
-	lines = append(lines, "### Inline Comments")
-	for _, raw := range comments {
-		c, ok := raw.(*jq.Obj)
-		if !ok || c == nil {
-			continue
-		}
-		path, _ := strVal(c, fieldPath)
-		line := intVal(c, fieldLine)
-		body, _ := strVal(c, fieldBody)
-		url := matchInlineLink(path, line, body, links, used)
-		lines = append(lines, formatInlineLinkBullet(path, line, body, url))
-	}
-	if len(comments) == 0 {
+	lines := []string{"### Inline Comments"}
+	if len(comments) > 0 {
+		lines = appendCommentBullets(lines, comments, links)
+	} else {
 		for _, link := range links {
 			lines = append(lines, formatInlineLinkBullet(link.Path, link.Line, link.Body, link.URL))
 		}
@@ -417,16 +405,35 @@ func renderSummaryInlineSection(comments []any, links []summaryInlineLink) strin
 	if len(lines) == 1 {
 		return ""
 	}
-	return strings.Join(lines, "\n")
+	return strings.Join(lines, newline)
 }
 
-func strVal(obj *jq.Obj, key string) (string, bool) {
+func appendCommentBullets(lines []string, comments []any, links []summaryInlineLink) []string {
+	used := make([]bool, len(links))
+	for _, raw := range comments {
+		c, ok := raw.(*jq.Obj)
+		if !ok || c == nil {
+			continue
+		}
+		path := strVal(c, fieldPath)
+		line := intVal(c, fieldLine)
+		body := strVal(c, fieldBody)
+		url := matchInlineLink(path, line, body, links, used)
+		lines = append(lines, formatInlineLinkBullet(path, line, body, url))
+	}
+	return lines
+}
+
+func strVal(obj *jq.Obj, key string) string {
 	v, ok := obj.Get(key)
 	if !ok {
-		return "", false
+		return ""
 	}
 	s, ok := v.(string)
-	return s, ok
+	if !ok {
+		return ""
+	}
+	return s
 }
 
 func intVal(obj *jq.Obj, key string) int {
@@ -451,23 +458,40 @@ func intVal(obj *jq.Obj, key string) int {
 }
 
 func matchInlineLink(path string, line int, body string, links []summaryInlineLink, used []bool) string {
+	if url := matchInlineBySig(body, links, used); url != "" {
+		return url
+	}
+	return matchInlineByLocation(path, line, links, used)
+}
+
+func matchInlineBySig(body string, links []summaryInlineLink, used []bool) string {
 	sig, hasSig := threadscore.FindingSig(body)
-	if hasSig {
-		for i, link := range links {
-			if used[i] || link.URL == "" {
-				continue
-			}
-			if lsig, ok := threadscore.FindingSig(link.Body); ok && lsig == sig {
-				used[i] = true
-				return link.URL
-			}
-		}
+	if !hasSig {
+		return ""
 	}
 	for i, link := range links {
-		if used[i] || link.URL == "" {
+		if !used[i] && sameFindingSig(link, sig) {
+			used[i] = true
+			return link.URL
+		}
+	}
+	return ""
+}
+
+func sameFindingSig(link summaryInlineLink, sig string) bool {
+	if link.URL == "" {
+		return false
+	}
+	lsig, ok := threadscore.FindingSig(link.Body)
+	return ok && lsig == sig
+}
+
+func matchInlineByLocation(path string, line int, links []summaryInlineLink, used []bool) string {
+	for i, link := range links {
+		if used[i] || link.URL == "" || link.Path != path {
 			continue
 		}
-		if link.Path == path && (line <= 0 || link.Line <= 0 || link.Line == line) {
+		if line <= 0 || link.Line <= 0 || link.Line == line {
 			used[i] = true
 			return link.URL
 		}
@@ -497,7 +521,7 @@ func inlineSnippet(body string) string {
 	if clean == "" {
 		return ""
 	}
-	firstLine, _, _ := strings.Cut(clean, "\n")
+	firstLine, _, _ := strings.Cut(clean, newline)
 	firstLine = strings.Join(strings.Fields(firstLine), " ")
 	runes := []rune(firstLine)
 	if len(runes) > summarySnippetCap {
@@ -568,7 +592,10 @@ func decodeSummaryCommentMap(m map[string]any, fallbackPRURL string) summaryRemo
 	if url == "" && fallbackPRURL != "" && id != "" {
 		url = fallbackPRURL + "#note_" + id
 	}
-	system, _ := m["system"].(bool)
+	system, ok := m["system"].(bool)
+	if !ok {
+		system = false
+	}
 	return summaryRemoteComment{
 		ID:        id,
 		Author:    author,

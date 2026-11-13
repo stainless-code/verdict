@@ -76,7 +76,7 @@ func ResolveThread(
 	caps := core.CapabilitiesFor(provider)
 	_, _, resolver := hostFor(provider)
 	if !caps.ThreadResolution || resolver == nil {
-		return &core.RefusalError{Code: "provider-unimplemented", Message: fmt.Sprintf(
+		return &core.RefusalError{Code: codeProviderUnimplemented, Message: fmt.Sprintf(
 			"thread resolution on %s is not implemented (%s)",
 			provider, caps.ReasonFor(core.CapabilityThreadResolution))}
 	}

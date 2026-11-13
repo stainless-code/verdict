@@ -7,8 +7,11 @@ import (
 // PostFlags carries the resolved post options: the adapter parses argv and
 // the service receives values only.
 type PostFlags struct {
-	Approve        string `enum:"true|false"`
-	ReviewFile     string
+	Approve    string `enum:"true|false"`
+	ReviewFile string
+	// Summary opts into maintaining one separate PR-level summary comment
+	// (comment) updated in place across posts, or keeps it disabled (off).
+	Summary        string `enum:"off|comment"`
 	RequestChanges bool
 	Bind           bool
 	Force          bool
@@ -21,19 +24,16 @@ type PostFlags struct {
 	// post-secret-shaped without it, and the receipt records what it let
 	// through.
 	AllowSecretValues bool
-	// Summary opts into maintaining one separate PR-level summary comment
-	// (comment) updated in place across posts, or keeps it disabled (off).
-	Summary string `enum:"off|comment"`
 }
 
 // PostSummary records the planned (on dry-run) or executed (on real post)
 // PR-level summary comment action.
 type PostSummary struct { //nolint:govet // field order is the published property order
-	Action         string `enum:"create|update|none"     json:"action"`
+	Action         string `enum:"create|update|none"        json:"action"`
 	CommentID      string `json:"comment_id,omitempty"      optional:"true"`
 	URL            string `json:"url,omitempty"             optional:"true"`
 	Marker         string `json:"marker,omitempty"          optional:"true"`
-	DuplicateCount int    `json:"duplicate_count,omitempty" min:"0"          optional:"true"`
+	DuplicateCount int    `json:"duplicate_count,omitempty" min:"0"         optional:"true"`
 	Note           string `json:"note,omitempty"            optional:"true"`
 }
 

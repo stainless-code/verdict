@@ -79,22 +79,8 @@ func parsePostFlags(r *cli.Runner, args []string, dir string) (core.PostFlags, i
 			}
 			setPostValue(&f, a, v)
 			i = next
-		case strings.HasPrefix(a, postApproveFlag+"="):
-			f.Approve = strings.TrimPrefix(a, postApproveFlag+"=")
-		case strings.HasPrefix(a, postSummaryFlag+"="):
-			f.Summary = strings.TrimPrefix(a, postSummaryFlag+"=")
-		case a == "--request-changes":
-			f.RequestChanges = true
-		case a == "--bind":
-			f.Bind = true
-		case a == "--force":
-			f.Force = true
-		case a == postDryRunFlag:
-			f.DryRun = true
-		case a == "--require-coverage":
-			f.RequireCoverage = true
-		case a == postcore.AllowSecretValuesFlag:
-			f.AllowSecretValues = true
+		case parsePostEqFlag(&f, a):
+		case applyPostSwitchFlag(&f, a):
 		default:
 			msg := fmt.Sprintf("unknown flag '%s' for post (want --approve[=bool], --request-changes, "+
 				"--bind, --force, --review-file <path>, --summary comment|off, --dry-run, --require-coverage, "+
@@ -109,6 +95,45 @@ func parsePostFlags(r *cli.Runner, args []string, dir string) (core.PostFlags, i
 // --approve=bool form), and postDryRunFlag the dry-run switch the parser and
 // the re-entry line share.
 const postApproveFlag = "--approve"
+
+func parsePostEqFlag(f *core.PostFlags, arg string) bool {
+	name, val, ok := strings.Cut(arg, postEqSep)
+	if !ok {
+		return false
+	}
+	switch name {
+	case postApproveFlag:
+		f.Approve = val
+		return true
+	case postSummaryFlag:
+		f.Summary = val
+		return true
+	default:
+		return false
+	}
+}
+
+func applyPostSwitchFlag(f *core.PostFlags, arg string) bool {
+	switch arg {
+	case "--request-changes":
+		f.RequestChanges = true
+	case "--bind":
+		f.Bind = true
+	case "--force":
+		f.Force = true
+	case postDryRunFlag:
+		f.DryRun = true
+	case "--require-coverage":
+		f.RequireCoverage = true
+	case postcore.AllowSecretValuesFlag:
+		f.AllowSecretValues = true
+	default:
+		return false
+	}
+	return true
+}
+
+const postEqSep = "="
 
 const postDryRunFlag = "--dry-run"
 

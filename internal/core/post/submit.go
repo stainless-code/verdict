@@ -368,17 +368,25 @@ func (st *state) submit(ctx context.Context) (*core.PostResponse, *core.RefusalE
 	if err := atomic.WriteFile(st.dir+"/.posted_"+st.phash, []byte{}); err != nil {
 		return nil, st.withWarnings(refusalOrFailed(err))
 	}
-	if st.summaryMode() == summaryComment {
-		sum, sref := st.publishSummary(ctx, cmdr, obj)
-		if sref != nil {
-			return nil, st.withWarnings(sref)
-		}
-		st.summary = sum
+	if sref := st.finishSummary(ctx, cmdr, obj); sref != nil {
+		return nil, st.withWarnings(sref)
 	}
 	if err := writePostReceipt(st, obj); err != nil {
 		return nil, st.withWarnings(refusalOrFailed(err))
 	}
 	return st.successResponse(obj, posted), nil
+}
+
+func (st *state) finishSummary(ctx context.Context, cmdr Commander, obj *jq.Obj) *core.RefusalError {
+	if st.summaryMode() != summaryComment {
+		return nil
+	}
+	sum, ref := st.publishSummary(ctx, cmdr, obj)
+	if ref != nil {
+		return ref
+	}
+	st.summary = sum
+	return nil
 }
 
 func (st *state) postWithRetry(ctx context.Context, cmdr Commander) (string, *core.RefusalError) {

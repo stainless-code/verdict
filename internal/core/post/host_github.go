@@ -2,7 +2,6 @@ package postcore
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -99,11 +98,13 @@ func githubResolved(stdout string) bool {
 	return ok && resolved == true
 }
 
+const ghReposPrefix = "repos/"
+
 func (githubHost) listSummaryComments(ctx context.Context, cmdr Commander, _ map[string]string,
 	repo, pr string,
 ) ([]summaryRemoteComment, error) {
 	items, err := readPublicationList(ctx, cmdr, []string{
-		toolGH, cmdAPI, "repos/" + repo + "/issues/" + pr + "/comments", flagPaginate,
+		toolGH, cmdAPI, ghReposPrefix + repo + "/issues/" + pr + "/comments", flagPaginate,
 	})
 	if err != nil {
 		return nil, err
@@ -114,18 +115,18 @@ func (githubHost) listSummaryComments(ctx context.Context, cmdr Commander, _ map
 func (githubHost) createSummaryComment(ctx context.Context, cmdr Commander, _ map[string]string,
 	repo, pr, body string,
 ) (summaryRemoteComment, error) {
-	return ghSummaryWrite(ctx, cmdr, "repos/"+repo+"/issues/"+pr+"/comments", methodPost, body)
+	return ghSummaryWrite(ctx, cmdr, ghReposPrefix+repo+"/issues/"+pr+"/comments", methodPost, body)
 }
 
 func (githubHost) updateSummaryComment(ctx context.Context, cmdr Commander, _ map[string]string,
 	repo, _, commentID, body string,
 ) (summaryRemoteComment, error) {
-	return ghSummaryWrite(ctx, cmdr, "repos/"+repo+"/issues/comments/"+commentID, methodPatch, body)
+	return ghSummaryWrite(ctx, cmdr, ghReposPrefix+repo+"/issues/comments/"+commentID, methodPatch, body)
 }
 
 func ghSummaryWrite(ctx context.Context, cmdr Commander, endpoint, method, body string) (summaryRemoteComment, error) {
 	if strings.TrimSpace(body) == "" {
-		return summaryRemoteComment{}, errors.New(errEmptySummary)
+		return summaryRemoteComment{}, shapeError(errEmptySummary)
 	}
 	if cmdr == nil {
 		return summaryRemoteComment{}, errNoCommander
@@ -136,10 +137,10 @@ func ghSummaryWrite(ctx context.Context, cmdr Commander, endpoint, method, body 
 		Stdin: strings.NewReader(payload),
 	})
 	if err != nil {
-		return summaryRemoteComment{}, err
+		return summaryRemoteComment{}, jq.Sealed("github summary write", err)
 	}
 	if res.ExitCode != 0 {
-		return summaryRemoteComment{}, errors.New(failureReason(res, nil))
+		return summaryRemoteComment{}, shapeError(failureReason(res, nil))
 	}
 	return decodeSummaryCommentObject(res.Stdout, "")
 }
@@ -152,10 +153,10 @@ func (githubHost) postedInlineURLs(ctx context.Context, cmdr Commander, _ map[st
 		return nil, nil
 	}
 	items, err := readPublicationList(ctx, cmdr, []string{
-		toolGH, cmdAPI, "repos/" + repo + "/pulls/" + pr + "/reviews/" + id + "/comments", flagPaginate,
+		toolGH, cmdAPI, ghReposPrefix + repo + "/pulls/" + pr + "/reviews/" + id + "/comments", flagPaginate,
 	})
 	if err != nil {
-		return nil, nil
+		return nil, err
 	}
 	return inlineLinksFromMaps(items), nil
 }
