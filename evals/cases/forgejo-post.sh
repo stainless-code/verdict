@@ -126,10 +126,10 @@ assert_file_eq "every post call is a registered argv in order" "$FIX/expected-ar
 assert_file_nogrep "no post curl argv carries the fixture token" "$EVAL_SANDBOX/post-calls.txt" "$TOKEN" -F
 
 run_review post acme/app "$PR" --json
-assert_exit "the second post refuses" 1
-assert_json_field "the second post names the receipt" already-posted '.error.code'
-assert_eq "the second post adds no call" 4 "$(hoststub_count curl)"
-assert_eq "the second post adds no write" 1 "$(write_calls)"
+assert_exit "empty remote permits publication despite local receipt" 0
+assert_json_field "second post still records accepted review" 901 '.data.review.id'
+assert_eq "second post makes its reads and write" 8 "$(hoststub_count curl)"
+assert_eq "second post adds one write" 2 "$(write_calls)"
 
 eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks good — approval with one note below.","approved":false,"comments":[{"path":"notes.txt","line":2,"body":"Name the retry boundary so the third attempt is visible here.","rigor":"pointed","severity":"informational"}]}

@@ -95,145 +95,32 @@ fi
 eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks good — reworded body, same SHA.","approved":false,"comments":[]}
 EOF
-cp "$EVAL_SANDBOX/.verdict/state/$PR/post.json" "$EVAL_SANDBOX/post-before.json"
+export EVAL_SAVE_PAYLOAD="$EVAL_SANDBOX/reworded.json"
 m="$(mark)"
 run_review post acme/app "$PR" --json
-code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
-if [ "$EVAL_STATUS" -eq 1 ] && [ "$code" = "already-posted" ]; then
-  good "same-SHA repost refused with already-posted (exit 1)"
-else
-  bad "same-SHA repost gave exit $EVAL_STATUS code '$code', want 1/already-posted"
-fi
-run_review post acme/app "$PR"
-if [ "$EVAL_STATUS" -eq 1 ] && grep -q -- "--force" "$EVAL_ERR"; then
-  good "refusal names the --force override"
-else
-  bad "refusal stderr: $(head -c 300 "$EVAL_ERR")"
-fi
-if cmp -s "$EVAL_SANDBOX/post-before.json" "$EVAL_SANDBOX/.verdict/state/$PR/post.json" \
-  && [ "$(reviews_posts_since "$m")" -eq 0 ]; then
-  good "refused repost posted nothing (no POST, post.json identical)"
-else
-  bad "refused repost posted or rewrote the record"
-fi
-
-FRESH="$EVAL_SANDBOX/fresh"
-rm -rf "$FRESH"
-mkdir -p "$FRESH/.verdict/state"
-cp -R "$EVAL_SANDBOX/.verdict/state/$PR" "$FRESH/.verdict/state/$PR"
-# A fresh checkout of the same repo carries the same controls the snapshot
-# pinned; only the uncommitted receipts and artifacts are new.
-for rel in config.json kb.jsonl kb-joins.jsonl learnings.md overrides; do
-  [ -e "$EVAL_SANDBOX/.verdict/$rel" ] || continue
-  cp -R "$EVAL_SANDBOX/.verdict/$rel" "$FRESH/.verdict/$rel"
-done
-cp "$EVAL_SANDBOX/review-$PR.json" "$FRESH/.verdict/state/$PR/review.json"
-rm -f "$FRESH/.verdict/state/$PR/post.json" "$FRESH/.verdict/state/$PR"/.posted_*
-posted_body="$(jq -r '.body // empty' "$EVAL_SANDBOX/posted-$PR.json" 2>/dev/null || true)"
-jq -n --arg b "$posted_body" --arg h "$HEADA" \
-  '[{id:901,body:$b,commit_id:$h,submitted_at:"2026-01-01T00:00:00Z"}]' \
-  >"$FRESH/.verdict/state/$PR/reviews.json"
+unset EVAL_SAVE_PAYLOAD
+assert_exit "new content on the same head posts" 0
+assert_eq "new content makes one write" 1 "$(reviews_posts_since "$m")"
+jq --arg h "$HEADA" '[{body:.body,commit_id:$h}]' "$EVAL_SANDBOX/reworded.json" \
+  >"$EVAL_SANDBOX/.verdict/state/$PR/reviews.json"
 m="$(mark)"
-run_review_in "$FRESH" post acme/app "$PR" --json
-code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
-msg="$(jq -r '.error.message // empty' <"$EVAL_OUT" 2>/dev/null || true)"
-if [ "$EVAL_STATUS" -eq 1 ] && [ "$code" = "already-posted" ] \
-  && [ "$(reviews_posts_since "$m")" -eq 0 ]; then
-  good "fresh bundle refuses already-posted from reviews.json (no network POST)"
-else
-  bad "fresh bundle gave exit $EVAL_STATUS code '$code' calls $(reviews_posts_since "$m"), want 1/already-posted/0"
-fi
-if printf '%s' "$msg" | matches "re-fetch if the earlier review was deleted"; then
-  good "fresh-bundle refusal names the stale-review re-fetch hint"
-else
-  bad "fresh-bundle refusal message: $(printf '%s' "$msg" | head -c 300)"
-fi
-
-jq --arg h "$HEADB" '.[0].commit_id = $h' "$FRESH/.verdict/state/$PR/reviews.json" \
-  >"$FRESH/.verdict/state/$PR/reviews.json.new"
-mv "$FRESH/.verdict/state/$PR/reviews.json.new" "$FRESH/.verdict/state/$PR/reviews.json"
-m="$(mark)"
-run_review_in "$FRESH" post acme/app "$PR" --json
-code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
-if [ "$EVAL_STATUS" -eq 1 ] && [ "$code" = "duplicate-payload" ] \
-  && [ "$(reviews_posts_since "$m")" -eq 0 ]; then
-  good "fresh bundle refuses duplicate-payload from the live marker (no network POST)"
-else
-  bad "fresh duplicate gave exit $EVAL_STATUS code '$code' calls $(reviews_posts_since "$m"), want 1/duplicate-payload/0"
-fi
-m="$(mark)"
-run_review_in "$FRESH" post acme/app "$PR" --force --json
-if [ "$EVAL_STATUS" -eq 0 ] && [ "$(reviews_posts_since "$m")" -eq 1 ]; then
-  good "--force posts through the live-review guard (exit 0, one POST)"
-else
-  bad "fresh --force gave exit $EVAL_STATUS calls $(reviews_posts_since "$m"), want 0/1"
-fi
-
 run_review post acme/app "$PR" --json
-msg="$(jq -r '.error.message // empty' <"$EVAL_OUT" 2>/dev/null || true)"
-if [ "$EVAL_STATUS" -eq 1 ] \
-  && printf '%s' "$msg" | matches "fetch acme/app $PR --base-sha ${HEADA:0:7}" \
-  && printf '%s' "$msg" | matches -- "--force"; then
-  good "--json error.message names the exact advance command + --force"
-else
-  bad "--json error.message: $(head -c 300 "$EVAL_OUT")"
-fi
-run_review post acme/app "$PR"
-if [ "$EVAL_STATUS" -eq 1 ] \
-  && grep -q "fetch acme/app $PR --base-sha ${HEADA:0:7}" "$EVAL_ERR" \
-  && grep -q -- "--force" "$EVAL_ERR"; then
-  good "text refusal names the exact advance command + --force"
-else
-  bad "text refusal stderr: $(head -c 300 "$EVAL_ERR")"
-fi
-
-run_review post acme/app "$PR" --dry-run --json
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && cmp -s "$EVAL_SANDBOX/post-before.json" "$EVAL_SANDBOX/.verdict/state/$PR/post.json"; then
-  good "dry run after a completed post stays advisory and keeps the record"
-else
-  bad "dry run after completed post exits $EVAL_STATUS"
-fi
-
+assert_exit "identical remote content suppresses publication" 1
+assert_json_field "nothing missing names duplicate-payload" duplicate-payload '.error.code'
+assert_eq "remote duplicate makes no write" 0 "$(reviews_posts_since "$m")"
 jq --arg h "$HEADB" '.headRefOid = $h' "$EVAL_SANDBOX/.verdict/state/$PR/PR.json" \
-  > "$EVAL_SANDBOX/.verdict/state/$PR/PR.json.new"
+  >"$EVAL_SANDBOX/.verdict/state/$PR/PR.json.new"
 mv "$EVAL_SANDBOX/.verdict/state/$PR/PR.json.new" "$EVAL_SANDBOX/.verdict/state/$PR/PR.json"
 run_review post acme/app "$PR" --json
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ "$(jq -r '.head // empty' "$EVAL_SANDBOX/.verdict/state/$PR/post.json" 2>/dev/null)" = "$HEADB" ]; then
-  good "new-SHA post proceeds and refreshes the record"
-else
-  bad "new-SHA post exits $EVAL_STATUS / head not refreshed"
-fi
-
-eval_write_review "$PR" <<'EOF'
-{"schema_version":"1","body":"> ✅ Looks good — forced repost on the same SHA.","approved":false,"comments":[]}
-EOF
+assert_exit "identical content on a new head re-arms" 0
+assert_json_field "new head is explicitly rearmed" true '.data.rearmed'
+assert_json_field "new head names previous review head" "$HEADA" '.data.previous_head'
+assert_json_field "receipt records rearm" true '.rearmed' "$EVAL_SANDBOX/.verdict/state/$PR/post.json"
+printf '[]\n' >"$EVAL_SANDBOX/.verdict/state/$PR/reviews.json"
 m="$(mark)"
-run_review post acme/app "$PR" --force --json
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ "$(jq -r '.head // empty' "$EVAL_SANDBOX/.verdict/state/$PR/post.json" 2>/dev/null)" = "$HEADB" ]; then
-  good "--force overrides the same-SHA refusal"
-else
-  bad "forced repost exits $EVAL_STATUS, want 0"
-fi
-if [ "$(reviews_posts_since "$m")" -eq 1 ]; then
-  good "forced repost made exactly one network POST"
-else
-  bad "forced repost made $(reviews_posts_since "$m") POST(s)"
-fi
-
-eval_write_review "$PR" <<'EOF'
-{"schema_version":"1","body":"> ✅ Ship it.","approved":true,"comments":[]}
-EOF
-run_review post acme/app "$PR" --bind --json
-code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
-event="$(jq -r '.data.event // empty' <"$EVAL_OUT" 2>/dev/null || true)"
-if [ "$EVAL_STATUS" -eq 1 ] && [ "$code" = "already-posted" ] && [ "$event" = "" ]; then
-  good "APPROVE repost on the same SHA refused (no silent bind)"
-else
-  bad "APPROVE repost gave exit $EVAL_STATUS code '$code' event '$event'"
-fi
+run_review post acme/app "$PR" --json
+assert_exit "local receipts cannot override empty remote" 0
+assert_eq "empty remote permits a new write" 1 "$(reviews_posts_since "$m")"
 
 PR=4297
 mk_comment "$PR"

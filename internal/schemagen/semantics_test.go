@@ -201,7 +201,7 @@ var publishedSemantics = map[string]string{
 	// pack test: additive $defs/packTestData, packTestCase, and
 	// packTestSummary, plus the generated envelope description. Existing shapes
 	// remain unchanged.
-	"envelope.schema.json": "2fe86a84160bb5fbfb623782656568ecd75e1d508d0cdfa5c333fb94b5b4295d",
+	"envelope.schema.json": "a22e454cf4ce192fbe8e4464818e2478df1462b21602119de5fdeddb4e6544a4",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -227,7 +227,7 @@ var publishedSemantics = map[string]string{
 	// $defs/chunkCoverage (required attested and total), the chunked
 	// bundle's stored chunk[] attestation. No existing property, required
 	// key, enum, or type changed.
-	"post.schema.json": "f3ca9187045c2f9ebafe2e9baa6557fbf99e6ef5c30b90cca0b2eb17a217e90e",
+	"post.schema.json": "8c85a50e4af7e0a1a7feab80dba73c9e3ac3bfde12b0bd79ffb1e56349b20f2e",
 	// patch identity: additive $defs/identity root (new bundle document) —
 	// no existing property, required key, or type changed.
 	"identity.schema.json": "efe9a7b331e41715bc55b8824e95154add584c2d63f670811ef03c350d2e5bdb",

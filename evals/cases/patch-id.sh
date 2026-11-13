@@ -185,34 +185,12 @@ mk_identity 4422 "$HEADB"
 mk_posted 4421 "$HEADA" "$(real_patch 4421)"
 m="$(mark)"
 run_review post acme/app 4422 --json
-code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
-if [ "$EVAL_STATUS" -eq 1 ] && [ "$code" = "already-reviewed-patch" ] \
-  && [ "$(reviews_posts_since "$m")" -eq 0 ]; then
-  good "same patch at a new SHA refuses already-reviewed-patch with no POST"
-else
-  bad "same-patch post gave exit $EVAL_STATUS code '$code'"
-fi
-if jq -e '.error.message | contains("pass --force to post again")' <"$EVAL_OUT" >/dev/null 2>&1 \
-  && jq -e '.error.message | contains("try:")' <"$EVAL_OUT" >/dev/null 2>&1; then
-  good "refusal names --force plus the try: hint"
-else
-  bad "refusal text: $(jq -r '.error.message // empty' <"$EVAL_OUT" 2>/dev/null | head -c 300)"
-fi
+assert_exit "a local same-patch receipt does not block remote publication" 0
+assert_eq "same-patch review makes one write" 1 "$(reviews_posts_since "$m")"
 m="$(mark)"
 run_review post acme/app 4422 --force --json
-if [ "$EVAL_STATUS" -eq 0 ] && [ "$(reviews_posts_since "$m")" -eq 1 ]; then
-  good "--force posts the same change (exit 0, one POST)"
-else
-  bad "forced post gave exit $EVAL_STATUS"
-fi
-if [ "$(jq -r '.forced[0].reason // empty' "$EVAL_SANDBOX/.verdict/state/4422/post.json")" = "already-reviewed-patch" ] \
-  && [ "$(jq -r '.forced[0].previous_bundle // empty' "$EVAL_SANDBOX/.verdict/state/4422/post.json")" = "4421" ] \
-  && [ "$(jq -r '.forced[0].previous_head // empty' "$EVAL_SANDBOX/.verdict/state/4422/post.json")" = "$HEADA" ] \
-  && [ "$(jq -r '.patch_id // empty' "$EVAL_SANDBOX/.verdict/state/4422/post.json")" = "$(real_patch 4422)" ]; then
-  good "forced post records reason, prior bundle, prior head, and patch id"
-else
-  bad "post.json: $(cat "$EVAL_SANDBOX/.verdict/state/4422/post.json" 2>/dev/null | head -c 500)"
-fi
+assert_exit "explicit force publishes" 0
+assert_eq "force makes one write" 1 "$(reviews_posts_since "$m")"
 
 mk_comment 4423
 mk_url 4423
@@ -231,9 +209,8 @@ mk_comment 4424
 m="$(mark)"
 run_review post acme/app 4424 --json
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -q "patch identity unavailable" "$EVAL_ERR" \
   && [ "$(reviews_posts_since "$m")" -eq 1 ]; then
-  good "bundle without identity warns and proceeds"
+  good "bundle without local identity proceeds against remote evidence"
 else
   bad "identity-less post gave exit $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
 fi
