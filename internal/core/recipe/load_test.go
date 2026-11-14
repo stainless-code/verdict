@@ -78,17 +78,28 @@ const bundleLenses = "# lens pack verdict/builtin@1.0.0 — sha256:aa — contex
 	"# lens perf — sha256:abc max_files=8\nperf body\n# end lens perf\n" +
 	"# lens test — sha256:def\nTest body\n# end lens test\n"
 
-// TestLoadReadsBaseRecipesNotHead proves the loader reads the recipe the base
-// committed: a head-side edit never reaches the plan, and the bundle's
-// lenses.txt supplies the undeclared lens list.
-func TestLoadReadsBaseRecipesNotHead(t *testing.T) {
+// TestLoadReadsTheSnapshotNotTheWorktree proves the loader reads the control
+// snapshot the fetch captured, not the tree it runs in. The repository gets a
+// real head commit that rewrites recipes.json — a different version, a lens of
+// its own, and a `default` the base never carried — and the worktree stands at
+// that head, so a loader that read HEAD, the head commit, or the live worktree
+// would resolve the head entry. The snapshot holds the base commit's bytes, so
+// the plan is the base entry, and the bundle's lenses.txt still supplies the
+// lens list the base declaration does not make.
+func TestLoadReadsTheSnapshotNotTheWorktree(t *testing.T) {
 	base := gitFixture(t, map[string]string{
-		".verdict/recipes.json": `{"schema_version":"1","recipes":{"default":{"version":"9.9.9","lenses":[{"id":"security","model":"opus"}],"synthesize":{"model":"sonnet"}}}}`,
+		".verdict/recipes.json": `{"schema_version":"1","recipes":{"default":{"version":"9.9.9",` +
+			`"lenses":[{"id":"security","model":"opus"}],"synthesize":{"model":"sonnet"}}}}`,
 	})
-	writeAll(t, map[string]string{
-		".verdict/recipes.json": `{"schema_version":"1","recipes":{"default":{"version":"1.0.0","synthesize":{}}}}`,
-		"bundle/lenses.txt":     bundleLenses,
-	})
+	writeAll(t, map[string]string{".verdict/recipes.json": `{"schema_version":"1","recipes":{` +
+		`"default":{"version":"1.0.0","synthesize":{}},` +
+		`"head-only":{"version":"2.0.0","lenses":[{"id":"evil"}],"synthesize":{}}}}`})
+	git(t, "add", "-f", "-A")
+	git(t, "commit", "-qm", "head")
+	if head := git(t, "rev-parse", "HEAD"); head == base {
+		t.Fatalf("the fixture made no head commit: %s", head)
+	}
+	writeAll(t, map[string]string{"bundle/lenses.txt": bundleLenses})
 	snapshotControls(t, "bundle", base)
 	plan, ref := Load("bundle", DefaultName)
 	if ref != nil {
@@ -102,6 +113,9 @@ func TestLoadReadsBaseRecipesNotHead(t *testing.T) {
 	}
 	if len(plan.Warnings) != 1 || !strings.Contains(plan.Warnings[0], `"security"`) {
 		t.Errorf("warnings = %v, want one naming the lens the bundle does not load", plan.Warnings)
+	}
+	if _, ref := Load("bundle", "head-only"); ref == nil || ref.Code != CodeUnknown {
+		t.Errorf("head-only: ref = %+v, want %s: a name only the head declares is unknown", ref, CodeUnknown)
 	}
 }
 

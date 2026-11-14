@@ -2,6 +2,7 @@ package controls
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -135,6 +136,56 @@ func TestGateRefusals(t *testing.T) {
 	}
 	if _, ref := Gate(".verdict/nope", base); ref == nil || ref.Code != CodeUnavailable {
 		t.Errorf("no controls.json: ref = %+v, want %s", ref, CodeUnavailable)
+	}
+}
+
+// TestGateRefusesAPolicyBaseSnapshotOfAnotherCommit proves the commit a base
+// policy snapshot names is part of the contract: a manifest stamped policy base
+// whose sha is not the bundle's base refuses controls-stale even though every
+// captured file still hashes correctly. The per-file hashes cannot see this — a
+// manifest that names another commit carries the right bytes for that other
+// commit — so the assembled policy-base branch is the only check on it.
+func TestGateRefusesAPolicyBaseSnapshotOfAnotherCommit(t *testing.T) {
+	base := baseRepo(t, map[string]string{".verdict/config.json": `{"schema_version":"1"}`})
+	other := strings.Repeat("c", 40)
+	if _, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: ".verdict/state/12", BaseSHA: base}); ref != nil {
+		t.Fatal(ref)
+	}
+	manifest := filepath.Join(".verdict/state/12", FileName)
+	raw, err := os.ReadFile(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := core.ControlsFile{}
+	if err := json.Unmarshal(raw, &file); err != nil {
+		t.Fatal(err)
+	}
+	if file.Policy != PolicyBase || file.SHA != base || file.BaseSHA != base {
+		t.Fatalf("manifest = %+v, want the base policy stamped with the base commit", file)
+	}
+	file.SHA = other
+	edited, err := json.Marshal(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(manifest, edited, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, gate := range []struct {
+		name string
+		call func() *core.RefusalError
+	}{
+		{"Gate", func() *core.RefusalError { _, ref := Gate(".verdict/state/12", base); return ref }},
+		{"GateRecorded", func() *core.RefusalError { _, ref := GateRecorded(".verdict/state/12"); return ref }},
+		{"GateRecordedPath", func() *core.RefusalError {
+			_, _, ref := GateRecordedPath(".verdict/state/12", RecipesPath)
+			return ref
+		}},
+	} {
+		ref := gate.call()
+		if ref == nil || ref.Code != CodeStale {
+			t.Errorf("%s on a policy-base snapshot of another commit: ref = %+v, want %s", gate.name, ref, CodeStale)
+		}
 	}
 }
 

@@ -945,7 +945,11 @@ func TestRunWarnsABudgetOverThePersonalLimit(t *testing.T) {
 			limit: new(1.0),
 			want:  "recipe default declares budget_usd 1.5, above the bundle's personal spend limit $1 — run enforces nothing",
 		},
-		{name: "at the limit", limit: new(2.0)},
+		// The limit is an inclusive ceiling: the declared amount equal to it is
+		// inside, so equality stays silent. Without this case the < vs <=
+		// mutant survives.
+		{name: "at the limit is silent", limit: new(1.5)},
+		{name: "below the limit is silent", limit: new(2.0)},
 		{name: "no typed run bundle"},
 	}
 	for _, tc := range tests {
