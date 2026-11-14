@@ -3762,7 +3762,9 @@ instead of a review.
 Drift rule: additive within `schema_version`/`sig_version` `"1"` — new
 optional keys pass through the stores and the schemas alike; renames,
 tighter types, and newly required keys never happen without a version bump,
-and a bump ships only by operator decision.
+and a bump ships only by operator decision. Before 1.0 the operator may instead ship a
+breaking shape change within `"1"`; the changeset and release notes then name
+the changed fields.
 
 ### Resolution and clean reviews
 
