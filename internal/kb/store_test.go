@@ -10,9 +10,33 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
 )
+
+// TestLockKeepsTheLayoutSentence proves kb.Lock hands a layout refusal back
+// untouched: one path, one sentence, and the refusal the caller maps. Wrapping
+// it here ("lock .verdict/kb.jsonl: …") named the path twice and buried the
+// bad-config code the operator needs.
+func TestLockKeepsTheLayoutSentence(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, config.VerdictDir)); err != nil {
+		t.Fatalf("symlink .verdict: %v", err)
+	}
+	unlock, err := kb.Lock(root)
+	if err == nil {
+		unlock()
+		t.Fatal("Lock followed an escaping .verdict symlink")
+	}
+	if got, want := err.Error(), "refuses to write outside the repository: .verdict"; got != want {
+		t.Fatalf("Lock error = %q; want %q", got, want)
+	}
+	if ref := config.RefusalOf(err); ref == nil || ref.Code != config.CodeBadConfig {
+		t.Fatalf("RefusalOf(Lock error) = %v; want bad-config", ref)
+	}
+}
 
 // fixtureKB is a store with agent-chosen key order and a history array: the
 // stored byte contract is "what was written", never a map re-encode.

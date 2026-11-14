@@ -88,10 +88,14 @@ func AppendHistory(row *jq.Obj, ev *jq.Obj) {
 // the wait refuses [storelock.ErrBusy]. It brings `.verdict/.gitignore` to the
 // tracked contract before the lock file appears, so a lock file beside a
 // tracked store is never worktree dirt.
+//
+// The layout error comes back unwrapped: the layout already names the path and
+// owns the operator sentence, and its caller maps it with [config.RefusalOf]
+// before prefixing anything of its own.
 func Lock(root string) (func(), error) {
 	if serr := config.NewLayout(root).EnsureStateIgnore(); serr != nil {
-		//nolint:wrapcheck // the state error names the file it could not write
-		return nil, fmt.Errorf("lock %s: %w", storePath(root), serr)
+		//nolint:wrapcheck // the layout error carries the refusal its caller maps
+		return nil, serr
 	}
 	//nolint:wrapcheck // the shared lock already names the store it guards
 	return storelock.Acquire(storePath(root), storelock.DefaultWait)

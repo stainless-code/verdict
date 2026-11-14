@@ -91,6 +91,18 @@ func (e *stateError) Refusal() *core.RefusalError {
 // Unwrap exposes the cause to [errors.Is]/[errors.As].
 func (e *stateError) Unwrap() error { return e.cause }
 
+// RefusalOf maps a layout failure to the operator refusal it carries, or nil
+// when the failure is local and the caller owns the sentence. A caller that
+// receives a wrapped layout error maps it here before adding its own prefix, so
+// the operator reads one path and one fix.
+func RefusalOf(err error) *core.RefusalError {
+	var serr *stateError
+	if !errors.As(err, &serr) {
+		return nil
+	}
+	return serr.Refusal()
+}
+
 // Layout resolves the state paths under one repository root.
 type Layout struct {
 	// Root is the Git root the layout was built for.

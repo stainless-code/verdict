@@ -17,6 +17,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
@@ -379,32 +380,38 @@ func (st *state) runAppend() *core.RefusalError {
 	return nil
 }
 
-// lockStore takes the knowledge base's lock for one read-modify-write,
-// mapping a held lock to the retryable store-busy refusal: a veto must wait
-// rather than rewrite rows another writer is appending to.
+// lockStore takes the knowledge base's lock for one read-modify-write: a veto
+// must wait rather than rewrite rows another writer is appending to.
 func (st *state) lockStore() (func(), *core.RefusalError) {
 	unlock, err := kb.Lock(st.root)
-	switch {
-	case errors.Is(err, storelock.ErrBusy):
-		return nil, st.refuse(codeStoreBusy, fmt.Sprintf(msgBusyKB, st.kbDisplay()))
-	case err != nil:
-		return nil, st.refuse(codeLearnFailed, fmt.Sprintf(msgWriteKB, st.kbDisplay(), err))
+	if err != nil {
+		return nil, st.storeRefusal(err)
 	}
 	return unlock, nil
 }
 
-// writeKB appends one row to the knowledge base, mapping a held lock to the
-// retryable store-busy refusal: the append is a read-modify-write, so a second
-// writer must wait rather than drop the first row.
+// writeKB appends one row to the knowledge base: the append is a
+// read-modify-write, so a second writer must wait rather than drop the first
+// row.
 func (st *state) writeKB(line string) *core.RefusalError {
-	err := kb.AppendRow(st.root, line)
-	switch {
-	case errors.Is(err, storelock.ErrBusy):
-		return st.refuse(codeStoreBusy, fmt.Sprintf(msgBusyKB, st.kbDisplay()))
-	case err != nil:
-		return st.refuse(codeLearnFailed, fmt.Sprintf(msgWriteKB, st.kbDisplay(), err))
+	if err := kb.AppendRow(st.root, line); err != nil {
+		return st.storeRefusal(err)
 	}
 	return nil
+}
+
+// storeRefusal maps a knowledge-base write failure to its refusal. A layout
+// failure the operator must fix keeps the layout's own bad-config sentence,
+// path and fix included, rather than a second prefix naming the path again; a
+// held lock is retryable; anything else is a failed write.
+func (st *state) storeRefusal(err error) *core.RefusalError {
+	if ref := config.RefusalOf(err); ref != nil {
+		return ref
+	}
+	if errors.Is(err, storelock.ErrBusy) {
+		return st.refuse(codeStoreBusy, fmt.Sprintf(msgBusyKB, st.kbDisplay()))
+	}
+	return st.refuse(codeLearnFailed, fmt.Sprintf(msgWriteKB, st.kbDisplay(), err))
 }
 
 func (st *state) validateAppend() (*appendInput, *core.RefusalError) {

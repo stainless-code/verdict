@@ -124,7 +124,7 @@ func (st *state) ensureStateIgnore() *core.RefusalError {
 	if serr == nil {
 		return nil
 	}
-	if ref := serr.Refusal(); ref != nil {
+	if ref := config.RefusalOf(serr); ref != nil {
 		return ref
 	}
 	return st.refuse(codeLearnFailed, fmt.Sprintf(msgWriteIgnore, st.root, serr))
