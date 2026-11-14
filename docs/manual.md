@@ -3634,11 +3634,14 @@ tree with no stored index is not a refusal: `data.index` is absent and the
 symbol, caller, and test counts are `null`, never 0, because an unmeasured list
 is not an empty one. One warning names that tree the way the `missing-index`
 refusal does — the revision the operator typed beside the tree it resolved to —
-and both outputs carry the exact build command that answers for it: the human
-line ends ` — run verdict index build --at <ref>` (or `--from <dir>`, for a
-directory hand-off), and `next:` holds the same command for JSON, since human
-mode prints no `next:` line of its own. `co_changed` and
-`owners` are measured from git either way.
+and both outputs carry the step that answers for it: the human line ends
+` — run verdict index build --at <ref>` (or `--from <dir>`, for a directory
+hand-off), and `next:` holds the same step for JSON, since human mode prints no
+`next:` line of its own. A revision is quoted for the shell (`--at
+'feature/$USER'`), and a hand-off that named a bare tree SHA gets words rather
+than a command — `verdict index build at a commit whose tree is <tree>` — because
+`build` resolves a commit and refuses every tree SHA with `bad-at`. `co_changed`
+and `owners` are measured from git either way.
 
 Callers walk from every changed symbol to depth 2: depth 1 is a direct caller,
 depth 2 a caller of a direct caller. Each declaration is queried at most once
@@ -3678,9 +3681,12 @@ own `.verdict/index` — the way to hand over an index built somewhere else — 
 its `HEAD` supplies the tree. A directory with no index store refuses
 `bad-flags`; a ref this clone cannot resolve refuses `bad-at`; a tree the store
 never built refuses `missing-index`, naming the revision the operator typed
-beside the tree it resolved to and the exact build command that answers for it
-(`no index for HEAD (tree <tree>)`, then `next: verdict index build --at HEAD`,
-or `verdict index build --from <dir>` for a directory hand-off); a truncated or
+beside the tree it resolved to and the step that answers for it (`no index for
+HEAD (tree <tree>)`, then `next: verdict index build --at HEAD`, quoted when the
+revision needs it, or `verdict index build --from <dir>` for a directory
+hand-off); a hand-off that named the tree itself gets words, not a command —
+`verdict index build at a commit whose tree is <tree>` — because `build`
+resolves a commit and refuses a bare tree SHA with `bad-at`; a truncated or
 invalid tree file refuses `index-corrupt`. A named index that answers for
 another tree is a **visible warning**, not a refusal — the operator asked for
 that index, and the rows really do describe it:

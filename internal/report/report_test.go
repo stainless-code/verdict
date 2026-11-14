@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stainless-code/verdict/internal/cli"
 )
@@ -26,6 +27,39 @@ func TestUnknownFlagListsAllReportFlags(t *testing.T) {
 		if !strings.Contains(got, flag) {
 			t.Errorf("unknown-flag message %q missing %s", got, flag)
 		}
+	}
+}
+
+// TestRentryKeepsAnEmptyArgument proves the re-enter line a refusal prints
+// survives an empty flag value. Dropping it would close the gap the operator
+// never typed: `--status` would stand bare, and with `--json` already appended
+// the value that follows would move onto the wrong token.
+func TestRentryKeepsAnEmptyArgument(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Run("human", func(t *testing.T) {
+		assertRentry(t, false, "re-enter: verdict report acme/app 1 --status ''\n")
+	})
+	t.Run("json", func(t *testing.T) {
+		assertRentry(t, true, "re-enter: verdict report acme/app 1 --status '' --json\n")
+	})
+}
+
+// assertRentry runs one report refusal with an empty --status value and pins
+// the re-enter line it prints.
+func assertRentry(t *testing.T, jsonMode bool, want string) {
+	t.Helper()
+	var out, diag bytes.Buffer
+	r := &cli.Runner{
+		Out: &out, Human: &out, Diag: &diag, JSONMode: jsonMode,
+		Cmd: "report", Repo: "acme/app", Pr: "1", Effective: cli.Defaults(),
+		Now: func() time.Time { return time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC) },
+	}
+	code := Run(context.Background(), r, []string{"--status", ""}, Request{Repo: "acme/app", Pr: "1"})
+	if code != cli.ExitRefused {
+		t.Fatalf("exit = %d; want %d (a missing bundle refuses)", code, cli.ExitRefused)
+	}
+	if got := diag.String(); !strings.Contains(got, want) {
+		t.Errorf("diag = %q; want it to carry %q", got, want)
 	}
 }
 

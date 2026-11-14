@@ -397,14 +397,42 @@ func TestBlastMissingIndexNamesTheBuildCommand(t *testing.T) {
 	})
 }
 
+// TestBlastRawTreeHintOmitsAnUnrunnableBuild proves the absent-index hint keeps
+// the words, not a command, when the hand-off named the tree itself: `index
+// build --at <tree SHA>` reads as the recovery it is not, because build
+// resolves a commit and refuses every tree SHA with bad-at.
+func TestBlastRawTreeHintOmitsAnUnrunnableBuild(t *testing.T) {
+	f := newFixture(t)
+	writeBlastFixture(f)
+	f.commit("one")
+	tree := f.run("", "rev-parse", "HEAD^{tree}")
+	resp := blastRun(t, f, func(r *Request) {
+		r.At = tree
+		r.Paths = []string{"a/ab.go"}
+	})
+	// A raw tree SHA keeps no ref, so label() reads as the tree alone, and the
+	// step names the commit that would answer instead.
+	assertAbsentIndex(t, resp, "no index for tree "+tree,
+		"verdict index build at a commit whose tree is "+tree,
+		"run verdict index build at a commit whose tree is "+tree+", then re-run")
+
+	// The command the hint withholds is the one build refuses: proving the
+	// refusal keeps the words in the hint from drifting back into a dead --at.
+	buildReq := f.request(QueryBuild, nil)
+	buildReq.At = tree
+	if _, ref := Run(context.Background(), buildReq); ref == nil || ref.Code != "bad-at" {
+		t.Fatalf("index build --at <tree SHA> refusal = %v; want bad-at", ref)
+	}
+}
+
 // assertAbsentIndex pins the three surfaces an absent index reaches: the
 // warning, the human line, and the next step.
-func assertAbsentIndex(t *testing.T, resp *Response, label, command, next string) {
+func assertAbsentIndex(t *testing.T, resp *Response, label, step, next string) {
 	t.Helper()
 	if want := "» index: " + label + ": symbol, caller, and test counts are unmeasured"; !slices.Contains(resp.Warnings, want) {
 		t.Errorf("warnings = %q; want %q", resp.Warnings, want)
 	}
-	if want := "index: " + label + ": symbol, caller, and test lists are unmeasured — run " + command; !slices.Contains(resp.Human, want) {
+	if want := "index: " + label + ": symbol, caller, and test lists are unmeasured — run " + step; !slices.Contains(resp.Human, want) {
 		t.Errorf("human = %q; want %q", resp.Human, want)
 	}
 	if resp.Next != next {

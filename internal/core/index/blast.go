@@ -769,7 +769,7 @@ func (st *state) blastResponse(
 	}
 	next := "read each candidate test before changing the code"
 	if !blast.Indexed {
-		next = "run " + key.buildCommand() + ", then re-run"
+		next = "run " + key.buildStep() + ", then re-run"
 	}
 	return &Response{At: st.req.TimeUTC(), Next: next, Data: data}
 }
@@ -833,7 +833,7 @@ func firstRows[T any](rows []T, limit int) ([]T, int) {
 // blastHuman renders the measured lists, one compact block per list.
 func (st *state) blastHuman(blast *Blast, key treeRef) {
 	if !blast.Indexed {
-		st.line(fmt.Sprintf(blastIndexAbsent, key.label(), key.buildCommand()))
+		st.line(fmt.Sprintf(blastIndexAbsent, key.label(), key.buildStep()))
 	} else {
 		st.blastSymbolLines(blast, key.tree)
 		st.blastCallerLines(blast)

@@ -205,11 +205,11 @@ func readTree(store string, key treeRef) (*treeIndex, *core.RefusalError) {
 }
 
 // missingIndexRefusal names the revision the operator typed beside the tree it
-// resolved to, then the one command that builds that tree.
+// resolved to, then the one step that builds that tree.
 func missingIndexRefusal(key treeRef) *core.RefusalError {
 	return &core.RefusalError{
 		Code:    codeMissingIndex,
-		Message: "no index for " + key.label() + "\nnext: " + key.buildCommand(),
+		Message: "no index for " + key.label() + "\nnext: " + key.buildStep(),
 	}
 }
 
@@ -224,16 +224,27 @@ func (key treeRef) label() string {
 
 // buildCommand is the exact `index build` invocation that answers for the
 // tree: the named checkout when the hand-off read a directory, else the
-// revision the operator typed (a tree SHA builds the same tree).
+// revision the operator typed. A bare tree SHA is no revision `build` accepts
+// — build resolves a commit — so that hand-off has no command.
 func (key treeRef) buildCommand() string {
 	switch {
 	case key.from != "":
 		return "verdict index build --from " + shellquote.Arg(key.from)
-	case key.at != "":
-		return "verdict index build --at " + key.at
+	case key.at != "" && key.at != key.tree:
+		return "verdict index build --at " + shellquote.Arg(key.at)
 	default:
-		return "verdict index build --at " + key.tree
+		return ""
 	}
+}
+
+// buildStep is what the operator does next for a missing tree: the exact
+// command when one exists, else the words that stand in for it because the
+// hand-off named the tree itself and no revision builds it.
+func (key treeRef) buildStep() string {
+	if command := key.buildCommand(); command != "" {
+		return command
+	}
+	return "verdict index build at a commit whose tree is " + key.tree
 }
 
 // isSourceEntry reports a regular file the index scans.

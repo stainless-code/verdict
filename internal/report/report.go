@@ -153,12 +153,23 @@ func setupRunner(r *cli.Runner, req Request) {
 func setRentry(r *cli.Runner, verb string, req Request, args []string) {
 	words := []string{"verdict", verb, shellquote.Arg(req.Repo), shellquote.Arg(req.Pr)}
 	for _, a := range args {
-		words = append(words, shellquote.Arg(a))
+		words = append(words, shellArg(a))
 	}
 	if r.JSONMode {
 		words = append(words, "--json")
 	}
 	r.Rentry = strings.Join(words, " ")
+}
+
+// shellArg renders one argument for the re-enter line. [shellquote.Arg] drops
+// an empty word, which would close the gap and hand the value to the next
+// token (`--json` included), so an empty argument keeps its place as a pair of
+// single quotes.
+func shellArg(arg string) string {
+	if arg == "" {
+		return "''"
+	}
+	return shellquote.Arg(arg)
 }
 
 // refuseGate renders a typed refusal, exiting 3 on gate runs so hooks can
