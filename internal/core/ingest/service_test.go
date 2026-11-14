@@ -473,6 +473,11 @@ func TestRun_BadSARIFInputs(t *testing.T) {
 		{"encoded traversal uri", `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"t"}},"results":[{"message":{"text":"hi"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"a/%2e%2e/%2e%2e/etc/passwd"}}}]}]}]}`},
 		{"file scheme uri", `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"t"}},"results":[{"message":{"text":"hi"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"file:///etc/passwd"}}}]}]}]}`},
 		{"absolute uri", `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"t"}},"results":[{"message":{"text":"hi"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"/etc/passwd"}}}]}]}]}`},
+		{"leading space traversal uri", `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"t"}},"results":[{"message":{"text":"hi"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":" ../etc/passwd"}}}]}]}]}`},
+		{"leading space absolute uri", `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"t"}},"results":[{"message":{"text":"hi"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":" /etc/passwd"}}}]}]}]}`},
+		{"leading space drive uri", `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"t"}},"results":[{"message":{"text":"hi"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":" C:/a.go"}}}]}]}]}`},
+		{"tab control traversal uri", `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"t"}},"results":[{"message":{"text":"hi"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"a/..\t/b"}}}]}]}]}`},
+		{"whitespace-only uri", `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"t"}},"results":[{"message":{"text":"hi"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"   "}}}]}]}]}`},
 		{"negative startLine", `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"t"}},"results":[{"message":{"text":"hi"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"pkg/auth.go"},"region":{"startLine":-1}}}]}]}]}`},
 		{"empty message", `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"t"}},"results":[{"message":{"text":"   "}}]}]}`},
 	}

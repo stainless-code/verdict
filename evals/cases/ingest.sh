@@ -187,6 +187,15 @@ else
   bad "bad URI gave exit $EVAL_STATUS code '$(jq -r '.error.code // empty' <"$EVAL_OUT")'"
 fi
 
+bad_ws_uri="$EVAL_SANDBOX/bad-ws-uri.sarif"
+jq '.runs[0].results[0].locations[0].physicalLocation.artifactLocation.uri = " ../etc/passwd"' "$sarif1" > "$bad_ws_uri"
+run_review ingest acme/app "$PR" --sarif "$bad_ws_uri" --json
+if [ "$EVAL_STATUS" -ne 0 ] && [ "$(jq -r '.error.code // empty' <"$EVAL_OUT")" = "bad-sarif" ]; then
+  good "whitespace-padded traversal URI refuses with bad-sarif"
+else
+  bad "whitespace-padded URI gave exit $EVAL_STATUS code '$(jq -r '.error.code // empty' <"$EVAL_OUT")'"
+fi
+
 ln -s "$sarif1" "$EVAL_SANDBOX/link.sarif"
 run_review ingest acme/app "$PR" --sarif "$EVAL_SANDBOX/link.sarif" --json
 if [ "$EVAL_STATUS" -ne 0 ] && [ "$(jq -r '.error.code // empty' <"$EVAL_OUT")" = "bad-sarif" ]; then

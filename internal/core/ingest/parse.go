@@ -349,7 +349,7 @@ func extractLocation(
 }
 
 func cleanPhysicalURI(runIdx, resIdx int, loc *sarifArtifactLocation) (string, *core.RefusalError) {
-	if loc == nil || strings.TrimSpace(loc.URI) == "" {
+	if loc == nil || loc.URI == "" {
 		return "", nil
 	}
 	cleaned, err := sarif.CleanURI(loc.URI)

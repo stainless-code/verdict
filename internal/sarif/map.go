@@ -149,9 +149,9 @@ func decodeScore(v any) (float64, bool) {
 }
 
 // CleanURI validates and normalizes a SARIF artifactLocation.uri into a
-// repository-relative POSIX path, rejecting NUL bytes, backslashes, Windows
-// drive prefixes, URL schemes, leading slashes, and ".." traversal segments
-// (both raw and percent-decoded).
+// repository-relative POSIX path, rejecting NUL bytes, ASCII control chars,
+// leading/trailing whitespace, backslashes, Windows drive prefixes, URL schemes,
+// leading slashes, and ".." traversal segments (both raw and percent-decoded).
 func CleanURI(raw string) (string, error) {
 	if raw == "" {
 		return "", nil
@@ -183,6 +183,10 @@ func unsafeURIReason(s string) string {
 	switch {
 	case strings.ContainsRune(s, 0):
 		return "NUL byte"
+	case hasASCIIControl(s):
+		return "control character"
+	case strings.TrimSpace(s) != s:
+		return "leading or trailing whitespace"
 	case strings.Contains(s, "\\"):
 		return "backslash"
 	case strings.HasPrefix(s, "/"):
@@ -196,6 +200,20 @@ func unsafeURIReason(s string) string {
 	default:
 		return ""
 	}
+}
+
+const (
+	minControlByte = 0x20
+	asciiDEL       = 0x7f
+)
+
+func hasASCIIControl(s string) bool {
+	for i := range len(s) {
+		if s[i] < minControlByte || s[i] == asciiDEL {
+			return true
+		}
+	}
+	return false
 }
 
 func hasURIScheme(s string) bool {

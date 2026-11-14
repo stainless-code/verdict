@@ -77,6 +77,8 @@ func TestCleanURIValid(t *testing.T) {
 		{"src/main.go", "src/main.go"},
 		{"./src/main.go", "src/main.go"},
 		{"a/./b/c.go", "a/b/c.go"},
+		{"src/my file.go", "src/my file.go"},
+		{"src/my%20file.go", "src/my file.go"},
 		{"", ""},
 	}
 	for _, tc := range valid {
@@ -105,6 +107,17 @@ func TestCleanURIUnsafe(t *testing.T) {
 		`a\b.go`,
 		"a\x00b.go",
 		".",
+		" ../etc/passwd",
+		" /etc/passwd",
+		" C:/a.go",
+		"a/..\t/b",
+		"a/b ",
+		" ",
+		"\t",
+		"%20../etc/passwd",
+		"a/..%09/b",
+		"a/\nb.go",
+		"a/\x7fb.go",
 	}
 	for _, u := range unsafe {
 		if got, err := CleanURI(u); err == nil {
