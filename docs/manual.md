@@ -1924,7 +1924,9 @@ absent, not an error. A present row whose bytes disagree refuses
 `controls-stale`, and a name no document answers refuses `unknown-recipe` with
 the available names listed; both refuse before any process starts. A malformed
 document or entry refuses `bad-recipe` with one diagnostic naming the JSON path
-and the offending key.
+and the offending key. The shared decoder also bounds nesting at 64 levels and
+names the byte offset instead of a path past it, so a pathologically nested
+control costs one diagnostic rather than a walk.
 
 The resolved plan is recorded everywhere a launch is audited: `data.recipe`
 in the `--json` envelope, the same object under `recipe` in

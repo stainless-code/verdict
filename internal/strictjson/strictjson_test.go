@@ -2,6 +2,7 @@ package strictjson
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -99,6 +100,38 @@ func TestDecodeRefusals(t *testing.T) {
 				t.Errorf("Decode(%s) = %q, want %q", tc.give, err.Error(), tc.want)
 			}
 		})
+	}
+}
+
+// nested renders a document nesting count arrays, closed innermost first.
+func nested(count int) string {
+	return strings.Repeat("[", count) + strings.Repeat("]", count)
+}
+
+// TestDecodeBoundsNesting proves the decoder refuses nesting past MaxDepth
+// instead of walking it. The worktree case is the reason: a base-owned control
+// is capped in bytes, but bytes of `[` nest deeply, and the fault path is built
+// one segment per level — so an uncapped reader answers a 200 KB document with a
+// diagnostic the same size as its nesting. The fault names the root and the
+// offset instead, and the message stays short however deep the document is.
+func TestDecodeBoundsNesting(t *testing.T) {
+	if _, err := Decode([]byte(nested(MaxDepth))); err != nil {
+		t.Errorf("Decode(nesting %d levels) = %v, want it accepted at the cap", MaxDepth, err)
+	}
+	_, err := Decode([]byte(nested(MaxDepth + 1)))
+	if err == nil {
+		t.Fatalf("Decode(nesting %d levels) accepted the document", MaxDepth+1)
+	}
+	want := "$: nesting deeper than 64 levels at offset 65"
+	if err.Error() != want {
+		t.Errorf("Decode(nesting 65 levels) = %q, want %q", err.Error(), want)
+	}
+	_, deepErr := Decode([]byte(nested(200000)))
+	if deepErr == nil {
+		t.Fatal("Decode(200000 levels) accepted the document")
+	}
+	if len(deepErr.Error()) > 64 {
+		t.Errorf("the fault for 200000 levels is %d bytes long: %q", len(deepErr.Error()), deepErr.Error())
 	}
 }
 

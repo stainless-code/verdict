@@ -22,7 +22,16 @@ const (
 	duplicateKey Fault = iota + 1
 	// trailingData is a second value after the top-level one.
 	trailingData
+	// tooDeep is nesting past MaxDepth, which the reader refuses instead of
+	// walking: the path a fault reports would grow with the nesting.
+	tooDeep
 )
+
+// MaxDepth bounds how deep one document may nest objects and arrays. Every
+// document this decoder reads is a control or a configuration file a handful of
+// levels deep, and the fault path is built by concatenation per level, so an
+// unbounded nesting turns one diagnostic into kilobytes of path text.
+const MaxDepth = 64
 
 // Error is one positioned decode fault: the JSON path of the fault ("$",
 // "$.a", "$.a[0]"), the repeated key when one applies, and the decoder's byte
@@ -41,6 +50,8 @@ func (e *Error) Error() string {
 		return fmt.Sprintf("%s: duplicate key %q", e.Path, e.Key)
 	case trailingData:
 		return fmt.Sprintf("%s: trailing data after the top object at offset %d", e.Path, e.Offset)
+	case tooDeep:
+		return fmt.Sprintf("%s: nesting deeper than %d levels at offset %d", e.Path, MaxDepth, e.Offset)
 	default:
 		return fmt.Sprintf("%s: malformed JSON at offset %d", e.Path, e.Offset)
 	}
@@ -56,7 +67,7 @@ func Decode(raw []byte) (any, error) {
 	if err != nil {
 		return nil, &Error{Path: "$", Offset: dec.InputOffset()}
 	}
-	val, fault := readTokenValue(dec, tok, "$")
+	val, fault := readTokenValue(dec, tok, "$", 0)
 	if fault != nil {
 		return nil, fault
 	}
@@ -66,27 +77,33 @@ func Decode(raw []byte) (any, error) {
 	return val, nil
 }
 
-// readTokenValue converts one already-read token into the generic tree.
-func readTokenValue(dec *json.Decoder, tok json.Token, path string) (any, *Error) {
+// readTokenValue converts one already-read token into the generic tree. depth
+// counts the objects and arrays already open; past MaxDepth the fault names the
+// root and the offset rather than the path, which is what keeps one deeply
+// nested document from reporting a diagnostic as long as itself.
+func readTokenValue(dec *json.Decoder, tok json.Token, path string, depth int) (any, *Error) {
 	delim, ok := tok.(json.Delim)
 	if !ok {
 		return tok, nil
 	}
+	if depth >= MaxDepth {
+		return nil, &Error{Path: "$", Offset: dec.InputOffset(), Fault: tooDeep}
+	}
 	switch delim {
 	case '{':
-		return readObject(dec, path)
+		return readObject(dec, path, depth)
 	case '[':
-		return readArray(dec, path)
+		return readArray(dec, path, depth)
 	default:
 		return nil, &Error{Path: path, Offset: dec.InputOffset()}
 	}
 }
 
 // readObject reads one JSON object, refusing a key it already holds.
-func readObject(dec *json.Decoder, path string) (any, *Error) {
+func readObject(dec *json.Decoder, path string, depth int) (any, *Error) {
 	obj := map[string]any{}
 	for dec.More() {
-		if fault := readObjectEntry(dec, obj, path); fault != nil {
+		if fault := readObjectEntry(dec, obj, path, depth+1); fault != nil {
 			return nil, fault
 		}
 	}
@@ -98,7 +115,7 @@ func readObject(dec *json.Decoder, path string) (any, *Error) {
 
 // readObjectEntry reads one key and its value, refusing a key the object
 // already spells.
-func readObjectEntry(dec *json.Decoder, obj map[string]any, path string) *Error {
+func readObjectEntry(dec *json.Decoder, obj map[string]any, path string, depth int) *Error {
 	key, fault := readObjectKey(dec, path)
 	if fault != nil {
 		return fault
@@ -106,7 +123,7 @@ func readObjectEntry(dec *json.Decoder, obj map[string]any, path string) *Error 
 	if _, dup := obj[key]; dup {
 		return &Error{Path: path, Key: key, Fault: duplicateKey}
 	}
-	val, fault := readObjectValue(dec, path, key)
+	val, fault := readObjectValue(dec, path, key, depth)
 	if fault != nil {
 		return fault
 	}
@@ -128,16 +145,16 @@ func readObjectKey(dec *json.Decoder, path string) (string, *Error) {
 }
 
 // readObjectValue reads one value under path.key.
-func readObjectValue(dec *json.Decoder, path, key string) (any, *Error) {
+func readObjectValue(dec *json.Decoder, path, key string, depth int) (any, *Error) {
 	valTok, err := dec.Token()
 	if err != nil {
 		return nil, &Error{Path: path + "." + key, Offset: dec.InputOffset()}
 	}
-	return readTokenValue(dec, valTok, path+"."+key)
+	return readTokenValue(dec, valTok, path+"."+key, depth)
 }
 
 // readArray reads one JSON array, threading the index into child paths.
-func readArray(dec *json.Decoder, path string) (any, *Error) {
+func readArray(dec *json.Decoder, path string, depth int) (any, *Error) {
 	var out []any
 	for i := 0; dec.More(); i++ {
 		elemPath := fmt.Sprintf("%s[%d]", path, i)
@@ -145,7 +162,7 @@ func readArray(dec *json.Decoder, path string) (any, *Error) {
 		if err != nil {
 			return nil, &Error{Path: elemPath, Offset: dec.InputOffset()}
 		}
-		val, fault := readTokenValue(dec, valTok, elemPath)
+		val, fault := readTokenValue(dec, valTok, elemPath, depth+1)
 		if fault != nil {
 			return nil, fault
 		}

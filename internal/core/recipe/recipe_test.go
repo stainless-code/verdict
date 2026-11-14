@@ -53,6 +53,7 @@ func TestParseRefusals(t *testing.T) {
 		{"duplicate entry key", doc(`{"version":"1.0.0","version":"1.0.0","synthesize":{}}`), `$.recipes.quick: duplicate key "version"`},
 		{"trailing data", `{"schema_version":"1","recipes":{}} {}`, `$: trailing data after the top object at offset`},
 		{"malformed", `{"schema_version":`, `$.schema_version: malformed JSON at offset`},
+		{"nesting past the decoder cap", strings.Repeat("[", 65) + strings.Repeat("]", 65), `$: nesting deeper than 64 levels at offset 65`},
 		{"top array", `[]`, `$: want an object, got array`},
 		{"schema_version type", `{"schema_version":1,"recipes":{}}`, `schema_version: want a string, got number`},
 		{"schema_version value", `{"schema_version":"2","recipes":{}}`, `schema_version: want the string "1", got "2"`},
