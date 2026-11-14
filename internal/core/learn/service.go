@@ -108,6 +108,11 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	return st.response(), nil
 }
 
+func (st *state) warn(msg string) {
+	st.warnings = append(st.warnings, msg)
+	st.req.Warn(msg)
+}
+
 func (st *state) refuse(code, msg string) *core.RefusalError {
 	return &core.RefusalError{Code: code, Message: msg, Warnings: st.warnings}
 }
@@ -210,9 +215,11 @@ func (st *state) readStatusRows() ([]any, *core.RefusalError) {
 	if err != nil {
 		return nil, st.corruptStore()
 	}
+	bundles := kb.ScanBundleFindings(st.root, skipWarn, st.warn)
+	overlap := kb.ComputeOverlap(st.root, skipWarn, bundles, st.warn)
 	rows := make([]any, 0, len(decoded))
 	for _, row := range decoded {
-		rows = append(rows, withPrecision(row))
+		rows = append(rows, withMetrics(row, overlap))
 	}
 	return rows, nil
 }
@@ -222,7 +229,8 @@ func (st *state) printStatusRow(row any) {
 	if !ok || m == nil {
 		return
 	}
-	st.humanf("%s [%s] %s hits=%s false_hits=%s judged=%s precision=%s\n",
+	recalledRaw := mustGet(m, fieldRecalledIn)
+	st.humanf("%s [%s] %s hits=%s false_hits=%s judged=%s precision=%s recalled_in=%s cited_in=%s exposure=%s acceptance=%s\n",
 		jq.Interp(mustGet(m, fieldID)),
 		jq.Interp(mustGet(m, fieldStatus)),
 		jq.Interp(mustGet(m, fieldRigor)),
@@ -230,7 +238,35 @@ func (st *state) printStatusRow(row any) {
 		numOrZero(mustGet(m, fieldFalseHits)),
 		numOrZero(mustGet(m, fieldJudged)),
 		jq.Interp(mustGet(m, fieldPrecision)),
+		measuredText(recalledRaw, recalledRaw != nil),
+		numOrZero(mustGet(m, fieldCitedIn)),
+		measuredText(mustGet(m, fieldExposure), recalledRaw != nil),
+		kb.NumOrNA(mustGet(m, fieldAcceptance)),
 	)
+}
+
+func measuredText(v any, measured bool) string {
+	if !measured {
+		return valUnmeasured
+	}
+	return kb.NumOrNA(v)
+}
+
+func withMetrics(row *jq.Obj, overlap *kb.OverlapRollup) *jq.Obj {
+	withPrecision(row)
+	id := idOf(row)
+	exp := overlap.Rules[id]
+	var recalledIn any
+	var exposure any
+	if overlap.MeasuredBundles > 0 {
+		recalledIn = exp.RecalledIn
+		exposure = kb.Ratio(exp.CitedIn, exp.RecalledIn)
+	}
+	row.Set(fieldRecalledIn, recalledIn)
+	row.Set(fieldCitedIn, exp.CitedIn)
+	row.Set(fieldExposure, exposure)
+	row.Set(fieldAcceptance, kb.Ratio(exp.Addressed, exp.Cited))
+	return row
 }
 
 func withPrecision(row *jq.Obj) *jq.Obj {
@@ -520,6 +556,10 @@ const (
 	defaultProvenance = "manual"
 	// precisionNA renders when judged is the number 0.
 	precisionNA = "n/a"
+	// skipWarn prefixes warnings emitted when scanning bundles for status metrics.
+	skipWarn = "learn skips "
+	// valUnmeasured renders recall columns when no bundle has kb-recall.json.
+	valUnmeasured = "unmeasured"
 )
 
 const (
@@ -550,6 +590,10 @@ const (
 	fieldJudged       = "judged"
 	fieldStatus       = "status"
 	fieldPrecision    = "precision"
+	fieldRecalledIn   = "recalled_in"
+	fieldCitedIn      = "cited_in"
+	fieldExposure     = "exposure"
+	fieldAcceptance   = "acceptance"
 	fieldHistory      = "history"
 	fieldRetiredAt    = "retiredAt"
 	fieldRetireReason = "retireReason"

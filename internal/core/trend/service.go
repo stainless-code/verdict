@@ -10,12 +10,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	corpuscore "github.com/stainless-code/verdict/internal/core/corpus"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/kb"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -219,22 +219,11 @@ func (st *state) listedBundleDir(name string) (string, bool) {
 }
 
 func readBundleRow(st *state, dir, name string) (row, bool) {
+	findings, ok := kb.ReadBundleFindings(dir, skipWarn, st.warn)
+	if !ok {
+		return row{}, false
+	}
 	bundle := dir + "/"
-	raw, err := jq.CappedFile(bundle+"findings.json", jq.MaxFindingsBytes)
-	if err != nil {
-		st.warn(skipWarn + bundle + " (findings.json unreadable or not a findings array)")
-		return row{}, false
-	}
-	doc, err := jq.DecodeOrdered(raw)
-	if err != nil {
-		st.warn(skipWarn + bundle + " (findings.json unreadable or not a findings array)")
-		return row{}, false
-	}
-	findings, ok := doc.([]any)
-	if !ok || !readcommon.ValidEntries(findings) {
-		st.warn(skipWarn + bundle + " (findings.json unreadable or not a findings array)")
-		return row{}, false
-	}
 	warnMalformedWithheld(st, findings, bundle)
 	return buildRow(bundle, name, findings), true
 }
@@ -284,7 +273,7 @@ func bundleModels(bundle string) []any {
 			return []any{}
 		}
 	}
-	return dedupeSorted(names)
+	return kb.DedupeSorted(names)
 }
 
 func appendModelNames(names, models []any) ([]any, bool) {
@@ -409,24 +398,6 @@ func categoryCounts(findings []any) map[string]int {
 		counts[core.CategoryOf(e)]++
 	}
 	return counts
-}
-
-func dedupeSorted(vals []any) []any {
-	if vals == nil {
-		return []any{}
-	}
-	sorted := append([]any{}, vals...)
-	slices.SortStableFunc(sorted, readcommon.Cmp)
-	out := sorted[:0]
-	for i, v := range sorted {
-		if i == 0 || readcommon.Cmp(sorted[i-1], v) != 0 {
-			out = append(out, v)
-		}
-	}
-	if out == nil {
-		return []any{}
-	}
-	return out
 }
 
 func isRegular(path string) bool {
