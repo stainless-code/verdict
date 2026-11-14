@@ -184,6 +184,21 @@ else
   good "the ledger stays tracked"
 fi
 
+# The ledger, its note and the ignore contract are tracked files: a rerun over
+# the same window leaves the worktree clean, so the lock the scan takes is the
+# ignored one and its name is the one the contract carries.
+run_review backtest reverts --since "$BASE" --json
+assert_exit "the tracked ledger rescan exits 0" 0
+git -C "$EVAL_SANDBOX" add -- .verdict/.gitignore .verdict/reverts.jsonl .verdict/reverts.md
+git -C "$EVAL_SANDBOX" commit -qm 'revert memory' >/dev/null
+run_review backtest reverts --since "$BASE" --json
+assert_exit "the second rescan exits 0" 0
+assert_eq "a rescan leaves no worktree dirt" "" "$(git -C "$EVAL_SANDBOX" status --porcelain -- .verdict)"
+git -C "$EVAL_SANDBOX" ls-files -- .verdict >"$EVAL_SANDBOX/tracked.txt"
+for rel in .verdict/.gitignore .verdict/reverts.jsonl .verdict/reverts.md; do
+  assert_file_grep "the ledger surface is tracked" "$EVAL_SANDBOX/tracked.txt" "^${rel}$"
+done
+
 stub_after="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 assert_eq "zero host CLI calls" "$stub_before" "$stub_after"
 

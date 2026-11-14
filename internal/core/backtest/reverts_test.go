@@ -699,7 +699,7 @@ func TestRevertsRefusesAStoreBusy(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	held, err := storelock.Acquire(filepath.Join(dir, "reverts.jsonl.lock"), storelock.DefaultWait)
+	held, err := storelock.Acquire(filepath.Join(dir, "reverts.jsonl"), storelock.DefaultWait)
 	if err != nil {
 		t.Fatalf("hold the ledger lock: %v", err)
 	}
@@ -723,6 +723,27 @@ func assertNoArtifacts(t *testing.T, dir string) {
 	for _, rel := range []string{"reverts.jsonl", "reverts.md"} {
 		if _, err := os.Stat(filepath.Join(dir, rel)); !errors.Is(err, fs.ErrNotExist) {
 			t.Errorf("a scan that could not take the lock wrote %s", rel)
+		}
+	}
+}
+
+// TestRevertsLeavesNoWorktreeDirt proves the scan's own lock file is not
+// worktree dirt: with the ledger, its note and the ignore contract tracked, a
+// rerun over the same window leaves `.verdict` byte-identical and clean.
+func TestRevertsLeavesNoWorktreeDirt(t *testing.T) {
+	r, base, _ := revertsRepo(t)
+	runReverts(t, r, base)
+	r.git("add", "--", filepath.Join(".verdict", ".gitignore"),
+		filepath.Join(".verdict", "reverts.jsonl"), filepath.Join(".verdict", "reverts.md"))
+	r.git("commit", "-qm", "revert memory")
+	runReverts(t, r, base)
+	if dirty := r.git("status", "--porcelain", "--", ".verdict"); dirty != "" {
+		t.Errorf(".verdict is dirty after a scan:\n%s", dirty)
+	}
+	tracked := strings.Split(strings.TrimSpace(r.git("ls-files", "--", ".verdict")), "\n")
+	for _, want := range []string{".verdict/.gitignore", ".verdict/reverts.jsonl", ".verdict/reverts.md"} {
+		if !slices.Contains(tracked, want) {
+			t.Errorf("%s is not tracked:\n%s", want, strings.Join(tracked, "\n"))
 		}
 	}
 }
