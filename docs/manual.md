@@ -597,6 +597,46 @@ typed. Retire keeps the tombstone line (`status`, `retiredAt`,
 `retireReason`, history-logged) with counters untouched; restore flips back to
 `active` keeping the tombstone as record.
 
+`learn --incident` records the other half of the loop — the bugs a review
+missed — as a row in `.verdict/incidents.jsonl`:
+
+```bash
+verdict learn --incident local-abc123 --sha <40-hex merge> --path src/a.ts \
+  --note "reverted in #42" --url https://example.com/o/r/pull/42 --at 2026-11-01T09:00:00Z
+```
+
+One row per `(bundle, sha)` pair: `{schema_version, bundle, sha, paths, note,
+url, detected_at}`, kept sorted by bundle then sha. The row's `bundle` is the
+resolved bundle directory's name, so an alias (`--incident a` for `local-a`)
+records the same pair as the full name instead of a second row for one review.
+`--path` repeats and is sorted-deduped, `--note` caps at 2,000 bytes, `--url`
+takes `http(s)` only, `--at` defaults to now, and the bundle must already carry
+`findings.json`
+(`missing-bundle` when the directory is absent, `missing-findings` when the
+store is). Paths obey the same clean repo-relative rule as every other
+learning path (`bad-scope`); attach flags without `--incident` refuse
+`bad-flags`, as do a malformed `--sha`, a missing `--path`, an over-cap
+`--note`, and a `--url` that is not `http(s)`; an `--at` that is not RFC 3339
+refuses `bad-at`. The attach is idempotent per pair — the second run reports
+`existing`, moves no byte, and answers with the row the ledger holds (its paths,
+note, url, and `detected_at`, never the request's), so re-running after a rebase
+is safe — and `--dry-run` reports what the write would do, writing nothing. An attach that
+would push the file past the 8 MiB the reader opens refuses `ledger-too-large`
+and writes nothing, so a full ledger can never become an unreadable one; trim
+rows first.
+
+The ledger is tracked, so an uncommitted attach is worktree dirt: `check-tree`
+fails on `?? .verdict/incidents.jsonl` until you commit it. Attaches are
+serialized by an OS advisory lock on `.verdict/incidents.jsonl.lock` — one
+`learn --incident` holds it at a time, and a second waits up to five seconds
+before refusing `store-busy` rather than interleaving two read-modify-writes and
+dropping a row. The kernel owns that lock, so there is no stale-lock state to
+reason about: a lock held by a live process waits and then refuses (a paused
+holder keeps it), a crashed or killed holder releases it at once, and the lock
+file itself persists — it carries nothing, and an attach brings
+`.verdict/.gitignore` to the tracked contract (the `incidents.jsonl.lock` line)
+so the lock file is never worktree dirt.
+
 Exposure and acceptance: `learn --status` (text and `--json`) joins
 `kb-recall.json` manifests, finding `kb` cites, and `kb-joins.jsonl` across
 reviewed bundles to report per rule: `recalled_in` (measured bundles whose
@@ -3270,6 +3310,23 @@ Each `trend` rollup also classifies bundles into advisory risk bands
 (`max(claimed, floor)`, and `unknown` only when there is no claim and the
 floor is `low`), tallying bundles, findings, open, addressed, and closed
 outcomes per band.
+
+`trend --incidents` measures the reviews that missed: every row in
+`.verdict/incidents.jsonl` joins to its bundle's findings store, and an
+incident is a **hit** when one non-`false-positive` finding covers one of its
+paths (exact, or the finding path under the incident path as a directory) and
+a **miss** otherwise. The data carries `incidents`, `measured`, `unmeasured`,
+`hit`, `missed`, `miss_rate` (`missed / measured`, rounded to four decimal
+places, `null` — `n/a` in text — when nothing measured), and per-bundle rows; a bundle whose directory
+or `findings.json` will not read is unmeasured and warns
+`trend skips incident <bundle>: <reason>` rather than counting as a miss; the
+reason is the shared store reader's, so a corrupt `findings.json` names the
+corruption instead of reporting no store. A `false-positive` finding is a
+non-catch, never a hit. No ledger, an empty ledger, or any attach that never
+ran reads a zero tally with a `null` miss rate, never an error; a corrupt
+ledger refuses `corrupt-store`. Without the flag both outputs are
+byte-identical to today, and the ledger itself is written only by
+`learn --incident`.
 
 ## Code index
 

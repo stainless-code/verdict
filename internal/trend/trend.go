@@ -17,12 +17,12 @@ import (
 // Request wires a trend run.
 type Request = readcommon.Request
 
-// Run executes `trend <owner/repo> [--overlap, --json]`, returning the
-// exit code.
+// Run executes `trend <owner/repo> [--overlap, --incidents, --json]`,
+// returning the exit code.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	rules, ruleFiltered := rulesFlag(args)
 	resolution, filtered := resolutionFlag(ruleFiltered)
-	doOverlap, code, done := parseFlags(r, filtered)
+	doOverlap, doIncidents, code, done := parseFlags(r, filtered)
 	if done {
 		return code
 	}
@@ -30,11 +30,12 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 		return code
 	}
 	if req.Repo == "" {
-		return r.ReportUsage(&cli.UsageError{Message: "usage: verdict trend <owner/repo> [--overlap] [--json]"})
+		return r.ReportUsage(&cli.UsageError{Message: "usage: verdict trend <owner/repo> [--overlap] [--incidents] [--json]"})
 	}
 	request := trendRequest(r, req, doOverlap)
 	request.Resolution = resolution
 	request.Rules = rules
+	request.Incidents = doIncidents
 	resp, ref := trendcore.Run(ctx, request)
 	if ref != nil {
 		return r.Refuse(ref)
@@ -69,18 +70,20 @@ func trendRequest(r *cli.Runner, req Request, doOverlap bool) *trendcore.Request
 }
 
 // parseFlags parses the trend flags.
-func parseFlags(r *cli.Runner, args []string) (bool, int, bool) {
-	overlap := false
+func parseFlags(r *cli.Runner, args []string) (bool, bool, int, bool) {
+	overlap, incidents := false, false
 	for _, a := range args {
 		switch a {
 		case "--overlap":
 			overlap = true
+		case "--incidents":
+			incidents = true
 		default:
-			return false, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
-				"unknown flag '%s' for trend (want --overlap, --json)", a)}), true
+			return false, false, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+				"unknown flag '%s' for trend (want --overlap, --incidents, --json)", a)}), true
 		}
 	}
-	return overlap, 0, false
+	return overlap, incidents, 0, false
 }
 
 func resolutionFlag(args []string) (bool, []string) {

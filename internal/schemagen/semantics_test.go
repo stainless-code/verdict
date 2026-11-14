@@ -213,6 +213,10 @@ var publishedSemantics = map[string]string{
 	// sarif ingest: additive $defs/ingestData, $defs/trendSources, and
 	// optional by_source on reportCounts, trendData, and trendBundleRow. No
 	// existing property, required key, enum, or type changed.
+	// incident memory: additive $defs/learnIncident, $defs/trendIncidents, and
+	// $defs/trendIncidentBundle plus the nullable optional learnData.incident
+	// and trendData.incidents keys, and the regenerated learnData/trendData
+	// descriptions. No existing property, required key, enum, or type changed.
 	// provenance receipt (--provenance): additive $defs/provenanceReceipt,
 	// $defs/provenanceInput, $defs/provenanceTruncatedRow, and additive array
 	// widening on envelope data.truncated (boolean|provenanceTruncatedRow[]).
@@ -223,7 +227,7 @@ var publishedSemantics = map[string]string{
 	// trend provenance: additive optional trendBundleRow.run_id and
 	// truncated_inputs (the row count the bundle's receipt reported cut, not a
 	// count of inputs). No existing property, required key, or type changed.
-	"envelope.schema.json": "fd871fd0bb0817797c89d46acb9be10842222f115161dd4b26b2a2d6744973e5",
+	"envelope.schema.json": "b3fe2d822a1d3449da97b7b910806ead5b3145c5343a5a9af961e08026862ab7",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

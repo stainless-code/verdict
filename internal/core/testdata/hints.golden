@@ -106,6 +106,7 @@ ingest-failed	try: confirm the bundle path and SARIF file readability, then re-r
 init-failed	try: address the cause above, then re-run the same command
 internal	try: address the cause above, then re-run the same command
 learn-failed	try: address the cause above, then re-run the same command
+ledger-too-large	try: trim or archive rows in .verdict/incidents.jsonl, then re-run
 manager-failed	try: address the cause above, then re-run the same command
 manager-missing	try: address the cause above, then re-run the same command
 mcp-config-backup-failed	try: check the config path and permissions named above, then re-run
@@ -185,6 +186,7 @@ skill-target-file	try: address the cause above, then re-run the same command
 skill-unknown-agent	try: address the cause above, then re-run the same command
 spend-capped	try: re-run with --consent-over-budget once the spend is approved, or raise the personal spend ceiling (spend.budget_usd) in the operator settings, then re-run
 stale-review-artifact	try: delete the stale review.json (or let the agent overwrite it), then re-run
+store-busy	try: wait for the attach holding the ledger (the OS drops the lock when its holder exits, so a retry after a crash succeeds), then re-run
 threads-failed	try: run 'gh auth status', confirm the repo/PR spelling, then re-run
 triage-failed	try: address the cause above, then re-run the same command
 uninstall-foreign	try: address the cause above, then re-run the same command

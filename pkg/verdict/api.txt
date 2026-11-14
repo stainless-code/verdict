@@ -359,11 +359,14 @@ type Invocation struct {
 type LearnRequest struct {
 	FromBundle, Pr, Accept, Reject                                    string
 	Pack, Rule, Scope, ID, Provenance, Rigor, Reason, Retire, Restore string
+	Incident, Sha, Note, URL, At                                      string
+	Paths                                                             []string
 	Propose, DryRun                                                   bool
 	Status                                                            bool
 }
     LearnRequest reads or updates the local knowledge base. It takes no repo/PR
-    positionals; the base lives under .verdict/.
+    positionals; the base lives under .verdict/. Incident, Sha, Paths, Note,
+    URL, and At attach one revert or incident to a recorded bundle.
 
 type MissingToolError struct {
 	Tool string
@@ -589,6 +592,7 @@ type TrendRequest struct {
 	Rules      bool
 	Resolution bool
 	Overlap    bool
+	Incidents  bool
 }
     TrendRequest rolls up review outcomes across fetched bundles. PR is unused;
     trend scopes by repo.

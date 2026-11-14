@@ -458,11 +458,25 @@ type FixAnchors struct {
 	Anchored  string `json:"anchored"`
 }
 
-// LearnData is the learn verb's --json data profile: one appended rule, or
-// the status listing of every rule in the knowledge base.
-type LearnData struct {
-	Rule  any   `json:"rule"  optional:"true"`
-	Rules []any `json:"rules" optional:"true"`
+// LearnData is the learn verb's --json data profile: one appended rule, the
+// status listing of every rule in the knowledge base, or one attached
+// incident.
+type LearnData struct { //nolint:govet // field order is the published property order
+	Rule     any            `json:"rule"  optional:"true"`
+	Rules    []any          `json:"rules" optional:"true"`
+	Incident *LearnIncident `anyOf:"null" json:"incident" optional:"true"`
+}
+
+// LearnIncident is the learn --incident attach: the merge and paths the
+// incident was recorded against, and whether the ledger keeps a new row.
+type LearnIncident struct { //nolint:govet // field order is the published property order
+	Bundle     string   `json:"bundle"`
+	Sha        string   `json:"sha"`
+	Paths      []string `json:"paths"`
+	Note       *string  `json:"note"`
+	URL        *string  `json:"url"`
+	DetectedAt string   `format:"date-time"       json:"detected_at"`
+	Attached   string   `enum:"appended|existing" json:"attached"`
 }
 
 // InitData is the init verb's --json data profile: the applied preset values
@@ -533,6 +547,31 @@ type TrendData struct { //nolint:govet // field order is the published property 
 	PerBundle   []TrendBundleRow `json:"per_bundle"`
 	Overlap     any              `json:"overlap"     optional:"true"`
 	Corpus      any              `json:"corpus"      optional:"true"`
+	Incidents   *TrendIncidents  `anyOf:"null"       json:"incidents"    optional:"true"`
+}
+
+// TrendIncidents is the trend --incidents miss rate over attached incidents:
+// a bundle whose findings store cannot be read leaves its incidents
+// unmeasured, out of the denominator.
+type TrendIncidents struct { //nolint:govet // field order is the published property order
+	Bundles    int                   `json:"bundles"    min:"0"`
+	Incidents  int                   `json:"incidents"  min:"0"`
+	Measured   int                   `json:"measured"   min:"0"`
+	Unmeasured int                   `json:"unmeasured" min:"0"`
+	Hit        int                   `json:"hit"        min:"0"`
+	Missed     int                   `json:"missed"     min:"0"`
+	MissRate   *float64              `json:"miss_rate"  min:"0"`
+	PerBundle  []TrendIncidentBundle `json:"per_bundle"`
+}
+
+// TrendIncidentBundle is one bundle's share of the incident miss rate.
+type TrendIncidentBundle struct { //nolint:govet // field order is the published property order
+	Bundle    string   `json:"bundle"`
+	Incidents int      `json:"incidents" min:"0"`
+	Measured  int      `json:"measured"  min:"0"`
+	Hit       int      `json:"hit"       min:"0"`
+	Missed    int      `json:"missed"    min:"0"`
+	MissRate  *float64 `json:"miss_rate" min:"0"`
 }
 
 // TrendStatuses is a five-status finding tally; every key is always present.

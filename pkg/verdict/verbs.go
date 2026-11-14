@@ -608,6 +608,7 @@ type TrendRequest struct {
 	Rules      bool
 	Resolution bool
 	Overlap    bool
+	Incidents  bool
 }
 
 // TrendResponse carries the outcome rollup and the human summary.
@@ -629,6 +630,7 @@ func (c *Client) Trend(ctx context.Context, req *TrendRequest) (*TrendResponse, 
 		Overlap:     req.Overlap,
 		Rules:       req.Rules,
 		Resolution:  req.Resolution,
+		Incidents:   req.Incidents,
 	})
 	if ref != nil {
 		return nil, refusalErr(ref)
@@ -931,10 +933,13 @@ func (c *Client) Fix(ctx context.Context, req *FixRequest) (*Outcome, error) {
 }
 
 // LearnRequest reads or updates the local knowledge base. It takes no
-// repo/PR positionals; the base lives under .verdict/.
+// repo/PR positionals; the base lives under .verdict/. Incident, Sha, Paths,
+// Note, URL, and At attach one revert or incident to a recorded bundle.
 type LearnRequest struct {
 	FromBundle, Pr, Accept, Reject                                    string
 	Pack, Rule, Scope, ID, Provenance, Rigor, Reason, Retire, Restore string
+	Incident, Sha, Note, URL, At                                      string
+	Paths                                                             []string
 	Propose, DryRun                                                   bool
 	Status                                                            bool
 }
@@ -960,6 +965,12 @@ func (c *Client) Learn(ctx context.Context, req *LearnRequest) (*Outcome, error)
 		Retire:     req.Retire,
 		Restore:    req.Restore,
 		Status:     req.Status,
+		Incident:   req.Incident,
+		Sha:        req.Sha,
+		Paths:      req.Paths,
+		Note:       req.Note,
+		URL:        req.URL,
+		At:         req.At,
 	})
 	if ref != nil {
 		return nil, refusalErr(ref)
