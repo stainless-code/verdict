@@ -14,6 +14,7 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/shellquote"
 )
 
 // Store layout names.
@@ -222,24 +223,12 @@ func missingIndexRefusal(key treeRef) *core.RefusalError {
 func (key treeRef) buildCommand() string {
 	switch {
 	case key.from != "":
-		return "verdict index build --from " + shellArg(key.from)
+		return "verdict index build --from " + shellquote.Arg(key.from)
 	case key.at != "":
 		return "verdict index build --at " + key.at
 	default:
 		return "verdict index build --at " + key.tree
 	}
-}
-
-// shellSafeRunes is the set a POSIX shell reads back verbatim; every path
-// carrying anything else gets single quotes, so a space or a `$` survives the
-// copy-paste into the operator's shell.
-const shellSafeRunes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./:@%+=,-"
-
-func shellArg(s string) string {
-	if s != "" && strings.Trim(s, shellSafeRunes) == "" {
-		return s
-	}
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // isSourceEntry reports a regular file the index scans.

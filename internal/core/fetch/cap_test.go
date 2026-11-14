@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // capTestDiff is a one-file, one-hunk staged diff. Its byte length is the
@@ -231,6 +232,40 @@ func TestOverCapRefusalNamesTheExclusionsThatFit(t *testing.T) {
 		"Paths after -- on fetch-local narrow the review to the matching files — they select, they never exclude"
 	if !strings.HasSuffix(ref.Message, want) {
 		t.Errorf("refusal tail = %q; want suffix %q", ref.Message, want)
+	}
+}
+
+// TestRestSplitQuotesAndEscapesTheLargestPath proves the everything-but-largest
+// candidate prints one pasteable word: the path is escaped so the ignore glob
+// matches that path and no lookalike, then shell-quoted so it reaches the flag
+// whole.
+func TestRestSplitQuotesAndEscapesTheLargestPath(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ name, path, arg string }{
+		{name: "glob class", path: "app/[id]/page.tsx", arg: `'app/\[id\]/page.tsx'`},
+		{name: "star", path: "docs/*.md", arg: `'docs/\*.md'`},
+		{name: "question", path: "a?b.txt", arg: `'a\?b.txt'`},
+		{name: "space", path: "my dir/a.go", arg: `'my dir/a.go'`},
+		{name: "single quote", path: "it's/a.go", arg: `'it'\''s/a.go'`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assertRestSuggestion(t, tc.path, tc.arg)
+		})
+	}
+}
+
+func assertRestSuggestion(t *testing.T, path, arg string) {
+	t.Helper()
+	cand, ok := restSplit(fileSlice{path: path, size: 700}, []string{"kept/a.go"}, 300).(*jq.Obj)
+	if !ok {
+		t.Fatalf("restSplit is not a jq object")
+	}
+	suggestion, _ := cand.Get(keySuggestion)
+	want := "re-fetch with --ignore " + arg + " (~300 bytes across 1 file(s))"
+	if suggestion != want {
+		t.Errorf("suggestion = %q; want %q", suggestion, want)
 	}
 }
 

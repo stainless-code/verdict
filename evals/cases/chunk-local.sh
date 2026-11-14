@@ -341,6 +341,31 @@ fi
   cd "$EVAL_SANDBOX" || exit 99
   git checkout -q -- $CLOC_FILES cloc-small.txt cloc-huge.txt 2>/dev/null || true
 )
+
+# The suggested exclusion has to be pasteable: a path holding glob syntax is
+# escaped so the ignore glob matches that path and nothing else, and the word
+# arrives whole.
+BRACKET='app/[id]/page.tsx'
+(
+  cd "$EVAL_SANDBOX" || exit 99
+  mkdir -p 'app/[id]'
+  awk 'BEGIN{for(i=0;i<9000;i++) printf "cloc bracket line %06d words words words words words\n", i}' >"$BRACKET"
+  printf 'small\n' >cloc-bracket-small.txt
+  git add -A
+  git commit -qm cloc-bracket-base 2>/dev/null || true
+  awk 'BEGIN{for(i=0;i<9000;i++) printf "cloc bracket CHANGED %06d other words other words other words\n", i}' >"$BRACKET"
+  printf 'small changed\n' >cloc-bracket-small.txt
+)
+run_review fetch-local acme/app clocbracket
+assert_exit "a bracketed path over the cap refuses" 1
+assert_file_grep "the suggestion escapes the glob class and quotes the path" "$EVAL_ERR" \
+  "re-fetch with --ignore 'app/\\[id\\]/page.tsx'" "-F"
+run_review fetch-local acme/app clocbracket-excluded --ignore 'app/\[id\]/page.tsx'
+assert_exit "the suggested --ignore excludes exactly the bracketed path" 0
+assert_file_grep "the excluded bundle keeps the other changed file" \
+  "$EVAL_SANDBOX/.verdict/state/local-clocbracket-excluded/full.diff" '^diff --git a/cloc-bracket-small.txt' "-E"
+assert_file_nogrep "the excluded bundle drops the bracketed path" \
+  "$EVAL_SANDBOX/.verdict/state/local-clocbracket-excluded/full.diff" 'page\.tsx' "-E"
 rm -rf "$CLOC_FAKEBIN" "$EVAL_SANDBOX/xdg-empty"
 rm -f "$KNOB" "$EVAL_SANDBOX"/cloc-concat.diff "$EVAL_SANDBOX"/cloc-manifest-1.json
 rm -f "$EVAL_SANDBOX"/cloc-canned.diff "$EVAL_SANDBOX"/cloc-pr.json

@@ -9,8 +9,10 @@ import (
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/exclude"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/shellquote"
 )
 
 // DefaultDiffCap is the fetched-diff byte cap (512000 bytes, overridable
@@ -243,9 +245,11 @@ func restSplit(top fileSlice, rest []string, restBytes int64) any {
 	for i, p := range shown {
 		files[i] = p
 	}
-	suggestion := fmt.Sprintf("re-fetch with --ignore %s (~%d bytes across %d file(s))", top.path, restBytes, len(rest))
+	suggestion := fmt.Sprintf("re-fetch with --ignore %s (~%d bytes across %d file(s))",
+		shellquote.Arg(exclude.LiteralPath(top.path)), restBytes, len(rest))
 	if len(rest) > numShownPaths {
-		suggestion = fmt.Sprintf("re-fetch with --ignore %s (%d files, first 10 named, ~%d bytes total)", top.path, len(rest), restBytes)
+		suggestion = fmt.Sprintf("re-fetch with --ignore %s (%d files, first 10 named, ~%d bytes total)",
+			shellquote.Arg(exclude.LiteralPath(top.path)), len(rest), restBytes)
 	}
 	return jq.NewObj(
 		keyKind, "paths", keyFiles, files, keyEstimated, restBytes,

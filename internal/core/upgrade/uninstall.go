@@ -8,6 +8,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/skill"
+	"github.com/stainless-code/verdict/internal/shellquote"
 )
 
 // Uninstall removes an installer-managed binary plus its receipt, and (on
@@ -116,7 +117,7 @@ func uninstallCommand(det *detection) string {
 	case ChannelBrew:
 		return "brew uninstall " + brewTarget
 	case ChannelProject:
-		return fmt.Sprintf("cd %s && npm uninstall %s", shellQuote(projectRoot(filepath.Dir(det.exe))), npmPackage)
+		return fmt.Sprintf("cd %s && npm uninstall %s", shellquote.Arg(projectRoot(filepath.Dir(det.exe))), npmPackage)
 	case ChannelSkill:
 		cmd, _ := skillUninstallCommand(det.exe)
 		return cmd
@@ -134,5 +135,5 @@ func skillUninstallCommand(exe string) (string, bool) {
 	if filepath.Base(root) != skill.Name {
 		return "", false
 	}
-	return "verdict skill uninstall --dir " + shellQuote(filepath.Dir(root)) + " --force", true
+	return "verdict skill uninstall --dir " + shellquote.Arg(filepath.Dir(root)) + " --force", true
 }
