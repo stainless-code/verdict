@@ -57,22 +57,17 @@ func incidentAudit(st *state) (*incidentRollup, *core.RefusalError) {
 			Message: fmt.Sprintf(msgIncidentLedger, filepath.ToSlash(incident.File)),
 		}
 	}
-	slices.SortStableFunc(rows, compareIncidentRows)
+	slices.SortStableFunc(rows, incident.CompareRows)
 	out := &incidentRollup{}
-	forEachBundle(rows, func(run []incident.Row) { out.addBundle(st, run) })
-	return out, nil
-}
-
-// forEachBundle calls fn once per bundle run of rows, which arrive sorted.
-func forEachBundle(rows []incident.Row, fn func([]incident.Row)) {
-	for len(rows) > 0 {
-		end := 1
-		for end < len(rows) && rows[end].Bundle == rows[0].Bundle {
+	for start := 0; start < len(rows); {
+		end := start + 1
+		for end < len(rows) && rows[end].Bundle == rows[start].Bundle {
 			end++
 		}
-		fn(rows[:end])
-		rows = rows[end:]
+		out.addBundle(st, rows[start:end])
+		start = end
 	}
+	return out, nil
 }
 
 // addBundle folds one bundle's incidents: its findings store is read once, and
@@ -138,16 +133,6 @@ func coversAnyPath(file string, paths []string) bool {
 		}
 	}
 	return false
-}
-
-// compareIncidentRows orders rows by bundle, then sha.
-//
-//nolint:gocritic // slices.SortStableFunc's comparator takes value rows
-func compareIncidentRows(a, b incident.Row) int {
-	if a.Bundle != b.Bundle {
-		return strings.Compare(a.Bundle, b.Bundle)
-	}
-	return strings.Compare(a.Sha, b.Sha)
 }
 
 // emitIncidentsHuman renders the miss-rate summary and one line per bundle,

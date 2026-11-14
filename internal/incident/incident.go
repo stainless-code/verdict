@@ -320,18 +320,28 @@ func pathsField(obj *jq.Obj) ([]string, error) {
 	return paths, nil
 }
 
+// Doc renders one row as the object an attach reports: the row's own fields,
+// without the schema version, which belongs to the file rather than the row.
+func Doc(row *Row) *jq.Obj {
+	return jq.NewObj(rowFields(row)...)
+}
+
 // encode renders one row in the published key order, with no HTML escaping so
 // a note keeps the bytes the operator typed.
 func encode(row *Row) string {
-	return jq.NewObj(
-		keySchemaVersion, row.SchemaVersion,
+	return jq.NewObj(append([]any{keySchemaVersion, row.SchemaVersion}, rowFields(row)...)...).MarshalCompact()
+}
+
+// rowFields lists the row's own fields in published key order.
+func rowFields(row *Row) []any {
+	return []any{
 		keyBundle, row.Bundle,
 		keySha, row.Sha,
 		keyPaths, pathList(row.Paths),
 		keyNote, optionalValue(row.Note),
 		keyURL, optionalValue(row.URL),
 		keyDetectedAt, row.DetectedAt,
-	).MarshalCompact()
+	}
 }
 
 // pathList renders the paths as a JSON array, never null.
@@ -351,12 +361,20 @@ func optionalValue(p *string) any {
 	return *p
 }
 
-// compareLines orders rows by bundle, then sha.
-func compareLines(a, b line) int { //nolint:gocritic // lines are copied while sorting one ledger
-	if a.row.Bundle != b.row.Bundle {
-		return strings.Compare(a.row.Bundle, b.row.Bundle)
+// CompareRows orders rows by bundle, then sha: the ledger's own order, which
+// the rewrite and the measurement join both sort by.
+//
+//nolint:gocritic // slices.SortStableFunc's comparator takes value rows
+func CompareRows(a, b Row) int {
+	if a.Bundle != b.Bundle {
+		return strings.Compare(a.Bundle, b.Bundle)
 	}
-	return strings.Compare(a.row.Sha, b.row.Sha)
+	return strings.Compare(a.Sha, b.Sha)
+}
+
+// compareLines orders the stored lines for the rewrite.
+func compareLines(a, b line) int { //nolint:gocritic // lines are copied while sorting one ledger
+	return CompareRows(a.row, b.row)
 }
 
 // path anchors the ledger under the reviewed repository root.

@@ -12,7 +12,6 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/incident"
-	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -58,21 +57,23 @@ func (st *state) runIncident() *core.RefusalError {
 	if ref != nil {
 		return ref
 	}
-	attached, ref := st.attachIncident(in)
+	row := in.row()
+	attached, ref := st.attachIncident(row)
 	if ref != nil {
 		return ref
 	}
 	st.next = nextIncident
-	st.data = &Data{Incident: incidentDoc(in, attached)}
+	doc := incident.Doc(row)
+	doc.Set(fieldAttached, attached)
+	st.data = &Data{Incident: doc}
 	st.humanf("attached incident %s %s -> %s (%s)\n",
-		in.bundle, in.sha[:shortShaLen], st.incidentDisplay(), pathCount(len(in.paths)))
+		row.Bundle, row.Sha[:shortShaLen], st.incidentDisplay(), pathCount(len(row.Paths)))
 	return nil
 }
 
-// attachIncident writes the row and reports whether the pair was new. A dry
-// run reads the ledger to answer the same question and writes nothing.
-func (st *state) attachIncident(in *incidentInput) (string, *core.RefusalError) {
-	row := &incident.Row{
+// row is the ledger row this attach writes.
+func (in *incidentInput) row() *incident.Row {
+	return &incident.Row{
 		SchemaVersion: incident.Version,
 		Bundle:        in.bundle,
 		Sha:           in.sha,
@@ -81,6 +82,11 @@ func (st *state) attachIncident(in *incidentInput) (string, *core.RefusalError) 
 		URL:           in.url,
 		DetectedAt:    in.at,
 	}
+}
+
+// attachIncident writes the row and reports whether the pair was new. A dry
+// run reads the ledger to answer the same question and writes nothing.
+func (st *state) attachIncident(row *incident.Row) (string, *core.RefusalError) {
 	if st.req.DryRun {
 		return st.previewAttach(row)
 	}
@@ -253,31 +259,6 @@ func (st *state) applyIncidentAt(in *incidentInput) *core.RefusalError {
 	}
 	in.at = at.UTC().Format(time.RFC3339)
 	return nil
-}
-
-// incidentDoc renders the envelope's data.incident in published key order.
-func incidentDoc(in *incidentInput, attached string) *jq.Obj {
-	paths := make([]any, 0, len(in.paths))
-	for _, p := range in.paths {
-		paths = append(paths, p)
-	}
-	return jq.NewObj(
-		"bundle", in.bundle,
-		"sha", in.sha,
-		"paths", paths,
-		"note", optional(in.note),
-		"url", optional(in.url),
-		"detected_at", in.at,
-		"attached", attached,
-	)
-}
-
-// optional renders a nil pointer as JSON null.
-func optional(p *string) any {
-	if p == nil {
-		return nil
-	}
-	return *p
 }
 
 // stripControls removes control characters: the note lands on one JSONL line

@@ -655,6 +655,7 @@ const (
 	fieldEvent        = "event"
 	fieldActor        = "actor"
 	fieldNote         = "note"
+	fieldAttached     = "attached"
 )
 
 const (
