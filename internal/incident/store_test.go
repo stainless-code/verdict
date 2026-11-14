@@ -27,7 +27,7 @@ func TestUpsertIsIdempotentAndSorted(t *testing.T) {
 		`"note":null,"url":null,"detected_at":"2026-11-14T00:00:00Z","run":"kept"}`
 	writeStore(t, root, seeded+"\n")
 
-	appended, err := Upsert(root, Row{
+	appended, err := Upsert(root, &Row{
 		SchemaVersion: "1", Bundle: "local-a", Sha: shaA, Paths: []string{"src/a.ts"},
 		Note: new("reverted in the same hour"), URL: new("https://example.test/inc/1"),
 		DetectedAt: "2026-11-14T00:00:01Z",
@@ -46,7 +46,7 @@ func TestUpsertIsIdempotentAndSorted(t *testing.T) {
 	}
 
 	before := readStore(t, root)
-	appended, err = Upsert(root, Row{
+	appended, err = Upsert(root, &Row{
 		SchemaVersion: "1", Bundle: "local-a", Sha: shaA, Paths: []string{"src/other.ts"},
 		DetectedAt: "2027-01-01T00:00:00Z",
 	})
@@ -111,7 +111,8 @@ func TestValidateRefusesUnstorableRows(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := Validate(storableRow(tc.mutate))
+			row := storableRow(tc.mutate)
+			err := Validate(&row)
 			if err == nil || !strings.HasSuffix(err.Error(), tc.want) {
 				t.Fatalf("Validate = %v; want a message ending in %q", err, tc.want)
 			}
@@ -204,7 +205,7 @@ func attachInParallel(root string, attaches int) ([]bool, []error) {
 	var wg sync.WaitGroup
 	for i := range attaches {
 		wg.Go(func() {
-			results[i], errs[i] = Upsert(root, Row{
+			results[i], errs[i] = Upsert(root, &Row{
 				SchemaVersion: "1",
 				Bundle:        fmt.Sprintf("local-%02d", i),
 				Sha:           fmt.Sprintf("%040x", i+1),
@@ -232,7 +233,7 @@ func TestUpsertBreaksAStaleLock(t *testing.T) {
 	if err := os.Chtimes(file, old, old); err != nil {
 		t.Fatal(err)
 	}
-	appended, err := Upsert(root, Row{
+	appended, err := Upsert(root, &Row{
 		SchemaVersion: "1", Bundle: "local-a", Sha: shaA,
 		Paths: []string{"src/a.ts"}, DetectedAt: "2026-11-14T00:00:00Z",
 	})

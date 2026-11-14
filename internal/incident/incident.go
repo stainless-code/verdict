@@ -42,15 +42,14 @@ var (
 	// ErrCorrupt marks a present ledger that is oversized, does not decode,
 	// or holds a row this build cannot read.
 	ErrCorrupt = errors.New("incident ledger unreadable")
-	// ErrInvalid marks a row or field this build cannot store or measure; the
+	// errInvalid marks a row or field this build cannot store or measure; the
 	// message names the field and the defect.
-	ErrInvalid = errors.New("incident row invalid")
+	errInvalid = errors.New("incident row invalid")
 )
 
-// invalidf names the field and the defect of one unusable row, wrapping
-// ErrInvalid so a caller can match the class without reading the message.
+// invalidf names the field and the defect of one unusable row.
 func invalidf(format string, a ...any) error {
-	return fmt.Errorf("%w: %s", ErrInvalid, fmt.Sprintf(format, a...)) //nolint:wrapcheck // the file's one error constructor
+	return fmt.Errorf("%w: %s", errInvalid, fmt.Sprintf(format, a...)) //nolint:wrapcheck // the file's one error constructor
 }
 
 const (
@@ -92,7 +91,7 @@ func Read(root string) ([]Row, error) {
 // verbatim, so a field this build does not read survives the write. The whole
 // read-modify-write holds the ledger's lock, so parallel attaches keep every
 // row.
-func Upsert(root string, row Row) (bool, error) { //nolint:gocritic // the row is the ledger's own value shape
+func Upsert(root string, row *Row) (bool, error) {
 	if err := Validate(row); err != nil {
 		return false, err
 	}
@@ -108,14 +107,14 @@ func Upsert(root string, row Row) (bool, error) { //nolint:gocritic // the row i
 	if stored(lines, row) {
 		return false, nil
 	}
-	if err := writeLines(root, append(lines, line{row: row, text: encode(row)})); err != nil {
+	if err := writeLines(root, append(lines, line{row: *row, text: encode(row)})); err != nil {
 		return false, err
 	}
 	return true, nil
 }
 
 // stored reports whether the (bundle, sha) pair is already in the ledger.
-func stored(lines []line, row Row) bool { //nolint:gocritic // the row is the ledger's own value shape
+func stored(lines []line, row *Row) bool {
 	for _, existing := range lines {
 		if existing.row.Bundle == row.Bundle && existing.row.Sha == row.Sha {
 			return true
@@ -137,7 +136,7 @@ func writeLines(root string, lines []line) error {
 
 // Validate reports why row cannot be stored or measured. A row that fails it
 // is never written, and a stored row that fails it refuses the read.
-func Validate(row Row) error { //nolint:gocritic // the row is the ledger's own value shape
+func Validate(row *Row) error {
 	if err := validateIdentity(row); err != nil {
 		return err
 	}
@@ -145,14 +144,14 @@ func Validate(row Row) error { //nolint:gocritic // the row is the ledger's own 
 }
 
 // validateIdentity checks the version, bundle, sha, and detection time.
-func validateIdentity(row Row) error { //nolint:gocritic // the row is the ledger's own value shape
+func validateIdentity(row *Row) error {
 	if row.SchemaVersion != Version {
 		return invalidf("%s %q is not %q", keySchemaVersion, row.SchemaVersion, Version)
 	}
 	if !singleElement(row.Bundle) {
 		return invalidf("%s %q is not one bundle name", keyBundle, row.Bundle)
 	}
-	if !validSha(row.Sha) {
+	if !ValidSha(row.Sha) {
 		return invalidf("%s %q is not 7-40 lowercase hex digits", keySha, row.Sha)
 	}
 	if _, err := time.Parse(time.RFC3339, row.DetectedAt); err != nil {
@@ -162,7 +161,7 @@ func validateIdentity(row Row) error { //nolint:gocritic // the row is the ledge
 }
 
 // validatePaths checks that at least one clean path was recorded.
-func validatePaths(row Row) error { //nolint:gocritic // the row is the ledger's own value shape
+func validatePaths(row *Row) error {
 	if len(row.Paths) == 0 {
 		return invalidf("%s holds no path", keyPaths)
 	}
@@ -180,8 +179,9 @@ func singleElement(name string) bool {
 		!strings.ContainsAny(name, `/\`) && !strings.ContainsFunc(name, unicode.IsControl)
 }
 
-// validSha reports whether sha is a git-abbreviated or full object id.
-func validSha(sha string) bool {
+// ValidSha reports whether sha is a git-abbreviated or full lowercase object
+// id: the one sha rule the attach and the read share.
+func ValidSha(sha string) bool {
 	if len(sha) < minShaLen || len(sha) > maxShaLen {
 		return false
 	}
@@ -239,7 +239,7 @@ func decode(text string) (Row, error) {
 	if err != nil {
 		return Row{}, err
 	}
-	if err := Validate(row); err != nil {
+	if err := Validate(&row); err != nil {
 		return Row{}, err
 	}
 	return row, nil
@@ -322,7 +322,7 @@ func pathsField(obj *jq.Obj) ([]string, error) {
 
 // encode renders one row in the published key order, with no HTML escaping so
 // a note keeps the bytes the operator typed.
-func encode(row Row) string { //nolint:gocritic // the row is the ledger's own value shape
+func encode(row *Row) string {
 	return jq.NewObj(
 		keySchemaVersion, row.SchemaVersion,
 		keyBundle, row.Bundle,

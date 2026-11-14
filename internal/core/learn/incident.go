@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -21,11 +20,8 @@ const (
 	// incidentNoteMaxBytes caps one note: it lands in a tracked file an agent
 	// reads, so the evidence stays a sentence, not a document.
 	incidentNoteMaxBytes = 2000
-	// shortShaLen is the abbreviation the human line prints and the shortest
-	// sha an attach accepts.
+	// shortShaLen is the abbreviation the human line prints.
 	shortShaLen = 7
-	// fullShaLen is a full SHA-1 object id.
-	fullShaLen = 40
 )
 
 const (
@@ -76,7 +72,7 @@ func (st *state) runIncident() *core.RefusalError {
 // attachIncident writes the row and reports whether the pair was new. A dry
 // run reads the ledger to answer the same question and writes nothing.
 func (st *state) attachIncident(in *incidentInput) (string, *core.RefusalError) {
-	row := incident.Row{
+	row := &incident.Row{
 		SchemaVersion: incident.Version,
 		Bundle:        in.bundle,
 		Sha:           in.sha,
@@ -95,11 +91,10 @@ func (st *state) attachIncident(in *incidentInput) (string, *core.RefusalError) 
 	return attachedText(appended), nil
 }
 
-// writeIncident upserts the row, mapping a store failure to its refusal.
-func (st *state) writeIncident(row incident.Row) (bool, *core.RefusalError) { //nolint:gocritic // the row is the store's own value shape
-	if err := os.MkdirAll(st.storeDir(), reviewDirPerm); err != nil {
-		return false, st.refuse(codeLearnFailed, fmt.Sprintf(msgMkdirReview, err))
-	}
+// writeIncident upserts the row, mapping a store failure to its refusal. The
+// bundle check proved .verdict exists, so the ledger's directory is not
+// something this path creates.
+func (st *state) writeIncident(row *incident.Row) (bool, *core.RefusalError) {
 	appended, err := incident.Upsert(st.root, row)
 	if err != nil {
 		return false, st.incidentRefusal(err)
@@ -121,7 +116,7 @@ func (st *state) incidentRefusal(err error) *core.RefusalError {
 }
 
 // previewAttach answers what a write would do without touching the ledger.
-func (st *state) previewAttach(row incident.Row) (string, *core.RefusalError) { //nolint:gocritic // the row is the store's own value shape
+func (st *state) previewAttach(row *incident.Row) (string, *core.RefusalError) {
 	rows, err := incident.Read(st.root)
 	if errors.Is(err, incident.ErrMissing) {
 		return attachedText(true), nil
@@ -194,7 +189,7 @@ func (st *state) incidentBundleDir() (string, *core.RefusalError) {
 // incidentSha reads the merge the incident is attached to.
 func (st *state) incidentSha() (string, *core.RefusalError) {
 	sha := st.req.Sha
-	if !validIncidentSha(sha) {
+	if !incident.ValidSha(sha) {
 		return "", st.refuse(codeBadFlags, fmt.Sprintf(msgIncidentSha, sha))
 	}
 	return sha, nil
@@ -283,16 +278,6 @@ func optional(p *string) any {
 		return nil
 	}
 	return *p
-}
-
-// validIncidentSha accepts a git-abbreviated or full lowercase object id.
-func validIncidentSha(sha string) bool {
-	if len(sha) < shortShaLen || len(sha) > fullShaLen {
-		return false
-	}
-	return !strings.ContainsFunc(sha, func(r rune) bool {
-		return !strings.ContainsRune("0123456789abcdef", r)
-	})
 }
 
 // stripControls removes control characters: the note lands on one JSONL line
