@@ -66,6 +66,12 @@ assert_file_grep "absent knob names the cap" "$EVAL_ERR" "exceeds its cap 512000
 assert_file_grep "absent knob carries the split hint" "$EVAL_ERR" "try: split the range"
 assert_file_grep "absent knob names the exclusion flags that fit the review" "$EVAL_ERR" \
   '^next: fit the diff under the cap with --ignore <glob>' "-E"
+assert_file_grep "the exclusion hint keeps the ignore file on the base revision" "$EVAL_ERR" \
+  '^next: .*or a \.verdict/ignore pattern committed on the base revision' "-E"
+assert_file_grep "the hint says paths after -- narrow instead of excluding" "$EVAL_ERR" \
+  '^next: .*Paths after -- on fetch-local narrow the review to the matching files' "-E"
+assert_file_grep "the refusal body names --ignore as the exclusion" "$EVAL_ERR" \
+  'or exclude files with --ignore <glob>, then re-fetch'
 assert_stream_nogrep "the over-cap next line offers no cap raise" "$EVAL_ERR" \
   '^next: .*MAX_BYTES' "-E"
 assert_stream_nogrep "absent knob mentions no chunking" "$EVAL_ERR" "chunk" "-i"
@@ -73,6 +79,16 @@ if [ ! -d "$BUNDLE/chunks" ]; then
   good "absent knob writes no chunks dir"
 else
   bad "absent knob wrote a chunks dir"
+fi
+# Paths after -- are git pathspecs: naming one file reviews that file and
+# nothing else, so the paths narrow and never exclude.
+run_review fetch-local acme/app clocnarrow -- cloc-f1.txt
+assert_exit "an over-cap worktree narrows to one path under the cap" 0
+if grep -q '^diff --git a/cloc-f1.txt' "$EVAL_SANDBOX/.verdict/state/local-clocnarrow/full.diff" \
+  && ! grep -qE '^diff --git a/cloc-f[2-6]\.txt' "$EVAL_SANDBOX/.verdict/state/local-clocnarrow/full.diff"; then
+  good "the narrowed bundle holds only the named path (a pathspec selects, it never excludes)"
+else
+  bad "narrowing to cloc-f1.txt reviewed something else too"
 fi
 # shellcheck disable=SC2086 # CLOC_FILES is a validated space-separated path list
 run_review fetch-local acme/app clocfix --chunk -- $CLOC_FILES

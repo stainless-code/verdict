@@ -220,15 +220,15 @@ func TestRunLocalChunkOffOverCapRefuses(t *testing.T) {
 
 // TestOverCapRefusalNamesTheExclusionsThatFit proves the over-cap refusal ends
 // with the exclusion machinery an operator can actually use — never a raised
-// cap — so the way to fit the review is one copy away.
+// cap — and says plainly that paths after -- narrow instead of excluding.
 func TestOverCapRefusalNamesTheExclusionsThatFit(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	_, _, err := runLocalStagedDiff(t, overDefaultCapDiff(), nil, nil, false)
 	ref := requireRefusal(t, err, "diff-too-large")
-	want := "\nnext: fit the diff under the cap with --ignore <glob> (repeatable on fetch and fetch-local), " +
-		"a committed .verdict/ignore line, or paths after -- on fetch-local — " +
-		"the cap is measured after those exclusions"
+	want := "\nnext: fit the diff under the cap with --ignore <glob> (repeatable on fetch and fetch-local) " +
+		"or a .verdict/ignore pattern committed on the base revision — the cap is measured after those exclusions. " +
+		"Paths after -- on fetch-local narrow the review to the matching files — they select, they never exclude"
 	if !strings.HasSuffix(ref.Message, want) {
 		t.Errorf("refusal tail = %q; want suffix %q", ref.Message, want)
 	}

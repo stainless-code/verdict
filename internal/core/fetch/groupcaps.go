@@ -186,7 +186,7 @@ func groupCapRefusal(limit *groupLimit, total int64, table []fileSlice) *core.Re
 	cands := splitCandidatesFor(table, limit.Files, total)
 	refusal := &core.RefusalError{Code: "diff-too-large", Message: fmt.Sprintf(
 		"group %s diff %d bytes exceeds its cap %d bytes (from %s) — split the range "+
-			"(fetch-local --range/--base, fetch --base-sha) or narrow with a paths filter, then re-fetch "+
+			"(fetch-local --range/--base, fetch --base-sha) or exclude files with --ignore <glob>, then re-fetch "+
 			"(override deliberate exceptions only: REVIEW_MAX_BYTES=<n> or the typed max_bytes default)\n",
 		limit.ID, total, limit.MaxBytes, orEmptyCapSource(limit.Source)) + diffFitNext}
 	refusal.Candidates = cands

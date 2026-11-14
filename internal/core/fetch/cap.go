@@ -130,16 +130,19 @@ func overCap(r *session, res *config.Resolved, fullDiff string, total int64, lim
 	printSplitCandidates(r, cands)
 	refusal := &core.RefusalError{Code: "diff-too-large", Message: fmt.Sprintf(
 		"diff %d bytes exceeds cap %d bytes — split the range (fetch-local --range/--base, fetch --base-sha) "+
-			"or narrow with a paths filter, then re-fetch (override deliberate exceptions only: "+
+			"or exclude files with --ignore <glob>, then re-fetch (override deliberate exceptions only: "+
 			"REVIEW_MAX_BYTES=<n> or the typed max_bytes default)\n", total, lim.maxBytes) + diffFitNext}
 	refusal.Candidates = cands
 	return false, refusal
 }
 
-// diffFitNext is the `next:` tail every over-cap refusal carries: the
-// exclusion machinery that already exists, which the cap is measured after.
-const diffFitNext = "next: fit the diff under the cap with --ignore <glob> (repeatable on fetch and fetch-local), " +
-	"a committed .verdict/ignore line, or paths after -- on fetch-local — the cap is measured after those exclusions"
+// diffFitNext is the `next:` tail every over-cap refusal carries: the only two
+// exclusions that exist, and the narrowing that is not one. The ignore file is
+// read from the base revision (controls snapshots it there), so a rule added on
+// the reviewed head never applies.
+const diffFitNext = "next: fit the diff under the cap with --ignore <glob> (repeatable on fetch and fetch-local) " +
+	"or a .verdict/ignore pattern committed on the base revision — the cap is measured after those exclusions. " +
+	"Paths after -- on fetch-local narrow the review to the matching files — they select, they never exclude"
 
 func printSplitCandidates(r *session, cands []any) {
 	if len(cands) == 0 {
@@ -240,9 +243,9 @@ func restSplit(top fileSlice, rest []string, restBytes int64) any {
 	for i, p := range shown {
 		files[i] = p
 	}
-	suggestion := fmt.Sprintf("re-fetch excluding %s (~%d bytes across %d file(s))", top.path, restBytes, len(rest))
+	suggestion := fmt.Sprintf("re-fetch with --ignore %s (~%d bytes across %d file(s))", top.path, restBytes, len(rest))
 	if len(rest) > numShownPaths {
-		suggestion = fmt.Sprintf("re-fetch excluding %s: first 10 of %d remaining files (~%d bytes total)", top.path, len(rest), restBytes)
+		suggestion = fmt.Sprintf("re-fetch with --ignore %s (%d files, first 10 named, ~%d bytes total)", top.path, len(rest), restBytes)
 	}
 	return jq.NewObj(
 		keyKind, "paths", keyFiles, files, keyEstimated, restBytes,

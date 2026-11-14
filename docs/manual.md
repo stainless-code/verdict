@@ -2870,12 +2870,15 @@ never do.
 ## Over-cap diffs (chunked fetch + manual recipe)
 
 Diffs over 512000 bytes refuse with typed `diff-too-large`: the refusal names
-the size, the cap, and the split-or-narrow escape, carries advisory split
+the size, the cap, and the split-or-exclude escape, carries advisory split
 candidates (largest file alone, everything-but-largest, range half-split), and
-ends with a `next:` line naming the exclusions that fit the review: a
-repeatable `--ignore <glob>`, a committed `.verdict/ignore` line, or paths after
-`--` on `fetch-local`, which the cap is measured after. Nothing
-auto-narrows. Deliberate exceptions only: `REVIEW_MAX_BYTES=<n>` env
+ends with a `next:` line naming the two exclusions that fit the review: a
+repeatable `--ignore <glob>`, or a `.verdict/ignore` pattern committed on the
+base revision, because the ignore file is read from the base snapshot and a rule
+added on the head never governs its own review. The cap is measured after those
+exclusions. Nothing auto-narrows, and paths after `--` on `fetch-local` are git
+pathspecs that select the files to review: they narrow, they never exclude.
+Deliberate exceptions only: `REVIEW_MAX_BYTES=<n>` env
 or the typed `max_bytes` default in `.verdict/config.json` (env wins, then the
 typed default, then 512000; either override disables chunking outright and the
 fetch prints its source). The typed cap and `chunk` default are read from the PR
