@@ -551,9 +551,15 @@ Fix: fix the range so both refs resolve, then re-run `fetch-local`.
 
 ## `diff-too-large`
 
-Cause: the fetched diff is over the cap.
+Cause: the fetched diff is over the cap, measured after exclusions.
 
-Fix: split the range (`--range`/`--base`/`--base-sha`) or narrow with a paths filter, then re-fetch.
+Fix: split the range (`--range`/`--base`/`--base-sha`) or exclude files with `--ignore <glob>`, then re-fetch.
+The `next:` line names the two exclusions that fit the review: `--ignore <glob>`
+(repeatable on `fetch` and `fetch-local`), or a `.verdict/ignore` pattern
+committed on the base revision — the ignore file is read from the base snapshot,
+so a rule added on the head never applies to its own review. Paths after `--` on
+`fetch-local` are git pathspecs: they narrow the review to the matching files,
+they never exclude.
 
 ## `download-failed`
 
@@ -758,7 +764,10 @@ Fix: run `post` or `record` first, then re-run.
 
 Cause: no tree file exists for the queried tree.
 
-Fix: run `verdict index build` at that tree (or omit `--at` to query HEAD).
+Fix: run `verdict index build` at the revision the refusal names (`--at <ref>`,
+or `--from <dir>` for a directory hand-off). The message pairs the ref you
+typed with the tree it resolved to, so `no index for HEAD (tree <tree>)` says
+which tree is unbuilt.
 
 ## `missing-patch`
 

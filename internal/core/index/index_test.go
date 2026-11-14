@@ -44,6 +44,17 @@ func newFixture(t *testing.T) *fixture {
 // hung test.
 const gitWaitDelay = time.Minute
 
+// rehome moves the fixture checkout beside itself, so a test can name a
+// directory whose own name the shell must quote.
+func (f *fixture) rehome(name string) string {
+	f.t.Helper()
+	moved := filepath.Join(filepath.Dir(f.dir), name)
+	if err := os.Rename(f.dir, moved); err != nil {
+		f.t.Fatal(err)
+	}
+	return moved
+}
+
 // ignoreVerdict appends the workspace to the repository's own exclude file,
 // never to a tracked .gitignore, so no fixture path is added to a commit.
 // git init skips .git/info when its template is empty, so the directory is
@@ -431,7 +442,96 @@ func TestCallersMissingIndexRefuses(t *testing.T) {
 	req := f.request(QueryCallers, nil)
 	req.Symbol = "a.Target"
 	_, ref := Run(context.Background(), req)
-	assertRefusal(t, ref, "missing-index", "no index for tree "+tree+"; run verdict index build")
+	assertRefusal(t, ref, "missing-index",
+		"no index for HEAD (tree "+tree+")\nnext: verdict index build --at HEAD")
+}
+
+// TestQueriesNameTheirCheckoutInAMissingIndex proves a query handed a checkout
+// directory names that directory in the build command: the operator is not
+// standing in it, so a --at there would build the wrong tree.
+func TestQueriesNameTheirCheckoutInAMissingIndex(t *testing.T) {
+	f := newFixture(t)
+	f.write("a/a.go", "package a\n\nfunc Target() {}\n")
+	f.commit("one")
+	f.dir = f.rehome("my checkout")
+	want := "next: verdict index build --from '" + f.dir + "'"
+	cases := []struct{ query, symbol, path string }{
+		{query: QueryCallers, symbol: "a.Target"},
+		{query: QueryTestsFor, path: "a/a.go"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.query, func(t *testing.T) {
+			req := f.request(tc.query, nil)
+			req.From, req.Symbol, req.Path = f.dir, tc.symbol, tc.path
+			_, ref := Run(context.Background(), req)
+			assertBuildFromCheckout(t, ref, want)
+		})
+	}
+}
+
+// assertBuildFromCheckout proves a missing-index refusal ends on the build
+// command for the checkout the query was handed.
+func assertBuildFromCheckout(t *testing.T, ref *core.RefusalError, want string) {
+	t.Helper()
+	if ref == nil || ref.Code != codeMissingIndex {
+		t.Fatalf("refusal = %v, want missing-index", ref)
+	}
+	if !strings.HasSuffix(ref.Message, want) {
+		t.Errorf("refusal tail = %q; want suffix %q", ref.Message, want)
+	}
+}
+
+// TestMissingIndexRefusalNamesTheHandoff pins the four hand-offs a missing
+// tree file can name: a revision (with the checkout when one was named), the
+// typed tree SHA itself, and the store's own scan.
+func TestMissingIndexRefusalNamesTheHandoff(t *testing.T) {
+	const tree = "6fa8100d5c1b2a3e4d5f60718293a4b5c6d7e8f9"
+	tests := []struct {
+		name string
+		key  treeRef
+		want string
+	}{
+		{
+			name: "revision",
+			key:  treeRef{tree: tree, at: "HEAD"},
+			want: "no index for HEAD (tree " + tree + ")\nnext: verdict index build --at HEAD",
+		},
+		{
+			name: "revision with its own checkout",
+			key:  treeRef{tree: tree, at: "HEAD", from: "/elsewhere/index-built"},
+			want: "no index for HEAD (tree " + tree + ")\nnext: verdict index build --from /elsewhere/index-built",
+		},
+		{
+			name: "typed tree sha",
+			key:  treeRef{tree: tree, at: tree},
+			want: "no index for tree " + tree + "\nnext: verdict index build --at " + tree,
+		},
+		{
+			name: "checkout path with a space",
+			key:  treeRef{tree: tree, at: "HEAD", from: "/tmp/my checkout"},
+			want: "no index for HEAD (tree " + tree + ")\nnext: verdict index build --from '/tmp/my checkout'",
+		},
+		{
+			name: "checkout path with a dollar sign",
+			key:  treeRef{tree: tree, at: "HEAD", from: "/tmp/$HOME"},
+			want: "no index for HEAD (tree " + tree + ")\nnext: verdict index build --from '/tmp/$HOME'",
+		},
+		{
+			name: "checkout path with a single quote",
+			key:  treeRef{tree: tree, at: "HEAD", from: "/tmp/it's"},
+			want: "no index for HEAD (tree " + tree + ")\nnext: verdict index build --from '/tmp/it'\\''s'",
+		},
+		{
+			name: "store scan",
+			key:  treeRef{tree: tree},
+			want: "no index for tree " + tree + "\nnext: verdict index build --at " + tree,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assertRefusal(t, missingIndexRefusal(tc.key), "missing-index", tc.want)
+		})
+	}
 }
 
 // TestShardIdentityIncludesRefsPerFile proves a shard parsed under a lower
@@ -462,7 +562,7 @@ func TestShardIdentityIncludesRefsPerFile(t *testing.T) {
 // assertTreeRefs pins the references one single-file tree carries.
 func assertTreeRefs(t *testing.T, store, tree string, truncated bool, names ...string) {
 	t.Helper()
-	got, ref := readTree(store, tree)
+	got, ref := readTree(store, treeRef{tree: tree})
 	if ref != nil {
 		t.Fatalf("read tree %s: %v", tree, ref)
 	}

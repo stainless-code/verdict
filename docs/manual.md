@@ -2968,9 +2968,15 @@ never do.
 ## Over-cap diffs (chunked fetch + manual recipe)
 
 Diffs over 512000 bytes refuse with typed `diff-too-large`: the refusal names
-the size, the cap, and the split-or-narrow escape, and carries advisory split
-candidates (largest file alone, everything-but-largest, range half-split) —
-nothing auto-narrows. Deliberate exceptions only: `REVIEW_MAX_BYTES=<n>` env
+the size, the cap, and the split-or-exclude escape, carries advisory split
+candidates (largest file alone, everything-but-largest, range half-split), and
+ends with a `next:` line naming the two exclusions that fit the review: a
+repeatable `--ignore <glob>`, or a `.verdict/ignore` pattern committed on the
+base revision, because the ignore file is read from the base snapshot and a rule
+added on the head never governs its own review. The cap is measured after those
+exclusions. Nothing auto-narrows, and paths after `--` on `fetch-local` are git
+pathspecs that select the files to review: they narrow, they never exclude.
+Deliberate exceptions only: `REVIEW_MAX_BYTES=<n>` env
 or the typed `max_bytes` default in `.verdict/config.json` (env wins, then the
 typed default, then 512000; either override disables chunking outright and the
 fetch prints its source). The typed cap and `chunk` default are read from the PR
@@ -3522,10 +3528,13 @@ store read is `<root>/.verdict/index`. A **directory** is a checkout with its
 own `.verdict/index` — the way to hand over an index built somewhere else — and
 its `HEAD` supplies the tree. A directory with no index store refuses
 `bad-flags`; a ref this clone cannot resolve refuses `bad-at`; a tree the store
-never built refuses `missing-index`; a truncated or invalid tree file refuses
-`index-corrupt`. A named index that answers for another tree is a **visible
-warning**, not a refusal — the operator asked for that index, and the rows
-really do describe it:
+never built refuses `missing-index`, naming the revision the operator typed
+beside the tree it resolved to and the exact build command that answers for it
+(`no index for HEAD (tree <tree>)`, then `next: verdict index build --at HEAD`,
+or `verdict index build --from <dir>` for a directory hand-off); a truncated or
+invalid tree file refuses `index-corrupt`. A named index that answers for
+another tree is a **visible warning**, not a refusal — the operator asked for
+that index, and the rows really do describe it:
 
 ```
 » impact: the index answers for tree <answered>, the bundle head is <head>; impact rows describe the named index
