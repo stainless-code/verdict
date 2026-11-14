@@ -232,7 +232,7 @@ func assertSecondaryEntries(t *testing.T, e1, e2, e3 map[string]any) {
 	if !ok || w["source"] != "exclusion" || w["exclusion_id"] != "builtin:vendor" {
 		t.Fatalf("expected exclusion withheld on entry 2, got %+v", e2)
 	}
-	if e3["kind"] != "section" || e3["anchored"] != false || e3["severity"] != "informational" {
+	if e3["kind"] != "section" || e3["anchored"] != "body" || e3["severity"] != "informational" {
 		t.Fatalf("unexpected section entry 3: %+v", e3)
 	}
 }

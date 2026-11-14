@@ -467,14 +467,15 @@ type candidate struct {
 
 func (st *ingestState) buildCandidate(r *parsedResult) candidate {
 	var (
-		kind     string
-		path     any
-		heading  any
-		line     any
-		side     any
-		anchored bool
-		inBounds bool
-		sigKey   string
+		kind        string
+		path        any
+		heading     any
+		line        any
+		side        any
+		entryAnchor any
+		anchored    bool
+		inBounds    bool
+		sigKey      string
 	)
 	if r.Path != "" {
 		kind = "inline"
@@ -485,11 +486,13 @@ func (st *ingestState) buildCandidate(r *parsedResult) candidate {
 			anchored = hunks.Contains(st.hunks, r.Path, "NEW", r.StartLine, r.EndLine)
 			inBounds = anchored
 		}
+		entryAnchor = anchored
 		sigKey = r.Path + "\n\n" + r.Body
 	} else {
 		kind = "section"
 		h := sectionHeading(r.Tool, r.RuleID)
 		heading = h
+		entryAnchor = "body"
 		inBounds = true
 		sigKey = newlineSep + h + newlineSep + r.Body
 	}
@@ -511,7 +514,7 @@ func (st *ingestState) buildCandidate(r *parsedResult) candidate {
 		Heading:     heading,
 		Line:        line,
 		Side:        side,
-		Anchored:    anchored,
+		Anchored:    entryAnchor,
 		Body:        r.Body,
 		KB:          &kb,
 		InBounds:    inBounds,
