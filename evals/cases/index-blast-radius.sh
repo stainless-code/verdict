@@ -163,7 +163,9 @@ assert_json_field "truncation counts are null" "null" '.data.callers.truncated'
 assert_json_field "co-change is still measured" 2 '.data.co_changed.count'
 assert_json_field "owners are still measured" 1 '.data.owners.count'
 assert_json_field "the absent index is named once" "true" \
-  '.warnings[0] | startswith("» index: no index for tree ")'
+  '.warnings[0] | startswith("» index: no index for HEAD (tree ")'
+assert_json_field "the absent-index hint names the exact build command" \
+  "run verdict index build --at HEAD, then re-run" '.next'
 
 run_review index blast-radius --paths a/ab.go --limit 0 --json
 assert_exit "an out-of-range limit exits 2" 2

@@ -368,6 +368,46 @@ func TestBlastNullCountsWithoutIndex(t *testing.T) {
 	}
 }
 
+// TestBlastMissingIndexNamesTheBuildCommand proves the absent-index hint names
+// the tree the operator asked for and the exact build that answers for it, the
+// way the callers and tests-for refusals do: "run verdict index build" alone
+// loses the checkout a --from hand-off read.
+func TestBlastMissingIndexNamesTheBuildCommand(t *testing.T) {
+	f := newFixture(t)
+	writeBlastFixture(f)
+	f.commit("one")
+	tree := f.run("", "rev-parse", "HEAD^{tree}")
+	t.Run("revision", func(t *testing.T) {
+		resp := blastRun(t, f, func(r *Request) { r.Paths = []string{"a/ab.go"} })
+		want := "no index for HEAD (tree " + tree + ")"
+		assertAbsentIndex(t, resp, want, "run verdict index build --at HEAD, then re-run")
+	})
+	t.Run("checkout hand-off", func(t *testing.T) {
+		dir := f.rehome("index-built")
+		resp := blastRun(t, f, func(r *Request) {
+			r.From = dir
+			r.Paths = []string{"a/ab.go"}
+		})
+		want := "no index for HEAD (tree " + tree + ")"
+		assertAbsentIndex(t, resp, want, "run verdict index build --from "+dir+", then re-run")
+	})
+}
+
+// assertAbsentIndex pins the three surfaces an absent index reaches: the
+// warning, the human line, and the next step.
+func assertAbsentIndex(t *testing.T, resp *Response, label, next string) {
+	t.Helper()
+	if want := "» index: " + label + ": symbol, caller, and test counts are unmeasured"; !slices.Contains(resp.Warnings, want) {
+		t.Errorf("warnings = %q; want %q", resp.Warnings, want)
+	}
+	if want := "index: " + label + ": symbol, caller, and test lists are unmeasured"; !slices.Contains(resp.Human, want) {
+		t.Errorf("human = %q; want %q", resp.Human, want)
+	}
+	if resp.Next != next {
+		t.Errorf("next = %q; want %q", resp.Next, next)
+	}
+}
+
 // TestBlastCoChangePartners proves the reused co-change window and its bound:
 // the default minimum count keeps both partners, and a higher one drops the
 // rarer partner.

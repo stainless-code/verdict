@@ -3626,8 +3626,11 @@ warning names the head — the answer is a truthful lower bound for the tree it
 names, and `data.input.head` names the bundle's head. `--paths` queries HEAD. A
 tree with no stored index is not a refusal: `data.index` is absent and the
 symbol, caller, and test counts are `null`, never 0, because an unmeasured list
-is not an empty one. `co_changed` and `owners` are measured from git either
-way.
+is not an empty one. One warning names that tree the way the `missing-index`
+refusal does — the revision the operator typed beside the tree it resolved to —
+and the `next:` step is the exact `verdict index build --at <ref>` (or
+`--from <dir>`, for a directory hand-off) that answers for it. `co_changed` and
+`owners` are measured from git either way.
 
 Callers walk from every changed symbol to depth 2: depth 1 is a direct caller,
 depth 2 a caller of a direct caller. Each declaration is queried at most once

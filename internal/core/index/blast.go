@@ -22,7 +22,7 @@ const (
 	blastDepth       = 2
 	blastDiffSuffix  = "/full.diff"
 	blastHeadWarning = "» index: the PR head %s is not indexed here; querying HEAD"
-	blastNoIndexWarn = "» index: no index for tree %s (run verdict index build): symbol, caller, and test counts are unmeasured"
+	blastNoIndexWarn = "» index: no index for %s: symbol, caller, and test counts are unmeasured"
 	blastNoInput     = "index blast-radius wants --pr <n> or --paths <path>"
 	blastOneInput    = "index blast-radius wants one of --pr <n> or --paths <path>, not both"
 	blastMissingDir  = "index blast-radius: no bundle at %s (run verdict fetch first)"
@@ -181,16 +181,16 @@ func (st *state) blastRadius(ctx context.Context) (*Response, *core.RefusalError
 	}
 	root := st.sourceRoot()
 	st.trust = st.readTrust(ctx, root)
-	t, tree, commit, stale, ref := st.blastTree(ctx, root, input.Head)
+	t, key, commit, stale, ref := st.blastTree(ctx, root, input.Head)
 	if ref != nil {
 		return nil, ref
 	}
-	entries, ref := st.lsTree(ctx, root, tree)
+	entries, ref := st.lsTree(ctx, root, key.tree)
 	if ref != nil {
 		return nil, ref
 	}
 	if st.req.Pr == "" {
-		if ref := checkBlastPaths(entries, input.Paths, tree); ref != nil {
+		if ref := checkBlastPaths(entries, input.Paths, key.tree); ref != nil {
 			return nil, ref
 		}
 	}
@@ -198,7 +198,7 @@ func (st *state) blastRadius(ctx context.Context) (*Response, *core.RefusalError
 	if t != nil {
 		pkgs = packageMap(t)
 	} else {
-		st.warn(fmt.Sprintf(blastNoIndexWarn, tree))
+		st.warn(fmt.Sprintf(blastNoIndexWarn, key.label()))
 	}
 	st.warnHunkless(changes)
 	symbols := blastSymbols(pkgs, t, changes)
@@ -217,7 +217,7 @@ func (st *state) blastRadius(ctx context.Context) (*Response, *core.RefusalError
 		unresolved: unresolved,
 	}
 	blast.Tests, blast.DepthTruncated = blastTests(t, symbols)
-	return st.blastResponse(t, tree, commit, stale, blast, limit), nil
+	return st.blastResponse(t, key, commit, stale, blast, limit), nil
 }
 
 // warnHunkless warns about each changed file whose diff named no line hunks.
@@ -313,42 +313,46 @@ func (st *state) bundleInput(ctx context.Context) (BlastInput, []blastChange, *c
 
 // blastTree loads the queried tree's index. Explicit --at wins; then the
 // bundle's PR head when the store already holds its tree; then HEAD. A tree
-// with no stored index is not an error — the symbol counts read null.
+// with no stored index is not an error — the symbol counts read null — but the
+// key keeps what was typed so the hint names the exact build that answers.
 //
 //nolint:revive // the tree selection ladder is one branch per rule
 func (st *state) blastTree(
 	ctx context.Context, root, head string,
-) (*treeIndex, string, string, bool, *core.RefusalError) {
+) (*treeIndex, treeRef, string, bool, *core.RefusalError) {
 	if at := strings.TrimSpace(st.req.At); at != "" {
 		tree, commit, ref := st.queryRefAt(ctx, root, at)
 		if ref != nil {
-			return nil, "", "", false, ref
+			return nil, treeRef{}, "", false, ref
 		}
 		t, ref := st.optionalTree(root, tree)
 		if ref != nil {
-			return nil, "", "", false, ref
+			return nil, treeRef{}, "", false, ref
 		}
-		return t, tree, commit, st.warnStale(ctx, root, tree), nil
+		key := treeRef{tree: tree, at: at, from: st.req.From}
+		return t, key, commit, st.warnStale(ctx, root, tree), nil
 	}
 	if head != "" && shaRe.MatchString(head) {
 		t, tree, commit, ok, ref := st.bundleTree(ctx, root, head)
 		if ref != nil {
-			return nil, "", "", false, ref
+			return nil, treeRef{}, "", false, ref
 		}
 		if ok {
-			return t, tree, commit, st.headDiffers(ctx, root, tree), nil
+			key := treeRef{tree: tree, at: head, from: st.req.From}
+			return t, key, commit, st.headDiffers(ctx, root, tree), nil
 		}
 		st.warn(fmt.Sprintf(blastHeadWarning, head))
 	}
-	tree, commit, ref := st.queryRefAt(ctx, root, "HEAD")
+	tree, commit, ref := st.queryRefAt(ctx, root, impactHeadRef)
 	if ref != nil {
-		return nil, "", "", false, ref
+		return nil, treeRef{}, "", false, ref
 	}
 	t, ref := st.optionalTree(root, tree)
 	if ref != nil {
-		return nil, "", "", false, ref
+		return nil, treeRef{}, "", false, ref
 	}
-	return t, tree, commit, false, nil
+	key := treeRef{tree: tree, at: impactHeadRef, from: st.req.From}
+	return t, key, commit, false, nil
 }
 
 // bundleTree resolves one bundle head to its stored index, reporting ok=false
@@ -750,13 +754,13 @@ func (st *state) blastOwners(
 
 // blastResponse renders the measured lists, truncating each with its count.
 func (st *state) blastResponse(
-	t *treeIndex, tree, commit string, stale bool, blast *Blast, limit int,
+	t *treeIndex, key treeRef, commit string, stale bool, blast *Blast, limit int,
 ) *Response {
 	blast.Counts = blastCounts(blast, t)
 	blast.Truncated = blastTruncated(blast, limit)
-	st.blastHuman(blast, tree)
+	st.blastHuman(blast, key)
 	data := &Data{
-		Kind: QueryBlastRadius, Tree: tree, Commit: commit, Stale: stale,
+		Kind: QueryBlastRadius, Tree: key.tree, Commit: commit, Stale: stale,
 		Limit: limit, Blast: blast,
 	}
 	if blast.Indexed {
@@ -765,7 +769,7 @@ func (st *state) blastResponse(
 	}
 	next := "read each candidate test before changing the code"
 	if !blast.Indexed {
-		next = "run verdict index build, then re-run"
+		next = "run " + key.buildCommand() + ", then re-run"
 	}
 	return &Response{At: st.req.TimeUTC(), Next: next, Data: data}
 }
@@ -827,11 +831,11 @@ func firstRows[T any](rows []T, limit int) ([]T, int) {
 }
 
 // blastHuman renders the measured lists, one compact block per list.
-func (st *state) blastHuman(blast *Blast, tree string) {
+func (st *state) blastHuman(blast *Blast, key treeRef) {
 	if !blast.Indexed {
-		st.line(fmt.Sprintf(blastIndexAbsent, tree))
+		st.line(fmt.Sprintf(blastIndexAbsent, key.label()))
 	} else {
-		st.blastSymbolLines(blast, tree)
+		st.blastSymbolLines(blast, key.tree)
 		st.blastCallerLines(blast)
 		st.blastTestLines(blast)
 	}

@@ -207,14 +207,19 @@ func readTree(store string, key treeRef) (*treeIndex, *core.RefusalError) {
 // missingIndexRefusal names the revision the operator typed beside the tree it
 // resolved to, then the one command that builds that tree.
 func missingIndexRefusal(key treeRef) *core.RefusalError {
-	label := "tree " + key.tree
-	if key.at != "" && key.at != key.tree {
-		label = key.at + " (tree " + key.tree + ")"
-	}
 	return &core.RefusalError{
 		Code:    codeMissingIndex,
-		Message: "no index for " + label + "\nnext: " + key.buildCommand(),
+		Message: "no index for " + key.label() + "\nnext: " + key.buildCommand(),
 	}
+}
+
+// label names the tree by the revision the operator typed when the two differ,
+// so a missing index reads as the ref that was asked for.
+func (key treeRef) label() string {
+	if key.at != "" && key.at != key.tree {
+		return key.at + " (tree " + key.tree + ")"
+	}
+	return "tree " + key.tree
 }
 
 // buildCommand is the exact `index build` invocation that answers for the
