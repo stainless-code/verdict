@@ -1,7 +1,9 @@
 // Package atomic owns every store write: temp file in the target directory,
 // fsync, close, rename over the target, then a best-effort directory fsync.
 // Nothing is ever truncated in place, so a crash lands on either the old or
-// the new bytes, never a torn middle. Every verb shares this one path.
+// the new bytes, never a torn middle. Every verb shares this one path, and
+// with it the bounded retry for the two calls a Windows replace makes
+// transient: the rename itself and a reader's open racing it.
 package atomic
 
 import (
@@ -11,8 +13,21 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/stainless-code/verdict/internal/jq"
+)
+
+// The bounded retry a replace and the reads racing one share. A lock that
+// outlives it is a real failure, never a hang.
+const (
+	// retryAttempts bounds the retry.
+	retryAttempts = 20
+	// retryBackoff is the first wait between attempts; it doubles up to
+	// retryMaxBackoff (~1.6s total across retryAttempts).
+	retryBackoff = 5 * time.Millisecond
+	// retryMaxBackoff caps the exponential wait.
+	retryMaxBackoff = 100 * time.Millisecond
 )
 
 const storeFileMode = 0o644
@@ -26,6 +41,26 @@ const opDirectWrite = "write "
 const tempAttempts = 100
 
 const stagedMode = 0o600
+
+// ReadFileRetry reads path, waiting out the transient denials a concurrent
+// atomic replace of the same path provokes: the replacer lands the new bytes by
+// renaming a staged file over the target, which holds that target with DELETE
+// access for a few microseconds and denies a reader's open outright, so a
+// shared file's reader and writer must not see each other's window as a
+// permanent failure. POSIX has no such window, so the loop there is one pass. A
+// permanent failure, a missing file included, comes back unchanged.
+func ReadFileRetry(path string) ([]byte, error) {
+	wait := retryBackoff
+	for attempt := 1; ; attempt++ {
+		raw, err := os.ReadFile(path)
+		if err == nil || attempt == retryAttempts || !transientFileLock(err) {
+			//nolint:wrapcheck // the caller seals the read error in its own sentence
+			return raw, err
+		}
+		time.Sleep(wait)
+		wait = min(wait*2, retryMaxBackoff)
+	}
+}
 
 // WriteFile writes data to path atomically with mode 0o644 (the
 // umask-022 default for store files). The temp file lives in the target

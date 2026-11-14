@@ -10,7 +10,8 @@ read-modify-write. A second writer waits five seconds for the lock: `learn`
 then refuses `store-busy` instead of dropping a row, and a flip drops the
 staged credit with the usual retry warning instead of losing an append. The
 persistent `.verdict/kb.jsonl.lock` joins the tracked `.verdict/.gitignore`
-contract. `trend`, adopt's `--from auto` twin scan, and the serve listings now
+contract, which the write brings up to date under that lock so parallel writers
+cannot race one another's rewrite of the shared file. `trend`, adopt's `--from auto` twin scan, and the serve listings now
 stat a bundle home before listing it: a `.verdict/state` that is not a
 directory, or will not list, refuses `corrupt-store` naming it instead of
 reading as an empty store — an absent home still reads as empty, a bundle home

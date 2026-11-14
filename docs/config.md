@@ -25,7 +25,10 @@ lives in `docs/policy-contract.md`.
 
 Only `/state/` is ignored, through the nested file.
 `Layout.EnsureStateIgnore` writes `.verdict/.gitignore` before any state
-write, and `Layout.EnsureStateDir` adds a second `*` layer at
+write — under a store's own lock when that store's writer calls it, since
+the two stores hold different locks over the one shared ignore file, and
+the read waits out a replace landing in that file instead of reporting it
+unreadable — and `Layout.EnsureStateDir` adds a second `*` layer at
 `.verdict/state/.gitignore` so parent negations naming generated files
 cannot re-admit them; reads never create files. With no base
 configuration the run follows the no-init rule on personal and built-in

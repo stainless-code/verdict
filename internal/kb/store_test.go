@@ -151,7 +151,10 @@ func TestAppendRowKeepsPriorBytes(t *testing.T) {
 
 // TestAppendRowKeepsEveryParallelAppend proves the append serializes on the
 // store's lock: sixteen appends started together each keep their row, which the
-// unlocked read-modify-write dropped to one or two.
+// unlocked read-modify-write dropped to one or two. Every append also brings
+// `.verdict/.gitignore` to the contract while it holds the lock, so the sixteen
+// writers leave one copy of each lock line rather than racing each other's
+// atomic rewrite of that one file.
 func TestAppendRowKeepsEveryParallelAppend(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, ".verdict"), 0o755); err != nil {
@@ -165,6 +168,13 @@ func TestAppendRowKeepsEveryParallelAppend(t *testing.T) {
 	}
 	if got := storedLines(t, dir); !slices.Equal(got, want) {
 		t.Fatalf("parallel appends kept %d rows; want %d\n%s", len(got), appends, strings.Join(got, "\n"))
+	}
+	ignore, err := os.ReadFile(filepath.Join(dir, ".verdict", ".gitignore"))
+	if err != nil {
+		t.Fatalf("read ignore: %v", err)
+	}
+	if got := strings.Count(string(ignore), "kb.jsonl.lock\n"); got != 1 {
+		t.Fatalf("ignore carries the lock line %d times; want 1\n%s", got, ignore)
 	}
 }
 

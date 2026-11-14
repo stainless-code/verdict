@@ -85,20 +85,34 @@ func AppendHistory(row *jq.Obj, ev *jq.Obj) {
 // Lock takes the store's OS advisory lock and returns its release. A
 // read-modify-write holds it above its read, so the append, the veto rewrite,
 // and the credit rewrite are one writer each; a lock another writer holds past
-// the wait refuses [storelock.ErrBusy]. It brings `.verdict/.gitignore` to the
-// tracked contract before the lock file appears, so a lock file beside a
-// tracked store is never worktree dirt.
+// the wait refuses [storelock.ErrBusy].
+//
+// The lock comes first and the `.verdict/.gitignore` contract second, so
+// parallel writers serialize the contract instead of racing each other's atomic
+// rewrite of one file, and the contract is in place before the write returns: a
+// lock file beside a tracked store is never worktree dirt. The home is created
+// ahead of the lock because the lock file lives inside it.
 //
 // The layout error comes back unwrapped: the layout already names the path and
 // owns the operator sentence, and its caller maps it with [config.RefusalOf]
 // before prefixing anything of its own.
 func Lock(root string) (func(), error) {
-	if serr := config.NewLayout(root).EnsureStateIgnore(); serr != nil {
+	layout := config.NewLayout(root)
+	if serr := layout.EnsureStateHome(); serr != nil {
 		//nolint:wrapcheck // the layout error carries the refusal its caller maps
 		return nil, serr
 	}
-	//nolint:wrapcheck // the shared lock already names the store it guards
-	return storelock.Acquire(storePath(root), storelock.DefaultWait)
+	unlock, err := storelock.Acquire(storePath(root), storelock.DefaultWait)
+	if err != nil {
+		//nolint:wrapcheck // the shared lock already names the store it guards
+		return nil, err
+	}
+	if serr := layout.EnsureStateIgnore(); serr != nil {
+		unlock()
+		//nolint:wrapcheck // the layout error carries the refusal its caller maps
+		return nil, serr
+	}
+	return unlock, nil
 }
 
 // WriteRows rewrites the store atomically, one compact row per line. Key

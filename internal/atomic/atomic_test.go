@@ -2,6 +2,8 @@ package atomic_test
 
 import (
 	"bytes"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -243,5 +245,30 @@ func assertNoTempFiles(t *testing.T, dir string) {
 		if strings.HasPrefix(e.Name(), ".tmp-") {
 			t.Errorf("temp leftover %q after failed write", e.Name())
 		}
+	}
+}
+
+// TestReadFileRetryReportsAPermanentFailure proves the read retry is only for a
+// transient lock: a missing file comes back with its own error, unreplaced and
+// unwrapped, so the caller can still tell an absent store from an unreadable
+// one. Retrying that would both delay the report and hide it.
+func TestReadFileRetryReportsAPermanentFailure(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "absent.json")
+	raw, err := atomic.ReadFileRetry(missing)
+	if !errors.Is(err, fs.ErrNotExist) || raw != nil {
+		t.Fatalf("ReadFileRetry(%s) = %q, %v; want nil, fs.ErrNotExist", missing, raw, err)
+	}
+}
+
+// TestReadFileRetryReturnsTheBytes proves the retry loop's one pass returns the
+// file's exact bytes, not a copy the caller has to decode again.
+func TestReadFileRetryReturnsTheBytes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "store.json")
+	if err := os.WriteFile(path, []byte("kept\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := atomic.ReadFileRetry(path)
+	if err != nil || string(raw) != "kept\n" {
+		t.Fatalf("ReadFileRetry = %q, %v; want \"kept\\n\", nil", raw, err)
 	}
 }

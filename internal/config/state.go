@@ -211,20 +211,45 @@ func reservedBundleName(name string) bool {
 	return (prefix == devicePrefixCOM || prefix == devicePrefixLPT) && digit >= '1' && digit <= '9'
 }
 
+// EnsureStateHome creates the managed `.verdict` directory and nothing else.
+// A store's lock file lives inside that home, so a writer takes the home before
+// the lock that serializes the ignore contract below: the contract cannot be
+// written under a lock whose own file the contract is what keeps untracked.
+func (l Layout) EnsureStateHome() *stateError {
+	_, serr := l.managedRoot()
+	return serr
+}
+
+// managedRoot resolves the repository root and creates the managed `.verdict`
+// directory inside it, returning the root both writes are anchored on.
+func (l Layout) managedRoot() (string, *stateError) {
+	root, serr := confineRoot(l.Root)
+	if serr != nil {
+		return "", serr
+	}
+	if serr := ensureManagedDir(root, VerdictDir); serr != nil {
+		return "", serr
+	}
+	return root, nil
+}
+
 // EnsureStateIgnore creates the `.verdict` directory and its `.gitignore`
 // with the `/state/`, `/backtest/`, `/index/`, and lock-file lines before any
 // generated file is written, so review state, mined artifacts, the local
 // index, and the lock files of the tracked stores are never tracked. It never
 // runs on reads: validation, explanation, and preview paths must not create
 // files, shared or local. An existing ignore file is preserved, gaining each
-// line only when missing; a negation that re-admits `state` refuses loudly
-// naming the line instead of being silently honored.
+// line only when missing, and is never rewritten when every line is present; a
+// negation that re-admits `state` refuses loudly naming the line instead of
+// being silently honored.
+//
+// The contract is one file with several writers — each store's lock serializes
+// its own writes, and the two stores hold different locks — so the read waits
+// out a concurrent atomic replace of the same file instead of reporting the
+// replacer's DELETE window as an unreadable ignore file.
 func (l Layout) EnsureStateIgnore() *stateError {
-	root, serr := confineRoot(l.Root)
+	root, serr := l.managedRoot()
 	if serr != nil {
-		return serr
-	}
-	if serr := ensureManagedDir(root, VerdictDir); serr != nil {
 		return serr
 	}
 	ignorePath, serr := confineJoin(root, GitignorePath)
@@ -242,7 +267,7 @@ func (l Layout) EnsureStateIgnore() *stateError {
 // re-admit state refuses naming the line instead of being silently honored
 // or overwritten.
 func ensureStateLine(ignorePath string) *stateError {
-	raw, err := os.ReadFile(ignorePath)
+	raw, err := atomic.ReadFileRetry(ignorePath)
 	if errors.Is(err, os.ErrNotExist) {
 		if werr := atomic.WriteFile(ignorePath, []byte(gitignoreStateLine+gitignoreBacktestLine+
 			gitignoreIndexLine+gitignoreIncidentLock+gitignoreKBLock)); werr != nil {

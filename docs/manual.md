@@ -607,7 +607,9 @@ five seconds, and the kernel releases it when a holder exits however it exits.
 `learn` refuses `store-busy` when the wait runs out; a flip drops the staged
 credit with its retry warning instead. The lock file persists and the write
 brings `.verdict/.gitignore` to the tracked contract (`kb.jsonl.lock` with
-`incidents.jsonl.lock`) so it is never worktree dirt.
+`incidents.jsonl.lock`) while it holds the lock, so parallel writers never race
+one another's rewrite of that shared file and the lock file is never worktree
+dirt.
 
 `learn --incident` records the other half of the loop — the bugs a review
 missed — as a row in `.verdict/incidents.jsonl`:
