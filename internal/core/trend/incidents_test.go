@@ -308,12 +308,13 @@ func TestCoversAnyPathSpellsTheCoverRule(t *testing.T) {
 }
 
 // TestUnmeasuredBundleWarnsAndSkips proves a bundle without a findings store
-// is named once and kept out of the denominator instead of counting as a miss.
+// is named once and stays out of the denominator instead of counting as a miss.
 func TestUnmeasuredBundleWarnsAndSkips(t *testing.T) {
 	seedIncidentFixture(t, incidentLedger)
 	prog := &progressLog{}
 	read := core.ReadRequest{Runtime: &core.Runtime{Now: fixedTrendClock, Progress: prog}, Repo: "acme/app"}
-	if _, ref := Run(t.Context(), &Request{ReadRequest: read, Incidents: true}); ref != nil {
+	resp, ref := Run(t.Context(), &Request{ReadRequest: read, Incidents: true})
+	if ref != nil {
 		t.Fatalf("refusal %s: %s", ref.Code, ref.Message)
 	}
 	var incidentWarns []string
@@ -322,9 +323,69 @@ func TestUnmeasuredBundleWarnsAndSkips(t *testing.T) {
 			incidentWarns = append(incidentWarns, warn)
 		}
 	}
-	want := []string{"trend skips incident local-c (no findings store)"}
+	wantWarns := []string{"trend skips incident local-c: .verdict/state/local-c/ (findings.json unreadable or not a findings array)"}
+	if !slices.Equal(incidentWarns, wantWarns) {
+		t.Fatalf("incident warnings = %q; want %q", incidentWarns, wantWarns)
+	}
+	assertIncidentsData(t, resp, `{"bundles":3,"incidents":3,"measured":2,"unmeasured":1,`+
+		`"hit":1,"missed":1,"miss_rate":0.5,"per_bundle":[`+
+		`{"bundle":"local-a","incidents":1,"measured":1,"hit":1,"missed":0,"miss_rate":0},`+
+		`{"bundle":"local-b","incidents":1,"measured":1,"hit":0,"missed":1,"miss_rate":1},`+
+		`{"bundle":"local-c","incidents":1,"measured":0,"hit":0,"missed":0,"miss_rate":null}]}`)
+}
+
+// TestCorruptBundleStoreKeepsTheReaderReason proves a bundle whose store will
+// not read warns with the reader's reason, so a corrupt store never reads as an
+// absent one.
+func TestCorruptBundleStoreKeepsTheReaderReason(t *testing.T) {
+	seedIncidentFixture(t, incidentLedger)
+	writeTrendStore(t, filepath.Join(readcommon.StateDir("."), "local-a"), "not-json")
+	prog := &progressLog{}
+	read := core.ReadRequest{Runtime: &core.Runtime{Now: fixedTrendClock, Progress: prog}, Repo: "acme/app"}
+	resp, ref := Run(t.Context(), &Request{ReadRequest: read, Incidents: true})
+	if ref != nil {
+		t.Fatalf("refusal %s: %s", ref.Code, ref.Message)
+	}
+	var incidentWarns []string
+	for _, warn := range prog.warns {
+		if strings.HasPrefix(warn, "trend skips incident ") {
+			incidentWarns = append(incidentWarns, warn)
+		}
+	}
+	want := []string{
+		"trend skips incident local-a: .verdict/state/local-a/ (findings.json unreadable or not a findings array)",
+		"trend skips incident local-c: .verdict/state/local-c/ (findings.json unreadable or not a findings array)",
+	}
 	if !slices.Equal(incidentWarns, want) {
 		t.Fatalf("incident warnings = %q; want %q", incidentWarns, want)
+	}
+	assertIncidentsData(t, resp, `{"bundles":3,"incidents":3,"measured":1,"unmeasured":2,`+
+		`"hit":0,"missed":1,"miss_rate":1,"per_bundle":[`+
+		`{"bundle":"local-a","incidents":1,"measured":0,"hit":0,"missed":0,"miss_rate":null},`+
+		`{"bundle":"local-b","incidents":1,"measured":1,"hit":0,"missed":1,"miss_rate":1},`+
+		`{"bundle":"local-c","incidents":1,"measured":0,"hit":0,"missed":0,"miss_rate":null}]}`)
+}
+
+// TestIncidentSummaryCountsMisses proves the summary line counts misses: the
+// fixture reads three catches against one miss, so a hit/missed swap in the
+// rendered line cannot pass.
+func TestIncidentSummaryCountsMisses(t *testing.T) {
+	seedIncidentFixture(t, incidentLedgerManyHits)
+	resp, ref := runIncidents(t)
+	if ref != nil {
+		t.Fatalf("refusal %s: %s", ref.Code, ref.Message)
+	}
+	assertIncidentsData(t, resp, `{"bundles":2,"incidents":4,"measured":4,"unmeasured":0,`+
+		`"hit":3,"missed":1,"miss_rate":0.25,"per_bundle":[`+
+		`{"bundle":"local-a","incidents":3,"measured":3,"hit":3,"missed":0,"miss_rate":0},`+
+		`{"bundle":"local-b","incidents":1,"measured":1,"hit":0,"missed":1,"miss_rate":1}]}`)
+	want := []string{
+		"incidents: 4 attached, 4 measured, 0 unmeasured — missed 1 of 4 (25.0%)",
+		"  local-a: 3 attached, 3 measured, 0 unmeasured — missed 0 of 3 (0.0%)",
+		"  local-b: 1 attached, 1 measured, 0 unmeasured — missed 1 of 1 (100.0%)",
+	}
+	if got := lastHumanLines(resp, len(want)); !slices.Equal(got, want) {
+		t.Fatalf("incident human lines = %q; want %q", got, want)
 	}
 }
 
@@ -404,6 +465,14 @@ const incidentCaughtFinding = `{"kind":"inline","path":"src/a.ts","side":"RIGHT"
 const incidentLedger = `{"schema_version":"1","bundle":"local-a","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","paths":["src/a.ts"],"note":null,"url":null,"detected_at":"2026-11-10T00:00:00Z"}
 {"schema_version":"1","bundle":"local-b","sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","paths":["src/b.ts"],"note":null,"url":null,"detected_at":"2026-11-11T00:00:00Z"}
 {"schema_version":"1","bundle":"local-c","sha":"cccccccccccccccccccccccccccccccccccccccc","paths":["src/c.ts"],"note":null,"url":null,"detected_at":"2026-11-12T00:00:00Z"}
+`
+
+// incidentLedgerManyHits attaches three caught incidents to local-a and one
+// missed one to local-b, so the summary line's catch and miss counts differ.
+const incidentLedgerManyHits = `{"schema_version":"1","bundle":"local-a","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1","paths":["src/a.ts"],"note":null,"url":null,"detected_at":"2026-11-10T00:00:00Z"}
+{"schema_version":"1","bundle":"local-a","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa2","paths":["src/a.ts"],"note":null,"url":null,"detected_at":"2026-11-10T00:01:00Z"}
+{"schema_version":"1","bundle":"local-a","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3","paths":["src/a.ts"],"note":null,"url":null,"detected_at":"2026-11-10T00:02:00Z"}
+{"schema_version":"1","bundle":"local-b","sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","paths":["src/b.ts"],"note":null,"url":null,"detected_at":"2026-11-11T00:00:00Z"}
 `
 
 func writeIncidentLedger(t *testing.T, content string) {

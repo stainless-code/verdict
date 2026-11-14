@@ -3177,12 +3177,14 @@ a **miss** otherwise. The data carries `incidents`, `measured`, `unmeasured`,
 `hit`, `missed`, `miss_rate` (`missed / measured`, rounded to four decimal
 places, `null` — `n/a` in text — when nothing measured), and per-bundle rows; a bundle whose directory
 or `findings.json` will not read is unmeasured and warns
-`trend skips incident <bundle> (no findings store)` rather than counting as a
-miss. A `false-positive` finding is a non-catch, never a hit. No ledger, an
-empty ledger, or any attach that never ran reads a zero tally with a `null`
-miss rate, never an error; a corrupt ledger refuses `corrupt-store`. Without
-the flag both outputs are byte-identical to today, and the ledger itself is
-written only by `learn --incident`.
+`trend skips incident <bundle>: <reason>` rather than counting as a miss; the
+reason is the shared store reader's, so a corrupt `findings.json` names the
+corruption instead of reporting no store. A `false-positive` finding is a
+non-catch, never a hit. No ledger, an empty ledger, or any attach that never
+ran reads a zero tally with a `null` miss rate, never an error; a corrupt
+ledger refuses `corrupt-store`. Without the flag both outputs are
+byte-identical to today, and the ledger itself is written only by
+`learn --incident`.
 
 ## Code index
 

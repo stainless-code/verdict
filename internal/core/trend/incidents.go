@@ -14,10 +14,10 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// incidentWarn names one incident bundle the join cannot measure: the ledger
-// is tracked, so a bundle whose store is gone is reported, never counted as a
-// miss.
-const incidentWarn = "trend skips incident %s (no findings store)"
+// incidentWarn names one incident bundle the join cannot measure, with the
+// reason the shared reader gave: the ledger is tracked, so a bundle whose
+// store is gone is reported, never counted as a miss.
+const incidentWarn = "trend skips incident %s: %s"
 
 // msgIncidentLedger is the refusal message for an unreadable ledger.
 const msgIncidentLedger = "incident ledger %s is unreadable (restore from backup or fix the bad line)"
@@ -98,20 +98,18 @@ func (out *incidentRollup) addBundle(st *state, rows []incident.Row) {
 	out.Missed += bundle.Missed
 }
 
-// incidentFindings reads one incident bundle's findings store, warning once
-// when it is absent or unreadable.
+// incidentFindings reads one incident bundle's findings store. An absent or
+// unreadable one warns with the reader's own reason, so a corrupt store never
+// reads as a missing one.
 func (st *state) incidentFindings(name string) ([]any, bool) {
 	dir, ref := readcommon.ResolveBundleDir(st.req.RepoRootPath(), name)
 	if ref != nil {
-		st.warn(fmt.Sprintf(incidentWarn, name))
+		st.warn(fmt.Sprintf(incidentWarn, name, ref.Message))
 		return nil, false
 	}
-	findings, ok := kb.ReadBundleFindings(dir, skipWarn, nil)
-	if !ok {
-		st.warn(fmt.Sprintf(incidentWarn, name))
-		return nil, false
-	}
-	return findings, true
+	return kb.ReadBundleFindings(dir, "", func(reason string) {
+		st.warn(fmt.Sprintf(incidentWarn, name, reason))
+	})
 }
 
 // incidentHit reports whether any finding catches one of the incident paths,
