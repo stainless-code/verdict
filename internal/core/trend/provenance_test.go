@@ -44,6 +44,12 @@ func TestTrendProvenanceFallbackAndDegrade(t *testing.T) {
 		t.Fatalf("trend refused: %s: %s", ref.Code, ref.Message)
 	}
 	wire := jq.PrettyOrdered(resp.Data.Wire())
+	assertTrendCarriesReceipt(t, wire)
+	assertTrendCountsUnreadableBundle(t, wire, log.warns)
+}
+
+func assertTrendCarriesReceipt(t *testing.T, wire string) {
+	t.Helper()
 	for _, want := range []string{`"run_id": "run101abc"`, `"hash101xyz"`, `"truncated_inputs": 1`} {
 		if !strings.Contains(wire, want) {
 			t.Fatalf("trend wire missing %s:\n%s", want, wire)
@@ -52,7 +58,20 @@ func TestTrendProvenanceFallbackAndDegrade(t *testing.T) {
 	if strings.Count(wire, `"run_id"`) != 1 {
 		t.Fatalf("expected only 1 bundle run_id in wire:\n%s", wire)
 	}
-	if !strings.Contains(strings.Join(log.warns, "\n"), "provenance.json") {
-		t.Fatalf("expected provenance.json warning for bundle 103, got: %v", log.warns)
+}
+
+// assertTrendCountsUnreadableBundle pins the warning copy to what happens: the
+// bundle is aggregated, so the receipt is forgotten rather than skipped.
+func assertTrendCountsUnreadableBundle(t *testing.T, wire string, warnings []string) {
+	t.Helper()
+	warns := strings.Join(warnings, "\n")
+	if !strings.Contains(warns, "trend counts 103 without its provenance receipt") {
+		t.Fatalf("expected a counted-without-receipt warning for bundle 103, got: %v", warnings)
+	}
+	if strings.Contains(warns, "trend skips") {
+		t.Fatalf("bundle 103 is counted, so the warning must not claim a skip: %v", warnings)
+	}
+	if !strings.Contains(wire, `"bundle": "103"`) {
+		t.Fatalf("bundle 103 should still be counted:\n%s", wire)
 	}
 }

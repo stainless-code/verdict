@@ -29,7 +29,7 @@ func buildResponse(st *state) *core.ReportResponse {
 	}
 	resp.Data.Receipt = reportReceipt(st)
 	if st.flags.Provenance {
-		resp.Data.ProvenanceTruncated = provenance.MergeTruncated(st.provenance, resp.Data.Receipt)
+		resp.Data.ProvenanceTruncated = provenance.MergeTruncated(st.provenance, readcommon.BundleTruncation(st.dir))
 	}
 	if st.gate {
 		resp.GateFailed, resp.CheckLines, resp.Data.Gate = gateTail(st)

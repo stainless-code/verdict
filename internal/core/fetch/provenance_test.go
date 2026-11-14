@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/provenance"
 )
 
 const (
@@ -86,6 +88,9 @@ type kbReceiptFlags struct {
 	sawKB       bool
 	sawLearn    bool
 	omittedTopN int
+	cappedTrunc int
+	cappedOmit  int
+	cappedIncl  int
 }
 
 func assertProvenanceKBCapAndSecrets(t *testing.T, r *core.ProvenanceReceipt, raw string) {
@@ -98,6 +103,10 @@ func assertProvenanceKBCapAndSecrets(t *testing.T, r *core.ProvenanceReceipt, ra
 	if !flags.sawKB || !flags.sawLearn || flags.omittedTopN != 2 {
 		t.Fatalf("receipt checks failed: %+v", flags)
 	}
+	if flags.cappedTrunc != 1 || flags.cappedOmit != 2 || flags.cappedIncl != 0 {
+		t.Fatalf("capped candidates = %d truncated, %d omitted, %d included; want 1, 2, 0",
+			flags.cappedTrunc, flags.cappedOmit, flags.cappedIncl)
+	}
 }
 
 func inspectKBReceiptInput(t *testing.T, in *core.ProvenanceInput, flags *kbReceiptFlags) {
@@ -107,11 +116,24 @@ func inspectKBReceiptInput(t *testing.T, in *core.ProvenanceInput, flags *kbRece
 		flags.sawKB = true
 		assertKBEntryCapped(t, in)
 	case "kb_candidate":
-		if isOmittedTopN(in) {
-			flags.omittedTopN++
-		}
+		inspectKBCandidateStatus(in, flags)
 	case "learnings":
 		flags.sawLearn = checkLearningsIncluded(t, in)
+	}
+}
+
+func inspectKBCandidateStatus(in *core.ProvenanceInput, flags *kbReceiptFlags) {
+	switch {
+	case isOmittedTopN(in):
+		flags.omittedTopN++
+	case in.Reason != "cap":
+		return
+	case in.Status == "truncated":
+		flags.cappedTrunc++
+	case in.Status == "omitted":
+		flags.cappedOmit++
+	case in.Status == "included":
+		flags.cappedIncl++
 	}
 }
 
@@ -142,9 +164,16 @@ func assertKBEntryCapped(t *testing.T, in *core.ProvenanceInput) {
 		t.Fatalf("kb entry status=%q reason=%q, want truncated/cap", in.Status, in.Reason)
 	}
 	if in.Included == nil || *in.Included != 3 || in.Omitted == nil || *in.Omitted != 2 {
-		t.Fatalf("kb counts = (%v, %v), want (3, 2)", in.Included, in.Omitted)
+		t.Fatalf("kb counts = (%s, %s), want (3, 2)", intPtrText(in.Included), intPtrText(in.Omitted))
 	}
 	assertKBCharCap(t, in)
+}
+
+func intPtrText(v *int) string {
+	if v == nil {
+		return "nil"
+	}
+	return strconv.Itoa(*v)
 }
 
 func assertKBCharCap(t *testing.T, in *core.ProvenanceInput) {
@@ -159,11 +188,66 @@ func assertKBCharCap(t *testing.T, in *core.ProvenanceInput) {
 
 func assertKBCapEquals(t *testing.T, r *core.ProvenanceReceipt, want int) {
 	t.Helper()
+	found := false
 	for i := range r.Inputs {
-		if r.Inputs[i].Kind == "kb" && (r.Inputs[i].Cap == nil || *r.Inputs[i].Cap != want) {
-			t.Fatalf("kb cap = %v, want %d", r.Inputs[i].Cap, want)
+		if r.Inputs[i].Kind != "kb" {
+			continue
+		}
+		found = true
+		if r.Inputs[i].Cap == nil || *r.Inputs[i].Cap != want {
+			t.Fatalf("kb cap = %s, want %d", intPtrText(r.Inputs[i].Cap), want)
 		}
 	}
+	if !found {
+		t.Fatalf("receipt carries no kb row, so the cap %d is unverified", want)
+	}
+}
+
+func TestFetchLocalFooterCountsPresentPathsOnly(t *testing.T) {
+	t.Chdir(t.TempDir())
+	cfg := `{"schema_version":"1","defaults":{"kb_policy":{"max_chars":140}}}`
+	writeLocalFixtureFiles(t, cfg)
+	_, _, bundleDir := runLocalProvenanceFixture(t, cfg, nil)
+	line := provenance.RenderInputsFooterLine(bundleDir)
+	for _, want := range []string{"controls 2 ·", "learnings included ·", "overrides 0 ·"} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("footer missing %q in: %q", want, line)
+		}
+	}
+}
+
+func TestFetchLocalLearningsAbsentIsNotIncluded(t *testing.T) {
+	t.Chdir(t.TempDir())
+	cfg := `{"schema_version":"1","defaults":{"kb_policy":{"max_chars":140}}}`
+	writeLocalFixtureFiles(t, cfg)
+	if err := os.Remove(".verdict/learnings.md"); err != nil {
+		t.Fatal(err)
+	}
+	_, _, bundleDir := runLocalProvenanceFixture(t, cfg, nil)
+	r, raw := readReceiptFile(t, bundleDir)
+	if !strings.Contains(raw, `"status": "absent"`) {
+		t.Fatalf("learnings row never reads absent:\n%s", raw)
+	}
+	line := provenance.RenderInputsFooterLine(bundleDir)
+	if !strings.Contains(line, "learnings absent ·") {
+		t.Fatalf("footer does not say learnings absent: %q", line)
+	}
+	assertLearningsRowAbsent(t, &r)
+}
+
+func assertLearningsRowAbsent(t *testing.T, r *core.ProvenanceReceipt) {
+	t.Helper()
+	for i := range r.Inputs {
+		in := &r.Inputs[i]
+		if in.Kind != "learnings" {
+			continue
+		}
+		if in.Status != "absent" || in.Bytes != nil {
+			t.Fatalf("learnings row = %q bytes=%v, want absent with no bytes", in.Status, in.Bytes)
+		}
+		return
+	}
+	t.Fatal("receipt carries no learnings row")
 }
 
 func TestFetchLocalProvenanceOverCapAndCharCap(t *testing.T) {

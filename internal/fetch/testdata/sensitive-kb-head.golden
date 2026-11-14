@@ -334,7 +334,7 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
 --- file C/.verdict/state/4715/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "dce5085bd795122dc0a76adf9d3e04753f3dda809abecf689fdc64dce56fb79f",
+  "run_id": "4fe37421af73b5dc49a0217a7add66b44eabfc30d53e0f0acf4f176da3d04020",
   "prompts_hash": "49f5c99439cc65f9faab329e78a460aba14420500afb5100ad75d321fcfd3912",
   "inputs": [
     {
@@ -499,9 +499,7 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
     {
       "kind": "learnings",
       "name": ".verdict/learnings.md",
-      "status": "included",
-      "bytes": 0,
-      "source": "head"
+      "status": "absent"
     },
     {
       "kind": "override",

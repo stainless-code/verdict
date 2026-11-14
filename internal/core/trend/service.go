@@ -250,7 +250,7 @@ func readBundleProvenance(st *state, dir, name string) *core.ProvenanceReceipt {
 	rec, exists, err := provenance.ReadReceipt(dir)
 	if err != nil {
 		if st != nil {
-			st.warn(fmt.Sprintf("%s%s: provenance receipt malformed (%v)", skipWarn, name, err))
+			st.warn(fmt.Sprintf("trend counts %s without its provenance receipt (%v)", name, err))
 		}
 		return nil
 	}

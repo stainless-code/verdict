@@ -1,6 +1,7 @@
 package provenance
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -29,6 +30,7 @@ const (
 	statusAbsent    = "absent"
 	statusTruncated = "truncated"
 	statusOmitted   = "omitted"
+	statusUsed      = "used"
 	kindPrompt      = "prompt"
 	kindPanel       = "panel"
 	kindKB          = "kb"
@@ -63,8 +65,8 @@ func wrapReceiptErr(msg string, err error) error {
 // KBCandidateInput describes one KB rule candidate evaluated during fetch.
 type KBCandidateInput struct {
 	ID     string
-	Status string // "included" | "omitted"
-	Reason string // "" | "top_n"
+	Status string // "included" | "omitted" | "truncated"
+	Reason string // "" | "top_n" | "cap"
 }
 
 // KBRecallInput summarizes KB recall results without rule text.
@@ -223,8 +225,10 @@ func readCappedReceiptBytes(path string) ([]byte, bool, error) {
 
 func decodeReceipt(path string, raw []byte) (*core.ProvenanceReceipt, error) {
 	var out core.ProvenanceReceipt
-	dec := json.NewDecoder(strings.NewReader(string(raw)))
-	dec.DisallowUnknownFields()
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	if receiptIsOurs(raw) {
+		dec.DisallowUnknownFields()
+	}
 	if err := dec.Decode(&out); err != nil {
 		return nil, wrapReceiptErr("parse "+path, err)
 	}
@@ -235,6 +239,17 @@ func decodeReceipt(path string, raw []byte) (*core.ProvenanceReceipt, error) {
 		out.Truncated = []core.ProvenanceTruncatedRow{}
 	}
 	return &out, nil
+}
+
+// receiptIsOurs reports whether the receipt declares this binary's schema
+// version. Only that version decodes strictly: the published schema lets the
+// receipt carry additive fields, and a reader must not turn a newer writer's
+// receipt into a permanent warning.
+func receiptIsOurs(raw []byte) bool {
+	var header struct {
+		SchemaVersion string `json:"schema_version"`
+	}
+	return json.Unmarshal(raw, &header) == nil && header.SchemaVersion == "1"
 }
 
 // EmptyReceipt returns a degraded empty receipt for malformed/missing bundles.
@@ -421,22 +436,14 @@ func kbTopNTruncRow(id string, kbIn *KBRecallInput, totalCands int) core.Provena
 }
 
 func learningsInputEntry(in *ControlInput) core.ProvenanceInput {
-	// Learnings is never truncated by any cap; report "included" with byte count.
-	n := int64(0)
-	entry := core.ProvenanceInput{
-		Kind:   "learnings",
-		Name:   ".verdict/learnings.md",
-		Status: statusIncluded,
-		Bytes:  &n,
+	entry := core.ProvenanceInput{Kind: "learnings", Name: ".verdict/learnings.md", Status: statusAbsent}
+	if in == nil || in.Status != statusUsed {
+		return entry
 	}
-	if in != nil {
-		entry.Source = in.Source
-		entry.SHA256 = in.SHA256
-		entry.Bytes = new(in.Bytes)
-		if in.Status == "unreadable" {
-			entry.Status = "unreadable"
-		}
-	}
+	entry.Status = statusIncluded
+	entry.Source = in.Source
+	entry.SHA256 = in.SHA256
+	entry.Bytes = new(in.Bytes)
 	return entry
 }
 
@@ -471,7 +478,7 @@ func normalizeControlStatus(kind, status string) string {
 }
 
 func isLiveControlStatus(status string) bool {
-	return status == statusIncluded || status == "used" || status == "base" || status == "head"
+	return status == statusIncluded || status == statusUsed || status == "base" || status == "head"
 }
 
 func configInputEntries(in *ReceiptBuildInput) []core.ProvenanceInput {
@@ -604,7 +611,7 @@ type footerInputStats struct {
 }
 
 func collectFooterStats(inputs []core.ProvenanceInput) footerInputStats {
-	s := footerInputStats{panelStr: "none", learnStatus: statusIncluded, cfgLayer: layerBuiltIn}
+	s := footerInputStats{panelStr: "none", learnStatus: statusAbsent, cfgLayer: layerBuiltIn}
 	for i := range inputs {
 		in := &inputs[i]
 		accumulateFooterInput(&s, in)
@@ -638,7 +645,7 @@ func accumulateFooterPolicyInput(s *footerInputStats, in *core.ProvenanceInput) 
 	case "override":
 		s.overCount += boolToInt(in.Status == statusIncluded)
 	case "control":
-		s.ctrlCount += boolToInt(in.Status != statusAbsent)
+		s.ctrlCount += boolToInt(in.Status == statusUsed)
 	case "config":
 		s.cfgLayer = nonEmptyString(in.Layer, s.cfgLayer)
 	}

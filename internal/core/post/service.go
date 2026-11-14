@@ -944,23 +944,25 @@ func (st *state) collectIdentity(ctx context.Context) {
 	}
 }
 
+// loadStateProvenance parses the bundle receipt once: --provenance exposes it
+// and the footer renders its Inputs line from it. A malformed or absent
+// receipt warns only when the run asked for the receipt fields, matching
+// report, so a newer writer's receipt never warns a plain post.
 func (st *state) loadStateProvenance() {
 	rec, exists, err := provenance.ReadReceipt(st.dir)
+	if err == nil && exists {
+		st.provenanceReceipt = rec
+		return
+	}
+	if !st.flags.Provenance {
+		return
+	}
 	if err != nil {
 		st.warn(fmt.Sprintf("provenance receipt malformed (%v) — degrading cleanly", err))
-		if st.flags.Provenance {
-			st.provenanceReceipt = provenance.EmptyReceipt()
-		}
-		return
+	} else {
+		st.warn("provenance receipt absent (" + provenance.ReceiptFile + " not found in bundle)")
 	}
-	if !exists {
-		if st.flags.Provenance {
-			st.warn("provenance receipt absent (" + provenance.ReceiptFile + " not found in bundle)")
-			st.provenanceReceipt = provenance.EmptyReceipt()
-		}
-		return
-	}
-	st.provenanceReceipt = rec
+	st.provenanceReceipt = provenance.EmptyReceipt()
 }
 
 func (st *state) applyProvenance(data *core.PostData) {

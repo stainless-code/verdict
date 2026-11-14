@@ -69,18 +69,18 @@ func baseBuildInput(root, dir, ctrlBody string) *ReceiptBuildInput {
 		},
 		Controls: []ControlInput{
 			{
-				Path: ".verdict/config.json", Status: "present", Source: "base",
+				Path: ".verdict/config.json", Status: "used", Source: "base",
 				SHA256: shaOf(ctrlBody), Bytes: int64(len(ctrlBody)),
 			},
 		},
 		Overrides: []ControlInput{
 			{
-				Path: ".verdict/overrides/preamble.md", Status: "present", Source: "base",
+				Path: ".verdict/overrides/preamble.md", Status: "used", Source: "base",
 				SHA256: shaOf("override-text"), Bytes: 13,
 			},
 		},
 		Learnings: &ControlInput{
-			Path: ".verdict/learnings.md", Status: "present", Source: "base",
+			Path: ".verdict/learnings.md", Status: "used", Source: "base",
 			SHA256: shaOf("- Never skip errors\n"), Bytes: 20,
 		},
 		Exclusions: ExclusionsInput{
@@ -326,7 +326,7 @@ func assertFooterHasExpectedSummary(t *testing.T, footer string) {
 	if got := strings.Count(footer, "> Inputs:"); got != 1 {
 		t.Fatalf("expected 1 Inputs line, got %d in:\n%s", got, footer)
 	}
-	for _, want := range []string{"panel opus,sonnet", "kb 3/5 (truncated)", "learnings included", "excluded 2"} {
+	for _, want := range []string{"panel opus,sonnet", "kb 3/5 (truncated)", "learnings included", "overrides 1", "controls 1", "excluded 2"} {
 		if !strings.Contains(footer, want) {
 			t.Fatalf("footer missing %q in:\n%s", want, footer)
 		}
@@ -340,9 +340,11 @@ func TestReadReceiptMalformedAndOversizeDegrade(t *testing.T) {
 		t.Fatalf("missing receipt = (%v, %v, %v), want (nil, false, nil)", r, ok, err)
 	}
 	writeAndExpectReadError(t, dir, []byte("{not json"))
+	writeAndExpectReadError(t, dir, []byte(`{"schema_version":"1","inputs":[],"truncated":[],"future_field":1}`))
 	if line := RenderInputsFooterLine(dir); line != "" {
 		t.Fatalf("malformed receipt should render empty footer inputs line, got %q", line)
 	}
+	assertNewerReceiptReads(t, dir)
 	truncateOversizeReceipt(t, dir)
 	if _, ok, err := ReadReceipt(dir); !ok || err == nil {
 		t.Fatalf("oversized receipt: ok=%v err=%v, want ok=true err!=nil", ok, err)
@@ -350,6 +352,21 @@ func TestReadReceiptMalformedAndOversizeDegrade(t *testing.T) {
 	b, err := json.Marshal(EmptyReceipt())
 	if err != nil || !strings.Contains(string(b), `"schema_version":"1"`) {
 		t.Fatalf("EmptyReceipt marshal: %q err=%v", string(b), err)
+	}
+}
+
+// assertNewerReceiptReads pins the unknown-field choice: our own schema
+// version decodes strictly, while a newer writer's receipt reads leniently so
+// a plain report never warns forever about fields this binary lacks.
+func assertNewerReceiptReads(t *testing.T, dir string) {
+	t.Helper()
+	raw := `{"schema_version":"2","inputs":[],"truncated":[],"future_field":1}`
+	if err := os.WriteFile(filepath.Join(dir, ReceiptFile), []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err := ReadReceipt(dir)
+	if err != nil || !ok || got == nil || got.SchemaVersion != "2" {
+		t.Fatalf("newer receipt = (%v, %v, %v), want schema_version 2 and no error", got, ok, err)
 	}
 }
 

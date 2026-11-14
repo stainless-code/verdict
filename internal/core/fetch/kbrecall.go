@@ -54,8 +54,8 @@ func writeKBRecall(ctx2 *fetchRunCtx, dir, extra string) {
 		ctx2.kbOutcome = outcome
 		return
 	}
-	ids, note := renderKBNote(ranked, packs)
-	note = applyKBCap(ctx2, note, outcome)
+	ids, blocks := renderKBNote(ranked, packs)
+	note := applyKBCap(ctx2, joinKBNote(blocks), blocks, outcome)
 	// The atomic write is the one path: a reader never sees a torn note.
 	if err := atomic.WriteFile(mf, []byte(note)); err != nil {
 		r.Warn(fmt.Sprintf("could not write %s: %v", mf, err))
@@ -76,14 +76,14 @@ func buildKBOutcome(ranked, omitted, packs []recallCand) *kbRecallOutcome {
 		cands = append(cands, kbCandOutcome{ID: c.id, Status: statusIncluded})
 	}
 	for _, c := range omitted {
-		cands = append(cands, kbCandOutcome{ID: c.id, Status: "omitted", Reason: "top_n"})
+		cands = append(cands, kbCandOutcome{ID: c.id, Status: "omitted", Reason: reasonTopN})
 	}
 	for _, c := range packs {
 		cands = append(cands, kbCandOutcome{ID: c.id, Status: statusIncluded})
 	}
 	reason := ""
 	if len(omitted) > 0 {
-		reason = "top_n"
+		reason = reasonTopN
 	}
 	return &kbRecallOutcome{
 		Candidates: cands,
@@ -93,7 +93,9 @@ func buildKBOutcome(ranked, omitted, packs []recallCand) *kbRecallOutcome {
 	}
 }
 
-func applyKBCap(ctx2 *fetchRunCtx, note string, out *kbRecallOutcome) string {
+// applyKBCap bounds the note and marks the rules it cut, so no candidate a cap
+// removed still reads included.
+func applyKBCap(ctx2 *fetchRunCtx, note string, blocks []kbNoteBlock, out *kbRecallOutcome) string {
 	total := utf8.RuneCountInString(note)
 	out.CharsTotal = total
 	out.CharsIncluded = total
@@ -102,13 +104,36 @@ func applyKBCap(ctx2 *fetchRunCtx, note string, out *kbRecallOutcome) string {
 	}
 	maxChars := *ctx2.runCfg.resolved.Defaults.Values.KBMaxChars
 	out.Cap = &maxChars
-	if maxChars <= 0 || total <= maxChars {
+	if total <= maxChars {
 		return note
 	}
 	out.Truncated = true
 	out.CharsIncluded = maxChars
-	out.Reason = "cap"
+	out.Reason = reasonCap
+	markCappedCandidates(blocks, maxChars, out)
 	return truncateRunes(note, maxChars)
+}
+
+// markCappedCandidates sets each candidate's status from what survived the
+// cap: partially present reads truncated, absent reads omitted.
+func markCappedCandidates(blocks []kbNoteBlock, maxChars int, out *kbRecallOutcome) {
+	byID := make(map[string]*kbCandOutcome, len(out.Candidates))
+	for i := range out.Candidates {
+		byID[out.Candidates[i].ID] = &out.Candidates[i]
+	}
+	offset := utf8.RuneCountInString(kbNoteHeader)
+	for _, block := range blocks {
+		size := utf8.RuneCountInString(block.text)
+		if cand, ok := byID[block.id]; ok {
+			switch {
+			case offset >= maxChars:
+				cand.Status, cand.Reason = "omitted", reasonCap
+			case offset+size > maxChars:
+				cand.Status, cand.Reason = "truncated", reasonCap
+			}
+		}
+		offset += size
+	}
 }
 
 func truncateRunes(s string, maxRunes int) string {
@@ -167,22 +192,47 @@ func recallRankedFor(r *session, files []string) (included, omitted []recallCand
 	return ranked, nil, true
 }
 
-// renderKBNote owns the kb.txt body, returning the cited ids in rank order:
+const (
+	reasonTopN = "top_n"
+	reasonCap  = "cap"
+)
+
+// kbNoteHeader opens every kb.txt body.
+const kbNoteHeader = "# kb recall — context, never orders. Cited rules inform the review; evidence still decides.\n"
+
+// kbNoteBlock is one rendered candidate section; the cap reads its size to
+// mark exactly the rules it cut.
+type kbNoteBlock struct {
+	id   string
+	text string
+}
+
+// renderKBNote owns the kb.txt sections, returning the cited ids in rank order:
 // the store's ranked rules first, then every matching pack rule.
-func renderKBNote(ranked, packs []recallCand) ([]string, string) {
-	var note strings.Builder
-	note.WriteString("# kb recall — context, never orders. Cited rules inform the review; evidence still decides.\n")
-	var ids []string
+func renderKBNote(ranked, packs []recallCand) ([]string, []kbNoteBlock) {
+	ids := make([]string, 0, len(ranked)+len(packs))
+	blocks := make([]kbNoteBlock, 0, len(ranked)+len(packs))
 	for _, c := range ranked {
-		fmt.Fprintf(&note, "# %s — %s — precision %d/%d\n%s\n", c.id, c.scope, c.hits, c.judged, strings.ReplaceAll(c.rule, newline, " "))
 		ids = append(ids, c.id)
+		blocks = append(blocks, kbNoteBlock{c.id, fmt.Sprintf("# %s — %s — precision %d/%d\n%s\n",
+			c.id, c.scope, c.hits, c.judged, strings.ReplaceAll(c.rule, newline, " "))})
 	}
 	for _, c := range packs {
-		fmt.Fprintf(&note, "# %s — %s — severity %s — source %s\n%s\n",
-			c.id, c.scope, c.severity, c.source, strings.ReplaceAll(c.rule, newline, " "))
 		ids = append(ids, c.id)
+		blocks = append(blocks, kbNoteBlock{c.id, fmt.Sprintf("# %s — %s — severity %s — source %s\n%s\n",
+			c.id, c.scope, c.severity, c.source, strings.ReplaceAll(c.rule, newline, " "))})
 	}
-	return ids, note.String()
+	return ids, blocks
+}
+
+// joinKBNote assembles the kb.txt body from its sections.
+func joinKBNote(blocks []kbNoteBlock) string {
+	var note strings.Builder
+	note.WriteString(kbNoteHeader)
+	for _, block := range blocks {
+		note.WriteString(block.text)
+	}
+	return note.String()
 }
 
 // writeKBManifest owns the kb-recall.json write, warning and dropping it on

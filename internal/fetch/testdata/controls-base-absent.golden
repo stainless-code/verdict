@@ -335,7 +335,7 @@ api-base-panel
 --- file C/.verdict/state/4701/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "dddfd1b34ab2588fddd6f7b6d8d10f0ed428e8e76fb759006683f5640e46bccb",
+  "run_id": "6ce68d89b65ca1bc8a4bbee04492a6f4aef78805005522123f889208aedb3e8f",
   "prompts_hash": "49f5c99439cc65f9faab329e78a460aba14420500afb5100ad75d321fcfd3912",
   "panel": [
     "api-base-panel"
@@ -507,9 +507,7 @@ api-base-panel
     {
       "kind": "learnings",
       "name": ".verdict/learnings.md",
-      "status": "included",
-      "bytes": 0,
-      "source": "base"
+      "status": "absent"
     },
     {
       "kind": "override",
