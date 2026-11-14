@@ -12,7 +12,18 @@ import (
 // ReadDir because Windows reports a regular file opened as a directory as
 // [fs.ErrNotExist], which a ReadDir-only check would read as an empty home.
 func StoreEntries(state string) ([]os.DirEntry, error) {
-	info, err := os.Stat(state)
+	return storeEntries(state, os.Stat, os.ReadDir)
+}
+
+// storeEntries is StoreEntries over injectable filesystem calls, so the
+// Windows shape — a regular file whose ReadDir answers instead of failing —
+// is a test, not an argument.
+func storeEntries(
+	state string,
+	stat func(string) (os.FileInfo, error),
+	readDir func(string) ([]os.DirEntry, error),
+) ([]os.DirEntry, error) {
+	info, err := stat(state)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		return nil, nil
@@ -21,7 +32,7 @@ func StoreEntries(state string) ([]os.DirEntry, error) {
 	case !info.IsDir():
 		return nil, UnreadableStore(state)
 	}
-	entries, err := os.ReadDir(state)
+	entries, err := readDir(state)
 	if err != nil {
 		return nil, UnreadableStore(state)
 	}
