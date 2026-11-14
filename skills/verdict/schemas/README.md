@@ -13,23 +13,28 @@ make schemas
 `go generate ./internal/schemagen` runs the same command. `make schemas-check`
 and the `TestSchemasMatchGenerated` Go test fail when the committed files
 differ from the generator output; CI checks, it never rewrites the tree.
+`make schemas-check` also compares the baseline below whole, so anything the
+generator emits — additive or breaking — needs `make schemas-baseline` in the
+same commit.
 
 [`internal/schemagen/testdata/baseline/`](https://github.com/stainless-code/verdict/tree/main/internal/schemagen/testdata/baseline)
-snapshots the accepted schemas, and `TestSchemasStayAdditive` fails when the
-generator removes a property or enum value, adds a required key, closes
-`additionalProperties`, narrows a type or bound, or drops a definition.
-Additive changes need no baseline update to pass, but re-take it in the same
-commit anyway: a baseline older than a field cannot report that field's
-removal. The baseline is test data, not part of the embedded or published
-payload. A move of the generator's shape — additive or breaking — updates the
-baseline in its own commit, and the diff is reviewed:
+snapshots the accepted schemas byte for byte, and `TestSchemasStayAdditive`
+fails when the generator removes a property or enum value, adds a required key,
+closes `additionalProperties`, narrows a type or bound, or drops a definition.
+Re-take the baseline in the same commit as every generator change: the
+additivity test allows an addition, so a baseline left behind reads as one and
+only the byte comparison reports it. The baseline is test data, not part of the
+embedded or published payload. A move of the generator's shape — additive or
+breaking — updates the baseline, and the diff is reviewed:
 
 ```
 make schemas-baseline
 ```
 
-That is the only supported way to bless a break; prose changes in
-`overlay.json` do not require it.
+That is the only supported way to bless a change; a prose-only
+`overlay.json` edit that moves the emitted bytes needs it too, because the
+check compares whole documents and `make schemas` alone would leave the
+baseline stale.
 
 [`internal/schemagen/overlay.json`](https://github.com/stainless-code/verdict/blob/main/internal/schemagen/overlay.json)
 carries only prose descriptions (and any future patterns). Structure,
