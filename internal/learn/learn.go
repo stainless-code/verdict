@@ -55,6 +55,12 @@ func learnRequest(r *cli.Runner, f *flags, repoRoot string) *learncore.Request {
 		Retire:     f.retire,
 		Restore:    f.restore,
 		Status:     f.status,
+		Incident:   f.incident,
+		Sha:        f.sha,
+		Paths:      f.paths,
+		Note:       f.note,
+		URL:        f.url,
+		At:         f.at,
 		JSONMode:   r.JSONMode,
 	}
 	out.ReadRequest = core.ReadRequest{
@@ -79,6 +85,12 @@ type flags struct {
 	reason     string
 	retire     string
 	restore    string
+	incident   string
+	sha        string
+	note       string
+	url        string
+	at         string
+	paths      []string
 	propose    bool
 	dryRun     bool
 	status     bool
@@ -104,27 +116,30 @@ func parseToken(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) 
 	if a == "--from-bundle" {
 		return parseBundle(r, f, args, i)
 	}
-	if a == "--propose" {
-		f.propose = true
+	if a == "--path" {
+		return parsePath(r, f, args, i)
+	}
+	if toggle, ok := learnToggles[a]; ok {
+		toggle(f)
 		return i, 0, false
 	}
-	if a == "--dry-run" {
-		f.dryRun = true
-		return i, 0, false
-	}
-	if want, ok := learnWants[a]; ok {
-		v, next, u := cli.FlagValue(args, i, a, want)
-		if u != nil {
-			return i, r.ReportUsage(u), true
-		}
-		setFlag(f, a, v)
-		return next, 0, false
-	}
-	if a != "--status" {
+	want, ok := learnWants[a]
+	if !ok {
 		return i, r.ReportUsage(unknownFlag(a)), true
 	}
-	f.status = true
-	return i, 0, false
+	v, next, u := cli.FlagValue(args, i, a, want)
+	if u != nil {
+		return i, r.ReportUsage(u), true
+	}
+	setFlag(f, a, v)
+	return next, 0, false
+}
+
+// learnToggles are the flags that take no operand.
+var learnToggles = map[string]func(*flags){
+	"--propose": func(f *flags) { f.propose = true },
+	"--dry-run": func(f *flags) { f.dryRun = true },
+	"--status":  func(f *flags) { f.status = true },
 }
 
 // unknownFlag reports one unknown learn flag.
@@ -132,72 +147,88 @@ func unknownFlag(a string) *cli.UsageError {
 	return &cli.UsageError{Message: fmt.Sprintf("unknown flag '%s' for learn (want %s)", a, usageFlags)}
 }
 
-// learnIDWant is the operand hint shared by the id-taking learn flags.
-const learnIDWant = "<id>"
+// learnIDWant is the operand hint shared by the id-taking learn flags, and
+// learnTextWant the one the free-text flags print.
+const (
+	learnIDWant   = "<id>"
+	learnTextWant = "<text>"
+)
 
 // learnWants names each value flag's accepted operand for the missing-value
 // usage error.
 var learnWants = map[string]string{
 	"--accept": learnIDWant, "--reject": learnIDWant,
 	"--pack":       "<directory>",
-	"--rule":       "<text>",
+	"--rule":       learnTextWant,
 	"--scope":      "<globs>",
 	"--id":         learnIDWant,
 	"--provenance": "<s>",
 	"--rigor":      "<level>",
 	"--retire":     learnIDWant,
 	"--restore":    learnIDWant,
-	"--reason":     "<text>",
+	"--reason":     learnTextWant,
+	"--incident":   "<bundle>",
+	"--sha":        "<sha>",
+	"--note":       "<text>",
+	"--url":        "<url>",
+	"--at":         "<RFC3339>",
+}
+
+// parsePath collects one repeatable --path operand.
+func parsePath(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) {
+	v, next, u := cli.FlagValue(args, i, "--path", "<path>")
+	if u != nil {
+		return i, r.ReportUsage(u), true
+	}
+	f.paths = append(f.paths, v)
+	return next, 0, false
+}
+
+// flagSetters stores one value-taking flag in the field it owns.
+var flagSetters = map[string]func(*flags, string){
+	"--accept":     func(f *flags, v string) { f.accept = v },
+	"--reject":     func(f *flags, v string) { f.reject = v },
+	"--pack":       func(f *flags, v string) { f.pack = v },
+	"--rule":       func(f *flags, v string) { f.rule = v },
+	"--scope":      func(f *flags, v string) { f.scope = v },
+	"--id":         func(f *flags, v string) { f.id = v },
+	"--provenance": func(f *flags, v string) { f.provenance = v },
+	"--rigor":      func(f *flags, v string) { f.rigor = v },
+	"--retire":     func(f *flags, v string) { f.retire = v },
+	"--restore":    func(f *flags, v string) { f.restore = v },
+	"--reason":     func(f *flags, v string) { f.reason = v },
+	"--incident":   func(f *flags, v string) { f.incident = v },
+	"--sha":        func(f *flags, v string) { f.sha = v },
+	"--note":       func(f *flags, v string) { f.note = v },
+	"--url":        func(f *flags, v string) { f.url = v },
+	"--at":         func(f *flags, v string) { f.at = v },
 }
 
 // setFlag stores one value-taking flag.
 func setFlag(f *flags, name, val string) {
-	switch name {
-	case "--accept":
-		f.accept = val
-	case "--reject":
-		f.reject = val
-	case "--pack":
-		f.pack = val
-	case "--rule":
-		f.rule = val
-	case "--scope":
-		f.scope = val
-	case "--id":
-		f.id = val
-	case "--provenance":
-		f.provenance = val
-	case "--rigor":
-		f.rigor = val
-	case "--retire":
-		f.retire = val
-	case "--restore":
-		f.restore = val
-	case "--reason":
-		f.reason = val
+	if set, ok := flagSetters[name]; ok {
+		set(f, val)
 	}
 }
 
 // appendRentry owns the rentry_cmd build (flag order fixed, values elided).
 func appendRentry(r *cli.Runner, f *flags) {
 	appendLearningRentry(r, f)
-	if f.pack != "" {
-		r.Rentry += " --pack ... --id ..."
-	}
-	if f.rule != "" {
-		r.Rentry += " --rule ..."
-	}
-	if f.scope != "" {
-		r.Rentry += " --scope ..."
-	}
-	if f.status {
-		r.Rentry += " --status"
-	}
-	if f.retire != "" {
-		r.Rentry += " --retire ..."
-	}
-	if f.restore != "" {
-		r.Rentry += " --restore ..."
+	for _, part := range []struct {
+		token string
+		set   bool
+	}{
+		{"--incident ... --sha ... --path ...", f.incident != ""},
+		{"--pack ... --id ...", f.pack != ""},
+		{"--rule ...", f.rule != ""},
+		{"--scope ...", f.scope != ""},
+		{"--status", f.status},
+		{"--retire ...", f.retire != ""},
+		{"--restore ...", f.restore != ""},
+	} {
+		if part.set {
+			r.Rentry += " " + part.token
+		}
 	}
 	if r.JSONMode {
 		r.Rentry += " --json"
@@ -212,7 +243,8 @@ const (
 	rigorPointed = "pointed"
 	// usageFlags lists the accepted flags for the unknown-flag message.
 	usageFlags = "--propose, --from-bundle, --accept, --reject, --dry-run, " +
-		"--pack, --rule, --scope, --id, --provenance, --rigor, --status, --retire, --restore, --reason, --json"
+		"--pack, --rule, --scope, --id, --provenance, --rigor, --status, --retire, --restore, --reason, " +
+		"--incident, --sha, --path, --note, --url, --at, --json"
 )
 
 func parseBundle(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) {

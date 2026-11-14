@@ -88,6 +88,12 @@ linters:
         text: "G703:"
         linters:
           - gosec
+      # The lock file is the ledger's own sibling in the repo root: the path is
+      # a constant suffix on the root, never external input.
+      - path: internal/incident/lock\.go
+        text: "G703:"
+        linters:
+          - gosec
       # Test ergonomics: fixture builders and the golden harness use direct
       # output and temp-dir cleanup; failures surface via t.Fatal/Fail.
       - path: .*_test\.go

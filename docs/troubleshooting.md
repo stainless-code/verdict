@@ -122,9 +122,9 @@ Fix: pass `--approve=true|false`.
 
 ## `bad-at`
 
-Cause: `--at` names a revision the checkout cannot resolve to a tree or commit.
+Cause: `--at` names a revision the checkout cannot resolve to a tree or commit, or (for `learn --incident`) a timestamp that is not RFC 3339.
 
-Fix: pass a ref or tree SHA that exists in the source checkout, then re-run.
+Fix: pass a ref or tree SHA that exists in the source checkout, then re-run. An incident attach takes an RFC 3339 timestamp (`2026-11-01T09:00:00Z`).
 
 ## `bad-attribution`
 
@@ -275,6 +275,12 @@ Fix: pass a resolvable base ref, then re-run.
 Cause: `--retire`/`--restore` lacks a human veto on the record.
 
 Fix: add `--reason` with 30+ chars.
+
+## `bad-recipe`
+
+Cause: the base `.verdict/recipes.json` document or the selected entry is invalid — an unknown key, a duplicate recipe key, a bad slug, semver, model hint, description length, or cap, a non-positive `budget_usd`, a duplicate lens id, empty `lenses`, or a missing `synthesize` (the message names the JSON path and the key).
+
+Fix: fix the key named above in `.verdict/recipes.json`, commit it at the base, then re-fetch.
 
 ## `bad-requirement`
 
@@ -482,9 +488,9 @@ Fix: fix the manifest named above and re-run.
 
 ## `corrupt-store`
 
-Cause: `findings.json` (or the knowledge-base store) is present but unreadable.
+Cause: `findings.json` (or the knowledge-base store, or the incident ledger `.verdict/incidents.jsonl`) is present but unreadable.
 
-Fix: re-run `post`/`record` to rebuild the store, or restore `findings.json` from backup, then re-run.
+Fix: re-run `post`/`record` to rebuild the store, or restore `findings.json` (or the incident ledger) from backup, then re-run.
 
 ## `cost-entry-contradicts-panel`
 
@@ -663,6 +669,12 @@ Fix: re-run the same command; if it repeats, report it with the full output.
 Cause: `learn` could not write the knowledge-base store (or create `.verdict`).
 
 Fix: make `.verdict` writable (or restore the knowledge-base store from backup), then re-run.
+
+## `ledger-too-large`
+
+Cause: the attach would have pushed `.verdict/incidents.jsonl` past the 8 MiB the reader opens, so it wrote nothing: a ledger that size can never be read again, which would block every later attach and `trend --incidents`.
+
+Fix: trim or archive rows from `.verdict/incidents.jsonl` (it is a plain JSONL file you own), then re-run the attach.
 
 ## `manager-failed`
 
@@ -1148,6 +1160,12 @@ Cause: `review.json` predates the launch (an earlier run's).
 
 Fix: delete the stale `review.json` (or let the agent overwrite it), then re-run.
 
+## `store-busy`
+
+Cause: another `learn --incident` held the ledger's lock (`.verdict/incidents.jsonl.lock`) for the whole five-second wait, so this attach wrote nothing. The lock is the operating system's and its holder is alive, so nothing is stale to clear.
+
+Fix: re-run the attach once the other one finishes; a holder that crashed or was killed already released the lock, so a retry succeeds at once. Deleting the lock file never helps — it carries no state, and the next attach creates it again.
+
 ## `threads-failed`
 
 Cause: the thread list could not be read from the host.
@@ -1189,6 +1207,12 @@ Fix: pass a group id from the list named above.
 Cause: a judge entry's sig matches no finding in `findings.json`.
 
 Fix: copy the full sig prefix from `report` output.
+
+## `unknown-recipe`
+
+Cause: `run --recipe <slug>` names no entry in the base `.verdict/recipes.json` and no built-in recipe.
+
+Fix: pass `--recipe` one of the names listed above; recipes live in `.verdict/recipes.json` at the PR base, so commit the entry there and re-fetch.
 
 ## `unknown-rule`
 

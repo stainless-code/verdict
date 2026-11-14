@@ -27,12 +27,13 @@ import (
 const skipWarn = "trend skips "
 
 // Request carries the resolved trend invocation: the shared read runtime
-// plus the --overlap audit flag.
+// plus the opt-in audit flags.
 type Request struct { //nolint:govet // field grouping documents the request surface
 	core.ReadRequest
 	Rules      bool
 	Resolution bool
 	Overlap    bool
+	Incidents  bool
 	Warnings   []string
 }
 
@@ -62,6 +63,7 @@ type Data struct { //nolint:govet // field order is the published property order
 	Rollup              rollup
 	Rows                []row
 	Overlap             *overlapRollup
+	Incidents           *incidentRollup
 	Corpus              *corpusRollup
 }
 
@@ -90,6 +92,9 @@ func (d *Data) Wire() *jq.Obj {
 	if d.Corpus != nil {
 		data.Set("corpus", corpusDoc(d.Corpus))
 	}
+	if d.Incidents != nil {
+		data.Set("incidents", incidentsDoc(d.Incidents))
+	}
 	return d.Receipt.Apply(data)
 }
 
@@ -115,7 +120,11 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if req.Overlap {
 		overlap = overlapAudit(st, rows)
 	}
-	st.emitHuman(&rollup, overlap, corpus)
+	incidents, ref := incidentJoin(st)
+	if ref != nil {
+		return nil, ref
+	}
+	st.emitHuman(&rollup, overlap, corpus, incidents)
 	var resolution any
 	if req.Resolution {
 		resolution = resolutionAudit(st, rows)
@@ -138,8 +147,18 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 			Receipt: st.receipt.ForResult(len(rows)),
 			Rules:   rules, Resolution: resolution, ResolutionRequested: req.Resolution,
 			GeneratedAt: now, Rollup: rollup, Rows: rows, Overlap: overlap, Corpus: corpus,
+			Incidents: incidents,
 		},
 	}, nil
+}
+
+// incidentJoin runs the opt-in incident audit: nil unless --incidents asked
+// for it, and nil with a refusal when the ledger will not read.
+func incidentJoin(st *state) (*incidentRollup, *core.RefusalError) {
+	if !st.req.Incidents {
+		return nil, nil
+	}
+	return incidentAudit(st)
 }
 
 func (st *state) warn(msg string) {

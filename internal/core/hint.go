@@ -113,6 +113,8 @@ var hintRules = []HintRule{
 	{codes: []string{"degenerate-body"}, hint: "try: open with a verdict marker (see prompts/review.md), then re-run"},
 	{codes: []string{"pr-not-open"}, hint: "try: re-fetch the PR (bundle may be stale)"},
 	{codes: []string{"unknown-sig", "ambiguous-sig", "unknown-judgment"}, hint: "try: copy the full sig prefix from report output"},
+	{codes: []string{"unknown-recipe"}, hint: "try: pass --recipe <name> from the list above; " +
+		"recipes live in .verdict/recipes.json at the base, so commit the entry there and re-fetch"},
 	{
 		codes: []string{"bad-sig"},
 		hint:  "try: list open inline sigs with report --status open --kind inline, then re-run with the full prefix",
@@ -167,6 +169,8 @@ var hintRules = []HintRule{
 		"256 files, and 64 lenses, then re-run"},
 	{codes: []string{"pack-unsafe-path"}, hint: "try: keep every pack path relative with no symlink " +
 		"components, then re-run"},
+	{codes: []string{"bad-recipe"}, hint: "try: fix the key named above in " +
+		".verdict/recipes.json, commit it at the base, then re-fetch"},
 	{codes: []string{"bad-by"}, hint: "try: use one of the dimensions named in the message"},
 	{prefix: "bad-", hint: "try: re-run with one of the valid values named above"},
 	{codes: []string{"already-learned"}, hint: "try: cite the existing rule id instead of learning it twice"},
@@ -197,6 +201,10 @@ var hintRules = []HintRule{
 		"(--print) to see why no review.json appeared, then re-run"},
 	{codes: []string{"stale-review-artifact"}, hint: "try: delete the stale review.json " +
 		"(or let the agent overwrite it), then re-run"},
+	{codes: []string{"store-busy"}, hint: "try: wait for the attach holding the ledger " +
+		"(the OS drops the lock when its holder exits, so a retry after a crash succeeds), then re-run"},
+	{codes: []string{"ledger-too-large"}, hint: "try: trim or archive rows in " +
+		".verdict/incidents.jsonl, then re-run"},
 	{codes: []string{"unknown-agent"}, hint: "try: re-run with one of the known agent names listed above"},
 	{codes: []string{"id-taken"}, hint: "try: pass a different --id"},
 	{codes: []string{"cost-panel-unresolved"}, hint: "try: pass the panel that ran, in order: " +

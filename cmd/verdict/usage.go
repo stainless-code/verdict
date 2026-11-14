@@ -49,7 +49,7 @@ func usageText() string {
 		"    kb.txt/sensitive.txt/panel when present (one fence per file, in that order) —\n" +
 		"    to stdout (human; progress moves to stderr) or data.prompt_dump (--json).\n" +
 		"    No agent runs, no network beyond the fetch, no store writes beyond the bundle.\n" +
-		"  run <owner/repo> <pr|local-name> --agent <claude|codex|cursor|opencode>\n" +
+		"  run <owner/repo> <pr|local-name> --agent <claude|codex|cursor|opencode> [--recipe <slug>]\n" +
 		"      [--timeout <secs, default 300>] [--rounds <n, default 1>] [--print] [-- <agent args>...] [--json]\n" +
 		"    launch YOUR agent against an existing bundle: one process per round, one shot by default.\n" +
 		"    It requires exactly one fresh review.json (absent refuses no-review-artifact, older\n" +
@@ -66,6 +66,9 @@ func usageText() string {
 		"    exits 0 without spawning; everything after '--' goes to the agent unchanged.\n" +
 		"    --print refuses options outside the safe model/cost display allowlist.\n" +
 		"    run passes a short tool-generated directive, never bundle bytes.\n" +
+		"    --recipe names a pipeline declared in .verdict/recipes.json at the PR base (default:\n" +
+		"    the built-in 'default'), records it in data.recipe and launcher.json, and declares\n" +
+		"    lens, model, and budget hints the agent may follow; verdict dispatches no stage.\n" +
 		"  config <owner/repo> <pr> (--explain | --preview [--file <path>]) [--json]\n" +
 		"    read-only policy surface: --explain renders the stored effective policy of a fetched run\n" +
 		"    (values with origins, requirements, pending plan, spend, privacy, observed checks);\n" +
@@ -247,7 +250,7 @@ func usageText() string {
 		"    --dry-run lists what would be resolved and makes zero writes; a real run\n" +
 		"    makes one host write per thread and writes threads-resolve.json. GitHub and\n" +
 		"    GitLab carry it; Forgejo refuses typed (no documented resolve endpoint).\n" +
-		"  trend <owner/repo> [--rules] [--overlap] [--resolution] [--json]\n" +
+		"  trend <owner/repo> [--rules] [--overlap] [--incidents] [--resolution] [--json]\n" +
 		"    portfolio rollup over existing bundle stores (no network, writes nothing):\n" +
 		"    findings opened/addressed/closed over time, broken down by severity tier\n" +
 		"    and status, with per-bundle models/effort for the calibration join.\n" +
@@ -260,6 +263,12 @@ func usageText() string {
 		"    (addressed vs false-positive); missing manifests read unmeasured (never\n" +
 		"    zero) and stay out of both denominators. Default output is byte-identical\n" +
 		"    without the flag.\n" +
+		"    --incidents joins .verdict/incidents.jsonl to the bundle stores and reports\n" +
+		"    the incident miss rate: an incident is a hit when one non-false-positive\n" +
+		"    finding covers one of its paths (exact, or the finding under it by\n" +
+		"    directory), a miss otherwise. A bundle whose store will not read is\n" +
+		"    unmeasured, out of the rate, never a miss; miss_rate is null until something\n" +
+		"    measures. Default output is byte-identical without the flag.\n" +
 		"  risk <owner/repo> [--status open|all] [--limit <n, default 50, max 200>] [--json]\n" +
 		"    advisory triage queue over every bundle under .verdict/state (no host read,\n" +
 		"    nothing written): each row's recomputed band, its 0-100 score (reach 35,\n" +
@@ -365,6 +374,13 @@ func usageText() string {
 		"  learn --restore <id> --reason <text> [--json]\n" +
 		"    restore a retired rule to active (tombstone history kept);\n" +
 		"    reason needs 30+ chars.\n" +
+		"  learn --incident <bundle> --sha <merge> --path <path> [--note <text>] [--url <url>]\n" +
+		"        [--at <RFC3339>] [--dry-run] [--json]\n" +
+		"    attach one revert or incident to a recorded bundle in\n" +
+		"    .verdict/incidents.jsonl (one row per bundle + sha, sorted; --path repeats);\n" +
+		"    the bundle must already carry findings.json. trend --incidents measures the\n" +
+		"    miss rate over those rows. A repeat attach reports existing and moves no\n" +
+		"    byte; --dry-run writes nothing.\n" +
 		"  init [--preset chill|standard|strict] [--yes] [--force] [--json]\n" +
 		"    guided offline scaffolder: writes the typed controls (tracked\n" +
 		"    .verdict/config.json defaults, .verdict/kb.jsonl starter, and the\n" +

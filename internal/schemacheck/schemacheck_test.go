@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -61,6 +62,8 @@ func TestKeywordsEnforcesSubset(t *testing.T) {
 		{name: "exclusiveMinimum respected", schema: `{"type":"number","exclusiveMinimum":0}`, value: `0.5`},
 		{name: "minItems violated", schema: `{"type":"array","minItems":1}`, value: `[]`, want: "below minItems"},
 		{name: "minItems respected", schema: `{"type":"array","minItems":1}`, value: `["a"]`},
+		{name: "maxItems violated", schema: `{"type":"array","maxItems":2}`, value: `["a","b","c"]`, want: "above maxItems 2"},
+		{name: "maxItems respected at the bound", schema: `{"type":"array","maxItems":2}`, value: `["a","b"]`},
 		{name: "date-time violated", schema: `{"type":"string","format":"date-time"}`, value: `"not-a-date"`, want: "not a date-time"},
 		{name: "date-time respected", schema: `{"type":"string","format":"date-time"}`, value: `"2026-11-02T12:00:00Z"`},
 		{name: "date-time offset accepted", schema: `{"type":"string","format":"date-time"}`, value: `"2026-11-02T12:00:00+02:00"`},
@@ -74,6 +77,12 @@ func TestKeywordsEnforcesSubset(t *testing.T) {
 		{name: "type violated", schema: `{"type":"integer"}`, value: `"1"`, want: `want type "integer"`},
 		{name: "integer rejects a fraction", schema: `{"type":"integer"}`, value: `1.5`, want: "want type"},
 		{name: "integer accepted", schema: `{"type":"integer"}`, value: `1`},
+		// An integer is an integer literal here, the rule every runtime parser
+		// follows: a zero fraction and an exponent refuse too, so a schema can
+		// never pass a document the binary then refuses.
+		{name: "integer rejects a zero fraction", schema: `{"type":"integer"}`, value: `24.0`, want: "want type"},
+		{name: "integer rejects an exponent", schema: `{"type":"integer"}`, value: `1e2`, want: "want type"},
+		{name: "integer rejects an exponent fraction", schema: `{"type":"integer"}`, value: `1e-1`, want: "want type"},
 		{name: "type array accepted", schema: `{"type":["integer","null"]}`, value: `null`},
 		{name: "const violated", schema: `{"const":"1"}`, value: `"2"`, want: "is not the const"},
 		{name: "enum violated", schema: `{"enum":["open","closed"]}`, value: `"maybe"`, want: "not one of"},
@@ -96,6 +105,23 @@ func TestKeywordsEnforcesSubset(t *testing.T) {
 			name:   "additionalProperties schema respected",
 			schema: `{"type":"object","properties":{"a":{}},"additionalProperties":{"type":"string"}}`,
 			value:  `{"b":"text"}`,
+		},
+		{
+			name:   "propertyNames respected",
+			schema: `{"type":"object","propertyNames":{"type":"string","pattern":"^[a-z]+$"}}`,
+			value:  `{"alpha":1,"beta":2}`,
+		},
+		{
+			name:   "propertyNames violated",
+			schema: `{"type":"object","propertyNames":{"type":"string","pattern":"^[a-z]+$"}}`,
+			value:  `{"Alpha":1}`,
+			want:   `$.Alpha: "Alpha" does not match pattern "^[a-z]+$"`,
+		},
+		{
+			name:   "propertyNames must be an object",
+			schema: `{"type":"object","propertyNames":"x"}`,
+			value:  `{"a":1}`,
+			want:   "$.a: schema node is not an object",
 		},
 		{
 			name:   "nested property path",
@@ -229,5 +255,36 @@ func writeSchema(t *testing.T, dir, name, body string) {
 	}
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("write %s: %v", name, err)
+	}
+}
+
+// TestShippedShimListsTheSubset keeps the shipped script's keyword list honest:
+// the header's #KEYWORDS: lines must name exactly the keywords this package
+// accepts — no more (a keyword the checker lacks would be a promise it breaks)
+// and no fewer (a missing keyword reads as unsupported). One list, in
+// Subset(); the shim only spells it.
+func TestShippedShimListsTheSubset(t *testing.T) {
+	const shimPath = "../../skills/verdict/schemas/validate.sh"
+	raw, err := os.ReadFile(shimPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", shimPath, err)
+	}
+	const marker = "#KEYWORDS:"
+	var documented []string
+	for line := range strings.SplitSeq(string(raw), "\n") {
+		rest, ok := strings.CutPrefix(line, marker)
+		if !ok {
+			continue
+		}
+		documented = append(documented, strings.Fields(rest)...)
+	}
+	if len(documented) == 0 {
+		t.Fatalf("%s carries no %s lines", shimPath, marker)
+	}
+	slices.Sort(documented)
+	want := schemacheck.Subset()
+	slices.Sort(want)
+	if !slices.Equal(documented, want) {
+		t.Errorf("%s lists %v;\nwant exactly schemacheck.Subset() = %v", shimPath, documented, want)
 	}
 }

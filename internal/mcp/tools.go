@@ -211,7 +211,8 @@ func allTools(readOnly, operator bool) []*tool {
 		dataTool(&toolSpec{
 			name: "learn",
 			description: "Read or update the local knowledge base. Call to list rules or " +
-				"add, retire, restore, propose, accept, or reject one. Proposals are inactive until accepted. Supports dry_run for the proposal lifecycle.",
+				"add, retire, restore, propose, accept, or reject one, or to attach a revert/incident " +
+				"to a recorded bundle with incident + sha + path. Proposals are inactive until accepted. Supports dry_run for the proposal lifecycle.",
 			omit: map[string]bool{"Repo": true},
 			meta: toolMeta{title: "Manage knowledge base", mutates: localWrites, idempotent: true},
 		}, toolDeps{}, decodeLearn, wireLearn, learncore.Run,
@@ -304,7 +305,8 @@ func allTools(readOnly, operator bool) []*tool {
 		dataTool(&toolSpec{
 			name: "trend",
 			description: "Roll up review outcomes across fetched bundles. Call for a cross-PR " +
-				"summary. Reads local bundles; writes nothing.",
+				"summary; set incidents to measure the miss rate over attached incidents. " +
+				"Reads local bundles; writes nothing.",
 			omit:     map[string]bool{fieldPr: true},
 			required: []string{argRepo},
 			meta:     toolMeta{title: "Review trend", mutates: noLocalWrites, readOnly: true, idempotent: true},

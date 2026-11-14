@@ -3,6 +3,7 @@ package schemacheck
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"regexp"
 	"slices"
@@ -24,11 +25,13 @@ const (
 	keyMax      = "maximum"
 	keyExclMin  = "exclusiveMinimum"
 	keyMinItems = "minItems"
+	keyMaxItems = "maxItems"
 	keyMinLen   = "minLength"
 	keyMaxLen   = "maxLength"
 	keyAnyOf    = "anyOf"
 	keyNot      = "not"
 	keyProps    = "properties"
+	keyNames    = "propertyNames"
 	keyRequired = "required"
 	keyAddl     = "additionalProperties"
 	keyConst    = "const"
@@ -50,12 +53,33 @@ const (
 	typeNull     = "null"
 )
 
-var constraintKeys = names(keyRef, keyDefs, keyType, keyFormat, keyPattern,
-	keyItems, keyMin, keyMax, keyExclMin, keyMinItems, keyMinLen, keyMaxLen, keyAnyOf, keyNot, keyProps,
-	keyRequired, keyAddl, keyConst, keyEnum)
+// constraintKeywords and annotationKeywords are the keyword subset in the order
+// the shipped `schemas/validate.sh` lists it. The sets the checker consults are
+// built from these two slices, and Subset renders them for the guard that keeps
+// the shim's header honest, so one list feeds all three.
+var constraintKeywords = []string{
+	keyRef, keyDefs, keyType, keyConst, keyEnum, keyProps, keyNames, keyRequired,
+	keyItems, keyMinItems, keyMaxItems, keyAddl, keyMin, keyMax, keyExclMin,
+	keyMinLen, keyMaxLen, keyPattern, keyNot, keyAnyOf, keyFormat,
+}
 
-var annotationKeys = names("$schema", "$id", "title", "description", "default",
-	"examples", "$comment")
+// annotationKeywords are accepted and ignored: they document a schema rather
+// than constrain a value.
+var annotationKeywords = []string{
+	"$schema", "$id", "title", "description", "default",
+	"examples", "$comment",
+}
+
+var (
+	constraintKeys = names(constraintKeywords...)
+	annotationKeys = names(annotationKeywords...)
+)
+
+// Subset returns every keyword this checker accepts, in canonical order: the
+// constraints it enforces, then the annotations it ignores. It is the one list
+// the checker, the shipped shim's header, and TestShippedShimListsTheSubset
+// read.
+func Subset() []string { return slices.Concat(constraintKeywords, annotationKeywords) }
 
 func names(keys ...string) map[string]bool {
 	set := make(map[string]bool, len(keys))
@@ -71,6 +95,7 @@ func (w *walk) applyKeywords(d document, s map[string]any, value any, path strin
 	w.checkEnum(d, s, value, path)
 	w.checkRequired(d, s, value, path)
 	w.checkProperties(d, s, value, path)
+	w.checkPropertyNames(d, s, value, path)
 	w.checkAdditional(d, s, value, path)
 	w.checkItems(d, s, value, path)
 	w.checkBounds(d, s, value, path)
@@ -183,6 +208,23 @@ func (w *walk) checkProperties(d document, s map[string]any, value any, path str
 	}
 }
 
+// checkPropertyNames validates every property NAME against the subschema, the
+// one keyword that constrains a map's keys. Names are walked in sorted order so
+// one document always yields one violation.
+func (w *walk) checkPropertyNames(d document, s map[string]any, value any, path string) {
+	object, ok := value.(map[string]any)
+	if !ok {
+		return
+	}
+	sub, has := s[keyNames]
+	if !has {
+		return
+	}
+	for _, key := range slices.Sorted(maps.Keys(object)) {
+		w.check(d, sub, key, path+"."+key)
+	}
+}
+
 func (w *walk) checkAdditional(d document, s map[string]any, value any, path string) {
 	object, ok := value.(map[string]any)
 	if !ok {
@@ -244,18 +286,17 @@ func (w *walk) checkBounds(_ document, s map[string]any, value any, path string)
 	}
 }
 
-// checkArrayBound refuses arrays shorter than the minItems bound.
+// checkArrayBound refuses arrays outside the minItems and maxItems bounds.
 func (w *walk) checkArrayBound(_ document, s map[string]any, value any, path string) {
 	list, ok := value.([]any)
 	if !ok {
 		return
 	}
-	bound, has := intBound(s[keyMinItems])
-	if !has {
-		return
+	if low, has := intBound(s[keyMinItems]); has && len(list) < low {
+		w.fail(path, fmt.Sprintf("array has %d items, below minItems %d", len(list), low))
 	}
-	if len(list) < bound {
-		w.fail(path, fmt.Sprintf("array has %d items, below minItems %d", len(list), bound))
+	if high, has := intBound(s[keyMaxItems]); has && len(list) > high {
+		w.fail(path, fmt.Sprintf("array has %d items, above maxItems %d", len(list), high))
 	}
 }
 
@@ -424,8 +465,12 @@ func jsonType(value any) string {
 	}
 }
 
-// isInteger reports whether value is an integer: JSON text without a fraction
-// or exponent, or a float with no fractional part.
+// isInteger reports whether value is an integer under this repository's one
+// rule: an integer is written as an integer literal, with no fraction and no
+// exponent. 24 is one; 24.0 and 1e2 are not, even though JSON Schema reads them
+// as integral values — the config reader and the pack manifest decode into Go
+// integers and refuse those spellings, so a schema that accepted them would
+// pass a document the binary then refuses with bad-config or bad-pack.
 func isInteger(value any) bool {
 	switch number := value.(type) {
 	case json.Number:
