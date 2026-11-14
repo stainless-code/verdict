@@ -219,6 +219,32 @@ func violationsOf(t *testing.T, root, schema any, give string) []schemacheck.Vio
 	return schemacheck.Validate(root, schema, value)
 }
 
+// TestDuplicateLensIDsAreParserOnly records the one rule this schema cannot
+// express: "no two lens rows name the same id". JSON Schema has no keyword for
+// an array of objects unique on one key (uniqueItems compares whole rows, and
+// the checker below does not implement it), so the schema accepts two rows with
+// the same id while the parser refuses bad-recipe. The parser row in
+// TestParseRefusals stays; this test states why the agreement table cannot hold
+// it, instead of leaving the exception implied by an absent case.
+func TestDuplicateLensIDsAreParserOnly(t *testing.T) {
+	schema := recipeSchema(t)
+	give := recipeDocument(`{"version":"1.0.0","lenses":[{"id":"logic"},{"id":"logic"}],"synthesize":{}}`)
+	value, err := schemacheck.Decode([]byte(give))
+	if err != nil {
+		t.Fatalf("candidate is not JSON: %v", err)
+	}
+	if got := schemacheck.Validate(schema, schema, value); len(got) != 0 {
+		t.Errorf("schema refuses duplicate lens ids, so the exception is stale: %v", got)
+	}
+	_, ref := recipe.Parse([]byte(give))
+	if ref == nil || ref.Code != recipe.CodeBad {
+		t.Fatalf("parser = %+v, want %s for duplicate lens ids", ref, recipe.CodeBad)
+	}
+	if !strings.Contains(ref.Message, "duplicate lens id") {
+		t.Errorf("parser message = %q, want it to name the duplicate", ref.Message)
+	}
+}
+
 // assertSide fails one side of the contract when its verdict is not the pinned
 // one, naming the document so a drift reads as a contract change.
 func assertSide(t *testing.T, side string, got, want bool, doc string) {
