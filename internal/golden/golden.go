@@ -87,6 +87,9 @@ func writeStream(sb *strings.Builder, header, stream string, roots []string) {
 // changes what a change looks like.
 func renderFile(sb *strings.Builder, key, body string, roots []string) {
 	body = Scrub(scrubRoots(body, roots))
+	if filepath.Base(filepath.ToSlash(key)) == "provenance.json" {
+		body = scrubProvenanceRuntime(body)
+	}
 	if !strings.HasSuffix(body, newline) {
 		body += newline
 	}
@@ -97,6 +100,57 @@ func renderFile(sb *strings.Builder, key, body string, roots []string) {
 	}
 	sb.WriteString("--- file " + name + " ---\n")
 	sb.WriteString(body)
+}
+
+var runtimeBundleArtifacts = map[string]bool{
+	"budget.json":  true,
+	"run.json":     true,
+	"source.json":  true,
+	"threads.json": true,
+}
+
+func replaceJSONField(line, key, val string) string {
+	indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+	suffix := ""
+	if strings.HasSuffix(strings.TrimSpace(line), ",") {
+		suffix = ","
+	}
+	return indent + `"` + key + `": ` + val + suffix
+}
+
+// scrubProvenanceRuntime normalizes sha256 (and bytes on source.json, which
+// embeds tool_version) for bundle artifacts whose disk bytes carry a live
+// runtime timestamp or version, keeping provenance goldens deterministic
+// across wall-clock runs and release bumps. The digest is still checked as a
+// relationship: the fetch test asserts every bundle row equals the digest of
+// the file it names, so the scrub removes noise, not coverage.
+func scrubProvenanceRuntime(body string) string {
+	lines := strings.Split(body, newline)
+	inBundle, target := false, ""
+	for i, line := range lines {
+		inBundle, target = scrubProvenanceLine(lines, i, line, inBundle, target)
+	}
+	return strings.Join(lines, newline)
+}
+
+func scrubProvenanceLine(lines []string, idx int, line string, inBundle bool, target string) (bool, string) {
+	trimmed := strings.TrimSpace(line)
+	switch {
+	case trimmed == `"kind": "bundle",`:
+		return true, target
+	case trimmed == "}," || trimmed == "}":
+		return false, ""
+	case inBundle && strings.HasPrefix(trimmed, `"name": "`):
+		name := strings.TrimSuffix(strings.TrimPrefix(trimmed, `"name": "`), `",`)
+		if runtimeBundleArtifacts[name] {
+			return inBundle, name
+		}
+	case target != "" && strings.HasPrefix(trimmed, `"sha256": "`):
+		lines[idx] = replaceJSONField(line, "sha256", `"RUNTIME_SHA256"`)
+	case target == "source.json" && strings.HasPrefix(trimmed, `"bytes": `):
+		lines[idx] = replaceJSONField(line, "bytes", "0")
+	}
+	return inBundle, target
 }
 
 // touchedKeys returns the sorted keys the run created, changed, or deleted,

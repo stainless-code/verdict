@@ -88,7 +88,7 @@ func (st *state) dispatch(ctx context.Context, s *session, req *core.FetchReques
 	if err != nil {
 		return nil, st.fail(ctx, err, s)
 	}
-	return st.response(req, data, next)
+	return st.response(ctx2, req, data, next)
 }
 
 func (st *state) provider(f *core.FetchFlags) (*core.FetchFlags, *core.RefusalError) {
@@ -135,6 +135,7 @@ func RunLocal(ctx context.Context, req *core.FetchLocalRequest) (*core.FetchResp
 	if err := finishTruncation(data); err != nil {
 		return nil, err
 	}
+	writeProvenanceReceipt(ctx2, data)
 	resp := &core.FetchResponse{
 		Repo:     req.Repo,
 		Pr:       req.Pr,
@@ -216,10 +217,11 @@ func attachRetryAt(ref *core.RefusalError, s *session) {
 }
 
 // response builds the typed success response.
-func (st *state) response(req *core.FetchRequest, data *core.FetchData, next string) (*core.FetchResponse, error) {
+func (st *state) response(ctx2 *fetchRunCtx, req *core.FetchRequest, data *core.FetchData, next string) (*core.FetchResponse, error) {
 	if err := finishTruncation(data); err != nil {
 		return nil, err
 	}
+	writeProvenanceReceipt(ctx2, data)
 	return &core.FetchResponse{
 		Repo:     req.Repo,
 		Pr:       req.Pr,

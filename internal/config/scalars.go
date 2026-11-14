@@ -73,9 +73,11 @@ func asEnum(raw any, path string, vocab []string) (string, *core.RefusalError) {
 	return "", refuse(CodeBadConfig, "%s: want one of %s, got %q", path, joinQuoted(vocab), str)
 }
 
-// nonEmptyStringArray requires an array of non-empty strings with at
-// least minLen entries.
-func nonEmptyStringArray(raw any, path string, minLen int) ([]string, *core.RefusalError) {
+// panelMembers requires an array of single-line panel member strings with at
+// least minLen entries. A member renders into the one-line footer, so a
+// line-breaking character (a newline opens a second comment marker) refuses
+// here instead of being sanitized.
+func panelMembers(raw any, path string, minLen int) ([]string, *core.RefusalError) {
 	items, ref := asArray(raw, path)
 	if ref != nil {
 		return nil, ref
@@ -85,13 +87,25 @@ func nonEmptyStringArray(raw any, path string, minLen int) ([]string, *core.Refu
 	}
 	out := make([]string, 0, len(items))
 	for i, item := range items {
-		str, ref := nonEmptyString(item, arrayPath(path, i))
+		at := arrayPath(path, i)
+		str, ref := nonEmptyString(item, at)
 		if ref != nil {
 			return nil, ref
+		}
+		if err := checkSingleLine(str, at); err != nil {
+			return nil, err
 		}
 		out = append(out, str)
 	}
 	return out, nil
+}
+
+// checkSingleLine refuses a value carrying a line-breaking character.
+func checkSingleLine(str, path string) *core.RefusalError {
+	if strings.ContainsFunc(str, core.IsLineBreak) {
+		return refuse(CodeBadConfig, "%s: want a single-line value without control characters", path)
+	}
+	return nil
 }
 
 // enumArray requires an array of vocabulary strings with at least minLen

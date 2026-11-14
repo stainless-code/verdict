@@ -196,7 +196,7 @@ func buildDefaults(raw any, path string) (*core.ConfigDefaults, *core.RefusalErr
 func buildDefaultsHead(obj map[string]any, path string, out *core.ConfigDefaults) *core.RefusalError {
 	var ref, err *core.RefusalError
 	if out.Panel, ref = presentStrings(obj, "panel", path, func(raw any, at string) ([]string, *core.RefusalError) {
-		return nonEmptyStringArray(raw, at, 1)
+		return panelMembers(raw, at, 1)
 	}); ref != nil {
 		return ref
 	}
@@ -243,6 +243,11 @@ func buildKBPolicy(raw any, path string) (*core.ConfigKBPolicy, *core.RefusalErr
 	}
 	if out.MaxFPRate, err = presentValue(obj, "max_fp_rate", path, func(raw any, at string) (float64, *core.RefusalError) {
 		return boundedFloat(raw, at, 0, 1)
+	}); err != nil {
+		return nil, err
+	}
+	if out.MaxChars, err = presentValue(obj, "max_chars", path, func(raw any, at string) (int, *core.RefusalError) {
+		return boundedCount(raw, at, 1)
 	}); err != nil {
 		return nil, err
 	}

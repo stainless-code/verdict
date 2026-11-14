@@ -639,7 +639,14 @@ Retirement is data-driven: after any credit, a rule with `judged` at/above
 the typed `defaults.kb_policy` object in `.verdict/config.json` (global only —
 inline scope or requirement policies refuse `bad-config`), then built-in
 defaults; invalid values warn and fall back, never failing the flip. Retired
-rules never recall; citing one warns and drops.
+rules never recall; citing one warns and drops. Recall size can also be
+bounded with `defaults.kb_policy.max_chars` (or `REVIEW_KB_MAX_CHARS`), which
+caps the rendered `kb.txt` while recording `status=truncated` and candidate
+`top_n` omissions in `provenance.json` (never copying rule or secret text).
+The `kb` row's `included` counts the candidates the top-N kept, so under the
+char cap it can exceed the number of candidates marked `included`, while
+`status=truncated` with `chars_included`/`chars_total` reports the char cap
+itself.
 
 ## Review controls are base-owned
 
@@ -2308,7 +2315,13 @@ The `<!-- verdict-footer -->` comment is a machine divider between content
 and footer. Re-rendering a body that already carries a rendered block strips
 the old block at the divider and appends a fresh one, so the result is
 byte-identical (no stacking). Never hand-write the marker — bodies carrying
-it get their rendered block replaced.
+it get their rendered block replaced. When `.verdict/state/<bundle>/provenance.json`
+is present, the footer adds one `> Inputs:` summary line inside that same
+marker block (old bundles without `provenance.json` keep the baseline footer
+byte-identical); passing `--provenance` to `report` or `post` prints the full
+inputs/truncation table in human output and exposes `data.receipt.inputs[]`
+and `data.truncated[]` in `--json` (malformed or missing receipts warn without
+failing the run).
 
 Knobs live under one `publish` namespace in the settings file (see Onboarding
 for the path and shape): `publish.footer` (bool, default `true`) kills the
@@ -3128,6 +3141,13 @@ mirroring `report --check`; counts are per store, so adopted findings appear in
 both the local and the PR bundle. Feed for the calibration narrative: per-bundle
 models plus per-tier outcomes is the raw material for per-model tier precision
 over time — run `calibrate` on recent bundles to settle what the trend only counts.
+
+When a bundle's `provenance.json` parses, its `per_bundle[]` row also carries
+`run_id` (the fetch receipt's identity) and `truncated_inputs`: the number of
+rows that receipt recorded as bounded or omitted, not a count of inputs, since
+one response cap plus two top-N omissions reads `3`. A bundle whose receipt is
+missing or unreadable is still counted, warns that it is counted without its
+receipt, and carries neither key.
 
 `trend --overlap` adds the KB overlap audit to the same rollup: an offline join
 of `kb-recall.json` manifests, findings `kb` cites, and `.verdict/kb-joins.jsonl`

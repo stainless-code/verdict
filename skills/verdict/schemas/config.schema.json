@@ -60,7 +60,8 @@
       "type": "object",
       "properties": {
         "min_judged": { "type": "integer", "minimum": 1 },
-        "max_fp_rate": { "type": "number", "minimum": 0, "maximum": 1 }
+        "max_fp_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "max_chars": { "type": "integer", "minimum": 1 }
       },
       "required": [],
       "additionalProperties": false

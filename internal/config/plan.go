@@ -163,15 +163,27 @@ func envLayers(env *Partial) []layerValue {
 	if env.MaxBytes != nil {
 		layers = append(layers, layerValue{layer: LayerEnv, source: "REVIEW_MAX_BYTES", partial: Partial{MaxBytes: env.MaxBytes}})
 	}
-	if env.KBPolicySet && env.KBMinJudged != nil {
-		partial := Partial{KBMinJudged: env.KBMinJudged, KBPolicySet: true}
-		layers = append(layers, layerValue{layer: LayerEnv, source: "REVIEW_KB_MIN_JUDGED", partial: partial})
+	return appendEnvKB(layers, env)
+}
+
+func appendEnvKB(layers []layerValue, env *Partial) []layerValue {
+	if !env.KBPolicySet {
+		return layers
 	}
-	if env.KBPolicySet && env.KBMaxFPRate != nil {
-		partial := Partial{KBMaxFPRate: env.KBMaxFPRate, KBPolicySet: true}
-		layers = append(layers, layerValue{layer: LayerEnv, source: "REVIEW_KB_MAX_FP_RATE", partial: partial})
+	if env.KBMinJudged != nil {
+		layers = append(layers, kbEnvLayer("REVIEW_KB_MIN_JUDGED", &Partial{KBMinJudged: env.KBMinJudged, KBPolicySet: true}))
+	}
+	if env.KBMaxFPRate != nil {
+		layers = append(layers, kbEnvLayer("REVIEW_KB_MAX_FP_RATE", &Partial{KBMaxFPRate: env.KBMaxFPRate, KBPolicySet: true}))
+	}
+	if env.KBMaxChars != nil {
+		layers = append(layers, kbEnvLayer("REVIEW_KB_MAX_CHARS", &Partial{KBMaxChars: env.KBMaxChars, KBPolicySet: true}))
 	}
 	return layers
+}
+
+func kbEnvLayer(source string, p *Partial) layerValue {
+	return layerValue{layer: LayerEnv, source: source, partial: *p}
 }
 
 // repoDefaults lifts the shared defaults out of the trusted configuration.

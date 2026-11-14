@@ -16,6 +16,7 @@ import (
 	"github.com/stainless-code/verdict/internal/diagram"
 	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -62,6 +63,7 @@ func Run(ctx context.Context, req *core.PostRequest) (*core.PostResponse, *core.
 	if ref := st.runGates(ctx); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
+	st.loadStateProvenance()
 	return st.publish(ctx)
 }
 
@@ -113,36 +115,37 @@ func (st *state) summaryMode() string {
 }
 
 type state struct { //nolint:govet // field grouping documents the post run state
-	req          *core.PostRequest
-	warnings     []string
-	flags        core.PostFlags
-	review       *jq.Obj
-	merged       recordcore.MergeResult
-	event        string
-	liveSHA      string
-	remoteInline []map[string]any
-	previousHead string
-	phash        string
-	dir          string
-	body         string
-	commitID     string
-	fetchedSHA   string
-	payload      string
-	payloads     []string
-	extraParts   []string
-	live         []liveReview
-	findingsFile string
-	now          string
-	retryAt      string
-	controls     *controls.Snapshot
-	comments     []any
-	diagram      diagram.Status
-	bundle       *readcommon.Bundle
-	embedded     int
-	driftStale   bool
-	liveLoaded   bool
-	identity     *identity.Identity
-	forced       []core.ForcedPost
+	req               *core.PostRequest
+	warnings          []string
+	flags             core.PostFlags
+	provenanceReceipt *core.ProvenanceReceipt
+	review            *jq.Obj
+	merged            recordcore.MergeResult
+	event             string
+	liveSHA           string
+	remoteInline      []map[string]any
+	previousHead      string
+	phash             string
+	dir               string
+	body              string
+	commitID          string
+	fetchedSHA        string
+	payload           string
+	payloads          []string
+	extraParts        []string
+	live              []liveReview
+	findingsFile      string
+	now               string
+	retryAt           string
+	controls          *controls.Snapshot
+	comments          []any
+	diagram           diagram.Status
+	bundle            *readcommon.Bundle
+	embedded          int
+	driftStale        bool
+	liveLoaded        bool
+	identity          *identity.Identity
+	forced            []core.ForcedPost
 	// withheld is what the capability table denied this post, in discovery
 	// order; post.json carries it so a degraded write stays legible.
 	withheld []core.WithheldCapability
@@ -938,5 +941,46 @@ func (st *state) collectIdentity(ctx context.Context) {
 	}
 	if current.PatchID != nil {
 		st.identity = current
+	}
+}
+
+// loadStateProvenance parses the bundle receipt once: --provenance exposes it
+// and the footer renders its Inputs line from it. A malformed or absent
+// receipt warns only when the run asked for the receipt fields, matching
+// report, so a newer writer's receipt never warns a plain post.
+func (st *state) loadStateProvenance() {
+	rec, exists, err := provenance.ReadReceipt(st.dir)
+	if err == nil && exists {
+		st.provenanceReceipt = rec
+		return
+	}
+	if !st.flags.Provenance {
+		return
+	}
+	if err != nil {
+		st.warn(fmt.Sprintf("provenance receipt malformed (%v) — degrading cleanly", err))
+	} else {
+		st.warn("provenance receipt absent (" + provenance.ReceiptFile + " not found in bundle)")
+	}
+	st.provenanceReceipt = provenance.EmptyReceipt()
+}
+
+func (st *state) applyProvenance(data *core.PostData) {
+	if !st.flags.Provenance {
+		return
+	}
+	truncated := provenance.MergeTruncated(st.provenanceReceipt, readcommon.BundleTruncation(st.dir))
+	data.ProvenanceEnabled = true
+	data.ProvenanceReceipt = st.provenanceReceipt
+	data.ProvenanceTruncated = truncated
+}
+
+func (st *state) printProvenanceTable() {
+	if !st.flags.Provenance || st.req.JSONMode {
+		return
+	}
+	truncated := provenance.MergeTruncated(st.provenanceReceipt, readcommon.BundleTruncation(st.dir))
+	for _, line := range provenance.FormatTable(st.provenanceReceipt, truncated) {
+		st.human(line)
 	}
 }

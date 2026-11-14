@@ -196,6 +196,7 @@ var reportBoolSetters = map[string]func(*reportcore.Flags){
 	"--include-withheld": func(f *reportcore.Flags) { f.IncludeWithheld = true },
 	"--cost":             func(f *reportcore.Flags) { f.Cost = true },
 	"--completeness":     func(f *reportcore.Flags) { f.Completeness = true },
+	"--provenance":       func(f *reportcore.Flags) { f.Provenance = true },
 	"--risk":             func(f *reportcore.Flags) { f.Risk = true },
 }
 

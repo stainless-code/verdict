@@ -48,6 +48,9 @@ func RenderFooter(o *FooterOpts) (string, error) {
 	sb.WriteString("---\n\n")
 	sb.WriteString(core.FooterDivider + newline)
 	sb.WriteString(attributionLine(o, attr, receipt) + newline)
+	if inputsLine := RenderInputsFooterLine(o.Dir); inputsLine != "" {
+		sb.WriteString(inputsLine + newline)
+	}
 	if o.PublishCopyright != "" {
 		sb.WriteString("> " + o.PublishCopyright + newline)
 	}
