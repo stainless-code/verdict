@@ -384,7 +384,7 @@ const gitignoreName = ".gitignore"
 // gitignoreBody is the entire tracked ignore contract: only generated
 // state, backtest artifacts, the local index, and the tracked stores' lock
 // files stay local, so the configuration and support files are reviewable.
-const gitignoreBody = "/state/\n/backtest/\n/index/\nincidents.jsonl.lock\nkb.jsonl.lock"
+const gitignoreBody = "/state/\n/backtest/\n/index/\nincidents.jsonl.lock\nkb.jsonl.lock\nreverts.jsonl.lock"
 
 func kbStarter() string {
 	first := `{"id":"check-error-paths",` +

@@ -13,7 +13,7 @@ import (
 // whatever order the writers landed in.
 var stateLines = []string{
 	gitignoreStateLine, gitignoreBacktestLine, gitignoreIndexLine,
-	gitignoreIncidentLock, gitignoreKBLock,
+	gitignoreIncidentLock, gitignoreKBLock, gitignoreRevertLock,
 }
 
 // TestEnsureStateIgnoreKeepsOneContractAcrossWriters proves the ignore contract

@@ -3,7 +3,9 @@ package backtest
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
+	"github.com/stainless-code/verdict/internal/storelock"
 )
 
 // runReverts scans r's history from since to HEAD through the real service.
@@ -684,5 +687,59 @@ func TestRevertsRefreshesARescan(t *testing.T) {
 		`"date":"2024-01-03T00:00:00Z","paths":["main.go"]}` + "\n"
 	if got := readRevertFile(t, r, ".verdict/reverts.jsonl"); got != want {
 		t.Errorf("a rescanned row did not replace the stored one:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// TestRevertsRefusesAStoreBusy proves the ledger's read-modify-write is one
+// writer's: a scan whose lock another writer holds past the wait refuses
+// `store-busy` and touches neither artifact, and the retry lands the rows.
+func TestRevertsRefusesAStoreBusy(t *testing.T) {
+	r, base, _ := revertsRepo(t)
+	dir := filepath.Join(r.dir, ".verdict")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	held, err := storelock.Acquire(filepath.Join(dir, "reverts.jsonl.lock"), storelock.DefaultWait)
+	if err != nil {
+		t.Fatalf("hold the ledger lock: %v", err)
+	}
+	_, ref := RunReverts(t.Context(), &Request{
+		Runtime:  &core.Runtime{Commander: coreexec.Runner{MissingTool: true}, Env: userEnv(t, nil)},
+		RepoRoot: r.dir, Mode: modeReverts, Since: base, Until: "HEAD",
+	})
+	if ref == nil || ref.Code != "store-busy" {
+		t.Fatalf("refusal = %+v; want store-busy", ref)
+	}
+	assertNoArtifacts(t, dir)
+	held()
+	if data := runReverts(t, r, base); data.Reverts.Total != 1 {
+		t.Errorf("retry recorded total %d; want 1", data.Reverts.Total)
+	}
+}
+
+// assertNoArtifacts proves a refused scan wrote neither artifact.
+func assertNoArtifacts(t *testing.T, dir string) {
+	t.Helper()
+	for _, rel := range []string{"reverts.jsonl", "reverts.md"} {
+		if _, err := os.Stat(filepath.Join(dir, rel)); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("a scan that could not take the lock wrote %s", rel)
+		}
+	}
+}
+
+// TestRevertsTracksItsLockFile proves the ignore contract lands with the first
+// scan: the lock file is ignored, so it is never worktree dirt beside the
+// tracked ledger it guards.
+func TestRevertsTracksItsLockFile(t *testing.T) {
+	r, base, _ := revertsRepo(t)
+	runReverts(t, r, base)
+	if ignore := readRevertFile(t, r, ".verdict/.gitignore"); !strings.Contains(ignore, "reverts.jsonl.lock\n") {
+		t.Errorf("ignore contract lacks the lock line:\n%s", ignore)
+	}
+	if !r.gitAllow("check-ignore", "-q", ".verdict/reverts.jsonl.lock") {
+		t.Error("the lock file is not ignored")
+	}
+	if r.gitAllow("check-ignore", "-q", ".verdict/reverts.jsonl") {
+		t.Error("the ledger is ignored; it is a tracked file")
 	}
 }

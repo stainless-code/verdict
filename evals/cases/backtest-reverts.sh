@@ -168,6 +168,22 @@ assert_refusal "unresolvable --until" "bad-until"
 run_review backtest reverts --since "$BASE" --agent claude --json
 assert_exit "a replay flag is a usage error" 2
 
+# The ledger's lock is the third store lock: the ignore contract lands with the
+# first scan, so the lock file is never worktree dirt beside the tracked ledger.
+assert_file_grep "the ignore contract carries the lock line" "$EVAL_SANDBOX/.verdict/.gitignore" '^reverts.jsonl.lock$'
+assert_file_eq "the ledger stays tracked, not ignored" \
+  "$EVAL_SANDBOX/expected-ledger.jsonl" "$LEDGER"
+if git -C "$EVAL_SANDBOX" check-ignore -q .verdict/reverts.jsonl.lock; then
+  good "the lock file is ignored"
+else
+  bad "the lock file is not ignored"
+fi
+if git -C "$EVAL_SANDBOX" check-ignore -q .verdict/reverts.jsonl; then
+  bad "the tracked ledger is ignored"
+else
+  good "the ledger stays tracked"
+fi
+
 stub_after="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 assert_eq "zero host CLI calls" "$stub_before" "$stub_after"
 

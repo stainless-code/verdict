@@ -16,8 +16,10 @@ import (
 	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/storelock"
 	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
@@ -52,6 +54,9 @@ const (
 	reasonMergeRevert  = "merge-revert"
 	reasonWideRevert   = "wide-revert"
 	reasonUnreadable   = "unreadable"
+	codeStoreBusy      = "store-busy"
+	msgBusyReverts     = "another writer holds " + revertFile + "'s lock and did not finish in time; retry"
+	msgWriteIgnore     = "backtest reverts could not bring .verdict/.gitignore to the tracked ignore contract: %v"
 )
 
 // RevertsResponse carries the envelope data and the accumulated warnings.
@@ -153,11 +158,7 @@ func RunReverts(ctx context.Context, req *Request) (resp *RevertsResponse, ref *
 	if ref != nil {
 		return nil, ref
 	}
-	ledger, ref := st.mergeReverts(rows)
-	if ref != nil {
-		return nil, ref
-	}
-	artifacts, ref := st.writeReverts(ledger)
+	artifacts, ledger, ref := st.storeReverts(rows)
 	if ref != nil {
 		return nil, ref
 	}
@@ -401,6 +402,55 @@ func revertedShas(body string) []string {
 type revertLine struct {
 	text string
 	row  RevertRow
+}
+
+// storeReverts lands the window's rows in the ledger: create the directory,
+// take the ledger's lock, upsert under it, and write. The lock covers the whole
+// read-modify-write, so two concurrent scans cannot lose each other's rows.
+func (st *state) storeReverts(rows []RevertRow) (*RevertsArtifacts, []revertLine, *core.RefusalError) {
+	dir := revertPath(st.root, ".verdict")
+	if err := os.MkdirAll(dir, dirPerm); err != nil {
+		return nil, nil, st.refuse(codeBacktestFail, "cannot create "+display(st.root, dir)+detailSep+err.Error())
+	}
+	unlock, ref := st.lockReverts()
+	if ref != nil {
+		return nil, nil, ref
+	}
+	defer unlock()
+	ledger, ref := st.mergeReverts(rows)
+	if ref != nil {
+		return nil, nil, ref
+	}
+	artifacts, ref := st.writeReverts(ledger)
+	if ref != nil {
+		return nil, nil, ref
+	}
+	return artifacts, ledger, nil
+}
+
+// lockReverts takes the ledger's exclusive advisory lock, then brings the
+// tracked ignore contract up to date while holding it, exactly as the KB store
+// does: parallel scans serialize the contract instead of racing one atomic
+// rewrite of the same file, and the ignore line is in place before the lock
+// file can appear as worktree dirt. The kernel owns the lock, so a crashed scan
+// leaves nothing stale behind.
+func (st *state) lockReverts() (func(), *core.RefusalError) {
+	file := revertPath(st.root, revertFile)
+	unlock, err := storelock.Acquire(storelock.LockPath(file), storelock.DefaultWait)
+	if err != nil {
+		if errors.Is(err, storelock.ErrBusy) {
+			return nil, st.refuse(codeStoreBusy, msgBusyReverts)
+		}
+		return nil, st.refuse(codeBacktestFail, "cannot lock "+display(st.root, file)+detailSep+err.Error())
+	}
+	if serr := config.NewLayout(st.root).EnsureStateIgnore(); serr != nil {
+		unlock()
+		if ref := config.RefusalOf(serr); ref != nil {
+			return nil, ref
+		}
+		return nil, st.refuse(codeBacktestFail, fmt.Sprintf(msgWriteIgnore, serr))
+	}
+	return unlock, nil
 }
 
 // mergeReverts upserts the window's rows into the stored ledger: a commit
@@ -650,13 +700,10 @@ func itemList(items []string) []any {
 	return out
 }
 
-// writeReverts lands the ledger then its note, each atomically. A ledger past
-// the reader's cap refuses rather than leaving a file no later scan can open.
+// writeReverts lands the ledger then its note, each atomically, with the lock
+// its caller holds. A ledger past the reader's cap refuses rather than leaving
+// a file no later scan can open.
 func (st *state) writeReverts(ledger []revertLine) (*RevertsArtifacts, *core.RefusalError) {
-	dir := revertPath(st.root, ".verdict")
-	if err := os.MkdirAll(dir, dirPerm); err != nil {
-		return nil, st.refuse(codeBacktestFail, "cannot create "+display(st.root, dir)+detailSep+err.Error())
-	}
 	var sb strings.Builder
 	rows := make([]RevertRow, 0, len(ledger))
 	for i := range ledger {

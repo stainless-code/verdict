@@ -3991,7 +3991,12 @@ build cannot read refuses `corrupt-store` naming the field: every field is read
 at its stored type and shape (`reverts` a lowercase hex commit id, `paths` a
 repository-relative path, `subject` a bounded non-empty string), so a malformed
 row is refused, never silently rendered as empty values. A write that would push
-the ledger past the reader's cap refuses `backtest-failed` naming the cap.
+the ledger past the reader's cap refuses `backtest-failed` naming the cap. A
+scan holds `.verdict/reverts.jsonl.lock` (an OS advisory lock, like the two
+other stores) across its read, upsert and write, and brings
+`.verdict/.gitignore` to the tracked contract while it holds it, so the lock
+file is never worktree dirt; a lock another scan holds past the wait refuses
+`store-busy`, which is retryable and wrote nothing.
 
 This mode is memory, not a claim: attach one deliberately with `verdict learn
 --incident <bundle> --sha <revert> --path <path>` (the row's `paths` are the

@@ -8,10 +8,9 @@ import (
 	"testing"
 )
 
-// TestEnsureStateIgnore pins the ignore-first rule: the ignore file gains
-// the `/state/`, `/backtest/`, `/index/`, and lock-file lines before any
-// generated file is written,
-// and a second call never duplicates them.
+// TestEnsureStateIgnore pins the ignore-first rule: the ignore file gains the
+// `/state/`, `/backtest/`, `/index/`, and lock-file lines before any generated
+// file is written, and a second call never duplicates them.
 func TestEnsureStateIgnore(t *testing.T) {
 	root := t.TempDir()
 	layout := NewLayout(root)
@@ -22,14 +21,14 @@ func TestEnsureStateIgnore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read ignore: %v", err)
 	}
-	if string(raw) != "/state/\n/backtest/\n/index/\nincidents.jsonl.lock\nkb.jsonl.lock\n" {
+	if string(raw) != "/state/\n/backtest/\n/index/\nincidents.jsonl.lock\nkb.jsonl.lock\nreverts.jsonl.lock\n" {
 		t.Fatalf("ignore = %q", raw)
 	}
 	if err := layout.EnsureStateIgnore(); err != nil {
 		t.Fatalf("second EnsureStateIgnore: %v", err)
 	}
 	raw, err = os.ReadFile(filepath.Join(root, ".verdict", ".gitignore"))
-	if err != nil || string(raw) != "/state/\n/backtest/\n/index/\nincidents.jsonl.lock\nkb.jsonl.lock\n" {
+	if err != nil || string(raw) != "/state/\n/backtest/\n/index/\nincidents.jsonl.lock\nkb.jsonl.lock\nreverts.jsonl.lock\n" {
 		t.Fatalf("ignore after second call = %q, err = %v", raw, err)
 	}
 }
