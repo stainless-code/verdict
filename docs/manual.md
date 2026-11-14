@@ -643,6 +643,10 @@ rules never recall; citing one warns and drops. Recall size can also be
 bounded with `defaults.kb_policy.max_chars` (or `REVIEW_KB_MAX_CHARS`), which
 caps the rendered `kb.txt` while recording `status=truncated` and candidate
 `top_n` omissions in `provenance.json` (never copying rule or secret text).
+The `kb` row's `included` counts the candidates the top-N kept, so under the
+char cap it can exceed the number of candidates marked `included`, while
+`status=truncated` with `chars_included`/`chars_total` reports the char cap
+itself.
 
 ## Review controls are base-owned
 
