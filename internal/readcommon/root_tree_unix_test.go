@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/testenv"
@@ -47,6 +48,12 @@ func readPID(t *testing.T, path string) (int, bool) {
 	return pid, pidAlive(pid)
 }
 
+// probeBudget is the cancellation fixture's probe budget: longer than
+// [testenv.Until]'s bound, so the readiness wait decides the outcome and the
+// shipped 5 s budget never does (a full-suite run once failed on a slow
+// fixture shell, not on the group kill).
+const probeBudget = time.Minute
+
 // TestRepoRootCancellationKillsTheProbeTree proves cancellation reaches the
 // probe's process group: the probe blocks on a live descendant, cancellation
 // is issued only after the descendant is running, and the descendant is gone
@@ -58,7 +65,7 @@ func TestRepoRootCancellationKillsTheProbeTree(t *testing.T) {
 	defer cancel()
 
 	rootErr := make(chan error, 1)
-	go func() { _, err := readcommon.RepoRoot(ctx); rootErr <- err }()
+	go func() { _, err := readcommon.RepoRootWithBudget(ctx, probeBudget); rootErr <- err }()
 
 	var pid int
 	testenv.Until(t, func() bool {
