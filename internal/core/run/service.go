@@ -427,16 +427,33 @@ func (st *state) printed(args *launchArgs) *core.RunResponse {
 		Timeout:  args.timeout,
 		Printed:  true,
 	}
+	next := "re-run without --print to launch it, or run the printed command yourself"
 	if args.staged != nil {
 		data.Stage = &core.RecipeStageRender{Index: args.staged.index, Kind: args.staged.stage.Kind}
+		next = st.stageNext(args.staged, len(args.plan.Stages), args.dir)
 	}
 	return &core.RunResponse{
 		Repo: st.req.Repo,
 		Pr:   st.req.Pr,
 		At:   core.NowUTC(st.now()),
 		Data: data,
-		Next: "re-run without --print to launch it, or run the printed command yourself",
+		Next: next,
 	}
+}
+
+// stageNext names what follows one rendered stage. A stage render cannot become
+// a launch — --stage requires --print — so the whole-pipeline advice to re-run
+// without --print walks the operator into a refusal: the next step is the
+// command just printed, then the following stage, and after the last stage the
+// record or post that closes the pipeline.
+func (st *state) stageNext(at *staged, stages int, dir string) string {
+	if at.index >= stages {
+		return fmt.Sprintf("run the printed command; stage %d closes the pipeline, and the "+
+			"review it writes is ready — %s", stages, st.next(dir))
+	}
+	return fmt.Sprintf("run the printed command, then render stage %d with verdict run %s %s "+
+		"--agent %s --recipe %s --print --stage %d",
+		at.index+1, st.req.Repo, st.req.Pr, st.req.Agent, st.req.Recipe, at.index+1)
 }
 
 // launch runs the one process of a one-shot run: resolve, record the launch,

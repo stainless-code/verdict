@@ -93,6 +93,8 @@ run_review run acme/app local-demo --agent claude --recipe quick --print --json
 assert_exit "--print exits 0 without launching" 0
 assert_envelope "--print"
 assert_json_field "--print is marked printed" "true" '.data.printed'
+assert_json_field "a whole-pipeline print still offers the launch" "true" \
+  '.next | contains("re-run without --print to launch it")'
 assert_json_field "data.recipe names the base entry" "quick" '.data.recipe.name'
 assert_json_field "data.recipe carries the base version, not the head's" "1.2.3" '.data.recipe.version'
 assert_json_field "data.recipe names its source" "repo" '.data.recipe.source'
@@ -166,6 +168,8 @@ assert_json_field "the stage directive names the stage and its declared hint" "t
   '.data.argv[-1] | contains("stage 2 of 4 (synthesize) of recipe quick@1.2.3 (repo)") and contains("(model hint opus)")'
 assert_json_field "the stage directive names the review it reads" "true" \
   '.data.argv[-1] | contains("Read .verdict/state/local-demo/review.json, the review the previous stage wrote.")'
+assert_json_field "the stage hint names the next stage, not a launch" "true" \
+  '.next | contains("--print --stage 3") and (contains("re-run without --print") | not)'
 assert_json_field "data.recipe still records the whole pipeline" "4" '.data.recipe.stages | length'
 assert_eq "--print --stage launched no agent process" "$stage_spawns" "$(spawns)"
 if [ ! -e "$LAUNCHER" ] && [ ! -e "$BUNDLE/review.json" ]; then
@@ -182,6 +186,13 @@ assert_json_field "the lens stage renders no model argument" "claude -p" '.data.
 assert_json_field "the lens stage's argv is the agent flags and one directive" "3" '.data.argv | length'
 assert_json_field "the first stage reads no previous review" "true" \
   '.data.argv[-1] | contains("the previous stage wrote") | not'
+
+run_review run acme/app local-demo --agent claude --recipe quick --print --stage 4 --json
+assert_exit "the rank stage renders its own command" 0
+assert_json_field "the last stage's hint closes the pipeline" "true" \
+  '.next | contains("stage 4 closes the pipeline") and contains("verdict record acme/app local-demo")'
+assert_json_field "the last stage's hint never points past the pipeline" "true" \
+  '.next | contains("--stage 5") | not'
 
 # --- (xiii) every --stage refusal lands before any process -----------------
 run_review run acme/app local-demo --agent claude --recipe quick --stage 2 --json

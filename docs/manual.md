@@ -2086,7 +2086,10 @@ decimal (`02`, `+2`, `2.0`), refuses `bad-flags` naming the stages the plan
 resolved, and an empty operand is the same exit-2 usage error as a missing one,
 never a silent whole-pipeline render. `--json` carries the rendered stage as `data.stage`
 (`{"index": 2, "kind": "synthesize"}`), which positions into the pipeline the
-same envelope already records at `data.recipe.stages`.
+same envelope already records at `data.recipe.stages`. The envelope's `next`
+names the step after the one you rendered — run the printed command, then render
+the following stage, and after stage 4 the `record` or `post` handoff — because a
+stage render cannot be turned back into a launch: `--stage` requires `--print`.
 
 ### Refusals, exit codes, and provenance
 

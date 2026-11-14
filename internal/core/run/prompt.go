@@ -17,6 +17,11 @@ const paragraphGap = "\n\n"
 // boundary (verdict validates that file; it never reads prose, retries, or
 // posts), and the pipeline the recipe declared.
 //
+// Every paragraph is formatted with its own fixed verbs and the paragraphs are
+// concatenated: the bundle path reaches readLine as a value, so a checkout
+// directory named "%s" stays a directory name instead of consuming the write
+// instruction's artifact argument.
+//
 // It carries no bundle bytes on purpose. The agent reads the bundle with its
 // own tools, so nothing attacker-influenced enters the prompt, no privacy
 // exclusion is re-resolved at launch time, and the command --print renders
@@ -24,16 +29,16 @@ const paragraphGap = "\n\n"
 // whole fenced dump is `fetch --show-prompts`, a separate, fetch-time decision.
 func directive(repo, pr, bundle, artifact string, local bool, plan *recipe.Plan) string {
 	subject, meta := subjectAndMeta(repo, pr, local)
+	head := fmt.Sprintf("Review %s and write exactly one review file.", subject)
 	read := readLine(bundle, meta, "kb.txt, sensitive.txt, and panel when the run carries them.")
-	write := "Write %s with {\"schema_version\": \"1\", \"body\": ..., "
-	write += "\"approved\": ..., \"comments\": [...]} (optional \"resolved\" and "
-	write += "\"triage\"). Write nothing else in the bundle."
+	write := fmt.Sprintf("Write %s with {\"schema_version\": \"1\", \"body\": ..., "+
+		"\"approved\": ..., \"comments\": [...]} (optional \"resolved\" and "+
+		"\"triage\"). Write nothing else in the bundle.", artifact)
 	boundary := "verdict launched this one process and validates that file; it does "
 	boundary += "not read your prose, retry you, or post. Do not post, merge, or "
 	boundary += "push: publishing is an explicit verdict post."
-	return fmt.Sprintf("Review %s and write exactly one review file."+paragraphGap+
-		read+paragraphGap+write+paragraphGap+boundary+paragraphGap+recipeParagraph(plan)+"\n",
-		subject, artifact)
+	return head + paragraphGap + read + paragraphGap + write + paragraphGap + boundary +
+		paragraphGap + recipeParagraph(plan) + "\n"
 }
 
 // subjectAndMeta names the review target and the metadata file the bundle

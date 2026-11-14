@@ -211,6 +211,41 @@ func TestDirectiveIsByteExact(t *testing.T) {
 	}
 }
 
+// TestDirectiveKeepsAPercentPathLiteral proves neither directive is a format
+// string assembled from data: a checkout path may contain %s, %d, and %%, and
+// must reach the agent byte for byte with the write instruction intact. A
+// bundle under a directory literally named "%s" used to consume the artifact
+// argument of directive's outer Sprintf and render "Write %!s(MISSING) with
+// ...".
+func TestDirectiveKeepsAPercentPathLiteral(t *testing.T) {
+	bundle := "/checkouts/%s/%d/100%%/42"
+	artifact := bundle + "/review.json"
+	plan := builtinPlan(t)
+
+	whole := directive("acme/app", "42", bundle, artifact, false, plan)
+	if want := "then the bundle at " + bundle + ": PR.json"; !strings.Contains(whole, want) {
+		t.Errorf("directive does not keep the path literally, want %q in:\n%s", want, whole)
+	}
+	if want := "Write " + artifact + " with {\"schema_version\": \"1\""; !strings.Contains(whole, want) {
+		t.Errorf("directive mangles the write instruction, want %q in:\n%s", want, whole)
+	}
+	if strings.Contains(whole, "%!") {
+		t.Errorf("directive rendered a format operand as data:\n%s", whole)
+	}
+
+	at := staged{index: 2, stage: plan.Stages[1]}
+	stage := stageDirective("acme/app", "42", bundle, artifact, false, plan, &at)
+	if want := "Read " + artifact + ", the review the previous stage wrote."; !strings.Contains(stage, want) {
+		t.Errorf("stage directive does not keep the path literally, want %q in:\n%s", want, stage)
+	}
+	if want := "Write " + artifact + " with {\"schema_version\": \"1\""; !strings.Contains(stage, want) {
+		t.Errorf("stage directive mangles the write instruction, want %q in:\n%s", want, stage)
+	}
+	if strings.Contains(stage, "%!") {
+		t.Errorf("stage directive rendered a format operand as data:\n%s", stage)
+	}
+}
+
 // TestAgentTableIsSortedAndUnique keeps the data table honest: duplicate or
 // unsorted rows would make the known-name list a lie.
 func TestAgentTableIsSortedAndUnique(t *testing.T) {

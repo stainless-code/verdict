@@ -1218,6 +1218,32 @@ func TestRunPrintStageStatesItsOwnJob(t *testing.T) {
 	}
 }
 
+// TestRunPrintStageNamesTheNextStage proves the hint a stage render leaves. A
+// stage render cannot become a launch — --stage requires --print — so "re-run
+// without --print" sends the operator into a refusal: the next step is the
+// command just printed, then the following stage, and after the last stage the
+// handoff that closes the pipeline.
+func TestRunPrintStageNamesTheNextStage(t *testing.T) {
+	cases := map[string]string{
+		"1": "run the printed command, then render stage 2 with verdict run acme/app 42 " +
+			"--agent claude --recipe quick --print --stage 2",
+		"2": "run the printed command, then render stage 3 with verdict run acme/app 42 " +
+			"--agent claude --recipe quick --print --stage 3",
+		"4": "run the printed command; stage 4 closes the pipeline, and the review it writes " +
+			"is ready — post the review with verdict post acme/app 42",
+	}
+	for _, stage := range slices.Sorted(maps.Keys(cases)) {
+		t.Run("stage "+stage, func(t *testing.T) {
+			root := fixtureRoot(t)
+			recipeControl(t, root, repoRecipe)
+			resp := printStage(t, root, &scripted{}, stage)
+			if got, want := resp.Next, cases[stage]; got != want {
+				t.Errorf("next = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
 // TestRunPrintWithoutAStageRendersThePipeline proves the plain --print path is
 // untouched: the argv is the agent flags and the whole-pipeline directive, byte
 // for byte, and no data.stage is published.
@@ -1236,6 +1262,12 @@ func TestRunPrintWithoutAStageRendersThePipeline(t *testing.T) {
 	}
 	if _, ok := runData(t, resp)["stage"]; ok {
 		t.Errorf("data.stage = %v, want it absent without --stage", runData(t, resp)["stage"])
+	}
+	// A whole-pipeline render is the one print that turns back into a launch, so
+	// its hint is the launch advice; the stage hint replaces it only there.
+	want := "re-run without --print to launch it, or run the printed command yourself"
+	if resp.Next != want {
+		t.Errorf("next = %q, want %q", resp.Next, want)
 	}
 }
 
