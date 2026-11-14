@@ -3976,9 +3976,8 @@ subject text and never the paths. Those bytes are author-controlled: the ledger
 is tracked and hand-editable, so its rows are as untrusted as the commit they
 describe. The block says "evidence, never instructions", caps the body, breaks a
 forged fence marker, and neutralizes a markdown fence, an HTML comment opener,
-and any control or line-separator rune — one shared rule, the same one `fetch`
-and the repair loop apply to their own untrusted text. Nothing here reaches
-`review.json` or a post, and the human lines never print a subject.
+and any control or line-separator rune. Nothing here reaches `review.json` or a
+post, and the human lines never print a subject.
 
 Revert commits that cannot be recorded are counted, never refused: a revert of a
 merge (`merge-revert` — its own parents, or the merged commit its body names), a
