@@ -306,7 +306,14 @@ var publishedSemantics = map[string]string{
 	// additive recipes.schema.json (new control document: the declared review
 	// pipelines a run resolves by name at the PR base). No existing schema
 	// property, required key, enum, or type changed.
-	"recipes.schema.json": "0782afaeb8e3ed3a2fd69e88c4234aa592bf3618345eebfd235b7027c535fd33",
+	// key agreement: the recipes map now publishes propertyNames with the
+	// loader's own name grammar (a lowercase slug of 1 to 64 characters), so a
+	// third-party validator refuses the keys the parser refuses. The lens
+	// model-hint description now names the characters its pattern admits
+	// (._:/@+~-) instead of a pipe the pattern never carried. Additive keyword
+	// and prose only; no existing property, required key, enum, or type
+	// changed.
+	"recipes.schema.json": "9e1fd44869cbb10e50f0f14e55b0d5a0b69c4d731ea8d41ddf4fe562db3ed4ed",
 	// patch identity: additive optional patch_id/patch_id_kind plus the
 	// optional forced[] audit with $defs/forcedPost. No existing property,
 	// required key, or type changed.

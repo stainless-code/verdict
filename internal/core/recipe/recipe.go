@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"math"
 	"regexp"
 	"slices"
 	"strconv"
@@ -66,10 +67,11 @@ var (
 )
 
 // Document is the published .verdict/recipes.json shape: named entries in one
-// strict, hash-pinned control document.
+// strict, hash-pinned control document. The map's keys are the recipe names, so
+// the generator publishes their grammar as propertyNames.
 type Document struct { //nolint:govet // field order is the published property order
 	SchemaVersion string           `const:"1"      json:"schema_version"`
-	Recipes       map[string]Entry `json:"recipes"`
+	Recipes       map[string]Entry `json:"recipes" propertyNames:"string"`
 }
 
 // Entry is one named pipeline declaration. BudgetUSD (absent reads as zero) and
@@ -349,20 +351,22 @@ func capAt(obj map[string]any, path, key string, lo, hi int) (int, *core.Refusal
 	return intAt(raw, path+"."+key, lo, hi)
 }
 
-// intAt requires a JSON integer in the inclusive range.
+// intAt requires a JSON number with no fractional part in the inclusive range.
+// JSON Schema reads 24.0 and 1e2 as integers, so this accepts every spelling of
+// one: the schema and the parser must accept exactly the same documents.
 func intAt(raw any, path string, lo, hi int) (int, *core.RefusalError) {
 	num, ok := raw.(json.Number)
 	if !ok {
 		return 0, refuse(CodeBad, "%s: want a number, got %s", path, strictjson.Kind(raw))
 	}
-	value, err := strconv.Atoi(num.String())
-	if err != nil {
+	value, err := strconv.ParseFloat(num.String(), floatBits)
+	if err != nil || value != math.Trunc(value) {
 		return 0, refuse(CodeBad, "%s: want an integer, got %s", path, num)
 	}
-	if value < lo || value > hi {
-		return 0, refuse(CodeBad, "%s: want an integer %d..%d, got %d", path, lo, hi, value)
+	if value < float64(lo) || value > float64(hi) {
+		return 0, refuse(CodeBad, "%s: want an integer %d..%d, got %s", path, lo, hi, num)
 	}
-	return value, nil
+	return int(value), nil
 }
 
 // floatBits is the width ParseFloat reads: a declared amount is a float64.
@@ -423,14 +427,13 @@ func objectAt(raw any, path string) (map[string]any, *core.RefusalError) {
 	return obj, nil
 }
 
-// stringAt requires a non-empty JSON string.
+// stringAt requires a JSON string. Emptiness is the schema's business, not
+// this helper's: a recipe description may be empty because the published
+// schema publishes no minLength for it.
 func stringAt(raw any, path string) (string, *core.RefusalError) {
 	text, ok := raw.(string)
 	if !ok {
 		return "", refuse(CodeBad, "%s: want a string, got %s", path, strictjson.Kind(raw))
-	}
-	if text == "" {
-		return "", refuse(CodeBad, "%s: want a non-empty string", path)
 	}
 	return text, nil
 }

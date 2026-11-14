@@ -3,6 +3,7 @@ package schemacheck
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"regexp"
 	"slices"
@@ -29,6 +30,7 @@ const (
 	keyAnyOf    = "anyOf"
 	keyNot      = "not"
 	keyProps    = "properties"
+	keyNames    = "propertyNames"
 	keyRequired = "required"
 	keyAddl     = "additionalProperties"
 	keyConst    = "const"
@@ -52,7 +54,7 @@ const (
 
 var constraintKeys = names(keyRef, keyDefs, keyType, keyFormat, keyPattern,
 	keyItems, keyMin, keyMax, keyExclMin, keyMinItems, keyMinLen, keyMaxLen, keyAnyOf, keyNot, keyProps,
-	keyRequired, keyAddl, keyConst, keyEnum)
+	keyNames, keyRequired, keyAddl, keyConst, keyEnum)
 
 var annotationKeys = names("$schema", "$id", "title", "description", "default",
 	"examples", "$comment")
@@ -71,6 +73,7 @@ func (w *walk) applyKeywords(d document, s map[string]any, value any, path strin
 	w.checkEnum(d, s, value, path)
 	w.checkRequired(d, s, value, path)
 	w.checkProperties(d, s, value, path)
+	w.checkPropertyNames(d, s, value, path)
 	w.checkAdditional(d, s, value, path)
 	w.checkItems(d, s, value, path)
 	w.checkBounds(d, s, value, path)
@@ -180,6 +183,23 @@ func (w *walk) checkProperties(d document, s map[string]any, value any, path str
 			continue
 		}
 		w.check(d, properties[key], sub, path+"."+key)
+	}
+}
+
+// checkPropertyNames validates every property NAME against the subschema, the
+// one keyword that constrains a map's keys. Names are walked in sorted order so
+// one document always yields one violation.
+func (w *walk) checkPropertyNames(d document, s map[string]any, value any, path string) {
+	object, ok := value.(map[string]any)
+	if !ok {
+		return
+	}
+	sub, has := s[keyNames]
+	if !has {
+		return
+	}
+	for _, key := range slices.Sorted(maps.Keys(object)) {
+		w.check(d, sub, key, path+"."+key)
 	}
 }
 
@@ -424,16 +444,18 @@ func jsonType(value any) string {
 	}
 }
 
-// isInteger reports whether value is an integer: JSON text without a fraction
-// or exponent, or a float with no fractional part.
+// isInteger reports whether value is an integer, as JSON Schema defines one: a
+// number whose value has no fractional part, however it is spelled. 24.0 and
+// 1e2 are integers; 1.5 is not, and a value Float64 cannot hold refuses rather
+// than rounding into the type.
 func isInteger(value any) bool {
 	switch number := value.(type) {
 	case json.Number:
-		if strings.ContainsAny(number.String(), ".eE") {
-			return false
+		if _, err := number.Int64(); err == nil {
+			return true
 		}
-		_, err := number.Int64()
-		return err == nil
+		converted, err := number.Float64()
+		return err == nil && converted == math.Trunc(converted)
 	case float64:
 		return number == math.Trunc(number)
 	case int:

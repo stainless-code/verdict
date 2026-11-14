@@ -19,6 +19,7 @@ const (
 	keyProperties           = "properties"
 	keyRequired             = "required"
 	keyAdditionalProperties = "additionalProperties"
+	keyPropertyNames        = "propertyNames"
 	keyItems                = "items"
 	keyAnyOf                = "anyOf"
 	keyNot                  = "not"
@@ -915,19 +916,45 @@ func (b *builder) mapNode(typ reflect.Type, tag reflect.StructTag) (*node, error
 	if typ.Key().Kind() != reflect.String {
 		return nil, errorf("map key must be a string, got %s", typ.Key())
 	}
+	value, err := b.mapValue(typ, tag)
+	if err != nil {
+		return nil, err
+	}
+	members := []member{member{keyType, stringNode(typeObject)}, member{keyAdditionalProperties, value}}
+	names, named, err := mapKeyNames(tag)
+	if err != nil {
+		return nil, err
+	}
+	if named {
+		members = append(members, member{keyPropertyNames, names})
+	}
+	return object(false, members...), nil
+}
+
+// mapValue builds the schema every map value validates against: a typed
+// reference, a pinned string, or the legacy open object.
+func (b *builder) mapValue(typ reflect.Type, tag reflect.StructTag) (*node, error) {
 	if ref, ok, err := b.valueRef(typ.Elem(), tag); err != nil || ok {
 		if err != nil {
 			return nil, err
 		}
-		return object(false,
-			member{keyType, stringNode(typeObject)},
-			member{keyAdditionalProperties, ref},
-		), nil
+		return ref, nil
 	}
-	return object(false,
-		member{keyType, stringNode(typeObject)},
-		member{keyAdditionalProperties, boolNode(true)},
-	), nil
+	return boolNode(true), nil
+}
+
+// mapKeyNames publishes the key type when the field names one, so a schema can
+// constrain a map's names (propertyNames); the pattern overlay supplies the
+// grammar.
+func mapKeyNames(tag reflect.StructTag) (*node, bool, error) {
+	spec := tag.Get(keyPropertyNames)
+	if spec == "" {
+		return nil, false, nil
+	}
+	if spec != typeString {
+		return nil, false, errorf("propertyNames %q wants %q", spec, typeString)
+	}
+	return object(false, member{keyType, stringNode(typeString)}), true, nil
 }
 
 // valueRef resolves a typed map value: a named struct with a $defs

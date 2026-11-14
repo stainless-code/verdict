@@ -10,9 +10,13 @@
       "const": "1"
     },
     "recipes": {
-      "description": "One named entry per pipeline. run resolves --recipe <slug> here first; a name is a map key and never a path. The key is a lowercase slug of at most 64 characters.",
+      "description": "One named entry per pipeline. run resolves --recipe <slug> here first; a name is a map key and never a path. The key is a lowercase slug of 1 to 64 characters, enforced by the propertyNames pattern published here.",
       "type": "object",
-      "additionalProperties": { "$ref": "#/$defs/recipe" }
+      "additionalProperties": { "$ref": "#/$defs/recipe" },
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+      }
     }
   },
   "required": ["schema_version", "recipes"],
@@ -61,7 +65,7 @@
           "pattern": "^[a-z0-9][a-z0-9-]*$"
         },
         "model": {
-          "description": "Model hint for this lens: at most 64 characters of letters, digits, and ._:|@+~-, so a hint can never reshape the directive. Verdict never selects a model.",
+          "description": "Model hint for this lens: 1 to 64 characters of letters, digits, and ._:/@+~- (the pattern published here), so a hint can never reshape the directive. Verdict never selects a model.",
           "type": "string",
           "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+~-]{0,63}$"
         },

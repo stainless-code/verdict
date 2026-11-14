@@ -74,6 +74,12 @@ func TestKeywordsEnforcesSubset(t *testing.T) {
 		{name: "type violated", schema: `{"type":"integer"}`, value: `"1"`, want: `want type "integer"`},
 		{name: "integer rejects a fraction", schema: `{"type":"integer"}`, value: `1.5`, want: "want type"},
 		{name: "integer accepted", schema: `{"type":"integer"}`, value: `1`},
+		// JSON Schema reads an integer as a value with no fractional part,
+		// however it is spelled: 24.0 and 1e2 are integers, and the recipe
+		// parser accepts them for the same reason.
+		{name: "integer accepts a zero fraction", schema: `{"type":"integer"}`, value: `24.0`},
+		{name: "integer accepts an exponent", schema: `{"type":"integer"}`, value: `1e2`},
+		{name: "integer rejects an exponent fraction", schema: `{"type":"integer"}`, value: `1e-1`, want: "want type"},
 		{name: "type array accepted", schema: `{"type":["integer","null"]}`, value: `null`},
 		{name: "const violated", schema: `{"const":"1"}`, value: `"2"`, want: "is not the const"},
 		{name: "enum violated", schema: `{"enum":["open","closed"]}`, value: `"maybe"`, want: "not one of"},
@@ -96,6 +102,23 @@ func TestKeywordsEnforcesSubset(t *testing.T) {
 			name:   "additionalProperties schema respected",
 			schema: `{"type":"object","properties":{"a":{}},"additionalProperties":{"type":"string"}}`,
 			value:  `{"b":"text"}`,
+		},
+		{
+			name:   "propertyNames respected",
+			schema: `{"type":"object","propertyNames":{"type":"string","pattern":"^[a-z]+$"}}`,
+			value:  `{"alpha":1,"beta":2}`,
+		},
+		{
+			name:   "propertyNames violated",
+			schema: `{"type":"object","propertyNames":{"type":"string","pattern":"^[a-z]+$"}}`,
+			value:  `{"Alpha":1}`,
+			want:   `$.Alpha: "Alpha" does not match pattern "^[a-z]+$"`,
+		},
+		{
+			name:   "propertyNames must be an object",
+			schema: `{"type":"object","propertyNames":"x"}`,
+			value:  `{"a":1}`,
+			want:   "$.a: schema node is not an object",
 		},
 		{
 			name:   "nested property path",

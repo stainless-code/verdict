@@ -6,11 +6,11 @@
 //
 // The subset is: $ref (same-file "#/..." pointer or sibling-file
 // "name.json#/..." pointer), type (single name or array), const, enum,
-// properties, required, items (single-schema form), additionalProperties (bool
-// or schema), minimum, maximum, exclusiveMinimum, minItems, minLength,
-// maxLength, pattern, not, anyOf, format (date-time), $defs. Annotation
-// keywords
-// ($schema, $id, title, description, default, examples, $comment) are ignored.
+// properties, propertyNames, required, items (single-schema form),
+// additionalProperties (bool or schema), minimum, maximum, exclusiveMinimum,
+// minItems, minLength, maxLength, pattern, not, anyOf, format (date-time),
+// $defs. Annotation keywords ($schema, $id, title, description, default,
+// examples, $comment) are ignored.
 // Any other keyword fails loudly, so a schema that outgrows the checker
 // breaks the build instead of silently passing, and a $ref this checker
 // cannot resolve is an error rather than an accept.
