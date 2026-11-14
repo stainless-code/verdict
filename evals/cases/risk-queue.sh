@@ -149,9 +149,9 @@ assert_json_field "a claimed-high clean bundle scores zero" "0" '.data.rows[2].s
 assert_json_field "an unreviewed bundle reads the missing-coverage floor" "medium" \
   '.data.rows[3].reported'
 assert_json_field "receipt reasons stay in the published vocabulary" "true" \
-  'all(.data.rows[].receipt_reasons[]; IN("missing-claim","stale-head","missing-coverage","unreadable","unanchored","deferred"))'
+  'all(.data.rows[].receipt_reasons[]; IN("missing-claim","missing-coverage","unreviewed-files","stale-head"))'
 assert_json_field "the unmeasured reach is warned with its count" "1" \
-  '[.warnings[] | select(test("^risk: 7 bundle\\(s\\) carry no impact.json"))] | length'
+  '[.warnings[] | select(test("^risk: 7 bundle\\(s\\) carry no usable impact.json"))] | length'
 assert_json_field "the follow-up backfills a local bundle through fetch-local" \
   "verdict fetch-local acme/app local-critical --index origin/main" '.next'
 after="$(tree_sum)"
@@ -248,5 +248,79 @@ run_review risk
 assert_exit "a bare risk returns exit 2" 2
 assert_file_grep "the usage lists the queue's flags" "$EVAL_ERR" \
   '^  risk <owner/repo> \[--status open\|all\] \[--limit <n, default 50, max 200>\] \[--json\]$'
+
+# 8) The band decides before the score: a critical bundle at 28 outranks a low
+# bundle at 41. Equal band and score fall back to the bundle name, and the two
+# twins are created out of lexical order so the run cannot pass by insertion.
+eval_mk_bundle local-noreach
+printf '%s\n' "{
+  \"schema_version\": \"1\",
+  \"body\": \"> [!IMPORTANT]\\n> The changed line drops the saved value.\",
+  \"approved\": false,
+  \"coverage\": [{\"file\": \"notes.txt\", \"ranges\": \"all\"}],
+  \"comments\": [
+    {
+      \"path\": \"notes.txt\",
+      \"line\": 2,
+      \"side\": \"RIGHT\",
+      \"body\": \"Critical logic error in changed line requiring immediate fix.\",
+      \"rigor\": \"walked\",
+      \"severity\": \"critical\",
+      \"category\": \"security\"
+    }
+  ]
+}" | eval_write_review local-noreach
+run_review record acme/app local-noreach --json
+assert_exit "record the unindexed critical bundle" 0
+mk_claimed local-low-rich low
+printf '%s\n' '{"symbols":{"count":26},"callers":{"count":0}}' >"$STATE/local-low-rich/impact.json"
+cat >"$STATE/local-low-rich/full.diff" <<'DIFF'
+diff --git a/notes.txt b/notes.txt
+--- a/notes.txt
++++ b/notes.txt
+@@ -1,14 +1,14 @@
+ top
+-old 1
++new 1
+-old 2
++new 2
+-old 3
++new 3
+-old 4
++new 4
+-old 5
++new 5
+-old 6
++new 6
+-old 7
++new 7
+-old 8
++new 8
+-old 9
++new 9
+-old 10
++new 10
+-old 11
++new 11
+-old 12
++new 12
+ bottom
+DIFF
+mk_claimed local-zeta-clean low
+mk_claimed local-alpha-clean low
+run_review risk acme/app --json
+assert_exit "the queue ranks the extended store" 0
+assert_json_field "eleven live bundles" "11" '.data.bundles'
+assert_json_field "the order is band, then score, then bundle name" \
+  "local-critical local-noreach local-important local-high 13 18 local-unclaimed local-low-rich local-low local-alpha-clean local-zeta-clean" \
+  '[.data.rows[].bundle] | join(" ")'
+assert_json_field "the critical row scores below the low row it outranks" "28 41" \
+  '[.data.rows[1].score.value, .data.rows[7].score.value] | join(" ")'
+assert_json_field "the lower-scored critical band still ranks ahead" "critical low" \
+  '[.data.rows[1].reported, .data.rows[7].reported] | join(" ")'
+assert_json_field "equal band and score fall back to the bundle name" "true" \
+  '([.data.rows[].bundle] | index("local-alpha-clean")) < ([.data.rows[].bundle] | index("local-zeta-clean"))'
+assert_json_field "the unindexed bundles are counted, not silently zeroed" "1" \
+  '[.warnings[] | select(test("^risk: 3 bundle\\(s\\) carry no usable impact.json"))] | length'
 
 eval_end

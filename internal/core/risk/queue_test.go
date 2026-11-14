@@ -8,6 +8,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/stainless-code/verdict/internal/core"
 )
 
 const (
@@ -89,6 +92,54 @@ func TestQueueOrdersByBandThenScoreThenBundle(t *testing.T) {
 	}
 	if rank := resp.Data.Rows[0].Rank; rank != 1 {
 		t.Errorf("top rank = %d, want 1", rank)
+	}
+}
+
+// TestQueueBandOutranksScore pins the band ahead of the score in the queue's
+// order: a critical bundle at 40 outranks a low bundle at 41, whose measured
+// evidence happens to be richer. A score-first comparator flips this pair.
+func TestQueueBandOutranksScore(t *testing.T) {
+	t.Chdir(t.TempDir())
+	queueBundle(t, "6", map[string]string{"PR.json": queuePR("OPEN"), "findings.json": queueCritical})
+	queueBundle(t, "8", map[string]string{
+		"PR.json":       queuePR("OPEN"),
+		"findings.json": queueClean,
+		"record.json":   queueLowRecord,
+		"full.diff":     queueRichDiff,
+		"impact.json":   `{"symbols":{"count":26},"callers":{"count":0}}`,
+	})
+
+	resp := queueRun(t, QueueStatusOpen, 50)
+	if got, want := rowBundles(resp.Data.Rows), []string{"6", "8"}; !slices.Equal(got, want) {
+		t.Fatalf("order = %v, want %v: the band decides before the score", got, want)
+	}
+	critical, low := resp.Data.Rows[0], resp.Data.Rows[1]
+	if critical.Rank != 1 {
+		t.Fatalf("critical rank = %d, want 1", critical.Rank)
+	}
+	if critical.Reported != LevelCritical || critical.Score.Value != 40 {
+		t.Fatalf("critical row = %q/%d, want critical/40", critical.Reported, critical.Score.Value)
+	}
+	if low.Reported != LevelLow || low.Score.Value != 41 {
+		t.Fatalf("low row = %q/%d, want low/41", low.Reported, low.Score.Value)
+	}
+	if critical.Score.Value >= low.Score.Value {
+		t.Fatalf("fixture is not an inverse pair: %d is not below %d", critical.Score.Value, low.Score.Value)
+	}
+}
+
+// TestSortRowsTieBreaksOnBundleName exercises the comparator's last key
+// directly: [os.ReadDir] already hands the queue lexical order, so only a
+// shuffled slice can fail when the name tie-break is removed.
+func TestSortRowsTieBreaksOnBundleName(t *testing.T) {
+	rows := []QueueRow{
+		{Bundle: "9", Reported: LevelLow},
+		{Bundle: "7", Reported: LevelLow},
+		{Bundle: "8", Reported: LevelLow, Score: core.RiskScore{Value: 1}},
+	}
+	sortRows(rows)
+	if got, want := rowBundles(rows), []string{"8", "7", "9"}; !slices.Equal(got, want) {
+		t.Fatalf("order = %v, want %v: the score breaks first, then the bundle name", got, want)
 	}
 }
 
@@ -247,7 +298,7 @@ func TestQueueWarnsMissingImpact(t *testing.T) {
 	queueBundle(t, "62", map[string]string{"PR.json": queuePR("OPEN"), "findings.json": queueClean})
 
 	resp := queueRun(t, QueueStatusOpen, 50)
-	want := "risk: 2 bundle(s) carry no impact.json (reach unmeasured; backfill with verdict fetch acme/app <pr> --index origin/main, or fetch-local for a local bundle)"
+	want := "risk: 2 bundle(s) carry no usable impact.json (reach unmeasured; backfill with verdict fetch acme/app <pr> --index origin/main, or fetch-local for a local bundle)"
 	if !slices.Contains(resp.Warnings, want) {
 		t.Errorf("warnings = %v, want %q", resp.Warnings, want)
 	}
@@ -373,6 +424,81 @@ func TestQueueTwiceIsIdentical(t *testing.T) {
 	}
 }
 
+// TestQueueSkipsUnparsableFindingsStore proves a store whose findings.json is
+// not a findings array warns, skips its bundle, and carries the scan-cut
+// receipt: an unreadable store never reads as a clean bundle.
+func TestQueueSkipsUnparsableFindingsStore(t *testing.T) {
+	t.Chdir(t.TempDir())
+	queueBundle(t, "71", map[string]string{"PR.json": queuePR("OPEN"), "findings.json": queueClean})
+	queueBundle(t, "72", map[string]string{"PR.json": queuePR("OPEN"), "findings.json": `{"not":"an array"}`})
+	queueBundle(t, "73", map[string]string{"PR.json": queuePR("OPEN"), "findings.json": `[{"sig":`})
+
+	resp := queueRun(t, QueueStatusOpen, 50)
+	if got, want := rowBundles(resp.Data.Rows), []string{"71"}; !slices.Equal(got, want) {
+		t.Fatalf("rows = %v, want %v: an unparsable store is skipped, never clean", got, want)
+	}
+	if resp.Data.Bundles != 1 {
+		t.Errorf("bundles = %d, want 1", resp.Data.Bundles)
+	}
+	for _, name := range []string{"72", "73"} {
+		want := skipWarn + name + " (findings.json is not a findings array)"
+		if !slices.Contains(resp.Warnings, want) {
+			t.Errorf("warnings = %v, want %q", resp.Warnings, want)
+		}
+	}
+	receipt := resp.Data.Receipt
+	if receipt == nil || !receipt.Truncated || receipt.TruncationReason != "scan_cap" ||
+		receipt.Returned != 1 || receipt.Total != nil {
+		t.Errorf("receipt = %+v, want scan_cap with returned=1 and an unknown total", receipt)
+	}
+}
+
+// TestQueueKeepsScanCapUnderLimit proves a cut store keeps its scan signal in
+// the receipt when the row cap also applies: the response receipt names the
+// cut, and the warning still names the store it skipped.
+func TestQueueKeepsScanCapUnderLimit(t *testing.T) {
+	t.Chdir(t.TempDir())
+	queueBundle(t, "81", map[string]string{"PR.json": queuePR("OPEN"), "findings.json": queueClean})
+	queueBundle(t, "82", map[string]string{"PR.json": queuePR("OPEN"), "findings.json": queueClean})
+	queueBundle(t, "83", map[string]string{"PR.json": queuePR("OPEN"), "findings.json": `{"not":"an array"}`})
+
+	resp := queueRun(t, QueueStatusOpen, 1)
+	receipt := resp.Data.Receipt
+	if receipt == nil || !receipt.Truncated || receipt.TruncationReason != "scan_cap" ||
+		receipt.Returned != 1 || receipt.Total != nil {
+		t.Fatalf("receipt = %+v, want scan_cap with returned=1 and an unknown total", receipt)
+	}
+	if want := skipWarn + "83 (findings.json is not a findings array)"; !slices.Contains(resp.Warnings, want) {
+		t.Errorf("warnings = %v, want %q", resp.Warnings, want)
+	}
+}
+
+// TestQueueReadsTheClockOnce proves the envelope's at and data.generated_at are
+// one reading: two calls let a run straddle a second between the two fields.
+func TestQueueReadsTheClockOnce(t *testing.T) {
+	t.Chdir(t.TempDir())
+	queueBundle(t, "91", map[string]string{"PR.json": queuePR("OPEN"), "findings.json": queueClean})
+	start := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	reads := 0
+	rt := core.Runtime{Now: func() time.Time {
+		reads++
+		return start.Add(time.Duration(reads) * time.Hour)
+	}}
+	req := new(QueueRequest)
+	req.Runtime = &rt
+	req.Repo = "acme/app"
+	resp, ref := Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("risk refusal: %v", ref)
+	}
+	if resp.At != resp.Data.GeneratedAt {
+		t.Errorf("at = %q, generated_at = %q, want one clock reading", resp.At, resp.Data.GeneratedAt)
+	}
+	if reads != 1 {
+		t.Errorf("clock read %d times, want 1", reads)
+	}
+}
+
 // queueLowRecord is a recorded bundle with a matching low claim and complete
 // coverage, so the queue reads it as reported=low.
 const queueLowRecord = `{"head":"` + queueHeadA + `","risk":{"level":"low",` +
@@ -388,6 +514,40 @@ const queueDiff = `diff --git a/notes.txt b/notes.txt
  top
 -old line
 +new line
+ bottom
+`
+
+// queueRichDiff is a twelve-line replacement, so churn measures 26 lines and
+// earns the 25-point bucket.
+const queueRichDiff = `diff --git a/notes.txt b/notes.txt
+--- a/notes.txt
++++ b/notes.txt
+@@ -1,14 +1,14 @@
+ top
+-old 1
++new 1
+-old 2
++new 2
+-old 3
++new 3
+-old 4
++new 4
+-old 5
++new 5
+-old 6
++new 6
+-old 7
++new 7
+-old 8
++new 8
+-old 9
++new 9
+-old 10
++new 10
+-old 11
++new 11
+-old 12
++new 12
  bottom
 `
 

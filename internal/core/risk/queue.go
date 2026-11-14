@@ -48,7 +48,7 @@ const skipWarn = "risk skips "
 // noImpactWarn names the bundles whose reach went unmeasured and the two
 // index runs that measure it: a provider PR re-fetches, a local bundle
 // re-captures.
-const noImpactWarn = "risk: %d bundle(s) carry no impact.json (reach unmeasured; backfill with " +
+const noImpactWarn = "risk: %d bundle(s) carry no usable impact.json (reach unmeasured; backfill with " +
 	"verdict fetch %s <pr> --index origin/main, or fetch-local for a local bundle)"
 
 // triageOrder is the band order the queue sorts by, ascending: low, unknown,
@@ -177,31 +177,34 @@ func Run(ctx context.Context, req *QueueRequest) (*QueueResponse, *core.RefusalE
 		return nil, ref
 	}
 	st := &scan{req: req, status: status, warnings: append([]string{}, req.Warnings...)}
+	now := req.TimeUTC()
 	rows := st.collect()
 	for i := range rows {
 		rows[i].Rank = i + 1
 	}
 	total := len(rows)
 	shown := rows
-	var receipt *core.Truncation
 	if total > limit {
 		shown = rows[:limit]
+	}
+	// A cut store outranks the row cap: the queue cannot count what it could not
+	// read, so the scan signal stays in the receipt even when --limit also bit.
+	receipt := core.ScanCut(st.cut, len(shown))
+	if receipt == nil && total > limit {
 		receipt = core.ResultCut("response_cap", len(shown), &total, nil)
-	} else if st.cut {
-		receipt = core.ScanCut(true, len(shown))
 	}
 	bands, needsHuman := tally(rows)
 	next := st.next(req.Repo, shown, st.skipped)
 	st.emitHuman(req.Repo, shown, bands, needsHuman, total, total-len(shown))
 	return &QueueResponse{
 		Repo:     req.Repo,
-		At:       req.TimeUTC(),
+		At:       now,
 		Next:     next,
 		Warnings: st.warnings,
 		Human:    st.lines,
 		Data: &QueueData{
 			Receipt:     receipt,
-			GeneratedAt: req.TimeUTC(),
+			GeneratedAt: now,
 			Bundles:     total,
 			NeedsHuman:  needsHuman,
 			ByBand:      bands,
