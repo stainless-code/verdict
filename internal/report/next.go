@@ -164,7 +164,7 @@ func nextStoreError(r *cli.Runner, resp *core.NextResponse) int {
 	if ref == nil {
 		return r.Refuse(&cli.RefusalError{Code: "report-failed", Message: "next: report produced no output"})
 	}
-	env := core.RenderEnvelope("report", r.Repo, r.Pr, resp.At, "",
+	env := core.RenderEnvelope(nextVerb, r.Repo, r.Pr, resp.At, "",
 		ref.Warnings, nil, &core.SchemaError{
 			Code:    ref.Code,
 			Message: ref.Message + "\n" + cli.HintFor(ref.Code),

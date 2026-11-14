@@ -167,6 +167,13 @@ assert_json_field "the absent index is named once" "true" \
 assert_json_field "the absent-index hint names the exact build command" \
   "run verdict index build --at HEAD, then re-run" '.next'
 
+# The human stream is the default surface, and it carries no next: line, so the
+# build command has to ride on the absent-index line itself.
+run_review index blast-radius --paths a/ab.go
+assert_exit "human blast-radius without an index exits 0" 0
+assert_file_grep "the human line names the build command" "$EVAL_OUT" \
+  '^index: no index for HEAD \(tree [0-9a-f]{40}\): symbol, caller, and test lists are unmeasured — run verdict index build --at HEAD$' -E
+
 run_review index blast-radius --paths a/ab.go --limit 0 --json
 assert_exit "an out-of-range limit exits 2" 2
 run_review index blast-radius --json

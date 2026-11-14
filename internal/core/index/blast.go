@@ -38,7 +38,7 @@ const (
 	blastPartnerHead = "index: %d co-change pair(s) over %d partner file(s)"
 	blastHunkless    = "» index: %s changed with no line hunks; every declaration in the new path is a changed symbol"
 	blastOwnerHead   = "index: ownership for %d changed path(s)"
-	blastIndexAbsent = "index: no index for %s: symbol, caller, and test lists are unmeasured"
+	blastIndexAbsent = "index: no index for %s: symbol, caller, and test lists are unmeasured — run %s"
 )
 
 // BlastInput is the blast-radius query input: the PR slug or the resolved
@@ -833,7 +833,7 @@ func firstRows[T any](rows []T, limit int) ([]T, int) {
 // blastHuman renders the measured lists, one compact block per list.
 func (st *state) blastHuman(blast *Blast, key treeRef) {
 	if !blast.Indexed {
-		st.line(fmt.Sprintf(blastIndexAbsent, key.label()))
+		st.line(fmt.Sprintf(blastIndexAbsent, key.label(), key.buildCommand()))
 	} else {
 		st.blastSymbolLines(blast, key.tree)
 		st.blastCallerLines(blast)

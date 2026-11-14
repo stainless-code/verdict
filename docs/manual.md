@@ -3634,8 +3634,10 @@ tree with no stored index is not a refusal: `data.index` is absent and the
 symbol, caller, and test counts are `null`, never 0, because an unmeasured list
 is not an empty one. One warning names that tree the way the `missing-index`
 refusal does — the revision the operator typed beside the tree it resolved to —
-and the `next:` step is the exact `verdict index build --at <ref>` (or
-`--from <dir>`, for a directory hand-off) that answers for it. `co_changed` and
+and both outputs carry the exact build command that answers for it: the human
+line ends ` — run verdict index build --at <ref>` (or `--from <dir>`, for a
+directory hand-off), and `next:` holds the same command for JSON, since human
+mode prints no `next:` line of its own. `co_changed` and
 `owners` are measured from git either way.
 
 Callers walk from every changed symbol to depth 2: depth 1 is a direct caller,

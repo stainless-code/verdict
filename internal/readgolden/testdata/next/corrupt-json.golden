@@ -2,7 +2,7 @@ exit: 1
 --- stdout ---
 {
   "schema_version": "1",
-  "verb": "report",
+  "verb": "next",
   "repo": "acme/app",
   "pr": 5101,
   "at": "0000-00-00T00:00:00Z",

@@ -379,7 +379,8 @@ func TestBlastMissingIndexNamesTheBuildCommand(t *testing.T) {
 	label := "no index for HEAD (tree " + f.run("", "rev-parse", "HEAD^{tree}") + ")"
 	t.Run("revision", func(t *testing.T) {
 		resp := blastRun(t, f, func(r *Request) { r.Paths = []string{"a/ab.go"} })
-		assertAbsentIndex(t, resp, label, "run verdict index build --at HEAD, then re-run")
+		assertAbsentIndex(t, resp, label, "verdict index build --at HEAD",
+			"run verdict index build --at HEAD, then re-run")
 	})
 	// The hand-off names the checkout as given, so this leg hands it over as
 	// `.`: a temp dir spelling (a drive letter and backslashes on Windows) needs
@@ -391,18 +392,19 @@ func TestBlastMissingIndexNamesTheBuildCommand(t *testing.T) {
 			r.From = "."
 			r.Paths = []string{"a/ab.go"}
 		})
-		assertAbsentIndex(t, resp, label, "run verdict index build --from ., then re-run")
+		assertAbsentIndex(t, resp, label, "verdict index build --from .",
+			"run verdict index build --from ., then re-run")
 	})
 }
 
 // assertAbsentIndex pins the three surfaces an absent index reaches: the
 // warning, the human line, and the next step.
-func assertAbsentIndex(t *testing.T, resp *Response, label, next string) {
+func assertAbsentIndex(t *testing.T, resp *Response, label, command, next string) {
 	t.Helper()
 	if want := "» index: " + label + ": symbol, caller, and test counts are unmeasured"; !slices.Contains(resp.Warnings, want) {
 		t.Errorf("warnings = %q; want %q", resp.Warnings, want)
 	}
-	if want := "index: " + label + ": symbol, caller, and test lists are unmeasured"; !slices.Contains(resp.Human, want) {
+	if want := "index: " + label + ": symbol, caller, and test lists are unmeasured — run " + command; !slices.Contains(resp.Human, want) {
 		t.Errorf("human = %q; want %q", resp.Human, want)
 	}
 	if resp.Next != next {
