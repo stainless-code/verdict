@@ -31,6 +31,10 @@ type VerifyRequest struct { //nolint:govet // field grouping documents the reque
 	// private /tmp. A host that cannot enforce it refuses
 	// sandbox-unavailable instead of running unwrapped.
 	Sandbox bool
+	// EnvAllowlist explicitly permits additional child environment variable
+	// names (even if secret-named) on top of the default allowlist and any
+	// base-snapshotted .verdict/verify-env entries.
+	EnvAllowlist []string
 }
 
 // ValidationReceipt is the tool-produced deep-validation record for one

@@ -5,12 +5,12 @@ import (
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
-	recordcore "github.com/stainless-code/verdict/internal/core/record"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 func seedControls(t *testing.T, bundleDir string) {
 	t.Helper()
-	base := recordcore.BundleBase(bundleDir, nil)
+	base := readcommon.BundleBase(bundleDir, nil)
 	if base == "" {
 		return
 	}

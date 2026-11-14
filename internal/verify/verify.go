@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
@@ -39,7 +40,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if code, done := r.Canceled(ctx, "verify"); done {
 		return code
 	}
-	resp, ref := verifycore.Run(ctx, verifyRequest(r, req, flags))
+	resp, ref := verifycore.Run(ctx, verifyRequest(r, req, &flags))
 	if ref != nil {
 		return r.RefuseTyped(ref)
 	}
@@ -56,7 +57,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 // environ snapshot for the child and redaction, the production watchdog,
 // the progress observer), the raw timeout string, and the JSON-mode flag
 // for the child's NO_COLOR default.
-func verifyRequest(r *cli.Runner, req Request, flags verifyFlags) *core.VerifyRequest {
+func verifyRequest(r *cli.Runner, req Request, flags *verifyFlags) *core.VerifyRequest {
 	root := req.Root
 	read := core.ReadRequest{
 		Runtime: &core.Runtime{
@@ -66,14 +67,15 @@ func verifyRequest(r *cli.Runner, req Request, flags verifyFlags) *core.VerifyRe
 		Repo: req.Repo, Pr: req.Pr, Root: &root, RepoRoot: req.RepoRoot,
 	}
 	return &core.VerifyRequest{
-		ReadRequest: read,
-		TimeoutRaw:  flags.timeout,
-		Group:       flags.group,
-		Command:     flags.command,
-		Sandbox:     flags.sandbox,
-		Environ:     os.Environ(),
-		JSONMode:    r.JSONMode,
-		Warnings:    append([]string{}, r.Warnings...),
+		ReadRequest:  read,
+		TimeoutRaw:   flags.timeout,
+		Group:        flags.group,
+		Command:      flags.command,
+		Sandbox:      flags.sandbox,
+		EnvAllowlist: flags.envAllowlist,
+		Environ:      os.Environ(),
+		JSONMode:     r.JSONMode,
+		Warnings:     append([]string{}, r.Warnings...),
 	}
 }
 
@@ -84,10 +86,11 @@ const defaultTimeoutS = "300"
 // deep group-validation pair: the service enforces both-or-neither, so the
 // adapter never guesses a command and never fabricates a patch.
 type verifyFlags struct {
-	timeout string
-	group   string
-	command string
-	sandbox bool
+	timeout      string
+	group        string
+	command      string
+	envAllowlist []string
+	sandbox      bool
 }
 
 // parseFlags strips verify's flags, reporting unknown ones. A value flag with
@@ -119,9 +122,17 @@ func parseToken(r *cli.Runner, args []string, i int, flags *verifyFlags) (int, i
 	case "--sandbox":
 		flags.sandbox = true
 		return i, 0, false
+	case "--env-allowlist":
+		v, next, u := cli.FlagValue(args, i, a, "<name[,name...]>")
+		if u != nil {
+			return i, r.ReportUsage(u), true
+		}
+		flags.envAllowlist = append(flags.envAllowlist, strings.Split(v, ",")...)
+		return next, 0, false
 	}
 	return i, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
-		"unknown flag '%s' for verify (want --timeout <secs>, --group <stableID>, --command <cmd>, --sandbox, --json)", a)}), true
+		"unknown flag '%s' for verify (want --timeout <secs>, --group <stableID>,"+
+			" --command <cmd>, --sandbox, --env-allowlist <names>, --json)", a)}), true
 }
 
 // takeValue consumes one value flag. An empty explicit timeout keeps the

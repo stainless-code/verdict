@@ -91,6 +91,7 @@ func Run(ctx context.Context, req *core.VerifyRequest) (*core.VerifyResponse, *c
 type state struct {
 	req      *core.VerifyRequest
 	warnings []string
+	env      []string
 }
 
 func (st *state) withWarnings(ref *core.RefusalError) *core.RefusalError {
@@ -122,6 +123,9 @@ func (st *state) execute(ctx context.Context, dir, now, vcmd string, timeout int
 			Code:    codeVerifyFailed,
 			Message: "verify failed: no commander in runtime",
 		})
+	}
+	if ref := st.prepareEnv(dir, readcommon.BundleBase(dir, nil)); ref != nil {
+		return nil, st.withWarnings(ref)
 	}
 	if !coreexec.WatchdogEnforced() {
 		st.warn("no ps(1) — timeout unenforced for this run")
@@ -220,16 +224,7 @@ func (st *state) response(dir, now string, exit int, timedOut bool, tail string)
 }
 
 func (st *state) childEnv() []string {
-	env := st.req.Environ
-	if !st.req.JSONMode {
-		return env
-	}
-	for _, kv := range env {
-		if strings.HasPrefix(kv, "NO_COLOR=") {
-			return env
-		}
-	}
-	return append(env, "NO_COLOR=1")
+	return st.env
 }
 
 // readVerifyCmd reads patch.json's verifyCmd with `jq -r` semantics: a

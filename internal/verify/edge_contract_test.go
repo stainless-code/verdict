@@ -203,14 +203,14 @@ func TestVerifyContractTruncatedOutput(t *testing.T) {
 	}
 }
 
-// TestVerifyContractRedaction pins secret redaction: the recorded tail
-// never carries the known secret value, while .verify.out keeps raw
-// output for debugging.
+// TestVerifyContractRedaction pins secret redaction: when an operator
+// opts a secret-named variable into the child environment, the recorded tail
+// still never carries the secret value, while .verify.out keeps raw output.
 func TestVerifyContractRedaction(t *testing.T) {
 	dir := t.TempDir()
 	edgePatch(t, dir, `printf '%s' "$EVAL_PROBE_TOKEN"`)
 	env := map[string]string{"EVAL_PROBE_TOKEN": "supersecretvalue123"}
-	code, _ := edgeRun(t, dir, t.TempDir(), env, true, "--json", "--timeout", "10")
+	code, _ := edgeRun(t, dir, t.TempDir(), env, true, "--json", "--timeout", "10", "--env-allowlist", "EVAL_PROBE_TOKEN")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0", code)
 	}
@@ -228,6 +228,29 @@ func TestVerifyContractRedaction(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join(dir, ".verdict", "state", "5201", ".verify.out"))
 	if err != nil || !strings.Contains(string(raw), "supersecretvalue123") {
 		t.Fatalf(".verify.out = %q, want raw output", raw)
+	}
+}
+
+func TestVerifyContractDefaultDenyEnv(t *testing.T) {
+	dir := t.TempDir()
+	edgePatch(t, dir, `printf 'tok=%s custom=%s' "$EVAL_PROBE_TOKEN" "$EVAL_CUSTOM_VAR"`)
+	env := map[string]string{
+		"EVAL_PROBE_TOKEN": "supersecretvalue123",
+		"EVAL_CUSTOM_VAR":  "customvalue456",
+	}
+	code, stdout := edgeRun(t, dir, t.TempDir(), env, true, "--json", "--timeout", "10")
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0", code)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, ".verdict", "state", "5201", ".verify.out"))
+	if err != nil || string(raw) != "tok= custom=" {
+		t.Fatalf(".verify.out = %q, want \"tok= custom=\"", raw)
+	}
+	if !strings.Contains(stdout, "EVAL_CUSTOM_VAR") || !strings.Contains(stdout, "EVAL_PROBE_TOKEN") {
+		t.Fatalf("warnings missing dropped variable names:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "supersecretvalue123") || strings.Contains(stdout, "customvalue456") {
+		t.Fatalf("stdout leaked dropped variable values:\n%s", stdout)
 	}
 }
 

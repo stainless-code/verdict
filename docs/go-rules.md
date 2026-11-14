@@ -47,7 +47,7 @@ this repo, and the repo files stay the truth for what is gated:
 - Kill process trees (pgid/Job Objects), never just the direct child (GO-EXEC-01). — partly: `internal/core/exec` (`setGroup`/`killGroup`, Windows Job objects) with tests.
 - `exec.CommandContext` + `WaitDelay`; timeouts read from `ctx.Err()`, not `err` (GO-EXEC-02). — partly: `internal/core/exec` sets `WaitDelay` on the watchdog; review-only elsewhere.
 - No shell for agent-supplied commands; argv only (GO-EXEC-03). — partly: every command verdict issues is argv. The one exception is by design: `verify` runs the agent's own `verifyCmd` through `bash -c`. Analyzer candidate, map §2.
-- Scrub child env (allowlist); cap output ~1 MiB/stream; `ExitCode()` for status (GO-EXEC-04/05). — partly: capture caps and `ExitCode` in `internal/core/exec` (`VerifyOutputCap` 1 MiB); `internal/testenv` scrubs test children. `gh`/`git` inherit on purpose — see `SECURITY.md` § Child process environment.
+- Scrub child env (allowlist); cap output ~1 MiB/stream; `ExitCode()` for status (GO-EXEC-04/05). — partly: `internal/core/verify` scrubs the `verify` child environment against a default-deny allowlist and drops `envsecret.IsSecret` names unless opted in via `--env-allowlist` or base-snapshotted `.verdict/verify-env`; capture caps and `ExitCode` live in `internal/core/exec` (`VerifyOutputCap` 1 MiB); `internal/testenv` scrubs test children. `gh`/`git` inherit on purpose — see `SECURITY.md` § Child process environment.
 - Strict capped JSON entry (`DisallowUnknownFields`, `UseNumber`, size caps) (GO-JSON-01). — partly: `test` reject-cases; analyzer candidate, map §2.
 - Preserve unknown store fields via `RawMessage` maps, never struct round-trips (GO-JSON-02). — partly: byte-exact store goldens in `internal/record`.
 - No `encoding/json/v2` or `jsontext` imports until stable (GO-JSON-05). — enforced: `lint:depguard`.
@@ -114,7 +114,7 @@ part of adopting these rules.
 Recorded here so a later reader does not "fix" them by accident. Each is a
 decision with a reason, not an oversight.
 
-- **GO-EXEC-03/04 (shell, env):** `verify` executes the agent's own command through `bash -c` with the environment snapshot the caller handed it, and the fixed `gh`/`git` argv inherits the developer's environment. Both are the product contract; see `SECURITY.md` § Child process environment.
+- **GO-EXEC-03/04 (shell, env):** `verify` executes the agent's own command through `bash -c` under a default-deny environment allowlist (dropping `envsecret.IsSecret` names unless explicitly opted in via `--env-allowlist` or base-snapshotted `.verdict/verify-env`), while the fixed `gh`/`git` argv inherits the developer's environment. Both are the product contract; see `SECURITY.md` § Child process environment.
 - **GO-LOG-01 (slog):** the CLI writes frozen `warn:`/`error:` lines and one JSON envelope instead of `slog` records, because byte-identical stdout/stderr is the output contract.
 - **GO-SEC-01 (os.Root):** bundle paths are operator-supplied (G304 excluded in `.golangci.yml`), not agent-supplied.
 - **GO-CRYPTO-02 (SHA-1):** `sig_version "1"` identifiers stay on SHA-1, confined to `internal/sig` by a scoped `depguard` exception; FIPS-only is documented as unsupported rather than tested.

@@ -238,6 +238,30 @@ func TestStrictInputSources(t *testing.T) {
 	}
 }
 
+// TestVerifyEnvSnapshotsBaseOnly proves .verdict/verify-env participates in
+// base snapshotting: base entries survive while PR head edits are ignored.
+func TestVerifyEnvSnapshotsBaseOnly(t *testing.T) {
+	base := baseRepo(t, map[string]string{".verdict/verify-env": "BASE_ONLY\n"})
+	writeAll(t, map[string]string{".verdict/verify-env": "HEAD_SECRET_TOKEN\n"})
+	snap, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: ".verdict/state/15", BaseSHA: base})
+	if ref != nil {
+		t.Fatalf("Resolve: %v", ref)
+	}
+	got, ok := snap.ReadFile(VerifyEnvPath)
+	if !ok || string(got) != "BASE_ONLY\n" {
+		t.Fatalf("snap verify-env = %q (ok=%v), want %q", got, ok, "BASE_ONLY\n")
+	}
+	headOnly := baseRepo(t, map[string]string{".verdict/config.json": `{"schema_version":"1"}`})
+	writeAll(t, map[string]string{".verdict/verify-env": "HEAD_ADDED\n"})
+	snap, ref = Resolve(t.Context(), cmdr, &Request{BundleDir: ".verdict/state/16", BaseSHA: headOnly})
+	if ref != nil {
+		t.Fatalf("Resolve head-only: %v", ref)
+	}
+	if snap.Has(VerifyEnvPath) {
+		t.Error("head-only .verdict/verify-env leaked into snapshot")
+	}
+}
+
 func TestExclusionControlsReadBase(t *testing.T) {
 	base := baseRepo(t, map[string]string{".verdict/ignore": "vendor/**\n", ".gitattributes": "*.pb.go linguist-generated\n"})
 	writeAll(t, map[string]string{".verdict/ignore": "**\n", ".gitattributes": "* linguist-generated\n"})
