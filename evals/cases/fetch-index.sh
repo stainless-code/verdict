@@ -142,4 +142,15 @@ else
   good "a refused hand-off writes no impact.json"
 fi
 
+rm -rf "$EVAL_SANDBOX/.verdict/index"
+run_review fetch-local acme/app impact-no-index --index HEAD
+assert_exit "missing index refuses" 1
+assert_stream_nogrep "missing index prints no done line" "$EVAL_OUT" '^done:' "-E"
+assert_stream_nogrep "missing index prints no next line" "$EVAL_OUT" '^next:' "-E"
+assert_file_grep "missing index names no index for tree" "$EVAL_ERR" "no index for tree "
+
+run_review fetch-local acme/app impact-no-index-json --index HEAD --json
+assert_exit "missing index --json refuses" 1
+assert_refusal "missing index refuses typed" "missing-index"
+
 eval_end
