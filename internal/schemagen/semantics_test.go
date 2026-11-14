@@ -318,7 +318,10 @@ var publishedSemantics = map[string]string{
 	// past, so one declared recipe can no longer grow the directive and argv
 	// without limit. Constraints on existing properties; no property, required
 	// key, enum, or type changed.
-	"recipes.schema.json": "56e9c64f5fcc92d04c0d7f88b789492dd628bf62f2fcbd2a6e0c758fb3f1a04f",
+	// published plan: additive $defs/plan, $defs/stage, and $defs/lensUse — the
+	// shape of data.recipe and launcher.json's recipe key, which had none. No
+	// existing property, required key, enum, or type changed.
+	"recipes.schema.json": "6dcf41ea9a4ab4596ce103852c754b6f9281e13180445948a6a7a68c7d60c0a1",
 	// patch identity: additive optional patch_id/patch_id_kind plus the
 	// optional forced[] audit with $defs/forcedPost. No existing property,
 	// required key, or type changed.

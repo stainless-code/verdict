@@ -1923,7 +1923,9 @@ and the offending key.
 The resolved plan is recorded everywhere a launch is audited: `data.recipe`
 in the `--json` envelope, the same object under `recipe` in
 `launcher.json`, and one line on stderr before `» run:` —
-`» recipe: deep@1.0.0 (repo)`. It is always the four stages in pipeline order
+`» recipe: deep@1.0.0 (repo)`. That object's shape is published, not implied:
+`schemas/recipes.schema.json#/$defs/plan` is exactly the plan `run` records, so
+a consumer can validate what it reads. It is always the four stages in pipeline order
 (`lenses`, `synthesize`, `dedupe`, `rank`), with `lens_source` `declared` or
 `bundle`, and `model`/`max_files`/`max_findings`/`budget_usd` omitted when the
 recipe declared none. `sha256` is over the selected entry's canonical JSON, so
@@ -3901,7 +3903,8 @@ The shapes agents write and operators parse are pinned in `schemas/`
 (agent-written input), `findings.schema.json` (the merged findings store),
 `cost.schema.json` (the self-reported spend record), `controls.schema.json`
 (the resolved base-owned controls snapshot), `recipes.schema.json` (the
-declared review pipelines `run --recipe` resolves), `usage.schema.json` (the
+declared review pipelines `run --recipe` resolves, plus the resolved
+`$defs/plan` shape a run records as `data.recipe`), `usage.schema.json` (the
 explicit usage handoff), `corpus.schema.json` (benchmark case manifests),
 `backtest.schema.json` (the backtest score report), `post.schema.json` and
 `record.schema.json` (completed post/record captures),
@@ -3913,9 +3916,10 @@ estimate). `schemas/validate.sh` is the
 offline checker: a shim over `verdict __validate-schema`, whose implementation
 lives in `internal/schemacheck` — the one keyword subset the published schemas
 use (`$ref` within a file or across sibling files, `type`, `const`, `enum`,
-`properties`, `required`, `items`, `additionalProperties` as a bool or a
-schema, `minimum`/`maximum`, `minLength`/`maxLength`, `pattern`, `anyOf`,
-`format: date-time`), with anything outside it failing loudly and an
+`properties`, `propertyNames`, `required`, `items`, `minItems`/`maxItems`,
+`additionalProperties` as a bool or a schema,
+`minimum`/`maximum`/`exclusiveMinimum`, `minLength`/`maxLength`, `pattern`,
+`not`, `anyOf`, `format: date-time`), with anything outside it failing loudly and an
 unresolvable `$ref` never validating. The Go conformance tests and the evals
 therefore run the same code, so a fixture cannot pass one side and fail the
 other; `evals/cases/schema-contract.sh` asserts representative fixtures

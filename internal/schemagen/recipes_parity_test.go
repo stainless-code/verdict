@@ -1,6 +1,7 @@
 package schemagen
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -127,6 +128,80 @@ func TestSchemaAndParserAgree(t *testing.T) {
 			assertSide(t, "parser", ref == nil, tc.valid, tc.give)
 		})
 	}
+}
+
+// TestResolvedPlanMatchesThePublishedShape pins the other half of the recipe
+// contract: what a run records. The resolved plan — marshalled from the type the
+// envelope and launcher.json carry — validates against the published
+// `$defs/plan`, and a plan that grows a key the schema does not publish refuses.
+// Without the `$defs` the shape would be pinned only by a Go test.
+func TestResolvedPlanMatchesThePublishedShape(t *testing.T) {
+	root, ok := recipeSchema(t).(map[string]any)
+	if !ok {
+		t.Fatal("generated recipes schema is not a JSON object")
+	}
+	defs, ok := root["$defs"].(map[string]any)
+	if !ok {
+		t.Fatal("generated recipes schema carries no $defs")
+	}
+	published, ok := defs["plan"].(map[string]any)
+	if !ok {
+		t.Fatal("$defs misses plan: the resolved pipeline has no published shape")
+	}
+	repo := parsedDocument(t, `{"schema_version":"1","recipes":{"quick":{"version":"1.2.3",`+
+		`"budget_usd":0.5,"lenses":[{"id":"logic","model":"sonnet","max_files":8}],`+
+		`"synthesize":{"model":"opus"}}}}`)
+	plan, ref := recipe.Resolve(repo, "quick", []string{"logic"})
+	if ref != nil {
+		t.Fatalf("Resolve: %v", ref)
+	}
+	recorded, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatalf("marshal the resolved plan: %v", err)
+	}
+	if got := violationsOf(t, root, published, string(recorded)); len(got) != 0 {
+		t.Fatalf("the resolved plan does not match the published shape: %v\n%s", got, recorded)
+	}
+	// The shape publishes the keys, not every runtime rule: which stage may
+	// carry a model hint is the resolver's business (it never puts one on
+	// dedupe or rank), exactly as the config schema leaves cross-field rules to
+	// the parser. What it does publish is the closed key set and the enums.
+	if got := violationsOf(t, root, published, `{"name":"quick","version":"1.2.3","source":"repo",`+
+		`"sha256":"x","stages":[{"kind":"prune"}]}`); len(got) == 0 {
+		t.Error("the schema accepts a stage kind outside the four published ones")
+	}
+	if got := violationsOf(t, root, published, `{"name":"quick","version":"1.2.3","source":"file",`+
+		`"sha256":"x","stages":[{"kind":"dedupe"}]}`); len(got) == 0 {
+		t.Error("the schema accepts a source outside builtin and repo")
+	}
+	if got := violationsOf(t, root, published, `{"name":"quick","version":"1.2.3","source":"repo",`+
+		`"sha256":"x","stages":[{"kind":"dedupe"}],"dispatched":true}`); len(got) == 0 {
+		t.Error("the schema accepts a key the plan does not publish")
+	}
+	if got := violationsOf(t, root, published, `{"name":"quick","version":"1.2.3","source":"repo"}`); len(got) == 0 {
+		t.Error("the schema accepts a plan with no stages")
+	}
+}
+
+// parsedDocument decodes one recipes document through the parser.
+func parsedDocument(t *testing.T, give string) *recipe.Document {
+	t.Helper()
+	doc, ref := recipe.Parse([]byte(give))
+	if ref != nil {
+		t.Fatalf("Parse(%s): %v", give, ref)
+	}
+	return doc
+}
+
+// violationsOf validates one JSON document against a schema node, resolving
+// $ref against the whole published document.
+func violationsOf(t *testing.T, root, schema any, give string) []schemacheck.Violation {
+	t.Helper()
+	value, err := schemacheck.Decode([]byte(give))
+	if err != nil {
+		t.Fatalf("candidate is not JSON: %v", err)
+	}
+	return schemacheck.Validate(root, schema, value)
 }
 
 // assertSide fails one side of the contract when its verdict is not the pinned

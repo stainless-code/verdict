@@ -71,27 +71,25 @@ type RunResponse struct { //nolint:govet // field grouping documents the respons
 // directive replaced by a placeholder and secret operands redacted. Repair is
 // set only when --rounds asked for more than one round; a one-shot run leaves
 // it out so its envelope stays byte-identical to the single-round shape. Recipe
-// carries the resolved pipeline as an interface because the recipe package
-// imports core for its refusals, so core cannot name its plan type; the wire
-// walker renders that type's own tags, which is what makes this field exactly
-// the published recipe shape.
+// is the resolved pipeline in the published `recipes.schema.json#/$defs/plan`
+// shape, which is also launcher.json's `recipe` key.
 type RunData struct { //nolint:govet // field order is the published property order
-	Agent      string     `json:"agent"`
-	Binary     string     `json:"binary"`
-	Argv       []string   `json:"argv"`
-	Bundle     string     `json:"bundle"`
-	Artifact   string     `json:"artifact"`
-	Recipe     any        `json:"recipe,omitempty"`
-	StartedAt  string     `json:"started_at,omitempty"`
-	EndedAt    string     `json:"ended_at,omitempty"`
-	DurationMS int        `json:"duration_ms,omitempty"`
-	Exit       int        `json:"exit"`
-	TimedOut   bool       `json:"timed_out"`
-	Timeout    int        `json:"timeout"`
-	Fresh      bool       `json:"artifact_fresh"`
-	Printed    bool       `json:"printed,omitempty"`
-	Record     string     `json:"record,omitempty"`
-	Repair     *RunRepair `json:"repair,omitempty"`
+	Agent      string      `json:"agent"`
+	Binary     string      `json:"binary"`
+	Argv       []string    `json:"argv"`
+	Bundle     string      `json:"bundle"`
+	Artifact   string      `json:"artifact"`
+	Recipe     *RecipePlan `json:"recipe,omitempty"`
+	StartedAt  string      `json:"started_at,omitempty"`
+	EndedAt    string      `json:"ended_at,omitempty"`
+	DurationMS int         `json:"duration_ms,omitempty"`
+	Exit       int         `json:"exit"`
+	TimedOut   bool        `json:"timed_out"`
+	Timeout    int         `json:"timeout"`
+	Fresh      bool        `json:"artifact_fresh"`
+	Printed    bool        `json:"printed,omitempty"`
+	Record     string      `json:"record,omitempty"`
+	Repair     *RunRepair  `json:"repair,omitempty"`
 }
 
 // RunRepair is the repair-loop profile: the round cap, how many rounds it

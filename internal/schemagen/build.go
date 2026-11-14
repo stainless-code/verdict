@@ -285,6 +285,11 @@ func documents() []document {
 				{typ: reflect.TypeFor[RecipeEntry](), name: "recipe", closed: true},
 				{typ: reflect.TypeFor[RecipeLens](), name: "lens", closed: true},
 				{typ: reflect.TypeFor[RecipeSynthesize](), name: "synthesize", closed: true},
+				// The resolved pipeline the declarations compile into: the
+				// published data.recipe object and launcher.json's recipe key.
+				{typ: reflect.TypeFor[core.RecipePlan](), name: "plan", closed: true},
+				{typ: reflect.TypeFor[core.RecipeStage](), name: "stage", closed: true},
+				{typ: reflect.TypeFor[core.RecipeLens](), name: "lensUse", closed: true},
 			},
 			additionalProperties: false,
 		},

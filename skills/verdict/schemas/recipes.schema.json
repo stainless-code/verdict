@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/recipes.schema.json",
   "title": "recipes.json — declared review pipelines",
-  "description": "The declared review pipelines a run resolves by name from .verdict/recipes.json at the PR base: lenses, synthesizer hint, and budget, compiled into the four-stage plan data.recipe and launcher.json record. The file is a review control, read from the base snapshot and hash-gated like the typed configuration, so a head edit never steers the pipeline it is judged by. Positions are declarations, not selections: run launches one process and never chooses a model. Every key is spelled exactly as published; the loader refuses any other case, an unknown key, and a duplicate key with bad-recipe.",
+  "description": "The declared review pipelines a run resolves by name from .verdict/recipes.json at the PR base: lenses, synthesizer hint, and budget, compiled into the four-stage plan data.recipe and launcher.json record, whose shape is published here as $defs/plan. The file is a review control, read from the base snapshot and hash-gated like the typed configuration, so a head edit never steers the pipeline it is judged by. Positions are declarations, not selections: run launches one process and never chooses a model. Every key is spelled exactly as published; the loader refuses any other case, an unknown key, and a duplicate key with bad-recipe.",
   "type": "object",
   "properties": {
     "schema_version": {
@@ -98,6 +98,89 @@
         }
       },
       "required": [],
+      "additionalProperties": false
+    },
+    "plan": {
+      "description": "The resolved pipeline: the shape of data.recipe in the run --json envelope and of the recipe key in launcher.json, which are byte-identical objects. run compiles one declared entry into exactly four stages and records what it declared; it never dispatches them.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "description": "The recipe name the run resolved: the --recipe slug, or default when the flag was omitted.",
+          "type": "string"
+        },
+        "version": {
+          "description": "The selected entry's declared version, verbatim.",
+          "type": "string"
+        },
+        "source": {
+          "description": "Where the entry came from: the base snapshot's .verdict/recipes.json (repo), or the embedded set (builtin). A repository entry wins by name.",
+          "enum": ["builtin", "repo"]
+        },
+        "sha256": {
+          "description": "SHA-256 over the selected entry's canonical JSON, so any field change moves it and the same document always records the same digest.",
+          "type": "string"
+        },
+        "budget_usd": {
+          "description": "The declared budget, present only when the entry declared one above zero. Recorded and rendered; run warns above the bundle's personal limit and enforces nothing.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "stages": {
+          "description": "The four stages in pipeline order: lenses, synthesize, dedupe, and rank.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/stage" }
+        }
+      },
+      "required": ["name", "version", "source", "sha256", "stages"],
+      "additionalProperties": false
+    },
+    "stage": {
+      "description": "One resolved stage. Only the lenses stage carries a lens source and lens rows; only the synthesize stage carries a model hint.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "description": "The stage this is: lenses, synthesize, dedupe, or rank.",
+          "enum": ["lenses", "synthesize", "dedupe", "rank"]
+        },
+        "lens_source": {
+          "description": "Where the lenses stage's rows came from: the entry listed them (declared), or it listed none and the bundle's loaded lenses stand in, in file order (bundle).",
+          "enum": ["declared", "bundle"]
+        },
+        "lenses": {
+          "description": "The lens rows the lenses stage names, with the hint and caps the recipe declared for each.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/lensUse" }
+        },
+        "model": {
+          "description": "The synthesizer model hint, when the entry declared one.",
+          "type": "string"
+        }
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    "lensUse": {
+      "description": "One lens the lenses stage names: the id it selects, plus the hint and caps the entry declared for it.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "The lens id the stage names.",
+          "type": "string"
+        },
+        "model": {
+          "description": "The model hint the entry declared for this lens, when it declared one.",
+          "type": "string"
+        },
+        "max_files": {
+          "description": "The declared dispatch scope cap, when the entry declared one.",
+          "type": "integer"
+        },
+        "max_findings": {
+          "description": "The declared dispatch return cap, when the entry declared one.",
+          "type": "integer"
+        }
+      },
+      "required": ["id"],
       "additionalProperties": false
     }
   }
