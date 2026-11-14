@@ -7,6 +7,7 @@ import (
 	ingestcore "github.com/stainless-code/verdict/internal/core/ingest"
 	"github.com/stainless-code/verdict/internal/core/pack"
 	readycore "github.com/stainless-code/verdict/internal/core/ready"
+	"github.com/stainless-code/verdict/internal/core/recipe"
 	"github.com/stainless-code/verdict/internal/core/threads"
 	"github.com/stainless-code/verdict/internal/identity"
 )
@@ -270,6 +271,19 @@ type WithheldCapability = core.WithheldCapability
 
 // Identity is schemas/identity.schema.json: the bundle's stable patch id.
 type Identity = identity.Identity
+
+// RecipesDocument is the declared review pipelines document at
+// .verdict/recipes.json, generated as schemas/recipes.schema.json.
+type RecipesDocument = recipe.Document
+
+// RecipeEntry is one named recipe a run resolves by name.
+type RecipeEntry = recipe.Entry
+
+// RecipeLens is one lens row a recipe declares, with its model hint and caps.
+type RecipeLens = recipe.Lens
+
+// RecipeSynthesize declares the synthesizer model hint.
+type RecipeSynthesize = recipe.Synthesize
 
 // PackManifest is a lens pack manifest, generated as schemas/pack.schema.json.
 type PackManifest = pack.Manifest

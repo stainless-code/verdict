@@ -1,13 +1,11 @@
 package config
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
 	"slices"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/strictjson"
 )
 
 // MaxConfigBytes caps one repository configuration: at most 65536 bytes
@@ -61,137 +59,18 @@ func Parse(raw []byte) (*core.Config, *core.RefusalError) {
 	return buildConfig(root)
 }
 
-// msgMalformedJSON names the byte offset of invalid JSON input.
-const msgMalformedJSON = "%s: malformed JSON at offset %d"
-
-// decodeStrict decodes with duplicate detection and trailing-data refusal.
-// The returned tree holds map[string]any, []any, string, [json.Number],
-// bool, and nil only.
+// decodeStrict maps the shared decoder's positioned fault to bad-config, so a
+// configuration and a recipe refuse through one decoder with their own codes.
 func decodeStrict(raw []byte) (any, *core.RefusalError) {
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber()
-	tok, err := dec.Token()
+	doc, err := strictjson.Decode(raw)
 	if err != nil {
-		return nil, refuse(CodeBadConfig, "$: malformed JSON at offset %d", dec.InputOffset())
+		return nil, refuse(CodeBadConfig, "%s", err)
 	}
-	val, ref := readTokenValue(dec, tok, "$")
-	if ref != nil {
-		return nil, ref
-	}
-	if _, err := dec.Token(); err != io.EOF {
-		return nil, refuse(CodeBadConfig, "$: trailing data after the top object at offset %d", dec.InputOffset())
-	}
-	return val, nil
+	return doc, nil
 }
 
-// readTokenValue converts one already-read token into the generic tree.
-func readTokenValue(dec *json.Decoder, tok json.Token, path string) (any, *core.RefusalError) {
-	if delim, ok := tok.(json.Delim); ok {
-		switch delim {
-		case '{':
-			return readObject(dec, path)
-		case '[':
-			return readArray(dec, path)
-		default:
-			return nil, refuse(CodeBadConfig, msgMalformedJSON, path, dec.InputOffset())
-		}
-	}
-	return tok, nil
-}
-
-// readObject reads one JSON object, refusing duplicate keys naming the
-// repeated key and its path.
-func readObject(dec *json.Decoder, path string) (any, *core.RefusalError) {
-	obj := map[string]any{}
-	for dec.More() {
-		if ref := readObjectEntry(dec, obj, path); ref != nil {
-			return nil, ref
-		}
-	}
-	if _, err := dec.Token(); err != nil {
-		return nil, refuse(CodeBadConfig, msgMalformedJSON, path, dec.InputOffset())
-	}
-	return obj, nil
-}
-
-// readObjectEntry reads one key-value pair into the object, refusing
-// duplicates naming the repeated key.
-func readObjectEntry(dec *json.Decoder, obj map[string]any, path string) *core.RefusalError {
-	key, ref := readObjectKey(dec, path)
-	if ref != nil {
-		return ref
-	}
-	if _, dup := obj[key]; dup {
-		return refuse(CodeBadConfig, "%s: duplicate key %q", path, key)
-	}
-	val, ref := readObjectValue(dec, path, key)
-	if ref != nil {
-		return ref
-	}
-	obj[key] = val
-	return nil
-}
-
-func readObjectKey(dec *json.Decoder, path string) (string, *core.RefusalError) {
-	keyTok, err := dec.Token()
-	if err != nil {
-		return "", refuse(CodeBadConfig, msgMalformedJSON, path, dec.InputOffset())
-	}
-	key, ok := keyTok.(string)
-	if !ok {
-		return "", refuse(CodeBadConfig, msgMalformedJSON, path, dec.InputOffset())
-	}
-	return key, nil
-}
-
-func readObjectValue(dec *json.Decoder, path, key string) (any, *core.RefusalError) {
-	valTok, err := dec.Token()
-	if err != nil {
-		return nil, refuse(CodeBadConfig, "%s."+key+": malformed JSON at offset %d", path, dec.InputOffset())
-	}
-	return readTokenValue(dec, valTok, path+"."+key)
-}
-
-// readArray reads one JSON array, threading the index into child paths.
-func readArray(dec *json.Decoder, path string) (any, *core.RefusalError) {
-	var out []any
-	for i := 0; dec.More(); i++ {
-		valTok, err := dec.Token()
-		if err != nil {
-			return nil, refuse(CodeBadConfig, "%s[%d]: malformed JSON at offset %d", path, i, dec.InputOffset())
-		}
-		val, ref := readTokenValue(dec, valTok, fmt.Sprintf("%s[%d]", path, i))
-		if ref != nil {
-			return nil, ref
-		}
-		out = append(out, val)
-	}
-	if _, err := dec.Token(); err != nil {
-		return nil, refuse(CodeBadConfig, msgMalformedJSON, path, dec.InputOffset())
-	}
-	return out, nil
-}
-
-// jsonNull is the JSON null literal, distinct from an absent key: an
-// explicit null records no value, an absent key records nothing.
-const jsonNull = "null"
-
-func jsonKind(v any) string {
-	switch v.(type) {
-	case nil:
-		return jsonNull
-	case map[string]any:
-		return "object"
-	case []any:
-		return "array"
-	case string:
-		return "string"
-	case bool:
-		return "boolean"
-	default:
-		return "number"
-	}
-}
+// jsonKind renders a decoded value's JSON kind for a diagnostic.
+func jsonKind(v any) string { return strictjson.Kind(v) }
 
 // checkSchemaVersion enforces the format marker: the string "1", present.
 func checkSchemaVersion(root map[string]any) *core.RefusalError {

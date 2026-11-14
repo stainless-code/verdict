@@ -2,6 +2,7 @@ package controls
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -135,6 +136,61 @@ func TestGateRefusals(t *testing.T) {
 	}
 	if _, ref := Gate(".verdict/nope", base); ref == nil || ref.Code != CodeUnavailable {
 		t.Errorf("no controls.json: ref = %+v, want %s", ref, CodeUnavailable)
+	}
+}
+
+// TestGateRefusesAPolicyBaseSnapshotOfAnotherCommit proves the commit a base
+// policy snapshot names is part of the contract: a manifest stamped policy base
+// whose sha is not the bundle's base refuses controls-stale even though every
+// captured file still hashes correctly. The per-file hashes cannot see this — a
+// manifest that names another commit carries the right bytes for that other
+// commit — so the assembled policy-base branch is the only check on it.
+func TestGateRefusesAPolicyBaseSnapshotOfAnotherCommit(t *testing.T) {
+	base := baseRepo(t, map[string]string{".verdict/config.json": `{"schema_version":"1"}`})
+	if _, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: ".verdict/state/12", BaseSHA: base}); ref != nil {
+		t.Fatal(ref)
+	}
+	restampWithAnotherCommit(t, filepath.Join(".verdict/state/12", FileName), base)
+	gates := []struct {
+		call func() *core.RefusalError
+		name string
+	}{
+		{name: "Gate", call: func() *core.RefusalError { _, ref := Gate(".verdict/state/12", base); return ref }},
+		{name: "GateRecorded", call: func() *core.RefusalError { _, ref := GateRecorded(".verdict/state/12"); return ref }},
+		{name: "GateRecordedPath", call: func() *core.RefusalError {
+			_, _, ref := GateRecordedPath(".verdict/state/12", RecipesPath)
+			return ref
+		}},
+	}
+	for _, gate := range gates {
+		if ref := gate.call(); ref == nil || ref.Code != CodeStale {
+			t.Errorf("%s on a policy-base snapshot of another commit: ref = %+v, want %s", gate.name, ref, CodeStale)
+		}
+	}
+}
+
+// restampWithAnotherCommit rewrites one manifest's recorded commit, leaving
+// every captured file byte alone.
+func restampWithAnotherCommit(t *testing.T, manifest, base string) {
+	t.Helper()
+	raw, err := os.ReadFile(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := core.ControlsFile{}
+	if err := json.Unmarshal(raw, &file); err != nil {
+		t.Fatal(err)
+	}
+	if file.Policy != PolicyBase || file.SHA != base || file.BaseSHA != base {
+		t.Fatalf("manifest = %+v, want the base policy stamped with the base commit", file)
+	}
+	file.SHA = strings.Repeat("c", 40)
+	edited, err := json.Marshal(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(manifest, edited, 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -276,5 +332,99 @@ func TestExclusionControlsReadBase(t *testing.T) {
 	raw, ok = snap.ReadFile(".gitattributes")
 	if !ok || string(raw) != "*.pb.go linguist-generated\n" {
 		t.Fatalf("attributes = %q; want base bytes", raw)
+	}
+}
+
+// recipesBase writes a base commit carrying one valid recipe document and
+// returns its SHA.
+func recipesBase(t *testing.T, recipe string) string {
+	t.Helper()
+	return baseRepo(t, map[string]string{
+		".verdict/config.json":  `{"schema_version":"1"}`,
+		".verdict/recipes.json": recipe,
+	})
+}
+
+// TestRecipesControlRow proves .verdict/recipes.json joins the inventory: the
+// base document is a used row holding its exact bytes, and the single-control
+// gate hands the base snapshot back.
+func TestRecipesControlRow(t *testing.T) {
+	const baseRecipe = `{"schema_version":"1","recipes":{"default":{"version":"1.0.0","synthesize":{}}}}`
+	base := recipesBase(t, baseRecipe)
+	writeAll(t, map[string]string{".verdict/recipes.json": `{"schema_version":"1","recipes":{"default":{"version":"2.0.0","synthesize":{}}}}`})
+	snap, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: "bundle", BaseSHA: base})
+	if ref != nil {
+		t.Fatalf("Resolve: %v", ref)
+	}
+	entry := snap.Entry(RecipesPath)
+	if entry == nil || entry.Status != "used" {
+		t.Fatalf("recipes row = %+v, want a used row", entry)
+	}
+	raw, ok := snap.ReadFile(RecipesPath)
+	if !ok || string(raw) != baseRecipe {
+		t.Fatalf("snapshot recipes.json = %q (ok=%v), want the base bytes", raw, ok)
+	}
+	if _, found, ref := GateRecordedPath("bundle", RecipesPath); ref != nil || !found {
+		t.Fatalf("GateRecordedPath = found %v, ref %v, want the used row", found, ref)
+	}
+}
+
+// TestRecipesControlTamperRefuses proves a hand edit to the recorded recipe
+// bytes refuses controls-stale on the single-control read.
+func TestRecipesControlTamperRefuses(t *testing.T) {
+	const baseRecipe = `{"schema_version":"1","recipes":{"default":{"version":"1.0.0","synthesize":{}}}}`
+	base := recipesBase(t, baseRecipe)
+	if _, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: "bundle", BaseSHA: base}); ref != nil {
+		t.Fatalf("Resolve: %v", ref)
+	}
+	writeAll(t, map[string]string{"bundle/controls/recipes.json": baseRecipe + "\n"})
+	if _, _, ref := GateRecordedPath("bundle", RecipesPath); ref == nil || ref.Code != CodeStale {
+		t.Fatalf("tampered recipes.json: ref = %+v, want %s", ref, CodeStale)
+	}
+}
+
+// TestRecipesControlAbsentIsNoRefusal proves an absent recipe document is a
+// missing row and found=false, never a refusal.
+func TestRecipesControlAbsentIsNoRefusal(t *testing.T) {
+	base := baseRepo(t, map[string]string{".verdict/config.json": `{"schema_version":"1"}`})
+	if _, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: "bundle", BaseSHA: base}); ref != nil {
+		t.Fatalf("Resolve: %v", ref)
+	}
+	snap, found, ref := GateRecordedPath("bundle", RecipesPath)
+	if ref != nil || found {
+		t.Fatalf("absent recipes.json = found %v, ref %v, want absent and no refusal", found, ref)
+	}
+	if entry := snap.Entry(RecipesPath); entry == nil || entry.Status != "missing" {
+		t.Fatalf("recipes row = %+v, want the inventory's missing row", entry)
+	}
+}
+
+// TestRecipesControlIgnoresUnrelatedDrift proves an edited sibling control is
+// not the recipe read's business, while the whole-snapshot gate still refuses
+// it.
+func TestRecipesControlIgnoresUnrelatedDrift(t *testing.T) {
+	base := baseRepo(t, map[string]string{".verdict/config.json": `{"schema_version":"1"}`})
+	if _, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: "bundle", BaseSHA: base}); ref != nil {
+		t.Fatalf("Resolve: %v", ref)
+	}
+	writeAll(t, map[string]string{"bundle/controls/config.json": "evil\n"})
+	if _, found, ref := GateRecordedPath("bundle", RecipesPath); ref != nil || found {
+		t.Fatalf("unrelated edit = found %v, ref %v, want the recipe read unaffected", found, ref)
+	}
+	if _, ref := GateRecorded("bundle"); ref == nil || ref.Code != CodeStale {
+		t.Fatalf("whole-snapshot read = %+v, want %s", ref, CodeStale)
+	}
+}
+
+// TestRecipesControlNoManifest proves a bundle with no controls.json has no
+// recipe row (found=false) while a malformed one refuses controls-unavailable.
+func TestRecipesControlNoManifest(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if snap, found, ref := GateRecordedPath("no-controls", RecipesPath); ref != nil || found || snap != nil {
+		t.Fatalf("no controls.json = found %v, ref %v, want absent and no refusal", found, ref)
+	}
+	writeAll(t, map[string]string{"broken/controls.json": "not json"})
+	if _, _, ref := GateRecordedPath("broken", RecipesPath); ref == nil || ref.Code != CodeUnavailable {
+		t.Fatalf("malformed controls.json = %+v, want %s", ref, CodeUnavailable)
 	}
 }

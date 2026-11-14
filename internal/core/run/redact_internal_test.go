@@ -162,7 +162,8 @@ func TestScrubSecretsKeepsItsPolicy(t *testing.T) {
 // bundle, the exact review file, and the boundary. The local variant names
 // source.json instead of PR.json.
 func TestDirectiveNamesTheArtifact(t *testing.T) {
-	pr := directive("acme/app", "42", ".verdict/state/42", ".verdict/state/42/review.json", false)
+	pr := directive("acme/app", "42", ".verdict/state/42", ".verdict/state/42/review.json", false,
+		builtinPlan(t))
 	for _, want := range []string{
 		"acme/app PR 42", ".verdict/state/42", "review.json", "PR.json",
 		"schema_version", "does not read your prose",
@@ -172,7 +173,7 @@ func TestDirectiveNamesTheArtifact(t *testing.T) {
 		}
 	}
 	local := directive("acme/app", "local-work", ".verdict/state/local-work",
-		".verdict/state/local-work/review.json", true)
+		".verdict/state/local-work/review.json", true, builtinPlan(t))
 	if !strings.Contains(local, "source.json") || strings.Contains(local, "PR.json") {
 		t.Errorf("local directive names the wrong metadata file:\n%s", local)
 	}

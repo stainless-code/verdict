@@ -89,6 +89,7 @@ CALL: api repos/acme/app/contents/.verdict/overrides/walkthrough-threshold.md?re
 CALL: api repos/acme/app/contents/.verdict/overrides/attribution.md?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.verdict/verify-env?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.verdict/verdict.lock?ref=cccccccccccccccccccccccccccccccccccccccc
+CALL: api repos/acme/app/contents/.verdict/recipes.json?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.verdict/packs?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.verdict/config.json?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: pr view 4701 --repo acme/app --json files --jq .files[] | "\(.path) (+\(.additions)/-\(.deletions))"
@@ -218,6 +219,12 @@ notes.txt
       "status": "missing",
       "bytes": 0,
       "sha256": ""
+    },
+    {
+      "path": ".verdict/recipes.json",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
     }
   ]
 }
@@ -335,7 +342,7 @@ api-base-panel
 --- file C/.verdict/state/4701/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "6ce68d89b65ca1bc8a4bbee04492a6f4aef78805005522123f889208aedb3e8f",
+  "run_id": "c7f2cfd0b944d02bd06c5b557b3c5876694dcecc2c2eb5e5df2d5ce132a360c7",
   "prompts_hash": "49f5c99439cc65f9faab329e78a460aba14420500afb5100ad75d321fcfd3912",
   "panel": [
     "api-base-panel"
@@ -396,8 +403,8 @@ api-base-panel
       "kind": "bundle",
       "name": "controls.json",
       "status": "included",
-      "sha256": "ae6376f99bd658cc5b712814a92f11bb4058c53aa21e39f27f4d207a4e0ef605",
-      "bytes": 1550
+      "sha256": "bc619d7b5d3a6cf22583d6e837bbdb541142432769e42619e50b6c02f7bfc021",
+      "bytes": 1666
     },
     {
       "kind": "bundle",
@@ -556,6 +563,12 @@ api-base-panel
     {
       "kind": "control",
       "name": ".verdict/kb.jsonl",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "control",
+      "name": ".verdict/recipes.json",
       "status": "missing",
       "source": "base"
     },

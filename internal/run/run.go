@@ -44,18 +44,20 @@ const defaultTimeoutS = "300"
 // today's one-shot.
 const defaultRounds = "1"
 
-// roundsFlag is the round-count flag, named once for the parser and the
-// usage line.
-const roundsFlag = "--rounds"
+// roundsFlag and recipeFlag are named once for the parser and the usage line.
+const (
+	roundsFlag = "--rounds"
+	recipeFlag = "--recipe"
+)
 
 // verbsWanted is the flag list the unknown-flag usage error names.
-const verbsWanted = "--agent <name>, --timeout <secs>, --rounds <n>, --print, -- <agent args>, --json"
+const verbsWanted = "--agent <name>, --recipe <slug>, --timeout <secs>, --rounds <n>, --print, -- <agent args>, --json"
 
-// Run executes `run <owner/repo> <pr|local-name> --agent <name> [--timeout
-// <secs>] [--rounds <n>] [--print] [-- <agent args>...] [--json]`, returning
-// the process exit code. A non-zero agent exit is preserved as this process's
-// exit code after the typed refusal is rendered, so CI surfaces the real
-// failure.
+// Run executes `run <owner/repo> <pr|local-name> --agent <name> [--recipe
+// <slug>] [--timeout <secs>] [--rounds <n>] [--print] [-- <agent args>...]
+// [--json]`, returning the process exit code. A non-zero agent exit is
+// preserved as this process's exit code after the typed refusal is rendered,
+// so CI surfaces the real failure.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
 	flags, code, done := parseFlags(r, args)
@@ -107,6 +109,7 @@ func runRequest(r *cli.Runner, req Request, flags *flags) *core.RunRequest {
 		PassThrough: flags.pass,
 		Environ:     os.Environ(),
 		Agent:       flags.agent,
+		Recipe:      flags.recipe,
 		TimeoutRaw:  flags.timeout,
 		RoundsRaw:   flags.rounds,
 		Print:       flags.print,
@@ -118,6 +121,7 @@ func runRequest(r *cli.Runner, req Request, flags *flags) *core.RunRequest {
 // flags is the parsed run surface. pass is everything after `--`, verbatim.
 type flags struct {
 	agent   string
+	recipe  string
 	timeout string
 	rounds  string
 	pass    []string
@@ -148,13 +152,8 @@ func parseFlags(r *cli.Runner, args []string) (flags, int, bool) {
 func parseToken(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) {
 	a := args[i]
 	switch a {
-	case "--agent":
-		v, next, u := cli.FlagValue(args, i, a, "<name>")
-		if u != nil {
-			return i, r.ReportUsage(u), true
-		}
-		f.agent = v
-		return next, 0, false
+	case "--agent", recipeFlag:
+		return parseNameFlag(r, f, args, i)
 	case "--timeout", roundsFlag:
 		return parseCountedFlag(r, f, args, i)
 	case "--print":
@@ -164,6 +163,22 @@ func parseToken(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) 
 		return i, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
 			"unknown flag '%s' for run (want %s)", a, verbsWanted)}), true
 	}
+}
+
+// parseNameFlag consumes one --agent or --recipe value flag, which name the
+// agent process and the pipeline it follows.
+func parseNameFlag(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) {
+	a := args[i]
+	operand, dst := "<name>", &f.agent
+	if a == recipeFlag {
+		operand, dst = "<slug>", &f.recipe
+	}
+	v, next, u := cli.FlagValue(args, i, a, operand)
+	if u != nil {
+		return i, r.ReportUsage(u), true
+	}
+	*dst = v
+	return next, 0, false
 }
 
 // parseCountedFlag consumes one --timeout or --rounds value flag, leaving the
@@ -195,6 +210,9 @@ func rentry(req Request, f *flags, jsonMode bool) string {
 	s := "verdict run " + req.Repo + " " + req.Pr
 	if f.agent != "" {
 		s += " --agent " + f.agent
+	}
+	if f.recipe != "" {
+		s += " --recipe " + f.recipe
 	}
 	if f.timeout != defaultTimeoutS {
 		s += " --timeout " + f.timeout

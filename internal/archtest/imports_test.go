@@ -112,6 +112,7 @@ var facadeAllowedDeps = map[string]bool{
 	"internal/schemacheck":    true,
 	"internal/shellquote":     true,
 	"internal/sig":            true,
+	"internal/strictjson":     true,
 	"pkg/verdict":             true,
 }
 
@@ -126,7 +127,8 @@ var leafHelpers = []string{"internal/exclude", "internal/shellquote"}
 // unnoticed.
 var coreSubpackages = []string{
 	"adopt", "backtest", "calibrate", "checktree", "corpus", "coverage", "doctor", "exec", "fetch", "fix",
-	"index", "ingest", "init", "learn", "pack", "panel", "post", "query", "ready", "record", "repair", "report", "risk", "run", "skill",
+	"index", "ingest", "init", "learn", "pack", "panel", "post", "query", "ready", "recipe", "record", "repair", "report", "risk",
+	"run", "skill",
 	"threads", "trend", "triage", "upgrade", "verify",
 }
 

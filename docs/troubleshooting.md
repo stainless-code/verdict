@@ -276,6 +276,12 @@ Cause: `--retire`/`--restore` lacks a human veto on the record.
 
 Fix: add `--reason` with 30+ chars.
 
+## `bad-recipe`
+
+Cause: the base `.verdict/recipes.json` document or the selected entry is invalid — an unknown key, a duplicate recipe key, a bad slug, semver, model hint, description length, or cap, a non-positive `budget_usd`, a duplicate lens id, empty `lenses`, or a missing `synthesize` (the message names the JSON path and the key).
+
+Fix: fix the key named above in `.verdict/recipes.json`, commit it at the base, then re-fetch.
+
 ## `bad-requirement`
 
 Cause: a requirement clause is invalid or unsatisfiable — the message names the key.
@@ -1189,6 +1195,12 @@ Fix: pass a group id from the list named above.
 Cause: a judge entry's sig matches no finding in `findings.json`.
 
 Fix: copy the full sig prefix from `report` output.
+
+## `unknown-recipe`
+
+Cause: `run --recipe <slug>` names no entry in the base `.verdict/recipes.json` and no built-in recipe.
+
+Fix: pass `--recipe` one of the names listed above; recipes live in `.verdict/recipes.json` at the PR base, so commit the entry there and re-fetch.
 
 ## `unknown-rule`
 
