@@ -298,6 +298,46 @@ func assertBundleDigestsMatchDisk(t *testing.T, bundleDir string, r *core.Proven
 	}
 }
 
+// TestFetchBundleDigestsCoverThreadsAndBudget closes the gap the provenance
+// goldens leave: the golden scrub blanks the digest of threads.json and
+// budget.json, so this consented PR fixture — threads.json from the thread
+// read, budget.json from the consented blind receipt — is the only place their
+// value is checked against disk.
+func TestFetchBundleDigestsCoverThreadsAndBudget(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	settings := filepath.Join(dir, "settings.json")
+	if err := os.WriteFile(settings, []byte(`{"spend":{"require_known_estimate":true}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var human, diag bytes.Buffer
+	var warnings []string
+	req := fetchTestReq(fetchHappyCommander(t), &human, &diag, &warnings)
+	req.SettingsPath = settings
+	req.Flags.BudgetConsent = true
+	if _, err := Run(context.Background(), req); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	bundleDir := filepath.Join(".verdict", "state", "7")
+	r, _ := readReceiptFile(t, bundleDir)
+	assertBundleDigestsMatchDisk(t, bundleDir, &r)
+	for _, name := range []string{"threads.json", "budget.json"} {
+		assertBundleRowNamed(t, &r, name)
+	}
+}
+
+// assertBundleRowNamed proves the receipt carries a bundle row for one named
+// artifact, so the digest check above cannot quietly skip it.
+func assertBundleRowNamed(t *testing.T, r *core.ProvenanceReceipt, name string) {
+	t.Helper()
+	for i := range r.Inputs {
+		if r.Inputs[i].Kind == "bundle" && r.Inputs[i].Name == name {
+			return
+		}
+	}
+	t.Fatalf("receipt carries no bundle row for %s", name)
+}
+
 func assertBundleDigestMatchesDisk(t *testing.T, bundleDir string, in *core.ProvenanceInput) {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(bundleDir, in.Name))
