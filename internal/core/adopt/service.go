@@ -92,6 +92,9 @@ func (st *state) response() *Response {
 }
 
 func (st *state) runAdopt(ctx context.Context) *core.RefusalError {
+	if ref := st.checkStoreHome(); ref != nil {
+		return ref
+	}
 	dir, fromDir, display, ref := st.resolveAdoptDirs(ctx)
 	if ref != nil {
 		return ref
@@ -121,6 +124,17 @@ func (st *state) adoptTarget() (string, *core.RefusalError) {
 		return "", st.refuse("bad-target", msgBadTarget)
 	}
 	return dir, nil
+}
+
+// checkStoreHome refuses a bundle home that will not list before any bundle
+// under it is resolved: a `.verdict/state` that is a file, or a directory that
+// will not open, names itself once instead of every bundle it holds reading as
+// a missing target.
+func (st *state) checkStoreHome() *core.RefusalError {
+	if _, err := readcommon.StoreEntries(readcommon.StateDir(st.req.RepoRootPath())); err != nil {
+		return st.refuse("corrupt-store", err.Error())
+	}
+	return nil
 }
 
 func (st *state) resolveAdoptDirs(ctx context.Context) (string, string, string, *core.RefusalError) {

@@ -2789,8 +2789,8 @@ behavior instead.
 against `.verdict/state/local-*` twins in the requested repository: exactly one twin
 adopts (printed as `from: auto -> local-<name>`), zero refuse `no-patch-match`,
 and many refuse `ambiguous-patch-match` naming the candidates (max five shown);
-a bundle home that will not list refuses `corrupt-store` naming it instead of
-reporting no twin.
+a bundle home that will not list refuses `corrupt-store` naming it before any
+target or twin resolves, instead of reporting no twin.
 Twins from a foreign repository, with stale bytes, or without a repository record
 never match. The literal name `local-auto` stays reachable as `--from local-auto`
 (the sentinel is matched first).
