@@ -562,26 +562,22 @@ func sectionHeading(tool, ruleID string) string {
 }
 
 func (st *ingestState) lookupExisting(verdictSig, entrySig, tool, fp string) (int, bool) {
-	if idx, ok := lookupByKey(st.bySig, verdictSig); ok {
-		return idx, true
+	if verdictSig != "" {
+		if idx, ok := st.bySig[verdictSig]; ok {
+			return idx, true
+		}
 	}
-	if idx, ok := lookupByKey(st.bySig, entrySig); ok {
-		return idx, true
+	if entrySig != "" {
+		if idx, ok := st.bySig[entrySig]; ok {
+			return idx, true
+		}
 	}
 	if tool != "" && fp != "" {
-		if idx, ok := lookupByKey(st.byToolFP, toolFPKey(tool, fp)); ok {
+		if idx, ok := st.byToolFP[toolFPKey(tool, fp)]; ok {
 			return idx, true
 		}
 	}
 	return 0, false
-}
-
-func lookupByKey(m map[string]int, key string) (int, bool) {
-	if key == "" {
-		return 0, false
-	}
-	idx, ok := m[key]
-	return idx, ok
 }
 
 func (st *ingestState) updateExisting(idx int, cand candidate) bool {
@@ -595,7 +591,7 @@ func (st *ingestState) updateExisting(idx int, cand candidate) bool {
 		return false
 	}
 	updated := pm.Clone()
-	oldSig := jq.StrOf(altGet(pm, "sig"))
+	oldSig := jq.StrOf(readcommon.FieldOf(pm, "sig"))
 	e := cand.Entry
 	updated.Set("sig", e.Sig)
 	updated.Set("kind", e.Kind)
@@ -641,8 +637,8 @@ func syncExclusionWithheld(m *jq.Obj, desired *core.Withheld, now, actor string)
 		return
 	}
 	at := resolveWithheldTimestamp(prior, priorSrc, desired, now)
-	if priorSrc == desired.Source && jq.StrOf(altGet(prior, "exclusion_id")) == desired.ExclusionID &&
-		jq.StrOf(altGet(prior, "reason")) == desired.Reason {
+	if priorSrc == desired.Source && jq.StrOf(readcommon.FieldOf(prior, "exclusion_id")) == desired.ExclusionID &&
+		jq.StrOf(readcommon.FieldOf(prior, "reason")) == desired.Reason {
 		return
 	}
 	w := jq.NewObj("source", desired.Source, "reason", desired.Reason, "exclusion_id", desired.ExclusionID, "at", at)
@@ -656,17 +652,17 @@ func priorWithheld(m *jq.Obj) (*jq.Obj, string) {
 	if !ok || prior == nil {
 		return nil, ""
 	}
-	return prior, jq.StrOf(altGet(prior, "source"))
+	return prior, jq.StrOf(readcommon.FieldOf(prior, "source"))
 }
 
 func resolveWithheldTimestamp(prior *jq.Obj, priorSrc string, desired *core.Withheld, now string) string {
 	if prior == nil || priorSrc != sourceExclusion {
 		return now
 	}
-	if jq.StrOf(altGet(prior, "exclusion_id")) != desired.ExclusionID || jq.StrOf(altGet(prior, "reason")) != desired.Reason {
+	if jq.StrOf(readcommon.FieldOf(prior, "exclusion_id")) != desired.ExclusionID || jq.StrOf(readcommon.FieldOf(prior, "reason")) != desired.Reason {
 		return now
 	}
-	if priorAt := jq.StrOf(altGet(prior, "at")); priorAt != "" {
+	if priorAt := jq.StrOf(readcommon.FieldOf(prior, "at")); priorAt != "" {
 		return priorAt
 	}
 	return now
@@ -694,11 +690,6 @@ func setOrDelete(m *jq.Obj, key string, val any) {
 	default:
 		m.Set(key, v)
 	}
-}
-
-func altGet(m *jq.Obj, key string) any {
-	v, _ := m.Get(key)
-	return v
 }
 
 func countOpen(entries []any) int {
