@@ -1,5 +1,846 @@
 # @stainless-code/verdict
 
+## 0.7.0
+
+### Minor Changes
+
+- 1f17fba: Mine SZZ candidates from a local clone. `backtest mine --since
+<90d|12w|18mo|2y|ref> [--until <ref>] [--run <slug>]` blames each later
+  `fix:`/`Revert "..."` commit's deleted lines to the merged or squash PR that
+  introduced them and writes
+  `.verdict/backtest/<run>/{run.json,mine.json}` with zero model calls and zero
+  network. `--run` ids are at most 42 bytes, the room a replay bundle name has
+  for one, so a mined run is always replayable. Candidates carry the PR head, base, reconstruction, merge/head dates,
+  and the union of anchored `path:line:kind` bugs; exclusions are counted by
+  reason and never refused. `mine.json` is timestamp-free, so a rerun over the
+  same window is byte-identical. The artifact is not citable: SZZ blame is a
+  hypothesis. Replay and score read it. The verb is CLI-only because replay
+  spends on model runs.
+- d6582b6: Replay mined candidates against your own agent. `backtest replay --run <id>
+--agent <name> [--max-reviews <n>] [--budget-usd <usd>] [--timeout <secs>]
+[--rounds <n>] [-- <agent args>]` walks the run's `mine.json` newest merge
+  first, builds a fresh local bundle at each candidate's own `base..head`,
+  launches the agent in a detached `git worktree` of that head (removed again
+  after each review, failures included), and records the review into the
+  bundle's `findings.json`. Spend is bounded by `--max-reviews` (1–99), a
+  median-projected `--budget-usd` ceiling, and a per-review `--timeout`; a review
+  that reported no price is unknown spend, never `$0.00`. A failed review is
+  that candidate's row (`status` is the refusal code) and the walk continues;
+  only `agent-missing`, `agent-spawn-failed`, cancellation, and a
+  `backtest-failed` that would hit every candidate (git gone mid-run, or a
+  state directory that cannot be created) end the run.
+  `--run` ids are capped at 42 bytes by `backtest mine` and `backtest replay`
+  alike, so two runs can never be cut onto one bundle name.
+  Rerunning the same `--run` replays only candidates that produced no review, and
+  a stored candidate replayed with another agent or other pass-through arguments
+  refuses `run-mismatch`. Every bundle carries a `backtest.json` marker, so
+  `trend` keeps replay input out of your history. Artifacts:
+  `.verdict/backtest/<run>/prs/<NNN>/replay.json`. Replays are not citable.
+- 3b2b92c: Score a replay, and run the whole backtest in one command. `backtest score --run
+<id>` grades each replayed PR's recorded findings against the bug lines the
+  run's own SZZ candidates carry, through the corpus matcher (±1 line, one
+  finding per bug, text that names the defect kind), and writes
+  `.verdict/backtest/<run>/report.json`. It is a pure read: no agent launches, no
+  bundle is built, and nothing enters `.verdict/state/corpus-*`.
+  `catch_rate` is `matched / bugs`, a match rate over blame-derived candidates —
+  a line a later fix deleted is a hypothesis, so a defect fixed without touching
+  the line is invisible and a deleted cleanup line beside the real bug is a
+  candidate that was never defective. `off_target_per_pr` is `(reported −
+matched) / prs`; an unmatched finding is not proven false, so the report never
+  calls it one.
+  `cost_per_review_usd` is null when nothing was priced, and
+  `spend.unpriced_reviews` marks a partial total as a lower bound. A per-signal
+  table splits the rate by `fix` and `revert`, `unclassified` counts bugs no
+  finding can name, and every zero denominator renders `null`. `backtest mine`
+  now records each bug's seed `signal` in `mine.json`. Bare `backtest --since
+<window> --agent <name>` composes mine, replay, and score on one run id. The
+  score report is also the verb's `--json` data, published as
+  `schemas/backtest.schema.json`. Scores are not citable.
+- 73cba6b: Accept clean benchmark controls with empty ground truth and seeded or real
+  provenance. Include two seeded clean cases and exercise clean review recording
+  and calibration through the CLI. Seeded fixtures are not a model-quality claim.
+- 751d7fd: Make corpus benchmark claims reproducible with typed severity weights,
+  ordered k-of-n recall, control false-positive rates, weighted F1, signal to
+  noise, and explicit denominators and observation counts. Preserve unknown
+  cost and latency as null. The benchmark runner records provenance and command
+  argv and writes a static Markdown report alongside JSON. Seeded runs are
+  labelled "not a model-quality claim".
+
+  Metric names distinguish false discovery rate from control-PR false-positive
+  rate. `control_fp_rate` counts controls with any finding; raw counts use
+  `control_findings_per_case`. Weighted F1 is named
+  `severity_weighted_pooled_f1` and its pooled formula is documented.
+
+- 0504186: Add bounded foreground GitHub PR waits through `pr-wait`, MCP `pr_wait`, and
+  Go and TypeScript clients. Conditions cover merge, closure, checks and review
+  changes. Timeouts return typed data. `ready --wait-for build --timeout D` waits
+  for CI completion and returns not-ready on timeout. GitLab and Forgejo waits
+  refuse explicitly; no daemon or saved cursor is introduced.
+- fe2a53c: Refuse a bundle name that is not one path element. Every verb that names a
+  bundle — adopt, calibrate, config explain/preview, fetch, fix, gate, index
+  blast-radius, next, post, ready, record, report, run, show, threads, triage,
+  verify, and the MCP tools that take a `pr` — resolves the name through one
+  shared guard before it joins `.verdict/state`, so `../other`, `a/b`, `a\b`,
+  `.`, `..`, and the empty name refuse `bad-flags` with one line instead of
+  reading outside the bundle home. The same guard refuses, on every OS, the
+  spellings Windows re-reads as another path or as a device: any `:`, a trailing
+  `.` or space, and a DOS device basename (`CON`, `PRN`, `AUX`, `NUL`, `COM1`-
+  `COM9`, `LPT1`-`LPT9`). `index blast-radius` reported the same input under its
+  own message and now renders the shared one. A PR number, a `local-` slug, and a
+  `corpus-` name still resolve as before.
+
+  The MCP `next` tool answers a findings store it cannot read with the typed
+  `corrupt-store` refusal instead of `{"item": null}`, so a caller no longer
+  reads a broken store as "nothing to act on".
+
+  `fetch` and `fetch-local` refuse a bundle directory that is a symlink, with the
+  `bad-config` refusal, before the first write: a link's target is an unrelated
+  location even when it resolves inside the repository. `trend` reads each listed
+  bundle directory it finds instead of resolving the listed name through the
+  bare-name fallback, so a `42` beside a `local-42` is no longer counted twice, and
+  `42` keeps its own findings.
+
+- 7e03259: Attest diff coverage. `review.json` gains an optional `coverage[]` of
+  `{file, ranges?}`, checked against the bundle's own `hunks.tsv`: `post` and
+  `record` warn once and add one body line on a partial attestation, and the new
+  `--require-coverage` flag refuses `coverage-incomplete` without bypassing
+  `--force`. `next --coverage` reports the unattested ranges before recording, and
+  `post.json`/`record.json` carry the measured summary. Generated and vendored
+  paths are exempt; chunked bundles keep `chunks[]` as their only attestation.
+  Legacy reviews render byte-identically.
+- 650ce7f: `doctor --provider github|gitlab|gitcafe|forgejo|bitbucket|azure` preflights one
+  host instead of always assuming GitHub: the same enum and `bad-provider`
+  refusal as `fetch --provider`, defaulting to `github` so a bare `doctor` keeps
+  its rows byte for byte. Each host has its own probe table — `gh` and its scope
+  rows for GitHub, `glab` presence, `glab auth status`, and a `glab api user`
+  reachability read for GitLab, the `cafe` CLI for gitcafe, and `curl`/`az` plus
+  the credential variables their fetch paths read (`FORGEJO_TOKEN`,
+  `BITBUCKET_TOKEN`, `AZURE_DEVOPS_EXT_PAT`, …) for the rest, reported by presence
+  and never by value. A non-GitHub preflight shows no `gh` row.
+
+  `adopt` now hands local findings to any bundle verdict can post to, so a GitLab
+  bundle adopts exactly like a GitHub one; its re-anchor reads the stored hunks
+  and shells no host CLI. Bundles on a host with no submit path still refuse
+  `provider-unimplemented`, with the host named in the message.
+
+- 69ef6fd: Ship the index hand-off. `fetch` and `fetch-local` take
+  `--index <ref|dir>`: the operator names an index they already built — a
+  revision in the reviewed repository, or a directory holding `.verdict/index` —
+  and the bundle gains an `impact` artifact and a `## impact` section on
+  `toc.txt`, inside the existing nonce fence. Nothing is built, refreshed, or
+  discovered: without the flag no section is written and an earlier run's
+  `impact.json` is removed.
+
+  `impact.json` (named in `data.artifacts`) holds the answered tree and commit,
+  `stale`, `coverage`, the diff's changed `paths`, the row `limit`, and one
+  measured object per list — `symbols`, `callers` (with `unresolved`), and
+  `tests` (with `depth_truncated`) — each carrying `count`, `truncated`, and
+  `rows`; a list the index could not answer reads `null`, never `0`. `sources`
+  carries `index:<tree>`, naming the tree that answered. The `toc.txt` section is
+  capped at 8 KiB and ends with `truncated: <n> line(s) omitted to fit the 8 KiB
+impact cap` when rows do not fit, and every path and symbol it renders is
+  escaped through the shared fence rule, so a hostile name can neither close the
+  fence nor start a line of its own.
+
+  A directory with no index store refuses `bad-flags`, an unresolvable ref
+  `bad-at`, a tree the store never built `missing-index`, and a truncated tree
+  file `index-corrupt`; a named index answering for another tree, and a bundle
+  head this clone cannot see, warn visibly and proceed. The four hashed prompt
+  files are untouched, so `prompts_hash` does not move.
+
+- 2642839: `post` publishes to Forgejo pull requests over the REST API: one atomic review
+  carrying the body, the verdict, the reviewed commit, and every inline finding,
+  with `APPROVED` for an approval. A review comment anchors on a file line
+  number (`new_position` on the new side, `old_position` on the old), so a
+  finding with no numeric line is withheld, a LEFT anchor on a file the change
+  deletes is withheld, and a multi-line range lands on its end line; each loss is
+  counted in the envelope `warnings`. A 200 that answers `PENDING` refuses
+  `post-failed` instead of recording a receipt for a draft nobody sees, and a
+  pre-existing draft authored by the token user refuses with a submit-or-discard
+  hint. `data.capabilities` now reports Forgejo's post, inline anchors, and both
+  binding verdicts.
+- f0559c6: Gate on diff coverage by default. `verdict gate` gains a `coverage` dimension
+  that reads the receipt `post.json`/`record.json` already store for the gated
+  HEAD and fails when that receipt is absent, names another HEAD, carries no
+  `coverage[]` attestation (a review that never attested coverage reads
+  `unknown`, not `pass`), or attests under 100% — the reviewed ranges are not
+  re-evaluated, so the gate reports the number the store holds. `--coverage
+require|warn` sets the posture and defaults to `require`; `--coverage warn`
+  reports the same shortfall as one `warn:` line and never fails the gate: it is
+  how to keep the old behavior and the migration while a review attests nothing. An all-exempt
+  diff passes once a receipt exists, a chunked bundle is graded on the chunk
+  attestation its receipt stores, and `--coverage` alone is still a usage error.
+  `post` and `record` keep the warning posture (`--require-coverage` opts into
+  the refusal), the SDK's `GateRequest` gains the same `Coverage` field with the
+  same default, and the published envelope schema adds `coverage` to the gate
+  dimension ids.
+
+  A chunked bundle is graded too, because `chunks[]` is its only attestation and
+  nothing stored that fact. `post.json` and `record.json` gain
+  `chunk_coverage: {attested, total}`, written beside the existing measured
+  summary at the point the merge already validates `chunks[]`: the manifest is
+  the denominator, and only a claim the manifest can name counts toward the
+  numerator, so the receipt can never attest more than the review wrote. Every
+  chunk attested passes; a shortfall fails naming the count (`1 of 2 chunk(s)
+unattested`); a receipt written by an older binary carries no such key and
+  still reads `unknown` under `require`. Non-chunked receipts are unchanged byte
+  for byte.
+
+- 8199d23: Package the review and merge gate as a first-party composite GitHub Action.
+  The runner is your CI — pass your own agent and keys, install a pinned verified
+  verdict release, and reuse the pipeline through the shipped example workflow.
+- 37d8164: Incremental re-review on GitLab. `fetch --provider gitlab --base-sha <sha>`
+  (or `--since`) calls `glab api
+projects/<id>/repository/compare?from=<base>&to=<head>`, joins the response's
+  per-file `diff` entries into `incremental.diff`, and names the base in
+  `incremental_base` — the same artifact, note, and `.compare.err` contract the
+  GitHub compare path already writes. A failed or unreadable compare still
+  finishes the fetch and writes `incremental.diff.note` instead of refusing.
+  Hosts without a compare adapter (GitCafe, Forgejo, Bitbucket, Azure) now accept
+  `--base-sha`/`--since` and write the note naming the unsupported provider
+  rather than refusing the fetch. The delta feeds the ordinary record/advance
+  path, so a second review round reopens delta-touched findings and records at
+  the fetched head.
+- 7e03259: `post` publishes to GitLab merge requests: each finding becomes one positioned
+  discussion, the review body becomes a summary note, and an approval verdict
+  becomes a real MR approval. `capabilities` reports GitLab's approval and
+  request-changes support separately, and a request-changes verdict on GitLab
+  warns that the host has no such event instead of silently pretending.
+- 7e03259: Make `data.capabilities` honest. The binding verdict splits into `approve` and
+  `request_changes`, because hosts differ: GitHub carries both, while GitLab
+  approves a merge request but has no request-changes review event — a bound
+  request-changes there still posts the discussions and summary note, and says in
+  a warning that the verdict did not bind. `review_verdicts` stays in place as
+  the compatibility sum `approve && request_changes`, so a consumer written before
+  the split reads the same truth; new readers branch on the two flags.
+  `thread_resolution` reads true on GitHub and GitLab, where `threads resolve`
+  closes a verdict-authored thread, and false on Forgejo, which has no documented
+  resolve endpoint, and on the fetch-only hosts. The new `unsupported` object
+  carries one machine-readable
+  reason code per absent capability (`fetch-only`, `no-request-changes-event`,
+  `no-approve-verdict`, `no-inline-anchors`, `no-resolve-mutation`,
+  `unknown-host`). The published envelope schema types `capabilities` instead of
+  leaving it open; only `provider` and `fetch` stay required, so an envelope
+  written before the split still validates while every new fetch emits the full
+  object.
+- 0bffc0a: Add repeatable fetch ignore overrides and a switch to disable built-in exclusions, recording both in exclusion receipts.
+- e2a47aa: Record receipts for excluded diff bytes and suppressed findings. Add post severity floors and show quiet findings in reports and trend counts.
+- 878fadc: Add `index blast-radius --pr <n>|--paths <path>` — one change's reach. The
+  changed declarations come from the fetched bundle's `full.diff` (no host call)
+  or from named files; their callers are walked to depth 2, once per target and
+  cycle-safe; and candidate tests, co-change partners, and CODEOWNERS owners ride
+  along for the same paths. A diff section with no line hunks — a rename or a
+  mode change — reads as every declaration in its new path and warns that it did.
+  A `++` or `--` line inside a hunk is a content line, so its changed line and the
+  hunk's anchors stay put. A depth-2 caller names the changed declaration it is
+  reached from, not the depth-1 caller in between. A `--pr` that holds a path
+  separator or is `.` or `..` refuses as `bad-flags`, since `--pr` names a bundle.
+  Every list publishes its count and truncation count, `co_changed` publishes its
+  distinct partner count beside the row count, and an absent index reads the
+  symbol, caller, and test counts as `null`, never 0. The read-only MCP `index`
+  tool serves the new query in both its `--paths` and `--pr` forms, and the
+  generated envelope schema types its output for the triage risk score.
+- 66ce064: Add `verdict index`: a local Go code index built with the standard library
+  (`go/parser`, `go/ast`) and stored under `.verdict/index/` by tree SHA.
+  `index build [--from <dir>] [--at <ref>]` writes one tree file plus
+  content-addressed shards, so an empty commit reuses the tree, a pure rename
+  parses nothing, and an edit parses one blob. `index status` reports the stored
+  trees and shards, `index prune` keeps the newest four trees and the shards they
+  reference, and `index callers <symbol> [--at <tree>] [--limit <n>]` returns
+  call sites labelled `exact` within a package or `lexical` across an import
+  edge; method values, cross-package value selectors that may be fields, dynamic dispatch, reflection, and generic instantiation
+  are counted as unresolved, never guessed. A package qualifier that matches no
+  package directory or import path refuses `bad-flags` rather than reading as no
+  callers. Caps
+  refuse `index-capped` with the measured number, a truncated shard refuses
+  `index-corrupt`, and a query against a tree that is not HEAD's warns and sets
+  `stale: true`. The MCP `index` tool is read-only and serves `callers` and
+  `status`; the SDK forwards every subcommand. `.verdict/index/` joins the
+  tracked ignore contract.
+- 45fda1e: Extend `verdict index` with three graph queries. `index tests-for
+<path>|--symbol <pkg.Name> [--at <tree>] [--limit <n>]` lists candidate tests
+  labelled `same-package`, `references`, or `imports-module` — tests worth
+  reading, never coverage claims; only `_test.go` files appear. `index co-changed
+<path> [--commits <n>] [--since <dur|ref>] [--min-count <n>] [--limit <n>]`
+  reads one bounded `git log --no-merges` window (merges excluded, renames as two
+  paths), reports partner paths with co-change counts and four-decimal Jaccard
+  ratios, echoes the window it read, warns on a shallow clone, and caches the
+  window under `.verdict/index/cochange/` (two newest, timestamp-free bytes).
+  `index owners <path>` answers the CODEOWNERS rule at the tree — GitHub's file
+  order, last matching rule wins, the documented glob subset only — with
+  `owners: null` when nothing matches instead of an owner named nobody. The same
+  `target` object (path, owners, source) rides on `tests-for` and `co-changed`.
+  The read-only MCP `index` tool serves the three new queries and publishes their
+  query enum; the SDK forwards them.
+- f86f3bc: Scan TypeScript, JavaScript, and Python in `verdict index`. A build now reads
+  `.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.py`, and
+  `.pyi` alongside Go, so `index callers`, `index tests-for`, and `index status`
+  answer for those files too. Go stays parsed with `go/parser`; the other three
+  are read by two dependency-free lexical scanners — no tree-sitter, no cgo, no
+  third-party module — that tokenize the file and record declarations, imports,
+  and call sites. Every scanned file publishes its `language`, a build publishes
+  `data.languages` with one row per scanned language and how many of the indexed
+  files it holds, and a caller row names the language it came from.
+
+  A scanned language resolves one way only: `exact` never appears, and a name is
+  attributed as `lexical` inside the directory that declares it, so a caller list
+  for a scanned symbol is a floor rather than a proof. Languages never cross: a
+  caller row, and a test candidate — however it was found — must share the
+  declaration's language family, so Go, Python, and the JavaScript family each
+  answer only for themselves.
+
+  Test candidates follow the language's own naming — `.test.` and `.spec.` names
+  and `__tests__` directories for the JavaScript family, `test_*.py`,
+  `*_test.py`, `conftest.py`, and `tests`/`test` directories for Python — and a
+  test in another directory is a candidate only when it imports the queried file
+  by a specifier that resolves to it, `from lib import mod` included. A blob two
+  languages both claim is parsed per file and cached under neither, so a shared
+  file never borrows another language's parse and every build counts those parses
+  as parses rather than reuse.
+
+  A file over the 1 MiB cap stays in the tree with `oversize: true` and counts as
+  skipped rather than indexed; an extension the index does not scan never enters
+  the tree, so it is not counted at all. A store written by an earlier build
+  (store version 2 now) reads as unbuilt in `index status` and is rebuilt once by
+  the next `index build`.
+
+- 42aad7e: Reach candidate tests through the import closure. `index tests-for
+<path>|--symbol <pkg.Name> [--at <tree>] [--depth <n>] [--limit <n>]` walks the
+  reverse import graph from the declaring package — breadth first, cycle safe,
+  `--depth` hops (default 3, maximum 8; 1 limits the walk to direct imports) — and
+  labels tests reached through their package's imports as `transitive-import`,
+  alongside `same-package`, `references`, and `imports-module`. Each row carries
+  the import hops its own imports took, or its package's when its own imports reach
+  nothing, so a sibling test that imports the target directly cannot hide it — and
+  a direct candidate at depth 1 never reads as a transitive one. `depth_truncated` counts
+  the candidates whose own chain is one hop past the cap. The walk uses each
+  language's own import data (Go import paths, TypeScript
+  and JavaScript specifiers, Python modules and the submodule a `from … import …`
+  names) and never crosses a language family. `index blast-radius` reuses it, so
+  its candidate-test list gains transitive rows and a `tests.depth_truncated`
+  count of the candidates its fixed depth cap hid; the read-only MCP `index` tool
+  takes `depth` too.
+- c5a33b5: `verdict ingest <owner/repo> <pr> --sarif <file|->` ingests SARIF 2.1.0 results
+  into the bundle's `findings.json` store with `source: "tool"`, sharing one
+  store, one dedupe path (`verdict/sig`, `sig`, and `(tool, fingerprint)`), and one
+  suppression/withheld path with model reviews. Severities map through
+  `skills/verdict/schemas/sarif-map.json`, out-of-diff results stay
+  `anchored: false`, excluded paths land withheld (`source: "exclusion"`), and tool
+  findings keep `rigor: "said"` (`rigor_source: "default"`).
+
+  `report` and `trend` publish `by_source` (`model` and `tool`) breakdowns,
+  `ingest` joins the CLI, MCP default tool registry (`mutates: localWrites`), Go
+  SDK (`pkg/verdict`), TypeScript client (`clients/ts`), and published JSON
+  Schemas.
+
+- 4a0805e: Propose inactive one-rule packs from normalized resolved review threads, accept
+  them through the existing pack importer, or reject them permanently with a human
+  reason. All three lifecycle modes support a write-free dry-run. Accepted rules
+  enter scoped review recall; quoted thread evidence never activates itself.
+- 5205da7: Ship the built-in lenses as a pack. The three lenses `prompts/review.md` step 4
+  names today — `perf`, `api-contract`, and `test` — now live as data in
+  `skills/verdict/packs/builtin/`: a strict JSON `pack.json` (published as
+  `schemas/pack.schema.json`) plus one markdown body per lens. `fetch` and
+  `fetch-local` resolve the embedded pack into every bundle as `lenses.txt`
+  (each body delimited and labelled with its id and eight-hex hash), list it in
+  `data.artifacts`, and append `lens_pack=<name>@<version>` and
+  `lenses=[<id>:<hash8>,…]` to each `plan.txt` group line. A lens whose globs
+  match none of a group's files is not offered for that group. The loader is
+  capped (64 KiB/file, 1 MiB/pack, 256 files, 64 lenses), refuses `bad-pack`,
+  `pack-too-large`, and `pack-unsafe-path` (absolute paths, `..`, symlinks), and
+  hashes the canonical tree. The four hashed prompt files are byte-identical, so
+  `prompts_hash` does not move.
+- cee9aca: `verdict mcp config` now covers six more hosts and the server's posture flags.
+  `--read-only` or `--operator` (mutually exclusive, like `verdict mcp`) puts the
+  matching argv after `mcp` in the
+  printed, `--json`, and `--write` snippets. A `verdict` entry whose argv is one
+  of verdict's own shapes (`["mcp"]` plus any combination of the two flags) is
+  updated in place on `--write` with the usual backup; any other argv still
+  refuses typed (`mcp-config-foreign`).
+
+  New JSON `mcpServers` hosts merge with `--write`: `gemini`
+  (`~/.gemini/settings.json`), `qwen` (`~/.qwen/settings.json`), and `windsurf`
+  (`~/.codeium/windsurf/mcp_config.json`). `opencode` (`opencode.json`),
+  `copilot` (`.vscode/mcp.json`), and `goose` (`~/.config/goose/config.yaml`)
+  are print-only: the snippet renders each host's own shape and `--write`
+  refuses typed naming the host.
+
+- 1b36d07: Declare every MCP tool's local mutation class explicitly and derive read-only
+  exposure from it. Calls hidden by `--read-only` now return the typed
+  `read-only-tool` tool refusal with a remediation hint.
+- 3fbf1a4: Layer lens packs and list them. `verdict pack list [--json]` reports every
+  loaded pack (built-in, org from the personal settings `packs` array, repo from
+  `.verdict/packs/<name>/`) with its layer, source, canonical tree hash, lens
+  and rule ids, and drift (null until `verdict.lock`). Repo packs are read from
+  the trusted-base controls snapshot, so a PR cannot edit the pack that reviews
+  it; `post`/`record` re-hash the snapshot and refuse `controls-stale`. Duplicate
+  ids in one layer refuse `bad-pack`; a cross-layer override needs
+  `"replace": ["<lower pack name>"]` (downward only) and otherwise refuses
+  `pack-conflict`. A layered set tags each lens in a `plan.txt` group line with
+  the full name of the pack that supplied it (`lenses=[<id>@<name>:<hash8>,…]`),
+  so two packs sharing a lens id stay distinguishable on the line. A settings
+  `packs` entry inside `.verdict/packs/` refuses
+  `bad-pack`, because that tree is the repo layer read at the PR base. Packs may
+  ship KB rules (`rules/<id>.md`, severity mapped through the manifest) that
+  join the fenced `kb.txt` context, never the trusted prompt. Manifest keys must
+  be exact lowercase, non-regular pack files and a symlinked pack root refuse
+  `pack-unsafe-path`, and body reads are bounded. A regular file directly under
+  `.verdict/packs/` is not a pack: `pack list` warns once and `fetch` ignores
+  it. A symlink or special file under `.verdict/packs/`, or a `.verdict/packs`
+  that is not a real directory, refuses naming the joined path — `pack list`
+  as `pack-unsafe-path`, `fetch` as `controls-unavailable` — so neither read
+  calls one ignorable. The read-only `pack` MCP tool, `Client.Pack`/`ListPacks`,
+  and the TypeScript `pack` method serve the same list.
+- 0131d0c: Add `verdict pack test` to run offline lens-pack eval cases.
+- bdaf963: Add `verdict pack add <dir|git-url>[@ref]`, which validates a lens pack with
+  the existing loader, vendors its tree under `.verdict/packs/<slug>/`
+  (including the `evals/` and `examples/` payloads), and pins it in
+  `.verdict/verdict.lock`. The lock's tree hash covers those payload trees too,
+  so two packs that differ only in an eval case record different hashes. The lock is strict JSON with one row
+  per repo pack, sorted by name: `name`, `source` (`dir:<path>` or
+  `git:<url>@<sha>`), `version`, the canonical tree `hash`, and an integrity
+  `sig` over those fields. A `dir:` source is a slash path with no control
+  character, backslash, or leading `-`; neither spelling carries a userinfo
+  password. Re-adding a name replaces its tree and entry and
+  prints the old and new hash; a source inside `.verdict/packs/` refuses
+  `bad-pack`. Git sources fetch hermetically (no system config, scrubbed
+  `HOME`/`XDG_*`, no prompts, no hooks, file protocol disabled, shallow clone
+  without tags or submodules) and record the resolved HEAD commit; the git calls
+  share a five-minute budget and the clone is checked against the pack caps
+  before it loads. A URL
+  userinfo password or token refuses `bad-pack` before the clone and never
+  reaches a printed line, a refusal message, or `verdict.lock`; the bare
+  `user@host` forms keep working, and a hand-written lock row carrying one
+  refuses too.
+
+  `fetch`, `fetch-local`, `post`, and `record` now refuse `pack-lock-missing`
+  when a repo pack has no lock entry and `pack-lock-drift` when the tree hash,
+  pack directory, or `sig` disagrees, from one shared check with no bypass
+  flag. `.verdict/verdict.lock` joins the controls inventory, so it is read at
+  the PR base and an edited snapshot copy refuses `controls-stale`. `pack list`
+  fills its `drift` column with null for a matching repo pack and the refusal
+  code otherwise; the human rows show it, and a lock row whose pack directory
+  is gone lists with `drift: "pack-lock-drift"`. The built-in pack stays pinned
+  by the binary and org packs stay in per-operator settings, so neither is
+  locked.
+
+- 65dde0c: Add `verdict panel`, a local planner for independent verifier dispatches.
+  Keep-biased results enrich findings and record/post/report summaries without
+  voting, dropping findings, or exposing verifier evidence in posted bodies.
+  New artifacts live under `verification/`; the pinned `panel` roster is unchanged.
+  The verifier prompt joins the provenance hash; existing receipts retain their hash.
+- 6f2f1ba: Post only comments and summary parts missing from fetched remote content. Recover partial publication after re-fetching, recognize identical findings at moved lines, and record new-head rearming with `rearmed` and `previous_head` in post output and receipts. Local receipts no longer block publication or override approval gates.
+- 53fde33: Add opt-in PR summary comment support via `post --summary comment|off` (default
+  `off`). When `off`, `post` output, host calls, and receipts stay byte-identical.
+  When `comment`, `post` maintains one separate PR-level summary comment carrying
+  a `<!-- verdict-summary head=<sha> -->` marker (distinct from review and
+  finding markers, never editing the PR description), ignoring comments by other
+  authors, updating the existing comment in place across GitHub (`PATCH`),
+  GitLab (`PUT`), and Forgejo (`PATCH`), linking to the submitted review and
+  posted inline comments where hosts supply URLs, and reporting duplicate matches
+  in the receipt without deleting older comments. `--dry-run` reports the planned
+  summary action (`create`, `update`, or `none`) without writing. A failed summary
+  write never loses the accepted review's receipt: `summary.action` is `failed`
+  with the reason, and the next post updates the summary.
+- 22506c4: Infer the provider from origin when no provider flag is given, refuse unknown hosts, and record the selection source in PR.json.
+- b70ea57: Add opt-in posted GitHub reaction proposals and per-rule acceptance and false-hit rates.
+- 6b6d3fd: `ready` advises on GitLab merge requests and plain `calibrate` joins live
+  GitLab threads, both through `glab` behind the same per-provider tables the
+  GitHub reads already sit behind (GitHub output byte-identical). `ready` reads
+  the merge request (`draft`, `has_conflicts`, `detailed_merge_status`,
+  `description`, head pipeline) plus the pipeline and discussion lists, so the
+  same draft, conflict, `ci-failing`, `threads-open`, and `description-thin`
+  blockers report on either host; `calibrate` matches the posted discussion
+  bodies (finding marker included) against the live discussions and reads
+  changed files through the repository compare, so the same fixed,
+  resolved-unfixed, open, and unknown outcomes join on either host. Bundles on
+  the remaining hosts still refuse `provider-unimplemented` naming the host.
+- 46c4591: Add advisory change-risk scoring (`review.json.risk`, `report --risk`,
+  `report --max-risk`, and `trend` risk-band rollups). `review.json` accepts an
+  optional `risk: {level, rationale, assessed_head}` claim validated during
+  `record` and persisted to `record.json` / `post.json` (with stale-head detection
+  via `risk-stale-head`). `report --risk` reports `claimed`, deterministic store
+  `floor` inputs, and `reported = max(claimed, floor)` (keeping unassessed
+  changes `unknown` and incomplete evidence at `>= medium`); `report --max-risk`
+  adds an offline fail-closed gate dimension. `trend` adds per-band outcome counts
+  under `by_risk` and `per_bundle[].risk`. Exposed across CLI, MCP `report`,
+  Go SDK `Client.Report`, JSON schemas, and TypeScript client types.
+- df3ddc7: Add per-rule `recalled_in`, `cited_in`, `exposure`, and `acceptance` columns to `learn --status` (text and `--json`), reusing the bundle overlap join and reporting missing recall manifests as `unmeasured`/`null`.
+- 3acb87b: Import structured rule objects with `learn --pack <directory> --id <rule-id>`, preserving pack provenance and hash in the tracked KB controls.
+- 7e03259: Launch your own agent. `verdict run <owner/repo> <pr|local-name> --agent <name>`
+  runs the operator's agent CLI against an existing bundle — one process, one
+  bundle, one shot — then asserts exactly one fresh `review.json` and hands off to
+  the unchanged `record`/`post` validation. It never retries, re-prompts, repairs,
+  or reads the model's prose, and it never posts.
+
+  Agents are data: the shipped table names `claude`, `codex`, `cursor`, and
+  `opencode` with their binaries and non-interactive argument shapes, so a new
+  agent is a new row. Everything after a bare `--` passes to the agent unchanged,
+  `--print` renders the exact command (POSIX-quoted) and exits zero without
+  spawning, and `--timeout` sets the shared watchdog budget.
+
+  Every failure is typed with a hint: `agent-missing`, `agent-spawn-failed`,
+  `agent-timeout`, `agent-failed` (whose exit code becomes the process exit code so
+  CI sees the real failure), `no-review-artifact`, `stale-review-artifact`,
+  `unknown-agent`, and `agent-record-failed`. The launch is recorded in
+  `.verdict/state/<bundle>/launcher.json` — agent, binary, argv shape with secrets
+  redacted, timings, exit code — with the child's full output in `.run.out`.
+
+  The verb is CLI-only: spawning a local agent is not an MCP tool, a facade method,
+  or a TypeScript client method. Verdict invokes your agent only when you ask: no
+  daemon, queue, scheduler, webhook, model selection, or interpretation of model
+  output, and `run` itself makes no network calls.
+
+- 052c2dc: `run` repairs an invalid `review.json` with `--rounds N` (1–5, default 1): round 1 sends today's directive unchanged, later rounds re-prompt the agent with the prior review bytes and the shape checker's fix list fenced under the run's nonce, and the loop stops on the first valid round. `--timeout` is per round, `--json` carries the loop in `data.repair`, and exhaustion refuses `repair-exhausted`.
+- 930e677: Add live bundle invalidations to `verdict serve`, with `--interval`, `--sweep`, and `--no-watch` controls.
+- a6f91a6: Add `verdict serve`, a read-only HTTP surface over the current repository
+  (loopback by default; `--host` is the documented exposure opt-in):
+  `/v1/health`, `/v1/roots`, `/v1/bundles`, the bundle detail, and `show`, with a
+  per-port session-cookie exchange for the browser, strict CSP, Host and Origin
+  gates, and `data.sources[]` traceability on every composed response.
+- a9b1286: `serve --root` discovers nested repositories with bounded traversal and a local
+  24-hour registry. The roots and inbox responses report cache, truncation, and
+  skipped-pattern state.
+- f2b8c96: Add `/v1/cost` repository, ISO-week, and model buckets plus `/v1/precision`
+  category and tier counts from the stored thread feed. Unmeasured model prices,
+  fixed outcomes stay `null`, no rates are published, and corrupt aggregates are
+  marked partial.
+- f43b7dd: `verdict serve` now opens an embedded browser UI with inbox, review detail,
+  threads, cost, precision, and gate views. The UI supports dark mode, refreshes
+  after live invalidations, and can read static `data.json` exports.
+- 2f551c0: `verdict skill` grows its inspection and removal half. `skill show <path>`
+  prints one embedded payload file byte-identically (with `--json`, one envelope
+  carrying `path` and the same bytes in `content`); a traversal, absolute, or
+  unknown path refuses `skill-path-not-inventory` and names `skill files`.
+  `skill status [--dir|--agent...|--detect] [--diff] [--json]` is the read-only
+  drift report: it writes nothing, reuses the install plan to report
+  create/update/keep/blocked per target with the receipt versus embedded version,
+  and exits 0 in sync and 1 when drifted, so CI can gate without
+  `install --dry-run`. `--diff` adds one unified diff per changed file, capped at
+  64 KiB overall with an explicit truncation marker and `truncated` in JSON.
+  `--agent` now repeats on `install`, `status`, and `uninstall`: targets are
+  deduplicated and handled in argv order, while `--dir` stays single.
+  `skill uninstall [--dir|--agent...] [--force] [--dry-run] [--json]` deletes
+  only the inventory paths the `.verdict-managed` receipt owns, then the receipt,
+  and leaves every foreign file in place; a target that is a symlink
+  (`skill-target-file`) or an inventory path that escapes the target through a
+  symlinked directory (`skill-foreign-conflict`) refuses before any deletion; a
+  target without a receipt refuses
+  `skill-dir-foreign` unless `--force` (which still removes only inventory
+  paths), an absent install refuses `skill-not-installed`, and `--dry-run`
+  deletes nothing. `skill install` likewise refuses a symlinked target
+  (`skill-target-file`) and a payload directory that escapes the target through
+  a symlink (`skill-foreign-conflict`) before it writes anything.
+  `verdict uninstall`'s skill-copy hint now names
+  `verdict skill uninstall` instead of `rm -rf`.
+- 9619fcf: Add `threads resolve <owner/repo> <pr> [--thread <id>]... [--dry-run]`, the
+  receipt-backed thread mutation: without `--thread` it closes every open
+  self-authored thread whose linked finding the local store marks addressed;
+  with `--thread` it closes only the named ids, and a human-authored thread
+  refuses. A thread is resolvable only when its root carries verdict's marker
+  and its root author equals the authenticated token user (read once per run;
+  an unreadable login refuses before any write); a forged marker skips as
+  `not-self-authored` by default and refuses `not-verdict-authored` when named.
+  `--dry-run` lists the plan and makes zero writes; a real run makes one
+  host write per thread and records `threads-resolve.json`. GitHub resolves
+  through `resolveReviewThread`, GitLab through the discussion resolved flag, and
+  `thread_resolution` now reads true on both; Forgejo refuses typed because its
+  API has no documented resolve endpoint.
+- 471af44: Publish a shared truncation receipt across CLI `--json` `data` envelopes (`fetch`, `report`, `next`, `show`, `trend`, `threads`, and `serve`), bundle artifacts, and MCP text/structured results, and make `next`/`show` report truncated misses honestly instead of refusing or claiming nothing exists.
+
+  Breaking (pre-1.0, within schema_version "1" by operator decision): index
+  blast-radius lists replace the integer `truncated` count and `depth_truncated`
+  with the shared boolean receipt (`truncated`, `truncation_reason`, `returned`,
+  `total`, `next_offset`); complete results omit the receipt instead of carrying
+  `truncated: false`.
+
+- c3880e0: `verify` now filters the child process environment with a default-deny
+  allowlist instead of forwarding the full parent `os.Environ()`. Only baseline
+  locale, terminal, shell, XDG, and toolchain variables (`PATH`, `HOME`, `LANG`,
+  `LC_*`, `TERM`, `TMPDIR`, `TZ`, `CI`, `USER`, `LOGNAME`, `SHELL`, color flags,
+  `XDG_*_HOME`, Go/C/Rust/JS/Python toolchain cache and home variables, plus
+  Windows OS runtime variables on `GOOS=windows`) pass by default, and any
+  variable matching `envsecret.IsSecret` (such as `FOO_TOKEN`, `GITHUB_TOKEN`,
+  `SSH_AUTH_SOCK`, or `LC_TOKEN`) is dropped even when it matches an allowlist
+  prefix. An explicit opt-in keeps the named variable even when it matches
+  `envsecret.IsSecret`. Operators can opt specific variable names in via
+  `--env-allowlist <name[,name...]>` (also wired as `envAllowlist` on the `verify`
+  MCP tool and `EnvAllowlist` on `verdict.VerifyRequest`) or `.verdict/verify-env`
+  (one name per line, `#` comments and blank lines ignored, read from the
+  base-snapshotted `controls` inventory rather than the untrusted PR worktree).
+  Dropped variable names — never values — are reported in deterministic sorted
+  order in `warnings[]`.
+- 8428078: `verify --sandbox` runs the verify command inside an enforced bubblewrap
+  sandbox on Linux: no network, a private PID namespace with its own `/proc`
+  (so no host PID or `/proc/<pid>/environ` is readable), an empty `/run` (so
+  `docker.sock`, the session bus, and agent sockets have no unix-socket route
+  out), a fresh `/dev`, a private `/tmp`, `--new-session`, and
+  `--die-with-parent`. `~/.aws`, `~/.ssh`, `~/.config/gh`, `~/.docker`,
+  `~/.kube`, `~/.config/gcloud`, `~/.azure`, and `~/.gnupg` are mounted empty;
+  `~/.netrc`, `~/.git-credentials`, `~/.npmrc`, and `~/.pypirc` are bound to
+  `/dev/null`; the reviewed root stays writable. It probes the same flags with
+  a no-op before anything executes and refuses `sandbox-unavailable` — running
+  nothing and leaving `patch.json` and `.verify.out` untouched — on every other
+  OS, when `bwrap` is missing, or when namespaces are restricted; it never
+  silently falls back to an unsandboxed run. The opt-in reaches the MCP tool
+  (`sandbox`), the Go facade (`Sandbox`), and the TypeScript client
+  (`--sandbox` argv); the patch record, deep-group receipt, and `--json` data
+  carry `sandboxed` when it was enforced. Runs without the flag are
+  byte-identical to before.
+- 7e03259: `post.json` records what a host withheld, so a degraded publish stays auditable
+  after the envelope is gone. The new optional `withheld[]` lists one entry per
+  capability the host could not carry, with the capability name and the same
+  machine-readable reason code `fetch` publishes in `data.capabilities.unsupported`
+  (`no-request-changes-event`, `no-approve-verdict`, `no-inline-anchors`, …) plus
+  the `requested_event` the run asked for. A bound `REQUEST_CHANGES` on GitLab
+  therefore leaves `review.state=commented` — the state the host accepted — _and_
+  an entry saying `request_changes` was withheld, so it is no longer
+  indistinguishable from a plain comment; the key is absent when nothing was
+  withheld, and `schema_version` stays `"1"` (additive: no field renamed or
+  removed). The `inline_anchors` capability now has a gate behind its claim: a
+  host advertising `inline_anchors: false` is sent no anchored comment, and the
+  merge keeps every finding in the body (keep-biased) with a warning naming the
+  host, instead of writing a position the host would refuse.
+
+### Patch Changes
+
+- aa21d04: Check missing agent binaries before prompt assembly, include installation guidance, and restrict printed and recorded pass-through arguments to safe model and cost options.
+- 1138177: Bound serve cache content hashing to 16 MiB per bundle lookup, shared across artifacts, chunks, and override fragments. Bypass the cache when the content budget is exceeded.
+- f734e11: Hash bundle artifacts up to 64 KiB when validating the serve cache, detecting rewrites that preserve size and mtime.
+- 934153e: Attach explicit context files with `fetch --context` and `fetch-local --context`, and cite context sources on findings.
+- 2780859: The coverage read names what its percentage counts. `next --coverage` and the
+  `coverage-incomplete` refusal said only "% of changed lines attested", while the
+  evaluator scores every hunk span on both sides, context included, so a reviewer
+  who attested every changed line but not its hunk context read a lower number
+  than they had covered. Both read points now state the basis beside the number,
+  for example `coverage: 54% of full hunk spans, both sides and context (12/22
+lines, 1 files)`. The record warning stderr line uses the same basis, and the
+  constant lives once in `internal/core/coverage` so the surfaces cannot drift.
+  The `--json` keys are unchanged; the `warnings` string now names the same
+  basis. The machine-built body line is unchanged.
+- 9cc03a6: Host tokens no longer appear in curl's command line. Forgejo and Bitbucket
+  reads hand the credential to curl as a config document on stdin, and a Forgejo
+  write stages it in a 0600 file under a private temp dir because its body owns
+  stdin; the file is removed after the call. The token, password, and
+  `Authorization` header are gone from the argv a local `ps` or
+  `/proc/<pid>/cmdline` can read. A credential carrying a newline refuses before
+  any process spawns.
+- 7262af7: Restructured the docs site into grouped sections with short sidebar labels, added a Markdown twin for every page, and pointed `verdict --help` at the new glossary route (`/verdict/docs/glossary`).
+- 27e1cee: `gate --live` reads threads on every host and fails closed when it cannot. The
+  live-thread dimension skipped the read for any bundle whose provider was not
+  GitHub — it warned `live recheck skipped: <provider> threads unreadable here`
+  and passed the gate without looking, so `--live strict` on a GitLab, GitCafe,
+  Forgejo, Bitbucket, or Azure bundle was a pass that proved nothing. The probe
+  now reads the bundle's own host through the same per-host adapter the `threads`
+  refresh uses (GitHub keeps its resolution-only `gh api graphql` read, unchanged
+  byte for byte), counts unresolved threads the same fail-closed way, and treats a
+  read that stopped before the host's last page as unread rather than clean:
+  `--live auto` warns and gates on the local dimensions, `--live strict` fails
+  closed with the existing strict refusal. Only local bundles skip the lookup now,
+  because they carry no host threads at all.
+- 73ccf13: An unknown gate tier now refuses `bad-flags` everywhere, not only on the CLI. The MCP `report` tool's `flags.check`
+  and the Go SDK's `Report.Check` and `Gate.MaxSeverity` used to pass any string through, so `check: "bogus"` gated on
+  every finding and could flip an informational-only bundle from passing to failing. The CLI keeps its existing
+  `--check` / `--max-severity` usage error.
+- 0ec4587: The index accuracy corpus's four scanner bugs are fixed, so the published
+  scorecard and the mechanism labels now match the manual. `index tests-for`
+  names a test whose own package imports the declaring package at
+  `transitive-import, depth 1` instead of dropping it, and `imports-module`
+  resolves a relative specifier (`import { tidy } from "../lib"`) against the
+  importing file's directory — including in a tree that also carries a `go.mod`,
+  where a scanned package's import path is now the directory rather than the Go
+  module path. `index callers` no longer attributes a Python attribute call
+  (`log.save(...)`) to a same-named module-level function, and a Go selector
+  written on a value outside the declaring package (`s.Save`, `a.Touch`) is
+  counted in `counts.unresolved` instead of disappearing, so an empty answer no
+  longer claims nothing was left unattributed.
+- cfcd55e: Share the impact section byte budget across symbols, callers, and tests, with omitted counts for each list.
+- ad7fcf7: Suppress module-function callers through import qualifiers shadowed by local bindings in Python and TypeScript. Rebuild indexes written with the previous scanner.
+- c4359ac: Keep serve inventory accounting within its byte budget even for oversized artifacts.
+- 1ff854e: Keep cited paths and comment identifiers inside quoted learning evidence.
+  Refuse unsafe paths and identifiers before proposing or accepting a learning,
+  including proposals generated before this validation was added.
+- 5cf17ae: Refuse symlinks at every managed bundle component before writing, including links to targets inside the repository. Symlinked repository roots remain supported.
+- 7e03259: Neutralize `@`-mentions in the review body and in each finding's inline
+  comment. Both are written by an agent and published verbatim, so an `@handle`
+  in that prose pinged that person the moment the review was submitted. `record`
+  now escapes every mention once, where the text is constructed into the record —
+  the same shared merge `post` runs — so the recorded body, each finding's posted
+  comment, the `post --dry-run` output, and the payload digest carry the same
+  bytes instead of diverging at submit time. A finding's signature is computed
+  over the escaped bytes, so merging the same bundle twice keeps one signature.
+
+  The escape is U+200B ZERO WIDTH SPACE between the `@` and the handle: invisible
+  in rendered Markdown, still plain text, and no host resolves a mention across
+  it. Fenced code blocks, inline code spans, HTML comments (finding markers
+  included), and the basis/footer blocks are left byte-identical, and an address
+  such as `user@example.com` is not a mention because the byte before the `@` can
+  sit in an address's local part while the handle must be `[A-Za-z0-9-]+`. A
+  finding's
+  `suggestion` is code and stays byte-identical too — a zero-width space inside a
+  patch would be an edit nobody can see. The rewrite is idempotent and has no
+  flag: neutralization is not opt-in.
+
+- cf9f5a0: `verdict next --coverage` with no positionals now leads with one `error:` line
+  that names what is missing, like the other verbs. A plain `Basis:` line directly
+  under the quoted `Confidence:` line is accepted without a `basis-replaced`
+  warning.
+- 7e03259: A `ranges: null` coverage claim is malformed, not whole-file. The attestation
+  reader treated a present-but-null `ranges` as "no ranges given", which is the
+  same shape as an omitted key, so it counted the claim as the file's whole hunk
+  set: `record --dry-run --require-coverage` reported the diff 100% attested and
+  the gate passed on a claim that carried no ranges at all. A `ranges` key that is
+  present and is not a string — `null` included — now warns once and counts as
+  unattested, exactly like a reversed or unparsable range. A claim still widens
+  only by saying `"all"` or by omitting the key, so a malformed claim can never
+  attest more than it says.
+- b653391: `verdict pack add` reports a failed sweep of the previous tree as success plus a warning
+  that names the leftover dot-prefixed sibling, instead of refusing an add whose new tree
+  and lock are already durable. The loader already skips that sibling.
+- 0bc5ef6: `verdict pack add` accepts only the three published git source forms — `https://host/path`
+  with no userinfo, `ssh://user@host/path`, and `user@host:path` — and refuses every other
+  remote-shaped string before any git call or write. The grammar is one allowlist shared by
+  `pack add` and `.verdict/verdict.lock`, so the one-slash scheme, `%`-escaped passwords,
+  token-only and two-`@` https URLs, `http://`, `git+https://`, IPv6 literals with
+  userinfo, and a query or fragment (`?private_token=…`, `#…`) all refuse as
+  `bad-pack-source`, and a hand-written lock row carrying one refuses
+  as `bad-lock-source` at `pack list`, `fetch`, `post`, and `record`. No source is echoed
+  raw: every refusal, human line, and `pack list` row renders through one display that
+  prints a parsed source and `<invalid source>` for anything else. git's own failure text is
+  never rendered: a failed clone, rev-parse, or checkout refuses as `pack-git-failed` with
+  fixed wording for the phase and its exit code, because that text can carry the source URL,
+  its query, or the ref.
+  The published lock pattern follows the same grammar: it bounds each DNS label at the 63
+  bytes the loader enforces and refuses a `://` inside an scp path, so a schema check and
+  `pack list` agree on every source shape.
+- bd8a2ca: `verdict pack add` refuses a crashed re-add's leftover staging or backup sibling as
+  `pack-staging-stale` when it cannot sweep it, naming the path to delete instead of
+  suggesting a `pack.json` repair. The loader still ignores those dotted siblings, so
+  `pack list` and `fetch` are unaffected.
+- d92d674: Compute post payload receipts from rendered review content and the reviewed head, excluding diff positions, event selection, and range metadata.
+- 6a93e36: Refresh live remote reviews and comments before publication, refusing without writes if the read fails. Retrying a partial publication no longer requires re-fetching. Match identical comment bodies one-to-one, pairing exact anchors before moved lines so distinct missing findings are preserved.
+- c242a67: Refuse to publish secret-shaped values. `post` scans the summary body and each
+  finding's body and suggestion before the first host call, and a credential
+  value — a PEM private key, an AWS key id, a GitHub, Slack, Google, Stripe,
+  Anthropic, or OpenAI token — refuses `post-secret-shaped`, naming the site and
+  the matched shape but never the value: a posted review cannot be unsent.
+  `--dry-run` warns in the same words and still exits 0. `--allow-secret-values`
+  publishes the review anyway, and `post.json` records the shapes it let through
+  in `secret_shapes_allowed[]`. The patterns move to `internal/envsecret`, so
+  `fetch`'s sensitive-content scan and this guard share one table; fetch's
+  bundles and goldens are byte-identical, and so is the receipt of a review that
+  carries no such value.
+- aecbee1: Reconcile binding verdicts separately from summary and inline content. Retry failed approvals without duplicate GitLab summary notes, ignore Forgejo drafts, map Forgejo anchors before matching, and reject malformed nested live notes. Preserve verified patch provenance and clarify partial-publication retry advice.
+- 7e03259: Mentions behind punctuation or emphasis are escaped too. The neutralizer opened
+  a mention only at a line start or after a space or tab, so `(@alice)`,
+  `**@alice**`, and `_@alice_` were published as written and still notified the
+  person they named — the exact notification the escape exists to prevent. Any
+  byte that cannot sit in the local part of an email address now opens a mention,
+  so those shapes are escaped while `user@example.com` is left byte-identical.
+  Fenced code blocks, inline code spans, HTML comments including the finding
+  markers, and a finding's `suggestion` stay untouched, and the rewrite remains
+  idempotent.
+- b1e0da0: `record` (and `record --dry-run`) now warns once per `cost.json` `models[]`
+  entry with no `name`, for example `cost.json: models[0] has no name — the name
+is what attribution reads; add "name"`. The record stays accepted and priced —
+  warnings only, never a refusal or rewrite — and `record --json` carries the
+  same text in `warnings[]`. Only a missing or non-string name warns; an empty
+  string passes, since the schema sets no minimum length.
+- 1957a9a: `scripts/release.sh` no longer reports a shipped release asset as missing. The
+  completeness check piped the asset list into `grep -q`, which exits at the first
+  match; the writer then took SIGPIPE, `pipefail` failed the pipeline, and the
+  asset landed in the missing list — so a complete release could refuse its own
+  body ("release v0.6.1 is not complete (missing: …)"). The race lost only under
+  load, which is why it showed up in a parallel eval run. The membership test is
+  now a bash whole-line match with no producer that can break, and the
+  `release-body` eval pins it with an asset list over 64 KiB whose first entry
+  must still be found.
+- bc1fbba: Export the six dashboard views with `report --html <dir> [--root <dir>]`.
+  Refresh through sibling staging and backup directories, roll back publication
+  failures, and refuse stale recovery artifacts or unsafe destinations.
+- 13206b7: Publish live resolution metrics and save calibration receipts. Add offline
+  resolution rollups, clean-review metrics, and clean report headlines.
+- f647837: A batch of small fixes from recent review rounds:
+
+  - An agent that exits non-zero just before its time budget runs out is now reported `agent-failed`, not
+    `agent-timeout`. The watchdog records its own budget kill instead of comparing the clock afterwards.
+  - MCP refusal results carry the refusal's `warnings`, both as `warn:` lines in the text and as a `warnings` field in
+    the structured result.
+  - Human-mode output prints a refusal's warnings as `warn:` lines before `error:`, so `pack list` no longer hides a
+    stray-file warning when it refuses.
+  - The `index-capped` refusal names the bytes it measured. Its hint no longer suggests raising a cap that cannot be
+    configured.
+  - `index status` points at the query, not at `index build`, once HEAD is indexed.
+  - Reading a crashed agent's partial review can no longer block on a FIFO.
+
+- 7e03259: Keep an argument credential out of the launch record. `verdict run --agent`
+  redacted a secret-shaped flag's operand in `launcher.json`'s `argv`, but the same
+  credential still reached the bundle twice: the recorded `output_tail` was scrubbed
+  only against secret-named environment values, so a child that echoed its own argv
+  — or printed it in a stray debug line — left the operand in plaintext, and the
+  raw child log `.run.out` was written `0644`.
+
+  The output scrub now hides the operand the argv redactor already identifies, from
+  one walk that feeds both the record's `argv` and its tail, so the two cannot
+  disagree about what a credential is. `.run.out` stays the child's raw stream for
+  debugging and is written `0600`. The environment scrub, the tail bound, `--print`,
+  and `launcher.json`'s shape are unchanged.
+
+- 430d6f8: Add a bounded local self-review recipe for Claude, Codex, and OpenCode, with round receipts, offline evals, and benchmark instructions. Require complete recorded coverage, bound to the verified diff identity on dirty local bundles. Refuse stale dirty-tree coverage after tracked files change since fetch.
+- e4c4da5: Pass setup-verdict inputs through environment variables and cache release archives. On reuse, refresh the signed checksums and build-commit
+  metadata, verify the archive, then extract a fresh binary without downloading the
+  archive again. A tampered archive fails closed and remains cached until the entry
+  is removed. Cache reuse requires release metadata access.
+- 8205d58: `verdict skill install` now checks its targets before the first write. On POSIX
+  exactly the directories an install will write are probed before the first byte,
+  so a read-only skills dir anywhere in a `--detect` set refuses with
+  `skill-install-failed`, names that target, and leaves the earlier targets
+  absent instead of already installed. A target that changes between that probe
+  and the write still fails, at write time. Windows reports that failure at write
+  time only, because its writability probe is a stat. A receipt path that cannot
+  be replaced refuses with `skill-foreign-conflict` the same way, before the
+  payload lands. A single-target install refuses on the same probe, and a
+  repeated `--agent` dedupes to one install per target instead of refusing.
+- 7e03259: Mentions wrapped in strikethrough are escaped too. The neutralizer walked back
+  over a run of `*` or `_` to tell emphasis markup from the tail of an address,
+  but `~` is also a valid local-part byte and was left out of that walk, so
+  `~~@alice~~` was published as written and GitHub read it as a strikethrough
+  mention — the exact notification the escape exists to prevent. A run of `~~` now
+  counts as markup the way `**` does, so that shape is escaped while
+  `foo~@example.com`, `user@example.com`, `(dev@example.com)`, and a lone tilde in
+  prose such as `approximately ~5 minutes` stay byte-identical. The rewrite
+  remains idempotent, and fenced code blocks, inline code spans, HTML comments,
+  and a finding's `suggestion` are still untouched.
+- 023a267: `docs/troubleshooting.md` lists every refusal code the binary can emit, each
+  with its cause and its fix. A drift test fails the build when a code ships
+  without an entry (or an entry names a retired code), and the manual's
+  refusal section links the page.
+- 2430e16: `verdict upgrade` quotes the project-local `run: cd <root>` hint with the
+  POSIX single-quote rule, so a project path with a space or `'` pastes
+  resolvably; `verdict uninstall`'s sibling skill-copy refusal now reads as a
+  sentence (`remove it with the tool that installed the skill copy at <dir>`)
+  instead of rendering prose in the `remove it with:` command slot.
+- 11f436b: Treat a thread feed removed during a serve read as absent instead of corrupt.
+- 1cf24d9: The verify pre-exec gate closes twelve static bypasses. `wget --remote-name`,
+  `wget -i`, `curl -K`/`--config`, `busybox wget`, `pip3 download <url>`,
+  `telnet`, curl's `telnet://` scheme, and `git archive --remote` now refuse as
+  `verify-networked`; a secret-shaped variable from the shared `envsecret`
+  classification in a networked command (`curl .../$AWS_KEY`,
+  `curl -H "X: $AWS_KEY"`) refuses as `verify-credential-read`; and
+  `git --exec-path` plus `tar -I` refuse as `verify-destructive`. Both short
+  options match the attached and clustered spellings a shell accepts too
+  (`tar -Itouch-fz`, `tar -cIf`, `wget -i/tmp/urls`, `wget -qi /tmp/urls`), not
+  only the separated form. Every refusal keeps the quoted fragment and `try:`
+  rewrite hint. The documented boundary is
+  unchanged: a plain `curl` GET, `/tmp` scratch writes, and non-secret variables
+  in URLs still execute, and the adversarial corpus rows that pinned each gap
+  move from `xfail` to `strict` with benign neighbours beside them.
+- 7e19070: On Windows, a command that failed to start — never attached to its job object,
+  or left with no thread to resume — and then survived verdict's cleanup kill
+  left the run waiting on it forever. That spawn failure now returns at once,
+  naming both the spawn error and the kill error, instead of hanging.
+- 5d3372a: Refuse symlinked bundle directories before `post` or `record` writes.
+
 ## 0.6.1
 
 ### Patch Changes
