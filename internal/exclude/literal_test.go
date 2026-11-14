@@ -17,6 +17,7 @@ func TestLiteralPathMatchesExactlyThatPath(t *testing.T) {
 		{name: "space", path: "my dir/a.go", pattern: "my dir/a.go", lookalike: "myxdir/a.go"},
 		{name: "quote", path: "it's/a.go", pattern: "it's/a.go", lookalike: "itxa.go"},
 		{name: "leading bang", path: "!notes.md", pattern: `\!notes.md`, lookalike: "notes.md"},
+		{name: "leading hash", path: "#hash.txt", pattern: `\#hash.txt`, lookalike: "hash.txt"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -40,17 +41,29 @@ func assertLiteralPath(t *testing.T, path, pattern, lookalike string) {
 }
 
 // TestLiteralPathSurvivesParseIgnore proves a leading ! stays an exclusion
-// rule rather than turning the pattern into a re-include.
+// rule rather than a re-include, and a leading # stays a pattern rather than
+// a comment line.
 func TestLiteralPathSurvivesParseIgnore(t *testing.T) {
 	t.Parallel()
-	rules, err := ParseIgnore([]byte(LiteralPath("!notes.md")+"\n"), "ignore")
+	for _, path := range []string{"!notes.md", "#hash.txt"} {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+			assertIgnoreLineIsARule(t, path)
+		})
+	}
+}
+
+func assertIgnoreLineIsARule(t *testing.T, path string) {
+	t.Helper()
+	line := LiteralPath(path)
+	rules, err := ParseIgnore([]byte(line+"\n"), "ignore")
 	if err != nil {
-		t.Fatalf("ParseIgnore refused the escaped leading bang: %v", err)
+		t.Fatalf("ParseIgnore refused the escaped line %q: %v", line, err)
 	}
 	if len(rules) != 1 || rules[0].Negate {
-		t.Fatalf("rules = %+v; want one non-negated rule", rules)
+		t.Fatalf("rules from %q = %+v; want one non-negated rule", line, rules)
 	}
-	if _, excluded := Excluded(rules, "!notes.md", ""); !excluded {
-		t.Errorf("Excluded(%q) = false; want the escaped rule to exclude it", "!notes.md")
+	if _, excluded := Excluded(rules, path, ""); !excluded {
+		t.Errorf("Excluded(%q) = false; want the escaped rule to exclude it", path)
 	}
 }

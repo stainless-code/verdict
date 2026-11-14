@@ -19,7 +19,7 @@ exit: 1
           "huge.txt"
         ],
         "estimated_bytes": 1220081,
-        "suggestion": "re-fetch narrowed to huge.txt (~1220081 bytes)"
+        "suggestion": "re-fetch narrowed to -- huge.txt (~1220081 bytes)"
       },
       {
         "kind": "range",
@@ -36,7 +36,7 @@ exit: 1
 » estimate: no comparable past runs — cost unknown (no usable .verdict/state/*/cost.json records yet)
 » chunking opted in for group 79cb327781f6115bd9d2ca21b19afa9e39edade7619defea51856731270c87e9 — single file over cap, keeping today's advisory refusal (split the range or narrow, or override the cap deliberately)
 candidates (suggested scopes — re-run narrowed, nothing auto-narrowed):
-- [paths] re-fetch narrowed to huge.txt (~1220081 bytes)
+- [paths] re-fetch narrowed to -- huge.txt (~1220081 bytes)
 - [range] split the range in half (~610041 bytes each): fetch-local --range/--base, fetch --base-sha/--since
 --- files ---
 --- file C/.gh-calls.log ---

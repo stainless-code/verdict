@@ -19,7 +19,7 @@ exit: 1
           "f00.txt"
         ],
         "estimated_bytes": 59477,
-        "suggestion": "re-fetch narrowed to f00.txt (~59477 bytes)"
+        "suggestion": "re-fetch narrowed to -- f00.txt (~59477 bytes)"
       },
       {
         "kind": "paths",
@@ -52,7 +52,7 @@ exit: 1
 » gh pr diff -> .verdict/state/4703/full.diff
 » estimate: no comparable past runs — cost unknown (no usable .verdict/state/*/cost.json records yet)
 candidates (suggested scopes — re-run narrowed, nothing auto-narrowed):
-- [paths] re-fetch narrowed to f00.txt (~59477 bytes)
+- [paths] re-fetch narrowed to -- f00.txt (~59477 bytes)
 - [paths] re-fetch with --ignore f00.txt (13 files, first 10 named, ~773201 bytes total)
 - [range] split the range in half (~416339 bytes each): fetch-local --range/--base, fetch --base-sha/--since
 --- files ---

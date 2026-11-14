@@ -218,7 +218,7 @@ func suggestSplits(fullDiff string, total int64) []any {
 	out := []any{
 		jq.NewObj(
 			keyKind, "paths", keyFiles, []any{top.path}, keyEstimated, top.size,
-			keySuggestion, fmt.Sprintf("re-fetch narrowed to %s (~%d bytes)", top.path, top.size)),
+			keySuggestion, fmt.Sprintf("re-fetch narrowed to -- %s (~%d bytes)", narrowArg(top.path), top.size)),
 	}
 	if len(rest) > 0 {
 		out = append(out, restSplit(top, rest, restBytes))
@@ -227,6 +227,17 @@ func suggestSplits(fullDiff string, total int64) []any {
 		keyKind, modeRange, keyFiles, []any{}, keyEstimated, half,
 		keySuggestion, fmt.Sprintf("split the range in half (~%d bytes each): fetch-local --range/--base, fetch --base-sha/--since", half)))
 	return out
+}
+
+// narrowArg renders one diff path as the git pathspec that selects exactly
+// it: git reads * ? [ and backslash as globs and a leading colon as magic, so
+// such a path carries :(literal). The word is shell-quoted for the `--` that
+// ends fetch-local's flags, so a space or a quote survives the paste.
+func narrowArg(path string) string {
+	if strings.ContainsAny(path, `*?[\`) || strings.HasPrefix(path, ":") {
+		path = ":(literal)" + path
+	}
+	return shellquote.Arg(path)
 }
 
 func compareFileSlices(a, b fileSlice) int {

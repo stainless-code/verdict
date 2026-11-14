@@ -224,7 +224,7 @@ func splitCandidatesFor(table []fileSlice, files map[string]bool, total int64) [
 	half := (total + 1) / 2
 	out := []any{jq.NewObj(
 		keyKind, "paths", keyFiles, []any{top.path}, keyEstimated, top.size,
-		keySuggestion, fmt.Sprintf("re-fetch narrowed to %s (~%d bytes)", top.path, top.size))}
+		keySuggestion, fmt.Sprintf("re-fetch narrowed to -- %s (~%d bytes)", narrowArg(top.path), top.size))}
 	if len(rest) > 0 {
 		out = append(out, restSplit(top, rest, restBytes))
 	}

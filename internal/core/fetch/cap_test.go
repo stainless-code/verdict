@@ -247,6 +247,7 @@ func TestRestSplitQuotesAndEscapesTheLargestPath(t *testing.T) {
 		{name: "question", path: "a?b.txt", arg: `'a\?b.txt'`},
 		{name: "space", path: "my dir/a.go", arg: `'my dir/a.go'`},
 		{name: "single quote", path: "it's/a.go", arg: `'it'\''s/a.go'`},
+		{name: "leading hash", path: "#hash.txt", arg: `'\#hash.txt'`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -266,6 +267,49 @@ func assertRestSuggestion(t *testing.T, path, arg string) {
 	want := "re-fetch with --ignore " + arg + " (~300 bytes across 1 file(s))"
 	if suggestion != want {
 		t.Errorf("suggestion = %q; want %q", suggestion, want)
+	}
+}
+
+// TestSuggestSplitsRendersAPasteablePathspec proves the narrowed candidate
+// prints the pathspec that selects exactly that file: :(literal) turns off
+// git's own globbing (a plain app/[id]/page.tsx also selects app/i/page.tsx),
+// and the word is shell-quoted so a space survives the paste after --.
+func TestSuggestSplitsRendersAPasteablePathspec(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ name, path, arg string }{
+		{name: "plain", path: "f00.txt", arg: `f00.txt`},
+		{name: "space", path: "my dir/a.go", arg: `'my dir/a.go'`},
+		{name: "class", path: "app/[id]/page.tsx", arg: `':(literal)app/[id]/page.tsx'`},
+		{name: "star", path: "docs/*.md", arg: `':(literal)docs/*.md'`},
+		{name: "leading colon", path: ":magic.md", arg: `':(literal):magic.md'`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assertNarrowSuggestion(t, tc.path, tc.arg)
+		})
+	}
+}
+
+func assertNarrowSuggestion(t *testing.T, path, arg string) {
+	t.Helper()
+	// The named section carries two hunks, so it is the largest one and leads
+	// the candidate list; the exact byte count is the goldens' business.
+	hunk := "--- a/@P@\n+++ b/@P@\n@@ -1 +1 @@\n-a\n+b\n"
+	diff := "diff --git a/kept.txt b/kept.txt\n" + strings.ReplaceAll(hunk, "@P@", "kept.txt") +
+		"diff --git a/" + path + " b/" + path + "\n" +
+		strings.ReplaceAll(hunk, "@P@", path) + strings.ReplaceAll(hunk, "@P@", path)
+	first, ok := suggestSplits(writeTemp(t, "full.diff", diff), int64(len(diff)))[0].(*jq.Obj)
+	if !ok {
+		t.Fatalf("first candidate is not a jq object")
+	}
+	suggestion, _ := first.Get(keySuggestion)
+	shown, ok := suggestion.(string)
+	if !ok {
+		t.Fatalf("suggestion is %T, want a string", suggestion)
+	}
+	if want := "re-fetch narrowed to -- " + arg + " (~"; !strings.HasPrefix(shown, want) {
+		t.Errorf("suggestion = %q; want prefix %q", suggestion, want)
 	}
 }
 
