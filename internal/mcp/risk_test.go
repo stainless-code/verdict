@@ -183,3 +183,28 @@ func stateTree(t *testing.T) string {
 	}
 	return tree.String()
 }
+
+// TestRiskToolRefusesALimitOutsideThePublishedBound proves the served bound is
+// enforced, not only published: limit 0 parses as the queue's unset default, so
+// the protocol edge has to refuse what the schema's minimum forbids.
+func TestRiskToolRefusesALimitOutsideThePublishedBound(t *testing.T) {
+	riskQueueFixture(t)
+	cfg := testConfig()
+	frames := serve(t, &cfg,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"risk","arguments":{"repo":"acme/app","limit":0}}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"risk","arguments":{"repo":"acme/app","limit":201}}}`,
+	)
+	for id, want := range map[string]string{
+		"1": `argument "limit" must be between 1 and 200`,
+		"2": `argument "limit" must be between 1 and 200`,
+	} {
+		frame := frames[id]
+		if frame.Error == nil || frame.Error.Code != codeInvalidParams {
+			t.Errorf("id %s = %+v, want -32602", id, frame.Error)
+			continue
+		}
+		if frame.Error.Message != want {
+			t.Errorf("id %s message = %q, want %q", id, frame.Error.Message, want)
+		}
+	}
+}

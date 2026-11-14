@@ -473,7 +473,7 @@ func wireTriage(ctx context.Context, b *bindings, req *triagecore.Request) error
 func decodeRisk(req *riskcore.QueueRequest, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.str(argStatus, &req.Status)
-	a.integer("limit", &req.Limit)
+	a.integerBounded("limit", &req.Limit, 1, riskcore.MaxQueueLimit)
 }
 
 func wireRisk(ctx context.Context, b *bindings, req *riskcore.QueueRequest) error {
