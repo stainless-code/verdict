@@ -319,3 +319,28 @@ func TestReadReceiptPrefersMatchingCoverageKeyClaim(t *testing.T) {
 		t.Fatalf("EvaluateBundle fallback = %+v, want claimed=low stale_head=true", fallback)
 	}
 }
+
+func TestDirtyWorktreeDigestMismatchMarksCoverageMissing(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	const oldSHA = "99fc09c4a541b225b9ec6a8ca48a31f39d6de4d0875304474f7eaa9a4e97acac"
+	writeTestReceipt(t, dir, "source.json", `{"kind":"worktree","dirty":true,"head_sha":null,"base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","diff_sha256":"`+oldSHA+`"}`)
+	writeTestReceipt(t, dir, "full.diff", "diff --git a/a.go b/a.go\n+modified\n")
+	writeTestReceipt(t, dir, "record.json", `{"head":"dirty","diff_sha256":"`+oldSHA+`","coverage":{"gaps":0},"risk":{"level":"low","rationale":"Clean worktree.","assessed_head":"diff:`+oldSHA+`"}}`)
+
+	covKey := risk.CoverageIdentity(dir, "")
+	if covKey != "" {
+		t.Fatalf("CoverageIdentity = %q, want empty on digest mismatch", covKey)
+	}
+	res := risk.EvaluateBundle(dir, "", covKey, nil, "low")
+	if !res.Inputs.MissingCoverage || res.Floor != "medium" || res.Reported != "medium" || !res.Exceeded {
+		t.Fatalf("EvaluateBundle on mismatched worktree digest = %+v (missing_coverage=%v), want floor=medium reported=medium exceeded=true missing_coverage=true",
+			res, res.Inputs.MissingCoverage)
+	}
+	if !slices.Contains(res.ReceiptReasons, "missing-coverage") {
+		t.Fatalf("ReceiptReasons = %v, want missing-coverage", res.ReceiptReasons)
+	}
+	if band := risk.BundleBand(dir, "", nil); band != "medium" {
+		t.Fatalf("BundleBand on mismatched worktree digest = %q, want medium", band)
+	}
+}

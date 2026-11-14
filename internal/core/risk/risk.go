@@ -355,7 +355,7 @@ func mergeCoverage(out *Receipt, m map[string]any, head, covKey string, isChunke
 	if out.Coverage.Known {
 		return
 	}
-	if covKey != "" && head != covKey {
+	if covKey == "" || head != covKey {
 		out.CoverageHead = head
 		return
 	}

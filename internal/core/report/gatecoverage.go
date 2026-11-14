@@ -1,15 +1,13 @@
 package reportcore
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"io"
 	"os"
 	"strconv"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/coverage"
+	"github.com/stainless-code/verdict/internal/core/risk"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -22,7 +20,6 @@ const (
 	chunksManifest  = "/chunks/manifest.json"
 	coverageWarn    = "warn"
 	coverageRequire = "require"
-	fieldDiffSHA256 = "diff_sha256"
 	fieldCoverage   = "coverage"
 	fieldChunkCov   = "chunk_coverage"
 	fieldPercent    = "percent"
@@ -72,7 +69,7 @@ func readStoredCoverage(dir, head string) storedCoverage {
 // head is remembered only for its name, a matching one marks the head found,
 // and its attestation wins.
 func mergeReceipt(kept, next storedCoverage, head string) storedCoverage {
-	if head != "" && next.head != head {
+	if head == "" || next.head != head {
 		kept.head = next.head
 		return kept
 	}
@@ -147,27 +144,7 @@ func intAt(m map[string]any, key string) int {
 }
 
 func coverageIdentity(st *state) string {
-	if st.headSHA != "" {
-		return st.headSHA
-	}
-	source := st.dir + "/source.json"
-	if readcommon.JSONStr(source, "kind") != "worktree" || readcommon.JSONRaw(source, "dirty") != "true" {
-		return ""
-	}
-	expected := readcommon.JSONStr(source, fieldDiffSHA256)
-	file, err := os.Open(st.dir + "/full.diff")
-	if err != nil {
-		return ""
-	}
-	defer func() { _ = file.Close() }()
-	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return ""
-	}
-	if expected != hex.EncodeToString(hash.Sum(nil)) {
-		return ""
-	}
-	return "diff:" + expected
+	return risk.CoverageIdentity(st.dir, st.headSHA)
 }
 
 // gateCoverageCheck is the coverage dimension: the stored receipt for the
