@@ -10,10 +10,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	corpuscore "github.com/stainless-code/verdict/internal/core/corpus"
+	"github.com/stainless-code/verdict/internal/core/risk"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
 	"github.com/stainless-code/verdict/internal/provenance"
@@ -158,6 +160,7 @@ type row struct {
 	bundle          string
 	at              string
 	runID           string
+	risk            string
 	models          []any
 	efforts         []any
 	findings        []any
@@ -272,10 +275,12 @@ func applyBundleProvenance(r *row, rec *core.ProvenanceReceipt) {
 
 func buildRow(bundle, name string, findings []any) row {
 	at, hasAt := bundleTime(bundle)
+	cleanDir := strings.TrimSuffix(bundle, "/")
 	return row{
 		bundle:     name,
 		at:         at,
 		hasAt:      hasAt,
+		risk:       risk.BundleBand(cleanDir, readcommon.OpenBundle(cleanDir).Head(), findings),
 		models:     bundleModels(bundle),
 		efforts:    bundleEfforts(bundle),
 		prov:       bundleProvenance(bundle),

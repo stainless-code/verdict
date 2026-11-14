@@ -16,6 +16,6 @@ esac
 
 func TestPRWaitGolden(t *testing.T) {
 	env := writeStub(t, waitStubScript, nil)
-	goldenRead(t, "pr-wait/once-json", nil, env, nil, splitRepo("pr-wait", "42", "--until", "merged", "--timeout", "1s", "--once", "--json")...)
-	goldenRead(t, "pr-wait/once-lines", nil, env, nil, splitRepo("pr-wait", "42", "--until", "checks-done", "--timeout", "1s", "--once")...)
+	goldenRead(t, "pr-wait/once-json", nil, env, nil, splitRepo("pr-wait", "42", "--until", "merged", "--once", "--json")...)
+	goldenRead(t, "pr-wait/once-lines", nil, env, nil, splitRepo("pr-wait", "42", "--until", "checks-done", "--once")...)
 }

@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // CheckBundle normalizes the review bytes, then runs the bundle-level shape
@@ -32,10 +33,22 @@ func checkNormalized(dir string, normalized []byte, repairs []Problem) (CheckRes
 	if err != nil {
 		return CheckResult{}, &core.RefusalError{Code: codeMissingDiff, Message: fmt.Sprintf(msgMissingDiff, dir)}
 	}
-	in := CheckInput{Diff: string(diff), ExcludedPaths: st.excludedPaths()}
+	in := CheckInput{
+		Diff:          string(diff),
+		ExcludedPaths: st.excludedPaths(),
+		HeadSHA:       bundleCheckHead(dir),
+	}
 	in.ChunkNames, in.ChunkManifest = chunkCheckNames(dir)
 	if verification, ok := ReadOptional(dir + "/verification.json"); ok {
 		in.Verification, in.HasVerification = verification, true
 	}
 	return MergeRepairs(CheckReviewInput(normalized, in), repairs, normalized), nil
+}
+
+func bundleCheckHead(dir string) string {
+	store := readcommon.OpenBundle(dir)
+	if head := store.Head(); head != "" {
+		return head
+	}
+	return readcommon.JSONStr(dir+sourceSuffix, "head_sha")
 }

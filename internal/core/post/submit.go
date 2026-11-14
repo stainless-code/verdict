@@ -542,6 +542,7 @@ func writePostReceipt(st *state, obj *jq.Obj) error {
 		PostedAt:        st.now,
 		Confidence:      intOrNilPost(st.merged.Confidence),
 		SecuritySummary: strOrNilPost(st.merged.Security),
+		Risk:            st.merged.Risk,
 		ReviewRaw:       obj,
 	}
 	if floor != "" {
@@ -629,6 +630,7 @@ func (st *state) successResponse(obj *jq.Obj, posted string) *core.PostResponse 
 		Summary:         st.summary,
 		Confidence:      intOrNilPost(st.merged.Confidence),
 		SecuritySummary: strOrNilPost(st.merged.Security),
+		Risk:            st.merged.Risk,
 		PayloadHash:     st.phash,
 		ItemsRaw:        recordcore.EnvelopeItems(payload),
 		ReviewRaw:       obj,

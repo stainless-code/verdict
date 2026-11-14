@@ -28,7 +28,7 @@ func isRegular(path string) bool {
 }
 
 func runLiveProbe(ctx context.Context, st *state) {
-	if !st.gate {
+	if !st.liveGate {
 		return
 	}
 	switch {

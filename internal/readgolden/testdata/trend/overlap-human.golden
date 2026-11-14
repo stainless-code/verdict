@@ -7,6 +7,7 @@ reviews: 3 (0 clean) — findings/review 3.0000, clean rate 0.0% (n=3)
 2026-03-01  bundles=1 findings=1 open=1 addressed=0 closed=0 tiers critical=1 important=0 informational=0 untagged=0
 tiers: critical=3 important=3 informational=3 untagged=0
 status: open=6 addressed=2 wont-fix=0 false-positive=0 deferred=1
+risk: low=0(0f/0o/0a/0c) medium=1(2f/1o/1a/0c) high=0(0f/0o/0a/0c) critical=2(7f/5o/1a/1c) unknown=0(0f/0o/0a/0c)
 provenance: tools=unmarked models=unmarked prompts=0 unique (+unmarked)
 overlap: 1 measured, 2 unmeasured — precision=0 coverage=n/a (recalled=1 cited=0 overlap=0)
 cited outcomes: 0 cited findings — addressed=0 false-positive=0 pending=0 wont-fix=0; joins rows=1 (addressed=1 false-positive=0)

@@ -116,8 +116,8 @@ func usageText() string {
 		"  report <owner/repo> <pr> [--status all|open|addressed|wont-fix|false-positive|deferred] " +
 		"[--kind inline|section|all]\n" +
 		"[--category logic|edge-case|security|performance|accidental-commit|style|docs|other]\n" +
-		"        [--output <path>] [--sarif <path>] [--include-withheld] [--cost] " +
-		"[--check <critical|important|informational>] [--completeness] " +
+		"        [--output <path>] [--sarif <path>] [--include-withheld] [--cost] [--risk] " +
+		"[--check <critical|important|informational>] [--completeness] [--max-risk <low|medium|high|critical>] " +
 		"[--live auto|strict|skip] [--json]\n" +
 		"    pure read over the store: ranked findings + verdict + counts. Advisory runs\n" +
 		"    touch no network; gate runs (--check/--completeness) end with one live-thread recheck read.\n" +
@@ -126,6 +126,10 @@ func usageText() string {
 		"    --cost adds a spend rollup from .verdict/state/<pr>/cost.json (absent/unreadable -> zeros, never fails; " +
 		"stratified by effort tier).\n" +
 		"    Consented over-budget receipts from .verdict/state/<pr>/budget.json surface here when present.\n" +
+		"    --risk prints the advisory risk assessment (claimed risk or unknown, deterministic store floor\n" +
+		"    inputs, and reported = max(claimed, floor)).\n" +
+		"    --max-risk <level> gates on reported risk (exits 1 when exceeded or unknown; exit 0 pass,\n" +
+		"    exit 2 usage, exit 3 tool error).\n" +
 		"    --check <tier> opts into gating (same output, machine exits): 0 no open\n" +
 		"    findings at-or-above tier, 1 findings at-or-above tier, 2 usage, 3 tool\n" +
 		"    error (missing/corrupt store). `--category <cat>` filters the ranked\n" +

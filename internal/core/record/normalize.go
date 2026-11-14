@@ -185,6 +185,8 @@ func normalizeReviewObject(obj *jq.Obj) []Problem {
 			repairs = append(repairs, normalizeSections(v, "$.sections")...)
 		case fieldTriage:
 			repairs = append(repairs, normalizeTriage(v, "$.triage")...)
+		case fieldRisk:
+			repairs = append(repairs, normalizeRisk(v, "$.risk")...)
 		}
 	}
 	return repairs
@@ -454,6 +456,15 @@ func normalizeTriage(v any, base string) []Problem {
 	return repairs
 }
 
+func normalizeRisk(v any, base string) []Problem {
+	m, ok := v.(*jq.Obj)
+	if !ok {
+		return nil
+	}
+	level, _ := m.Get(fieldLevel)
+	return normalizeEnum(m, fieldLevel, level, base, riskLevels)
+}
+
 func normalizeRigor(m *jq.Obj, key string, v any, base string) []Problem {
 	s, ok := v.(string)
 	if !ok {
@@ -632,7 +643,7 @@ var (
 
 	topOptionalKeys = map[string]bool{
 		fieldResolved: true, fieldTriage: true, fieldSections: true,
-		fieldConfidence: true, fieldSecuritySummary: true, fieldChunks: true,
+		fieldConfidence: true, fieldSecuritySummary: true, fieldRisk: true, fieldChunks: true,
 	}
 	commentOptionalKeys = map[string]bool{
 		fieldLine: true, "start_line": true, fieldSide: true, "suggestion": true,

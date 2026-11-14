@@ -76,6 +76,7 @@ const (
 	ProblemCodeEnumSynonym         = "enum-synonym"
 	ProblemCodeNormalizedTrivia    = "normalized-trivia"
 	ProblemCodeBasisReplaced       = "basis-replaced"
+	ProblemCodeRiskStaleHead       = "risk-stale-head"
 
 	ProblemLevelError   = "error"
 	ProblemLevelWarning = "warning"
@@ -87,8 +88,8 @@ const (
 type Problem struct { //nolint:govet // field order is the published property order
 	Path string `json:"path"`
 	//nolint:revive // published enum tag exceeds the line limit
-	Code    string `enum:"anchor-outside-hunk|bad-enum|basis-replaced|enum-synonym|invalid-json|key-alias|missing-field|normalized-extracted|normalized-fence|normalized-trivia|out-of-range|path-not-in-diff|rigor-unset|scalar-to-array|unknown-field|wrong-type" json:"code"`
-	Level   string `enum:"error|warning"                                                                                                                                                                                                                            json:"level"` //nolint:revive // published enum tag exceeds the line limit
+	Code    string `enum:"anchor-outside-hunk|bad-enum|basis-replaced|enum-synonym|invalid-json|key-alias|missing-field|normalized-extracted|normalized-fence|normalized-trivia|out-of-range|path-not-in-diff|rigor-unset|risk-stale-head|scalar-to-array|unknown-field|wrong-type" json:"code"`
+	Level   string `enum:"error|warning"                                                                                                                                                                                                                                            json:"level"` //nolint:revive // published enum tag exceeds the line limit
 	Message string `json:"message"`
 	Fix     string `json:"fix"`
 	Example any    `json:"example,omitempty"`
@@ -113,6 +114,7 @@ var problemCodeLevels = map[string]string{
 	ProblemCodeEnumSynonym:         ProblemLevelWarning,
 	ProblemCodeNormalizedTrivia:    ProblemLevelWarning,
 	ProblemCodeBasisReplaced:       ProblemLevelWarning,
+	ProblemCodeRiskStaleHead:       ProblemLevelWarning,
 }
 
 // ProblemCodes returns the published problem-code enum in lexical order.

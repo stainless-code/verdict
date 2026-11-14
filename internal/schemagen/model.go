@@ -184,6 +184,7 @@ type ReportData struct { //nolint:govet // field order is the published property
 	Cost         ReportCost         `json:"cost"         optional:"true"`
 	Completeness ReportCompleteness `json:"completeness" optional:"true"`
 	Compliance   *ReportCompliance  `anyOf:"null"        json:"compliance"             optional:"true"`
+	Risk         *ReportRisk        `anyOf:"null"        json:"risk"                   optional:"true"`
 	Gate         *ReportGate        `anyOf:"null"        json:"gate"                   optional:"true"`
 }
 
@@ -232,6 +233,12 @@ type ReportGate = core.ReportGate
 
 // GateDimension is core's one gate dimension verdict.
 type GateDimension = core.GateDimension
+
+// ReportRisk is core's advisory risk block on report --risk / --max-risk.
+type ReportRisk = core.ReportRisk
+
+// RiskInputs is core's deterministic store inputs for the risk floor.
+type RiskInputs = core.RiskInputs
 
 // PostData is the post verb's --json data profile (dry-run and real post).
 type PostData = core.PostData
@@ -504,6 +511,7 @@ type TrendData struct { //nolint:govet // field order is the published property 
 	ByStatus    TrendStatuses    `json:"by_status"`
 	ByTier      TrendTiers       `json:"by_tier"`
 	ByCategory  map[string]int   `json:"by_category"`
+	ByRisk      TrendRiskBands   `json:"by_risk"     optional:"true"`
 	BySource    TrendSources     `json:"by_source"   optional:"true"`
 	Withheld    map[string]int   `json:"withheld"    optional:"true"`
 	Provenance  TrendProvenance  `json:"provenance"`
@@ -528,6 +536,24 @@ type TrendTiers struct {
 	Important     int `json:"important"`
 	Informational int `json:"informational"`
 	Untagged      int `json:"untagged"`
+}
+
+// TrendRiskBands is a five-band risk rollup across bundles.
+type TrendRiskBands struct {
+	Low      TrendRiskBand `json:"low"`
+	Medium   TrendRiskBand `json:"medium"`
+	High     TrendRiskBand `json:"high"`
+	Critical TrendRiskBand `json:"critical"`
+	Unknown  TrendRiskBand `json:"unknown"`
+}
+
+// TrendRiskBand tallies bundles and finding outcomes for one risk band.
+type TrendRiskBand struct {
+	Bundles   int `json:"bundles"`
+	Findings  int `json:"findings"`
+	Open      int `json:"open"`
+	Addressed int `json:"addressed"`
+	Closed    int `json:"closed"`
 }
 
 // TrendSources is a two-source finding tally; both keys are always present.
@@ -569,8 +595,9 @@ type TrendBundleRow struct { //nolint:govet // field order is the published prop
 	ByStatus   TrendStatuses    `json:"by_status"`
 	ByTier     TrendTiers       `json:"by_tier"`
 	ByCategory map[string]int   `json:"by_category"`
-	BySource   TrendSources     `json:"by_source"   optional:"true"`
-	Withheld   map[string]int   `json:"withheld"    optional:"true"`
+	Risk       string           `enum:"low|medium|high|critical|unknown" json:"risk"     optional:"true"`
+	BySource   TrendSources     `json:"by_source"                        optional:"true"`
+	Withheld   map[string]int   `json:"withheld"                         optional:"true"`
 }
 
 // CalibrateData is the calibrate verb's --json data profile. The three modes

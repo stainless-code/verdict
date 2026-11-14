@@ -5,9 +5,9 @@ exit: 0
 » chunking opted in for group a3c3b326fa11f4d8f2610a59546c67c805a5e08133c7adaa66e483ce775356f9 — slicing that group's over-cap diff (999309 bytes, cap 512000)
 » roles -> .verdict/state/local-demo/roles.txt (heuristic file roles for triage)
 » panel: none pinned (set REVIEW_PANEL or the typed defaults.panel for comparable, cost-capped runs)
+» chunked: 3 chunk(s) at or under 512000 bytes + .verdict/state/local-demo/chunks/manifest.json
 done: .verdict/state/local-demo/source.json .verdict/state/local-demo/full.diff .verdict/state/local-demo/toc.txt .verdict/state/local-demo/roles.txt (3 files)
 next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/local-demo/source.json + .verdict/state/local-demo/chunks/manifest.json and the chunks it lists to any agent; ask it to write .verdict/state/local-demo/review.json
-» chunked: 3 chunk(s) at or under 512000 bytes + .verdict/state/local-demo/chunks/manifest.json
 --- files ---
 --- file C/.verdict/.gitignore ---
 /state/

@@ -41,6 +41,9 @@ const (
 	// is the store's camelCase key.
 	fieldInBoundsInput   = "in-bounds"
 	fieldSecuritySummary = "security_summary"
+	fieldRisk            = "risk"
+	fieldLevel           = "level"
+	fieldAssessedHead    = "assessed_head"
 	// fieldRigorSource is the provenance of the recorded rung.
 	fieldRigorSource = "rigor_source"
 )
@@ -90,12 +93,18 @@ const (
 	fieldSHA              = "sha"
 	fieldStartLine        = "start_line"
 	outcomeAddressed      = "addressed"
+	headDirty             = "dirty"
+	headUnknown           = "unknown"
+	tierCritical          = "critical"
+	riskMedium            = "medium"
 )
 
 const (
 	shortSHALen       = 7
 	maxBodyRunes      = 200
 	minRationaleRunes = 30
+	minRiskRationale  = 10
+	maxRiskRationale  = 500
 	hunkFieldCount    = 4
 	hunkStartIdx      = 2
 	hunkEndIdx        = 3

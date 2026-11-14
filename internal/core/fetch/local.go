@@ -344,17 +344,21 @@ func localFinish(
 	if err := writeSourceJSON(dir, req.Repo, mode, slug, diffSHA, total, adds, dels, toolVersion, model, now, ident); err != nil {
 		return nil, "", err
 	}
-	shown := r.display(dir)
-	fmt.Fprintf(r.Human, "done: %s/source.json %s/full.diff %s/toc.txt %s/roles.txt (%d files)\n", shown, shown, shown, shown, total)
-	fmt.Fprintf(r.Human, "next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + "+
-		"%s/source.json + %s%s to any agent; ask it to write %s/review.json\n",
-		dir, diffFeed(dir, chunkActive, fullDiffFile), impactFeed(dir, f.Index), dir)
 	chunkJSON, ref := maybeWriteChunks(r.Diag, dir, fc.maxBytes, chunkActive,
 		groupLimits(ctx2.runCfg.resolved, f.ChunkFlag), mode.headSHA, mode.baseSHA, fc.source, r.privacy.Exclusions)
 	if ref != nil {
 		return nil, "", ref
 	}
-	return fetchTailLocal(ctx, ctx2, req, f, budget, &fc, chunkJSON, mode, listed, total, adds, dels)
+	data, next, err := fetchTailLocal(ctx, ctx2, req, f, budget, &fc, chunkJSON, mode, listed, total, adds, dels)
+	if err != nil {
+		return nil, "", err
+	}
+	shown := r.display(dir)
+	fmt.Fprintf(r.Human, "done: %s/source.json %s/full.diff %s/toc.txt %s/roles.txt (%d files)\n", shown, shown, shown, shown, total)
+	fmt.Fprintf(r.Human, "next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + "+
+		"%s/source.json + %s%s to any agent; ask it to write %s/review.json\n",
+		dir, diffFeed(dir, chunkActive, fullDiffFile), impactFeed(dir, f.Index), dir)
+	return data, next, nil
 }
 
 // localSlug owns the fetch-local slug pipeline on bytes: ASCII-lowercase,

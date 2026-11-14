@@ -47,6 +47,7 @@
       "description": "One-paragraph security read; a non-string value refuses.",
       "type": ["string", "null"]
     },
+    "risk": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/riskClaim" }] },
     "chunks": {
       "description": "Coverage attestation on chunked bundles: every manifest chunk name the synthesis covers. Missing warns; non-array/non-string entries and attested-but-partial coverage refuse.",
       "type": "array",
@@ -217,6 +218,17 @@
         "ranges": { "type": "string" }
       },
       "required": ["file"],
+      "additionalProperties": true
+    },
+    "riskClaim": {
+      "type": "object",
+      "properties": {
+        "level": { "enum": ["low", "medium", "high", "critical"] },
+        "rationale": { "type": "string" },
+        "assessed_head": { "type": "string" },
+        "stale": { "type": "boolean" }
+      },
+      "required": ["level", "rationale", "assessed_head"],
       "additionalProperties": true
     }
   }

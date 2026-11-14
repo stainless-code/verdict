@@ -60,7 +60,7 @@ func waitSessionRun(ctx context.Context, req *WaitRequest) (*WaitResponse, *Wait
 	if ctx.Err() != nil {
 		return nil, nil, &core.RefusalError{Code: codeCanceled, Message: "PR wait canceled"}
 	}
-	timeout, interval, ref := WaitDurations(req.Timeout, req.Interval)
+	timeout, interval, ref := waitRequestDurations(req)
 	if ref != nil {
 		return nil, nil, ref
 	}
@@ -91,6 +91,14 @@ func waitSessionRun(ctx context.Context, req *WaitRequest) (*WaitResponse, *Wait
 		Repo: req.Repo, Pr: req.Pr, At: req.TimeUTC(),
 		Next: "inspect the wait outcome", Warnings: append([]string{}, req.Warnings...), Data: data,
 	}, data, nil
+}
+
+func waitRequestDurations(req *WaitRequest) (time.Duration, time.Duration, *core.RefusalError) {
+	timeoutText := req.Timeout
+	if req.Once && timeoutText == "" {
+		timeoutText = pollMaxTimeout.String()
+	}
+	return WaitDurations(timeoutText, req.Interval)
 }
 
 // WaitDurations validates timeout and interval for all wait transports.

@@ -206,13 +206,17 @@ var publishedSemantics = map[string]string{
 	// remain unchanged.
 	// summary comment: additive nullable postData.summary and $defs/postSummary
 	// (optional; no existing property, required key, enum, or type changed).
+	// risk score: additive optional risk-stale-head problem code,
+	// postData/recordData.risk ($defs/riskClaim), reportData.risk ($defs/reportRisk +
+	// $defs/riskInputs), gateDimension.id enum value "risk", and trendData.by_risk /
+	// trendBundleRow.risk. No existing property, required key, or type changed.
 	// sarif ingest: additive $defs/ingestData, $defs/trendSources, and
 	// optional by_source on reportCounts, trendData, and trendBundleRow. No
 	// existing property, required key, enum, or type changed.
 	// provenance receipt (--provenance): additive $defs/provenanceReceipt,
 	// $defs/provenanceInput, $defs/provenanceTruncatedRow, and additive array
 	// widening on envelope data.truncated (boolean|provenanceTruncatedRow[]).
-	"envelope.schema.json": "8e59018f93b82d94b240afcfb059a5079db9a9df80d1d4b5c178ca4fdc69745e",
+	"envelope.schema.json": "53c568d0cb2d7161ce78ce50b8c2a4e156ec390ed64c75b83cde500d1cdb8a2b",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -244,7 +248,9 @@ var publishedSemantics = map[string]string{
 	// summary comment: additive optional nullable summary object with
 	// $defs/postSummary recording create/update/none outcome for --summary
 	// comment. No existing property, required key, enum, or type changed.
-	"post.schema.json": "7a4672e6b084f89b9d2884cf997c8025d600c016dda890e6778afd925633d8d1",
+	// risk score: additive optional nullable risk claim ($defs/riskClaim). No
+	// existing property, required key, enum, or type changed.
+	"post.schema.json": "667ef93b68ff65b85b5eda8ef11e1608cf788feb98e186499b20b1a78495671b",
 	// patch identity: additive $defs/identity root (new bundle document) —
 	// no existing property, required key, or type changed.
 	"identity.schema.json": "efe9a7b331e41715bc55b8824e95154add584c2d63f670811ef03c350d2e5bdb",
@@ -313,7 +319,9 @@ var publishedSemantics = map[string]string{
 	// $defs/chunkCoverage (required attested and total), the chunked
 	// bundle's stored chunk[] attestation. No existing property, required
 	// key, enum, or type changed.
-	"record.schema.json": "db998c9865ae0f9bdd948b83eefeacd97421d80420688a98eade523fec9a3626",
+	// risk score: additive optional nullable risk claim ($defs/riskClaim). No
+	// existing property, required key, enum, or type changed.
+	"record.schema.json": "0db369bc5ae7b7ae016a6272b8a500879ef7238b03256fd066ca91567ab7e131",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable comment.brief
 	// (optional; no existing property, required key, or type changed). The
 	// descriptions now state the checker's exact error/warning split; shape
@@ -325,7 +333,9 @@ var publishedSemantics = map[string]string{
 	// checker warns (never refuses) on unknown or non-string values and the
 	// normalizer lowercases case variants. No existing property, required key,
 	// or type changed.
-	"review.schema.json": "8275d74c29a079ec7827d75170f86aad58121ed714e45e6de441e13b46947a16",
+	// risk score: additive optional nullable risk claim ($defs/riskClaim). No
+	// existing property, required key, enum, or type changed.
+	"review.schema.json": "58b8cafc67abfc6fe394f0cd7dff77182def6cd6652851e037ded38dc57defbe",
 	// additive threads.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed). The PR-conversation
 	// contract extends the first cut with the thread's host id, PR/head/time
