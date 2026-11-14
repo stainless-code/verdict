@@ -18,6 +18,8 @@ import (
 	"github.com/stainless-code/verdict/internal/kb"
 )
 
+const statusIncluded = "included"
+
 type kbCandOutcome struct {
 	ID     string
 	Status string
@@ -25,9 +27,9 @@ type kbCandOutcome struct {
 }
 
 type kbRecallOutcome struct {
-	Candidates    []kbCandOutcome
-	Cap           *int
 	Reason        string
+	Cap           *int
+	Candidates    []kbCandOutcome
 	Included      int
 	Omitted       int
 	CharsIncluded int
@@ -71,13 +73,13 @@ func writeKBRecall(ctx2 *fetchRunCtx, dir, extra string) {
 func buildKBOutcome(ranked, omitted, packs []recallCand) *kbRecallOutcome {
 	cands := make([]kbCandOutcome, 0, len(ranked)+len(omitted)+len(packs))
 	for _, c := range ranked {
-		cands = append(cands, kbCandOutcome{ID: c.id, Status: "included"})
+		cands = append(cands, kbCandOutcome{ID: c.id, Status: statusIncluded})
 	}
 	for _, c := range omitted {
 		cands = append(cands, kbCandOutcome{ID: c.id, Status: "omitted", Reason: "top_n"})
 	}
 	for _, c := range packs {
-		cands = append(cands, kbCandOutcome{ID: c.id, Status: "included"})
+		cands = append(cands, kbCandOutcome{ID: c.id, Status: statusIncluded})
 	}
 	reason := ""
 	if len(omitted) > 0 {

@@ -102,6 +102,22 @@ func renderFile(sb *strings.Builder, key, body string, roots []string) {
 	sb.WriteString(body)
 }
 
+var runtimeBundleArtifacts = map[string]bool{
+	"budget.json":  true,
+	"run.json":     true,
+	"source.json":  true,
+	"threads.json": true,
+}
+
+func replaceJSONField(line, key, val string) string {
+	indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+	suffix := ""
+	if strings.HasSuffix(strings.TrimSpace(line), ",") {
+		suffix = ","
+	}
+	return indent + `"` + key + `": ` + val + suffix
+}
+
 // scrubProvenanceRuntime normalizes sha256 (and bytes on source.json, which
 // embeds tool_version) for bundle artifacts whose disk bytes carry a live
 // runtime timestamp or version, keeping provenance goldens deterministic
@@ -110,31 +126,29 @@ func scrubProvenanceRuntime(body string) string {
 	lines := strings.Split(body, newline)
 	inBundle, target := false, ""
 	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		switch {
-		case trimmed == `"kind": "bundle",`:
-			inBundle = true
-		case inBundle && (trimmed == `"name": "budget.json",` || trimmed == `"name": "run.json",` || trimmed == `"name": "source.json",` || trimmed == `"name": "threads.json",`):
-			target = strings.TrimSuffix(strings.TrimPrefix(trimmed, `"name": "`), `",`)
-		case trimmed == "}," || trimmed == "}":
-			inBundle, target = false, ""
-		case target != "" && strings.HasPrefix(trimmed, `"sha256": "`):
-			indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
-			suffix := ""
-			if strings.HasSuffix(trimmed, ",") {
-				suffix = ","
-			}
-			lines[i] = indent + `"sha256": "RUNTIME_SHA256"` + suffix
-		case target == "source.json" && strings.HasPrefix(trimmed, `"bytes": `):
-			indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
-			suffix := ""
-			if strings.HasSuffix(trimmed, ",") {
-				suffix = ","
-			}
-			lines[i] = indent + `"bytes": 0` + suffix
-		}
+		inBundle, target = scrubProvenanceLine(lines, i, line, inBundle, target)
 	}
 	return strings.Join(lines, newline)
+}
+
+func scrubProvenanceLine(lines []string, idx int, line string, inBundle bool, target string) (bool, string) {
+	trimmed := strings.TrimSpace(line)
+	switch {
+	case trimmed == `"kind": "bundle",`:
+		return true, target
+	case trimmed == "}," || trimmed == "}":
+		return false, ""
+	case inBundle && strings.HasPrefix(trimmed, `"name": "`):
+		name := strings.TrimSuffix(strings.TrimPrefix(trimmed, `"name": "`), `",`)
+		if runtimeBundleArtifacts[name] {
+			return inBundle, name
+		}
+	case target != "" && strings.HasPrefix(trimmed, `"sha256": "`):
+		lines[idx] = replaceJSONField(line, "sha256", `"RUNTIME_SHA256"`)
+	case target == "source.json" && strings.HasPrefix(trimmed, `"bytes": `):
+		lines[idx] = replaceJSONField(line, "bytes", "0")
+	}
+	return inBundle, target
 }
 
 // touchedKeys returns the sorted keys the run created, changed, or deleted,

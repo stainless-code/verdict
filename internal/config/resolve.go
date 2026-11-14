@@ -143,12 +143,12 @@ type EffectiveDefaults struct {
 	BudgetDisplay      string   `json:"-"`
 	DisplayMinSeverity *string  `json:"display_min_severity,omitempty"`
 	PostMinSeverity    *string  `json:"post_min_severity,omitempty"`
+	KBMaxChars         *int     `json:"kb_max_chars,omitempty"`
 	Effort             string   `json:"effort"`
 	Panel              []string `json:"panel,omitempty"`
 	MaxBytes           int64    `json:"max_bytes"`
 	KBMinJudged        int      `json:"kb_min_judged"`
 	KBMaxFPRate        float64  `json:"kb_max_fp_rate"`
-	KBMaxChars         *int     `json:"kb_max_chars,omitempty"`
 	Chunk              bool     `json:"chunk"`
 }
 
@@ -193,27 +193,12 @@ func mergePartials(layers []layerValue) ResolvedDefaults {
 		func(p Partial) (int64, bool) { return derefInt64(p.MaxBytes) })
 	out.Values.Chunk, out.Origins["chunk"], out.Shadowed = pickBool(layers, "chunk", out.Shadowed,
 		func(p Partial) (bool, bool) { return derefBool(p.Chunk) })
-	out.Values.KBMinJudged, out.Origins["kb_policy.min_judged"], out.Shadowed = pickInt(layers, "kb_policy.min_judged", out.Shadowed,
-		func(p Partial) (int, bool) {
-			if !p.KBPolicySet || p.KBMinJudged == nil {
-				return 0, false
-			}
-			return *p.KBMinJudged, true
-		})
-	out.Values.KBMaxFPRate, out.Origins["kb_policy.max_fp_rate"], out.Shadowed = pickFloat64(layers, "kb_policy.max_fp_rate", out.Shadowed,
-		func(p Partial) (float64, bool) {
-			if !p.KBPolicySet || p.KBMaxFPRate == nil {
-				return 0, false
-			}
-			return *p.KBMaxFPRate, true
-		})
-	out.Values.KBMaxChars, out.Origins[keyKBMaxChars], out.Shadowed = pickPointer(layers, keyKBMaxChars, out.Shadowed,
-		func(p Partial) (*int, bool) {
-			if !p.KBPolicySet || p.KBMaxChars == nil {
-				return nil, false
-			}
-			return p.KBMaxChars, true
-		})
+	out.Values.KBMinJudged, out.Origins["kb_policy.min_judged"], out.Shadowed = pickInt(
+		layers, "kb_policy.min_judged", out.Shadowed, func(p Partial) (int, bool) { return pickKBMinJudged(&p) })
+	out.Values.KBMaxFPRate, out.Origins["kb_policy.max_fp_rate"], out.Shadowed = pickFloat64(
+		layers, "kb_policy.max_fp_rate", out.Shadowed, func(p Partial) (float64, bool) { return pickKBMaxFPRate(&p) })
+	out.Values.KBMaxChars, out.Origins[keyKBMaxChars], out.Shadowed = pickPointer(
+		layers, keyKBMaxChars, out.Shadowed, func(p Partial) (*int, bool) { return pickKBMaxChars(&p) })
 	out.Values.Effort, out.Origins["effort"], out.Shadowed = pickString(layers, "effort", out.Shadowed,
 		func(p Partial) (string, bool) { return derefString(p.Effort) })
 	out.Values.DisplayMinSeverity, out.Origins["display_min_severity"], out.Shadowed = pickPointer(layers,
@@ -222,6 +207,27 @@ func mergePartials(layers []layerValue) ResolvedDefaults {
 	out.Values.PostMinSeverity, out.Origins["post_min_severity"], out.Shadowed = pickPointer(layers, "post_min_severity", out.Shadowed,
 		func(p Partial) (*string, bool) { return p.PostMinSeverity, p.PostMinSeverity != nil })
 	return out
+}
+
+func pickKBMinJudged(p *Partial) (int, bool) {
+	if !p.KBPolicySet || p.KBMinJudged == nil {
+		return 0, false
+	}
+	return *p.KBMinJudged, true
+}
+
+func pickKBMaxFPRate(p *Partial) (float64, bool) {
+	if !p.KBPolicySet || p.KBMaxFPRate == nil {
+		return 0, false
+	}
+	return *p.KBMaxFPRate, true
+}
+
+func pickKBMaxChars(p *Partial) (*int, bool) {
+	if !p.KBPolicySet || p.KBMaxChars == nil {
+		return nil, false
+	}
+	return p.KBMaxChars, true
 }
 
 // derefInt64 lifts an optional int64 into a set pair.

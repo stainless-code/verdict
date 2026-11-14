@@ -21,7 +21,42 @@ import (
 // ReceiptFile is the per-bundle provenance receipt file name.
 const ReceiptFile = "provenance.json"
 
-const maxReceiptBytes = 4 * 1024 * 1024
+const (
+	maxReceiptBytes = 4 * 1024 * 1024
+	statusIncluded  = "included"
+	statusAbsent    = "absent"
+	statusTruncated = "truncated"
+	statusOmitted   = "omitted"
+	kindPrompt      = "prompt"
+	kindPanel       = "panel"
+	kindKB          = "kb"
+	kindBundle      = "bundle"
+	kindExclusions  = "exclusions"
+	layerBuiltIn    = "built-in"
+	runShortLen     = 12
+	hashShortLen    = 7
+	sepComma        = ","
+	sepColon        = ":"
+	dash            = "-"
+)
+
+type receiptError struct {
+	err error
+	msg string
+}
+
+func (e *receiptError) Error() string {
+	if e.err == nil {
+		return e.msg
+	}
+	return e.msg + ": " + e.err.Error()
+}
+
+func (e *receiptError) Unwrap() error { return e.err }
+
+func wrapReceiptErr(msg string, err error) error {
+	return &receiptError{msg: msg, err: err}
+}
 
 // KBCandidateInput describes one KB rule candidate evaluated during fetch.
 type KBCandidateInput struct {
@@ -32,9 +67,9 @@ type KBCandidateInput struct {
 
 // KBRecallInput summarizes KB recall results without rule text.
 type KBRecallInput struct {
-	Candidates    []KBCandidateInput
-	Cap           *int
 	Reason        string
+	Cap           *int
+	Candidates    []KBCandidateInput
 	Included      int
 	Omitted       int
 	CharsIncluded int
@@ -61,38 +96,38 @@ type ConfigOriginInput struct {
 
 // ExclusionsInput describes excluded.json without raw file content.
 type ExclusionsInput struct {
-	Present           bool
 	RawDiffSHA256     string
 	DiffSHA256        string
 	PatternsSource    string
 	Excluded          int
 	ExcludedBytes     int64
 	KeptBytes         int64
+	Present           bool
 	Defaults          bool
 	Ignore            bool
 	NoDefaultExcludes bool
 }
 
-// ReceiptBuildInput carries all fetch-time inputs needed to build provenance.json.
+// ReceiptBuildInput holds fetch-time inputs for building provenance.json.
 type ReceiptBuildInput struct {
+	Learnings    *ControlInput
+	KB           *KBRecallInput
+	BundleTrunc  *core.Truncation
 	Root         string
 	Dir          string
 	HeadSHA      string
 	BaseSHA      string
 	PanelSource  string
-	Panel        []string
 	ConfigSHA256 string
+	Panel        []string
 	ConfigLayers []string
 	ConfigValues []ConfigOriginInput
 	Controls     []ControlInput
 	Overrides    []ControlInput
-	Learnings    *ControlInput
 	Exclusions   ExclusionsInput
-	KB           *KBRecallInput
-	BundleTrunc  *core.Truncation
 }
 
-// BuildReceipt constructs the deterministic ProvenanceReceipt for a fetched bundle.
+// BuildReceipt builds the deterministic ProvenanceReceipt for a bundle.
 func BuildReceipt(in *ReceiptBuildInput) *core.ProvenanceReceipt {
 	promptsHash := PromptsHash(in.Root)
 	prompts := promptInputEntries(in.Root)
@@ -118,12 +153,15 @@ func BuildReceipt(in *ReceiptBuildInput) *core.ProvenanceReceipt {
 
 	truncated := append([]core.ProvenanceTruncatedRow{}, kbTruncRows...)
 	if in.BundleTrunc != nil && in.BundleTrunc.Truncated {
-		truncated = append(truncated, core.NewProvenanceTruncatedRow("bundle", "", "truncated", in.BundleTrunc.TruncationReason, in.BundleTrunc))
+		row := core.NewProvenanceTruncatedRow(
+			kindBundle, "", statusTruncated, in.BundleTrunc.TruncationReason, in.BundleTrunc,
+		)
+		truncated = append(truncated, row)
 	}
 
 	return &core.ProvenanceReceipt{
 		SchemaVersion: "1",
-		RunID:         computeRunID(in, promptsHash, learnEntry),
+		RunID:         computeRunID(in, promptsHash, &learnEntry),
 		PromptsHash:   promptsHash,
 		Panel:         slices.Clone(in.Panel),
 		Inputs:        inputs,
@@ -138,48 +176,63 @@ func WriteReceipt(dir string, receipt *core.ProvenanceReceipt) error {
 	}
 	raw, err := json.MarshalIndent(receipt, "", "  ")
 	if err != nil {
-		return fmt.Errorf("encode %s: %w", ReceiptFile, err)
+		return wrapReceiptErr("encode "+ReceiptFile, err)
 	}
 	path := filepath.Join(dir, ReceiptFile)
 	if err := atomic.WriteFile(path, append(raw, '\n')); err != nil {
-		return fmt.Errorf("write %s: %w", path, err)
+		return wrapReceiptErr("write "+path, err)
 	}
 	return nil
 }
 
-// ReadReceipt loads and validates provenance.json from dir.
-// When the file does not exist, exists is false and err is nil.
-// When the file exists but is malformed/oversized, exists is true and err is non-nil.
+// ReadReceipt loads and validates provenance.json from dir. Returns
+// exists=false when missing, and exists=true with non-nil err when corrupt.
 func ReadReceipt(dir string) (receipt *core.ProvenanceReceipt, exists bool, err error) {
 	path := filepath.Join(dir, ReceiptFile)
+	raw, exists, err := readCappedReceiptBytes(path)
+	if !exists || err != nil {
+		return nil, exists, err
+	}
+	out, err := decodeReceipt(path, raw)
+	if err != nil {
+		return nil, true, err
+	}
+	return out, true, nil
+}
+
+func readCappedReceiptBytes(path string) ([]byte, bool, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, false, nil
 		}
-		return nil, true, fmt.Errorf("open %s: %w", path, err)
+		return nil, true, wrapReceiptErr("open "+path, err)
 	}
 	defer func() { _ = f.Close() }()
 	raw, err := io.ReadAll(io.LimitReader(f, maxReceiptBytes+1))
 	if err != nil {
-		return nil, true, fmt.Errorf("read %s: %w", path, err)
+		return nil, true, wrapReceiptErr("read "+path, err)
 	}
 	if len(raw) > maxReceiptBytes {
-		return nil, true, fmt.Errorf("%s exceeds %d bytes", path, maxReceiptBytes)
+		return nil, true, wrapReceiptErr(fmt.Sprintf("%s exceeds %d bytes", path, maxReceiptBytes), nil)
 	}
+	return raw, true, nil
+}
+
+func decodeReceipt(path string, raw []byte) (*core.ProvenanceReceipt, error) {
 	var out core.ProvenanceReceipt
 	dec := json.NewDecoder(strings.NewReader(string(raw)))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&out); err != nil {
-		return nil, true, fmt.Errorf("parse %s: %w", path, err)
+		return nil, wrapReceiptErr("parse "+path, err)
 	}
 	if out.SchemaVersion == "" || out.Inputs == nil {
-		return nil, true, fmt.Errorf("%s missing schema_version or inputs", path)
+		return nil, wrapReceiptErr(path+" missing schema_version or inputs", nil)
 	}
 	if out.Truncated == nil {
 		out.Truncated = []core.ProvenanceTruncatedRow{}
 	}
-	return &out, true, nil
+	return &out, nil
 }
 
 // EmptyReceipt returns a degraded empty receipt for malformed/missing bundles.
@@ -198,25 +251,25 @@ func promptInputEntries(root string) []core.ProvenanceInput {
 		if err != nil {
 			n := int64(0)
 			out = append(out, core.ProvenanceInput{
-				Kind: "prompt", Name: f, Status: "absent", Bytes: &n,
+				Kind: kindPrompt, Name: f, Status: statusAbsent, Bytes: &n,
 			})
 			continue
 		}
 		out = append(out, core.ProvenanceInput{
-			Kind: "prompt", Name: f, Status: "included", SHA256: shaHex(raw), Bytes: new(int64(len(raw))),
+			Kind: kindPrompt, Name: f, Status: statusIncluded, SHA256: shaHex(raw), Bytes: new(int64(len(raw))),
 		})
 	}
 	return out
 }
 
 func panelInputEntry(source string, members []string) core.ProvenanceInput {
-	status := "included"
+	status := statusIncluded
 	if len(members) == 0 {
-		status = "absent"
+		status = statusAbsent
 	}
 	return core.ProvenanceInput{
-		Kind:    "panel",
-		Name:    "panel",
+		Kind:    kindPanel,
+		Name:    kindPanel,
 		Status:  status,
 		Source:  source,
 		Members: slices.Clone(members),
@@ -227,29 +280,7 @@ func bundleInputEntries(dir string) []core.ProvenanceInput {
 	if dir == "" {
 		return nil
 	}
-	var rels []string
-	_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d == nil {
-			return nil
-		}
-		rel, rerr := filepath.Rel(dir, path)
-		if rerr != nil || rel == "." {
-			return nil
-		}
-		relSlash := filepath.ToSlash(rel)
-		if d.IsDir() {
-			if relSlash == "controls" || strings.HasPrefix(d.Name(), ".") {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if relSlash == ReceiptFile || strings.HasPrefix(d.Name(), ".") {
-			return nil
-		}
-		rels = append(rels, relSlash)
-		return nil
-	})
-	slices.Sort(rels)
+	rels := listBundleRelPaths(dir)
 	out := make([]core.ProvenanceInput, 0, len(rels))
 	for _, rel := range rels {
 		raw, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))
@@ -257,9 +288,9 @@ func bundleInputEntries(dir string) []core.ProvenanceInput {
 			continue
 		}
 		out = append(out, core.ProvenanceInput{
-			Kind:   "bundle",
+			Kind:   kindBundle,
 			Name:   rel,
-			Status: "included",
+			Status: statusIncluded,
 			SHA256: shaHex(raw),
 			Bytes:  new(int64(len(raw))),
 		})
@@ -267,25 +298,89 @@ func bundleInputEntries(dir string) []core.ProvenanceInput {
 	return out
 }
 
+func listBundleRelPaths(dir string) []string {
+	var rels []string
+	walkErr := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d == nil {
+			return err
+		}
+		return collectBundleEntry(dir, path, d, &rels)
+	})
+	if walkErr != nil {
+		return nil
+	}
+	slices.Sort(rels)
+	return rels
+}
+
+func collectBundleEntry(dir, path string, d fs.DirEntry, rels *[]string) error {
+	rel, err := filepath.Rel(dir, path)
+	if err != nil {
+		return wrapReceiptErr("relpath", err)
+	}
+	if rel == "." {
+		return nil
+	}
+	relSlash := filepath.ToSlash(rel)
+	if d.IsDir() {
+		return skipBundleDirIfNeeded(relSlash, d.Name())
+	}
+	if relSlash != ReceiptFile && !strings.HasPrefix(d.Name(), ".") {
+		*rels = append(*rels, relSlash)
+	}
+	return nil
+}
+
+func skipBundleDirIfNeeded(relSlash, name string) error {
+	if relSlash == "controls" || strings.HasPrefix(name, ".") {
+		return filepath.SkipDir
+	}
+	return nil
+}
+
 func kbInputsAndTruncated(dir string, kbIn *KBRecallInput) ([]core.ProvenanceInput, []core.ProvenanceTruncatedRow) {
 	if kbIn == nil {
 		return []core.ProvenanceInput{{
-			Kind:     "kb",
+			Kind:     kindKB,
 			Name:     "kb.txt",
-			Status:   "absent",
+			Status:   statusAbsent,
 			Included: new(0),
 			Omitted:  new(0),
 		}}, nil
 	}
-	status := "absent"
+	summary := kbSummaryEntry(dir, kbIn)
+	entries := make([]core.ProvenanceInput, 0, 1+len(kbIn.Candidates))
+	entries = append(entries, summary)
+	var truncRows []core.ProvenanceTruncatedRow
+	if kbIn.Truncated && kbIn.Cap != nil {
+		truncRows = append(truncRows, kbCapTruncRow(kbIn))
+	}
+	totalCands := len(kbIn.Candidates)
+	for _, c := range kbIn.Candidates {
+		entries = append(entries, core.ProvenanceInput{
+			Kind:   "kb_candidate",
+			Name:   c.ID,
+			ID:     c.ID,
+			Status: c.Status,
+			Reason: c.Reason,
+		})
+		if c.Status == statusOmitted && c.Reason == "top_n" {
+			truncRows = append(truncRows, kbTopNTruncRow(c.ID, kbIn, totalCands))
+		}
+	}
+	return entries, truncRows
+}
+
+func kbSummaryEntry(dir string, kbIn *KBRecallInput) core.ProvenanceInput {
+	status := statusAbsent
 	if kbIn.Included > 0 {
-		status = "included"
+		status = statusIncluded
 	}
 	if kbIn.Truncated {
-		status = "truncated"
+		status = statusTruncated
 	}
 	summary := core.ProvenanceInput{
-		Kind:     "kb",
+		Kind:     kindKB,
 		Name:     "kb.txt",
 		Status:   status,
 		Reason:   kbIn.Reason,
@@ -303,36 +398,24 @@ func kbInputsAndTruncated(dir string, kbIn *KBRecallInput) ([]core.ProvenanceInp
 		summary.SHA256 = shaHex(raw)
 		summary.Bytes = new(int64(len(raw)))
 	}
+	return summary
+}
 
-	entries := make([]core.ProvenanceInput, 0, 1+len(kbIn.Candidates))
-	entries = append(entries, summary)
-	var truncRows []core.ProvenanceTruncatedRow
-	totalCands := len(kbIn.Candidates)
-	if kbIn.Truncated && kbIn.Cap != nil {
-		cut := core.ResultCut("response_cap", kbIn.CharsIncluded, new(kbIn.CharsTotal), nil)
-		row := core.NewProvenanceTruncatedRow("kb", "", "truncated", "cap", cut)
-		row.CharsIncluded = new(kbIn.CharsIncluded)
-		row.CharsTotal = new(kbIn.CharsTotal)
-		row.Cap = new(*kbIn.Cap)
-		truncRows = append(truncRows, row)
-	}
-	for _, c := range kbIn.Candidates {
-		entries = append(entries, core.ProvenanceInput{
-			Kind:   "kb_candidate",
-			Name:   c.ID,
-			ID:     c.ID,
-			Status: c.Status,
-			Reason: c.Reason,
-		})
-		if c.Status == "omitted" && c.Reason == "top_n" {
-			cut := core.ResultCut("response_cap", kbIn.Included, new(totalCands), nil)
-			row := core.NewProvenanceTruncatedRow("kb_candidate", c.ID, "omitted", "top_n", cut)
-			row.Included = new(kbIn.Included)
-			row.Omitted = new(kbIn.Omitted)
-			truncRows = append(truncRows, row)
-		}
-	}
-	return entries, truncRows
+func kbCapTruncRow(kbIn *KBRecallInput) core.ProvenanceTruncatedRow {
+	cut := core.ResultCut("response_cap", kbIn.CharsIncluded, new(kbIn.CharsTotal), nil)
+	row := core.NewProvenanceTruncatedRow(kindKB, "", statusTruncated, "cap", cut)
+	row.CharsIncluded = new(kbIn.CharsIncluded)
+	row.CharsTotal = new(kbIn.CharsTotal)
+	row.Cap = new(*kbIn.Cap)
+	return row
+}
+
+func kbTopNTruncRow(id string, kbIn *KBRecallInput, totalCands int) core.ProvenanceTruncatedRow {
+	cut := core.ResultCut("response_cap", kbIn.Included, new(totalCands), nil)
+	row := core.NewProvenanceTruncatedRow("kb_candidate", id, statusOmitted, "top_n", cut)
+	row.Included = new(kbIn.Included)
+	row.Omitted = new(kbIn.Omitted)
+	return row
 }
 
 func learningsInputEntry(in *ControlInput) core.ProvenanceInput {
@@ -341,7 +424,7 @@ func learningsInputEntry(in *ControlInput) core.ProvenanceInput {
 	entry := core.ProvenanceInput{
 		Kind:   "learnings",
 		Name:   ".verdict/learnings.md",
-		Status: "included",
+		Status: statusIncluded,
 		Bytes:  &n,
 	}
 	if in != nil {
@@ -362,12 +445,7 @@ func controlEntries(kind string, items []ControlInput) []core.ProvenanceInput {
 	})
 	out := make([]core.ProvenanceInput, 0, len(sorted))
 	for _, it := range sorted {
-		status := it.Status
-		if kind == "override" {
-			if status == "used" || status == "base" || status == "head" {
-				status = "included"
-			}
-		}
+		status := normalizeControlStatus(kind, it.Status)
 		entry := core.ProvenanceInput{
 			Kind:   kind,
 			Name:   it.Path,
@@ -375,7 +453,7 @@ func controlEntries(kind string, items []ControlInput) []core.ProvenanceInput {
 			Source: it.Source,
 			SHA256: it.SHA256,
 		}
-		if it.Bytes > 0 || status == "included" || status == "used" || status == "base" || status == "head" {
+		if it.Bytes > 0 || isLiveControlStatus(status) {
 			entry.Bytes = new(it.Bytes)
 		}
 		out = append(out, entry)
@@ -383,14 +461,25 @@ func controlEntries(kind string, items []ControlInput) []core.ProvenanceInput {
 	return out
 }
 
-func configInputEntries(in *ReceiptBuildInput) []core.ProvenanceInput {
-	layerSummary := strings.Join(in.ConfigLayers, ",")
-	if layerSummary == "" {
-		layerSummary = "built-in"
+func normalizeControlStatus(kind, status string) string {
+	if kind == "override" && isLiveControlStatus(status) {
+		return statusIncluded
 	}
-	status := "included"
+	return status
+}
+
+func isLiveControlStatus(status string) bool {
+	return status == statusIncluded || status == "used" || status == "base" || status == "head"
+}
+
+func configInputEntries(in *ReceiptBuildInput) []core.ProvenanceInput {
+	layerSummary := strings.Join(in.ConfigLayers, sepComma)
+	if layerSummary == "" {
+		layerSummary = layerBuiltIn
+	}
+	status := statusIncluded
 	if in.ConfigSHA256 == "" {
-		status = "built-in"
+		status = layerBuiltIn
 	}
 	parts := make([]string, 0, len(in.ConfigValues))
 	sortedVals := slices.Clone(in.ConfigValues)
@@ -415,16 +504,16 @@ func configInputEntries(in *ReceiptBuildInput) []core.ProvenanceInput {
 func exclusionsInputEntries(dir string, ex *ExclusionsInput) []core.ProvenanceInput {
 	if !ex.Present {
 		return []core.ProvenanceInput{{
-			Kind:     "exclusions",
+			Kind:     kindExclusions,
 			Name:     "excluded.json",
-			Status:   "absent",
+			Status:   statusAbsent,
 			Excluded: new(0),
 		}}
 	}
 	entry := core.ProvenanceInput{
-		Kind:          "exclusions",
+		Kind:          kindExclusions,
 		Name:          "excluded.json",
-		Status:        "included",
+		Status:        statusIncluded,
 		Source:        ex.PatternsSource,
 		Excluded:      new(ex.Excluded),
 		ExcludedBytes: new(ex.ExcludedBytes),
@@ -437,7 +526,7 @@ func exclusionsInputEntries(dir string, ex *ExclusionsInput) []core.ProvenanceIn
 	return []core.ProvenanceInput{entry}
 }
 
-func computeRunID(in *ReceiptBuildInput, promptsHash string, learn core.ProvenanceInput) string {
+func computeRunID(in *ReceiptBuildInput, promptsHash string, learn *core.ProvenanceInput) string {
 	h := sha256.New()
 	writeKV(h, "prompts_hash", promptsHash)
 	writeKV(h, "head_sha", in.HeadSHA)
@@ -446,39 +535,48 @@ func computeRunID(in *ReceiptBuildInput, promptsHash string, learn core.Provenan
 		writeKV(h, "full_diff_sha256", shaHex(raw))
 	}
 	writeKV(h, "panel_source", in.PanelSource)
-	writeKV(h, "panel", strings.Join(in.Panel, ","))
+	writeKV(h, "panel", strings.Join(in.Panel, sepComma))
 	writeKV(h, "config_sha256", in.ConfigSHA256)
-	sortedVals := slices.Clone(in.ConfigValues)
+	writeConfigOriginsToHash(h, in.ConfigValues)
+	writeControlsToHash(h, "ctrl:", in.Controls)
+	writeControlsToHash(h, "over:", in.Overrides)
+	writeKV(h, "learnings", learn.Status+sepColon+learn.SHA256)
+	writeExclAndKBToHash(h, in)
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func writeConfigOriginsToHash(w io.Writer, vals []ConfigOriginInput) {
+	sortedVals := slices.Clone(vals)
 	slices.SortFunc(sortedVals, func(a, b ConfigOriginInput) int { return strings.Compare(a.Key, b.Key) })
 	for _, v := range sortedVals {
-		writeKV(h, "cfg:"+v.Key, v.Layer+":"+v.Source)
+		writeKV(w, "cfg:"+v.Key, v.Layer+sepColon+v.Source)
 	}
-	sortedCtrls := slices.Clone(in.Controls)
-	slices.SortFunc(sortedCtrls, func(a, b ControlInput) int { return strings.Compare(a.Path, b.Path) })
-	for _, c := range sortedCtrls {
-		writeKV(h, "ctrl:"+c.Path, c.Status+":"+c.SHA256)
+}
+
+func writeControlsToHash(w io.Writer, prefix string, items []ControlInput) {
+	sorted := slices.Clone(items)
+	slices.SortFunc(sorted, func(a, b ControlInput) int { return strings.Compare(a.Path, b.Path) })
+	for _, c := range sorted {
+		writeKV(w, prefix+c.Path, c.Status+sepColon+c.SHA256)
 	}
-	sortedOvers := slices.Clone(in.Overrides)
-	slices.SortFunc(sortedOvers, func(a, b ControlInput) int { return strings.Compare(a.Path, b.Path) })
-	for _, o := range sortedOvers {
-		writeKV(h, "over:"+o.Path, o.Status+":"+o.SHA256)
-	}
-	writeKV(h, "learnings", learn.Status+":"+learn.SHA256)
+}
+
+func writeExclAndKBToHash(w io.Writer, in *ReceiptBuildInput) {
 	if in.Exclusions.Present {
-		writeKV(h, "excl", fmt.Sprintf("%s:%s:%d:%s",
+		writeKV(w, "excl", fmt.Sprintf("%s:%s:%d:%s",
 			in.Exclusions.RawDiffSHA256, in.Exclusions.DiffSHA256, in.Exclusions.Excluded, in.Exclusions.PatternsSource))
 	}
-	if in.KB != nil {
-		writeKV(h, "kb_summary", fmt.Sprintf("%d:%d:%v:%d:%d",
-			in.KB.Included, in.KB.Omitted, in.KB.Truncated, in.KB.CharsIncluded, in.KB.CharsTotal))
-		if in.KB.Cap != nil {
-			writeKV(h, "kb_cap", strconv.Itoa(*in.KB.Cap))
-		}
-		for _, c := range in.KB.Candidates {
-			writeKV(h, "kb_cand:"+c.ID, c.Status+":"+c.Reason)
-		}
+	if in.KB == nil {
+		return
 	}
-	return hex.EncodeToString(h.Sum(nil))
+	writeKV(w, "kb_summary", fmt.Sprintf("%d:%d:%v:%d:%d",
+		in.KB.Included, in.KB.Omitted, in.KB.Truncated, in.KB.CharsIncluded, in.KB.CharsTotal))
+	if in.KB.Cap != nil {
+		writeKV(w, "kb_cap", strconv.Itoa(*in.KB.Cap))
+	}
+	for _, c := range in.KB.Candidates {
+		writeKV(w, "kb_cand:"+c.ID, c.Status+sepColon+c.Reason)
+	}
 }
 
 func writeKV(w io.Writer, k, v string) {
@@ -490,9 +588,84 @@ func shaHex(b []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// RenderInputsFooterLine formats the single compact `> Inputs:` footer line
-// from provenance.json. Old bundles without provenance.json return "" so the
-// rendered footer stays byte-identical.
+type footerInputStats struct {
+	panelStr    string
+	learnStatus string
+	cfgLayer    string
+	promptsCnt  int
+	kbInc       int
+	kbOm        int
+	exclCount   int
+	overCount   int
+	ctrlCount   int
+	kbTrunc     bool
+}
+
+func collectFooterStats(inputs []core.ProvenanceInput) footerInputStats {
+	s := footerInputStats{panelStr: "none", learnStatus: statusIncluded, cfgLayer: layerBuiltIn}
+	for i := range inputs {
+		in := &inputs[i]
+		accumulateFooterInput(&s, in)
+	}
+	return s
+}
+
+func accumulateFooterInput(s *footerInputStats, in *core.ProvenanceInput) {
+	switch in.Kind {
+	case kindPrompt:
+		s.promptsCnt += boolToInt(in.Status == statusIncluded)
+	case kindPanel:
+		if len(in.Members) > 0 {
+			s.panelStr = strings.Join(in.Members, sepComma)
+		}
+	case kindKB:
+		s.kbInc = derefOrZero(in.Included)
+		s.kbOm = derefOrZero(in.Omitted)
+		s.kbTrunc = in.Status == statusTruncated
+	case kindExclusions:
+		s.exclCount = derefOrZero(in.Excluded)
+	default:
+		accumulateFooterPolicyInput(s, in)
+	}
+}
+
+func accumulateFooterPolicyInput(s *footerInputStats, in *core.ProvenanceInput) {
+	switch in.Kind {
+	case "learnings":
+		s.learnStatus = nonEmptyString(in.Status, s.learnStatus)
+	case "override":
+		s.overCount += boolToInt(in.Status == statusIncluded)
+	case "control":
+		s.ctrlCount += boolToInt(in.Status != statusAbsent)
+	case "config":
+		s.cfgLayer = nonEmptyString(in.Layer, s.cfgLayer)
+	}
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+func nonEmptyString(val, fallback string) string {
+	if val != "" {
+		return val
+	}
+	return fallback
+}
+
+func derefOrZero(v *int) int {
+	if v == nil {
+		return 0
+	}
+	return *v
+}
+
+// RenderInputsFooterLine formats the compact single-line `> Inputs:` summary
+// appended inside the footer marker when provenance.json exists. Missing or
+// malformed provenance.json returns "" so legacy bundles remain identical.
 func RenderInputsFooterLine(dir string) string {
 	if dir == "" {
 		return ""
@@ -501,77 +674,34 @@ func RenderInputsFooterLine(dir string) string {
 	if !ok || err != nil || r == nil {
 		return ""
 	}
-	var promptsCount, kbInc, kbOm, exclCount, overCount, ctrlCount int
-	var kbTrunc bool
-	var panelStr, learnStatus, cfgLayer string
-	for i := range r.Inputs {
-		in := &r.Inputs[i]
-		switch in.Kind {
-		case "prompt":
-			if in.Status == "included" {
-				promptsCount++
-			}
-		case "panel":
-			if len(in.Members) > 0 {
-				panelStr = strings.Join(in.Members, ",")
-			}
-		case "kb":
-			if in.Included != nil {
-				kbInc = *in.Included
-			}
-			if in.Omitted != nil {
-				kbOm = *in.Omitted
-			}
-			kbTrunc = in.Status == "truncated"
-		case "learnings":
-			learnStatus = in.Status
-		case "override":
-			if in.Status == "included" {
-				overCount++
-			}
-		case "control":
-			if in.Status != "absent" {
-				ctrlCount++
-			}
-		case "config":
-			cfgLayer = in.Layer
-		case "exclusions":
-			if in.Excluded != nil {
-				exclCount = *in.Excluded
-			}
-		}
-	}
-	if panelStr == "" {
-		panelStr = "none"
-	}
-	if learnStatus == "" {
-		learnStatus = "included"
-	}
-	if cfgLayer == "" {
-		cfgLayer = "built-in"
-	}
-	kbPart := fmt.Sprintf("kb %d", kbInc)
-	if kbOm > 0 || kbTrunc {
-		kbPart = fmt.Sprintf("kb %d/%d", kbInc, kbInc+kbOm)
-		if kbTrunc {
-			kbPart += " (truncated)"
-		} else if kbOm > 0 {
-			kbPart += fmt.Sprintf(" (%d omitted)", kbOm)
-		}
-	}
-	runShort := r.RunID
-	if len(runShort) > 12 {
-		runShort = runShort[:12]
-	}
-	promptHashShort := r.PromptsHash
-	if len(promptHashShort) > 7 {
-		promptHashShort = promptHashShort[:7]
-	}
-	return fmt.Sprintf("> Inputs: run %s · prompts %d (%s) · panel %s · %s · learnings %s · overrides %d · controls %d · config %s · excluded %d",
-		runShort, promptsCount, promptHashShort, panelStr, kbPart, learnStatus, overCount, ctrlCount, cfgLayer, exclCount)
+	s := collectFooterStats(r.Inputs)
+	kbPart := formatFooterKBPart(s.kbInc, s.kbOm, s.kbTrunc)
+	return fmt.Sprintf(
+		"> Inputs: run %s · prompts %d (%s) · panel %s · %s · learnings %s · overrides %d · controls %d · config %s · excluded %d",
+		truncatePrefix(r.RunID, runShortLen), s.promptsCnt, truncatePrefix(r.PromptsHash, hashShortLen),
+		s.panelStr, kbPart, s.learnStatus, s.overCount, s.ctrlCount, s.cfgLayer, s.exclCount,
+	)
 }
 
-// MergeTruncated appends any bundle truncation rows not already captured in r.Truncated.
+func formatFooterKBPart(kbInc, kbOm int, kbTrunc bool) string {
+	if kbOm == 0 && !kbTrunc {
+		return fmt.Sprintf("kb %d", kbInc)
+	}
+	part := fmt.Sprintf("kb %d/%d", kbInc, kbInc+kbOm)
+	if kbTrunc {
+		return part + " (truncated)"
+	}
+	return part + fmt.Sprintf(" (%d omitted)", kbOm)
+}
+
+func truncatePrefix(s string, maxLen int) string {
+	if len(s) > maxLen {
+		return s[:maxLen]
+	}
+	return s
+}
+
+// MergeTruncated appends bundle truncation rows absent from r.Truncated.
 func MergeTruncated(r *core.ProvenanceReceipt, extra *core.Truncation) []core.ProvenanceTruncatedRow {
 	var base []core.ProvenanceTruncatedRow
 	if r != nil {
@@ -583,13 +713,20 @@ func MergeTruncated(r *core.ProvenanceReceipt, extra *core.Truncation) []core.Pr
 		}
 		return base
 	}
-	for _, row := range base {
-		if row.Input == "bundle" && row.Reason == extra.TruncationReason {
-			return base
+	if hasBundleTruncation(base, extra.TruncationReason) {
+		return base
+	}
+	row := core.NewProvenanceTruncatedRow(kindBundle, "", statusTruncated, extra.TruncationReason, extra)
+	return append(base, row)
+}
+
+func hasBundleTruncation(rows []core.ProvenanceTruncatedRow, reason string) bool {
+	for i := range rows {
+		if rows[i].Input == kindBundle && rows[i].Reason == reason {
+			return true
 		}
 	}
-	base = append(base, core.NewProvenanceTruncatedRow("bundle", "", "truncated", extra.TruncationReason, extra))
-	return base
+	return false
 }
 
 // FormatTable renders the full local provenance & truncation tables for
@@ -598,18 +735,17 @@ func FormatTable(r *core.ProvenanceReceipt, truncated []core.ProvenanceTruncated
 	if r == nil {
 		r = EmptyReceipt()
 	}
-	lines := []string{fmt.Sprintf("provenance: run_id=%s prompts_hash=%s", r.RunID, r.PromptsHash)}
-	lines = append(lines, "KIND\tNAME\tSTATUS\tBYTES\tSHA256\tDETAIL")
+	lines := []string{
+		fmt.Sprintf("provenance: run_id=%s prompts_hash=%s", r.RunID, r.PromptsHash),
+		"KIND\tNAME\tSTATUS\tBYTES\tSHA256\tDETAIL",
+	}
 	for i := range r.Inputs {
-		in := &r.Inputs[i]
-		lines = append(lines, formatInputRow(in))
+		lines = append(lines, formatInputRow(&r.Inputs[i]))
 	}
 	if len(truncated) == 0 {
-		lines = append(lines, "truncated: none")
-		return lines
+		return append(lines, "truncated: none")
 	}
-	lines = append(lines, fmt.Sprintf("truncated: %d", len(truncated)))
-	lines = append(lines, "INPUT\tID\tSTATUS\tREASON\tDETAIL")
+	lines = append(lines, fmt.Sprintf("truncated: %d", len(truncated)), "INPUT\tID\tSTATUS\tREASON\tDETAIL")
 	for i := range truncated {
 		lines = append(lines, formatTruncatedRow(&truncated[i]))
 	}
@@ -617,79 +753,64 @@ func FormatTable(r *core.ProvenanceReceipt, truncated []core.ProvenanceTruncated
 }
 
 func formatInputRow(in *core.ProvenanceInput) string {
-	bytesCol := "-"
+	bytesCol := dash
 	if in.Bytes != nil {
-		bytesCol = strconv.FormatInt(*in.Bytes, 10)
+		bytesCol = strconv.FormatInt(*in.Bytes, decimalBase)
 	}
-	shaCol := "-"
+	shaCol := dash
 	if in.SHA256 != "" {
-		shaCol = in.SHA256
-		if len(shaCol) > 12 {
-			shaCol = shaCol[:12]
-		}
+		shaCol = truncatePrefix(in.SHA256, runShortLen)
 	}
+	details := inputRowDetails(in)
+	detailCol := strings.Join(details, " ")
+	if detailCol == "" {
+		detailCol = dash
+	}
+	return fmt.Sprintf("%s\t%s\t%s\t%s\t%s\t%s", in.Kind, in.Name, in.Status, bytesCol, shaCol, detailCol)
+}
+
+func inputRowDetails(in *core.ProvenanceInput) []string {
 	var details []string
 	if in.Reason != "" {
 		details = append(details, "reason="+in.Reason)
 	}
-	if in.Included != nil {
-		details = append(details, "included="+strconv.Itoa(*in.Included))
-	}
-	if in.Omitted != nil {
-		details = append(details, "omitted="+strconv.Itoa(*in.Omitted))
-	}
-	if in.CharsIncluded != nil {
-		details = append(details, "chars_included="+strconv.Itoa(*in.CharsIncluded))
-	}
-	if in.CharsTotal != nil {
-		details = append(details, "chars_total="+strconv.Itoa(*in.CharsTotal))
-	}
-	if in.Cap != nil {
-		details = append(details, "cap="+strconv.Itoa(*in.Cap))
-	}
-	if in.Excluded != nil {
-		details = append(details, "excluded="+strconv.Itoa(*in.Excluded))
-	}
+	details = appendIntDetail(details, "included", in.Included)
+	details = appendIntDetail(details, statusOmitted, in.Omitted)
+	details = appendIntDetail(details, "chars_included", in.CharsIncluded)
+	details = appendIntDetail(details, "chars_total", in.CharsTotal)
+	details = appendIntDetail(details, "cap", in.Cap)
+	details = appendIntDetail(details, "excluded", in.Excluded)
 	if in.Layer != "" {
 		details = append(details, "layer="+in.Layer)
 	}
 	if len(in.Members) > 0 {
-		details = append(details, "members="+strings.Join(in.Members, ","))
+		details = append(details, "members="+strings.Join(in.Members, sepComma))
 	}
 	if in.Detail != "" {
 		details = append(details, in.Detail)
 	}
-	detailCol := strings.Join(details, " ")
-	if detailCol == "" {
-		detailCol = "-"
+	return details
+}
+
+func appendIntDetail(details []string, key string, val *int) []string {
+	if val == nil {
+		return details
 	}
-	return fmt.Sprintf("%s\t%s\t%s\t%s\t%s\t%s", in.Kind, in.Name, in.Status, bytesCol, shaCol, detailCol)
+	return append(details, key+"="+strconv.Itoa(*val))
 }
 
 func formatTruncatedRow(row *core.ProvenanceTruncatedRow) string {
 	idCol := row.ID
 	if idCol == "" {
-		idCol = "-"
+		idCol = dash
 	}
 	var details []string
-	if row.Included != nil {
-		details = append(details, "included="+strconv.Itoa(*row.Included))
-	}
-	if row.Omitted != nil {
-		details = append(details, "omitted="+strconv.Itoa(*row.Omitted))
-	}
-	if row.CharsIncluded != nil {
-		details = append(details, "chars_included="+strconv.Itoa(*row.CharsIncluded))
-	}
-	if row.CharsTotal != nil {
-		details = append(details, "chars_total="+strconv.Itoa(*row.CharsTotal))
-	}
-	if row.Cap != nil {
-		details = append(details, "cap="+strconv.Itoa(*row.Cap))
-	}
+	details = appendIntDetail(details, "included", row.Included)
+	details = appendIntDetail(details, statusOmitted, row.Omitted)
+	details = appendIntDetail(details, "chars_included", row.CharsIncluded)
+	details = appendIntDetail(details, "chars_total", row.CharsTotal)
+	details = appendIntDetail(details, "cap", row.Cap)
 	details = append(details, fmt.Sprintf("truncation_reason=%s returned=%d", row.TruncationReason, row.Returned))
-	if row.Total != nil {
-		details = append(details, "total="+strconv.Itoa(*row.Total))
-	}
+	details = appendIntDetail(details, "total", row.Total)
 	return fmt.Sprintf("%s\t%s\t%s\t%s\t%s", row.Input, idCol, row.Status, row.Reason, strings.Join(details, " "))
 }

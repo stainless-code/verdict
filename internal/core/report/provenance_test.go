@@ -28,34 +28,42 @@ const sampleProvenanceJSON = `{
   ]
 }`
 
+func runReportChecked(t *testing.T, req core.ReadRequest, flags *core.ReportFlags) *core.ReportResponse {
+	t.Helper()
+	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{ReadRequest: req, Flags: *flags})
+	if ref != nil {
+		t.Fatalf("report refused: %s: %s", ref.Code, ref.Message)
+	}
+	return resp
+}
+
 func TestReportProvenanceWireGatingHumanTableAndDegrade(t *testing.T) {
 	req := fixture(t, "[]")
 	writeFile(t, ".verdict/state/5101/provenance.json", sampleProvenanceJSON)
 
-	// Without --provenance: wire must omit provenance receipt & truncated array.
-	plainResp, ref := reportcore.Run(context.Background(), &core.ReportRequest{ReadRequest: req})
-	if ref != nil {
-		t.Fatal(ref)
-	}
+	plainResp := runReportChecked(t, req, &core.ReportFlags{})
 	plainWire := jq.PrettyOrdered(plainResp.Data.Wire())
 	if strings.Contains(plainWire, `"inputs"`) || strings.Contains(plainWire, `"abcd1234"`) {
 		t.Fatalf("report without --provenance exposed provenance keys:\n%s", plainWire)
 	}
 
-	// With --provenance: wire exposes data.receipt.inputs[] and data.truncated[], human prints table.
-	provResp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
-		ReadRequest: req,
-		Flags:       core.ReportFlags{Provenance: true},
-	})
-	if ref != nil {
-		t.Fatal(ref)
+	assertReportProvenanceIncluded(t, req)
+
+	writeFile(t, ".verdict/state/5101/provenance.json", "{corrupt")
+	badResp := runReportChecked(t, req, &core.ReportFlags{Provenance: true})
+	if !strings.Contains(strings.Join(badResp.Warnings, "\n"), "provenance.json") {
+		t.Fatalf("expected provenance.json warning on malformed file, got: %v", badResp.Warnings)
 	}
-	wireJSON := jq.PrettyOrdered(provResp.Data.Wire())
+}
+
+func assertReportProvenanceIncluded(t *testing.T, req core.ReadRequest) {
+	t.Helper()
+	provResp := runReportChecked(t, req, &core.ReportFlags{Provenance: true})
 	var decoded struct {
 		Receipt   core.ProvenanceReceipt        `json:"receipt"`
 		Truncated []core.ProvenanceTruncatedRow `json:"truncated"`
 	}
-	if err := json.Unmarshal([]byte(wireJSON), &decoded); err != nil {
+	if err := json.Unmarshal([]byte(jq.PrettyOrdered(provResp.Data.Wire())), &decoded); err != nil {
 		t.Fatalf("unmarshal report wire: %v", err)
 	}
 	if len(decoded.Receipt.Inputs) != 4 || len(decoded.Truncated) != 2 {
@@ -66,18 +74,5 @@ func TestReportProvenanceWireGatingHumanTableAndDegrade(t *testing.T) {
 		if !strings.Contains(humanText, want) {
 			t.Fatalf("human provenance output missing %q:\n%s", want, humanText)
 		}
-	}
-
-	// Malformed provenance.json degrades cleanly with a warning.
-	writeFile(t, ".verdict/state/5101/provenance.json", "{corrupt")
-	badResp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
-		ReadRequest: req,
-		Flags:       core.ReportFlags{Provenance: true},
-	})
-	if ref != nil {
-		t.Fatalf("malformed provenance.json refused report: %v", ref)
-	}
-	if !strings.Contains(strings.Join(badResp.Warnings, "\n"), "provenance.json") {
-		t.Fatalf("expected provenance.json warning on malformed file, got: %v", badResp.Warnings)
 	}
 }

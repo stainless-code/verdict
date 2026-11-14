@@ -11,32 +11,31 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
+func seedTrendProvenanceBundle(t *testing.T, bundleDir, provJSON string) {
+	t.Helper()
+	writeListedStore(t, bundleDir, "["+trendOpenFinding+"]")
+	if provJSON == "" {
+		return
+	}
+	if err := os.WriteFile(filepath.Join(bundleDir, "provenance.json"), []byte(provJSON), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestTrendProvenanceFallbackAndDegrade(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	state := readcommon.StateDir(root)
 
-	withProv := filepath.Join(state, "101")
-	writeListedStore(t, withProv, "["+trendOpenFinding+"]")
-	provBody := `{
+	seedTrendProvenanceBundle(t, filepath.Join(state, "101"), `{
   "schema_version": "1",
   "run_id": "run101abc",
   "prompts_hash": "hash101xyz",
   "inputs": [],
   "truncated": [{"input": "kb", "status": "truncated", "reason": "cap", "truncated": true, "truncation_reason": "response_cap", "returned": 50, "total": 100, "next_offset": null}]
-}`
-	if err := os.WriteFile(filepath.Join(withProv, "provenance.json"), []byte(provBody), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	legacy := filepath.Join(state, "102")
-	writeListedStore(t, legacy, "["+trendOpenFinding+"]")
-
-	malformed := filepath.Join(state, "103")
-	writeListedStore(t, malformed, "["+trendOpenFinding+"]")
-	if err := os.WriteFile(filepath.Join(malformed, "provenance.json"), []byte("{not json"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+}`)
+	seedTrendProvenanceBundle(t, filepath.Join(state, "102"), "")
+	seedTrendProvenanceBundle(t, filepath.Join(state, "103"), "{not json")
 
 	log := &progressLog{}
 	read := core.ReadRequest{Runtime: &core.Runtime{Progress: log}, RepoRoot: root}
@@ -45,16 +44,15 @@ func TestTrendProvenanceFallbackAndDegrade(t *testing.T) {
 		t.Fatalf("trend refused: %s: %s", ref.Code, ref.Message)
 	}
 	wire := jq.PrettyOrdered(resp.Data.Wire())
-	if !strings.Contains(wire, `"run_id": "run101abc"`) || !strings.Contains(wire, `"hash101xyz"`) || !strings.Contains(wire, `"truncated_inputs": 1`) {
-		t.Fatalf("trend wire missed provenance summary:\n%s", wire)
+	for _, want := range []string{`"run_id": "run101abc"`, `"hash101xyz"`, `"truncated_inputs": 1`} {
+		if !strings.Contains(wire, want) {
+			t.Fatalf("trend wire missing %s:\n%s", want, wire)
+		}
 	}
-	// Legacy bundle 102 must omit run_id.
-	if strings.Contains(wire, `"102"`) && strings.Count(wire, `"run_id"`) != 1 {
+	if strings.Count(wire, `"run_id"`) != 1 {
 		t.Fatalf("expected only 1 bundle run_id in wire:\n%s", wire)
 	}
-	// Malformed bundle 103 warns without failing trend.
-	joined := strings.Join(log.warns, "\n")
-	if !strings.Contains(joined, "provenance.json") {
+	if !strings.Contains(strings.Join(log.warns, "\n"), "provenance.json") {
 		t.Fatalf("expected provenance.json warning for bundle 103, got: %v", log.warns)
 	}
 }

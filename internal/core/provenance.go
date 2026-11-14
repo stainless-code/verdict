@@ -5,8 +5,8 @@ import "github.com/stainless-code/verdict/internal/jq"
 // ProvenanceReceipt is the persisted provenance.json receipt and the
 // `data.receipt` object exposed by `report --provenance --json` and
 // `post --provenance --json`.
-type ProvenanceReceipt struct { //nolint:govet // field order is the published property order
-	SchemaVersion string                   `const:"1"             json:"schema_version"`
+type ProvenanceReceipt struct {
+	SchemaVersion string                   `const:"1"              json:"schema_version"`
 	RunID         string                   `json:"run_id"`
 	PromptsHash   string                   `json:"prompts_hash"`
 	Panel         []string                 `json:"panel,omitempty"`

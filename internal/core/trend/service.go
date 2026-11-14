@@ -264,8 +264,8 @@ func applyBundleProvenance(r *row, rec *core.ProvenanceReceipt) {
 	r.runID = rec.RunID
 	r.truncatedInputs = len(rec.Truncated)
 	if r.prov != nil && rec.PromptsHash != "" {
-		if cur, ok := r.prov.Get("prompts_hash"); !ok || cur == nil || cur == "" {
-			r.prov.Set("prompts_hash", rec.PromptsHash)
+		if cur, ok := r.prov.Get(keyPromptsHash); !ok || cur == nil || cur == "" {
+			r.prov.Set(keyPromptsHash, rec.PromptsHash)
 		}
 	}
 }
@@ -373,6 +373,8 @@ func appendTier(efforts []any, seen map[string]bool, tier string) []any {
 	return efforts
 }
 
+const keyPromptsHash = "prompts_hash"
+
 func bundleProvenance(bundle string) *jq.Obj {
 	for _, rec := range []string{bundle + "post.json", bundle + "record.json"} {
 		if !isRegular(rec) {
@@ -402,13 +404,13 @@ func provenanceTriple(path string) *jq.Obj {
 	}
 	return jq.NewObj(
 		"tool_version", m["tool_version"],
-		"prompts_hash", m["prompts_hash"],
+		keyPromptsHash, m[keyPromptsHash],
 		"model", m["model"],
 	)
 }
 
 func unmarkedProvenance() *jq.Obj {
-	return jq.NewObj("tool_version", nil, "prompts_hash", nil, "model", nil)
+	return jq.NewObj("tool_version", nil, keyPromptsHash, nil, "model", nil)
 }
 
 func statusCounts(findings []any) map[string]int {

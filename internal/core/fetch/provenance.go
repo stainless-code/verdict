@@ -85,7 +85,7 @@ func collectControlInputs(ctx2 *fetchRunCtx) (ctrls, overrides []provenance.Cont
 		switch {
 		case f.Path == config.LearningsPath:
 			learn := ci
-			learn.Status = "included"
+			learn.Status = statusIncluded
 			learnings = &learn
 		case strings.HasPrefix(f.Path, overridesDirPrefix):
 			overrides = append(overrides, ci)
