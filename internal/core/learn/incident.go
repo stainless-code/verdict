@@ -13,6 +13,7 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/incident"
+	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -37,6 +38,7 @@ const (
 	msgWriteIncident     = "learn could not write %s: %v"
 	msgCorruptIncident   = "incident ledger %s is unreadable (restore from backup or fix the bad line)"
 	msgBusyIncident      = "incident ledger %s is being written by another attach (retry in a moment)"
+	msgFullIncident      = "refusing learn: %s would pass the %d-byte read cap (trim rows from the ledger first)"
 	msgWriteIgnore       = "learn could not bring %s/.verdict/.gitignore to the tracked ignore contract: %v"
 )
 
@@ -134,6 +136,8 @@ func (st *state) incidentRefusal(err error) *core.RefusalError {
 	switch {
 	case errors.Is(err, incident.ErrBusy):
 		return st.refuse(codeStoreBusy, fmt.Sprintf(msgBusyIncident, st.incidentDisplay()))
+	case errors.Is(err, incident.ErrTooLarge):
+		return st.refuse(codeLedgerTooLarge, fmt.Sprintf(msgFullIncident, st.incidentDisplay(), jq.MaxKBBytes))
 	case errors.Is(err, incident.ErrCorrupt):
 		return st.corruptIncident()
 	default:

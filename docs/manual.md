@@ -616,7 +616,10 @@ learning path (`bad-scope`); attach flags without `--incident` refuse
 `--note`, and a `--url` that is not `http(s)`; an `--at` that is not RFC 3339
 refuses `bad-at`. The attach is idempotent per pair — the second run reports
 `existing` and moves no byte, so re-running after a rebase is safe — and
-`--dry-run` reports the append it would make, writing nothing.
+`--dry-run` reports the append it would make, writing nothing. An attach that
+would push the file past the 8 MiB the reader opens refuses `ledger-too-large`
+and writes nothing, so a full ledger can never become an unreadable one; trim
+rows first.
 
 The ledger is tracked, so an uncommitted attach is worktree dirt: `check-tree`
 fails on `?? .verdict/incidents.jsonl` until you commit it. Attaches are

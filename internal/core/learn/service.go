@@ -631,6 +631,7 @@ const (
 	codeBadReason       = "bad-reason"
 	codeCorruptStore    = "corrupt-store"
 	codeStoreBusy       = "store-busy"
+	codeLedgerTooLarge  = "ledger-too-large"
 )
 
 const (

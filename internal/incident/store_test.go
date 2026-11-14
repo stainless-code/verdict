@@ -133,6 +133,35 @@ func TestReadRefusesUnstorablePathRow(t *testing.T) {
 	}
 }
 
+// TestUpsertRefusesAnAppendPastTheReadCap proves the write honors the reader's
+// cap: an append that would leave a ledger no Read can open refuses typed and
+// moves no byte, so the rows already attached stay readable.
+func TestUpsertRefusesAnAppendPastTheReadCap(t *testing.T) {
+	root := t.TempDir()
+	empty := `{"schema_version":"1","bundle":"local-a","sha":"` + shaA + `","paths":["src/a.ts"],` +
+		`"note":"","url":null,"detected_at":"2026-11-14T00:00:00Z"}` + "\n"
+	note := strings.Repeat("n", int(jq.MaxKBBytes)-len(empty)-64)
+	seeded := strings.Replace(empty, `"note":""`, `"note":"`+note+`"`, 1)
+	writeStore(t, root, seeded)
+	if int64(len(seeded)) > jq.MaxKBBytes {
+		t.Fatalf("the seeded ledger is already past the cap: %d bytes", len(seeded))
+	}
+
+	appended, err := Upsert(root, &Row{
+		SchemaVersion: "1", Bundle: "local-a", Sha: shaB,
+		Paths: []string{"src/b.ts"}, DetectedAt: "2026-11-14T00:00:01Z",
+	})
+	if !errors.Is(err, ErrTooLarge) {
+		t.Fatalf("Upsert past the read cap = (%v, %v); want ErrTooLarge", appended, err)
+	}
+	if got := readStore(t, root); got != seeded {
+		t.Fatal("a refused append moved the ledger")
+	}
+	if _, err := Read(root); err != nil {
+		t.Fatalf("Read after the refused append = %v; want the seeded ledger", err)
+	}
+}
+
 // storableRow is one row every rule accepts, mutated by the caller.
 func storableRow(mutate func(*Row)) Row {
 	row := Row{

@@ -658,6 +658,12 @@ Cause: `learn` could not write the knowledge-base store (or create `.verdict`).
 
 Fix: make `.verdict` writable (or restore the knowledge-base store from backup), then re-run.
 
+## `ledger-too-large`
+
+Cause: the attach would have pushed `.verdict/incidents.jsonl` past the 8 MiB the reader opens, so it wrote nothing: a ledger that size can never be read again, which would block every later attach and `trend --incidents`.
+
+Fix: trim or archive rows from `.verdict/incidents.jsonl` (it is a plain JSONL file you own), then re-run the attach.
+
 ## `manager-failed`
 
 Cause: the package manager's update command failed — the message names its exit or error.

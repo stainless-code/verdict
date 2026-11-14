@@ -31,3 +31,7 @@ refuses `store-busy`, while a crashed holder releases the lock at once. The
 lock file persists and is ignored — the tracked ignore contract
 (`.verdict/.gitignore`, written by `init` and kept current by the attach) gains
 the `incidents.jsonl.lock` line.
+
+An attach that would push the ledger past the 8 MiB the reader opens refuses
+`ledger-too-large` and writes nothing, instead of leaving a file no later read
+(attach or `trend --incidents`) can open.

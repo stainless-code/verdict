@@ -105,6 +105,7 @@ ingest-failed	try: confirm the bundle path and SARIF file readability, then re-r
 init-failed	try: address the cause above, then re-run the same command
 internal	try: address the cause above, then re-run the same command
 learn-failed	try: address the cause above, then re-run the same command
+ledger-too-large	try: trim or archive rows in .verdict/incidents.jsonl, then re-run
 manager-failed	try: address the cause above, then re-run the same command
 manager-missing	try: address the cause above, then re-run the same command
 mcp-config-backup-failed	try: check the config path and permissions named above, then re-run

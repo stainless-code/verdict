@@ -109,6 +109,7 @@ export type RefusalCode =
   | "init-failed"
   | "internal"
   | "learn-failed"
+  | "ledger-too-large"
   | "manager-failed"
   | "manager-missing"
   | "mcp-config-backup-failed"

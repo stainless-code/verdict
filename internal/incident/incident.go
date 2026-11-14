@@ -45,6 +45,10 @@ var (
 	// errInvalid marks a row or field this build cannot store or measure; the
 	// message names the field and the defect.
 	errInvalid = errors.New("incident row invalid")
+	// ErrTooLarge marks a ledger whose next row would push the file past the
+	// reader's cap. The attach writes nothing: a ledger no Read can open would
+	// block every later attach and `trend --incidents` with it.
+	ErrTooLarge = errors.New("incident ledger full")
 )
 
 // invalidf names the field and the defect of one unusable row.
@@ -124,12 +128,18 @@ func stored(lines []line, row *Row) bool {
 }
 
 // writeLines sorts rows by bundle then sha and replaces the ledger atomically.
+// A result past the read cap refuses instead of landing: the write would
+// succeed and every later Read would report a corrupt store.
 func writeLines(root string, lines []line) error {
 	slices.SortStableFunc(lines, compareLines)
 	var sb strings.Builder
 	for _, l := range lines {
 		sb.WriteString(l.text)
 		sb.WriteByte('\n')
+	}
+	if int64(sb.Len()) > jq.MaxKBBytes {
+		return fmt.Errorf("%w: %d bytes would pass the %d-byte read cap", //nolint:wrapcheck // the sentinel is the contract
+			ErrTooLarge, sb.Len(), jq.MaxKBBytes)
 	}
 	return atomic.WriteFile(path(root), []byte(sb.String()))
 }

@@ -1,6 +1,7 @@
 package learncore
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -116,6 +117,19 @@ func TestIncidentBusyRefusalIsTyped(t *testing.T) {
 	want := "incident ledger /repo/.verdict/incidents.jsonl is being written by another attach (retry in a moment)"
 	if ref == nil || ref.Code != "store-busy" || ref.Message != want {
 		t.Fatalf("refusal = %v; want store-busy %q", ref, want)
+	}
+}
+
+// TestLedgerTooLargeRefusalIsTyped proves an append past the ledger's read cap
+// refuses as its own code: a generic failed write would leave the operator
+// re-running an attach that can never fit.
+func TestLedgerTooLargeRefusalIsTyped(t *testing.T) {
+	st := &state{root: "/repo"}
+	ref := st.incidentRefusal(fmt.Errorf("upsert: %w", incident.ErrTooLarge))
+	want := "refusing learn: /repo/.verdict/incidents.jsonl would pass the 8388608-byte read cap " +
+		"(trim rows from the ledger first)"
+	if ref == nil || ref.Code != "ledger-too-large" || ref.Message != want {
+		t.Fatalf("refusal = %v; want ledger-too-large %q", ref, want)
 	}
 }
 
