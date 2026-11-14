@@ -13,6 +13,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
@@ -663,6 +665,31 @@ func derefOrZero(v *int) int {
 	return *v
 }
 
+// footerFieldLen caps one rendered `> Inputs:` field so a long config value
+// cannot push the line past a label.
+const footerFieldLen = 64
+
+// displayField renders one footer value on a single line: control runes
+// (CR/LF included) become spaces and the result is capped, so no receipt or
+// config value can open a second line or a second comment marker.
+func displayField(v string) string {
+	clean := strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, v)
+	if utf8.RuneCountInString(clean) > footerFieldLen {
+		clean = string([]rune(clean)[:footerFieldLen])
+	}
+	return clean
+}
+
+// footerField is one `label value` field of the line, rendered single-line.
+func footerField(label, value string) string {
+	return label + displayField(value)
+}
+
 // RenderInputsFooterLine formats the compact single-line `> Inputs:` summary
 // appended inside the footer marker when provenance.json exists. Missing or
 // malformed provenance.json returns "" so legacy bundles remain identical.
@@ -674,13 +701,23 @@ func RenderInputsFooterLine(dir string) string {
 	if !ok || err != nil || r == nil {
 		return ""
 	}
+	return inputsFooterLine(r)
+}
+
+func inputsFooterLine(r *core.ProvenanceReceipt) string {
 	s := collectFooterStats(r.Inputs)
-	kbPart := formatFooterKBPart(s.kbInc, s.kbOm, s.kbTrunc)
-	return fmt.Sprintf(
-		"> Inputs: run %s · prompts %d (%s) · panel %s · %s · learnings %s · overrides %d · controls %d · config %s · excluded %d",
-		truncatePrefix(r.RunID, runShortLen), s.promptsCnt, truncatePrefix(r.PromptsHash, hashShortLen),
-		s.panelStr, kbPart, s.learnStatus, s.overCount, s.ctrlCount, s.cfgLayer, s.exclCount,
-	)
+	fields := []string{
+		"> Inputs: " + footerField("run ", truncatePrefix(r.RunID, runShortLen)),
+		footerField("prompts ", strconv.Itoa(s.promptsCnt)) + " (" + displayField(truncatePrefix(r.PromptsHash, hashShortLen)) + ")",
+		footerField("panel ", s.panelStr),
+		displayField(formatFooterKBPart(s.kbInc, s.kbOm, s.kbTrunc)),
+		footerField("learnings ", s.learnStatus),
+		footerField("overrides ", strconv.Itoa(s.overCount)),
+		footerField("controls ", strconv.Itoa(s.ctrlCount)),
+		footerField("config ", s.cfgLayer),
+		footerField("excluded ", strconv.Itoa(s.exclCount)),
+	}
+	return strings.Join(fields, " · ")
 }
 
 func formatFooterKBPart(kbInc, kbOm int, kbTrunc bool) string {

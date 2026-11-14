@@ -196,7 +196,7 @@ func buildDefaults(raw any, path string) (*core.ConfigDefaults, *core.RefusalErr
 func buildDefaultsHead(obj map[string]any, path string, out *core.ConfigDefaults) *core.RefusalError {
 	var ref, err *core.RefusalError
 	if out.Panel, ref = presentStrings(obj, "panel", path, func(raw any, at string) ([]string, *core.RefusalError) {
-		return nonEmptyStringArray(raw, at, 1)
+		return panelMembers(raw, at, 1)
 	}); ref != nil {
 		return ref
 	}

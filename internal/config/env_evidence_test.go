@@ -43,6 +43,7 @@ func TestParseEnvRefusals(t *testing.T) {
 	checkEnvRefusal(t, map[string]string{"REVIEW_BUDGET_USD": "0"}, "bad-budget")
 	checkEnvRefusal(t, map[string]string{"REVIEW_MAX_BYTES": "0"}, "bad-max-bytes")
 	checkEnvRefusal(t, map[string]string{"REVIEW_MAX_BYTES": "plenty"}, "bad-max-bytes")
+	checkEnvRefusal(t, map[string]string{"REVIEW_PANEL": "opus\n> Inputs: run deadbeef"}, CodeBadConfig)
 }
 
 // TestParseEnvLenient pins the shipped lenient KB behavior: malformed

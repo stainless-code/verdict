@@ -417,7 +417,9 @@ func pickString(layers []layerValue, key string, shadowed []ShadowedValue, get s
 func ParseEnv(env map[string]string) (Partial, []string, *core.RefusalError) {
 	var out Partial
 	var warnings []string
-	panelEnv(env, &out)
+	if ref := panelEnv(env, &out); ref != nil {
+		return Partial{}, nil, ref
+	}
 	if ref := budgetEnv(env, &out); ref != nil {
 		return Partial{}, nil, ref
 	}
@@ -437,12 +439,19 @@ func envTrim(env map[string]string, name string) (string, bool) {
 	return strings.TrimSpace(raw), true
 }
 
-func panelEnv(env map[string]string, out *Partial) {
+func panelEnv(env map[string]string, out *Partial) *core.RefusalError {
 	raw, ok := envTrim(env, "REVIEW_PANEL")
 	if !ok {
-		return
+		return nil
 	}
-	out.Panel, out.PanelSet = splitList(raw), true
+	members := splitList(raw)
+	for _, member := range members {
+		if ref := checkSingleLine(member, "REVIEW_PANEL"); ref != nil {
+			return ref
+		}
+	}
+	out.Panel, out.PanelSet = members, true
+	return nil
 }
 
 // budgetEnv reads the estimate-guard threshold, refusing malformed input

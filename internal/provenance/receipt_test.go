@@ -283,6 +283,44 @@ func assertNewFooterAndTable(t *testing.T, root, dir, ctrl string) {
 	}
 }
 
+func TestFooterInputsLineStaysSingleLine(t *testing.T) {
+	t.Parallel()
+	root, dir := seedReceiptFixture(t, `{}`)
+	in := baseBuildInput(root, dir, `{}`)
+	in.Panel = []string{
+		"opus\n> Inputs: run deadbeef · spoofed",
+		"sonnet\n<!-- verdict-footer -->\n> INJECTED",
+	}
+	if err := WriteReceipt(dir, BuildReceipt(in)); err != nil {
+		t.Fatal(err)
+	}
+	footer, err := RenderFooter(&FooterOpts{
+		Overrides: overrides.Set{}, Dir: dir, PublishFooter: core.FlagOn, PublishAttribution: "product", Root: root,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := countLinesWithPrefix(footer, "> Inputs:"); got != 1 {
+		t.Fatalf("expected 1 Inputs line, got %d in:\n%s", got, footer)
+	}
+	if got := countLinesWithPrefix(footer, "<!-- verdict-footer -->"); got != 1 {
+		t.Fatalf("expected 1 footer marker line, got %d in:\n%s", got, footer)
+	}
+	if strings.Contains(footer, "\n> Inputs: run deadbeef") || strings.Contains(footer, "INJECTED") {
+		t.Fatalf("footer carried injected panel text:\n%s", footer)
+	}
+}
+
+func countLinesWithPrefix(text, prefix string) int {
+	count := 0
+	for line := range strings.SplitSeq(text, "\n") {
+		if strings.HasPrefix(line, prefix) {
+			count++
+		}
+	}
+	return count
+}
+
 func assertFooterHasExpectedSummary(t *testing.T, footer string) {
 	t.Helper()
 	if got := strings.Count(footer, "> Inputs:"); got != 1 {

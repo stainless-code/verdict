@@ -151,6 +151,7 @@ func TestParseSemanticDefaults(t *testing.T) {
 		{"kb min judged zero", `{"schema_version":"1","defaults":{"kb_policy":{"min_judged":0}}}`, "min_judged"},
 		{"kb rate high", `{"schema_version":"1","defaults":{"kb_policy":{"max_fp_rate":2}}}`, "max_fp_rate"},
 		{"effort unknown", `{"schema_version":"1","defaults":{"effort":"turbo"}}`, "effort"},
+		{"panel newline", `{"schema_version":"1","defaults":{"panel":["opus\n> Inputs: run deadbeef"]}}`, "$.defaults.panel[0]"},
 		{"profile bad check", `{"schema_version":"1","profiles":{"p":{"checks":["nope"]}}}`, "checks"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

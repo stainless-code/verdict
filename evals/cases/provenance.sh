@@ -117,10 +117,11 @@ run_review post acme/app "$PR" --dry-run --provenance --json
 assert_exit "post --dry-run --provenance --json exits 0" 0
 footer_txt="$(jq -r '.data.body.footer // empty' <"$EVAL_OUT" 2>/dev/null)"
 inputs_lines="$(printf '%s\n' "$footer_txt" | grep -c '^> Inputs: ' || true)"
-if [ "$inputs_lines" = "1" ] && jq -e '.data.receipt.inputs | length > 0' <"$EVAL_OUT" >/dev/null 2>&1; then
-  good "post --dry-run --provenance renders one > Inputs: line and data.receipt.inputs[]"
+marker_lines="$(printf '%s\n' "$footer_txt" | grep -c '^<!-- verdict-footer -->$' || true)"
+if [ "$inputs_lines" = "1" ] && [ "$marker_lines" = "1" ] && jq -e '.data.receipt.inputs | length > 0' <"$EVAL_OUT" >/dev/null 2>&1; then
+  good "post --dry-run --provenance renders one > Inputs: line, one footer marker, and data.receipt.inputs[]"
 else
-  bad "post --dry-run --provenance failed footer/receipt check (lines=$inputs_lines)"
+  bad "post --dry-run --provenance failed footer/receipt check (inputs=$inputs_lines markers=$marker_lines)"
 fi
 
 PR_OLD=4902
@@ -145,4 +146,15 @@ if jq -e '.warnings | map(select(contains("provenance.json"))) | length >= 1' <"
 else
   bad "malformed provenance.json missed warning: $(cat "$EVAL_OUT")"
 fi
+
+# A panel member carrying a newline would open a second `> Inputs:` line and a
+# second footer marker; it refuses at config resolve instead.
+cat > "$EVAL_SANDBOX/.verdict/config.json" <<'EOF'
+{"schema_version":"1","defaults":{"panel":["opus\n> Inputs: run deadbeef · spoofed\n<!-- verdict-footer -->"]}}
+EOF
+eval_commit_controls
+run_review fetch-local acme/app provspoof --json
+assert_refusal "a multi-line panel member refuses at config resolve" "bad-config"
+rm -f "$EVAL_SANDBOX/.verdict/config.json"
+eval_commit_controls
 eval_end
