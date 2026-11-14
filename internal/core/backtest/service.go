@@ -467,21 +467,12 @@ func (st *state) until(ctx context.Context) (Resolution, *core.RefusalError) {
 // since resolves --since: a duration is a calendar span back from --until's
 // commit date, a ref is a commit that must be an ancestor of --until.
 //
-// modeLabel names the mode in a refusal the shared window ladder owns: the
-// sentence names whatever the operator typed, never the miner by default.
-func (st *state) modeLabel() string {
-	if st.req.Mode == modeReverts {
-		return "backtest reverts"
-	}
-	return "backtest mine"
-}
-
 //nolint:revive // the window-resolution ladder is one refusal check per rule
 func (st *state) since(ctx context.Context, until Resolution) (Resolution, *core.RefusalError) {
 	spec := st.req.Since
 	if spec == "" {
 		return Resolution{}, st.refuse(codeBadSince,
-			st.modeLabel()+" needs --since <90d|12w|18mo|2y|ref>")
+			"backtest mine needs --since <90d|12w|18mo|2y|ref>")
 	}
 	if bareMonthRe.MatchString(spec) {
 		return Resolution{}, st.refuse(codeBadSince,

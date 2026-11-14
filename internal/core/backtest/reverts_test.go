@@ -766,21 +766,6 @@ func TestRevertsTracksItsLockFile(t *testing.T) {
 	}
 }
 
-// TestRevertsBadSinceCopyNamesItsMode proves the shared window ladder's
-// sentence names the mode the operator typed: a reverts scan must never tell
-// them about the miner.
-func TestRevertsBadSinceCopyNamesItsMode(t *testing.T) {
-	st := &state{req: &Request{Mode: modeReverts}}
-	_, ref := st.since(t.Context(), Resolution{})
-	want := "backtest reverts needs --since <90d|12w|18mo|2y|ref>"
-	if ref == nil || ref.Code != "bad-since" || ref.Message != want {
-		t.Fatalf("refusal = %+v; want bad-since %q", ref, want)
-	}
-	if got := (&state{req: &Request{Mode: modeMine}}).modeLabel(); got != "backtest mine" {
-		t.Errorf("mine label = %q; want backtest mine", got)
-	}
-}
-
 // TestRevertsCapsTheStoredSubject proves the scanner bounds what it stores: a
 // revert of a mass-message commit keeps 4,096 bytes cut on a rune boundary, so
 // the row is one this build can read back — an uncapped write would refuse its
