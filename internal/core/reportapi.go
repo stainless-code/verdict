@@ -22,6 +22,7 @@ type ReportFlags struct {
 	IncludeWithheld bool
 	Cost            bool
 	Completeness    bool
+	Provenance      bool
 }
 
 // ReportRequest is the report service invocation: the read runtime and

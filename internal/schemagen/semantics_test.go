@@ -38,7 +38,9 @@ var publishedSemantics = map[string]string{
 	// $defs/configIndex shape. Additions only; no existing property, required
 	// key, enum, or type changed. The configIndex description now calls the
 	// index a code index rather than a Go one.
-	"config.schema.json": "69bc0562a8f17a7f5107c859b3641c48277cb4b1457f653e673839bc7db7ab23",
+	// kb_policy.max_chars: additive optional non-null integer >= 1 controlling KB
+	// recall character budget.
+	"config.schema.json": "642aff63cce2daac6269b57a2b69f176e79e1a7ac52b0f5c968884049cbb1abe",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets
@@ -207,7 +209,10 @@ var publishedSemantics = map[string]string{
 	// sarif ingest: additive $defs/ingestData, $defs/trendSources, and
 	// optional by_source on reportCounts, trendData, and trendBundleRow. No
 	// existing property, required key, enum, or type changed.
-	"envelope.schema.json": "d17f20650ffc93b157681950ba186f2fd10a0076399b7f6bd9c92b906604f3bd",
+	// provenance receipt (--provenance): additive $defs/provenanceReceipt,
+	// $defs/provenanceInput, $defs/provenanceTruncatedRow, and additive array
+	// widening on envelope data.truncated (boolean|provenanceTruncatedRow[]).
+	"envelope.schema.json": "8e59018f93b82d94b240afcfb059a5079db9a9df80d1d4b5c178ca4fdc69745e",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

@@ -57,6 +57,7 @@ const (
 	keyKBPolicy     = "kb_policy"
 	keyKBMinJudged  = "kb_policy.min_judged"
 	keyKBMaxFPRate  = "kb_policy.max_fp_rate"
+	keyKBMaxChars   = "kb_policy.max_chars"
 )
 
 // Partial is one layer's contribution to the ordinary defaults. Each field
@@ -69,6 +70,7 @@ type Partial struct {
 	Chunk              *bool
 	KBMinJudged        *int
 	KBMaxFPRate        *float64
+	KBMaxChars         *int
 	Effort             *string
 	DisplayMinSeverity *string
 	PostMinSeverity    *string
@@ -97,6 +99,7 @@ func partialFromDefaults(defaults *core.ConfigDefaults) Partial {
 		out.KBPolicySet = true
 		out.KBMinJudged = defaults.KBPolicy.MinJudged
 		out.KBMaxFPRate = defaults.KBPolicy.MaxFPRate
+		out.KBMaxChars = defaults.KBPolicy.MaxChars
 	}
 	out.Effort = defaults.Effort
 	out.DisplayMinSeverity = defaults.DisplayMinSeverity
@@ -145,6 +148,7 @@ type EffectiveDefaults struct {
 	MaxBytes           int64    `json:"max_bytes"`
 	KBMinJudged        int      `json:"kb_min_judged"`
 	KBMaxFPRate        float64  `json:"kb_max_fp_rate"`
+	KBMaxChars         *int     `json:"kb_max_chars,omitempty"`
 	Chunk              bool     `json:"chunk"`
 }
 
@@ -202,6 +206,13 @@ func mergePartials(layers []layerValue) ResolvedDefaults {
 				return 0, false
 			}
 			return *p.KBMaxFPRate, true
+		})
+	out.Values.KBMaxChars, out.Origins[keyKBMaxChars], out.Shadowed = pickPointer(layers, keyKBMaxChars, out.Shadowed,
+		func(p Partial) (*int, bool) {
+			if !p.KBPolicySet || p.KBMaxChars == nil {
+				return nil, false
+			}
+			return p.KBMaxChars, true
 		})
 	out.Values.Effort, out.Origins["effort"], out.Shadowed = pickString(layers, "effort", out.Shadowed,
 		func(p Partial) (string, bool) { return derefString(p.Effort) })
@@ -469,7 +480,21 @@ func kbEnvs(env map[string]string, out *Partial) []string {
 	if raw, ok := envTrim(env, "REVIEW_KB_MAX_FP_RATE"); ok {
 		warnings = append(warnings, kbMaxFPRateEnv(raw, out)...)
 	}
+	if raw, ok := envTrim(env, "REVIEW_KB_MAX_CHARS"); ok {
+		warnings = append(warnings, kbMaxCharsEnv(raw, out)...)
+	}
 	return warnings
+}
+
+// kbMaxCharsEnv reads the recall character cap override, warning past
+// malformed values instead of refusing.
+func kbMaxCharsEnv(raw string, out *Partial) []string {
+	maxChars, err := strconv.Atoi(raw)
+	if err != nil || maxChars < 1 {
+		return []string{"ignoring invalid REVIEW_KB_MAX_CHARS '" + raw + "' (want a positive integer)"}
+	}
+	out.KBMaxChars, out.KBPolicySet = &maxChars, true
+	return nil
 }
 
 // kbMinJudgedEnv reads the retirement quorum override, warning past

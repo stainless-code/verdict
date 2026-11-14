@@ -227,24 +227,27 @@ func (d *GateDimension) wire() *jq.Obj {
 // the published insertion order; CostRaw carries the ordered rollup
 // (including receipts and unknown keys) so the envelope re-emits it verbatim.
 type ReportData struct { //nolint:govet // field order is the published property order
-	Receipt       *Truncation         `json:"-"                         receipt:"true"`
-	Verification  *PanelSummary       `anyOf:"null"                     json:"verification,omitempty" optional:"true"`
-	GeneratedAt   string              `format:"date-time"               json:"generated_at"`
-	Dir           string              `json:"dir"`
-	Head          ReportHead          `json:"head"`
-	Verdict       ReportVerdict       `json:"verdict"`
-	QuietByPolicy []any               `json:"quiet_by_policy,omitempty" optional:"true"`
-	Counts        ReportCounts        `json:"counts"`
-	Panel         ReportPanel         `json:"panel"`
-	Patch         any                 `json:"patch"`
-	Output        *string             `json:"output"`
-	Filters       ReportFilters       `json:"filters"`
-	Items         []FindingItem       `json:"items"`
-	Cost          *ReportCost         `json:"cost,omitempty"`
-	Completeness  *ReportCompleteness `json:"completeness,omitempty"`
-	Compliance    *ReportCompliance   `json:"compliance,omitempty"`
-	Gate          *ReportGate         `json:"gate,omitempty"`
-	CostRaw       *jq.Obj             `json:"-"`
+	Receipt             *Truncation              `json:"-"                         receipt:"true"`
+	Verification        *PanelSummary            `anyOf:"null"                     json:"verification,omitempty" optional:"true"`
+	GeneratedAt         string                   `format:"date-time"               json:"generated_at"`
+	Dir                 string                   `json:"dir"`
+	Head                ReportHead               `json:"head"`
+	Verdict             ReportVerdict            `json:"verdict"`
+	QuietByPolicy       []any                    `json:"quiet_by_policy,omitempty" optional:"true"`
+	Counts              ReportCounts             `json:"counts"`
+	Panel               ReportPanel              `json:"panel"`
+	Patch               any                      `json:"patch"`
+	Output              *string                  `json:"output"`
+	Filters             ReportFilters            `json:"filters"`
+	Items               []FindingItem            `json:"items"`
+	Cost                *ReportCost              `json:"cost,omitempty"`
+	Completeness        *ReportCompleteness      `json:"completeness,omitempty"`
+	Compliance          *ReportCompliance        `json:"compliance,omitempty"`
+	Gate                *ReportGate              `json:"gate,omitempty"`
+	CostRaw             *jq.Obj                  `json:"-"`
+	ProvenanceEnabled   bool                     `json:"-"`
+	ProvenanceReceipt   *ProvenanceReceipt       `json:"-"`
+	ProvenanceTruncated []ProvenanceTruncatedRow `json:"-"`
 }
 
 // Wire renders the data object in wire order. CostRaw wins over the typed
@@ -257,7 +260,9 @@ func (d *ReportData) Wire() *jq.Obj {
 	if d.Verification != nil {
 		o.Set("verification", d.Verification)
 	}
-	return d.Receipt.Apply(o)
+	out := d.Receipt.Apply(o)
+	applyProvenanceWire(out, d.ProvenanceEnabled, d.ProvenanceReceipt, d.ProvenanceTruncated)
+	return out
 }
 
 // Wirable lets a type override its reflected wire representation.

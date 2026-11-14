@@ -15,6 +15,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -56,6 +57,7 @@ type Flags = core.ReportFlags
 
 type state struct { // field grouping documents the loaded dimensions; alignment is irrelevant here
 	truncation *core.Truncation
+	provenance *core.ProvenanceReceipt
 	req        *core.ReportRequest
 	flags      Flags
 	warnings   []string
@@ -236,6 +238,7 @@ func loadState(ctx context.Context, st *state) *core.RefusalError {
 	st.counts.CheckedFiles = countNonEmpty(strings.Split(checkedFiles(st.dir), newline))
 	loadStateCost(st)
 	loadStateCompleteness(ctx, st)
+	loadStateProvenance(st)
 	return nil
 }
 
@@ -266,6 +269,24 @@ func loadStateCompleteness(ctx context.Context, st *state) {
 	if _, ok := identity.Verify(ctx, st.commander(), st.dir, st.headSHA, st.baseSHA); !ok {
 		st.warn("patch identity unavailable — completeness compares heads")
 	}
+}
+
+func loadStateProvenance(st *state) {
+	if !st.flags.Provenance {
+		return
+	}
+	rec, exists, err := provenance.ReadReceipt(st.dir)
+	if err != nil {
+		st.warn(fmt.Sprintf("provenance receipt malformed (%v) — degrading cleanly", err))
+		st.provenance = provenance.EmptyReceipt()
+		return
+	}
+	if !exists {
+		st.warn("provenance receipt absent (" + provenance.ReceiptFile + " not found in bundle)")
+		st.provenance = provenance.EmptyReceipt()
+		return
+	}
+	st.provenance = rec
 }
 
 func storeCounts(entries []any) core.ReportCounts {

@@ -268,7 +268,7 @@ func rowDoc(r *row) *jq.Obj {
 	if r.hasAt {
 		at = r.at
 	}
-	return jq.NewObj(
+	doc := jq.NewObj(
 		"bundle", r.bundle,
 		"at", at,
 		"models", anyList(r.models),
@@ -291,6 +291,11 @@ func rowDoc(r *row) *jq.Obj {
 		"by_source", sourceDoc(rowSources(r)),
 		"withheld", readcommon.WithheldCounts(r.findings),
 	)
+	if r.runID != "" {
+		doc.Set("run_id", r.runID)
+		doc.Set("truncated_inputs", r.truncatedInputs)
+	}
+	return doc
 }
 
 func (st *state) emitHuman(out *rollup, overlap *overlapRollup, corpus *corpusRollup) {

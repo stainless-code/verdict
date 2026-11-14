@@ -98,6 +98,61 @@ export interface Provenance {
   [key: string]: unknown;
 }
 
+/** Fetched bundle provenance receipt persisted in provenance.json and exposed via --provenance --json. */
+export interface ProvenanceReceipt {
+  schema_version: "1";
+  run_id: string;
+  prompts_hash: string;
+  panel?: Array<string>;
+  inputs: Array<ProvenanceInput>;
+  truncated: Array<ProvenanceTruncatedRow>;
+  [key: string]: unknown;
+}
+
+/** One resolved input, bundle artifact, KB candidate, override, control, config, or exclusion entry without rule bodies or secret values. */
+export interface ProvenanceInput {
+  kind: string;
+  name: string;
+  id?: string;
+  status: string;
+  reason?: string;
+  sha256?: string;
+  bytes?: number | null;
+  source?: string;
+  layer?: string;
+  members?: Array<string>;
+  included?: number | null;
+  omitted?: number | null;
+  chars_included?: number | null;
+  chars_total?: number | null;
+  cap?: number | null;
+  excluded?: number | null;
+  excluded_bytes?: number | null;
+  kept_bytes?: number | null;
+  detail?: string;
+  [key: string]: unknown;
+}
+
+/** One bounded or omitted input row in data.truncated[] when --provenance is active. */
+export interface ProvenanceTruncatedRow {
+  input: string;
+  id?: string;
+  status: string;
+  reason: string;
+  truncated: boolean;
+  truncation_reason:
+    "work_budget" | "response_cap" | "time_budget" | "scan_cap" | "chunk_cap";
+  returned: number;
+  total: number | null;
+  next_offset: number | null;
+  included?: number | null;
+  omitted?: number | null;
+  chars_included?: number | null;
+  chars_total?: number | null;
+  cap?: number | null;
+  [key: string]: unknown;
+}
+
 export interface CoverageSummary {
   percent: number | null;
   attested: number;

@@ -23,7 +23,7 @@ var (
 		keyPanel, keyBudgetUSD, keyMaxBytes, keyChunk, keyKBPolicy, keyEffort,
 		keyDisplayFloor, keyPostFloor,
 	}
-	kbPolicyFields     = []string{"min_judged", "max_fp_rate"}
+	kbPolicyFields     = []string{"min_judged", "max_fp_rate", "max_chars"}
 	requirementsFields = []string{"block_clauses", "require_checks", "require_bind"}
 	clauseFields       = []string{"name", "threshold", "categories", "paths"}
 	scopeFields        = []string{"name", "include", "exclude", "profile", "defaults", "requirements"}

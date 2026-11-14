@@ -384,6 +384,9 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[FindingsCounts](), name: "findingsCounts"},
 		{typ: reflect.TypeFor[FindingItem](), name: "findingItem"},
 		{typ: reflect.TypeFor[Provenance](), name: "provenance"},
+		{typ: reflect.TypeFor[core.ProvenanceReceipt](), name: "provenanceReceipt"},
+		{typ: reflect.TypeFor[core.ProvenanceInput](), name: "provenanceInput"},
+		{typ: reflect.TypeFor[core.ProvenanceTruncatedRow](), name: "provenanceTruncatedRow"},
 		{typ: reflect.TypeFor[CoverageSummary](), name: coverageSummaryType},
 		{typ: reflect.TypeFor[core.PanelSummary](), name: verificationSummaryType},
 		{typ: reflect.TypeFor[ReportData](), name: "reportData"},
@@ -671,6 +674,14 @@ func (b *builder) envelopeData() (*node, error) {
 	props, _, err := b.fieldNodes(reflect.TypeFor[core.Truncation]())
 	if err != nil {
 		return nil, err
+	}
+	for i := range props.members {
+		if props.members[i].key == "truncated" {
+			props.members[i].value = object(false,
+				member{keyType, array(stringNode(typeBoolean), stringNode(typeArray))},
+				member{keyItems, object(false, member{keyRef, stringNode(defsPrefix + "provenanceTruncatedRow")})},
+			)
+		}
 	}
 	return object(true, member{keyType, array(stringNode("object"), stringNode("null"))},
 		member{keyProperties, props}, member{keyAdditionalProperties, boolNode(true)}), nil

@@ -76,7 +76,7 @@ func evidenceValues(defaults *ResolvedDefaults) []EvidenceValue {
 	values := defaults.Values
 	origins := defaults.Origins
 	get := func(key string) FieldOrigin { return origins[key] }
-	return []EvidenceValue{
+	out := []EvidenceValue{
 		{Key: keyPanel, Value: slices.Clone(values.Panel), Origin: get(keyPanel)},
 		{Key: keyBudgetUSD, Value: values.BudgetUSD, Origin: get(keyBudgetUSD)},
 		{Key: keyMaxBytes, Value: values.MaxBytes, Origin: get(keyMaxBytes)},
@@ -87,6 +87,10 @@ func evidenceValues(defaults *ResolvedDefaults) []EvidenceValue {
 		{Key: keyDisplayFloor, Value: values.DisplayMinSeverity, Origin: get(keyDisplayFloor)},
 		{Key: keyPostFloor, Value: values.PostMinSeverity, Origin: get(keyPostFloor)},
 	}
+	if values.KBMaxChars != nil {
+		out = append(out, EvidenceValue{Key: keyKBMaxChars, Value: values.KBMaxChars, Origin: get(keyKBMaxChars)})
+	}
+	return out
 }
 
 // consumedInputs derives the allowlisted input names from the resolution

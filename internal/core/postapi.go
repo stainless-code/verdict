@@ -25,6 +25,7 @@ type PostFlags struct {
 	// post-secret-shaped without it, and the receipt records what it let
 	// through.
 	AllowSecretValues bool
+	Provenance        bool
 }
 
 // PostSummary records the planned (on dry-run) or executed (on real post)
@@ -70,25 +71,28 @@ type PostData struct { //nolint:govet // field order is the published property o
 	Rearmed      bool   `json:"rearmed,omitempty"`
 	PreviousHead string `json:"previous_head,omitempty"`
 
-	Verification    *PanelSummary    `anyOf:"null"            json:"verification,omitempty" optional:"true"`
-	DryRun          bool             `json:"dry_run"`
-	Event           string           `json:"event"`
-	CommitID        string           `json:"commit_id"`
-	Body            PostBody         `inline:"true"           json:"body"`
-	Anchors         AnchorsSummary   `json:"anchors"`
-	Suggestions     Suggestions      `inline:"true"           json:"suggestions"`
-	Findings        PostFindings     `inline:"true"           json:"findings"`
-	Items           []FindingItem    `json:"items"`
-	Confidence      *int             `json:"confidence"       max:"5"                       min:"1"`
-	SecuritySummary *string          `json:"security_summary"`
-	PayloadHash     string           `json:"payload_hash"`
-	Review          map[string]any   `json:"review,omitempty"`
-	Provenance      Provenance       `json:"provenance"       optional:"true"`
-	Coverage        *CoverageSummary `anyOf:"null"            json:"coverage,omitempty"     optional:"true"`
-	Withheld        *WithheldSummary `anyOf:"null"            json:"withheld,omitempty"     optional:"true"`
-	Summary         *PostSummary     `anyOf:"null"            json:"summary,omitempty"      optional:"true"`
-	ItemsRaw        []any            `json:"-"`
-	ReviewRaw       any              `json:"-"`
+	Verification        *PanelSummary            `anyOf:"null"            json:"verification,omitempty" optional:"true"`
+	DryRun              bool                     `json:"dry_run"`
+	Event               string                   `json:"event"`
+	CommitID            string                   `json:"commit_id"`
+	Body                PostBody                 `inline:"true"           json:"body"`
+	Anchors             AnchorsSummary           `json:"anchors"`
+	Suggestions         Suggestions              `inline:"true"           json:"suggestions"`
+	Findings            PostFindings             `inline:"true"           json:"findings"`
+	Items               []FindingItem            `json:"items"`
+	Confidence          *int                     `json:"confidence"       max:"5"                       min:"1"`
+	SecuritySummary     *string                  `json:"security_summary"`
+	PayloadHash         string                   `json:"payload_hash"`
+	Review              map[string]any           `json:"review,omitempty"`
+	Provenance          Provenance               `json:"provenance"       optional:"true"`
+	Coverage            *CoverageSummary         `anyOf:"null"            json:"coverage,omitempty"     optional:"true"`
+	Withheld            *WithheldSummary         `anyOf:"null"            json:"withheld,omitempty"     optional:"true"`
+	Summary             *PostSummary             `anyOf:"null"            json:"summary,omitempty"      optional:"true"`
+	ItemsRaw            []any                    `json:"-"`
+	ReviewRaw           any                      `json:"-"`
+	ProvenanceEnabled   bool                     `json:"-"`
+	ProvenanceReceipt   *ProvenanceReceipt       `json:"-"`
+	ProvenanceTruncated []ProvenanceTruncatedRow `json:"-"`
 }
 
 // PostBody is the rendered post body summary.
@@ -215,6 +219,7 @@ func (d *PostData) Wire() *jq.Obj {
 		if d.Summary != nil {
 			o.Set("summary", d.Summary)
 		}
+		applyProvenanceWire(o, d.ProvenanceEnabled, d.ProvenanceReceipt, d.ProvenanceTruncated)
 		return o
 	}
 	pairs := d.leadPairs(body)
@@ -235,6 +240,7 @@ func (d *PostData) Wire() *jq.Obj {
 		o.Set("summary", d.Summary)
 	}
 	o.Set("provenance", provenance)
+	applyProvenanceWire(o, d.ProvenanceEnabled, d.ProvenanceReceipt, d.ProvenanceTruncated)
 	return o
 }
 

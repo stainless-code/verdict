@@ -246,6 +246,11 @@ func buildKBPolicy(raw any, path string) (*core.ConfigKBPolicy, *core.RefusalErr
 	}); err != nil {
 		return nil, err
 	}
+	if out.MaxChars, err = presentValue(obj, "max_chars", path, func(raw any, at string) (int, *core.RefusalError) {
+		return boundedCount(raw, at, 1)
+	}); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 

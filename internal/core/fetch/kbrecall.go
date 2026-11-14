@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core/pack"
@@ -17,6 +18,24 @@ import (
 	"github.com/stainless-code/verdict/internal/kb"
 )
 
+type kbCandOutcome struct {
+	ID     string
+	Status string
+	Reason string
+}
+
+type kbRecallOutcome struct {
+	Candidates    []kbCandOutcome
+	Cap           *int
+	Reason        string
+	Included      int
+	Omitted       int
+	CharsIncluded int
+	CharsTotal    int
+	Truncated     bool
+	NotesWritten  bool
+}
+
 // writeKBRecall writes the scoped rules recalled onto a bundle as advisory
 // context (kb.txt plus the kb-recall.json machine manifest): the store's
 // top-3 ranked rules followed by every matching pack rule. No match, no
@@ -25,22 +44,80 @@ func writeKBRecall(ctx2 *fetchRunCtx, dir, extra string) {
 	r := ctx2.runner
 	mf, mfj := dir+suffixKBTxt, dir+suffixKBRecall
 	files := recallFiles(dir, withoutExcluded(ctx2, extra))
-	ranked, _ := recallRankedFor(r, files)
+	ranked, omitted, _ := recallRankedFor(r, files)
 	packs := packRecallCands(ctx2.packs, files)
+	outcome := buildKBOutcome(ranked, omitted, packs)
 	if len(ranked) == 0 && len(packs) == 0 {
 		clearKBRecall(mf, mfj)
+		ctx2.kbOutcome = outcome
 		return
 	}
 	ids, note := renderKBNote(ranked, packs)
+	note = applyKBCap(ctx2, note, outcome)
 	// The atomic write is the one path: a reader never sees a torn note.
 	if err := atomic.WriteFile(mf, []byte(note)); err != nil {
 		r.Warn(fmt.Sprintf("could not write %s: %v", mf, err))
+		ctx2.kbOutcome = outcome
 		return
 	}
+	outcome.NotesWritten = true
+	ctx2.kbOutcome = outcome
 	if !writeKBManifest(r, mfj, mf, ranked, packs) {
 		return
 	}
 	fmt.Fprintf(r.Human, "» kb: %d rule(s) -> %s (%s)\n", len(ranked)+len(packs), mf, strings.Join(ids, ", "))
+}
+
+func buildKBOutcome(ranked, omitted, packs []recallCand) *kbRecallOutcome {
+	cands := make([]kbCandOutcome, 0, len(ranked)+len(omitted)+len(packs))
+	for _, c := range ranked {
+		cands = append(cands, kbCandOutcome{ID: c.id, Status: "included"})
+	}
+	for _, c := range omitted {
+		cands = append(cands, kbCandOutcome{ID: c.id, Status: "omitted", Reason: "top_n"})
+	}
+	for _, c := range packs {
+		cands = append(cands, kbCandOutcome{ID: c.id, Status: "included"})
+	}
+	reason := ""
+	if len(omitted) > 0 {
+		reason = "top_n"
+	}
+	return &kbRecallOutcome{
+		Candidates: cands,
+		Included:   len(ranked) + len(packs),
+		Omitted:    len(omitted),
+		Reason:     reason,
+	}
+}
+
+func applyKBCap(ctx2 *fetchRunCtx, note string, out *kbRecallOutcome) string {
+	total := utf8.RuneCountInString(note)
+	out.CharsTotal = total
+	out.CharsIncluded = total
+	if ctx2.runCfg == nil || ctx2.runCfg.resolved == nil || ctx2.runCfg.resolved.Defaults.Values.KBMaxChars == nil {
+		return note
+	}
+	maxChars := *ctx2.runCfg.resolved.Defaults.Values.KBMaxChars
+	out.Cap = &maxChars
+	if maxChars <= 0 || total <= maxChars {
+		return note
+	}
+	out.Truncated = true
+	out.CharsIncluded = maxChars
+	out.Reason = "cap"
+	return truncateRunes(note, maxChars)
+}
+
+func truncateRunes(s string, maxRunes int) string {
+	count := 0
+	for i := range s {
+		if count == maxRunes {
+			return s[:i]
+		}
+		count++
+	}
+	return s
 }
 
 // packRecallCands renders the matching pack rules as KB candidates: pack
@@ -71,21 +148,21 @@ func clearKBRecall(mf, mfj string) {
 }
 
 // recallRankedFor owns the recall pipeline: store read, active rules, scope
-// matching, and the top-N rank.
-func recallRankedFor(r *session, files []string) ([]recallCand, bool) {
+// matching, and the top-N rank (returning kept and omitted candidates).
+func recallRankedFor(r *session, files []string) (included, omitted []recallCand, ok bool) {
 	raw, ok := r.readControl(kb.File)
 	if !ok || len(files) == 0 {
-		return nil, false
+		return nil, nil, false
 	}
 	rules, ok := recallRules(r, raw)
 	if !ok {
-		return nil, false
+		return nil, nil, false
 	}
 	ranked := rankCands(matchRules(rules, files))
 	if len(ranked) > numTopRules {
-		ranked = ranked[:numTopRules]
+		return ranked[:numTopRules], ranked[numTopRules:], true
 	}
-	return ranked, true
+	return ranked, nil, true
 }
 
 // renderKBNote owns the kb.txt body, returning the cited ids in rank order:

@@ -640,8 +640,10 @@ func (st *state) successResponse(obj *jq.Obj, posted string) *core.PostResponse 
 	if prov != nil {
 		data.Provenance = *prov
 	}
+	st.applyProvenance(data)
 	if !st.req.JSONMode {
 		st.human(strings.TrimRight(posted, newline))
+		st.printProvenanceTable()
 	}
 	return &core.PostResponse{
 		Repo: st.req.Repo, Pr: st.req.Pr, At: st.now,

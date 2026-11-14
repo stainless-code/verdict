@@ -16,6 +16,7 @@ import (
 	corpuscore "github.com/stainless-code/verdict/internal/core/corpus"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
+	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -149,17 +150,19 @@ func (st *state) human(line string) {
 }
 
 type row struct {
-	prov       *jq.Obj
-	byStatus   map[string]int
-	byTier     map[string]int
-	byCategory map[string]int
-	bySource   map[string]int
-	bundle     string
-	at         string
-	models     []any
-	efforts    []any
-	findings   []any
-	hasAt      bool
+	prov            *jq.Obj
+	byStatus        map[string]int
+	byTier          map[string]int
+	byCategory      map[string]int
+	bySource        map[string]int
+	bundle          string
+	at              string
+	runID           string
+	models          []any
+	efforts         []any
+	findings        []any
+	truncatedInputs int
+	hasAt           bool
 }
 
 func collectRows(st *state) []row {
@@ -235,7 +238,36 @@ func readBundleRow(st *state, dir, name string) (row, bool) {
 		st.receipt = receipt
 	}
 	warnMalformedWithheld(st, findings, bundle)
-	return buildRow(bundle, name, findings), true
+	r := buildRow(bundle, name, findings)
+	applyBundleProvenance(&r, readBundleProvenance(st, dir, name))
+	return r, true
+}
+
+func readBundleProvenance(st *state, dir, name string) *core.ProvenanceReceipt {
+	rec, exists, err := provenance.ReadReceipt(dir)
+	if err != nil {
+		if st != nil {
+			st.warn(fmt.Sprintf("%s%s: provenance receipt malformed (%v)", skipWarn, name, err))
+		}
+		return nil
+	}
+	if !exists {
+		return nil
+	}
+	return rec
+}
+
+func applyBundleProvenance(r *row, rec *core.ProvenanceReceipt) {
+	if rec == nil {
+		return
+	}
+	r.runID = rec.RunID
+	r.truncatedInputs = len(rec.Truncated)
+	if r.prov != nil && rec.PromptsHash != "" {
+		if cur, ok := r.prov.Get("prompts_hash"); !ok || cur == nil || cur == "" {
+			r.prov.Set("prompts_hash", rec.PromptsHash)
+		}
+	}
 }
 
 func buildRow(bundle, name string, findings []any) row {

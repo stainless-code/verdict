@@ -273,6 +273,7 @@ func (st *state) dryRunResponse(ctx context.Context) (*core.PostResponse, *core.
 		payloadHash = st.phash
 	} else {
 		st.previewDryRun(footerText)
+		st.printProvenanceTable()
 	}
 	payload, _, _ := st.floorPayload()
 	nOpen, nDeferred, nAddressed := postCounts(payload)
@@ -304,6 +305,7 @@ func (st *state) dryRunResponse(ctx context.Context) (*core.PostResponse, *core.
 	if prov != nil {
 		data.Provenance = *prov
 	}
+	st.applyProvenance(data)
 	return &core.PostResponse{
 		Repo: st.req.Repo, Pr: st.req.Pr, At: st.now,
 		Data:     data,

@@ -373,6 +373,7 @@ type fetchRunCtx struct {
 	runCfg            *runConfig
 	packs             *pack.Set
 	receipt           *ExcludedFile
+	kbOutcome         *kbRecallOutcome
 	repo              string
 	pr                string
 	dir               string

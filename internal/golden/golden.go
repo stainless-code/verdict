@@ -87,6 +87,9 @@ func writeStream(sb *strings.Builder, header, stream string, roots []string) {
 // changes what a change looks like.
 func renderFile(sb *strings.Builder, key, body string, roots []string) {
 	body = Scrub(scrubRoots(body, roots))
+	if filepath.Base(filepath.ToSlash(key)) == "provenance.json" {
+		body = scrubProvenanceRuntime(body)
+	}
 	if !strings.HasSuffix(body, newline) {
 		body += newline
 	}
@@ -97,6 +100,41 @@ func renderFile(sb *strings.Builder, key, body string, roots []string) {
 	}
 	sb.WriteString("--- file " + name + " ---\n")
 	sb.WriteString(body)
+}
+
+// scrubProvenanceRuntime normalizes sha256 (and bytes on source.json, which
+// embeds tool_version) for bundle artifacts whose disk bytes carry a live
+// runtime timestamp or version, keeping provenance goldens deterministic
+// across wall-clock runs and release bumps.
+func scrubProvenanceRuntime(body string) string {
+	lines := strings.Split(body, newline)
+	inBundle, target := false, ""
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case trimmed == `"kind": "bundle",`:
+			inBundle = true
+		case inBundle && (trimmed == `"name": "budget.json",` || trimmed == `"name": "run.json",` || trimmed == `"name": "source.json",` || trimmed == `"name": "threads.json",`):
+			target = strings.TrimSuffix(strings.TrimPrefix(trimmed, `"name": "`), `",`)
+		case trimmed == "}," || trimmed == "}":
+			inBundle, target = false, ""
+		case target != "" && strings.HasPrefix(trimmed, `"sha256": "`):
+			indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+			suffix := ""
+			if strings.HasSuffix(trimmed, ",") {
+				suffix = ","
+			}
+			lines[i] = indent + `"sha256": "RUNTIME_SHA256"` + suffix
+		case target == "source.json" && strings.HasPrefix(trimmed, `"bytes": `):
+			indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+			suffix := ""
+			if strings.HasSuffix(trimmed, ",") {
+				suffix = ","
+			}
+			lines[i] = indent + `"bytes": 0` + suffix
+		}
+	}
+	return strings.Join(lines, newline)
 }
 
 // touchedKeys returns the sorted keys the run created, changed, or deleted,

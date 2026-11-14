@@ -324,6 +324,252 @@ file paths, NEW line numbers, and evidence for or against. Verify third-party
 contract claims by web search and quote the source URLs; an unverified
 load-bearing claim stays `unproven` rather than becoming ground truth.
 # end lens test
+--- file C/.verdict/state/4708/provenance.json ---
+{
+  "schema_version": "1",
+  "run_id": "21e2b6ee2dc1f511b1b4eebaf7d9918d16fdedf4c6ba319cf4949d532a2def28",
+  "prompts_hash": "49f5c99439cc65f9faab329e78a460aba14420500afb5100ad75d321fcfd3912",
+  "inputs": [
+    {
+      "kind": "prompt",
+      "name": "SKILL.md",
+      "status": "included",
+      "sha256": "3815122ebf219abe59367a90a037313bc114e678e1cb996ac09d06703f2bbdb8",
+      "bytes": 12779
+    },
+    {
+      "kind": "prompt",
+      "name": "prompts/diagrams.md",
+      "status": "included",
+      "sha256": "d19183a969b0e131d7520f0d2fa82889b903c4878e5fcea5ca9f2f0901eacd2d",
+      "bytes": 3780
+    },
+    {
+      "kind": "prompt",
+      "name": "prompts/review.md",
+      "status": "included",
+      "sha256": "a3a28018074f7e72529e529883fc613bbb5002ab67612afd1d019f1db848dd59",
+      "bytes": 27446
+    },
+    {
+      "kind": "prompt",
+      "name": "prompts/system.md",
+      "status": "included",
+      "sha256": "cc86e2bc7dd027b2081ca5109c04af728108332f579dae6f6a6242489bf076b3",
+      "bytes": 5973
+    },
+    {
+      "kind": "prompt",
+      "name": "prompts/verifier.md",
+      "status": "included",
+      "sha256": "0f6e0c6f0fa613588824da7e19055439d1c428bcf6abb416b8ed4ce3d32b2697",
+      "bytes": 918
+    },
+    {
+      "kind": "panel",
+      "name": "panel",
+      "status": "absent"
+    },
+    {
+      "kind": "bundle",
+      "name": "PR.json",
+      "status": "included",
+      "sha256": "a9ce0d415da67e17a0487b997cb1ef75a5402a2b0403380014fe0be3eab337c8",
+      "bytes": 552
+    },
+    {
+      "kind": "bundle",
+      "name": "controls.json",
+      "status": "included",
+      "sha256": "616df07cd4949ad905424216a37771e3f6df8d5d7ee7f9613dffaaf63ac08699",
+      "bytes": 1488
+    },
+    {
+      "kind": "bundle",
+      "name": "excluded.json",
+      "status": "included",
+      "sha256": "fc6f0c15165118ed30aa3f8037f33adffd88349b9c9002f6597434b95c9bb49f",
+      "bytes": 426
+    },
+    {
+      "kind": "bundle",
+      "name": "full.diff",
+      "status": "included",
+      "sha256": "f0f76c0faeee81b8bbd6f88f80b3c71ec86118bc30c380816727eedb265448e3",
+      "bytes": 99
+    },
+    {
+      "kind": "bundle",
+      "name": "full.raw.diff",
+      "status": "included",
+      "sha256": "f0f76c0faeee81b8bbd6f88f80b3c71ec86118bc30c380816727eedb265448e3",
+      "bytes": 99
+    },
+    {
+      "kind": "bundle",
+      "name": "hunks.tsv",
+      "status": "included",
+      "sha256": "276c23394649ebacdc94e7e4a2f755b6699cae5d8756c8e081aff72789ef91e7",
+      "bytes": 28
+    },
+    {
+      "kind": "bundle",
+      "name": "identity.json",
+      "status": "included",
+      "sha256": "e1f363bc8c1b1176818b5977d6582309dc05b8764c06d61e7e087b6e47ebfad9",
+      "bytes": 411
+    },
+    {
+      "kind": "bundle",
+      "name": "inline.json",
+      "status": "included",
+      "sha256": "9faab3f9c01c5f72cfc5a3ec4d28d61bf42aaefa67b8a29d5042e0d2fb87e31c",
+      "bytes": 557
+    },
+    {
+      "kind": "bundle",
+      "name": "lenses.txt",
+      "status": "included",
+      "sha256": "235ff394e6d3bc20c0ac3ac50e040a7d8f3111bb32609c811eccf4a37a828245",
+      "bytes": 3097
+    },
+    {
+      "kind": "bundle",
+      "name": "reviews.json",
+      "status": "included",
+      "sha256": "5e676ab4de297915b66a09dfb5e75a6871164a9d45a9b7ac15d13aab4892d84c",
+      "bytes": 134
+    },
+    {
+      "kind": "bundle",
+      "name": "roles.txt",
+      "status": "included",
+      "sha256": "7a44057d003c3dd097ceec3b8847974784318abbfb73a4ddf4dd09efc517d674",
+      "bytes": 16
+    },
+    {
+      "kind": "bundle",
+      "name": "run.json",
+      "status": "included",
+      "sha256": "RUNTIME_SHA256",
+      "bytes": 6349
+    },
+    {
+      "kind": "bundle",
+      "name": "store.json",
+      "status": "included",
+      "sha256": "e8bc152ffe65bec1fe1c3a2b610403147a8a4930e24d34aae5da55ec76f1f58b",
+      "bytes": 28
+    },
+    {
+      "kind": "bundle",
+      "name": "threads.json",
+      "status": "included",
+      "sha256": "RUNTIME_SHA256",
+      "bytes": 1774
+    },
+    {
+      "kind": "bundle",
+      "name": "toc.txt",
+      "status": "included",
+      "sha256": "86c5d2d6ed889ec3464c7e07f39a8ceb3b35ed40b7042a8a3f53e93fe7c05d24",
+      "bytes": 206
+    },
+    {
+      "kind": "kb",
+      "name": "kb.txt",
+      "status": "absent",
+      "included": 0,
+      "omitted": 0
+    },
+    {
+      "kind": "learnings",
+      "name": ".verdict/learnings.md",
+      "status": "included",
+      "bytes": 0,
+      "source": "base"
+    },
+    {
+      "kind": "override",
+      "name": ".verdict/overrides/attribution.md",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "override",
+      "name": ".verdict/overrides/footer-order.md",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "override",
+      "name": ".verdict/overrides/preamble.md",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "override",
+      "name": ".verdict/overrides/walkthrough-threshold.md",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "control",
+      "name": ".gitattributes",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "control",
+      "name": ".verdict/config.json",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "control",
+      "name": ".verdict/ignore",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "control",
+      "name": ".verdict/kb.jsonl",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "control",
+      "name": ".verdict/verdict.lock",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "control",
+      "name": ".verdict/verify-env",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "config",
+      "name": ".verdict/config.json",
+      "status": "built-in",
+      "layer": "built-in",
+      "detail": "budget_usd=built-in, chunk=built-in, display_min_severity=built-in, effort=built-in, kb_policy.max_fp_rate=built-in, kb_policy.min_judged=built-in, max_bytes=built-in, panel=built-in, post_min_severity=built-in"
+    },
+    {
+      "kind": "exclusions",
+      "name": "excluded.json",
+      "status": "included",
+      "sha256": "fc6f0c15165118ed30aa3f8037f33adffd88349b9c9002f6597434b95c9bb49f",
+      "bytes": 426,
+      "source": ".verdict/ignore@base",
+      "excluded": 0,
+      "excluded_bytes": 0,
+      "kept_bytes": 99
+    }
+  ],
+  "truncated": []
+}
 --- file C/.verdict/state/4708/reviews.json ---
 [{"id":7,"user":{"login":"rev"},"body":"Summary note","submitted_at":"0000-00-00T00:00:00Z","html_url":"https://example.invalid/r/7"}]
 --- file C/.verdict/state/4708/roles.txt ---
@@ -383,6 +629,10 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
               "layer": "built-in",
               "source": "built-in"
             },
+            "kb_policy.max_chars": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "kb_policy.max_fp_rate": {
               "layer": "built-in",
               "source": "built-in"
@@ -436,6 +686,10 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
           "layer": "built-in",
           "source": "built-in"
         },
+        "kb_policy.max_chars": {
+          "layer": "built-in",
+          "source": "built-in"
+        },
         "kb_policy.max_fp_rate": {
           "layer": "built-in",
           "source": "built-in"
@@ -472,7 +726,7 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
   "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
   "captured_at": "0000-00-00T00:00:00Z",
   "config_sha256": "",
-  "inputs_sha256": "a6bb9525e495dea834a6e5234af6d4fcb21f155c0694077cf9cd4192fedd9b6e",
+  "inputs_sha256": "99a1d15c6a7222741a3a3fea47b23598ee48053d6d60fb9701de1f420b68c188",
   "evidence": {
     "plan": {
       "effort_tier": "standard",
