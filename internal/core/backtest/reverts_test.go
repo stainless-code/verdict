@@ -743,3 +743,18 @@ func TestRevertsTracksItsLockFile(t *testing.T) {
 		t.Error("the ledger is ignored; it is a tracked file")
 	}
 }
+
+// TestRevertsBadSinceCopyNamesItsMode proves the shared window ladder's
+// sentence names the mode the operator typed: a reverts scan must never tell
+// them about the miner.
+func TestRevertsBadSinceCopyNamesItsMode(t *testing.T) {
+	st := &state{req: &Request{Mode: modeReverts}}
+	_, ref := st.since(t.Context(), Resolution{})
+	want := "backtest reverts needs --since <90d|12w|18mo|2y|ref>"
+	if ref == nil || ref.Code != "bad-since" || ref.Message != want {
+		t.Fatalf("refusal = %+v; want bad-since %q", ref, want)
+	}
+	if got := (&state{req: &Request{Mode: modeMine}}).modeLabel(); got != "backtest mine" {
+		t.Errorf("mine label = %q; want backtest mine", got)
+	}
+}

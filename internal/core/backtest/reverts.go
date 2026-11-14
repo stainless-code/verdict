@@ -212,9 +212,11 @@ func (st *state) scanReverts(
 		if ref := st.canceled(ctx); ref != nil {
 			return nil, nil, ref
 		}
-		if ref := st.considerRevert(ctx, c, found); ref != nil {
+		row, skip, ref := st.classifyRevert(ctx, c)
+		if ref != nil {
 			return nil, nil, ref
 		}
+		found.add(row, skip)
 	}
 	return found.rows, found.skipped, nil
 }
@@ -225,45 +227,42 @@ type revertFindings struct {
 	skipped []RevertSkipped
 }
 
-// considerRevert decides one commit: a recordable revert is appended to the
-// findings, anything else that was counted is recorded with its reason.
-func (st *state) considerRevert(ctx context.Context, c commit, found *revertFindings) *core.RefusalError {
-	skip, ref := st.classifyRevert(ctx, c, found)
-	if ref != nil {
-		return ref
+// add records one commit's outcome: the row it became, or the reason it was
+// counted instead. A commit that is not a revert contributes neither.
+func (f *revertFindings) add(row *RevertRow, skip *RevertSkipped) {
+	if row != nil {
+		f.rows = append(f.rows, *row)
 	}
 	if skip != nil {
-		found.skipped = append(found.skipped, *skip)
+		f.skipped = append(f.skipped, *skip)
 	}
-	return nil
 }
 
-// classifyRevert records one revert commit or reports why it was counted
-// instead.
+// classifyRevert reads one commit and reports the row it records or the reason
+// it was counted instead.
 func (st *state) classifyRevert(
-	ctx context.Context, c commit, found *revertFindings,
-) (*RevertSkipped, *core.RefusalError) {
+	ctx context.Context, c commit,
+) (*RevertRow, *RevertSkipped, *core.RefusalError) {
 	subject, body, skip, ref := st.revertText(ctx, c.sha)
 	if ref != nil || skip != nil {
-		return skip, ref
+		return nil, skip, ref
 	}
 	if !revertSubject(subject) {
-		return nil, nil
+		return nil, nil, nil
 	}
 	named := revertedShas(body)
 	merge, ref := st.revertsAMerge(ctx, c.parents, named)
 	if ref != nil {
-		return nil, ref
+		return nil, nil, ref
 	}
 	if merge {
-		return &RevertSkipped{Reason: reasonMergeRevert, SHA: c.sha}, nil
+		return nil, &RevertSkipped{Reason: reasonMergeRevert, SHA: c.sha}, nil
 	}
 	row, skip, ref := st.revertRow(ctx, c.sha, subject, named)
 	if ref != nil || skip != nil {
-		return skip, ref
+		return nil, skip, ref
 	}
-	found.rows = append(found.rows, row)
-	return nil, nil
+	return &row, nil, nil
 }
 
 // revertsAMerge reports whether the revert undoes a merge: the commit itself
@@ -275,24 +274,16 @@ func (st *state) revertsAMerge(
 		return true, nil
 	}
 	for _, target := range named {
-		merged, ref := st.mergeTarget(ctx, target)
-		if ref != nil || merged {
-			return merged, ref
+		out, exit, _, _, err := st.gitCapped(ctx, commandOutputCap, st.root,
+			"rev-list", "--parents", "-n", "1", target)
+		if err != nil {
+			return false, st.gitFailure(ctx, err.Error())
+		}
+		if exit == 0 && len(strings.Fields(firstLine(out))) > 2 {
+			return true, nil
 		}
 	}
 	return false, nil
-}
-
-// mergeTarget reports whether one named commit has more than one parent. A
-// commit this clone does not have is no evidence either way, so the revert
-// stays recordable.
-func (st *state) mergeTarget(ctx context.Context, sha string) (bool, *core.RefusalError) {
-	out, exit, _, _, err := st.gitCapped(ctx, commandOutputCap, st.root,
-		"rev-list", "--parents", "-n", "1", sha)
-	if err != nil {
-		return false, st.gitFailure(ctx, err.Error())
-	}
-	return exit == 0 && len(strings.Fields(firstLine(out))) > 2, nil
 }
 
 // revertText reads one commit's subject and body. A commit git cannot read is
