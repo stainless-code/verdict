@@ -145,3 +145,4 @@ if jq -e '.warnings | map(select(contains("provenance.json"))) | length >= 1' <"
 else
   bad "malformed provenance.json missed warning: $(cat "$EVAL_OUT")"
 fi
+eval_end
