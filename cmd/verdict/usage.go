@@ -353,6 +353,13 @@ func usageText() string {
 		"  learn --restore <id> --reason <text> [--json]\n" +
 		"    restore a retired rule to active (tombstone history kept);\n" +
 		"    reason needs 30+ chars.\n" +
+		"  learn --incident <bundle> --sha <merge> --path <path> [--note <text>] [--url <url>]\n" +
+		"        [--at <RFC3339>] [--dry-run] [--json]\n" +
+		"    attach one revert or incident to a recorded bundle in\n" +
+		"    .verdict/incidents.jsonl (one row per bundle + sha, sorted; --path repeats);\n" +
+		"    the bundle must already carry findings.json. trend --incidents measures the\n" +
+		"    miss rate over those rows. A repeat attach reports existing and moves no\n" +
+		"    byte; --dry-run writes nothing.\n" +
 		"  init [--preset chill|standard|strict] [--yes] [--force] [--json]\n" +
 		"    guided offline scaffolder: writes the typed controls (tracked\n" +
 		"    .verdict/config.json defaults, .verdict/kb.jsonl starter, and the\n" +

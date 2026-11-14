@@ -25,7 +25,7 @@ import (
 
 // Request carries the resolved learn invocation. Learn takes no repo/pr
 // positionals; the runtime carries env, clock, and progress.
-type Request struct {
+type Request struct { //nolint:govet // field grouping documents the learned surface
 	core.ReadRequest
 	Rule       string
 	Scope      string
@@ -37,6 +37,12 @@ type Request struct {
 	Restore    string
 	Accept     string
 	Reject     string
+	Incident   string
+	Sha        string
+	Paths      []string `json:"path"`
+	Note       string
+	URL        string
+	At         string
 	FromBundle string `json:"from_bundle"`
 	Pack       string
 	Status     bool
@@ -54,15 +60,20 @@ type Response struct {
 	Warnings []string
 }
 
-// Data is the learn envelope's data profile: status carries rules, every
-// other mode carries one rule row.
+// Data is the learn envelope's data profile: status carries rules, an
+// incident attach carries one incident row, every other mode carries one rule
+// row.
 type Data struct { //nolint:govet // the wire shape keeps its field order
-	Rules []any
-	Rule  *jq.Obj
+	Rules    []any
+	Rule     *jq.Obj
+	Incident *jq.Obj
 }
 
 // Wire renders the profile in published wire order.
 func (d *Data) Wire() *jq.Obj {
+	if d.Incident != nil {
+		return jq.NewObj("incident", d.Incident)
+	}
 	if d.Rule != nil {
 		return jq.NewObj("rule", d.Rule)
 	}
@@ -138,6 +149,8 @@ func (st *state) runLearn() *core.RefusalError {
 		return ref
 	}
 	switch {
+	case st.req.Incident != "":
+		return st.runIncident()
 	case st.req.Accept != "":
 		return st.runAccept()
 	case st.req.Reject != "":
@@ -158,26 +171,63 @@ func (st *state) runLearn() *core.RefusalError {
 }
 
 func (st *state) checkModes() *core.RefusalError {
-	if ref := st.checkLifecycleFlags(); ref != nil {
-		return ref
+	for _, check := range []func() *core.RefusalError{
+		st.checkLifecycleFlags,
+		st.checkOneMode,
+		st.checkScopeNeedsRule,
+		st.checkReasonNeedsVeto,
+		st.checkIncidentNeedsMode,
+	} {
+		if ref := check(); ref != nil {
+			return ref
+		}
 	}
+	return nil
+}
+
+// checkOneMode refuses a run with no mode or with two.
+func (st *state) checkOneMode() *core.RefusalError {
 	if st.countModes() != 1 {
 		return st.refuse(codeBadFlags, msgNeedOneMode)
 	}
+	return nil
+}
+
+// checkScopeNeedsRule refuses a scope with no rule text to scope.
+func (st *state) checkScopeNeedsRule() *core.RefusalError {
 	if st.req.Rule == "" && st.req.Scope != "" {
 		return st.refuse(codeBadFlags, msgScopeNeedsRule)
 	}
+	return nil
+}
+
+// checkReasonNeedsVeto refuses a reason with nothing to withdraw.
+func (st *state) checkReasonNeedsVeto() *core.RefusalError {
 	if st.req.Retire == "" && st.req.Restore == "" && st.req.Reject == "" && st.req.Reason != "" {
 		return st.refuse(codeBadFlags, msgReasonNeedsVeto)
 	}
 	return nil
 }
 
+// checkIncidentNeedsMode refuses an attach flag without its bundle.
+func (st *state) checkIncidentNeedsMode() *core.RefusalError {
+	if st.req.Incident == "" && st.wantsIncident() {
+		return st.refuse(codeBadFlags, msgIncidentNeedsMode)
+	}
+	return nil
+}
+
+// wantsIncident reports whether an attach-only flag arrived without --incident.
+func (st *state) wantsIncident() bool {
+	return st.req.Sha != "" || len(st.req.Paths) > 0 || st.req.Note != "" ||
+		st.req.URL != "" || st.req.At != ""
+}
+
 func (st *state) countModes() int {
 	modes := 0
 	for _, enabled := range []bool{
 		st.req.Accept != "", st.req.Reject != "", st.req.Propose, st.req.Pack != "", st.req.Rule != "",
-		st.req.Status, st.req.Retire != "", st.req.Restore != "",
+		st.req.Status, st.req.Retire != "", st.req.Restore != "", st.req.Incident != "",
 	} {
 		if enabled {
 			modes++
@@ -563,20 +613,23 @@ const (
 )
 
 const (
-	codeCanceled       = "canceled"
-	codeLearnFailed    = "learn-failed"
-	codeBadFlags       = "bad-flags"
-	codeBadRule        = "bad-rule"
-	codeBadScope       = "bad-scope"
-	codeBadRigor       = "bad-rigor"
-	codeBadID          = "bad-id"
-	codeAlreadyLearned = "already-learned"
-	codeIDTaken        = "id-taken"
-	codeUnknownRule    = "unknown-rule"
-	codeAlreadyRetired = "already-retired"
-	codeNotRetired     = "not-retired"
-	codeBadReason      = "bad-reason"
-	codeCorruptStore   = "corrupt-store"
+	codeCanceled        = "canceled"
+	codeLearnFailed     = "learn-failed"
+	codeBadFlags        = "bad-flags"
+	codeBadAt           = "bad-at"
+	codeMissingBundle   = "missing-bundle"
+	codeMissingFindings = "missing-findings"
+	codeBadRule         = "bad-rule"
+	codeBadScope        = "bad-scope"
+	codeBadRigor        = "bad-rigor"
+	codeBadID           = "bad-id"
+	codeAlreadyLearned  = "already-learned"
+	codeIDTaken         = "id-taken"
+	codeUnknownRule     = "unknown-rule"
+	codeAlreadyRetired  = "already-retired"
+	codeNotRetired      = "not-retired"
+	codeBadReason       = "bad-reason"
+	codeCorruptStore    = "corrupt-store"
 )
 
 const (
@@ -622,6 +675,7 @@ const (
 const (
 	msgCanceled    = "canceled before learn completed"
 	msgNeedOneMode = "learn needs exactly one of --rule <text>, --pack <directory> --id <rule-id>, " +
+		"--incident <bundle> --sha <sha> --path <path>, " +
 		"--status, --retire <id>, --restore <id>"
 	msgScopeNeedsRule  = "learn: --scope belongs to --rule (append mode)"
 	msgReasonNeedsVeto = "learn: --reason belongs to --retire/--restore"
@@ -658,7 +712,8 @@ func (st *state) checkLifecycleFlags() *core.RefusalError {
 	if st.req.FromBundle != "" && !st.req.Propose {
 		return st.refuse(codeBadFlags, "--from-bundle requires --propose")
 	}
-	if st.req.DryRun && !st.req.Propose && st.req.Accept == "" && st.req.Reject == "" {
+	if st.req.DryRun && !st.req.Propose && st.req.Accept == "" && st.req.Reject == "" &&
+		st.req.Incident == "" {
 		return st.refuse(codeBadFlags, "--dry-run requires a learning lifecycle mode")
 	}
 	return nil
