@@ -1,0 +1,245 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "risk",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "verdict fetch acme/app 5101 --index origin/main",
+  "warnings": [
+    "risk: 4 bundle(s) carry no usable impact.json (reach unmeasured; backfill with verdict fetch acme/app <pr> --index origin/main, or fetch-local for a local bundle)"
+  ],
+  "data": {
+    "generated_at": "0000-00-00T00:00:00Z",
+    "bundles": 4,
+    "needs_human": 3,
+    "by_band": {
+      "critical": 2,
+      "high": 0,
+      "medium": 1,
+      "unknown": 0,
+      "low": 1
+    },
+    "rows": [
+      {
+        "rank": 1,
+        "bundle": "5101",
+        "pr": 5101,
+        "state": "open",
+        "head": "aaaaaaa",
+        "claimed": "unknown",
+        "floor": "critical",
+        "reported": "critical",
+        "receipt_reasons": [
+          "missing-claim",
+          "missing-coverage"
+        ],
+        "inputs": {
+          "open_critical": 1,
+          "open_important": 1,
+          "deferred": 1,
+          "unanchored": 0,
+          "stale_head": false,
+          "missing_coverage": true
+        },
+        "score": {
+          "value": 21,
+          "measured": 3,
+          "reach": {
+            "measured": false,
+            "points": 0,
+            "weight": 35
+          },
+          "churn": {
+            "measured": true,
+            "files": 1,
+            "additions": 1,
+            "deletions": 1,
+            "hunks": 1,
+            "points": 0,
+            "weight": 25
+          },
+          "category": {
+            "measured": true,
+            "worst": "untagged",
+            "open": 4,
+            "points": 25,
+            "weight": 25
+          },
+          "rung": {
+            "measured": true,
+            "weakest": "said",
+            "open": 4,
+            "points": 100,
+            "weight": 15
+          }
+        },
+        "needs_human": true
+      },
+      {
+        "rank": 2,
+        "bundle": "5109",
+        "pr": 5109,
+        "state": "merged",
+        "head": "aaaaaaa",
+        "claimed": "unknown",
+        "floor": "critical",
+        "reported": "critical",
+        "receipt_reasons": [
+          "missing-claim",
+          "missing-coverage"
+        ],
+        "inputs": {
+          "open_critical": 1,
+          "open_important": 1,
+          "deferred": 1,
+          "unanchored": 0,
+          "stale_head": false,
+          "missing_coverage": true
+        },
+        "score": {
+          "value": 21,
+          "measured": 3,
+          "reach": {
+            "measured": false,
+            "points": 0,
+            "weight": 35
+          },
+          "churn": {
+            "measured": true,
+            "files": 1,
+            "additions": 1,
+            "deletions": 1,
+            "hunks": 1,
+            "points": 0,
+            "weight": 25
+          },
+          "category": {
+            "measured": true,
+            "worst": "untagged",
+            "open": 4,
+            "points": 25,
+            "weight": 25
+          },
+          "rung": {
+            "measured": true,
+            "weakest": "said",
+            "open": 4,
+            "points": 100,
+            "weight": 15
+          }
+        },
+        "needs_human": true
+      },
+      {
+        "rank": 3,
+        "bundle": "local-x",
+        "pr": null,
+        "state": "local",
+        "head": "aaaaaaa",
+        "claimed": "unknown",
+        "floor": "medium",
+        "reported": "medium",
+        "receipt_reasons": [
+          "missing-claim",
+          "missing-coverage"
+        ],
+        "inputs": {
+          "open_critical": 0,
+          "open_important": 0,
+          "deferred": 0,
+          "unanchored": 0,
+          "stale_head": false,
+          "missing_coverage": true
+        },
+        "score": {
+          "value": 0,
+          "measured": 1,
+          "reach": {
+            "measured": false,
+            "points": 0,
+            "weight": 35
+          },
+          "churn": {
+            "measured": true,
+            "files": 1,
+            "additions": 1,
+            "deletions": 1,
+            "hunks": 1,
+            "points": 0,
+            "weight": 25
+          },
+          "category": {
+            "measured": false,
+            "open": 0,
+            "points": 0,
+            "weight": 25
+          },
+          "rung": {
+            "measured": false,
+            "open": 0,
+            "points": 0,
+            "weight": 15
+          }
+        },
+        "needs_human": true
+      },
+      {
+        "rank": 4,
+        "bundle": "5102",
+        "pr": 5102,
+        "state": "open",
+        "head": "ccccccc",
+        "claimed": "low",
+        "floor": "low",
+        "reported": "low",
+        "receipt_reasons": [],
+        "inputs": {
+          "open_critical": 0,
+          "open_important": 0,
+          "deferred": 0,
+          "unanchored": 0,
+          "unreviewed_files": 0,
+          "stale_head": false,
+          "missing_coverage": false
+        },
+        "score": {
+          "value": 0,
+          "measured": 3,
+          "reach": {
+            "measured": false,
+            "points": 0,
+            "weight": 35
+          },
+          "churn": {
+            "measured": true,
+            "files": 1,
+            "additions": 1,
+            "deletions": 1,
+            "hunks": 1,
+            "points": 0,
+            "weight": 25
+          },
+          "category": {
+            "measured": true,
+            "open": 0,
+            "points": 0,
+            "weight": 25
+          },
+          "rung": {
+            "measured": true,
+            "open": 0,
+            "points": 0,
+            "weight": 15
+          }
+        },
+        "needs_human": false
+      }
+    ]
+  },
+  "error": null
+}
+--- stderr ---
+warn: risk: 4 bundle(s) carry no usable impact.json (reach unmeasured; backfill with verdict fetch acme/app <pr> --index origin/main, or fetch-local for a local bundle)
+--- files ---

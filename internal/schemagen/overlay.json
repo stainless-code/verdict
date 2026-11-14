@@ -232,7 +232,12 @@
       "/properties/data/properties/truncated": "Bounded-input rows when --provenance is active; elsewhere the boolean truncation flag every verb's data already carries.",
       "/$defs/prWaitData": "Bounded foreground PR wait outcome; timeout is data with error null.",
       "/$defs/prWaitSnapshot": "One observed PR state, including canonical JSON evidence for checks, reviews, and threads.",
-      "/$defs/readyData/properties/wait": "Present when a bounded build wait was requested; timeout leaves readiness false."
+      "/$defs/readyData/properties/wait": "Present when a bounded build wait was requested; timeout leaves readiness false.",
+      "/$defs/riskData": "risk --json data: the advisory triage queue over the bundles under .verdict/state. bundles counts the queued bundles (by_band sums to it) and rows are ranked by band, then score, then bundle name; a hidden row adds the response_cap receipt.",
+      "/$defs/riskBands": "The queued bundles per recomputed risk band, worst first. Every band is always present, zeros included.",
+      "/$defs/riskRow": "One ranked bundle: its host state, its recomputed band and receipt reasons, the advisory score with each component's points and weight, and whether it needs a human (any band but low).",
+      "/$defs/riskRow/properties/score": "The 0-100 triage score: reach 35, churn 25, category 25, rung 15, integer-divided by 100. measured counts the components whose artifact was read, so a missing one reads unmeasured at 0 points instead of a clean zero.",
+      "/$defs/riskRow/properties/state": "open and local are live and stay in the default queue; merged and closed are named as skipped unless --status all asks for them. A state token the queue does not know reads open."
     }
   },
   "findings": {

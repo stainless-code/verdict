@@ -20,6 +20,7 @@ import {
   type RecordData,
   type ReportData,
   type ReportGate,
+  type RiskData,
   type ShowData,
   type ThreadsData,
   type ThreadsResolveData,
@@ -66,6 +67,7 @@ type Verb =
   | "doctor"
   | "calibrate"
   | "trend"
+  | "risk"
   | "index"
   | "adopt"
   | "ingest"
@@ -220,6 +222,22 @@ export async function typeChecks(): Promise<void> {
   void bundles;
   void critical;
 
+  const riskQueue: Envelope<RiskData> = await client.risk([
+    "acme/app",
+    "--status",
+    "all",
+  ]);
+  const queued: number = riskQueue.data.bundles;
+  const topState: "open" | "merged" | "closed" | "local" | undefined =
+    riskQueue.data.rows[0]?.state;
+  const topScore: number = riskQueue.data.rows[0]?.score.value ?? 0;
+  void queued;
+  void topState;
+  void topScore;
+  // @ts-expect-error - a band count is a number, never a narrowed literal
+  const badCount: "many" = riskQueue.data.by_band.critical;
+  void badCount;
+
   const adopt: Envelope<AdoptData> = await client.adopt([]);
   const adopted: number = adopt.data.adopted;
   void adopted;
@@ -253,11 +271,13 @@ export async function typeChecks(): Promise<void> {
   const exactFetchLocal: Exact<DataFor["fetch-local"], FetchLocalData> = true;
   const exactCheckTree: Exact<DataFor["check-tree"], CheckTreeData> = true;
   const exactTrend: Exact<DataFor["trend"], TrendData> = true;
+  const exactRisk: Exact<DataFor["risk"], RiskData> = true;
   const exactCalibrate: Exact<DataFor["calibrate"], CalibrateData> = true;
   void exactReady;
   void exactFetchLocal;
   void exactCheckTree;
   void exactTrend;
+  void exactRisk;
   void exactCalibrate;
   const readyStatusesAreNotAny: IsAny<TrendData["by_status"]> = false;
   const calibratePrecisionIsDeliberatelyUnknown: Exact<

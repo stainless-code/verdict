@@ -1,0 +1,11 @@
+exit: 0
+--- stdout ---
+risk: acme/app — 3 bundle(s), 2 need a human (critical=1 high=0 medium=1 unknown=0 low=1)
+1  critical  score=21  5101     open=4  reach=-  churn=+1/-1  cat=untagged  rung=said
+2  medium    score=0   local-x  open=0  reach=-  churn=+1/-1  cat=-         rung=-
+skipped: 1 bundle(s) not open (--status all includes them)
+limit: 2 shown, 1 hidden
+next: verdict fetch acme/app 5101 --index origin/main
+--- stderr ---
+warn: risk: 3 bundle(s) carry no usable impact.json (reach unmeasured; backfill with verdict fetch acme/app <pr> --index origin/main, or fetch-local for a local bundle)
+--- files ---

@@ -35,6 +35,7 @@ func TestToolCommanders(t *testing.T) {
 		"ready":       "exec.Runner{cap=4194304 missing=false}",
 		"record":      "exec.Runner{cap=67108864 missing=true}",
 		"report":      "<nil>",
+		"risk":        "<nil>",
 		"show":        "<nil>",
 		"threads":     "exec.Runner{cap=67108864 missing=true}",
 		"trend":       "<nil>",

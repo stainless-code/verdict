@@ -39,6 +39,7 @@ var wantAnnotations = map[string]toolAnnotations{
 	},
 	"record": {Title: "Record review", IdempotentHint: true},
 	"report": {Title: "Render report", IdempotentHint: true},
+	"risk":   {Title: "Triage risk queue", ReadOnlyHint: true, IdempotentHint: true},
 	"show":   {Title: "Show finding", ReadOnlyHint: true, IdempotentHint: true},
 	"threads": {
 		Title: "Refresh review threads", IdempotentHint: true, OpenWorldHint: true,
@@ -102,14 +103,14 @@ func TestSurfaceSets(t *testing.T) {
 	defaults := names(allTools(false, false))
 	wantDefaults := []string{
 		"adopt", "calibrate", "check-tree", "config", "doctor", "fetch", "fetch-local", "fix",
-		"index", "ingest", "init", "learn", "next", "pack", "post", "pr_wait", "ready", "record", "report", "show",
+		"index", "ingest", "init", "learn", "next", "pack", "post", "pr_wait", "ready", "record", "report", "risk", "show",
 		"threads", "trend", "verify",
 	}
 	if !reflect.DeepEqual(defaults, wantDefaults) {
 		t.Errorf("default tools = %v, want %v", defaults, wantDefaults)
 	}
 	readOnly := names(allTools(true, false))
-	wantReadOnly := []string{"check-tree", "config", "doctor", "index", "next", "pack", "pr_wait", "ready", "record", "report", "show", "trend"}
+	wantReadOnly := []string{"check-tree", "config", "doctor", "index", "next", "pack", "pr_wait", "ready", "record", "report", "risk", "show", "trend"}
 	if !reflect.DeepEqual(readOnly, wantReadOnly) {
 		t.Errorf("read-only tools = %v, want %v", readOnly, wantReadOnly)
 	}
@@ -181,7 +182,7 @@ func TestMutationDeclarations(t *testing.T) {
 		"fetch-local": localWrites, "fix": localWrites, "index": noLocalWrites,
 		"ingest": localWrites, "init": localWrites, "learn": localWrites, "next": noLocalWrites,
 		"pack": noLocalWrites, "post": localWrites, "ready": noLocalWrites,
-		"record": localWrites, "report": localWrites, "show": noLocalWrites,
+		"record": localWrites, "report": localWrites, "risk": noLocalWrites, "show": noLocalWrites,
 		"threads": localWrites, "trend": noLocalWrites, "triage": localWrites,
 		"verify": localWrites,
 	}

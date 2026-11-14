@@ -312,6 +312,7 @@ export interface ReportRisk {
   max_risk?: "low" | "medium" | "high" | "critical";
   exceeded: boolean;
   gate_reason?: "risk-exceeded" | "risk-unknown";
+  score?: RiskScore | null;
   [key: string]: unknown;
 }
 
@@ -323,6 +324,109 @@ export interface RiskInputs {
   unreviewed_files?: number | null;
   stale_head: boolean;
   missing_coverage: boolean;
+  [key: string]: unknown;
+}
+
+export interface RiskScore {
+  value: number;
+  measured: number;
+  reach: RiskReach;
+  churn: RiskChurn;
+  category: RiskCategory;
+  rung: RiskRung;
+  [key: string]: unknown;
+}
+
+export interface RiskReach {
+  measured: boolean;
+  symbols?: number | null;
+  callers?: number | null;
+  stale?: boolean | null;
+  points: number;
+  weight: number;
+  [key: string]: unknown;
+}
+
+export interface RiskChurn {
+  measured: boolean;
+  files: number;
+  additions: number;
+  deletions: number;
+  hunks: number;
+  points: number;
+  weight: number;
+  [key: string]: unknown;
+}
+
+export interface RiskCategory {
+  measured: boolean;
+  worst?:
+    | "logic"
+    | "edge-case"
+    | "security"
+    | "performance"
+    | "accidental-commit"
+    | "style"
+    | "docs"
+    | "other"
+    | "untagged";
+  open: number;
+  points: number;
+  weight: number;
+  [key: string]: unknown;
+}
+
+export interface RiskRung {
+  measured: boolean;
+  weakest?: "said" | "pointed" | "walked" | "ran" | "reproduced";
+  open: number;
+  points: number;
+  weight: number;
+  [key: string]: unknown;
+}
+
+/** risk --json data: the advisory triage queue over the bundles under .verdict/state. bundles counts the queued bundles (by_band sums to it) and rows are ranked by band, then score, then bundle name; a hidden row adds the response_cap receipt. */
+export interface RiskData {
+  truncated?: boolean;
+  truncation_reason?:
+    "work_budget" | "response_cap" | "time_budget" | "scan_cap" | "chunk_cap";
+  returned?: number;
+  total?: number | null;
+  next_offset?: number | null;
+  generated_at: string;
+  bundles: number;
+  needs_human: number;
+  by_band: RiskBands;
+  rows: Array<RiskRow>;
+  [key: string]: unknown;
+}
+
+/** The queued bundles per recomputed risk band, worst first. Every band is always present, zeros included. */
+export interface RiskBands {
+  critical: number;
+  high: number;
+  medium: number;
+  unknown: number;
+  low: number;
+  [key: string]: unknown;
+}
+
+/** One ranked bundle: its host state, its recomputed band and receipt reasons, the advisory score with each component's points and weight, and whether it needs a human (any band but low). */
+export interface RiskRow {
+  rank: number;
+  bundle: string;
+  pr: number | null;
+  /** open and local are live and stay in the default queue; merged and closed are named as skipped unless --status all asks for them. A state token the queue does not know reads open. */
+  state: "open" | "merged" | "closed" | "local";
+  head: string | null;
+  claimed: "unknown" | "low" | "medium" | "high" | "critical";
+  floor: "low" | "medium" | "high" | "critical";
+  reported: "unknown" | "low" | "medium" | "high" | "critical";
+  receipt_reasons: Array<string>;
+  inputs: RiskInputs;
+  /** The 0-100 triage score: reach 35, churn 25, category 25, rung 15, integer-divided by 100. measured counts the components whose artifact was read, so a missing one reads unmeasured at 0 points instead of a clean zero. */
+  score: RiskScore;
+  needs_human: boolean;
   [key: string]: unknown;
 }
 

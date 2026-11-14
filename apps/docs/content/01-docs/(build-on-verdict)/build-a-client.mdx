@@ -235,6 +235,7 @@ additional properties, so a new key stays additive. The installer surfaces
 | `doctor`          | `doctorData`           |
 | `calibrate`       | `calibrateData`        |
 | `trend`           | `trendData`            |
+| `risk`            | `riskData`             |
 | `adopt`           | `adoptData`            |
 | `fix`             | `fixData`              |
 | `learn`           | `learnData`            |
@@ -269,10 +270,10 @@ structured results without writing a wrapper.
   `tools/list` schemas, or wants `--read-only` to hide writing verbs.
 - Use **spawning** for a library, a script, a CI step, or any program that
   needs one call and no protocol session. A JSON client does not need MCP.
-- `verdict mcp --read-only` exposes only `report`, `next`, `show`, `trend`,
-  `ready`, `doctor`, `check-tree`, and `config`, plus `record` limited to its
-  `dry_run: true` form. `threads` never joins that set: it
-  rewrites `.verdict/state/<pr>/threads.json` from the host.
+- `verdict mcp --read-only` exposes only `report`, `next`, `show`, `risk`,
+  `trend`, `ready`, `doctor`, `check-tree`, `config`, `index`, `pack`, and
+  `pr_wait`, plus `record` limited to its `dry_run: true` form. `threads` never
+  joins that set: it rewrites `.verdict/state/<pr>/threads.json` from the host.
 - Success results are the CLI envelope's `data`; typed refusals return
   `isError: true` with `{code, message, hint}` intact. Malformed calls are
   JSON-RPC `-32602`, not refusals. stdout is the protocol channel; progress and

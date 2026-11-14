@@ -24,6 +24,7 @@ import (
 	packcore "github.com/stainless-code/verdict/internal/core/pack"
 	"github.com/stainless-code/verdict/internal/core/query"
 	readycore "github.com/stainless-code/verdict/internal/core/ready"
+	riskcore "github.com/stainless-code/verdict/internal/core/risk"
 	trendcore "github.com/stainless-code/verdict/internal/core/trend"
 	triagecore "github.com/stainless-code/verdict/internal/core/triage"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -550,6 +551,58 @@ func TestRuntimeReadyEnvelopeValidates(t *testing.T) {
 	if ci["failing"] != json.Number("0") || ci["total"] != json.Number("1") {
 		t.Errorf("ready ci = %v, want 0 failing of 1", ci)
 	}
+}
+
+// TestRuntimeRiskEnvelopeValidates proves the risk response envelope validates
+// against the generated envelope schema, both complete and capped: the capped
+// run is what pins the flat receipt keys the data profile publishes.
+func TestRuntimeRiskEnvelopeValidates(t *testing.T) {
+	doc := loadSchemaDocument(t, "envelope.schema.json")
+	dir := t.TempDir()
+	t.Chdir(dir)
+	for _, pr := range []string{"5101", "5102"} {
+		writeFixture(t, ".verdict/state/"+pr+"/PR.json",
+			`{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
+				`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`)
+	}
+	writeFixture(t, ".verdict/state/5101/findings.json", "["+fixtureFinding()+"]")
+	// An unreviewed bundle is queued at the missing-coverage floor, never
+	// dropped, so the tallies cover two bands.
+	writeFixture(t, ".verdict/state/5102/findings.json", "[]")
+	rr := core.ReadRequest{Runtime: fixedRuntime(), Repo: "acme/app"}
+	req := &riskcore.QueueRequest{ReadRequest: rr}
+	resp, ref := riskcore.Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("risk refusal: %v", ref)
+	}
+	data := resp.Data.Wire()
+	assertServiceEnvelope(t, doc, "risk", "acme/app", "", resp.At, resp.Next, resp.Warnings, data)
+	assertWireFields(t, data, map[string]any{
+		"bundles":     json.Number("2"),
+		"needs_human": json.Number("2"),
+	})
+	if bands := wireSubMap(t, data, "by_band"); bands["critical"] != json.Number("1") ||
+		bands["medium"] != json.Number("1") {
+		t.Errorf("by_band = %v, want one critical and one unreviewed bundle", bands)
+	}
+	if rows := wireList(t, data, "rows"); len(rows) != 2 {
+		t.Errorf("risk rows = %d, want both bundles", len(rows))
+	}
+
+	capped := &riskcore.QueueRequest{ReadRequest: rr, Limit: 1}
+	cut, ref := riskcore.Run(context.Background(), capped)
+	if ref != nil {
+		t.Fatalf("capped risk refusal: %v", ref)
+	}
+	cutData := cut.Data.Wire()
+	assertServiceEnvelope(t, doc, "risk", "acme/app", "", cut.At, cut.Next, cut.Warnings, cutData)
+	assertWireFields(t, cutData, map[string]any{
+		"truncated":         true,
+		"truncation_reason": "response_cap",
+		"returned":          json.Number("1"),
+		"total":             json.Number("2"),
+		"next_offset":       nil,
+	})
 }
 
 // TestRuntimeTrendEnvelopeValidates proves the trend response envelope

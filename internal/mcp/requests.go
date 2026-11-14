@@ -20,6 +20,7 @@ import (
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
 	packcore "github.com/stainless-code/verdict/internal/core/pack"
 	readycore "github.com/stainless-code/verdict/internal/core/ready"
+	riskcore "github.com/stainless-code/verdict/internal/core/risk"
 	trendcore "github.com/stainless-code/verdict/internal/core/trend"
 	triagecore "github.com/stainless-code/verdict/internal/core/triage"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -474,6 +475,20 @@ func decodeTriage(req *triagecore.Request, a *args) {
 
 func wireTriage(ctx context.Context, b *bindings, req *triagecore.Request) error {
 	return b.wireRead(ctx, &req.ReadRequest)
+}
+
+func decodeRisk(req *riskcore.QueueRequest, a *args) {
+	a.str(argRepo, &req.Repo)
+	a.str(argStatus, &req.Status)
+	a.integerBounded("limit", &req.Limit, 1, riskcore.MaxQueueLimit)
+}
+
+func wireRisk(ctx context.Context, b *bindings, req *riskcore.QueueRequest) error {
+	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
+		return err
+	}
+	req.Warnings = b.warningList()
+	return nil
 }
 
 func decodeVerify(req *core.VerifyRequest, a *args) {

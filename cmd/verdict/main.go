@@ -39,6 +39,7 @@ import (
 	"github.com/stainless-code/verdict/internal/ready"
 	"github.com/stainless-code/verdict/internal/record"
 	"github.com/stainless-code/verdict/internal/report"
+	"github.com/stainless-code/verdict/internal/risk"
 	runverb "github.com/stainless-code/verdict/internal/run"
 	"github.com/stainless-code/verdict/internal/scaffold"
 	"github.com/stainless-code/verdict/internal/schemacheck"
@@ -62,7 +63,7 @@ const (
 )
 
 const verbsHint = "fetch|fetch-local|run|panel|record|adopt|ingest|fix|post|triage|report|next|show|" +
-	"check-tree|verify|doctor|calibrate|ready|pr-wait|gate|threads|trend|index|backtest|" +
+	"check-tree|verify|doctor|calibrate|ready|pr-wait|gate|threads|trend|risk|index|backtest|" +
 	"learn|pack|init|skill|upgrade|uninstall|mcp|serve|config"
 
 func main() {
@@ -168,6 +169,8 @@ const cmdTrend = "trend"
 
 const cmdBacktest = "backtest"
 
+const cmdRisk = "risk"
+
 var readVerbs = map[string]readHandler{
 	"config":     configcmd.Run,
 	"panel":      panel.Run,
@@ -179,6 +182,7 @@ var readVerbs = map[string]readHandler{
 	"gate":       gate.Run,
 	"threads":    threads.Run,
 	cmdTrend:     trend.Run,
+	cmdRisk:      risk.Run,
 	"calibrate":  calibrate.Run,
 	verbDoctor:   doctor.Run,
 	"check-tree": checktree.Run,
@@ -350,7 +354,7 @@ func splitCommand(args []string) (cmd, repo, pr string, rest []string) {
 	if bareVerbs[cmd] {
 		return cmd, "", "", args
 	}
-	if cmd == cmdTrend {
+	if repoOnlyVerbs[cmd] {
 		if len(args) > 0 {
 			repo, rest = args[0], args[1:]
 		}

@@ -178,7 +178,7 @@ func refetchCommand(dir string, req core.ReadRequest, posted string) string {
 		prov = readcommon.JSONStr(dir+"/PR.json", "provider")
 	}
 	if isLocalDir(dir) {
-		return fmt.Sprintf("verdict fetch-local %s %s", req.Repo, strings.TrimPrefix(req.Pr, "local-"))
+		return fmt.Sprintf("verdict fetch-local %s %s", req.Repo, readcommon.LocalName(req.Pr))
 	}
 	providerFlag := ""
 	if prov != "" && prov != providerGitHub {

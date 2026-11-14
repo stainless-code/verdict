@@ -2,7 +2,7 @@ package main
 
 func usageText() string {
 	return "usage: verdict fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
-		"fetch-local|run|panel|record|adopt|ingest|fix|check-tree|ready|pr-wait|gate|threads|trend|index|" +
+		"fetch-local|run|panel|record|adopt|ingest|fix|check-tree|ready|pr-wait|gate|threads|trend|risk|index|" +
 		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|config [opts]\n" +
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
 		"[--index <ref|dir>] [--context <file|dir>] [--ignore <glob>] [--no-default-excludes] " +
@@ -269,6 +269,15 @@ func usageText() string {
 		"    directory), a miss otherwise. A bundle whose store will not read is\n" +
 		"    unmeasured, out of the rate, never a miss; miss_rate is null until something\n" +
 		"    measures. Default output is byte-identical without the flag.\n" +
+		"  risk <owner/repo> [--status open|all] [--limit <n, default 50, max 200>] [--json]\n" +
+		"    advisory triage queue over every bundle under .verdict/state (no host read,\n" +
+		"    nothing written): each row's recomputed band, its 0-100 score (reach 35,\n" +
+		"    churn 25, category 25, rung 15), and whether it needs a human. Rows sort by\n" +
+		"    band, then score, then bundle name; --status open keeps live bundles and\n" +
+		"    names the merged/closed ones it skipped, --status all keeps everything. A\n" +
+		"    bundle with no findings.json is queued, never dropped; a missing or unusable\n" +
+		"    impact.json reads reach unmeasured with a counted warning. Gating one bundle\n" +
+		"    stays report --max-risk.\n" +
 		"  index build [--from <dir>] [--at <ref>] [--json]\n" +
 		"    build the code index for one tree under .verdict/index/: Go parsed with\n" +
 		"    go/parser, TypeScript, JavaScript, and Python by two lexical scanners.\n" +
@@ -506,6 +515,11 @@ var bareVerbs = map[string]bool{
 	"serve":      true,
 }
 
+// repoOnlyVerbs take one <owner/repo> and nothing else positional: every other
+// argument is one of their own flags, so the split must not read the second
+// token as a PR.
+var repoOnlyVerbs = map[string]bool{cmdTrend: true, cmdRisk: true}
+
 func arityUsage(cmd, repo, pr string) bool {
 	if cmd == "" {
 		return true
@@ -513,7 +527,7 @@ func arityUsage(cmd, repo, pr string) bool {
 	if bareVerbs[cmd] {
 		return false
 	}
-	if cmd == cmdTrend {
+	if repoOnlyVerbs[cmd] {
 		return repo == ""
 	}
 	if cmd == cmdBacktest {

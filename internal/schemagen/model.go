@@ -8,6 +8,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core/pack"
 	readycore "github.com/stainless-code/verdict/internal/core/ready"
 	"github.com/stainless-code/verdict/internal/core/recipe"
+	riskcore "github.com/stainless-code/verdict/internal/core/risk"
 	"github.com/stainless-code/verdict/internal/core/threads"
 	"github.com/stainless-code/verdict/internal/identity"
 )
@@ -240,6 +241,31 @@ type ReportRisk = core.ReportRisk
 
 // RiskInputs is core's deterministic store inputs for the risk floor.
 type RiskInputs = core.RiskInputs
+
+// RiskScore is core's advisory triage score report --risk publishes.
+type RiskScore = core.RiskScore
+
+// RiskReach is core's measured blast radius from impact.json.
+type RiskReach = core.RiskReach
+
+// RiskChurn is core's measured diff size from full.diff.
+type RiskChurn = core.RiskChurn
+
+// RiskCategory is core's worst open-finding category.
+type RiskCategory = core.RiskCategory
+
+// RiskRung is core's weakest open-finding evidence rung.
+type RiskRung = core.RiskRung
+
+// RiskData is the risk verb's --json data profile: the ranked triage queue
+// over the bundles under .verdict/state.
+type RiskData = riskcore.QueueData
+
+// RiskBands is the queue's five-band tally, worst band first.
+type RiskBands = riskcore.QueueBands
+
+// RiskRow is one ranked bundle in the triage queue.
+type RiskRow = riskcore.QueueRow
 
 // PostData is the post verb's --json data profile (dry-run and real post).
 type PostData = core.PostData

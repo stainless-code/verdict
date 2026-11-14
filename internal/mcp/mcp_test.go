@@ -104,12 +104,12 @@ func decodeFrames(t *testing.T, raw []byte) map[string]frame {
 func TestToolSchemas(t *testing.T) {
 	t.Parallel()
 	tools := allTools(false, false)
-	if len(tools) != 23 {
-		t.Fatalf("tools = %d, want 23", len(tools))
+	if len(tools) != 24 {
+		t.Fatalf("tools = %d, want 24", len(tools))
 	}
 	wantNames := []string{
 		"adopt", "calibrate", "check-tree", "config", "doctor", "fetch", "fetch-local", "fix",
-		"index", "ingest", "init", "learn", "next", "pack", "post", "pr_wait", "ready", "record", "report", "show",
+		"index", "ingest", "init", "learn", "next", "pack", "post", "pr_wait", "ready", "record", "report", "risk", "show",
 		"threads", "trend", "verify",
 	}
 	names := make([]string, 0, len(tools))
@@ -541,7 +541,7 @@ func TestServeLifecycle(t *testing.T) {
 	if err := json.Unmarshal(frames["2"].Result, &list); err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Tools) != 23 {
+	if len(list.Tools) != 24 {
 		t.Errorf("tools = %d", len(list.Tools))
 	}
 	var ok callToolResult

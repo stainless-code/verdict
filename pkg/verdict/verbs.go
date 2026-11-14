@@ -22,6 +22,7 @@ import (
 	readycore "github.com/stainless-code/verdict/internal/core/ready"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
+	riskcore "github.com/stainless-code/verdict/internal/core/risk"
 	trendcore "github.com/stainless-code/verdict/internal/core/trend"
 	triagecore "github.com/stainless-code/verdict/internal/core/triage"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
@@ -636,6 +637,42 @@ func (c *Client) Trend(ctx context.Context, req *TrendRequest) (*TrendResponse, 
 		return nil, refusalErr(ref)
 	}
 	return &TrendResponse{
+		Repo: resp.Repo, At: resp.At, Next: resp.Next,
+		Warnings: resp.Warnings, Human: resp.Human, Data: wireJSON(resp.Data),
+	}, nil
+}
+
+// RiskRequest ranks the bundles under .verdict/state into the triage queue.
+// PR is unused; risk scopes by repo. Limit 0 reads the published default.
+type RiskRequest struct {
+	Repo, Status string
+	Limit        int
+}
+
+// RiskResponse carries the ranked queue and the human summary.
+type RiskResponse struct {
+	Repo, At, Next string
+	Warnings       []string
+	Human          []string
+	Data           json.RawMessage
+}
+
+// Risk ranks the local bundles into the advisory triage queue.
+func (c *Client) Risk(ctx context.Context, req *RiskRequest) (*RiskResponse, error) {
+	if req == nil {
+		req = &RiskRequest{}
+	}
+	rr, err := c.request(ctx, req.Repo, "")
+	if err != nil {
+		return nil, err
+	}
+	resp, ref := riskcore.Run(ctx, &riskcore.QueueRequest{
+		ReadRequest: rr, Status: req.Status, Limit: req.Limit,
+	})
+	if ref != nil {
+		return nil, refusalErr(ref)
+	}
+	return &RiskResponse{
 		Repo: resp.Repo, At: resp.At, Next: resp.Next,
 		Warnings: resp.Warnings, Human: resp.Human, Data: wireJSON(resp.Data),
 	}, nil

@@ -1,0 +1,6 @@
+exit: 2
+--- stdout ---
+
+--- stderr ---
+--status wants open or all, not "weird"
+--- files ---

@@ -1,0 +1,6 @@
+exit: 0
+--- stdout ---
+risk: acme/app — no bundles under .verdict/state (fetch a PR first)
+--- stderr ---
+
+--- files ---

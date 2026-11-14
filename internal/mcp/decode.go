@@ -170,6 +170,26 @@ func (a *args) integer(key string, dst *int) {
 	}
 }
 
+// integerBounded reads an optional integer and holds it to the published bound,
+// so a caller cannot pass a value the tool's own schema forbids. An absent key
+// keeps whatever default the service reads.
+func (a *args) integerBounded(key string, dst *int, lo, hi int) {
+	if a.err != nil {
+		return
+	}
+	raw, ok := a.take(key)
+	if !ok {
+		return
+	}
+	if err := json.Unmarshal(raw, dst); err != nil {
+		a.fail(paramErrorf(msgArgument, key, err))
+		return
+	}
+	if *dst < lo || *dst > hi {
+		a.fail(paramErrorf("argument %q must be between %d and %d", key, lo, hi))
+	}
+}
+
 func (a *args) strings(key string, dst *[]string) {
 	if a.err != nil {
 		return

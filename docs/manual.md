@@ -1048,7 +1048,7 @@ webhook, listener, or MCP subscription. Killing a wait leaves no background work
 
 ## Machine surface
 
-`fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`run`/`record`/`adopt`/`ingest`/`fix`/`check-tree`/`ready`/`pr-wait`/`threads`/`trend`/`index`/`backtest`/`learn`/`pack`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
+`fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`run`/`record`/`adopt`/`ingest`/`fix`/`check-tree`/`ready`/`pr-wait`/`threads`/`trend`/`risk`/`index`/`backtest`/`learn`/`pack`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
 non-zero. Bounded CLI `data` envelopes (`fetch`, `report`, `next`, `show`,
@@ -1263,6 +1263,32 @@ is inert: advisory runs never touch the network regardless.
 - `reported = max(claimed, floor)` (remaining `unknown` when unclaimed and the
   floor is `low`). Missing or stale evidence emits `receipt_reasons`.
 
+`report --risk` also publishes `data.risk.score`, an advisory 0–100 triage
+score built only from the bundle's own artifacts: `impact.json` for reach,
+`full.diff` for churn, and the open entries of `findings.json` for category and
+rung. Each component echoes the points it earned and the weight it carried, so
+a value is recomputable from the row itself with no config read:
+
+| Component                                 | Weight | Points                                                                                                      |
+| ----------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------- |
+| `reach` = `symbols + callers`             | 35     | 0→0, 1–3→25, 4–10→50, 11–25→75, ≥26→100                                                                     |
+| `churn` = `additions + deletions`         | 25     | 0–20→0, 21–100→25, 101–300→50, 301–800→75, ≥801→100                                                         |
+| `category` = worst open finding category  | 25     | security 100, logic 75, performance/edge-case/accidental-commit 50, other/untagged 25, style/docs 0, none 0 |
+| `rung` = weakest rung among open findings | 15     | said 100, pointed 75, walked 25, ran/reproduced 0, none 0                                                   |
+
+`value = (35*reach + 25*churn + 25*category + 15*rung) / 100` with integer
+division. `measured` counts the components whose inputs were read (`0`–`4`), so
+a bundle with no `impact.json` reads `reach.measured: false`, `reach.points: 0`
+and `score.measured: 3` instead of a silent zero, and `reach.stale` reports the
+index's own staleness without ever correcting it. The score is advisory and
+rides `--risk` alone: `--max-risk` gates on `reported` and never reads it, so a
+band and its score can never disagree. Human mode prints one line after
+`risk floor inputs:`:
+
+```
+risk score: 61/100 (reach 50w35 churn 25w25 category 100w25 rung 100w15, measured 3/4)
+```
+
 `report --max-risk <low|medium|high|critical>` gates on `data.risk.reported`
 without calling the network unless paired with `--check` or `--completeness`:
 exit `0` when `reported <= <level>`, exit `1` when `reported` exceeds `<level>`
@@ -1355,8 +1381,8 @@ exits when stdin closes. It is listed as experimental in the usage block, and
 
 Tools are named after the verbs and take the core request shape: `adopt`,
 `calibrate`, `check-tree`, `config`, `doctor`, `fetch`, `fetch-local`, `fix`, `index`, `ingest`, `init`,
-`learn`, `next`, `pack`, `post`, `pr_wait`, `ready`, `record`, `report`, `show`, `threads`,
-`trend`, `verify`. That is 23 tools. `upgrade` and `skill` are distribution surfaces,
+`learn`, `next`, `pack`, `post`, `pr_wait`, `ready`, `record`, `report`, `risk`, `show`,
+`threads`, `trend`, `verify`. That is 24 tools. `upgrade` and `skill` are distribution surfaces,
 never tools; `triage` is human-owned and joins the surface only with
 `--operator`, so an agent proposes status changes through `triage[]` in
 `review.json` instead. Input schemas are generated from the Go request structs,
@@ -1368,8 +1394,8 @@ error the model sees before calling instead of a runtime refusal. `post` writes
 a review and sends it to the host (GitHub, GitLab, or Forgejo), so it is not
 exposed under `--read-only`.
 
-`--read-only` exposes ten read tools (`report`, `next`, `show`, `trend`,
-`ready`, `doctor`, `check-tree`, `config`, `index`, `pack`) plus `record` limited to its `dry_run: true`
+`--read-only` exposes the read tools (`report`, `next`, `show`, `risk`, `trend`,
+`ready`, `doctor`, `check-tree`, `config`, `index`, `pack`, `pr_wait`) plus `record` limited to its `dry_run: true`
 form, and is mutually exclusive with `--operator`. A non-dry `record` call
 there is an `isError` `bad-flags` result naming `dry_run`; the tool keeps
 `readOnlyHint: false` because the same tool writes by default. `report` writes
@@ -3327,6 +3353,61 @@ ran reads a zero tally with a `null` miss rate, never an error; a corrupt
 ledger refuses `corrupt-store`. Without the flag both outputs are
 byte-identical to today, and the ledger itself is written only by
 `learn --incident`.
+
+## Triage risk queue
+
+`risk <owner/repo> [--status open|all] [--limit <n>]` is the portfolio view of
+the same advisory score `report --risk` prints: one row per bundle under
+`.verdict/state`, ranked so the worst first. Pure read — no host call, no index
+build, nothing written; every row is recomputed from the bundle's own artifacts
+on each run, so a hand-edited store stays truthful.
+
+A row carries `rank`, `bundle`, `pr` (null for a local bundle), `state`
+(`open`, `merged`, `closed`, or `local`), the short `head`, `claimed`, `floor`,
+and `reported`, plus `receipt_reasons` drawn from the published vocabulary
+(`missing-claim`, `missing-coverage`, `unreviewed-files`, `stale-head`), the
+floor's `inputs`, its `score`, and `needs_human` — true for
+every row whose `reported` band is not `low`. Rows sort by band
+(`critical`, `high`, `medium`, `unknown`, `low`), then by score, then by bundle
+name, so the order is total and a rerun is byte-identical.
+
+A bundle with no `findings.json` is queued, never dropped: it reads the
+missing-coverage floor (`medium`) with an unmeasured category and rung, because
+a bundle nobody reviewed is exactly what the queue exists to surface. A state
+token the queue does not know reads `open`, so a hostile `PR.json` cannot
+smuggle a value into the published enum. A bundle whose name the shared guard
+refuses, or whose store is over the read cap, is warned and skipped rather than
+read as clean. Backtest replays (`backtest.json`) and corpus fixtures are left
+out of the review history with a counted warning.
+
+`--status open` (the default) keeps host-open and local bundles and prints one
+`skipped:` line naming the merged and closed ones it left out; `--status all`
+keeps everything. `--limit` (default 50, max 200) bounds the published rows and
+carries the flattened receipt (`truncated`, `truncation_reason`, `returned`,
+`total`) while `bundles`, `by_band`, and `needs_human` keep describing the whole
+queue. `truncation_reason` is `response_cap` when the bound bit, and `scan_cap`
+when a store could not be read at all — that one wins, because the queue cannot
+count what it could not read, so `total` stays null and the warning names the
+skipped store; `returned` always counts the rows published.
+
+The score is the 0-100 advisory number `report --risk` publishes: reach 35
+(index symbols plus callers from `impact.json`), churn 25 (`full.diff` lines),
+category 25 (worst open finding's category), rung 15 (weakest open finding's
+rigor). A missing or unusable `impact.json` reads reach unmeasured at 0 points
+and warns with the count — never as a clean zero — and the follow-up names the
+backfill (`verdict fetch <pr> --index origin/main`, or `fetch-local` for a local
+bundle). A missing `findings.json` leaves category and rung unmeasured without
+a warning of its own: the missing-coverage and unmeasured-category rules above
+already name it. A missing `full.diff` leaves churn unmeasured at 0 points with
+no warning and no receipt reason — only the row's `churn=missing` cell says so.
+A rigor token no rung names scores as `said`, the conservative floor, while the
+row's `weakest` stays null: the store never carried that rung. No score is a
+gate: gating one bundle stays `report <owner/repo> <pr> --max-risk <level>`.
+
+Human mode prints one header line with the band tally, one line per row
+(`rank`, band, score, bundle, open findings, reach, churn, category, rung), then
+the skipped and limit lines and the follow-up command. The MCP `risk` tool
+serves the same `data` object as `risk --json` and is read-only.
 
 ## Code index
 

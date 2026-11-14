@@ -47,6 +47,7 @@ var forbiddenDeps = []string{
 	"internal/prwait",
 	"internal/threads",
 	"internal/trend",
+	"internal/risk",
 	"internal/panel",
 	"internal/calibrate",
 	"internal/index",

@@ -209,6 +209,61 @@ type ReportRisk struct { //nolint:govet // field order is the published property
 	MaxRisk        *string    `enum:"low|medium|high|critical"         json:"max_risk,omitempty"    optional:"true"`
 	Exceeded       bool       `json:"exceeded"`
 	GateReason     *string    `enum:"risk-exceeded|risk-unknown"       json:"gate_reason,omitempty" optional:"true"`
+	Score          *RiskScore `anyOf:"null"                            json:"score,omitempty"       optional:"true"`
+}
+
+// RiskScore is the advisory 0..100 triage score: four weighted components,
+// each echoing the points it earned and the weight it carried so every value
+// is recomputable from the row itself. Measured counts the components whose
+// inputs were read, so an absent artifact reads unmeasured instead of zero.
+type RiskScore struct { //nolint:govet // field order is the published property order
+	Value    int          `json:"value"    max:"100" min:"0"`
+	Measured int          `json:"measured" max:"4"   min:"0"`
+	Reach    RiskReach    `json:"reach"`
+	Churn    RiskChurn    `json:"churn"`
+	Category RiskCategory `json:"category"`
+	Rung     RiskRung     `json:"rung"`
+}
+
+// RiskReach is the measured blast radius from impact.json: changed symbols
+// plus their callers. Stale reports the index's own staleness, never a
+// recomputation.
+type RiskReach struct { //nolint:govet // field order is the published property order
+	Measured bool  `json:"measured"`
+	Symbols  *int  `json:"symbols,omitempty" min:"0"         optional:"true"`
+	Callers  *int  `json:"callers,omitempty" min:"0"         optional:"true"`
+	Stale    *bool `json:"stale,omitempty"   optional:"true"`
+	Points   int   `json:"points"            max:"100"       min:"0"`
+	Weight   int   `json:"weight"            max:"100"       min:"0"`
+}
+
+// RiskChurn is the measured diff size from full.diff.
+type RiskChurn struct {
+	Measured  bool `json:"measured"`
+	Files     int  `json:"files"     min:"0"`
+	Additions int  `json:"additions" min:"0"`
+	Deletions int  `json:"deletions" min:"0"`
+	Hunks     int  `json:"hunks"     min:"0"`
+	Points    int  `json:"points"    max:"100" min:"0"`
+	Weight    int  `json:"weight"    max:"100" min:"0"`
+}
+
+// RiskCategory is the worst category among the bundle's open findings.
+type RiskCategory struct { //nolint:govet // field order is the published property order
+	Measured bool    `json:"measured"`
+	Worst    *string `enum:"logic|edge-case|security|performance|accidental-commit|style|docs|other|untagged" json:"worst,omitempty"`
+	Open     int     `json:"open"                                                                             min:"0"`
+	Points   int     `json:"points"                                                                           max:"100"              min:"0"` //nolint:revive // tag column widened by the published category enum
+	Weight   int     `json:"weight"                                                                           max:"100"              min:"0"` //nolint:revive // tag column widened by the published category enum
+}
+
+// RiskRung is the weakest evidence rung among the bundle's open findings.
+type RiskRung struct { //nolint:govet // field order is the published property order
+	Measured bool    `json:"measured"`
+	Weakest  *string `enum:"said|pointed|walked|ran|reproduced" json:"weakest,omitempty"`
+	Open     int     `json:"open"                               min:"0"`
+	Points   int     `json:"points"                             max:"100"                min:"0"`
+	Weight   int     `json:"weight"                             max:"100"                min:"0"`
 }
 
 // ReportGate is the composed gate result: every dimension this run
