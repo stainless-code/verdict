@@ -9,8 +9,10 @@ import (
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/exclude"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/shellquote"
 )
 
 // DefaultDiffCap is the fetched-diff byte cap (512000 bytes, overridable
@@ -130,11 +132,19 @@ func overCap(r *session, res *config.Resolved, fullDiff string, total int64, lim
 	printSplitCandidates(r, cands)
 	refusal := &core.RefusalError{Code: "diff-too-large", Message: fmt.Sprintf(
 		"diff %d bytes exceeds cap %d bytes — split the range (fetch-local --range/--base, fetch --base-sha) "+
-			"or narrow with a paths filter, then re-fetch (override deliberate exceptions only: "+
-			"REVIEW_MAX_BYTES=<n> or the typed max_bytes default)", total, lim.maxBytes)}
+			"or exclude files with --ignore <glob>, then re-fetch (override deliberate exceptions only: "+
+			"REVIEW_MAX_BYTES=<n> or the typed max_bytes default)\n", total, lim.maxBytes) + diffFitNext}
 	refusal.Candidates = cands
 	return false, refusal
 }
+
+// diffFitNext is the `next:` tail every over-cap refusal carries: the only two
+// exclusions that exist, and the narrowing that is not one. The ignore file is
+// read from the base revision (controls snapshots it there), so a rule added on
+// the reviewed head never applies.
+const diffFitNext = "next: fit the diff under the cap with --ignore <glob> (repeatable on fetch and fetch-local) " +
+	"or a .verdict/ignore pattern committed on the base revision — the cap is measured after those exclusions. " +
+	"Paths after -- on fetch-local narrow the review to the matching files — they select, they never exclude"
 
 func printSplitCandidates(r *session, cands []any) {
 	if len(cands) == 0 {
@@ -208,7 +218,7 @@ func suggestSplits(fullDiff string, total int64) []any {
 	out := []any{
 		jq.NewObj(
 			keyKind, "paths", keyFiles, []any{top.path}, keyEstimated, top.size,
-			keySuggestion, fmt.Sprintf("re-fetch narrowed to %s (~%d bytes)", top.path, top.size)),
+			keySuggestion, fmt.Sprintf("re-fetch narrowed to -- %s (~%d bytes)", narrowArg(top.path), top.size)),
 	}
 	if len(rest) > 0 {
 		out = append(out, restSplit(top, rest, restBytes))
@@ -217,6 +227,17 @@ func suggestSplits(fullDiff string, total int64) []any {
 		keyKind, modeRange, keyFiles, []any{}, keyEstimated, half,
 		keySuggestion, fmt.Sprintf("split the range in half (~%d bytes each): fetch-local --range/--base, fetch --base-sha/--since", half)))
 	return out
+}
+
+// narrowArg renders one diff path as the git pathspec that selects exactly
+// it: git reads * ? [ and backslash as globs and a leading colon as magic, so
+// such a path carries :(literal). The word is shell-quoted for the `--` that
+// ends fetch-local's flags, so a space or a quote survives the paste.
+func narrowArg(path string) string {
+	if strings.ContainsAny(path, `*?[\`) || strings.HasPrefix(path, ":") {
+		path = ":(literal)" + path
+	}
+	return shellquote.Arg(path)
 }
 
 func compareFileSlices(a, b fileSlice) int {
@@ -235,9 +256,11 @@ func restSplit(top fileSlice, rest []string, restBytes int64) any {
 	for i, p := range shown {
 		files[i] = p
 	}
-	suggestion := fmt.Sprintf("re-fetch excluding %s (~%d bytes across %d file(s))", top.path, restBytes, len(rest))
+	suggestion := fmt.Sprintf("re-fetch with --ignore %s (~%d bytes across %d file(s))",
+		shellquote.Arg(exclude.LiteralPath(top.path)), restBytes, len(rest))
 	if len(rest) > numShownPaths {
-		suggestion = fmt.Sprintf("re-fetch excluding %s: first 10 of %d remaining files (~%d bytes total)", top.path, len(rest), restBytes)
+		suggestion = fmt.Sprintf("re-fetch with --ignore %s (%d files, first 10 named, ~%d bytes total)",
+			shellquote.Arg(exclude.LiteralPath(top.path)), len(rest), restBytes)
 	}
 	return jq.NewObj(
 		keyKind, "paths", keyFiles, files, keyEstimated, restBytes,

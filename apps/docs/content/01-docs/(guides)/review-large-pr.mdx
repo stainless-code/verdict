@@ -16,8 +16,12 @@ A PR over the 512000-byte diff cap refuses instead of silently under-reviewing. 
     ```
 
     A diff over the 512000-byte cap answers with `data: null` and a typed refusal: exit 1,
-    `diff-too-large`, naming the size, the cap, and the split-or-narrow escape
-    with advisory candidates. The refused fetch still writes the raw
+    `diff-too-large`, naming the size, the cap, and the split-or-exclude escape
+    with advisory candidates, then a `next:` line naming the two exclusions that
+    fit the review (`--ignore <glob>`, or a `.verdict/ignore` pattern committed on
+    the base revision — the ignore file is read from the base snapshot). Paths
+    after `--` on `fetch-local` narrow the review to the matching files instead:
+    they never exclude. The refused fetch still writes the raw
     `full.diff` (with `controls.json`) into the bundle directory, but no
     reviewed bundle is kept — `record`, `report`, and `post` have nothing to
     read — and the tool never auto-narrows a diff you did not scope.

@@ -186,9 +186,9 @@ func groupCapRefusal(limit *groupLimit, total int64, table []fileSlice) *core.Re
 	cands := splitCandidatesFor(table, limit.Files, total)
 	refusal := &core.RefusalError{Code: "diff-too-large", Message: fmt.Sprintf(
 		"group %s diff %d bytes exceeds its cap %d bytes (from %s) — split the range "+
-			"(fetch-local --range/--base, fetch --base-sha) or narrow with a paths filter, then re-fetch "+
-			"(override deliberate exceptions only: REVIEW_MAX_BYTES=<n> or the typed max_bytes default)",
-		limit.ID, total, limit.MaxBytes, orEmptyCapSource(limit.Source))}
+			"(fetch-local --range/--base, fetch --base-sha) or exclude files with --ignore <glob>, then re-fetch "+
+			"(override deliberate exceptions only: REVIEW_MAX_BYTES=<n> or the typed max_bytes default)\n",
+		limit.ID, total, limit.MaxBytes, orEmptyCapSource(limit.Source)) + diffFitNext}
 	refusal.Candidates = cands
 	return refusal
 }
@@ -224,7 +224,7 @@ func splitCandidatesFor(table []fileSlice, files map[string]bool, total int64) [
 	half := (total + 1) / 2
 	out := []any{jq.NewObj(
 		keyKind, "paths", keyFiles, []any{top.path}, keyEstimated, top.size,
-		keySuggestion, fmt.Sprintf("re-fetch narrowed to %s (~%d bytes)", top.path, top.size))}
+		keySuggestion, fmt.Sprintf("re-fetch narrowed to -- %s (~%d bytes)", narrowArg(top.path), top.size))}
 	if len(rest) > 0 {
 		out = append(out, restSplit(top, rest, restBytes))
 	}

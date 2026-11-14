@@ -42,7 +42,7 @@ func (st *state) callers(ctx context.Context) (*Response, *core.RefusalError) {
 		return nil, ref
 	}
 	store := storePath(root)
-	t, ref := readTree(store, tree)
+	t, ref := readTree(store, treeRef{tree: tree, at: st.queryAt(), from: st.req.From})
 	if ref != nil {
 		return nil, ref
 	}
@@ -59,11 +59,15 @@ func (st *state) callers(ctx context.Context) (*Response, *core.RefusalError) {
 // queryRef resolves the query's tree and commit. A raw tree SHA has no
 // commit to report, which is not an error.
 func (st *state) queryRef(ctx context.Context, root string) (string, string, *core.RefusalError) {
-	at := st.req.At
-	if at == "" {
-		at = "HEAD"
+	return st.queryRefAt(ctx, root, st.queryAt())
+}
+
+// queryAt is the revision a query verb reads: --at, else HEAD.
+func (st *state) queryAt() string {
+	if at := st.req.At; at != "" {
+		return at
 	}
-	return st.queryRefAt(ctx, root, at)
+	return impactHeadRef
 }
 
 // queryRefAt resolves one explicit revision to its tree and commit.
