@@ -77,14 +77,27 @@ Do not "fix" the inherited side: it is the documented local posture.
   configuration, and shadowing either would break the command rather than
   harden it. The spawn site passes no environment, so the child inherits the
   parent's (`internal/core/exec`).
-- **Explicit: the agent-written `bash -c` verify command.** `verify` runs the
-  agent's claimed proof with an environment the caller handed in as an
-  ordered snapshot (`internal/core/verify/service.go`), never by inheriting
-  silently. The same snapshot is the redaction list for the recorded tail, so
-  a token the operator passed to verdict is scrubbed from `.verify.out` and
-  `patch.json`. This is the untrusted side: the command text is agent output,
-  so what the child can see is decided at the edge instead of defaulting to
-  whatever the developer's environment happens to export.
+- **Default-deny allowlist: the agent-written `bash -c` verify command.**
+  `verify` runs the agent's claimed proof (or deep-group `--command`) with a
+  default-deny filtered slice of the caller's environment
+  (`internal/core/verify/env.go`), never by inheriting `os.Environ()`
+  unfiltered. Only baseline locale, terminal, shell, XDG, and toolchain
+  variables (`PATH`, `HOME`, `LANG`, `LC_*`, `TERM`, `TMPDIR`, `TZ`, `CI`,
+  `USER`, `LOGNAME`, `SHELL`, color flags, `XDG_*_HOME`, Go/C/Rust/JS/Python
+  cache and home variables, plus Windows OS runtime variables on
+  `GOOS=windows`) pass by default; any variable whose name matches
+  `envsecret.IsSecret` (credential-shaped endings such as `*_TOKEN`,
+  `*_SECRET`, `*_KEY`, `*_PASSWORD`, plus `AWS_ACCESS_KEY_ID` and
+  `SSH_AUTH_SOCK`, including `LC_TOKEN`) is dropped even when it
+  matches an allowlist prefix. An explicit opt-in keeps the named variable even
+  when its name is secret-shaped. Operators opt additional variable names in with
+  `--env-allowlist NAME[,NAME...]` or `.verdict/verify-env` (one variable name
+  per line, `#` comments and blank lines ignored, read exclusively from the
+  verified base-commit `controls` snapshot, checked against the bundle's current
+  base, so an untrusted PR head cannot widen its own environment unless the
+  operator passes `--allow-head-controls`, which reads the worktree instead). Dropped variable names — never values — are reported in
+  sorted order in `warnings[]`, and the full parent snapshot remains the
+  redaction list for `verifiedTail` in `patch.json`.
 
 The hermetic counterpart for tests is `internal/testenv`: every harness that
 spawns `git`, `gh`, or the verdict binary builds its child environment there.

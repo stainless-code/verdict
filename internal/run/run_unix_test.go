@@ -15,8 +15,8 @@ import (
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
-	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/record"
 )
 
@@ -321,7 +321,7 @@ func TestRunLaunchesAndHandsOff(t *testing.T) {
 // no fetch built.
 func seedControls(t *testing.T, f *fixture) {
 	t.Helper()
-	base := recordcore.BundleBase(f.dir, nil)
+	base := readcommon.BundleBase(f.dir, nil)
 	if base == "" {
 		t.Fatal("fixture bundle states no base SHA")
 	}

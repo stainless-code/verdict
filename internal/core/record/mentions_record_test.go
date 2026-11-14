@@ -11,6 +11,7 @@ import (
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // mentionZWSP is the escape the recorded body must carry.
@@ -58,7 +59,7 @@ func mergeMentionBody(t *testing.T, slug, body string) string {
 	if err != nil {
 		t.Fatalf("load review: %v", err)
 	}
-	snap, ref := controls.Gate(dir, recordcore.BundleBase(dir, nil))
+	snap, ref := controls.Gate(dir, readcommon.BundleBase(dir, nil))
 	if ref != nil {
 		t.Fatalf("controls gate: %v", ref)
 	}
@@ -176,7 +177,7 @@ func mergeMentionEntry(t *testing.T, slug, commentBody string) string {
 	if err != nil {
 		t.Fatalf("load review: %v", err)
 	}
-	snap, ref := controls.Gate(dir, recordcore.BundleBase(dir, nil))
+	snap, ref := controls.Gate(dir, readcommon.BundleBase(dir, nil))
 	if ref != nil {
 		t.Fatalf("controls gate: %v", ref)
 	}

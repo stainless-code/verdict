@@ -152,4 +152,47 @@ else
   bad "V6 second record exits $EVAL_STATUS (gate leaked into record?)"
 fi
 
+# V7: Default-deny child environment filtering + --env-allowlist + .verdict/verify-env
+eval_mk_patch 5210 'env'
+FOO_TOKEN="supersecret_eval_val_12345" \
+  LC_TOKEN="lc_secret_eval_val_11111" \
+  UNLISTED_VAR="unlisted_eval_val_67890" \
+  run_review verify acme/app 5210 --json --timeout 10
+assert_exit "V7 default-deny env run" 0
+OUT5210="$EVAL_SANDBOX/.verdict/state/5210/.verify.out"
+assert_file_nogrep "V7 child env drops FOO_TOKEN" "$OUT5210" "FOO_TOKEN="
+assert_file_nogrep "V7 child env drops LC_TOKEN" "$OUT5210" "LC_TOKEN="
+assert_file_nogrep "V7 child env drops UNLISTED_VAR" "$OUT5210" "UNLISTED_VAR="
+assert_file_grep "V7 child env keeps PATH" "$OUT5210" "^PATH="
+if jq -e '.warnings | any(contains("FOO_TOKEN") and contains("LC_TOKEN") and contains("UNLISTED_VAR"))' <"$EVAL_OUT" >/dev/null 2>&1; then
+  good "V7 warnings name every dropped variable"
+else
+  bad "V7 warnings missing dropped names: $(cat "$EVAL_OUT")"
+fi
+for v in supersecret_eval_val_12345 lc_secret_eval_val_11111 unlisted_eval_val_67890; do
+  assert_stream_nogrep "V7 stdout never carries the value $v" "$EVAL_OUT" "$v"
+  assert_stream_nogrep "V7 stderr never carries the value $v" "$EVAL_ERR" "$v"
+done
+
+FOO_TOKEN="supersecret_eval_val_12345" \
+  run_review verify acme/app 5210 --env-allowlist FOO_TOKEN --json --timeout 10
+assert_exit "V7 --env-allowlist opt-in run" 0
+assert_file_grep "V7 --env-allowlist forwards FOO_TOKEN to the child" "$OUT5210" "^FOO_TOKEN=supersecret_eval_val_12345$"
+assert_stream_nogrep "V7 --env-allowlist keeps the FOO_TOKEN value out of the envelope" "$EVAL_OUT" "supersecret_eval_val_12345"
+assert_file_grep "V7 --env-allowlist redacts the value in outputTail" "$EVAL_OUT" '\*\*\*REDACTED\*\*\*'
+
+mkdir -p "$EVAL_SANDBOX/.verdict"
+printf '# base allowlist\nUNLISTED_VAR\n' > "$EVAL_SANDBOX/.verdict/verify-env"
+eval_mk_bundle 5211
+printf 'FOO_TOKEN\n' > "$EVAL_SANDBOX/.verdict/verify-env"
+jq -n '{verifyCmd:"env"}' > "$EVAL_SANDBOX/.verdict/state/5211/patch.json"
+FOO_TOKEN="supersecret_eval_val_12345" \
+  UNLISTED_VAR="unlisted_eval_val_67890" \
+  run_review verify acme/app 5211 --json --timeout 10
+assert_exit "V7 base-snapshotted .verdict/verify-env run" 0
+OUT5211="$EVAL_SANDBOX/.verdict/state/5211/.verify.out"
+assert_file_grep "V7 base .verdict/verify-env passes UNLISTED_VAR" "$OUT5211" "^UNLISTED_VAR=unlisted_eval_val_67890$"
+assert_file_nogrep "V7 worktree-head .verdict/verify-env is ignored" "$OUT5211" "FOO_TOKEN="
+rm -f "$EVAL_SANDBOX/.verdict/verify-env"
+
 eval_end

@@ -48,7 +48,7 @@ func Run(ctx context.Context, req *core.RecordRequest) (*core.RecordResponse, *c
 	if ref := reviewRefusal(check, false); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	snap, ref := controls.Gate(dir, BundleBase(dir, st.store))
+	snap, ref := controls.Gate(dir, readcommon.BundleBase(dir, st.store))
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
@@ -313,22 +313,6 @@ type svc struct {
 	warnings   []string
 }
 
-// BundleBase reads the base commit a bundle was fetched at: the local
-// source.json base_sha, else the PR record's baseRefOid, else its base_sha.
-// store is the caller's decoded bundle so the run reads PR.json once.
-func BundleBase(dir string, store *readcommon.Bundle) string {
-	if base := readcommon.JSONStr(dir+sourceSuffix, "base_sha"); base != "" {
-		return base
-	}
-	if store == nil {
-		store = readcommon.OpenBundle(dir)
-	}
-	if base := store.StrField("baseRefOid"); base != "" {
-		return base
-	}
-	return store.StrField("base_sha")
-}
-
 func (st *svc) runtime() core.Runtime {
 	var rt core.Runtime
 	if st.req.Runtime != nil {
@@ -407,7 +391,8 @@ func (st *svc) finalize(ctx context.Context, dir, prov, headFull, now string, re
 		Coverage:        res.Coverage.Receipt(),
 		ChunkCoverage:   res.Coverage.ChunkReceipt(),
 	}
-	if ident, ok := identity.Verify(ctx, st.identityCommander(), dir, identityHead(dir, prov, st.store), BundleBase(dir, st.store)); ok {
+	base := readcommon.BundleBase(dir, st.store)
+	if ident, ok := identity.Verify(ctx, st.identityCommander(), dir, identityHead(dir, prov, st.store), base); ok {
 		record.PatchID, record.PatchIDKind = ident.PatchID, ident.PatchIDKind
 	}
 	if err := atomic.WriteFile(dir+"/record.json", []byte(jq.PrettyOrdered(record.Wire()))); err != nil {
