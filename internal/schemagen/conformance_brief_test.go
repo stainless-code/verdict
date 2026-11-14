@@ -37,10 +37,12 @@ func fixtureReviewDoc(brief any) map[string]any {
 }
 
 // TestReviewBriefSchema pins the published review contract: a valid brief
-// validates, and every documented shape failure is refused.
+// validates, and every documented shape failure is refused. Every fixture goes
+// through decodeWire, so the checker reads the literal the wire would carry
+// rather than the Go type the map literal happens to hold.
 func TestReviewBriefSchema(t *testing.T) {
 	doc := loadSchemaDocument(t, "review.schema.json")
-	if err := validationError(doc, doc, fixtureReviewDoc(fixtureBrief())); err != nil {
+	if err := validationError(doc, doc, decodeWire(t, fixtureReviewDoc(fixtureBrief()))); err != nil {
 		t.Fatalf("valid brief does not validate: %v", err)
 	}
 	cases := map[string]any{
@@ -55,7 +57,7 @@ func TestReviewBriefSchema(t *testing.T) {
 	}
 	for name, brief := range cases {
 		t.Run(name, func(t *testing.T) {
-			if err := validationError(doc, doc, fixtureReviewDoc(brief)); err == nil {
+			if err := validationError(doc, doc, decodeWire(t, fixtureReviewDoc(brief))); err == nil {
 				t.Error("invalid brief validated")
 			}
 		})

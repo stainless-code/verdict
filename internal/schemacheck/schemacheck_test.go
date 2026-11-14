@@ -217,6 +217,18 @@ func TestPointerEscapes(t *testing.T) {
 	wantFailure(t, failures, `want type "string"`)
 }
 
+// TestIntegerTypeReadsTheSpelling proves the integer rule is about the JSON
+// literal, never the Go type: Validate accepts any decoded value, and a
+// float64 or int can only come from a decode that dropped the literal, so
+// neither may pass `type: integer`.
+func TestIntegerTypeReadsTheSpelling(t *testing.T) {
+	schema := decode(t, `{"type":"integer"}`)
+	for _, value := range []any{24.0, 24} {
+		failures := schemacheck.Validate(nil, schema, value)
+		wantFailure(t, failures, `want type "integer", got number`)
+	}
+}
+
 // TestDecodeKeepsNumbers proves the checker sees integers as integers and
 // keeps big values exact.
 func TestDecodeKeepsNumbers(t *testing.T) {
