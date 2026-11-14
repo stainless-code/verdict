@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -27,17 +28,19 @@ func TestUpsertIsIdempotentAndSorted(t *testing.T) {
 		`"note":null,"url":null,"detected_at":"2026-11-14T00:00:00Z","run":"kept"}`
 	writeStore(t, root, seeded+"\n")
 
-	_, appended, err := Upsert(root, &Row{
+	request := &Row{
 		SchemaVersion: "1", Bundle: "local-a", Sha: shaA, Paths: []string{"src/a.ts"},
 		Note: new("reverted in the same hour"), URL: new("https://example.test/inc/1"),
 		DetectedAt: "2026-11-14T00:00:01Z",
-	})
+	}
+	kept, appended, err := Upsert(root, request)
 	if err != nil {
 		t.Fatalf("Upsert: %v", err)
 	}
 	if !appended {
 		t.Fatal("first attach reported an existing row")
 	}
+	assertRow(t, "the appended row", kept, request)
 	want := `{"schema_version":"1","bundle":"local-a","sha":"` + shaA + `","paths":["src/a.ts"],` +
 		`"note":"reverted in the same hour","url":"https://example.test/inc/1",` +
 		`"detected_at":"2026-11-14T00:00:01Z"}` + "\n" + seeded + "\n"
@@ -46,7 +49,7 @@ func TestUpsertIsIdempotentAndSorted(t *testing.T) {
 	}
 
 	before := readStore(t, root)
-	_, appended, err = Upsert(root, &Row{
+	kept, appended, err = Upsert(root, &Row{
 		SchemaVersion: "1", Bundle: "local-a", Sha: shaA, Paths: []string{"src/other.ts"},
 		DetectedAt: "2027-01-01T00:00:00Z",
 	})
@@ -56,9 +59,42 @@ func TestUpsertIsIdempotentAndSorted(t *testing.T) {
 	if appended {
 		t.Fatal("second attach of the same pair reported an append")
 	}
+	// The existing path answers with the stored row, never the request's:
+	// every field below came from the first attach, not this one.
+	assertRow(t, "the existing row", kept, request)
 	if got := readStore(t, root); got != before {
 		t.Fatalf("second attach moved the ledger bytes: %q", got)
 	}
+}
+
+// assertRow pins kept to want field by field: the row a caller reports is the
+// row the ledger holds.
+func assertRow(t *testing.T, label string, kept, want *Row) {
+	t.Helper()
+	if kept == nil {
+		t.Fatalf("%s: Upsert returned no row", label)
+	}
+	if !slices.Equal(kept.Paths, want.Paths) {
+		t.Fatalf("%s paths = %q; want %q", label, kept.Paths, want.Paths)
+	}
+	if got, wantNote := deref(kept.Note), deref(want.Note); got != wantNote {
+		t.Fatalf("%s note = %q; want %q", label, got, wantNote)
+	}
+	if got, wantURL := deref(kept.URL), deref(want.URL); got != wantURL {
+		t.Fatalf("%s url = %q; want %q", label, got, wantURL)
+	}
+	if kept.SchemaVersion != want.SchemaVersion || kept.Bundle != want.Bundle ||
+		kept.Sha != want.Sha || kept.DetectedAt != want.DetectedAt {
+		t.Fatalf("%s identity = %+v; want %+v", label, *kept, *want)
+	}
+}
+
+// deref renders one optional row field, with "" for absent.
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // TestValidateRefusesUnstorableRows pins every rule the row has to satisfy:

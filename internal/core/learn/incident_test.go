@@ -10,6 +10,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/incident"
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 const (
@@ -244,6 +245,38 @@ func incidentList(t *testing.T, resp *Response, key string) []string {
 		out = append(out, text)
 	}
 	return out
+}
+
+// TestIncidentDryRunProjectsTheReadCap proves `--dry-run` refuses what the
+// write refuses: with the ledger 64 bytes under the 8 MiB read cap, both the
+// dry run and the real attach answer `ledger-too-large`, so the preview never
+// promises an append the write cannot make.
+func TestIncidentDryRunProjectsTheReadCap(t *testing.T) {
+	root := seedIncidentRepo(t)
+	writeIncidentBundle(t, root, "local-a", "[]")
+	path := filepath.Join(root, ".verdict", "incidents.jsonl")
+	seeded := ledgerNearCap()
+	if err := os.WriteFile(path, []byte(seeded), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, dry := range []bool{true, false} {
+		_, ref := Run(t.Context(), incidentRequest(root, func(req *Request) { req.DryRun = dry }))
+		if ref == nil || ref.Code != "ledger-too-large" {
+			t.Fatalf("dry=%v refusal = %v; want ledger-too-large", dry, ref)
+		}
+	}
+	if got := readIncidentFile(t, path); got != seeded {
+		t.Fatal("a refused attach moved the ledger")
+	}
+}
+
+// ledgerNearCap is a readable ledger whose next row passes the read cap: one
+// row for another bundle, 64 bytes short of jq.MaxKBBytes.
+func ledgerNearCap() string {
+	empty := `{"schema_version":"1","bundle":"local-b","sha":"` + strings.Repeat("b", 40) + `",` +
+		`"paths":["src/b.ts"],"note":"","url":null,"detected_at":"2026-11-14T00:00:00Z"}` + "\n"
+	note := strings.Repeat("n", int(jq.MaxKBBytes)-len(empty)-64)
+	return strings.Replace(empty, `"note":""`, `"note":"`+note+`"`, 1)
 }
 
 // TestIncidentRecordsTheResolvedBundle proves an alias and the bundle it names

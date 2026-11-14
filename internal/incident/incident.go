@@ -32,6 +32,9 @@ const (
 	keyNote          = "note"
 	keyURL           = "url"
 	keyDetectedAt    = "detected_at"
+	// newline is the byte every ledger row ends with: the reader splits on it
+	// and the writer appends it.
+	newline int64 = 1
 )
 
 // Store-read sentinels: callers keep their own postures, so the reader says
@@ -110,15 +113,46 @@ func Upsert(root string, row *Row) (*Row, bool, error) {
 	if err != nil && !errors.Is(err, ErrMissing) {
 		return nil, false, err
 	}
-	if existing, ok := stored(lines, row); ok {
-		kept := existing.row
-		return &kept, false, nil
+	kept, appended, text, err := plan(lines, row)
+	if err != nil || !appended {
+		return kept, appended, err
 	}
-	if err := writeLines(root, append(lines, line{row: *row, text: encode(row)})); err != nil {
+	if err := writeLines(root, append(lines, line{row: *row, text: text})); err != nil {
 		return nil, false, err
 	}
+	return kept, true, nil
+}
+
+// Plan answers what [Upsert] would do with row, without writing: the row the
+// ledger would hold for the pair, whether the pair is new, and the refusal the
+// write would earn — the same refusal, so a dry run never promises an append
+// the write refuses. It takes no lock, like every other read.
+func Plan(root string, row *Row) (*Row, bool, error) {
+	if err := Validate(row); err != nil {
+		return nil, false, err
+	}
+	lines, err := readLines(root)
+	if err != nil && !errors.Is(err, ErrMissing) {
+		return nil, false, err
+	}
+	kept, appended, _, err := plan(lines, row)
+	return kept, appended, err
+}
+
+// plan settles row against the ledger's lines without writing: the row the
+// write would keep, whether it would append, the encoded line it would write,
+// and the refusal it would earn.
+func plan(lines []line, row *Row) (*Row, bool, string, error) {
+	if existing, ok := stored(lines, row); ok {
+		kept := existing.row
+		return &kept, false, "", nil
+	}
+	text := encode(row)
+	if err := refuseOverCap(size(lines) + int64(len(text)) + newline); err != nil {
+		return nil, false, "", err
+	}
 	appended := *row
-	return &appended, true, nil
+	return &appended, true, text, nil
 }
 
 // stored returns the ledger's line for the (bundle, sha) pair.
@@ -131,19 +165,35 @@ func stored(lines []line, row *Row) (line, bool) {
 	return line{}, false
 }
 
+// size is the ledger's byte length as lines: each row's own bytes plus the
+// newline that ends it. Stored text, not a re-encode, so a field this build
+// does not read still counts.
+func size(lines []line) int64 {
+	total := int64(0)
+	for _, l := range lines {
+		total += int64(len(l.text)) + newline
+	}
+	return total
+}
+
+// refuseOverCap rejects a ledger the reader could not open: the write would
+// succeed and every later Read — and `trend --incidents` with it — would report
+// a corrupt store.
+func refuseOverCap(bytes int64) error {
+	if bytes <= jq.MaxKBBytes {
+		return nil
+	}
+	return fmt.Errorf("%w: %d bytes would pass the %d-byte read cap", //nolint:wrapcheck // the sentinel is the contract
+		ErrTooLarge, bytes, jq.MaxKBBytes)
+}
+
 // writeLines sorts rows by bundle then sha and replaces the ledger atomically.
-// A result past the read cap refuses instead of landing: the write would
-// succeed and every later Read would report a corrupt store.
 func writeLines(root string, lines []line) error {
 	slices.SortStableFunc(lines, compareLines)
 	var sb strings.Builder
 	for _, l := range lines {
 		sb.WriteString(l.text)
 		sb.WriteByte('\n')
-	}
-	if int64(sb.Len()) > jq.MaxKBBytes {
-		return fmt.Errorf("%w: %d bytes would pass the %d-byte read cap", //nolint:wrapcheck // the sentinel is the contract
-			ErrTooLarge, sb.Len(), jq.MaxKBBytes)
 	}
 	return atomic.WriteFile(path(root), []byte(sb.String()))
 }

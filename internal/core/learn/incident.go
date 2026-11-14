@@ -146,22 +146,16 @@ func (st *state) incidentRefusal(err error) *core.RefusalError {
 }
 
 // previewAttach answers what a write would do without touching the ledger: the
-// row it would keep — the stored one when the pair is already there — and what
-// the attach would report.
+// row it would keep — the stored one when the pair is already there — what the
+// attach would report, and the refusal the write would earn. It projects
+// through the same decision the write takes, so a dry run never promises an
+// append the write refuses.
 func (st *state) previewAttach(row *incident.Row) (*incident.Row, string, *core.RefusalError) {
-	rows, err := incident.Read(st.root)
-	if errors.Is(err, incident.ErrMissing) {
-		return row, attachedText(true), nil
-	}
+	kept, appended, err := incident.Plan(st.root, row)
 	if err != nil {
-		return nil, "", st.corruptIncident()
+		return nil, "", st.incidentRefusal(err)
 	}
-	for i := range rows {
-		if rows[i].Bundle == row.Bundle && rows[i].Sha == row.Sha {
-			return &rows[i], attachedText(false), nil
-		}
-	}
-	return row, attachedText(true), nil
+	return kept, attachedText(appended), nil
 }
 
 // corruptIncident reports an unreadable ledger: a silent drop would lose
