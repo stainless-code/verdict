@@ -493,49 +493,60 @@ func TestRun_BadSARIFInputs(t *testing.T) {
 
 func TestRun_ExclusionsUnderSymlinkedAncestor(t *testing.T) {
 	isolateTestEnv(t)
-	realParent, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	realRepo := filepath.Join(realParent, "repo")
-	bundleDir := filepath.Join(realRepo, ".verdict", "state", "44")
-	if err := os.MkdirAll(bundleDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	mustWriteTestFile(t, filepath.Join(bundleDir, "PR.json"), "{\"headRefOid\":\"abc1234\"}\n")
-	mustWriteTestFile(t, filepath.Join(bundleDir, "full.diff"), sampleDiff)
-	mustWriteTestFile(t, filepath.Join(bundleDir, "excluded.json"), `{"schema_version": "1", "excluded": [{"path": "vendor/gen.go", "rule_id": "builtin:vendor", "bytes": 120}]}`+"\n")
-
-	linkParent := filepath.Join(realParent, "link-parent")
-	if err := os.Symlink(realRepo, linkParent); err != nil {
-		t.Fatal(err)
-	}
+	realParent, linkParent, bundleDir := setupSymlinkedAncestorBundle(t)
 
 	payload := `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"semgrep"}},"results":[{"ruleId":"go.vendor.rule","level":"error","message":{"text":"Generated vendor issue"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"vendor/gen.go"},"region":{"startLine":1}}}]}]}]}`
-	resp, ref := runIngestBytes(linkParent, "44", []byte(payload))
-	if ref != nil {
-		t.Fatalf("unexpected refusal: %+v", ref)
-	}
-	if resp.Data.Withheld != 1 {
+	if resp := mustRunIngest(t, linkParent, "44", payload); resp.Data.Withheld != 1 {
 		t.Fatalf("withheld = %d, want 1 under symlinked repoRoot ancestor", resp.Data.Withheld)
 	}
 
 	// A symlinked excluded.json inside the bundle must still be ignored by ReadConfined.
 	for _, name := range []string{"excluded.json", "findings.json"} {
-		if err := os.Remove(filepath.Join(bundleDir, name)); err != nil {
-			t.Fatal(err)
-		}
+		mustRemoveTestFile(t, filepath.Join(bundleDir, name))
 	}
 	outsideExcl := filepath.Join(realParent, "outside-excluded.json")
 	mustWriteTestFile(t, outsideExcl, `{"schema_version": "1", "excluded": [{"path": "vendor/gen.go", "rule_id": "builtin:vendor", "bytes": 120}]}`+"\n")
 	if err := os.Symlink(outsideExcl, filepath.Join(bundleDir, "excluded.json")); err != nil {
 		t.Fatal(err)
 	}
-	resp2, ref2 := runIngestBytes(linkParent, "44", []byte(payload))
-	if ref2 != nil {
-		t.Fatalf("unexpected refusal on symlinked excluded.json: %+v", ref2)
+	if resp := mustRunIngest(t, linkParent, "44", payload); resp.Data.Withheld != 0 {
+		t.Fatalf("withheld = %d, want 0 when excluded.json itself is a symlink", resp.Data.Withheld)
 	}
-	if resp2.Data.Withheld != 0 {
-		t.Fatalf("withheld = %d, want 0 when excluded.json itself is a symlink", resp2.Data.Withheld)
+}
+
+func setupSymlinkedAncestorBundle(t *testing.T) (realParent, linkParent, bundleDir string) {
+	t.Helper()
+	var err error
+	if realParent, err = filepath.EvalSymlinks(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	realRepo := filepath.Join(realParent, "repo")
+	bundleDir = filepath.Join(realRepo, ".verdict", "state", "44")
+	if err := os.MkdirAll(bundleDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteTestFile(t, filepath.Join(bundleDir, "PR.json"), "{\"headRefOid\":\"abc1234\"}\n")
+	mustWriteTestFile(t, filepath.Join(bundleDir, "full.diff"), sampleDiff)
+	mustWriteTestFile(t, filepath.Join(bundleDir, "excluded.json"), `{"schema_version": "1", "excluded": [{"path": "vendor/gen.go", "rule_id": "builtin:vendor", "bytes": 120}]}`+"\n")
+	linkParent = filepath.Join(realParent, "link-parent")
+	if err := os.Symlink(realRepo, linkParent); err != nil {
+		t.Fatal(err)
+	}
+	return realParent, linkParent, bundleDir
+}
+
+func mustRunIngest(t *testing.T, repoRoot, pr, payload string) *Response {
+	t.Helper()
+	resp, ref := runIngestBytes(repoRoot, pr, []byte(payload))
+	if ref != nil {
+		t.Fatalf("unexpected refusal: %+v", ref)
+	}
+	return resp
+}
+
+func mustRemoveTestFile(t *testing.T, path string) {
+	t.Helper()
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
 	}
 }

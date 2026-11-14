@@ -150,8 +150,9 @@ func decodeScore(v any) (float64, bool) {
 
 // CleanURI validates and normalizes a SARIF artifactLocation.uri into a
 // repository-relative POSIX path, rejecting NUL bytes, ASCII control chars,
-// leading/trailing whitespace, backslashes, Windows drive prefixes, URL schemes,
-// leading slashes, and ".." traversal segments (both raw and percent-decoded).
+// leading or trailing whitespace, backslashes, Windows drive prefixes, URL
+// schemes, leading slashes, and ".." traversal segments (both raw and
+// percent-decoded).
 func CleanURI(raw string) (string, error) {
 	if raw == "" {
 		return "", nil
