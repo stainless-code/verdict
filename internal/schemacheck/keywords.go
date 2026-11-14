@@ -444,18 +444,20 @@ func jsonType(value any) string {
 	}
 }
 
-// isInteger reports whether value is an integer, as JSON Schema defines one: a
-// number whose value has no fractional part, however it is spelled. 24.0 and
-// 1e2 are integers; 1.5 is not, and a value Float64 cannot hold refuses rather
-// than rounding into the type.
+// isInteger reports whether value is an integer under this repository's one
+// rule: an integer is written as an integer literal, with no fraction and no
+// exponent. 24 is one; 24.0 and 1e2 are not, even though JSON Schema reads them
+// as integral values — the config reader and the pack manifest decode into Go
+// integers and refuse those spellings, so a schema that accepted them would
+// pass a document the binary then refuses with bad-config or bad-pack.
 func isInteger(value any) bool {
 	switch number := value.(type) {
 	case json.Number:
-		if _, err := number.Int64(); err == nil {
-			return true
+		if strings.ContainsAny(number.String(), ".eE") {
+			return false
 		}
-		converted, err := number.Float64()
-		return err == nil && converted == math.Trunc(converted)
+		_, err := number.Int64()
+		return err == nil
 	case float64:
 		return number == math.Trunc(number)
 	case int:

@@ -72,10 +72,12 @@ func TestSchemaAndParserAgree(t *testing.T) {
 			strings.Repeat("x", 280) + `","synthesize":{}}`), true},
 		{"281-character description", recipeDocument(`{"version":"1.0.0","description":"` +
 			strings.Repeat("x", 281) + `","synthesize":{}}`), false},
-		{"integral cap with a zero fraction", recipeDocument(
-			`{"version":"1.0.0","lenses":[{"id":"logic","max_files":24.0}],"synthesize":{}}`), true},
-		{"integral cap as an exponent", recipeDocument(
-			`{"version":"1.0.0","lenses":[{"id":"logic","max_files":1e1}],"synthesize":{}}`), true},
+		// An integer is an integer literal: the config and pack readers refuse
+		// a zero fraction and an exponent, so the schema refuses them here too.
+		{"cap with a zero fraction", recipeDocument(
+			`{"version":"1.0.0","lenses":[{"id":"logic","max_files":24.0}],"synthesize":{}}`), false},
+		{"cap as an exponent", recipeDocument(
+			`{"version":"1.0.0","lenses":[{"id":"logic","max_files":1e1}],"synthesize":{}}`), false},
 		{"fractional cap", recipeDocument(
 			`{"version":"1.0.0","lenses":[{"id":"logic","max_files":1.5}],"synthesize":{}}`), false},
 		{"cap above the range", recipeDocument(

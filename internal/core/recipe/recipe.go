@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
-	"math"
 	"regexp"
 	"slices"
 	"strconv"
@@ -394,22 +393,23 @@ func capAt(obj map[string]any, path, key string, lo, hi int) (int, *core.Refusal
 	return intAt(raw, path+"."+key, lo, hi)
 }
 
-// intAt requires a JSON number with no fractional part in the inclusive range.
-// JSON Schema reads 24.0 and 1e2 as integers, so this accepts every spelling of
-// one: the schema and the parser must accept exactly the same documents.
+// intAt requires a JSON integer in the inclusive range. An integer is written
+// as an integer literal — no fraction, no exponent — the same rule the config
+// and pack readers follow, so the published schema and this parser accept one
+// document: 24.0 and 1e2 refuse on both sides.
 func intAt(raw any, path string, lo, hi int) (int, *core.RefusalError) {
 	num, ok := raw.(json.Number)
 	if !ok {
 		return 0, refuse(CodeBad, "%s: want a number, got %s", path, strictjson.Kind(raw))
 	}
-	value, err := strconv.ParseFloat(num.String(), floatBits)
-	if err != nil || value != math.Trunc(value) {
+	value, err := strconv.Atoi(num.String())
+	if err != nil {
 		return 0, refuse(CodeBad, "%s: want an integer, got %s", path, num)
 	}
-	if value < float64(lo) || value > float64(hi) {
+	if value < lo || value > hi {
 		return 0, refuse(CodeBad, "%s: want an integer %d..%d, got %s", path, lo, hi, num)
 	}
-	return int(value), nil
+	return value, nil
 }
 
 // floatBits is the width ParseFloat reads: a declared amount is a float64.

@@ -80,7 +80,9 @@ func TestParseRefusals(t *testing.T) {
 		{"max_files over", doc(`{"version":"1.0.0","lenses":[{"id":"logic","max_files":25}],"synthesize":{}}`), `$.recipes.quick.lenses[0].max_files: want an integer 1..24, got 25`},
 		{"max_findings under", doc(`{"version":"1.0.0","lenses":[{"id":"logic","max_findings":0}],"synthesize":{}}`), `$.recipes.quick.lenses[0].max_findings: want an integer 1..20, got 0`},
 		{"max_findings fraction", doc(`{"version":"1.0.0","lenses":[{"id":"logic","max_findings":1.5}],"synthesize":{}}`), `$.recipes.quick.lenses[0].max_findings: want an integer, got 1.5`},
-		{"max_files spelled over", doc(`{"version":"1.0.0","lenses":[{"id":"logic","max_files":25.0}],"synthesize":{}}`), `$.recipes.quick.lenses[0].max_files: want an integer 1..24, got 25.0`},
+		{"max_files spelled over", doc(`{"version":"1.0.0","lenses":[{"id":"logic","max_files":25.0}],"synthesize":{}}`), `$.recipes.quick.lenses[0].max_files: want an integer, got 25.0`},
+		{"max_files zero fraction", doc(`{"version":"1.0.0","lenses":[{"id":"logic","max_files":24.0}],"synthesize":{}}`), `$.recipes.quick.lenses[0].max_files: want an integer, got 24.0`},
+		{"max_files exponent", doc(`{"version":"1.0.0","lenses":[{"id":"logic","max_files":1e1}],"synthesize":{}}`), `$.recipes.quick.lenses[0].max_files: want an integer, got 1e1`},
 		{"recipe key too long", `{"schema_version":"1","recipes":{"` + strings.Repeat("r", 65) + `":` + entryValid + `}}`, `$.recipes: recipe key "` + strings.Repeat("r", 65) + `" is not a lowercase slug`},
 		{"lens model whitespace", doc(`{"version":"1.0.0","lenses":[{"id":"logic","model":"opus 4"}],"synthesize":{}}`), `$.recipes.quick.lenses[0].model: "opus 4" is not a model hint`},
 		{"lens model quote", doc(`{"version":"1.0.0","lenses":[{"id":"logic","model":"o\"pus"}],"synthesize":{}}`), `$.recipes.quick.lenses[0].model: "o\"pus" is not a model hint`},
@@ -126,14 +128,15 @@ func TestParseAcceptsFullEntry(t *testing.T) {
 	}
 }
 
-// TestParseAcceptsSchemaValidSpellings proves the three rules the published
-// schema states, so the parser cannot refuse a document a third-party
-// validator accepts: an empty description is a description, an integral number
-// is an integer however it is spelled, and a recipe name is the map key.
-func TestParseAcceptsSchemaValidSpellings(t *testing.T) {
-	doc := parsed(t, `{"schema_version":"1","recipes":{"quick":{"version":"1.0.0","description":"",`+
-		`"lenses":[{"id":"logic","max_files":24.0,"max_findings":1e1}],"synthesize":{}}}}`)
-	quick := doc.Recipes["quick"]
+// TestParseAcceptsWhatTheSchemaPublishes pins the two rules the published
+// schema states, so the parser cannot refuse a document a third-party validator
+// accepts: an empty description is a description (the schema publishes no
+// minLength), and an integer is an integer literal (24, not 24.0 — the config
+// and pack readers refuse the fraction spelling, so the schema does too).
+func TestParseAcceptsWhatTheSchemaPublishes(t *testing.T) {
+	parsedDoc := parsed(t, `{"schema_version":"1","recipes":{"quick":{"version":"1.0.0","description":"",`+
+		`"lenses":[{"id":"logic","max_files":24,"max_findings":10}],"synthesize":{}}}}`)
+	quick := parsedDoc.Recipes["quick"]
 	if quick.Description != "" {
 		t.Errorf("description = %q, want the empty string", quick.Description)
 	}
@@ -142,6 +145,10 @@ func TestParseAcceptsSchemaValidSpellings(t *testing.T) {
 	}
 	if got := quick.Lenses[0]; got.MaxFiles != 24 || got.MaxFindings != 10 {
 		t.Errorf("caps = %d/%d, want 24/10", got.MaxFiles, got.MaxFindings)
+	}
+	for _, spelled := range []string{"24.0", "1e1"} {
+		checkRefusal(t, doc(`{"version":"1.0.0","lenses":[{"id":"logic","max_files":`+spelled+`}],"synthesize":{}}`),
+			"want an integer, got "+spelled)
 	}
 }
 
