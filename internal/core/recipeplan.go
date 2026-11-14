@@ -27,6 +27,14 @@ type RecipeStage struct { //nolint:govet // field order is the published stage o
 	Model      string       `json:"model,omitempty"`
 }
 
+// RecipeStageRender names the one pipeline stage a `--print --stage <n>` render
+// covers: its 1-based position in the plan, so the stage's own detail is the
+// plan's row at that position, and the stage kind at that position.
+type RecipeStageRender struct { //nolint:govet // field order is the published data.stage order
+	Index int    `json:"index"                         max:"4"     min:"1"`
+	Kind  string `enum:"lenses|synthesize|dedupe|rank" json:"kind"`
+}
+
 // RecipeLens is one lens the lenses stage names, with the hint and caps the
 // recipe declared for it.
 type RecipeLens struct {

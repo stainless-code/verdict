@@ -149,6 +149,65 @@ assert_json_field "a lens-less default run warns about nothing" "0" '.warnings |
 assert_json_field "the rendered argv names the built-in pipeline" "true" \
   '.data.argv[-1] | contains("recipe default@1.0.0 (builtin)")'
 
+# --- (xii) --stage renders one stage's command, launching nothing ----------
+# One stage at a time is the operator's own CI chaining models: the render names
+# the stage, its declared hint (as the agent's model argument) and caps, and the
+# review.json the stages chain through. Verdict itself still starts no process.
+export STUB_AGENT_MODE=none
+stage_spawns="$(spawns)"
+run_review run acme/app local-demo --agent claude --recipe quick --print --stage 2 --json
+assert_exit "--print --stage exits 0 without launching" 0
+assert_envelope "--print --stage"
+assert_json_field "data.stage names the rendered position" "2" '.data.stage.index'
+assert_json_field "data.stage names the stage kind" "synthesize" '.data.stage.kind'
+assert_json_field "the rendered command carries the stage's declared model" "claude -p --model opus" \
+  '.data.argv[:4] | join(" ")'
+assert_json_field "the stage directive names the stage and its declared hint" "true" \
+  '.data.argv[-1] | contains("stage 2 of 4 (synthesize) of recipe quick@1.2.3 (repo)") and contains("(model hint opus)")'
+assert_json_field "the stage directive names the review it reads" "true" \
+  '.data.argv[-1] | contains("Read .verdict/state/local-demo/review.json, the review the previous stage wrote.")'
+assert_json_field "data.recipe still records the whole pipeline" "4" '.data.recipe.stages | length'
+assert_eq "--print --stage launched no agent process" "$stage_spawns" "$(spawns)"
+if [ ! -e "$LAUNCHER" ] && [ ! -e "$BUNDLE/review.json" ]; then
+  good "--print --stage wrote no launcher record and no review"
+else
+  bad "--print --stage wrote into the bundle (launcher.json or review.json)"
+fi
+
+run_review run acme/app local-demo --agent claude --recipe quick --print --stage 1 --json
+assert_exit "the lens stage renders its own command" 0
+assert_json_field "the lens stage renders the declared lens hint and caps" "true" \
+  '.data.argv[-1] | contains("logic (model sonnet, max_files 8, max_findings 6)")'
+assert_json_field "the lens stage renders no model argument" "claude -p" '.data.argv[:2] | join(" ")'
+assert_json_field "the lens stage's argv is the agent flags and one directive" "3" '.data.argv | length'
+assert_json_field "the first stage reads no previous review" "true" \
+  '.data.argv[-1] | contains("the previous stage wrote") | not'
+
+# --- (xiii) every --stage refusal lands before any process -----------------
+run_review run acme/app local-demo --agent claude --recipe quick --stage 2 --json
+assert_exit "--stage without --print refuses" 1
+assert_refusal "--stage without --print" "bad-flags"
+assert_json_field "the refusal names what a stage render needs" "true" \
+  '.error.message | contains("renders one stage'"'"'s command for --print")'
+
+run_review run acme/app local-demo --agent claude --print --stage 2 --json
+assert_exit "--stage without --recipe refuses" 1
+assert_refusal "--stage without --recipe" "bad-flags"
+assert_json_field "the refusal names the missing pipeline" "true" \
+  '.error.message | contains("--recipe is missing")'
+
+run_review run acme/app local-demo --agent claude --recipe quick --print --stage 5 --json
+assert_exit "a stage index past the last stage refuses" 1
+assert_refusal "a stage index past the last stage" "bad-flags"
+assert_json_field "the refusal names the four resolved stages" "true" \
+  '.error.message | contains("1 lenses, 2 synthesize, 3 dedupe, 4 rank")'
+
+run_review run acme/app local-demo --agent claude --recipe quick --print --stage 2 -- --model sonnet
+assert_exit "a pass-through model against a declared hint refuses" 1
+assert_file_grep "the refusal names the declared hint" "$EVAL_ERR" \
+  "--print --stage 2 renders the declared model hint 'opus'" "-F"
+assert_eq "no --stage refusal launched an agent process" "$stage_spawns" "$(spawns)"
+
 # --- (viii) a budget over the personal limit warns once ---------------------
 run_review run acme/app local-demo --agent claude --recipe spendy --print --json
 assert_exit "an over-limit budget still runs" 0

@@ -5,34 +5,53 @@ import (
 )
 
 // agentDef is one launch definition: the --agent name an operator types, the
-// binary it spawns, and the non-interactive argument shape that binary uses to
-// answer once and exit.
+// binary it spawns, the flag that binary takes a model on, and the
+// non-interactive argument shape that binary uses to answer once and exit.
 //
 // The launcher reads every field and branches on none, so adding an agent is
 // adding a row to [agentDefs] — data, not a code path. The one convention every
 // row obeys is the argument order the launcher builds (see [argvFor]):
 //
-//	<binary> <args...> [<passthrough...>] <prompt>
+//	<binary> <args...> [<modelflag> <model>] [<passthrough...>] <prompt>
 //
 // The agent's own non-interactive flags come first so the operator's
 // pass-through arguments cannot cancel them, the operator's flags come next so
 // per-agent model/cost selection stays the operator's business, and the
 // tool-generated directive is the last argument. A binary that wants its prompt
-// somewhere else (a file path, stdin) does not fit this shape yet.
+// somewhere else (a file path, stdin) does not fit this shape yet. ModelFlag is
+// read only by a --print --stage render, which prints the stage's declared hint
+// as that argument; a launch never composes one.
 type agentDef struct {
-	Name    string
-	Binary  string
-	Install string
-	Args    []string
+	Name      string
+	Binary    string
+	Install   string
+	ModelFlag string
+	Args      []string
 }
+
+// modelFlag is the argument every shipped row takes a model name on; a row
+// whose binary spells it differently carries its own value.
+const modelFlag = "--model"
 
 // agentDefs is the shipped agent table, sorted by name. Every row is data: a
 // new agent is a new entry here, and nothing else in the launcher changes.
 var agentDefs = []agentDef{
-	{Name: "claude", Binary: "claude", Args: []string{"-p"}, Install: "install claude using its official installer"},
-	{Name: "codex", Binary: "codex", Args: []string{"exec"}, Install: "npm install -g @openai/codex"},
-	{Name: "cursor", Binary: "cursor-agent", Args: []string{"-p"}, Install: "install cursor-agent using the Cursor CLI installer"},
-	{Name: "opencode", Binary: "opencode", Args: []string{"run"}, Install: "npm install -g opencode-ai"},
+	{
+		Name: "claude", Binary: "claude", ModelFlag: modelFlag, Args: []string{"-p"},
+		Install: "install claude using its official installer",
+	},
+	{
+		Name: "codex", Binary: "codex", ModelFlag: modelFlag, Args: []string{"exec"},
+		Install: "npm install -g @openai/codex",
+	},
+	{
+		Name: "cursor", Binary: "cursor-agent", ModelFlag: modelFlag, Args: []string{"-p"},
+		Install: "install cursor-agent using the Cursor CLI installer",
+	},
+	{
+		Name: "opencode", Binary: "opencode", ModelFlag: modelFlag, Args: []string{"run"},
+		Install: "npm install -g opencode-ai",
+	},
 }
 
 // lookupAgent resolves one --agent name against the table.
@@ -56,12 +75,16 @@ func AgentNames() []string {
 }
 
 // argvFor builds the exact argv the launcher spawns, and the same argv --print
-// renders: the binary, the definition's non-interactive flags, the operator's
+// renders: the binary, the definition's non-interactive flags, the model hint a
+// --print --stage render declares (empty for everything else), the operator's
 // pass-through arguments unchanged, then the directive.
-func argvFor(def agentDef, passthrough []string, prompt string) []string {
-	argv := make([]string, 0, len(def.Args)+len(passthrough)+2)
+func argvFor(def *agentDef, model string, passthrough []string, prompt string) []string {
+	var argv []string
 	argv = append(argv, def.Binary)
 	argv = append(argv, def.Args...)
+	if model != "" {
+		argv = append(argv, def.ModelFlag, model)
+	}
 	argv = append(argv, passthrough...)
 	return append(argv, prompt)
 }

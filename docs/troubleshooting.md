@@ -176,7 +176,7 @@ Fix: remove the credential key named above and export it as an environment crede
 
 ## `bad-flags`
 
-Cause: the flag combination is not valid (e.g. `--range`/`--base`/`--staged`/`--stash` are mutually exclusive, or `learn` got no mode), or a bundle positional is not one path element (`../other`, `a/b`, `a\b`, `.`, `..`, and an empty name all refuse this way, since a bundle name is a PR number or a fetch-local slug, never a path).
+Cause: the flag combination is not valid (e.g. `--range`/`--base`/`--staged`/`--stash` are mutually exclusive, or `learn` got no mode), or a bundle positional is not one path element (`../other`, `a/b`, `a\b`, `.`, `..`, and an empty name all refuse this way, since a bundle name is a PR number or a fetch-local slug, never a path). `run --stage` joins this list: it renders one stage only, so it wants both `--print` and `--recipe`, an index inside the plan's stages, and no pass-through `--model`/`-m` when that stage declares a hint.
 
 Fix: re-run with a valid combination — the message names the clash.
 

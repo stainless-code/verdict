@@ -71,7 +71,7 @@ var manualSurfaces = []manualSurface{
 		heading: "### Recipes (declared review pipelines)",
 		terms: []string{
 			"--recipe", ".verdict/recipes.json", "data.recipe", "launcher.json",
-			"bad-recipe", "unknown-recipe",
+			"bad-recipe", "unknown-recipe", "--stage <n>", "data.stage",
 		},
 	},
 	{

@@ -3,12 +3,14 @@ package run
 import (
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1064,4 +1066,208 @@ func builtinPlan(t *testing.T) *recipe.Plan {
 		t.Fatalf("recipe.Resolve: %v", ref)
 	}
 	return plan
+}
+
+// stageOf returns a response's data.stage as decoded JSON, failing when the
+// published field is absent.
+func stageOf(t *testing.T, resp *core.RunResponse) map[string]any {
+	t.Helper()
+	stage, ok := jq.AsMap(runData(t, resp)["stage"])
+	if !ok {
+		t.Fatalf("data.stage = %v, want the rendered stage", runData(t, resp)["stage"])
+	}
+	return stage
+}
+
+// assertStageRender pins one --print --stage render: the argv the stage
+// composes, every fragment its directive must carry, the published data.stage,
+// and that nothing ran or was written.
+func assertStageRender(t *testing.T, resp *core.RunResponse, cmdr *scripted, root string,
+	index int, kind string, fragments []string,
+) {
+	t.Helper()
+	if cmdr.calls != 0 {
+		t.Errorf("spawns = %d, want 0 under --print", cmdr.calls)
+	}
+	assertArgvPrefix(t, resp.Data.Argv, argvParts(kind))
+	assertPromptCarries(t, resp.Data.Argv[len(resp.Data.Argv)-1], fragments)
+	stage := stageOf(t, resp)
+	if jq.StrOf(stage["kind"]) != kind || strconv.Itoa(index) != fmt.Sprint(stage["index"]) {
+		t.Errorf("data.stage = %v, want index %d %s", stage, index, kind)
+	}
+	assertPrintWroteNothing(t, root)
+}
+
+// assertPromptCarries fails every fragment the rendered directive omits.
+func assertPromptCarries(t *testing.T, prompt string, fragments []string) {
+	t.Helper()
+	for _, fragment := range fragments {
+		if !strings.Contains(prompt, fragment) {
+			t.Errorf("stage directive does not carry %q:\n%s", fragment, prompt)
+		}
+	}
+}
+
+// assertPrintWroteNothing proves a --print render touched neither artifact.
+func assertPrintWroteNothing(t *testing.T, root string) {
+	t.Helper()
+	for _, name := range []string{launcherFile, reviewFile} {
+		if _, err := os.Stat(filepath.Join(bundleDir(root), name)); err == nil {
+			t.Errorf("--print wrote %s; it must touch nothing", name)
+		}
+	}
+}
+
+// argvParts is the agent flags one stage render composes before its directive:
+// the synthesizer's declared hint as the model argument, and nothing for a
+// stage that declares no single hint.
+func argvParts(kind string) []string {
+	if kind == recipe.StageSynthesize {
+		return []string{"claude", "-p", modelFlag, "opus"}
+	}
+	return []string{"claude", "-p"}
+}
+
+// TestRunPrintRendersOneStage proves --print --stage composes one stage's
+// command: the declared synthesizer hint becomes the agent's model argument,
+// the prompt names the stage and the review the previous one wrote, and nothing
+// is launched or written.
+func TestRunPrintRendersOneStage(t *testing.T) {
+	root := fixtureRoot(t)
+	recipeControl(t, root, repoRecipe)
+	cmdr := &scripted{}
+	resp := printStage(t, root, cmdr, "2")
+	assertStageRender(t, resp, cmdr, root, 2, recipe.StageSynthesize, []string{
+		"stage 2 of 4 (synthesize) of recipe quick@1.2.3 (repo)",
+		"Read .verdict/state/42/review.json, the review the previous stage wrote.",
+		"Synthesize one review from those findings",
+		"(model hint opus)",
+	})
+}
+
+// TestRunPrintStageLensesNamesTheDeclaredCaps proves a lens stage renders the
+// rows the recipe declared, with their hints and caps, and no model argument:
+// one stage's lenses each get their own hint, so the argv names none.
+func TestRunPrintStageLensesNamesTheDeclaredCaps(t *testing.T) {
+	root := fixtureRoot(t)
+	recipeControl(t, root, repoRecipe)
+	cmdr := &scripted{}
+	resp := printStage(t, root, cmdr, "1")
+	assertStageRender(t, resp, cmdr, root, 1, recipe.StageLenses, []string{
+		"stage 1 of 4 (lenses) of recipe quick@1.2.3 (repo)",
+		"logic (model sonnet, max_files 8, max_findings 6)",
+	})
+	if prompt := resp.Data.Argv[len(resp.Data.Argv)-1]; strings.Contains(prompt, "the previous stage wrote") {
+		t.Errorf("the first stage reads a previous review:\n%s", prompt)
+	}
+}
+
+// printStage drives one --print --stage render of the quick repository recipe.
+func printStage(t *testing.T, root string, cmdr *scripted, stage string) *core.RunResponse {
+	t.Helper()
+	req := request(root, cmdr)
+	req.Print, req.Recipe, req.StageRaw = true, "quick", stage
+	resp, ref := Run(t.Context(), req)
+	if ref != nil {
+		t.Fatalf("Run refused: %v", ref)
+	}
+	return resp
+}
+
+// TestRunPrintWithoutAStageRendersThePipeline proves the plain --print path is
+// untouched: no data.stage, and the argv is the agent flags plus the one
+// whole-pipeline directive.
+func TestRunPrintWithoutAStageRendersThePipeline(t *testing.T) {
+	root := fixtureRoot(t)
+	recipeControl(t, root, repoRecipe)
+	req := request(root, &scripted{})
+	req.Print = true
+	req.Recipe = "quick"
+	resp, ref := Run(t.Context(), req)
+	if ref != nil {
+		t.Fatalf("Run refused: %v", ref)
+	}
+	if _, ok := runData(t, resp)["stage"]; ok {
+		t.Errorf("data.stage = %v, want it absent without --stage", runData(t, resp)["stage"])
+	}
+	if len(resp.Data.Argv) != 3 || resp.Data.Argv[0] != "claude" || resp.Data.Argv[1] != "-p" {
+		t.Fatalf("argv = %q, want the agent flags and one directive", resp.Data.Argv)
+	}
+	if prompt := resp.Data.Argv[2]; strings.Contains(prompt, "stage 1 of 4") {
+		t.Errorf("the whole-pipeline directive names one stage:\n%s", prompt)
+	}
+}
+
+// stageRefusalCase is one --stage refusal: the flags it is asked with, and the
+// message fragment it owes the operator.
+type stageRefusalCase struct {
+	stage    string
+	want     string
+	printOn  bool
+	noRecipe bool
+}
+
+// TestRunStageRefusals pins every --stage refusal: the flag renders one stage
+// under --print for a declared recipe, and it owns the model argument.
+func TestRunStageRefusals(t *testing.T) {
+	cases := map[string]stageRefusalCase{
+		"--stage without --print": {
+			stage: "2", want: "run --stage renders one stage's command for --print",
+		},
+		"--stage without --recipe": {
+			stage: "2", printOn: true, noRecipe: true,
+			want: "--recipe is missing (the built-in default declares no lens hints or caps)",
+		},
+		"--stage past the last stage": {
+			stage: "5", printOn: true,
+			want: "--stage must be one of 1 lenses, 2 synthesize, 3 dedupe, 4 rank, got '5'",
+		},
+		"--stage with a signed index": {
+			stage: "+2", printOn: true,
+			want: "--stage must be one of 1 lenses, 2 synthesize, 3 dedupe, 4 rank, got '+2'",
+		},
+	}
+	for _, name := range slices.Sorted(maps.Keys(cases)) {
+		tc := cases[name]
+		t.Run(name, func(t *testing.T) {
+			assertStageRefusal(t, &tc, nil)
+		})
+	}
+}
+
+// TestRunStageRefusesAModelAgainstTheDeclaredHint proves the render owns the
+// model argument: asking for the declared hint and a pass-through model at once
+// refuses instead of letting one of the two values quietly win.
+func TestRunStageRefusesAModelAgainstTheDeclaredHint(t *testing.T) {
+	assertStageRefusal(t, &stageRefusalCase{
+		stage: "2", printOn: true,
+		want: "--print --stage 2 renders the declared model hint 'opus'; drop --model/-m after '--'",
+	}, []string{modelFlag, "sonnet"})
+}
+
+// assertStageRefusal drives one --stage refusal and pins its code, its message
+// fragment, its hint, and that no process started.
+func assertStageRefusal(t *testing.T, tc *stageRefusalCase, passThrough []string) {
+	t.Helper()
+	root := fixtureRoot(t)
+	recipeControl(t, root, repoRecipe)
+	cmdr := &scripted{}
+	req := request(root, cmdr)
+	req.Print, req.Recipe, req.StageRaw, req.PassThrough = tc.printOn, "quick", tc.stage, passThrough
+	if tc.noRecipe {
+		req.Recipe = ""
+	}
+	_, ref := Run(t.Context(), req)
+	if ref == nil || ref.Code != codeBadFlags {
+		t.Fatalf("refusal = %v, want %s", ref, codeBadFlags)
+	}
+	if !strings.Contains(ref.Message, tc.want) {
+		t.Errorf("message = %q, want it to carry %q", ref.Message, tc.want)
+	}
+	if core.HintFor(ref.Code) == "" {
+		t.Errorf("refusal %q has no hint", ref.Code)
+	}
+	if cmdr.calls != 0 {
+		t.Errorf("spawns = %d, want 0: a refused render starts nothing", cmdr.calls)
+	}
 }

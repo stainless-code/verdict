@@ -384,7 +384,10 @@
       "/$defs/lensUse/properties/id": "The lens id the stage names.",
       "/$defs/lensUse/properties/model": "The model hint the entry declared for this lens, when it declared one.",
       "/$defs/lensUse/properties/max_files": "The declared dispatch scope cap, when the entry declared one.",
-      "/$defs/lensUse/properties/max_findings": "The declared dispatch return cap, when the entry declared one."
+      "/$defs/lensUse/properties/max_findings": "The declared dispatch return cap, when the entry declared one.",
+      "/$defs/stageRender": "The one pipeline stage a run --print --stage <n> render covers: its 1-based position in $defs/plan.stages, so the rendered stage's own declarations are that row, and the stage kind at that position. run renders the stage's command and launches nothing, so a stage render writes no launcher.json.",
+      "/$defs/stageRender/properties/index": "The 1-based position the --stage operand named, over the plan's four stages.",
+      "/$defs/stageRender/properties/kind": "The kind at that position: lenses, synthesize, dedupe, or rank."
     },
     "patterns": {
       "/properties/recipes/propertyNames": "^[a-z0-9][a-z0-9-]{0,63}$",

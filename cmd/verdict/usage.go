@@ -50,7 +50,8 @@ func usageText() string {
 		"    to stdout (human; progress moves to stderr) or data.prompt_dump (--json).\n" +
 		"    No agent runs, no network beyond the fetch, no store writes beyond the bundle.\n" +
 		"  run <owner/repo> <pr|local-name> --agent <claude|codex|cursor|opencode> [--recipe <slug>]\n" +
-		"      [--timeout <secs, default 300>] [--rounds <n, default 1>] [--print] [-- <agent args>...] [--json]\n" +
+		"      [--stage <n>] [--timeout <secs, default 300>] [--rounds <n, default 1>] [--print]\n" +
+		"      [-- <agent args>...] [--json]\n" +
 		"    launch YOUR agent against an existing bundle: one process per round, one shot by default.\n" +
 		"    It requires exactly one fresh review.json (absent refuses no-review-artifact, older\n" +
 		"    than the launch refuses stale-review-artifact), names the next command, and by default never\n" +
@@ -69,6 +70,11 @@ func usageText() string {
 		"    --recipe names a pipeline declared in .verdict/recipes.json at the PR base (default:\n" +
 		"    the built-in 'default'), records it in data.recipe and launcher.json, and declares\n" +
 		"    lens, model, and budget hints the agent may follow; verdict dispatches no stage.\n" +
+		"    --stage <n> (with --print and --recipe) renders one stage's command instead of the\n" +
+		"    whole pipeline: its declared model hint becomes the agent's model argument and its\n" +
+		"    directive names that stage and the review.json it reads and writes, so your own CI\n" +
+		"    chains the stages under different models; verdict still launches nothing and never\n" +
+		"    sequences them.\n" +
 		"  config <owner/repo> <pr> (--explain | --preview [--file <path>]) [--json]\n" +
 		"    read-only policy surface: --explain renders the stored effective policy of a fetched run\n" +
 		"    (values with origins, requirements, pending plan, spend, privacy, observed checks);\n" +

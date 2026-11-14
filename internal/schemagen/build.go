@@ -293,6 +293,9 @@ func documents() []document {
 				// published data.recipe object and launcher.json's recipe key.
 				{typ: reflect.TypeFor[core.RecipePlan](), name: "plan", closed: true},
 				{typ: reflect.TypeFor[core.RecipeStage](), name: "stage", closed: true},
+				// The one stage a --print --stage render covers: the published
+				// data.stage object, positioned into the plan's stages.
+				{typ: reflect.TypeFor[RecipeStageRender](), name: "stageRender", closed: true},
 				{typ: reflect.TypeFor[core.RecipeLens](), name: "lensUse", closed: true},
 			},
 			additionalProperties: false,

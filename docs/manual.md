@@ -2051,6 +2051,41 @@ no lenses is silent whatever the bundle loaded: a lens-less bundle is the
 ordinary default run, not news. The format is published as
 `schemas/recipes.schema.json`.
 
+#### One stage at a time (`--print --stage <n>`)
+
+`run --print --stage <n> --recipe <slug>` renders the command for **one** stage
+instead of the whole pipeline, so your own CI can chain the stages under
+different models while verdict stays a renderer:
+
+```bash
+verdict run acme/app 123 --agent claude --recipe deep --print --stage 2
+# claude -p --model sonnet '…'
+```
+
+`n` is 1-based over the recipe's four stages — `1 lenses`, `2 synthesize`,
+`3 dedupe`, `4 rank`. The rendered argv is
+`<binary> <agent flags> [--model <hint>] [<your arguments>...] <stage
+directive>`: the stage's declared model hint becomes that agent's model
+argument (only the synthesizer can declare one, so the lens stage renders none
+and your own `--model` after `--` stays yours), and the directive names the
+stage, its declared hints and caps, and the single artifact it reads and writes.
+A stage whose hint is declared refuses a pass-through `--model`/`-m` rather than
+let one of the two values quietly win.
+
+The stages chain through the one artifact `record` and `post` already consume:
+every stage reads the bundle and writes `review.json`, and stages 2–4 also read
+the `review.json` the previous stage wrote — so you can stop after any stage and
+still hold a `record`-able review. No new bundle file and no new artifact
+contract is involved, and verdict writes nothing itself.
+
+`--stage` requires both `--print` and `--recipe`, each refusing `bad-flags`
+otherwise: a partial launch is the orchestration verdict refuses, and the
+built-in `default` declares no lenses, caps, or model, so a stage of it has
+nothing to render. An index outside `1`–`4` refuses `bad-flags` naming the
+stages the plan resolved. `--json` carries the rendered stage as `data.stage`
+(`{"index": 2, "kind": "synthesize"}`), which positions into the pipeline the
+same envelope already records at `data.recipe.stages`.
+
 ### Refusals, exit codes, and provenance
 
 Every refusal code the binary can emit is listed with its cause and its fix in
@@ -2078,7 +2113,9 @@ them through `error.code`, and the envelope's `data.exit` records what the agent
 itself returned.
 
 Plus the shared codes: `missing-bundle` (fetch first), `bad-flags` (no
-`--agent`, a `--rounds` outside 1–5, or `--print` with `--rounds` greater than 1),
+`--agent`, a `--rounds` outside 1–5, `--print` with `--rounds` greater than 1, or
+`--stage` without `--print` and `--recipe`, outside the plan's stages, or
+against a pass-through model when the stage declares one),
 `bad-timeout`, `canceled` (exit 3), and usage errors (exit 2).
 With the default one shot there is no retry, no re-prompt, and no repair
 pass: fix the invocation and run again. With `--rounds N` the only repetition

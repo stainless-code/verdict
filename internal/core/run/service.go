@@ -89,26 +89,120 @@ func Run(ctx context.Context, req *core.RunRequest) (resp *core.RunResponse, ref
 	if ref != nil {
 		return nil, ref
 	}
+	args, ref := st.argsFor(&def, dir, timeout)
+	if ref != nil {
+		return nil, ref
+	}
+	return st.invoke(ctx, args, rounds)
+}
+
+// argsFor resolves everything one invocation works from: the declared pipeline,
+// the stage a render covers, the bundle and its review path, the exact argv,
+// and the agent binary on PATH.
+func (st *state) argsFor(def *agentDef, dir string, timeout int) (*launchArgs, *core.RefusalError) {
 	plan, ref := st.pipeline(dir)
 	if ref != nil {
 		return nil, ref
 	}
-	args := launchArgs{
-		def:      def,
+	at, ref := st.stage(plan)
+	if ref != nil {
+		return nil, ref
+	}
+	args := &launchArgs{
+		def:      *def,
 		dir:      dir,
 		plan:     plan,
+		staged:   at,
 		bundle:   readcommon.DisplayPath(st.req.RepoRootPath(), dir),
 		artifact: readcommon.DisplayPath(st.req.RepoRootPath(), filepath.Join(dir, reviewFile)),
 		abs:      filepath.Join(dir, reviewFile),
 		timeout:  timeout,
 	}
-	if _, ref := st.resolve(def); ref != nil {
+	if _, ref := st.resolve(&args.def); ref != nil {
 		return nil, ref
 	}
-	args.prompt = directive(st.req.Repo, st.req.Pr, st.promptBundle(dir), st.promptArtifact(dir),
-		readcommon.IsLocalBundleDir(dir), plan)
-	args.argv = argvFor(def, st.req.PassThrough, args.prompt)
-	return st.invoke(ctx, &args, rounds)
+	args.compose(st.req, st.promptBundle(dir), st.promptArtifact(dir), readcommon.IsLocalBundleDir(dir))
+	return args, nil
+}
+
+// compose builds the prompt and argv one invocation works from: the
+// whole-pipeline directive, or the one stage --stage asked to render, whose
+// declared model hint becomes the agent's model argument.
+func (a *launchArgs) compose(req *core.RunRequest, bundle, artifact string, local bool) {
+	if a.staged == nil {
+		a.prompt = directive(req.Repo, req.Pr, bundle, artifact, local, a.plan)
+	} else {
+		a.prompt = stageDirective(req.Repo, req.Pr, bundle, artifact, local, a.plan, a.staged)
+	}
+	a.argv = argvFor(&a.def, a.model(), req.PassThrough, a.prompt)
+}
+
+// model is the model argument the argv composes: the rendered stage's declared
+// hint, and nothing on a launch, which leaves model choice to the operator.
+func (a *launchArgs) model() string {
+	if a.staged == nil {
+		return ""
+	}
+	return a.staged.stage.Model
+}
+
+// staged is the one pipeline stage a --print render covers: the 1-based
+// position the operator named and the resolved row there.
+type staged struct {
+	stage recipe.Stage
+	index int
+}
+
+// stage validates --stage and resolves the row it names. A stage render needs
+// --print (verdict launches one process and chains no stages) and --recipe (the
+// built-in default declares no lens hint, cap, or model, so a stage of it has
+// nothing to render), and it owns the model argument, so a pass-through model
+// would silently override the declared hint.
+func (st *state) stage(plan *recipe.Plan) (*staged, *core.RefusalError) {
+	if st.req.StageRaw == "" {
+		return nil, nil
+	}
+	if !st.req.Print {
+		return nil, st.refuse(codeBadFlags, "run --stage renders one stage's command for --print: "+
+			"verdict launches one process and chains no stages")
+	}
+	if st.req.Recipe == "" {
+		return nil, st.refuse(codeBadFlags, "run --stage renders one stage of a declared recipe: "+
+			"--recipe is missing (the built-in default declares no lens hints or caps)")
+	}
+	index, err := strconv.Atoi(st.req.StageRaw)
+	if err != nil || !digits(st.req.StageRaw) || index < 1 || index > len(plan.Stages) {
+		return nil, st.refuse(codeBadFlags, fmt.Sprintf("--stage must be one of %s, got '%s'",
+			stageNames(plan.Stages), st.req.StageRaw))
+	}
+	at := staged{index: index, stage: plan.Stages[index-1]}
+	if at.stage.Model != "" && passThroughModel(st.req.PassThrough) {
+		return nil, st.refuse(codeBadFlags, fmt.Sprintf(
+			"--print --stage %d renders the declared model hint '%s'; drop --model/-m after '--'",
+			index, at.stage.Model))
+	}
+	return &at, nil
+}
+
+// stageNames renders the accepted --stage values in pipeline order, so the
+// refusal names what the plan actually resolved.
+func stageNames(stages []recipe.Stage) string {
+	names := make([]string, 0, len(stages))
+	for i, stage := range stages {
+		names = append(names, fmt.Sprintf("%d %s", i+1, stage.Kind))
+	}
+	return strings.Join(names, ", ")
+}
+
+// passThroughModel reports whether the operator already selects a model after
+// `--`, in either the spaced or the inline spelling.
+func passThroughModel(args []string) bool {
+	for _, arg := range args {
+		if name, _, _ := strings.Cut(arg, "="); name == modelFlag || name == "-m" {
+			return true
+		}
+	}
+	return false
 }
 
 // promptBundle is the bundle path the directive names: the repository-relative
@@ -162,11 +256,12 @@ type state struct {
 }
 
 // launchArgs is the resolved invocation one launch works from: the definition,
-// the declared pipeline, the bundle and its review path, the timeout, and the
-// exact argv.
+// the declared pipeline, the one stage a render covers (nil otherwise), the
+// bundle and its review path, the timeout, and the exact argv.
 type launchArgs struct {
 	def      agentDef
 	plan     *recipe.Plan
+	staged   *staged
 	dir      string
 	bundle   string
 	artifact string
@@ -328,6 +423,7 @@ func (st *state) printed(args *launchArgs) *core.RunResponse {
 			Bundle:   args.bundle,
 			Artifact: args.artifact,
 			Recipe:   args.plan,
+			Stage:    stageRender(args.staged),
 			Timeout:  args.timeout,
 			Printed:  true,
 		},
@@ -335,10 +431,19 @@ func (st *state) printed(args *launchArgs) *core.RunResponse {
 	}
 }
 
+// stageRender is the published data.stage object of a --print --stage render,
+// and nil for every invocation that renders the whole pipeline.
+func stageRender(at *staged) *core.RecipeStageRender {
+	if at == nil {
+		return nil
+	}
+	return &core.RecipeStageRender{Index: at.index, Kind: at.stage.Kind}
+}
+
 // launch runs the one process of a one-shot run: resolve, record the launch,
 // spawn with the watchdog, then assert the artifact and hand off.
 func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunResponse, *core.RefusalError) {
-	bin, ref := st.resolve(args.def)
+	bin, ref := st.resolve(&args.def)
 	if ref != nil {
 		return nil, ref
 	}
@@ -367,7 +472,7 @@ func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunRespons
 // resolve finds the agent binary on PATH. "Not installed" is the launcher's
 // typed refusal, not a spawn error: the distinction tells the operator whether
 // to install something or to fix what is installed.
-func (st *state) resolve(def agentDef) (string, *core.RefusalError) {
+func (st *state) resolve(def *agentDef) (string, *core.RefusalError) {
 	look := st.req.LookPath
 	if look == nil {
 		look = exec.LookPath

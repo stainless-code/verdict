@@ -8,6 +8,10 @@ import (
 	"github.com/stainless-code/verdict/internal/core/recipe"
 )
 
+// paragraphGap separates the directive's paragraphs, so every one of them reads
+// as its own instruction block for the agent.
+const paragraphGap = "\n\n"
+
 // directive is the tool-generated prompt the launched agent receives: the
 // subject, the bundle it reads, the single review file it must write, the
 // boundary (verdict validates that file; it never reads prose, retries, or
@@ -34,9 +38,69 @@ func directive(repo, pr, bundle, artifact string, local bool, plan *recipe.Plan)
 	boundary := "verdict launched this one process and validates that file; it does "
 	boundary += "not read your prose, retry you, or post. Do not post, merge, or "
 	boundary += "push: publishing is an explicit verdict post."
-	return fmt.Sprintf("Review %s and write exactly one review file.\n\n"+
-		read+"\n\n"+write+"\n\n"+boundary+"\n\n"+recipeParagraph(plan)+"\n",
+	return fmt.Sprintf("Review %s and write exactly one review file."+paragraphGap+
+		read+paragraphGap+write+paragraphGap+boundary+paragraphGap+recipeParagraph(plan)+"\n",
 		subject, bundle, meta, artifact)
+}
+
+// stageDirective is the prompt a --print --stage render composes: the same
+// subject and bundle contract, one stage's job instead of the whole pipeline,
+// and the artifact the next stage reads. It names the review file as the
+// previous stage's output so the stages chain through the one artifact record
+// and post already consume.
+func stageDirective(repo, pr, bundle, artifact string, local bool, plan *recipe.Plan, at *staged) string {
+	subject := fmt.Sprintf("%s PR %s", repo, pr)
+	meta := "PR.json"
+	if local {
+		subject = fmt.Sprintf("%s local change %s", repo, pr)
+		meta = "source.json"
+	}
+	head := fmt.Sprintf("Review %s — stage %d of %d (%s) of recipe %s@%s (%s).",
+		subject, at.index, len(plan.Stages), at.stage.Kind, plan.Name, plan.Version, plan.Source)
+	read := fmt.Sprintf("Read the installed verdict review skill first, then the bundle at "+
+		"%s: %s, roles.txt, and toc.txt indexing full.diff, plus kb.txt and "+
+		"sensitive.txt when the run carries them.", bundle, meta)
+	if at.index > 1 {
+		read += fmt.Sprintf(" Read %s, the review the previous stage wrote.", artifact)
+	}
+	write := fmt.Sprintf("Write %s with {\"schema_version\": \"1\", \"body\": ..., "+
+		"\"approved\": ..., \"comments\": [...]}. Write nothing else in the bundle.", artifact)
+	boundary := "verdict rendered this one command and launches nothing for you: it does " +
+		"not read your prose, retry you, post, or chain the stages. The later stages " +
+		"read the file you write, so keep every value the earlier stages declared."
+	return head + paragraphGap + read + paragraphGap + stageTask(at) + paragraphGap + write + paragraphGap + boundary + "\n"
+}
+
+// stageTask states the one job the rendered stage owns, with the hints and caps
+// the recipe declared for it. Every value comes from the resolved plan, so a
+// declaration no stage can carry renders nothing.
+func stageTask(at *staged) string {
+	switch at.stage.Kind {
+	case recipe.StageLenses:
+		return "Run the declared lenses as independent sub-agents, each honoring the " +
+			"hint and caps listed for it: " + lensLine(at.stage.Lenses) +
+			". Record their findings as comments; the later stages synthesize, dedupe, and rank."
+	case recipe.StageSynthesize:
+		return "Synthesize one review from those findings: a single body whose first line " +
+			"carries the verdict marker, the combined approved flag, and every comment kept " +
+			"on its anchor" + modelHint(at.stage.Model) + "."
+	case recipe.StageDedupe:
+		return "Merge duplicate findings: keep the strongest wording and one anchor per " +
+			"finding, drop the redundant comments, and leave any count the body states consistent."
+	case recipe.StageRank:
+		return "Rank the review: order comments by severity and blast radius, tag the body " +
+			"sections, and set confidence. This file is the artifact verdict records or posts."
+	}
+	return ""
+}
+
+// modelHint names the declared hint beside a stage, or nothing when it declared
+// none.
+func modelHint(model string) string {
+	if model == "" {
+		return ""
+	}
+	return " (model hint " + model + ")"
 }
 
 // recipeParagraph renders the declared pipeline: the recipe's identity, every
