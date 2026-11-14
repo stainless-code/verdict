@@ -195,6 +195,16 @@ file_url() {
   printf 'file://%s' "$p"
 }
 
+# eval_fixture_commit <message> [git-commit flags] closes the fixture's commit
+# at a pinned date: a wall-clock date makes every capture of the same fixture a
+# different base SHA, and the provenance run_id hashes that SHA, so two
+# equivalent bundles stop rendering an identical footer (hunk-snapshot).
+eval_fixture_commit() {
+  GIT_AUTHOR_DATE=2024-06-01T00:00:00Z GIT_COMMITTER_DATE=2024-06-01T00:00:00Z \
+    git -c user.email=eval@example.com -c user.name=eval -c commit.gpgsign=false \
+    commit -qm "$@"
+}
+
 # eval_fixture_repo <dir> readies the throwaway checkout the fixture
 # producer builds from: a committed base carrying the old lines and a
 # worktree carrying the reviewed change. It lives apart from the case
@@ -212,8 +222,7 @@ eval_fixture_repo() {
       printf '.verdict/state/\n' >.gitignore
       printf 'top\nold line\nbottom\n' >notes.txt
       git add -A
-      git -c user.email=eval@example.com -c user.name=eval -c commit.gpgsign=false \
-        commit -qm eval-base
+      eval_fixture_commit eval-base
     fi
     printf 'top\nnew line\nbottom\n' >notes.txt
   )
@@ -259,8 +268,7 @@ eval_mk_bundle() {
   # Stage only the controls: the fixture's own change must stay uncommitted
   # so every capture still sees the reviewed diff.
   ( cd "$repo" && git add -A -- .verdict .gitignore && \
-    git -c user.email=eval@example.com -c user.name=eval -c commit.gpgsign=false \
-      commit -qm eval-controls --allow-empty )
+    eval_fixture_commit eval-controls --allow-empty )
   slug="fx$(printf '%s' "$name" | cksum | cut -d' ' -f1)"
   (
     cd "$repo" || exit 99
