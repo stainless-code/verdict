@@ -57,6 +57,9 @@ const (
 	reviewFile = "review.json"
 	// msgCanceled is the frozen cancel text, matching every other verb.
 	msgCanceled = "canceled before run completed"
+	// runStateFile is the bundle's typed run record, which run reads only to
+	// project a declared budget.
+	runStateFile = "run.json"
 	// floatBitSize is the precision strconv needs to render a declared dollar
 	// amount without inventing digits.
 	floatBitSize = 64
@@ -210,25 +213,28 @@ func (st *state) pipeline(dir string) (*recipe.Plan, *core.RefusalError) {
 
 // warnOverBudget projects the declared budget against the bundle's resolved
 // personal limit. It warns and never refuses: verdict cannot meter an agent's
-// spend, so a cap it cannot keep is not a refusal it may claim.
+// spend, so a cap it cannot keep is not a refusal it may claim. A run bundle it
+// cannot read loses the projection, and that loss is worth one line naming the
+// file: silence would read as "no limit to cross". A bundle without a limit
+// projects nothing, because record and post are the verbs that refuse a broken
+// run bundle.
 func (st *state) warnOverBudget(dir string, plan *recipe.Plan) {
-	limit, ok := personalLimit(dir)
-	if !ok || plan.BudgetUSD <= limit {
+	rs, found, err := config.ReadRunState(dir)
+	if err != nil {
+		st.warn(fmt.Sprintf("could not read %s, so the recipe's declared budget "+
+			"is not projected against the bundle's spend limit — re-fetch to rebuild it",
+			st.display(filepath.Join(dir, runStateFile))))
+		return
+	}
+	if !found || rs.Resolved == nil || rs.Resolved.Spend.PersonalLimit == nil {
+		return
+	}
+	limit := *rs.Resolved.Spend.PersonalLimit
+	if plan.BudgetUSD <= limit {
 		return
 	}
 	st.warn(fmt.Sprintf("recipe %s declares budget_usd %s, above the bundle's personal spend limit $%s — "+
 		"run enforces nothing", plan.Name, formatUSD(plan.BudgetUSD), formatUSD(limit)))
-}
-
-// personalLimit reads the bundle's resolved personal spend limit. A bundle
-// without one warns nothing: run reads the file only to project the declared
-// budget, and record and post are the verbs that refuse a broken run bundle.
-func personalLimit(dir string) (float64, bool) {
-	rs, found, err := config.ReadRunState(dir)
-	if err != nil || !found || rs.Resolved == nil || rs.Resolved.Spend.PersonalLimit == nil {
-		return 0, false
-	}
-	return *rs.Resolved.Spend.PersonalLimit, true
 }
 
 // formatUSD renders one dollar amount without an exponent or trailing zeros.

@@ -977,6 +977,31 @@ func assertBudgetWarning(t *testing.T, limit *float64, want string) {
 	}
 }
 
+// TestRunWarnsAMalformedRunBundle proves the budget projection is not silent: a
+// bundle whose run.json cannot be read warns once, naming the file, and the run
+// still launches. run reads that file only to project a declared budget, so a
+// broken one is context the operator lost, not a reason to refuse a launch that
+// record and post are the verbs to gate.
+func TestRunWarnsAMalformedRunBundle(t *testing.T) {
+	root := fixtureRoot(t)
+	dir := bundleDir(root)
+	recipeControl(t, root, "")
+	writeUnder(t, dir, "run.json", "{not json")
+	cmdr := &scripted{write: func() { writeReview(t, dir) }}
+	resp, ref := Run(t.Context(), request(root, cmdr))
+	if ref != nil {
+		t.Fatalf("Run refused: %v", ref)
+	}
+	if cmdr.calls != 1 || !resp.Data.Fresh {
+		t.Errorf("calls = %d, fresh = %v, want the run to proceed", cmdr.calls, resp.Data.Fresh)
+	}
+	want := []string{"could not read .verdict/state/42/run.json, so the recipe's declared budget " +
+		"is not projected against the bundle's spend limit — re-fetch to rebuild it"}
+	if !slices.Equal(resp.Warnings, want) {
+		t.Errorf("warnings = %q, want %q", resp.Warnings, want)
+	}
+}
+
 // writeLimit plants the bundle's typed personal spend limit, or leaves the
 // bundle without one.
 func writeLimit(t *testing.T, dir string, limit *float64) {
