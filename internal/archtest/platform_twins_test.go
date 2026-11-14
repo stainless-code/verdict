@@ -16,7 +16,6 @@ import (
 // on purpose, keyed "<dir>:<func>" with the reason. An entry that stops naming
 // an unpaired function fails, so the allowlist cannot rot.
 var windowsOnlyFuncs = map[string]string{
-	"internal/atomic:retryableReplace":   "retries the Windows-only rename locks",
 	"internal/core/exec:closeHandle":     "closes a Win32 handle whose outcome is already decided",
 	"internal/core/exec:pid32":           "narrows a pid to the DWORD a Win32 call takes",
 	"internal/core/exec:resumeOK":        "reads ResumeThread's DWORD result word",

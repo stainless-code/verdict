@@ -488,7 +488,7 @@ Fix: fix the manifest named above and re-run.
 
 ## `corrupt-store`
 
-Cause: `findings.json` (or the knowledge-base store, or the incident ledger `.verdict/incidents.jsonl`) is present but unreadable.
+Cause: `findings.json` (or the knowledge-base store, or the incident ledger `.verdict/incidents.jsonl`) is present but unreadable, or a bundle home (`.verdict/state`) is not a directory so a listing cannot read it.
 
 Fix: re-run `post`/`record` to rebuild the store, or restore `findings.json` (or the incident ledger) from backup, then re-run.
 
@@ -1162,9 +1162,9 @@ Fix: delete the stale `review.json` (or let the agent overwrite it), then re-run
 
 ## `store-busy`
 
-Cause: another `learn --incident` held the ledger's lock (`.verdict/incidents.jsonl.lock`) for the whole five-second wait, so this attach wrote nothing. The lock is the operating system's and its holder is alive, so nothing is stale to clear.
+Cause: another write held the store's lock — `.verdict/incidents.jsonl.lock` for `--incident`, `.verdict/kb.jsonl.lock` for `--rule`, `--pack`, `--retire`, and `--restore`, and the same `kb.jsonl.lock` for the credit rewrite a `record` or `triage` flip performs — for the whole five-second wait, so this write did nothing. The lock is the operating system's and its holder is alive, so nothing is stale to clear.
 
-Fix: re-run the attach once the other one finishes; a holder that crashed or was killed already released the lock, so a retry succeeds at once. Deleting the lock file never helps — it carries no state, and the next attach creates it again.
+Fix: re-run the write once the other one finishes; a holder that crashed or was killed already released the lock, so a retry succeeds at once. Deleting the lock file never helps — it carries no state, and the next write creates it again.
 
 ## `threads-failed`
 

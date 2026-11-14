@@ -92,6 +92,9 @@ func (st *state) response() *Response {
 }
 
 func (st *state) runAdopt(ctx context.Context) *core.RefusalError {
+	if ref := st.checkStoreHome(); ref != nil {
+		return ref
+	}
 	dir, fromDir, display, ref := st.resolveAdoptDirs(ctx)
 	if ref != nil {
 		return ref
@@ -121,6 +124,17 @@ func (st *state) adoptTarget() (string, *core.RefusalError) {
 		return "", st.refuse("bad-target", msgBadTarget)
 	}
 	return dir, nil
+}
+
+// checkStoreHome refuses a bundle home that will not list before any bundle
+// under it is resolved: a `.verdict/state` that is a file, or a directory that
+// will not open, names itself once instead of every bundle it holds reading as
+// a missing target.
+func (st *state) checkStoreHome() *core.RefusalError {
+	if _, err := readcommon.StoreEntries(readcommon.StateDir(st.req.RepoRootPath())); err != nil {
+		return st.refuse("corrupt-store", err.Error())
+	}
+	return nil
 }
 
 func (st *state) resolveAdoptDirs(ctx context.Context) (string, string, string, *core.RefusalError) {
@@ -176,7 +190,10 @@ func (st *state) resolveAutoFrom(ctx context.Context, dir string) (string, strin
 			"no-patch-match: target %s has no verifiable patch identity "+
 				"(re-fetch so identity.json exists) — pass --from <local-slug>", dir))
 	}
-	twins := st.scanPatchTwins(ctx, cur)
+	twins, ref := st.scanPatchTwins(ctx, cur)
+	if ref != nil {
+		return "", "", ref
+	}
 	switch len(twins) {
 	case 0:
 		return "", "", st.refuse("no-patch-match", fmt.Sprintf(
@@ -197,11 +214,12 @@ func (st *state) resolveAutoFrom(ctx context.Context, dir string) (string, strin
 // scanPatchTwins returns the sorted local bundle slugs whose verified
 // identity matches cur in the requested repository. The scan is bounded to
 // the bundle home's local-* identity files (non-recursive), so malformed,
-// stale, or foreign receipts skip instead of refusing.
-func (st *state) scanPatchTwins(ctx context.Context, cur *identity.Identity) []string {
-	entries, err := os.ReadDir(readcommon.StateDir(st.req.RepoRootPath()))
+// stale, or foreign receipts skip instead of refusing; a bundle home that will
+// not list refuses rather than reporting no twin.
+func (st *state) scanPatchTwins(ctx context.Context, cur *identity.Identity) ([]string, *core.RefusalError) {
+	entries, err := readcommon.StoreEntries(readcommon.StateDir(st.req.RepoRootPath()))
 	if err != nil {
-		return nil
+		return nil, st.refuse("corrupt-store", err.Error())
 	}
 	var twins []string
 	for _, entry := range entries {
@@ -209,7 +227,7 @@ func (st *state) scanPatchTwins(ctx context.Context, cur *identity.Identity) []s
 			twins = append(twins, twin)
 		}
 	}
-	return twins
+	return twins, nil
 }
 
 // twinSlug reads one candidate bundle: non-local, byte-stale, head-stale,

@@ -113,7 +113,10 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 		return nil, &core.RefusalError{Code: "canceled", Message: "canceled before trend completed"}
 	}
 	now := st.req.TimeUTC()
-	rows := collectRows(st)
+	rows, ref := collectRows(st)
+	if ref != nil {
+		return nil, ref
+	}
 	rollup := rollupRows(rows)
 	corpus := corpusRollupOf(st.corpora)
 	var overlap *overlapRollup
@@ -187,10 +190,12 @@ type row struct {
 	hasAt           bool
 }
 
-func collectRows(st *state) []row {
-	entries, err := os.ReadDir(readcommon.StateDir(st.req.RepoRootPath()))
+// collectRows reads the bundle home: an absent home is an empty rollup, and a
+// home that will not list is a refusal naming it rather than a silent zero.
+func collectRows(st *state) ([]row, *core.RefusalError) {
+	entries, err := readcommon.StoreEntries(readcommon.StateDir(st.req.RepoRootPath()))
 	if err != nil {
-		return nil
+		return nil, &core.RefusalError{Code: "corrupt-store", Message: err.Error()}
 	}
 	var rows []row
 	replays := 0
@@ -206,7 +211,7 @@ func collectRows(st *state) []row {
 	if replays > 0 {
 		st.warn(fmt.Sprintf(skipWarn+"%d backtest bundle(s) (replay input, not your review history)", replays))
 	}
-	return rows
+	return rows, nil
 }
 
 // walkEntry folds one state-directory entry: a corpus is read for its

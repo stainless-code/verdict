@@ -8,7 +8,9 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/storelock"
 )
 
 // Store-read sentinels: callers keep their own postures, so the reader
@@ -35,7 +37,7 @@ func ParseRows(raw []byte) ([]*jq.Obj, error) {
 // ErrCorrupt. Every verb that reads kb.jsonl goes through here, so the
 // decode and the size cap exist once.
 func ReadRows(root string) ([]*jq.Obj, error) {
-	path := rootPath(root, File)
+	path := storePath(root)
 	if !isFile(path) {
 		//nolint:wrapcheck // the package sentinel is the classification callers match
 		return nil, ErrMissing
@@ -80,22 +82,64 @@ func AppendHistory(row *jq.Obj, ev *jq.Obj) {
 	row.Set(fieldHistory, append(hist, ev))
 }
 
+// Lock takes the store's OS advisory lock and returns its release. A
+// read-modify-write holds it above its read, so the append, the veto rewrite,
+// and the credit rewrite are one writer each; a lock another writer holds past
+// the wait refuses [storelock.ErrBusy].
+//
+// The lock comes first and the `.verdict/.gitignore` contract second, so
+// parallel writers serialize the contract instead of racing each other's atomic
+// rewrite of one file, and the contract is in place before the write returns: a
+// lock file beside a tracked store is never worktree dirt. The home is created
+// ahead of the lock because the lock file lives inside it.
+//
+// The layout error comes back unwrapped: the layout already names the path and
+// owns the operator sentence, and its caller maps it with [config.RefusalOf]
+// before prefixing anything of its own.
+func Lock(root string) (func(), error) {
+	layout := config.NewLayout(root)
+	if serr := layout.EnsureStateHome(); serr != nil {
+		//nolint:wrapcheck // the layout error carries the refusal its caller maps
+		return nil, serr
+	}
+	unlock, err := storelock.Acquire(storePath(root), storelock.DefaultWait)
+	if err != nil {
+		//nolint:wrapcheck // the shared lock already names the store it guards
+		return nil, err
+	}
+	if serr := layout.EnsureStateIgnore(); serr != nil {
+		unlock()
+		//nolint:wrapcheck // the layout error carries the refusal its caller maps
+		return nil, serr
+	}
+	return unlock, nil
+}
+
 // WriteRows rewrites the store atomically, one compact row per line. Key
 // order is the stored contract (the decoder is order-preserving), so the
-// writer never re-encodes through a map.
+// writer never re-encodes through a map. The primitive takes no lock: the
+// caller holds [Lock] across its read and this write, exactly as
+// internal/incident's Upsert does.
 func WriteRows(root string, rows []*jq.Obj) error {
 	var sb strings.Builder
 	for _, row := range rows {
 		sb.WriteString(row.MarshalCompact())
 		sb.WriteByte('\n')
 	}
-	return atomic.WriteFile(rootPath(root, File), []byte(sb.String()))
+	return atomic.WriteFile(storePath(root), []byte(sb.String()))
 }
 
 // AppendRow appends one already-encoded row (the --rule path appends instead
-// of rewriting).
+// of rewriting). The read-modify-write holds the store's OS advisory lock, so
+// parallel appends keep every row; a lock another writer holds past the wait
+// refuses [storelock.ErrBusy].
 func AppendRow(root, line string) error {
-	path := rootPath(root, File)
+	path := storePath(root)
+	unlock, err := Lock(root)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	var prev []byte
 	if isFile(path) {
 		raw, err := jq.CappedFile(path, jq.MaxKBBytes)
@@ -113,12 +157,12 @@ func AppendRow(root, line string) error {
 // triage/retire lookups.
 func ValidID(id string) bool { return idRe.MatchString(id) }
 
-// rootPath anchors one store path under the reviewed repository root.
-func rootPath(root, rel string) string {
+// storePath anchors the knowledge-base store under the reviewed root.
+func storePath(root string) string {
 	if root == "" {
-		return rel
+		return File
 	}
-	return filepath.Join(root, rel)
+	return filepath.Join(root, File)
 }
 
 // isFile reports whether path is a regular file, mirroring [[ -f ]].

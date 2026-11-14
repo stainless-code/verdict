@@ -71,7 +71,8 @@ var hintRules = []HintRule{
 	},
 	{
 		codes: []string{"corrupt-store"},
-		hint:  "try: re-run post/record to rebuild the store, or restore findings.json from backup, then re-run",
+		hint: "try: restore the file or directory the message names from backup (permissions included), " +
+			"or move it aside and rebuild the store, then re-run",
 	},
 	{
 		codes: []string{"bad-root"},
@@ -201,7 +202,7 @@ var hintRules = []HintRule{
 		"(--print) to see why no review.json appeared, then re-run"},
 	{codes: []string{"stale-review-artifact"}, hint: "try: delete the stale review.json " +
 		"(or let the agent overwrite it), then re-run"},
-	{codes: []string{"store-busy"}, hint: "try: wait for the attach holding the ledger " +
+	{codes: []string{"store-busy"}, hint: "try: wait for the write holding the store's lock " +
 		"(the OS drops the lock when its holder exits, so a retry after a crash succeeds), then re-run"},
 	{codes: []string{"ledger-too-large"}, hint: "try: trim or archive rows in " +
 		".verdict/incidents.jsonl, then re-run"},

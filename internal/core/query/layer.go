@@ -336,18 +336,35 @@ func errRow(root Root, bundle, code, message string) ErrRow {
 }
 
 // listBundles reads one root's state directory: sorted directory names that
-// are addressable bundle slugs, truncated at the bundle cap.
+// are addressable bundle slugs, truncated at the bundle cap. An absent home is
+// empty; a file sitting at the store path and a home that will not list are
+// each one corrupt-store row naming it. The directory test comes from Stat
+// rather than ReadDir because Windows reports a regular file opened as a
+// directory as [fs.ErrNotExist], which would read a file sitting at the store
+// path as an empty root.
 func (l *Layer) listBundles(root Root) ([]string, bool, []ErrRow) {
-	entries, err := l.readDir(readcommon.StateDir(root.Path))
+	state := readcommon.StateDir(root.Path)
+	info, err := l.stat(state)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, false, nil
+	}
+	if err != nil || info == nil {
+		return nil, false, corruptRoot(root, readcommon.UnreadableStore(state).Error())
+	}
+	if !info.IsDir() {
+		return nil, false, corruptRoot(root, readcommon.NotADirectory(state).Error())
+	}
+	entries, err := l.readDir(state)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, false, nil
-		}
-		return nil, false, []ErrRow{errRow(root, "", "corrupt-store",
-			"bundle directory unreadable: "+err.Error())}
+		return nil, false, corruptRoot(root, readcommon.UnreadableStore(state).Error())
 	}
 	names, truncated := l.capBundles(bundleNames(root, entries))
 	return names, truncated, nil
+}
+
+// corruptRoot reports one root whose bundle home will not list.
+func corruptRoot(root Root, message string) []ErrRow {
+	return []ErrRow{errRow(root, "", "corrupt-store", message)}
 }
 
 // bundleNames keeps the addressable bundle directories in readdir order,

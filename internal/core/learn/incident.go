@@ -105,7 +105,7 @@ func (st *state) attachIncident(row *incident.Row) (*incident.Row, string, *core
 // bundle check proved .verdict exists, so the ledger's directory is not
 // something this path creates.
 func (st *state) writeIncident(row *incident.Row) (*incident.Row, bool, *core.RefusalError) {
-	if ref := st.ensureLedgerIgnore(); ref != nil {
+	if ref := st.ensureStateIgnore(); ref != nil {
 		return nil, false, ref
 	}
 	kept, appended, err := incident.Upsert(st.root, row)
@@ -115,16 +115,16 @@ func (st *state) writeIncident(row *incident.Row) (*incident.Row, bool, *core.Re
 	return kept, appended, nil
 }
 
-// ensureLedgerIgnore brings `.verdict/.gitignore` to the tracked contract
-// before the ledger's lock file appears: a checkout fetched before the lock
-// line existed gains it here, so the first attach never leaves the lock file as
+// ensureStateIgnore brings `.verdict/.gitignore` to the tracked contract
+// before a store's lock file appears: a checkout fetched before the lock lines
+// existed gains them here, so the first write never leaves a lock file as
 // worktree dirt for check-tree.
-func (st *state) ensureLedgerIgnore() *core.RefusalError {
+func (st *state) ensureStateIgnore() *core.RefusalError {
 	serr := config.NewLayout(st.root).EnsureStateIgnore()
 	if serr == nil {
 		return nil
 	}
-	if ref := serr.Refusal(); ref != nil {
+	if ref := config.RefusalOf(serr); ref != nil {
 		return ref
 	}
 	return st.refuse(codeLearnFailed, fmt.Sprintf(msgWriteIgnore, st.root, serr))

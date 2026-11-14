@@ -17,10 +17,12 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/storelock"
 )
 
 // Request carries the resolved learn invocation. Learn takes no repo/pr
@@ -368,14 +370,48 @@ func (st *state) runAppend() *core.RefusalError {
 		return ref
 	}
 	row := appendRowDoc(validated)
-	if err := kb.AppendRow(st.root, row.MarshalCompact()+"\n"); err != nil {
-		return st.refuse(codeLearnFailed, fmt.Sprintf(msgWriteKB, st.kbDisplay(), err))
+	if ref := st.writeKB(row.MarshalCompact() + "\n"); ref != nil {
+		return ref
 	}
 	st.next = nextAppend
 	st.data = &Data{Rule: row}
 	st.humanf("learned %s -> %s (scope %s, rigor %s)\n",
 		validated.lid, st.kbDisplay(), validated.scope, validated.rigor)
 	return nil
+}
+
+// lockStore takes the knowledge base's lock for one read-modify-write: a veto
+// must wait rather than rewrite rows another writer is appending to.
+func (st *state) lockStore() (func(), *core.RefusalError) {
+	unlock, err := kb.Lock(st.root)
+	if err != nil {
+		return nil, st.storeRefusal(err)
+	}
+	return unlock, nil
+}
+
+// writeKB appends one row to the knowledge base: the append is a
+// read-modify-write, so a second writer must wait rather than drop the first
+// row.
+func (st *state) writeKB(line string) *core.RefusalError {
+	if err := kb.AppendRow(st.root, line); err != nil {
+		return st.storeRefusal(err)
+	}
+	return nil
+}
+
+// storeRefusal maps a knowledge-base write failure to its refusal. A layout
+// failure the operator must fix keeps the layout's own bad-config sentence,
+// path and fix included, rather than a second prefix naming the path again; a
+// held lock is retryable; anything else is a failed write.
+func (st *state) storeRefusal(err error) *core.RefusalError {
+	if ref := config.RefusalOf(err); ref != nil {
+		return ref
+	}
+	if errors.Is(err, storelock.ErrBusy) {
+		return st.refuse(codeStoreBusy, fmt.Sprintf(msgBusyKB, st.kbDisplay()))
+	}
+	return st.refuse(codeLearnFailed, fmt.Sprintf(msgWriteKB, st.kbDisplay(), err))
 }
 
 func (st *state) validateAppend() (*appendInput, *core.RefusalError) {
@@ -474,53 +510,96 @@ func appendRowDoc(in *appendInput) *jq.Obj {
 
 func (st *state) runRetire() *core.RefusalError {
 	id := st.req.Retire
-	if !kb.ValidID(id) {
-		return st.refuse(codeBadID, fmt.Sprintf(msgBadID, id))
-	}
-	rows, cur, ref := st.loadVetoRow(id)
-	if ref != nil {
-		return ref
-	}
-	if jq.Interp(mustGet(cur, fieldStatus)) == statusRetired {
-		return st.refuse(codeAlreadyRetired, fmt.Sprintf(msgAlreadyRetired, id))
-	}
-	if utf8.RuneCountInString(st.req.Reason) < reasonMin {
-		return st.refuse(codeBadReason, msgRetireReason)
-	}
-	st.tombstoneRetire(cur)
-	if ref := st.writeRows(rows); ref != nil {
-		return ref
-	}
-	st.next = nextRetire
-	st.data = &Data{Rule: cur}
-	st.humanf("retired %s (tombstone kept, counters untouched)\n", id)
-	return nil
+	return st.veto(&veto{
+		id:       id,
+		forbid:   statusRetired,
+		shortMsg: msgRetireReason,
+		next:     nextRetire,
+		human:    "retired %s (tombstone kept, counters untouched)\n",
+		apply:    (*state).tombstoneRetire,
+		wrong: func() *core.RefusalError {
+			return st.refuse(codeAlreadyRetired, fmt.Sprintf(msgAlreadyRetired, id))
+		},
+	})
 }
 
 func (st *state) runRestore() *core.RefusalError {
 	id := st.req.Restore
-	if !kb.ValidID(id) {
-		return st.refuse(codeBadID, fmt.Sprintf(msgBadID, id))
+	return st.veto(&veto{
+		id:       id,
+		forbid:   statusActive,
+		shortMsg: msgRestoreReason,
+		next:     nextRestore,
+		human:    "restored %s (status active, tombstone history kept)\n",
+		apply:    (*state).activateRow,
+		wrong: func() *core.RefusalError {
+			return st.refuse(codeNotRetired, fmt.Sprintf(msgNotRetired, id))
+		},
+	})
+}
+
+// veto is one human veto: the row state it turns off (with the refusal that
+// names that state), its short-reason message, and the change to apply.
+type veto struct {
+	apply    func(*state, *jq.Obj)
+	wrong    func() *core.RefusalError
+	id       string
+	forbid   string
+	shortMsg string
+	next     string
+	human    string
+}
+
+// veto applies one human veto. The refused cases are decided before the store
+// lock is asked for, so a refused veto writes nothing — not the lock file, not
+// the ignore contract it implies — and the mutation re-reads its row under the
+// lock, so it stays one read-modify-write beside a concurrent append.
+func (st *state) veto(v *veto) *core.RefusalError {
+	if !kb.ValidID(v.id) {
+		return st.refuse(codeBadID, fmt.Sprintf(msgBadID, v.id))
 	}
-	rows, cur, ref := st.loadVetoRow(id)
+	if _, _, ref := st.checkVetoRow(v); ref != nil {
+		return ref
+	}
+	if utf8.RuneCountInString(st.req.Reason) < reasonMin {
+		return st.refuse(codeBadReason, v.shortMsg)
+	}
+	unlock, ref := st.lockStore()
 	if ref != nil {
 		return ref
 	}
-	if jq.Interp(mustGet(cur, fieldStatus)) == statusActive {
-		return st.refuse(codeNotRetired, fmt.Sprintf(msgNotRetired, id))
+	defer unlock()
+	rows, cur, ref := st.checkVetoRow(v)
+	if ref != nil {
+		return ref
 	}
-	if utf8.RuneCountInString(st.req.Reason) < reasonMin {
-		return st.refuse(codeBadReason, msgRestoreReason)
-	}
-	cur.Set(fieldStatus, statusActive)
-	st.appendHistory(cur, eventRestored)
+	v.apply(st, cur)
 	if ref := st.writeRows(rows); ref != nil {
 		return ref
 	}
-	st.next = nextRestore
+	st.next = v.next
 	st.data = &Data{Rule: cur}
-	st.humanf("restored %s (status active, tombstone history kept)\n", id)
+	st.humanf(v.human, v.id)
 	return nil
+}
+
+// checkVetoRow reads the veto's target and refuses when it is missing or
+// already in the state the veto turns off.
+func (st *state) checkVetoRow(v *veto) ([]*jq.Obj, *jq.Obj, *core.RefusalError) {
+	rows, cur, ref := st.loadVetoRow(v.id)
+	if ref != nil {
+		return nil, nil, ref
+	}
+	if jq.Interp(mustGet(cur, fieldStatus)) == v.forbid {
+		return nil, nil, v.wrong()
+	}
+	return rows, cur, nil
+}
+
+// activateRow restores a retired row, keeping the tombstone in its history.
+func (st *state) activateRow(cur *jq.Obj) {
+	cur.Set(fieldStatus, statusActive)
+	st.appendHistory(cur, eventRestored)
 }
 
 func (st *state) loadVetoRow(id string) ([]*jq.Obj, *jq.Obj, *core.RefusalError) {
@@ -692,6 +771,7 @@ const (
 	msgAlreadyLearned  = "rule text already learned (cite the existing rule id instead of learning it twice)"
 	msgIDTaken         = "id '%s' is taken (pass a different --id)"
 	msgWriteKB         = "learn could not write %s: %v"
+	msgBusyKB          = "another write holds the store lock on %s (retry in a moment)"
 	msgAlreadyRetired  = "learn: rule '%s' is already retired"
 	msgRetireReason    = "learn --retire needs --reason with 30+ chars (human veto, on the record)"
 	msgNotRetired      = "learn: rule '%s' is already active"

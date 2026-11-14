@@ -44,6 +44,14 @@ warn: kb commit failed: could not rewrite .verdict/kb.jsonl (flips stand, staged
   bfd750df  addressed  true  notes.txt
 recorded: .verdict/state/local-kb/findings.json (0 open) + .verdict/state/local-kb/record.json — report/triage read it; post stays refused (no PR target)
 --- files ---
+--- file C/.verdict/.gitignore ---
+/state/
+/backtest/
+/index/
+incidents.jsonl.lock
+kb.jsonl.lock
+--- file C/.verdict/kb.jsonl.lock ---
+
 --- file C/.verdict/state/local-kb/findings.json ---
 [
   {

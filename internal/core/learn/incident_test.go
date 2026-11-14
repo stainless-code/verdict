@@ -329,7 +329,7 @@ func TestIncidentBringTheLockLineToTheIgnoreFile(t *testing.T) {
 	if _, ref := Run(t.Context(), incidentRequest(root, nil)); ref != nil {
 		t.Fatalf("refusal %s: %s", ref.Code, ref.Message)
 	}
-	want := "/state/\n/backtest/\n/index/\nincidents.jsonl.lock\n"
+	want := "/state/\n/backtest/\n/index/\nincidents.jsonl.lock\nkb.jsonl.lock\n"
 	if got := readIncidentFile(t, ignore); got != want {
 		t.Fatalf("ignore = %q; want %q", got, want)
 	}

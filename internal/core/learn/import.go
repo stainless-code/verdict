@@ -7,7 +7,6 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/pack"
 	"github.com/stainless-code/verdict/internal/jq"
-	"github.com/stainless-code/verdict/internal/kb"
 )
 
 func (st *state) runImport() *core.RefusalError {
@@ -55,8 +54,8 @@ func (st *state) importRule(p *pack.Pack, rule *pack.Rule) *core.RefusalError {
 		st.humanf("would import %s", rule.ID)
 		return nil
 	}
-	if err := kb.AppendRow(st.root, row.MarshalCompact()+"\n"); err != nil {
-		return st.refuse(codeLearnFailed, fmt.Sprintf(msgWriteKB, st.kbDisplay(), err))
+	if ref := st.writeKB(row.MarshalCompact() + "\n"); ref != nil {
+		return ref
 	}
 	st.data = &Data{Rule: row}
 	st.next = nextAppend

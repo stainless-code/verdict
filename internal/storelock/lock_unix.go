@@ -1,6 +1,6 @@
 //go:build linux || darwin || freebsd || netbsd || openbsd || dragonfly
 
-package incident
+package storelock
 
 import (
 	"errors"
@@ -20,6 +20,6 @@ func tryLock(f *os.File) (bool, error) {
 	case errors.Is(err, syscall.EWOULDBLOCK), errors.Is(err, syscall.EINTR):
 		return false, nil
 	default:
-		return false, fmt.Errorf("incident ledger lock %s: %w", f.Name(), err) //nolint:wrapcheck // the file names the lock
+		return false, fmt.Errorf("store lock %s: %w", f.Name(), err) //nolint:wrapcheck // the file names the lock
 	}
 }

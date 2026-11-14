@@ -16,3 +16,7 @@ func replaceRootFile(root *os.Root, from, to string) error {
 	//nolint:wrapcheck // the caller seals the rename error in the atomic-write message (GO-ERRORS-03)
 	return root.Rename(from, to)
 }
+
+// transientFileLock is never true on POSIX: a failed rename or read is final,
+// and waiting on it would only delay the report.
+func transientFileLock(error) bool { return false }

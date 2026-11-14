@@ -2,6 +2,7 @@ package kb
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/storelock"
 )
 
 // ApplyCredit stages one credit op per cited rule
@@ -163,8 +165,11 @@ func (c *Ctx) ruleActive(rid string) bool {
 
 // CommitStaged applies staged credit after the
 // findings file carrying the flips has persisted. One kb.jsonl rewrite
-// (counters), then join rows, then retirement checks. Failures warn loudly
-// and strip the staged stamps so a later re-flip can retry; never fails.
+// (counters), then join rows, then retirement checks. The whole
+// read-modify-write holds the store's lock, so a flip beside a learning
+// append or a veto keeps every row; a held lock drops this credit like any
+// other commit failure. Failures warn loudly and strip the staged stamps so a
+// later re-flip can retry; never fails.
 func (c *Ctx) CommitStaged(findingsFile, now string) {
 	if len(c.Staged) == 0 {
 		return
@@ -173,6 +178,11 @@ func (c *Ctx) CommitStaged(findingsFile, now string) {
 		c.Staged = nil
 		return
 	}
+	unlock, dropped := c.lockCommit(findingsFile)
+	if dropped {
+		return
+	}
+	defer unlock()
 	rows, ok := c.loadStore(findingsFile)
 	if !ok {
 		return
@@ -227,18 +237,38 @@ func filterLive(staged []map[string]any, joins []*jq.Obj) []map[string]any {
 func (c *Ctx) rewriteCounters(rows []*jq.Obj, live []map[string]any, findingsFile string) bool {
 	hits, fps := tallyOutcomes(live)
 	if !bumpCounters(rows, hits, fps) {
-		c.warnDropped("kb commit failed: could not rewrite " + c.display(File))
-		StripStamps(findingsFile, c.Staged, c.Warn)
-		c.Staged = nil
+		c.dropStaged(findingsFile, "kb commit failed: could not rewrite "+c.display(File))
 		return false
 	}
 	if err := WriteRows(c.Root, rows); err != nil {
-		c.warnDropped("kb commit failed: could not rewrite " + c.display(File))
-		StripStamps(findingsFile, c.Staged, c.Warn)
-		c.Staged = nil
+		c.dropStaged(findingsFile, "kb commit failed: could not rewrite "+c.display(File))
 		return false
 	}
 	return true
+}
+
+// lockCommit takes the store lock for this commit's read-modify-write. A held
+// lock drops the staged credit — a flip must never fail on another writer —
+// and reports that it did, so the caller starts nothing.
+func (c *Ctx) lockCommit(findingsFile string) (func(), bool) {
+	unlock, err := Lock(c.Root)
+	if err == nil {
+		return unlock, false
+	}
+	detail := "could not take the store lock: " + err.Error()
+	if errors.Is(err, storelock.ErrBusy) {
+		detail = "another write holds the store lock"
+	}
+	c.dropStaged(findingsFile, "kb commit skipped: "+detail)
+	return nil, true
+}
+
+// dropStaged reports one dropped credit and strips the staged stamps, so a
+// later re-flip can retry instead of reading credit this commit never wrote.
+func (c *Ctx) dropStaged(findingsFile, detail string) {
+	c.warnDropped(detail)
+	StripStamps(findingsFile, c.Staged, c.Warn)
+	c.Staged = nil
 }
 
 // warnDropped reports one dropped-credit outcome with the shared recovery
