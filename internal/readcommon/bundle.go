@@ -317,6 +317,12 @@ func DisplayPath(root, path string) string {
 	return filepath.ToSlash(rel)
 }
 
+// LocalName strips the store's local- prefix from a bundle name, so a
+// suggestion hands fetch-local the slug the store prefixes itself.
+func LocalName(bundle string) string {
+	return strings.TrimPrefix(bundle, localPrefix)
+}
+
 // IsLocalBundleDir reports whether dir is a local-bundle directory: the
 // last segment carries the local- prefix, whatever root anchors it.
 func IsLocalBundleDir(dir string) bool {

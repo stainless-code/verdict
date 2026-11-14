@@ -178,7 +178,10 @@ func Run(ctx context.Context, req *QueueRequest) (*QueueResponse, *core.RefusalE
 	}
 	st := &scan{req: req, status: status, warnings: append([]string{}, req.Warnings...)}
 	now := req.TimeUTC()
-	rows := st.collect()
+	rows, ref := st.collect()
+	if ref != nil {
+		return nil, ref
+	}
 	for i := range rows {
 		rows[i].Rank = i + 1
 	}
@@ -253,11 +256,30 @@ type scan struct {
 	cut      bool
 }
 
-// collect reads the bundle home and returns the kept rows in queue order.
-func (st *scan) collect() []QueueRow {
-	entries, err := os.ReadDir(readcommon.StateDir(st.req.RepoRootPath()))
+// readState lists the bundle home. A store that is not there is an empty
+// queue; one that is there and will not list is a refusal naming it, so a file
+// where the directory belongs never reads as "no bundles".
+func (st *scan) readState() ([]os.DirEntry, *core.RefusalError) {
+	state := readcommon.StateDir(st.req.RepoRootPath())
+	entries, err := os.ReadDir(state)
 	if err != nil {
-		return nil
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, &core.RefusalError{
+			Code: "corrupt-store",
+			Message: fmt.Sprintf("bundle store %s is unreadable (restore the directory or fix its permissions)",
+				state),
+		}
+	}
+	return entries, nil
+}
+
+// collect reads the bundle home and returns the kept rows in queue order.
+func (st *scan) collect() ([]QueueRow, *core.RefusalError) {
+	entries, ref := st.readState()
+	if ref != nil {
+		return nil, ref
 	}
 	rows := make([]QueueRow, 0, len(entries))
 	for _, entry := range entries {
@@ -274,7 +296,7 @@ func (st *scan) collect() []QueueRow {
 		st.warn(fmt.Sprintf(noImpactWarn, st.noImpact, st.req.Repo))
 	}
 	sortRows(rows)
-	return rows
+	return rows, nil
 }
 
 // walk folds one state-directory entry: a corpus or replay bundle is counted
@@ -473,11 +495,11 @@ func (st *scan) next(repo string, shown []QueueRow, skipped int) string {
 // backfill names the index run that measures a bundle's reach: a local bundle
 // re-captures through fetch-local, a provider PR through fetch.
 func backfill(repo, bundle string) string {
-	verb := "fetch"
+	verb, name := "fetch", bundle
 	if bundlePR(bundle) == nil {
-		verb = "fetch-local"
+		verb, name = "fetch-local", readcommon.LocalName(bundle)
 	}
-	return fmt.Sprintf("verdict %s %s %s --index origin/main", verb, repo, bundle)
+	return fmt.Sprintf("verdict %s %s %s --index origin/main", verb, repo, name)
 }
 
 // emitHuman renders the queue: one header line, one line per row, then the

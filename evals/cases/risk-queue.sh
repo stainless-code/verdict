@@ -153,7 +153,7 @@ assert_json_field "receipt reasons stay in the published vocabulary" "true" \
 assert_json_field "the unmeasured reach is warned with its count" "1" \
   '[.warnings[] | select(test("^risk: 7 bundle\\(s\\) carry no usable impact.json"))] | length'
 assert_json_field "the follow-up backfills a local bundle through fetch-local" \
-  "verdict fetch-local acme/app local-critical --index origin/main" '.next'
+  "verdict fetch-local acme/app critical --index origin/main" '.next'
 after="$(tree_sum)"
 assert_eq "the queue leaves every bundle byte-identical" "$before" "$after"
 
@@ -169,7 +169,7 @@ assert_file_grep "human rows count down the queue" "$EVAL_OUT" '^7  low       sc
 assert_file_grep "human mode names the skipped bundles" "$EVAL_OUT" \
   '^skipped: 2 bundle[(]s[)] not open [(]--status all includes them[)]$'
 assert_file_grep "human mode prints the follow-up" "$EVAL_OUT" \
-  '^next: verdict fetch-local acme/app local-critical --index origin/main$'
+  '^next: verdict fetch-local acme/app critical --index origin/main$'
 
 # 3) --status all keeps merged and closed bundles and drops the skipped line.
 run_review risk acme/app --status all --json
@@ -322,5 +322,65 @@ assert_json_field "equal band and score fall back to the bundle name" "true" \
   '([.data.rows[].bundle] | index("local-alpha-clean")) < ([.data.rows[].bundle] | index("local-zeta-clean"))'
 assert_json_field "the unindexed bundles are counted, not silently zeroed" "1" \
   '[.warnings[] | select(test("^risk: 3 bundle\\(s\\) carry no usable impact.json"))] | length'
+
+# 9) The follow-up is a command that runs: the store adds the local- prefix
+# itself, so a suggestion echoing local- back would refuse the slug before it
+# captured anything. Dropping the backfilled reach puts the top row back on the
+# unmeasured path, and the replay happens in its own fixture so the store the
+# earlier legs asserted stays untouched.
+rm -f "$STATE/local-critical/impact.json"
+run_review risk acme/app --json
+assert_exit "risk before the follow-up replay succeeds" 0
+SUGGESTED="$(jq -r '.next' "$EVAL_OUT")"
+assert_eq "the follow-up names the slug fetch-local takes" \
+  "verdict fetch-local acme/app critical --index origin/main" "$SUGGESTED"
+SUGGEST_ROOT="$(eval_fixture_scratch)/follow-up"
+mkdir -p "$SUGGEST_ROOT"
+set -- $SUGGESTED
+shift
+# The redirects sit on the subshell, so they resolve in the sandbox while the
+# command itself runs from the follow-up fixture.
+set +e
+(
+  cd "$SUGGEST_ROOT" || exit 99
+  git init -q
+  printf 'alpha\nbeta\n' > notes.txt
+  git add notes.txt
+  git -c user.email=eval@example.com -c user.name=eval -c commit.gpgsign=false commit -q -m follow-up-base
+  git update-ref refs/remotes/origin/main HEAD
+  PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" index build --at origin/main >/dev/null
+  printf 'alpha\nbeta\ngamma\n' > notes.txt
+  git add notes.txt
+  PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" "$@"
+) >"$EVAL_OUT" 2>"$EVAL_ERR"
+# shellcheck disable=SC2034 # EVAL_STATUS is read by assert_exit below
+EVAL_STATUS=$?
+set -e
+assert_exit "the suggested follow-up runs" 0
+assert_file_grep "the suggested follow-up names the bundle it captured" "$EVAL_OUT" "local-critical"
+if [ -f "$SUGGEST_ROOT/.verdict/state/local-critical/full.diff" ]; then
+  good "the suggested follow-up writes the bundle it names"
+else
+  bad "the suggested follow-up captured nothing"
+fi
+
+# 10) A bundle home that is there and will not list refuses instead of reading
+# as "no bundles": a file where .verdict/state belongs is a store fault, and
+# the refusal names the path.
+BROKEN_ROOT="$(eval_fixture_scratch)/broken-store"
+mkdir -p "$BROKEN_ROOT/.verdict"
+printf 'not a directory\n' >"$BROKEN_ROOT/.verdict/state"
+set +e
+(
+  cd "$BROKEN_ROOT" || exit 99
+  PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" risk acme/app --json
+) >"$EVAL_OUT" 2>"$EVAL_ERR"
+# shellcheck disable=SC2034 # EVAL_STATUS is read by assert_exit below
+EVAL_STATUS=$?
+set -e
+assert_exit "an unlistable store refuses" 1
+assert_refusal "an unlistable store" "corrupt-store"
+assert_json_field "the refusal names the store it could not read" "true" \
+  '.error.message | contains(".verdict/state")'
 
 eval_end

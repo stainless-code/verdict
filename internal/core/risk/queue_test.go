@@ -424,6 +424,44 @@ func TestQueueTwiceIsIdentical(t *testing.T) {
 	}
 }
 
+// TestQueueRefusesAStoreItCannotList proves a bundle home that is there but
+// will not list refuses instead of reading as an empty queue: a file where the
+// state directory belongs must never have risk report that no bundles exist.
+func TestQueueRefusesAStoreItCannotList(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(".verdict", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(".verdict", "state"), []byte("not a directory"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	resp, ref := Run(context.Background(), &QueueRequest{Repo: "acme/app"})
+	if ref == nil {
+		t.Fatalf("risk returned %+v, want a refusal", resp)
+	}
+	if ref.Code != "corrupt-store" {
+		t.Errorf("code = %q, want corrupt-store", ref.Code)
+	}
+	if !strings.Contains(ref.Message, ".verdict/state") {
+		t.Errorf("message = %q, want it to name the store", ref.Message)
+	}
+}
+
+// TestQueueBackfillNamesTheLocalSlug proves the local follow-up passes the slug
+// fetch-local expects: the store adds the local- prefix itself, so the
+// suggestion must strip it rather than hand it back.
+func TestQueueBackfillNamesTheLocalSlug(t *testing.T) {
+	t.Chdir(t.TempDir())
+	queueBundle(t, "local-112", map[string]string{
+		"source.json": queueLocal(), "findings.json": queueClean, "full.diff": queueDiff,
+	})
+	resp := queueRun(t, QueueStatusOpen, 50)
+	want := "verdict fetch-local acme/app 112 --index origin/main"
+	if resp.Next != want {
+		t.Errorf("next = %q, want %q", resp.Next, want)
+	}
+}
+
 // TestQueueSkipsUnparsableFindingsStore proves a store whose findings.json is
 // not a findings array warns, skips its bundle, and carries the scan-cut
 // receipt: an unreadable store never reads as a clean bundle.
