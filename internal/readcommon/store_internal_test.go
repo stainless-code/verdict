@@ -44,13 +44,15 @@ func TestStoreEntriesAbsentHomeIsEmpty(t *testing.T) {
 	}
 }
 
-// TestStoreEntriesRefusesARegularFile pins the non-directory branch: the
-// refusal names the home in the one sentence every verb uses.
+// TestStoreEntriesRefusesARegularFile pins the non-directory branch and the
+// wiring that reaches it: the exported call must answer the stat sentence, not
+// the sentence a ReadDir answered first (on Unix, ENOTDIR) would produce.
 func TestStoreEntriesRefusesARegularFile(t *testing.T) {
 	file := newHome(t).file
 	entries, err := StoreEntries(file)
-	if err == nil || !strings.Contains(err.Error(), "bundle store "+file+" is unreadable") {
-		t.Fatalf("regular file = (%v, %v); want one unreadable sentence naming it", entries, err)
+	want := "bundle store " + file + " is not a directory (restore the directory or fix its permissions)"
+	if err == nil || err.Error() != want {
+		t.Fatalf("regular file = (%v, %q); want (%v, %q)", entries, err, nil, want)
 	}
 }
 
@@ -60,8 +62,10 @@ func TestStoreEntriesRefusesARegularFile(t *testing.T) {
 func TestStoreEntriesRefusesAFileWhoseReadDirAnswers(t *testing.T) {
 	file := newHome(t).file
 	ghost := func(string) ([]os.DirEntry, error) { return []os.DirEntry{fakeEntry("ghost")}, nil }
-	if entries, err := storeEntries(file, os.Stat, ghost); err == nil {
-		t.Fatalf("regular file with a willing ReadDir = (%v, nil); want the stat decision", entries)
+	entries, err := storeEntries(file, os.Stat, ghost)
+	want := "bundle store " + file + " is not a directory (restore the directory or fix its permissions)"
+	if err == nil || err.Error() != want {
+		t.Fatalf("regular file with a willing ReadDir = (%v, %q); want (%v, %q)", entries, err, nil, want)
 	}
 }
 

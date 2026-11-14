@@ -10,7 +10,9 @@ import (
 // StoreEntries lists a bundle home: an absent home is empty, and anything else
 // that stops the listing comes back as one error naming it. Stat runs before
 // ReadDir because Windows reports a regular file opened as a directory as
-// [fs.ErrNotExist], which a ReadDir-only check would read as an empty home.
+// [fs.ErrNotExist], which a ReadDir-only check would read as an empty home; the
+// non-directory branch is its own sentence, so no verb talks about a file store
+// as if the directory were merely unreadable.
 func StoreEntries(state string) ([]os.DirEntry, error) {
 	return storeEntries(state, os.Stat, os.ReadDir)
 }
@@ -30,13 +32,22 @@ func storeEntries(
 	case err != nil:
 		return nil, UnreadableStore(state)
 	case !info.IsDir():
-		return nil, UnreadableStore(state)
+		return nil, NotADirectory(state)
 	}
 	entries, err := readDir(state)
 	if err != nil {
 		return nil, UnreadableStore(state)
 	}
 	return entries, nil
+}
+
+// NotADirectory names a bundle home the store path holds as a file, in the one
+// sentence every verb refuses it with. It is a separate sentence from
+// [UnreadableStore] because the fix differs: a file sitting where the store
+// belongs is removed or renamed, while an unreadable directory is restored.
+func NotADirectory(state string) error {
+	//nolint:wrapcheck // the sentence is the whole error; there is no cause to wrap
+	return fmt.Errorf("bundle store %s is not a directory (restore the directory or fix its permissions)", state)
 }
 
 // UnreadableStore names a bundle home that will not list, in the one sentence
