@@ -638,7 +638,10 @@ Retirement is data-driven: after any credit, a rule with `judged` at/above
 the typed `defaults.kb_policy` object in `.verdict/config.json` (global only —
 inline scope or requirement policies refuse `bad-config`), then built-in
 defaults; invalid values warn and fall back, never failing the flip. Retired
-rules never recall; citing one warns and drops.
+rules never recall; citing one warns and drops. Recall size can also be
+bounded with `defaults.kb_policy.max_chars` (or `REVIEW_KB_MAX_CHARS`), which
+caps the rendered `kb.txt` while recording `status=truncated` and candidate
+`top_n` omissions in `provenance.json` (never copying rule or secret text).
 
 ## Review controls are base-owned
 
@@ -2288,7 +2291,13 @@ The `<!-- verdict-footer -->` comment is a machine divider between content
 and footer. Re-rendering a body that already carries a rendered block strips
 the old block at the divider and appends a fresh one, so the result is
 byte-identical (no stacking). Never hand-write the marker — bodies carrying
-it get their rendered block replaced.
+it get their rendered block replaced. When `.verdict/state/<bundle>/provenance.json`
+is present, the footer adds one `> Inputs:` summary line inside that same
+marker block (old bundles without `provenance.json` keep the baseline footer
+byte-identical); passing `--provenance` to `report` or `post` prints the full
+inputs/truncation table in human output and exposes `data.receipt.inputs[]`
+and `data.truncated[]` in `--json` (malformed or missing receipts warn without
+failing the run).
 
 Knobs live under one `publish` namespace in the settings file (see Onboarding
 for the path and shape): `publish.footer` (bool, default `true`) kills the

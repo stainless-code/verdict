@@ -171,6 +171,10 @@ func envLayers(env *Partial) []layerValue {
 		partial := Partial{KBMaxFPRate: env.KBMaxFPRate, KBPolicySet: true}
 		layers = append(layers, layerValue{layer: LayerEnv, source: "REVIEW_KB_MAX_FP_RATE", partial: partial})
 	}
+	if env.KBPolicySet && env.KBMaxChars != nil {
+		partial := Partial{KBMaxChars: env.KBMaxChars, KBPolicySet: true}
+		layers = append(layers, layerValue{layer: LayerEnv, source: "REVIEW_KB_MAX_CHARS", partial: partial})
+	}
 	return layers
 }
 
