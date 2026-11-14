@@ -906,10 +906,9 @@ func TestProjectLocalReasonBareRoot(t *testing.T) {
 	}
 }
 
-// shellSafeRunes repeats the literal safe set shellQuote
-// (internal/core/upgrade/shellquote.go) leaves bare. The upgrade test package
-// is external, so it cannot call the unexported predicate and no exported one
-// exists; the set is repeated here instead of the quoting rule.
+// shellSafeRunes repeats the literal safe set internal/shellquote leaves bare.
+// The upgrade test package is external, so the set is repeated here instead of
+// the quoting rule.
 const shellSafeRunes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./:@%+=,-"
 
 // shellSafePath reports whether the shell reads every rune of s back

@@ -19,7 +19,10 @@ func usageText() string {
 		"    no-pr-target, calibrate no-threads, adopt bad-target). calibrate --probe is offline and runs on any\n" +
 		"    bundle. Incremental re-review (--base-sha/--since) runs on GitHub and GitLab; other providers write\n" +
 		"    incremental.diff.note.\n" +
-		"    diffs over 512000 bytes refuse with a split-or-narrow hint (empty diffs warn, never fail).\n" +
+		"    diffs over 512000 bytes refuse with a split, narrow, or exclude hint, then the two exclusions that\n" +
+		"    fit the review (--ignore <glob>, or a .verdict/ignore pattern committed on the base revision; empty\n" +
+		"    diffs warn, never fail). Paths after -- on fetch-local narrow the review to the matching files — they\n" +
+		"    select, they never exclude.\n" +
 		"    Deliberate exceptions only: REVIEW_MAX_BYTES=<n> (or the typed max_bytes default) overrides the cap.\n" +
 		"    Chunking opt-in only: --chunk (or the typed chunk default) marks over-cap fetches for " +
 		"chunked slicing (override chain wins; absent reads today's refusal).\n" +

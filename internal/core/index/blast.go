@@ -378,7 +378,7 @@ func (st *state) bundleTree(
 // optionalTree reads one tree index, treating an absent index as unmeasured
 // (nil) while a corrupt one still refuses.
 func (st *state) optionalTree(root, tree string) (*treeIndex, *core.RefusalError) {
-	t, ref := readTree(storePath(root), tree)
+	t, ref := readTree(storePath(root), treeRef{tree: tree})
 	if ref == nil {
 		return t, nil
 	}

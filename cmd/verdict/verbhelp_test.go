@@ -59,3 +59,16 @@ func TestServeUsageListsEventsRoute(t *testing.T) {
 		t.Fatalf("serve usage route line = %q, want %q", usageText(), want)
 	}
 }
+
+// TestFetchUsageNamesAllThreeOverCapExits pins the over-cap hint: splitting,
+// narrowing, and excluding are three different escapes, and the paths that
+// narrow are not exclusions.
+func TestFetchUsageNamesAllThreeOverCapExits(t *testing.T) {
+	const want = "    diffs over 512000 bytes refuse with a split, narrow, or exclude hint, then the two exclusions that\n" +
+		"    fit the review (--ignore <glob>, or a .verdict/ignore pattern committed on the base revision; empty\n" +
+		"    diffs warn, never fail). Paths after -- on fetch-local narrow the review to the matching files — they\n" +
+		"    select, they never exclude.\n"
+	if !strings.Contains(usageText(), want) {
+		t.Fatalf("fetch usage over-cap hint = %q, want %q", usageText(), want)
+	}
+}

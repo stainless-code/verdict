@@ -5,10 +5,11 @@ exit: 1
 » estimate: no comparable past runs — cost unknown (no usable .verdict/state/*/cost.json records yet)
 --- stderr ---
 candidates (suggested scopes — re-run narrowed, nothing auto-narrowed):
-- [paths] re-fetch narrowed to f00.txt (~59477 bytes)
-- [paths] re-fetch excluding f00.txt: first 10 of 13 remaining files (~773201 bytes total)
+- [paths] re-fetch narrowed to -- f00.txt (~59477 bytes)
+- [paths] re-fetch with --ignore f00.txt (13 files, first 10 named, ~773201 bytes total)
 - [range] split the range in half (~416339 bytes each): fetch-local --range/--base, fetch --base-sha/--since
-error: group ecaf54a24679bc127e9a1c38ee342f3f73b93f5160d003639592fe755e25fea3 diff 832678 bytes exceeds its cap 512000 bytes (from built-in) — split the range (fetch-local --range/--base, fetch --base-sha) or narrow with a paths filter, then re-fetch (override deliberate exceptions only: REVIEW_MAX_BYTES=<n> or the typed max_bytes default)
+error: group ecaf54a24679bc127e9a1c38ee342f3f73b93f5160d003639592fe755e25fea3 diff 832678 bytes exceeds its cap 512000 bytes (from built-in) — split the range (fetch-local --range/--base, fetch --base-sha) or exclude files with --ignore <glob>, then re-fetch (override deliberate exceptions only: REVIEW_MAX_BYTES=<n> or the typed max_bytes default)
+next: fit the diff under the cap with --ignore <glob> (repeatable on fetch and fetch-local) or a .verdict/ignore pattern committed on the base revision — the cap is measured after those exclusions. Paths after -- on fetch-local narrow the review to the matching files — they select, they never exclude
 try: split the range (--range/--base/--base-sha) or narrow with a paths filter, then re-fetch
 --- files ---
 --- file C/.gh-calls.log ---

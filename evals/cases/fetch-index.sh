@@ -147,10 +147,35 @@ run_review fetch-local acme/app impact-no-index --index HEAD
 assert_exit "missing index refuses" 1
 assert_stream_nogrep "missing index prints no done line" "$EVAL_OUT" '^done:' "-E"
 assert_stream_nogrep "missing index prints no next line" "$EVAL_OUT" '^next:' "-E"
-assert_file_grep "missing index names no index for tree" "$EVAL_ERR" "no index for tree "
+assert_file_grep "missing index names the typed ref and its tree" "$EVAL_ERR" \
+  "no index for HEAD (tree $tree)"
+assert_file_grep "missing index names the exact build command" "$EVAL_ERR" \
+  '^next: verdict index build --at HEAD$' "-E"
+
+# A hand-off naming a checkout directory builds from that checkout, and the
+# path arrives single-quoted so a space survives the copy-paste into a shell.
+# pwd normalises the doubled slash a TMPDIR with a trailing one leaves behind,
+# which is the same path the client prints.
+HANDOFF="$(cd "$EVAL_SANDBOX" && pwd)/handoff dir"
+mkdir -p "$HANDOFF/.verdict/index/trees"
+(
+  cd "$HANDOFF" || exit 99
+  git init -q -b main
+  printf 'package h\n\nfunc H() {}\n' >h.go
+  git add -A
+  GIT_AUTHOR_DATE=2024-05-02T00:00:00Z GIT_COMMITTER_DATE=2024-05-02T00:00:00Z \
+    git commit -qm 'handoff fixture'
+)
+run_review fetch-local acme/app impact-handoff --index "$HANDOFF" --json
+assert_exit "a hand-off directory with no tree file refuses" 1
+assert_refusal "the hand-off directory refuses missing-index" "missing-index"
+assert_file_grep "the hand-off builds from its own checkout, space quoted" "$EVAL_OUT" \
+  "next: verdict index build --from '$HANDOFF'" "-F"
 
 run_review fetch-local acme/app impact-no-index-json --index HEAD --json
 assert_exit "missing index --json refuses" 1
 assert_refusal "missing index refuses typed" "missing-index"
+assert_file_grep "missing index --json carries the ref and the build command" "$EVAL_OUT" \
+  "no index for HEAD (tree $tree)\\nnext: verdict index build --at HEAD" "-F"
 
 eval_end

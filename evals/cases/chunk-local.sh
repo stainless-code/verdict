@@ -64,12 +64,30 @@ run_review fetch-local acme/app clocfix -- $CLOC_FILES
 assert_exit "absent-knob over-cap local refuses" 1
 assert_file_grep "absent knob names the cap" "$EVAL_ERR" "exceeds its cap 512000 bytes"
 assert_file_grep "absent knob carries the split hint" "$EVAL_ERR" "try: split the range"
+assert_file_grep "absent knob names the exclusion flags that fit the review" "$EVAL_ERR" \
+  '^next: fit the diff under the cap with --ignore <glob>' "-E"
+assert_file_grep "the exclusion hint keeps the ignore file on the base revision" "$EVAL_ERR" \
+  '^next: .*or a \.verdict/ignore pattern committed on the base revision' "-E"
+assert_file_grep "the hint says paths after -- narrow instead of excluding" "$EVAL_ERR" \
+  '^next: .*Paths after -- on fetch-local narrow the review to the matching files' "-E"
+assert_file_grep "the refusal body names --ignore as the exclusion" "$EVAL_ERR" \
+  'or exclude files with --ignore <glob>, then re-fetch'
+assert_stream_nogrep "the over-cap next line offers no cap raise" "$EVAL_ERR" \
+  '^next: .*MAX_BYTES' "-E"
 assert_stream_nogrep "absent knob mentions no chunking" "$EVAL_ERR" "chunk" "-i"
 if [ ! -d "$BUNDLE/chunks" ]; then
   good "absent knob writes no chunks dir"
 else
   bad "absent knob wrote a chunks dir"
 fi
+# Paths after -- are git pathspecs: naming one file reviews that file and
+# nothing else, so the paths narrow and never exclude.
+run_review fetch-local acme/app clocnarrow -- cloc-f1.txt
+assert_exit "an over-cap worktree narrows to one path under the cap" 0
+NARROWED="$EVAL_SANDBOX/.verdict/state/local-clocnarrow/full.diff"
+assert_file_grep "the narrowed bundle holds the named path" "$NARROWED" '^diff --git a/cloc-f1\.txt' "-E"
+assert_file_nogrep "the narrowed bundle omits every other file (a pathspec selects, it never excludes)" \
+  "$NARROWED" '^diff --git a/cloc-f[2-6]\.txt' "-E"
 # shellcheck disable=SC2086 # CLOC_FILES is a validated space-separated path list
 run_review fetch-local acme/app clocfix --chunk -- $CLOC_FILES
 if [ "$EVAL_STATUS" -eq 0 ] \
@@ -323,6 +341,43 @@ fi
   cd "$EVAL_SANDBOX" || exit 99
   git checkout -q -- $CLOC_FILES cloc-small.txt cloc-huge.txt 2>/dev/null || true
 )
+
+# Both suggested scopes have to be pasteable: a path holding glob syntax is
+# escaped so the ignore glob and the pathspec each select that path and nothing
+# else, and the word arrives whole. The bracketed file is the largest section
+# but fits the cap alone, so each suggestion is a run that exits 0.
+BRACKET='app/[id]/page.tsx'
+(
+  cd "$EVAL_SANDBOX" || exit 99
+  mkdir -p 'app/[id]'
+  awk 'BEGIN{for(i=0;i<3200;i++) printf "cloc bracket line %06d %-40s\n", i, "words"}' >"$BRACKET"
+  awk 'BEGIN{for(i=0;i<2200;i++) printf "cloc bracket big %06d %-40s\n", i, "words"}' >cloc-bracket-big.txt
+  printf 'small\n' >cloc-bracket-small.txt
+  git add -A
+  git commit -qm cloc-bracket-base 2>/dev/null || true
+  awk 'BEGIN{for(i=0;i<3200;i++) printf "cloc bracket CHANGED %06d %-40s\n", i, "other"}' >"$BRACKET"
+  awk 'BEGIN{for(i=0;i<2200;i++) printf "cloc bracket BIGCHANGED %06d %-38s\n", i, "other"}' >cloc-bracket-big.txt
+  printf 'small changed\n' >cloc-bracket-small.txt
+)
+BRACKET_BUNDLE="$EVAL_SANDBOX/.verdict/state/local-clocbracket"
+run_review fetch-local acme/app clocbracket
+assert_exit "a bracketed path over the cap refuses" 1
+assert_file_grep "the exclusion suggestion escapes the glob class and quotes the path" "$EVAL_ERR" \
+  "re-fetch with --ignore 'app/\\[id\\]/page.tsx'" "-F"
+assert_file_grep "the narrowing suggestion carries -- and :(literal)" "$EVAL_ERR" \
+  "re-fetch narrowed to -- ':(literal)app/[id]/page.tsx'" "-F"
+run_review fetch-local acme/app clocbracket-excluded --ignore 'app/\[id\]/page.tsx'
+assert_exit "the suggested --ignore excludes exactly the bracketed path" 0
+assert_file_grep "the excluded bundle keeps the other changed files" \
+  "$EVAL_SANDBOX/.verdict/state/local-clocbracket-excluded/full.diff" '^diff --git a/cloc-bracket-' "-E"
+assert_file_nogrep "the excluded bundle drops the bracketed path" \
+  "$EVAL_SANDBOX/.verdict/state/local-clocbracket-excluded/full.diff" 'page\.tsx' "-E"
+run_review fetch-local acme/app clocbracket-narrowed -- ':(literal)app/[id]/page.tsx'
+assert_exit "the suggested pathspec narrows to exactly the bracketed path" 0
+assert_file_grep "the narrowed bundle keeps the bracketed path" "$BRACKET_BUNDLE-narrowed/full.diff" \
+  "diff --git a/app/[id]/page.tsx b/app/[id]/page.tsx" "-F"
+assert_file_nogrep "the narrowed bundle drops every other path" "$BRACKET_BUNDLE-narrowed/full.diff" \
+  'cloc-bracket-big|cloc-bracket-small' "-E"
 rm -rf "$CLOC_FAKEBIN" "$EVAL_SANDBOX/xdg-empty"
 rm -f "$KNOB" "$EVAL_SANDBOX"/cloc-concat.diff "$EVAL_SANDBOX"/cloc-manifest-1.json
 rm -f "$EVAL_SANDBOX"/cloc-canned.diff "$EVAL_SANDBOX"/cloc-pr.json

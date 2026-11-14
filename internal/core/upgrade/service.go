@@ -22,6 +22,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/shellquote"
 )
 
 // Install channels, in the operator's §6 table order.
@@ -335,7 +336,7 @@ func applySafety(req *Request, det *detection) (*detection, *core.RefusalError) 
 		det.Code = codeProjectLocal
 		det.Command = "npm install " + npmPackage + "@latest"
 		det.Reason = fmt.Sprintf("project-local install at %s: the upgrade belongs in the project manifest/lockfile; "+
-			"run: cd %s && %s", det.exe, shellQuote(root), det.Command)
+			"run: cd %s && %s", det.exe, shellquote.Arg(root), det.Command)
 	case ChannelSkill:
 		root := skillRoot(det.exe)
 		det.Code = codeSkillCopy
