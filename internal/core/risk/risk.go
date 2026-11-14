@@ -83,23 +83,39 @@ type Receipt struct {
 	CoverageFound bool
 }
 
-// ReadReceipt loads post.json then record.json for dir, extracting the latest
-// stored risk claim and the coverage attestation matching coverageKey.
+// ReadReceipt loads post.json then record.json for dir, preferring the risk
+// claim whose receipt identity matches coverageKey (falling back to any claim
+// only when none matches) and the coverage attestation matching coverageKey.
 func ReadReceipt(dir, coverageKey string) Receipt {
 	var out Receipt
+	var fallback *core.RiskClaim
 	isChunked := isRegular(dir + chunksManifest)
 	for _, suffix := range []string{postSuffix, recordSuffix} {
 		m, ok := readReceiptMap(dir + suffix)
 		if !ok {
 			continue
 		}
-		if out.Claim == nil {
-			out.Claim = claimFromMap(m)
-		}
 		head := receiptIdentity(m)
+		out.Claim, fallback = pickClaim(out.Claim, fallback, claimFromMap(m), coverageKey != "" && head == coverageKey)
 		mergeCoverage(&out, m, head, coverageKey, isChunked)
 	}
+	if out.Claim == nil {
+		out.Claim = fallback
+	}
 	return out
+}
+
+func pickClaim(matched, fallback, next *core.RiskClaim, matchesHead bool) (*core.RiskClaim, *core.RiskClaim) {
+	if next == nil {
+		return matched, fallback
+	}
+	if matchesHead && matched == nil {
+		return next, fallback
+	}
+	if !matchesHead && fallback == nil {
+		return matched, next
+	}
+	return matched, fallback
 }
 
 // CoverageIdentity resolves the head or diff digest key used to match stored

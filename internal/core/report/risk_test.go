@@ -146,3 +146,24 @@ func TestReportRiskWithheldFindingStillRaisesFloor(t *testing.T) {
 		t.Fatalf("expected --max-risk low to fail on withheld critical finding, got failed=%v risk=%+v", resp.GateFailed, r)
 	}
 }
+
+func TestReportRiskPrefersFreshRecordClaimOverStalePost(t *testing.T) {
+	req := fixture(t, "[]")
+	const oldHead = "1111111111111111111111111111111111111111"
+	writeFile(t, ".verdict/state/5101/post.json",
+		`{"head":"`+oldHead+`","coverage":{"gaps":0},"risk":{"level":"low","rationale":"Old post.","assessed_head":"`+oldHead+`"}}`)
+	writeFile(t, ".verdict/state/5101/record.json",
+		`{"head":"`+storeHeadSHA+`","coverage":{"gaps":0},"risk":{"level":"high","rationale":"Fresh record.","assessed_head":"`+storeHeadSHA+`"}}`)
+
+	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+		ReadRequest: req,
+		Flags:       core.ReportFlags{Risk: true},
+	})
+	if ref != nil {
+		t.Fatalf("Run refused: %+v", ref)
+	}
+	r := resp.Data.Risk
+	if r == nil || r.Claimed != "high" || r.Reported != "high" || r.Inputs.StaleHead {
+		t.Fatalf("stale post.json shadowed fresh record.json: %+v (stale_head=%v)", r, r.Inputs.StaleHead)
+	}
+}

@@ -279,3 +279,32 @@ func TestEvaluateBundleReceiptsAndBands(t *testing.T) {
 		t.Fatalf("BundleBand with withheld open critical = %q, want critical", band)
 	}
 }
+
+func TestReadReceiptPrefersMatchingCoverageKeyClaim(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	const headOld = "1111111111111111111111111111111111111111"
+	const headNew = "2222222222222222222222222222222222222222"
+
+	oldPost := `{"head":"` + headOld + `","coverage":{"gaps":0},"risk":{"level":"low","rationale":"Stale post claim.","assessed_head":"` + headOld + `"}}`
+	newRecord := `{"head":"` + headNew + `","coverage":{"gaps":0},"risk":{"level":"high","rationale":"Fresh record claim.","assessed_head":"` + headNew + `"}}`
+	if err := os.WriteFile(filepath.Join(dir, "post.json"), []byte(oldPost), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "record.json"), []byte(newRecord), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	res := risk.EvaluateBundle(dir, headNew, headNew, nil, "")
+	if res.Claimed != "high" || res.Reported != "high" || res.Inputs.StaleHead {
+		t.Fatalf("EvaluateBundle with stale post.json and fresh record.json = %+v (stale_head=%v), want claimed=high reported=high stale_head=false",
+			res, res.Inputs.StaleHead)
+	}
+
+	// Fallback still surfaces a stale claim when no receipt matches the current head.
+	const headUnrecorded = "3333333333333333333333333333333333333333"
+	fallback := risk.EvaluateBundle(dir, headUnrecorded, headUnrecorded, nil, "")
+	if fallback.Claimed != "low" || !fallback.Inputs.StaleHead {
+		t.Fatalf("EvaluateBundle fallback = %+v, want claimed=low stale_head=true", fallback)
+	}
+}
