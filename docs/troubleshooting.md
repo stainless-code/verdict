@@ -1141,9 +1141,9 @@ Fix: delete the stale `review.json` (or let the agent overwrite it), then re-run
 
 ## `store-busy`
 
-Cause: another `learn --incident` held `.verdict/incidents.jsonl` for the whole five-second wait, so this attach wrote nothing.
+Cause: another `learn --incident` held `.verdict/incidents.jsonl` for the whole five-second wait, so this attach wrote nothing. A lock is broken only when it is past a minute _and_ the process that wrote it is gone, so a paused or sleeping holder keeps its lock.
 
-Fix: re-run the attach once the other one finishes. If no attach is running, the lock file is a killed attach's leftover: the next attach breaks it once it is a minute old, or delete `.verdict/incidents.jsonl.lock` yourself (it names the pid that wrote it).
+Fix: re-run the attach once the other one finishes. If no attach is running, the lock file is a killed attach's leftover: the next attach breaks it once it is a minute old and its pid no longer exists, or delete `.verdict/incidents.jsonl.lock` yourself (it names the pid that wrote it).
 
 ## `threads-failed`
 

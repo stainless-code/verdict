@@ -622,7 +622,8 @@ The ledger is tracked, so an uncommitted attach is worktree dirt: `check-tree`
 fails on `?? .verdict/incidents.jsonl` until you commit it (the
 `.verdict/incidents.jsonl.lock` beside it exists only while an attach writes,
 and a killed attach leaves one that the next attach breaks once it is a minute
-old). Attaches are serialized by that lock — one `learn --incident` holds it at
+old and the pid in it is gone — a paused holder keeps its lock). Attaches are
+serialized by that lock — one `learn --incident` holds it at
 a time, and a second waits up to five seconds before refusing `store-busy`
 rather than interleaving two read-modify-writes and dropping a row.
 

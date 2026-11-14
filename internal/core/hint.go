@@ -198,7 +198,7 @@ var hintRules = []HintRule{
 	{codes: []string{"stale-review-artifact"}, hint: "try: delete the stale review.json " +
 		"(or let the agent overwrite it), then re-run"},
 	{codes: []string{"store-busy"}, hint: "try: wait for the attach holding the ledger " +
-		"(a lock older than a minute is broken automatically), then re-run"},
+		"(a lock is broken after a minute only once its holder is gone), then re-run"},
 	{codes: []string{"unknown-agent"}, hint: "try: re-run with one of the known agent names listed above"},
 	{codes: []string{"id-taken"}, hint: "try: pass a different --id"},
 	{codes: []string{"cost-panel-unresolved"}, hint: "try: pass the panel that ran, in order: " +

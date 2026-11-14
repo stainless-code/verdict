@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 const (
@@ -222,17 +224,7 @@ func attachInParallel(root string, attaches int) ([]bool, []error) {
 // block the ledger forever.
 func TestUpsertBreaksAStaleLock(t *testing.T) {
 	root := t.TempDir()
-	file := filepath.Join(root, filepath.FromSlash(File)+lockSuffix)
-	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(file, []byte("9999 2020-01-01T00:00:00Z\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	old := time.Now().Add(-2 * lockStale)
-	if err := os.Chtimes(file, old, old); err != nil {
-		t.Fatal(err)
-	}
+	file := staleLock(t, root, fmt.Sprintf("%d 2020-01-01T00:00:00Z 1\n", deadPid(t)))
 	appended, err := Upsert(root, &Row{
 		SchemaVersion: "1", Bundle: "local-a", Sha: shaA,
 		Paths: []string{"src/a.ts"}, DetectedAt: "2026-11-14T00:00:00Z",
@@ -252,13 +244,8 @@ func TestUpsertBreaksAStaleLock(t *testing.T) {
 // attach holds, and never steals the holder's file.
 func TestLockRefusesALiveLock(t *testing.T) {
 	root := t.TempDir()
-	file := filepath.Join(root, filepath.FromSlash(File)+lockSuffix)
-	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(file, []byte("9999 2026-11-14T00:00:00Z\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	held := "9999 2026-11-14T00:00:00Z 1\n"
+	file := writeLock(t, root, held)
 	unlock, err := lock(root, 20*time.Millisecond)
 	if !errors.Is(err, ErrBusy) {
 		t.Fatalf("lock = %v; want ErrBusy", err)
@@ -266,9 +253,113 @@ func TestLockRefusesALiveLock(t *testing.T) {
 	if unlock != nil {
 		t.Fatal("a refused lock returned a release")
 	}
-	if got := readIncidentLock(t, file); got != "9999 2026-11-14T00:00:00Z\n" {
+	if got := readIncidentLock(t, file); got != held {
 		t.Fatalf("the waiter rewrote the held lock: %q", got)
 	}
+}
+
+// TestStaleLockKeepsALiveHolder proves age alone never proves a lock abandoned:
+// a lock aged past lockStale but written by a running process stays held, so a
+// paused holder keeps its row and the retry appends beside it.
+func TestStaleLockKeepsALiveHolder(t *testing.T) {
+	root := t.TempDir()
+	seeded := ledgerLine(shaA, "src/a.ts", "2026-11-14T00:00:00Z")
+	writeStore(t, root, seeded+"\n")
+	token := fmt.Sprintf("%d 2020-01-01T00:00:00Z 1\n", os.Getpid())
+	file := staleLock(t, root, token)
+
+	if _, err := lock(root, 20*time.Millisecond); !errors.Is(err, ErrBusy) {
+		t.Fatalf("lock over a live holder's stale lock = %v; want ErrBusy", err)
+	}
+	if got := readIncidentLock(t, file); got != token {
+		t.Fatalf("the waiter rewrote the live holder's lock: %q", got)
+	}
+
+	// The holder finishes, and the retry keeps both rows.
+	if err := os.Remove(file); err != nil {
+		t.Fatal(err)
+	}
+	appended, err := Upsert(root, &Row{
+		SchemaVersion: "1", Bundle: "local-a", Sha: shaB,
+		Paths: []string{"src/b.ts"}, DetectedAt: "2026-11-14T00:00:01Z",
+	})
+	if err != nil {
+		t.Fatalf("Upsert after the holder released: %v", err)
+	}
+	if !appended {
+		t.Fatal("the retry appended nothing")
+	}
+	want := seeded + "\n" + ledgerLine(shaB, "src/b.ts", "2026-11-14T00:00:01Z") + "\n"
+	if got := readStore(t, root); got != want {
+		t.Fatalf("ledger = %q; want %q", got, want)
+	}
+}
+
+// TestReleaseKeepsALockItNoLongerOwns proves the release is owner-checked: a
+// holder whose lock a waiter broke must not delete the new holder's file.
+func TestReleaseKeepsALockItNoLongerOwns(t *testing.T) {
+	root := t.TempDir()
+	mkdirStore(t, root)
+	unlock, err := lock(root, 20*time.Millisecond)
+	if err != nil {
+		t.Fatalf("lock: %v", err)
+	}
+	breaker := "9999 2026-11-14T00:00:00Z 7\n"
+	if err := os.WriteFile(lockPath(root), []byte(breaker), lockMode); err != nil {
+		t.Fatal(err)
+	}
+	unlock()
+	if got := readIncidentLock(t, lockPath(root)); got != breaker {
+		t.Fatalf("release left %q; want the new holder's %q", got, breaker)
+	}
+}
+
+// writeLock lands the lock file carrying token and returns its path.
+func writeLock(t *testing.T, root, token string) string {
+	t.Helper()
+	file := lockPath(root)
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte(token), lockMode); err != nil {
+		t.Fatal(err)
+	}
+	return file
+}
+
+// staleLock writes token's lock and ages it past lockStale.
+func staleLock(t *testing.T, root, token string) string {
+	t.Helper()
+	file := writeLock(t, root, token)
+	old := time.Now().Add(-2 * lockStale)
+	if err := os.Chtimes(file, old, old); err != nil {
+		t.Fatal(err)
+	}
+	return file
+}
+
+// deadPid is the pid of a helper process this test started and reaped, so a
+// lock naming it is a leftover whose holder is provably gone.
+func deadPid(t *testing.T) int {
+	t.Helper()
+	for attempt := range 3 {
+		cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^$")
+		cmd.Env = testenv.Base(nil)
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("reap helper process %d: %v", attempt, err)
+		}
+		if pid := cmd.Process.Pid; !pidAlive(pid) {
+			return pid
+		}
+	}
+	t.Fatal("every reaped pid came back alive; this machine reuses pids faster than the probe")
+	return 0
+}
+
+// ledgerLine is one stored row in the ledger's published key order.
+func ledgerLine(sha, path, at string) string {
+	return `{"schema_version":"1","bundle":"local-a","sha":"` + sha +
+		`","paths":["` + path + `"],"note":null,"url":null,"detected_at":"` + at + `"}`
 }
 
 func readIncidentLock(t *testing.T, file string) string {
