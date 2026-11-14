@@ -242,6 +242,8 @@ func TestScoreHostileImpact(t *testing.T) {
 		{"negative count", `{"symbols":{"count":-1},"callers":{"count":1}}`},
 		{"string count", `{"symbols":{"count":"3"},"callers":{"count":1}}`},
 		{"overflowing count", `{"symbols":{"count":1e30},"callers":{"count":1}}`},
+		{"summed overflow", `{"symbols":{"count":9223372036854775807},"callers":{"count":1}}`},
+		{"count above the tables", `{"symbols":{"count":1073741825},"callers":{"count":1}}`},
 		{"missing count", `{"symbols":{},"callers":{"count":1}}`},
 		{"unparsable", `{"symbols":`},
 		{"not an object", `[1,2]`},
@@ -266,6 +268,39 @@ func TestScoreHostileImpact(t *testing.T) {
 	}), nil)
 	if stale.Reach.Stale == nil || !*stale.Reach.Stale {
 		t.Errorf("stale = %v, want true from impact.json", stale.Reach.Stale)
+	}
+
+	top := risk.Score(scoreBundle(t, map[string]string{
+		"impact.json": `{"symbols":{"count":1073741824},"callers":{"count":1073741824}}`,
+	}), nil)
+	if !top.Reach.Measured || top.Reach.Points != 100 {
+		t.Errorf("largest counts = %+v, want a measured reach in the top bucket", top.Reach)
+	}
+}
+
+// TestScoreUnnamedRigorIsNotPublished proves a rigor token no rung names scores
+// conservatively as said while the published weakest stays null: the store
+// never carried that rung, so the row must not claim it did.
+func TestScoreUnnamedRigorIsNotPublished(t *testing.T) {
+	dir := scoreBundle(t, map[string]string{"findings.json": `[]`})
+	cases := []struct {
+		name    string
+		entries []any
+	}{
+		{"unnamed alone", []any{scoreFinding("open", "logic", "invented")}},
+		{"unnamed beside a named", []any{
+			scoreFinding("open", "logic", "walked"),
+			scoreFinding("open", "logic", "invented"),
+		}},
+	}
+	for _, tc := range cases {
+		got := risk.Score(dir, tc.entries)
+		if !got.Rung.Measured || got.Rung.Points != 100 {
+			t.Errorf("%s: rung = %+v, want a measured 100 points (said is the conservative floor)", tc.name, got.Rung)
+		}
+		if got.Rung.Weakest != nil {
+			t.Errorf("%s: weakest = %q, want unset: the store names no such rung", tc.name, *got.Rung.Weakest)
+		}
 	}
 }
 

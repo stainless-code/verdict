@@ -24,7 +24,6 @@ const (
 const (
 	impactSuffix   = "/impact.json"
 	findingsSuffix = "/findings.json"
-	statusOpen     = "open"
 	// bandTop bounds the last bucket: any count above it falls through to the
 	// same points, so no input escapes a table.
 	bandTop = 1 << 30
@@ -114,12 +113,21 @@ func reachScore(dir string) core.RiskReach {
 		return out
 	}
 	out.Measured = true
-	out.Points = bandPoints(*out.Symbols+*out.Callers, reachBands)
+	out.Points = bandPoints(reachSum(*out.Symbols, *out.Callers), reachBands)
 	return out
 }
 
+// reachSum adds two validated counts without overflowing the int the band table
+// reads: each is at most bandTop, so the sum saturates there, under the top
+// bucket's edge.
+func reachSum(symbols, callers int) int {
+	return int(min(int64(symbols)+int64(callers), int64(bandTop)))
+}
+
 // impactCount reads one list receipt's count, nil unless it is a non-negative
-// integer literal.
+// integer the band table can hold: a count above bandTop, or one that would not
+// parse as an int at all, leaves reach unmeasured rather than summing into a
+// wrapped, measured zero.
 func impactCount(m map[string]any, key string) *int {
 	list, ok := jq.AsMap(m[key])
 	if !ok {
@@ -130,7 +138,7 @@ func impactCount(m map[string]any, key string) *int {
 		return nil
 	}
 	n, err := strconv.Atoi(lit.String())
-	if err != nil || n < 0 {
+	if err != nil || n < 0 || n > bandTop {
 		return nil
 	}
 	return &n
@@ -177,24 +185,39 @@ func categoryScore(entries []any, measured bool) core.RiskCategory {
 
 // rungScore picks the weakest rung among the open findings: the rung a bundle
 // still rests on, so one said-grade finding drags the whole bundle down.
+// rungScore reads the open entries' rungs: the weakest wins, and a rigor token
+// no rung names scores as said (the conservative floor) while the published
+// weakest stays null, because the store never carried that rung.
 func rungScore(entries []any, measured bool) core.RiskRung {
-	out := core.RiskRung{Measured: measured, Weight: WeightRung}
-	weakest := ""
-	for _, e := range openEntries(entries) {
-		out.Open++
-		rung := core.RungOf(e)
-		if rung == "" {
-			rung = core.RungSaid
-		}
-		if weakest == "" || rungOrder(rung) > rungOrder(weakest) {
-			weakest = rung
-		}
-	}
+	open := openEntries(entries)
+	out := core.RiskRung{Measured: measured, Weight: WeightRung, Open: len(open)}
+	weakest, named := weakestRung(open)
 	if weakest != "" {
-		out.Weakest = &weakest
 		out.Points = rungPoints[weakest]
+		if named {
+			out.Weakest = &weakest
+		}
 	}
 	return out
+}
+
+// weakestRung returns the lowest rung among the open entries and whether every
+// one of them named a rung. A token no rung names scores as said — the
+// conservative floor — but it clears the flag, so the row publishes no rung the
+// store did not carry.
+func weakestRung(open []any) (string, bool) {
+	weakest, weakestRank := "", -1
+	named := true
+	for _, e := range open {
+		rung := core.RungOf(e)
+		if rung == "" {
+			rung, named = core.RungSaid, false
+		}
+		if rank := rungOrder(rung); rank > weakestRank {
+			weakest, weakestRank = rung, rank
+		}
+	}
+	return weakest, named
 }
 
 func rungOrder(rung string) int {
@@ -209,7 +232,7 @@ func rungOrder(rung string) int {
 func openEntries(entries []any) []any {
 	out := make([]any, 0, len(entries))
 	for _, e := range entries {
-		if readcommon.StatusOf(e) == statusOpen {
+		if readcommon.StatusOf(e) == readcommon.StatusOpen {
 			out = append(out, e)
 		}
 	}
