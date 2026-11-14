@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -254,5 +255,36 @@ func writeSchema(t *testing.T, dir, name, body string) {
 	}
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("write %s: %v", name, err)
+	}
+}
+
+// TestShippedShimListsTheSubset keeps the shipped script's keyword list honest:
+// the header's #KEYWORDS: lines must name exactly the keywords this package
+// accepts — no more (a keyword the checker lacks would be a promise it breaks)
+// and no fewer (a missing keyword reads as unsupported). One list, in
+// Subset(); the shim only spells it.
+func TestShippedShimListsTheSubset(t *testing.T) {
+	const shimPath = "../../skills/verdict/schemas/validate.sh"
+	raw, err := os.ReadFile(shimPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", shimPath, err)
+	}
+	const marker = "#KEYWORDS:"
+	var documented []string
+	for line := range strings.SplitSeq(string(raw), "\n") {
+		rest, ok := strings.CutPrefix(line, marker)
+		if !ok {
+			continue
+		}
+		documented = append(documented, strings.Fields(rest)...)
+	}
+	if len(documented) == 0 {
+		t.Fatalf("%s carries no %s lines", shimPath, marker)
+	}
+	slices.Sort(documented)
+	want := schemacheck.Subset()
+	slices.Sort(want)
+	if !slices.Equal(documented, want) {
+		t.Errorf("%s lists %v;\nwant exactly schemacheck.Subset() = %v", shimPath, documented, want)
 	}
 }

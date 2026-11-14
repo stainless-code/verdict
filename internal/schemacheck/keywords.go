@@ -53,12 +53,33 @@ const (
 	typeNull     = "null"
 )
 
-var constraintKeys = names(keyRef, keyDefs, keyType, keyFormat, keyPattern,
-	keyItems, keyMin, keyMax, keyExclMin, keyMinItems, keyMaxItems, keyMinLen, keyMaxLen, keyAnyOf, keyNot, keyProps,
-	keyNames, keyRequired, keyAddl, keyConst, keyEnum)
+// constraintKeywords and annotationKeywords are the keyword subset in the order
+// the shipped `schemas/validate.sh` lists it. The sets the checker consults are
+// built from these two slices, and Subset renders them for the guard that keeps
+// the shim's header honest, so one list feeds all three.
+var constraintKeywords = []string{
+	keyRef, keyDefs, keyType, keyConst, keyEnum, keyProps, keyNames, keyRequired,
+	keyItems, keyMinItems, keyMaxItems, keyAddl, keyMin, keyMax, keyExclMin,
+	keyMinLen, keyMaxLen, keyPattern, keyNot, keyAnyOf, keyFormat,
+}
 
-var annotationKeys = names("$schema", "$id", "title", "description", "default",
-	"examples", "$comment")
+// annotationKeywords are accepted and ignored: they document a schema rather
+// than constrain a value.
+var annotationKeywords = []string{
+	"$schema", "$id", "title", "description", "default",
+	"examples", "$comment",
+}
+
+var (
+	constraintKeys = names(constraintKeywords...)
+	annotationKeys = names(annotationKeywords...)
+)
+
+// Subset returns every keyword this checker accepts, in canonical order: the
+// constraints it enforces, then the annotations it ignores. It is the one list
+// the checker, the shipped shim's header, and TestShippedShimListsTheSubset
+// read.
+func Subset() []string { return slices.Concat(constraintKeywords, annotationKeywords) }
 
 func names(keys ...string) map[string]bool {
 	set := make(map[string]bool, len(keys))

@@ -8,11 +8,16 @@
 #
 # The checker is the Go implementation in internal/schemacheck, reached
 # through the hidden `__validate-schema` verb, so the published schemas, the
-# conformance tests, and this script share one keyword subset: $ref (same file
-# or a sibling file), type, const, enum, properties, required, items,
-# additionalProperties (bool or schema), minimum, maximum, exclusiveMinimum,
-# minItems, minLength, maxLength, pattern, not, anyOf, format (date-time), $defs.
-# Any other keyword fails loudly.
+# conformance tests, and this script share one keyword subset. The list below is
+# checked against that package's Subset(), which is also the set the checker
+# enforces: a keyword outside it fails loudly, and the annotations in it are
+# accepted and ignored.
+#
+#KEYWORDS: $ref $defs type const enum properties propertyNames required items
+#KEYWORDS: minItems maxItems additionalProperties minimum maximum exclusiveMinimum
+#KEYWORDS: minLength maxLength pattern not anyOf format
+#KEYWORDS: $schema $id title description default examples $comment
+#
 # This shim resolves the binary exactly like every other skill path
 # (VERDICT_BIN, the skill's bin/verdict, then PATH) and needs no jq.
 set -eu
