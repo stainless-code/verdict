@@ -171,7 +171,7 @@ func TestSharedBlobParsesPerLanguage(t *testing.T) {
 	f.write("other.ts", "other(1)\n")
 	f.commit("one")
 	assertBuildCounts(t, f, []buildCount{{3, 0}, {2, 1}})
-	tree, ref := readTree(storePath(f.dir), f.bodyTree())
+	tree, ref := readTree(storePath(f.dir), treeRef{tree: f.bodyTree()})
 	if ref != nil {
 		t.Fatalf("readTree refused: %v", ref)
 	}
@@ -414,7 +414,7 @@ func TestRenameAcrossLanguagesReparses(t *testing.T) {
 	if resp.Data.Parsed != 1 || resp.Data.Reused != 0 {
 		t.Errorf("parsed/reused = %d/%d; want 1/0 for the renamed file", resp.Data.Parsed, resp.Data.Reused)
 	}
-	tree, ref := readTree(storePath(f.dir), f.bodyTree())
+	tree, ref := readTree(storePath(f.dir), treeRef{tree: f.bodyTree()})
 	if ref != nil {
 		t.Fatalf("readTree refused: %v", ref)
 	}

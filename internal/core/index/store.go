@@ -14,6 +14,7 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/shellquote"
 )
 
 // Store layout names.
@@ -172,26 +173,62 @@ func readShard(store, blob string, lang language, refsPerFile int) (*shard, bool
 	return &s, true, nil
 }
 
+// treeRef names what one index read answers for: the tree SHA, the revision
+// the operator typed for it (empty when the store itself lists the tree), and
+// the checkout holding that revision when the hand-off named a directory
+// rather than this one. A missing tree file can then name what was typed and
+// the exact build command that would answer for it.
+type treeRef struct {
+	tree string
+	at   string
+	from string
+}
+
 // readTree reads and validates one tree file.
-func readTree(store, tree string) (*treeIndex, *core.RefusalError) {
-	raw, err := os.ReadFile(treePath(store, tree))
+func readTree(store string, key treeRef) (*treeIndex, *core.RefusalError) {
+	raw, err := os.ReadFile(treePath(store, key.tree))
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, &core.RefusalError{
-			Code: codeMissingIndex, Message: "no index for tree " + tree + "; run verdict index build",
-		}
+		return nil, missingIndexRefusal(key)
 	}
 	if err != nil {
 		return nil, &core.RefusalError{
-			Code: codeIndexFailed, Message: "could not read tree " + tree + jsonSuffix + colonSpace + err.Error(),
+			Code: codeIndexFailed, Message: "could not read tree " + key.tree + jsonSuffix + colonSpace + err.Error(),
 		}
 	}
 	var t treeIndex
-	if err := json.Unmarshal(raw, &t); err != nil || t.SchemaVersion != "1" || t.Tree != tree {
+	if err := json.Unmarshal(raw, &t); err != nil || t.SchemaVersion != "1" || t.Tree != key.tree {
 		return nil, &core.RefusalError{
-			Code: codeIndexCorrupt, Message: fmt.Sprintf("tree %s.json is truncated or invalid", tree),
+			Code: codeIndexCorrupt, Message: fmt.Sprintf("tree %s.json is truncated or invalid", key.tree),
 		}
 	}
 	return &t, nil
+}
+
+// missingIndexRefusal names the revision the operator typed beside the tree it
+// resolved to, then the one command that builds that tree.
+func missingIndexRefusal(key treeRef) *core.RefusalError {
+	label := "tree " + key.tree
+	if key.at != "" && key.at != key.tree {
+		label = key.at + " (tree " + key.tree + ")"
+	}
+	return &core.RefusalError{
+		Code:    codeMissingIndex,
+		Message: "no index for " + label + "\nnext: " + key.buildCommand(),
+	}
+}
+
+// buildCommand is the exact `index build` invocation that answers for the
+// tree: the named checkout when the hand-off read a directory, else the
+// revision the operator typed (a tree SHA builds the same tree).
+func (key treeRef) buildCommand() string {
+	switch {
+	case key.from != "":
+		return "verdict index build --from " + shellquote.Arg(key.from)
+	case key.at != "":
+		return "verdict index build --at " + key.at
+	default:
+		return "verdict index build --at " + key.tree
+	}
 }
 
 // isSourceEntry reports a regular file the index scans.
@@ -612,7 +649,7 @@ func (st *state) treeRows(store string) ([]TreeRow, *core.RefusalError) {
 			continue
 		}
 		tree := strings.TrimSuffix(e.Name(), jsonSuffix)
-		t, ref := readTree(store, tree)
+		t, ref := readTree(store, treeRef{tree: tree})
 		if ref != nil {
 			return nil, ref
 		}
@@ -654,7 +691,7 @@ func (st *state) prune(ctx context.Context) (*Response, *core.RefusalError) {
 	referenced := map[string]bool{}
 	kept := make([]string, 0, len(keep))
 	for _, candidate := range keep {
-		t, ref := readTree(store, candidate.name)
+		t, ref := readTree(store, treeRef{tree: candidate.name})
 		if ref != nil {
 			return nil, ref
 		}

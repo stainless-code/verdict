@@ -199,7 +199,7 @@ func TestImpactRefusals(t *testing.T) {
 	f.write("a/ab.go", "package a\n\nfunc A() {}\n\nfunc B() {}\n\n// later\n")
 	f.commit("two")
 	assertRefusal(t, f.impactRefuse("HEAD"), codeMissingIndex,
-		"no index for tree "+f.run("", "rev-parse", "HEAD^{tree}")+"; run verdict index build")
+		"no index for HEAD (tree "+f.run("", "rev-parse", "HEAD^{tree}")+")\nnext: verdict index build --at HEAD")
 
 	if err := os.WriteFile(filepath.Join(f.dir, ".verdict", "index", "trees", built.Data.Tree+".json"),
 		[]byte("{truncated"), 0o644); err != nil {

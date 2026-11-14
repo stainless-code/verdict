@@ -80,7 +80,7 @@ func ImpactOf(ctx context.Context, req *ImpactRequest) (*Impact, *core.RefusalEr
 	if strings.TrimSpace(req.Index) == "" {
 		return nil, &core.RefusalError{Code: codeBadFlags, Message: impactNoIndex}
 	}
-	root, store, at, ref := impactStore(req.Index, st.sourceRoot())
+	root, store, at, from, ref := impactStore(req.Index, st.sourceRoot())
 	if ref != nil {
 		return nil, ref
 	}
@@ -89,7 +89,7 @@ func ImpactOf(ctx context.Context, req *ImpactRequest) (*Impact, *core.RefusalEr
 	if ref != nil {
 		return nil, ref
 	}
-	t, ref := readTree(store, tree)
+	t, ref := readTree(store, treeRef{tree: tree, at: at, from: from})
 	if ref != nil {
 		return nil, ref
 	}
@@ -118,38 +118,40 @@ func ImpactOf(ctx context.Context, req *ImpactRequest) (*Impact, *core.RefusalEr
 func impactSource(tree string) string { return "index:" + tree }
 
 // impactStore resolves the named hand-off into the git root to resolve in, the
-// index store to read, and the revision the tree comes from. A directory that
-// holds a store is a checkout; anything else is a revision in the reviewed
+// index store to read, and the revision the tree comes from. from names the
+// hand-off's own checkout when the operator named a directory, so a missing
+// tree file can point at the build that answers for it. A directory that holds
+// a store is a checkout; anything else is a revision in the reviewed
 // repository.
-func impactStore(index, sourceRoot string) (root, store, at string, ref *core.RefusalError) {
+func impactStore(index, sourceRoot string) (root, store, at, from string, ref *core.RefusalError) {
 	info, err := os.Stat(index)
 	if errors.Is(err, os.ErrNotExist) {
 		root = sourceRoot
-		return root, storePath(root), index, nil
+		return root, storePath(root), index, "", nil
 	}
 	if err != nil {
-		return "", "", "", &core.RefusalError{
+		return "", "", "", "", &core.RefusalError{
 			Code: codeIndexFailed, Message: "impact: cannot read --index " + index + colonSpace + err.Error(),
 		}
 	}
 	if !info.IsDir() {
 		root = sourceRoot
-		return root, storePath(root), index, nil
+		return root, storePath(root), index, "", nil
 	}
 	dir, absErr := filepath.Abs(index)
 	if absErr != nil {
-		return "", "", "", &core.RefusalError{
+		return "", "", "", "", &core.RefusalError{
 			Code: codeIndexFailed, Message: "impact: --index " + index + " is not addressable: " + absErr.Error(),
 		}
 	}
 	store = storePath(dir)
 	if !isDir(filepath.Join(store, impactStoreTrees)) {
-		return "", "", "", &core.RefusalError{
+		return "", "", "", "", &core.RefusalError{
 			Code:    codeBadFlags,
 			Message: fmt.Sprintf(impactNotAStore, dir, config.VerdictDir+"/"+storeDirName),
 		}
 	}
-	return dir, store, impactHeadRef, nil
+	return dir, store, impactHeadRef, dir, nil
 }
 
 // isDir reports a readable directory.
