@@ -588,3 +588,101 @@ func TestRevertSubjectIsTheMinersPredicate(t *testing.T) {
 		}
 	}
 }
+
+// twoRevertRepo builds a fixture with two recorded reverts, so the ledger's
+// order is observable: the rows are keyed by commit id, not by the order the
+// scan met them. The later revert sorts first here.
+func twoRevertRepo(t *testing.T) (r *repo, base, first, second string) {
+	t.Helper()
+	r = newRepo(t)
+	r.write("main.go", "package main\n")
+	base = r.commit("feat: base")
+	r.write("a.go", "package main\n")
+	featA := r.commit("feat: add a")
+	r.write("b.go", "package main\n")
+	featB := r.commit("feat: add b")
+	r.git("revert", "--no-edit", featB)
+	first = r.head()
+	r.day++
+	r.git("revert", "--no-edit", featA)
+	second = r.head()
+	return r, base, first, second
+}
+
+// TestRevertsOrdersTheLedgerBySHA proves the ledger is byte-deterministic with
+// more than one row: the rows are sorted by commit id, so a map's iteration
+// order can never reach the file. It repeats the scan because an unordered
+// collect only sometimes flips the order, and a file contract cannot be
+// sometimes.
+func TestRevertsOrdersTheLedgerBySHA(t *testing.T) {
+	r, base, first, second := twoRevertRepo(t)
+	if first != "da4ee5a81a8a4ce21d1b2b8fdf4ea8b429125722" ||
+		second != "7aff5060095a6ba81a1dcad4c6857783c1063251" {
+		t.Fatalf("fixture reverts = %q, %q; the literals below assume the pinned fixture", first, second)
+	}
+	want := `{"schema_version":"1","sha":"7aff5060095a6ba81a1dcad4c6857783c1063251",` +
+		`"subject":"Revert \"feat: add a\"","reverts":["a87f384911944626685e522728b34caa058537ff"],` +
+		`"date":"2024-01-05T00:00:00Z","paths":["a.go"]}` + "\n" +
+		`{"schema_version":"1","sha":"da4ee5a81a8a4ce21d1b2b8fdf4ea8b429125722",` +
+		`"subject":"Revert \"feat: add b\"","reverts":["7037a86d134315e5555e53aa12816fd2b5bc8c1b"],` +
+		`"date":"2024-01-04T00:00:00Z","paths":["b.go"]}` + "\n"
+	for range 8 {
+		runReverts(t, r, base)
+		if got := readRevertFile(t, r, ".verdict/reverts.jsonl"); got != want {
+			t.Fatalf("ledger is not sorted by sha:\n%s\nwant:\n%s", got, want)
+		}
+	}
+	note := readRevertFile(t, r, ".verdict/reverts.md")
+	if strings.Index(note, "## 7aff506") > strings.Index(note, "## da4ee5a") {
+		t.Errorf("note sections are not in ledger order:\n%s", note)
+	}
+}
+
+// TestRevertSkipsLineOrdersTheReasons proves the skip footer carries one
+// reason order, whatever order the scan met them in and however the count map
+// iterates: a reader diffing two runs must see one line.
+func TestRevertSkipsLineOrdersTheReasons(t *testing.T) {
+	skipped := []RevertSkipped{
+		{Reason: "wide-revert", SHA: "aa"},
+		{Reason: "unreadable", SHA: "bb"},
+		{Reason: "merge-revert", SHA: "cc"},
+		{Reason: "wide-revert", SHA: "dd"},
+		{Reason: "binary", SHA: "ee"},
+		{Reason: "merge-revert", SHA: "ff"},
+	}
+	want := "skipped: binary 1, merge-revert 2, unreadable 1, wide-revert 2"
+	for range 32 {
+		if got := revertSkipsLine(skipped); got != want {
+			t.Fatalf("skips line = %q; want %q", got, want)
+		}
+	}
+}
+
+// TestRevertsRefreshesARescan proves the window's own row wins: a stored row is
+// evidence from an older scan, and a rerun over its window replaces it with
+// what this scan read, so a stale subject or date cannot outlive its scan.
+func TestRevertsRefreshesARescan(t *testing.T) {
+	r, base, revert := revertsRepo(t)
+	if revert != "ae2b454103bc34718b047676c3edfceda04fdfc4" {
+		t.Fatalf("fixture revert = %q; the literals below assume the pinned fixture", revert)
+	}
+	if err := os.MkdirAll(filepath.Join(r.dir, ".verdict"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stale := `{"schema_version":"1","sha":"` + revert + `","subject":"Revert \"stale\"",` +
+		`"reverts":[],"date":"2020-01-01T00:00:00Z","paths":["old.go"]}` + "\n"
+	ledger := filepath.Join(r.dir, ".verdict", "reverts.jsonl")
+	if err := os.WriteFile(ledger, []byte(stale), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	data := runReverts(t, r, base)
+	if data.Reverts.Window != 1 || data.Reverts.Total != 1 {
+		t.Errorf("window/total = %d/%d; want 1/1", data.Reverts.Window, data.Reverts.Total)
+	}
+	want := `{"schema_version":"1","sha":"` + revert + `","subject":"Revert \"feat: add a guard\"",` +
+		`"reverts":["bc21ab1945f386a0b6754918489df7de5b78a6ff"],` +
+		`"date":"2024-01-03T00:00:00Z","paths":["main.go"]}` + "\n"
+	if got := readRevertFile(t, r, ".verdict/reverts.jsonl"); got != want {
+		t.Errorf("a rescanned row did not replace the stored one:\n%s\nwant:\n%s", got, want)
+	}
+}
