@@ -585,7 +585,7 @@ A repo that carries its controls in the base commit negates them in its own
 
 ```bash
 verdict learn --rule "Check error paths on every await" --scope "src/*.ts" --provenance manual --rigor walked
-verdict learn --status            # rules + counters + precision
+verdict learn --status            # rules + counters + precision + exposure + acceptance
 verdict learn --retire <id> --reason "<30+ chars, on the record>"
 verdict learn --restore <id> --reason "<30+ chars, on the record>"
 ```
@@ -595,6 +595,16 @@ rule text and taken ids are refused; empty rule/scope and bad rigor/id fail
 typed. Retire keeps the tombstone line (`status`, `retiredAt`,
 `retireReason`, history-logged) with counters untouched; restore flips back to
 `active` keeping the tombstone as record.
+
+Exposure and acceptance: `learn --status` (text and `--json`) joins
+`kb-recall.json` manifests, finding `kb` cites, and `kb-joins.jsonl` across
+reviewed bundles to report per rule: `recalled_in` (measured bundles whose
+recall manifest listed the rule), `cited_in` (reviewed bundles with at least one
+finding citing it), `exposure = cited_in / recalled_in`, and
+`acceptance = addressed / cited` alongside `precision = hits / judged`. When no
+bundle in `.verdict/state` carries a `kb-recall.json` manifest, `recalled_in`
+and `exposure` read `null` in JSON (`unmeasured` in text); a zero denominator
+reads `null` (`n/a` in text), never `0` or `NaN`.
 
 Recall: `fetch`/`fetch-local` writes `.verdict/state/<bundle>/kb.txt` when active
 rules scope-match the diff — top 3 by precision (`judged==0` reads 0.5),
