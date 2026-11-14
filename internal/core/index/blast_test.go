@@ -376,20 +376,22 @@ func TestBlastMissingIndexNamesTheBuildCommand(t *testing.T) {
 	f := newFixture(t)
 	writeBlastFixture(f)
 	f.commit("one")
-	tree := f.run("", "rev-parse", "HEAD^{tree}")
+	label := "no index for HEAD (tree " + f.run("", "rev-parse", "HEAD^{tree}") + ")"
 	t.Run("revision", func(t *testing.T) {
 		resp := blastRun(t, f, func(r *Request) { r.Paths = []string{"a/ab.go"} })
-		want := "no index for HEAD (tree " + tree + ")"
-		assertAbsentIndex(t, resp, want, "run verdict index build --at HEAD, then re-run")
+		assertAbsentIndex(t, resp, label, "run verdict index build --at HEAD, then re-run")
 	})
+	// The hand-off names the checkout as given, so this leg hands it over as
+	// `.`: a temp dir spelling (a drive letter and backslashes on Windows) needs
+	// shell quoting, and an expectation built from it would be rebuilt from the
+	// renderer under test.
 	t.Run("checkout hand-off", func(t *testing.T) {
-		dir := f.rehome("index-built")
+		t.Chdir(f.dir)
 		resp := blastRun(t, f, func(r *Request) {
-			r.From = dir
+			r.From = "."
 			r.Paths = []string{"a/ab.go"}
 		})
-		want := "no index for HEAD (tree " + tree + ")"
-		assertAbsentIndex(t, resp, want, "run verdict index build --from "+dir+", then re-run")
+		assertAbsentIndex(t, resp, label, "run verdict index build --from ., then re-run")
 	})
 }
 
