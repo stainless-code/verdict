@@ -28,8 +28,9 @@ const vetoSeed = `{"id":"active-one","rule":"Retire the first active rule","scop
 `
 
 // vetoSettle is how long the test watches for a write that ignores the lock it
-// holds. A writer waiting on flock cannot land inside this window; the unlocked
-// veto rewrote the store in it.
+// holds. A writer waiting on the store lock — flock on Unix, LockFileEx on
+// Windows — cannot land inside this window; the unlocked veto rewrote the store
+// in it.
 const vetoSettle = 200 * time.Millisecond
 
 // mixedOp is one write started by the test, tagged with the row it must leave
@@ -38,6 +39,13 @@ type mixedOp struct {
 	req    *Request
 	label  string
 	wantID string
+}
+
+// outcome is one write's return: the refusal it came back with, nil for a write
+// that refused nothing, and its label.
+type outcome struct {
+	ref   *core.RefusalError
+	label string
 }
 
 // TestVetoAndAppendKeepEveryRow proves an append and a veto share one lock:
@@ -51,7 +59,7 @@ func TestVetoAndAppendKeepEveryRow(t *testing.T) {
 	store := seedVetoStore(t, root)
 	ops := mixedOps()
 	held := holdStoreLock(t, store)
-	refusals := startMixed(t, ops, held)
+	refusals := startMixed(t, ops, store, held)
 	for msg := range refusals {
 		t.Error(msg)
 	}
@@ -81,32 +89,54 @@ func seedVetoStore(t *testing.T, root string) string {
 }
 
 // startMixed runs every op while the caller holds the store lock, fails the
-// test if any op lands before it is released, then returns the refusal messages
-// after all of them finish.
-func startMixed(t *testing.T, ops []mixedOp, held func()) <-chan string {
+// test if any op returns before it is released, then returns the refusal
+// messages after all of them finish. Two properties are watched, because a
+// write that ignores the lock can show either one: an op that returns did not
+// wait the window its held lock forces, and the store's bytes must not move
+// while the lock is held, which catches a writer that writes before it waits.
+// A returned op is reported by what it did — a nil refusal means it landed, and
+// any refusal means it never waited, naming the refusal instead of claiming a
+// landing the store never took.
+func startMixed(t *testing.T, ops []mixedOp, store string, held func()) <-chan string {
 	t.Helper()
+	before := storeBytes(t, store)
 	var wg sync.WaitGroup
 	refusals := make(chan string, len(ops))
-	returned := make(chan string, len(ops))
+	returned := make(chan outcome, len(ops))
 	for _, op := range ops {
 		wg.Go(func() {
 			_, ref := Run(context.Background(), op.req)
 			if ref != nil {
 				refusals <- fmt.Sprintf("%s: %s: %s", op.label, ref.Code, ref.Message)
 			}
-			returned <- op.label
+			returned <- outcome{label: op.label, ref: ref}
 		})
 	}
 	select {
-	case label := <-returned:
+	case first := <-returned:
 		held()
-		t.Fatalf("%s landed while another writer held the lock", label)
+		t.Fatalf("%s returned while another writer held the lock: %s", first.label, earlyReturn(first))
 	case <-time.After(vetoSettle):
+	}
+	if got := storeBytes(t, store); got != before {
+		held()
+		t.Fatalf("the store moved while another writer held the lock: %q", got)
 	}
 	held()
 	wg.Wait()
 	close(refusals)
 	return refusals
+}
+
+// earlyReturn names what a write did before the lock was released: a write that
+// refused nothing landed unlocked, and a write that refused something never
+// waited its window, which is a pre-lock failure and never the store-busy a
+// held lock earns after five seconds.
+func earlyReturn(first outcome) string {
+	if first.ref == nil {
+		return "it landed"
+	}
+	return first.ref.Code + ": " + first.ref.Message
 }
 
 // readStore reads the store back as rows.
