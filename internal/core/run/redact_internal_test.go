@@ -182,6 +182,35 @@ func TestDirectiveNamesTheArtifact(t *testing.T) {
 	}
 }
 
+// pipelineDirective is the whole-pipeline directive for a PR bundle, byte for
+// byte: the built-in default declares no lens, no model hint, and no budget, so
+// every sentence here is fixed text. It is one literal on purpose — a permuted
+// Sprintf argument degrades a sentence into nonsense and every substring pin
+// below survives it.
+const pipelineDirective = "Review acme/app PR 42 and write exactly one review file.\n\n" +
+	"Read the installed verdict review skill first, then the bundle at .verdict/state/42: PR.json, " +
+	"roles.txt, and toc.txt indexing full.diff, plus kb.txt, sensitive.txt, and panel when the run " +
+	"carries them.\n\n" +
+	"Write .verdict/state/42/review.json with {\"schema_version\": \"1\", \"body\": ..., " +
+	"\"approved\": ..., \"comments\": [...]} (optional \"resolved\" and \"triage\"). Write nothing " +
+	"else in the bundle.\n\n" +
+	"verdict launched this one process and validates that file; it does not read your prose, retry " +
+	"you, or post. Do not post, merge, or push: publishing is an explicit verdict post.\n\n" +
+	"The review pipeline is recipe default@1.0.0 (builtin): lenses none; synthesize; dedupe; rank. " +
+	"These are declarations, not selections: verdict launched this one process and never chose a model.\n"
+
+// TestDirectiveIsByteExact pins the whole-pipeline directive against that
+// literal. Every other pin in this package is a substring, and a bundle and
+// metadata file swapped in the argument list reads as "the bundle at PR.json:
+// .verdict/state/42" while all of them still pass.
+func TestDirectiveIsByteExact(t *testing.T) {
+	got := directive("acme/app", "42", ".verdict/state/42", ".verdict/state/42/review.json", false,
+		builtinPlan(t))
+	if got != pipelineDirective {
+		t.Fatalf("directive =\n%q\nwant\n%q", got, pipelineDirective)
+	}
+}
+
 // TestAgentTableIsSortedAndUnique keeps the data table honest: duplicate or
 // unsorted rows would make the known-name list a lie.
 func TestAgentTableIsSortedAndUnique(t *testing.T) {

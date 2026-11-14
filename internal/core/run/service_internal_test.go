@@ -1175,8 +1175,8 @@ func printStage(t *testing.T, root string, cmdr *scripted, stage string) *core.R
 }
 
 // TestRunPrintWithoutAStageRendersThePipeline proves the plain --print path is
-// untouched: no data.stage, and the argv is the agent flags plus the one
-// whole-pipeline directive.
+// untouched: the argv is the agent flags and the whole-pipeline directive, byte
+// for byte, and no data.stage is published.
 func TestRunPrintWithoutAStageRendersThePipeline(t *testing.T) {
 	root := fixtureRoot(t)
 	recipeControl(t, root, repoRecipe)
@@ -1187,16 +1187,30 @@ func TestRunPrintWithoutAStageRendersThePipeline(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("Run refused: %v", ref)
 	}
+	if want := []string{"claude", "-p", quickPipelineDirective}; !slices.Equal(resp.Data.Argv, want) {
+		t.Fatalf("argv =\n%q\nwant\n%q", resp.Data.Argv, want)
+	}
 	if _, ok := runData(t, resp)["stage"]; ok {
 		t.Errorf("data.stage = %v, want it absent without --stage", runData(t, resp)["stage"])
 	}
-	if len(resp.Data.Argv) != 3 || resp.Data.Argv[0] != "claude" || resp.Data.Argv[1] != "-p" {
-		t.Fatalf("argv = %q, want the agent flags and one directive", resp.Data.Argv)
-	}
-	if prompt := resp.Data.Argv[2]; strings.Contains(prompt, "stage 1 of 4") {
-		t.Errorf("the whole-pipeline directive names one stage:\n%s", prompt)
-	}
 }
+
+// quickPipelineDirective is the whole-pipeline directive for the fixture's
+// repository recipe, byte for byte. Like the built-in variant it is one
+// literal: the stage-render tests pin the stage text, and this pins what a
+// plain --print still renders.
+const quickPipelineDirective = "Review acme/app PR 42 and write exactly one review file.\n\n" +
+	"Read the installed verdict review skill first, then the bundle at .verdict/state/42: PR.json, " +
+	"roles.txt, and toc.txt indexing full.diff, plus kb.txt, sensitive.txt, and panel when the run " +
+	"carries them.\n\n" +
+	"Write .verdict/state/42/review.json with {\"schema_version\": \"1\", \"body\": ..., " +
+	"\"approved\": ..., \"comments\": [...]} (optional \"resolved\" and \"triage\"). Write nothing " +
+	"else in the bundle.\n\n" +
+	"verdict launched this one process and validates that file; it does not read your prose, retry " +
+	"you, or post. Do not post, merge, or push: publishing is an explicit verdict post.\n\n" +
+	"The review pipeline is recipe quick@1.2.3 (repo): lenses logic (model sonnet, max_files 8, " +
+	"max_findings 6); synthesize (model opus); dedupe; rank; budget_usd 1.2. These are declarations, " +
+	"not selections: verdict launched this one process and never chose a model.\n"
 
 // stageRefusalCase is one --stage refusal: the flags it is asked with, and the
 // message fragment it owes the operator.
