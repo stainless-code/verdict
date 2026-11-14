@@ -263,9 +263,9 @@ func usageText() string {
 		"    churn 25, category 25, rung 15), and whether it needs a human. Rows sort by\n" +
 		"    band, then score, then bundle name; --status open keeps live bundles and\n" +
 		"    names the merged/closed ones it skipped, --status all keeps everything. A\n" +
-		"    bundle with no findings.json is queued, never dropped, and a component whose\n" +
-		"    artifact is missing reads unmeasured with a warning. Gating one bundle stays\n" +
-		"    report --max-risk.\n" +
+		"    bundle with no findings.json is queued, never dropped; a missing or unusable\n" +
+		"    impact.json reads reach unmeasured with a counted warning. Gating one bundle\n" +
+		"    stays report --max-risk.\n" +
 		"  index build [--from <dir>] [--at <ref>] [--json]\n" +
 		"    build the code index for one tree under .verdict/index/: Go parsed with\n" +
 		"    go/parser, TypeScript, JavaScript, and Python by two lexical scanners.\n" +

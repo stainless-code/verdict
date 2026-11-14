@@ -186,7 +186,7 @@ fi
 run_mcp_input "$FRAMES" --operator
 if [ "$EVAL_STATUS" -eq 0 ]; then good "--operator session exits 0"; else bad "--operator exit $EVAL_STATUS"; fi
 if jq -e 'select(.id == 2).result.tools | (length == 25) and (map(.name) | (index("triage") != null) and (index("ingest") != null)) and (map(select(.name == "triage"))[0].inputSchema.properties.status.enum == ["open","addressed","wont-fix","false-positive","deferred"])' <"$MCP_OUT" >/dev/null; then
-  good "--operator exposes 24 tools including ingest and triage with its status enum"
+  good "--operator exposes 25 tools including ingest and triage with its status enum"
 else
   bad "--operator tool list drifted"
 fi

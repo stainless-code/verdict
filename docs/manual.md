@@ -3193,7 +3193,7 @@ Each `trend` rollup also classifies bundles into advisory risk bands
 floor is `low`), tallying bundles, findings, open, addressed, and closed
 outcomes per band.
 
-## Risk (triage queue across bundles)
+## Triage risk queue
 
 `risk <owner/repo> [--status open|all] [--limit <n>]` is the portfolio view of
 the same advisory score `report --risk` prints: one row per bundle under
@@ -3204,8 +3204,8 @@ on each run, so a hand-edited store stays truthful.
 A row carries `rank`, `bundle`, `pr` (null for a local bundle), `state`
 (`open`, `merged`, `closed`, or `local`), the short `head`, `claimed`, `floor`,
 and `reported`, plus `receipt_reasons` drawn from the published vocabulary
-(`missing-claim`, `stale-head`, `missing-coverage`, `unreadable`, `unanchored`,
-`deferred`), the floor's `inputs`, its `score`, and `needs_human` — true for
+(`missing-claim`, `missing-coverage`, `unreviewed-files`, `stale-head`), the
+floor's `inputs`, its `score`, and `needs_human` — true for
 every row whose `reported` band is not `low`. Rows sort by band
 (`critical`, `high`, `medium`, `unknown`, `low`), then by score, then by bundle
 name, so the order is total and a rerun is byte-identical.
@@ -3222,17 +3222,24 @@ out of the review history with a counted warning.
 `--status open` (the default) keeps host-open and local bundles and prints one
 `skipped:` line naming the merged and closed ones it left out; `--status all`
 keeps everything. `--limit` (default 50, max 200) bounds the published rows and
-carries the flattened receipt (`truncated`, `truncation_reason` `response_cap`,
-`returned`, `total`) while `bundles`, `by_band`, and `needs_human` keep
-describing the whole queue.
+carries the flattened receipt (`truncated`, `truncation_reason`, `returned`,
+`total`) while `bundles`, `by_band`, and `needs_human` keep describing the whole
+queue. `truncation_reason` is `response_cap` when the bound bit, and `scan_cap`
+when a store could not be read at all — that one wins, because the queue cannot
+count what it could not read, so `total` stays null and the warning names the
+skipped store; `returned` always counts the rows published.
 
 The score is the 0-100 advisory number `report --risk` publishes: reach 35
 (index symbols plus callers from `impact.json`), churn 25 (`full.diff` lines),
 category 25 (worst open finding's category), rung 15 (weakest open finding's
-rigor). A component whose artifact is missing reads unmeasured at 0 points and
-warns with the count — never as a clean zero — and the follow-up names the
+rigor). A missing or unusable `impact.json` reads reach unmeasured at 0 points
+and warns with the count — never as a clean zero — and the follow-up names the
 backfill (`verdict fetch <pr> --index origin/main`, or `fetch-local` for a local
-bundle). No score is a gate: gating one bundle stays
+bundle). A missing `full.diff` or `findings.json` leaves its own components
+unmeasured without a warning: the missing-coverage and unmeasured-category
+rules above already name it. A rigor token no rung names scores as `said`, the
+conservative floor, while the row's `weakest` stays null: the store never
+carried that rung. No score is a gate: gating one bundle stays
 `report <owner/repo> <pr> --max-risk <level>`.
 
 Human mode prints one header line with the band tally, one line per row
