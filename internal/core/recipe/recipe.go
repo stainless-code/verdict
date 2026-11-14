@@ -84,10 +84,10 @@ type Document struct { //nolint:govet // field order is the published property o
 // Description are recorded, never enforced; only Version, Synthesize, and the
 // lens rows reach the directive.
 type Entry struct { //nolint:govet // field order is the published property order
-	Version     string     `json:"version"              maxLength:"64"`
+	Version     string     `json:"version"               maxLength:"64"`
 	Description string     `json:"description,omitempty" maxLength:"280"`
 	BudgetUSD   float64    `exclusiveMin:"0"             json:"budget_usd,omitempty"`
-	Lenses      []Lens     `json:"lenses,omitempty"      maxItems:"64" minItems:"1"`
+	Lenses      []Lens     `json:"lenses,omitempty"      maxItems:"64"               minItems:"1"`
 	Synthesize  Synthesize `json:"synthesize"`
 }
 
@@ -153,7 +153,9 @@ func (d *Document) rootAt(root map[string]any) *core.RefusalError {
 	return nil
 }
 
-// entryAt validates one named entry and records it.
+// entryAt validates one named entry and records it: the required version, then
+// the optional description, budget, and lens rows, then the required
+// synthesizer hint, in published order.
 func (d *Document) entryAt(name string, raw any) *core.RefusalError {
 	if !nameRE.MatchString(name) {
 		return refuse(CodeBad, "$.recipes: recipe key %q is not a lowercase slug", name)
@@ -166,106 +168,129 @@ func (d *Document) entryAt(name string, raw any) *core.RefusalError {
 	if ref := checkKeys(obj, path, entryKeys); ref != nil {
 		return ref
 	}
-	version, ref := requiredString(obj, path, "version")
+	entry, ref := entryOf(obj, path)
 	if ref != nil {
-		return ref
-	}
-	if n := utf8.RuneCountInString(version); n > maxVersion {
-		return refuse(CodeBad, "%s.version: %d characters, over the %d-character cap", path, n, maxVersion)
-	}
-	if !semverRE.MatchString(version) {
-		return refuse(CodeBad, "%s.version: %q is not semver", path, version)
-	}
-	entry := Entry{Version: version}
-	if ref := entry.optionalAt(obj, path); ref != nil {
 		return ref
 	}
 	d.Recipes[name] = entry
 	return nil
 }
 
-// optionalAt validates the keys an entry may omit, then the one it may not.
-//
-//nolint:revive // one linear pass over the optional keys, in published order
-func (e *Entry) optionalAt(obj map[string]any, path string) *core.RefusalError {
-	if raw, ok := obj["description"]; ok {
-		if ref := e.descriptionAt(raw, path); ref != nil {
-			return ref
-		}
+// entryOf reads one entry: the required version, then each optional key the
+// document spells, then the required synthesizer hint, in published order.
+func entryOf(obj map[string]any, path string) (Entry, *core.RefusalError) {
+	entry, ref := versionAt(obj, path)
+	if ref != nil {
+		return Entry{}, ref
 	}
-	if raw, ok := obj["budget_usd"]; ok {
-		if ref := e.budgetAt(raw, path); ref != nil {
-			return ref
-		}
+	if entry.Description, ref = descriptionAt(obj, path); ref != nil {
+		return Entry{}, ref
 	}
-	if raw, ok := obj["lenses"]; ok {
-		if ref := e.lensesFieldAt(raw, path); ref != nil {
-			return ref
-		}
+	if entry.BudgetUSD, ref = budgetAt(obj, path); ref != nil {
+		return Entry{}, ref
 	}
-	return e.synthesizeAt(obj, path)
+	if entry.Lenses, ref = lensesFieldAt(obj, path); ref != nil {
+		return Entry{}, ref
+	}
+	synthesize, ref := synthesizeAt(obj, path)
+	if ref != nil {
+		return Entry{}, ref
+	}
+	entry.Synthesize = synthesize
+	return entry, nil
 }
 
-// descriptionAt validates the human prose: at most 280 characters, and never
-// rendered — only validated ids, enums, numbers, and hints reach a prompt.
-func (e *Entry) descriptionAt(raw any, path string) *core.RefusalError {
+// versionAt requires the entry's semver, capped so the version the directive
+// renders beside the recipe name stays bounded.
+func versionAt(obj map[string]any, path string) (Entry, *core.RefusalError) {
+	version, ref := requiredString(obj, path, "version")
+	if ref != nil {
+		return Entry{}, ref
+	}
+	if n := utf8.RuneCountInString(version); n > maxVersion {
+		return Entry{}, refuse(CodeBad, "%s.version: %d characters, over the %d-character cap",
+			path, n, maxVersion)
+	}
+	if !semverRE.MatchString(version) {
+		return Entry{}, refuse(CodeBad, "%s.version: %q is not semver", path, version)
+	}
+	return Entry{Version: version}, nil
+}
+
+// descriptionAt reads the human prose when the entry declares it: at most 280
+// characters, and never rendered — only validated ids, enums, numbers, and
+// hints reach a prompt.
+func descriptionAt(obj map[string]any, path string) (string, *core.RefusalError) {
+	raw, ok := obj["description"]
+	if !ok {
+		return "", nil
+	}
 	description, ref := stringAt(raw, path+".description")
 	if ref != nil {
-		return ref
+		return "", ref
 	}
 	if n := utf8.RuneCountInString(description); n > maxDescription {
-		return refuse(CodeBad, "%s.description: %d characters, over the %d-character cap",
+		return "", refuse(CodeBad, "%s.description: %d characters, over the %d-character cap",
 			path, n, maxDescription)
 	}
-	e.Description = description
-	return nil
+	return description, nil
 }
 
-// budgetAt records the declared amount.
-func (e *Entry) budgetAt(raw any, path string) *core.RefusalError {
-	budget, ref := budgetAt(raw, path+".budget_usd")
-	if ref != nil {
-		return ref
+// budgetAt reads the declared amount when the entry declares one: a projection
+// run records and the driver may honor, so zero and negative are not amounts.
+func budgetAt(obj map[string]any, path string) (float64, *core.RefusalError) {
+	raw, ok := obj["budget_usd"]
+	if !ok {
+		return 0, nil
 	}
-	e.BudgetUSD = budget
-	return nil
-}
-
-// lensesFieldAt records the declared lens rows.
-func (e *Entry) lensesFieldAt(raw any, path string) *core.RefusalError {
-	lenses, ref := lensesAt(raw, path+".lenses")
-	if ref != nil {
-		return ref
+	num, ok := raw.(json.Number)
+	if !ok {
+		return 0, refuse(CodeBad, "%s.budget_usd: want a number, got %s", path, strictjson.Kind(raw))
 	}
-	e.Lenses = lenses
-	return nil
+	amount, err := strconv.ParseFloat(num.String(), floatBits)
+	if err != nil {
+		return 0, refuse(CodeBad, "%s.budget_usd: want a number, got %s", path, num)
+	}
+	if amount <= 0 {
+		return 0, refuse(CodeBad, "%s.budget_usd: want a number above 0, got %s", path, num)
+	}
+	return amount, nil
 }
 
-// synthesizeAt validates the required synthesizer hint.
-func (e *Entry) synthesizeAt(obj map[string]any, path string) *core.RefusalError {
+// lensesFieldAt reads the declared lens rows when the entry declares any.
+func lensesFieldAt(obj map[string]any, path string) ([]Lens, *core.RefusalError) {
+	raw, ok := obj["lenses"]
+	if !ok {
+		return nil, nil
+	}
+	return lensRowsAt(raw, path+".lenses")
+}
+
+// synthesizeAt validates the required synthesizer hint: one closed object with
+// an optional model hint.
+func synthesizeAt(obj map[string]any, path string) (Synthesize, *core.RefusalError) {
 	raw, ref := member(obj, path, "synthesize")
 	if ref != nil {
-		return ref
+		return Synthesize{}, ref
 	}
 	nodePath := path + ".synthesize"
 	node, ref := objectAt(raw, nodePath)
 	if ref != nil {
-		return ref
+		return Synthesize{}, ref
 	}
 	if ref := checkKeys(node, nodePath, synthesizeKeys); ref != nil {
-		return ref
+		return Synthesize{}, ref
 	}
 	model, ref := modelAt(node, nodePath)
 	if ref != nil {
-		return ref
+		return Synthesize{}, ref
 	}
-	e.Synthesize = Synthesize{Model: model}
-	return nil
+	return Synthesize{Model: model}, nil
 }
 
-// lensesAt validates the declared lens rows: one to maxLenses, no repeated id,
-// and every row's id, hint, and caps.
-func lensesAt(raw any, path string) ([]Lens, *core.RefusalError) {
+// lensRowsAt validates the declared rows: one to maxLenses, no repeated id, and
+// every row's id, hint, and caps.
+func lensRowsAt(raw any, path string) ([]Lens, *core.RefusalError) {
 	items, ok := raw.([]any)
 	if !ok {
 		return nil, refuse(CodeBad, "%s: want an array, got %s", path, strictjson.Kind(raw))
@@ -288,7 +313,7 @@ func lensesAt(raw any, path string) ([]Lens, *core.RefusalError) {
 	return lenses, nil
 }
 
-// lensAt validates one lens row and records its id as taken.
+// lensAt validates one lens row: its id, its model hint, and its dispatch caps.
 func lensAt(raw any, path string, seen map[string]bool) (Lens, *core.RefusalError) {
 	obj, ref := objectAt(raw, path)
 	if ref != nil {
@@ -301,11 +326,19 @@ func lensAt(raw any, path string, seen map[string]bool) (Lens, *core.RefusalErro
 	if ref != nil {
 		return Lens{}, ref
 	}
-	return lensHintsAt(obj, path, id)
+	model, ref := modelAt(obj, path)
+	if ref != nil {
+		return Lens{}, ref
+	}
+	maxFiles, maxFindings, ref := lensCapsAt(obj, path)
+	if ref != nil {
+		return Lens{}, ref
+	}
+	return Lens{ID: id, Model: model, MaxFiles: maxFiles, MaxFindings: maxFindings}, nil
 }
 
-// lensIDAt requires the row's id: a lowercase slug of 1..64 characters,
-// unique within the entry.
+// lensIDAt requires the row's id — a lowercase slug of 1..64 characters,
+// unique within the entry — and records it as taken.
 func lensIDAt(obj map[string]any, path string, seen map[string]bool) (string, *core.RefusalError) {
 	id, ref := requiredString(obj, path, "id")
 	if ref != nil {
@@ -321,20 +354,17 @@ func lensIDAt(obj map[string]any, path string, seen map[string]bool) (string, *c
 	return id, nil
 }
 
-// lensHintsAt reads one row's optional model hint and dispatch caps.
-func lensHintsAt(obj map[string]any, path, id string) (Lens, *core.RefusalError) {
-	lens := Lens{ID: id}
-	var ref *core.RefusalError
-	if lens.Model, ref = modelAt(obj, path); ref != nil {
-		return Lens{}, ref
+// lensCapsAt reads the row's two optional dispatch caps.
+func lensCapsAt(obj map[string]any, path string) (int, int, *core.RefusalError) {
+	maxFiles, ref := capAt(obj, path, "max_files", minLensFiles, maxLensFiles)
+	if ref != nil {
+		return 0, 0, ref
 	}
-	if lens.MaxFiles, ref = capAt(obj, path, "max_files", minLensFiles, maxLensFiles); ref != nil {
-		return Lens{}, ref
+	maxFindings, ref := capAt(obj, path, "max_findings", minLensFindings, maxLensFindings)
+	if ref != nil {
+		return 0, 0, ref
 	}
-	if lens.MaxFindings, ref = capAt(obj, path, "max_findings", minLensFindings, maxLensFindings); ref != nil {
-		return Lens{}, ref
-	}
-	return lens, nil
+	return maxFiles, maxFindings, nil
 }
 
 // modelAt reads the optional model hint: at most 64 characters from the
@@ -384,23 +414,6 @@ func intAt(raw any, path string, lo, hi int) (int, *core.RefusalError) {
 
 // floatBits is the width ParseFloat reads: a declared amount is a float64.
 const floatBits = 64
-
-// budgetAt requires a positive USD amount: a projection run records and the
-// driver may honor, so zero and negative values are not amounts at all.
-func budgetAt(raw any, path string) (float64, *core.RefusalError) {
-	num, ok := raw.(json.Number)
-	if !ok {
-		return 0, refuse(CodeBad, "%s: want a number, got %s", path, strictjson.Kind(raw))
-	}
-	budget, err := strconv.ParseFloat(num.String(), floatBits)
-	if err != nil {
-		return 0, refuse(CodeBad, "%s: want a number, got %s", path, num)
-	}
-	if budget <= 0 {
-		return 0, refuse(CodeBad, "%s: want a number above 0, got %s", path, num)
-	}
-	return budget, nil
-}
 
 // checkKeys refuses any key outside the closed set, naming the first in sorted
 // order so one document always yields one diagnostic.

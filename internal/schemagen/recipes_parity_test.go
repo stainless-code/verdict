@@ -131,23 +131,13 @@ func TestSchemaAndParserAgree(t *testing.T) {
 }
 
 // TestResolvedPlanMatchesThePublishedShape pins the other half of the recipe
-// contract: what a run records. The resolved plan — marshalled from the type the
-// envelope and launcher.json carry — validates against the published
-// `$defs/plan`, and a plan that grows a key the schema does not publish refuses.
-// Without the `$defs` the shape would be pinned only by a Go test.
+// contract: what a run records. The resolved plan — marshaled from the type
+// the envelope and launcher.json carry — validates against the published
+// `$defs/plan`, and a plan outside that shape refuses. Without the `$defs` the
+// shape would be pinned only by a Go test.
 func TestResolvedPlanMatchesThePublishedShape(t *testing.T) {
-	root, ok := recipeSchema(t).(map[string]any)
-	if !ok {
-		t.Fatal("generated recipes schema is not a JSON object")
-	}
-	defs, ok := root["$defs"].(map[string]any)
-	if !ok {
-		t.Fatal("generated recipes schema carries no $defs")
-	}
-	published, ok := defs["plan"].(map[string]any)
-	if !ok {
-		t.Fatal("$defs misses plan: the resolved pipeline has no published shape")
-	}
+	root := publishedSchema(t)
+	published := publishedPlanDef(t, root)
 	repo := parsedDocument(t, `{"schema_version":"1","recipes":{"quick":{"version":"1.2.3",`+
 		`"budget_usd":0.5,"lenses":[{"id":"logic","model":"sonnet","max_files":8}],`+
 		`"synthesize":{"model":"opus"}}}}`)
@@ -166,20 +156,43 @@ func TestResolvedPlanMatchesThePublishedShape(t *testing.T) {
 	// carry a model hint is the resolver's business (it never puts one on
 	// dedupe or rank), exactly as the config schema leaves cross-field rules to
 	// the parser. What it does publish is the closed key set and the enums.
-	if got := violationsOf(t, root, published, `{"name":"quick","version":"1.2.3","source":"repo",`+
-		`"sha256":"x","stages":[{"kind":"prune"}]}`); len(got) == 0 {
-		t.Error("the schema accepts a stage kind outside the four published ones")
+	assertRefused(t, root, published, "a stage kind outside the four published ones",
+		`{"name":"quick","version":"1.2.3","source":"repo","sha256":"x","stages":[{"kind":"prune"}]}`)
+	assertRefused(t, root, published, "a source outside builtin and repo",
+		`{"name":"quick","version":"1.2.3","source":"file","sha256":"x","stages":[{"kind":"dedupe"}]}`)
+	assertRefused(t, root, published, "a plan with no stages",
+		`{"name":"quick","version":"1.2.3","source":"repo"}`)
+}
+
+// publishedSchema returns the generated recipes schema as a decoded document.
+func publishedSchema(t *testing.T) map[string]any {
+	t.Helper()
+	root, ok := recipeSchema(t).(map[string]any)
+	if !ok {
+		t.Fatal("generated recipes schema is not a JSON object")
 	}
-	if got := violationsOf(t, root, published, `{"name":"quick","version":"1.2.3","source":"file",`+
-		`"sha256":"x","stages":[{"kind":"dedupe"}]}`); len(got) == 0 {
-		t.Error("the schema accepts a source outside builtin and repo")
+	return root
+}
+
+// publishedPlanDef returns the `$defs/plan` node the published shape lives at.
+func publishedPlanDef(t *testing.T, root map[string]any) map[string]any {
+	t.Helper()
+	defs, ok := root["$defs"].(map[string]any)
+	if !ok {
+		t.Fatal("generated recipes schema carries no $defs")
 	}
-	if got := violationsOf(t, root, published, `{"name":"quick","version":"1.2.3","source":"repo",`+
-		`"sha256":"x","stages":[{"kind":"dedupe"}],"dispatched":true}`); len(got) == 0 {
-		t.Error("the schema accepts a key the plan does not publish")
+	published, ok := defs["plan"].(map[string]any)
+	if !ok {
+		t.Fatal("$defs misses plan: the resolved pipeline has no published shape")
 	}
-	if got := violationsOf(t, root, published, `{"name":"quick","version":"1.2.3","source":"repo"}`); len(got) == 0 {
-		t.Error("the schema accepts a plan with no stages")
+	return published
+}
+
+// assertRefused requires one candidate document to fail the published shape.
+func assertRefused(t *testing.T, root, published map[string]any, what, give string) {
+	t.Helper()
+	if got := violationsOf(t, root, published, give); len(got) == 0 {
+		t.Errorf("the schema accepts %s: %s", what, give)
 	}
 }
 

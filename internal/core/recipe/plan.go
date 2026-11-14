@@ -41,9 +41,9 @@ const (
 
 // Plan is the resolved pipeline: the record of what a run declared, and the
 // published `data.recipe` object and `recipe` key of launcher.json. The wire
-// type is the contract root's (core.RecipePlan) because the envelope has to name
-// it; these aliases keep this package's readers on the recipe vocabulary, and
-// an alias means one type rather than a copy that could drift.
+// type is the contract root's (core.RecipePlan) because the envelope has to
+// name it; these aliases keep this package's readers on the recipe vocabulary,
+// and an alias means one type rather than a copy that could drift.
 type (
 	Plan    = core.RecipePlan
 	Stage   = core.RecipeStage

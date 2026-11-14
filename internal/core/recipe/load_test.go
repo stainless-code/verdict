@@ -78,15 +78,11 @@ const bundleLenses = "# lens pack verdict/builtin@1.0.0 — sha256:aa — contex
 	"# lens perf — sha256:abc max_files=8\nperf body\n# end lens perf\n" +
 	"# lens test — sha256:def\nTest body\n# end lens test\n"
 
-// TestLoadReadsTheSnapshotNotTheWorktree proves the loader reads the control
-// snapshot the fetch captured, not the tree it runs in. The repository gets a
-// real head commit that rewrites recipes.json — a different version, a lens of
-// its own, and a `default` the base never carried — and the worktree stands at
-// that head, so a loader that read HEAD, the head commit, or the live worktree
-// would resolve the head entry. The snapshot holds the base commit's bytes, so
-// the plan is the base entry, and the bundle's lenses.txt still supplies the
-// lens list the base declaration does not make.
-func TestLoadReadsTheSnapshotNotTheWorktree(t *testing.T) {
+// headRewriteFixture commits a base recipes.json, rewrites it in a real head
+// commit that also declares a name the base never carried, and leaves the
+// worktree checked out at that head. It returns the base commit.
+func headRewriteFixture(t *testing.T) string {
+	t.Helper()
 	base := gitFixture(t, map[string]string{
 		".verdict/recipes.json": `{"schema_version":"1","recipes":{"default":{"version":"9.9.9",` +
 			`"lenses":[{"id":"security","model":"opus"}],"synthesize":{"model":"sonnet"}}}}`,
@@ -99,12 +95,31 @@ func TestLoadReadsTheSnapshotNotTheWorktree(t *testing.T) {
 	if head := git(t, "rev-parse", "HEAD"); head == base {
 		t.Fatalf("the fixture made no head commit: %s", head)
 	}
+	return base
+}
+
+// TestLoadReadsTheSnapshotNotTheWorktree proves the loader reads the control
+// snapshot the fetch captured, not the tree it runs in: the head commit rewrote
+// recipes.json, so a loader reading HEAD, the head commit, or the live worktree
+// would resolve the head entry instead of the base one.
+func TestLoadReadsTheSnapshotNotTheWorktree(t *testing.T) {
+	base := headRewriteFixture(t)
 	writeAll(t, map[string]string{"bundle/lenses.txt": bundleLenses})
 	snapshotControls(t, "bundle", base)
 	plan, ref := Load("bundle", DefaultName)
 	if ref != nil {
 		t.Fatalf("Load: %v", ref)
 	}
+	assertBasePlan(t, plan)
+	if _, ref := Load("bundle", "head-only"); ref == nil || ref.Code != CodeUnknown {
+		t.Errorf("head-only: ref = %+v, want %s: a name only the head declares is unknown", ref, CodeUnknown)
+	}
+}
+
+// assertBasePlan pins the plan the base entry resolves, whatever tree the
+// loader ran in.
+func assertBasePlan(t *testing.T, plan *Plan) {
+	t.Helper()
 	if plan.Version != "9.9.9" || plan.Source != SourceRepo {
 		t.Fatalf("plan = %+v, want the base entry default@9.9.9", plan)
 	}
@@ -113,9 +128,6 @@ func TestLoadReadsTheSnapshotNotTheWorktree(t *testing.T) {
 	}
 	if len(plan.Warnings) != 1 || !strings.Contains(plan.Warnings[0], `"security"`) {
 		t.Errorf("warnings = %v, want one naming the lens the bundle does not load", plan.Warnings)
-	}
-	if _, ref := Load("bundle", "head-only"); ref == nil || ref.Code != CodeUnknown {
-		t.Errorf("head-only: ref = %+v, want %s: a name only the head declares is unknown", ref, CodeUnknown)
 	}
 }
 

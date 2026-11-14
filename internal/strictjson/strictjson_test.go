@@ -109,11 +109,11 @@ func nested(count int) string {
 }
 
 // TestDecodeBoundsNesting proves the decoder refuses nesting past MaxDepth
-// instead of walking it. The worktree case is the reason: a base-owned control
-// is capped in bytes, but bytes of `[` nest deeply, and the fault path is built
-// one segment per level — so an uncapped reader answers a 200 KB document with a
-// diagnostic the same size as its nesting. The fault names the root and the
-// offset instead, and the message stays short however deep the document is.
+// instead of walking it. A base-owned control is capped in bytes, but bytes of
+// `[` nest deeply, and the fault path is built one segment per level — so an
+// uncapped reader answers a 200 KB document with a diagnostic the same size
+// as its nesting. The fault names the root and the offset instead, and the
+// message stays short however deep the document is.
 func TestDecodeBoundsNesting(t *testing.T) {
 	if _, err := Decode([]byte(nested(MaxDepth))); err != nil {
 		t.Errorf("Decode(nesting %d levels) = %v, want it accepted at the cap", MaxDepth, err)

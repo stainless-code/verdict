@@ -147,11 +147,32 @@ func TestGateRefusals(t *testing.T) {
 // commit — so the assembled policy-base branch is the only check on it.
 func TestGateRefusesAPolicyBaseSnapshotOfAnotherCommit(t *testing.T) {
 	base := baseRepo(t, map[string]string{".verdict/config.json": `{"schema_version":"1"}`})
-	other := strings.Repeat("c", 40)
 	if _, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: ".verdict/state/12", BaseSHA: base}); ref != nil {
 		t.Fatal(ref)
 	}
-	manifest := filepath.Join(".verdict/state/12", FileName)
+	restampWithAnotherCommit(t, filepath.Join(".verdict/state/12", FileName), base)
+	gates := []struct {
+		call func() *core.RefusalError
+		name string
+	}{
+		{name: "Gate", call: func() *core.RefusalError { _, ref := Gate(".verdict/state/12", base); return ref }},
+		{name: "GateRecorded", call: func() *core.RefusalError { _, ref := GateRecorded(".verdict/state/12"); return ref }},
+		{name: "GateRecordedPath", call: func() *core.RefusalError {
+			_, _, ref := GateRecordedPath(".verdict/state/12", RecipesPath)
+			return ref
+		}},
+	}
+	for _, gate := range gates {
+		if ref := gate.call(); ref == nil || ref.Code != CodeStale {
+			t.Errorf("%s on a policy-base snapshot of another commit: ref = %+v, want %s", gate.name, ref, CodeStale)
+		}
+	}
+}
+
+// restampWithAnotherCommit rewrites one manifest's recorded commit, leaving
+// every captured file byte alone.
+func restampWithAnotherCommit(t *testing.T, manifest, base string) {
+	t.Helper()
 	raw, err := os.ReadFile(manifest)
 	if err != nil {
 		t.Fatal(err)
@@ -163,29 +184,13 @@ func TestGateRefusesAPolicyBaseSnapshotOfAnotherCommit(t *testing.T) {
 	if file.Policy != PolicyBase || file.SHA != base || file.BaseSHA != base {
 		t.Fatalf("manifest = %+v, want the base policy stamped with the base commit", file)
 	}
-	file.SHA = other
+	file.SHA = strings.Repeat("c", 40)
 	edited, err := json.Marshal(file)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(manifest, edited, 0o644); err != nil {
 		t.Fatal(err)
-	}
-	for _, gate := range []struct {
-		name string
-		call func() *core.RefusalError
-	}{
-		{"Gate", func() *core.RefusalError { _, ref := Gate(".verdict/state/12", base); return ref }},
-		{"GateRecorded", func() *core.RefusalError { _, ref := GateRecorded(".verdict/state/12"); return ref }},
-		{"GateRecordedPath", func() *core.RefusalError {
-			_, _, ref := GateRecordedPath(".verdict/state/12", RecipesPath)
-			return ref
-		}},
-	} {
-		ref := gate.call()
-		if ref == nil || ref.Code != CodeStale {
-			t.Errorf("%s on a policy-base snapshot of another commit: ref = %+v, want %s", gate.name, ref, CodeStale)
-		}
 	}
 }
 

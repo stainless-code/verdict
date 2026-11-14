@@ -929,7 +929,7 @@ func (b *builder) mapNode(typ reflect.Type, tag reflect.StructTag) (*node, error
 	if err != nil {
 		return nil, err
 	}
-	members := []member{member{keyType, stringNode(typeObject)}, member{keyAdditionalProperties, value}}
+	members := []member{{keyType, stringNode(typeObject)}, {keyAdditionalProperties, value}}
 	names, named, err := mapKeyNames(tag)
 	if err != nil {
 		return nil, err

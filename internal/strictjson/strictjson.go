@@ -33,6 +33,9 @@ const (
 // unbounded nesting turns one diagnostic into kilobytes of path text.
 const MaxDepth = 64
 
+// rootPath addresses the whole document in a fault.
+const rootPath = "$"
+
 // Error is one positioned decode fault: the JSON path of the fault ("$",
 // "$.a", "$.a[0]"), the repeated key when one applies, and the decoder's byte
 // offset.
@@ -65,14 +68,14 @@ func Decode(raw []byte) (any, error) {
 	dec.UseNumber()
 	tok, err := dec.Token()
 	if err != nil {
-		return nil, &Error{Path: "$", Offset: dec.InputOffset()}
+		return nil, &Error{Path: rootPath, Offset: dec.InputOffset()}
 	}
-	val, fault := readTokenValue(dec, tok, "$", 0)
+	val, fault := readTokenValue(dec, tok, rootPath, 0)
 	if fault != nil {
 		return nil, fault
 	}
 	if _, err := dec.Token(); err != io.EOF {
-		return nil, &Error{Path: "$", Offset: dec.InputOffset(), Fault: trailingData}
+		return nil, &Error{Path: rootPath, Offset: dec.InputOffset(), Fault: trailingData}
 	}
 	return val, nil
 }
@@ -87,7 +90,7 @@ func readTokenValue(dec *json.Decoder, tok json.Token, path string, depth int) (
 		return tok, nil
 	}
 	if depth >= MaxDepth {
-		return nil, &Error{Path: "$", Offset: dec.InputOffset(), Fault: tooDeep}
+		return nil, &Error{Path: rootPath, Offset: dec.InputOffset(), Fault: tooDeep}
 	}
 	switch delim {
 	case '{':

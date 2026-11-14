@@ -277,15 +277,10 @@ func GateRecorded(bundleDir string) (*Snapshot, *core.RefusalError) {
 // row) is found=false, and an unrelated control edited after the fetch never
 // decides this read.
 func GateRecordedPath(bundleDir, path string) (*Snapshot, bool, *core.RefusalError) {
-	raw, err := jq.CappedFile(filepath.Join(bundleDir, FileName), MaxTotalBytes)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, false, nil
+	s, ref := readControlsIfPresent(bundleDir)
+	if ref != nil || s == nil {
+		return nil, false, ref
 	}
-	file, ref := parseControls(raw)
-	if err != nil || ref != nil {
-		return nil, false, refuse(CodeUnavailable, msgNoControls)
-	}
-	s := &Snapshot{Dir: filepath.Join(bundleDir, DirName), File: *file}
 	if ref := s.verifyBase(s.File.BaseSHA); ref != nil {
 		return nil, false, ref
 	}
@@ -302,9 +297,14 @@ func GateRecordedPath(bundleDir, path string) (*Snapshot, bool, *core.RefusalErr
 // msgNoControls is the frozen diagnostic for a missing or invalid manifest.
 const msgNoControls = "bundle has no valid controls.json — re-fetch it (fetch resolves controls at the PR base)"
 
-// readControls loads and validates one bundle's controls.json.
-func readControls(bundleDir string) (*Snapshot, *core.RefusalError) {
+// readControlsIfPresent loads and validates one bundle's controls.json, and
+// answers nil when the bundle carries none: the callers differ only in what an
+// absent manifest means.
+func readControlsIfPresent(bundleDir string) (*Snapshot, *core.RefusalError) {
 	raw, err := jq.CappedFile(filepath.Join(bundleDir, FileName), MaxTotalBytes)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, refuse(CodeUnavailable, msgNoControls)
 	}
@@ -313,6 +313,19 @@ func readControls(bundleDir string) (*Snapshot, *core.RefusalError) {
 		return nil, ref
 	}
 	return &Snapshot{Dir: filepath.Join(bundleDir, DirName), File: *file}, nil
+}
+
+// readControls loads and validates one bundle's controls.json, where an absent
+// manifest is unavailable rather than absent.
+func readControls(bundleDir string) (*Snapshot, *core.RefusalError) {
+	s, ref := readControlsIfPresent(bundleDir)
+	if ref != nil {
+		return nil, ref
+	}
+	if s == nil {
+		return nil, refuse(CodeUnavailable, msgNoControls)
+	}
+	return s, nil
 }
 
 // parseControls validates one controls.json body.
