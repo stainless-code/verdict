@@ -39,8 +39,12 @@ func RunNext(ctx context.Context, req *core.NextRequest) (*core.NextResponse, *c
 		//nolint:nilerr // the report refusal is classified into the response, not returned
 		return resp, nil
 	}
+	resp.Receipt = reportResp.Data.Receipt.ForResult(min(len(reportResp.Data.Items), 1))
 	if len(reportResp.Data.Items) == 0 {
 		resp.Human = "next: none " + statusF + " — nothing to act on"
+		if resp.Receipt != nil {
+			resp.Human = "next: no matching finding in partial results — a miss is not proof of absence"
+		}
 		return resp, nil
 	}
 	top := reportResp.Data.Items[0]

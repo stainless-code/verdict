@@ -126,63 +126,17 @@ func (c *fetchRunCtx) readRequest() core.ReadRequest {
 // counts. A list the index could not answer reads null, never 0.
 func impactJSON(impact *indexcore.Impact) *jq.Obj {
 	b := impact.Data.Blast
-	return jq.NewObj(
-		keySchema, "1",
-		"sources", []any{impact.Index},
-		"tree", impact.Data.Tree,
-		"commit", impact.Data.Commit,
-		"stale", impact.Data.Stale,
+	indexed := impact.Data.Wire()
+	o := jq.NewObj(keySchema, "1", "sources", []any{impact.Index}, "tree", impact.Data.Tree,
+		"commit", impact.Data.Commit, "stale", impact.Data.Stale,
 		"coverage", jq.NewObj("files_indexed", impact.Data.Files, "skipped", impact.Data.Skipped),
 		"input", jq.NewObj("head", impactNullString(b.Input.Head), "paths", impactStringValues(b.Input.Paths)),
-		"limit", impact.Data.Limit,
-		"symbols", jq.NewObj(
-			"count", impactNullInt(b.Counts.ChangedSymbols),
-			"truncated", impactNullInt(b.Truncated.ChangedSymbols),
-			"rows", impactSymbolRows(b.Symbols),
-		),
-		"callers", jq.NewObj(
-			"count", impactNullInt(b.Counts.Callers),
-			"unresolved", impactNullInt(b.Counts.Unresolved),
-			"truncated", impactNullInt(b.Truncated.Callers),
-			"rows", impactCallerRows(b.Callers),
-		),
-		"tests", jq.NewObj(
-			"count", impactNullInt(b.Counts.Tests),
-			"truncated", impactNullInt(b.Truncated.Tests),
-			"depth_truncated", impactNullInt(b.DepthTruncated),
-			"rows", impactTestRows(b.Tests),
-		),
-	)
-}
-
-// impactSymbolRows renders the changed declarations.
-func impactSymbolRows(rows []indexcore.SymbolRow) []any {
-	out := make([]any, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, jq.NewObj(keyPath, r.Path, "name", r.Name, keyKind, r.Kind, "line", r.Line))
+		"limit", impact.Data.Limit)
+	for _, key := range []string{"symbols", "callers", "tests"} {
+		value, _ := indexed.Get(key)
+		o.Set(key, value)
 	}
-	return out
-}
-
-// impactCallerRows renders the caller rows reached from a changed declaration.
-func impactCallerRows(rows []indexcore.CallerRow) []any {
-	out := make([]any, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, jq.NewObj(
-			"symbol", r.Symbol, keyPath, r.Path, keyKind, r.Kind,
-			"resolution", r.Resolution, "line", r.Line, "depth", r.Depth,
-		))
-	}
-	return out
-}
-
-// impactTestRows renders the candidate tests.
-func impactTestRows(rows []indexcore.TestRow) []any {
-	out := make([]any, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, jq.NewObj(keyPath, r.Path, "via", r.Via, "depth", r.Depth))
-	}
-	return out
+	return o
 }
 
 // impactSection renders the capped "## impact" section: the heads and counts,
@@ -344,14 +298,6 @@ func impactArtifactRow(obj *jq.Obj, dir string) {
 	if impactPresent(dir) {
 		obj.Set("impact.json", dir+suffixImpact)
 	}
-}
-
-// impactNullInt renders an unmeasured count as null, never 0.
-func impactNullInt(v *int) any {
-	if v == nil {
-		return nil
-	}
-	return *v
 }
 
 // impactNullString renders an absent string as null.

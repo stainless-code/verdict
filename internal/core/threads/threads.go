@@ -20,6 +20,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -63,7 +64,7 @@ type File struct { //nolint:govet // field order is the published property order
 	PR            int      `json:"pr"`
 	HeadSHA       string   `json:"head_sha"`
 	FetchedAt     string   `format:"date-time"                                   json:"fetched_at"`
-	Truncated     bool     `json:"truncated"`
+	Truncated     bool     `json:"truncated,omitempty"                           receipt:"true"`
 	Threads       []Thread `json:"threads"`
 }
 
@@ -90,9 +91,9 @@ type Thread struct { //nolint:govet // field order is the published property ord
 type Comment struct { //nolint:govet // field order is the published property order
 	ID         string `json:"id"`
 	Author     string `json:"author"`
-	AuthorKind string `enum:"human|bot|verdict" json:"author_kind"`
+	AuthorKind string `enum:"human|bot|verdict"   json:"author_kind"`
 	Body       string `json:"body"`
-	Truncated  bool   `json:"truncated"`
+	Truncated  bool   `json:"truncated,omitempty" receipt:"true"`
 	CreatedAt  string `json:"created_at"`
 }
 
@@ -102,15 +103,16 @@ func (f *File) Wire() *jq.Obj {
 	for i := range f.Threads {
 		threads = append(threads, f.Threads[i].wire())
 	}
-	return jq.NewObj(
+	o := jq.NewObj(
 		"schema_version", f.SchemaVersion,
 		"provider", f.Provider,
 		"pr", f.PR,
 		"head_sha", f.HeadSHA,
 		"fetched_at", f.FetchedAt,
-		"truncated", f.Truncated,
 		"threads", threads,
 	)
+	receipt := core.ScanCut(f.Truncated, len(f.Threads))
+	return receipt.Apply(o)
 }
 
 // wire renders one thread in published key order, with empty lists as [].
@@ -154,14 +156,18 @@ func (t *Thread) wire() *jq.Obj {
 
 // Wire renders one comment in published key order.
 func (c *Comment) Wire() *jq.Obj {
-	return jq.NewObj(
+	o := jq.NewObj(
 		"id", c.ID,
 		"author", c.Author,
 		"author_kind", c.AuthorKind,
 		"body", c.Body,
-		"truncated", c.Truncated,
 		"created_at", c.CreatedAt,
 	)
+	var receipt *core.Truncation
+	if c.Truncated {
+		receipt = core.ResultCut("response_cap", len(c.Body), nil, nil)
+	}
+	return receipt.Apply(o)
 }
 
 // WriteFile writes the feed atomically to path (the bundle's threads.json).

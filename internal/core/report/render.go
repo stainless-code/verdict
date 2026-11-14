@@ -24,6 +24,7 @@ func buildResponse(st *state) *core.ReportResponse {
 		Output:   outputArtifact(st),
 		Sarif:    sarifArtifact(st),
 	}
+	resp.Data.Receipt = reportReceipt(st)
 	if st.gate {
 		resp.GateFailed, resp.CheckLines, resp.Data.Gate = gateTail(st)
 	}
@@ -760,4 +761,17 @@ func verificationHuman(entries []any) []string {
 		return []string{fmt.Sprintf("verification: %d confirmed · %d contested · %d single", v.Confirmed, v.Contested, v.Single)}
 	}
 	return nil
+}
+
+func reportReceipt(st *state) *core.Truncation {
+	if st.truncation != nil {
+		return st.truncation.ForResult(len(viewRanked(st)))
+	}
+	if st.flags.Output != "" && st.nAllOpen == 0 {
+		total := countNonEmpty(strings.Split(checkedFiles(st.dir), newline))
+		if total > checkedShown {
+			return core.ResultCut("response_cap", checkedShown, new(total), nil)
+		}
+	}
+	return readcommon.BundleTruncation(st.dir).ForResult(len(viewRanked(st)))
 }

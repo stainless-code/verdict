@@ -204,7 +204,7 @@ var publishedSemantics = map[string]string{
 	// remain unchanged.
 	// summary comment: additive nullable postData.summary and $defs/postSummary
 	// (optional; no existing property, required key, enum, or type changed).
-	"envelope.schema.json": "d89c78f578624cb0bb94bff161be835a755d6ac85b736938d7de78eab5433bf7",
+	"envelope.schema.json": "db23c90be4af165899967fbbf3e81aa6a3083a3d4b11eed2ad39e7e8bf403b0a",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -320,7 +320,7 @@ var publishedSemantics = map[string]string{
 	// contract extends the first cut with the thread's host id, PR/head/time
 	// envelope, root author kind, finding_sig, and the comments[] array: all
 	// additions to the new document, no previously published shape changed.
-	"threads.schema.json": "0dfe2a58cc8e51beede189ccc676fee3446e847336e2b72270539eb4c4eed3bc",
+	"threads.schema.json": "e24857002ee5c60fb38a3a2a0867eb453526dd35c075b4b4adde33f41ebe69dc",
 	// additive threads-resolve.schema.json (new bundle document; no existing
 	// schema property, required key, or type changed). The receipt proves the
 	// resolve mutation: provider, repo, pr, head, timestamp, dry_run, the

@@ -506,8 +506,14 @@ func successResult(tool string, data *jq.Obj) callToolResult {
 			IsError:           false,
 		}
 	}
+	total := len(raw)
+	receipt := core.ResultCut("response_cap", 0, new(total), nil)
+	if cut, _ := data.Get("truncated"); cut != true {
+		data = receipt.Apply(data.Clone())
+	}
+	raw = rawMarshal(data)
 	return callToolResult{
-		Content:           []contentBlock{{Type: contentTypeText, Text: truncationSummary(tool, data, len(raw))}},
+		Content:           []contentBlock{{Type: contentTypeText, Text: truncationSummary(tool, data, total)}},
 		StructuredContent: raw,
 		IsError:           false,
 	}
@@ -515,10 +521,7 @@ func successResult(tool string, data *jq.Obj) callToolResult {
 
 func truncationSummary(tool string, data *jq.Obj, size int) string {
 	pairs := []any{
-		"truncated", true,
 		"tool", tool,
-		"bytes", size,
-		"limit", maxResultTextBytes,
 	}
 	artifact, _ := data.Get("dir")
 	path, ok := artifact.(string)
@@ -531,7 +534,8 @@ func truncationSummary(tool string, data *jq.Obj, size int) string {
 		pairs = append(pairs, "next", "structuredContent carries the full result; "+
 			"narrow the call to get a smaller text block")
 	}
-	return jq.NewObj(pairs...).MarshalCompact()
+	receipt := core.ResultCut("response_cap", 0, new(size), nil)
+	return receipt.Apply(jq.NewObj(pairs...)).MarshalCompact()
 }
 
 // wireRefusal maps a wiring error to its typed refusal: parameter errors become

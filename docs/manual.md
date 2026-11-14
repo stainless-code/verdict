@@ -1001,7 +1001,19 @@ webhook, listener, or MCP subscription. Killing a wait leaves no background work
 `fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`run`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`pr-wait`/`threads`/`trend`/`index`/`backtest`/`learn`/`pack`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
-non-zero. `mcp config` also takes `--json`. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `threads` refreshes only `.verdict/state/<pr>/threads.json` from the host (all six
+non-zero. Bounded CLI `data` envelopes (`fetch`, `report`, `next`, `show`,
+`trend`, `index`, `threads`, and `serve` views) and MCP results whose output
+or underlying bundle was truncated carry `truncated: true`, `truncation_reason`
+(`work_budget`, `response_cap`, `time_budget`, `scan_cap`, or `chunk_cap`),
+`returned`, `total` (null when unknown), and `next_offset` (null when no
+continuation exists). Counts use the producer's unit. MCP text-cap receipts
+count original JSON bytes: zero payload bytes appear in the summary, while
+`structuredContent` retains the full payload (or preserves the upstream
+producer receipt). A miss in `next` or `show` under truncation emits a success
+envelope with null item/fix and a partial-results `next` hint rather than
+claiming absence. Complete results omit the receipt.
+
+`mcp config` also takes `--json`. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `threads` refreshes only `.verdict/state/<pr>/threads.json` from the host (all six
 hosts; GitHub reads GraphQL `reviewThreads`) and returns the feed tally — it
 never refetches the diff, so it is the cheap re-read after replies,
 resolutions, or a push. `report` is the pure offline reader over the store
@@ -3760,7 +3772,9 @@ instead of a review.
 Drift rule: additive within `schema_version`/`sig_version` `"1"` — new
 optional keys pass through the stores and the schemas alike; renames,
 tighter types, and newly required keys never happen without a version bump,
-and a bump ships only by operator decision.
+and a bump ships only by operator decision. Before 1.0 the operator may instead ship a
+breaking shape change within `"1"`; the changeset and release notes then name
+the changed fields.
 
 ### Resolution and clean reviews
 

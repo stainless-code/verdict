@@ -66,7 +66,7 @@ assert_json_field "second row is lexical through the import" "lexical" '.data.ro
 assert_json_field "second row path" "b/b.go" '.data.rows[1].path'
 assert_json_field "second row line" 6 '.data.rows[1].line'
 assert_json_field "no unresolved candidates" 0 '.data.counts.unresolved'
-assert_json_field "rows are not truncated" 0 '.data.truncated'
+assert_json_field "receipt is absent for complete rows" null '.data.truncated'
 
 run_review index callers a.Target
 assert_exit "human callers exits 0" 0
