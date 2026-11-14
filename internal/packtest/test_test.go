@@ -304,3 +304,19 @@ func (f reverseFS) ReadDir(name string) ([]fs.DirEntry, error) {
 	slices.Reverse(entries)
 	return entries, err
 }
+
+// TestPackTestHumanFlattensLineBreaks proves a rendered case line survives a
+// reason carrying a Unicode line or paragraph separator: those end a line for
+// a renderer even though they are not C0 controls.
+func TestPackTestHumanFlattensLineBreaks(t *testing.T) {
+	p := &packcore.Pack{}
+	p.Name = "acme/test"
+	data := &TestData{Cases: []TestCase{
+		{Case: "sep\u2028case", Status: failStatus, Reason: "re\u2029ason"},
+	}}
+	want := "FAIL sep\uFFFDcase — re\uFFFDason"
+	got := testResponse(p, data, "").Human
+	if len(got) != 2 || got[0] != want {
+		t.Fatalf("human = %q; want %q", got, want)
+	}
+}

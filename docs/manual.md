@@ -1824,6 +1824,10 @@ still allowlists only the loopback names, so a LAN client needs a concrete
 interface address such as `--host 192.168.1.10`. `/v1` is the only version: a
 breaking change becomes `/v2`.
 
+A path carrying a traversal segment, a backslash, or a line break — a control
+rune, U+2028, or U+2029 — is refused before routing with the `404` `no such
+route` body, so a URL never becomes a filesystem path.
+
 Cost accepts exactly one `by` value: `repo`, `week`, or `model`. Week buckets
 use the UTC ISO week of the bundle receipt's `post.json` `posted_at`; cost
 records do not carry timestamps. Cost rows distinguish record `runs` from `model_runs`
