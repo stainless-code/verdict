@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
@@ -32,10 +33,22 @@ const (
 	revertNote         = ".verdict/reverts.md"
 	defaultRevertSince = "12mo"
 	revertMaxSha       = 40
+	revertMinSha       = 7
 	revertMaxFiles     = 200
 	revertMaxLines     = 5000
+	// revertMaxSubject bounds one stored subject. The ledger is tracked, so a
+	// mass-message commit would otherwise become repository weight no reader
+	// asked for; the scanner cuts at this cap on a rune boundary, and the note
+	// fences what it stores.
+	revertMaxSubject   = untrusted.MaxBytes
 	detailSep          = ": "
 	humanIndent        = "  "
+	fieldSchemaVersion = "schema_version"
+	fieldSHA           = "sha"
+	fieldSubject       = "subject"
+	fieldReverts       = "reverts"
+	fieldDate          = "date"
+	fieldPaths         = "paths"
 	reasonMergeRevert  = "merge-revert"
 	reasonWideRevert   = "wide-revert"
 	reasonUnreadable   = "unreadable"
@@ -283,7 +296,8 @@ func (st *state) mergeTarget(ctx context.Context, sha string) (bool, *core.Refus
 
 // revertText reads one commit's subject and body. A commit git cannot read is
 // this commit's `unreadable` skip rather than the scan's refusal, so one
-// damaged object never hides a history's reverts.
+// damaged object never hides a history's reverts. The subject comes back inside
+// the stored cap, so one mass-message commit is a bounded row.
 func (st *state) revertText(
 	ctx context.Context, sha string,
 ) (string, string, *RevertSkipped, *core.RefusalError) {
@@ -296,7 +310,8 @@ func (st *state) revertText(
 		return "", "", &RevertSkipped{Reason: reasonUnreadable, SHA: sha}, nil
 	}
 	subject, body, _ := strings.Cut(out, "\x00")
-	return strings.TrimSpace(subject), strings.TrimSpace(body), nil, nil
+	capped, _ := untrusted.Cap(strings.TrimSpace(subject), revertMaxSubject)
+	return capped, strings.TrimSpace(body), nil, nil
 }
 
 // revertRow builds one ledger row, applying the binary and width exclusions
@@ -436,7 +451,9 @@ func (st *state) readReverts() ([]revertLine, *core.RefusalError) {
 }
 
 // decodeRevert reads one stored row, naming why this build cannot record it
-// ("") when it can.
+// ("") when it can. The ledger is tracked and hand-editable, so every field is
+// read at its stored type: a wrong type is a defect to refuse, never an empty
+// value to render.
 func decodeRevert(text string) (RevertRow, string) {
 	doc, err := jq.DecodeOrdered([]byte(text))
 	if err != nil {
@@ -446,58 +463,170 @@ func decodeRevert(text string) (RevertRow, string) {
 	if !ok {
 		return RevertRow{}, "row is not a JSON object"
 	}
+	facts, defect := readFacts(obj)
+	if defect != "" {
+		return RevertRow{}, defect
+	}
 	row := RevertRow{
-		SchemaVersion: stringOr(obj, "schema_version"),
-		SHA:           stringOr(obj, "sha"),
-		Subject:       stringOr(obj, "subject"),
-		Reverts:       stringsOr(obj, "reverts"),
-		Date:          stringOr(obj, "date"),
-		Paths:         stringsOr(obj, "paths"),
+		SchemaVersion: facts.schemaVersion, SHA: facts.sha, Subject: facts.subject, Date: facts.date,
+	}
+	if row.Reverts, defect = stringsField(obj, fieldReverts); defect != "" {
+		return RevertRow{}, defect
+	}
+	if row.Paths, defect = stringsField(obj, fieldPaths); defect != "" {
+		return RevertRow{}, defect
 	}
 	return row, validateRevert(&row)
 }
 
-// validateRevert reports why one stored row cannot be recorded, or "".
+// validateRevert reports why one stored row cannot be recorded, or "". Every
+// field a reader will see is either a fixed shape that cannot carry text or is
+// quoted inside the note's fence, so a value outside its shape is a defect.
 func validateRevert(row *RevertRow) string {
-	if row.SchemaVersion != schemaVersion {
-		return "schema_version " + strconv.Quote(row.SchemaVersion) + " is not " + schemaVersion
+	if defect := validateFacts(row); defect != "" {
+		return defect
 	}
-	if len(row.SHA) != revertMaxSha || strings.Trim(row.SHA, "0123456789abcdef") != "" {
-		return "sha " + strconv.Quote(row.SHA) + " is not a lowercase 40-hex commit id"
+	return validateText(row)
+}
+
+// validateFacts checks the fields the note prints outside its fence.
+func validateFacts(row *RevertRow) string {
+	if row.SchemaVersion != schemaVersion {
+		return fieldDefect(fieldSchemaVersion, strconv.Quote(row.SchemaVersion)+" is not "+schemaVersion)
+	}
+	if !revertCommit(row.SHA, revertMaxSha) {
+		return fieldDefect(fieldSHA, strconv.Quote(row.SHA)+", not a 40-character lowercase hex commit id")
 	}
 	if _, err := time.Parse(time.RFC3339, row.Date); err != nil {
-		return "date " + strconv.Quote(row.Date) + " is not RFC 3339"
+		return fieldDefect(fieldDate, strconv.Quote(row.Date)+", not RFC 3339")
 	}
 	return ""
 }
 
-// stringOr reads one string field; a missing or non-string field reads empty
-// and the row's validation names the defect.
-func stringOr(obj *jq.Obj, key string) string {
-	v, _ := obj.Get(key)
-	s, ok := v.(string)
-	if !ok {
-		return ""
+// validateText checks the fields the note quotes inside its fence.
+func validateText(row *RevertRow) string {
+	if defect := validateSubject(row); defect != "" {
+		return defect
 	}
-	return s
+	return validateLists(row)
 }
 
-// stringsOr reads one string array; anything else reads empty.
-func stringsOr(obj *jq.Obj, key string) []string {
-	v, _ := obj.Get(key)
-	list, ok := v.([]any)
+// validateSubject bounds the one free-text field a row carries.
+func validateSubject(row *RevertRow) string {
+	if row.Subject == "" {
+		return fieldDefect(fieldSubject, "is empty")
+	}
+	if len(row.Subject) > revertMaxSubject {
+		return fieldDefect(fieldSubject, strconv.Itoa(len(row.Subject))+" bytes, past the "+
+			strconv.Itoa(revertMaxSubject)+"-byte cap")
+	}
+	return ""
+}
+
+// validateLists checks the two lists: shaped so they cannot carry text a
+// reader could act on, so the note's fence only has to quote the subject.
+func validateLists(row *RevertRow) string {
+	for _, sha := range row.Reverts {
+		if !revertCommit(sha, revertMaxSha) {
+			return fieldDefect(fieldReverts, "names "+strconv.Quote(sha)+
+				", not a 7-to-40-character lowercase hex commit id")
+		}
+	}
+	for _, path := range row.Paths {
+		if !revertRepoPath(path) {
+			return fieldDefect(fieldPaths, "names "+strconv.Quote(path)+", not a repository-relative path")
+		}
+	}
+	return ""
+}
+
+// fieldDefect names one stored field and what is wrong with it.
+func fieldDefect(key, problem string) string {
+	return "field " + strconv.Quote(key) + " " + problem
+}
+
+// revertCommit reports whether sha is a lowercase hex commit id of n bytes at
+// most and [revertMinSha] at least: the shape git itself abbreviates, and one
+// that cannot carry anything a reader could read as an instruction.
+func revertCommit(sha string, maxLen int) bool {
+	if len(sha) < revertMinSha || len(sha) > maxLen || strings.Trim(sha, "0123456789abcdef") != "" {
+		return false
+	}
+	return true
+}
+
+// revertRepoPath reports whether one stored path is a repository-relative path
+// this build can render: not absolute, not climbing out through "..", valid
+// UTF-8, and free of any control or line-separator rune that could break the
+// note's own line.
+func revertRepoPath(rel string) bool {
+	return rel != "" && filepath.IsLocal(filepath.FromSlash(rel)) && utf8.ValidString(rel) &&
+		!strings.ContainsFunc(rel, core.IsLineBreak)
+}
+
+// rowFacts is the four single-valued fields a row publishes.
+type rowFacts struct {
+	schemaVersion string
+	sha           string
+	subject       string
+	date          string
+}
+
+// readFacts reads the single-valued fields, naming the first defect it meets.
+func readFacts(obj *jq.Obj) (rowFacts, string) {
+	var facts rowFacts
+	for _, field := range []struct {
+		into *string
+		key  string
+	}{
+		{&facts.schemaVersion, fieldSchemaVersion},
+		{&facts.sha, fieldSHA},
+		{&facts.subject, fieldSubject},
+		{&facts.date, fieldDate},
+	} {
+		value, defect := stringField(obj, field.key)
+		if defect != "" {
+			return rowFacts{}, defect
+		}
+		*field.into = value
+	}
+	return facts, ""
+}
+
+// stringField reads one required string field, naming the defect when the
+// stored value is missing or another type.
+func stringField(obj *jq.Obj, key string) (string, string) {
+	value, ok := obj.Get(key)
 	if !ok {
-		return nil
+		return "", fieldDefect(key, "is missing")
+	}
+	text, ok := value.(string)
+	if !ok {
+		return "", fieldDefect(key, "is not a string")
+	}
+	return text, ""
+}
+
+// stringsField reads one required array-of-strings field, naming the defect
+// when the stored value is missing, another type, or carries a non-string item.
+func stringsField(obj *jq.Obj, key string) ([]string, string) {
+	value, ok := obj.Get(key)
+	if !ok {
+		return nil, fieldDefect(key, "is missing")
+	}
+	list, ok := value.([]any)
+	if !ok {
+		return nil, fieldDefect(key, "is not an array of strings")
 	}
 	out := make([]string, 0, len(list))
 	for _, item := range list {
-		s, ok := item.(string)
+		text, ok := item.(string)
 		if !ok {
-			return nil
+			return nil, fieldDefect(key, "is not an array of strings")
 		}
-		out = append(out, s)
+		out = append(out, text)
 	}
-	return out
+	return out, ""
 }
 
 // encodeRevert renders one row in the published key order.
@@ -553,7 +682,9 @@ func (st *state) writeReverts(ledger []revertLine) (*RevertsArtifacts, *core.Ref
 }
 
 // revertsNote renders the whole ledger as the reading surface: one section per
-// revert, the machine facts outside the fence and the author's text inside it.
+// revert whose only unfenced bytes are the validated short sha and date. The
+// section body is author-controlled, so everything else the row carries is
+// quoted inside the untrusted fence.
 func revertsNote(rows []RevertRow) []byte {
 	var sb strings.Builder
 	sb.WriteString("# Reverts\n\n")
@@ -563,22 +694,26 @@ func revertsNote(rows []RevertRow) []byte {
 	for i := range rows {
 		row := &rows[i]
 		sb.WriteString("\n## " + short(row.SHA) + "  " + row.Date + "\n\n")
-		sb.WriteString("reverts: " + revertTargets(row.Reverts) + "\n\n")
 		sb.WriteString(untrusted.Block("revert:"+row.SHA, revertQuote(row)))
 	}
 	return []byte(sb.String())
 }
 
-// revertQuote renders one revert's subject and paths as the fenced body.
+// revertQuote renders one revert's stored fields as the fenced body: the
+// machine facts first, then the author's subject last, so the block cap can
+// only ever cut subject text and never the paths a reader came for.
 func revertQuote(row *RevertRow) string {
-	lines := []string{row.Subject, "", "paths:"}
+	var sb strings.Builder
+	sb.WriteString("reverts: " + revertTargets(row.Reverts) + "\n")
+	sb.WriteString("paths:")
 	if len(row.Paths) == 0 {
-		lines = append(lines, "- (none)")
+		sb.WriteString("\n- (none)")
 	}
 	for _, path := range row.Paths {
-		lines = append(lines, "- "+path)
+		sb.WriteString("\n- " + path)
 	}
-	return strings.Join(lines, "\n")
+	sb.WriteString("\n\nsubject:\n" + row.Subject)
+	return sb.String()
 }
 
 // revertTargets renders the reverted commits as one line, or "-".

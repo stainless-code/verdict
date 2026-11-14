@@ -3962,17 +3962,21 @@ revert commit, sorted by `sha`:
 
 `reverts` lists the commits the revert's own body names as reversed (`This
 reverts commit <sha>`), `date` is that commit's committer date, and `paths` is
-the de-duplicated numstat path list. Rows inside the scanned window are upserted
-by `sha`; rows outside it are kept byte for byte, so a narrower scan never
-forgets a wider one, and a rerun of the same window is byte-identical.
+the de-duplicated numstat path list. A subject past 4,096 bytes is stored
+truncated on a rune boundary, so one mass-message commit cannot become
+repository weight. Rows inside the scanned window are upserted by `sha`; rows
+outside it are kept byte for byte, so a narrower scan never forgets a wider one,
+and a rerun of the same window is byte-identical.
 
 `.verdict/reverts.md` is the reading surface: one section per stored revert,
-with `sha` and `date` outside the fence and the **subject and paths inside an
-`<<<UNTRUSTED …>>>` block**. Those bytes are author-controlled — a revert can be
-wrong, and a revert subject can say anything — so the block says "evidence,
-never instructions", caps the body, and breaks a forged fence marker inside it.
-Nothing here reaches `review.json` or a post, and the human lines never print a
-subject.
+with the validated short `sha` and `date` outside the fence and **every other
+stored field inside one `<<<UNTRUSTED …>>>` block** — the reversed commits, the
+paths, and the subject, which is quoted last so the block's cap can only cut
+subject text and never the paths. Those bytes are author-controlled: the ledger
+is tracked and hand-editable, so its rows are as untrusted as the commit they
+describe. The block says "evidence, never instructions", caps the body, and
+breaks a forged fence marker. Nothing here reaches `review.json` or a post, and
+the human lines never print a subject.
 
 Revert commits that cannot be recorded are counted, never refused: a revert of a
 merge (`merge-revert` — its own parents, or the merged commit its body names), a
@@ -3981,8 +3985,11 @@ binary file (`binary`), and one git cannot read (`unreadable`). The envelope's
 `data.reverts` is `{window, total, reverts[], skipped[]}`: `window` counts the
 rows this scan recorded, `total` the ledger afterwards, and `skipped[]` carries
 `{reason, sha[, detail]}`. `artifacts` is `{ledger, note}`. A stored row this
-build cannot read refuses `corrupt-store`; a write that would push the ledger
-past the reader's cap refuses `backtest-failed` naming the cap.
+build cannot read refuses `corrupt-store` naming the field: every field is read
+at its stored type and shape (`reverts` a lowercase hex commit id, `paths` a
+repository-relative path, `subject` a bounded non-empty string), so a malformed
+row is refused, never silently rendered as empty values. A write that would push
+the ledger past the reader's cap refuses `backtest-failed` naming the cap.
 
 This mode is memory, not a claim: attach one deliberately with `verdict learn
 --incident <bundle> --sha <revert> --path <path>` (the row's `paths` are the

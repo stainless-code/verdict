@@ -22,7 +22,7 @@ const MaxBytes = 4096
 // spell a fence marker, and the closing marker ends it. The result ends with a
 // newline, so blocks concatenate.
 func Block(source, body string) string {
-	quoted, cut := capBody(fence.Safe(body))
+	quoted, cut := Cap(fence.Safe(body), MaxBytes)
 	var sb strings.Builder
 	sb.WriteString("<<<UNTRUSTED source=")
 	sb.WriteString(fence.Safe(source))
@@ -38,13 +38,13 @@ func Block(source, body string) string {
 	return sb.String()
 }
 
-// capBody bounds one body at [MaxBytes] without splitting a rune, reporting
-// whether it had to.
-func capBody(s string) (string, bool) {
-	if len(s) <= MaxBytes {
+// Cap bounds s at limit bytes without splitting a rune, reporting whether it
+// had to. The caller owns the budget; this owns only where a cut may fall.
+func Cap(s string, limit int) (string, bool) {
+	if len(s) <= limit {
 		return s, false
 	}
-	end := MaxBytes
+	end := limit
 	for end > 0 && !utf8.RuneStart(s[end]) {
 		end--
 	}
