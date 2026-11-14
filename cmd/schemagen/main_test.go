@@ -18,16 +18,41 @@ import (
 func TestCheckRefusesAStaleBaseline(t *testing.T) {
 	root := freshTree(t)
 	t.Chdir(root)
-	assertRun(t, 0, "")
+	assertRun(t, nil, 0, "")
 	dropReceiptBinding(t, filepath.Join(root, baselineDir, "envelope.schema.json"))
-	assertRun(t, 1, "schemagen: internal/schemagen/testdata/baseline is stale; "+
+	assertRun(t, nil, 1, "schemagen: internal/schemagen/testdata/baseline is stale; "+
 		"run `make schemas-baseline` from the repo root")
+}
+
+// TestCheckNamesTheTargetForTheRequestedDirectory proves -dir gets a hint that
+// rewrites that directory: the baseline target when it is the baseline, and the
+// -write form otherwise. The shipped target would leave either one stale.
+func TestCheckNamesTheTargetForTheRequestedDirectory(t *testing.T) {
+	root := freshTree(t)
+	t.Chdir(root)
+	dropReceiptBinding(t, filepath.Join(root, baselineDir, "envelope.schema.json"))
+	assertRun(t, []string{"-dir", baselineDir}, 1,
+		"schemagen: internal/schemagen/testdata/baseline is stale; "+
+			"run `make schemas-baseline` from the repo root")
+
+	scratch := "scratch-schemas"
+	files, err := schemagen.Generate()
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if err := writeAll(scratch, files); err != nil {
+		t.Fatalf("write %s: %v", scratch, err)
+	}
+	dropReceiptBinding(t, filepath.Join(scratch, "envelope.schema.json"))
+	assertRun(t, []string{"-dir", scratch}, 1,
+		"schemagen: scratch-schemas is stale; "+
+			"run `go run ./cmd/schemagen -write -dir scratch-schemas`")
 }
 
 // TestCheckAcceptsTheCommittedSchemas runs the same check `make schemas-check`
 // runs against the committed tree, so a baseline left behind fails here too.
 func TestCheckAcceptsTheCommittedSchemas(t *testing.T) {
-	assertRun(t, 0, "")
+	assertRun(t, nil, 0, "")
 }
 
 // freshTree writes the generated schemas, unmodified, into both committed
@@ -67,11 +92,12 @@ func dropReceiptBinding(t *testing.T, path string) {
 	}
 }
 
-// assertRun runs the checker and requires one exit code plus one stderr line.
-func assertRun(t *testing.T, wantCode int, wantStderr string) {
+// assertRun runs the checker with args and requires one exit code plus one
+// stderr line.
+func assertRun(t *testing.T, args []string, wantCode int, wantStderr string) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	code := run(nil, &stdout, &stderr)
+	code := run(args, &stdout, &stderr)
 	if code != wantCode {
 		t.Errorf("exit = %d; want %d (stdout %q, stderr %q)", code, wantCode, stdout.String(), stderr.String())
 	}

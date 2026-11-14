@@ -31,8 +31,10 @@ breaking — updates the baseline, and the diff is reviewed:
 make schemas-baseline
 ```
 
-That is the only supported way to bless a break; prose changes in
-`overlay.json` do not require it.
+That is the only supported way to bless a change; a prose-only
+`overlay.json` edit that moves the emitted bytes needs it too, because the
+check compares whole documents and `make schemas` alone would leave the
+baseline stale.
 
 [`internal/schemagen/overlay.json`](https://github.com/stainless-code/verdict/blob/main/internal/schemagen/overlay.json)
 carries only prose descriptions (and any future patterns). Structure,

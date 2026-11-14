@@ -109,7 +109,7 @@ func execute(opts options, stdout, stderr io.Writer) error {
 // the byte comparison is the gate that sees that.
 func checkCommitted(dir string, files []schemagen.File, stdout io.Writer) error {
 	if dir != "" {
-		return checkAll(dir, dir, shippedHint, files, stdout)
+		return checkAll(dir, dir, hintFor(dir), files, stdout)
 	}
 	root, err := schemagen.RepoRoot()
 	if err != nil {
@@ -119,6 +119,23 @@ func checkCommitted(dir string, files []schemagen.File, stdout io.Writer) error 
 		return err
 	}
 	return checkAll(filepath.Join(root, baselineDir), baselineDir, baselineHint, files, stdout)
+}
+
+// hintFor names the command that rewrites dir when it was given explicitly: the
+// baseline target when dir is the baseline, else the -write form for that
+// directory. The shipped target would leave either one stale.
+func hintFor(dir string) string {
+	if root, err := schemagen.RepoRoot(); err == nil && samePath(dir, filepath.Join(root, baselineDir)) {
+		return baselineHint
+	}
+	return "run `go run ./cmd/schemagen -write -dir " + dir + "`"
+}
+
+// samePath reports whether two paths address the same directory.
+func samePath(a, b string) bool {
+	absA, errA := filepath.Abs(a)
+	absB, errB := filepath.Abs(b)
+	return errA == nil && errB == nil && absA == absB
 }
 
 func parseFlags(args []string, stderr io.Writer) (options, error) {
