@@ -69,7 +69,7 @@ func (st *state) rounds() (int, *core.RefusalError) {
 // further rounds), and on a round that repeats the prior bytes. A never-valid
 // run leaves the last attempt's review.json in place.
 func (st *state) repairLoop(ctx context.Context, args *launchArgs, n int) (*core.RunResponse, *core.RefusalError) {
-	bin, ref := st.resolve(args.def)
+	bin, ref := st.resolve(&args.def)
 	if ref != nil {
 		return nil, ref
 	}
@@ -123,7 +123,7 @@ func (st *state) repairRound(ctx context.Context, args *launchArgs, rec *launche
 	if k > 1 {
 		prompt = repair.RoundPrompt(args.prompt, repair.Nonce(), prior, k, n, rep.Attempts[len(rep.Attempts)-1].Problems, args.artifact)
 	}
-	argv := argvFor(args.def, st.req.PassThrough, prompt)
+	argv := argvFor(&args.def, args.model(), st.req.PassThrough, prompt)
 	st.human(fmt.Sprintf("» round %d/%d: %s (timeout %ds)", k, n, strings.Join(rec.Argv, " "), args.timeout))
 	roundStarted := st.now()
 	roundRes, spawnErr := st.spawn(ctx, argv, args.timeout)

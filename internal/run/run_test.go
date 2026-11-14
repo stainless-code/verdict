@@ -259,3 +259,90 @@ func TestRentryKeepsRecipe(t *testing.T) {
 		t.Fatalf("rentry named a recipe nobody asked for: %q", plain)
 	}
 }
+
+// TestParseFlagsStage proves --stage takes its operand as a value flag, keeps
+// it raw for the service to resolve against the plan, and never eats a
+// pass-through tail.
+func TestParseFlagsStage(t *testing.T) {
+	r, _, _ := testRunner()
+	flags, code, done := parseFlags(r, []string{"--agent", "claude", "--print", "--stage", "2", "--", "--stage", "9"})
+	if done {
+		t.Fatalf("parse failed with exit %d", code)
+	}
+	if flags.stage != "2" || !flags.print {
+		t.Fatalf("flags = stage %q print %v", flags.stage, flags.print)
+	}
+	if want := []string{"--stage", "9"}; !slices.Equal(flags.pass, want) {
+		t.Fatalf("pass-through = %q, want %q", flags.pass, want)
+	}
+	if got := runRequest(r, Request{Repo: "acme/app", Pr: "42"}, &flags).StageRaw; got != "2" {
+		t.Errorf("request stage = %q, want the parsed flag carried through", got)
+	}
+}
+
+// TestParseFlagsStageMissingValue proves --stage without its operand is a usage
+// error naming the flag, never a silent whole-pipeline render.
+func TestParseFlagsStageMissingValue(t *testing.T) {
+	r, _, diag := testRunner()
+	_, code, done := parseFlags(r, []string{"--agent", "claude", "--print", "--stage"})
+	if !done || code != cli.ExitUsage {
+		t.Fatalf("exit = %d done %v, want the usage exit", code, done)
+	}
+	if got, want := strings.TrimSpace(diag.String()), "--stage needs a value (want <n>)"; got != want {
+		t.Errorf("usage error = %q, want %q", got, want)
+	}
+}
+
+// TestParseFlagsStageEmptyValue proves --stage with an empty operand is the
+// same usage error as --stage with none: the service reads "" as "render the
+// whole pipeline", which is the one command the flag exists to avoid.
+func TestParseFlagsStageEmptyValue(t *testing.T) {
+	r, _, diag := testRunner()
+	_, code, done := parseFlags(r, []string{"--agent", "claude", "--print", "--stage", ""})
+	if !done || code != cli.ExitUsage {
+		t.Fatalf("exit = %d done %v, want the usage exit", code, done)
+	}
+	if got, want := strings.TrimSpace(diag.String()), "--stage needs a value (want <n>)"; got != want {
+		t.Errorf("usage error = %q, want %q", got, want)
+	}
+}
+
+// TestRentryQuotesTheStageOperand pins the paste-safe form: the operand reaches
+// this line as the operator typed it, refusals included, so a value carrying
+// shell metacharacters must not rewrite the command it is echoed in.
+func TestRentryQuotesTheStageOperand(t *testing.T) {
+	req := Request{Repo: "acme/app", Pr: "42"}
+	got := rentry(req, &flags{agent: "claude", stage: "2; rm -rf /", timeout: defaultTimeoutS, rounds: defaultRounds, print: true}, false)
+	want := "verdict run acme/app 42 --agent claude --print --stage '2; rm -rf /'"
+	if got != want {
+		t.Fatalf("rentry = %q, want %q", got, want)
+	}
+}
+
+// TestUnknownFlagNamesStage proves the unknown-flag diagnostic advertises
+// --stage: the parse error is where an operator learns the surface grew.
+func TestUnknownFlagNamesStage(t *testing.T) {
+	r, _, diag := testRunner()
+	_, code, done := parseFlags(r, []string{"--agent", "claude", "--stages", "2"})
+	if !done || code != cli.ExitUsage {
+		t.Fatalf("exit = %d done %v, want the usage exit", code, done)
+	}
+	if !strings.Contains(diag.String(), "--stage <n>") {
+		t.Errorf("unknown-flag diagnostic does not name --stage: %q", diag.String())
+	}
+}
+
+// TestRentryKeepsStage pins the re-run line: the stage it names is the one the
+// operator rendered, dropped only when unasked.
+func TestRentryKeepsStage(t *testing.T) {
+	req := Request{Repo: "acme/app", Pr: "42"}
+	got := rentry(req, &flags{agent: "claude", recipe: "quick", stage: "2", timeout: defaultTimeoutS, rounds: defaultRounds, print: true}, false)
+	want := "verdict run acme/app 42 --agent claude --recipe quick --print --stage 2"
+	if got != want {
+		t.Fatalf("rentry = %q, want %q", got, want)
+	}
+	plain := rentry(req, &flags{agent: "claude", timeout: defaultTimeoutS, rounds: defaultRounds}, false)
+	if strings.Contains(plain, "--stage") {
+		t.Fatalf("rentry named a stage nobody asked for: %q", plain)
+	}
+}

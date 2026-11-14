@@ -311,6 +311,10 @@ type RecipeLens = recipe.Lens
 // RecipeSynthesize declares the synthesizer model hint.
 type RecipeSynthesize = recipe.Synthesize
 
+// RecipeStageRender names the one stage a --print --stage render covers: its
+// 1-based position and the kind at that position.
+type RecipeStageRender = core.RecipeStageRender
+
 // PackManifest is a lens pack manifest, generated as schemas/pack.schema.json.
 type PackManifest = pack.Manifest
 

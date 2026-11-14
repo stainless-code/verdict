@@ -161,6 +161,24 @@
       "required": ["kind"],
       "additionalProperties": false
     },
+    "stageRender": {
+      "description": "The one pipeline stage a run --print --stage <n> render covers: its 1-based position in $defs/plan.stages, so the rendered stage's own declarations are that row, and the stage kind at that position. run renders the stage's command and launches nothing, so a stage render writes no launcher.json.",
+      "type": "object",
+      "properties": {
+        "index": {
+          "description": "The 1-based position the --stage operand named, over the plan's four stages.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4
+        },
+        "kind": {
+          "description": "The kind at that position: lenses, synthesize, dedupe, or rank.",
+          "enum": ["lenses", "synthesize", "dedupe", "rank"]
+        }
+      },
+      "required": ["index", "kind"],
+      "additionalProperties": false
+    },
     "lensUse": {
       "description": "One lens the lenses stage names: the id it selects, plus the hint and caps the entry declared for it.",
       "type": "object",
