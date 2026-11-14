@@ -16,27 +16,10 @@ import (
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
+	"github.com/stainless-code/verdict/internal/provenance"
 )
 
 const statusIncluded = "included"
-
-type kbCandOutcome struct {
-	ID     string
-	Status string
-	Reason string
-}
-
-type kbRecallOutcome struct {
-	Reason        string
-	Cap           *int
-	Candidates    []kbCandOutcome
-	Included      int
-	Omitted       int
-	CharsIncluded int
-	CharsTotal    int
-	Truncated     bool
-	NotesWritten  bool
-}
 
 // writeKBRecall writes the scoped rules recalled onto a bundle as advisory
 // context (kb.txt plus the kb-recall.json machine manifest): the store's
@@ -62,7 +45,6 @@ func writeKBRecall(ctx2 *fetchRunCtx, dir, extra string) {
 		ctx2.kbOutcome = outcome
 		return
 	}
-	outcome.NotesWritten = true
 	ctx2.kbOutcome = outcome
 	if !writeKBManifest(r, mfj, mf, ranked, packs) {
 		return
@@ -70,22 +52,22 @@ func writeKBRecall(ctx2 *fetchRunCtx, dir, extra string) {
 	fmt.Fprintf(r.Human, "» kb: %d rule(s) -> %s (%s)\n", len(ranked)+len(packs), mf, strings.Join(ids, ", "))
 }
 
-func buildKBOutcome(ranked, omitted, packs []recallCand) *kbRecallOutcome {
-	cands := make([]kbCandOutcome, 0, len(ranked)+len(omitted)+len(packs))
+func buildKBOutcome(ranked, omitted, packs []recallCand) *provenance.KBRecallInput {
+	cands := make([]provenance.KBCandidateInput, 0, len(ranked)+len(omitted)+len(packs))
 	for _, c := range ranked {
-		cands = append(cands, kbCandOutcome{ID: c.id, Status: statusIncluded})
+		cands = append(cands, provenance.KBCandidateInput{ID: c.id, Status: statusIncluded})
 	}
 	for _, c := range omitted {
-		cands = append(cands, kbCandOutcome{ID: c.id, Status: "omitted", Reason: reasonTopN})
+		cands = append(cands, provenance.KBCandidateInput{ID: c.id, Status: "omitted", Reason: reasonTopN})
 	}
 	for _, c := range packs {
-		cands = append(cands, kbCandOutcome{ID: c.id, Status: statusIncluded})
+		cands = append(cands, provenance.KBCandidateInput{ID: c.id, Status: statusIncluded})
 	}
 	reason := ""
 	if len(omitted) > 0 {
 		reason = reasonTopN
 	}
-	return &kbRecallOutcome{
+	return &provenance.KBRecallInput{
 		Candidates: cands,
 		Included:   len(ranked) + len(packs),
 		Omitted:    len(omitted),
@@ -95,7 +77,7 @@ func buildKBOutcome(ranked, omitted, packs []recallCand) *kbRecallOutcome {
 
 // applyKBCap bounds the note and marks the rules it cut, so no candidate a cap
 // removed still reads included.
-func applyKBCap(ctx2 *fetchRunCtx, note string, blocks []kbNoteBlock, out *kbRecallOutcome) string {
+func applyKBCap(ctx2 *fetchRunCtx, note string, blocks []kbNoteBlock, out *provenance.KBRecallInput) string {
 	total := utf8.RuneCountInString(note)
 	out.CharsTotal = total
 	out.CharsIncluded = total
@@ -116,8 +98,8 @@ func applyKBCap(ctx2 *fetchRunCtx, note string, blocks []kbNoteBlock, out *kbRec
 
 // markCappedCandidates sets each candidate's status from what survived the
 // cap: partially present reads truncated, absent reads omitted.
-func markCappedCandidates(blocks []kbNoteBlock, maxChars int, out *kbRecallOutcome) {
-	byID := make(map[string]*kbCandOutcome, len(out.Candidates))
+func markCappedCandidates(blocks []kbNoteBlock, maxChars int, out *provenance.KBRecallInput) {
+	byID := make(map[string]*provenance.KBCandidateInput, len(out.Candidates))
 	for i := range out.Candidates {
 		byID[out.Candidates[i].ID] = &out.Candidates[i]
 	}

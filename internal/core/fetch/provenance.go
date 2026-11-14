@@ -63,7 +63,7 @@ func buildProvenanceInput(ctx2 *fetchRunCtx, data *core.FetchData, dir string) *
 		Overrides:    overrides,
 		Learnings:    learnings,
 		Exclusions:   collectExclusionsInput(ctx2),
-		KB:           collectKBInput(ctx2.kbOutcome),
+		KB:           ctx2.kbOutcome,
 		BundleTrunc:  bundleTrunc,
 	}
 }
@@ -122,40 +122,12 @@ func collectExclusionsInput(ctx2 *fetchRunCtx) provenance.ExclusionsInput {
 		return provenance.ExclusionsInput{}
 	}
 	return provenance.ExclusionsInput{
-		Present:           true,
-		RawDiffSHA256:     ex.RawDiffSHA256,
-		DiffSHA256:        ex.DiffSHA256,
-		PatternsSource:    ex.PatternsSource,
-		Excluded:          len(ex.Excluded),
-		ExcludedBytes:     int64(ex.ExcludedBytes),
-		KeptBytes:         int64(ex.KeptBytes),
-		Defaults:          len(ex.Defaults) > 0,
-		Ignore:            len(ex.Ignore) > 0,
-		NoDefaultExcludes: ex.NoDefaultExcludes,
-	}
-}
-
-func collectKBInput(kb *kbRecallOutcome) *provenance.KBRecallInput {
-	if kb == nil {
-		return nil
-	}
-	cands := make([]provenance.KBCandidateInput, 0, len(kb.Candidates))
-	for _, c := range kb.Candidates {
-		cands = append(cands, provenance.KBCandidateInput{
-			ID:     c.ID,
-			Status: c.Status,
-			Reason: c.Reason,
-		})
-	}
-	return &provenance.KBRecallInput{
-		Candidates:    cands,
-		Cap:           kb.Cap,
-		Reason:        kb.Reason,
-		Included:      kb.Included,
-		Omitted:       kb.Omitted,
-		CharsIncluded: kb.CharsIncluded,
-		CharsTotal:    kb.CharsTotal,
-		Truncated:     kb.Truncated,
-		NotesWritten:  kb.NotesWritten,
+		Present:        true,
+		RawDiffSHA256:  ex.RawDiffSHA256,
+		DiffSHA256:     ex.DiffSHA256,
+		PatternsSource: ex.PatternsSource,
+		Excluded:       len(ex.Excluded),
+		ExcludedBytes:  int64(ex.ExcludedBytes),
+		KeptBytes:      int64(ex.KeptBytes),
 	}
 }

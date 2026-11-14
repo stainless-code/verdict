@@ -79,7 +79,6 @@ type KBRecallInput struct {
 	CharsIncluded int
 	CharsTotal    int
 	Truncated     bool
-	NotesWritten  bool
 }
 
 // ControlInput describes one control snapshot entry.
@@ -100,16 +99,13 @@ type ConfigOriginInput struct {
 
 // ExclusionsInput describes excluded.json without raw file content.
 type ExclusionsInput struct {
-	RawDiffSHA256     string
-	DiffSHA256        string
-	PatternsSource    string
-	Excluded          int
-	ExcludedBytes     int64
-	KeptBytes         int64
-	Present           bool
-	Defaults          bool
-	Ignore            bool
-	NoDefaultExcludes bool
+	RawDiffSHA256  string
+	DiffSHA256     string
+	PatternsSource string
+	Excluded       int
+	ExcludedBytes  int64
+	KeptBytes      int64
+	Present        bool
 }
 
 // ReceiptBuildInput holds fetch-time inputs for building provenance.json.
@@ -448,12 +444,8 @@ func learningsInputEntry(in *ControlInput) core.ProvenanceInput {
 }
 
 func controlEntries(kind string, items []ControlInput) []core.ProvenanceInput {
-	sorted := slices.Clone(items)
-	slices.SortFunc(sorted, func(a, b ControlInput) int {
-		return strings.Compare(a.Path, b.Path)
-	})
-	out := make([]core.ProvenanceInput, 0, len(sorted))
-	for _, it := range sorted {
+	out := make([]core.ProvenanceInput, 0, len(items))
+	for _, it := range sortedControls(items) {
 		status := normalizeControlStatus(kind, it.Status)
 		entry := core.ProvenanceInput{
 			Kind:   kind,
@@ -491,11 +483,7 @@ func configInputEntries(in *ReceiptBuildInput) []core.ProvenanceInput {
 		status = layerBuiltIn
 	}
 	parts := make([]string, 0, len(in.ConfigValues))
-	sortedVals := slices.Clone(in.ConfigValues)
-	slices.SortFunc(sortedVals, func(a, b ConfigOriginInput) int {
-		return strings.Compare(a.Key, b.Key)
-	})
-	for _, v := range sortedVals {
+	for _, v := range sortedConfigValues(in.ConfigValues) {
 		if v.Layer != "" {
 			parts = append(parts, v.Key+"="+v.Layer)
 		}
@@ -554,18 +542,28 @@ func computeRunID(in *ReceiptBuildInput, promptsHash string, learn *core.Provena
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+// sortedConfigValues returns the winning config origins in key order.
+func sortedConfigValues(vals []ConfigOriginInput) []ConfigOriginInput {
+	sorted := slices.Clone(vals)
+	slices.SortFunc(sorted, func(a, b ConfigOriginInput) int { return strings.Compare(a.Key, b.Key) })
+	return sorted
+}
+
+// sortedControls returns snapshot entries in path order.
+func sortedControls(items []ControlInput) []ControlInput {
+	sorted := slices.Clone(items)
+	slices.SortFunc(sorted, func(a, b ControlInput) int { return strings.Compare(a.Path, b.Path) })
+	return sorted
+}
+
 func writeConfigOriginsToHash(w io.Writer, vals []ConfigOriginInput) {
-	sortedVals := slices.Clone(vals)
-	slices.SortFunc(sortedVals, func(a, b ConfigOriginInput) int { return strings.Compare(a.Key, b.Key) })
-	for _, v := range sortedVals {
+	for _, v := range sortedConfigValues(vals) {
 		writeKV(w, "cfg:"+v.Key, v.Layer+sepColon+v.Source)
 	}
 }
 
 func writeControlsToHash(w io.Writer, prefix string, items []ControlInput) {
-	sorted := slices.Clone(items)
-	slices.SortFunc(sorted, func(a, b ControlInput) int { return strings.Compare(a.Path, b.Path) })
-	for _, c := range sorted {
+	for _, c := range sortedControls(items) {
 		writeKV(w, prefix+c.Path, c.Status+sepColon+c.SHA256)
 	}
 }
@@ -622,50 +620,42 @@ func collectFooterStats(inputs []core.ProvenanceInput) footerInputStats {
 func accumulateFooterInput(s *footerInputStats, in *core.ProvenanceInput) {
 	switch in.Kind {
 	case kindPrompt:
-		s.promptsCnt += boolToInt(in.Status == statusIncluded)
+		s.promptsCnt += countTrue(in.Status == statusIncluded)
 	case kindPanel:
 		if len(in.Members) > 0 {
 			s.panelStr = strings.Join(in.Members, sepComma)
 		}
 	case kindKB:
-		s.kbInc = derefOrZero(in.Included)
-		s.kbOm = derefOrZero(in.Omitted)
+		s.kbInc, s.kbOm = ptrInt(in.Included), ptrInt(in.Omitted)
 		s.kbTrunc = in.Status == statusTruncated
 	case kindExclusions:
-		s.exclCount = derefOrZero(in.Excluded)
+		s.exclCount = ptrInt(in.Excluded)
 	default:
 		accumulateFooterPolicyInput(s, in)
 	}
 }
 
 func accumulateFooterPolicyInput(s *footerInputStats, in *core.ProvenanceInput) {
-	switch in.Kind {
-	case "learnings":
-		s.learnStatus = nonEmptyString(in.Status, s.learnStatus)
-	case "override":
-		s.overCount += boolToInt(in.Status == statusIncluded)
-	case "control":
-		s.ctrlCount += boolToInt(in.Status == statusUsed)
-	case "config":
-		s.cfgLayer = nonEmptyString(in.Layer, s.cfgLayer)
+	switch {
+	case in.Kind == "learnings" && in.Status != "":
+		s.learnStatus = in.Status
+	case in.Kind == "override":
+		s.overCount += countTrue(in.Status == statusIncluded)
+	case in.Kind == "control":
+		s.ctrlCount += countTrue(in.Status == statusUsed)
+	case in.Kind == "config" && in.Layer != "":
+		s.cfgLayer = in.Layer
 	}
 }
 
-func boolToInt(b bool) int {
+func countTrue(b bool) int {
 	if b {
 		return 1
 	}
 	return 0
 }
 
-func nonEmptyString(val, fallback string) string {
-	if val != "" {
-		return val
-	}
-	return fallback
-}
-
-func derefOrZero(v *int) int {
+func ptrInt(v *int) int {
 	if v == nil {
 		return 0
 	}
@@ -675,6 +665,14 @@ func derefOrZero(v *int) int {
 // footerFieldLen caps one rendered `> Inputs:` field so a long config value
 // cannot push the line past a label.
 const footerFieldLen = 64
+
+// cutString keeps at most maxLen leading bytes of s.
+func cutString(s string, maxLen int) string {
+	if len(s) > maxLen {
+		return s[:maxLen]
+	}
+	return s
+}
 
 // displayField renders one footer value on a single line: control runes
 // (CR/LF included) become spaces and the result is capped, so no receipt or
@@ -714,8 +712,8 @@ func RenderInputsFooterLine(dir string) string {
 func inputsFooterLine(r *core.ProvenanceReceipt) string {
 	s := collectFooterStats(r.Inputs)
 	fields := []string{
-		"> Inputs: " + footerField("run ", truncatePrefix(r.RunID, runShortLen)),
-		footerField("prompts ", strconv.Itoa(s.promptsCnt)) + " (" + displayField(truncatePrefix(r.PromptsHash, hashShortLen)) + ")",
+		"> Inputs: " + footerField("run ", cutString(r.RunID, runShortLen)),
+		footerField("prompts ", strconv.Itoa(s.promptsCnt)) + " (" + displayField(cutString(r.PromptsHash, hashShortLen)) + ")",
 		footerField("panel ", s.panelStr),
 		displayField(formatFooterKBPart(s.kbInc, s.kbOm, s.kbTrunc)),
 		footerField("learnings ", s.learnStatus),
@@ -736,13 +734,6 @@ func formatFooterKBPart(kbInc, kbOm int, kbTrunc bool) string {
 		return part + " (truncated)"
 	}
 	return part + fmt.Sprintf(" (%d omitted)", kbOm)
-}
-
-func truncatePrefix(s string, maxLen int) string {
-	if len(s) > maxLen {
-		return s[:maxLen]
-	}
-	return s
 }
 
 // MergeTruncated appends bundle truncation rows absent from r.Truncated.
@@ -803,7 +794,7 @@ func formatInputRow(in *core.ProvenanceInput) string {
 	}
 	shaCol := dash
 	if in.SHA256 != "" {
-		shaCol = truncatePrefix(in.SHA256, runShortLen)
+		shaCol = cutString(in.SHA256, runShortLen)
 	}
 	details := inputRowDetails(in)
 	detailCol := strings.Join(details, " ")

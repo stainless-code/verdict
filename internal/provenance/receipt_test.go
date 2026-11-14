@@ -86,7 +86,6 @@ func baseBuildInput(root, dir, ctrlBody string) *ReceiptBuildInput {
 		Exclusions: ExclusionsInput{
 			Present: true, RawDiffSHA256: shaOf("raw"), DiffSHA256: shaOf("diff"),
 			PatternsSource: ".verdict/ignore@base", Excluded: 2, ExcludedBytes: 100, KeptBytes: 200,
-			Defaults: true, Ignore: true,
 		},
 		KB: &KBRecallInput{
 			Candidates: []KBCandidateInput{
@@ -97,7 +96,7 @@ func baseBuildInput(root, dir, ctrlBody string) *ReceiptBuildInput {
 				{ID: "r5", Status: "omitted", Reason: "top_n"},
 			},
 			Cap: &capVal, Reason: "cap", Included: 3, Omitted: 2,
-			CharsIncluded: 110, CharsTotal: 250, Truncated: true, NotesWritten: true,
+			CharsIncluded: 110, CharsTotal: 250, Truncated: true,
 		},
 	}
 }
