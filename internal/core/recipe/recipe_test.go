@@ -73,7 +73,7 @@ func TestParseRefusals(t *testing.T) {
 		{"unknown lens key", doc(`{"version":"1.0.0","lenses":[{"id":"logic","globs":[]}],"synthesize":{}}`), `$.recipes.quick.lenses[0]: unknown key "globs"`},
 		{"lens id missing", doc(`{"version":"1.0.0","lenses":[{"model":"opus"}],"synthesize":{}}`), `$.recipes.quick.lenses[0]: missing "id"`},
 		{"lens id not a slug", doc(`{"version":"1.0.0","lenses":[{"id":"Logic"}],"synthesize":{}}`), `$.recipes.quick.lenses[0].id: "Logic" is not a lowercase slug`},
-		{"lens id too long", doc(`{"version":"1.0.0","lenses":[{"id":"` + strings.Repeat("l", 65) + `"}],"synthesize":{}}`), `$.recipes.quick.lenses[0].id: "` + strings.Repeat("l", 65) + `" is not a lowercase slug`},
+		{"lens id too long", doc(`{"version":"1.0.0","lenses":[{"id":"` + strings.Repeat("l", 65) + `"}],"synthesize":{}}`), `$.recipes.quick.lenses[0].id: 65 characters, over the 64-character cap`},
 		{"too many lenses", doc(`{"version":"1.0.0","lenses":` + lensRows(65) + `,"synthesize":{}}`), `$.recipes.quick.lenses: 65 lenses, over the 64-lens cap`},
 		{"duplicate lens id", doc(`{"version":"1.0.0","lenses":[{"id":"logic"},{"id":"logic"}],"synthesize":{}}`), `$.recipes.quick.lenses[1].id: duplicate lens id "logic"`},
 		{"max_files zero", doc(`{"version":"1.0.0","lenses":[{"id":"logic","max_files":0}],"synthesize":{}}`), `$.recipes.quick.lenses[0].max_files: want an integer 1..24, got 0`},

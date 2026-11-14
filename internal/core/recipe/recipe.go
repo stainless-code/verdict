@@ -39,6 +39,10 @@ const (
 	// maxLenses is the lens-count cap, the same one a pack manifest may ship
 	// (pack.MaxLenses): one recipe declares no more rows than one pack holds.
 	maxLenses = 64
+	// maxLensID is the lens id cap, in characters: the id names a lens the
+	// bundle loads and is rendered in the directive, so it is bounded like the
+	// version and the model hint.
+	maxLensID = 64
 	// Model hints are at most 64 characters: enough for provider/model.
 	maxModelLength = 64
 	// the dispatch caps a lens row may declare, shared with the pack manifest.
@@ -342,6 +346,9 @@ func lensIDAt(obj map[string]any, path string, seen map[string]bool) (string, *c
 	id, ref := requiredString(obj, path, "id")
 	if ref != nil {
 		return "", ref
+	}
+	if n := utf8.RuneCountInString(id); n > maxLensID {
+		return "", refuse(CodeBad, "%s.id: %d characters, over the %d-character cap", path, n, maxLensID)
 	}
 	if !lensIDRE.MatchString(id) {
 		return "", refuse(CodeBad, "%s.id: %q is not a lowercase slug", path, id)
