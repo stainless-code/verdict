@@ -606,9 +606,12 @@ verdict learn --incident local-abc123 --sha <40-hex merge> --path src/a.ts \
 ```
 
 One row per `(bundle, sha)` pair: `{schema_version, bundle, sha, paths, note,
-url, detected_at}`, kept sorted by bundle then sha. `--path` repeats and is
-sorted-deduped, `--note` caps at 2,000 bytes, `--url` takes `http(s)` only,
-`--at` defaults to now, and the bundle must already carry `findings.json`
+url, detected_at}`, kept sorted by bundle then sha. The row's `bundle` is the
+resolved bundle directory's name, so an alias (`--incident a` for `local-a`)
+records the same pair as the full name instead of a second row for one review.
+`--path` repeats and is sorted-deduped, `--note` caps at 2,000 bytes, `--url`
+takes `http(s)` only, `--at` defaults to now, and the bundle must already carry
+`findings.json`
 (`missing-bundle` when the directory is absent, `missing-findings` when the
 store is). Paths obey the same clean repo-relative rule as every other
 learning path (`bad-scope`); attach flags without `--incident` refuse

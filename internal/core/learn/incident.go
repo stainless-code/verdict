@@ -175,9 +175,12 @@ func (st *state) incidentDisplay() string {
 	return filepath.ToSlash(filepath.Join(st.root, incident.File))
 }
 
-// validateIncident resolves the bundle and checks every attach value.
+// validateIncident resolves the bundle and checks every attach value. The row
+// records the resolved directory's name, so an alias and the bundle it names
+// are one pair in the ledger, not two rows for one review.
 func (st *state) validateIncident() (*incidentInput, *core.RefusalError) {
-	if _, ref := st.incidentBundleDir(); ref != nil {
+	dir, ref := st.incidentBundleDir()
+	if ref != nil {
 		return nil, ref
 	}
 	sha, ref := st.incidentSha()
@@ -188,7 +191,7 @@ func (st *state) validateIncident() (*incidentInput, *core.RefusalError) {
 	if ref != nil {
 		return nil, ref
 	}
-	in := &incidentInput{bundle: st.req.Incident, sha: sha, paths: paths, at: st.now}
+	in := &incidentInput{bundle: filepath.Base(dir), sha: sha, paths: paths, at: st.now}
 	in.note, ref = st.incidentNote()
 	if ref != nil {
 		return nil, ref

@@ -246,6 +246,37 @@ func incidentList(t *testing.T, resp *Response, key string) []string {
 	return out
 }
 
+// TestIncidentRecordsTheResolvedBundle proves an alias and the bundle it names
+// are one ledger pair: attaching `--incident a` stores `local-a`, so the same
+// merge attached by both spellings keeps one row and the join measures it once.
+func TestIncidentRecordsTheResolvedBundle(t *testing.T) {
+	root := seedIncidentRepo(t)
+	writeIncidentBundle(t, root, "local-a", "[]")
+	resp, ref := Run(t.Context(), incidentRequest(root, func(req *Request) { req.Incident = "a" }))
+	if ref != nil {
+		t.Fatalf("alias refusal %s: %s", ref.Code, ref.Message)
+	}
+	if got := incidentField(t, resp, "bundle"); got != "local-a" {
+		t.Fatalf("alias attach stored bundle %q; want local-a", got)
+	}
+	if got := incidentField(t, resp, "attached"); got != "appended" {
+		t.Fatalf("alias attach = %q; want appended", got)
+	}
+
+	resp, ref = Run(t.Context(), incidentRequest(root, func(req *Request) { req.Incident = "local-a" }))
+	if ref != nil {
+		t.Fatalf("bundle refusal %s: %s", ref.Code, ref.Message)
+	}
+	if got := incidentField(t, resp, "attached"); got != "existing" {
+		t.Fatalf("the same pair by its own name = %q; want existing", got)
+	}
+	want := `{"schema_version":"1","bundle":"local-a","sha":"` + incidentSha + `",` +
+		`"paths":["src/a.ts"],"note":null,"url":null,"detected_at":"2026-11-14T00:00:00Z"}` + "\n"
+	if got := readIncidentFile(t, filepath.Join(root, ".verdict", "incidents.jsonl")); got != want {
+		t.Fatalf("ledger = %q; want one local-a row", got)
+	}
+}
+
 // TestIncidentBringTheLockLineToTheIgnoreFile proves the attach leaves the
 // worktree clean: `.verdict/.gitignore` gains the lock-file line a checkout
 // fetched before it existed lacks, and a dry run writes nothing.

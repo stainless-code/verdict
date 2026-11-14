@@ -6,7 +6,8 @@
 revert or incident to a recorded bundle, writing
 `.verdict/incidents.jsonl` at the repo root: one row per `(bundle, sha)` pair
 with `{schema_version, bundle, sha, paths, note, url, detected_at}`, kept
-sorted by bundle then sha. `--path` repeats (sorted-deduped), `--note` caps at
+sorted by bundle then sha, where `bundle` is the resolved bundle directory's
+name (an alias records the same pair as the full name). `--path` repeats (sorted-deduped), `--note` caps at
 2,000 bytes, `--url` takes `http(s)` only, `--at` defaults to now, and the
 bundle must already carry `findings.json`. The attach is idempotent — the
 second run reports `existing`, moves no byte, and answers with the stored row —
