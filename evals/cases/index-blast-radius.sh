@@ -163,7 +163,28 @@ assert_json_field "truncation counts are null" "null" '.data.callers.truncated'
 assert_json_field "co-change is still measured" 2 '.data.co_changed.count'
 assert_json_field "owners are still measured" 1 '.data.owners.count'
 assert_json_field "the absent index is named once" "true" \
-  '.warnings[0] | startswith("» index: no index for tree ")'
+  '.warnings[0] | startswith("» index: no index for HEAD (tree ")'
+assert_json_field "the absent-index hint names the exact build command" \
+  "run verdict index build --at HEAD, then re-run" '.next'
+
+# The human stream is the default surface, and it carries no next: line, so the
+# build command has to ride on the absent-index line itself.
+run_review index blast-radius --paths a/ab.go
+assert_exit "human blast-radius without an index exits 0" 0
+assert_file_grep "the human line names the build command" "$EVAL_OUT" \
+  '^index: no index for HEAD \(tree [0-9a-f]{40}\): symbol, caller, and test lists are unmeasured — run verdict index build --at HEAD$' -E
+
+# A raw tree SHA is a hand-off --at accepts but build cannot answer with (it
+# resolves a commit), so the step turns into words instead of a dead command.
+tree_sha="$(cd "$EVAL_SANDBOX" && git rev-parse 'HEAD^{tree}')"
+run_review index blast-radius --paths a/ab.go --at "$tree_sha" --json
+assert_exit "blast-radius --at <tree SHA> exits 0" 0
+assert_json_field "the absent-index step names the commit that answers" \
+  "run verdict index build at a commit whose tree is $tree_sha, then re-run" '.next'
+run_review index blast-radius --paths a/ab.go --at "$tree_sha"
+assert_exit "human blast-radius --at <tree SHA> exits 0" 0
+assert_file_nogrep "the human line offers no --at the build refuses" "$EVAL_OUT" \
+  "--at $tree_sha$" -E
 
 run_review index blast-radius --paths a/ab.go --limit 0 --json
 assert_exit "an out-of-range limit exits 2" 2

@@ -4,4 +4,5 @@ exit: 1
 --- stderr ---
 error: show: sig prefix ambiguous
 try: copy the full sig prefix from report output
+re-enter: verdict show acme/app 5101 --sig a1111111
 --- files ---

@@ -129,8 +129,9 @@ func TestNextHumanStoreErrorCancelExitsBroke(t *testing.T) {
 	if out.Len() != 0 {
 		t.Errorf("stdout = %q; a refusal stays off stdout", out.String())
 	}
-	if got := diag.String(); got != "next: cannot read store (run post or record first)\n" {
-		t.Errorf("stderr = %q; want the frozen store-error line", diag.String())
+	if got, want := diag.String(), "next: cannot read store (run post or record first)\n"+
+		"re-enter: verdict next acme/app 7\n"; got != want {
+		t.Errorf("stderr = %q; want %q", got, want)
 	}
 }
 

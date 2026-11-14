@@ -328,7 +328,7 @@ Fix: supply valid SARIF 2.1.0 JSON (`"version": "2.1.0"`, `runs[]` array) with r
 
 Cause: `--scope` is empty, malformed, or belongs to a different mode (or the scope config key is invalid). Learning proposals also refuse unsafe cited paths or comment identifiers.
 
-Fix: pass a comma-separated glob list (e.g. `src/*.ts`) together with `--rule`, or fix the named scope key. For learnings, use a clean repo-relative cited path of at most 4096 bytes — no controls, parent components, absolute paths, backslashes, colons, commas or glob syntax. Comment IDs allow 1–256 ASCII letters, digits, underscores, hyphens or equals signs. Unsafe metadata is refused before proposing or accepting.
+Fix: pass a comma-separated glob list (e.g. `src/*.ts`) together with `--rule`, or fix the named scope key. For learnings, use a clean repo-relative cited path of at most 4096 bytes — no control runes or line breaks (U+2028/U+2029 included), parent components, absolute paths, backslashes, colons, commas or glob syntax. Comment IDs allow 1–256 ASCII letters, digits, underscores, hyphens or equals signs. Unsafe metadata is refused before proposing or accepting.
 
 ## `bad-settings`
 

@@ -4,4 +4,5 @@ exit: 1
 --- stderr ---
 error: findings store .verdict/state/5101/findings.json is unreadable or not a findings array (re-run post/record to rebuild, or restore the file)
 try: restore the file or directory the message names from backup (permissions included), or re-run post/record to rebuild the store, then re-run
+re-enter: verdict report acme/app 5101
 --- files ---

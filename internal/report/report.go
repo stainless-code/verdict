@@ -19,6 +19,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core/risk"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/shellquote"
 )
 
 // Request wires a report-family run.
@@ -40,6 +41,7 @@ const (
 // exactly one envelope to stdout.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	setupRunner(r, req)
+	setRentry(r, "report", req, args)
 	flags, code, done := parseFlags(r, args)
 	if done {
 		return code
@@ -143,6 +145,31 @@ func writeArtifact(a *core.FileArtifact) *cli.RefusalError {
 // setupRunner records the invocation (no re-entry line: report sets none).
 func setupRunner(r *cli.Runner, req Request) {
 	r.Repo, r.Pr = req.Repo, req.Pr
+}
+
+// setRentry records the re-run line every refusal of this family prints: the
+// invocation the operator typed, so the way forward after the named cause is
+// the same command instead of a bare `try:`.
+func setRentry(r *cli.Runner, verb string, req Request, args []string) {
+	words := []string{"verdict", verb, shellquote.Arg(req.Repo), shellquote.Arg(req.Pr)}
+	for _, a := range args {
+		words = append(words, shellArg(a))
+	}
+	if r.JSONMode {
+		words = append(words, "--json")
+	}
+	r.Rentry = strings.Join(words, " ")
+}
+
+// shellArg renders one argument for the re-enter line. [shellquote.Arg] drops
+// an empty word, which would close the gap and hand the value to the next
+// token (`--json` included), so an empty argument keeps its place as a pair of
+// single quotes.
+func shellArg(arg string) string {
+	if arg == "" {
+		return "''"
+	}
+	return shellquote.Arg(arg)
 }
 
 // refuseGate renders a typed refusal, exiting 3 on gate runs so hooks can

@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"unicode"
+
+	"github.com/stainless-code/verdict/internal/core"
 )
 
 // contentTypeJSON is the one body shape a data or problem response carries.
@@ -78,7 +79,7 @@ func (s *Server) rejected(w http.ResponseWriter, r *http.Request) bool {
 	return false
 }
 
-// badPath refuses a traversal segment, a control byte, or a backslash before
+// badPath refuses a traversal segment, a line break, or a backslash before
 // routing: the URL never becomes a filesystem path.
 func badPath(p string) bool {
 	if strings.Contains(p, `\`) {
@@ -89,7 +90,7 @@ func badPath(p string) bool {
 			return true
 		}
 	}
-	return strings.ContainsFunc(p, unicode.IsControl)
+	return strings.ContainsFunc(p, core.IsLineBreak)
 }
 
 // problem writes one transport error: status, reason, message.

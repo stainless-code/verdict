@@ -169,10 +169,16 @@ func probeFailure(label string, cause error) error {
 // unreadable working directory report ErrRootUnresolved wrapped with the
 // cause, so no caller can mistake a broken probe for an absent checkout.
 func RepoRoot(ctx context.Context) (string, error) {
+	return repoRoot(ctx, repoRootTimeout)
+}
+
+// repoRoot is RepoRoot under a caller-chosen probe budget, so a test whose
+// fixture process is slow to start measures the probe, not the budget.
+func repoRoot(ctx context.Context, budget time.Duration) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", rootUnresolved(err)
 	}
-	top, err := gitTopLevel(ctx)
+	top, err := gitTopLevel(ctx, budget)
 	if err == nil {
 		if sameDir(top) {
 			return ".", nil
@@ -217,8 +223,8 @@ func probeFailed(err error) bool {
 }
 
 // gitTopLevel probes the git top level under the caller's context.
-func gitTopLevel(ctx context.Context) (string, error) {
-	probe, stop := context.WithTimeout(ctx, repoRootTimeout)
+func gitTopLevel(ctx context.Context, budget time.Duration) (string, error) {
+	probe, stop := context.WithTimeout(ctx, budget)
 	defer stop()
 	res, err := (coreexec.Runner{OutputCap: repoRootOutputCap}).Run(probe, &core.Command{
 		Argv: []string{"git", "rev-parse", "--show-toplevel"}, OutputCap: repoRootOutputCap,

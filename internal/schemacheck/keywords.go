@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
-	"math"
 	"regexp"
 	"slices"
 	"strings"
@@ -471,21 +470,20 @@ func jsonType(value any) string {
 // as integral values — the config reader and the pack manifest decode into Go
 // integers and refuse those spellings, so a schema that accepted them would
 // pass a document the binary then refuses with bad-config or bad-pack.
+//
+// Only [json.Number] can carry the literal, so every caller decodes with
+// [Decode] (or [Document]); a float64 or int reaches here only from a decode
+// that threw the spelling away, and the rule has nothing left to read.
 func isInteger(value any) bool {
-	switch number := value.(type) {
-	case json.Number:
-		if strings.ContainsAny(number.String(), ".eE") {
-			return false
-		}
-		_, err := number.Int64()
-		return err == nil
-	case float64:
-		return number == math.Trunc(number)
-	case int:
-		return true
-	default:
+	number, ok := value.(json.Number)
+	if !ok {
 		return false
 	}
+	if strings.ContainsAny(number.String(), ".eE") {
+		return false
+	}
+	_, err := number.Int64()
+	return err == nil
 }
 
 func numberOf(value any) (float64, bool) {

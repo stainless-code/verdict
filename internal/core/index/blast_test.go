@@ -368,6 +368,78 @@ func TestBlastNullCountsWithoutIndex(t *testing.T) {
 	}
 }
 
+// TestBlastMissingIndexNamesTheBuildCommand proves the absent-index hint names
+// the tree the operator asked for and the exact build that answers for it, the
+// way the callers and tests-for refusals do: "run verdict index build" alone
+// loses the checkout a --from hand-off read.
+func TestBlastMissingIndexNamesTheBuildCommand(t *testing.T) {
+	f := newFixture(t)
+	writeBlastFixture(f)
+	f.commit("one")
+	label := "no index for HEAD (tree " + f.run("", "rev-parse", "HEAD^{tree}") + ")"
+	t.Run("revision", func(t *testing.T) {
+		resp := blastRun(t, f, func(r *Request) { r.Paths = []string{"a/ab.go"} })
+		assertAbsentIndex(t, resp, label, "verdict index build --at HEAD",
+			"run verdict index build --at HEAD, then re-run")
+	})
+	// The hand-off names the checkout as given, so this leg hands it over as
+	// `.`: a temp dir spelling (a drive letter and backslashes on Windows) needs
+	// shell quoting, and an expectation built from it would be rebuilt from the
+	// renderer under test.
+	t.Run("checkout hand-off", func(t *testing.T) {
+		t.Chdir(f.dir)
+		resp := blastRun(t, f, func(r *Request) {
+			r.From = "."
+			r.Paths = []string{"a/ab.go"}
+		})
+		assertAbsentIndex(t, resp, label, "verdict index build --from .",
+			"run verdict index build --from ., then re-run")
+	})
+}
+
+// TestBlastRawTreeHintOmitsAnUnrunnableBuild proves the absent-index hint keeps
+// the words, not a command, when the hand-off named the tree itself: `index
+// build --at <tree SHA>` reads as the recovery it is not, because build
+// resolves a commit and refuses every tree SHA with bad-at.
+func TestBlastRawTreeHintOmitsAnUnrunnableBuild(t *testing.T) {
+	f := newFixture(t)
+	writeBlastFixture(f)
+	f.commit("one")
+	tree := f.run("", "rev-parse", "HEAD^{tree}")
+	resp := blastRun(t, f, func(r *Request) {
+		r.At = tree
+		r.Paths = []string{"a/ab.go"}
+	})
+	// A raw tree SHA keeps no ref, so label() reads as the tree alone, and the
+	// step names the commit that would answer instead.
+	assertAbsentIndex(t, resp, "no index for tree "+tree,
+		"verdict index build at a commit whose tree is "+tree,
+		"run verdict index build at a commit whose tree is "+tree+", then re-run")
+
+	// The command the hint withholds is the one build refuses: proving the
+	// refusal keeps the words in the hint from drifting back into a dead --at.
+	buildReq := f.request(QueryBuild, nil)
+	buildReq.At = tree
+	if _, ref := Run(context.Background(), buildReq); ref == nil || ref.Code != "bad-at" {
+		t.Fatalf("index build --at <tree SHA> refusal = %v; want bad-at", ref)
+	}
+}
+
+// assertAbsentIndex pins the three surfaces an absent index reaches: the
+// warning, the human line, and the next step.
+func assertAbsentIndex(t *testing.T, resp *Response, label, step, next string) {
+	t.Helper()
+	if want := "» index: " + label + ": symbol, caller, and test counts are unmeasured"; !slices.Contains(resp.Warnings, want) {
+		t.Errorf("warnings = %q; want %q", resp.Warnings, want)
+	}
+	if want := "index: " + label + ": symbol, caller, and test lists are unmeasured — run " + step; !slices.Contains(resp.Human, want) {
+		t.Errorf("human = %q; want %q", resp.Human, want)
+	}
+	if resp.Next != next {
+		t.Errorf("next = %q; want %q", resp.Next, next)
+	}
+}
+
 // TestBlastCoChangePartners proves the reused co-change window and its bound:
 // the default minimum count keeps both partners, and a higher one drops the
 // rarer partner.
