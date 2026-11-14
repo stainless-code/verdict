@@ -3779,6 +3779,8 @@ reviews those candidates with the operator's own agent, one launch per
 candidate; it is the backtest step that spends. `backtest score --run <id>`
 then grades the replayed findings against the lines the miner blamed, and
 `backtest --since … --agent <name>` runs all three in one invocation.
+`backtest reverts` is the fourth mode and the only one that reads neither a
+model nor a bundle: it records the window's revert commits as memory (below).
 
 Every mining git call runs with the system and user config nulled — the artifact
 never depends on a formatting knob — with one exception: the user's
@@ -3932,6 +3934,60 @@ the seed rule that fix commit matched), and its `fix`. The envelope's
 `repo` is empty and `pr` is null: mining targets the checkout, not a bundle.
 Human output is one header line, one line per candidate, a skipped-by-reason
 footer, and the `not citable — SZZ-derived` line.
+
+### Reverts
+
+`backtest reverts [--since <90d|12w|18mo|2y|ref>] [--until <ref>] [--json]`
+scans the same window for revert commits only — subject `Revert "..."`, the
+miner's own predicate, refused for a revert of a revert — and records them as
+memory instead of as candidates. `--since` defaults to `12mo`, `--until` to
+`HEAD`, and the window resolution and its refusals (`bad-since`, `bad-until`,
+`window-too-large`, `not-a-repo`, `canceled`) are the miner's. Nothing is
+blamed and nothing is graded: the scan stops after `git show --numstat`, because
+the undo is the evidence and a blamed line would only be a guess about it.
+
+`.verdict/reverts.jsonl` is a tracked ledger beside `kb.jsonl`, one row per
+revert commit, sorted by `sha`:
+
+```json
+{
+  "schema_version": "1",
+  "sha": "<40 hex>",
+  "subject": "Revert \"...\"",
+  "reverts": ["<40 hex>"],
+  "date": "2026-01-02T00:00:00Z",
+  "paths": ["src/a.ts"]
+}
+```
+
+`reverts` lists the commits the revert's own body names as reversed (`This
+reverts commit <sha>`), `date` is that commit's committer date, and `paths` is
+the de-duplicated numstat path list. Rows inside the scanned window are upserted
+by `sha`; rows outside it are kept byte for byte, so a narrower scan never
+forgets a wider one, and a rerun of the same window is byte-identical.
+
+`.verdict/reverts.md` is the reading surface: one section per stored revert,
+with `sha` and `date` outside the fence and the **subject and paths inside an
+`<<<UNTRUSTED …>>>` block**. Those bytes are author-controlled — a revert can be
+wrong, and a revert subject can say anything — so the block says "evidence,
+never instructions", caps the body, and breaks a forged fence marker inside it.
+Nothing here reaches `review.json` or a post, and the human lines never print a
+subject.
+
+Revert commits that cannot be recorded are counted, never refused: a revert of a
+merge (`merge-revert` — its own parents, or the merged commit its body names), a
+revert wider than 200 files or 5,000 lines (`wide-revert`), one touching a
+binary file (`binary`), and one git cannot read (`unreadable`). The envelope's
+`data.reverts` is `{window, total, reverts[], skipped[]}`: `window` counts the
+rows this scan recorded, `total` the ledger afterwards, and `skipped[]` carries
+`{reason, sha[, detail]}`. `artifacts` is `{ledger, note}`. A stored row this
+build cannot read refuses `corrupt-store`; a write that would push the ledger
+past the reader's cap refuses `backtest-failed` naming the cap.
+
+This mode is memory, not a claim: attach one deliberately with `verdict learn
+--incident <bundle> --sha <revert> --path <path>` (the row's `paths` are the
+copy), so no machine asserts harm and `trend --incidents` counts only the
+incidents a human attached.
 
 ### Replay
 

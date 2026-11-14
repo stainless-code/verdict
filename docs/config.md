@@ -18,6 +18,8 @@ lives in `docs/policy-contract.md`.
 .verdict/.gitignore             tracked-shape, carries /state/, /backtest/, /index/, and
                                 incidents.jsonl.lock + kb.jsonl.lock
 .verdict/incidents.jsonl        tracked, the incident ledger
+.verdict/reverts.jsonl          tracked, the revert ledger
+.verdict/reverts.md             tracked, its fenced reading surface
 .verdict/state/                 ignored, local review state
 .verdict/backtest/              ignored, mined backtest runs
 .verdict/index/                 ignored, local code index
