@@ -10,6 +10,7 @@ learned never-log-secrets-in-error-paths -> .verdict/kb.jsonl (scope src/*.ts, r
 /index/
 incidents.jsonl.lock
 kb.jsonl.lock
+reverts.jsonl.lock
 --- file C/.verdict/kb.jsonl ---
 {"id":"never-log-secrets-in-error-paths","rule":"Never log secrets in error paths","scope":"src/*.ts","provenance":"manual","rigor":"pointed","hits":0,"false_hits":0,"judged":0,"status":"active"}
 --- file C/.verdict/kb.jsonl.lock ---
