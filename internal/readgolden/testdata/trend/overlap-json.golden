@@ -45,10 +45,10 @@ exit: 0
         "closed": 0
       },
       "medium": {
-        "bundles": 0,
-        "findings": 0,
-        "open": 0,
-        "addressed": 0,
+        "bundles": 1,
+        "findings": 2,
+        "open": 1,
+        "addressed": 1,
         "closed": 0
       },
       "high": {
@@ -59,18 +59,18 @@ exit: 0
         "closed": 0
       },
       "critical": {
+        "bundles": 2,
+        "findings": 7,
+        "open": 5,
+        "addressed": 1,
+        "closed": 1
+      },
+      "unknown": {
         "bundles": 0,
         "findings": 0,
         "open": 0,
         "addressed": 0,
         "closed": 0
-      },
-      "unknown": {
-        "bundles": 3,
-        "findings": 9,
-        "open": 6,
-        "addressed": 2,
-        "closed": 1
       }
     },
     "withheld": {"agent":0,"below-severity":0,"exclusion":0,"validation":0},
@@ -161,7 +161,7 @@ exit: 0
         "by_category": {
           "untagged": 6
         },
-        "risk": "unknown",
+        "risk": "critical",
         "withheld": {"agent":0,"below-severity":0,"exclusion":0,"validation":0}
       },
       {
@@ -199,7 +199,7 @@ exit: 0
         "by_category": {
           "untagged": 2
         },
-        "risk": "unknown",
+        "risk": "medium",
         "withheld": {"agent":0,"below-severity":0,"exclusion":0,"validation":0}
       },
       {
@@ -233,7 +233,7 @@ exit: 0
         "by_category": {
           "untagged": 1
         },
-        "risk": "unknown",
+        "risk": "critical",
         "withheld": {"agent":0,"below-severity":0,"exclusion":0,"validation":0}
       }
     ],

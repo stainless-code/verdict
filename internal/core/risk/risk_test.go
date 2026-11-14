@@ -242,9 +242,22 @@ func TestEvaluateBundleReceiptsAndBands(t *testing.T) {
 	dir := t.TempDir()
 	const headA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
-	// Bundle with no receipt classifies as unknown in trend bands.
-	if band := risk.BundleBand(dir, headA, nil); band != "unknown" {
-		t.Fatalf("empty bundle band = %q, want unknown", band)
+	// Bundle with no receipt has missing-coverage floor medium -> reported medium.
+	if band := risk.BundleBand(dir, headA, nil); band != "medium" {
+		t.Fatalf("empty bundle without coverage band = %q, want medium", band)
+	}
+	// Unclaimed bundle with complete coverage and low floor stays unknown (never low).
+	cleanDir := t.TempDir()
+	cleanRec := `{"head":"` + headA + `","coverage":{"gaps":0}}`
+	if err := os.WriteFile(filepath.Join(cleanDir, "record.json"), []byte(cleanRec), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if band := risk.BundleBand(cleanDir, headA, nil); band != "unknown" {
+		t.Fatalf("unclaimed clean bundle with complete coverage = %q, want unknown", band)
+	}
+	// Unclaimed bundle with an open critical finding reports critical.
+	if band := risk.BundleBand(cleanDir, headA, []any{entry("open", "critical", "inline", true)}); band != "critical" {
+		t.Fatalf("unclaimed bundle with open critical = %q, want critical", band)
 	}
 
 	// Write record.json with low claim and 0 coverage gaps; post.json overrides claim to medium.

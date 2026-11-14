@@ -3083,9 +3083,10 @@ network. Without the flag both outputs are byte-identical to today.
 
 Each `trend` rollup also classifies bundles into advisory risk bands
 (`by_risk`: `low`, `medium`, `high`, `critical`, `unknown`, plus
-`per_bundle[].risk`) using `max(claimed, floor)` for assessed bundles and
-`unknown` for unclaimed bundles, tallying bundles, findings, open,
-addressed, and closed outcomes per band.
+`per_bundle[].risk`) using the same `reported` level `report --risk` computes
+(`max(claimed, floor)`, and `unknown` only when there is no claim and the
+floor is `low`), tallying bundles, findings, open, addressed, and closed
+outcomes per band.
 
 ## Code index
 

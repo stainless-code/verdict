@@ -32,7 +32,7 @@ func TestTrendRiskBands(t *testing.T) {
 	assertTrendRiskBands(t, data)
 
 	human := strings.Join(resp.Human, "\n")
-	wantLine := "risk: low=1(0f/0o/0a/0c) medium=0(0f/0o/0a/0c) high=1(1f/0o/1a/0c) critical=1(1f/1o/0a/0c) unknown=1(1f/0o/0a/1c)"
+	wantLine := "risk: low=1(0f/0o/0a/0c) medium=1(1f/0o/0a/1c) high=1(1f/0o/1a/0c) critical=1(1f/1o/0a/0c) unknown=1(0f/0o/0a/0c)"
 	if !strings.Contains(human, wantLine) {
 		t.Errorf("human missing %q:\n%s", wantLine, human)
 	}
@@ -50,9 +50,11 @@ func seedTrendRiskBundles(t *testing.T) {
 	writeTrendRiskBundle(t, "local-high",
 		`[{"kind":"inline","path":"b.go","side":"RIGHT","line":2,"anchored":true,"body":"Fixed race condition.","rigor":"walked","severity":"important","sig":"2222222222222222222222222222222222222222","sig_version":"1","status":"addressed"}]`,
 		`{"head":"`+testTrendRiskHead+`","posted_at":"2026-03-03T00:00:00Z","coverage":{"gaps":0},"risk":{"level":"high","rationale":"Concurrency state change.","assessed_head":"`+testTrendRiskHead+`"}}`)
-	writeTrendRiskBundle(t, "local-unknown",
+	writeTrendRiskBundle(t, "local-unclaimed-medium",
 		`[{"kind":"inline","path":"c.go","side":"RIGHT","line":3,"anchored":true,"body":"Deferred cleanup.","rigor":"said","severity":"informational","sig":"3333333333333333333333333333333333333333","sig_version":"1","status":"deferred"}]`,
 		"")
+	writeTrendRiskBundle(t, "local-unknown", "[]",
+		`{"head":"`+testTrendRiskHead+`","posted_at":"2026-03-04T00:00:00Z","coverage":{"gaps":0}}`)
 }
 
 func writeTrendRiskBundle(t *testing.T, name, findings, post string) {
@@ -84,10 +86,10 @@ func assertTrendRiskBands(t *testing.T, data map[string]any) {
 	}
 	wantBands := map[string]map[string]float64{
 		"low":      {"bundles": 1, "findings": 0, "open": 0, "addressed": 0, "closed": 0},
-		"medium":   {"bundles": 0, "findings": 0, "open": 0, "addressed": 0, "closed": 0},
+		"medium":   {"bundles": 1, "findings": 1, "open": 0, "addressed": 0, "closed": 1},
 		"high":     {"bundles": 1, "findings": 1, "open": 0, "addressed": 1, "closed": 0},
 		"critical": {"bundles": 1, "findings": 1, "open": 1, "addressed": 0, "closed": 0},
-		"unknown":  {"bundles": 1, "findings": 1, "open": 0, "addressed": 0, "closed": 1},
+		"unknown":  {"bundles": 1, "findings": 0, "open": 0, "addressed": 0, "closed": 0},
 	}
 	for band, want := range wantBands {
 		assertTrendBand(t, byRisk, band, want)

@@ -159,17 +159,12 @@ func EvaluateBundle(dir, headSHA, covKey string, entries []any, maxRisk string) 
 	return Evaluate(receipt.Claim, headSHA, entries, receipt.Coverage, maxRisk)
 }
 
-// BundleBand returns the risk band a bundle classifies into for trend rollups:
-// bundles without a stored risk claim stay "unknown" (never "low"), while
-// claimed bundles resolve to max(claimed, floor).
+// BundleBand returns the risk band a bundle classifies into for trend rollups,
+// matching report --risk's reported level: max(claimed, floor), or "unknown"
+// only when there is no claim and the floor is "low".
 func BundleBand(dir, headSHA string, allEntries []any) string {
 	covKey := CoverageIdentity(dir, headSHA)
-	receipt := ReadReceipt(dir, covKey)
-	if receipt.Claim == nil || !ValidLevel(receipt.Claim.Level) {
-		return LevelUnknown
-	}
-	res := Evaluate(receipt.Claim, headSHA, allEntries, receipt.Coverage, "")
-	return res.Reported
+	return EvaluateBundle(dir, headSHA, covKey, allEntries, "").Reported
 }
 
 // ComputeFloor deterministically computes the minimum risk floor and receipt
