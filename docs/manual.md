@@ -3241,12 +3241,13 @@ category 25 (worst open finding's category), rung 15 (weakest open finding's
 rigor). A missing or unusable `impact.json` reads reach unmeasured at 0 points
 and warns with the count — never as a clean zero — and the follow-up names the
 backfill (`verdict fetch <pr> --index origin/main`, or `fetch-local` for a local
-bundle). A missing `full.diff` or `findings.json` leaves its own components
-unmeasured without a warning: the missing-coverage and unmeasured-category
-rules above already name it. A rigor token no rung names scores as `said`, the
-conservative floor, while the row's `weakest` stays null: the store never
-carried that rung. No score is a gate: gating one bundle stays
-`report <owner/repo> <pr> --max-risk <level>`.
+bundle). A missing `findings.json` leaves category and rung unmeasured without
+a warning of its own: the missing-coverage and unmeasured-category rules above
+already name it. A missing `full.diff` leaves churn unmeasured at 0 points with
+no warning and no receipt reason — only the row's `churn=missing` cell says so.
+A rigor token no rung names scores as `said`, the conservative floor, while the
+row's `weakest` stays null: the store never carried that rung. No score is a
+gate: gating one bundle stays `report <owner/repo> <pr> --max-risk <level>`.
 
 Human mode prints one header line with the band tally, one line per row
 (`rank`, band, score, bundle, open findings, reach, churn, category, rung), then

@@ -24,8 +24,10 @@ const (
 const (
 	impactSuffix   = "/impact.json"
 	findingsSuffix = "/findings.json"
-	// bandTop bounds the last bucket: any count above it falls through to the
-	// same points, so no input escapes a table.
+	// bandTop bounds the last bucket: a churn count above it falls through to
+	// the same points, so no diff escapes that table. A reach count above it is
+	// read as unmeasured instead (impactCount), because reach sums two counts
+	// and the band tables read an int.
 	bandTop = 1 << 30
 )
 
@@ -113,15 +115,8 @@ func reachScore(dir string) core.RiskReach {
 		return out
 	}
 	out.Measured = true
-	out.Points = bandPoints(reachSum(*out.Symbols, *out.Callers), reachBands)
+	out.Points = bandPoints(*out.Symbols+*out.Callers, reachBands)
 	return out
-}
-
-// reachSum adds two validated counts without overflowing the int the band table
-// reads: each is at most bandTop, so the sum saturates there, under the top
-// bucket's edge.
-func reachSum(symbols, callers int) int {
-	return int(min(int64(symbols)+int64(callers), int64(bandTop)))
 }
 
 // impactCount reads one list receipt's count, nil unless it is a non-negative
