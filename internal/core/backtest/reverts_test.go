@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
@@ -777,5 +778,70 @@ func TestRevertsBadSinceCopyNamesItsMode(t *testing.T) {
 	}
 	if got := (&state{req: &Request{Mode: modeMine}}).modeLabel(); got != "backtest mine" {
 		t.Errorf("mine label = %q; want backtest mine", got)
+	}
+}
+
+// TestRevertsCapsTheStoredSubject proves the scanner bounds what it stores: a
+// revert of a mass-message commit keeps 4,096 bytes cut on a rune boundary, so
+// the row is one this build can read back — an uncapped write would refuse its
+// own ledger as `corrupt-store` on the next scan, and a byte cut would store
+// half a rune.
+func TestRevertsCapsTheStoredSubject(t *testing.T) {
+	r, base, full, want := hugeSubjectRepo(t)
+	data := runReverts(t, r, base)
+	if len(data.Reverts.Rows) != 1 {
+		t.Fatalf("rows = %d; want 1", len(data.Reverts.Rows))
+	}
+	if got := data.Reverts.Rows[0].Subject; got != want {
+		t.Errorf("stored subject = %d bytes; want the first %d, cut on the rune boundary",
+			len(got), len(want))
+	}
+	ledger := readRevertFile(t, r, ".verdict/reverts.jsonl")
+	assertLedgerCarries(t, ledger, want, full)
+	assertRowReadsBack(t, r, ledger)
+}
+
+// hugeSubjectRepo builds a revert whose 4,096th subject byte falls inside a
+// two-byte rune, returning the repo, the window base, the whole subject and the
+// capped expectation.
+func hugeSubjectRepo(t *testing.T) (r *repo, base, full, want string) {
+	t.Helper()
+	r = newRepo(t)
+	r.write("main.go", "package main\n")
+	base = r.commit("feat: base")
+	body := strings.Repeat("a", 4081) + strings.Repeat("é", 60)
+	r.write("main.go", "package main\n\nfunc guard() {}\n")
+	feature := r.commit(body)
+	r.git("revert", "--no-edit", feature)
+	full = `Revert "` + body + `"`
+	want = full[:revertMaxSubject-1]
+	if !utf8.ValidString(want) || revertMaxSubject != 4096 {
+		t.Fatalf("fixture boundary = %d bytes; want a rune boundary below 4096", len(want))
+	}
+	return r, base, full, want
+}
+
+// assertLedgerCarries proves the ledger holds the capped subject, not the whole
+// one.
+func assertLedgerCarries(t *testing.T, ledger, want, full string) {
+	t.Helper()
+	if !strings.Contains(ledger, quoteJSON(t, want)) {
+		t.Error("the ledger does not carry the capped subject")
+	}
+	if strings.Contains(ledger, quoteJSON(t, full)) {
+		t.Error("the ledger carries the subject uncapped")
+	}
+}
+
+// assertRowReadsBack proves the row the scan wrote is one this build reads: a
+// narrow window keeps it and leaves its bytes alone.
+func assertRowReadsBack(t *testing.T, r *repo, ledger string) {
+	t.Helper()
+	narrow := runReverts(t, r, r.head())
+	if narrow.Reverts.Window != 0 || narrow.Reverts.Total != 1 {
+		t.Errorf("window/total = %d/%d; want 0/1", narrow.Reverts.Window, narrow.Reverts.Total)
+	}
+	if got := readRevertFile(t, r, ".verdict/reverts.jsonl"); got != ledger {
+		t.Error("the scan's own row did not read back unchanged")
 	}
 }
