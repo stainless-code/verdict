@@ -30,6 +30,16 @@ if [ "$(printf '%s' "$row" | jq -s -r '.[0] | "\(.id) \(.provenance) \(.rigor) \
 else
   bad "kb.jsonl row is '$row'"
 fi
+lock_present="no"
+if [ -e "$EVAL_SANDBOX/.verdict/kb.jsonl.lock" ]; then
+  lock_present="yes"
+fi
+assert_eq "the append keeps the store's lock file" "yes" "$lock_present"
+lock_ignored="no"
+if git -C "$EVAL_SANDBOX" check-ignore -q .verdict/kb.jsonl.lock; then
+  lock_ignored="yes"
+fi
+assert_eq "the lock file is ignored, not worktree dirt" "yes" "$lock_ignored"
 run_review learn --rule "Check error paths on every await" --scope "src/*.ts" --json
 code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
 if [ "$EVAL_STATUS" -ne 0 ] && [ "$code" = "already-learned" ]; then

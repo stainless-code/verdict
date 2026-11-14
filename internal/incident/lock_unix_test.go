@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stainless-code/verdict/internal/storelock"
 	"github.com/stainless-code/verdict/internal/testenv"
 )
 
@@ -77,7 +78,7 @@ func TestStoppedHolderKeepsTheLock(t *testing.T) {
 		t.Fatalf("stop the holder: %v", err)
 	}
 	past := time.Now().Add(-time.Hour)
-	if err := os.Chtimes(lockPath(root), past, past); err != nil {
+	if err := os.Chtimes(storelock.LockPath(path(root)), past, past); err != nil {
 		t.Fatal(err)
 	}
 	release, err := lock(root, 20*time.Millisecond)

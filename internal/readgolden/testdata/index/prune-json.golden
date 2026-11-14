@@ -11,10 +11,10 @@ exit: 0
   "data": {
     "kind": "prune",
     "kept": [
-      "54388deecda988c4a9a7b6b3134c94f21776a34a",
-      "66cb36f82f38d360350fba5e4997afa12adea846",
-      "94e342390ea190cdbebf6f0bdc3e7cb6aa6bfddb",
-      "d8abb4066f86daf1036fbb64125558c2aeecb2d1"
+      "1e1cfea42768647dd44a3b270fb10668a619a394",
+      "26975045823db3eda5e210220c9a0804334528b6",
+      "5141a8b86902b9ed5dbf9fcc6755e952a0114461",
+      "a0931465f8bb0dcf2cabeead5d900e744b0cf080"
     ],
     "removed": {
       "trees": 1,

@@ -597,6 +597,14 @@ typed. Retire keeps the tombstone line (`status`, `retiredAt`,
 `retireReason`, history-logged) with counters untouched; restore flips back to
 `active` keeping the tombstone as record.
 
+A rule append and a pack import are read-modify-writes of
+`.verdict/kb.jsonl`, so they are serialized by an OS advisory lock on
+`.verdict/kb.jsonl.lock`: one write holds it at a time, a second waits up to
+five seconds before refusing `store-busy`, and the kernel releases it when a
+holder exits however it exits — the lock file persists and the write brings
+`.verdict/.gitignore` to the tracked contract (`kb.jsonl.lock` with
+`incidents.jsonl.lock`) so it is never worktree dirt.
+
 `learn --incident` records the other half of the loop — the bugs a review
 missed — as a row in `.verdict/incidents.jsonl`:
 
@@ -634,8 +642,8 @@ dropping a row. The kernel owns that lock, so there is no stale-lock state to
 reason about: a lock held by a live process waits and then refuses (a paused
 holder keeps it), a crashed or killed holder releases it at once, and the lock
 file itself persists — it carries nothing, and an attach brings
-`.verdict/.gitignore` to the tracked contract (the `incidents.jsonl.lock` line)
-so the lock file is never worktree dirt.
+`.verdict/.gitignore` to the tracked contract (the `incidents.jsonl.lock` line,
+written with `kb.jsonl.lock`) so the lock file is never worktree dirt.
 
 Exposure and acceptance: `learn --status` (text and `--json`) joins
 `kb-recall.json` manifests, finding `kb` cites, and `kb-joins.jsonl` across

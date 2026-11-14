@@ -22,14 +22,14 @@ func TestEnsureStateIgnore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read ignore: %v", err)
 	}
-	if string(raw) != "/state/\n/backtest/\n/index/\nincidents.jsonl.lock\n" {
+	if string(raw) != "/state/\n/backtest/\n/index/\nincidents.jsonl.lock\nkb.jsonl.lock\n" {
 		t.Fatalf("ignore = %q", raw)
 	}
 	if err := layout.EnsureStateIgnore(); err != nil {
 		t.Fatalf("second EnsureStateIgnore: %v", err)
 	}
 	raw, err = os.ReadFile(filepath.Join(root, ".verdict", ".gitignore"))
-	if err != nil || string(raw) != "/state/\n/backtest/\n/index/\nincidents.jsonl.lock\n" {
+	if err != nil || string(raw) != "/state/\n/backtest/\n/index/\nincidents.jsonl.lock\nkb.jsonl.lock\n" {
 		t.Fatalf("ignore after second call = %q, err = %v", raw, err)
 	}
 }
@@ -71,7 +71,7 @@ func TestEnsureStateIgnoreRepairs(t *testing.T) {
 	if err := layout.EnsureStateIgnore(); err != nil {
 		t.Fatalf("EnsureStateIgnore: %v", err)
 	}
-	if got := readIgnore(t, layout); got != "dist/\n/state/\n/backtest/\n/index/\nincidents.jsonl.lock\n" {
+	if got := readIgnore(t, layout); got != "dist/\n/state/\n/backtest/\n/index/\nincidents.jsonl.lock\nkb.jsonl.lock\n" {
 		t.Fatalf("ignore = %q", got)
 	}
 }

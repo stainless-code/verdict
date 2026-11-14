@@ -284,7 +284,7 @@ func TestEnsureStateIgnorePreservesBenignNegations(t *testing.T) {
 		t.Fatalf("EnsureStateIgnore: %v", err)
 	}
 	kept, err := os.ReadFile(layout.GitignoreFile())
-	if err != nil || string(kept) != before+"/state/\n/backtest/\n/index/\nincidents.jsonl.lock\n" {
+	if err != nil || string(kept) != before+"/state/\n/backtest/\n/index/\nincidents.jsonl.lock\nkb.jsonl.lock\n" {
 		t.Fatalf("ignore = %q, err = %v", kept, err)
 	}
 }

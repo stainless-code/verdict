@@ -21,6 +21,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/storelock"
 )
 
 // Request carries the resolved learn invocation. Learn takes no repo/pr
@@ -368,13 +369,30 @@ func (st *state) runAppend() *core.RefusalError {
 		return ref
 	}
 	row := appendRowDoc(validated)
-	if err := kb.AppendRow(st.root, row.MarshalCompact()+"\n"); err != nil {
-		return st.refuse(codeLearnFailed, fmt.Sprintf(msgWriteKB, st.kbDisplay(), err))
+	if ref := st.writeKB(row.MarshalCompact() + "\n"); ref != nil {
+		return ref
 	}
 	st.next = nextAppend
 	st.data = &Data{Rule: row}
 	st.humanf("learned %s -> %s (scope %s, rigor %s)\n",
 		validated.lid, st.kbDisplay(), validated.scope, validated.rigor)
+	return nil
+}
+
+// writeKB appends one row to the knowledge base, mapping a held lock to the
+// retryable store-busy refusal: the append is a read-modify-write, so a second
+// writer must wait rather than drop the first row.
+func (st *state) writeKB(line string) *core.RefusalError {
+	if ref := st.ensureStateIgnore(); ref != nil {
+		return ref
+	}
+	err := kb.AppendRow(st.root, line)
+	switch {
+	case errors.Is(err, storelock.ErrBusy):
+		return st.refuse(codeStoreBusy, fmt.Sprintf(msgBusyKB, st.kbDisplay()))
+	case err != nil:
+		return st.refuse(codeLearnFailed, fmt.Sprintf(msgWriteKB, st.kbDisplay(), err))
+	}
 	return nil
 }
 
@@ -692,6 +710,7 @@ const (
 	msgAlreadyLearned  = "rule text already learned (cite the existing rule id instead of learning it twice)"
 	msgIDTaken         = "id '%s' is taken (pass a different --id)"
 	msgWriteKB         = "learn could not write %s: %v"
+	msgBusyKB          = "knowledge base %s is being written by another learn (retry in a moment)"
 	msgAlreadyRetired  = "learn: rule '%s' is already retired"
 	msgRetireReason    = "learn --retire needs --reason with 30+ chars (human veto, on the record)"
 	msgNotRetired      = "learn: rule '%s' is already active"

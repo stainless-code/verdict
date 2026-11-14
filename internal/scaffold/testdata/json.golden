@@ -46,6 +46,7 @@ init: preset standard (chill: unpinned/10/0.7, standard: 1 member/5/0.5, strict:
 /backtest/
 /index/
 incidents.jsonl.lock
+kb.jsonl.lock
 wrote: .verdict/config.json
 wrote: .verdict/kb.jsonl
 wrote: .verdict/.gitignore
@@ -61,6 +62,7 @@ next: pin real panel slugs in .verdict/config.json, tune defaults.budget_usd, th
 /backtest/
 /index/
 incidents.jsonl.lock
+kb.jsonl.lock
 --- file C/.verdict/config.json ---
 {
   "schema_version": "1",

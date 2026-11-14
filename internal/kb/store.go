@@ -9,6 +9,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/storelock"
 )
 
 // Store-read sentinels: callers keep their own postures, so the reader
@@ -93,9 +94,16 @@ func WriteRows(root string, rows []*jq.Obj) error {
 }
 
 // AppendRow appends one already-encoded row (the --rule path appends instead
-// of rewriting).
+// of rewriting). The read-modify-write holds the store's OS advisory lock, so
+// parallel appends keep every row; a lock another writer holds past the wait
+// refuses [storelock.ErrBusy].
 func AppendRow(root, line string) error {
 	path := rootPath(root, File)
+	unlock, err := storelock.Acquire(path, storelock.DefaultWait)
+	if err != nil {
+		return err //nolint:wrapcheck // the shared lock already names the store it guards
+	}
+	defer unlock()
 	var prev []byte
 	if isFile(path) {
 		raw, err := jq.CappedFile(path, jq.MaxKBBytes)

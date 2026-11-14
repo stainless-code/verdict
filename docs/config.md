@@ -16,7 +16,7 @@ lives in `docs/policy-contract.md`.
 .verdict/learnings.md           tracked, shared heading memory
 .verdict/overrides/             tracked, shared override files
 .verdict/.gitignore             tracked-shape, carries /state/, /backtest/, /index/, and
-                                incidents.jsonl.lock
+                                incidents.jsonl.lock + kb.jsonl.lock
 .verdict/incidents.jsonl        tracked, the incident ledger
 .verdict/state/                 ignored, local review state
 .verdict/backtest/              ignored, mined backtest runs

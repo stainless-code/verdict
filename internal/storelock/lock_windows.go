@@ -1,6 +1,6 @@
 //go:build windows
 
-package incident
+package storelock
 
 import (
 	"errors"
@@ -15,7 +15,7 @@ const (
 	// flags: one exclusive, non-blocking claim on the range below.
 	lockfileExclusiveLock   = 0x00000002
 	lockfileFailImmediately = 0x00000001
-	// lockBytes is the length of the range every attach locks. One byte at
+	// lockBytes is the length of the range every writer locks. One byte at
 	// offset zero locks the file for this protocol.
 	lockBytes = 1
 	// errLockViolation is ERROR_LOCK_VIOLATION: another handle holds the range.
@@ -41,5 +41,5 @@ func tryLock(f *os.File) (bool, error) {
 	if errors.Is(err, errLockViolation) {
 		return false, nil
 	}
-	return false, fmt.Errorf("incident ledger lock %s: %w", f.Name(), err) //nolint:wrapcheck // the file names the lock
+	return false, fmt.Errorf("store lock %s: %w", f.Name(), err) //nolint:wrapcheck // the file names the lock
 }
