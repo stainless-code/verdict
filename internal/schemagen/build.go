@@ -276,6 +276,17 @@ func documents() []document {
 			additionalProperties: false,
 		},
 		{
+			name:  "recipes",
+			title: "recipes.json — declared review pipelines",
+			root:  reflect.TypeFor[RecipesDocument](),
+			defs: []definition{
+				{typ: reflect.TypeFor[RecipeEntry](), name: "recipe", closed: true},
+				{typ: reflect.TypeFor[RecipeLens](), name: "lens", closed: true},
+				{typ: reflect.TypeFor[RecipeSynthesize](), name: "synthesize", closed: true},
+			},
+			additionalProperties: false,
+		},
+		{
 			name:  "lock",
 			title: "verdict.lock — pinned repo lens packs",
 			root:  reflect.TypeFor[LockFile](),

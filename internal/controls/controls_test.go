@@ -278,3 +278,97 @@ func TestExclusionControlsReadBase(t *testing.T) {
 		t.Fatalf("attributes = %q; want base bytes", raw)
 	}
 }
+
+// recipesBase writes a base commit carrying one valid recipe document and
+// returns its SHA.
+func recipesBase(t *testing.T, recipe string) string {
+	t.Helper()
+	return baseRepo(t, map[string]string{
+		".verdict/config.json":  `{"schema_version":"1"}`,
+		".verdict/recipes.json": recipe,
+	})
+}
+
+// TestRecipesControlRow proves .verdict/recipes.json joins the inventory: the
+// base document is a used row holding its exact bytes, and the single-control
+// gate hands the base snapshot back.
+func TestRecipesControlRow(t *testing.T) {
+	const baseRecipe = `{"schema_version":"1","recipes":{"default":{"version":"1.0.0","synthesize":{}}}}`
+	base := recipesBase(t, baseRecipe)
+	writeAll(t, map[string]string{".verdict/recipes.json": `{"schema_version":"1","recipes":{"default":{"version":"2.0.0","synthesize":{}}}}`})
+	snap, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: "bundle", BaseSHA: base})
+	if ref != nil {
+		t.Fatalf("Resolve: %v", ref)
+	}
+	entry := snap.Entry(RecipesPath)
+	if entry == nil || entry.Status != "used" {
+		t.Fatalf("recipes row = %+v, want a used row", entry)
+	}
+	raw, ok := snap.ReadFile(RecipesPath)
+	if !ok || string(raw) != baseRecipe {
+		t.Fatalf("snapshot recipes.json = %q (ok=%v), want the base bytes", raw, ok)
+	}
+	if _, found, ref := GateRecordedPath("bundle", RecipesPath); ref != nil || !found {
+		t.Fatalf("GateRecordedPath = found %v, ref %v, want the used row", found, ref)
+	}
+}
+
+// TestRecipesControlTamperRefuses proves a hand edit to the recorded recipe
+// bytes refuses controls-stale on the single-control read.
+func TestRecipesControlTamperRefuses(t *testing.T) {
+	const baseRecipe = `{"schema_version":"1","recipes":{"default":{"version":"1.0.0","synthesize":{}}}}`
+	base := recipesBase(t, baseRecipe)
+	if _, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: "bundle", BaseSHA: base}); ref != nil {
+		t.Fatalf("Resolve: %v", ref)
+	}
+	writeAll(t, map[string]string{"bundle/controls/recipes.json": baseRecipe + "\n"})
+	if _, _, ref := GateRecordedPath("bundle", RecipesPath); ref == nil || ref.Code != CodeStale {
+		t.Fatalf("tampered recipes.json: ref = %+v, want %s", ref, CodeStale)
+	}
+}
+
+// TestRecipesControlAbsentIsNoRefusal proves an absent recipe document is a
+// missing row and found=false, never a refusal.
+func TestRecipesControlAbsentIsNoRefusal(t *testing.T) {
+	base := baseRepo(t, map[string]string{".verdict/config.json": `{"schema_version":"1"}`})
+	if _, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: "bundle", BaseSHA: base}); ref != nil {
+		t.Fatalf("Resolve: %v", ref)
+	}
+	snap, found, ref := GateRecordedPath("bundle", RecipesPath)
+	if ref != nil || found {
+		t.Fatalf("absent recipes.json = found %v, ref %v, want absent and no refusal", found, ref)
+	}
+	if entry := snap.Entry(RecipesPath); entry == nil || entry.Status != "missing" {
+		t.Fatalf("recipes row = %+v, want the inventory's missing row", entry)
+	}
+}
+
+// TestRecipesControlIgnoresUnrelatedDrift proves an edited sibling control is
+// not the recipe read's business, while the whole-snapshot gate still refuses
+// it.
+func TestRecipesControlIgnoresUnrelatedDrift(t *testing.T) {
+	base := baseRepo(t, map[string]string{".verdict/config.json": `{"schema_version":"1"}`})
+	if _, ref := Resolve(t.Context(), cmdr, &Request{BundleDir: "bundle", BaseSHA: base}); ref != nil {
+		t.Fatalf("Resolve: %v", ref)
+	}
+	writeAll(t, map[string]string{"bundle/controls/config.json": "evil\n"})
+	if _, found, ref := GateRecordedPath("bundle", RecipesPath); ref != nil || found {
+		t.Fatalf("unrelated edit = found %v, ref %v, want the recipe read unaffected", found, ref)
+	}
+	if _, ref := GateRecorded("bundle"); ref == nil || ref.Code != CodeStale {
+		t.Fatalf("whole-snapshot read = %+v, want %s", ref, CodeStale)
+	}
+}
+
+// TestRecipesControlNoManifest proves a bundle with no controls.json has no
+// recipe row (found=false) while a malformed one refuses controls-unavailable.
+func TestRecipesControlNoManifest(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if snap, found, ref := GateRecordedPath("no-controls", RecipesPath); ref != nil || found || snap != nil {
+		t.Fatalf("no controls.json = found %v, ref %v, want absent and no refusal", found, ref)
+	}
+	writeAll(t, map[string]string{"broken/controls.json": "not json"})
+	if _, _, ref := GateRecordedPath("broken", RecipesPath); ref == nil || ref.Code != CodeUnavailable {
+		t.Fatalf("malformed controls.json = %+v, want %s", ref, CodeUnavailable)
+	}
+}

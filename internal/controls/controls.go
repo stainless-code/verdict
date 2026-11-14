@@ -69,6 +69,10 @@ const LockPath = VerdictDir + "/verdict.lock"
 // resolved at the PR base with the rest of the inventory.
 const VerifyEnvPath = VerdictDir + "/verify-env"
 
+// RecipesPath is the declared review pipelines document a run resolves by
+// name at the PR base, never from the head.
+const RecipesPath = VerdictDir + "/recipes.json"
+
 const (
 	packSep       = "/"
 	controlPrefix = "control "
@@ -87,6 +91,7 @@ var Inventory = []string{
 	VerdictDir + "/overrides/attribution.md",
 	VerifyEnvPath,
 	LockPath,
+	RecipesPath,
 }
 
 // snapshotRel sheds the tracked directory prefix for the snapshot layout:
@@ -241,11 +246,9 @@ func writeAt(dest string, raw []byte) *core.RefusalError {
 // Gate loads a bundle's controls.json and verifies it against the bundle's
 // base commit and the bytes on disk; drift is a typed refusal.
 func Gate(bundleDir, bundleBase string) (*Snapshot, *core.RefusalError) {
-	raw, err := jq.CappedFile(filepath.Join(bundleDir, FileName), MaxTotalBytes)
-	s := &Snapshot{Dir: filepath.Join(bundleDir, DirName)}
-	if err != nil || json.Unmarshal(raw, &s.File) != nil || s.File.SchemaVersion != schemaVersion ||
-		(s.File.Policy != PolicyBase && s.File.Policy != PolicyHead) {
-		return nil, refuse(CodeUnavailable, "bundle has no valid controls.json — re-fetch it (fetch resolves controls at the PR base)")
+	s, ref := readControls(bundleDir)
+	if ref != nil {
+		return nil, ref
 	}
 	if ref := s.verify(bundleBase); ref != nil {
 		return nil, ref
@@ -258,16 +261,68 @@ func Gate(bundleDir, bundleBase string) (*Snapshot, *core.RefusalError) {
 // explanation) use it when they hold no bundle base of their own: the
 // hashes still prove the captured bytes are unchanged.
 func GateRecorded(bundleDir string) (*Snapshot, *core.RefusalError) {
-	raw, err := jq.CappedFile(filepath.Join(bundleDir, FileName), MaxTotalBytes)
-	s := &Snapshot{Dir: filepath.Join(bundleDir, DirName)}
-	if err != nil || json.Unmarshal(raw, &s.File) != nil || s.File.SchemaVersion != schemaVersion ||
-		(s.File.Policy != PolicyBase && s.File.Policy != PolicyHead) {
-		return nil, refuse(CodeUnavailable, "bundle has no valid controls.json — re-fetch it (fetch resolves controls at the PR base)")
+	s, ref := readControls(bundleDir)
+	if ref != nil {
+		return nil, ref
 	}
 	if ref := s.verify(s.File.BaseSHA); ref != nil {
 		return nil, ref
 	}
 	return s, nil
+}
+
+// GateRecordedPath loads a bundle's controls.json and re-hashes one named
+// control row against the base the file records. A verb that reads one control
+// refuses only for that control: absence (no controls.json, no row, a missing
+// row) is found=false, and an unrelated control edited after the fetch never
+// decides this read.
+func GateRecordedPath(bundleDir, path string) (*Snapshot, bool, *core.RefusalError) {
+	raw, err := jq.CappedFile(filepath.Join(bundleDir, FileName), MaxTotalBytes)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, false, nil
+	}
+	file, ref := parseControls(raw)
+	if err != nil || ref != nil {
+		return nil, false, refuse(CodeUnavailable, msgNoControls)
+	}
+	s := &Snapshot{Dir: filepath.Join(bundleDir, DirName), File: *file}
+	if ref := s.verifyBase(s.File.BaseSHA); ref != nil {
+		return nil, false, ref
+	}
+	entry := s.Entry(path)
+	if entry == nil || entry.Status != statusUsed {
+		return s, false, nil
+	}
+	if s.drifted(*entry) {
+		return nil, false, staleFile(entry.Path)
+	}
+	return s, true, nil
+}
+
+// msgNoControls is the frozen diagnostic for a missing or invalid manifest.
+const msgNoControls = "bundle has no valid controls.json — re-fetch it (fetch resolves controls at the PR base)"
+
+// readControls loads and validates one bundle's controls.json.
+func readControls(bundleDir string) (*Snapshot, *core.RefusalError) {
+	raw, err := jq.CappedFile(filepath.Join(bundleDir, FileName), MaxTotalBytes)
+	if err != nil {
+		return nil, refuse(CodeUnavailable, msgNoControls)
+	}
+	file, ref := parseControls(raw)
+	if ref != nil {
+		return nil, ref
+	}
+	return &Snapshot{Dir: filepath.Join(bundleDir, DirName), File: *file}, nil
+}
+
+// parseControls validates one controls.json body.
+func parseControls(raw []byte) (*core.ControlsFile, *core.RefusalError) {
+	file := &core.ControlsFile{}
+	if json.Unmarshal(raw, file) != nil || file.SchemaVersion != schemaVersion ||
+		(file.Policy != PolicyBase && file.Policy != PolicyHead) {
+		return nil, refuse(CodeUnavailable, msgNoControls)
+	}
+	return file, nil
 }
 
 // Entry finds one inventory row in the snapshot by its tracked path,
@@ -285,16 +340,29 @@ func (s *Snapshot) Entry(rel string) *core.ControlsFileEntry {
 }
 
 func (s *Snapshot) verify(bundleBase string) *core.RefusalError {
+	if ref := s.verifyBase(bundleBase); ref != nil {
+		return ref
+	}
+	for _, e := range s.File.Files {
+		if s.drifted(e) {
+			return staleFile(e.Path)
+		}
+	}
+	return nil
+}
+
+// verifyBase checks the recorded base against the bundle base the caller holds.
+func (s *Snapshot) verifyBase(bundleBase string) *core.RefusalError {
 	f := s.File
 	if bundleBase == "" || f.BaseSHA != bundleBase || (f.Policy == PolicyBase && f.SHA != bundleBase) {
 		return refuse(CodeStale, fmt.Sprintf("controls base %q does not match the bundle base %q — re-fetch", f.BaseSHA, bundleBase))
 	}
-	for _, e := range f.Files {
-		if s.drifted(e) {
-			return refuse(CodeStale, fmt.Sprintf("controls snapshot file %s changed under the bundle — re-fetch the bundle", e.Path))
-		}
-	}
 	return nil
+}
+
+// staleFile is the frozen drift diagnostic for one control path.
+func staleFile(path string) *core.RefusalError {
+	return refuse(CodeStale, fmt.Sprintf("controls snapshot file %s changed under the bundle — re-fetch the bundle", path))
 }
 
 func (s *Snapshot) drifted(e core.ControlsFileEntry) bool {

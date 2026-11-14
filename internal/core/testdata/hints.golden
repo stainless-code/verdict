@@ -43,6 +43,7 @@ bad-preset	try: re-run with one of the valid values named above
 bad-provider	try: re-run with one of the valid values named above
 bad-range	try: re-run with one of the valid values named above
 bad-reason	try: re-run with one of the valid values named above
+bad-recipe	try: fix the key named above in .verdict/recipes.json, commit it at the base, then re-fetch
 bad-requirement	try: re-run with one of the valid values named above
 bad-review-input	try: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run
 bad-review-schema	try: set "schema_version": "1" in review.json
@@ -191,6 +192,7 @@ uninstall-no-receipt	try: address the cause above, then re-run the same command
 unknown-agent	try: re-run with one of the known agent names listed above
 unknown-group	try: address the cause above, then re-run the same command
 unknown-judgment	try: copy the full sig prefix from report output
+unknown-recipe	try: pass --recipe <name> from the list above; recipes live in .verdict/recipes.json at the base, so commit the entry there and re-fetch
 unknown-rule	try: list rules with learn --status, then re-run
 unknown-sig	try: copy the full sig prefix from report output
 unknown-thread	try: address the cause above, then re-run the same command

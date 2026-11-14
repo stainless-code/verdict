@@ -337,6 +337,32 @@
       "/$defs/rule/properties/id": "^[a-z0-9][a-z0-9-]{0,64}$"
     }
   },
+  "recipes": {
+    "descriptions": {
+      "": "The declared review pipelines a run resolves by name from .verdict/recipes.json at the PR base: lenses, synthesizer hint, and budget, compiled into the four-stage plan data.recipe and launcher.json record. The file is a review control, read from the base snapshot and hash-gated like the typed configuration, so a head edit never steers the pipeline it is judged by. Positions are declarations, not selections: run launches one process and never chooses a model. Every key is spelled exactly as published; the loader refuses any other case, an unknown key, and a duplicate key with bad-recipe.",
+      "/properties/schema_version": "Recipes format version; exactly \"1\".",
+      "/properties/recipes": "One named entry per pipeline. run resolves --recipe <slug> here first; a name is a map key and never a path. The key is a lowercase slug of at most 64 characters.",
+      "/$defs/recipe": "One named pipeline: the version it declares, an optional description and budget, an optional lens set, and the required synthesizer hint.",
+      "/$defs/recipe/properties/version": "Entry semver, recorded verbatim in data.recipe and launcher.json. A field change moves the recorded sha256, so the same document always records the same plan.",
+      "/$defs/recipe/properties/description": "Operator prose for humans, at most 280 characters. It is never rendered into the directive: only validated ids, enums, numbers, and pattern-checked hints reach the prompt.",
+      "/$defs/recipe/properties/budget_usd": "Declared USD budget for the whole pipeline, above zero. It is recorded and rendered, and a value above the bundle's spend.personal_limit_usd warns; run enforces nothing and never refuses on it.",
+      "/$defs/recipe/properties/lenses": "The lens set the pipeline declares, in declaration order. Omit it to inherit the bundle's loaded lenses from lenses.txt in file order. A declared lens the bundle does not load warns and never refuses: lens offers are per plan group, and fetch is the authority on them.",
+      "/$defs/recipe/properties/synthesize": "The synthesizer stage's model hint. The empty object is the \"no hint\" spelling, and it is the built-in default's whole entry besides its version.",
+      "/$defs/lens": "One declared lens: the id it selects, its model hint, and the per-lens dispatch caps the reviewer-subagent contract states.",
+      "/$defs/lens/properties/id": "Lens id, a lowercase slug. A missing lens warns; a repeated id in one entry refuses bad-recipe.",
+      "/$defs/lens/properties/model": "Model hint for this lens: at most 64 characters of letters, digits, and ._:|@+~-, so a hint can never reshape the directive. Verdict never selects a model.",
+      "/$defs/lens/properties/max_files": "How many changed files this lens may read, 1 to 24.",
+      "/$defs/lens/properties/max_findings": "How many findings this lens may return, 1 to 20.",
+      "/$defs/synthesize": "The synthesizer stage's declaration. Only a model hint is declared; dedupe and rank take none.",
+      "/$defs/synthesize/properties/model": "Synthesizer model hint, same grammar and cap as a lens hint."
+    },
+    "patterns": {
+      "/$defs/recipe/properties/version": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$",
+      "/$defs/lens/properties/id": "^[a-z0-9][a-z0-9-]*$",
+      "/$defs/lens/properties/model": "^[A-Za-z0-9][A-Za-z0-9._:/@+~-]{0,63}$",
+      "/$defs/synthesize/properties/model": "^[A-Za-z0-9][A-Za-z0-9._:/@+~-]{0,63}$"
+    }
+  },
   "record": {
     "descriptions": {
       "": "Written by the record verb in the verdict CLI for local and provider-PR bundles (GitHub PRs use post). findings/open are recomputed from the merged store every run; confidence/security_summary are null when the review carried none. additionalProperties stays open for additive provenance fields.",

@@ -303,6 +303,10 @@ var publishedSemantics = map[string]string{
 	// loader's own grammar; no property, required key, enum, or type changed.
 	"lock.schema.json": "c88951e4ac18781f93881f6654493ad8a7345ea990fca44bbd1149c7eefc4714",
 	"pack.schema.json": "be5fbfe989cf2dbae0b4a3ba67be5e8512e3784db734896b7f142d7df579ae73",
+	// additive recipes.schema.json (new control document: the declared review
+	// pipelines a run resolves by name at the PR base). No existing schema
+	// property, required key, enum, or type changed.
+	"recipes.schema.json": "0782afaeb8e3ed3a2fd69e88c4234aa592bf3618345eebfd235b7027c535fd33",
 	// patch identity: additive optional patch_id/patch_id_kind plus the
 	// optional forced[] audit with $defs/forcedPost. No existing property,
 	// required key, or type changed.

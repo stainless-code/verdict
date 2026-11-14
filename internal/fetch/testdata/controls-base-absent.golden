@@ -89,6 +89,7 @@ CALL: api repos/acme/app/contents/.verdict/overrides/walkthrough-threshold.md?re
 CALL: api repos/acme/app/contents/.verdict/overrides/attribution.md?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.verdict/verify-env?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.verdict/verdict.lock?ref=cccccccccccccccccccccccccccccccccccccccc
+CALL: api repos/acme/app/contents/.verdict/recipes.json?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.verdict/packs?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.verdict/config.json?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: pr view 4701 --repo acme/app --json files --jq .files[] | "\(.path) (+\(.additions)/-\(.deletions))"
@@ -215,6 +216,12 @@ notes.txt
     },
     {
       "path": ".verdict/verdict.lock",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".verdict/recipes.json",
       "status": "missing",
       "bytes": 0,
       "sha256": ""
