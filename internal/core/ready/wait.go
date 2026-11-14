@@ -60,7 +60,11 @@ func waitSessionRun(ctx context.Context, req *WaitRequest) (*WaitResponse, *Wait
 	if ctx.Err() != nil {
 		return nil, nil, &core.RefusalError{Code: codeCanceled, Message: "PR wait canceled"}
 	}
-	timeout, interval, ref := WaitDurations(req.Timeout, req.Interval)
+	timeoutText := req.Timeout
+	if req.Once && timeoutText == "" {
+		timeoutText = pollMaxTimeout.String()
+	}
+	timeout, interval, ref := WaitDurations(timeoutText, req.Interval)
 	if ref != nil {
 		return nil, nil, ref
 	}
