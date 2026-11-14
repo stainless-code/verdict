@@ -244,7 +244,7 @@ func usageText() string {
 		"    --dry-run lists what would be resolved and makes zero writes; a real run\n" +
 		"    makes one host write per thread and writes threads-resolve.json. GitHub and\n" +
 		"    GitLab carry it; Forgejo refuses typed (no documented resolve endpoint).\n" +
-		"  trend <owner/repo> [--rules] [--overlap] [--resolution] [--json]\n" +
+		"  trend <owner/repo> [--rules] [--overlap] [--incidents] [--resolution] [--json]\n" +
 		"    portfolio rollup over existing bundle stores (no network, writes nothing):\n" +
 		"    findings opened/addressed/closed over time, broken down by severity tier\n" +
 		"    and status, with per-bundle models/effort for the calibration join.\n" +
@@ -257,6 +257,12 @@ func usageText() string {
 		"    (addressed vs false-positive); missing manifests read unmeasured (never\n" +
 		"    zero) and stay out of both denominators. Default output is byte-identical\n" +
 		"    without the flag.\n" +
+		"    --incidents joins .verdict/incidents.jsonl to the bundle stores and reports\n" +
+		"    the incident miss rate: an incident is a hit when one non-false-positive\n" +
+		"    finding covers one of its paths (exact, or the finding under it by\n" +
+		"    directory), a miss otherwise. A bundle whose store will not read is\n" +
+		"    unmeasured, out of the rate, never a miss; miss_rate is null until something\n" +
+		"    measures. Default output is byte-identical without the flag.\n" +
 		"  index build [--from <dir>] [--at <ref>] [--json]\n" +
 		"    build the code index for one tree under .verdict/index/: Go parsed with\n" +
 		"    go/parser, TypeScript, JavaScript, and Python by two lexical scanners.\n" +

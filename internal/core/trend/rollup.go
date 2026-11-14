@@ -310,13 +310,16 @@ func rowDoc(r *row) *jq.Obj {
 	)
 }
 
-func (st *state) emitHuman(out *rollup, overlap *overlapRollup, corpus *corpusRollup) {
+func (st *state) emitHuman(out *rollup, overlap *overlapRollup, corpus *corpusRollup, incidents *incidentRollup) {
 	st.emitRollupHuman(out)
 	if overlap != nil {
 		st.emitOverlapHuman(overlap)
 	}
 	if corpus != nil {
 		st.emitCorpusHuman(corpus)
+	}
+	if incidents != nil {
+		st.emitIncidentsHuman(incidents)
 	}
 }
 
