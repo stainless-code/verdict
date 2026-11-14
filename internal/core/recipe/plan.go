@@ -164,24 +164,21 @@ func canonical(entry *Entry, name string) (string, *core.RefusalError) {
 // lensStage resolves the lenses stage and its warnings.
 func lensStage(entry *Entry, name string, installed []string) ([]LensUse, string, []string) {
 	if len(entry.Lenses) == 0 {
-		return bundleLensStage(name, installed)
+		lenses, source := bundleLensStage(installed)
+		return lenses, source, nil
 	}
 	return declaredLensStage(entry.Lenses, name, installed)
 }
 
 // bundleLensStage stands the bundle's loaded ids in for a recipe that declares
-// none. An empty set warns: the lenses stage then names nothing, which is
-// legal but rarely what the pipeline meant.
-func bundleLensStage(name string, installed []string) ([]LensUse, string, []string) {
+// none, in file order. No warning: a bundle that loads no lens is the ordinary
+// default path, so a recipe that asks for nothing gets the empty set silently.
+func bundleLensStage(installed []string) ([]LensUse, string) {
 	lenses := make([]LensUse, 0, len(installed))
 	for _, id := range installed {
 		lenses = append(lenses, LensUse{ID: id})
 	}
-	if len(lenses) == 0 {
-		return lenses, LensSourceBundle, []string{fmt.Sprintf(
-			"recipe %s declares no lenses and the bundle loads no lens, so the lenses stage names none", name)}
-	}
-	return lenses, LensSourceBundle, nil
+	return lenses, LensSourceBundle
 }
 
 // declaredLensStage keeps the declared rows in declaration order. A lens the

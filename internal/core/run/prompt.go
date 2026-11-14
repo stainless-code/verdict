@@ -75,8 +75,7 @@ func stageLine(stage recipe.Stage) string {
 }
 
 // lensLine renders the resolved lens list in order. An empty list says so: the
-// stage names nothing, which is legal, and load time warns when the bundle
-// loaded no lens either.
+// stage names nothing, which is legal and the ordinary lens-less bundle.
 func lensLine(lenses []recipe.LensUse) string {
 	if len(lenses) == 0 {
 		return "lenses none"

@@ -208,9 +208,9 @@ func TestHashIsCanonicalAndMoves(t *testing.T) {
 	}
 }
 
-// TestWarnings proves the two lens warnings: a declared lens the bundle does
-// not load, and a lens stage that names nothing because the bundle loaded
-// nothing.
+// TestWarnings proves the one lens warning: a declared lens the bundle does not
+// load. A recipe that declares no lenses is silent whatever the bundle loaded,
+// because inheriting an empty set is the ordinary lens-less bundle, not news.
 func TestWarnings(t *testing.T) {
 	const give = `{"schema_version":"1","recipes":{"quick":{"version":"1.0.0","lenses":[{"id":"security"}],"synthesize":{}},"bare":` + entryValid + `}}`
 	if got := planOf(t, give, "quick", []string{"perf"}).Warnings; len(got) != 1 ||
@@ -220,9 +220,11 @@ func TestWarnings(t *testing.T) {
 	if got := planOf(t, give, "quick", []string{"security"}).Warnings; len(got) != 0 {
 		t.Errorf("warnings = %v, want none when the bundle loads the lens", got)
 	}
-	if got := planOf(t, give, "bare", nil).Warnings; len(got) != 1 ||
-		!strings.Contains(got[0], "loads no lens") {
-		t.Errorf("warnings = %v, want one naming the empty lens stage", got)
+	if got := planOf(t, give, "bare", nil).Warnings; len(got) != 0 {
+		t.Errorf("warnings = %v, want none for a recipe that declares no lenses", got)
+	}
+	if got := planOf(t, give, "bare", []string{"perf"}).Warnings; len(got) != 0 {
+		t.Errorf("warnings = %v, want none when the bundle supplies the lenses", got)
 	}
 }
 

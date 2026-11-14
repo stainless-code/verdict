@@ -834,8 +834,8 @@ func TestRunWithoutARecipesFileResolvesTheBuiltin(t *testing.T) {
 			t.Errorf("directive does not name %q:\n%s", want, directive)
 		}
 	}
-	if len(resp.Warnings) != 1 || !strings.Contains(resp.Warnings[0], "loads no lens") {
-		t.Errorf("warnings = %q, want the empty-lens-stage warning", resp.Warnings)
+	if len(resp.Warnings) != 0 {
+		t.Errorf("warnings = %q, want none: a lens-less bundle is the ordinary default run", resp.Warnings)
 	}
 }
 

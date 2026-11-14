@@ -195,11 +195,8 @@ func TestReplayRunsEachCandidateAtItsHistoricalHead(t *testing.T) {
 	f := newReplayFixture(t)
 	f.plant(t, "write", "0.6")
 	resp := runReplayOK(t, f.request(t, nil))
-	// The replay's bundles load no lens, so the run pipeline names its empty
-	// lenses stage once; anything else is the replay's own noise.
-	want := []string{"recipe default declares no lenses and the bundle loads no lens, so the lenses stage names none"}
-	if !slices.Equal(resp.Warnings, want) {
-		t.Errorf("warnings = %q, want only the run recipe's empty-lens-stage warning", resp.Warnings)
+	if len(resp.Warnings) != 0 {
+		t.Errorf("warnings = %q; a clean replay warns about nothing", resp.Warnings)
 	}
 	checkReplayData(t, resp.Data)
 	checkHistoricalBundles(t, f)
