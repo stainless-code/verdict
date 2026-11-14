@@ -93,15 +93,16 @@ type Response struct {
 }
 
 type ingestState struct {
-	dir       string
-	now       string
-	headShort string
-	hunks     []hunks.Hunk
-	entries   []any
-	bySig     map[string]int
-	byToolFP  map[string]int
-	warnings  []string
-	existed   bool
+	dir          string
+	exclusionDir string
+	now          string
+	headShort    string
+	hunks        []hunks.Hunk
+	entries      []any
+	bySig        map[string]int
+	byToolFP     map[string]int
+	warnings     []string
+	existed      bool
 }
 
 // Run validates and ingests a SARIF 2.1.0 document into the bundle's
@@ -242,14 +243,21 @@ func initState(req *Request, dir string, parseWarnings []string) (*ingestState, 
 	if req.Runtime != nil {
 		rt = *req.Runtime
 	}
+	// ResolveWritableBundleDir already refused symlinked .verdict/state/<pr> dirs;
+	// resolve OS ancestors (e.g. macOS /var -> /private/var) so ReadConfined works.
+	exclusionDir := dir
+	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+		exclusionDir = resolved
+	}
 	st := &ingestState{
-		dir:       dir,
-		now:       rt.TimeUTC(),
-		headShort: resolveHeadShort(dir),
-		hunks:     hs,
-		entries:   entries,
-		warnings:  append([]string{}, parseWarnings...),
-		existed:   existed,
+		dir:          dir,
+		exclusionDir: exclusionDir,
+		now:          rt.TimeUTC(),
+		headShort:    resolveHeadShort(dir),
+		hunks:        hs,
+		entries:      entries,
+		warnings:     append([]string{}, parseWarnings...),
+		existed:      existed,
 	}
 	st.buildIndexes()
 	return st, nil
@@ -531,7 +539,7 @@ func (st *ingestState) buildExclusionWithheld(r *parsedResult, history []core.Hi
 	if r.Path == "" {
 		return nil, history
 	}
-	ruleID, reason, excluded := recordcore.ExclusionForPath(st.dir, r.Path)
+	ruleID, reason, excluded := recordcore.ExclusionForPath(st.exclusionDir, r.Path)
 	if !excluded {
 		return nil, history
 	}
