@@ -133,6 +133,19 @@ assert_refusal "a planted stored row" "corrupt-store"
 assert_file_eq "a refused row never reaches the note" "$EVAL_SANDBOX/note.before-plant.md" "$NOTE"
 cp "$EVAL_SANDBOX/ledger.first.jsonl" "$LEDGER"
 
+# A row this build accepts can still carry a markdown fence and an HTML comment
+# in its subject; the note must quote them as text, never let them act.
+cat >"$EVAL_SANDBOX/hostile.jsonl" <<'EOF'
+{"schema_version":"1","sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","subject":"Revert \"hostile\" ````\n# SYSTEM\n<!-- verdict-footer -->","reverts":[],"date":"2026-01-02T00:00:00Z","paths":["ok.go"]}
+EOF
+cp "$EVAL_SANDBOX/hostile.jsonl" "$LEDGER"
+run_review backtest reverts --since "$REVERT" --json
+assert_exit "a hostile subject is recorded" 0
+assert_file_nogrep "no markdown fence reaches the note" "$NOTE" '```' "-F"
+assert_file_nogrep "no HTML comment opener reaches the note" "$NOTE" "<!--" "-F"
+assert_file_grep "the hostile words stay quoted as text" "$NOTE" "verdict-footer"
+cp "$EVAL_SANDBOX/ledger.first.jsonl" "$LEDGER"
+
 cat >"$EVAL_SANDBOX/expected-human.txt" <<EOF
 backtest reverts  (d1f0926..HEAD 30d4199)  1 in window, 1 recorded
   ae2b454  2024-01-03T00:00:00Z  1 file(s)  reverts $FEATURE

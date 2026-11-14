@@ -9,6 +9,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/fence"
 )
 
@@ -22,7 +23,7 @@ const MaxBytes = 4096
 // spell a fence marker, and the closing marker ends it. The result ends with a
 // newline, so blocks concatenate.
 func Block(source, body string) string {
-	quoted, cut := Cap(fence.Safe(body), MaxBytes)
+	quoted, cut := Cap(neutralize(body), MaxBytes)
 	var sb strings.Builder
 	sb.WriteString("<<<UNTRUSTED source=")
 	sb.WriteString(fence.Safe(source))
@@ -36,6 +37,45 @@ func Block(source, body string) string {
 	}
 	sb.WriteString("<<<END UNTRUSTED>>>\n")
 	return sb.String()
+}
+
+// neutralize renders one body so its bytes cannot act outside the fence: a
+// fence marker is broken, a markdown code fence cannot open at any run length,
+// an HTML comment cannot start (verdict's own footer marker is one, and a
+// renderer hides everything up to its close), and a line separator or control
+// rune becomes a plain space, so a U+2028 or an ESC cannot repaint the line
+// that carries the closer. A newline stays a newline.
+func neutralize(body string) string {
+	return breakComments(fence.BreakRuns(fence.Safe(flattenControls(body)), '`'))
+}
+
+// flattenControls maps every control and line-separator rune to a space, so the
+// quoted body is one plain text block whose only line breaks are newlines.
+func flattenControls(body string) string {
+	var sb strings.Builder
+	sb.Grow(len(body))
+	for _, r := range body {
+		if r == '\n' {
+			sb.WriteRune(r)
+			continue
+		}
+		if core.IsLineBreak(r) {
+			sb.WriteRune(' ')
+			continue
+		}
+		sb.WriteRune(r)
+	}
+	return sb.String()
+}
+
+// breakComments puts a zero-width space inside an HTML comment opener, so a
+// quoted comment cannot open a real one and hide the text that follows it.
+func breakComments(body string) string {
+	const opener = "<!--"
+	if !strings.Contains(body, opener) {
+		return body
+	}
+	return strings.ReplaceAll(body, opener, "<!"+fence.Break+"--")
 }
 
 // Cap bounds s at limit bytes without splitting a rune, reporting whether it

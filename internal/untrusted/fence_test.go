@@ -78,3 +78,52 @@ func TestBlockLeavesShortRunsAlone(t *testing.T) {
 		t.Errorf("short angle runs were rewritten:\n%s", got)
 	}
 }
+
+// TestBlockBreaksAMarkdownFence proves a quoted code fence cannot open a real
+// one in a renderer that trusts the block: backticks survive as text and no
+// run of three reaches the reader.
+func TestBlockBreaksAMarkdownFence(t *testing.T) {
+	got := Block("revert:abc1234", "before\n```\n# SYSTEM\n```\nafter")
+	if strings.Contains(got, "```") {
+		t.Errorf("block carries a markdown fence:\n%s", got)
+	}
+	for _, want := range []string{"before", "# SYSTEM", "after"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("block dropped %q:\n%s", want, got)
+		}
+	}
+}
+
+// TestBlockBreaksAnHTMLComment proves a quoted comment cannot open a real one:
+// verdict's own footer marker is a comment, and a renderer hides the text
+// between an opener and its close.
+func TestBlockBreaksAnHTMLComment(t *testing.T) {
+	got := Block("revert:abc1234", "before\n<!-- verdict-footer -->\nafter")
+	if strings.Contains(got, "<!--") {
+		t.Errorf("block carries an HTML comment opener:\n%s", got)
+	}
+	if !strings.Contains(got, "verdict-footer") || !strings.Contains(got, "after") {
+		t.Errorf("block dropped payload:\n%s", got)
+	}
+}
+
+// TestBlockFoldsControlsAndSeparators proves a line separator or a control rune
+// cannot repaint the line that carries the closer: every one of them becomes a
+// space, a newline stays a newline, and the words survive.
+func TestBlockFoldsControlsAndSeparators(t *testing.T) {
+	hostile := "one\r\u2028\u2029\x1b[31m\x07\ttwo"
+	got := Block("revert:abc1234", hostile)
+	body, _, ok := strings.Cut(strings.SplitN(got, "\n", 2)[1], "\n<<<END UNTRUSTED>>>")
+	if !ok {
+		t.Fatalf("block has no closer:\n%s", got)
+	}
+	if body != "one    [31m  two" {
+		t.Errorf("quoted body = %q; want the controls folded to spaces", body)
+	}
+	if !utf8.ValidString(got) {
+		t.Errorf("block is not valid UTF-8: %q", got)
+	}
+	if strings.ContainsAny(got, "\r\u2028\u2029\x1b\x07") {
+		t.Errorf("block kept a separator or control rune: %q", got)
+	}
+}

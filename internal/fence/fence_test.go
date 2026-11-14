@@ -54,3 +54,23 @@ func TestSafeLeavesShortRuns(t *testing.T) {
 		}
 	}
 }
+
+// TestBreakRunsBreaksAnotherMarker proves the breaker is the same rule for any
+// marker byte: a markdown code fence is broken at every run length, and text
+// with no such run is returned byte-identical.
+func TestBreakRunsBreaksAnotherMarker(t *testing.T) {
+	t.Parallel()
+	for _, n := range []int{3, 4, 5, 6, 8, 100} {
+		in := strings.Repeat("`", n)
+		got := BreakRuns(in, '`')
+		if strings.Contains(got, "```") {
+			t.Errorf("BreakRuns(%d backticks) = %q, want no markdown fence", n, got)
+		}
+		if strings.Count(got, "`") != n {
+			t.Errorf("BreakRuns(%d backticks) dropped a marker byte: %q", n, got)
+		}
+	}
+	if in := "a `` b <c> d"; BreakRuns(in, '`') != in {
+		t.Errorf("BreakRuns rewrote a short run: %q", BreakRuns(in, '`'))
+	}
+}
