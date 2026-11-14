@@ -427,7 +427,7 @@ func (st *state) storeReverts(rows []RevertRow) (*RevertsArtifacts, []revertLine
 // leaves nothing stale behind.
 func (st *state) lockReverts() (func(), *core.RefusalError) {
 	file := revertPath(st.root, revertFile)
-	unlock, err := storelock.Acquire(storelock.LockPath(file), storelock.DefaultWait)
+	unlock, err := storelock.Acquire(file, storelock.DefaultWait)
 	if err != nil {
 		if errors.Is(err, storelock.ErrBusy) {
 			return nil, st.refuse(codeStoreBusy, msgBusyReverts)
