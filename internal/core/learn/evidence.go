@@ -4,7 +4,6 @@ import (
 	"io/fs"
 	"path"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -18,7 +17,8 @@ const (
 )
 
 const (
-	msgLearningScope     = "learning cited path must be a clean repo-relative path of at most 4096 bytes without controls or glob syntax"
+	msgLearningScope = "learning cited path must be a clean repo-relative path of at most 4096 bytes " +
+		"without control runes, line breaks, or glob syntax"
 	msgLearningCommentID = "learning comment id must contain 1..256 ASCII letters, digits, underscores, hyphens or equals signs"
 )
 
@@ -36,7 +36,7 @@ func validLearningPath(file string) bool {
 	if path.Clean(file) != file || strings.ContainsAny(file, `\,:*?[]`) {
 		return false
 	}
-	return !strings.ContainsFunc(file, unicode.IsControl)
+	return !strings.ContainsFunc(file, core.IsLineBreak)
 }
 
 func checkLearningCommentID(id string) *core.RefusalError {

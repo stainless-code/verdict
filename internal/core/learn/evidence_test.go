@@ -22,6 +22,8 @@ func TestLearningRejectsUnsafeMetadata(t *testing.T) {
 		{"nul", "src/evil\x00.go", "72"},
 		{"c0", "src/evil\x1f.go", "72"},
 		{"c1", "src/evil\u0085.go", "72"},
+		{"line-separator", "src/evil\u2028.go", "72"},
+		{"paragraph-separator", "src/evil\u2029.go", "72"},
 		{"absolute", "/src/evil.go", "72"},
 		{"drive", "C:/src/evil.go", "72"},
 		{"unclean", "src//evil.go", "72"},

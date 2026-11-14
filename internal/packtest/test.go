@@ -12,7 +12,6 @@ import (
 	"os/exec"
 	"slices"
 	"strings"
-	"unicode"
 
 	"github.com/stainless-code/verdict/internal/core"
 	packcore "github.com/stainless-code/verdict/internal/core/pack"
@@ -132,7 +131,7 @@ func testResponse(p *packcore.Pack, data *TestData, at string) *TestResponse {
 
 func oneLine(value string) string {
 	return strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
+		if core.IsLineBreak(r) {
 			return '�'
 		}
 		return r

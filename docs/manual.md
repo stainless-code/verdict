@@ -199,7 +199,9 @@ backup, then re-run). The read verbs apply the same guard to every entry:
 non-string `sig`/`body`/`heading`/`kind`/`suggestion` (and `report` on an
 unreadable `patch.json`), instead of dying mid-render with no envelope;
 `trend` warns and skips corrupt bundles, rolling up the readable ones, so one
-bad bundle never fails the whole audit. An unreadable `source.json` head degrades to the dirty-head
+bad bundle never fails the whole audit. Every `report`, `next`, and `show`
+refusal ends with a `re-enter:` line naming the invocation the operator typed,
+so the way forward after the `try:` fix is one paste away. An unreadable `source.json` head degrades to the dirty-head
 path instead (`record.json` head reads `"dirty"`).
 
 ### Review-input problems
@@ -1821,6 +1823,10 @@ accepted (the DNS-rebinding gate). A wildcard bind (`--host 0.0.0.0` or `::`)
 still allowlists only the loopback names, so a LAN client needs a concrete
 interface address such as `--host 192.168.1.10`. `/v1` is the only version: a
 breaking change becomes `/v2`.
+
+A path carrying a traversal segment, a backslash, or a line break — a control
+rune, U+2028, or U+2029 — is refused before routing with the `404` `no such
+route` body, so a URL never becomes a filesystem path.
 
 Cost accepts exactly one `by` value: `repo`, `week`, or `model`. Week buckets
 use the UTC ISO week of the bundle receipt's `post.json` `posted_at`; cost
@@ -3626,8 +3632,16 @@ warning names the head — the answer is a truthful lower bound for the tree it
 names, and `data.input.head` names the bundle's head. `--paths` queries HEAD. A
 tree with no stored index is not a refusal: `data.index` is absent and the
 symbol, caller, and test counts are `null`, never 0, because an unmeasured list
-is not an empty one. `co_changed` and `owners` are measured from git either
-way.
+is not an empty one. One warning names that tree the way the `missing-index`
+refusal does — the revision the operator typed beside the tree it resolved to —
+and both outputs carry the step that answers for it: the human line ends
+` — run verdict index build --at <ref>` (or `--from <dir>`, for a directory
+hand-off), and `next:` holds the same step for JSON, since human mode prints no
+`next:` line of its own. A revision is quoted for the shell (`--at
+'feature/$USER'`), and a hand-off that named a bare tree SHA gets words rather
+than a command — `verdict index build at a commit whose tree is <tree>` — because
+`build` resolves a commit and refuses every tree SHA with `bad-at`. `co_changed`
+and `owners` are measured from git either way.
 
 Callers walk from every changed symbol to depth 2: depth 1 is a direct caller,
 depth 2 a caller of a direct caller. Each declaration is queried at most once
@@ -3667,9 +3681,12 @@ own `.verdict/index` — the way to hand over an index built somewhere else — 
 its `HEAD` supplies the tree. A directory with no index store refuses
 `bad-flags`; a ref this clone cannot resolve refuses `bad-at`; a tree the store
 never built refuses `missing-index`, naming the revision the operator typed
-beside the tree it resolved to and the exact build command that answers for it
-(`no index for HEAD (tree <tree>)`, then `next: verdict index build --at HEAD`,
-or `verdict index build --from <dir>` for a directory hand-off); a truncated or
+beside the tree it resolved to and the step that answers for it (`no index for
+HEAD (tree <tree>)`, then `next: verdict index build --at HEAD`, quoted when the
+revision needs it, or `verdict index build --from <dir>` for a directory
+hand-off); a hand-off that named the tree itself gets words, not a command —
+`verdict index build at a commit whose tree is <tree>` — because `build`
+resolves a commit and refuses a bare tree SHA with `bad-at`; a truncated or
 invalid tree file refuses `index-corrupt`. A named index that answers for
 another tree is a **visible warning**, not a refusal — the operator asked for
 that index, and the rows really do describe it:

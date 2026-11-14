@@ -30,6 +30,12 @@ means a human reviewer is the only gate.
   driver goroutine that must act on either outcome keeps its own bounded loop,
   because `t.Fatalf` cannot run there. — review-only: a raw `time.Sleep` poll
   compiles and passes.
+- **A wait that races a shipped deadline measures the machine.** A fixture whose
+  child must start inside a product timeout fails under load while the code is
+  right; `internal/readcommon`'s root-probe fixture runs through
+  `RepoRootWithBudget` with the test's own budget instead of widening the poll,
+  so the shipped 5 s constant stays the product's and never decides the test.
+  — review-only: nothing detects a fixture that races a constant.
 
 ## Agent launch (`run --agent`)
 

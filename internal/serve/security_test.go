@@ -83,6 +83,8 @@ func TestBadPathIsTheEarlyRouteRefusal(t *testing.T) {
 	for _, tc := range []struct{ name, path string }{
 		{name: "encoded traversal", path: "/v1/roots/" + rootID + "/bundles/%2e%2e%2f"},
 		{name: "control byte", path: "/v1/roots/" + rootID + "/bundles/local%00"},
+		{name: "line separator", path: "/v1/roots/" + rootID + "/bundles/local%E2%80%A8"},
+		{name: "paragraph separator", path: "/v1/roots/" + rootID + "/bundles/local%E2%80%A9"},
 		{name: "backslash", path: "/v1/roots/" + rootID + "/bundles/..%5C..%5Cetc"},
 	} {
 		t.Run(tc.name, func(t *testing.T) { assertBadPath(t, ts, headers, tc.path) })

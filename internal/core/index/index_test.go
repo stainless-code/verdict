@@ -481,9 +481,10 @@ func assertBuildFromCheckout(t *testing.T, ref *core.RefusalError, want string) 
 	}
 }
 
-// TestMissingIndexRefusalNamesTheHandoff pins the four hand-offs a missing
-// tree file can name: a revision (with the checkout when one was named), the
-// typed tree SHA itself, and the store's own scan.
+// TestMissingIndexRefusalNamesTheHandoff pins every hand-off a missing tree
+// file can name: a revision (with the checkout when one was named, and with
+// the quoting a revision needs), the typed tree SHA itself — no `--at` builds
+// a tree, so that hand-off names the step in words — and the store's own scan.
 func TestMissingIndexRefusalNamesTheHandoff(t *testing.T) {
 	const tree = "6fa8100d5c1b2a3e4d5f60718293a4b5c6d7e8f9"
 	tests := []struct {
@@ -502,9 +503,19 @@ func TestMissingIndexRefusalNamesTheHandoff(t *testing.T) {
 			want: "no index for HEAD (tree " + tree + ")\nnext: verdict index build --from /elsewhere/index-built",
 		},
 		{
+			name: "revision with a shell variable",
+			key:  treeRef{tree: tree, at: "feature/$USER"},
+			want: "no index for feature/$USER (tree " + tree + ")\nnext: verdict index build --at 'feature/$USER'",
+		},
+		{
+			name: "revision with a space",
+			key:  treeRef{tree: tree, at: "my branch"},
+			want: "no index for my branch (tree " + tree + ")\nnext: verdict index build --at 'my branch'",
+		},
+		{
 			name: "typed tree sha",
 			key:  treeRef{tree: tree, at: tree},
-			want: "no index for tree " + tree + "\nnext: verdict index build --at " + tree,
+			want: "no index for tree " + tree + "\nnext: verdict index build at a commit whose tree is " + tree,
 		},
 		{
 			name: "checkout path with a space",
@@ -524,7 +535,7 @@ func TestMissingIndexRefusalNamesTheHandoff(t *testing.T) {
 		{
 			name: "store scan",
 			key:  treeRef{tree: tree},
-			want: "no index for tree " + tree + "\nnext: verdict index build --at " + tree,
+			want: "no index for tree " + tree + "\nnext: verdict index build at a commit whose tree is " + tree,
 		},
 	}
 	for _, tc := range tests {
