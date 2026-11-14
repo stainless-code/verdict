@@ -57,6 +57,7 @@ const (
 	keyKBPolicy     = "kb_policy"
 	keyKBMinJudged  = "kb_policy.min_judged"
 	keyKBMaxFPRate  = "kb_policy.max_fp_rate"
+	keyKBMaxChars   = "kb_policy.max_chars"
 )
 
 // Partial is one layer's contribution to the ordinary defaults. Each field
@@ -69,6 +70,7 @@ type Partial struct {
 	Chunk              *bool
 	KBMinJudged        *int
 	KBMaxFPRate        *float64
+	KBMaxChars         *int
 	Effort             *string
 	DisplayMinSeverity *string
 	PostMinSeverity    *string
@@ -97,6 +99,7 @@ func partialFromDefaults(defaults *core.ConfigDefaults) Partial {
 		out.KBPolicySet = true
 		out.KBMinJudged = defaults.KBPolicy.MinJudged
 		out.KBMaxFPRate = defaults.KBPolicy.MaxFPRate
+		out.KBMaxChars = defaults.KBPolicy.MaxChars
 	}
 	out.Effort = defaults.Effort
 	out.DisplayMinSeverity = defaults.DisplayMinSeverity
@@ -140,6 +143,7 @@ type EffectiveDefaults struct {
 	BudgetDisplay      string   `json:"-"`
 	DisplayMinSeverity *string  `json:"display_min_severity,omitempty"`
 	PostMinSeverity    *string  `json:"post_min_severity,omitempty"`
+	KBMaxChars         *int     `json:"kb_max_chars,omitempty"`
 	Effort             string   `json:"effort"`
 	Panel              []string `json:"panel,omitempty"`
 	MaxBytes           int64    `json:"max_bytes"`
@@ -189,20 +193,12 @@ func mergePartials(layers []layerValue) ResolvedDefaults {
 		func(p Partial) (int64, bool) { return derefInt64(p.MaxBytes) })
 	out.Values.Chunk, out.Origins["chunk"], out.Shadowed = pickBool(layers, "chunk", out.Shadowed,
 		func(p Partial) (bool, bool) { return derefBool(p.Chunk) })
-	out.Values.KBMinJudged, out.Origins["kb_policy.min_judged"], out.Shadowed = pickInt(layers, "kb_policy.min_judged", out.Shadowed,
-		func(p Partial) (int, bool) {
-			if !p.KBPolicySet || p.KBMinJudged == nil {
-				return 0, false
-			}
-			return *p.KBMinJudged, true
-		})
-	out.Values.KBMaxFPRate, out.Origins["kb_policy.max_fp_rate"], out.Shadowed = pickFloat64(layers, "kb_policy.max_fp_rate", out.Shadowed,
-		func(p Partial) (float64, bool) {
-			if !p.KBPolicySet || p.KBMaxFPRate == nil {
-				return 0, false
-			}
-			return *p.KBMaxFPRate, true
-		})
+	out.Values.KBMinJudged, out.Origins["kb_policy.min_judged"], out.Shadowed = pickInt(
+		layers, "kb_policy.min_judged", out.Shadowed, func(p Partial) (int, bool) { return pickKBMinJudged(&p) })
+	out.Values.KBMaxFPRate, out.Origins["kb_policy.max_fp_rate"], out.Shadowed = pickFloat64(
+		layers, "kb_policy.max_fp_rate", out.Shadowed, func(p Partial) (float64, bool) { return pickKBMaxFPRate(&p) })
+	out.Values.KBMaxChars, out.Origins[keyKBMaxChars], out.Shadowed = pickPointer(
+		layers, keyKBMaxChars, out.Shadowed, func(p Partial) (*int, bool) { return pickKBMaxChars(&p) })
 	out.Values.Effort, out.Origins["effort"], out.Shadowed = pickString(layers, "effort", out.Shadowed,
 		func(p Partial) (string, bool) { return derefString(p.Effort) })
 	out.Values.DisplayMinSeverity, out.Origins["display_min_severity"], out.Shadowed = pickPointer(layers,
@@ -211,6 +207,27 @@ func mergePartials(layers []layerValue) ResolvedDefaults {
 	out.Values.PostMinSeverity, out.Origins["post_min_severity"], out.Shadowed = pickPointer(layers, "post_min_severity", out.Shadowed,
 		func(p Partial) (*string, bool) { return p.PostMinSeverity, p.PostMinSeverity != nil })
 	return out
+}
+
+func pickKBMinJudged(p *Partial) (int, bool) {
+	if !p.KBPolicySet || p.KBMinJudged == nil {
+		return 0, false
+	}
+	return *p.KBMinJudged, true
+}
+
+func pickKBMaxFPRate(p *Partial) (float64, bool) {
+	if !p.KBPolicySet || p.KBMaxFPRate == nil {
+		return 0, false
+	}
+	return *p.KBMaxFPRate, true
+}
+
+func pickKBMaxChars(p *Partial) (*int, bool) {
+	if !p.KBPolicySet || p.KBMaxChars == nil {
+		return nil, false
+	}
+	return p.KBMaxChars, true
 }
 
 // derefInt64 lifts an optional int64 into a set pair.
@@ -400,7 +417,9 @@ func pickString(layers []layerValue, key string, shadowed []ShadowedValue, get s
 func ParseEnv(env map[string]string) (Partial, []string, *core.RefusalError) {
 	var out Partial
 	var warnings []string
-	panelEnv(env, &out)
+	if ref := panelEnv(env, &out); ref != nil {
+		return Partial{}, nil, ref
+	}
 	if ref := budgetEnv(env, &out); ref != nil {
 		return Partial{}, nil, ref
 	}
@@ -420,12 +439,19 @@ func envTrim(env map[string]string, name string) (string, bool) {
 	return strings.TrimSpace(raw), true
 }
 
-func panelEnv(env map[string]string, out *Partial) {
+func panelEnv(env map[string]string, out *Partial) *core.RefusalError {
 	raw, ok := envTrim(env, "REVIEW_PANEL")
 	if !ok {
-		return
+		return nil
 	}
-	out.Panel, out.PanelSet = splitList(raw), true
+	members := splitList(raw)
+	for _, member := range members {
+		if ref := checkSingleLine(member, "REVIEW_PANEL"); ref != nil {
+			return ref
+		}
+	}
+	out.Panel, out.PanelSet = members, true
+	return nil
 }
 
 // budgetEnv reads the estimate-guard threshold, refusing malformed input
@@ -469,7 +495,21 @@ func kbEnvs(env map[string]string, out *Partial) []string {
 	if raw, ok := envTrim(env, "REVIEW_KB_MAX_FP_RATE"); ok {
 		warnings = append(warnings, kbMaxFPRateEnv(raw, out)...)
 	}
+	if raw, ok := envTrim(env, "REVIEW_KB_MAX_CHARS"); ok {
+		warnings = append(warnings, kbMaxCharsEnv(raw, out)...)
+	}
 	return warnings
+}
+
+// kbMaxCharsEnv reads the recall character cap override, warning past
+// malformed values instead of refusing.
+func kbMaxCharsEnv(raw string, out *Partial) []string {
+	maxChars, err := strconv.Atoi(raw)
+	if err != nil || maxChars < 1 {
+		return []string{"ignoring invalid REVIEW_KB_MAX_CHARS '" + raw + "' (want a positive integer)"}
+	}
+	out.KBMaxChars, out.KBPolicySet = &maxChars, true
+	return nil
 }
 
 // kbMinJudgedEnv reads the retirement quorum override, warning past

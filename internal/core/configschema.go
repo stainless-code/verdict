@@ -54,6 +54,7 @@ type ConfigDefaults struct { //nolint:govet // field order is the published prop
 type ConfigKBPolicy struct {
 	MinJudged *int     `json:"min_judged,omitempty"  min:"1" nonnull:"true"`
 	MaxFPRate *float64 `json:"max_fp_rate,omitempty" max:"1" min:"0"        nonnull:"true"`
+	MaxChars  *int     `json:"max_chars,omitempty"   min:"1" nonnull:"true"`
 }
 
 // ConfigRequirements holds the conjunctive review requirements: every

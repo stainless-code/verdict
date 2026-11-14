@@ -315,6 +315,263 @@ file paths, NEW line numbers, and evidence for or against. Verify third-party
 contract claims by web search and quote the source URLs; an unverified
 load-bearing claim stays `unproven` rather than becoming ground truth.
 # end lens test
+--- file C/.verdict/state/4707/provenance.json ---
+{
+  "schema_version": "1",
+  "run_id": "23c76e01971dd2f53336915689654fa64c9a0fb2d7d63dee378620dd89fa48a6",
+  "prompts_hash": "49f5c99439cc65f9faab329e78a460aba14420500afb5100ad75d321fcfd3912",
+  "inputs": [
+    {
+      "kind": "prompt",
+      "name": "SKILL.md",
+      "status": "included",
+      "sha256": "3815122ebf219abe59367a90a037313bc114e678e1cb996ac09d06703f2bbdb8",
+      "bytes": 12779
+    },
+    {
+      "kind": "prompt",
+      "name": "prompts/diagrams.md",
+      "status": "included",
+      "sha256": "d19183a969b0e131d7520f0d2fa82889b903c4878e5fcea5ca9f2f0901eacd2d",
+      "bytes": 3780
+    },
+    {
+      "kind": "prompt",
+      "name": "prompts/review.md",
+      "status": "included",
+      "sha256": "a3a28018074f7e72529e529883fc613bbb5002ab67612afd1d019f1db848dd59",
+      "bytes": 27446
+    },
+    {
+      "kind": "prompt",
+      "name": "prompts/system.md",
+      "status": "included",
+      "sha256": "cc86e2bc7dd027b2081ca5109c04af728108332f579dae6f6a6242489bf076b3",
+      "bytes": 5973
+    },
+    {
+      "kind": "prompt",
+      "name": "prompts/verifier.md",
+      "status": "included",
+      "sha256": "0f6e0c6f0fa613588824da7e19055439d1c428bcf6abb416b8ed4ce3d32b2697",
+      "bytes": 918
+    },
+    {
+      "kind": "panel",
+      "name": "panel",
+      "status": "absent"
+    },
+    {
+      "kind": "bundle",
+      "name": "PR.json",
+      "status": "included",
+      "sha256": "385e0123b84fd63f99d03c6d65d9f6b6488bd37880e76eb5a2d461bbd91a4c1c",
+      "bytes": 553
+    },
+    {
+      "kind": "bundle",
+      "name": "controls.json",
+      "status": "included",
+      "sha256": "0d64ba25350df94ff37c7153726c75273123441cd7c02d5759eeecee9fdecece",
+      "bytes": 1604
+    },
+    {
+      "kind": "bundle",
+      "name": "excluded.json",
+      "status": "included",
+      "sha256": "11ee2feb0492c61eb27c7d6e806596bf9cea654990c487f4623451013437c968",
+      "bytes": 426
+    },
+    {
+      "kind": "bundle",
+      "name": "full.diff",
+      "status": "included",
+      "sha256": "2c9b2f1cce239dd825be072716fb8c7e57b9b932877ca4866e9b665a741db5c1",
+      "bytes": 45
+    },
+    {
+      "kind": "bundle",
+      "name": "full.raw.diff",
+      "status": "included",
+      "sha256": "2c9b2f1cce239dd825be072716fb8c7e57b9b932877ca4866e9b665a741db5c1",
+      "bytes": 45
+    },
+    {
+      "kind": "bundle",
+      "name": "hunks.tsv",
+      "status": "included",
+      "sha256": "276c23394649ebacdc94e7e4a2f755b6699cae5d8756c8e081aff72789ef91e7",
+      "bytes": 28
+    },
+    {
+      "kind": "bundle",
+      "name": "identity.json",
+      "status": "included",
+      "sha256": "bc5c736bc12639a124d5d252aa7f881047fc47483d93e41999fefb2a655db950",
+      "bytes": 411
+    },
+    {
+      "kind": "bundle",
+      "name": "incremental.diff.note",
+      "status": "included",
+      "sha256": "6451913bec136d79f83ff55cec32e71fa2929442ee1939c855c5afe48b202d63",
+      "bytes": 81
+    },
+    {
+      "kind": "bundle",
+      "name": "inline.json",
+      "status": "included",
+      "sha256": "d3a5aa525584f5f8419a1330bfe8610578758e36f5f7d179bf47c763036ab8f9",
+      "bytes": 210
+    },
+    {
+      "kind": "bundle",
+      "name": "lenses.txt",
+      "status": "included",
+      "sha256": "235ff394e6d3bc20c0ac3ac50e040a7d8f3111bb32609c811eccf4a37a828245",
+      "bytes": 3097
+    },
+    {
+      "kind": "bundle",
+      "name": "reviews.json",
+      "status": "included",
+      "sha256": "37d97feca592d47d357f0cc9999dbdce2231d1b2e4237794fbfef0f892577015",
+      "bytes": 140
+    },
+    {
+      "kind": "bundle",
+      "name": "roles.txt",
+      "status": "included",
+      "sha256": "7a44057d003c3dd097ceec3b8847974784318abbfb73a4ddf4dd09efc517d674",
+      "bytes": 16
+    },
+    {
+      "kind": "bundle",
+      "name": "run.json",
+      "status": "included",
+      "sha256": "RUNTIME_SHA256",
+      "bytes": 6349
+    },
+    {
+      "kind": "bundle",
+      "name": "store.json",
+      "status": "included",
+      "sha256": "e8bc152ffe65bec1fe1c3a2b610403147a8a4930e24d34aae5da55ec76f1f58b",
+      "bytes": 28
+    },
+    {
+      "kind": "bundle",
+      "name": "threads.json",
+      "status": "included",
+      "sha256": "RUNTIME_SHA256",
+      "bytes": 1194
+    },
+    {
+      "kind": "bundle",
+      "name": "toc.txt",
+      "status": "included",
+      "sha256": "b54f1372c7e4b35fe8df4b13f9799f1c626cf42baa2baf6793c1105effedc7c4",
+      "bytes": 206
+    },
+    {
+      "kind": "kb",
+      "name": "kb.txt",
+      "status": "absent",
+      "included": 0,
+      "omitted": 0
+    },
+    {
+      "kind": "learnings",
+      "name": ".verdict/learnings.md",
+      "status": "absent"
+    },
+    {
+      "kind": "override",
+      "name": ".verdict/overrides/attribution.md",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "override",
+      "name": ".verdict/overrides/footer-order.md",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "override",
+      "name": ".verdict/overrides/preamble.md",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "override",
+      "name": ".verdict/overrides/walkthrough-threshold.md",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "control",
+      "name": ".gitattributes",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "control",
+      "name": ".verdict/config.json",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "control",
+      "name": ".verdict/ignore",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "control",
+      "name": ".verdict/kb.jsonl",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "control",
+      "name": ".verdict/recipes.json",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "control",
+      "name": ".verdict/verdict.lock",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "control",
+      "name": ".verdict/verify-env",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "config",
+      "name": ".verdict/config.json",
+      "status": "built-in",
+      "layer": "built-in",
+      "detail": "budget_usd=built-in, chunk=built-in, display_min_severity=built-in, effort=built-in, kb_policy.max_fp_rate=built-in, kb_policy.min_judged=built-in, max_bytes=built-in, panel=built-in, post_min_severity=built-in"
+    },
+    {
+      "kind": "exclusions",
+      "name": "excluded.json",
+      "status": "included",
+      "sha256": "11ee2feb0492c61eb27c7d6e806596bf9cea654990c487f4623451013437c968",
+      "bytes": 426,
+      "source": ".verdict/ignore@base",
+      "excluded": 0,
+      "excluded_bytes": 0,
+      "kept_bytes": 45
+    }
+  ],
+  "truncated": []
+}
 --- file C/.verdict/state/4707/reviews.json ---
 [
   {
@@ -383,6 +640,10 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
               "layer": "built-in",
               "source": "built-in"
             },
+            "kb_policy.max_chars": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "kb_policy.max_fp_rate": {
               "layer": "built-in",
               "source": "built-in"
@@ -436,6 +697,10 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
           "layer": "built-in",
           "source": "built-in"
         },
+        "kb_policy.max_chars": {
+          "layer": "built-in",
+          "source": "built-in"
+        },
         "kb_policy.max_fp_rate": {
           "layer": "built-in",
           "source": "built-in"
@@ -472,7 +737,7 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
   "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
   "captured_at": "0000-00-00T00:00:00Z",
   "config_sha256": "",
-  "inputs_sha256": "ecdccc71563002989ea76719a8f3517e9fb275194f3084800e9847798ac4e0ce",
+  "inputs_sha256": "35fe412ffbc2c884239522dcd5ee159ab6d58b5351af415a71fa350e6c2e1cc6",
   "evidence": {
     "plan": {
       "effort_tier": "standard",

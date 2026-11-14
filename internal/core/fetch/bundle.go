@@ -14,6 +14,7 @@ import (
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -373,6 +374,7 @@ type fetchRunCtx struct {
 	runCfg            *runConfig
 	packs             *pack.Set
 	receipt           *ExcludedFile
+	kbOutcome         *provenance.KBRecallInput
 	repo              string
 	pr                string
 	dir               string

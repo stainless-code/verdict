@@ -23,6 +23,7 @@ type ReportFlags struct {
 	IncludeWithheld bool
 	Cost            bool
 	Completeness    bool
+	Provenance      bool
 	Risk            bool
 }
 

@@ -11,6 +11,7 @@ import (
 	panelcore "github.com/stainless-code/verdict/internal/core/panel"
 	"github.com/stainless-code/verdict/internal/core/risk"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -27,6 +28,9 @@ func buildResponse(st *state) *core.ReportResponse {
 		Sarif:    sarifArtifact(st),
 	}
 	resp.Data.Receipt = reportReceipt(st)
+	if st.flags.Provenance {
+		resp.Data.ProvenanceTruncated = provenance.MergeTruncated(st.provenance, readcommon.BundleTruncation(st.dir))
+	}
 	if st.gate {
 		resp.GateFailed, resp.CheckLines, resp.Data.Gate = gateTail(st)
 	}
@@ -90,6 +94,10 @@ func buildData(st *state) *core.ReportData {
 			Gaps:       len(st.requiredGaps),
 			Satisfied:  st.compliance.Satisfied() && len(st.requiredGaps) == 0,
 		}
+	}
+	if st.flags.Provenance {
+		data.ProvenanceEnabled = true
+		data.ProvenanceReceipt = st.provenance
 	}
 	return data
 }
@@ -267,6 +275,13 @@ func buildHuman(st *state) []string {
 			readcommon.Locator(item.Entry), sigHuman(item.Entry)))
 	}
 	lines = appendHumanTail(st, lines)
+	if st.flags.Provenance {
+		lines = append(lines, provenance.FormatTable(st.provenance, provenance.MergeTruncated(st.provenance, reportReceipt(st)))...)
+	}
+	return finalizeHuman(st, view, lines)
+}
+
+func finalizeHuman(st *state, view []readcommon.Ranked, lines []string) []string {
 	if st.flags.Output != "" {
 		return append(lines, "wrote "+st.flags.Output)
 	}

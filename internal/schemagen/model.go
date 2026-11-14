@@ -597,21 +597,23 @@ type TrendPeriod struct {
 
 // TrendBundleRow is one reviewed bundle's contribution to the rollup.
 type TrendBundleRow struct { //nolint:govet // field order is the published property order
-	Bundle     string           `json:"bundle"`
-	At         *string          `json:"at"`
-	Models     []string         `json:"models"`
-	Efforts    []string         `json:"efforts"`
-	Provenance ProvenanceTriple `json:"provenance"`
-	Findings   int              `json:"findings"`
-	Open       int              `json:"open"`
-	Addressed  int              `json:"addressed"`
-	Closed     int              `json:"closed"`
-	ByStatus   TrendStatuses    `json:"by_status"`
-	ByTier     TrendTiers       `json:"by_tier"`
-	ByCategory map[string]int   `json:"by_category"`
-	Risk       string           `enum:"low|medium|high|critical|unknown" json:"risk"     optional:"true"`
-	BySource   TrendSources     `json:"by_source"                        optional:"true"`
-	Withheld   map[string]int   `json:"withheld"                         optional:"true"`
+	Bundle          string           `json:"bundle"`
+	At              *string          `json:"at"`
+	Models          []string         `json:"models"`
+	Efforts         []string         `json:"efforts"`
+	Provenance      ProvenanceTriple `json:"provenance"`
+	Findings        int              `json:"findings"`
+	Open            int              `json:"open"`
+	Addressed       int              `json:"addressed"`
+	Closed          int              `json:"closed"`
+	ByStatus        TrendStatuses    `json:"by_status"`
+	ByTier          TrendTiers       `json:"by_tier"`
+	ByCategory      map[string]int   `json:"by_category"`
+	Risk            string           `enum:"low|medium|high|critical|unknown" json:"risk"     optional:"true"`
+	BySource        TrendSources     `json:"by_source"                        optional:"true"`
+	Withheld        map[string]int   `json:"withheld"                         optional:"true"`
+	RunID           string           `json:"run_id"                           optional:"true"`
+	TruncatedInputs int              `json:"truncated_inputs"                 min:"0"         optional:"true"`
 }
 
 // CalibrateData is the calibrate verb's --json data profile. The three modes
