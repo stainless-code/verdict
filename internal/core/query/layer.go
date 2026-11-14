@@ -69,14 +69,15 @@ type ErrRow struct {
 // verb data object, the artifacts the view read, and the failures it kept as
 // rows.
 type View struct {
-	At       string
-	Next     string
-	Repo     string
-	Pr       string
-	Warnings []string
-	Data     *jq.Obj
-	Sources  []Source
-	Errors   []ErrRow
+	Truncation *core.Truncation
+	At         string
+	Next       string
+	Repo       string
+	Pr         string
+	Warnings   []string
+	Data       *jq.Obj
+	Sources    []Source
+	Errors     []ErrRow
 }
 
 // Root is one served repository root: its visible identity and absolute path.

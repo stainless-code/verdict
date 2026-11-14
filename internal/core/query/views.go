@@ -51,8 +51,8 @@ func (l *Layer) Health(_ context.Context) *View {
 	view := l.newView()
 	roots := make([]any, 0, len(l.roots))
 	for _, root := range l.roots {
-		names, _, _ := l.listBundles(root)
-		roots = append(roots, jq.NewObj("id", root.ID, "path", root.Path, "bundles", len(names)))
+		names, cut, _ := l.listBundles(root)
+		roots = append(roots, core.ScanCut(cut, len(names)).Apply(jq.NewObj("id", root.ID, "path", root.Path, "bundles", len(names))))
 	}
 	watch := !l.noWatch
 	interval := l.interval.String()
@@ -71,6 +71,7 @@ func (l *Layer) Health(_ context.Context) *View {
 		keySources, []any{},
 		keyErrors, []any{},
 	)
+	core.ScanCut(l.discovery.Truncated, len(roots)).Apply(view.Data)
 	return view
 }
 
@@ -92,13 +93,15 @@ func (l *Layer) Roots(_ context.Context) *View {
 	}
 	view.Data = jq.NewObj(
 		"roots", roots,
-		"truncated", truncated || l.discovery.Truncated,
 		"skipped", jq.NewObj("symlinks", l.discovery.Symlinks, "gitignore_patterns", l.discovery.SkippedPatterns),
 		"discovery", l.discoveryWire(),
 		keyPartial, truncated || l.discovery.Truncated || len(errs) > 0,
 		keySources, []any{},
 		keyErrors, errorsWire(errs),
 	)
+	if truncated || l.discovery.Truncated {
+		core.ScanCut(true, len(roots)).Apply(view.Data)
+	}
 	view.Errors = errs
 	view.Warnings = append(view.Warnings, l.discovery.Warnings...)
 	return view
@@ -174,6 +177,13 @@ func (l *Layer) Bundles(ctx context.Context, pattern string) (*View, error) {
 	data.Set("discovery", l.discoveryWire())
 	data.Set(keySources, sourcesWire(view.Sources))
 	data.Set(keyErrors, errorsWire(errs))
+	if ctx.Err() != nil {
+		view.Truncation = core.ResultCut("time_budget", 0, nil, nil)
+	}
+	if view.Truncation != nil {
+		view.Truncation.Returned = len(rows)
+		view.Truncation.Apply(data)
+	}
 	view.Data = data
 	view.Errors = errs
 	return view, nil
@@ -189,6 +199,9 @@ func (l *Layer) collectRows(
 	var errs []ErrRow
 	var sum totals
 	partial := l.discovery.Truncated
+	if partial {
+		view.Truncation = core.ScanCut(true, 0)
+	}
 	for _, root := range l.roots {
 		if ctx.Err() != nil {
 			break
@@ -209,10 +222,12 @@ func (l *Layer) foldRoot(ctx context.Context, root Root, pattern string, view *V
 	errs := append(append([]ErrRow{}, listErrs...), rootErrs...)
 	view.Sources = mergeSources(view.Sources, sources)
 	if cut {
+		view.Truncation = core.ScanCut(true, 0)
 		view.Warnings = append(view.Warnings,
 			fmt.Sprintf("serve: bundle cap %d reached under %s; listing truncated", l.maxBundles, root.Path))
 	}
 	if inv.cut {
+		view.Truncation = core.ScanCut(true, 0)
 		view.Warnings = append(view.Warnings, inventoryWarning(root.Path))
 	}
 	view.Warnings = append(view.Warnings, inv.notes...)
@@ -368,6 +383,7 @@ func (l *Layer) Detail(ctx context.Context, rootID, bundle string) (*View, error
 	data.Set(keyPartial, len(errs) > 0 || inv.cut)
 	data.Set(keySources, sourcesWire(inv.sources))
 	data.Set(keyErrors, errorsWire(errs))
+	core.ScanCut(inv.cut, len(inv.sources)).Apply(data)
 	view := &View{
 		At:       resp.At,
 		Next:     "run verdict show <repo> " + bundle + " --sig <sig> to read one finding",
@@ -425,16 +441,20 @@ func (l *Layer) Show(ctx context.Context, rootID, bundle, sig string) (*View, er
 	if resp.Item != nil {
 		record = resp.Item.Raw
 	}
-	data := jq.NewObj("item", record)
+	data := jq.NewObj("item", record, "fix", nil)
 	if resp.Fix != nil {
 		data.Set("fix", resp.Fix.Wire())
 	}
+	next := "address via address-reviews mode, then post"
+	if resp.Item == nil {
+		next = "partial results — a miss is not proof of absence"
+	}
 	return &View{
 		At:       resp.At,
-		Next:     "address via address-reviews mode, then post",
+		Next:     next,
 		Repo:     resp.Repo,
 		Pr:       resp.Pr,
 		Warnings: append([]string{}, resp.Warnings...),
-		Data:     data,
+		Data:     resp.Receipt.Apply(data),
 	}, nil
 }

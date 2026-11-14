@@ -227,6 +227,7 @@ func (d *GateDimension) wire() *jq.Obj {
 // the published insertion order; CostRaw carries the ordered rollup
 // (including receipts and unknown keys) so the envelope re-emits it verbatim.
 type ReportData struct { //nolint:govet // field order is the published property order
+	Receipt       *Truncation         `json:"-"                         receipt:"true"`
 	Verification  *PanelSummary       `anyOf:"null"                     json:"verification,omitempty" optional:"true"`
 	GeneratedAt   string              `format:"date-time"               json:"generated_at"`
 	Dir           string              `json:"dir"`
@@ -256,7 +257,7 @@ func (d *ReportData) Wire() *jq.Obj {
 	if d.Verification != nil {
 		o.Set("verification", d.Verification)
 	}
-	return o
+	return d.Receipt.Apply(o)
 }
 
 // Wirable lets a type override its reflected wire representation.

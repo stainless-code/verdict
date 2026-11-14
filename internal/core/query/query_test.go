@@ -1180,6 +1180,7 @@ func TestInventoryCapsAndReportsTruncation(t *testing.T) {
 		t.Fatalf("sources = %d, want the 64-entry cap", len(view.Sources))
 	}
 	assertTruncatedInventory(t, view)
+	assertInventoryReceipt(t, view)
 }
 
 // assertTruncatedInventory pins the partial flag, warning, store row, and
@@ -1256,6 +1257,30 @@ func TestShowDoesNotInventoryTheBundle(t *testing.T) {
 	}
 	if len(view.Sources) != 0 {
 		t.Errorf("show sources = %v, want none", view.Sources)
+	}
+}
+
+// TestShowTruncatedMissCarriesPartialNext proves a show miss over a truncated
+// bundle emits null item/fix, the receipt, and the partial-results next hint.
+func TestShowTruncatedMissCarriesPartialNext(t *testing.T) {
+	t.Parallel()
+	dir, _ := fixture(t)
+	receipt := `{"truncated":true,"truncation_reason":"scan_cap","returned":100,"total":null,"next_offset":null}`
+	if err := os.WriteFile(filepath.Join(dir, ".verdict", "state", "1234", "truncation.json"), []byte(receipt), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	view, err := newLayer(dir).Show(context.Background(), RootID(mustAbs(t, dir)), "1234", "deadbeef")
+	if err != nil {
+		t.Fatalf("Show: %v", err)
+	}
+	if view.Next != "partial results — a miss is not proof of absence" {
+		t.Errorf("Next = %q, want partial-results hint", view.Next)
+	}
+	if view.Data.Fields["item"] != nil || view.Data.Fields["fix"] != nil {
+		t.Errorf("miss data = %v, want item:nil fix:nil", view.Data.Fields)
+	}
+	if view.Data.Fields["truncated"] != true || view.Data.Fields["returned"] != int64(0) {
+		t.Errorf("miss receipt = %v, want truncated:true returned:0", view.Data.Fields)
 	}
 }
 
@@ -1586,5 +1611,15 @@ func TestBundleFilterIsPortable(t *testing.T) {
 	}
 	if BundleMatches("local-*", "1234") {
 		t.Error("a local glob matched a PR bundle")
+	}
+}
+
+func assertInventoryReceipt(t *testing.T, view *View) {
+	t.Helper()
+	data := wireMap(t, view.Data)
+	for key, want := range map[string]any{"truncated": true, "truncation_reason": "scan_cap", "returned": json.Number("64"), "total": nil, "next_offset": nil} {
+		if got := data[key]; got != want {
+			t.Errorf("inventory receipt %s = %v, want %v", key, got, want)
+		}
 	}
 }

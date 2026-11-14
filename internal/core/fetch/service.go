@@ -88,7 +88,7 @@ func (st *state) dispatch(ctx context.Context, s *session, req *core.FetchReques
 	if err != nil {
 		return nil, st.fail(ctx, err, s)
 	}
-	return st.response(req, data, next), nil
+	return st.response(req, data, next)
 }
 
 func (st *state) provider(f *core.FetchFlags) (*core.FetchFlags, *core.RefusalError) {
@@ -131,6 +131,9 @@ func RunLocal(ctx context.Context, req *core.FetchLocalRequest) (*core.FetchResp
 	data, next, err := runLocalTail(ctx, ctx2, req)
 	if err != nil {
 		return nil, st.fail(ctx, err, s)
+	}
+	if err := finishTruncation(data); err != nil {
+		return nil, err
 	}
 	resp := &core.FetchResponse{
 		Repo:     req.Repo,
@@ -213,7 +216,10 @@ func attachRetryAt(ref *core.RefusalError, s *session) {
 }
 
 // response builds the typed success response.
-func (st *state) response(req *core.FetchRequest, data *core.FetchData, next string) *core.FetchResponse {
+func (st *state) response(req *core.FetchRequest, data *core.FetchData, next string) (*core.FetchResponse, error) {
+	if err := finishTruncation(data); err != nil {
+		return nil, err
+	}
 	return &core.FetchResponse{
 		Repo:     req.Repo,
 		Pr:       req.Pr,
@@ -221,7 +227,7 @@ func (st *state) response(req *core.FetchRequest, data *core.FetchData, next str
 		Data:     data,
 		Warnings: st.warnings,
 		Next:     next,
-	}
+	}, nil
 }
 
 // session builds the injected session: the adapter's streams, the render
@@ -310,6 +316,7 @@ func discardNil(w io.Writer) io.Writer {
 }
 
 type session struct {
+	receipt        *core.Truncation
 	providerSource string
 	Human          io.Writer
 	Diag           io.Writer

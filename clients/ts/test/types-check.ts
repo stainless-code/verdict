@@ -136,7 +136,7 @@ export async function typeChecks(): Promise<void> {
   void nextSig;
 
   const show: Envelope<ShowData> = await client.show([]);
-  const showFix: ShowFix = show.data.fix;
+  const showFix: ShowFix | null = show.data.fix;
   void showFix;
 
   const ready: Envelope<ReadyData> = await client.ready([]);
