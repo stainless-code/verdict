@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -15,6 +16,15 @@ const entryValid = `{"version":"1.0.0","synthesize":{}}`
 // doc wraps one entry body in the document envelope.
 func doc(body string) string {
 	return `{"schema_version":"1","recipes":{"quick":` + body + `}}`
+}
+
+// lensRows renders count distinct declared lens rows.
+func lensRows(count int) string {
+	rows := make([]string, 0, count)
+	for i := range count {
+		rows = append(rows, `{"id":"lens-`+strconv.Itoa(i)+`"}`)
+	}
+	return "[" + strings.Join(rows, ",") + "]"
 }
 
 // checkRefusal proves one input refuses bad-recipe with the named fragment.
@@ -51,6 +61,7 @@ func TestParseRefusals(t *testing.T) {
 		{"unknown entry key", doc(`{"version":"1.0.0","synthesize":{},"bogus":1}`), `$.recipes.quick: unknown key "bogus"`},
 		{"missing version", doc(`{"synthesize":{}}`), `$.recipes.quick: missing "version"`},
 		{"version not semver", doc(`{"version":"1.0","synthesize":{}}`), `$.recipes.quick.version: "1.0" is not semver`},
+		{"version too long", doc(`{"version":"1.0.0+` + strings.Repeat("b", 59) + `","synthesize":{}}`), `$.recipes.quick.version: 65 characters, over the 64-character cap`},
 		{"description too long", doc(`{"version":"1.0.0","description":"` + strings.Repeat("x", 281) + `","synthesize":{}}`), `$.recipes.quick.description: 281 characters, over the 280-character cap`},
 		{"budget zero", doc(`{"version":"1.0.0","budget_usd":0,"synthesize":{}}`), `$.recipes.quick.budget_usd: want a number above 0, got 0`},
 		{"budget negative", doc(`{"version":"1.0.0","budget_usd":-1,"synthesize":{}}`), `$.recipes.quick.budget_usd: want a number above 0, got -1`},
@@ -61,6 +72,8 @@ func TestParseRefusals(t *testing.T) {
 		{"unknown lens key", doc(`{"version":"1.0.0","lenses":[{"id":"logic","globs":[]}],"synthesize":{}}`), `$.recipes.quick.lenses[0]: unknown key "globs"`},
 		{"lens id missing", doc(`{"version":"1.0.0","lenses":[{"model":"opus"}],"synthesize":{}}`), `$.recipes.quick.lenses[0]: missing "id"`},
 		{"lens id not a slug", doc(`{"version":"1.0.0","lenses":[{"id":"Logic"}],"synthesize":{}}`), `$.recipes.quick.lenses[0].id: "Logic" is not a lowercase slug`},
+		{"lens id too long", doc(`{"version":"1.0.0","lenses":[{"id":"` + strings.Repeat("l", 65) + `"}],"synthesize":{}}`), `$.recipes.quick.lenses[0].id: "` + strings.Repeat("l", 65) + `" is not a lowercase slug`},
+		{"too many lenses", doc(`{"version":"1.0.0","lenses":` + lensRows(65) + `,"synthesize":{}}`), `$.recipes.quick.lenses: 65 lenses, over the 64-lens cap`},
 		{"duplicate lens id", doc(`{"version":"1.0.0","lenses":[{"id":"logic"},{"id":"logic"}],"synthesize":{}}`), `$.recipes.quick.lenses[1].id: duplicate lens id "logic"`},
 		{"max_files zero", doc(`{"version":"1.0.0","lenses":[{"id":"logic","max_files":0}],"synthesize":{}}`), `$.recipes.quick.lenses[0].max_files: want an integer 1..24, got 0`},
 		{"max_files over", doc(`{"version":"1.0.0","lenses":[{"id":"logic","max_files":25}],"synthesize":{}}`), `$.recipes.quick.lenses[0].max_files: want an integer 1..24, got 25`},

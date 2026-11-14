@@ -25,6 +25,7 @@ const (
 	keyMax      = "maximum"
 	keyExclMin  = "exclusiveMinimum"
 	keyMinItems = "minItems"
+	keyMaxItems = "maxItems"
 	keyMinLen   = "minLength"
 	keyMaxLen   = "maxLength"
 	keyAnyOf    = "anyOf"
@@ -53,7 +54,7 @@ const (
 )
 
 var constraintKeys = names(keyRef, keyDefs, keyType, keyFormat, keyPattern,
-	keyItems, keyMin, keyMax, keyExclMin, keyMinItems, keyMinLen, keyMaxLen, keyAnyOf, keyNot, keyProps,
+	keyItems, keyMin, keyMax, keyExclMin, keyMinItems, keyMaxItems, keyMinLen, keyMaxLen, keyAnyOf, keyNot, keyProps,
 	keyNames, keyRequired, keyAddl, keyConst, keyEnum)
 
 var annotationKeys = names("$schema", "$id", "title", "description", "default",
@@ -264,18 +265,17 @@ func (w *walk) checkBounds(_ document, s map[string]any, value any, path string)
 	}
 }
 
-// checkArrayBound refuses arrays shorter than the minItems bound.
+// checkArrayBound refuses arrays outside the minItems and maxItems bounds.
 func (w *walk) checkArrayBound(_ document, s map[string]any, value any, path string) {
 	list, ok := value.([]any)
 	if !ok {
 		return
 	}
-	bound, has := intBound(s[keyMinItems])
-	if !has {
-		return
+	if low, has := intBound(s[keyMinItems]); has && len(list) < low {
+		w.fail(path, fmt.Sprintf("array has %d items, below minItems %d", len(list), low))
 	}
-	if len(list) < bound {
-		w.fail(path, fmt.Sprintf("array has %d items, below minItems %d", len(list), bound))
+	if high, has := intBound(s[keyMaxItems]); has && len(list) > high {
+		w.fail(path, fmt.Sprintf("array has %d items, above maxItems %d", len(list), high))
 	}
 }
 

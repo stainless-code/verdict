@@ -27,8 +27,9 @@
       "type": "object",
       "properties": {
         "version": {
-          "description": "Entry semver, recorded verbatim in data.recipe and launcher.json. A field change moves the recorded sha256, so the same document always records the same plan.",
+          "description": "Entry semver of 1 to 64 characters, recorded verbatim in data.recipe and launcher.json. A field change moves the recorded sha256, so the same document always records the same plan.",
           "type": "string",
+          "maxLength": 64,
           "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
         },
         "description": {
@@ -42,10 +43,11 @@
           "exclusiveMinimum": 0
         },
         "lenses": {
-          "description": "The lens set the pipeline declares, in declaration order. Omit it to inherit the bundle's loaded lenses from lenses.txt in file order. A declared lens the bundle does not load warns and never refuses: lens offers are per plan group, and fetch is the authority on them.",
+          "description": "The lens set the pipeline declares, in declaration order, at most 64 rows: the same lens cap a pack manifest ships. Omit it to inherit the bundle's loaded lenses from lenses.txt in file order. A declared lens the bundle does not load warns and never refuses: lens offers are per plan group, and fetch is the authority on them.",
           "type": "array",
           "items": { "$ref": "#/$defs/lens" },
-          "minItems": 1
+          "minItems": 1,
+          "maxItems": 64
         },
         "synthesize": {
           "description": "The synthesizer stage's model hint. The empty object is the \"no hint\" spelling, and it is the built-in default's whole entry besides its version.",
@@ -60,9 +62,9 @@
       "type": "object",
       "properties": {
         "id": {
-          "description": "Lens id, a lowercase slug. A missing lens warns; a repeated id in one entry refuses bad-recipe.",
+          "description": "Lens id: a lowercase slug of 1 to 64 characters, the pattern published here. A missing lens warns; a repeated id in one entry refuses bad-recipe.",
           "type": "string",
-          "pattern": "^[a-z0-9][a-z0-9-]*$"
+          "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
         },
         "model": {
           "description": "Model hint for this lens: 1 to 64 characters of letters, digits, and ._:/@+~- (the pattern published here), so a hint can never reshape the directive. Verdict never selects a model.",

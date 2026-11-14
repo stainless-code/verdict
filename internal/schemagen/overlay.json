@@ -343,13 +343,13 @@
       "/properties/schema_version": "Recipes format version; exactly \"1\".",
       "/properties/recipes": "One named entry per pipeline. run resolves --recipe <slug> here first; a name is a map key and never a path. The key is a lowercase slug of 1 to 64 characters, enforced by the propertyNames pattern published here.",
       "/$defs/recipe": "One named pipeline: the version it declares, an optional description and budget, an optional lens set, and the required synthesizer hint.",
-      "/$defs/recipe/properties/version": "Entry semver, recorded verbatim in data.recipe and launcher.json. A field change moves the recorded sha256, so the same document always records the same plan.",
+      "/$defs/recipe/properties/version": "Entry semver of 1 to 64 characters, recorded verbatim in data.recipe and launcher.json. A field change moves the recorded sha256, so the same document always records the same plan.",
       "/$defs/recipe/properties/description": "Operator prose for humans, at most 280 characters. It is never rendered into the directive: only validated ids, enums, numbers, and pattern-checked hints reach the prompt.",
       "/$defs/recipe/properties/budget_usd": "Declared USD budget for the whole pipeline, above zero. It is recorded and rendered, and a value above the bundle's spend.personal_limit_usd warns; run enforces nothing and never refuses on it.",
-      "/$defs/recipe/properties/lenses": "The lens set the pipeline declares, in declaration order. Omit it to inherit the bundle's loaded lenses from lenses.txt in file order. A declared lens the bundle does not load warns and never refuses: lens offers are per plan group, and fetch is the authority on them.",
+      "/$defs/recipe/properties/lenses": "The lens set the pipeline declares, in declaration order, at most 64 rows: the same lens cap a pack manifest ships. Omit it to inherit the bundle's loaded lenses from lenses.txt in file order. A declared lens the bundle does not load warns and never refuses: lens offers are per plan group, and fetch is the authority on them.",
       "/$defs/recipe/properties/synthesize": "The synthesizer stage's model hint. The empty object is the \"no hint\" spelling, and it is the built-in default's whole entry besides its version.",
       "/$defs/lens": "One declared lens: the id it selects, its model hint, and the per-lens dispatch caps the reviewer-subagent contract states.",
-      "/$defs/lens/properties/id": "Lens id, a lowercase slug. A missing lens warns; a repeated id in one entry refuses bad-recipe.",
+      "/$defs/lens/properties/id": "Lens id: a lowercase slug of 1 to 64 characters, the pattern published here. A missing lens warns; a repeated id in one entry refuses bad-recipe.",
       "/$defs/lens/properties/model": "Model hint for this lens: 1 to 64 characters of letters, digits, and ._:/@+~- (the pattern published here), so a hint can never reshape the directive. Verdict never selects a model.",
       "/$defs/lens/properties/max_files": "How many changed files this lens may read, 1 to 24.",
       "/$defs/lens/properties/max_findings": "How many findings this lens may return, 1 to 20.",
@@ -359,7 +359,7 @@
     "patterns": {
       "/properties/recipes/propertyNames": "^[a-z0-9][a-z0-9-]{0,63}$",
       "/$defs/recipe/properties/version": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$",
-      "/$defs/lens/properties/id": "^[a-z0-9][a-z0-9-]*$",
+      "/$defs/lens/properties/id": "^[a-z0-9][a-z0-9-]{0,63}$",
       "/$defs/lens/properties/model": "^[A-Za-z0-9][A-Za-z0-9._:/@+~-]{0,63}$",
       "/$defs/synthesize/properties/model": "^[A-Za-z0-9][A-Za-z0-9._:/@+~-]{0,63}$"
     }

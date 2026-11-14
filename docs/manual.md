@@ -1897,15 +1897,15 @@ verdict run acme/app 123 --agent claude --recipe deep --print
 }
 ```
 
-| Field            | Meaning                                                                                                                                                                                                         |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `schema_version` | `"1"`; any other value refuses `bad-recipe`.                                                                                                                                                                    |
-| recipe key       | The `--recipe` slug: `^[a-z0-9][a-z0-9-]{0,63}$`. A name is a map key, never a path.                                                                                                                            |
-| `version`        | Required semver, recorded and rendered.                                                                                                                                                                         |
-| `description`    | Optional, up to 280 characters, for humans. It is hashed and recorded, never rendered into the agent's prompt.                                                                                                  |
-| `lenses[]`       | The lens set in declaration order, each `id` with an optional `model` hint, `max_files` (1–24) and `max_findings` (1–20). Omit `lenses` to inherit the bundle's loaded lenses from `lenses.txt`, in file order. |
-| `budget_usd`     | Optional declared spend for the pipeline, above zero. Recorded and rendered; above the bundle's personal limit it warns. `run` enforces nothing.                                                                |
-| `synthesize`     | Required object with an optional `model` hint; `{}` declares no hint.                                                                                                                                           |
+| Field            | Meaning                                                                                                                                                                                                                                                                      |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schema_version` | `"1"`; any other value refuses `bad-recipe`.                                                                                                                                                                                                                                 |
+| recipe key       | The `--recipe` slug: `^[a-z0-9][a-z0-9-]{0,63}$`. A name is a map key, never a path.                                                                                                                                                                                         |
+| `version`        | Required semver of 1–64 characters, recorded and rendered.                                                                                                                                                                                                                   |
+| `description`    | Optional, up to 280 characters, for humans. It is hashed and recorded, never rendered into the agent's prompt.                                                                                                                                                               |
+| `lenses[]`       | At most 64 rows — the pack lens cap — in declaration order, each `id` a lowercase slug of 1–64 characters with an optional `model` hint, `max_files` (1–24) and `max_findings` (1–20). Omit `lenses` to inherit the bundle's loaded lenses from `lenses.txt`, in file order. |
+| `budget_usd`     | Optional declared spend for the pipeline, above zero. Recorded and rendered; above the bundle's personal limit it warns. `run` enforces nothing.                                                                                                                             |
+| `synthesize`     | Required object with an optional `model` hint; `{}` declares no hint.                                                                                                                                                                                                        |
 
 Resolution reads **only the base bytes**: `.verdict/recipes.json` rides the
 fixed controls inventory ([Review controls are base-owned](#review-controls-are-base-owned)),

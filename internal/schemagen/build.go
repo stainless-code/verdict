@@ -31,6 +31,7 @@ const (
 	keyMaximum              = "maximum"
 	keyItemsMinimum         = "items_min"
 	keyMinItems             = "minItems"
+	keyMaxItems             = "maxItems"
 	keyMinLength            = "minLength"
 	keyMaxLength            = "maxLength"
 	keyItemsEnum            = "items_enum"
@@ -847,14 +848,17 @@ func (b *builder) sliceNode(typ reflect.Type, tag reflect.StructTag) (*node, err
 	return out, nil
 }
 
-// appendArrayBound adds the minItems bound when the tag names one.
+// appendArrayBound adds the minItems and maxItems bounds when the tags name
+// them: the published array contract a parser enforces on the same field.
 func appendArrayBound(out *node, tag reflect.StructTag) error {
-	bound, ok, err := arrayBound(tag)
-	if err != nil {
-		return err
-	}
-	if ok {
-		out.members = append(out.members, member{keyMinItems, numberNode(bound)})
+	for _, keyword := range []string{keyMinItems, keyMaxItems} {
+		value, ok, err := nonNegative(keyword, tag.Get(keyword))
+		if err != nil {
+			return err
+		}
+		if ok {
+			out.members = append(out.members, member{keyword, numberNode(value)})
+		}
 	}
 	return nil
 }
@@ -866,6 +870,7 @@ func untypedItems(tag reflect.StructTag, typ reflect.Type) error {
 		{keyItemsMinimum, "items_min needs item keywords"},
 		{keyItemsEnum, "items_enum needs a typed element"},
 		{keyMinItems, "minItems needs a typed element"},
+		{keyMaxItems, "maxItems needs a typed element"},
 	} {
 		if tag.Get(rule.keyword) != "" {
 			return errorf("%s: %s", typ, rule.reason)
@@ -898,18 +903,17 @@ func (b *builder) itemsNode(typ reflect.Type, elem reflect.Type, tag reflect.Str
 	return items, nil
 }
 
-// arrayBound reads an optional non-negative minItems array bound.
-func arrayBound(tag reflect.StructTag) (string, bool, error) {
-	bound := tag.Get(keyMinItems)
-	if bound == "" {
+// nonNegative reads an optional non-negative integer keyword value.
+func nonNegative(keyword, value string) (string, bool, error) {
+	if value == "" {
 		return "", false, nil
 	}
-	for i := range len(bound) {
-		if bound[i] < '0' || bound[i] > '9' {
-			return "", false, errorf("minItems %q is not a non-negative integer", bound)
+	for i := range len(value) {
+		if value[i] < '0' || value[i] > '9' {
+			return "", false, errorf("%s %q is not a non-negative integer", keyword, value)
 		}
 	}
-	return bound, true, nil
+	return value, true, nil
 }
 
 func (b *builder) mapNode(typ reflect.Type, tag reflect.StructTag) (*node, error) {

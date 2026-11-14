@@ -61,6 +61,8 @@ func TestKeywordsEnforcesSubset(t *testing.T) {
 		{name: "exclusiveMinimum respected", schema: `{"type":"number","exclusiveMinimum":0}`, value: `0.5`},
 		{name: "minItems violated", schema: `{"type":"array","minItems":1}`, value: `[]`, want: "below minItems"},
 		{name: "minItems respected", schema: `{"type":"array","minItems":1}`, value: `["a"]`},
+		{name: "maxItems violated", schema: `{"type":"array","maxItems":2}`, value: `["a","b","c"]`, want: "above maxItems 2"},
+		{name: "maxItems respected at the bound", schema: `{"type":"array","maxItems":2}`, value: `["a","b"]`},
 		{name: "date-time violated", schema: `{"type":"string","format":"date-time"}`, value: `"not-a-date"`, want: "not a date-time"},
 		{name: "date-time respected", schema: `{"type":"string","format":"date-time"}`, value: `"2026-11-02T12:00:00Z"`},
 		{name: "date-time offset accepted", schema: `{"type":"string","format":"date-time"}`, value: `"2026-11-02T12:00:00+02:00"`},

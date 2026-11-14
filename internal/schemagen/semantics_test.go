@@ -313,7 +313,12 @@ var publishedSemantics = map[string]string{
 	// (._:/@+~-) instead of a pipe the pattern never carried. Additive keyword
 	// and prose only; no existing property, required key, enum, or type
 	// changed.
-	"recipes.schema.json": "9e1fd44869cbb10e50f0f14e55b0d5a0b69c4d731ea8d41ddf4fe562db3ed4ed",
+	// bounds: version maxLength 64, lenses maxItems 64, and the lens id pattern
+	// bounded at 64 characters, the same three caps the parser now refuses
+	// past, so one declared recipe can no longer grow the directive and argv
+	// without limit. Constraints on existing properties; no property, required
+	// key, enum, or type changed.
+	"recipes.schema.json": "56e9c64f5fcc92d04c0d7f88b789492dd628bf62f2fcbd2a6e0c758fb3f1a04f",
 	// patch identity: additive optional patch_id/patch_id_kind plus the
 	// optional forced[] audit with $defs/forcedPost. No existing property,
 	// required key, or type changed.

@@ -1,6 +1,7 @@
 package schemagen
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -34,6 +35,15 @@ func recipeSchema(t *testing.T) any {
 // recipeDocument wraps one entry body in the document envelope.
 func recipeDocument(body string) string {
 	return `{"schema_version":"1","recipes":{"quick":` + body + `}}`
+}
+
+// recipeLensRows renders count distinct declared lens rows.
+func recipeLensRows(count int) string {
+	rows := make([]string, 0, count)
+	for i := range count {
+		rows = append(rows, fmt.Sprintf(`{"id":"lens-%d"}`, i))
+	}
+	return "[" + strings.Join(rows, ",") + "]"
 }
 
 // TestSchemaAndParserAgree is the published contract: one table of documents,
@@ -93,6 +103,18 @@ func TestSchemaAndParserAgree(t *testing.T) {
 			`{"version":"1.0.0","synthesize":{"model":"op us"}}`), false},
 		{"65-character model hint", recipeDocument(`{"version":"1.0.0","synthesize":{"model":"` +
 			strings.Repeat("m", 65) + `"}}`), false},
+		{"version at the 64-character cap", recipeDocument(`{"version":"1.0.0+` +
+			strings.Repeat("b", 58) + `","synthesize":{}}`), true},
+		{"65-character version", recipeDocument(`{"version":"1.0.0+` +
+			strings.Repeat("b", 59) + `","synthesize":{}}`), false},
+		{"lens id at the 64-character cap", recipeDocument(`{"version":"1.0.0","lenses":[{"id":"` +
+			strings.Repeat("l", 64) + `"}],"synthesize":{}}`), true},
+		{"65-character lens id", recipeDocument(`{"version":"1.0.0","lenses":[{"id":"` +
+			strings.Repeat("l", 65) + `"}],"synthesize":{}}`), false},
+		{"64 lenses", recipeDocument(`{"version":"1.0.0","lenses":` + recipeLensRows(64) +
+			`,"synthesize":{}}`), true},
+		{"65 lenses", recipeDocument(`{"version":"1.0.0","lenses":` + recipeLensRows(65) +
+			`,"synthesize":{}}`), false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

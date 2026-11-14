@@ -34,6 +34,12 @@ const (
 const (
 	// maxDescription is the description cap, in characters.
 	maxDescription = 280
+	// maxVersion is the version cap, in characters: the directive renders the
+	// version beside the recipe name, so it is bounded like the name is.
+	maxVersion = 64
+	// maxLenses is the lens-count cap, the same one a pack manifest may ship
+	// (pack.MaxLenses): one recipe declares no more rows than one pack holds.
+	maxLenses = 64
 	// Model hints are at most 64 characters: enough for provider/model.
 	maxModelLength = 64
 	// the dispatch caps a lens row may declare, shared with the pack manifest.
@@ -43,7 +49,7 @@ const (
 	maxLensFindings = 20
 
 	namePattern   = `^[a-z0-9][a-z0-9-]{0,63}$`
-	lensIDPattern = `^[a-z0-9][a-z0-9-]*$`
+	lensIDPattern = `^[a-z0-9][a-z0-9-]{0,63}$`
 	semverPattern = `^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$`
 	// modelPattern admits no whitespace, quote, or control character, so a hint
 	// can never reshape the directive it is rendered into.
@@ -78,10 +84,10 @@ type Document struct { //nolint:govet // field order is the published property o
 // Description are recorded, never enforced; only Version, Synthesize, and the
 // lens rows reach the directive.
 type Entry struct { //nolint:govet // field order is the published property order
-	Version     string     `json:"version"`
+	Version     string     `json:"version"              maxLength:"64"`
 	Description string     `json:"description,omitempty" maxLength:"280"`
 	BudgetUSD   float64    `exclusiveMin:"0"             json:"budget_usd,omitempty"`
-	Lenses      []Lens     `json:"lenses,omitempty"      minItems:"1"`
+	Lenses      []Lens     `json:"lenses,omitempty"      maxItems:"64" minItems:"1"`
 	Synthesize  Synthesize `json:"synthesize"`
 }
 
@@ -163,6 +169,9 @@ func (d *Document) entryAt(name string, raw any) *core.RefusalError {
 	version, ref := requiredString(obj, path, "version")
 	if ref != nil {
 		return ref
+	}
+	if n := utf8.RuneCountInString(version); n > maxVersion {
+		return refuse(CodeBad, "%s.version: %d characters, over the %d-character cap", path, n, maxVersion)
 	}
 	if !semverRE.MatchString(version) {
 		return refuse(CodeBad, "%s.version: %q is not semver", path, version)
@@ -254,8 +263,8 @@ func (e *Entry) synthesizeAt(obj map[string]any, path string) *core.RefusalError
 	return nil
 }
 
-// lensesAt validates the declared lens rows: at least one, no repeated id, and
-// every row's id, hint, and caps.
+// lensesAt validates the declared lens rows: one to maxLenses, no repeated id,
+// and every row's id, hint, and caps.
 func lensesAt(raw any, path string) ([]Lens, *core.RefusalError) {
 	items, ok := raw.([]any)
 	if !ok {
@@ -263,6 +272,9 @@ func lensesAt(raw any, path string) ([]Lens, *core.RefusalError) {
 	}
 	if len(items) == 0 {
 		return nil, refuse(CodeBad, "%s: want at least one lens", path)
+	}
+	if len(items) > maxLenses {
+		return nil, refuse(CodeBad, "%s: %d lenses, over the %d-lens cap", path, len(items), maxLenses)
 	}
 	lenses := make([]Lens, 0, len(items))
 	seen := make(map[string]bool, len(items))
@@ -292,7 +304,8 @@ func lensAt(raw any, path string, seen map[string]bool) (Lens, *core.RefusalErro
 	return lensHintsAt(obj, path, id)
 }
 
-// lensIDAt requires the row's id: a lowercase slug, unique within the entry.
+// lensIDAt requires the row's id: a lowercase slug of 1..64 characters,
+// unique within the entry.
 func lensIDAt(obj map[string]any, path string, seen map[string]bool) (string, *core.RefusalError) {
 	id, ref := requiredString(obj, path, "id")
 	if ref != nil {
