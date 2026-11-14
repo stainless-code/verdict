@@ -6,11 +6,3 @@ error: learn: no rule 'nope' (no .verdict/kb.jsonl yet — see learn --status)
 try: list rules with learn --status, then re-run
 re-enter: verdict learn --retire ...
 --- files ---
---- file C/.verdict/.gitignore ---
-/state/
-/backtest/
-/index/
-incidents.jsonl.lock
-kb.jsonl.lock
---- file C/.verdict/kb.jsonl.lock ---
-

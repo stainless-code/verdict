@@ -510,63 +510,96 @@ func appendRowDoc(in *appendInput) *jq.Obj {
 
 func (st *state) runRetire() *core.RefusalError {
 	id := st.req.Retire
-	if !kb.ValidID(id) {
-		return st.refuse(codeBadID, fmt.Sprintf(msgBadID, id))
-	}
-	unlock, ref := st.lockStore()
-	if ref != nil {
-		return ref
-	}
-	defer unlock()
-	rows, cur, ref := st.loadVetoRow(id)
-	if ref != nil {
-		return ref
-	}
-	if jq.Interp(mustGet(cur, fieldStatus)) == statusRetired {
-		return st.refuse(codeAlreadyRetired, fmt.Sprintf(msgAlreadyRetired, id))
-	}
-	if utf8.RuneCountInString(st.req.Reason) < reasonMin {
-		return st.refuse(codeBadReason, msgRetireReason)
-	}
-	st.tombstoneRetire(cur)
-	if ref := st.writeRows(rows); ref != nil {
-		return ref
-	}
-	st.next = nextRetire
-	st.data = &Data{Rule: cur}
-	st.humanf("retired %s (tombstone kept, counters untouched)\n", id)
-	return nil
+	return st.veto(&veto{
+		id:       id,
+		forbid:   statusRetired,
+		shortMsg: msgRetireReason,
+		next:     nextRetire,
+		human:    "retired %s (tombstone kept, counters untouched)\n",
+		apply:    (*state).tombstoneRetire,
+		wrong: func() *core.RefusalError {
+			return st.refuse(codeAlreadyRetired, fmt.Sprintf(msgAlreadyRetired, id))
+		},
+	})
 }
 
 func (st *state) runRestore() *core.RefusalError {
 	id := st.req.Restore
-	if !kb.ValidID(id) {
-		return st.refuse(codeBadID, fmt.Sprintf(msgBadID, id))
+	return st.veto(&veto{
+		id:       id,
+		forbid:   statusActive,
+		shortMsg: msgRestoreReason,
+		next:     nextRestore,
+		human:    "restored %s (status active, tombstone history kept)\n",
+		apply:    (*state).activateRow,
+		wrong: func() *core.RefusalError {
+			return st.refuse(codeNotRetired, fmt.Sprintf(msgNotRetired, id))
+		},
+	})
+}
+
+// veto is one human veto: the row state it turns off (with the refusal that
+// names that state), its short-reason message, and the change to apply.
+type veto struct {
+	apply    func(*state, *jq.Obj)
+	wrong    func() *core.RefusalError
+	id       string
+	forbid   string
+	shortMsg string
+	next     string
+	human    string
+}
+
+// veto applies one human veto. The refused cases are decided before the store
+// lock is asked for, so a refused veto writes nothing — not the lock file, not
+// the ignore contract it implies — and the mutation re-reads its row under the
+// lock, so it stays one read-modify-write beside a concurrent append.
+func (st *state) veto(v *veto) *core.RefusalError {
+	if !kb.ValidID(v.id) {
+		return st.refuse(codeBadID, fmt.Sprintf(msgBadID, v.id))
+	}
+	if _, _, ref := st.checkVetoRow(v); ref != nil {
+		return ref
+	}
+	if utf8.RuneCountInString(st.req.Reason) < reasonMin {
+		return st.refuse(codeBadReason, v.shortMsg)
 	}
 	unlock, ref := st.lockStore()
 	if ref != nil {
 		return ref
 	}
 	defer unlock()
-	rows, cur, ref := st.loadVetoRow(id)
+	rows, cur, ref := st.checkVetoRow(v)
 	if ref != nil {
 		return ref
 	}
-	if jq.Interp(mustGet(cur, fieldStatus)) == statusActive {
-		return st.refuse(codeNotRetired, fmt.Sprintf(msgNotRetired, id))
-	}
-	if utf8.RuneCountInString(st.req.Reason) < reasonMin {
-		return st.refuse(codeBadReason, msgRestoreReason)
-	}
-	cur.Set(fieldStatus, statusActive)
-	st.appendHistory(cur, eventRestored)
+	v.apply(st, cur)
 	if ref := st.writeRows(rows); ref != nil {
 		return ref
 	}
-	st.next = nextRestore
+	st.next = v.next
 	st.data = &Data{Rule: cur}
-	st.humanf("restored %s (status active, tombstone history kept)\n", id)
+	st.humanf(v.human, v.id)
 	return nil
+}
+
+// checkVetoRow reads the veto's target and refuses when it is missing or
+// already in the state the veto turns off.
+func (st *state) checkVetoRow(v *veto) ([]*jq.Obj, *jq.Obj, *core.RefusalError) {
+	rows, cur, ref := st.loadVetoRow(v.id)
+	if ref != nil {
+		return nil, nil, ref
+	}
+	if jq.Interp(mustGet(cur, fieldStatus)) == v.forbid {
+		return nil, nil, v.wrong()
+	}
+	return rows, cur, nil
+}
+
+// activateRow restores a retired row, keeping the tombstone in its history.
+func (st *state) activateRow(cur *jq.Obj) {
+	cur.Set(fieldStatus, statusActive)
+	st.appendHistory(cur, eventRestored)
 }
 
 func (st *state) loadVetoRow(id string) ([]*jq.Obj, *jq.Obj, *core.RefusalError) {

@@ -6,11 +6,3 @@ error: learn: rule 'await-err' is already active
 try: check the rule status with learn --status, then re-run
 re-enter: verdict learn --restore ...
 --- files ---
---- file C/.verdict/.gitignore ---
-/state/
-/backtest/
-/index/
-incidents.jsonl.lock
-kb.jsonl.lock
---- file C/.verdict/kb.jsonl.lock ---
-
