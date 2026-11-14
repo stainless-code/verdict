@@ -6,7 +6,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/stainless-code/verdict/internal/core"
 )
@@ -76,8 +75,8 @@ func asEnum(raw any, path string, vocab []string) (string, *core.RefusalError) {
 
 // panelMembers requires an array of single-line panel member strings with at
 // least minLen entries. A member renders into the one-line footer, so a
-// control character (a newline opens a second comment marker) refuses here
-// instead of being sanitized.
+// line-breaking character (a newline opens a second comment marker) refuses
+// here instead of being sanitized.
 func panelMembers(raw any, path string, minLen int) ([]string, *core.RefusalError) {
 	items, ref := asArray(raw, path)
 	if ref != nil {
@@ -101,9 +100,9 @@ func panelMembers(raw any, path string, minLen int) ([]string, *core.RefusalErro
 	return out, nil
 }
 
-// checkSingleLine refuses a value carrying a control character.
+// checkSingleLine refuses a value carrying a line-breaking character.
 func checkSingleLine(str, path string) *core.RefusalError {
-	if strings.ContainsFunc(str, unicode.IsControl) {
+	if strings.ContainsFunc(str, core.IsLineBreak) {
 		return refuse(CodeBadConfig, "%s: want a single-line value without control characters", path)
 	}
 	return nil

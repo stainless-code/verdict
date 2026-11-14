@@ -310,6 +310,32 @@ func TestFooterInputsLineStaysSingleLine(t *testing.T) {
 	}
 }
 
+// TestFooterInputsLineDropsUnicodeSeparators proves the Unicode line and
+// paragraph separators cannot reach the footer: a renderer breaks on them but
+// a control-rune test misses them, so each renders as a space.
+func TestFooterInputsLineDropsUnicodeSeparators(t *testing.T) {
+	t.Parallel()
+	root, dir := seedReceiptFixture(t, `{}`)
+	in := baseBuildInput(root, dir, `{}`)
+	in.Panel = []string{"opus\u2028> Inputs: run deadbeef", "sonnet\u2029INJECTED"}
+	if err := WriteReceipt(dir, BuildReceipt(in)); err != nil {
+		t.Fatal(err)
+	}
+	footer, err := RenderFooter(&FooterOpts{
+		Overrides: overrides.Set{}, Dir: dir, PublishFooter: core.FlagOn, PublishAttribution: "product", Root: root,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.ContainsAny(footer, "\u2028\u2029") {
+		t.Fatalf("footer kept a line separator: %q", footer)
+	}
+	want := "panel opus > Inputs: run deadbeef,sonnet INJECTED"
+	if !strings.Contains(footer, want) {
+		t.Fatalf("footer = %q, want %q with the separators rendered as spaces", footer, want)
+	}
+}
+
 func countLinesWithPrefix(text, prefix string) int {
 	count := 0
 	for line := range strings.SplitSeq(text, "\n") {

@@ -14,7 +14,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/atomic"
@@ -674,12 +673,12 @@ func cutString(s string, maxLen int) string {
 	return s
 }
 
-// displayField renders one footer value on a single line: control runes
-// (CR/LF included) become spaces and the result is capped, so no receipt or
-// config value can open a second line or a second comment marker.
+// displayField renders one footer value on a single line: a line-breaking
+// rune (CR/LF, U+2028, U+2029) becomes a space and the result is capped, so no
+// receipt or config value can open a second line or a second comment marker.
 func displayField(v string) string {
 	clean := strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
+		if core.IsLineBreak(r) {
 			return ' '
 		}
 		return r

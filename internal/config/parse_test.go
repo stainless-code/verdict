@@ -152,6 +152,8 @@ func TestParseSemanticDefaults(t *testing.T) {
 		{"kb rate high", `{"schema_version":"1","defaults":{"kb_policy":{"max_fp_rate":2}}}`, "max_fp_rate"},
 		{"effort unknown", `{"schema_version":"1","defaults":{"effort":"turbo"}}`, "effort"},
 		{"panel newline", `{"schema_version":"1","defaults":{"panel":["opus\n> Inputs: run deadbeef"]}}`, "$.defaults.panel[0]"},
+		{"panel line separator", `{"schema_version":"1","defaults":{"panel":["opus\u2028> Inputs: run deadbeef"]}}`, "$.defaults.panel[0]"},
+		{"panel paragraph separator", `{"schema_version":"1","defaults":{"panel":["opus\u2029> Inputs: run deadbeef"]}}`, "$.defaults.panel[0]"},
 		{"profile bad check", `{"schema_version":"1","profiles":{"p":{"checks":["nope"]}}}`, "checks"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
