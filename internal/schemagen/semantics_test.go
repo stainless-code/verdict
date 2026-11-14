@@ -38,7 +38,9 @@ var publishedSemantics = map[string]string{
 	// $defs/configIndex shape. Additions only; no existing property, required
 	// key, enum, or type changed. The configIndex description now calls the
 	// index a code index rather than a Go one.
-	"config.schema.json": "69bc0562a8f17a7f5107c859b3641c48277cb4b1457f653e673839bc7db7ab23",
+	// kb_policy.max_chars: additive optional non-null integer >= 1 controlling KB
+	// recall character budget.
+	"config.schema.json": "642aff63cce2daac6269b57a2b69f176e79e1a7ac52b0f5c968884049cbb1abe",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets
@@ -215,7 +217,17 @@ var publishedSemantics = map[string]string{
 	// $defs/trendIncidentBundle plus the nullable optional learnData.incident
 	// and trendData.incidents keys, and the regenerated learnData/trendData
 	// descriptions. No existing property, required key, enum, or type changed.
-	"envelope.schema.json": "c2897a08f9405e20dad4e390554abee864f26a3c42badac4c4b653304aea0018",
+	// provenance receipt (--provenance): additive $defs/provenanceReceipt,
+	// $defs/provenanceInput, $defs/provenanceTruncatedRow, and additive array
+	// widening on envelope data.truncated (boolean|provenanceTruncatedRow[]).
+	// receipt declaration: additive data.receipt ($ref provenanceReceipt) and
+	// additive optional reportData/postData receipt and truncated members
+	// ($ref provenanceReceipt, boolean|provenanceTruncatedRow[]). No existing
+	// property, required key, enum, or type changed.
+	// trend provenance: additive optional trendBundleRow.run_id and
+	// truncated_inputs (the row count the bundle's receipt reported cut, not a
+	// count of inputs). No existing property, required key, or type changed.
+	"envelope.schema.json": "b3fe2d822a1d3449da97b7b910806ead5b3145c5343a5a9af961e08026862ab7",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

@@ -318,6 +318,7 @@ func decodePost(req *core.PostRequest, a *args) {
 		f.boolean("dryRun", &req.Flags.DryRun)
 		f.boolean("requireCoverage", &req.Flags.RequireCoverage)
 		f.boolean("allowSecretValues", &req.Flags.AllowSecretValues)
+		f.boolean("provenance", &req.Flags.Provenance)
 		f.str("summary", &req.Flags.Summary)
 	})
 }
@@ -387,6 +388,7 @@ func decodeReport(req *core.ReportRequest, a *args) {
 		f.boolean("cost", &req.Flags.Cost)
 		f.boolean("includeWithheld", &req.Flags.IncludeWithheld)
 		f.boolean("completeness", &req.Flags.Completeness)
+		f.boolean("provenance", &req.Flags.Provenance)
 		f.boolean("risk", &req.Flags.Risk)
 		f.str("maxRisk", &req.Flags.MaxRisk)
 	})

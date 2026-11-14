@@ -225,6 +225,11 @@
       "/$defs/indexBlastPartner": "One partner path, the changed path it moved with, its co-change count, and the Jaccard ratio.",
       "/$defs/indexBlastOwners": "One ownership row per changed path, from the CODEOWNERS file at the queried tree. count is always measured; truncated is true only when the result list was capped.",
       "/$defs/indexData/properties/index": "Present only when the queried tree has a stored index; blast-radius omits it when the symbol, caller, and test lists are unmeasured.",
+      "/$defs/provenanceReceipt": "Fetched bundle provenance receipt persisted in provenance.json and exposed via --provenance --json.",
+      "/$defs/provenanceInput": "One resolved input, bundle artifact, KB candidate, override, control, config, or exclusion entry without rule bodies or secret values.",
+      "/$defs/provenanceTruncatedRow": "One bounded or omitted input row in data.truncated[] when --provenance is active.",
+      "/properties/data/properties/receipt": "Fetched bundle receipt (run_id, prompts_hash, inputs, truncations) exposed by report and post under --provenance; absent without the flag.",
+      "/properties/data/properties/truncated": "Bounded-input rows when --provenance is active; elsewhere the boolean truncation flag every verb's data already carries.",
       "/$defs/prWaitData": "Bounded foreground PR wait outcome; timeout is data with error null.",
       "/$defs/prWaitSnapshot": "One observed PR state, including canonical JSON evidence for checks, reviews, and threads.",
       "/$defs/readyData/properties/wait": "Present when a bounded build wait was requested; timeout leaves readiness false."

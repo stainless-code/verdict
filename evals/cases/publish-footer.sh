@@ -103,7 +103,10 @@ absent_footer="$(jq -r '.data.body.footer // empty' <"$EVAL_OUT" 2>/dev/null)"
 printf '%s' "$absent_footer" > "$EVAL_SANDBOX/absent-footer.txt"
 assert_exit "absent post.json render succeeds" 0
 assert_file_nogrep "absent post.json keeps today's unlinked render" "$EVAL_SANDBOX/absent-footer.txt" '[review' "-F"
-if [ "$absent_footer" = "$repost_footer" ]; then
+rm -f "$EVAL_SANDBOX/.verdict/state/4524/post.json"
+run_review post acme/app 4524 --dry-run --json
+fresh_4524="$(jq -r '.data.body.footer // empty' <"$EVAL_OUT" 2>/dev/null)"
+if [ "$fresh_4524" = "$repost_footer" ]; then
   good "omit-branch footer byte-identical to fresh unlinked render"
 else
   bad "omit-branch footer differs from fresh render"

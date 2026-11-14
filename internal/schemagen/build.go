@@ -23,6 +23,10 @@ const (
 	keyAnyOf                = "anyOf"
 	keyNot                  = "not"
 	keyRef                  = "$ref"
+	keyReceipt              = "receipt"
+	keyTruncated            = "truncated"
+	defsReportData          = "reportData"
+	defsPostData            = "postData"
 	keyDefs                 = "$defs"
 	keyConst                = "const"
 	keyEnum                 = "enum"
@@ -386,6 +390,9 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[FindingsCounts](), name: "findingsCounts"},
 		{typ: reflect.TypeFor[FindingItem](), name: "findingItem"},
 		{typ: reflect.TypeFor[Provenance](), name: "provenance"},
+		{typ: reflect.TypeFor[core.ProvenanceReceipt](), name: "provenanceReceipt"},
+		{typ: reflect.TypeFor[core.ProvenanceInput](), name: "provenanceInput"},
+		{typ: reflect.TypeFor[core.ProvenanceTruncatedRow](), name: "provenanceTruncatedRow"},
 		{typ: reflect.TypeFor[CoverageSummary](), name: coverageSummaryType},
 		{typ: reflect.TypeFor[core.PanelSummary](), name: verificationSummaryType},
 		{typ: reflect.TypeFor[ReportData](), name: "reportData"},
@@ -600,6 +607,7 @@ func (b *builder) defsNode(defs []definition) (*node, error) {
 		if len(def.constraints) > 0 {
 			schema.members = append(schema.members, def.constraints...)
 		}
+		addVerbWireMembers(def.name, schema)
 		members = append(members, member{def.name, schema})
 	}
 	return object(true, members...), nil
@@ -685,8 +693,43 @@ func (b *builder) envelopeData() (*node, error) {
 	if err != nil {
 		return nil, err
 	}
+	receipt, truncated := provenanceWireMembers()
+	props.members = append(props.members, receipt)
+	for i := range props.members {
+		if props.members[i].key == keyTruncated {
+			props.members[i] = truncated
+		}
+	}
 	return object(true, member{keyType, array(stringNode("object"), stringNode("null"))},
 		member{keyProperties, props}, member{keyAdditionalProperties, boolNode(true)}), nil
+}
+
+// provenanceWireMembers declares the two keys applyProvenanceWire sets when
+// --provenance is active: the receipt object, and the row array that widens the
+// plain boolean on data.truncated.
+func provenanceWireMembers() (receipt, truncated member) {
+	receipt = member{keyReceipt, object(false, member{keyRef, stringNode(defsPrefix + "provenanceReceipt")})}
+	truncated = member{keyTruncated, object(false,
+		member{keyType, array(stringNode(typeBoolean), stringNode(typeArray))},
+		member{keyItems, object(false, member{keyRef, stringNode(defsPrefix + "provenanceTruncatedRow")})},
+	)}
+	return receipt, truncated
+}
+
+// addVerbWireMembers appends keys a verb writes outside its Go struct, which a
+// reflected data profile cannot see.
+func addVerbWireMembers(name string, schema *node) {
+	if name != defsReportData && name != defsPostData {
+		return
+	}
+	for i := range schema.members {
+		if schema.members[i].key != keyProperties {
+			continue
+		}
+		receipt, truncated := provenanceWireMembers()
+		schema.members[i].value.members = append(schema.members[i].value.members, receipt, truncated)
+		return
+	}
 }
 
 func jsonFieldName(field *reflect.StructField) (name string, optional bool, err error) {
