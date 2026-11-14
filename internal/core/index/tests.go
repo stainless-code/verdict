@@ -73,7 +73,7 @@ func (st *state) testTargets(
 	if ref != nil {
 		return nil, nil, "", false, nil, ref
 	}
-	t, ref := readTree(storePath(r), treeRef{tree: tree, at: st.queryAt()})
+	t, ref := readTree(storePath(r), treeRef{tree: tree, at: st.queryAt(), from: st.req.From})
 	if ref != nil {
 		return nil, nil, "", false, nil, ref
 	}

@@ -222,12 +222,24 @@ func missingIndexRefusal(key treeRef) *core.RefusalError {
 func (key treeRef) buildCommand() string {
 	switch {
 	case key.from != "":
-		return "verdict index build --from " + quotePath(key.from)
+		return "verdict index build --from " + shellArg(key.from)
 	case key.at != "":
 		return "verdict index build --at " + key.at
 	default:
 		return "verdict index build --at " + key.tree
 	}
+}
+
+// shellSafeRunes is the set a POSIX shell reads back verbatim; every path
+// carrying anything else gets single quotes, so a space or a `$` survives the
+// copy-paste into the operator's shell.
+const shellSafeRunes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./:@%+=,-"
+
+func shellArg(s string) string {
+	if s != "" && strings.Trim(s, shellSafeRunes) == "" {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // isSourceEntry reports a regular file the index scans.

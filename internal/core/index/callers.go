@@ -42,7 +42,7 @@ func (st *state) callers(ctx context.Context) (*Response, *core.RefusalError) {
 		return nil, ref
 	}
 	store := storePath(root)
-	t, ref := readTree(store, treeRef{tree: tree, at: st.queryAt()})
+	t, ref := readTree(store, treeRef{tree: tree, at: st.queryAt(), from: st.req.From})
 	if ref != nil {
 		return nil, ref
 	}
