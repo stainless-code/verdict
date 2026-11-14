@@ -597,6 +597,28 @@ typed. Retire keeps the tombstone line (`status`, `retiredAt`,
 `retireReason`, history-logged) with counters untouched; restore flips back to
 `active` keeping the tombstone as record.
 
+`learn --incident` records the other half of the loop — the bugs a review
+missed — as a row in `.verdict/incidents.jsonl`:
+
+```bash
+verdict learn --incident local-abc123 --sha <40-hex merge> --path src/a.ts \
+  --note "reverted in #42" --url https://example.com/o/r/pull/42 --at 2026-11-01T09:00:00Z
+```
+
+One row per `(bundle, sha)` pair: `{schema_version, bundle, sha, paths, note,
+url, detected_at}`, kept sorted by bundle then sha. `--path` repeats and is
+sorted-deduped, `--note` caps at 2,000 bytes, `--url` takes `http(s)` only,
+`--at` defaults to now, and the bundle must already carry `findings.json`
+(`missing-bundle` when the directory is absent, `missing-findings` when the
+store is). Paths obey the same clean repo-relative rule as every other
+learning path (`bad-scope`); attach flags without `--incident` refuse
+`bad-flags`, as do a malformed `--sha`, a missing `--path`, an over-cap
+`--note`, and a `--url` that is not `http(s)`; an `--at` that is not RFC 3339
+refuses `bad-at`. The attach is
+idempotent per pair — the second run reports `existing` and moves no byte, so
+re-running after a rebase is safe — and `--dry-run` reports the append it
+would make, writing nothing.
+
 Exposure and acceptance: `learn --status` (text and `--json`) joins
 `kb-recall.json` manifests, finding `kb` cites, and `kb-joins.jsonl` across
 reviewed bundles to report per rule: `recalled_in` (measured bundles whose
@@ -3146,6 +3168,21 @@ Each `trend` rollup also classifies bundles into advisory risk bands
 (`max(claimed, floor)`, and `unknown` only when there is no claim and the
 floor is `low`), tallying bundles, findings, open, addressed, and closed
 outcomes per band.
+
+`trend --incidents` measures the reviews that missed: every row in
+`.verdict/incidents.jsonl` joins to its bundle's findings store, and an
+incident is a **hit** when one non-`false-positive` finding covers one of its
+paths (exact, or the finding path under the incident path as a directory) and
+a **miss** otherwise. The data carries `incidents`, `measured`, `unmeasured`,
+`hit`, `missed`, `miss_rate` (`missed / measured`, rounded to four decimal
+places, `null` — `n/a` in text — when nothing measured), and per-bundle rows; a bundle whose directory
+or `findings.json` will not read is unmeasured and warns
+`trend skips incident <bundle> (no findings store)` rather than counting as a
+miss. A `false-positive` finding is a non-catch, never a hit. No ledger, an
+empty ledger, or any attach that never ran reads a zero tally with a `null`
+miss rate, never an error; a corrupt ledger refuses `corrupt-store`. Without
+the flag both outputs are byte-identical to today, and the ledger itself is
+written only by `learn --incident`.
 
 ## Code index
 
