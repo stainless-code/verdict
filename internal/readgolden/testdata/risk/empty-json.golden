@@ -1,0 +1,28 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "risk",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "verdict fetch acme/app <pr>",
+  "warnings": [],
+  "data": {
+    "generated_at": "0000-00-00T00:00:00Z",
+    "bundles": 0,
+    "needs_human": 0,
+    "by_band": {
+      "critical": 0,
+      "high": 0,
+      "medium": 0,
+      "unknown": 0,
+      "low": 0
+    },
+    "rows": []
+  },
+  "error": null
+}
+--- stderr ---
+
+--- files ---

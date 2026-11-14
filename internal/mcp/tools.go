@@ -27,6 +27,7 @@ import (
 	readycore "github.com/stainless-code/verdict/internal/core/ready"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
+	riskcore "github.com/stainless-code/verdict/internal/core/risk"
 	trendcore "github.com/stainless-code/verdict/internal/core/trend"
 	triagecore "github.com/stainless-code/verdict/internal/core/triage"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
@@ -274,6 +275,15 @@ func allTools(readOnly, operator bool) []*tool {
 			required:  requiredRepoPr,
 			meta:      toolMeta{title: "Render report", mutates: localWrites, idempotent: true, servedWhenReadOnly: true},
 		}, toolDeps{}, decodeReport, wireReport, invokeReport),
+		dataTool(&toolSpec{
+			name: "risk",
+			description: "Rank the bundles under .verdict/state into an advisory triage queue. " +
+				"Reads local bundles only and writes nothing. Follow with report --risk to gate one bundle.",
+			omit:     map[string]bool{fieldPr: true},
+			required: []string{argRepo},
+			meta:     toolMeta{title: "Triage risk queue", mutates: noLocalWrites, readOnly: true, idempotent: true},
+		}, toolDeps{}, decodeRisk, wireRisk, riskcore.Run,
+			func(resp *riskcore.QueueResponse) *jq.Obj { return wireData(resp.Data) }),
 		directTool(&toolSpec{
 			name: "show",
 			description: "Return one full finding by signature or unique prefix. Call to inspect " +

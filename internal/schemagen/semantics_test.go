@@ -226,7 +226,12 @@ var publishedSemantics = map[string]string{
 	// triage score: additive optional reportData.risk.score ($defs/riskScore
 	// with $defs/riskReach, riskChurn, riskCategory, and riskRung). No existing
 	// property, required key, enum, or type changed.
-	"envelope.schema.json": "2f81751a59a84e941844cae86a6364a89f975d1a0bc8abf604db2d3c0e7ce093",
+	// triage queue: additive $defs/riskData, $defs/riskBands, and $defs/riskRow
+	// pinning the risk verb's data profile (the ranked queue), carrying the same
+	// optional flat receipt keys (truncated, truncation_reason, returned, total,
+	// next_offset) trendData and indexData publish. Additions only; no existing
+	// property, required key, enum, or type changed.
+	"envelope.schema.json": "8cbddc2fe927270b9461f60c042adf71933491680e500c7761f7f8c8822f6736",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

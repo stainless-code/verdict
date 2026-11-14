@@ -20,6 +20,7 @@ import type {
   RefusalErrorBody,
   ReportData,
   ReportGate,
+  RiskData,
   ShowData,
   ThreadsData,
   ThreadsResolveData,
@@ -78,6 +79,7 @@ export interface DataFor {
   doctor: DoctorData;
   calibrate: CalibrateData;
   trend: TrendData;
+  risk: RiskData;
   index: IndexData;
   adopt: AdoptData;
   ingest: IngestData;

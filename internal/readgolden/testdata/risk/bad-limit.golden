@@ -1,0 +1,6 @@
+exit: 2
+--- stdout ---
+
+--- stderr ---
+--limit wants an integer from 1 to 200, not "201"
+--- files ---

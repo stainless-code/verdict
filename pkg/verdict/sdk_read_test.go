@@ -156,6 +156,43 @@ func TestClientTrend(t *testing.T) {
 	}
 }
 
+// TestClientRisk proves the queue through the SDK: the ranked row, the band
+// tally, the human summary, and a status the queue does not know refusing
+// typed instead of reaching the store.
+func TestClientRisk(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writePRBundle(t, "6101")
+	writeFindings(t, "6101", sdkStore())
+	c := newSDKClient(nil, nil)
+	defer c.Close()
+
+	resp, err := c.Risk(context.Background(), &verdict.RiskRequest{Repo: "acme/app"})
+	requireNoError(t, err)
+	if resp.Repo != "acme/app" || resp.At != sdkAt ||
+		resp.Next != "verdict fetch acme/app 6101 --index origin/main" {
+		t.Errorf("envelope = repo %q at %q next %q", resp.Repo, resp.At, resp.Next)
+	}
+	doc := decodeData(t, resp.Data)
+	assertNumbers(t, doc, map[string]float64{"bundles": 1, "needs_human": 1})
+	bands := asMap(t, doc["by_band"], "by_band")
+	assertNumbers(t, bands, map[string]float64{"critical": 1, "high": 0, "medium": 0, "unknown": 0, "low": 0})
+	rows, ok := doc["rows"].([]any)
+	if !ok || len(rows) != 1 {
+		t.Fatalf("rows = %v, want exactly the ranked bundle", doc["rows"])
+	}
+	row := asMap(t, rows[0], "rows[0]")
+	if row["bundle"] != "6101" || row["state"] != "open" || row["reported"] != "critical" ||
+		row["needs_human"] != true {
+		t.Errorf("row = %v, want the critical open bundle", row)
+	}
+	if resp.Human[0] != "risk: acme/app — 1 bundle(s), 1 need a human (critical=1 high=0 medium=0 unknown=0 low=0)" {
+		t.Errorf("human = %v, want the rendered queue header", resp.Human)
+	}
+
+	_, err = c.Risk(context.Background(), &verdict.RiskRequest{Repo: "acme/app", Status: "weird"})
+	requireRefusal(t, err, "bad-flags", "try: re-run with one of the valid values named above")
+}
+
 // TestClientCalibrate proves the calibrate verb through the SDK: the offline
 // probe grades every finding, counts them, writes the grade store, and the
 // bad judgment refuses typed.

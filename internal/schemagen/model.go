@@ -7,6 +7,7 @@ import (
 	ingestcore "github.com/stainless-code/verdict/internal/core/ingest"
 	"github.com/stainless-code/verdict/internal/core/pack"
 	readycore "github.com/stainless-code/verdict/internal/core/ready"
+	riskcore "github.com/stainless-code/verdict/internal/core/risk"
 	"github.com/stainless-code/verdict/internal/core/threads"
 	"github.com/stainless-code/verdict/internal/identity"
 )
@@ -254,6 +255,16 @@ type RiskCategory = core.RiskCategory
 
 // RiskRung is core's weakest open-finding evidence rung.
 type RiskRung = core.RiskRung
+
+// RiskData is the risk verb's --json data profile: the ranked triage queue
+// over the bundles under .verdict/state.
+type RiskData = riskcore.QueueData
+
+// RiskBands is the queue's five-band tally, worst band first.
+type RiskBands = riskcore.QueueBands
+
+// RiskRow is one ranked bundle in the triage queue.
+type RiskRow = riskcore.QueueRow
 
 // PostData is the post verb's --json data profile (dry-run and real post).
 type PostData = core.PostData

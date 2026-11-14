@@ -44,6 +44,7 @@ body:
         - ready
         - pr-wait
         - trend
+        - risk
         - index
         - backtest
         - learn

@@ -273,6 +273,9 @@ func inputSchema(t *tool) map[string]any {
 }
 
 var fieldDocs = map[string]string{
+	"risk.Limit":  "Rows to publish, 1–200; defaults to 50. The tallies keep describing the whole queue.",
+	"risk.Status": "Bundle filter: open (host-open and local, the default) or all (adds merged and closed).",
+
 	"pr_wait.Until":    "Condition to await; review-changed compares with this call's first observation.",
 	"pr_wait.Timeout":  "Foreground wait duration, 1s–50s; defaults to 50s.",
 	"pr_wait.Interval": "Initial poll interval, at least 1s and at most timeout; defaults to 1s.",

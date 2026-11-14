@@ -160,6 +160,9 @@ func (c *Client) Record(ctx context.Context, req *RecordRequest) (*Result, error
 func (c *Client) Report(ctx context.Context, req *ReportRequest) (*ReportResponse, error)
     Report renders the offline review report for the bundle.
 
+func (c *Client) Risk(ctx context.Context, req *RiskRequest) (*RiskResponse, error)
+    Risk ranks the local bundles into the advisory triage queue.
+
 func (c *Client) Show(ctx context.Context, req *ShowRequest) (*ShowResponse, error)
     Show returns one full finding record by signature or unique prefix.
 
@@ -541,6 +544,21 @@ type Result struct {
     Result carries the envelope fields shared by bundle-scoped responses. Data
     is the verb's data profile as JSON, byte-identical to the --json envelope's
     data object.
+
+type RiskRequest struct {
+	Repo, Status string
+	Limit        int
+}
+    RiskRequest ranks the bundles under .verdict/state into the triage queue.
+    PR is unused; risk scopes by repo. Limit 0 reads the published default.
+
+type RiskResponse struct {
+	Repo, At, Next string
+	Warnings       []string
+	Human          []string
+	Data           json.RawMessage
+}
+    RiskResponse carries the ranked queue and the human summary.
 
 type ShowRequest struct {
 	Invocation
