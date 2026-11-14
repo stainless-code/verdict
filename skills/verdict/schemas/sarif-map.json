@@ -1,0 +1,29 @@
+{
+  "schema_version": "1",
+  "default_tier": "important",
+  "levels": {
+    "error": "critical",
+    "warning": "important",
+    "note": "informational",
+    "none": "informational"
+  },
+  "security_severity_thresholds": [
+    {
+      "min": 7.0,
+      "tier": "critical"
+    },
+    {
+      "min": 4.0,
+      "tier": "important"
+    },
+    {
+      "min": 0.0,
+      "tier": "informational"
+    }
+  ],
+  "tier_to_level": {
+    "critical": "error",
+    "important": "warning",
+    "informational": "note"
+  }
+}

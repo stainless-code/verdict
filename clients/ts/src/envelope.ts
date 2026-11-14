@@ -8,6 +8,7 @@ import type {
   FetchLocalData,
   FixData,
   IndexData,
+  IngestData,
   InitData,
   LearnData,
   NextData,
@@ -79,6 +80,7 @@ export interface DataFor {
   trend: TrendData;
   index: IndexData;
   adopt: AdoptData;
+  ingest: IngestData;
   fix: FixData;
   learn: LearnData;
   pack: PackData;

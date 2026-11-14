@@ -29,6 +29,7 @@ import (
 	"github.com/stainless-code/verdict/internal/fix"
 	"github.com/stainless-code/verdict/internal/gate"
 	"github.com/stainless-code/verdict/internal/index"
+	"github.com/stainless-code/verdict/internal/ingest"
 	"github.com/stainless-code/verdict/internal/learn"
 	"github.com/stainless-code/verdict/internal/pack"
 	"github.com/stainless-code/verdict/internal/panel"
@@ -60,7 +61,7 @@ const (
 	verbDoctor = "doctor"
 )
 
-const verbsHint = "fetch|fetch-local|run|panel|record|adopt|fix|post|triage|report|next|show|" +
+const verbsHint = "fetch|fetch-local|run|panel|record|adopt|ingest|fix|post|triage|report|next|show|" +
 	"check-tree|verify|doctor|calibrate|ready|pr-wait|gate|threads|trend|index|backtest|" +
 	"learn|pack|init|skill|upgrade|uninstall|mcp|serve|config"
 
@@ -275,10 +276,22 @@ func dispatchMutating(
 		return record.RunPost(ctx, r, rest, &record.Request{
 			Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env, Forces: forces,
 		}), true
+	default:
+		return dispatchStoreVerbs(ctx, cmd, r, repo, pr, root, repoRoot, env, rest)
+	}
+}
+
+func dispatchStoreVerbs(
+	ctx context.Context, cmd string, r *cli.Runner, repo, pr, root, repoRoot string,
+	env map[string]string, rest []string,
+) (int, bool) {
+	switch cmd {
 	case "triage":
 		return triage.Run(ctx, r, rest, triage.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}), true
 	case "adopt":
 		return adopt.Run(ctx, r, rest, adopt.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}), true
+	case "ingest":
+		return ingest.Run(ctx, r, rest, &ingest.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}), true
 	case "fix":
 		return fix.Run(ctx, r, rest, fix.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}), true
 	case "learn":

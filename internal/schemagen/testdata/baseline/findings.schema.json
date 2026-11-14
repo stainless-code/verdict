@@ -98,6 +98,22 @@
         "confidence": { "enum": ["single", "confirmed", "contested"] },
         "triagedAt": { "type": "string" },
         "triagedBy": { "type": "string" },
+        "source": {
+          "description": "Finding provenance: model for agent review findings, tool for ingested SARIF findings. Absent reads as model.",
+          "enum": ["model", "tool"]
+        },
+        "tool": {
+          "description": "Originating analysis tool name recorded when source is tool.",
+          "type": "string"
+        },
+        "rule_id": {
+          "description": "Tool rule identifier recorded when source is tool.",
+          "type": "string"
+        },
+        "fingerprint": {
+          "description": "Deterministic tool result fingerprint used for idempotent SARIF re-ingestion.",
+          "type": "string"
+        },
         "history": {
           "description": "Append-only: reported, claim, reopened, revalidation, addressed, triaged.",
           "type": "array",

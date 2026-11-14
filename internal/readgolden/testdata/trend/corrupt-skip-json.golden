@@ -75,6 +75,10 @@ exit: 0
         "closed": 0
       }
     },
+    "by_source": {
+      "model": 9,
+      "tool": 0
+    },
     "withheld": {"agent":0,"below-severity":0,"exclusion":0,"validation":0},
     "provenance": {
       "tools": [
@@ -164,6 +168,10 @@ exit: 0
           "untagged": 6
         },
         "risk": "critical",
+        "by_source": {
+          "model": 6,
+          "tool": 0
+        },
         "withheld": {"agent":0,"below-severity":0,"exclusion":0,"validation":0}
       },
       {
@@ -202,6 +210,10 @@ exit: 0
           "untagged": 2
         },
         "risk": "medium",
+        "by_source": {
+          "model": 2,
+          "tool": 0
+        },
         "withheld": {"agent":0,"below-severity":0,"exclusion":0,"validation":0}
       },
       {
@@ -236,6 +248,10 @@ exit: 0
           "untagged": 1
         },
         "risk": "critical",
+        "by_source": {
+          "model": 1,
+          "tool": 0
+        },
         "withheld": {"agent":0,"below-severity":0,"exclusion":0,"validation":0}
       }
     ]

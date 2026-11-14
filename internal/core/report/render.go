@@ -285,6 +285,9 @@ func appendHumanTail(st *state, lines []string) []string {
 			lines = append(lines, line)
 		}
 	}
+	if line := sourceHuman(st.counts.BySource); line != "" {
+		lines = append(lines, line)
+	}
 	if st.flags.Cost {
 		lines = append(lines, costHuman(st)...)
 	}
@@ -382,6 +385,13 @@ func categoryHuman(counts map[string]int) string {
 		return ""
 	}
 	return "by category: " + strings.Join(parts, ", ")
+}
+
+func sourceHuman(counts map[string]int) string {
+	if counts["tool"] == 0 {
+		return ""
+	}
+	return fmt.Sprintf("by source: model %d, tool %d", counts["model"], counts["tool"])
 }
 
 func costHuman(st *state) []string {

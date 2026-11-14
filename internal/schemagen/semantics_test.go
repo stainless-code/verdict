@@ -208,7 +208,10 @@ var publishedSemantics = map[string]string{
 	// postData/recordData.risk ($defs/riskClaim), reportData.risk ($defs/reportRisk +
 	// $defs/riskInputs), gateDimension.id enum value "risk", and trendData.by_risk /
 	// trendBundleRow.risk. No existing property, required key, or type changed.
-	"envelope.schema.json": "64acb2748d4c6f0835b7b19799569c24df3eb45fe00ecf9bc1c4eafa0127e578",
+	// sarif ingest: additive $defs/ingestData, $defs/trendSources, and
+	// optional by_source on reportCounts, trendData, and trendBundleRow. No
+	// existing property, required key, enum, or type changed.
+	"envelope.schema.json": "e710e79ce0a855ad5c756e1302c95c98c12ee126e03685d627d07b53ce867081",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -217,7 +220,10 @@ var publishedSemantics = map[string]string{
 	// finding categories: additive optional entry.category enum (absent and
 	// null group as untagged; never part of the sig). No existing property,
 	// required key, or type changed.
-	"findings.schema.json": "b529440d679f4fc15af3dd0bd3d2bea0e6805d82f4c1aac859aea13963346380",
+	// sarif ingest: additive optional entry.source enum (model|tool) and
+	// optional tool, rule_id, and fingerprint strings on findings entries. No
+	// existing property, required key, or type changed.
+	"findings.schema.json": "1abce02980e93cc219592a809cb9edb7c3f1d3dc8a0a08c7fe0c74503671778b",
 	// post_floor_scoped: additive optional per-path posting floor list with its
 	// $defs/floorScope entry (required path, enum floor). No existing
 	// property, required key, or type changed.

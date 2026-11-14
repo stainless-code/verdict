@@ -165,6 +165,8 @@ export interface ReportCounts {
   by_category: unknown;
   withheld?: number;
   withheld_by_source?: unknown;
+  /** Whole-store finding counts by provenance source (model and tool). */
+  by_source?: unknown;
   [key: string]: unknown;
 }
 
@@ -854,6 +856,20 @@ export interface AdoptData {
   [key: string]: unknown;
 }
 
+/** ingest --json data: the target bundle, distinct tool names ingested, and per-run finding counts. */
+export interface IngestData {
+  dir: string;
+  tools: Array<string>;
+  ingested: number;
+  added: number;
+  updated: number;
+  unchanged: number;
+  anchored: number;
+  withheld: number;
+  open: number;
+  [key: string]: unknown;
+}
+
 /** next --json data: the ranked finding to fix next, or null when the store has nothing open. item keeps every stored record key beside the ranked locator. */
 export interface NextData {
   truncated?: boolean;
@@ -1013,6 +1029,8 @@ export interface TrendData {
   /** Portfolio finding counts by observed category with untagged for null entries; only observed categories appear. */
   by_category: unknown;
   by_risk?: TrendRiskBands;
+  /** Portfolio finding counts by provenance source (model and tool). */
+  by_source?: TrendSources;
   withheld?: unknown;
   provenance: TrendProvenance;
   periods: Array<TrendPeriod>;
@@ -1059,6 +1077,13 @@ export interface TrendRiskBand {
   [key: string]: unknown;
 }
 
+/** A two-source finding tally: model and tool. */
+export interface TrendSources {
+  model: number;
+  tool: number;
+  [key: string]: unknown;
+}
+
 /** The distinct tools, models, and prompt hashes behind the rollup; a bundle that recorded none contributes a null entry. */
 export interface TrendProvenance {
   tools: unknown[];
@@ -1095,6 +1120,8 @@ export interface TrendBundleRow {
   /** One bundle's finding counts by observed category with untagged for null entries. */
   by_category: unknown;
   risk?: "low" | "medium" | "high" | "critical" | "unknown";
+  /** One bundle's finding counts by provenance source (model and tool). */
+  by_source?: TrendSources;
   withheld?: unknown;
   [key: string]: unknown;
 }

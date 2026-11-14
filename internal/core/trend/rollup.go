@@ -41,6 +41,7 @@ type rollup struct {
 	byTier     map[string]int
 	byCategory map[string]int
 	byRisk     map[string]*riskBandCounts
+	bySource   map[string]int
 	tools      []any
 	models     []any
 	hashes     []any
@@ -75,10 +76,12 @@ func rollupRows(rows []row) rollup {
 		},
 		byCategory: map[string]int{},
 		byRisk:     initRiskBands(),
+		bySource:   map[string]int{"model": 0, "tool": 0},
 	}
 	for i := range rows {
 		r := &rows[i]
 		addWithheld(out.withheld, r.findings)
+		addSources(out.bySource, r)
 		out.bundles++
 		out.clean += cleanCount(r)
 		out.findings += len(r.findings)
@@ -212,6 +215,7 @@ func rollupDoc(out *rollup) *jq.Obj {
 		"by_tier", tierDoc(out.byTier),
 		"by_category", categoryDoc(out.byCategory),
 		"by_risk", riskDoc(out.byRisk),
+		"by_source", sourceDoc(out.bySource),
 		"withheld", out.withheld,
 		"provenance", jq.NewObj(
 			"tools", anyList(out.tools),
@@ -244,6 +248,28 @@ func categoryDoc(counts map[string]int) *jq.Obj {
 		o.Set(k, counts[k])
 	}
 	return o
+}
+
+func rowSources(r *row) map[string]int {
+	if len(r.bySource) > 0 {
+		return r.bySource
+	}
+	return readcommon.SourceCounts(r.findings)
+}
+
+func addSources(dst map[string]int, r *row) {
+	for k, v := range rowSources(r) {
+		dst[k] += v
+	}
+}
+
+const (
+	sourceModel = "model"
+	sourceTool  = "tool"
+)
+
+func sourceDoc(counts map[string]int) *jq.Obj {
+	return jq.NewObj(sourceModel, counts[sourceModel], sourceTool, counts[sourceTool])
 }
 
 func anyList(vals []any) []any {
@@ -279,6 +305,7 @@ func rowDoc(r *row) *jq.Obj {
 		"by_tier", tierDoc(r.byTier),
 		"by_category", categoryDoc(r.byCategory),
 		"risk", riskBand(r.risk),
+		"by_source", sourceDoc(rowSources(r)),
 		"withheld", readcommon.WithheldCounts(r.findings),
 	)
 }
@@ -300,28 +327,35 @@ func (st *state) emitRollupHuman(out *rollup) {
 	}
 	if out.bundles == 0 {
 		st.human("trend: " + st.req.Repo + " — no reviewed bundles (no .verdict/state/*/findings.json yet)")
-	} else {
-		st.human(fmt.Sprintf("trend: %s — %d bundle(s), %d findings (open=%d addressed=%d closed=%d)",
-			st.req.Repo, out.bundles, out.findings, out.open, out.addressed, out.closed))
-		st.emitReviewHuman(out)
-		for i := range out.periods {
-			p := &out.periods[i]
-			name := "undated"
-			if p.hasName {
-				name = p.name
-			}
-			st.human(fmt.Sprintf("%s  bundles=%d findings=%d open=%d addressed=%d closed=%d "+
-				"tiers critical=%d important=%d informational=%d untagged=%d",
-				name, p.bundles, p.findings, p.open, p.addressed, p.closed,
-				p.byTier[tierCritical], p.byTier[tierImportant], p.byTier[tierInformational], p.byTier[tierUntagged]))
+		return
+	}
+	st.human(fmt.Sprintf("trend: %s — %d bundle(s), %d findings (open=%d addressed=%d closed=%d)",
+		st.req.Repo, out.bundles, out.findings, out.open, out.addressed, out.closed))
+	if out.bySource[sourceTool] > 0 {
+		st.human(fmt.Sprintf("by source: model %d, tool %d", out.bySource[sourceModel], out.bySource[sourceTool]))
+	}
+	st.emitReviewHuman(out)
+	st.emitPeriodLines(out.periods)
+	st.human(fmt.Sprintf("tiers: critical=%d important=%d informational=%d untagged=%d",
+		out.byTier[tierCritical], out.byTier[tierImportant], out.byTier[tierInformational], out.byTier[tierUntagged]))
+	st.human(fmt.Sprintf("status: open=%d addressed=%d wont-fix=%d false-positive=%d deferred=%d",
+		out.byStatus[statusOpen], out.byStatus[statusAddressed], out.byStatus[statusWontFix],
+		out.byStatus[statusFalsePositive], out.byStatus[statusDeferred]))
+	st.human(riskHumanLine(out.byRisk))
+	st.human("provenance: " + provenanceLine(out))
+}
+
+func (st *state) emitPeriodLines(periods []period) {
+	for i := range periods {
+		p := &periods[i]
+		name := "undated"
+		if p.hasName {
+			name = p.name
 		}
-		st.human(fmt.Sprintf("tiers: critical=%d important=%d informational=%d untagged=%d",
-			out.byTier[tierCritical], out.byTier[tierImportant], out.byTier[tierInformational], out.byTier[tierUntagged]))
-		st.human(fmt.Sprintf("status: open=%d addressed=%d wont-fix=%d false-positive=%d deferred=%d",
-			out.byStatus[statusOpen], out.byStatus[statusAddressed], out.byStatus[statusWontFix],
-			out.byStatus[statusFalsePositive], out.byStatus[statusDeferred]))
-		st.human(riskHumanLine(out.byRisk))
-		st.human("provenance: " + provenanceLine(out))
+		st.human(fmt.Sprintf("%s  bundles=%d findings=%d open=%d addressed=%d closed=%d "+
+			"tiers critical=%d important=%d informational=%d untagged=%d",
+			name, p.bundles, p.findings, p.open, p.addressed, p.closed,
+			p.byTier[tierCritical], p.byTier[tierImportant], p.byTier[tierInformational], p.byTier[tierUntagged]))
 	}
 }
 

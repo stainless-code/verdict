@@ -4,6 +4,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	backtestcore "github.com/stainless-code/verdict/internal/core/backtest"
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
+	ingestcore "github.com/stainless-code/verdict/internal/core/ingest"
 	"github.com/stainless-code/verdict/internal/core/pack"
 	readycore "github.com/stainless-code/verdict/internal/core/ready"
 	"github.com/stainless-code/verdict/internal/core/threads"
@@ -403,6 +404,10 @@ type AdoptData struct {
 	Open    int    `json:"open"    min:"0"`
 }
 
+// IngestData is the ingest verb's --json data profile: the target bundle,
+// distinct tool names, and ingested/updated/withheld/open counts.
+type IngestData = ingestcore.Data
+
 // NextData is the next verb's --json data profile: the ranked finding to fix
 // next, or null when the store has nothing open.
 type NextData struct {
@@ -507,6 +512,7 @@ type TrendData struct { //nolint:govet // field order is the published property 
 	ByTier      TrendTiers       `json:"by_tier"`
 	ByCategory  map[string]int   `json:"by_category"`
 	ByRisk      TrendRiskBands   `json:"by_risk"     optional:"true"`
+	BySource    TrendSources     `json:"by_source"   optional:"true"`
 	Withheld    map[string]int   `json:"withheld"    optional:"true"`
 	Provenance  TrendProvenance  `json:"provenance"`
 	Periods     []TrendPeriod    `json:"periods"`
@@ -550,6 +556,12 @@ type TrendRiskBand struct {
 	Closed    int `json:"closed"`
 }
 
+// TrendSources is a two-source finding tally; both keys are always present.
+type TrendSources struct {
+	Model int `json:"model" min:"0"`
+	Tool  int `json:"tool"  min:"0"`
+}
+
 // TrendProvenance is the rollup's distinct tools, models, and prompt hashes;
 // a bundle that recorded none contributes a null entry.
 type TrendProvenance struct {
@@ -584,6 +596,7 @@ type TrendBundleRow struct { //nolint:govet // field order is the published prop
 	ByTier     TrendTiers       `json:"by_tier"`
 	ByCategory map[string]int   `json:"by_category"`
 	Risk       string           `enum:"low|medium|high|critical|unknown" json:"risk"     optional:"true"`
+	BySource   TrendSources     `json:"by_source"                        optional:"true"`
 	Withheld   map[string]int   `json:"withheld"                         optional:"true"`
 }
 

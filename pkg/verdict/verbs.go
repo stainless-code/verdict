@@ -14,6 +14,7 @@ import (
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	fixcore "github.com/stainless-code/verdict/internal/core/fix"
 	indexcore "github.com/stainless-code/verdict/internal/core/index"
+	ingestcore "github.com/stainless-code/verdict/internal/core/ingest"
 	initcore "github.com/stainless-code/verdict/internal/core/init"
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
 	packcore "github.com/stainless-code/verdict/internal/core/pack"
@@ -860,6 +861,46 @@ func (c *Client) Adopt(ctx context.Context, req *AdoptRequest) (*AdoptResponse, 
 		return nil, refusalErr(ref)
 	}
 	return &AdoptResponse{
+		Outcome: outcomeOf(resp.At, resp.Next, resp.Warnings, resp.Data),
+		Human:   resp.Human,
+	}, nil
+}
+
+// IngestRequest imports SARIF 2.1.0 tool results into the target bundle's
+// findings store. Set SARIF to a file path, or SARIFData for in-memory bytes.
+type IngestRequest struct {
+	Invocation
+	SARIF     string
+	SARIFData []byte
+}
+
+// IngestResponse carries the ingest summary and the human line.
+type IngestResponse struct { //nolint:govet // field order is the public API surface
+	Outcome
+	Human string
+}
+
+// Ingest maps SARIF 2.1.0 results into the bundle's findings store, sharing the
+// deduplication, hunk anchoring, and path-exclusion withholding paths.
+func (c *Client) Ingest(ctx context.Context, req *IngestRequest) (*IngestResponse, error) {
+	rr, err := c.request(ctx, req.Repo, req.PR)
+	if err != nil {
+		return nil, err
+	}
+	creq := &ingestcore.Request{
+		ReadRequest: rr,
+		SARIF:       req.SARIF,
+	}
+	if len(req.SARIFData) > 0 {
+		creq.SARIF = ""
+		creq.SARIFData = req.SARIFData
+		creq.SARIFInline = true
+	}
+	resp, ref := ingestcore.Run(ctx, creq)
+	if ref != nil {
+		return nil, refusalErr(ref)
+	}
+	return &IngestResponse{
 		Outcome: outcomeOf(resp.At, resp.Next, resp.Warnings, resp.Data),
 		Human:   resp.Human,
 	}, nil
