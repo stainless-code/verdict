@@ -61,6 +61,87 @@ func TestUpsertIsIdempotentAndSorted(t *testing.T) {
 	}
 }
 
+// TestValidateRefusesUnstorableRows pins every rule the row has to satisfy:
+// each case is one mutation of a storable row, and the message names the field.
+func TestValidateRefusesUnstorableRows(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		mutate func(*Row)
+		want   string
+	}{
+		{
+			name: "schema version", mutate: func(r *Row) { r.SchemaVersion = "2" },
+			want: `schema_version "2" is not "1"`,
+		},
+		{
+			name: "empty bundle", mutate: func(r *Row) { r.Bundle = "" },
+			want: `bundle "" is not one bundle name`,
+		},
+		{
+			name: "bundle with a separator", mutate: func(r *Row) { r.Bundle = "a/b" },
+			want: `bundle "a/b" is not one bundle name`,
+		},
+		{
+			name: "parent bundle", mutate: func(r *Row) { r.Bundle = ".." },
+			want: `bundle ".." is not one bundle name`,
+		},
+		{
+			name: "short sha", mutate: func(r *Row) { r.Sha = "abc" },
+			want: `sha "abc" is not 7-40 lowercase hex digits`,
+		},
+		{
+			name: "uppercase sha", mutate: func(r *Row) { r.Sha = "AAAAAAA" },
+			want: `sha "AAAAAAA" is not 7-40 lowercase hex digits`,
+		},
+		{
+			name: "bare date", mutate: func(r *Row) { r.DetectedAt = "2026-11-14" },
+			want: `detected_at "2026-11-14" is not RFC 3339`,
+		},
+		{
+			name: "no paths", mutate: func(r *Row) { r.Paths = nil },
+			want: `paths holds no path`,
+		},
+		{
+			name: "empty path", mutate: func(r *Row) { r.Paths = []string{""} },
+			want: `paths holds an empty or control-bearing path`,
+		},
+		{
+			name: "control path", mutate: func(r *Row) { r.Paths = []string{"src/a.ts\n"} },
+			want: `paths holds an empty or control-bearing path`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := Validate(storableRow(tc.mutate))
+			if err == nil || !strings.HasSuffix(err.Error(), tc.want) {
+				t.Fatalf("Validate = %v; want a message ending in %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// TestReadRefusesUnstorablePathRow proves the read validates what it decodes,
+// so a stored row the join cannot measure refuses as a corrupt store.
+func TestReadRefusesUnstorablePathRow(t *testing.T) {
+	for _, paths := range []string{`[]`, `["src/a\ts.ts"]`} {
+		root := t.TempDir()
+		writeStore(t, root, `{"schema_version":"1","bundle":"local-a","sha":"`+shaA+`",`+
+			`"paths":`+paths+`,"note":null,"url":null,"detected_at":"2026-11-14T00:00:00Z"}`+"\n")
+		if _, err := Read(root); !errors.Is(err, ErrCorrupt) {
+			t.Fatalf("Read(paths %s) = %v; want ErrCorrupt", paths, err)
+		}
+	}
+}
+
+// storableRow is one row every rule accepts, mutated by the caller.
+func storableRow(mutate func(*Row)) Row {
+	row := Row{
+		SchemaVersion: "1", Bundle: "local-a", Sha: shaA,
+		Paths: []string{"src/a.ts"}, DetectedAt: "2026-11-14T00:00:00Z",
+	}
+	mutate(&row)
+	return row
+}
+
 // TestReadRefusesUnknownSchemaVersion proves a row this build does not
 // understand refuses the read instead of being skipped (the corrupt-store
 // posture internal/core/learn and internal/core/trend hold).

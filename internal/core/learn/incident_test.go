@@ -136,6 +136,29 @@ func TestIncidentDryRunWritesNothing(t *testing.T) {
 	}
 }
 
+// TestIncidentNoteStaysOnOneLine proves a control-bearing note cannot break
+// the ledger's one-row-per-line contract: the note is stripped, and the stored
+// line is exactly the row an operator would have written.
+func TestIncidentNoteStaysOnOneLine(t *testing.T) {
+	root := seedIncidentRepo(t)
+	writeIncidentBundle(t, root, "local-a", "[]")
+	resp, ref := Run(t.Context(), incidentRequest(root, func(req *Request) {
+		req.Note = "reverted\nafter the hour\ttab"
+	}))
+	if ref != nil {
+		t.Fatalf("refusal %s: %s", ref.Code, ref.Message)
+	}
+	if got := incidentField(t, resp, "note"); got != "revertedafter the hourtab" {
+		t.Fatalf("note = %q; want the controls stripped", got)
+	}
+	want := `{"schema_version":"1","bundle":"local-a","sha":"` + incidentSha + `",` +
+		`"paths":["src/a.ts"],"note":"revertedafter the hourtab","url":null,` +
+		`"detected_at":"2026-11-14T00:00:00Z"}` + "\n"
+	if got := readIncidentFile(t, filepath.Join(root, ".verdict", "incidents.jsonl")); got != want {
+		t.Fatalf("ledger = %q; want %q", got, want)
+	}
+}
+
 // TestIncidentSecondAttachIsExisting proves the attach is idempotent: the
 // second run reports the existing row and leaves the ledger byte-identical.
 func TestIncidentSecondAttachIsExisting(t *testing.T) {
