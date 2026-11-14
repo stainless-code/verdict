@@ -122,9 +122,9 @@ Fix: pass `--approve=true|false`.
 
 ## `bad-at`
 
-Cause: `--at` names a revision the checkout cannot resolve to a tree or commit.
+Cause: `--at` names a revision the checkout cannot resolve to a tree or commit, or (for `learn --incident`) a timestamp that is not RFC 3339.
 
-Fix: pass a ref or tree SHA that exists in the source checkout, then re-run.
+Fix: pass a ref or tree SHA that exists in the source checkout, then re-run. An incident attach takes an RFC 3339 timestamp (`2026-11-01T09:00:00Z`).
 
 ## `bad-attribution`
 
@@ -482,9 +482,9 @@ Fix: fix the manifest named above and re-run.
 
 ## `corrupt-store`
 
-Cause: `findings.json` (or the knowledge-base store) is present but unreadable.
+Cause: `findings.json` (or the knowledge-base store, or the incident ledger `.verdict/incidents.jsonl`) is present but unreadable.
 
-Fix: re-run `post`/`record` to rebuild the store, or restore `findings.json` from backup, then re-run.
+Fix: re-run `post`/`record` to rebuild the store, or restore `findings.json` (or the incident ledger) from backup, then re-run.
 
 ## `cost-entry-contradicts-panel`
 

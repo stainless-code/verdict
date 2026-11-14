@@ -614,10 +614,17 @@ store is). Paths obey the same clean repo-relative rule as every other
 learning path (`bad-scope`); attach flags without `--incident` refuse
 `bad-flags`, as do a malformed `--sha`, a missing `--path`, an over-cap
 `--note`, and a `--url` that is not `http(s)`; an `--at` that is not RFC 3339
-refuses `bad-at`. The attach is
-idempotent per pair — the second run reports `existing` and moves no byte, so
-re-running after a rebase is safe — and `--dry-run` reports the append it
-would make, writing nothing.
+refuses `bad-at`. The attach is idempotent per pair — the second run reports
+`existing` and moves no byte, so re-running after a rebase is safe — and
+`--dry-run` reports the append it would make, writing nothing.
+
+The ledger is tracked, so an uncommitted attach is worktree dirt: `check-tree`
+fails on `?? .verdict/incidents.jsonl` until you commit it (the
+`.verdict/incidents.jsonl.lock` beside it exists only while an attach writes,
+and a killed attach leaves one that the next attach breaks once it is a minute
+old). Attaches are serialized by that lock — one `learn --incident` holds it at
+a time, and a second waits up to five seconds before refusing `store-busy`
+rather than interleaving two read-modify-writes and dropping a row.
 
 Exposure and acceptance: `learn --status` (text and `--json`) joins
 `kb-recall.json` manifests, finding `kb` cites, and `kb-joins.jsonl` across
