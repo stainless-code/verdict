@@ -84,12 +84,10 @@ fi
 # nothing else, so the paths narrow and never exclude.
 run_review fetch-local acme/app clocnarrow -- cloc-f1.txt
 assert_exit "an over-cap worktree narrows to one path under the cap" 0
-if grep -q '^diff --git a/cloc-f1.txt' "$EVAL_SANDBOX/.verdict/state/local-clocnarrow/full.diff" \
-  && ! grep -qE '^diff --git a/cloc-f[2-6]\.txt' "$EVAL_SANDBOX/.verdict/state/local-clocnarrow/full.diff"; then
-  good "the narrowed bundle holds only the named path (a pathspec selects, it never excludes)"
-else
-  bad "narrowing to cloc-f1.txt reviewed something else too"
-fi
+NARROWED="$EVAL_SANDBOX/.verdict/state/local-clocnarrow/full.diff"
+assert_file_grep "the narrowed bundle holds the named path" "$NARROWED" '^diff --git a/cloc-f1\.txt' "-E"
+assert_file_nogrep "the narrowed bundle omits every other file (a pathspec selects, it never excludes)" \
+  "$NARROWED" '^diff --git a/cloc-f[2-6]\.txt' "-E"
 # shellcheck disable=SC2086 # CLOC_FILES is a validated space-separated path list
 run_review fetch-local acme/app clocfix --chunk -- $CLOC_FILES
 if [ "$EVAL_STATUS" -eq 0 ] \
