@@ -1,6 +1,6 @@
 ---
 title: Why Verdict, and how it compares
-description: "The pains behind Verdict and how it differs from CodeRabbit, Copilot code review, Bugbot, Greptile, Graphite, Macroscope and Pullfrog."
+description: "The pains behind Verdict and how it differs from CodeRabbit, Copilot code review, Bugbot, Greptile, Graphite, Macroscope, Pullfrog and PR-Agent."
 sidebar:
   label: Compare
 mode: center
@@ -22,6 +22,7 @@ search:
       "macroscope",
       "pullfrog",
       "qodo",
+      "pr-agent",
       "proval",
     ]
 ---
@@ -86,6 +87,16 @@ model including a local one, for GitLab, Forgejo and GitHub, but it answers "loc
 with a Docker Compose service, a dashboard and an encryption key, where Verdict answers
 with one binary and no service.
 
+## Two rows the self-hosted reviewers do not have
+
+The paragraph above leaves two differences without a row, because neither shows up in a hosted tool's price list: the pack format and the launcher. Verdict's side of each row comes from [`docs/manual.md`](https://github.com/stainless-code/verdict/blob/main/docs/manual.md#lens-packs); PR-Agent's comes from its own tree at commit `ba4a8b8`, read 2026-11-14; a cell we could not check says so.
+
+| Difference             | Verdict                                                                                                                                                                                                                                                                                                                                                                                                                                                          | PR-Agent (MIT)                                                                                                                                                                                                                                           | proval (AGPL-3.0)                                                                                |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Price                  | MIT, no metering: the only cost is your model's tokens, and a local model charges none.                                                                                                                                                                                                                                                                                                                                                                          | Free to self-host, MIT; the model's tokens are the cost (license read 2026-11-14).                                                                                                                                                                       | Free to self-host, AGPL-3.0; model tokens plus the Compose service you run (checked 2026-11-04). |
+| The pack format        | A pack is `pack.json` naming each lens plus `lenses/<id>.md` carrying its body: strict JSON, `schema_version` `"1"`, unknown fields refuse, published as `schemas/pack.schema.json`. `fetch` writes the loaded bodies to `lenses.txt` with each lens's body hash; `pack add` vendors a pack and pins its tree hash in `.verdict/verdict.lock`, and `pack list` reports `pack-lock-drift` when the two disagree.                                                  | Prompts are TOML templates inside the package (`pr_agent/settings/pr_reviewer_prompts.toml`); a repo tunes them with `extra_instructions` and the other keys in `.pr_agent.toml`. No lens or pack layer in the tree (commit `ba4a8b8`, read 2026-11-14). | unverified (2026-11-14)                                                                          |
+| Launches any agent CLI | [`run`](https://github.com/stainless-code/verdict/blob/main/docs/manual.md#your-agent-launched-run---agent) starts `claude`, `codex`, `cursor`, or `opencode` — the four rows of the agent table today — against a bundle, one process per round, then requires one fresh `review.json`. `--` passes your model and turn flags through unchanged, `--print` renders the argv, and `launcher.json` records what ran. A new agent is a table row, not a code path. | Calls models itself through LiteLLM; no agent CLI is launched (commit `ba4a8b8`, read 2026-11-14).                                                                                                                                                       | unverified (2026-11-14)                                                                          |
+
 ## Complements, not competitors
 
 clawpatch (machine-checked fix-to-revalidate loops for whole-repo campaigns) and pstack
@@ -107,7 +118,7 @@ not its harness wrapping, credited in
 - Graphite: [pricing](https://graphite.com/pricing), [AI reviews](https://graphite.com/docs/ai-reviews), [rules](https://graphite.com/docs/ai-review-customization).
 - Macroscope: [pricing](https://docs.macroscope.com/pricing), [check runs](https://docs.macroscope.com/check-run-agents/configuration), [CLI](https://docs.macroscope.com/cli), [benchmark](https://macroscope.com/blog/macroscopebench).
 - Pullfrog: [billing](https://docs.pullfrog.com/billing), [review behavior](https://docs.pullfrog.com/pr-reviews).
-- Qodo: [pricing](https://www.qodo.ai/pricing/), [PR-Agent](https://github.com/The-PR-Agent/pr-agent).
+- Qodo: [pricing](https://www.qodo.ai/pricing/), [PR-Agent](https://github.com/The-PR-Agent/pr-agent) at `ba4a8b8`, read 2026-11-14.
 - Sourcery: [pricing](https://www.sourcery.ai/pricing), [engine](https://github.com/sourcery-ai/sourcery).
 - Ellipsis: [pricing](https://www.ellipsis.dev/pricing).
 - proval: [repository](https://github.com/seoes/proval).
