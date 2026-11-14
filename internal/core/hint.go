@@ -71,7 +71,8 @@ var hintRules = []HintRule{
 	},
 	{
 		codes: []string{"corrupt-store"},
-		hint:  "try: re-run post/record to rebuild the store, or restore findings.json from backup, then re-run",
+		hint: "try: restore the file or directory the message names from backup (permissions included), " +
+			"or re-run post/record to rebuild the store, then re-run",
 	},
 	{
 		codes: []string{"bad-root"},

@@ -78,7 +78,7 @@ controls-stale	try: re-fetch the bundle (controls changed under it), then re-run
 controls-too-large	try: trim the named control file under its cap, commit it at base, then re-fetch
 controls-unavailable	try: check out the PR base (actions/checkout fetch-depth: 0, or git fetch --depth=1 origin <base>), then re-fetch; fetch --allow-head-controls is the explicit opt-out
 corpus-invalid	try: address the cause above, then re-run the same command
-corrupt-store	try: re-run post/record to rebuild the store, or restore findings.json from backup, then re-run
+corrupt-store	try: restore the file or directory the message names from backup (permissions included), or re-run post/record to rebuild the store, then re-run
 cost-entry-contradicts-panel	try: pass the panel in the order it ran (synthesizer first), or fix the entry's name, then re-run
 cost-entry-unnamed	try: pass every model that ran: --cost-names=<lead>,<lens-1>,<lens-2>
 cost-models-not-array	try: rewrite models as an array of named entries, then re-run
