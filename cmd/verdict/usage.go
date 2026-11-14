@@ -49,7 +49,7 @@ func usageText() string {
 		"    kb.txt/sensitive.txt/panel when present (one fence per file, in that order) —\n" +
 		"    to stdout (human; progress moves to stderr) or data.prompt_dump (--json).\n" +
 		"    No agent runs, no network beyond the fetch, no store writes beyond the bundle.\n" +
-		"  run <owner/repo> <pr|local-name> --agent <claude|codex|cursor|opencode>\n" +
+		"  run <owner/repo> <pr|local-name> --agent <claude|codex|cursor|opencode> [--recipe <slug>]\n" +
 		"      [--timeout <secs, default 300>] [--rounds <n, default 1>] [--print] [-- <agent args>...] [--json]\n" +
 		"    launch YOUR agent against an existing bundle: one process per round, one shot by default.\n" +
 		"    It requires exactly one fresh review.json (absent refuses no-review-artifact, older\n" +
@@ -66,6 +66,9 @@ func usageText() string {
 		"    exits 0 without spawning; everything after '--' goes to the agent unchanged.\n" +
 		"    --print refuses options outside the safe model/cost display allowlist.\n" +
 		"    run passes a short tool-generated directive, never bundle bytes.\n" +
+		"    --recipe names a pipeline declared in .verdict/recipes.json at the PR base (default:\n" +
+		"    the built-in 'default'), records it in data.recipe and launcher.json, and declares\n" +
+		"    lens, model, and budget hints the agent may follow; verdict dispatches no stage.\n" +
 		"  config <owner/repo> <pr> (--explain | --preview [--file <path>]) [--json]\n" +
 		"    read-only policy surface: --explain renders the stored effective policy of a fetched run\n" +
 		"    (values with origins, requirements, pending plan, spend, privacy, observed checks);\n" +

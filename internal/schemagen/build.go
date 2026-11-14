@@ -19,6 +19,7 @@ const (
 	keyProperties           = "properties"
 	keyRequired             = "required"
 	keyAdditionalProperties = "additionalProperties"
+	keyPropertyNames        = "propertyNames"
 	keyItems                = "items"
 	keyAnyOf                = "anyOf"
 	keyNot                  = "not"
@@ -34,6 +35,7 @@ const (
 	keyMaximum              = "maximum"
 	keyItemsMinimum         = "items_min"
 	keyMinItems             = "minItems"
+	keyMaxItems             = "maxItems"
 	keyMinLength            = "minLength"
 	keyMaxLength            = "maxLength"
 	keyItemsEnum            = "items_enum"
@@ -276,6 +278,22 @@ func documents() []document {
 			defs: []definition{
 				{typ: reflect.TypeFor[PackLens](), name: "lens", closed: true},
 				{typ: reflect.TypeFor[PackRule](), name: "rule", closed: true},
+			},
+			additionalProperties: false,
+		},
+		{
+			name:  "recipes",
+			title: "recipes.json — declared review pipelines",
+			root:  reflect.TypeFor[RecipesDocument](),
+			defs: []definition{
+				{typ: reflect.TypeFor[RecipeEntry](), name: "recipe", closed: true},
+				{typ: reflect.TypeFor[RecipeLens](), name: "lens", closed: true},
+				{typ: reflect.TypeFor[RecipeSynthesize](), name: "synthesize", closed: true},
+				// The resolved pipeline the declarations compile into: the
+				// published data.recipe object and launcher.json's recipe key.
+				{typ: reflect.TypeFor[core.RecipePlan](), name: "plan", closed: true},
+				{typ: reflect.TypeFor[core.RecipeStage](), name: "stage", closed: true},
+				{typ: reflect.TypeFor[core.RecipeLens](), name: "lensUse", closed: true},
 			},
 			additionalProperties: false,
 		},
@@ -881,14 +899,17 @@ func (b *builder) sliceNode(typ reflect.Type, tag reflect.StructTag) (*node, err
 	return out, nil
 }
 
-// appendArrayBound adds the minItems bound when the tag names one.
+// appendArrayBound adds the minItems and maxItems bounds when the tags name
+// them: the published array contract a parser enforces on the same field.
 func appendArrayBound(out *node, tag reflect.StructTag) error {
-	bound, ok, err := arrayBound(tag)
-	if err != nil {
-		return err
-	}
-	if ok {
-		out.members = append(out.members, member{keyMinItems, numberNode(bound)})
+	for _, keyword := range []string{keyMinItems, keyMaxItems} {
+		value, ok, err := nonNegative(keyword, tag.Get(keyword))
+		if err != nil {
+			return err
+		}
+		if ok {
+			out.members = append(out.members, member{keyword, numberNode(value)})
+		}
 	}
 	return nil
 }
@@ -900,6 +921,7 @@ func untypedItems(tag reflect.StructTag, typ reflect.Type) error {
 		{keyItemsMinimum, "items_min needs item keywords"},
 		{keyItemsEnum, "items_enum needs a typed element"},
 		{keyMinItems, "minItems needs a typed element"},
+		{keyMaxItems, "maxItems needs a typed element"},
 	} {
 		if tag.Get(rule.keyword) != "" {
 			return errorf("%s: %s", typ, rule.reason)
@@ -932,37 +954,62 @@ func (b *builder) itemsNode(typ reflect.Type, elem reflect.Type, tag reflect.Str
 	return items, nil
 }
 
-// arrayBound reads an optional non-negative minItems array bound.
-func arrayBound(tag reflect.StructTag) (string, bool, error) {
-	bound := tag.Get(keyMinItems)
-	if bound == "" {
+// nonNegative reads an optional non-negative integer keyword value.
+func nonNegative(keyword, value string) (string, bool, error) {
+	if value == "" {
 		return "", false, nil
 	}
-	for i := range len(bound) {
-		if bound[i] < '0' || bound[i] > '9' {
-			return "", false, errorf("minItems %q is not a non-negative integer", bound)
+	for i := range len(value) {
+		if value[i] < '0' || value[i] > '9' {
+			return "", false, errorf("%s %q is not a non-negative integer", keyword, value)
 		}
 	}
-	return bound, true, nil
+	return value, true, nil
 }
 
 func (b *builder) mapNode(typ reflect.Type, tag reflect.StructTag) (*node, error) {
 	if typ.Key().Kind() != reflect.String {
 		return nil, errorf("map key must be a string, got %s", typ.Key())
 	}
+	value, err := b.mapValue(typ, tag)
+	if err != nil {
+		return nil, err
+	}
+	members := []member{{keyType, stringNode(typeObject)}, {keyAdditionalProperties, value}}
+	names, named, err := mapKeyNames(tag)
+	if err != nil {
+		return nil, err
+	}
+	if named {
+		members = append(members, member{keyPropertyNames, names})
+	}
+	return object(false, members...), nil
+}
+
+// mapValue builds the schema every map value validates against: a typed
+// reference, a pinned string, or the legacy open object.
+func (b *builder) mapValue(typ reflect.Type, tag reflect.StructTag) (*node, error) {
 	if ref, ok, err := b.valueRef(typ.Elem(), tag); err != nil || ok {
 		if err != nil {
 			return nil, err
 		}
-		return object(false,
-			member{keyType, stringNode(typeObject)},
-			member{keyAdditionalProperties, ref},
-		), nil
+		return ref, nil
 	}
-	return object(false,
-		member{keyType, stringNode(typeObject)},
-		member{keyAdditionalProperties, boolNode(true)},
-	), nil
+	return boolNode(true), nil
+}
+
+// mapKeyNames publishes the key type when the field names one, so a schema can
+// constrain a map's names (propertyNames); the pattern overlay supplies the
+// grammar.
+func mapKeyNames(tag reflect.StructTag) (*node, bool, error) {
+	spec := tag.Get(keyPropertyNames)
+	if spec == "" {
+		return nil, false, nil
+	}
+	if spec != typeString {
+		return nil, false, errorf("propertyNames %q wants %q", spec, typeString)
+	}
+	return object(false, member{keyType, stringNode(typeString)}), true, nil
 }
 
 // valueRef resolves a typed map value: a named struct with a $defs

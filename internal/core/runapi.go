@@ -19,6 +19,10 @@ import (
 // does not resolve is a typed refusal (agent-missing) rather than a spawn
 // error. Nil falls back to the host's exec.LookPath.
 //
+// Recipe is the --recipe slug: a name looked up in the base recipe control,
+// then in the built-in set. An empty name asks for the recipe named default, so
+// even the implicit pipeline is a file and every run records what it declared.
+//
 // Checkout is the working directory the agent process starts in, for callers
 // whose review target is a historical tree (backtest replay) rather than the
 // live one: an empty value keeps RepoRoot. It moves the child's cwd only —
@@ -31,6 +35,7 @@ type RunRequest struct { //nolint:govet // field grouping documents the request 
 	PassThrough []string
 	Environ     []string
 	Agent       string
+	Recipe      string
 	Checkout    string
 	TimeoutRaw  string
 	RoundsRaw   string
@@ -65,23 +70,26 @@ type RunResponse struct { //nolint:govet // field grouping documents the respons
 // command the operator asked for; a real run records the same argv with the
 // directive replaced by a placeholder and secret operands redacted. Repair is
 // set only when --rounds asked for more than one round; a one-shot run leaves
-// it out so its envelope stays byte-identical to the single-round shape.
+// it out so its envelope stays byte-identical to the single-round shape. Recipe
+// is the resolved pipeline in the published `recipes.schema.json#/$defs/plan`
+// shape, which is also launcher.json's `recipe` key.
 type RunData struct { //nolint:govet // field order is the published property order
-	Agent      string     `json:"agent"`
-	Binary     string     `json:"binary"`
-	Argv       []string   `json:"argv"`
-	Bundle     string     `json:"bundle"`
-	Artifact   string     `json:"artifact"`
-	StartedAt  string     `json:"started_at,omitempty"`
-	EndedAt    string     `json:"ended_at,omitempty"`
-	DurationMS int        `json:"duration_ms,omitempty"`
-	Exit       int        `json:"exit"`
-	TimedOut   bool       `json:"timed_out"`
-	Timeout    int        `json:"timeout"`
-	Fresh      bool       `json:"artifact_fresh"`
-	Printed    bool       `json:"printed,omitempty"`
-	Record     string     `json:"record,omitempty"`
-	Repair     *RunRepair `json:"repair,omitempty"`
+	Agent      string      `json:"agent"`
+	Binary     string      `json:"binary"`
+	Argv       []string    `json:"argv"`
+	Bundle     string      `json:"bundle"`
+	Artifact   string      `json:"artifact"`
+	Recipe     *RecipePlan `json:"recipe,omitempty"`
+	StartedAt  string      `json:"started_at,omitempty"`
+	EndedAt    string      `json:"ended_at,omitempty"`
+	DurationMS int         `json:"duration_ms,omitempty"`
+	Exit       int         `json:"exit"`
+	TimedOut   bool        `json:"timed_out"`
+	Timeout    int         `json:"timeout"`
+	Fresh      bool        `json:"artifact_fresh"`
+	Printed    bool        `json:"printed,omitempty"`
+	Record     string      `json:"record,omitempty"`
+	Repair     *RunRepair  `json:"repair,omitempty"`
 }
 
 // RunRepair is the repair-loop profile: the round cap, how many rounds it

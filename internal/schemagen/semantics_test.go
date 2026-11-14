@@ -319,6 +319,29 @@ var publishedSemantics = map[string]string{
 	// loader's own grammar; no property, required key, enum, or type changed.
 	"lock.schema.json": "c88951e4ac18781f93881f6654493ad8a7345ea990fca44bbd1149c7eefc4714",
 	"pack.schema.json": "be5fbfe989cf2dbae0b4a3ba67be5e8512e3784db734896b7f142d7df579ae73",
+	// additive recipes.schema.json (new control document: the declared review
+	// pipelines a run resolves by name at the PR base). No existing schema
+	// property, required key, enum, or type changed.
+	// key agreement: the recipes map now publishes propertyNames with the
+	// loader's own name grammar (a lowercase slug of 1 to 64 characters), so a
+	// third-party validator refuses the keys the parser refuses. The lens
+	// model-hint description now names the characters its pattern admits
+	// (._:/@+~-) instead of a pipe the pattern never carried. Additive keyword
+	// and prose only; no existing property, required key, enum, or type
+	// changed.
+	// bounds: version maxLength 64, lenses maxItems 64, and the lens id pattern
+	// bounded at 64 characters, the same three caps the parser now refuses
+	// past, so one declared recipe can no longer grow the directive and argv
+	// without limit. Constraints on existing properties; no property, required
+	// key, enum, or type changed.
+	// published plan: additive $defs/plan, $defs/stage, and $defs/lensUse — the
+	// shape of data.recipe and launcher.json's recipe key, which had none. No
+	// existing property, required key, enum, or type changed.
+	// stage count: $defs/plan.stages now publishes minItems 4 and maxItems 4 —
+	// the four stages a run always compiles, in pipeline order, the count the
+	// directive and data.recipe always carry. A constraint on an additive
+	// property only: no existing property, required key, enum, or type changed.
+	"recipes.schema.json": "8d6085e969eb16d063d379a03904abbc9a1d63e1dc053aee7e285df224ed04a3",
 	// patch identity: additive optional patch_id/patch_id_kind plus the
 	// optional forced[] audit with $defs/forcedPost. No existing property,
 	// required key, or type changed.

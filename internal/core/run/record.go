@@ -7,6 +7,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/core/recipe"
 	"github.com/stainless-code/verdict/internal/envsecret"
 	"github.com/stainless-code/verdict/internal/jq"
 )
@@ -71,6 +72,7 @@ type launcher struct { //nolint:govet // field order is the published property o
 	Argv          []string          `json:"argv"`
 	Bundle        string            `json:"bundle"`
 	Artifact      string            `json:"artifact"`
+	Recipe        *recipe.Plan      `json:"recipe,omitempty"`
 	StartedAt     string            `json:"started_at"`
 	Timeout       int               `json:"timeout"`
 	DurationMS    *int              `json:"duration_ms,omitempty"`

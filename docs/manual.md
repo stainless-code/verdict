@@ -698,6 +698,7 @@ snapshot the bytes into the bundle:
 | Control                                    | Consumed by                           |
 | ------------------------------------------ | ------------------------------------- |
 | `.verdict/config.json` (typed defaults)    | `fetch` panel, budget, cap, chunking  |
+| `.verdict/recipes.json` (pipelines)        | `run --recipe` resolution             |
 | `.verdict/kb.jsonl`                        | `fetch` recall; `record`/`post` cites |
 | `.verdict/learnings.md`                    | the review agent (headings)           |
 | `.verdict/verify-env` (env allowlist)      | `verify` child environment opt-ins    |
@@ -1906,6 +1907,103 @@ it. The argv it builds is
 | `--rounds <n>`     | Total launch→check rounds, default `1` (today's one-shot), range 1–5. `-- <args>` passes through every round.                                       |
 | `-- <args>`        | Everything after the bare `--` goes to the agent unchanged: its own model, cost, and turn flags are yours.                                          |
 | `--print`          | Renders the exact command (POSIX-quoted) and exits `0` without spawning or writing. The escape hatch for harnesses that build their own invocation. |
+
+### Recipes (declared review pipelines)
+
+A review pipeline — lenses, synthesizer, dedupe, rank — is a file you can
+diff and share, not logic implied by the prompt. `run --recipe <slug>` resolves
+one and records it; without the flag `run` resolves the recipe named `default`,
+so the pipeline is always a file.
+
+```bash
+verdict run acme/app 123 --agent claude --recipe deep --print
+```
+
+`.verdict/recipes.json` is a strict, versioned control document:
+
+```json
+{
+  "schema_version": "1",
+  "recipes": {
+    "deep": {
+      "version": "1.0.0",
+      "description": "Security pass over the risky paths.",
+      "budget_usd": 4.5,
+      "lenses": [
+        {
+          "id": "security",
+          "model": "opus",
+          "max_files": 10,
+          "max_findings": 8
+        },
+        { "id": "logic" }
+      ],
+      "synthesize": { "model": "sonnet" }
+    }
+  }
+}
+```
+
+| Field            | Meaning                                                                                                                                                                                                                                                                      |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schema_version` | `"1"`; any other value refuses `bad-recipe`.                                                                                                                                                                                                                                 |
+| recipe key       | The `--recipe` slug: `^[a-z0-9][a-z0-9-]{0,63}$`. A name is a map key, never a path.                                                                                                                                                                                         |
+| `version`        | Required semver of 1–64 characters, recorded and rendered.                                                                                                                                                                                                                   |
+| `description`    | Optional, up to 280 characters, for humans. It is hashed and recorded, never rendered into the agent's prompt.                                                                                                                                                               |
+| `lenses[]`       | At most 64 rows — the pack lens cap — in declaration order, each `id` a lowercase slug of 1–64 characters with an optional `model` hint, `max_files` (1–24) and `max_findings` (1–20). Omit `lenses` to inherit the bundle's loaded lenses from `lenses.txt`, in file order. |
+| `budget_usd`     | Optional declared spend for the pipeline, above zero. Recorded and rendered; above the bundle's personal limit it warns. `run` enforces nothing.                                                                                                                             |
+| `synthesize`     | Required object with an optional `model` hint; `{}` declares no hint.                                                                                                                                                                                                        |
+
+Resolution reads **the control snapshot's bytes**: `.verdict/recipes.json`
+rides the fixed controls inventory
+([Review controls are base-owned](#review-controls-are-base-owned)), and `run`
+re-hashes that one row, so a head edit to the document never steers the
+pipeline judging it while an unrelated control edited after the fetch never
+blocks a launch. The snapshot holds the **base** commit's bytes, with one
+documented exception: a bundle fetched with `fetch --allow-head-controls` holds
+the head worktree's copy instead (the flag's meaning for every control, above),
+so there the recipe resolves the PR's own edit, including names the base never
+carried. A CI reviewer reading this paragraph as a security claim is reading
+the default, not the opt-out. A repository entry wins by name; otherwise the built-in
+`default` (`{"version": "1.0.0", "synthesize": {}}`) answers. A bundle with no
+recipe row resolves the built-in and refuses nothing: an absent control is
+absent, not an error. A present row whose bytes disagree refuses
+`controls-stale`, and a name no document answers refuses `unknown-recipe` with
+the available names listed; both refuse before any process starts. A malformed
+document or entry refuses `bad-recipe` with one diagnostic naming the JSON path
+and the offending key. The shared decoder also bounds nesting at 64 levels and
+names the byte offset instead of a path past it, so a pathologically nested
+control costs one diagnostic rather than a walk.
+
+The resolved plan is recorded everywhere a launch is audited: `data.recipe`
+in the `--json` envelope, the same object under `recipe` in
+`launcher.json`, and one line on stderr before `» run:` —
+`» recipe: deep@1.0.0 (repo)`. That object's shape is published, not implied:
+`schemas/recipes.schema.json#/$defs/plan` is exactly the plan `run` records, so
+a consumer can validate what it reads. It is always the four stages in pipeline order
+(`lenses`, `synthesize`, `dedupe`, `rank`), with `lens_source` `declared` or
+`bundle`, and `model`/`max_files`/`max_findings`/`budget_usd` omitted when the
+recipe declared none. `sha256` is over the selected entry's canonical JSON, so
+any field change moves it and the same document always hashes the same.
+
+A recipe **declares; it never dispatches**. `run` launches one process and
+never chooses a model: the recipe reaches the agent as one directive paragraph
+naming every resolved lens in order with its hint and caps, the synthesizer
+hint, and the declared budget, closing with the fact that these are
+declarations, not selections. Only validated ids, enums, bounded integers, and
+pattern-checked hints enter that paragraph — a model hint carries no
+whitespace, quotes, or control characters — and `description` never enters it.
+`--print` renders the same argv a launch would spawn, byte-identically.
+
+Three conditions warn and the run proceeds, because `run` is not their
+authority: a declared lens the bundle did not load (lens offers are per plan
+group, and `fetch` is the authority on them); a `budget_usd` above the bundle's
+`resolved.spend.personal_limit` (a pre-run projection, never a refusal); and a
+`run.json` the projection could not read (the file is named, and `record`/
+`post` are the verbs that refuse a broken run bundle). A recipe that declares
+no lenses is silent whatever the bundle loaded: a lens-less bundle is the
+ordinary default run, not news. The format is published as
+`schemas/recipes.schema.json`.
 
 ### Refusals, exit codes, and provenance
 
@@ -3898,7 +3996,9 @@ The shapes agents write and operators parse are pinned in `schemas/`
 (draft 2020-12, shipped in the npm tarball): `review.schema.json`
 (agent-written input), `findings.schema.json` (the merged findings store),
 `cost.schema.json` (the self-reported spend record), `controls.schema.json`
-(the resolved base-owned controls snapshot), `usage.schema.json` (the
+(the resolved base-owned controls snapshot), `recipes.schema.json` (the
+declared review pipelines `run --recipe` resolves, plus the resolved
+`$defs/plan` shape a run records as `data.recipe`), `usage.schema.json` (the
 explicit usage handoff), `corpus.schema.json` (benchmark case manifests),
 `backtest.schema.json` (the backtest score report), `post.schema.json` and
 `record.schema.json` (completed post/record captures),
@@ -3910,9 +4010,10 @@ estimate). `schemas/validate.sh` is the
 offline checker: a shim over `verdict __validate-schema`, whose implementation
 lives in `internal/schemacheck` — the one keyword subset the published schemas
 use (`$ref` within a file or across sibling files, `type`, `const`, `enum`,
-`properties`, `required`, `items`, `additionalProperties` as a bool or a
-schema, `minimum`/`maximum`, `minLength`/`maxLength`, `pattern`, `anyOf`,
-`format: date-time`), with anything outside it failing loudly and an
+`properties`, `propertyNames`, `required`, `items`, `minItems`/`maxItems`,
+`additionalProperties` as a bool or a schema,
+`minimum`/`maximum`/`exclusiveMinimum`, `minLength`/`maxLength`, `pattern`,
+`not`, `anyOf`, `format: date-time`), with anything outside it failing loudly and an
 unresolvable `$ref` never validating. The Go conformance tests and the evals
 therefore run the same code, so a fixture cannot pass one side and fail the
 other; `evals/cases/schema-contract.sh` asserts representative fixtures

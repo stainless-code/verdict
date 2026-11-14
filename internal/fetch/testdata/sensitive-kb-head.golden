@@ -214,6 +214,12 @@ notes.txt
       "status": "missing",
       "bytes": 0,
       "sha256": ""
+    },
+    {
+      "path": ".verdict/recipes.json",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
     }
   ]
 }
@@ -335,7 +341,7 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
 --- file C/.verdict/state/4715/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "4fe37421af73b5dc49a0217a7add66b44eabfc30d53e0f0acf4f176da3d04020",
+  "run_id": "2a0146af65d7aab4b5acd1769575b053b7750172207a2ff8a02ccccd22c8266f",
   "prompts_hash": "49f5c99439cc65f9faab329e78a460aba14420500afb5100ad75d321fcfd3912",
   "inputs": [
     {
@@ -389,8 +395,8 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
       "kind": "bundle",
       "name": "controls.json",
       "status": "included",
-      "sha256": "cef19ddcd54ee01b1e3c06acf2a65c421f7f681011260c1723fec5177e6dae3c",
-      "bytes": 1448
+      "sha256": "a7b296e3fd18dc12c1e58294581305afe8b9779309bb8575680157cea61859b3",
+      "bytes": 1564
     },
     {
       "kind": "bundle",
@@ -547,6 +553,12 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
     {
       "kind": "control",
       "name": ".verdict/kb.jsonl",
+      "status": "missing",
+      "source": "head"
+    },
+    {
+      "kind": "control",
+      "name": ".verdict/recipes.json",
       "status": "missing",
       "source": "head"
     },
