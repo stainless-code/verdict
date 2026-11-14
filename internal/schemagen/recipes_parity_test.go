@@ -164,6 +164,17 @@ func TestResolvedPlanMatchesThePublishedShape(t *testing.T) {
 		`{"name":"quick","version":"1.2.3","source":"file","sha256":"x","stages":[{"kind":"dedupe"}]}`)
 	assertRefused(t, root, published, "a plan with no stages",
 		`{"name":"quick","version":"1.2.3","source":"repo"}`)
+	// The count is part of the published shape: run always compiles exactly the
+	// four stages, so a three- or five-stage plan is not this document.
+	assertRefused(t, root, published, "a plan with three stages",
+		`{"name":"quick","version":"1.2.3","source":"repo","sha256":"x",`+
+			`"stages":[{"kind":"lenses"},{"kind":"synthesize"},{"kind":"dedupe"}]}`)
+	assertRefused(t, root, published, "a plan with five stages",
+		`{"name":"quick","version":"1.2.3","source":"repo","sha256":"x",`+
+			`"stages":[{"kind":"lenses"},{"kind":"synthesize"},{"kind":"dedupe"},`+
+			`{"kind":"rank"},{"kind":"rank"}]}`)
+	assertAccepted(t, root, published, `{"name":"quick","version":"1.2.3","source":"repo","sha256":"x",`+
+		`"stages":[{"kind":"lenses"},{"kind":"synthesize"},{"kind":"dedupe"},{"kind":"rank"}]}`)
 }
 
 // publishedSchema returns the generated recipes schema as a decoded document.
@@ -188,6 +199,15 @@ func publishedPlanDef(t *testing.T, root map[string]any) map[string]any {
 		t.Fatal("$defs misses plan: the resolved pipeline has no published shape")
 	}
 	return published
+}
+
+// assertAccepted requires one candidate document to satisfy the published
+// shape, the control beside the refusal rows.
+func assertAccepted(t *testing.T, root, published map[string]any, give string) {
+	t.Helper()
+	if got := violationsOf(t, root, published, give); len(got) != 0 {
+		t.Errorf("the schema refuses %s: %v", give, got)
+	}
 }
 
 // assertRefused requires one candidate document to fail the published shape.

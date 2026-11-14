@@ -126,9 +126,11 @@
           "exclusiveMinimum": 0
         },
         "stages": {
-          "description": "The four stages in pipeline order: lenses, synthesize, dedupe, and rank.",
+          "description": "The pipeline stages, exactly four and in this order: lenses, synthesize, dedupe, and rank. The count is published as minItems/maxItems 4.",
           "type": "array",
-          "items": { "$ref": "#/$defs/stage" }
+          "items": { "$ref": "#/$defs/stage" },
+          "minItems": 4,
+          "maxItems": 4
         }
       },
       "required": ["name", "version", "source", "sha256", "stages"],

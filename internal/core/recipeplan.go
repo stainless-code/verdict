@@ -14,7 +14,7 @@ type RecipePlan struct { //nolint:govet // field order is the published data.rec
 	Source    string        `enum:"builtin|repo" json:"source"`
 	SHA256    string        `json:"sha256"`
 	BudgetUSD float64       `exclusiveMin:"0"    json:"budget_usd,omitempty"`
-	Stages    []RecipeStage `json:"stages"`
+	Stages    []RecipeStage `json:"stages"       maxItems:"4"                minItems:"4"`
 	Warnings  []string      `json:"-"`
 }
 

@@ -333,7 +333,11 @@ var publishedSemantics = map[string]string{
 	// published plan: additive $defs/plan, $defs/stage, and $defs/lensUse — the
 	// shape of data.recipe and launcher.json's recipe key, which had none. No
 	// existing property, required key, enum, or type changed.
-	"recipes.schema.json": "6dcf41ea9a4ab4596ce103852c754b6f9281e13180445948a6a7a68c7d60c0a1",
+	// stage count: $defs/plan.stages now publishes minItems 4 and maxItems 4 —
+	// the four stages a run always compiles, in pipeline order, the count the
+	// directive and data.recipe always carry. A constraint on an additive
+	// property only: no existing property, required key, enum, or type changed.
+	"recipes.schema.json": "8d6085e969eb16d063d379a03904abbc9a1d63e1dc053aee7e285df224ed04a3",
 	// patch identity: additive optional patch_id/patch_id_kind plus the
 	// optional forced[] audit with $defs/forcedPost. No existing property,
 	// required key, or type changed.
