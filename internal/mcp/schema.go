@@ -317,7 +317,7 @@ var fieldDocs = map[string]string{
 	"AllowSecretValues": "Publish review text that carries a secret-shaped value; " +
 		"the post-secret-shaped refusal names this override.",
 	"doctor.Provider": "Code host to preflight (github, gitlab, gitcafe, forgejo, bitbucket, azure); default github.",
-	"learn.Status":    "List rules with counters and precision (boolean list switch; learn sets no status).",
+	"learn.Status":    "List rules with counters, precision, exposure and acceptance (boolean list switch; learn sets no status).",
 	"next.Status":     "Status filter for the top finding (all, open, addressed, wont-fix, false-positive, deferred); empty means open.",
 	"triage.Status":   "Status to flip the finding to (open, addressed, wont-fix, false-positive, deferred).",
 	"index.Query":     "Subcommand: callers, status, tests-for, co-changed, owners, or blast-radius; build and prune are CLI-only.",
