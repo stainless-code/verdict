@@ -488,7 +488,7 @@ Fix: fix the manifest named above and re-run.
 
 ## `corrupt-store`
 
-Cause: `findings.json` (or the knowledge-base store, or the incident ledger `.verdict/incidents.jsonl`) is present but unreadable.
+Cause: `findings.json` (or the knowledge-base store, or the incident ledger `.verdict/incidents.jsonl`) is present but unreadable, or a bundle home (`.verdict/state`) is not a directory so a listing cannot read it.
 
 Fix: re-run `post`/`record` to rebuild the store, or restore `findings.json` (or the incident ledger) from backup, then re-run.
 

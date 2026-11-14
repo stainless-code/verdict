@@ -1819,7 +1819,9 @@ the counts of skipped symlinks and unsupported ignore patterns.
 path-safe slug and `{sig}` a 4–40 hex prefix. A product refusal is always HTTP
 `200` with the envelope (`error.code` set, `data: null`); a corrupt bundle in a
 listing keeps its row with `null` counts and an `errors[]` entry, and any total
-over it is `null` and `partial: true` — never `0`. Transport errors are a
+over it is `null` and `partial: true` — never `0`. A root whose `.verdict/state`
+is not a directory, or will not list, adds one `corrupt-store` row naming it
+rather than reading as a root with no bundles. Transport errors are a
 separate vocabulary: `400` (`token-in-query`, `bad-glob`), `401`, `403`
 (Host/Origin), `404`, and `405` with `Allow: GET, HEAD`. Every response carries
 the strict CSP (`default-src 'self'`, no inline script or style), no referrer,
@@ -2784,7 +2786,9 @@ behavior instead.
 `adopt owner/repo N --from auto` matches the target bundle's verified identity
 against `.verdict/state/local-*` twins in the requested repository: exactly one twin
 adopts (printed as `from: auto -> local-<name>`), zero refuse `no-patch-match`,
-and many refuse `ambiguous-patch-match` naming the candidates (max five shown).
+and many refuse `ambiguous-patch-match` naming the candidates (max five shown);
+a bundle home that will not list refuses `corrupt-store` naming it instead of
+reporting no twin.
 Twins from a foreign repository, with stale bytes, or without a repository record
 never match. The literal name `local-auto` stays reachable as `--from local-auto`
 (the sentinel is matched first).
@@ -3309,8 +3313,10 @@ effort from `cost.json` when the agent wrote one, provenance from the post
 receipt else the calibration record — `tool_version`, `prompts_hash`, `model`,
 missing reads unmarked). Pure read — no network,
 nothing written, recomputed every run so hand-edited stores stay truthful;
-missing or unreadable stores warn and skip, and no reviewed bundles reads as
-zeros, never an error. `closed` means no longer actionable
+missing or unreadable per-bundle stores warn and skip, and no reviewed bundles
+reads as zeros, never an error. The bundle home itself is different: a
+`.verdict/state` that is not a directory, or will not list, refuses
+`corrupt-store` naming it rather than reporting an empty rollup. `closed` means no longer actionable
 (`wont-fix`/`false-positive`/`deferred`); null severity reads `untagged`,
 mirroring `report --check`; counts are per store, so adopted findings appear in
 both the local and the PR bundle. Feed for the calibration narrative: per-bundle
