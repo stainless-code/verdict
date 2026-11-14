@@ -3,6 +3,8 @@ package fetchcore
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -265,6 +267,7 @@ func TestFetchLocalProvenanceOverCapAndCharCap(t *testing.T) {
 		t.Fatalf("run_id drifted across identical runs: %q vs %q", r1.RunID, r2.RunID)
 	}
 	assertProvenanceKBCapAndSecrets(t, &r1, raw1)
+	assertBundleDigestsMatchDisk(t, bundleDir, &r1)
 
 	cfg2 := `{"schema_version":"1","defaults":{"effort":"deep"}}`
 	writeLocalFixtureFiles(t, cfg2)
@@ -274,6 +277,48 @@ func TestFetchLocalProvenanceOverCapAndCharCap(t *testing.T) {
 		t.Fatalf("changing control config did not change run_id (%q)", r1.RunID)
 	}
 	assertKBCapEquals(t, &r3, 90)
+}
+
+// assertBundleDigestsMatchDisk proves the receipt's bundle rows hash the bytes
+// they name. Goldens scrub these digests so they stay clock-independent, so
+// this relationship is the only place the value itself is checked.
+func assertBundleDigestsMatchDisk(t *testing.T, bundleDir string, r *core.ProvenanceReceipt) {
+	t.Helper()
+	rows := 0
+	for i := range r.Inputs {
+		in := &r.Inputs[i]
+		if in.Kind != "bundle" {
+			continue
+		}
+		rows++
+		assertBundleDigestMatchesDisk(t, bundleDir, in)
+	}
+	if rows == 0 {
+		t.Fatal("receipt carries no bundle rows")
+	}
+}
+
+func assertBundleDigestMatchesDisk(t *testing.T, bundleDir string, in *core.ProvenanceInput) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(bundleDir, in.Name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(raw)
+	if want := hex.EncodeToString(sum[:]); in.SHA256 != want {
+		t.Fatalf("bundle %s sha256 = %s, want %s (digest of its disk bytes)", in.Name, in.SHA256, want)
+	}
+	assertBundleBytes(t, in, int64(len(raw)))
+}
+
+func assertBundleBytes(t *testing.T, in *core.ProvenanceInput, want int64) {
+	t.Helper()
+	if in.Bytes == nil {
+		t.Fatalf("bundle %s bytes = nil, want %d", in.Name, want)
+	}
+	if *in.Bytes != want {
+		t.Fatalf("bundle %s bytes = %d, want %d", in.Name, *in.Bytes, want)
+	}
 }
 
 func TestFetchLocalReceiptWriteFailureWarnsWithoutFailing(t *testing.T) {

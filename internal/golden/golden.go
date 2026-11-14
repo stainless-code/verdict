@@ -121,7 +121,9 @@ func replaceJSONField(line, key, val string) string {
 // scrubProvenanceRuntime normalizes sha256 (and bytes on source.json, which
 // embeds tool_version) for bundle artifacts whose disk bytes carry a live
 // runtime timestamp or version, keeping provenance goldens deterministic
-// across wall-clock runs and release bumps.
+// across wall-clock runs and release bumps. The digest is still checked as a
+// relationship: the fetch test asserts every bundle row equals the digest of
+// the file it names, so the scrub removes noise, not coverage.
 func scrubProvenanceRuntime(body string) string {
 	lines := strings.Split(body, newline)
 	inBundle, target := false, ""
