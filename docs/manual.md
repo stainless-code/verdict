@@ -586,7 +586,7 @@ A repo that carries its controls in the base commit negates them in its own
 
 ```bash
 verdict learn --rule "Check error paths on every await" --scope "src/*.ts" --provenance manual --rigor walked
-verdict learn --status            # rules + counters + precision
+verdict learn --status            # rules + counters + precision + exposure + acceptance
 verdict learn --retire <id> --reason "<30+ chars, on the record>"
 verdict learn --restore <id> --reason "<30+ chars, on the record>"
 ```
@@ -596,6 +596,16 @@ rule text and taken ids are refused; empty rule/scope and bad rigor/id fail
 typed. Retire keeps the tombstone line (`status`, `retiredAt`,
 `retireReason`, history-logged) with counters untouched; restore flips back to
 `active` keeping the tombstone as record.
+
+Exposure and acceptance: `learn --status` (text and `--json`) joins
+`kb-recall.json` manifests, finding `kb` cites, and `kb-joins.jsonl` across
+reviewed bundles to report per rule: `recalled_in` (measured bundles whose
+recall manifest listed the rule), `cited_in` (reviewed bundles with at least one
+finding citing it), `exposure = cited_in / recalled_in`, and
+`acceptance = addressed / cited` alongside `precision = hits / judged`. When no
+bundle in `.verdict/state` carries a `kb-recall.json` manifest, `recalled_in`
+and `exposure` read `null` in JSON (`unmeasured` in text); a zero denominator
+reads `null` (`n/a` in text), never `0` or `NaN`.
 
 Recall: `fetch`/`fetch-local` writes `.verdict/state/<bundle>/kb.txt` when active
 rules scope-match the diff — top 3 by precision (`judged==0` reads 0.5),
@@ -643,6 +653,7 @@ snapshot the bytes into the bundle:
 | `.verdict/config.json` (typed defaults)    | `fetch` panel, budget, cap, chunking  |
 | `.verdict/kb.jsonl`                        | `fetch` recall; `record`/`post` cites |
 | `.verdict/learnings.md`                    | the review agent (headings)           |
+| `.verdict/verify-env` (env allowlist)      | `verify` child environment opt-ins    |
 | `.verdict/overrides/*.md` (four fragments) | `record`/`post` body and footer       |
 | `.verdict/packs/**` (every regular file)   | `fetch` lens and rule layers          |
 
@@ -992,7 +1003,19 @@ webhook, listener, or MCP subscription. Killing a wait leaves no background work
 `fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`run`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`pr-wait`/`threads`/`trend`/`index`/`backtest`/`learn`/`pack`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
-non-zero. `mcp config` also takes `--json`. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `threads` refreshes only `.verdict/state/<pr>/threads.json` from the host (all six
+non-zero. Bounded CLI `data` envelopes (`fetch`, `report`, `next`, `show`,
+`trend`, `index`, `threads`, and `serve` views) and MCP results whose output
+or underlying bundle was truncated carry `truncated: true`, `truncation_reason`
+(`work_budget`, `response_cap`, `time_budget`, `scan_cap`, or `chunk_cap`),
+`returned`, `total` (null when unknown), and `next_offset` (null when no
+continuation exists). Counts use the producer's unit. MCP text-cap receipts
+count original JSON bytes: zero payload bytes appear in the summary, while
+`structuredContent` retains the full payload (or preserves the upstream
+producer receipt). A miss in `next` or `show` under truncation emits a success
+envelope with null item/fix and a partial-results `next` hint rather than
+claiming absence. Complete results omit the receipt.
+
+`mcp config` also takes `--json`. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `threads` refreshes only `.verdict/state/<pr>/threads.json` from the host (all six
 hosts; GitHub reads GraphQL `reviewThreads`) and returns the feed tally — it
 never refetches the diff, so it is the cheap re-read after replies,
 resolutions, or a push. `report` is the pure offline reader over the store
@@ -2774,10 +2797,32 @@ environment, and the split is deliberate (the security rationale is in
   `doctor`, and the base-owned control reads) **inherit your environment**.
   That is the point: they must use your `gh` auth and your git config,
   because verdict is a local CLI working on your behalf.
-- The **agent-written `verifyCmd`** runs under `bash -c` with an **explicit**
-  environment — the ordered snapshot the CLI hands `verify`, not a silent
-  inheritance. The same snapshot is the redaction list for the recorded tail,
-  so a token you exported is scrubbed from `.verify.out` and `patch.json`.
+- The **agent-written `verifyCmd`** (and deep-group `--command`) runs under
+  `bash -c` with a **default-deny allowlist** over the caller's environment —
+  never an unfiltered inheritance. By default, only baseline locale, terminal,
+  shell, XDG, and toolchain variables pass (`PATH`, `HOME`, `LANG`, `LC_*`,
+  `TERM`, `TMPDIR`, `TZ`, `CI`, `USER`, `LOGNAME`, `SHELL`, `COLORTERM`,
+  `NO_COLOR`, `FORCE_COLOR`, `CLICOLOR`, `CLICOLOR_FORCE`, `XDG_CACHE_HOME`,
+  `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `GOPATH`, `GOCACHE`,
+  `GOMODCACHE`, `GOROOT`, `GOTOOLCHAIN`, `GOPROXY`, `GOPRIVATE`, `GONOPROXY`,
+  `GONOSUMDB`, `CGO_ENABLED`, `CC`, `CXX`, `CARGO_HOME`, `RUSTUP_HOME`,
+  `NPM_CONFIG_CACHE`, `PNPM_HOME`, `BUN_INSTALL`, `DENO_DIR`, `VIRTUAL_ENV`,
+  `UV_CACHE_DIR`, `PIP_CACHE_DIR`, plus Windows runtime variables `TEMP`,
+  `TMP`, `PATHEXT`, `COMSPEC`, `SYSTEMROOT`, `WINDIR`, `USERPROFILE`,
+  `APPDATA`, `LOCALAPPDATA`, `PROGRAMDATA`, `PROGRAMFILES`, `PROGRAMFILES(X86)`,
+  `COMMONPROGRAMFILES`, `OS`, `NUMBER_OF_PROCESSORS`, `PROCESSOR_ARCHITECTURE`,
+  `SYSTEMDRIVE`, `HOMEDRIVE`, `HOMEPATH`, `MSYSTEM` on `GOOS=windows`). Any variable matching `envsecret.IsSecret` (credential-shaped
+  endings such as `*_TOKEN`, `*_SECRET`, `*_KEY`, `*_PASSWORD`, plus
+  `AWS_ACCESS_KEY_ID` and `SSH_AUTH_SOCK`, including `LC_TOKEN`) is dropped even when it matches an allowlist prefix. An explicit opt-in keeps
+  the named variable even when its name is secret-shaped. Operators
+  opt extra variable names in with `--env-allowlist <name[,name...]>` (repeatable)
+  or `.verdict/verify-env` (one variable name per line, `#` comments and blank
+  lines ignored, read from the verified base-commit `controls` snapshot, checked
+  against the bundle's current base, so an untrusted PR head cannot widen its own
+  environment unless the operator passes `--allow-head-controls`). Dropped variable names
+  — never values — are listed in deterministic sorted order in `warnings[]`,
+  and the full parent environment remains the redaction list for `verifiedTail`
+  in `patch.json`.
 - The **agent `run` launches** inherits your environment for the same reason
   `gh` and `git` do: it authenticates with your key, on your machine. `--json`
   adds `NO_COLOR=1`. The recorded tail in `launcher.json` scrubs the values of
@@ -3777,7 +3822,9 @@ instead of a review.
 Drift rule: additive within `schema_version`/`sig_version` `"1"` — new
 optional keys pass through the stores and the schemas alike; renames,
 tighter types, and newly required keys never happen without a version bump,
-and a bump ships only by operator decision.
+and a bump ships only by operator decision. Before 1.0 the operator may instead ship a
+breaking shape change within `"1"`; the changeset and release notes then name
+the changed fields.
 
 ### Resolution and clean reviews
 

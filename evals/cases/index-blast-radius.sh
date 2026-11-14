@@ -89,7 +89,7 @@ assert_json_field "candidates carry the strongest mechanism" \
   '[.data.tests.rows[].path] | join(",")'
 assert_json_field "the two-package test is transitive at depth 2" "c/c_test.go transitive-import 2" \
   '[.data.tests.rows[] | select(.via == "transitive-import") | "\(.path) \(.via) \(.depth)"] | join(",")'
-assert_json_field "the depth cap counts the four-package test once" 1 '.data.tests.depth_truncated'
+assert_json_field "the depth cap reports work budget" work_budget '.data.tests.truncation_reason'
 assert_json_field "two co-change partners" 2 '.data.co_changed.count'
 assert_json_field "the partner count names distinct files, not pairs" 2 '.data.co_changed.partners'
 assert_json_field "partners carry literal counts and jaccard" \
@@ -107,7 +107,7 @@ assert_json_field "the cycle rows are both depth 1" "1,1" \
 run_review index blast-radius --paths a/ab.go --limit 2 --json
 assert_exit "a truncated blast-radius exits 0" 0
 assert_json_field "the count is the whole list" 7 '.data.callers.count'
-assert_json_field "the truncation count names the hidden rows" 5 '.data.callers.truncated'
+assert_json_field "the receipt names the original row count" 7 '.data.callers.total'
 assert_json_field "two rows are shown" 2 '[.data.callers.rows[]] | length'
 
 run_review index blast-radius --paths a/ab.go

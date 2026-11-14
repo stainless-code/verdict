@@ -295,5 +295,5 @@ func supportedArtifact(rel, name string) bool {
 	if rel == chunksDirName {
 		return name == "manifest.json" || strings.HasSuffix(name, ".cost.json")
 	}
-	return slices.Contains(artifactNames, name)
+	return name == "truncation.json" || slices.Contains(artifactNames, name)
 }

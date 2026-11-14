@@ -22,7 +22,8 @@ const corpusPrefix = "corpus-"
 
 const prSuffix = "/PR.json"
 
-// PostSuffix and RecordSuffix name the bundle receipt files relative to a bundle dir.
+// PostSuffix and RecordSuffix name the bundle receipt files relative to a
+// bundle dir.
 const (
 	PostSuffix   = "/post.json"
 	RecordSuffix = "/record.json"

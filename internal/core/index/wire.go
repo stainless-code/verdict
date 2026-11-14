@@ -1,6 +1,9 @@
 package indexcore
 
-import "github.com/stainless-code/verdict/internal/jq"
+import (
+	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/jq"
+)
 
 // Published object keys shared by more than one branch.
 const (
@@ -15,6 +18,19 @@ const (
 // Wire renders the index data profile in published order. Each subcommand
 // publishes only the keys it measured.
 func (d *Data) Wire() *jq.Obj {
+	o := d.wireData()
+	switch d.Kind {
+	case QueryCallers:
+		return listReceipt(o, len(d.Rows), d.Truncated, 0)
+	case QueryTestsFor:
+		return listReceipt(o, len(d.TestRows), d.Truncated, d.DepthTruncated)
+	case QueryCoChanged:
+		return listReceipt(o, len(d.CoChangeRows), d.Truncated, 0)
+	}
+	return o
+}
+
+func (d *Data) wireData() *jq.Obj {
 	switch d.Kind {
 	case QueryBuild:
 		return jq.NewObj(
@@ -53,7 +69,6 @@ func (d *Data) Wire() *jq.Obj {
 			"index", indexDoc(d),
 			"counts", jq.NewObj("callers", d.Callers, "unresolved", d.Unresolved),
 			"limit", d.Limit,
-			"truncated", d.Truncated,
 			"rows", rowValues(d.Rows),
 		)
 	case QueryTestsFor:
@@ -85,8 +100,6 @@ func testsForDoc(d *Data) *jq.Obj {
 	o.Set("counts", jq.NewObj("tests", d.Tests))
 	o.Set("limit", d.Limit)
 	o.Set("depth", d.Depth)
-	o.Set("truncated", d.Truncated)
-	o.Set("depth_truncated", d.DepthTruncated)
 	o.Set("rows", testRowValues(d.TestRows))
 	return o
 }
@@ -100,7 +113,6 @@ func coChangedDoc(d *Data) *jq.Obj {
 		"target", targetDoc(d.Target),
 		"counts", jq.NewObj("partners", d.Partners, "target_commits", d.TargetCommits),
 		"limit", d.Limit,
-		"truncated", d.Truncated,
 		"rows", coChangeRowValues(d.CoChangeRows),
 	)
 }
@@ -219,4 +231,17 @@ func stringValues(in []string) []any {
 		out = append(out, s)
 	}
 	return out
+}
+
+func listReceipt(o *jq.Obj, returned, hidden, depthHidden int) *jq.Obj {
+	if hidden == 0 && depthHidden == 0 {
+		return o
+	}
+	total := new(returned + hidden)
+	reason := "response_cap"
+	if depthHidden > 0 {
+		reason = "work_budget"
+		total = nil
+	}
+	return core.ResultCut(reason, returned, total, nil).Apply(o)
 }

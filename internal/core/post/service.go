@@ -339,7 +339,7 @@ func (st *state) checkBundle() *core.RefusalError {
 
 // gateControls verifies the captured controls and their repo pack lock.
 func (st *state) gateControls() *core.RefusalError {
-	snap, ref := controls.Gate(st.dir, recordcore.BundleBase(st.dir, st.store()))
+	snap, ref := controls.Gate(st.dir, readcommon.BundleBase(st.dir, st.store()))
 	st.controls = snap
 	if ref != nil {
 		return ref
@@ -834,7 +834,7 @@ func (st *state) patchGuard(ctx context.Context) *core.RefusalError {
 		return nil
 	}
 	cur, ok := identity.Verify(ctx, st.identityCommander(), st.dir,
-		st.commitID, recordcore.BundleBase(st.dir, st.store()))
+		st.commitID, readcommon.BundleBase(st.dir, st.store()))
 	if !ok {
 		st.warn("patch identity unavailable — dedupe by SHA only")
 		return nil
@@ -931,7 +931,7 @@ func (st *state) collectIdentity(ctx context.Context) {
 	if _, err := os.Lstat(st.dir + "/identity.json"); errors.Is(err, os.ErrNotExist) {
 		return
 	}
-	current, ok := identity.Verify(ctx, st.identityCommander(), st.dir, st.commitID, recordcore.BundleBase(st.dir, st.store()))
+	current, ok := identity.Verify(ctx, st.identityCommander(), st.dir, st.commitID, readcommon.BundleBase(st.dir, st.store()))
 	if !ok {
 		st.warn("patch identity unavailable — provenance omitted")
 		return

@@ -277,6 +277,7 @@ func fetchData(
 	impactArtifactRow(artifacts, ctx2.dir)
 	contextArtifacts(artifacts, ctx2.dir)
 	data := &core.FetchData{
+		Receipt:      ctx2.runner.receipt,
 		Sources:      readcommon.ContextSources(ctx2.dir),
 		Dir:          ctx2.dir,
 		HeadSHA:      readcommon.PrField(ctx2.dir, keyHeadSHA),
@@ -336,7 +337,26 @@ func addFetchExtras(data *core.FetchData, budget *budgetState, fcap *fetchCap, c
 	}
 	if chunkJSON != nil {
 		data.Chunk = chunkJSON
+		if data.Receipt == nil {
+			data.Receipt = chunkEnvelopeReceipt(chunkJSON)
+		}
 	}
+}
+
+func chunkEnvelopeReceipt(chunkJSON any) *core.Truncation {
+	obj, ok := chunkJSON.(*jq.Obj)
+	if !ok {
+		return nil
+	}
+	v, has := obj.Get("count")
+	if !has {
+		return nil
+	}
+	count := int(readcommon.NumOr(v))
+	if count <= 1 {
+		return nil
+	}
+	return core.ResultCut("chunk_cap", count, new(count), nil)
 }
 
 // readDiffHunks reads the coverage-manifest hunked set from .difffiles
@@ -365,6 +385,7 @@ func localFetchData(ctx2 *fetchRunCtx, mode *localMode, listed string, total, ad
 		diffSize = fi.Size()
 	}
 	return &core.FetchData{
+		Receipt:      ctx2.runner.receipt,
 		Sources:      readcommon.ContextSources(dir),
 		Local:        true,
 		Dir:          dir,

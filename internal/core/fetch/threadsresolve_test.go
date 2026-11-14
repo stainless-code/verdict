@@ -379,3 +379,36 @@ func decodeReceipt(t *testing.T, path string) receiptDoc {
 	}
 	return doc
 }
+
+func TestRunThreadsResolveWithExcerptedComment(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writeResolveBundle(t, providerGitHub)
+	err := threadscore.WriteFile(".verdict/state/7/threads.json", &threadscore.File{
+		Provider:  providerGitHub,
+		PR:        7,
+		HeadSHA:   resolveHead,
+		FetchedAt: "2026-11-01T00:00:00Z",
+		Threads: []threadscore.Thread{{
+			ID: "t1", Author: "verdict", AuthorKind: "verdict",
+			FindingSig: new(resolveSigAddressed), Kind: "review-comment",
+			Comments: []threadscore.Comment{{
+				ID: "c1", Author: "verdict", AuthorKind: "verdict",
+				Body: strings.Repeat("x", threadscore.MaxCommentBytes), Truncated: true,
+				CreatedAt: "2026-11-01T00:00:00Z",
+			}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("write threads.json: %v", err)
+	}
+	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{
+		resolveGitHubSelf: {stdout: "verdict\n"},
+	}}
+	resp, ref := RunThreads(context.Background(), resolveRequest(cmdr, nil, true))
+	if ref != nil {
+		t.Fatalf("RunThreads dry-run refusal = %s: %s", ref.Code, ref.Message)
+	}
+	if resp.Resolve == nil || strings.Join(resp.Resolve.Resolved, ",") != "t1" {
+		t.Fatalf("resolved = %+v, want [t1]", resp.Resolve)
+	}
+}

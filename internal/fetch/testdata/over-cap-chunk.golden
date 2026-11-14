@@ -64,7 +64,12 @@ exit: 0
       "count": 2,
       "manifest": ".verdict/state/4703/chunks/manifest.json",
       "total_bytes": 832678
-    }
+    },
+    "truncated": true,
+    "truncation_reason": "chunk_cap",
+    "returned": 2,
+    "total": 2,
+    "next_offset": null
   },
   "error": null
 }
@@ -238,7 +243,12 @@ f13.txt
       "bytes": 475816,
       "diff": ".verdict/state/4703/chunks/chunk-01.diff",
       "toc": ".verdict/state/4703/chunks/chunk-01.toc.txt",
-      "roles": ".verdict/state/4703/chunks/chunk-01.roles.txt"
+      "roles": ".verdict/state/4703/chunks/chunk-01.roles.txt",
+      "truncated": true,
+      "truncation_reason": "chunk_cap",
+      "returned": 8,
+      "total": 14,
+      "next_offset": 8
     },
     {
       "index": 2,
@@ -255,7 +265,12 @@ f13.txt
       "bytes": 356862,
       "diff": ".verdict/state/4703/chunks/chunk-02.diff",
       "toc": ".verdict/state/4703/chunks/chunk-02.toc.txt",
-      "roles": ".verdict/state/4703/chunks/chunk-02.roles.txt"
+      "roles": ".verdict/state/4703/chunks/chunk-02.roles.txt",
+      "truncated": true,
+      "truncation_reason": "chunk_cap",
+      "returned": 6,
+      "total": 14,
+      "next_offset": null
     }
   ],
   "excluded_count": 0,
@@ -320,6 +335,12 @@ f13.txt
     },
     {
       "path": ".verdict/overrides/attribution.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".verdict/verify-env",
       "status": "missing",
       "bytes": 0,
       "sha256": ""
@@ -1640,7 +1661,6 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
   "pr": 4703,
   "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "fetched_at": "0000-00-00T00:00:00Z",
-  "truncated": false,
   "threads": []
 }
 --- file C/.verdict/state/4703/toc.txt ---

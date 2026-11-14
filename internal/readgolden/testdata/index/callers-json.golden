@@ -27,7 +27,6 @@ exit: 0
       "unresolved": 0
     },
     "limit": 50,
-    "truncated": 0,
     "rows": [
       {
         "path": "app/app.go",

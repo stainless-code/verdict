@@ -15,7 +15,7 @@ _verdict_flags() { # $1 = verb
     next) printf '%s\n' --status --coverage --json;;
     show) printf '%s\n' --sig --json;;
     check-tree) printf '%s\n' --expect --json;;
-    verify) printf '%s\n' --timeout --group --command --sandbox --json;;
+    verify) printf '%s\n' --timeout --group --command --sandbox --env-allowlist --json;;
     config) printf '%s\n' --explain --preview --file --json;;
     doctor) printf '%s\n' --provider --json;;
     calibrate) printf '%s\n' --reactions --reaction-reason --probe --judge --judge-file --json;;

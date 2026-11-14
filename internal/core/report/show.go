@@ -22,22 +22,20 @@ func RunShow(_ context.Context, req *core.ShowRequest) (*core.ShowResponse, *cor
 	if req.Sig == "" {
 		return nil, &core.RefusalError{Code: "missing-sig", Message: "show needs --sig <sig> (short prefix ok)"}
 	}
+	receipt := readcommon.BundleTruncation(dir)
 	full := readcommon.ResolveSig(entries, req.Sig)
-	switch full {
-	case "NONE":
+	if full == "NONE" && receipt == nil {
 		return nil, &core.RefusalError{Code: "unknown-sig", Message: "show: sig not in store"}
-	case "MANY":
+	}
+	if full == "MANY" {
 		return nil, &core.RefusalError{Code: "ambiguous-sig", Message: "show: sig prefix ambiguous"}
 	}
-	resp := &core.ShowResponse{
-		Repo:     req.Repo,
-		Pr:       req.Pr,
-		At:       req.TimeUTC(),
-		Warnings: req.Warnings,
-	}
+	resp := &core.ShowResponse{Repo: req.Repo, Pr: req.Pr, At: req.TimeUTC(), Warnings: req.Warnings, Receipt: receipt.ForResult(0)}
+
 	if rec := findRecord(entries, full); rec != nil {
 		resp.Item = &core.FindingItem{Raw: rec}
 		resp.Fix = buildFix(rec, dir)
+		resp.Receipt = receipt.ForResult(1)
 	}
 	return resp, nil
 }

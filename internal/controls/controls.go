@@ -65,6 +65,10 @@ const PacksPrefix = VerdictDir + "/packs"
 // LockPath is the repo layer's pin file, in the fixed inventory.
 const LockPath = VerdictDir + "/verdict.lock"
 
+// VerifyEnvPath is the repo layer's verify child-environment opt-in list,
+// resolved at the PR base with the rest of the inventory.
+const VerifyEnvPath = VerdictDir + "/verify-env"
+
 const (
 	packSep       = "/"
 	controlPrefix = "control "
@@ -81,6 +85,7 @@ var Inventory = []string{
 	VerdictDir + "/overrides/footer-order.md",
 	VerdictDir + "/overrides/walkthrough-threshold.md",
 	VerdictDir + "/overrides/attribution.md",
+	VerifyEnvPath,
 	LockPath,
 }
 

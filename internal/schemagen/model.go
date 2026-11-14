@@ -349,10 +349,12 @@ type ConfigSpend = core.ConfigSpend
 type ConfigCheck = core.ConfigCheck
 
 // ShowData is the show verb's --json data profile: the raw finding record
-// plus the read-only fix block.
+// plus the read-only fix block. Both are null when a truncated scan did not
+// reach the requested sig.
 type ShowData struct {
-	Item any     `json:"item"`
-	Fix  ShowFix `json:"fix"`
+	Receipt *core.Truncation `json:"-"     receipt:"true"`
+	Item    any              `json:"item"`
+	Fix     ShowFix          `anyOf:"null" json:"fix"`
 }
 
 // TriageData is the triage verb's --json data profile: the flipped finding's
@@ -404,7 +406,8 @@ type AdoptData struct {
 // NextData is the next verb's --json data profile: the ranked finding to fix
 // next, or null when the store has nothing open.
 type NextData struct {
-	Item *FindingItem `anyOf:"null" json:"item"`
+	Receipt *core.Truncation `json:"-"     receipt:"true"`
+	Item    *FindingItem     `anyOf:"null" json:"item"`
 }
 
 // FixData is the fix verb's --json data profile. The pass and completion
@@ -492,6 +495,7 @@ type VerifyData = core.VerifyData
 // TrendData is the trend verb's --json data profile: the portfolio rollup,
 // one row per reviewed bundle, and the opt-in overlap and corpus joins.
 type TrendData struct { //nolint:govet // field order is the published property order
+	Receipt     *core.Truncation `json:"-"           receipt:"true"`
 	Rules       any              `json:"rules"       optional:"true"`
 	GeneratedAt string           `format:"date-time" json:"generated_at"`
 	Bundles     int              `json:"bundles"     min:"0"`
@@ -714,6 +718,7 @@ type FetchCapabilities struct { //nolint:govet // field order is the published p
 // diff statistics the toc counted, and the conditional summaries the run
 // armed (estimate and budget, cap, chunk, prompt dump).
 type FetchData struct { //nolint:govet // field order is the published property order
+	Receipt         *core.Truncation  `json:"-"                        receipt:"true"`
 	Dir             string            `json:"dir"`
 	HeadSHA         string            `json:"head_sha"`
 	BaseSHA         string            `json:"base_sha"`
@@ -740,6 +745,7 @@ type FetchData struct { //nolint:govet // field order is the published property 
 // statistics without a remote base, plus the worktree kind and no
 // incremental base.
 type FetchLocalData struct { //nolint:govet // field order is the published property order
+	Receipt      *core.Truncation  `json:"-"                        receipt:"true"`
 	Dir          string            `json:"dir"`
 	Kind         string            `json:"kind"`
 	HeadSHA      string            `json:"head_sha"`
@@ -823,38 +829,37 @@ type ThreadsResolveData = fetchcore.ThreadsResolveData
 // subcommands, so every subcommand-specific key is optional and a consumer
 // branches on kind.
 type IndexData struct { //nolint:govet // field order is the published property order
-	Kind string `enum:"build|status|prune|callers|tests-for|co-changed|owners|blast-radius" json:"kind"`
+	Receipt *core.Truncation `json:"-"                                                                   receipt:"true"`
+	Kind    string           `enum:"build|status|prune|callers|tests-for|co-changed|owners|blast-radius" json:"kind"`
 
-	Tree           string             `json:"tree"            optional:"true"`
-	Commit         string             `json:"commit"          optional:"true"`
-	Built          bool               `json:"built"           optional:"true"`
-	Stale          bool               `json:"stale"           optional:"true"`
-	FilesIndexed   int                `json:"files_indexed"   min:"0"         optional:"true"`
-	Skipped        int                `json:"skipped"         min:"0"         optional:"true"`
-	Parsed         int                `json:"parsed"          min:"0"         optional:"true"`
-	Reused         int                `json:"reused"          min:"0"         optional:"true"`
-	TreeBytes      int64              `json:"tree_bytes"      min:"0"         optional:"true"`
-	Languages      []IndexLangRow     `json:"languages"       optional:"true"`
-	Shards         IndexShards        `json:"shards"          optional:"true"`
-	Trees          []IndexTreeRow     `json:"trees"           optional:"true"`
-	Kept           []string           `json:"kept"            optional:"true"`
-	Removed        IndexRemoved       `json:"removed"         optional:"true"`
-	Query          IndexQuery         `json:"query"           optional:"true"`
-	Index          IndexStatus        `json:"index"           optional:"true"`
-	Counts         IndexCounts        `json:"counts"          optional:"true"`
-	Limit          int                `json:"limit"           min:"1"         optional:"true"`
-	Depth          int                `json:"depth"           min:"1"         optional:"true"`
-	Truncated      int                `json:"truncated"       min:"0"         optional:"true"`
-	DepthTruncated int                `json:"depth_truncated" min:"0"         optional:"true"`
-	Rows           []IndexRow         `json:"rows"            optional:"true"`
-	Window         IndexWindow        `json:"window"          optional:"true"`
-	Target         *IndexTarget       `anyOf:"null"           json:"target"   optional:"true"`
-	Input          IndexBlastInput    `json:"input"           optional:"true"`
-	Symbols        IndexBlastSymbols  `json:"symbols"         optional:"true"`
-	Callers        IndexBlastCallers  `json:"callers"         optional:"true"`
-	Tests          IndexBlastTests    `json:"tests"           optional:"true"`
-	CoChanged      IndexBlastPartners `json:"co_changed"      optional:"true"`
-	Owners         IndexBlastOwners   `json:"owners"          optional:"true"`
+	Tree         string             `json:"tree"          optional:"true"`
+	Commit       string             `json:"commit"        optional:"true"`
+	Built        bool               `json:"built"         optional:"true"`
+	Stale        bool               `json:"stale"         optional:"true"`
+	FilesIndexed int                `json:"files_indexed" min:"0"         optional:"true"`
+	Skipped      int                `json:"skipped"       min:"0"         optional:"true"`
+	Parsed       int                `json:"parsed"        min:"0"         optional:"true"`
+	Reused       int                `json:"reused"        min:"0"         optional:"true"`
+	TreeBytes    int64              `json:"tree_bytes"    min:"0"         optional:"true"`
+	Languages    []IndexLangRow     `json:"languages"     optional:"true"`
+	Shards       IndexShards        `json:"shards"        optional:"true"`
+	Trees        []IndexTreeRow     `json:"trees"         optional:"true"`
+	Kept         []string           `json:"kept"          optional:"true"`
+	Removed      IndexRemoved       `json:"removed"       optional:"true"`
+	Query        IndexQuery         `json:"query"         optional:"true"`
+	Index        IndexStatus        `json:"index"         optional:"true"`
+	Counts       IndexCounts        `json:"counts"        optional:"true"`
+	Limit        int                `json:"limit"         min:"1"         optional:"true"`
+	Depth        int                `json:"depth"         min:"1"         optional:"true"`
+	Rows         []IndexRow         `json:"rows"          optional:"true"`
+	Window       IndexWindow        `json:"window"        optional:"true"`
+	Target       *IndexTarget       `anyOf:"null"         json:"target"   optional:"true"`
+	Input        IndexBlastInput    `json:"input"         optional:"true"`
+	Symbols      IndexBlastSymbols  `json:"symbols"       optional:"true"`
+	Callers      IndexBlastCallers  `json:"callers"       optional:"true"`
+	Tests        IndexBlastTests    `json:"tests"         optional:"true"`
+	CoChanged    IndexBlastPartners `json:"co_changed"    optional:"true"`
+	Owners       IndexBlastOwners   `json:"owners"        optional:"true"`
 }
 
 // IndexBlastInput is the blast-radius query input: the fetched PR bundle slug
@@ -868,9 +873,9 @@ type IndexBlastInput struct {
 // IndexBlastSymbols is the changed-declaration list. count and truncated are
 // null when the index could not answer.
 type IndexBlastSymbols struct {
-	Count     *int               `json:"count"     min:"0"`
-	Truncated *int               `json:"truncated" min:"0"`
-	Rows      []IndexBlastSymbol `json:"rows"`
+	Receipt *core.Truncation   `json:"-"     receipt:"true"`
+	Count   *int               `json:"count" min:"0"`
+	Rows    []IndexBlastSymbol `json:"rows"`
 }
 
 // IndexBlastSymbol is one changed declaration: the file, the declared name and
@@ -885,9 +890,9 @@ type IndexBlastSymbol struct {
 // IndexBlastCallers is the caller list within the depth cap. count,
 // unresolved, and truncated are null when the index could not answer.
 type IndexBlastCallers struct {
+	Receipt    *core.Truncation   `json:"-"          receipt:"true"`
 	Count      *int               `json:"count"      min:"0"`
 	Unresolved *int               `json:"unresolved" min:"0"`
-	Truncated  *int               `json:"truncated"  min:"0"`
 	Rows       []IndexBlastCaller `json:"rows"`
 }
 
@@ -907,19 +912,18 @@ type IndexBlastCaller struct {
 // answer; depth_truncated counts the candidates one import hop past the
 // transitive walk's depth cap.
 type IndexBlastTests struct {
-	Count          *int       `json:"count"           min:"0"`
-	Truncated      *int       `json:"truncated"       min:"0"`
-	DepthTruncated *int       `json:"depth_truncated" min:"0"`
-	Rows           []IndexRow `json:"rows"`
+	Receipt *core.Truncation `json:"-"     receipt:"true"`
+	Count   *int             `json:"count" min:"0"`
+	Rows    []IndexRow       `json:"rows"`
 }
 
 // IndexBlastPartners is the co-change list for the changed paths: count is the
 // number of (target, partner) rows and partners the distinct partner paths.
 type IndexBlastPartners struct { //nolint:govet // field order is the published property order
-	Count     int                 `json:"count"     min:"0"`
-	Partners  int                 `json:"partners"  min:"0"`
-	Truncated int                 `json:"truncated" min:"0"`
-	Rows      []IndexBlastPartner `json:"rows"`
+	Receipt  *core.Truncation    `json:"-"        receipt:"true"`
+	Count    int                 `json:"count"    min:"0"`
+	Partners int                 `json:"partners" min:"0"`
+	Rows     []IndexBlastPartner `json:"rows"`
 }
 
 // IndexBlastPartner is one path that moved with one changed path.
@@ -932,9 +936,9 @@ type IndexBlastPartner struct {
 
 // IndexBlastOwners is one ownership row per changed path.
 type IndexBlastOwners struct { //nolint:govet // field order is the published property order
-	Count     int           `json:"count"     min:"0"`
-	Truncated int           `json:"truncated" min:"0"`
-	Rows      []IndexTarget `json:"rows"`
+	Receipt *core.Truncation `json:"-"     receipt:"true"`
+	Count   int              `json:"count" min:"0"`
+	Rows    []IndexTarget    `json:"rows"`
 }
 
 // IndexLangRow is one scanned language and the files it covers.
@@ -1075,6 +1079,7 @@ type IndexRef struct {
 
 // ServeData is the shared profile for `serve` views and bundle invalidations.
 type ServeData struct { //nolint:govet // field order groups the view families
+	Receipt   *core.Truncation    `json:"-"                   receipt:"true"`
 	Version   string              `json:"version,omitempty"`
 	URL       string              `json:"url,omitempty"`
 	Listen    string              `json:"listen,omitempty"`
@@ -1083,7 +1088,6 @@ type ServeData struct { //nolint:govet // field order groups the view families
 	Interval  string              `json:"interval,omitempty"`
 	Cache     *ServeCache         `anyOf:"null"               json:"cache,omitempty"`
 	Roots     []ServeRoot         `json:"roots,omitempty"`
-	Truncated *bool               `json:"truncated,omitempty" type:"boolean|null"`
 	Skipped   *ServeSkipped       `anyOf:"null"               json:"skipped,omitempty"`
 	Discovery *ServeDiscovery     `anyOf:"null"               json:"discovery,omitempty"`
 	Cost      *ServeCostData      `anyOf:"null"               json:"cost,omitempty"`

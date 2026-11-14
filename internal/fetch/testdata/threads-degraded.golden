@@ -63,7 +63,12 @@ exit: 0
       "tier": null,
       "projected_usd": null,
       "comparable_runs": 0
-    }
+    },
+    "truncated": true,
+    "truncation_reason": "scan_cap",
+    "returned": 0,
+    "total": null,
+    "next_offset": null
   },
   "error": null
 }
@@ -194,6 +199,12 @@ notes.txt
     },
     {
       "path": ".verdict/overrides/attribution.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".verdict/verify-env",
       "status": "missing",
       "bytes": 0,
       "sha256": ""
@@ -587,8 +598,12 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
   "pr": 4701,
   "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "fetched_at": "0000-00-00T00:00:00Z",
+  "threads": [],
   "truncated": true,
-  "threads": []
+  "truncation_reason": "scan_cap",
+  "returned": 0,
+  "total": null,
+  "next_offset": null
 }
 --- file C/.verdict/state/4701/toc.txt ---
 # TOC for PR #4701 (acme/app) — read ranges as coverage checklist

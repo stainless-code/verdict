@@ -2,6 +2,9 @@ package readgolden_test
 
 import (
 	"testing"
+
+	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // showBundle writes a store with two sigs sharing an 8-char prefix (the
@@ -79,7 +82,35 @@ func TestNextGolden(t *testing.T) {
 
 	goArgs = splitRepo("next", "5101", "--status", "bogus", "--json")
 	goldenRead(t, "next/bad-status-json", mixed, nil, nil, goArgs...)
+
+	// A truncated store restates its fetch receipt over the envelope:
+	// the found ranking counts itself, and an empty ranking is a success
+	// envelope with truncated:true returned:0 — not a plain miss.
+	truncated := func(t *testing.T, dir, _ string) {
+		t.Helper()
+		mkPRBundle(t, dir, "5101")
+		writeFiles(t, dir, map[string]string{
+			".verdict/state/5101/findings.json":   mixedFindings(),
+			".verdict/state/5101/truncation.json": truncationReceipt,
+		})
+	}
+	goArgs = splitRepo("next", "5101", "--json")
+	goldenRead(t, "next/truncated-json", truncated, nil, nil, goArgs...)
+
+	empty = func(t *testing.T, dir, _ string) {
+		t.Helper()
+		mkPRBundle(t, dir, "5101")
+		writeFiles(t, dir, map[string]string{
+			".verdict/state/5101/findings.json":   `[]`,
+			".verdict/state/5101/truncation.json": truncationReceipt,
+		})
+	}
+	goArgs = splitRepo("next", "5101", "--json")
+	goldenRead(t, "next/truncated-empty-json", empty, nil, nil, goArgs...)
 }
+
+// truncationReceipt is the exact bytes ScanCut emits on a capped source scan.
+var truncationReceipt = jq.PrettyOrdered(core.Wire(core.ScanCut(true, 100)))
 
 // TestShowGolden pins the show verb: the full record, the
 // unknown and ambiguous prefixes, the missing flag, the corrupt store,
@@ -106,6 +137,23 @@ func TestShowGolden(t *testing.T) {
 
 	goArgs = splitRepo("show", "5101", "--json")
 	goldenRead(t, "show/missing-sig", show, nil, nil, goArgs...)
+
+	// A truncated store answers a miss with the receipt instead of the
+	// unknown-sig refusal: the sig may exist past the scan cap, so the
+	// envelope says truncated:true returned:0 with item and fix null.
+	truncatedShow := func(t *testing.T, dir, _ string) {
+		t.Helper()
+		mkPRBundle(t, dir, "5101")
+		writeFiles(t, dir, map[string]string{
+			".verdict/state/5101/findings.json":   findingsDoc(finding(sigShowA, "open", "critical", "walked", "inline")),
+			".verdict/state/5101/truncation.json": truncationReceipt,
+		})
+	}
+	goArgs = splitRepo("show", "5101", "--sig", "deadbeef", "--json")
+	goldenRead(t, "show/truncated-miss-json", truncatedShow, nil, nil, goArgs...)
+
+	goArgs = splitRepo("show", "5101", "--sig", sigShowA[:8], "--json")
+	goldenRead(t, "show/truncated-hit-json", truncatedShow, nil, nil, goArgs...)
 
 	corrupt := func(t *testing.T, dir, _ string) {
 		t.Helper()

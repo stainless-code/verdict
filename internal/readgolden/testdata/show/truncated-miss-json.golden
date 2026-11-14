@@ -1,0 +1,24 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "show",
+  "repo": "acme/app",
+  "pr": 5101,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "partial results — a miss is not proof of absence",
+  "warnings": [],
+  "data": {
+    "item": null,
+    "fix": null,
+    "truncated": true,
+    "truncation_reason": "scan_cap",
+    "returned": 0,
+    "total": null,
+    "next_offset": null
+  },
+  "error": null
+}
+--- stderr ---
+
+--- files ---

@@ -208,7 +208,7 @@ var publishedSemantics = map[string]string{
 	// postData/recordData.risk ($defs/riskClaim), reportData.risk ($defs/reportRisk +
 	// $defs/riskInputs), gateDimension.id enum value "risk", and trendData.by_risk /
 	// trendBundleRow.risk. No existing property, required key, or type changed.
-	"envelope.schema.json": "063082f6906f17a8d9c4a4c51e0bd2d9266aed9e38b9fbb34a33cd335260b16e",
+	"envelope.schema.json": "64acb2748d4c6f0835b7b19799569c24df3eb45fe00ecf9bc1c4eafa0127e578",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -330,7 +330,7 @@ var publishedSemantics = map[string]string{
 	// contract extends the first cut with the thread's host id, PR/head/time
 	// envelope, root author kind, finding_sig, and the comments[] array: all
 	// additions to the new document, no previously published shape changed.
-	"threads.schema.json": "0dfe2a58cc8e51beede189ccc676fee3446e847336e2b72270539eb4c4eed3bc",
+	"threads.schema.json": "e24857002ee5c60fb38a3a2a0867eb453526dd35c075b4b4adde33f41ebe69dc",
 	// additive threads-resolve.schema.json (new bundle document; no existing
 	// schema property, required key, or type changed). The receipt proves the
 	// resolve mutation: provider, repo, pr, head, timestamp, dry_run, the

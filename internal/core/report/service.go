@@ -56,14 +56,15 @@ const (
 type Flags = core.ReportFlags
 
 type state struct { // field grouping documents the loaded dimensions; alignment is irrelevant here
-	req      *core.ReportRequest
-	flags    Flags
-	warnings []string
-	counts   core.ReportCounts
-	cost     *jq.Obj
-	receipts []any
-	entries  []any
-	ranked   []readcommon.Ranked
+	truncation *core.Truncation
+	req        *core.ReportRequest
+	flags      Flags
+	warnings   []string
+	counts     core.ReportCounts
+	cost       *jq.Obj
+	receipts   []any
+	entries    []any
+	ranked     []readcommon.Ranked
 	// view is the display-filtered ranked set the views render: the
 	// effective display_min_severity withholds below-floor findings
 	// while every gate keeps reading ranked. policy is the typed

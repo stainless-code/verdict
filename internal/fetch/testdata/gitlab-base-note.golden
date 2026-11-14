@@ -187,6 +187,12 @@ a.txt
       "sha256": ""
     },
     {
+      "path": ".verdict/verify-env",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
       "path": ".verdict/verdict.lock",
       "status": "missing",
       "bytes": 0,
@@ -581,7 +587,6 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
   "pr": 4706,
   "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "fetched_at": "0000-00-00T00:00:00Z",
-  "truncated": false,
   "threads": [
     {
       "id": "d1",
@@ -602,7 +607,6 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
           "author": "ana",
           "author_kind": "human",
           "body": "Please rename.",
-          "truncated": false,
           "created_at": "0000-00-00T00:00:00Z"
         },
         {
@@ -610,7 +614,6 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
           "author": "verdict",
           "author_kind": "human",
           "body": "Fixed.",
-          "truncated": false,
           "created_at": "0000-00-00T00:00:00Z"
         }
       ]
@@ -634,7 +637,6 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
           "author": "bo",
           "author_kind": "human",
           "body": "Old note",
-          "truncated": false,
           "created_at": "0000-00-00T00:00:00Z"
         }
       ]
@@ -658,7 +660,6 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
           "author": "rev",
           "author_kind": "human",
           "body": "LGTM",
-          "truncated": false,
           "created_at": "0000-00-00T00:00:00Z"
         }
       ]

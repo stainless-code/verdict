@@ -29,7 +29,6 @@ exit: 0
     "limit": 50,
     "symbols": {
       "count": 3,
-      "truncated": 0,
       "rows": [
         {
           "path": "a/ab.go",
@@ -54,7 +53,6 @@ exit: 0
     "callers": {
       "count": 7,
       "unresolved": 1,
-      "truncated": 0,
       "rows": [
         {
           "symbol": "example.com/m/a.A",
@@ -116,8 +114,6 @@ exit: 0
     },
     "tests": {
       "count": 2,
-      "truncated": 0,
-      "depth_truncated": 0,
       "rows": [
         {
           "path": "a/a_test.go",
@@ -133,7 +129,6 @@ exit: 0
     "co_changed": {
       "count": 2,
       "partners": 2,
-      "truncated": 0,
       "rows": [
         {
           "target": "a/ab.go",
@@ -151,7 +146,6 @@ exit: 0
     },
     "owners": {
       "count": 1,
-      "truncated": 0,
       "rows": [
         {
           "path": "a/ab.go",

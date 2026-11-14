@@ -8,7 +8,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
-	recordcore "github.com/stainless-code/verdict/internal/core/record"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // seedControls snapshots the sandbox's root controls into each fixture
@@ -31,7 +31,7 @@ func seedControls(t *testing.T, dir string) {
 // bundle directory with a stated base.
 func seedBundle(t *testing.T, dir, bundle string) {
 	t.Helper()
-	base := recordcore.BundleBase(bundle, nil)
+	base := readcommon.BundleBase(bundle, nil)
 	if fi, statErr := os.Stat(bundle); statErr != nil || !fi.IsDir() || base == "" {
 		return
 	}

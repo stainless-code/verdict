@@ -1,12 +1,14 @@
 package indexcore
 
-import "github.com/stainless-code/verdict/internal/jq"
+import (
+	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/jq"
+)
 
 // List keys shared by every measured list.
 const (
-	keyCount     = "count"
-	keyTruncated = "truncated"
-	keyRows      = "rows"
+	keyCount = "count"
+	keyRows  = "rows"
 )
 
 // blastIndexDoc renders the queried tree's index state and coverage.
@@ -38,57 +40,59 @@ func blastRadiusDoc(d *Data) *jq.Obj {
 	o.Set("tests", blastTestDoc(b))
 	o.Set("co_changed", blastPartnerDoc(b))
 	o.Set("owners", blastOwnerDoc(b))
+	for _, key := range []string{"symbols", "callers", "tests", "co_changed", "owners"} {
+		child, _ := o.Get(key)
+		if why := listTruncationReason(child); why != "" {
+			returned := len(b.Symbols) + len(b.Callers) + len(b.Tests) + len(b.Partners) + len(b.Owners)
+			return core.ResultCut(why, returned, nil, nil).Apply(o)
+		}
+	}
+
 	return o
 }
 
 // blastSymbolDoc renders the changed-declaration list.
 func blastSymbolDoc(b *Blast) *jq.Obj {
-	return jq.NewObj(
+	return listReceipt(jq.NewObj(
 		keyCount, nullInt(b.Counts.ChangedSymbols),
-		keyTruncated, nullInt(b.Truncated.ChangedSymbols),
 		keyRows, blastSymbolValues(b.Symbols),
-	)
+	), len(b.Symbols), measuredHidden(b.Truncated.ChangedSymbols), measuredHidden(nil))
 }
 
 // blastCallerDoc renders the caller list and the candidates it could not
 // attribute.
 func blastCallerDoc(b *Blast) *jq.Obj {
-	return jq.NewObj(
+	return listReceipt(jq.NewObj(
 		keyCount, nullInt(b.Counts.Callers),
 		"unresolved", nullInt(b.Counts.Unresolved),
-		keyTruncated, nullInt(b.Truncated.Callers),
 		keyRows, blastCallerValues(b.Callers),
-	)
+	), len(b.Callers), measuredHidden(b.Truncated.Callers), measuredHidden(nil))
 }
 
 // blastTestDoc renders the candidate-test list and the candidates the depth cap
 // hid.
 func blastTestDoc(b *Blast) *jq.Obj {
-	return jq.NewObj(
+	return listReceipt(jq.NewObj(
 		keyCount, nullInt(b.Counts.Tests),
-		keyTruncated, nullInt(b.Truncated.Tests),
-		"depth_truncated", nullInt(b.DepthTruncated),
 		keyRows, testRowValues(b.Tests),
-	)
+	), len(b.Tests), measuredHidden(b.Truncated.Tests), measuredHidden(b.DepthTruncated))
 }
 
 // blastPartnerDoc renders the co-change list with its pair and partner counts.
 func blastPartnerDoc(b *Blast) *jq.Obj {
-	return jq.NewObj(
+	return listReceipt(jq.NewObj(
 		keyCount, b.Counts.CoChanged,
 		"partners", b.Counts.Partners,
-		keyTruncated, b.Truncated.CoChanged,
 		keyRows, blastPartnerValues(b.Partners),
-	)
+	), len(b.Partners), measuredHidden(new(b.Truncated.CoChanged)), measuredHidden(nil))
 }
 
 // blastOwnerDoc renders the ownership list.
 func blastOwnerDoc(b *Blast) *jq.Obj {
-	return jq.NewObj(
+	return listReceipt(jq.NewObj(
 		keyCount, b.Counts.Owners,
-		keyTruncated, b.Truncated.Owners,
 		keyRows, blastOwnerValues(b.Owners),
-	)
+	), len(b.Owners), measuredHidden(new(b.Truncated.Owners)), measuredHidden(nil))
 }
 
 // nullInt renders a measured count, or JSON null when the list went
@@ -149,4 +153,24 @@ func blastOwnerValues(rows []Target) []any {
 		out = append(out, targetDoc(&rows[i]))
 	}
 	return out
+}
+
+func measuredHidden(n *int) int {
+	if n == nil {
+		return 0
+	}
+	return *n
+}
+
+func listTruncationReason(data any) string {
+	row, ok := data.(*jq.Obj)
+	if !ok {
+		return ""
+	}
+	value, _ := row.Get("truncation_reason")
+	reason, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	return reason
 }

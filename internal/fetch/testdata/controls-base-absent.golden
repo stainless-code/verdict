@@ -87,6 +87,7 @@ CALL: api repos/acme/app/contents/.verdict/overrides/preamble.md?ref=ccccccccccc
 CALL: api repos/acme/app/contents/.verdict/overrides/footer-order.md?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.verdict/overrides/walkthrough-threshold.md?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.verdict/overrides/attribution.md?ref=cccccccccccccccccccccccccccccccccccccccc
+CALL: api repos/acme/app/contents/.verdict/verify-env?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.verdict/verdict.lock?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.verdict/packs?ref=cccccccccccccccccccccccccccccccccccccccc
 CALL: api repos/acme/app/contents/.verdict/config.json?ref=cccccccccccccccccccccccccccccccccccccccc
@@ -202,6 +203,12 @@ notes.txt
     },
     {
       "path": ".verdict/overrides/attribution.md",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "path": ".verdict/verify-env",
       "status": "missing",
       "bytes": 0,
       "sha256": ""
@@ -611,7 +618,6 @@ api-base-panel
   "pr": 4701,
   "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "fetched_at": "0000-00-00T00:00:00Z",
-  "truncated": false,
   "threads": [
     {
       "id": "PRRT_1",
@@ -632,7 +638,6 @@ api-base-panel
           "author": "verdict[bot]",
           "author_kind": "verdict",
           "body": "Consider clarifying this line.\n\n<!-- verdict-finding sig=6c3ee749e3d1f97870c9e8b5c1171fae2cb9ff4e -->",
-          "truncated": false,
           "created_at": "0000-00-00T00:00:00Z"
         },
         {
@@ -640,7 +645,6 @@ api-base-panel
           "author": "mate",
           "author_kind": "human",
           "body": "Done.",
-          "truncated": false,
           "created_at": "0000-00-00T00:00:00Z"
         }
       ]
@@ -664,7 +668,6 @@ api-base-panel
           "author": "ana",
           "author_kind": "human",
           "body": "Old anchor.",
-          "truncated": false,
           "created_at": "0000-00-00T00:00:00Z"
         }
       ]

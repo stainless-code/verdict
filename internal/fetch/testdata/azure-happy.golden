@@ -183,6 +183,12 @@ a.txt
       "sha256": ""
     },
     {
+      "path": ".verdict/verify-env",
+      "status": "missing",
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
       "path": ".verdict/verdict.lock",
       "status": "missing",
       "bytes": 0,
@@ -612,7 +618,6 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
   "pr": 4716,
   "head_sha": "e516722ce9ce0870538023ae1e062b7f1a11e504",
   "fetched_at": "0000-00-00T00:00:00Z",
-  "truncated": false,
   "threads": [
     {
       "id": "9",
@@ -633,7 +638,6 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
           "author": "ana",
           "author_kind": "human",
           "body": "Nit",
-          "truncated": false,
           "created_at": "0000-00-00T00:00:00Z"
         }
       ]
@@ -657,7 +661,6 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
           "author": "bo",
           "author_kind": "human",
           "body": "Question",
-          "truncated": false,
           "created_at": "0000-00-00T00:00:00Z"
         }
       ]

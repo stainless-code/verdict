@@ -70,13 +70,16 @@ func renderNextJSON(r *cli.Runner, req Request, resp *core.NextResponse, covMode
 		return cli.ExitOK
 	}
 	next := nextNone
+	if resp.Receipt != nil {
+		next = "partial results — a miss is not proof of absence"
+	}
 	var item any
 	if resp.Item != nil {
 		next = nextAddress
 		item = resp.Item.Wire()
 	}
 	env := core.RenderEnvelope("next", req.Repo, req.Pr, resp.At, next,
-		resp.Warnings, jq.NewObj("item", item), nil)
+		resp.Warnings, resp.Receipt.Apply(jq.NewObj("item", item)), nil)
 	fmt.Fprint(r.Out, jq.PrettyOrdered(env))
 	return cli.ExitOK
 }

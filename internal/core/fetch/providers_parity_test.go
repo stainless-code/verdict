@@ -90,7 +90,11 @@ func hostGet(t *testing.T, path, key string) any {
 // hostTruncated reads the feed's truncated flag the way jq -r would.
 func hostTruncated(t *testing.T, dir string) string {
 	t.Helper()
-	return hostField(t, hostObj(t, dir+suffixThreadsJSON), "truncated")
+	o := hostObj(t, dir+suffixThreadsJSON)
+	if _, ok := o.Get("truncated"); !ok {
+		return "null"
+	}
+	return hostField(t, o, "truncated")
 }
 
 // assertWarning fails unless one warning carries substr.
@@ -410,7 +414,7 @@ func TestForgejoCappedReviewsTruncateFeed(t *testing.T) {
 		forgejoReviewCall(1):                            {stdout: `[{"id":1,"body":"summary","user":{"login":"rev"}}]`},
 		forgejoCall(forgejoAPI + "/reviews/1/comments"): {stdout: `[]`},
 	}
-	assertForgejoFeed(t, "one short page", oneShortPage, "false", false)
+	assertForgejoFeed(t, "one short page", oneShortPage, "null", false)
 	assertForgejoFeed(t, "cap", forgejoFullReviews(), "true", true)
 }
 

@@ -148,4 +148,27 @@ else
   bad "F5 show attempted $((gh_after - gh_before)) gh call(s)"
 fi
 
+mkdir -p "$EVAL_SANDBOX/.verdict/state/5205"
+cat > "$EVAL_SANDBOX/.verdict/state/5205/findings.json" <<'EOF'
+[]
+EOF
+cat > "$EVAL_SANDBOX/.verdict/state/5205/truncation.json" <<'EOF'
+{"truncated":true,"truncation_reason":"scan_cap","returned":100,"total":null,"next_offset":null}
+EOF
+run_review show acme/app 5205 --sig deadbeef --json
+if [ "$EVAL_STATUS" -eq 0 ] \
+  && [ "$(jq -r '.data | .item == null and .fix == null and .truncated == true and .truncation_reason == "scan_cap" and .returned == 0' <"$EVAL_OUT" 2>/dev/null)" = "true" ] \
+  && [ "$(jq -r '.next' <"$EVAL_OUT" 2>/dev/null)" = "partial results — a miss is not proof of absence" ]; then
+  good "F6 truncated show miss returns null item/fix with scan_cap receipt"
+else
+  bad "F6 truncated show: exit $EVAL_STATUS $(jq -c '{next,data}' <"$EVAL_OUT" 2>/dev/null)"
+fi
+run_review next acme/app 5205 --json
+if [ "$EVAL_STATUS" -eq 0 ] \
+  && [ "$(jq -r '.data | .item == null and .truncated == true and .truncation_reason == "scan_cap" and .returned == 0' <"$EVAL_OUT" 2>/dev/null)" = "true" ]; then
+  good "F6 truncated empty next returns null item with scan_cap receipt"
+else
+  bad "F6 truncated next: exit $EVAL_STATUS $(jq -c '.data' <"$EVAL_OUT" 2>/dev/null)"
+fi
+
 eval_end

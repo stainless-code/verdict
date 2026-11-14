@@ -64,6 +64,7 @@ func probeLiveCount(ctx context.Context, st *state) {
 	}
 	removeErrFile(st.dir + "/.recheck.err")
 	if read.Truncated {
+		st.truncation = core.ScanCut(true, 0)
 		probeUnreachable(st, providerName(st.dir)+" thread read incomplete")
 		return
 	}

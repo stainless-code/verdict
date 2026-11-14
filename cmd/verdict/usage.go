@@ -157,11 +157,13 @@ func usageText() string {
 		"  check-tree [--expect <prefix,...>] [--json]\n" +
 		"    refuse on unexpected dirt (own .verdict/state/ scratch ignored). No network. Machine clean-tree gate for mutating modes.\n" +
 		"  verify <owner/repo> <pr> [--timeout <secs, default 300>] [--group <stableID> --command <cmd>]\n" +
-		"        [--sandbox] [--json]\n" +
+		"        [--sandbox] [--env-allowlist <name[,name...]>] [--json]\n" +
 		"    With neither --group nor --command, execute patch.json verifyCmd with a watchdog and\n" +
 		"    record exit + tail in the patch record. --group and --command are required together:\n" +
 		"    --command runs for the named deep plan group at the reviewed head and writes\n" +
 		"    validation-<group>.json (patch.json stays untouched).\n" +
+		"    Child env is default-deny (allowlist + LC_*; secret-named vars dropped unless opted in\n" +
+		"    via --env-allowlist or base-snapshotted .verdict/verify-env; dropped names warn).\n" +
 		"    Runs in its own process group (timeout kills the tree); known secret values\n" +
 		"    are redacted from the recorded tail.\n" +
 		"    --sandbox runs the command under bwrap (Linux only) with no network, empty\n" +

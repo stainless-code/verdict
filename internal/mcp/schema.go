@@ -320,7 +320,7 @@ var fieldDocs = map[string]string{
 	"AllowSecretValues": "Publish review text that carries a secret-shaped value; " +
 		"the post-secret-shaped refusal names this override.",
 	"doctor.Provider": "Code host to preflight (github, gitlab, gitcafe, forgejo, bitbucket, azure); default github.",
-	"learn.Status":    "List rules with counters and precision (boolean list switch; learn sets no status).",
+	"learn.Status":    "List rules with counters, precision, exposure and acceptance (boolean list switch; learn sets no status).",
 	"next.Status":     "Status filter for the top finding (all, open, addressed, wont-fix, false-positive, deferred); empty means open.",
 	"triage.Status":   "Status to flip the finding to (open, addressed, wont-fix, false-positive, deferred).",
 	"index.Query":     "Subcommand: callers, status, tests-for, co-changed, owners, or blast-radius; build and prune are CLI-only.",
@@ -341,6 +341,8 @@ var fieldDocs = map[string]string{
 		"impact section.",
 	"Sandbox": "Run under bwrap (Linux only) with no network, hidden credential dirs, " +
 		"a writable repo, and a private /tmp; refuses sandbox-unavailable when it cannot be enforced.",
+	"EnvAllowlist": "Additional parent environment variable names to pass through to the verification child process, " +
+		"overriding default-deny filtering and secret-name dropping.",
 }
 
 func fieldDescription(toolName, field string) string {

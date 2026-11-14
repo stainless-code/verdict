@@ -237,6 +237,13 @@ func assertEvalCase(t *testing.T, headA string, tc *evalCase) {
 	}
 }
 
+func writeTestReceipt(t *testing.T, dir, name, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestEvaluateBundleReceiptsAndBands(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -248,27 +255,16 @@ func TestEvaluateBundleReceiptsAndBands(t *testing.T) {
 	}
 	// Unclaimed bundle with complete coverage and low floor stays unknown (never low).
 	cleanDir := t.TempDir()
-	cleanRec := `{"head":"` + headA + `","coverage":{"gaps":0}}`
-	if err := os.WriteFile(filepath.Join(cleanDir, "record.json"), []byte(cleanRec), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeTestReceipt(t, cleanDir, "record.json", `{"head":"`+headA+`","coverage":{"gaps":0}}`)
 	if band := risk.BundleBand(cleanDir, headA, nil); band != "unknown" {
 		t.Fatalf("unclaimed clean bundle with complete coverage = %q, want unknown", band)
 	}
-	// Unclaimed bundle with an open critical finding reports critical.
 	if band := risk.BundleBand(cleanDir, headA, []any{entry("open", "critical", "inline", true)}); band != "critical" {
 		t.Fatalf("unclaimed bundle with open critical = %q, want critical", band)
 	}
 
-	// Write record.json with low claim and 0 coverage gaps; post.json overrides claim to medium.
-	recJSON := `{"head":"` + headA + `","coverage":{"gaps":0},"risk":{"level":"low","rationale":"Initial record pass.","assessed_head":"` + headA + `"}}`
-	postJSON := `{"head":"` + headA + `","coverage":{"gaps":1},"risk":{"level":"high","rationale":"Post pass found gap.","assessed_head":"` + headA + `"}}`
-	if err := os.WriteFile(filepath.Join(dir, "record.json"), []byte(recJSON), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "post.json"), []byte(postJSON), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeTestReceipt(t, dir, "record.json", `{"head":"`+headA+`","coverage":{"gaps":0},"risk":{"level":"low","rationale":"Initial record pass.","assessed_head":"`+headA+`"}}`)
+	writeTestReceipt(t, dir, "post.json", `{"head":"`+headA+`","coverage":{"gaps":1},"risk":{"level":"high","rationale":"Post pass found gap.","assessed_head":"`+headA+`"}}`)
 	res := risk.EvaluateBundle(dir, headA, headA, nil, "")
 	if res.Claimed != "high" || res.Reported != "high" || !slices.Equal(res.ReceiptReasons, []string{"unreviewed-files"}) {
 		t.Fatalf("EvaluateBundle = %+v", res)
@@ -276,6 +272,11 @@ func TestEvaluateBundleReceiptsAndBands(t *testing.T) {
 	if band := risk.BundleBand(dir, headA, []any{entry("open", "critical", "inline", true)}); band != "critical" {
 		t.Fatalf("BundleBand with open critical = %q, want critical", band)
 	}
+}
+
+func TestBundleBandCountsWithheldFindings(t *testing.T) {
+	t.Parallel()
+	const headA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	withheld := jq.NewObj(
 		"status", "open",
 		"severity", "critical",
@@ -283,12 +284,9 @@ func TestEvaluateBundleReceiptsAndBands(t *testing.T) {
 		"anchored", true,
 		"withheld", jq.NewObj("source", "agent", "reason", "suppressed", "at", "2026-11-13T13:24:03Z"),
 	)
-	recLow := `{"head":"` + headA + `","coverage":{"gaps":0},"risk":{"level":"low","rationale":"Low claim.","assessed_head":"` + headA + `"}}`
-	dirWithheld := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dirWithheld, "record.json"), []byte(recLow), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if band := risk.BundleBand(dirWithheld, headA, []any{withheld}); band != "critical" {
+	dir := t.TempDir()
+	writeTestReceipt(t, dir, "record.json", `{"head":"`+headA+`","coverage":{"gaps":0},"risk":{"level":"low","rationale":"Low claim.","assessed_head":"`+headA+`"}}`)
+	if band := risk.BundleBand(dir, headA, []any{withheld}); band != "critical" {
 		t.Fatalf("BundleBand with withheld open critical = %q, want critical", band)
 	}
 }
