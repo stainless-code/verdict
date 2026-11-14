@@ -38,8 +38,8 @@ const (
 // bytes return in the response instead of being written.
 type ReportRequest struct {
 	Invocation
-	Status, Kind, Output, Sarif, Check, Live string
-	Cost, Completeness, IncludeWithheld      bool
+	Status, Kind, Output, Sarif, Check, Live, MaxRisk string
+	Cost, Completeness, IncludeWithheld, Risk         bool
 }
 
 // ReportResponse is the offline review report with render inputs and the
@@ -63,8 +63,9 @@ func (c *Client) Report(ctx context.Context, req *ReportRequest) (*ReportRespons
 		ReadRequest: rr,
 		Flags: core.ReportFlags{
 			Status: req.Status, Kind: req.Kind, Output: req.Output, Sarif: req.Sarif,
-			Check: req.Check, Live: req.Live, Cost: req.Cost, Completeness: req.Completeness,
-			IncludeWithheld: req.IncludeWithheld,
+			Check: req.Check, Live: req.Live, MaxRisk: req.MaxRisk,
+			Cost: req.Cost, Completeness: req.Completeness,
+			IncludeWithheld: req.IncludeWithheld, Risk: req.Risk,
 		},
 		Effective: core.Defaults(),
 	})

@@ -186,10 +186,35 @@ type ReportCompliance struct { //nolint:govet // field order is the published pr
 	Satisfied  bool `json:"satisfied"`
 }
 
+// RiskInputs carries the deterministic store inputs that feed the risk floor.
+type RiskInputs struct { //nolint:govet // field order is the published property order
+	OpenCritical    int  `json:"open_critical"              min:"0"`
+	OpenImportant   int  `json:"open_important"             min:"0"`
+	Deferred        int  `json:"deferred"                   min:"0"`
+	Unanchored      int  `json:"unanchored"                 min:"0"`
+	UnreviewedFiles *int `json:"unreviewed_files,omitempty" min:"0" optional:"true"`
+	StaleHead       bool `json:"stale_head"`
+	MissingCoverage bool `json:"missing_coverage"`
+}
+
+// ReportRisk is the advisory risk block rendered by report --risk / --max-risk.
+type ReportRisk struct { //nolint:govet // field order is the published property order
+	Claimed        string     `enum:"unknown|low|medium|high|critical" json:"claimed"`
+	Floor          string     `enum:"low|medium|high|critical"         json:"floor"`
+	Reported       string     `enum:"unknown|low|medium|high|critical" json:"reported"`
+	AssessedHead   *string    `json:"assessed_head,omitempty"          optional:"true"`
+	Rationale      *string    `json:"rationale,omitempty"              optional:"true"`
+	Inputs         RiskInputs `json:"inputs"`
+	ReceiptReasons []string   `json:"receipt_reasons,omitempty"        optional:"true"`
+	MaxRisk        *string    `enum:"low|medium|high|critical"         json:"max_risk,omitempty"    optional:"true"`
+	Exceeded       bool       `json:"exceeded"`
+	GateReason     *string    `enum:"risk-exceeded|risk-unknown"       json:"gate_reason,omitempty" optional:"true"`
+}
+
 // ReportGate is the composed gate result: every dimension this run
-// requested, in `findings, head, coverage, live_threads, compliance` order.
-// Passed is true iff no dimension failed or read unknown, so a skip stays
-// neutral.
+// requested, in `findings, head, coverage, live_threads, compliance, risk`
+// order. Passed is true iff no dimension failed or read unknown, so a skip
+// stays neutral.
 type ReportGate struct { //nolint:govet // published wire order: passed before dimensions
 	Passed     bool            `json:"passed"`
 	Dimensions []GateDimension `json:"dimensions"`
@@ -199,10 +224,10 @@ type ReportGate struct { //nolint:govet // published wire order: passed before d
 // script parses; Count is the dimension's own tally, absent when the
 // dimension has none to report.
 type GateDimension struct { //nolint:govet // field order is the published property order
-	ID     string `enum:"findings|head|coverage|live_threads|compliance" json:"id"`
-	Status string `enum:"pass|fail|skip|unknown"                         json:"status"`
+	ID     string `enum:"findings|head|coverage|live_threads|compliance|risk" json:"id"`
+	Status string `enum:"pass|fail|skip|unknown"                              json:"status"`
 	Detail string `json:"detail"`
-	Count  *int   `json:"count"                                          min:"0"`
+	Count  *int   `json:"count"                                               min:"0"`
 }
 
 // Wire renders the gate result in the published key order.
@@ -243,6 +268,7 @@ type ReportData struct { //nolint:govet // field order is the published property
 	Cost          *ReportCost         `json:"cost,omitempty"`
 	Completeness  *ReportCompleteness `json:"completeness,omitempty"`
 	Compliance    *ReportCompliance   `json:"compliance,omitempty"`
+	Risk          *ReportRisk         `json:"risk,omitempty"`
 	Gate          *ReportGate         `json:"gate,omitempty"`
 	CostRaw       *jq.Obj             `json:"-"`
 }

@@ -27,6 +27,7 @@
     },
     "confidence": { "type": ["integer", "null"], "minimum": 1, "maximum": 5 },
     "security_summary": { "type": ["string", "null"] },
+    "risk": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/riskClaim" }] },
     "tool_version": {
       "description": "Tool version that wrote this record (from package.json).",
       "type": "string"
@@ -180,6 +181,17 @@
         "note": { "type": "string" }
       },
       "required": ["action"],
+      "additionalProperties": true
+    },
+    "riskClaim": {
+      "type": "object",
+      "properties": {
+        "level": { "enum": ["low", "medium", "high", "critical"] },
+        "rationale": { "type": "string" },
+        "assessed_head": { "type": "string" },
+        "stale": { "type": "boolean" }
+      },
+      "required": ["level", "rationale", "assessed_head"],
       "additionalProperties": true
     }
   }

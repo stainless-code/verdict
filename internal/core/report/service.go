@@ -13,6 +13,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/core/risk"
 	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -75,6 +76,7 @@ type state struct { // field grouping documents the loaded dimensions; alignment
 	panel        []any
 	patch        any
 	comp         *core.ReportCompleteness
+	risk         *core.ReportRisk
 	dir          string
 	now          string
 	headSHA      string
@@ -85,6 +87,7 @@ type state struct { // field grouping documents the loaded dimensions; alignment
 	nOpen        int
 	nAllOpen     int
 	gate         bool
+	liveGate     bool
 	compOK       bool
 }
 
@@ -109,20 +112,19 @@ const (
 // adapter to write.
 func Run(ctx context.Context, req *core.ReportRequest) (*core.ReportResponse, *core.RefusalError) {
 	flags := normalizeFlags(req)
-	if ref := validateCategory(flags.Category); ref != nil {
-		return nil, ref
-	}
-	if ref := validateTier(flags.Check); ref != nil {
+	if ref := validateReportFlags(&flags); ref != nil {
 		return nil, ref
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, &core.RefusalError{Code: codeCanceled, Message: "canceled before report completed"}
 	}
+	liveGate := flags.Check != "" || flags.Completeness || flags.Coverage != ""
 	st := &state{
 		req:      req,
 		flags:    flags,
 		warnings: append([]string{}, req.Warnings...),
-		gate:     flags.Check != "" || flags.Completeness || flags.Coverage != "",
+		gate:     liveGate || flags.MaxRisk != "",
+		liveGate: liveGate,
 	}
 	if err := loadState(ctx, st); err != nil {
 		return nil, err
@@ -137,6 +139,19 @@ func Run(ctx context.Context, req *core.ReportRequest) (*core.ReportResponse, *c
 	warnDeepValidation(st)
 	runLiveProbe(ctx, st)
 	return buildResponse(st), nil
+}
+
+func validateReportFlags(flags *Flags) *core.RefusalError {
+	for _, ref := range []*core.RefusalError{
+		validateCategory(flags.Category),
+		validateTier(flags.Check),
+		validateMaxRisk(flags.MaxRisk),
+	} {
+		if ref != nil {
+			return ref
+		}
+	}
+	return nil
 }
 
 func loadGatePolicy(ctx context.Context, st *state) *core.RefusalError {
@@ -183,6 +198,19 @@ func validateTier(tier string) *core.RefusalError {
 		Code: codeBadFlags,
 		Message: fmt.Sprintf("report: unknown gate tier '%s' (want %s)",
 			tier, strings.Join(core.TierValues, "|")),
+	}
+}
+
+// validateMaxRisk refuses an unpublished --max-risk level in core so CLI, MCP,
+// and Go SDK callers fail with bad-flags rather than comparing unknown values.
+func validateMaxRisk(level string) *core.RefusalError {
+	if level == "" || risk.ValidLevel(level) {
+		return nil
+	}
+	return &core.RefusalError{
+		Code: codeBadFlags,
+		Message: fmt.Sprintf("report: unknown --max-risk level '%s' (want %s)",
+			level, strings.Join(risk.Levels(), "|")),
 	}
 }
 
@@ -236,7 +264,16 @@ func loadState(ctx context.Context, st *state) *core.RefusalError {
 	st.counts.CheckedFiles = countNonEmpty(strings.Split(checkedFiles(st.dir), newline))
 	loadStateCost(st)
 	loadStateCompleteness(ctx, st)
+	loadStateRisk(st)
 	return nil
+}
+
+func loadStateRisk(st *state) {
+	if !st.flags.Risk && st.flags.MaxRisk == "" {
+		return
+	}
+	covKey := risk.CoverageIdentity(st.dir, st.headSHA)
+	st.risk = risk.EvaluateBundle(st.dir, st.headSHA, covKey, st.entries, st.flags.MaxRisk)
 }
 
 func loadRefusal(err error) *core.RefusalError {

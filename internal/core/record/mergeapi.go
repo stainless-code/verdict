@@ -79,6 +79,7 @@ type MergeResult struct { //nolint:govet // field order is the published propert
 	FindingsFile string
 	Confidence   any
 	Security     any
+	Risk         *core.RiskClaim
 	Coverage     *coverage.Summary
 	Warnings     []string
 }
@@ -158,6 +159,7 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 		FindingsFile: st.findingsFile,
 		Confidence:   st.confidence,
 		Security:     st.security,
+		Risk:         st.risk,
 		Coverage:     st.coverage,
 		Warnings:     st.warnings,
 	}, nil

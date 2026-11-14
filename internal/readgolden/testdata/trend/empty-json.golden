@@ -34,6 +34,43 @@ exit: 0
       "untagged": 0
     },
     "by_category": {},
+    "by_risk": {
+      "low": {
+        "bundles": 0,
+        "findings": 0,
+        "open": 0,
+        "addressed": 0,
+        "closed": 0
+      },
+      "medium": {
+        "bundles": 0,
+        "findings": 0,
+        "open": 0,
+        "addressed": 0,
+        "closed": 0
+      },
+      "high": {
+        "bundles": 0,
+        "findings": 0,
+        "open": 0,
+        "addressed": 0,
+        "closed": 0
+      },
+      "critical": {
+        "bundles": 0,
+        "findings": 0,
+        "open": 0,
+        "addressed": 0,
+        "closed": 0
+      },
+      "unknown": {
+        "bundles": 0,
+        "findings": 0,
+        "open": 0,
+        "addressed": 0,
+        "closed": 0
+      }
+    },
     "by_source": {
       "model": 0,
       "tool": 0

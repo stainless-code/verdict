@@ -248,6 +248,7 @@ from the review and reports `basis-replaced`.
 | `out-of-range`         | error   | A length or numeric bound is outside its published range (confidence, brief approach/question, caps).                                |
 | `path-not-in-diff`     | mixed   | Error for a comment path; warning for a brief site outside the diff.                                                                 |
 | `unknown-field`        | warning | A key is not in the published shape; the fix names the nearest known key.                                                            |
+| `risk-stale-head`      | warning | `review.json.risk.assessed_head` disagrees with the bundle's current HEAD SHA; the stored claim is marked `stale: true`.             |
 | `anchor-outside-hunk`  | warning | The line is provably outside every hunk; `record` moves the comment into the body.                                                   |
 | `rigor-unset`          | warning | A comment carries no evidence rung; it records as `said` with `rigor_source: default`.                                               |
 | `normalized-fence`     | warning | One whole-document code fence was unwrapped.                                                                                         |
@@ -1200,6 +1201,25 @@ closed and `auto` reads it neutral, exactly like a dead network. Pick
 open live; pick `skip` for air-gapped runs where the operator accepts the
 local-dimensions-only verdict on the record. `--live` without a gate flag
 is inert: advisory runs never touch the network regardless.
+
+`report --risk` adds an advisory, recomputable change-risk assessment
+(`data.risk`) combining the stored `review.json.risk` claim (`record.json` /
+`post.json`) with a deterministic floor from the bundle store:
+
+- `claimed` is one of `low|medium|high|critical` or `unknown` when no valid
+  claim was recorded (unclaimed changes never read as `low`).
+- The deterministic `floor` starts at `low` and rises to at least `medium` when
+  coverage receipts are missing or show unreviewed files, `assessed_head` is
+  stale, or deferred or unanchored inline findings exist; `high` when an open
+  `important` finding exists; `critical` when an open `critical` finding exists.
+- `reported = max(claimed, floor)` (remaining `unknown` when unclaimed and the
+  floor is `low`). Missing or stale evidence emits `receipt_reasons`.
+
+`report --max-risk <low|medium|high|critical>` gates on `data.risk.reported`
+without calling the network unless paired with `--check` or `--completeness`:
+exit `0` when `reported <= <level>`, exit `1` when `reported` exceeds `<level>`
+(`risk-exceeded`) or reads `unknown` (`risk-unknown`, fail closed), exit `2` for
+usage errors, and exit `3` for bundle/store tool errors.
 
 ### `gate`: one composed exit code for CI
 
@@ -3119,6 +3139,13 @@ credited flips, and per-bundle `calibrate_eligible` marks bundles carrying a
 posted review id + head that `calibrate` could settle against live threads — the
 audit reads those shapes only, never recomputes them and never touches the
 network. Without the flag both outputs are byte-identical to today.
+
+Each `trend` rollup also classifies bundles into advisory risk bands
+(`by_risk`: `low`, `medium`, `high`, `critical`, `unknown`, plus
+`per_bundle[].risk`) using the same `reported` level `report --risk` computes
+(`max(claimed, floor)`, and `unknown` only when there is no claim and the
+floor is `low`), tallying bundles, findings, open, addressed, and closed
+outcomes per band.
 
 ## Code index
 

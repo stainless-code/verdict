@@ -297,6 +297,7 @@ func (st *state) dryRunResponse(ctx context.Context) (*core.PostResponse, *core.
 		Summary:         st.summary,
 		Confidence:      intOrNilPost(st.merged.Confidence),
 		SecuritySummary: strOrNilPost(st.merged.Security),
+		Risk:            st.merged.Risk,
 		PayloadHash:     payloadHash,
 		ItemsRaw:        recordcore.EnvelopeItems(payload),
 	}

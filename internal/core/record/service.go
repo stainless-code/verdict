@@ -384,6 +384,7 @@ func (st *svc) finalize(ctx context.Context, dir, prov, headFull, now string, re
 		Confidence:      intOrNil(res.Confidence),
 		ConfidenceRaw:   res.Confidence,
 		SecuritySummary: strOrNil(res.Security),
+		Risk:            res.Risk,
 		ToolVersion:     toolVersion,
 		PromptsHash:     promptsHash,
 		Model:           modelOrNil(model),
@@ -415,6 +416,7 @@ func (st *svc) finalize(ctx context.Context, dir, prov, headFull, now string, re
 			Confidence:      intOrNil(res.Confidence),
 			ConfidenceRaw:   res.Confidence,
 			SecuritySummary: strOrNil(res.Security),
+			Risk:            res.Risk,
 			Items:           typedItems(res.Entries),
 			ItemsRaw:        EnvelopeItems(res.Entries),
 		},
@@ -435,6 +437,7 @@ func (st *svc) dryRun(dir, now string, res *MergeResult) *core.RecordResponse {
 		Confidence:      intOrNil(res.Confidence),
 		ConfidenceRaw:   res.Confidence,
 		SecuritySummary: strOrNil(res.Security),
+		Risk:            res.Risk,
 		Items:           typedItems(res.Entries),
 		ItemsRaw:        EnvelopeItems(res.Entries),
 		DryRun:          true,
@@ -584,12 +587,12 @@ func resolveHead(dir string, store *readcommon.Bundle, prov string) string {
 		if headFull := readcommon.JSONStr(dir+sourceSuffix, "head_sha"); headFull != "" {
 			return headFull
 		}
-		return "dirty"
+		return headDirty
 	}
 	if headFull := store.Head(); headFull != "" {
 		return headFull
 	}
-	return "unknown"
+	return headUnknown
 }
 
 func sha256File(path string) string {

@@ -281,3 +281,41 @@ func TestBundleOverCapReadsEmpty(t *testing.T) {
 		t.Errorf("ProviderMarker over cap = %q, %v; want absent", got, present)
 	}
 }
+
+func TestReceiptIdentity(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{name: "concrete-head", raw: `{"head":"aaaa"}`, want: "aaaa"},
+		{name: "missing-head-with-digest", raw: `{"diff_sha256":"deadbeef"}`, want: "diff:deadbeef"},
+		{name: "null-head-with-digest", raw: `{"head":null,"diff_sha256":"deadbeef"}`, want: "diff:deadbeef"},
+		{name: "dirty-head-missing-digest", raw: `{"head":"dirty"}`, want: "dirty"},
+		{name: "dirty-head-null-digest", raw: `{"head":"dirty","diff_sha256":null}`, want: "dirty"},
+		{name: "missing-both", raw: `{}`, want: ""},
+		{name: "null-both", raw: `{"head":null,"diff_sha256":null}`, want: ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			checkReceiptIdentity(t, tc.raw, tc.want)
+		})
+	}
+}
+
+func checkReceiptIdentity(t *testing.T, raw, want string) {
+	t.Helper()
+	doc, err := jq.Decode([]byte(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, ok := jq.AsMap(doc)
+	if !ok {
+		t.Fatal("expected map")
+	}
+	if got := ReceiptIdentity(m); got != want {
+		t.Errorf("ReceiptIdentity(%s) = %q, want %q", raw, got, want)
+	}
+}

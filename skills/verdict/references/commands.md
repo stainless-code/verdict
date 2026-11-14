@@ -62,3 +62,27 @@ last, above the base ignore file; `!` re-includes. `--no-default-excludes`
 disables generated and attribute defaults while the ignore file still applies.
 `excluded.json` records `ignore`, `no_default_excludes`, and `patterns_source`
 (`cli` when run overrides are present).
+
+## Risk assessment (`review.json.risk`)
+
+`review.json` accepts an optional `risk` object summarizing the reviewer's
+change-risk judgment for the reviewed head:
+
+```json
+"risk": {
+  "level": "medium",
+  "rationale": "Touches auth token verification with added unit coverage.",
+  "assessed_head": "<full 40-char head SHA from source/PR.json>"
+}
+```
+
+- `level`: one of `low`, `medium`, `high`, `critical`.
+- `rationale`: 10–500 characters explaining why this level fits the change.
+- `assessed_head`: current bundle HEAD SHA; a mismatch warns `risk-stale-head`
+  during `record` and marks the stored claim `stale: true`.
+
+The score is advisory by default (`report --risk`) and enforced only when
+explicitly gated (`report --max-risk <level>`). `report` always computes a
+deterministic floor from open findings, deferred/unanchored items, head
+freshness, and coverage receipts (`reported = max(claimed, floor)`), so
+never emit an optimistic `low` when coverage is incomplete or issues remain.

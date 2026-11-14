@@ -31,9 +31,20 @@ type Review struct { //nolint:govet // field order is the published property ord
 	Sections        []SectionTag    `json:"sections,omitempty"`
 	Confidence      *int            `json:"confidence,omitempty"       max:"5"                         min:"1"`
 	SecuritySummary *string         `json:"security_summary,omitempty"`
+	Risk            *RiskClaim      `anyOf:"null"                      json:"risk,omitempty"           optional:"true"`
 	Chunks          []string        `json:"chunks,omitempty"`
 	Suppressed      []Suppression   `json:"suppressed,omitempty"`
 	Coverage        []CoverageClaim `json:"coverage,omitempty"`
+}
+
+// RiskClaim is the agent-assessed risk summary carried by review.json,
+// record.json, and post.json. Stale is true when assessed_head does not match
+// the bundle head SHA recorded beside it.
+type RiskClaim struct {
+	Level        string `enum:"low|medium|high|critical" json:"level"`
+	Rationale    string `json:"rationale"`
+	AssessedHead string `json:"assessed_head"`
+	Stale        bool   `json:"stale,omitempty"          optional:"true"`
 }
 
 // CoverageClaim is one diff-coverage attestation entry: the file and the
@@ -166,6 +177,7 @@ type RecordData struct { //nolint:govet // field order is the published property
 	Findings        RecordFindings   `inline:"true"               json:"findings"`
 	Confidence      *int             `json:"confidence"           max:"5"                       min:"1"`
 	SecuritySummary *string          `json:"security_summary"`
+	Risk            *RiskClaim       `anyOf:"null"                json:"risk,omitempty"         optional:"true"`
 	Verification    *PanelSummary    `anyOf:"null"                json:"verification,omitempty" optional:"true"`
 	Items           []FindingItem    `json:"items"`
 	DryRun          bool             `json:"dry_run,omitempty"`
@@ -218,6 +230,7 @@ type Record struct { //nolint:govet // field order is the published property ord
 	Open            int              `json:"open"                       min:"0"`
 	Confidence      *int             `json:"confidence,omitempty"       max:"5"                         min:"1"`
 	SecuritySummary *string          `json:"security_summary,omitempty"`
+	Risk            *RiskClaim       `anyOf:"null"                      json:"risk,omitempty"           optional:"true"`
 	ToolVersion     string           `json:"tool_version,omitempty"`
 	PromptsHash     string           `json:"prompts_hash,omitempty"`
 	Model           *string          `json:"model,omitempty"`
@@ -438,9 +451,17 @@ func (d *RecordData) Wire() *jq.Obj {
 		"confidence", d.ConfidenceRaw,
 		"security_summary", strOrNull(d.SecuritySummary),
 	)
+	if d.Risk != nil {
+		o.Set("risk", d.Risk)
+	}
 	if d.Verification != nil {
 		o.Set("verification", d.Verification)
 	}
+	setRecordTailWire(o, d, items)
+	return o
+}
+
+func setRecordTailWire(o *jq.Obj, d *RecordData, items any) {
 	if d.Coverage != nil {
 		o.Set("coverage", d.Coverage)
 	}
@@ -457,7 +478,6 @@ func (d *RecordData) Wire() *jq.Obj {
 	if d.Repairs != nil {
 		o.Set("repairs", d.Repairs)
 	}
-	return o
 }
 
 // findingItemsWire renders typed envelope summaries.
@@ -492,6 +512,9 @@ func (r *Record) Wire() *jq.Obj {
 		"prompts_hash", r.PromptsHash,
 		"model", strOrNull(r.Model),
 	)
+	if r.Risk != nil {
+		o.Set("risk", r.Risk)
+	}
 	if r.PatchID != nil {
 		o.Set("patch_id", *r.PatchID)
 	}

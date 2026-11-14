@@ -296,6 +296,7 @@ func documents() []document {
 				{typ: reflect.TypeFor[core.PanelSummary](), name: verificationSummaryType},
 				{typ: reflect.TypeFor[ChunkCoverage](), name: chunkCoverageType},
 				{typ: reflect.TypeFor[core.PostSummary](), name: "postSummary"},
+				{typ: reflect.TypeFor[core.RiskClaim](), name: defsRiskClaim},
 			},
 			additionalProperties: true,
 		},
@@ -318,6 +319,7 @@ func documents() []document {
 				{typ: reflect.TypeFor[CoverageSummary](), name: coverageSummaryType},
 				{typ: reflect.TypeFor[core.PanelSummary](), name: verificationSummaryType},
 				{typ: reflect.TypeFor[ChunkCoverage](), name: chunkCoverageType},
+				{typ: reflect.TypeFor[core.RiskClaim](), name: "riskClaim"},
 			},
 			additionalProperties: true,
 		},
@@ -397,8 +399,11 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[CostTier](), name: "costTier"},
 		{typ: reflect.TypeFor[ReportCompleteness](), name: "reportCompleteness"},
 		{typ: reflect.TypeFor[ReportCompliance](), name: "reportCompliance"},
+		{typ: reflect.TypeFor[ReportRisk](), name: "reportRisk"},
+		{typ: reflect.TypeFor[RiskInputs](), name: "riskInputs"},
 		{typ: reflect.TypeFor[ReportGate](), name: "reportGate"},
 		{typ: reflect.TypeFor[GateDimension](), name: "gateDimension"},
+		{typ: reflect.TypeFor[core.RiskClaim](), name: "riskClaim"},
 		{typ: reflect.TypeFor[PostData](), name: "postData"},
 		{typ: reflect.TypeFor[core.PostSummary](), name: "postSummary"},
 		{typ: reflect.TypeFor[RecordData](), name: "recordData"},
@@ -465,6 +470,8 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[TrendData](), name: "trendData"},
 		{typ: reflect.TypeFor[TrendStatuses](), name: "trendStatuses"},
 		{typ: reflect.TypeFor[TrendTiers](), name: "trendTiers"},
+		{typ: reflect.TypeFor[TrendRiskBands](), name: "trendRiskBands"},
+		{typ: reflect.TypeFor[TrendRiskBand](), name: "trendRiskBand"},
 		{typ: reflect.TypeFor[TrendSources](), name: "trendSources"},
 		{typ: reflect.TypeFor[TrendProvenance](), name: "trendProvenance"},
 		{typ: reflect.TypeFor[TrendPeriod](), name: "trendPeriod"},
@@ -510,6 +517,8 @@ func envelopeDefs() []definition {
 	}
 }
 
+const defsRiskClaim = "riskClaim"
+
 func reviewDefs() []definition {
 	return []definition{
 		{typ: reflect.TypeFor[Comment](), name: "comment"},
@@ -519,6 +528,7 @@ func reviewDefs() []definition {
 		{typ: reflect.TypeFor[TriageClaim](), name: "triageClaim"},
 		{typ: reflect.TypeFor[SectionTag](), name: "sectionTag"},
 		{typ: reflect.TypeFor[CoverageClaim](), name: "coverageClaim"},
+		{typ: reflect.TypeFor[core.RiskClaim](), name: defsRiskClaim},
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/brief"
 	"github.com/stainless-code/verdict/internal/core"
@@ -30,6 +31,7 @@ type CheckResult struct {
 type CheckInput struct {
 	ExcludedPaths   map[string]bool
 	Diff            string
+	HeadSHA         string
 	ChunkNames      []string
 	ChunkManifest   string
 	Verification    []byte
@@ -62,7 +64,7 @@ var (
 	//nolint:goconst // published schema literals
 	knownReviewKeys = []string{
 		"schema_version", fieldBody, problemApproved, fieldComments, suppressedKey,
-		fieldResolved, fieldTriage, fieldSections, fieldChunks, fieldCoverage, fieldConfidence, fieldSecuritySummary,
+		fieldResolved, fieldTriage, fieldSections, fieldChunks, fieldCoverage, fieldConfidence, fieldSecuritySummary, fieldRisk,
 	}
 	//nolint:goconst // schema keys are published literals
 	knownCommentKeys = []string{
@@ -72,7 +74,9 @@ var (
 	knownTriageKeys   = []string{fieldSig, fieldStatus, problemRationale}
 	knownSectionKeys  = []string{"heading", fieldSeverity}
 	knownCoverageKeys = []string{fieldFile, fieldRanges}
-	reviewKeys        = []string{"critical", exampleImportant, "informational"}
+	knownRiskKeys     = []string{fieldLevel, problemRationale, fieldAssessedHead}
+	reviewKeys        = []string{tierCritical, exampleImportant, "informational"}
+	riskLevels        = []string{"low", "medium", "high", "critical"}
 	rigorKeys         = []string{rungSaid, rungPointed, rungWalked, rungRan, rungReproduced}
 	triageStatuses    = []string{"open", "addressed", exampleWontFix, exampleFalsePositive, "deferred"}
 )
@@ -93,6 +97,7 @@ func CheckReviewInput(review []byte, in CheckInput) CheckResult {
 		res:             CheckResult{Problems: []Problem{}},
 		hunks:           hunks.Parse(in.Diff),
 		excludedPaths:   in.ExcludedPaths,
+		headSHA:         in.HeadSHA,
 		chunkNames:      in.ChunkNames,
 		chunkManifest:   in.ChunkManifest,
 		hasChunks:       in.ChunkNames != nil,
@@ -125,6 +130,7 @@ type checker struct {
 	res             CheckResult
 	excludedPaths   map[string]bool
 	hunks           []hunks.Hunk
+	headSHA         string
 	chunkNames      []string
 	chunkManifest   string
 	verification    []byte
@@ -223,6 +229,8 @@ func (c *checker) checkReview(obj *jq.Obj) {
 			c.checkConfidence(v)
 		case fieldSecuritySummary:
 			c.checkSecuritySummary(v)
+		case fieldRisk:
+			c.checkRisk(v)
 		case fieldChunks:
 			c.checkChunks(v)
 		case fieldCoverage:
@@ -861,6 +869,99 @@ func (c *checker) checkSecuritySummary(v any) {
 	if _, ok := v.(string); !ok {
 		c.wrongType("$.security_summary", "security_summary must be a string", "use a short paragraph", "...")
 	}
+}
+
+func (c *checker) checkRisk(v any) {
+	if v == nil {
+		return
+	}
+	const pathRisk = "$.risk"
+	m, ok := v.(*jq.Obj)
+	if !ok {
+		c.wrongType(pathRisk, "risk must be an object",
+			"use {level, rationale, assessed_head}",
+			map[string]any{fieldLevel: riskMedium, problemRationale: exampleEllipsis, fieldAssessedHead: "HEAD"})
+		return
+	}
+	assessedHead := c.checkRiskFields(m, pathRisk)
+	c.checkMissingRiskFields(m, pathRisk)
+	if c.headSHA != "" && c.headSHA != headDirty && c.headSHA != headUnknown && assessedHead != "" && assessedHead != c.headSHA {
+		c.add(c.problem(riskPath(pathRisk, fieldAssessedHead), core.ProblemCodeRiskStaleHead, core.ProblemLevelWarning,
+			fmt.Sprintf("risk assessed_head %q does not match bundle head %q — marking risk claim stale", assessedHead, c.headSHA),
+			fmt.Sprintf("update risk.assessed_head to %q after reviewing the current head", c.headSHA),
+			c.headSHA))
+	}
+}
+
+func riskPath(base, key string) string { return fmt.Sprintf("%s.%s", base, key) }
+
+func (c *checker) checkRiskFields(m *jq.Obj, pathRisk string) string {
+	var assessedHead string
+	for _, key := range m.Keys {
+		val, _ := m.Get(key)
+		switch key {
+		case fieldLevel:
+			c.checkRiskLevel(riskPath(pathRisk, fieldLevel), val)
+		case problemRationale:
+			c.checkRiskRationale(riskPath(pathRisk, problemRationale), val)
+		case fieldAssessedHead:
+			assessedHead = c.checkRiskHead(riskPath(pathRisk, fieldAssessedHead), val)
+		default:
+			c.unknown(pathRisk, key, knownRiskKeys)
+		}
+	}
+	return assessedHead
+}
+
+func (c *checker) checkMissingRiskFields(m *jq.Obj, pathRisk string) {
+	if _, ok := m.Get(fieldLevel); !ok {
+		c.missing(riskPath(pathRisk, fieldLevel), "missing risk level", "use low|medium|high|critical", riskMedium)
+	}
+	if _, ok := m.Get(problemRationale); !ok {
+		c.missing(riskPath(pathRisk, problemRationale), "missing risk rationale", "explain the assessed risk briefly", exampleEllipsis)
+	}
+	if _, ok := m.Get(fieldAssessedHead); !ok {
+		c.missing(riskPath(pathRisk, fieldAssessedHead), "missing risk assessed_head", "record the bundle head SHA", c.headSHA)
+	}
+}
+
+func (c *checker) checkRiskLevel(path string, v any) {
+	s, ok := v.(string)
+	if !ok {
+		c.wrongType(path, "risk level must be a string", "use low|medium|high|critical", riskMedium)
+		return
+	}
+	if !slices.Contains(riskLevels, s) {
+		c.badEnum(path, fmt.Sprintf("unknown risk level %q", s), "use low|medium|high|critical", riskMedium)
+	}
+}
+
+func (c *checker) checkRiskRationale(path string, v any) {
+	s, ok := v.(string)
+	if !ok {
+		c.wrongType(path, "risk rationale must be a string", "write a concise risk rationale (10-500 characters)", exampleEllipsis)
+		return
+	}
+	n := utf8.RuneCountInString(strings.TrimSpace(s))
+	if n < minRiskRationale || n > maxRiskRationale {
+		c.outOfRange(path, fmt.Sprintf("risk rationale must be %d-%d characters (got %d)", minRiskRationale, maxRiskRationale, n),
+			fmt.Sprintf("write a %d-%d character rationale explaining the risk level", minRiskRationale, maxRiskRationale),
+			"Touches auth token verification with added test coverage.")
+	}
+}
+
+func (c *checker) checkRiskHead(path string, v any) string {
+	s, ok := v.(string)
+	if !ok {
+		c.wrongType(path, "risk assessed_head must be a string", "record the reviewed head SHA", "HEAD")
+		return ""
+	}
+	trimmed := strings.TrimSpace(s)
+	if trimmed == "" {
+		c.outOfRange(path, "risk assessed_head must be a non-empty SHA", "record the reviewed head SHA", "HEAD")
+		return ""
+	}
+	return trimmed
 }
 
 func invalidJSON(review []byte) *Problem {

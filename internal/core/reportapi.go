@@ -19,9 +19,11 @@ type ReportFlags struct {
 	Sarif           string
 	Check           string `enum:"critical|important|informational"`
 	Live            string `enum:"auto|strict|skip"`
+	MaxRisk         string `enum:"low|medium|high|critical"`
 	IncludeWithheld bool
 	Cost            bool
 	Completeness    bool
+	Risk            bool
 }
 
 // ReportRequest is the report service invocation: the read runtime and

@@ -22,7 +22,12 @@ const corpusPrefix = "corpus-"
 
 const prSuffix = "/PR.json"
 
-const postSuffix = "/post.json"
+// PostSuffix and RecordSuffix name the bundle receipt files relative to a
+// bundle dir.
+const (
+	PostSuffix   = "/post.json"
+	RecordSuffix = "/record.json"
+)
 
 // BacktestMarkerFile marks a bundle a backtest replay built. The marker keeps
 // the bundle out of the operator's history rollups: it is benchmark input, not
@@ -528,10 +533,29 @@ func (b *Bundle) loadPR() bool {
 
 func (b *Bundle) loadPost() bool {
 	if !b.postLoaded {
-		b.post, b.postOK = decodeStore(b.dir+postSuffix, jq.MaxPRBytes)
+		b.post, b.postOK = decodeStore(b.dir+PostSuffix, jq.MaxPRBytes)
 		b.postLoaded = true
 	}
 	return b.postOK
+}
+
+// IsConcreteHead reports whether head names a real commit SHA rather than a
+// missing or placeholder worktree marker.
+func IsConcreteHead(head string) bool {
+	return head != "" && head != "dirty" && head != "unknown"
+}
+
+// ReceiptIdentity resolves the commit or diff-digest key stored on a
+// post.json or record.json receipt.
+func ReceiptIdentity(m map[string]any) string {
+	head := jq.StrOf(m["head"])
+	if IsConcreteHead(head) {
+		return head
+	}
+	if diff := jq.StrOf(m["diff_sha256"]); diff != "" {
+		return "diff:" + diff
+	}
+	return head
 }
 
 // readStoreFile is [jq.CappedFile] behind a seam so tests can count the

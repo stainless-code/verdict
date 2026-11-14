@@ -81,6 +81,7 @@ type PostData struct { //nolint:govet // field order is the published property o
 	Items           []FindingItem    `json:"items"`
 	Confidence      *int             `json:"confidence"       max:"5"                       min:"1"`
 	SecuritySummary *string          `json:"security_summary"`
+	Risk            *RiskClaim       `anyOf:"null"            json:"risk,omitempty"         optional:"true"`
 	PayloadHash     string           `json:"payload_hash"`
 	Review          map[string]any   `json:"review,omitempty"`
 	Provenance      Provenance       `json:"provenance"       optional:"true"`
@@ -123,6 +124,7 @@ type Post struct { //nolint:govet // field order is the published property order
 	PostedAt        string         `format:"date-time"                json:"posted_at"`
 	Confidence      *int           `json:"confidence,omitempty"       max:"5"                       min:"1"`
 	SecuritySummary *string        `json:"security_summary,omitempty"`
+	Risk            *RiskClaim     `anyOf:"null"                      json:"risk,omitempty"         optional:"true"`
 	ToolVersion     string         `json:"tool_version,omitempty"`
 	PromptsHash     string         `json:"prompts_hash,omitempty"`
 	Model           *string        `json:"model,omitempty"`
@@ -212,6 +214,9 @@ func (d *PostData) Wire() *jq.Obj {
 			"payload_hash", d.PayloadHash,
 			"provenance", provenance,
 		)...)
+		if d.Risk != nil {
+			o.Set("risk", d.Risk)
+		}
 		if d.Summary != nil {
 			o.Set("summary", d.Summary)
 		}
@@ -224,6 +229,9 @@ func (d *PostData) Wire() *jq.Obj {
 		"security_summary", Wire(d.SecuritySummary),
 		"payload_hash", d.PayloadHash,
 	)...)
+	if d.Risk != nil {
+		o.Set("risk", d.Risk)
+	}
 	if review != nil {
 		o.Set("review", review)
 	}
@@ -300,6 +308,11 @@ func (p *Post) Wire() *jq.Obj {
 	)
 	setRearmWire(o, p.Rearmed, p.PreviousHead)
 	setPostPatchWire(o, p)
+	setPostTailWire(o, p)
+	return o
+}
+
+func setPostTailWire(o *jq.Obj, p *Post) {
 	if p.Forced != nil {
 		o.Set("forced", p.Forced)
 	}
@@ -309,8 +322,10 @@ func (p *Post) Wire() *jq.Obj {
 	if p.Verification != nil {
 		o.Set("verification", p.Verification)
 	}
+	if p.Risk != nil {
+		o.Set("risk", p.Risk)
+	}
 	setPostCoverageWire(o, p)
-	return o
 }
 
 // setPostCoverageWire appends the stored attestation last: the measured line
