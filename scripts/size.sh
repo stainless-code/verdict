@@ -9,8 +9,9 @@ BUDGET='scripts/size-baseline.txt'
 # `make size` fails when a target or the dep count grows past its line, when a
 # shipped target has no line, or a line names a target the release contract no
 # longer ships. A deliberate growth raises only the crossed ceilings, in the
-# same change, to the next 10 kB above the exact measurement; the measured
-# values and the reason go in the commit message body.
+# same change, to the next 10 kB that leaves at least 8 KB of headroom above the
+# exact measurement; the measured values and the reason go in the commit
+# message body.
 # The release build's own inputs (.goreleaser.yml): ./cmd/verdict, -trimpath,
 # -s -w, and a fixed version so the embedded string length cannot drift.
 VERSION='0.0.0'
