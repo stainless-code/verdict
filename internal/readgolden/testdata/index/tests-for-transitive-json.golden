@@ -32,8 +32,6 @@ exit: 0
     },
     "limit": 50,
     "depth": 3,
-    "truncated": 0,
-    "depth_truncated": 0,
     "rows": [
       {
         "path": "c/c_test.go",

@@ -60,6 +60,7 @@ func (a *precisionAggregate) addBundle(layer *Layer, root Root, bundle string, k
 	a.view.Sources = mergeSources(a.view.Sources, inv.sources)
 	a.view.Warnings = append(a.view.Warnings, inv.notes...)
 	a.partial = a.partial || inv.cut
+	a.inventoryCut(inv.cut)
 	entries, err := readcommon.LoadFindings(dir)
 	if err != nil {
 		code := "corrupt-store"
@@ -152,6 +153,7 @@ func (a *precisionAggregate) result() *View {
 		keySources, sourcesWire(a.view.Sources),
 		keyErrors, errorsWire(a.errs),
 	)
+	a.receipt(a.view.Data, 0)
 	a.view.Errors = a.errs
 	a.view.Next = precisionNext
 	return a.view

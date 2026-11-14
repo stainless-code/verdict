@@ -83,7 +83,7 @@ assert_json_field "a direct import edge is one hop" "b/b_test.go 1" \
   '[.data.rows[] | select(.via == "references") | "\(.path) \(.depth)"] | join(",")'
 assert_json_field "a test two packages out is transitive" "d/d_test.go 2" \
   '[.data.rows[] | select(.via == "transitive-import") | "\(.path) \(.depth)"] | join(",")'
-assert_json_field "nothing is hidden under the default cap" 0 '.data.depth_truncated'
+assert_json_field "receipt is absent under default work budget" null '.data.truncated'
 assert_json_field "target owners are the last matching rule" "@go-owner" \
   '[.data.target.owners[]] | join(",")'
 assert_json_field "target names the CODEOWNERS source" ".github/CODEOWNERS" '.data.target.owners_source'
@@ -100,7 +100,7 @@ run_review index tests-for a/a.go --depth 1 --json
 assert_exit "a one-hop depth exits 0" 0
 assert_json_field "one hop turns the transitive walk off" "a/a_test.go,b/b_test.go,c/c_test.go" \
   '[.data.rows[].path] | join(",")'
-assert_json_field "the cap counts the candidate it hid" 1 '.data.depth_truncated'
+assert_json_field "the cap names the work budget" work_budget '.data.truncation_reason'
 
 run_review index tests-for --symbol a.Target --json
 assert_exit "symbol tests-for exits 0" 0

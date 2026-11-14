@@ -598,7 +598,6 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
   "pr": 4708,
   "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "fetched_at": "0000-00-00T00:00:00Z",
-  "truncated": false,
   "threads": [
     {
       "id": "7",
@@ -619,7 +618,6 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
           "author": "rev",
           "author_kind": "human",
           "body": "Summary note",
-          "truncated": false,
           "created_at": "0000-00-00T00:00:00Z"
         }
       ]
@@ -643,7 +641,6 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
           "author": "ana",
           "author_kind": "human",
           "body": "Nit",
-          "truncated": false,
           "created_at": "0000-00-00T00:00:00Z"
         }
       ]
@@ -667,7 +664,6 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
           "author": "bo",
           "author_kind": "human",
           "body": "Old spot",
-          "truncated": false,
           "created_at": "0000-00-00T00:00:00Z"
         }
       ]

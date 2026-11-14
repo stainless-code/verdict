@@ -592,7 +592,6 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
   "pr": 4713,
   "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "fetched_at": "0000-00-00T00:00:00Z",
-  "truncated": false,
   "threads": [
     {
       "id": "PRRT_1",
@@ -613,7 +612,6 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
           "author": "verdict[bot]",
           "author_kind": "verdict",
           "body": "Consider clarifying this line.\n\n<!-- verdict-finding sig=6c3ee749e3d1f97870c9e8b5c1171fae2cb9ff4e -->",
-          "truncated": false,
           "created_at": "0000-00-00T00:00:00Z"
         },
         {
@@ -621,7 +619,6 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
           "author": "mate",
           "author_kind": "human",
           "body": "Done.",
-          "truncated": false,
           "created_at": "0000-00-00T00:00:00Z"
         }
       ]
@@ -645,7 +642,6 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
           "author": "ana",
           "author_kind": "human",
           "body": "Old anchor.",
-          "truncated": false,
           "created_at": "0000-00-00T00:00:00Z"
         }
       ]

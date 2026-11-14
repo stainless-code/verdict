@@ -18,7 +18,25 @@
       "type": "array",
       "items": { "type": "string" }
     },
-    "data": { "type": ["object", "null"], "additionalProperties": true },
+    "data": {
+      "type": ["object", "null"],
+      "properties": {
+        "truncated": { "type": "boolean" },
+        "truncation_reason": {
+          "enum": [
+            "work_budget",
+            "response_cap",
+            "time_budget",
+            "scan_cap",
+            "chunk_cap"
+          ]
+        },
+        "returned": { "type": "integer", "minimum": 0 },
+        "total": { "type": ["integer", "null"], "minimum": 0 },
+        "next_offset": { "type": ["integer", "null"], "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
     "error": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/error" }] }
   },
   "required": [
@@ -34,6 +52,32 @@
   ],
   "additionalProperties": false,
   "$defs": {
+    "truncation": {
+      "type": "object",
+      "properties": {
+        "truncated": { "type": "boolean" },
+        "truncation_reason": {
+          "enum": [
+            "work_budget",
+            "response_cap",
+            "time_budget",
+            "scan_cap",
+            "chunk_cap"
+          ]
+        },
+        "returned": { "type": "integer", "minimum": 0 },
+        "total": { "type": ["integer", "null"], "minimum": 0 },
+        "next_offset": { "type": ["integer", "null"], "minimum": 0 }
+      },
+      "required": [
+        "truncated",
+        "truncation_reason",
+        "returned",
+        "total",
+        "next_offset"
+      ],
+      "additionalProperties": true
+    },
     "error": {
       "description": "Refusal shape from fail(): data is null, message carries the cause plus a try: hint, candidates rides only on the oversize-fetch refusal.",
       "type": "object",
@@ -660,8 +704,21 @@
       "description": "show --json data: item is the raw finding record in store key order; fix is the read-only machine repair directive built from that record plus the bundle's patch/verification history. Neither key adds execution, flags, or store writes.",
       "type": "object",
       "properties": {
+        "truncated": { "type": "boolean" },
+        "truncation_reason": {
+          "enum": [
+            "work_budget",
+            "response_cap",
+            "time_budget",
+            "scan_cap",
+            "chunk_cap"
+          ]
+        },
+        "returned": { "type": "integer", "minimum": 0 },
+        "total": { "type": ["integer", "null"], "minimum": 0 },
+        "next_offset": { "type": ["integer", "null"], "minimum": 0 },
         "item": {},
-        "fix": { "$ref": "#/$defs/showFix" }
+        "fix": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/showFix" }] }
       },
       "required": ["item", "fix"],
       "additionalProperties": true
@@ -670,6 +727,19 @@
       "description": "serve --json data (and the start envelope): one profile across health, roots, inbox, detail, and the start line, so every view-specific key is optional while partial, sources, and errors are always present. A product refusal is data null with the typed error; a corrupt bundle in a listing keeps its row with null counts and an errors[] entry, and any total over it is null and partial.",
       "type": "object",
       "properties": {
+        "truncated": { "type": "boolean" },
+        "truncation_reason": {
+          "enum": [
+            "work_budget",
+            "response_cap",
+            "time_budget",
+            "scan_cap",
+            "chunk_cap"
+          ]
+        },
+        "returned": { "type": "integer", "minimum": 0 },
+        "total": { "type": ["integer", "null"], "minimum": 0 },
+        "next_offset": { "type": ["integer", "null"], "minimum": 0 },
         "version": { "type": "string" },
         "url": { "type": "string" },
         "listen": { "type": "string" },
@@ -683,7 +753,6 @@
           "type": "array",
           "items": { "$ref": "#/$defs/serveRoot" }
         },
-        "truncated": { "type": ["boolean", "null"] },
         "skipped": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/serveSkipped" }]
         },
@@ -1027,6 +1096,18 @@
         "head_sha": { "type": "string" },
         "fetched_at": { "type": "string", "format": "date-time" },
         "truncated": { "type": "boolean" },
+        "truncation_reason": {
+          "enum": [
+            "work_budget",
+            "response_cap",
+            "time_budget",
+            "scan_cap",
+            "chunk_cap"
+          ]
+        },
+        "returned": { "type": "integer", "minimum": 0 },
+        "total": { "type": ["integer", "null"], "minimum": 0 },
+        "next_offset": { "type": ["integer", "null"], "minimum": 0 },
         "threads": {
           "type": "array",
           "items": { "$ref": "#/$defs/thread" }
@@ -1038,7 +1119,6 @@
         "pr",
         "head_sha",
         "fetched_at",
-        "truncated",
         "threads"
       ],
       "additionalProperties": true
@@ -1090,16 +1170,21 @@
         "author_kind": { "enum": ["human", "bot", "verdict"] },
         "body": { "type": "string" },
         "truncated": { "type": "boolean" },
+        "truncation_reason": {
+          "enum": [
+            "work_budget",
+            "response_cap",
+            "time_budget",
+            "scan_cap",
+            "chunk_cap"
+          ]
+        },
+        "returned": { "type": "integer", "minimum": 0 },
+        "total": { "type": ["integer", "null"], "minimum": 0 },
+        "next_offset": { "type": ["integer", "null"], "minimum": 0 },
         "created_at": { "type": "string" }
       },
-      "required": [
-        "id",
-        "author",
-        "author_kind",
-        "body",
-        "truncated",
-        "created_at"
-      ],
+      "required": ["id", "author", "author_kind", "body", "created_at"],
       "additionalProperties": true
     },
     "configData": {
@@ -1554,6 +1639,19 @@
       "description": "next --json data: the ranked finding to fix next, or null when the store has nothing open. item keeps every stored record key beside the ranked locator.",
       "type": "object",
       "properties": {
+        "truncated": { "type": "boolean" },
+        "truncation_reason": {
+          "enum": [
+            "work_budget",
+            "response_cap",
+            "time_budget",
+            "scan_cap",
+            "chunk_cap"
+          ]
+        },
+        "returned": { "type": "integer", "minimum": 0 },
+        "total": { "type": ["integer", "null"], "minimum": 0 },
+        "next_offset": { "type": ["integer", "null"], "minimum": 0 },
         "item": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/findingItem" }]
         }
@@ -1705,6 +1803,18 @@
         "head_sha": { "type": "string" },
         "fetched_at": { "type": "string" },
         "truncated": { "type": "boolean" },
+        "truncation_reason": {
+          "enum": [
+            "work_budget",
+            "response_cap",
+            "time_budget",
+            "scan_cap",
+            "chunk_cap"
+          ]
+        },
+        "returned": { "type": "integer", "minimum": 0 },
+        "total": { "type": ["integer", "null"], "minimum": 0 },
+        "next_offset": { "type": ["integer", "null"], "minimum": 0 },
         "threads": { "type": "integer" },
         "open": { "type": "integer" },
         "outdated": { "type": "integer" },
@@ -1716,7 +1826,6 @@
         "provider",
         "head_sha",
         "fetched_at",
-        "truncated",
         "threads",
         "open",
         "outdated",
@@ -1785,6 +1894,19 @@
       "description": "trend --json data: the portfolio rollup, one row per reviewed bundle, and the opt-in overlap and corpus joins. Every tally key is always present.",
       "type": "object",
       "properties": {
+        "truncated": { "type": "boolean" },
+        "truncation_reason": {
+          "enum": [
+            "work_budget",
+            "response_cap",
+            "time_budget",
+            "scan_cap",
+            "chunk_cap"
+          ]
+        },
+        "returned": { "type": "integer", "minimum": 0 },
+        "total": { "type": ["integer", "null"], "minimum": 0 },
+        "next_offset": { "type": ["integer", "null"], "minimum": 0 },
         "rules": {},
         "generated_at": { "type": "string", "format": "date-time" },
         "bundles": { "type": "integer", "minimum": 0 },
@@ -2038,6 +2160,19 @@
       "description": "index --json data: one object across build, status, prune, callers, tests-for, co-changed, owners, and blast-radius, so kind names the subcommand and every other key is optional.",
       "type": "object",
       "properties": {
+        "truncated": { "type": "boolean" },
+        "truncation_reason": {
+          "enum": [
+            "work_budget",
+            "response_cap",
+            "time_budget",
+            "scan_cap",
+            "chunk_cap"
+          ]
+        },
+        "returned": { "type": "integer", "minimum": 0 },
+        "total": { "type": ["integer", "null"], "minimum": 0 },
+        "next_offset": { "type": ["integer", "null"], "minimum": 0 },
         "kind": {
           "enum": [
             "build",
@@ -2081,8 +2216,6 @@
         "counts": { "$ref": "#/$defs/indexCounts" },
         "limit": { "type": "integer", "minimum": 1 },
         "depth": { "type": "integer", "minimum": 1 },
-        "truncated": { "type": "integer", "minimum": 0 },
-        "depth_truncated": { "type": "integer", "minimum": 0 },
         "rows": {
           "type": "array",
           "items": { "$ref": "#/$defs/indexRow" }
@@ -2252,17 +2385,29 @@
       "additionalProperties": true
     },
     "indexBlastSymbols": {
-      "description": "The changed declarations: each declaration whose span the diff touched, or every declaration in a --paths file. count is how many were measured and truncated is how many the limit hid; both are null when no index answered, never 0.",
+      "description": "The changed declarations: each declaration whose span the diff touched, or every declaration in a --paths file. count is how many were measured (null when no index answered, never 0); truncated is true only when the result list was capped.",
       "type": "object",
       "properties": {
+        "truncated": { "type": "boolean" },
+        "truncation_reason": {
+          "enum": [
+            "work_budget",
+            "response_cap",
+            "time_budget",
+            "scan_cap",
+            "chunk_cap"
+          ]
+        },
+        "returned": { "type": "integer", "minimum": 0 },
+        "total": { "type": ["integer", "null"], "minimum": 0 },
+        "next_offset": { "type": ["integer", "null"], "minimum": 0 },
         "count": { "type": ["integer", "null"], "minimum": 0 },
-        "truncated": { "type": ["integer", "null"], "minimum": 0 },
         "rows": {
           "type": "array",
           "items": { "$ref": "#/$defs/indexBlastSymbol" }
         }
       },
-      "required": ["count", "truncated", "rows"],
+      "required": ["count", "rows"],
       "additionalProperties": true
     },
     "indexBlastSymbol": {
@@ -2278,18 +2423,30 @@
       "additionalProperties": true
     },
     "indexBlastCallers": {
-      "description": "The callers of the changed declarations within depth 2, walked once per target and deduplicated by call site. count, unresolved, and truncated are null when no index answered.",
+      "description": "The callers of the changed declarations within depth 2, walked once per target and deduplicated by call site. count and unresolved are null when no index answered; truncated is true only when the result list was capped.",
       "type": "object",
       "properties": {
+        "truncated": { "type": "boolean" },
+        "truncation_reason": {
+          "enum": [
+            "work_budget",
+            "response_cap",
+            "time_budget",
+            "scan_cap",
+            "chunk_cap"
+          ]
+        },
+        "returned": { "type": "integer", "minimum": 0 },
+        "total": { "type": ["integer", "null"], "minimum": 0 },
+        "next_offset": { "type": ["integer", "null"], "minimum": 0 },
         "count": { "type": ["integer", "null"], "minimum": 0 },
         "unresolved": { "type": ["integer", "null"], "minimum": 0 },
-        "truncated": { "type": ["integer", "null"], "minimum": 0 },
         "rows": {
           "type": "array",
           "items": { "$ref": "#/$defs/indexBlastCaller" }
         }
       },
-      "required": ["count", "unresolved", "truncated", "rows"],
+      "required": ["count", "unresolved", "rows"],
       "additionalProperties": true
     },
     "indexBlastCaller": {
@@ -2309,33 +2466,56 @@
       "additionalProperties": true
     },
     "indexBlastTests": {
-      "description": "The candidate tests to read for the changed declarations, strongest mechanism per file. A candidate is never a coverage claim, and count/truncated are null when no index answered.",
+      "description": "The candidate tests to read for the changed declarations, strongest mechanism per file. A candidate is never a coverage claim; count is null when no index answered and truncated is true only when the result list was capped.",
       "type": "object",
       "properties": {
+        "truncated": { "type": "boolean" },
+        "truncation_reason": {
+          "enum": [
+            "work_budget",
+            "response_cap",
+            "time_budget",
+            "scan_cap",
+            "chunk_cap"
+          ]
+        },
+        "returned": { "type": "integer", "minimum": 0 },
+        "total": { "type": ["integer", "null"], "minimum": 0 },
+        "next_offset": { "type": ["integer", "null"], "minimum": 0 },
         "count": { "type": ["integer", "null"], "minimum": 0 },
-        "truncated": { "type": ["integer", "null"], "minimum": 0 },
-        "depth_truncated": { "type": ["integer", "null"], "minimum": 0 },
         "rows": {
           "type": "array",
           "items": { "$ref": "#/$defs/indexRow" }
         }
       },
-      "required": ["count", "truncated", "depth_truncated", "rows"],
+      "required": ["count", "rows"],
       "additionalProperties": true
     },
     "indexBlastPartners": {
-      "description": "The paths that moved with each changed path in one bounded co-change window, read at HEAD. count is the number of (changed path, partner) rows and partners the distinct partner paths across them; truncated is always measured: history needs no index.",
+      "description": "The paths that moved with each changed path in one bounded co-change window, read at HEAD. count is the number of (changed path, partner) rows and partners the distinct partner paths across them: history needs no index; truncated is true only when the result list was capped.",
       "type": "object",
       "properties": {
+        "truncated": { "type": "boolean" },
+        "truncation_reason": {
+          "enum": [
+            "work_budget",
+            "response_cap",
+            "time_budget",
+            "scan_cap",
+            "chunk_cap"
+          ]
+        },
+        "returned": { "type": "integer", "minimum": 0 },
+        "total": { "type": ["integer", "null"], "minimum": 0 },
+        "next_offset": { "type": ["integer", "null"], "minimum": 0 },
         "count": { "type": "integer", "minimum": 0 },
         "partners": { "type": "integer", "minimum": 0 },
-        "truncated": { "type": "integer", "minimum": 0 },
         "rows": {
           "type": "array",
           "items": { "$ref": "#/$defs/indexBlastPartner" }
         }
       },
-      "required": ["count", "partners", "truncated", "rows"],
+      "required": ["count", "partners", "rows"],
       "additionalProperties": true
     },
     "indexBlastPartner": {
@@ -2351,17 +2531,29 @@
       "additionalProperties": true
     },
     "indexBlastOwners": {
-      "description": "One ownership row per changed path, from the CODEOWNERS file at the queried tree. count and truncated are always measured.",
+      "description": "One ownership row per changed path, from the CODEOWNERS file at the queried tree. count is always measured; truncated is true only when the result list was capped.",
       "type": "object",
       "properties": {
+        "truncated": { "type": "boolean" },
+        "truncation_reason": {
+          "enum": [
+            "work_budget",
+            "response_cap",
+            "time_budget",
+            "scan_cap",
+            "chunk_cap"
+          ]
+        },
+        "returned": { "type": "integer", "minimum": 0 },
+        "total": { "type": ["integer", "null"], "minimum": 0 },
+        "next_offset": { "type": ["integer", "null"], "minimum": 0 },
         "count": { "type": "integer", "minimum": 0 },
-        "truncated": { "type": "integer", "minimum": 0 },
         "rows": {
           "type": "array",
           "items": { "$ref": "#/$defs/indexTarget" }
         }
       },
-      "required": ["count", "truncated", "rows"],
+      "required": ["count", "rows"],
       "additionalProperties": true
     },
     "calibrateData": {
@@ -2503,6 +2695,19 @@
       "description": "fetch --json data: the bundle location, the diff statistics the toc counted, the panel, and the conditional summaries the run armed. estimate and budget travel together, cap and chunk follow only when armed, and prompt_dump lands last when staged.",
       "type": "object",
       "properties": {
+        "truncated": { "type": "boolean" },
+        "truncation_reason": {
+          "enum": [
+            "work_budget",
+            "response_cap",
+            "time_budget",
+            "scan_cap",
+            "chunk_cap"
+          ]
+        },
+        "returned": { "type": "integer", "minimum": 0 },
+        "total": { "type": ["integer", "null"], "minimum": 0 },
+        "next_offset": { "type": ["integer", "null"], "minimum": 0 },
         "dir": { "type": "string" },
         "head_sha": { "type": "string" },
         "base_sha": { "type": "string" },
@@ -2559,6 +2764,19 @@
       "description": "fetch-local --json data: the same statistics without a remote base, plus the worktree kind and no incremental_base.",
       "type": "object",
       "properties": {
+        "truncated": { "type": "boolean" },
+        "truncation_reason": {
+          "enum": [
+            "work_budget",
+            "response_cap",
+            "time_budget",
+            "scan_cap",
+            "chunk_cap"
+          ]
+        },
+        "returned": { "type": "integer", "minimum": 0 },
+        "total": { "type": ["integer", "null"], "minimum": 0 },
+        "next_offset": { "type": ["integer", "null"], "minimum": 0 },
         "dir": { "type": "string" },
         "kind": { "type": "string" },
         "head_sha": { "type": "string" },

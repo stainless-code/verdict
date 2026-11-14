@@ -259,14 +259,14 @@ func TestRuntimeIndexEnvelopeValidates(t *testing.T) {
 		{query: indexcore.QueryBlastRadius, paths: []string{"a/a.go"}, want: map[string]any{
 			"kind": "blast-radius",
 			"symbols": map[string]any{
-				"count": json.Number("2"), "truncated": json.Number("0"),
+				"count": json.Number("2"),
 				"rows": []any{
 					map[string]any{"path": "a/a.go", "name": "Target", "kind": "func", "line": json.Number("3")},
 					map[string]any{"path": "a/a.go", "name": "Caller", "kind": "func", "line": json.Number("5")},
 				},
 			},
 			"callers": map[string]any{
-				"count": json.Number("2"), "unresolved": json.Number("0"), "truncated": json.Number("0"),
+				"count": json.Number("2"), "unresolved": json.Number("0"),
 				"rows": []any{
 					map[string]any{
 						"symbol": "example.com/m/a.Target", "path": "a/a.go", "kind": "call",

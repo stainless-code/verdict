@@ -235,8 +235,7 @@ f00.txt
   "source": "paged",
   "cli_cap": 100,
   "provider_ceiling": 3000,
-  "count": 2,
-  "truncated": false
+  "count": 2
 }
 --- file C/.verdict/state/4712/full.diff ---
 diff --git a/f00.txt b/f00.txt
@@ -598,7 +597,6 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
   "pr": 4712,
   "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "fetched_at": "0000-00-00T00:00:00Z",
-  "truncated": false,
   "threads": []
 }
 --- file C/.verdict/state/4712/toc.txt ---

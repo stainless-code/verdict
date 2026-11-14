@@ -78,7 +78,12 @@ c.txt
       "bytes": 333103,
       "diff": ".verdict/state/local-demo/chunks/chunk-01.diff",
       "toc": ".verdict/state/local-demo/chunks/chunk-01.toc.txt",
-      "roles": ".verdict/state/local-demo/chunks/chunk-01.roles.txt"
+      "roles": ".verdict/state/local-demo/chunks/chunk-01.roles.txt",
+      "truncated": true,
+      "truncation_reason": "chunk_cap",
+      "returned": 1,
+      "total": 3,
+      "next_offset": 1
     },
     {
       "index": 2,
@@ -90,7 +95,12 @@ c.txt
       "bytes": 333103,
       "diff": ".verdict/state/local-demo/chunks/chunk-02.diff",
       "toc": ".verdict/state/local-demo/chunks/chunk-02.toc.txt",
-      "roles": ".verdict/state/local-demo/chunks/chunk-02.roles.txt"
+      "roles": ".verdict/state/local-demo/chunks/chunk-02.roles.txt",
+      "truncated": true,
+      "truncation_reason": "chunk_cap",
+      "returned": 1,
+      "total": 3,
+      "next_offset": 2
     },
     {
       "index": 3,
@@ -102,7 +112,12 @@ c.txt
       "bytes": 333103,
       "diff": ".verdict/state/local-demo/chunks/chunk-03.diff",
       "toc": ".verdict/state/local-demo/chunks/chunk-03.toc.txt",
-      "roles": ".verdict/state/local-demo/chunks/chunk-03.roles.txt"
+      "roles": ".verdict/state/local-demo/chunks/chunk-03.roles.txt",
+      "truncated": true,
+      "truncation_reason": "chunk_cap",
+      "returned": 1,
+      "total": 3,
+      "next_offset": null
     }
   ],
   "excluded_count": 0,

@@ -32,15 +32,18 @@ exit: 0
     },
     "limit": 50,
     "depth": 2,
-    "truncated": 0,
-    "depth_truncated": 1,
     "rows": [
       {
         "path": "c/c_test.go",
         "via": "transitive-import",
         "depth": 2
       }
-    ]
+    ],
+    "truncated": true,
+    "truncation_reason": "work_budget",
+    "returned": 1,
+    "total": null,
+    "next_offset": null
   },
   "error": null
 }

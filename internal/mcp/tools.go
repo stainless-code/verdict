@@ -505,7 +505,7 @@ func invokeNext(ctx context.Context, req *core.NextRequest) (*jq.Obj, *core.Refu
 	if resp.Item != nil {
 		item = resp.Item.Wire()
 	}
-	return jq.NewObj("item", item), nil
+	return resp.Receipt.Apply(jq.NewObj("item", item)), nil
 }
 
 func invokePack(ctx context.Context, req *packcore.Request) (*jq.Obj, *core.RefusalError) {
@@ -530,11 +530,11 @@ func invokeShow(ctx context.Context, req *core.ShowRequest) (*jq.Obj, *core.Refu
 	if resp.Item != nil {
 		item = resp.Item.Raw
 	}
-	data := jq.NewObj("item", item)
+	data := jq.NewObj("item", item, "fix", nil)
 	if resp.Fix != nil {
 		data.Set("fix", resp.Fix.Wire())
 	}
-	return data, nil
+	return resp.Receipt.Apply(data), nil
 }
 
 func invokeConfig(ctx context.Context, req *core.ConfigRequest) (*jq.Obj, *core.RefusalError) {
