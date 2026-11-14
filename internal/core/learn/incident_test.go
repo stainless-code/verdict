@@ -159,6 +159,31 @@ func TestIncidentNoteStaysOnOneLine(t *testing.T) {
 	}
 }
 
+// TestIncidentBringTheLockLineToTheIgnoreFile proves the attach leaves the
+// worktree clean: `.verdict/.gitignore` gains the lock-file line a checkout
+// fetched before it existed lacks, and a dry run writes nothing.
+func TestIncidentBringTheLockLineToTheIgnoreFile(t *testing.T) {
+	root := seedIncidentRepo(t)
+	writeIncidentBundle(t, root, "local-a", "[]")
+	ignore := filepath.Join(root, ".verdict", ".gitignore")
+	if err := os.WriteFile(ignore, []byte("/state/\n/backtest/\n/index/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, ref := Run(t.Context(), incidentRequest(root, func(req *Request) { req.DryRun = true })); ref != nil {
+		t.Fatalf("dry-run refusal %s: %s", ref.Code, ref.Message)
+	}
+	if got := readIncidentFile(t, ignore); got != "/state/\n/backtest/\n/index/\n" {
+		t.Fatalf("--dry-run rewrote the ignore file: %q", got)
+	}
+	if _, ref := Run(t.Context(), incidentRequest(root, nil)); ref != nil {
+		t.Fatalf("refusal %s: %s", ref.Code, ref.Message)
+	}
+	want := "/state/\n/backtest/\n/index/\nincidents.jsonl.lock\n"
+	if got := readIncidentFile(t, ignore); got != want {
+		t.Fatalf("ignore = %q; want %q", got, want)
+	}
+}
+
 // TestIncidentSecondAttachIsExisting proves the attach is idempotent: the
 // second run reports the existing row and leaves the ledger byte-identical.
 func TestIncidentSecondAttachIsExisting(t *testing.T) {

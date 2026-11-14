@@ -619,13 +619,16 @@ refuses `bad-at`. The attach is idempotent per pair — the second run reports
 `--dry-run` reports the append it would make, writing nothing.
 
 The ledger is tracked, so an uncommitted attach is worktree dirt: `check-tree`
-fails on `?? .verdict/incidents.jsonl` until you commit it (the
-`.verdict/incidents.jsonl.lock` beside it exists only while an attach writes,
-and a killed attach leaves one that the next attach breaks once it is a minute
-old and the pid in it is gone — a paused holder keeps its lock). Attaches are
-serialized by that lock — one `learn --incident` holds it at
-a time, and a second waits up to five seconds before refusing `store-busy`
-rather than interleaving two read-modify-writes and dropping a row.
+fails on `?? .verdict/incidents.jsonl` until you commit it. Attaches are
+serialized by an OS advisory lock on `.verdict/incidents.jsonl.lock` — one
+`learn --incident` holds it at a time, and a second waits up to five seconds
+before refusing `store-busy` rather than interleaving two read-modify-writes and
+dropping a row. The kernel owns that lock, so there is no stale-lock state to
+reason about: a lock held by a live process waits and then refuses (a paused
+holder keeps it), a crashed or killed holder releases it at once, and the lock
+file itself persists — it carries nothing, and an attach brings
+`.verdict/.gitignore` to the tracked contract (the `incidents.jsonl.lock` line)
+so the lock file is never worktree dirt.
 
 Exposure and acceptance: `learn --status` (text and `--json`) joins
 `kb-recall.json` manifests, finding `kb` cites, and `kb-joins.jsonl` across

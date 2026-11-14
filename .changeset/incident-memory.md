@@ -24,3 +24,10 @@ The flag joins the CLI, MCP (`learn` gains `incident`/`sha`/`path`/`note`/
 `url`/`at`, `trend` gains `incidents`), Go SDK (`pkg/verdict`), the TypeScript
 client (`clients/ts`), and the published JSON Schemas
 (`learnIncident`, `trendIncidents`, `trendIncidentBundle`).
+
+Attaches are serialized by an OS advisory lock on
+`.verdict/incidents.jsonl.lock`: a second attach waits up to five seconds and
+refuses `store-busy`, while a crashed holder releases the lock at once. The
+lock file persists and is ignored — the tracked ignore contract
+(`.verdict/.gitignore`, written by `init` and kept current by the attach) gains
+the `incidents.jsonl.lock` line.

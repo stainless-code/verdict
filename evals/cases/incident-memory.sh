@@ -98,9 +98,14 @@ assert_eq "eight parallel attaches keep every row" "9" \
 assert_eq "every parallel attach reports an append" "8" \
   "$(jq -s '[.[] | select(.data.incident.attached == "appended")] | length' "$EVAL_SANDBOX"/parallel-*.json)"
 if [ -e "$EVAL_SANDBOX/.verdict/incidents.jsonl.lock" ]; then
-  bad "the parallel attaches left the ledger lock behind"
+  good "the ledger lock file persists after the attaches"
 else
-  good "the parallel attaches leave no ledger lock"
+  bad "the parallel attaches removed the ledger lock file"
+fi
+if git -C "$EVAL_SANDBOX" check-ignore -q .verdict/incidents.jsonl.lock; then
+  good "the persistent lock file is ignored, not worktree dirt"
+else
+  bad "the persistent lock file would read as worktree dirt"
 fi
 
 assert_eq "attaching an incident makes no host call" "0" "$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"

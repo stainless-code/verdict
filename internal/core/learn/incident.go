@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/incident"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -36,6 +37,7 @@ const (
 	msgWriteIncident     = "learn could not write %s: %v"
 	msgCorruptIncident   = "incident ledger %s is unreadable (restore from backup or fix the bad line)"
 	msgBusyIncident      = "incident ledger %s is being written by another attach (retry in a moment)"
+	msgWriteIgnore       = "learn could not bring %s/.verdict/.gitignore to the tracked ignore contract: %v"
 )
 
 // nextIncident points the operator at the measurement the attach feeds.
@@ -101,11 +103,29 @@ func (st *state) attachIncident(row *incident.Row) (string, *core.RefusalError) 
 // bundle check proved .verdict exists, so the ledger's directory is not
 // something this path creates.
 func (st *state) writeIncident(row *incident.Row) (bool, *core.RefusalError) {
+	if ref := st.ensureLedgerIgnore(); ref != nil {
+		return false, ref
+	}
 	appended, err := incident.Upsert(st.root, row)
 	if err != nil {
 		return false, st.incidentRefusal(err)
 	}
 	return appended, nil
+}
+
+// ensureLedgerIgnore brings `.verdict/.gitignore` to the tracked contract
+// before the ledger's lock file appears: a checkout fetched before the lock
+// line existed gains it here, so the first attach never leaves the lock file as
+// worktree dirt for check-tree.
+func (st *state) ensureLedgerIgnore() *core.RefusalError {
+	serr := config.NewLayout(st.root).EnsureStateIgnore()
+	if serr == nil {
+		return nil
+	}
+	if ref := serr.Refusal(); ref != nil {
+		return ref
+	}
+	return st.refuse(codeLearnFailed, fmt.Sprintf(msgWriteIgnore, st.root, serr))
 }
 
 // incidentRefusal maps a ledger write failure to its refusal: a held lock is
