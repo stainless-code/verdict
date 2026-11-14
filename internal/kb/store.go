@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/storelock"
 )
@@ -36,7 +37,7 @@ func ParseRows(raw []byte) ([]*jq.Obj, error) {
 // ErrCorrupt. Every verb that reads kb.jsonl goes through here, so the
 // decode and the size cap exist once.
 func ReadRows(root string) ([]*jq.Obj, error) {
-	path := rootPath(root, File)
+	path := storePath(root)
 	if !isFile(path) {
 		//nolint:wrapcheck // the package sentinel is the classification callers match
 		return nil, ErrMissing
@@ -81,16 +82,33 @@ func AppendHistory(row *jq.Obj, ev *jq.Obj) {
 	row.Set(fieldHistory, append(hist, ev))
 }
 
+// Lock takes the store's OS advisory lock and returns its release. A
+// read-modify-write holds it above its read, so the append, the veto rewrite,
+// and the credit rewrite are one writer each; a lock another writer holds past
+// the wait refuses [storelock.ErrBusy]. It brings `.verdict/.gitignore` to the
+// tracked contract before the lock file appears, so a lock file beside a
+// tracked store is never worktree dirt.
+func Lock(root string) (func(), error) {
+	if serr := config.NewLayout(root).EnsureStateIgnore(); serr != nil {
+		//nolint:wrapcheck // the state error names the file it could not write
+		return nil, fmt.Errorf("lock %s: %w", storePath(root), serr)
+	}
+	//nolint:wrapcheck // the shared lock already names the store it guards
+	return storelock.Acquire(storePath(root), storelock.DefaultWait)
+}
+
 // WriteRows rewrites the store atomically, one compact row per line. Key
 // order is the stored contract (the decoder is order-preserving), so the
-// writer never re-encodes through a map.
+// writer never re-encodes through a map. The primitive takes no lock: the
+// caller holds [Lock] across its read and this write, exactly as
+// internal/incident's Upsert does.
 func WriteRows(root string, rows []*jq.Obj) error {
 	var sb strings.Builder
 	for _, row := range rows {
 		sb.WriteString(row.MarshalCompact())
 		sb.WriteByte('\n')
 	}
-	return atomic.WriteFile(rootPath(root, File), []byte(sb.String()))
+	return atomic.WriteFile(storePath(root), []byte(sb.String()))
 }
 
 // AppendRow appends one already-encoded row (the --rule path appends instead
@@ -98,10 +116,10 @@ func WriteRows(root string, rows []*jq.Obj) error {
 // parallel appends keep every row; a lock another writer holds past the wait
 // refuses [storelock.ErrBusy].
 func AppendRow(root, line string) error {
-	path := rootPath(root, File)
-	unlock, err := storelock.Acquire(path, storelock.DefaultWait)
+	path := storePath(root)
+	unlock, err := Lock(root)
 	if err != nil {
-		return err //nolint:wrapcheck // the shared lock already names the store it guards
+		return err
 	}
 	defer unlock()
 	var prev []byte
@@ -121,12 +139,12 @@ func AppendRow(root, line string) error {
 // triage/retire lookups.
 func ValidID(id string) bool { return idRe.MatchString(id) }
 
-// rootPath anchors one store path under the reviewed repository root.
-func rootPath(root, rel string) string {
+// storePath anchors the knowledge-base store under the reviewed root.
+func storePath(root string) string {
 	if root == "" {
-		return rel
+		return File
 	}
-	return filepath.Join(root, rel)
+	return filepath.Join(root, File)
 }
 
 // isFile reports whether path is a regular file, mirroring [[ -f ]].

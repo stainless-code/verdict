@@ -597,12 +597,14 @@ typed. Retire keeps the tombstone line (`status`, `retiredAt`,
 `retireReason`, history-logged) with counters untouched; restore flips back to
 `active` keeping the tombstone as record.
 
-A rule append and a pack import are read-modify-writes of
-`.verdict/kb.jsonl`, so they are serialized by an OS advisory lock on
+Every write to `.verdict/kb.jsonl` is a read-modify-write — a rule append, a
+pack import, a veto, and the credit rewrite a `record` or `triage` flip
+performs — so all of them serialize on one OS advisory lock,
 `.verdict/kb.jsonl.lock`: one write holds it at a time, a second waits up to
-five seconds before refusing `store-busy`, and the kernel releases it when a
-holder exits however it exits — the lock file persists and the write brings
-`.verdict/.gitignore` to the tracked contract (`kb.jsonl.lock` with
+five seconds, and the kernel releases it when a holder exits however it exits.
+`learn` refuses `store-busy` when the wait runs out; a flip drops the staged
+credit with its retry warning instead. The lock file persists and the write
+brings `.verdict/.gitignore` to the tracked contract (`kb.jsonl.lock` with
 `incidents.jsonl.lock`) so it is never worktree dirt.
 
 `learn --incident` records the other half of the loop — the bugs a review

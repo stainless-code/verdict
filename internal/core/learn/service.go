@@ -379,13 +379,24 @@ func (st *state) runAppend() *core.RefusalError {
 	return nil
 }
 
+// lockStore takes the knowledge base's lock for one read-modify-write,
+// mapping a held lock to the retryable store-busy refusal: a veto must wait
+// rather than rewrite rows another writer is appending to.
+func (st *state) lockStore() (func(), *core.RefusalError) {
+	unlock, err := kb.Lock(st.root)
+	switch {
+	case errors.Is(err, storelock.ErrBusy):
+		return nil, st.refuse(codeStoreBusy, fmt.Sprintf(msgBusyKB, st.kbDisplay()))
+	case err != nil:
+		return nil, st.refuse(codeLearnFailed, fmt.Sprintf(msgWriteKB, st.kbDisplay(), err))
+	}
+	return unlock, nil
+}
+
 // writeKB appends one row to the knowledge base, mapping a held lock to the
 // retryable store-busy refusal: the append is a read-modify-write, so a second
 // writer must wait rather than drop the first row.
 func (st *state) writeKB(line string) *core.RefusalError {
-	if ref := st.ensureStateIgnore(); ref != nil {
-		return ref
-	}
 	err := kb.AppendRow(st.root, line)
 	switch {
 	case errors.Is(err, storelock.ErrBusy):
@@ -495,6 +506,11 @@ func (st *state) runRetire() *core.RefusalError {
 	if !kb.ValidID(id) {
 		return st.refuse(codeBadID, fmt.Sprintf(msgBadID, id))
 	}
+	unlock, ref := st.lockStore()
+	if ref != nil {
+		return ref
+	}
+	defer unlock()
 	rows, cur, ref := st.loadVetoRow(id)
 	if ref != nil {
 		return ref
@@ -520,6 +536,11 @@ func (st *state) runRestore() *core.RefusalError {
 	if !kb.ValidID(id) {
 		return st.refuse(codeBadID, fmt.Sprintf(msgBadID, id))
 	}
+	unlock, ref := st.lockStore()
+	if ref != nil {
+		return ref
+	}
+	defer unlock()
 	rows, cur, ref := st.loadVetoRow(id)
 	if ref != nil {
 		return ref

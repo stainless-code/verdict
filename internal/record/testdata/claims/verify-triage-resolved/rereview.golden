@@ -50,10 +50,18 @@ warn: $.body: no Basis line in the leading quote block — inserted the computed
   bfd750df  addressed  true  notes.txt
 recorded: .verdict/state/local-kb/findings.json (0 open) + .verdict/state/local-kb/record.json — report/triage read it; post stays refused (no PR target)
 --- files ---
+--- file C/.verdict/.gitignore ---
+/state/
+/backtest/
+/index/
+incidents.jsonl.lock
+kb.jsonl.lock
 --- file C/.verdict/kb-joins.jsonl ---
 {"at":"0000-00-00T00:00:00Z","sig":"bfd750dfd6a62efb7a91db702664395618b7f845","rule":"rec-rule","outcome":"addressed","actor":"revalidator","verb":"record","bundle":"local-kb","review_id":null}
 --- file C/.verdict/kb.jsonl ---
 {"id":"rec-rule","status":"active","hits":1,"false_hits":0,"judged":1}
+--- file C/.verdict/kb.jsonl.lock ---
+
 --- file C/.verdict/state/local-kb/findings.json ---
 [
   {

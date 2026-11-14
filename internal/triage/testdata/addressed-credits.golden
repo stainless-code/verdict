@@ -17,10 +17,18 @@ exit: 0
 --- stderr ---
 triaged 01234567 -> addressed
 --- files ---
+--- file C/.verdict/.gitignore ---
+/state/
+/backtest/
+/index/
+incidents.jsonl.lock
+kb.jsonl.lock
 --- file C/.verdict/kb-joins.jsonl ---
 {"at":"0000-00-00T00:00:00Z","sig":"0123456789abcdef0123456789abcdef01234567","rule":"await-err","outcome":"addressed","actor":"human","verb":"triage","bundle":"4251","review_id":null}
 --- file C/.verdict/kb.jsonl ---
 {"id":"await-err","rule":"Check error paths on every await","scope":"src/*.ts","provenance":"manual","rigor":"walked","hits":1,"false_hits":0,"judged":1,"status":"active"}
+--- file C/.verdict/kb.jsonl.lock ---
+
 --- file C/.verdict/state/4251/findings.json ---
 [
   {
