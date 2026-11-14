@@ -171,7 +171,8 @@ func readSARIFInput(req *Request) ([]byte, *core.RefusalError) {
 	if path == "" {
 		return nil, &core.RefusalError{Code: codeMissingSARIF, Message: "--sarif <file|-> is required"}
 	}
-	if isSymlinkPath(path) {
+	// ReadRegularCapped opens via O_NONBLOCK without O_NOFOLLOW, so check Lstat first.
+	if linfo, err := os.Lstat(path); err == nil && linfo.Mode()&os.ModeSymlink != 0 {
 		return nil, &core.RefusalError{
 			Code:    codeBadSARIF,
 			Message: fmt.Sprintf("SARIF path %s must be a regular file (not a symlink or directory)", path),
@@ -195,11 +196,6 @@ func validateInlineSARIF(raw []byte) ([]byte, *core.RefusalError) {
 		return nil, &core.RefusalError{Code: codeMissingSARIF, Message: "SARIF input is empty"}
 	}
 	return raw, nil
-}
-
-func isSymlinkPath(path string) bool {
-	linfo, err := os.Lstat(path)
-	return err == nil && linfo.Mode()&os.ModeSymlink != 0
 }
 
 func classifySARIFReadErr(path string, err error) *core.RefusalError {
