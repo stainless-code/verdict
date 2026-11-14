@@ -431,7 +431,46 @@ func TestCallersMissingIndexRefuses(t *testing.T) {
 	req := f.request(QueryCallers, nil)
 	req.Symbol = "a.Target"
 	_, ref := Run(context.Background(), req)
-	assertRefusal(t, ref, "missing-index", "no index for tree "+tree+"; run verdict index build")
+	assertRefusal(t, ref, "missing-index",
+		"no index for HEAD (tree "+tree+")\nnext: verdict index build --at HEAD")
+}
+
+// TestMissingIndexRefusalNamesTheHandoff pins the four hand-offs a missing
+// tree file can name: a revision (with the checkout when one was named), the
+// typed tree SHA itself, and the store's own scan.
+func TestMissingIndexRefusalNamesTheHandoff(t *testing.T) {
+	const tree = "6fa8100d5c1b2a3e4d5f60718293a4b5c6d7e8f9"
+	tests := []struct {
+		name string
+		key  treeRef
+		want string
+	}{
+		{
+			name: "revision",
+			key:  treeRef{tree: tree, at: "HEAD"},
+			want: "no index for HEAD (tree " + tree + ")\nnext: verdict index build --at HEAD",
+		},
+		{
+			name: "revision with its own checkout",
+			key:  treeRef{tree: tree, at: "HEAD", from: "/elsewhere/index-built"},
+			want: "no index for HEAD (tree " + tree + ")\nnext: verdict index build --from /elsewhere/index-built",
+		},
+		{
+			name: "typed tree sha",
+			key:  treeRef{tree: tree, at: tree},
+			want: "no index for tree " + tree + "\nnext: verdict index build --at " + tree,
+		},
+		{
+			name: "store scan",
+			key:  treeRef{tree: tree},
+			want: "no index for tree " + tree + "\nnext: verdict index build --at " + tree,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assertRefusal(t, missingIndexRefusal(tc.key), "missing-index", tc.want)
+		})
+	}
 }
 
 // TestShardIdentityIncludesRefsPerFile proves a shard parsed under a lower
@@ -462,7 +501,7 @@ func TestShardIdentityIncludesRefsPerFile(t *testing.T) {
 // assertTreeRefs pins the references one single-file tree carries.
 func assertTreeRefs(t *testing.T, store, tree string, truncated bool, names ...string) {
 	t.Helper()
-	got, ref := readTree(store, tree)
+	got, ref := readTree(store, treeRef{tree: tree})
 	if ref != nil {
 		t.Fatalf("read tree %s: %v", tree, ref)
 	}

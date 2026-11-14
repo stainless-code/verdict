@@ -218,6 +218,22 @@ func TestRunLocalChunkOffOverCapRefuses(t *testing.T) {
 	}
 }
 
+// TestOverCapRefusalNamesTheExclusionsThatFit proves the over-cap refusal ends
+// with the exclusion machinery an operator can actually use — never a raised
+// cap — so the way to fit the review is one copy away.
+func TestOverCapRefusalNamesTheExclusionsThatFit(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	_, _, err := runLocalStagedDiff(t, overDefaultCapDiff(), nil, nil, false)
+	ref := requireRefusal(t, err, "diff-too-large")
+	want := "\nnext: fit the diff under the cap with --ignore <glob> (repeatable on fetch and fetch-local), " +
+		"a committed .verdict/ignore line, or paths after -- on fetch-local — " +
+		"the cap is measured after those exclusions"
+	if !strings.HasSuffix(ref.Message, want) {
+		t.Errorf("refusal tail = %q; want suffix %q", ref.Message, want)
+	}
+}
+
 // TestRunLocalChunkOverrideDisablesChunking proves the manual's rule that
 // either cap override disables chunking outright: an over-cap run with
 // --chunk still refuses diff-too-large and writes no chunks — including the

@@ -131,10 +131,15 @@ func overCap(r *session, res *config.Resolved, fullDiff string, total int64, lim
 	refusal := &core.RefusalError{Code: "diff-too-large", Message: fmt.Sprintf(
 		"diff %d bytes exceeds cap %d bytes — split the range (fetch-local --range/--base, fetch --base-sha) "+
 			"or narrow with a paths filter, then re-fetch (override deliberate exceptions only: "+
-			"REVIEW_MAX_BYTES=<n> or the typed max_bytes default)", total, lim.maxBytes)}
+			"REVIEW_MAX_BYTES=<n> or the typed max_bytes default)\n", total, lim.maxBytes) + diffFitNext}
 	refusal.Candidates = cands
 	return false, refusal
 }
+
+// diffFitNext is the `next:` tail every over-cap refusal carries: the
+// exclusion machinery that already exists, which the cap is measured after.
+const diffFitNext = "next: fit the diff under the cap with --ignore <glob> (repeatable on fetch and fetch-local), " +
+	"a committed .verdict/ignore line, or paths after -- on fetch-local — the cap is measured after those exclusions"
 
 func printSplitCandidates(r *session, cands []any) {
 	if len(cands) == 0 {

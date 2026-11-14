@@ -147,10 +147,15 @@ run_review fetch-local acme/app impact-no-index --index HEAD
 assert_exit "missing index refuses" 1
 assert_stream_nogrep "missing index prints no done line" "$EVAL_OUT" '^done:' "-E"
 assert_stream_nogrep "missing index prints no next line" "$EVAL_OUT" '^next:' "-E"
-assert_file_grep "missing index names no index for tree" "$EVAL_ERR" "no index for tree "
+assert_file_grep "missing index names the typed ref and its tree" "$EVAL_ERR" \
+  "no index for HEAD (tree $tree)"
+assert_file_grep "missing index names the exact build command" "$EVAL_ERR" \
+  '^next: verdict index build --at HEAD$' "-E"
 
 run_review fetch-local acme/app impact-no-index-json --index HEAD --json
 assert_exit "missing index --json refuses" 1
 assert_refusal "missing index refuses typed" "missing-index"
+assert_file_grep "missing index --json carries the ref and the build command" "$EVAL_OUT" \
+  "no index for HEAD (tree $tree)\\nnext: verdict index build --at HEAD" "-F"
 
 eval_end

@@ -64,6 +64,10 @@ run_review fetch-local acme/app clocfix -- $CLOC_FILES
 assert_exit "absent-knob over-cap local refuses" 1
 assert_file_grep "absent knob names the cap" "$EVAL_ERR" "exceeds its cap 512000 bytes"
 assert_file_grep "absent knob carries the split hint" "$EVAL_ERR" "try: split the range"
+assert_file_grep "absent knob names the exclusion flags that fit the review" "$EVAL_ERR" \
+  '^next: fit the diff under the cap with --ignore <glob>' "-E"
+assert_stream_nogrep "the over-cap next line offers no cap raise" "$EVAL_ERR" \
+  '^next: .*MAX_BYTES' "-E"
 assert_stream_nogrep "absent knob mentions no chunking" "$EVAL_ERR" "chunk" "-i"
 if [ ! -d "$BUNDLE/chunks" ]; then
   good "absent knob writes no chunks dir"
