@@ -27,7 +27,7 @@ func TestUpsertIsIdempotentAndSorted(t *testing.T) {
 		`"note":null,"url":null,"detected_at":"2026-11-14T00:00:00Z","run":"kept"}`
 	writeStore(t, root, seeded+"\n")
 
-	appended, err := Upsert(root, &Row{
+	_, appended, err := Upsert(root, &Row{
 		SchemaVersion: "1", Bundle: "local-a", Sha: shaA, Paths: []string{"src/a.ts"},
 		Note: new("reverted in the same hour"), URL: new("https://example.test/inc/1"),
 		DetectedAt: "2026-11-14T00:00:01Z",
@@ -46,7 +46,7 @@ func TestUpsertIsIdempotentAndSorted(t *testing.T) {
 	}
 
 	before := readStore(t, root)
-	appended, err = Upsert(root, &Row{
+	_, appended, err = Upsert(root, &Row{
 		SchemaVersion: "1", Bundle: "local-a", Sha: shaA, Paths: []string{"src/other.ts"},
 		DetectedAt: "2027-01-01T00:00:00Z",
 	})
@@ -147,7 +147,7 @@ func TestUpsertRefusesAnAppendPastTheReadCap(t *testing.T) {
 		t.Fatalf("the seeded ledger is already past the cap: %d bytes", len(seeded))
 	}
 
-	appended, err := Upsert(root, &Row{
+	_, appended, err := Upsert(root, &Row{
 		SchemaVersion: "1", Bundle: "local-a", Sha: shaB,
 		Paths: []string{"src/b.ts"}, DetectedAt: "2026-11-14T00:00:01Z",
 	})
@@ -234,7 +234,7 @@ func attachInParallel(root string, attaches int) ([]bool, []error) {
 	var wg sync.WaitGroup
 	for i := range attaches {
 		wg.Go(func() {
-			results[i], errs[i] = Upsert(root, &Row{
+			_, results[i], errs[i] = Upsert(root, &Row{
 				SchemaVersion: "1",
 				Bundle:        fmt.Sprintf("local-%02d", i),
 				Sha:           fmt.Sprintf("%040x", i+1),
@@ -283,7 +283,7 @@ func TestUpsertRefusesAHeldLock(t *testing.T) {
 		SchemaVersion: "1", Bundle: "local-a", Sha: shaB,
 		Paths: []string{"src/b.ts"}, DetectedAt: "2026-11-14T00:00:01Z",
 	}
-	if appended, err := Upsert(root, row); !errors.Is(err, ErrBusy) || appended {
+	if _, appended, err := Upsert(root, row); !errors.Is(err, ErrBusy) || appended {
 		t.Fatalf("Upsert under a held lock = (%v, %v); want ErrBusy", appended, err)
 	}
 	if got := readStore(t, root); got != seeded {
@@ -291,7 +291,7 @@ func TestUpsertRefusesAHeldLock(t *testing.T) {
 	}
 
 	unlock()
-	appended, err := Upsert(root, row)
+	_, appended, err := Upsert(root, row)
 	if err != nil || !appended {
 		t.Fatalf("Upsert after the holder released = (%v, %v); want an append", appended, err)
 	}

@@ -615,8 +615,9 @@ learning path (`bad-scope`); attach flags without `--incident` refuse
 `bad-flags`, as do a malformed `--sha`, a missing `--path`, an over-cap
 `--note`, and a `--url` that is not `http(s)`; an `--at` that is not RFC 3339
 refuses `bad-at`. The attach is idempotent per pair — the second run reports
-`existing` and moves no byte, so re-running after a rebase is safe — and
-`--dry-run` reports the append it would make, writing nothing. An attach that
+`existing`, moves no byte, and answers with the row the ledger holds (its paths,
+note, url, and `detected_at`, never the request's), so re-running after a rebase
+is safe — and `--dry-run` reports what the write would do, writing nothing. An attach that
 would push the file past the 8 MiB the reader opens refuses `ledger-too-large`
 and writes nothing, so a full ledger can never become an unreadable one; trim
 rows first.

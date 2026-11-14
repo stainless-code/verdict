@@ -173,6 +173,79 @@ func TestIncidentNoteStaysOnOneLine(t *testing.T) {
 	}
 }
 
+// TestIncidentExistingReportsTheStoredRow proves a repeat attach answers with
+// the ledger's row rather than the request's: the second run asks for another
+// path, note, url, and time, and both the write and the dry run report what was
+// actually stored.
+func TestIncidentExistingReportsTheStoredRow(t *testing.T) {
+	root := seedIncidentRepo(t)
+	writeIncidentBundle(t, root, "local-a", "[]")
+	if _, ref := Run(t.Context(), incidentRequest(root, nil)); ref != nil {
+		t.Fatalf("first attach refusal %s: %s", ref.Code, ref.Message)
+	}
+	path := filepath.Join(root, ".verdict", "incidents.jsonl")
+	first := readIncidentFile(t, path)
+
+	for _, dry := range []bool{false, true} {
+		resp, ref := Run(t.Context(), incidentRequest(root, func(req *Request) {
+			req.DryRun = dry
+			req.Paths = []string{"src/other.ts"}
+			req.Note = "changed in a later run"
+			req.URL = "https://example.test/inc/2"
+			req.At = "2030-01-01T00:00:00Z"
+		}))
+		if ref != nil {
+			t.Fatalf("dry=%v refusal %s: %s", dry, ref.Code, ref.Message)
+		}
+		assertStoredRow(t, resp, dry)
+	}
+	if got := readIncidentFile(t, path); got != first {
+		t.Fatalf("the repeat attach moved the ledger: %q", got)
+	}
+}
+
+// assertStoredRow pins one repeat-attach response to the row the first attach
+// stored.
+func assertStoredRow(t *testing.T, resp *Response, dry bool) {
+	t.Helper()
+	if got := incidentField(t, resp, "attached"); got != "existing" {
+		t.Fatalf("dry=%v attached = %q; want existing", dry, got)
+	}
+	if got := incidentField(t, resp, "detected_at"); got != "2026-11-14T00:00:00Z" {
+		t.Fatalf("dry=%v detected_at = %q; want the stored time", dry, got)
+	}
+	if got := strings.Join(incidentList(t, resp, "paths"), ","); got != "src/a.ts" {
+		t.Fatalf("dry=%v paths = %q; want the stored path", dry, got)
+	}
+	for _, key := range []string{"note", "url"} {
+		if got, ok := resp.Data.Incident.Get(key); !ok || got != nil {
+			t.Fatalf("dry=%v %s = %v; want the stored null", dry, key, got)
+		}
+	}
+}
+
+// incidentList reads one array field of data.incident.
+func incidentList(t *testing.T, resp *Response, key string) []string {
+	t.Helper()
+	value, ok := resp.Data.Incident.Get(key)
+	if !ok {
+		t.Fatalf("data.incident carries no %q", key)
+	}
+	items, ok := value.([]any)
+	if !ok {
+		t.Fatalf("data.incident.%s = %T; want an array", key, value)
+	}
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		text, ok := item.(string)
+		if !ok {
+			t.Fatalf("data.incident.%s item = %T; want a string", key, item)
+		}
+		out = append(out, text)
+	}
+	return out
+}
+
 // TestIncidentBringTheLockLineToTheIgnoreFile proves the attach leaves the
 // worktree clean: `.verdict/.gitignore` gains the lock-file line a checkout
 // fetched before it existed lacks, and a dry run writes nothing.

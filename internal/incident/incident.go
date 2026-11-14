@@ -94,37 +94,41 @@ func Read(root string) ([]Row, error) {
 // leaves every byte of the file untouched. Stored lines are rewritten
 // verbatim, so a field this build does not read survives the write. The whole
 // read-modify-write holds the ledger's lock, so parallel attaches keep every
-// row.
-func Upsert(root string, row *Row) (bool, error) {
+// row. It returns the row the ledger holds for the pair, which for an existing
+// pair is the stored one: the caller reports what is attached, not what it
+// asked to attach.
+func Upsert(root string, row *Row) (*Row, bool, error) {
 	if err := Validate(row); err != nil {
-		return false, err
+		return nil, false, err
 	}
 	unlock, err := lock(root, lockWait)
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
 	defer unlock()
 	lines, err := readLines(root)
 	if err != nil && !errors.Is(err, ErrMissing) {
-		return false, err
+		return nil, false, err
 	}
-	if stored(lines, row) {
-		return false, nil
+	if existing, ok := stored(lines, row); ok {
+		kept := existing.row
+		return &kept, false, nil
 	}
 	if err := writeLines(root, append(lines, line{row: *row, text: encode(row)})); err != nil {
-		return false, err
+		return nil, false, err
 	}
-	return true, nil
+	appended := *row
+	return &appended, true, nil
 }
 
-// stored reports whether the (bundle, sha) pair is already in the ledger.
-func stored(lines []line, row *Row) bool {
+// stored returns the ledger's line for the (bundle, sha) pair.
+func stored(lines []line, row *Row) (line, bool) {
 	for _, existing := range lines {
 		if existing.row.Bundle == row.Bundle && existing.row.Sha == row.Sha {
-			return true
+			return existing, true
 		}
 	}
-	return false
+	return line{}, false
 }
 
 // writeLines sorts rows by bundle then sha and replaces the ledger atomically.

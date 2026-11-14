@@ -9,8 +9,8 @@ with `{schema_version, bundle, sha, paths, note, url, detected_at}`, kept
 sorted by bundle then sha. `--path` repeats (sorted-deduped), `--note` caps at
 2,000 bytes, `--url` takes `http(s)` only, `--at` defaults to now, and the
 bundle must already carry `findings.json`. The attach is idempotent — the
-second run reports `existing` and moves no byte — and `--dry-run` reports the
-append it would make, writing nothing.
+second run reports `existing`, moves no byte, and answers with the stored row —
+and `--dry-run` reports what the write would do, writing nothing.
 
 `verdict trend --incidents` joins that ledger to the bundles' findings stores
 and reports `incidents`, `measured`, `unmeasured`, `hit`, `missed`, `miss_rate`

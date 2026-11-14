@@ -61,8 +61,7 @@ func (st *state) runIncident() *core.RefusalError {
 	if ref != nil {
 		return ref
 	}
-	row := in.row()
-	attached, ref := st.attachIncident(row)
+	row, attached, ref := st.attachIncident(in.row())
 	if ref != nil {
 		return ref
 	}
@@ -88,31 +87,32 @@ func (in *incidentInput) row() *incident.Row {
 	}
 }
 
-// attachIncident writes the row and reports whether the pair was new. A dry
-// run reads the ledger to answer the same question and writes nothing.
-func (st *state) attachIncident(row *incident.Row) (string, *core.RefusalError) {
+// attachIncident writes the row and reports the row the ledger holds for the
+// pair plus what the attach did to it. A dry run reads the ledger to answer the
+// same question and writes nothing.
+func (st *state) attachIncident(row *incident.Row) (*incident.Row, string, *core.RefusalError) {
 	if st.req.DryRun {
 		return st.previewAttach(row)
 	}
-	appended, err := st.writeIncident(row)
+	kept, appended, err := st.writeIncident(row)
 	if err != nil {
-		return "", err
+		return nil, "", err
 	}
-	return attachedText(appended), nil
+	return kept, attachedText(appended), nil
 }
 
 // writeIncident upserts the row, mapping a store failure to its refusal. The
 // bundle check proved .verdict exists, so the ledger's directory is not
 // something this path creates.
-func (st *state) writeIncident(row *incident.Row) (bool, *core.RefusalError) {
+func (st *state) writeIncident(row *incident.Row) (*incident.Row, bool, *core.RefusalError) {
 	if ref := st.ensureLedgerIgnore(); ref != nil {
-		return false, ref
+		return nil, false, ref
 	}
-	appended, err := incident.Upsert(st.root, row)
+	kept, appended, err := incident.Upsert(st.root, row)
 	if err != nil {
-		return false, st.incidentRefusal(err)
+		return nil, false, st.incidentRefusal(err)
 	}
-	return appended, nil
+	return kept, appended, nil
 }
 
 // ensureLedgerIgnore brings `.verdict/.gitignore` to the tracked contract
@@ -145,21 +145,23 @@ func (st *state) incidentRefusal(err error) *core.RefusalError {
 	}
 }
 
-// previewAttach answers what a write would do without touching the ledger.
-func (st *state) previewAttach(row *incident.Row) (string, *core.RefusalError) {
+// previewAttach answers what a write would do without touching the ledger: the
+// row it would keep — the stored one when the pair is already there — and what
+// the attach would report.
+func (st *state) previewAttach(row *incident.Row) (*incident.Row, string, *core.RefusalError) {
 	rows, err := incident.Read(st.root)
 	if errors.Is(err, incident.ErrMissing) {
-		return attachedText(true), nil
+		return row, attachedText(true), nil
 	}
 	if err != nil {
-		return "", st.corruptIncident()
+		return nil, "", st.corruptIncident()
 	}
-	for _, existing := range rows {
-		if existing.Bundle == row.Bundle && existing.Sha == row.Sha {
-			return attachedText(false), nil
+	for i := range rows {
+		if rows[i].Bundle == row.Bundle && rows[i].Sha == row.Sha {
+			return &rows[i], attachedText(false), nil
 		}
 	}
-	return attachedText(true), nil
+	return row, attachedText(true), nil
 }
 
 // corruptIncident reports an unreadable ledger: a silent drop would lose
