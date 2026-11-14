@@ -157,6 +157,32 @@ assert_json_field "an over-limit budget warns once" "1" '.warnings | length'
 assert_json_field "the budget warning names both amounts" "true" \
   '.warnings[0] | contains("budget_usd 5") and contains("personal spend limit $1")'
 
+# --- (xi) --allow-head-controls resolves the head's own document ------------
+# The snapshot normally holds the base bytes; the opt-out holds the head
+# worktree's copy instead, which is the one case where a recipe declares from
+# the PR it judges. The base document has no `default` entry, so resolving one
+# under the flag proves the head's document answered.
+run_review fetch-local acme/app demo-head --base "$BASE" --allow-head-controls --json -- notes.txt
+assert_exit "a bundle can be fetched from the head worktree controls" 0
+HEADSNAP="$SANDBOX/.verdict/state/local-demo-head"
+assert_file_grep "the snapshot carries the head document under the flag"   "$HEADSNAP/controls/recipes.json" '"version":"9.9.9"' "-F"
+assert_json_field "the opt-out stamps policy head" "head" '.data.controls.policy'
+assert_json_field "the opt-out warns once" "1" \
+  '[.warnings[] | select(contains("allow-head-controls"))] | length'
+run_review run acme/app local-demo-head --agent claude --recipe quick --print --json
+assert_exit "the head-controlled bundle exits 0 without launching" 0
+assert_json_field "the head's version is what the plan records" "9.9.9" '.data.recipe.version'
+assert_json_field "the head entry is still sourced from the repository" "repo" '.data.recipe.source'
+assert_json_field "the head's own lens reaches the plan" "evil-lens" \
+  '.data.recipe.stages[0].lenses[0].id'
+run_review run acme/app local-demo-head --agent claude --recipe default --print --json
+assert_exit "the head-only default entry resolves" 0
+assert_json_field "a name only the head declares resolves to the repository entry" "9.9.9" \
+  '.data.recipe.version'
+assert_json_field "...and not to the built-in default" "repo" '.data.recipe.source'
+assert_eq "neither head-controlled --print launched an agent process" \
+  "$before_spawns" "$(spawns)"
+
 # --- (ii) the launch records the same plan the envelope carries -------------
 export STUB_AGENT_MODE=write
 run_review run acme/app local-demo --agent claude --recipe quick --json

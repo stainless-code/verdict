@@ -1907,11 +1907,17 @@ verdict run acme/app 123 --agent claude --recipe deep --print
 | `budget_usd`     | Optional declared spend for the pipeline, above zero. Recorded and rendered; above the bundle's personal limit it warns. `run` enforces nothing.                                                                                                                             |
 | `synthesize`     | Required object with an optional `model` hint; `{}` declares no hint.                                                                                                                                                                                                        |
 
-Resolution reads **only the base bytes**: `.verdict/recipes.json` rides the
-fixed controls inventory ([Review controls are base-owned](#review-controls-are-base-owned)),
-and `run` re-hashes that one row, so a head edit to the document never steers
-the pipeline judging it while an unrelated control edited after the fetch never
-blocks a launch. A repository entry wins by name; otherwise the built-in
+Resolution reads **the control snapshot's bytes**: `.verdict/recipes.json`
+rides the fixed controls inventory
+([Review controls are base-owned](#review-controls-are-base-owned)), and `run`
+re-hashes that one row, so a head edit to the document never steers the
+pipeline judging it while an unrelated control edited after the fetch never
+blocks a launch. The snapshot holds the **base** commit's bytes, with one
+documented exception: a bundle fetched with `fetch --allow-head-controls` holds
+the head worktree's copy instead (the flag's meaning for every control, above),
+so there the recipe resolves the PR's own edit, including names the base never
+carried. A CI reviewer reading this paragraph as a security claim is reading
+the default, not the opt-out. A repository entry wins by name; otherwise the built-in
 `default` (`{"version": "1.0.0", "synthesize": {}}`) answers. A bundle with no
 recipe row resolves the built-in and refuses nothing: an absent control is
 absent, not an error. A present row whose bytes disagree refuses
