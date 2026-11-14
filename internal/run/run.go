@@ -238,7 +238,9 @@ func rentry(req Request, f *flags, jsonMode bool) string {
 }
 
 // flagTail rebuilds the flags the operator typed, each one only when the
-// invocation actually asked for it.
+// invocation actually asked for it. The stage operand is quoted: it reaches
+// this line exactly as typed — a refusal names the value it could not read —
+// and the line exists to be pasted back into a shell.
 func flagTail(f *flags) string {
 	var s string
 	if f.agent != "" {
@@ -257,7 +259,7 @@ func flagTail(f *flags) string {
 		s += " --print"
 	}
 	if f.stage != "" {
-		s += " --stage " + f.stage
+		s += " --stage " + quoteArg(f.stage)
 	}
 	return s
 }

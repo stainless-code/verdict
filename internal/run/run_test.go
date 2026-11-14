@@ -307,6 +307,18 @@ func TestParseFlagsStageEmptyValue(t *testing.T) {
 	}
 }
 
+// TestRentryQuotesTheStageOperand pins the paste-safe form: the operand reaches
+// this line as the operator typed it, refusals included, so a value carrying
+// shell metacharacters must not rewrite the command it is echoed in.
+func TestRentryQuotesTheStageOperand(t *testing.T) {
+	req := Request{Repo: "acme/app", Pr: "42"}
+	got := rentry(req, &flags{agent: "claude", stage: "2; rm -rf /", timeout: defaultTimeoutS, rounds: defaultRounds, print: true}, false)
+	want := "verdict run acme/app 42 --agent claude --print --stage '2; rm -rf /'"
+	if got != want {
+		t.Fatalf("rentry = %q, want %q", got, want)
+	}
+}
+
 // TestUnknownFlagNamesStage proves the unknown-flag diagnostic advertises
 // --stage: the parse error is where an operator learns the surface grew.
 func TestUnknownFlagNamesStage(t *testing.T) {

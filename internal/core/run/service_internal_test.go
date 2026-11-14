@@ -1174,6 +1174,50 @@ func printStage(t *testing.T, root string, cmdr *scripted, stage string) *core.R
 	return resp
 }
 
+// TestRunPrintStageStatesItsOwnJob pins each stage's job sentence as a literal:
+// stageTask is the render's whole workload description, and the dedupe and rank
+// stages have no other pin — a cut folding rank into the fall-through return
+// would be otherwise unobserved.
+func TestRunPrintStageStatesItsOwnJob(t *testing.T) {
+	for _, tc := range []struct {
+		stage string
+		want  string
+	}{
+		{
+			stage: "1",
+			want: "Run the declared lenses as independent sub-agents, each honoring the hint and " +
+				"caps listed for it: lenses logic (model sonnet, max_files 8, max_findings 6). " +
+				"Record their findings as comments; the later stages synthesize, dedupe, and rank.",
+		},
+		{
+			stage: "2",
+			want: "Synthesize one review from those findings: a single body whose first line " +
+				"carries the verdict marker, the combined approved flag, and every comment kept " +
+				"on its anchor (model hint opus).",
+		},
+		{
+			stage: "3",
+			want: "Merge duplicate findings: keep the strongest wording and one anchor per " +
+				"finding, drop the redundant comments, and leave any count the body states consistent.",
+		},
+		{
+			stage: "4",
+			want: "Rank the review: order comments by severity and blast radius, tag the body " +
+				"sections, and set confidence. This file is the artifact verdict records or posts.",
+		},
+	} {
+		t.Run("stage "+tc.stage, func(t *testing.T) {
+			root := fixtureRoot(t)
+			recipeControl(t, root, repoRecipe)
+			resp := printStage(t, root, &scripted{}, tc.stage)
+			directive := resp.Data.Argv[len(resp.Data.Argv)-1]
+			if !strings.Contains(directive, "\n\n"+tc.want+"\n\n") {
+				t.Errorf("the stage's job is not its own paragraph:\n%s", directive)
+			}
+		})
+	}
+}
+
 // TestRunPrintWithoutAStageRendersThePipeline proves the plain --print path is
 // untouched: the argv is the agent flags and the whole-pipeline directive, byte
 // for byte, and no data.stage is published.

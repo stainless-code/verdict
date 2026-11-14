@@ -413,33 +413,30 @@ func digits(s string) bool {
 	return true
 }
 
+// printed is the envelope of a --print render. data.stage names the one stage a
+// --stage render covers, and stays absent for the whole pipeline, so a plain
+// --print keeps the envelope shape it always had.
 func (st *state) printed(args *launchArgs) *core.RunResponse {
+	data := &core.RunData{
+		Agent:    args.def.Name,
+		Binary:   args.def.Binary,
+		Argv:     args.argv,
+		Bundle:   args.bundle,
+		Artifact: args.artifact,
+		Recipe:   args.plan,
+		Timeout:  args.timeout,
+		Printed:  true,
+	}
+	if args.staged != nil {
+		data.Stage = &core.RecipeStageRender{Index: args.staged.index, Kind: args.staged.stage.Kind}
+	}
 	return &core.RunResponse{
 		Repo: st.req.Repo,
 		Pr:   st.req.Pr,
 		At:   core.NowUTC(st.now()),
-		Data: &core.RunData{
-			Agent:    args.def.Name,
-			Binary:   args.def.Binary,
-			Argv:     args.argv,
-			Bundle:   args.bundle,
-			Artifact: args.artifact,
-			Recipe:   args.plan,
-			Stage:    stageRender(args.staged),
-			Timeout:  args.timeout,
-			Printed:  true,
-		},
+		Data: data,
 		Next: "re-run without --print to launch it, or run the printed command yourself",
 	}
-}
-
-// stageRender is the published data.stage object of a --print --stage render,
-// and nil for every invocation that renders the whole pipeline.
-func stageRender(at *staged) *core.RecipeStageRender {
-	if at == nil {
-		return nil
-	}
-	return &core.RecipeStageRender{Index: at.index, Kind: at.stage.Kind}
 }
 
 // launch runs the one process of a one-shot run: resolve, record the launch,
