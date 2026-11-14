@@ -257,22 +257,38 @@ type scan struct {
 }
 
 // readState lists the bundle home. A store that is not there is an empty
-// queue; one that is there and will not list is a refusal naming it, so a file
-// where the directory belongs never reads as "no bundles".
+// queue; a path that is not a directory, and a directory that will not list,
+// are refusals naming it, so a file where the store belongs never reads as
+// "no bundles".
+//
+// The directory test comes from Stat rather than ReadDir: Windows reports a
+// regular file opened as a directory as [fs.ErrNotExist], so a ReadDir-only
+// check would read a file sitting at the store path as a missing store.
 func (st *scan) readState() ([]os.DirEntry, *core.RefusalError) {
 	state := readcommon.StateDir(st.req.RepoRootPath())
-	entries, err := os.ReadDir(state)
+	info, err := os.Stat(state)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, &core.RefusalError{
-			Code: "corrupt-store",
-			Message: fmt.Sprintf("bundle store %s is unreadable (restore the directory or fix its permissions)",
-				state),
-		}
+		return nil, unreadableStore(state)
+	}
+	if !info.IsDir() {
+		return nil, unreadableStore(state)
+	}
+	entries, err := os.ReadDir(state)
+	if err != nil {
+		return nil, unreadableStore(state)
 	}
 	return entries, nil
+}
+
+// unreadableStore names a bundle home the queue cannot read.
+func unreadableStore(state string) *core.RefusalError {
+	return &core.RefusalError{
+		Code:    "corrupt-store",
+		Message: fmt.Sprintf("bundle store %s is unreadable (restore the directory or fix its permissions)", state),
+	}
 }
 
 // collect reads the bundle home and returns the kept rows in queue order.
