@@ -110,9 +110,16 @@ var facadeAllowedDeps = map[string]bool{
 	"internal/retry":          true,
 	"internal/sarif":          true,
 	"internal/schemacheck":    true,
+	"internal/shellquote":     true,
 	"internal/sig":            true,
 	"pkg/verdict":             true,
 }
+
+// leafHelpers are the shared pure helpers every service may import: each must
+// stay a leaf, so a new internal dependency is a deliberate boundary change
+// the facade allowlist would otherwise hide (a leaf that imports another
+// allowlisted package changes no facade dep).
+var leafHelpers = []string{"internal/exclude", "internal/shellquote"}
 
 // coreSubpackages classifies every package under internal/core. A new package
 // must be added here deliberately, so the core boundary is never widened
@@ -203,6 +210,32 @@ func TestImportBoundaries(t *testing.T) {
 	t.Run("verb adapter coverage", func(t *testing.T) {
 		checkVerbAdapterCoverage(t, repo)
 	})
+	t.Run("leaf helpers", func(t *testing.T) {
+		checkLeafHelpers(t, repo)
+	})
+}
+
+// checkLeafHelpers proves each shared helper imports no other repository
+// package.
+func checkLeafHelpers(t *testing.T, repo map[string]listedPackage) {
+	t.Helper()
+	for _, rel := range leafHelpers {
+		pkg, ok := repo[rel]
+		if !ok {
+			t.Fatalf("leaf helper %s is not in the package graph", rel)
+		}
+		checkNoRepoDeps(t, rel, pkg)
+	}
+}
+
+// checkNoRepoDeps fails on the first dependency that is a repository package.
+func checkNoRepoDeps(t *testing.T, rel string, pkg listedPackage) {
+	t.Helper()
+	for _, dep := range pkg.Deps {
+		if inner, ok := strings.CutPrefix(dep, modulePath); ok {
+			t.Errorf("leaf helper %s depends on %s", rel, inner)
+		}
+	}
 }
 
 // loadRepoGraph runs exactly one `go list -deps -json ./...` from the module
