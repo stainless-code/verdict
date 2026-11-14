@@ -157,7 +157,9 @@ type staged struct {
 // --print (verdict launches one process and chains no stages) and --recipe (the
 // built-in default declares no lens hint, cap, or model, so a stage of it has
 // nothing to render), and it owns the model argument, so a pass-through model
-// would silently override the declared hint.
+// would silently override the declared hint. The operand must be the canonical
+// spelling of the index it resolves: `02` and `+2` are the same position as
+// `2`, and one index spelled three ways is three things to match in a CI log.
 func (st *state) stage(plan *recipe.Plan) (*staged, *core.RefusalError) {
 	if st.req.StageRaw == "" {
 		return nil, nil
@@ -171,7 +173,7 @@ func (st *state) stage(plan *recipe.Plan) (*staged, *core.RefusalError) {
 			"--recipe is missing (the built-in default declares no lens hints or caps)")
 	}
 	index, err := strconv.Atoi(st.req.StageRaw)
-	if err != nil || !digits(st.req.StageRaw) || index < 1 || index > len(plan.Stages) {
+	if err != nil || strconv.Itoa(index) != st.req.StageRaw || index < 1 || index > len(plan.Stages) {
 		return nil, st.refuse(codeBadFlags, fmt.Sprintf("--stage must be one of %s, got '%s'",
 			stageNames(plan.Stages), st.req.StageRaw))
 	}

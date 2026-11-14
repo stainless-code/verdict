@@ -188,11 +188,17 @@ func parseNameFlag(r *cli.Runner, f *flags, args []string, i int) (int, int, boo
 }
 
 // parseStageFlag consumes the --stage operand, left raw here so the service can
-// refuse a bad index typed, beside the plan it resolves against.
+// refuse a bad index typed, beside the plan it resolves against. An empty
+// operand is the missing-value usage error, not an absent flag: the service
+// reads "" as "render the whole pipeline", which is the one command --stage
+// exists to avoid.
 func parseStageFlag(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) {
 	v, next, u := cli.FlagValue(args, i, stageFlag, "<n>")
 	if u != nil {
 		return i, r.ReportUsage(u), true
+	}
+	if v == "" {
+		return i, r.ReportUsage(cli.MissingValue(stageFlag, "<n>")), true
 	}
 	f.stage = v
 	return next, 0, false

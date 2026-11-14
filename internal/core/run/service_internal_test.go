@@ -1240,6 +1240,14 @@ func TestRunStageRefusals(t *testing.T) {
 			stage: "+2", printOn: true,
 			want: "--stage must be one of 1 lenses, 2 synthesize, 3 dedupe, 4 rank, got '+2'",
 		},
+		"--stage with a leading zero": {
+			stage: "02", printOn: true,
+			want: "--stage must be one of 1 lenses, 2 synthesize, 3 dedupe, 4 rank, got '02'",
+		},
+		"--stage spelled as a decimal": {
+			stage: "2.0", printOn: true,
+			want: "--stage must be one of 1 lenses, 2 synthesize, 3 dedupe, 4 rank, got '2.0'",
+		},
 	}
 	for _, name := range slices.Sorted(maps.Keys(cases)) {
 		tc := cases[name]
@@ -1251,12 +1259,49 @@ func TestRunStageRefusals(t *testing.T) {
 
 // TestRunStageRefusesAModelAgainstTheDeclaredHint proves the render owns the
 // model argument: asking for the declared hint and a pass-through model at once
-// refuses instead of letting one of the two values quietly win.
+// refuses instead of letting one of the two values quietly win. Every spelling
+// of a pass-through model counts — spaced and inline, long and short — since a
+// tail that dodges one of them would override the hint unrefused.
 func TestRunStageRefusesAModelAgainstTheDeclaredHint(t *testing.T) {
-	assertStageRefusal(t, &stageRefusalCase{
-		stage: "2", printOn: true,
-		want: "--print --stage 2 renders the declared model hint 'opus'; drop --model/-m after '--'",
-	}, []string{modelFlag, "sonnet"})
+	for _, tc := range []struct {
+		name        string
+		passThrough []string
+	}{
+		{name: "spaced long", passThrough: []string{"--model", "sonnet"}},
+		{name: "inline long", passThrough: []string{"--model=sonnet"}},
+		{name: "spaced short", passThrough: []string{"-m", "sonnet"}},
+		{name: "inline short", passThrough: []string{"-m=sonnet"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assertStageRefusal(t, &stageRefusalCase{
+				stage: "2", printOn: true,
+				want: "--print --stage 2 renders the declared model hint 'opus'; drop --model/-m after '--'",
+			}, tc.passThrough)
+		})
+	}
+}
+
+// TestRunStageKeepsAPassThroughModelAgainstADeclaredNothing proves the other
+// half of that rule: the lens stage declares no hint, so the operator's model
+// argument is their own and rides the argv untouched, ahead of the directive.
+func TestRunStageKeepsAPassThroughModelAgainstADeclaredNothing(t *testing.T) {
+	root := fixtureRoot(t)
+	recipeControl(t, root, repoRecipe)
+	req := request(root, &scripted{})
+	req.Print, req.Recipe, req.StageRaw = true, "quick", "1"
+	req.PassThrough = []string{"--model", "haiku"}
+	resp, ref := Run(t.Context(), req)
+	if ref != nil {
+		t.Fatalf("Run refused: %v", ref)
+	}
+	want := []string{"claude", "-p", "--model", "haiku"}
+	if len(resp.Data.Argv) != len(want)+1 || !slices.Equal(resp.Data.Argv[:len(want)], want) {
+		t.Fatalf("argv = %q, want %q then the lens directive", resp.Data.Argv, want)
+	}
+	if head := "Review acme/app PR 42 — stage 1 of 4 (lenses) of recipe quick@1.2.3 (repo)."; !strings.HasPrefix(resp.Data.Argv[len(want)], head) {
+		t.Errorf("directive = %q, want it to start with %q", resp.Data.Argv[len(want)], head)
+	}
 }
 
 // assertStageRefusal drives one --stage refusal and pins its code, its message

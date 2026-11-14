@@ -202,6 +202,17 @@ assert_refusal "a stage index past the last stage" "bad-flags"
 assert_json_field "the refusal names the four resolved stages" "true" \
   '.error.message | contains("1 lenses, 2 synthesize, 3 dedupe, 4 rank")'
 
+run_review run acme/app local-demo --agent claude --recipe quick --print --stage 02 --json
+assert_exit "a non-canonical stage index refuses" 1
+assert_refusal "a non-canonical stage index" "bad-flags"
+assert_json_field "the refusal echoes the index it could not read" "true" \
+  '.error.message | contains("got '"'"'02'"'"'")'
+
+run_review run acme/app local-demo --agent claude --recipe quick --print --stage ""
+assert_exit "an empty stage operand is a usage error, not a whole pipeline" 2
+assert_file_grep "the usage error names the operand it wants" "$EVAL_ERR" \
+  "--stage needs a value (want <n>)" "-F"
+
 run_review run acme/app local-demo --agent claude --recipe quick --print --stage 2 -- --model sonnet
 assert_exit "a pass-through model against a declared hint refuses" 1
 assert_file_grep "the refusal names the declared hint" "$EVAL_ERR" \

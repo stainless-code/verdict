@@ -293,6 +293,20 @@ func TestParseFlagsStageMissingValue(t *testing.T) {
 	}
 }
 
+// TestParseFlagsStageEmptyValue proves --stage with an empty operand is the
+// same usage error as --stage with none: the service reads "" as "render the
+// whole pipeline", which is the one command the flag exists to avoid.
+func TestParseFlagsStageEmptyValue(t *testing.T) {
+	r, _, diag := testRunner()
+	_, code, done := parseFlags(r, []string{"--agent", "claude", "--print", "--stage", ""})
+	if !done || code != cli.ExitUsage {
+		t.Fatalf("exit = %d done %v, want the usage exit", code, done)
+	}
+	if got, want := strings.TrimSpace(diag.String()), "--stage needs a value (want <n>)"; got != want {
+		t.Errorf("usage error = %q, want %q", got, want)
+	}
+}
+
 // TestUnknownFlagNamesStage proves the unknown-flag diagnostic advertises
 // --stage: the parse error is where an operator learns the surface grew.
 func TestUnknownFlagNamesStage(t *testing.T) {

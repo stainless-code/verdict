@@ -2081,8 +2081,10 @@ contract is involved, and verdict writes nothing itself.
 `--stage` requires both `--print` and `--recipe`, each refusing `bad-flags`
 otherwise: a partial launch is the orchestration verdict refuses, and the
 built-in `default` declares no lenses, caps, or model, so a stage of it has
-nothing to render. An index outside `1`–`4` refuses `bad-flags` naming the
-stages the plan resolved. `--json` carries the rendered stage as `data.stage`
+nothing to render. An index outside `1`–`4`, or one spelled any way but its own
+decimal (`02`, `+2`, `2.0`), refuses `bad-flags` naming the stages the plan
+resolved, and an empty operand is the same exit-2 usage error as a missing one,
+never a silent whole-pipeline render. `--json` carries the rendered stage as `data.stage`
 (`{"index": 2, "kind": "synthesize"}`), which positions into the pipeline the
 same envelope already records at `data.recipe.stages`.
 
