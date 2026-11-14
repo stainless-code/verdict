@@ -132,11 +132,9 @@ EOF
 run_review post acme/app "$PR_OLD" --dry-run --json
 assert_exit "old bundle post --dry-run exits 0" 0
 old_footer="$(jq -r '.data.body.footer // empty' <"$EVAL_OUT" 2>/dev/null)"
-if ! grep -Fq '> Inputs:' <<<"$old_footer"; then
-  good "old bundle without provenance.json keeps old footer byte-identical without Inputs line"
-else
-  bad "old bundle emitted unexpected > Inputs: line"
-fi
+printf '%s' "$old_footer" >"$EVAL_SANDBOX/old-footer.txt"
+assert_file_nogrep "old bundle without provenance.json keeps old footer byte-identical without Inputs line" \
+  "$EVAL_SANDBOX/old-footer.txt" '> Inputs:' "-F"
 
 # Malformed provenance.json warns and degrades gracefully without failing report.
 printf '{corrupt' > "$receipt_file"
