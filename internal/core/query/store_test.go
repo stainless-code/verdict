@@ -4,7 +4,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -30,7 +29,8 @@ func TestListBundlesRefusesAFileStore(t *testing.T) {
 	if len(view.Errors) != 1 {
 		t.Fatalf("errors = %+v; want one corrupt-store row", view.Errors)
 	}
-	if view.Errors[0].Code != "corrupt-store" || !strings.Contains(view.Errors[0].Message, ".verdict/state") {
-		t.Errorf("error row = %+v; want corrupt-store naming the store", view.Errors[0])
+	want := "bundle store " + state + " is not a directory (move the file aside and re-fetch to rebuild the store)"
+	if view.Errors[0].Code != "corrupt-store" || view.Errors[0].Message != want {
+		t.Errorf("error row = %+v; want corrupt-store with %q", view.Errors[0], want)
 	}
 }

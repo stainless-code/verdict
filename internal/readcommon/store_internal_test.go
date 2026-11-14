@@ -50,7 +50,7 @@ func TestStoreEntriesAbsentHomeIsEmpty(t *testing.T) {
 func TestStoreEntriesRefusesARegularFile(t *testing.T) {
 	file := newHome(t).file
 	entries, err := StoreEntries(file)
-	want := "bundle store " + file + " is not a directory (restore the directory or fix its permissions)"
+	want := "bundle store " + file + " is not a directory (move the file aside and re-fetch to rebuild the store)"
 	if err == nil || err.Error() != want {
 		t.Fatalf("regular file = (%v, %q); want (%v, %q)", entries, err, nil, want)
 	}
@@ -63,7 +63,7 @@ func TestStoreEntriesRefusesAFileWhoseReadDirAnswers(t *testing.T) {
 	file := newHome(t).file
 	ghost := func(string) ([]os.DirEntry, error) { return []os.DirEntry{fakeEntry("ghost")}, nil }
 	entries, err := storeEntries(file, os.Stat, ghost)
-	want := "bundle store " + file + " is not a directory (restore the directory or fix its permissions)"
+	want := "bundle store " + file + " is not a directory (move the file aside and re-fetch to rebuild the store)"
 	if err == nil || err.Error() != want {
 		t.Fatalf("regular file with a willing ReadDir = (%v, %q); want (%v, %q)", entries, err, nil, want)
 	}

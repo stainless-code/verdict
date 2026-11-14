@@ -44,10 +44,12 @@ func storeEntries(
 // NotADirectory names a bundle home the store path holds as a file, in the one
 // sentence every verb refuses it with. It is a separate sentence from
 // [UnreadableStore] because the fix differs: a file sitting where the store
-// belongs is removed or renamed, while an unreadable directory is restored.
+// belongs is moved aside and the bundle re-fetched, while an unreadable
+// directory is restored from backup. Permission advice would be wrong here —
+// the path opens fine, it is simply not a directory.
 func NotADirectory(state string) error {
 	//nolint:wrapcheck // the sentence is the whole error; there is no cause to wrap
-	return fmt.Errorf("bundle store %s is not a directory (restore the directory or fix its permissions)", state)
+	return fmt.Errorf("bundle store %s is not a directory (move the file aside and re-fetch to rebuild the store)", state)
 }
 
 // UnreadableStore names a bundle home that will not list, in the one sentence
