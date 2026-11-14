@@ -15,6 +15,7 @@ import (
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // coverageSlug names the local bundle every gate case records into.
@@ -79,7 +80,7 @@ func mergeCoverage(t *testing.T, require bool) (string, []string, error) {
 	if err != nil {
 		t.Fatalf("load review: %v", err)
 	}
-	snap, ref := controls.Gate(dir, recordcore.BundleBase(dir, nil))
+	snap, ref := controls.Gate(dir, readcommon.BundleBase(dir, nil))
 	if ref != nil {
 		t.Fatalf("controls gate: %v", ref)
 	}

@@ -10,7 +10,8 @@ locale, terminal, shell, XDG, and toolchain variables (`PATH`, `HOME`, `LANG`,
 Windows OS runtime variables on `GOOS=windows`) pass by default, and any
 variable matching `envsecret.IsSecret` (such as `FOO_TOKEN`, `GITHUB_TOKEN`,
 `SSH_AUTH_SOCK`, or `LC_TOKEN`) is dropped even when it matches an allowlist
-prefix. Operators can opt specific variable names in via
+prefix. An explicit opt-in keeps the named variable even when it matches
+`envsecret.IsSecret`. Operators can opt specific variable names in via
 `--env-allowlist <name[,name...]>` (also wired as `envAllowlist` on the `verify`
 MCP tool and `EnvAllowlist` on `verdict.VerifyRequest`) or `.verdict/verify-env`
 (one name per line, `#` comments and blank lines ignored, read from the

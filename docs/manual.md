@@ -2771,11 +2771,13 @@ environment, and the split is deliberate (the security rationale is in
   `COMMONPROGRAMFILES`, `OS`, `NUMBER_OF_PROCESSORS`, `PROCESSOR_ARCHITECTURE`,
   `SYSTEMDRIVE`, `HOMEDRIVE`, `HOMEPATH`, `MSYSTEM` on `GOOS=windows`). Any variable matching `envsecret.IsSecret` (credential-shaped
   endings such as `*_TOKEN`, `*_SECRET`, `*_KEY`, `*_PASSWORD`, plus
-  `AWS_ACCESS_KEY_ID` and `SSH_AUTH_SOCK`, including `LC_TOKEN`) is dropped even when it matches an allowlist prefix. Operators
+  `AWS_ACCESS_KEY_ID` and `SSH_AUTH_SOCK`, including `LC_TOKEN`) is dropped even when it matches an allowlist prefix. An explicit opt-in keeps
+  the named variable even when its name is secret-shaped. Operators
   opt extra variable names in with `--env-allowlist <name[,name...]>` (repeatable)
   or `.verdict/verify-env` (one variable name per line, `#` comments and blank
-  lines ignored, read from the verified base-commit `controls` snapshot so an
-  untrusted PR head cannot widen its own environment). Dropped variable names
+  lines ignored, read from the verified base-commit `controls` snapshot, checked
+  against the bundle's current base, so an untrusted PR head cannot widen its own
+  environment unless the operator passes `--allow-head-controls`). Dropped variable names
   — never values — are listed in deterministic sorted order in `warnings[]`,
   and the full parent environment remains the redaction list for `verifiedTail`
   in `patch.json`.

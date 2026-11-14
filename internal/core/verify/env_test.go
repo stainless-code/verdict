@@ -224,6 +224,23 @@ func writeControlsVerifyEnv(t *testing.T, bundleDir, body string) {
 }
 `, controls.VerifyEnvPath, len(body), shaHex)
 	writeFile(t, filepath.Join(bundleDir, controls.FileName), manifest)
+	writeFile(t, filepath.Join(bundleDir, "PR.json"), `{"baseRefOid":"abcdef1234567890abcdef1234567890abcdef12"}`)
+}
+
+func TestVerifyRefusesControlsStaleAgainstBundleBase(t *testing.T) {
+	bundle(t, `{"verifyCmd":"printf ok"}`)
+	writeControlsVerifyEnv(t, ".verdict/state/5201", "FOO_TOKEN\n")
+	writeFile(t, ".verdict/state/5201/PR.json", `{"baseRefOid":"1111111111111111111111111111111111111111"}`)
+
+	c, cmdr := &collector{}, &scriptCommander{res: core.Result{Stdout: "ok"}}
+	environ := []string{"PATH=/bin", "FOO_TOKEN=must_not_pass"}
+	_, ref := verifycore.Run(context.Background(), verifyRequest(c, cmdr, "10", environ, false))
+	if ref == nil || ref.Code != controls.CodeStale {
+		t.Fatalf("Run refusal = %v, want %s when the snapshot base differs from the bundle base", ref, controls.CodeStale)
+	}
+	if len(cmdr.got) != 0 {
+		t.Fatalf("verify ran the child with a stale controls snapshot: %+v", cmdr.got)
+	}
 }
 
 func TestVerifyEnvControlsSnapshotTrustedWhileWorktreeIgnored(t *testing.T) {

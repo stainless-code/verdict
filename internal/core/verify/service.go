@@ -124,7 +124,7 @@ func (st *state) execute(ctx context.Context, dir, now, vcmd string, timeout int
 			Message: "verify failed: no commander in runtime",
 		})
 	}
-	if ref := st.prepareEnv(dir); ref != nil {
+	if ref := st.prepareEnv(dir, readcommon.BundleBase(dir, nil)); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
 	if !coreexec.WatchdogEnforced() {

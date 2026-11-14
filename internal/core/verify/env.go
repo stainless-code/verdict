@@ -49,11 +49,11 @@ func defaultAllowlistSet(isWindows bool) map[string]bool {
 	return set
 }
 
-func (st *state) prepareEnv(dir string) *core.RefusalError {
+func (st *state) prepareEnv(dir, base string) *core.RefusalError {
 	if err := validateEnvNames("--env-allowlist", st.req.EnvAllowlist); err != nil {
 		return err
 	}
-	repoNames, ref := readControlsEnvAllowlist(dir)
+	repoNames, ref := readControlsEnvAllowlist(dir, base)
 	if ref != nil {
 		return ref
 	}
@@ -101,7 +101,7 @@ func isEnvCont(c byte) bool {
 	return isEnvStart(c) || (c >= '0' && c <= '9')
 }
 
-func readControlsEnvAllowlist(dir string) ([]string, *core.RefusalError) {
+func readControlsEnvAllowlist(dir, base string) ([]string, *core.RefusalError) {
 	if _, err := os.Stat(filepath.Join(dir, controls.FileName)); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
@@ -111,7 +111,7 @@ func readControlsEnvAllowlist(dir string) ([]string, *core.RefusalError) {
 			Message: fmt.Sprintf("cannot inspect bundle controls %s: %v", controls.FileName, err),
 		}
 	}
-	snap, ref := controls.GateRecorded(dir)
+	snap, ref := controls.Gate(dir, base)
 	if ref != nil {
 		return nil, ref
 	}

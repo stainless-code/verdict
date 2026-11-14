@@ -89,11 +89,13 @@ Do not "fix" the inherited side: it is the documented local posture.
   `envsecret.IsSecret` (credential-shaped endings such as `*_TOKEN`,
   `*_SECRET`, `*_KEY`, `*_PASSWORD`, plus `AWS_ACCESS_KEY_ID` and
   `SSH_AUTH_SOCK`, including `LC_TOKEN`) is dropped even when it
-  matches an allowlist prefix. Operators opt additional variable names in with
+  matches an allowlist prefix. An explicit opt-in keeps the named variable even
+  when its name is secret-shaped. Operators opt additional variable names in with
   `--env-allowlist NAME[,NAME...]` or `.verdict/verify-env` (one variable name
   per line, `#` comments and blank lines ignored, read exclusively from the
-  verified base-commit `controls` snapshot so an untrusted PR head cannot widen
-  its own environment). Dropped variable names — never values — are reported in
+  verified base-commit `controls` snapshot, checked against the bundle's current
+  base, so an untrusted PR head cannot widen its own environment unless the
+  operator passes `--allow-head-controls`, which reads the worktree instead). Dropped variable names — never values — are reported in
   sorted order in `warnings[]`, and the full parent snapshot remains the
   redaction list for `verifiedTail` in `patch.json`.
 
