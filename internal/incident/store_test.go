@@ -2,10 +2,13 @@ package incident
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stainless-code/verdict/internal/jq"
 )
@@ -88,6 +91,113 @@ func TestReadMissingLedgerIsMissing(t *testing.T) {
 	}
 }
 
+// TestUpsertKeepsEveryParallelAttach proves the attach serializes: sixteen
+// attaches started together each keep a row, which the unlocked
+// read-modify-write dropped to one or two.
+func TestUpsertKeepsEveryParallelAttach(t *testing.T) {
+	root := t.TempDir()
+	mkdirStore(t, root)
+	const attaches = 16
+	results, errs := attachInParallel(root, attaches)
+	for i := range attaches {
+		if errs[i] != nil {
+			t.Fatalf("attach %d: %v", i, errs[i])
+		}
+		if !results[i] {
+			t.Fatalf("attach %d reported an existing row; every pair was distinct", i)
+		}
+	}
+	rows, err := Read(root)
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if len(rows) != attaches {
+		t.Fatalf("parallel attaches kept %d rows; want %d", len(rows), attaches)
+	}
+}
+
+// attachInParallel starts every attach at once and returns what each reported.
+func attachInParallel(root string, attaches int) ([]bool, []error) {
+	results := make([]bool, attaches)
+	errs := make([]error, attaches)
+	var wg sync.WaitGroup
+	for i := range attaches {
+		wg.Go(func() {
+			results[i], errs[i] = Upsert(root, Row{
+				SchemaVersion: "1",
+				Bundle:        fmt.Sprintf("local-%02d", i),
+				Sha:           fmt.Sprintf("%040x", i+1),
+				Paths:         []string{fmt.Sprintf("src/%02d.go", i)},
+				DetectedAt:    "2026-11-14T00:00:00Z",
+			})
+		})
+	}
+	wg.Wait()
+	return results, errs
+}
+
+// TestUpsertBreaksAStaleLock proves a lock left by a killed attach does not
+// block the ledger forever.
+func TestUpsertBreaksAStaleLock(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, filepath.FromSlash(File)+lockSuffix)
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte("9999 2020-01-01T00:00:00Z\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-2 * lockStale)
+	if err := os.Chtimes(file, old, old); err != nil {
+		t.Fatal(err)
+	}
+	appended, err := Upsert(root, Row{
+		SchemaVersion: "1", Bundle: "local-a", Sha: shaA,
+		Paths: []string{"src/a.ts"}, DetectedAt: "2026-11-14T00:00:00Z",
+	})
+	if err != nil {
+		t.Fatalf("Upsert over a stale lock: %v", err)
+	}
+	if !appended {
+		t.Fatal("Upsert over a stale lock appended nothing")
+	}
+	if _, err := os.Stat(file); !os.IsNotExist(err) {
+		t.Fatalf("the attach left its lock behind (stat err %v)", err)
+	}
+}
+
+// TestLockRefusesALiveLock proves a waiter gives up typed on a lock another
+// attach holds, and never steals the holder's file.
+func TestLockRefusesALiveLock(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, filepath.FromSlash(File)+lockSuffix)
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte("9999 2026-11-14T00:00:00Z\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	unlock, err := lock(root, 20*time.Millisecond)
+	if !errors.Is(err, ErrBusy) {
+		t.Fatalf("lock = %v; want ErrBusy", err)
+	}
+	if unlock != nil {
+		t.Fatal("a refused lock returned a release")
+	}
+	if got := readIncidentLock(t, file); got != "9999 2026-11-14T00:00:00Z\n" {
+		t.Fatalf("the waiter rewrote the held lock: %q", got)
+	}
+}
+
+func readIncidentLock(t *testing.T, file string) string {
+	t.Helper()
+	raw, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
 func writeStore(t *testing.T, root, content string) {
 	t.Helper()
 	p := filepath.Join(root, filepath.FromSlash(File))
@@ -95,6 +205,15 @@ func writeStore(t *testing.T, root, content string) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// mkdirStore lands the ledger's directory, which every attach finds: the
+// bundle check proved the review store beside it exists.
+func mkdirStore(t *testing.T, root string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(root, filepath.FromSlash(File))), 0o755); err != nil {
 		t.Fatal(err)
 	}
 }

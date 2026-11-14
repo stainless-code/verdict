@@ -85,6 +85,24 @@ assert_json_field "dry-run reports the new sha" "$SHA_B" '.data.incident.sha'
 assert_file_eq "dry-run leaves the ledger byte-identical" \
   "$EVAL_SANDBOX/incidents.first.jsonl" "$EVAL_SANDBOX/.verdict/incidents.jsonl"
 
+for n in 1 2 3 4 5 6 7 8; do
+  (
+    cd "$EVAL_SANDBOX" || exit 99
+    PATH="$EVAL_STUBBIN:$PATH" "$EVAL_CLI" learn --incident local-a --sha "$(printf '%040d' "$n")" \
+      --path "src/p$n.ts" --json >"$EVAL_SANDBOX/parallel-$n.json" 2>&1
+  ) &
+done
+wait
+assert_eq "eight parallel attaches keep every row" "9" \
+  "$(wc -l <"$EVAL_SANDBOX/.verdict/incidents.jsonl" | tr -d ' ')"
+assert_eq "every parallel attach reports an append" "8" \
+  "$(jq -s '[.[] | select(.data.incident.attached == "appended")] | length' "$EVAL_SANDBOX"/parallel-*.json)"
+if [ -e "$EVAL_SANDBOX/.verdict/incidents.jsonl.lock" ]; then
+  bad "the parallel attaches left the ledger lock behind"
+else
+  good "the parallel attaches leave no ledger lock"
+fi
+
 assert_eq "attaching an incident makes no host call" "0" "$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 
 eval_end

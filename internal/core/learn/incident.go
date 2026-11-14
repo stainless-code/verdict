@@ -40,6 +40,7 @@ const (
 	msgIncidentAt        = "refusing learn: --at '%s' is not RFC 3339"
 	msgWriteIncident     = "learn could not write %s: %v"
 	msgCorruptIncident   = "incident ledger %s is unreadable (restore from backup or fix the bad line)"
+	msgBusyIncident      = "incident ledger %s is being written by another attach (retry in a moment)"
 )
 
 // nextIncident points the operator at the measurement the attach feeds.
@@ -100,13 +101,23 @@ func (st *state) writeIncident(row incident.Row) (bool, *core.RefusalError) { //
 		return false, st.refuse(codeLearnFailed, fmt.Sprintf(msgMkdirReview, err))
 	}
 	appended, err := incident.Upsert(st.root, row)
-	if errors.Is(err, incident.ErrCorrupt) {
-		return false, st.corruptIncident()
-	}
 	if err != nil {
-		return false, st.refuse(codeLearnFailed, fmt.Sprintf(msgWriteIncident, st.incidentDisplay(), err))
+		return false, st.incidentRefusal(err)
 	}
 	return appended, nil
+}
+
+// incidentRefusal maps a ledger write failure to its refusal: a held lock is
+// retryable, a corrupt ledger is not, and every other error is a failed write.
+func (st *state) incidentRefusal(err error) *core.RefusalError {
+	switch {
+	case errors.Is(err, incident.ErrBusy):
+		return st.refuse(codeStoreBusy, fmt.Sprintf(msgBusyIncident, st.incidentDisplay()))
+	case errors.Is(err, incident.ErrCorrupt):
+		return st.corruptIncident()
+	default:
+		return st.refuse(codeLearnFailed, fmt.Sprintf(msgWriteIncident, st.incidentDisplay(), err))
+	}
 }
 
 // previewAttach answers what a write would do without touching the ledger.

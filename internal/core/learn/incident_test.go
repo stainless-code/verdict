@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/incident"
 )
 
 const (
@@ -104,6 +105,17 @@ func TestIncidentRefusesScopeEscape(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, ".verdict", "incidents.jsonl")); !os.IsNotExist(err) {
 		t.Fatal("the refused attach wrote the ledger")
+	}
+}
+
+// TestIncidentBusyRefusalIsTyped proves a ledger another attach holds refuses
+// as a retryable store state, not as a failed write.
+func TestIncidentBusyRefusalIsTyped(t *testing.T) {
+	st := &state{root: "/repo"}
+	ref := st.incidentRefusal(incident.ErrBusy)
+	want := "incident ledger /repo/.verdict/incidents.jsonl is being written by another attach (retry in a moment)"
+	if ref == nil || ref.Code != "store-busy" || ref.Message != want {
+		t.Fatalf("refusal = %v; want store-busy %q", ref, want)
 	}
 }
 

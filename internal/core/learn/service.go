@@ -630,6 +630,7 @@ const (
 	codeNotRetired      = "not-retired"
 	codeBadReason       = "bad-reason"
 	codeCorruptStore    = "corrupt-store"
+	codeStoreBusy       = "store-busy"
 )
 
 const (

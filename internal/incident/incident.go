@@ -89,11 +89,18 @@ func Read(root string) ([]Row, error) {
 // Upsert appends row unless its (bundle, sha) pair is already stored, keeping
 // one row per pair and the file sorted by bundle then sha. An existing pair
 // leaves every byte of the file untouched. Stored lines are rewritten
-// verbatim, so a field this build does not read survives the write.
+// verbatim, so a field this build does not read survives the write. The whole
+// read-modify-write holds the ledger's lock, so parallel attaches keep every
+// row.
 func Upsert(root string, row Row) (bool, error) { //nolint:gocritic // the row is the ledger's own value shape
 	if err := Validate(row); err != nil {
 		return false, err
 	}
+	unlock, err := lock(root, lockWait)
+	if err != nil {
+		return false, err
+	}
+	defer unlock()
 	lines, err := readLines(root)
 	if err != nil && !errors.Is(err, ErrMissing) {
 		return false, err

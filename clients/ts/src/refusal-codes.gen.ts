@@ -188,6 +188,7 @@ export type RefusalCode =
   | "skill-unknown-agent"
   | "spend-capped"
   | "stale-review-artifact"
+  | "store-busy"
   | "threads-failed"
   | "triage-failed"
   | "uninstall-foreign"
