@@ -55,4 +55,11 @@ else
   bad "case(s) call undefined helper(s):$unknown"
 fi
 
+silent="$(grep -rL -E '^eval_end$' "$CASES"/*.sh || true)"
+if [ -z "$silent" ]; then
+  good "every case ends with eval_end (a bad leg fails the case)"
+else
+  bad "case(s) never call eval_end, so their failures cannot gate:$silent"
+fi
+
 eval_end

@@ -9,7 +9,7 @@ import (
 func defaultsValues(d *ResolvedDefaults) []core.ConfigValue {
 	get := func(key string) FieldOrigin { return d.Origins[key] }
 	values := d.Values
-	return []core.ConfigValue{
+	out := []core.ConfigValue{
 		{Key: keyPanel, Value: values.Panel, Layer: get(keyPanel).Layer, Source: get(keyPanel).Source},
 		{Key: keyBudgetUSD, Value: values.BudgetUSD, Layer: get(keyBudgetUSD).Layer, Source: get(keyBudgetUSD).Source},
 		{Key: keyMaxBytes, Value: values.MaxBytes, Layer: get(keyMaxBytes).Layer, Source: get(keyMaxBytes).Source},
@@ -20,6 +20,13 @@ func defaultsValues(d *ResolvedDefaults) []core.ConfigValue {
 		{Key: keyDisplayFloor, Value: values.DisplayMinSeverity, Layer: get(keyDisplayFloor).Layer, Source: get(keyDisplayFloor).Source},
 		{Key: keyPostFloor, Value: values.PostMinSeverity, Layer: get(keyPostFloor).Layer, Source: get(keyPostFloor).Source},
 	}
+	if values.KBMaxChars != nil {
+		out = append(out, core.ConfigValue{
+			Key: keyKBMaxChars, Value: values.KBMaxChars,
+			Layer: get(keyKBMaxChars).Layer, Source: get(keyKBMaxChars).Source,
+		})
+	}
+	return out
 }
 
 // shadowValues renders captured losing values as reported values, keeping the

@@ -470,6 +470,313 @@ file paths, NEW line numbers, and evidence for or against. Verify third-party
 contract claims by web search and quote the source URLs; an unverified
 load-bearing claim stays `unproven` rather than becoming ground truth.
 # end lens test
+--- file C/.verdict/state/4703/provenance.json ---
+{
+  "schema_version": "1",
+  "run_id": "a55234b1c4298c974db8400486546d6d6583400525f6d1fd7aea34e54043e610",
+  "prompts_hash": "49f5c99439cc65f9faab329e78a460aba14420500afb5100ad75d321fcfd3912",
+  "inputs": [
+    {
+      "kind": "prompt",
+      "name": "SKILL.md",
+      "status": "included",
+      "sha256": "3815122ebf219abe59367a90a037313bc114e678e1cb996ac09d06703f2bbdb8",
+      "bytes": 12779
+    },
+    {
+      "kind": "prompt",
+      "name": "prompts/diagrams.md",
+      "status": "included",
+      "sha256": "d19183a969b0e131d7520f0d2fa82889b903c4878e5fcea5ca9f2f0901eacd2d",
+      "bytes": 3780
+    },
+    {
+      "kind": "prompt",
+      "name": "prompts/review.md",
+      "status": "included",
+      "sha256": "a3a28018074f7e72529e529883fc613bbb5002ab67612afd1d019f1db848dd59",
+      "bytes": 27446
+    },
+    {
+      "kind": "prompt",
+      "name": "prompts/system.md",
+      "status": "included",
+      "sha256": "cc86e2bc7dd027b2081ca5109c04af728108332f579dae6f6a6242489bf076b3",
+      "bytes": 5973
+    },
+    {
+      "kind": "prompt",
+      "name": "prompts/verifier.md",
+      "status": "included",
+      "sha256": "0f6e0c6f0fa613588824da7e19055439d1c428bcf6abb416b8ed4ce3d32b2697",
+      "bytes": 918
+    },
+    {
+      "kind": "panel",
+      "name": "panel",
+      "status": "absent"
+    },
+    {
+      "kind": "bundle",
+      "name": "PR.json",
+      "status": "included",
+      "sha256": "3e7225cc4411be8c23ff42412f1c604e32b4d649ac2efa88ddcc250c5744d5c1",
+      "bytes": 351
+    },
+    {
+      "kind": "bundle",
+      "name": "chunks/chunk-01.diff",
+      "status": "included",
+      "sha256": "d2fed71287ec06ad98f41fbebb22ab2ee2d5b20b468151f06166d7293c26cd62",
+      "bytes": 475816
+    },
+    {
+      "kind": "bundle",
+      "name": "chunks/chunk-01.roles.txt",
+      "status": "included",
+      "sha256": "fa9f900c49d1a164e3148a4d9a31018c8da3f4e98175b3afc2db4e699cbfa071",
+      "bytes": 88
+    },
+    {
+      "kind": "bundle",
+      "name": "chunks/chunk-01.toc.txt",
+      "status": "included",
+      "sha256": "d0eb934b99e1d266dbab6719373d0f26320b2ad580878c669b8e725172d4e256",
+      "bytes": 546
+    },
+    {
+      "kind": "bundle",
+      "name": "chunks/chunk-02.diff",
+      "status": "included",
+      "sha256": "db8f323dd53a49d61509272e8ef03b22214c72fab8fbd2fbcf0a948ff4be3d62",
+      "bytes": 356862
+    },
+    {
+      "kind": "bundle",
+      "name": "chunks/chunk-02.roles.txt",
+      "status": "included",
+      "sha256": "cdb35fe1ae91e1b32d85b49c2d6e4ca26b45b2b426581b3609786a03003d372b",
+      "bytes": 68
+    },
+    {
+      "kind": "bundle",
+      "name": "chunks/chunk-02.toc.txt",
+      "status": "included",
+      "sha256": "bd03babaad6fc8efbb5e2826d3db0ba6c17bee732a2fec3b6cdf58d14e3cb458",
+      "bytes": 426
+    },
+    {
+      "kind": "bundle",
+      "name": "chunks/manifest.json",
+      "status": "included",
+      "sha256": "9c9f3136fd216badf97e8a906fccdab495213bfe556e2e9a4f2727a1c199eda3",
+      "bytes": 1709
+    },
+    {
+      "kind": "bundle",
+      "name": "controls.json",
+      "status": "included",
+      "sha256": "e083d819a25738543fe8a852df969adc0f5ef1565b737c6044aba0ce0d245815",
+      "bytes": 1550
+    },
+    {
+      "kind": "bundle",
+      "name": "excluded.json",
+      "status": "included",
+      "sha256": "faf89429a13b44eae1803601d49c2cc9aca6780dbf7af75d1346230030c8596a",
+      "bytes": 430
+    },
+    {
+      "kind": "bundle",
+      "name": "full.diff",
+      "status": "included",
+      "sha256": "d4bf78cd8ca2d7cf2ee4d479c5736b0301289ce9957325118112c88cb5d128f3",
+      "bytes": 832678
+    },
+    {
+      "kind": "bundle",
+      "name": "full.raw.diff",
+      "status": "included",
+      "sha256": "d4bf78cd8ca2d7cf2ee4d479c5736b0301289ce9957325118112c88cb5d128f3",
+      "bytes": 832678
+    },
+    {
+      "kind": "bundle",
+      "name": "hunks.tsv",
+      "status": "included",
+      "sha256": "c4207867e6e95e82941b1e771f586cbcdaae276df812919c197337a383c9e0b3",
+      "bytes": 448
+    },
+    {
+      "kind": "bundle",
+      "name": "identity.json",
+      "status": "included",
+      "sha256": "c2ad6f2dfe83025ab3ec54b93a7ebd652a58cf179cd4ebda012977c218e1f596",
+      "bytes": 411
+    },
+    {
+      "kind": "bundle",
+      "name": "inline.json",
+      "status": "included",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "bytes": 3
+    },
+    {
+      "kind": "bundle",
+      "name": "lenses.txt",
+      "status": "included",
+      "sha256": "235ff394e6d3bc20c0ac3ac50e040a7d8f3111bb32609c811eccf4a37a828245",
+      "bytes": 3097
+    },
+    {
+      "kind": "bundle",
+      "name": "reviews.json",
+      "status": "included",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "bytes": 3
+    },
+    {
+      "kind": "bundle",
+      "name": "roles.txt",
+      "status": "included",
+      "sha256": "79b95df27ccb7f0fc66ffd83b0d07f151928cdc16b285f8ecb904273591b551f",
+      "bytes": 18
+    },
+    {
+      "kind": "bundle",
+      "name": "run.json",
+      "status": "included",
+      "sha256": "RUNTIME_SHA256",
+      "bytes": 32357
+    },
+    {
+      "kind": "bundle",
+      "name": "store.json",
+      "status": "included",
+      "sha256": "e8bc152ffe65bec1fe1c3a2b610403147a8a4930e24d34aae5da55ec76f1f58b",
+      "bytes": 28
+    },
+    {
+      "kind": "bundle",
+      "name": "threads.json",
+      "status": "included",
+      "sha256": "RUNTIME_SHA256",
+      "bytes": 181
+    },
+    {
+      "kind": "bundle",
+      "name": "toc.txt",
+      "status": "included",
+      "sha256": "64dadb6fe1d0ddd485c1f2c06eb2e40ede0563963269fd6f7706297be738a860",
+      "bytes": 677
+    },
+    {
+      "kind": "kb",
+      "name": "kb.txt",
+      "status": "absent",
+      "included": 0,
+      "omitted": 0
+    },
+    {
+      "kind": "learnings",
+      "name": ".verdict/learnings.md",
+      "status": "absent"
+    },
+    {
+      "kind": "override",
+      "name": ".verdict/overrides/attribution.md",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "override",
+      "name": ".verdict/overrides/footer-order.md",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "override",
+      "name": ".verdict/overrides/preamble.md",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "override",
+      "name": ".verdict/overrides/walkthrough-threshold.md",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "control",
+      "name": ".gitattributes",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "control",
+      "name": ".verdict/config.json",
+      "status": "used",
+      "sha256": "fc8df1835d5c275561faa1c892b34d0c95b7ecc7a69e35c69dd19ad5ef125b99",
+      "bytes": 49,
+      "source": "base"
+    },
+    {
+      "kind": "control",
+      "name": ".verdict/ignore",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "control",
+      "name": ".verdict/kb.jsonl",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "control",
+      "name": ".verdict/verdict.lock",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "control",
+      "name": ".verdict/verify-env",
+      "status": "missing",
+      "source": "base"
+    },
+    {
+      "kind": "config",
+      "name": ".verdict/config.json",
+      "status": "included",
+      "sha256": "fc8df1835d5c275561faa1c892b34d0c95b7ecc7a69e35c69dd19ad5ef125b99",
+      "layer": "built-in,repo",
+      "detail": "budget_usd=built-in, chunk=repo, display_min_severity=built-in, effort=built-in, kb_policy.max_fp_rate=built-in, kb_policy.min_judged=built-in, max_bytes=built-in, panel=built-in, post_min_severity=built-in"
+    },
+    {
+      "kind": "exclusions",
+      "name": "excluded.json",
+      "status": "included",
+      "sha256": "faf89429a13b44eae1803601d49c2cc9aca6780dbf7af75d1346230030c8596a",
+      "bytes": 430,
+      "source": ".verdict/ignore@base",
+      "excluded": 0,
+      "excluded_bytes": 0,
+      "kept_bytes": 832678
+    }
+  ],
+  "truncated": [
+    {
+      "input": "bundle",
+      "status": "truncated",
+      "reason": "chunk_cap",
+      "truncated": true,
+      "truncation_reason": "chunk_cap",
+      "returned": 2,
+      "total": 2,
+      "next_offset": null
+    }
+  ]
+}
 --- file C/.verdict/state/4703/reviews.json ---
 []
 --- file C/.verdict/state/4703/roles.txt ---
@@ -542,6 +849,10 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
               "layer": "built-in",
               "source": "built-in"
             },
+            "kb_policy.max_chars": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "kb_policy.max_fp_rate": {
               "layer": "built-in",
               "source": "built-in"
@@ -606,6 +917,10 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
               "source": "built-in"
             },
             "effort": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
+            "kb_policy.max_chars": {
               "layer": "built-in",
               "source": "built-in"
             },
@@ -676,6 +991,10 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
               "layer": "built-in",
               "source": "built-in"
             },
+            "kb_policy.max_chars": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "kb_policy.max_fp_rate": {
               "layer": "built-in",
               "source": "built-in"
@@ -740,6 +1059,10 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
               "source": "built-in"
             },
             "effort": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
+            "kb_policy.max_chars": {
               "layer": "built-in",
               "source": "built-in"
             },
@@ -810,6 +1133,10 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
               "layer": "built-in",
               "source": "built-in"
             },
+            "kb_policy.max_chars": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "kb_policy.max_fp_rate": {
               "layer": "built-in",
               "source": "built-in"
@@ -874,6 +1201,10 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
               "source": "built-in"
             },
             "effort": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
+            "kb_policy.max_chars": {
               "layer": "built-in",
               "source": "built-in"
             },
@@ -944,6 +1275,10 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
               "layer": "built-in",
               "source": "built-in"
             },
+            "kb_policy.max_chars": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "kb_policy.max_fp_rate": {
               "layer": "built-in",
               "source": "built-in"
@@ -1008,6 +1343,10 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
               "source": "built-in"
             },
             "effort": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
+            "kb_policy.max_chars": {
               "layer": "built-in",
               "source": "built-in"
             },
@@ -1078,6 +1417,10 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
               "layer": "built-in",
               "source": "built-in"
             },
+            "kb_policy.max_chars": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "kb_policy.max_fp_rate": {
               "layer": "built-in",
               "source": "built-in"
@@ -1142,6 +1485,10 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
               "source": "built-in"
             },
             "effort": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
+            "kb_policy.max_chars": {
               "layer": "built-in",
               "source": "built-in"
             },
@@ -1212,6 +1559,10 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
               "layer": "built-in",
               "source": "built-in"
             },
+            "kb_policy.max_chars": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "kb_policy.max_fp_rate": {
               "layer": "built-in",
               "source": "built-in"
@@ -1276,6 +1627,10 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
               "source": "built-in"
             },
             "effort": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
+            "kb_policy.max_chars": {
               "layer": "built-in",
               "source": "built-in"
             },
@@ -1346,6 +1701,10 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
               "layer": "built-in",
               "source": "built-in"
             },
+            "kb_policy.max_chars": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "kb_policy.max_fp_rate": {
               "layer": "built-in",
               "source": "built-in"
@@ -1413,6 +1772,10 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
               "layer": "built-in",
               "source": "built-in"
             },
+            "kb_policy.max_chars": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "kb_policy.max_fp_rate": {
               "layer": "built-in",
               "source": "built-in"
@@ -1473,6 +1836,10 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
           "layer": "built-in",
           "source": "built-in"
         },
+        "kb_policy.max_chars": {
+          "layer": "built-in",
+          "source": "built-in"
+        },
         "kb_policy.max_fp_rate": {
           "layer": "built-in",
           "source": "built-in"
@@ -1516,7 +1883,7 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
   "base_sha": "2f1e8b7357838ae80128e21908a5069031b1dfb7",
   "captured_at": "0000-00-00T00:00:00Z",
   "config_sha256": "fc8df1835d5c275561faa1c892b34d0c95b7ecc7a69e35c69dd19ad5ef125b99",
-  "inputs_sha256": "165d0d3f9dff4291fff037aaac4e91b82bfed06aa8fb1c20b256827c2c9eccf6",
+  "inputs_sha256": "edd3c2f5ad0ac912f8632ec1b96b98641375817a14677cd24362113c21f2ec47",
   "inventory": {
     "config.json": "fc8df1835d5c275561faa1c892b34d0c95b7ecc7a69e35c69dd19ad5ef125b99"
   },

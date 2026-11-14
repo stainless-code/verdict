@@ -84,7 +84,7 @@ func parsePostFlags(r *cli.Runner, args []string, dir string) (core.PostFlags, i
 		default:
 			msg := fmt.Sprintf("unknown flag '%s' for post (want --approve[=bool], --request-changes, "+
 				"--bind, --force, --review-file <path>, --summary comment|off, --dry-run, --require-coverage, "+
-				"--allow-secret-values, --json)", a)
+				"--allow-secret-values, --provenance, --json)", a)
 			return f, r.ReportUsage(&cli.UsageError{Message: msg}), true
 		}
 	}
@@ -127,6 +127,8 @@ func applyPostSwitchFlag(f *core.PostFlags, arg string) bool {
 		f.RequireCoverage = true
 	case postcore.AllowSecretValuesFlag:
 		f.AllowSecretValues = true
+	case "--provenance":
+		f.Provenance = true
 	default:
 		return false
 	}
