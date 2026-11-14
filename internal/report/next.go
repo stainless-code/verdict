@@ -13,6 +13,7 @@ import (
 // next envelope one-liners and the complete-coverage percentage, named so the
 // two render paths cannot drift from the prose a caller reads.
 const (
+	nextVerb        = "next"
 	nextNone        = "none — nothing to act on"
 	nextAddress     = "address via address-reviews mode, then post"
 	percentComplete = 100
@@ -23,11 +24,12 @@ const (
 // is called directly: the adapter resolved prefs once, so the report run
 // behind next carries the same warnings instead of re-resolving them.
 func RunNext(ctx context.Context, r *cli.Runner, args []string, req Request) int {
+	setRentry(r, nextVerb, req, args)
 	statusF, covMode, code, done := parseNextFlags(r, args)
 	if done {
 		return code
 	}
-	if code, done := r.Canceled(ctx, "next"); done {
+	if code, done := r.Canceled(ctx, nextVerb); done {
 		return code
 	}
 	resp, ref := callNext(ctx, r, req, statusF, covMode)
@@ -64,7 +66,7 @@ func callNext(ctx context.Context, r *cli.Runner, req Request, statusF string, c
 // renderNextJSON writes the machine envelope for either mode.
 func renderNextJSON(r *cli.Runner, req Request, resp *core.NextResponse, covMode bool) int {
 	if covMode {
-		env := core.RenderEnvelope("next", req.Repo, req.Pr, resp.At, coverageNextLine(resp.Coverage),
+		env := core.RenderEnvelope(nextVerb, req.Repo, req.Pr, resp.At, coverageNextLine(resp.Coverage),
 			resp.Warnings, jq.NewObj("coverage", resp.Coverage), nil)
 		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
 		return cli.ExitOK
@@ -78,7 +80,7 @@ func renderNextJSON(r *cli.Runner, req Request, resp *core.NextResponse, covMode
 		next = nextAddress
 		item = resp.Item.Wire()
 	}
-	env := core.RenderEnvelope("next", req.Repo, req.Pr, resp.At, next,
+	env := core.RenderEnvelope(nextVerb, req.Repo, req.Pr, resp.At, next,
 		resp.Warnings, resp.Receipt.Apply(jq.NewObj("item", item)), nil)
 	fmt.Fprint(r.Out, jq.PrettyOrdered(env))
 	return cli.ExitOK
@@ -156,6 +158,7 @@ func nextStoreError(r *cli.Runner, resp *core.NextResponse) int {
 	}
 	if !r.JSONMode {
 		fmt.Fprintln(r.Diag, "next: cannot read store (run post or record first)")
+		r.WriteRentry()
 		return code
 	}
 	if ref == nil {
@@ -167,5 +170,6 @@ func nextStoreError(r *cli.Runner, resp *core.NextResponse) int {
 			Message: ref.Message + "\n" + cli.HintFor(ref.Code),
 		})
 	fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+	r.WriteRentry()
 	return code
 }

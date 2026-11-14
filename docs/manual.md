@@ -199,7 +199,9 @@ backup, then re-run). The read verbs apply the same guard to every entry:
 non-string `sig`/`body`/`heading`/`kind`/`suggestion` (and `report` on an
 unreadable `patch.json`), instead of dying mid-render with no envelope;
 `trend` warns and skips corrupt bundles, rolling up the readable ones, so one
-bad bundle never fails the whole audit. An unreadable `source.json` head degrades to the dirty-head
+bad bundle never fails the whole audit. Every `report`, `next`, and `show`
+refusal ends with a `re-enter:` line naming the invocation the operator typed,
+so the way forward after the `try:` fix is one paste away. An unreadable `source.json` head degrades to the dirty-head
 path instead (`record.json` head reads `"dirty"`).
 
 ### Review-input problems

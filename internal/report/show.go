@@ -13,6 +13,7 @@ import (
 // RunShow executes `show <owner/repo> <pr> --sig <sig> [--json]`: one full
 // finding record.
 func RunShow(ctx context.Context, r *cli.Runner, args []string, req Request) int {
+	setRentry(r, "show", req, args)
 	sig, code, done := parseShowFlags(r, args)
 	if done {
 		return code

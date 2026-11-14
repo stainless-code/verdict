@@ -15,5 +15,5 @@ exit: 1
   }
 }
 --- stderr ---
-
+re-enter: verdict next acme/app 5101 --json
 --- files ---

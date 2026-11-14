@@ -155,10 +155,16 @@ func (r *Runner) RefuseExit(err error, code int) int {
 	default:
 		r.writeErrorLine(msg)
 	}
+	r.WriteRentry()
+	return code
+}
+
+// WriteRentry prints the re-enter line, for a renderer that writes its own
+// envelope instead of calling [Runner.RefuseExit].
+func (r *Runner) WriteRentry() {
 	if r.Rentry != "" {
 		fmt.Fprintf(r.Diag, "re-enter: %s\n", r.Rentry)
 	}
-	return code
 }
 
 func (r *Runner) writeErrorLine(msg string) {

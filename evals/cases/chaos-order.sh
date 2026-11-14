@@ -309,23 +309,21 @@ matrix_row "gate" "stale-head" "$EVAL_STATUS" "none" "yes" "no" "same" "0"
 for verb in report next show; do
   m0="$(mark)"
   snap "$EVAL_SANDBOX/.verdict/state/no-such-pr" "$EVAL_SANDBOX/s5.$verb.before"
+  want_reenter="verdict $verb acme/app no-such-pr --json"
   if [ "$verb" = "show" ]; then
     run_review "$verb" acme/app no-such-pr --sig abc --json
+    want_reenter="verdict show acme/app no-such-pr --sig abc --json"
   else
     run_review "$verb" acme/app no-such-pr --json
   fi
-  code="$(jq -r '.error.code // empty' "$EVAL_OUT" 2>/dev/null || true)"
-  nxt="$(jq -r '.next // empty' "$EVAL_OUT" 2>/dev/null || true)"
-  re="$(sed -n 's/^re-enter: //p' "$EVAL_ERR" | head -1 || true)"
-  if [ "$EVAL_STATUS" -eq 1 ] && [ "$code" = "missing-findings" ] \
-    && [ -z "$nxt" ] && [ -z "$re" ]; then
-    echo "  EXPECTED-FAIL: $verb on a missing bundle names no way forward (empty next, no re-enter; reason: read verbs never set Rentry and refusals render next as empty)"
-  else
-    bad "$verb on a missing bundle exits $EVAL_STATUS with code '$code' (want the documented gap or a way forward)"
-  fi
+  assert_exit "$verb on a missing bundle exits 1" 1
+  assert_refusal "$verb on a missing bundle" missing-findings
+  assert_eq "$verb on a missing bundle names the command to re-enter" \
+    "$want_reenter" "$(sed -n 's/^re-enter: //p' "$EVAL_ERR" | head -1)"
+  rerun_rentry "$verb on a missing bundle" missing-findings
   snap "$EVAL_SANDBOX/.verdict/state/no-such-pr" "$EVAL_SANDBOX/s5.$verb.after"
   snap_same "$verb on a missing bundle" "$EVAL_SANDBOX/s5.$verb.before" "$EVAL_SANDBOX/s5.$verb.after"
-  matrix_row "$verb" "no-bundle" "$EVAL_STATUS" "$code" "no" "no" "same" "$(reviews_since "$m0")"
+  matrix_row "$verb" "no-bundle" "$EVAL_STATUS" "missing-findings" "no" "yes" "same" "$(reviews_since "$m0")"
 done
 
 eval_end
