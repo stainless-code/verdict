@@ -211,6 +211,18 @@ else
   bad "missing --sarif gave exit $EVAL_STATUS code '$(jq -r '.error.code // empty' <"$EVAL_OUT")'"
 fi
 
+big_sarif="$EVAL_SANDBOX/too-large.sarif"
+{
+  printf '{"version":"2.1.0","runs":[]}'
+  dd if=/dev/zero bs=1024 count=8192 2>/dev/null | tr '\0' ' '
+} > "$big_sarif"
+run_review ingest acme/app "$PR" --sarif "$big_sarif" --json
+if [ "$EVAL_STATUS" -ne 0 ] && [ "$(jq -r '.error.code // empty' <"$EVAL_OUT")" = "sarif-too-large" ]; then
+  good "oversize --sarif refuses with sarif-too-large"
+else
+  bad "oversize --sarif gave exit $EVAL_STATUS code '$(jq -r '.error.code // empty' <"$EVAL_OUT")'"
+fi
+
 if [ "$(( $(wc -l <"$EVAL_STUBLOG" | tr -d ' ') - stub_before ))" = "0" ]; then
   good "zero stub-gh intercepts across ingest legs (offline)"
 else
