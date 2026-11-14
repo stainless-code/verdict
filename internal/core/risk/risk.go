@@ -35,8 +35,6 @@ const (
 )
 
 const (
-	postSuffix     = "/post.json"
-	recordSuffix   = "/record.json"
 	chunksManifest = "/chunks/manifest.json"
 	fullDiffSuffix = "/full.diff"
 )
@@ -90,12 +88,12 @@ func ReadReceipt(dir, coverageKey string) Receipt {
 	var out Receipt
 	var fallback *core.RiskClaim
 	isChunked := isRegular(dir + chunksManifest)
-	for _, suffix := range []string{postSuffix, recordSuffix} {
+	for _, suffix := range []string{readcommon.PostSuffix, readcommon.RecordSuffix} {
 		m, ok := readReceiptMap(dir + suffix)
 		if !ok {
 			continue
 		}
-		head := receiptIdentity(m)
+		head := readcommon.ReceiptIdentity(m)
 		out.Claim, fallback = pickClaim(out.Claim, fallback, claimFromMap(m), coverageKey != "" && head == coverageKey)
 		mergeCoverage(&out, m, head, coverageKey, isChunked)
 	}
@@ -121,7 +119,7 @@ func pickClaim(matched, fallback, next *core.RiskClaim, matchesHead bool) (*core
 // CoverageIdentity resolves the head or diff digest key used to match stored
 // coverage receipts in dir, mirroring gate coverage identity.
 func CoverageIdentity(dir, headSHA string) string {
-	if isConcreteHead(headSHA) {
+	if readcommon.IsConcreteHead(headSHA) {
 		return headSHA
 	}
 	return worktreeDiffIdentity(dir)
@@ -274,11 +272,7 @@ func isClaimStale(claim *core.RiskClaim, bundleHead string) bool {
 	if claim.Stale {
 		return true
 	}
-	return isConcreteHead(bundleHead) && claim.AssessedHead != bundleHead
-}
-
-func isConcreteHead(head string) bool {
-	return head != "" && head != "dirty" && head != "unknown"
+	return readcommon.IsConcreteHead(bundleHead) && claim.AssessedHead != bundleHead
 }
 
 func collectInputs(entries []any, cov CoverageInput, staleHead bool) core.RiskInputs {
@@ -355,17 +349,6 @@ func claimFromMap(m map[string]any) *core.RiskClaim {
 		AssessedHead: jq.Str(rm["assessed_head"]),
 		Stale:        stale,
 	}
-}
-
-func receiptIdentity(m map[string]any) string {
-	head := jq.Str(m["head"])
-	if isConcreteHead(head) {
-		return head
-	}
-	if diff := jq.Str(m["diff_sha256"]); diff != "" {
-		return "diff:" + diff
-	}
-	return head
 }
 
 func mergeCoverage(out *Receipt, m map[string]any, head, covKey string, isChunked bool) {

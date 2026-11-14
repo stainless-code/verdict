@@ -19,12 +19,9 @@ import (
 // the attestation would publish a number the store does not hold, so it could
 // disagree with the receipt the merge is audited against.
 const (
-	postSuffix      = "/post.json"
-	recordSuffix    = "/record.json"
 	chunksManifest  = "/chunks/manifest.json"
 	coverageWarn    = "warn"
 	coverageRequire = "require"
-	fieldHead       = "head"
 	fieldDiffSHA256 = "diff_sha256"
 	fieldCoverage   = "coverage"
 	fieldChunkCov   = "chunk_coverage"
@@ -58,7 +55,7 @@ type storedCoverage struct {
 // gated head, with its summary when one is stored.
 func readStoredCoverage(dir, head string) storedCoverage {
 	var out storedCoverage
-	for _, suffix := range []string{postSuffix, recordSuffix} {
+	for _, suffix := range []string{readcommon.PostSuffix, readcommon.RecordSuffix} {
 		receipt, ok := receiptAt(dir + suffix)
 		if !ok {
 			continue
@@ -105,7 +102,7 @@ func receiptAt(path string) (storedCoverage, bool) {
 	if !ok {
 		return storedCoverage{}, false
 	}
-	out := storedCoverage{head: receiptIdentity(m)}
+	out := storedCoverage{head: readcommon.ReceiptIdentity(m)}
 	if summary, ok := jq.AsMap(m[fieldCoverage]); ok {
 		out.sum = summaryOf(summary)
 	}
@@ -113,17 +110,6 @@ func receiptAt(path string) (storedCoverage, bool) {
 		out.chunks = chunkCoverageOf(chunks)
 	}
 	return out, true
-}
-
-func receiptIdentity(m map[string]any) string {
-	head := jq.Str(m[fieldHead])
-	if head != "" && head != "dirty" {
-		return head
-	}
-	if diff := jq.Str(m[fieldDiffSHA256]); diff != "" {
-		return "diff:" + diff
-	}
-	return head
 }
 
 // chunkCoverageOf reads the stored receipt's chunk attestation.
