@@ -613,7 +613,10 @@
         },
         "max_risk": { "enum": ["low", "medium", "high", "critical"] },
         "exceeded": { "type": "boolean" },
-        "gate_reason": { "enum": ["risk-exceeded", "risk-unknown"] }
+        "gate_reason": { "enum": ["risk-exceeded", "risk-unknown"] },
+        "score": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/riskScore" }]
+        }
       },
       "required": ["claimed", "floor", "reported", "inputs", "exceeded"],
       "additionalProperties": true
@@ -637,6 +640,92 @@
         "stale_head",
         "missing_coverage"
       ],
+      "additionalProperties": true
+    },
+    "riskScore": {
+      "type": "object",
+      "properties": {
+        "value": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "measured": { "type": "integer", "minimum": 0, "maximum": 4 },
+        "reach": { "$ref": "#/$defs/riskReach" },
+        "churn": { "$ref": "#/$defs/riskChurn" },
+        "category": { "$ref": "#/$defs/riskCategory" },
+        "rung": { "$ref": "#/$defs/riskRung" }
+      },
+      "required": ["value", "measured", "reach", "churn", "category", "rung"],
+      "additionalProperties": true
+    },
+    "riskReach": {
+      "type": "object",
+      "properties": {
+        "measured": { "type": "boolean" },
+        "symbols": { "type": ["integer", "null"], "minimum": 0 },
+        "callers": { "type": ["integer", "null"], "minimum": 0 },
+        "stale": { "type": ["boolean", "null"] },
+        "points": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "weight": { "type": "integer", "minimum": 0, "maximum": 100 }
+      },
+      "required": ["measured", "points", "weight"],
+      "additionalProperties": true
+    },
+    "riskChurn": {
+      "type": "object",
+      "properties": {
+        "measured": { "type": "boolean" },
+        "files": { "type": "integer", "minimum": 0 },
+        "additions": { "type": "integer", "minimum": 0 },
+        "deletions": { "type": "integer", "minimum": 0 },
+        "hunks": { "type": "integer", "minimum": 0 },
+        "points": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "weight": { "type": "integer", "minimum": 0, "maximum": 100 }
+      },
+      "required": [
+        "measured",
+        "files",
+        "additions",
+        "deletions",
+        "hunks",
+        "points",
+        "weight"
+      ],
+      "additionalProperties": true
+    },
+    "riskCategory": {
+      "type": "object",
+      "properties": {
+        "measured": { "type": "boolean" },
+        "worst": {
+          "enum": [
+            "logic",
+            "edge-case",
+            "security",
+            "performance",
+            "accidental-commit",
+            "style",
+            "docs",
+            "other",
+            "untagged"
+          ]
+        },
+        "open": { "type": "integer", "minimum": 0 },
+        "points": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "weight": { "type": "integer", "minimum": 0, "maximum": 100 }
+      },
+      "required": ["measured", "open", "points", "weight"],
+      "additionalProperties": true
+    },
+    "riskRung": {
+      "type": "object",
+      "properties": {
+        "measured": { "type": "boolean" },
+        "weakest": {
+          "enum": ["said", "pointed", "walked", "ran", "reproduced"]
+        },
+        "open": { "type": "integer", "minimum": 0 },
+        "points": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "weight": { "type": "integer", "minimum": 0, "maximum": 100 }
+      },
+      "required": ["measured", "open", "points", "weight"],
       "additionalProperties": true
     },
     "reportGate": {

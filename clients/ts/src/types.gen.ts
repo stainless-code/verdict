@@ -312,6 +312,7 @@ export interface ReportRisk {
   max_risk?: "low" | "medium" | "high" | "critical";
   exceeded: boolean;
   gate_reason?: "risk-exceeded" | "risk-unknown";
+  score?: RiskScore | null;
   [key: string]: unknown;
 }
 
@@ -323,6 +324,64 @@ export interface RiskInputs {
   unreviewed_files?: number | null;
   stale_head: boolean;
   missing_coverage: boolean;
+  [key: string]: unknown;
+}
+
+export interface RiskScore {
+  value: number;
+  measured: number;
+  reach: RiskReach;
+  churn: RiskChurn;
+  category: RiskCategory;
+  rung: RiskRung;
+  [key: string]: unknown;
+}
+
+export interface RiskReach {
+  measured: boolean;
+  symbols?: number | null;
+  callers?: number | null;
+  stale?: boolean | null;
+  points: number;
+  weight: number;
+  [key: string]: unknown;
+}
+
+export interface RiskChurn {
+  measured: boolean;
+  files: number;
+  additions: number;
+  deletions: number;
+  hunks: number;
+  points: number;
+  weight: number;
+  [key: string]: unknown;
+}
+
+export interface RiskCategory {
+  measured: boolean;
+  worst?:
+    | "logic"
+    | "edge-case"
+    | "security"
+    | "performance"
+    | "accidental-commit"
+    | "style"
+    | "docs"
+    | "other"
+    | "untagged";
+  open: number;
+  points: number;
+  weight: number;
+  [key: string]: unknown;
+}
+
+export interface RiskRung {
+  measured: boolean;
+  weakest?: "said" | "pointed" | "walked" | "ran" | "reproduced";
+  open: number;
+  points: number;
+  weight: number;
   [key: string]: unknown;
 }
 

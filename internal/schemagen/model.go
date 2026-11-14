@@ -240,6 +240,21 @@ type ReportRisk = core.ReportRisk
 // RiskInputs is core's deterministic store inputs for the risk floor.
 type RiskInputs = core.RiskInputs
 
+// RiskScore is core's advisory triage score report --risk publishes.
+type RiskScore = core.RiskScore
+
+// RiskReach is core's measured blast radius from impact.json.
+type RiskReach = core.RiskReach
+
+// RiskChurn is core's measured diff size from full.diff.
+type RiskChurn = core.RiskChurn
+
+// RiskCategory is core's worst open-finding category.
+type RiskCategory = core.RiskCategory
+
+// RiskRung is core's weakest open-finding evidence rung.
+type RiskRung = core.RiskRung
+
 // PostData is the post verb's --json data profile (dry-run and real post).
 type PostData = core.PostData
 

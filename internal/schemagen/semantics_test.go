@@ -223,7 +223,10 @@ var publishedSemantics = map[string]string{
 	// trend provenance: additive optional trendBundleRow.run_id and
 	// truncated_inputs (the row count the bundle's receipt reported cut, not a
 	// count of inputs). No existing property, required key, or type changed.
-	"envelope.schema.json": "fd871fd0bb0817797c89d46acb9be10842222f115161dd4b26b2a2d6744973e5",
+	// triage score: additive optional reportData.risk.score ($defs/riskScore
+	// with $defs/riskReach, riskChurn, riskCategory, and riskRung). No existing
+	// property, required key, enum, or type changed.
+	"envelope.schema.json": "2f81751a59a84e941844cae86a6364a89f975d1a0bc8abf604db2d3c0e7ce093",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

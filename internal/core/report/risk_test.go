@@ -3,6 +3,8 @@ package reportcore_test
 import (
 	"context"
 	"os"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -165,5 +167,93 @@ func TestReportRiskPrefersFreshRecordClaimOverStalePost(t *testing.T) {
 	r := resp.Data.Risk
 	if r == nil || r.Claimed != "high" || r.Reported != "high" || r.Inputs.StaleHead {
 		t.Fatalf("stale post.json shadowed fresh record.json: %+v (stale_head=%v)", r, r.Inputs.StaleHead)
+	}
+}
+
+func reportRiskDiff(additions int) string {
+	var b strings.Builder
+	b.WriteString("diff --git a/notes.txt b/notes.txt\n--- a/notes.txt\n+++ b/notes.txt\n@@ -1,0 +1,")
+	b.WriteString(strconv.Itoa(additions) + " @@\n")
+	for range additions {
+		b.WriteString("+new line\n")
+	}
+	return b.String()
+}
+
+// TestReportRiskScore pins the score report --risk publishes: every component
+// echoes its points and weight, the value is the published integer formula,
+// and the human line follows the floor inputs it belongs to.
+//
+//nolint:cyclop,revive // one assertion block per component
+func TestReportRiskScore(t *testing.T) {
+	req := fixture(t, "["+openFinding+"]")
+	writeFile(t, ".verdict/state/5101/impact.json", `{"symbols":{"count":1},"callers":{"count":3},"stale":false}`)
+	writeFile(t, ".verdict/state/5101/full.diff", reportRiskDiff(21))
+
+	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+		ReadRequest: req,
+		Flags:       core.ReportFlags{Risk: true},
+	})
+	if ref != nil {
+		t.Fatalf("Run refused: %+v", ref)
+	}
+	s := resp.Data.Risk.Score
+	if s == nil {
+		t.Fatal("Data.Risk.Score is nil under --risk")
+	}
+	if s.Value != 33 || s.Measured != 4 {
+		t.Errorf("Score = value %d measured %d, want 33/4", s.Value, s.Measured)
+	}
+	if s.Reach.Points != 50 || s.Reach.Weight != 35 || !s.Reach.Measured {
+		t.Errorf("Reach = %+v, want 50w35 measured", s.Reach)
+	}
+	if s.Churn.Points != 25 || s.Churn.Weight != 25 || s.Churn.Additions != 21 {
+		t.Errorf("Churn = %+v, want 25w25 with 21 additions", s.Churn)
+	}
+	if s.Category.Points != 25 || s.Category.Weight != 25 || s.Category.Worst == nil || *s.Category.Worst != "untagged" {
+		t.Errorf("Category = %+v, want 25w25 untagged", s.Category)
+	}
+	if s.Rung.Points != 25 || s.Rung.Weight != 15 || s.Rung.Weakest == nil || *s.Rung.Weakest != "walked" {
+		t.Errorf("Rung = %+v, want 25w15 walked", s.Rung)
+	}
+
+	const want = "risk score: 33/100 (reach 50w35 churn 25w25 category 25w25 rung 25w15, measured 4/4)"
+	at := slices.Index(resp.Human, want)
+	if at < 0 {
+		t.Fatalf("human lines %v lack %q", resp.Human, want)
+	}
+	if at == 0 || !strings.HasPrefix(resp.Human[at-1], "risk floor inputs: ") {
+		t.Errorf("score line follows %q, want the risk floor inputs line", resp.Human[max(0, at-1)])
+	}
+}
+
+// TestReportRiskScoreOnlyUnderRiskFlag proves --max-risk alone (and a plain
+// report) stays byte-identical: the gate reads reported, never the score.
+func TestReportRiskScoreOnlyUnderRiskFlag(t *testing.T) {
+	req := fixture(t, "[]")
+	writeFile(t, ".verdict/state/5101/impact.json", `{"symbols":{"count":1},"callers":{"count":3}}`)
+	writeFile(t, ".verdict/state/5101/record.json",
+		`{"head":"`+storeHeadSHA+`","coverage":{"gaps":0},"risk":{"level":"medium","rationale":"Touches shared persistence layer cleanly.","assessed_head":"`+storeHeadSHA+`"}}`)
+
+	gated, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+		ReadRequest: req,
+		Flags:       core.ReportFlags{MaxRisk: "medium"},
+	})
+	if ref != nil {
+		t.Fatalf("Run refused: %+v", ref)
+	}
+	if gated.Data.Risk == nil || gated.Data.Risk.Score != nil {
+		t.Fatalf("--max-risk alone must publish the band without a score: %+v", gated.Data.Risk)
+	}
+	if strings.Contains(strings.Join(gated.Human, "\n"), "risk score: ") {
+		t.Errorf("--max-risk human output carries a score line:\n%s", strings.Join(gated.Human, "\n"))
+	}
+
+	plain, ref := reportcore.Run(context.Background(), &core.ReportRequest{ReadRequest: req})
+	if ref != nil {
+		t.Fatalf("Run refused: %+v", ref)
+	}
+	if plain.Data.Risk != nil {
+		t.Errorf("plain report publishes a risk block: %+v", plain.Data.Risk)
 	}
 }

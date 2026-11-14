@@ -277,6 +277,9 @@ func loadStateRisk(st *state) {
 	}
 	covKey := risk.CoverageIdentity(st.dir, st.headSHA)
 	st.risk = risk.EvaluateBundle(st.dir, st.headSHA, covKey, st.entries, st.flags.MaxRisk)
+	if st.flags.Risk {
+		st.risk.Score = risk.Score(st.dir, st.entries)
+	}
 }
 
 func loadRefusal(err error) *core.RefusalError {

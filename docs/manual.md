@@ -1222,6 +1222,32 @@ is inert: advisory runs never touch the network regardless.
 - `reported = max(claimed, floor)` (remaining `unknown` when unclaimed and the
   floor is `low`). Missing or stale evidence emits `receipt_reasons`.
 
+`report --risk` also publishes `data.risk.score`, an advisory 0–100 triage
+score built only from the bundle's own artifacts: `impact.json` for reach,
+`full.diff` for churn, and the open entries of `findings.json` for category and
+rung. Each component echoes the points it earned and the weight it carried, so
+a value is recomputable from the row itself with no config read:
+
+| Component                                 | Weight | Points                                                                                                      |
+| ----------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------- |
+| `reach` = `symbols + callers`             | 35     | 0→0, 1–3→25, 4–10→50, 11–25→75, ≥26→100                                                                     |
+| `churn` = `additions + deletions`         | 25     | 0–20→0, 21–100→25, 101–300→50, 301–800→75, ≥801→100                                                         |
+| `category` = worst open finding category  | 25     | security 100, logic 75, performance/edge-case/accidental-commit 50, other/untagged 25, style/docs 0, none 0 |
+| `rung` = weakest rung among open findings | 15     | said 100, pointed 75, walked 25, ran/reproduced 0, none 0                                                   |
+
+`value = (35*reach + 25*churn + 25*category + 15*rung) / 100` with integer
+division. `measured` counts the components whose inputs were read (`0`–`4`), so
+a bundle with no `impact.json` reads `reach.measured: false`, `reach.points: 0`
+and `score.measured: 3` instead of a silent zero, and `reach.stale` reports the
+index's own staleness without ever correcting it. The score is advisory and
+rides `--risk` alone: `--max-risk` gates on `reported` and never reads it, so a
+band and its score can never disagree. Human mode prints one line after
+`risk floor inputs:`:
+
+```
+risk score: 61/100 (reach 50w35 churn 25w25 category 100w25 rung 100w15, measured 3/4)
+```
+
 `report --max-risk <low|medium|high|critical>` gates on `data.risk.reported`
 without calling the network unless paired with `--check` or `--completeness`:
 exit `0` when `reported <= <level>`, exit `1` when `reported` exceeds `<level>`

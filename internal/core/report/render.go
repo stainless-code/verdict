@@ -351,6 +351,9 @@ func riskHuman(r *core.ReportRisk) []string {
 		fmt.Sprintf("risk: %s (claimed=%s floor=%s)", r.Reported, r.Claimed, r.Floor),
 		riskInputsHuman(r.Inputs),
 	}
+	if r.Score != nil {
+		lines = append(lines, riskScoreHuman(r.Score))
+	}
 	if r.AssessedHead != nil {
 		headLine := "risk assessed: " + readcommon.ShortSHA(*r.AssessedHead)
 		if r.Rationale != nil && *r.Rationale != "" {
@@ -374,6 +377,12 @@ func riskInputsHuman(in core.RiskInputs) string {
 			"unanchored=%d unreviewed_files=%s stale_head=%t missing_coverage=%t",
 		in.OpenCritical, in.OpenImportant, in.Deferred, in.Unanchored, unrev, in.StaleHead, in.MissingCoverage,
 	)
+}
+
+func riskScoreHuman(s *core.RiskScore) string {
+	return fmt.Sprintf("risk score: %d/100 (reach %dw%d churn %dw%d category %dw%d rung %dw%d, measured %d/4)",
+		s.Value, s.Reach.Points, s.Reach.Weight, s.Churn.Points, s.Churn.Weight,
+		s.Category.Points, s.Category.Weight, s.Rung.Points, s.Rung.Weight, s.Measured)
 }
 
 func sigHuman(entry any) string {
