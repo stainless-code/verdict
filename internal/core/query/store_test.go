@@ -29,7 +29,11 @@ func TestListBundlesRefusesAFileStore(t *testing.T) {
 	if len(view.Errors) != 1 {
 		t.Fatalf("errors = %+v; want one corrupt-store row", view.Errors)
 	}
-	want := "bundle store " + state + " is not a directory (move the file aside and re-fetch to rebuild the store)"
+	// The row names the store with wire separators — every serve path is
+	// slash-separated (layer.go's slashSep) — so the expectation has to
+	// normalize the fixture's own native path the same way, or Windows
+	// compares C:\... against C:/....
+	want := "bundle store " + filepath.ToSlash(state) + " is not a directory (move the file aside and re-fetch to rebuild the store)"
 	if view.Errors[0].Code != "corrupt-store" || view.Errors[0].Message != want {
 		t.Errorf("error row = %+v; want corrupt-store with %q", view.Errors[0], want)
 	}
