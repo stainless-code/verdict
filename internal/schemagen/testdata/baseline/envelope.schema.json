@@ -1823,15 +1823,44 @@
       "additionalProperties": true
     },
     "learnData": {
-      "description": "learn --json data: exactly one of rule (one appended rule) or rules (the status listing).",
+      "description": "learn --json data: exactly one of rule (one appended rule), rules (the status listing), or incident (one attached revert or incident).",
       "type": "object",
       "properties": {
         "rule": {},
         "rules": {
           "type": "array"
+        },
+        "incident": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/learnIncident" }]
         }
       },
       "required": [],
+      "additionalProperties": true
+    },
+    "learnIncident": {
+      "description": "learn --incident data: the bundle and merge the incident was attached to, the paths it touched, the optional note and link, the detection time, and whether the ledger gained a row (appended) or already carried it (existing).",
+      "type": "object",
+      "properties": {
+        "bundle": { "type": "string" },
+        "sha": { "type": "string" },
+        "paths": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "note": { "type": ["string", "null"] },
+        "url": { "type": ["string", "null"] },
+        "detected_at": { "type": "string", "format": "date-time" },
+        "attached": { "enum": ["appended", "existing"] }
+      },
+      "required": [
+        "bundle",
+        "sha",
+        "paths",
+        "note",
+        "url",
+        "detected_at",
+        "attached"
+      ],
       "additionalProperties": true
     },
     "initData": {
@@ -2000,7 +2029,7 @@
       "additionalProperties": true
     },
     "trendData": {
-      "description": "trend --json data: the portfolio rollup, one row per reviewed bundle, and the opt-in overlap and corpus joins. Every tally key is always present.",
+      "description": "trend --json data: the portfolio rollup, one row per reviewed bundle, and the opt-in overlap, corpus, and incident joins. Every tally key is always present.",
       "type": "object",
       "properties": {
         "truncated": { "type": "boolean" },
@@ -2046,7 +2075,10 @@
           "items": { "$ref": "#/$defs/trendBundleRow" }
         },
         "overlap": {},
-        "corpus": {}
+        "corpus": {},
+        "incidents": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/trendIncidents" }]
+        }
       },
       "required": [
         "generated_at",
@@ -2215,6 +2247,55 @@
         "by_status",
         "by_tier",
         "by_category"
+      ],
+      "additionalProperties": true
+    },
+    "trendIncidents": {
+      "description": "trend --incidents data: the attached incidents, how many a bundle findings store could measure, the hit and missed split, and miss_rate (4 dp, null when nothing measured).",
+      "type": "object",
+      "properties": {
+        "bundles": { "type": "integer", "minimum": 0 },
+        "incidents": { "type": "integer", "minimum": 0 },
+        "measured": { "type": "integer", "minimum": 0 },
+        "unmeasured": { "type": "integer", "minimum": 0 },
+        "hit": { "type": "integer", "minimum": 0 },
+        "missed": { "type": "integer", "minimum": 0 },
+        "miss_rate": { "type": ["number", "null"], "minimum": 0 },
+        "per_bundle": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/trendIncidentBundle" }
+        }
+      },
+      "required": [
+        "bundles",
+        "incidents",
+        "measured",
+        "unmeasured",
+        "hit",
+        "missed",
+        "miss_rate",
+        "per_bundle"
+      ],
+      "additionalProperties": true
+    },
+    "trendIncidentBundle": {
+      "description": "One bundle share of the incident miss rate: its attached, measured, hit, and missed incidents and its own miss_rate.",
+      "type": "object",
+      "properties": {
+        "bundle": { "type": "string" },
+        "incidents": { "type": "integer", "minimum": 0 },
+        "measured": { "type": "integer", "minimum": 0 },
+        "hit": { "type": "integer", "minimum": 0 },
+        "missed": { "type": "integer", "minimum": 0 },
+        "miss_rate": { "type": ["number", "null"], "minimum": 0 }
+      },
+      "required": [
+        "bundle",
+        "incidents",
+        "measured",
+        "hit",
+        "missed",
+        "miss_rate"
       ],
       "additionalProperties": true
     },

@@ -211,7 +211,11 @@ var publishedSemantics = map[string]string{
 	// sarif ingest: additive $defs/ingestData, $defs/trendSources, and
 	// optional by_source on reportCounts, trendData, and trendBundleRow. No
 	// existing property, required key, enum, or type changed.
-	"envelope.schema.json": "e710e79ce0a855ad5c756e1302c95c98c12ee126e03685d627d07b53ce867081",
+	// incident memory: additive $defs/learnIncident, $defs/trendIncidents, and
+	// $defs/trendIncidentBundle plus the nullable optional learnData.incident
+	// and trendData.incidents keys, and the regenerated learnData/trendData
+	// descriptions. No existing property, required key, enum, or type changed.
+	"envelope.schema.json": "c2897a08f9405e20dad4e390554abee864f26a3c42badac4c4b653304aea0018",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

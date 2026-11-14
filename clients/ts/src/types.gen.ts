@@ -912,10 +912,23 @@ export interface FixAnchors {
   [key: string]: unknown;
 }
 
-/** learn --json data: exactly one of rule (one appended rule) or rules (the status listing). */
+/** learn --json data: exactly one of rule (one appended rule), rules (the status listing), or incident (one attached revert or incident). */
 export interface LearnData {
   rule?: unknown;
   rules?: unknown[];
+  incident?: LearnIncident | null;
+  [key: string]: unknown;
+}
+
+/** learn --incident data: the bundle and merge the incident was attached to, the paths it touched, the optional note and link, the detection time, and whether the ledger gained a row (appended) or already carried it (existing). */
+export interface LearnIncident {
+  bundle: string;
+  sha: string;
+  paths: Array<string>;
+  note: string | null;
+  url: string | null;
+  detected_at: string;
+  attached: "appended" | "existing";
   [key: string]: unknown;
 }
 
@@ -1009,7 +1022,7 @@ export interface VerifyData {
   [key: string]: unknown;
 }
 
-/** trend --json data: the portfolio rollup, one row per reviewed bundle, and the opt-in overlap and corpus joins. Every tally key is always present. */
+/** trend --json data: the portfolio rollup, one row per reviewed bundle, and the opt-in overlap, corpus, and incident joins. Every tally key is always present. */
 export interface TrendData {
   truncated?: boolean;
   truncation_reason?:
@@ -1037,6 +1050,7 @@ export interface TrendData {
   per_bundle: Array<TrendBundleRow>;
   overlap?: unknown;
   corpus?: unknown;
+  incidents?: TrendIncidents | null;
   [key: string]: unknown;
 }
 
@@ -1123,6 +1137,30 @@ export interface TrendBundleRow {
   /** One bundle's finding counts by provenance source (model and tool). */
   by_source?: TrendSources;
   withheld?: unknown;
+  [key: string]: unknown;
+}
+
+/** trend --incidents data: the attached incidents, how many a bundle findings store could measure, the hit and missed split, and miss_rate (4 dp, null when nothing measured). */
+export interface TrendIncidents {
+  bundles: number;
+  incidents: number;
+  measured: number;
+  unmeasured: number;
+  hit: number;
+  missed: number;
+  miss_rate: number | null;
+  per_bundle: Array<TrendIncidentBundle>;
+  [key: string]: unknown;
+}
+
+/** One bundle share of the incident miss rate: its attached, measured, hit, and missed incidents and its own miss_rate. */
+export interface TrendIncidentBundle {
+  bundle: string;
+  incidents: number;
+  measured: number;
+  hit: number;
+  missed: number;
+  miss_rate: number | null;
   [key: string]: unknown;
 }
 

@@ -297,6 +297,7 @@ var fieldDocs = map[string]string{
 	"Output":     "Write the rendered report markdown to this path.",
 	"Sarif":      "Write a SARIF report to this path.",
 	"Overlap":    "Join overlapping findings across bundles.",
+	"Incidents":  "Measure the miss rate over attached incidents: reads .verdict/incidents.jsonl and each bundle's findings store.",
 	"Probe":      "Grade the offline probe instead of joining live state.",
 	"Specs":      "Judge specs to grade (probe mode).",
 	"Summary":    "PR-level summary comment mode: comment (create or update in place) or off (default).",
@@ -309,6 +310,14 @@ var fieldDocs = map[string]string{
 	"Reason":     "Retirement reason (30+ characters).",
 	"Retire":     "Rule id to retire.",
 	"Restore":    "Rule id to restore.",
+	"learn.Incident": "Recorded bundle a later revert or incident is attached to " +
+		"(the vendored chain: fetch + post or record first).",
+	"learn.Sha": "Merge commit the revert or incident is traced back to (7-40 lowercase hex digits).",
+	"learn.Paths": "Repo-relative paths the revert or incident touched; at least one, " +
+		"deduped and sorted.",
+	"learn.Note": "Evidence note for the attach (at most 2000 bytes; control characters are stripped).",
+	"learn.URL":  "Evidence link for the attach (http or https only).",
+	"learn.At":   "RFC 3339 detection time; defaults to the current UTC time.",
 	"Preset":     "Scaffold preset (chill, standard, strict).",
 	"Yes":        "Confirm overwriting existing control files.",
 	"TimeoutRaw": "Verification timeout in seconds (positive integer).",

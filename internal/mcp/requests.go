@@ -273,6 +273,12 @@ func decodeLearn(req *learncore.Request, a *args) {
 	a.str("retire", &req.Retire)
 	a.str("restore", &req.Restore)
 	a.boolean(argStatus, &req.Status)
+	a.str("incident", &req.Incident)
+	a.str("sha", &req.Sha)
+	a.strings("path", &req.Paths)
+	a.str("note", &req.Note)
+	a.str("url", &req.URL)
+	a.str("at", &req.At)
 }
 
 func wireLearn(ctx context.Context, b *bindings, req *learncore.Request) error {
@@ -443,6 +449,7 @@ func decodeTrend(req *trendcore.Request, a *args) {
 	a.boolean("overlap", &req.Overlap)
 	a.boolean("rules", &req.Rules)
 	a.boolean("resolution", &req.Resolution)
+	a.boolean("incidents", &req.Incidents)
 }
 
 func wireTrend(ctx context.Context, b *bindings, req *trendcore.Request) error {
