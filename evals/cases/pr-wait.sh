@@ -60,6 +60,13 @@ assert_exit "one-shot unmet exit" 1
 assert_docs "snapshot plus final one-shot result" 2
 assert_eq "one-shot outcome" condition-unmet "$(jq -s -r '.[1].outcome' "$EVAL_OUT")"
 
+printf '0' >"$WAIT_COUNT"
+run_review pr-wait acme/app 42 --until merged --once --json
+assert_exit "one-shot without timeout exit" 1
+assert_envelope "one-shot without timeout"
+assert_json_field "one-shot without timeout outcome" condition-unmet '.data.outcome'
+assert_json_field "one-shot without timeout observations" 1 '.data.observations'
+
 run_review pr-wait acme/app 42 --until merged --timeout 5s --provider forgejo --json
 assert_exit "Forgejo refuses explicitly" 1
 assert_refusal "unsupported host" provider-unimplemented

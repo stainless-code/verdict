@@ -77,6 +77,30 @@ func TestWaitOnceDoesNotSleep(t *testing.T) {
 	}
 }
 
+func TestWaitOnceAllowsOmittedTimeout(t *testing.T) {
+	req, host, elapsed := waitTestRequest(t, "merged")
+	req.Once = true
+	req.Timeout = ""
+	resp, ref := Wait(t.Context(), req)
+	if ref != nil {
+		t.Fatal(ref)
+	}
+	if resp.Data.Outcome != "condition-unmet" || *elapsed != 0 || host.polls != 1 {
+		t.Fatalf("response=%+v elapsed=%v polls=%d", resp.Data, *elapsed, host.polls)
+	}
+
+	for _, tc := range []struct{ timeout, interval string }{{"0s", ""}, {"31m", ""}, {"", "1ms"}, {"5s", "10s"}} {
+		badReq, badHost, _ := waitTestRequest(t, "merged")
+		badReq.Once = true
+		badReq.Timeout = tc.timeout
+		badReq.Interval = tc.interval
+		_, badRef := Wait(t.Context(), badReq)
+		if badRef == nil || badRef.Code != "bad-flags" || badHost.polls != 0 {
+			t.Fatalf("once bounds %+v: ref=%v polls=%d", tc, badRef, badHost.polls)
+		}
+	}
+}
+
 func TestWaitDoneAllowsFailedBuild(t *testing.T) {
 	req, host, _ := waitTestRequest(t, "checks-done")
 	host.field = "failed"
