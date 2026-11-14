@@ -20,6 +20,7 @@ import (
 	doctorcore "github.com/stainless-code/verdict/internal/core/doctor"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	indexcore "github.com/stainless-code/verdict/internal/core/index"
+	ingestcore "github.com/stainless-code/verdict/internal/core/ingest"
 	packcore "github.com/stainless-code/verdict/internal/core/pack"
 	"github.com/stainless-code/verdict/internal/core/query"
 	readycore "github.com/stainless-code/verdict/internal/core/ready"
@@ -92,6 +93,41 @@ func TestRuntimeAdoptEnvelopeValidates(t *testing.T) {
 		"open":    json.Number("1"),
 	})
 	assertEnvelope(t, doc, "adopt", "4311", resp.At, resp.Next, resp.Warnings, data)
+}
+
+// TestRuntimeIngestEnvelopeValidates proves the ingest response envelope
+// validates against the generated envelope schema and reports the typed
+// SARIF counts.
+func TestRuntimeIngestEnvelopeValidates(t *testing.T) {
+	doc := loadSchemaDocument(t, "envelope.schema.json")
+	dir := t.TempDir()
+	t.Chdir(dir)
+	writeFixture(t, ".verdict/state/4312/PR.json",
+		`{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
+			`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`)
+	writeFixture(t, ".verdict/state/4312/full.diff", fixtureDiff())
+	sarifPayload := `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"semgrep"}},` +
+		`"results":[{"ruleId":"test.rule","level":"error","message":{"text":"avoid issue"},` +
+		`"locations":[{"physicalLocation":{"artifactLocation":{"uri":"notes.txt"},"region":{"startLine":2}}}]}]}]}`
+	writeFixture(t, "scan.sarif", sarifPayload)
+	req := &ingestcore.Request{SARIF: "scan.sarif"}
+	req.ReadRequest = core.ReadRequest{Runtime: fixedRuntime(), Repo: "acme/app", Pr: "4312"}
+	resp, ref := ingestcore.Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("ingest refusal: %v", ref)
+	}
+	data := resp.Data.Wire()
+	assertWireFields(t, data, map[string]any{
+		"dir":       ".verdict/state/4312",
+		"ingested":  json.Number("1"),
+		"added":     json.Number("1"),
+		"updated":   json.Number("0"),
+		"unchanged": json.Number("0"),
+		"anchored":  json.Number("1"),
+		"withheld":  json.Number("0"),
+		"open":      json.Number("1"),
+	})
+	assertEnvelope(t, doc, "ingest", "4312", resp.At, resp.Next, resp.Warnings, data)
 }
 
 // TestRuntimePackTestEnvelopeValidates validates the pack test data against

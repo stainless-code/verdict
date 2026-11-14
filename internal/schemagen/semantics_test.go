@@ -204,7 +204,10 @@ var publishedSemantics = map[string]string{
 	// remain unchanged.
 	// summary comment: additive nullable postData.summary and $defs/postSummary
 	// (optional; no existing property, required key, enum, or type changed).
-	"envelope.schema.json": "db23c90be4af165899967fbbf3e81aa6a3083a3d4b11eed2ad39e7e8bf403b0a",
+	// sarif ingest: additive $defs/ingestData, $defs/trendSources, and
+	// optional by_source on reportCounts, trendData, and trendBundleRow. No
+	// existing property, required key, enum, or type changed.
+	"envelope.schema.json": "d17f20650ffc93b157681950ba186f2fd10a0076399b7f6bd9c92b906604f3bd",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -213,7 +216,10 @@ var publishedSemantics = map[string]string{
 	// finding categories: additive optional entry.category enum (absent and
 	// null group as untagged; never part of the sig). No existing property,
 	// required key, or type changed.
-	"findings.schema.json": "b529440d679f4fc15af3dd0bd3d2bea0e6805d82f4c1aac859aea13963346380",
+	// sarif ingest: additive optional entry.source enum (model|tool) and
+	// optional tool, rule_id, and fingerprint strings on findings entries. No
+	// existing property, required key, or type changed.
+	"findings.schema.json": "1abce02980e93cc219592a809cb9edb7c3f1d3dc8a0a08c7fe0c74503671778b",
 	// post_floor_scoped: additive optional per-path posting floor list with its
 	// $defs/floorScope entry (required path, enum floor). No existing
 	// property, required key, or type changed.

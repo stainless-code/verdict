@@ -44,6 +44,10 @@ exit: 1
         "security": 0,
         "style": 0,
         "untagged": 6
+      },
+      "by_source": {
+        "model": 6,
+        "tool": 0
       }
     },
     "panel": {

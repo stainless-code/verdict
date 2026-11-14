@@ -68,6 +68,7 @@ type Verb =
   | "trend"
   | "index"
   | "adopt"
+  | "ingest"
   | "fix"
   | "learn"
   | "pack"
@@ -222,6 +223,10 @@ export async function typeChecks(): Promise<void> {
   const adopt: Envelope<AdoptData> = await client.adopt([]);
   const adopted: number = adopt.data.adopted;
   void adopted;
+
+  const ingest: Envelope<DataFor["ingest"]> = await client.ingest([]);
+  const ingested: number = ingest.data.ingested;
+  void ingested;
 
   const fixed: Envelope<FixData> = await client.fix([]);
   const complete: boolean = fixed.data.complete;

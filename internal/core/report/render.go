@@ -261,16 +261,28 @@ func buildHuman(st *state) []string {
 			item.Rank, jq.Str(readcommon.FieldOf(item.Entry, "status")),
 			readcommon.Locator(item.Entry), sigHuman(item.Entry)))
 	}
-	if st.flags.Category == "" {
-		if line := categoryHuman(st.counts.ByCategory); line != "" {
-			lines = append(lines, line)
-		}
+	if line := optionalCategoryHuman(st); line != "" {
+		lines = append(lines, line)
+	}
+	if line := sourceHuman(st.counts.BySource); line != "" {
+		lines = append(lines, line)
 	}
 	if st.flags.Cost {
 		lines = append(lines, costHuman(st)...)
 	}
 	lines = append(lines, quietLines(st)...)
 	lines = append(lines, extraHuman(st)...)
+	return finalizeHuman(st, view, lines)
+}
+
+func optionalCategoryHuman(st *state) string {
+	if st.flags.Category != "" {
+		return ""
+	}
+	return categoryHuman(st.counts.ByCategory)
+}
+
+func finalizeHuman(st *state, view []readcommon.Ranked, lines []string) []string {
 	if st.flags.Output != "" {
 		return append(lines, "wrote "+st.flags.Output)
 	}
@@ -340,6 +352,13 @@ func categoryHuman(counts map[string]int) string {
 		return ""
 	}
 	return "by category: " + strings.Join(parts, ", ")
+}
+
+func sourceHuman(counts map[string]int) string {
+	if counts["tool"] == 0 {
+		return ""
+	}
+	return fmt.Sprintf("by source: model %d, tool %d", counts["model"], counts["tool"])
 }
 
 func costHuman(st *state) []string {

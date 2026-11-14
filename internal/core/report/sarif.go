@@ -6,6 +6,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/sarif"
 )
 
 // sarifArtifact builds the --sarif block: the SARIF 2.1.0 finding export
@@ -99,15 +100,11 @@ func sarifMessage(entry any) string {
 }
 
 func sarifLevel(sev any) string {
-	if s, ok := sev.(string); ok {
-		switch s {
-		case tierCritical:
-			return "error"
-		case tierImportant:
-			return "warning"
-		}
+	s, ok := sev.(string)
+	if !ok {
+		return sarif.LevelForTier("")
 	}
-	return "note"
+	return sarif.LevelForTier(s)
 }
 
 // sarifCategory reads the finding's published category for the SARIF

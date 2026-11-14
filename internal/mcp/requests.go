@@ -15,6 +15,7 @@ import (
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	fixcore "github.com/stainless-code/verdict/internal/core/fix"
 	indexcore "github.com/stainless-code/verdict/internal/core/index"
+	ingestcore "github.com/stainless-code/verdict/internal/core/ingest"
 	initcore "github.com/stainless-code/verdict/internal/core/init"
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
 	packcore "github.com/stainless-code/verdict/internal/core/pack"
@@ -67,6 +68,16 @@ func decodeAdopt(req *adoptcore.Request, a *args) {
 }
 
 func wireAdopt(ctx context.Context, b *bindings, req *adoptcore.Request) error {
+	return b.wireRead(ctx, &req.ReadRequest)
+}
+
+func decodeIngest(req *ingestcore.Request, a *args) {
+	a.str(argRepo, &req.Repo)
+	a.str(argPr, &req.Pr)
+	a.str("sarif", &req.SARIF)
+}
+
+func wireIngest(ctx context.Context, b *bindings, req *ingestcore.Request) error {
 	return b.wireRead(ctx, &req.ReadRequest)
 }
 

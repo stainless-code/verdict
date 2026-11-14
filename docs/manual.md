@@ -999,7 +999,7 @@ webhook, listener, or MCP subscription. Killing a wait leaves no background work
 
 ## Machine surface
 
-`fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`run`/`record`/`adopt`/`fix`/`check-tree`/`ready`/`pr-wait`/`threads`/`trend`/`index`/`backtest`/`learn`/`pack`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
+`fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`run`/`record`/`adopt`/`ingest`/`fix`/`check-tree`/`ready`/`pr-wait`/`threads`/`trend`/`index`/`backtest`/`learn`/`pack`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
 non-zero. Bounded CLI `data` envelopes (`fetch`, `report`, `next`, `show`,
@@ -1286,9 +1286,9 @@ exits when stdin closes. It is listed as experimental in the usage block, and
 `verdict mcp --help` documents it.
 
 Tools are named after the verbs and take the core request shape: `adopt`,
-`calibrate`, `check-tree`, `config`, `doctor`, `fetch`, `fetch-local`, `fix`, `init`,
-`learn`, `next`, `post`, `ready`, `record`, `report`, `show`, `threads`,
-`trend`, `verify`. That is 19 tools. `upgrade` and `skill` are distribution surfaces,
+`calibrate`, `check-tree`, `config`, `doctor`, `fetch`, `fetch-local`, `fix`, `index`, `ingest`, `init`,
+`learn`, `next`, `pack`, `post`, `pr_wait`, `ready`, `record`, `report`, `show`, `threads`,
+`trend`, `verify`. That is 23 tools. `upgrade` and `skill` are distribution surfaces,
 never tools; `triage` is human-owned and joins the surface only with
 `--operator`, so an agent proposes status changes through `triage[]` in
 `review.json` instead. Input schemas are generated from the Go request structs,
@@ -2544,6 +2544,20 @@ target verdict can post to (`forgejo`, `github`, `gitlab`) — a host with no su
 refuses `provider-unimplemented` naming it. From there `post`
 and `calibrate` proceed normally — predictions recorded offline get settled against
 live ground truth.
+
+Static-analysis ingestion: `ingest owner/repo N --sarif <file|->` maps SARIF 2.1.0
+results into `.verdict/state/<bundle>/findings.json` with `source: "tool"`,
+sharing one store, one dedupe path, and one suppression/withheld path with model
+reviews. Severity is mapped via `skills/verdict/schemas/sarif-map.json`
+(`security-severity` threshold or SARIF `level`), anchors are resolved against
+the bundle diff (`anchored: false` when outside hunks so out-of-diff results
+never fail inline posting), excluded paths land withheld with `source: "exclusion"`,
+and tool findings never gain `"verified"` rigor (`rigor: "said"`, `rigor_source: "default"`).
+Re-ingesting unchanged SARIF is idempotent (`added: 0, updated: 0, unchanged: N`),
+matching a model finding preserves the model entry, and changed tool results
+update in place by `(tool, fingerprint)`. SARIF inputs are capped at 8 MiB and
+validated offline without following URIs on disk or over the network. `report` and
+`trend` report `by_source` (`model` and `tool`) alongside tier and status counts.
 
 ### Patch identity (`identity.json`)
 

@@ -24,6 +24,7 @@ var wantAnnotations = map[string]toolAnnotations{
 	"fetch-local": {Title: "Fetch local diff", IdempotentHint: true},
 	"fix":         {Title: "Prepare a fix"},
 	"index":       {Title: "Query code index", ReadOnlyHint: true, IdempotentHint: true},
+	"ingest":      {Title: "Ingest SARIF findings", IdempotentHint: true},
 	"init": {
 		Title: "Scaffold controls", DestructiveHint: true, IdempotentHint: true,
 	},
@@ -101,7 +102,7 @@ func TestSurfaceSets(t *testing.T) {
 	defaults := names(allTools(false, false))
 	wantDefaults := []string{
 		"adopt", "calibrate", "check-tree", "config", "doctor", "fetch", "fetch-local", "fix",
-		"index", "init", "learn", "next", "pack", "post", "pr_wait", "ready", "record", "report", "show",
+		"index", "ingest", "init", "learn", "next", "pack", "post", "pr_wait", "ready", "record", "report", "show",
 		"threads", "trend", "verify",
 	}
 	if !reflect.DeepEqual(defaults, wantDefaults) {
@@ -178,7 +179,7 @@ func TestMutationDeclarations(t *testing.T) {
 		"adopt":   localWrites, "calibrate": localWrites, "check-tree": noLocalWrites,
 		"config": noLocalWrites, "doctor": noLocalWrites, "fetch": localWrites,
 		"fetch-local": localWrites, "fix": localWrites, "index": noLocalWrites,
-		"init": localWrites, "learn": localWrites, "next": noLocalWrites,
+		"ingest": localWrites, "init": localWrites, "learn": localWrites, "next": noLocalWrites,
 		"pack": noLocalWrites, "post": localWrites, "ready": noLocalWrites,
 		"record": localWrites, "report": localWrites, "show": noLocalWrites,
 		"threads": localWrites, "trend": noLocalWrites, "triage": localWrites,

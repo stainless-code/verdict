@@ -47,6 +47,7 @@ export type {
   FindingItem,
   FixAnchors,
   FixData,
+  IngestData,
   InitData,
   LearnData,
   NextData,

@@ -275,6 +275,7 @@ func storeCounts(entries []any) core.ReportCounts {
 		Anchored:   countInlineAnchored(entries),
 		Unanchored: countInlineLoose(entries),
 		ByCategory: core.CategoryCounts(entries),
+		BySource:   readcommon.SourceCounts(entries),
 	}
 }
 

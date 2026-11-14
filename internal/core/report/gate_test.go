@@ -846,8 +846,12 @@ func TestRunReportBadTierRefusal(t *testing.T) {
 // whose entries carry no category: every published key zero, untagged holding
 // the whole store.
 func wantUntaggedCounts(inline, section, anchored, unanchored, untagged int) core.ReportCounts {
-	return core.ReportCounts{Inline: inline, Section: section, Anchored: anchored, Unanchored: unanchored, ByCategory: map[string]int{
-		"logic": 0, "edge-case": 0, "security": 0, "performance": 0,
-		"accidental-commit": 0, "style": 0, "docs": 0, "other": 0, "untagged": untagged,
-	}}
+	return core.ReportCounts{
+		Inline: inline, Section: section, Anchored: anchored, Unanchored: unanchored,
+		ByCategory: map[string]int{
+			"logic": 0, "edge-case": 0, "security": 0, "performance": 0,
+			"accidental-commit": 0, "style": 0, "docs": 0, "other": 0, "untagged": untagged,
+		},
+		BySource: map[string]int{"model": inline + section, "tool": 0},
+	}
 }

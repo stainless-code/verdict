@@ -33,6 +33,7 @@ func (spawnlessCommander) LookPath(tool string) error {
 func TestToolPrGuard(t *testing.T) {
 	cases := []prToolCase{
 		{name: "adopt", args: `"repo":"acme/app","pr":"../escaped","from":"twin"`},
+		{name: "ingest", args: `"repo":"acme/app","pr":"../escaped","sarif":"scan.sarif"`},
 		{name: "calibrate", args: `"repo":"acme/app","pr":"../escaped"`},
 		{name: "config", args: `"repo":"acme/app","pr":"../escaped","flags":{"explain":true}`},
 		{name: "fetch", args: `"repo":"acme/app","pr":"../escaped"`},

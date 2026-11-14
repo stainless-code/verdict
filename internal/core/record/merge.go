@@ -963,16 +963,24 @@ func BackfillEntry(m *jq.Obj) {
 	}
 	if !m.Has(fieldRigorSource) {
 		m.Set(fieldRigorSource, priorRigorSource(m))
+	} else if src, _ := m.Get("source"); jq.StrOf(src) == "tool" {
+		if rs, _ := m.Get(fieldRigorSource); jq.StrOf(rs) == "verified" {
+			m.Set(fieldRigorSource, rigorSourceDefault)
+		}
 	}
 }
 
 // priorRigorSource guesses the provenance of a store entry written before the
-// field existed. The pre-change merge defaulted a missing rigor to pointed,
-// so pointed reads back as the checker's default; any other recognized rung
-// must have come from the review. A model-written pointed is
+// field existed. Tool findings never carry model or verified rigor provenance
+// and always backfill to default. The pre-change merge defaulted a missing
+// rigor to pointed, so pointed reads back as the checker's default; any other
+// recognized rung must have come from the review. A model-written pointed is
 // indistinguishable from a default-filled one — the manual states that
 // ambiguity — and reads as default either way.
 func priorRigorSource(m *jq.Obj) string {
+	if src, _ := m.Get("source"); jq.StrOf(src) == "tool" {
+		return rigorSourceDefault
+	}
 	rv, _ := m.Get(fieldRigor)
 	if s, ok := rv.(string); ok && s != rungPointed && slices.Contains(rigorAllow, s) {
 		return rigorSourceModel

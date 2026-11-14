@@ -26,6 +26,7 @@ func TestToolCommanders(t *testing.T) {
 		"fetch-local": "exec.Runner{cap=67108864 missing=true}",
 		"fix":         "exec.Runner{cap=67108864 missing=true}",
 		"index":       "exec.Runner{cap=4194304 missing=false}",
+		"ingest":      "<nil>",
 		"init":        "exec.Runner{cap=67108864 missing=true}",
 		"learn":       "<nil>",
 		"next":        "<nil>",
