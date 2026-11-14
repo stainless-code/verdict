@@ -122,7 +122,7 @@ var facadeAllowedDeps = map[string]bool{
 // stay a leaf, so a new internal dependency is a deliberate boundary change
 // the facade allowlist would otherwise hide (a leaf that imports another
 // allowlisted package changes no facade dep).
-var leafHelpers = []string{"internal/exclude", "internal/shellquote"}
+var leafHelpers = []string{"internal/exclude", "internal/shellquote", "internal/strictjson"}
 
 // coreSubpackages classifies every package under internal/core. A new package
 // must be added here deliberately, so the core boundary is never widened
