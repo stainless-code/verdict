@@ -1,6 +1,6 @@
 {
   "name": "@stainless-code/verdict",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "Code review any coding agent can run: fetch, review, gate, post. Evidence-graded findings, cost rollups, one static binary — no server, no account, no daemon.",
   "homepage": "https://stainless-code.com/verdict",
   "license": "MIT",
