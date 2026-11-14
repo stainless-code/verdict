@@ -16,6 +16,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
+	"github.com/stainless-code/verdict/internal/core/risk"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -46,7 +47,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if code, done := r.Canceled(ctx, "report"); done {
 		return code
 	}
-	gate := flags.Check != "" || flags.Completeness
+	gate := flags.Check != "" || flags.Completeness || flags.Coverage != "" || flags.MaxRisk != ""
 	resp, ref := reportcore.Run(ctx, reportRequest(r, req, &flags))
 	if ref != nil {
 		return refuseGate(r, ref, gate)
@@ -188,12 +189,14 @@ var reportValueWants = map[string]string{
 	"--check":    "critical|important|informational",
 	"--live":     "auto|strict|skip",
 	"--category": "logic|edge-case|security|performance|accidental-commit|style|docs|other",
+	"--max-risk": "low|medium|high|critical",
 }
 
 var reportBoolSetters = map[string]func(*reportcore.Flags){
 	"--include-withheld": func(f *reportcore.Flags) { f.IncludeWithheld = true },
 	"--cost":             func(f *reportcore.Flags) { f.Cost = true },
 	"--completeness":     func(f *reportcore.Flags) { f.Completeness = true },
+	"--risk":             func(f *reportcore.Flags) { f.Risk = true },
 }
 
 func reportWantedFlags() string {
@@ -241,6 +244,8 @@ func parseReportValue(r *cli.Runner, flags *reportcore.Flags, args []string, i i
 		return parseCheckFlag(r, flags, v)
 	case "--live":
 		return parseLiveFlag(r, flags, v)
+	case "--max-risk":
+		return parseMaxRiskFlag(r, flags, v)
 	default: // --output, --sarif
 		setReportPath(flags, args[i], v)
 		return next - i + 1, 0, false
@@ -310,6 +315,17 @@ func parseLiveFlag(r *cli.Runner, flags *reportcore.Flags, next string) (int, in
 		return 0, r.ReportUsage(usageErr(
 			"unknown --live posture '%s' for report (want auto|strict|skip)",
 			flags.Live)), true
+	}
+	return 2, 0, false
+}
+
+// parseMaxRiskFlag consumes --max-risk, validating the risk threshold level.
+func parseMaxRiskFlag(r *cli.Runner, flags *reportcore.Flags, next string) (int, int, bool) {
+	flags.MaxRisk = next
+	if !risk.ValidLevel(flags.MaxRisk) {
+		return 0, r.ReportUsage(usageErr(
+			"unknown --max-risk level '%s' for report (want low|medium|high|critical)",
+			flags.MaxRisk)), true
 	}
 	return 2, 0, false
 }

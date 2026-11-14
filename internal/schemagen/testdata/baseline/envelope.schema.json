@@ -91,6 +91,7 @@
             "out-of-range",
             "path-not-in-diff",
             "rigor-unset",
+            "risk-stale-head",
             "scalar-to-array",
             "unknown-field",
             "wrong-type"
@@ -224,6 +225,9 @@
         "completeness": { "$ref": "#/$defs/reportCompleteness" },
         "compliance": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reportCompliance" }]
+        },
+        "risk": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reportRisk" }]
         },
         "gate": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reportGate" }]
@@ -429,6 +433,49 @@
       ],
       "additionalProperties": true
     },
+    "reportRisk": {
+      "type": "object",
+      "properties": {
+        "claimed": { "enum": ["unknown", "low", "medium", "high", "critical"] },
+        "floor": { "enum": ["low", "medium", "high", "critical"] },
+        "reported": {
+          "enum": ["unknown", "low", "medium", "high", "critical"]
+        },
+        "assessed_head": { "type": ["string", "null"] },
+        "rationale": { "type": ["string", "null"] },
+        "inputs": { "$ref": "#/$defs/riskInputs" },
+        "receipt_reasons": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "max_risk": { "enum": ["low", "medium", "high", "critical"] },
+        "exceeded": { "type": "boolean" },
+        "gate_reason": { "enum": ["risk-exceeded", "risk-unknown"] }
+      },
+      "required": ["claimed", "floor", "reported", "inputs", "exceeded"],
+      "additionalProperties": true
+    },
+    "riskInputs": {
+      "type": "object",
+      "properties": {
+        "open_critical": { "type": "integer", "minimum": 0 },
+        "open_important": { "type": "integer", "minimum": 0 },
+        "deferred": { "type": "integer", "minimum": 0 },
+        "unanchored": { "type": "integer", "minimum": 0 },
+        "unreviewed_files": { "type": ["integer", "null"], "minimum": 0 },
+        "stale_head": { "type": "boolean" },
+        "missing_coverage": { "type": "boolean" }
+      },
+      "required": [
+        "open_critical",
+        "open_important",
+        "deferred",
+        "unanchored",
+        "stale_head",
+        "missing_coverage"
+      ],
+      "additionalProperties": true
+    },
     "reportGate": {
       "description": "Composed gate result: every requested dimension in findings, head, coverage, live_threads, compliance order. passed is true iff no dimension failed or read unknown, so a skip and an auto-posture unreachable probe stay neutral.",
       "type": "object",
@@ -451,7 +498,14 @@
       "properties": {
         "id": {
           "description": "Which dimension read: findings (open findings at-or-above the --max-severity tier), head (a completed post for the fetched HEAD under --require-head), coverage (the stored diff-coverage receipt for that HEAD under --coverage, default require; a chunked bundle is graded on the chunk attestation its receipt stores), or live_threads (unresolved threads on the PR under --live).",
-          "enum": ["findings", "head", "coverage", "live_threads", "compliance"]
+          "enum": [
+            "findings",
+            "head",
+            "coverage",
+            "live_threads",
+            "compliance",
+            "risk"
+          ]
         },
         "status": {
           "description": "pass, fail, unknown (the dimension could not be read and the posture fails closed), or skip (not requested, or unreachable under --live auto). Only fail and unknown fail the gate.",
@@ -465,6 +519,17 @@
         }
       },
       "required": ["id", "status", "detail", "count"],
+      "additionalProperties": true
+    },
+    "riskClaim": {
+      "type": "object",
+      "properties": {
+        "level": { "enum": ["low", "medium", "high", "critical"] },
+        "rationale": { "type": "string" },
+        "assessed_head": { "type": "string" },
+        "stale": { "type": "boolean" }
+      },
+      "required": ["level", "rationale", "assessed_head"],
       "additionalProperties": true
     },
     "postData": {
@@ -522,6 +587,9 @@
           "maximum": 5
         },
         "security_summary": { "type": ["string", "null"] },
+        "risk": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/riskClaim" }]
+        },
         "payload_hash": { "type": "string" },
         "review": {
           "description": "Real-post only: the accepted GitHub review object.",
@@ -592,6 +660,9 @@
           "maximum": 5
         },
         "security_summary": { "type": ["string", "null"] },
+        "risk": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/riskClaim" }]
+        },
         "verification": {
           "anyOf": [
             { "type": "null" },
@@ -1799,6 +1870,7 @@
           "type": "object",
           "additionalProperties": true
         },
+        "by_risk": { "$ref": "#/$defs/trendRiskBands" },
         "withheld": { "type": "object", "additionalProperties": true },
         "provenance": { "$ref": "#/$defs/trendProvenance" },
         "periods": {
@@ -1857,6 +1929,30 @@
         "untagged": { "type": "integer" }
       },
       "required": ["critical", "important", "informational", "untagged"],
+      "additionalProperties": true
+    },
+    "trendRiskBands": {
+      "type": "object",
+      "properties": {
+        "low": { "$ref": "#/$defs/trendRiskBand" },
+        "medium": { "$ref": "#/$defs/trendRiskBand" },
+        "high": { "$ref": "#/$defs/trendRiskBand" },
+        "critical": { "$ref": "#/$defs/trendRiskBand" },
+        "unknown": { "$ref": "#/$defs/trendRiskBand" }
+      },
+      "required": ["low", "medium", "high", "critical", "unknown"],
+      "additionalProperties": true
+    },
+    "trendRiskBand": {
+      "type": "object",
+      "properties": {
+        "bundles": { "type": "integer" },
+        "findings": { "type": "integer" },
+        "open": { "type": "integer" },
+        "addressed": { "type": "integer" },
+        "closed": { "type": "integer" }
+      },
+      "required": ["bundles", "findings", "open", "addressed", "closed"],
       "additionalProperties": true
     },
     "trendProvenance": {
@@ -1925,6 +2021,7 @@
           "type": "object",
           "additionalProperties": true
         },
+        "risk": { "enum": ["low", "medium", "high", "critical", "unknown"] },
         "withheld": { "type": "object", "additionalProperties": true }
       },
       "required": [

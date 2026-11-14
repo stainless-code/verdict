@@ -37,6 +37,7 @@ export interface Problem {
     | "out-of-range"
     | "path-not-in-diff"
     | "rigor-unset"
+    | "risk-stale-head"
     | "scalar-to-array"
     | "unknown-field"
     | "wrong-type";
@@ -122,6 +123,7 @@ export interface ReportData {
   cost?: ReportCost;
   completeness?: ReportCompleteness;
   compliance?: ReportCompliance | null;
+  risk?: ReportRisk | null;
   gate?: ReportGate | null;
   [key: string]: unknown;
 }
@@ -230,6 +232,31 @@ export interface ReportCompliance {
   [key: string]: unknown;
 }
 
+export interface ReportRisk {
+  claimed: "unknown" | "low" | "medium" | "high" | "critical";
+  floor: "low" | "medium" | "high" | "critical";
+  reported: "unknown" | "low" | "medium" | "high" | "critical";
+  assessed_head?: string | null;
+  rationale?: string | null;
+  inputs: RiskInputs;
+  receipt_reasons?: Array<string>;
+  max_risk?: "low" | "medium" | "high" | "critical";
+  exceeded: boolean;
+  gate_reason?: "risk-exceeded" | "risk-unknown";
+  [key: string]: unknown;
+}
+
+export interface RiskInputs {
+  open_critical: number;
+  open_important: number;
+  deferred: number;
+  unanchored: number;
+  unreviewed_files?: number | null;
+  stale_head: boolean;
+  missing_coverage: boolean;
+  [key: string]: unknown;
+}
+
 /** Composed gate result: every requested dimension in findings, head, coverage, live_threads, compliance order. passed is true iff no dimension failed or read unknown, so a skip and an auto-posture unreachable probe stay neutral. */
 export interface ReportGate {
   /** The gate verdict the exit code follows: exit 0 when true, exit 1 when false. */
@@ -241,12 +268,20 @@ export interface ReportGate {
 /** One gate dimension: its id, verdict status, human detail text, and its own failing tally (null where the dimension has no count to report). */
 export interface GateDimension {
   /** Which dimension read: findings (open findings at-or-above the --max-severity tier), head (a completed post for the fetched HEAD under --require-head), coverage (the stored diff-coverage receipt for that HEAD under --coverage, default require; a chunked bundle is graded on the chunk attestation its receipt stores), or live_threads (unresolved threads on the PR under --live). */
-  id: "findings" | "head" | "coverage" | "live_threads" | "compliance";
+  id: "findings" | "head" | "coverage" | "live_threads" | "compliance" | "risk";
   /** pass, fail, unknown (the dimension could not be read and the posture fails closed), or skip (not requested, or unreachable under --live auto). Only fail and unknown fail the gate. */
   status: "pass" | "fail" | "skip" | "unknown";
   detail: string;
   /** The dimension's own tally: offending findings for findings, unattested ranges for coverage (unattested chunks on a chunked bundle), versus-thread count for live_threads, null for head and for a skipped or unreachable live probe. */
   count: number | null;
+  [key: string]: unknown;
+}
+
+export interface RiskClaim {
+  level: "low" | "medium" | "high" | "critical";
+  rationale: string;
+  assessed_head: string;
+  stale?: boolean;
   [key: string]: unknown;
 }
 
@@ -265,6 +300,7 @@ export interface PostData {
   items: Array<FindingItem>;
   confidence: number | null;
   security_summary: string | null;
+  risk?: RiskClaim | null;
   payload_hash: string;
   /** Real-post only: the accepted GitHub review object. */
   review?: unknown;
@@ -294,6 +330,7 @@ export interface RecordData {
   findings: RecordDataFindings;
   confidence: number | null;
   security_summary: string | null;
+  risk?: RiskClaim | null;
   verification?: VerificationSummary | null;
   items: Array<FindingItem>;
   /** True only on record --dry-run; the run wrote no findings.json, record.json, or any new file. */
@@ -927,6 +964,7 @@ export interface TrendData {
   by_tier: TrendTiers;
   /** Portfolio finding counts by observed category with untagged for null entries; only observed categories appear. */
   by_category: unknown;
+  by_risk?: TrendRiskBands;
   withheld?: unknown;
   provenance: TrendProvenance;
   periods: Array<TrendPeriod>;
@@ -952,6 +990,24 @@ export interface TrendTiers {
   important: number;
   informational: number;
   untagged: number;
+  [key: string]: unknown;
+}
+
+export interface TrendRiskBands {
+  low: TrendRiskBand;
+  medium: TrendRiskBand;
+  high: TrendRiskBand;
+  critical: TrendRiskBand;
+  unknown: TrendRiskBand;
+  [key: string]: unknown;
+}
+
+export interface TrendRiskBand {
+  bundles: number;
+  findings: number;
+  open: number;
+  addressed: number;
+  closed: number;
   [key: string]: unknown;
 }
 
@@ -990,6 +1046,7 @@ export interface TrendBundleRow {
   by_tier: TrendTiers;
   /** One bundle's finding counts by observed category with untagged for null entries. */
   by_category: unknown;
+  risk?: "low" | "medium" | "high" | "critical" | "unknown";
   withheld?: unknown;
   [key: string]: unknown;
 }

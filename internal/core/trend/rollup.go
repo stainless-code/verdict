@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/core/risk"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -21,13 +22,24 @@ const (
 	tierImportant       = "important"
 	tierInformational   = "informational"
 	tierUntagged        = "untagged"
+	fieldFindings       = "findings"
+	fieldClosed         = "closed"
 )
+
+type riskBandCounts struct {
+	bundles   int
+	findings  int
+	open      int
+	addressed int
+	closed    int
+}
 
 type rollup struct {
 	withheld   map[string]int
 	byStatus   map[string]int
 	byTier     map[string]int
 	byCategory map[string]int
+	byRisk     map[string]*riskBandCounts
 	tools      []any
 	models     []any
 	hashes     []any
@@ -61,6 +73,7 @@ func rollupRows(rows []row) rollup {
 			tierCritical: 0, tierImportant: 0, tierInformational: 0, tierUntagged: 0,
 		},
 		byCategory: map[string]int{},
+		byRisk:     initRiskBands(),
 	}
 	for i := range rows {
 		r := &rows[i]
@@ -70,7 +83,9 @@ func rollupRows(rows []row) rollup {
 		out.findings += len(r.findings)
 		out.open += r.byStatus[statusOpen]
 		out.addressed += r.byStatus[statusAddressed]
-		out.closed += r.byStatus[statusWontFix] + r.byStatus[statusFalsePositive] + r.byStatus[statusDeferred]
+		closed := r.byStatus[statusWontFix] + r.byStatus[statusFalsePositive] + r.byStatus[statusDeferred]
+		out.closed += closed
+		addRiskBand(out.byRisk, r.risk, len(r.findings), r.byStatus[statusOpen], r.byStatus[statusAddressed], closed)
 		for k, v := range r.byStatus {
 			out.byStatus[k] += v
 		}
@@ -168,10 +183,10 @@ func rollupDoc(out *rollup) *jq.Obj {
 		periods = append(periods, jq.NewObj(
 			"period", name,
 			"bundles", p.bundles,
-			"findings", p.findings,
-			"open", p.open,
-			"addressed", p.addressed,
-			"closed", p.closed,
+			fieldFindings, p.findings,
+			statusOpen, p.open,
+			statusAddressed, p.addressed,
+			fieldClosed, p.closed,
 			"by_tier", tierDoc(p.byTier),
 		))
 	}
@@ -182,10 +197,10 @@ func rollupDoc(out *rollup) *jq.Obj {
 		"reviews_clean", out.clean,
 		"findings_per_review", rateOrNil(out.findings, out.bundles),
 		"clean_rate", rateOrNil(out.clean, out.bundles),
-		"findings", out.findings,
-		"open", out.open,
-		"addressed", out.addressed,
-		"closed", out.closed,
+		fieldFindings, out.findings,
+		statusOpen, out.open,
+		statusAddressed, out.addressed,
+		fieldClosed, out.closed,
 		"by_status", jq.NewObj(
 			statusOpen, out.byStatus[statusOpen],
 			statusAddressed, out.byStatus[statusAddressed],
@@ -195,6 +210,7 @@ func rollupDoc(out *rollup) *jq.Obj {
 		),
 		"by_tier", tierDoc(out.byTier),
 		"by_category", categoryDoc(out.byCategory),
+		"by_risk", riskDoc(out.byRisk),
 		"withheld", out.withheld,
 		"provenance", jq.NewObj(
 			"tools", anyList(out.tools),
@@ -261,6 +277,7 @@ func rowDoc(r *row) *jq.Obj {
 		),
 		"by_tier", tierDoc(r.byTier),
 		"by_category", categoryDoc(r.byCategory),
+		"risk", riskBand(r.risk),
 		"withheld", readcommon.WithheldCounts(r.findings),
 	)
 }
@@ -302,8 +319,60 @@ func (st *state) emitRollupHuman(out *rollup) {
 		st.human(fmt.Sprintf("status: open=%d addressed=%d wont-fix=%d false-positive=%d deferred=%d",
 			out.byStatus[statusOpen], out.byStatus[statusAddressed], out.byStatus[statusWontFix],
 			out.byStatus[statusFalsePositive], out.byStatus[statusDeferred]))
+		st.human(riskHumanLine(out.byRisk))
 		st.human("provenance: " + provenanceLine(out))
 	}
+}
+
+func initRiskBands() map[string]*riskBandCounts {
+	m := make(map[string]*riskBandCounts, len(risk.Bands()))
+	for _, band := range risk.Bands() {
+		m[band] = &riskBandCounts{}
+	}
+	return m
+}
+
+func riskBand(band string) string {
+	if band == "" {
+		return risk.LevelUnknown
+	}
+	return band
+}
+
+func addRiskBand(byRisk map[string]*riskBandCounts, band string, findings, open, addressed, closed int) {
+	c := byRisk[riskBand(band)]
+	if c == nil {
+		c = byRisk[risk.LevelUnknown]
+	}
+	c.bundles++
+	c.findings += findings
+	c.open += open
+	c.addressed += addressed
+	c.closed += closed
+}
+
+func riskDoc(byRisk map[string]*riskBandCounts) *jq.Obj {
+	o := jq.NewObj()
+	for _, band := range risk.Bands() {
+		c := byRisk[band]
+		o.Set(band, jq.NewObj(
+			"bundles", c.bundles,
+			fieldFindings, c.findings,
+			statusOpen, c.open,
+			statusAddressed, c.addressed,
+			fieldClosed, c.closed,
+		))
+	}
+	return o
+}
+
+func riskHumanLine(byRisk map[string]*riskBandCounts) string {
+	parts := make([]string, 0, len(risk.Bands()))
+	for _, band := range risk.Bands() {
+		c := byRisk[band]
+		parts = append(parts, fmt.Sprintf("%s=%d(%df/%do/%da/%dc)", band, c.bundles, c.findings, c.open, c.addressed, c.closed))
+	}
+	return "risk: " + strings.Join(parts, " ")
 }
 
 func provenanceLine(out *rollup) string {

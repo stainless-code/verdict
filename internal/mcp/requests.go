@@ -370,6 +370,8 @@ func decodeReport(req *core.ReportRequest, a *args) {
 		f.boolean("cost", &req.Flags.Cost)
 		f.boolean("includeWithheld", &req.Flags.IncludeWithheld)
 		f.boolean("completeness", &req.Flags.Completeness)
+		f.boolean("risk", &req.Flags.Risk)
+		f.str("maxRisk", &req.Flags.MaxRisk)
 	})
 }
 

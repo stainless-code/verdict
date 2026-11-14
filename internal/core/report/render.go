@@ -3,11 +3,13 @@ package reportcore
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	panelcore "github.com/stainless-code/verdict/internal/core/panel"
+	"github.com/stainless-code/verdict/internal/core/risk"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -73,6 +75,9 @@ func buildData(st *state) *core.ReportData {
 	}
 	if st.comp != nil {
 		data.Completeness = st.comp
+	}
+	if st.risk != nil {
+		data.Risk = st.risk
 	}
 	if st.compliance != nil && st.compliance.HasPolicy {
 		data.Compliance = &core.ReportCompliance{
@@ -260,16 +265,7 @@ func buildHuman(st *state) []string {
 			item.Rank, jq.Str(readcommon.FieldOf(item.Entry, "status")),
 			readcommon.Locator(item.Entry), sigHuman(item.Entry)))
 	}
-	if st.flags.Category == "" {
-		if line := categoryHuman(st.counts.ByCategory); line != "" {
-			lines = append(lines, line)
-		}
-	}
-	if st.flags.Cost {
-		lines = append(lines, costHuman(st)...)
-	}
-	lines = append(lines, quietLines(st)...)
-	lines = append(lines, extraHuman(st)...)
+	lines = appendHumanTail(st, lines)
 	if st.flags.Output != "" {
 		return append(lines, "wrote "+st.flags.Output)
 	}
@@ -280,6 +276,22 @@ func buildHuman(st *state) []string {
 		return append(lines, "next: address open threads")
 	}
 	return append(lines, "next: none open — nothing to address")
+}
+
+func appendHumanTail(st *state, lines []string) []string {
+	if st.flags.Category == "" {
+		if line := categoryHuman(st.counts.ByCategory); line != "" {
+			lines = append(lines, line)
+		}
+	}
+	if st.flags.Cost {
+		lines = append(lines, costHuman(st)...)
+	}
+	if st.risk != nil {
+		lines = append(lines, riskHuman(st.risk)...)
+	}
+	lines = append(lines, quietLines(st)...)
+	return append(lines, extraHuman(st)...)
 }
 
 // complianceHuman names the captured compliance verdict before any display
@@ -313,6 +325,36 @@ func complianceHuman(st *state) string {
 	default:
 		return "compliance: satisfied"
 	}
+}
+
+func riskHuman(r *core.ReportRisk) []string {
+	lines := []string{
+		fmt.Sprintf("risk: %s (claimed=%s floor=%s)", r.Reported, r.Claimed, r.Floor),
+		riskInputsHuman(r.Inputs),
+	}
+	if r.AssessedHead != nil {
+		headLine := "risk assessed: " + readcommon.ShortSHA(*r.AssessedHead)
+		if r.Rationale != nil && *r.Rationale != "" {
+			headLine += " — " + *r.Rationale
+		}
+		lines = append(lines, headLine)
+	}
+	if len(r.ReceiptReasons) > 0 {
+		lines = append(lines, "risk receipt: "+strings.Join(r.ReceiptReasons, ", "))
+	}
+	return lines
+}
+
+func riskInputsHuman(in core.RiskInputs) string {
+	unrev := "missing"
+	if in.UnreviewedFiles != nil {
+		unrev = strconv.Itoa(*in.UnreviewedFiles)
+	}
+	return fmt.Sprintf(
+		"risk floor inputs: open_critical=%d open_important=%d deferred=%d "+
+			"unanchored=%d unreviewed_files=%s stale_head=%t missing_coverage=%t",
+		in.OpenCritical, in.OpenImportant, in.Deferred, in.Unanchored, unrev, in.StaleHead, in.MissingCoverage,
+	)
 }
 
 func sigHuman(entry any) string {
@@ -436,6 +478,7 @@ const (
 	dimSkip       = "skip"
 	dimUnknown    = "unknown"
 	dimCompliance = "compliance"
+	dimRisk       = "risk"
 	checkPrefix   = "check: "
 )
 
@@ -467,26 +510,52 @@ func gateTail(st *state) (bool, []string, *core.ReportGate) {
 }
 
 // gateDimensions is the ceiling on one run's gate checks: findings, head,
-// coverage, live, compliance.
-const gateDimensions = 5
+// coverage, live, compliance, risk.
+const gateDimensions = 6
 
 // gateChecks evaluates the dimensions this run asked for, in wire order.
 func gateChecks(st *state) []gateCheck {
+	specs := []struct {
+		build   func(*state) gateCheck
+		enabled bool
+	}{
+		{gateTierCheck, st.flags.Check != ""},
+		{gateCompletenessCheck, st.flags.Completeness},
+		{gateCoverageCheck, st.flags.Coverage != ""},
+		{gateLiveCheck, st.liveGate},
+		{gateComplianceCheck, st.compliance != nil && st.compliance.HasPolicy},
+		{gateRiskCheck, st.flags.MaxRisk != "" && st.risk != nil},
+	}
 	checks := make([]gateCheck, 0, gateDimensions)
-	if st.flags.Check != "" {
-		checks = append(checks, gateTierCheck(st))
-	}
-	if st.flags.Completeness {
-		checks = append(checks, gateCompletenessCheck(st))
-	}
-	if st.flags.Coverage != "" {
-		checks = append(checks, gateCoverageCheck(st))
-	}
-	checks = append(checks, gateLiveCheck(st))
-	if st.compliance != nil && st.compliance.HasPolicy {
-		checks = append(checks, gateComplianceCheck(st))
+	for _, spec := range specs {
+		if spec.enabled {
+			checks = append(checks, spec.build(st))
+		}
 	}
 	return checks
+}
+
+func gateRiskCheck(st *state) gateCheck {
+	r := st.risk
+	if !r.Exceeded {
+		detail := fmt.Sprintf("reported risk %s <= max-risk %s", r.Reported, *r.MaxRisk)
+		return gateCheck{
+			dim:  core.GateDimension{ID: dimRisk, Status: dimPass, Detail: detail},
+			line: checkPrefix + detail + " — risk passes",
+		}
+	}
+	if r.Reported == risk.LevelUnknown {
+		detail := fmt.Sprintf("reported risk unknown > max-risk %s (%s)", *r.MaxRisk, risk.GateReasonUnknown)
+		return gateCheck{
+			dim:  core.GateDimension{ID: dimRisk, Status: dimUnknown, Detail: detail},
+			line: checkPrefix + detail + " — risk fails",
+		}
+	}
+	detail := fmt.Sprintf("reported risk %s exceeds max-risk %s (%s)", r.Reported, *r.MaxRisk, risk.GateReasonExceeded)
+	return gateCheck{
+		dim:  core.GateDimension{ID: dimRisk, Status: dimFail, Detail: detail},
+		line: checkPrefix + detail + " — risk fails",
+	}
 }
 
 // gateComplianceCheck evaluates captured requirements: a blocking finding

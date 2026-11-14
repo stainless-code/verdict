@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/brief"
 	"github.com/stainless-code/verdict/internal/config"
@@ -25,6 +26,7 @@ import (
 type state struct { //nolint:govet // field grouping documents the merge dimensions; alignment is irrelevant here
 	confidence      any
 	security        any
+	risk            *core.RiskClaim
 	review          *jq.Obj
 	coverage        *coverage.Summary
 	controls        *controls.Snapshot
@@ -280,8 +282,60 @@ func checkReviewSchema(warn func(string), review *jq.Obj) error {
 func (st *state) parseConfidence() error {
 	st.confidence = nil
 	st.security = nil
+	st.risk = nil
 	st.parseConfidenceLevel()
-	return st.parseSecuritySummary()
+	if err := st.parseSecuritySummary(); err != nil {
+		return err
+	}
+	st.parseRisk()
+	return nil
+}
+
+func (st *state) parseRisk() {
+	raw, has := st.review.Get(fieldRisk)
+	if !has || raw == nil {
+		return
+	}
+	obj, ok := raw.(*jq.Obj)
+	if !ok {
+		st.warnInput("ignoring non-object risk claim (want {level, rationale, assessed_head})")
+		return
+	}
+	claim, valid := parseRiskClaimObj(obj)
+	if !valid {
+		st.warnInput("ignoring invalid risk claim (want valid level, 10-500 char rationale, assessed_head)")
+		return
+	}
+	stale := st.headFull != "" && st.headFull != headDirty && st.headFull != headUnknown && claim.AssessedHead != st.headFull
+	if stale {
+		st.warnInput(fmt.Sprintf("risk assessed_head %q != bundle head %q — marking risk claim stale", claim.AssessedHead, st.headFull))
+	}
+	claim.Stale = stale
+	st.risk = claim
+}
+
+func parseRiskClaimObj(obj *jq.Obj) (*core.RiskClaim, bool) {
+	levelVal, _ := obj.Get(fieldLevel)
+	rationaleVal, _ := obj.Get(problemRationale)
+	headVal, _ := obj.Get(fieldAssessedHead)
+	level, okL := levelVal.(string)
+	rationale, okR := rationaleVal.(string)
+	assessedHead, okH := headVal.(string)
+	if !okL || !okR || !okH {
+		return nil, false
+	}
+	level = strings.ToLower(strings.TrimSpace(level))
+	rationale = strings.TrimSpace(rationale)
+	assessedHead = strings.TrimSpace(assessedHead)
+	n := utf8.RuneCountInString(rationale)
+	if !slices.Contains(riskLevels, level) || n < minRiskRationale || n > maxRiskRationale || assessedHead == "" {
+		return nil, false
+	}
+	return &core.RiskClaim{
+		Level:        level,
+		Rationale:    rationale,
+		AssessedHead: assessedHead,
+	}, true
 }
 
 func (st *state) parseConfidenceLevel() {
@@ -764,7 +818,7 @@ func sigBody(v any) string {
 
 var (
 	rigorAllow = []string{rungSaid, rungPointed, rungWalked, rungRan, rungReproduced}
-	sevAllow   = []string{"critical", "important", "informational"}
+	sevAllow   = []string{tierCritical, "important", "informational"}
 )
 
 func pick(v any, allowed []string, dflt any) any {

@@ -11,10 +11,12 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	corpuscore "github.com/stainless-code/verdict/internal/core/corpus"
+	"github.com/stainless-code/verdict/internal/core/risk"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -152,6 +154,7 @@ type row struct {
 	byCategory map[string]int
 	bundle     string
 	at         string
+	risk       string
 	models     []any
 	efforts    []any
 	findings   []any
@@ -241,10 +244,12 @@ func readBundleRow(st *state, dir, name string) (row, bool) {
 
 func buildRow(bundle, name string, findings []any) row {
 	at, hasAt := bundleTime(bundle)
+	cleanDir := strings.TrimSuffix(bundle, "/")
 	return row{
 		bundle:     name,
 		at:         at,
 		hasAt:      hasAt,
+		risk:       risk.BundleBand(cleanDir, readcommon.OpenBundle(cleanDir).Head(), findings),
 		models:     bundleModels(bundle),
 		efforts:    bundleEfforts(bundle),
 		prov:       bundleProvenance(bundle),
