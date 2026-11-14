@@ -548,11 +548,11 @@ func IsConcreteHead(head string) bool {
 // ReceiptIdentity resolves the commit or diff-digest key stored on a
 // post.json or record.json receipt.
 func ReceiptIdentity(m map[string]any) string {
-	head := jq.Str(m["head"])
+	head := jq.StrOf(m["head"])
 	if IsConcreteHead(head) {
 		return head
 	}
-	if diff := jq.Str(m["diff_sha256"]); diff != "" {
+	if diff := jq.StrOf(m["diff_sha256"]); diff != "" {
 		return "diff:" + diff
 	}
 	return head
