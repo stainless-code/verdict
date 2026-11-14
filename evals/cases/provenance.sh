@@ -98,10 +98,14 @@ else
   bad "report --provenance --json missed receipt or truncated: $(cat "$EVAL_OUT")"
 fi
 
+# A truncated bundle still reports the plain boolean without the flag, never the receipt.
+cat > "$EVAL_SANDBOX/.verdict/state/local-prov1/truncation.json" <<'EOF'
+{"truncated": true, "truncation_reason": "response_cap", "returned": 7, "total": 9, "next_offset": null}
+EOF
 run_review report acme/app local-prov1 --json
 assert_exit "report without --provenance exits 0" 0
-if jq -e '(.data | has("receipt") | not) and (.data | has("truncated") | not)' <"$EVAL_OUT" >/dev/null 2>&1; then
-  good "report without --provenance omits provenance keys"
+if jq -e '(.data.truncated | type) == "boolean" and .data.truncated and (.data | has("receipt") | not)' <"$EVAL_OUT" >/dev/null 2>&1; then
+  good "report without --provenance keeps data.truncated a boolean and omits the receipt"
 else
   bad "report without --provenance leaked provenance keys: $(cat "$EVAL_OUT")"
 fi

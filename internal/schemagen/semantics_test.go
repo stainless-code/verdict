@@ -216,7 +216,14 @@ var publishedSemantics = map[string]string{
 	// provenance receipt (--provenance): additive $defs/provenanceReceipt,
 	// $defs/provenanceInput, $defs/provenanceTruncatedRow, and additive array
 	// widening on envelope data.truncated (boolean|provenanceTruncatedRow[]).
-	"envelope.schema.json": "53c568d0cb2d7161ce78ce50b8c2a4e156ec390ed64c75b83cde500d1cdb8a2b",
+	// receipt declaration: additive data.receipt ($ref provenanceReceipt) and
+	// additive optional reportData/postData receipt and truncated members
+	// ($ref provenanceReceipt, boolean|provenanceTruncatedRow[]). No existing
+	// property, required key, enum, or type changed.
+	// trend provenance: additive optional trendBundleRow.run_id and
+	// truncated_inputs (the row count the bundle's receipt reported cut, not a
+	// count of inputs). No existing property, required key, or type changed.
+	"envelope.schema.json": "fd871fd0bb0817797c89d46acb9be10842222f115161dd4b26b2a2d6744973e5",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

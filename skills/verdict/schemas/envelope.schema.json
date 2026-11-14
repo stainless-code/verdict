@@ -22,6 +22,7 @@
       "type": ["object", "null"],
       "properties": {
         "truncated": {
+          "description": "Bounded-input rows when --provenance is active; elsewhere the boolean truncation flag every verb's data already carries.",
           "type": ["boolean", "array"],
           "items": { "$ref": "#/$defs/provenanceTruncatedRow" }
         },
@@ -36,7 +37,11 @@
         },
         "returned": { "type": "integer", "minimum": 0 },
         "total": { "type": ["integer", "null"], "minimum": 0 },
-        "next_offset": { "type": ["integer", "null"], "minimum": 0 }
+        "next_offset": { "type": ["integer", "null"], "minimum": 0 },
+        "receipt": {
+          "description": "Fetched bundle receipt (run_id, prompts_hash, inputs, truncations) exposed by report and post under --provenance; absent without the flag.",
+          "$ref": "#/$defs/provenanceReceipt"
+        }
       },
       "additionalProperties": true
     },
@@ -376,6 +381,11 @@
         },
         "gate": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reportGate" }]
+        },
+        "receipt": { "$ref": "#/$defs/provenanceReceipt" },
+        "truncated": {
+          "type": ["boolean", "array"],
+          "items": { "$ref": "#/$defs/provenanceTruncatedRow" }
         }
       },
       "required": [
@@ -759,6 +769,11 @@
         "summary": {
           "description": "Planned (on dry-run) or executed (when --summary comment is active) PR-level summary comment action.",
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/postSummary" }]
+        },
+        "receipt": { "$ref": "#/$defs/provenanceReceipt" },
+        "truncated": {
+          "type": ["boolean", "array"],
+          "items": { "$ref": "#/$defs/provenanceTruncatedRow" }
         }
       },
       "required": [
@@ -2301,7 +2316,9 @@
           "description": "One bundle's finding counts by provenance source (model and tool).",
           "$ref": "#/$defs/trendSources"
         },
-        "withheld": { "type": "object", "additionalProperties": true }
+        "withheld": { "type": "object", "additionalProperties": true },
+        "run_id": { "type": "string" },
+        "truncated_inputs": { "type": "integer", "minimum": 0 }
       },
       "required": [
         "bundle",

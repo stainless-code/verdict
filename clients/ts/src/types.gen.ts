@@ -190,6 +190,8 @@ export interface ReportData {
   compliance?: ReportCompliance | null;
   risk?: ReportRisk | null;
   gate?: ReportGate | null;
+  receipt?: ProvenanceReceipt;
+  truncated?: boolean | Array<ProvenanceTruncatedRow>;
   [key: string]: unknown;
 }
 
@@ -376,6 +378,8 @@ export interface PostData {
   withheld?: WithheldSummary | null;
   /** Planned (on dry-run) or executed (when --summary comment is active) PR-level summary comment action. */
   summary?: PostSummary | null;
+  receipt?: ProvenanceReceipt;
+  truncated?: boolean | Array<ProvenanceTruncatedRow>;
   [key: string]: unknown;
 }
 
@@ -1178,6 +1182,8 @@ export interface TrendBundleRow {
   /** One bundle's finding counts by provenance source (model and tool). */
   by_source?: TrendSources;
   withheld?: unknown;
+  run_id?: string;
+  truncated_inputs?: number;
   [key: string]: unknown;
 }
 

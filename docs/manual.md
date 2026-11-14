@@ -3135,6 +3135,13 @@ both the local and the PR bundle. Feed for the calibration narrative: per-bundle
 models plus per-tier outcomes is the raw material for per-model tier precision
 over time — run `calibrate` on recent bundles to settle what the trend only counts.
 
+When a bundle's `provenance.json` parses, its `per_bundle[]` row also carries
+`run_id` (the fetch receipt's identity) and `truncated_inputs`: the number of
+rows that receipt recorded as bounded or omitted, not a count of inputs, since
+one response cap plus two top-N omissions reads `3`. A bundle whose receipt is
+missing or unreadable is still counted, warns that it is counted without its
+receipt, and carries neither key.
+
 `trend --overlap` adds the KB overlap audit to the same rollup: an offline join
 of `kb-recall.json` manifests, findings `kb` cites, and `.verdict/kb-joins.jsonl`
 into the three arena-binding numbers — recall precision (recalled rules actually
