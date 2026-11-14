@@ -191,3 +191,71 @@ func TestRentryRebuildsTheCommand(t *testing.T) {
 		t.Fatalf("rentry default = %q", plain)
 	}
 }
+
+// TestParseFlagsRecipe proves --recipe takes its operand as a value flag,
+// leaves the resolution to the service when absent, and never eats a
+// pass-through tail.
+func TestParseFlagsRecipe(t *testing.T) {
+	r, _, _ := testRunner()
+	flags, code, done := parseFlags(r, []string{"--agent", "claude"})
+	if done {
+		t.Fatalf("parse failed with exit %d", code)
+	}
+	if flags.recipe != "" {
+		t.Fatalf("recipe = %q, want the empty name that resolves default", flags.recipe)
+	}
+	flags, code, done = parseFlags(r, []string{"--agent", "claude", "--recipe", "quick", "--", "--recipe", "9"})
+	if done {
+		t.Fatalf("parse failed with exit %d", code)
+	}
+	if flags.recipe != "quick" {
+		t.Fatalf("recipe = %q, want quick", flags.recipe)
+	}
+	want := []string{"--recipe", "9"}
+	if !slices.Equal(flags.pass, want) {
+		t.Fatalf("pass-through = %q, want %q", flags.pass, want)
+	}
+	if got := runRequest(r, Request{Repo: "acme/app", Pr: "42"}, &flags).Recipe; got != "quick" {
+		t.Errorf("request recipe = %q, want the parsed flag carried through", got)
+	}
+}
+
+// TestParseFlagsRecipeMissingValue proves --recipe without its operand is a
+// usage error naming the flag, never a silent default.
+func TestParseFlagsRecipeMissingValue(t *testing.T) {
+	r, _, diag := testRunner()
+	_, code, done := parseFlags(r, []string{"--agent", "claude", "--recipe"})
+	if !done || code != cli.ExitUsage {
+		t.Fatalf("exit = %d done %v, want the usage exit", code, done)
+	}
+	if got, want := strings.TrimSpace(diag.String()), "--recipe needs a value (want <slug>)"; got != want {
+		t.Errorf("usage error = %q, want %q", got, want)
+	}
+}
+
+// TestUnknownFlagNamesRecipe proves the unknown-flag diagnostic advertises
+// --recipe: the parse error is where an operator learns the surface grew.
+func TestUnknownFlagNamesRecipe(t *testing.T) {
+	r, _, diag := testRunner()
+	_, code, done := parseFlags(r, []string{"--agent", "claude", "--recipe-file", "x.json"})
+	if !done || code != cli.ExitUsage {
+		t.Fatalf("exit = %d done %v, want the usage exit", code, done)
+	}
+	if !strings.Contains(diag.String(), "--recipe <slug>") {
+		t.Errorf("unknown-flag diagnostic does not name --recipe: %q", diag.String())
+	}
+}
+
+// TestRentryKeepsRecipe pins the re-run line: the pipeline it names is the one
+// the operator asked for, dropped only when unasked.
+func TestRentryKeepsRecipe(t *testing.T) {
+	req := Request{Repo: "acme/app", Pr: "42"}
+	got := rentry(req, &flags{agent: "claude", timeout: defaultTimeoutS, rounds: defaultRounds, recipe: "quick"}, false)
+	want := "verdict run acme/app 42 --agent claude --recipe quick"
+	if got != want {
+		t.Fatalf("rentry = %q, want %q", got, want)
+	}
+	if plain := rentry(req, &flags{agent: "claude", timeout: defaultTimeoutS, rounds: defaultRounds}, false); strings.Contains(plain, "--recipe") {
+		t.Fatalf("rentry named a recipe nobody asked for: %q", plain)
+	}
+}

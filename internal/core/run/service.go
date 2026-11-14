@@ -21,8 +21,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
+	"github.com/stainless-code/verdict/internal/core/recipe"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -55,6 +57,9 @@ const (
 	reviewFile = "review.json"
 	// msgCanceled is the frozen cancel text, matching every other verb.
 	msgCanceled = "canceled before run completed"
+	// floatBitSize is the precision strconv needs to render a declared dollar
+	// amount without inventing digits.
+	floatBitSize = 64
 )
 
 // Run launches the configured agent against the bundle, one shot by default
@@ -81,9 +86,14 @@ func Run(ctx context.Context, req *core.RunRequest) (resp *core.RunResponse, ref
 	if ref != nil {
 		return nil, ref
 	}
+	plan, ref := st.pipeline(dir)
+	if ref != nil {
+		return nil, ref
+	}
 	args := launchArgs{
 		def:      def,
 		dir:      dir,
+		plan:     plan,
 		bundle:   readcommon.DisplayPath(st.req.RepoRootPath(), dir),
 		artifact: readcommon.DisplayPath(st.req.RepoRootPath(), filepath.Join(dir, reviewFile)),
 		abs:      filepath.Join(dir, reviewFile),
@@ -93,7 +103,7 @@ func Run(ctx context.Context, req *core.RunRequest) (resp *core.RunResponse, ref
 		return nil, ref
 	}
 	args.prompt = directive(st.req.Repo, st.req.Pr, st.promptBundle(dir), st.promptArtifact(dir),
-		readcommon.IsLocalBundleDir(dir))
+		readcommon.IsLocalBundleDir(dir), plan)
 	args.argv = argvFor(def, st.req.PassThrough, args.prompt)
 	return st.invoke(ctx, &args, rounds)
 }
@@ -149,9 +159,11 @@ type state struct {
 }
 
 // launchArgs is the resolved invocation one launch works from: the definition,
-// the bundle and its review path, the timeout, and the exact argv.
+// the declared pipeline, the bundle and its review path, the timeout, and the
+// exact argv.
 type launchArgs struct {
 	def      agentDef
+	plan     *recipe.Plan
 	dir      string
 	bundle   string
 	artifact string
@@ -174,6 +186,54 @@ func (st *state) carry(resp *core.RunResponse, ref *core.RefusalError) {
 
 func (st *state) refuse(code, msg string) *core.RefusalError {
 	return &core.RefusalError{Code: code, Message: msg}
+}
+
+// pipeline resolves the run's declared pipeline and folds in the warnings it
+// carries: the recipe control of the base snapshot, the bundle's loaded lens
+// ids, and the bundle's own spend limit. It is the one adapter between the
+// service and the bundle facts the plan depends on.
+func (st *state) pipeline(dir string) (*recipe.Plan, *core.RefusalError) {
+	name := st.req.Recipe
+	if name == "" {
+		name = recipe.DefaultName
+	}
+	plan, ref := recipe.Load(dir, name)
+	if ref != nil {
+		return nil, ref
+	}
+	for _, warning := range plan.Warnings {
+		st.warn(warning)
+	}
+	st.warnOverBudget(dir, plan)
+	return plan, nil
+}
+
+// warnOverBudget projects the declared budget against the bundle's resolved
+// personal limit. It warns and never refuses: verdict cannot meter an agent's
+// spend, so a cap it cannot keep is not a refusal it may claim.
+func (st *state) warnOverBudget(dir string, plan *recipe.Plan) {
+	limit, ok := personalLimit(dir)
+	if !ok || plan.BudgetUSD <= limit {
+		return
+	}
+	st.warn(fmt.Sprintf("recipe %s declares budget_usd %s, above the bundle's personal spend limit $%s — "+
+		"run enforces nothing", plan.Name, formatUSD(plan.BudgetUSD), formatUSD(limit)))
+}
+
+// personalLimit reads the bundle's resolved personal spend limit. A bundle
+// without one warns nothing: run reads the file only to project the declared
+// budget, and record and post are the verbs that refuse a broken run bundle.
+func personalLimit(dir string) (float64, bool) {
+	rs, found, err := config.ReadRunState(dir)
+	if err != nil || !found || rs.Resolved == nil || rs.Resolved.Spend.PersonalLimit == nil {
+		return 0, false
+	}
+	return *rs.Resolved.Spend.PersonalLimit, true
+}
+
+// formatUSD renders one dollar amount without an exponent or trailing zeros.
+func formatUSD(value float64) string {
+	return strconv.FormatFloat(value, 'f', -1, floatBitSize)
 }
 
 func (st *state) warn(msg string) {
@@ -261,6 +321,7 @@ func (st *state) printed(args *launchArgs) *core.RunResponse {
 			Argv:     args.argv,
 			Bundle:   args.bundle,
 			Artifact: args.artifact,
+			Recipe:   args.plan,
 			Timeout:  args.timeout,
 			Printed:  true,
 		},
@@ -280,6 +341,7 @@ func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunRespons
 		SchemaVersion: launcherSchema,
 		Agent:         args.def.Name,
 		Binary:        bin,
+		Recipe:        args.plan,
 		Bundle:        args.bundle,
 		Artifact:      args.artifact,
 		StartedAt:     core.NowUTC(started),
@@ -290,6 +352,7 @@ func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunRespons
 	if ref != nil {
 		return nil, ref
 	}
+	st.human(fmt.Sprintf("» recipe: %s@%s (%s)", args.plan.Name, args.plan.Version, args.plan.Source))
 	st.human(fmt.Sprintf("» run: %s (timeout %ds)", strings.Join(rec.Argv, " "), args.timeout))
 	res, err := st.spawn(ctx, args.argv, args.timeout)
 	return st.finish(ctx, args, rec, launched, started, res, err, nil)
@@ -503,6 +566,7 @@ func (st *state) response(args *launchArgs, rec *launcher, res *core.Result, art
 			Argv:       rec.Argv,
 			Bundle:     rec.Bundle,
 			Artifact:   rec.Artifact,
+			Recipe:     args.plan,
 			StartedAt:  rec.StartedAt,
 			EndedAt:    rec.EndedAt,
 			DurationMS: durationMS(rec.DurationMS),
