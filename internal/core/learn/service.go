@@ -771,7 +771,7 @@ const (
 	msgAlreadyLearned  = "rule text already learned (cite the existing rule id instead of learning it twice)"
 	msgIDTaken         = "id '%s' is taken (pass a different --id)"
 	msgWriteKB         = "learn could not write %s: %v"
-	msgBusyKB          = "knowledge base %s is being written by another learn (retry in a moment)"
+	msgBusyKB          = "another write holds the store lock on %s (retry in a moment)"
 	msgAlreadyRetired  = "learn: rule '%s' is already retired"
 	msgRetireReason    = "learn --retire needs --reason with 30+ chars (human veto, on the record)"
 	msgNotRetired      = "learn: rule '%s' is already active"

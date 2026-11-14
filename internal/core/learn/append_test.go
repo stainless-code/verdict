@@ -25,8 +25,12 @@ func TestRuleAppendRefusesAStoreBusy(t *testing.T) {
 	req := &Request{Rule: "Prefer literal argv", Scope: "internal", Rigor: "walked"}
 	req.Runtime = &core.Runtime{}
 	unlock := holdStoreLock(t, store)
-	if _, ref := Run(context.Background(), req); ref == nil || ref.Code != codeStoreBusy {
+	_, ref := Run(context.Background(), req)
+	if ref == nil || ref.Code != codeStoreBusy {
 		t.Fatalf("append under a held lock = %v; want store-busy", ref)
+	}
+	if want := "another write holds the store lock on .verdict/kb.jsonl (retry in a moment)"; ref.Message != want {
+		t.Fatalf("store-busy message = %q; want %q", ref.Message, want)
 	}
 	if got := storeBytes(t, store); got != seededKBRow {
 		t.Fatalf("a refused append moved the store: %q", got)
