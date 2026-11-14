@@ -2,6 +2,7 @@ package reportcore_test
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 
@@ -118,5 +119,30 @@ func TestReportRiskInvalidMaxRiskRefuses(t *testing.T) {
 	})
 	if ref == nil || ref.Code != "bad-flags" {
 		t.Fatalf("ref = %+v, want bad-flags", ref)
+	}
+}
+
+func TestReportRiskWithheldFindingStillRaisesFloor(t *testing.T) {
+	raw, err := os.ReadFile("testdata/withheld.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := fixture(t, string(raw))
+	writeFile(t, ".verdict/state/5101/record.json",
+		`{"head":"`+storeHeadSHA+`","coverage":{"gaps":0},"risk":{"level":"low","rationale":"Looks low.","assessed_head":"`+storeHeadSHA+`"}}`)
+
+	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+		ReadRequest: req,
+		Flags:       core.ReportFlags{Risk: true, MaxRisk: "low"},
+	})
+	if ref != nil {
+		t.Fatalf("Run refused: %+v", ref)
+	}
+	r := resp.Data.Risk
+	if r == nil || r.Floor != "critical" || r.Reported != "critical" || r.Inputs.OpenCritical != 1 {
+		t.Fatalf("withheld open critical must raise floor to critical, got %+v", r)
+	}
+	if !resp.GateFailed || !r.Exceeded || r.GateReason == nil || *r.GateReason != "risk-exceeded" {
+		t.Fatalf("expected --max-risk low to fail on withheld critical finding, got failed=%v risk=%+v", resp.GateFailed, r)
 	}
 }

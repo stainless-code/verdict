@@ -263,4 +263,19 @@ func TestEvaluateBundleReceiptsAndBands(t *testing.T) {
 	if band := risk.BundleBand(dir, headA, []any{entry("open", "critical", "inline", true)}); band != "critical" {
 		t.Fatalf("BundleBand with open critical = %q, want critical", band)
 	}
+	withheld := jq.NewObj(
+		"status", "open",
+		"severity", "critical",
+		"kind", "inline",
+		"anchored", true,
+		"withheld", jq.NewObj("source", "agent", "reason", "suppressed", "at", "2026-11-13T13:24:03Z"),
+	)
+	recLow := `{"head":"` + headA + `","coverage":{"gaps":0},"risk":{"level":"low","rationale":"Low claim.","assessed_head":"` + headA + `"}}`
+	dirWithheld := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dirWithheld, "record.json"), []byte(recLow), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if band := risk.BundleBand(dirWithheld, headA, []any{withheld}); band != "critical" {
+		t.Fatalf("BundleBand with withheld open critical = %q, want critical", band)
+	}
 }

@@ -137,10 +137,10 @@ func fileSHA256Hex(path string) string {
 }
 
 // EvaluateBundle computes the full advisory risk report for a bundle from a
-// stored receipt, head SHA, visible findings, and --max-risk threshold.
-func EvaluateBundle(dir, headSHA, covKey string, visibleEntries []any, maxRisk string) *core.ReportRisk {
+// stored receipt, head SHA, stored findings, and --max-risk threshold.
+func EvaluateBundle(dir, headSHA, covKey string, entries []any, maxRisk string) *core.ReportRisk {
 	receipt := ReadReceipt(dir, covKey)
-	return Evaluate(receipt.Claim, headSHA, visibleEntries, receipt.Coverage, maxRisk)
+	return Evaluate(receipt.Claim, headSHA, entries, receipt.Coverage, maxRisk)
 }
 
 // BundleBand returns the risk band a bundle classifies into for trend rollups:
@@ -152,14 +152,14 @@ func BundleBand(dir, headSHA string, allEntries []any) string {
 	if receipt.Claim == nil || !ValidLevel(receipt.Claim.Level) {
 		return LevelUnknown
 	}
-	res := Evaluate(receipt.Claim, headSHA, readcommon.VisibleFindings(allEntries), receipt.Coverage, "")
+	res := Evaluate(receipt.Claim, headSHA, allEntries, receipt.Coverage, "")
 	return res.Reported
 }
 
 // ComputeFloor deterministically computes the minimum risk floor and receipt
 // reasons from store findings, coverage completeness, and head freshness.
-func ComputeFloor(visibleEntries []any, cov CoverageInput, staleHead bool) (string, core.RiskInputs, []string) {
-	inputs := collectInputs(visibleEntries, cov, staleHead)
+func ComputeFloor(entries []any, cov CoverageInput, staleHead bool) (string, core.RiskInputs, []string) {
+	inputs := collectInputs(entries, cov, staleHead)
 	floor := findingsFloor(inputs)
 	evFloor, reasons := evidenceFloor(inputs)
 	return MaxLevel(floor, evFloor), inputs, reasons
@@ -199,9 +199,9 @@ func evidenceFloor(inputs core.RiskInputs) (string, []string) {
 // floor. Missing claims read as "unknown" (never "low") and raise reported to
 // the floor whenever the floor is above low; when floor is low and no claim
 // exists, reported stays "unknown" so an unassessed bundle never poses as low.
-func Evaluate(claim *core.RiskClaim, bundleHead string, visibleEntries []any, cov CoverageInput, maxRisk string) *core.ReportRisk {
+func Evaluate(claim *core.RiskClaim, bundleHead string, entries []any, cov CoverageInput, maxRisk string) *core.ReportRisk {
 	staleHead := isClaimStale(claim, bundleHead)
-	floor, inputs, reasons := ComputeFloor(visibleEntries, cov, staleHead)
+	floor, inputs, reasons := ComputeFloor(entries, cov, staleHead)
 
 	claimed := LevelUnknown
 	var assessedHead *string
