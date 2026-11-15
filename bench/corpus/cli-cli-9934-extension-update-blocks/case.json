@@ -20,12 +20,14 @@
       "kind": "blocking-wait",
       "severity": "important",
       "keywords": [
-        "the receive blocks until the update check finishes",
         "every extension invocation waits for the update check",
         "the command hangs on the update check",
         "a slow network delays the extension's exit",
         "a slow lookup holds the command open",
-        "the update check is waited for instead of skipped"
+        "the update check is waited for instead of skipped",
+        "stall the cli",
+        "extension command blocks",
+        "holds the cli open"
       ],
       "note": "the goroutine that runs the check is started in PreRun and posts to the channel only when the lookup returns, so the bare receive waits exactly as long as the network takes"
     }

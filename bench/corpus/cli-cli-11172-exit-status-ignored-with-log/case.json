@@ -25,7 +25,10 @@
         "exit-status has no effect with logs",
         "scripts cannot detect a failed run",
         "the log branch returns without setting the failure exit",
-        "the command exits successfully for a failed run when logs are printed"
+        "the command exits successfully for a failed run when logs are printed",
+        "bypasses the --exit-status",
+        "ignores the flag",
+        "skips the failure check"
       ],
       "note": "the same flag is honored on the summary path a hundred lines below, so the log path's return is the line that drops it"
     }

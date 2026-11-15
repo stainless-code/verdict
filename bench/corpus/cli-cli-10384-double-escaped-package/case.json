@@ -25,7 +25,10 @@
         "the percent sign of a pre-escaped name is encoded twice",
         "an already escaped name no longer resolves",
         "callers that already encoded the name break",
-        "re-encodes the caller's escape sequence"
+        "re-encodes the caller's escape sequence",
+        "corrupting the path",
+        "corrupts paths",
+        "encoded twice"
       ],
       "note": "the helper escapes the captured name as if it were raw text, and replaces the first textual occurrence in the path, so input that is already escaped keeps its own escapes and gains new ones"
     }

@@ -26,7 +26,11 @@
         "graceful degradation is lost",
         "a missing project scope aborts the whole command",
         "a response that also carries usable data is thrown away",
-        "the command aborts even though only one field of the query failed"
+        "the command aborts even though only one field of the query failed",
+        "breaks projectsv2ignorableerror",
+        "breaking projectsv2ignorableerror",
+        "error out unnecessarily",
+        "fatal instead of ignorable"
       ],
       "note": "the interception returns its own error before the caller can decide the failed field is ignorable, so a query that also returned usable data fails"
     }

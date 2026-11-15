@@ -565,12 +565,16 @@ var keywordCases = []keywordCase{
 		// fix (bc8c46b0b, Fixes #10235) restored the non-blocking select.
 		id: "cli-cli-9934-extension-update-blocks",
 		passes: []string{
-			"The receive blocks until the update check finishes, so the extension cannot exit while the lookup is in flight.",
+			"The receive is now unconditional, so a slow check will stall the CLI after the extension has already run.",
 			"Every extension invocation waits for the update check before the process ends.",
 			"The command hangs on the update check instead of running to completion.",
 			"A slow network delays the extension's exit because the channel is received unconditionally.",
 			"A slow lookup holds the command open after the extension has already run.",
 			"The update check is waited for instead of skipped once the command finishes.",
+			// audit-10's fresh paraphrase: it says the command stalls, not that
+			// a receive blocks, so the short phrase is what has to catch it.
+			"Removing the select with time.After makes PostRun wait indefinitely on updateMessageChan, so a slow or stalled network check will stall the CLI after the extension exits.",
+			"Because updateMessageChan is now received unconditionally without a timeout or default branch, every extension command blocks until the background release lookup completes.",
 		},
 		fails: []string{
 			"The update notice is fetched on every invocation instead of being cached for a day.",
@@ -579,6 +583,10 @@ var keywordCases = []keywordCase{
 			"The pinned extension hint uses the wrong upgrade flag.",
 			"The channel is unbuffered, so the goroutine leaks when the command exits early.",
 			"The release lookup runs in PreRun, so it repeats the network call the extension already made.",
+			// audit-10's neutral remark: it describes the receive without
+			// claiming the wait is wrong, so it must stay ungraded.
+			"Note that the receive blocks until the update check finishes; verify that PreRun's goroutine always sends on updateMessageChan.",
+			"PreRun launches the lookup in a goroutine and PostRun prints the notice to stderr when a newer version exists.",
 		},
 	},
 	{
@@ -592,6 +600,10 @@ var keywordCases = []keywordCase{
 			"An already escaped name no longer resolves because its escape sequence gains another layer.",
 			"Callers that already encoded the name break: the command worked before this change and now the endpoint 404s.",
 			"The helper re-encodes the caller's escape sequence instead of escaping only an unescaped name.",
+			// audit-10's fresh paraphrases: both say the path is corrupted, never
+			// that a name is escaped again.
+			"If the caller passes a URL-encoded package name such as ghcr.io%2Fuser%2Fpkg, url.QueryEscape will escape the % characters into %25, corrupting the path.",
+			"Calling url.QueryEscape unconditionally on packageName corrupts paths that are already percent-encoded (turning %2F into %252F), causing 404 responses.",
 		},
 		fails: []string{
 			"The regexp is compiled on every call instead of once at package level, which costs a compile per request.",
@@ -600,6 +612,10 @@ var keywordCases = []keywordCase{
 			"The new net/url import is used only by this helper and could be scoped to the function.",
 			"The helper handles the container type but not the npm or nuget package types.",
 			"The added tests only cover paths that need escaping, not paths that are already valid.",
+			// audit-10's neutral remarks: they approve the replacement or the
+			// no-match path and must not be read as the corruption claim.
+			"Good that strings.Replace uses n=1 so only the captured package segment is substituted.",
+			"The helper returns path unchanged when pathWithPackageNameRE does not match.",
 		},
 	},
 	{
@@ -615,6 +631,10 @@ var keywordCases = []keywordCase{
 			"Scripts cannot detect a failed run when --log is also passed.",
 			"The log branch returns without setting the failure exit, so `echo $?` reports success.",
 			"The command exits successfully for a failed run when logs are printed.",
+			// audit-10's fresh paraphrases: they name the flag and the skipped
+			// check, not the exit code the user sees.
+			"Returning displayLogSegments(...) here bypasses the --exit-status check later in runView, so gh run view --log --exit-status will exit 0 even when the workflow run failed.",
+			"When --log or --log-failed is passed alongside --exit-status, this early return skips the opts.ExitStatus failure check below and ignores the flag.",
 		},
 		fails: []string{
 			"The fallback fetches job logs one request at a time, so a wide matrix is slow.",
@@ -623,6 +643,10 @@ var keywordCases = []keywordCase{
 			"The progress indicator is stopped twice on the error path.",
 			"The new helper closes the response body only after checking the status code.",
 			"Skipped jobs are still requested from the logs endpoint, which wastes a request.",
+			// audit-10's neutral remarks: they describe the branch and its
+			// cleanup without claiming the return drops the flag.
+			"Returning displayLogSegments directly keeps the log-printing branch separate from the summary table below.",
+			"Deferring runLogZip.Close() ensures the temporary zip reader is cleaned up before displayLogSegments runs.",
 		},
 	},
 	{
@@ -636,6 +660,10 @@ var keywordCases = []keywordCase{
 			"Graceful degradation is lost: gh pr view prints the scope error and shows nothing.",
 			"A missing project scope aborts the whole command even though the rest of the query succeeded.",
 			"A response that also carries usable data is thrown away when one field needs read:project.",
+			// audit-10's fresh paraphrases: they name the broken predicate and the
+			// needless failure, not the partial result.
+			"Returning scopeErr here replaces GraphQLError with a plain formatted error, breaking ProjectsV2IgnorableError checks in callers like gh pr view when read:project is missing.",
+			"Because GenerateScopeErrorForGQL strips the original server error message and GraphQLError wrapper, callers can no longer treat missing read:project scopes as non-fatal and will error out unnecessarily.",
 		},
 		fails: []string{
 			"The regular expression is not anchored, so a message with two scope lists parses the wrong one.",
@@ -644,6 +672,10 @@ var keywordCases = []keywordCase{
 			"The error message hardcodes the refresh command instead of reusing the shared helper.",
 			"The message is printed to stdout instead of stderr, which breaks scripted callers.",
 			"The scope list is sorted, so the suggestions lose the server's order.",
+			// audit-10's neutral remarks: they approve the unwrapping and the
+			// fallback, which must not be read as the fatal-error claim.
+			"Good that GenerateScopeErrorForGQL uses errors.As to unwrap wrapped GraphQLError values before formatting the scope hint.",
+			"Falling back to GraphQLError when scopeErr is nil preserves existing handling for non-scope GraphQL errors.",
 		},
 	},
 }
