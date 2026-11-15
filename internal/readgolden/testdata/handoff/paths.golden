@@ -1,0 +1,7 @@
+exit: 1
+--- stdout ---
+
+--- stderr ---
+error: handoff: no open inline finding at or above important under *.go — widen --paths or lower --min-severity
+try: lower --min-severity, widen --paths, or read the bundle with report
+--- files ---

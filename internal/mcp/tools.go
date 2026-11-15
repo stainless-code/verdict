@@ -18,6 +18,7 @@ import (
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	fixcore "github.com/stainless-code/verdict/internal/core/fix"
+	handoffcore "github.com/stainless-code/verdict/internal/core/handoff"
 	indexcore "github.com/stainless-code/verdict/internal/core/index"
 	ingestcore "github.com/stainless-code/verdict/internal/core/ingest"
 	initcore "github.com/stainless-code/verdict/internal/core/init"
@@ -41,6 +42,8 @@ const (
 	argPr              = "pr"
 	argFlags           = "flags"
 	argStatus          = "status"
+	argMinSeverity     = "minSeverity"
+	argPaths           = "paths"
 	fieldRepo          = "Repo"
 	fieldPr            = "Pr"
 	msgRequestMismatch = "tool request type mismatch"
@@ -181,6 +184,15 @@ func allTools(readOnly, operator bool) []*tool {
 			meta:     toolMeta{title: "Prepare a fix", mutates: localWrites},
 		}, toolDeps{commander: fetchRunner}, decodeFix, wireFix, fixcore.Run,
 			func(resp *fixcore.Response) *jq.Obj { return wireData(resp.Data) }),
+		dataTool(&toolSpec{
+			name: "handoff",
+			description: "Project the open inline findings a fix run would take as one handoff. " +
+				"Carries sig, locator, severity, rigor, fix text, KB rules, the recorded " +
+				"verify command, and the exact brief fix prints. Reads the bundle; writes nothing.",
+			required: requiredRepoPr,
+			meta:     toolMeta{title: "Hand off open findings", mutates: noLocalWrites, readOnly: true, idempotent: true},
+		}, toolDeps{}, decodeHandoff, wireHandoff, handoffcore.Run,
+			func(resp *handoffcore.Response) *jq.Obj { return wireData(resp.Data) }),
 		directTool(&toolSpec{
 			name: "index",
 			description: "Query the local code index under .verdict/index for callers, candidate tests, " +

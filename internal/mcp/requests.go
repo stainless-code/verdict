@@ -14,6 +14,7 @@ import (
 	doctorcore "github.com/stainless-code/verdict/internal/core/doctor"
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	fixcore "github.com/stainless-code/verdict/internal/core/fix"
+	handoffcore "github.com/stainless-code/verdict/internal/core/handoff"
 	indexcore "github.com/stainless-code/verdict/internal/core/index"
 	ingestcore "github.com/stainless-code/verdict/internal/core/ingest"
 	initcore "github.com/stainless-code/verdict/internal/core/init"
@@ -211,9 +212,26 @@ func decodeFix(req *fixcore.Request, a *args) {
 	a.str(argPr, &req.Pr)
 	a.str("sig", &req.Sig)
 	a.boolean("all", &req.All)
-	a.str("minSeverity", &req.MinSeverity)
+	a.str(argMinSeverity, &req.MinSeverity)
 	a.str("verifyCmd", &req.VerifyCmd)
-	a.strings("paths", &req.Paths)
+	a.strings(argPaths, &req.Paths)
+}
+
+// decodeHandoff reads the projection's severity floor and portable path globs.
+func decodeHandoff(req *handoffcore.Request, a *args) {
+	a.str(argRepo, &req.Repo)
+	a.str(argPr, &req.Pr)
+	a.str(argMinSeverity, &req.MinSeverity)
+	a.strings(argPaths, &req.Paths)
+}
+
+// wireHandoff resolves the read runtime and carries the startup warnings.
+func wireHandoff(ctx context.Context, b *bindings, req *handoffcore.Request) error {
+	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
+		return err
+	}
+	req.Warnings = b.warningList()
+	return nil
 }
 
 func wireFix(ctx context.Context, b *bindings, req *fixcore.Request) error {
@@ -232,7 +250,7 @@ func decodeIndex(req *indexcore.Request, a *args) {
 	a.str("path", &req.Path)
 	a.str("since", &req.Since)
 	a.str(argPr, &req.Pr)
-	a.strings("paths", &req.Paths)
+	a.strings(argPaths, &req.Paths)
 	a.integer("commits", &req.Commits)
 	a.integer("minCount", &req.MinCount)
 	a.integer("limit", &req.Limit)

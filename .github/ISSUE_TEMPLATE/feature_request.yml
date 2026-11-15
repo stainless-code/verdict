@@ -24,6 +24,7 @@ body:
         - adopt
         - ingest
         - fix
+        - handoff
         - check-tree
         - ready
         - pr-wait

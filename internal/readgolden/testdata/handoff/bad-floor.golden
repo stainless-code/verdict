@@ -1,0 +1,7 @@
+exit: 1
+--- stdout ---
+
+--- stderr ---
+error: handoff: --min-severity takes critical|important|informational|off
+try: pass critical|important|informational|off
+--- files ---

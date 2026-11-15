@@ -272,12 +272,14 @@ export async function typeChecks(): Promise<void> {
   const exactCheckTree: Exact<DataFor["check-tree"], CheckTreeData> = true;
   const exactTrend: Exact<DataFor["trend"], TrendData> = true;
   const exactRisk: Exact<DataFor["risk"], RiskData> = true;
+  const exactHandoff: Exact<DataFor["handoff"], HandoffData> = true;
   const exactCalibrate: Exact<DataFor["calibrate"], CalibrateData> = true;
   void exactReady;
   void exactFetchLocal;
   void exactCheckTree;
   void exactTrend;
   void exactRisk;
+  void exactHandoff;
   void exactCalibrate;
   const readyStatusesAreNotAny: IsAny<TrendData["by_status"]> = false;
   const calibratePrecisionIsDeliberatelyUnknown: Exact<

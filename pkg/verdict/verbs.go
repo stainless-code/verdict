@@ -13,6 +13,7 @@ import (
 	doctorcore "github.com/stainless-code/verdict/internal/core/doctor"
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	fixcore "github.com/stainless-code/verdict/internal/core/fix"
+	handoffcore "github.com/stainless-code/verdict/internal/core/handoff"
 	indexcore "github.com/stainless-code/verdict/internal/core/index"
 	ingestcore "github.com/stainless-code/verdict/internal/core/ingest"
 	initcore "github.com/stainless-code/verdict/internal/core/init"
@@ -674,6 +675,45 @@ func (c *Client) Risk(ctx context.Context, req *RiskRequest) (*RiskResponse, err
 		return nil, refusalErr(ref)
 	}
 	return &RiskResponse{
+		Repo: resp.Repo, At: resp.At, Next: resp.Next,
+		Warnings: resp.Warnings, Human: resp.Human, Data: wireJSON(resp.Data),
+	}, nil
+}
+
+// HandoffRequest projects the open inline findings a fix run would take. PR
+// names the bundle; MinSeverity is the severity floor (empty reads important)
+// and Paths are the portable globs that scope the projection.
+type HandoffRequest struct {
+	Repo, Pr, MinSeverity string
+	Paths                 []string
+}
+
+// HandoffResponse carries the projection and the markdown a caller can print.
+type HandoffResponse struct {
+	Repo, At, Next string
+	Warnings       []string
+	Human          []string
+	Data           json.RawMessage
+}
+
+// Handoff hands one bundle's open findings to a human or another agent.
+func (c *Client) Handoff(ctx context.Context, req *HandoffRequest) (*HandoffResponse, error) {
+	if req == nil {
+		req = &HandoffRequest{}
+	}
+	rr, err := c.request(ctx, req.Repo, req.Pr)
+	if err != nil {
+		return nil, err
+	}
+	resp, ref := handoffcore.Run(ctx, &handoffcore.Request{
+		ReadRequest: rr,
+		MinSeverity: req.MinSeverity,
+		Paths:       req.Paths,
+	})
+	if ref != nil {
+		return nil, refusalErr(ref)
+	}
+	return &HandoffResponse{
 		Repo: resp.Repo, At: resp.At, Next: resp.Next,
 		Warnings: resp.Warnings, Human: resp.Human, Data: wireJSON(resp.Data),
 	}, nil

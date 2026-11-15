@@ -505,6 +505,8 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[FixData](), name: "fixData"},
 		{typ: reflect.TypeFor[FixAnchors](), name: "fixAnchors"},
 		{typ: reflect.TypeFor[FixBatchRow](), name: "fixBatchRow"},
+		{typ: reflect.TypeFor[HandoffData](), name: "handoffData"},
+		{typ: reflect.TypeFor[HandoffRow](), name: "handoffRow"},
 		{typ: reflect.TypeFor[LearnData](), name: "learnData"},
 		{typ: reflect.TypeFor[LearnIncident](), name: "learnIncident"},
 		{typ: reflect.TypeFor[InitData](), name: "initData"},

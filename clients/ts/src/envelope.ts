@@ -7,6 +7,7 @@ import type {
   FetchData,
   FetchLocalData,
   FixData,
+  HandoffData,
   IndexData,
   IngestData,
   InitData,
@@ -80,6 +81,7 @@ export interface DataFor {
   calibrate: CalibrateData;
   trend: TrendData;
   risk: RiskData;
+  handoff: HandoffData;
   index: IndexData;
   adopt: AdoptData;
   ingest: IngestData;

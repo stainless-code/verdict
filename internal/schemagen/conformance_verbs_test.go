@@ -19,6 +19,7 @@ import (
 	checktreecore "github.com/stainless-code/verdict/internal/core/checktree"
 	doctorcore "github.com/stainless-code/verdict/internal/core/doctor"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
+	handoffcore "github.com/stainless-code/verdict/internal/core/handoff"
 	indexcore "github.com/stainless-code/verdict/internal/core/index"
 	ingestcore "github.com/stainless-code/verdict/internal/core/ingest"
 	packcore "github.com/stainless-code/verdict/internal/core/pack"
@@ -603,6 +604,53 @@ func TestRuntimeRiskEnvelopeValidates(t *testing.T) {
 		"total":             json.Number("2"),
 		"next_offset":       nil,
 	})
+}
+
+// TestRuntimeHandoffEnvelopeValidates proves the handoff response envelope
+// validates against the generated envelope schema and carries the brief text
+// fix prints plus the verify command the bundle records.
+func TestRuntimeHandoffEnvelopeValidates(t *testing.T) {
+	doc := loadSchemaDocument(t, "envelope.schema.json")
+	t.Chdir(t.TempDir())
+	writeFixture(t, ".verdict/state/local-42/findings.json", "["+fixtureFindingWithBrief()+"]")
+	writeFixture(t, ".verdict/state/local-42/verification.json",
+		`[{"sig":"c111111111111111111111111111111111111111","verdict":"VERIFIED",`+
+			`"verifyCmd":"go test ./...","resultHead":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]`)
+	req := &handoffcore.Request{}
+	req.ReadRequest = core.ReadRequest{Runtime: fixedRuntime(), Repo: "acme/app", Pr: "42"}
+	resp, ref := handoffcore.Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("handoff refusal: %v", ref)
+	}
+	data := resp.Data.Wire()
+	assertServiceEnvelope(t, doc, "handoff", "acme/app", "42", resp.At, resp.Next, resp.Warnings, data)
+	assertWireFields(t, data, map[string]any{
+		"floor": "important",
+		"count": json.Number("1"),
+	})
+	rows := wireList(t, data, "rows")
+	if len(rows) != 1 {
+		t.Fatalf("handoff rows = %d, want the one open finding", len(rows))
+	}
+	row := wireMap(t, rows[0])
+	if row["severity"] != "critical" || row["rigor"] != "walked" {
+		t.Errorf("row = %v, want critical/walked", row)
+	}
+	wantBrief := "brief:\n" +
+		"  outcome: Reject duplicate deliveries before anything is enqueued.\n" +
+		"  sites: notes.txt:2, other.txt\n" +
+		"  approach: Track delivery ids in a bounded LRU checked at the top of the handler.\n" +
+		"  questions:\n" +
+		"    - Should the dedupe window be 24 hours or 7 days?\n"
+	if row["brief_text"] != wantBrief {
+		t.Errorf("brief_text = %q, want the block fix prints %q", row["brief_text"], wantBrief)
+	}
+	if row["verify_cmd"] != "go test ./..." {
+		t.Errorf("verify_cmd = %v, want the recorded claim command", row["verify_cmd"])
+	}
+	if row["suggestion"] != nil {
+		t.Errorf("suggestion = %v, want null for the fixture", row["suggestion"])
+	}
 }
 
 // TestRuntimeTrendEnvelopeValidates proves the trend response envelope
