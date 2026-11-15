@@ -47,6 +47,8 @@ export type {
   FindingItem,
   FixAnchors,
   FixData,
+  HandoffData,
+  HandoffRow,
   IngestData,
   InitData,
   LearnData,

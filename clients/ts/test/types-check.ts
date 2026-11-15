@@ -12,6 +12,8 @@ import {
   type FetchData,
   type FetchLocalData,
   type FixData,
+  type HandoffData,
+  type HandoffRow,
   type InitData,
   type LearnData,
   type NextData,
@@ -68,6 +70,7 @@ type Verb =
   | "calibrate"
   | "trend"
   | "risk"
+  | "handoff"
   | "index"
   | "adopt"
   | "ingest"
@@ -273,6 +276,7 @@ export async function typeChecks(): Promise<void> {
   const exactTrend: Exact<DataFor["trend"], TrendData> = true;
   const exactRisk: Exact<DataFor["risk"], RiskData> = true;
   const exactHandoff: Exact<DataFor["handoff"], HandoffData> = true;
+  const exactHandoffRow: Exact<HandoffData["rows"][number], HandoffRow> = true;
   const exactCalibrate: Exact<DataFor["calibrate"], CalibrateData> = true;
   void exactReady;
   void exactFetchLocal;
@@ -280,6 +284,7 @@ export async function typeChecks(): Promise<void> {
   void exactTrend;
   void exactRisk;
   void exactHandoff;
+  void exactHandoffRow;
   void exactCalibrate;
   const readyStatusesAreNotAny: IsAny<TrendData["by_status"]> = false;
   const calibratePrecisionIsDeliberatelyUnknown: Exact<
