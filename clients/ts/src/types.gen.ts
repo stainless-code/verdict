@@ -1208,6 +1208,8 @@ export interface TrendData {
   /** Portfolio finding counts by observed category with untagged for null entries; only observed categories appear. */
   by_category: unknown;
   by_risk?: TrendRiskBands;
+  /** Per author/reviewer pair tallies, keyed "<author>/<reviewer>" and sorted: the fingerprint's agent against each model the record priced, with unknown for either half the bundle never recorded. */
+  by_pair?: Record<string, TrendPairCounts>;
   /** Portfolio finding counts by provenance source (model and tool). */
   by_source?: TrendSources;
   withheld?: unknown;
@@ -1257,6 +1259,16 @@ export interface TrendRiskBand {
   [key: string]: unknown;
 }
 
+/** One author/reviewer pair's outcomes across the bundles that carried it. */
+export interface TrendPairCounts {
+  bundles: number;
+  findings: number;
+  open: number;
+  addressed: number;
+  closed: number;
+  [key: string]: unknown;
+}
+
 /** A two-source finding tally: model and tool. */
 export interface TrendSources {
   model: number;
@@ -1289,6 +1301,10 @@ export interface TrendBundleRow {
   bundle: string;
   at: string | null;
   models: Array<string>;
+  /** The agent the bundle's record.json stamped, or unknown when it recorded no fingerprint. Advisory: it groups history and never decides a review. */
+  author: string;
+  /** The reviewer models the bundle's record.json stamped, empty when it recorded none. */
+  review_models: Array<string>;
   efforts: Array<string>;
   provenance: ProvenanceTriple;
   findings: number;

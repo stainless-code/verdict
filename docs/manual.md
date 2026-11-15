@@ -3412,7 +3412,11 @@ into one time series: findings opened/addressed/closed per review date, broken
 down by severity tier and status, plus per-bundle rows (review time, models and
 effort from `cost.json` when the agent wrote one, provenance from the post
 receipt else the calibration record — `tool_version`, `prompts_hash`, `model`,
-missing reads unmarked). Pure read — no network,
+missing reads unmarked; the author/reviewer pair from `record.json` — the
+fingerprint's `agent` and the models `cost.json` priced, `unknown` for either
+half the bundle never recorded). Per-bundle rows carry that pair, and `by_pair`
+groups the portfolio by it, keyed `<author>/<reviewer>`, so a family's outcomes
+are readable without re-reading every record. Pure read — no network,
 nothing written, recomputed every run so hand-edited stores stay truthful;
 missing or unreadable per-bundle stores warn and skip, and no reviewed bundles
 reads as zeros, never an error. The bundle home itself is different: a

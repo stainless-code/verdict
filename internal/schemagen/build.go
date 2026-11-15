@@ -519,6 +519,7 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[TrendTiers](), name: "trendTiers"},
 		{typ: reflect.TypeFor[TrendRiskBands](), name: "trendRiskBands"},
 		{typ: reflect.TypeFor[TrendRiskBand](), name: "trendRiskBand"},
+		{typ: reflect.TypeFor[TrendPairCounts](), name: "trendPairCounts"},
 		{typ: reflect.TypeFor[TrendSources](), name: "trendSources"},
 		{typ: reflect.TypeFor[TrendProvenance](), name: "trendProvenance"},
 		{typ: reflect.TypeFor[TrendPeriod](), name: "trendPeriod"},

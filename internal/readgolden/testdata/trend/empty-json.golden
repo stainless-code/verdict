@@ -71,6 +71,7 @@ exit: 0
         "closed": 0
       }
     },
+    "by_pair": {},
     "by_source": {
       "model": 0,
       "tool": 0

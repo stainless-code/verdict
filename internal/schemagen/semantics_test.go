@@ -246,7 +246,10 @@ var publishedSemantics = map[string]string{
 	// $defs/prWaitData.inconsistent_observations, plus the regenerated
 	// observations and prWaitData property descriptions. No existing property,
 	// required key, enum, or type changed.
-	"envelope.schema.json": "b76aa5542d82eb425d64665971a3786496a9ec5a96519211aa3716b5adbe4b2c",
+	// author/reviewer pair: additive optional trendData.by_pair
+	// ($defs/trendPairCounts) plus required trendBundleRow.author and
+	// trendBundleRow.review_models. No existing property, enum, or type changed.
+	"envelope.schema.json": "d2ab0fd122621e4485e65069a47e03e49d86ecc6e25374da0ac3e09b5aced7c6",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
