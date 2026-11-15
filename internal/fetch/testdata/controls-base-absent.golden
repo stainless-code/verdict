@@ -345,8 +345,8 @@ api-base-panel
 --- file C/.verdict/state/4701/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "34250c552dc692d35d2f6c6fdc04039762a55c7e56f11ea39b60b083bd2c2b7d",
-  "prompts_hash": "e62e67fb077675601eec7b83f6f6e8e1ea0bfac881e82d3db192d840b6ab6f83",
+  "run_id": "0a02cdcc4a5bd1bec93e9208481a95deba1e42298a3e8fc43e100a37d1c59c6a",
+  "prompts_hash": "bddb9306ee0e9be76cf9d4c1a417eb38a992cb5773b17915e698ea99603e7815",
   "panel": [
     "api-base-panel"
   ],
@@ -355,8 +355,8 @@ api-base-panel
       "kind": "prompt",
       "name": "SKILL.md",
       "status": "included",
-      "sha256": "46083e965f5dd88ecb32401398d2bf0c5caebdc2e48abfdaf55e922e5b30923a",
-      "bytes": 12809
+      "sha256": "3451d9d1442dd2538c2bc663776451c43cb0eed7d6dda35487488ad8f650ad13",
+      "bytes": 12821
     },
     {
       "kind": "prompt",
@@ -369,8 +369,8 @@ api-base-panel
       "kind": "prompt",
       "name": "prompts/review.md",
       "status": "included",
-      "sha256": "85c9b108f5aada55cc67c0f9fd23305ddcb8bc49efd26391493cd5952786c7be",
-      "bytes": 27670
+      "sha256": "454ea99396b7b67e0cc9db62ecac7be7901009921834895084b575ab29c6f1a9",
+      "bytes": 27682
     },
     {
       "kind": "prompt",

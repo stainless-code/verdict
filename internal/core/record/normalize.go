@@ -635,9 +635,10 @@ var (
 		"read":   rungPointed,
 	}
 	commentAliases = map[string]string{
-		"inBounds": fieldInBoundsInput,
-		"rung":     fieldRigor,
-		fieldFile:  fieldPath,
+		"inBounds":  fieldInBoundsInput,
+		"in_bounds": fieldInBoundsInput,
+		"rung":      fieldRigor,
+		fieldFile:   fieldPath,
 	}
 	siteAliases = map[string]string{fieldFile: fieldPath}
 
@@ -649,7 +650,7 @@ var (
 		fieldLine: true, "start_line": true, fieldSide: true, "suggestion": true,
 		fieldBrief: true, fieldRigor: true, fieldSeverity: true, fieldInBoundsInput: true, "kb": true, fieldSources: true,
 	}
-	commentNullAliases = map[string]bool{"rung": true, "inBounds": true}
+	commentNullAliases = map[string]bool{"rung": true, "inBounds": true, "in_bounds": true}
 	briefOptionalKeys  = map[string]bool{
 		"sites": true, "approach": true, "questions": true,
 	}
