@@ -105,6 +105,7 @@ type runner struct {
 	commit  string
 	cases   []corpusCase
 	scores  []*score
+	spend   []sampleSpend
 	loops   []loopRecord
 	total   int
 	dirty   bool
@@ -481,12 +482,58 @@ func (r *runner) sample(ctx context.Context, rep *Report, c *corpusCase, index i
 	cr := r.paths(c, index)
 	rep.Samples++
 	err := r.measure(ctx, cr, prefix, nonce)
+	r.spend = append(r.spend, r.sampleSpend(cr, err != nil))
 	if cr.promptSHA != "" {
 		rep.PromptSHA[c.id] = cr.promptSHA
 	}
 	if err != nil {
 		r.fail(rep, cr, err)
 	}
+}
+
+// sampleSpend is one scheduled sample's measured spend: its own est_usd in
+// single-shot mode, every repair round's in loop mode.
+type sampleSpend struct {
+	usd        float64
+	refused    bool
+	has        bool
+	incomplete bool
+}
+
+// sampleSpend reads one sample's measured spend from its run directory. A
+// refused sample has no bundle, but the agent still spent: its cost.json is
+// what the rollup has to carry, so this reads the run dir, never the bundle.
+func (r *runner) sampleSpend(cr *caseRun, refused bool) sampleSpend {
+	out := sampleSpend{refused: refused}
+	for _, path := range r.spendPaths(cr) {
+		usd, has, incomplete := costEstimate(path)
+		if !has {
+			continue
+		}
+		out.usd += usd
+		out.has = true
+		out.incomplete = out.incomplete || incomplete
+	}
+	return out
+}
+
+// spendPaths lists the cost records one sample wrote: one file in single-shot
+// mode, one per repair round in loop mode.
+func (r *runner) spendPaths(cr *caseRun) []string {
+	if r.cfg.Loop <= 1 {
+		return []string{filepath.Join(cr.dir, costJSONName)}
+	}
+	entries, err := os.ReadDir(cr.dir)
+	if err != nil {
+		return nil
+	}
+	paths := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() && strings.HasPrefix(e.Name(), "round-") {
+			paths = append(paths, filepath.Join(cr.dir, e.Name(), costJSONName))
+		}
+	}
+	return paths
 }
 
 // measure runs the agent, then the transfer of its output into a scored

@@ -104,13 +104,19 @@ type Stat struct {
 	N      int      `json:"n"`
 }
 
-// CostRollup is the spend the bundles report, measured or absent.
+// CostRollup is the spend the run reports: every scheduled sample, scored or
+// refused. The bundle counters stay what they were; measured_usd sums samples.
 type CostRollup struct {
-	Bundles      int     `json:"bundles"`
-	WithEstimate int     `json:"bundles_with_estimate"`
-	Incomplete   int     `json:"bundles_incomplete,omitempty"`
-	Usd          float64 `json:"measured_usd"`
-	Measured     bool    `json:"measured"`
+	Bundles          int     `json:"bundles"`
+	WithEstimate     int     `json:"bundles_with_estimate"`
+	Incomplete       int     `json:"bundles_incomplete,omitempty"`
+	Samples          int     `json:"samples"`
+	SampleEstimates  int     `json:"samples_with_estimate"`
+	SampleIncomplete int     `json:"samples_incomplete,omitempty"`
+	RefusedSamples   int     `json:"refused_samples"`
+	Usd              float64 `json:"measured_usd"`
+	RefusedUsd       float64 `json:"refused_usd"`
+	Measured         bool    `json:"measured"`
 }
 
 // Failure is one sample that produced no score. Its evidence stays in the run
@@ -297,24 +303,59 @@ func (r *runner) caseSpread(id string) CaseSpread {
 	return CaseSpread{Case: id, Runs: runs, Precision: stat(precision), Recall: stat(recall), FalseDiscoveryRate: stat(fdr), Metrics: stats}
 }
 
-// cost sums the est_usd each bundle reports. Nothing here prices a token: a
-// rate the operator did not measure stays unmeasured.
+// cost sums every scheduled sample's est_usd, scored or refused: a sample
+// record refused still burned the tokens it reports, and a rollup that counted
+// only recorded bundles under-reported the run (a pilot that spent 0.242 USD
+// published 0.089). The refused share is kept apart so a reader can see what
+// the failures cost. Nothing here prices a token: spend the agent did not
+// measure stays unmeasured, never zero.
 func (r *runner) cost() CostRollup {
-	roll := CostRollup{Bundles: len(r.scores)}
+	roll := CostRollup{Bundles: len(r.scores), Samples: len(r.spend)}
+	for _, s := range r.spend {
+		roll.addSample(s)
+	}
 	for _, s := range r.scores {
-		est, ok, incomplete := costEstimate(filepath.Join(reviewRoot, s.slug, costJSONName))
-		if !ok {
-			continue
-		}
-		roll.Usd += est
-		roll.WithEstimate++
-		if incomplete {
-			roll.Incomplete++
-		}
+		roll.addBundle(bundleSpend(filepath.Join(reviewRoot, s.slug, costJSONName)))
 	}
 	roll.Usd = math.Round(roll.Usd*round6) / round6
-	roll.Measured = roll.Bundles > 0 && roll.WithEstimate == roll.Bundles && roll.Incomplete == 0
+	roll.RefusedUsd = math.Round(roll.RefusedUsd*round6) / round6
+	roll.Measured = roll.Samples > 0 && roll.SampleEstimates == roll.Samples && roll.SampleIncomplete == 0
 	return roll
+}
+
+// addSample counts one sample's spend, running total and all.
+func (c *CostRollup) addSample(s sampleSpend) {
+	if !s.has {
+		return
+	}
+	c.Usd += s.usd
+	c.SampleEstimates++
+	if s.incomplete {
+		c.SampleIncomplete++
+	}
+	if s.refused {
+		c.RefusedUsd += s.usd
+		c.RefusedSamples++
+	}
+}
+
+// bundleSpend reports whether one bundle's cost record is priced, and whether
+// the agent flagged it incomplete.
+func bundleSpend(path string) (bool, bool) {
+	_, ok, incomplete := costEstimate(path)
+	return ok, incomplete
+}
+
+// addBundle counts one recorded bundle's cost record, which is its own tally:
+// the sample counters are what the rollup sums, and these are what it scored.
+func (c *CostRollup) addBundle(ok, incomplete bool) {
+	if !ok {
+		return
+	}
+	c.WithEstimate++
+	if incomplete {
+		c.Incomplete++
+	}
 }
 
 func costEstimate(path string) (float64, bool, bool) {
@@ -465,10 +506,16 @@ func (r *runner) renderTotals(w io.Writer, rep *Report) {
 			rate(totals.FalseDiscoveryRate), totals.Reported)
 	}
 	if rep.Cost.Measured {
-		fmt.Fprintf(w, "cost: measured %.6f USD over %d bundle(s)\n", rep.Cost.Usd, rep.Cost.Bundles)
+		fmt.Fprintf(w, "cost: measured %.6f USD over %d sample(s), %d bundle(s)",
+			rep.Cost.Usd, rep.Cost.Samples, rep.Cost.Bundles)
 	} else {
-		fmt.Fprintf(w, "cost: unmeasured (%d of %d bundles carry est_usd)\n", rep.Cost.WithEstimate, rep.Cost.Bundles)
+		fmt.Fprintf(w, "cost: unmeasured (%d of %d samples carry est_usd)",
+			rep.Cost.SampleEstimates, rep.Cost.Samples)
 	}
+	if rep.Cost.RefusedSamples > 0 {
+		fmt.Fprintf(w, ", %.6f USD in %d refused sample(s)", rep.Cost.RefusedUsd, rep.Cost.RefusedSamples)
+	}
+	fmt.Fprintln(w)
 	if rep.PromptsHash != "" {
 		fmt.Fprintf(w, "prompts_hash: %s, %.1fs elapsed\n", rep.PromptsHash, rep.ElapsedSeconds)
 	}

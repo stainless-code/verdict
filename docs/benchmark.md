@@ -278,6 +278,14 @@ measured (from `cost.json`) or projected (pilot extrapolation). Do not
 publish a rate from a run that exceeded the operator's budget; record the
 budget in the publication notes.
 
+The runner's own rollup reads the same `cost.json` files, one per sample it
+scheduled. `cost.measured_usd` sums every sample, a refused one included, and
+`cost.refused_usd` with `cost.refused_samples` names the share that produced no
+bundle: a refusal costs the tokens it reports and it is exactly the spend a
+pilot hides when only recorded bundles are counted. `cost.samples_with_estimate`
+against `cost.samples` says whether the total is measured at all; a sample with
+no `est_usd` leaves the run unmeasured rather than free.
+
 ### 4. Reproducibility
 
 The reporting join is exact: the same manifest and `findings.json` produce

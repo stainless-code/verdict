@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/hunks"
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // restoreWD keeps a test's later paths valid after Run moves the process into
@@ -298,6 +299,7 @@ func TestLoadCasesRefusesABuglessManifest(t *testing.T) {
 type fakeGrader struct {
 	dry     func(slug string) (DryRunResult, error)
 	refusal error
+	refuse  string
 	model   string
 	prefix  string
 	panel   []string
@@ -311,7 +313,7 @@ func (f *fakeGrader) promptPrefix(context.Context) (string, string, error) {
 
 func (f *fakeGrader) record(_ context.Context, slug string) ([]string, error) {
 	f.calls = append(f.calls, "record "+slug)
-	if f.refusal != nil {
+	if f.refusal != nil && (f.refuse == "" || strings.Contains(slug, f.refuse)) {
 		return nil, f.refusal
 	}
 	doc, err := json.Marshal(map[string]any{"model": f.model, "prompts_hash": "f00d"})
@@ -375,6 +377,11 @@ const agentCopiesReview = `printf '%s' "$BENCH_TEST_REVIEW" > "$VERDICT_BENCH_OU
 
 // agentFails is the smallest failing agent: a non-zero exit and no review.
 const agentFails = `printf 'agent exploded'; exit 3`
+
+// agentWritesSpend is a conforming agent that also reports a priced sample:
+// the refused-sample rollup can only be tested with spend on the other side.
+const agentWritesSpend = `printf '%s' "$BENCH_TEST_REVIEW" > "$VERDICT_BENCH_OUT"
+printf '{"est_usd":0.03}' > "$VERDICT_BENCH_COST"`
 
 // runRefusal is Run's error for an unconfigured run: the loop must refuse
 // before it touches the corpus or the working directory.
@@ -560,6 +567,54 @@ func checkEvidenceLog(t *testing.T, rep *Report) {
 	}
 	if !strings.Contains(string(log), "agent exploded") {
 		t.Errorf("evidence log = %q, want the agent's output", log)
+	}
+}
+
+// TestCostRollupCarriesRefusedSampleSpend pins the rollup the pilot got wrong:
+// two samples each spent 0.03 USD, the second was refused by record, and the
+// report published 0.03 for the pair. Spend belongs to every sample, and the
+// refused share is named rather than folded in silently.
+func TestCostRollupCarriesRefusedSampleSpend(t *testing.T) {
+	rep := refusedSampleReport(t)
+	checkRefusedSampleCost(t, &rep.Cost)
+}
+
+// refusedSampleReport runs two samples and has record refuse the second.
+func refusedSampleReport(t *testing.T) *Report {
+	t.Helper()
+	needPOSIX(t)
+	restoreWD(t)
+	cfg := benchConfig(t, fakeCorpus(t), agentWritesSpend)
+	cfg.Runs = 2
+	fake := &fakeGrader{
+		model:   cfg.Model,
+		panel:   cfg.Panel,
+		prefix:  fakePrefix,
+		refusal: jq.NewErr("record: bad-review-input: coverage[0] wants a path"),
+		refuse:  "run2",
+	}
+	rep, err := runGraded(context.Background(), cfg, fake)
+	if err == nil || rep == nil {
+		t.Fatalf("runGraded = %v, %v; want a report plus a refused-sample error", rep, err)
+	}
+	return rep
+}
+
+// checkRefusedSampleCost says what the rollup must report for two 0.03 USD
+// samples, one refused.
+func checkRefusedSampleCost(t *testing.T, cost *CostRollup) {
+	t.Helper()
+	if cost.Samples != 2 || cost.SampleEstimates != 2 || !cost.Measured {
+		t.Errorf("cost = %+v, want two priced samples, measured", cost)
+	}
+	if got, want := cost.Usd, 0.06; got != want {
+		t.Errorf("measured_usd = %v, want %v (both samples spent 0.03)", got, want)
+	}
+	if got, want := cost.RefusedUsd, 0.03; got != want {
+		t.Errorf("refused_usd = %v, want %v", got, want)
+	}
+	if cost.RefusedSamples != 1 || cost.Bundles != 1 {
+		t.Errorf("cost = %+v, want 1 refused sample and 1 bundle", cost)
 	}
 }
 

@@ -110,6 +110,12 @@ assistant message, including `cost.total`, and the adapter sums those into
 provider reports no price it omits `est_usd`, which reads `unmeasured` in the
 report rather than free.
 
+The rollup sums every sample's `cost.json`, including a sample `record`
+refused: a refusal still burned the tokens it could not score. `cost.measured_usd`
+is that total, and `cost.refused_usd` names the share that produced no bundle,
+with `cost.refused_samples` counting them. A sample whose record carries no
+`est_usd` leaves the run unmeasured; it never reads zero.
+
 [`example-seeded-model-pilot.json`](runner/testdata/example-seeded-model-pilot.json)
 is an archived seeded example: eight cases, three samples each, `internal`, never
 citable.
