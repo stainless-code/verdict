@@ -367,6 +367,11 @@ func (s *addScan) visit(line string) {
 	case strings.HasPrefix(line, "+"):
 		s.mark(s.newLine)
 		s.newLine++
+	case strings.HasPrefix(line, `\`):
+		// "\ No newline at end of file" annotates the line above it and is
+		// not body text on either side, so the new-side counter must not
+		// move: across a "-old / marker / +new" replacement the marker would
+		// otherwise push every following added line one too high.
 	default:
 		s.newLine++
 	}
