@@ -598,6 +598,9 @@ func (r *runner) sampleSpend(cr *caseRun, refused bool) sampleSpend {
 	for _, path := range r.spendPaths(cr) {
 		usd, has, incomplete := costEstimate(path)
 		if !has {
+			// A round with no estimate is unknown spend, not zero: the
+			// sample's total is a lower bound, so it cannot read complete.
+			out.incomplete = true
 			continue
 		}
 		out.usd += usd

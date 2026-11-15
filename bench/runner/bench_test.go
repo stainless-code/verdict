@@ -222,6 +222,32 @@ func TestCostRollupCountsUnpricedRefusals(t *testing.T) {
 	}
 }
 
+// TestSampleSpendFlagsAnUnpricedRound pins what a loop sample knows about its
+// spend: a round that cost.json never priced leaves the total a lower bound,
+// so the sample must read incomplete even though another round was priced. The
+// old `continue` dropped the round silently and the sample read complete.
+func TestSampleSpendFlagsAnUnpricedRound(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "round-01", costJSONName), []byte(`{"est_usd":0.03}`))
+	writeFile(t, filepath.Join(dir, "round-02", costJSONName), []byte(`{"incomplete":false}`))
+	r := &runner{cfg: &Config{Loop: 2}}
+	spend := r.sampleSpend(&caseRun{dir: dir}, false)
+	if !spend.has || spend.usd != 0.03 {
+		t.Fatalf("spend = %+v, want the priced round's 0.03 kept", spend)
+	}
+	if !spend.incomplete {
+		t.Fatal("incomplete = false, want true: round-02 carries no est_usd")
+	}
+	r.spend = []sampleSpend{spend}
+	cost := r.cost()
+	if cost.SampleIncomplete != 1 || cost.Measured {
+		t.Errorf("cost = %+v, want one incomplete sample and measured false", cost)
+	}
+	if cost.Usd != 0.03 || cost.RefusedUsd != 0 {
+		t.Errorf("measured_usd=%v refused_usd=%v, want 0.03 and 0", cost.Usd, cost.RefusedUsd)
+	}
+}
+
 // TestMaxUSDRefusesNonFiniteCaps pins the flag's domain: NaN passes every
 // comparison, so the old "< 0" test let it through and capReached then never
 // fired; +Inf ran the whole corpus and made the report unserializable, because
