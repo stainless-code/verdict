@@ -16,7 +16,7 @@ mk_local() { # $1 = slug dir; stdin becomes review.json
 }
 
 WEAK_REVIEW='```json
-{"schema_version":"1","body":"> ✅ Weak-model review with enough length to pass the guard.","approved":false,"resolved":"a1b2","comments":[{"file":"notes.txt","line":2,"body":"A finding with enough substance.","rung":"traced","severity":"Critical","brief":{"outcome":"Reject duplicate deliveries before anything is enqueued.","questions":"Why is this safe?"}}]}
+{"schema_version":"1","body":"> ✅ Weak-model review with enough length to pass the guard.","approved":false,"resolved":"a1b2","comments":[{"file":"notes.txt","line":2,"body":"A finding with enough substance.","rung":"traced","severity":"Critical","in_bounds":false,"brief":{"outcome":"Reject duplicate deliveries before anything is enqueued.","questions":"Why is this safe?"}}]}
 ```'
 
 printf '%s' "$WEAK_REVIEW" | mk_local "$SLUG"
@@ -24,6 +24,7 @@ run_review record acme/app "$SLUG" --dry-run --json
 assert_exit "fenced aliased dry run warns and exits 0" 0
 assert_envelope "normalized dry run"
 assert_json_field "normalized path alias" "notes.txt" '.data.normalized.comments[0].path'
+assert_json_field "normalized in_bounds alias" "false" '.data.normalized.comments[0]["in-bounds"]'
 assert_json_field "normalized rigor synonym" "walked" '.data.normalized.comments[0].rigor'
 assert_json_field "normalized severity case" "critical" '.data.normalized.comments[0].severity'
 assert_json_field "normalized scalar resolved" "a1b2" '.data.normalized.resolved[0]'

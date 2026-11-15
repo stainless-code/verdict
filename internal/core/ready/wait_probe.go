@@ -36,9 +36,21 @@ type WaitProbe struct {
 	etag   string
 }
 
+// waitIncompleteError marks a read whose torn or disagreeing state a later
+// observation can complete. It unwraps to the refusal a one-shot read reports.
+type waitIncompleteError struct{ refusal *core.RefusalError }
+
+func (e *waitIncompleteError) Error() string { return e.refusal.Error() }
+
+func (e *waitIncompleteError) Unwrap() error { return e.refusal }
+
+func incompleteRead() *waitIncompleteError { return &waitIncompleteError{refusal: waitReadFailed()} }
+
 // Read reads a complete GitHub observation without writing local files.
 // Other providers refuse explicitly, before executing any host command.
-func (p *WaitProbe) Read(ctx context.Context, req *core.ReadRequest, provider, until string) (*WaitSnapshot, *core.RefusalError) {
+// A [*waitIncompleteError] comes back for a state a retry can complete;
+// everything else is a hard refusal.
+func (p *WaitProbe) Read(ctx context.Context, req *core.ReadRequest, provider, until string) (*WaitSnapshot, error) {
 	if provider != providerGitHub {
 		return nil, &core.RefusalError{Code: "provider-unimplemented", Message: "pr-wait on " + provider + " is unsupported; " +
 			"supported hosts: github"}
@@ -52,13 +64,14 @@ func (p *WaitProbe) Read(ctx context.Context, req *core.ReadRequest, provider, u
 	if !ok {
 		return nil, waitReadFailed()
 	}
-	detail, ref := decodeWaitDetail(raw, live)
-	if ref != nil {
-		return nil, ref
+	detail, err := decodeWaitDetail(raw, live)
+	if err != nil {
+		return nil, err
 	}
 
 	var threads []any
 	if until == untilReviewChanged {
+		var ref *core.RefusalError
 		threads, ref = waitThreads(ctx, req)
 		if ref != nil {
 			return nil, ref
@@ -68,10 +81,10 @@ func (p *WaitProbe) Read(ctx context.Context, req *core.ReadRequest, provider, u
 	return waitSnapshot(live, detail.Checks, detail.Reviews, threads)
 }
 
-func waitSnapshot(live map[string]any, checks []map[string]any, reviews, threads []any) (*WaitSnapshot, *core.RefusalError) {
+func waitSnapshot(live map[string]any, checks []map[string]any, reviews, threads []any) (*WaitSnapshot, error) {
 	head, ok := live["head"].(map[string]any)
 	if !ok {
-		return nil, waitReadFailed()
+		return nil, incompleteRead()
 	}
 	if threads == nil {
 		threads = []any{}
@@ -85,7 +98,7 @@ func waitSnapshot(live map[string]any, checks []map[string]any, reviews, threads
 	}
 	snapshot.ChecksKnown, snapshot.ChecksDone, snapshot.ChecksGreen = waitChecks(checks)
 	if !validWaitState(snapshot) {
-		return nil, waitReadFailed()
+		return nil, incompleteRead()
 	}
 	return snapshot, nil
 }
@@ -210,17 +223,17 @@ type waitDetail struct {
 	Reviews []any            `json:"reviews"`
 }
 
-func decodeWaitDetail(raw string, live map[string]any) (*waitDetail, *core.RefusalError) {
+func decodeWaitDetail(raw string, live map[string]any) (*waitDetail, error) {
 	detail := &waitDetail{}
 	if json.Unmarshal([]byte(raw), detail) != nil {
-		return nil, waitReadFailed()
+		return nil, incompleteRead()
 	}
 	if detail.Reviews == nil || len(detail.Reviews) >= waitPageLimit || len(detail.Checks) >= waitPageLimit {
 		return nil, waitReadFailed()
 	}
 	head, ok := live["head"].(map[string]any)
 	if !ok || detail.Head != jq.StrOf(head["sha"]) {
-		return nil, waitReadFailed()
+		return nil, incompleteRead()
 	}
 	return detail, nil
 }

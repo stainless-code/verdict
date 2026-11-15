@@ -2094,7 +2094,7 @@ other.txt	NEW	1	3
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "e62e67fb077675601eec7b83f6f6e8e1ea0bfac881e82d3db192d840b6ab6f83",
+  "prompts_hash": "bddb9306ee0e9be76cf9d4c1a417eb38a992cb5773b17915e698ea99603e7815",
   "model": null
 }
 --- file C/.verdict/state/local-mx/store.json ---

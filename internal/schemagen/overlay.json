@@ -233,6 +233,8 @@
       "/properties/data/properties/receipt": "Fetched bundle receipt (run_id, prompts_hash, inputs, truncations) exposed by report and post under --provenance; absent without the flag.",
       "/properties/data/properties/truncated": "Bounded-input rows when --provenance is active; elsewhere the boolean truncation flag every verb's data already carries.",
       "/$defs/prWaitData": "Bounded foreground PR wait outcome; timeout is data with error null.",
+      "/$defs/prWaitData/properties/observations": "Snapshots that differed from the previous observation; repeated identical reads do not count.",
+      "/$defs/prWaitData/properties/inconsistent_observations": "Reads a bounded wait retried because the host disagreed with itself, such as a GraphQL head that is not yet the REST head right after a push. --once never retries, and a wait still inconsistent at its timeout refuses pr-read-failed instead of claiming an outcome.",
       "/$defs/prWaitSnapshot": "One observed PR state, including canonical JSON evidence for checks, reviews, and threads.",
       "/$defs/readyData/properties/wait": "Present when a bounded build wait was requested; timeout leaves readiness false.",
       "/$defs/riskData": "risk --json data: the advisory triage queue over the bundles under .verdict/state. bundles counts the queued bundles (by_band sums to it) and rows are ranked by band, then score, then bundle name; a hidden row adds the response_cap receipt.",

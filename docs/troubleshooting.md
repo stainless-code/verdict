@@ -969,9 +969,14 @@ Fix: re-fetch the PR, then re-run.
 
 ## `pr-read-failed`
 
-Cause: the PR could not be read from the host.
+Cause: the PR could not be read from the host, or a host read kept disagreeing
+with itself (a GraphQL head that is not yet the REST head, a torn view
+document) for the whole bounded wait.
 
-Fix: run `gh auth status`, confirm the repo/PR spelling, then re-run.
+Fix: run `gh auth status`, confirm the repo/PR spelling, then re-run. A bounded
+`pr-wait` retries an inconsistent observation on its next interval and names the
+retried count in this refusal, so a wait right after a push usually recovers by
+itself; rerun once the push settles. `--once` never retries.
 
 ## `privacy-unavailable`
 
@@ -1363,8 +1368,9 @@ exiting 0 unless `--check` requests exit 1.
 Fix: inspect the last snapshot and CI state, then make another bounded call if
 needed. Use MCP `pr_wait` instead of an agent sleep loop. A missing or unreadable
 check rollup never counts as complete. GitLab and Forgejo waits refuse
-`provider-unimplemented`; GitHub incomplete or inconsistent reads refuse
-`pr-read-failed`. CLI timeouts accept 1s–30m; MCP timeouts cannot exceed 50s.
+`provider-unimplemented`; GitHub hard read failures, and a state still
+inconsistent when the budget expires, refuse `pr-read-failed`. CLI timeouts
+accept 1s–30m; MCP timeouts cannot exceed 50s.
 
 ## `condition-unmet` (data outcome)
 

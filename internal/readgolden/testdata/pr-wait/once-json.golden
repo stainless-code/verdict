@@ -12,7 +12,8 @@ exit: 1
     "outcome": "condition-unmet",
     "until": "merged",
     "snapshot": {"state":"OPEN","head":"abc","reviews":"[]","threads":"[]","checks":"[{\"__typename\":\"CheckRun\",\"conclusion\":\"SUCCESS\",\"status\":\"COMPLETED\"}]","checks_known":true,"checks_done":true,"checks_green":true},
-    "observations": 1
+    "observations": 1,
+    "inconsistent_observations": 0
   },
   "error": null
 }
