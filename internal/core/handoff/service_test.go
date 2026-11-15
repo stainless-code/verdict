@@ -14,23 +14,17 @@ import (
 )
 
 const (
-	// handoffSig is the open critical finding every leg projects.
-	handoffSig = "c111111111111111111111111111111111111111"
-	// handoffInfoSig is open but informational: below the default floor.
-	handoffInfoSig = "d333333333333333333333333333333333333333"
-	// handoffClosedSig is important but already fixed.
+	handoffSig       = "c111111111111111111111111111111111111111"
+	handoffInfoSig   = "d333333333333333333333333333333333333333"
 	handoffClosedSig = "b222222222222222222222222222222222222222"
 
-	// handoffBody is the fix text the projection carries.
 	handoffBody = "The guard returns before the nil check, so a nil slice reaches the loop."
 
-	// handoffBrief is the stored machine brief, as review.json carries it.
 	handoffBrief = `{"sites":[{"path":"app.txt","line":2}],` +
 		`"outcome":"Guard the nil slice before the loop iterates it in prod.",` +
 		`"approach":"Return early; the caller already treats a nil slice as absent.",` +
 		`"questions":["Should the caller or the callee own the check?"]}`
 
-	// handoffBriefText is exactly what fix prints for that brief.
 	handoffBriefText = "brief:\n" +
 		"  outcome: Guard the nil slice before the loop iterates it in prod.\n" +
 		"  sites: app.txt:2\n" +
@@ -39,9 +33,6 @@ const (
 		"    - Should the caller or the callee own the check?\n"
 )
 
-// handoffFindings is a four-entry store: one critical open inline finding with
-// a brief, plus three entries the default projection leaves out (informational
-// inline, closed inline, open section).
 func handoffFindings() string {
 	return `[` +
 		`{"sig":"` + handoffSig + `","kind":"inline","path":"app.txt","line":2,` +
@@ -60,14 +51,11 @@ func handoffFindings() string {
 		`]`
 }
 
-// handoffVerification records the rerun command for the critical finding, the
-// same claim fix expects a pass to write.
 func handoffVerification() string {
 	return `[{"sig":"` + handoffSig + `","verdict":"VERIFIED","verifyCmd":"go test ./...",` +
 		`"resultHead":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]`
 }
 
-// handoffBundle writes one local bundle under the state home.
 func handoffBundle(t *testing.T, name string, files map[string]string) {
 	t.Helper()
 	dir := filepath.Join(".verdict", "state", name)
@@ -81,7 +69,6 @@ func handoffBundle(t *testing.T, name string, files map[string]string) {
 	}
 }
 
-// handoffRun runs the projection over the bundle named by pr.
 func handoffRun(t *testing.T, pr, floor string, paths ...string) (*Response, *core.RefusalError) {
 	t.Helper()
 	req := &Request{MinSeverity: floor, Paths: paths}
@@ -89,9 +76,6 @@ func handoffRun(t *testing.T, pr, floor string, paths ...string) (*Response, *co
 	return Run(context.Background(), req)
 }
 
-// TestRunProjectsTheOpenFindingFixWouldTake pins the projection field by
-// field against literals: the same open inline pick fix makes, with the brief
-// text fix prints and the recorded verify command.
 func TestRunProjectsTheOpenFindingFixWouldTake(t *testing.T) {
 	t.Chdir(t.TempDir())
 	handoffBundle(t, "local-42", map[string]string{
@@ -111,8 +95,6 @@ func TestRunProjectsTheOpenFindingFixWouldTake(t *testing.T) {
 	assertProjection(t, &row)
 }
 
-// assertProjection holds one row to the fixture's literals: the fix pick's
-// fields, the brief text fix prints, and the recorded verify command.
 func assertProjection(t *testing.T, row *Row) {
 	t.Helper()
 	for _, field := range []struct{ name, got, want string }{
@@ -130,7 +112,6 @@ func assertProjection(t *testing.T, row *Row) {
 	assertOptional(t, row)
 }
 
-// assertOptional pins the three fields the store may leave out.
 func assertOptional(t *testing.T, row *Row) {
 	t.Helper()
 	if want := []string{"await-err"}; !slices.Equal(row.KBRules, want) {
@@ -144,9 +125,6 @@ func assertOptional(t *testing.T, row *Row) {
 	}
 }
 
-// TestMarkdownCarriesTheJSONRows proves the two projections agree: every row
-// appears once in the markdown with the same brief text and fix text the
-// envelope carries, and the caution precedes the quoted prose.
 func TestMarkdownCarriesTheJSONRows(t *testing.T) {
 	t.Chdir(t.TempDir())
 	handoffBundle(t, "local-42", map[string]string{"findings.json": handoffFindings()})
@@ -163,7 +141,6 @@ func TestMarkdownCarriesTheJSONRows(t *testing.T) {
 	assertCautionFirst(t, md, resp.Data)
 }
 
-// countHeadings counts the per-finding sections in the markdown.
 func countHeadings(lines []string) int {
 	n := 0
 	for _, line := range lines {
@@ -174,8 +151,6 @@ func countHeadings(lines []string) int {
 	return n
 }
 
-// assertRowsInMarkdown holds each row's sig, fix text, and brief text to a
-// literal substring of the markdown.
 func assertRowsInMarkdown(t *testing.T, md string, rows []Row) {
 	t.Helper()
 	for i := range rows {
@@ -188,8 +163,6 @@ func assertRowsInMarkdown(t *testing.T, md string, rows []Row) {
 	}
 }
 
-// assertCautionFirst proves the untrusted-data line comes before any quoted
-// finding prose.
 func assertCautionFirst(t *testing.T, md string, d *Data) {
 	t.Helper()
 	caution := strings.Index(md, d.Caution)
@@ -199,9 +172,6 @@ func assertCautionFirst(t *testing.T, md string, d *Data) {
 	}
 }
 
-// TestRefusalNamesTheFloor proves an empty projection refuses and says which
-// floor emptied it, and that lowering the floor to off projects the same
-// bundle.
 func TestRefusalNamesTheFloor(t *testing.T) {
 	t.Chdir(t.TempDir())
 	handoffBundle(t, "local-7", map[string]string{
@@ -229,9 +199,6 @@ func TestRefusalNamesTheFloor(t *testing.T) {
 	}
 }
 
-// TestPathsScopeProjection proves --paths narrows the same selector: a glob
-// matching nothing refuses naming the globs, and one matching the finding
-// projects it.
 func TestPathsScopeProjection(t *testing.T) {
 	t.Chdir(t.TempDir())
 	handoffBundle(t, "local-42", map[string]string{"findings.json": handoffFindings()})
@@ -252,8 +219,6 @@ func TestPathsScopeProjection(t *testing.T) {
 	}
 }
 
-// TestRunWritesNothing proves the read-only contract: the bundle tree and the
-// working directory are byte-identical after a run.
 func TestRunWritesNothing(t *testing.T) {
 	t.Chdir(t.TempDir())
 	handoffBundle(t, "local-42", map[string]string{"findings.json": handoffFindings()})
@@ -268,8 +233,6 @@ func TestRunWritesNothing(t *testing.T) {
 	}
 }
 
-// treeOf lists every path under dir with its size, sorted, so a created,
-// emptied, or rewritten file shows up as a difference.
 func treeOf(t *testing.T, dir string) []string {
 	t.Helper()
 	var out []string
@@ -289,4 +252,22 @@ func treeOf(t *testing.T, dir string) []string {
 	}
 	slices.Sort(out)
 	return out
+}
+
+func TestSuggestionFenceOutgrowsBackticks(t *testing.T) {
+	for _, tc := range []struct{ body, want string }{
+		{"if items == nil { return }", "```"},
+		{"x := ```yaml\nk: v\n```", "````"},
+		{"x := ````inner````", "`````"},
+	} {
+		if got := fenceFor(tc.body); got != tc.want {
+			t.Errorf("fenceFor(%q) = %q, want %q", tc.body, got, tc.want)
+		}
+	}
+	suggestion := "log.Println(\"```\")\nreturn nil"
+	lines := rowLines(&Row{Suggestion: &suggestion})
+	md := strings.Join(lines, "\n")
+	if !strings.Contains(md, "\n````\n"+suggestion+"\n````") {
+		t.Errorf("suggestion block is not fenced by four backticks:\n%s", md)
+	}
 }

@@ -49,7 +49,8 @@ func rowLines(r *Row) []string {
 		"fix: " + r.FixText,
 	}
 	if r.Suggestion != nil {
-		lines = append(lines, "", "suggested code:", "", "```", *r.Suggestion, "```")
+		fence := fenceFor(*r.Suggestion)
+		lines = append(lines, "", "suggested code:", "", fence, *r.Suggestion, fence)
 	}
 	lines = append(lines, "")
 	if r.BriefText == "" {
@@ -59,6 +60,22 @@ func rowLines(r *Row) []string {
 }
 
 // verifyOf names the recorded rerun command, or says there is none.
+// fenceFor returns a code fence longer than any backtick run in body, so a
+// suggestion that itself holds ``` (or more) cannot close the block early
+// (CommonMark: the closing fence must be at least as long as the opening).
+func fenceFor(body string) string {
+	n, run := 3, 0
+	for _, r := range body {
+		if r != '`' {
+			run = 0
+			continue
+		}
+		run++
+		n = max(n, run+1)
+	}
+	return strings.Repeat("`", n)
+}
+
 func verifyOf(r *Row) string {
 	if r.VerifyCmd == nil || *r.VerifyCmd == "" {
 		return "none recorded"
