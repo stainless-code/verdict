@@ -18,7 +18,10 @@ func (st *state) runCorpus(dir string) *core.RefusalError {
 	if err != nil {
 		return st.loadRefusal(err)
 	}
-	report := corpuscore.EvaluateDir(dir, c, entries)
+	report, ref := corpuscore.EvaluateDir(dir, c, entries)
+	if ref != nil {
+		return st.withWarnings(ref)
+	}
 	sample, ref := corpuscore.LoadSample(dir, report)
 	if ref != nil {
 		return st.withWarnings(ref)

@@ -141,7 +141,9 @@ One case, one manifest, published as
   the category table — that the diff spells is dropped from that case's
   grading instead of refusing the case, because the curator cannot change the
   table; if no phrase is left, validation refuses the case and asks for a
-  keyword the diff does not spell.
+  keyword the diff does not spell. A real bundle must carry its `full.diff`:
+  `calibrate` refuses one that is missing or unreadable instead of grading
+  with the unfiltered built-ins, and `trend` skips it with a warning.
 - `line_tolerance` (optional, default 1) is the window in lines. Keep it
   short of the far end of the new-side hunk that shows the bug: the corpus
   test refuses a case whose window covers the whole hunk.

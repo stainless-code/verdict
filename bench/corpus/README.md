@@ -105,7 +105,8 @@ bench/corpus/<repo>-<pr>-<slug>/
   published category table — that the diff spells is dropped from that case's
   grading instead of refusing the case, because the curator cannot change the
   table. A bug left with no unspelled phrase is refused: add a keyword the diff
-  does not spell.
+  does not spell. The bundle must carry `full.diff`; a real case without it is
+  refused rather than graded with the unfiltered built-ins.
 - The ground-truth `line` must be a line the diff **adds**. A context line is
   code the diff carries without marking: a tool-free reviewer reading only the
   added lines has no fair chance at it, so validation refuses an anchor the

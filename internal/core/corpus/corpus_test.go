@@ -174,7 +174,11 @@ func checkFixtures(t *testing.T, name, dir string, c *core.CorpusCase, index []h
 // each ground-truth bug, or the case grades every model wrong.
 func checkNamedBugs(t *testing.T, name, dir string, c *core.CorpusCase, entries []any) {
 	t.Helper()
-	if rep := EvaluateDir(dir, c, entries); rep.Matched != len(c.Bugs) {
+	rep, ref := EvaluateDir(dir, c, entries)
+	if ref != nil {
+		t.Fatalf("%s: %v", name, ref)
+	}
+	if rep.Matched != len(c.Bugs) {
 		t.Errorf("%s: the fake outputs match %d of %d ground-truth bugs; add the words a reviewer would use to the bug's keywords",
 			name, rep.Matched, len(c.Bugs))
 	}

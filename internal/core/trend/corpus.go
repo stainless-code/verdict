@@ -39,21 +39,30 @@ type corpusRollup struct {
 	total   corpusCounts
 }
 
+// skipCorpus warns about one bundle trend cannot read and keeps the rest.
+func (st *state) skipCorpus(dir, reason string) {
+	st.warn(skipWarn + "corpus bundle " + dir + "/ (" + reason + ")")
+}
+
 func (st *state) readCorpus(dir string) {
 	c, ref := corpuscore.Load(dir)
 	if ref != nil {
-		st.warn(skipWarn + "corpus bundle " + dir + "/ (" + ref.Message + ")")
+		st.skipCorpus(dir, ref.Message)
 		return
 	}
 	entries, err := readcommon.LoadFindings(dir)
 	if err != nil {
-		st.warn(skipWarn + "corpus bundle " + dir + "/ (" + err.Error() + ")")
+		st.skipCorpus(dir, err.Error())
 		return
 	}
-	report := corpuscore.EvaluateDir(dir, c, entries)
+	report, ref := corpuscore.EvaluateDir(dir, c, entries)
+	if ref != nil {
+		st.skipCorpus(dir, ref.Message)
+		return
+	}
 	sample, ref := corpuscore.LoadSample(dir, report)
 	if ref != nil {
-		st.warn(skipWarn + "corpus bundle " + dir + "/ (" + ref.Message + ")")
+		st.skipCorpus(dir, ref.Message)
 		return
 	}
 	st.corpora = append(st.corpora, corpusPoint{
