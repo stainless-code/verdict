@@ -1048,7 +1048,7 @@ export interface NextData {
   [key: string]: unknown;
 }
 
-/** fix --json data: one pass over the named finding, or the completion shape. The pass carries the finding identity, its anchors, the pass budget, and the open/fixed/stopped tallies; completion leaves those null and sets complete. */
+/** fix --json data: one pass over the named finding, one --all batch, or the completion shape. The pass carries the finding identity, its anchors, the pass budget, and the open/fixed/stopped tallies; a batch leaves those null and fills min_severity, verify_cmd, and one batch row per selected sig; completion leaves them null and sets complete. */
 export interface FixData {
   dir: string;
   ledger: string;
@@ -1065,6 +1065,10 @@ export interface FixData {
   open: number;
   stopped: number;
   complete: boolean;
+  min_severity?: string | null;
+  verify_cmd?: string | null;
+  /** One row per open inline finding at or above min_severity, in rank order. Absent on a single pass and on a completion. */
+  batch?: Array<FixBatchRow>;
   [key: string]: unknown;
 }
 
@@ -1075,6 +1079,17 @@ export interface FixAnchors {
   start_line: string;
   side: string;
   anchored: string;
+  [key: string]: unknown;
+}
+
+/** One sig's outcome in a fix --all batch: the sig, its locator and severity, the pass the batch consumed (0 when it consumed none), the outcome word, and the reason a skipped row gives. A ceiling, scope-escape, or no-anchor row is reported rather than refused, so one stuck finding cannot block the batch. */
+export interface FixBatchRow {
+  sig: string;
+  locator: string;
+  severity: "critical" | "important" | "informational" | "untagged";
+  pass: number;
+  outcome: "ready" | "ceiling" | "scope-escape" | "no-anchor";
+  reason: string;
   [key: string]: unknown;
 }
 

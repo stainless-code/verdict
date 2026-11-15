@@ -3,6 +3,7 @@ package readcommon
 import (
 	"slices"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 )
@@ -94,6 +95,76 @@ func TopOpenInline(entries []any) (string, any) {
 	entry := decorated[0].entry
 	sig, _ := entrySig(entry)
 	return sig, entry
+}
+
+// Selector narrows the store to the findings one fix run covers: the
+// status/kind display filters, a severity floor, portable path globs, and an
+// explicit sig list. Every field left empty narrows nothing, so the zero
+// Selector picks the whole store.
+type Selector struct {
+	Status string
+	Kind   string
+	Floor  string
+	Paths  []string
+	Sigs   []string
+}
+
+// Select returns the selector's findings in Rank order. It is the one
+// selection rule the fix modes share — the default pick, a whole-store batch,
+// a recipe's path scope, and an explicit sig subset — so none of them can
+// disagree about what is fixable. A missing or unpublished severity is never
+// withheld by a floor, because the vocabulary cannot place it.
+func Select(entries []any, sel *Selector) []Ranked {
+	status, kind := sel.Status, sel.Kind
+	if status == "" {
+		status = StatusAll
+	}
+	if kind == "" {
+		kind = KindAll
+	}
+	floor := config.SeverityRank(sel.Floor)
+	wanted := make(map[string]bool, len(sel.Sigs))
+	for _, sig := range sel.Sigs {
+		wanted[sig] = true
+	}
+	var out []Ranked
+	for _, ranked := range Rank(entries, status, kind) {
+		if !selects(ranked.Entry, sel.Paths, wanted, floor) {
+			continue
+		}
+		out = append(out, ranked)
+	}
+	return out
+}
+
+// selects applies the floor, the path globs, and the sig list to one ranked
+// finding.
+func selects(entry any, paths []string, wanted map[string]bool, floor int) bool {
+	if len(wanted) > 0 {
+		sig, _ := entrySig(entry)
+		if !wanted[sig] {
+			return false
+		}
+	}
+	if !aboveFloor(FieldOf(entry, "severity"), floor) {
+		return false
+	}
+	if len(paths) == 0 {
+		return true
+	}
+	path, ok := FieldOf(entry, "path").(string)
+	return ok && slices.ContainsFunc(paths, func(glob string) bool { return config.Match(glob, path) })
+}
+
+// aboveFloor reports whether one severity clears the floor rank. Rank 0 means
+// no floor, and the untagged rank is kept because a floor never withholds a
+// severity it cannot place.
+func aboveFloor(severity any, floor int) bool {
+	if floor == 0 {
+		return true
+	}
+	rank := config.SeverityRank(jq.StrOf(severity))
+	return rank == 0 || rank >= floor
 }
 
 type rankKeys struct {

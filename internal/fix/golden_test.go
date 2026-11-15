@@ -30,6 +30,7 @@ const (
 	sigDone     = "2123456789abcdef0123456789abcdef01234567"
 	sigCeiling  = "4123456789abcdef0123456789abcdef01234567"
 	sigScope    = "5123456789abcdef0123456789abcdef01234567"
+	sigBatch    = "6123456789abcdef0123456789abcdef01234567"
 )
 
 // findingJSON renders one valid store entry.
@@ -172,6 +173,50 @@ func setupScope(t *testing.T, dir, _ string) {
 	}
 }
 
+// batchVerifyCmd is the verify command every batch fixture hands the loop.
+const batchVerifyCmd = "go test ./..."
+
+// setupBatch is the three-tier batch fixture: one open inline sig per
+// severity, so a floor and the default pick can be told apart.
+func setupBatch(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	mkLocal(t, dir, "batch", "["+
+		findingJSON(sigInfo, "open", "informational", "notes.txt", "Minor wording nit here.")+","+
+		findingJSON(sigBatch, "open", "important", "other.txt", "Important scoping bug here.")+","+
+		findingJSON(sigCritical, "open", "critical", "app.txt", "Critical boundary bug here.")+"]")
+}
+
+// setupBatchStopped is the mixed-outcome fixture: one sig at its ceiling and
+// the rest ready, so the batch reports both instead of refusing.
+func setupBatchStopped(t *testing.T, dir, _ string) {
+	t.Helper()
+	setupBatch(t, dir, "")
+	seedLedger(t, dir, "batch", `{"sigs":{"`+sigBatch+`":{"passes":3}}}`+"\n")
+}
+
+// setupBatchPatch is the patch.json fallback fixture: the bundle's own patch
+// descriptor carries the verify command, so --verify-cmd is not needed.
+func setupBatchPatch(t *testing.T, dir, _ string) {
+	t.Helper()
+	setupBatch(t, dir, "")
+	patch := `{"sig":"` + sigCritical + `","verifyCmd":"go vet ./..."}` + "\n"
+	bdir := filepath.Join(dir, ".verdict", "state", "local-batch")
+	if err := os.WriteFile(filepath.Join(bdir, "patch.json"), []byte(patch), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// setupBatchBelowFloor is the empty-batch fixture: every open finding sits
+// below the default floor, so the batch selects nothing.
+func setupBatchBelowFloor(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	mkLocal(t, dir, "low", "["+
+		findingJSON(sigInfo, "open", "informational", "notes.txt", "Minor wording nit here.")+","+
+		findingJSON(sigInfo2, "open", "informational", "app.txt", "Another nit here.")+"]")
+}
+
 // setupNotLocal is the PR-bundle refusal fixture.
 func setupNotLocal(t *testing.T, dir, _ string) {
 	t.Helper()
@@ -202,6 +247,36 @@ func TestFixGolden(t *testing.T) {
 	t.Run("refusals", testFixRefusals)
 	t.Run("gates", testFixGates)
 	t.Run("brief", testFixBrief)
+	t.Run("batch", testFixBatch)
+}
+
+// testFixBatch pins the --all batch: the plan for every selected sig, the
+// floor, the mixed ceiling outcome, the patch.json fallback, and the typed
+// refusals a batch adds.
+func testFixBatch(t *testing.T) {
+	t.Helper()
+	golden.Pin(t, harness, "batch-json", setupBatch, nil,
+		"fix", "acme/app", "local-batch", "--all", "--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "batch-human", setupBatch, nil,
+		"fix", "acme/app", "local-batch", "--all", "--verify-cmd", batchVerifyCmd)
+	golden.Pin(t, harness, "batch-floor", setupBatch, nil,
+		"fix", "acme/app", "local-batch", "--all", "--min-severity", "critical",
+		"--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "batch-stopped", setupBatchStopped, nil,
+		"fix", "acme/app", "local-batch", "--all", "--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "batch-patch-cmd", setupBatchPatch, nil,
+		"fix", "acme/app", "local-batch", "--all", "--min-severity", "critical", "--json")
+	golden.Pin(t, harness, "batch-no-verify", setupBatch, nil,
+		"fix", "acme/app", "local-batch", "--all", "--json")
+	golden.Pin(t, harness, "batch-empty", setupBatchBelowFloor, nil,
+		"fix", "acme/app", "local-low", "--all", "--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "batch-complete", setupDone, nil,
+		"fix", "acme/app", "local-done", "--all", "--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "batch-bad-floor", setupBatch, nil,
+		"fix", "acme/app", "local-batch", "--all", "--min-severity", "high",
+		"--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "batch-conflict", setupBatch, nil,
+		"fix", "acme/app", "local-batch", "--all", "--sig", sigInfo)
 }
 
 // testFixPick covers the default pick, tiebreak, and completion.

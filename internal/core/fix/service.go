@@ -24,13 +24,16 @@ import (
 )
 
 // Request carries the resolved fix invocation: the shared runtime (env,
-// clock, progress, commander) plus the --sig override and the adapter-routed
-// human stream. Human bytes are written verbatim so the kb recall block keeps
-// its exact layout.
+// clock, progress, commander) plus the selection flags and the
+// adapter-routed human stream. Human bytes are written verbatim so the kb
+// recall block keeps its exact layout.
 type Request struct { //nolint:govet // the transport contract keeps its field order
 	core.ReadRequest
-	Sig   string
-	Human io.Writer
+	Sig         string
+	All         bool
+	MinSeverity string
+	VerifyCmd   string
+	Human       io.Writer
 }
 
 // Response carries the completed pass or completion summary: the envelope
@@ -42,25 +45,62 @@ type Response struct {
 	Warnings []string
 }
 
-// Data is the fix envelope's data profile. The pass and completion shapes
-// share one type; completion leaves the pass fields null and sets complete.
+// Data is the fix envelope's data profile. The pass, batch, and completion
+// shapes share one type; completion leaves the pass fields null and sets
+// complete, and a batch leaves the single-pass fields null and fills batch.
 type Data struct { //nolint:govet // field order is the published property order
-	Dir        string
-	Ledger     string
-	Sig        *string
-	Locator    *string
-	Severity   *string
-	Body       *string
-	Brief      *core.Brief
-	Anchors    *Anchors
-	Pass       *int
-	MaxPasses  int
-	KB         any
-	OpenInline int
-	Fixed      int
-	Open       int
-	Stopped    int
-	Complete   bool
+	Dir         string
+	Ledger      string
+	Sig         *string
+	Locator     *string
+	Severity    *string
+	Body        *string
+	Brief       *core.Brief
+	Anchors     *Anchors
+	Pass        *int
+	MaxPasses   int
+	KB          any
+	OpenInline  int
+	Fixed       int
+	Open        int
+	Stopped     int
+	Complete    bool
+	MinSeverity *string
+	VerifyCmd   *string
+	Batch       []BatchRow
+}
+
+// BatchRow is one sig's outcome in a batch: the sig, where it anchors, the
+// pass the batch consumed (0 when it consumed none), the outcome word, and the
+// reason a skipped row carries.
+type BatchRow struct { //nolint:govet // field order is the published property order
+	Sig      string
+	Locator  string
+	Severity string
+	Pass     int
+	Outcome  string
+	Reason   string
+}
+
+// Wire renders one batch row in published wire order.
+func (r *BatchRow) Wire() *jq.Obj {
+	return jq.NewObj(
+		"sig", r.Sig,
+		"locator", r.Locator,
+		"severity", r.Severity,
+		"pass", r.Pass,
+		"outcome", r.Outcome,
+		"reason", r.Reason,
+	)
+}
+
+// batchWire renders the batch array, one wired row per selected sig.
+func batchWire(rows []BatchRow) []any {
+	out := make([]any, 0, len(rows))
+	for i := range rows {
+		out = append(out, rows[i].Wire())
+	}
+	return out
 }
 
 // Anchors is the pass envelope's anchor block.
@@ -106,6 +146,15 @@ func (d *Data) Wire() *jq.Obj {
 	o.Set("open", d.Open)
 	o.Set("stopped", d.Stopped)
 	o.Set("complete", d.Complete)
+	if d.MinSeverity != nil {
+		o.Set("min_severity", *d.MinSeverity)
+	}
+	if d.VerifyCmd != nil {
+		o.Set("verify_cmd", *d.VerifyCmd)
+	}
+	if d.Batch != nil {
+		o.Set("batch", batchWire(d.Batch))
+	}
 	return o
 }
 
@@ -119,6 +168,9 @@ type state struct { //nolint:govet // fix service state is allocated once per in
 
 // Run executes one fix pass (or reports completion) over a local bundle.
 func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
+	if msg := req.comboFault(); msg != "" {
+		return nil, &core.RefusalError{Code: core.CodeBadFlags, Message: msg}
+	}
 	st := &state{req: req}
 	if err := ctx.Err(); err != nil {
 		return nil, st.refuse("canceled", "canceled before fix completed")
@@ -128,6 +180,18 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 		return nil, ref
 	}
 	return st.response(), nil
+}
+
+func (r *Request) comboFault() string {
+	switch {
+	case r.All && r.Sig != "":
+		return "fix takes --sig or --all, not both (--all selects every open inline finding)"
+	case !r.All && r.MinSeverity != "":
+		return "--min-severity narrows a batch: pass it with --all"
+	case !r.All && r.VerifyCmd != "":
+		return "--verify-cmd proves a batch: pass it with --all"
+	}
+	return ""
 }
 
 func (st *state) warn(msg string) {
@@ -159,10 +223,7 @@ func (st *state) runFix(ctx context.Context) *core.RefusalError {
 	if ref != nil {
 		return ref
 	}
-	if ref := st.checkPrGate(dir); ref != nil {
-		return ref
-	}
-	if ref := st.checkTreeGate(ctx); ref != nil {
+	if ref := st.bundleGates(ctx, dir); ref != nil {
 		return ref
 	}
 	entries, ref := st.loadFindings(dir)
@@ -174,6 +235,10 @@ func (st *state) runFix(ctx context.Context) *core.RefusalError {
 	store, ref := st.loadLedger(ledgerPath)
 	if ref != nil {
 		return ref
+	}
+	if st.req.All {
+		return st.runBatch(ctx, dir, ledgerPath, store, entries,
+			fixOpen, fixOpenInline, now)
 	}
 	full, rec, ref := st.selectRec(entries, fixOpenInline, dir)
 	if ref != nil {
@@ -195,6 +260,15 @@ func (st *state) fixBundleDir() (string, *core.RefusalError) {
 		return "", st.refuse("not-local", "fix works on local bundles; fetch-local first")
 	}
 	return dir, nil
+}
+
+// bundleGates runs the two read gates every fix pass shares: the bundle's PR
+// state and the worktree's merge state.
+func (st *state) bundleGates(ctx context.Context, dir string) *core.RefusalError {
+	if ref := st.checkPrGate(dir); ref != nil {
+		return ref
+	}
+	return st.checkTreeGate(ctx)
 }
 
 func (st *state) checkPrGate(dir string) *core.RefusalError {
@@ -325,9 +399,9 @@ func (st *state) runPass(
 			readcommon.Prefix(full)))
 	}
 	if passes >= 1 {
-		if _, first, n := st.scopeEscape(ctx, store, full, anchor); n > 0 {
+		if escapes := st.scopeEscape(ctx, store, full, anchor); len(escapes) > 0 {
 			return st.scopeStop(dir, ledgerPath, store, entries, full,
-				first, n, anchor, fixOpen, now)
+				escapes, anchor, fixOpen, now)
 		}
 	}
 	pass := passes + 1
@@ -642,13 +716,7 @@ func (st *state) ceilingStop(
 	passes, fixOpen int,
 	now string,
 ) *core.RefusalError {
-	row := sigStore(store, full)
-	ensurePasses(row, passes)
-	row.Set(keyLastAt, now)
-	if v, _ := row.Get(keyStopped); v == nil {
-		row.Set(keyStopped, stoppedCeiling)
-	}
-	putSig(store, full, row)
+	tombstone(store, full, stoppedCeiling, passes, now)
 	if ref := writeLedger(ledgerPath, store); ref != nil {
 		return ref
 	}
@@ -668,6 +736,20 @@ func ensurePasses(row *jq.Obj, passes int) {
 	}
 }
 
+// tombstone records one sig's stopped outcome: its pass count (the first
+// record wins), the timestamp, and the stop reason once. Recording the reason
+// once keeps a later ceiling from overwriting the scope escape that came
+// first, so the ledger says why the loop really stopped.
+func tombstone(store *ledgerDoc, full, reason string, passes int, now string) {
+	row := sigStore(store, full)
+	ensurePasses(row, passes)
+	row.Set(keyLastAt, now)
+	if v, _ := row.Get(keyStopped); v == nil {
+		row.Set(keyStopped, reason)
+	}
+	putSig(store, full, row)
+}
+
 func numOf(v any) (int, bool) {
 	return jq.IntOf(v)
 }
@@ -676,21 +758,22 @@ func (st *state) scopeEscape(
 	ctx context.Context,
 	store *ledgerDoc,
 	sig, anchor string,
-) (bool, string, int) {
-	base := baselineOf(store, sig)
-	work := st.worktreeFiles(ctx)
-	baseSet := newPathSet(base)
-	first := ""
-	n := 0
+) []string {
+	return escapePaths(st.worktreeFiles(ctx), baselineOf(store, sig), anchor)
+}
+
+// escapePaths lists the worktree files outside the anchor that the sig's pass
+// baseline does not already hold, in the sorted order the worktree listing
+// carries.
+func escapePaths(work, baseline []string, anchor string) []string {
+	baseSet := newPathSet(baseline)
+	var out []string
 	for _, p := range work {
 		if isEscape(p, anchor, baseSet) {
-			if first == "" {
-				first = p
-			}
-			n++
+			out = append(out, p)
 		}
 	}
-	return n > 0, first, n
+	return out
 }
 
 func newPathSet(paths []string) map[string]bool {
@@ -735,25 +818,17 @@ func (st *state) scopeStop(
 	dir, ledgerPath string,
 	store *ledgerDoc,
 	entries []any,
-	full, first string,
-	n int,
+	full string,
+	escapes []string,
 	anchor string,
 	fixOpen int,
 	now string,
 ) *core.RefusalError {
-	row := sigStore(store, full)
-	p, _ := row.Get(keyPasses)
-	if _, ok := numOf(p); !ok {
-		row.Set(keyPasses, 1)
-	}
-	row.Set(keyLastAt, now)
-	if v, _ := row.Get(keyStopped); v == nil {
-		row.Set(keyStopped, codeScopeEscape)
-	}
-	putSig(store, full, row)
+	tombstone(store, full, codeScopeEscape, 1, now)
 	if ref := writeLedger(ledgerPath, store); ref != nil {
 		return ref
 	}
+	first, n := escapes[0], len(escapes)
 	st.humanf(fmtFixComplete,
 		dir, fixedCount(entries), fixOpen, stoppedCount(store), ledgerPath)
 	st.humanf("next: worktree escaped the anchor — revert or stash files "+
@@ -863,44 +938,21 @@ func (st *state) passOutput(
 ) *core.RefusalError {
 	st.humanf("» ledger: %s — sig %s pass %d/3\n",
 		ledgerPath, readcommon.Prefix(full), pass)
-	locator := locatorOf(rec)
-	sev := interpOf(rec, keySeverity)
-	if sev == "" {
-		sev = sevUntagged
-	}
-	body := interpOf(rec, keyBody)
-	side := interpOf(rec, keySide)
-	if side == "" {
-		side = sideRight
-	}
-	ln := interpOf(rec, keyLine)
-	if ln == "" {
-		ln = litUnknown
-	}
-	sl := interpOf(rec, keyStartLine)
-	if sl == "" {
-		sl = ln
-	}
-	an := interpOf(rec, keyAnchored)
-	st.humanf("fix: %s [%s] %s (pass %d/3, ledger %s)\n",
-		readcommon.Prefix(full), sev, locator, pass, ledgerPath)
-	st.humanf("finding: %s\n", body)
-	st.humanf("anchors: %s:%s-%s side=%s anchored=%s\n",
-		anchor, sl, ln, side, an)
-	machineBrief := brief.FromRecord(rec)
-	printBrief(st, machineBrief)
+	block := readPassBlock(rec, full, anchor)
+	st.printPassBlock(block, pass, ledgerPath)
 	kbVal := readKbValue(dir)
-	st.printKbAndInstructions(dir, anchor)
+	st.printKB(dir)
+	st.printInstructions(dir, anchor)
 	st.next = nextPass
 	st.data = &Data{
 		Dir:        dir,
 		Ledger:     ledgerPath,
 		Sig:        &full,
-		Locator:    &locator,
-		Severity:   &sev,
-		Body:       &body,
-		Brief:      machineBrief,
-		Anchors:    &Anchors{Path: anchor, Line: ln, StartLine: sl, Side: side, Anchored: an},
+		Locator:    &block.locator,
+		Severity:   &block.severity,
+		Body:       &block.body,
+		Brief:      block.brief,
+		Anchors:    block.anchors,
 		Pass:       &pass,
 		MaxPasses:  maxPasses,
 		KB:         kbVal,
@@ -911,6 +963,57 @@ func (st *state) passOutput(
 		Complete:   false,
 	}
 	return nil
+}
+
+// passBlock is one finding's printed context: everything a pass says about the
+// finding before the bundle-wide kb recall and instructions.
+type passBlock struct { //nolint:govet // field order mirrors the printed block
+	full     string
+	locator  string
+	severity string
+	body     string
+	anchors  *Anchors
+	brief    *core.Brief
+}
+
+// readPassBlock reads one finding's block from the record, defaulting the
+// absent anchor fields the way pass output always has.
+func readPassBlock(rec *jq.Obj, full, anchor string) *passBlock {
+	severity := interpOf(rec, keySeverity)
+	if severity == "" {
+		severity = sevUntagged
+	}
+	side := interpOf(rec, keySide)
+	if side == "" {
+		side = sideRight
+	}
+	line := interpOf(rec, keyLine)
+	if line == "" {
+		line = litUnknown
+	}
+	start := interpOf(rec, keyStartLine)
+	if start == "" {
+		start = line
+	}
+	return &passBlock{
+		full:     full,
+		locator:  locatorOf(rec),
+		severity: severity,
+		body:     interpOf(rec, keyBody),
+		anchors:  &Anchors{Path: anchor, Line: line, StartLine: start, Side: side, Anchored: interpOf(rec, keyAnchored)},
+		brief:    brief.FromRecord(rec),
+	}
+}
+
+// printPassBlock writes the finding line, its body, anchors, and stored brief.
+func (st *state) printPassBlock(block *passBlock, pass int, ledgerPath string) {
+	st.humanf("fix: %s [%s] %s (pass %d/3, ledger %s)\n",
+		readcommon.Prefix(block.full), block.severity, block.locator, pass, ledgerPath)
+	st.humanf("finding: %s\n", block.body)
+	st.humanf("anchors: %s:%s-%s side=%s anchored=%s\n",
+		block.anchors.Path, block.anchors.StartLine, block.anchors.Line,
+		block.anchors.Side, block.anchors.Anchored)
+	printBrief(st, block.brief)
 }
 
 func readKbValue(dir string) any {
@@ -925,16 +1028,23 @@ func readKbValue(dir string) any {
 	return jq.NewObj(keyFile, dir+suffixKB, keyContent, trimmed)
 }
 
-func (st *state) printKbAndInstructions(dir, anchor string) {
-	if readcommon.IsFile(dir + suffixKB) {
-		kbRaw, err := os.ReadFile(dir + suffixKB)
-		if err != nil {
-			kbRaw = nil
-		}
-		st.humanf("--- kb.txt (%s/kb.txt, full context) ---\n", dir)
-		st.humanf("%s", string(kbRaw))
-		st.humanf("--- end kb.txt ---\n")
+// printKB writes the bundle's kb recall block when the bundle carries one.
+func (st *state) printKB(dir string) {
+	if !readcommon.IsFile(dir + suffixKB) {
+		return
 	}
+	kbRaw, err := os.ReadFile(dir + suffixKB)
+	if err != nil {
+		kbRaw = nil
+	}
+	st.humanf("--- kb.txt (%s/kb.txt, full context) ---\n", dir)
+	st.humanf("%s", string(kbRaw))
+	st.humanf("--- end kb.txt ---\n")
+}
+
+// printInstructions writes the one-pass patch/verify/land/re-run instructions
+// plus the verify gate and the spend note every pass carries.
+func (st *state) printInstructions(dir, anchor string) {
 	st.humanf(instructionsFmt,
 		anchor, dir, st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr)
 	st.humanf("%s", gateMsg)
@@ -1042,6 +1152,7 @@ const (
 	codeBadSig = "bad-sig"
 	// codeScopeEscape is the refusal code for anchor scope escapes.
 	codeScopeEscape = "scope-escape"
+	codeNoVerifyCmd = "no-verify-cmd"
 	// kindInline matches inline findings only.
 	kindInline = "inline"
 	// statusOpen matches open findings only.
@@ -1073,7 +1184,8 @@ const (
 	// keyStartLine is the anchor start-line field.
 	keyStartLine = "start_line"
 	// keyAnchored is the anchor anchored-flag field.
-	keyAnchored = "anchored"
+	keyAnchored  = "anchored"
+	keyVerifyCmd = "verifyCmd"
 	// keyHeading is the section heading fallback field.
 	keyHeading = "heading"
 	// keyFile is the kb file field.
@@ -1094,7 +1206,8 @@ const (
 	// suffixFindings is the bundle findings file suffix.
 	suffixFindings = "/findings.json"
 	// suffixFixJSON is the ledger file suffix.
-	suffixFixJSON = "/fix.json"
+	suffixFixJSON   = "/fix.json"
+	suffixPatchJSON = "/patch.json"
 	// suffixKB is the kb recall file suffix.
 	suffixKB = "/kb.txt"
 	// suffixReviews is the stored reviews file suffix.

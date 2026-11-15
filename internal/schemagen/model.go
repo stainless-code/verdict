@@ -462,21 +462,34 @@ type NextData struct {
 // FixData is the fix verb's --json data profile. The pass and completion
 // shapes share it: completion leaves the pass fields null and sets complete.
 type FixData struct { //nolint:govet // field order is the published property order
-	Dir        string      `json:"dir"`
-	Ledger     string      `json:"ledger"`
-	Sig        *string     `json:"sig"`
-	Locator    *string     `json:"locator"`
-	Severity   *string     `json:"severity"`
-	Body       *string     `json:"body"`
-	Anchors    *FixAnchors `anyOf:"null"       json:"anchors"`
-	Pass       *int        `json:"pass"`
-	MaxPasses  int         `json:"max_passes"  min:"0"`
-	KB         any         `json:"kb"`
-	OpenInline int         `json:"open_inline" min:"0"`
-	Fixed      int         `json:"fixed"       min:"0"`
-	Open       int         `json:"open"        min:"0"`
-	Stopped    int         `json:"stopped"     min:"0"`
-	Complete   bool        `json:"complete"`
+	Dir         string        `json:"dir"`
+	Ledger      string        `json:"ledger"`
+	Sig         *string       `json:"sig"`
+	Locator     *string       `json:"locator"`
+	Severity    *string       `json:"severity"`
+	Body        *string       `json:"body"`
+	Anchors     *FixAnchors   `anyOf:"null"        json:"anchors"`
+	Pass        *int          `json:"pass"`
+	MaxPasses   int           `json:"max_passes"   min:"0"`
+	KB          any           `json:"kb"`
+	OpenInline  int           `json:"open_inline"  min:"0"`
+	Fixed       int           `json:"fixed"        min:"0"`
+	Open        int           `json:"open"         min:"0"`
+	Stopped     int           `json:"stopped"      min:"0"`
+	Complete    bool          `json:"complete"`
+	MinSeverity *string       `json:"min_severity" optional:"true"`
+	VerifyCmd   *string       `json:"verify_cmd"   optional:"true"`
+	Batch       []FixBatchRow `json:"batch"        optional:"true"`
+}
+
+// FixBatchRow is one sig's outcome in a fix --all batch.
+type FixBatchRow struct { //nolint:govet // field order is the published property order
+	Sig      string `json:"sig"`
+	Locator  string `json:"locator"`
+	Severity string `enum:"critical|important|informational|untagged" json:"severity"`
+	Pass     int    `json:"pass"                                      min:"0"`
+	Outcome  string `enum:"ready|ceiling|scope-escape|no-anchor"      json:"outcome"`
+	Reason   string `json:"reason"`
 }
 
 // FixAnchors is the fix pass's anchor block, read verbatim from the record.

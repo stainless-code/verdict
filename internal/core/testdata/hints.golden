@@ -137,7 +137,7 @@ no-pr-target	try: run the fetch/record step named above first, then re-run
 no-review-artifact	try: run the printed command yourself (--print) to see why no review.json appeared, then re-run
 no-run-bundle	try: address the cause above, then re-run the same command
 no-threads	try: run the fetch/record step named above first, then re-run
-no-verify-cmd	try: run the fetch/record step named above first, then re-run
+no-verify-cmd	try: write verifyCmd in the bundle's patch.json (the command verify and fix --all hand back), or pass --verify-cmd <cmd> to a fix batch, then re-run
 not-a-repo	try: run the fetch/record step named above first, then re-run
 not-local	try: run the fetch/record step named above first, then re-run
 not-retired	try: check the rule status with learn --status, then re-run

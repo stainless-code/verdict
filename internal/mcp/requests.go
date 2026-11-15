@@ -210,6 +210,9 @@ func decodeFix(req *fixcore.Request, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.str(argPr, &req.Pr)
 	a.str("sig", &req.Sig)
+	a.boolean("all", &req.All)
+	a.str("minSeverity", &req.MinSeverity)
+	a.str("verifyCmd", &req.VerifyCmd)
 }
 
 func wireFix(ctx context.Context, b *bindings, req *fixcore.Request) error {
