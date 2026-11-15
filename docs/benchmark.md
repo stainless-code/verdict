@@ -291,6 +291,18 @@ pilot hides when only recorded bundles are counted. `cost.samples_with_estimate`
 against `cost.samples` says whether the total is measured at all; a sample with
 no `est_usd` leaves the run unmeasured rather than free.
 
+A refused sample stays a failure. It is named in `failures[]`, it keeps a
+citable run from being citable, and its spend is counted, not written off:
+`cost.measured_usd` includes it and `cost.refused_usd` breaks it out. Repairing
+a refused sample on the single-sample path is deferred by decision, not
+forgotten. `-loop` already repairs a refused review through the harness, but a
+repaired loop sample is not citable, so using it for measurement would change
+what a published number means. The shipped prompt now names the keys a review
+must carry (`rigor`, `in-bounds`, `coverage` with `file` and `ranges`), and the
+next pilot measures whether refusals persist; only if they do is the run verb's
+repair loop wired into a citable single-sample path, and that change publishes
+its repair rounds and per-sample repair cost as new report fields.
+
 ### 4. Reproducibility
 
 The reporting join is exact: the same manifest and `findings.json` produce
@@ -349,7 +361,10 @@ The report adds one loop summary per sample with valid on first try, rounds
 to valid, final validity, give-up, added and dropped finding ids, round 1
 and final problem lists, and per-round walls. Calibrate rates are published
 for the final bundle only. An invalid round 1 has no findings file, so no
-precision is invented for it. A warning such as `rigor-unset` does not refuse.
+precision is invented for it. A warning such as `rigor-unset` does not refuse. A sample the harness cannot
+repair within the round cap is a give-up failure, and its spend is counted like
+any other. Harness-driven repair is not the repair decision above: it stays an
+uncitable mode, not the single-sample path the next pilot measures.
 Deletion to clear a problem counts as dropped, never as a fix. A model fix
 needs changed review bytes and no repair for that code on that path. Repairs
 count separately. Fix rates split error and warning levels per code. Costs sum
