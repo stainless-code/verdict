@@ -1,0 +1,720 @@
+diff --git a/.changes/unreleased/Features-20260123-173805.yaml b/.changes/unreleased/Features-20260123-173805.yaml
+new file mode 100644
+index 000000000..e780e6093
+--- /dev/null
++++ b/.changes/unreleased/Features-20260123-173805.yaml
+@@ -0,0 +1,6 @@
++kind: Features
++body: Added ability to parse semantic layer dimensions added to columns as part of new YAML. (Not ready for use until more of the new yaml is implemented.)
++time: 2026-01-23T17:38:05.847998-08:00
++custom:
++    Author: theyostalservice
++    Issue: .
+diff --git a/core/dbt/artifacts/resources/__init__.py b/core/dbt/artifacts/resources/__init__.py
+index d447dd11d..b91c5232e 100644
+--- a/core/dbt/artifacts/resources/__init__.py
++++ b/core/dbt/artifacts/resources/__init__.py
+@@ -5,6 +5,7 @@ from dbt.artifacts.resources.v1.catalog import Catalog, CatalogWriteIntegrationC
+ # alias to latest resource definitions
+ from dbt.artifacts.resources.v1.components import (
+     ColumnConfig,
++    ColumnDimension,
+     ColumnInfo,
+     CompiledResource,
+     Contract,
+diff --git a/core/dbt/artifacts/resources/v1/components.py b/core/dbt/artifacts/resources/v1/components.py
+index e042033d9..d8f366fa0 100644
+--- a/core/dbt/artifacts/resources/v1/components.py
++++ b/core/dbt/artifacts/resources/v1/components.py
+@@ -11,7 +11,7 @@ from dbt_common.contracts.config.properties import AdditionalPropertiesMixin
+ from dbt_common.contracts.constraints import ColumnLevelConstraint
+ from dbt_common.contracts.util import Mergeable
+ from dbt_common.dataclass_schema import ExtensibleDbtClassMixin, dbtClassMixin
+-from dbt_semantic_interfaces.type_enums import TimeGranularity
++from dbt_semantic_interfaces.type_enums import DimensionType, TimeGranularity
+ 
+ NodeVersion = Union[str, float]
+ 
+@@ -76,6 +76,24 @@ class ColumnConfig(BaseConfig):
+     tags: List[str] = field(default_factory=list)
+ 
+ 
++@dataclass
++class ColumnDimension(dbtClassMixin):
++    """Used for column-based dimensions for Semantic Models"""
++
++    @dataclass
++    class ColumnDimensionValidityParams(dbtClassMixin):
++        is_start: bool = False
++        is_end: bool = False
++
++    name: str
++    type: DimensionType
++    description: Optional[str] = None
++    label: Optional[str] = None
++    is_partition: bool = False
++    config: Dict[str, Any] = field(default_factory=dict)
++    validity_params: Optional[ColumnDimensionValidityParams] = None
++
++
+ @dataclass
+ class ColumnInfo(AdditionalPropertiesMixin, ExtensibleDbtClassMixin):
+     """Used in all ManifestNodes and SourceDefinition"""
+@@ -90,6 +108,7 @@ class ColumnInfo(AdditionalPropertiesMixin, ExtensibleDbtClassMixin):
+     tags: List[str] = field(default_factory=list)
+     _extra: Dict[str, Any] = field(default_factory=dict)
+     granularity: Optional[TimeGranularity] = None
++    dimension: Union[ColumnDimension, DimensionType, None] = None
+     doc_blocks: List[str] = field(default_factory=list)
+ 
+     def __post_serialize__(self, dct: Dict, context: Optional[Dict] = None) -> dict:
+diff --git a/core/dbt/contracts/graph/unparsed.py b/core/dbt/contracts/graph/unparsed.py
+index 92c570d32..0e117a959 100644
+--- a/core/dbt/contracts/graph/unparsed.py
++++ b/core/dbt/contracts/graph/unparsed.py
+@@ -141,11 +141,49 @@ class HasConfig:
+     config: Dict[str, Any] = field(default_factory=dict)
+ 
+ 
++@dataclass
++class UnparsedDimensionBase(dbtClassMixin):
++    # Should we be limiting name length or otherwise validating this?
++    name: str
++    type: str  # actually a DimensionType enum value
++    description: Optional[str] = None
++    label: Optional[str] = None
++    is_partition: bool = False
++    config: Dict[str, Any] = field(default_factory=dict)
++
++
++@dataclass
++class UnparsedDimensionTypeParams(dbtClassMixin):
++    """Used for dbt Semantic Layer dimensions (v1 YAML)."""
++
++    time_granularity: str  # TimeGranularity enum
++    validity_params: Optional[DimensionValidityParams] = None
++
++
++@dataclass
++class UnparsedDimension(UnparsedDimensionBase):
++    """Used for dbt Semantic Layer dimensions (v1 YAML)."""
++
++    type_params: Optional[UnparsedDimensionTypeParams] = None
++    expr: Optional[str] = None
++
++
++@dataclass
++class UnparsedDimensionV2(UnparsedDimensionBase):
++    """Used for dbt Semantic Layer dimensions (v2 YAML)."""
++
++    validity_params: Optional[DimensionValidityParams] = None
++
++
+ @dataclass
+ class UnparsedColumn(HasConfig, HasColumnAndTestProps):
+     quote: Optional[bool] = None
+     tags: List[str] = field(default_factory=list)
+     granularity: Optional[str] = None  # str is really a TimeGranularity Enum
++    # Note 1: Dimension str is a DimensionType enum value
++    # Note 2: Don't ask me why, but str must come after UnparsedDimensionV2 here or else
++    # this will be read as a dict object instead of a UnparsedDimensionV2 object
++    dimension: Union[UnparsedDimensionV2, str, None] = None
+ 
+ 
+ @dataclass
+@@ -713,24 +751,6 @@ class UnparsedMeasure(dbtClassMixin):
+     config: Dict[str, Any] = field(default_factory=dict)
+ 
+ 
+-@dataclass
+-class UnparsedDimensionTypeParams(dbtClassMixin):
+-    time_granularity: str  # TimeGranularity enum
+-    validity_params: Optional[DimensionValidityParams] = None
+-
+-
+-@dataclass
+-class UnparsedDimension(dbtClassMixin):
+-    name: str
+-    type: str  # actually an enum
+-    description: Optional[str] = None
+-    label: Optional[str] = None
+-    is_partition: bool = False
+-    type_params: Optional[UnparsedDimensionTypeParams] = None
+-    expr: Optional[str] = None
+-    config: Dict[str, Any] = field(default_factory=dict)
+-
+-
+ @dataclass
+ class UnparsedSemanticModel(dbtClassMixin):
+     name: str
+diff --git a/core/dbt/parser/common.py b/core/dbt/parser/common.py
+index 378d45970..4ea552e02 100644
+--- a/core/dbt/parser/common.py
++++ b/core/dbt/parser/common.py
+@@ -1,7 +1,12 @@
+ from dataclasses import dataclass
+ from typing import Any, Dict, Generic, List, Optional, TypeVar, Union
+ 
+-from dbt.artifacts.resources import ColumnConfig, ColumnInfo, NodeVersion
++from dbt.artifacts.resources import (
++    ColumnConfig,
++    ColumnDimension,
++    ColumnInfo,
++    NodeVersion,
++)
+ from dbt.contracts.graph.nodes import UnpatchedSourceDefinition
+ from dbt.contracts.graph.unparsed import (
+     HasColumnDocs,
+@@ -9,6 +14,7 @@ from dbt.contracts.graph.unparsed import (
+     HasColumnTests,
+     UnparsedAnalysisUpdate,
+     UnparsedColumn,
++    UnparsedDimensionV2,
+     UnparsedExposure,
+     UnparsedFunctionUpdate,
+     UnparsedMacroUpdate,
+@@ -21,7 +27,7 @@ from dbt.node_types import NodeType
+ from dbt.parser.search import FileBlock
+ from dbt_common.contracts.constraints import ColumnLevelConstraint, ConstraintType
+ from dbt_common.exceptions import DbtInternalError
+-from dbt_semantic_interfaces.type_enums import TimeGranularity
++from dbt_semantic_interfaces.type_enums import DimensionType, TimeGranularity
+ 
+ schema_file_keys_to_resource_types = {
+     "models": NodeType.Model,
+@@ -214,9 +220,29 @@ class ParserRef:
+         tags: List[str] = getattr(column, "tags", [])
+         quote: Optional[bool] = None
+         granularity: Optional[TimeGranularity] = None
++        dimension: Optional[Union[DimensionType, ColumnDimension]] = None
+         if isinstance(column, UnparsedColumn):
+             quote = column.quote
+             granularity = TimeGranularity(column.granularity) if column.granularity else None
++            if isinstance(column.dimension, UnparsedDimensionV2):
++                dimension = ColumnDimension(
++                    name=column.dimension.name or column.name,
++                    type=(DimensionType(column.dimension.type)),
++                    description=column.dimension.description or column.description,
++                    label=column.dimension.label,
++                    is_partition=column.dimension.is_partition,
++                    config=column.dimension.config or {},
++                    validity_params=(
++                        ColumnDimension.ColumnDimensionValidityParams(
++                            is_start=column.dimension.validity_params.is_start,
++                            is_end=column.dimension.validity_params.is_end,
++                        )
++                        if column.dimension.validity_params
++                        else None
++                    ),
++                )
++            elif isinstance(column.dimension, str):
++                dimension = DimensionType(column.dimension)
+ 
+         if any(
+             c
+@@ -248,6 +274,7 @@ class ParserRef:
+             quote=quote,
+             _extra=column.extra,
+             granularity=granularity,
++            dimension=dimension,
+             config=ColumnConfig(meta=column_meta, tags=column_tags),
+         )
+ 
+diff --git a/core/dbt/parser/schema_yaml_readers.py b/core/dbt/parser/schema_yaml_readers.py
+index 35ff18f05..f4c4b3b5c 100644
+--- a/core/dbt/parser/schema_yaml_readers.py
++++ b/core/dbt/parser/schema_yaml_readers.py
+@@ -2,10 +2,13 @@ from collections.abc import Sequence
+ from typing import Any, Dict, List, Optional, Union
+ 
+ from dbt.artifacts.resources import (
++    ColumnDimension,
++    ColumnInfo,
+     ConversionTypeParams,
+     CumulativeTypeParams,
+     Dimension,
+     DimensionTypeParams,
++    DimensionValidityParams,
+     Entity,
+     Export,
+     ExportConfig,
+@@ -710,11 +713,65 @@ class SemanticModelParser(YamlReader):
+             dimensions=dimensions,
+         )
+ 
++    def _parse_v2_column_dimensions(self, columns: Dict[str, ColumnInfo]) -> List[Dimension]:
++        dimensions: List[Dimension] = []
++        for column in columns.values():
++            if column.dimension is None:
++                continue
++            elif isinstance(column.dimension, DimensionType):
++                dimensions.append(
++                    Dimension(
++                        name=column.name,
++                        type=column.dimension,
++                        description=column.description,
++                        metadata=None,  # Not yet supported in v1 or v2 YAML
++                        config=SemanticLayerElementConfig(meta=column.config.get("meta", {})),
++                    )
++                )
++            elif isinstance(column.dimension, ColumnDimension):
++                type_params = (
++                    DimensionTypeParams(
++                        time_granularity=column.granularity,
++                        validity_params=(
++                            DimensionValidityParams(
++                                is_start=column.dimension.validity_params.is_start,
++                                is_end=column.dimension.validity_params.is_end,
++                            )
++                            if column.dimension.validity_params is not None
++                            else None
++                        ),
++                    )
++                    if column.granularity is not None
++                    else None
++                )
++                meta = dict(column.config.get("meta", {}))
++                meta.update((column.dimension.config or {}).get("meta", {}))
++                config = SemanticLayerElementConfig(meta=meta)
++                dimensions.append(
++                    Dimension(
++                        # required
++                        type=DimensionType(column.dimension.type),
++                        # fields that use column's values as fallback values
++                        name=column.dimension.name or column.name,
++                        description=column.dimension.description or column.description,
++                        config=config,
++                        # optional fields
++                        label=column.dimension.label,
++                        is_partition=column.dimension.is_partition,
++                        type_params=type_params,
++                        metadata=None,  # Not yet supported in v1 or v2 YAML
++                        # expr argument is not supported for column-based dimensions
++                    )
++                )
++        return dimensions
++
+     def parse_v2_semantic_model_from_dbt_model_patch(
+         self,
+         node: ModelNode,
+         patch: ParsedNodePatch,
+     ) -> None:
++        dimensions = self._parse_v2_column_dimensions(patch.columns)
++
+         self._parse_semantic_model_helper(
+             semantic_model_name=node.name,
+             semantic_model_config=patch.config,
+@@ -722,10 +779,10 @@ class SemanticModelParser(YamlReader):
+             label=None,  # does not seem to be available in v2 YAML, unless it is part of the semantic model config's 'group'?
+             model=f"ref('{patch.name}')",
+             name=node.name,
+-            defaults=None,  # unclear if this exists in some form in v2 YAML
++            defaults=None,  # TODO DI-4604: support agg_time_dimension default here for v2 YAML
+             primary_entity=None,  # Not yet implemented; should become patch.primary_entity
+             entities=[],  # Not yet implemented, will derive from patch.derived_semantics.entities
+-            dimensions=[],  # Not yet implemented, will derive from patch.derived_semantics.dimensions
++            dimensions=dimensions,
+             # Measures are not part of the v2 YAML design.
+             measures=[],
+             unparsed_measures=[],
+diff --git a/tests/functional/artifacts/expected_manifest.py b/tests/functional/artifacts/expected_manifest.py
+index 076d12f41..746cdae99 100644
+--- a/tests/functional/artifacts/expected_manifest.py
++++ b/tests/functional/artifacts/expected_manifest.py
+@@ -312,6 +312,7 @@ def expected_seeded_manifest(project, model_database=None, quote_model=False):
+                     "id": {
+                         "name": "id",
+                         "description": "The user ID number",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+@@ -324,6 +325,7 @@ def expected_seeded_manifest(project, model_database=None, quote_model=False):
+                     "first_name": {
+                         "name": "first_name",
+                         "description": "The user's first name",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+@@ -336,6 +338,7 @@ def expected_seeded_manifest(project, model_database=None, quote_model=False):
+                     "email": {
+                         "name": "email",
+                         "description": "The user's email",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+@@ -348,6 +351,7 @@ def expected_seeded_manifest(project, model_database=None, quote_model=False):
+                     "ip_address": {
+                         "name": "ip_address",
+                         "description": "The user's IP address",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+@@ -360,6 +364,7 @@ def expected_seeded_manifest(project, model_database=None, quote_model=False):
+                     "updated_at": {
+                         "name": "updated_at",
+                         "description": "The last time this user's email was updated",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+@@ -423,6 +428,7 @@ def expected_seeded_manifest(project, model_database=None, quote_model=False):
+                     "id": {
+                         "name": "id",
+                         "description": "The user ID number",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+@@ -435,6 +441,7 @@ def expected_seeded_manifest(project, model_database=None, quote_model=False):
+                     "first_name": {
+                         "name": "first_name",
+                         "description": "The user's first name",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+@@ -447,6 +454,7 @@ def expected_seeded_manifest(project, model_database=None, quote_model=False):
+                     "email": {
+                         "name": "email",
+                         "description": "The user's email",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+@@ -459,6 +467,7 @@ def expected_seeded_manifest(project, model_database=None, quote_model=False):
+                     "ip_address": {
+                         "name": "ip_address",
+                         "description": "The user's IP address",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+@@ -471,6 +480,7 @@ def expected_seeded_manifest(project, model_database=None, quote_model=False):
+                     "updated_at": {
+                         "name": "updated_at",
+                         "description": "The last time this user's email was updated",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+@@ -523,6 +533,7 @@ def expected_seeded_manifest(project, model_database=None, quote_model=False):
+                     "id": {
+                         "name": "id",
+                         "description": "The user ID number",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+@@ -535,6 +546,7 @@ def expected_seeded_manifest(project, model_database=None, quote_model=False):
+                     "first_name": {
+                         "name": "first_name",
+                         "description": "The user's first name",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+@@ -547,6 +559,7 @@ def expected_seeded_manifest(project, model_database=None, quote_model=False):
+                     "email": {
+                         "name": "email",
+                         "description": "The user's email",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+@@ -559,6 +572,7 @@ def expected_seeded_manifest(project, model_database=None, quote_model=False):
+                     "ip_address": {
+                         "name": "ip_address",
+                         "description": "The user's IP address",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+@@ -571,6 +585,7 @@ def expected_seeded_manifest(project, model_database=None, quote_model=False):
+                     "updated_at": {
+                         "name": "updated_at",
+                         "description": "The last time this user's email was updated",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+@@ -809,6 +824,7 @@ def expected_seeded_manifest(project, model_database=None, quote_model=False):
+                     "id": {
+                         "description": "An ID field",
+                         "name": "id",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+@@ -1081,6 +1097,7 @@ def expected_references_manifest(project):
+                     "first_name": {
+                         "description": "The first name being summarized",
+                         "name": "first_name",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+@@ -1093,6 +1110,7 @@ def expected_references_manifest(project):
+                     "ct": {
+                         "description": "The number of instances of the first name",
+                         "name": "ct",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+@@ -1159,6 +1177,7 @@ def expected_references_manifest(project):
+                     "first_name": {
+                         "description": "The first name being summarized",
+                         "name": "first_name",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+@@ -1171,6 +1190,7 @@ def expected_references_manifest(project):
+                     "ct": {
+                         "description": "The number of instances of the first name",
+                         "name": "ct",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+@@ -1232,6 +1252,7 @@ def expected_references_manifest(project):
+                     "id": {
+                         "name": "id",
+                         "description": "The user ID number",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+@@ -1244,6 +1265,7 @@ def expected_references_manifest(project):
+                     "first_name": {
+                         "name": "first_name",
+                         "description": "The user's first name",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+@@ -1256,6 +1278,7 @@ def expected_references_manifest(project):
+                     "email": {
+                         "name": "email",
+                         "description": "The user's email",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+@@ -1268,6 +1291,7 @@ def expected_references_manifest(project):
+                     "ip_address": {
+                         "name": "ip_address",
+                         "description": "The user's IP address",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+@@ -1280,6 +1304,7 @@ def expected_references_manifest(project):
+                     "updated_at": {
+                         "name": "updated_at",
+                         "description": "The last time this user's email was updated",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+@@ -1363,6 +1388,7 @@ def expected_references_manifest(project):
+                 "columns": {
+                     "id": {
+                         "description": "An ID field",
++                        "dimension": None,
+                         "name": "id",
+                         "data_type": None,
+                         "meta": {},
+@@ -1659,6 +1685,7 @@ def expected_versions_manifest(project):
+                     "first_name": {
+                         "description": "The first name being summarized",
+                         "name": "first_name",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+@@ -1674,6 +1701,7 @@ def expected_versions_manifest(project):
+                     "ct": {
+                         "description": "The number of instances of the first name",
+                         "name": "ct",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+@@ -1746,6 +1774,7 @@ def expected_versions_manifest(project):
+                     "first_name": {
+                         "description": "The first name being summarized",
+                         "name": "first_name",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+@@ -1761,6 +1790,7 @@ def expected_versions_manifest(project):
+                     "extra": {
+                         "description": "",
+                         "name": "extra",
++                        "dimension": None,
+                         "data_type": None,
+                         "meta": {},
+                         "quote": None,
+diff --git a/tests/functional/docs/test_good_docs_blocks.py b/tests/functional/docs/test_good_docs_blocks.py
+index 6e8c44c21..4299f68e5 100644
+--- a/tests/functional/docs/test_good_docs_blocks.py
++++ b/tests/functional/docs/test_good_docs_blocks.py
+@@ -89,6 +89,7 @@ class TestGoodDocsBlocks:
+         assert {
+             "name": "id",
+             "description": "The user ID number",
++            "dimension": None,
+             "data_type": None,
+             "constraints": [],
+             "meta": {},
+@@ -102,6 +103,7 @@ class TestGoodDocsBlocks:
+         assert {
+             "name": "first_name",
+             "description": "The user's first name",
++            "dimension": None,
+             "data_type": None,
+             "constraints": [],
+             "meta": {},
+@@ -115,6 +117,7 @@ class TestGoodDocsBlocks:
+         assert {
+             "name": "last_name",
+             "description": "The user's last name",
++            "dimension": None,
+             "data_type": None,
+             "constraints": [],
+             "meta": {},
+@@ -128,6 +131,7 @@ class TestGoodDocsBlocks:
+         assert {
+             "name": "tricky",
+             "description": "The user ID number The user's first name The user's last name",
++            "dimension": None,
+             "data_type": None,
+             "constraints": [],
+             "meta": {},
+@@ -176,6 +180,7 @@ class TestGoodDocsBlocksAltPath:
+         assert {
+             "name": "id",
+             "description": "The user ID number with alternative text",
++            "dimension": None,
+             "data_type": None,
+             "constraints": [],
+             "meta": {},
+@@ -189,6 +194,7 @@ class TestGoodDocsBlocksAltPath:
+         assert {
+             "name": "first_name",
+             "description": "The user's first name",
++            "dimension": None,
+             "data_type": None,
+             "constraints": [],
+             "meta": {},
+@@ -202,6 +208,7 @@ class TestGoodDocsBlocksAltPath:
+         assert {
+             "name": "last_name",
+             "description": "The user's last name in this other file",
++            "dimension": None,
+             "data_type": None,
+             "constraints": [],
+             "meta": {},
+@@ -215,6 +222,7 @@ class TestGoodDocsBlocksAltPath:
+         assert {
+             "name": "tricky",
+             "description": "The user ID number with alternative text The user's first name The user's last name in this other file",
++            "dimension": None,
+             "data_type": None,
+             "constraints": [],
+             "meta": {},
+diff --git a/tests/functional/semantic_models/fixtures.py b/tests/functional/semantic_models/fixtures.py
+index b029db387..99a6429ad 100644
+--- a/tests/functional/semantic_models/fixtures.py
++++ b/tests/functional/semantic_models/fixtures.py
+@@ -547,4 +547,31 @@ base_schema_yml_v2 = """models:
+   - name: fct_revenue
+     description: This is the model fct_revenue. It should be able to use doc blocks
+     semantic_model: true
++    columns:
++      - name: id
++        description: This is the id column dim.
++        config:
++          meta:
++          component_level: "original_meta"
++        dimension:
++          name: id_dim
++          label: "ID Dimension"
++          type: categorical
++          is_partition: true
++          config:
++            meta:
++              component_level: "dimension_override"
++      - name: second_col
++        description: This is the second column.
++        granularity: day
++        dimension:
++          name: second_dim
++          label: "Second Dimension"
++          type: time
++          validity_params:
++            is_start: true
++            is_end: true
++      - name: col_with_default_dimensions
++        description: This is the column with default dimension settings.
++        dimension: categorical
+ """
+diff --git a/tests/functional/semantic_models/test_semantic_model_v2_parsing.py b/tests/functional/semantic_models/test_semantic_model_v2_parsing.py
+index 91fe47b02..68f9df9ed 100644
+--- a/tests/functional/semantic_models/test_semantic_model_v2_parsing.py
++++ b/tests/functional/semantic_models/test_semantic_model_v2_parsing.py
+@@ -1,6 +1,7 @@
+ import pytest
+ 
+ from dbt.contracts.graph.manifest import Manifest
++from dbt_semantic_interfaces.type_enums import DimensionType
+ from tests.functional.assertions.test_runner import dbtTestRunner
+ from tests.functional.semantic_models.fixtures import (
+     base_schema_yml_v2,
+@@ -37,9 +38,40 @@ class TestSemanticModelParsingWorks:
+             semantic_model.description
+             == "This is the model fct_revenue. It should be able to use doc blocks"
+         )
++
++        assert len(semantic_model.dimensions) == 3
++        dimensions = {dimension.name: dimension for dimension in semantic_model.dimensions}
++        id_dim = dimensions["id_dim"]
++        assert id_dim.type == DimensionType.CATEGORICAL
++        assert id_dim.description == "This is the id column dim."
++        assert id_dim.label == "ID Dimension"
++        assert id_dim.is_partition is True
++        assert id_dim.config.meta == {"component_level": "dimension_override"}
++        second_dim = dimensions["second_dim"]
++        assert second_dim.type == DimensionType.TIME
++        assert second_dim.description == "This is the second column."
++        assert second_dim.label == "Second Dimension"
++        assert second_dim.is_partition is False
++        assert second_dim.config.meta == {}
++        assert second_dim.type_params.validity_params.is_start is True
++        assert second_dim.type_params.validity_params.is_end is True
++        col_with_default_dimensions = dimensions["col_with_default_dimensions"]
++        assert col_with_default_dimensions.type == DimensionType.CATEGORICAL
++        assert (
++            col_with_default_dimensions.description
++            == "This is the column with default dimension settings."
++        )
++        assert col_with_default_dimensions.label is None
++        assert col_with_default_dimensions.is_partition is False
++        assert col_with_default_dimensions.config.meta == {}
++        assert col_with_default_dimensions.validity_params is None
+         # No measures in v2 YAML
+         assert len(semantic_model.measures) == 0
+         # TODO: Metrics are not parsed yet
+         assert len(manifest.metrics) == 0
+         # TODO: Dimensions are not parsed yet (for those attached to model columns)
+         # TODO: Dimensions are not parsed yet (for those defined in derived semantics)
++
++
++# TODO DI-4605: add enforcement and a testfor when there are validity params with no column granularity
++# TODO DI-4603: add enforcement and a test for a TIME type dimension and a column that has no granularity set

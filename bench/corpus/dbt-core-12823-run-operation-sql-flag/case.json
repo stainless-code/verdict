@@ -1,0 +1,16 @@
+{
+  "schema_version": "1",
+  "id": "dbt-core-12823-run-operation-sql-flag",
+  "kind": "control",
+  "language": "python",
+  "provenance": {
+    "kind": "real",
+    "repo": "dbt-labs/dbt-core",
+    "pr": 12823,
+    "base_sha": "2a392b613ba111de5daf105029b4a61847d60e09",
+    "head_sha": "184f59ed3da73f024c261fb6786d8cee7d97141a",
+    "source": "PR #12823 Add --sql flag to dbt run-operation, merged 2026-05-04",
+    "note": "clean control: no commit after the reviewed head removes or rewrites any line this PR added (all 255 added lines in its 7 files are untouched through the last python-era commit), and no fix or revert names the PR"
+  },
+  "bugs": []
+}

@@ -1,0 +1,38 @@
+{
+  "schema_version": "1",
+  "id": "dbt-core-11768-python-model-config-warning",
+  "kind": "real",
+  "language": "python",
+  "provenance": {
+    "kind": "real",
+    "repo": "dbt-labs/dbt-core",
+    "pr": 11768,
+    "base_sha": "240a6056fb397ad0b85da597d293ec30f83d1091",
+    "head_sha": "65598f3dc6bea57f63a7bd4b7b33d7193ed05ab0",
+    "fix_commit": "https://github.com/dbt-labs/dbt-core/commit/116d5d120269c1e2f8db22aa6e9630735d74ca61",
+    "source": "PR #11768 Validate model sql file provided config, merged 2025-06-25",
+    "note": "the PR adds the first config validation at parse time, but it validates every Model node's _config_call_dict without knowing whether the node is a python model; python models add config_keys_used, config_keys_defaults, meta_keys_used and meta_keys_defaults to that dict themselves, so every python model raised a custom-key-in-config deprecation for keys no user wrote (#12314) until the fix passed is_python_model and skipped them"
+  },
+  "bugs": [
+    {
+      "path": "core/dbt/parser/base.py",
+      "line": 414,
+      "kind": "false-positive-warning",
+      "severity": "important",
+      "keywords": [
+        "internal config keys",
+        "internal properties",
+        "keys the user never wrote",
+        "spurious deprecation",
+        "false positive",
+        "the user cannot specify",
+        "deprecation warning",
+        "added config keys",
+        "internal keys",
+        "cannot set"
+      ],
+      "note": "validate_model_config sees a python model's own internal keys in _config_call_dict and validates them as user-written config, so a custom-key-in-config deprecation is raised for keys the user cannot write; the fix passes is_python_model and skips the four internal keys",
+      "also_lines": [413]
+    }
+  ]
+}
