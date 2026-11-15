@@ -238,7 +238,11 @@ var publishedSemantics = map[string]string{
 	// optional flat receipt keys (truncated, truncation_reason, returned, total,
 	// next_offset) trendData and indexData publish. Additions only; no existing
 	// property, required key, enum, or type changed.
-	"envelope.schema.json": "08e6987b4274ca939c1ee0f6907446e472c1ace54f3edb2ade2f31f3c983ed4c",
+	// pr-wait inconsistent reads: additive required
+	// $defs/prWaitData.inconsistent_observations, plus the regenerated
+	// observations and prWaitData property descriptions. No existing property,
+	// required key, enum, or type changed.
+	"envelope.schema.json": "b76aa5542d82eb425d64665971a3786496a9ec5a96519211aa3716b5adbe4b2c",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

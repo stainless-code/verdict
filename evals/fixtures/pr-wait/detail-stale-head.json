@@ -1,0 +1,7 @@
+{
+  "headRefOid": "just-pushed",
+  "statusCheckRollup": [
+    { "__typename": "CheckRun", "status": "COMPLETED", "conclusion": "SUCCESS" }
+  ],
+  "reviews": []
+}

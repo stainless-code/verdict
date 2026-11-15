@@ -3,6 +3,7 @@ package readycore
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -35,10 +36,11 @@ type WaitResponse struct {
 
 // WaitData is the bounded wait outcome, including its last observation.
 type WaitData struct {
-	Snapshot     *WaitSnapshot `anyOf:"null"                                                 json:"snapshot"`
-	Outcome      string        `enum:"condition-met|condition-unmet|wait-timeout"            json:"outcome"`
-	Until        string        `enum:"merged|closed|checks-green|checks-done|review-changed" json:"until"`
-	Observations int           `json:"observations"`
+	Snapshot                 *WaitSnapshot `anyOf:"null"                                                 json:"snapshot"`
+	Outcome                  string        `enum:"condition-met|condition-unmet|wait-timeout"            json:"outcome"`
+	Until                    string        `enum:"merged|closed|checks-green|checks-done|review-changed" json:"until"`
+	Observations             int           `json:"observations"`
+	InconsistentObservations int           `json:"inconsistent_observations"`
 }
 
 // Wire renders the published wait data profile.
@@ -47,7 +49,8 @@ func (d *WaitData) Wire() *jq.Obj {
 	if d.Snapshot != nil {
 		snapshot = d.Snapshot
 	}
-	return jq.NewObj("outcome", d.Outcome, "until", d.Until, "snapshot", snapshot, "observations", d.Observations)
+	return jq.NewObj("outcome", d.Outcome, "until", d.Until, "snapshot", snapshot, "observations", d.Observations,
+		"inconsistent_observations", d.InconsistentObservations)
 }
 
 // Wait runs a foreground poll, returning timeout as data rather than a refusal.
@@ -86,11 +89,7 @@ func waitSessionRun(ctx context.Context, req *WaitRequest) (*WaitResponse, *Wait
 	if err != nil {
 		return nil, data, waitRefusal(ctx, err)
 	}
-	data.Outcome = session.outcome(completed)
-	return &WaitResponse{
-		Repo: req.Repo, Pr: req.Pr, At: req.TimeUTC(),
-		Next: "inspect the wait outcome", Warnings: append([]string{}, req.Warnings...), Data: data,
-	}, data, nil
+	return session.done(completed)
 }
 
 func waitRequestDurations(req *WaitRequest) (time.Duration, time.Duration, *core.RefusalError) {
@@ -195,6 +194,7 @@ type waitSession struct {
 	req      *WaitRequest
 	data     *WaitData
 	baseline *WaitSnapshot
+	pending  *core.RefusalError
 	probe    WaitProbe
 	provider string
 	last     string
@@ -202,10 +202,11 @@ type waitSession struct {
 }
 
 func (s *waitSession) observe(ctx context.Context) (bool, error) {
-	snapshot, ref := s.probe.Read(ctx, &s.req.ReadRequest, s.provider, s.req.Until)
-	if ref != nil {
-		return false, ref
+	snapshot, err := s.probe.Read(ctx, &s.req.ReadRequest, s.provider, s.req.Until)
+	if err != nil {
+		return false, s.refused(err)
 	}
+	s.pending = nil
 	s.matched = waitMatches(s.req.Until, s.baseline, snapshot)
 	if s.baseline == nil {
 		s.baseline = snapshot
@@ -216,6 +217,43 @@ func (s *waitSession) observe(ctx context.Context) (bool, error) {
 		s.changed(snapshot, encoded)
 	}
 	return s.matched || s.req.Once, nil
+}
+
+// refused decides whether a refused read ends the wait. A bounded wait records
+// an incomplete observation and reads again on the next interval; --once and
+// every hard failure keep the refusal terminal.
+func (s *waitSession) refused(err error) error {
+	incomplete, ok := errors.AsType[*waitIncompleteError](err)
+	if !ok || s.req.Once {
+		return err
+	}
+	s.data.InconsistentObservations++
+	s.pending = incomplete.refusal
+	return nil
+}
+
+// done turns a finished poll into its response, refusing when the budget ran
+// out while the last read was still incomplete.
+func (s *waitSession) done(completed bool) (*WaitResponse, *WaitData, *core.RefusalError) {
+	if ref := s.unresolved(); ref != nil {
+		return nil, s.data, ref
+	}
+	s.data.Outcome = s.outcome(completed)
+	return &WaitResponse{
+		Repo: s.req.Repo, Pr: s.req.Pr, At: s.req.TimeUTC(),
+		Next: "inspect the wait outcome", Warnings: append([]string{}, s.req.Warnings...), Data: s.data,
+	}, s.data, nil
+}
+
+// unresolved reports a budget that ran out while the last read was still
+// incomplete: no observed state is no state, so the wait refuses instead of
+// claiming a condition it never saw.
+func (s *waitSession) unresolved() *core.RefusalError {
+	if s.pending == nil {
+		return nil
+	}
+	return &core.RefusalError{Code: s.pending.Code, Message: fmt.Sprintf("%s after %d inconsistent observations",
+		s.pending.Message, s.data.InconsistentObservations)}
 }
 
 func (s *waitSession) changed(snapshot *WaitSnapshot, encoded string) {

@@ -978,7 +978,10 @@ export interface PrWaitData {
   outcome: "condition-met" | "condition-unmet" | "wait-timeout";
   until:
     "merged" | "closed" | "checks-green" | "checks-done" | "review-changed";
+  /** Snapshots that differed from the previous observation; repeated identical reads do not count. */
   observations: number;
+  /** Reads a bounded wait retried because the host disagreed with itself, such as a GraphQL head that is not yet the REST head right after a push. --once never retries, and a wait still inconsistent at its timeout refuses pr-read-failed instead of claiming an outcome. */
+  inconsistent_observations: number;
   [key: string]: unknown;
 }
 
