@@ -325,7 +325,8 @@ func allTools(readOnly, operator bool) []*tool {
 			name: "verify",
 			description: "Run the recorded verifyCmd under the watchdog and record the proof. " +
 				"Pass group and command together to validate one deep plan group at the reviewed root, " +
-				"or set sandbox true for enforced bubblewrap isolation on Linux (refused where unenforceable). " +
+				"or set sandbox true for enforced isolation — bubblewrap on Linux, sandbox-exec " +
+				"on macOS. " +
 				"Never fabricates a patch or a command from configuration.",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Run verification", mutates: localWrites, destructive: true, openWorld: true},
