@@ -80,9 +80,12 @@ at the recorded head is the tree:
 bench/corpus/<repo>-<pr>-<slug>/
   case.json                 # kind: real (or control), provenance.repo/.pr/.base_sha/.head_sha/.fix_commit
   full.diff                 # git diff <base> <reviewed head>, verbatim
-  hunks.tsv                 # the fetch-time index of that diff
+  hunks.tsv                 # the index of that diff, as fetch writes one
 ```
 
+- `hunks.tsv` is checked in for reading and for drift: the runner rebuilds the
+  index from `full.diff` for every bundle, so a stale copy would only mislead a
+  reader of the case directory.
 - `provenance.base_sha` and `provenance.head_sha` are the 40-hex commits the
   `full.diff` spans; a bundle stamps them, so the diff a model reviews names the
   two commits a reader can check it against. `provenance.fix_commit` is the full

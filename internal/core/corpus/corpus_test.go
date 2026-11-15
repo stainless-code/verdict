@@ -111,9 +111,11 @@ func checkCase(t *testing.T, root, name string) *core.CorpusCase {
 	return c
 }
 
-// checkHunksTSV holds a real case's checked-in index to the producer that
-// writes one: hunks.tsv is what fetch records beside a diff, so a case that
-// ships one can become a bundle without a second fetch.
+// checkHunksTSV keeps a real case's checked-in index from drifting. The
+// runner rebuilds the index from full.diff for every bundle it records, so
+// this copy is never read at run time; it is here because a reader, and the
+// goldens that compare a bundle's hunks.tsv, take the file as the diff's
+// index, and a stale one would describe a diff the case no longer has.
 func checkHunksTSV(t *testing.T, name, dir string, c *core.CorpusCase, index []hunks.Hunk) {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(dir, "hunks.tsv"))
