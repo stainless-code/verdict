@@ -19,26 +19,78 @@ import (
 // and the review text stays unique per bundle (the sig join key). A real case
 // ships the reviewed diff and no fixtures, so the checks that need a fake
 // output are the seeded cases' own.
+// seededCaseIDs are the ten hermetic fixtures the bench-corpus eval measures
+// and its goldens pin. A case that leaves the corpus, or stops being seeded,
+// stops being measured without failing anything else, so the check is
+// membership in a literal list rather than a count band.
+var seededCaseIDs = []string{
+	"auth-bypass",
+	"control-comment",
+	"control-rename",
+	"missing-error-check",
+	"nil-deref",
+	"off-by-one",
+	"panic-index",
+	"path-traversal",
+	"race-close",
+	"sql-injection",
+}
+
+// minRealCases is the floor the pilot set. A real case is the merged diff and
+// ground truth a curator confirmed by hand, so the floor is the four the pilot
+// shipped; more are welcome and none of them is pinned by name.
+const minRealCases = 4
+
 func TestCheckedInCorpusCases(t *testing.T) {
 	root := filepath.Join("..", "..", "..", "bench", "corpus")
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		t.Fatalf("read corpus root: %v", err)
 	}
-	seen := 0
+	present := make(map[string]*core.CorpusCase, len(entries))
 	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
+		if entry.IsDir() {
+			present[entry.Name()] = checkCase(t, root, entry.Name())
 		}
-		seen++
-		checkCase(t, root, entry.Name())
 	}
-	if seen < 6 || seen > 20 {
-		t.Errorf("checked-in corpus has %d cases, want 6-20", seen)
+	checkSeededCases(t, present)
+}
+
+// checkSeededCases proves every hermetic fixture is still there and still
+// hermetic, and that the real corpus has not shrunk below the pilot's floor.
+func checkSeededCases(t *testing.T, present map[string]*core.CorpusCase) {
+	t.Helper()
+	for _, id := range seededCaseIDs {
+		checkStillSeeded(t, id, present[id])
+	}
+	if n := countReal(present); n < minRealCases {
+		t.Errorf("corpus has %d real cases, want at least %d", n, minRealCases)
 	}
 }
 
-func checkCase(t *testing.T, root, name string) {
+// checkStillSeeded reports a named fixture that is missing or no longer seeded.
+func checkStillSeeded(t *testing.T, id string, c *core.CorpusCase) {
+	t.Helper()
+	switch {
+	case c == nil:
+		t.Errorf("seeded case %q is gone: the bench-corpus eval measures it and its goldens pin its fixtures", id)
+	case c.Provenance.Kind != kindSeeded:
+		t.Errorf("seeded case %q has provenance.kind %q, want %q", id, c.Provenance.Kind, kindSeeded)
+	}
+}
+
+// countReal counts the real-origin cases, controls included.
+func countReal(present map[string]*core.CorpusCase) int {
+	n := 0
+	for _, c := range present {
+		if c.Provenance.Kind == kindReal {
+			n++
+		}
+	}
+	return n
+}
+
+func checkCase(t *testing.T, root, name string) *core.CorpusCase {
 	t.Helper()
 	dir := filepath.Join(root, name)
 	c, ref := loadCase(t, filepath.Join(dir, "case.json"))
@@ -56,6 +108,7 @@ func checkCase(t *testing.T, root, name string) {
 	checkHunksTSV(t, name, dir, c, index)
 	checkTolerance(t, name, c, index)
 	checkFixtures(t, name, dir, c, index)
+	return c
 }
 
 // checkHunksTSV holds a real case's checked-in index to the producer that
