@@ -159,7 +159,7 @@ var keywordCases = []keywordCase{
 			"The nested batch in a sequence is waited for with a WaitGroup, so the sequence blocks forever.",
 			"The command value is evaluated before the nil check, so a nil command panics.",
 			"The send happens from a goroutine, so messages can be delivered out of order.",
-			"The program context is not checked, so a cancelled program still runs the queued commands.",
+			"The program context is not checked, so a canceled program still runs the queued commands.",
 			"The batch message is not compacted, so nil commands are still passed to the channel.",
 			"Add tracing for commands handed to the command handler.",
 			"This loop hands each non-nil batch command to p.Send in a new goroutine.",
