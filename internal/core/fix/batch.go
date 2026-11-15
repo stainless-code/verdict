@@ -188,8 +188,8 @@ func (st *state) printBatch(dir, ledgerPath string, rows []batchRow, verify stri
 	st.printKB(dir)
 	st.humanf(batchInstructionsFmt, joinAnchors(anchors), verify, dir,
 		st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr)
-	st.humanf("%s", gateMsg)
-	st.humanf("%s", budgetMsg)
+	st.humanRaw(gateMsg)
+	st.humanRaw(budgetMsg)
 	st.humanf("next: patch %s with verify %q, write verification.json, "+
 		"run record to land it, then re-run fix --all\n", joinAnchors(anchors), verify)
 	return ready

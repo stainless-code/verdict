@@ -209,6 +209,12 @@ func (st *state) humanf(format string, args ...any) {
 	}
 }
 
+// humanRaw writes pre-rendered text (a stored file, a shared block) with no
+// format expansion.
+func (st *state) humanRaw(text string) {
+	st.humanf("%s", text)
+}
+
 func (st *state) response() *Response {
 	return &Response{
 		At:       st.at,
@@ -1018,53 +1024,26 @@ func (st *state) printKB(dir string) {
 		kbRaw = nil
 	}
 	st.humanf("--- kb.txt (%s/kb.txt, full context) ---\n", dir)
-	st.humanf("%s", string(kbRaw))
+	st.humanRaw(string(kbRaw))
 	st.humanf("--- end kb.txt ---\n")
 }
 
 func (st *state) printInstructions(dir, anchor string) {
 	st.humanf(instructionsFmt,
 		anchor, dir, st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr)
-	st.humanf("%s", gateMsg)
-	st.humanf("%s", budgetMsg)
+	st.humanRaw(gateMsg)
+	st.humanRaw(budgetMsg)
 	st.humanf("next: patch %s, write verification.json, "+
 		"run record to land it, then re-run fix\n", anchor)
 }
 
 // printBrief writes the stored brief between the anchor line and the kb
 // recall: one block per finding, and nothing at all when none is stored.
+// The text comes from internal/brief so handoff embeds the same bytes.
 func printBrief(st *state, b *core.Brief) {
-	if b == nil {
-		return
+	if text := brief.Render(b); text != "" {
+		st.humanRaw(text)
 	}
-	st.humanf("brief:\n")
-	st.humanf("  outcome: %s\n", b.Outcome)
-	if len(b.Sites) > 0 {
-		st.humanf("  sites: %s\n", briefSites(b.Sites))
-	}
-	if b.Approach != "" {
-		st.humanf("  approach: %s\n", b.Approach)
-	}
-	if len(b.Questions) == 0 {
-		return
-	}
-	st.humanf("  questions:\n")
-	for _, q := range b.Questions {
-		st.humanf("    - %s\n", q)
-	}
-}
-
-// briefSites renders the sites one line: path[:line] joined by commas.
-func briefSites(sites []core.BriefSite) string {
-	out := make([]string, 0, len(sites))
-	for _, site := range sites {
-		if site.Line == nil {
-			out = append(out, site.Path)
-			continue
-		}
-		out = append(out, fmt.Sprintf("%s:%d", site.Path, *site.Line))
-	}
-	return strings.Join(out, ", ")
 }
 
 func locatorOf(m *jq.Obj) string {

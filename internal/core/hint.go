@@ -113,6 +113,7 @@ var hintRules = []HintRule{
 		"re-fetch if the earlier review was deleted"},
 	{codes: []string{"already-reviewed-patch"}, hint: "try: re-run with --force to post the same change again, " +
 		"or fetch the delta/base for a new review"},
+	{codes: []string{"no-open-findings"}, hint: "try: lower --min-severity, widen --paths, or read the bundle with report"},
 	{codes: []string{"no-patch-match"}, hint: "try: pass --from <local-slug>, or re-fetch the target bundle " +
 		"so identity.json exists"},
 	{codes: []string{"ambiguous-patch-match"}, hint: "try: pass the exact --from <local-slug> named above"},
