@@ -28,14 +28,14 @@ var macOSTwin = map[string]string{
 
 // macOSStepOmissions are the base-lane steps a macOS twin cannot repeat, with
 // why. Bubblewrap is Linux-only, so the verify sandbox install, namespace
-// sysctl, namespace probe, and containment summary stay on the Linux eval
-// lane; the same case grades the macOS sandbox-exec network legs instead.
+// sysctl, and namespace probe stay on the Linux eval lane; the same case
+// grades the macOS sandbox-exec network legs, and both lanes re-read its
+// summary.
 var macOSStepOmissions = map[string][]string{
 	"evals": {
 		"Install bubblewrap",
 		"Allow unprivileged user namespaces (bubblewrap)",
 		"Prove bubblewrap can create its namespaces",
-		"Prove the verify sandbox containment case ran",
 	},
 }
 
@@ -123,6 +123,18 @@ func TestCIMacOSAdvisoryEvents(t *testing.T) {
 	const advisoryArm = `elif ($m | index($k)) and ($me | index($ev)) and $res != "" then empty`
 	if !strings.Contains(workflow, advisoryArm) {
 		t.Errorf("ci-complete lost %q: the advisory events would stop being read", advisoryArm)
+	}
+}
+
+// TestCIEveryEvalLaneRequiresSandbox pins EVAL_REQUIRE_SANDBOX on both lanes
+// that can enforce a mechanism: without it a broken runner grades the refusal
+// leg, and the lane stays green about isolation nobody exercised.
+func TestCIEveryEvalLaneRequiresSandbox(t *testing.T) {
+	jobs := workflowJobs(t, "ci.yml", readCIWorkflow(t))
+	for _, lane := range []string{"evals", "evals-macos"} {
+		if !strings.Contains(strings.Join(jobs[lane], "\n"), `EVAL_REQUIRE_SANDBOX: "1"`) {
+			t.Errorf("%s lost EVAL_REQUIRE_SANDBOX=1: a broken sandbox would grade the refusal leg", lane)
+		}
 	}
 }
 
