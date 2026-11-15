@@ -39,6 +39,7 @@ var refusalCodes = []string{
 	"backtest-failed",
 	"backtest-row-stale",
 	"backtest-run-stale",
+	"bad-adjudication",
 	"bad-approve",
 	"bad-at",
 	"bad-attribution",

@@ -45,7 +45,7 @@ func TestRenderOnlyNeedsPublication(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	if err := renderFile(cfg.Render, &out); err != nil {
+	if err := renderPublication(&cfg, &out); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "# Benchmark 2040-02-03") {

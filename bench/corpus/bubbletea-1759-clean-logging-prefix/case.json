@@ -1,0 +1,16 @@
+{
+  "schema_version": "1",
+  "id": "bubbletea-1759-clean-logging-prefix",
+  "kind": "control",
+  "language": "go",
+  "provenance": {
+    "kind": "real",
+    "repo": "charmbracelet/bubbletea",
+    "pr": 1759,
+    "base_sha": "b3b8f982fef18b7dab7268b4444bc02acc631794",
+    "head_sha": "418cada8885b84de11160f103534a5bba0fd2d5d",
+    "source": "PR #1759 fix(logging): preserve Unicode prefix spacing, merged 2026-11-12",
+    "note": "clean control: the last commit touching logging.go or logging_test.go is this PR's own squash commit, and no later fix or revert reaches its lines"
+  },
+  "bugs": []
+}
