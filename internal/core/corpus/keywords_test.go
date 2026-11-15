@@ -83,6 +83,7 @@ var keywordCases = []keywordCase{
 			"An empty positional on the boundary ends flag parsing, so the rest of the arguments are lost.",
 			"A double dash sitting exactly on the Nth positional is consumed by the `--` branch before the parser stops, so the action never sees it.",
 			"The Nth-argument check runs after the branches that handle the argument, so an empty positional ends parsing and the rest are lost.",
+			"Empty positional: the rest of the arguments are lost because the break runs first.",
 			"An empty positional makes the loop break, so the Nth-argument check never runs and the trailing arguments vanish.",
 			"A `--` on the boundary fires the early return first; the stop check is below it.",
 			"Arguments are dropped because the branch that consumes the argument runs before the boundary check.",
@@ -130,7 +131,7 @@ func requireBothLists(t *testing.T, kc keywordCase) {
 func eachNamesDefect(t *testing.T, bug *core.CorpusBug, texts []string) {
 	t.Helper()
 	for _, text := range texts {
-		if !namesDefect(normalize(text), bug) {
+		if !namesDefect(text, bug) {
 			t.Errorf("graded false, want true (sentence names the defect): %q", text)
 		}
 	}
@@ -139,7 +140,7 @@ func eachNamesDefect(t *testing.T, bug *core.CorpusBug, texts []string) {
 func noneNamesDefect(t *testing.T, bug *core.CorpusBug, texts []string) {
 	t.Helper()
 	for _, text := range texts {
-		if namesDefect(normalize(text), bug) {
+		if namesDefect(text, bug) {
 			t.Errorf("graded true, want false (sentence names another defect): %q", text)
 		}
 	}

@@ -104,6 +104,14 @@ func repairCases() []repairCase {
 			codes: []string{core.ProblemCodeNormalizedTrivia, core.ProblemCodeNormalizedTrivia},
 		},
 		{
+			name: "in-bounds-snake-null-alias",
+			in: `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[` +
+				`{"path":"notes.txt","line":2,"body":"A finding with enough substance.","in_bounds":null}]}`,
+			want: `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[` +
+				`{"path":"notes.txt","line":2,"body":"A finding with enough substance."}]}`,
+			codes: []string{core.ProblemCodeNormalizedTrivia},
+		},
+		{
 			name: "trivia",
 			in: "\ufeff" + `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[` +
 				`{"path":"notes.txt","line":2,"body":"A finding with enough substance.","severity":null},` +

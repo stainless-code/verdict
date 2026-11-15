@@ -1,0 +1,34 @@
+{
+  "schema_version": "1",
+  "id": "undici-4223-agent-client-eviction",
+  "kind": "real",
+  "language": "javascript",
+  "provenance": {
+    "kind": "real",
+    "repo": "nodejs/undici",
+    "pr": 4223,
+    "base_sha": "1262f6121e870c5ffd3eb55202635ad5068077dc",
+    "head_sha": "59940c8b330bbe282735fb1ddc820fb991c24ef3",
+    "fix_commit": "https://github.com/nodejs/undici/commit/ab6ea16e3c3e75e979b13ceba8008e45d699852e",
+    "source": "PR #4223 fix: agent memory leak, squash-merged 2025-05-20 as 59940c8b3",
+    "note": "The PR stored {count, dispatcher} in the client map so a Client could be evicted once its connections closed, but kOnConnect and kOnDisconnect look the entry up with the origin the event carries, which is client[kUrl] (a URL object), while kDispatch keys the map by String(opts.origin): Map.get misses on every event, count stays 0 and no entry is ever deleted. The later fix #4425 closes over the string key and calls close() instead of destroy(). The base leaked the same way (its own TODO said dispatchers are never removed), so what is new here is bookkeeping that can never fire."
+  },
+  "bugs": [
+    {
+      "path": "lib/dispatcher/agent.js",
+      "line": 56,
+      "kind": "resource-leak",
+      "severity": "important",
+      "keywords": [
+        "never evicted",
+        "the count never moves",
+        "looked up with a different key",
+        "the client outlives its connections",
+        "unbounded growth of the client map",
+        "the lookup can never find the entry"
+      ],
+      "note": "the connect/disconnect handlers look the entry up with the URL the event carries while the map is keyed by the origin string, so the count never moves and the Client is never evicted",
+      "also_lines": [48, 60]
+    }
+  ]
+}

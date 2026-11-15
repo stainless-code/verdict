@@ -381,7 +381,11 @@ func (st *state) gradeReview(c *Candidate, bundle string) (*corpuscore.Report, *
 		return nil, st.refuse(codeBacktestRowStale,
 			"recorded review "+display(st.root, dir)+" is missing or unreadable; delete its prs/<NNN>/ directory and replay the run")
 	}
-	return corpuscore.Evaluate(scoreCase(c), entries), nil
+	report, ref := corpuscore.EvaluateDir(dir, scoreCase(c), entries)
+	if ref != nil {
+		return nil, ref
+	}
+	return report, nil
 }
 
 // signalTally accumulates the two published seed-signal rows.
