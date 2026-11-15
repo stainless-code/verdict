@@ -22,7 +22,7 @@ import (
 
 // Report is the publication JSON: the fields the runbook requires, plus the
 // per-sample blocks they rest on.
-type Report struct {
+type Report struct { //nolint:govet // field order is the published property order
 	LoopCost          *LoopCost              `json:"loop_cost,omitempty"`
 	PromptSHA         map[string]string      `json:"prompt_sha256"`
 	GeneratedAt       string                 `json:"generated_at"`
@@ -38,12 +38,14 @@ type Report struct {
 	TrendCorpus       json.RawMessage        `json:"trend_corpus"`
 	Bundles           []BundleRun            `json:"bundles"`
 	Failures          []Failure              `json:"failures"`
+	Skipped           []SkippedSample        `json:"skipped,omitempty"`
 	Panel             []string               `json:"panel"`
 	Cases             []CaseSpread           `json:"cases"`
 	AnyOfKRecall      corpuscore.Measurement `json:"any_of_k_recall"`
 	Agent             AgentRef               `json:"agent"`
 	Corpus            CorpusRef              `json:"corpus"`
 	Cost              CostRollup             `json:"cost"`
+	BudgetUSD         *float64               `json:"budget_usd,omitempty"`
 	SeverityWeights   core.SeverityWeights   `json:"severity_weights"`
 	K                 int                    `json:"k"`
 	Repeats           int                    `json:"repeats"`
@@ -53,7 +55,15 @@ type Report struct {
 	TolerancePoints   int                    `json:"tolerance_points"`
 	Seeded            bool                   `json:"seeded"`
 	Citable           bool                   `json:"citable"`
+	CapHit            bool                   `json:"cap_hit,omitempty"`
 	Internal          bool                   `json:"internal"`
+	SpentAtCap        float64                `json:"spent_at_cap,omitempty"`
+}
+
+// SkippedSample is one sample the budget cap kept from running.
+type SkippedSample struct {
+	Case string `json:"case"`
+	Run  int    `json:"run"`
 }
 
 // CorpusRef pins what was measured: the checkout the cases came from.
@@ -104,13 +114,21 @@ type Stat struct {
 	N      int      `json:"n"`
 }
 
-// CostRollup is the spend the bundles report, measured or absent.
+// CostRollup is the spend the run reports: every scheduled sample, scored or
+// refused. The bundle counters stay what they were; measured_usd sums samples.
 type CostRollup struct {
-	Bundles      int     `json:"bundles"`
-	WithEstimate int     `json:"bundles_with_estimate"`
-	Incomplete   int     `json:"bundles_incomplete,omitempty"`
-	Usd          float64 `json:"measured_usd"`
-	Measured     bool    `json:"measured"`
+	Bundles          int `json:"bundles"`
+	WithEstimate     int `json:"bundles_with_estimate"`
+	Incomplete       int `json:"bundles_incomplete,omitempty"`
+	Samples          int `json:"samples"`
+	SampleEstimates  int `json:"samples_with_estimate"`
+	SampleIncomplete int `json:"samples_incomplete,omitempty"`
+	RefusedSamples   int `json:"refused_samples"`
+	// RefusedUsd is the priced part of RefusedSamples; a refusal with no
+	// est_usd is counted there and contributes nothing here.
+	Usd        float64 `json:"measured_usd"`
+	RefusedUsd float64 `json:"refused_usd"`
+	Measured   bool    `json:"measured"`
 }
 
 // Failure is one sample that produced no score. Its evidence stays in the run
@@ -173,6 +191,9 @@ const (
 	// it is the same result.
 	tolerancePoints = 5
 	round6          = 1e6
+	// floatBits is strconv's float64 width, the precision every metric in the
+	// report is rounded and formatted at.
+	floatBits = 64
 )
 
 func (r *runner) newReport() *Report {
@@ -184,7 +205,7 @@ func (r *runner) newReport() *Report {
 	if r.cfg.Loop > 1 {
 		agent.Loop = r.cfg.Loop
 	}
-	return &Report{
+	rep := &Report{
 		SchemaVersion:   "1",
 		Date:            r.cfg.Now.Format("2006-01-02"),
 		SeverityWeights: r.cfg.Weights,
@@ -201,6 +222,11 @@ func (r *runner) newReport() *Report {
 
 		TolerancePoints: tolerancePoints,
 	}
+	if r.cfg.MaxUSD > 0 {
+		budget := r.cfg.MaxUSD
+		rep.BudgetUSD = &budget
+	}
+	return rep
 }
 
 // finish turns the samples into the publication and writes it. The tool's
@@ -297,24 +323,63 @@ func (r *runner) caseSpread(id string) CaseSpread {
 	return CaseSpread{Case: id, Runs: runs, Precision: stat(precision), Recall: stat(recall), FalseDiscoveryRate: stat(fdr), Metrics: stats}
 }
 
-// cost sums the est_usd each bundle reports. Nothing here prices a token: a
-// rate the operator did not measure stays unmeasured.
+// cost sums every scheduled sample's est_usd, scored or refused: a sample
+// record refused still burned the tokens it reports, and a rollup that counted
+// only recorded bundles under-reported the run (a pilot that spent 0.242 USD
+// published 0.089). The refused share is kept apart so a reader can see what
+// the failures cost. Nothing here prices a token: spend the agent did not
+// measure stays unmeasured, never zero.
 func (r *runner) cost() CostRollup {
-	roll := CostRollup{Bundles: len(r.scores)}
-	for _, s := range r.scores {
-		est, ok, incomplete := costEstimate(filepath.Join(reviewRoot, s.slug, costJSONName))
-		if !ok {
-			continue
-		}
-		roll.Usd += est
-		roll.WithEstimate++
-		if incomplete {
-			roll.Incomplete++
-		}
+	roll := CostRollup{Bundles: len(r.scores), Samples: len(r.spend)}
+	for _, s := range r.spend {
+		roll.addSample(s)
 	}
-	roll.Usd = math.Round(roll.Usd*round6) / round6
-	roll.Measured = roll.Bundles > 0 && roll.WithEstimate == roll.Bundles && roll.Incomplete == 0
+	for _, s := range r.scores {
+		roll.addBundle(bundleSpend(filepath.Join(reviewRoot, s.slug, costJSONName)))
+	}
+	roll.Usd = roundUSD(roll.Usd)
+	roll.RefusedUsd = roundUSD(roll.RefusedUsd)
+	roll.Measured = roll.Samples > 0 && roll.SampleEstimates == roll.Samples && roll.SampleIncomplete == 0
 	return roll
+}
+
+// addSample counts one sample's spend, running total and all. Refusals are
+// counted whether or not the agent priced them: a refused sample is a fact
+// about the run, and RefusedUsd is the part of it a reader can add up.
+func (c *CostRollup) addSample(s sampleSpend) {
+	if s.refused {
+		c.RefusedSamples++
+	}
+	if !s.has {
+		return
+	}
+	c.Usd += s.usd
+	c.SampleEstimates++
+	if s.incomplete {
+		c.SampleIncomplete++
+	}
+	if s.refused {
+		c.RefusedUsd += s.usd
+	}
+}
+
+// bundleSpend reports whether one bundle's cost record is priced, and whether
+// the agent flagged it incomplete.
+func bundleSpend(path string) (bool, bool) {
+	_, ok, incomplete := costEstimate(path)
+	return ok, incomplete
+}
+
+// addBundle counts one recorded bundle's cost record, which is its own tally:
+// the sample counters are what the rollup sums, and these are what it scored.
+func (c *CostRollup) addBundle(ok, incomplete bool) {
+	if !ok {
+		return
+	}
+	c.WithEstimate++
+	if incomplete {
+		c.Incomplete++
+	}
 }
 
 func costEstimate(path string) (float64, bool, bool) {
@@ -354,6 +419,7 @@ func (r *runner) citable(rep *Report) (bool, string) {
 	if r.cfg.Loop > 1 {
 		reasons = append(reasons, "loop mode")
 	}
+	reasons = append(reasons, budgetReasons(rep)...)
 	return len(reasons) == 0, strings.Join(reasons, "; ")
 }
 
@@ -362,7 +428,7 @@ func (r *runner) loopSummaries() []LoopSummary {
 	out := make([]LoopSummary, 0, len(r.loops))
 	for i := range r.loops {
 		rec := &r.loops[i]
-		cr := &caseRun{slug: rec.slug, corpus: corpusCase{id: rec.caseID}, index: rec.run}
+		cr := &caseRun{slug: rec.slug, corpus: &corpusCase{id: rec.caseID}, index: rec.run}
 		out = append(out, summarizeLoop(cr, &rec.out))
 	}
 	return out
@@ -441,6 +507,10 @@ func (r *runner) render(w io.Writer, rep *Report) {
 		fmt.Fprintf(w, "table: %v\n", err)
 	}
 	r.renderTotals(w, rep)
+	if rep.CapHit && rep.BudgetUSD != nil {
+		fmt.Fprintf(w, "budget: cap %.6f USD hit after %.6f USD; %d sample(s) not run: %s\n",
+			*rep.BudgetUSD, rep.SpentAtCap, len(rep.Skipped), skippedList(rep.Skipped))
+	}
 	for _, f := range rep.Failures {
 		fmt.Fprintf(w, "failed: %s run %d: %s (%s)\n", f.Case, f.Run, f.Error, f.Evidence)
 	}
@@ -465,13 +535,59 @@ func (r *runner) renderTotals(w io.Writer, rep *Report) {
 			rate(totals.FalseDiscoveryRate), totals.Reported)
 	}
 	if rep.Cost.Measured {
-		fmt.Fprintf(w, "cost: measured %.6f USD over %d bundle(s)\n", rep.Cost.Usd, rep.Cost.Bundles)
+		fmt.Fprintf(w, "cost: measured %.6f USD over %d sample(s), %d bundle(s)",
+			rep.Cost.Usd, rep.Cost.Samples, rep.Cost.Bundles)
 	} else {
-		fmt.Fprintf(w, "cost: unmeasured (%d of %d bundles carry est_usd)\n", rep.Cost.WithEstimate, rep.Cost.Bundles)
+		fmt.Fprintf(w, "cost: unmeasured (%d of %d samples carry est_usd)",
+			rep.Cost.SampleEstimates, rep.Cost.Samples)
 	}
+	if rep.Cost.RefusedSamples > 0 {
+		fmt.Fprintf(w, ", %.6f USD in %d refused sample(s)", rep.Cost.RefusedUsd, rep.Cost.RefusedSamples)
+	}
+	fmt.Fprintln(w)
 	if rep.PromptsHash != "" {
 		fmt.Fprintf(w, "prompts_hash: %s, %.1fs elapsed\n", rep.PromptsHash, rep.ElapsedSeconds)
 	}
+}
+
+// skippedList names at most four unscheduled samples, then counts the rest.
+func skippedList(skipped []SkippedSample) string {
+	const shown = 4
+	parts := make([]string, 0, shown+1)
+	for _, s := range skipped[:min(len(skipped), shown)] {
+		parts = append(parts, fmt.Sprintf("%s run %d", s.Case, s.Run))
+	}
+	if len(skipped) > shown {
+		parts = append(parts, fmt.Sprintf("+%d more", len(skipped)-shown))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// roundUSD trims a spend figure to the six decimals a report publishes.
+func roundUSD(usd float64) float64 {
+	return math.Round(usd*round6) / round6
+}
+
+// budgetReasons names both ways a run can be uncitable for its budget: a
+// sample the cap kept from running, and spend that reached the cap with nothing
+// left to skip.
+func budgetReasons(rep *Report) []string {
+	var reasons []string
+	if rep.CapHit {
+		reasons = append(reasons, "budget cap hit")
+	}
+	if atBudget(rep) {
+		reasons = append(reasons, fmt.Sprintf("spend %.6f USD reached the %.6f USD budget", rep.Cost.Usd, *rep.BudgetUSD))
+	}
+	return reasons
+}
+
+// atBudget reports whether a run's known spend reached the budget cap. Known
+// spend is a lower bound, so requiring the rollup to be measured would publish
+// a run that is already at the cap with one unpriced sample; zero known spend
+// can never reach a positive cap, so the bound needs no other guard.
+func atBudget(rep *Report) bool {
+	return rep.BudgetUSD != nil && rep.Cost.Usd >= *rep.BudgetUSD
 }
 
 func (r *runner) caseWall(id string) float64 {
@@ -536,6 +652,9 @@ func (r *runner) commands() [][]string {
 	}
 	if len(c.Cases) > 0 {
 		command = append(command, "-cases", strings.Join(c.Cases, ","))
+	}
+	if c.MaxUSD > 0 {
+		command = append(command, "-max-usd", strconv.FormatFloat(c.MaxUSD, 'f', -1, floatBits))
 	}
 	if c.Internal {
 		command = append(command, "-internal")

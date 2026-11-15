@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -16,6 +17,7 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
+	corpuscore "github.com/stainless-code/verdict/internal/core/corpus"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -38,6 +40,7 @@ type Config struct {
 	Panel    []string
 	Cases    []string
 	Timeout  time.Duration
+	MaxUSD   float64
 	K        int
 	Weights  core.SeverityWeights
 	Runs     int
@@ -63,21 +66,29 @@ func (cfg *Config) validate() error {
 	if err := cfg.validateSampling(); err != nil {
 		return err
 	}
+	if err := cfg.validateRequired(); err != nil {
+		return err
+	}
+	if err := cfg.validateNumbers(); err != nil {
+		return err
+	}
+	cfg.applyDefaults()
+	return nil
+}
+
+// validateRequired refuses a run no bundle could be attributed to or produced.
+func (cfg *Config) validateRequired() error {
 	switch {
 	case strings.TrimSpace(cfg.Model) == "":
 		return jq.NewErr("-model is required: every bundle is attributed to exactly one model")
 	case strings.TrimSpace(cfg.Agent) == "":
 		return jq.NewErr("-agent is required: the command that produces a review for one prompt")
-	case cfg.Runs < 1:
-		return jq.NewErrf("-runs must be at least 1, got %d", cfg.Runs)
-	case cfg.Loop < 0:
-		return jq.NewErrf("-loop must be at least 1, got %d", cfg.Loop)
-	case cfg.Loop > loopMaxRounds:
-		return jq.NewErrf("-loop must be at most %d, got %d", loopMaxRounds, cfg.Loop)
 	}
-	if cfg.Loop == 0 {
-		cfg.Loop = 1
-	}
+	return nil
+}
+
+// applyDefaults fills what the operator left out; nothing here can fail.
+func (cfg *Config) applyDefaults() {
 	if cfg.Repo == "" {
 		cfg.Repo = benchRepo
 	}
@@ -91,6 +102,25 @@ func (cfg *Config) validate() error {
 		cfg.Now = time.Now()
 	}
 	cfg.Now = cfg.Now.UTC()
+}
+
+// validateNumbers bounds the counts and budgets a run spends.
+func (cfg *Config) validateNumbers() error {
+	switch {
+	case cfg.Runs < 1:
+		return jq.NewErrf("-runs must be at least 1, got %d", cfg.Runs)
+	case cfg.Loop < 0:
+		return jq.NewErrf("-loop must be at least 1, got %d", cfg.Loop)
+	case cfg.Loop > loopMaxRounds:
+		return jq.NewErrf("-loop must be at most %d, got %d", loopMaxRounds, cfg.Loop)
+	case math.IsNaN(cfg.MaxUSD) || math.IsInf(cfg.MaxUSD, 0):
+		return jq.NewErrf("-max-usd must be a finite number or zero (no cap), got %v", cfg.MaxUSD)
+	case cfg.MaxUSD < 0:
+		return jq.NewErrf("-max-usd must be zero (no cap) or positive, got %v", cfg.MaxUSD)
+	}
+	if cfg.Loop == 0 {
+		cfg.Loop = 1
+	}
 	return nil
 }
 
@@ -105,6 +135,7 @@ type runner struct {
 	commit  string
 	cases   []corpusCase
 	scores  []*score
+	spend   []sampleSpend
 	loops   []loopRecord
 	total   int
 	dirty   bool
@@ -266,24 +297,19 @@ func slug(s string) string {
 }
 
 // corpusCase is one checked-in manifest plus the bytes every artifact copies
-// verbatim.
+// verbatim. A real case also carries the commit pair its bundle stamps, and an
+// empty pair is what tells a seeded case apart: nothing else sets it.
 type corpusCase struct {
 	id       string
+	baseSHA  string
+	headSHA  string
 	manifest []byte
 	diff     []byte
 }
 
-type manifest struct {
-	SchemaVersion string            `json:"schema_version"`
-	ID            string            `json:"id"`
-	Kind          string            `json:"kind"`
-	Bugs          []json.RawMessage `json:"bugs"`
-	LineTolerance int               `json:"line_tolerance"`
-}
-
-// loadCases reads the corpus and validates what the scoring path needs: a v1
-// manifest, an id matching its directory, a diff, and at least one
-// ground-truth bug.
+// loadCases reads the corpus and validates what the scoring path needs: each
+// manifest through the corpus package's own validator, an id matching its
+// directory, and a diff the ground truth sits on.
 func loadCases(dir string, only []string) ([]corpusCase, int, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -335,30 +361,37 @@ func readSelected(dir string, known, only []string) ([]corpusCase, error) {
 	return cases, nil
 }
 
+// readCase reads one case manifest and the diff it grades against. The manifest
+// goes through the corpus package's validator — the same rules the corpus
+// package's own tests enforce — before anything is scheduled, so a malformed
+// case is refused instead of spending a sample and failing at scoring.
 func readCase(dir, id string) (corpusCase, error) {
-	raw, err := os.ReadFile(filepath.Join(dir, id, caseManifestName))
+	path := filepath.Join(dir, id, caseManifestName)
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		return corpusCase{}, jq.NewErrf("case %s: %s", id, err)
 	}
-	var m manifest
-	if err := json.Unmarshal(raw, &m); err != nil {
-		return corpusCase{}, jq.NewErrf("case %s: %s", id, err)
+	c, ref := corpuscore.LoadFile(path)
+	if ref != nil {
+		return corpusCase{}, jq.NewErr(ref.Message)
 	}
-	switch {
-	case m.SchemaVersion != "1":
-		return corpusCase{}, jq.NewErrf("case %s: schema_version %q, want \"1\"", id, m.SchemaVersion)
-	case m.ID != id:
-		return corpusCase{}, jq.NewErrf("case %s: manifest id %q does not match its directory", id, m.ID)
-	case m.Kind == "control" && (m.Bugs == nil || len(m.Bugs) != 0):
-		return corpusCase{}, jq.NewErrf("case %s: control requires bugs: []", id)
-	case len(m.Bugs) == 0 && m.Kind != "control":
-		return corpusCase{}, jq.NewErrf("case %s: manifest carries no ground-truth bug", id)
+	if c.ID != id {
+		return corpusCase{}, jq.NewErrf("case %s: manifest id %q does not match its directory", id, c.ID)
 	}
 	diff, err := os.ReadFile(filepath.Join(dir, id, fullDiffName))
 	if err != nil {
 		return corpusCase{}, jq.NewErrf("case %s: %s", id, err)
 	}
-	return corpusCase{id: id, manifest: raw, diff: diff}, nil
+	if ref := corpuscore.CheckDiff(raw, diff, path); ref != nil {
+		return corpusCase{}, jq.NewErr(ref.Message)
+	}
+	return corpusCase{
+		manifest: raw,
+		diff:     diff,
+		id:       id,
+		baseSHA:  c.Provenance.BaseSHA,
+		headSHA:  c.Provenance.HeadSHA,
+	}, nil
 }
 
 func missingCases(only, known []string) []string {
@@ -406,11 +439,7 @@ func (r *runner) run(ctx context.Context) (*Report, error) {
 		return nil, err
 	}
 	rep := r.newReport()
-	for _, c := range r.cases {
-		for index := 1; index <= r.cfg.Runs; index++ {
-			r.sample(ctx, rep, c, index, prefix, nonce)
-		}
-	}
+	r.schedule(ctx, rep, prefix, nonce)
 	if err := r.finish(ctx, rep); err != nil {
 		return rep, err
 	}
@@ -418,6 +447,66 @@ func (r *runner) run(ctx context.Context) (*Report, error) {
 		r.render(r.cfg.Summary, rep)
 	}
 	return rep, failure(rep)
+}
+
+// schedule runs the corpus sample by sample until the cap stops it.
+func (r *runner) schedule(ctx context.Context, rep *Report, prefix, nonce string) {
+	for i := range r.cases {
+		if rep.CapHit {
+			r.skipCase(rep, r.cases[i].id)
+			continue
+		}
+		r.scheduleCase(ctx, rep, i, prefix, nonce)
+	}
+}
+
+// scheduleCase runs one case's samples, stopping where the cap is reached.
+func (r *runner) scheduleCase(ctx context.Context, rep *Report, i int, prefix, nonce string) {
+	for index := 1; index <= r.cfg.Runs; index++ {
+		if r.capReached() {
+			r.skipFrom(rep, i, index)
+			return
+		}
+		r.sample(ctx, rep, &r.cases[i], index, prefix, nonce)
+	}
+}
+
+// capReached reports whether measured spend has reached -max-usd. The cap
+// stops scheduling, never a sample already running: an agent in flight cannot
+// be un-spent, and cutting it off would leave a half-run sample in the report.
+func (r *runner) capReached() bool {
+	return r.cfg.MaxUSD > 0 && r.spentUSD() >= r.cfg.MaxUSD
+}
+
+// spentUSD is the measured spend of the samples that have finished.
+func (r *runner) spentUSD() float64 {
+	total := 0.0
+	for _, s := range r.spend {
+		total += s.usd
+	}
+	return total
+}
+
+// skipFrom records the cap hit and this case's remaining samples. Later cases
+// are not recorded here: schedule sees CapHit on its next pass and records
+// each of their runs once, which is the only place a case it did not reach is
+// named.
+func (r *runner) skipFrom(rep *Report, caseIndex, run int) {
+	rep.CapHit = true
+	rep.SpentAtCap = roundUSD(r.spentUSD())
+	r.skipRuns(rep, r.cases[caseIndex].id, run, r.cfg.Runs)
+}
+
+// skipCase records every run of one case as not scheduled.
+func (r *runner) skipCase(rep *Report, id string) {
+	r.skipRuns(rep, id, 1, r.cfg.Runs)
+}
+
+// skipRuns records runs first..last of one case as not scheduled.
+func (r *runner) skipRuns(rep *Report, id string, first, last int) {
+	for run := first; run <= last; run++ {
+		rep.Skipped = append(rep.Skipped, SkippedSample{Case: id, Run: run})
+	}
 }
 
 // failure is the run's exit error: the JSON is already written, so a failure
@@ -431,7 +520,7 @@ func failure(rep *Report) error {
 
 // caseRun is one sample's artifacts and its measurement.
 type caseRun struct {
-	corpus    corpusCase
+	corpus    *corpusCase
 	dir       string
 	slug      string
 	promptSHA string
@@ -440,23 +529,72 @@ type caseRun struct {
 	index     int
 }
 
-func (r *runner) paths(c corpusCase, index int) *caseRun {
+func (r *runner) paths(c *corpusCase, index int) *caseRun {
 	s := "corpus-" + c.id + "-" + slug(r.cfg.Model) + "-run" + strconv.Itoa(index)
 	return &caseRun{corpus: c, index: index, slug: s, dir: filepath.Join("runs", s)}
 }
 
 // sample produces one review, scores it with the shipped binary, and records
 // the outcome. A failure keeps the sample's evidence and moves on.
-func (r *runner) sample(ctx context.Context, rep *Report, c corpusCase, index int, prefix, nonce string) {
+func (r *runner) sample(ctx context.Context, rep *Report, c *corpusCase, index int, prefix, nonce string) {
 	cr := r.paths(c, index)
 	rep.Samples++
 	err := r.measure(ctx, cr, prefix, nonce)
+	r.spend = append(r.spend, r.sampleSpend(cr, err != nil))
 	if cr.promptSHA != "" {
 		rep.PromptSHA[c.id] = cr.promptSHA
 	}
 	if err != nil {
 		r.fail(rep, cr, err)
 	}
+}
+
+// sampleSpend is one scheduled sample's measured spend: its own est_usd in
+// single-shot mode, every repair round's in loop mode.
+type sampleSpend struct {
+	usd        float64
+	refused    bool
+	has        bool
+	incomplete bool
+}
+
+// sampleSpend reads one sample's measured spend from its run directory. A
+// refused sample has no bundle, but the agent still spent: its cost.json is
+// what the rollup has to carry, so this reads the run dir, never the bundle.
+func (r *runner) sampleSpend(cr *caseRun, refused bool) sampleSpend {
+	out := sampleSpend{refused: refused}
+	for _, path := range r.spendPaths(cr) {
+		usd, has, incomplete := costEstimate(path)
+		if !has {
+			// A round with no estimate is unknown spend, not zero: the
+			// sample's total is a lower bound, so it cannot read complete.
+			out.incomplete = true
+			continue
+		}
+		out.usd += usd
+		out.has = true
+		out.incomplete = out.incomplete || incomplete
+	}
+	return out
+}
+
+// spendPaths lists the cost records one sample wrote: one file in single-shot
+// mode, one per repair round in loop mode.
+func (r *runner) spendPaths(cr *caseRun) []string {
+	if r.cfg.Loop <= 1 {
+		return []string{filepath.Join(cr.dir, costJSONName)}
+	}
+	entries, err := os.ReadDir(cr.dir)
+	if err != nil {
+		return nil
+	}
+	paths := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() && strings.HasPrefix(e.Name(), "round-") {
+			paths = append(paths, filepath.Join(cr.dir, e.Name(), costJSONName))
+		}
+	}
+	return paths
 }
 
 // measure runs the agent, then the transfer of its output into a scored
@@ -468,7 +606,7 @@ func (r *runner) measure(ctx context.Context, cr *caseRun, prefix, nonce string)
 	if err := os.MkdirAll(cr.dir, dirPerm); err != nil {
 		return jq.NewErrf("sample dir: %s", err)
 	}
-	source := caseSource(cr.corpus.id, cr.corpus.diff)
+	source := caseSource(cr.corpus)
 	derived, err := toToolFreePrefix(prefix)
 	if err != nil {
 		return err
@@ -489,7 +627,7 @@ func (r *runner) measureLoop(ctx context.Context, cr *caseRun, prefix, nonce str
 	if err := os.MkdirAll(cr.dir, dirPerm); err != nil {
 		return jq.NewErrf("sample dir: %s", err)
 	}
-	source := caseSource(cr.corpus.id, cr.corpus.diff)
+	source := caseSource(cr.corpus)
 	lc := loopConfig(r.cfg.Timeout, r.cfg.Loop)
 	out, err := r.runLoop(ctx, cr, prefix, nonce, lc, source)
 	if err != nil {

@@ -2,6 +2,8 @@ package corpuscore
 
 import (
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,27 +16,81 @@ import (
 
 // TestCheckedInCorpusCases validates every checked-in manifest and its fake
 // agent outputs: ids match directories, anchors sit inside the diff hunks,
-// and the review text stays unique per bundle (the sig join key).
+// and the review text stays unique per bundle (the sig join key). A real case
+// ships the reviewed diff and no fixtures, so the checks that need a fake
+// output are the seeded cases' own.
+// seededCaseIDs are the ten hermetic fixtures the bench-corpus eval measures
+// and its goldens pin. A case that leaves the corpus, or stops being seeded,
+// stops being measured without failing anything else, so the check is
+// membership in a literal list rather than a count band.
+var seededCaseIDs = []string{
+	"auth-bypass",
+	"control-comment",
+	"control-rename",
+	"missing-error-check",
+	"nil-deref",
+	"off-by-one",
+	"panic-index",
+	"path-traversal",
+	"race-close",
+	"sql-injection",
+}
+
+// minRealCases is the floor the pilot set. A real case is the merged diff and
+// ground truth a curator confirmed by hand, so the floor is the four the pilot
+// shipped; more are welcome and none of them is pinned by name.
+const minRealCases = 4
+
 func TestCheckedInCorpusCases(t *testing.T) {
 	root := filepath.Join("..", "..", "..", "bench", "corpus")
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		t.Fatalf("read corpus root: %v", err)
 	}
-	seen := 0
+	present := make(map[string]*core.CorpusCase, len(entries))
 	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
+		if entry.IsDir() {
+			present[entry.Name()] = checkCase(t, root, entry.Name())
 		}
-		seen++
-		checkCase(t, root, entry.Name())
 	}
-	if seen < 6 || seen > 10 {
-		t.Errorf("checked-in corpus has %d cases, want 6-10", seen)
+	checkSeededCases(t, present)
+}
+
+// checkSeededCases proves every hermetic fixture is still there and still
+// hermetic, and that the real corpus has not shrunk below the pilot's floor.
+func checkSeededCases(t *testing.T, present map[string]*core.CorpusCase) {
+	t.Helper()
+	for _, id := range seededCaseIDs {
+		checkStillSeeded(t, id, present[id])
+	}
+	if n := countReal(present); n < minRealCases {
+		t.Errorf("corpus has %d real cases, want at least %d", n, minRealCases)
 	}
 }
 
-func checkCase(t *testing.T, root, name string) {
+// checkStillSeeded reports a named fixture that is missing or no longer seeded.
+func checkStillSeeded(t *testing.T, id string, c *core.CorpusCase) {
+	t.Helper()
+	switch {
+	case c == nil:
+		t.Errorf("seeded case %q is gone: the bench-corpus eval measures it and its goldens pin its fixtures", id)
+	case c.Provenance.Kind != kindSeeded:
+		t.Errorf("seeded case %q has provenance.kind %q, want %q", id, c.Provenance.Kind, kindSeeded)
+	}
+}
+
+// countReal counts the real-origin cases, controls included.
+func countReal(present map[string]*core.CorpusCase) int {
+	n := 0
+	for _, c := range present {
+		if c.Provenance.Kind == kindReal {
+			n++
+		}
+	}
+	return n
+}
+
+func checkCase(t *testing.T, root, name string) *core.CorpusCase {
 	t.Helper()
 	dir := filepath.Join(root, name)
 	c, ref := loadCase(t, filepath.Join(dir, "case.json"))
@@ -48,20 +104,70 @@ func checkCase(t *testing.T, root, name string) {
 	if err != nil {
 		t.Fatalf("%s: read full.diff: %v", name, err)
 	}
+	checkDiffAgainstCase(t, name, dir, diff)
 	index := hunks.Parse(string(diff))
-	agents, err := os.ReadDir(filepath.Join(dir, "agents"))
+	checkHunksTSV(t, name, dir, c, index)
+	checkTolerance(t, name, c, index)
+	checkFixtures(t, name, dir, c, index)
+	return c
+}
+
+// checkDiffAgainstCase runs the shipped guard over the checked-in pair: a
+// keyword the case's own diff spells, or a ground truth on a line the diff
+// does not add, is a free pass or an unfair one, so the corpus test refuses it
+// before a run does.
+func checkDiffAgainstCase(t *testing.T, name, dir string, diff []byte) {
+	t.Helper()
+	path := filepath.Join(dir, "case.json")
+	raw, err := os.ReadFile(path)
 	if err != nil {
+		t.Fatalf("%s: read case.json: %v", name, err)
+	}
+	if ref := CheckDiff(raw, diff, path); ref != nil {
+		t.Errorf("%s: %v", name, ref)
+	}
+}
+
+// checkHunksTSV keeps a real case's checked-in index from drifting. The
+// runner rebuilds the index from full.diff for every bundle it records, so
+// this copy is never read at run time; it is here because a reader, and the
+// goldens that compare a bundle's hunks.tsv, take the file as the diff's
+// index, and a stale one would describe a diff the case no longer has.
+func checkHunksTSV(t *testing.T, name, dir string, c *core.CorpusCase, index []hunks.Hunk) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(dir, "hunks.tsv"))
+	if errors.Is(err, fs.ErrNotExist) {
+		if c.Provenance.Kind == kindReal {
+			t.Errorf("%s: real case ships no hunks.tsv", name)
+		}
+		return
+	}
+	if err != nil {
+		t.Fatalf("%s: read hunks.tsv: %v", name, err)
+	}
+	if got, want := string(raw), hunks.Format(index); got != want {
+		t.Errorf("%s: hunks.tsv is not the index of full.diff, want:\n%s", name, want)
+	}
+}
+
+// checkFixtures validates the fake agent outputs a seeded case ships: a real
+// case ships none, so its entries are the live run's own.
+func checkFixtures(t *testing.T, name, dir string, c *core.CorpusCase, index []hunks.Hunk) {
+	t.Helper()
+	agents, err := os.ReadDir(filepath.Join(dir, "agents"))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("%s: read agents: %v", name, err)
 	}
-	if len(agents) == 0 {
+	if len(agents) == 0 && c.Provenance.Kind != kindReal {
 		t.Errorf("%s: no fake agent outputs", name)
 	}
 	var entries []any
 	for _, agent := range agents {
 		entries = append(entries, checkAgent(t, filepath.Join(dir, "agents", agent.Name()), index, c.Kind == "control")...)
 	}
-	checkTolerance(t, name, c, index)
-	checkNamedBugs(t, name, c, entries)
+	if len(entries) > 0 {
+		checkNamedBugs(t, name, c, entries)
+	}
 }
 
 // checkNamedBugs holds the corpus to its own rule: a fake output must name
@@ -478,23 +584,33 @@ func TestRate(t *testing.T) {
 	}
 }
 
-// TestLoadRejects proves the semantic gates the schema cannot express.
+// TestLoadRejects proves the semantic gates the schema cannot express. Each
+// row's want is the field the refusal must name, because a row that is also
+// invalid for some other reason still passes a bare "was it refused" check: the
+// SHA rows below used to omit fix_commit, so deleting the SHA rule outright
+// left them refused over the missing commit and the table never noticed.
 //
 //nolint:revive // the table is the rejection matrix
 func TestLoadRejects(t *testing.T) {
 	tests := []struct {
 		name string
+		want string
 		body string
 	}{
-		{"missing schema version", `{"id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
-		{"real without fix commit", `{"schema_version":"1","id":"x","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
-		{"seeded without injection", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
-		{"no bugs", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[]}`},
-		{"unknown field", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}],"typo":true}`},
-		{"blank keyword", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical","keywords":[" "]}]}`},
-		{"also_lines below line 1", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":10,"kind":"k","severity":"critical","also_lines":[0]}]}`},
-		{"also_lines repeats the primary line", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":10,"kind":"k","severity":"critical","also_lines":[10]}]}`},
-		{"also_lines repeats an entry", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":10,"kind":"k","severity":"critical","also_lines":[8,8]}]}`},
+		{"missing schema version", "", `{"id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
+		{"real without fix commit", "provenance.fix_commit", `{"schema_version":"1","id":"x","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1,"base_sha":"2799fd43bd5cf6996cc5f1af206175b543c640e1","head_sha":"5e0af0c601e231050df9e8ef1752fb2eaf63f2a8"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
+		{"real without a base sha", "provenance.base_sha", `{"schema_version":"1","id":"x","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1,"head_sha":"5e0af0c601e231050df9e8ef1752fb2eaf63f2a8","fix_commit":"37ad84c48d434b095729ebc7cb6df701e80a6ed4"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
+		{"real without a head sha", "provenance.head_sha", `{"schema_version":"1","id":"x","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1,"base_sha":"2799fd43bd5cf6996cc5f1af206175b543c640e1","fix_commit":"37ad84c48d434b095729ebc7cb6df701e80a6ed4"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
+		{"real with an abbreviated base sha", "provenance.base_sha", `{"schema_version":"1","id":"x","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1,"base_sha":"2799fd43bd5cf6996cc5f1af206175b543c640e","head_sha":"5e0af0c601e231050df9e8ef1752fb2eaf63f2a8","fix_commit":"37ad84c48d434b095729ebc7cb6df701e80a6ed4"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
+		{"real with an uppercase head sha", "provenance.head_sha", `{"schema_version":"1","id":"x","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1,"base_sha":"2799fd43bd5cf6996cc5f1af206175b543c640e1","head_sha":"5E0AF0C601E231050DF9E8EF1752FB2EAF63F2A8","fix_commit":"37ad84c48d434b095729ebc7cb6df701e80a6ed4"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
+		{"real control without a base sha", "provenance.base_sha", `{"schema_version":"1","id":"x","kind":"control","provenance":{"kind":"real","repo":"o/r","pr":1,"head_sha":"5e0af0c601e231050df9e8ef1752fb2eaf63f2a8"},"bugs":[]}`},
+		{"seeded without injection", "", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
+		{"no bugs", "", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[]}`},
+		{"unknown field", "", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}],"typo":true}`},
+		{"blank keyword", "", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical","keywords":[" "]}]}`},
+		{"also_lines below line 1", "", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":10,"kind":"k","severity":"critical","also_lines":[0]}]}`},
+		{"also_lines repeats the primary line", "", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":10,"kind":"k","severity":"critical","also_lines":[10]}]}`},
+		{"also_lines repeats an entry", "", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":10,"kind":"k","severity":"critical","also_lines":[8,8]}]}`},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -502,8 +618,12 @@ func TestLoadRejects(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(dir, "corpus.json"), []byte(tc.body), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if _, ref := Load(dir); ref == nil || ref.Code != codeCorpusInvalid {
+			_, ref := Load(dir)
+			if ref == nil || ref.Code != codeCorpusInvalid {
 				t.Fatalf("Load = %v, want corpus-invalid", ref)
+			}
+			if tc.want != "" && !strings.Contains(ref.Message, tc.want) {
+				t.Fatalf("refusal = %q, want it to name %s", ref.Message, tc.want)
 			}
 		})
 	}

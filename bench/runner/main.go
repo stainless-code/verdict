@@ -6,6 +6,7 @@
 //
 //	go run ./bench/runner -model <id> -agent '<command>' [-runs 3] [-panel p]
 //	    [-cases a,b] [-internal] [-out path] [-workdir dir] [-timeout 15m]
+//	    [-max-usd n]
 //
 // The agent command runs under sh(1) with the run dir as its working directory;
 // $VERDICT_BENCH_PROMPT names the prompt to read, $VERDICT_BENCH_OUT the
@@ -76,6 +77,7 @@ func parseFlags(args []string) (Config, error) {
 	fs.IntVar(&cfg.K, "k", 1, "first k samples used for any-of-k recall; 1 <= k <= repeats")
 	fs.IntVar(&cfg.Loop, "loop", 1, "repair rounds per sample (1 keeps the single-shot path)")
 	fs.DurationVar(&cfg.Timeout, "timeout", defaultTimeout, "budget for one sample")
+	fs.Float64Var(&cfg.MaxUSD, "max-usd", 0, "stop scheduling samples once measured spend reaches this many USD (0: no cap)")
 	if err := fs.Parse(args); err != nil {
 		return Config{}, jq.NewErrf("flags: %s", err)
 	}

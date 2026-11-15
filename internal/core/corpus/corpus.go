@@ -70,6 +70,8 @@ const (
 	kindControl = "control"
 	kindSeeded  = "seeded"
 	kindReal    = "real"
+	// decimalBase is the radix atoi folds a hunk header's digits in.
+	decimalBase = 10
 )
 
 // IsDir reports whether dir names a marked corpus bundle: the last
@@ -78,10 +80,14 @@ func IsDir(dir string) bool {
 	return strings.HasPrefix(filepath.Base(dir), "corpus-")
 }
 
-// Load reads and validates one bundle's corpus.json. Every failure is a
-// typed corpus-invalid refusal naming the file and the reason.
+// Load reads and validates one bundle's corpus.json.
 func Load(dir string) (*core.CorpusCase, *core.RefusalError) {
-	path := dir + manifestName
+	return LoadFile(dir + manifestName)
+}
+
+// LoadFile reads and validates one corpus case manifest at path. Every failure
+// is a typed corpus-invalid refusal naming the file and the reason.
+func LoadFile(path string) (*core.CorpusCase, *core.RefusalError) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, invalid(path, "unreadable")
@@ -161,12 +167,50 @@ func validateProvenance(c *core.CorpusCase, path string) *core.RefusalError {
 			return invalid(path, "seeded cases need provenance.injected (what was injected)")
 		}
 	case kindReal:
-		if strings.TrimSpace(c.Provenance.Repo) == "" || c.Provenance.PR == nil ||
-			strings.TrimSpace(c.Provenance.FixCommit) == "" {
-			return invalid(path, "real cases need provenance.repo, provenance.pr, and provenance.fix_commit")
+		if ref := validateRealProvenance(c, path); ref != nil {
+			return ref
 		}
 	}
 	return nil
+}
+
+// validateRealProvenance requires the origin every real case names: the
+// repository, the PR, and the two commits its diff spans, which are the commits
+// a bundle stamps and a reader can check the diff against. The later fix
+// commit is required only where a defect was fixed: a clean control is a merged
+// PR nothing had to repair, so it has none to name.
+func validateRealProvenance(c *core.CorpusCase, path string) *core.RefusalError {
+	p := c.Provenance
+	if strings.TrimSpace(p.Repo) == "" || p.PR == nil {
+		return invalid(path, "real cases need provenance.repo and provenance.pr")
+	}
+	if !commitID(p.BaseSHA) {
+		return invalid(path, "provenance.base_sha "+strconv.Quote(p.BaseSHA)+" is not a 40-character lowercase hex commit id")
+	}
+	if !commitID(p.HeadSHA) {
+		return invalid(path, "provenance.head_sha "+strconv.Quote(p.HeadSHA)+" is not a 40-character lowercase hex commit id")
+	}
+	if c.Kind != kindControl && strings.TrimSpace(p.FixCommit) == "" {
+		return invalid(path, "real bug cases need provenance.fix_commit (the commit that fixed the defect)")
+	}
+	return nil
+}
+
+// commitIDLen is the length of a full lowercase hex git commit id.
+const commitIDLen = 40
+
+// commitID reports whether s is a 40-character lowercase hex commit id, the
+// shape a bundle's base_sha and head_sha take.
+func commitID(s string) bool {
+	if len(s) != commitIDLen {
+		return false
+	}
+	for _, r := range s {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 // validateBugs enforces at least one well-formed, unique ground-truth bug.
@@ -230,6 +274,197 @@ func validateKeywords(keywords []string, n int, path string) *core.RefusalError 
 		}
 	}
 	return nil
+}
+
+// CheckDiff refuses a real case whose ground truth its own diff contradicts: a
+// keyword the diff itself spells, or a bug line the PR did not add. Both are
+// free passes for a tool-free reviewer. A vocabulary lifted from the patch
+// grades "StopOnNthArg is a new field" as a defect report when it names the
+// change; a ground truth on a context line is code the diff carries without
+// marking, so a reviewer who reads only the added lines has no fair chance at
+// it. Seeded cases are synthetic (their diff is written for the bug) and
+// controls carry no bugs, so the rule binds real cases only.
+func CheckDiff(raw, diff []byte, path string) *core.RefusalError {
+	var c core.CorpusCase
+	if err := json.Unmarshal(raw, &c); err != nil {
+		return invalid(path, "not a corpus case manifest: "+err.Error())
+	}
+	if c.Provenance.Kind != kindReal {
+		return nil
+	}
+	if ref := unusableKeyword(&c, diff, path); ref != nil {
+		return ref
+	}
+	return unaddedAnchor(&c, diff, path)
+}
+
+// unusableKeyword names the first keyword the diff spells, if any.
+func unusableKeyword(c *core.CorpusCase, diff []byte, path string) *core.RefusalError {
+	for i := range c.Bugs {
+		for _, keyword := range c.Bugs[i].Keywords {
+			if keywordInDiff(diff, keyword) {
+				return invalid(path, fmt.Sprintf(
+					"bug %d keyword %q is spelled by the case's own full.diff; "+
+						"name the defect in words instead of reusing the diff's identifiers", i+1, keyword))
+			}
+		}
+	}
+	return nil
+}
+
+// unaddedAnchor names the first anchor the diff does not add. A bug's window
+// is its line and every also_line: a context line in it is as unfair as a
+// context primary anchor, because a finding there is graded as a hit.
+func unaddedAnchor(c *core.CorpusCase, diff []byte, path string) *core.RefusalError {
+	added := addedLines(diff)
+	for i := range c.Bugs {
+		b := &c.Bugs[i]
+		if line, ok := firstUnadded(added[b.Path], b); !ok {
+			return invalid(path, fmt.Sprintf(
+				"bug %d anchors %s:%d, a line this diff does not add; put the ground truth on the line "+
+					"the PR wrote, or the review is scored on code the diff only carries as context",
+				i+1, b.Path, line))
+		}
+	}
+	return nil
+}
+
+// firstUnadded reports whether every anchor of one bug is added, naming the
+// first that is not.
+func firstUnadded(added map[int]bool, b *core.CorpusBug) (int, bool) {
+	if !added[b.Line] {
+		return b.Line, false
+	}
+	for _, line := range b.AlsoLines {
+		if !added[line] {
+			return line, false
+		}
+	}
+	return 0, true
+}
+
+// addedLines indexes the new-side lines each path's hunks add.
+func addedLines(diff []byte) map[string]map[int]bool {
+	scan := &addScan{added: map[string]map[int]bool{}}
+	for line := range strings.SplitSeq(string(diff), "\n") {
+		scan.visit(line)
+	}
+	return scan.added
+}
+
+// addScan walks one unified diff, marking the new-side lines its hunks add.
+type addScan struct {
+	added   map[string]map[int]bool
+	path    string
+	newLine int
+}
+
+// visit reads one diff line: a header moves the path or the counter, an
+// addition marks its line, and context advances to the next new-side line.
+func (s *addScan) visit(line string) {
+	switch {
+	case strings.HasPrefix(line, "+++ "):
+		s.path = diffPath(line)
+	case strings.HasPrefix(line, "@@ "):
+		s.newLine, _ = hunkStart(line)
+	case s.path == "" || s.newLine == 0, strings.HasPrefix(line, "-"):
+	case strings.HasPrefix(line, "+"):
+		s.mark(s.newLine)
+		s.newLine++
+	case strings.HasPrefix(line, `\`):
+		// "\ No newline at end of file" annotates the line above it and is
+		// not body text on either side, so the new-side counter must not
+		// move: across a "-old / marker / +new" replacement the marker would
+		// otherwise push every following added line one too high.
+	default:
+		s.newLine++
+	}
+}
+
+// mark records one new-side line as added.
+func (s *addScan) mark(n int) {
+	if s.added[s.path] == nil {
+		s.added[s.path] = map[int]bool{}
+	}
+	s.added[s.path][n] = true
+}
+
+// diffPath reads the new-side path out of a "+++ " header, "" for /dev/null.
+func diffPath(line string) string {
+	path := strings.TrimPrefix(strings.TrimPrefix(line, "+++ "), "b/")
+	if path == "/dev/null" {
+		return ""
+	}
+	return path
+}
+
+// hunkStart reads a hunk header's new-side start and count: "@@ -a,b +c,d @@".
+func hunkStart(line string) (start, count int) {
+	_, rest, ok := strings.Cut(line, "+")
+	if !ok {
+		return 0, 0
+	}
+	fields := strings.Fields(rest)
+	if len(fields) == 0 {
+		return 0, 0
+	}
+	before, after, hasCount := strings.Cut(fields[0], ",")
+	start = atoi(before)
+	if !hasCount {
+		return start, 1
+	}
+	return start, atoi(after)
+}
+
+// atoi is the digits-only parse a hunk header needs; a malformed field reads 0,
+// which no added line can occupy.
+func atoi(s string) int {
+	n := 0
+	for i := range len(s) {
+		if s[i] < '0' || s[i] > '9' {
+			return 0
+		}
+		n = n*decimalBase + int(s[i]-'0')
+	}
+	return n
+}
+
+// keywordInDiff reports whether one keyword occurs in the diff as a whole
+// identifier: no identifier byte may continue it on either side, so "help"
+// stays clear of "helpName" while "cmd.name" still finds "cmd.Name".
+func keywordInDiff(diff []byte, keyword string) bool {
+	return boundedOccurrence(strings.ToLower(string(diff)), strings.ToLower(strings.TrimSpace(keyword)))
+}
+
+// boundedOccurrence scans haystack for needle at an identifier boundary.
+func boundedOccurrence(haystack, needle string) bool {
+	if needle == "" {
+		return false
+	}
+	for from := 0; from <= len(haystack)-len(needle); {
+		i := strings.Index(haystack[from:], needle)
+		if i < 0 {
+			return false
+		}
+		at := from + i
+		if boundedAt(haystack, at, len(needle)) {
+			return true
+		}
+		from = at + 1
+	}
+	return false
+}
+
+// boundedAt reports whether the span at..at+n stands alone in s.
+func boundedAt(s string, at, n int) bool {
+	end := at + n
+	return (at == 0 || !identByte(s[at-1])) && (end == len(s) || !identByte(s[end]))
+}
+
+// identByte is a byte that could continue a Go identifier: a letter, a digit,
+// the underscore, and the dot that joins a selector.
+func identByte(b byte) bool {
+	return 'a' <= b && b <= 'z' || 'A' <= b && b <= 'Z' || '0' <= b && b <= '9' || b == '_' || b == '.'
 }
 
 // Tolerance reads the manifest's line window (default 1).

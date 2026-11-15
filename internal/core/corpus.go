@@ -16,13 +16,15 @@ type CorpusCase struct {
 }
 
 // CorpusProvenance records where a case came from: the injected defect for
-// seeded cases, or the repository, PR, and later bug-fix commit for real
-// ones.
+// seeded cases, or the repository, PR, reviewed base and head, and later
+// bug-fix commit for real ones.
 type CorpusProvenance struct {
 	Kind      string `enum:"seeded|real"          json:"kind"`
 	Injected  string `json:"injected,omitempty"`
 	Repo      string `json:"repo,omitempty"`
 	PR        *int   `json:"pr,omitempty"`
+	BaseSHA   string `json:"base_sha,omitempty"`
+	HeadSHA   string `json:"head_sha,omitempty"`
 	FixCommit string `json:"fix_commit,omitempty"`
 	Source    string `json:"source,omitempty"`
 	Note      string `json:"note,omitempty"`

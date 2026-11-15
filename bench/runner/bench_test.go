@@ -6,7 +6,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
+	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -16,6 +19,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/hunks"
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // restoreWD keeps a test's later paths valid after Run moves the process into
@@ -135,9 +139,9 @@ func TestAssemblePromptFencesTheMetaAndDiffInOrder(t *testing.T) {
 
 // TestCaseSourceIsDeterministicAndSynthetic pins the synthesized provenance.
 func TestCaseSourceIsDeterministicAndSynthetic(t *testing.T) {
-	first := caseSource("off-by-one", []byte("diff\n"))
-	again := caseSource("off-by-one", []byte("diff\n"))
-	other := caseSource("other", []byte("diff\n"))
+	first := caseSource(&corpusCase{id: "off-by-one", diff: []byte("diff\n")})
+	again := caseSource(&corpusCase{id: "off-by-one", diff: []byte("diff\n")})
+	other := caseSource(&corpusCase{id: "other", diff: []byte("diff\n")})
 	if !bytes.Equal(first, again) {
 		t.Errorf("caseSource is not deterministic: %q then %q", first, again)
 	}
@@ -153,6 +157,305 @@ func TestCaseSourceIsDeterministicAndSynthetic(t *testing.T) {
 	}
 	if len(meta.HeadSHA) != 40 || len(meta.BaseSHA) != 40 {
 		t.Errorf("shas are not 40 hex chars: head=%q base=%q", meta.HeadSHA, meta.BaseSHA)
+	}
+}
+
+// TestCaseSourceStampsTheReviewedPair pins a real case's stamp: the commits the
+// manifest names, not hashes of the case bytes, so a bundle's base_sha lands on
+// the repository the diff came from.
+func TestCaseSourceStampsTheReviewedPair(t *testing.T) {
+	got := string(caseSource(&corpusCase{
+		id:      "urfave-cli-2319-required-flags-help-name",
+		diff:    []byte("diff --git a/command.go b/command.go\n"),
+		baseSHA: "b79d76894ba609be305dbb458a95f1bad6ef7f2f",
+		headSHA: "5af95006c1cb31cdeb4d9c90ef3303af10950eb6",
+	}))
+	want := "{\"head_sha\":\"5af95006c1cb31cdeb4d9c90ef3303af10950eb6\"," +
+		"\"base_sha\":\"b79d76894ba609be305dbb458a95f1bad6ef7f2f\"}\n"
+	if got != want {
+		t.Errorf("caseSource = %q, want %q", got, want)
+	}
+}
+
+// TestReadCaseRefusesARealCaseWithoutCommits refuses a real manifest the
+// runner cannot stamp: its bundle would carry an empty base_sha.
+func TestReadCaseRefusesARealCaseWithoutCommits(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "case-a", caseManifestName),
+		[]byte(`{"schema_version":"1","id":"case-a","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1},"bugs":[{"path":"x","line":1}]}`))
+	writeFile(t, filepath.Join(dir, "case-a", fullDiffName), []byte("diff\n"))
+	if _, _, err := loadCases(dir, nil); err == nil || !strings.Contains(err.Error(), `provenance.base_sha "" is not a 40-character lowercase hex commit id`) {
+		t.Fatalf("loadCases error = %v, want a missing-commit refusal", err)
+	}
+}
+
+// TestReadCaseRefusesADiffSpelledKeyword pins the guard on the run path: a
+// real case whose keyword the diff itself spells never reaches an agent.
+func TestReadCaseRefusesADiffSpelledKeyword(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "case-a", caseManifestName), []byte(
+		`{"schema_version":"1","id":"case-a","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1,`+
+			`"base_sha":"`+strings.Repeat("a", 40)+`","head_sha":"`+strings.Repeat("b", 40)+`",`+
+			`"fix_commit":"`+strings.Repeat("c", 40)+`"},`+
+			`"bugs":[{"path":"command.go","line":3,"kind":"validation-bypass","severity":"important",`+
+			`"keywords":["boundary check","stoponntharg"]}]}`))
+	writeFile(t, filepath.Join(dir, "case-a", fullDiffName), []byte("+\tif StopOnNthArg > 0 {\n"))
+	if _, _, err := loadCases(dir, nil); err == nil || !strings.Contains(err.Error(), `"stoponntharg"`) {
+		t.Fatalf("loadCases error = %v, want a refusal naming the keyword", err)
+	}
+}
+
+// TestCostRollupCountsUnpricedRefusals pins the counter split: a refused
+// sample the agent priced contributes to refused_usd, one it did not still
+// counts in refused_samples, and both leave the rollup unmeasured.
+func TestCostRollupCountsUnpricedRefusals(t *testing.T) {
+	r := &runner{cfg: &Config{}, spend: []sampleSpend{
+		{usd: 0.03, refused: true, has: true},
+		{refused: true},
+		{usd: 0.01, has: true},
+	}}
+	cost := r.cost()
+	if cost.RefusedSamples != 2 || cost.RefusedUsd != 0.03 {
+		t.Errorf("refused_samples=%d refused_usd=%v, want 2 and 0.03", cost.RefusedSamples, cost.RefusedUsd)
+	}
+	if cost.Samples != 3 || cost.SampleEstimates != 2 || cost.Usd != 0.04 {
+		t.Errorf("cost = %+v, want 3 samples, 2 priced, 0.04 USD", cost)
+	}
+	if cost.Measured {
+		t.Error("measured = true, want false: one sample carries no est_usd")
+	}
+}
+
+// TestSampleSpendFlagsAnUnpricedRound pins what a loop sample knows about its
+// spend: a round that cost.json never priced leaves the total a lower bound,
+// so the sample must read incomplete even though another round was priced. The
+// old `continue` dropped the round silently and the sample read complete.
+func TestSampleSpendFlagsAnUnpricedRound(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "round-01", costJSONName), []byte(`{"est_usd":0.03}`))
+	writeFile(t, filepath.Join(dir, "round-02", costJSONName), []byte(`{"incomplete":false}`))
+	r := &runner{cfg: &Config{Loop: 2}}
+	spend := r.sampleSpend(&caseRun{dir: dir}, false)
+	if !spend.has || spend.usd != 0.03 {
+		t.Fatalf("spend = %+v, want the priced round's 0.03 kept", spend)
+	}
+	if !spend.incomplete {
+		t.Fatal("incomplete = false, want true: round-02 carries no est_usd")
+	}
+	r.spend = []sampleSpend{spend}
+	cost := r.cost()
+	if cost.SampleIncomplete != 1 || cost.Measured {
+		t.Errorf("cost = %+v, want one incomplete sample and measured false", cost)
+	}
+	if cost.Usd != 0.03 || cost.RefusedUsd != 0 {
+		t.Errorf("measured_usd=%v refused_usd=%v, want 0.03 and 0", cost.Usd, cost.RefusedUsd)
+	}
+}
+
+// TestBudgetRefusalNeedsNoMeasuredRun pins the cap's spend base when only part
+// of the run is priced: known spend is a lower bound, so a run at the cap with
+// one unpriced sample must still be refused. Requiring cost.measured let it be
+// published with the budget already spent.
+func TestBudgetRefusalNeedsNoMeasuredRun(t *testing.T) {
+	budget := 0.05
+	rep := &Report{
+		Cost:      CostRollup{Usd: 0.06, Samples: 2, SampleEstimates: 1, Measured: false},
+		BudgetUSD: &budget,
+	}
+	if !atBudget(rep) {
+		t.Fatal("atBudget = false, want true: 0.06 known spend is at the 0.05 cap")
+	}
+	if got := strings.Join(budgetReasons(rep), "; "); !strings.Contains(got, "reached the 0.050000 USD budget") {
+		t.Errorf("budgetReasons = %q, want the spend refusal", got)
+	}
+	rep.Cost.Usd = 0.04
+	if atBudget(rep) {
+		t.Error("atBudget = true for 0.04 under a 0.05 cap")
+	}
+	rep.BudgetUSD = nil
+	rep.Cost.Usd = 1
+	if atBudget(rep) {
+		t.Error("atBudget = true with no budget set")
+	}
+}
+
+// TestMaxUSDRefusesNonFiniteCaps pins the flag's domain: NaN passes every
+// comparison, so the old "< 0" test let it through and capReached then never
+// fired; +Inf ran the whole corpus and made the report unserializable, because
+// encoding/json refuses Inf.
+func TestMaxUSDRefusesNonFiniteCaps(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		refuse string
+		limit  float64
+	}{
+		{name: "NaN", limit: math.NaN(), refuse: "finite number"},
+		{name: "+Inf", limit: math.Inf(1), refuse: "finite number"},
+		{name: "-Inf", limit: math.Inf(-1), refuse: "finite number"},
+		{name: "negative", limit: -1, refuse: "zero (no cap) or positive"},
+		{name: "zero", limit: 0},
+		{name: "positive", limit: 0.05},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			checkMaxUSD(t, tc.limit, tc.refuse)
+		})
+	}
+}
+
+// checkMaxUSD pins one -max-usd value: accepted, or refused in words naming the
+// rule it broke.
+func checkMaxUSD(t *testing.T, limit float64, refuse string) {
+	t.Helper()
+	err := (&Config{Runs: 1, Loop: 1, MaxUSD: limit}).validateNumbers()
+	if refuse == "" {
+		if err != nil {
+			t.Fatalf("validateNumbers(%v) = %v, want accepted", limit, err)
+		}
+		return
+	}
+	if err == nil || !strings.Contains(err.Error(), refuse) {
+		t.Fatalf("validateNumbers(%v) = %v, want a refusal naming %q", limit, err, refuse)
+	}
+}
+
+// TestMaxUSDCountsRefusedSpend pins the cap's spend base: a refused sample
+// costs what its agent reported, so three refusals at 0.03 against a 0.05 cap
+// stop after two. A rollup that ignored refused spend would let all three run.
+func TestMaxUSDCountsRefusedSpend(t *testing.T) {
+	needPOSIX(t)
+	restoreWD(t)
+	cfg := benchConfig(t, fakeCorpus(t), agentWritesSpend)
+	cfg.Runs = 3
+	cfg.MaxUSD = 0.05
+	fake := &fakeGrader{
+		model:   cfg.Model,
+		panel:   cfg.Panel,
+		prefix:  fakePrefix,
+		refusal: jq.NewErr("record: bad-review-input: coverage[0] wants file and ranges"),
+	}
+	rep, err := runGraded(context.Background(), cfg, fake)
+	if err == nil {
+		t.Fatal("runGraded reported success after three refused samples")
+	}
+	if rep.Samples != 2 || len(rep.Skipped) != 1 {
+		t.Fatalf("samples=%d skipped=%v, want two run and one skipped", rep.Samples, rep.Skipped)
+	}
+	if got, want := rep.Cost.Usd, 0.06; got != want || rep.Cost.RefusedUsd != want {
+		t.Errorf("measured=%v refused=%v, want %v (refused spend funds the cap)", got, rep.Cost.RefusedUsd, want)
+	}
+	if !rep.CapHit {
+		t.Error("cap_hit = false, want the cap to stop the third refused sample")
+	}
+}
+
+// TestCommandsRecordTheBudget pins the reproduction command: a capped run must
+// name its cap, and an uncapped one must not grow a -max-usd 0 the operator
+// never typed.
+func TestCommandsRecordTheBudget(t *testing.T) {
+	capped := cappedMultiCaseReport(t)
+	command := strings.Join(capped.Commands[0], " ")
+	if !strings.Contains(command, "-max-usd 0.05") {
+		t.Errorf("command = %q, want the cap it ran under", command)
+	}
+	plain := oneSampleReport(t, 0)
+	if plain.BudgetUSD != nil {
+		t.Fatalf("budget = %v, want none for an uncapped run", plain.BudgetUSD)
+	}
+	if command := strings.Join(plain.Commands[0], " "); strings.Contains(command, "-max-usd") {
+		t.Errorf("command = %q, want no budget flag on an uncapped run", command)
+	}
+}
+
+// TestBudgetReachedWithoutASkipIsNotCitable pins the other half of the budget
+// rule: when the last scheduled sample pushes spend to the cap, nothing is
+// skipped, so cap_hit stays false — and the run must still not be citable.
+func TestBudgetReachedWithoutASkipIsNotCitable(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		limit  float64
+		reason bool
+	}{
+		{name: "past the cap", limit: 0.01, reason: true},
+		{name: "exactly at the cap", limit: 0.03, reason: true},
+		{name: "under the cap", limit: 0.04, reason: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			checkBudgetRefusal(t, oneSampleReport(t, tc.limit), tc.reason)
+		})
+	}
+}
+
+// checkBudgetRefusal asserts a full run at a cap either carries the budget
+// refusal and is uncitable, or carries neither.
+func checkBudgetRefusal(t *testing.T, rep *Report, want bool) {
+	t.Helper()
+	if rep.CapHit || len(rep.Skipped) != 0 {
+		t.Fatalf("cap_hit=%v skipped=%v, want no skipped sample", rep.CapHit, rep.Skipped)
+	}
+	got := strings.Contains(rep.CitableReason, "reached the 0.0")
+	if got != want {
+		t.Errorf("citable=%v reason=%q, want the budget reason present=%v", rep.Citable, rep.CitableReason, want)
+	}
+	if want && rep.Citable {
+		t.Errorf("citable=%v, want a run that spent its budget refused", rep.Citable)
+	}
+}
+
+// oneSampleReport runs one priced 0.03 USD sample against a cap.
+func oneSampleReport(t *testing.T, limit float64) *Report {
+	t.Helper()
+	needPOSIX(t)
+	restoreWD(t)
+	cfg := benchConfig(t, fakeCorpus(t), agentWritesSpend)
+	cfg.MaxUSD = limit
+	fake := &fakeGrader{model: cfg.Model, panel: cfg.Panel, prefix: fakePrefix}
+	rep, err := runGraded(context.Background(), cfg, fake)
+	if err != nil {
+		t.Fatalf("runGraded: %v", err)
+	}
+	return rep
+}
+
+// TestMalformedRealControlNeverReachesAnAgent pins the pre-schedule manifest
+// validation: the runner's own check asked only that a real case's commit pair
+// be non-empty, so a control with base_sha "x" passed it, spent a sample, and
+// failed later at scoring. The corpus validator now runs first.
+func TestMalformedRealControlNeverReachesAnAgent(t *testing.T) {
+	needPOSIX(t)
+	restoreWD(t)
+	t.Setenv("BENCH_TEST_REVIEW", reviewBody)
+	marker := filepath.Join(t.TempDir(), "agent-ran")
+	root := fakeCorpusOf(t, "case-a")
+	writeFile(t, filepath.Join(root, "corpus", "case-a", caseManifestName), []byte(
+		`{"schema_version":"1","id":"case-a","kind":"control","provenance":{"kind":"real","repo":"o/r","pr":1,`+
+			`"base_sha":"x","head_sha":"`+strings.Repeat("b", 40)+`"},"bugs":[]}`))
+	cfg := benchConfig(t, root, `touch `+marker+`
+`+agentCopiesReview)
+	fake := &fakeGrader{model: cfg.Model, panel: cfg.Panel, prefix: fakePrefix}
+	if _, err := runGraded(context.Background(), cfg, fake); err == nil ||
+		!strings.Contains(err.Error(), `provenance.base_sha "x" is not a 40-character lowercase hex commit id`) {
+		t.Fatalf("run = %v, want a base_sha refusal", err)
+	}
+	if _, err := os.Stat(marker); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("agent marker exists: a malformed case reached the agent")
+	}
+}
+
+// TestReadCaseRefusesAContextAnchor pins the anchor guard on the run path: a
+// real case whose ground truth is a context line never reaches an agent.
+func TestReadCaseRefusesAContextAnchor(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "case-a", caseManifestName), []byte(
+		`{"schema_version":"1","id":"case-a","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1,`+
+			`"base_sha":"`+strings.Repeat("a", 40)+`","head_sha":"`+strings.Repeat("b", 40)+`",`+
+			`"fix_commit":"`+strings.Repeat("c", 40)+`"},`+
+			`"bugs":[{"path":"command.go","line":4,"kind":"validation-bypass","severity":"important",`+
+			`"keywords":["boundary check"]}]}`))
+	writeFile(t, filepath.Join(dir, "case-a", fullDiffName), []byte(
+		"diff --git a/command.go b/command.go\n--- a/command.go\n+++ b/command.go\n"+
+			"@@ -1,3 +1,4 @@\n \tfirst()\n \tsecond()\n+\tthird()\n \tfourth()\n"))
+	if _, _, err := loadCases(dir, nil); err == nil || !strings.Contains(err.Error(), "command.go:4") {
+		t.Fatalf("loadCases error = %v, want a context-anchor refusal naming the line", err)
 	}
 }
 
@@ -246,7 +549,9 @@ func TestStatSummarizesRunsAndKeepsNullsEmpty(t *testing.T) {
 // whose ids and directories disagree.
 func TestLoadCasesRefusesAManifestThatDoesNotMatchItsDirectory(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "case-a", caseManifestName), []byte(`{"schema_version":"1","id":"case-b","bugs":[{"path":"x","line":1}]}`))
+	writeFile(t, filepath.Join(dir, "case-a", caseManifestName), []byte(
+		`{"schema_version":"1","id":"case-b","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},`+
+			`"bugs":[{"path":"x","line":1,"kind":"nil-deref","severity":"critical"}]}`))
 	writeFile(t, filepath.Join(dir, "case-a", fullDiffName), []byte("diff\n"))
 	if _, _, err := loadCases(dir, nil); err == nil || !strings.Contains(err.Error(), "does not match its directory") {
 		t.Fatalf("loadCases error = %v, want an id-mismatch refusal", err)
@@ -256,9 +561,10 @@ func TestLoadCasesRefusesAManifestThatDoesNotMatchItsDirectory(t *testing.T) {
 // TestLoadCasesRefusesABuglessManifest refuses a case that cannot be scored.
 func TestLoadCasesRefusesABuglessManifest(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "case-a", caseManifestName), []byte(`{"schema_version":"1","id":"case-a","bugs":[]}`))
+	writeFile(t, filepath.Join(dir, "case-a", caseManifestName), []byte(
+		`{"schema_version":"1","id":"case-a","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[]}`))
 	writeFile(t, filepath.Join(dir, "case-a", fullDiffName), []byte("diff\n"))
-	if _, _, err := loadCases(dir, nil); err == nil || !strings.Contains(err.Error(), "no ground-truth bug") {
+	if _, _, err := loadCases(dir, nil); err == nil || !strings.Contains(err.Error(), "needs at least one ground-truth bug") {
 		t.Fatalf("loadCases error = %v, want a bugless refusal", err)
 	}
 }
@@ -269,6 +575,7 @@ func TestLoadCasesRefusesABuglessManifest(t *testing.T) {
 type fakeGrader struct {
 	dry     func(slug string) (DryRunResult, error)
 	refusal error
+	refuse  string
 	model   string
 	prefix  string
 	panel   []string
@@ -282,7 +589,7 @@ func (f *fakeGrader) promptPrefix(context.Context) (string, string, error) {
 
 func (f *fakeGrader) record(_ context.Context, slug string) ([]string, error) {
 	f.calls = append(f.calls, "record "+slug)
-	if f.refusal != nil {
+	if f.refusal != nil && (f.refuse == "" || strings.Contains(slug, f.refuse)) {
 		return nil, f.refusal
 	}
 	doc, err := json.Marshal(map[string]any{"model": f.model, "prompts_hash": "f00d"})
@@ -320,14 +627,25 @@ const reviewBody = `{"schema_version":"1","body":"ok","approved":false,"comments
 // copies into every run dir.
 func fakeCorpus(t *testing.T) string {
 	t.Helper()
+	return fakeCorpusOf(t, "off-by-one")
+}
+
+// fakeCorpusOf writes one seeded case per id, in the order given, so a test can
+// drive a corpus the cap must stop part-way through.
+func fakeCorpusOf(t *testing.T, ids ...string) string {
+	t.Helper()
 	root := t.TempDir()
 	for _, rel := range promptFiles {
 		writeFile(t, filepath.Join(root, prefixPrompts, filepath.FromSlash(rel)), []byte("fixture prompt "+rel+"\n"))
 	}
 	dir := filepath.Join(root, "corpus")
-	writeFile(t, filepath.Join(dir, "off-by-one", caseManifestName),
-		[]byte(`{"schema_version":"1","id":"off-by-one","kind":"seeded","line_tolerance":3,"bugs":[{"path":"pagination.go","line":42}]}`))
-	writeFile(t, filepath.Join(dir, "off-by-one", fullDiffName), []byte(fakeDiff))
+	for _, id := range ids {
+		writeFile(t, filepath.Join(dir, id, caseManifestName),
+			[]byte(`{"schema_version":"1","id":"`+id+`","kind":"seeded","line_tolerance":3,`+
+				`"provenance":{"kind":"seeded","injected":"the bound skips the last element"},`+
+				`"bugs":[{"path":"pagination.go","line":42,"kind":"off-by-one","severity":"critical"}]}`))
+		writeFile(t, filepath.Join(dir, id, fullDiffName), []byte(fakeDiff))
+	}
 	return root
 }
 
@@ -347,11 +665,37 @@ const agentCopiesReview = `printf '%s' "$BENCH_TEST_REVIEW" > "$VERDICT_BENCH_OU
 // agentFails is the smallest failing agent: a non-zero exit and no review.
 const agentFails = `printf 'agent exploded'; exit 3`
 
+// agentWritesSpend is a conforming agent that also reports a priced sample:
+// the refused-sample rollup can only be tested with spend on the other side.
+const agentWritesSpend = `printf '%s' "$BENCH_TEST_REVIEW" > "$VERDICT_BENCH_OUT"
+printf '{"est_usd":0.03}' > "$VERDICT_BENCH_COST"`
+
 // runRefusal is Run's error for an unconfigured run: the loop must refuse
 // before it touches the corpus or the working directory.
 func runRefusal(cfg *Config) error {
 	_, err := Run(context.Background(), cfg)
 	return err
+}
+
+// stubVerdict writes the binary a fixture run points at: a script that refuses
+// instead of becoming a verdict.
+//
+// A fixture must never name this test binary. newRunner falls back to the real
+// tool when no grader is injected, and that tool renders the prompt prefix by
+// running `fetch-local --show-prompts`; pointed at the test binary's own path,
+// the command re-executes the suite with arguments it ignores, so it re-runs
+// every test, reaches the same call, and recurses until the machine dies. A
+// stub makes that accident a loud failure naming the command instead.
+func stubVerdict(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "verdict")
+	writeFile(t, path, []byte("#!/bin/sh\n"+
+		`echo "bench test reached the real verdict binary: $*" >&2`+"\n"+
+		"exit 97\n"))
+	if err := os.Chmod(path, 0o755); err != nil {
+		t.Fatalf("chmod %s: %v", path, err)
+	}
+	return path
 }
 
 // benchConfig is a one-case fixture run.
@@ -361,7 +705,7 @@ func benchConfig(t *testing.T, root, agent string) *Config {
 		K:       1,
 		Root:    root,
 		Corpus:  filepath.Join(root, "corpus"),
-		Verdict: os.Args[0],
+		Verdict: stubVerdict(t),
 		WorkDir: t.TempDir(),
 		Out:     filepath.Join(t.TempDir(), "run.json"),
 		Agent:   agent,
@@ -532,6 +876,162 @@ func checkEvidenceLog(t *testing.T, rep *Report) {
 	if !strings.Contains(string(log), "agent exploded") {
 		t.Errorf("evidence log = %q, want the agent's output", log)
 	}
+}
+
+// TestCostRollupCarriesRefusedSampleSpend pins the rollup the pilot got wrong:
+// two samples each spent 0.03 USD, the second was refused by record, and the
+// report published 0.03 for the pair. Spend belongs to every sample, and the
+// refused share is named rather than folded in silently.
+func TestCostRollupCarriesRefusedSampleSpend(t *testing.T) {
+	rep := refusedSampleReport(t)
+	checkRefusedSampleCost(t, &rep.Cost)
+}
+
+// refusedSampleReport runs two samples and has record refuse the second.
+func refusedSampleReport(t *testing.T) *Report {
+	t.Helper()
+	needPOSIX(t)
+	restoreWD(t)
+	cfg := benchConfig(t, fakeCorpus(t), agentWritesSpend)
+	cfg.Runs = 2
+	fake := &fakeGrader{
+		model:   cfg.Model,
+		panel:   cfg.Panel,
+		prefix:  fakePrefix,
+		refusal: jq.NewErr("record: bad-review-input: coverage[0] wants a path"),
+		refuse:  "run2",
+	}
+	rep, err := runGraded(context.Background(), cfg, fake)
+	if err == nil || rep == nil {
+		t.Fatalf("runGraded = %v, %v; want a report plus a refused-sample error", rep, err)
+	}
+	return rep
+}
+
+// checkRefusedSampleCost says what the rollup must report for two 0.03 USD
+// samples, one refused.
+func checkRefusedSampleCost(t *testing.T, cost *CostRollup) {
+	t.Helper()
+	if cost.Samples != 2 || cost.SampleEstimates != 2 || !cost.Measured {
+		t.Errorf("cost = %+v, want two priced samples, measured", cost)
+	}
+	if got, want := cost.Usd, 0.06; got != want {
+		t.Errorf("measured_usd = %v, want %v (both samples spent 0.03)", got, want)
+	}
+	if got, want := cost.RefusedUsd, 0.03; got != want {
+		t.Errorf("refused_usd = %v, want %v", got, want)
+	}
+	if cost.RefusedSamples != 1 || cost.Bundles != 1 {
+		t.Errorf("cost = %+v, want 1 refused sample and 1 bundle", cost)
+	}
+}
+
+// TestMaxUSDStopsSchedulingAtTheCap pins the budget stop: three samples at
+// 0.03 USD each against a 0.05 USD cap run two, and the third is reported as
+// not run rather than as a failure. The run is never citable.
+func TestMaxUSDStopsSchedulingAtTheCap(t *testing.T) {
+	rep := cappedReport(t)
+	if rep.Samples != 2 || len(rep.Skipped) != 1 {
+		t.Fatalf("samples=%d skipped=%v, want two run and one skipped", rep.Samples, rep.Skipped)
+	}
+	if got := rep.Skipped[0]; got.Case != "off-by-one" || got.Run != 3 {
+		t.Errorf("skipped = %+v, want off-by-one run 3", got)
+	}
+	checkCapRecorded(t, rep)
+	if rep.Citable || !strings.Contains(rep.CitableReason, "budget cap hit") {
+		t.Errorf("citable=%v reason=%q, want a budget refusal", rep.Citable, rep.CitableReason)
+	}
+	if got := countRunDirs(t); got != 2 {
+		t.Errorf("%d sample dirs, want 2 (the cap stops scheduling)", got)
+	}
+}
+
+// cappedReport runs three priced samples against a 0.05 USD cap.
+func cappedReport(t *testing.T) *Report {
+	t.Helper()
+	needPOSIX(t)
+	restoreWD(t)
+	cfg := benchConfig(t, fakeCorpus(t), agentWritesSpend)
+	cfg.Runs = 3
+	cfg.MaxUSD = 0.05
+	fake := &fakeGrader{model: cfg.Model, panel: cfg.Panel, prefix: fakePrefix}
+	rep, err := runGraded(context.Background(), cfg, fake)
+	if err != nil {
+		t.Fatalf("runGraded: %v (a cap stop is not a failure)", err)
+	}
+	return rep
+}
+
+// checkCapRecorded pins the cap the report publishes, not just the stop.
+func checkCapRecorded(t *testing.T, rep *Report) {
+	t.Helper()
+	if !rep.CapHit || rep.BudgetUSD == nil || *rep.BudgetUSD != 0.05 {
+		t.Errorf("cap_hit=%v budget=%v, want the 0.05 cap recorded", rep.CapHit, rep.BudgetUSD)
+	}
+	if got, want := rep.SpentAtCap, 0.06; got != want {
+		t.Errorf("spent_at_cap = %v, want %v", got, want)
+	}
+}
+
+// TestMaxUSDRecordsEachSkippedSampleOnce pins the skip list across cases: the
+// cap is hit while scheduling the third case, and the two cases it never
+// reached appear once each — not once from skipFrom and once from schedule.
+func TestMaxUSDRecordsEachSkippedSampleOnce(t *testing.T) {
+	rep := cappedMultiCaseReport(t)
+	want := []SkippedSample{{Case: "case-c", Run: 1}, {Case: "case-d", Run: 1}}
+	if !slices.Equal(rep.Skipped, want) {
+		t.Fatalf("skipped = %v, want %v (each unscheduled sample once)", rep.Skipped, want)
+	}
+	if got, want := skipLine(t, rep), "budget: cap 0.050000 USD hit after 0.060000 USD; 2 sample(s) not run: case-c run 1, case-d run 1"; got != want {
+		t.Errorf("human budget line = %q, want %q", got, want)
+	}
+	if rep.Samples != 2 || rep.Cost.Usd != 0.06 {
+		t.Errorf("samples=%d cost=%v, want two samples at 0.06", rep.Samples, rep.Cost.Usd)
+	}
+}
+
+// cappedMultiCaseReport runs four priced cases at one sample each against a
+// 0.05 USD cap, so the cap is reached while scheduling the third.
+func cappedMultiCaseReport(t *testing.T) *Report {
+	t.Helper()
+	needPOSIX(t)
+	restoreWD(t)
+	cfg := benchConfig(t, fakeCorpusOf(t, "case-a", "case-b", "case-c", "case-d"), agentWritesSpend)
+	cfg.Runs = 1
+	cfg.MaxUSD = 0.05
+	fake := &fakeGrader{model: cfg.Model, panel: cfg.Panel, prefix: fakePrefix}
+	rep, err := runGraded(context.Background(), cfg, fake)
+	if err != nil {
+		t.Fatalf("runGraded: %v (a cap stop is not a failure)", err)
+	}
+	return rep
+}
+
+// skipLine renders the report's budget line through the real renderer, so the
+// human count is pinned against the same string the operator reads.
+func skipLine(t *testing.T, rep *Report) string {
+	t.Helper()
+	var buf bytes.Buffer
+	r := &runner{cfg: &Config{}}
+	r.render(&buf, rep)
+	for line := range strings.SplitSeq(buf.String(), "\n") {
+		if strings.HasPrefix(line, "budget: ") {
+			return line
+		}
+	}
+	t.Fatalf("no budget line in %q", buf.String())
+	return ""
+}
+
+// countRunDirs counts the sample dirs a run created; Run moved the process
+// into the run dir, so the path is relative.
+func countRunDirs(t *testing.T) int {
+	t.Helper()
+	entries, err := os.ReadDir("runs")
+	if err != nil {
+		t.Fatalf("runs: %v", err)
+	}
+	return len(entries)
 }
 
 // TestRunRefusesAMissingModel refuses a run no bundle could be attributed to.

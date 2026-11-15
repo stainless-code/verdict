@@ -63,7 +63,10 @@ var publishedSemantics = map[string]string{
 	// unchanged.
 	// typed state: the manifest description names the .verdict/state run
 	// bundle path. Prose only.
-	"corpus.schema.json": "fe91633ff5196a5149c3c3ef6bdfdb73ea132cf204e1b0ede7d54be207566f17",
+	// additive corpus.schema.json: provenance gains base_sha and head_sha, the
+	// commits a real case's diff spans and its bundle stamps. Two new optional
+	// string properties; no existing property, required key, or type changed.
+	"corpus.schema.json": "e1206318dc186aa479ae702384edba263ce229f921e68858e142efb16b4e5785",
 	// intentional pre-v1 break: lenses items become per-group
 	// {group,labels[]} entries (an empty labels list is that group's explicit
 	// zero) and schema_version pins 2. No other property, required key, or

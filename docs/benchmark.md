@@ -112,14 +112,17 @@ One case, one manifest, published as
 
 - **Seeded** cases name what was injected (`provenance.injected`) and ship a
   deterministic `full.diff`; they are the hermetic starter corpus.
-- **Real** cases name the repository, PR number, and the later bug-fix
-  commit (`provenance.repo`, `provenance.pr`, `provenance.fix_commit`), plus
-  the reviewed head (`provenance.source` may carry the fetch command or
-  URL). The ground truth is the defect fixed by that commit, at the line it
-  occupied in the reviewed head.
-- At least one bug is required. Ground truth is file + line + kind +
-  severity; `note` says why the line is a defect. A bug that cannot be
-  pointed at a line is not a corpus case.
+- **Real** cases name the repository and PR number (`provenance.repo`,
+  `provenance.pr`), the two commits the diff spans (`provenance.base_sha`,
+  `provenance.head_sha`, 40-hex), and the later bug-fix commit
+  (`provenance.fix_commit`). The ground truth is the defect fixed by that
+  commit, at the line it occupied in the reviewed head. A bundle stamps the
+  manifest's base and head, so the reviewed diff names the commits it came
+  from. A real clean control names the same repository, PR, and commit pair
+  and omits `fix_commit`, which nothing could name.
+- A bug case requires at least one bug; a control requires `bugs: []`. Ground
+  truth is file + line + kind + severity; `note` says why the line is a
+  defect. A bug that cannot be pointed at a line is not a corpus case.
 - `keywords` (optional) is the case's own vocabulary for that defect, in
   case-insensitive, whitespace-folded substring form at a word start. Write
   the words a reviewer would use to describe the defect, not the words you
@@ -184,9 +187,10 @@ Pick merged PRs whose bug was fixed later, on the same repository:
 2. The later fix commit `F` must change a line that is a real defect at `H`
    — not a style cleanup, rename, or dependency bump. The hunk in `F` gives
    the file and line at `H`; record the exact line where the bad code sits.
-3. Record `repo`, `pr`, `fix_commit` (full URL), and the reviewed head SHA.
-   If the PR review cited the bug, keep the finding text out of the
-   manifest; ground truth stays independent of the reviewer.
+3. Record `repo`, `pr`, `base_sha`, `head_sha` (the commits the diff spans),
+   and `fix_commit` (full URL). If the PR review cited the bug, keep the
+   finding text out of the manifest; ground truth stays independent of the
+   reviewer.
 4. Prefer bugs an experienced reviewer would call real: off-by-one, nil
    dereference, injection, missing error check, path traversal, race,
    auth bypass, index panic. Exclude anything where "fixed" is debatable.
@@ -274,6 +278,32 @@ measured (from `cost.json`) or projected (pilot extrapolation). Do not
 publish a rate from a run that exceeded the operator's budget; record the
 budget in the publication notes.
 
+`bench/runner -max-usd <n>` enforces the budget instead of leaving it to the
+operator: it stops scheduling samples once measured spend reaches `n`, records
+every sample it did not run in the report's `skipped` list, and marks the run
+uncitable. A sample already running finishes; only scheduling stops.
+
+The runner's own rollup reads the same `cost.json` files, one per sample it
+scheduled. `cost.measured_usd` sums every sample, a refused one included;
+`cost.refused_samples` counts every refused sample and `cost.refused_usd` the
+priced share of them, so a refusal with no `est_usd` is still counted: a
+refusal costs the tokens it reports and it is exactly the spend a pilot hides
+when only recorded bundles are counted. `cost.samples_with_estimate`
+against `cost.samples` says whether the total is measured at all; a sample with
+no `est_usd` leaves the run unmeasured rather than free.
+
+A refused sample stays a failure. It is named in `failures[]`, it keeps a
+citable run from being citable, and its spend is counted, not written off:
+`cost.measured_usd` includes it and `cost.refused_usd` breaks it out. Repairing
+a refused sample on the single-sample path is deferred by decision, not
+forgotten. `-loop` already repairs a refused review through the harness, but a
+repaired loop sample is not citable, so using it for measurement would change
+what a published number means. The shipped prompt now names the keys a review
+must carry (`rigor`, `in-bounds`, `coverage` with `file` and `ranges`), and the
+next pilot measures whether refusals persist; only if they do is the run verb's
+repair loop wired into a citable single-sample path, and that change publishes
+its repair rounds and per-sample repair cost as new report fields.
+
 ### 4. Reproducibility
 
 The reporting join is exact: the same manifest and `findings.json` produce
@@ -332,13 +362,17 @@ The report adds one loop summary per sample with valid on first try, rounds
 to valid, final validity, give-up, added and dropped finding ids, round 1
 and final problem lists, and per-round walls. Calibrate rates are published
 for the final bundle only. An invalid round 1 has no findings file, so no
-precision is invented for it. A warning such as `rigor-unset` does not refuse.
+precision is invented for it. A warning such as `rigor-unset` does not refuse. A sample the harness cannot
+repair within the round cap is a give-up failure, and its spend is counted like
+any other. Harness-driven repair is not the repair decision above: it stays an
+uncitable mode, not the single-sample path the next pilot measures.
 Deletion to clear a problem counts as dropped, never as a fix. A model fix
 needs changed review bytes and no repair for that code on that path. Repairs
 count separately. Fix rates split error and warning levels per code. Costs sum
 every attempt including invalid and adapter-failed rounds when spend is
 present. Missing spend stays unmeasured, never zero. Model attribution is
-preserved. Loop runs are never citable.
+preserved. Loop runs are never citable, and neither is a run a `-max-usd` cap
+stopped short.
 
 ## SZZ candidate mining, replay, and score
 
@@ -716,10 +750,14 @@ claim to cite; keep unmeasured equivalence wording softened or removed.
 
 `kind: "control"` records a clean change with `bugs: []`. Its provenance
 still identifies a `seeded` or `real` origin. Null or nonempty ground truth
-is refused for a control; bug cases still require at least one defect.
-Every finding on a control is a false positive. Recall has no denominator
+is refused for a control; bug cases still require at least one defect. A
+real control names `provenance.repo`, `provenance.pr`, and the same
+`base_sha`/`head_sha` pair, and carries no `fix_commit`: a clean change is
+one nothing had to repair. Every finding on
+a control is a false positive. Recall has no denominator
 and renders `null`. The two seeded clean cases, `control-comment` and
-`control-rename`, are **not a model-quality claim**.
+`control-rename`, are **not a model-quality claim**; a real control is the
+one that gives `control_fp_rate` a denominator.
 
 ## Ordered sampling
 

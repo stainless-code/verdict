@@ -21,7 +21,7 @@
       "minimum": 0
     },
     "provenance": {
-      "description": "Where the case came from: injected text for seeded cases, or repo/PR/fix_commit for real ones. The validation test enforces the per-kind requirements the schema cannot express.",
+      "description": "Where the case came from: injected text for seeded cases, or repo, PR number, the two commits the diff spans (base_sha, head_sha), and fix_commit for real ones. The validation test enforces the per-kind requirements the schema cannot express.",
       "$ref": "#/$defs/provenance"
     },
     "bugs": {
@@ -34,13 +34,21 @@
   "additionalProperties": false,
   "$defs": {
     "provenance": {
-      "description": "Case origin. Seeded cases name what was injected; real cases name the repository, PR number, and the later commit that fixed the bug.",
+      "description": "Case origin. Seeded cases name what was injected; real cases name the repository, PR number, the commits the PR was reviewed at, and the later commit that fixed the bug.",
       "type": "object",
       "properties": {
         "kind": { "enum": ["seeded", "real"] },
         "injected": { "type": "string" },
         "repo": { "type": "string" },
         "pr": { "type": ["integer", "null"] },
+        "base_sha": {
+          "description": "Merge base the reviewed head was diffed against, as a 40-character lowercase hex commit id. Real cases require it; it is the base_sha a bundle stamps.",
+          "type": "string"
+        },
+        "head_sha": {
+          "description": "Reviewed head commit, as a 40-character lowercase hex commit id. Real cases require it; it is the head_sha a bundle stamps.",
+          "type": "string"
+        },
         "fix_commit": { "type": "string" },
         "source": { "type": "string" },
         "note": { "type": "string" }

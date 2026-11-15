@@ -1,0 +1,82 @@
+diff --git a/flag_test.go b/flag_test.go
+index d48bda4..2616728 100644
+--- a/flag_test.go
++++ b/flag_test.go
+@@ -2718,6 +2718,55 @@ func TestTimestampFlagApply_ShortenedLayouts(t *testing.T) {
+ 	}
+ }
+ 
++func TestTimestampFlagApply_TimeOnlyLayoutTimezoned(t *testing.T) {
++	for _, loc := range []*time.Location{
++		time.FixedZone("UTC-5", -5*60*60),
++		time.FixedZone("UTC+2", 2*60*60),
++	} {
++		for _, value := range []string{"01:00", "12:00", "20:00"} {
++			t.Run(loc.String()+" "+value, func(t *testing.T) {
++				var got time.Time
++				cmd := &Command{
++					Flags: []Flag{
++						&TimestampFlag{Name: "time", Config: TimestampConfig{Layouts: []string{"15:04"}, Timezone: loc}},
++					},
++					Action: func(_ context.Context, cmd *Command) error {
++						got = cmd.Timestamp("time")
++						return nil
++					},
++				}
++
++				assert.NoError(t, cmd.Run(buildTestContext(t), []string{"", "--time", value}))
++
++				clock, err := time.Parse("15:04", value)
++				assert.NoError(t, err)
++				now := time.Now().In(loc)
++				expected := time.Date(now.Year(), now.Month(), now.Day(), clock.Hour(), clock.Minute(), 0, 0, loc)
++				assert.Equal(t, expected, got)
++			})
++		}
++	}
++}
++
++func TestTimestampFlagApply_TimeOnlyLayoutWithOffset(t *testing.T) {
++	var got time.Time
++	cmd := &Command{
++		Flags: []Flag{
++			&TimestampFlag{Name: "time", Config: TimestampConfig{Layouts: []string{"15:04 -0700"}}},
++		},
++		Action: func(_ context.Context, cmd *Command) error {
++			got = cmd.Timestamp("time")
++			return nil
++		},
++	}
++
++	assert.NoError(t, cmd.Run(buildTestContext(t), []string{"", "--time", "20:00 -0500"}))
++
++	loc := time.FixedZone("", -5*60*60)
++	now := time.Now().In(loc)
++	assert.Equal(t, time.Date(now.Year(), now.Month(), now.Day(), 20, 0, 0, 0, loc), got)
++}
++
+ func TestTimestampFlagApply_YearlessLayoutJanuaryFirst(t *testing.T) {
+ 	year := time.Now().UTC().Year()
+ 
+diff --git a/flag_timestamp.go b/flag_timestamp.go
+index 83723e6..0f17365 100644
+--- a/flag_timestamp.go
++++ b/flag_timestamp.go
+@@ -87,13 +87,14 @@ func (t *timestampValue) Set(value string) error {
+ 		return err
+ 	}
+ 
+-	defaultTS, _ := time.ParseInLocation(time.TimeOnly, time.TimeOnly, timestamp.Location())
+-
+ 	n := time.Now().In(timestamp.Location())
+ 
+ 	// If format is missing date (or year only), set it explicitly to current
+ 	// A layout that carries a date parses "January 1" to the same instant a date-less layout does, so ask the layout.
+-	if !layoutHasDate(matchedLayout) && timestamp.Truncate(time.Hour*24).UnixNano() == defaultTS.Truncate(time.Hour*24).UnixNano() {
++	// The date is compared in the timestamp's own location: truncating the
++	// instant to a day works in UTC and misses January 1 of year 0 for part
++	// of the day whenever Timezone is not UTC.
++	if !layoutHasDate(matchedLayout) && timestamp.Year() == 0 && timestamp.YearDay() == 1 {
+ 		timestamp = time.Date(
+ 			n.Year(),
+ 			n.Month(),

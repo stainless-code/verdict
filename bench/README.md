@@ -110,6 +110,12 @@ assistant message, including `cost.total`, and the adapter sums those into
 provider reports no price it omits `est_usd`, which reads `unmeasured` in the
 report rather than free.
 
+The rollup sums every sample's `cost.json`, including a sample `record`
+refused: a refusal still burned the tokens it could not score. `cost.measured_usd`
+is that total, `cost.refused_samples` counts every sample that produced no
+bundle — priced or not — and `cost.refused_usd` is the priced share of them. A sample whose record carries no
+`est_usd` leaves the run unmeasured; it never reads zero.
+
 [`example-seeded-model-pilot.json`](runner/testdata/example-seeded-model-pilot.json)
 is an archived seeded example: eight cases, three samples each, `internal`, never
 citable.
@@ -125,6 +131,7 @@ citable.
 | `-runs`     | `1`                                   | samples per case; the runbook publishes `3`                   |
 | `-loop`     | `1`                                   | repair rounds per sample; `1` keeps single-shot               |
 | `-timeout`  | `15m`                                 | budget for one sample                                         |
+| `-max-usd`  | `0` (no cap)                          | stop scheduling samples at this measured spend                |
 | `-root`     | the module root                       | checkout to read the corpus, prompts, and binary from         |
 | `-corpus`   | `<root>/bench/corpus`                 | corpus directory                                              |
 | `-verdict`  | `<root>/bin/verdict`                  | the binary that scores                                        |
@@ -132,6 +139,16 @@ citable.
 | `-out`      | `bench/results[/pilot]/<run-id>.json` | publication JSON                                              |
 | `-internal` | `false`                               | mark a pilot: never citable, published under `results/pilot/` |
 | `-repo`     | `acme/bench`                          | owner/repo label the corpus verbs take (local, never network) |
+
+## Budget
+
+`-max-usd <n>` stops scheduling new samples once measured spend reaches `n`
+dollars; a sample already running is never interrupted, because an agent in
+flight cannot be un-spent. The report then carries `cap_hit`, `budget_usd`,
+`spent_at_cap`, and a `skipped[]` list naming every sample that did not run.
+Spend is the sum of the `cost.json` records the agents wrote, the same total the
+cost rollup publishes, so a refused sample counts: it spent what it reports.
+A capped run is never citable — it is a budget stop, not a measurement.
 
 ## Loop mode
 
