@@ -1,0 +1,34 @@
+{
+  "schema_version": "1",
+  "id": "hono-4659-bearer-auth-scheme-regex-metacharacters",
+  "kind": "real",
+  "language": "typescript",
+  "provenance": {
+    "kind": "real",
+    "repo": "honojs/hono",
+    "pr": 4659,
+    "base_sha": "cea7b7b993af682fbf10bb29937d028a55b8ab7e",
+    "head_sha": "3aa2f9ae0957b4466a6d84978aba36f1e5677f25",
+    "fix_commit": "https://github.com/honojs/hono/commit/0c0bf8d789949d69d4e5bea244c468d2c7d9986b",
+    "source": "PR #4659 fix(bearer-auth): make auth-scheme case-insensitive, squash-merged 2026-02-06",
+    "note": "the configured auth scheme is spliced into a regular expression instead of being compared as a literal, so the scheme is matched by pattern: a prefix of X.Y accepts the header scheme XZY, a prefix of X.Auth+v2 rejects its own literal scheme, and a prefix holding an unmatched bracket throws while the middleware is built; the base builds the same pattern in the same way, and this PR only added the case-insensitive flag to it, so the defect is rewritten rather than introduced here (fix PR #4750)"
+  },
+  "bugs": [
+    {
+      "path": "src/middleware/bearer-auth/index.ts",
+      "line": 116,
+      "kind": "injection",
+      "severity": "important",
+      "keywords": [
+        "metacharacter",
+        "interpolated into a regular expression",
+        "not escaped",
+        "literal string",
+        "used as a pattern",
+        "different scheme is accepted",
+        "unmatched bracket"
+      ],
+      "note": "the option and the token grammar are concatenated into one RegExp source, so every metacharacter in the configured scheme is live; the fix compares the header prefix as a string and tests the token with its own anchored pattern"
+    }
+  ]
+}

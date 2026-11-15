@@ -1,0 +1,34 @@
+{
+  "schema_version": "1",
+  "id": "hono-4171-etag-if-none-match-whitespace",
+  "kind": "real",
+  "language": "typescript",
+  "provenance": {
+    "kind": "real",
+    "repo": "honojs/hono",
+    "pr": 4171,
+    "base_sha": "2590c60b61742fa98454ce30c18d9d5c9447d4a5",
+    "head_sha": "091ecb7e867e958d48d7734029b196f654f16d14",
+    "fix_commit": "https://github.com/honojs/hono/commit/f8b7847d755d98009feb2d7d1e6dff0921f8c500",
+    "source": "PR #4171 fix(middleware/etag): should return 304 when weak etag is passed in 'If-None-Match', squash-merged 2025-05-29",
+    "note": "the If-None-Match list is split on a comma plus the whitespace after it, so a tag written with whitespace before the comma keeps a trailing space and never equals the response's tag: a matching conditional request is answered 200 with the full body instead of 304; the base split the header the same way and this PR rewrote the comparison to add weak-tag handling without trimming the entries (fix PR #5222)"
+  },
+  "bugs": [
+    {
+      "path": "src/middleware/etag/index.ts",
+      "line": 34,
+      "kind": "invalid-output",
+      "severity": "important",
+      "keywords": [
+        "whitespace before the comma",
+        "trailing space",
+        "never equals",
+        "still returns 200",
+        "optional whitespace",
+        "one side of the delimiter",
+        "trim"
+      ],
+      "note": "RFC 9110's #entity-tag list allows optional whitespace on both sides of a comma; splitting on /,\\s*/ consumes only the right-hand side of each comma, so the left-hand entry keeps its trailing spaces and the equality test fails; the fix splits on the comma and trims each entry"
+    }
+  ]
+}

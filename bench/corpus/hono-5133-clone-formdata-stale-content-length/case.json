@@ -1,0 +1,33 @@
+{
+  "schema_version": "1",
+  "id": "hono-5133-clone-formdata-stale-content-length",
+  "kind": "real",
+  "language": "typescript",
+  "provenance": {
+    "kind": "real",
+    "repo": "honojs/hono",
+    "pr": 5133,
+    "base_sha": "80959d47d56ac18c2985336ad311917dc56497c5",
+    "head_sha": "d7964503c956ae4af78597b7b11a05f9e5e73d2d",
+    "fix_commit": "https://github.com/honojs/hono/commit/612b59c0227b421090d46721cd5a98243ad8c6ec",
+    "source": "PR #5133 fix(request): fix multipart boundary mismatch in cloneRawRequest, squash-merged 2026-07-18",
+    "note": "the clone re-serializes a FormData body, so every content header copied from the original request is stale, but the added block drops only the content type: the declared content length stays at the original body's byte count (77 for a 169-byte clone), and a request built from the clone would send a truncated body; the base kept both stale headers, so this PR fixed the boundary half and left the length half (fix PR #5282)"
+  },
+  "bugs": [
+    {
+      "path": "src/request.ts",
+      "line": 494,
+      "kind": "stale-header",
+      "severity": "important",
+      "keywords": [
+        "content-length",
+        "declared length",
+        "no longer matches the body",
+        "truncated",
+        "stale content",
+        "length of the original body"
+      ],
+      "note": "the block removes the stale content type because the runtime regenerates the multipart boundary, and leaves the stale content length, which the regeneration also invalidates; the fix deletes the content length in the same branch"
+    }
+  ]
+}

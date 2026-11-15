@@ -1,0 +1,34 @@
+{
+  "schema_version": "1",
+  "id": "hono-3936-pattern-router-wildcard-overmatch",
+  "kind": "real",
+  "language": "typescript",
+  "provenance": {
+    "kind": "real",
+    "repo": "honojs/hono",
+    "pr": 3936,
+    "base_sha": "c9bd83025cadf7a93dbba9ede959a383f1af4c61",
+    "head_sha": "a2ec84866b21fe830d88ebb5f69e32b3bdfe71fc",
+    "fix_commit": "https://github.com/honojs/hono/commit/a19462879716e7b600daed8eb3a1b2af4bd68feb",
+    "source": "PR #3936 refactor(pattern-router): reduce bundle size and remove outdated comments, squash-merged 2025-02-21",
+    "note": "a pattern whose path ends with a wildcard is compiled with an empty suffix, so the route has no end anchor and matches every path that merely shares its prefix: /path/* answers /pathfoo and /paths, and the suffix form /assets* answers /asset; the base built the same expression outside its try block, so this refactor moved the line into the try without giving it a boundary (fix PR #5252)"
+  },
+  "bugs": [
+    {
+      "path": "src/router/pattern-router/router.ts",
+      "line": 35,
+      "kind": "over-match",
+      "severity": "important",
+      "keywords": [
+        "end anchor",
+        "segment boundary",
+        "also matches",
+        "sibling path",
+        "wrong handler",
+        "matches a path it should not",
+        "over-matches"
+      ],
+      "note": "endsWithWildcard drops the '/?$' suffix instead of requiring 'the end or a slash', so the added pattern line matches a sibling path; the fix compiles '(?:$|/)' for a trailing '/*' and leaves the suffix form unanchored only on the right, which is what a suffix wildcard means"
+    }
+  ]
+}
