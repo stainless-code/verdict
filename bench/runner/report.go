@@ -641,6 +641,9 @@ func (r *runner) commands() [][]string {
 	if len(c.Cases) > 0 {
 		command = append(command, "-cases", strings.Join(c.Cases, ","))
 	}
+	if c.MaxUSD > 0 {
+		command = append(command, "-max-usd", strconv.FormatFloat(c.MaxUSD, 'f', -1, 64))
+	}
 	if c.Internal {
 		command = append(command, "-internal")
 	}

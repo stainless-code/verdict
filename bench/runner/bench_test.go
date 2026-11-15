@@ -221,6 +221,24 @@ func TestCostRollupCountsUnpricedRefusals(t *testing.T) {
 	}
 }
 
+// TestCommandsRecordTheBudget pins the reproduction command: a capped run must
+// name its cap, and an uncapped one must not grow a -max-usd 0 the operator
+// never typed.
+func TestCommandsRecordTheBudget(t *testing.T) {
+	capped := cappedMultiCaseReport(t)
+	command := strings.Join(capped.Commands[0], " ")
+	if !strings.Contains(command, "-max-usd 0.05") {
+		t.Errorf("command = %q, want the cap it ran under", command)
+	}
+	plain := oneSampleReport(t, 0)
+	if plain.BudgetUSD != nil {
+		t.Fatalf("budget = %v, want none for an uncapped run", plain.BudgetUSD)
+	}
+	if command := strings.Join(plain.Commands[0], " "); strings.Contains(command, "-max-usd") {
+		t.Errorf("command = %q, want no budget flag on an uncapped run", command)
+	}
+}
+
 // TestBudgetReachedWithoutASkipIsNotCitable pins the other half of the budget
 // rule: when the last scheduled sample pushes spend to the cap, nothing is
 // skipped, so cap_hit stays false — and the run must still not be citable.
