@@ -53,6 +53,11 @@ var keywordCases = []keywordCase{
 			"A timestamp whose year parses to zero is silently replaced with the current date.",
 			"The year-zero test keys on the parsed value alone, so a layout that spells out the year still has its date replaced.",
 			"The flag discards an explicit year zero and fills in today's date instead.",
+			"A year-only layout that parses 0000 is treated as unset, so the caller's year zero is replaced with today.",
+			"Parsing \"0000\" with the 2006 layout yields year 0 and the date is silently rewritten to the current day.",
+			"A literal year 0 in a year-carrying layout is treated as unset and its date is replaced with today.",
+			"The parsed timestamp is rewritten: year zero becomes the current date.",
+			"Parsing 0000 succeeds, then the missing-year branch discards it and stamps the current date.",
 		},
 		fails: []string{
 			"The year-only layout fails to parse a value with a timezone suffix.",
@@ -75,6 +80,11 @@ var keywordCases = []keywordCase{
 			"The early return for -- skips the Nth-argument boundary.",
 			"The Nth argument boundary is checked after the branches that consume the argument.",
 			"An empty positional on the boundary ends flag parsing, so the rest of the arguments are lost.",
+			"A double dash sitting exactly on the Nth positional is consumed by the `--` branch before the parser stops, so the action never sees it.",
+			"The Nth-argument check runs after the branches that handle the argument, so an empty positional ends parsing and the rest are lost.",
+			"An empty positional makes the loop break, so the Nth-argument check never runs and the trailing arguments vanish.",
+			"A `--` on the boundary fires the early return first; the stop check is below it.",
+			"Arguments are dropped because the branch that consumes the argument runs before the boundary check.",
 		},
 		fails: []string{
 			"The loop bound runs one past the slice.",

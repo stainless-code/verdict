@@ -25,7 +25,12 @@
         "never asks the layout",
         "silently replaced",
         "keys on the parsed value",
-        "explicit year zero"
+        "explicit year zero",
+        "year zero",
+        "treated as unset",
+        "replaced with today",
+        "current date",
+        "rewritten"
       ],
       "note": "the reviewed head decides a timestamp has no year by testing the parsed value's year and day-of-year, so a year-only layout that parses a literal year zero takes the missing-year branch and the date is rewritten to today; the fix adds layoutHasYear and gates both branches on yearMissing"
     }
