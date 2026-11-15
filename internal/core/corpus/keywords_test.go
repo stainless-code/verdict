@@ -41,6 +41,7 @@ var keywordCases = []keywordCase{
 			"Add a nil check before Set is called on the destination.",
 			"The completion command's required flags are skipped too.",
 			"The table of flag names is unsorted.",
+			"Move the `cmd.Name` comparisons into a helper so the two call sites share one branch.",
 		},
 	},
 	{
@@ -83,6 +84,7 @@ var keywordCases = []keywordCase{
 			"Rename posArgs to positionals for readability.",
 			"A flag that needs an argument is reported only when it is last in a group.",
 			"MutuallyExclusiveFlags are checked before dispatching to a subcommand.",
+			"`StopOnNthArg` is a new field generated per parse; the count is tracked on the flag set.",
 		},
 	},
 }

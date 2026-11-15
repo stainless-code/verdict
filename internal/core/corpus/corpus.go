@@ -270,6 +270,77 @@ func validateKeywords(keywords []string, n int, path string) *core.RefusalError 
 	return nil
 }
 
+// CheckKeywords refuses a real case's keyword that the case's own diff spells
+// as an identifier. A vocabulary lifted from the patch is a free pass: the
+// sentence "StopOnNthArg is a new field, so the count is tracked on the flag
+// set" names the change, not the defect, and a keyword the diff itself prints
+// grades it as a defect report. The gate has to be satisfiable in the words a
+// reviewer uses without the diff open. Seeded cases are synthetic (their diff
+// is written for the bug) and controls carry no keywords, so the rule binds
+// real cases only.
+func CheckKeywords(raw, diff []byte, path string) *core.RefusalError {
+	var c core.CorpusCase
+	if err := json.Unmarshal(raw, &c); err != nil {
+		return invalid(path, "not a corpus case manifest: "+err.Error())
+	}
+	if c.Provenance.Kind != kindReal {
+		return nil
+	}
+	return unusableKeyword(&c, diff, path)
+}
+
+// unusableKeyword names the first keyword the diff spells, if any.
+func unusableKeyword(c *core.CorpusCase, diff []byte, path string) *core.RefusalError {
+	for i := range c.Bugs {
+		for _, keyword := range c.Bugs[i].Keywords {
+			if keywordInDiff(diff, keyword) {
+				return invalid(path, fmt.Sprintf(
+					"bug %d keyword %q is spelled by the case's own full.diff; "+
+						"name the defect in words instead of reusing the diff's identifiers", i+1, keyword))
+			}
+		}
+	}
+	return nil
+}
+
+// keywordInDiff reports whether one keyword occurs in the diff as a whole
+// identifier: no identifier byte may continue it on either side, so "help"
+// stays clear of "helpName" while "cmd.name" still finds "cmd.Name".
+func keywordInDiff(diff []byte, keyword string) bool {
+	return boundedOccurrence(strings.ToLower(string(diff)), strings.ToLower(strings.TrimSpace(keyword)))
+}
+
+// boundedOccurrence scans haystack for needle at an identifier boundary.
+func boundedOccurrence(haystack, needle string) bool {
+	if needle == "" {
+		return false
+	}
+	for from := 0; from <= len(haystack)-len(needle); {
+		i := strings.Index(haystack[from:], needle)
+		if i < 0 {
+			return false
+		}
+		at := from + i
+		if boundedAt(haystack, at, len(needle)) {
+			return true
+		}
+		from = at + 1
+	}
+	return false
+}
+
+// boundedAt reports whether the span at..at+n stands alone in s.
+func boundedAt(s string, at, n int) bool {
+	end := at + n
+	return (at == 0 || !identByte(s[at-1])) && (end == len(s) || !identByte(s[end]))
+}
+
+// identByte is a byte that could continue a Go identifier: a letter, a digit,
+// the underscore, and the dot that joins a selector.
+func identByte(b byte) bool {
+	return 'a' <= b && b <= 'z' || 'A' <= b && b <= 'Z' || '0' <= b && b <= '9' || b == '_' || b == '.'
+}
+
 // Tolerance reads the manifest's line window (default 1).
 func Tolerance(c *core.CorpusCase) int {
 	if c.LineTolerance != nil && *c.LineTolerance >= 0 {

@@ -16,6 +16,7 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
+	corpuscore "github.com/stainless-code/verdict/internal/core/corpus"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -389,6 +390,10 @@ func readCase(dir, id string) (corpusCase, error) {
 	diff, err := os.ReadFile(filepath.Join(dir, id, fullDiffName))
 	if err != nil {
 		return corpusCase{}, jq.NewErrf("case %s: %s", id, err)
+	}
+	path := filepath.Join(dir, id, caseManifestName)
+	if ref := corpuscore.CheckKeywords(raw, diff, path); ref != nil {
+		return corpusCase{}, jq.NewErr(ref.Message)
 	}
 	return corpusCase{
 		manifest: raw,

@@ -95,6 +95,11 @@ bench/corpus/<repo>-<pr>-<slug>/
   diff's hunks (the added line itself, or the statement the fix deletes), with
   `kind`, `severity`, and the `keywords` a reviewer would use. A fix that also
   shows the call site lists it in `also_lines`.
+- A keyword must name the defect in words. Validation refuses one that the
+  case's own `full.diff` spells (case-insensitively, as a whole identifier or
+  word), because grading on the patch's vocabulary is a free pass: a finding
+  that says "`StopOnNthArg` is a new field" names the change, not the bug, and
+  a keyword lifted from the diff grades it as a real report.
 - No `snapshots/` and no `agents/`: `TestSeededDiffApplies` skips a real case
   (its applied diff is proven by the repository it came from), and the
   `bench-corpus` eval records bundles only for cases with fixture outputs, so a

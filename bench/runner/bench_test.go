@@ -186,6 +186,20 @@ func TestReadCaseRefusesARealCaseWithoutCommits(t *testing.T) {
 	}
 }
 
+// TestReadCaseRefusesADiffSpelledKeyword pins the guard on the run path: a
+// real case whose keyword the diff itself spells never reaches an agent.
+func TestReadCaseRefusesADiffSpelledKeyword(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "case-a", caseManifestName), []byte(
+		`{"schema_version":"1","id":"case-a","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1,`+
+			`"base_sha":"`+strings.Repeat("a", 40)+`","head_sha":"`+strings.Repeat("b", 40)+`"},`+
+			`"bugs":[{"path":"command.go","line":3,"kind":"validation-bypass","keywords":["boundary check","stoponntharg"]}]}`))
+	writeFile(t, filepath.Join(dir, "case-a", fullDiffName), []byte("+\tif StopOnNthArg > 0 {\n"))
+	if _, _, err := loadCases(dir, nil); err == nil || !strings.Contains(err.Error(), `"stoponntharg"`) {
+		t.Fatalf("loadCases error = %v, want a refusal naming the keyword", err)
+	}
+}
+
 // TestSlugKeepsBundleAlphabet pins the bundle-name alphabet.
 func TestSlugKeepsBundleAlphabet(t *testing.T) {
 	for _, tc := range []struct{ in, want string }{

@@ -104,11 +104,27 @@ func checkCase(t *testing.T, root, name string) *core.CorpusCase {
 	if err != nil {
 		t.Fatalf("%s: read full.diff: %v", name, err)
 	}
+	checkKeywordsAgainstDiff(t, name, dir, diff)
 	index := hunks.Parse(string(diff))
 	checkHunksTSV(t, name, dir, c, index)
 	checkTolerance(t, name, c, index)
 	checkFixtures(t, name, dir, c, index)
 	return c
+}
+
+// checkKeywordsAgainstDiff runs the shipped guard over the checked-in pair: a
+// keyword the case's own diff spells is a free pass, so the corpus test has to
+// refuse it before a run does.
+func checkKeywordsAgainstDiff(t *testing.T, name, dir string, diff []byte) {
+	t.Helper()
+	path := filepath.Join(dir, "case.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("%s: read case.json: %v", name, err)
+	}
+	if ref := CheckKeywords(raw, diff, path); ref != nil {
+		t.Errorf("%s: %v", name, ref)
+	}
 }
 
 // checkHunksTSV keeps a real case's checked-in index from drifting. The
