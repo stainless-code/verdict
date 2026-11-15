@@ -15,13 +15,14 @@ import (
 // that stops naming the defect (or starts naming a neighbor) fails here
 // instead of quietly grading a model wrong.
 type keywordCase struct {
-	id string
-	// bug is the index into the case's bugs, so a case whose fix commit
-	// repaired two defects pins each of them from both sides. Zero for the
-	// common one-bug case.
-	bug    int
+	id     string
 	passes []string
 	fails  []string
+	// bug is the index into the case's bugs, so a case whose fix commit
+	// repaired two defects pins each of them from both sides. Zero for the
+	// common one-bug case. It trails the pointer fields so the GC's scan of
+	// this struct stops before it (fieldalignment).
+	bug int
 }
 
 // minKeywordsPerBug keeps a case from passing this test on one lucky phrase.
