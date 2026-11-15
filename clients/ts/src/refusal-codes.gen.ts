@@ -157,6 +157,7 @@ export type RefusalCode =
   | "panel-empty"
   | "panel-stale"
   | "panel-too-large"
+  | "partial-clone"
   | "post-failed"
   | "post-secret-shaped"
   | "pr-not-open"

@@ -238,10 +238,18 @@ func TestReadMissingLedgerIsMissing(t *testing.T) {
 	}
 }
 
+// parallelAttachWait is the wait the parallel-attach test gives the ledger
+// lock. Sixteen waiters can starve one past the operator's five seconds on a
+// loaded machine, and the test grades the rows kept, not the budget.
+const parallelAttachWait = time.Minute
+
 // TestUpsertKeepsEveryParallelAttach proves the attach serializes: sixteen
 // attaches started together each keep a row, which the unlocked
 // read-modify-write dropped to one or two.
 func TestUpsertKeepsEveryParallelAttach(t *testing.T) {
+	restore := lockWait
+	lockWait = parallelAttachWait
+	t.Cleanup(func() { lockWait = restore })
 	root := t.TempDir()
 	mkdirStore(t, root)
 	const attaches = 16

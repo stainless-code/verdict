@@ -14,6 +14,7 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -122,23 +123,79 @@ func validRecorded(v *float64) bool {
 	return v != nil && *v >= 0 && !math.IsNaN(*v) && !math.IsInf(*v, 0)
 }
 
-// Cohort reads the selected case, run, model and panel for any-of-k recall. A
-// sibling that cannot be graded is left out with a warning naming its bundle,
-// so a shrunken denominator is never silent.
+// Cohort reads the selected case, run, model and panel for any-of-k recall.
 func Cohort(dir string, sample *Sample) ([]Sample, []string) {
 	out := []Sample{*sample}
 	var warnings []string
+	selected := readableIdentity(dir)
 	for _, sibling := range siblingDirs(dir) {
 		s, ok, reason := cohortSibling(sibling, sample)
 		if ok {
 			out = append(out, s)
 			continue
 		}
-		if reason != "" {
+		if reason != "" && readableIdentity(sibling).joins(selected) {
 			warnings = append(warnings, fmt.Sprintf("corpus bundle %q skipped from the cohort (%s)", sibling, reason))
 		}
 	}
 	return out, warnings
+}
+
+type cohortIdentity struct {
+	caseID string
+	runID  string
+	model  string
+	panel  string
+}
+
+func readableIdentity(dir string) cohortIdentity {
+	return cohortIdentity{
+		caseID: manifestID(dir),
+		runID:  samplingRunID(dir),
+		model:  provenance.CostModel(dir),
+		panel:  PanelLabel(PanelOf(dir)),
+	}
+}
+
+func manifestID(dir string) string {
+	var manifest struct {
+		ID string `json:"id"`
+	}
+	if !readIdentity(filepath.Join(dir, "corpus.json"), &manifest) {
+		return ""
+	}
+	return strings.TrimSpace(manifest.ID)
+}
+
+func samplingRunID(dir string) string {
+	var sampling struct {
+		RunID string `json:"run_id"`
+	}
+	if !readIdentity(filepath.Join(dir, "corpus_run.json"), &sampling) {
+		return ""
+	}
+	return strings.TrimSpace(sampling.RunID)
+}
+
+func readIdentity(path string, target any) bool {
+	raw, err := jq.CappedFile(path, maxManifestBytes)
+	if err != nil {
+		return false
+	}
+	return json.Unmarshal(raw, target) == nil
+}
+
+func (id cohortIdentity) joins(selected cohortIdentity) bool {
+	return samePart(id.caseID, selected.caseID) && samePart(id.runID, selected.runID) &&
+		samePart(id.model, selected.model) && samePart(id.panel, selected.panel)
+}
+
+func samePart(sibling, selected string) bool {
+	return unknownPart(sibling) || unknownPart(selected) || sibling == selected
+}
+
+func unknownPart(part string) bool {
+	return part == "" || part == unrecorded || part == unpaneled
 }
 
 // siblingDirs lists the other corpus bundles beside dir. A listing failure is
