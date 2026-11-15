@@ -129,7 +129,7 @@ var keywordCases = []keywordCase{
 			"The condition combines a URL with a missing base instead of returning it unchanged.",
 		},
 		fails: []string{
-			"The flag defaults to false in the instance defaults, so every request stops honouring absolute URLs.",
+			"The flag defaults to false in the instance defaults, so every request stops honoring absolute URLs.",
 			"getUri ignores the config argument and always merges the instance defaults.",
 			"The README documents the option but the type declaration does not add it.",
 			"The new option is validated as a string rather than a boolean.",
