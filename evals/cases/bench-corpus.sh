@@ -163,7 +163,7 @@ else
 fi
 run_review trend acme/bench --json
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && jq -e '.warnings | map(select(contains("trend skips corpus bundle .verdict/state/corpus-broken/"))) | length == 1' <"$EVAL_OUT" >/dev/null 2>&1 \
+  && jq -e '.warnings | map(select(contains("trend skips corpus bundle \".verdict/state/corpus-broken\""))) | length == 1' <"$EVAL_OUT" >/dev/null 2>&1 \
   && [ "$(jq -r '.data.corpus.bundles' <"$EVAL_OUT" 2>/dev/null)" = "16" ]; then
   good "trend warns and skips the corrupt corpus bundle, keeping the 16 measured"
 else

@@ -12,7 +12,7 @@ func TestControlEmptyTruthOneReportEqualsOneFalsePositive(t *testing.T) {
 	if ref := validate(c, "fixture"); ref != nil {
 		t.Fatal(ref)
 	}
-	r := Evaluate(c, []any{jq.NewObj("path", "sample.go", "line", 3, "body", "regression")})
+	r := evaluateAll(c, []any{jq.NewObj("path", "sample.go", "line", 3, "body", "regression")})
 	if r.Matched != 0 || r.FalsePositives != 1 || r.Reported != 1 {
 		t.Fatalf("control counts = %+v; want matched=0 false-positive=1 reported=1", r)
 	}
