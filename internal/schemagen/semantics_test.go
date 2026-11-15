@@ -243,9 +243,10 @@ var publishedSemantics = map[string]string{
 	// observations and prWaitData property descriptions. No existing property,
 	// required key, enum, or type changed.
 	// fix batch: additive optional fixData.min_severity, fixData.verify_cmd,
-	// and fixData.batch ($ref fixBatchRow), plus additive $defs/fixBatchRow. No
-	// existing property, required key, enum, or type changed.
-	"envelope.schema.json": "ae86572ca9f255930e58039d6b68fc0dbe05dcb8e919c22a37c2bda3c7f76ee3",
+	// fixData.batch ($ref fixBatchRow), and fixData.patch (the fix.patch path),
+	// plus additive $defs/fixBatchRow. No existing property, required key, enum,
+	// or type changed.
+	"envelope.schema.json": "1451d335370ca83de0f15ead8148e6517f0e85c161b00467734d49b3756794ea",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

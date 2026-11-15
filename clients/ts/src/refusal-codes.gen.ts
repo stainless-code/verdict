@@ -99,6 +99,7 @@ export type RefusalCode =
   | "fetch-failed"
   | "fix-ceiling"
   | "fix-failed"
+  | "fix-patch-secret"
   | "head-mismatch"
   | "html-not-export"
   | "html-symlink"

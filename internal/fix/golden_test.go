@@ -217,6 +217,49 @@ func setupBatchBelowFloor(t *testing.T, dir, _ string) {
 		findingJSON(sigInfo2, "open", "informational", "app.txt", "Another nit here.")+"]")
 }
 
+// patchedAnchorContent is the worktree content a fix patch fixture holds: the
+// anchor file patched the way an agent would after pass one.
+const patchedAnchorContent = "alpha\nbeta fixed\ngamma\n"
+
+// setupPatch is the patch-output fixture: one pass is on record and the
+// anchor file carries the patch that pass asked for.
+func setupPatch(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	mkLocal(t, dir, "patched", "["+
+		findingJSON(sigBatch, "open", "important", "app.txt", "Important scoping bug here.")+"]")
+	seedLedger(t, dir, "patched", `{"sigs":{"`+sigBatch+`":{"passes":1,`+
+		`"last_at":"2026-01-01T00:00:00Z","baseline":["app.txt","notes.txt","other.txt"]}}}`+"\n")
+	if err := os.WriteFile(filepath.Join(dir, "app.txt"), []byte(patchedAnchorContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// setupPatchSecret is the same fixture with a credential in the patch: the
+// patch output refuses before writing.
+func setupPatchSecret(t *testing.T, dir, _ string) {
+	t.Helper()
+	setupPatch(t, dir, "")
+	leak := "alpha\ntoken=ghp_0123456789abcdefghijklmnopqrstuvwxyz\ngamma\n"
+	if err := os.WriteFile(filepath.Join(dir, "app.txt"), []byte(leak), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// setupPatchStale is the clean-worktree fixture: a previous pass left a patch,
+// the agent reverted its change, so the stale diff must not survive.
+func setupPatchStale(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	mkLocal(t, dir, "stale", "["+
+		findingJSON(sigBatch, "open", "important", "app.txt", "Important scoping bug here.")+"]")
+	stale := "diff --git a/app.txt b/app.txt\n--- a/app.txt\n+++ b/app.txt\n@@ -1,3 +1,3 @@\n alpha\n-beta\n+beta stale\n gamma\n"
+	bdir := filepath.Join(dir, ".verdict", "state", "local-stale")
+	if err := os.WriteFile(filepath.Join(bdir, "fix.patch"), []byte(stale), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // setupNotLocal is the PR-bundle refusal fixture.
 func setupNotLocal(t *testing.T, dir, _ string) {
 	t.Helper()
@@ -248,11 +291,29 @@ func TestFixGolden(t *testing.T) {
 	t.Run("gates", testFixGates)
 	t.Run("brief", testFixBrief)
 	t.Run("batch", testFixBatch)
+	t.Run("patch", testFixPatch)
 }
 
 // testFixBatch pins the --all batch: the plan for every selected sig, the
 // floor, the mixed ceiling outcome, the patch.json fallback, and the typed
 // refusals a batch adds.
+// testFixPatch pins the patch output: fix.patch beside the ledger, the stale
+// patch removed once the worktree is clean, and the secret-shaped refusal that
+// writes neither the patch nor a pass.
+func testFixPatch(t *testing.T) {
+	t.Helper()
+	golden.Pin(t, harness, "patch-json", setupPatch, nil,
+		"fix", "acme/app", "local-patched", "--json")
+	golden.Pin(t, harness, "patch-human", setupPatch, nil,
+		"fix", "acme/app", "local-patched")
+	golden.Pin(t, harness, "patch-secret", setupPatchSecret, nil,
+		"fix", "acme/app", "local-patched", "--json")
+	golden.Pin(t, harness, "patch-stale", setupPatchStale, nil,
+		"fix", "acme/app", "local-stale", "--json")
+	golden.Pin(t, harness, "patch-batch", setupPatch, nil,
+		"fix", "acme/app", "local-patched", "--all", "--verify-cmd", batchVerifyCmd, "--json")
+}
+
 func testFixBatch(t *testing.T) {
 	t.Helper()
 	golden.Pin(t, harness, "batch-json", setupBatch, nil,
@@ -274,6 +335,9 @@ func testFixBatch(t *testing.T) {
 		"fix", "acme/app", "local-done", "--all", "--verify-cmd", batchVerifyCmd, "--json")
 	golden.Pin(t, harness, "batch-bad-floor", setupBatch, nil,
 		"fix", "acme/app", "local-batch", "--all", "--min-severity", "high",
+		"--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "batch-bad-floor-empty", setupDone, nil,
+		"fix", "acme/app", "local-done", "--all", "--min-severity", "high",
 		"--verify-cmd", batchVerifyCmd, "--json")
 	golden.Pin(t, harness, "batch-conflict", setupBatch, nil,
 		"fix", "acme/app", "local-batch", "--all", "--sig", sigInfo)

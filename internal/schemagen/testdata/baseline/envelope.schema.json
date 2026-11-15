@@ -2095,6 +2095,10 @@
         "complete": { "type": "boolean" },
         "min_severity": { "type": ["string", "null"] },
         "verify_cmd": { "type": ["string", "null"] },
+        "patch": {
+          "description": "Path of fix.patch beside the ledger: the worktree's unified diff against HEAD, written before the pass consumes its budget and absent when the worktree is clean. Nothing is applied or pushed — the operator runs git apply.",
+          "type": ["string", "null"]
+        },
         "batch": {
           "description": "One row per open inline finding at or above min_severity, in rank order. Absent on a single pass and on a completion.",
           "type": "array",

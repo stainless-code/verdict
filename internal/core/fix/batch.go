@@ -82,10 +82,8 @@ func (st *state) runBatch(
 	fixOpen, fixOpenInline int,
 	now string,
 ) *core.RefusalError {
-	if st.req.MinSeverity == "" {
-		st.req.MinSeverity = defaultBatchFloor
-	}
-	if ref := st.validateFloor(); ref != nil {
+	floor, ref := st.batchFloor()
+	if ref != nil {
 		return ref
 	}
 	if fixOpenInline == 0 {
@@ -94,14 +92,14 @@ func (st *state) runBatch(
 	picks := readcommon.Select(entries, &readcommon.Selector{
 		Status: readcommon.StatusOpen,
 		Kind:   readcommon.KindInline,
-		Floor:  st.req.MinSeverity,
+		Floor:  floor,
 	})
 	if len(picks) == 0 {
 		return st.emptyBatch(dir, ledgerPath, store, entries, fixOpen, fixOpenInline, now)
 	}
-	verify := st.batchVerifyCmd(dir)
-	if verify == "" {
-		return st.refuse(codeNoVerifyCmd, fmt.Sprintf(msgBatchNoVerify, dir))
+	verify, ref := st.batchEnv(ctx, dir)
+	if ref != nil {
+		return ref
 	}
 	work := st.worktreeFiles(ctx)
 	rows := make([]batchRow, 0, len(picks))
@@ -126,6 +124,33 @@ func (st *state) validateFloor() *core.RefusalError {
 	}
 	return st.refuse("bad-min-severity",
 		"fix --all: --min-severity takes critical|important|informational|off")
+}
+
+// batchFloor resolves the severity floor a batch selects with: the operator's
+// --min-severity, or the important default when the flag is absent.
+func (st *state) batchFloor() (string, *core.RefusalError) {
+	if st.req.MinSeverity == "" {
+		st.req.MinSeverity = defaultBatchFloor
+	}
+	if ref := st.validateFloor(); ref != nil {
+		return "", ref
+	}
+	return st.req.MinSeverity, nil
+}
+
+// batchEnv resolves what every batch pass needs before it picks a sig: the
+// proving command and the patch snapshot of the worktree the passes extend.
+func (st *state) batchEnv(ctx context.Context, dir string) (string, *core.RefusalError) {
+	verify := st.batchVerifyCmd(dir)
+	if verify == "" {
+		return "", st.refuse(codeNoVerifyCmd, fmt.Sprintf(msgBatchNoVerify, dir))
+	}
+	patch, ref := st.writePatch(ctx, dir)
+	if ref != nil {
+		return "", ref
+	}
+	st.patch = patch
+	return verify, nil
 }
 
 // batchPick runs the per-sig ceilings for one selected finding and records the
@@ -304,6 +329,7 @@ func (st *state) fillBatchData(
 		VerifyCmd:   &verify,
 		Batch:       out,
 		MinSeverity: &floor,
+		Patch:       st.patch,
 	}
 }
 

@@ -46,6 +46,8 @@ var hintRules = []HintRule{
 	{codes: []string{"post-failed"}, hint: "try: narrow anchor drift or body size (see above), then re-run"},
 	{codes: []string{"post-secret-shaped"}, hint: "try: remove the value from review.json and re-run, " +
 		"or pass --allow-secret-values to publish it anyway"},
+	{codes: []string{"fix-patch-secret"}, hint: "try: remove the value from the worktree (rotate it " +
+		"if it was real), then re-run fix"},
 	{
 		codes: []string{"diff-too-large"},
 		hint:  "try: split the range (--range/--base/--base-sha) or narrow with a paths filter, then re-fetch",

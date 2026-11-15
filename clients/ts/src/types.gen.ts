@@ -1067,6 +1067,8 @@ export interface FixData {
   complete: boolean;
   min_severity?: string | null;
   verify_cmd?: string | null;
+  /** Path of fix.patch beside the ledger: the worktree's unified diff against HEAD, written before the pass consumes its budget and absent when the worktree is clean. Nothing is applied or pushed — the operator runs git apply. */
+  patch?: string | null;
   /** One row per open inline finding at or above min_severity, in rank order. Absent on a single pass and on a completion. */
   batch?: Array<FixBatchRow>;
   [key: string]: unknown;

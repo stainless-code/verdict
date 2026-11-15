@@ -2947,6 +2947,17 @@ nothing. Pass `--verify-cmd <cmd>` or write `verifyCmd` in the bundle's
 `patch.json` — the same command `verify` runs. `--all` and `--sig` are mutually
 exclusive, and `--min-severity`/`--verify-cmd` belong to the batch.
 
+Each pass also writes `fix.patch` beside the ledger: the worktree's unified
+diff against `HEAD`, captured before the pass consumes its budget, so the change
+set a pass extends is reviewable and reversible. `fix` never applies it and
+never pushes — an operator applies it with `git apply` — and untracked files
+stay out of it until `git add -N` puts them in the diff. An empty diff removes a
+stale patch instead of leaving a diff that no longer describes the tree. The
+diff is scanned for credential shapes before it lands: a private key, an AWS key
+id, or a GitHub, Slack, Stripe, Google, Anthropic, or OpenAI token refuses
+`fix-patch-secret` naming the shape, writes no patch, and records no pass, so a
+secret never reaches the bundle every later agent run reads.
+
 ## Hostile-PR sandbox recipe (enforced on Linux with --sandbox; recipe for other OSes)
 
 When the diff is untrusted (unknown author, drive-by PR, patch claims

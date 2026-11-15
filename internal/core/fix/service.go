@@ -67,6 +67,7 @@ type Data struct { //nolint:govet // field order is the published property order
 	Complete    bool
 	MinSeverity *string
 	VerifyCmd   *string
+	Patch       *string
 	Batch       []BatchRow
 }
 
@@ -152,6 +153,9 @@ func (d *Data) Wire() *jq.Obj {
 	if d.VerifyCmd != nil {
 		o.Set("verify_cmd", *d.VerifyCmd)
 	}
+	if d.Patch != nil {
+		o.Set("patch", *d.Patch)
+	}
 	if d.Batch != nil {
 		o.Set("batch", batchWire(d.Batch))
 	}
@@ -164,6 +168,7 @@ type state struct { //nolint:govet // fix service state is allocated once per in
 	at       string
 	next     string
 	data     *Data
+	patch    *string
 }
 
 // Run executes one fix pass (or reports completion) over a local bundle.
@@ -404,6 +409,11 @@ func (st *state) runPass(
 				escapes, anchor, fixOpen, now)
 		}
 	}
+	patch, ref := st.writePatch(ctx, dir)
+	if ref != nil {
+		return ref
+	}
+	st.patch = patch
 	pass := passes + 1
 	store = setPass(store, full, pass, now, st.worktreeFiles(ctx))
 	if ref := writeLedger(ledgerPath, store); ref != nil {
@@ -630,7 +640,7 @@ func freshLedger() *ledgerDoc {
 func writeLedger(path string, store *ledgerDoc) *core.RefusalError {
 	if err := atomic.WriteFile(path, []byte(store.obj.MarshalCompact()+"\n")); err != nil {
 		return &core.RefusalError{
-			Code:    "fix-failed",
+			Code:    codeFixFailed,
 			Message: fmt.Sprintf("could not write %s: %v", path, err),
 		}
 	}
@@ -961,6 +971,7 @@ func (st *state) passOutput(
 		Open:       fixOpen,
 		Stopped:    stoppedCount(store),
 		Complete:   false,
+		Patch:      st.patch,
 	}
 	return nil
 }
@@ -1207,6 +1218,7 @@ const (
 	suffixFindings = "/findings.json"
 	// suffixFixJSON is the ledger file suffix.
 	suffixFixJSON   = "/fix.json"
+	suffixFixPatch  = "/fix.patch"
 	suffixPatchJSON = "/patch.json"
 	// suffixKB is the kb recall file suffix.
 	suffixKB = "/kb.txt"

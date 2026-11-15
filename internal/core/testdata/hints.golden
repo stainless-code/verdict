@@ -95,6 +95,7 @@ duplicate-payload	try: re-run with --force to repost the identical payload — r
 fetch-failed	try: run 'gh auth status', confirm the repo/PR spelling, then re-run
 fix-ceiling	try: triage the sig or split the fix — the 3-pass ceiling is hard-coded
 fix-failed	try: address the cause above, then re-run the same command
+fix-patch-secret	try: remove the value from the worktree (rotate it if it was real), then re-run fix
 head-mismatch	try: address the cause above, then re-run the same command
 html-not-export	try: choose a new, empty, or previous HTML export directory
 html-symlink	try: choose an HTML export directory that is not a symlink

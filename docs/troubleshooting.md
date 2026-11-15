@@ -596,9 +596,20 @@ Fix: triage the sig or split the fix — the 3-pass ceiling is hard-coded.
 
 ## `fix-failed`
 
-Cause: the fix ledger could not be written.
+Cause: the fix ledger or the patch output could not be written.
 
 Fix: make the bundle directory writable, then re-run `fix`.
+
+## `fix-patch-secret`
+
+Cause: the worktree diff `fix` was about to write to `fix.patch` carries a
+secret-shaped value — a private key, an AWS key id, a GitHub, Slack, Stripe,
+Google, Anthropic, or OpenAI token. The bundle keeps that patch, and every later
+agent run reads it.
+
+Fix: remove the value from the worktree and rotate it if it was real, then
+re-run `fix`. The pass was not recorded and `fix.patch` was not written, so no
+pass was spent.
 
 ## `head-mismatch`
 
