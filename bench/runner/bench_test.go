@@ -221,6 +221,36 @@ func TestCostRollupCountsUnpricedRefusals(t *testing.T) {
 	}
 }
 
+// TestMaxUSDCountsRefusedSpend pins the cap's spend base: a refused sample
+// costs what its agent reported, so three refusals at 0.03 against a 0.05 cap
+// stop after two. A rollup that ignored refused spend would let all three run.
+func TestMaxUSDCountsRefusedSpend(t *testing.T) {
+	needPOSIX(t)
+	restoreWD(t)
+	cfg := benchConfig(t, fakeCorpus(t), agentWritesSpend)
+	cfg.Runs = 3
+	cfg.MaxUSD = 0.05
+	fake := &fakeGrader{
+		model:   cfg.Model,
+		panel:   cfg.Panel,
+		prefix:  fakePrefix,
+		refusal: jq.NewErr("record: bad-review-input: coverage[0] wants file and ranges"),
+	}
+	rep, err := runGraded(context.Background(), cfg, fake)
+	if err == nil {
+		t.Fatal("runGraded reported success after three refused samples")
+	}
+	if rep.Samples != 2 || len(rep.Skipped) != 1 {
+		t.Fatalf("samples=%d skipped=%v, want two run and one skipped", rep.Samples, rep.Skipped)
+	}
+	if got, want := rep.Cost.Usd, 0.06; got != want || rep.Cost.RefusedUsd != want {
+		t.Errorf("measured=%v refused=%v, want %v (refused spend funds the cap)", got, rep.Cost.RefusedUsd, want)
+	}
+	if !rep.CapHit {
+		t.Error("cap_hit = false, want the cap to stop the third refused sample")
+	}
+}
+
 // TestCommandsRecordTheBudget pins the reproduction command: a capped run must
 // name its cap, and an uncapped one must not grow a -max-usd 0 the operator
 // never typed.
