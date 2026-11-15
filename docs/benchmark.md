@@ -26,9 +26,11 @@ deliberately simple and published:
   and its text names that bug's defect. A defect is named by its `kind` in
   hyphen or space form (`off-by-one`, `off by one`), a phrase from the
   published category vocabulary for that kind (see below), or a phrase from
-  the bug's optional `keywords`. Matching is case-insensitive and
-  whitespace-folded, and a phrase must start a word, so `race` does not
-  match inside `trace`.
+  the bug's optional `keywords`. The finding text and every phrase are
+  normalized the same way — lower-cased, whitespace-folded, and a spaced
+  selector dot folded — and a phrase must start a word, so `race` does not
+  match inside `trace`. A real case drops the built-in phrases its own diff
+  spells before grading.
 - A finding that matches through an alternate anchor counts the same bug:
   one bug is one true positive no matter how many of its lines a review
   names, and the reported match keeps the primary line.
@@ -131,6 +133,23 @@ One case, one manifest, published as
   and line window, but a keyword nobody would write turns true positives
   into false ones. The bug's `kind` and its category vocabulary always name
   it too, so a case with no keywords is matched on `kind` and category.
+  Validation refuses a keyword the case's own `full.diff` spells: at a word
+  start, including as the prefix of a longer identifier (`help` in
+  `helpName`) and as one part of a split or spaced selector (`cmd`, `name`,
+  or `cmd .Name` against `cmd.Name`), because the patch's own words are not
+  the reviewer's. The match is left-bounded, so `help` is refused even when
+  the diff only writes `helper`: prefer a multi-word phrase (`help command`)
+  when the single word lives inside an identifier. A built-in phrase — the
+  `kind` in either form or one from the category table — that the diff spells
+  is dropped from that case's grading instead of refusing the case, because
+  the curator cannot change the table. A dropped phrase is unavailable for
+  that case: a correct finding that names only it grades as a false positive
+  (a bounds finding saying `len(` when the diff spells `len(`), so give the
+  case a keyword that the diff does not spell. If no phrase is left,
+  validation refuses the case and asks for that keyword. A real bundle must
+  carry a non-empty `full.diff`: `calibrate` refuses one that is missing,
+  empty, or unreadable instead of grading with the unfiltered built-ins, and
+  `trend` skips it with a warning.
 - `line_tolerance` (optional, default 1) is the window in lines. Keep it
   short of the far end of the new-side hunk that shows the bug: the corpus
   test refuses a case whose window covers the whole hunk.
@@ -397,12 +416,14 @@ citable, never posted.
 
 ### What the backtest numbers mean
 
-Grading reuses the corpus rule (`corpuscore.Evaluate`): a finding matches a bug
-when it names the same `path`, its line is within ±1 of the bug's line, and its
-text names the defect (the bug's kind in hyphen or space form, or the published
-category vocabulary for that kind). A backtest case has no hand-written
-keywords: the kind is the miner's deterministic guess, so a finding must name
-what that guess calls the defect.
+Grading reuses the corpus rule over the replay bundle
+(`corpuscore.EvaluateDir`): a finding matches a bug when it names the same
+`path`, its line is within ±1 of the bug's line, and its text names the defect
+(the bug's kind in hyphen or space form, or the published category vocabulary
+for that kind). The bundle's `full.diff` is read too: a built-in phrase that
+diff spells is dropped, so a finding that names only that phrase is off target.
+A backtest case has no hand-written keywords: the kind is the miner's
+deterministic guess, so a finding must name what that guess calls the defect.
 
 - **`catch_rate = matched / bugs`** over the replayed PRs whose review was
   graded. Read it as a **match rate over SZZ candidates**, not a measured catch

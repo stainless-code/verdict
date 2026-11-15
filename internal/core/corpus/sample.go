@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"os"
@@ -121,37 +122,62 @@ func validRecorded(v *float64) bool {
 	return v != nil && *v >= 0 && !math.IsNaN(*v) && !math.IsInf(*v, 0)
 }
 
-// Cohort reads the selected case, run, model and panel for any-of-k recall.
-func Cohort(dir string, sample *Sample) []Sample {
+// Cohort reads the selected case, run, model and panel for any-of-k recall. A
+// sibling that cannot be graded is left out with a warning naming its bundle,
+// so a shrunken denominator is never silent.
+func Cohort(dir string, sample *Sample) ([]Sample, []string) {
 	out := []Sample{*sample}
-	entries, err := os.ReadDir(filepath.Dir(dir))
-	if err != nil {
-		return out
-	}
-	for _, e := range entries {
-		if !e.IsDir() || e.Name() == filepath.Base(dir) || !strings.HasPrefix(e.Name(), "corpus-") {
+	var warnings []string
+	for _, sibling := range siblingDirs(dir) {
+		s, ok, reason := cohortSibling(sibling, sample)
+		if ok {
+			out = append(out, s)
 			continue
 		}
-		sibling := filepath.Join(filepath.Dir(dir), e.Name())
-		if s, ok := cohortSibling(sibling, sample); ok {
-			out = append(out, s)
+		if reason != "" {
+			warnings = append(warnings, fmt.Sprintf("corpus bundle %q skipped from the cohort (%s)", sibling, reason))
+		}
+	}
+	return out, warnings
+}
+
+// siblingDirs lists the other corpus bundles beside dir. A listing failure is
+// an empty cohort, not a skipped one.
+func siblingDirs(dir string) []string {
+	entries, err := os.ReadDir(filepath.Dir(dir))
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		if e.IsDir() && e.Name() != filepath.Base(dir) && strings.HasPrefix(e.Name(), "corpus-") {
+			out = append(out, filepath.Join(filepath.Dir(dir), e.Name()))
 		}
 	}
 	return out
 }
 
-func cohortSibling(dir string, selected *Sample) (Sample, bool) {
+// cohortSibling grades one sibling. A non-empty reason is a skip worth
+// surfacing; an empty one means it simply belongs to another cohort.
+func cohortSibling(dir string, selected *Sample) (Sample, bool, string) {
 	c, ref := Load(dir)
 	if ref != nil {
-		return Sample{}, false
+		return Sample{}, false, ref.Message
 	}
 	entries, err := readcommon.LoadFindings(dir)
 	if err != nil {
-		return Sample{}, false
+		return Sample{}, false, err.Error()
 	}
-	s, ref := LoadSample(dir, Evaluate(c, entries))
+	report, ref := EvaluateDir(dir, c, entries)
 	if ref != nil {
-		return Sample{}, false
+		return Sample{}, false, ref.Message
 	}
-	return s, s.Sampling.RunID == selected.Sampling.RunID && s.CaseID == selected.CaseID && s.Group == selected.Group
+	s, ref := LoadSample(dir, report)
+	if ref != nil {
+		return Sample{}, false, ref.Message
+	}
+	if s.Sampling.RunID != selected.Sampling.RunID || s.CaseID != selected.CaseID || s.Group != selected.Group {
+		return Sample{}, false, ""
+	}
+	return s, true, ""
 }

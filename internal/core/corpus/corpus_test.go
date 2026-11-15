@@ -166,15 +166,19 @@ func checkFixtures(t *testing.T, name, dir string, c *core.CorpusCase, index []h
 		entries = append(entries, checkAgent(t, filepath.Join(dir, "agents", agent.Name()), index, c.Kind == "control")...)
 	}
 	if len(entries) > 0 {
-		checkNamedBugs(t, name, c, entries)
+		checkNamedBugs(t, name, dir, c, entries)
 	}
 }
 
 // checkNamedBugs holds the corpus to its own rule: a fake output must name
 // each ground-truth bug, or the case grades every model wrong.
-func checkNamedBugs(t *testing.T, name string, c *core.CorpusCase, entries []any) {
+func checkNamedBugs(t *testing.T, name, dir string, c *core.CorpusCase, entries []any) {
 	t.Helper()
-	if rep := Evaluate(c, entries); rep.Matched != len(c.Bugs) {
+	rep, ref := EvaluateDir(dir, c, entries)
+	if ref != nil {
+		t.Fatalf("%s: %v", name, ref)
+	}
+	if rep.Matched != len(c.Bugs) {
 		t.Errorf("%s: the fake outputs match %d of %d ground-truth bugs; add the words a reviewer would use to the bug's keywords",
 			name, rep.Matched, len(c.Bugs))
 	}
@@ -381,7 +385,7 @@ func TestEvaluateMatching(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			rep := Evaluate(c, tc.entries)
+			rep := evaluateAll(c, tc.entries)
 			if rep.Reported != tc.reported || rep.Matched != tc.matched ||
 				rep.FalsePositives != tc.fp || len(rep.Missed) != tc.missed {
 				t.Fatalf("got reported=%d matched=%d fp=%d missed=%d, want %d/%d/%d/%d",
@@ -406,7 +410,7 @@ func TestDuplicateOnASharedWindowSaysAlreadyMatched(t *testing.T) {
 		{Path: "a.go", Line: 10, Kind: "off-by-one", Severity: "critical"},
 		{Path: "a.go", Line: 11, Kind: "missing-error-check", Severity: "important"},
 	}}
-	rep := Evaluate(c, []any{entry("a.go", 10, "off by one"), entry("a.go", 10, "off by one again")})
+	rep := evaluateAll(c, []any{entry("a.go", 10, "off by one"), entry("a.go", 10, "off by one again")})
 	if got := fpReasons(rep); !equalStrings(got, []string{ReasonAlreadyMatched}) {
 		t.Fatalf("false-positive reasons = %v, want [%s]", got, ReasonAlreadyMatched)
 	}
@@ -419,10 +423,10 @@ func TestZeroToleranceNeedsTheBugLine(t *testing.T) {
 		LineTolerance: &zero,
 		Bugs:          []core.CorpusBug{{Path: "a.go", Line: 10, Kind: "off-by-one", Severity: "critical"}},
 	}
-	if rep := Evaluate(c, []any{entry("a.go", 11, "off by one")}); rep.Matched != 0 || rep.FalsePositives != 1 {
+	if rep := evaluateAll(c, []any{entry("a.go", 11, "off by one")}); rep.Matched != 0 || rep.FalsePositives != 1 {
 		t.Errorf("adjacent line with tolerance 0 = matched %d fp %d, want 0/1", rep.Matched, rep.FalsePositives)
 	}
-	if rep := Evaluate(c, []any{entry("a.go", 10, "off by one")}); rep.Matched != 1 {
+	if rep := evaluateAll(c, []any{entry("a.go", 10, "off by one")}); rep.Matched != 1 {
 		t.Errorf("bug line with tolerance 0 matched %d, want 1", rep.Matched)
 	}
 }
@@ -433,9 +437,9 @@ func TestZeroToleranceNeedsTheBugLine(t *testing.T) {
 // primary line reported.
 func TestEvaluateAlsoLines(t *testing.T) {
 	c := alsoLinesCase()
-	rep := Evaluate(c, []any{entry("files.go", 24, "confine name under root or reject .. segments")})
+	rep := evaluateAll(c, []any{entry("files.go", 24, "confine name under root or reject .. segments")})
 	checkAlsoMatch(t, rep)
-	rep = Evaluate(c, []any{entry("files.go", 25, "confine name under root")})
+	rep = evaluateAll(c, []any{entry("files.go", 25, "confine name under root")})
 	if rep.Matched != 1 {
 		t.Fatalf("line inside the alternate window matched %d, want 1", rep.Matched)
 	}
@@ -444,7 +448,7 @@ func TestEvaluateAlsoLines(t *testing.T) {
 // TestEvaluateAlsoLinesNeedsTheDefect pins the naming rule on an alternate
 // anchor: the right line with the wrong defect is still a false positive.
 func TestEvaluateAlsoLinesNeedsTheDefect(t *testing.T) {
-	rep := Evaluate(alsoLinesCase(), []any{entry("files.go", 24, "rename this helper for readability")})
+	rep := evaluateAll(alsoLinesCase(), []any{entry("files.go", 24, "rename this helper for readability")})
 	if rep.Matched != 0 {
 		t.Fatalf("alternate anchor without the defect matched %d, want 0", rep.Matched)
 	}
@@ -456,7 +460,7 @@ func TestEvaluateAlsoLinesNeedsTheDefect(t *testing.T) {
 // TestEvaluateAlsoLinesCountsOneBugOnce pins the one-match-per-bug rule:
 // findings on two anchors of the same bug grade as one hit and one duplicate.
 func TestEvaluateAlsoLinesCountsOneBugOnce(t *testing.T) {
-	rep := Evaluate(alsoLinesCase(), []any{
+	rep := evaluateAll(alsoLinesCase(), []any{
 		entry("files.go", 28, "join without confining lets ../ escape"),
 		entry("files.go", 24, "join without confining lets ../ escape"),
 	})
@@ -537,6 +541,9 @@ func TestCategoryVocabulary(t *testing.T) {
 		{"injection", core.CorpusBug{Kind: "injection"}, "Pass name as a query argument instead of formatting the SQL.", true},
 		{"kind text", core.CorpusBug{Kind: "off-by-one"}, "This is an off by one in the bound.", true},
 		{"case keyword", core.CorpusBug{Kind: "custom-kind", Keywords: []string{"cache key"}}, "Two requests share a cache key.", true},
+		{"sentence opens with the keyword", core.CorpusBug{Kind: "custom-kind", Keywords: []string{"empty positional"}}, "Empty positional: the loop breaks before the boundary check.", true},
+		{"sentence dot does not glue to the next word", core.CorpusBug{Kind: "custom-kind", Keywords: []string{"ignored.name"}}, "The error is ignored. Name the flag.", false},
+		{"spaced selector still folds", core.CorpusBug{Kind: "custom-kind", Keywords: []string{"cmd.name"}}, "The selector cmd .Name is wrong.", true},
 		{"wrong defect", core.CorpusBug{Kind: "off-by-one"}, "Consider renaming this loop variable.", false},
 		{"glued word", core.CorpusBug{Kind: "race"}, "This brace style is inconsistent.", false},
 		{"generic auth word", core.CorpusBug{Kind: "auth-bypass"}, "Rename the admin variable to match its role.", false},
@@ -547,7 +554,7 @@ func TestCategoryVocabulary(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := namesDefect(normalize(tc.text), &tc.bug); got != tc.want {
+			if got := namesDefect(tc.text, &tc.bug); got != tc.want {
 				t.Errorf("namesDefect(%q, %s) = %v, want %v", tc.text, tc.bug.Kind, got, tc.want)
 			}
 		})

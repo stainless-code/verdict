@@ -131,7 +131,7 @@ var leafHelpers = []string{"internal/exclude", "internal/shellquote", "internal/
 // must be added here deliberately, so the core boundary is never widened
 // unnoticed.
 var coreSubpackages = []string{
-	"adopt", "backtest", "calibrate", "checktree", "corpus", "coverage", "doctor", "exec", "fetch", "fix",
+	"adopt", "backtest", "calibrate", "checktree", "corpus", "corpus/corpustest", "coverage", "doctor", "exec", "fetch", "fix",
 	"index", "ingest", "init", "learn", "pack", "panel", "post", "query", "ready", "recipe", "record", "repair", "report", "risk",
 	"run", "skill",
 	"threads", "trend", "triage", "upgrade", "verify",
