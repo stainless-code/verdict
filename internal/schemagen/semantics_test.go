@@ -349,7 +349,11 @@ var publishedSemantics = map[string]string{
 	// the four stages a run always compiles, in pipeline order, the count the
 	// directive and data.recipe always carry. A constraint on an additive
 	// property only: no existing property, required key, enum, or type changed.
-	"recipes.schema.json": "8d6085e969eb16d063d379a03904abbc9a1d63e1dc053aee7e285df224ed04a3",
+	// stage render: additive $defs/stageRender — the data.stage object a
+	// run --print --stage render fills, positioned into the plan's stages. A
+	// new definition only: no existing property, required key, enum, or type
+	// changed.
+	"recipes.schema.json": "4ccac4c5b2e8b92fdab6778870dcdfb1578b2fcaf83b86373bb9c43dfc6c7c4a",
 	// patch identity: additive optional patch_id/patch_id_kind plus the
 	// optional forced[] audit with $defs/forcedPost. No existing property,
 	// required key, or type changed.

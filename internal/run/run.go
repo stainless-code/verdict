@@ -44,20 +44,22 @@ const defaultTimeoutS = "300"
 // today's one-shot.
 const defaultRounds = "1"
 
-// roundsFlag and recipeFlag are named once for the parser and the usage line.
+// roundsFlag, recipeFlag, and stageFlag are named once for the parser and the
+// usage line.
 const (
 	roundsFlag = "--rounds"
 	recipeFlag = "--recipe"
+	stageFlag  = "--stage"
 )
 
 // verbsWanted is the flag list the unknown-flag usage error names.
-const verbsWanted = "--agent <name>, --recipe <slug>, --timeout <secs>, --rounds <n>, --print, -- <agent args>, --json"
+const verbsWanted = "--agent <name>, --recipe <slug>, --stage <n>, --timeout <secs>, --rounds <n>, --print, -- <agent args>, --json"
 
 // Run executes `run <owner/repo> <pr|local-name> --agent <name> [--recipe
-// <slug>] [--timeout <secs>] [--rounds <n>] [--print] [-- <agent args>...]
-// [--json]`, returning the process exit code. A non-zero agent exit is
-// preserved as this process's exit code after the typed refusal is rendered,
-// so CI surfaces the real failure.
+// <slug>] [--stage <n>] [--timeout <secs>] [--rounds <n>] [--print] [--
+// <agent args>...] [--json]`, returning the process exit code. A non-zero agent
+// exit is preserved as this process's exit code after the typed refusal is
+// rendered, so CI surfaces the real failure.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
 	flags, code, done := parseFlags(r, args)
@@ -110,6 +112,7 @@ func runRequest(r *cli.Runner, req Request, flags *flags) *core.RunRequest {
 		Environ:     os.Environ(),
 		Agent:       flags.agent,
 		Recipe:      flags.recipe,
+		StageRaw:    flags.stage,
 		TimeoutRaw:  flags.timeout,
 		RoundsRaw:   flags.rounds,
 		Print:       flags.print,
@@ -122,6 +125,7 @@ func runRequest(r *cli.Runner, req Request, flags *flags) *core.RunRequest {
 type flags struct {
 	agent   string
 	recipe  string
+	stage   string
 	timeout string
 	rounds  string
 	pass    []string
@@ -154,6 +158,8 @@ func parseToken(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) 
 	switch a {
 	case "--agent", recipeFlag:
 		return parseNameFlag(r, f, args, i)
+	case stageFlag:
+		return parseStageFlag(r, f, args, i)
 	case "--timeout", roundsFlag:
 		return parseCountedFlag(r, f, args, i)
 	case "--print":
@@ -178,6 +184,23 @@ func parseNameFlag(r *cli.Runner, f *flags, args []string, i int) (int, int, boo
 		return i, r.ReportUsage(u), true
 	}
 	*dst = v
+	return next, 0, false
+}
+
+// parseStageFlag consumes the --stage operand, left raw here so the service can
+// refuse a bad index typed, beside the plan it resolves against. An empty
+// operand is the missing-value usage error, not an absent flag: the service
+// reads "" as "render the whole pipeline", which is the one command --stage
+// exists to avoid.
+func parseStageFlag(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) {
+	v, next, u := cli.FlagValue(args, i, stageFlag, "<n>")
+	if u != nil {
+		return i, r.ReportUsage(u), true
+	}
+	if v == "" {
+		return i, r.ReportUsage(cli.MissingValue(stageFlag, "<n>")), true
+	}
+	f.stage = v
 	return next, 0, false
 }
 
@@ -207,7 +230,19 @@ func parseCountedFlag(r *cli.Runner, f *flags, args []string, i int) (int, int, 
 // pass-through tail is not reproduced: its quoting belongs to whatever shell
 // the operator used.
 func rentry(req Request, f *flags, jsonMode bool) string {
-	s := "verdict run " + req.Repo + " " + req.Pr
+	s := "verdict run " + req.Repo + " " + req.Pr + flagTail(f)
+	if jsonMode {
+		s += " --json"
+	}
+	return s
+}
+
+// flagTail rebuilds the flags the operator typed, each one only when the
+// invocation actually asked for it. The stage operand is quoted: it reaches
+// this line exactly as typed — a refusal names the value it could not read —
+// and the line exists to be pasted back into a shell.
+func flagTail(f *flags) string {
+	var s string
 	if f.agent != "" {
 		s += " --agent " + f.agent
 	}
@@ -223,8 +258,8 @@ func rentry(req Request, f *flags, jsonMode bool) string {
 	if f.print {
 		s += " --print"
 	}
-	if jsonMode {
-		s += " --json"
+	if f.stage != "" {
+		s += " --stage " + quoteArg(f.stage)
 	}
 	return s
 }

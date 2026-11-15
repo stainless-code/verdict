@@ -24,7 +24,7 @@ func displayPassThrough(args, environ []string) ([]string, bool) {
 func displayOption(args, known []string) (int, bool) {
 	name, value, inline := strings.Cut(args[0], "=")
 	switch name {
-	case "--model", "-m", "--max-budget-usd", "--max-cost", "--max-turns":
+	case modelFlag, "-m", "--max-budget-usd", "--max-cost", "--max-turns":
 	default:
 		return 1, false
 	}
