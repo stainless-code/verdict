@@ -1,0 +1,38 @@
+{
+  "schema_version": "1",
+  "id": "sentry-python-4121-logging-mapping-args",
+  "kind": "real",
+  "language": "python",
+  "provenance": {
+    "kind": "real",
+    "repo": "getsentry/sentry-python",
+    "pr": 4121,
+    "base_sha": "42ad8df79815cc6113d4106ce19c32a195a18cfb",
+    "head_sha": "4c9731bbe68b6523cccec73fb764e04e61e441cb",
+    "fix_commit": "https://github.com/getsentry/sentry-python/commit/e71ccbf19f644fe7928db37f6e4a09e1febbc4e2",
+    "source": "PR #4121 \"Coerce None values into strings in logentry params\", squash-merged 2025-03-12; the fix commit e71ccbf19 reverts it and says why (fixes #4267)",
+    "note": "introduced by this PR: the base passes record.args through untouched, and the PR replaces it with a tuple built by iterating record.args, which flattens a mapping argument to its keys. The fix commit reverts the hunk on 2025-04-14 and states the consequence: 'Because we iterate over `record.args`, that change caused us to only send the dictionary's keys, not the values.' By then the statement had moved to logging.py:268-272 (identical text), so the revert deletes the five lines this diff adds at a shifted line number, restores `\"params\": record.args,`, and adds two tests asserting the params are the dict."
+  },
+  "bugs": [
+    {
+      "path": "sentry_sdk/integrations/logging.py",
+      "line": 252,
+      "kind": "mapping-args-sent-as-keys",
+      "severity": "important",
+      "keywords": [
+        "only the mapping's keys reach the report",
+        "the values of a dictionary passed as arguments are lost",
+        "a mapping logged with percent placeholders keeps just its key names",
+        "dict arguments are flattened into their keys",
+        "the message renders with key names instead of the substituted values",
+        "mapping-style interpolation receives the key names",
+        "the interpolated parameters collapse to the dictionary keys",
+        "keys instead of values",
+        "flattens a mapping",
+        "only keys survive"
+      ],
+      "note": "stdlib logging accepts a single mapping as record.args for %(name)s templates; the generator iterates it, so keys, not values, are sent. The generator also rewrites a None argument to the string \"None\", which was the PR's intent.",
+      "also_lines": [251]
+    }
+  ]
+}

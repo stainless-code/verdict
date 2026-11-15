@@ -1,0 +1,38 @@
+{
+  "schema_version": "1",
+  "id": "sentry-python-6168-span-batcher-flush-thread",
+  "kind": "real",
+  "language": "python",
+  "provenance": {
+    "kind": "real",
+    "repo": "getsentry/sentry-python",
+    "pr": 6168,
+    "base_sha": "6436518b21943881122e0cc6e0e49fe1355fd23f",
+    "head_sha": "d90a9238ccf84dd49b2c994e8cbc9cc7b8fdbf80",
+    "fix_commit": "https://github.com/getsentry/sentry-python/commit/e17291eea3d274c6a64252760af956b43f94947c",
+    "source": "PR #6168 \"ref(batcher): Only flush the bucket that triggered the flush event\", squash-merged 2026-05-04; fix commit e17291eea \"Do not let a failed flush kill the flusher thread\", closes #7138",
+    "note": "pre-existing pattern, authored again here: the PR writes SpanBatcher its own _flush_loop (the base class inherited an equally unguarded one), so the reviewed lines are new code that repeats the flaw. The fix wraps both flush calls in capture_internal_exceptions; by then the same lines had moved down one line, and the loop body is byte-identical apart from the guard."
+  },
+  "bugs": [
+    {
+      "path": "sentry_sdk/_span_batcher.py",
+      "line": 93,
+      "kind": "flusher-thread-death",
+      "severity": "important",
+      "keywords": [
+        "one failed send permanently ends the background drain",
+        "the loop dies on the first failure and nothing drains the queue again",
+        "every later item is discarded because nothing drains the accumulator",
+        "an unguarded failure stops the worker for good",
+        "the send is not guarded, so the first failure ends the flusher",
+        "the buffer keeps accepting items that nothing will send",
+        "no exception handling means a single failure ends the periodic drain",
+        "kills the background thread",
+        "kills the flusher",
+        "the drain never resumes"
+      ],
+      "note": "the daemon loop calls _flush unguarded; the fix's body states the consequence: the thread ends, _ensure_thread still sees the same pid, items keep accumulating to MAX_BEFORE_DROP and are then dropped for the rest of the process lifetime.",
+      "also_lines": [99, 100]
+    }
+  ]
+}

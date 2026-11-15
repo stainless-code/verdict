@@ -1,0 +1,16 @@
+{
+  "schema_version": "1",
+  "id": "sentry-python-8119-clean-baggage-trailing-comma",
+  "kind": "control",
+  "language": "python",
+  "provenance": {
+    "kind": "real",
+    "repo": "getsentry/sentry-python",
+    "pr": 8119,
+    "base_sha": "ed74ba7d42ebdbc046fbcc1687eda9f31921ef47",
+    "head_sha": "63707d7379521871c3c88a743b7d321c6754c8d5",
+    "source": "PR #8119 \"fix(tracing): Drop trailing comma when serializing baggage without third-party items\", squash-merged 2026-10-28",
+    "note": "clean control: Baggage.serialize appended third_party_items even when it was the empty string, so a sentry-only baggage header ended with a comma. The guard is exact because from_incoming_header only ever stores stripped, comma-joined items in that field, so an empty field means there was nothing to append. No later commit touches the statement (git log -L over Baggage.serialize lists only older commits; one later commit touches tracing_utils.py at all) and no revert or fix names the PR."
+  },
+  "bugs": []
+}

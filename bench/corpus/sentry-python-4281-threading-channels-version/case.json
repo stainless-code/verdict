@@ -1,0 +1,35 @@
+{
+  "schema_version": "1",
+  "id": "sentry-python-4281-threading-channels-version",
+  "kind": "real",
+  "language": "python",
+  "provenance": {
+    "kind": "real",
+    "repo": "getsentry/sentry-python",
+    "pr": 4281,
+    "base_sha": "706d2d29e68848a3cb085f043287d908255344b5",
+    "head_sha": "2d392af3ea6da91ddbdde55d18e15c24dce6b59b",
+    "fix_commit": "https://github.com/getsentry/sentry-python/commit/a350506948ad12ffc6d564cef3985f0dd5435b20",
+    "source": "PR #4281 \"fix: Data leak in ThreadingIntegration between threads\", squash-merged 2025-04-15; fix commit a35050694 \"fix(threading): Handle channels shadowing (#5299)\", closes #5298",
+    "note": "introduced by this PR, which reads channels.__version__ inside a block whose only failure handler is ImportError, so a module named channels that has no __version__ raises AttributeError out of setup_once(). By the time of the fix the file had gained an unrelated constant and the block sits two lines lower; the two lines the fix deletes are the ones this diff adds."
+  },
+  "bugs": [
+    {
+      "path": "sentry_sdk/integrations/threading.py",
+      "line": 57,
+      "kind": "shadowed-module-crashes-setup",
+      "severity": "critical",
+      "keywords": [
+        "a lookalike package without a version attribute aborts the initialization",
+        "a shadowing module makes the attribute access raise instead of skipping",
+        "initialization crashes instead of disabling the integration",
+        "the guard only covers a missing package, so a missing attribute crashes setup",
+        "bootstrapping the client fails when a local module of that name has no version",
+        "crashes init",
+        "crashes the client"
+      ],
+      "note": "ThreadingIntegration is a default integration and setup_integrations only catches DidNotEnable around its setup_once, so the AttributeError reaches sentry_sdk.init() and the application fails to start. The fix moves `import channels` and the version read into their own try whose handler is `(ImportError, AttributeError)`.",
+      "also_lines": [55, 58]
+    }
+  ]
+}

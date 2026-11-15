@@ -787,6 +787,104 @@ var keywordCases = []keywordCase{
 			"Falling back to GraphQLError when scopeErr is nil preserves existing handling for non-scope GraphQL errors.",
 		},
 	},
+	// sentry-python. Four kinds outside the published category table, so each
+	// row's vocabulary is its kind and keywords alone. Every keyword was
+	// checked to be unspelled by the case's own full.diff, and every row below
+	// grades the same way against the filtered runtime vocabulary
+	// (usablePhrases), not only against the unfiltered pin here.
+	//
+	// audit-11 (cross-family): 4133 and 4281 lost the phrases that described
+	// the PR's intended mechanism (a neutral or approving comment could carry
+	// them), and each case gained 2-4 short directional phrases so a reviewer
+	// who words the defect differently still grades as a hit. The three
+	// sentences those phrases were written against are pinned as must-grade-
+	// false rows, and the audit's own paraphrases are pinned where a phrase
+	// covers them (4133 both, 6168 one; the rest are known misses).
+	{
+		id: "sentry-python-4121-logging-mapping-args",
+		passes: []string{
+			"Only the mapping's keys reach the report, because the generator iterates the dict that was passed as the single argument.",
+			"The values of a dictionary passed as arguments are lost; only its keys are sent with the event.",
+			"A mapping logged with percent placeholders keeps just its key names, so the message renders as a tuple of keys.",
+			"Dict arguments are flattened into their keys before they reach Sentry.",
+			"The interpolated parameters collapse to the dictionary keys, so the substitution never sees its value.",
+			"Mapping-style interpolation receives the key names, not the values, whenever the caller passes a single dict.",
+			"A dict argument is flattened into keys instead of values, so the placeholder cannot be interpolated.",
+			"The generator flattens a mapping before the event is built, so what ships is the key set.",
+			"Only keys survive the tuple conversion, so the substituted values never reach the report.",
+		},
+		fails: []string{
+			"Coercing the absent value into a string keeps the payload serializable, which is what the linked issue asked for.",
+			"Building a tuple here copies the arguments once per event, which is cheap.",
+			"The message field keeps the raw template, so placeholders are never substituted.",
+			"The string conversion truncates messages longer than the event size limit.",
+			"The handler drops records below the configured level before the event is built.",
+		},
+	},
+	{
+		id: "sentry-python-4133-debug-parent-logger",
+		passes: []string{
+			"An application root configuration silently suppresses the diagnostics, so turning the option on produces nothing.",
+			"The library's diagnostics end up in the host application's log stream instead of its own sink.",
+			"The library prints nothing when the host has its own log configuration at INFO level.",
+			"A parent log setup decides whether anything is emitted, so the SDK's own switch no longer controls it.",
+			"Checking the parent handlers skips the SDK's own setup, so debug=true fails to attach the stream the option promises.",
+			"If the application configures a root logger, the SDK's lines are leaked to the root and debug=true produces nothing.",
+			"With the host's root level above DEBUG, debug=true produces nothing at all.",
+		},
+		fails: []string{
+			"Using the public accessor makes the check consider inherited configuration, which is the documented behavior.",
+			"This swaps an internal attribute read for a public call, and both read the same value.",
+			"The level is set to INFO instead of DEBUG, so quieter records are lost.",
+			"A second call adds another output stream, duplicating every line.",
+			"The check runs before the filter is attached, so the first record escapes.",
+			"The warning about missing dependencies goes through the standard warnings module.",
+			"A configured root makes the library skip its own setup, avoiding duplicate log output.",
+			"Any existing root setup stops the library from installing its own output, which is the intent of checking parent handlers.",
+		},
+	},
+	{
+		id: "sentry-python-6168-span-batcher-flush-thread",
+		passes: []string{
+			"One failed send permanently ends the background drain, so nothing is uploaded again.",
+			"The loop dies on the first failure and nothing drains the queue again.",
+			"Every later item is discarded because nothing drains the accumulator.",
+			"An unguarded failure stops the worker for good.",
+			"The send is not guarded, so the first failure ends the flusher and the buffer keeps growing.",
+			"No exception handling means a single failure ends the periodic drain.",
+			"The buffer keeps accepting items that nothing will send.",
+			"With no try/except around the flush, one transient transport or serialization error kills the background thread.",
+			"A single failure kills the flusher, and the drain never resumes while items keep queueing.",
+		},
+		fails: []string{
+			"Flushing only the buckets that filled up is what the specification asks for.",
+			"The jitter between waits spreads the flushes out across instances.",
+			"Taking a snapshot of the bucket list while holding the lock avoids a modification error.",
+			"The pending set stores trace ids, so a bucket is queued only once.",
+			"Recording the last flush timestamp after the send keeps the interval accurate.",
+			"The envelope size cap splits a large bucket into several items.",
+		},
+	},
+	{
+		id: "sentry-python-4281-threading-channels-version",
+		passes: []string{
+			"A lookalike package without a version attribute aborts the initialization.",
+			"An unrelated channels module with no version attribute crashes the client during setup.",
+			"A shadowing module makes the attribute access raise instead of skipping the integration.",
+			"Initialization crashes instead of disabling the integration when the import resolves to an unrelated module.",
+			"A local channels module without a version attribute crashes init() before the integration is enabled.",
+			"The guard only covers a missing package, so a missing attribute crashes setup.",
+			"Bootstrapping the client fails when a local module of that name has no version.",
+		},
+		fails: []string{
+			"Forking the scopes into the started thread stops data leaking between threads, which is the point of the change.",
+			"The warning lists three upgrade paths, which is more than most users need.",
+			"Threads started before the integration is set up never get the warning.",
+			"The integration is skipped when the client is not active.",
+			"The deprecation notice should be emitted once per process, not once per start.",
+			"The version read is assumed to exist on any module of that name, which matches how the other integrations detect versions.",
+		},
+	},
 }
 
 // TestCheckedInCorpusKeywordsGradeBothWays proves the shipped vocabulary both

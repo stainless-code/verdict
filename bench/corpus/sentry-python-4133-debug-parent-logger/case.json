@@ -1,0 +1,34 @@
+{
+  "schema_version": "1",
+  "id": "sentry-python-4133-debug-parent-logger",
+  "kind": "real",
+  "language": "python",
+  "provenance": {
+    "kind": "real",
+    "repo": "getsentry/sentry-python",
+    "pr": 4133,
+    "base_sha": "4f51ff37a26b1e774b8050119da75074d1a1d5ed",
+    "head_sha": "37930840dcefba96e7708b19e461013a919e83a5",
+    "fix_commit": "https://github.com/getsentry/sentry-python/commit/5689bc09fd223f80f65290e2ccb685b8acb9a5f2",
+    "source": "PR #4133 \"fix(debug): Take into account parent handlers for debug logger\", squash-merged 2025-03-13; the fix commit 5689bc09 reverts it (fixes #4266)",
+    "note": "introduced by the one-line change: the SDK's own logger is configured only when no handler is attached anywhere in the hierarchy, so once an application configures the root logger the SDK never installs its own handler. The fix commit reverts to the attribute check on 2025-04-14: 'we should not consider parent loggers, since we only want the SDK to log debug messages when configured to do so via debug=True ... With 37930840d... a custom root logger configuration would also cause SDK logs to be emitted.' The revert names the emission direction; the converse is what the same line does to a host root level above DEBUG, where the SDK's own diagnostics disappear entirely."
+  },
+  "bugs": [
+    {
+      "path": "sentry_sdk/debug.py",
+      "line": 22,
+      "kind": "debug-output-hijacked",
+      "severity": "important",
+      "keywords": [
+        "an application root configuration silently suppresses the diagnostics",
+        "the library's diagnostics end up in the host application's log stream instead of its own",
+        "the library prints nothing when the host has its own log configuration",
+        "a parent log setup decides whether anything is emitted",
+        "debug=true produces nothing",
+        "debug=true fails",
+        "leaked to the root"
+      ],
+      "note": "init_debug_support runs when the debug option is on; the inherited-handler walk makes it a no-op whenever the application has a root handler, so the SDK either emits nothing (host root level above DEBUG) or emits its diagnostics through the application's own handler and formatter. Both are observable; the keywords cover the suppression direction and the emission direction, and the revert cites the emission one."
+    }
+  ]
+}

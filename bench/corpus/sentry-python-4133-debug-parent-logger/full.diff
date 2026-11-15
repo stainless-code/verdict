@@ -1,0 +1,13 @@
+diff --git a/sentry_sdk/debug.py b/sentry_sdk/debug.py
+index e4c686a3e..f740d92de 100644
+--- a/sentry_sdk/debug.py
++++ b/sentry_sdk/debug.py
+@@ -19,7 +19,7 @@ class _DebugFilter(logging.Filter):
+ 
+ def init_debug_support():
+     # type: () -> None
+-    if not logger.handlers:
++    if not logger.hasHandlers():
+         configure_logger()
+ 
+ 
