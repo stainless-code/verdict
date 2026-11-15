@@ -1,0 +1,34 @@
+{
+  "schema_version": "1",
+  "id": "undici-5808-cookie-expires-out-of-range",
+  "kind": "real",
+  "language": "javascript",
+  "provenance": {
+    "kind": "real",
+    "repo": "nodejs/undici",
+    "pr": 5808,
+    "base_sha": "65fd635cc9bb9ed50087ad1ca1271a5bbc573129",
+    "head_sha": "6933139baebca36b470c6db663d4207f29944867",
+    "fix_commit": "https://github.com/nodejs/undici/commit/78aa1a0a2352daa2793daeb1f53a4646cf4e3de8",
+    "source": "PR #5808 fix(cookies): keep an Expires of 0 when serializing a cookie, squash-merged 2026-09-15 as 6933139ba",
+    "note": "The PR replaced the truthiness test with a null test so a numeric 0 is no longer dropped, but it kept the string comparison, which only guards the Date form: a number outside the range a Date can represent is not caught, so toIMFDate reads NaN getters and splices undefined/NaN into the attribute. The base has the same out-of-range symptom (cookie.expires is truthy for 1e16 and 1e16.toString() is not 'Invalid Date' either), so the reviewed line is code the PR rewrote without repairing and the later fix #5832 rewrites it; the zero case the PR does repair behaves correctly at head."
+  },
+  "bugs": [
+    {
+      "path": "lib/web/cookies/util.js",
+      "line": 320,
+      "kind": "invalid-output",
+      "severity": "important",
+      "keywords": [
+        "out of range timestamp",
+        "outside the representable date range",
+        "unrepresentable date value",
+        "malformed header value",
+        "splices undefined tokens",
+        "not a valid IMF-fixdate"
+      ],
+      "note": "the guard stringifies the value instead of testing its type, so a number no Date can represent reaches toIMFDate and the emitted attribute is garbage; the fix keeps the value out of the attribute unless it is a valid time value",
+      "also_lines": []
+    }
+  ]
+}

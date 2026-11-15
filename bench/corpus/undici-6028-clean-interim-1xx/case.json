@@ -1,0 +1,16 @@
+{
+  "schema_version": "1",
+  "id": "undici-6028-clean-interim-1xx",
+  "kind": "control",
+  "language": "javascript",
+  "provenance": {
+    "kind": "real",
+    "repo": "nodejs/undici",
+    "pr": 6028,
+    "base_sha": "25543f5bd5744ff673016ed89b4bb09455e4875a",
+    "head_sha": "0f6739a10f311d31b59450394d10ad8a6f55a7bf",
+    "source": "PR #6028 fix: let interim 1xx responses through DecoratorHandler, squash-merged 2026-10-21 as 0f6739a10",
+    "note": "Clean control: a 21-line semantic change plus tests that lets interim 1xx responses through DecoratorHandler without counting them as the response start. No later commit touches any of its three files (git log 0f6739a10..HEAD -- lib/handler/decorator-handler.js test/decorator-handler.js test/interceptors/dns.js is empty, and each file's last commit is 0f6739a10 itself), so no fix and no revert can reach its lines."
+  },
+  "bugs": []
+}
