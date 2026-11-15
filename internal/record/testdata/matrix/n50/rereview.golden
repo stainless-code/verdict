@@ -11,7 +11,6 @@ exit: 0
     "rigor pointed below critical floor walked on c84ffef (advisory); a gate would downgrade it to important",
     "rigor pointed below critical floor walked on afb9e47 (advisory); a gate would downgrade it to important",
     "rigor pointed below critical floor walked on a9d91e9 (advisory); a gate would downgrade it to important",
-    "rigor said below critical floor walked on c7bc06e (advisory)",
     "rigor said below critical floor walked on b280b3f (advisory)",
     "rigor said below critical floor walked on f8c039f (advisory)",
     "rigor said below critical floor walked on 2d784bc (advisory)",
@@ -360,7 +359,6 @@ exit: 0
 warn: rigor pointed below critical floor walked on c84ffef (advisory); a gate would downgrade it to important
 warn: rigor pointed below critical floor walked on afb9e47 (advisory); a gate would downgrade it to important
 warn: rigor pointed below critical floor walked on a9d91e9 (advisory); a gate would downgrade it to important
-warn: rigor said below critical floor walked on c7bc06e (advisory)
 warn: rigor said below critical floor walked on b280b3f (advisory)
 warn: rigor said below critical floor walked on f8c039f (advisory)
 warn: rigor said below critical floor walked on 2d784bc (advisory)

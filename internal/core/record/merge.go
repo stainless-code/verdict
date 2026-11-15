@@ -21,6 +21,7 @@ import (
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/sig"
+	"github.com/stainless-code/verdict/internal/validation"
 )
 
 type state struct { //nolint:govet // field grouping documents the merge dimensions; alignment is irrelevant here
@@ -66,6 +67,7 @@ type state struct { //nolint:govet // field grouping documents the merge dimensi
 	requireCoverage bool
 	requireRigor    []string
 	bodyOnlyAnchors bool
+	policy          validation.Policy
 	judged          map[string]core.ValidationResult
 	validation      *ValidationResult
 	receiptLoaded   bool
@@ -143,24 +145,32 @@ func (st *state) validateAndMerge(body string) (string, diagram.Status, error) {
 	st.reportMoves()
 	st.buildEntries(body)
 	st.keptSigs = freshInlineSigs(st.entries, len(st.kept))
-	if err := st.sealEntries(); err != nil {
+	if err := st.finishEntries(); err != nil {
 		return "", diagram.Status{}, err
 	}
 	body = st.hideWithheldSections(st.hideWithheldMoved(body))
-	curated, dstat, err := st.applyClaims(body)
+	curated, dstat, err := st.garnishChecks(body)
 	if err != nil {
 		return "", diagram.Status{}, err
 	}
-	st.settleValidation()
 	st.setMarker(curated)
 	st.countHunks()
 	removeDerivedSnapshot(st)
 	return curated, dstat, nil
 }
 
-// sealEntries merges the entries and runs the pass over them before any body
-// section is curated from them, so a rejected finding that moved out of the
-// diff is dropped by the same path as an inline one.
+// finishEntries runs the pass and then the floors, in that order and for two
+// separate reasons: a withheld entry must exist before the moved and section
+// bodies are curated from it, and a floor must read statuses the run's own
+// claims and triage already settled. Floors move severity and history only,
+// never withheld, so they cannot release anything the pass withheld.
+func (st *state) finishEntries() error {
+	if err := st.sealEntries(); err != nil {
+		return err
+	}
+	return st.settleEntries()
+}
+
 func (st *state) sealEntries() error {
 	if err := st.mergeEntries(); err != nil {
 		return err
@@ -180,15 +190,17 @@ func (st *state) mergeEntries() error {
 	return st.applySilence()
 }
 
-func (st *state) applyClaims(body string) (string, diagram.Status, error) {
+func (st *state) settleEntries() error {
 	st.applyResolved()
 	if err := st.applyVerification(); err != nil {
-		return "", diagram.Status{}, err
+		return err
 	}
 	if err := st.applyTriage(); err != nil {
-		return "", diagram.Status{}, err
+		return err
 	}
-	return st.garnishChecks(body)
+	st.sealFloors()
+	st.settleValidation()
+	return nil
 }
 
 func (st *state) loadKB() {

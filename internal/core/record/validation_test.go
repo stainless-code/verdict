@@ -441,6 +441,76 @@ func TestCriticalDowngradesInsteadOfRefusing(t *testing.T) {
 	}
 }
 
+// writtenReview is the closed-finding fixture: one `said` critical the run can
+// close, plus a clean important finding so the post still has something to say.
+func writtenReview(t *testing.T, path string) {
+	t.Helper()
+	writeFile(t, path, `{"schema_version":"1","body":"> [!IMPORTANT]\n> Two findings.","approved":false,"comments":[`+
+		`{"path":"notes.txt","line":2,"side":"RIGHT","body":"`+hedgedBody+`","rigor":"said","severity":"critical"},`+
+		`{"path":"notes.txt","line":2,"side":"RIGHT","body":"`+walkedBody+`","rigor":"walked","severity":"important"}]}`)
+}
+
+// verifyClaim marks one finding addressed in the same run that posts it.
+func verifyClaim(t *testing.T, sig string) {
+	t.Helper()
+	writeFile(t, ".verdict/state/7/verification.json", `[{"sig":"`+sig+
+		`","verdict":"VERIFIED","resultHead":"`+coverageHead+`","verifyCmd":"go test ./..."}]`)
+}
+
+// TestFloorsSkipSameRunAddressedFinding pins the closed-finding rule for the
+// run that closes it: triage and verification settle the status before the
+// floors judge, so an addressed critical is neither refused nor downgraded.
+func TestFloorsSkipSameRunAddressedFinding(t *testing.T) {
+	validationBundle(t, "")
+	writtenReview(t, ".verdict/state/7/review.json")
+	verifyClaim(t, hedgedSig)
+	_, ref, _ := runValidationPost(t, validationFlags(), "critical=walked", "important=said")
+	if ref != nil {
+		t.Fatalf("post refused on a finding this run addressed: %v (%s)", ref, ref.Message)
+	}
+	stored := findingEntry(t, hedgedSig)
+	if stored["status"] != "addressed" {
+		t.Fatalf("status = %v, want addressed", stored["status"])
+	}
+	if stored["severity"] != "critical" {
+		t.Fatalf("severity = %v, want the closed finding left alone", stored["severity"])
+	}
+}
+
+// TestFloorsSkipStoredAddressedFinding pins the same rule for a finding a prior
+// run closed: a closed candidate is not an open finding under a floor.
+func TestFloorsSkipStoredAddressedFinding(t *testing.T) {
+	validationBundle(t, "")
+	writtenReview(t, ".verdict/state/7/review.json")
+	verifyClaim(t, hedgedSig)
+	if _, ref, _ := runValidationPost(t, validationFlags()); ref != nil {
+		t.Fatalf("first post refused: %v (%s)", ref, ref.Message)
+	}
+	// The next run reports only the clean finding, so the closed one carries
+	// over as stored history rather than reopening.
+	writeFile(t, ".verdict/state/7/review.json", `{"schema_version":"1","body":"> [!IMPORTANT]\n> One finding.","approved":false,"comments":[`+
+		`{"path":"notes.txt","line":2,"side":"RIGHT","body":"`+walkedBody+`","rigor":"walked","severity":"important"}]}`)
+	os.Remove(".verdict/state/7/verification.json")
+	if _, ref, _ := runValidationPost(t, validationFlags(), "critical=walked"); ref != nil {
+		t.Fatalf("post refused on a stored addressed finding: %v (%s)", ref, ref.Message)
+	}
+	stored := findingEntry(t, hedgedSig)
+	if stored["status"] != "addressed" || stored["severity"] != "critical" {
+		t.Fatalf("stored finding = %v/%v, want addressed/critical", stored["status"], stored["severity"])
+	}
+}
+
+// TestFloorsStillRefuseOpenFinding pins that the closed-finding rule did not
+// disarm the gate: an open `said` critical still refuses.
+func TestFloorsStillRefuseOpenFinding(t *testing.T) {
+	validationBundle(t, "")
+	writtenReview(t, ".verdict/state/7/review.json")
+	_, ref, _ := runValidationPost(t, validationFlags(), "critical=walked")
+	if ref == nil || ref.Code != "rigor-below-floor" {
+		t.Fatalf("refusal = %v, want rigor-below-floor", ref)
+	}
+}
+
 // TestPolicyFromBaseBeatsHeadEdit pins criterion 8: the gate reads the
 // trusted-base snapshot, so rewriting the head's configuration cannot move it.
 func TestPolicyFromBaseBeatsHeadEdit(t *testing.T) {

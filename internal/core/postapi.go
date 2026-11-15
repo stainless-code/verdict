@@ -278,8 +278,6 @@ func (d *PostData) Wire() *jq.Obj {
 	return o
 }
 
-// setPostValidationWire appends the validator pass only when one ran, so a
-// run without validation.json keeps its published envelope bytes.
 func setPostValidationWire(o *jq.Obj, v *ValidationData) {
 	if v == nil {
 		return
@@ -419,9 +417,6 @@ func setPostFloorWire(o *jq.Obj, p *Post) {
 	}
 }
 
-// setValidationWire appends the trusted-validator receipt: the exact-file hash
-// (null when the pass was skipped), the per-verdict tally, and the mode and
-// floors the gate applied, so a reader proves what published the findings.
 func setValidationWire(o *jq.Obj, hash *string, counts ValidationCounts, mode string, floors RigorFloors) {
 	o.Set("validation_hash", hash)
 	o.Set("validation_counts", counts)

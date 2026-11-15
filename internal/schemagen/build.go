@@ -145,8 +145,6 @@ const coverageSummaryType = "coverageSummary"
 // is published under on post and record.
 const chunkCoverageType = "chunkCoverage"
 
-// defsValidationCounts and defsRigorFloors are the $defs names the validation
-// receipt is published under on post, record, and the validation document.
 const (
 	defsValidationCounts = "validationCounts"
 	defsRigorFloors      = "rigorFloors"
@@ -594,8 +592,6 @@ func envelopeDefs() []definition {
 
 const defsRiskClaim = "riskClaim"
 
-// defsValidationData is the $defs name the envelope's pass projection is
-// published under on post and report.
 const defsValidationData = "validationData"
 
 func reviewDefs() []definition {

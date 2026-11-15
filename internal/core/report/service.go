@@ -315,8 +315,6 @@ func storedValidation(dir string) *core.ValidationData {
 		if err != nil {
 			continue
 		}
-		// record.json carries the same four keys under the same names, so one
-		// receipt type reads either file.
 		var receipt core.Record
 		if err := json.Unmarshal(raw, &receipt); err != nil || receipt.ValidationMode == "" {
 			continue

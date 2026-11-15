@@ -9,7 +9,6 @@ exit: 0
   "next": "report or triage the local bundle; post stays refused (no PR target)",
   "warnings": [
     "rigor pointed below critical floor walked on c84ffef (advisory); a gate would downgrade it to important",
-    "rigor said below critical floor walked on c7bc06e (advisory)",
     "rigor said below important floor pointed on 99cd29f (advisory)",
     "$.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)"
   ],
@@ -107,7 +106,6 @@ exit: 0
 --- stderr ---
 » anchors: 0 inline, 0 moved to body
 warn: rigor pointed below critical floor walked on c84ffef (advisory); a gate would downgrade it to important
-warn: rigor said below critical floor walked on c7bc06e (advisory)
 warn: rigor said below important floor pointed on 99cd29f (advisory)
 warn: $.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)
 » findings: 12 sigs -> .verdict/state/local-mx/findings.json

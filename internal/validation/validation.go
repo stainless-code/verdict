@@ -129,6 +129,15 @@ type Violation struct {
 	Floor    string
 }
 
+// CandidateObj lifts one finding a pass or a floor owes a judgement, or nil.
+func CandidateObj(entry any) *jq.Obj {
+	m, ok := entry.(*jq.Obj)
+	if !ok || m == nil || !Candidate(m) {
+		return nil
+	}
+	return m
+}
+
 // Detail renders one violation as `short-sig (severity rigor < floor)`.
 func (v Violation) Detail() string {
 	return fmt.Sprintf("%s (%s %s < %s)", readcommon.ShortSHA(v.Sig), v.Severity, v.Rigor, v.Floor)
@@ -138,8 +147,8 @@ func (v Violation) Detail() string {
 // gate downgrades and the rest it names.
 func Floors(entries []any, p Policy) (downgrades, violations []Violation) {
 	for _, entry := range entries {
-		m, ok := entry.(*jq.Obj)
-		if !ok || m == nil || readcommon.WithheldSource(m) != "" {
+		m := CandidateObj(entry)
+		if m == nil {
 			continue
 		}
 		if v, below := underFloor(m, &p); below {

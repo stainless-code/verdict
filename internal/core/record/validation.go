@@ -42,9 +42,16 @@ func (st *state) applyValidation() *core.RefusalError {
 			return ref
 		}
 	}
-	out.Violations = st.applyFloors(policy)
+	st.policy = policy
 	st.validation = out
 	return nil
+}
+
+func (st *state) sealFloors() {
+	if st.validation == nil {
+		return
+	}
+	st.validation.Violations = st.applyFloors(st.policy)
 }
 
 func (st *state) rigorPolicy() (validation.Policy, *core.RefusalError) {
@@ -65,7 +72,7 @@ func (st *state) applyVerdicts(file *core.ValidationFile, mode string) (core.Val
 	st.judged = make(map[string]core.ValidationResult, len(index))
 	maps.Copy(st.judged, index)
 	for _, entry := range st.entries {
-		m := candidateObj(entry)
+		m := validation.CandidateObj(entry)
 		if m == nil {
 			continue
 		}
@@ -80,15 +87,6 @@ func (st *state) applyVerdicts(file *core.ValidationFile, mode string) (core.Val
 	}
 	st.warnUnmatched(index)
 	return counts, nil
-}
-
-// candidateObj lifts one entry a pass owes a result to, or nil.
-func candidateObj(entry any) *jq.Obj {
-	m, ok := entry.(*jq.Obj)
-	if !ok || m == nil || !validation.Candidate(m) {
-		return nil
-	}
-	return m
 }
 
 func indexResults(results []core.ValidationResult) map[string]core.ValidationResult {
@@ -134,9 +132,6 @@ func (st *state) applyValidationVerdict(
 	return nil
 }
 
-// downgradeRefusal holds a downgrade to the rank it names: a verdict may not
-// move a finding from a severity it does not currently carry, which would
-// scrape an upgrade past the never-upgrade rule.
 func downgradeRefusal(m *jq.Obj, result *core.ValidationResult) *core.RefusalError {
 	current := suppressionString(m, fieldSeverity)
 	if current == result.FromSeverity {
@@ -193,9 +188,6 @@ func downgradeNote(v validation.Violation, downgrades []validation.Violation) st
 	return ""
 }
 
-// settleValidation counts the candidates no result named once triage has
-// settled the statuses the receipt is stored beside, so a finding this run
-// addressed is neither open nor unvalidated in the file that describes it.
 func (st *state) settleValidation() {
 	if st.validation == nil {
 		return
@@ -209,7 +201,6 @@ func (st *state) settleValidation() {
 	st.validation.Counts.Unvalidated = n
 }
 
-// isJudged reports whether one result named the entry.
 func isJudged(judged map[string]core.ValidationResult, entry any) bool {
 	_, named := judged[jq.StrOf(readcommon.FieldOf(entry, fieldSig))]
 	return named
