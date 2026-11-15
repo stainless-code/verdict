@@ -353,8 +353,9 @@ var fieldDocs = map[string]string{
 	"Index": "Explicit index hand-off: a ref or a directory holding an index store. The fetch " +
 		"verb writes impact.json and a capped ## impact section on toc.txt; omitted means no " +
 		"impact section.",
-	"Sandbox": "Run under bwrap (Linux only) with no network, hidden credential dirs, " +
-		"a writable repo, and a private /tmp; refuses sandbox-unavailable when it cannot be enforced.",
+	"Sandbox": "Run under an enforced sandbox — bwrap on Linux (no network, hidden credential dirs, " +
+		"a writable repo, a private /tmp), sandbox-exec on macOS (no network, loopback included; " +
+		"credentials stay visible); refuses sandbox-unavailable when the host cannot enforce it.",
 	"EnvAllowlist": "Additional parent environment variable names to pass through to the verification child process, " +
 		"overriding default-deny filtering and secret-name dropping.",
 }

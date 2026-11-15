@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -12,17 +13,19 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 )
 
-// verify --sandbox is Linux + bubblewrap only. Every other host, a missing
-// bwrap, and a bwrap that cannot create its namespaces refuse typed; the run
-// never falls back to an unwrapped command.
 const (
 	codeSandboxUnavailable = "sandbox-unavailable"
-	sandboxTool            = "bwrap"
+	bwrapTool              = "bwrap"
+	sandboxExecTool        = "sandbox-exec"
+	sandboxExecPath        = "/usr/bin/sandbox-exec"
 	sandboxTmpfs           = "--tmpfs"
 	sandboxProbeTimeout    = 15 * time.Second
 	sandboxProbeCap        = 4 << 10
 	sandboxShellArgs       = 3
 )
+
+// macOS has no filesystem namespace; sandbox-exec enforces network only.
+const sandboxExecProfile = "(version 1)(allow default)(deny network*)"
 
 // sandboxCredentialPaths are every host credential path the wrapper hides:
 // directories behind an empty tmpfs, files behind a read-only /dev/null bind.
@@ -64,14 +67,13 @@ func (m sandboxMount) argv() []string {
 	return []string{"--ro-bind", "/dev/null", m.dest}
 }
 
-// sandbox is one probed bwrap wrapper: prefix holds the fixed mount and
-// namespace flags through `--`.
 type sandbox struct {
+	tool   string
 	prefix []string
 }
 
-// argv wraps the verified command: bwrap's own exit status is the command's,
-// so the watchdog records the same proof an unwrapped run would.
+// argv wraps the verified command: the runner's own exit status is the
+// command's, so the watchdog records the same proof an unwrapped run would.
 func (sb *sandbox) argv(vcmd string) []string {
 	argv := make([]string, 0, len(sb.prefix)+sandboxShellArgs)
 	argv = append(argv, sb.prefix...)
@@ -83,23 +85,37 @@ func (sb *sandbox) argv(vcmd string) []string {
 // means the run is unsandboxed; every enforcement failure is
 // sandbox-unavailable.
 func prepareSandbox(ctx context.Context, commander core.Commander, workDir, root string, env []string) (*sandbox, *core.RefusalError) {
-	prefix, ref := sandboxArgv(root, env)
+	sb, ref := sandboxMechanism(runtime.GOOS, root, env)
 	if ref != nil {
 		return nil, ref
 	}
-	sb := &sandbox{prefix: prefix}
 	if ref := sb.probe(ctx, commander, workDir, env); ref != nil {
 		return nil, ref
 	}
 	return sb, nil
 }
 
-// sandboxArgv is the enforced shape of the manual recipe: a read-only host, a
+func sandboxMechanism(goos, root string, env []string) (*sandbox, *core.RefusalError) {
+	switch goos {
+	case "linux":
+		prefix, ref := bwrapArgv(root, env)
+		if ref != nil {
+			return nil, ref
+		}
+		return &sandbox{tool: bwrapTool, prefix: prefix}, nil
+	case "darwin":
+		return &sandbox{tool: sandboxExecTool, prefix: []string{sandboxExecPath, "-p", sandboxExecProfile}}, nil
+	}
+	return nil, sandboxUnavailable(goos +
+		" has no enforced sandbox — --sandbox needs Linux with bubblewrap, or macOS with sandbox-exec")
+}
+
+// bwrapArgv is the enforced shape of the manual recipe: a read-only host, a
 // writable reviewed root, a private /tmp, an empty /run, a fresh /dev and
 // /proc under a private PID namespace, empty credential paths, and no
 // network. The repo bind is last so a checkout under /tmp or /run survives
 // the tmpfs that replaces its parent.
-func sandboxArgv(root string, env []string) ([]string, *core.RefusalError) {
+func bwrapArgv(root string, env []string) ([]string, *core.RefusalError) {
 	repo, err := filepath.Abs(root)
 	if err != nil {
 		return nil, sandboxUnavailable(fmt.Sprintf("could not resolve the reviewed root %s: %v", root, err))
@@ -114,7 +130,7 @@ func sandboxArgv(root string, env []string) ([]string, *core.RefusalError) {
 			"HOME is unset in the child environment, so the credential paths under it cannot be hidden")
 	}
 	argv := []string{
-		sandboxTool,
+		bwrapTool,
 		"--ro-bind", "/", "/",
 		"--dev", "/dev",
 		"--proc", "/proc",
@@ -180,9 +196,6 @@ func sandboxHome(env []string) (string, bool) {
 	return "", false
 }
 
-// probe runs `bwrap <same flags> -- true`: success proves the kernel allows
-// the mounts and the network namespace, and any other outcome refuses before
-// the real command spawns.
 func (sb *sandbox) probe(ctx context.Context, commander core.Commander, workDir string, env []string) *core.RefusalError {
 	pctx, cancel := context.WithTimeout(ctx, sandboxProbeTimeout)
 	defer cancel()
@@ -194,18 +207,27 @@ func (sb *sandbox) probe(ctx context.Context, commander core.Commander, workDir 
 	}
 	if err != nil {
 		return sandboxUnavailable(fmt.Sprintf(
-			"bwrap could not start (%v) — verify --sandbox needs Linux with bubblewrap installed; "+
-				"install it, or use the manual recipe on another OS", err))
+			"%s could not start (%v) — --sandbox needs Linux with bubblewrap, or macOS with sandbox-exec; "+
+				"install it, or use the manual recipe on another OS", sb.tool, err))
 	}
 	if res.TimedOut {
-		return sandboxUnavailable(fmt.Sprintf("bwrap did not finish its namespace probe within %s", sandboxProbeTimeout))
+		return sandboxUnavailable(fmt.Sprintf("%s did not finish its sandbox probe within %s", sb.tool, sandboxProbeTimeout))
 	}
 	if res.ExitCode != 0 {
 		return sandboxUnavailable(fmt.Sprintf(
-			"bwrap could not create the sandbox (exit %d: %s) — unprivileged user namespaces may be restricted",
-			res.ExitCode, sandboxDetail(res)))
+			"%s could not create the sandbox (exit %d: %s)%s",
+			sb.tool, res.ExitCode, sandboxDetail(res), sb.probeRemedy()))
 	}
 	return nil
+}
+
+// probeRemedy is the cause a failed probe names, per mechanism: only bwrap
+// builds namespaces, so only its refusal points at the namespace sysctl.
+func (sb *sandbox) probeRemedy() string {
+	if sb.tool == bwrapTool {
+		return " — unprivileged user namespaces may be restricted"
+	}
+	return ""
 }
 
 // sandboxDetail trims bwrap's diagnostic to its first line for the refusal.
