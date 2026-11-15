@@ -1,0 +1,33 @@
+{
+  "schema_version": "1",
+  "id": "cli-cli-10384-double-escaped-package",
+  "kind": "real",
+  "language": "go",
+  "provenance": {
+    "kind": "real",
+    "repo": "cli/cli",
+    "pr": 10384,
+    "base_sha": "b77778291f650de438fc2072ff0c57340b40f00e",
+    "head_sha": "9c87069199c424dbc0f6e257ee84f19902efbe62",
+    "fix_commit": "https://github.com/cli/cli/commit/f4382d1345cf68a5e000a4f63c4e0f61531827cd",
+    "source": "PR #10384 9798-gh-api-encode-package-name, merged 2025-02-25; reverted by PR #10630",
+    "note": "INTRODUCED: escapePackageNameInPath is new in this PR and rewrites the captured package name with url.QueryEscape and a blind strings.Replace on the raw path, so a name the caller already percent-escaped has its percent sign encoded again (%2F becomes %252F) and the packages endpoint answers 404; issue #10592 is one of the two regressions PR #10630 names when it reverts this change, and the base has no such rewrite"
+  },
+  "bugs": [
+    {
+      "path": "pkg/cmd/api/api.go",
+      "line": 724,
+      "kind": "double-encoding",
+      "severity": "important",
+      "keywords": [
+        "an already escaped name is escaped again",
+        "double-encodes the package name",
+        "the percent sign of a pre-escaped name is encoded twice",
+        "an already escaped name no longer resolves",
+        "callers that already encoded the name break",
+        "re-encodes the caller's escape sequence"
+      ],
+      "note": "the helper escapes the captured name as if it were raw text, and replaces the first textual occurrence in the path, so input that is already escaped keeps its own escapes and gains new ones"
+    }
+  ]
+}

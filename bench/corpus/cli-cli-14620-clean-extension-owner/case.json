@@ -1,0 +1,16 @@
+{
+  "schema_version": "1",
+  "id": "cli-cli-14620-clean-extension-owner",
+  "kind": "control",
+  "language": "go",
+  "provenance": {
+    "kind": "real",
+    "repo": "cli/cli",
+    "pr": 14620,
+    "base_sha": "996be976cad960a726aabb94be67dfc7e31e317b",
+    "head_sha": "731e9b50e46abbc19c3f78ae0631ada7c773feac",
+    "source": "PR #14620 williammartin-profile-startup-time, merged 2026-10-09",
+    "note": "clean control: no commit after the reviewed head touches pkg/cmd/root/extension.go, pkg/extensions/official.go, or pkg/extensions/official_test.go at all (git rev-list 731e9b50e..trunk over those paths is empty), so no fix or revert can have repaired a line this PR added; read as a reviewer, the changed predicate keeps every outcome the old (name, owner) form produced \u2014 official name with a matching owner is true, an empty or foreign owner is false, the name comparison stays case-sensitive and the owner comparison case-insensitive \u2014 and only defers the owner lookup behind a name match, which is the startup cost the PR set out to remove"
+  },
+  "bugs": []
+}

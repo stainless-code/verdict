@@ -1,0 +1,68 @@
+diff --git a/pkg/cmd/root/extension.go b/pkg/cmd/root/extension.go
+index df846195a..657913605 100644
+--- a/pkg/cmd/root/extension.go
++++ b/pkg/cmd/root/extension.go
+@@ -83,7 +83,7 @@ func NewCmdExtension(io *iostreams.IOStreams, em extensions.ExtensionManager, ex
+ 	// organization names), so we must not record telemetry for them by
+ 	// default. Official GitHub-owned extensions are a known, fixed set and
+ 	// can safely contribute their command name to telemetry.
+-	if !extensions.IsOfficial(ext.Name(), ext.Owner()) {
++	if !extensions.IsOfficial(ext) {
+ 		cmdutil.DisableTelemetry(cmd)
+ 	}
+ 
+diff --git a/pkg/extensions/official.go b/pkg/extensions/official.go
+index c45ddc031..507664452 100644
+--- a/pkg/extensions/official.go
++++ b/pkg/extensions/official.go
+@@ -41,13 +41,16 @@ var OfficialExtensions = []OfficialExtension{
+ // `gh-STACK`), and we must not treat that as official. Owner comparison
+ // is case-insensitive because GitHub usernames and organization names
+ // are themselves case-insensitive.
+-func IsOfficial(name, owner string) bool {
+-	if owner == "" {
+-		return false
+-	}
+-	for _, ext := range OfficialExtensions {
+-		if ext.Name == name && strings.EqualFold(ext.Owner, owner) {
+-			return true
++//
++// The owner is resolved only after a name match because resolving it for a
++// git-installed extension spawns git, and this is called for every installed
++// extension on every gh invocation. Official extension names are unique.
++func IsOfficial(ext Extension) bool {
++	name := ext.Name()
++	for _, official := range OfficialExtensions {
++		if official.Name == name {
++			owner := ext.Owner()
++			return owner != "" && strings.EqualFold(official.Owner, owner)
+ 		}
+ 	}
+ 	return false
+diff --git a/pkg/extensions/official_test.go b/pkg/extensions/official_test.go
+index cb9b69987..e9d86e154 100644
+--- a/pkg/extensions/official_test.go
++++ b/pkg/extensions/official_test.go
+@@ -73,7 +73,21 @@ func TestIsOfficial(t *testing.T) {
+ 
+ 	for _, tt := range tests {
+ 		t.Run(tt.name, func(t *testing.T) {
+-			assert.Equal(t, tt.want, IsOfficial(tt.extName, tt.extOwner))
++			ext := &ExtensionMock{
++				NameFunc:  func() string { return tt.extName },
++				OwnerFunc: func() string { return tt.extOwner },
++			}
++			assert.Equal(t, tt.want, IsOfficial(ext))
+ 		})
+ 	}
+ }
++
++func TestIsOfficial_DoesNotResolveOwnerForUnofficialNames(t *testing.T) {
++	ext := &ExtensionMock{
++		NameFunc:  func() string { return "my-custom-ext" },
++		OwnerFunc: func() string { return "someone" },
++	}
++
++	assert.False(t, IsOfficial(ext))
++	assert.Empty(t, ext.OwnerCalls())
++}

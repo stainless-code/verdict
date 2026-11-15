@@ -560,6 +560,92 @@ var keywordCases = []keywordCase{
 			"Note that result.dispatcher.destroy() tears down the dispatcher when count drops to zero.",
 		},
 	},
+	{
+		// cli/cli #9934 made the extension update check blocking; the later
+		// fix (bc8c46b0b, Fixes #10235) restored the non-blocking select.
+		id: "cli-cli-9934-extension-update-blocks",
+		passes: []string{
+			"The receive blocks until the update check finishes, so the extension cannot exit while the lookup is in flight.",
+			"Every extension invocation waits for the update check before the process ends.",
+			"The command hangs on the update check instead of running to completion.",
+			"A slow network delays the extension's exit because the channel is received unconditionally.",
+			"A slow lookup holds the command open after the extension has already run.",
+			"The update check is waited for instead of skipped once the command finishes.",
+		},
+		fails: []string{
+			"The update notice is fetched on every invocation instead of being cached for a day.",
+			"The debug flag is ignored, so a failed lookup is silent.",
+			"The notice is printed to stdout instead of stderr.",
+			"The pinned extension hint uses the wrong upgrade flag.",
+			"The channel is unbuffered, so the goroutine leaks when the command exits early.",
+			"The release lookup runs in PreRun, so it repeats the network call the extension already made.",
+		},
+	},
+	{
+		// cli/cli #10384 double-encoded a package name the caller had already
+		// escaped; PR #10630 reverted it and names issue #10592.
+		id: "cli-cli-10384-double-escaped-package",
+		passes: []string{
+			"The helper escapes the captured name as if it were raw text, so an already escaped name is escaped again: %2F becomes %252F.",
+			"The path rewrite double-encodes the package name, so the packages endpoint answers 404 for it.",
+			"The percent sign of a pre-escaped name is encoded twice, so the request asks the server for %252F.",
+			"An already escaped name no longer resolves because its escape sequence gains another layer.",
+			"Callers that already encoded the name break: the command worked before this change and now the endpoint 404s.",
+			"The helper re-encodes the caller's escape sequence instead of escaping only an unescaped name.",
+		},
+		fails: []string{
+			"The regexp is compiled on every call instead of once at package level, which costs a compile per request.",
+			"The capture group is lazy, so a name that ends with the word versions stops the match early.",
+			"The helper should return an error instead of the original path when the pattern does not match.",
+			"The new net/url import is used only by this helper and could be scoped to the function.",
+			"The helper handles the container type but not the npm or nuget package types.",
+			"The added tests only cover paths that need escaping, not paths that are already valid.",
+		},
+	},
+	{
+		// cli/cli #11172 rewrote the log path and left its early return above
+		// the exit-status check; the flag was already ignored at the base, so
+		// the provenance note discloses a pre-existing defect on a rewritten
+		// line. Fix 24964681a, Fixes #12674.
+		id: "cli-cli-11172-exit-status-ignored-with-log",
+		passes: []string{
+			"With --log a failed run still exits zero, so CI marks the job green.",
+			"The failure is never reported to the shell because the log path returns first.",
+			"exit-status has no effect with logs: the flag is parsed and then dropped.",
+			"Scripts cannot detect a failed run when --log is also passed.",
+			"The log branch returns without setting the failure exit, so `echo $?` reports success.",
+			"The command exits successfully for a failed run when logs are printed.",
+		},
+		fails: []string{
+			"The fallback fetches job logs one request at a time, so a wide matrix is slow.",
+			"The 25-request cap should be a named constant rather than a literal.",
+			"The zip log map drops files whose names the server truncated differently.",
+			"The progress indicator is stopped twice on the error path.",
+			"The new helper closes the response body only after checking the status code.",
+			"Skipped jobs are still requested from the logs endpoint, which wastes a request.",
+		},
+	},
+	{
+		// cli/cli #12596 returned the reformatted scope error before callers
+		// could treat it as ignorable; PR #12915 reverted it (issue #12904).
+		id: "cli-cli-12596-scope-error-hard-fail",
+		passes: []string{
+			"The new interception fails the command instead of degrading, so a partial response is discarded.",
+			"Replacing the server's message turns an ignorable scope failure into a fatal error for every caller.",
+			"Because the error is swapped before the caller inspects it, the caller never sees the partial result.",
+			"Graceful degradation is lost: gh pr view prints the scope error and shows nothing.",
+			"A missing project scope aborts the whole command even though the rest of the query succeeded.",
+			"A response that also carries usable data is thrown away when one field needs read:project.",
+		},
+		fails: []string{
+			"The regular expression is not anchored, so a message with two scope lists parses the wrong one.",
+			"The helper does not trim the trailing comma from the joined scope list.",
+			"The set package is imported in the wrong group for this file.",
+			"The error message hardcodes the refresh command instead of reusing the shared helper.",
+			"The message is printed to stdout instead of stderr, which breaks scripted callers.",
+			"The scope list is sorted, so the suggestions lose the server's order.",
+		},
+	},
 }
 
 // TestCheckedInCorpusKeywordsGradeBothWays proves the shipped vocabulary both

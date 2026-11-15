@@ -1,0 +1,33 @@
+{
+  "schema_version": "1",
+  "id": "cli-cli-11172-exit-status-ignored-with-log",
+  "kind": "real",
+  "language": "go",
+  "provenance": {
+    "kind": "real",
+    "repo": "cli/cli",
+    "pr": 11172,
+    "base_sha": "f5134c48c032f81fdde803482b7f9b4f9651bb80",
+    "head_sha": "7eef7af23d8594ceaf2bb58c052b2eed218a023b",
+    "fix_commit": "https://github.com/cli/cli/commit/24964681a8ab84470e623017d066c2815e1692d8",
+    "source": "PR #11172 babakks/use-job-run-log-api, merged 2025-07-04",
+    "note": "PRE-EXISTING: the base also ended this branch with a bare `return displayRunLog(...)` above the exit-status check further down runView, so `--exit-status` was already ignored whenever logs were printed; the PR rewrote exactly this logic (the zip log map, populateLogSegments, displayLogSegments) and kept the early return, which is the added line a reviewer reads. The later fix 24964681a (Fixes #12674) reports the failure state inside the log branch and returns cmdutil.SilentError"
+  },
+  "bugs": [
+    {
+      "path": "pkg/cmd/run/view/view.go",
+      "line": 334,
+      "kind": "ignored-flag",
+      "severity": "important",
+      "keywords": [
+        "a failed run still exits zero",
+        "the failure is never reported to the shell",
+        "exit-status has no effect with logs",
+        "scripts cannot detect a failed run",
+        "the log branch returns without setting the failure exit",
+        "the command exits successfully for a failed run when logs are printed"
+      ],
+      "note": "the same flag is honored on the summary path a hundred lines below, so the log path's return is the line that drops it"
+    }
+  ]
+}
