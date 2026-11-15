@@ -584,28 +584,33 @@ func TestRate(t *testing.T) {
 	}
 }
 
-// TestLoadRejects proves the semantic gates the schema cannot express.
+// TestLoadRejects proves the semantic gates the schema cannot express. Each
+// row's want is the field the refusal must name, because a row that is also
+// invalid for some other reason still passes a bare "was it refused" check: the
+// SHA rows below used to omit fix_commit, so deleting the SHA rule outright
+// left them refused over the missing commit and the table never noticed.
 //
 //nolint:revive // the table is the rejection matrix
 func TestLoadRejects(t *testing.T) {
 	tests := []struct {
 		name string
+		want string
 		body string
 	}{
-		{"missing schema version", `{"id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
-		{"real without fix commit", `{"schema_version":"1","id":"x","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1,"base_sha":"2799fd43bd5cf6996cc5f1af206175b543c640e1","head_sha":"5e0af0c601e231050df9e8ef1752fb2eaf63f2a8"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
-		{"real without a base sha", `{"schema_version":"1","id":"x","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1,"head_sha":"5e0af0c601e231050df9e8ef1752fb2eaf63f2a8"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
-		{"real without a head sha", `{"schema_version":"1","id":"x","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1,"base_sha":"2799fd43bd5cf6996cc5f1af206175b543c640e1"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
-		{"real with an abbreviated base sha", `{"schema_version":"1","id":"x","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1,"base_sha":"2799fd43bd5cf6996cc5f1af206175b543c640e","head_sha":"5e0af0c601e231050df9e8ef1752fb2eaf63f2a8"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
-		{"real with an uppercase head sha", `{"schema_version":"1","id":"x","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1,"base_sha":"2799fd43bd5cf6996cc5f1af206175b543c640e1","head_sha":"5E0AF0C601E231050DF9E8EF1752FB2EAF63F2A8"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
-		{"real control without a base sha", `{"schema_version":"1","id":"x","kind":"control","provenance":{"kind":"real","repo":"o/r","pr":1,"head_sha":"5e0af0c601e231050df9e8ef1752fb2eaf63f2a8"},"bugs":[]}`},
-		{"seeded without injection", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
-		{"no bugs", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[]}`},
-		{"unknown field", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}],"typo":true}`},
-		{"blank keyword", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical","keywords":[" "]}]}`},
-		{"also_lines below line 1", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":10,"kind":"k","severity":"critical","also_lines":[0]}]}`},
-		{"also_lines repeats the primary line", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":10,"kind":"k","severity":"critical","also_lines":[10]}]}`},
-		{"also_lines repeats an entry", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":10,"kind":"k","severity":"critical","also_lines":[8,8]}]}`},
+		{"missing schema version", "", `{"id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
+		{"real without fix commit", "provenance.fix_commit", `{"schema_version":"1","id":"x","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1,"base_sha":"2799fd43bd5cf6996cc5f1af206175b543c640e1","head_sha":"5e0af0c601e231050df9e8ef1752fb2eaf63f2a8"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
+		{"real without a base sha", "provenance.base_sha", `{"schema_version":"1","id":"x","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1,"head_sha":"5e0af0c601e231050df9e8ef1752fb2eaf63f2a8","fix_commit":"37ad84c48d434b095729ebc7cb6df701e80a6ed4"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
+		{"real without a head sha", "provenance.head_sha", `{"schema_version":"1","id":"x","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1,"base_sha":"2799fd43bd5cf6996cc5f1af206175b543c640e1","fix_commit":"37ad84c48d434b095729ebc7cb6df701e80a6ed4"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
+		{"real with an abbreviated base sha", "provenance.base_sha", `{"schema_version":"1","id":"x","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1,"base_sha":"2799fd43bd5cf6996cc5f1af206175b543c640e","head_sha":"5e0af0c601e231050df9e8ef1752fb2eaf63f2a8","fix_commit":"37ad84c48d434b095729ebc7cb6df701e80a6ed4"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
+		{"real with an uppercase head sha", "provenance.head_sha", `{"schema_version":"1","id":"x","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1,"base_sha":"2799fd43bd5cf6996cc5f1af206175b543c640e1","head_sha":"5E0AF0C601E231050DF9E8EF1752FB2EAF63F2A8","fix_commit":"37ad84c48d434b095729ebc7cb6df701e80a6ed4"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
+		{"real control without a base sha", "provenance.base_sha", `{"schema_version":"1","id":"x","kind":"control","provenance":{"kind":"real","repo":"o/r","pr":1,"head_sha":"5e0af0c601e231050df9e8ef1752fb2eaf63f2a8"},"bugs":[]}`},
+		{"seeded without injection", "", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
+		{"no bugs", "", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[]}`},
+		{"unknown field", "", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}],"typo":true}`},
+		{"blank keyword", "", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical","keywords":[" "]}]}`},
+		{"also_lines below line 1", "", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":10,"kind":"k","severity":"critical","also_lines":[0]}]}`},
+		{"also_lines repeats the primary line", "", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":10,"kind":"k","severity":"critical","also_lines":[10]}]}`},
+		{"also_lines repeats an entry", "", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":10,"kind":"k","severity":"critical","also_lines":[8,8]}]}`},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -613,8 +618,12 @@ func TestLoadRejects(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(dir, "corpus.json"), []byte(tc.body), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if _, ref := Load(dir); ref == nil || ref.Code != codeCorpusInvalid {
+			_, ref := Load(dir)
+			if ref == nil || ref.Code != codeCorpusInvalid {
 				t.Fatalf("Load = %v, want corpus-invalid", ref)
+			}
+			if tc.want != "" && !strings.Contains(ref.Message, tc.want) {
+				t.Fatalf("refusal = %q, want it to name %s", ref.Message, tc.want)
 			}
 		})
 	}
