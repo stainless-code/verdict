@@ -618,6 +618,64 @@ func checkRefusedSampleCost(t *testing.T, cost *CostRollup) {
 	}
 }
 
+// TestMaxUSDStopsSchedulingAtTheCap pins the budget stop: three samples at
+// 0.03 USD each against a 0.05 USD cap run two, and the third is reported as
+// not run rather than as a failure. The run is never citable.
+func TestMaxUSDStopsSchedulingAtTheCap(t *testing.T) {
+	rep := cappedReport(t)
+	if rep.Samples != 2 || len(rep.Skipped) != 1 {
+		t.Fatalf("samples=%d skipped=%v, want two run and one skipped", rep.Samples, rep.Skipped)
+	}
+	if got := rep.Skipped[0]; got.Case != "off-by-one" || got.Run != 3 {
+		t.Errorf("skipped = %+v, want off-by-one run 3", got)
+	}
+	checkCapRecorded(t, rep)
+	if rep.Citable || !strings.Contains(rep.CitableReason, "budget cap hit") {
+		t.Errorf("citable=%v reason=%q, want a budget refusal", rep.Citable, rep.CitableReason)
+	}
+	if got := countRunDirs(t); got != 2 {
+		t.Errorf("%d sample dirs, want 2 (the cap stops scheduling)", got)
+	}
+}
+
+// cappedReport runs three priced samples against a 0.05 USD cap.
+func cappedReport(t *testing.T) *Report {
+	t.Helper()
+	needPOSIX(t)
+	restoreWD(t)
+	cfg := benchConfig(t, fakeCorpus(t), agentWritesSpend)
+	cfg.Runs = 3
+	cfg.MaxUSD = 0.05
+	fake := &fakeGrader{model: cfg.Model, panel: cfg.Panel, prefix: fakePrefix}
+	rep, err := runGraded(context.Background(), cfg, fake)
+	if err != nil {
+		t.Fatalf("runGraded: %v (a cap stop is not a failure)", err)
+	}
+	return rep
+}
+
+// checkCapRecorded pins the cap the report publishes, not just the stop.
+func checkCapRecorded(t *testing.T, rep *Report) {
+	t.Helper()
+	if !rep.CapHit || rep.BudgetUSD == nil || *rep.BudgetUSD != 0.05 {
+		t.Errorf("cap_hit=%v budget=%v, want the 0.05 cap recorded", rep.CapHit, rep.BudgetUSD)
+	}
+	if got, want := rep.SpentAtCap, 0.06; got != want {
+		t.Errorf("spent_at_cap = %v, want %v", got, want)
+	}
+}
+
+// countRunDirs counts the sample dirs a run created; Run moved the process
+// into the run dir, so the path is relative.
+func countRunDirs(t *testing.T) int {
+	t.Helper()
+	entries, err := os.ReadDir("runs")
+	if err != nil {
+		t.Fatalf("runs: %v", err)
+	}
+	return len(entries)
+}
+
 // TestRunRefusesAMissingModel refuses a run no bundle could be attributed to.
 func TestRunRefusesAMissingModel(t *testing.T) {
 	cfg := &Config{K: 1, Agent: "true", Runs: 1}

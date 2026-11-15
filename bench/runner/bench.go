@@ -38,6 +38,7 @@ type Config struct {
 	Panel    []string
 	Cases    []string
 	Timeout  time.Duration
+	MaxUSD   float64
 	K        int
 	Weights  core.SeverityWeights
 	Runs     int
@@ -63,21 +64,29 @@ func (cfg *Config) validate() error {
 	if err := cfg.validateSampling(); err != nil {
 		return err
 	}
+	if err := cfg.validateRequired(); err != nil {
+		return err
+	}
+	if err := cfg.validateNumbers(); err != nil {
+		return err
+	}
+	cfg.applyDefaults()
+	return nil
+}
+
+// validateRequired refuses a run no bundle could be attributed to or produced.
+func (cfg *Config) validateRequired() error {
 	switch {
 	case strings.TrimSpace(cfg.Model) == "":
 		return jq.NewErr("-model is required: every bundle is attributed to exactly one model")
 	case strings.TrimSpace(cfg.Agent) == "":
 		return jq.NewErr("-agent is required: the command that produces a review for one prompt")
-	case cfg.Runs < 1:
-		return jq.NewErrf("-runs must be at least 1, got %d", cfg.Runs)
-	case cfg.Loop < 0:
-		return jq.NewErrf("-loop must be at least 1, got %d", cfg.Loop)
-	case cfg.Loop > loopMaxRounds:
-		return jq.NewErrf("-loop must be at most %d, got %d", loopMaxRounds, cfg.Loop)
 	}
-	if cfg.Loop == 0 {
-		cfg.Loop = 1
-	}
+	return nil
+}
+
+// applyDefaults fills what the operator left out; nothing here can fail.
+func (cfg *Config) applyDefaults() {
 	if cfg.Repo == "" {
 		cfg.Repo = benchRepo
 	}
@@ -91,6 +100,23 @@ func (cfg *Config) validate() error {
 		cfg.Now = time.Now()
 	}
 	cfg.Now = cfg.Now.UTC()
+}
+
+// validateNumbers bounds the counts and budgets a run spends.
+func (cfg *Config) validateNumbers() error {
+	switch {
+	case cfg.Runs < 1:
+		return jq.NewErrf("-runs must be at least 1, got %d", cfg.Runs)
+	case cfg.Loop < 0:
+		return jq.NewErrf("-loop must be at least 1, got %d", cfg.Loop)
+	case cfg.Loop > loopMaxRounds:
+		return jq.NewErrf("-loop must be at most %d, got %d", loopMaxRounds, cfg.Loop)
+	case cfg.MaxUSD < 0:
+		return jq.NewErrf("-max-usd must be zero (no cap) or positive, got %v", cfg.MaxUSD)
+	}
+	if cfg.Loop == 0 {
+		cfg.Loop = 1
+	}
 	return nil
 }
 
@@ -437,11 +463,7 @@ func (r *runner) run(ctx context.Context) (*Report, error) {
 		return nil, err
 	}
 	rep := r.newReport()
-	for i := range r.cases {
-		for index := 1; index <= r.cfg.Runs; index++ {
-			r.sample(ctx, rep, &r.cases[i], index, prefix, nonce)
-		}
-	}
+	r.schedule(ctx, rep, prefix, nonce)
 	if err := r.finish(ctx, rep); err != nil {
 		return rep, err
 	}
@@ -449,6 +471,67 @@ func (r *runner) run(ctx context.Context) (*Report, error) {
 		r.render(r.cfg.Summary, rep)
 	}
 	return rep, failure(rep)
+}
+
+// schedule runs the corpus sample by sample until the cap stops it.
+func (r *runner) schedule(ctx context.Context, rep *Report, prefix, nonce string) {
+	for i := range r.cases {
+		if rep.CapHit {
+			r.skipCase(rep, r.cases[i].id)
+			continue
+		}
+		r.scheduleCase(ctx, rep, i, prefix, nonce)
+	}
+}
+
+// scheduleCase runs one case's samples, stopping where the cap is reached.
+func (r *runner) scheduleCase(ctx context.Context, rep *Report, i int, prefix, nonce string) {
+	for index := 1; index <= r.cfg.Runs; index++ {
+		if r.capReached() {
+			r.skipFrom(rep, i, index)
+			return
+		}
+		r.sample(ctx, rep, &r.cases[i], index, prefix, nonce)
+	}
+}
+
+// capReached reports whether measured spend has reached -max-usd. The cap
+// stops scheduling, never a sample already running: an agent in flight cannot
+// be un-spent, and cutting it off would leave a half-run sample in the report.
+func (r *runner) capReached() bool {
+	return r.cfg.MaxUSD > 0 && r.spentUSD() >= r.cfg.MaxUSD
+}
+
+// spentUSD is the measured spend of the samples that have finished.
+func (r *runner) spentUSD() float64 {
+	total := 0.0
+	for _, s := range r.spend {
+		total += s.usd
+	}
+	return total
+}
+
+// skipFrom records the cap hit and every sample it left unscheduled: the rest
+// of this case, then every run of every later case.
+func (r *runner) skipFrom(rep *Report, caseIndex, run int) {
+	rep.CapHit = true
+	rep.SpentAtCap = roundUSD(r.spentUSD())
+	r.skipRuns(rep, r.cases[caseIndex].id, run, r.cfg.Runs)
+	for j := caseIndex + 1; j < len(r.cases); j++ {
+		r.skipCase(rep, r.cases[j].id)
+	}
+}
+
+// skipCase records every run of one case as not scheduled.
+func (r *runner) skipCase(rep *Report, id string) {
+	r.skipRuns(rep, id, 1, r.cfg.Runs)
+}
+
+// skipRuns records runs first..last of one case as not scheduled.
+func (r *runner) skipRuns(rep *Report, id string, first, last int) {
+	for run := first; run <= last; run++ {
+		rep.Skipped = append(rep.Skipped, SkippedSample{Case: id, Run: run})
+	}
 }
 
 // failure is the run's exit error: the JSON is already written, so a failure

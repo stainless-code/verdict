@@ -22,7 +22,7 @@ import (
 
 // Report is the publication JSON: the fields the runbook requires, plus the
 // per-sample blocks they rest on.
-type Report struct {
+type Report struct { //nolint:govet // field order is the published property order
 	LoopCost          *LoopCost              `json:"loop_cost,omitempty"`
 	PromptSHA         map[string]string      `json:"prompt_sha256"`
 	GeneratedAt       string                 `json:"generated_at"`
@@ -38,12 +38,14 @@ type Report struct {
 	TrendCorpus       json.RawMessage        `json:"trend_corpus"`
 	Bundles           []BundleRun            `json:"bundles"`
 	Failures          []Failure              `json:"failures"`
+	Skipped           []SkippedSample        `json:"skipped,omitempty"`
 	Panel             []string               `json:"panel"`
 	Cases             []CaseSpread           `json:"cases"`
 	AnyOfKRecall      corpuscore.Measurement `json:"any_of_k_recall"`
 	Agent             AgentRef               `json:"agent"`
 	Corpus            CorpusRef              `json:"corpus"`
 	Cost              CostRollup             `json:"cost"`
+	BudgetUSD         *float64               `json:"budget_usd,omitempty"`
 	SeverityWeights   core.SeverityWeights   `json:"severity_weights"`
 	K                 int                    `json:"k"`
 	Repeats           int                    `json:"repeats"`
@@ -53,7 +55,15 @@ type Report struct {
 	TolerancePoints   int                    `json:"tolerance_points"`
 	Seeded            bool                   `json:"seeded"`
 	Citable           bool                   `json:"citable"`
+	CapHit            bool                   `json:"cap_hit,omitempty"`
 	Internal          bool                   `json:"internal"`
+	SpentAtCap        float64                `json:"spent_at_cap,omitempty"`
+}
+
+// SkippedSample is one sample the budget cap kept from running.
+type SkippedSample struct {
+	Case string `json:"case"`
+	Run  int    `json:"run"`
 }
 
 // CorpusRef pins what was measured: the checkout the cases came from.
@@ -190,7 +200,7 @@ func (r *runner) newReport() *Report {
 	if r.cfg.Loop > 1 {
 		agent.Loop = r.cfg.Loop
 	}
-	return &Report{
+	rep := &Report{
 		SchemaVersion:   "1",
 		Date:            r.cfg.Now.Format("2006-01-02"),
 		SeverityWeights: r.cfg.Weights,
@@ -207,6 +217,11 @@ func (r *runner) newReport() *Report {
 
 		TolerancePoints: tolerancePoints,
 	}
+	if r.cfg.MaxUSD > 0 {
+		budget := r.cfg.MaxUSD
+		rep.BudgetUSD = &budget
+	}
+	return rep
 }
 
 // finish turns the samples into the publication and writes it. The tool's
@@ -317,8 +332,8 @@ func (r *runner) cost() CostRollup {
 	for _, s := range r.scores {
 		roll.addBundle(bundleSpend(filepath.Join(reviewRoot, s.slug, costJSONName)))
 	}
-	roll.Usd = math.Round(roll.Usd*round6) / round6
-	roll.RefusedUsd = math.Round(roll.RefusedUsd*round6) / round6
+	roll.Usd = roundUSD(roll.Usd)
+	roll.RefusedUsd = roundUSD(roll.RefusedUsd)
 	roll.Measured = roll.Samples > 0 && roll.SampleEstimates == roll.Samples && roll.SampleIncomplete == 0
 	return roll
 }
@@ -394,6 +409,9 @@ func (r *runner) citable(rep *Report) (bool, string) {
 	}
 	if r.cfg.Loop > 1 {
 		reasons = append(reasons, "loop mode")
+	}
+	if rep.CapHit {
+		reasons = append(reasons, "budget cap hit")
 	}
 	return len(reasons) == 0, strings.Join(reasons, "; ")
 }
@@ -482,6 +500,10 @@ func (r *runner) render(w io.Writer, rep *Report) {
 		fmt.Fprintf(w, "table: %v\n", err)
 	}
 	r.renderTotals(w, rep)
+	if rep.CapHit && rep.BudgetUSD != nil {
+		fmt.Fprintf(w, "budget: cap %.6f USD hit after %.6f USD; %d sample(s) not run: %s\n",
+			*rep.BudgetUSD, rep.SpentAtCap, len(rep.Skipped), skippedList(rep.Skipped))
+	}
 	for _, f := range rep.Failures {
 		fmt.Fprintf(w, "failed: %s run %d: %s (%s)\n", f.Case, f.Run, f.Error, f.Evidence)
 	}
@@ -519,6 +541,24 @@ func (r *runner) renderTotals(w io.Writer, rep *Report) {
 	if rep.PromptsHash != "" {
 		fmt.Fprintf(w, "prompts_hash: %s, %.1fs elapsed\n", rep.PromptsHash, rep.ElapsedSeconds)
 	}
+}
+
+// skippedList names at most four unscheduled samples, then counts the rest.
+func skippedList(skipped []SkippedSample) string {
+	const shown = 4
+	parts := make([]string, 0, shown+1)
+	for _, s := range skipped[:min(len(skipped), shown)] {
+		parts = append(parts, fmt.Sprintf("%s run %d", s.Case, s.Run))
+	}
+	if len(skipped) > shown {
+		parts = append(parts, fmt.Sprintf("+%d more", len(skipped)-shown))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// roundUSD trims a spend figure to the six decimals a report publishes.
+func roundUSD(usd float64) float64 {
+	return math.Round(usd*round6) / round6
 }
 
 func (r *runner) caseWall(id string) float64 {

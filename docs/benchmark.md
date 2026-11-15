@@ -278,6 +278,11 @@ measured (from `cost.json`) or projected (pilot extrapolation). Do not
 publish a rate from a run that exceeded the operator's budget; record the
 budget in the publication notes.
 
+`bench/runner -max-usd <n>` enforces the budget instead of leaving it to the
+operator: it stops scheduling samples once measured spend reaches `n`, records
+every sample it did not run in the report's `skipped` list, and marks the run
+uncitable. A sample already running finishes; only scheduling stops.
+
 The runner's own rollup reads the same `cost.json` files, one per sample it
 scheduled. `cost.measured_usd` sums every sample, a refused one included, and
 `cost.refused_usd` with `cost.refused_samples` names the share that produced no
@@ -350,7 +355,8 @@ needs changed review bytes and no repair for that code on that path. Repairs
 count separately. Fix rates split error and warning levels per code. Costs sum
 every attempt including invalid and adapter-failed rounds when spend is
 present. Missing spend stays unmeasured, never zero. Model attribution is
-preserved. Loop runs are never citable.
+preserved. Loop runs are never citable, and neither is a run a `-max-usd` cap
+stopped short.
 
 ## SZZ candidate mining, replay, and score
 
