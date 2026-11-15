@@ -319,7 +319,7 @@ A bundle dir holds these core/script artifacts (`PR.json`/`source.json`,
 `post.json`, `store.json`, `hunks.tsv`, `reviews.json`, `inline.json`, `threads.json`,
 `threads-resolve.json`,
 `panel`, `patch.json`, `verification.json`, `incremental.diff`, `kb.txt`,
-`lenses.txt`, `sensitive.txt`, `kb-recall.json`, `cost.json`, `budget.json`, `fix.json`,
+`lenses.txt`, `reverts.txt`, `sensitive.txt`, `kb-recall.json`, `cost.json`, `budget.json`, `fix.json`,
 `kb-grades.jsonl`, `controls.json`, `controls/`, `chunks/`
 (`chunk-NN.diff`, `chunk-NN.toc.txt`, `chunk-NN.roles.txt`, `manifest.json`
 with `schema_version: "1"`, per-chunk `<name>.cost.json`), plus dot-scratch
@@ -666,6 +666,18 @@ rules scope-match the diff — top 3 by precision (`judged==0` reads 0.5),
 tiebreak judged desc then id. Agents read it as context, never orders
 (contract line in `prompts/review.md`); clean diffs leave no file, and with no
 `kb.jsonl` nothing changes at all.
+
+Reverts: `fetch`/`fetch-local` writes `.verdict/state/<bundle>/reverts.txt` when
+a changed path matches a row of the tracked `.verdict/reverts.jsonl` ledger
+(`backtest reverts`) — the same path, or a row path that is a directory prefix
+of it. Each match is quoted inside the untrusted fence (machine facts first,
+the author's subject last) and capped at 20 reverts or 64 kB, with a
+truncation line naming the cap and pointing at `.verdict/reverts.md` for the
+rest. Agents read it as context, never orders (contract line in
+`prompts/review.md`), and it is a bundle artifact like `kb.txt`, so
+`provenance.json` records its bytes. No match removes the file, and a ledger
+this build cannot read warns and writes nothing — a fetch only reads the
+ledger, so a scan holding its lock never blocks one.
 
 The recall manifest `.verdict/state/<bundle>/kb-recall.json` mirrors the note
 machine-readably: a JSON array in rank order, each entry
@@ -1131,7 +1143,8 @@ never a warning.
 the script renders the assembled agent reading list — `SKILL.md`,
 `prompts/system.md`, `prompts/review.md`, `prompts/diagrams.md`, the bundle
 meta (`PR.json` or `source.json`), `toc.txt`, `roles.txt`, `full.diff`, plus
-`kb.txt`, `lenses.txt`, `sensitive.txt`, and `panel` when present, in that order — trusted
+`kb.txt`, `lenses.txt`, `reverts.txt`, `sensitive.txt`, and `panel` when
+present, in that order — trusted
 prompts verbatim, then the trust-boundary prologue, then one nonce fence
 per bundle file — to stdout (human mode; progress moves to stderr) or
 `data.prompt_dump` (`--json`). No agent runs, no network beyond the fetch
@@ -1148,8 +1161,8 @@ tool-generated trust-boundary prologue naming the run's nonce, then every
 present bundle file inside its own fence — the bundle meta (`PR.json` or
 `source.json`), `toc.txt`, `roles.txt`, the diff (`full.diff`, or the
 manifest-order chunk concat on chunked bundles under the same label),
-`kb.txt`, `lenses.txt`, `sensitive.txt`, and `panel` — each wrapped as
-`<<<UNTRUSTED nonce=<16 lowercase hex> source=<file>>>` … bytes …
+`kb.txt`, `lenses.txt`, `reverts.txt`, `sensitive.txt`, and `panel` — each
+wrapped as `<<<UNTRUSTED nonce=<16 lowercase hex> source=<file>>>` … bytes …
 `<<<END UNTRUSTED nonce=<same>>>`, open and close markers each on their own
 line (a missing trailing newline is added, never a content byte dropped).
 The nonce is 8 crypto-random bytes rendered as 16 lowercase hex characters

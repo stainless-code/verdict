@@ -322,6 +322,7 @@ func localStores(ctx2 *fetchRunCtx, r *session, dir, slug, listed, numstat strin
 		return ref
 	}
 	writeKBRecall(ctx2, dir, listed)
+	writeRevertsNote(ctx2, dir, listed)
 	writeLensBodies(ctx2)
 	return nil
 }
