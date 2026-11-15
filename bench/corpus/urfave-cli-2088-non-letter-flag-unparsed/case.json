@@ -1,0 +1,37 @@
+{
+  "schema_version": "1",
+  "id": "urfave-cli-2088-non-letter-flag-unparsed",
+  "kind": "real",
+  "language": "go",
+  "provenance": {
+    "kind": "real",
+    "repo": "urfave/cli",
+    "pr": 2088,
+    "base_sha": "117ef1c4c41356a9b8eba24115125e7f05150fc4",
+    "head_sha": "f87d093a10e59c00a33ae711bd4b926a33c8b942",
+    "fix_commit": "https://github.com/urfave/cli/commit/5ec54503ea2c7c703a2509730983507e179f7992",
+    "source": "PR #2088 Fix:(issue_2056) Add cmd.XXXArgs() functions for retrieving args, merged 2025-04-19",
+    "note": "an args-accessor PR also added a branch that classifies a single-dash argument by its first byte and, when that byte is not a letter, appends it to the positional args with everything after it and returns from the loop; a flag named \"4\" can therefore never be given as `-4` and a non-ASCII name is misclassified for the same reason, because the byte is read as a rune. The base has no such branch and parses `-4 value` normally, so the PR introduced the defect. Two later fixes repair the two halves of that one branch: 5ec54503ea2c7c703a2509730983507e179f7992 looks the argument up in the applied flags before stopping, and 3b4e832cc97a6be6e440bd1cbf21bb60f57223f6 decodes the first rune instead of a byte"
+  },
+  "bugs": [
+    {
+      "path": "command_parse.go",
+      "line": 121,
+      "kind": "misclassified-flag",
+      "severity": "important",
+      "keywords": [
+        "a flag whose name is not a letter can never be set",
+        "a numeric flag name is never applied",
+        "the dash form of a numeric flag becomes a positional argument",
+        "the flag is never looked up because its name does not start with a letter",
+        "a defined flag is misclassified as an argument",
+        "can never be set",
+        "only a name starting with a letter is ever treated as a flag",
+        "the caller's value is lost and the flag keeps its default",
+        "the argument names a flag but is skipped",
+        "never looked up as a flag"
+      ],
+      "note": "the added else-if classifies a single-dash argument by its first byte alone, so a name that is not a letter is appended to the positional args with everything after it and the flag is never applied; the fix looks the argument up in the applied flags first and only stops at an argument that names no flag, and a second fix decodes the first rune rather than a byte"
+    }
+  ]
+}

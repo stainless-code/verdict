@@ -29,15 +29,30 @@ type keywordCase struct {
 const minKeywordsPerBug = 5
 
 var keywordCases = []keywordCase{
+	// audit-2 found this row's vocabulary direction-free: "named help",
+	// "called help", "user-defined" and "exemption tests" name a naming
+	// decision, not the skipped check, so a test request or a note about the
+	// built-in command graded as a defect report. The claims below say what
+	// goes wrong; audit-2's three counterexamples are pinned false and its
+	// first paraphrase is pinned true. Its second paraphrase ("use a dedicated
+	// flag instead of comparing cmd.Name") names the fix's mechanism rather
+	// than the defect, so it stays a known miss in the curation log. Two bare
+	// nouns that came in with the first pass ("custom subcommand",
+	// "required-flag validation") went the same way as the old phrases: a test
+	// request and a note about where the validation lives matched them.
 	{
 		id: "urfave-cli-2319-required-flags-help-name",
 		passes: []string{
-			"The exemption is keyed on cmd.Name == helpName, so a user command called help skips checkRequiredFlags.",
-			"Required-flag enforcement is keyed on cmd.Name, so a user command named help is exempted from its required flags.",
-			"checkAllRequiredFlags returns nil for any command called help, including a user-defined one whose --token is required.",
-			"Matching the built-in help command by name lets a user-defined help command run without its required flag.",
+			"The exemption is keyed on the command name, so a custom subcommand called help skips required-flag checks.",
+			"Required-flag enforcement is matched by name, so a user command called help is exempted from its required flags.",
+			"checkAllRequiredFlags returns nil for a custom subcommand whose --token is required, because it is the help command by name.",
+			"Matching the help command by name lets a custom subcommand run without its required flag.",
 			"The name comparison exempts every command called help from required-flag validation.",
-			"A user command named help bypasses the required-flag check because the exemption tests cmd.Name.",
+			"A custom subcommand named help bypasses required-flag validation because the exemption matches its name.",
+			"Required flags are never enforced on a command named help, because the exemption matches the name.",
+			"The check is never enforced for a user command called help, so its action runs with zero values.",
+			// audit-2's paraphrase of the same defect.
+			"Any custom subcommand whose Name happens to be \"help\" skips required-flag validation.",
 		},
 		fails: []string{
 			"The loop bound runs one past the slice.",
@@ -48,8 +63,27 @@ var keywordCases = []keywordCase{
 			"The completion command's required flags are skipped too.",
 			"The table of flag names is unsorted.",
 			"Move the `cmd.Name` comparisons into a helper so the two call sites share one branch.",
+			// audit-2's counterexamples: a test request, a note about the
+			// built-in command, and a question about the word "exemption".
+			"Add a test for a subcommand named help that has a required flag.",
+			"The built-in help command should still work for user-defined subcommands.",
+			"Verify what this exemption tests when parent commands have required flags.",
+			// The two bare nouns the first pass added, each in a neutral
+			// sentence: a test request and a note about where the check lives.
+			"Add a test for a custom subcommand named help.",
+			"required-flag validation lives in checkAllRequiredFlags.",
 		},
 	},
+	// audit-2 found "year zero" and "yields year 0" direction-free: they name
+	// the value the defect is about, so a comment praising the new comparison
+	// and a note about Go's parsing graded as defect reports. "explicit year
+	// zero" went with them for the same reason, and the first pass's two
+	// conditions ("layout carries a year", "layout specifies a year") went the
+	// same way: a note about the layout and a question about what the check
+	// should read matched them. Each claim below says the date is discarded;
+	// audit-2's two counterexamples are pinned false, and its first paraphrase
+	// is pinned true. Its second was a question, not a finding, so it moved to
+	// the known misses in the curation log.
 	{
 		id: "urfave-cli-2450-year-zero-timestamp",
 		passes: []string{
@@ -58,12 +92,13 @@ var keywordCases = []keywordCase{
 			"The missing-year branch never asks the layout whether it carries a year, so 0000 reads as unset.",
 			"A timestamp whose year parses to zero is silently replaced with the current date.",
 			"The year-zero test keys on the parsed value alone, so a layout that spells out the year still has its date replaced.",
-			"The flag discards an explicit year zero and fills in today's date instead.",
-			"A year-only layout that parses 0000 is treated as unset, so the caller's year zero is replaced with today.",
-			"Parsing \"0000\" with the 2006 layout yields year 0 and the date is silently rewritten to the current day.",
+			"The flag discards an explicit year zero and the date is replaced with today.",
+			"A year-only layout that parses 0000 is treated as unset, so the caller's year is replaced with today.",
+			"Parsing \"0000\" with the 2006 layout succeeds and the date is silently rewritten to the current day.",
 			"A literal year 0 in a year-carrying layout is treated as unset and its date is replaced with today.",
-			"The parsed timestamp is rewritten: year zero becomes the current date.",
-			"Parsing 0000 succeeds, then the missing-year branch discards the year zero and stamps today.",
+			"The branch drops the parsed year when layoutHasDate reports no date, so the caller's literal year never reaches the flag.",
+			// audit-2's first paraphrase of the same defect.
+			"A layout containing only a year like \"2006\" will have year 0000 overwritten with the current date.",
 		},
 		fails: []string{
 			"The year-only layout fails to parse a value with a timezone suffix.",
@@ -74,25 +109,41 @@ var keywordCases = []keywordCase{
 			"A time-only value ignores the configured timezone.",
 			"The flag's help text does not list the default layouts.",
 			"For a time-only layout in UTC-5 this condition leaves January 1 instead of the current date, so the caller's zone is ignored.",
+			// audit-2's counterexamples: praise for the comment beside the
+			// comparison, and a neutral note about what Go's parser returns.
+			"Nice comment explaining why year zero needs location-aware comparison.",
+			"Go time.Parse yields year 0 when the layout omits the year component.",
+			// The two conditions the first pass added, each in a neutral
+			// sentence, and audit-2's second paraphrase, which is a question
+			// about what the check should read rather than a defect report.
+			"Note that the layout carries a year for the 2006 form.",
+			"A layout that specifies a year is handled by layoutHasDate.",
+			"Check whether the layout specifies a year instead of testing timestamp.Year() == 0.",
 		},
 	},
+	// audit-2 found "early return", "empty positional", "boundary check",
+	// "on the boundary", "argument boundary" and "empty-arg" direction-free:
+	// they name the code the argument travels through, not what goes wrong, so
+	// a praise sentence and two wrong-defect findings graded as hits. The first
+	// pass added two more location fragments ("after the empty", "after the
+	// double-dash") that a note about the trace or the append matched, and they
+	// are gone too. Each claim below says an argument is consumed or lost;
+	// audit-2's three counterexamples are pinned false and its first paraphrase
+	// true. Its second paraphrase ("move the check to the top of the loop")
+	// names where the fix goes rather than the defect, so it stays a known miss
+	// in the curation log.
 	{
 		id: "urfave-cli-2163-stop-on-nth-arg-order",
 		passes: []string{
-			"The StopOnNthArg check sits below the empty-arg break and the -- early return, so those arguments are swallowed.",
-			"An empty argument on the boundary terminates the loop and the remaining args are lost.",
-			"The boundary check is placed after the branches that consume the argument, so a positional on the boundary is dropped.",
+			"The StopOnNthArg check sits below the empty-arg break and the -- branch, so those arguments are swallowed.",
 			"The StopOnNthArg check runs too late: the -- branch returns before it.",
-			"Arguments after an empty positional are discarded because the empty-arg break comes first.",
-			"The early return for -- skips the Nth-argument boundary.",
-			"The Nth argument boundary is checked after the branches that consume the argument.",
+			"A `--` sitting exactly on the Nth positional is consumed by the `--` branch before the parser stops, so the action never sees it.",
+			"The Nth-argument boundary is checked after the branches that consume the argument.",
 			"An empty positional on the boundary ends flag parsing, so the rest of the arguments are lost.",
-			"A double dash sitting exactly on the Nth positional is consumed by the `--` branch before the parser stops, so the action never sees it.",
-			"The Nth-argument check runs after the branches that handle the argument, so an empty positional ends parsing and the rest are lost.",
-			"Empty positional: the rest of the arguments are lost because the break runs first.",
-			"An empty positional makes the loop break, so the Nth-argument check never runs and the trailing arguments vanish.",
-			"A `--` on the boundary fires the early return first; the stop check is below it.",
-			"Arguments are dropped because the branch that consumes the argument runs before the boundary check.",
+			"A `--` on the boundary reaches its branch first, so the args are lost.",
+			"An argument that lands on the boundary is lost after the separator, so the action never receives it.",
+			// audit-2's paraphrase of the same defect.
+			"Checking StopOnNthArg after the empty-string and double-dash branches means those arguments bypass the limit.",
 		},
 		fails: []string{
 			"The loop bound runs one past the slice.",
@@ -102,6 +153,45 @@ var keywordCases = []keywordCase{
 			"A flag that needs an argument is reported only when it is last in a group.",
 			"MutuallyExclusiveFlags are checked before dispatching to a subcommand.",
 			"`StopOnNthArg` is a new field generated per parse; the count is tracked on the flag set.",
+			// audit-2's counterexamples: praise for the early return, a finding
+			// about the later empty-argument bug, and a wrong-defect comparison.
+			"Good use of an early return here to avoid mutating the outer slice.",
+			"The empty positional should be appended to posArgs instead of breaking out of the loop.",
+			"The boundary check should use >= instead of == in case len(posArgs) overshoots.",
+			// The two location fragments the first pass added, each in a
+			// neutral sentence about the same line.
+			"The trace runs after the empty-arg check, which is fine.",
+			"Note that the append happens after the double-dash branch is handled.",
+		},
+	},
+	// The fourth urfave row pins the branch that classifies a single-dash
+	// argument by its first byte: a name that is not a letter is appended to
+	// the positionals with everything after it, so a flag named "4" is never
+	// applied and a non-ASCII name is misclassified because the byte is read
+	// as a rune. Both halves are this one branch and two later fixes repair
+	// them, so a sentence about either names the defect. The fails list is a
+	// praise sentence for the branch's intent, a neutral note about the dash
+	// branch above it, and neighboring defects in the same file.
+	{
+		id: "urfave-cli-2088-non-letter-flag-unparsed",
+		passes: []string{
+			"A numeric flag name is never applied: `-4 value` is appended to the positional args instead.",
+			"The dash form of a numeric flag becomes a positional argument, so the value the caller passed never reaches the flag.",
+			"A defined flag is misclassified as an argument because the first byte of its name is not a letter, so it is never looked up as a flag.",
+			"A flag whose name starts with a digit can never be set, so a CLI that names a flag 4 takes its value as a positional.",
+			"Only a name starting with a letter is ever treated as a flag, so the caller's value is lost and the flag keeps its default.",
+			"The argument names a flag but is skipped, so the caller's value is lost and the flag keeps its default.",
+			"A flag whose name is not a letter can never be set: the branch returns before the lookup runs.",
+			"Calling unicode.IsLetter on rune(firstArg[1]) misclassifies a multi-byte name, so `-\u00fc` can never be set.",
+		},
+		fails: []string{
+			"Good: an argument that is not a letter is kept out of flag parsing, so a negative number stays positional.",
+			"The `--` branch sets shortOptionHandling to false before this else-if is reached.",
+			"A `--` argument is never parsed as a flag, which is intended.",
+			"Empty positional arguments are dropped instead of appended.",
+			"firstArg[1] is indexed without checking the length, so a bare dash panics.",
+			"The args accessor functions should be grouped by receiver.",
+			"Add a test that a negative number stays positional.",
 		},
 	},
 	{
