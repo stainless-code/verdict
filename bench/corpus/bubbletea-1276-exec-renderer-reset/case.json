@@ -1,0 +1,35 @@
+{
+  "schema_version": "1",
+  "id": "bubbletea-1276-exec-renderer-reset",
+  "kind": "real",
+  "language": "go",
+  "provenance": {
+    "kind": "real",
+    "repo": "charmbracelet/bubbletea",
+    "pr": 1276,
+    "base_sha": "b489f8a23f9f4447b3c38b85cdecec03a7a76392",
+    "head_sha": "78ed49b060c81477836604621a079edf7b683ff5",
+    "fix_commit": "https://github.com/charmbracelet/bubbletea/commit/78e3b36c60b8c0f57403c6a77cd62f4895ffadd8",
+    "source": "PR #1276 Maintain exec output, merged 2025-05-13",
+    "note": "the fix landed after the renderer rewrite, on a tree carrying the same call; it deletes the reset from the exec path and the method from the renderer interface, and its message names the cursor-position damage this case anchors"
+  },
+  "bugs": [
+    {
+      "path": "exec.go",
+      "line": 126,
+      "kind": "line-count-desync",
+      "severity": "important",
+      "keywords": [
+        "line count no longer matches the screen",
+        "next frame is painted at the wrong row",
+        "throws away the renderer's state",
+        "cursor ends up in the wrong place",
+        "duplicates the view below the subprocess output",
+        "zeroes the count while the lines are still on screen",
+        "program's own output is drawn below the child's"
+      ],
+      "note": "the subprocess writes to the same terminal the renderer counts lines on, and this call drops the renderer's count to zero while those lines are still on screen, so the next frame is placed as if nothing had been rendered there",
+      "also_lines": [117]
+    }
+  ]
+}
