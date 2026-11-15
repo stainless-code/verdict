@@ -82,6 +82,11 @@ func AppendHistory(row *jq.Obj, ev *jq.Obj) {
 	row.Set(fieldHistory, append(hist, ev))
 }
 
+// lockWait is the wait a writer gives the store lock. The parallel-append test
+// raises it: sixteen waiters can starve one past a budget sized for a single
+// operator write while the machine is loaded.
+var lockWait = storelock.DefaultWait
+
 // Lock takes the store's OS advisory lock and returns its release. A
 // read-modify-write holds it above its read, so the append, the veto rewrite,
 // and the credit rewrite are one writer each; a lock another writer holds past
@@ -102,7 +107,7 @@ func Lock(root string) (func(), error) {
 		//nolint:wrapcheck // the layout error carries the refusal its caller maps
 		return nil, serr
 	}
-	unlock, err := storelock.Acquire(storePath(root), storelock.DefaultWait)
+	unlock, err := storelock.Acquire(storePath(root), lockWait)
 	if err != nil {
 		//nolint:wrapcheck // the shared lock already names the store it guards
 		return nil, err
