@@ -31,6 +31,11 @@ func TestToolFixCombos(t *testing.T) {
 			args: `"repo":"acme/app","pr":"1","verifyCmd":"go test ./..."`,
 			want: "--verify-cmd proves a batch: pass it with --all",
 		},
+		{
+			name: "paths-without-all",
+			args: `"repo":"acme/app","pr":"1","paths":["internal/**"]`,
+			want: "--paths scopes a batch: pass it with --all",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

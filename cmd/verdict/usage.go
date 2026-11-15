@@ -98,7 +98,8 @@ func usageText() string {
 		"    dedupe, hunk anchoring, and path-exclusion withholding paths. No network. Tool findings\n" +
 		"    carry said rigor with default provenance (never verified); results outside the diff stay\n" +
 		"    unanchored and never post inline.\n" +
-		"  fix <owner/repo> <local-slug> [--sig <s> | --all [--min-severity <s>] [--verify-cmd <cmd>]] [--json]\n" +
+		"  fix <owner/repo> <local-slug> [--sig <s> | --all [--min-severity <s>] [--verify-cmd <cmd>]\n" +
+		"        [--paths <glob>]...] [--json]\n" +
 		"    one bounded pass over a local bundle: picks the top open inline sig\n" +
 		"    (or --sig), prints finding + kb.txt context with verify/land/re-run\n" +
 		"    instructions. Max 3 passes per sig (ledger .verdict/state/<bundle>/fix.json);\n" +
@@ -107,6 +108,10 @@ func usageText() string {
 		"    (default important; off reads no floor) and names each sig's outcome: ready,\n" +
 		"    ceiling, scope-escape, or no-anchor. It needs the command that proves the\n" +
 		"    passes: --verify-cmd <cmd>, or verifyCmd in the bundle's patch.json.\n" +
+		"    --paths <glob> (repeatable) scopes the batch to matching finding paths.\n" +
+		"    Every pass writes fix.patch beside the ledger — the worktree's diff against HEAD,\n" +
+		"    never applied and never pushed — and refuses (fix-patch-secret) rather than write\n" +
+		"    a secret-shaped value into the bundle.\n" +
 		"  post  <owner/repo> <pr> [--approve=true|false] [--request-changes] [--bind] [--force]\n" +
 		"        [--review-file .verdict/state/<pr>/review.json] [--summary comment|off] [--dry-run]\n" +
 		"        [--require-coverage] [--min-severity critical|important|informational|off]\n" +

@@ -33,6 +33,7 @@ type Request struct { //nolint:govet // the transport contract keeps its field o
 	All         bool
 	MinSeverity string
 	VerifyCmd   string
+	Paths       []string
 	Human       io.Writer
 }
 
@@ -68,6 +69,7 @@ type Data struct { //nolint:govet // field order is the published property order
 	MinSeverity *string
 	VerifyCmd   *string
 	Patch       *string
+	Paths       []string
 	Batch       []BatchRow
 }
 
@@ -156,6 +158,9 @@ func (d *Data) Wire() *jq.Obj {
 	if d.Patch != nil {
 		o.Set("patch", *d.Patch)
 	}
+	if d.Paths != nil {
+		o.Set("paths", core.WireStrings(d.Paths))
+	}
 	if d.Batch != nil {
 		o.Set("batch", batchWire(d.Batch))
 	}
@@ -195,6 +200,8 @@ func (r *Request) comboFault() string {
 		return "--min-severity narrows a batch: pass it with --all"
 	case !r.All && r.VerifyCmd != "":
 		return "--verify-cmd proves a batch: pass it with --all"
+	case !r.All && len(r.Paths) > 0:
+		return "--paths scopes a batch: pass it with --all"
 	}
 	return ""
 }

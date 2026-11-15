@@ -30,11 +30,16 @@ const (
 	msgBatchNoVerify = "fix --all hands out one pass per selected sig and needs the " +
 		"command that proves them: pass --verify-cmd <cmd> (or name a recipe that " +
 		"carries verify_cmd), or write verifyCmd in %s/patch.json, then re-run fix --all"
-	// msgBatchEmpty reports a batch whose floor selected nothing.
+	// msgBatchEmpty reports a batch whose floor and path globs selected nothing.
 	msgBatchEmpty = "fix --all: no open inline finding at or above %s — " +
 		"lower --min-severity or fix one sig with --sig"
+	// msgBatchEmptyPaths reports the same under a batch's path globs.
+	msgBatchEmptyPaths = "fix --all: no open inline finding at or above %s under %s — " +
+		"widen --paths, lower --min-severity, or fix one sig with --sig"
 	// nextBatchEmpty is the envelope follow-up for an empty batch.
 	nextBatchEmpty = "lower --min-severity or fix one sig with --sig"
+	// nextBatchEmptyPaths is the same follow-up under a batch's path globs.
+	nextBatchEmptyPaths = "widen --paths, lower --min-severity, or fix one sig with --sig"
 	// nextBatchPasses is the envelope follow-up after a batch consumed passes.
 	nextBatchPasses = "patch each anchor, run the verify command yourself, write one " +
 		"verification.json claim per sig, land with record, then re-run fix --all"
@@ -93,6 +98,7 @@ func (st *state) runBatch(
 		Status: readcommon.StatusOpen,
 		Kind:   readcommon.KindInline,
 		Floor:  floor,
+		Paths:  st.req.Paths,
 	})
 	if len(picks) == 0 {
 		return st.emptyBatch(dir, ledgerPath, store, entries, fixOpen, fixOpenInline, now)
@@ -209,8 +215,8 @@ func batchSeverity(entry any) string {
 // returns how many sigs consumed a pass.
 func (st *state) printBatch(dir, ledgerPath string, rows []batchRow, verify string) int {
 	ready, anchors := batchReady(rows)
-	st.humanf("» ledger: %s — batch of %d selected, %d pass(es)\n",
-		ledgerPath, len(rows), ready)
+	st.humanf("» ledger: %s — batch of %d selected%s, %d pass(es)\n",
+		ledgerPath, len(rows), scopeSuffix(st.req.Paths), ready)
 	for i := range rows {
 		st.printBatchRow(ledgerPath, &rows[i])
 	}
@@ -330,6 +336,7 @@ func (st *state) fillBatchData(
 		Batch:       out,
 		MinSeverity: &floor,
 		Patch:       st.patch,
+		Paths:       st.req.Paths,
 	}
 }
 
@@ -343,11 +350,11 @@ func (st *state) emptyBatch(
 	now string,
 ) *core.RefusalError {
 	st.at = now
-	st.humanf(msgBatchEmpty+"\n", st.req.MinSeverity)
 	if ref := writeLedger(ledgerPath, store); ref != nil {
 		return ref
 	}
-	st.next = nextBatchEmpty
+	st.humanf("%s\n", batchEmptyMsg(st.req.MinSeverity, st.req.Paths))
+	st.next = batchEmptyNext(st.req.Paths)
 	st.data = &Data{
 		Dir:         dir,
 		Ledger:      ledgerPath,
@@ -358,8 +365,35 @@ func (st *state) emptyBatch(
 		Stopped:     stoppedCount(store),
 		Batch:       []BatchRow{},
 		MinSeverity: &st.req.MinSeverity,
+		Paths:       st.req.Paths,
 	}
 	return nil
+}
+
+// batchEmptyMsg names why a batch selected nothing: the floor alone, or the
+// floor under the path globs that narrowed it.
+func batchEmptyMsg(floor string, paths []string) string {
+	if len(paths) > 0 {
+		return fmt.Sprintf(msgBatchEmptyPaths, floor, strings.Join(paths, ", "))
+	}
+	return fmt.Sprintf(msgBatchEmpty, floor)
+}
+
+// batchEmptyNext is the envelope follow-up an empty batch carries.
+func batchEmptyNext(paths []string) string {
+	if len(paths) > 0 {
+		return nextBatchEmptyPaths
+	}
+	return nextBatchEmpty
+}
+
+// scopeSuffix names the path globs a batch selected with, so the ledger line
+// says which slice of the store the passes were spent on.
+func scopeSuffix(paths []string) string {
+	if len(paths) == 0 {
+		return ""
+	}
+	return " under " + strings.Join(paths, ", ")
 }
 
 // joinAnchors renders the batch's anchor files for one line, each once and in

@@ -2907,7 +2907,7 @@ and remove it when done — the working tree stays untouched throughout.
 ### Fix loops (bounded, verify-gated)
 
 `fix owner/repo local-<name> [--sig <s> | --all [--min-severity <s>]
-[--verify-cmd <cmd>]] [--json]` runs one bounded pass over a local bundle: it
+[--verify-cmd <cmd>] [--paths <glob>]...] [--json]` runs one bounded pass over a local bundle: it
 picks the top open inline sig (severity `critical` above
 `important` above `informational`, then path) or the `--sig` prefix (must be open
 and inline; non-open, section, and unknown sigs refuse), prints the finding
@@ -2945,7 +2945,15 @@ not refused: only `--all` having no verification command refuses (`no-verify-cmd
 because a batch that hands out passes nothing can prove spends agent runs for
 nothing. Pass `--verify-cmd <cmd>` or write `verifyCmd` in the bundle's
 `patch.json` — the same command `verify` runs. `--all` and `--sig` are mutually
-exclusive, and `--min-severity`/`--verify-cmd` belong to the batch.
+exclusive, and `--min-severity`/`--verify-cmd`/`--paths` belong to the batch.
+
+`--paths <glob>` (repeatable, portable globs as in `.verdict/config.json`) scopes
+a batch to the findings whose anchor path matches: two globs select the union,
+and a scoped batch with nothing above the floor says so with the globs in the
+message instead of claiming the store is empty. It is the batch's scope unit
+because a finding records no lens — a recipe declares lenses and model hints, not
+paths, so `--recipe` cannot select sigs until `record` stores per-finding lens
+provenance.
 
 Each pass also writes `fix.patch` beside the ledger: the worktree's unified
 diff against `HEAD`, captured before the pass consumes its budget, so the change

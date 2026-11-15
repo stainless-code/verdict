@@ -480,6 +480,7 @@ type FixData struct { //nolint:govet // field order is the published property or
 	MinSeverity *string       `json:"min_severity" optional:"true"`
 	VerifyCmd   *string       `json:"verify_cmd"   optional:"true"`
 	Patch       *string       `json:"patch"        optional:"true"`
+	Paths       []string      `json:"paths"        optional:"true"`
 	Batch       []FixBatchRow `json:"batch"        optional:"true"`
 }
 

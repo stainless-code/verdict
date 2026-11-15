@@ -55,7 +55,7 @@ func wireConfigFiles(files []ConfigFile) []any {
 		if file.OldPath != "" {
 			o.Set("old_path", file.OldPath)
 		}
-		o.Set("scopes", wireStrings(file.Scopes))
+		o.Set("scopes", WireStrings(file.Scopes))
 		o.Set("values", wireValues(file.Values))
 		o.Set("shadowed", wireValues(file.Shadowed))
 		out = append(out, o)
@@ -153,7 +153,7 @@ func (d *ConfigData) Wire() *jq.Obj {
 	o.Set("plan", plan)
 	o.Set("plan_status", d.PlanStatus)
 	o.Set("spend", wireSpend(d.Spend))
-	o.Set("privacy", wireStrings(d.Privacy))
+	o.Set("privacy", WireStrings(d.Privacy))
 	if d.Checks != nil {
 		o.Set("checks", wireChecks(d.Checks))
 	}
@@ -227,8 +227,8 @@ func setWireList[T any](o *jq.Obj, key string, items []T) {
 	o.Set(key, out)
 }
 
-// wireStrings renders a string list in order.
-func wireStrings(items []string) []any {
+// WireStrings renders a string list in order for an envelope property.
+func WireStrings(items []string) []any {
 	out := make([]any, 0, len(items))
 	for _, item := range items {
 		out = append(out, item)

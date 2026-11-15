@@ -341,6 +341,17 @@ func testFixBatch(t *testing.T) {
 		"--verify-cmd", batchVerifyCmd, "--json")
 	golden.Pin(t, harness, "batch-conflict", setupBatch, nil,
 		"fix", "acme/app", "local-batch", "--all", "--sig", sigInfo)
+	golden.Pin(t, harness, "batch-paths", setupBatch, nil,
+		"fix", "acme/app", "local-batch", "--all", "--verify-cmd", batchVerifyCmd,
+		"--paths", "other.txt", "--json")
+	golden.Pin(t, harness, "batch-paths-glob", setupBatch, nil,
+		"fix", "acme/app", "local-batch", "--all", "--verify-cmd", batchVerifyCmd,
+		"--paths", "app.*", "--paths", "other.txt")
+	golden.Pin(t, harness, "batch-paths-empty", setupBatch, nil,
+		"fix", "acme/app", "local-batch", "--all", "--verify-cmd", batchVerifyCmd,
+		"--paths", "docs/**", "--json")
+	golden.Pin(t, harness, "batch-paths-without-all", setupBatch, nil,
+		"fix", "acme/app", "local-batch", "--paths", "src/**")
 }
 
 // testFixPick covers the default pick, tiebreak, and completion.

@@ -31,6 +31,7 @@ const (
 	sigFlag         = "--sig"
 	minSeverityFlag = "--min-severity"
 	verifyCmdFlag   = "--verify-cmd"
+	pathsFlag       = "--paths"
 	flagSep         = " "
 )
 
@@ -41,18 +42,18 @@ const (
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
 	r.Rentry = "verdict fix " + req.Repo + " " + req.Pr
-	flags, code, done := parseFlags(r, args)
+	f, code, done := parseFlags(r, args)
 	if done {
 		return code
 	}
-	r.Rentry += flags.rentry()
+	r.Rentry += f.rentry()
 	if r.JSONMode {
 		r.Rentry += " --json"
 	}
 	if code, done := r.Canceled(ctx, "fix"); done {
 		return code
 	}
-	resp, ref := fixcore.Run(ctx, fixRequest(r, req, flags))
+	resp, ref := fixcore.Run(ctx, fixRequest(r, req, f))
 	if ref != nil {
 		if ref.Code == core.CodeBadFlags {
 			return r.ReportUsage(&cli.UsageError{Message: ref.Message})
@@ -70,10 +71,10 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 
 // fixRequest injects the runner's clock, progress observer, and the
 // production commander into the typed service request.
-func fixRequest(r *cli.Runner, req Request, f flags) *fixcore.Request {
+func fixRequest(r *cli.Runner, req Request, f *flags) *fixcore.Request {
 	out := &fixcore.Request{
 		Sig: f.sig, All: f.all, MinSeverity: f.minSeverity,
-		VerifyCmd: f.verifyCmd, Human: r.Human,
+		VerifyCmd: f.verifyCmd, Paths: f.paths, Human: r.Human,
 	}
 	out.ReadRequest = core.ReadRequest{
 		Runtime: &core.Runtime{
@@ -86,15 +87,16 @@ func fixRequest(r *cli.Runner, req Request, f flags) *fixcore.Request {
 }
 
 // flags carries the parsed fix options.
-type flags struct { //nolint:govet // one string per flag reads in flag order
+type flags struct {
 	sig         string
-	all         bool
 	minSeverity string
 	verifyCmd   string
+	paths       []string
+	all         bool
 }
 
 // rentry renders the flags a retry repeats, in flag order.
-func (f flags) rentry() string {
+func (f *flags) rentry() string {
 	var sb strings.Builder
 	for _, row := range []struct {
 		flag string
@@ -104,6 +106,7 @@ func (f flags) rentry() string {
 		{flagSep + "--all", f.all},
 		{flagSep + minSeverityFlag + flagSep + f.minSeverity, f.minSeverity != ""},
 		{flagSep + verifyCmdFlag + flagSep + shellquote.Arg(f.verifyCmd), f.verifyCmd != ""},
+		{pathEntry(f.paths), len(f.paths) > 0},
 	} {
 		if row.set {
 			sb.WriteString(row.flag)
@@ -113,38 +116,51 @@ func (f flags) rentry() string {
 }
 
 // parseFlags strips fix's flags, reporting unknown ones.
-func parseFlags(r *cli.Runner, args []string) (flags, int, bool) {
-	var f flags
+func parseFlags(r *cli.Runner, args []string) (*flags, int, bool) {
+	f := &flags{}
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch a {
-		case sigFlag, minSeverityFlag, verifyCmdFlag:
+		case sigFlag, minSeverityFlag, verifyCmdFlag, pathsFlag:
 			v, next, u := cli.FlagValue(args, i, a, wantOf(a))
 			if u != nil {
 				return f, r.ReportUsage(u), true
 			}
-			setFixValue(&f, a, v)
+			setFixValue(f, a, v)
 			i = next
 		case "--all":
 			f.all = true
 		default:
 			msg := fmt.Sprintf("unknown flag '%s' for fix (want %s <sig>, --all "+
-				"[%s <s>] [%s <cmd>], --json)", a, sigFlag, minSeverityFlag, verifyCmdFlag)
+				"[%s <s>] [%s <cmd>] [%s <glob>], --json)",
+				a, sigFlag, minSeverityFlag, verifyCmdFlag, pathsFlag)
 			return f, r.ReportUsage(&cli.UsageError{Message: msg}), true
 		}
 	}
 	return f, 0, false
 }
 
+// pathEntry renders every --paths glob a retry repeats, in the order given.
+func pathEntry(paths []string) string {
+	var sb strings.Builder
+	for _, p := range paths {
+		sb.WriteString(flagSep + pathsFlag + flagSep + shellquote.Arg(p))
+	}
+	return sb.String()
+}
+
 // wantOf renders one value flag's accepted operand for the usage error.
 func wantOf(flag string) string {
-	if flag == minSeverityFlag {
+	switch flag {
+	case minSeverityFlag:
 		return "critical|important|informational|off"
-	}
-	if flag == verifyCmdFlag {
+	case verifyCmdFlag:
 		return "<cmd>"
+	case pathsFlag:
+		return "<glob>"
+	default:
+		return "<sig>"
 	}
-	return "<sig>"
 }
 
 // setFixValue stores one value flag's operand.
@@ -154,6 +170,8 @@ func setFixValue(f *flags, flag, val string) {
 		f.sig = val
 	case minSeverityFlag:
 		f.minSeverity = val
+	case pathsFlag:
+		f.paths = append(f.paths, val)
 	default:
 		f.verifyCmd = val
 	}

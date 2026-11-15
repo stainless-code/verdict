@@ -213,6 +213,7 @@ func decodeFix(req *fixcore.Request, a *args) {
 	a.boolean("all", &req.All)
 	a.str("minSeverity", &req.MinSeverity)
 	a.str("verifyCmd", &req.VerifyCmd)
+	a.strings("paths", &req.Paths)
 }
 
 func wireFix(ctx context.Context, b *bindings, req *fixcore.Request) error {
