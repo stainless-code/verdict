@@ -248,6 +248,33 @@ func TestSampleSpendFlagsAnUnpricedRound(t *testing.T) {
 	}
 }
 
+// TestBudgetRefusalNeedsNoMeasuredRun pins the cap's spend base when only part
+// of the run is priced: known spend is a lower bound, so a run at the cap with
+// one unpriced sample must still be refused. Requiring cost.measured let it be
+// published with the budget already spent.
+func TestBudgetRefusalNeedsNoMeasuredRun(t *testing.T) {
+	budget := 0.05
+	rep := &Report{
+		Cost:      CostRollup{Usd: 0.06, Samples: 2, SampleEstimates: 1, Measured: false},
+		BudgetUSD: &budget,
+	}
+	if !atBudget(rep) {
+		t.Fatal("atBudget = false, want true: 0.06 known spend is at the 0.05 cap")
+	}
+	if got := strings.Join(budgetReasons(rep), "; "); !strings.Contains(got, "reached the 0.050000 USD budget") {
+		t.Errorf("budgetReasons = %q, want the spend refusal", got)
+	}
+	rep.Cost.Usd = 0.04
+	if atBudget(rep) {
+		t.Error("atBudget = true for 0.04 under a 0.05 cap")
+	}
+	rep.BudgetUSD = nil
+	rep.Cost.Usd = 1
+	if atBudget(rep) {
+		t.Error("atBudget = true with no budget set")
+	}
+}
+
 // TestMaxUSDRefusesNonFiniteCaps pins the flag's domain: NaN passes every
 // comparison, so the old "< 0" test let it through and capReached then never
 // fired; +Inf ran the whole corpus and made the report unserializable, because

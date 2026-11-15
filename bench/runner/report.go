@@ -582,12 +582,12 @@ func budgetReasons(rep *Report) []string {
 	return reasons
 }
 
-// atBudget reports whether a measured run's spend reached the budget cap.
-// CapHit names samples that did not run; this names the run that spent what it
-// was allowed and stopped only because the corpus ended — the same bar, and the
-// only way a full run can be uncitable for its budget.
+// atBudget reports whether a run's known spend reached the budget cap. Known
+// spend is a lower bound, so requiring the rollup to be measured would publish
+// a run that is already at the cap with one unpriced sample; zero known spend
+// can never reach a positive cap, so the bound needs no other guard.
 func atBudget(rep *Report) bool {
-	return rep.BudgetUSD != nil && rep.Cost.Measured && rep.Cost.Usd >= *rep.BudgetUSD
+	return rep.BudgetUSD != nil && rep.Cost.Usd >= *rep.BudgetUSD
 }
 
 func (r *runner) caseWall(id string) float64 {
