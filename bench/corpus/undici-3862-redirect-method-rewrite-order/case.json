@@ -1,0 +1,33 @@
+{
+  "schema_version": "1",
+  "id": "undici-3862-redirect-method-rewrite-order",
+  "kind": "real",
+  "language": "javascript",
+  "provenance": {
+    "kind": "real",
+    "repo": "nodejs/undici",
+    "pr": 3862,
+    "base_sha": "6551919a3e492746806604cec2d241385c391f35",
+    "head_sha": "0d0655262460093703dfd89ddcb7d58eb8f48ef3",
+    "fix_commit": "https://github.com/nodejs/undici/commit/5a47b01f7e2a86f5b3041aa3f456599df6579fb3",
+    "source": "PR #3862 fix: 301 and 302 change method to GET, squash-merged 2024-11-21 as 0d0655262",
+    "note": "The PR added the 301/302 POST-to-GET rewrite, but at the end of onHeaders: below the location computation (which nulls location when the body is disturbed) and below the early return that hands a non-followed response straight to the next handler, so the rewrite cannot run for a response that is not followed and a POST whose body is a stream is never followed even though its body is about to be discarded. The later fix #3873 moves the block above the location computation and drops the body first."
+  },
+  "bugs": [
+    {
+      "path": "lib/handler/redirect-handler.js",
+      "line": 140,
+      "kind": "check-ordering",
+      "severity": "important",
+      "keywords": [
+        "runs after the early return",
+        "the method rewrite happens too late",
+        "dead on the pass-through path",
+        "placed below the check that decides whether to follow",
+        "disturbed body never follows the redirect"
+      ],
+      "note": "the rewrite sits below the location computation and the pass-through return, so a 301/302 POST with a stream body stops redirecting although the body would be thrown away; the fix moves it above both",
+      "also_lines": [141, 142]
+    }
+  ]
+}

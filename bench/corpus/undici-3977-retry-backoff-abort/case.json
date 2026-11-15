@@ -1,0 +1,34 @@
+{
+  "schema_version": "1",
+  "id": "undici-3977-retry-backoff-abort",
+  "kind": "real",
+  "language": "javascript",
+  "provenance": {
+    "kind": "real",
+    "repo": "nodejs/undici",
+    "pr": 3977,
+    "base_sha": "ad7ac027ed6d0fca7414a0810dcf136cda35065e",
+    "head_sha": "e51df14623d9c4cb3fd8753727c3e62c24a57a3a",
+    "fix_commit": "https://github.com/nodejs/undici/commit/f7df237f02d2da057881294533c3348c785d2af3",
+    "source": "PR #3977 fix(#3975): do not unref timeout, squash-merged 2024-12-31 as e51df1462",
+    "note": "The PR dropped .unref() from the retry backoff timer (issue #3975: the process exited while a retry was still pending), which leaves an untracked setTimeout as the only thing holding the wait. A caller abort that arrives during the backoff reaches only the proxy controller of the already-finished connection, so nothing cancels the timer: the request settles when the backoff fires, and with a large Retry-After that is minutes. The later fix #5675 returns the timer from the default policy and cancels it from the controller proxy. The missing abort handling is older than the PR (the unref'd line ignored aborts too), so the reviewed line is what the fix rewrites, not what introduced the gap."
+  },
+  "bugs": [
+    {
+      "path": "lib/handler/retry-handler.js",
+      "line": 136,
+      "kind": "ignored-abort",
+      "severity": "important",
+      "keywords": [
+        "not cancelled on abort",
+        "ignores the caller's abort",
+        "the abort signal is not observed",
+        "waits out the whole backoff",
+        "settles only when the timer fires",
+        "hangs until the backoff elapses"
+      ],
+      "note": "the backoff timer is not tracked or cancelled, so an abort during the wait is lost and the request settles only when the timer fires",
+      "also_lines": []
+    }
+  ]
+}
