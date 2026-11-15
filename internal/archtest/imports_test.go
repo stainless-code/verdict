@@ -110,12 +110,14 @@ var facadeAllowedDeps = map[string]bool{
 	"internal/provenance":     true,
 	"internal/readcommon":     true,
 	"internal/retry":          true,
+	"internal/reverts":        true,
 	"internal/sarif":          true,
 	"internal/schemacheck":    true,
 	"internal/shellquote":     true,
 	"internal/sig":            true,
 	"internal/storelock":      true,
 	"internal/strictjson":     true,
+	"internal/untrusted":      true,
 	"pkg/verdict":             true,
 }
 

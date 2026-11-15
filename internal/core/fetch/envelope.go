@@ -274,6 +274,7 @@ func fetchData(
 		artifacts.Set("kb-recall.json", ctx2.dir+suffixKBRecall)
 	}
 	addArtifactIfPresent(artifacts, ctx2.dir, "lenses.txt", suffixLensesTxt)
+	addRevertsArtifact(artifacts, ctx2.dir)
 	impactArtifactRow(artifacts, ctx2.dir)
 	contextArtifacts(artifacts, ctx2.dir)
 	data := &core.FetchData{
@@ -420,6 +421,7 @@ func localArtifacts(dir string) *jq.Obj {
 	addArtifactIfPresent(artifacts, dir, "kb.txt", suffixKBTxt)
 	addArtifactIfPresent(artifacts, dir, "kb-recall.json", suffixKBRecall)
 	addArtifactIfPresent(artifacts, dir, "lenses.txt", suffixLensesTxt)
+	addRevertsArtifact(artifacts, dir)
 	impactArtifactRow(artifacts, dir)
 	contextArtifacts(artifacts, dir)
 	return artifacts
@@ -429,6 +431,13 @@ func addArtifactIfPresent(obj *jq.Obj, dir, key, suffix string) {
 	if _, err := os.Stat(dir + suffix); err == nil {
 		obj.Set(key, dir+suffix)
 	}
+}
+
+// addRevertsArtifact names the bundle's revert memory: both bundle wirings
+// publish it, and the pair drifting apart would leave one surface with a note
+// no reader is told about.
+func addRevertsArtifact(obj *jq.Obj, dir string) {
+	addArtifactIfPresent(obj, dir, "reverts.txt", suffixRevertsTxt)
 }
 
 // fetchTailLocal owns the fetch-local tail: the typed data (carrying
