@@ -385,7 +385,7 @@ func TestEvaluateMatching(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			rep := Evaluate(c, tc.entries)
+			rep := evaluateAll(c, tc.entries)
 			if rep.Reported != tc.reported || rep.Matched != tc.matched ||
 				rep.FalsePositives != tc.fp || len(rep.Missed) != tc.missed {
 				t.Fatalf("got reported=%d matched=%d fp=%d missed=%d, want %d/%d/%d/%d",
@@ -410,7 +410,7 @@ func TestDuplicateOnASharedWindowSaysAlreadyMatched(t *testing.T) {
 		{Path: "a.go", Line: 10, Kind: "off-by-one", Severity: "critical"},
 		{Path: "a.go", Line: 11, Kind: "missing-error-check", Severity: "important"},
 	}}
-	rep := Evaluate(c, []any{entry("a.go", 10, "off by one"), entry("a.go", 10, "off by one again")})
+	rep := evaluateAll(c, []any{entry("a.go", 10, "off by one"), entry("a.go", 10, "off by one again")})
 	if got := fpReasons(rep); !equalStrings(got, []string{ReasonAlreadyMatched}) {
 		t.Fatalf("false-positive reasons = %v, want [%s]", got, ReasonAlreadyMatched)
 	}
@@ -423,10 +423,10 @@ func TestZeroToleranceNeedsTheBugLine(t *testing.T) {
 		LineTolerance: &zero,
 		Bugs:          []core.CorpusBug{{Path: "a.go", Line: 10, Kind: "off-by-one", Severity: "critical"}},
 	}
-	if rep := Evaluate(c, []any{entry("a.go", 11, "off by one")}); rep.Matched != 0 || rep.FalsePositives != 1 {
+	if rep := evaluateAll(c, []any{entry("a.go", 11, "off by one")}); rep.Matched != 0 || rep.FalsePositives != 1 {
 		t.Errorf("adjacent line with tolerance 0 = matched %d fp %d, want 0/1", rep.Matched, rep.FalsePositives)
 	}
-	if rep := Evaluate(c, []any{entry("a.go", 10, "off by one")}); rep.Matched != 1 {
+	if rep := evaluateAll(c, []any{entry("a.go", 10, "off by one")}); rep.Matched != 1 {
 		t.Errorf("bug line with tolerance 0 matched %d, want 1", rep.Matched)
 	}
 }
@@ -437,9 +437,9 @@ func TestZeroToleranceNeedsTheBugLine(t *testing.T) {
 // primary line reported.
 func TestEvaluateAlsoLines(t *testing.T) {
 	c := alsoLinesCase()
-	rep := Evaluate(c, []any{entry("files.go", 24, "confine name under root or reject .. segments")})
+	rep := evaluateAll(c, []any{entry("files.go", 24, "confine name under root or reject .. segments")})
 	checkAlsoMatch(t, rep)
-	rep = Evaluate(c, []any{entry("files.go", 25, "confine name under root")})
+	rep = evaluateAll(c, []any{entry("files.go", 25, "confine name under root")})
 	if rep.Matched != 1 {
 		t.Fatalf("line inside the alternate window matched %d, want 1", rep.Matched)
 	}
@@ -448,7 +448,7 @@ func TestEvaluateAlsoLines(t *testing.T) {
 // TestEvaluateAlsoLinesNeedsTheDefect pins the naming rule on an alternate
 // anchor: the right line with the wrong defect is still a false positive.
 func TestEvaluateAlsoLinesNeedsTheDefect(t *testing.T) {
-	rep := Evaluate(alsoLinesCase(), []any{entry("files.go", 24, "rename this helper for readability")})
+	rep := evaluateAll(alsoLinesCase(), []any{entry("files.go", 24, "rename this helper for readability")})
 	if rep.Matched != 0 {
 		t.Fatalf("alternate anchor without the defect matched %d, want 0", rep.Matched)
 	}
@@ -460,7 +460,7 @@ func TestEvaluateAlsoLinesNeedsTheDefect(t *testing.T) {
 // TestEvaluateAlsoLinesCountsOneBugOnce pins the one-match-per-bug rule:
 // findings on two anchors of the same bug grade as one hit and one duplicate.
 func TestEvaluateAlsoLinesCountsOneBugOnce(t *testing.T) {
-	rep := Evaluate(alsoLinesCase(), []any{
+	rep := evaluateAll(alsoLinesCase(), []any{
 		entry("files.go", 28, "join without confining lets ../ escape"),
 		entry("files.go", 24, "join without confining lets ../ escape"),
 	})

@@ -319,17 +319,24 @@ func unusableVocabulary(c *core.CorpusCase, diff []byte, path string) *core.Refu
 	for i := range c.Bugs {
 		b := &c.Bugs[i]
 		if keyword, ok := spelledKeyword(b, text); ok {
-			return invalid(path, fmt.Sprintf(
+			return invalidVocabulary(path, fmt.Sprintf(
 				"bug %d keyword %q is spelled by the case's own full.diff; "+
 					"name the defect in words instead of reusing the diff's words", i+1, keyword))
 		}
 		if len(unspelledPhrases(b, text)) == 0 {
-			return invalid(path, fmt.Sprintf(
+			return invalidVocabulary(path, fmt.Sprintf(
 				"bug %d has no phrase its own full.diff does not spell; "+
 					"add a keyword the diff does not spell", i+1))
 		}
 	}
 	return nil
+}
+
+// invalidVocabulary refuses a valid manifest whose vocabulary cannot grade. It
+// carries no case-authoring template: the manifest shape is not the problem.
+func invalidVocabulary(path, reason string) *core.RefusalError {
+	return &core.RefusalError{Code: codeCorpusInvalid, Message: fmt.Sprintf(
+		"corpus manifest %s is unusable: %s", path, reason)}
 }
 
 // spelledKeyword is the first keyword the normalized diff spells, if any.
@@ -493,28 +500,6 @@ type Report struct {
 	FalsePositives int
 }
 
-// Evaluate grades entries against the case's ground truth. A finding is a
-// true positive when it names the same path, its line sits within the
-// tolerance window of the primary line or any alternate anchor of an
-// as-yet-unmatched bug, and its text names that bug's defect; everything else
-// reported is a false positive. Each bug counts once even when several
-// anchors match it: a second finding on the same bug is a false positive,
-// and the reported match keeps the primary line. A finding record moved
-// to the body is never a true positive: the line claim was withdrawn, so the
-// text is graded as the note it became. The tool-generated moved section is
-// skipped: it is record's own wording, and the comments it lists are graded
-// from the moved entries themselves. Evaluate keeps the full vocabulary; use
-// EvaluateWithDiff or EvaluateDir when the reviewed diff is known.
-func Evaluate(c *core.CorpusCase, entries []any) *Report {
-	return evaluate(c, entries, nil)
-}
-
-// EvaluateWithDiff grades entries against a real case whose reviewed diff is
-// known, dropping the built-in phrases the diff spells.
-func EvaluateWithDiff(c *core.CorpusCase, entries []any, diff []byte) *Report {
-	return evaluate(c, entries, diff)
-}
-
 // EvaluateDir grades a bundle, reading the reviewed full.diff beside its
 // corpus.json so the built-in phrases the diff spells are filtered. A real
 // case must carry that diff: a missing or unreadable one is a corpus-invalid
@@ -528,6 +513,18 @@ func EvaluateDir(dir string, c *core.CorpusCase, entries []any) (*Report, *core.
 	return evaluate(c, entries, diff), nil
 }
 
+// evaluate grades entries against the case's ground truth. A finding is a true
+// positive when it names the same path, its line sits within the tolerance
+// window of the primary line or any alternate anchor of an as-yet-unmatched
+// bug, and its text names that bug's defect; everything else reported is a
+// false positive. Each bug counts once even when several anchors match it: a
+// second finding on the same bug is a false positive, and the reported match
+// keeps the primary line. A finding record moved to the body is never a true
+// positive: the line claim was withdrawn, so the text is graded as the note it
+// became. The tool-generated moved section is skipped: it is record's own
+// wording, and the comments it lists are graded from the moved entries
+// themselves. The diff is nil only for a seeded or synthetic case; EvaluateDir
+// is the production entry point and supplies a real bundle's bytes.
 func evaluate(c *core.CorpusCase, entries []any, diff []byte) *Report {
 	tol := Tolerance(c)
 	phrases := usablePhrases(c, diff)

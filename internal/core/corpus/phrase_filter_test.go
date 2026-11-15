@@ -26,7 +26,7 @@ func TestDiffSpelledBuiltinPhrasesAreFilteredFromGrading(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			rep := EvaluateWithDiff(c, []any{entry("pool.go", 45, tc.body)}, []byte(raceDiff))
+			rep := evaluate(c, []any{entry("pool.go", 45, tc.body)}, []byte(raceDiff))
 			if got := rep.Matched == 1; got != tc.want {
 				t.Fatalf("matched = %v, want %v (outcomes %+v)", got, tc.want, rep.Outcomes)
 			}
@@ -131,4 +131,10 @@ func raceCase(keywords ...string) *core.CorpusCase {
 			Severity: "important", Keywords: keywords,
 		}},
 	}
+}
+
+// evaluateAll grades with the unfiltered vocabulary. Tests that predate the
+// diff filter use it; production has no diff-less entry point.
+func evaluateAll(c *core.CorpusCase, entries []any) *Report {
+	return evaluate(c, entries, nil)
 }

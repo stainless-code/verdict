@@ -17,7 +17,7 @@ func TestSamplePinsWeightsAndRecordedZero(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "cost.json"), []byte(`{"est_usd":0}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	s, ref := LoadSample(dir, Evaluate(&core.CorpusCase{ID: "clean", Kind: "control"}, nil))
+	s, ref := LoadSample(dir, evaluateAll(&core.CorpusCase{ID: "clean", Kind: "control"}, nil))
 	if ref != nil {
 		t.Fatal(ref)
 	}

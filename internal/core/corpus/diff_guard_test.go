@@ -173,6 +173,30 @@ func TestCheckDiffRefusesAnUnreadableManifest(t *testing.T) {
 	}
 }
 
+// TestVocabularyRefusalsDoNotBorrowTheCaseTemplate proves the two vocabulary
+// refusals give their own remedy instead of telling the curator to copy a case
+// manifest whose shape is already valid.
+func TestVocabularyRefusalsDoNotBorrowTheCaseTemplate(t *testing.T) {
+	rows := []*guardRow{
+		{name: "keyword the diff spells", keywords: []string{"stoponntharg"}, line: 93},
+		{name: "no usable phrase", bugKind: "race", diff: raceAllDiff, path: "pool.go", line: 45},
+	}
+	for _, row := range rows {
+		t.Run(row.name, func(t *testing.T) {
+			ref := CheckDiff(guardManifest(t, row), []byte(row.diffText()), "case.json")
+			if ref == nil {
+				t.Fatal("accepted the vocabulary, want a refusal")
+			}
+			if strings.Contains(ref.Message, "copy bench/corpus") {
+				t.Errorf("vocabulary refusal borrows the case-authoring template: %q", ref.Message)
+			}
+			if !strings.Contains(ref.Message, "unusable") {
+				t.Errorf("message %q does not call the vocabulary unusable", ref.Message)
+			}
+		})
+	}
+}
+
 // guardManifest builds one case.json body: real unless a test says otherwise,
 // so the guards' kind rule is the only variable.
 func guardManifest(t *testing.T, row *guardRow) []byte {
