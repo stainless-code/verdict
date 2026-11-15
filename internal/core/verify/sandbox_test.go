@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -79,8 +80,27 @@ func wantVarRunMount() []string {
 	return nil
 }
 
-// wantProbeArgv is the literal no-op probe argv, mounts included.
+func hostSandboxTool() string {
+	switch runtime.GOOS {
+	case "linux":
+		return "bwrap"
+	case "darwin":
+		return "sandbox-exec"
+	}
+	return ""
+}
+
+func requireSandboxHost(t *testing.T) {
+	t.Helper()
+	if hostSandboxTool() == "" {
+		t.Skip("no enforced sandbox mechanism on this host")
+	}
+}
+
 func wantProbeArgv(root, home string) []string {
+	if runtime.GOOS == "darwin" {
+		return []string{"/usr/bin/sandbox-exec", "-p", "(version 1)(allow default)(deny network*)", "true"}
+	}
 	argv := []string{
 		"bwrap",
 		"--ro-bind", "/", "/",
@@ -122,6 +142,7 @@ func wantRunArgv(root, home, vcmd string) []string {
 // command share the mount and namespace flags, and the command still runs as
 // `bash -c` inside the wrapper.
 func TestSandboxWrapsVerifyCommand(t *testing.T) {
+	requireSandboxHost(t)
 	root, home, resp, cmdr := runSandboxedVerify(t, "printf ok", nil)
 	checkSandboxSpawn(t, cmdr, root, home, "printf ok")
 	checkSandboxRecord(t, resp)
@@ -190,6 +211,7 @@ func checkSandboxRecord(t *testing.T, resp *core.VerifyResponse) {
 // TestSandboxProbeFailureRefusesWithoutRunning proves a host that cannot
 // enforce the sandbox runs nothing and leaves the prior proof untouched.
 func TestSandboxProbeFailureRefusesWithoutRunning(t *testing.T) {
+	requireSandboxHost(t)
 	before, cmdr, ref := runProbeFailure(t)
 	checkProbeRefusal(t, ref)
 	if len(cmdr.calls) != 1 || cmdr.calls[0].Argv[len(cmdr.calls[0].Argv)-1] != "true" {
@@ -223,7 +245,7 @@ func checkProbeRefusal(t *testing.T, ref *core.RefusalError) {
 	if ref == nil || ref.Code != "sandbox-unavailable" {
 		t.Fatalf("ref = %v, want sandbox-unavailable", ref)
 	}
-	if !strings.Contains(ref.Message, "bwrap could not start") {
+	if !strings.Contains(ref.Message, hostSandboxTool()+" could not start") {
 		t.Errorf("message = %q", ref.Message)
 	}
 	if len(ref.Warnings) != 1 || ref.Warnings[0] != "prefs warning" {
@@ -250,6 +272,9 @@ func checkNothingWritten(t *testing.T, before []byte) {
 // TestSandboxNamespaceFailureNamesTheCause proves a probe that starts but
 // cannot build its namespaces refuses with bwrap's own diagnostic.
 func TestSandboxNamespaceFailureNamesTheCause(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("the diagnostic is bwrap's: namespaces are the Linux mount shape")
+	}
 	root := t.TempDir()
 	t.Chdir(root)
 	writeFile(t, ".verdict/state/5201/patch.json", `{"verifyCmd":"printf ok"}`)
@@ -274,6 +299,9 @@ func TestSandboxNamespaceFailureNamesTheCause(t *testing.T) {
 // TestSandboxWithoutHomeRefuses proves the credential dirs are never left
 // exposed: no child HOME means no verified hiding place, so nothing spawns.
 func TestSandboxWithoutHomeRefuses(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("HOME hiding is the bwrap mount shape; macOS enforces the network half only")
+	}
 	root := t.TempDir()
 	t.Chdir(root)
 	writeFile(t, ".verdict/state/5201/patch.json", `{"verifyCmd":"printf ok"}`)
@@ -309,6 +337,7 @@ func (c *groupSandboxCommander) Run(_ context.Context, cmd *core.Command) (core.
 // TestSandboxGroupValidationWrapsTheOperatorCommand proves the deep-group
 // path uses the same wrapper and records sandboxed on the receipt.
 func TestSandboxGroupValidationWrapsTheOperatorCommand(t *testing.T) {
+	requireSandboxHost(t)
 	root, home, resp, cmdr := runSandboxedGroup(t)
 	checkGroupCommandArgv(t, root, home, cmdr)
 	checkGroupReceipt(t, root, resp)

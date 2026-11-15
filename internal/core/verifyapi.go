@@ -26,10 +26,11 @@ type VerifyRequest struct { //nolint:govet // field grouping documents the reque
 	// these fields.
 	Group   string
 	Command string
-	// Sandbox wraps the executed command in the enforced Linux bwrap sandbox:
-	// no network, empty credential dirs, a writable reviewed root, and a
-	// private /tmp. A host that cannot enforce it refuses
-	// sandbox-unavailable instead of running unwrapped.
+	// Sandbox wraps the executed command in the host's enforced sandbox:
+	// bwrap on Linux (no network, empty credential dirs, a writable reviewed
+	// root, a private /tmp) and sandbox-exec on macOS (no network, loopback
+	// included; credentials stay visible). A host that cannot enforce it
+	// refuses sandbox-unavailable instead of running unwrapped.
 	Sandbox bool
 	// EnvAllowlist explicitly permits additional child environment variable
 	// names (even if secret-named) on top of the default allowlist and any

@@ -29,7 +29,7 @@ var macOSTwin = map[string]string{
 // macOSStepOmissions are the base-lane steps a macOS twin cannot repeat, with
 // why. Bubblewrap is Linux-only, so the verify sandbox install, namespace
 // sysctl, namespace probe, and containment summary stay on the Linux eval
-// lane; the same case still runs its refusal leg on macOS.
+// lane; the same case grades the macOS sandbox-exec network legs instead.
 var macOSStepOmissions = map[string][]string{
 	"evals": {
 		"Install bubblewrap",

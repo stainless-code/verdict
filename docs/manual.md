@@ -2968,7 +2968,7 @@ counts) — the ledger is an audit trail, not a lock. Verifying an untrusted
 worktree? `verify` refuses hostile shapes pre-exec, but the static gate cannot
 see everything — run the verify step under the Hostile-PR sandbox recipe below.
 
-## Hostile-PR sandbox recipe (enforced on Linux with --sandbox; recipe for other OSes)
+## Hostile-PR sandbox recipe
 
 When the diff is untrusted (unknown author, drive-by PR, patch claims
 arriving via `fix-ci`) and the `verifyCmd` wants the network, run the verify
@@ -2985,15 +2985,16 @@ replacement.
 
 The static gate is a tripwire, not a boundary. It matches the spellings it
 knows, on one command string at a time, and a shape it has not learned
-executes. The boundary is the enforced sandbox below: on Linux with
-`bubblewrap` installed, `verify --sandbox` gives the command no route out.
-A host that cannot enforce it refuses `sandbox-unavailable` and runs
-nothing, so `--sandbox` never degrades to an unwrapped run.
+executes. The boundary is the enforced sandbox below: `verify --sandbox`
+runs the command under `bubblewrap` on Linux (the full mount and namespace
+shape) and under `sandbox-exec` on macOS (no network). A host that can
+enforce neither refuses `sandbox-unavailable` and runs nothing, so
+`--sandbox` never degrades to an unwrapped run.
 
 ### Enforced sandbox: `verify --sandbox`
 
-On Linux with `bubblewrap` installed, pass the flag and let `verify` build
-the sandbox itself:
+On Linux with `bubblewrap` installed, or on macOS, which ships
+`sandbox-exec`, pass the flag and let `verify` build the sandbox itself:
 
 ```bash
 verdict verify owner/repo 123 --sandbox
@@ -3025,10 +3026,20 @@ read-only bind of `/dev/null`. A missing entry adds no mount. `/var/run` is
 shadowed too when the host ships it as a real directory; on the distros
 where it is a symlink to `/run`, the `/run` mount covers it.
 
+On macOS the whole enforced shape is the network half: `sandbox-exec`
+runs the command under `(version 1)(allow default)(deny network*)`, so every
+`bind()` and `connect()` is denied — loopback and unix sockets included —
+and a command that listens or connects fails. macOS has no
+filesystem namespace, so the mounts above, the private `/tmp`, the empty
+`/run`, and the credential hiding are Linux-only: on macOS the command still
+sees the host filesystem and your credential files, and the recipe below
+covers that half.
+
 Before anything executes it probes the same flags with a no-op; when the
-host is not Linux, `bwrap` is missing, the user-namespace restriction is on,
-or `HOME` is unset, `verify` refuses `sandbox-unavailable` naming the cause
-and runs nothing. It never silently falls back to an unsandboxed command.
+host is neither Linux nor macOS, `bwrap` or `sandbox-exec` is missing, the
+user-namespace restriction is on, or (on Linux) `HOME` is unset, `verify`
+refuses `sandbox-unavailable` naming the cause and runs nothing. It never
+silently falls back to an unsandboxed command.
 The patch record and the deep-group receipt carry `"sandboxed": true`, and
 the `--json` data adds `"sandboxed": true`; absent means the run was not
 sandboxed. The same opt-in reaches the MCP tool (`sandbox`), the Go facade
@@ -3036,8 +3047,9 @@ sandboxed. The same opt-in reaches the MCP tool (`sandbox`), the Go facade
 
 ### Recipe for other OSes (and for wrapping the whole review)
 
-The one-liner below still applies on macOS or a minimal image with no
-`bwrap`, or when the whole `verdict` process must run inside the sandbox:
+The one-liner below still applies on Windows, on a minimal image with no
+`bwrap`, when you need the filesystem half on macOS, or when the whole
+`verdict` process must run inside the sandbox:
 
 `bwrap` one-liner, from the repo root (`verify` runs the same `verifyCmd`;
 only the filesystem and network it sees change):

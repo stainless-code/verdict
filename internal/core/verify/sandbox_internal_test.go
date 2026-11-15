@@ -20,7 +20,7 @@ func wantVarRunMount() []string {
 // TestSandboxArgvRefusesTheFilesystemRoot keeps the writable bind from ever
 // covering the whole host.
 func TestSandboxArgvRefusesTheFilesystemRoot(t *testing.T) {
-	_, ref := sandboxArgv(string(filepath.Separator), []string{"HOME=" + t.TempDir()})
+	_, ref := bwrapArgv(string(filepath.Separator), []string{"HOME=" + t.TempDir()})
 	if ref == nil || ref.Code != codeSandboxUnavailable {
 		t.Fatalf("ref = %v, want sandbox-unavailable", ref)
 	}
@@ -37,9 +37,9 @@ func TestSandboxArgvMasksCredentialFiles(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, ".netrc"), []byte("machine example"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	argv, ref := sandboxArgv(root, []string{"HOME=" + home})
+	argv, ref := bwrapArgv(root, []string{"HOME=" + home})
 	if ref != nil {
-		t.Fatalf("sandboxArgv: %v", ref)
+		t.Fatalf("bwrapArgv: %v", ref)
 	}
 	want := []string{
 		"bwrap",
@@ -61,6 +61,39 @@ func TestSandboxArgvMasksCredentialFiles(t *testing.T) {
 	)
 	if !slices.Equal(argv, want) {
 		t.Errorf("argv = %v, want %v", argv, want)
+	}
+}
+
+func TestSandboxMechanismRefusesHostsWithoutOne(t *testing.T) {
+	for _, goos := range []string{"windows", "freebsd"} {
+		mech, ref := sandboxMechanism(goos, t.TempDir(), []string{"HOME=" + t.TempDir()})
+		if mech != nil || ref == nil || ref.Code != codeSandboxUnavailable {
+			t.Fatalf("%s: mech=%v ref=%v, want sandbox-unavailable", goos, mech, ref)
+		}
+		if !strings.Contains(ref.Message, goos) {
+			t.Errorf("%s: message = %q, want the OS named", goos, ref.Message)
+		}
+	}
+}
+
+func TestSandboxMechanismUsesSandboxExecOnDarwin(t *testing.T) {
+	mech, ref := sandboxMechanism("darwin", t.TempDir(), []string{"PATH=/bin"})
+	if ref != nil {
+		t.Fatalf("sandboxMechanism: %v", ref)
+	}
+	want := []string{"/usr/bin/sandbox-exec", "-p", "(version 1)(allow default)(deny network*)"}
+	if mech.tool != "sandbox-exec" || !slices.Equal(mech.prefix, want) {
+		t.Errorf("mechanism = %+v, want tool sandbox-exec and prefix %v", mech, want)
+	}
+}
+
+func TestSandboxMechanismRoutesLinuxToBwrap(t *testing.T) {
+	mech, ref := sandboxMechanism("linux", t.TempDir(), []string{"HOME=" + t.TempDir()})
+	if ref != nil {
+		t.Fatalf("sandboxMechanism: %v", ref)
+	}
+	if mech.tool != "bwrap" || !slices.Contains(mech.prefix, "--unshare-net") {
+		t.Errorf("mechanism = %+v, want bwrap with --unshare-net", mech)
 	}
 }
 
