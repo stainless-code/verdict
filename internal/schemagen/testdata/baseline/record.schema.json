@@ -48,6 +48,15 @@
       "description": "First model of the latest cost record, else null when no cost record names one.",
       "type": ["string", "null"]
     },
+    "author": {
+      "description": "The fetch fingerprint this bundle carried, copied from author.json; null when the bundle carries none, so an unknown author is never guessed as human.",
+      "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/author" }]
+    },
+    "review_models": {
+      "description": "Every model name the bundle's cost.json prices, deduplicated and sorted; empty when the cost record names none. The reviewer half of the author/reviewer pair.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
     "patch_id": {
       "description": "Bundle patch id at record time, copied from identity.json; absent when the bundle had no identity.",
       "type": ["string", "null"]
@@ -78,10 +87,27 @@
     "diff_sha256",
     "recorded_at",
     "findings",
-    "open"
+    "open",
+    "author",
+    "review_models"
   ],
   "additionalProperties": true,
   "$defs": {
+    "author": {
+      "type": "object",
+      "properties": {
+        "agent": {
+          "description": "Agent the fingerprint named: claude, codex, or cursor. Advisory only: it groups history and suggests a reviewer family, and nothing routes on it.",
+          "type": "string"
+        },
+        "model": {
+          "description": "Model the fingerprint named, else null when the signal named only the agent.",
+          "type": ["string", "null"]
+        }
+      },
+      "required": ["agent", "model"],
+      "additionalProperties": true
+    },
     "repair": {
       "type": "object",
       "properties": {

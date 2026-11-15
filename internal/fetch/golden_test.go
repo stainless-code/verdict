@@ -389,6 +389,24 @@ func TestFetchGoldenGitHub(t *testing.T) {
 		"fetch", "acme/app", "4701")
 	golden.Pin(t, harness, "happy-json", setup, nil,
 		"fetch", "acme/app", "4701", "--json")
+	// A PR a harness opened carries its own fingerprints in the body and the
+	// commit trailer: the bundle records the advisory author.json and the
+	// envelope names it, while the reviewed diff stays exactly what it was.
+	authorSignals := func(t *testing.T, dir, _ string) {
+		t.Helper()
+		promptFiles(t, dir)
+		stubPR(t, dir)
+		writeCanned(t, dir, "pr.json", `{"state":"OPEN","headRefOid":"`+headA+`","baseRefOid":"`+headB+`",`+
+			`"title":"Harden the retry budget",`+
+			`"body":"## Summary\n\nRetries stop at three per host.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",`+
+			`"headRefName":"sebastian/harden-retry-budget","author":{"login":"teammate"},`+
+			`"files":[{"path":"notes.txt","additions":3,"deletions":1}],"additions":3,"deletions":1,`+
+			`"commits":[{"oid":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",`+
+			`"messageHeadline":"fetch: cap retries at three",`+
+			`"messageBody":"The budget path retried without limit.\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"}]}`)
+	}
+	golden.Pin(t, harness, "author-advisory", authorSignals, nil,
+		"fetch", "acme/app", "4701", "--json")
 	golden.Pin(t, harness, "base-sha-json", setup, map[string]string{"GH_COMPARE_FAIL": "0"},
 		"fetch", "acme/app", "4701", "--base-sha", headB[:7], "--json")
 	golden.Pin(t, harness, "base-sha-note", setup, map[string]string{"GH_COMPARE_FAIL": "1"},

@@ -180,6 +180,8 @@ type row struct {
 	byCategory      map[string]int
 	bySource        map[string]int
 	bundle          string
+	author          string
+	reviewers       []string
 	at              string
 	runID           string
 	risk            string
@@ -300,8 +302,11 @@ func applyBundleProvenance(r *row, rec *core.ProvenanceReceipt) {
 func buildRow(bundle, name string, findings []any) row {
 	at, hasAt := bundleTime(bundle)
 	cleanDir := strings.TrimSuffix(bundle, "/")
+	author, reviewers := bundlePair(bundle)
 	return row{
 		bundle:     name,
+		author:     author,
+		reviewers:  reviewers,
 		at:         at,
 		hasAt:      hasAt,
 		risk:       risk.BundleBand(cleanDir, readcommon.OpenBundle(cleanDir).Head(), findings),

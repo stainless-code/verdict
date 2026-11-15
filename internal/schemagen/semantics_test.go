@@ -18,6 +18,10 @@ import (
 // skill) re-pinned all ten hashes: only each $id URL moved; no property,
 // required key, enum, or type changed.
 var publishedSemantics = map[string]string{
+	// additive author.schema.json (new bundle document; the advisory author
+	// fingerprint fetch detects). No existing schema property, required key,
+	// enum, or type changed.
+	"author.schema.json":      "f7d48bf8cc56baf70899b6e02caceae111838bb7ee3ed707eb7e4a9e7b809a70",
 	"excluded.schema.json":    "da38e86c8f27bc41b8255f7fc12cbf0a81fa181eee2be172c46b4ae015b041ac",
 	"panel-plan.schema.json":  "c4ac13bb03fb5918bc5b60ff9eba10776f10b999fdc88049409792439b1c043a",
 	"panel.schema.json":       "60fee20b395837e41c0bb8044dcaed55fa7a38d8d8a504a9f228be95b28319ef",
@@ -246,7 +250,10 @@ var publishedSemantics = map[string]string{
 	// fixData.patch (the fix.patch path), and fixData.paths (the --paths globs),
 	// plus fixData.batch ($ref fixBatchRow) and $defs/fixBatchRow. No existing
 	// property, required key, enum, or type changed.
-	"envelope.schema.json": "94ec0b1df46baf502415d7ffdfd955e221ba89ef61adbbbe433470c3b4a287e5",
+	// author/reviewer pair: additive optional trendData.by_pair
+	// ($defs/trendPairCounts) plus required trendBundleRow.author and
+	// trendBundleRow.review_models. No existing property, enum, or type changed.
+	"envelope.schema.json": "9b6ad000db5e05adb14f184afa7a74aa3c7ba198a6a670698dad70343984773c",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -378,7 +385,10 @@ var publishedSemantics = map[string]string{
 	// key, enum, or type changed.
 	// risk score: additive optional nullable risk claim ($defs/riskClaim). No
 	// existing property, required key, enum, or type changed.
-	"record.schema.json": "0db369bc5ae7b7ae016a6272b8a500879ef7238b03256fd066ca91567ab7e131",
+	// author/reviewer pair: additive required-nullable author object
+	// ($defs/author) and required review_models string array. No existing
+	// property, enum, or type changed; older stores simply carry neither key.
+	"record.schema.json": "0f39476dac5836babb324ef8e62fca0423472765454745e4f849adca3649ebab",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable comment.brief
 	// (optional; no existing property, required key, or type changed). The
 	// descriptions now state the checker's exact error/warning split; shape

@@ -8,6 +8,7 @@ reviews: 3 (0 clean) — findings/review 3.0000, clean rate 0.0% (n=3)
 tiers: critical=3 important=3 informational=3 untagged=0
 status: open=6 addressed=2 wont-fix=0 false-positive=0 deferred=1
 risk: low=0(0f/0o/0a/0c) medium=1(2f/1o/1a/0c) high=0(0f/0o/0a/0c) critical=2(7f/5o/1a/1c) unknown=0(0f/0o/0a/0c)
+pairs: claude/gpt-5.1-codex=1(2f/1o/1a/0c) codex/claude-opus-4-5=1(1f/1o/0a/0c) unknown/unknown=1(6f/4o/1a/1c)
 provenance: tools=unmarked models=unmarked prompts=0 unique (+unmarked)
 --- stderr ---
 

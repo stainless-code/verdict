@@ -64,10 +64,13 @@ func TestPanelDeclarationOrder(t *testing.T) {
 func TestRecordPanelOrderGolden(t *testing.T) {
 	confidence, percent := 3, 100
 	security, model, patch := "reviewed", "verifier", "patch"
+	authorModel := "Opus 4.5"
 	record := &Record{
 		SchemaVersion: "1", Status: "local", Head: "head", DiffSHA256: "diff", RecordedAt: "2026-11-13T12:00:00Z",
 		Findings: 1, Open: 1, Confidence: &confidence, ConfidenceRaw: 3, SecuritySummary: &security,
 		ToolVersion: "version", PromptsHash: "hash", Model: &model, PatchID: &patch, PatchIDKind: "git",
+		Author:       &AuthorRef{Agent: "claude", Model: &authorModel},
+		ReviewModels: []string{"gpt-5.1-codex", "opus-4.5"},
 		Repairs:      []Repair{{Code: "enum-synonym", Path: "$.comments"}},
 		Verification: &PanelSummary{Verifiers: 2, Confirmed: 1, Contested: 0, Single: 0},
 		Coverage:     &CoverageSummary{Percent: &percent, Attested: 1, Total: 1, Files: 1}, ChunkCoverage: &ChunkCoverage{Attested: 1, Total: 1},
