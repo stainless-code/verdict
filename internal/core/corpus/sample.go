@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"os"
@@ -121,41 +122,54 @@ func validRecorded(v *float64) bool {
 	return v != nil && *v >= 0 && !math.IsNaN(*v) && !math.IsInf(*v, 0)
 }
 
-// Cohort reads the selected case, run, model and panel for any-of-k recall.
-func Cohort(dir string, sample *Sample) []Sample {
+// Cohort reads the selected case, run, model and panel for any-of-k recall. A
+// sibling that cannot be graded is left out with a warning naming its bundle,
+// so a shrunken denominator is never silent.
+func Cohort(dir string, sample *Sample) ([]Sample, []string) {
 	out := []Sample{*sample}
+	var warnings []string
 	entries, err := os.ReadDir(filepath.Dir(dir))
 	if err != nil {
-		return out
+		return out, warnings
 	}
 	for _, e := range entries {
 		if !e.IsDir() || e.Name() == filepath.Base(dir) || !strings.HasPrefix(e.Name(), "corpus-") {
 			continue
 		}
 		sibling := filepath.Join(filepath.Dir(dir), e.Name())
-		if s, ok := cohortSibling(sibling, sample); ok {
-			out = append(out, s)
+		s, ok, reason := cohortSibling(sibling, sample)
+		if !ok {
+			if reason != "" {
+				warnings = append(warnings, fmt.Sprintf("corpus bundle %q skipped from the cohort (%s)", sibling, reason))
+			}
+			continue
 		}
+		out = append(out, s)
 	}
-	return out
+	return out, warnings
 }
 
-func cohortSibling(dir string, selected *Sample) (Sample, bool) {
+// cohortSibling grades one sibling. A non-empty reason is a skip worth
+// surfacing; an empty one means it simply belongs to another cohort.
+func cohortSibling(dir string, selected *Sample) (Sample, bool, string) {
 	c, ref := Load(dir)
 	if ref != nil {
-		return Sample{}, false
+		return Sample{}, false, ref.Message
 	}
 	entries, err := readcommon.LoadFindings(dir)
 	if err != nil {
-		return Sample{}, false
+		return Sample{}, false, err.Error()
 	}
 	report, ref := EvaluateDir(dir, c, entries)
 	if ref != nil {
-		return Sample{}, false
+		return Sample{}, false, ref.Message
 	}
 	s, ref := LoadSample(dir, report)
 	if ref != nil {
-		return Sample{}, false
+		return Sample{}, false, ref.Message
 	}
-	return s, s.Sampling.RunID == selected.Sampling.RunID && s.CaseID == selected.CaseID && s.Group == selected.Group
+	if s.Sampling.RunID != selected.Sampling.RunID || s.CaseID != selected.CaseID || s.Group != selected.Group {
+		return Sample{}, false, ""
+	}
+	return s, true, ""
 }

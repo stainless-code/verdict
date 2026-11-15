@@ -1,7 +1,9 @@
 package corpuscore
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core/corpus/corpustest"
@@ -19,7 +21,10 @@ func TestCohortFiltersDiffSpelledPhrase(t *testing.T) {
 	corpustest.Bundle(t, filtered, corpustest.SpelledDiff, corpustest.Finding)
 
 	sample := loadCohortSample(t, selected)
-	samples := Cohort(selected, &sample)
+	samples, warnings := Cohort(selected, &sample)
+	if len(warnings) != 0 {
+		t.Fatalf("warnings = %q, want none for complete siblings", warnings)
+	}
 	if len(samples) != 2 {
 		t.Fatalf("samples = %d, want the selected bundle and one sibling", len(samples))
 	}
@@ -49,4 +54,25 @@ func loadCohortSample(t *testing.T, dir string) Sample {
 		t.Fatalf("LoadSample: %v", ref)
 	}
 	return sample
+}
+
+// TestCohortWarnsOnUnreadableSibling proves a sibling dropped for an unusable
+// diff is named, not silently removed from the published denominator.
+func TestCohortWarnsOnUnreadableSibling(t *testing.T) {
+	root := t.TempDir()
+	selected := filepath.Join(readcommon.StateDir(root), "corpus-race-selected")
+	broken := filepath.Join(readcommon.StateDir(root), "corpus-race-broken")
+	corpustest.Bundle(t, selected, corpustest.CleanDiff, corpustest.CleanBody)
+	corpustest.Bundle(t, broken, corpustest.SpelledDiff, corpustest.Finding)
+	if err := os.Remove(filepath.Join(broken, "full.diff")); err != nil {
+		t.Fatal(err)
+	}
+	sample := loadCohortSample(t, selected)
+	samples, warnings := Cohort(selected, &sample)
+	if len(samples) != 1 {
+		t.Fatalf("samples = %d, want only the selected bundle", len(samples))
+	}
+	if len(warnings) != 1 || !strings.Contains(warnings[0], broken) || !strings.Contains(warnings[0], "full.diff") {
+		t.Fatalf("warnings = %q, want one naming %s and full.diff", warnings, broken)
+	}
 }

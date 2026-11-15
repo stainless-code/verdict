@@ -39,9 +39,10 @@ type corpusRollup struct {
 	total   corpusCounts
 }
 
-// skipCorpus warns about one bundle trend cannot read and keeps the rest.
+// skipCorpus warns about one bundle trend cannot read and keeps the rest. The
+// directory is quoted so a newline in a name cannot forge a warning line.
 func (st *state) skipCorpus(dir, reason string) {
-	st.warn(skipWarn + "corpus bundle " + dir + "/ (" + reason + ")")
+	st.warn(fmt.Sprintf("%scorpus bundle %q (%s)", skipWarn, dir, reason))
 }
 
 func (st *state) readCorpus(dir string) {

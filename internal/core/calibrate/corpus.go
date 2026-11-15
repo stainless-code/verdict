@@ -27,7 +27,9 @@ func (st *state) runCorpus(dir string) *core.RefusalError {
 		return st.withWarnings(ref)
 	}
 	metrics := corpuscore.Measure([]corpuscore.Sample{sample})
-	metrics.AnyOfKRecall, metrics.IncompleteCohorts = corpuscore.AnyOfKRecall(corpuscore.Cohort(dir, &sample))
+	cohort, warnings := corpuscore.Cohort(dir, &sample)
+	st.warnings = append(st.warnings, warnings...)
+	metrics.AnyOfKRecall, metrics.IncompleteCohorts = corpuscore.AnyOfKRecall(cohort)
 	st.corpus = &corpusResult{
 		metrics:  metrics,
 		sampling: sample.Sampling,
