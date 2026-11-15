@@ -29,6 +29,26 @@
       ],
       "note": "the connect/disconnect handlers look the entry up with the URL the event carries while the map is keyed by the origin string, so the count never moves and the Client is never evicted",
       "also_lines": [48, 60]
+    },
+    {
+      "path": "lib/dispatcher/agent.js",
+      "line": 61,
+      "kind": "premature-destroy",
+      "severity": "important",
+      "keywords": [
+        "kills in-flight requests",
+        "tears down queued requests",
+        "aborts pending work",
+        "aborts in-flight requests",
+        "error queued requests",
+        "errors queued requests",
+        "cancels pending requests",
+        "cancels queued requests",
+        "drops requests that are still queued",
+        "should be closed instead of destroyed",
+        "destroys a dispatcher that still has work"
+      ],
+      "note": "evicting the Client calls destroy(), which errors the requests still queued on it with ClientDestroyedError; the fix calls close() so the dispatcher drains first. Separate defect from the key mismatch on the two lines above it: with the lookup corrected, one connection-close drops every queued request, so the two are graded as two bugs"
     }
   ]
 }
