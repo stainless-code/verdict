@@ -48,6 +48,7 @@ recorded: .verdict/state/local-kb/findings.json (0 open) + .verdict/state/local-
 /index/
 incidents.jsonl.lock
 kb.jsonl.lock
+reverts.jsonl.lock
 --- file C/.verdict/kb-joins.jsonl ---
 {"at":"0000-00-00T00:00:00Z","sig":"bfd750dfd6a62efb7a91db702664395618b7f845","rule":"rec-rule","outcome":"addressed","actor":"revalidator","verb":"record","bundle":"local-kb","review_id":null}
 --- file C/.verdict/kb.jsonl ---

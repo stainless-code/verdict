@@ -50,6 +50,7 @@ recorded: .verdict/state/local-kb/findings.json (0 open) + .verdict/state/local-
 /index/
 incidents.jsonl.lock
 kb.jsonl.lock
+reverts.jsonl.lock
 --- file C/.verdict/kb.jsonl.lock ---
 
 --- file C/.verdict/state/local-kb/findings.json ---

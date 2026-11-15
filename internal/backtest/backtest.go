@@ -22,12 +22,14 @@ import (
 	runverb "github.com/stainless-code/verdict/internal/run"
 )
 
-// The shipped modes. `mine` is free and local; `replay` spawns the
-// operator's own agent, one review per candidate; `score` is a pure read over
-// a replay's bundles; `composed` is the bare `--since` form that runs all
-// three in order.
+// The shipped modes. `mine` is free and local; `reverts` records what git
+// already says was reverted; `replay` spawns the operator's own agent, one
+// review per candidate; `score` is a pure read over a replay's bundles;
+// `composed` is the bare `--since` form that runs mine, replay, and score in
+// order.
 const (
 	modeMine     = "mine"
+	modeReverts  = "reverts"
 	modeReplay   = "replay"
 	modeScore    = "score"
 	modeComposed = "composed"
@@ -52,7 +54,8 @@ type Request struct {
 
 // wanted names the flag list a per-mode usage error publishes.
 var wanted = map[string]string{
-	modeMine: "--since <90d|12w|18mo|2y|ref>, --until <ref>, --run <slug>, --json",
+	modeMine:    "--since <90d|12w|18mo|2y|ref>, --until <ref>, --run <slug>, --json",
+	modeReverts: "--since <90d|12w|18mo|2y|ref>, --until <ref>, --json",
 	modeReplay: "--run <id>, --agent <name>, --max-reviews <n>, --budget-usd <usd>, " +
 		"--timeout <secs>, --rounds <n>, -- <agent args>, --json",
 	modeScore: "--run <id>, --json",
@@ -71,6 +74,8 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 		return code
 	}
 	switch f.mode {
+	case modeReverts:
+		return runReverts(ctx, r, req, f)
 	case modeReplay:
 		return runReplay(ctx, r, req, f)
 	case modeScore:
@@ -85,6 +90,17 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 // runMine executes `backtest mine`: the SZZ candidate miner.
 func runMine(ctx context.Context, r *cli.Runner, req Request, f *flags) int {
 	resp, ref := corebacktest.Run(ctx, mineRequest(r, req, f))
+	if ref != nil {
+		return r.RefuseTyped(ref)
+	}
+	r.Warnings = resp.Warnings
+	renderJSON(r, resp.At, resp.Next, resp.Warnings, resp.Data.Wire())
+	return cli.ExitOK
+}
+
+// runReverts executes `backtest reverts`: the revert memory scan.
+func runReverts(ctx context.Context, r *cli.Runner, req Request, f *flags) int {
+	resp, ref := corebacktest.RunReverts(ctx, revertsRequest(r, req, f))
 	if ref != nil {
 		return r.RefuseTyped(ref)
 	}
@@ -154,6 +170,18 @@ func mineRequest(r *cli.Runner, req Request, f *flags) *corebacktest.Request {
 		},
 		RepoRoot: req.RepoRoot, Mode: modeMine, Since: f.since, Until: f.until,
 		Run: f.run, Warnings: append([]string{}, r.Warnings...),
+	}
+}
+
+// revertsRequest is one revert scan. Its window defaults live in the service,
+// so an invocation with no --since scans the last 12 months.
+func revertsRequest(r *cli.Runner, req Request, f *flags) *corebacktest.Request {
+	return &corebacktest.Request{
+		Runtime: &core.Runtime{
+			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r}, Commander: coreexec.Runner{MissingTool: true},
+		},
+		RepoRoot: req.RepoRoot, Mode: modeReverts, Since: f.since, Until: f.until,
+		Warnings: append([]string{}, r.Warnings...),
 	}
 }
 
@@ -245,10 +273,10 @@ func parseFlags(args []string) (*flags, *cli.UsageError) {
 // checkMode accepts the shipped modes and the undecided no-mode form.
 func checkMode(mode string) *cli.UsageError {
 	switch mode {
-	case "", modeMine, modeReplay, modeScore:
+	case "", modeMine, modeReverts, modeReplay, modeScore:
 		return nil
 	default:
-		return usage("unknown mode '" + mode + "' for backtest (want mine, replay, or score)")
+		return usage("unknown mode '" + mode + "' for backtest (want mine, reverts, replay, or score)")
 	}
 }
 
@@ -259,7 +287,7 @@ func resolveMode(f *flags) *cli.UsageError {
 		return nil
 	}
 	if f.since == "" {
-		return usage("backtest needs a mode ('mine', 'replay', or 'score'), or --since to mine, replay, and score in one run")
+		return usage("backtest needs a mode ('mine', 'reverts', 'replay', or 'score'), or --since to mine, replay, and score in one run")
 	}
 	f.mode = modeComposed
 	return nil
@@ -292,7 +320,7 @@ func parseToken(f *flags, args []string, i int) (int, *cli.UsageError) {
 // after `--` are accepted, and --print is run's escape hatch rather than a
 // silently accepted no-op.
 func (f *flags) launches() bool {
-	return f.mode != modeMine && f.mode != modeScore
+	return f.mode != modeMine && f.mode != modeReverts && f.mode != modeScore
 }
 
 // label names the invocation in a usage error.
@@ -315,9 +343,9 @@ type valueFlag struct {
 // valueFlags lists every mode's operand flags.
 func (f *flags) valueFlags() []valueFlag {
 	return []valueFlag{
-		{&f.since, "--since", "<duration|ref>", []string{modeMine, modeComposed}},
-		{&f.until, "--until", "<ref>", []string{modeMine, modeComposed}},
-		{&f.run, "--run", "<id|slug>", nil},
+		{&f.since, "--since", "<duration|ref>", []string{modeMine, modeComposed, modeReverts}},
+		{&f.until, "--until", "<ref>", []string{modeMine, modeComposed, modeReverts}},
+		{&f.run, "--run", "<id|slug>", []string{modeMine, modeReplay, modeScore, modeComposed}},
 		{&f.agent, "--agent", "<name>", []string{modeReplay, modeComposed}},
 		{&f.maxReviews, "--max-reviews", "<n>", []string{modeReplay, modeComposed}},
 		{&f.budgetUSD, "--budget-usd", "<usd>", []string{modeReplay, modeComposed}},
@@ -380,7 +408,7 @@ func rentry(f *flags, jsonMode bool) string {
 	if jsonMode {
 		s += " --json"
 	}
-	if f.mode != modeMine && f.mode != modeScore && len(f.pass) > 0 {
+	if f.mode != modeMine && f.mode != modeScore && f.mode != modeReverts && len(f.pass) > 0 {
 		s += " -- " + runverb.RenderCommand(f.pass)
 	}
 	return s
@@ -391,6 +419,8 @@ func modeRentry(f *flags) string {
 	switch f.mode {
 	case modeMine:
 		return mineRentry(f)
+	case modeReverts:
+		return windowRentry(f)
 	case modeScore:
 		return scoreRentry(f)
 	case modeComposed:
@@ -403,6 +433,11 @@ func modeRentry(f *flags) string {
 // mineRentry renders the mining flags, skipping the ones left at their
 // defaults.
 func mineRentry(f *flags) string {
+	return windowRentry(f) + runRentry(f)
+}
+
+// windowRentry renders the flags that resolve a git window.
+func windowRentry(f *flags) string {
 	s := ""
 	if f.since != "" {
 		s += " --since " + f.since
@@ -410,10 +445,15 @@ func mineRentry(f *flags) string {
 	if f.until != "" && f.until != defaultUntil {
 		s += " --until " + f.until
 	}
-	if f.run != "" {
-		s += " --run " + f.run
-	}
 	return s
+}
+
+// runRentry renders the run id a miner reads or writes.
+func runRentry(f *flags) string {
+	if f.run == "" {
+		return ""
+	}
+	return " --run " + f.run
 }
 
 // replayRentry renders the replay flags, skipping the ones left at their

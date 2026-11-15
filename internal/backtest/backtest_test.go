@@ -21,6 +21,24 @@ func TestParseFlagsMineSurface(t *testing.T) {
 	}
 }
 
+// TestParseFlagsRevertsSurface proves the revert scan reads the window and
+// nothing a mode that spends or writes a run id would read.
+func TestParseFlagsRevertsSurface(t *testing.T) {
+	f, uerr := parseFlags([]string{"reverts", "--since", "12w", "--until", "main"})
+	if uerr != nil {
+		t.Fatalf("parse: %v", uerr)
+	}
+	if f.mode != modeReverts || f.since != "12w" || f.until != "main" {
+		t.Errorf("flags = %+v", f)
+	}
+	if f.run != "" || f.agent != "" || len(f.pass) != 0 {
+		t.Errorf("reverts picked up another mode's state: %+v", f)
+	}
+	if f.launches() {
+		t.Error("reverts claims to launch an agent")
+	}
+}
+
 // TestParseFlagsReplaySurface proves the replay mode reads its flags and the
 // pass-through tail after a bare `--`.
 func TestParseFlagsReplaySurface(t *testing.T) {
@@ -91,6 +109,8 @@ func TestParseFlagsPerModeRejectsTheOtherModesFlags(t *testing.T) {
 		args []string
 		part string
 	}{
+		{"reverts with run", []string{"reverts", "--run", "sweep"}, "want --since <90d|12w|18mo|2y|ref>, --until <ref>, --json"},
+		{"reverts with pass-through", []string{"reverts", "--"}, "want --since <90d|12w|18mo|2y|ref>"},
 		{"mine with agent", []string{"mine", "--agent", "claude"}, "want --since <90d|12w|18mo|2y|ref>, --until <ref>, --run <slug>, --json"},
 		{"mine with budget", []string{"mine", "--budget-usd", "5"}, "want --since <90d"},
 		{"mine with pass-through", []string{"mine", "--"}, "want --since <90d"},
@@ -169,6 +189,18 @@ func TestRentryRebuildsEachMode(t *testing.T) {
 			[]string{"mine", "--since", "90d", "--until", "main"},
 			true,
 			"verdict backtest mine --since 90d --until main --json",
+		},
+		{
+			"reverts",
+			[]string{"reverts", "--since", "12w", "--until", "main"},
+			true,
+			"verdict backtest reverts --since 12w --until main --json",
+		},
+		{
+			"reverts defaults",
+			[]string{"reverts"},
+			false,
+			"verdict backtest reverts",
 		},
 		{
 			"replay defaults",

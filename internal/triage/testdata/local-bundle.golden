@@ -23,6 +23,7 @@ triaged 01234567 -> addressed
 /index/
 incidents.jsonl.lock
 kb.jsonl.lock
+reverts.jsonl.lock
 --- file C/.verdict/kb-joins.jsonl ---
 {"at":"0000-00-00T00:00:00Z","sig":"0123456789abcdef0123456789abcdef01234567","rule":"await-err","outcome":"addressed","actor":"human","verb":"triage","bundle":"local-k6","review_id":null}
 --- file C/.verdict/kb.jsonl ---

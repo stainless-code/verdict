@@ -32,6 +32,7 @@ exit: 0
 /index/
 incidents.jsonl.lock
 kb.jsonl.lock
+reverts.jsonl.lock
 --- file C/.verdict/kb.jsonl ---
 {"id":"no-secret-logs","rule":"Never log secrets in error paths","scope":"src/*.ts","provenance":"manual","rigor":"walked","hits":0,"false_hits":0,"judged":0,"status":"active"}
 --- file C/.verdict/kb.jsonl.lock ---

@@ -114,8 +114,9 @@ func (r *repo) switchMain() {
 	r.git("switch", "-q", "main")
 }
 
-// gitAllow runs a git command that may fail, returning its output and success.
-func (r *repo) gitAllow(args ...string) (string, bool) {
+// gitAllow runs a git command that may fail, reporting whether it succeeded.
+// Its output is discarded: a caller asks a yes/no question about the fixture.
+func (r *repo) gitAllow(args ...string) bool {
 	r.t.Helper()
 	cmd := exec.CommandContext(r.t.Context(), "git", args...)
 	cmd.Dir = r.dir
@@ -124,8 +125,8 @@ func (r *repo) gitAllow(args ...string) (string, bool) {
 		"GIT_COMMITTER_DATE": r.date(),
 		"GIT_CONFIG_SYSTEM":  os.DevNull,
 	})
-	out, err := cmd.CombinedOutput()
-	return string(out), err == nil
+	_, err := cmd.CombinedOutput()
+	return err == nil
 }
 
 // head resolves HEAD to its full id.

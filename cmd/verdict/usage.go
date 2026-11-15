@@ -333,6 +333,15 @@ func usageText() string {
 		"    --since takes a duration against --until's commit date or a ref. Skipped fixes are\n" +
 		"    counted with reasons, never refused. Candidates are not citable: SZZ-derived,\n" +
 		"    unverified.\n" +
+		"  backtest reverts [--since <90d|12w|18mo|2y|<ref>>] [--until <ref>] [--json]\n" +
+		"    record the window's revert commits as memory, not as candidates: subject\n" +
+		"    Revert \"...\", no blame, no model call. --since defaults to 12mo and --until to\n" +
+		"    HEAD. Writes .verdict/reverts.jsonl (tracked, one row per revert, upserted by\n" +
+		"    sha so an older window survives a narrower scan) and .verdict/reverts.md, where\n" +
+		"    the subject and paths are quoted inside an untrusted fence. A revert of a\n" +
+		"    merge, one wider than 200 files or 5000 lines, a binary one, and one git cannot\n" +
+		"    read are counted by reason, never refused. Attach one deliberately with\n" +
+		"    learn --incident.\n" +
 		"  backtest replay --run <id> --agent <name> [--max-reviews <n>] [--budget-usd <usd>]\n" +
 		"        [--timeout <secs>] [--rounds <n>] [-- <agent args>] [--json]\n" +
 		"    replay the mined candidates, newest merge first: each one gets a fresh local\n" +
