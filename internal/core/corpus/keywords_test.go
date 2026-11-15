@@ -1,6 +1,7 @@
 package corpuscore
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -14,7 +15,11 @@ import (
 // that stops naming the defect (or starts naming a neighbor) fails here
 // instead of quietly grading a model wrong.
 type keywordCase struct {
-	id     string
+	id string
+	// bug is the index into the case's bugs, so a case whose fix commit
+	// repaired two defects pins each of them from both sides. Zero for the
+	// common one-bug case.
+	bug    int
 	passes []string
 	fails  []string
 }
@@ -98,6 +103,46 @@ var keywordCases = []keywordCase{
 			"`StopOnNthArg` is a new field generated per parse; the count is tracked on the flag set.",
 		},
 	},
+	{
+		// Two bugs, one fix commit: #4425 corrected the map key and replaced
+		// destroy() with close(). Each side is pinned here so a finding about
+		// either defect grades as a hit and a finding about the other does not.
+		id: "undici-4223-agent-client-eviction",
+		passes: []string{
+			"The lookup is keyed on the URL the event carries while the map stores the origin string, so the count never moves.",
+			"The entry is deleted under a key the map does not use, so the client outlives its connections.",
+			"Bookkeeping that never fires leaves unbounded growth of the client map.",
+			"Each Client is looked up with a different key than the one the map stores, so the lookup can never find the entry.",
+			"The dispatcher is never evicted because the count never moves off zero.",
+		},
+		fails: []string{
+			"Calling destroy() here kills in-flight requests that close() would have drained.",
+			"The eviction tears down queued requests instead of letting the dispatcher finish them.",
+			"Rename result to entry so the shape is obvious.",
+			"The mock agent stores {count, dispatcher} too, which is fine.",
+			"The eviction runs inside the disconnect event, which blocks the socket close.",
+			"The disconnect handler does not check that targets is present, so a nil dereference is possible.",
+		},
+	},
+	{
+		id:  "undici-4223-agent-client-eviction",
+		bug: 1,
+		passes: []string{
+			"Calling destroy() here kills in-flight requests that close() would have drained.",
+			"The eviction tears down queued requests instead of letting the dispatcher finish them.",
+			"Evicting with destroy() aborts pending work: a request queued right then fails with ClientDestroyedError.",
+			"The handler drops requests that are still queued, so it should be closed instead of destroyed.",
+			"The eviction destroys a dispatcher that still has work, erroring the queued request.",
+		},
+		fails: []string{
+			"The lookup is keyed on the URL the event carries while the map stores the origin string, so the count never moves.",
+			"One Client is retained per origin for the life of the process, which is unbounded growth of the client map.",
+			"Bookkeeping that never fires leaves the client map growing forever.",
+			"Rename result to entry so the shape is obvious.",
+			"destroy() is called once in this block, which matches the close path below.",
+			"Add a comment explaining why the eviction happens on disconnect.",
+		},
+	},
 }
 
 // TestCheckedInCorpusKeywordsGradeBothWays proves the shipped vocabulary both
@@ -105,7 +150,10 @@ var keywordCases = []keywordCase{
 // about a neighboring defect leaves it unnamed.
 func TestCheckedInCorpusKeywordsGradeBothWays(t *testing.T) {
 	for _, kc := range keywordCases {
-		t.Run(kc.id, func(t *testing.T) { checkKeywordLists(t, kc) })
+		// The bug index is in the name because a fix commit can repair more
+		// than one defect in a case, so the id alone does not name the pin.
+		name := fmt.Sprintf("%s/bug%d", kc.id, kc.bug)
+		t.Run(name, func(t *testing.T) { checkKeywordLists(t, kc) })
 	}
 }
 
@@ -113,7 +161,7 @@ func TestCheckedInCorpusKeywordsGradeBothWays(t *testing.T) {
 func checkKeywordLists(t *testing.T, kc keywordCase) {
 	t.Helper()
 	requireBothLists(t, kc)
-	bug := keywordBug(t, kc.id)
+	bug := keywordBug(t, kc)
 	eachNamesDefect(t, bug, kc.passes)
 	noneNamesDefect(t, bug, kc.fails)
 }
@@ -146,15 +194,17 @@ func noneNamesDefect(t *testing.T, bug *core.CorpusBug, texts []string) {
 	}
 }
 
-// keywordBug is the single ground-truth bug of one checked-in case.
-func keywordBug(t *testing.T, id string) *core.CorpusBug {
+// keywordBug is the ground-truth bug a row pins: the checked-in case's bug at
+// the row's index.
+func keywordBug(t *testing.T, kc keywordCase) *core.CorpusBug {
 	t.Helper()
-	c, ref := loadCase(t, filepath.Join("..", "..", "..", "bench", "corpus", id, "case.json"))
+	c, ref := loadCase(t, filepath.Join("..", "..", "..", "bench", "corpus", kc.id, "case.json"))
 	if ref != nil {
-		t.Fatalf("%s: %v", id, ref)
+		t.Fatalf("%s: %v", kc.id, ref)
 	}
-	if len(c.Bugs) != 1 {
-		t.Fatalf("%s: %d ground-truth bugs, want 1", id, len(c.Bugs))
+	if kc.bug < 0 || kc.bug >= len(c.Bugs) {
+		t.Fatalf("%s: bug %d, want 0..%d (%d ground-truth bugs)",
+			kc.id, kc.bug, len(c.Bugs)-1, len(c.Bugs))
 	}
-	return &c.Bugs[0]
+	return &c.Bugs[kc.bug]
 }
