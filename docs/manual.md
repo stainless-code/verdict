@@ -356,6 +356,12 @@ as `{field, signal}` — `field` is `title`, `body`, `head_ref`, or `commits`, a
 `signal` is the matched text verbatim. `model` is whatever a trailer names after
 the agent's own name, null when no signal names one.
 
+`record` stamps the fingerprint into `record.json` as `author` (`{agent,
+model}`, null when the bundle carries none) beside `review_models`: every model
+name `cost.json` already prices, deduplicated and sorted — the reviewer half of
+the pair. A bundle naming neither stores `null` and `[]`, never an invented
+human.
+
 It is data, never a decision: it never blocks, never changes what is reviewed,
 and never pins a model — a spoofable fingerprint is not authority. Nothing is
 written when no signal matches (and an earlier run's file is removed), so an

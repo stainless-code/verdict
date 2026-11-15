@@ -56,6 +56,8 @@ c1.txt	NEW	1	2
   "tool_version": "VERSION",
   "prompts_hash": "bddb9306ee0e9be76cf9d4c1a417eb38a992cb5773b17915e698ea99603e7815",
   "model": null,
+  "author": null,
+  "review_models": [],
   "chunk_coverage": {"attested":2,"total":2}
 }
 --- file C/.verdict/state/local-ch/store.json ---

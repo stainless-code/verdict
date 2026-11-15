@@ -426,6 +426,10 @@
       "/properties/tool_version": "Tool version that wrote this record (from package.json).",
       "/properties/prompts_hash": "sha256 over the sorted prompt-set file names plus contents (SKILL.md plus prompts/system.md, prompts/review.md, prompts/diagrams.md).",
       "/properties/model": "First model of the latest cost record, else null when no cost record names one.",
+      "/properties/author": "The fetch fingerprint this bundle carried, copied from author.json; null when the bundle carries none, so an unknown author is never guessed as human.",
+      "/$defs/author/properties/agent": "Agent the fingerprint named: claude, codex, or cursor. Advisory only: it groups history and suggests a reviewer family, and nothing routes on it.",
+      "/$defs/author/properties/model": "Model the fingerprint named, else null when the signal named only the agent.",
+      "/properties/review_models": "Every model name the bundle's cost.json prices, deduplicated and sorted; empty when the cost record names none. The reviewer half of the author/reviewer pair.",
       "/properties/repairs": "Safe review.json rewrites applied before the merge, in document order; absent when the review was already clean.",
       "/properties/patch_id": "Bundle patch id at record time, copied from identity.json; absent when the bundle had no identity.",
       "/properties/patch_id_kind": "Patch id algorithm (git-patch-id or the labeled diff-sha256 fallback); absent when the bundle had no identity."

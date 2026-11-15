@@ -84,5 +84,7 @@ recorded: .verdict/state/local-kb/findings.json (0 open) + .verdict/state/local-
   "security_summary": null,
   "tool_version": "VERSION",
   "prompts_hash": "bddb9306ee0e9be76cf9d4c1a417eb38a992cb5773b17915e698ea99603e7815",
-  "model": null
+  "model": null,
+  "author": null,
+  "review_models": []
 }

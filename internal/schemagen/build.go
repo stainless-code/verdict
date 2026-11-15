@@ -349,6 +349,7 @@ func documents() []document {
 			title: "record.json — completed-record (local bundles)",
 			root:  reflect.TypeFor[Record](),
 			defs: []definition{
+				{typ: reflect.TypeFor[core.AuthorRef](), name: "author"},
 				{typ: reflect.TypeFor[Repair](), name: "repair"},
 				{typ: reflect.TypeFor[CoverageSummary](), name: coverageSummaryType},
 				{typ: reflect.TypeFor[core.PanelSummary](), name: verificationSummaryType},

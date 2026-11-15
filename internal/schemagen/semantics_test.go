@@ -378,7 +378,10 @@ var publishedSemantics = map[string]string{
 	// key, enum, or type changed.
 	// risk score: additive optional nullable risk claim ($defs/riskClaim). No
 	// existing property, required key, enum, or type changed.
-	"record.schema.json": "0db369bc5ae7b7ae016a6272b8a500879ef7238b03256fd066ca91567ab7e131",
+	// author/reviewer pair: additive required-nullable author object
+	// ($defs/author) and required review_models string array. No existing
+	// property, enum, or type changed; older stores simply carry neither key.
+	"record.schema.json": "0f39476dac5836babb324ef8e62fca0423472765454745e4f849adca3649ebab",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable comment.brief
 	// (optional; no existing property, required key, or type changed). The
 	// descriptions now state the checker's exact error/warning split; shape
