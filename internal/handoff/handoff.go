@@ -75,6 +75,7 @@ func handoffRequest(r *cli.Runner, req Request, opts options) *handoffcore.Reque
 type options struct {
 	minSeverity string
 	paths       []string
+	formatSet   bool
 }
 
 func parseFlags(r *cli.Runner, args []string) (options, int, bool) {
@@ -86,7 +87,8 @@ func parseFlags(r *cli.Runner, args []string) (options, int, bool) {
 		}
 		i = next
 	}
-	return opts, 0, false
+	code, done := formatPrecedence(r, opts)
+	return opts, code, done
 }
 
 func applyFlag(r *cli.Runner, args []string, i int, opts *options) (int, int, bool) {
@@ -97,10 +99,31 @@ func applyFlag(r *cli.Runner, args []string, i int, opts *options) (int, int, bo
 	case pathsFlag:
 		return parseValue(r, args, i, "<glob>", func(v string) { opts.paths = append(opts.paths, v) })
 	case formatFlag:
-		return parseFormat(r, args, i)
+		next, code, done := parseFormat(r, args, i)
+		opts.formatSet = !done
+		return next, code, done
 	default:
 		return i, r.ReportUsage(&cli.UsageError{Message: usageHandoff}), true
 	}
+}
+
+// formatPrecedence settles an explicit --format md against the JSON mode the
+// prefs phase derived: the flag beats REVIEW_OUTPUT_FORMAT and the compact
+// prefs file, the repo-wide order of flags over env over prefs. --json and
+// --format md on one command line are a contradiction, so the pair refuses
+// rather than letting one silently win.
+func formatPrecedence(r *cli.Runner, opts options) (int, bool) {
+	if !opts.formatSet {
+		return 0, false
+	}
+	if r.JSONPeeked {
+		return r.ReportUsage(&cli.UsageError{
+			Message: "--format md and --json ask for different output: pass one",
+		}), true
+	}
+	r.JSONMode = false
+	r.Output = core.FormatText
+	return 0, false
 }
 
 func parseValue(

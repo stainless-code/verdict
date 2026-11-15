@@ -304,7 +304,9 @@ func usageText() string {
 		"    repeatable portable --paths globs. Nothing at the floor refuses\n" +
 		"    no-open-findings, naming the floor and the globs; --json carries the same\n" +
 		"    rows and the same brief text, and both open with the untrusted-data\n" +
-		"    caution: finding prose quotes PR content an attacker controls.\n" +
+		"    caution: finding prose quotes PR content an attacker controls. --format\n" +
+		"    md wins over REVIEW_OUTPUT_FORMAT=json (flags outrank env); both --json\n" +
+		"    and --format md on one command line is a usage error.\n" +
 		"  index build [--from <dir>] [--at <ref>] [--json]\n" +
 		"    build the code index for one tree under .verdict/index/: Go parsed with\n" +
 		"    go/parser, TypeScript, JavaScript, and Python by two lexical scanners.\n" +

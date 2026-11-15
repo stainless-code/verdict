@@ -3110,7 +3110,10 @@ both verbs render it from one function.
 and the envelope also carry the same one-line caution, printed before any
 quoted prose: finding text quotes PR content an attacker controls, so it reads
 as evidence and never as instructions. `--format md` is the human output and the
-default, so the flag exists to say so explicitly. A bundle with nothing open at
+default, so the flag exists to say so explicitly — and, because flags outrank
+env, it also wins over a `REVIEW_OUTPUT_FORMAT=json` the job exports for every
+verb; spelling out both `--json` and `--format md` is a usage error rather than
+a silent winner. A bundle with nothing open at
 the floor refuses `no-open-findings` naming the floor (and the globs, when
 `--paths` scoped it) rather than printing an empty handoff. The MCP `handoff`
 tool serves the same `data` object as `handoff --json` and is read-only.

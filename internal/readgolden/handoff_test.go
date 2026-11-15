@@ -45,6 +45,10 @@ func handoffBelowFloor(t *testing.T, dir, _ string) {
 	})
 }
 
+// envJSON is the env-derived JSON mode a CI shell sets: a formatter or an
+// agent turns envelopes on for every verb in the job.
+var envJSON = map[string]string{"REVIEW_OUTPUT_FORMAT": "json"}
+
 func handoffArgs(flags ...string) []string {
 	return append([]string{"handoff", "acme/app", "local-x"}, flags...)
 }
@@ -62,4 +66,12 @@ func TestHandoffGolden(t *testing.T) {
 		handoffArgs("--min-severity", "blocker")...)
 	goldenRead(t, "handoff/bad-format", handoffMixed, nil, nil, handoffArgs("--format", "text")...)
 	goldenRead(t, "handoff/bad-flag", handoffMixed, nil, nil, handoffArgs("--sig", sigCrit)...)
+	// The env's JSON mode and an explicit --format md disagree; the flag wins,
+	// because flags outrank env everywhere else in the CLI.
+	goldenRead(t, "handoff/env-json", handoffMixed, envJSON, nil, handoffArgs()...)
+	goldenRead(t, "handoff/env-json-format-md", handoffMixed, envJSON, nil,
+		handoffArgs("--format", "md")...)
+	// Both spelled out on argv is a contradiction, not a silent winner.
+	goldenRead(t, "handoff/json-format-md", handoffMixed, nil, nil,
+		handoffArgs("--json", "--format", "md")...)
 }

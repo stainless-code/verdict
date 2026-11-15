@@ -17,7 +17,10 @@ envelope also carry one caution line, before any quoted prose, that finding text
 quotes PR content an attacker controls. `--min-severity` defaults to
 `important` (`off` for no floor) and repeatable portable `--paths` globs narrow
 the projection. Nothing open at the floor refuses `no-open-findings`, naming the
-floor and the globs.
+floor and the globs. `--format md` — the default — also beats a
+`REVIEW_OUTPUT_FORMAT=json` exported for the whole job, because flags outrank
+env; passing both `--json` and `--format md` is a usage error rather than a
+silent winner.
 
 The verb is read-only: no ledger, no patch, no store write, no host call. The
 MCP `handoff` tool serves the same `data` and is declared non-mutating; the Go
