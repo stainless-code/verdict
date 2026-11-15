@@ -677,6 +677,27 @@ func runRefusal(cfg *Config) error {
 	return err
 }
 
+// stubVerdict writes the binary a fixture run points at: a script that refuses
+// instead of becoming a verdict.
+//
+// A fixture must never name this test binary. newRunner falls back to the real
+// tool when no grader is injected, and that tool renders the prompt prefix by
+// running `fetch-local --show-prompts`; pointed at the test binary's own path,
+// the command re-executes the suite with arguments it ignores, so it re-runs
+// every test, reaches the same call, and recurses until the machine dies. A
+// stub makes that accident a loud failure naming the command instead.
+func stubVerdict(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "verdict")
+	writeFile(t, path, []byte("#!/bin/sh\n"+
+		`echo "bench test reached the real verdict binary: $*" >&2`+"\n"+
+		"exit 97\n"))
+	if err := os.Chmod(path, 0o755); err != nil {
+		t.Fatalf("chmod %s: %v", path, err)
+	}
+	return path
+}
+
 // benchConfig is a one-case fixture run.
 func benchConfig(t *testing.T, root, agent string) *Config {
 	t.Helper()
@@ -684,7 +705,7 @@ func benchConfig(t *testing.T, root, agent string) *Config {
 		K:       1,
 		Root:    root,
 		Corpus:  filepath.Join(root, "corpus"),
-		Verdict: os.Args[0],
+		Verdict: stubVerdict(t),
 		WorkDir: t.TempDir(),
 		Out:     filepath.Join(t.TempDir(), "run.json"),
 		Agent:   agent,
