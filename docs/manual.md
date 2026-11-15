@@ -771,6 +771,42 @@ Track your controls once so the base commit carries them — in a repo whose
 `.gitignore` admits them, `git add .verdict/config.json .verdict/kb.jsonl
 .verdict/learnings.md` (and any other control you use), then commit.
 
+## Defaults at a glance
+
+A bare run takes the defaults below; each is a floor that a matching flag, the
+`REVIEW_*` environment, `.verdict/config.json`, or the personal layer can
+replace, in that order ("Typed repository configuration" below has the detail).
+`verdict config <owner/repo> <pr> --explain` prints the values one run actually
+resolved and the layer each came from. `unset` means the floor sets nothing, so
+the behavior stays off until a layer above turns it on.
+
+<!-- defaults-at-a-glance:begin (generated; see internal/archtest/verbdefaults_test.go) -->
+
+| Verb                  | Knob                           | Built-in default |
+| --------------------- | ------------------------------ | ---------------- |
+| fetch, fetch-local    | defaults.budget_usd            | unset            |
+| fetch, fetch-local    | defaults.chunk                 | off              |
+| fetch, fetch-local    | defaults.effort                | standard         |
+| fetch, fetch-local    | defaults.kb_policy.max_chars   | unset            |
+| fetch, fetch-local    | defaults.max_bytes             | 512000           |
+| fetch, fetch-local    | defaults.panel                 | unset            |
+| gate                  | --coverage                     | require          |
+| gate                  | --live                         | auto             |
+| post                  | --bind                         | off              |
+| post                  | defaults.post_min_severity     | unset            |
+| record, triage, learn | defaults.kb_policy.max_fp_rate | 0.5              |
+| record, triage, learn | defaults.kb_policy.min_judged  | 5                |
+| report                | defaults.display_min_severity  | unset            |
+| run                   | --rounds                       | 1                |
+| run                   | --timeout                      | 300              |
+
+<!-- defaults-at-a-glance:end -->
+
+`post` binds an approval only when `--bind` is passed or the captured policy
+sets `requirements.require_bind`; `gate` needs one dimension
+(`--max-severity` or `--require-head`), so `--live` and `--coverage` carry a
+posture and never gate alone.
+
 ## Typed repository configuration
 
 `.verdict/config.json` is the only repository configuration file:
@@ -3926,7 +3962,13 @@ commit predates the cutoff, the span starts at the history root. A range too
 large to list in one capture refuses `window-too-large`, naming `--since`:
 narrow the span. In a shallow clone the run warns that an introducer at the
 clone boundary reads as `no-pr`; `git fetch --unshallow` removes the
-boundary.
+boundary. A partial clone (`git clone --filter=blob:none`) refuses
+`partial-clone` before the first blame: the clone holds the history but not the
+blobs, and blame fetches each missing blob in its own round-trip, so the run
+stalls on the network instead of finishing, whatever the remote is called.
+Clone without `--filter`, or unset the remote's `promisor` and
+`partialclonefilter` settings and run `git fetch --refetch` to repopulate the
+objects.
 
 The default run id is `<until-short-sha>-<since-slug>`. A duration keeps its
 digits and unit (`12w`); a hex commit id becomes its first seven characters; a

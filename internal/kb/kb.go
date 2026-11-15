@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -49,7 +50,7 @@ type Ctx struct {
 // New returns a Ctx with default thresholds.
 func New(warn func(string)) *Ctx {
 	c := &Ctx{
-		Policy: Policy{MinJudged: defaultMinJudged, MaxFPRate: defaultMaxFPRate},
+		Policy: builtinPolicy(),
 		Warn:   warn,
 	}
 	// The default reader resolves store names through Root exactly like every
@@ -86,7 +87,7 @@ var idRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,64}$`)
 // non-rate ceilings keep the built-in defaults instead of weakening
 // retirement.
 func PolicyFrom(minJudged int, maxFPRate string) Policy {
-	pol := Policy{MinJudged: defaultMinJudged, MaxFPRate: defaultMaxFPRate}
+	pol := builtinPolicy()
 	if minJudged > 0 {
 		pol.MinJudged = minJudged
 	}
@@ -94,6 +95,13 @@ func PolicyFrom(minJudged int, maxFPRate string) Policy {
 		pol.MaxFPRate = maxFPRate
 	}
 	return pol
+}
+
+func builtinPolicy() Policy {
+	return Policy{
+		MinJudged: config.BuiltinKBMinJudged,
+		MaxFPRate: strconv.FormatFloat(config.BuiltinKBMaxFPRate, 'f', -1, floatBits),
+	}
 }
 
 // isPositiveInt mirrors `[[ "$raw" =~ ^[0-9]+$ ]] && (( 10#$raw > 0 ))`.
@@ -264,8 +272,6 @@ func (c *Ctx) readJoins() ([]*jq.Obj, bool) {
 }
 
 const (
-	defaultMinJudged = 5
-	defaultMaxFPRate = "0.5"
-	floatBits        = 64
-	kbListCap        = 5
+	floatBits = 64
+	kbListCap = 5
 )

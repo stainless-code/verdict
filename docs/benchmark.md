@@ -147,8 +147,9 @@ One case, one manifest, published as
   (a bounds finding saying `len(` when the diff spells `len(`), so give the
   case a keyword that the diff does not spell. If no phrase is left,
   validation refuses the case and asks for that keyword. A real bundle must
-  carry a non-empty `full.diff`: `calibrate` refuses one that is missing,
-  empty, or unreadable instead of grading with the unfiltered built-ins, and
+  carry a `full.diff` that is a unified diff: `calibrate` refuses one that is
+  missing, empty, unreadable, or not a diff (no `@@` hunk header and no
+  `---`/`+++` pair) instead of grading with the unfiltered built-ins, and
   `trend` skips it with a warning.
 - `line_tolerance` (optional, default 1) is the window in lines. Keep it
   short of the far end of the new-side hunk that shows the bug: the corpus
@@ -503,6 +504,12 @@ stopped short.
 06b: it blames each later `fix:` or `Revert "..."` commit's deleted lines back
 to the merged or squash PR that introduced them and writes a deterministic
 `.verdict/backtest/<run>/mine.json` with zero model calls and zero network.
+Mine from a full clone: a partial one (`git clone --filter=blob:none`) holds the
+history but not the blobs, and blame fetches each missing blob in its own
+round-trip, so the run stalls on the network. `backtest mine` refuses
+`partial-clone` there rather than reading as a hang; clone without `--filter`, or
+unset the remote's promisor and `partialclonefilter` settings and run
+`git fetch --refetch`.
 The artifact is a candidate list, not a corpus, not a measurement, and not
 citable: SZZ blame is a hypothesis, every excluded fix is counted with a
 reason, and a fix can touch cleanup adjacent to the real bug. Use it to pick
@@ -930,6 +937,14 @@ per-class F1, which computes an F1 separately for each severity and averages
 those scores by class support. In the four-sample fixture, WTP=30, WFP=9,
 WFN=32, so pooled F1 is 60/101=.5941; support-weighted per-class F1 is
 7/18=.3889. Neither formula is substituted for the other.
+
+`calibrate` reads the sibling bundles beside the selected one to fill the
+first-k cohort. A sibling it cannot grade is dropped from that cohort and named
+in `warnings` (`corpus bundle "<path>" skipped from the cohort (<cause>)`), so a
+shrunken denominator is never silent — but only when the broken bundle would
+have joined this cohort: one that declares another case, another run, or
+another model or panel is another denominator, and its own breakage is not a
+loss to this rate.
 
 Legacy bundles without `corpus_run.json` are independent k=1 runs and resolve
 weights from the repository's typed config, falling back to 25/5/1.
