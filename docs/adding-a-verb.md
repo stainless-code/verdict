@@ -79,6 +79,12 @@ typecheck, and client tests.
 - `docs/manual.md`: the verb list under "Machine surface", the verb's own
   section (the `## Trend` or `## Local review` style heading), and the
   changelog line.
+- The `## Defaults at a glance` table in `docs/manual.md` is generated from
+  `config.BuiltinDefaults` and the flag parsers' defaults: a new typed default
+  adds its row there, a new defaulted flag adds one in `defaultsRows`
+  (`internal/archtest/verbdefaults_test.go`), then
+  `go test ./internal/archtest -run TestPublishedDefaultsTable -update` rewrites
+  the table. The guard fails when either side moves alone.
 - `CONTRIBUTING.md`: the "Verbs are:" list.
 - `.github/ISSUE_TEMPLATE/bug_report.yml` and `feature_request.yml`: the verb
   dropdown options.

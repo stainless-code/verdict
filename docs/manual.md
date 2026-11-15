@@ -771,6 +771,45 @@ Track your controls once so the base commit carries them — in a repo whose
 `.gitignore` admits them, `git add .verdict/config.json .verdict/kb.jsonl
 .verdict/learnings.md` (and any other control you use), then commit.
 
+## Defaults at a glance
+
+A bare run takes the defaults below. Each is a floor: a matching flag, then the
+`REVIEW_*` environment, then `.verdict/config.json`, then the personal settings
+layer can replace it ("Typed repository configuration" below has the layer
+order), and `verdict config <owner/repo> <pr> --explain` prints the values one
+run actually resolved with the layer each came from. `unset` means the floor
+sets nothing, so the behavior stays off until a layer above turns it on. The
+table is generated from the definitions the binary uses — the typed defaults
+registry and the flag parsers — so it cannot describe a default the shipped run
+does not take.
+
+<!-- defaults-at-a-glance:begin (generated; see internal/archtest/verbdefaults_test.go) -->
+
+| Verb                  | Knob                           | Built-in default |
+| --------------------- | ------------------------------ | ---------------- |
+| fetch, fetch-local    | defaults.budget_usd            | unset            |
+| fetch, fetch-local    | defaults.chunk                 | off              |
+| fetch, fetch-local    | defaults.effort                | standard         |
+| fetch, fetch-local    | defaults.kb_policy.max_chars   | unset            |
+| fetch, fetch-local    | defaults.max_bytes             | 512000           |
+| fetch, fetch-local    | defaults.panel                 | unset            |
+| gate                  | --coverage                     | require          |
+| gate                  | --live                         | auto             |
+| post                  | --bind                         | off              |
+| post                  | defaults.post_min_severity     | unset            |
+| record, triage, learn | defaults.kb_policy.max_fp_rate | 0.5              |
+| record, triage, learn | defaults.kb_policy.min_judged  | 5                |
+| report                | defaults.display_min_severity  | unset            |
+| run                   | --rounds                       | 1                |
+| run                   | --timeout                      | 300              |
+
+<!-- defaults-at-a-glance:end -->
+
+`post` binds an approval only when `--bind` is passed or the captured policy
+sets `requirements.require_bind`; `gate` needs one dimension
+(`--max-severity` or `--require-head`), so `--live` and `--coverage` carry a
+posture and never gate alone.
+
 ## Typed repository configuration
 
 `.verdict/config.json` is the only repository configuration file:

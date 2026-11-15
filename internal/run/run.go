@@ -36,13 +36,13 @@ type Request struct {
 	RepoRoot string
 }
 
-// defaultTimeoutS is the watchdog budget when --timeout is absent: the same
+// DefaultTimeoutS is the watchdog budget when --timeout is absent: the same
 // default verify gives the commands it spawns.
-const defaultTimeoutS = "300"
+const DefaultTimeoutS = "300"
 
-// defaultRounds is the launch-to-check round count when --rounds is absent:
+// DefaultRounds is the launch-to-check round count when --rounds is absent:
 // today's one-shot.
-const defaultRounds = "1"
+const DefaultRounds = "1"
 
 // roundsFlag, recipeFlag, and stageFlag are named once for the parser and the
 // usage line.
@@ -135,7 +135,7 @@ type flags struct {
 // parseFlags strips run's flags, reporting unknown ones. Every argument after a
 // bare `--` is the operator's business and is passed through unchanged.
 func parseFlags(r *cli.Runner, args []string) (flags, int, bool) {
-	f := flags{timeout: defaultTimeoutS, rounds: defaultRounds}
+	f := flags{timeout: DefaultTimeoutS, rounds: DefaultRounds}
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if a == "--" {
@@ -249,10 +249,10 @@ func flagTail(f *flags) string {
 	if f.recipe != "" {
 		s += " --recipe " + f.recipe
 	}
-	if f.timeout != defaultTimeoutS {
+	if f.timeout != DefaultTimeoutS {
 		s += " --timeout " + f.timeout
 	}
-	if f.rounds != defaultRounds && f.rounds != "" {
+	if f.rounds != DefaultRounds && f.rounds != "" {
 		s += " --rounds " + f.rounds
 	}
 	if f.print {

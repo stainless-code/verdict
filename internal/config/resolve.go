@@ -121,6 +121,54 @@ func Builtins() Partial {
 	}
 }
 
+// BuiltinDefault is one row of the built-in floor: the published defaults key,
+// the value the resolver starts from (nil when the floor sets none), and the
+// verbs whose bare run that value shapes.
+type BuiltinDefault struct {
+	Key   string
+	Value any
+	Verbs []string
+}
+
+// Verb spellings a built-in default row names.
+const (
+	verbFetch      = "fetch"
+	verbFetchLocal = "fetch-local"
+	verbPost       = "post"
+	verbReport     = "report"
+	verbRecord     = "record"
+	verbTriage     = "triage"
+	verbLearn      = "learn"
+)
+
+// BuiltinDefaults lists the built-in floor in the evidence key order, one row
+// per recognized defaults key. A published defaults table renders this list, so
+// a value moved in Builtins moves the table with it.
+func BuiltinDefaults() []BuiltinDefault {
+	floor := Builtins()
+	return []BuiltinDefault{
+		{Key: keyPanel, Value: floor.Panel, Verbs: []string{verbFetch, verbFetchLocal}},
+		{Key: keyBudgetUSD, Value: builtinValue(floor.BudgetUSD), Verbs: []string{verbFetch, verbFetchLocal}},
+		{Key: keyMaxBytes, Value: builtinValue(floor.MaxBytes), Verbs: []string{verbFetch, verbFetchLocal}},
+		{Key: keyChunk, Value: builtinValue(floor.Chunk), Verbs: []string{verbFetch, verbFetchLocal}},
+		{Key: keyEffort, Value: builtinValue(floor.Effort), Verbs: []string{verbFetch, verbFetchLocal}},
+		{Key: keyKBMinJudged, Value: builtinValue(floor.KBMinJudged), Verbs: []string{verbRecord, verbTriage, verbLearn}},
+		{Key: keyKBMaxFPRate, Value: builtinValue(floor.KBMaxFPRate), Verbs: []string{verbRecord, verbTriage, verbLearn}},
+		{Key: keyKBMaxChars, Value: builtinValue(floor.KBMaxChars), Verbs: []string{verbFetch, verbFetchLocal}},
+		{Key: keyDisplayFloor, Value: builtinValue(floor.DisplayMinSeverity), Verbs: []string{verbReport}},
+		{Key: keyPostFloor, Value: builtinValue(floor.PostMinSeverity), Verbs: []string{verbPost}},
+	}
+}
+
+// builtinValue lifts one optional floor value into a table cell: absent stays
+// absent instead of reading as a zero the floor never set.
+func builtinValue[T any](value *T) any {
+	if value == nil {
+		return nil
+	}
+	return *value
+}
+
 // FieldOrigin records the winning layer and the exact source that
 // supplied one effective field.
 type FieldOrigin struct {

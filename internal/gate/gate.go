@@ -21,7 +21,6 @@ import (
 type Request = readcommon.Request
 
 const (
-	liveAuto        = "auto"
 	liveStrict      = "strict"
 	statusPass      = "pass"
 	statusFail      = "fail"
@@ -35,7 +34,6 @@ const (
 	flagRequireHE   = "--require-head"
 	flagLive        = "--live"
 	flagCoverage    = "--coverage"
-	coverageRequire = "require"
 	coverageWarn    = "warn"
 	idCoverage      = "coverage"
 	idWidth         = 12 // longest dimension id: live_threads
@@ -46,6 +44,14 @@ const (
 	actionCoverage = "attest the unattested ranges in review.json (coverage[], or every " +
 		"chunk in chunks[] when the bundle is chunked), then re-record or re-post"
 )
+
+// DefaultLive is the --live posture a gate run starts from: the live thread
+// read is attempted and its absence is reported, never fatal.
+const DefaultLive = "auto"
+
+// DefaultCoverage is the --coverage posture a gate run starts from: the stored
+// attestation is part of the gate unless the operator opts out.
+const DefaultCoverage = "require"
 
 // Run executes `gate <owner/repo> <pr> [flags]`, returning the exit code.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
@@ -243,7 +249,7 @@ var gateActionsByID = map[string]func(status string) string{
 // --coverage defaults to require: the stored attestation is part of the gate
 // unless the operator opts out, the same way --live carries its posture.
 func parseFlags(r *cli.Runner, args []string) (reportcore.Flags, int, bool) {
-	flags := reportcore.Flags{Live: liveAuto, Coverage: coverageRequire}
+	flags := reportcore.Flags{Live: DefaultLive, Coverage: DefaultCoverage}
 	gated := false
 	i := 0
 	for i < len(args) {
@@ -331,7 +337,7 @@ func applyCoverage(r *cli.Runner, flags *reportcore.Flags, v string, consumed in
 
 func validLive(s string) bool {
 	switch s {
-	case liveAuto, liveStrict, "skip":
+	case DefaultLive, liveStrict, "skip":
 		return true
 	default:
 		return false
@@ -339,5 +345,5 @@ func validLive(s string) bool {
 }
 
 func validCoverage(s string) bool {
-	return s == coverageRequire || s == coverageWarn
+	return s == DefaultCoverage || s == coverageWarn
 }
