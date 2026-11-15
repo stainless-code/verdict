@@ -183,9 +183,10 @@ func usageText() string {
 		"    via --env-allowlist or base-snapshotted .verdict/verify-env; dropped names warn).\n" +
 		"    Runs in its own process group (timeout kills the tree); known secret values\n" +
 		"    are redacted from the recorded tail.\n" +
-		"    --sandbox runs the command under bwrap (Linux only) with no network, empty\n" +
-		"    ~/.aws, ~/.ssh, and ~/.config/gh, a writable reviewed root, and a private /tmp;\n" +
-		"    when bwrap cannot enforce that it refuses sandbox-unavailable and runs nothing.\n" +
+		"    --sandbox runs the command under an enforced sandbox: bwrap on Linux (no network,\n" +
+		"    empty ~/.aws and ~/.ssh, a writable reviewed root, a private /tmp), and\n" +
+		"    sandbox-exec on macOS (no network, loopback included; credentials stay visible).\n" +
+		"    A host that cannot enforce it refuses sandbox-unavailable and runs nothing.\n" +
 		"    Runs the agent's claimed proof — exit code becomes machine fact. No GitHub I/O.\n" +
 		"    Destructive, networked, credential-reading, and repo-escaping commands\n" +
 		"    refuse before execution as verify-destructive, verify-networked,\n" +

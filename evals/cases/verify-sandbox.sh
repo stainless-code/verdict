@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 #
-# verify --sandbox: on a host that can enforce bubblewrap the command runs
-# contained (no network, hidden credentials, writable repo, private /tmp);
-# on every other host the run refuses sandbox-unavailable and executes
+# verify --sandbox: on a host that can enforce a mechanism the command runs
+# contained — bubblewrap on Linux (no network, hidden credentials, writable
+# repo, private /tmp), sandbox-exec on macOS (no network, loopback included) —
+# and on every other host the run refuses sandbox-unavailable and executes
 # nothing. The refusal leg is a real leg, never a skip.
 #
 # EVAL_REQUIRE_SANDBOX=1 (the Linux CI lane) fails the case instead of
@@ -61,6 +62,20 @@ sandbox_works() {
     --tmpfs /run --unshare-net --new-session --die-with-parent -- true >/dev/null 2>&1
 }
 
+sandbox_exec_works() {
+  [ -x /usr/bin/sandbox-exec ] \
+    && /usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' true >/dev/null 2>&1
+}
+
+# mechanism is the runner this host enforces, or empty when it cannot.
+mechanism() {
+  if sandbox_works; then
+    printf 'bwrap'
+  elif sandbox_exec_works; then
+    printf 'sandbox-exec'
+  fi
+}
+
 # socket_dir is a directory under /run the runner can write: a unix socket
 # there is the route out --unshare-net does not close. Prefer
 # $XDG_RUNTIME_DIR (the session bus), then /run/user/<uid>, then /run/lock
@@ -116,21 +131,23 @@ refusal_leg() {
   else
     bad "refusal ran the command unsandboxed (sentinel present)"
   fi
-  if jq -r '.error.message // empty' <"$EVAL_OUT" | matches -i -E "bwrap|namespace"; then
-    good "refusal names the bwrap cause"
+  if jq -r '.error.message // empty' <"$EVAL_OUT" | matches -i -E "bwrap|namespace|enforced sandbox|sandbox-exec"; then
+    good "refusal names the mechanism cause"
   else
-    bad "refusal does not name the bwrap cause: $(head -c 200 "$EVAL_OUT")"
+    bad "refusal does not name the mechanism cause: $(head -c 200 "$EVAL_OUT")"
   fi
 }
 
-if ! sandbox_works; then
+MECH="$(mechanism)"
+if [ -z "$MECH" ]; then
   if [ "${EVAL_REQUIRE_SANDBOX:-0}" = "1" ]; then
-    bad "EVAL_REQUIRE_SANDBOX=1 but bwrap cannot create its namespaces"
+    bad "EVAL_REQUIRE_SANDBOX=1 but no sandbox mechanism can be enforced here"
   fi
   refusal_leg
   eval_end
   exit 0
 fi
+good "sandbox mechanism: $MECH"
 
 # The listener is the containment target: the unsandboxed run must reach it,
 # and every sandboxed run must leave it untouched.
@@ -226,12 +243,19 @@ if [ -f "$EVAL_SANDBOX/sandbox-both.txt" ] && [ "$(cat "$EVAL_SANDBOX/sandbox-bo
 else
   bad "/tmp write failed inside the sandbox"
 fi
-if [ ! -e "/tmp/sandbox-tmp.$UNIQ.txt" ]; then
-  good "/tmp is private (host does not see the child's file)"
+if [ "$MECH" = "bwrap" ]; then
+  if [ ! -e "/tmp/sandbox-tmp.$UNIQ.txt" ]; then
+    good "/tmp is private (host does not see the child's file)"
+  else
+    bad "/tmp is shared with the host"
+    rm -f "/tmp/sandbox-tmp.$UNIQ.txt"
+  fi
 else
-  bad "/tmp is shared with the host"
+  # macOS enforces the network half only: the host /tmp is writable by design.
   rm -f "/tmp/sandbox-tmp.$UNIQ.txt"
 fi
+
+bwrap_legs() {
 
 # Host PIDs and their environments are outside the sandbox. The canary is a
 # same-uid host process carrying a sentinel value: today its environment is
@@ -391,5 +415,11 @@ while IFS="$TAB" read -r id _ mode cmd; do
   fi
   assert_eq "$id leaves the listener untouched" 0 "$(hits)"
 done < "$EVAL_ROOT/evals/fixtures/verify-fuzz-corpus.tsv"
+
+}
+
+if [ "$MECH" = "bwrap" ]; then
+  bwrap_legs
+fi
 
 eval_end

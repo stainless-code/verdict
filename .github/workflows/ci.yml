@@ -605,6 +605,10 @@ jobs:
 
       - name: Run offline contract evals (built binary)
         shell: bash
+        env:
+          # The macOS lane must grade the sandbox-exec network legs, not the
+          # refusal fallback; a broken sandbox-exec fails here instead.
+          EVAL_REQUIRE_SANDBOX: "1"
         run: make evals
         # Builds bin/verdict, asserts it is executable (the suite fails here
         # rather than silently grading nothing), then runs every case
@@ -626,6 +630,16 @@ jobs:
           jq -e '[.cases[] | select(.name == "run-agent" and .status == "PASS")] | length == 1' \
             evals/results/summary.json
           echo "evals: run-agent PASS (stub agent, advisory gh stub, no model)"
+
+      - name: Prove the verify sandbox containment case ran
+        shell: bash
+        run: |
+          # A refusal-only pass would keep the lane green without proving
+          # isolation, so the macOS job re-reads the summary and fails when
+          # the case was deleted, renamed, or skipped.
+          jq -e '[.cases[] | select(.name == "verify-sandbox" and .status == "PASS")] | length == 1' \
+            evals/results/summary.json
+          echo "evals: verify-sandbox PASS (sandbox-exec network legs, macOS)"
 
       - name: Upload the eval summary (kept on a failed run)
         if: ${{ !cancelled() }}
