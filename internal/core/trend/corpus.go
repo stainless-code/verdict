@@ -50,7 +50,7 @@ func (st *state) readCorpus(dir string) {
 		st.warn(skipWarn + "corpus bundle " + dir + "/ (" + err.Error() + ")")
 		return
 	}
-	report := corpuscore.Evaluate(c, entries)
+	report := corpuscore.EvaluateDir(dir, c, entries)
 	sample, ref := corpuscore.LoadSample(dir, report)
 	if ref != nil {
 		st.warn(skipWarn + "corpus bundle " + dir + "/ (" + ref.Message + ")")

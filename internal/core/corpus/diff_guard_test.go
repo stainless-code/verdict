@@ -56,10 +56,32 @@ const kindPhraseDiff = `diff --git a/parse.go b/parse.go
  	return
 `
 
+// raceDiff carries a race category phrase in a comment, the shape a real
+// race-fix diff has; the case must still load because the curator cannot edit
+// the built-in table.
+const raceDiff = `diff --git a/pool.go b/pool.go
+--- a/pool.go
++++ b/pool.go
+@@ -44,2 +44,3 @@ func borrow() *Conn {
++	// the goroutine closes the conn after the pool takes it back
++	c := pool.get()
+ return c
+`
+
+// raceAllDiff spells every built-in phrase the race category answers to, so a
+// keyword-free race case has nothing left to grade with.
+const raceAllDiff = `diff --git a/pool.go b/pool.go
+--- a/pool.go
++++ b/pool.go
+@@ -44,2 +44,3 @@ func borrow() *Conn {
++	// goroutine race concurrent: wait for the close before reuse
++	c := pool.get()
+ return c
+`
+
 // TestCheckDiffRefusesDiffVocabulary pins the vocabulary guard from both
-// sides: a phrase the diff spells as a word, a selector part, or a longer
-// identifier's prefix is refused, and a phrase that only shares letters inside
-// an identifier is kept.
+// sides: a curator keyword the diff spells is refused, a built-in phrase it
+// spells is filtered instead, and a case left with no phrase at all is refused.
 func TestCheckDiffRefusesDiffVocabulary(t *testing.T) {
 	for _, tc := range keywordGuardRows {
 		t.Run(tc.name, func(t *testing.T) { checkGuardRow(t, tc) })
@@ -123,8 +145,10 @@ var keywordGuardRows = []*guardRow{
 	{name: "inside a longer identifier", keywords: []string{"ntharg"}, line: 93},
 	{name: "a word the diff comments", refuse: "empty source", keywords: []string{"empty source", "thrown away"}, line: 93},
 	{name: "prose the diff never spells", keywords: []string{"the check runs too late", "boundary check", "swallowed"}, line: 93},
-	{name: "category phrase the diff comments", refuse: "\"nil check\"", bugKind: "nil-deref", diff: nilCheckDiff, path: "session.go", keywords: []string{"dereference before the lookup"}, line: 50},
-	{name: "kind phrase the diff comments", refuse: "\"validation bypass\"", diff: kindPhraseDiff, path: "parse.go", keywords: []string{"the exemption ignores the required flag"}, line: 10},
+	{name: "built-in category phrase the diff comments", bugKind: "nil-deref", diff: nilCheckDiff, path: "session.go", keywords: []string{"dereference before the lookup"}, line: 50},
+	{name: "built-in kind phrase the diff comments", diff: kindPhraseDiff, path: "parse.go", keywords: []string{"the exemption ignores the required flag"}, line: 10},
+	{name: "race case whose diff comments goroutine", bugKind: "race", diff: raceDiff, path: "pool.go", keywords: []string{"data race"}, line: 45},
+	{name: "no usable phrase", refuse: "add a keyword the diff does not spell", bugKind: "race", diff: raceAllDiff, path: "pool.go", line: 45},
 	{name: "seeded case, its own diff", kind: "seeded", keywords: []string{"stoponntharg"}, line: 93},
 	{name: "control, no bugs", kind: "control", keywords: []string{"stoponntharg"}, line: 93},
 }

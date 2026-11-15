@@ -27,9 +27,10 @@ deliberately simple and published:
   hyphen or space form (`off-by-one`, `off by one`), a phrase from the
   published category vocabulary for that kind (see below), or a phrase from
   the bug's optional `keywords`. The finding text and every phrase are
-  normalized the same way — lower-cased, whitespace-folded, and with the
-  spaces around a selector dot removed — and a phrase must start a word, so
-  `race` does not match inside `trace`.
+  normalized the same way — lower-cased, whitespace-folded, and a spaced
+  selector dot folded — and a phrase must start a word, so `race` does not
+  match inside `trace`. A real case grades only with the built-in phrases its
+  own diff does not spell.
 - A finding that matches through an alternate anchor counts the same bug:
   one bug is one true positive no matter how many of its lines a review
   names, and the reported match keeps the primary line.
@@ -132,11 +133,15 @@ One case, one manifest, published as
   and line window, but a keyword nobody would write turns true positives
   into false ones. The bug's `kind` and its category vocabulary always name
   it too, so a case with no keywords is matched on `kind` and category.
-  Validation refuses any of those phrases — keyword, `kind`, or category —
-  that the case's own `full.diff` spells: at a word start, including as the
-  prefix of a longer identifier (`help` in `helpName`) and as one part of a
-  split or spaced selector (`cmd`, `name`, or `cmd .Name` against
-  `cmd.Name`). The patch's own vocabulary is not the reviewer's.
+  Validation refuses a keyword the case's own `full.diff` spells: at a word
+  start, including as the prefix of a longer identifier (`help` in
+  `helpName`) and as one part of a split or spaced selector (`cmd`, `name`,
+  or `cmd .Name` against `cmd.Name`), because the patch's own words are not
+  the reviewer's. A built-in phrase — the `kind` in either form or one from
+  the category table — that the diff spells is dropped from that case's
+  grading instead of refusing the case, because the curator cannot change the
+  table; if no phrase is left, validation refuses the case and asks for a
+  keyword the diff does not spell.
 - `line_tolerance` (optional, default 1) is the window in lines. Keep it
   short of the far end of the new-side hunk that shows the bug: the corpus
   test refuses a case whose window covers the whole hunk.

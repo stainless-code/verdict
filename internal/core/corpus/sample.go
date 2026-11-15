@@ -149,7 +149,7 @@ func cohortSibling(dir string, selected *Sample) (Sample, bool) {
 	if err != nil {
 		return Sample{}, false
 	}
-	s, ref := LoadSample(dir, Evaluate(c, entries))
+	s, ref := LoadSample(dir, EvaluateDir(dir, c, entries))
 	if ref != nil {
 		return Sample{}, false
 	}

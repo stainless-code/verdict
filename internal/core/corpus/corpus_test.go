@@ -166,15 +166,15 @@ func checkFixtures(t *testing.T, name, dir string, c *core.CorpusCase, index []h
 		entries = append(entries, checkAgent(t, filepath.Join(dir, "agents", agent.Name()), index, c.Kind == "control")...)
 	}
 	if len(entries) > 0 {
-		checkNamedBugs(t, name, c, entries)
+		checkNamedBugs(t, name, dir, c, entries)
 	}
 }
 
 // checkNamedBugs holds the corpus to its own rule: a fake output must name
 // each ground-truth bug, or the case grades every model wrong.
-func checkNamedBugs(t *testing.T, name string, c *core.CorpusCase, entries []any) {
+func checkNamedBugs(t *testing.T, name, dir string, c *core.CorpusCase, entries []any) {
 	t.Helper()
-	if rep := Evaluate(c, entries); rep.Matched != len(c.Bugs) {
+	if rep := EvaluateDir(dir, c, entries); rep.Matched != len(c.Bugs) {
 		t.Errorf("%s: the fake outputs match %d of %d ground-truth bugs; add the words a reviewer would use to the bug's keywords",
 			name, rep.Matched, len(c.Bugs))
 	}
@@ -538,6 +538,8 @@ func TestCategoryVocabulary(t *testing.T) {
 		{"kind text", core.CorpusBug{Kind: "off-by-one"}, "This is an off by one in the bound.", true},
 		{"case keyword", core.CorpusBug{Kind: "custom-kind", Keywords: []string{"cache key"}}, "Two requests share a cache key.", true},
 		{"sentence opens with the keyword", core.CorpusBug{Kind: "custom-kind", Keywords: []string{"empty positional"}}, "Empty positional: the loop breaks before the boundary check.", true},
+		{"sentence dot does not glue to the next word", core.CorpusBug{Kind: "custom-kind", Keywords: []string{"ignored.name"}}, "The error is ignored. Name the flag.", false},
+		{"spaced selector still folds", core.CorpusBug{Kind: "custom-kind", Keywords: []string{"cmd.name"}}, "The selector cmd .Name is wrong.", true},
 		{"wrong defect", core.CorpusBug{Kind: "off-by-one"}, "Consider renaming this loop variable.", false},
 		{"glued word", core.CorpusBug{Kind: "race"}, "This brace style is inconsistent.", false},
 		{"generic auth word", core.CorpusBug{Kind: "auth-bypass"}, "Rename the admin variable to match its role.", false},

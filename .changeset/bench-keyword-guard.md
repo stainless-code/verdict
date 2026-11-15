@@ -2,8 +2,10 @@
 "@stainless-code/verdict": patch
 ---
 
-Refuse every vocabulary escape in a real corpus case's own diff: a keyword that
-is one part of a split selector, a spaced selector, a prefix of a longer
-identifier, or the bug's kind or category phrase is no longer a free pass.
-Normalize a finding's text before matching its keywords, so a phrase that opens
-a sentence ("Empty positional: ...") still names the defect.
+Refuse a corpus keyword the case's own diff spells, including as one part of a
+split selector, a spaced selector, or a prefix of a longer identifier. The
+built-in `kind` and category phrases the diff spells are instead dropped from
+that case's grading, so race and bounds cases stay curatable; a case left with
+no phrase is refused and asks for a keyword the diff does not spell. Grading
+also normalizes the finding's text, so a phrase that opens a sentence
+("Empty positional: ...") still names the defect.

@@ -72,6 +72,8 @@ const (
 	kindReal    = "real"
 	// decimalBase is the radix atoi folds a hunk header's digits in.
 	decimalBase = 10
+	// space is the separator normalize folds and a selector dot may cross.
+	space = " "
 )
 
 // IsDir reports whether dir names a marked corpus bundle: the last
@@ -292,28 +294,43 @@ func CheckDiff(raw, diff []byte, path string) *core.RefusalError {
 	if c.Provenance.Kind != kindReal {
 		return nil
 	}
-	if ref := unusableKeyword(&c, diff, path); ref != nil {
+	if ref := unusableVocabulary(&c, diff, path); ref != nil {
 		return ref
 	}
 	return unaddedAnchor(&c, diff, path)
 }
 
-// unusableKeyword names the first defect phrase the diff spells, if any: a
-// keyword, the bug's kind, or a phrase from its published category. Each one
-// names the defect in grading, so each one lifted from the patch is the same
-// free pass.
-func unusableKeyword(c *core.CorpusCase, diff []byte, path string) *core.RefusalError {
+// unusableVocabulary refuses a case whose curator keyword the diff spells, or
+// whose bug has no phrase left once the built-in phrases the diff spells are
+// dropped. A built-in phrase is filtered rather than refused because the
+// curator cannot change the category table; a keyword is refused because the
+// curator can.
+func unusableVocabulary(c *core.CorpusCase, diff []byte, path string) *core.RefusalError {
 	text := normalize(string(diff))
 	for i := range c.Bugs {
-		for _, phrase := range defectPhrases(&c.Bugs[i]) {
-			if containsPhrase(text, normalize(phrase)) {
-				return invalid(path, fmt.Sprintf(
-					"bug %d phrase %q is spelled by the case's own full.diff; "+
-						"name the defect in words instead of reusing the diff's words", i+1, phrase))
-			}
+		b := &c.Bugs[i]
+		if keyword, ok := spelledKeyword(b, text); ok {
+			return invalid(path, fmt.Sprintf(
+				"bug %d keyword %q is spelled by the case's own full.diff; "+
+					"name the defect in words instead of reusing the diff's words", i+1, keyword))
+		}
+		if len(unspelledPhrases(b, text)) == 0 {
+			return invalid(path, fmt.Sprintf(
+				"bug %d has no phrase its own full.diff does not spell; "+
+					"add a keyword the diff does not spell", i+1))
 		}
 	}
 	return nil
+}
+
+// spelledKeyword is the first keyword the normalized diff spells, if any.
+func spelledKeyword(b *core.CorpusBug, text string) (string, bool) {
+	for _, keyword := range b.Keywords {
+		if containsPhrase(text, normalize(keyword)) {
+			return keyword, true
+		}
+	}
+	return "", false
 }
 
 // unaddedAnchor names the first anchor the diff does not add. A bug's window
@@ -477,9 +494,28 @@ type Report struct {
 // to the body is never a true positive: the line claim was withdrawn, so the
 // text is graded as the note it became. The tool-generated moved section is
 // skipped: it is record's own wording, and the comments it lists are graded
-// from the moved entries themselves.
+// from the moved entries themselves. A real case drops the built-in phrases
+// its own diff spells, so the patch's vocabulary never names its defect.
 func Evaluate(c *core.CorpusCase, entries []any) *Report {
+	return evaluate(c, entries, nil)
+}
+
+// EvaluateWithDiff grades entries against a real case whose reviewed diff is
+// known; callers that have the manifest but not the diff keep the full
+// vocabulary.
+func EvaluateWithDiff(c *core.CorpusCase, entries []any, diff []byte) *Report {
+	return evaluate(c, entries, diff)
+}
+
+// EvaluateDir grades a bundle, reading the reviewed full.diff beside its
+// corpus.json so the built-in phrases the diff spells are filtered.
+func EvaluateDir(dir string, c *core.CorpusCase, entries []any) *Report {
+	return evaluate(c, entries, bundleDiff(dir))
+}
+
+func evaluate(c *core.CorpusCase, entries []any, diff []byte) *Report {
 	tol := Tolerance(c)
+	phrases := usablePhrases(c, diff)
 	used := make([]bool, len(c.Bugs))
 	rep := &Report{Case: c, Outcomes: make([]Outcome, 0, len(entries))}
 	for _, e := range entries {
@@ -487,12 +523,40 @@ func Evaluate(c *core.CorpusCase, entries []any) *Report {
 			continue
 		}
 		rep.Reported++
-		out, bug := grade(e, c.Bugs, used, tol)
+		out, bug := grade(e, c.Bugs, phrases, used, tol)
 		rep.Outcomes = append(rep.Outcomes, out)
 		tallyOutcome(rep, used, bug)
 	}
 	collectMissed(rep, c.Bugs, used)
 	return rep
+}
+
+// usablePhrases is each bug's defect-naming vocabulary. A real case drops the
+// built-in phrases its own diff spells; a synthetic or diff-less case keeps
+// the full set.
+func usablePhrases(c *core.CorpusCase, diff []byte) [][]string {
+	sets := make([][]string, len(c.Bugs))
+	for i := range c.Bugs {
+		sets[i] = defectPhrases(&c.Bugs[i])
+	}
+	if diff == nil || c.Provenance.Kind != kindReal {
+		return sets
+	}
+	text := normalize(string(diff))
+	for i := range c.Bugs {
+		sets[i] = unspelledPhrases(&c.Bugs[i], text)
+	}
+	return sets
+}
+
+// bundleDiff reads the reviewed diff a corpus bundle carries beside its
+// manifest; a legacy or synthetic bundle without one keeps the full vocabulary.
+func bundleDiff(dir string) []byte {
+	raw, err := os.ReadFile(filepath.Join(dir, "full.diff"))
+	if err != nil {
+		return nil
+	}
+	return raw
 }
 
 func tallyOutcome(rep *Report, used []bool, bug int) {
@@ -512,7 +576,7 @@ func collectMissed(rep *Report, bugs []core.CorpusBug, used []bool) {
 	}
 }
 
-func grade(e any, bugs []core.CorpusBug, used []bool, tol int) (Outcome, int) {
+func grade(e any, bugs []core.CorpusBug, phrases [][]string, used []bool, tol int) (Outcome, int) {
 	out := Outcome{Result: ResultFalsePositive, Reason: ReasonUnanchored, BugIndex: -1}
 	m, ok := e.(*jq.Obj)
 	if !ok || m == nil {
@@ -531,7 +595,7 @@ func grade(e any, bugs []core.CorpusBug, used []bool, tol int) (Outcome, int) {
 		out.Reason = ReasonMovedToBody
 		return out, -1
 	}
-	i, reason := matchBug(out.Path, out.Line, findingText(m), bugs, used, tol)
+	i, reason := matchBug(out.Path, out.Line, findingText(m), bugs, phrases, used, tol)
 	if i < 0 {
 		out.Reason = reason
 		return out, -1
@@ -601,14 +665,14 @@ func findingText(m *jq.Obj) string {
 
 // matchBug returns the first unused bug in the line window whose defect the
 // finding names, plus the reason the match failed when there is none.
-func matchBug(path string, line int, text string, bugs []core.CorpusBug, used []bool, tol int) (int, string) {
+func matchBug(path string, line int, text string, bugs []core.CorpusBug, phrases [][]string, used []bool, tol int) (int, string) {
 	window := windowBugs(path, line, bugs, tol)
 	for _, i := range window {
-		if !used[i] && namesDefect(text, &bugs[i]) {
+		if !used[i] && namesDefectPhrases(text, phrases[i]) {
 			return i, ""
 		}
 	}
-	return -1, missReason(window, text, bugs, used)
+	return -1, missReason(window, text, phrases, used)
 }
 
 // windowBugs is the indices of the bugs on path whose primary line or any
@@ -644,14 +708,14 @@ func withinAnchors(line int, b *core.CorpusBug, tol int) bool {
 // missReason names why no bug in the window matched: there was none, the
 // finding names a bug already counted, one sat there unnamed, or every bug in
 // the window was already counted.
-func missReason(window []int, text string, bugs []core.CorpusBug, used []bool) string {
+func missReason(window []int, text string, phrases [][]string, used []bool) string {
 	if len(window) == 0 {
 		return ReasonOffLine
 	}
 	reason := ReasonAlreadyMatched
 	for _, i := range window {
 		switch {
-		case used[i] && namesDefect(text, &bugs[i]):
+		case used[i] && namesDefectPhrases(text, phrases[i]):
 			return ReasonAlreadyMatched
 		case !used[i]:
 			reason = ReasonUnnamed
@@ -660,18 +724,38 @@ func missReason(window []int, text string, bugs []core.CorpusBug, used []bool) s
 	return reason
 }
 
-// namesDefect reports whether text names the bug's defect: its kind in hyphen
-// or space form, a phrase the kind's category answers to, or a phrase the case
-// pins as a keyword. The text is normalized like the phrases, so a phrase that
-// opens a sentence ("Empty positional: ...") still matches its lower-case form.
+// namesDefect reports whether text names the bug's defect with its full
+// vocabulary: its kind in hyphen or space form, a phrase the kind's category
+// answers to, or a phrase the case pins as a keyword.
 func namesDefect(text string, b *core.CorpusBug) bool {
+	return namesDefectPhrases(text, defectPhrases(b))
+}
+
+// namesDefectPhrases reports whether text names the defect with one of
+// phrases. The text is normalized like the phrases, so a phrase that opens a
+// sentence ("Empty positional: ...") still matches its lower-case form.
+func namesDefectPhrases(text string, phrases []string) bool {
 	text = normalize(text)
-	for _, phrase := range defectPhrases(b) {
+	for _, phrase := range phrases {
 		if containsPhrase(text, normalize(phrase)) {
 			return true
 		}
 	}
 	return false
+}
+
+// unspelledPhrases are the defect phrases a normalized diff does not spell.
+// A real case's grading vocabulary drops the ones it does: the built-ins
+// belong to the published table, so a diff that carries one must not name the
+// defect.
+func unspelledPhrases(b *core.CorpusBug, text string) []string {
+	var out []string
+	for _, phrase := range defectPhrases(b) {
+		if !containsPhrase(text, normalize(phrase)) {
+			out = append(out, phrase)
+		}
+	}
+	return out
 }
 
 // defectPhrases are the names a finding can call the bug: the kind, the
@@ -739,19 +823,41 @@ func containsPhrase(text, phrase string) bool {
 	return false
 }
 
-// normalize lowers, folds whitespace, and trims the spaces a writer may put
-// around a selector dot, so "cmd .Name" and "cmd.Name" are one phrase.
+// normalize lowers, folds whitespace, and folds a spaced selector dot, so
+// "cmd .Name" and "cmd.Name" are one phrase.
 func normalize(s string) string {
-	return foldDots(strings.Join(strings.Fields(strings.ToLower(s)), " "))
+	return foldDots(strings.Join(strings.Fields(strings.ToLower(s)), space))
 }
 
-// foldDots trims the whitespace around each dot.
+// foldDots joins a dot written with a space before it when identifier parts sit
+// on both sides, so "cmd .Name" becomes "cmd.Name". A sentence's dot has no
+// space before it, so its following space stays: "ignored. Name" never becomes
+// "ignored.name".
 func foldDots(s string) string {
 	parts := strings.Split(s, ".")
-	for i := range parts {
-		parts[i] = strings.TrimSpace(parts[i])
+	for i := 1; i < len(parts); i++ {
+		left := parts[i-1]
+		if !strings.HasSuffix(left, space) || !identEnd(left) || !identStart(parts[i]) {
+			continue
+		}
+		parts[i-1] = strings.TrimRight(left, space)
+		parts[i] = strings.TrimLeft(parts[i], space)
 	}
 	return strings.Join(parts, ".")
+}
+
+func identEnd(s string) bool {
+	t := strings.TrimRight(s, space)
+	return t != "" && identPart(t[len(t)-1])
+}
+
+func identStart(s string) bool {
+	t := strings.TrimLeft(s, space)
+	return t != "" && identPart(t[0])
+}
+
+func identPart(b byte) bool {
+	return wordByte(b) || b == '_'
 }
 
 // wordByte is the lower-case letter or digit a phrase may not be glued to.
