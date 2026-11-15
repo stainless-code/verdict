@@ -1,0 +1,36 @@
+{
+  "schema_version": "1",
+  "id": "bubbletea-848-window-title-msg-unhandled",
+  "kind": "real",
+  "language": "go",
+  "provenance": {
+    "kind": "real",
+    "repo": "charmbracelet/bubbletea",
+    "pr": 848,
+    "base_sha": "21eecd586367fd0cd78da6842c48f9c4b1185b6f",
+    "head_sha": "9e0e8f0df1c55044ed04bd17f4b460e01e94dc9c",
+    "fix_commit": "https://github.com/charmbracelet/bubbletea/commit/9edf69c677c7353eca5fae6d3ea3986af39717b7",
+    "source": "PR #848 fix: recover from nested panics in Sequence and Batch commands, merged 2025-09-11",
+    "note": "introduced by the PR: it extracted the batch and sequence code into execBatchMsg and execSequenceMsg and, in the same move, dropped the setWindowTitleMsg and windowSizeMsg cases the loop used to handle; the later fix re-adds both under the switch and says it fixes this merge. A SetWindowTitle command now falls through to Update and the title is never written, and a WindowSize command never re-checks the terminal size"
+  },
+  "bugs": [
+    {
+      "path": "tea.go",
+      "line": 479,
+      "kind": "unhandled-internal-message",
+      "severity": "important",
+      "keywords": [
+        "never reaches the renderer",
+        "falls through to the user's Update",
+        "window title is never set",
+        "title command is silently dropped",
+        "resize check never runs",
+        "the switch lost its internal cases",
+        "internal messages are no longer handled",
+        "terminal title never changes"
+      ],
+      "note": "the switch in eventLoop handles QuitMsg, the renderer messages, execMsg, BatchMsg and sequenceMsg, and nothing else: the window title and window size messages it no longer names fall through to model.View's caller, so the OSC 2 title sequence is never emitted and go p.checkResize() never runs",
+      "also_lines": [478]
+    }
+  ]
+}

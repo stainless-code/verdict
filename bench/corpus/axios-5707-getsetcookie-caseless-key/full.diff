@@ -1,0 +1,52 @@
+diff --git a/index.d.ts b/index.d.ts
+index 232a4a35..e968ce82 100644
+--- a/index.d.ts
++++ b/index.d.ts
+@@ -74,6 +74,8 @@ export class AxiosHeaders {
+   getAuthorization(matcher?: AxiosHeaderMatcher): AxiosHeaderValue;
+   hasAuthorization(matcher?: AxiosHeaderMatcher): boolean;
+ 
++  getSetCookie(): string[];
++
+   [Symbol.iterator](): IterableIterator<[string, AxiosHeaderValue]>;
+ }
+ 
+diff --git a/lib/core/AxiosHeaders.js b/lib/core/AxiosHeaders.js
+index 7b576e9e..2212f77c 100644
+--- a/lib/core/AxiosHeaders.js
++++ b/lib/core/AxiosHeaders.js
+@@ -245,6 +245,10 @@ class AxiosHeaders {
+     return Object.entries(this.toJSON()).map(([header, value]) => header + ': ' + value).join('\n');
+   }
+ 
++  getSetCookie() {
++    return this["set-cookie"] || [];
++  }
++
+   get [Symbol.toStringTag]() {
+     return 'AxiosHeaders';
+   }
+diff --git a/test/unit/core/AxiosHeaders.js b/test/unit/core/AxiosHeaders.js
+index bc751233..e4e577b3 100644
+--- a/test/unit/core/AxiosHeaders.js
++++ b/test/unit/core/AxiosHeaders.js
+@@ -423,4 +423,19 @@ describe('AxiosHeaders', function () {
+       assert.deepStrictEqual(new AxiosHeaders({x:1, y:2}).toString(), 'x: 1\ny: 2');
+     });
+   });
++
++  describe('getSetCookie', function () {
++    it('should return set-cookie', function () {
++      const headers = new AxiosHeaders(
++        'Set-Cookie: key=val;\n' +
++        'Set-Cookie: key2=val2;\n'
++      );
++
++      assert.deepStrictEqual(headers.getSetCookie(), ['key=val;', 'key2=val2;']);
++    });
++
++    it('should return empty set-cookie', function () {
++      assert.deepStrictEqual(new AxiosHeaders().getSetCookie(), []);
++    });
++  });
+ });

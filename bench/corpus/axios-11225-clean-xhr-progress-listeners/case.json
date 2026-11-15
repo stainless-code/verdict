@@ -1,0 +1,16 @@
+{
+  "schema_version": "1",
+  "id": "axios-11225-clean-xhr-progress-listeners",
+  "kind": "control",
+  "language": "javascript",
+  "provenance": {
+    "kind": "real",
+    "repo": "axios/axios",
+    "pr": 11225,
+    "base_sha": "790b2ca8b6d8486dde3ce54cda20990ba91b0831",
+    "head_sha": "b16dd7787807f7f15e5fb1a3e39b7d190c312b2e",
+    "source": "PR #11225 fix(xhr): remove progress event listeners on request completion, squash-merged 2026-10-15 as b16dd7787",
+    "note": "Clean control: the XHR adapter now detaches its download and upload progress listeners in `done()`, reporting a throwing final progress callback asynchronously and skipping the detach when a flush already re-entered completion. Checked in the clone at 530adb0aa: `git rev-list b16dd7787..HEAD -- lib/adapters/xhr.js tests/browser/progress.browser.test.js tests/unit/adapters/xhr.test.js` is empty and each of those files' last commit is b16dd7787 itself, so no later fix or revert can reach a line the PR added. Only PRE_RELEASE_CHANGELOG.md moved afterwards, and no commit reverts or re-references #11225."
+  },
+  "bugs": []
+}
