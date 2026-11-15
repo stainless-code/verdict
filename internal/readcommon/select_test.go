@@ -6,8 +6,6 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// selectEntry renders one finding whose path, severity, status, and kind are
-// the axis a selector row varies.
 func selectEntry(sig, status, severity, path, kind string) string {
 	return `{"kind":"` + kind + `","path":"` + path + `","side":"RIGHT","line":2,` +
 		`"anchored":true,"body":"Body here with enough substance.","suggestion":null,` +
@@ -16,7 +14,6 @@ func selectEntry(sig, status, severity, path, kind string) string {
 		`"rationale":"","history":[]}`
 }
 
-// selectFixture is the shared store: one finding per selection axis.
 var selectFixture = "[" +
 	selectEntry("crit", "open", "critical", "app.txt", "inline") + "," +
 	selectEntry("imp", "open", "important", "src/a.go", "inline") + "," +
@@ -25,8 +22,6 @@ var selectFixture = "[" +
 	selectEntry("section", "open", "critical", "src/d.go", "section") + "," +
 	selectEntry("done", "addressed", "critical", "src/e.go", "inline") + "]"
 
-// TestSelect proves the one selection rule every fix mode shares: the
-// status/kind filters, the severity floor, the path globs, and the sig list.
 func TestSelect(t *testing.T) {
 	t.Parallel()
 	entries := mustEntries(t, selectFixture)
@@ -111,7 +106,6 @@ func TestSelect(t *testing.T) {
 	}
 }
 
-// assertSigs compares one selection's sigs against the literal expectation.
 func assertSigs(t *testing.T, ranked []readcommon.Ranked, want []string) {
 	t.Helper()
 	got := rankSigs(ranked)
@@ -125,9 +119,6 @@ func assertSigs(t *testing.T, ranked []readcommon.Ranked, want []string) {
 	}
 }
 
-// TestSelectFloorLeavesUntaggedProvesFloorIsNotASecondRank pins the untagged
-// rule against the published floor semantics: a severity the vocabulary
-// cannot place is never withheld.
 func TestSelectFloorLeavesUntagged(t *testing.T) {
 	t.Parallel()
 	entries := mustEntries(t, "["+
@@ -141,9 +132,6 @@ func TestSelectFloorLeavesUntagged(t *testing.T) {
 	}
 }
 
-// TestSelectKeepsStoreRanks proves a selection reports the store-wide rank
-// numbers, not a renumbered list: a selected finding's rank keeps saying how
-// many fixable findings sit above it.
 func TestSelectKeepsStoreRanks(t *testing.T) {
 	t.Parallel()
 	entries := mustEntries(t, selectFixture)
@@ -161,7 +149,6 @@ func TestSelectKeepsStoreRanks(t *testing.T) {
 	}
 }
 
-// rankNumbers renders one ranking's rank column.
 func rankNumbers(ranked []readcommon.Ranked) []int {
 	out := make([]int, 0, len(ranked))
 	for _, r := range ranked {

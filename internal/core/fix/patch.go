@@ -12,29 +12,16 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// The patch output's refusal text and refusal code.
 const (
-	// codePatchSecret refuses a patch that would write a credential value
-	// into the bundle, where every later agent run reads it.
 	codePatchSecret = "fix-patch-secret"
-	// codeFixFailed refuses a bundle or worktree the pass cannot read or write.
-	codeFixFailed = "fix-failed"
-	// msgPatchSecret names where the patch would land and which shapes it
-	// carries, never the matched bytes: the shape alone says what to rotate.
-	msgPatchSecret = "fix.patch would carry a secret-shaped value (%s) — " +
+	codeFixFailed   = "fix-failed"
+	msgPatchSecret  = "fix.patch would carry a secret-shaped value (%s) — " +
 		"remove it from the worktree (rotate it if it was real), then re-run; " +
 		"the pass was not recorded and %s was not written"
-	// msgPatchDiff refuses a worktree the diff command could not read.
 	msgPatchDiff = "fix: could not diff the worktree against HEAD (%v) — " +
 		"fix.patch is the change set a pass extends, so the pass needs it"
 )
 
-// writePatch writes fix.patch beside the ledger: the worktree's unified diff
-// against HEAD, which is the change set the pass about to run will extend. It
-// never applies anything and never commits — the operator applies the patch
-// with `git apply`, and untracked files stay out until `git add -N` puts them
-// in the diff. A patch carrying a credential shape refuses instead of landing
-// on disk; an empty diff removes a stale patch and reports no path.
 func (st *state) writePatch(ctx context.Context, dir string) (*string, *core.RefusalError) {
 	path := dir + suffixFixPatch
 	res, err := st.runGit(ctx, "git", "diff", "HEAD", "--no-color", "--no-ext-diff")
@@ -62,9 +49,6 @@ func (st *state) writePatch(ctx context.Context, dir string) (*string, *core.Ref
 	return &path, nil
 }
 
-// removeStalePatch deletes a patch a previous pass left behind once the
-// worktree is clean: a stale diff describes code that no longer differs, and
-// an operator applying it would replay the wrong change.
 func removeStalePatch(path string) *core.RefusalError {
 	if !readcommon.IsFile(path) {
 		return nil
@@ -78,7 +62,6 @@ func removeStalePatch(path string) *core.RefusalError {
 	return nil
 }
 
-// patchFiles counts the files a unified diff touches.
 func patchFiles(diff string) int {
 	if strings.TrimSpace(diff) == "" {
 		return 0

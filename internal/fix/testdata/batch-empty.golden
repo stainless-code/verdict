@@ -34,5 +34,3 @@ exit: 0
 » readiness: .verdict/state/local-low — findings 2 open (2 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
 fix --all: no open inline finding at or above important — lower --min-severity or fix one sig with --sig
 --- files ---
---- file C/.verdict/state/local-low/fix.json ---
-{"sigs":{}}

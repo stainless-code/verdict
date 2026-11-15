@@ -1,11 +1,7 @@
-// Package fixcore is the fix verb's domain service: one pass of the bounded
-// verify-gated fix loop over a local bundle. It picks the top open inline sig
-// with the same eight-key ranking next and report use unless --sig names one,
-// enforces the 3-pass ceiling and the scope-escape audit against the ledger
-// fix.json, prints the finding context with the kb recall, and reports
-// terminal completion when no open inline sig remains. Fix writes only the
-// ledger; findings.json is never touched. internal/fix owns argv parsing,
-// rentry, envelope rendering, and exit mapping.
+// Package fixcore is the fix verb's domain service: the bounded, verify-gated
+// fix loop over a local bundle. It writes the ledger and the patch output and
+// never writes findings.json; internal/fix owns argv parsing, re-entry,
+// envelope rendering, and exit mapping.
 package fixcore
 
 import (
@@ -23,10 +19,7 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// Request carries the resolved fix invocation: the shared runtime (env,
-// clock, progress, commander) plus the selection flags and the
-// adapter-routed human stream. Human bytes are written verbatim so the kb
-// recall block keeps its exact layout.
+// Request carries the resolved fix invocation.
 type Request struct { //nolint:govet // the transport contract keeps its field order
 	core.ReadRequest
 	Sig         string
@@ -37,8 +30,7 @@ type Request struct { //nolint:govet // the transport contract keeps its field o
 	Human       io.Writer
 }
 
-// Response carries the completed pass or completion summary: the envelope
-// inputs plus the accumulated warnings.
+// Response carries the completed pass, batch, or completion summary.
 type Response struct {
 	At       string
 	Next     string
@@ -46,9 +38,8 @@ type Response struct {
 	Warnings []string
 }
 
-// Data is the fix envelope's data profile. The pass, batch, and completion
-// shapes share one type; completion leaves the pass fields null and sets
-// complete, and a batch leaves the single-pass fields null and fills batch.
+// Data is the fix envelope's data profile; the pass, batch, and completion
+// shapes share it.
 type Data struct { //nolint:govet // field order is the published property order
 	Dir         string
 	Ledger      string
@@ -73,9 +64,7 @@ type Data struct { //nolint:govet // field order is the published property order
 	Batch       []BatchRow
 }
 
-// BatchRow is one sig's outcome in a batch: the sig, where it anchors, the
-// pass the batch consumed (0 when it consumed none), the outcome word, and the
-// reason a skipped row carries.
+// BatchRow is one sig's outcome in a fix batch.
 type BatchRow struct { //nolint:govet // field order is the published property order
 	Sig      string
 	Locator  string
@@ -97,7 +86,6 @@ func (r *BatchRow) Wire() *jq.Obj {
 	)
 }
 
-// batchWire renders the batch array, one wired row per selected sig.
 func batchWire(rows []BatchRow) []any {
 	out := make([]any, 0, len(rows))
 	for i := range rows {
@@ -176,7 +164,7 @@ type state struct { //nolint:govet // fix service state is allocated once per in
 	patch    *string
 }
 
-// Run executes one fix pass (or reports completion) over a local bundle.
+// Run executes one fix pass, one batch pass, or reports completion.
 func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if msg := req.comboFault(); msg != "" {
 		return nil, &core.RefusalError{Code: core.CodeBadFlags, Message: msg}
@@ -244,10 +232,7 @@ func (st *state) runFix(ctx context.Context) *core.RefusalError {
 	}
 	now, fixOpen, fixOpenInline := st.printReadiness(dir, entries)
 	ledgerPath := dir + suffixFixJSON
-	store, ref := st.loadLedger(ledgerPath)
-	if ref != nil {
-		return ref
-	}
+	store := st.loadLedger(ledgerPath)
 	if st.req.All {
 		return st.runBatch(ctx, dir, ledgerPath, store, entries,
 			fixOpen, fixOpenInline, now)
@@ -274,8 +259,6 @@ func (st *state) fixBundleDir() (string, *core.RefusalError) {
 	return dir, nil
 }
 
-// bundleGates runs the two read gates every fix pass shares: the bundle's PR
-// state and the worktree's merge state.
 func (st *state) bundleGates(ctx context.Context, dir string) *core.RefusalError {
 	if ref := st.checkPrGate(dir); ref != nil {
 		return ref
@@ -592,26 +575,18 @@ type ledgerDoc struct {
 	obj *jq.Obj
 }
 
-func (st *state) loadLedger(path string) (*ledgerDoc, *core.RefusalError) {
+func (st *state) loadLedger(path string) *ledgerDoc {
 	if !readcommon.Exists(path) {
-		return st.createLedger(path)
+		return freshLedger()
 	}
 	raw, err := os.ReadFile(path)
 	if err == nil {
 		if doc, ok := decodeLedgerDoc(raw); ok {
-			return st.ledgerWithSigs(path, doc), nil
+			return st.ledgerWithSigs(path, doc)
 		}
 	}
 	st.warn(fmt.Sprintf(msgLedgerUnreadable, path))
-	return freshLedger(), nil
-}
-
-func (st *state) createLedger(path string) (*ledgerDoc, *core.RefusalError) {
-	fresh := freshLedger()
-	if ref := writeLedger(path, fresh); ref != nil {
-		return nil, ref
-	}
-	return freshLedger(), nil
+	return freshLedger()
 }
 
 func decodeLedgerDoc(raw []byte) (*jq.Obj, bool) {
@@ -753,10 +728,6 @@ func ensurePasses(row *jq.Obj, passes int) {
 	}
 }
 
-// tombstone records one sig's stopped outcome: its pass count (the first
-// record wins), the timestamp, and the stop reason once. Recording the reason
-// once keeps a later ceiling from overwriting the scope escape that came
-// first, so the ledger says why the loop really stopped.
 func tombstone(store *ledgerDoc, full, reason string, passes int, now string) {
 	row := sigStore(store, full)
 	ensurePasses(row, passes)
@@ -779,9 +750,6 @@ func (st *state) scopeEscape(
 	return escapePaths(st.worktreeFiles(ctx), baselineOf(store, sig), anchor)
 }
 
-// escapePaths lists the worktree files outside the anchor that the sig's pass
-// baseline does not already hold, in the sorted order the worktree listing
-// carries.
 func escapePaths(work, baseline []string, anchor string) []string {
 	baseSet := newPathSet(baseline)
 	var out []string
@@ -983,8 +951,6 @@ func (st *state) passOutput(
 	return nil
 }
 
-// passBlock is one finding's printed context: everything a pass says about the
-// finding before the bundle-wide kb recall and instructions.
 type passBlock struct { //nolint:govet // field order mirrors the printed block
 	full     string
 	locator  string
@@ -994,8 +960,6 @@ type passBlock struct { //nolint:govet // field order mirrors the printed block
 	brief    *core.Brief
 }
 
-// readPassBlock reads one finding's block from the record, defaulting the
-// absent anchor fields the way pass output always has.
 func readPassBlock(rec *jq.Obj, full, anchor string) *passBlock {
 	severity := interpOf(rec, keySeverity)
 	if severity == "" {
@@ -1023,7 +987,6 @@ func readPassBlock(rec *jq.Obj, full, anchor string) *passBlock {
 	}
 }
 
-// printPassBlock writes the finding line, its body, anchors, and stored brief.
 func (st *state) printPassBlock(block *passBlock, pass int, ledgerPath string) {
 	st.humanf("fix: %s [%s] %s (pass %d/3, ledger %s)\n",
 		readcommon.Prefix(block.full), block.severity, block.locator, pass, ledgerPath)
@@ -1046,7 +1009,6 @@ func readKbValue(dir string) any {
 	return jq.NewObj(keyFile, dir+suffixKB, keyContent, trimmed)
 }
 
-// printKB writes the bundle's kb recall block when the bundle carries one.
 func (st *state) printKB(dir string) {
 	if !readcommon.IsFile(dir + suffixKB) {
 		return
@@ -1060,8 +1022,6 @@ func (st *state) printKB(dir string) {
 	st.humanf("--- end kb.txt ---\n")
 }
 
-// printInstructions writes the one-pass patch/verify/land/re-run instructions
-// plus the verify gate and the spend note every pass carries.
 func (st *state) printInstructions(dir, anchor string) {
 	st.humanf(instructionsFmt,
 		anchor, dir, st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr)

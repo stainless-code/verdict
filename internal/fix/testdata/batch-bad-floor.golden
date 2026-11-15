@@ -18,5 +18,3 @@ exit: 1
 » readiness: .verdict/state/local-batch — findings 3 open (3 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
 re-enter: verdict fix acme/app local-batch --all --min-severity high --verify-cmd 'go test ./...' --json
 --- files ---
---- file C/.verdict/state/local-batch/fix.json ---
-{"sigs":{}}

@@ -25,8 +25,6 @@ type Request struct {
 	RepoRoot string
 }
 
-// The fix flags, spelled once: the usage text, the re-entry line, and the
-// combination guard all name them.
 const (
 	sigFlag         = "--sig"
 	minSeverityFlag = "--min-severity"
@@ -35,10 +33,7 @@ const (
 	flagSep         = " "
 )
 
-// Run executes `fix <owner/repo> <local-slug>` with a selection mode — a
-// named `--sig`, or `--all` with its batch flags — plus `--json`, returning
-// the process exit code. Human progress goes to the runner's human stream;
-// --json mode prints exactly one envelope to stdout.
+// Run executes the fix verb: argv parsing, one fixcore call, and exit mapping.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
 	r.Rentry = "verdict fix " + req.Repo + " " + req.Pr
@@ -69,8 +64,6 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	return cli.ExitOK
 }
 
-// fixRequest injects the runner's clock, progress observer, and the
-// production commander into the typed service request.
 func fixRequest(r *cli.Runner, req Request, f *flags) *fixcore.Request {
 	out := &fixcore.Request{
 		Sig: f.sig, All: f.all, MinSeverity: f.minSeverity,
@@ -86,7 +79,6 @@ func fixRequest(r *cli.Runner, req Request, f *flags) *fixcore.Request {
 	return out
 }
 
-// flags carries the parsed fix options.
 type flags struct {
 	sig         string
 	minSeverity string
@@ -95,7 +87,6 @@ type flags struct {
 	all         bool
 }
 
-// rentry renders the flags a retry repeats, in flag order.
 func (f *flags) rentry() string {
 	var sb strings.Builder
 	for _, row := range []struct {
@@ -115,7 +106,6 @@ func (f *flags) rentry() string {
 	return sb.String()
 }
 
-// parseFlags strips fix's flags, reporting unknown ones.
 func parseFlags(r *cli.Runner, args []string) (*flags, int, bool) {
 	f := &flags{}
 	for i := 0; i < len(args); i++ {
@@ -140,7 +130,6 @@ func parseFlags(r *cli.Runner, args []string) (*flags, int, bool) {
 	return f, 0, false
 }
 
-// pathEntry renders every --paths glob a retry repeats, in the order given.
 func pathEntry(paths []string) string {
 	var sb strings.Builder
 	for _, p := range paths {
@@ -149,7 +138,6 @@ func pathEntry(paths []string) string {
 	return sb.String()
 }
 
-// wantOf renders one value flag's accepted operand for the usage error.
 func wantOf(flag string) string {
 	switch flag {
 	case minSeverityFlag:
@@ -163,7 +151,6 @@ func wantOf(flag string) string {
 	}
 }
 
-// setFixValue stores one value flag's operand.
 func setFixValue(f *flags, flag, val string) {
 	switch flag {
 	case sigFlag:

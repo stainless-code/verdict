@@ -173,11 +173,8 @@ func setupScope(t *testing.T, dir, _ string) {
 	}
 }
 
-// batchVerifyCmd is the verify command every batch fixture hands the loop.
 const batchVerifyCmd = "go test ./..."
 
-// setupBatch is the three-tier batch fixture: one open inline sig per
-// severity, so a floor and the default pick can be told apart.
 func setupBatch(t *testing.T, dir, _ string) {
 	t.Helper()
 	mkRepo(t, dir)
@@ -187,16 +184,12 @@ func setupBatch(t *testing.T, dir, _ string) {
 		findingJSON(sigCritical, "open", "critical", "app.txt", "Critical boundary bug here.")+"]")
 }
 
-// setupBatchStopped is the mixed-outcome fixture: one sig at its ceiling and
-// the rest ready, so the batch reports both instead of refusing.
 func setupBatchStopped(t *testing.T, dir, _ string) {
 	t.Helper()
 	setupBatch(t, dir, "")
 	seedLedger(t, dir, "batch", `{"sigs":{"`+sigBatch+`":{"passes":3}}}`+"\n")
 }
 
-// setupBatchPatch is the patch.json fallback fixture: the bundle's own patch
-// descriptor carries the verify command, so --verify-cmd is not needed.
 func setupBatchPatch(t *testing.T, dir, _ string) {
 	t.Helper()
 	setupBatch(t, dir, "")
@@ -207,8 +200,6 @@ func setupBatchPatch(t *testing.T, dir, _ string) {
 	}
 }
 
-// setupBatchBelowFloor is the empty-batch fixture: every open finding sits
-// below the default floor, so the batch selects nothing.
 func setupBatchBelowFloor(t *testing.T, dir, _ string) {
 	t.Helper()
 	mkRepo(t, dir)
@@ -217,12 +208,8 @@ func setupBatchBelowFloor(t *testing.T, dir, _ string) {
 		findingJSON(sigInfo2, "open", "informational", "app.txt", "Another nit here.")+"]")
 }
 
-// patchedAnchorContent is the worktree content a fix patch fixture holds: the
-// anchor file patched the way an agent would after pass one.
 const patchedAnchorContent = "alpha\nbeta fixed\ngamma\n"
 
-// setupPatch is the patch-output fixture: one pass is on record and the
-// anchor file carries the patch that pass asked for.
 func setupPatch(t *testing.T, dir, _ string) {
 	t.Helper()
 	mkRepo(t, dir)
@@ -235,8 +222,6 @@ func setupPatch(t *testing.T, dir, _ string) {
 	}
 }
 
-// setupPatchSecret is the same fixture with a credential in the patch: the
-// patch output refuses before writing.
 func setupPatchSecret(t *testing.T, dir, _ string) {
 	t.Helper()
 	setupPatch(t, dir, "")
@@ -246,8 +231,12 @@ func setupPatchSecret(t *testing.T, dir, _ string) {
 	}
 }
 
-// setupPatchStale is the clean-worktree fixture: a previous pass left a patch,
-// the agent reverted its change, so the stale diff must not survive.
+func setupBatchLedger(t *testing.T, dir, _ string) {
+	t.Helper()
+	setupBatch(t, dir, "")
+	seedLedger(t, dir, "batch", "{\n  \"sigs\": {\n    \""+sigBatch+"\": {\"passes\": 2}\n  }\n}\n")
+}
+
 func setupPatchStale(t *testing.T, dir, _ string) {
 	t.Helper()
 	mkRepo(t, dir)
@@ -294,12 +283,6 @@ func TestFixGolden(t *testing.T) {
 	t.Run("patch", testFixPatch)
 }
 
-// testFixBatch pins the --all batch: the plan for every selected sig, the
-// floor, the mixed ceiling outcome, the patch.json fallback, and the typed
-// refusals a batch adds.
-// testFixPatch pins the patch output: fix.patch beside the ledger, the stale
-// patch removed once the worktree is clean, and the secret-shaped refusal that
-// writes neither the patch nor a pass.
 func testFixPatch(t *testing.T) {
 	t.Helper()
 	golden.Pin(t, harness, "patch-json", setupPatch, nil,
@@ -341,6 +324,8 @@ func testFixBatch(t *testing.T) {
 		"--verify-cmd", batchVerifyCmd, "--json")
 	golden.Pin(t, harness, "batch-conflict", setupBatch, nil,
 		"fix", "acme/app", "local-batch", "--all", "--sig", sigInfo)
+	golden.Pin(t, harness, "batch-no-verify-ledger", setupBatchLedger, nil,
+		"fix", "acme/app", "local-batch", "--all", "--json")
 	golden.Pin(t, harness, "batch-paths", setupBatch, nil,
 		"fix", "acme/app", "local-batch", "--all", "--verify-cmd", batchVerifyCmd,
 		"--paths", "other.txt", "--json")

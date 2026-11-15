@@ -18,5 +18,3 @@ exit: 1
 » readiness: .verdict/state/local-done — findings 0 open (0 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
 re-enter: verdict fix acme/app local-done --all --min-severity high --verify-cmd 'go test ./...' --json
 --- files ---
---- file C/.verdict/state/local-done/fix.json ---
-{"sigs":{}}

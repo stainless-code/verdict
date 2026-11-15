@@ -6,5 +6,3 @@ next: done — no open findings
 --- stderr ---
 
 --- files ---
---- file C/.verdict/state/local-done/fix.json ---
-{"sigs":{}}

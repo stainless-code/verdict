@@ -183,12 +183,10 @@ if [ "$EVAL_STATUS" -eq 1 ] && [ "$(jq -r '.error.code' <"$EVAL_OUT")" = "no-ver
 else
   bad "no verify cmd: exit $EVAL_STATUS $(jq -c '.error' <"$EVAL_OUT" 2>/dev/null)"
 fi
-# fix creates the ledger on load, so the assertion is that no sig was recorded:
-# the refusal spent nothing.
-if [ "$(jq -r '.sigs | length' "$EVAL_SANDBOX/.verdict/state/local-needverify/fix.json")" = "0" ]; then
-  good "the refusal records no sig in the ledger"
+if [ ! -e "$EVAL_SANDBOX/.verdict/state/local-needverify/fix.json" ]; then
+  good "a refusal on a fresh bundle leaves no fix.json"
 else
-  bad "the refusal recorded a pass: $(cat "$EVAL_SANDBOX/.verdict/state/local-needverify/fix.json")"
+  bad "the refusal created a ledger: $(cat "$EVAL_SANDBOX/.verdict/state/local-needverify/fix.json")"
 fi
 
 mk_local ceiling

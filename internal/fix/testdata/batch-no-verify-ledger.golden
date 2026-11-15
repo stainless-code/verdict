@@ -1,0 +1,20 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fix",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "no-verify-cmd",
+    "message": "fix --all hands out one pass per selected sig and needs the command that proves them: pass --verify-cmd <cmd> (or name a recipe that carries verify_cmd), or write verifyCmd in .verdict/state/local-batch/patch.json, then re-run fix --all\ntry: write verifyCmd in the bundle's patch.json (the command verify and fix --all hand back), or pass --verify-cmd <cmd> to a fix batch, then re-run"
+  }
+}
+--- stderr ---
+» readiness: .verdict/state/local-batch — findings 3 open (3 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
+re-enter: verdict fix acme/app local-batch --all --json
+--- files ---

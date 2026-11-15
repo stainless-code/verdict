@@ -12,47 +12,29 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// Batch outcome words: one per selected sig, so a batch says what happened to
-// every sig it looked at instead of only the one it advanced.
 const (
-	// outcomeReady marks a sig the batch consumed a pass for.
-	outcomeReady = "ready"
-	// outcomeCeiling marks a sig that already spent its passes.
-	outcomeCeiling = stoppedCeiling
-	// outcomeNoAnchor marks a selected finding with no anchor path to scope.
+	outcomeReady    = "ready"
+	outcomeCeiling  = stoppedCeiling
 	outcomeNoAnchor = "no-anchor"
 )
 
-// The batch's own refusal text and hints.
 const (
-	// msgBatchNoVerify refuses a batch with no verification path: passes
-	// handed out with no command to prove them spend agent runs for nothing.
 	msgBatchNoVerify = "fix --all hands out one pass per selected sig and needs the " +
 		"command that proves them: pass --verify-cmd <cmd> (or name a recipe that " +
 		"carries verify_cmd), or write verifyCmd in %s/patch.json, then re-run fix --all"
-	// msgBatchEmpty reports a batch whose floor and path globs selected nothing.
 	msgBatchEmpty = "fix --all: no open inline finding at or above %s — " +
 		"lower --min-severity or fix one sig with --sig"
-	// msgBatchEmptyPaths reports the same under a batch's path globs.
 	msgBatchEmptyPaths = "fix --all: no open inline finding at or above %s under %s — " +
 		"widen --paths, lower --min-severity, or fix one sig with --sig"
-	// nextBatchEmpty is the envelope follow-up for an empty batch.
-	nextBatchEmpty = "lower --min-severity or fix one sig with --sig"
-	// nextBatchEmptyPaths is the same follow-up under a batch's path globs.
+	nextBatchEmpty      = "lower --min-severity or fix one sig with --sig"
 	nextBatchEmptyPaths = "widen --paths, lower --min-severity, or fix one sig with --sig"
-	// nextBatchPasses is the envelope follow-up after a batch consumed passes.
-	nextBatchPasses = "patch each anchor, run the verify command yourself, write one " +
+	nextBatchPasses     = "patch each anchor, run the verify command yourself, write one " +
 		"verification.json claim per sig, land with record, then re-run fix --all"
-	// nextBatchStopped is the envelope follow-up when no sig advanced.
-	nextBatchStopped = "triage the stopped sigs, or re-run fix --all with another floor"
-	// defaultBatchFloor is the batch's severity floor when --min-severity is
-	// absent: important, so a batch never spends passes on nits by default.
+	nextBatchStopped  = "triage the stopped sigs, or re-run fix --all with another floor"
 	defaultBatchFloor = "important"
-	// floorOff states the absence of a floor.
-	floorOff = "off"
+	floorOff          = "off"
 )
 
-// batchInstructionsFmt guides the agent through one batch pass.
 const batchInstructionsFmt = "instructions: patch each anchor file (%s), run the " +
 	"verify command yourself (%s), then write %s/verification.json " +
 	"[{sig, verdict, resultHead, verifyCmd}] with one claim per sig, verdict " +
@@ -61,8 +43,6 @@ const batchInstructionsFmt = "instructions: patch each anchor file (%s), run the
 	"freshness proof); land it with record %s %s; re-run fix %s %s --all for the " +
 	"next pass\n"
 
-// batchRow is one selected sig's outcome inside a running batch, plus the
-// record and anchor the printed block needs.
 type batchRow struct { //nolint:govet // the row reads in ledger order
 	pick     readcommon.Ranked
 	rec      *jq.Obj
@@ -74,11 +54,6 @@ type batchRow struct { //nolint:govet // the row reads in ledger order
 	locator  string
 }
 
-// runBatch executes one batch pass: every open inline finding at or above the
-// floor gets the same per-sig ceilings a single pass gets, and each sig's
-// outcome is named. A sig at its ceiling or outside its anchor scope is
-// reported, not refused, because one stuck finding must not block the rest of
-// the batch; the batch refuses only when no verification path exists.
 func (st *state) runBatch(
 	ctx context.Context,
 	dir, ledgerPath string,
@@ -121,8 +96,6 @@ func (st *state) runBatch(
 	return nil
 }
 
-// validateFloor refuses a --min-severity outside the published vocabulary,
-// reading `off` as the stated absence of a floor.
 func (st *state) validateFloor() *core.RefusalError {
 	floor := st.req.MinSeverity
 	if floor == "" || floor == floorOff || config.SeverityRank(floor) > 0 {
@@ -132,8 +105,6 @@ func (st *state) validateFloor() *core.RefusalError {
 		"fix --all: --min-severity takes critical|important|informational|off")
 }
 
-// batchFloor resolves the severity floor a batch selects with: the operator's
-// --min-severity, or the important default when the flag is absent.
 func (st *state) batchFloor() (string, *core.RefusalError) {
 	if st.req.MinSeverity == "" {
 		st.req.MinSeverity = defaultBatchFloor
@@ -144,8 +115,6 @@ func (st *state) batchFloor() (string, *core.RefusalError) {
 	return st.req.MinSeverity, nil
 }
 
-// batchEnv resolves what every batch pass needs before it picks a sig: the
-// proving command and the patch snapshot of the worktree the passes extend.
 func (st *state) batchEnv(ctx context.Context, dir string) (string, *core.RefusalError) {
 	verify := st.batchVerifyCmd(dir)
 	if verify == "" {
@@ -159,8 +128,6 @@ func (st *state) batchEnv(ctx context.Context, dir string) (string, *core.Refusa
 	return verify, nil
 }
 
-// batchPick runs the per-sig ceilings for one selected finding and records the
-// pass it consumes, exactly as a single pass would.
 func (st *state) batchPick(
 	store *ledgerDoc,
 	pick readcommon.Ranked,
@@ -192,7 +159,6 @@ func (st *state) batchPick(
 	return row
 }
 
-// batchRecord narrows one ranked entry to its record object.
 func batchRecord(entry any) *jq.Obj {
 	rec, ok := entry.(*jq.Obj)
 	if !ok {
@@ -201,7 +167,6 @@ func batchRecord(entry any) *jq.Obj {
 	return rec
 }
 
-// batchSeverity reads one selected finding's severity, untagged when absent.
 func batchSeverity(entry any) string {
 	severity := interpOf(batchRecord(entry), keySeverity)
 	if severity == "" {
@@ -210,9 +175,6 @@ func batchSeverity(entry any) string {
 	return severity
 }
 
-// printBatch writes one block per ready sig plus one line per skipped sig, in
-// rank order, then the bundle-wide kb recall and the batch instructions. It
-// returns how many sigs consumed a pass.
 func (st *state) printBatch(dir, ledgerPath string, rows []batchRow, verify string) int {
 	ready, anchors := batchReady(rows)
 	st.humanf("» ledger: %s — batch of %d selected%s, %d pass(es)\n",
@@ -233,7 +195,6 @@ func (st *state) printBatch(dir, ledgerPath string, rows []batchRow, verify stri
 	return ready
 }
 
-// batchReady counts the sigs that consumed a pass and lists their anchors.
 func batchReady(rows []batchRow) (int, []string) {
 	anchors := make([]string, 0, len(rows))
 	for i := range rows {
@@ -244,7 +205,6 @@ func batchReady(rows []batchRow) (int, []string) {
 	return len(anchors), anchors
 }
 
-// printBatchRow writes one selected sig's block or its skip line.
 func (st *state) printBatchRow(ledgerPath string, row *batchRow) {
 	if row.outcome == outcomeReady {
 		st.printPassBlock(readPassBlock(row.rec, row.full(), row.anchor), row.pass, ledgerPath)
@@ -254,7 +214,6 @@ func (st *state) printBatchRow(ledgerPath string, row *batchRow) {
 		readcommon.Prefix(row.full()), row.severity, row.locator, row.outcome, row.reason())
 }
 
-// full reads the selected sig.
 func (r *batchRow) full() string {
 	sig, ok := readcommon.FieldOf(r.pick.Entry, keySig).(string)
 	if !ok {
@@ -263,7 +222,6 @@ func (r *batchRow) full() string {
 	return sig
 }
 
-// reason states why a skipped row consumed no pass.
 func (r *batchRow) reason() string {
 	switch r.outcome {
 	case outcomeCeiling:
@@ -278,8 +236,6 @@ func (r *batchRow) reason() string {
 	}
 }
 
-// batchVerifyCmd reads the batch's verification command: the operator's
-// --verify-cmd first, then the bundle's patch.json verifyCmd.
 func (st *state) batchVerifyCmd(dir string) string {
 	if st.req.VerifyCmd != "" {
 		return st.req.VerifyCmd
@@ -299,7 +255,6 @@ func (st *state) batchVerifyCmd(dir string) string {
 	return interpOf(m, keyVerifyCmd)
 }
 
-// fillBatchData fills the batch envelope profile.
 func (st *state) fillBatchData(
 	dir, ledgerPath string,
 	store *ledgerDoc,
@@ -340,8 +295,6 @@ func (st *state) fillBatchData(
 	}
 }
 
-// emptyBatch reports a batch whose floor selected nothing: no pass is
-// consumed, no verify command is demanded, and the operator hears why.
 func (st *state) emptyBatch(
 	dir, ledgerPath string,
 	store *ledgerDoc,
@@ -350,9 +303,6 @@ func (st *state) emptyBatch(
 	now string,
 ) *core.RefusalError {
 	st.at = now
-	if ref := writeLedger(ledgerPath, store); ref != nil {
-		return ref
-	}
 	st.humanf("%s\n", batchEmptyMsg(st.req.MinSeverity, st.req.Paths))
 	st.next = batchEmptyNext(st.req.Paths)
 	st.data = &Data{
@@ -370,8 +320,6 @@ func (st *state) emptyBatch(
 	return nil
 }
 
-// batchEmptyMsg names why a batch selected nothing: the floor alone, or the
-// floor under the path globs that narrowed it.
 func batchEmptyMsg(floor string, paths []string) string {
 	if len(paths) > 0 {
 		return fmt.Sprintf(msgBatchEmptyPaths, floor, strings.Join(paths, ", "))
@@ -379,7 +327,6 @@ func batchEmptyMsg(floor string, paths []string) string {
 	return fmt.Sprintf(msgBatchEmpty, floor)
 }
 
-// batchEmptyNext is the envelope follow-up an empty batch carries.
 func batchEmptyNext(paths []string) string {
 	if len(paths) > 0 {
 		return nextBatchEmptyPaths
@@ -387,8 +334,6 @@ func batchEmptyNext(paths []string) string {
 	return nextBatchEmpty
 }
 
-// scopeSuffix names the path globs a batch selected with, so the ledger line
-// says which slice of the store the passes were spent on.
 func scopeSuffix(paths []string) string {
 	if len(paths) == 0 {
 		return ""
@@ -396,8 +341,6 @@ func scopeSuffix(paths []string) string {
 	return " under " + strings.Join(paths, ", ")
 }
 
-// joinAnchors renders the batch's anchor files for one line, each once and in
-// selection order.
 func joinAnchors(anchors []string) string {
 	seen := make(map[string]bool, len(anchors))
 	out := make([]string, 0, len(anchors))

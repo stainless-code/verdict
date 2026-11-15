@@ -37,5 +37,3 @@ exit: 0
 » readiness: .verdict/state/local-batch — findings 3 open (3 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
 fix --all: no open inline finding at or above important under docs/** — widen --paths, lower --min-severity, or fix one sig with --sig
 --- files ---
---- file C/.verdict/state/local-batch/fix.json ---
-{"sigs":{}}
