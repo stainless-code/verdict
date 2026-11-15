@@ -20,6 +20,7 @@ export type RefusalCode =
   | "backtest-failed"
   | "backtest-row-stale"
   | "backtest-run-stale"
+  | "bad-adjudication"
   | "bad-approve"
   | "bad-at"
   | "bad-attribution"

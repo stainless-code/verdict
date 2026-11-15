@@ -353,6 +353,107 @@ Publish a checked-in JSON next to the corpus (for example
 `bench/runner` writes this file when it is run without `-internal`; then link
 it from the model comparison page.
 
+## Adjudication: findings the answer key does not hold
+
+Strict precision grades every unmatched finding as a false positive, so a real
+defect the case never lists counts against the review. Keywords misfire the
+other way too: a correct finding worded differently misses the case's
+vocabulary, which costs both precision and recall. Adjudication reclassifies
+those findings against the code, publishes every call with its rationale, and
+leaves the answer key alone — curators widen a case's keywords in the next
+corpus version, and the report names the findings that ask for it.
+
+### The record
+
+One versioned record per run, beside the report:
+
+```json
+{
+  "schema_version": "1",
+  "run_id": "2026-11-15-fixture-model",
+  "created_at": "2026-11-15T10:00:00Z",
+  "entries": [
+    {
+      "case": "off-by-one",
+      "sample": 1,
+      "sig": "1f00ad0b56dc866f568010da6c8a89c15701d5a5",
+      "verdict": "matches-ground-truth",
+      "bug": 0,
+      "adjudicator": "operator",
+      "rationale": "The finding says `The loop iterates one index too far`, and the ground-truth note reads \"loop bound is <= len(xs), so the last read runs one past the slice\"."
+    }
+  ]
+}
+```
+
+- `run_id` is the report's `run_id`: a record describes one run and is never
+  applied to another.
+- An entry names one **unmatched** finding by its stable identity: the case id,
+  the sample number, and the finding `sig` the calibrate block published.
+- `verdict` is one of:
+  - `real-unlisted` — a real defect the ground truth does not list. Counts as a
+    true positive in adjudicated precision only.
+  - `matches-ground-truth` — the defect a ground-truth bug names, in words the
+    case's keywords missed. `bug` is the bug's index in the case manifest's
+    `bugs[]` array, and the finding must sit on that bug's path inside its
+    `line_tolerance` window, alternate `also_lines` anchors included. Counts as
+    a true positive for that bug in adjudicated precision **and** adjudicated
+    recall; a bug the strict run already matched is refused, as is a second
+    claim on the same bug, because one bug is one true positive.
+  - `false-positive` — confirms the strict call. Changes no figure.
+- `rationale` clears 30 characters and, for `real-unlisted` and
+  `matches-ground-truth`, quotes the code or the finding in backticks.
+  A `matches-ground-truth` rationale also quotes the bug's ground-truth `note`
+  verbatim, which is the published evidence the words were the same defect.
+- `adjudicator` names who made the call; every verdict carries one.
+
+The record is refused, not worked around, when an entry names a case, sample,
+or sig the run never produced (`unknown-sig`), the record belongs to another
+run (`run-mismatch`), a rationale is missing, short, or uncited
+(`rationale-required`, `bad-adjudication`), a `matches-ground-truth` claim
+names a bug the case does not have, a bug the run already matched, a finding
+outside the bug's window, or a rationale that does not quote the note, one
+finding or one bug is adjudicated twice, or the file is not one strict
+versioned document (all `bad-adjudication`). The record is separate from
+`case.json` in every case: adjudication never edits ground truth.
+
+### Recompute after the paid run
+
+Adjudication happens after a run, from its publication JSON:
+
+```sh
+go run ./bench/runner -render bench/results/<date>.json \
+  -adjudication bench/results/<date>-adjudication.json \
+  -out bench/results/<date>-adjudicated.json
+```
+
+`-render` reads the publication and launches nothing; `-adjudication` applies
+the record; `-out` writes the adjudicated JSON plus its `.md` sibling. Without
+`-out` the command prints the Markdown only, which is enough to read the
+numbers. `-out` refuses to overwrite the publication it reads.
+
+The report and the Markdown then carry, beside the strict figures:
+
+- `adjudication.precision_adjudicated` — `(matched + real-unlisted +
+matches-ground-truth) / reported`;
+- `adjudication.recall_adjudicated` — `(matched + matches-ground-truth) /
+ground_truth`;
+- `adjudication.real_unlisted`, `matches_ground_truth`, `false_positives`, and
+  `entries` — the count per verdict, zeros included;
+- `adjudication.record` and `adjudication.sha256` — the record's path and
+  digest;
+- `adjudication.keyword_misses[]` — every `matches-ground-truth` entry with its
+  case, sample, finding, and bug, sorted; this is the per-case list the next
+  corpus version curates against.
+
+Strict figures are never rewritten: adjudication reclassifies findings the run
+already reported, so both figures share one denominator and a reader can check
+the gap. With no record the whole `adjudication` block is absent and the
+Markdown has no adjudication section — the adjudicated figures are never filled
+from the strict ones. Each bundle also carries `ground_truth_bugs[]` (path,
+line, `also_lines`, `note`, in manifest order) so a keyword-miss claim is
+checked against the run's own ground truth without re-reading the corpus.
+
 ## Loop mode
 
 `-loop N` runs a repair loop per sample. The default is `1`, which keeps the
@@ -753,6 +854,11 @@ Once 06b has run, the comparison page may cite:
 
 - overall precision, recall, and false-discovery rate with the denominators
   (`cases`, bug-runs, reported findings) and the corpus commit/date;
+- the adjudicated precision and recall beside the strict ones, with the
+  adjudication record's path and sha256 and its counts per verdict — both
+  numbers are mandatory in a citable report, so a strict-only publication is
+  not citable until its run is adjudicated (see
+  [Adjudication](#adjudication-findings-the-answer-key-does-not-hold));
 - the per-model and per-panel table from `data.corpus`, including the
   reproducibility spread;
 - the cost note per model, labelled measured or projected;
@@ -848,7 +954,10 @@ go run ./bench/runner -render bench/runner/testdata/example-seeded-run.json \
 ```
 
 The runner writes both files when the run finishes. `-render` reads only the
-JSON and launches no agent. The JSON records the corpus commit and dirty
+JSON and launches no agent. Publish a run's numbers only after adjudicating it:
+the record is written from the report's own `sig` values and applied with
+`-render … -adjudication …`, as
+[Adjudication](#adjudication-findings-the-answer-key-does-not-hold) describes. The JSON records the corpus commit and dirty
 state, UTC date, `prompts_hash`, CLI version, command argv, k, repeats, resolved
 severity weights, individual calibration blocks, and per-case sample spreads.
 The Markdown renders the same denominators and sample counts, with cases and

@@ -44,7 +44,7 @@ func run() error {
 		return &usageError{err}
 	}
 	if cfg.Render != "" {
-		return renderFile(cfg.Render, os.Stdout)
+		return renderPublication(&cfg, os.Stdout)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
@@ -61,6 +61,7 @@ func parseFlags(args []string) (Config, error) {
 		root  string
 	)
 	fs.StringVar(&cfg.Render, "render", "", "render a publication JSON as static Markdown; launches nothing")
+	fs.StringVar(&cfg.Adjudication, "adjudication", "", "adjudication record to reclassify a rendered publication with (with -render)")
 	fs.StringVar(&cfg.Model, "model", "", "model id every bundle is attributed to (required)")
 	fs.StringVar(&cfg.Agent, "agent", "", "agent command line, run with sh -c per sample (required)")
 	fs.StringVar(&panel, "panel", "", "panel the samples run under (default bench-<model>)")
@@ -87,8 +88,8 @@ func parseFlags(args []string) (Config, error) {
 	if err := cfg.validateSampling(); err != nil {
 		return Config{}, err
 	}
-	if cfg.Render != "" {
-		return cfg, nil
+	if cfg.Render != "" || cfg.Adjudication != "" {
+		return renderConfig(&cfg)
 	}
 	cfg.Cases = splitCSV(cases)
 	cfg.Panel = splitCSV(panel)
@@ -135,3 +136,44 @@ func moduleRoot() (string, error) {
 }
 
 type usageError struct{ error }
+
+// renderConfig settles the recompute path: a record needs a report to
+// reclassify, and -out only ever writes an adjudicated publication.
+func renderConfig(cfg *Config) (Config, error) {
+	if cfg.Render == "" {
+		return Config{}, jq.NewErr("-adjudication reclassifies a published report: pass it with -render <report>")
+	}
+	return *cfg, cfg.validateRender()
+}
+
+// validateRender bounds the recompute path: a record is what makes the
+// adjudicated figures exist, and the report a reader checks must survive.
+func (cfg *Config) validateRender() error {
+	if cfg.Adjudication == "" {
+		if cfg.Out != "" {
+			return jq.NewErr("-out writes an adjudicated report: pass -adjudication with -render")
+		}
+		return nil
+	}
+	if samePath(cfg.Out, cfg.Render) {
+		return jq.NewErr("-out would overwrite the publication it reads; write the adjudicated report elsewhere")
+	}
+	if cfg.Adjudication == cfg.Render {
+		return jq.NewErr("-adjudication is the publication itself: name the record")
+	}
+	return nil
+}
+
+// samePath compares two optional paths by their absolute form, so a relative
+// -out that resolves onto the input is still refused.
+func samePath(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	absA, errA := filepath.Abs(a)
+	absB, errB := filepath.Abs(b)
+	if errA != nil || errB != nil {
+		return a == b
+	}
+	return absA == absB
+}
