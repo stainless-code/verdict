@@ -1,0 +1,16 @@
+{
+  "schema_version": "1",
+  "id": "undici-5875-clean-retry-clamp",
+  "kind": "control",
+  "language": "javascript",
+  "provenance": {
+    "kind": "real",
+    "repo": "nodejs/undici",
+    "pr": 5875,
+    "base_sha": "5c9189b2d5a36f676809af2e3c471754e8f63908",
+    "head_sha": "a464b753d9e8eaba82f5ee5694dffe26789038b9",
+    "source": "PR #5875 fix(eventsource): fix retry wrap bug, squash-merged 2026-09-25 as a464b753d",
+    "note": "Clean control: clamps the EventSource reconnection delay to setTimeout's 2^31-1 limit before scheduling, because larger delays (including Infinity) make Node fire the timer after 1 ms and turn a long reconnection time into a reconnect storm. Eight lines of production code plus a named constant; both producers of the delay bound it from below (the node.reconnectionTime option is an unsigned long, the retry field must pass isASCIINumber before parseInt), so Math.min alone cannot leave a negative or NaN delay, and the tests cover the field, the Infinity case and the option. No later commit touches either file (git log a464b753d..02c4f8c6e -- lib/web/eventsource/eventsource.js test/eventsource/eventsource-reconnect.js is empty, and each file's last commit is a464b753d itself), so no fix and no revert can reach its lines."
+  },
+  "bugs": []
+}
