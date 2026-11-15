@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -370,11 +371,12 @@ func inWindow(finding gradedFinding, bug GroundTruthBug, tolerance int) bool {
 }
 
 // quotesCode reports whether text carries a backticked span long enough to be
-// a quoted line rather than decoration.
+// a quoted line rather than decoration. Only visible runes count, so a span of
+// zero-width spaces is no citation at all.
 func quotesCode(text string) bool {
 	spans := strings.Split(text, "`")
 	for i := 1; i < len(spans); i += 2 {
-		if utf8.RuneCountInString(strings.TrimSpace(spans[i])) >= quoteMin {
+		if utf8.RuneCountInString(strings.TrimSpace(visible(spans[i]))) >= quoteMin {
 			return true
 		}
 	}
@@ -382,13 +384,28 @@ func quotesCode(text string) bool {
 }
 
 // quotesNote reports whether text quotes the ground-truth note, ignoring the
-// whitespace and case a reflowed quotation changes.
+// invisibles, whitespace, and case a reflowed quotation changes.
 func quotesNote(rationale, note string) bool {
 	return strings.Contains(foldSpace(rationale), foldSpace(note))
 }
 
+// visible drops the runes that render as nothing: a format character (a
+// zero-width space, joiner, or BOM) or anything unicode does not call graphic.
+// Padding a quote with them must not reach a length floor, and splitting one
+// with them must not slip past a containment check.
+func visible(s string) string {
+	var out strings.Builder
+	for _, r := range s {
+		if unicode.Is(unicode.Cf, r) || !unicode.IsGraphic(r) {
+			continue
+		}
+		out.WriteRune(r)
+	}
+	return out.String()
+}
+
 func foldSpace(s string) string {
-	return strings.ToLower(strings.Join(strings.Fields(s), " "))
+	return strings.ToLower(strings.Join(strings.Fields(visible(s)), " "))
 }
 
 func locator(path string, line int) string {

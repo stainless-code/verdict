@@ -402,9 +402,12 @@ One versioned record per run, beside the report:
     claim on the same bug, because one bug is one true positive.
   - `false-positive` — confirms the strict call. Changes no figure.
 - `rationale` clears 30 characters and, for `real-unlisted` and
-  `matches-ground-truth`, quotes the code or the finding in backticks.
-  A `matches-ground-truth` rationale also quotes the bug's ground-truth `note`
-  verbatim, which is the published evidence the words were the same defect.
+  `matches-ground-truth`, quotes the code or the finding in backticks. Only
+  visible runes count, so padding a span with zero-width or other format runes
+  is not a citation. A `matches-ground-truth` rationale also quotes the bug's
+  ground-truth `note`, compared with case folded, whitespace collapsed, and
+  invisibles dropped, so a reflowed quotation still counts; that quote is the
+  published evidence the words were the same defect.
 - `adjudicator` names who made the call; every verdict carries one.
 
 The record is refused, not worked around, when an entry names a case, sample,

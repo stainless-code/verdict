@@ -216,6 +216,8 @@ func adjudicationRefusalCases(t *testing.T, rep *Report) []refusalCase {
 		{"no adjudicator", recordJSON(fixtureRunID, `{"case":"off-by-one","sample":1,"sig":"`+unlisted+`","verdict":"false-positive","rationale":"`+long+`"}`), "bad-adjudication", "adjudicator is required"},
 		{"short rationale", recordJSON(fixtureRunID, entryJSON(unlisted, verdictRealUnlisted, "shadowing", nil)), "rationale-required", "at least 30 characters"},
 		{"uncited rationale", recordJSON(fixtureRunID, entryJSON(unlisted, verdictRealUnlisted, long, nil)), "bad-adjudication", "code-citing rationale"},
+		{"invisible citation", recordJSON(fixtureRunID, entryJSON(unlisted, verdictRealUnlisted, long+" `\u200b\u200b\u200b`", nil)), "bad-adjudication", "code-citing rationale"},
+		{"padded citation", recordJSON(fixtureRunID, entryJSON(unlisted, verdictRealUnlisted, long+" `ab\u200b\u200b`", nil)), "bad-adjudication", "code-citing rationale"},
 		{"true positive", recordJSON(fixtureRunID, entryJSON(matched, verdictRealUnlisted, quotedRows, nil)), "bad-adjudication", "graded a true positive"},
 		{"bug on a false positive", recordJSON(fixtureRunID, entryJSON(unlisted, verdictFalsePositive, long, new(0))), "bad-adjudication", "only for verdict"},
 		{"missing bug index", recordJSON(fixtureRunID, entryJSON(miss, verdictMatchesGroundTruth, missNote, nil)), "bad-adjudication", "names the ground-truth bug index"},
@@ -301,6 +303,37 @@ func checkWrittenMarkdown(t *testing.T, out string) {
 		if !strings.Contains(string(raw), want) {
 			t.Errorf("written Markdown omits %q", want)
 		}
+	}
+}
+
+// TestAdjudicationAcceptsPaddedCodeQuote proves the visible-rune rule refuses
+// only invisible citations: real code carrying zero-width padding still cites.
+func TestAdjudicationAcceptsPaddedCodeQuote(t *testing.T) {
+	rep := fixtureReport(t)
+	entry := entryJSON(fixtureSig(t, rep, 11), verdictRealUnlisted,
+		"the finding says `\u200brows\u200b` at the slice bound", nil)
+	adj, err := loadAdjudication(writeRecord(t, t.TempDir(), recordJSON(fixtureRunID, entry)), rep)
+	if err != nil {
+		t.Fatalf("loadAdjudication refused real code with zero-width padding: %v", err)
+	}
+	if adj.RealUnlisted != 1 {
+		t.Errorf("real-unlisted count = %d, want the padded code quote accepted", adj.RealUnlisted)
+	}
+}
+
+// TestAdjudicationAcceptsPaddedNoteQuote proves the note comparison drops the
+// invisibles it folds away: a quotation carrying one still quotes the note.
+func TestAdjudicationAcceptsPaddedNoteQuote(t *testing.T) {
+	rep := fixtureReport(t)
+	note := strings.Replace(noteOffByOne, "one past", "one \u200bpast", 1)
+	entry := entryJSON(fixtureSig(t, rep, 42), verdictMatchesGroundTruth,
+		"the ground-truth note reads `"+note+"`", new(0))
+	adj, err := loadAdjudication(writeRecord(t, t.TempDir(), recordJSON(fixtureRunID, entry)), rep)
+	if err != nil {
+		t.Fatalf("loadAdjudication refused a note quote carrying an invisible: %v", err)
+	}
+	if adj.MatchesGroundTruth != 1 {
+		t.Errorf("matches-ground-truth count = %d, want the padded note quote accepted", adj.MatchesGroundTruth)
 	}
 }
 
