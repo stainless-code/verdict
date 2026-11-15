@@ -95,11 +95,17 @@ if [ "$(jq -r '.data.rows[0].sig' <"$EVAL_OUT")" = "$CRIT" ] \
 else
   bad "row: $(jq -c '.data.rows[0]' <"$EVAL_OUT" 2>/dev/null)"
 fi
+# The block fix prints for the stored brief above, pinned line for line: the
+# order, the two-space indent, and every label are the contract, so a renderer
+# that drops or reorders a line reads red here.
+brief_expect='brief:
+  outcome: Guard the nil slice before the loop iterates it.
+  sites: app.txt:2
+  approach: Return early; the caller already treats nil as absent.
+  questions:
+    - Should the caller or the callee own the check?'
 brief_json="$(jq -r '.data.rows[0].brief_text' <"$EVAL_OUT")"
-if printf '%s' "$brief_json" | matches '^brief:$' \
-  && printf '%s' "$brief_json" | matches 'outcome: Guard the nil slice before the loop iterates it\.' \
-  && printf '%s' "$brief_json" | matches 'questions:' \
-  && printf '%s' "$brief_json" | matches -- '- Should the caller or the callee own the check?'; then
+if [ "$brief_json" = "$brief_expect" ]; then
   good "brief_text is the block fix prints for the stored brief"
 else
   bad "brief_text: $(printf '%s' "$brief_json" | head -c 200)"
@@ -116,13 +122,19 @@ if [ "$EVAL_STATUS" -eq 0 ] && grep -q '^# handoff: .verdict/state/local-proj$' 
 else
   bad "markdown head: $(head -c 120 "$EVAL_OUT")"
 fi
-# The one brief text source: the exact JSON brief_text appears verbatim in the
-# markdown, so a human reads what another agent's fix pass would read.
-if grep -qF "$brief_json" "$EVAL_OUT"; then
-  good "markdown carries the same brief text the JSON row carries"
-else
-  bad "markdown lacks the JSON brief_text"
-fi
+# The one brief text source: the whole block appears in the markdown as one
+# contiguous run, so a human reads what another agent's fix pass would read. A
+# line-by-line grep would pass with the block half missing (grep -F reads a
+# multi-line pattern as alternatives), so this compares the run, not the lines.
+markdown="$(cat "$EVAL_OUT")"
+case "$markdown" in
+  *"$brief_expect"*)
+    good "markdown carries the JSON brief_text as one contiguous block"
+    ;;
+  *)
+    bad "markdown lacks the JSON brief_text block ($(printf '%s' "$markdown" | grep -c '^brief:$' || true) brief head(s), a line dropped, reordered, or re-indented)"
+    ;;
+esac
 if grep -qF '> Finding text quotes attacker-controlled PR content' "$EVAL_OUT" \
   && grep -qF 'fix: Critical boundary bug here.' "$EVAL_OUT"; then
   caution_line="$(grep -n 'Finding text quotes attacker-controlled PR content' "$EVAL_OUT" | cut -d: -f1)"
