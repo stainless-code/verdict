@@ -191,6 +191,9 @@ const (
 	// it is the same result.
 	tolerancePoints = 5
 	round6          = 1e6
+	// floatBits is strconv's float64 width, the precision every metric in the
+	// report is rounded and formatted at.
+	floatBits = 64
 )
 
 func (r *runner) newReport() *Report {
@@ -416,12 +419,7 @@ func (r *runner) citable(rep *Report) (bool, string) {
 	if r.cfg.Loop > 1 {
 		reasons = append(reasons, "loop mode")
 	}
-	if rep.CapHit {
-		reasons = append(reasons, "budget cap hit")
-	}
-	if atBudget(rep) {
-		reasons = append(reasons, fmt.Sprintf("spend %.6f USD reached the %.6f USD budget", rep.Cost.Usd, *rep.BudgetUSD))
-	}
+	reasons = append(reasons, budgetReasons(rep)...)
 	return len(reasons) == 0, strings.Join(reasons, "; ")
 }
 
@@ -570,6 +568,20 @@ func roundUSD(usd float64) float64 {
 	return math.Round(usd*round6) / round6
 }
 
+// budgetReasons names both ways a run can be uncitable for its budget: a
+// sample the cap kept from running, and spend that reached the cap with nothing
+// left to skip.
+func budgetReasons(rep *Report) []string {
+	var reasons []string
+	if rep.CapHit {
+		reasons = append(reasons, "budget cap hit")
+	}
+	if atBudget(rep) {
+		reasons = append(reasons, fmt.Sprintf("spend %.6f USD reached the %.6f USD budget", rep.Cost.Usd, *rep.BudgetUSD))
+	}
+	return reasons
+}
+
 // atBudget reports whether a measured run's spend reached the budget cap.
 // CapHit names samples that did not run; this names the run that spent what it
 // was allowed and stopped only because the corpus ended — the same bar, and the
@@ -642,7 +654,7 @@ func (r *runner) commands() [][]string {
 		command = append(command, "-cases", strings.Join(c.Cases, ","))
 	}
 	if c.MaxUSD > 0 {
-		command = append(command, "-max-usd", strconv.FormatFloat(c.MaxUSD, 'f', -1, 64))
+		command = append(command, "-max-usd", strconv.FormatFloat(c.MaxUSD, 'f', -1, floatBits))
 	}
 	if c.Internal {
 		command = append(command, "-internal")
