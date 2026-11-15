@@ -20,13 +20,13 @@
       "kind": "over-match",
       "severity": "important",
       "keywords": [
-        "end anchor",
-        "segment boundary",
-        "also matches",
-        "sibling path",
-        "wrong handler",
         "matches a path it should not",
-        "over-matches"
+        "accepts a path it should reject",
+        "matches a sibling path",
+        "prefix overmatch",
+        "over-matches",
+        "no boundary after the wildcard",
+        "matches a longer path"
       ],
       "note": "endsWithWildcard drops the '/?$' suffix instead of requiring 'the end or a slash', so the added pattern line matches a sibling path; the fix compiles '(?:$|/)' for a trailing '/*' and leaves the suffix form unanchored only on the right, which is what a suffix wildcard means"
     }

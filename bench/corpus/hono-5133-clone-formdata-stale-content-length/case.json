@@ -20,12 +20,12 @@
       "kind": "stale-header",
       "severity": "important",
       "keywords": [
-        "content-length",
         "declared length",
         "no longer matches the body",
-        "truncated",
-        "stale content",
-        "length of the original body"
+        "length of the original body",
+        "stale content length",
+        "keeps the original content length",
+        "leaves the original content length"
       ],
       "note": "the block removes the stale content type because the runtime regenerates the multipart boundary, and leaves the stale content length, which the regeneration also invalidates; the fix deletes the content length in the same branch"
     }

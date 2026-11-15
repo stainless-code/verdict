@@ -21,10 +21,9 @@
       "severity": "important",
       "keywords": [
         "metacharacter",
+        "interpreted as regex metacharacters",
         "interpolated into a regular expression",
         "not escaped",
-        "literal string",
-        "used as a pattern",
         "different scheme is accepted",
         "unmatched bracket"
       ],
