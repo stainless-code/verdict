@@ -36,7 +36,10 @@ var keywordCases = []keywordCase{
 	// goes wrong; audit-2's three counterexamples are pinned false and its
 	// first paraphrase is pinned true. Its second paraphrase ("use a dedicated
 	// flag instead of comparing cmd.Name") names the fix's mechanism rather
-	// than the defect, so it stays a known miss in the curation log.
+	// than the defect, so it stays a known miss in the curation log. Two bare
+	// nouns that came in with the first pass ("custom subcommand",
+	// "required-flag validation") went the same way as the old phrases: a test
+	// request and a note about where the validation lives matched them.
 	{
 		id: "urfave-cli-2319-required-flags-help-name",
 		passes: []string{
@@ -46,6 +49,8 @@ var keywordCases = []keywordCase{
 			"Matching the help command by name lets a custom subcommand run without its required flag.",
 			"The name comparison exempts every command called help from required-flag validation.",
 			"A custom subcommand named help bypasses required-flag validation because the exemption matches its name.",
+			"Required flags are never enforced on a command named help, because the exemption matches the name.",
+			"The check is never enforced for a user command called help, so its action runs with zero values.",
 			// audit-2's paraphrase of the same defect.
 			"Any custom subcommand whose Name happens to be \"help\" skips required-flag validation.",
 		},
@@ -63,14 +68,22 @@ var keywordCases = []keywordCase{
 			"Add a test for a subcommand named help that has a required flag.",
 			"The built-in help command should still work for user-defined subcommands.",
 			"Verify what this exemption tests when parent commands have required flags.",
+			// The two bare nouns the first pass added, each in a neutral
+			// sentence: a test request and a note about where the check lives.
+			"Add a test for a custom subcommand named help.",
+			"required-flag validation lives in checkAllRequiredFlags.",
 		},
 	},
 	// audit-2 found "year zero" and "yields year 0" direction-free: they name
 	// the value the defect is about, so a comment praising the new comparison
 	// and a note about Go's parsing graded as defect reports. "explicit year
-	// zero" went with them for the same reason. Each claim below says the date
-	// is discarded; audit-2's two counterexamples are pinned false and both of
-	// its paraphrases true.
+	// zero" went with them for the same reason, and the first pass's two
+	// conditions ("layout carries a year", "layout specifies a year") went the
+	// same way: a note about the layout and a question about what the check
+	// should read matched them. Each claim below says the date is discarded;
+	// audit-2's two counterexamples are pinned false, and its first paraphrase
+	// is pinned true. Its second was a question, not a finding, so it moved to
+	// the known misses in the curation log.
 	{
 		id: "urfave-cli-2450-year-zero-timestamp",
 		passes: []string{
@@ -83,9 +96,9 @@ var keywordCases = []keywordCase{
 			"A year-only layout that parses 0000 is treated as unset, so the caller's year is replaced with today.",
 			"Parsing \"0000\" with the 2006 layout succeeds and the date is silently rewritten to the current day.",
 			"A literal year 0 in a year-carrying layout is treated as unset and its date is replaced with today.",
-			// audit-2's paraphrases of the same defect.
+			"The branch drops the parsed year when layoutHasDate reports no date, so the caller's literal year never reaches the flag.",
+			// audit-2's first paraphrase of the same defect.
 			"A layout containing only a year like \"2006\" will have year 0000 overwritten with the current date.",
-			"Check whether the layout specifies a year instead of testing timestamp.Year() == 0.",
 		},
 		fails: []string{
 			"The year-only layout fails to parse a value with a timezone suffix.",
@@ -100,17 +113,25 @@ var keywordCases = []keywordCase{
 			// comparison, and a neutral note about what Go's parser returns.
 			"Nice comment explaining why year zero needs location-aware comparison.",
 			"Go time.Parse yields year 0 when the layout omits the year component.",
+			// The two conditions the first pass added, each in a neutral
+			// sentence, and audit-2's second paraphrase, which is a question
+			// about what the check should read rather than a defect report.
+			"Note that the layout carries a year for the 2006 form.",
+			"A layout that specifies a year is handled by layoutHasDate.",
+			"Check whether the layout specifies a year instead of testing timestamp.Year() == 0.",
 		},
 	},
 	// audit-2 found "early return", "empty positional", "boundary check",
 	// "on the boundary", "argument boundary" and "empty-arg" direction-free:
 	// they name the code the argument travels through, not what goes wrong, so
-	// a praise sentence and two wrong-defect findings graded as hits. Each
-	// claim below says an argument is consumed or lost; audit-2's three
-	// counterexamples are pinned false and its first paraphrase true. Its
-	// second paraphrase ("move the check to the top of the loop") names where
-	// the fix goes rather than the defect, so it stays a known miss in the
-	// curation log.
+	// a praise sentence and two wrong-defect findings graded as hits. The first
+	// pass added two more location fragments ("after the empty", "after the
+	// double-dash") that a note about the trace or the append matched, and they
+	// are gone too. Each claim below says an argument is consumed or lost;
+	// audit-2's three counterexamples are pinned false and its first paraphrase
+	// true. Its second paraphrase ("move the check to the top of the loop")
+	// names where the fix goes rather than the defect, so it stays a known miss
+	// in the curation log.
 	{
 		id: "urfave-cli-2163-stop-on-nth-arg-order",
 		passes: []string{
@@ -120,6 +141,7 @@ var keywordCases = []keywordCase{
 			"The Nth-argument boundary is checked after the branches that consume the argument.",
 			"An empty positional on the boundary ends flag parsing, so the rest of the arguments are lost.",
 			"A `--` on the boundary reaches its branch first, so the args are lost.",
+			"An argument that lands on the boundary is lost after the separator, so the action never receives it.",
 			// audit-2's paraphrase of the same defect.
 			"Checking StopOnNthArg after the empty-string and double-dash branches means those arguments bypass the limit.",
 		},
@@ -136,6 +158,10 @@ var keywordCases = []keywordCase{
 			"Good use of an early return here to avoid mutating the outer slice.",
 			"The empty positional should be appended to posArgs instead of breaking out of the loop.",
 			"The boundary check should use >= instead of == in case len(posArgs) overshoots.",
+			// The two location fragments the first pass added, each in a
+			// neutral sentence about the same line.
+			"The trace runs after the empty-arg check, which is fine.",
+			"Note that the append happens after the double-dash branch is handled.",
 		},
 	},
 	// The fourth urfave row pins the branch that classifies a single-dash
