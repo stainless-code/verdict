@@ -141,9 +141,10 @@ One case, one manifest, published as
   the category table — that the diff spells is dropped from that case's
   grading instead of refusing the case, because the curator cannot change the
   table; if no phrase is left, validation refuses the case and asks for a
-  keyword the diff does not spell. A real bundle must carry its `full.diff`:
-  `calibrate` refuses one that is missing or unreadable instead of grading
-  with the unfiltered built-ins, and `trend` skips it with a warning.
+  keyword the diff does not spell. A real bundle must carry a non-empty
+  `full.diff`: `calibrate` refuses one that is missing, empty, or unreadable
+  instead of grading with the unfiltered built-ins, and `trend` skips it with
+  a warning.
 - `line_tolerance` (optional, default 1) is the window in lines. Keep it
   short of the far end of the new-side hunk that shows the bug: the corpus
   test refuses a case whose window covers the whole hunk.
@@ -410,12 +411,14 @@ citable, never posted.
 
 ### What the backtest numbers mean
 
-Grading reuses the corpus rule (`corpuscore.Evaluate`): a finding matches a bug
-when it names the same `path`, its line is within ±1 of the bug's line, and its
-text names the defect (the bug's kind in hyphen or space form, or the published
-category vocabulary for that kind). A backtest case has no hand-written
-keywords: the kind is the miner's deterministic guess, so a finding must name
-what that guess calls the defect.
+Grading reuses the corpus rule over the replay bundle
+(`corpuscore.EvaluateDir`): a finding matches a bug when it names the same
+`path`, its line is within ±1 of the bug's line, and its text names the defect
+(the bug's kind in hyphen or space form, or the published category vocabulary
+for that kind). The bundle's `full.diff` is read too: a built-in phrase that
+diff spells is dropped, so a finding that names only that phrase is off target.
+A backtest case has no hand-written keywords: the kind is the miner's
+deterministic guess, so a finding must name what that guess calls the defect.
 
 - **`catch_rate = matched / bugs`** over the replayed PRs whose review was
   graded. Read it as a **match rate over SZZ candidates**, not a measured catch
