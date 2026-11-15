@@ -200,6 +200,50 @@ func TestReadCaseRefusesADiffSpelledKeyword(t *testing.T) {
 	}
 }
 
+// TestBudgetReachedWithoutASkipIsNotCitable pins the other half of the budget
+// rule: when the last scheduled sample pushes spend to the cap, nothing is
+// skipped, so cap_hit stays false — and the run must still not be citable.
+func TestBudgetReachedWithoutASkipIsNotCitable(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		cap    float64
+		reason bool
+	}{
+		{name: "past the cap", cap: 0.01, reason: true},
+		{name: "exactly at the cap", cap: 0.03, reason: true},
+		{name: "under the cap", cap: 0.04, reason: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rep := oneSampleReport(t, tc.cap)
+			if rep.CapHit || len(rep.Skipped) != 0 {
+				t.Fatalf("cap_hit=%v skipped=%v, want no skipped sample", rep.CapHit, rep.Skipped)
+			}
+			got := strings.Contains(rep.CitableReason, "reached the 0.0")
+			if got != tc.reason {
+				t.Errorf("citable=%v reason=%q, want the budget reason present=%v", rep.Citable, rep.CitableReason, tc.reason)
+			}
+			if tc.reason && rep.Citable {
+				t.Errorf("citable=%v, want a run that spent its budget refused", rep.Citable)
+			}
+		})
+	}
+}
+
+// oneSampleReport runs one priced 0.03 USD sample against a cap.
+func oneSampleReport(t *testing.T, cap float64) *Report {
+	t.Helper()
+	needPOSIX(t)
+	restoreWD(t)
+	cfg := benchConfig(t, fakeCorpus(t), agentWritesSpend)
+	cfg.MaxUSD = cap
+	fake := &fakeGrader{model: cfg.Model, panel: cfg.Panel, prefix: fakePrefix}
+	rep, err := runGraded(context.Background(), cfg, fake)
+	if err != nil {
+		t.Fatalf("runGraded: %v", err)
+	}
+	return rep
+}
+
 // TestReadCaseRefusesAContextAnchor pins the anchor guard on the run path: a
 // real case whose ground truth is a context line never reaches an agent.
 func TestReadCaseRefusesAContextAnchor(t *testing.T) {
