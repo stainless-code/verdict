@@ -64,6 +64,7 @@ type guardRow struct {
 	kind     string
 	refuse   string
 	keywords []string
+	also     []int
 	line     int
 }
 
@@ -82,6 +83,9 @@ var anchorGuardRows = []*guardRow{
 	{name: "first added line", keywords: []string{"the check runs too late"}, line: 91},
 	{name: "context line", refuse: "help.go:96", keywords: []string{"the check runs too late"}, line: 96},
 	{name: "context line before the hunk", refuse: "help.go:12", keywords: []string{"the check runs too late"}, line: 12},
+	{name: "also_lines on an added line", keywords: []string{"the check runs too late"}, line: 93, also: []int{94, 95}},
+	{name: "also_line on a context line", refuse: "help.go:96", keywords: []string{"the check runs too late"}, line: 93, also: []int{96}},
+	{name: "also_line outside the hunk", refuse: "help.go:200", keywords: []string{"the check runs too late"}, line: 93, also: []int{200}},
 	{name: "seeded case anchors freely", kind: "seeded", keywords: []string{"the check runs too late"}, line: 96},
 }
 
@@ -106,10 +110,14 @@ func guardManifest(t *testing.T, row *guardRow) []byte {
 	if line == 0 {
 		line = 93
 	}
-	bugs := []any{map[string]any{
+	bug := map[string]any{
 		"path": "help.go", "line": line, "kind": "validation-bypass",
 		"severity": "important", "keywords": row.keywords,
-	}}
+	}
+	if len(row.also) > 0 {
+		bug["also_lines"] = row.also
+	}
+	bugs := []any{bug}
 	if kind == kindControl {
 		bugs = []any{}
 	}

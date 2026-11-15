@@ -308,19 +308,35 @@ func unusableKeyword(c *core.CorpusCase, diff []byte, path string) *core.Refusal
 	return nil
 }
 
-// unaddedAnchor names the first bug whose line the diff does not add.
+// unaddedAnchor names the first anchor the diff does not add. A bug's window
+// is its line and every also_line: a context line in it is as unfair as a
+// context primary anchor, because a finding there is graded as a hit.
 func unaddedAnchor(c *core.CorpusCase, diff []byte, path string) *core.RefusalError {
 	added := addedLines(diff)
 	for i := range c.Bugs {
 		b := &c.Bugs[i]
-		if added[b.Path][b.Line] {
-			continue
+		if line, ok := firstUnadded(added[b.Path], b); !ok {
+			return invalid(path, fmt.Sprintf(
+				"bug %d anchors %s:%d, a line this diff does not add; put the ground truth on the line "+
+					"the PR wrote, or the review is scored on code the diff only carries as context",
+				i+1, b.Path, line))
 		}
-		return invalid(path, fmt.Sprintf(
-			"bug %d anchors %s:%d, a line this diff does not add; put the ground truth on the line "+
-				"the PR wrote, or the review is scored on code the diff only carries as context", i+1, b.Path, b.Line))
 	}
 	return nil
+}
+
+// firstUnadded reports whether every anchor of one bug is added, naming the
+// first that is not.
+func firstUnadded(added map[int]bool, b *core.CorpusBug) (int, bool) {
+	if !added[b.Line] {
+		return b.Line, false
+	}
+	for _, line := range b.AlsoLines {
+		if !added[line] {
+			return line, false
+		}
+	}
+	return 0, true
 }
 
 // addedLines indexes the new-side lines each path's hunks add.
