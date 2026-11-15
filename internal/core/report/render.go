@@ -50,6 +50,7 @@ func reportNext(st *state) string {
 func buildData(st *state) *core.ReportData {
 	data := &core.ReportData{
 		Verification: panelcore.Summarize(st.entries),
+		Validation:   st.validation,
 		GeneratedAt:  st.now,
 		Dir:          st.dir,
 		Head: core.ReportHead{

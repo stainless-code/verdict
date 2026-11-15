@@ -189,6 +189,7 @@ export interface ReportData {
   completeness?: ReportCompleteness;
   compliance?: ReportCompliance | null;
   risk?: ReportRisk | null;
+  validation?: ValidationData | null;
   gate?: ReportGate | null;
   receipt?: ProvenanceReceipt;
   truncated?: boolean | Array<ProvenanceTruncatedRow>;

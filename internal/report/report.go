@@ -225,6 +225,7 @@ var reportBoolSetters = map[string]func(*reportcore.Flags){
 	"--completeness":     func(f *reportcore.Flags) { f.Completeness = true },
 	"--provenance":       func(f *reportcore.Flags) { f.Provenance = true },
 	"--risk":             func(f *reportcore.Flags) { f.Risk = true },
+	"--validation":       func(f *reportcore.Flags) { f.Validation = true },
 }
 
 func reportWantedFlags() string {

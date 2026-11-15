@@ -379,6 +379,9 @@
         "risk": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reportRisk" }]
         },
+        "validation": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/validationData" }]
+        },
         "gate": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reportGate" }]
         },

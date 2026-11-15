@@ -7,6 +7,7 @@ package reportcore
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/validation"
 )
 
 const (
@@ -79,6 +81,7 @@ type state struct { // field grouping documents the loaded dimensions; alignment
 	patch        any
 	comp         *core.ReportCompleteness
 	risk         *core.ReportRisk
+	validation   *core.ValidationData
 	dir          string
 	now          string
 	headSHA      string
@@ -268,6 +271,7 @@ func loadState(ctx context.Context, st *state) *core.RefusalError {
 	loadStateCompleteness(ctx, st)
 	loadStateProvenance(st)
 	loadStateRisk(st)
+	loadStateValidation(st)
 	return nil
 }
 
@@ -280,6 +284,57 @@ func loadStateRisk(st *state) {
 	if st.flags.Risk {
 		st.risk.Score = risk.Score(st.dir, st.entries)
 	}
+}
+
+// loadStateValidation projects the pass a post or record run stored, else a
+// tally of the artifact; either way it degrades to a warning, never a refusal.
+func loadStateValidation(st *state) {
+	if !st.flags.Validation {
+		return
+	}
+	if data := storedValidation(st.dir); data != nil {
+		st.validation = data
+		return
+	}
+	file, hash, ref := validation.Load(st.dir, st.headSHA, st.entries)
+	if ref != nil {
+		st.warn("validation artifact unreadable (" + ref.Message + ") — degrading cleanly")
+		return
+	}
+	if file == nil {
+		st.warn("validation artifact absent (" + validation.FileName + " not found in bundle)")
+		return
+	}
+	policy := validation.PolicyFromConfig(nil)
+	st.validation = &core.ValidationData{
+		Hash: &hash, Counts: validation.Tally(file, st.entries), Mode: policy.Mode, Floors: policy.Floors,
+	}
+}
+
+// receiptValidation mirrors the four receipt keys post and record store.
+type receiptValidation struct {
+	Hash   *string               `json:"validation_hash"`
+	Floors core.RigorFloors      `json:"rigor_floors"`
+	Mode   string                `json:"validation_mode"`
+	Counts core.ValidationCounts `json:"validation_counts"`
+}
+
+// storedValidation repeats what the gate applied rather than re-deriving it.
+func storedValidation(dir string) *core.ValidationData {
+	for _, suffix := range []string{readcommon.PostSuffix, readcommon.RecordSuffix} {
+		raw, err := jq.CappedFile(dir+suffix, jq.MaxPRBytes)
+		if err != nil {
+			continue
+		}
+		var receipt receiptValidation
+		if err := json.Unmarshal(raw, &receipt); err != nil || receipt.Mode == "" {
+			continue
+		}
+		return &core.ValidationData{
+			Hash: receipt.Hash, Counts: receipt.Counts, Mode: receipt.Mode, Floors: receipt.Floors,
+		}
+	}
+	return nil
 }
 
 func loadRefusal(err error) *core.RefusalError {

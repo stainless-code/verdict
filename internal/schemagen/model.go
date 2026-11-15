@@ -210,6 +210,7 @@ type ReportData struct { //nolint:govet // field order is the published property
 	Completeness ReportCompleteness `json:"completeness" optional:"true"`
 	Compliance   *ReportCompliance  `anyOf:"null"        json:"compliance"             optional:"true"`
 	Risk         *ReportRisk        `anyOf:"null"        json:"risk"                   optional:"true"`
+	Validation   *ValidationData    `anyOf:"null"        json:"validation"             optional:"true"`
 	Gate         *ReportGate        `anyOf:"null"        json:"gate"                   optional:"true"`
 }
 

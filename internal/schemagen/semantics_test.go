@@ -242,7 +242,7 @@ var publishedSemantics = map[string]string{
 	// $defs/prWaitData.inconsistent_observations, plus the regenerated
 	// observations and prWaitData property descriptions. No existing property,
 	// required key, enum, or type changed.
-	"envelope.schema.json": "5a6c4df0d81f713eb16701382c0437a6acb8a3aa34ae324ca1a06effd32291ea",
+	"envelope.schema.json": "fe21931a4509ecfeb4c62e8724ba260df835f60116e5f95305c9b550969f2815",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

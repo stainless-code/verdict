@@ -1019,8 +1019,10 @@ real bug with local blast radius keeps publishing.
 artifact bytes, `null` when the pass was skipped), `validation_counts`
 (`confirmed`, `rejected`, `downgraded`, `unvalidated`), `validation_mode`, and
 `rigor_floors`. `post --json` reports the applied pass under `data.validation`
-only when one ran. A `validation.json` written for another head refuses
-`validation-stale`; a malformed one refuses `bad-validation`.
+only when one ran, and `report --json --validation` reads it back — the receipt
+a `post` or `record` run stored, or a tally of the artifact when none has. A
+`validation.json` written for another head refuses `validation-stale`; a
+malformed one refuses `bad-validation`.
 
 ### Diff coverage (agent attestation)
 
