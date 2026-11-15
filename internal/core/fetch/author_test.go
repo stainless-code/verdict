@@ -232,6 +232,14 @@ func TestNoFingerprintFromPlainProse(t *testing.T) {
 			pr:   `{"number":4714,"title":"Stop parsing the [codex] tag","body":"","headRefName":"sebastian/tag-parse"}`,
 		},
 		{
+			name: "harness prefix opening a title",
+			pr:   `{"number":4716,"title":"cursor/ rules cleanup","body":"Sorts the rule list.","headRefName":"sebastian/rules-cleanup"}`,
+		},
+		{
+			name: "harness prefix opening a body",
+			pr:   `{"number":4717,"title":"Document the harness setup","body":"codex/setup notes follow.","headRefName":"sebastian/harness-docs"}`,
+		},
+		{
 			name: "a co-author whose name merely starts like an agent",
 			pr: `{"number":4715,"title":"Harden the retry budget","body":"",
 				"headRefName":"sebastian/harden-retry-budget",

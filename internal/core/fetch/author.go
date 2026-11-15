@@ -39,8 +39,7 @@ const (
 	keyMessageHeadline = "messageHeadline"
 )
 
-// authorNames is ordered longest first, so "Claude Code" is a name, not a model
-// called Code.
+// longest first, so "Claude Code" is not parsed as model "Code".
 var authorNames = []struct{ name, agent string }{
 	{"claude code", agentClaude},
 	{"claude", agentClaude},

@@ -26,6 +26,31 @@ func TestAuthorReadsThroughTheCap(t *testing.T) {
 	}
 }
 
+// TestAuthorRejectsAnUnknownClaim proves a document naming an agent or a
+// confidence the schema does not publish reads as no claim, so no reader grows
+// a fourth agent or a third confidence from a hand-edited file.
+func TestAuthorRejectsAnUnknownClaim(t *testing.T) {
+	cases := []struct{ name, body string }{
+		{
+			name: "unpublished agent",
+			body: `{"schema_version":"1","agent":"gemini","model":null,"confidence":"high","evidence":[]}`,
+		},
+		{
+			name: "unpublished confidence",
+			body: `{"schema_version":"1","agent":"claude","model":null,"confidence":"certain","evidence":[]}`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeAuthorBody(t, dir, tc.body)
+			if file, ok := Author(dir); ok {
+				t.Errorf("author = %+v, want no claim", file)
+			}
+		})
+	}
+}
+
 func writeAuthorBody(t *testing.T, dir, body string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, AuthorSuffix[1:]), []byte(body), 0o600); err != nil {

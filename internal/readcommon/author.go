@@ -18,6 +18,10 @@ func Author(dir string) (*core.AuthorFile, bool) {
 	return ParseAuthor(raw)
 }
 
+var authorAgents = map[string]bool{"claude": true, "codex": true, "cursor": true}
+
+var authorConfidences = map[string]bool{"high": true, "medium": true}
+
 // ParseAuthor decodes one author.json body, false for anything that names no
 // agent.
 func ParseAuthor(raw []byte) (*core.AuthorFile, bool) {
@@ -30,7 +34,8 @@ func ParseAuthor(raw []byte) (*core.AuthorFile, bool) {
 		return nil, false
 	}
 	agent := jq.StrOf(m["agent"])
-	if agent == "" {
+	confidence := jq.StrOf(m["confidence"])
+	if !authorAgents[agent] || !authorConfidences[confidence] {
 		return nil, false
 	}
 	var model *string
@@ -41,7 +46,7 @@ func ParseAuthor(raw []byte) (*core.AuthorFile, bool) {
 		SchemaVersion: jq.StrOf(m["schema_version"]),
 		Agent:         agent,
 		Model:         model,
-		Confidence:    jq.StrOf(m["confidence"]),
+		Confidence:    confidence,
 		Evidence:      authorEvidence(m["evidence"]),
 	}, true
 }
