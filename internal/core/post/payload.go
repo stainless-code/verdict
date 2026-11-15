@@ -300,6 +300,7 @@ func (st *state) dryRunResponse(ctx context.Context) (*core.PostResponse, *core.
 		SecuritySummary: strOrNilPost(st.merged.Security),
 		Risk:            st.merged.Risk,
 		PayloadHash:     payloadHash,
+		Validation:      st.validationData(),
 		ItemsRaw:        recordcore.EnvelopeItems(payload),
 	}
 	prov := decodeProvenanceTyped(st.req.RootPath(), st.dir)

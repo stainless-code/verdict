@@ -7,6 +7,7 @@ package reportcore
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/validation"
 )
 
 const (
@@ -79,6 +81,7 @@ type state struct { // field grouping documents the loaded dimensions; alignment
 	patch        any
 	comp         *core.ReportCompleteness
 	risk         *core.ReportRisk
+	validation   *core.ValidationData
 	dir          string
 	now          string
 	headSHA      string
@@ -268,6 +271,7 @@ func loadState(ctx context.Context, st *state) *core.RefusalError {
 	loadStateCompleteness(ctx, st)
 	loadStateProvenance(st)
 	loadStateRisk(st)
+	loadStateValidation(st)
 	return nil
 }
 
@@ -280,6 +284,47 @@ func loadStateRisk(st *state) {
 	if st.flags.Risk {
 		st.risk.Score = risk.Score(st.dir, st.entries)
 	}
+}
+
+func loadStateValidation(st *state) {
+	if !st.flags.Validation {
+		return
+	}
+	if data := storedValidation(st.dir); data != nil {
+		st.validation = data
+		return
+	}
+	file, hash, ref := validation.Load(st.dir, st.headSHA, st.entries)
+	if ref != nil {
+		st.warn("validation artifact unreadable (" + ref.Message + ") — degrading cleanly")
+		return
+	}
+	if file == nil {
+		st.warn("validation artifact absent (" + validation.FileName + " not found in bundle)")
+		return
+	}
+	policy := validation.PolicyFromConfig(nil)
+	st.validation = &core.ValidationData{
+		Hash: &hash, Counts: validation.Tally(file, st.entries), Mode: policy.Mode, Floors: policy.Floors,
+	}
+}
+
+func storedValidation(dir string) *core.ValidationData {
+	for _, suffix := range []string{readcommon.PostSuffix, readcommon.RecordSuffix} {
+		raw, err := jq.CappedFile(dir+suffix, jq.MaxPRBytes)
+		if err != nil {
+			continue
+		}
+		var receipt core.Record
+		if err := json.Unmarshal(raw, &receipt); err != nil || receipt.ValidationMode == "" {
+			continue
+		}
+		return &core.ValidationData{
+			Hash: receipt.ValidationHash, Counts: receipt.ValidationCounts,
+			Mode: receipt.ValidationMode, Floors: receipt.RigorFloors,
+		}
+	}
+	return nil
 }
 
 func loadRefusal(err error) *core.RefusalError {

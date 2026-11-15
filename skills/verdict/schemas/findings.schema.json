@@ -206,7 +206,8 @@
             "revalidation",
             "addressed",
             "triaged",
-            "withheld"
+            "withheld",
+            "validation"
           ]
         },
         "actor": { "type": "string" },

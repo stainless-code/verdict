@@ -313,6 +313,7 @@ func wireNext(ctx context.Context, b *bindings, req *core.NextRequest) error {
 func decodePost(req *core.PostRequest, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.str(argPr, &req.Pr)
+	a.strings("requireRigor", &req.RequireRigor)
 	a.flags(func(f *args) {
 		f.str("approve", &req.Flags.Approve)
 		f.str("reviewFile", &req.Flags.ReviewFile)

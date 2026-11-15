@@ -24,15 +24,15 @@ func RunPost(ctx context.Context, r *cli.Runner, args []string, req *Request) in
 	if ref != nil {
 		return r.RefuseTyped(ref)
 	}
-	f, code, done := parsePostFlags(r, args, dir)
+	inv, code, done := parsePostFlags(r, args, dir)
 	if done {
 		return code
 	}
-	r.Rentry = postRentry(req.Repo, req.Pr, dir, f, r.JSONMode)
+	r.Rentry = postRentry(req.Repo, req.Pr, dir, inv, r.JSONMode)
 	if code, done := r.Canceled(ctx, "post"); done {
 		return code
 	}
-	resp, ref := postcore.Run(ctx, postRequest(r, req, f))
+	resp, ref := postcore.Run(ctx, postRequest(r, req, inv))
 	if ref != nil {
 		return r.RefuseTyped(ref)
 	}
@@ -47,7 +47,7 @@ func RunPost(ctx context.Context, r *cli.Runner, args []string, req *Request) in
 // the injected runtime (environment, clock, progress, and the production
 // split-stream commander), the render configuration, and the adapter-routed
 // flags.
-func postRequest(r *cli.Runner, req *Request, f core.PostFlags) *core.PostRequest {
+func postRequest(r *cli.Runner, req *Request, inv *postInvocation) *core.PostRequest {
 	root := req.Root
 	read := core.ReadRequest{
 		Runtime: &core.Runtime{
@@ -57,38 +57,39 @@ func postRequest(r *cli.Runner, req *Request, f core.PostFlags) *core.PostReques
 		Repo: req.Repo, Pr: req.Pr, Forces: req.Forces, Root: &root, RepoRoot: req.RepoRoot,
 	}
 	return &core.PostRequest{
-		ReadRequest: read,
-		Flags:       f,
-		Effective:   r.Effective,
-		JSONMode:    r.JSONMode,
-		Warnings:    append([]string{}, r.Warnings...),
+		ReadRequest:  read,
+		Flags:        inv.flags,
+		RequireRigor: inv.requireRigor,
+		Effective:    r.Effective,
+		JSONMode:     r.JSONMode,
+		Warnings:     append([]string{}, r.Warnings...),
 	}
 }
 
 // parsePostFlags strips post's flags, reporting unknown ones. A value flag
 // with no operand is a usage error.
-func parsePostFlags(r *cli.Runner, args []string, dir string) (core.PostFlags, int, bool) {
-	f := core.PostFlags{Approve: "false", ReviewFile: dir + "/review.json"}
+func parsePostFlags(r *cli.Runner, args []string, dir string) (*postInvocation, int, bool) {
+	inv := &postInvocation{flags: core.PostFlags{Approve: "false", ReviewFile: dir + "/review.json"}}
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
-		case a == postApproveFlag, a == "--review-file", a == postSummaryFlag, a == postMinSeverityFlag:
+		case a == postApproveFlag, a == "--review-file", a == postSummaryFlag, a == postMinSeverityFlag, a == postRequireRigorFlag:
 			v, next, u := cli.FlagValue(args, i, a, postWants[a])
 			if u != nil {
-				return f, r.ReportUsage(u), true
+				return inv, r.ReportUsage(u), true
 			}
-			setPostValue(&f, a, v)
+			setPostValue(inv, a, v)
 			i = next
-		case parsePostEqFlag(&f, a):
-		case applyPostSwitchFlag(&f, a):
+		case parsePostEqFlag(&inv.flags, a):
+		case applyPostSwitchFlag(&inv.flags, a):
 		default:
 			msg := fmt.Sprintf("unknown flag '%s' for post (want --approve[=bool], --request-changes, "+
 				"--bind, --force, --review-file <path>, --summary comment|off, --dry-run, --require-coverage, "+
-				"--allow-secret-values, --provenance, --json)", a)
-			return f, r.ReportUsage(&cli.UsageError{Message: msg}), true
+				"--require-rigor <tier>=<rung>, --allow-secret-values, --provenance, --json)", a)
+			return inv, r.ReportUsage(&cli.UsageError{Message: msg}), true
 		}
 	}
-	return f, 0, false
+	return inv, 0, false
 }
 
 // postApproveFlag names the --approve flag (which also takes the documented
@@ -139,6 +140,8 @@ const postEqSep = "="
 
 const postMinSeverityFlag = "--min-severity"
 
+const postRequireRigorFlag = "--require-rigor"
+
 const postDryRunFlag = "--dry-run"
 
 const postSummaryFlag = "--summary"
@@ -146,32 +149,40 @@ const postSummaryFlag = "--summary"
 // postWants names each value flag's accepted operand for the missing-value
 // usage error.
 var postWants = map[string]string{
-	postApproveFlag:     "true|false",
-	"--review-file":     "<path>",
-	postSummaryFlag:     "comment|off",
-	postMinSeverityFlag: "critical|important|informational|off",
+	postApproveFlag:      "true|false",
+	"--review-file":      "<path>",
+	postSummaryFlag:      "comment|off",
+	postMinSeverityFlag:  "critical|important|informational|off",
+	postRequireRigorFlag: "critical|important|informational=<said|pointed|walked|ran|reproduced>",
+}
+
+type postInvocation struct {
+	flags        core.PostFlags
+	requireRigor []string
 }
 
 // setPostValue stores one value-taking post flag's value.
-func setPostValue(f *core.PostFlags, name, val string) {
+func setPostValue(inv *postInvocation, name, val string) {
 	switch name {
 	case postApproveFlag:
-		f.Approve = val
+		inv.flags.Approve = val
 	case postSummaryFlag:
-		f.Summary = val
+		inv.flags.Summary = val
 	case postMinSeverityFlag:
-		f.MinSeverity = val
+		inv.flags.MinSeverity = val
+	case postRequireRigorFlag:
+		inv.requireRigor = append(inv.requireRigor, val)
 	default:
-		f.ReviewFile = val
+		inv.flags.ReviewFile = val
 	}
 }
 
 // postRentry rebuilds the exact re-run command recorded after flag parsing
 // (flags included, in flag order, so a retry reproduces this invocation).
-func postRentry(repo, pr, dir string, f core.PostFlags, jsonMode bool) string {
+func postRentry(repo, pr, dir string, inv *postInvocation, jsonMode bool) string {
 	var sb strings.Builder
 	sb.WriteString("verdict post " + repo + " " + pr)
-	for _, flag := range postRentryFlags(f, dir, jsonMode) {
+	for _, flag := range postRentryFlags(inv, dir, jsonMode) {
 		sb.WriteString(" " + flag)
 	}
 	return sb.String()
@@ -179,7 +190,12 @@ func postRentry(repo, pr, dir string, f core.PostFlags, jsonMode bool) string {
 
 // postRentryFlags lists the flags a retry repeats, in flag order: one row per
 // flag instead of one branch, so the list stays a table as flags are added.
-func postRentryFlags(f core.PostFlags, dir string, jsonMode bool) []string {
+func postRentryFlags(inv *postInvocation, dir string, jsonMode bool) []string {
+	f := inv.flags
+	out := make([]string, 0, 1+2*len(inv.requireRigor))
+	for _, floor := range inv.requireRigor {
+		out = append(out, postRequireRigorFlag, floor)
+	}
 	rows := []struct {
 		flag string
 		set  bool
@@ -195,7 +211,6 @@ func postRentryFlags(f core.PostFlags, dir string, jsonMode bool) []string {
 		{postcore.AllowSecretValuesFlag, f.AllowSecretValues},
 		{"--json", jsonMode},
 	}
-	var out []string
 	for _, row := range rows {
 		if row.set {
 			out = append(out, row.flag)

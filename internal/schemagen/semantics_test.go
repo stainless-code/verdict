@@ -44,7 +44,7 @@ var publishedSemantics = map[string]string{
 	// index a code index rather than a Go one.
 	// kb_policy.max_chars: additive optional non-null integer >= 1 controlling KB
 	// recall character budget.
-	"config.schema.json": "642aff63cce2daac6269b57a2b69f176e79e1a7ac52b0f5c968884049cbb1abe",
+	"config.schema.json": "e7bca2256eaa3417f675cd3428f9a9bcfc84ccefc7bf23ed68ff2102ab58a716",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets
@@ -253,7 +253,9 @@ var publishedSemantics = map[string]string{
 	// author/reviewer pair: additive optional trendData.by_pair
 	// ($defs/trendPairCounts) plus required trendBundleRow.author and
 	// trendBundleRow.review_models. No existing property, enum, or type changed.
-	"envelope.schema.json": "9b6ad000db5e05adb14f184afa7a74aa3c7ba198a6a670698dad70343984773c",
+	// The validation pass adds data.validation (optional, post only).
+	"envelope.schema.json": "7045b52b76b5ed3582ad058298982aa9191abeffa8114cd1495f1bdb20abe842",
+
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -265,7 +267,7 @@ var publishedSemantics = map[string]string{
 	// sarif ingest: additive optional entry.source enum (model|tool) and
 	// optional tool, rule_id, and fingerprint strings on findings entries. No
 	// existing property, required key, or type changed.
-	"findings.schema.json": "1abce02980e93cc219592a809cb9edb7c3f1d3dc8a0a08c7fe0c74503671778b",
+	"findings.schema.json": "273c22cb1804ca71acc28ca2f7912d8ec60f9efeb5c3772feb8b33286f107207",
 	// post_floor_scoped: additive optional per-path posting floor list with its
 	// $defs/floorScope entry (required path, enum floor). No existing
 	// property, required key, or type changed.
@@ -287,7 +289,7 @@ var publishedSemantics = map[string]string{
 	// comment. No existing property, required key, enum, or type changed.
 	// risk score: additive optional nullable risk claim ($defs/riskClaim). No
 	// existing property, required key, enum, or type changed.
-	"post.schema.json": "667ef93b68ff65b85b5eda8ef11e1608cf788feb98e186499b20b1a78495671b",
+	"post.schema.json": "0e6fcf560007fd66da8605a73e5a2df912d5334d8b999341e850a7b9c1a1e0f2",
 	// patch identity: additive $defs/identity root (new bundle document) —
 	// no existing property, required key, or type changed.
 	"identity.schema.json": "efe9a7b331e41715bc55b8824e95154add584c2d63f670811ef03c350d2e5bdb",
@@ -388,7 +390,10 @@ var publishedSemantics = map[string]string{
 	// author/reviewer pair: additive required-nullable author object
 	// ($defs/author) and required review_models string array. No existing
 	// property, enum, or type changed; older stores simply carry neither key.
-	"record.schema.json": "0f39476dac5836babb324ef8e62fca0423472765454745e4f849adca3649ebab",
+	// The validation pass adds required-nullable validation_hash and required
+	// validation_counts/validation_mode/rigor_floors after chunk_coverage.
+	"record.schema.json": "37628cfde409c8b33bf7a9a23dba5f2875a4d43a63e0589b2134323385edd384",
+
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable comment.brief
 	// (optional; no existing property, required key, or type changed). The
 	// descriptions now state the checker's exact error/warning split; shape
@@ -418,6 +423,11 @@ var publishedSemantics = map[string]string{
 	// property, required key, or type changed — the envelope fetchEstimate entry
 	// from f3a22047 is untouched).
 	"usage.schema.json": "143473d20d0e0d140432356d9254554b969b9c71290d61ec3f5ab821e2b6bc69",
+	// additive validation.schema.json (new bundle document; no existing schema
+	// property, required key, or type changed). It pins the trusted pass: one
+	// result per finding sig with its verdict, reason, optional one-rank
+	// downgrade pair, and checks.
+	"validation.schema.json": "c018104ce060fdaa7d45b5cc5a02d3b0046a4d5c5c121b7d5b64f8eb02bd58f0",
 }
 
 // TestGeneratedSchemasPreservePublishedSemantics proves the generated files

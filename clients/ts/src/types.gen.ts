@@ -189,6 +189,7 @@ export interface ReportData {
   completeness?: ReportCompleteness;
   compliance?: ReportCompliance | null;
   risk?: ReportRisk | null;
+  validation?: ValidationData | null;
   gate?: ReportGate | null;
   receipt?: ProvenanceReceipt;
   truncated?: boolean | Array<ProvenanceTruncatedRow>;
@@ -482,8 +483,32 @@ export interface PostData {
   withheld?: WithheldSummary | null;
   /** Planned (on dry-run) or executed (when --summary comment is active) PR-level summary comment action. */
   summary?: PostSummary | null;
+  validation?: ValidationData | null;
   receipt?: ProvenanceReceipt;
   truncated?: boolean | Array<ProvenanceTruncatedRow>;
+  [key: string]: unknown;
+}
+
+export interface ValidationData {
+  hash: string | null;
+  counts: ValidationCounts;
+  mode: "warn" | "gate";
+  floors: RigorFloors;
+  [key: string]: unknown;
+}
+
+export interface ValidationCounts {
+  confirmed: number;
+  rejected: number;
+  downgraded: number;
+  unvalidated: number;
+  [key: string]: unknown;
+}
+
+export interface RigorFloors {
+  critical: "said" | "pointed" | "walked" | "ran" | "reproduced";
+  important: "said" | "pointed" | "walked" | "ran" | "reproduced";
+  informational: "said" | "pointed" | "walked" | "ran" | "reproduced";
   [key: string]: unknown;
 }
 

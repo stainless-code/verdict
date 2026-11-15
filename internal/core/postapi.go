@@ -44,10 +44,14 @@ type PostSummary struct { //nolint:govet // field order is the published propert
 // flag, and the warnings the adapter already accumulated (prefs).
 type PostRequest struct { //nolint:govet // field grouping documents the request surface
 	ReadRequest
-	Flags     PostFlags
-	Effective Effective
-	JSONMode  bool
-	Warnings  []string
+	Flags PostFlags
+	// RequireRigor names the per-tier evidence floors this invocation
+	// demands (`critical=walked`). A named tier also gates: below-floor
+	// findings refuse rigor-below-floor unless --force records the bypass.
+	RequireRigor []string
+	Effective    Effective
+	JSONMode     bool
+	Warnings     []string
 }
 
 // PostResponse carries the post outcome: the envelope identity, the typed
@@ -89,11 +93,22 @@ type PostData struct { //nolint:govet // field order is the published property o
 	Coverage            *CoverageSummary         `anyOf:"null"            json:"coverage,omitempty"     optional:"true"`
 	Withheld            *WithheldSummary         `anyOf:"null"            json:"withheld,omitempty"     optional:"true"`
 	Summary             *PostSummary             `anyOf:"null"            json:"summary,omitempty"      optional:"true"`
+	Validation          *ValidationData          `anyOf:"null"            json:"validation,omitempty"   optional:"true"`
 	ItemsRaw            []any                    `json:"-"`
 	ReviewRaw           any                      `json:"-"`
 	ProvenanceEnabled   bool                     `json:"-"`
 	ProvenanceReceipt   *ProvenanceReceipt       `json:"-"`
 	ProvenanceTruncated []ProvenanceTruncatedRow `json:"-"`
+}
+
+// ValidationData is the applied validator pass a post reports: the exact-file
+// hash (null when the pass was skipped), the per-verdict tally, the mode, and
+// the floors, so a reader proves what shaped the payload.
+type ValidationData struct { //nolint:govet // field order is the published property order
+	Hash   *string          `json:"hash"`
+	Counts ValidationCounts `json:"counts"`
+	Mode   string           `enum:"warn|gate" json:"mode"`
+	Floors RigorFloors      `json:"floors"`
 }
 
 // PostBody is the rendered post body summary.
@@ -150,13 +165,20 @@ type Post struct { //nolint:govet // field order is the published property order
 	// PostMinSeverity is the global posting floor. PostFloorScoped records
 	// different path-specific floors that withheld findings, and
 	// BelowFloorExcluded counts all withheld findings.
-	PostMinSeverity    *string          `enum:"critical|important|informational" json:"post_min_severity,omitempty"`
-	BelowFloorExcluded int              `json:"below_floor_excluded,omitempty"   min:"0"`
-	PostFloorScoped    []FloorScope     `json:"post_floor_scoped,omitempty"`
-	Coverage           *CoverageSummary `anyOf:"null"                            json:"coverage,omitempty"          optional:"true"`
-	ChunkCoverage      *ChunkCoverage   `anyOf:"null"                            json:"chunk_coverage,omitempty"    optional:"true"`
-	Summary            *PostSummary     `anyOf:"null"                            json:"summary,omitempty"           optional:"true"`
-	ReviewRaw          any              `json:"-"`
+	PostMinSeverity    *string      `enum:"critical|important|informational" json:"post_min_severity,omitempty"`
+	BelowFloorExcluded int          `json:"below_floor_excluded,omitempty"   min:"0"`
+	PostFloorScoped    []FloorScope `json:"post_floor_scoped,omitempty"`
+	// ValidationHash is the SHA-256 of the validation.json this post applied,
+	// null when the pass was skipped; the counts, mode, and floors prove what
+	// the gate read.
+	ValidationHash   *string          `json:"validation_hash"   optional:"true"`
+	ValidationCounts ValidationCounts `json:"validation_counts" optional:"true"`
+	ValidationMode   string           `enum:"warn|gate"         json:"validation_mode"          optional:"true"`
+	RigorFloors      RigorFloors      `json:"rigor_floors"      optional:"true"`
+	Coverage         *CoverageSummary `anyOf:"null"             json:"coverage,omitempty"       optional:"true"`
+	ChunkCoverage    *ChunkCoverage   `anyOf:"null"             json:"chunk_coverage,omitempty" optional:"true"`
+	Summary          *PostSummary     `anyOf:"null"             json:"summary,omitempty"        optional:"true"`
+	ReviewRaw        any              `json:"-"`
 }
 
 // FloorScope is one path-scoped severity floor that actually withheld a
@@ -169,12 +191,14 @@ type FloorScope struct {
 }
 
 // ForcedPost is one explicit --force bypass recorded in post.json: the fired
-// guard plus the prior bundle and head when a same-patch sibling refused.
-type ForcedPost struct { //nolint:govet // field order is the published property order
-	Reason         string  `json:"reason"`
-	PatchID        *string `json:"patch_id,omitempty"`
-	PreviousBundle *string `json:"previous_bundle,omitempty"`
-	PreviousHead   *string `json:"previous_head,omitempty"`
+// guard plus the prior bundle and head when a same-patch sibling refused, and
+// the sigs a rigor floor refused.
+type ForcedPost struct {
+	Reason         string   `json:"reason"`
+	PatchID        *string  `json:"patch_id,omitempty"`
+	PreviousBundle *string  `json:"previous_bundle,omitempty"`
+	PreviousHead   *string  `json:"previous_head,omitempty"`
+	Sigs           []string `json:"sigs,omitempty"`
 }
 
 // WithheldCapability is one capability the host could not carry for the post
@@ -225,6 +249,7 @@ func (d *PostData) Wire() *jq.Obj {
 			o.Set("summary", d.Summary)
 		}
 		applyProvenanceWire(o, d.ProvenanceEnabled, d.ProvenanceReceipt, d.ProvenanceTruncated)
+		setPostValidationWire(o, d.Validation)
 		return o
 	}
 	pairs := d.leadPairs(body)
@@ -249,7 +274,16 @@ func (d *PostData) Wire() *jq.Obj {
 	}
 	o.Set("provenance", provenance)
 	applyProvenanceWire(o, d.ProvenanceEnabled, d.ProvenanceReceipt, d.ProvenanceTruncated)
+	setPostValidationWire(o, d.Validation)
 	return o
+}
+
+func setPostValidationWire(o *jq.Obj, v *ValidationData) {
+	if v == nil {
+		return
+	}
+	o.Set("validation", jq.NewObj(
+		"hash", v.Hash, "counts", v.Counts, "mode", v.Mode, "floors", v.Floors))
 }
 
 func (d *PostData) leadPairs(body *jq.Obj) []any {
@@ -332,6 +366,7 @@ func setPostTailWire(o *jq.Obj, p *Post) {
 		o.Set("risk", p.Risk)
 	}
 	setPostCoverageWire(o, p)
+	setValidationWire(o, p.ValidationHash, p.ValidationCounts, p.ValidationMode, p.RigorFloors)
 }
 
 // setPostCoverageWire appends the stored attestation last: the measured line
@@ -380,6 +415,13 @@ func setPostFloorWire(o *jq.Obj, p *Post) {
 	if len(p.PostFloorScoped) > 0 {
 		o.Set("post_floor_scoped", p.PostFloorScoped)
 	}
+}
+
+func setValidationWire(o *jq.Obj, hash *string, counts ValidationCounts, mode string, floors RigorFloors) {
+	o.Set("validation_hash", hash)
+	o.Set("validation_counts", counts)
+	o.Set("validation_mode", mode)
+	o.Set("rigor_floors", floors)
 }
 
 // setPostPatchWire appends the optional patch identity after the provenance
