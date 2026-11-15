@@ -22,10 +22,11 @@
       "keywords": [
         "metacharacter",
         "interpreted as regex metacharacters",
-        "interpolated into a regular expression",
         "not escaped",
         "different scheme is accepted",
-        "unmatched bracket"
+        "unmatched bracket",
+        "without escaping",
+        "unescaped scheme"
       ],
       "note": "the option and the token grammar are concatenated into one RegExp source, so every metacharacter in the configured scheme is live; the fix compares the header prefix as a string and tests the token with its own anchored pattern"
     }

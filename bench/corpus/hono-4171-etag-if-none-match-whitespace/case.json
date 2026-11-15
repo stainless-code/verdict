@@ -24,8 +24,8 @@
         "trailing space",
         "spaces before the comma",
         "not trimmed",
-        "left of the comma",
-        "one side of the delimiter"
+        "trailing whitespace before the comma",
+        "whitespace is not stripped"
       ],
       "note": "RFC 9110's #entity-tag list allows optional whitespace on both sides of a comma; splitting on /,\\s*/ consumes only the right-hand side of each comma, so the left-hand entry keeps its trailing spaces and the equality test fails; the fix splits on the comma and trims each entry"
     }

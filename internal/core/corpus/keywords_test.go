@@ -98,18 +98,21 @@ var keywordCases = []keywordCase{
 			"`StopOnNthArg` is a new field generated per parse; the count is tracked on the flag set.",
 		},
 	},
-	// The hono entries end each fails list with a counterexample from the
-	// independent corpus audit (corpus-audit-1): a neutral or neighboring
-	// sentence that a direction-free keyword used to grade as a hit.
+	// The hono entries pin two independent audits in both directions: the last
+	// rows of each fails list are a neutral or praising sentence the earlier
+	// vocabularies graded as a hit, and each passes list carries a paraphrased
+	// finding a widened phrase now covers.
 	{
 		id: "hono-4659-bearer-auth-scheme-regex-metacharacters",
 		passes: []string{
 			"Every metacharacter in the configured scheme is live, so a scheme containing a dot accepts a different scheme than the one configured.",
 			"The scheme is interpreted as regex metacharacters: a prefix of X.Y accepts the header scheme XZY.",
 			"An unmatched bracket in the scheme makes the pattern fail to compile, so the middleware throws while it is built.",
-			"The option is interpolated into a regular expression, so X.Auth+v2 rejects its own literal scheme because + is a quantifier.",
+			"The scheme is concatenated into the pattern without escaping, so X.Auth+v2 rejects its own literal scheme because + is a quantifier.",
 			"Because the configured scheme is not escaped, a different scheme is accepted whenever the prefix contains a dot.",
 			"A scheme holding an unmatched bracket cannot compile, so the service fails at startup.",
+			"An unescaped scheme lets a dot in the prefix match any character, so a different scheme is accepted.",
+			"Passing options.prefix directly into new RegExp(...) without escaping regex special characters allows characters like . or + in the scheme to act as wildcards or throw a SyntaxError.",
 		},
 		fails: []string{
 			"The token comparison is not constant time, so the time it takes leaks how much of the value is right.",
@@ -119,17 +122,20 @@ var keywordCases = []keywordCase{
 			"The realm is written into the challenge without quoting, so a space breaks the header grammar.",
 			"Note that options.prefix is used as a pattern with the 'i' flag; verify TOKEN_STRINGS is meant to be case-insensitive too.",
 			"Comparing prefix as a literal string with startsWith would avoid allocating a RegExp.",
+			"In bearerAuth, options.prefix is interpolated into a regular expression with the 'i' flag for case-insensitive matching.",
 		},
 	},
 	{
 		id: "hono-3936-pattern-router-wildcard-overmatch",
 		passes: []string{
 			"The compiled route matches a path it should not: /path/* answers /pathfoo because nothing requires the end of the path.",
-			"With no boundary after the wildcard, the route accepts a path it should reject, such as /pathological.",
+			"With the suffix dropped, the route accepts a path it should reject, such as /pathological.",
 			"The trailing wildcard pattern matches a sibling path, so /paths reaches the handler registered for /path/*.",
 			"This is a prefix overmatch: the suffix form /assets* answers /asset and /assetx as well.",
 			"The pattern over-matches every path that starts with the registered prefix, including /pathfoo.",
-			"Dropping the suffix means the pattern matches a longer path than the route declares.",
+			"The trailing wildcard omits the end anchor, so the route matches paths beyond the prefix: /path/* answers /pathfoo.",
+			"A wildcard route lacks a segment boundary, so a sibling path like /paths is routed to the wildcard handler.",
+			"Because endsWithWildcard omits the end anchor (/?$), a route like /api/* will also match /apiv2 instead of requiring a slash boundary.",
 		},
 		fails: []string{
 			"Routes are matched in registration order, so a later specific route is shadowed by an earlier one.",
@@ -139,6 +145,8 @@ var keywordCases = []keywordCase{
 			"The pattern is rebuilt on every lookup instead of once at registration.",
 			"Consider adding a comment explaining why the end anchor is omitted when endsWithWildcard is true.",
 			"Pushing routes unconditionally means duplicate routes could match the wrong handler.",
+			"When endsWithWildcard is true, omitting /?$ ensures the route matches a longer path such as /path/a/b.",
+			"Using an empty suffix leaves no boundary after the wildcard, which is intentional for suffix matching like /assets*.",
 		},
 	},
 	{
@@ -146,10 +154,11 @@ var keywordCases = []keywordCase{
 		passes: []string{
 			"Whitespace before the comma is left on the entry, so a matching tag never equals the response tag and the request is answered 200 instead of 304.",
 			"Entries are not trimmed, so a tag written with a trailing space is never recognized and the client gets the full body again.",
-			"The split consumes only the right-hand side of the delimiter, so the entry left of the comma keeps its spaces.",
-			"If-None-Match allows whitespace on one side of the delimiter as well as the other, but only the right-hand side is consumed.",
+			"Splitting on the comma leaves trailing whitespace before the comma on every tag but the last, so the entry never matches.",
+			"If-None-Match allows whitespace before the comma as well as after it, but the split consumes only the right-hand side.",
 			"Spaces before the comma survive the split, so a tag the response carries is not recognized and the conditional request is answered in full.",
 			"Every entry but the last keeps a trailing space, so a tag that is present in the list never matches.",
+			"Whitespace is not stripped from the tag that precedes the comma, so that tag never matches the response.",
 		},
 		fails: []string{
 			"The 304 response keeps the Content-Encoding header, so a cached client tries to decode the body twice.",
@@ -159,17 +168,20 @@ var keywordCases = []keywordCase{
 			"The middleware generates a tag for HEAD responses, where there is no body to hash.",
 			"The regex `/,\\s*/` already handles optional whitespace after the comma; you could also trim the outer header.",
 			"Splitting on comma breaks ETags containing a comma inside quotes (e.g. \"a,b\"), so it never equals and still returns 200.",
+			"Any characters to the left of the comma are passed directly into stripWeak.",
+			"The regex /,\\s*/ consumes whitespace on one side of the delimiter, which is fine for standard headers.",
 		},
 	},
 	{
 		id: "hono-5133-clone-formdata-stale-content-length",
 		passes: []string{
-			"The clone keeps the original content length, so the declared length still describes the pre-clone body.",
-			"Only the content type is dropped: the clone leaves the original content length in place, and it no longer matches the body that was re-serialized.",
+			"The clone keeps the original content length, so the declared header still describes the pre-clone body.",
+			"Only the content type is dropped: the clone leaves the original content length in place, and the header disagrees with the body it re-serialized.",
 			"The stale content length declares 77 bytes for a 169-byte multipart body.",
-			"Because the length of the original body is copied over, the clone's declared length disagrees with what it sends.",
-			"A request built from this clone would advertise the declared length of the original body and be cut short on the wire.",
+			"The clone keeps the stale length from the original request, so the header is wrong for the re-serialized body.",
+			"A request built from this clone would advertise a wrong content-length and be cut short on the wire.",
 			"The block removes the stale type but keeps the original content length, which the fresh boundary invalidates as well.",
+			"The stale content-length survives the clone, so the request declares more bytes than the re-serialized body carries.",
 		},
 		fails: []string{
 			"The FormData is re-serialized for every clone, so a large upload is buffered twice in memory.",
@@ -179,6 +191,9 @@ var keywordCases = []keywordCase{
 			"Headers are copied without normalizing their case, so a lookup by name misses.",
 			"Should content-length be preserved if the FormData boundary happens to be the same length?",
 			"Good catch deleting the stale content-type; check whether content-length is also needed by the server.",
+			"Deleting content-type lets Request regenerate the boundary; the declared length header is left untouched.",
+			"The cloned request preserves the content-length of the original body from req.header().",
+			"Good catch deleting content-type since the original boundary no longer matches the body.",
 		},
 	},
 }

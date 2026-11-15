@@ -25,8 +25,9 @@
         "matches a sibling path",
         "prefix overmatch",
         "over-matches",
-        "no boundary after the wildcard",
-        "matches a longer path"
+        "omits the end anchor",
+        "lacks a segment boundary",
+        "matches paths beyond the prefix"
       ],
       "note": "endsWithWildcard drops the '/?$' suffix instead of requiring 'the end or a slash', so the added pattern line matches a sibling path; the fix compiles '(?:$|/)' for a trailing '/*' and leaves the suffix form unanchored only on the right, which is what a suffix wildcard means"
     }
