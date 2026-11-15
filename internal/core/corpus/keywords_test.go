@@ -105,26 +105,6 @@ var keywordCases = []keywordCase{
 	// the plumbing, or a suggestion. None of them may grade as a defect report,
 	// which is why no keyword names a location or a mechanism on its own.
 	{
-		id: "bubbletea-1233-alt-screen-line-count",
-		passes: []string{
-			"This keeps one line count for both screens, so the inline section is repainted at the wrong row.",
-			"The count is shared between the two screens, so leaving the alt screen applies the alt screen's count to the inline section.",
-			"After the alt screen is left, the renderer moves the cursor up by the wrong number of lines.",
-			"Stale lines are left on screen because the inline section is not returned to its start.",
-			"flush does not track the alt screen separately, so the inline frame is repainted at the wrong row.",
-			"This is a shared line count defect.",
-		},
-		fails: []string{
-			"The line-skipping comparison reads the wrong slice, so an unchanged line is painted again anyway.",
-			"EraseScreenBelow is emitted even when the terminal width is still unknown.",
-			"The render buffer is compared before it is reset, so every line is always repainted.",
-			"repaint() leaves the cached width in place, so truncation uses a stale terminal width.",
-			"The queued message lines are dumped before the frame is painted, so they scroll away.",
-			"This line stores the number of new lines in the renderer's counter.",
-			"Add a comment explaining why the alt screen and inline modes share one counter.",
-		},
-	},
-	{
 		id: "bubbletea-1255-signal-send-shutdown-hang",
 		passes: []string{
 			"The handler blocks forever because the interrupt is written with no receiver left.",
@@ -142,6 +122,7 @@ var keywordCases = []keywordCase{
 			"The handler stops listening after the first signal, so a second interrupt is ignored.",
 			"The handler writes the interrupt message to the program's message channel.",
 			"Add a log line naming which signal the handler received.",
+			"Note that shutdown waits for the handler goroutine to finish; consider buffering the sig channel.",
 		},
 	},
 	{
@@ -183,6 +164,28 @@ var keywordCases = []keywordCase{
 			"Add tracing for commands handed to the command handler.",
 			"This loop hands each non-nil batch command to p.Send in a new goroutine.",
 			"Add a comment explaining that the commands in a batch are run one at a time.",
+			"Commands handed to the command handler should be wrapped with panic recovery.",
+		},
+	},
+	{
+		id: "bubbletea-848-window-title-msg-unhandled",
+		passes: []string{
+			"The message switch in eventLoop has no case for the window title message, so a SetWindowTitle command never reaches the renderer.",
+			"A window title command now falls through to the user's Update, so the title is never written.",
+			"The resize check never runs because the window size case was dropped from the switch.",
+			"The switch lost its internal cases, so internal messages are no longer handled.",
+			"The terminal title never changes: the title command is silently dropped.",
+			"This is an unhandled internal message.",
+		},
+		fails: []string{
+			"The sequence goroutine recovers from a panic with recover, so a panic in a nested sequence is swallowed.",
+			"The batch handler waits on a WaitGroup whose counter is never incremented.",
+			"Commands in a sequence are executed one at a time, so a slow command delays the next one.",
+			"The message filter runs before the internal switch, so a filtered QuitMsg is never handled.",
+			"eventLoop returns the model on ctx.Done without draining the command channel, so a queued command is lost.",
+			"The renderer's handleMessages is called after the switch, so a clear-screen message repaints twice.",
+			"This loop reads each message from the program's message channel and dispatches it.",
+			"Add tracing around the internal message switch so missing cases are easier to spot.",
 		},
 	},
 }
