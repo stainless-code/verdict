@@ -151,9 +151,10 @@ to write dispatches, lenses run under it.
    without that binding is unknown for this capture. Actual cost stays agent attestation: an
    unknown group cost stays unknown, and one group's actual cost is never split across groups.
 3. **Bar is sound + correct + elegant.** Keep findings that clear all three; tag each with
-   its evidence rung (said/pointed/walked/ran/reproduced — scale lives in `review.md`); drop praise,
-   style prefs, unverified claims, pre-existing code the PR didn't touch, and bloat-shaped
-   fixes (impossible-case guards, single-use abstractions, restating comments, tautological tests).
+   its evidence rung in the comment key `rigor` (said|pointed|walked|ran|reproduced — scale
+   lives in `review.md`); drop praise, style prefs, unverified claims, pre-existing code the
+   PR didn't touch, and bloat-shaped fixes (impossible-case guards, single-use abstractions,
+   restating comments, tautological tests).
 4. **Exactly one terminal write.** The router's Terminal-write column is exhaustive:
    produce that write and stop. A trivial incremental delta ends in a 1–2 sentence
    no-review note, never an empty review.
