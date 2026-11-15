@@ -338,15 +338,15 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
 --- file C/.verdict/state/4709/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "ed90a9279ffae34c4ef5e8eeb2c9481695114b4af816a88c0068c96218b84cad",
-  "prompts_hash": "71e81dd0a06320e6252cd6ddc49e0d9591a61684a254568a653a7b338bcb1857",
+  "run_id": "e6e733ca1463ec96d7b35200b7fbc6431fe1f50ced9d930b40920e8d7f346dfc",
+  "prompts_hash": "e62e67fb077675601eec7b83f6f6e8e1ea0bfac881e82d3db192d840b6ab6f83",
   "inputs": [
     {
       "kind": "prompt",
       "name": "SKILL.md",
       "status": "included",
-      "sha256": "3815122ebf219abe59367a90a037313bc114e678e1cb996ac09d06703f2bbdb8",
-      "bytes": 12779
+      "sha256": "46083e965f5dd88ecb32401398d2bf0c5caebdc2e48abfdaf55e922e5b30923a",
+      "bytes": 12809
     },
     {
       "kind": "prompt",
@@ -359,8 +359,8 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
       "kind": "prompt",
       "name": "prompts/review.md",
       "status": "included",
-      "sha256": "1676513464c5ff1319460ff1bd00cbc0915622deb10374df8b43bc32afe69d5c",
-      "bytes": 27574
+      "sha256": "85c9b108f5aada55cc67c0f9fd23305ddcb8bc49efd26391493cd5952786c7be",
+      "bytes": 27670
     },
     {
       "kind": "prompt",

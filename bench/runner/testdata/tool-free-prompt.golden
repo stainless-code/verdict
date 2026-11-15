@@ -161,9 +161,10 @@ to write dispatches, lenses run under it.
    without that binding is unknown for this capture. Actual cost stays agent attestation: an
    unknown group cost stays unknown, and one group's actual cost is never split across groups.
 3. **Bar is sound + correct + elegant.** Keep findings that clear all three; tag each with
-   its evidence rung (said/pointed/walked/ran/reproduced — scale lives in `review.md`); drop praise,
-   style prefs, unverified claims, pre-existing code the PR didn't touch, and bloat-shaped
-   fixes (impossible-case guards, single-use abstractions, restating comments, tautological tests).
+   its evidence rung in the comment key `rigor` (said|pointed|walked|ran|reproduced — scale
+   lives in `review.md`); drop praise, style prefs, unverified claims, pre-existing code the
+   PR didn't touch, and bloat-shaped fixes (impossible-case guards, single-use abstractions,
+   restating comments, tautological tests).
 4. **Exactly one terminal write.** The router's Terminal-write column is exhaustive:
    produce that write and stop. A trivial incremental delta ends in a 1–2 sentence
    no-review note, never an empty review.
@@ -336,16 +337,17 @@ past what a heading scan covers in one turn.
    else drop unless PR introduced/amplified the regression), anything not actionable.
    Also drop **bloat-shaped findings**: impossible-case guards, single-use abstractions,
    restating comments, tautological tests, just-in-case guards. Bar: sound + correct + elegant.
-   Tag each surviving finding with its evidence rung — said (your claim alone) / pointed
+   Tag each surviving finding's evidence rung in the comment key `rigor`, one of
+   `said|pointed|walked|ran|reproduced` — said (your claim alone) / pointed
    (`file:line` or library source) / walked (failure traced step by step, can't reach) /
    ran (script or test against the real code) / reproduced (in the running app). Push each
-   finding as far down-rung as is cheap and say where it stopped; rung-`said` findings are
+   finding as far down-rung as is cheap and say where it stopped; a `said` `rigor` finding is
    labeled `unproven` in the body or dropped. Perf-adjacent findings carry the limiter (from
    a profile, not a guess) plus run count and spread, or are marked `unproven`. Count errors
    and confirm the timed code actually ran; one honest ballpark run, stated as one run, beats
    five-figure theater. Tag severity `critical` / `important` / `informational` mirroring the
    finding's tier (unknown values refuse the review). Tag each
-   inline comment `in-bounds:true/false` — `false` means redesign or out-of-diff: address mode
+   inline comment's `in-bounds` boolean — `false` means redesign or out-of-diff: address mode
    reports it, never redesigns it. Every inline comment may carry one `category` from the
    closed taxonomy `logic|edge-case|security|performance|accidental-commit|style|docs|other`
    — label the kind the evidence supports, never infer it from the file path; omit it when
