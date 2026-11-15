@@ -246,11 +246,15 @@ var publishedSemantics = map[string]string{
 	// $defs/prWaitData.inconsistent_observations, plus the regenerated
 	// observations and prWaitData property descriptions. No existing property,
 	// required key, enum, or type changed.
+	// fix batch: additive optional fixData.min_severity, fixData.verify_cmd,
+	// fixData.patch (the fix.patch path), and fixData.paths (the --paths globs),
+	// plus fixData.batch ($ref fixBatchRow) and $defs/fixBatchRow. No existing
+	// property, required key, enum, or type changed.
 	// author/reviewer pair: additive optional trendData.by_pair
 	// ($defs/trendPairCounts) plus required trendBundleRow.author and
 	// trendBundleRow.review_models. No existing property, enum, or type changed.
 	// The validation pass adds data.validation (optional, post only).
-	"envelope.schema.json": "ee612c3e699950005f26fe3fc1a741da28d1ca7a7035e8dbae2635d242878d92",
+	"envelope.schema.json": "7045b52b76b5ed3582ad058298982aa9191abeffa8114cd1495f1bdb20abe842",
 
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type

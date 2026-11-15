@@ -46,6 +46,8 @@ var hintRules = []HintRule{
 	{codes: []string{"post-failed"}, hint: "try: narrow anchor drift or body size (see above), then re-run"},
 	{codes: []string{"post-secret-shaped"}, hint: "try: remove the value from review.json and re-run, " +
 		"or pass --allow-secret-values to publish it anyway"},
+	{codes: []string{"fix-patch-secret"}, hint: "try: remove the value from the worktree (rotate it " +
+		"if it was real), then re-run fix"},
 	{
 		codes: []string{"diff-too-large"},
 		hint:  "try: split the range (--range/--base/--base-sha) or narrow with a paths filter, then re-fetch",
@@ -63,8 +65,13 @@ var hintRules = []HintRule{
 	{codes: []string{"ingest-failed"}, hint: "try: confirm the bundle path and SARIF file readability, then re-run"},
 	{prefix: "missing-", hint: "try: run the fetch/record step named above first, then re-run"},
 	{
+		codes: []string{"no-verify-cmd"},
+		hint: "try: write verifyCmd in the bundle's patch.json (the command verify and " +
+			"fix --all hand back), or pass --verify-cmd <cmd> to a fix batch, then re-run",
+	},
+	{
 		codes: []string{
-			"not-a-repo", "not-local", "no-pr-target", "no-threads", "no-verify-cmd", "report-failed",
+			"not-a-repo", "not-local", "no-pr-target", "no-threads", "report-failed",
 			"config-no-bundle",
 		},
 		hint: "try: run the fetch/record step named above first, then re-run",

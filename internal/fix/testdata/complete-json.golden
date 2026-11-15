@@ -33,5 +33,3 @@ exit: 0
 fix complete: .verdict/state/local-done — fixed=1 open=0 stopped=0 (ledger .verdict/state/local-done/fix.json)
 next: done — no open findings
 --- files ---
---- file C/.verdict/state/local-done/fix.json ---
-{"sigs":{}}

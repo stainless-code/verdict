@@ -1,0 +1,20 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fix",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "bad-min-severity",
+    "message": "fix --all: --min-severity takes critical|important|informational|off\ntry: pass critical|important|informational|off"
+  }
+}
+--- stderr ---
+» readiness: .verdict/state/local-batch — findings 3 open (3 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
+re-enter: verdict fix acme/app local-batch --all --min-severity high --verify-cmd 'go test ./...' --json
+--- files ---

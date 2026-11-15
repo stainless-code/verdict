@@ -32,7 +32,7 @@ _verdict_flags() { # $1 = verb
     pack) printf '%s\n' list add test --dir --json;;
     adopt) printf '%s\n' --from --json;;
     ingest) printf '%s\n' --sarif --json;;
-    fix) printf '%s\n' --sig --json;;
+    fix) printf '%s\n' --sig --all --min-severity --verify-cmd --paths --json;;
     pr-wait) printf '%s\n' --until --timeout --once --interval --json --provider ;;
     ready) printf '%s\n' --json --check --wait-for --timeout;;
     gate) printf '%s\n' --max-severity --require-head --live --coverage --json;;
@@ -67,6 +67,7 @@ _verdict_values() { # $1 = verb, $2 = flag
       esac;;
     --approve) printf '%s\n' true false;;
     --preset) printf '%s\n' chill standard strict;;
+    --min-severity) printf '%s\n' critical important informational off;;
     --max-severity) printf '%s\n' critical important informational;;
     --live) printf '%s\n' auto strict skip;;
     --status)

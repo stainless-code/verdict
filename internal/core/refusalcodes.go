@@ -2,6 +2,10 @@ package core
 
 import "slices"
 
+// CodeBadFlags names the invalid-flag-combination refusal: an adapter renders
+// it as usage (exit 2), not as a gate failure.
+const CodeBadFlags = "bad-flags"
+
 // refusalCodes is the closed set of refusal codes this build can emit: one
 // sorted entry per code refused anywhere in the tree.
 //
@@ -120,6 +124,7 @@ var refusalCodes = []string{
 	"fetch-failed",
 	"fix-ceiling",
 	"fix-failed",
+	"fix-patch-secret",
 	"head-mismatch",
 	"html-not-export",
 	"html-symlink",

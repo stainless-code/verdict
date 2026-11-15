@@ -182,7 +182,7 @@ Fix: remove the credential key named above and export it as an environment crede
 
 ## `bad-flags`
 
-Cause: the flag combination is not valid (e.g. `--range`/`--base`/`--staged`/`--stash` are mutually exclusive, or `learn` got no mode), or a bundle positional is not one path element (`../other`, `a/b`, `a\b`, `.`, `..`, and an empty name all refuse this way, since a bundle name is a PR number or a fetch-local slug, never a path). `run --stage` joins this list: it renders one stage only, so it wants both `--print` and `--recipe`, an index inside the plan's stages, and no pass-through `--model`/`-m` when that stage declares a hint.
+Cause: the flag combination is not valid (e.g. `--range`/`--base`/`--staged`/`--stash` are mutually exclusive, `fix` got `--sig` with `--all` or a batch flag (`--min-severity`, `--verify-cmd`, `--paths`) without `--all`, or `learn` got no mode), or a bundle positional is not one path element (`../other`, `a/b`, `a\b`, `.`, `..`, and an empty name all refuse this way, since a bundle name is a PR number or a fetch-local slug, never a path). `run --stage` joins this list: it renders one stage only, so it wants both `--print` and `--recipe`, an index inside the plan's stages, and no pass-through `--model`/`-m` when that stage declares a hint.
 
 Fix: re-run with a valid combination — the message names the clash.
 
@@ -608,9 +608,20 @@ Fix: triage the sig or split the fix — the 3-pass ceiling is hard-coded.
 
 ## `fix-failed`
 
-Cause: the fix ledger could not be written.
+Cause: the fix ledger or the patch output could not be written.
 
 Fix: make the bundle directory writable, then re-run `fix`.
+
+## `fix-patch-secret`
+
+Cause: the worktree diff `fix` was about to write to `fix.patch` carries a
+secret-shaped value — a private key, an AWS key id, a GitHub, Slack, Stripe,
+Google, Anthropic, or OpenAI token. The bundle keeps that patch, and every later
+agent run reads it.
+
+Fix: remove the value from the worktree and rotate it if it was real, then
+re-run `fix`. The pass was not recorded and `fix.patch` was not written, so no
+pass was spent.
 
 ## `head-mismatch`
 

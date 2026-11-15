@@ -156,12 +156,25 @@ m0="$(mark)"
 run_review fix acme/app loop1 --json
 assert_exit "re-entry via fix exits 0" 0
 if [ -f "$LB/fix.json" ]; then
-  good "fix writes only its ledger (fix.json)"
+  good "fix writes its ledger beside the bundle (fix.json)"
 else
   bad "fix wrote no ledger"
 fi
+# fix owns two outputs — the ledger and the worktree patch — and the envelope
+# names both. The store check looks past exactly those two names, so a third
+# file appearing (findings.json rewritten, a review or thread file touched)
+# still fails; deriving the names from the envelope keeps this from drifting
+# if fix ever renames them (fix.patch landed in STA-105 and broke the old
+# hardcoded `grep -v fix.json`).
+jq -r '[(.data.ledger // empty), (.data.patch // empty)][] | split("/") | last' \
+  "$EVAL_OUT" >"$EVAL_SANDBOX/fix-own.txt"
+snap_store() {
+  awk 'NR==FNR { skip[$0] = 1; next }
+       { p = $2; sub("^\\./", "", p); if (!(p in skip)) print }' \
+    "$EVAL_SANDBOX/fix-own.txt" "$1"
+}
 snap "$LB" "$EVAL_SANDBOX/s5.after"
-if cmp -s <(grep -v 'fix.json' "$EVAL_SANDBOX/s5.before") <(grep -v 'fix.json' "$EVAL_SANDBOX/s5.after"); then
+if cmp -s <(snap_store "$EVAL_SANDBOX/s5.before") <(snap_store "$EVAL_SANDBOX/s5.after"); then
   good "fix left the findings store alone"
 else
   bad "fix touched the findings store"
@@ -171,7 +184,7 @@ if [ "$(calls_since "$m0")" -eq 0 ]; then
 else
   bad "fix reached the stub"
 fi
-matrix_row "fix" "abandoned" "$EVAL_STATUS" "none" "yes" "no" "ledger-only" "0"
+matrix_row "fix" "abandoned" "$EVAL_STATUS" "none" "yes" "no" "ledger+patch" "0"
 
 run_review report acme/app loop1 --json
 SIGS="$(jq -r '.data.items[] | select(.status == "open") | .sig' "$EVAL_OUT" 2>/dev/null || true)"

@@ -30,6 +30,7 @@ const (
 	sigDone     = "2123456789abcdef0123456789abcdef01234567"
 	sigCeiling  = "4123456789abcdef0123456789abcdef01234567"
 	sigScope    = "5123456789abcdef0123456789abcdef01234567"
+	sigBatch    = "6123456789abcdef0123456789abcdef01234567"
 )
 
 // findingJSON renders one valid store entry.
@@ -172,6 +173,82 @@ func setupScope(t *testing.T, dir, _ string) {
 	}
 }
 
+const batchVerifyCmd = "go test ./..."
+
+func setupBatch(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	mkLocal(t, dir, "batch", "["+
+		findingJSON(sigInfo, "open", "informational", "notes.txt", "Minor wording nit here.")+","+
+		findingJSON(sigBatch, "open", "important", "other.txt", "Important scoping bug here.")+","+
+		findingJSON(sigCritical, "open", "critical", "app.txt", "Critical boundary bug here.")+"]")
+}
+
+func setupBatchStopped(t *testing.T, dir, _ string) {
+	t.Helper()
+	setupBatch(t, dir, "")
+	seedLedger(t, dir, "batch", `{"sigs":{"`+sigBatch+`":{"passes":3}}}`+"\n")
+}
+
+func setupBatchPatch(t *testing.T, dir, _ string) {
+	t.Helper()
+	setupBatch(t, dir, "")
+	patch := `{"sig":"` + sigCritical + `","verifyCmd":"go vet ./..."}` + "\n"
+	bdir := filepath.Join(dir, ".verdict", "state", "local-batch")
+	if err := os.WriteFile(filepath.Join(bdir, "patch.json"), []byte(patch), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func setupBatchBelowFloor(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	mkLocal(t, dir, "low", "["+
+		findingJSON(sigInfo, "open", "informational", "notes.txt", "Minor wording nit here.")+","+
+		findingJSON(sigInfo2, "open", "informational", "app.txt", "Another nit here.")+"]")
+}
+
+const patchedAnchorContent = "alpha\nbeta fixed\ngamma\n"
+
+func setupPatch(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	mkLocal(t, dir, "patched", "["+
+		findingJSON(sigBatch, "open", "important", "app.txt", "Important scoping bug here.")+"]")
+	seedLedger(t, dir, "patched", `{"sigs":{"`+sigBatch+`":{"passes":1,`+
+		`"last_at":"2026-01-01T00:00:00Z","baseline":["app.txt","notes.txt","other.txt"]}}}`+"\n")
+	if err := os.WriteFile(filepath.Join(dir, "app.txt"), []byte(patchedAnchorContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func setupPatchSecret(t *testing.T, dir, _ string) {
+	t.Helper()
+	setupPatch(t, dir, "")
+	leak := "alpha\ntoken=ghp_0123456789abcdefghijklmnopqrstuvwxyz\ngamma\n"
+	if err := os.WriteFile(filepath.Join(dir, "app.txt"), []byte(leak), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func setupBatchLedger(t *testing.T, dir, _ string) {
+	t.Helper()
+	setupBatch(t, dir, "")
+	seedLedger(t, dir, "batch", "{\n  \"sigs\": {\n    \""+sigBatch+"\": {\"passes\": 2}\n  }\n}\n")
+}
+
+func setupPatchStale(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	mkLocal(t, dir, "stale", "["+
+		findingJSON(sigBatch, "open", "important", "app.txt", "Important scoping bug here.")+"]")
+	stale := "diff --git a/app.txt b/app.txt\n--- a/app.txt\n+++ b/app.txt\n@@ -1,3 +1,3 @@\n alpha\n-beta\n+beta stale\n gamma\n"
+	bdir := filepath.Join(dir, ".verdict", "state", "local-stale")
+	if err := os.WriteFile(filepath.Join(bdir, "fix.patch"), []byte(stale), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // setupNotLocal is the PR-bundle refusal fixture.
 func setupNotLocal(t *testing.T, dir, _ string) {
 	t.Helper()
@@ -202,6 +279,64 @@ func TestFixGolden(t *testing.T) {
 	t.Run("refusals", testFixRefusals)
 	t.Run("gates", testFixGates)
 	t.Run("brief", testFixBrief)
+	t.Run("batch", testFixBatch)
+	t.Run("patch", testFixPatch)
+}
+
+func testFixPatch(t *testing.T) {
+	t.Helper()
+	golden.Pin(t, harness, "patch-json", setupPatch, nil,
+		"fix", "acme/app", "local-patched", "--json")
+	golden.Pin(t, harness, "patch-human", setupPatch, nil,
+		"fix", "acme/app", "local-patched")
+	golden.Pin(t, harness, "patch-secret", setupPatchSecret, nil,
+		"fix", "acme/app", "local-patched", "--json")
+	golden.Pin(t, harness, "patch-stale", setupPatchStale, nil,
+		"fix", "acme/app", "local-stale", "--json")
+	golden.Pin(t, harness, "patch-batch", setupPatch, nil,
+		"fix", "acme/app", "local-patched", "--all", "--verify-cmd", batchVerifyCmd, "--json")
+}
+
+func testFixBatch(t *testing.T) {
+	t.Helper()
+	golden.Pin(t, harness, "batch-json", setupBatch, nil,
+		"fix", "acme/app", "local-batch", "--all", "--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "batch-human", setupBatch, nil,
+		"fix", "acme/app", "local-batch", "--all", "--verify-cmd", batchVerifyCmd)
+	golden.Pin(t, harness, "batch-floor", setupBatch, nil,
+		"fix", "acme/app", "local-batch", "--all", "--min-severity", "critical",
+		"--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "batch-stopped", setupBatchStopped, nil,
+		"fix", "acme/app", "local-batch", "--all", "--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "batch-patch-cmd", setupBatchPatch, nil,
+		"fix", "acme/app", "local-batch", "--all", "--min-severity", "critical", "--json")
+	golden.Pin(t, harness, "batch-no-verify", setupBatch, nil,
+		"fix", "acme/app", "local-batch", "--all", "--json")
+	golden.Pin(t, harness, "batch-empty", setupBatchBelowFloor, nil,
+		"fix", "acme/app", "local-low", "--all", "--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "batch-complete", setupDone, nil,
+		"fix", "acme/app", "local-done", "--all", "--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "batch-bad-floor", setupBatch, nil,
+		"fix", "acme/app", "local-batch", "--all", "--min-severity", "high",
+		"--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "batch-bad-floor-empty", setupDone, nil,
+		"fix", "acme/app", "local-done", "--all", "--min-severity", "high",
+		"--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "batch-conflict", setupBatch, nil,
+		"fix", "acme/app", "local-batch", "--all", "--sig", sigInfo)
+	golden.Pin(t, harness, "batch-no-verify-ledger", setupBatchLedger, nil,
+		"fix", "acme/app", "local-batch", "--all", "--json")
+	golden.Pin(t, harness, "batch-paths", setupBatch, nil,
+		"fix", "acme/app", "local-batch", "--all", "--verify-cmd", batchVerifyCmd,
+		"--paths", "other.txt", "--json")
+	golden.Pin(t, harness, "batch-paths-glob", setupBatch, nil,
+		"fix", "acme/app", "local-batch", "--all", "--verify-cmd", batchVerifyCmd,
+		"--paths", "app.*", "--paths", "other.txt")
+	golden.Pin(t, harness, "batch-paths-empty", setupBatch, nil,
+		"fix", "acme/app", "local-batch", "--all", "--verify-cmd", batchVerifyCmd,
+		"--paths", "docs/**", "--json")
+	golden.Pin(t, harness, "batch-paths-without-all", setupBatch, nil,
+		"fix", "acme/app", "local-batch", "--paths", "src/**")
 }
 
 // testFixPick covers the default pick, tiebreak, and completion.
