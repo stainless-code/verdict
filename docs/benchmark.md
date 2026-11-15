@@ -503,6 +503,12 @@ stopped short.
 06b: it blames each later `fix:` or `Revert "..."` commit's deleted lines back
 to the merged or squash PR that introduced them and writes a deterministic
 `.verdict/backtest/<run>/mine.json` with zero model calls and zero network.
+Mine from a full clone: a partial one (`git clone --filter=blob:none`) holds the
+history but not the blobs, and blame fetches each missing blob in its own
+round-trip, so the run stalls on the network. `backtest mine` refuses
+`partial-clone` there rather than reading as a hang; clone without `--filter`, or
+unset the remote's promisor and `partialclonefilter` settings and run
+`git fetch --refetch`.
 The artifact is a candidate list, not a corpus, not a measurement, and not
 citable: SZZ blame is a hypothesis, every excluded fix is counted with a
 reason, and a fix can touch cleanup adjacent to the real bug. Use it to pick

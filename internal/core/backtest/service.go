@@ -41,6 +41,7 @@ const (
 	codeCanceled         = "canceled"
 	codeBadFlags         = "bad-flags"
 	codeWindowTooLarge   = "window-too-large"
+	codePartialClone     = "partial-clone"
 	modeMine             = "mine"
 	methodSZZ            = "szz-blame-v1"
 	schemaVersion        = "1"
@@ -48,6 +49,9 @@ const (
 	msgCanceled          = "canceled before backtest mine completed"
 	shallowWarning       = "shallow clone: an introducer at the clone boundary reads as no-pr; " +
 		"run 'git fetch --unshallow' for the full history"
+	partialCloneRefusal = "partial clone: blame would fetch each missing blob in its own round-trip; " +
+		"re-clone without --filter, or unset the remote's promisor and partialclonefilter settings " +
+		"and run 'git fetch --refetch'"
 	artifactDir       = ".verdict/backtest"
 	commandOutputCap  = 16 << 20
 	gitDateLayout     = "2006-01-02T15:04:05Z"
@@ -218,6 +222,9 @@ func Run(ctx context.Context, req *Request) (resp *Response, ref *core.RefusalEr
 		return nil, ref
 	}
 	st.root = root
+	if ref := st.partialClone(ctx); ref != nil {
+		return nil, ref
+	}
 	version, ref := st.gitVersion(ctx)
 	if ref != nil {
 		return nil, ref
@@ -393,6 +400,34 @@ func (st *state) shallow(ctx context.Context) {
 		return
 	}
 	st.warn(shallowWarning)
+}
+
+func (st *state) partialClone(ctx context.Context) *core.RefusalError {
+	if st.promisorRemote(ctx) || st.partialCloneExtension(ctx) {
+		return st.refuse(codePartialClone, partialCloneRefusal)
+	}
+	return nil
+}
+
+// promisorRemote reports whether a remote is flagged as a promisor, which is
+// what makes blame fetch: the flag, not the filter config, is the promise.
+func (st *state) promisorRemote(ctx context.Context) bool {
+	out, exit, _, err := st.git(ctx, st.root, "config", "--type=bool",
+		"--get-regexp", `^remote\..*\.promisor$`)
+	if err != nil || exit != 0 {
+		return false
+	}
+	for line := range strings.SplitSeq(out, "\n") {
+		if fields := strings.Fields(line); len(fields) > 1 && fields[len(fields)-1] == "true" {
+			return true
+		}
+	}
+	return false
+}
+
+func (st *state) partialCloneExtension(ctx context.Context) bool {
+	out, exit, _, err := st.git(ctx, st.root, "config", "--get", "extensions.partialClone")
+	return err == nil && exit == 0 && strings.TrimSpace(out) != ""
 }
 
 // gitVersion records the exact git that produced the artifact.

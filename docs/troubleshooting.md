@@ -955,6 +955,12 @@ Cause: more than 100 inline findings or 4 verifiers would exceed the 400-dispatc
 
 Fix: narrow the review or pinned roster, re-fetch if the roster changed, then run `verdict panel`.
 
+## `partial-clone`
+
+Cause: `backtest mine` ran in a partial clone (`git clone --filter=blob:none`). Blame fetches each missing blob from the promisor remote on its own round-trip, so the run stalls on the network instead of finishing.
+
+Fix: re-clone without `--filter=blob:none`, or unset the remote's `promisor` and `partialclonefilter` settings and run `git fetch --refetch`, then re-run.
+
 ## `post-failed`
 
 Cause: the post submission failed (anchor drift or body size — the message says which).
