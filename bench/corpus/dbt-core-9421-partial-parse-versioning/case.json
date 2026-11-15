@@ -20,17 +20,18 @@
       "kind": "stale-partial-parse",
       "severity": "important",
       "keywords": [
-        "adding a version",
-        "adding versioning",
         "gains versioning",
+        "never schedules",
+        "gains versions",
+        "newly versioned",
+        "becomes versioned",
         "referencing nodes are not reparsed",
         "not scheduled for reparsing",
         "does not reparse",
-        "downstream refs",
-        "stale parse",
-        "not in the graph",
+        "not reparsed",
+        "never reparsed",
         "against the old",
-        "never reparsed"
+        "is_versioned is false"
       ],
       "note": "the gate is the old node's own versioned flag, so a model that becomes versioned is not counted as a change that its referencing nodes must re-read; the fix also tests the new schema entry for versions",
       "also_lines": [847]

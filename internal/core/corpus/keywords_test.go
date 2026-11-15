@@ -121,14 +121,21 @@ var keywordCases = []keywordCase{
 	{
 		id: "dbt-core-11768-python-model-config-warning",
 		passes: []string{
-			"Python models add internal config keys when their config is accessed, so this validation raises a deprecation warning for keys the user never wrote.",
+			"Python models add config keys when their config is accessed, so this validation raises a spurious deprecation for keys the user never wrote.",
 			"The validation cannot tell a python model's internal properties apart from user config, so every python model gets a spurious deprecation.",
-			"The internal keys are not in the jsonschema, so validating them warns even though the user cannot set them.",
-			"A false positive: the config keys a python model adds itself are reported as unknown custom keys.",
-			"Every python model raises a deprecation warning for its own bookkeeping keys.",
-			"This fires custom-key-in-config-deprecation for internal keys no user wrote.",
+			"The internal keys are not in the jsonschema, so validating them warns even though the user cannot specify them.",
+			"The validation reports a python model's own bookkeeping keys as unknown custom keys.",
+			"Every python model raises a spurious deprecation for its own bookkeeping keys.",
+			"This fires custom-key-in-config-deprecation for config keys the user never wrote.",
+			"A false deprecation is raised for keys the python model added itself.",
+			"The model's bookkeeping keys are treated as user config, so every python model warns.",
+			"Filter out python-model bookkeeping keys before calling validate_model_config.",
 		},
+		// Neutral or praising sentences at the same line, then findings about
+		// neighboring defects in the same file: none may name this one.
 		fails: []string{
+			"Ensure internal keys are stripped before serializing the manifest.",
+			"This validation should raise an error rather than a deprecation warning.",
 			"The validation runs once per node, not once per config read.",
 			"validate_config_call_dict defaults to False, so most callers skip validation.",
 			"The post-hook and pre-hook keys are compared before the deprecation is raised.",
@@ -143,12 +150,20 @@ var keywordCases = []keywordCase{
 		passes: []string{
 			"When the dimension name differs from the column name, no expression is set, so MetricFlow queries a column that does not exist.",
 			"The dimension name falls back to the column only when the dimension has no name; otherwise the expression is never set.",
-			"A dimension whose name differs from its column gets no mapping, so the wrong identifier is queried.",
+			"A dimension whose name differs from its column gets no mapping, so the query names the wrong identifier.",
 			"The reader builds the dimension with the friendly name and leaves the expression unset.",
-			"MetricFlow resolves the dimension name as if it were a warehouse column, which is why validation reports an invalid identifier.",
+			"MetricFlow resolves the dimension name instead of the column, so the query fails because the expression is missing.",
 			"The comment says expressions are unsupported for column-based dimensions, but the name can differ, so the generated SQL points at the dimension name instead of the column.",
+			"Pass expr=column.name when column.dimension.name differs from column.name.",
+			"The dimension is built without expr, so the warehouse column is never read.",
+			"Sets expr to the column name whenever the dimension name is a label.",
 		},
+		// Neutral or praising sentences at the same line, then findings about
+		// neighboring defects in the same file: none may name this one.
 		fails: []string{
+			"Good that no expression is needed for column-based dimensions per the comment.",
+			"Check whether column.dimension.label also differs from the column name.",
+			"If DimensionType is invalid, MetricFlow will report an invalid identifier.",
 			"The metrics parsing path does not handle the filter block.",
 			"Entities are derived only from derived_semantics, never from columns.",
 			"The new method skips columns without a dimension block, which is correct.",
@@ -161,14 +176,21 @@ var keywordCases = []keywordCase{
 	{
 		id: "dbt-core-9421-partial-parse-versioning",
 		passes: []string{
-			"Adding a version to an existing model never schedules its referencing nodes for reparsing, so the downstream refs keep the stale parse.",
+			"Adding a version to an existing model leaves the referencing nodes not reparsed, so they keep reading the old parse.",
+			"Adding a version to an existing model never schedules its referencing nodes for reparsing, so the dependents keep the parse they already had.",
 			"The condition only covers a changed latest version or a removed one, so a model that gains versioning is not reparsed.",
-			"A model that becomes versioned leaves its dependents pointing at the old parse, and dbt fails with a node that is not in the graph.",
+			"A model that becomes versioned leaves its dependents pointing at the old parse, so dbt fails on a node that was never parsed.",
 			"Because the gate reads the old node's flag, adding versioning does not reparse any referencing node.",
 			"Downstream models keep resolving against the old version when a new version is added to the schema.",
 			"Partial parsing misses the version-added case, so referencing nodes are never reparsed.",
+			"If an unversioned model gains versions, node.is_versioned is False so referencing models are not reparsed.",
+			"Also check elem.get(\"versions\") so newly versioned models trigger downstream reparsing.",
 		},
+		// Neutral or praising sentences at the same line, then findings about
+		// neighboring defects in the same file: none may name this one.
 		fails: []string{
+			"Good that this comment clarifies adding a version vs removing one.",
+			"Removing a version leaves downstream refs with a stale parse if node_patches is not cleared.",
 			"The unit-test scheduling block runs before the macro branch.",
 			"delete_schema_mssa_links should return the removed node ids.",
 			"The versioned test fixture uses a snake_case model name.",

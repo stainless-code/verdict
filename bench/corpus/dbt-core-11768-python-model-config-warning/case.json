@@ -20,16 +20,13 @@
       "kind": "false-positive-warning",
       "severity": "important",
       "keywords": [
-        "internal config keys",
-        "internal properties",
         "keys the user never wrote",
         "spurious deprecation",
-        "false positive",
+        "false deprecation",
         "the user cannot specify",
-        "deprecation warning",
-        "added config keys",
-        "internal keys",
-        "cannot set"
+        "bookkeeping keys",
+        "python model's own",
+        "treated as user config"
       ],
       "note": "validate_model_config sees a python model's own internal keys in _config_call_dict and validates them as user-written config, so a custom-key-in-config deprecation is raised for keys the user cannot write; the fix passes is_python_model and skips the four internal keys",
       "also_lines": [413]
