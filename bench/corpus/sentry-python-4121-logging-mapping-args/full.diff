@@ -1,0 +1,17 @@
+diff --git a/sentry_sdk/integrations/logging.py b/sentry_sdk/integrations/logging.py
+index b792510d6..28809de4a 100644
+--- a/sentry_sdk/integrations/logging.py
++++ b/sentry_sdk/integrations/logging.py
+@@ -248,7 +248,11 @@ class EventHandler(_BaseHandler):
+         else:
+             event["logentry"] = {
+                 "message": to_string(record.msg),
+-                "params": record.args,
++                "params": (
++                    tuple(str(arg) if arg is None else arg for arg in record.args)
++                    if record.args
++                    else ()
++                ),
+             }
+ 
+         event["extra"] = self._extra_from_record(record)

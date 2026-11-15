@@ -1,0 +1,63 @@
+diff --git a/sentry_sdk/tracing_utils.py b/sentry_sdk/tracing_utils.py
+index 8a6961ba1..2ac3a67e4 100644
+--- a/sentry_sdk/tracing_utils.py
++++ b/sentry_sdk/tracing_utils.py
+@@ -973,7 +973,7 @@ class Baggage:
+                 item = Baggage.SENTRY_PREFIX + quote(key) + "=" + quote(str(val))
+                 items.append(item)
+ 
+-        if include_third_party:
++        if include_third_party and self.third_party_items:
+             items.append(self.third_party_items)
+ 
+         return ",".join(items)
+diff --git a/tests/test_tracing_utils.py b/tests/test_tracing_utils.py
+index 3098e7366..293d83b43 100644
+--- a/tests/test_tracing_utils.py
++++ b/tests/test_tracing_utils.py
+@@ -133,11 +133,11 @@ def test_strip_sentry_baggage(header, expected):
+         (Baggage(sentry_items={}, mutable=False), '<Baggage "", mutable=False>'),
+         (
+             Baggage(sentry_items={"foo": "bar"}),
+-            '<Baggage "sentry-foo=bar,", mutable=True>',
++            '<Baggage "sentry-foo=bar", mutable=True>',
+         ),
+         (
+             Baggage(sentry_items={"foo": "bar"}, mutable=False),
+-            '<Baggage "sentry-foo=bar,", mutable=False>',
++            '<Baggage "sentry-foo=bar", mutable=False>',
+         ),
+         (
+             Baggage(sentry_items={"foo": "bar"}, third_party_items="asdf=1234,"),
+diff --git a/tests/tracing/test_baggage.py b/tests/tracing/test_baggage.py
+index 1e0075fea..3d70a7cfe 100644
+--- a/tests/tracing/test_baggage.py
++++ b/tests/tracing/test_baggage.py
+@@ -67,6 +67,27 @@ def test_mixed_baggage():
+     )
+ 
+ 
++def test_sentry_only_baggage():
++    header = (
++        "sentry-trace_id=771a43a4192642f0b136d5159a501700,"
++        "sentry-public_key=49d0f7386ad645858ae85020e393bef3,"
++        "sentry-sample_rate=0.01337"
++    )
++    baggage = Baggage.from_incoming_header(header)
++
++    assert baggage.third_party_items == ""
++
++    serialized = baggage.serialize(include_third_party=True)
++
++    # with no third-party items, include_third_party should change nothing
++    assert serialized == baggage.serialize()
++    assert serialized == (
++        "sentry-trace_id=771a43a4192642f0b136d5159a501700,"
++        "sentry-public_key=49d0f7386ad645858ae85020e393bef3,"
++        "sentry-sample_rate=0.01337"
++    )
++
++
+ def test_malformed_baggage():
+     header = ","
+ 
