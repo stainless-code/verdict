@@ -1,0 +1,362 @@
+diff --git a/PRE_RELEASE_CHANGELOG.md b/PRE_RELEASE_CHANGELOG.md
+index 8aa11592..62d1bdc6 100644
+--- a/PRE_RELEASE_CHANGELOG.md
++++ b/PRE_RELEASE_CHANGELOG.md
+@@ -1,3 +1,7 @@
+ # Pre-Release Changelog
+ 
+ ## Unreleased
++
++## Bug Fixes
++
++- **Interceptor storage:** Removed trailing interceptor tombstones after ejection so repeated register-then-eject cycles no longer grow the handlers array, while preserving its public array shape, interceptor iteration behavior, and interceptor ID identity across registrations. (**#11070**)
+diff --git a/lib/core/InterceptorManager.js b/lib/core/InterceptorManager.js
+index fe10f3d7..77c42cf6 100644
+--- a/lib/core/InterceptorManager.js
++++ b/lib/core/InterceptorManager.js
+@@ -2,9 +2,45 @@
+ 
+ import utils from '../utils.js';
+ 
++const $internals = Symbol('internals');
++
++function trimHandlers(handlers) {
++  while (handlers.length && handlers[handlers.length - 1] === null) {
++    handlers.pop();
++  }
++}
++
++function syncHandlerEntries(manager, internals) {
++  const handlers = manager.handlers;
++
++  if (handlers !== internals.handlersRef) {
++    internals.handlersRef = handlers;
++    internals.handlerEntries.clear();
++  } else if (handlers.length !== internals.handlersLength) {
++    if (!handlers.length) {
++      internals.handlerEntries.clear();
++    } else {
++      internals.handlerEntries.forEach(function removeStaleEntry(entry, id) {
++        if (handlers[entry.index] !== entry.handler) {
++          internals.handlerEntries.delete(id);
++        }
++      });
++    }
++  }
++
++  internals.handlersLength = handlers.length;
++}
++
+ class InterceptorManager {
+   constructor() {
+     this.handlers = [];
++    this[$internals] = {
++      handlersRef: this.handlers,
++      handlersLength: this.handlers.length,
++      handlerEntries: new Map(),
++      iterationDepth: 0,
++      nextId: 0,
++    };
+   }
+ 
+   /**
+@@ -17,13 +53,26 @@ class InterceptorManager {
+    * @return {Number} An ID used to remove interceptor later
+    */
+   use(fulfilled, rejected, options) {
+-    this.handlers.push({
++    const handler = {
+       fulfilled,
+       rejected,
+       synchronous: options ? options.synchronous : false,
+       runWhen: options ? options.runWhen : null,
++    };
++    const internals = this[$internals];
++
++    syncHandlerEntries(this, internals);
++
++    const id = internals.nextId++;
++
++    this.handlers.push(handler);
++    internals.handlerEntries.set(id, {
++      handler,
++      index: this.handlers.length - 1,
+     });
+-    return this.handlers.length - 1;
++    internals.handlersLength = this.handlers.length;
++
++    return id;
+   }
+ 
+   /**
+@@ -34,8 +83,27 @@ class InterceptorManager {
+    * @returns {void}
+    */
+   eject(id) {
+-    if (this.handlers[id]) {
+-      this.handlers[id] = null;
++    const internals = this[$internals];
++
++    syncHandlerEntries(this, internals);
++
++    const entry = internals.handlerEntries.get(id);
++
++    if (entry) {
++      internals.handlerEntries.delete(id);
++
++      // Ignore IDs invalidated by clear or direct replacement of handlers.
++      if (this.handlers[entry.index] !== entry.handler) {
++        return;
++      }
++
++      this.handlers[entry.index] = null;
++
++      // Do not reuse an index while forEach is walking its length snapshot.
++      if (!internals.iterationDepth) {
++        trimHandlers(this.handlers);
++        internals.handlersLength = this.handlers.length;
++      }
+     }
+   }
+ 
+@@ -47,6 +115,7 @@ class InterceptorManager {
+   clear() {
+     if (this.handlers) {
+       this.handlers = [];
++      syncHandlerEntries(this, this[$internals]);
+     }
+   }
+ 
+@@ -61,11 +130,25 @@ class InterceptorManager {
+    * @returns {void}
+    */
+   forEach(fn) {
+-    utils.forEach(this.handlers, function forEachHandler(h) {
+-      if (h !== null) {
+-        fn(h);
++    const internals = this[$internals];
++
++    syncHandlerEntries(this, internals);
++
++    internals.iterationDepth++;
++
++    try {
++      utils.forEach(this.handlers, function forEachHandler(h) {
++        if (h !== null) {
++          fn(h);
++        }
++      });
++    } finally {
++      if (!--internals.iterationDepth) {
++        syncHandlerEntries(this, internals);
++        trimHandlers(this.handlers);
++        internals.handlersLength = this.handlers.length;
+       }
+-    });
++    }
+   }
+ }
+ 
+diff --git a/tests/browser/adapter.browser.test.js b/tests/browser/adapter.browser.test.js
+index fd3f5903..46cf7ac4 100644
+--- a/tests/browser/adapter.browser.test.js
++++ b/tests/browser/adapter.browser.test.js
+@@ -86,8 +86,8 @@ describe('adapter (vitest browser)', () => {
+ 
+   afterEach(() => {
+     window.XMLHttpRequest = OriginalXMLHttpRequest;
+-    axios.interceptors.request.handlers = [];
+-    axios.interceptors.response.handlers = [];
++    axios.interceptors.request.clear();
++    axios.interceptors.response.clear();
+   });
+ 
+   it('should support custom adapter', async () => {
+diff --git a/tests/browser/interceptors.browser.test.js b/tests/browser/interceptors.browser.test.js
+index 69a7bc73..36d9c1b4 100644
+--- a/tests/browser/interceptors.browser.test.js
++++ b/tests/browser/interceptors.browser.test.js
+@@ -129,8 +129,8 @@ describe('interceptors (vitest browser)', () => {
+ 
+   afterEach(() => {
+     window.XMLHttpRequest = OriginalXMLHttpRequest;
+-    axios.interceptors.request.handlers = [];
+-    axios.interceptors.response.handlers = [];
++    axios.interceptors.request.clear();
++    axios.interceptors.response.clear();
+     vi.restoreAllMocks();
+   });
+ 
+diff --git a/tests/unit/core/InterceptorManager.test.js b/tests/unit/core/InterceptorManager.test.js
+new file mode 100644
+index 00000000..a058fe3d
+--- /dev/null
++++ b/tests/unit/core/InterceptorManager.test.js
+@@ -0,0 +1,167 @@
++import { describe, it, expect } from 'vitest';
++import InterceptorManager from '../../../lib/core/InterceptorManager.js';
++
++describe('core::InterceptorManager', () => {
++  it('does not accumulate trailing tombstones during repeated use and eject', () => {
++    const manager = new InterceptorManager();
++    const persistent = manager.use(() => {});
++    const transient = () => {};
++
++    for (let i = 0; i < 10000; i++) {
++      const id = manager.use(transient);
++      manager.eject(id);
++    }
++
++    expect(Array.isArray(manager.handlers)).toBe(true);
++    expect(manager.handlers).toHaveLength(1);
++
++    manager.eject(persistent);
++
++    expect(manager.handlers).toHaveLength(0);
++  });
++
++  it('preserves interior tombstones until trailing handlers are removed', () => {
++    const manager = new InterceptorManager();
++    const first = manager.use(() => {});
++    const second = manager.use(() => {});
++    const third = manager.use(() => {});
++
++    manager.eject(second);
++
++    expect(manager.handlers).toHaveLength(3);
++    expect(manager.handlers[second]).toBeNull();
++
++    manager.eject(third);
++
++    expect(manager.handlers).toHaveLength(1);
++    expect(manager.handlers[first]).not.toBeNull();
++  });
++
++  it('does not reuse an ejected interceptor ID after trimming its handler', () => {
++    const manager = new InterceptorManager();
++    const active = () => {};
++    const staleId = manager.use(() => {});
++
++    manager.eject(staleId);
++
++    const activeId = manager.use(active);
++
++    expect(activeId).not.toBe(staleId);
++
++    manager.eject(staleId);
++
++    expect(manager.handlers).toHaveLength(1);
++    expect(manager.handlers[0].fulfilled).toBe(active);
++
++    manager.eject(activeId);
++
++    expect(manager.handlers).toHaveLength(0);
++  });
++
++  it('invalidates interceptor IDs when the handlers array is replaced', () => {
++    const manager = new InterceptorManager();
++    const stale = () => {};
++    const active = () => {};
++    const staleId = manager.use(stale);
++
++    manager.handlers = [...manager.handlers];
++
++    const activeId = manager.use(active);
++
++    expect(activeId).not.toBe(staleId);
++
++    manager.eject(staleId);
++
++    expect(manager.handlers.map((handler) => handler.fulfilled)).toEqual([stale, active]);
++
++    manager.eject(activeId);
++
++    expect(manager.handlers.map((handler) => handler.fulfilled)).toEqual([stale]);
++  });
++
++  it('does not retain interceptor entries when the handlers array is cleared in place', () => {
++    const manager = new InterceptorManager();
++    const handler = () => {};
++
++    for (let i = 0; i < 10000; i++) {
++      manager.handlers.length = 0;
++      manager.use(handler);
++    }
++
++    const internals = manager[Object.getOwnPropertySymbols(manager)[0]];
++
++    expect(manager.handlers).toHaveLength(1);
++    expect(internals.handlerEntries.size).toBe(1);
++  });
++
++  it('defers compaction while iterating so newly registered handlers are not visited', () => {
++    const manager = new InterceptorManager();
++    const first = () => {};
++    const removed = () => {};
++    const added = () => {};
++    const visited = [];
++    let mutated = false;
++
++    manager.use(first);
++    const removedId = manager.use(removed);
++
++    manager.forEach((handler) => {
++      visited.push(handler.fulfilled);
++
++      if (!mutated && handler.fulfilled === first) {
++        mutated = true;
++        manager.eject(removedId);
++        manager.use(added);
++      }
++    });
++
++    expect(visited).toEqual([first]);
++
++    const nextVisited = [];
++    manager.forEach((handler) => nextVisited.push(handler.fulfilled));
++
++    expect(nextVisited).toEqual([first, added]);
++  });
++
++  it('compacts handlers ejected during iteration after iteration completes', () => {
++    const manager = new InterceptorManager();
++    const first = () => {};
++    const second = () => {};
++    const visited = [];
++
++    manager.use(first);
++    const secondId = manager.use(second);
++
++    manager.forEach((handler) => {
++      visited.push(handler.fulfilled);
++
++      if (handler.fulfilled === first) {
++        manager.eject(secondId);
++      }
++    });
++
++    expect(visited).toEqual([first]);
++    expect(manager.handlers).toHaveLength(1);
++  });
++
++  it('preserves iteration over the current handlers when cleared during iteration', () => {
++    const manager = new InterceptorManager();
++    const first = () => {};
++    const second = () => {};
++    const visited = [];
++
++    manager.use(first);
++    manager.use(second);
++
++    manager.forEach((handler) => {
++      visited.push(handler.fulfilled);
++
++      if (handler.fulfilled === first) {
++        manager.clear();
++      }
++    });
++
++    expect(visited).toEqual([first, second]);
++    expect(manager.handlers).toHaveLength(0);
++  });
++});

@@ -1,0 +1,37 @@
+{
+  "schema_version": "1",
+  "id": "axios-11087-nullish-interceptor-handlers",
+  "kind": "real",
+  "language": "javascript",
+  "provenance": {
+    "kind": "real",
+    "repo": "axios/axios",
+    "pr": 11087,
+    "base_sha": "609dacd8cce089adc7720e11cd62405adf3b6867",
+    "head_sha": "712e02373f1c5ac72fdf5da16f04838338ba817e",
+    "fix_commit": "https://github.com/axios/axios/commit/2d2a21af8a433089474a2149781799c93acbcf3c",
+    "source": "PR #11087 fix(interceptors): trim trailing ejected handlers, squash-merged 2026-07-29 as 712e02373",
+    "note": "Introduced by this PR: it added a bookkeeping pass that runs at the top of `use`, `eject` and `forEach` and reads `handlers.length` before anything checks that the public `handlers` value exists. The field has always been a plain public array that callers assign to, and the class's own `clear()` still guards it with `if (this.handlers)`, so a falsy value was a tolerated no-op for iteration before this PR; now the first `forEach` of the next request throws. The later fix #11118 adds a count helper that treats a nullish value as empty and re-creates the array in `use`, closing issue #11114, which reports `axios.interceptors.request.handlers = null` throwing `Cannot read properties of null (reading 'length')` on every request. The `use()` throw on a nullish stack is older than this PR (the array push was unguarded before it); the iteration crash is new, and the fix touches both lines the case anchors."
+  },
+  "bugs": [
+    {
+      "path": "lib/core/InterceptorManager.js",
+      "line": 31,
+      "kind": "nil-deref",
+      "severity": "important",
+      "keywords": [
+        "a falsy public list makes every request throw",
+        "every request crashes once the public array is falsy",
+        "user code that nulls the public array crashes the next request",
+        "crashes when the public collection is replaced with a falsy value",
+        "does not tolerate a caller-assigned falsy collection",
+        "rejects a replaced collection instead of treating it as empty",
+        "causing a typeerror",
+        "throws a typeerror",
+        "crashes on null handlers"
+      ],
+      "note": "the sync pass dereferences the public handler array before any existence check, so a caller that replaces it with a falsy value turns every later request into a TypeError; the fix counts through a helper that treats a nullish value as empty",
+      "also_lines": [19]
+    }
+  ]
+}
