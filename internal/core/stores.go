@@ -234,6 +234,8 @@ type Record struct { //nolint:govet // field order is the published property ord
 	ToolVersion     string           `json:"tool_version,omitempty"`
 	PromptsHash     string           `json:"prompts_hash,omitempty"`
 	Model           *string          `json:"model,omitempty"`
+	Author          *AuthorRef       `anyOf:"null"                      json:"author"`
+	ReviewModels    []string         `json:"review_models"`
 	PatchID         *string          `json:"patch_id,omitempty"`
 	PatchIDKind     string           `json:"patch_id_kind,omitempty"`
 	Repairs         []Repair         `json:"repairs,omitempty"`
@@ -512,6 +514,8 @@ func (r *Record) Wire() *jq.Obj {
 		"prompts_hash", r.PromptsHash,
 		"model", strOrNull(r.Model),
 	)
+	o.Set("author", authorWire(r.Author))
+	o.Set("review_models", StringValues(r.ReviewModels))
 	if r.Risk != nil {
 		o.Set("risk", r.Risk)
 	}
@@ -534,6 +538,13 @@ func (r *Record) Wire() *jq.Obj {
 		o.Set("chunk_coverage", r.ChunkCoverage)
 	}
 	return o
+}
+
+func authorWire(a *AuthorRef) any {
+	if a == nil {
+		return nil
+	}
+	return a
 }
 
 // strOrNull renders an optional string (nil reads null).

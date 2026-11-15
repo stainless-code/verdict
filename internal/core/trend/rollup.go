@@ -23,11 +23,20 @@ const (
 	tierImportant       = "important"
 	tierInformational   = "informational"
 	tierUntagged        = "untagged"
+	fieldBundles        = "bundles"
 	fieldFindings       = "findings"
 	fieldClosed         = "closed"
 )
 
 type riskBandCounts struct {
+	bundles   int
+	findings  int
+	open      int
+	addressed int
+	closed    int
+}
+
+type pairCounts struct {
 	bundles   int
 	findings  int
 	open      int
@@ -41,6 +50,7 @@ type rollup struct {
 	byTier     map[string]int
 	byCategory map[string]int
 	byRisk     map[string]*riskBandCounts
+	byPair     map[string]*pairCounts
 	bySource   map[string]int
 	tools      []any
 	models     []any
@@ -76,6 +86,7 @@ func rollupRows(rows []row) rollup {
 		},
 		byCategory: map[string]int{},
 		byRisk:     initRiskBands(),
+		byPair:     map[string]*pairCounts{},
 		bySource:   map[string]int{"model": 0, "tool": 0},
 	}
 	for i := range rows {
@@ -90,6 +101,7 @@ func rollupRows(rows []row) rollup {
 		closed := r.byStatus[statusWontFix] + r.byStatus[statusFalsePositive] + r.byStatus[statusDeferred]
 		out.closed += closed
 		addRiskBand(out.byRisk, r.risk, len(r.findings), r.byStatus[statusOpen], r.byStatus[statusAddressed], closed)
+		addPairs(out.byPair, r, closed)
 		for k, v := range r.byStatus {
 			out.byStatus[k] += v
 		}
@@ -215,6 +227,7 @@ func rollupDoc(out *rollup) *jq.Obj {
 		"by_tier", tierDoc(out.byTier),
 		"by_category", categoryDoc(out.byCategory),
 		"by_risk", riskDoc(out.byRisk),
+		"by_pair", pairDoc(out.byPair),
 		"by_source", sourceDoc(out.bySource),
 		"withheld", out.withheld,
 		"provenance", jq.NewObj(
@@ -272,6 +285,14 @@ func sourceDoc(counts map[string]int) *jq.Obj {
 	return jq.NewObj(sourceModel, counts[sourceModel], sourceTool, counts[sourceTool])
 }
 
+func stringList(vals []string) []any {
+	out := make([]any, 0, len(vals))
+	for _, v := range vals {
+		out = append(out, v)
+	}
+	return out
+}
+
 func anyList(vals []any) []any {
 	if vals == nil {
 		return []any{}
@@ -288,6 +309,8 @@ func rowDoc(r *row) *jq.Obj {
 		"bundle", r.bundle,
 		"at", at,
 		"models", anyList(r.models),
+		"author", r.author,
+		"review_models", stringList(r.reviewers),
 		"efforts", anyList(r.efforts),
 		"provenance", r.prov,
 		"findings", len(r.findings),
@@ -350,6 +373,7 @@ func (st *state) emitRollupHuman(out *rollup) {
 		out.byStatus[statusOpen], out.byStatus[statusAddressed], out.byStatus[statusWontFix],
 		out.byStatus[statusFalsePositive], out.byStatus[statusDeferred]))
 	st.human(riskHumanLine(out.byRisk))
+	st.human(pairsHumanLine(out.byPair))
 	st.human("provenance: " + provenanceLine(out))
 }
 
@@ -416,6 +440,55 @@ func riskHumanLine(byRisk map[string]*riskBandCounts) string {
 		parts = append(parts, fmt.Sprintf("%s=%d(%df/%do/%da/%dc)", band, c.bundles, c.findings, c.open, c.addressed, c.closed))
 	}
 	return "risk: " + strings.Join(parts, " ")
+}
+
+func addPairs(byPair map[string]*pairCounts, r *row, closed int) {
+	for _, key := range pairKeys(r) {
+		c := byPair[key]
+		if c == nil {
+			c = &pairCounts{}
+			byPair[key] = c
+		}
+		c.bundles++
+		c.findings += len(r.findings)
+		c.open += r.byStatus[statusOpen]
+		c.addressed += r.byStatus[statusAddressed]
+		c.closed += closed
+	}
+}
+
+func pairDoc(byPair map[string]*pairCounts) *jq.Obj {
+	keys := make([]string, 0, len(byPair))
+	for k := range byPair {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	o := jq.NewObj()
+	for _, k := range keys {
+		c := byPair[k]
+		o.Set(k, jq.NewObj(
+			fieldBundles, c.bundles,
+			fieldFindings, c.findings,
+			statusOpen, c.open,
+			statusAddressed, c.addressed,
+			fieldClosed, c.closed,
+		))
+	}
+	return o
+}
+
+func pairsHumanLine(byPair map[string]*pairCounts) string {
+	keys := make([]string, 0, len(byPair))
+	for k := range byPair {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		c := byPair[k]
+		parts = append(parts, fmt.Sprintf("%s=%d(%df/%do/%da/%dc)", k, c.bundles, c.findings, c.open, c.addressed, c.closed))
+	}
+	return "pairs: " + strings.Join(parts, " ")
 }
 
 func provenanceLine(out *rollup) string {

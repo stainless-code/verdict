@@ -42,6 +42,13 @@ type BacktestSpend = backtestcore.ScoreSpend
 // BacktestSignal is one row of the score's fix/revert catch table.
 type BacktestSignal = backtestcore.ScoreSignal
 
+// AuthorFile is the bundle's advisory author fingerprint, generated as
+// schemas/author.schema.json.
+type AuthorFile = core.AuthorFile
+
+// AuthorEvidence is one matched author signal and the PR field it came from.
+type AuthorEvidence = core.AuthorEvidence
+
 // CorpusCase is the benchmark corpus case manifest, generated as
 // schemas/corpus.schema.json.
 type CorpusCase = core.CorpusCase
@@ -558,26 +565,27 @@ type VerifyData = core.VerifyData
 // TrendData is the trend verb's --json data profile: the portfolio rollup,
 // one row per reviewed bundle, and the opt-in overlap and corpus joins.
 type TrendData struct { //nolint:govet // field order is the published property order
-	Receipt     *core.Truncation `json:"-"           receipt:"true"`
-	Rules       any              `json:"rules"       optional:"true"`
-	GeneratedAt string           `format:"date-time" json:"generated_at"`
-	Bundles     int              `json:"bundles"     min:"0"`
-	Findings    int              `json:"findings"    min:"0"`
-	Open        int              `json:"open"        min:"0"`
-	Addressed   int              `json:"addressed"   min:"0"`
-	Closed      int              `json:"closed"      min:"0"`
-	ByStatus    TrendStatuses    `json:"by_status"`
-	ByTier      TrendTiers       `json:"by_tier"`
-	ByCategory  map[string]int   `json:"by_category"`
-	ByRisk      TrendRiskBands   `json:"by_risk"     optional:"true"`
-	BySource    TrendSources     `json:"by_source"   optional:"true"`
-	Withheld    map[string]int   `json:"withheld"    optional:"true"`
-	Provenance  TrendProvenance  `json:"provenance"`
-	Periods     []TrendPeriod    `json:"periods"`
-	PerBundle   []TrendBundleRow `json:"per_bundle"`
-	Overlap     any              `json:"overlap"     optional:"true"`
-	Corpus      any              `json:"corpus"      optional:"true"`
-	Incidents   *TrendIncidents  `anyOf:"null"       json:"incidents"    optional:"true"`
+	Receipt     *core.Truncation           `json:"-"           receipt:"true"`
+	Rules       any                        `json:"rules"       optional:"true"`
+	GeneratedAt string                     `format:"date-time" json:"generated_at"`
+	Bundles     int                        `json:"bundles"     min:"0"`
+	Findings    int                        `json:"findings"    min:"0"`
+	Open        int                        `json:"open"        min:"0"`
+	Addressed   int                        `json:"addressed"   min:"0"`
+	Closed      int                        `json:"closed"      min:"0"`
+	ByStatus    TrendStatuses              `json:"by_status"`
+	ByTier      TrendTiers                 `json:"by_tier"`
+	ByCategory  map[string]int             `json:"by_category"`
+	ByRisk      TrendRiskBands             `json:"by_risk"     optional:"true"`
+	ByPair      map[string]TrendPairCounts `json:"by_pair"     optional:"true"`
+	BySource    TrendSources               `json:"by_source"   optional:"true"`
+	Withheld    map[string]int             `json:"withheld"    optional:"true"`
+	Provenance  TrendProvenance            `json:"provenance"`
+	Periods     []TrendPeriod              `json:"periods"`
+	PerBundle   []TrendBundleRow           `json:"per_bundle"`
+	Overlap     any                        `json:"overlap"     optional:"true"`
+	Corpus      any                        `json:"corpus"      optional:"true"`
+	Incidents   *TrendIncidents            `anyOf:"null"       json:"incidents"    optional:"true"`
 }
 
 // TrendIncidents is the trend --incidents miss rate over attached incidents:
@@ -664,11 +672,22 @@ type TrendPeriod struct {
 	ByTier    TrendTiers `json:"by_tier"`
 }
 
+// TrendPairCounts is one author/reviewer pair's outcome tally.
+type TrendPairCounts struct {
+	Bundles   int `json:"bundles"   min:"0"`
+	Findings  int `json:"findings"  min:"0"`
+	Open      int `json:"open"      min:"0"`
+	Addressed int `json:"addressed" min:"0"`
+	Closed    int `json:"closed"    min:"0"`
+}
+
 // TrendBundleRow is one reviewed bundle's contribution to the rollup.
 type TrendBundleRow struct { //nolint:govet // field order is the published property order
 	Bundle          string           `json:"bundle"`
 	At              *string          `json:"at"`
 	Models          []string         `json:"models"`
+	Author          string           `json:"author"`
+	ReviewModels    []string         `json:"review_models"`
 	Efforts         []string         `json:"efforts"`
 	Provenance      ProvenanceTriple `json:"provenance"`
 	Findings        int              `json:"findings"`

@@ -21,7 +21,7 @@ var infoWord = regexp.MustCompile(`^[A-Za-z0-9_+.-]*$`)
 // byte-identical; a move here is a deliberate prompt edit, never a side effect.
 func TestPromptsHashUnchanged(t *testing.T) {
 	t.Parallel()
-	const want = "bddb9306ee0e9be76cf9d4c1a417eb38a992cb5773b17915e698ea99603e7815"
+	const want = "1438107819d4774870f0449ac2f5d52966f7c4d78bd3a1ee7522c7c9bbd1f990"
 	if got := PromptsHash(filepath.Join("..", "..")); got != want {
 		t.Fatalf("PromptsHash = %s, want %s", got, want)
 	}
