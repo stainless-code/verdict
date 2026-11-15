@@ -1,0 +1,16 @@
+{
+  "schema_version": "1",
+  "id": "hono-5391-clean-combine-some-response",
+  "kind": "control",
+  "language": "typescript",
+  "provenance": {
+    "kind": "real",
+    "repo": "honojs/hono",
+    "pr": 5391,
+    "base_sha": "e5bb2062a3ddd645e3a16d1300bd76d6c9af33a5",
+    "head_sha": "afb2068c1c53a530528ac5f237e245793dd03c07",
+    "source": "PR #5391 fix(combine): return a Response from a short-circuiting middleware in some(), squash-merged 2026-09-30",
+    "note": "clean control: a middleware that short-circuits some() returns a Response without assigning c.res, so the context was never finalized and the request surfaced as a 500; the PR keeps that Response and returns it, with the sibling every() as the precedent; both files' last touch at HEAD is this commit, every line it added still blames to it, and no revert names it"
+  },
+  "bugs": []
+}

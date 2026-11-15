@@ -1,0 +1,6 @@
+src/middleware/bearer-auth/index.test.ts	OLD	450	455
+src/middleware/bearer-auth/index.test.ts	NEW	450	467
+src/middleware/bearer-auth/index.test.ts	OLD	481	486
+src/middleware/bearer-auth/index.test.ts	NEW	493	507
+src/middleware/bearer-auth/index.ts	OLD	113	119
+src/middleware/bearer-auth/index.ts	NEW	113	119
