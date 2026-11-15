@@ -37,6 +37,8 @@ const (
 	MaxPRBytes       int64 = 8 << 20
 	MaxKBBytes       int64 = 8 << 20
 	MaxCostBytes     int64 = 8 << 20
+	// MaxAuthorBytes caps author.json at 64 KiB.
+	MaxAuthorBytes int64 = 64 << 10
 )
 
 // Capped reads at most maxBytes bytes from r, returning [ErrTooLarge] when

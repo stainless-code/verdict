@@ -1,6 +1,6 @@
 ---
 title: Review an untrusted PR
-description: "A hostile diff gets no trust: fetch it as data, run the verify step under a bubblewrap sandbox on Linux, and read the typed refusals elsewhere."
+description: "A hostile diff gets no trust: fetch it as data, run the verify step under an enforced sandbox (bubblewrap on Linux, sandbox-exec on macOS), and read the typed refusals elsewhere."
 sidebar:
   label: Untrusted PRs
 search:
@@ -24,19 +24,19 @@ Use this when the diff is untrusted: an unknown author, a drive-by fork PR, or a
     verdict verify owner/repo 123 --sandbox
     ```
 
-    On Linux with `bubblewrap` installed, `verify` builds the sandbox itself: the command gets its own PID namespace and loopback, no route out, an empty `/run`, a private `/tmp`, and every credential path on the host (`~/.aws`, `~/.ssh`, `~/.config/gh`, and the rest) replaced before the command runs. The patch record carries `"sandboxed": true`, and the `--json` envelope reports it the same way.
+    On Linux with `bubblewrap` installed, `verify` builds the sandbox itself: the command gets its own PID namespace and loopback, no route out, an empty `/run`, a private `/tmp`, and every credential path on the host (`~/.aws`, `~/.ssh`, `~/.config/gh`, and the rest) replaced before the command runs. On macOS it builds a `sandbox-exec` profile instead, which denies the network — every `bind()` and `connect()`, loopback included — and leaves the host filesystem and credential paths untouched, so filesystem isolation on a Mac needs a Linux VM or container running the bubblewrap recipe. The patch record carries `"sandboxed": true`, and the `--json` envelope reports it the same way.
 
   </Step>
 
   <Step title="Read the refusals">
-    Two layers can stop the run, and both refuse before anything executes. The static gate rejects hostile shapes up front — [`verify-networked`](/docs/troubleshooting#verify-networked) for pipe-to-shell fetches, plus `verify-destructive`, `verify-credential-read`, and `verify-repo-escape` — each quoting the matched fragment with a `try:` rewrite hint. The sandbox is the second layer for what the static gate cannot see: when the host is not Linux, `bwrap` is missing, or user namespaces are restricted, `verify` refuses [`sandbox-unavailable`](/docs/troubleshooting#sandbox-unavailable) with exit `1`, names the cause, and runs nothing. It never silently falls back to an unsandboxed command.
+    Two layers can stop the run, and both refuse before anything executes. The static gate rejects hostile shapes up front — [`verify-networked`](/docs/troubleshooting#verify-networked) for pipe-to-shell fetches, plus `verify-destructive`, `verify-credential-read`, and `verify-repo-escape` — each quoting the matched fragment with a `try:` rewrite hint. The sandbox is the second layer for what the static gate cannot see: when the host has no mechanism (Linux needs `bwrap`, macOS needs a working `sandbox-exec`), `bwrap` is missing, or user namespaces are restricted, `verify` refuses [`sandbox-unavailable`](/docs/troubleshooting#sandbox-unavailable) with exit `1`, names the cause, and runs nothing. It never silently falls back to an unsandboxed command.
   </Step>
 </Steps>
 
 ## What success looks like
 
-On Linux the claimed command runs contained and the patch record notes `"sandboxed": true`. Anywhere else you get `sandbox-unavailable`, the patch file stays byte-identical, no `.verify.out` is written, and exit `1` tells the caller the proof did not run. Either way, nothing untrusted touched your credentials or your network. Once the proof runs, the normal merge protection still applies: [Gate a PR in CI](/docs/ci-gate).
+On Linux and macOS the claimed command runs contained and the patch record notes `"sandboxed": true`. Anywhere else you get `sandbox-unavailable`, the patch file stays byte-identical, no `.verify.out` is written, and exit `1` tells the caller the proof did not run. Either way, nothing untrusted reached your network; on Linux your credentials are hidden too, and on macOS filesystem isolation needs a Linux VM or container running the bubblewrap recipe. Once the proof runs, the normal merge protection still applies: [Gate a PR in CI](/docs/ci-gate).
 
 ## Full detail
 
-The [enforced-sandbox section of the manual](https://github.com/stainless-code/verdict/blob/main/docs/manual.md#enforced-sandbox-verify---sandbox) specifies every mount and namespace, and the [parent recipe](https://github.com/stainless-code/verdict/blob/main/docs/manual.md#hostile-pr-sandbox-recipe-enforced-on-linux-with---sandbox-recipe-for-other-oses) covers other OSes and wrapping the whole review.
+The [enforced-sandbox section of the manual](https://github.com/stainless-code/verdict/blob/main/docs/manual.md#enforced-sandbox-verify---sandbox) specifies every mount and namespace, and the [parent recipe](https://github.com/stainless-code/verdict/blob/main/docs/manual.md#hostile-pr-sandbox-recipe) covers other OSes and wrapping the whole review.

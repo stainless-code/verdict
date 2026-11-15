@@ -2408,6 +2408,11 @@
           "additionalProperties": true
         },
         "by_risk": { "$ref": "#/$defs/trendRiskBands" },
+        "by_pair": {
+          "description": "Per author/reviewer pair tallies, keyed \"<author>/<reviewer>\" and sorted: the fingerprint's agent against each model the record priced, with unknown for either half the bundle never recorded.",
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/trendPairCounts" }
+        },
         "by_source": {
           "description": "Portfolio finding counts by provenance source (model and tool).",
           "$ref": "#/$defs/trendSources"
@@ -2499,6 +2504,19 @@
       "required": ["bundles", "findings", "open", "addressed", "closed"],
       "additionalProperties": true
     },
+    "trendPairCounts": {
+      "description": "One author/reviewer pair's outcomes across the bundles that carried it.",
+      "type": "object",
+      "properties": {
+        "bundles": { "type": "integer", "minimum": 0 },
+        "findings": { "type": "integer", "minimum": 0 },
+        "open": { "type": "integer", "minimum": 0 },
+        "addressed": { "type": "integer", "minimum": 0 },
+        "closed": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["bundles", "findings", "open", "addressed", "closed"],
+      "additionalProperties": true
+    },
     "trendSources": {
       "description": "A two-source finding tally: model and tool.",
       "type": "object",
@@ -2559,6 +2577,15 @@
           "type": "array",
           "items": { "type": "string" }
         },
+        "author": {
+          "description": "The agent the bundle's record.json stamped, or unknown when it recorded no fingerprint. Advisory: it groups history and never decides a review.",
+          "type": "string"
+        },
+        "review_models": {
+          "description": "The reviewer models the bundle's record.json stamped, empty when it recorded none.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
         "efforts": {
           "type": "array",
           "items": { "type": "string" }
@@ -2588,6 +2615,8 @@
         "bundle",
         "at",
         "models",
+        "author",
+        "review_models",
         "efforts",
         "provenance",
         "findings",

@@ -99,6 +99,15 @@ func TestTrendWithoutIncidentsFlagKeepsEnvelopeBytes(t *testing.T) {
         "closed": 0
       }
     },
+    "by_pair": {
+      "unknown/unknown": {
+        "bundles": 2,
+        "findings": 1,
+        "open": 0,
+        "addressed": 1,
+        "closed": 0
+      }
+    },
     "by_source": {
       "model": 1,
       "tool": 0
@@ -136,6 +145,8 @@ func TestTrendWithoutIncidentsFlagKeepsEnvelopeBytes(t *testing.T) {
         "bundle": "local-a",
         "at": null,
         "models": [],
+        "author": "unknown",
+        "review_models": [],
         "efforts": [],
         "provenance": {
           "tool_version": null,
@@ -174,6 +185,8 @@ func TestTrendWithoutIncidentsFlagKeepsEnvelopeBytes(t *testing.T) {
         "bundle": "local-b",
         "at": null,
         "models": [],
+        "author": "unknown",
+        "review_models": [],
         "efforts": [],
         "provenance": {
           "tool_version": null,

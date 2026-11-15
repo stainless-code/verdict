@@ -388,6 +388,8 @@ func (st *svc) finalize(ctx context.Context, dir, prov, headFull, now string, re
 		ToolVersion:     toolVersion,
 		PromptsHash:     promptsHash,
 		Model:           modelOrNil(model),
+		Author:          authorStamp(dir),
+		ReviewModels:    reviewModels(dir),
 		Repairs:         repairList(st.repairs),
 		Coverage:        res.Coverage.Receipt(),
 		ChunkCoverage:   res.Coverage.ChunkReceipt(),

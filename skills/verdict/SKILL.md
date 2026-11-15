@@ -123,6 +123,11 @@ and you fall back to the full diff.
 contract for lens subagents the Review modes dispatch — the orchestrator reads it
 to write dispatches, lenses run under it.
 
+When `author.json` names an agent, prefer a reviewer and verifier from a different
+model family wherever the harness lets you pick the model, then record the model you
+actually ran in `cost.json`'s `models[]`. The fingerprint is advisory — it never pins a
+model, and the recorded reviewer is what `trend` groups by.
+
 ## Core rules (do not soften)
 
 1. **You are the synthesizer.** Read the complete raw diff end-to-end first, using the

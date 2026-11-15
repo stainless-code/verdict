@@ -18,6 +18,10 @@ import (
 // skill) re-pinned all ten hashes: only each $id URL moved; no property,
 // required key, enum, or type changed.
 var publishedSemantics = map[string]string{
+	// additive author.schema.json (new bundle document; the advisory author
+	// fingerprint fetch detects). No existing schema property, required key,
+	// enum, or type changed.
+	"author.schema.json":      "f7d48bf8cc56baf70899b6e02caceae111838bb7ee3ed707eb7e4a9e7b809a70",
 	"excluded.schema.json":    "da38e86c8f27bc41b8255f7fc12cbf0a81fa181eee2be172c46b4ae015b041ac",
 	"panel-plan.schema.json":  "c4ac13bb03fb5918bc5b60ff9eba10776f10b999fdc88049409792439b1c043a",
 	"panel.schema.json":       "60fee20b395837e41c0bb8044dcaed55fa7a38d8d8a504a9f228be95b28319ef",
@@ -242,7 +246,12 @@ var publishedSemantics = map[string]string{
 	// $defs/prWaitData.inconsistent_observations, plus the regenerated
 	// observations and prWaitData property descriptions. No existing property,
 	// required key, enum, or type changed.
-	"envelope.schema.json": "fe21931a4509ecfeb4c62e8724ba260df835f60116e5f95305c9b550969f2815",
+	// author/reviewer pair: additive optional trendData.by_pair
+	// ($defs/trendPairCounts) plus required trendBundleRow.author and
+	// trendBundleRow.review_models. No existing property, enum, or type changed.
+	// The validation pass adds data.validation (optional, post only).
+	"envelope.schema.json": "ee612c3e699950005f26fe3fc1a741da28d1ca7a7035e8dbae2635d242878d92",
+
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -374,7 +383,13 @@ var publishedSemantics = map[string]string{
 	// key, enum, or type changed.
 	// risk score: additive optional nullable risk claim ($defs/riskClaim). No
 	// existing property, required key, enum, or type changed.
-	"record.schema.json": "f1533befd705bc2cb61c6a7d7e7a02b062c78bde1113576c34550b5cc4763f09",
+	// author/reviewer pair: additive required-nullable author object
+	// ($defs/author) and required review_models string array. No existing
+	// property, enum, or type changed; older stores simply carry neither key.
+	// The validation pass adds required-nullable validation_hash and required
+	// validation_counts/validation_mode/rigor_floors after chunk_coverage.
+	"record.schema.json": "37628cfde409c8b33bf7a9a23dba5f2875a4d43a63e0589b2134323385edd384",
+
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable comment.brief
 	// (optional; no existing property, required key, or type changed). The
 	// descriptions now state the checker's exact error/warning split; shape

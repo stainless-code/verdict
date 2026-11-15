@@ -88,6 +88,24 @@ func TestRuntimeFetchLocalOutputValidates(t *testing.T) {
 	}
 }
 
+// TestRuntimeAuthorValidates proves the author fingerprint writer's shape —
+// a named model, then a null one — validates against its own published schema.
+func TestRuntimeAuthorValidates(t *testing.T) {
+	doc := loadSchemaDocument(t, "author.schema.json")
+	model := "Opus 4.5"
+	named := &core.AuthorFile{
+		SchemaVersion: "1", Agent: "claude", Model: &model, Confidence: "high",
+		Evidence: []core.AuthorEvidence{{Field: "commits", Signal: "Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"}},
+	}
+	validateWire(t, doc, "author.json", doc, decodeWire(t, core.Wire(named)))
+
+	unnamed := &core.AuthorFile{
+		SchemaVersion: "1", Agent: "codex", Confidence: "medium",
+		Evidence: []core.AuthorEvidence{{Field: "head_ref", Signal: "codex/"}},
+	}
+	validateWire(t, doc, "author.json without a model", doc, decodeWire(t, core.Wire(unnamed)))
+}
+
 // TestGroupedFetchEstimateValidatesWithoutBudget proves the grouped estimate a
 // run publishes with no ordinary budget validates against the generated
 // envelope and fetchData profiles, with the unset guard and ceiling absent

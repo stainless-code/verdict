@@ -21,7 +21,8 @@ func trendMixed(t *testing.T, dir string) {
 			finding(sigImp, "addressed", "important", "walked", "inline"),
 			finding(sigInfo, "open", "informational", "said", "inline"),
 		),
-		".verdict/state/5102/record.json": `{"recorded_at":"2026-02-01T00:00:00Z"}`,
+		".verdict/state/5102/record.json": `{"recorded_at":"2026-02-01T00:00:00Z",` +
+			`"author":{"agent":"claude","model":"Opus 4.5"},"review_models":["gpt-5.1-codex"]}`,
 		".verdict/state/5102/cost.json": `{"schema_version":"1","effort":"deep",` +
 			`"models":[{"name":"m","input_tokens":10,"output_tokens":5}],"est_usd":0.01}`,
 		".verdict/state/5102/kb-recall.json": `[{"id":"r-a1","score":1,"hits":2,"judged":2}]`,
@@ -30,7 +31,8 @@ func trendMixed(t *testing.T, dir string) {
 		".verdict/state/local-x/full.diff":   fullDiff,
 		".verdict/state/local-x/findings.json": findingsDoc(
 			finding(sigCrit, "open", "critical", "walked", "inline")),
-		".verdict/state/local-x/record.json": `{"recorded_at":"2026-03-01T00:00:00Z"}`,
+		".verdict/state/local-x/record.json": `{"recorded_at":"2026-03-01T00:00:00Z",` +
+			`"author":{"agent":"codex","model":null},"review_models":["claude-opus-4-5"]}`,
 
 		".verdict/kb-joins.jsonl": `{"at":"2026-10-31T00:00:01Z","sig":"` + sigImp + `",` +
 			`"rule":"r-a1","outcome":"addressed","actor":"human","verb":"triage",` +

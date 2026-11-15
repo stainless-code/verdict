@@ -321,6 +321,7 @@ A bundle dir holds these core/script artifacts (`PR.json`/`source.json`,
 `threads-resolve.json`,
 `panel`, `patch.json`, `verification.json`, `incremental.diff`, `kb.txt`,
 `lenses.txt`, `reverts.txt`, `sensitive.txt`, `kb-recall.json`, `cost.json`, `budget.json`, `fix.json`,
+`author.json`,
 `kb-grades.jsonl`, `controls.json`, `controls/`, `chunks/`
 (`chunk-NN.diff`, `chunk-NN.toc.txt`, `chunk-NN.roles.txt`, `manifest.json`
 with `schema_version: "1"`, per-chunk `<name>.cost.json`), plus dot-scratch
@@ -341,6 +342,32 @@ everything else in a bundle dir is script-owned.
 and `plan.txt` is the fence label for its rendered section in the
 `--show-prompts` dump, one line per group (see
 [Policy engine](#policy-engine-scopes-profiles-deep-validation)).
+
+`author.json` is the advisory author fingerprint `fetch` detects in the PR
+(`schemas/author.schema.json`): `{schema_version, agent, model, confidence,
+evidence[]}`. It reads five signals — a `Co-authored-by:` trailer whose name is
+an agent's (`claude`, `codex`, `cursor`, and `Claude Code` for the tool rather
+than a model called Code), the `Generated with Claude Code` line a harness
+appends to the PR body, the `[codex]` PR-title tag, and the `codex/` or
+`cursor/` branch prefixes. An explicit trailer or generated-with line is `high`
+confidence, a naming convention `medium`; the strongest signal names the
+`agent`, the earliest one breaks a tie, and every match stays in `evidence[]`
+as `{field, signal}` — `field` is `title`, `body`, `head_ref`, or `commits`, and
+`signal` is the matched text verbatim. `model` is whatever a trailer names after
+the agent's own name, null when no signal names one.
+
+`record` stamps the fingerprint into `record.json` as `author` (`{agent,
+model}`, null when the bundle carries none) beside `review_models`: every model
+name `cost.json` already prices, deduplicated and sorted — the reviewer half of
+the pair. A bundle naming neither stores `null` and `[]`, never an invented
+human.
+
+It is data, never a decision: it never blocks, never changes what is reviewed,
+and never pins a model — a spoofable fingerprint is not authority. Nothing is
+written when no signal matches (and an earlier run's file is removed), so an
+absent `author.json` means unknown, never human. Commit messages reach it only
+where the provider payload carries them (GitHub's view answers with the commit
+list); the other providers contribute the title, body, and head ref.
 
 ### Lens packs
 
@@ -3025,7 +3052,7 @@ counts) — the ledger is an audit trail, not a lock. Verifying an untrusted
 worktree? `verify` refuses hostile shapes pre-exec, but the static gate cannot
 see everything — run the verify step under the Hostile-PR sandbox recipe below.
 
-## Hostile-PR sandbox recipe (enforced on Linux with --sandbox; recipe for other OSes)
+## Hostile-PR sandbox recipe
 
 When the diff is untrusted (unknown author, drive-by PR, patch claims
 arriving via `fix-ci`) and the `verifyCmd` wants the network, run the verify
@@ -3040,10 +3067,18 @@ below is the second layer for what the static gate cannot see (a plain
 `curl` GET stays allowed; `/tmp` scratch writes stay allowed) — not a
 replacement.
 
+The static gate is a tripwire, not a boundary. It matches the spellings it
+knows, on one command string at a time, and a shape it has not learned
+executes. The boundary is the enforced sandbox below: `verify --sandbox`
+runs the command under `bubblewrap` on Linux (the full mount and namespace
+shape) and under `sandbox-exec` on macOS (no network). A host that can
+enforce neither refuses `sandbox-unavailable` and runs nothing, so
+`--sandbox` never degrades to an unwrapped run.
+
 ### Enforced sandbox: `verify --sandbox`
 
-On Linux with `bubblewrap` installed, pass the flag and let `verify` build
-the sandbox itself:
+On Linux with `bubblewrap` installed, or on macOS, which ships
+`sandbox-exec`, pass the flag and let `verify` build the sandbox itself:
 
 ```bash
 verdict verify owner/repo 123 --sandbox
@@ -3075,10 +3110,21 @@ read-only bind of `/dev/null`. A missing entry adds no mount. `/var/run` is
 shadowed too when the host ships it as a real directory; on the distros
 where it is a symlink to `/run`, the `/run` mount covers it.
 
+On macOS the whole enforced shape is the network half: `sandbox-exec`
+runs the command under `(version 1)(allow default)(deny network*)`, so every
+`bind()` and `connect()` is denied — loopback and unix sockets included —
+and a command that listens or connects fails. macOS has no
+filesystem namespace, so the mounts above, the private `/tmp`, the empty
+`/run`, and the credential hiding are Linux-only: on macOS the command still
+sees the host filesystem and your credential files. Filesystem isolation on a
+macOS host needs a Linux VM or container running the `bwrap` recipe below —
+there is no in-place macOS equivalent.
+
 Before anything executes it probes the same flags with a no-op; when the
-host is not Linux, `bwrap` is missing, the user-namespace restriction is on,
-or `HOME` is unset, `verify` refuses `sandbox-unavailable` naming the cause
-and runs nothing. It never silently falls back to an unsandboxed command.
+host is neither Linux nor macOS, `bwrap` or `sandbox-exec` is missing, the
+user-namespace restriction is on, or (on Linux) `HOME` is unset, `verify`
+refuses `sandbox-unavailable` naming the cause and runs nothing. It never
+silently falls back to an unsandboxed command.
 The patch record and the deep-group receipt carry `"sandboxed": true`, and
 the `--json` data adds `"sandboxed": true`; absent means the run was not
 sandboxed. The same opt-in reaches the MCP tool (`sandbox`), the Go facade
@@ -3086,8 +3132,9 @@ sandboxed. The same opt-in reaches the MCP tool (`sandbox`), the Go facade
 
 ### Recipe for other OSes (and for wrapping the whole review)
 
-The one-liner below still applies on macOS or a minimal image with no
-`bwrap`, or when the whole `verdict` process must run inside the sandbox:
+The one-liner below is Linux-only. It applies on a minimal image with no
+`bwrap`, on Windows or macOS only inside a Linux VM or container, or when the
+whole `verdict` process must run inside the sandbox:
 
 `bwrap` one-liner, from the repo root (`verify` runs the same `verifyCmd`;
 only the filesystem and network it sees change):
@@ -3119,7 +3166,7 @@ bwrap --ro-bind / / --dev /dev --proc /proc --unshare-pid --tmpfs /tmp \
   -- verdict verify owner/repo 123
 ```
 
-No `bwrap` (macOS, minimal images)? `systemd-nspawn` covers the network
+No `bwrap` (minimal Linux images)? `systemd-nspawn` covers the network
 half of the shape only — network-only isolation, not the same shape:
 
 ```bash
@@ -3478,7 +3525,11 @@ into one time series: findings opened/addressed/closed per review date, broken
 down by severity tier and status, plus per-bundle rows (review time, models and
 effort from `cost.json` when the agent wrote one, provenance from the post
 receipt else the calibration record — `tool_version`, `prompts_hash`, `model`,
-missing reads unmarked). Pure read — no network,
+missing reads unmarked; the author/reviewer pair from `record.json` — the
+fingerprint's `agent` and the models `cost.json` priced, `unknown` for either
+half the bundle never recorded). Per-bundle rows carry that pair, and `by_pair`
+groups the portfolio by it, keyed `<author>/<reviewer>`, so a family's outcomes
+are readable without re-reading every record. Pure read — no network,
 nothing written, recomputed every run so hand-edited stores stay truthful;
 missing or unreadable per-bundle stores warn and skip, and no reviewed bundles
 reads as zeros, never an error. The bundle home itself is different: a
@@ -4355,6 +4406,7 @@ declared review pipelines `run --recipe` resolves, plus the resolved
 explicit usage handoff), `corpus.schema.json` (benchmark case manifests),
 `backtest.schema.json` (the backtest score report), `post.schema.json` and
 `record.schema.json` (completed post/record captures),
+`author.schema.json` (the advisory author fingerprint a fetch detects),
 `threads.schema.json` (the normalized PR conversation),
 `pack.schema.json` (the lens pack manifest),
 and `envelope.schema.json` (the `--json` envelope plus the stable per-verb

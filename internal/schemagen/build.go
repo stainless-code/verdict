@@ -160,6 +160,15 @@ const keyScopeDefaults = "defaults"
 func documents() []document {
 	return []document{
 		{
+			name:  "author",
+			title: "author.json — advisory author fingerprint",
+			root:  reflect.TypeFor[AuthorFile](),
+			defs: []definition{
+				{typ: reflect.TypeFor[AuthorEvidence](), name: "evidence"},
+			},
+			additionalProperties: false,
+		},
+		{
 			name:  "backtest",
 			title: "report.json — backtest score report",
 			root:  reflect.TypeFor[BacktestData](),
@@ -350,6 +359,7 @@ func documents() []document {
 			title: "record.json — completed-record (local bundles)",
 			root:  reflect.TypeFor[Record](),
 			defs: []definition{
+				{typ: reflect.TypeFor[core.AuthorRef](), name: "author"},
 				{typ: reflect.TypeFor[Repair](), name: "repair"},
 				{typ: reflect.TypeFor[CoverageSummary](), name: coverageSummaryType},
 				{typ: reflect.TypeFor[core.PanelSummary](), name: verificationSummaryType},
@@ -534,6 +544,7 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[TrendTiers](), name: "trendTiers"},
 		{typ: reflect.TypeFor[TrendRiskBands](), name: "trendRiskBands"},
 		{typ: reflect.TypeFor[TrendRiskBand](), name: "trendRiskBand"},
+		{typ: reflect.TypeFor[TrendPairCounts](), name: "trendPairCounts"},
 		{typ: reflect.TypeFor[TrendSources](), name: "trendSources"},
 		{typ: reflect.TypeFor[TrendProvenance](), name: "trendProvenance"},
 		{typ: reflect.TypeFor[TrendPeriod](), name: "trendPeriod"},

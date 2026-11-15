@@ -174,7 +174,7 @@ requirement-unmet	try: address the cause above, then re-run the same command
 rigor-below-floor	try: deepen the evidence for the named findings, or re-run with --force to publish them and record the bypass
 rounds-path-unsafe	try: remove the named path from the bundle (verdict owns it as a plain directory), then re-run
 run-mismatch	try: pick another --run, or delete the existing run directory
-sandbox-unavailable	try: install bubblewrap on Linux and allow unprivileged user namespaces, or re-run without --sandbox on a command you trust
+sandbox-unavailable	try: on Linux install bubblewrap and allow unprivileged user namespaces; on macOS sandbox-exec ships with the OS — or re-run without --sandbox on a command you trust
 sarif-too-large	try: split or trim the SARIF report under 8 MiB before ingesting
 scope-escape	try: revert or stash files outside the anchor path, then re-run fix
 serve-listen-failed	try: pass --port 0 for a kernel-assigned port, or free the named address, then re-run

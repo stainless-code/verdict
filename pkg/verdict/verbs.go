@@ -363,10 +363,11 @@ type VerifyRequest struct {
 	// EnvAllowlist passes explicit parent environment variable names through
 	// default-deny filtering and secret-name dropping.
 	EnvAllowlist []string
-	// Sandbox wraps the command in the enforced Linux bwrap sandbox: no
-	// network, empty credential dirs, a writable reviewed root, and a private
-	// /tmp. The call refuses with sandbox-unavailable when the host cannot
-	// enforce it instead of running unwrapped.
+	// Sandbox wraps the command in the host's enforced sandbox: bwrap on
+	// Linux (no network, empty credential dirs, a writable reviewed root, a
+	// private /tmp), sandbox-exec on macOS (no network, loopback included;
+	// credentials stay visible). The call refuses with sandbox-unavailable
+	// when the host cannot enforce it instead of running unwrapped.
 	Sandbox bool
 }
 

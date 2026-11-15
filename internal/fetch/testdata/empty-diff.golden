@@ -306,15 +306,15 @@ load-bearing claim stays `unproven` rather than becoming ground truth.
 --- file C/.verdict/state/4701/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "020c444f525aa132aceb473c999ef74d2c7c643286d33f7b316baa6edc5aba90",
-  "prompts_hash": "4e52f483e0653b36ab29476d3f2f1fe402be0b0d57fd1e2208b8432716827b8e",
+  "run_id": "290f9d069a01c0cd10139dfcb90362e9ab939b0167c22670c429dffa686ffd18",
+  "prompts_hash": "0819c05a9f07bebd054279a4a998adfc9077a5cf5a12dc84d588205b917a893d",
   "inputs": [
     {
       "kind": "prompt",
       "name": "SKILL.md",
       "status": "included",
-      "sha256": "3451d9d1442dd2538c2bc663776451c43cb0eed7d6dda35487488ad8f650ad13",
-      "bytes": 12821
+      "sha256": "56a5922897f1def73b571fd871ce3ea65798e595f54952aec380496e785797cb",
+      "bytes": 13140
     },
     {
       "kind": "prompt",
