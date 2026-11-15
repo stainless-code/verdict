@@ -23,22 +23,24 @@ func TestCalibrateFiltersDiffSpelledPhrase(t *testing.T) {
 		{name: "control diff leaves the phrase", diff: corpustest.CleanDiff, body: corpustest.CleanBody, want: 1},
 	}
 	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			root := t.TempDir()
-			dir := filepath.Join(readcommon.StateDir(root), "corpus-"+corpustest.CaseID)
-			corpustest.Bundle(t, dir, tc.diff, tc.body)
-			resp, ref := Run(t.Context(), &Request{ReadRequest: core.ReadRequest{
-				RepoRoot: root, Pr: "corpus-" + corpustest.CaseID,
-			}})
-			if ref != nil {
-				t.Fatalf("calibrate refusal %s: %s", ref.Code, ref.Message)
-			}
-			if resp.Data.corpus == nil {
-				t.Fatal("calibrate returned no corpus result")
-			}
-			if got := resp.Data.corpus.report.Matched; got != tc.want {
-				t.Fatalf("matched = %d, want %d", got, tc.want)
-			}
-		})
+		t.Run(tc.name, func(t *testing.T) { checkCalibrateFilter(t, tc.diff, tc.body, tc.want) })
+	}
+}
+
+func checkCalibrateFilter(t *testing.T, diff, body string, want int) {
+	t.Helper()
+	root := t.TempDir()
+	dir := filepath.Join(readcommon.StateDir(root), "corpus-"+corpustest.CaseID)
+	corpustest.Bundle(t, dir, diff, body)
+	read := core.ReadRequest{RepoRoot: root, Pr: "corpus-" + corpustest.CaseID}
+	resp, ref := Run(t.Context(), &Request{ReadRequest: read})
+	if ref != nil {
+		t.Fatalf("calibrate refusal %s: %s", ref.Code, ref.Message)
+	}
+	if resp.Data.corpus == nil {
+		t.Fatal("calibrate returned no corpus result")
+	}
+	if got := resp.Data.corpus.report.Matched; got != want {
+		t.Fatalf("matched = %d, want %d", got, want)
 	}
 }

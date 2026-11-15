@@ -23,21 +23,24 @@ func TestScoreFiltersDiffSpelledPhrase(t *testing.T) {
 		{name: "control diff leaves the phrase", diff: corpustest.CleanDiff, body: corpustest.CleanBody, want: 1},
 	}
 	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			root := t.TempDir()
-			bundle := "local-bt-1-filter"
-			corpustest.Review(t, filepath.Join(root, ".verdict", "state", bundle), tc.diff, tc.body)
-			writeRaceScoreRun(t, root, bundle)
-			resp, ref := RunScore(t.Context(), &ScoreRequest{
-				Runtime: &core.Runtime{Now: scoreClock}, RepoRoot: root, Run: "s1",
-			})
-			if ref != nil {
-				t.Fatalf("score refusal %s: %s", ref.Code, ref.Message)
-			}
-			if got := resp.Data.Matched; got != tc.want {
-				t.Fatalf("matched = %d, want %d", got, tc.want)
-			}
-		})
+		t.Run(tc.name, func(t *testing.T) { checkScoreFilter(t, tc.diff, tc.body, tc.want) })
+	}
+}
+
+func checkScoreFilter(t *testing.T, diff, body string, want int) {
+	t.Helper()
+	root := t.TempDir()
+	bundle := "local-bt-1-filter"
+	corpustest.Review(t, filepath.Join(root, ".verdict", "state", bundle), diff, body)
+	writeRaceScoreRun(t, root, bundle)
+	resp, ref := RunScore(t.Context(), &ScoreRequest{
+		Runtime: &core.Runtime{Now: scoreClock}, RepoRoot: root, Run: "s1",
+	})
+	if ref != nil {
+		t.Fatalf("score refusal %s: %s", ref.Code, ref.Message)
+	}
+	if got := resp.Data.Matched; got != want {
+		t.Fatalf("matched = %d, want %d", got, want)
 	}
 }
 

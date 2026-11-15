@@ -21,6 +21,11 @@ const (
 	CleanBody = "This is a race between the pool and the borrower."
 )
 
+const (
+	dirMode  = 0o755
+	fileMode = 0o600
+)
+
 const manifest = `{
   "schema_version": "1",
   "id": "race-filter",
@@ -101,10 +106,10 @@ func Review(t *testing.T, dir, diff, body string) {
 
 func write(t *testing.T, dir, name, body string) {
 	t.Helper()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, dirMode); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), fileMode); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -66,26 +66,39 @@ func TestEvaluateDirRefusesARealCaseWithoutDiff(t *testing.T) {
 		{name: "whitespace", body: "\n\n \t\n", write: true},
 	}
 	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			dir := t.TempDir()
-			writeManifest(t, dir, raceCase("data race"))
-			c, ref := Load(dir)
-			if ref != nil {
-				t.Fatalf("Load: %v", ref)
-			}
-			if tc.write {
-				if err := os.WriteFile(filepath.Join(dir, "full.diff"), []byte(tc.body), 0o600); err != nil {
-					t.Fatal(err)
-				}
-			}
-			rep, ref := EvaluateDir(dir, c, []any{entry("pool.go", 45, "The goroutine closes the conn.")})
-			if ref == nil || ref.Code != codeCorpusInvalid {
-				t.Fatalf("EvaluateDir = %v, %v; want a corpus-invalid refusal", rep, ref)
-			}
-			if !strings.Contains(ref.Message, "full.diff") {
-				t.Errorf("message %q does not name full.diff", ref.Message)
-			}
-		})
+		t.Run(tc.name, func(t *testing.T) { checkNoDiffRefusal(t, tc.body, tc.write) })
+	}
+}
+
+// checkNoDiffRefusal proves one missing, empty, or blank diff refuses before
+// grading and names the file. A row with write false leaves full.diff absent.
+func checkNoDiffRefusal(t *testing.T, body string, write bool) {
+	t.Helper()
+	dir := t.TempDir()
+	writeManifest(t, dir, raceCase("data race"))
+	c, ref := Load(dir)
+	if ref != nil {
+		t.Fatalf("Load: %v", ref)
+	}
+	writeDiffIfAny(t, dir, body, write)
+	rep, ref := EvaluateDir(dir, c, []any{entry("pool.go", 45, "The goroutine closes the conn.")})
+	if ref == nil || ref.Code != codeCorpusInvalid {
+		t.Fatalf("EvaluateDir = %v, %v; want a corpus-invalid refusal", rep, ref)
+	}
+	if !strings.Contains(ref.Message, "full.diff") {
+		t.Errorf("message %q does not name full.diff", ref.Message)
+	}
+}
+
+// writeDiffIfAny writes the fixture's full.diff unless the row leaves it
+// missing.
+func writeDiffIfAny(t *testing.T, dir, body string, write bool) {
+	t.Helper()
+	if !write {
+		return
+	}
+	if err := os.WriteFile(filepath.Join(dir, "full.diff"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 

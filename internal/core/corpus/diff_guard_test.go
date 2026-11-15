@@ -182,18 +182,21 @@ func TestVocabularyRefusalsDoNotBorrowTheCaseTemplate(t *testing.T) {
 		{name: "no usable phrase", bugKind: "race", diff: raceAllDiff, path: "pool.go", line: 45},
 	}
 	for _, row := range rows {
-		t.Run(row.name, func(t *testing.T) {
-			ref := CheckDiff(guardManifest(t, row), []byte(row.diffText()), "case.json")
-			if ref == nil {
-				t.Fatal("accepted the vocabulary, want a refusal")
-			}
-			if strings.Contains(ref.Message, "copy bench/corpus") {
-				t.Errorf("vocabulary refusal borrows the case-authoring template: %q", ref.Message)
-			}
-			if !strings.Contains(ref.Message, "unusable") {
-				t.Errorf("message %q does not call the vocabulary unusable", ref.Message)
-			}
-		})
+		t.Run(row.name, func(t *testing.T) { checkVocabularyRefusal(t, row) })
+	}
+}
+
+func checkVocabularyRefusal(t *testing.T, row *guardRow) {
+	t.Helper()
+	ref := CheckDiff(guardManifest(t, row), []byte(row.diffText()), "case.json")
+	if ref == nil {
+		t.Fatal("accepted the vocabulary, want a refusal")
+	}
+	if strings.Contains(ref.Message, "copy bench/corpus") {
+		t.Errorf("vocabulary refusal borrows the case-authoring template: %q", ref.Message)
+	}
+	if !strings.Contains(ref.Message, "unusable") {
+		t.Errorf("message %q does not call the vocabulary unusable", ref.Message)
 	}
 }
 

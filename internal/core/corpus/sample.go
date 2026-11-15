@@ -128,25 +128,33 @@ func validRecorded(v *float64) bool {
 func Cohort(dir string, sample *Sample) ([]Sample, []string) {
 	out := []Sample{*sample}
 	var warnings []string
-	entries, err := os.ReadDir(filepath.Dir(dir))
-	if err != nil {
-		return out, warnings
-	}
-	for _, e := range entries {
-		if !e.IsDir() || e.Name() == filepath.Base(dir) || !strings.HasPrefix(e.Name(), "corpus-") {
-			continue
-		}
-		sibling := filepath.Join(filepath.Dir(dir), e.Name())
+	for _, sibling := range siblingDirs(dir) {
 		s, ok, reason := cohortSibling(sibling, sample)
-		if !ok {
-			if reason != "" {
-				warnings = append(warnings, fmt.Sprintf("corpus bundle %q skipped from the cohort (%s)", sibling, reason))
-			}
+		if ok {
+			out = append(out, s)
 			continue
 		}
-		out = append(out, s)
+		if reason != "" {
+			warnings = append(warnings, fmt.Sprintf("corpus bundle %q skipped from the cohort (%s)", sibling, reason))
+		}
 	}
 	return out, warnings
+}
+
+// siblingDirs lists the other corpus bundles beside dir. A listing failure is
+// an empty cohort, not a skipped one.
+func siblingDirs(dir string) []string {
+	entries, err := os.ReadDir(filepath.Dir(dir))
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		if e.IsDir() && e.Name() != filepath.Base(dir) && strings.HasPrefix(e.Name(), "corpus-") {
+			out = append(out, filepath.Join(filepath.Dir(dir), e.Name()))
+		}
+	}
+	return out
 }
 
 // cohortSibling grades one sibling. A non-empty reason is a skip worth
