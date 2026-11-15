@@ -41,7 +41,9 @@ with `provider-unimplemented`. Saved provider metadata is honored, or select
 
 These are bounded foreground reads — no watch feed, daemon, persisted cursor,
 webhook, or subscription. Empty/unknown check rollups stay pending; incomplete
-review history or a head changing during a read refuses `pr-read-failed`.
+review history refuses `pr-read-failed`. A head that changes during a read is
+retried on the next interval inside a bounded wait, and one still changing when
+the timeout arrives refuses `pr-read-failed`.
 
 ## Suppression receipts
 

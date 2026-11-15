@@ -7,8 +7,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/../lib/hoststub.sh"
 
 FIX="$EVAL_ROOT/evals/fixtures/pr-wait"
-export WAIT_FIX="$FIX" WAIT_COUNT="$EVAL_SANDBOX/poll-count"
+export WAIT_FIX="$FIX" WAIT_COUNT="$EVAL_SANDBOX/poll-count" WAIT_VIEW="$EVAL_SANDBOX/view-count" WAIT_STALE_VIEWS=0
 printf '0' >"$WAIT_COUNT"
+printf '0' >"$WAIT_VIEW"
 hoststub_init gh
 hoststub_prove_dead gh
 cat >"$EVAL_STUBBIN/gh" <<'STUB'
@@ -24,7 +25,11 @@ case "$argv" in
     if [ "$n" -eq 1 ]; then cat "$WAIT_FIX/open.http"; else cat "$WAIT_FIX/merged.http"; fi
     exit 0;;
   'pr view 42 --repo acme/app --json headRefOid,statusCheckRollup,reviews')
-    cat "$WAIT_FIX/detail.json"; exit 0;;
+    v="$(cat "$WAIT_VIEW")"
+    v=$((v+1))
+    printf '%s' "$v" >"$WAIT_VIEW"
+    if [ "$v" -eq "$WAIT_STALE_VIEWS" ]; then cat "$WAIT_FIX/detail-stale-head.json"; else cat "$WAIT_FIX/detail.json"; fi
+    exit 0;;
 esac
 if [ "$#" -eq 10 ] && [ "$1" = api ] && [ "$2" = graphql ] &&
    [ "$3" = -F ] && [ "$4" = owner=acme ] && [ "$5" = -F ] &&
@@ -44,8 +49,28 @@ assert_envelope "merge wait"
 assert_json_field "typed condition result" condition-met '.data.outcome'
 assert_json_field "merged snapshot" MERGED '.data.snapshot.state'
 assert_json_field "two observations" 2 '.data.observations'
+assert_json_field "no inconsistent observations" 0 '.data.inconsistent_observations'
 assert_eq "host flipped on second poll" 2 "$(cat "$WAIT_COUNT")"
 if [ -e "$EVAL_SANDBOX/.verdict/state/42" ]; then bad "pr-wait wrote a bundle"; else good "pr-wait writes no bundle"; fi
+
+printf '0' >"$WAIT_COUNT"
+printf '0' >"$WAIT_VIEW"
+export WAIT_STALE_VIEWS=1
+run_review pr-wait acme/app 42 --until checks-done --timeout 5s --json
+assert_exit "transient head mismatch is retried" 0
+assert_envelope "transient head mismatch"
+assert_json_field "retried wait reaches its condition" condition-met '.data.outcome'
+assert_json_field "inconsistent observation counted" 1 '.data.inconsistent_observations'
+assert_json_field "only the consistent state observed" 1 '.data.observations'
+assert_eq "host read again after the mismatch" 2 "$(cat "$WAIT_VIEW")"
+
+printf '0' >"$WAIT_COUNT"
+printf '0' >"$WAIT_VIEW"
+run_review pr-wait acme/app 42 --until checks-done --timeout 5s --once --json
+assert_exit "one-shot refuses a mismatched head" 1
+assert_refusal "one-shot stale head" pr-read-failed
+assert_eq "one-shot reads the host once" 1 "$(cat "$WAIT_VIEW")"
+export WAIT_STALE_VIEWS=0
 
 printf '0' >"$WAIT_COUNT"
 run_review pr-wait acme/app 42 --until merged --timeout 1s --json
@@ -66,6 +91,7 @@ assert_exit "one-shot without timeout exit" 1
 assert_envelope "one-shot without timeout"
 assert_json_field "one-shot without timeout outcome" condition-unmet '.data.outcome'
 assert_json_field "one-shot without timeout observations" 1 '.data.observations'
+assert_json_field "one-shot counts no inconsistency" 0 '.data.inconsistent_observations'
 
 run_review pr-wait acme/app 42 --until merged --timeout 5s --provider forgejo --json
 assert_exit "Forgejo refuses explicitly" 1

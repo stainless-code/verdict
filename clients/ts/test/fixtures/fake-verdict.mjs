@@ -38,6 +38,7 @@ switch (mode) {
           until: "merged",
           snapshot: null,
           observations: 0,
+          inconsistent_observations: 0,
         },
       }),
     );

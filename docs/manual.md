@@ -1025,17 +1025,25 @@ the remaining budget. SIGINT and SIGTERM cancel host subprocesses as well.
 
 An empty or unknown check rollup remains pending. `review-changed --once`
 returns its baseline immediately with `condition-unmet`; no baseline is saved
-between invocations. A head change during a read or incomplete review data
-refuses `pr-read-failed` rather than claiming an unchanged or finished review.
-The GitHub view's 100-review window and thread comment pages are checked:
-100 or more reviews, truncated comments, or excessive/repeated thread pages
-refuse rather than silently dropping history.
+between invocations. A host that disagrees with itself — a GraphQL head that is
+not yet the REST head, or a torn view document — is not terminal inside a
+bounded wait: it counts as an inconsistent observation, the wait sleeps one
+interval and reads again, because those reads stay inconsistent for a few
+seconds after a push. `--once`, and a wait still inconsistent when its timeout
+arrives, refuses `pr-read-failed` instead of claiming an unchanged or finished
+review. A hard failure refuses at once at any point: `gh` missing or failing to
+execute, an auth or 404 exit, or a non-GitHub provider. Incomplete review data
+is also hard: the GitHub view's 100-review window and thread comment pages are
+checked, and 100 or more reviews, truncated comments, or excessive/repeated
+thread pages refuse rather than silently dropping history.
 
 Without `--json`, stdout contains one compact JSON snapshot per observed
 change, followed by a final result line. Snapshots contain state, head, check
 completion flags, and canonical JSON strings for checks, reviews and threads.
 With `--json`, stdout is exactly one standard envelope; its `data` contains
-`outcome`, `until`, the last `snapshot` (or null), and `observations`.
+`outcome`, `until`, the last `snapshot` (or null), `observations` (distinct
+states observed), and `inconsistent_observations` (reads retried because the
+host disagreed with itself).
 
 | Outcome           | CLI exit | Meaning                                                   |
 | ----------------- | -------- | --------------------------------------------------------- |

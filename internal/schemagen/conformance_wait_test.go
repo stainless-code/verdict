@@ -32,7 +32,7 @@ func TestRuntimePRWaitEnvelopeValidates(t *testing.T) {
 		t.Fatal(ref)
 	}
 	assertServiceEnvelope(t, doc, "pr-wait", "acme/app", "42", resp.At, resp.Next, resp.Warnings, resp.Data.Wire())
-	assertWireFields(t, resp.Data.Wire(), map[string]any{"outcome": "condition-unmet", "until": "merged", "observations": json.Number("1")})
+	assertWireFields(t, resp.Data.Wire(), map[string]any{"outcome": "condition-unmet", "until": "merged", "observations": json.Number("1"), "inconsistent_observations": json.Number("0")})
 }
 
 func TestRuntimeReadyWaitTimeoutEnvelopeValidates(t *testing.T) {

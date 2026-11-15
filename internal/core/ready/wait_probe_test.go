@@ -2,6 +2,7 @@ package readycore
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -52,9 +53,10 @@ func TestWaitProbeConditionalAndFailedChecks(t *testing.T) {
 func TestWaitProbeUnsupported(t *testing.T) {
 	for _, provider := range []string{"gitlab", "forgejo"} {
 		host := &waitHost{}
-		_, ref := (&WaitProbe{}).Read(t.Context(), &core.ReadRequest{Runtime: &core.Runtime{Commander: host}}, provider, "merged")
-		if ref == nil || ref.Code != "provider-unimplemented" || !strings.Contains(ref.Message, provider) || len(host.calls) != 0 {
-			t.Fatalf("provider %s: ref=%v calls=%v", provider, ref, host.calls)
+		_, err := (&WaitProbe{}).Read(t.Context(), &core.ReadRequest{Runtime: &core.Runtime{Commander: host}}, provider, "merged")
+		ref, ok := errors.AsType[*core.RefusalError](err)
+		if !ok || ref.Code != "provider-unimplemented" || !strings.Contains(ref.Message, provider) || len(host.calls) != 0 {
+			t.Fatalf("provider %s: ref=%v calls=%v", provider, err, host.calls)
 		}
 	}
 }
@@ -110,9 +112,12 @@ func TestWaitRejectsTruncatedComments(t *testing.T) {
 }
 
 func TestWaitRejectsHeadRace(t *testing.T) {
-	_, ref := decodeWaitDetail(`{"headRefOid":"new-head","reviews":[]}`, map[string]any{"head": map[string]any{"sha": "old-head"}})
-	if ref == nil || ref.Code != "pr-read-failed" {
-		t.Fatalf("head race ref %v", ref)
+	_, err := decodeWaitDetail(`{"headRefOid":"new-head","reviews":[]}`, map[string]any{"head": map[string]any{"sha": "old-head"}})
+	if _, incomplete := errors.AsType[*waitIncompleteError](err); !incomplete {
+		t.Fatalf("head race err %v; want an incomplete read", err)
+	}
+	if ref, ok := errors.AsType[*core.RefusalError](err); !ok || ref.Code != "pr-read-failed" {
+		t.Fatalf("head race err %v; want pr-read-failed", err)
 	}
 }
 
@@ -198,10 +203,14 @@ func TestWaitRejectsPagedChecks(t *testing.T) {
 		}
 		return `{"headRefOid":"abc","statusCheckRollup":[` + strings.Join(items, ",") + `],"reviews":[]}`
 	}
-	if _, ref := decodeWaitDetail(makeDetail(99), live); ref != nil {
-		t.Fatalf("99 checks refused: %v", ref)
+	if _, err := decodeWaitDetail(makeDetail(99), live); err != nil {
+		t.Fatalf("99 checks refused: %v", err)
 	}
-	if _, ref := decodeWaitDetail(makeDetail(100), live); ref == nil || ref.Code != "pr-read-failed" {
-		t.Fatalf("100 checks got ref=%v; want pr-read-failed", ref)
+	_, err := decodeWaitDetail(makeDetail(100), live)
+	if _, incomplete := errors.AsType[*waitIncompleteError](err); incomplete {
+		t.Fatalf("100 checks got an incomplete read %v; want a hard refusal", err)
+	}
+	if ref, ok := errors.AsType[*core.RefusalError](err); !ok || ref.Code != "pr-read-failed" {
+		t.Fatalf("100 checks err %v; want pr-read-failed", err)
 	}
 }

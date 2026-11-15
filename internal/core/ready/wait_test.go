@@ -11,9 +11,12 @@ import (
 )
 
 type sequenceHost struct {
-	field string
-	calls []string
-	polls int
+	field     string
+	calls     []string
+	polls     int
+	views     int
+	headRace  int
+	viewFails bool
 }
 
 func (h *sequenceHost) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
@@ -28,6 +31,10 @@ func (h *sequenceHost) Run(_ context.Context, cmd *core.Command) (core.Result, e
 		}
 		return core.Result{Stdout: "HTTP/2.0 200 OK\r\n\r\n" + fmt.Sprintf(`{"state":%q,"head":{"sha":"abc"}}`, state)}, nil
 	case strings.Contains(argv, "pr view"):
+		h.views++
+		if h.viewFails {
+			return core.Result{ExitCode: 1}, nil
+		}
 		return h.detail(), nil
 	case strings.Contains(argv, "graphql"):
 		return core.Result{Stdout: `{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}`}, nil
@@ -135,7 +142,11 @@ func (h *sequenceHost) detail() core.Result {
 		}
 		review = "CHANGES_REQUESTED"
 	}
-	return core.Result{Stdout: fmt.Sprintf(`{"headRefOid":"abc","statusCheckRollup":[{"__typename":"CheckRun","status":%q,"conclusion":%q}],"reviews":[{"state":%q}]}`, status, conclusion, review)}
+	head := "abc"
+	if h.views <= h.headRace {
+		head = "just-pushed"
+	}
+	return core.Result{Stdout: fmt.Sprintf(`{"headRefOid":%q,"statusCheckRollup":[{"__typename":"CheckRun","status":%q,"conclusion":%q}],"reviews":[{"state":%q}]}`, head, status, conclusion, review)}
 }
 
 func assertWaitCondition(t *testing.T, until string) {
@@ -152,6 +163,56 @@ func assertWaitCondition(t *testing.T, until string) {
 	}
 	if resp.Data.Outcome != "condition-met" || host.polls != 2 || *elapsed != time.Second || observed != 2 {
 		t.Fatalf("outcome=%s polls=%d elapsed=%v observed=%d", resp.Data.Outcome, host.polls, *elapsed, observed)
+	}
+}
+
+func TestWaitRetriesIncompleteObservation(t *testing.T) {
+	req, host, elapsed := waitTestRequest(t, "checks-done")
+	host.headRace = 1
+	resp, ref := Wait(t.Context(), req)
+	if ref != nil {
+		t.Fatal(ref)
+	}
+	if resp.Data.Outcome != "condition-met" || resp.Data.InconsistentObservations != 1 || host.polls != 2 || *elapsed != time.Second {
+		t.Fatalf("data=%+v polls=%d elapsed=%v", resp.Data, host.polls, *elapsed)
+	}
+}
+
+func TestWaitPersistentInconsistencyRefusesAtTimeout(t *testing.T) {
+	req, host, elapsed := waitTestRequest(t, "checks-done")
+	host.headRace = 100
+	_, ref := Wait(t.Context(), req)
+	if ref == nil || ref.Code != "pr-read-failed" ||
+		ref.Message != "could not read complete PR wait state after 3 inconsistent observations" {
+		t.Fatalf("ref=%v; want pr-read-failed naming three inconsistent observations", ref)
+	}
+	if host.polls != 3 || *elapsed != 5*time.Second {
+		t.Fatalf("polls=%d elapsed=%v; want 3 polls over the 5s budget", host.polls, *elapsed)
+	}
+}
+
+func TestWaitOnceRefusesIncompleteObservation(t *testing.T) {
+	req, host, elapsed := waitTestRequest(t, "checks-done")
+	req.Once = true
+	host.headRace = 1
+	_, ref := Wait(t.Context(), req)
+	if ref == nil || ref.Code != "pr-read-failed" || ref.Message != "could not read complete PR wait state" {
+		t.Fatalf("once ref=%v; want today's pr-read-failed", ref)
+	}
+	if host.polls != 1 || *elapsed != 0 {
+		t.Fatalf("once polls=%d elapsed=%v; want one immediate observation", host.polls, *elapsed)
+	}
+}
+
+func TestWaitHardReadFailureIsImmediate(t *testing.T) {
+	req, host, elapsed := waitTestRequest(t, "checks-done")
+	host.viewFails = true
+	_, ref := Wait(t.Context(), req)
+	if ref == nil || ref.Code != "pr-read-failed" || ref.Message != "could not read complete PR wait state" {
+		t.Fatalf("ref=%v; want an immediate pr-read-failed", ref)
+	}
+	if host.polls != 1 || *elapsed != 0 {
+		t.Fatalf("polls=%d elapsed=%v; want one immediate observation", host.polls, *elapsed)
 	}
 }
 
