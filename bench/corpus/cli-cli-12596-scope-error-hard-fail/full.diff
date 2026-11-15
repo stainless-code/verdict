@@ -1,0 +1,156 @@
+diff --git a/api/client.go b/api/client.go
+index e6ff59c59..b83e9b707 100644
+--- a/api/client.go
++++ b/api/client.go
+@@ -10,6 +10,7 @@ import (
+ 	"regexp"
+ 	"strings"
+ 
++	"github.com/cli/cli/v2/pkg/set"
+ 	ghAPI "github.com/cli/go-gh/v2/pkg/api"
+ 	ghauth "github.com/cli/go-gh/v2/pkg/auth"
+ )
+@@ -178,6 +179,10 @@ func handleResponse(err error) error {
+ 
+ 	var gqlErr *ghAPI.GraphQLError
+ 	if errors.As(err, &gqlErr) {
++		scopeErr := GenerateScopeErrorForGQL(gqlErr)
++		if scopeErr != nil {
++			return scopeErr
++		}
+ 		return GraphQLError{
+ 			GraphQLError: gqlErr,
+ 		}
+@@ -186,6 +191,40 @@ func handleResponse(err error) error {
+ 	return err
+ }
+ 
++func GenerateScopeErrorForGQL(gqlErr *ghAPI.GraphQLError) error {
++	missing := set.NewStringSet()
++	for _, e := range gqlErr.Errors {
++		if e.Type != "INSUFFICIENT_SCOPES" {
++			continue
++		}
++		missing.AddValues(requiredScopesFromServerMessage(e.Message))
++	}
++	if missing.Len() > 0 {
++		s := missing.ToSlice()
++		// TODO: this duplicates parts of generateScopesSuggestion
++		return fmt.Errorf(
++			"error: your authentication token is missing required scopes %v\n"+
++				"To request it, run:  gh auth refresh -s %s",
++			s,
++			strings.Join(s, ","))
++	}
++	return nil
++}
++
++var scopesRE = regexp.MustCompile(`one of the following scopes: \[(.+?)]`)
++
++func requiredScopesFromServerMessage(msg string) []string {
++	m := scopesRE.FindStringSubmatch(msg)
++	if m == nil {
++		return nil
++	}
++	var scopes []string
++	for _, mm := range strings.Split(m[1], ",") {
++		scopes = append(scopes, strings.Trim(mm, "' "))
++	}
++	return scopes
++}
++
+ // ScopesSuggestion is an error messaging utility that prints the suggestion to request additional OAuth
+ // scopes in case a server response indicates that there are missing scopes.
+ func ScopesSuggestion(resp *http.Response) string {
+diff --git a/api/client_test.go b/api/client_test.go
+index 1701a17a9..d961b05dc 100644
+--- a/api/client_test.go
++++ b/api/client_test.go
+@@ -10,6 +10,7 @@ import (
+ 
+ 	"github.com/cli/cli/v2/pkg/httpmock"
+ 	"github.com/cli/cli/v2/pkg/iostreams"
++	"github.com/cli/go-gh/v2/pkg/api"
+ 	"github.com/stretchr/testify/assert"
+ )
+ 
+@@ -255,3 +256,79 @@ func TestHTTPHeaders(t *testing.T) {
+ 	}
+ 	assert.Equal(t, "", stderr.String())
+ }
++
++func TestGenerateScopeErrorForGQL(t *testing.T) {
++	tests := []struct {
++		name     string
++		gqlError *api.GraphQLError
++		wantErr  bool
++		expected string
++	}{
++		{
++			name: "missing scope",
++			gqlError: &api.GraphQLError{
++				Errors: []api.GraphQLErrorItem{
++					{
++						Type:    "INSUFFICIENT_SCOPES",
++						Message: "The 'addProjectV2ItemById' field requires one of the following scopes: ['project']",
++					},
++				},
++			},
++			wantErr: true,
++			expected: "error: your authentication token is missing required scopes [project]\n" +
++				"To request it, run:  gh auth refresh -s project",
++		},
++
++		{
++			name: "ignore non-scope errors",
++			gqlError: &api.GraphQLError{
++				Errors: []api.GraphQLErrorItem{
++					{
++						Type:    "NOT_FOUND",
++						Message: "Could not resolve to a Repository",
++					},
++				},
++			},
++			wantErr: false,
++		},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			err := GenerateScopeErrorForGQL(tt.gqlError)
++			if tt.wantErr {
++				assert.NotNil(t, err)
++				assert.Equal(t, tt.expected, err.Error())
++			} else {
++				assert.Nil(t, err)
++			}
++		})
++	}
++}
++
++func TestRequiredScopesFromServerMessage(t *testing.T) {
++	tests := []struct {
++		msg      string
++		expected []string
++	}{
++		{
++			msg:      "requires one of the following scopes: ['project']",
++			expected: []string{"project"},
++		},
++		{
++			msg:      "requires one of the following scopes: ['repo', 'read:org']",
++			expected: []string{"repo", "read:org"},
++		},
++		{
++			msg:      "no match here",
++			expected: nil,
++		},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.msg, func(t *testing.T) {
++			output := requiredScopesFromServerMessage(tt.msg)
++			assert.Equal(t, tt.expected, output)
++		})
++	}
++}

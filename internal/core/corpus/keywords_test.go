@@ -29,15 +29,30 @@ type keywordCase struct {
 const minKeywordsPerBug = 5
 
 var keywordCases = []keywordCase{
+	// audit-2 found this row's vocabulary direction-free: "named help",
+	// "called help", "user-defined" and "exemption tests" name a naming
+	// decision, not the skipped check, so a test request or a note about the
+	// built-in command graded as a defect report. The claims below say what
+	// goes wrong; audit-2's three counterexamples are pinned false and its
+	// first paraphrase is pinned true. Its second paraphrase ("use a dedicated
+	// flag instead of comparing cmd.Name") names the fix's mechanism rather
+	// than the defect, so it stays a known miss in the curation log. Two bare
+	// nouns that came in with the first pass ("custom subcommand",
+	// "required-flag validation") went the same way as the old phrases: a test
+	// request and a note about where the validation lives matched them.
 	{
 		id: "urfave-cli-2319-required-flags-help-name",
 		passes: []string{
-			"The exemption is keyed on cmd.Name == helpName, so a user command called help skips checkRequiredFlags.",
-			"Required-flag enforcement is keyed on cmd.Name, so a user command named help is exempted from its required flags.",
-			"checkAllRequiredFlags returns nil for any command called help, including a user-defined one whose --token is required.",
-			"Matching the built-in help command by name lets a user-defined help command run without its required flag.",
+			"The exemption is keyed on the command name, so a custom subcommand called help skips required-flag checks.",
+			"Required-flag enforcement is matched by name, so a user command called help is exempted from its required flags.",
+			"checkAllRequiredFlags returns nil for a custom subcommand whose --token is required, because it is the help command by name.",
+			"Matching the help command by name lets a custom subcommand run without its required flag.",
 			"The name comparison exempts every command called help from required-flag validation.",
-			"A user command named help bypasses the required-flag check because the exemption tests cmd.Name.",
+			"A custom subcommand named help bypasses required-flag validation because the exemption matches its name.",
+			"Required flags are never enforced on a command named help, because the exemption matches the name.",
+			"The check is never enforced for a user command called help, so its action runs with zero values.",
+			// audit-2's paraphrase of the same defect.
+			"Any custom subcommand whose Name happens to be \"help\" skips required-flag validation.",
 		},
 		fails: []string{
 			"The loop bound runs one past the slice.",
@@ -48,8 +63,27 @@ var keywordCases = []keywordCase{
 			"The completion command's required flags are skipped too.",
 			"The table of flag names is unsorted.",
 			"Move the `cmd.Name` comparisons into a helper so the two call sites share one branch.",
+			// audit-2's counterexamples: a test request, a note about the
+			// built-in command, and a question about the word "exemption".
+			"Add a test for a subcommand named help that has a required flag.",
+			"The built-in help command should still work for user-defined subcommands.",
+			"Verify what this exemption tests when parent commands have required flags.",
+			// The two bare nouns the first pass added, each in a neutral
+			// sentence: a test request and a note about where the check lives.
+			"Add a test for a custom subcommand named help.",
+			"required-flag validation lives in checkAllRequiredFlags.",
 		},
 	},
+	// audit-2 found "year zero" and "yields year 0" direction-free: they name
+	// the value the defect is about, so a comment praising the new comparison
+	// and a note about Go's parsing graded as defect reports. "explicit year
+	// zero" went with them for the same reason, and the first pass's two
+	// conditions ("layout carries a year", "layout specifies a year") went the
+	// same way: a note about the layout and a question about what the check
+	// should read matched them. Each claim below says the date is discarded;
+	// audit-2's two counterexamples are pinned false, and its first paraphrase
+	// is pinned true. Its second was a question, not a finding, so it moved to
+	// the known misses in the curation log.
 	{
 		id: "urfave-cli-2450-year-zero-timestamp",
 		passes: []string{
@@ -58,12 +92,13 @@ var keywordCases = []keywordCase{
 			"The missing-year branch never asks the layout whether it carries a year, so 0000 reads as unset.",
 			"A timestamp whose year parses to zero is silently replaced with the current date.",
 			"The year-zero test keys on the parsed value alone, so a layout that spells out the year still has its date replaced.",
-			"The flag discards an explicit year zero and fills in today's date instead.",
-			"A year-only layout that parses 0000 is treated as unset, so the caller's year zero is replaced with today.",
-			"Parsing \"0000\" with the 2006 layout yields year 0 and the date is silently rewritten to the current day.",
+			"The flag discards an explicit year zero and the date is replaced with today.",
+			"A year-only layout that parses 0000 is treated as unset, so the caller's year is replaced with today.",
+			"Parsing \"0000\" with the 2006 layout succeeds and the date is silently rewritten to the current day.",
 			"A literal year 0 in a year-carrying layout is treated as unset and its date is replaced with today.",
-			"The parsed timestamp is rewritten: year zero becomes the current date.",
-			"Parsing 0000 succeeds, then the missing-year branch discards the year zero and stamps today.",
+			"The branch drops the parsed year when layoutHasDate reports no date, so the caller's literal year never reaches the flag.",
+			// audit-2's first paraphrase of the same defect.
+			"A layout containing only a year like \"2006\" will have year 0000 overwritten with the current date.",
 		},
 		fails: []string{
 			"The year-only layout fails to parse a value with a timezone suffix.",
@@ -74,25 +109,41 @@ var keywordCases = []keywordCase{
 			"A time-only value ignores the configured timezone.",
 			"The flag's help text does not list the default layouts.",
 			"For a time-only layout in UTC-5 this condition leaves January 1 instead of the current date, so the caller's zone is ignored.",
+			// audit-2's counterexamples: praise for the comment beside the
+			// comparison, and a neutral note about what Go's parser returns.
+			"Nice comment explaining why year zero needs location-aware comparison.",
+			"Go time.Parse yields year 0 when the layout omits the year component.",
+			// The two conditions the first pass added, each in a neutral
+			// sentence, and audit-2's second paraphrase, which is a question
+			// about what the check should read rather than a defect report.
+			"Note that the layout carries a year for the 2006 form.",
+			"A layout that specifies a year is handled by layoutHasDate.",
+			"Check whether the layout specifies a year instead of testing timestamp.Year() == 0.",
 		},
 	},
+	// audit-2 found "early return", "empty positional", "boundary check",
+	// "on the boundary", "argument boundary" and "empty-arg" direction-free:
+	// they name the code the argument travels through, not what goes wrong, so
+	// a praise sentence and two wrong-defect findings graded as hits. The first
+	// pass added two more location fragments ("after the empty", "after the
+	// double-dash") that a note about the trace or the append matched, and they
+	// are gone too. Each claim below says an argument is consumed or lost;
+	// audit-2's three counterexamples are pinned false and its first paraphrase
+	// true. Its second paraphrase ("move the check to the top of the loop")
+	// names where the fix goes rather than the defect, so it stays a known miss
+	// in the curation log.
 	{
 		id: "urfave-cli-2163-stop-on-nth-arg-order",
 		passes: []string{
-			"The StopOnNthArg check sits below the empty-arg break and the -- early return, so those arguments are swallowed.",
-			"An empty argument on the boundary terminates the loop and the remaining args are lost.",
-			"The boundary check is placed after the branches that consume the argument, so a positional on the boundary is dropped.",
+			"The StopOnNthArg check sits below the empty-arg break and the -- branch, so those arguments are swallowed.",
 			"The StopOnNthArg check runs too late: the -- branch returns before it.",
-			"Arguments after an empty positional are discarded because the empty-arg break comes first.",
-			"The early return for -- skips the Nth-argument boundary.",
-			"The Nth argument boundary is checked after the branches that consume the argument.",
+			"A `--` sitting exactly on the Nth positional is consumed by the `--` branch before the parser stops, so the action never sees it.",
+			"The Nth-argument boundary is checked after the branches that consume the argument.",
 			"An empty positional on the boundary ends flag parsing, so the rest of the arguments are lost.",
-			"A double dash sitting exactly on the Nth positional is consumed by the `--` branch before the parser stops, so the action never sees it.",
-			"The Nth-argument check runs after the branches that handle the argument, so an empty positional ends parsing and the rest are lost.",
-			"Empty positional: the rest of the arguments are lost because the break runs first.",
-			"An empty positional makes the loop break, so the Nth-argument check never runs and the trailing arguments vanish.",
-			"A `--` on the boundary fires the early return first; the stop check is below it.",
-			"Arguments are dropped because the branch that consumes the argument runs before the boundary check.",
+			"A `--` on the boundary reaches its branch first, so the args are lost.",
+			"An argument that lands on the boundary is lost after the separator, so the action never receives it.",
+			// audit-2's paraphrase of the same defect.
+			"Checking StopOnNthArg after the empty-string and double-dash branches means those arguments bypass the limit.",
 		},
 		fails: []string{
 			"The loop bound runs one past the slice.",
@@ -102,6 +153,45 @@ var keywordCases = []keywordCase{
 			"A flag that needs an argument is reported only when it is last in a group.",
 			"MutuallyExclusiveFlags are checked before dispatching to a subcommand.",
 			"`StopOnNthArg` is a new field generated per parse; the count is tracked on the flag set.",
+			// audit-2's counterexamples: praise for the early return, a finding
+			// about the later empty-argument bug, and a wrong-defect comparison.
+			"Good use of an early return here to avoid mutating the outer slice.",
+			"The empty positional should be appended to posArgs instead of breaking out of the loop.",
+			"The boundary check should use >= instead of == in case len(posArgs) overshoots.",
+			// The two location fragments the first pass added, each in a
+			// neutral sentence about the same line.
+			"The trace runs after the empty-arg check, which is fine.",
+			"Note that the append happens after the double-dash branch is handled.",
+		},
+	},
+	// The fourth urfave row pins the branch that classifies a single-dash
+	// argument by its first byte: a name that is not a letter is appended to
+	// the positionals with everything after it, so a flag named "4" is never
+	// applied and a non-ASCII name is misclassified because the byte is read
+	// as a rune. Both halves are this one branch and two later fixes repair
+	// them, so a sentence about either names the defect. The fails list is a
+	// praise sentence for the branch's intent, a neutral note about the dash
+	// branch above it, and neighboring defects in the same file.
+	{
+		id: "urfave-cli-2088-non-letter-flag-unparsed",
+		passes: []string{
+			"A numeric flag name is never applied: `-4 value` is appended to the positional args instead.",
+			"The dash form of a numeric flag becomes a positional argument, so the value the caller passed never reaches the flag.",
+			"A defined flag is misclassified as an argument because the first byte of its name is not a letter, so it is never looked up as a flag.",
+			"A flag whose name starts with a digit can never be set, so a CLI that names a flag 4 takes its value as a positional.",
+			"Only a name starting with a letter is ever treated as a flag, so the caller's value is lost and the flag keeps its default.",
+			"The argument names a flag but is skipped, so the caller's value is lost and the flag keeps its default.",
+			"A flag whose name is not a letter can never be set: the branch returns before the lookup runs.",
+			"Calling unicode.IsLetter on rune(firstArg[1]) misclassifies a multi-byte name, so `-\u00fc` can never be set.",
+		},
+		fails: []string{
+			"Good: an argument that is not a letter is kept out of flag parsing, so a negative number stays positional.",
+			"The `--` branch sets shortOptionHandling to false before this else-if is reached.",
+			"A `--` argument is never parsed as a flag, which is intended.",
+			"Empty positional arguments are dropped instead of appended.",
+			"firstArg[1] is indexed without checking the length, so a bare dash panics.",
+			"The args accessor functions should be grouped by receiver.",
+			"Add a test that a negative number stays positional.",
 		},
 	},
 	{
@@ -558,6 +648,143 @@ var keywordCases = []keywordCase{
 			"Calling result.dispatcher.destroy() here cleans up the dispatcher once count reaches zero; consider adding a comment.",
 			"Calling destroy() here when count <= 0 ensures the dispatcher is disposed after eviction.",
 			"Note that result.dispatcher.destroy() tears down the dispatcher when count drops to zero.",
+		},
+	},
+	{
+		// cli/cli #9934 made the extension update check blocking; the later
+		// fix (bc8c46b0b, Fixes #10235) restored the non-blocking select.
+		id: "cli-cli-9934-extension-update-blocks",
+		passes: []string{
+			"The receive is now unconditional, so a slow check will stall the CLI after the extension has already run.",
+			"Every extension invocation waits for the update check before the process ends.",
+			"The command hangs on the update check instead of running to completion.",
+			"A slow network delays the extension's exit because the channel is received unconditionally.",
+			"A slow lookup holds the command open after the extension has already run.",
+			"The update check is waited for instead of skipped once the command finishes.",
+			// audit-10's fresh paraphrase: it says the command stalls, not that
+			// a receive blocks, so the short phrase is what has to catch it.
+			"Removing the select with time.After makes PostRun wait indefinitely on updateMessageChan, so a slow or stalled network check will stall the CLI after the extension exits.",
+			"Because updateMessageChan is now received unconditionally without a timeout or default branch, every extension command blocks until the background release lookup completes.",
+		},
+		fails: []string{
+			"The update notice is fetched on every invocation instead of being cached for a day.",
+			"The debug flag is ignored, so a failed lookup is silent.",
+			"The notice is printed to stdout instead of stderr.",
+			"The pinned extension hint uses the wrong upgrade flag.",
+			"The channel is unbuffered, so the goroutine leaks when the command exits early.",
+			"The release lookup runs in PreRun, so it repeats the network call the extension already made.",
+			// audit-10's neutral remark: it describes the receive without
+			// claiming the wait is wrong, so it must stay ungraded.
+			"Note that the receive blocks until the update check finishes; verify that PreRun's goroutine always sends on updateMessageChan.",
+			"PreRun launches the lookup in a goroutine and PostRun prints the notice to stderr when a newer version exists.",
+		},
+	},
+	{
+		// cli/cli #10384 double-encoded a package name the caller had already
+		// escaped; PR #10630 reverted it and names issue #10592.
+		id: "cli-cli-10384-double-escaped-package",
+		passes: []string{
+			"The helper escapes the captured name as if it were raw text, so an already escaped name is escaped again: %2F becomes %252F.",
+			"The path rewrite double-encodes the package name, so the packages endpoint answers 404 for it.",
+			"The percent sign of a pre-escaped name is encoded twice, so the request asks the server for %252F.",
+			"An already escaped name no longer resolves because its escape sequence gains another layer.",
+			"Callers that already encoded the name break: the command worked before this change and now the endpoint 404s.",
+			"The helper re-encodes the caller's escape sequence instead of escaping only an unescaped name.",
+			// audit-10's fresh paraphrases, repointed: the pin states their claim
+			// in encoding terms, because a bare "the path is corrupted" no longer
+			// counts (CodeRabbit on PR #151). The originals are pinned in fails.
+			"If the caller passes a URL-encoded package name such as ghcr.io%2Fuser%2Fpkg, url.QueryEscape double-encodes the percent sign into %25.",
+			"Calling url.QueryEscape unconditionally on packageName double-encodes paths that are already percent-encoded, causing 404 responses.",
+		},
+		fails: []string{
+			"The regexp is compiled on every call instead of once at package level, which costs a compile per request.",
+			"The capture group is lazy, so a name that ends with the word versions stops the match early.",
+			"The helper should return an error instead of the original path when the pattern does not match.",
+			"The new net/url import is used only by this helper and could be scoped to the function.",
+			"The helper handles the container type but not the npm or nuget package types.",
+			"The added tests only cover paths that need escaping, not paths that are already valid.",
+			// audit-10's neutral remarks: they approve the replacement or the
+			// no-match path and must not be read as the corruption claim.
+			"Good that strings.Replace uses n=1 so only the captured package segment is substituted.",
+			"The helper returns path unchanged when pathWithPackageNameRE does not match.",
+			// A bare path-corruption claim is not this defect, wherever it comes
+			// from (CodeRabbit on PR #151).
+			"This path is corrupted when the base URL has a trailing slash.",
+			// audit-10's paraphrases verbatim. They name the corrupted path and
+			// not the encoding claim, so they are known misses after the
+			// narrowing; pinning them as false keeps it from quietly reversing.
+			"If the caller passes a URL-encoded package name such as ghcr.io%2Fuser%2Fpkg, url.QueryEscape will escape the % characters into %25, corrupting the path.",
+			"Calling url.QueryEscape unconditionally on packageName corrupts paths that are already percent-encoded (turning %2F into %252F), causing 404 responses.",
+		},
+	},
+	{
+		// cli/cli #11172 rewrote the log path and left its early return above
+		// the exit-status check; the flag was already ignored at the base, so
+		// the provenance note discloses a pre-existing defect on a rewritten
+		// line. Fix 24964681a, Fixes #12674.
+		id: "cli-cli-11172-exit-status-ignored-with-log",
+		passes: []string{
+			"With --log a failed run still exits zero, so CI marks the job green.",
+			"The failure is never reported to the shell because the log path returns first.",
+			"exit-status has no effect with logs: the flag is parsed and then dropped.",
+			"Scripts cannot detect a failed run when --log is also passed.",
+			"The log branch returns without setting the failure exit, so `echo $?` reports success.",
+			"The command exits successfully for a failed run when logs are printed.",
+			// audit-10's fresh paraphrases: they name the flag and the skipped
+			// check, not the exit code the user sees.
+			"Returning displayLogSegments(...) here bypasses the --exit-status check later in runView, so gh run view --log --exit-status will exit 0 even when the workflow run failed.",
+			// audit-10's second paraphrase, repointed to name the flag: "ignores
+			// the flag" alone also credits a comment about --log-failed
+			// (CodeRabbit on PR #151). The original is pinned in fails.
+			"When --log or --log-failed is passed alongside --exit-status, this early return skips the opts.ExitStatus failure check below and ignores --exit-status.",
+		},
+		fails: []string{
+			"The fallback fetches job logs one request at a time, so a wide matrix is slow.",
+			"The 25-request cap should be a named constant rather than a literal.",
+			"The zip log map drops files whose names the server truncated differently.",
+			"The progress indicator is stopped twice on the error path.",
+			"The new helper closes the response body only after checking the status code.",
+			"Skipped jobs are still requested from the logs endpoint, which wastes a request.",
+			// audit-10's neutral remarks: they describe the branch and its
+			// cleanup without claiming the return drops the flag.
+			"Returning displayLogSegments directly keeps the log-printing branch separate from the summary table below.",
+			"Deferring runLogZip.Close() ensures the temporary zip reader is cleaned up before displayLogSegments runs.",
+			// A flag other than --exit-status being ignored is a different
+			// defect, so this must not be credited as this bug.
+			"`--log-failed` ignores the flag when no step failed.",
+			// audit-10's paraphrase verbatim: "ignores the flag" without naming
+			// the flag is a known miss after the narrowing, pinned false so the
+			// narrowing cannot quietly reverse.
+			"When --log or --log-failed is passed alongside --exit-status, this early return skips the opts.ExitStatus failure check below and ignores the flag.",
+		},
+	},
+	{
+		// cli/cli #12596 returned the reformatted scope error before callers
+		// could treat it as ignorable; PR #12915 reverted it (issue #12904).
+		id: "cli-cli-12596-scope-error-hard-fail",
+		passes: []string{
+			"The new interception fails the command instead of degrading, so a partial response is discarded.",
+			"Replacing the server's message turns an ignorable scope failure into a fatal error for every caller.",
+			"Because the error is swapped before the caller inspects it, the caller never sees the partial result.",
+			"Graceful degradation is lost: gh pr view prints the scope error and shows nothing.",
+			"A missing project scope aborts the whole command even though the rest of the query succeeded.",
+			"A response that also carries usable data is thrown away when one field needs read:project.",
+			// audit-10's fresh paraphrases: they name the broken predicate and the
+			// needless failure, not the partial result.
+			"Returning scopeErr here replaces GraphQLError with a plain formatted error, breaking ProjectsV2IgnorableError checks in callers like gh pr view when read:project is missing.",
+			"Because GenerateScopeErrorForGQL strips the original server error message and GraphQLError wrapper, callers can no longer treat missing read:project scopes as non-fatal and will error out unnecessarily.",
+		},
+		fails: []string{
+			"The regular expression is not anchored, so a message with two scope lists parses the wrong one.",
+			"The helper does not trim the trailing comma from the joined scope list.",
+			"The set package is imported in the wrong group for this file.",
+			"The error message hardcodes the refresh command instead of reusing the shared helper.",
+			"The message is printed to stdout instead of stderr, which breaks scripted callers.",
+			"The scope list is sorted, so the suggestions lose the server's order.",
+			// audit-10's neutral remarks: they approve the unwrapping and the
+			// fallback, which must not be read as the fatal-error claim.
+			"Good that GenerateScopeErrorForGQL uses errors.As to unwrap wrapped GraphQLError values before formatting the scope hint.",
+			"Falling back to GraphQLError when scopeErr is nil preserves existing handling for non-scope GraphQL errors.",
 		},
 	},
 	// sentry-python. Four kinds outside the published category table, so each

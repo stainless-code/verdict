@@ -20,18 +20,16 @@
       "kind": "check-ordering",
       "severity": "important",
       "keywords": [
-        "early return",
-        "empty-arg",
         "swallowed",
-        "on the boundary",
-        "boundary check",
-        "argument boundary",
         "runs too late",
-        "empty positional",
         "consumes the argument",
         "consumed by the",
-        "before the check",
-        "never sees it"
+        "never sees it",
+        "checked after",
+        "bypass the limit",
+        "lost after the separator",
+        "args are lost",
+        "arguments are lost"
       ],
       "note": "the boundary check that stops flag parsing at the Nth positional sits below the empty-argument break and the -- early return in the same loop, so those two argument shapes reach their branches first; the fix moves the check to the top of the loop",
       "also_lines": [92, 95]

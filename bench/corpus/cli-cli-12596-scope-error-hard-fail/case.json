@@ -1,0 +1,38 @@
+{
+  "schema_version": "1",
+  "id": "cli-cli-12596-scope-error-hard-fail",
+  "kind": "real",
+  "language": "go",
+  "provenance": {
+    "kind": "real",
+    "repo": "cli/cli",
+    "pr": 12596,
+    "base_sha": "150834b426b43e8af3e32bef59f0457b49fe1ebb",
+    "head_sha": "fc8c0f1110171c3e4dffc77b3e8b7d4ed70785ba",
+    "fix_commit": "https://github.com/cli/cli/commit/3921788f76ee8aea4039a277c35c7aeaa64f3953",
+    "source": "PR #12596 fix/clarify-scope-error, merged 2026-03-02; reverted by PR #12915",
+    "note": "INTRODUCED: the PR adds the interception in handleResponse, which now returns the reformatted scope error for any INSUFFICIENT_SCOPES GraphQL error, before GraphQLError/ProjectsV2IgnorableError can match the server's own wording and let the command degrade; gh pr view and gh issue view fail outright when the token lacks read:project (issue #12904), and PR #12915 reverts this change. The base passes the original ghAPI.GraphQLError through, whose message still carries the wording ProjectsV2IgnorableError matches, so the defect is new here"
+  },
+  "bugs": [
+    {
+      "path": "api/client.go",
+      "line": 184,
+      "kind": "spurious-error",
+      "severity": "important",
+      "keywords": [
+        "fails the command instead of degrading",
+        "turns an ignorable scope failure into a fatal error",
+        "the caller never sees the partial result",
+        "graceful degradation is lost",
+        "a missing project scope aborts the whole command",
+        "a response that also carries usable data is thrown away",
+        "the command aborts even though only one field of the query failed",
+        "breaks projectsv2ignorableerror",
+        "breaking projectsv2ignorableerror",
+        "error out unnecessarily",
+        "fatal instead of ignorable"
+      ],
+      "note": "the interception returns its own error before the caller can decide the failed field is ignorable, so a query that also returned usable data fails"
+    }
+  ]
+}
