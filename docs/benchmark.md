@@ -120,9 +120,9 @@ One case, one manifest, published as
   manifest's base and head, so the reviewed diff names the commits it came
   from. A real clean control names the same repository, PR, and commit pair
   and omits `fix_commit`, which nothing could name.
-- At least one bug is required. Ground truth is file + line + kind +
-  severity; `note` says why the line is a defect. A bug that cannot be
-  pointed at a line is not a corpus case.
+- A bug case requires at least one bug; a control requires `bugs: []`. Ground
+  truth is file + line + kind + severity; `note` says why the line is a
+  defect. A bug that cannot be pointed at a line is not a corpus case.
 - `keywords` (optional) is the case's own vocabulary for that defect, in
   case-insensitive, whitespace-folded substring form at a word start. Write
   the words a reviewer would use to describe the defect, not the words you
