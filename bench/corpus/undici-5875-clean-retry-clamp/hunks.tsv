@@ -1,0 +1,6 @@
+lib/web/eventsource/eventsource.js	OLD	30	35
+lib/web/eventsource/eventsource.js	NEW	30	43
+lib/web/eventsource/eventsource.js	OLD	376	382
+lib/web/eventsource/eventsource.js	NEW	384	390
+test/eventsource/eventsource-reconnect.js	OLD	117	122
+test/eventsource/eventsource-reconnect.js	NEW	117	183
