@@ -27,12 +27,9 @@
         "expression unset",
         "queries the dimension name",
         "the dimension name instead of the column",
-        "falls back to the dimension",
         "column that does not exist",
-        "no mapping",
-        "without expr",
-        "pass expr",
-        "sets expr"
+        "reads the wrong column",
+        "warehouse column is never"
       ],
       "note": "name falls back to the dimension's own name while no expression is set, so a dimension whose name differs from its column is read as a column of that name; the fix sets the expression to the column name when the two differ",
       "also_lines": [763]

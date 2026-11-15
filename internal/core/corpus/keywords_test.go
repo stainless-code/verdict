@@ -123,17 +123,17 @@ var keywordCases = []keywordCase{
 		passes: []string{
 			"Python models add config keys when their config is accessed, so this validation raises a spurious deprecation for keys the user never wrote.",
 			"The validation cannot tell a python model's internal properties apart from user config, so every python model gets a spurious deprecation.",
-			"The internal keys are not in the jsonschema, so validating them warns even though the user cannot specify them.",
-			"The validation reports a python model's own bookkeeping keys as unknown custom keys.",
-			"Every python model raises a spurious deprecation for its own bookkeeping keys.",
-			"This fires custom-key-in-config-deprecation for config keys the user never wrote.",
+			"The internal keys are not in the jsonschema, so validating them raises a false deprecation.",
+			"The validation reports the config keys a python model adds itself as user-written, so keys the user never wrote are flagged as custom.",
+			"The internal keys are treated as user config, so this warns on every python model.",
 			"A false deprecation is raised for keys the python model added itself.",
-			"The model's bookkeeping keys are treated as user config, so every python model warns.",
-			"Filter out python-model bookkeeping keys before calling validate_model_config.",
+			"This fires custom-key-in-config-deprecation and warns on every python model, even one the user configured correctly.",
 		},
 		// Neutral or praising sentences at the same line, then findings about
 		// neighboring defects in the same file: none may name this one.
 		fails: []string{
+			"Document the python model's own config keys in the README.",
+			"Bookkeeping keys are stored in _config_call_dict.",
 			"Ensure internal keys are stripped before serializing the manifest.",
 			"This validation should raise an error rather than a deprecation warning.",
 			"The validation runs once per node, not once per config read.",
@@ -141,7 +141,6 @@ var keywordCases = []keywordCase{
 			"The post-hook and pre-hook keys are compared before the deprecation is raised.",
 			"The config dict is copied instead of referenced, which costs an extra allocation.",
 			"Python models need a separate parser entry point.",
-			"The new test does not cover seeds or snapshots.",
 			"Move the validation into the jsonschema module.",
 		},
 	},
@@ -150,17 +149,18 @@ var keywordCases = []keywordCase{
 		passes: []string{
 			"When the dimension name differs from the column name, no expression is set, so MetricFlow queries a column that does not exist.",
 			"The dimension name falls back to the column only when the dimension has no name; otherwise the expression is never set.",
-			"A dimension whose name differs from its column gets no mapping, so the query names the wrong identifier.",
+			"A dimension whose name differs from its column queries a column that does not exist.",
 			"The reader builds the dimension with the friendly name and leaves the expression unset.",
 			"MetricFlow resolves the dimension name instead of the column, so the query fails because the expression is missing.",
 			"The comment says expressions are unsupported for column-based dimensions, but the name can differ, so the generated SQL points at the dimension name instead of the column.",
-			"Pass expr=column.name when column.dimension.name differs from column.name.",
 			"The dimension is built without expr, so the warehouse column is never read.",
-			"Sets expr to the column name whenever the dimension name is a label.",
+			"A column-based dimension named differently from its column reads the wrong column.",
 		},
 		// Neutral or praising sentences at the same line, then findings about
 		// neighboring defects in the same file: none may name this one.
 		fails: []string{
+			"Good: this now sets expr for column-based dimensions.",
+			"Consider a no mapping fallback log for unknown dimension types.",
 			"Good that no expression is needed for column-based dimensions per the comment.",
 			"Check whether column.dimension.label also differs from the column name.",
 			"If DimensionType is invalid, MetricFlow will report an invalid identifier.",
@@ -179,16 +179,17 @@ var keywordCases = []keywordCase{
 			"Adding a version to an existing model leaves the referencing nodes not reparsed, so they keep reading the old parse.",
 			"Adding a version to an existing model never schedules its referencing nodes for reparsing, so the dependents keep the parse they already had.",
 			"The condition only covers a changed latest version or a removed one, so a model that gains versioning is not reparsed.",
-			"A model that becomes versioned leaves its dependents pointing at the old parse, so dbt fails on a node that was never parsed.",
+			"A model that becomes versioned leaves its dependents not reparsed, so dbt fails with a node that was never parsed.",
 			"Because the gate reads the old node's flag, adding versioning does not reparse any referencing node.",
-			"Downstream models keep resolving against the old version when a new version is added to the schema.",
+			"Downstream models are never reparsed when a new version is added to the schema, so they keep the old parse.",
 			"Partial parsing misses the version-added case, so referencing nodes are never reparsed.",
 			"If an unversioned model gains versions, node.is_versioned is False so referencing models are not reparsed.",
-			"Also check elem.get(\"versions\") so newly versioned models trigger downstream reparsing.",
 		},
 		// Neutral or praising sentences at the same line, then findings about
 		// neighboring defects in the same file: none may name this one.
 		fails: []string{
+			"Newly versioned models are handled by the versions loop below.",
+			"Nice that a model that becomes versioned keeps its alias.",
 			"Good that this comment clarifies adding a version vs removing one.",
 			"Removing a version leaves downstream refs with a stale parse if node_patches is not cleared.",
 			"The unit-test scheduling block runs before the macro branch.",
