@@ -307,26 +307,9 @@ type corpusCase struct {
 	diff     []byte
 }
 
-type manifest struct {
-	Provenance    manifestProvenance `json:"provenance"`
-	SchemaVersion string             `json:"schema_version"`
-	ID            string             `json:"id"`
-	Kind          string             `json:"kind"`
-	Bugs          []json.RawMessage  `json:"bugs"`
-	LineTolerance int                `json:"line_tolerance"`
-}
-
-// manifestProvenance is the origin a manifest names: seeded, or real with the
-// commits the reviewed diff spans.
-type manifestProvenance struct {
-	Kind    string `json:"kind"`
-	BaseSHA string `json:"base_sha"`
-	HeadSHA string `json:"head_sha"`
-}
-
-// loadCases reads the corpus and validates what the scoring path needs: a v1
-// manifest, an id matching its directory, a diff, and at least one
-// ground-truth bug.
+// loadCases reads the corpus and validates what the scoring path needs: each
+// manifest through the corpus package's own validator, an id matching its
+// directory, and a diff the ground truth sits on.
 func loadCases(dir string, only []string) ([]corpusCase, int, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -378,23 +361,27 @@ func readSelected(dir string, known, only []string) ([]corpusCase, error) {
 	return cases, nil
 }
 
+// readCase reads one case manifest and the diff it grades against. The manifest
+// goes through the corpus package's validator — the same rules the corpus
+// package's own tests enforce — before anything is scheduled, so a malformed
+// case is refused instead of spending a sample and failing at scoring.
 func readCase(dir, id string) (corpusCase, error) {
-	raw, err := os.ReadFile(filepath.Join(dir, id, caseManifestName))
+	path := filepath.Join(dir, id, caseManifestName)
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		return corpusCase{}, jq.NewErrf("case %s: %s", id, err)
 	}
-	var m manifest
-	if err := json.Unmarshal(raw, &m); err != nil {
-		return corpusCase{}, jq.NewErrf("case %s: %s", id, err)
+	c, ref := corpuscore.LoadFile(path)
+	if ref != nil {
+		return corpusCase{}, jq.NewErr(ref.Message)
 	}
-	if err := checkManifest(&m, id); err != nil {
-		return corpusCase{}, err
+	if c.ID != id {
+		return corpusCase{}, jq.NewErrf("case %s: manifest id %q does not match its directory", id, c.ID)
 	}
 	diff, err := os.ReadFile(filepath.Join(dir, id, fullDiffName))
 	if err != nil {
 		return corpusCase{}, jq.NewErrf("case %s: %s", id, err)
 	}
-	path := filepath.Join(dir, id, caseManifestName)
 	if ref := corpuscore.CheckDiff(raw, diff, path); ref != nil {
 		return corpusCase{}, jq.NewErr(ref.Message)
 	}
@@ -402,28 +389,9 @@ func readCase(dir, id string) (corpusCase, error) {
 		manifest: raw,
 		diff:     diff,
 		id:       id,
-		baseSHA:  m.Provenance.BaseSHA,
-		headSHA:  m.Provenance.HeadSHA,
+		baseSHA:  c.Provenance.BaseSHA,
+		headSHA:  c.Provenance.HeadSHA,
 	}, nil
-}
-
-// checkManifest refuses a manifest the scoring path cannot use: a v1 version,
-// an id matching its directory, a control without bugs, a bug case with at
-// least one, and the commit pair a real case's bundle stamps.
-func checkManifest(m *manifest, id string) error {
-	switch {
-	case m.SchemaVersion != "1":
-		return jq.NewErrf("case %s: schema_version %q, want \"1\"", id, m.SchemaVersion)
-	case m.ID != id:
-		return jq.NewErrf("case %s: manifest id %q does not match its directory", id, m.ID)
-	case m.Kind == "control" && (m.Bugs == nil || len(m.Bugs) != 0):
-		return jq.NewErrf("case %s: control requires bugs: []", id)
-	case len(m.Bugs) == 0 && m.Kind != "control":
-		return jq.NewErrf("case %s: manifest carries no ground-truth bug", id)
-	case m.Provenance.Kind == "real" && (m.Provenance.BaseSHA == "" || m.Provenance.HeadSHA == ""):
-		return jq.NewErrf("case %s: real case names no provenance.base_sha/head_sha", id)
-	}
-	return nil
 }
 
 func missingCases(only, known []string) []string {

@@ -80,10 +80,14 @@ func IsDir(dir string) bool {
 	return strings.HasPrefix(filepath.Base(dir), "corpus-")
 }
 
-// Load reads and validates one bundle's corpus.json. Every failure is a
-// typed corpus-invalid refusal naming the file and the reason.
+// Load reads and validates one bundle's corpus.json.
 func Load(dir string) (*core.CorpusCase, *core.RefusalError) {
-	path := dir + manifestName
+	return LoadFile(dir + manifestName)
+}
+
+// LoadFile reads and validates one corpus case manifest at path. Every failure
+// is a typed corpus-invalid refusal naming the file and the reason.
+func LoadFile(path string) (*core.CorpusCase, *core.RefusalError) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, invalid(path, "unreadable")

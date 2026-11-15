@@ -6,7 +6,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
+	"io/fs"
 	"math"
 	"os"
 	"path/filepath"
@@ -182,7 +184,7 @@ func TestReadCaseRefusesARealCaseWithoutCommits(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "case-a", caseManifestName),
 		[]byte(`{"schema_version":"1","id":"case-a","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1},"bugs":[{"path":"x","line":1}]}`))
 	writeFile(t, filepath.Join(dir, "case-a", fullDiffName), []byte("diff\n"))
-	if _, _, err := loadCases(dir, nil); err == nil || !strings.Contains(err.Error(), "no provenance.base_sha/head_sha") {
+	if _, _, err := loadCases(dir, nil); err == nil || !strings.Contains(err.Error(), `provenance.base_sha "" is not a 40-character lowercase hex commit id`) {
 		t.Fatalf("loadCases error = %v, want a missing-commit refusal", err)
 	}
 }
@@ -193,8 +195,10 @@ func TestReadCaseRefusesADiffSpelledKeyword(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "case-a", caseManifestName), []byte(
 		`{"schema_version":"1","id":"case-a","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1,`+
-			`"base_sha":"`+strings.Repeat("a", 40)+`","head_sha":"`+strings.Repeat("b", 40)+`"},`+
-			`"bugs":[{"path":"command.go","line":3,"kind":"validation-bypass","keywords":["boundary check","stoponntharg"]}]}`))
+			`"base_sha":"`+strings.Repeat("a", 40)+`","head_sha":"`+strings.Repeat("b", 40)+`",`+
+			`"fix_commit":"`+strings.Repeat("c", 40)+`"},`+
+			`"bugs":[{"path":"command.go","line":3,"kind":"validation-bypass","severity":"important",`+
+			`"keywords":["boundary check","stoponntharg"]}]}`))
 	writeFile(t, filepath.Join(dir, "case-a", fullDiffName), []byte("+\tif StopOnNthArg > 0 {\n"))
 	if _, _, err := loadCases(dir, nil); err == nil || !strings.Contains(err.Error(), `"stoponntharg"`) {
 		t.Fatalf("loadCases error = %v, want a refusal naming the keyword", err)
@@ -282,8 +286,8 @@ func TestBudgetRefusalNeedsNoMeasuredRun(t *testing.T) {
 func TestMaxUSDRefusesNonFiniteCaps(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
-		limit  float64
 		refuse string
+		limit  float64
 	}{
 		{name: "NaN", limit: math.NaN(), refuse: "finite number"},
 		{name: "+Inf", limit: math.Inf(1), refuse: "finite number"},
@@ -293,18 +297,24 @@ func TestMaxUSDRefusesNonFiniteCaps(t *testing.T) {
 		{name: "positive", limit: 0.05},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg := &Config{Runs: 1, Loop: 1, MaxUSD: tc.limit}
-			err := cfg.validateNumbers()
-			if tc.refuse == "" {
-				if err != nil {
-					t.Fatalf("validateNumbers(%v) = %v, want accepted", tc.limit, err)
-				}
-				return
-			}
-			if err == nil || !strings.Contains(err.Error(), tc.refuse) {
-				t.Fatalf("validateNumbers(%v) = %v, want a refusal naming %q", tc.limit, err, tc.refuse)
-			}
+			checkMaxUSD(t, tc.limit, tc.refuse)
 		})
+	}
+}
+
+// checkMaxUSD pins one -max-usd value: accepted, or refused in words naming the
+// rule it broke.
+func checkMaxUSD(t *testing.T, limit float64, refuse string) {
+	t.Helper()
+	err := (&Config{Runs: 1, Loop: 1, MaxUSD: limit}).validateNumbers()
+	if refuse == "" {
+		if err != nil {
+			t.Fatalf("validateNumbers(%v) = %v, want accepted", limit, err)
+		}
+		return
+	}
+	if err == nil || !strings.Contains(err.Error(), refuse) {
+		t.Fatalf("validateNumbers(%v) = %v, want a refusal naming %q", limit, err, refuse)
 	}
 }
 
@@ -406,14 +416,41 @@ func oneSampleReport(t *testing.T, limit float64) *Report {
 	return rep
 }
 
+// TestMalformedRealControlNeverReachesAnAgent pins the pre-schedule manifest
+// validation: the runner's own check asked only that a real case's commit pair
+// be non-empty, so a control with base_sha "x" passed it, spent a sample, and
+// failed later at scoring. The corpus validator now runs first.
+func TestMalformedRealControlNeverReachesAnAgent(t *testing.T) {
+	needPOSIX(t)
+	restoreWD(t)
+	t.Setenv("BENCH_TEST_REVIEW", reviewBody)
+	marker := filepath.Join(t.TempDir(), "agent-ran")
+	root := fakeCorpusOf(t, "case-a")
+	writeFile(t, filepath.Join(root, "corpus", "case-a", caseManifestName), []byte(
+		`{"schema_version":"1","id":"case-a","kind":"control","provenance":{"kind":"real","repo":"o/r","pr":1,`+
+			`"base_sha":"x","head_sha":"`+strings.Repeat("b", 40)+`"},"bugs":[]}`))
+	cfg := benchConfig(t, root, `touch `+marker+`
+`+agentCopiesReview)
+	fake := &fakeGrader{model: cfg.Model, panel: cfg.Panel, prefix: fakePrefix}
+	if _, err := runGraded(context.Background(), cfg, fake); err == nil ||
+		!strings.Contains(err.Error(), `provenance.base_sha "x" is not a 40-character lowercase hex commit id`) {
+		t.Fatalf("run = %v, want a base_sha refusal", err)
+	}
+	if _, err := os.Stat(marker); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("agent marker exists: a malformed case reached the agent")
+	}
+}
+
 // TestReadCaseRefusesAContextAnchor pins the anchor guard on the run path: a
 // real case whose ground truth is a context line never reaches an agent.
 func TestReadCaseRefusesAContextAnchor(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "case-a", caseManifestName), []byte(
 		`{"schema_version":"1","id":"case-a","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1,`+
-			`"base_sha":"`+strings.Repeat("a", 40)+`","head_sha":"`+strings.Repeat("b", 40)+`"},`+
-			`"bugs":[{"path":"command.go","line":4,"kind":"validation-bypass","keywords":["boundary check"]}]}`))
+			`"base_sha":"`+strings.Repeat("a", 40)+`","head_sha":"`+strings.Repeat("b", 40)+`",`+
+			`"fix_commit":"`+strings.Repeat("c", 40)+`"},`+
+			`"bugs":[{"path":"command.go","line":4,"kind":"validation-bypass","severity":"important",`+
+			`"keywords":["boundary check"]}]}`))
 	writeFile(t, filepath.Join(dir, "case-a", fullDiffName), []byte(
 		"diff --git a/command.go b/command.go\n--- a/command.go\n+++ b/command.go\n"+
 			"@@ -1,3 +1,4 @@\n \tfirst()\n \tsecond()\n+\tthird()\n \tfourth()\n"))
@@ -512,7 +549,9 @@ func TestStatSummarizesRunsAndKeepsNullsEmpty(t *testing.T) {
 // whose ids and directories disagree.
 func TestLoadCasesRefusesAManifestThatDoesNotMatchItsDirectory(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "case-a", caseManifestName), []byte(`{"schema_version":"1","id":"case-b","bugs":[{"path":"x","line":1}]}`))
+	writeFile(t, filepath.Join(dir, "case-a", caseManifestName), []byte(
+		`{"schema_version":"1","id":"case-b","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},`+
+			`"bugs":[{"path":"x","line":1,"kind":"nil-deref","severity":"critical"}]}`))
 	writeFile(t, filepath.Join(dir, "case-a", fullDiffName), []byte("diff\n"))
 	if _, _, err := loadCases(dir, nil); err == nil || !strings.Contains(err.Error(), "does not match its directory") {
 		t.Fatalf("loadCases error = %v, want an id-mismatch refusal", err)
@@ -522,9 +561,10 @@ func TestLoadCasesRefusesAManifestThatDoesNotMatchItsDirectory(t *testing.T) {
 // TestLoadCasesRefusesABuglessManifest refuses a case that cannot be scored.
 func TestLoadCasesRefusesABuglessManifest(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "case-a", caseManifestName), []byte(`{"schema_version":"1","id":"case-a","bugs":[]}`))
+	writeFile(t, filepath.Join(dir, "case-a", caseManifestName), []byte(
+		`{"schema_version":"1","id":"case-a","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[]}`))
 	writeFile(t, filepath.Join(dir, "case-a", fullDiffName), []byte("diff\n"))
-	if _, _, err := loadCases(dir, nil); err == nil || !strings.Contains(err.Error(), "no ground-truth bug") {
+	if _, _, err := loadCases(dir, nil); err == nil || !strings.Contains(err.Error(), "needs at least one ground-truth bug") {
 		t.Fatalf("loadCases error = %v, want a bugless refusal", err)
 	}
 }
@@ -601,7 +641,9 @@ func fakeCorpusOf(t *testing.T, ids ...string) string {
 	dir := filepath.Join(root, "corpus")
 	for _, id := range ids {
 		writeFile(t, filepath.Join(dir, id, caseManifestName),
-			[]byte(`{"schema_version":"1","id":"`+id+`","kind":"seeded","line_tolerance":3,"bugs":[{"path":"pagination.go","line":42}]}`))
+			[]byte(`{"schema_version":"1","id":"`+id+`","kind":"seeded","line_tolerance":3,`+
+				`"provenance":{"kind":"seeded","injected":"the bound skips the last element"},`+
+				`"bugs":[{"path":"pagination.go","line":42,"kind":"off-by-one","severity":"critical"}]}`))
 		writeFile(t, filepath.Join(dir, id, fullDiffName), []byte(fakeDiff))
 	}
 	return root

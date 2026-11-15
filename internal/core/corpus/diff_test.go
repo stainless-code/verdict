@@ -81,10 +81,10 @@ func checkPatchedTree(t *testing.T, repo string, after map[string]string, touche
 }
 
 // TestAddedLinesIgnoresNoNewlineMarker pins the new-side counter across the
-// "\ No newline at end of file" marker. The marker sits between a removed and an
-// added line whenever a file's last line changes, and counting it as body text
-// pushed every following added line one too high — an anchor then pointed a
-// reader at the wrong line.
+// "\ No newline at end of file" marker. The marker sits between a removed and
+// an added line whenever a file's last line changes, and counting it as body
+// text pushed every following added line one too high — an anchor then pointed
+// a reader at the wrong line.
 func TestAddedLinesIgnoresNoNewlineMarker(t *testing.T) {
 	diff := []byte("diff --git a/f.go b/f.go\n" +
 		"--- a/f.go\n" +

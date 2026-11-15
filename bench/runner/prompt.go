@@ -208,7 +208,8 @@ const shaHexLen = 40
 // never mistakable for a real PR head.
 //
 // The case's base_sha is what tells the two apart: no real case is loaded
-// without a pair (checkManifest), and no seeded manifest sets one.
+// without a pair (the corpus validator refuses it), and no seeded manifest
+// sets one.
 func caseSource(c *corpusCase) []byte {
 	if c.baseSHA != "" {
 		return fmt.Appendf(nil, "{%q:%q,%q:%q}\n", headSHAKey, c.headSHA, "base_sha", c.baseSHA)
