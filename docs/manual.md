@@ -3876,7 +3876,13 @@ commit predates the cutoff, the span starts at the history root. A range too
 large to list in one capture refuses `window-too-large`, naming `--since`:
 narrow the span. In a shallow clone the run warns that an introducer at the
 clone boundary reads as `no-pr`; `git fetch --unshallow` removes the
-boundary.
+boundary. A partial clone (`git clone --filter=blob:none`) refuses
+`partial-clone` before the first blame: the clone holds the history but not the
+blobs, and blame fetches each missing blob in its own round-trip, so the run
+stalls on the network instead of finishing, whatever the remote is called.
+Clone without `--filter`, or unset the remote's `promisor` and
+`partialclonefilter` settings and run `git fetch --refetch` to repopulate the
+objects.
 
 The default run id is `<until-short-sha>-<since-slug>`. A duration keeps its
 digits and unit (`12w`); a hex commit id becomes its first seven characters; a
