@@ -21,6 +21,7 @@ var windowsOnlyFuncs = map[string]string{
 	"internal/core/exec:resumeOK":        "reads ResumeThread's DWORD result word",
 	"internal/core/exec:resumeProcess":   "resumes a suspended Windows process",
 	"internal/core/exec:resumeThread":    "resumes a suspended Windows thread",
+	"internal/core/exec:snapshotThreads": "reads a suspended Windows process's thread ids from one Toolhelp snapshot",
 	"internal/core/exec:taskkillTree":    "kills a Windows tree through taskkill",
 	"internal/core/exec:threadsOf":       "reads the threads of a suspended Windows process",
 	"internal/core/exec:treeFor":         "wraps the Windows Job Object handle",

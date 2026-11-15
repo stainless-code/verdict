@@ -237,6 +237,7 @@ var hintRules = []HintRule{
 	{codes: []string{"backtest-run-stale"}, hint: "try: re-mine the run in place with the same " +
 		"--run and window, then replay it again"},
 	{codes: []string{"window-too-large"}, hint: "try: narrow --since (a shorter span or a later ref), then re-run"},
+	{codes: []string{"partial-clone"}, hint: "try: re-clone without --filter=blob:none, then re-run"},
 }
 
 // matches reports whether the rule answers code.

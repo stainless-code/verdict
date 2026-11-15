@@ -102,6 +102,23 @@ func writeDiffIfAny(t *testing.T, dir, body string, write bool) {
 	}
 }
 
+func TestEvaluateDirRefusesADiffThatIsNotADiff(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest(t, dir, raceCase())
+	writeDiffIfAny(t, dir, "\n\nThe diff was lost.\n\n", true)
+	c, ref := Load(dir)
+	if ref != nil {
+		t.Fatalf("Load: %v", ref)
+	}
+	rep, ref := EvaluateDir(dir, c, []any{entry("pool.go", 45, "This is a race between the pool and the borrower.")})
+	if ref == nil || ref.Code != codeCorpusInvalid {
+		t.Fatalf("EvaluateDir = %v, %v; want a corpus-invalid refusal", rep, ref)
+	}
+	if !strings.Contains(ref.Message, "unified diff") {
+		t.Errorf("message %q does not name the shape a reviewed diff has", ref.Message)
+	}
+}
+
 // TestEvaluateDirKeepsSeededWithoutDiff pins the exception: a seeded case has
 // no reviewed diff to filter, so its full vocabulary still grades.
 func TestEvaluateDirKeepsSeededWithoutDiff(t *testing.T) {

@@ -22,6 +22,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/provenance"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // Bundle conventions and defaults.
@@ -123,10 +124,14 @@ func invalid(path, reason string) *core.RefusalError {
 // invalidDiff refuses a real bundle whose reviewed diff cannot be used. The
 // message names the path and never any content: grading without the diff would
 // keep the built-in phrases it spells.
-func invalidDiff(path string) *core.RefusalError {
+func invalidDiff(dir, path, reason string) *core.RefusalError {
+	remedy := "rebuild the bundle and re-run the review"
+	if _, err := os.Stat(filepath.Join(dir, readcommon.BacktestMarkerFile)); err == nil {
+		remedy = "rebuild it with 'backtest replay', then score again"
+	}
 	return &core.RefusalError{Code: codeCorpusInvalid, Message: fmt.Sprintf(
-		"corpus bundle %s is missing, empty, or unreadable; a real case must grade against its "+
-			"reviewed full.diff (rebuild the bundle and re-run the review)", path)}
+		"corpus bundle %s is %s; a real case must grade against its reviewed "+
+			"full.diff (%s)", path, reason, remedy)}
 }
 
 // validate enforces the semantic rules the JSON Schema cannot express.
@@ -561,9 +566,8 @@ func usablePhrases(c *core.CorpusCase, diff []byte) [][]string {
 	return sets
 }
 
-// bundleDiff reads the reviewed diff a bundle carries. A real case must carry
-// a non-empty one: grading without it would keep the built-in phrases the diff
-// spells. A seeded or synthetic case without one keeps the full vocabulary.
+// A real case must carry its diff: grading without it would keep the built-in
+// phrases the diff spells.
 func bundleDiff(dir string, c *core.CorpusCase) ([]byte, *core.RefusalError) {
 	path := filepath.Join(dir, "full.diff")
 	raw, err := os.ReadFile(path)
@@ -571,12 +575,26 @@ func bundleDiff(dir string, c *core.CorpusCase) ([]byte, *core.RefusalError) {
 		if c.Provenance.Kind != kindReal {
 			return nil, nil
 		}
-		return nil, invalidDiff(path)
+		return nil, invalidDiff(dir, path, "missing or unreadable")
 	}
-	if c.Provenance.Kind == kindReal && len(bytes.TrimSpace(raw)) == 0 {
-		return nil, invalidDiff(path)
+	if c.Provenance.Kind != kindReal {
+		return raw, nil
+	}
+	if !looksLikeDiff(raw) {
+		return nil, invalidDiff(dir, path, "empty or not a unified diff")
 	}
 	return raw, nil
+}
+
+func looksLikeDiff(raw []byte) bool {
+	oldFile := false
+	for line := range strings.SplitSeq(string(raw), "\n") {
+		if strings.HasPrefix(line, "@@ ") || oldFile && strings.HasPrefix(line, "+++ ") {
+			return true
+		}
+		oldFile = oldFile || strings.HasPrefix(line, "--- ")
+	}
+	return false
 }
 
 func tallyOutcome(rep *Report, used []bool, bug int) {

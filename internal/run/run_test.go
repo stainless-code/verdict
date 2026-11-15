@@ -168,12 +168,12 @@ func TestParseFlagsRoundsMissingValue(t *testing.T) {
 // the one the operator ran, dropped only at the default.
 func TestRentryKeepsRounds(t *testing.T) {
 	req := Request{Repo: "acme/app", Pr: "42"}
-	got := rentry(req, &flags{agent: "claude", timeout: defaultTimeoutS, rounds: "3"}, false)
+	got := rentry(req, &flags{agent: "claude", timeout: DefaultTimeoutS, rounds: "3"}, false)
 	want := "verdict run acme/app 42 --agent claude --rounds 3"
 	if got != want {
 		t.Fatalf("rentry = %q, want %q", got, want)
 	}
-	if plain := rentry(req, &flags{agent: "claude", timeout: defaultTimeoutS, rounds: defaultRounds}, false); plain != "verdict run acme/app 42 --agent claude" {
+	if plain := rentry(req, &flags{agent: "claude", timeout: DefaultTimeoutS, rounds: DefaultRounds}, false); plain != "verdict run acme/app 42 --agent claude" {
 		t.Fatalf("rentry default = %q", plain)
 	}
 }
@@ -187,7 +187,7 @@ func TestRentryRebuildsTheCommand(t *testing.T) {
 	if got != want {
 		t.Fatalf("rentry = %q, want %q", got, want)
 	}
-	if plain := rentry(req, &flags{agent: "claude", timeout: defaultTimeoutS}, false); plain != "verdict run acme/app 42 --agent claude" {
+	if plain := rentry(req, &flags{agent: "claude", timeout: DefaultTimeoutS}, false); plain != "verdict run acme/app 42 --agent claude" {
 		t.Fatalf("rentry default = %q", plain)
 	}
 }
@@ -250,12 +250,12 @@ func TestUnknownFlagNamesRecipe(t *testing.T) {
 // the operator asked for, dropped only when unasked.
 func TestRentryKeepsRecipe(t *testing.T) {
 	req := Request{Repo: "acme/app", Pr: "42"}
-	got := rentry(req, &flags{agent: "claude", timeout: defaultTimeoutS, rounds: defaultRounds, recipe: "quick"}, false)
+	got := rentry(req, &flags{agent: "claude", timeout: DefaultTimeoutS, rounds: DefaultRounds, recipe: "quick"}, false)
 	want := "verdict run acme/app 42 --agent claude --recipe quick"
 	if got != want {
 		t.Fatalf("rentry = %q, want %q", got, want)
 	}
-	if plain := rentry(req, &flags{agent: "claude", timeout: defaultTimeoutS, rounds: defaultRounds}, false); strings.Contains(plain, "--recipe") {
+	if plain := rentry(req, &flags{agent: "claude", timeout: DefaultTimeoutS, rounds: DefaultRounds}, false); strings.Contains(plain, "--recipe") {
 		t.Fatalf("rentry named a recipe nobody asked for: %q", plain)
 	}
 }
@@ -312,7 +312,7 @@ func TestParseFlagsStageEmptyValue(t *testing.T) {
 // shell metacharacters must not rewrite the command it is echoed in.
 func TestRentryQuotesTheStageOperand(t *testing.T) {
 	req := Request{Repo: "acme/app", Pr: "42"}
-	got := rentry(req, &flags{agent: "claude", stage: "2; rm -rf /", timeout: defaultTimeoutS, rounds: defaultRounds, print: true}, false)
+	got := rentry(req, &flags{agent: "claude", stage: "2; rm -rf /", timeout: DefaultTimeoutS, rounds: DefaultRounds, print: true}, false)
 	want := "verdict run acme/app 42 --agent claude --print --stage '2; rm -rf /'"
 	if got != want {
 		t.Fatalf("rentry = %q, want %q", got, want)
@@ -336,12 +336,12 @@ func TestUnknownFlagNamesStage(t *testing.T) {
 // operator rendered, dropped only when unasked.
 func TestRentryKeepsStage(t *testing.T) {
 	req := Request{Repo: "acme/app", Pr: "42"}
-	got := rentry(req, &flags{agent: "claude", recipe: "quick", stage: "2", timeout: defaultTimeoutS, rounds: defaultRounds, print: true}, false)
+	got := rentry(req, &flags{agent: "claude", recipe: "quick", stage: "2", timeout: DefaultTimeoutS, rounds: DefaultRounds, print: true}, false)
 	want := "verdict run acme/app 42 --agent claude --recipe quick --print --stage 2"
 	if got != want {
 		t.Fatalf("rentry = %q, want %q", got, want)
 	}
-	plain := rentry(req, &flags{agent: "claude", timeout: defaultTimeoutS, rounds: defaultRounds}, false)
+	plain := rentry(req, &flags{agent: "claude", timeout: DefaultTimeoutS, rounds: DefaultRounds}, false)
 	if strings.Contains(plain, "--stage") {
 		t.Fatalf("rentry named a stage nobody asked for: %q", plain)
 	}
