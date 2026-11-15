@@ -61,11 +61,15 @@ type MergeParams struct { //nolint:govet // field grouping documents the merge c
 	// be refused or silently dropped. Keep-biased: the finding survives, only
 	// the inline position is lost.
 	BodyOnlyAnchors bool
+	// RequireRigor carries post's --require-rigor floors into the shared
+	// merge; record leaves it empty and reads the base policy alone.
+	RequireRigor []string
 }
 
 // MergeResult carries the shared merge outputs both verbs need.
 type MergeResult struct { //nolint:govet // field order is the published property order
 	Verification *core.PanelSummary
+	Validation   *ValidationResult
 	Body         string
 	Diagram      diagram.Status
 	Entries      []any
@@ -101,28 +105,27 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 		return MergeResult{}, &core.RefusalError{Code: controls.CodeUnavailable, Message: "merge needs a controls snapshot"}
 	}
 	st := &state{
-		review:          in.Review,
-		forces:          in.Forces,
-		preFooter:       in.PreFooter,
-		progress:        rt.Progress,
-		effective:       in.Effective,
-		cmd:             in.Cmd,
-		repo:            in.Repo,
-		pr:              in.Pr,
-		env:             rt.Env,
-		now:             rt.TimeUTC(),
-		findingsFile:    in.FindingsFile,
-		dir:             in.Dir,
-		reviewFile:      in.ReviewFile,
-		root:            in.Root,
-		repoRoot:        in.repoRootPath(),
-		headFull:        in.HeadFull,
-		headShort:       readcommon.ShortSHA(in.HeadFull),
-		prov:            in.Prov,
-		dryRun:          in.DryRun,
-		controls:        in.Controls,
-		run:             in.Run,
-		minSeverity:     in.MinSeverity,
+		review:       in.Review,
+		forces:       in.Forces,
+		preFooter:    in.PreFooter,
+		progress:     rt.Progress,
+		effective:    in.Effective,
+		cmd:          in.Cmd,
+		repo:         in.Repo,
+		pr:           in.Pr,
+		env:          rt.Env,
+		now:          rt.TimeUTC(),
+		findingsFile: in.FindingsFile,
+		dir:          in.Dir,
+		reviewFile:   in.ReviewFile,
+		root:         in.Root,
+		repoRoot:     in.repoRootPath(),
+		headFull:     in.HeadFull,
+		headShort:    readcommon.ShortSHA(in.HeadFull),
+		prov:         in.Prov,
+		dryRun:       in.DryRun,
+		controls:     in.Controls,
+		run:          in.Run, minSeverity: in.MinSeverity,
 		hunkRows:        in.HunkRows,
 		inputChecked:    in.InputChecked,
 		requireCoverage: in.RequireCoverage,
@@ -136,6 +139,10 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 	if err != nil {
 		return MergeResult{}, err
 	}
+	validated, ref := st.applyValidation(in)
+	if ref != nil {
+		return MergeResult{}, ref
+	}
 	verification := st.applyPanel(panel)
 	if err := st.persistMerged(); err != nil {
 		return MergeResult{}, err
@@ -147,6 +154,7 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 	return MergeResult{
 		Body:         curated,
 		Verification: verification,
+		Validation:   validated,
 		Diagram:      dstat,
 		Entries:      st.entries,
 		Kept:         st.kept,

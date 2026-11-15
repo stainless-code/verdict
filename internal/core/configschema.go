@@ -23,6 +23,17 @@ type Config struct { //nolint:govet // field order is the published property ord
 	DefaultProfile  string                   `json:"default_profile,omitempty"  nonnull:"true"`
 	SeverityWeights *ConfigSeverityWeights   `json:"severity_weights,omitempty" nonnull:"true"`
 	Index           *ConfigIndex             `json:"index,omitempty"            nonnull:"true"`
+	RigorPolicy     *ConfigRigorPolicy       `json:"rigor_policy,omitempty"     nonnull:"true"`
+}
+
+// ConfigRigorPolicy is the repository's publication floor: the mode
+// (advisory or gating) and the evidence rung each severity tier must reach
+// before it posts. Absent keys keep the built-in policy.
+type ConfigRigorPolicy struct {
+	Mode          string `enum:"warn|gate"                          json:"mode,omitempty"`
+	Critical      string `enum:"said|pointed|walked|ran|reproduced" json:"critical,omitempty"`
+	Important     string `enum:"said|pointed|walked|ran|reproduced" json:"important,omitempty"`
+	Informational string `enum:"said|pointed|walked|ran|reproduced" json:"informational,omitempty"`
 }
 
 // ConfigIndex holds the local code index caps; absent keys keep the built-in

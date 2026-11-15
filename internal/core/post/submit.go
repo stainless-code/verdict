@@ -561,6 +561,11 @@ func writePostReceipt(st *state, obj *jq.Obj) error {
 	if st.forced != nil {
 		receipt.Forced = st.forced
 	}
+	validated := st.validationReceipt()
+	receipt.ValidationHash = validated.Hash
+	receipt.ValidationCounts = validated.Counts
+	receipt.ValidationMode = validated.Mode
+	receipt.RigorFloors = validated.Floors
 	if st.withheld != nil {
 		receipt.Withheld = st.withheld
 	}
@@ -632,6 +637,7 @@ func (st *state) successResponse(obj *jq.Obj, posted string) *core.PostResponse 
 		SecuritySummary: strOrNilPost(st.merged.Security),
 		Risk:            st.merged.Risk,
 		PayloadHash:     st.phash,
+		Validation:      st.validationData(),
 		ItemsRaw:        recordcore.EnvelopeItems(payload),
 		ReviewRaw:       obj,
 	}

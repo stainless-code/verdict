@@ -69,7 +69,11 @@
     },
     "chunk_coverage": {
       "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/chunkCoverage" }]
-    }
+    },
+    "validation_hash": { "type": ["string", "null"] },
+    "validation_counts": { "$ref": "#/$defs/validationCounts" },
+    "validation_mode": { "enum": ["warn", "gate"] },
+    "rigor_floors": { "$ref": "#/$defs/rigorFloors" }
   },
   "required": [
     "schema_version",
@@ -78,7 +82,11 @@
     "diff_sha256",
     "recorded_at",
     "findings",
-    "open"
+    "open",
+    "validation_hash",
+    "validation_counts",
+    "validation_mode",
+    "rigor_floors"
   ],
   "additionalProperties": true,
   "$defs": {
@@ -142,6 +150,33 @@
         "stale": { "type": "boolean" }
       },
       "required": ["level", "rationale", "assessed_head"],
+      "additionalProperties": true
+    },
+    "validationCounts": {
+      "type": "object",
+      "properties": {
+        "confirmed": { "type": "integer", "minimum": 0 },
+        "rejected": { "type": "integer", "minimum": 0 },
+        "downgraded": { "type": "integer", "minimum": 0 },
+        "unvalidated": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["confirmed", "rejected", "downgraded", "unvalidated"],
+      "additionalProperties": true
+    },
+    "rigorFloors": {
+      "type": "object",
+      "properties": {
+        "critical": {
+          "enum": ["said", "pointed", "walked", "ran", "reproduced"]
+        },
+        "important": {
+          "enum": ["said", "pointed", "walked", "ran", "reproduced"]
+        },
+        "informational": {
+          "enum": ["said", "pointed", "walked", "ran", "reproduced"]
+        }
+      },
+      "required": ["critical", "important", "informational"],
       "additionalProperties": true
     }
   }

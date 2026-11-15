@@ -30,6 +30,7 @@ First-party, no upstream text:
 - `prompts/rule-packs.md`
 
 - `SKILL.md`
+- `prompts/validate.md`
 - `prompts/verifier.md`
 - `references/`
 - `schemas/`

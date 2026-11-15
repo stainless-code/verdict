@@ -312,6 +312,12 @@ Cause: `--rigor` is not a known level.
 
 Fix: re-run with one of `said|pointed|walked|ran|reproduced`.
 
+## `bad-rigor-policy`
+
+Cause: `--require-rigor` is not `<critical|important|informational>=<rung>`, or `rigor_policy` in the trusted-base `.verdict/config.json` names a mode or rung outside the typed vocabulary.
+
+Fix: pass `--require-rigor critical=walked` (repeatable, one tier per flag), or fix `rigor_policy` and re-fetch so the base snapshot carries it.
+
 ## `bad-root`
 
 Cause: `serve --root` names a path that is missing, not a directory, or unreadable.
@@ -407,6 +413,12 @@ Fix: pass a ref in `HEAD`'s history (the default is `HEAD`), then re-run.
 Cause: the `VERDICT_USAGE` record does not match `schemas/usage.schema.json`.
 
 Fix: fix the usage record named above to match the schema, then re-run.
+
+## `bad-validation`
+
+Cause: `validation.json` is malformed: an unknown key, a verdict outside `CONFIRMED|REJECTED|DOWNGRADED`, a reason outside 10-500 characters, a `DOWNGRADED` pair that is not exactly one rank, a duplicate sig, or a sig that matches no single finding.
+
+Fix: rewrite the artifact to match `schemas/validation.schema.json`, or delete it to post without a validation pass.
 
 ## `bind-required`
 
@@ -1050,6 +1062,12 @@ Cause: a required typed check has no passing evidence for the reviewed head.
 
 Fix: record the evidence named above (`verify --group <id> --command <cmd>`), then re-run — `--force` cannot satisfy a trusted requirement.
 
+## `rigor-below-floor`
+
+Cause: a posting finding's evidence rung sits below the floor its severity demands, in gate mode.
+
+Fix: deepen the evidence and re-review, or re-run with `--force` to publish and record the bypass in `post.json`.
+
 ## `rounds-path-unsafe`
 
 Cause: the bundle's `.run.rounds` entry is a symlink or another non-directory, so round evidence would land outside the bundle (or a sweep would delete files there).
@@ -1308,6 +1326,12 @@ Fix: run `brew upgrade` on the formula instead of pinning `--version`.
 Cause: the upstream diff is over the cap.
 
 Fix: re-fetch narrowed to a range via `--base-sha`/`--since`, or narrow with a paths filter, then re-run.
+
+## `validation-stale`
+
+Cause: `validation.json` was written for a head that is not the bundle head, usually after a push that moved it.
+
+Fix: re-run the validation pass against the current head, or delete the artifact to post unreviewed.
 
 ## `verify-credential-read`
 

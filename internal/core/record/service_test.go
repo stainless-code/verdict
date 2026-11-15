@@ -124,6 +124,7 @@ func checkRecordStores(t *testing.T) {
 	wantOrder := []string{
 		"schema_version", "status", "head", "diff_sha256", "recorded_at",
 		"findings", "open", "confidence", "security_summary", "tool_version", "prompts_hash", "model",
+		"validation_hash", "validation_counts", "validation_mode", "rigor_floors",
 	}
 	if strings.Join(order, ",") != strings.Join(wantOrder, ",") {
 		t.Errorf("record.json keys = %v, want %v", order, wantOrder)

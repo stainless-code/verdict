@@ -8,7 +8,10 @@ exit: 0
   "at": "0000-00-00T00:00:00Z",
   "next": "report or triage the local bundle; post stays refused (no PR target)",
   "warnings": [
-    "$.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)"
+    "$.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)",
+    "rigor pointed below critical floor walked on c84ffef (advisory); a gate would downgrade it to important",
+    "rigor said below critical floor walked on c7bc06e (advisory)",
+    "rigor said below important floor pointed on 99cd29f (advisory)"
   ],
   "data": {
     "dir": ".verdict/state/local-mx",
@@ -104,6 +107,9 @@ exit: 0
 --- stderr ---
 » anchors: 0 inline, 0 moved to body
 warn: $.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)
+warn: rigor pointed below critical floor walked on c84ffef (advisory); a gate would downgrade it to important
+warn: rigor said below critical floor walked on c7bc06e (advisory)
+warn: rigor said below important floor pointed on 99cd29f (advisory)
 » findings: 12 sigs -> .verdict/state/local-mx/findings.json
   c7bc06e4  deferred  true  notes.txt
   63b8aa5b  open  true  notes.txt
@@ -454,6 +460,10 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "bddb9306ee0e9be76cf9d4c1a417eb38a992cb5773b17915e698ea99603e7815",
-  "model": null
+  "prompts_hash": "68830ec8d9b1e6f8015204d6ae59db610391b9f2fe8f92383ce6b3a2142b0153",
+  "model": null,
+  "validation_hash": null,
+  "validation_counts": {"confirmed":0,"rejected":0,"downgraded":0,"unvalidated":11},
+  "validation_mode": "warn",
+  "rigor_floors": {"critical":"walked","important":"pointed","informational":"said"}
 }

@@ -172,6 +172,7 @@ func documents() []document {
 				{typ: reflect.TypeFor[ConfigSeverityWeights](), name: "configSeverityWeights", closed: true},
 				{typ: reflect.TypeFor[ConfigIndex](), name: "configIndex", closed: true},
 				{typ: reflect.TypeFor[ConfigRequirements](), name: "requirements", closed: true},
+				{typ: reflect.TypeFor[ConfigRigorPolicy](), name: "rigorPolicy", closed: true},
 				{typ: reflect.TypeFor[BlockClause](), name: "blockClause", closed: true},
 				{typ: reflect.TypeFor[ConfigScope](), name: "scope", closed: true, constraints: []member{
 					{keyAnyOf, array(
@@ -322,6 +323,8 @@ func documents() []document {
 				{typ: reflect.TypeFor[ChunkCoverage](), name: chunkCoverageType},
 				{typ: reflect.TypeFor[core.PostSummary](), name: "postSummary"},
 				{typ: reflect.TypeFor[core.RiskClaim](), name: defsRiskClaim},
+				{typ: reflect.TypeFor[ValidationCounts](), name: "validationCounts"},
+				{typ: reflect.TypeFor[RigorFloors](), name: "rigorFloors"},
 			},
 			additionalProperties: true,
 		},
@@ -345,8 +348,20 @@ func documents() []document {
 				{typ: reflect.TypeFor[core.PanelSummary](), name: verificationSummaryType},
 				{typ: reflect.TypeFor[ChunkCoverage](), name: chunkCoverageType},
 				{typ: reflect.TypeFor[core.RiskClaim](), name: "riskClaim"},
+				{typ: reflect.TypeFor[ValidationCounts](), name: "validationCounts"},
+				{typ: reflect.TypeFor[RigorFloors](), name: "rigorFloors"},
 			},
 			additionalProperties: true,
+		},
+		{
+			name:  "validation",
+			title: "validation.json — trusted validator pass results",
+			root:  reflect.TypeFor[ValidationFile](),
+			defs: []definition{
+				{typ: reflect.TypeFor[ValidationResult](), name: "result", closed: true},
+				{typ: reflect.TypeFor[ValidationValidator](), name: "validator", closed: true},
+			},
+			additionalProperties: false,
 		},
 		{
 			name:  "panel",
@@ -441,6 +456,9 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[GateDimension](), name: "gateDimension"},
 		{typ: reflect.TypeFor[core.RiskClaim](), name: "riskClaim"},
 		{typ: reflect.TypeFor[PostData](), name: "postData"},
+		{typ: reflect.TypeFor[ValidationData](), name: "validationData"},
+		{typ: reflect.TypeFor[ValidationCounts](), name: "validationCounts"},
+		{typ: reflect.TypeFor[RigorFloors](), name: "rigorFloors"},
 		{typ: reflect.TypeFor[core.PostSummary](), name: "postSummary"},
 		{typ: reflect.TypeFor[RecordData](), name: "recordData"},
 		{typ: reflect.TypeFor[Repair](), name: "repair"},

@@ -40,6 +40,9 @@ func buildConfig(root map[string]any) (*core.Config, *core.RefusalError) {
 	if cfg.SeverityWeights, ref = presentNested(root, "severity_weights", rootLocation, buildSeverityWeights); ref != nil {
 		return nil, ref
 	}
+	if cfg.RigorPolicy, ref = presentNested(root, "rigor_policy", rootLocation, buildRigorPolicy); ref != nil {
+		return nil, ref
+	}
 	if ref = buildConfigTail(cfg, root); ref != nil {
 		return nil, ref
 	}
@@ -144,6 +147,49 @@ func requiredString(obj map[string]any, key, path, code string) (string, *core.R
 		return "", remap(raw, path+keySep+key, ref, code)
 	}
 	return val, nil
+}
+
+// rungEnum is the published evidence rung vocabulary, strongest last; a
+// floor names one of these and ranks by it.
+var rungEnum = []string{"said", "pointed", "walked", "ran", "reproduced"}
+
+// buildRigorPolicy validates the repository's publication floor: the mode
+// and the per-tier evidence rungs. Absent keys keep the built-in policy.
+func buildRigorPolicy(raw any, path string) (*core.ConfigRigorPolicy, *core.RefusalError) {
+	obj, ref := asObject(raw, path)
+	if ref != nil {
+		return nil, ref
+	}
+	out := &core.ConfigRigorPolicy{}
+	mode, ref := readEnumString(obj, "mode", path, []string{core.ValidationWarn, core.ValidationGate})
+	if ref != nil {
+		return nil, ref
+	}
+	out.Mode = mode
+	for _, tier := range []struct {
+		dst  *string
+		name string
+	}{
+		{name: severityEnum[0], dst: &out.Critical},
+		{name: severityEnum[1], dst: &out.Important},
+		{name: severityEnum[2], dst: &out.Informational},
+	} {
+		floor, ref := readEnumString(obj, tier.name, path, rungEnum)
+		if ref != nil {
+			return nil, ref
+		}
+		*tier.dst = floor
+	}
+	return out, nil
+}
+
+// readEnumString reads one optional enum scalar, absent reading as "".
+func readEnumString(obj map[string]any, key, path string, vocab []string) (string, *core.RefusalError) {
+	value, ref := presentEnum(obj, key, path, vocab)
+	if ref != nil || value == nil {
+		return "", ref
+	}
+	return *value, nil
 }
 
 // buildIndex validates the local index caps.

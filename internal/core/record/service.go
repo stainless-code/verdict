@@ -392,6 +392,12 @@ func (st *svc) finalize(ctx context.Context, dir, prov, headFull, now string, re
 		Coverage:        res.Coverage.Receipt(),
 		ChunkCoverage:   res.Coverage.ChunkReceipt(),
 	}
+	if res.Validation != nil {
+		record.ValidationHash = res.Validation.Hash
+		record.ValidationCounts = res.Validation.Counts
+		record.ValidationMode = res.Validation.Mode
+		record.RigorFloors = res.Validation.Floors
+	}
 	base := readcommon.BundleBase(dir, st.store)
 	if ident, ok := identity.Verify(ctx, st.identityCommander(), dir, identityHead(dir, prov, st.store), base); ok {
 		record.PatchID, record.PatchIDKind = ident.PatchID, ident.PatchIDKind

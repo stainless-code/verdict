@@ -146,7 +146,7 @@ type BriefSite struct { //nolint:govet // field order is the published property 
 // HistoryEvent is one append-only findings history entry.
 type HistoryEvent struct {
 	At       string     `json:"at"`
-	Event    string     `enum:"reported|claim|reopened|revalidation|addressed|triaged|withheld" json:"event"`
+	Event    string     `enum:"reported|claim|reopened|revalidation|addressed|triaged|withheld|validation" json:"event"`
 	Actor    string     `json:"actor,omitempty"`
 	Note     string     `json:"note,omitempty"`
 	SHA      string     `json:"sha,omitempty"`
@@ -221,26 +221,30 @@ type ChunkCoverage struct {
 // Record is schemas/record.schema.json: the completed-record artifact.
 // ConfidenceRaw wins over the typed confidence like RecordData does.
 type Record struct { //nolint:govet // field order is the published property order
-	SchemaVersion   string           `const:"1"                         json:"schema_version"`
-	Status          string           `json:"status"`
-	Head            string           `json:"head"`
-	DiffSHA256      string           `json:"diff_sha256"`
-	RecordedAt      string           `format:"date-time"                json:"recorded_at"`
-	Findings        int              `json:"findings"                   min:"0"`
-	Open            int              `json:"open"                       min:"0"`
-	Confidence      *int             `json:"confidence,omitempty"       max:"5"                         min:"1"`
-	SecuritySummary *string          `json:"security_summary,omitempty"`
-	Risk            *RiskClaim       `anyOf:"null"                      json:"risk,omitempty"           optional:"true"`
-	ToolVersion     string           `json:"tool_version,omitempty"`
-	PromptsHash     string           `json:"prompts_hash,omitempty"`
-	Model           *string          `json:"model,omitempty"`
-	PatchID         *string          `json:"patch_id,omitempty"`
-	PatchIDKind     string           `json:"patch_id_kind,omitempty"`
-	Repairs         []Repair         `json:"repairs,omitempty"`
-	Verification    *PanelSummary    `anyOf:"null"                      json:"verification,omitempty"   optional:"true"`
-	Coverage        *CoverageSummary `anyOf:"null"                      json:"coverage,omitempty"       optional:"true"`
-	ChunkCoverage   *ChunkCoverage   `anyOf:"null"                      json:"chunk_coverage,omitempty" optional:"true"`
-	ConfidenceRaw   any              `json:"-"`
+	SchemaVersion    string           `const:"1"                         json:"schema_version"`
+	Status           string           `json:"status"`
+	Head             string           `json:"head"`
+	DiffSHA256       string           `json:"diff_sha256"`
+	RecordedAt       string           `format:"date-time"                json:"recorded_at"`
+	Findings         int              `json:"findings"                   min:"0"`
+	Open             int              `json:"open"                       min:"0"`
+	Confidence       *int             `json:"confidence,omitempty"       max:"5"                         min:"1"`
+	SecuritySummary  *string          `json:"security_summary,omitempty"`
+	Risk             *RiskClaim       `anyOf:"null"                      json:"risk,omitempty"           optional:"true"`
+	ToolVersion      string           `json:"tool_version,omitempty"`
+	PromptsHash      string           `json:"prompts_hash,omitempty"`
+	Model            *string          `json:"model,omitempty"`
+	PatchID          *string          `json:"patch_id,omitempty"`
+	PatchIDKind      string           `json:"patch_id_kind,omitempty"`
+	Repairs          []Repair         `json:"repairs,omitempty"`
+	Verification     *PanelSummary    `anyOf:"null"                      json:"verification,omitempty"   optional:"true"`
+	Coverage         *CoverageSummary `anyOf:"null"                      json:"coverage,omitempty"       optional:"true"`
+	ChunkCoverage    *ChunkCoverage   `anyOf:"null"                      json:"chunk_coverage,omitempty" optional:"true"`
+	ValidationHash   *string          `json:"validation_hash"`
+	ValidationCounts ValidationCounts `json:"validation_counts"`
+	ValidationMode   string           `enum:"warn|gate"                  json:"validation_mode"`
+	RigorFloors      RigorFloors      `json:"rigor_floors"`
+	ConfidenceRaw    any              `json:"-"`
 }
 
 // Wire renders one finding entry in wire order: the fixed construction order
@@ -533,6 +537,10 @@ func (r *Record) Wire() *jq.Obj {
 	if r.ChunkCoverage != nil {
 		o.Set("chunk_coverage", r.ChunkCoverage)
 	}
+	o.Set("validation_hash", r.ValidationHash)
+	o.Set("validation_counts", r.ValidationCounts)
+	o.Set("validation_mode", r.ValidationMode)
+	o.Set("rigor_floors", r.RigorFloors)
 	return o
 }
 

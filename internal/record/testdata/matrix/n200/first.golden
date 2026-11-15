@@ -89,7 +89,35 @@ exit: 0
     "ignoring unknown kb rule 'rec-rule' (no .verdict/kb.jsonl yet)",
     "ignoring unknown kb rule 'rec-rule' (no .verdict/kb.jsonl yet)",
     "ignoring unknown kb rule 'rec-rule' (no .verdict/kb.jsonl yet)",
-    "$.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)"
+    "$.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)",
+    "rigor pointed below critical floor walked on c84ffef (advisory); a gate would downgrade it to important",
+    "rigor pointed below critical floor walked on afb9e47 (advisory); a gate would downgrade it to important",
+    "rigor pointed below critical floor walked on a9d91e9 (advisory); a gate would downgrade it to important",
+    "rigor pointed below critical floor walked on 3727577 (advisory); a gate would downgrade it to important",
+    "rigor pointed below critical floor walked on 5518f3c (advisory); a gate would downgrade it to important",
+    "rigor pointed below critical floor walked on bbd92c1 (advisory); a gate would downgrade it to important",
+    "rigor pointed below critical floor walked on b2e672a (advisory); a gate would downgrade it to important",
+    "rigor pointed below critical floor walked on 654f7a3 (advisory); a gate would downgrade it to important",
+    "rigor pointed below critical floor walked on c124b80 (advisory); a gate would downgrade it to important",
+    "rigor pointed below critical floor walked on ffe27ec (advisory); a gate would downgrade it to important",
+    "rigor pointed below critical floor walked on 393344e (advisory); a gate would downgrade it to important",
+    "rigor pointed below critical floor walked on cf2cfda (advisory); a gate would downgrade it to important",
+    "rigor pointed below critical floor walked on afc103b (advisory); a gate would downgrade it to important",
+    "rigor said below critical floor walked on c7bc06e (advisory)",
+    "rigor said below critical floor walked on b280b3f (advisory)",
+    "rigor said below critical floor walked on f8c039f (advisory)",
+    "rigor said below critical floor walked on 2d784bc (advisory)",
+    "rigor said below critical floor walked on 2434239 (advisory)",
+    "rigor said below critical floor walked on d0bb6bf (advisory)",
+    "rigor said below critical floor walked on d304381 (advisory)",
+    "rigor said below critical floor walked on da575fd (advisory)",
+    "rigor said below critical floor walked on 6a5db2e (advisory)",
+    "rigor said below critical floor walked on 2723216 (advisory)",
+    "rigor said below critical floor walked on f42de78 (advisory)",
+    "rigor said below critical floor walked on 7a93f33 (advisory)",
+    "rigor said below critical floor walked on 71358a4 (advisory)",
+    "rigor said below critical floor walked on a5c35e4 (advisory)",
+    "rigor said below important floor pointed on 99cd29f (advisory)"
   ],
   "data": {
     "dir": ".verdict/state/local-mx",
@@ -1432,6 +1460,34 @@ warn: ignoring unknown kb rule 'rec-rule' (no .verdict/kb.jsonl yet)
 warn: ignoring unknown kb rule 'rec-rule' (no .verdict/kb.jsonl yet)
 warn: ignoring unknown kb rule 'rec-rule' (no .verdict/kb.jsonl yet)
 warn: $.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)
+warn: rigor pointed below critical floor walked on c84ffef (advisory); a gate would downgrade it to important
+warn: rigor pointed below critical floor walked on afb9e47 (advisory); a gate would downgrade it to important
+warn: rigor pointed below critical floor walked on a9d91e9 (advisory); a gate would downgrade it to important
+warn: rigor pointed below critical floor walked on 3727577 (advisory); a gate would downgrade it to important
+warn: rigor pointed below critical floor walked on 5518f3c (advisory); a gate would downgrade it to important
+warn: rigor pointed below critical floor walked on bbd92c1 (advisory); a gate would downgrade it to important
+warn: rigor pointed below critical floor walked on b2e672a (advisory); a gate would downgrade it to important
+warn: rigor pointed below critical floor walked on 654f7a3 (advisory); a gate would downgrade it to important
+warn: rigor pointed below critical floor walked on c124b80 (advisory); a gate would downgrade it to important
+warn: rigor pointed below critical floor walked on ffe27ec (advisory); a gate would downgrade it to important
+warn: rigor pointed below critical floor walked on 393344e (advisory); a gate would downgrade it to important
+warn: rigor pointed below critical floor walked on cf2cfda (advisory); a gate would downgrade it to important
+warn: rigor pointed below critical floor walked on afc103b (advisory); a gate would downgrade it to important
+warn: rigor said below critical floor walked on c7bc06e (advisory)
+warn: rigor said below critical floor walked on b280b3f (advisory)
+warn: rigor said below critical floor walked on f8c039f (advisory)
+warn: rigor said below critical floor walked on 2d784bc (advisory)
+warn: rigor said below critical floor walked on 2434239 (advisory)
+warn: rigor said below critical floor walked on d0bb6bf (advisory)
+warn: rigor said below critical floor walked on d304381 (advisory)
+warn: rigor said below critical floor walked on da575fd (advisory)
+warn: rigor said below critical floor walked on 6a5db2e (advisory)
+warn: rigor said below critical floor walked on 2723216 (advisory)
+warn: rigor said below critical floor walked on f42de78 (advisory)
+warn: rigor said below critical floor walked on 7a93f33 (advisory)
+warn: rigor said below critical floor walked on 71358a4 (advisory)
+warn: rigor said below critical floor walked on a5c35e4 (advisory)
+warn: rigor said below important floor pointed on 99cd29f (advisory)
 » findings: 203 sigs -> .verdict/state/local-mx/findings.json
   c7bc06e4  open  true  notes.txt
   63b8aa5b  open  true  notes.txt
@@ -2094,8 +2150,12 @@ other.txt	NEW	1	3
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "bddb9306ee0e9be76cf9d4c1a417eb38a992cb5773b17915e698ea99603e7815",
-  "model": null
+  "prompts_hash": "68830ec8d9b1e6f8015204d6ae59db610391b9f2fe8f92383ce6b3a2142b0153",
+  "model": null,
+  "validation_hash": null,
+  "validation_counts": {"confirmed":0,"rejected":0,"downgraded":0,"unvalidated":203},
+  "validation_mode": "warn",
+  "rigor_floors": {"critical":"walked","important":"pointed","informational":"said"}
 }
 --- file C/.verdict/state/local-mx/store.json ---
 {

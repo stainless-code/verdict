@@ -72,7 +72,7 @@ func parsePostFlags(r *cli.Runner, args []string, dir string) (core.PostFlags, i
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
-		case a == postApproveFlag, a == "--review-file", a == postSummaryFlag, a == postMinSeverityFlag:
+		case a == postApproveFlag, a == "--review-file", a == postSummaryFlag, a == postMinSeverityFlag, a == postRequireRigorFlag:
 			v, next, u := cli.FlagValue(args, i, a, postWants[a])
 			if u != nil {
 				return f, r.ReportUsage(u), true
@@ -84,7 +84,7 @@ func parsePostFlags(r *cli.Runner, args []string, dir string) (core.PostFlags, i
 		default:
 			msg := fmt.Sprintf("unknown flag '%s' for post (want --approve[=bool], --request-changes, "+
 				"--bind, --force, --review-file <path>, --summary comment|off, --dry-run, --require-coverage, "+
-				"--allow-secret-values, --provenance, --json)", a)
+				"--require-rigor <tier>=<rung>, --allow-secret-values, --provenance, --json)", a)
 			return f, r.ReportUsage(&cli.UsageError{Message: msg}), true
 		}
 	}
@@ -139,6 +139,8 @@ const postEqSep = "="
 
 const postMinSeverityFlag = "--min-severity"
 
+const postRequireRigorFlag = "--require-rigor"
+
 const postDryRunFlag = "--dry-run"
 
 const postSummaryFlag = "--summary"
@@ -146,10 +148,11 @@ const postSummaryFlag = "--summary"
 // postWants names each value flag's accepted operand for the missing-value
 // usage error.
 var postWants = map[string]string{
-	postApproveFlag:     "true|false",
-	"--review-file":     "<path>",
-	postSummaryFlag:     "comment|off",
-	postMinSeverityFlag: "critical|important|informational|off",
+	postApproveFlag:      "true|false",
+	"--review-file":      "<path>",
+	postSummaryFlag:      "comment|off",
+	postMinSeverityFlag:  "critical|important|informational|off",
+	postRequireRigorFlag: "critical|important|informational=<said|pointed|walked|ran|reproduced>",
 }
 
 // setPostValue stores one value-taking post flag's value.
@@ -161,6 +164,8 @@ func setPostValue(f *core.PostFlags, name, val string) {
 		f.Summary = val
 	case postMinSeverityFlag:
 		f.MinSeverity = val
+	case postRequireRigorFlag:
+		f.RequireRigor = append(f.RequireRigor, val)
 	default:
 		f.ReviewFile = val
 	}
@@ -180,6 +185,10 @@ func postRentry(repo, pr, dir string, f core.PostFlags, jsonMode bool) string {
 // postRentryFlags lists the flags a retry repeats, in flag order: one row per
 // flag instead of one branch, so the list stays a table as flags are added.
 func postRentryFlags(f core.PostFlags, dir string, jsonMode bool) []string {
+	out := make([]string, 0, 1+len(f.RequireRigor))
+	for _, floor := range f.RequireRigor {
+		out = append(out, postRequireRigorFlag+" "+floor)
+	}
 	rows := []struct {
 		flag string
 		set  bool
@@ -195,7 +204,6 @@ func postRentryFlags(f core.PostFlags, dir string, jsonMode bool) []string {
 		{postcore.AllowSecretValuesFlag, f.AllowSecretValues},
 		{"--json", jsonMode},
 	}
-	var out []string
 	for _, row := range rows {
 		if row.set {
 			out = append(out, row.flag)

@@ -945,6 +945,9 @@
           "description": "Planned (on dry-run) or executed (when --summary comment is active) PR-level summary comment action.",
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/postSummary" }]
         },
+        "validation": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/validationData" }]
+        },
         "receipt": { "$ref": "#/$defs/provenanceReceipt" },
         "truncated": {
           "type": ["boolean", "array"],
@@ -964,6 +967,44 @@
         "security_summary",
         "payload_hash"
       ],
+      "additionalProperties": true
+    },
+    "validationData": {
+      "type": "object",
+      "properties": {
+        "hash": { "type": ["string", "null"] },
+        "counts": { "$ref": "#/$defs/validationCounts" },
+        "mode": { "enum": ["warn", "gate"] },
+        "floors": { "$ref": "#/$defs/rigorFloors" }
+      },
+      "required": ["hash", "counts", "mode", "floors"],
+      "additionalProperties": true
+    },
+    "validationCounts": {
+      "type": "object",
+      "properties": {
+        "confirmed": { "type": "integer", "minimum": 0 },
+        "rejected": { "type": "integer", "minimum": 0 },
+        "downgraded": { "type": "integer", "minimum": 0 },
+        "unvalidated": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["confirmed", "rejected", "downgraded", "unvalidated"],
+      "additionalProperties": true
+    },
+    "rigorFloors": {
+      "type": "object",
+      "properties": {
+        "critical": {
+          "enum": ["said", "pointed", "walked", "ran", "reproduced"]
+        },
+        "important": {
+          "enum": ["said", "pointed", "walked", "ran", "reproduced"]
+        },
+        "informational": {
+          "enum": ["said", "pointed", "walked", "ran", "reproduced"]
+        }
+      },
+      "required": ["critical", "important", "informational"],
       "additionalProperties": true
     },
     "postSummary": {

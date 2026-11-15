@@ -40,7 +40,7 @@ var publishedSemantics = map[string]string{
 	// index a code index rather than a Go one.
 	// kb_policy.max_chars: additive optional non-null integer >= 1 controlling KB
 	// recall character budget.
-	"config.schema.json": "642aff63cce2daac6269b57a2b69f176e79e1a7ac52b0f5c968884049cbb1abe",
+	"config.schema.json": "e7bca2256eaa3417f675cd3428f9a9bcfc84ccefc7bf23ed68ff2102ab58a716",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets
@@ -242,7 +242,7 @@ var publishedSemantics = map[string]string{
 	// $defs/prWaitData.inconsistent_observations, plus the regenerated
 	// observations and prWaitData property descriptions. No existing property,
 	// required key, enum, or type changed.
-	"envelope.schema.json": "b76aa5542d82eb425d64665971a3786496a9ec5a96519211aa3716b5adbe4b2c",
+	"envelope.schema.json": "5a6c4df0d81f713eb16701382c0437a6acb8a3aa34ae324ca1a06effd32291ea",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -254,7 +254,7 @@ var publishedSemantics = map[string]string{
 	// sarif ingest: additive optional entry.source enum (model|tool) and
 	// optional tool, rule_id, and fingerprint strings on findings entries. No
 	// existing property, required key, or type changed.
-	"findings.schema.json": "1abce02980e93cc219592a809cb9edb7c3f1d3dc8a0a08c7fe0c74503671778b",
+	"findings.schema.json": "273c22cb1804ca71acc28ca2f7912d8ec60f9efeb5c3772feb8b33286f107207",
 	// post_floor_scoped: additive optional per-path posting floor list with its
 	// $defs/floorScope entry (required path, enum floor). No existing
 	// property, required key, or type changed.
@@ -276,7 +276,7 @@ var publishedSemantics = map[string]string{
 	// comment. No existing property, required key, enum, or type changed.
 	// risk score: additive optional nullable risk claim ($defs/riskClaim). No
 	// existing property, required key, enum, or type changed.
-	"post.schema.json": "667ef93b68ff65b85b5eda8ef11e1608cf788feb98e186499b20b1a78495671b",
+	"post.schema.json": "0e6fcf560007fd66da8605a73e5a2df912d5334d8b999341e850a7b9c1a1e0f2",
 	// patch identity: additive $defs/identity root (new bundle document) —
 	// no existing property, required key, or type changed.
 	"identity.schema.json": "efe9a7b331e41715bc55b8824e95154add584c2d63f670811ef03c350d2e5bdb",
@@ -374,7 +374,7 @@ var publishedSemantics = map[string]string{
 	// key, enum, or type changed.
 	// risk score: additive optional nullable risk claim ($defs/riskClaim). No
 	// existing property, required key, enum, or type changed.
-	"record.schema.json": "0db369bc5ae7b7ae016a6272b8a500879ef7238b03256fd066ca91567ab7e131",
+	"record.schema.json": "f1533befd705bc2cb61c6a7d7e7a02b062c78bde1113576c34550b5cc4763f09",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable comment.brief
 	// (optional; no existing property, required key, or type changed). The
 	// descriptions now state the checker's exact error/warning split; shape
@@ -404,6 +404,11 @@ var publishedSemantics = map[string]string{
 	// property, required key, or type changed — the envelope fetchEstimate entry
 	// from f3a22047 is untouched).
 	"usage.schema.json": "143473d20d0e0d140432356d9254554b969b9c71290d61ec3f5ab821e2b6bc69",
+	// additive validation.schema.json (new bundle document; no existing schema
+	// property, required key, or type changed). It pins the trusted pass: one
+	// result per finding sig with its verdict, reason, optional one-rank
+	// downgrade pair, and checks.
+	"validation.schema.json": "c018104ce060fdaa7d45b5cc5a02d3b0046a4d5c5c121b7d5b64f8eb02bd58f0",
 }
 
 // TestGeneratedSchemasPreservePublishedSemantics proves the generated files

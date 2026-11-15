@@ -95,6 +95,14 @@ var hintRules = []HintRule{
 	{codes: []string{"bad-timeout"}, hint: "try: pass --timeout <positive-seconds> (default 300)"},
 	{codes: []string{"bad-approve"}, hint: "try: pass --approve=true|false"},
 	{codes: []string{"bad-review-schema"}, hint: "try: set \"schema_version\": \"1\" in review.json"},
+	{codes: []string{"bad-rigor-policy"}, hint: "try: pass --require-rigor <tier>=<said|pointed|walked|ran|reproduced>, " +
+		"or fix rigor_policy in the trusted-base .verdict/config.json"},
+	{codes: []string{"bad-validation"}, hint: "try: fix validation.json to match " +
+		"schemas/validation.schema.json — a 10-500 character reason, one result per finding sig"},
+	{codes: []string{"validation-stale"}, hint: "try: re-run the validation pass against the current head, " +
+		"or delete validation.json to post unreviewed"},
+	{codes: []string{"rigor-below-floor"}, hint: "try: deepen the evidence for the named findings, " +
+		"or re-run with --force to publish them and record the bypass"},
 	{codes: []string{"approve-blocked"}, hint: "try: triage the findings or re-run with --force"},
 	{codes: []string{"budget-exceeded"}, hint: "try: re-run with --consent-over-budget once the spend " +
 		"is approved, or raise REVIEW_BUDGET_USD/the typed budget_usd default"},

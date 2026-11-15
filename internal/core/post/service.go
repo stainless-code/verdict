@@ -460,6 +460,7 @@ func (st *state) merge() *core.RefusalError {
 		Repo: st.req.Repo, Pr: st.req.Pr, Cmd: "post", Controls: st.controls,
 		RequireCoverage: st.flags.RequireCoverage,
 		Run:             rs, MinSeverity: st.flags.MinSeverity,
+		RequireRigor: st.flags.RequireRigor,
 		// A host that advertises no inline anchors sends none: the merge keeps
 		// every finding in the body instead of an anchor the host would refuse.
 		BodyOnlyAnchors: !caps.InlineAnchors,
@@ -469,7 +470,7 @@ func (st *state) merge() *core.RefusalError {
 	}
 	st.merged, st.body, st.diagram = res, panelBody(res.Body, res.Verification), res.Diagram
 	st.recordAnchorGap(caps, res.NMoved)
-	return nil
+	return st.rigorGate()
 }
 
 func (st *state) bindGate(ctx context.Context) *core.RefusalError {
