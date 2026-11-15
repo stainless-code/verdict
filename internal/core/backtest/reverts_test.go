@@ -15,6 +15,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
+	"github.com/stainless-code/verdict/internal/reverts"
 	"github.com/stainless-code/verdict/internal/storelock"
 )
 
@@ -312,9 +313,9 @@ type corruptRow struct {
 func corruptRows(t *testing.T) []corruptRow {
 	t.Helper()
 	sha := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	row := func(subject, reverts, paths, date string) string {
+	row := func(subject, targets, paths, date string) string {
 		return `{"schema_version":"1","sha":"` + sha + `","subject":` + subject +
-			`,"reverts":` + reverts + `,"date":"` + date + `","paths":` + paths + `}` + "\n"
+			`,"reverts":` + targets + `,"date":"` + date + `","paths":` + paths + `}` + "\n"
 	}
 	return []corruptRow{
 		{
@@ -341,7 +342,7 @@ func corruptRows(t *testing.T) []corruptRow {
 		{"subject is empty", row(`""`, `[]`, `["main.go"]`, "2024-01-01T00:00:00Z"), `field "subject" is empty`},
 		{
 			"subject is past the cap",
-			row(`"`+strings.Repeat("a", revertMaxSubject+1)+`"`, `[]`, `["main.go"]`, "2024-01-01T00:00:00Z"),
+			row(`"`+strings.Repeat("a", reverts.MaxSubject+1)+`"`, `[]`, `["main.go"]`, "2024-01-01T00:00:00Z"),
 			`past the 4096-byte cap`,
 		},
 		{
@@ -799,8 +800,8 @@ func hugeSubjectRepo(t *testing.T) (r *repo, base, full, want string) {
 	feature := r.commit(body)
 	r.git("revert", "--no-edit", feature)
 	full = `Revert "` + body + `"`
-	want = full[:revertMaxSubject-1]
-	if !utf8.ValidString(want) || revertMaxSubject != 4096 {
+	want = full[:reverts.MaxSubject-1]
+	if !utf8.ValidString(want) || reverts.MaxSubject != 4096 {
 		t.Fatalf("fixture boundary = %d bytes; want a rune boundary below 4096", len(want))
 	}
 	return r, base, full, want

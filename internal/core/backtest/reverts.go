@@ -12,13 +12,12 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
-	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/reverts"
 	"github.com/stainless-code/verdict/internal/storelock"
 	"github.com/stainless-code/verdict/internal/untrusted"
 )
@@ -31,31 +30,17 @@ const (
 	modeReverts        = "reverts"
 	methodReverts      = "revert-log-v1"
 	msgCanceledReverts = "canceled before backtest reverts completed"
-	revertFile         = ".verdict/reverts.jsonl"
 	revertNote         = ".verdict/reverts.md"
 	defaultRevertSince = "12mo"
-	revertMaxSha       = 40
-	revertMinSha       = 7
 	revertMaxFiles     = 200
 	revertMaxLines     = 5000
-	// revertMaxSubject bounds one stored subject. The ledger is tracked, so a
-	// mass-message commit would otherwise become repository weight no reader
-	// asked for; the scanner cuts at this cap on a rune boundary, and the note
-	// fences what it stores.
-	revertMaxSubject   = untrusted.MaxBytes
 	detailSep          = ": "
 	humanIndent        = "  "
-	fieldSchemaVersion = "schema_version"
-	fieldSHA           = "sha"
-	fieldSubject       = "subject"
-	fieldReverts       = "reverts"
-	fieldDate          = "date"
-	fieldPaths         = "paths"
 	reasonMergeRevert  = "merge-revert"
 	reasonWideRevert   = "wide-revert"
 	reasonUnreadable   = "unreadable"
 	codeStoreBusy      = "store-busy"
-	msgBusyReverts     = "another writer holds " + revertFile + "'s lock and did not finish in time; retry"
+	msgBusyReverts     = "another writer holds " + reverts.File + "'s lock and did not finish in time; retry"
 	msgWriteIgnore     = "backtest reverts could not bring .verdict/.gitignore to the tracked ignore contract: %v"
 )
 
@@ -105,16 +90,8 @@ type Reverts struct { //nolint:govet // field order is the published property or
 	Skipped []RevertSkipped `json:"skipped"`
 }
 
-// RevertRow is one stored revert. Subject and paths are author-controlled
-// text; the note fences them, and nothing here reads them.
-type RevertRow struct {
-	SchemaVersion string   `json:"schema_version"`
-	SHA           string   `json:"sha"`
-	Subject       string   `json:"subject"`
-	Reverts       []string `json:"reverts"`
-	Date          string   `json:"date"`
-	Paths         []string `json:"paths"`
-}
+// RevertRow is one stored revert, the ledger row this mode publishes.
+type RevertRow = reverts.Row
 
 // RevertSkipped is one revert commit the scan counted but did not record.
 type RevertSkipped struct {
@@ -302,7 +279,7 @@ func (st *state) revertText(
 		return "", "", &RevertSkipped{Reason: reasonUnreadable, SHA: sha}, nil
 	}
 	subject, body, _ := strings.Cut(out, "\x00")
-	capped, _ := untrusted.Cap(strings.TrimSpace(subject), revertMaxSubject)
+	capped, _ := untrusted.Cap(strings.TrimSpace(subject), reverts.MaxSubject)
 	return capped, strings.TrimSpace(body), nil, nil
 }
 
@@ -323,7 +300,7 @@ func (st *state) revertRow(
 		return RevertRow{}, nil, ref
 	}
 	return RevertRow{
-		SchemaVersion: schemaVersion, SHA: sha, Subject: subject,
+		SchemaVersion: reverts.SchemaVersion, SHA: sha, Subject: subject,
 		Reverts: named, Date: date, Paths: revertPaths(stats),
 	}, nil, nil
 }
@@ -426,7 +403,7 @@ func (st *state) storeReverts(rows []RevertRow) (*RevertsArtifacts, []revertLine
 // file can appear as worktree dirt. The kernel owns the lock, so a crashed scan
 // leaves nothing stale behind.
 func (st *state) lockReverts() (func(), *core.RefusalError) {
-	file := revertPath(st.root, revertFile)
+	file := revertPath(st.root, reverts.File)
 	unlock, err := storelock.Acquire(file, storelock.DefaultWait)
 	if err != nil {
 		if errors.Is(err, storelock.ErrBusy) {
@@ -457,7 +434,7 @@ func (st *state) mergeReverts(scanned []RevertRow) ([]revertLine, *core.RefusalE
 		bySHA[stored[i].row.SHA] = stored[i]
 	}
 	for _, row := range scanned {
-		bySHA[row.SHA] = revertLine{row: row, text: encodeRevert(&row)}
+		bySHA[row.SHA] = revertLine{row: row, text: reverts.Encode(&row)}
 	}
 	merged := make([]revertLine, 0, len(bySHA))
 	for _, sha := range slices.Sorted(maps.Keys(bySHA)) {
@@ -466,229 +443,24 @@ func (st *state) mergeReverts(scanned []RevertRow) ([]revertLine, *core.RefusalE
 	return merged, nil
 }
 
-// readReverts decodes the stored ledger, keeping each row's own bytes.
+// readReverts reads the stored ledger through the shared validating reader,
+// keeping each row's own bytes.
 func (st *state) readReverts() ([]revertLine, *core.RefusalError) {
-	file := revertPath(st.root, revertFile)
-	raw, err := jq.CappedFile(file, jq.MaxKBBytes)
-	if errors.Is(err, fs.ErrNotExist) {
+	file := revertPath(st.root, reverts.File)
+	entries, err := reverts.Read(st.root)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
 		return nil, nil
-	}
-	if err != nil {
+	case errors.Is(err, reverts.ErrCorrupt):
+		return nil, st.refuse(codeCorruptStore, "unreadable "+display(st.root, file)+detailSep+err.Error())
+	case err != nil:
 		return nil, st.refuse(codeCorruptStore, "cannot read "+display(st.root, file)+detailSep+err.Error())
 	}
-	lines := []revertLine{}
-	for text := range strings.SplitSeq(string(raw), "\n") {
-		text = strings.TrimSpace(text)
-		if text == "" {
-			continue
-		}
-		row, defect := decodeRevert(text)
-		if defect != "" {
-			return nil, st.refuse(codeCorruptStore, "unreadable "+display(st.root, file)+detailSep+defect)
-		}
-		lines = append(lines, revertLine{row: row, text: text})
+	lines := make([]revertLine, 0, len(entries))
+	for i := range entries {
+		lines = append(lines, revertLine{row: entries[i].Row, text: entries[i].Text})
 	}
 	return lines, nil
-}
-
-// decodeRevert reads one stored row, naming why this build cannot record it
-// ("") when it can. The ledger is tracked and hand-editable, so every field is
-// read at its stored type: a wrong type is a defect to refuse, never an empty
-// value to render.
-func decodeRevert(text string) (RevertRow, string) {
-	doc, err := jq.DecodeOrdered([]byte(text))
-	if err != nil {
-		return RevertRow{}, err.Error()
-	}
-	obj, ok := doc.(*jq.Obj)
-	if !ok {
-		return RevertRow{}, "row is not a JSON object"
-	}
-	facts, defect := readFacts(obj)
-	if defect != "" {
-		return RevertRow{}, defect
-	}
-	row := RevertRow{
-		SchemaVersion: facts.schemaVersion, SHA: facts.sha, Subject: facts.subject, Date: facts.date,
-	}
-	if row.Reverts, defect = stringsField(obj, fieldReverts); defect != "" {
-		return RevertRow{}, defect
-	}
-	if row.Paths, defect = stringsField(obj, fieldPaths); defect != "" {
-		return RevertRow{}, defect
-	}
-	return row, validateRevert(&row)
-}
-
-// validateRevert reports why one stored row cannot be recorded, or "". Every
-// field a reader will see is either a fixed shape that cannot carry text or is
-// quoted inside the note's fence, so a value outside its shape is a defect.
-func validateRevert(row *RevertRow) string {
-	if defect := validateFacts(row); defect != "" {
-		return defect
-	}
-	return validateText(row)
-}
-
-// validateFacts checks the fields the note prints outside its fence.
-func validateFacts(row *RevertRow) string {
-	if row.SchemaVersion != schemaVersion {
-		return fieldDefect(fieldSchemaVersion, strconv.Quote(row.SchemaVersion)+" is not "+schemaVersion)
-	}
-	if !revertCommit(row.SHA, revertMaxSha) {
-		return fieldDefect(fieldSHA, strconv.Quote(row.SHA)+", not a 40-character lowercase hex commit id")
-	}
-	if _, err := time.Parse(time.RFC3339, row.Date); err != nil {
-		return fieldDefect(fieldDate, strconv.Quote(row.Date)+", not RFC 3339")
-	}
-	return ""
-}
-
-// validateText checks the fields the note quotes inside its fence.
-func validateText(row *RevertRow) string {
-	if defect := validateSubject(row); defect != "" {
-		return defect
-	}
-	return validateLists(row)
-}
-
-// validateSubject bounds the one free-text field a row carries.
-func validateSubject(row *RevertRow) string {
-	if row.Subject == "" {
-		return fieldDefect(fieldSubject, "is empty")
-	}
-	if len(row.Subject) > revertMaxSubject {
-		return fieldDefect(fieldSubject, strconv.Itoa(len(row.Subject))+" bytes, past the "+
-			strconv.Itoa(revertMaxSubject)+"-byte cap")
-	}
-	return ""
-}
-
-// validateLists checks the two lists: shaped so they cannot carry text a
-// reader could act on, so the note's fence only has to quote the subject.
-func validateLists(row *RevertRow) string {
-	for _, sha := range row.Reverts {
-		if !revertCommit(sha, revertMaxSha) {
-			return fieldDefect(fieldReverts, "names "+strconv.Quote(sha)+
-				", not a 7-to-40-character lowercase hex commit id")
-		}
-	}
-	for _, path := range row.Paths {
-		if !revertRepoPath(path) {
-			return fieldDefect(fieldPaths, "names "+strconv.Quote(path)+", not a repository-relative path")
-		}
-	}
-	return ""
-}
-
-// fieldDefect names one stored field and what is wrong with it.
-func fieldDefect(key, problem string) string {
-	return "field " + strconv.Quote(key) + " " + problem
-}
-
-// revertCommit reports whether sha is a lowercase hex commit id of n bytes at
-// most and [revertMinSha] at least: the shape git itself abbreviates, and one
-// that cannot carry anything a reader could read as an instruction.
-func revertCommit(sha string, maxLen int) bool {
-	if len(sha) < revertMinSha || len(sha) > maxLen || strings.Trim(sha, "0123456789abcdef") != "" {
-		return false
-	}
-	return true
-}
-
-// revertRepoPath reports whether one stored path is a repository-relative path
-// this build can render: not absolute, not climbing out through "..", valid
-// UTF-8, and free of any control or line-separator rune that could break the
-// note's own line.
-func revertRepoPath(rel string) bool {
-	return rel != "" && filepath.IsLocal(filepath.FromSlash(rel)) && utf8.ValidString(rel) &&
-		!strings.ContainsFunc(rel, core.IsLineBreak)
-}
-
-// rowFacts is the four single-valued fields a row publishes.
-type rowFacts struct {
-	schemaVersion string
-	sha           string
-	subject       string
-	date          string
-}
-
-// readFacts reads the single-valued fields, naming the first defect it meets.
-func readFacts(obj *jq.Obj) (rowFacts, string) {
-	var facts rowFacts
-	for _, field := range []struct {
-		into *string
-		key  string
-	}{
-		{&facts.schemaVersion, fieldSchemaVersion},
-		{&facts.sha, fieldSHA},
-		{&facts.subject, fieldSubject},
-		{&facts.date, fieldDate},
-	} {
-		value, defect := stringField(obj, field.key)
-		if defect != "" {
-			return rowFacts{}, defect
-		}
-		*field.into = value
-	}
-	return facts, ""
-}
-
-// stringField reads one required string field, naming the defect when the
-// stored value is missing or another type.
-func stringField(obj *jq.Obj, key string) (string, string) {
-	value, ok := obj.Get(key)
-	if !ok {
-		return "", fieldDefect(key, "is missing")
-	}
-	text, ok := value.(string)
-	if !ok {
-		return "", fieldDefect(key, "is not a string")
-	}
-	return text, ""
-}
-
-// stringsField reads one required array-of-strings field, naming the defect
-// when the stored value is missing, another type, or carries a non-string item.
-func stringsField(obj *jq.Obj, key string) ([]string, string) {
-	value, ok := obj.Get(key)
-	if !ok {
-		return nil, fieldDefect(key, "is missing")
-	}
-	list, ok := value.([]any)
-	if !ok {
-		return nil, fieldDefect(key, "is not an array of strings")
-	}
-	out := make([]string, 0, len(list))
-	for _, item := range list {
-		text, ok := item.(string)
-		if !ok {
-			return nil, fieldDefect(key, "is not an array of strings")
-		}
-		out = append(out, text)
-	}
-	return out, ""
-}
-
-// encodeRevert renders one row in the published key order.
-func encodeRevert(row *RevertRow) string {
-	return jq.NewObj(
-		"schema_version", row.SchemaVersion,
-		"sha", row.SHA,
-		"subject", row.Subject,
-		"reverts", itemList(row.Reverts),
-		"date", row.Date,
-		"paths", itemList(row.Paths),
-	).MarshalCompact()
-}
-
-// itemList renders a string slice as a JSON array, never null.
-func itemList(items []string) []any {
-	out := make([]any, 0, len(items))
-	for _, item := range items {
-		out = append(out, item)
-	}
-	return out
 }
 
 // writeReverts lands the ledger then its note, each atomically, with the lock
@@ -706,9 +478,9 @@ func (st *state) writeReverts(ledger []revertLine) (*RevertsArtifacts, *core.Ref
 	if int64(len(body)) > jq.MaxKBBytes {
 		return nil, st.refuse(codeBacktestFail, fmt.Sprintf(
 			"%s would be %d bytes, past the %d-byte read cap; narrow --since or remove rows by hand",
-			revertFile, len(body), jq.MaxKBBytes))
+			reverts.File, len(body), jq.MaxKBBytes))
 	}
-	file := revertPath(st.root, revertFile)
+	file := revertPath(st.root, reverts.File)
 	if err := atomic.WriteFile(file, []byte(body)); err != nil {
 		return nil, st.refuse(codeBacktestFail, "cannot write "+display(st.root, file)+detailSep+err.Error())
 	}
@@ -716,7 +488,7 @@ func (st *state) writeReverts(ledger []revertLine) (*RevertsArtifacts, *core.Ref
 	if err := atomic.WriteFile(note, revertsNote(rows)); err != nil {
 		return nil, st.refuse(codeBacktestFail, "cannot write "+display(st.root, note)+detailSep+err.Error())
 	}
-	return &RevertsArtifacts{Ledger: revertFile, Note: revertNote}, nil
+	return &RevertsArtifacts{Ledger: reverts.File, Note: revertNote}, nil
 }
 
 // revertsNote renders the whole ledger as the reading surface: one section per
