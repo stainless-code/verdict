@@ -258,8 +258,11 @@ var publishedSemantics = map[string]string{
 	// text and verify command), plus the regenerated envelope description
 	// naming handoffData. No existing property, required key, enum, or type
 	// changed.
-	// The validation pass adds data.validation (optional, post only).
-	"envelope.schema.json": "c2d742dfa071b91d05cb7832d2206607ff7d038be69ba6f70be3ed0121498f42",
+	// The validation pass adds data.validation (optional, post only), and
+	// validationData joins the envelope description's published data-profile
+	// list beside postData. No existing property, required key, enum, or type
+	// changed.
+	"envelope.schema.json": "312897e9b6bdf80aef54aeffa1d5397aff3fa80c9a62ff9c3769e0ca9a10b409",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
