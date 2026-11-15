@@ -600,10 +600,11 @@ var keywordCases = []keywordCase{
 			"An already escaped name no longer resolves because its escape sequence gains another layer.",
 			"Callers that already encoded the name break: the command worked before this change and now the endpoint 404s.",
 			"The helper re-encodes the caller's escape sequence instead of escaping only an unescaped name.",
-			// audit-10's fresh paraphrases: both say the path is corrupted, never
-			// that a name is escaped again.
-			"If the caller passes a URL-encoded package name such as ghcr.io%2Fuser%2Fpkg, url.QueryEscape will escape the % characters into %25, corrupting the path.",
-			"Calling url.QueryEscape unconditionally on packageName corrupts paths that are already percent-encoded (turning %2F into %252F), causing 404 responses.",
+			// audit-10's fresh paraphrases, repointed: the pin states their claim
+			// in encoding terms, because a bare "the path is corrupted" no longer
+			// counts (CodeRabbit on PR #151). The originals are pinned in fails.
+			"If the caller passes a URL-encoded package name such as ghcr.io%2Fuser%2Fpkg, url.QueryEscape double-encodes the percent sign into %25.",
+			"Calling url.QueryEscape unconditionally on packageName double-encodes paths that are already percent-encoded, causing 404 responses.",
 		},
 		fails: []string{
 			"The regexp is compiled on every call instead of once at package level, which costs a compile per request.",
@@ -616,6 +617,14 @@ var keywordCases = []keywordCase{
 			// no-match path and must not be read as the corruption claim.
 			"Good that strings.Replace uses n=1 so only the captured package segment is substituted.",
 			"The helper returns path unchanged when pathWithPackageNameRE does not match.",
+			// A bare path-corruption claim is not this defect, wherever it comes
+			// from (CodeRabbit on PR #151).
+			"This path is corrupted when the base URL has a trailing slash.",
+			// audit-10's paraphrases verbatim. They name the corrupted path and
+			// not the encoding claim, so they are known misses after the
+			// narrowing; pinning them as false keeps it from quietly reversing.
+			"If the caller passes a URL-encoded package name such as ghcr.io%2Fuser%2Fpkg, url.QueryEscape will escape the % characters into %25, corrupting the path.",
+			"Calling url.QueryEscape unconditionally on packageName corrupts paths that are already percent-encoded (turning %2F into %252F), causing 404 responses.",
 		},
 	},
 	{
@@ -634,7 +643,10 @@ var keywordCases = []keywordCase{
 			// audit-10's fresh paraphrases: they name the flag and the skipped
 			// check, not the exit code the user sees.
 			"Returning displayLogSegments(...) here bypasses the --exit-status check later in runView, so gh run view --log --exit-status will exit 0 even when the workflow run failed.",
-			"When --log or --log-failed is passed alongside --exit-status, this early return skips the opts.ExitStatus failure check below and ignores the flag.",
+			// audit-10's second paraphrase, repointed to name the flag: "ignores
+			// the flag" alone also credits a comment about --log-failed
+			// (CodeRabbit on PR #151). The original is pinned in fails.
+			"When --log or --log-failed is passed alongside --exit-status, this early return skips the opts.ExitStatus failure check below and ignores --exit-status.",
 		},
 		fails: []string{
 			"The fallback fetches job logs one request at a time, so a wide matrix is slow.",
@@ -647,6 +659,13 @@ var keywordCases = []keywordCase{
 			// cleanup without claiming the return drops the flag.
 			"Returning displayLogSegments directly keeps the log-printing branch separate from the summary table below.",
 			"Deferring runLogZip.Close() ensures the temporary zip reader is cleaned up before displayLogSegments runs.",
+			// A flag other than --exit-status being ignored is a different
+			// defect, so this must not be credited as this bug.
+			"`--log-failed` ignores the flag when no step failed.",
+			// audit-10's paraphrase verbatim: "ignores the flag" without naming
+			// the flag is a known miss after the narrowing, pinned false so the
+			// narrowing cannot quietly reverse.
+			"When --log or --log-failed is passed alongside --exit-status, this early return skips the opts.ExitStatus failure check below and ignores the flag.",
 		},
 	},
 	{
