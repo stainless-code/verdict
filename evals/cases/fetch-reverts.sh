@@ -52,9 +52,11 @@ MISS=cccccccccccccccccccccccccccccccccccccccc
   printf 'package pkg\n\nfunc B() { _ = 2 }\n' >pkg/b.go
 )
 
+# The two matching rows are stored in descending sha order: the note publishes
+# them by sha, so a reader never sees a ledger's line order.
 cat >"$LEDGER" <<EOF
-{"schema_version":"1","sha":"$MATCH","subject":"Revert \"feat: add a guard\"","reverts":["dddddddddddddddddddddddddddddddddddddddd"],"date":"2024-01-03T00:00:00Z","paths":["src/a.go"]}
 {"schema_version":"1","sha":"$PREFIX","subject":"Revert \"feat: pkg helper\"","reverts":[],"date":"2024-01-04T00:00:00Z","paths":["pkg"]}
+{"schema_version":"1","sha":"$MATCH","subject":"Revert \"feat: add a guard\"","reverts":["dddddddddddddddddddddddddddddddddddddddd"],"date":"2024-01-03T00:00:00Z","paths":["src/a.go"]}
 {"schema_version":"1","sha":"$MISS","subject":"Revert \"feat: docs\"","reverts":[],"date":"2024-01-05T00:00:00Z","paths":["docs/notes.md"]}
 EOF
 
