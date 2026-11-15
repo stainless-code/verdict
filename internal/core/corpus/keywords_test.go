@@ -57,7 +57,7 @@ var keywordCases = []keywordCase{
 			"Parsing \"0000\" with the 2006 layout yields year 0 and the date is silently rewritten to the current day.",
 			"A literal year 0 in a year-carrying layout is treated as unset and its date is replaced with today.",
 			"The parsed timestamp is rewritten: year zero becomes the current date.",
-			"Parsing 0000 succeeds, then the missing-year branch discards it and stamps the current date.",
+			"Parsing 0000 succeeds, then the missing-year branch discards the year zero and stamps today.",
 		},
 		fails: []string{
 			"The year-only layout fails to parse a value with a timezone suffix.",
@@ -67,6 +67,7 @@ var keywordCases = []keywordCase{
 			"The loop bound runs one past the layouts slice.",
 			"A time-only value ignores the configured timezone.",
 			"The flag's help text does not list the default layouts.",
+			"For a time-only layout in UTC-5 this condition leaves January 1 instead of the current date, so the caller's zone is ignored.",
 		},
 	},
 	{
