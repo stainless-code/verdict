@@ -15,9 +15,17 @@
     {
       "path": "command_parse.go",
       "line": 93,
-      "kind": "off-by-one",
+      "kind": "check-ordering",
       "severity": "important",
-      "keywords": ["boundary check", "nth argument", "stop parsing flags"],
+      "keywords": [
+        "stoponntharg",
+        "early return",
+        "swallowed",
+        "boundary",
+        "nth argument",
+        "remaining args",
+        "empty-arg"
+      ],
       "note": "the boundary check that stops flag parsing at the Nth positional sits below the empty-argument break and the -- early return in the same loop, so those two argument shapes reach their branches first; the fix moves the check to the top of the loop",
       "also_lines": [92, 95]
     }

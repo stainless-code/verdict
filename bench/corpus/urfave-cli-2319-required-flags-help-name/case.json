@@ -15,9 +15,15 @@
     {
       "path": "command.go",
       "line": 414,
-      "kind": "missing-error-check",
+      "kind": "validation-bypass",
       "severity": "important",
-      "keywords": ["required flags", "named help", "built-in help command"],
+      "keywords": [
+        "cmd.name",
+        "named help",
+        "called help",
+        "user-defined help",
+        "checkrequiredflags"
+      ],
       "note": "cmd.Name == helpName exempts every command called help, including a user-defined one, from checkRequiredFlags; the fix adds a builtInHelp marker and tests that instead",
       "also_lines": [415]
     }

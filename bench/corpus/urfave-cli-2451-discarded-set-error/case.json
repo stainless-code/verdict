@@ -17,7 +17,12 @@
       "line": 166,
       "kind": "missing-error-check",
       "severity": "important",
-      "keywords": ["validator error", "f.Set", "empty source"],
+      "keywords": [
+        "thrown away",
+        "bypasses its validator",
+        "validator error",
+        "empty source"
+      ],
       "also_lines": [165],
       "note": "the else branch of the reviewed empty-value handling calls f.Set(f.Name, \"false\") as `_ = f.Set(...)`, discarding both the parse error and the validator error; the fix rewrites the branch to set val = \"false\" and return the error"
     }
