@@ -138,6 +138,36 @@ var keywordCases = []keywordCase{
 			"The boundary check should use >= instead of == in case len(posArgs) overshoots.",
 		},
 	},
+	// The fourth urfave row pins the branch that classifies a single-dash
+	// argument by its first byte: a name that is not a letter is appended to
+	// the positionals with everything after it, so a flag named "4" is never
+	// applied and a non-ASCII name is misclassified because the byte is read
+	// as a rune. Both halves are this one branch and two later fixes repair
+	// them, so a sentence about either names the defect. The fails list is a
+	// praise sentence for the branch's intent, a neutral note about the dash
+	// branch above it, and neighboring defects in the same file.
+	{
+		id: "urfave-cli-2088-non-letter-flag-unparsed",
+		passes: []string{
+			"A numeric flag name is never applied: `-4 value` is appended to the positional args instead.",
+			"The dash form of a numeric flag becomes a positional argument, so the value the caller passed never reaches the flag.",
+			"A defined flag is misclassified as an argument because the first byte of its name is not a letter, so it is never looked up as a flag.",
+			"A flag whose name starts with a digit can never be set, so a CLI that names a flag 4 takes its value as a positional.",
+			"Only a name starting with a letter is ever treated as a flag, so the caller's value is lost and the flag keeps its default.",
+			"The argument names a flag but is skipped, so the caller's value is lost and the flag keeps its default.",
+			"A flag whose name is not a letter can never be set: the branch returns before the lookup runs.",
+			"Calling unicode.IsLetter on rune(firstArg[1]) misclassifies a multi-byte name, so `-\u00fc` can never be set.",
+		},
+		fails: []string{
+			"Good: an argument that is not a letter is kept out of flag parsing, so a negative number stays positional.",
+			"The `--` branch sets shortOptionHandling to false before this else-if is reached.",
+			"A `--` argument is never parsed as a flag, which is intended.",
+			"Empty positional arguments are dropped instead of appended.",
+			"firstArg[1] is indexed without checking the length, so a bare dash panics.",
+			"The args accessor functions should be grouped by receiver.",
+			"Add a test that a negative number stays positional.",
+		},
+	},
 	{
 		id: "dbt-core-8589-semantic-model-same-model",
 		passes: []string{
