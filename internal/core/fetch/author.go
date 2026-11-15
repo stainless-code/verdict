@@ -11,6 +11,7 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 const (
@@ -260,6 +261,15 @@ func authorGeneratedHit(t authorText) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func authorRoutingHint(dir string) string {
+	file, ok := readcommon.Author(dir)
+	if !ok || file.Confidence == "" {
+		return ""
+	}
+	return fmt.Sprintf("; author looks like %s (%s); a reviewer from another model family is suggested",
+		file.Agent, file.Confidence)
 }
 
 func addAuthorArtifact(obj *jq.Obj, dir string) {

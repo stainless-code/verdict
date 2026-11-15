@@ -269,6 +269,21 @@ func TestAuthorArtifactNamesTheFile(t *testing.T) {
 	}
 }
 
+// TestAuthorRoutingHint holds the advisory next-step suffix to its literal, and
+// to nothing at all when the bundle carries no fingerprint.
+func TestAuthorRoutingHint(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if got := authorRoutingHint(dir); got != "" {
+		t.Errorf("hint without a fingerprint = %q, want no hint", got)
+	}
+	writeTestFile(t, dir+suffixAuthor, `{"schema_version":"1","agent":"codex","model":null,"confidence":"medium","evidence":[{"field":"head_ref","signal":"codex/"}]}`)
+	want := "; author looks like codex (medium); a reviewer from another model family is suggested"
+	if got := authorRoutingHint(dir); got != want {
+		t.Errorf("hint = %q, want %q", got, want)
+	}
+}
+
 func readAuthorFile(t *testing.T, dir string) *core.AuthorFile {
 	t.Helper()
 	raw, err := os.ReadFile(dir + suffixAuthor)

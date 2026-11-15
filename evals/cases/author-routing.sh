@@ -84,6 +84,10 @@ assert_file_eq "the reviewed diff is unchanged" "$EVAL_SANDBOX/canned.diff" "$BU
 assert_json_field "the reviewed file count is unchanged" 1 '.data.files'
 assert_json_field "the next step feeds the diff, not the fingerprint" "false" \
   '.next | contains("author.json")'
+assert_json_field "the next step suggests a reviewer from another family" "true" \
+  '.next | contains("author looks like claude (high); a reviewer from another model family is suggested")'
+assert_file_grep "the human next step carries the same suggestion" "$EVAL_ERR" \
+  'next: .*author looks like claude \(high\); a reviewer from another model family is suggested$' "-E"
 
 # A PR carrying no published signal writes no fingerprint, and the earlier claim
 # does not survive the rerun: absent means unknown, never human.
@@ -99,5 +103,8 @@ else
   good "a fetch matching no signal removes the earlier fingerprint"
 fi
 assert_stream_nogrep "no fingerprint line prints without a signal" "$EVAL_ERR" '^» author: ' "-E"
+assert_json_field "no suggestion rides a missing fingerprint" "false" \
+  '.next | contains("another model family")'
+assert_stream_nogrep "no suggestion prints without a fingerprint" "$EVAL_ERR" 'another model family'
 
 eval_end
