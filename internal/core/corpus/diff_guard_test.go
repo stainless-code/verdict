@@ -22,9 +22,66 @@ const guardDiff = `diff --git a/help.go b/help.go
  	return nil
 `
 
+// selectorDiff is a patch whose only mention of the selector is the dotted
+// form, so a keyword that is one of its parts is spelled only as a part.
+const selectorDiff = `diff --git a/command.go b/command.go
+--- a/command.go
++++ b/command.go
+@@ -410,1 +410,4 @@ func run() error {
++	if cmd.Name == helpName {
++		return nil
++	}
+ 	return cmd.Run()
+`
+
+// nilCheckDiff carries a category phrase in a comment, the shape that let a
+// nil-deref case grade the diff's own words.
+const nilCheckDiff = `diff --git a/session.go b/session.go
+--- a/session.go
++++ b/session.go
+@@ -50,2 +50,3 @@ func load(id string) *Session {
++	// add a nil check before the lookup
++	s := lookup(id)
+ 	return s
+`
+
+// kindPhraseDiff carries a bug's kind in space form, which names the defect
+// without any of the case's keywords.
+const kindPhraseDiff = `diff --git a/parse.go b/parse.go
+--- a/parse.go
++++ b/parse.go
+@@ -10,1 +10,3 @@ func parse() {
++	// validation bypass: the required flag is never checked
++	run(name)
+ 	return
+`
+
+// raceDiff carries a race category phrase in a comment, the shape a real
+// race-fix diff has; the case must still load because the curator cannot edit
+// the built-in table.
+const raceDiff = `diff --git a/pool.go b/pool.go
+--- a/pool.go
++++ b/pool.go
+@@ -44,2 +44,3 @@ func borrow() *Conn {
++	// the goroutine closes the conn after the pool takes it back
++	c := pool.get()
+ return c
+`
+
+// raceAllDiff spells every built-in phrase the race category answers to, so a
+// keyword-free race case has nothing left to grade with.
+const raceAllDiff = `diff --git a/pool.go b/pool.go
+--- a/pool.go
++++ b/pool.go
+@@ -44,2 +44,3 @@ func borrow() *Conn {
++	// goroutine race concurrent: wait for the close before reuse
++	c := pool.get()
+ return c
+`
+
 // TestCheckDiffRefusesDiffVocabulary pins the vocabulary guard from both
-// sides: a keyword the diff spells is refused, and a keyword that merely
-// shares letters with an identifier is kept.
+// sides: a curator keyword the diff spells is refused, a built-in phrase it
+// spells is filtered instead, and a case left with no phrase at all is refused.
 func TestCheckDiffRefusesDiffVocabulary(t *testing.T) {
 	for _, tc := range keywordGuardRows {
 		t.Run(tc.name, func(t *testing.T) { checkGuardRow(t, tc) })
@@ -43,7 +100,7 @@ func TestCheckDiffRefusesAContextAnchor(t *testing.T) {
 // and a kept one must survive untouched.
 func checkGuardRow(t *testing.T, tc *guardRow) {
 	t.Helper()
-	ref := CheckDiff(guardManifest(t, tc), []byte(guardDiff), "case.json")
+	ref := CheckDiff(guardManifest(t, tc), []byte(tc.diffText()), "case.json")
 	if tc.refuse == "" {
 		if ref != nil {
 			t.Fatalf("refused %v, want the case kept", ref)
@@ -62,18 +119,36 @@ func checkGuardRow(t *testing.T, tc *guardRow) {
 type guardRow struct {
 	name     string
 	kind     string
+	bugKind  string
+	diff     string
+	path     string
 	refuse   string
 	keywords []string
 	also     []int
 	line     int
 }
 
+func (r *guardRow) diffText() string {
+	if r.diff == "" {
+		return guardDiff
+	}
+	return r.diff
+}
+
 var keywordGuardRows = []*guardRow{
 	{name: "identifier, any case", refuse: "stoponntharg", keywords: []string{"early return", "stoponntharg"}, line: 93},
 	{name: "selector", refuse: "cmd.name", keywords: []string{"cmd.name", "on the boundary"}, line: 93},
+	{name: "split selector", refuse: "\"cmd\"", diff: selectorDiff, path: "command.go", keywords: []string{"cmd", "name"}, line: 410},
+	{name: "split selector field", refuse: "\"name\"", diff: selectorDiff, path: "command.go", keywords: []string{"name"}, line: 410},
+	{name: "spaced selector", refuse: "\"cmd .Name\"", keywords: []string{"cmd .Name"}, line: 93},
+	{name: "prefix of a longer identifier", refuse: "\"help\"", diff: selectorDiff, path: "command.go", keywords: []string{"help"}, line: 410},
+	{name: "inside a longer identifier", keywords: []string{"ntharg"}, line: 93},
 	{name: "a word the diff comments", refuse: "empty source", keywords: []string{"empty source", "thrown away"}, line: 93},
-	{name: "letters inside a longer identifier", keywords: []string{"help", "ntharg"}, line: 93},
 	{name: "prose the diff never spells", keywords: []string{"the check runs too late", "boundary check", "swallowed"}, line: 93},
+	{name: "built-in category phrase the diff comments", bugKind: "nil-deref", diff: nilCheckDiff, path: "session.go", keywords: []string{"dereference before the lookup"}, line: 50},
+	{name: "built-in kind phrase the diff comments", diff: kindPhraseDiff, path: "parse.go", keywords: []string{"the exemption ignores the required flag"}, line: 10},
+	{name: "race case whose diff comments goroutine", bugKind: "race", diff: raceDiff, path: "pool.go", keywords: []string{"data race"}, line: 45},
+	{name: "no usable phrase", refuse: "add a keyword the diff does not spell", bugKind: "race", diff: raceAllDiff, path: "pool.go", line: 45},
 	{name: "seeded case, its own diff", kind: "seeded", keywords: []string{"stoponntharg"}, line: 93},
 	{name: "control, no bugs", kind: "control", keywords: []string{"stoponntharg"}, line: 93},
 }
@@ -98,6 +173,33 @@ func TestCheckDiffRefusesAnUnreadableManifest(t *testing.T) {
 	}
 }
 
+// TestVocabularyRefusalsDoNotBorrowTheCaseTemplate proves the two vocabulary
+// refusals give their own remedy instead of telling the curator to copy a case
+// manifest whose shape is already valid.
+func TestVocabularyRefusalsDoNotBorrowTheCaseTemplate(t *testing.T) {
+	rows := []*guardRow{
+		{name: "keyword the diff spells", keywords: []string{"stoponntharg"}, line: 93},
+		{name: "no usable phrase", bugKind: "race", diff: raceAllDiff, path: "pool.go", line: 45},
+	}
+	for _, row := range rows {
+		t.Run(row.name, func(t *testing.T) { checkVocabularyRefusal(t, row) })
+	}
+}
+
+func checkVocabularyRefusal(t *testing.T, row *guardRow) {
+	t.Helper()
+	ref := CheckDiff(guardManifest(t, row), []byte(row.diffText()), "case.json")
+	if ref == nil {
+		t.Fatal("accepted the vocabulary, want a refusal")
+	}
+	if strings.Contains(ref.Message, "copy bench/corpus") {
+		t.Errorf("vocabulary refusal borrows the case-authoring template: %q", ref.Message)
+	}
+	if !strings.Contains(ref.Message, "unusable") {
+		t.Errorf("message %q does not call the vocabulary unusable", ref.Message)
+	}
+}
+
 // guardManifest builds one case.json body: real unless a test says otherwise,
 // so the guards' kind rule is the only variable.
 func guardManifest(t *testing.T, row *guardRow) []byte {
@@ -113,6 +215,12 @@ func guardManifest(t *testing.T, row *guardRow) []byte {
 	bug := map[string]any{
 		"path": "help.go", "line": line, "kind": "validation-bypass",
 		"severity": "important", "keywords": row.keywords,
+	}
+	if row.path != "" {
+		bug["path"] = row.path
+	}
+	if row.bugKind != "" {
+		bug["kind"] = row.bugKind
 	}
 	if len(row.also) > 0 {
 		bug["also_lines"] = row.also

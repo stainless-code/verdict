@@ -39,21 +39,31 @@ type corpusRollup struct {
 	total   corpusCounts
 }
 
+// skipCorpus warns about one bundle trend cannot read and keeps the rest. The
+// directory is quoted so a newline in a name cannot forge a warning line.
+func (st *state) skipCorpus(dir, reason string) {
+	st.warn(fmt.Sprintf("%scorpus bundle %q (%s)", skipWarn, dir, reason))
+}
+
 func (st *state) readCorpus(dir string) {
 	c, ref := corpuscore.Load(dir)
 	if ref != nil {
-		st.warn(skipWarn + "corpus bundle " + dir + "/ (" + ref.Message + ")")
+		st.skipCorpus(dir, ref.Message)
 		return
 	}
 	entries, err := readcommon.LoadFindings(dir)
 	if err != nil {
-		st.warn(skipWarn + "corpus bundle " + dir + "/ (" + err.Error() + ")")
+		st.skipCorpus(dir, err.Error())
 		return
 	}
-	report := corpuscore.Evaluate(c, entries)
+	report, ref := corpuscore.EvaluateDir(dir, c, entries)
+	if ref != nil {
+		st.skipCorpus(dir, ref.Message)
+		return
+	}
 	sample, ref := corpuscore.LoadSample(dir, report)
 	if ref != nil {
-		st.warn(skipWarn + "corpus bundle " + dir + "/ (" + ref.Message + ")")
+		st.skipCorpus(dir, ref.Message)
 		return
 	}
 	st.corpora = append(st.corpora, corpusPoint{

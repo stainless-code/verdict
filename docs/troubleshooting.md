@@ -482,9 +482,9 @@ Fix: check out the PR base (`actions/checkout` with `fetch-depth: 0`, or `git fe
 
 ## `corpus-invalid`
 
-Cause: the benchmark case manifest is invalid — the message names the file and the reason.
+Cause: the benchmark case manifest is invalid, or a real bundle's reviewed `full.diff` is missing, empty, or unreadable — the message names the file and the reason.
 
-Fix: fix the manifest named above and re-run.
+Fix: for a manifest, fix the file named above and re-run. For a missing, empty, or unreadable `full.diff`, rebuild the bundle (`fetch-local` or `fetch` for a fetched bundle, `backtest replay` for a replay bundle), then re-run the verb. An empty diff is a failed capture, not a valid review of no changes.
 
 ## `corrupt-store`
 
