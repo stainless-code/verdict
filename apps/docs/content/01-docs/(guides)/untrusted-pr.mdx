@@ -24,7 +24,7 @@ Use this when the diff is untrusted: an unknown author, a drive-by fork PR, or a
     verdict verify owner/repo 123 --sandbox
     ```
 
-    On Linux with `bubblewrap` installed, `verify` builds the sandbox itself: the command gets its own PID namespace and loopback, no route out, an empty `/run`, a private `/tmp`, and every credential path on the host (`~/.aws`, `~/.ssh`, `~/.config/gh`, and the rest) replaced before the command runs. On macOS it builds a `sandbox-exec` profile instead, which denies the network — every `bind()` and `connect()`, loopback included — and leaves the filesystem and credential paths as the recipe does. The patch record carries `"sandboxed": true`, and the `--json` envelope reports it the same way.
+    On Linux with `bubblewrap` installed, `verify` builds the sandbox itself: the command gets its own PID namespace and loopback, no route out, an empty `/run`, a private `/tmp`, and every credential path on the host (`~/.aws`, `~/.ssh`, `~/.config/gh`, and the rest) replaced before the command runs. On macOS it builds a `sandbox-exec` profile instead, which denies the network — every `bind()` and `connect()`, loopback included — and leaves the host filesystem and credential paths untouched, so filesystem isolation on a Mac needs a Linux VM or container running the bubblewrap recipe. The patch record carries `"sandboxed": true`, and the `--json` envelope reports it the same way.
 
   </Step>
 
@@ -35,7 +35,7 @@ Use this when the diff is untrusted: an unknown author, a drive-by fork PR, or a
 
 ## What success looks like
 
-On Linux and macOS the claimed command runs contained and the patch record notes `"sandboxed": true`. Anywhere else you get `sandbox-unavailable`, the patch file stays byte-identical, no `.verify.out` is written, and exit `1` tells the caller the proof did not run. Either way, nothing untrusted reached your network; on Linux your credentials are hidden too, and on macOS the filesystem half stays the manual's recipe. Once the proof runs, the normal merge protection still applies: [Gate a PR in CI](/docs/ci-gate).
+On Linux and macOS the claimed command runs contained and the patch record notes `"sandboxed": true`. Anywhere else you get `sandbox-unavailable`, the patch file stays byte-identical, no `.verify.out` is written, and exit `1` tells the caller the proof did not run. Either way, nothing untrusted reached your network; on Linux your credentials are hidden too, and on macOS filesystem isolation needs a Linux VM or container running the bubblewrap recipe. Once the proof runs, the normal merge protection still applies: [Gate a PR in CI](/docs/ci-gate).
 
 ## Full detail
 

@@ -3032,8 +3032,9 @@ runs the command under `(version 1)(allow default)(deny network*)`, so every
 and a command that listens or connects fails. macOS has no
 filesystem namespace, so the mounts above, the private `/tmp`, the empty
 `/run`, and the credential hiding are Linux-only: on macOS the command still
-sees the host filesystem and your credential files, and the recipe below
-covers that half.
+sees the host filesystem and your credential files. Filesystem isolation on a
+macOS host needs a Linux VM or container running the `bwrap` recipe below —
+there is no in-place macOS equivalent.
 
 Before anything executes it probes the same flags with a no-op; when the
 host is neither Linux nor macOS, `bwrap` or `sandbox-exec` is missing, the
@@ -3047,9 +3048,9 @@ sandboxed. The same opt-in reaches the MCP tool (`sandbox`), the Go facade
 
 ### Recipe for other OSes (and for wrapping the whole review)
 
-The one-liner below still applies on Windows, on a minimal image with no
-`bwrap`, when you need the filesystem half on macOS, or when the whole
-`verdict` process must run inside the sandbox:
+The one-liner below is Linux-only. It applies on a minimal image with no
+`bwrap`, on Windows or macOS only inside a Linux VM or container, or when the
+whole `verdict` process must run inside the sandbox:
 
 `bwrap` one-liner, from the repo root (`verify` runs the same `verifyCmd`;
 only the filesystem and network it sees change):
@@ -3081,7 +3082,7 @@ bwrap --ro-bind / / --dev /dev --proc /proc --unshare-pid --tmpfs /tmp \
   -- verdict verify owner/repo 123
 ```
 
-No `bwrap` (macOS, minimal images)? `systemd-nspawn` covers the network
+No `bwrap` (minimal Linux images)? `systemd-nspawn` covers the network
 half of the shape only — network-only isolation, not the same shape:
 
 ```bash
