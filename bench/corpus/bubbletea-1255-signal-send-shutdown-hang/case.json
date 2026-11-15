@@ -1,0 +1,38 @@
+{
+  "schema_version": "1",
+  "id": "bubbletea-1255-signal-send-shutdown-hang",
+  "kind": "real",
+  "language": "go",
+  "provenance": {
+    "kind": "real",
+    "repo": "charmbracelet/bubbletea",
+    "pr": 1255,
+    "base_sha": "2ea49ddc4f36b8c47231ab0be31e40ca8676b050",
+    "head_sha": "cb9395982335da2fbc8cf90c5cf2c3b73eee4787",
+    "fix_commit": "https://github.com/charmbracelet/bubbletea/commit/ff51ba4c51f85875761b15a64f9ab9aa0eaa9fa1",
+    "source": "PR #1255 feat(SIGINT): better handle interrupts, merged 2024-12-02",
+    "note": "the base sends on the message channel from the signal handler with the same missing guard, so the PR rewrote this send into a two-message switch without repairing it; the later fix guards the send on the program's context and ships a regression test"
+  },
+  "bugs": [
+    {
+      "path": "tea.go",
+      "line": 289,
+      "kind": "deadlock",
+      "severity": "important",
+      "keywords": [
+        "blocks forever",
+        "program never exits",
+        "hangs the program on exit",
+        "hung on exit",
+        "shutdown never completes",
+        "shutdown hangs waiting for the handler",
+        "stuck in the send",
+        "never returns from the send",
+        "deadlocks the shutdown",
+        "send has no context guard"
+      ],
+      "note": "the handler writes the interrupt message straight onto the program's message channel with no way out; once the event loop has stopped nothing reads that channel, so the handler never returns, and shutdown waits for the handlers it started",
+      "also_lines": [291]
+    }
+  ]
+}

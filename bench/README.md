@@ -126,23 +126,25 @@ citable.
 
 ## Flags
 
-| flag        | default                               |                                                               |
-| ----------- | ------------------------------------- | ------------------------------------------------------------- |
-| `-model`    | —                                     | model id every bundle is attributed to (required)             |
-| `-agent`    | —                                     | agent command line (required)                                 |
-| `-panel`    | `bench-<model>`                       | panel the samples run under                                   |
-| `-cases`    | the whole corpus                      | comma-separated case ids; a subset is never citable           |
-| `-runs`     | `1`                                   | samples per case; the runbook publishes `3`                   |
-| `-loop`     | `1`                                   | repair rounds per sample; `1` keeps single-shot               |
-| `-timeout`  | `15m`                                 | budget for one sample                                         |
-| `-max-usd`  | `0` (no cap)                          | stop scheduling samples at this measured spend                |
-| `-root`     | the module root                       | checkout to read the corpus, prompts, and binary from         |
-| `-corpus`   | `<root>/bench/corpus`                 | corpus directory                                              |
-| `-verdict`  | `<root>/bin/verdict`                  | the binary that scores                                        |
-| `-workdir`  | a fresh temp dir                      | run directory; must be empty or absent                        |
-| `-out`      | `bench/results[/pilot]/<run-id>.json` | publication JSON                                              |
-| `-internal` | `false`                               | mark a pilot: never citable, published under `results/pilot/` |
-| `-repo`     | `acme/bench`                          | owner/repo label the corpus verbs take (local, never network) |
+| flag            | default                               |                                                               |
+| --------------- | ------------------------------------- | ------------------------------------------------------------- |
+| `-model`        | —                                     | model id every bundle is attributed to (required)             |
+| `-agent`        | —                                     | agent command line (required)                                 |
+| `-panel`        | `bench-<model>`                       | panel the samples run under                                   |
+| `-cases`        | the whole corpus                      | comma-separated case ids; a subset is never citable           |
+| `-runs`         | `1`                                   | samples per case; the runbook publishes `3`                   |
+| `-loop`         | `1`                                   | repair rounds per sample; `1` keeps single-shot               |
+| `-timeout`      | `15m`                                 | budget for one sample                                         |
+| `-max-usd`      | `0` (no cap)                          | stop scheduling samples at this measured spend                |
+| `-root`         | the module root                       | checkout to read the corpus, prompts, and binary from         |
+| `-corpus`       | `<root>/bench/corpus`                 | corpus directory                                              |
+| `-verdict`      | `<root>/bin/verdict`                  | the binary that scores                                        |
+| `-workdir`      | a fresh temp dir                      | run directory; must be empty or absent                        |
+| `-out`          | `bench/results[/pilot]/<run-id>.json` | publication JSON                                              |
+| `-internal`     | `false`                               | mark a pilot: never citable, published under `results/pilot/` |
+| `-repo`         | `acme/bench`                          | owner/repo label the corpus verbs take (local, never network) |
+| `-render`       | —                                     | re-render a published JSON as Markdown; launches nothing      |
+| `-adjudication` | —                                     | a record to reclassify a `-render`ed publication with         |
 
 ## Budget
 

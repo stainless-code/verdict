@@ -1,0 +1,156 @@
+diff --git a/examples/go.mod b/examples/go.mod
+index 1905da6..5726017 100644
+--- a/examples/go.mod
++++ b/examples/go.mod
+@@ -23,7 +23,7 @@ require (
+ 	github.com/aymanbagabas/go-udiff v0.2.0 // indirect
+ 	github.com/aymerick/douceur v0.2.0 // indirect
+ 	github.com/charmbracelet/colorprofile v0.2.3-0.20250311203215-f60798e515dc // indirect
+-	github.com/charmbracelet/x/ansi v0.9.2 // indirect
++	github.com/charmbracelet/x/ansi v0.9.3 // indirect
+ 	github.com/charmbracelet/x/cellbuf v0.0.13 // indirect
+ 	github.com/charmbracelet/x/exp/golden v0.0.0-20241011142426-46044092ad91 // indirect
+ 	github.com/charmbracelet/x/exp/slice v0.0.0-20250327172914-2fdc97757edf // indirect
+@@ -45,8 +45,7 @@ require (
+ 	github.com/yuin/goldmark v1.7.8 // indirect
+ 	github.com/yuin/goldmark-emoji v1.0.5 // indirect
+ 	golang.org/x/net v0.38.0 // indirect
+-	golang.org/x/sync v0.14.0 // indirect
+-	golang.org/x/sys v0.33.0 // indirect
++	golang.org/x/sys v0.34.0 // indirect
+ 	golang.org/x/term v0.31.0 // indirect
+ 	golang.org/x/text v0.24.0 // indirect
+ )
+diff --git a/examples/go.sum b/examples/go.sum
+index 297e85d..4bdca2b 100644
+--- a/examples/go.sum
++++ b/examples/go.sum
+@@ -24,8 +24,8 @@ github.com/charmbracelet/harmonica v0.2.0 h1:8NxJWRWg/bzKqqEaaeFNipOu77YR5t8aSwG
+ github.com/charmbracelet/harmonica v0.2.0/go.mod h1:KSri/1RMQOZLbw7AHqgcBycp8pgJnQMYYT8QZRqZ1Ao=
+ github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834 h1:ZR7e0ro+SZZiIZD7msJyA+NjkCNNavuiPBLgerbOziE=
+ github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834/go.mod h1:aKC/t2arECF6rNOnaKaVU6y4t4ZeHQzqfxedE/VkVhA=
+-github.com/charmbracelet/x/ansi v0.9.2 h1:92AGsQmNTRMzuzHEYfCdjQeUzTrgE1vfO5/7fEVoXdY=
+-github.com/charmbracelet/x/ansi v0.9.2/go.mod h1:3RQDQ6lDnROptfpWuUVIUG64bD2g2BgntdxH0Ya5TeE=
++github.com/charmbracelet/x/ansi v0.9.3 h1:BXt5DHS/MKF+LjuK4huWrC6NCvHtexww7dMayh6GXd0=
++github.com/charmbracelet/x/ansi v0.9.3/go.mod h1:3RQDQ6lDnROptfpWuUVIUG64bD2g2BgntdxH0Ya5TeE=
+ github.com/charmbracelet/x/cellbuf v0.0.13 h1:/KBBKHuVRbq1lYx5BzEHBAFBP8VcQzJejZ/IA3iR28k=
+ github.com/charmbracelet/x/cellbuf v0.0.13/go.mod h1:xe0nKWGd3eJgtqZRaN9RjMtK7xUYchjzPr7q6kcvCCs=
+ github.com/charmbracelet/x/exp/golden v0.0.0-20241011142426-46044092ad91 h1:payRxjMjKgx2PaCWLZ4p3ro9y97+TVLZNaRZgJwSVDQ=
+@@ -86,12 +86,10 @@ golang.org/x/exp v0.0.0-20220909182711-5c715a9e8561 h1:MDc5xs78ZrZr3HMQugiXOAkSZ
+ golang.org/x/exp v0.0.0-20220909182711-5c715a9e8561/go.mod h1:cyybsKvd6eL0RnXn6p/Grxp8F5bW7iYuBgsNCOHpMYE=
+ golang.org/x/net v0.38.0 h1:vRMAPTMaeGqVhG5QyLJHqNDwecKTomGeqbnfZyKlBI8=
+ golang.org/x/net v0.38.0/go.mod h1:ivrbrMbzFq5J41QOQh0siUuly180yBYtLp+CKbEaFx8=
+-golang.org/x/sync v0.14.0 h1:woo0S4Yywslg6hp4eUFjTVOyKt0RookbpAHG4c1HmhQ=
+-golang.org/x/sync v0.14.0/go.mod h1:1dzgHSNfp02xaA81J2MS99Qcpr2w7fw1gpm99rleRqA=
+ golang.org/x/sys v0.0.0-20210809222454-d867a43fc93e/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+ golang.org/x/sys v0.6.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+-golang.org/x/sys v0.33.0 h1:q3i8TbbEz+JRD9ywIRlyRAQbM0qF7hu24q3teo2hbuw=
+-golang.org/x/sys v0.33.0/go.mod h1:BJP2sWEmIv4KK5OTEluFJCKSidICx8ciO85XgH3Ak8k=
++golang.org/x/sys v0.34.0 h1:H5Y5sJ2L2JRdyv7ROF1he/lPdvFsd0mJHFw2ThKHxLA=
++golang.org/x/sys v0.34.0/go.mod h1:BJP2sWEmIv4KK5OTEluFJCKSidICx8ciO85XgH3Ak8k=
+ golang.org/x/term v0.31.0 h1:erwDkOK1Msy6offm1mOgvspSkslFnIGsFnxOKoufg3o=
+ golang.org/x/term v0.31.0/go.mod h1:R4BeIy7D95HzImkxGkTW1UQTtP54tio2RyHz7PwK0aw=
+ golang.org/x/text v0.24.0 h1:dd5Bzh4yt5KYA8f9CJHCP4FB4D51c2c6JvN37xJJkJ0=
+diff --git a/tea.go b/tea.go
+index f7882b3..3d0b975 100644
+--- a/tea.go
++++ b/tea.go
+@@ -24,7 +24,6 @@ import (
+ 
+ 	"github.com/charmbracelet/x/term"
+ 	"github.com/muesli/cancelreader"
+-	"golang.org/x/sync/errgroup"
+ )
+ 
+ // ErrProgramPanic is returned by [Program.Run] when the program recovers from a panic.
+@@ -473,11 +472,10 @@ func (p *Program) eventLoop(model Model, cmds chan Cmd) (Model, error) {
+ 
+ 			case BatchMsg:
+ 				for _, cmd := range msg {
+-					select {
+-					case <-p.ctx.Done():
+-						return model, nil
+-					case cmds <- cmd:
++					if cmd == nil {
++						continue
+ 					}
++					go p.Send(cmd())
+ 				}
+ 				continue
+ 
+@@ -490,22 +488,31 @@ func (p *Program) eventLoop(model Model, cmds chan Cmd) (Model, error) {
+ 						}
+ 
+ 						msg := cmd()
+-						if batchMsg, ok := msg.(BatchMsg); ok {
+-							g, _ := errgroup.WithContext(p.ctx)
+-							for _, cmd := range batchMsg {
++						switch msg := msg.(type) {
++						case BatchMsg:
++							var wg sync.WaitGroup
++							for _, cmd := range msg {
++								if cmd == nil {
++									continue
++								}
++								wg.Add(1)
+ 								cmd := cmd
+-								g.Go(func() error {
++								go func() {
++									defer wg.Done()
+ 									p.Send(cmd())
+-									return nil
+-								})
++								}()
+ 							}
+-
+-							//nolint:errcheck,gosec
+-							g.Wait() // wait for all commands from batch msg to finish
+-							continue
++							wg.Wait()
++						case sequenceMsg:
++							for _, cmd := range msg {
++								if cmd == nil {
++									continue
++								}
++								p.Send(cmd())
++							}
++						default:
++							p.Send(msg)
+ 						}
+-
+-						p.Send(msg)
+ 					}
+ 				}()
+ 
+diff --git a/tea_test.go b/tea_test.go
+index d4e29d0..b45d80a 100644
+--- a/tea_test.go
++++ b/tea_test.go
+@@ -424,6 +424,27 @@ func TestTeaSequenceMsgWithBatchMsg(t *testing.T) {
+ 	}
+ }
+ 
++func TestTeaNestedSequenceMsg(t *testing.T) {
++	var buf bytes.Buffer
++	var in bytes.Buffer
++
++	inc := func() Msg {
++		return incrementMsg{}
++	}
++
++	m := &testModel{}
++	p := NewProgram(m, WithInput(&in), WithOutput(&buf))
++	go p.Send(sequenceMsg{inc, Sequence(inc, inc), Quit})
++
++	if _, err := p.Run(); err != nil {
++		t.Fatal(err)
++	}
++
++	if m.counter.Load() != 3 {
++		t.Fatalf("counter should be 3, got %d", m.counter.Load())
++	}
++}
++
+ func TestTeaSend(t *testing.T) {
+ 	var buf bytes.Buffer
+ 	var in bytes.Buffer

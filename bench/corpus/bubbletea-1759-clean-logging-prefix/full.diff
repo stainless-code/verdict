@@ -1,0 +1,70 @@
+diff --git a/logging.go b/logging.go
+index 349758c..971ebc6 100644
+--- a/logging.go
++++ b/logging.go
+@@ -6,6 +6,7 @@ import (
+ 	"log"
+ 	"os"
+ 	"unicode"
++	"unicode/utf8"
+ )
+ 
+ // LogToFile sets up default logging to log to a file. This is helpful as we
+@@ -42,8 +43,8 @@ func LogToFileWith(path string, prefix string, log LogOptionsSetter) (*os.File,
+ 	// Add a space after the prefix if a prefix is being specified and it
+ 	// doesn't already have a trailing space.
+ 	if len(prefix) > 0 {
+-		finalChar := prefix[len(prefix)-1]
+-		if !unicode.IsSpace(rune(finalChar)) {
++		finalRune, _ := utf8.DecodeLastRuneInString(prefix)
++		if !unicode.IsSpace(finalRune) {
+ 			prefix += " "
+ 		}
+ 	}
+diff --git a/logging_test.go b/logging_test.go
+index 70c2065..33c93a1 100644
+--- a/logging_test.go
++++ b/logging_test.go
+@@ -1,6 +1,7 @@
+ package tea
+ 
+ import (
++	"io"
+ 	"log"
+ 	"os"
+ 	"path/filepath"
+@@ -27,3 +28,34 @@ func TestLogToFile(t *testing.T) {
+ 		t.Fatalf("wrong log msg: %q", string(out))
+ 	}
+ }
++
++func TestLogToFileWithPrefixSpacing(t *testing.T) {
++	tests := []struct {
++		name   string
++		prefix string
++		want   string
++	}{
++		{"empty", "", ""},
++		{"missing space", "prefix", "prefix "},
++		{"ASCII space", "prefix ", "prefix "},
++		{"non-breaking space", "prefix\u00a0", "prefix\u00a0"},
++		{"ideographic space", "prefix\u3000", "prefix\u3000"},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			logger := log.New(io.Discard, "", 0)
++			f, err := LogToFileWith(filepath.Join(t.TempDir(), "log.txt"), tt.prefix, logger)
++			if err != nil {
++				t.Fatal(err)
++			}
++			if err := f.Close(); err != nil {
++				t.Fatal(err)
++			}
++
++			if got := logger.Prefix(); got != tt.want {
++				t.Fatalf("prefix = %q; want %q", got, tt.want)
++			}
++		})
++	}
++}
