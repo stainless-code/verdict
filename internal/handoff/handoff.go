@@ -17,7 +17,6 @@ import (
 // Request wires a handoff run.
 type Request = readcommon.Request
 
-// usageHandoff is the verb's own synopsis, repeated in every usage error.
 const usageHandoff = "usage: verdict handoff <owner/repo> <pr> [--min-severity <s>] " +
 	"[--paths <glob>]... [--format md] [--json]"
 
@@ -58,8 +57,6 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	return cli.ExitOK
 }
 
-// handoffRequest injects the runner's clock and progress observer into the
-// typed service request.
 func handoffRequest(r *cli.Runner, req Request, opts options) *handoffcore.Request {
 	read := req
 	if read.Runtime == nil {
@@ -75,14 +72,11 @@ func handoffRequest(r *cli.Runner, req Request, opts options) *handoffcore.Reque
 	}
 }
 
-// options carries the parsed severity floor and path globs.
 type options struct {
 	minSeverity string
 	paths       []string
 }
 
-// parseFlags parses the verb's flags: the two value flags (one repeatable),
-// the format, and the global --json the front door already stripped.
 func parseFlags(r *cli.Runner, args []string) (options, int, bool) {
 	opts := options{}
 	for i := 0; i < len(args); i++ {
@@ -95,8 +89,6 @@ func parseFlags(r *cli.Runner, args []string) (options, int, bool) {
 	return opts, 0, false
 }
 
-// applyFlag parses the flag at args[i] into opts and returns the index of its
-// last consumed token.
 func applyFlag(r *cli.Runner, args []string, i int, opts *options) (int, int, bool) {
 	switch args[i] {
 	case minSeverityFlag:
@@ -111,7 +103,6 @@ func applyFlag(r *cli.Runner, args []string, i int, opts *options) (int, int, bo
 	}
 }
 
-// parseValue reads one value flag and hands it to set.
 func parseValue(
 	r *cli.Runner, args []string, i int, want string, set func(string),
 ) (int, int, bool) {
@@ -123,8 +114,6 @@ func parseValue(
 	return next, 0, false
 }
 
-// parseFormat reads --format and holds it to the one published value: md is
-// the projection's only rendering, and the default, so naming it is explicit.
 func parseFormat(r *cli.Runner, args []string, i int) (int, int, bool) {
 	v, next, u := cli.FlagValue(args, i, args[i], "md")
 	if u != nil {

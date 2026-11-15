@@ -128,7 +128,6 @@ func Render(b *core.Brief) string {
 	return out.String()
 }
 
-// renderSites renders the sites one line: path[:line] joined by commas.
 func renderSites(sites []core.BriefSite) string {
 	out := make([]string, 0, len(sites))
 	for _, site := range sites {

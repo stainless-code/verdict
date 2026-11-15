@@ -209,8 +209,6 @@ func (st *state) humanf(format string, args ...any) {
 	}
 }
 
-// humanRaw writes pre-rendered text (a stored file, a shared block) with no
-// format expansion.
 func (st *state) humanRaw(text string) {
 	st.humanf("%s", text)
 }
@@ -1039,7 +1037,6 @@ func (st *state) printInstructions(dir, anchor string) {
 
 // printBrief writes the stored brief between the anchor line and the kb
 // recall: one block per finding, and nothing at all when none is stored.
-// The text comes from internal/brief so handoff embeds the same bytes.
 func printBrief(st *state, b *core.Brief) {
 	if text := brief.Render(b); text != "" {
 		st.humanRaw(text)

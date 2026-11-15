@@ -251,9 +251,6 @@ func TestFromRecordAbsent(t *testing.T) {
 	}
 }
 
-// TestRenderPinsTheBlockText pins the bytes fix prints for a stored brief (and
-// handoff embeds): one block, site lines only when sites exist, and nothing at
-// all for a nil brief.
 func TestRenderPinsTheBlockText(t *testing.T) {
 	line := 2
 	b := &core.Brief{

@@ -606,9 +606,6 @@ func TestRuntimeRiskEnvelopeValidates(t *testing.T) {
 	})
 }
 
-// TestRuntimeHandoffEnvelopeValidates proves the handoff response envelope
-// validates against the generated envelope schema and carries the brief text
-// fix prints plus the verify command the bundle records.
 func TestRuntimeHandoffEnvelopeValidates(t *testing.T) {
 	doc := loadSchemaDocument(t, "envelope.schema.json")
 	t.Chdir(t.TempDir())

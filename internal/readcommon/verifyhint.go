@@ -8,8 +8,6 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// minSigPrefix is the shortest stored sig prefix VerifyHint matches: sigs are
-// 40 hex chars, so 8 is unambiguous within one store.
 const minSigPrefix = 8
 
 const (
@@ -32,7 +30,6 @@ func VerifyHint(dir, full string) *core.VerifyHint {
 	return patchHint(dir, full)
 }
 
-// verificationHint reads the matching claim from the verification log.
 func verificationHint(dir, full string) *core.VerifyHint {
 	for _, claim := range verificationClaims(dir + verifyPath) {
 		if !sigMatches(stringField(claim, keySig), full) {
@@ -45,7 +42,6 @@ func verificationHint(dir, full string) *core.VerifyHint {
 	return nil
 }
 
-// verificationClaims reads the log's object entries, skipping anything else.
 func verificationClaims(path string) []*jq.Obj {
 	raw, ok := readOrderedStore(path)
 	if !ok {
@@ -64,8 +60,6 @@ func verificationClaims(path string) []*jq.Obj {
 	return claims
 }
 
-// patchHint reads the patch record's command when it names the finding (or
-// names no sig at all, the batch-patch case).
 func patchHint(dir, full string) *core.VerifyHint {
 	raw, ok := readOrderedStore(dir + patchPath)
 	if !ok {
@@ -78,7 +72,6 @@ func patchHint(dir, full string) *core.VerifyHint {
 	return hintFrom(patch)
 }
 
-// patchMatches holds a patch record to the finding it names.
 func patchMatches(patch *jq.Obj, full string) bool {
 	for _, key := range []string{keySig, "findingSig"} {
 		named := stringField(patch, key)
@@ -89,7 +82,6 @@ func patchMatches(patch *jq.Obj, full string) bool {
 	return true
 }
 
-// hintFrom builds the hint from one record, nil without a command.
 func hintFrom(m *jq.Obj) *core.VerifyHint {
 	command := stringField(m, keyVerifyCmd)
 	if command == "" {
@@ -102,7 +94,6 @@ func hintFrom(m *jq.Obj) *core.VerifyHint {
 	return hint
 }
 
-// sigMatches accepts the full sig or a stored prefix of at least minSigPrefix.
 func sigMatches(stored, full string) bool {
 	if stored == "" || full == "" {
 		return false
@@ -113,8 +104,6 @@ func sigMatches(stored, full string) bool {
 	return len(stored) >= minSigPrefix && strings.HasPrefix(full, stored)
 }
 
-// stringField reads one string field off a record ("" when absent or not a
-// string).
 func stringField(m *jq.Obj, key string) string {
 	if m == nil {
 		return ""
@@ -127,8 +116,6 @@ func stringField(m *jq.Obj, key string) string {
 	return s
 }
 
-// readOrderedStore decodes one store file, keeping key order (false when it is
-// absent or unreadable).
 func readOrderedStore(path string) (any, bool) {
 	raw, err := os.ReadFile(path)
 	if err != nil {

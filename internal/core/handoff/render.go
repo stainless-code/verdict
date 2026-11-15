@@ -60,11 +60,14 @@ func rowLines(r *Row) []string {
 }
 
 // verifyOf names the recorded rerun command, or says there is none.
+// minFence is the shortest fence a code block may open with.
+const minFence = 3
+
 // fenceFor returns a code fence longer than any backtick run in body, so a
 // suggestion that itself holds ``` (or more) cannot close the block early
 // (CommonMark: the closing fence must be at least as long as the opening).
 func fenceFor(body string) string {
-	n, run := 3, 0
+	n, run := minFence, 0
 	for _, r := range body {
 		if r != '`' {
 			run = 0

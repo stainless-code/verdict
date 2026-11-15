@@ -217,7 +217,6 @@ func decodeFix(req *fixcore.Request, a *args) {
 	a.strings(argPaths, &req.Paths)
 }
 
-// decodeHandoff reads the projection's severity floor and portable path globs.
 func decodeHandoff(req *handoffcore.Request, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.str(argPr, &req.Pr)
@@ -225,7 +224,6 @@ func decodeHandoff(req *handoffcore.Request, a *args) {
 	a.strings(argPaths, &req.Paths)
 }
 
-// wireHandoff resolves the read runtime and carries the startup warnings.
 func wireHandoff(ctx context.Context, b *bindings, req *handoffcore.Request) error {
 	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
 		return err

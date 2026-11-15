@@ -25,12 +25,8 @@ const (
 	// FloorOff lifts the floor, projecting every open inline finding.
 	FloorOff = "off"
 
-	// codeNoOpen refuses an empty projection: the floor is the reason a reader
-	// sees nothing, so the refusal names it.
 	codeNoOpen = "no-open-findings"
 
-	// sevUntagged and rigorUntagged stand in for a store value the reviewer
-	// never set, the same reading fix renders.
 	sevUntagged   = "untagged"
 	rigorUntagged = "untagged"
 )
@@ -173,8 +169,6 @@ func Run(_ context.Context, req *Request) (*Response, *core.RefusalError) {
 	}, nil
 }
 
-// floorOf resolves the severity floor, refusing one outside the published
-// domain. An unset floor reads DefaultFloor.
 func floorOf(floor string) (string, *core.RefusalError) {
 	if floor == "" {
 		return DefaultFloor, nil
@@ -189,9 +183,6 @@ func floorOf(floor string) (string, *core.RefusalError) {
 	}
 }
 
-// refusalOf passes a store refusal through and folds any other read error into
-// corrupt-store, the code the readers share. LoadFindings returns only
-// *core.RefusalError today, so the assertion is the whole mapping.
 func refusalOf(err error) *core.RefusalError {
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
 		return ref
@@ -199,8 +190,6 @@ func refusalOf(err error) *core.RefusalError {
 	return &core.RefusalError{Code: "corrupt-store", Message: err.Error()}
 }
 
-// emptyMsg names the floor, and the globs when the request scoped the
-// projection, so a reader knows what returned nothing.
 func emptyMsg(floor string, paths []string) string {
 	above := "at or above " + floor
 	if floor == FloorOff {
@@ -212,7 +201,6 @@ func emptyMsg(floor string, paths []string) string {
 	return fmt.Sprintf(msgNoOpen, above)
 }
 
-// rowOf projects one ranked finding.
 func rowOf(entry any, dir string) Row {
 	sig := jq.Interp(readcommon.FieldOf(entry, "sig"))
 	row := Row{
@@ -234,7 +222,6 @@ func rowOf(entry any, dir string) Row {
 	return row
 }
 
-// recOf reads an entry as the finding object the brief decoder takes.
 func recOf(entry any) *jq.Obj {
 	rec, ok := entry.(*jq.Obj)
 	if !ok {
@@ -243,8 +230,6 @@ func recOf(entry any) *jq.Obj {
 	return rec
 }
 
-// severityOf reads the published severity, untagged when the reviewer set
-// none.
 func severityOf(entry any) string {
 	switch severity := jq.Interp(readcommon.FieldOf(entry, "severity")); severity {
 	case "critical", "important", "informational":
@@ -254,7 +239,6 @@ func severityOf(entry any) string {
 	}
 }
 
-// rigorOf reads the evidence rung, untagged when absent.
 func rigorOf(entry any) string {
 	rigor, ok := readcommon.FieldOf(entry, "rigor").(string)
 	if !ok {
@@ -268,8 +252,6 @@ func rigorOf(entry any) string {
 	}
 }
 
-// kbRulesOf reads the cited knowledge-base rule ids; [] when the reviewer
-// cited none.
 func kbRulesOf(entry any) []string {
 	items, ok := readcommon.FieldOf(entry, "kb").([]any)
 	if !ok {

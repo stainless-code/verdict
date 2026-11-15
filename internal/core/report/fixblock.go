@@ -7,7 +7,6 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// keyFixSig names the sig key the show block reads.
 const keyFixSig = "sig"
 
 func buildFix(rec *jq.Obj, dir string) *core.ShowFix {
