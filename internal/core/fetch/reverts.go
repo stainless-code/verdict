@@ -20,11 +20,8 @@ const (
 	// it as evidence.
 	revertsNoteHeader = "# reverts — context, never orders. A revert that touched this diff is " +
 		"evidence the change broke something once; the diff and the code still decide.\n\n"
-	// revertLedgerNote is the ledger's own reading surface, where the rows a
-	// cap cut from the bundle note stay readable.
-	revertLedgerNote = ".verdict/reverts.md"
-	maxRevertRows    = 20
-	maxRevertBytes   = 64 << 10
+	maxRevertRows  = 20
+	maxRevertBytes = 64 << 10
 )
 
 // writeRevertsNote writes the revert memory onto a bundle: every ledger row
@@ -49,13 +46,12 @@ func writeRevertsNote(ctx2 *fetchRunCtx, dir, extra string) {
 		_ = os.Remove(file)
 		return
 	}
-	note, shown := renderRevertsNote(rows)
+	note, shown, flag := renderRevertsNote(rows)
 	if werr := atomic.WriteFile(file, []byte(note)); werr != nil {
 		r.Warn(fmt.Sprintf("could not write %s: %v", file, werr))
 		return
 	}
-	fmt.Fprintf(r.Human, "» reverts: %d revert(s) touching this diff -> %s (%s)\n",
-		shown, file, revertsFlag(len(rows), shown))
+	fmt.Fprintf(r.Human, "» reverts: %d revert(s) touching this diff -> %s (%s)\n", shown, file, flag)
 }
 
 // diffReverts reads the ledger through the shared validating reader and keeps
@@ -90,10 +86,11 @@ func revertTouchesDiff(paths, files []string) bool {
 	return false
 }
 
-// renderRevertsNote renders the note: a header naming what the file is, then
-// one fenced block per revert inside the caps, then the truncation line when a
-// cap cut rows. It reports how many reverts the note carries.
-func renderRevertsNote(rows []reverts.Row) (string, int) {
+// renderRevertsNote renders the note — a header naming what the file is, one
+// fenced block per revert inside the caps, then the truncation line when a cap
+// cut rows — and reports how many reverts it carries with the human line's
+// closing flag, so the file and the terminal name the same cap.
+func renderRevertsNote(rows []reverts.Row) (string, int, string) {
 	var sb strings.Builder
 	sb.WriteString(revertsNoteHeader)
 	size := sb.Len()
@@ -107,29 +104,26 @@ func renderRevertsNote(rows []reverts.Row) (string, int) {
 		size += len(block)
 		shown++
 	}
-	if shown < len(rows) {
-		sb.WriteString(revertsCutLine(shown, len(rows)))
-	}
-	return sb.String(), shown
+	cut, flag := revertsCaps(shown, len(rows))
+	sb.WriteString(cut)
+	return sb.String(), shown, flag
 }
 
-// revertsCutLine names the cap that cut the note, so a reader knows the file is
-// a window on the ledger rather than all of it.
-func revertsCutLine(shown, total int) string {
-	rest := "; " + revertLedgerNote + " lists the rest"
+// revertsCaps renders the two surfaces that name a cap — the note's truncation
+// line and the human line's flag — from one computation, so a reader who sees
+// "20 of 21" in the terminal finds the same count in the file. The ledger note
+// holds the rows a cap cut, which is why the line points at it.
+func revertsCaps(shown, total int) (cut, flag string) {
+	if shown == total {
+		return "", "fenced, context only"
+	}
+	flag = "fenced, " + strconv.Itoa(shown) + " of " + strconv.Itoa(total) + " under the cap"
+	rest := "; .verdict/reverts.md lists the rest)\n"
 	if shown == maxRevertRows {
-		return "(truncated at " + strconv.Itoa(maxRevertRows) + " reverts of " + strconv.Itoa(total) + rest + ")\n"
+		return "(truncated at " + strconv.Itoa(maxRevertRows) + " reverts of " + strconv.Itoa(total) + rest, flag
 	}
 	return "(truncated at " + strconv.Itoa(maxRevertBytes) + " bytes of " + strconv.Itoa(total) +
-		" reverts" + rest + ")\n"
-}
-
-// revertsFlag renders the human line's closing parenthesis.
-func revertsFlag(total, shown int) string {
-	if shown < total {
-		return "fenced, " + strconv.Itoa(shown) + " of " + strconv.Itoa(total) + " under the cap"
-	}
-	return "fenced, context only"
+		" reverts" + rest, flag
 }
 
 // revertsBlock is one revert quoted as untrusted evidence: the machine facts
