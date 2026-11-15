@@ -124,12 +124,13 @@ if [ "$EVAL_STATUS" -eq 1 ] \
 else
   bad "secret patch: exit $EVAL_STATUS $(jq -c '.error' <"$EVAL_OUT" 2>/dev/null)"
 fi
-if [ "$(cat "$EVAL_SANDBOX/.verdict/state/local-patchy/fix.json")" = "$before_ledger" ] \
-  && ! grep -q 'ghp_' "$EVAL_SANDBOX/.verdict/state/local-patchy/fix.patch"; then
-  good "the refused patch spends no pass and writes no secret"
+if [ "$(cat "$EVAL_SANDBOX/.verdict/state/local-patchy/fix.json")" = "$before_ledger" ]; then
+  good "the refused patch spends no pass"
 else
-  bad "refused patch moved the ledger or the patch file"
+  bad "refused patch moved the ledger"
 fi
+assert_file_nogrep "the refused patch writes no secret" \
+  "$EVAL_SANDBOX/.verdict/state/local-patchy/fix.patch" 'ghp_'
 printf 'alpha\nbeta fixed\ngamma\n' > "$EVAL_SANDBOX/app.txt"
 
 mk_local scoped
@@ -204,3 +205,5 @@ if [ "$EVAL_STATUS" -eq 0 ] \
 else
   bad "ceiling batch: $(jq -c '.data.batch' <"$EVAL_OUT" 2>/dev/null)"
 fi
+
+eval_end
