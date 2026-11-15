@@ -137,14 +137,19 @@ One case, one manifest, published as
   start, including as the prefix of a longer identifier (`help` in
   `helpName`) and as one part of a split or spaced selector (`cmd`, `name`,
   or `cmd .Name` against `cmd.Name`), because the patch's own words are not
-  the reviewer's. A built-in phrase — the `kind` in either form or one from
-  the category table — that the diff spells is dropped from that case's
-  grading instead of refusing the case, because the curator cannot change the
-  table; if no phrase is left, validation refuses the case and asks for a
-  keyword the diff does not spell. A real bundle must carry a non-empty
-  `full.diff`: `calibrate` refuses one that is missing, empty, or unreadable
-  instead of grading with the unfiltered built-ins, and `trend` skips it with
-  a warning.
+  the reviewer's. The match is left-bounded, so `help` is refused even when
+  the diff only writes `helper`: prefer a multi-word phrase (`help command`)
+  when the single word lives inside an identifier. A built-in phrase — the
+  `kind` in either form or one from the category table — that the diff spells
+  is dropped from that case's grading instead of refusing the case, because
+  the curator cannot change the table. A dropped phrase is unavailable for
+  that case: a correct finding that names only it grades as a false positive
+  (a bounds finding saying `len(` when the diff spells `len(`), so give the
+  case a keyword that the diff does not spell. If no phrase is left,
+  validation refuses the case and asks for that keyword. A real bundle must
+  carry a non-empty `full.diff`: `calibrate` refuses one that is missing,
+  empty, or unreadable instead of grading with the unfiltered built-ins, and
+  `trend` skips it with a warning.
 - `line_tolerance` (optional, default 1) is the window in lines. Keep it
   short of the far end of the new-side hunk that shows the bug: the corpus
   test refuses a case whose window covers the whole hunk.

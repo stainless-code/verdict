@@ -101,13 +101,19 @@ bench/corpus/<repo>-<pr>-<slug>/
   spaced selector), because grading on the patch's vocabulary is a free
   pass: a finding that says "`StopOnNthArg` is a new field" names the change,
   not the bug, and a keyword lifted from the diff grades it as a real report.
+  The match is left-bounded, so a one-word keyword can be refused for a diff
+  that only writes a longer word (`help` against `helper`); use a phrase, not
+  a word that lives inside an identifier.
 - A built-in phrase — the bug's `kind` in either form, or one from the
   published category table — that the diff spells is dropped from that case's
   grading instead of refusing the case, because the curator cannot change the
-  table. A bug left with no unspelled phrase is refused: add a keyword the diff
-  does not spell. The bundle must carry a non-empty `full.diff`; a real case
-  without it, or with only blank bytes, is refused rather than graded with the
-  unfiltered built-ins.
+  table. A dropped phrase cannot name the defect for that case: a correct
+  finding that uses only it grades as a false positive (for example a bounds
+  finding saying `len(` when the diff spells `len(`), so add a keyword the
+  diff does not spell. A bug left with no unspelled phrase is refused. The
+  bundle must carry a non-empty `full.diff`; a real case without it, or with
+  only blank bytes, is refused rather than graded with the unfiltered
+  built-ins.
 - The ground-truth `line` must be a line the diff **adds**. A context line is
   code the diff carries without marking: a tool-free reviewer reading only the
   added lines has no fair chance at it, so validation refuses an anchor the
