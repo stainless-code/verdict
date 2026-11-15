@@ -64,7 +64,11 @@ type Entry struct {
 }
 
 // rowError is one stored row this build cannot record: the message names the
-// field and what is wrong with it, and [errors.Is] matches [ErrCorrupt].
+// field and the shape it broke, never the stored value, and [errors.Is] matches
+// [ErrCorrupt]. The reason is not fenced: it is warned to a terminal and copied
+// into a review bundle's `warnings[]`, so a stored value here would carry an
+// author's markdown, backtick run, or footer marker outside the fence the whole
+// ledger contract exists to keep it in.
 type rowError struct {
 	detail string
 }
@@ -142,7 +146,9 @@ func Encode(row *Row) string {
 
 // validate reports why one stored row cannot be recorded. Every field a reader
 // sees is either a fixed shape that cannot carry text or is quoted inside the
-// reading surface's fence, so a value outside its shape is a defect.
+// reading surface's fence, so a value outside its shape is a defect — and the
+// reason names the field and the broken shape rather than reprinting the value
+// outside that fence.
 func validate(row *Row) error {
 	if defect := validateFacts(row); defect != nil {
 		return defect
@@ -153,13 +159,13 @@ func validate(row *Row) error {
 // validateFacts checks the fields the reading surface prints outside its fence.
 func validateFacts(row *Row) error {
 	if row.SchemaVersion != SchemaVersion {
-		return fieldDefect(fieldSchemaVersion, strconv.Quote(row.SchemaVersion)+" is not "+SchemaVersion)
+		return fieldDefect(fieldSchemaVersion, "is not "+strconv.Quote(SchemaVersion))
 	}
 	if !commit(row.SHA, maxSha) {
-		return fieldDefect(fieldSHA, strconv.Quote(row.SHA)+", not a 40-character lowercase hex commit id")
+		return fieldDefect(fieldSHA, "is not a 7-to-40-character lowercase hex commit id")
 	}
 	if _, err := time.Parse(time.RFC3339, row.Date); err != nil {
-		return fieldDefect(fieldDate, strconv.Quote(row.Date)+", not RFC 3339")
+		return fieldDefect(fieldDate, "is not RFC 3339")
 	}
 	return nil
 }
@@ -189,19 +195,21 @@ func validateSubject(row *Row) error {
 func validateLists(row *Row) error {
 	for _, sha := range row.Reverts {
 		if !commit(sha, maxSha) {
-			return fieldDefect(fieldReverts, "names "+strconv.Quote(sha)+
-				", not a 7-to-40-character lowercase hex commit id")
+			return fieldDefect(fieldReverts, "carries an item that is not a 7-to-40-character lowercase "+
+				"hex commit id")
 		}
 	}
 	for _, path := range row.Paths {
 		if !repoPath(path) {
-			return fieldDefect(fieldPaths, "names "+strconv.Quote(path)+", not a repository-relative path")
+			return fieldDefect(fieldPaths, "carries an item that is not a repository-relative path")
 		}
 	}
 	return nil
 }
 
-// fieldDefect names one stored field and what is wrong with it.
+// fieldDefect names one stored field and what is wrong with it. The problem is
+// a shape, never the stored value: a reader warns this reason outside every
+// fence.
 func fieldDefect(key, problem string) error {
 	return &rowError{detail: "field " + strconv.Quote(key) + " " + problem}
 }
