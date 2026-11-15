@@ -53,20 +53,39 @@ func TestEvaluateDirFiltersFromBundleDiff(t *testing.T) {
 }
 
 // TestEvaluateDirRefusesARealCaseWithoutDiff is the fail-closed guard: a real
-// bundle that lost its full.diff must not grade with the unfiltered built-ins.
+// bundle that lost its full.diff, or kept only blank bytes, must not grade with
+// the unfiltered built-ins.
 func TestEvaluateDirRefusesARealCaseWithoutDiff(t *testing.T) {
-	dir := t.TempDir()
-	writeManifest(t, dir, raceCase("data race"))
-	c, ref := Load(dir)
-	if ref != nil {
-		t.Fatalf("Load: %v", ref)
+	tests := []struct {
+		name  string
+		body  string
+		write bool
+	}{
+		{name: "missing"},
+		{name: "empty", write: true},
+		{name: "whitespace", body: "\n\n \t\n", write: true},
 	}
-	rep, ref := EvaluateDir(dir, c, []any{entry("pool.go", 45, "The goroutine closes the conn.")})
-	if ref == nil || ref.Code != codeCorpusInvalid {
-		t.Fatalf("EvaluateDir = %v, %v; want a corpus-invalid refusal", rep, ref)
-	}
-	if !strings.Contains(ref.Message, "full.diff") {
-		t.Errorf("message %q does not name full.diff", ref.Message)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeManifest(t, dir, raceCase("data race"))
+			c, ref := Load(dir)
+			if ref != nil {
+				t.Fatalf("Load: %v", ref)
+			}
+			if tc.write {
+				if err := os.WriteFile(filepath.Join(dir, "full.diff"), []byte(tc.body), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			rep, ref := EvaluateDir(dir, c, []any{entry("pool.go", 45, "The goroutine closes the conn.")})
+			if ref == nil || ref.Code != codeCorpusInvalid {
+				t.Fatalf("EvaluateDir = %v, %v; want a corpus-invalid refusal", rep, ref)
+			}
+			if !strings.Contains(ref.Message, "full.diff") {
+				t.Errorf("message %q does not name full.diff", ref.Message)
+			}
+		})
 	}
 }
 

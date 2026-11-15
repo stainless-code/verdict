@@ -1,0 +1,11 @@
+diff --git a/b.go b/b.go
+index f895538..9f9b1f0 100644
+--- a/b.go
++++ b/b.go
+@@ -1,5 +1,6 @@
+ package b
+ func run() {
+     first()
++    doWork()
+     second()
+ }

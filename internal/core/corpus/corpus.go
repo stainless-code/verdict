@@ -120,13 +120,13 @@ func invalid(path, reason string) *core.RefusalError {
 			"provenance, bugs (empty for controls); try: copy bench/corpus/<id>/case.json)", path, reason)}
 }
 
-// invalidDiff refuses a real bundle whose reviewed diff cannot be read. The
+// invalidDiff refuses a real bundle whose reviewed diff cannot be used. The
 // message names the path and never any content: grading without the diff would
 // keep the built-in phrases it spells.
 func invalidDiff(path string) *core.RefusalError {
 	return &core.RefusalError{Code: codeCorpusInvalid, Message: fmt.Sprintf(
-		"corpus bundle %s is missing or unreadable; a real case must grade against its "+
-			"reviewed full.diff (re-fetch the bundle)", path)}
+		"corpus bundle %s is missing, empty, or unreadable; a real case must grade against its "+
+			"reviewed full.diff (rebuild the bundle and re-run the review)", path)}
 }
 
 // validate enforces the semantic rules the JSON Schema cannot express.
@@ -565,18 +565,21 @@ func usablePhrases(c *core.CorpusCase, diff []byte) [][]string {
 }
 
 // bundleDiff reads the reviewed diff a bundle carries. A real case must carry
-// one: grading without it would keep the built-in phrases the diff spells. A
-// seeded or synthetic case without one keeps the full vocabulary.
+// a non-empty one: grading without it would keep the built-in phrases the diff
+// spells. A seeded or synthetic case without one keeps the full vocabulary.
 func bundleDiff(dir string, c *core.CorpusCase) ([]byte, *core.RefusalError) {
 	path := filepath.Join(dir, "full.diff")
 	raw, err := os.ReadFile(path)
-	if err == nil {
-		return raw, nil
+	if err != nil {
+		if c.Provenance.Kind != kindReal {
+			return nil, nil
+		}
+		return nil, invalidDiff(path)
 	}
-	if c.Provenance.Kind != kindReal {
-		return nil, nil
+	if c.Provenance.Kind == kindReal && len(bytes.TrimSpace(raw)) == 0 {
+		return nil, invalidDiff(path)
 	}
-	return nil, invalidDiff(path)
+	return raw, nil
 }
 
 func tallyOutcome(rep *Report, used []bool, bug int) {
