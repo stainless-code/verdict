@@ -121,6 +121,48 @@ func Builtins() Partial {
 	}
 }
 
+// BuiltinDefault is one published defaults key, its built-in value, and the
+// verbs it shapes.
+type BuiltinDefault struct {
+	Key   string
+	Value any
+	Verbs []string
+}
+
+const (
+	verbFetch      = "fetch"
+	verbFetchLocal = "fetch-local"
+	verbPost       = "post"
+	verbReport     = "report"
+	verbRecord     = "record"
+	verbTriage     = "triage"
+	verbLearn      = "learn"
+)
+
+// BuiltinDefaults lists the built-in floor in the evidence key order.
+func BuiltinDefaults() []BuiltinDefault {
+	floor := Builtins()
+	return []BuiltinDefault{
+		{Key: keyPanel, Value: floor.Panel, Verbs: []string{verbFetch, verbFetchLocal}},
+		{Key: keyBudgetUSD, Value: builtinValue(floor.BudgetUSD), Verbs: []string{verbFetch, verbFetchLocal}},
+		{Key: keyMaxBytes, Value: builtinValue(floor.MaxBytes), Verbs: []string{verbFetch, verbFetchLocal}},
+		{Key: keyChunk, Value: builtinValue(floor.Chunk), Verbs: []string{verbFetch, verbFetchLocal}},
+		{Key: keyEffort, Value: builtinValue(floor.Effort), Verbs: []string{verbFetch, verbFetchLocal}},
+		{Key: keyKBMinJudged, Value: builtinValue(floor.KBMinJudged), Verbs: []string{verbRecord, verbTriage, verbLearn}},
+		{Key: keyKBMaxFPRate, Value: builtinValue(floor.KBMaxFPRate), Verbs: []string{verbRecord, verbTriage, verbLearn}},
+		{Key: keyKBMaxChars, Value: builtinValue(floor.KBMaxChars), Verbs: []string{verbFetch, verbFetchLocal}},
+		{Key: keyDisplayFloor, Value: builtinValue(floor.DisplayMinSeverity), Verbs: []string{verbReport}},
+		{Key: keyPostFloor, Value: builtinValue(floor.PostMinSeverity), Verbs: []string{verbPost}},
+	}
+}
+
+func builtinValue[T any](value *T) any {
+	if value == nil {
+		return nil
+	}
+	return *value
+}
+
 // FieldOrigin records the winning layer and the exact source that
 // supplied one effective field.
 type FieldOrigin struct {

@@ -64,7 +64,7 @@ func findings(body string) string {
 `, body)
 }
 
-const sampling = `{"run_id":"race-run","k":1,"repeats":1,"sample":1,"severity_weights":{"critical":25,"important":5,"informational":1}}`
+const sampling = `{"run_id":"race-run","k":1,"repeats":%d,"sample":%d,"severity_weights":{"critical":25,"important":5,"informational":1}}`
 
 // SpelledDiff adds the bug line and carries the race phrase in a comment,
 // the shape a real race-fix diff has.
@@ -93,7 +93,13 @@ func Bundle(t *testing.T, dir, diff, body string) {
 	write(t, dir, "corpus.json", manifest)
 	write(t, dir, "full.diff", diff)
 	write(t, dir, "findings.json", findings(body))
-	write(t, dir, "corpus_run.json", sampling)
+	Sample(t, dir, 1, 1)
+}
+
+// Sample rewrites a bundle's sampling record as one sample of a repeats run.
+func Sample(t *testing.T, dir string, sample, repeats int) {
+	t.Helper()
+	write(t, dir, "corpus_run.json", fmt.Sprintf(sampling, repeats, sample))
 }
 
 // Review writes the replay-bundle part of a corpus bundle: findings and the

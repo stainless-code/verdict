@@ -488,9 +488,9 @@ Fix: check out the PR base (`actions/checkout` with `fetch-depth: 0`, or `git fe
 
 ## `corpus-invalid`
 
-Cause: the benchmark case manifest is invalid, or a real bundle's reviewed `full.diff` is missing, empty, or unreadable — the message names the file and the reason.
+Cause: the benchmark case manifest is invalid, or a real bundle's reviewed `full.diff` is missing, empty, unreadable, or not a unified diff (no `@@` hunk header and no `---`/`+++` pair) — the message names the file and the reason.
 
-Fix: for a manifest, fix the file named above and re-run. For a missing, empty, or unreadable `full.diff`, rebuild the bundle (`fetch-local` or `fetch` for a fetched bundle, `backtest replay` for a replay bundle), then re-run the verb. An empty diff is a failed capture, not a valid review of no changes.
+Fix: for a manifest, fix the file named above and re-run. For a `full.diff` that cannot grade, rebuild the bundle (`fetch-local` or `fetch` for a fetched bundle, `backtest replay` for a replay bundle, which the message names), then re-run the verb. An empty or prose diff is a failed capture, not a valid review of no changes.
 
 ## `corrupt-store`
 
@@ -954,6 +954,12 @@ Fix: dispatch `verification/dispatch.md` against the current head and rewrite `v
 Cause: more than 100 inline findings or 4 verifiers would exceed the 400-dispatch limit.
 
 Fix: narrow the review or pinned roster, re-fetch if the roster changed, then run `verdict panel`.
+
+## `partial-clone`
+
+Cause: `backtest mine` ran in a partial clone (`git clone --filter=blob:none`). Blame fetches each missing blob from the promisor remote on its own round-trip, so the run stalls on the network instead of finishing.
+
+Fix: re-clone without `--filter=blob:none`, or unset the remote's `promisor` and `partialclonefilter` settings and run `git fetch --refetch`, then re-run.
 
 ## `post-failed`
 

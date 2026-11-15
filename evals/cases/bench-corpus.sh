@@ -161,6 +161,12 @@ if [ "$EVAL_STATUS" -eq 1 ] && [ "$(jq -r '.error.code' <"$EVAL_OUT" 2>/dev/null
 else
   bad "corrupt manifest calibrate: exit $EVAL_STATUS $(jq -c '.error // empty' <"$EVAL_OUT" 2>/dev/null)"
 fi
+run_review calibrate acme/bench corpus-off-by-one-fixture-good --json
+if [ "$EVAL_STATUS" -eq 0 ] && [ "$(jq -r '.warnings | length' <"$EVAL_OUT" 2>/dev/null)" = "0" ]; then
+  good "a broken sibling from another case leaves the cohort warning silent"
+else
+  bad "cohort warning for an unrelated broken sibling: exit $EVAL_STATUS $(jq -c '.warnings // .error' <"$EVAL_OUT" 2>/dev/null)"
+fi
 run_review trend acme/bench --json
 if [ "$EVAL_STATUS" -eq 0 ] \
   && jq -e '.warnings | map(select(contains("trend skips corpus bundle \".verdict/state/corpus-broken\""))) | length == 1' <"$EVAL_OUT" >/dev/null 2>&1 \

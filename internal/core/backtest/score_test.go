@@ -13,6 +13,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/golden"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // scoreRun is the fixture run every scoring case reads.
@@ -250,6 +251,34 @@ func removeScoreDiff(t *testing.T, root string) {
 func emptyScoreDiff(t *testing.T, root string) {
 	t.Helper()
 	writeTestFile(t, filepath.Join(root, ".verdict", "state", "local-bt-1-s1", "full.diff"), "\n\n \t\n")
+}
+
+const scoreMarker = `{
+  "schema_version": "1",
+  "mode": "replay",
+  "run": "s1",
+  "head": "2222222222222222222222222222222222222222",
+  "base": "1111111111111111111111111111111111111111",
+  "agent": "fixture",
+  "pr": 42,
+  "n": 1
+}
+`
+
+func TestScoreNamesReplayForABrokenReplayBundle(t *testing.T) {
+	root := scoreFixture(t)
+	writeTestFile(t, filepath.Join(root, ".verdict", "state", "local-bt-1-s1", readcommon.BacktestMarkerFile), scoreMarker)
+	removeScoreDiff(t, root)
+	_, ref := RunScore(t.Context(), &ScoreRequest{
+		Runtime:  &core.Runtime{Now: scoreClock, Progress: &recorder{}},
+		RepoRoot: root, Run: scoreRun,
+	})
+	if ref == nil {
+		t.Fatal("no refusal")
+	}
+	if !strings.Contains(ref.Message, "backtest replay") {
+		t.Fatalf("message %q does not name backtest replay", ref.Message)
+	}
 }
 
 // corruptScoreRow truncates one resume record.

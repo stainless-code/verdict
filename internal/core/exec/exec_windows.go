@@ -246,22 +246,19 @@ func armStarted(cmd *osexec.Cmd) error {
 // exactly one thread, suspend count 1, and the caller still holds the
 // process handle, so the pid cannot have been recycled and ResumeThread once
 // per owned thread leaves it running.
+// A snapshot taken under load has missed the child's thread (STA-415), so
+// the lookup is retried.
 func resumeProcess(pid uint32) error {
+	return resumePrimaryThread(func() ([]uint32, error) { return snapshotThreads(pid) }, resumeThread)
+}
+
+func snapshotThreads(pid uint32) ([]uint32, error) {
 	snap, err := syscall.CreateToolhelp32Snapshot(th32csSnapThread, 0)
 	if err != nil {
-		return watchdogError("snapshot verify process threads: " + err.Error())
+		return nil, watchdogError("snapshot verify process threads: " + err.Error())
 	}
 	defer closeHandle(snap) // the snapshot read already rules
-	resumed := 0
-	for _, id := range threadsOf(snap, pid) {
-		if resumeThread(id) {
-			resumed++
-		}
-	}
-	if resumed == 0 {
-		return errResumeFailed
-	}
-	return nil
+	return threadsOf(snap, pid), nil
 }
 
 func threadsOf(snap syscall.Handle, pid uint32) []uint32 {
@@ -411,8 +408,6 @@ type waitStatus struct {
 var errNoProcess = watchdogError("no verify process")
 
 var errNoJob = watchdogError("no verify job object")
-
-var errResumeFailed = watchdogError("resume suspended verify process: no thread resumed")
 
 type watchdogError string
 
