@@ -1,0 +1,37 @@
+{
+  "schema_version": "1",
+  "id": "dbt-core-8589-semantic-model-same-model",
+  "kind": "real",
+  "language": "python",
+  "provenance": {
+    "kind": "real",
+    "repo": "dbt-labs/dbt-core",
+    "pr": 8589,
+    "base_sha": "f17c1f3fe730947f554b55e4e5471bb9cb45fd95",
+    "head_sha": "bb4214b5c229041134e6664ee720c66c9d51ce7c",
+    "fix_commit": "https://github.com/dbt-labs/dbt-core/commit/c12f6fbf4db774356bd1472045ef4e1873969b08",
+    "source": "PR #8589 Dc/8546 semantic models in graph selection, merged 2023-09-26",
+    "note": "the added same_model compares self.model, a string, against old.same_model, the bound method itself, so the equality is always False and same_contents reports every semantic model as modified; the fix compares old.model, and its issue #9548 states the models 'were always getting picked up as part of state:modified'"
+  },
+  "bugs": [
+    {
+      "path": "core/dbt/contracts/graph/nodes.py",
+      "line": 1680,
+      "kind": "always-false-comparison",
+      "severity": "important",
+      "keywords": [
+        "bound method",
+        "method object",
+        "never returns true",
+        "always false",
+        "always reports a change",
+        "compares the field to the method",
+        "right-hand side is the method",
+        "the two models never compare equal",
+        "string against a method object",
+        "never succeed"
+      ],
+      "note": "self.model is a string and old.same_model is the bound method, so same_model is always False and same_contents never reports an unchanged semantic model; the fix compares old.model instead"
+    }
+  ]
+}

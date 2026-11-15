@@ -1,0 +1,130 @@
+diff --git a/README.md b/README.md
+index 0c79acb5..bfa9d487 100644
+--- a/README.md
++++ b/README.md
+@@ -375,11 +375,16 @@ These are the available config options for making requests. Only the `url` is re
+   // `method` is the request method to be used when making the request
+   method: 'get', // default
+ 
+-  // `baseURL` will be prepended to `url` unless `url` is absolute.
++  // `baseURL` will be prepended to `url` unless `url` is absolute and option `allowAbsoluteUrls` is set to true.
+   // It can be convenient to set `baseURL` for an instance of axios to pass relative URLs
+   // to methods of that instance.
+   baseURL: 'https://some-domain.com/api/',
+ 
++  // `allowAbsoluteUrls` determines whether or not absolute URLs will override a configured `baseUrl`.
++  // When set to true (default), absolute values for `url` will override `baseUrl`.
++  // When set to false, absolute values for `url` will always be prepended by `baseUrl`.
++  allowAbsoluteUrls: true,
++
+   // `transformRequest` allows changes to the request data before it is sent to the server
+   // This is only applicable for request methods 'PUT', 'POST', 'PATCH' and 'DELETE'
+   // The last function in the array must return a string or an instance of Buffer, ArrayBuffer,
+diff --git a/lib/core/Axios.js b/lib/core/Axios.js
+index 6dd3c2cb..386dc016 100644
+--- a/lib/core/Axios.js
++++ b/lib/core/Axios.js
+@@ -97,6 +97,15 @@ class Axios {
+       }
+     }
+ 
++    // Set config.allowAbsoluteUrls
++    if (config.allowAbsoluteUrls !== undefined) {
++      // do nothing
++    } else if (this.defaults.allowAbsoluteUrls !== undefined) {
++      config.allowAbsoluteUrls = this.defaults.allowAbsoluteUrls;
++    } else {
++      config.allowAbsoluteUrls = true;
++    }
++
+     validator.assertOptions(config, {
+       baseUrl: validators.spelling('baseURL'),
+       withXsrfToken: validators.spelling('withXSRFToken')
+@@ -192,7 +201,7 @@ class Axios {
+ 
+   getUri(config) {
+     config = mergeConfig(this.defaults, config);
+-    const fullPath = buildFullPath(config.baseURL, config.url);
++    const fullPath = buildFullPath(config.baseURL, config.url, config.allowAbsoluteUrls);
+     return buildURL(fullPath, config.params, config.paramsSerializer);
+   }
+ }
+diff --git a/lib/core/buildFullPath.js b/lib/core/buildFullPath.js
+index b60927c0..ba07b221 100644
+--- a/lib/core/buildFullPath.js
++++ b/lib/core/buildFullPath.js
+@@ -13,8 +13,9 @@ import combineURLs from '../helpers/combineURLs.js';
+  *
+  * @returns {string} The combined full path
+  */
+-export default function buildFullPath(baseURL, requestedURL) {
+-  if (baseURL && !isAbsoluteURL(requestedURL)) {
++export default function buildFullPath(baseURL, requestedURL, allowAbsoluteUrls) {
++  let isRelativeUrl = !isAbsoluteURL(requestedURL);
++  if (baseURL && isRelativeUrl || allowAbsoluteUrls == false) {
+     return combineURLs(baseURL, requestedURL);
+   }
+   return requestedURL;
+diff --git a/test/specs/core/buildFullPath.spec.js b/test/specs/core/buildFullPath.spec.js
+index 8e6d8e93..2dfbe1bc 100644
+--- a/test/specs/core/buildFullPath.spec.js
++++ b/test/specs/core/buildFullPath.spec.js
+@@ -5,10 +5,14 @@ describe('helpers::buildFullPath', function () {
+     expect(buildFullPath('https://api.github.com', '/users')).toBe('https://api.github.com/users');
+   });
+ 
+-  it('should return the requestedURL when it is absolute', function () {
++  it('should not combine the URLs when the requestedURL is absolute', function () {
+     expect(buildFullPath('https://api.github.com', 'https://api.example.com/users')).toBe('https://api.example.com/users');
+   });
+ 
++  it('should combine the URLs when the requestedURL is absolute and allowAbsoluteUrls is false', function () {
++    expect(buildFullPath('https://api.github.com', 'https://api.example.com/users', false)).toBe('https://api.github.com/https://api.example.com/users');
++  });
++
+   it('should not combine URLs when the baseURL is not configured', function () {
+     expect(buildFullPath(undefined, '/users')).toBe('/users');
+   });
+diff --git a/test/specs/options.spec.js b/test/specs/options.spec.js
+index 482838e2..482fcb23 100644
+--- a/test/specs/options.spec.js
++++ b/test/specs/options.spec.js
+@@ -1,4 +1,5 @@
+-import AxiosHeaders from "../../lib/core/AxiosHeaders.js";
++// import AxiosHeaders from "../../lib/core/AxiosHeaders.js";
++// import isAbsoluteURL from '../../lib/helpers/isAbsoluteURL.js';
+ 
+ describe('options', function () {
+   beforeEach(function () {
+@@ -63,8 +64,7 @@ describe('options', function () {
+       baseURL: 'http://test.com/'
+     });
+ 
+-    instance.get('/foo');
+-
++    instance.get('/foo')
+     getAjaxRequest().then(function (request) {
+       expect(request.url).toBe('http://test.com/foo');
+       done();
+@@ -100,6 +100,21 @@ describe('options', function () {
+     });
+   });
+ 
++  it('should combine the URLs if base url and request url exist and allowAbsoluteUrls is false', function (done) {
++    const instance = axios.create({
++      baseURL: 'http://someurl.com/',
++      allowAbsoluteUrls: false
++    });
++
++    instance.get('http://someotherurl.com/');
++
++    getAjaxRequest().then(function (request) {
++      expect(request.url).toBe('http://someotherurl.com/');
++      done();
++    });
++
++  });
++
+   it('should change only the baseURL of the specified instance', function() {
+     const instance1 = axios.create();
+     const instance2 = axios.create();

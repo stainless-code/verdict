@@ -59,6 +59,20 @@ func TestRuntimeBacktestScoreEnvelopeValidates(t *testing.T) {
 	}
 }
 
+// scoreRunDiff is the exact `git diff` bytes fetch-local's localDiff writes
+// into a replay bundle. It carries no built-in phrase for the mined kind, so
+// the finding must still name the defect.
+const scoreRunDiff = `diff --git a/main.go b/main.go
+index de4fcb3..e45f54f 100644
+--- a/main.go
++++ b/main.go
+@@ -1,3 +1,3 @@
+ package main
+-func main() {
++func run() {
+ }
+`
+
 // writeScoreRun plants one replayed PR whose review names the mined bug.
 func writeScoreRun(t *testing.T, root string) {
 	t.Helper()
@@ -75,6 +89,7 @@ func writeScoreRun(t *testing.T, root string) {
 			`"base":"2222222222222222222222222222222222222222","agent":"claude","status":"ok",`+
 			`"bundle":"local-bt-1-s1","at":"2024-02-01T12:00:00Z","pr":2,"cost_usd":0.25,"n":1,`+
 			`"pass_through":[]}`)
+	writeFixture(t, filepath.Join(root, ".verdict", "state", "local-bt-1-s1", "full.diff"), scoreRunDiff)
 	writeFixture(t, filepath.Join(root, ".verdict", "state", "local-bt-1-s1", "findings.json"),
 		`[{"kind":"inline","path":"main.go","side":"RIGHT","line":6,"anchored":true,`+
 			`"body":"The removal is unchecked.","suggestion":null,"rigor":"walked",`+

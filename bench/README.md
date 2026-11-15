@@ -85,11 +85,13 @@ instruction), so the sample gets the shipped judgment rubric with everything it
 may read fenced in `prompt.md`, and its final message must be exactly one
 `review.json` document. There is no second hand-maintained copy; a drift pin
 (`bench/runner/testdata/tool-free-prompt.golden`) fails when the shipped prompt
-changes without review, and a key-shape guard fails when the rewrite cuts away a
-`review.json` key shape the shipped prompt publishes — a cut coverage entry cost
-a pilot run a correct finding. The tool-bearing contract belongs to full-workflow
-mode, not this one. A final message carrying tool-call markup is an adapter
-failure, never a scored review: `pi.sh` refuses it before writing `review.json`
+changes without review, and a key-shape guard pins four `review.json` key
+shapes — the comment keys `rigor` and `in-bounds`, and the coverage entry's
+`file` and `ranges` — and fails when the rewrite drops one of them or spells one
+from the transform's own copy; a cut coverage entry cost a pilot run a correct
+finding. The tool-bearing contract belongs to full-workflow mode, not this one.
+A final message carrying tool-call markup is an adapter failure, never a scored
+review: `pi.sh` refuses it before writing `review.json`
 with `pi agent: final message is a tool call, but this sample has no tools:
 <first 240 chars>`, and the runner labels it `kind: "adapter_tool_call"` in
 `failures[]` — but only for a sample that already failed (a valid `review.json`
@@ -124,23 +126,25 @@ citable.
 
 ## Flags
 
-| flag        | default                               |                                                               |
-| ----------- | ------------------------------------- | ------------------------------------------------------------- |
-| `-model`    | —                                     | model id every bundle is attributed to (required)             |
-| `-agent`    | —                                     | agent command line (required)                                 |
-| `-panel`    | `bench-<model>`                       | panel the samples run under                                   |
-| `-cases`    | the whole corpus                      | comma-separated case ids; a subset is never citable           |
-| `-runs`     | `1`                                   | samples per case; the runbook publishes `3`                   |
-| `-loop`     | `1`                                   | repair rounds per sample; `1` keeps single-shot               |
-| `-timeout`  | `15m`                                 | budget for one sample                                         |
-| `-max-usd`  | `0` (no cap)                          | stop scheduling samples at this measured spend                |
-| `-root`     | the module root                       | checkout to read the corpus, prompts, and binary from         |
-| `-corpus`   | `<root>/bench/corpus`                 | corpus directory                                              |
-| `-verdict`  | `<root>/bin/verdict`                  | the binary that scores                                        |
-| `-workdir`  | a fresh temp dir                      | run directory; must be empty or absent                        |
-| `-out`      | `bench/results[/pilot]/<run-id>.json` | publication JSON                                              |
-| `-internal` | `false`                               | mark a pilot: never citable, published under `results/pilot/` |
-| `-repo`     | `acme/bench`                          | owner/repo label the corpus verbs take (local, never network) |
+| flag            | default                               |                                                               |
+| --------------- | ------------------------------------- | ------------------------------------------------------------- |
+| `-model`        | —                                     | model id every bundle is attributed to (required)             |
+| `-agent`        | —                                     | agent command line (required)                                 |
+| `-panel`        | `bench-<model>`                       | panel the samples run under                                   |
+| `-cases`        | the whole corpus                      | comma-separated case ids; a subset is never citable           |
+| `-runs`         | `1`                                   | samples per case; the runbook publishes `3`                   |
+| `-loop`         | `1`                                   | repair rounds per sample; `1` keeps single-shot               |
+| `-timeout`      | `15m`                                 | budget for one sample                                         |
+| `-max-usd`      | `0` (no cap)                          | stop scheduling samples at this measured spend                |
+| `-root`         | the module root                       | checkout to read the corpus, prompts, and binary from         |
+| `-corpus`       | `<root>/bench/corpus`                 | corpus directory                                              |
+| `-verdict`      | `<root>/bin/verdict`                  | the binary that scores                                        |
+| `-workdir`      | a fresh temp dir                      | run directory; must be empty or absent                        |
+| `-out`          | `bench/results[/pilot]/<run-id>.json` | publication JSON                                              |
+| `-internal`     | `false`                               | mark a pilot: never citable, published under `results/pilot/` |
+| `-repo`         | `acme/bench`                          | owner/repo label the corpus verbs take (local, never network) |
+| `-render`       | —                                     | re-render a published JSON as Markdown; launches nothing      |
+| `-adjudication` | —                                     | a record to reclassify a `-render`ed publication with         |
 
 ## Budget
 

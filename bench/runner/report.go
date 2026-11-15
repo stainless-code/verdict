@@ -42,6 +42,7 @@ type Report struct { //nolint:govet // field order is the published property ord
 	Panel             []string               `json:"panel"`
 	Cases             []CaseSpread           `json:"cases"`
 	AnyOfKRecall      corpuscore.Measurement `json:"any_of_k_recall"`
+	Adjudication      *Adjudication          `json:"adjudication,omitempty"`
 	Agent             AgentRef               `json:"agent"`
 	Corpus            CorpusRef              `json:"corpus"`
 	Cost              CostRollup             `json:"cost"`
@@ -87,12 +88,23 @@ type AgentRef struct {
 // BundleRun is one scored sample: the calibrate data verbatim plus the wall
 // clock it took.
 type BundleRun struct {
-	Slug        string          `json:"slug"`
-	Case        string          `json:"case"`
-	Warnings    []string        `json:"warnings,omitempty"`
-	Calibrate   json.RawMessage `json:"calibrate"`
-	Run         int             `json:"run"`
-	WallSeconds float64         `json:"wall_seconds"`
+	Slug            string           `json:"slug"`
+	Case            string           `json:"case"`
+	Warnings        []string         `json:"warnings,omitempty"`
+	Calibrate       json.RawMessage  `json:"calibrate"`
+	GroundTruthBugs []GroundTruthBug `json:"ground_truth_bugs,omitempty"`
+	Run             int              `json:"run"`
+	WallSeconds     float64          `json:"wall_seconds"`
+}
+
+// GroundTruthBug is one manifest bug the report carries, in manifest order, so
+// an adjudication entry's window claim is checked against the run's own ground
+// truth without re-reading the corpus checkout.
+type GroundTruthBug struct {
+	Path      string `json:"path"`
+	Note      string `json:"note,omitempty"`
+	AlsoLines []int  `json:"also_lines,omitempty"`
+	Line      int    `json:"line"`
 }
 
 // CaseSpread is one case over its samples: the runbook publishes median, min,
@@ -281,15 +293,34 @@ func (r *runner) bundles() []BundleRun {
 	out := make([]BundleRun, 0, len(r.scores))
 	for _, s := range r.scores {
 		out = append(out, BundleRun{
-			Slug:        s.slug,
-			Case:        s.caseID,
-			Run:         s.run,
-			WallSeconds: s.wall,
-			Warnings:    s.warnings,
-			Calibrate:   s.data,
+			Slug:            s.slug,
+			Case:            s.caseID,
+			Run:             s.run,
+			WallSeconds:     s.wall,
+			Warnings:        s.warnings,
+			Calibrate:       s.data,
+			GroundTruthBugs: r.groundTruthBugs(s.caseID),
 		})
 	}
 	return out
+}
+
+// groundTruthBugs publishes the case's bugs in manifest order: the bug index an
+// adjudication entry names is this array's position.
+func (r *runner) groundTruthBugs(id string) []GroundTruthBug {
+	for i := range r.cases {
+		if r.cases[i].id != id {
+			continue
+		}
+		var manifest struct {
+			Bugs []GroundTruthBug `json:"bugs"`
+		}
+		if json.Unmarshal(r.cases[i].manifest, &manifest) != nil {
+			return nil
+		}
+		return manifest.Bugs
+	}
+	return nil
 }
 
 func (r *runner) spread() []CaseSpread {

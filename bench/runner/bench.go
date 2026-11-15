@@ -26,26 +26,27 @@ import (
 // Config is one benchmark run's inputs. Everything an operator can vary is
 // here; everything a run derives from the corpus stays derived.
 type Config struct {
-	Render   string
-	Now      time.Time
-	Summary  io.Writer
-	Out      string
-	Corpus   string
-	Verdict  string
-	WorkDir  string
-	Agent    string
-	Model    string
-	Repo     string
-	Root     string
-	Panel    []string
-	Cases    []string
-	Timeout  time.Duration
-	MaxUSD   float64
-	K        int
-	Weights  core.SeverityWeights
-	Runs     int
-	Loop     int
-	Internal bool
+	Render       string
+	Adjudication string
+	Now          time.Time
+	Summary      io.Writer
+	Out          string
+	Corpus       string
+	Verdict      string
+	WorkDir      string
+	Agent        string
+	Model        string
+	Repo         string
+	Root         string
+	Panel        []string
+	Cases        []string
+	Timeout      time.Duration
+	MaxUSD       float64
+	K            int
+	Weights      core.SeverityWeights
+	Runs         int
+	Loop         int
+	Internal     bool
 }
 
 const (

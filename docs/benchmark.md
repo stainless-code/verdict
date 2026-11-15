@@ -26,9 +26,11 @@ deliberately simple and published:
   and its text names that bug's defect. A defect is named by its `kind` in
   hyphen or space form (`off-by-one`, `off by one`), a phrase from the
   published category vocabulary for that kind (see below), or a phrase from
-  the bug's optional `keywords`. Matching is case-insensitive and
-  whitespace-folded, and a phrase must start a word, so `race` does not
-  match inside `trace`.
+  the bug's optional `keywords`. The finding text and every phrase are
+  normalized the same way — lower-cased, whitespace-folded, and a spaced
+  selector dot folded — and a phrase must start a word, so `race` does not
+  match inside `trace`. A real case drops the built-in phrases its own diff
+  spells before grading.
 - A finding that matches through an alternate anchor counts the same bug:
   one bug is one true positive no matter how many of its lines a review
   names, and the reported match keeps the primary line.
@@ -131,6 +133,23 @@ One case, one manifest, published as
   and line window, but a keyword nobody would write turns true positives
   into false ones. The bug's `kind` and its category vocabulary always name
   it too, so a case with no keywords is matched on `kind` and category.
+  Validation refuses a keyword the case's own `full.diff` spells: at a word
+  start, including as the prefix of a longer identifier (`help` in
+  `helpName`) and as one part of a split or spaced selector (`cmd`, `name`,
+  or `cmd .Name` against `cmd.Name`), because the patch's own words are not
+  the reviewer's. The match is left-bounded, so `help` is refused even when
+  the diff only writes `helper`: prefer a multi-word phrase (`help command`)
+  when the single word lives inside an identifier. A built-in phrase — the
+  `kind` in either form or one from the category table — that the diff spells
+  is dropped from that case's grading instead of refusing the case, because
+  the curator cannot change the table. A dropped phrase is unavailable for
+  that case: a correct finding that names only it grades as a false positive
+  (a bounds finding saying `len(` when the diff spells `len(`), so give the
+  case a keyword that the diff does not spell. If no phrase is left,
+  validation refuses the case and asks for that keyword. A real bundle must
+  carry a non-empty `full.diff`: `calibrate` refuses one that is missing,
+  empty, or unreadable instead of grading with the unfiltered built-ins, and
+  `trend` skips it with a warning.
 - `line_tolerance` (optional, default 1) is the window in lines. Keep it
   short of the far end of the new-side hunk that shows the bug: the corpus
   test refuses a case whose window covers the whole hunk.
@@ -334,6 +353,110 @@ Publish a checked-in JSON next to the corpus (for example
 `bench/runner` writes this file when it is run without `-internal`; then link
 it from the model comparison page.
 
+## Adjudication: findings the answer key does not hold
+
+Strict precision grades every unmatched finding as a false positive, so a real
+defect the case never lists counts against the review. Keywords misfire the
+other way too: a correct finding worded differently misses the case's
+vocabulary, which costs both precision and recall. Adjudication reclassifies
+those findings against the code, publishes every call with its rationale, and
+leaves the answer key alone — curators widen a case's keywords in the next
+corpus version, and the report names the findings that ask for it.
+
+### The record
+
+One versioned record per run, beside the report:
+
+```json
+{
+  "schema_version": "1",
+  "run_id": "2026-11-15-fixture-model",
+  "created_at": "2026-11-15T10:00:00Z",
+  "entries": [
+    {
+      "case": "off-by-one",
+      "sample": 1,
+      "sig": "1f00ad0b56dc866f568010da6c8a89c15701d5a5",
+      "verdict": "matches-ground-truth",
+      "bug": 0,
+      "adjudicator": "operator",
+      "rationale": "The finding says `The loop iterates one index too far`, and the ground-truth note reads \"loop bound is <= len(xs), so the last read runs one past the slice\"."
+    }
+  ]
+}
+```
+
+- `run_id` is the report's `run_id`: a record describes one run and is never
+  applied to another.
+- An entry names one **unmatched** finding by its stable identity: the case id,
+  the sample number, and the finding `sig` the calibrate block published.
+- `verdict` is one of:
+  - `real-unlisted` — a real defect the ground truth does not list. Counts as a
+    true positive in adjudicated precision only.
+  - `matches-ground-truth` — the defect a ground-truth bug names, in words the
+    case's keywords missed. `bug` is the bug's index in the case manifest's
+    `bugs[]` array, and the finding must sit on that bug's path inside its
+    `line_tolerance` window, alternate `also_lines` anchors included. Counts as
+    a true positive for that bug in adjudicated precision **and** adjudicated
+    recall; a bug the strict run already matched is refused, as is a second
+    claim on the same bug, because one bug is one true positive.
+  - `false-positive` — confirms the strict call. Changes no figure.
+- `rationale` clears 30 characters and, for `real-unlisted` and
+  `matches-ground-truth`, quotes the code or the finding in backticks. Only
+  visible runes count, so padding a span with zero-width or other format runes
+  is not a citation. A `matches-ground-truth` rationale also quotes the bug's
+  ground-truth `note`, compared with case folded, whitespace collapsed, and
+  invisibles dropped, so a reflowed quotation still counts; that quote is the
+  published evidence the words were the same defect.
+- `adjudicator` names who made the call; every verdict carries one.
+
+The record is refused, not worked around, when an entry names a case, sample,
+or sig the run never produced (`unknown-sig`), the record belongs to another
+run (`run-mismatch`), a rationale is missing, short, or uncited
+(`rationale-required`, `bad-adjudication`), a `matches-ground-truth` claim
+names a bug the case does not have, a bug the run already matched, a finding
+outside the bug's window, or a rationale that does not quote the note, one
+finding or one bug is adjudicated twice, or the file is not one strict
+versioned document (all `bad-adjudication`). The record is separate from
+`case.json` in every case: adjudication never edits ground truth.
+
+### Recompute after the paid run
+
+Adjudication happens after a run, from its publication JSON:
+
+```sh
+go run ./bench/runner -render bench/results/<date>.json \
+  -adjudication bench/results/<date>-adjudication.json \
+  -out bench/results/<date>-adjudicated.json
+```
+
+`-render` reads the publication and launches nothing; `-adjudication` applies
+the record; `-out` writes the adjudicated JSON plus its `.md` sibling. Without
+`-out` the command prints the Markdown only, which is enough to read the
+numbers. `-out` refuses to overwrite the publication it reads.
+
+The report and the Markdown then carry, beside the strict figures:
+
+- `adjudication.precision_adjudicated` — `(matched + real-unlisted +
+matches-ground-truth) / reported`;
+- `adjudication.recall_adjudicated` — `(matched + matches-ground-truth) /
+ground_truth`;
+- `adjudication.real_unlisted`, `matches_ground_truth`, `false_positives`, and
+  `entries` — the count per verdict, zeros included;
+- `adjudication.record` and `adjudication.sha256` — the record's path and
+  digest;
+- `adjudication.keyword_misses[]` — every `matches-ground-truth` entry with its
+  case, sample, finding, and bug, sorted; this is the per-case list the next
+  corpus version curates against.
+
+Strict figures are never rewritten: adjudication reclassifies findings the run
+already reported, so both figures share one denominator and a reader can check
+the gap. With no record the whole `adjudication` block is absent and the
+Markdown has no adjudication section — the adjudicated figures are never filled
+from the strict ones. Each bundle also carries `ground_truth_bugs[]` (path,
+line, `also_lines`, `note`, in manifest order) so a keyword-miss claim is
+checked against the run's own ground truth without re-reading the corpus.
+
 ## Loop mode
 
 `-loop N` runs a repair loop per sample. The default is `1`, which keeps the
@@ -397,12 +520,14 @@ citable, never posted.
 
 ### What the backtest numbers mean
 
-Grading reuses the corpus rule (`corpuscore.Evaluate`): a finding matches a bug
-when it names the same `path`, its line is within ±1 of the bug's line, and its
-text names the defect (the bug's kind in hyphen or space form, or the published
-category vocabulary for that kind). A backtest case has no hand-written
-keywords: the kind is the miner's deterministic guess, so a finding must name
-what that guess calls the defect.
+Grading reuses the corpus rule over the replay bundle
+(`corpuscore.EvaluateDir`): a finding matches a bug when it names the same
+`path`, its line is within ±1 of the bug's line, and its text names the defect
+(the bug's kind in hyphen or space form, or the published category vocabulary
+for that kind). The bundle's `full.diff` is read too: a built-in phrase that
+diff spells is dropped, so a finding that names only that phrase is off target.
+A backtest case has no hand-written keywords: the kind is the miner's
+deterministic guess, so a finding must name what that guess calls the defect.
 
 - **`catch_rate = matched / bugs`** over the replayed PRs whose review was
   graded. Read it as a **match rate over SZZ candidates**, not a measured catch
@@ -732,6 +857,11 @@ Once 06b has run, the comparison page may cite:
 
 - overall precision, recall, and false-discovery rate with the denominators
   (`cases`, bug-runs, reported findings) and the corpus commit/date;
+- the adjudicated precision and recall beside the strict ones, with the
+  adjudication record's path and sha256 and its counts per verdict — both
+  numbers are mandatory in a citable report, so a strict-only publication is
+  not citable until its run is adjudicated (see
+  [Adjudication](#adjudication-findings-the-answer-key-does-not-hold));
 - the per-model and per-panel table from `data.corpus`, including the
   reproducibility spread;
 - the cost note per model, labelled measured or projected;
@@ -827,7 +957,10 @@ go run ./bench/runner -render bench/runner/testdata/example-seeded-run.json \
 ```
 
 The runner writes both files when the run finishes. `-render` reads only the
-JSON and launches no agent. The JSON records the corpus commit and dirty
+JSON and launches no agent. Publish a run's numbers only after adjudicating it:
+the record is written from the report's own `sig` values and applied with
+`-render … -adjudication …`, as
+[Adjudication](#adjudication-findings-the-answer-key-does-not-hold) describes. The JSON records the corpus commit and dirty
 state, UTC date, `prompts_hash`, CLI version, command argv, k, repeats, resolved
 severity weights, individual calibration blocks, and per-case sample spreads.
 The Markdown renders the same denominators and sample counts, with cases and

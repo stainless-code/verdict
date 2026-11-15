@@ -1,0 +1,364 @@
+diff --git a/.changes/unreleased/Features-20250625-151818.yaml b/.changes/unreleased/Features-20250625-151818.yaml
+new file mode 100644
+index 000000000..bf0de70df
+--- /dev/null
++++ b/.changes/unreleased/Features-20250625-151818.yaml
+@@ -0,0 +1,6 @@
++kind: Features
++body: Begin validating configs from model sql files
++time: 2025-06-25T15:18:18.164-05:00
++custom:
++  Author: QMalcolm
++  Issue: "11727"
+diff --git a/core/dbt/events/types.py b/core/dbt/events/types.py
+index 0228a4c9d..6e2f08225 100644
+--- a/core/dbt/events/types.py
++++ b/core/dbt/events/types.py
+@@ -632,7 +632,11 @@ class CustomKeyInConfigDeprecation(WarnLevel):
+         return "D026"
+ 
+     def message(self) -> str:
+-        description = f"Custom key `{self.key}` found in `config` at path `{self.key_path}` in file `{self.file}`. Custom config keys should move into the `config.meta`."
++        path_specification = ""
++        if self.key_path != "":
++            path_specification = f" at path `{self.key_path}`"
++
++        description = f"Custom key `{self.key}` found in `config`{path_specification} in file `{self.file}`. Custom config keys should move into the `config.meta`."
+         return line_wrap_message(deprecation_tag(description, self.__class__.__name__))
+ 
+ 
+diff --git a/core/dbt/jsonschemas.py b/core/dbt/jsonschemas.py
+index b4521d950..9c229e5af 100644
+--- a/core/dbt/jsonschemas.py
++++ b/core/dbt/jsonschemas.py
+@@ -3,7 +3,7 @@ import os
+ import re
+ from datetime import date, datetime
+ from pathlib import Path
+-from typing import Any, Dict, Iterator, List
++from typing import Any, Dict, Iterator, List, Optional
+ 
+ import jsonschema
+ from jsonschema import ValidationError
+@@ -13,6 +13,9 @@ from jsonschema.validators import Draft7Validator, extend
+ from dbt import deprecations
+ from dbt.include.jsonschemas import JSONSCHEMAS_PATH
+ 
++_PROJECT_SCHEMA: Optional[Dict[str, Any]] = None
++_RESOURCES_SCHEMA: Optional[Dict[str, Any]] = None
++
+ 
+ def load_json_from_package(jsonschema_type: str, filename: str) -> Dict[str, Any]:
+     """Loads a JSON file from within a package."""
+@@ -23,11 +26,24 @@ def load_json_from_package(jsonschema_type: str, filename: str) -> Dict[str, Any
+ 
+ 
+ def project_schema() -> Dict[str, Any]:
+-    return load_json_from_package(jsonschema_type="project", filename="0.0.110.json")
++    global _PROJECT_SCHEMA
++
++    if _PROJECT_SCHEMA is None:
++        _PROJECT_SCHEMA = load_json_from_package(
++            jsonschema_type="project", filename="0.0.110.json"
++        )
++    return _PROJECT_SCHEMA
+ 
+ 
+ def resources_schema() -> Dict[str, Any]:
+-    return load_json_from_package(jsonschema_type="resources", filename="latest.json")
++    global _RESOURCES_SCHEMA
++
++    if _RESOURCES_SCHEMA is None:
++        _RESOURCES_SCHEMA = load_json_from_package(
++            jsonschema_type="resources", filename="latest.json"
++        )
++
++    return _RESOURCES_SCHEMA
+ 
+ 
+ def custom_type_rule(validator, types, instance, schema):
+@@ -62,14 +78,19 @@ def _additional_properties_violation_keys(error: ValidationError) -> List[str]:
+     return [key.strip("'") for key in found_keys]
+ 
+ 
++def _validate_with_schema(
++    schema: Dict[str, Any], json: Dict[str, Any]
++) -> Iterator[ValidationError]:
++    validator = CustomDraft7Validator(schema)
++    return validator.iter_errors(json)
++
++
+ def jsonschema_validate(schema: Dict[str, Any], json: Dict[str, Any], file_path: str) -> None:
+ 
+     if not os.environ.get("DBT_ENV_PRIVATE_RUN_JSONSCHEMA_VALIDATIONS"):
+         return
+ 
+-    validator = CustomDraft7Validator(schema)
+-    errors: Iterator[ValidationError] = validator.iter_errors(json)  # get all validation errors
+-
++    errors = _validate_with_schema(schema, json)
+     for error in errors:
+         # Listify the error path to make it easier to work with (it's a deque in the ValidationError object)
+         error_path = list(error.path)
+@@ -116,3 +137,73 @@ def jsonschema_validate(schema: Dict[str, Any], json: Dict[str, Any], file_path:
+                 file=file_path,
+                 key_path=error_path_to_string(error),
+             )
++
++
++def validate_model_config(config: Dict[str, Any], file_path: str) -> None:
++    if not os.environ.get("DBT_ENV_PRIVATE_RUN_JSONSCHEMA_VALIDATIONS"):
++        return
++
++    resources_jsonschema = resources_schema()
++    nested_definition_name = "ModelPropertiesConfigs"
++
++    model_config_schema = {
++        "$schema": "http://json-schema.org/draft-07/schema#",
++        "title": nested_definition_name,
++        **resources_jsonschema["definitions"][nested_definition_name],
++        "definitions": {
++            k: v
++            for k, v in resources_jsonschema["definitions"].items()
++            if k != nested_definition_name
++        },
++    }
++
++    errors = _validate_with_schema(model_config_schema, config)
++    for error in errors:
++        error_path = list(error.path)
++        if error.validator == "additionalProperties":
++            keys = _additional_properties_violation_keys(error)
++            if len(error.path) == 0:
++                key_path = error_path_to_string(error)
++                for key in keys:
++                    deprecations.warn(
++                        "custom-key-in-config-deprecation",
++                        key=key,
++                        file=file_path,
++                        key_path=key_path,
++                    )
++            else:
++                error.path.appendleft("config")
++                key_path = error_path_to_string(error)
++                for key in keys:
++                    deprecations.warn(
++                        "custom-key-in-object-deprecation",
++                        key=key,
++                        file=file_path,
++                        key_path=key_path,
++                    )
++        elif error.validator == "type":
++            # Not deprecating invalid types yet, except for pre-existing deprecation_date deprecation
++            pass
++        elif error.validator == "anyOf" and len(error_path) > 0:
++            for sub_error in error.context or []:
++                if (
++                    isinstance(sub_error, ValidationError)
++                    and sub_error.validator == "additionalProperties"
++                ):
++                    error.path.appendleft("config")
++                    keys = _additional_properties_violation_keys(sub_error)
++                    key_path = error_path_to_string(error)
++                    for key in keys:
++                        deprecations.warn(
++                            "custom-key-in-object-deprecation",
++                            key=key,
++                            file=file_path,
++                            key_path=key_path,
++                        )
++        else:
++            deprecations.warn(
++                "generic-json-schema-validation-deprecation",
++                violation=error.message,
++                file=file_path,
++                key_path=error_path_to_string(error),
++            )
+diff --git a/core/dbt/parser/base.py b/core/dbt/parser/base.py
+index f72d67c16..01801ced9 100644
+--- a/core/dbt/parser/base.py
++++ b/core/dbt/parser/base.py
+@@ -24,6 +24,7 @@ from dbt.exceptions import (
+     InvalidAccessTypeError,
+ )
+ from dbt.flags import get_flags
++from dbt.jsonschemas import validate_model_config
+ from dbt.node_types import AccessType, ModelLanguage, NodeType
+ from dbt.parser.common import resource_types_to_schema_file_keys
+ from dbt.parser.search import FileBlock
+@@ -316,6 +317,7 @@ class ConfiguredParser(
+         context=None,
+         patch_config_dict=None,
+         patch_file_id=None,
++        validate_config_call_dict: bool = False,
+     ) -> None:
+         """Given the ContextConfig used for parsing and the parsed node,
+         generate and set the true values to use, overriding the temporary parse
+@@ -404,6 +406,13 @@ class ConfiguredParser(
+             rendered=False, patch_config_dict=patch_config_dict
+         )
+ 
++        # We validate the _config_call_dict here because there is more than
++        # one way that the _config_call_dict can be set and also, later it gets
++        # read multiple times. Doing the validation here ensures that the config
++        # is only validated once.
++        if parsed_node.resource_type == NodeType.Model and validate_config_call_dict:
++            validate_model_config(config._config_call_dict, parsed_node.original_file_path)
++
+         parsed_node.config_call_dict = config._config_call_dict
+         parsed_node.unrendered_config_call_dict = config._unrendered_config_call_dict
+ 
+diff --git a/core/dbt/parser/models.py b/core/dbt/parser/models.py
+index 06e11a896..0dd003d25 100644
+--- a/core/dbt/parser/models.py
++++ b/core/dbt/parser/models.py
+@@ -241,7 +241,9 @@ class ModelParser(SimpleSQLParser[ModelNode]):
+                 verify_python_model_code(node)
+                 context = self._context_for(node, config)
+                 self.parse_python_model(node, config, context)
+-                self.update_parsed_node_config(node, config, context=context)
++                self.update_parsed_node_config(
++                    node, config, context=context, validate_config_call_dict=True
++                )
+ 
+             except ValidationError as exc:
+                 # we got a ValidationError - probably bad types in config()
+@@ -438,7 +440,7 @@ class ModelParser(SimpleSQLParser[ModelNode]):
+ 
+         # if there are hooks present this, it WILL render jinja. Will need to change
+         # when the experimental parser supports hooks
+-        self.update_parsed_node_config(node, config)
++        self.update_parsed_node_config(node, config, validate_config_call_dict=True)
+ 
+         # update the unrendered config with values from the file.
+         # values from yaml files are in there already
+diff --git a/tests/functional/deprecations/test_config_deprecations.py b/tests/functional/deprecations/test_config_deprecations.py
+index 0599b7668..888052ec2 100644
+--- a/tests/functional/deprecations/test_config_deprecations.py
++++ b/tests/functional/deprecations/test_config_deprecations.py
+@@ -1,6 +1,9 @@
++import os
+ from collections import defaultdict
++from typing import Dict
+ 
+ import pytest
++from pytest_mock import MockerFixture
+ 
+ from dbt import deprecations
+ from dbt.exceptions import CompilationError, ProjectContractError, YamlParseDictError
+@@ -20,6 +23,20 @@ from tests.functional.deprecations.fixtures import (
+ )
+ 
+ 
++# TODO: This is now defined 4 times throughout the test suite. We should move it to a utils file.
++def normalize(path):
++    """On windows, neither is enough on its own:
++
++    >>> normcase('C:\\documents/ALL CAPS/subdir\\..')
++    'c:\\documents\\all caps\\subdir\\..'
++    >>> normpath('C:\\documents/ALL CAPS/subdir\\..')
++    'C:\\documents\\ALL CAPS'
++    >>> normpath(normcase('C:\\documents/ALL CAPS/subdir\\..'))
++    'c:\\documents\\all caps'
++    """
++    return os.path.normcase(os.path.normpath(path))
++
++
+ # test deprecation messages
+ class TestTestsConfigDeprecation:
+     @pytest.fixture(scope="class")
+@@ -162,3 +179,39 @@ class TestTestConfigInDependency:
+         results = run_dbt(["test"])
+         # 1 data_test in the dep and 1 in the project
+         assert len(results) == 2
++
++
++class TestValidateModelConfigOnlyCalledOncePerModel:
++    @pytest.fixture(scope="class")
++    def models(self):
++        return {
++            "model.sql": models_trivial__model_sql,
++            "versioned_model.sql": models_trivial__model_sql,
++            "schema.yml": old_tests_yml,
++        }
++
++    @pytest.fixture(scope="class")
++    def macros(self):
++        return {"custom.sql": macros__custom_test_sql}
++
++    def test_validate_model_config_only_called_once_per_model(
++        self, project, models: Dict[str, str], mocker: MockerFixture
++    ):
++        mocked_vmc = mocker.patch("dbt.parser.base.validate_model_config")
++        run_dbt(
++            ["parse", "--no-partial-parse"],
++        )
++        # this is a list of all the files that validate_model_config was called on
++        called_on_files = [call.args[1] for call in mocked_vmc.call_args_list]
++
++        # this entire test is only useful if we have validated more than one file
++        assert len(called_on_files) > 1
++
++        # Each model sql file should have been validated once
++        assert len(called_on_files) == len(set(called_on_files))
++
++        # Only model sql files should have been validated
++        sql_model_files = [file for file in models.keys() if file.endswith(".sql")]
++        assert len(called_on_files) == len(sql_model_files)
++        for file in sql_model_files:
++            assert normalize(f"models/{file}") in called_on_files
+diff --git a/tests/unit/test_jsonschemas.py b/tests/unit/test_jsonschemas.py
+new file mode 100644
+index 000000000..0fc96cc7e
+--- /dev/null
++++ b/tests/unit/test_jsonschemas.py
+@@ -0,0 +1,49 @@
++import os
++from unittest import mock
++
++from dbt.deprecations import (
++    CustomKeyInConfigDeprecation,
++    CustomKeyInObjectDeprecation,
++    GenericJSONSchemaValidationDeprecation,
++)
++from dbt.jsonschemas import validate_model_config
++from dbt_common.events.event_manager_client import add_callback_to_manager
++from tests.utils import EventCatcher
++
++
++class TestValidateModelConfigNoError:
++    @mock.patch.dict(os.environ, {"DBT_ENV_PRIVATE_RUN_JSONSCHEMA_VALIDATIONS": "True"})
++    def test_validate_model_config_no_error(self):
++        caught_events = []
++        add_callback_to_manager(caught_events.append)
++
++        config = {
++            "enabled": True,
++        }
++        validate_model_config(config, "test.yml")
++        assert len(caught_events) == 0
++
++    @mock.patch.dict(os.environ, {"DBT_ENV_PRIVATE_RUN_JSONSCHEMA_VALIDATIONS": "True"})
++    def test_validate_model_config_error(self):
++        ckiod_catcher = EventCatcher(CustomKeyInObjectDeprecation)
++        ckicd_catcher = EventCatcher(CustomKeyInConfigDeprecation)
++        gjsvd_catcher = EventCatcher(GenericJSONSchemaValidationDeprecation)
++        add_callback_to_manager(ckiod_catcher.catch)
++        add_callback_to_manager(ckicd_catcher.catch)
++        add_callback_to_manager(gjsvd_catcher.catch)
++
++        config = {
++            "non_existent_config": True,  # this config key doesn't exist
++            "docs": {
++                "show": True,  # this is a valid config key
++                "color": "red",  # this is an invalid config key, as it should be `node_color`
++            },
++        }
++
++        validate_model_config(config, "test.yml")
++
++        assert len(ckiod_catcher.caught_events) == 1
++        assert ckiod_catcher.caught_events[0].data.key == "color"
++        assert len(ckicd_catcher.caught_events) == 1
++        assert ckicd_catcher.caught_events[0].data.key == "non_existent_config"
++        assert len(gjsvd_catcher.caught_events) == 0

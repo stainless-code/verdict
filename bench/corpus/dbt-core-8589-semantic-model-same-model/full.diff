@@ -1,0 +1,605 @@
+diff --git a/.changes/unreleased/Fixes-20230925-233306.yaml b/.changes/unreleased/Fixes-20230925-233306.yaml
+new file mode 100644
+index 000000000..1e078932b
+--- /dev/null
++++ b/.changes/unreleased/Fixes-20230925-233306.yaml
+@@ -0,0 +1,6 @@
++kind: Fixes
++body: semantic models in graph selection
++time: 2023-09-25T23:33:06.754344+01:00
++custom:
++  Author: dave-connors-3 michelleark
++  Issue: "8589"
+diff --git a/core/dbt/cli/params.py b/core/dbt/cli/params.py
+index b82310585..da2facec3 100644
+--- a/core/dbt/cli/params.py
++++ b/core/dbt/cli/params.py
+@@ -368,6 +368,7 @@ resource_type = click.option(
+     type=ChoiceTuple(
+         [
+             "metric",
++            "semantic_model",
+             "source",
+             "analysis",
+             "model",
+diff --git a/core/dbt/compilation.py b/core/dbt/compilation.py
+index f42141d70..f48caa809 100644
+--- a/core/dbt/compilation.py
++++ b/core/dbt/compilation.py
+@@ -183,10 +183,10 @@ class Linker:
+     def link_graph(self, manifest: Manifest):
+         for source in manifest.sources.values():
+             self.add_node(source.unique_id)
+-        for semantic_model in manifest.semantic_models.values():
+-            self.add_node(semantic_model.unique_id)
+         for node in manifest.nodes.values():
+             self.link_node(node, manifest)
++        for semantic_model in manifest.semantic_models.values():
++            self.link_node(semantic_model, manifest)
+         for exposure in manifest.exposures.values():
+             self.link_node(exposure, manifest)
+         for metric in manifest.metrics.values():
+diff --git a/core/dbt/contracts/graph/nodes.py b/core/dbt/contracts/graph/nodes.py
+index 3aad00901..065a60a6d 100644
+--- a/core/dbt/contracts/graph/nodes.py
++++ b/core/dbt/contracts/graph/nodes.py
+@@ -1676,6 +1676,56 @@ class SemanticModel(GraphNode):
+             else None
+         )
+ 
++    def same_model(self, old: "SemanticModel") -> bool:
++        return self.model == old.same_model
++
++    def same_node_relation(self, old: "SemanticModel") -> bool:
++        return self.node_relation == old.node_relation
++
++    def same_description(self, old: "SemanticModel") -> bool:
++        return self.description == old.description
++
++    def same_defaults(self, old: "SemanticModel") -> bool:
++        return self.defaults == old.defaults
++
++    def same_entities(self, old: "SemanticModel") -> bool:
++        return self.entities == old.entities
++
++    def same_dimensions(self, old: "SemanticModel") -> bool:
++        return self.dimensions == old.dimensions
++
++    def same_measures(self, old: "SemanticModel") -> bool:
++        return self.measures == old.measures
++
++    def same_config(self, old: "SemanticModel") -> bool:
++        return self.config == old.config
++
++    def same_primary_entity(self, old: "SemanticModel") -> bool:
++        return self.primary_entity == old.primary_entity
++
++    def same_group(self, old: "SemanticModel") -> bool:
++        return self.group == old.group
++
++    def same_contents(self, old: Optional["SemanticModel"]) -> bool:
++        # existing when it didn't before is a change!
++        # metadata/tags changes are not "changes"
++        if old is None:
++            return True
++
++        return (
++            self.same_model(old)
++            and self.same_node_relation(old)
++            and self.same_description(old)
++            and self.same_defaults(old)
++            and self.same_entities(old)
++            and self.same_dimensions(old)
++            and self.same_measures(old)
++            and self.same_config(old)
++            and self.same_primary_entity(old)
++            and self.same_group(old)
++            and True
++        )
++
+ 
+ # ====================================
+ # Patches
+diff --git a/core/dbt/graph/cli.py b/core/dbt/graph/cli.py
+index 2950e8841..5f8620f6e 100644
+--- a/core/dbt/graph/cli.py
++++ b/core/dbt/graph/cli.py
+@@ -21,7 +21,7 @@ from .selector_spec import (
+ 
+ INTERSECTION_DELIMITER = ","
+ 
+-DEFAULT_INCLUDES: List[str] = ["fqn:*", "source:*", "exposure:*", "metric:*"]
++DEFAULT_INCLUDES: List[str] = ["fqn:*", "source:*", "exposure:*", "metric:*", "semantic_model:*"]
+ DEFAULT_EXCLUDES: List[str] = []
+ 
+ 
+diff --git a/core/dbt/graph/selector_methods.py b/core/dbt/graph/selector_methods.py
+index 20e78d1c6..e9729b7cd 100644
+--- a/core/dbt/graph/selector_methods.py
++++ b/core/dbt/graph/selector_methods.py
+@@ -18,6 +18,7 @@ from dbt.contracts.graph.nodes import (
+     ResultNode,
+     ManifestNode,
+     ModelNode,
++    SemanticModel,
+ )
+ from dbt.contracts.graph.unparsed import UnparsedVersion
+ from dbt.contracts.state import PreviousState
+@@ -53,6 +54,7 @@ class MethodName(StrEnum):
+     SourceStatus = "source_status"
+     Wildcard = "wildcard"
+     Version = "version"
++    SemanticModel = "semantic_model"
+ 
+ 
+ def is_selected_node(fqn: List[str], node_selector: str, is_versioned: bool) -> bool:
+@@ -144,6 +146,16 @@ class SelectorMethod(metaclass=abc.ABCMeta):
+                 continue
+             yield unique_id, metric
+ 
++    def semantic_model_nodes(
++        self, included_nodes: Set[UniqueId]
++    ) -> Iterator[Tuple[UniqueId, SemanticModel]]:
++
++        for key, semantic_model in self.manifest.semantic_models.items():
++            unique_id = UniqueId(key)
++            if unique_id not in included_nodes:
++                continue
++            yield unique_id, semantic_model
++
+     def all_nodes(
+         self, included_nodes: Set[UniqueId]
+     ) -> Iterator[Tuple[UniqueId, SelectorTarget]]:
+@@ -152,6 +164,7 @@ class SelectorMethod(metaclass=abc.ABCMeta):
+             self.source_nodes(included_nodes),
+             self.exposure_nodes(included_nodes),
+             self.metric_nodes(included_nodes),
++            self.semantic_model_nodes(included_nodes),
+         )
+ 
+     def configurable_nodes(
+@@ -167,6 +180,7 @@ class SelectorMethod(metaclass=abc.ABCMeta):
+             self.parsed_nodes(included_nodes),
+             self.exposure_nodes(included_nodes),
+             self.metric_nodes(included_nodes),
++            self.semantic_model_nodes(included_nodes),
+         )
+ 
+     def groupable_nodes(
+@@ -210,8 +224,8 @@ class QualifiedNameSelectorMethod(SelectorMethod):
+ 
+         :param str selector: The selector or node name
+         """
+-        parsed_nodes = list(self.parsed_nodes(included_nodes))
+-        for node, real_node in parsed_nodes:
++        non_source_nodes = list(self.non_source_nodes(included_nodes))
++        for node, real_node in non_source_nodes:
+             if self.node_is_match(selector, real_node.fqn, real_node.is_versioned):
+                 yield node
+ 
+@@ -322,6 +336,31 @@ class MetricSelectorMethod(SelectorMethod):
+             yield node
+ 
+ 
++class SemanticModelSelectorMethod(SelectorMethod):
++    def search(self, included_nodes: Set[UniqueId], selector: str) -> Iterator[UniqueId]:
++        parts = selector.split(".")
++        target_package = SELECTOR_GLOB
++        if len(parts) == 1:
++            target_name = parts[0]
++        elif len(parts) == 2:
++            target_package, target_name = parts
++        else:
++            msg = (
++                'Invalid semantic model selector value "{}". Semantic models must be of '
++                "the form ${{semantic_model_name}} or "
++                "${{semantic_model_package.semantic_model_name}}"
++            ).format(selector)
++            raise DbtRuntimeError(msg)
++
++        for node, real_node in self.semantic_model_nodes(included_nodes):
++            if not fnmatch(real_node.package_name, target_package):
++                continue
++            if not fnmatch(real_node.name, target_name):
++                continue
++
++            yield node
++
++
+ class PathSelectorMethod(SelectorMethod):
+     def search(self, included_nodes: Set[UniqueId], selector: str) -> Iterator[UniqueId]:
+         """Yields nodes from included that match the given path."""
+@@ -431,7 +470,7 @@ class ResourceTypeSelectorMethod(SelectorMethod):
+             resource_type = NodeType(selector)
+         except ValueError as exc:
+             raise DbtRuntimeError(f'Invalid resource_type selector "{selector}"') from exc
+-        for node, real_node in self.parsed_nodes(included_nodes):
++        for node, real_node in self.all_nodes(included_nodes):
+             if real_node.resource_type == resource_type:
+                 yield node
+ 
+@@ -539,7 +578,7 @@ class StateSelectorMethod(SelectorMethod):
+     def check_modified_content(
+         self, old: Optional[SelectorTarget], new: SelectorTarget, adapter_type: str
+     ) -> bool:
+-        if isinstance(new, (SourceDefinition, Exposure, Metric)):
++        if isinstance(new, (SourceDefinition, Exposure, Metric, SemanticModel)):
+             # these all overwrite `same_contents`
+             different_contents = not new.same_contents(old)  # type: ignore
+         else:
+@@ -761,6 +800,7 @@ class MethodManager:
+         MethodName.Result: ResultSelectorMethod,
+         MethodName.SourceStatus: SourceStatusSelectorMethod,
+         MethodName.Version: VersionSelectorMethod,
++        MethodName.SemanticModel: SemanticModelSelectorMethod,
+     }
+ 
+     def __init__(
+diff --git a/core/dbt/task/list.py b/core/dbt/task/list.py
+index b1edf2b51..3b9448aeb 100644
+--- a/core/dbt/task/list.py
++++ b/core/dbt/task/list.py
+@@ -1,6 +1,6 @@
+ import json
+ 
+-from dbt.contracts.graph.nodes import Exposure, SourceDefinition, Metric
++from dbt.contracts.graph.nodes import Exposure, SourceDefinition, Metric, SemanticModel
+ from dbt.flags import get_flags
+ from dbt.graph import ResourceTypeSelector
+ from dbt.task.runnable import GraphRunnableTask
+@@ -28,6 +28,7 @@ class ListTask(GraphRunnableTask):
+             NodeType.Source,
+             NodeType.Exposure,
+             NodeType.Metric,
++            NodeType.SemanticModel,
+         )
+     )
+     ALL_RESOURCE_VALUES = DEFAULT_RESOURCE_VALUES | frozenset((NodeType.Analysis,))
+@@ -74,6 +75,8 @@ class ListTask(GraphRunnableTask):
+                 yield self.manifest.exposures[node]
+             elif node in self.manifest.metrics:
+                 yield self.manifest.metrics[node]
++            elif node in self.manifest.semantic_models:
++                yield self.manifest.semantic_models[node]
+             else:
+                 raise DbtRuntimeError(
+                     f'Got an unexpected result from node selection: "{node}"'
+@@ -97,6 +100,10 @@ class ListTask(GraphRunnableTask):
+                 # metrics are searched for by pkg.metric_name
+                 metric_selector = ".".join([node.package_name, node.name])
+                 yield f"metric:{metric_selector}"
++            elif node.resource_type == NodeType.SemanticModel:
++                assert isinstance(node, SemanticModel)
++                semantic_model_selector = ".".join([node.package_name, node.name])
++                yield f"semantic_model:{semantic_model_selector}"
+             else:
+                 # everything else is from `fqn`
+                 yield ".".join(node.fqn)
+diff --git a/tests/functional/list/fixtures.py b/tests/functional/list/fixtures.py
+index c35988e29..ea42e2a00 100644
+--- a/tests/functional/list/fixtures.py
++++ b/tests/functional/list/fixtures.py
+@@ -46,7 +46,16 @@ models__ephemeral_sql = """
+ 
+ {{ config(materialized='ephemeral') }}
+ 
+-select 1 as id
++select
++  1 as id,
++  {{ dbt.date_trunc('day', dbt.current_timestamp()) }} as created_at
++
++"""
++
++models__metric_flow = """
++
++select
++  {{ dbt.date_trunc('day', dbt.current_timestamp()) }} as date_day
+ 
+ """
+ 
+@@ -103,6 +112,38 @@ select 4 as id
+ 
+ """
+ 
++semantic_models__sm_yml = """
++semantic_models:
++  - name: my_sm
++    model: ref('outer')
++    defaults:
++      agg_time_dimension: created_at
++    entities:
++      - name: my_entity
++        type: primary
++        expr: id
++    dimensions:
++      - name: created_at
++        type: time
++        type_params:
++          time_granularity: day
++    measures:
++      - name: total_outer_count
++        agg: count
++        expr: 1
++
++"""
++
++metrics__m_yml = """
++metrics:
++  - name: total_outer
++    type: simple
++    description: The total count of outer
++    label: Total Outer
++    type_params:
++      measure: total_outer_count
++"""
++
+ 
+ @pytest.fixture(scope="class")
+ def snapshots():
+@@ -122,6 +163,9 @@ def models():
+         "incremental.sql": models__incremental_sql,
+         "docs.md": models__docs_md,
+         "outer.sql": models__outer_sql,
++        "metricflow_time_spine.sql": models__metric_flow,
++        "sm.yml": semantic_models__sm_yml,
++        "m.yml": metrics__m_yml,
+         "sub": {"inner.sql": models__sub__inner_sql},
+     }
+ 
+@@ -141,6 +185,16 @@ def analyses():
+     return {"a.sql": analyses__a_sql}
+ 
+ 
++@pytest.fixture(scope="class")
++def semantic_models():
++    return {"sm.yml": semantic_models__sm_yml}
++
++
++@pytest.fixture(scope="class")
++def metrics():
++    return {"m.yml": metrics__m_yml}
++
++
+ @pytest.fixture(scope="class")
+ def project_files(
+     project_root,
+diff --git a/tests/functional/list/test_list.py b/tests/functional/list/test_list.py
+index f6db74612..582258802 100644
+--- a/tests/functional/list/test_list.py
++++ b/tests/functional/list/test_list.py
+@@ -12,6 +12,8 @@ from tests.functional.list.fixtures import (  # noqa: F401
+     macros,
+     seeds,
+     analyses,
++    semantic_models,
++    metrics,
+     project_files,
+ )
+ 
+@@ -151,13 +153,22 @@ class TestList:
+ 
+     def expect_model_output(self):
+         expectations = {
+-            "name": ("ephemeral", "incremental", "inner", "outer"),
+-            "selector": ("test.ephemeral", "test.incremental", "test.sub.inner", "test.outer"),
++            "name": ("ephemeral", "incremental", "inner", "metricflow_time_spine", "outer"),
++            "selector": (
++                "test.ephemeral",
++                "test.incremental",
++                "test.sub.inner",
++                "test.metricflow_time_spine",
++                "test.outer",
++            ),
+             "json": (
+                 {
+                     "name": "ephemeral",
+                     "package_name": "test",
+-                    "depends_on": {"nodes": [], "macros": []},
++                    "depends_on": {
++                        "nodes": [],
++                        "macros": ["macro.dbt.current_timestamp", "macro.dbt.date_trunc"],
++                    },
+                     "tags": [],
+                     "config": {
+                         "enabled": True,
+@@ -265,6 +276,44 @@ class TestList:
+                     "alias": "inner",
+                     "resource_type": "model",
+                 },
++                {
++                    "name": "metricflow_time_spine",
++                    "package_name": "test",
++                    "depends_on": {
++                        "nodes": [],
++                        "macros": ["macro.dbt.current_timestamp", "macro.dbt.date_trunc"],
++                    },
++                    "tags": [],
++                    "config": {
++                        "enabled": True,
++                        "group": None,
++                        "materialized": "view",
++                        "post-hook": [],
++                        "tags": [],
++                        "pre-hook": [],
++                        "quoting": {},
++                        "column_types": {},
++                        "persist_docs": {},
++                        "full_refresh": None,
++                        "unique_key": None,
++                        "on_schema_change": "ignore",
++                        "on_configuration_change": "apply",
++                        "database": None,
++                        "schema": None,
++                        "alias": None,
++                        "meta": {},
++                        "grants": {},
++                        "packages": [],
++                        "incremental_strategy": None,
++                        "docs": {"node_color": None, "show": True},
++                        "contract": {"enforced": False},
++                        "access": "protected",
++                    },
++                    "original_file_path": normalize("models/metricflow_time_spine.sql"),
++                    "unique_id": "model.test.metricflow_time_spine",
++                    "alias": "metricflow_time_spine",
++                    "resource_type": "model",
++                },
+                 {
+                     "name": "outer",
+                     "package_name": "test",
+@@ -308,6 +357,7 @@ class TestList:
+                 self.dir("models/ephemeral.sql"),
+                 self.dir("models/incremental.sql"),
+                 self.dir("models/sub/inner.sql"),
++                self.dir("models/metricflow_time_spine.sql"),
+                 self.dir("models/outer.sql"),
+             ),
+         }
+@@ -539,7 +589,10 @@ class TestList:
+             "source:test.my_source.my_table",
+             "test.not_null_outer_id",
+             "test.unique_outer_id",
++            "test.metricflow_time_spine",
+             "test.t",
++            "semantic_model:test.my_sm",
++            "metric:test.total_outer",
+         }
+         # analyses have their type inserted into their fqn like tests
+         expected_all = expected_default | {"test.analysis.a"}
+@@ -564,11 +617,22 @@ class TestList:
+         results = self.run_dbt_ls(["--resource-type", "test", "--select", "+inner"])
+         assert set(results) == {"test.not_null_outer_id", "test.unique_outer_id"}
+ 
++        results = self.run_dbt_ls(["--resource-type", "semantic_model"])
++        assert set(results) == {"semantic_model:test.my_sm"}
++
++        results = self.run_dbt_ls(["--resource-type", "metric"])
++        assert set(results) == {"metric:test.total_outer"}
++
+         results = self.run_dbt_ls(["--resource-type", "model", "--select", "outer+"])
+         assert set(results) == {"test.outer", "test.sub.inner"}
+ 
+         results = self.run_dbt_ls(["--resource-type", "model", "--exclude", "inner"])
+-        assert set(results) == {"test.ephemeral", "test.outer", "test.incremental"}
++        assert set(results) == {
++            "test.ephemeral",
++            "test.outer",
++            "test.metricflow_time_spine",
++            "test.incremental",
++        }
+ 
+         results = self.run_dbt_ls(["--select", "config.incremental_strategy:delete+insert"])
+         assert set(results) == {"test.incremental"}
+@@ -586,6 +650,7 @@ class TestList:
+             "test.not_null_outer_id",
+             "test.outer",
+             "test.sub.inner",
++            "test.metricflow_time_spine",
+             "test.t",
+             "test.unique_outer_id",
+         }
+@@ -598,6 +663,7 @@ class TestList:
+             "test.incremental",
+             "test.not_null_outer_id",
+             "test.outer",
++            "test.metricflow_time_spine",
+             "test.sub.inner",
+             "test.t",
+         }
+diff --git a/tests/unit/test_graph_selector_methods.py b/tests/unit/test_graph_selector_methods.py
+index 4345f762b..941531596 100644
+--- a/tests/unit/test_graph_selector_methods.py
++++ b/tests/unit/test_graph_selector_methods.py
+@@ -17,7 +17,9 @@ from dbt.contracts.graph.nodes import (
+     MetricTypeParams,
+     MetricInputMeasure,
+     Group,
++    NodeRelation,
+     SeedNode,
++    SemanticModel,
+     SingularTestNode,
+     GenericTestNode,
+     SourceDefinition,
+@@ -47,6 +49,7 @@ from dbt.graph.selector_methods import (
+     ExposureSelectorMethod,
+     MetricSelectorMethod,
+     VersionSelectorMethod,
++    SemanticModelSelectorMethod,
+ )
+ import dbt.exceptions
+ import dbt.contracts.graph.nodes
+@@ -427,6 +430,33 @@ def make_group(pkg, name, path=None):
+     )
+ 
+ 
++def make_semantic_model(pkg: str, name: str, path=None, model=None):
++    if path is None:
++        path = "schema.yml"
++
++    if model is None:
++        model = name
++
++    node_relation = NodeRelation(
++        alias=model,
++        schema_name="dbt",
++    )
++
++    return SemanticModel(
++        name=name,
++        resource_type=NodeType.SemanticModel,
++        model=model,
++        node_relation=node_relation,
++        package_name=pkg,
++        path=path,
++        description="Customer entity",
++        primary_entity="customer",
++        unique_id=f"semantic_model.{pkg}.{name}",
++        original_file_path=path,
++        fqn=[pkg, "semantic_models", name],
++    )
++
++
+ @pytest.fixture
+ def macro_test_unique():
+     return make_macro(
+@@ -798,6 +828,7 @@ def manifest(
+         nodes={n.unique_id: n for n in nodes},
+         sources={s.unique_id: s for s in sources},
+         macros={m.unique_id: m for m in macros},
++        semantic_models={},
+         docs={},
+         files={},
+         exposures={},
+@@ -815,7 +846,8 @@ def search_manifest_using_method(manifest, method, selection):
+         set(manifest.nodes)
+         | set(manifest.sources)
+         | set(manifest.exposures)
+-        | set(manifest.metrics),
++        | set(manifest.metrics)
++        | set(manifest.semantic_models),
+         selection,
+     )
+     results = {manifest.expect(uid).search_name for uid in selected}
+@@ -1247,6 +1279,22 @@ def test_select_metric(manifest):
+     assert search_manifest_using_method(manifest, method, "*_metric") == {"my_metric"}
+ 
+ 
++def test_select_semantic_model(manifest):
++    semantic_model = make_semantic_model(
++        "pkg",
++        "customer",
++        model="customers",
++        path="_semantic_models.yml",
++    )
++    manifest.semantic_models[semantic_model.unique_id] = semantic_model
++    methods = MethodManager(manifest, None)
++    method = methods.get_method("semantic_model", [])
++    assert isinstance(method, SemanticModelSelectorMethod)
++    assert search_manifest_using_method(manifest, method, "customer") == {"customer"}
++    assert not search_manifest_using_method(manifest, method, "not_customer")
++    assert search_manifest_using_method(manifest, method, "*omer") == {"customer"}
++
++
+ @pytest.fixture
+ def previous_state(manifest):
+     writable = copy.deepcopy(manifest).writable_manifest()

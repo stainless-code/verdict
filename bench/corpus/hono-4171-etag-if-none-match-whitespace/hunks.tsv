@@ -1,0 +1,4 @@
+src/middleware/etag/index.test.ts	OLD	270	275
+src/middleware/etag/index.test.ts	NEW	270	295
+src/middleware/etag/index.ts	OLD	27	34
+src/middleware/etag/index.ts	NEW	27	38

@@ -1,0 +1,37 @@
+{
+  "schema_version": "1",
+  "id": "dbt-core-12386-column-dimension-expr",
+  "kind": "real",
+  "language": "python",
+  "provenance": {
+    "kind": "real",
+    "repo": "dbt-labs/dbt-core",
+    "pr": 12386,
+    "base_sha": "3eeb06baf4e80a53964d3349377a89b4884a9dd1",
+    "head_sha": "a5ff83d7e40f63cc0b13554a258fcb2c2cb13ff2",
+    "fix_commit": "https://github.com/dbt-labs/dbt-core/commit/1411f9f26d1681890eead3499ad575c3dc879fa6",
+    "source": "PR #12386 Parse dimensions defined on dbt columns into a semantic model, merged 2026-01-26",
+    "note": "the new v2 reader builds a Dimension from a column-level definition whose name may differ from the column, and comments that the expression argument is not supported for column-based dimensions, so the dimension name becomes the identifier; the fix sets the expression to the column name when the two differ (#12512), and it is a two-defect squash (the same commit also changes how foreign-key constraints resolve ref() under deferral)"
+  },
+  "bugs": [
+    {
+      "path": "core/dbt/parser/schema_yaml_readers.py",
+      "line": 755,
+      "kind": "unset-expr",
+      "severity": "important",
+      "keywords": [
+        "expression is never set",
+        "expr is not set",
+        "expr is missing",
+        "expression unset",
+        "queries the dimension name",
+        "the dimension name instead of the column",
+        "column that does not exist",
+        "reads the wrong column",
+        "warehouse column is never"
+      ],
+      "note": "name falls back to the dimension's own name while no expression is set, so a dimension whose name differs from its column is read as a column of that name; the fix sets the expression to the column name when the two differ",
+      "also_lines": [763]
+    }
+  ]
+}

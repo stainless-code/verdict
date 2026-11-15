@@ -51,7 +51,8 @@ func shippedPrefix(t *testing.T) string {
 // step 7, the transform replaced that whole step, and a pilot model then wrote
 // a bare path array that record refused.
 func TestToolFreePromptKeepsSchemaKeyShapes(t *testing.T) {
-	got, err := toToolFreePrefix(shippedPrefix(t))
+	shipped := shippedPrefix(t)
+	got, err := toToolFreePrefix(shipped)
 	if err != nil {
 		t.Fatalf("toToolFreePrefix: %v", err)
 	}
@@ -59,9 +60,24 @@ func TestToolFreePromptKeepsSchemaKeyShapes(t *testing.T) {
 		if !strings.Contains(got, row.Text) {
 			t.Errorf("tool-free prompt never writes %s for key %q", row.Text, row.Key)
 		}
+		checkShapeSurvives(t, shipped, row)
 	}
 	if want := "`" + strings.Join(promptkeys.RigorValues, "|") + "`"; !strings.Contains(got, want) {
 		t.Errorf("tool-free prompt does not publish the rigor values as %s", want)
+	}
+}
+
+// checkShapeSurvives proves one shape text comes from the shipped prompt and
+// not from the transform: with every occurrence cut from the shipped bytes,
+// the derived prompt must lose every spelling of it.
+func checkShapeSurvives(t *testing.T, shipped string, row promptkeys.ReviewKey) {
+	t.Helper()
+	stripped, err := toToolFreePrefix(strings.ReplaceAll(shipped, row.Text, ""))
+	if err != nil {
+		t.Fatalf("toToolFreePrefix without %s: %v", row.Text, err)
+	}
+	if strings.Contains(stripped, row.Text) {
+		t.Errorf("tool-free prompt spells %s for key %q from its own copy, not the shipped prompt", row.Text, row.Key)
 	}
 }
 

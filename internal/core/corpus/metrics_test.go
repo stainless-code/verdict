@@ -19,10 +19,10 @@ func measuredFixture() []Sample {
 		return jq.NewObj("path", path, "line", line, "body", "race", "severity", severity)
 	}
 	reports := []*Report{
-		Evaluate(c, []any{finding("a", 10, "critical"), finding("x", 40, "important"), finding("x", 50, "informational")}),
-		Evaluate(c, []any{finding("b", 20, "important"), finding("x", 60, "informational")}),
-		Evaluate(clean, []any{finding("x", 40, "informational"), finding("x", 50, "informational")}),
-		Evaluate(clean, nil),
+		evaluateAll(c, []any{finding("a", 10, "critical"), finding("x", 40, "important"), finding("x", 50, "informational")}),
+		evaluateAll(c, []any{finding("b", 20, "important"), finding("x", 60, "informational")}),
+		evaluateAll(clean, []any{finding("x", 40, "informational"), finding("x", 50, "informational")}),
+		evaluateAll(clean, nil),
 	}
 	samples := make([]Sample, 0, 4)
 	for i, r := range reports {

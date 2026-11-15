@@ -1,0 +1,33 @@
+{
+  "schema_version": "1",
+  "id": "dbt-core-9421-partial-parse-versioning",
+  "kind": "real",
+  "language": "python",
+  "provenance": {
+    "kind": "real",
+    "repo": "dbt-labs/dbt-core",
+    "pr": 9421,
+    "base_sha": "1cbc6d333d79f4408ed620c5aef18b18a216e6c3",
+    "head_sha": "5ae8f6aad71545818a1f179abb45d5867f0e2e4f",
+    "fix_commit": "https://github.com/dbt-labs/dbt-core/commit/1592987de842b7ffba0544b3eeec5d33dbf57a9a",
+    "source": "PR #9421 Enable unit testing versioned models, merged 2024-01-29",
+    "note": "the line the PR rewrites decides whether a schema edit re-parses the nodes that reference a changed model, but it only looks at the previously parsed node being versioned, so a model that gains versions for the first time leaves its referencing nodes on the stale parse; the base carries the same gap behind a narrower condition, so the PR neither introduces nor repairs it, and the later fix adds elem.get(\"versions\") to the test"
+  },
+  "bugs": [
+    {
+      "path": "core/dbt/parser/partial.py",
+      "line": 849,
+      "kind": "stale-partial-parse",
+      "severity": "important",
+      "keywords": [
+        "never schedules",
+        "not scheduled for reparsing",
+        "does not reparse after a version is added",
+        "never reparsed",
+        "keeps the old parse"
+      ],
+      "note": "the gate is the old node's own versioned flag, so a model that becomes versioned is not counted as a change that its referencing nodes must re-read; the fix also tests the new schema entry for versions",
+      "also_lines": [847]
+    }
+  ]
+}

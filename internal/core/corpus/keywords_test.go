@@ -1,6 +1,7 @@
 package corpuscore
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -17,6 +18,11 @@ type keywordCase struct {
 	id     string
 	passes []string
 	fails  []string
+	// bug is the index into the case's bugs, so a case whose fix commit
+	// repaired two defects pins each of them from both sides. Zero for the
+	// common one-bug case. It trails the pointer fields so the GC's scan of
+	// this struct stops before it (fieldalignment).
+	bug int
 }
 
 // minKeywordsPerBug keeps a case from passing this test on one lucky phrase.
@@ -83,6 +89,7 @@ var keywordCases = []keywordCase{
 			"An empty positional on the boundary ends flag parsing, so the rest of the arguments are lost.",
 			"A double dash sitting exactly on the Nth positional is consumed by the `--` branch before the parser stops, so the action never sees it.",
 			"The Nth-argument check runs after the branches that handle the argument, so an empty positional ends parsing and the rest are lost.",
+			"Empty positional: the rest of the arguments are lost because the break runs first.",
 			"An empty positional makes the loop break, so the Nth-argument check never runs and the trailing arguments vanish.",
 			"A `--` on the boundary fires the early return first; the stop check is below it.",
 			"Arguments are dropped because the branch that consumes the argument runs before the boundary check.",
@@ -97,6 +104,462 @@ var keywordCases = []keywordCase{
 			"`StopOnNthArg` is a new field generated per parse; the count is tracked on the flag set.",
 		},
 	},
+	{
+		id: "dbt-core-8589-semantic-model-same-model",
+		passes: []string{
+			"same_model compares the model string to the bound method old.same_model, so the equality is always False.",
+			"The right-hand side is the method object rather than the other node's model field.",
+			"Every semantic model is reported as modified because the comparison is always false.",
+			"The field is compared to a bound method, so the two nodes never compare equal.",
+			"same_model can never succeed: the second operand is the method, not old.model.",
+			"Every run reports a change, because same_model never returns true.",
+		},
+		fails: []string{
+			"same_contents does not compare the node's metadata or tags.",
+			"The defaults are compared by identity, so two equal dicts read as different.",
+			"Rename same_model to same_model_field so the intent is clear.",
+			"The new selector method filters by package instead of by resource type.",
+			"same_group compares groups before the primary entity is resolved.",
+			"The list task drops the semantic model's version from its output.",
+			"Semantic models reach graph selection but their tests do not.",
+		},
+	},
+	{
+		id: "dbt-core-11768-python-model-config-warning",
+		passes: []string{
+			"Python models record config keys when they call dbt.config.get, so this validation raises a spurious deprecation for keys the user never wrote.",
+			"The validation cannot tell the python model's own bookkeeping properties apart from user config, so a spurious deprecation is raised for the key that was read.",
+			"The keys recorded by dbt.config.get are not in the jsonschema, so validating them raises a false deprecation.",
+			"It validates keys the user never wrote, because a dbt.config.get call puts them in _config_call_dict.",
+			"The keys a python model read are validated as user config, and the validator warns for keys the model read.",
+			"A false deprecation is raised for keys the python model added itself.",
+			"With DBT_ENV_PRIVATE_RUN_JSONSCHEMA_VALIDATIONS set, the validator warns for keys the model read with dbt.config.get, even though the model wrote no config.",
+		},
+		// Neutral or praising sentences at the same line, then findings about
+		// neighboring defects in the same file: none may name this one.
+		fails: []string{
+			"Check whether validate_model_config already ignores keys the user never wrote in _config_call_dict.",
+			"The change means dbt warns on every python model, even one that never reads config.",
+			"Document the python model's own config keys in the README.",
+			"Bookkeeping keys are stored in _config_call_dict.",
+			"Ensure internal keys are stripped before serializing the manifest.",
+			"This validation should raise an error rather than a deprecation warning.",
+			"The validation runs once per node, not once per config read.",
+			"validate_config_call_dict defaults to False, so most callers skip validation.",
+			"The post-hook and pre-hook keys are compared before the deprecation is raised.",
+			"The config dict is copied instead of referenced, which costs an extra allocation.",
+			"Python models need a separate parser entry point.",
+			"Move the validation into the jsonschema module.",
+		},
+	},
+	{
+		id: "dbt-core-12386-column-dimension-expr",
+		passes: []string{
+			"When the dimension name differs from the column name, no expression is set, so MetricFlow queries a column that does not exist.",
+			"The dimension name falls back to the column only when the dimension has no name; otherwise the expression is never set.",
+			"A dimension whose name differs from its column queries a column that does not exist.",
+			"The reader builds the dimension with the friendly name and leaves the expression unset.",
+			"MetricFlow resolves the dimension name instead of the column, so the query fails because the expression is missing.",
+			"The comment says expressions are unsupported for column-based dimensions, but the name can differ, so the generated SQL points at the dimension name instead of the column.",
+			"The dimension is built without expr, so the warehouse column is never read.",
+			"A column-based dimension named differently from its column reads the wrong column.",
+			"When the dimension name differs from the column name, expr is not set, so MetricFlow uses the dimension name as the SQL identifier.",
+		},
+		// Neutral or praising sentences at the same line, then findings about
+		// neighboring defects in the same file: none may name this one.
+		fails: []string{
+			"Good that expr is left unset here per the comment on column-based dimensions.",
+			"The missing expression is acceptable here; dimension names should be used as column names.",
+			"Good: this now sets expr for column-based dimensions.",
+			"Consider a no mapping fallback log for unknown dimension types.",
+			"Good that no expression is needed for column-based dimensions per the comment.",
+			"Check whether column.dimension.label also differs from the column name.",
+			"If DimensionType is invalid, MetricFlow will report an invalid identifier.",
+			"The metrics parsing path does not handle the filter block.",
+			"Entities are derived only from derived_semantics, never from columns.",
+			"The new method skips columns without a dimension block, which is correct.",
+			"Unlike dimensions, the entity branch keeps the fallback name in the wrong order.",
+			"Column-level dimensions lose their config meta merge when the dimension block has no meta.",
+			"The v2 reader should validate type before constructing the dimension.",
+			"Dimensions defined at the model level still use the old parser.",
+		},
+	},
+	{
+		id: "dbt-core-9421-partial-parse-versioning",
+		passes: []string{
+			"Adding a version to an existing model never schedules its referencing nodes for reparsing, so the dependents keep the parse they already had.",
+			"The gate reads the old node's flag, so it does not reparse after a version is added and the dependents stay stale.",
+			"Downstream models are never reparsed when a new version is added to the schema, so they keep the old parse.",
+			"Partial parsing misses the version-added case, so referencing nodes are never reparsed.",
+			"Dependents of a model that gains its first version are not scheduled for reparsing, so each one keeps the old parse.",
+			"A model that becomes versioned does not reparse after a version is added, so its referencing nodes keep the old parse.",
+		},
+		// Neutral or praising sentences at the same line, then findings about
+		// neighboring defects in the same file: none may name this one.
+		fails: []string{
+			"This gate does not reparse dependents when an unversioned model remains unversioned, avoiding unnecessary work.",
+			"When a model is unversioned, referencing nodes are not reparsed, which avoids unnecessary work.",
+			"Newly versioned models are handled by the versions loop below.",
+			"Nice that a model that becomes versioned keeps its alias.",
+			"Good that this comment clarifies adding a version vs removing one.",
+			"Removing a version leaves downstream refs with a stale parse if node_patches is not cleared.",
+			"The unit-test scheduling block runs before the macro branch.",
+			"delete_schema_mssa_links should return the removed node ids.",
+			"The versioned test fixture uses a snake_case model name.",
+			"Deleting a version from the schema does not remove its patch.",
+			"The saved manifest copy is deep-copied on every file change, which is expensive.",
+			"Group changes schedule referencing nodes even when the group is unchanged.",
+			"The new test mocks the scheduler instead of asserting the parsed manifest.",
+		},
+	},
+	// The bubbletea rows are the sentences the curation probe measured, plus the
+	// shape a finding at the same line takes when it says nothing about the
+	// defect at all: a tracing request (the review that prompted these rows was
+	// "Add tracing for commands handed to the command handler"), a note about
+	// the plumbing, or a suggestion. None of them may grade as a defect report,
+	// which is why no keyword names a location or a mechanism on its own.
+	{
+		id: "bubbletea-1255-signal-send-shutdown-hang",
+		passes: []string{
+			"The handler blocks forever because the interrupt is written with no receiver left.",
+			"Once the event loop has stopped, the handler is stuck in the send and the program never exits.",
+			"shutdown hangs waiting for the handler, so shutdown never completes.",
+			"This send has no context guard, unlike Program.Send, so it hangs the program on exit.",
+			"A signal arriving during shutdown leaves the handler blocked and the program hung on exit.",
+			"This is a deadlock.",
+		},
+		fails: []string{
+			"InterruptMsg is returned before the final view is rendered, so the last frame is missing.",
+			"The signal handler is registered twice, so two notifiers race for the same signal.",
+			"ignoreSignals is read with a plain load, so a concurrent write is lost.",
+			"ErrInterrupted is not wrapped in ErrProgramKilled, so errors.Is fails for callers.",
+			"The handler stops listening after the first signal, so a second interrupt is ignored.",
+			"The handler writes the interrupt message to the program's message channel.",
+			"Add a log line naming which signal the handler received.",
+			"Note that shutdown waits for the handler goroutine to finish; consider buffering the sig channel.",
+		},
+	},
+	{
+		id: "bubbletea-1276-exec-renderer-reset",
+		passes: []string{
+			"The line count no longer matches the screen, so the next frame is painted at the wrong row.",
+			"This throws away the renderer's state while the subprocess output is still on screen.",
+			"The cursor ends up in the wrong place after the command, and the view is duplicated.",
+			"Zeroing the count while the lines are still on screen duplicates the view below the subprocess output.",
+			"The program's own output is drawn below the child's, so the previous frame is never overwritten.",
+			"This is a line count desync.",
+		},
+		fails: []string{
+			"The subprocess inherits stderr instead of the program output, so the child errors are lost.",
+			"The callback runs in a goroutine, so a message can arrive after the program stopped.",
+			"ReleaseTerminal is called on the error path as well, so the terminal is restored twice.",
+			"The exec callback error is discarded, so a failing command looks successful.",
+			"The command stdin is never connected, so an interactive program sees EOF.",
+			"The subprocess runs before the renderer is reset for the next frame.",
+			"Add tracing around the exec callback to see when the subprocess finishes.",
+		},
+	},
+	{
+		id: "bubbletea-1463-batch-executed-in-event-loop",
+		passes: []string{
+			"This runs the commands in the event loop, so a batch no longer runs concurrently.",
+			"Each command is executed one after another, blocking the event loop while it runs.",
+			"A batch command that waits for a sibling that cannot start deadlocks instead of running them together.",
+			"The event loop stalls while the command runs, so updates and rendering stop.",
+			"Executing them one at a time serializes what the batch should start at once.",
+			"This is a serialized batch.",
+			"Go evaluates cmd() before starting the goroutine, so batch commands execute sequentially on the event loop and a slow command freezes rendering.",
+		},
+		fails: []string{
+			"The nested batch in a sequence is waited for with a WaitGroup, so the sequence blocks forever.",
+			"The command value is evaluated before the nil check, so a nil command panics.",
+			"The send happens from a goroutine, so messages can be delivered out of order.",
+			"The program context is not checked, so a canceled program still runs the queued commands.",
+			"The batch message is not compacted, so nil commands are still passed to the channel.",
+			"Add tracing for commands handed to the command handler.",
+			"This loop hands each non-nil batch command to p.Send in a new goroutine.",
+			"Add a comment explaining that the commands in a batch are run one at a time.",
+			"Commands handed to the command handler should be wrapped with panic recovery.",
+		},
+	},
+	{
+		id: "bubbletea-848-window-title-msg-unhandled",
+		passes: []string{
+			"The message switch in eventLoop has no case for the window title message, so a SetWindowTitle command never reaches the renderer.",
+			"A window title command now falls through to the user's Update, so the title is never written.",
+			"The resize check never runs because the window size case was dropped from the switch.",
+			"The switch lost its internal cases, so internal messages are no longer handled.",
+			"The terminal title never changes: the title command is silently dropped.",
+			"This is an unhandled internal message.",
+		},
+		fails: []string{
+			"The sequence goroutine recovers from a panic with recover, so a panic in a nested sequence is swallowed.",
+			"The batch handler waits on a WaitGroup whose counter is never incremented.",
+			"Commands in a sequence are executed one at a time, so a slow command delays the next one.",
+			"The message filter runs before the internal switch, so a filtered QuitMsg is never handled.",
+			"eventLoop returns the model on ctx.Done without draining the command channel, so a queued command is lost.",
+			"The renderer's handleMessages is called after the switch, so a clear-screen message repaints twice.",
+			"This loop reads each message from the program's message channel and dispatches it.",
+			"Add tracing around the internal message switch so missing cases are easier to spot.",
+		},
+	},
+	{
+		id: "axios-5707-getsetcookie-caseless-key",
+		passes: []string{
+			"The accessor bypasses the caseless accessor and reads one fixed key, so a header set as Set-Cookie comes back empty.",
+			"AxiosHeaders stores a header under the name the caller passed, and this method misses a header stored under its original casing.",
+			"getSetCookie silently drops the values for a mixed-case header name instead of going through the case-insensitive getter.",
+			"A header the caller set is never returned: the header is not found when its name is not lower case.",
+			"The method returns nothing for a header the caller already set a line earlier.",
+			"It silently loses the values when the name is not lower case, because the key is hard-coded.",
+			"Direct property lookup this[\"set-cookie\"] is case-sensitive, so Set-Cookie headers stored with mixed casing return [].",
+			"The accessor misses the stored cookie when the name was set as Set-Cookie.",
+		},
+		fails: []string{
+			"The parser splits a header line on every colon, so a value containing a colon is truncated.",
+			"toString drops headers whose value is false instead of rendering them.",
+			"set throws on a header name that contains a space instead of normalizing it.",
+			"Header names are camel-cased for the accessors, so DELETE is spelled Delete.",
+			"clear() leaves the accessor methods bound to the previous instance.",
+			"Reading the property directly avoids the accessor machinery, which looks like a reasonable micro-optimization.",
+			"The accessor is declared in the type file, so TypeScript users can call it.",
+			"Reading this['set-cookie'] directly avoids the overhead of calling this.get().",
+			"getSetCookie returns a mutable reference to the internal array, so later set calls mutate it.",
+			"getSetCookie should return undefined instead of an empty array when the header is absent.",
+			"Prefer this.get('set-cookie') instead of this['set-cookie'] for consistency with the other accessors.",
+		},
+	},
+	{
+		id: "axios-6192-absolute-url-flag-precedence",
+		passes: []string{
+			"The false flag bypasses the guard that requires a base, so the joiner is handed undefined and throws.",
+			"Operator precedence drops the base check: allowAbsoluteUrls == false alone makes the whole condition true.",
+			"It throws when the flag is off and no base is set, instead of returning the requested URL.",
+			"The call crashes joining a URL onto an undefined base.",
+			"It fails to build the full path when the base is missing.",
+			"The condition combines a URL with a missing base instead of returning it unchanged.",
+			"Missing parentheses around isRelativeUrl || allowAbsoluteUrls == false: when allowAbsoluteUrls is false and baseURL is undefined, combineURLs(undefined, requestedURL) throws a TypeError.",
+			"Operator precedence causes && to bind tighter than ||, so allowAbsoluteUrls == false invokes combineURLs even when baseURL is undefined.",
+		},
+		fails: []string{
+			"The flag defaults to false in the instance defaults, so every request stops honoring absolute URLs.",
+			"getUri ignores the config argument and always merges the instance defaults.",
+			"The README documents the option but the type declaration does not add it.",
+			"The new option is validated as a string rather than a boolean.",
+			"The combined URL keeps a duplicate slash when the base ends in one.",
+			"The new flag is copied from the instance defaults when the request config leaves it undefined.",
+			"Taking the absolute-URL check into a local makes the condition easier to read.",
+			"Checking allowAbsoluteUrls == false in the same conditional keeps buildFullPath concise.",
+			"Use strict equality === false so a caller passing 0 does not turn the flag on.",
+			"Using && instead of || in the condition would make the base check redundant.",
+		},
+	},
+	{
+		id: "axios-6873-iterated-headers-overwrite",
+		passes: []string{
+			"Each iteration overwrites the value stored before, so a Headers with three set-cookie values keeps one.",
+			"Duplicate values from a repeated key are dropped because every pair goes through the setter on its own.",
+			"Only the last value of a repeated header survives when the source is an iterable.",
+			"Multiple values collapse into one instead of forming the array the source provided.",
+			"Repeated values are overwritten instead of accumulated, so a caller loses every earlier entry.",
+			"Repeated pairs lose every value but the last when the source is a Map or a Headers.",
+			"Calling setHeader(entry[1], entry[0], rewrite) on each entry overwrites earlier values for the same header name instead of preserving them as an array.",
+			"Iterating a Headers object with multiple set-cookie entries will clobber previous cookies because setHeader is called per pair.",
+		},
+		fails: []string{
+			"The iterable branch throws a TypeError for an entry that is not an array, so a Map-like source is rejected.",
+			"isIterable is added to the utils export but not to the type declaration.",
+			"The branch now accepts any iterable, so a string source reaches the pair loop instead of the header parser.",
+			"The plain-object check drops the iterator exclusion, so an object with a custom iterator is treated as plain.",
+			"The pair loop reads the key and value in the wrong order, so every header name becomes a value.",
+			"The branch accepts any object with a Symbol.iterator, which is broader than the old Headers check.",
+			"Throwing a TypeError for a non-array entry is a clear contract for custom sources.",
+			"Calling setHeader inside the for-of loop reuses the existing single-header validation path.",
+			"entry[1] and entry[0] are swapped, so every header name becomes a value.",
+			"Iterating an object without checking entry.length === 2 accepts malformed pairs.",
+		},
+	},
+	{
+		id: "axios-11087-nullish-interceptor-handlers",
+		passes: []string{
+			"A falsy public list makes every request throw Cannot read properties of null (reading 'length').",
+			"Every request crashes once the public array is falsy, because the sync pass runs before any existence check.",
+			"User code that nulls the public array crashes the next request instead of behaving as a no-op.",
+			"The sync pass crashes when the public collection is replaced with a falsy value.",
+			"The new pass does not tolerate a caller-assigned falsy collection, though clear() has always allowed it.",
+			"It rejects a replaced collection instead of treating it as empty.",
+			"syncHandlerEntries reads handlers.length without checking if handlers is null or undefined, causing a TypeError when user code sets interceptors.request.handlers = null.",
+			"If manager.handlers is set to null, handlers.length throws a TypeError in syncHandlerEntries; guard against nullish handlers.",
+			"The sync pass crashes on null handlers, so a caller that nulls the public field breaks every request.",
+		},
+		fails: []string{
+			"Ejecting a handler shifts the remaining indexes, so a later eject removes the wrong interceptor.",
+			"The next id is never reused after clear(), so ids grow without bound.",
+			"trimHandlers removes interior tombstones too, so forEach skips a live handler.",
+			"The iteration depth is decremented twice when a handler throws.",
+			"Numeric-string ids are no longer accepted by eject after the move to a Map.",
+			"forEach no longer visits handlers added during iteration.",
+			"The bookkeeping map is cleared when the handler list reference changes, which keeps the id table in sync.",
+			"Trimming trailing tombstones after an eject keeps the array compact.",
+			"Storing handlers.length in internals.handlersLength lets syncHandlerEntries detect in-place array mutations.",
+			"handlers.length is read inside syncHandlerEntries on every call instead of caching it on the instance.",
+			"Setting handlersLength here will cause an off-by-one error when a handler is ejected.",
+			"We already guard against nullish handlers upstream, so this check is redundant.",
+		},
+	},
+	// The hono entries pin two independent audits in both directions: the last
+	// rows of each fails list are a neutral or praising sentence the earlier
+	// vocabularies graded as a hit, and each passes list carries a paraphrased
+	// finding a widened phrase now covers.
+	{
+		id: "hono-4659-bearer-auth-scheme-regex-metacharacters",
+		passes: []string{
+			"Every metacharacter in the configured scheme is live, so a scheme containing a dot accepts a different scheme than the one configured.",
+			"The scheme is interpreted as regex metacharacters: a prefix of X.Y accepts the header scheme XZY.",
+			"An unmatched bracket in the scheme makes the pattern fail to compile, so the middleware throws while it is built.",
+			"The scheme is concatenated into the pattern without escaping, so X.Auth+v2 rejects its own literal scheme because + is a quantifier.",
+			"Because the configured scheme is not escaped, a different scheme is accepted whenever the prefix contains a dot.",
+			"A scheme holding an unmatched bracket cannot compile, so the service fails at startup.",
+			"An unescaped scheme lets a dot in the prefix match any character, so a different scheme is accepted.",
+			"Passing options.prefix directly into new RegExp(...) without escaping regex special characters allows characters like . or + in the scheme to act as wildcards or throw a SyntaxError.",
+		},
+		fails: []string{
+			"The token comparison is not constant time, so the time it takes leaks how much of the value is right.",
+			"The unauthorized reply carries no Cache-Control, so an intermediary may store the 401.",
+			"verifyToken's resolved value is not awaited, so a rejected promise still counts as success.",
+			"A request with no Authorization header is rejected with 400 instead of 401.",
+			"The realm is written into the challenge without quoting, so a space breaks the header grammar.",
+			"Note that options.prefix is used as a pattern with the 'i' flag; verify TOKEN_STRINGS is meant to be case-insensitive too.",
+			"Comparing prefix as a literal string with startsWith would avoid allocating a RegExp.",
+			"In bearerAuth, options.prefix is interpolated into a regular expression with the 'i' flag for case-insensitive matching.",
+		},
+	},
+	{
+		id: "hono-3936-pattern-router-wildcard-overmatch",
+		passes: []string{
+			"The compiled route matches a path it should not: /path/* answers /pathfoo because nothing requires the end of the path.",
+			"With the suffix dropped, the route accepts a path it should reject, such as /pathological.",
+			"The trailing wildcard pattern matches a sibling path, so /paths reaches the handler registered for /path/*.",
+			"This is a prefix overmatch: the suffix form /assets* answers /asset and /assetx as well.",
+			"The pattern over-matches every path that starts with the registered prefix, including /pathfoo.",
+			"The trailing wildcard omits the end anchor, so the route matches paths beyond the prefix: /path/* answers /pathfoo.",
+			"A wildcard route lacks a segment boundary, so a sibling path like /paths is routed to the wildcard handler.",
+			"Because endsWithWildcard omits the end anchor (/?$), a route like /api/* will also match /apiv2 instead of requiring a slash boundary.",
+		},
+		fails: []string{
+			"Routes are matched in registration order, so a later specific route is shadowed by an earlier one.",
+			"UnsupportedPathError is thrown after some routes were already stored, leaving the router half-registered.",
+			"The catch block rethrows a generic error, so the caller cannot tell which path was rejected.",
+			"Params are decoded twice, so a percent-encoded value is corrupted.",
+			"The pattern is rebuilt on every lookup instead of once at registration.",
+			"Consider adding a comment explaining why the end anchor is omitted when endsWithWildcard is true.",
+			"Pushing routes unconditionally means duplicate routes could match the wrong handler.",
+			"When endsWithWildcard is true, omitting /?$ ensures the route matches a longer path such as /path/a/b.",
+			"Using an empty suffix leaves no boundary after the wildcard, which is intentional for suffix matching like /assets*.",
+		},
+	},
+	{
+		id: "hono-4171-etag-if-none-match-whitespace",
+		passes: []string{
+			"Whitespace before the comma is left on the entry, so a matching tag never equals the response tag and the request is answered 200 instead of 304.",
+			"Entries are not trimmed, so a tag written with a trailing space is never recognized and the client gets the full body again.",
+			"Splitting on the comma leaves trailing whitespace before the comma on every tag but the last, so the entry never matches.",
+			"If-None-Match allows whitespace before the comma as well as after it, but the split consumes only the right-hand side.",
+			"Spaces before the comma survive the split, so a tag the response carries is not recognized and the conditional request is answered in full.",
+			"Every entry but the last keeps a trailing space, so a tag that is present in the list never matches.",
+			"Whitespace is not stripped from the tag that precedes the comma, so that tag never matches the response.",
+		},
+		fails: []string{
+			"The 304 response keeps the Content-Encoding header, so a cached client tries to decode the body twice.",
+			"The generated tag is hashed from the uncompressed body, so it differs between gzip and identity responses.",
+			"The stored 304 drops every header not on the retained list, including Vary.",
+			"The tag is computed after the body is consumed, so a replayed request re-reads a disturbed stream.",
+			"The middleware generates a tag for HEAD responses, where there is no body to hash.",
+			"The regex `/,\\s*/` already handles optional whitespace after the comma; you could also trim the outer header.",
+			"Splitting on comma breaks ETags containing a comma inside quotes (e.g. \"a,b\"), so it never equals and still returns 200.",
+			"Any characters to the left of the comma are passed directly into stripWeak.",
+			"The regex /,\\s*/ consumes whitespace on one side of the delimiter, which is fine for standard headers.",
+		},
+	},
+	{
+		id: "hono-5133-clone-formdata-stale-content-length",
+		passes: []string{
+			"The clone keeps the original content length, so the declared header still describes the pre-clone body.",
+			"Only the content type is dropped: the clone leaves the original content length in place, and the header disagrees with the body it re-serialized.",
+			"The stale content length declares 77 bytes for a 169-byte multipart body.",
+			"The clone keeps the stale length from the original request, so the header is wrong for the re-serialized body.",
+			"A request built from this clone would advertise a wrong content-length and be cut short on the wire.",
+			"The block removes the stale type but keeps the original content length, which the fresh boundary invalidates as well.",
+			"The stale content-length survives the clone, so the request declares more bytes than the re-serialized body carries.",
+		},
+		fails: []string{
+			"The FormData is re-serialized for every clone, so a large upload is buffered twice in memory.",
+			"The clone copies the signal of the original request, so an aborted caller cancels the clone too.",
+			"The cache key is chosen from the media type, so a request validated as JSON is re-read as text.",
+			"The clone drops the duplex option, so a streamed body cannot be sent through fetch.",
+			"Headers are copied without normalizing their case, so a lookup by name misses.",
+			"Should content-length be preserved if the FormData boundary happens to be the same length?",
+			"Good catch deleting the stale content-type; check whether content-length is also needed by the server.",
+			"Deleting content-type lets Request regenerate the boundary; the declared length header is left untouched.",
+			"The cloned request preserves the content-length of the original body from req.header().",
+			"Good catch deleting content-type since the original boundary no longer matches the body.",
+		},
+	},
+	{
+		// Two bugs, one fix commit: #4425 corrected the map key and replaced
+		// destroy() with close(). Each side is pinned here so a finding about
+		// either defect grades as a hit and a finding about the other does not.
+		id: "undici-4223-agent-client-eviction",
+		passes: []string{
+			"The lookup is keyed on the URL the event carries while the map stores the origin string, so the count never moves.",
+			"The entry is deleted under a key the map does not use, so the client outlives its connections.",
+			"Bookkeeping that never fires leaves unbounded growth of the client map.",
+			"Each Client is looked up with a different key than the one the map stores, so the lookup can never find the entry.",
+			"The dispatcher is never evicted because the count never moves off zero.",
+		},
+		fails: []string{
+			"Calling destroy() here kills in-flight requests that close() would have drained.",
+			"The eviction tears down queued requests instead of letting the dispatcher finish them.",
+			"Rename result to entry so the shape is obvious.",
+			"The mock agent stores {count, dispatcher} too, which is fine.",
+			"The eviction runs inside the disconnect event, which blocks the socket close.",
+			"The disconnect handler does not check that targets is present, so a nil dereference is possible.",
+		},
+	},
+	{
+		id:  "undici-4223-agent-client-eviction",
+		bug: 1,
+		passes: []string{
+			"Calling destroy() here kills in-flight requests that close() would have drained.",
+			"The eviction tears down queued requests instead of letting the dispatcher finish them.",
+			"Evicting with destroy() aborts pending work: a request queued right then fails with ClientDestroyedError.",
+			"The handler drops requests that are still queued, so it should be closed instead of destroyed.",
+			"The eviction destroys a dispatcher that still has work, erroring the queued request.",
+			// audit-6: the three natural paraphrases of this defect that the
+			// first board missed, starting with the finding that motivated the
+			// bug entry at all. They stay pinned so a shorter board cannot
+			// regress to grading them false.
+			"Calling result.dispatcher.destroy() here abruptly aborts in-flight requests instead of using close().",
+			"Using destroy() instead of close() will error queued requests with ClientDestroyedError.",
+			"Calling destroy() when active connections drop to zero cancels pending requests instead of draining them with close().",
+			"Evicting on disconnect errors queued requests instead of draining them.",
+			"The handler cancels queued requests as soon as the count reaches zero.",
+		},
+		fails: []string{
+			"The lookup is keyed on the URL the event carries while the map stores the origin string, so the count never moves.",
+			"One Client is retained per origin for the life of the process, which is unbounded growth of the client map.",
+			"Bookkeeping that never fires leaves the client map growing forever.",
+			"Rename result to entry so the shape is obvious.",
+			"destroy() is called once in this block, which matches the close path below.",
+			"Add a comment explaining why the eviction happens on disconnect.",
+			// audit-6's neutral remarks: they name destroy(), the dispatcher and
+			// the count, so a board that matched words instead of a direction
+			// would swallow them.
+			"Calling result.dispatcher.destroy() here cleans up the dispatcher once count reaches zero; consider adding a comment.",
+			"Calling destroy() here when count <= 0 ensures the dispatcher is disposed after eviction.",
+			"Note that result.dispatcher.destroy() tears down the dispatcher when count drops to zero.",
+		},
+	},
 }
 
 // TestCheckedInCorpusKeywordsGradeBothWays proves the shipped vocabulary both
@@ -104,7 +567,10 @@ var keywordCases = []keywordCase{
 // about a neighboring defect leaves it unnamed.
 func TestCheckedInCorpusKeywordsGradeBothWays(t *testing.T) {
 	for _, kc := range keywordCases {
-		t.Run(kc.id, func(t *testing.T) { checkKeywordLists(t, kc) })
+		// The bug index is in the name because a fix commit can repair more
+		// than one defect in a case, so the id alone does not name the pin.
+		name := fmt.Sprintf("%s/bug%d", kc.id, kc.bug)
+		t.Run(name, func(t *testing.T) { checkKeywordLists(t, kc) })
 	}
 }
 
@@ -112,7 +578,7 @@ func TestCheckedInCorpusKeywordsGradeBothWays(t *testing.T) {
 func checkKeywordLists(t *testing.T, kc keywordCase) {
 	t.Helper()
 	requireBothLists(t, kc)
-	bug := keywordBug(t, kc.id)
+	bug := keywordBug(t, kc)
 	eachNamesDefect(t, bug, kc.passes)
 	noneNamesDefect(t, bug, kc.fails)
 }
@@ -130,7 +596,7 @@ func requireBothLists(t *testing.T, kc keywordCase) {
 func eachNamesDefect(t *testing.T, bug *core.CorpusBug, texts []string) {
 	t.Helper()
 	for _, text := range texts {
-		if !namesDefect(normalize(text), bug) {
+		if !namesDefect(text, bug) {
 			t.Errorf("graded false, want true (sentence names the defect): %q", text)
 		}
 	}
@@ -139,21 +605,23 @@ func eachNamesDefect(t *testing.T, bug *core.CorpusBug, texts []string) {
 func noneNamesDefect(t *testing.T, bug *core.CorpusBug, texts []string) {
 	t.Helper()
 	for _, text := range texts {
-		if namesDefect(normalize(text), bug) {
+		if namesDefect(text, bug) {
 			t.Errorf("graded true, want false (sentence names another defect): %q", text)
 		}
 	}
 }
 
-// keywordBug is the single ground-truth bug of one checked-in case.
-func keywordBug(t *testing.T, id string) *core.CorpusBug {
+// keywordBug is the ground-truth bug a row pins: the checked-in case's bug at
+// the row's index.
+func keywordBug(t *testing.T, kc keywordCase) *core.CorpusBug {
 	t.Helper()
-	c, ref := loadCase(t, filepath.Join("..", "..", "..", "bench", "corpus", id, "case.json"))
+	c, ref := loadCase(t, filepath.Join("..", "..", "..", "bench", "corpus", kc.id, "case.json"))
 	if ref != nil {
-		t.Fatalf("%s: %v", id, ref)
+		t.Fatalf("%s: %v", kc.id, ref)
 	}
-	if len(c.Bugs) != 1 {
-		t.Fatalf("%s: %d ground-truth bugs, want 1", id, len(c.Bugs))
+	if kc.bug < 0 || kc.bug >= len(c.Bugs) {
+		t.Fatalf("%s: bug %d, want 0..%d (%d ground-truth bugs)",
+			kc.id, kc.bug, len(c.Bugs)-1, len(c.Bugs))
 	}
-	return &c.Bugs[0]
+	return &c.Bugs[kc.bug]
 }

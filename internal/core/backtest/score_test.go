@@ -131,6 +131,8 @@ func TestScoreRefusesBadRuns(t *testing.T) {
 		{name: "row names no bundle", run: "s1", mutate: stripScoreBundle, code: "backtest-row-stale", part: "names no bundle"},
 		{name: "missing findings", run: "s1", mutate: removeScoreFindings, code: "backtest-row-stale", part: "missing or unreadable"},
 		{name: "corrupt findings", run: "s1", mutate: corruptScoreFindings, code: "backtest-row-stale", part: "missing or unreadable"},
+		{name: "missing bundle diff", run: "s1", mutate: removeScoreDiff, code: "corpus-invalid", part: "full.diff"},
+		{name: "empty bundle diff", run: "s1", mutate: emptyScoreDiff, code: "corpus-invalid", part: "full.diff"},
 		{name: "re-mined candidate", run: "s1", mutate: remineScoreRow, code: "backtest-run-stale", part: "no longer carries"},
 		{name: "foreign row", run: "s1", mutate: foreignScoreRow, code: "backtest-row-stale", part: "not 's1'"},
 		{name: "repeated row", run: "s1", mutate: repeatScoreRow, code: "backtest-row-stale", part: "already scored"},
@@ -234,6 +236,20 @@ func removeScoreFindings(t *testing.T, root string) {
 func corruptScoreFindings(t *testing.T, root string) {
 	t.Helper()
 	writeTestFile(t, filepath.Join(root, ".verdict", "state", "local-bt-1-s1", "findings.json"), "{")
+}
+
+// removeScoreDiff deletes the first bundle's reviewed diff.
+func removeScoreDiff(t *testing.T, root string) {
+	t.Helper()
+	if err := os.Remove(filepath.Join(root, ".verdict", "state", "local-bt-1-s1", "full.diff")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// emptyScoreDiff leaves only blank bytes where the reviewed diff should be.
+func emptyScoreDiff(t *testing.T, root string) {
+	t.Helper()
+	writeTestFile(t, filepath.Join(root, ".verdict", "state", "local-bt-1-s1", "full.diff"), "\n\n \t\n")
 }
 
 // corruptScoreRow truncates one resume record.

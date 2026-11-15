@@ -4172,18 +4172,23 @@ predates the seed `signal`, is unreadable, or no longer carries a scored PR
 refuses `backtest-run-stale` and asks for a re-mine in place; a resume record
 that is unreadable, names another run, repeats a candidate, or points at a
 missing findings file refuses `backtest-row-stale` and asks for that
-`prs/<NNN>/` directory to be removed before replaying. Neither refusal asks
-for the run directory to be deleted: re-mining or replaying rebuilds the
-artifact in place.
+`prs/<NNN>/` directory to be removed before replaying. A bundle whose real
+`full.diff` is missing, empty, or unreadable refuses `corpus-invalid`; re-run
+`backtest replay` to rebuild that bundle. Neither the row refusals nor the diff
+refusal asks for the run directory to be deleted: re-mining or replaying
+rebuilds the artifact in place.
 
-Grading is the corpus matcher's own rule (`corpuscore.Evaluate`): a finding
-matches a bug when it carries the same `path`, its line is within ±1 of the
-bug's line, and its text names the defect — the bug's `kind` in hyphen or space
-form, or a phrase from the published category vocabulary for that kind. A
-backtest case carries no keywords: the kind is the miner's deterministic guess,
-so a finding must name what that guess calls the defect. One bug is one match;
-a second finding on the same bug is off target. A finding record moved out of
-its hunk is graded as body text, never as a line claim.
+Grading is the corpus matcher's rule over the bundle (`corpuscore.EvaluateDir`):
+a finding matches a bug when it carries the same `path`, its line is within ±1
+of the bug's line, and its text names the defect — the bug's `kind` in hyphen
+or space form, or a phrase from the published category vocabulary for that
+kind. The bundle's `full.diff` is read too: a built-in phrase that diff spells
+is dropped from the case's vocabulary, so a finding that names only that phrase
+is off target. A backtest case carries no keywords: the kind is the miner's
+deterministic guess, so a finding must name what that guess calls the defect.
+One bug is one match; a second finding on the same bug is off target. A
+finding record moved out of its hunk is graded as body text, never as a line
+claim.
 
 The metrics:
 

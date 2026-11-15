@@ -1,0 +1,136 @@
+diff --git a/lib/handler/redirect-handler.js b/lib/handler/redirect-handler.js
+index 2f1995e6..40adeb52 100644
+--- a/lib/handler/redirect-handler.js
++++ b/lib/handler/redirect-handler.js
+@@ -10,6 +10,8 @@ const redirectableStatusCodes = [300, 301, 302, 303, 307, 308]
+ 
+ const kBody = Symbol('body')
+ 
++const noop = () => {}
++
+ class BodyAsyncIterable {
+   constructor (body) {
+     this[kBody] = body
+@@ -132,10 +134,20 @@ class RedirectHandler {
+     this.opts.maxRedirections = 0
+     this.opts.query = null
+ 
++    // https://tools.ietf.org/html/rfc7231#section-6.4.2
++    // https://fetch.spec.whatwg.org/#http-redirect-fetch
++    // In case of HTTP 301 or 302 with POST, change the method to GET
++    if ((statusCode === 301 || statusCode === 302) && this.opts.method === 'POST') {
++      this.opts.method = 'GET'
++      if (util.isStream(this.opts.body)) util.destroy(this.opts.body.on('error', noop))
++      this.opts.body = null
++    }
++
+     // https://tools.ietf.org/html/rfc7231#section-6.4.4
+     // In case of HTTP 303, always replace method to be either HEAD or GET
+     if (statusCode === 303 && this.opts.method !== 'HEAD') {
+       this.opts.method = 'GET'
++      if (util.isStream(this.opts.body)) util.destroy(this.opts.body.on('error', noop))
+       this.opts.body = null
+     }
+   }
+diff --git a/test/interceptors/redirect.js b/test/interceptors/redirect.js
+index 0d8c333c..fe4cc862 100644
+--- a/test/interceptors/redirect.js
++++ b/test/interceptors/redirect.js
+@@ -167,7 +167,7 @@ for (const factory of [
+     await t.completed
+   })
+ 
+-  test('should follow redirection after a HTTP 301', async t => {
++  test('should follow redirection after a HTTP 301 changing method to GET', async t => {
+     t = tspl(t, { plan: 3 })
+ 
+     const server = await startRedirectingServer()
+@@ -188,7 +188,7 @@ for (const factory of [
+     t.ok(!headers.location)
+     t.strictEqual(
+       body,
+-      `POST /5 :: host@${server} connection@keep-alive content-length@7 :: REQUEST`
++      `GET /5 :: host@${server} connection@keep-alive`
+     )
+   })
+ 
+@@ -540,7 +540,7 @@ for (const factory of [
+       headers,
+       body: bodyStream
+     } = await request(t, server, undefined, `http://${server}/301`, {
+-      method: 'POST',
++      method: 'PUT',
+       body: createReadableStream('REQUEST'),
+       maxRedirections: 10
+     })
+@@ -608,7 +608,7 @@ test('should follow redirections when going cross origin', async t => {
+       `http://${server1}/end`
+     ]
+   )
+-  t.strictEqual(body, 'POST')
++  t.strictEqual(body, 'GET')
+ 
+   await t.completed
+ })
+diff --git a/test/redirect-request.js b/test/redirect-request.js
+index 4b7d1143..55583d7a 100644
+--- a/test/redirect-request.js
++++ b/test/redirect-request.js
+@@ -125,7 +125,7 @@ for (const factory of [
+ 
+     t.strictEqual(statusCode, 200)
+     t.ok(!headers.location)
+-    t.strictEqual(body, `POST /5 :: host@${server} connection@keep-alive content-length@7 :: REQUEST`)
++    t.strictEqual(body, `GET /5 :: host@${server} connection@keep-alive`)
+   })
+ 
+   test('should follow redirection after a HTTP 302', async t => {
+@@ -485,7 +485,7 @@ for (const factory of [
+     const server = await startRedirectingServer()
+ 
+     const { statusCode, headers, body: bodyStream } = await request(t, server, undefined, `http://${server}/301`, {
+-      method: 'POST',
++      method: 'PUT',
+       body: createReadableStream('REQUEST'),
+       maxRedirections: 10
+     })
+@@ -541,7 +541,7 @@ test('should follow redirections when going cross origin', async t => {
+     `http://${server3}/end`,
+     `http://${server1}/end`
+   ])
+-  t.strictEqual(body, 'POST')
++  t.strictEqual(body, 'GET')
+ 
+   await t.completed
+ })
+diff --git a/test/redirect-stream.js b/test/redirect-stream.js
+index f45456d3..d6e15259 100644
+--- a/test/redirect-stream.js
++++ b/test/redirect-stream.js
+@@ -80,7 +80,7 @@ test('should follow redirection after a HTTP 300', async t => {
+   t.strictEqual(body.join(''), `GET /5 key=value :: host@${server} connection@keep-alive`)
+ })
+ 
+-test('should follow redirection after a HTTP 301', async t => {
++test('should follow redirection after a HTTP 301 changing method to GET', async t => {
+   t = tspl(t, { plan: 3 })
+ 
+   const body = []
+@@ -97,7 +97,7 @@ test('should follow redirection after a HTTP 301', async t => {
+     }
+   )
+ 
+-  t.strictEqual(body.join(''), `POST /5 :: host@${server} connection@keep-alive content-length@7 :: REQUEST`)
++  t.strictEqual(body.join(''), `GET /5 :: host@${server} connection@keep-alive`)
+ })
+ 
+ test('should follow redirection after a HTTP 302', async t => {
+@@ -316,7 +316,7 @@ test('should follow redirections when going cross origin', async t => {
+     }
+   )
+ 
+-  t.strictEqual(body.join(''), 'POST')
++  t.strictEqual(body.join(''), 'GET')
+ })
+ 
+ describe('when a Location response header is NOT present', async () => {

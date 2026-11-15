@@ -1,0 +1,36 @@
+{
+  "schema_version": "1",
+  "id": "axios-6192-absolute-url-flag-precedence",
+  "kind": "real",
+  "language": "javascript",
+  "provenance": {
+    "kind": "real",
+    "repo": "axios/axios",
+    "pr": 6192,
+    "base_sha": "4a3e26cf65bb040b7eb4577d5fd62199b0f3d017",
+    "head_sha": "32c7bcc0f233285ba27dec73a4b1e81fb7a219b3",
+    "fix_commit": "https://github.com/axios/axios/commit/f10c2e0de7fde0051f848609a29c2906d0caa1d9",
+    "source": "PR #6192 feat: Add config for ignoring absolute URLs (#5902), squash-merged 2025-02-12 as 32c7bcc0f",
+    "note": "Introduced by this PR: it hoisted `!isAbsoluteURL(requestedURL)` into a local and OR-ed the new flag clause outside the `baseURL &&` guard, so the guard covers only the relative-URL case: with `allowAbsoluteUrls: false` and no configured base, the disjunct is true and `combineURLs(undefined, url)` reads `.replace` off undefined. The later fix #6833 parenthesizes the disjunct and adds the three-argument test that pins it. Scope at this head: `getUri()` passes the flag (the PR added that call) while `lib/adapters/http.js` still calls `buildFullPath(config.baseURL, config.url)` with two arguments, so an ordinary request only ignores the option until #6810 plumbs it into the adapter \u2014 after which this line is the TypeError reported in issue #6832 for `axios.get(url, {allowAbsoluteUrls: false})`."
+  },
+  "bugs": [
+    {
+      "path": "lib/core/buildFullPath.js",
+      "line": 18,
+      "kind": "nil-deref",
+      "severity": "important",
+      "keywords": [
+        "the false flag bypasses the guard that requires a base",
+        "operator precedence drops the base check",
+        "throws when the flag is off and no base is set",
+        "crashes joining a url onto an undefined base",
+        "fails to build the full path when the base is missing",
+        "combines a url with a missing base instead of returning it unchanged",
+        "throws a typeerror",
+        "bind tighter"
+      ],
+      "note": "the flag disjunct is grouped outside the check that a base exists, so turning the flag off without a base hands undefined to the URL joiner and the call throws instead of returning the requested URL",
+      "also_lines": []
+    }
+  ]
+}
