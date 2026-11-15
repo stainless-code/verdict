@@ -10,12 +10,27 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/golden"
+	"github.com/stainless-code/verdict/internal/promptkeys"
 )
 
 // TestToolFreePromptPinsShippedReview derives the tool-free prompt from the
 // real prompt files and pins it: any shipped edit forces a reviewed golden
 // diff.
 func TestToolFreePromptPinsShippedReview(t *testing.T) {
+	got, err := toToolFreePrefix(shippedPrefix(t))
+	if err != nil {
+		t.Fatalf("toToolFreePrefix: %v", err)
+	}
+	if !strings.Contains(got, "You have no tools") {
+		t.Error("derived prompt carries no no-tools statement: every adapter must inherit it")
+	}
+	golden.Check(t, "tool-free-prompt", got)
+}
+
+// shippedPrefix reads the trusted prompt files in the order the tool
+// concatenates them.
+func shippedPrefix(t *testing.T) string {
+	t.Helper()
 	root, err := moduleRoot()
 	if err != nil {
 		t.Fatalf("moduleRoot: %v", err)
@@ -28,14 +43,26 @@ func TestToolFreePromptPinsShippedReview(t *testing.T) {
 		}
 		sb.Write(raw)
 	}
-	got, err := toToolFreePrefix(sb.String())
+	return sb.String()
+}
+
+// TestToolFreePromptKeepsSchemaKeyShapes holds the derived prompt to the key
+// shapes the shipped prompt publishes. #137 added the coverage entry shape to
+// step 7, the transform replaced that whole step, and a pilot model then wrote
+// a bare path array that record refused.
+func TestToolFreePromptKeepsSchemaKeyShapes(t *testing.T) {
+	got, err := toToolFreePrefix(shippedPrefix(t))
 	if err != nil {
 		t.Fatalf("toToolFreePrefix: %v", err)
 	}
-	if !strings.Contains(got, "You have no tools") {
-		t.Error("derived prompt carries no no-tools statement: every adapter must inherit it")
+	for _, row := range promptkeys.Review {
+		if !strings.Contains(got, row.Text) {
+			t.Errorf("tool-free prompt never writes %s for key %q", row.Text, row.Key)
+		}
 	}
-	golden.Check(t, "tool-free-prompt", got)
+	if want := "`" + strings.Join(promptkeys.RigorValues, "|") + "`"; !strings.Contains(got, want) {
+		t.Errorf("tool-free prompt does not publish the rigor values as %s", want)
+	}
 }
 
 // TestToolFreeTransformNeedsItsAnchors removes one anchor at a time: each
@@ -49,6 +76,8 @@ func TestToolFreeTransformNeedsItsAnchors(t *testing.T) {
 		{"4. **Specialist decision.**", "4. **Specialist decision.**"},
 		{"6. **Aggregate", "6. **Aggregate"},
 		{"7. **Submit.**", "7. **Submit.**"},
+		{toolFreeCoverageHead, toolFreeCoverageHead},
+		{toolFreeCoverageTail, toolFreeCoverageTail},
 		{"## Review body format", "## Review body format"},
 	} {
 		got, err := toToolFreePrefix(strings.Replace(fakePrefix, tc.remove, "", 1))

@@ -68,6 +68,8 @@ const (
 		"5. **Dispatch (only if step 4 found questions).** Emit every subagent call in a single turn.\n" +
 		"6. **Aggregate & draft.** Merge the lens findings.\n" +
 		"7. **Submit.** Before `post` or `record`, run `verdict record <repo> <slug> --dry-run`, then run `verdict post owner/repo N`.\n" +
+		"   Attest coverage — the default `gate` requires it. Stamp entries of `{\"file\": …, \"ranges\": …}`.\n" +
+		"   A partial attestation warns once and adds one body line.\n" +
 		"8. **Cost record.** With every `review.json`, write cost.json.\n" +
 		"## Review body format\n"
 )

@@ -7,23 +7,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
-)
 
-// promptReviewKeys are the review.json keys prompts/review.md must publish, and
-// the schema branch that has to define each one. A pilot review wrote `rung`
-// and `in_bounds` because the prompt described the evidence rung and the
-// in-bounds flag without naming their keys; record repaired both instead of
-// the review landing clean.
-var promptReviewKeys = []struct {
-	key  string
-	text string
-	path []string
-}{
-	{"rigor", "`rigor`", []string{"$defs", "comment", "properties", "rigor"}},
-	{"in-bounds", "`in-bounds`", []string{"$defs", "comment", "properties", "in-bounds"}},
-	{"file", `{"file": …, "ranges": …}`, []string{"$defs", "coverageClaim", "properties", "file"}},
-	{"ranges", `{"file": …, "ranges": …}`, []string{"$defs", "coverageClaim", "properties", "ranges"}},
-}
+	"github.com/stainless-code/verdict/internal/promptkeys"
+)
 
 // TestPromptNamesReviewKeys holds the prompt to the published key names: every
 // key it tells the model to emit exists in review.schema.json under that exact
@@ -32,12 +18,12 @@ var promptReviewKeys = []struct {
 func TestPromptNamesReviewKeys(t *testing.T) {
 	t.Parallel()
 	prompt := string(readSkillFile(t, "prompts/review.md"))
-	for _, row := range promptReviewKeys {
-		if !strings.Contains(prompt, row.text) {
-			t.Errorf("prompts/review.md never writes %s for key %q", row.text, row.key)
+	for _, row := range promptkeys.Review {
+		if !strings.Contains(prompt, row.Text) {
+			t.Errorf("prompts/review.md never writes %s for key %q", row.Text, row.Key)
 		}
-		if !schemaHas(t, row.path...) {
-			t.Errorf("review.schema.json has no property %q at %s", row.key, strings.Join(row.path, "."))
+		if !schemaHas(t, row.Path...) {
+			t.Errorf("review.schema.json has no property %q at %s", row.Key, strings.Join(row.Path, "."))
 		}
 	}
 }
@@ -47,7 +33,7 @@ func TestPromptNamesReviewKeys(t *testing.T) {
 // into a refusal, and one omitting a value hides an allowed rung.
 func TestPromptRigorValuesMatchSchema(t *testing.T) {
 	t.Parallel()
-	want := []string{"said", "pointed", "walked", "ran", "reproduced"}
+	want := promptkeys.RigorValues
 	published := "`" + strings.Join(want, "|") + "`"
 	if prompt := string(readSkillFile(t, "prompts/review.md")); !strings.Contains(prompt, published) {
 		t.Errorf("prompts/review.md does not publish the rigor values as %s", published)

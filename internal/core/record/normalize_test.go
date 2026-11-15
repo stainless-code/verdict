@@ -80,6 +80,14 @@ func repairCases() []repairCase {
 			codes: []string{core.ProblemCodeKeyAlias, core.ProblemCodeKeyAlias, core.ProblemCodeKeyAlias},
 		},
 		{
+			name: "in-bounds-snake-alias",
+			in: `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[` +
+				`{"path":"notes.txt","line":2,"body":"A finding with enough substance.","in_bounds":false}]}`,
+			want: `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[` +
+				`{"path":"notes.txt","line":2,"body":"A finding with enough substance.","in-bounds":false}]}`,
+			codes: []string{core.ProblemCodeKeyAlias},
+		},
+		{
 			name: "enum-synonym",
 			in: `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[` +
 				`{"path":"notes.txt","line":2,"body":"A finding with enough substance.","rigor":"traced","severity":"Critical"}]}`,
@@ -343,6 +351,7 @@ func strictCases() []strictCase {
 		{"extracted", "Here is the review:\n" + base + "\nThanks", core.ProblemCodeNormalizedExtracted},
 		{"scalar-to-array", `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[],"resolved":"a1b2"}`, core.ProblemCodeScalarToArray},
 		{"key-alias", comment(`{"file":"notes.txt","line":2,"body":"A finding with enough substance.","rung":"walked"}`), core.ProblemCodeKeyAlias},
+		{"in-bounds-alias", comment(`{"path":"notes.txt","line":2,"body":"A finding with enough substance.","in_bounds":false}`), core.ProblemCodeKeyAlias},
 		{"enum-synonym", comment(`{"path":"notes.txt","line":2,"body":"A finding with enough substance.","rigor":"traced"}`), core.ProblemCodeEnumSynonym},
 		{"trivia", "\ufeff" + comment(`{"path":"notes.txt","line":2,"body":"A finding with enough substance.","rigor":"walked","severity":null}`), core.ProblemCodeNormalizedTrivia},
 	}

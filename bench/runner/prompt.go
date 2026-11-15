@@ -112,8 +112,17 @@ const (
 	toolFreeSubmit = "7. **Submit.** Your final message must be exactly one review.json document " +
 		"(`{schema_version: \"1\", body, approved, comments[]}` plus optional `coverage`, `confidence`, " +
 		"`security_summary`): one JSON document, no prose, no code fence, no tool call. Do not run " +
-		"`verdict record`, `verdict post`, or any other command — the harness scores your document itself.\n" +
-		"8. **No cost record.** Do not write any file: the harness measures spend itself.\n"
+		"`verdict record`, `verdict post`, or any other command — the harness scores your document itself.\n"
+	toolFreeCost = "8. **No cost record.** Do not write any file: the harness measures spend itself.\n"
+)
+
+// toolFreeCoverageHead and toolFreeCoverageTail bracket step 7's coverage
+// sentences, which the replacement keeps byte-for-byte: review.json's coverage
+// entry has one published spelling, and the copy once written into
+// toolFreeSubmit drifted into a bare path array.
+const (
+	toolFreeCoverageHead = "   Attest coverage — the default `gate` requires it."
+	toolFreeCoverageTail = "   A partial attestation warns once"
 )
 
 // toToolFreePrefix derives the tool-free bench prompt from the rendered
@@ -133,7 +142,10 @@ func toToolFreePrefix(prefix string) (string, error) {
 	if out, err = replaceRange(out, "4. **Specialist decision.**", "6. **Aggregate", toolFreeLenses); err != nil {
 		return "", err
 	}
-	if out, err = replaceRange(out, "7. **Submit.**", "## Review body format", toolFreeSubmit); err != nil {
+	if out, err = replaceRange(out, "7. **Submit.**", toolFreeCoverageHead, toolFreeSubmit); err != nil {
+		return "", err
+	}
+	if out, err = replaceRange(out, toolFreeCoverageTail, "## Review body format", toolFreeCost); err != nil {
 		return "", err
 	}
 	return toolFreeBanner + out, nil

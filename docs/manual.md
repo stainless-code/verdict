@@ -228,8 +228,9 @@ PR bundle still refuses `not-local` (use `post`).
 Before checking, `record` runs `NormalizeReview` over the agent's bytes: one
 whole-document code fence is unwrapped, prose around exactly one balanced JSON
 object is dropped, a scalar where a string array belongs becomes a one-element
-array, the aliases `inBounds`/`rung`/`file` become `in-bounds`/`rigor`/`path`,
-rigor synonyms and enum case are folded, and a BOM, an explicit null on an
+array, the aliases `inBounds` and `in_bounds` become `in-bounds` while
+`rung`/`file` become `rigor`/`path`, rigor synonyms and enum case are
+folded, and a BOM, an explicit null on an
 optional key, or an exact-duplicate comment is removed. Every rewrite is a
 warning with its own code and is listed in `record.json`'s `repairs[]`; strict
 input turns each into an error. A repair never invents or rewrites prose, and
@@ -256,7 +257,7 @@ from the review and reports `basis-replaced`.
 | `normalized-fence`     | warning | One whole-document code fence was unwrapped.                                                                                         |
 | `normalized-extracted` | warning | Prose around exactly one balanced JSON object was dropped.                                                                           |
 | `scalar-to-array`      | warning | A scalar where a string array belongs was wrapped in a one-element array.                                                            |
-| `key-alias`            | warning | A known alias (`inBounds`, `rung`, `file`) was renamed to its canonical key.                                                         |
+| `key-alias`            | warning | A known alias (`inBounds`, `in_bounds`, `rung`, `file`) was renamed to its canonical key.                                            |
 | `enum-synonym`         | warning | A rigor synonym or a case-folded enum value was rewritten to the published value.                                                    |
 | `normalized-trivia`    | warning | A BOM, an explicit null on an optional key, or an exact-duplicate comment was removed.                                               |
 | `basis-replaced`       | warning | The body's `> Basis:` line disagreed with the computed counts, or was missing from the leading quote block, and the CLI replaced it. |

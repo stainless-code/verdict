@@ -12,7 +12,6 @@ values as `said|pointed|walked|ran|reproduced`, writes the in-bounds flag as
 
 An archtest holds every key the prompt publishes to review.schema.json and its
 `rigor` value list to the schema enum, so the two cannot drift apart again. The
-prompt set moves `prompts_hash` to
-`e62e67fb077675601eec7b83f6f6e8e1ea0bfac881e82d3db192d840b6ab6f83`, and the
-record and fetch goldens follow it: `prompts_hash`, the `run_id` that folds it,
-and the two edited prompt rows of each provenance input list.
+prompt set moves `prompts_hash`, and the record and fetch goldens follow it:
+`prompts_hash`, the `run_id` that folds it, and the two edited prompt rows of
+each provenance input list.

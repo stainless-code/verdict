@@ -76,10 +76,10 @@ verdict fetch owner/repo 123
 #    `triage[]` claims). Attest what you read in `coverage[]` (`chunks[]` on a
 #    chunked bundle): the default `gate` fails without it, and `next --coverage`
 #    lists the gaps. Verdict repairs a fenced or prose-wrapped document,
-#    scalar-for-array values, the aliases `inBounds`/`rung`/`file`, enum
-#    synonyms and case, and null optional keys, and reports every repair — but
-#    write clean JSON anyway: repairs are a safety net, and strict CI refuses
-#    them.
+#    scalar-for-array values, the aliases `inBounds`/`in_bounds`/`rung`/`file`,
+#    enum synonyms and case, and null optional keys, and reports every repair —
+#    but write clean JSON anyway: repairs are a safety net, and strict CI
+#    refuses them.
 #    Before posting or recording, run `verdict record owner/repo <slug>
 #    --dry-run` on the bundle (local or PR), fix every problem it lists, and
 #    repeat at most 3 rounds.
@@ -358,6 +358,11 @@ details</details>` when the fix is non-trivial or cross-file. For the top-severi
    state the one load-bearing fact it stands on plus its rung — if that fact never got past
    `pointed`, say so.
 7. **Submit.** Your final message must be exactly one review.json document (`{schema_version: "1", body, approved, comments[]}` plus optional `coverage`, `confidence`, `security_summary`): one JSON document, no prose, no code fence, no tool call. Do not run `verdict record`, `verdict post`, or any other command — the harness scores your document itself.
+   Attest coverage — the default `gate` requires it. Stamp top-level `coverage` entries of
+   `{"file": …, "ranges": …}`: one entry per changed source file, with `ranges` as
+   `"1-240,300-320"` of changed source lines, or
+   absent/`"all"` for the whole file (read them from `toc.txt`; a range is side-agnostic — one
+   interval covers that hunk on either side). Generated and vendored paths are exempt automatically.
 8. **No cost record.** Do not write any file: the harness measures spend itself.
 ## Review body format (Default format — at most two parts, in order)
 
