@@ -381,14 +381,23 @@ const reviewBody = `{"schema_version":"1","body":"ok","approved":false,"comments
 // copies into every run dir.
 func fakeCorpus(t *testing.T) string {
 	t.Helper()
+	return fakeCorpusOf(t, "off-by-one")
+}
+
+// fakeCorpusOf writes one seeded case per id, in the order given, so a test can
+// drive a corpus the cap must stop part-way through.
+func fakeCorpusOf(t *testing.T, ids ...string) string {
+	t.Helper()
 	root := t.TempDir()
 	for _, rel := range promptFiles {
 		writeFile(t, filepath.Join(root, prefixPrompts, filepath.FromSlash(rel)), []byte("fixture prompt "+rel+"\n"))
 	}
 	dir := filepath.Join(root, "corpus")
-	writeFile(t, filepath.Join(dir, "off-by-one", caseManifestName),
-		[]byte(`{"schema_version":"1","id":"off-by-one","kind":"seeded","line_tolerance":3,"bugs":[{"path":"pagination.go","line":42}]}`))
-	writeFile(t, filepath.Join(dir, "off-by-one", fullDiffName), []byte(fakeDiff))
+	for _, id := range ids {
+		writeFile(t, filepath.Join(dir, id, caseManifestName),
+			[]byte(`{"schema_version":"1","id":"`+id+`","kind":"seeded","line_tolerance":3,"bugs":[{"path":"pagination.go","line":42}]}`))
+		writeFile(t, filepath.Join(dir, id, fullDiffName), []byte(fakeDiff))
+	}
 	return root
 }
 
@@ -693,6 +702,56 @@ func checkCapRecorded(t *testing.T, rep *Report) {
 	if got, want := rep.SpentAtCap, 0.06; got != want {
 		t.Errorf("spent_at_cap = %v, want %v", got, want)
 	}
+}
+
+// TestMaxUSDRecordsEachSkippedSampleOnce pins the skip list across cases: the
+// cap is hit while scheduling the third case, and the two cases it never
+// reached appear once each — not once from skipFrom and once from schedule.
+func TestMaxUSDRecordsEachSkippedSampleOnce(t *testing.T) {
+	rep := cappedMultiCaseReport(t)
+	want := []SkippedSample{{Case: "case-c", Run: 1}, {Case: "case-d", Run: 1}}
+	if !slices.Equal(rep.Skipped, want) {
+		t.Fatalf("skipped = %v, want %v (each unscheduled sample once)", rep.Skipped, want)
+	}
+	if got, want := skipLine(t, rep), "budget: cap 0.050000 USD hit after 0.060000 USD; 2 sample(s) not run: case-c run 1, case-d run 1"; got != want {
+		t.Errorf("human budget line = %q, want %q", got, want)
+	}
+	if rep.Samples != 2 || rep.Cost.Usd != 0.06 {
+		t.Errorf("samples=%d cost=%v, want two samples at 0.06", rep.Samples, rep.Cost.Usd)
+	}
+}
+
+// cappedMultiCaseReport runs four priced cases at one sample each against a
+// 0.05 USD cap, so the cap is reached while scheduling the third.
+func cappedMultiCaseReport(t *testing.T) *Report {
+	t.Helper()
+	needPOSIX(t)
+	restoreWD(t)
+	cfg := benchConfig(t, fakeCorpusOf(t, "case-a", "case-b", "case-c", "case-d"), agentWritesSpend)
+	cfg.Runs = 1
+	cfg.MaxUSD = 0.05
+	fake := &fakeGrader{model: cfg.Model, panel: cfg.Panel, prefix: fakePrefix}
+	rep, err := runGraded(context.Background(), cfg, fake)
+	if err != nil {
+		t.Fatalf("runGraded: %v (a cap stop is not a failure)", err)
+	}
+	return rep
+}
+
+// skipLine renders the report's budget line through the real renderer, so the
+// human count is pinned against the same string the operator reads.
+func skipLine(t *testing.T, rep *Report) string {
+	t.Helper()
+	var buf bytes.Buffer
+	r := &runner{cfg: &Config{}}
+	r.render(&buf, rep)
+	for _, line := range strings.Split(buf.String(), "\n") {
+		if strings.HasPrefix(line, "budget: ") {
+			return line
+		}
+	}
+	t.Fatalf("no budget line in %q", buf.String())
+	return ""
 }
 
 // countRunDirs counts the sample dirs a run created; Run moved the process

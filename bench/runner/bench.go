@@ -516,15 +516,14 @@ func (r *runner) spentUSD() float64 {
 	return total
 }
 
-// skipFrom records the cap hit and every sample it left unscheduled: the rest
-// of this case, then every run of every later case.
+// skipFrom records the cap hit and this case's remaining samples. Later cases
+// are not recorded here: schedule sees CapHit on its next pass and records
+// each of their runs once, which is the only place a case it did not reach is
+// named.
 func (r *runner) skipFrom(rep *Report, caseIndex, run int) {
 	rep.CapHit = true
 	rep.SpentAtCap = roundUSD(r.spentUSD())
 	r.skipRuns(rep, r.cases[caseIndex].id, run, r.cfg.Runs)
-	for j := caseIndex + 1; j < len(r.cases); j++ {
-		r.skipCase(rep, r.cases[j].id)
-	}
 }
 
 // skipCase records every run of one case as not scheduled.
