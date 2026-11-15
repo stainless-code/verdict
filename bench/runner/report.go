@@ -117,16 +117,18 @@ type Stat struct {
 // CostRollup is the spend the run reports: every scheduled sample, scored or
 // refused. The bundle counters stay what they were; measured_usd sums samples.
 type CostRollup struct {
-	Bundles          int     `json:"bundles"`
-	WithEstimate     int     `json:"bundles_with_estimate"`
-	Incomplete       int     `json:"bundles_incomplete,omitempty"`
-	Samples          int     `json:"samples"`
-	SampleEstimates  int     `json:"samples_with_estimate"`
-	SampleIncomplete int     `json:"samples_incomplete,omitempty"`
-	RefusedSamples   int     `json:"refused_samples"`
-	Usd              float64 `json:"measured_usd"`
-	RefusedUsd       float64 `json:"refused_usd"`
-	Measured         bool    `json:"measured"`
+	Bundles          int `json:"bundles"`
+	WithEstimate     int `json:"bundles_with_estimate"`
+	Incomplete       int `json:"bundles_incomplete,omitempty"`
+	Samples          int `json:"samples"`
+	SampleEstimates  int `json:"samples_with_estimate"`
+	SampleIncomplete int `json:"samples_incomplete,omitempty"`
+	RefusedSamples   int `json:"refused_samples"`
+	// RefusedUsd is the priced part of RefusedSamples; a refusal with no
+	// est_usd is counted there and contributes nothing here.
+	Usd        float64 `json:"measured_usd"`
+	RefusedUsd float64 `json:"refused_usd"`
+	Measured   bool    `json:"measured"`
 }
 
 // Failure is one sample that produced no score. Its evidence stays in the run
@@ -338,8 +340,13 @@ func (r *runner) cost() CostRollup {
 	return roll
 }
 
-// addSample counts one sample's spend, running total and all.
+// addSample counts one sample's spend, running total and all. Refusals are
+// counted whether or not the agent priced them: a refused sample is a fact
+// about the run, and RefusedUsd is the part of it a reader can add up.
 func (c *CostRollup) addSample(s sampleSpend) {
+	if s.refused {
+		c.RefusedSamples++
+	}
 	if !s.has {
 		return
 	}
@@ -350,7 +357,6 @@ func (c *CostRollup) addSample(s sampleSpend) {
 	}
 	if s.refused {
 		c.RefusedUsd += s.usd
-		c.RefusedSamples++
 	}
 }
 

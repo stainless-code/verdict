@@ -284,10 +284,11 @@ every sample it did not run in the report's `skipped` list, and marks the run
 uncitable. A sample already running finishes; only scheduling stops.
 
 The runner's own rollup reads the same `cost.json` files, one per sample it
-scheduled. `cost.measured_usd` sums every sample, a refused one included, and
-`cost.refused_usd` with `cost.refused_samples` names the share that produced no
-bundle: a refusal costs the tokens it reports and it is exactly the spend a
-pilot hides when only recorded bundles are counted. `cost.samples_with_estimate`
+scheduled. `cost.measured_usd` sums every sample, a refused one included;
+`cost.refused_samples` counts every refused sample and `cost.refused_usd` the
+priced share of them, so a refusal with no `est_usd` is still counted: a
+refusal costs the tokens it reports and it is exactly the spend a pilot hides
+when only recorded bundles are counted. `cost.samples_with_estimate`
 against `cost.samples` says whether the total is measured at all; a sample with
 no `est_usd` leaves the run unmeasured rather than free.
 

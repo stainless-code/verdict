@@ -112,8 +112,8 @@ report rather than free.
 
 The rollup sums every sample's `cost.json`, including a sample `record`
 refused: a refusal still burned the tokens it could not score. `cost.measured_usd`
-is that total, and `cost.refused_usd` names the share that produced no bundle,
-with `cost.refused_samples` counting them. A sample whose record carries no
+is that total, `cost.refused_samples` counts every sample that produced no
+bundle — priced or not — and `cost.refused_usd` is the priced share of them. A sample whose record carries no
 `est_usd` leaves the run unmeasured; it never reads zero.
 
 [`example-seeded-model-pilot.json`](runner/testdata/example-seeded-model-pilot.json)

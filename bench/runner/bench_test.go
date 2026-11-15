@@ -200,6 +200,27 @@ func TestReadCaseRefusesADiffSpelledKeyword(t *testing.T) {
 	}
 }
 
+// TestCostRollupCountsUnpricedRefusals pins the counter split: a refused
+// sample the agent priced contributes to refused_usd, one it did not still
+// counts in refused_samples, and both leave the rollup unmeasured.
+func TestCostRollupCountsUnpricedRefusals(t *testing.T) {
+	r := &runner{cfg: &Config{}, spend: []sampleSpend{
+		{usd: 0.03, refused: true, has: true},
+		{refused: true},
+		{usd: 0.01, has: true},
+	}}
+	cost := r.cost()
+	if cost.RefusedSamples != 2 || cost.RefusedUsd != 0.03 {
+		t.Errorf("refused_samples=%d refused_usd=%v, want 2 and 0.03", cost.RefusedSamples, cost.RefusedUsd)
+	}
+	if cost.Samples != 3 || cost.SampleEstimates != 2 || cost.Usd != 0.04 {
+		t.Errorf("cost = %+v, want 3 samples, 2 priced, 0.04 USD", cost)
+	}
+	if cost.Measured {
+		t.Error("measured = true, want false: one sample carries no est_usd")
+	}
+}
+
 // TestBudgetReachedWithoutASkipIsNotCitable pins the other half of the budget
 // rule: when the last scheduled sample pushes spend to the cap, nothing is
 // skipped, so cap_hit stays false — and the run must still not be citable.
