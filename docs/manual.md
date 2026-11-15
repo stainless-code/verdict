@@ -2983,6 +2983,13 @@ below is the second layer for what the static gate cannot see (a plain
 `curl` GET stays allowed; `/tmp` scratch writes stay allowed) — not a
 replacement.
 
+The static gate is a tripwire, not a boundary. It matches the spellings it
+knows, on one command string at a time, and a shape it has not learned
+executes. The boundary is the enforced sandbox below: on Linux with
+`bubblewrap` installed, `verify --sandbox` gives the command no route out.
+A host that cannot enforce it refuses `sandbox-unavailable` and runs
+nothing, so `--sandbox` never degrades to an unwrapped run.
+
 ### Enforced sandbox: `verify --sandbox`
 
 On Linux with `bubblewrap` installed, pass the flag and let `verify` build

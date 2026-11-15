@@ -1074,6 +1074,11 @@ Cause: the sandbox cannot be enforced (no bubblewrap, or no unprivileged user na
 
 Fix: install bubblewrap on Linux and allow unprivileged user namespaces, or re-run without `--sandbox` on a command you trust.
 
+`--sandbox` is the enforced half of the split: the static gate is a
+tripwire (see `verify-networked`), and this flag is the boundary. A host
+that cannot enforce it refuses here instead of running the command
+unwrapped.
+
 ## `sarif-too-large`
 
 Cause: the SARIF input exceeds the 8 MiB size cap.
@@ -1336,6 +1341,11 @@ Fix: fix the command or the evidence named above, then re-run `verify`.
 ## `verify-networked`
 
 Cause: `verifyCmd` fetches the network or pipes to a shell.
+
+The gate is a tripwire, not a boundary: it refuses the spellings it knows,
+and a shape it has not learned executes. For a boundary, run the step
+under `verify --sandbox`: on Linux with `bubblewrap` it removes the route
+out, and a host that cannot enforce it refuses `sandbox-unavailable`.
 
 Fix: rewrite `verifyCmd` without network fetches or pipe-to-shell (fetch fixtures first, run offline), then re-run.
 
