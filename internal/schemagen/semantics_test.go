@@ -253,9 +253,16 @@ var publishedSemantics = map[string]string{
 	// author/reviewer pair: additive optional trendData.by_pair
 	// ($defs/trendPairCounts) plus required trendBundleRow.author and
 	// trendBundleRow.review_models. No existing property, enum, or type changed.
-	// The validation pass adds data.validation (optional, post only).
-	"envelope.schema.json": "7045b52b76b5ed3582ad058298982aa9191abeffa8114cd1495f1bdb20abe842",
-
+	// handoff projection: additive $defs/handoffData and $defs/handoffRow
+	// pinning the handoff verb's data profile (open findings with their brief
+	// text and verify command), plus the regenerated envelope description
+	// naming handoffData. No existing property, required key, enum, or type
+	// changed.
+	// The validation pass adds data.validation (optional, post only), and
+	// validationData joins the envelope description's published data-profile
+	// list beside postData. No existing property, required key, enum, or type
+	// changed.
+	"envelope.schema.json": "312897e9b6bdf80aef54aeffa1d5397aff3fa80c9a62ff9c3769e0ca9a10b409",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

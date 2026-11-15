@@ -4,6 +4,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	backtestcore "github.com/stainless-code/verdict/internal/core/backtest"
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
+	handoffcore "github.com/stainless-code/verdict/internal/core/handoff"
 	ingestcore "github.com/stainless-code/verdict/internal/core/ingest"
 	"github.com/stainless-code/verdict/internal/core/pack"
 	readycore "github.com/stainless-code/verdict/internal/core/ready"
@@ -533,6 +534,15 @@ type FixAnchors struct {
 	Side      string `json:"side"`
 	Anchored  string `json:"anchored"`
 }
+
+// HandoffData is the handoff verb's --json data profile: one projection of the
+// open inline findings a fix run would take.
+type HandoffData = handoffcore.Data
+
+// HandoffRow is one open finding in the handoff projection: what to fix, the
+// evidence behind it, and the brief and verify command fix itself would have
+// handed a pass.
+type HandoffRow = handoffcore.Row
 
 // LearnData is the learn verb's --json data profile: one appended rule, the
 // status listing of every rule in the knowledge base, or one attached

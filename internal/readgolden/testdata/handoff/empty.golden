@@ -1,0 +1,7 @@
+exit: 1
+--- stdout ---
+
+--- stderr ---
+error: handoff: no open inline finding at or above important — lower --min-severity, or read the bundle with report
+try: lower --min-severity, widen --paths, or read the bundle with report
+--- files ---

@@ -101,6 +101,45 @@ func FromRecord(rec *jq.Obj) *core.Brief {
 	}
 }
 
+// Render writes the stored brief as the one block fix hands an agent — the
+// outcome, the affected sites, the approach, and the open questions — and
+// returns "" for a nil brief, so a finding without one prints nothing.
+// Handoff embeds this exact text, so the two verbs cannot diverge.
+func Render(b *core.Brief) string {
+	if b == nil {
+		return ""
+	}
+	var out strings.Builder
+	out.WriteString("brief:\n")
+	fmt.Fprintf(&out, "  outcome: %s\n", b.Outcome)
+	if len(b.Sites) > 0 {
+		fmt.Fprintf(&out, "  sites: %s\n", renderSites(b.Sites))
+	}
+	if b.Approach != "" {
+		fmt.Fprintf(&out, "  approach: %s\n", b.Approach)
+	}
+	if len(b.Questions) == 0 {
+		return out.String()
+	}
+	out.WriteString("  questions:\n")
+	for _, q := range b.Questions {
+		fmt.Fprintf(&out, "    - %s\n", q)
+	}
+	return out.String()
+}
+
+func renderSites(sites []core.BriefSite) string {
+	out := make([]string, 0, len(sites))
+	for _, site := range sites {
+		if site.Line == nil {
+			out = append(out, site.Path)
+			continue
+		}
+		out = append(out, fmt.Sprintf("%s:%d", site.Path, *site.Line))
+	}
+	return strings.Join(out, ", ")
+}
+
 // objectOf reads v as a string map plus its key order (*jq.Obj keeps file
 // order; a plain map reads sorted so warnings stay deterministic).
 func objectOf(v any) (map[string]any, []string, bool) {

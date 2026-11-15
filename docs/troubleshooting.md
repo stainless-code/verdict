@@ -852,6 +852,15 @@ Cause: `init` would overwrite existing control files without confirmation.
 
 Fix: re-run with `--yes` after reviewing the preview.
 
+## `no-open-findings`
+
+Cause: `handoff` projects the open inline findings a `fix` run would take, and
+the bundle holds none at or above the severity floor (and under the `--paths`
+globs, when given).
+
+Fix: lower `--min-severity` (or pass `off`), widen `--paths`, or read the whole
+bundle with `report --status open`.
+
 ## `no-patch-match`
 
 Cause: no local bundle matched the patch operation.

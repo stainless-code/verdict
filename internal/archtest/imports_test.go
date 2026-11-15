@@ -48,6 +48,7 @@ var forbiddenDeps = []string{
 	"internal/threads",
 	"internal/trend",
 	"internal/risk",
+	"internal/handoff",
 	"internal/panel",
 	"internal/calibrate",
 	"internal/index",
@@ -81,6 +82,7 @@ var facadeAllowedDeps = map[string]bool{
 	"internal/core/exec":      true,
 	"internal/core/fetch":     true,
 	"internal/core/fix":       true,
+	"internal/core/handoff":   true,
 	"internal/core/init":      true,
 	"internal/core/index":     true,
 	"internal/core/ingest":    true,
@@ -133,7 +135,8 @@ var leafHelpers = []string{"internal/exclude", "internal/shellquote", "internal/
 // unnoticed.
 var coreSubpackages = []string{
 	"adopt", "backtest", "calibrate", "checktree", "corpus", "corpus/corpustest", "coverage", "doctor", "exec", "fetch", "fix",
-	"index", "ingest", "init", "learn", "pack", "panel", "post", "query", "ready", "recipe", "record", "repair", "report", "risk",
+	"handoff", "index", "ingest", "init", "learn", "pack", "panel", "post", "query", "ready", "recipe", "record", "repair",
+	"report", "risk",
 	"run", "skill",
 	"threads", "trend", "triage", "upgrade", "verify",
 }

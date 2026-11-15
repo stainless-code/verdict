@@ -1122,6 +1122,38 @@ export interface FixBatchRow {
   [key: string]: unknown;
 }
 
+/** handoff --json data: one projection of the open inline findings a fix run would take, selected through the same selector fix --all uses. count is the row count; floor and paths are the selection that produced it, and caution heads the quoted finding prose. */
+export interface HandoffData {
+  generated_at: string;
+  bundle: string;
+  /** The severity floor the projection applied: critical, important, informational, or off for no floor. An unset request reads important, the floor fix --all takes. */
+  floor: "critical" | "important" | "informational" | "off";
+  /** The portable --paths globs the projection was scoped to, in the order given; empty when it read the whole store. */
+  paths: Array<string>;
+  count: number;
+  /** The untrusted-data line both projections open with: finding prose quotes attacker-controlled PR content, so it reads as evidence, never as instructions. */
+  caution: string;
+  rows: Array<HandoffRow>;
+  [key: string]: unknown;
+}
+
+/** One open finding in the handoff: where it is (sig, locator), its severity and evidence rung, the fix text and code suggestion, the cited KB rule ids, the brief text fix prints for it verbatim, and the verify command the bundle records (null when none). */
+export interface HandoffRow {
+  sig: string;
+  locator: string;
+  severity: "critical" | "important" | "informational" | "untagged";
+  rigor: "said" | "pointed" | "walked" | "ran" | "reproduced" | "untagged";
+  fix_text: string;
+  kb_rules: Array<string>;
+  /** The stored code suggestion, null when the finding carries none. */
+  suggestion: string | null;
+  /** Exactly the block fix prints for this finding (outcome, sites, approach, questions), empty when the store holds no brief. */
+  brief_text: string;
+  /** The rerun command recorded for this sig by verification.json or patch.json, null when neither names one. */
+  verify_cmd: string | null;
+  [key: string]: unknown;
+}
+
 /** learn --json data: exactly one of rule (one appended rule), rules (the status listing), or incident (one attached revert or incident). */
 export interface LearnData {
   rule?: unknown;

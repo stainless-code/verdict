@@ -2,7 +2,7 @@ package main
 
 func usageText() string {
 	return "usage: verdict fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
-		"fetch-local|run|panel|record|adopt|ingest|fix|check-tree|ready|pr-wait|gate|threads|trend|risk|index|" +
+		"fetch-local|run|panel|record|adopt|ingest|fix|check-tree|ready|pr-wait|gate|threads|trend|risk|handoff|index|" +
 		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|config [opts]\n" +
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
 		"[--index <ref|dir>] [--context <file|dir>] [--ignore <glob>] [--no-default-excludes] " +
@@ -294,6 +294,19 @@ func usageText() string {
 		"    bundle with no findings.json is queued, never dropped; a missing or unusable\n" +
 		"    impact.json reads reach unmeasured with a counted warning. Gating one bundle\n" +
 		"    stays report --max-risk.\n" +
+		"  handoff <owner/repo> <pr> [--min-severity <s, default important>] [--paths <glob>]...\n" +
+		"        [--format md] [--json]\n" +
+		"    one markdown projection of the open inline findings fix would take (no host\n" +
+		"    read, nothing written): per finding its sig, path:line, severity, rigor, fix\n" +
+		"    text, cited kb rules, and the verify command the bundle records, plus the\n" +
+		"    brief fix prints for it, verbatim from the same builder. Selection is the\n" +
+		"    fix --all selector: open inline at or above --min-severity, narrowed by\n" +
+		"    repeatable portable --paths globs. Nothing at the floor refuses\n" +
+		"    no-open-findings, naming the floor and the globs; --json carries the same\n" +
+		"    rows and the same brief text, and both open with the untrusted-data\n" +
+		"    caution: finding prose quotes PR content an attacker controls. --format\n" +
+		"    md wins over REVIEW_OUTPUT_FORMAT=json (flags outrank env); both --json\n" +
+		"    and --format md on one command line is a usage error.\n" +
 		"  index build [--from <dir>] [--at <ref>] [--json]\n" +
 		"    build the code index for one tree under .verdict/index/: Go parsed with\n" +
 		"    go/parser, TypeScript, JavaScript, and Python by two lexical scanners.\n" +

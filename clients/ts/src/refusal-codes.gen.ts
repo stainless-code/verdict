@@ -139,6 +139,7 @@ export type RefusalCode =
   | "missing-source"
   | "missing-tool"
   | "needs-confirm"
+  | "no-open-findings"
   | "no-patch-match"
   | "no-pr-target"
   | "no-review-artifact"

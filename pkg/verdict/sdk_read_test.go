@@ -193,6 +193,45 @@ func TestClientRisk(t *testing.T) {
 	requireRefusal(t, err, "bad-flags", "try: re-run with one of the valid values named above")
 }
 
+// TestClientHandoff proves the projection through the SDK: the default floor,
+// a row's brief text and verify hint, the markdown, and the empty-store
+// refusal naming the floor.
+func TestClientHandoff(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writePRBundle(t, "6101")
+	writeFindings(t, "6101", sdkStore())
+	writeFile(".verdict/state/6101/verification.json",
+		`[{"sig":"`+sdkSigCrit+`","verdict":"VERIFIED","verifyCmd":"go test ./..."}]`)
+	c := newSDKClient(nil, nil)
+	defer c.Close()
+
+	resp, err := c.Handoff(context.Background(), &verdict.HandoffRequest{Repo: "acme/app", Pr: "6101"})
+	requireNoError(t, err)
+	if resp.Repo != "acme/app" || resp.At != sdkAt || !contains(resp.Next, "verdict fix --sig") {
+		t.Errorf("envelope = repo %q at %q next %q", resp.Repo, resp.At, resp.Next)
+	}
+	doc := decodeData(t, resp.Data)
+	assertNumbers(t, doc, map[string]float64{"count": 2})
+	if doc["floor"] != "important" {
+		t.Errorf("floor = %v, want important", doc["floor"])
+	}
+	rows := asSlice(t, doc["rows"], "rows")
+	row := asMap(t, rows[0], "rows[0]")
+	if row["sig"] != sdkSigCrit || row["locator"] != "notes.txt:2" ||
+		row["severity"] != "critical" || row["verify_cmd"] != "go test ./..." {
+		t.Errorf("row = %v, want the critical pick with its verify hint", row)
+	}
+	md := strings.Join(resp.Human, "\n")
+	if resp.Human[0] != "# handoff: .verdict/state/6101" || !contains(md, "## "+sdkSigCrit) {
+		t.Errorf("human = %v, want the markdown projection", resp.Human)
+	}
+
+	writeFindings(t, "6101", "[]")
+	_, err = c.Handoff(context.Background(), &verdict.HandoffRequest{Repo: "acme/app", Pr: "6101"})
+	requireRefusal(t, err, "no-open-findings",
+		"try: lower --min-severity, widen --paths, or read the bundle with report")
+}
+
 // TestClientCalibrate proves the calibrate verb through the SDK: the offline
 // probe grades every finding, counts them, writes the grade store, and the
 // bad judgment refuses typed.

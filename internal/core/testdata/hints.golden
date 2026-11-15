@@ -135,6 +135,7 @@ missing-sig	try: run the fetch/record step named above first, then re-run
 missing-source	try: run the fetch/record step named above first, then re-run
 missing-tool	try: run the fetch/record step named above first, then re-run
 needs-confirm	try: re-run with --yes after reviewing the preview, then re-run
+no-open-findings	try: lower --min-severity, widen --paths, or read the bundle with report
 no-patch-match	try: pass --from <local-slug>, or re-fetch the target bundle so identity.json exists
 no-pr-target	try: run the fetch/record step named above first, then re-run
 no-review-artifact	try: run the printed command yourself (--print) to see why no review.json appeared, then re-run

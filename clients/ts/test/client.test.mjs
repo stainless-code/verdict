@@ -172,8 +172,16 @@ describe("unit: fake binary exit paths", () => {
     assert.equal(argv.filter((a) => a === "--json").length, 1);
   });
 
-  it("adopt, ingest, fix, learn, init and risk reach their own verbs", async () => {
-    for (const verb of ["adopt", "ingest", "fix", "learn", "init", "risk"]) {
+  it("adopt, ingest, fix, handoff, learn, init and risk reach their own verbs", async () => {
+    for (const verb of [
+      "adopt",
+      "ingest",
+      "fix",
+      "learn",
+      "init",
+      "risk",
+      "handoff",
+    ]) {
       const dir = mkdtempSync(join(tmpdir(), "verdict-argv-"));
       const argvFile = join(dir, "argv.json");
       const client = createClient({ bin: FAKE, stderr: "pipe" });

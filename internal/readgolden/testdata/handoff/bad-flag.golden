@@ -1,0 +1,6 @@
+exit: 2
+--- stdout ---
+
+--- stderr ---
+usage: verdict handoff <owner/repo> <pr> [--min-severity <s>] [--paths <glob>]... [--format md] [--json]
+--- files ---

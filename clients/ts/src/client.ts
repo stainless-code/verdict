@@ -331,6 +331,10 @@ export interface VerdictClient {
     opts?: RunOptions,
   ): Promise<Envelope<DataFor["trend"]>>;
   risk(args?: string[], opts?: RunOptions): Promise<Envelope<DataFor["risk"]>>;
+  handoff(
+    args?: string[],
+    opts?: RunOptions,
+  ): Promise<Envelope<DataFor["handoff"]>>;
   index(
     args?: string[],
     opts?: RunOptions,
@@ -412,6 +416,7 @@ export function createClient(defaults: ClientOptions = {}): VerdictClient {
       run<DataFor["calibrate"]>("calibrate", args, opts),
     trend: (args, opts) => run<DataFor["trend"]>("trend", args, opts),
     risk: (args, opts) => run<DataFor["risk"]>("risk", args, opts),
+    handoff: (args, opts) => run<DataFor["handoff"]>("handoff", args, opts),
     index: (args, opts) => run<DataFor["index"]>("index", args, opts),
     adopt: (args, opts) => run<DataFor["adopt"]>("adopt", args, opts),
     ingest: (args, opts) => run<DataFor["ingest"]>("ingest", args, opts),

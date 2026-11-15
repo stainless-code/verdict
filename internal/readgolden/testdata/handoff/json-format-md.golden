@@ -1,0 +1,6 @@
+exit: 2
+--- stdout ---
+
+--- stderr ---
+--format md and --json ask for different output: pass one
+--- files ---

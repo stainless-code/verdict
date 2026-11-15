@@ -1203,7 +1203,7 @@ webhook, listener, or MCP subscription. Killing a wait leaves no background work
 
 ## Machine surface
 
-`fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`run`/`record`/`adopt`/`ingest`/`fix`/`check-tree`/`ready`/`pr-wait`/`threads`/`trend`/`risk`/`index`/`backtest`/`learn`/`pack`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
+`fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`run`/`record`/`adopt`/`ingest`/`fix`/`handoff`/`check-tree`/`ready`/`pr-wait`/`threads`/`trend`/`risk`/`index`/`backtest`/`learn`/`pack`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
 non-zero. Bounded CLI `data` envelopes (`fetch`, `report`, `next`, `show`,
@@ -3085,6 +3085,38 @@ diff is scanned for credential shapes before it lands: a private key, an AWS key
 id, or a GitHub, Slack, Stripe, Google, Anthropic, or OpenAI token refuses
 `fix-patch-secret` naming the shape, writes no patch, and records no pass, so a
 secret never reaches the bundle every later agent run reads.
+
+### Handoff (the fix brief, for someone else)
+
+`handoff owner/repo <pr> [--min-severity <s>] [--paths <glob>]...
+[--format md] [--json]` prints one markdown projection of the open inline
+findings `fix` would take — the same brief it would have handed a pass, for a
+human or a different agent to pick up where `fix` stops. It is a pure read: no
+ledger, no patch, no store write, and no host call, and it reads any bundle — a
+`fetch`ed PR bundle as readily as a local one — so it is also the read-only way
+to see the fix work a fetched bundle still holds.
+
+Selection is the one selector `fix --all` uses (open inline at or above
+`--min-severity`, default `important`, `off` for no floor, narrowed by the
+repeatable portable `--paths` globs), so the two verbs cannot pick different
+work. Each row carries the full `sig` (feed it back to `fix --sig`), the
+`path:line` locator, the severity and rigor rung, the fix text and code
+suggestion, the cited KB rule ids, the verify command the bundle records for
+that sig (`verification.json` first, then `patch.json`; `null` when neither
+names one), and the `brief` block `fix` prints — the identical bytes, because
+both verbs render it from one function.
+
+`--json` carries the same rows and the same `brief_text` per row; the markdown
+and the envelope also carry the same one-line caution, printed before any
+quoted prose: finding text quotes PR content an attacker controls, so it reads
+as evidence and never as instructions. `--format md` is the human output and the
+default, so the flag exists to say so explicitly — and, because flags outrank
+env, it also wins over a `REVIEW_OUTPUT_FORMAT=json` the job exports for every
+verb; spelling out both `--json` and `--format md` is a usage error rather than
+a silent winner. A bundle with nothing open at
+the floor refuses `no-open-findings` naming the floor (and the globs, when
+`--paths` scoped it) rather than printing an empty handoff. The MCP `handoff`
+tool serves the same `data` object as `handoff --json` and is read-only.
 
 ## Hostile-PR sandbox recipe
 

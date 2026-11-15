@@ -250,3 +250,29 @@ func TestFromRecordAbsent(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderPinsTheBlockText(t *testing.T) {
+	line := 2
+	b := &core.Brief{
+		Sites:     []core.BriefSite{{Path: "app.txt", Line: &line}, {Path: "web.go"}},
+		Outcome:   keep,
+		Approach:  "Reject before the enqueue so the retry never sees it.",
+		Questions: []string{"Should the caller or the callee own the check?"},
+	}
+	want := "brief:\n" +
+		"  outcome: Reject duplicate deliveries before anything is enqueued.\n" +
+		"  sites: app.txt:2, web.go\n" +
+		"  approach: Reject before the enqueue so the retry never sees it.\n" +
+		"  questions:\n" +
+		"    - Should the caller or the callee own the check?\n"
+	if got := brief.Render(b); got != want {
+		t.Errorf("Render = %q, want %q", got, want)
+	}
+	if got := brief.Render(&core.Brief{Outcome: keep}); got !=
+		"brief:\n  outcome: Reject duplicate deliveries before anything is enqueued.\n" {
+		t.Errorf("Render of a bare brief = %q", got)
+	}
+	if got := brief.Render(nil); got != "" {
+		t.Errorf("Render(nil) = %q, want empty", got)
+	}
+}

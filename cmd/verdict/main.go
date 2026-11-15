@@ -28,6 +28,7 @@ import (
 	"github.com/stainless-code/verdict/internal/fetch"
 	"github.com/stainless-code/verdict/internal/fix"
 	"github.com/stainless-code/verdict/internal/gate"
+	handoffverb "github.com/stainless-code/verdict/internal/handoff"
 	"github.com/stainless-code/verdict/internal/index"
 	"github.com/stainless-code/verdict/internal/ingest"
 	"github.com/stainless-code/verdict/internal/learn"
@@ -63,7 +64,7 @@ const (
 )
 
 const verbsHint = "fetch|fetch-local|run|panel|record|adopt|ingest|fix|post|triage|report|next|show|" +
-	"check-tree|verify|doctor|calibrate|ready|pr-wait|gate|threads|trend|risk|index|backtest|" +
+	"check-tree|verify|doctor|calibrate|ready|pr-wait|gate|threads|trend|risk|handoff|index|backtest|" +
 	"learn|pack|init|skill|upgrade|uninstall|mcp|serve|config"
 
 func main() {
@@ -188,6 +189,7 @@ var readVerbs = map[string]readHandler{
 	"check-tree": checktree.Run,
 	"index":      index.Run,
 	"pack":       pack.Run,
+	"handoff":    handoffverb.Run,
 }
 
 // repoFreeVerbs run without a resolvable repository root: doctor exists to
