@@ -1,0 +1,2426 @@
+diff --git a/pkg/cmd/run/shared/shared.go b/pkg/cmd/run/shared/shared.go
+index b58f6b0f7..f085add49 100644
+--- a/pkg/cmd/run/shared/shared.go
++++ b/pkg/cmd/run/shared/shared.go
+@@ -1,7 +1,6 @@
+ package shared
+ 
+ import (
+-	"archive/zip"
+ 	"errors"
+ 	"fmt"
+ 	"net/http"
+@@ -230,8 +229,6 @@ type Job struct {
+ 	CompletedAt time.Time `json:"completed_at"`
+ 	URL         string    `json:"html_url"`
+ 	RunID       int64     `json:"run_id"`
+-
+-	Log *zip.File
+ }
+ 
+ type Step struct {
+@@ -241,8 +238,6 @@ type Step struct {
+ 	Number      int
+ 	StartedAt   time.Time `json:"started_at"`
+ 	CompletedAt time.Time `json:"completed_at"`
+-
+-	Log *zip.File
+ }
+ 
+ type Steps []Step
+diff --git a/pkg/cmd/run/view/fixtures/run_log.zip b/pkg/cmd/run/view/fixtures/run_log.zip
+deleted file mode 100644
+index 425ba09dd..000000000
+Binary files a/pkg/cmd/run/view/fixtures/run_log.zip and /dev/null differ
+diff --git a/pkg/cmd/run/view/logs.go b/pkg/cmd/run/view/logs.go
+new file mode 100644
+index 000000000..bd99830bb
+--- /dev/null
++++ b/pkg/cmd/run/view/logs.go
+@@ -0,0 +1,349 @@
++package view
++
++import (
++	"archive/zip"
++	"errors"
++	"fmt"
++	"io"
++	"net/http"
++	"regexp"
++	"slices"
++	"sort"
++	"strings"
++	"unicode/utf16"
++
++	"github.com/cli/cli/v2/api"
++	"github.com/cli/cli/v2/internal/ghinstance"
++	"github.com/cli/cli/v2/internal/ghrepo"
++	"github.com/cli/cli/v2/pkg/cmd/run/shared"
++)
++
++type logFetcher interface {
++	GetLog() (io.ReadCloser, error)
++}
++
++type zipLogFetcher struct {
++	File *zip.File
++}
++
++func (f *zipLogFetcher) GetLog() (io.ReadCloser, error) {
++	return f.File.Open()
++}
++
++type apiLogFetcher struct {
++	httpClient *http.Client
++
++	repo  ghrepo.Interface
++	jobID int64
++}
++
++func (f *apiLogFetcher) GetLog() (io.ReadCloser, error) {
++	logURL := fmt.Sprintf("%srepos/%s/actions/jobs/%d/logs",
++		ghinstance.RESTPrefix(f.repo.RepoHost()), ghrepo.FullName(f.repo), f.jobID)
++
++	req, err := http.NewRequest("GET", logURL, nil)
++	if err != nil {
++		return nil, err
++	}
++
++	resp, err := f.httpClient.Do(req)
++	if err != nil {
++		return nil, err
++	}
++
++	if resp.StatusCode == 404 {
++		return nil, fmt.Errorf("log not found: %v", f.jobID)
++	} else if resp.StatusCode != 200 {
++		return nil, api.HandleHTTPError(resp)
++	}
++
++	return resp.Body, nil
++}
++
++// logSegment represents a segment of a log trail, which can be either an entire
++// job log or an individual step log.
++type logSegment struct {
++	job     *shared.Job
++	step    *shared.Step
++	fetcher logFetcher
++}
++
++// maxAPILogFetchers is the maximum allowed number of API log fetchers that can
++// be assigned to log segments. This is a heuristic limit to avoid overwhelming
++// the API with too many requests when fetching logs for a run with many jobs or
++// steps.
++const maxAPILogFetchers = 25
++
++var errTooManyAPILogFetchers = errors.New("too many missing logs")
++
++// populateLogSegments populates log segments from the provided jobs and data
++// available in the given ZIP archive map. Any missing logs will be assigned a
++// log fetcher that retrieves logs from the API.
++//
++// For example, if there's no step log available in the ZIP archive, the entire
++// job log will be selected as a log segment.
++//
++// Note that, as heuristic approach, we only allow a limited number of API log
++// fetchers to be assigned. This is to avoid overwhelming the API with too many
++// requests.
++func populateLogSegments(httpClient *http.Client, repo ghrepo.Interface, jobs []shared.Job, zlm *zipLogMap, onlyFailed bool) ([]logSegment, error) {
++	segments := make([]logSegment, 0, len(jobs))
++
++	apiLogFetcherCount := 0
++	for _, job := range jobs {
++		if onlyFailed && !shared.IsFailureState(job.Conclusion) {
++			continue
++		}
++
++		stepLogAvailable := slices.ContainsFunc(job.Steps, func(step shared.Step) bool {
++			_, ok := zlm.forStep(job.ID, step.Number)
++			return ok
++		})
++
++		// If at least one step log is available, we populate the segments with
++		// them and don't use the entire job log.
++		if stepLogAvailable {
++			steps := slices.Clone(job.Steps)
++			sort.Sort(steps)
++			for _, step := range steps {
++				if onlyFailed && !shared.IsFailureState(step.Conclusion) {
++					continue
++				}
++
++				zf, ok := zlm.forStep(job.ID, step.Number)
++				if !ok {
++					// We have no step log in the zip archive, but there's nothing we can do
++					// about that because there is no API endpoint to fetch step logs.
++					continue
++				}
++
++				segments = append(segments, logSegment{
++					job:     &job,
++					step:    &step,
++					fetcher: &zipLogFetcher{File: zf},
++				})
++			}
++			continue
++		}
++
++		segment := logSegment{job: &job}
++		if zf, ok := zlm.forJob(job.ID); ok {
++			segment.fetcher = &zipLogFetcher{File: zf}
++		} else {
++			segment.fetcher = &apiLogFetcher{
++				httpClient: httpClient,
++				repo:       repo,
++				jobID:      job.ID,
++			}
++			apiLogFetcherCount++
++		}
++		segments = append(segments, segment)
++
++		if apiLogFetcherCount > maxAPILogFetchers {
++			return nil, errTooManyAPILogFetchers
++		}
++	}
++
++	return segments, nil
++}
++
++// zipLogMap is a map of job and step logs available in a ZIP archive.
++type zipLogMap struct {
++	jobs  map[int64]*zip.File
++	steps map[string]*zip.File
++}
++
++func newZipLogMap() *zipLogMap {
++	return &zipLogMap{
++		jobs:  make(map[int64]*zip.File),
++		steps: make(map[string]*zip.File),
++	}
++}
++
++func (l *zipLogMap) forJob(jobID int64) (*zip.File, bool) {
++	f, ok := l.jobs[jobID]
++	return f, ok
++}
++
++func (l *zipLogMap) forStep(jobID int64, stepNumber int) (*zip.File, bool) {
++	logFetcherKey := fmt.Sprintf("%d/%d", jobID, stepNumber)
++	f, ok := l.steps[logFetcherKey]
++	return f, ok
++}
++
++func (l *zipLogMap) addStep(jobID int64, stepNumber int, zf *zip.File) {
++	logFetcherKey := fmt.Sprintf("%d/%d", jobID, stepNumber)
++	l.steps[logFetcherKey] = zf
++}
++
++func (l *zipLogMap) addJob(jobID int64, zf *zip.File) {
++	l.jobs[jobID] = zf
++}
++
++// getZipLogMap populates a logs struct with appropriate log fetchers based on
++// the provided zip file and list of jobs.
++//
++// The structure of zip file is expected to be as:
++//
++//	zip/
++//	├── jobname1/
++//	│   ├── 1_stepname.txt
++//	│   ├── 2_anotherstepname.txt
++//	│   ├── 3_stepstepname.txt
++//	│   └── 4_laststepname.txt
++//	├── jobname2/
++//	|   ├── 1_stepname.txt
++//	|   └── 2_somestepname.txt
++//	├── 0_jobname1.txt
++//	├── 1_jobname2.txt
++//	└── -9999999999_jobname3.txt
++//
++// The function iterates through the list of jobs and tries to find the matching
++// log file in the ZIP archive.
++//
++// The top-level .txt files include the logs for an entire job run. Note that
++// the prefixed number is either:
++//   - An ordinal and cannot be mapped to the corresponding job's ID.
++//   - A negative integer which is the ID of the job in the old Actions service.
++//     The service right now tries to get logs and use an ordinal in a loop.
++//     However, if it doesn't get the logs, it falls back to an old service
++//     where the ID can apparently be negative.
++func getZipLogMap(rlz *zip.Reader, jobs []shared.Job) *zipLogMap {
++	zlm := newZipLogMap()
++
++	for _, job := range jobs {
++		// So far we haven't yet encountered a ZIP containing both top-level job
++		// logs (i.e. the normal and the legacy .txt files). However, it's still
++		// possible. Therefore, we prioritise the normal log over the legacy one.
++		if zf := matchFileInZIPArchive(rlz, jobLogFilenameRegexp(job)); zf != nil {
++			zlm.addJob(job.ID, zf)
++		} else if zf := matchFileInZIPArchive(rlz, legacyJobLogFilenameRegexp(job)); zf != nil {
++			zlm.addJob(job.ID, zf)
++		}
++
++		for _, step := range job.Steps {
++			if zf := matchFileInZIPArchive(rlz, stepLogFilenameRegexp(job, step)); zf != nil {
++				zlm.addStep(job.ID, step.Number, zf)
++			}
++		}
++	}
++
++	return zlm
++}
++
++const JOB_NAME_MAX_LENGTH = 90
++
++func getJobNameForLogFilename(name string) string {
++	// As described in https://github.com/cli/cli/issues/5011#issuecomment-1570713070, there are a number of steps
++	// the server can take when producing the downloaded zip file that can result in a mismatch between the job name
++	// and the filename in the zip including:
++	//  * Removing characters in the job name that aren't allowed in file paths
++	//  * Truncating names that are too long for zip files
++	//  * Adding collision deduplicating numbers for jobs with the same name
++	//
++	// We are hesitant to duplicate all the server logic due to the fragility but it may be unavoidable. Currently, we:
++	// * Strip `/` which occur when composite action job names are constructed of the form `<JOB_NAME`> / <ACTION_NAME>`
++	// * Truncate long job names
++	//
++	sanitizedJobName := strings.ReplaceAll(name, "/", "")
++	sanitizedJobName = strings.ReplaceAll(sanitizedJobName, ":", "")
++	sanitizedJobName = truncateAsUTF16(sanitizedJobName, JOB_NAME_MAX_LENGTH)
++	return sanitizedJobName
++}
++
++// A job run log file is a top-level .txt file whose name starts with an ordinal
++// number; e.g., "0_jobname.txt".
++func jobLogFilenameRegexp(job shared.Job) *regexp.Regexp {
++	sanitizedJobName := getJobNameForLogFilename(job.Name)
++	re := fmt.Sprintf(`^\d+_%s\.txt$`, regexp.QuoteMeta(sanitizedJobName))
++	return regexp.MustCompile(re)
++}
++
++// A legacy job run log file is a top-level .txt file whose name starts with a
++// negative number which is the ID of the run; e.g., "-2147483648_jobname.txt".
++func legacyJobLogFilenameRegexp(job shared.Job) *regexp.Regexp {
++	sanitizedJobName := getJobNameForLogFilename(job.Name)
++	re := fmt.Sprintf(`^-\d+_%s\.txt$`, regexp.QuoteMeta(sanitizedJobName))
++	return regexp.MustCompile(re)
++}
++
++func stepLogFilenameRegexp(job shared.Job, step shared.Step) *regexp.Regexp {
++	sanitizedJobName := getJobNameForLogFilename(job.Name)
++	re := fmt.Sprintf(`^%s\/%d_.*\.txt$`, regexp.QuoteMeta(sanitizedJobName), step.Number)
++	return regexp.MustCompile(re)
++}
++
++/*
++If you're reading this comment by necessity, I'm sorry and if you're reading it for fun, you're welcome, you weirdo.
++
++What is the length of this string "a😅😅"? If you said 9 you'd be right. If you said 3 or 5 you might also be right!
++
++Here's a summary:
++
++	"a" takes 1 byte (`\x61`)
++	"😅" takes 4 `bytes` (`\xF0\x9F\x98\x85`)
++	"a😅😅" therefore takes 9 `bytes`
++	In Go `len("a😅😅")` is 9 because the `len` builtin counts `bytes`
++	In Go `len([]rune("a😅😅"))` is 3 because each `rune` is 4 `bytes` so each character fits within a `rune`
++	In C# `"a😅😅".Length` is 5 because `.Length` counts `Char` objects, `Chars` hold 2 bytes, and "😅" takes 2 Chars.
++
++But wait, what does C# have to do with anything? Well the server is running C#. Which server? The one that serves log
++files to us in `.zip` format of course! When the server is constructing the zip file to avoid running afoul of a 260
++byte zip file path length limitation, it applies transformations to various strings in order to limit their length.
++In C#, the server truncates strings with this function:
++
++	public static string TruncateAfter(string str, int max)
++	{
++		string result = str.Length > max ? str.Substring(0, max) : str;
++		result = result.Trim();
++		return result;
++	}
++
++This seems like it would be easy enough to replicate in Go but as we already discovered, the length of a string isn't
++as obvious as it might seem. Since C# uses UTF-16 encoding for strings, and Go uses UTF-8 encoding and represents
++characters by runes (which are an alias of int32) we cannot simply slice the string without any further consideration.
++Instead, we need to encode the string as UTF-16 bytes, slice it and then decode it back to UTF-8.
++
++Interestingly, in C# length and substring both act on the Char type so it's possible to slice into the middle of
++a visual, "representable" character. For example we know `"a😅😅".Length` = 5 (1+2+2) and therefore Substring(0,4)
++results in the final character being cleaved in two, resulting in "a😅�". Since our int32 runes are being encoded as
++2 uint16 elements, we also mimic this behaviour by slicing into the UTF-16 encoded string.
++
++Here's a program you can put into a dotnet playground to see how C# works:
++
++	using System;
++	public class Program {
++	  public static void Main() {
++	    string s = "a😅😅";
++	    Console.WriteLine("{0} {1}", s.Length, s);
++	    string t = TruncateAfter(s, 4);
++	    Console.WriteLine("{0} {1}", t.Length, t);
++	  }
++	  public static string TruncateAfter(string str, int max) {
++	    string result = str.Length > max ? str.Substring(0, max) : str;
++	    return result.Trim();
++	  }
++	}
++
++This will output:
++5 a😅😅
++4 a😅�
++*/
++func truncateAsUTF16(str string, max int) string {
++	// Encode the string to UTF-16 to count code units
++	utf16Encoded := utf16.Encode([]rune(str))
++	if len(utf16Encoded) > max {
++		// Decode back to UTF-8 up to the max length
++		str = string(utf16.Decode(utf16Encoded[:max]))
++	}
++	return strings.TrimSpace(str)
++}
++
++func matchFileInZIPArchive(zr *zip.Reader, re *regexp.Regexp) *zip.File {
++	for _, file := range zr.File {
++		if re.MatchString(file.Name) {
++			return file
++		}
++	}
++	return nil
++}
+diff --git a/pkg/cmd/run/view/logs_test.go b/pkg/cmd/run/view/logs_test.go
+new file mode 100644
+index 000000000..b49a605ab
+--- /dev/null
++++ b/pkg/cmd/run/view/logs_test.go
+@@ -0,0 +1,542 @@
++package view
++
++import (
++	"archive/zip"
++	"bytes"
++	"io"
++	"net/http"
++	"testing"
++
++	"github.com/cli/cli/v2/internal/ghrepo"
++	"github.com/cli/cli/v2/pkg/cmd/run/shared"
++	"github.com/cli/cli/v2/pkg/httpmock"
++	ghAPI "github.com/cli/go-gh/v2/pkg/api"
++	"github.com/stretchr/testify/assert"
++	"github.com/stretchr/testify/require"
++)
++
++func TestZipLogFetcher(t *testing.T) {
++	zr := createZipReader(t, map[string]string{
++		"foo.txt": "blah blah",
++	})
++
++	fetcher := &zipLogFetcher{
++		File: zr.File[0],
++	}
++
++	rc, err := fetcher.GetLog()
++	assert.NoError(t, err)
++
++	defer rc.Close()
++
++	content, err := io.ReadAll(rc)
++	assert.NoError(t, err)
++	assert.Equal(t, "blah blah", string(content))
++}
++
++func TestApiLogFetcher(t *testing.T) {
++	tests := []struct {
++		name        string
++		httpStubs   func(reg *httpmock.Registry)
++		wantErr     string
++		wantContent string
++	}{
++		{
++			// This is the real flow as of now. When we call the `/logs`
++			// endpoint, the server will respond with a 302 redirect, pointing
++			// to the actual log file URL.
++			name: "successful with redirect (HTTP 302, then HTTP 200)",
++			httpStubs: func(reg *httpmock.Registry) {
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/jobs/123/logs"),
++					httpmock.WithHeader(
++						httpmock.StatusStringResponse(http.StatusFound, ""),
++						"Location",
++						"https://some.domain/the-actual-log",
++					),
++				)
++				reg.Register(
++					httpmock.REST("GET", "the-actual-log"),
++					httpmock.StringResponse("blah blah"),
++				)
++			},
++			wantContent: "blah blah",
++		},
++		{
++			name: "successful without redirect (HTTP 200)",
++			httpStubs: func(reg *httpmock.Registry) {
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/jobs/123/logs"),
++					httpmock.StatusStringResponse(http.StatusOK, "blah blah"),
++				)
++			},
++			wantContent: "blah blah",
++		},
++		{
++			name: "failed with not found error (HTTP 404)",
++			httpStubs: func(reg *httpmock.Registry) {
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/jobs/123/logs"),
++					httpmock.StatusStringResponse(http.StatusNotFound, ""),
++				)
++			},
++			wantErr: "log not found: 123",
++		},
++		{
++			name: "failed with server error (HTTP 500)",
++			httpStubs: func(reg *httpmock.Registry) {
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/jobs/123/logs"),
++					httpmock.JSONErrorResponse(http.StatusInternalServerError, ghAPI.HTTPError{
++						Message:    "blah blah",
++						StatusCode: http.StatusInternalServerError,
++					}),
++				)
++			},
++			wantErr: "HTTP 500: blah blah (https://api.github.com/repos/OWNER/REPO/actions/jobs/123/logs)",
++		},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			reg := &httpmock.Registry{}
++			defer reg.Verify(t)
++
++			tt.httpStubs(reg)
++
++			httpClient := &http.Client{Transport: reg}
++
++			fetcher := &apiLogFetcher{
++				httpClient: httpClient,
++				repo:       ghrepo.New("OWNER", "REPO"),
++				jobID:      123,
++			}
++
++			rc, err := fetcher.GetLog()
++
++			if tt.wantErr != "" {
++				assert.EqualError(t, err, tt.wantErr)
++				assert.Nil(t, rc)
++				return
++			}
++
++			assert.NoError(t, err)
++			assert.NotNil(t, rc)
++
++			content, err := io.ReadAll(rc)
++			assert.NoError(t, err)
++
++			assert.NoError(t, rc.Close())
++			assert.Equal(t, tt.wantContent, string(content))
++		})
++	}
++}
++
++func TestGetZipLogMap(t *testing.T) {
++	tests := []struct {
++		name      string
++		job       shared.Job
++		zipReader *zip.Reader
++		// wantJobLog can be nil (i.e. not found) or string
++		wantJobLog any
++		// wantStepLogs elements can be nil (i.e. not found) or string
++		wantStepLogs []any
++	}{
++		{
++			name: "job log missing from zip, but step log present",
++			job: shared.Job{
++				ID:   123,
++				Name: "job foo",
++				Steps: []shared.Step{{
++					Name:   "step one",
++					Number: 1,
++				}},
++			},
++			zipReader: createZipReader(t, map[string]string{
++				"job foo/1_step one.txt": "step one log",
++			}),
++			wantJobLog: nil,
++			wantStepLogs: []any{
++				"step one log",
++			},
++		},
++		{
++			name: "matching job name and step number 1",
++			job: shared.Job{
++				ID:   123,
++				Name: "job foo",
++				Steps: []shared.Step{{
++					Name:   "step one",
++					Number: 1,
++				}},
++			},
++			zipReader: createZipReader(t, map[string]string{
++				"0_job foo.txt":          "job log",
++				"job foo/1_step one.txt": "step one log",
++			}),
++			wantJobLog: "job log",
++			wantStepLogs: []any{
++				"step one log",
++			},
++		},
++		{
++			name: "matching job name and step number 2",
++			job: shared.Job{
++				ID:   123,
++				Name: "job foo",
++				Steps: []shared.Step{{
++					Name:   "step two",
++					Number: 2,
++				}},
++			},
++			zipReader: createZipReader(t, map[string]string{
++				"0_job foo.txt":          "job log",
++				"job foo/2_step two.txt": "step two log",
++			}),
++			wantJobLog: "job log",
++			wantStepLogs: []any{
++				nil, // no log for step 1
++				"step two log",
++			},
++		},
++		{
++			// We should just look for the step number and not the step name.
++			name: "matching job name and step number and mismatch step name",
++			job: shared.Job{
++				ID:   123,
++				Name: "job foo",
++				Steps: []shared.Step{{
++					Name:   "mismatch",
++					Number: 1,
++				}},
++			},
++			zipReader: createZipReader(t, map[string]string{
++				"0_job foo.txt":          "job log",
++				"job foo/1_step one.txt": "step one log",
++			}),
++			wantJobLog: "job log",
++			wantStepLogs: []any{
++				"step one log",
++			},
++		},
++		{
++			name: "matching job name and mismatch step number",
++			job: shared.Job{
++				ID:   123,
++				Name: "job foo",
++				Steps: []shared.Step{{
++					Name:   "step two",
++					Number: 2,
++				}},
++			},
++			zipReader: createZipReader(t, map[string]string{
++				"0_job foo.txt":          "job log",
++				"job foo/1_step one.txt": "step one log",
++			}),
++			wantJobLog: "job log",
++			wantStepLogs: []any{
++				nil, // no log for step 1
++				nil, // no log for step 2
++			},
++		},
++		{
++			name: "matching job name with no step logs in zip",
++			job: shared.Job{
++				ID:   123,
++				Name: "job foo",
++				Steps: []shared.Step{{
++					Name:   "step one",
++					Number: 1,
++				}},
++			},
++			zipReader: createZipReader(t, map[string]string{
++				"0_job foo.txt": "job log",
++			}),
++			wantJobLog: "job log",
++			wantStepLogs: []any{
++				nil, // no log for step 1
++			},
++		},
++		{
++			name: "matching job name with no step data",
++			job: shared.Job{
++				ID:   123,
++				Name: "job foo",
++			},
++			zipReader: createZipReader(t, map[string]string{
++				"0_job foo.txt": "job log",
++			}),
++			wantJobLog: "job log",
++			wantStepLogs: []any{
++				nil, // no log for step 1
++			},
++		},
++		{
++			name: "matching job name with random prefix and no step logs in zip",
++			job: shared.Job{
++				ID:   123,
++				Name: "job foo",
++				Steps: []shared.Step{{
++					Name:   "step one",
++					Number: 1,
++				}},
++			},
++			zipReader: createZipReader(t, map[string]string{
++				"999999999_job foo.txt": "job log",
++			}),
++			wantJobLog: "job log",
++			wantStepLogs: []any{
++				nil, // no log for step 1
++			},
++		},
++		{
++			name: "matching job name with legacy filename and no step logs in zip",
++			job: shared.Job{
++				ID:   123,
++				Name: "job foo",
++				Steps: []shared.Step{{
++					Name:   "step one",
++					Number: 1,
++				}},
++			},
++			zipReader: createZipReader(t, map[string]string{
++				"-9999999999_job foo.txt": "job log",
++			}),
++			wantJobLog: "job log",
++			wantStepLogs: []any{
++				nil, // no log for step 1
++			},
++		},
++		{
++			name: "matching job name with legacy filename and no step data",
++			job: shared.Job{
++				ID:   123,
++				Name: "job foo",
++			},
++			zipReader: createZipReader(t, map[string]string{
++				"-9999999999_job foo.txt": "job log",
++			}),
++			wantJobLog: "job log",
++			wantStepLogs: []any{
++				nil, // no log for step 1
++			},
++		},
++		{
++			name: "matching job name with both normal and legacy filename",
++			job: shared.Job{
++				ID:   123,
++				Name: "job foo",
++			},
++			zipReader: createZipReader(t, map[string]string{
++				"0_job foo.txt":           "job log",
++				"-9999999999_job foo.txt": "legacy job log",
++			}),
++			wantJobLog: "job log",
++			wantStepLogs: []any{
++				nil, // no log for step 1
++			},
++		},
++		{
++			name: "one job name is a suffix of another",
++			job: shared.Job{
++				ID:   123,
++				Name: "job foo",
++				Steps: []shared.Step{{
++					Name:   "step one",
++					Number: 1,
++				}},
++			},
++			zipReader: createZipReader(t, map[string]string{
++				"0_jjob foo.txt":          "the other job log",
++				"jjob foo/1_step one.txt": "the other step one log",
++				"1_job foo.txt":           "job log",
++				"job foo/1_step one.txt":  "step one log",
++			}),
++			wantJobLog: "job log",
++			wantStepLogs: []any{
++				"step one log",
++			},
++		},
++		{
++			name: "escape metacharacters in job name",
++			job: shared.Job{
++				ID:   123,
++				Name: "metacharacters .+*?()|[]{}^$ job",
++				Steps: []shared.Step{{
++					Name:   "step one",
++					Number: 1,
++				}},
++			},
++			zipReader:  createZipReader(t, nil),
++			wantJobLog: nil,
++			wantStepLogs: []any{
++				nil, // no log for step 1
++			},
++		},
++		{
++			name: "mismatching job name",
++			job: shared.Job{
++				ID:   123,
++				Name: "mismatch",
++				Steps: []shared.Step{{
++					Name:   "step one",
++					Number: 1,
++				}},
++			},
++			zipReader:  createZipReader(t, nil),
++			wantJobLog: nil,
++			wantStepLogs: []any{
++				nil, // no log for step 1
++			},
++		},
++		{
++			name: "job name with forward slash matches dir with slash removed",
++			job: shared.Job{
++				ID:   123,
++				Name: "job foo / with slash",
++				Steps: []shared.Step{{
++					Name:   "step one",
++					Number: 1,
++				}},
++			},
++			zipReader: createZipReader(t, map[string]string{
++				"0_job foo  with slash.txt":          "job log",
++				"job foo  with slash/1_step one.txt": "step one log",
++			}),
++			wantJobLog: "job log",
++			wantStepLogs: []any{
++				"step one log",
++			},
++		},
++		{
++			name: "job name with colon matches dir with colon removed",
++			job: shared.Job{
++				ID:   123,
++				Name: "job foo : with colon",
++				Steps: []shared.Step{{
++					Name:   "step one",
++					Number: 1,
++				}},
++			},
++			zipReader: createZipReader(t, map[string]string{
++				"0_job foo  with colon.txt":          "job log",
++				"job foo  with colon/1_step one.txt": "step one log",
++			}),
++			wantJobLog: "job log",
++			wantStepLogs: []any{
++				"step one log",
++			},
++		},
++		{
++			name: "job name with really long name (over the ZIP limit)",
++			job: shared.Job{
++				ID:   123,
++				Name: "thisisnineteenchars_thisisnineteenchars_thisisnineteenchars_thisisnineteenchars_thisisnineteenchars_",
++				Steps: []shared.Step{{
++					Name:   "long name job",
++					Number: 1,
++				}},
++			},
++			zipReader: createZipReader(t, map[string]string{
++				"thisisnineteenchars_thisisnineteenchars_thisisnineteenchars_thisisnineteenchars_thisisnine/1_long name job.txt": "step one log",
++			}),
++			wantJobLog: nil,
++			wantStepLogs: []any{
++				"step one log",
++			},
++		},
++		{
++			name: "job name that would be truncated by the C# server to split a grapheme",
++			job: shared.Job{
++				ID:   123,
++				Name: "emoji test 😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅",
++				Steps: []shared.Step{{
++					Name:   "emoji job",
++					Number: 1,
++				}},
++			},
++			zipReader: createZipReader(t, map[string]string{
++				"emoji test 😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅�/1_emoji job.txt": "step one log",
++			}),
++			wantJobLog: nil,
++			wantStepLogs: []any{
++				"step one log",
++			},
++		},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			logMap := getZipLogMap(tt.zipReader, []shared.Job{tt.job})
++
++			jobLogFile, ok := logMap.forJob(tt.job.ID)
++
++			switch want := tt.wantJobLog.(type) {
++			case nil:
++				require.False(t, ok)
++				require.Nil(t, jobLogFile)
++			case string:
++				require.True(t, ok)
++				require.NotNil(t, jobLogFile)
++				require.Equal(t, want, string(readZipFile(t, jobLogFile)))
++			default:
++				t.Fatal("wantJobLog must be nil or string")
++			}
++
++			for i, wantStepLog := range tt.wantStepLogs {
++				stepLogFile, ok := logMap.forStep(tt.job.ID, 1+i) // Step numbers start from 1
++
++				switch want := wantStepLog.(type) {
++				case nil:
++					require.False(t, ok)
++					require.Nil(t, stepLogFile)
++				case string:
++					require.True(t, ok)
++					require.NotNil(t, stepLogFile)
++
++					gotStepLog := readZipFile(t, stepLogFile)
++					require.Equal(t, want, string(gotStepLog))
++				default:
++					t.Fatal("wantStepLog must be nil or string")
++				}
++			}
++		})
++	}
++}
++
++func readZipFile(t *testing.T, zf *zip.File) []byte {
++	rc, err := zf.Open()
++	assert.NoError(t, err)
++	defer rc.Close()
++
++	content, err := io.ReadAll(rc)
++	assert.NoError(t, err)
++	return content
++}
++
++func createZipReader(t *testing.T, files map[string]string) *zip.Reader {
++	raw := createZipArchive(t, files)
++
++	zr, err := zip.NewReader(bytes.NewReader(raw), int64(len(raw)))
++	assert.NoError(t, err)
++
++	return zr
++}
++
++func createZipArchive(t *testing.T, files map[string]string) []byte {
++	buf := bytes.NewBuffer(nil)
++	zw := zip.NewWriter(buf)
++
++	for name, content := range files {
++		fileWriter, err := zw.Create(name)
++		assert.NoError(t, err)
++
++		_, err = fileWriter.Write([]byte(content))
++		assert.NoError(t, err)
++	}
++
++	err := zw.Close()
++	assert.NoError(t, err)
++
++	return buf.Bytes()
++}
+diff --git a/pkg/cmd/run/view/view.go b/pkg/cmd/run/view/view.go
+index 0dafbcc09..d50b14fdf 100644
+--- a/pkg/cmd/run/view/view.go
++++ b/pkg/cmd/run/view/view.go
+@@ -10,12 +10,8 @@ import (
+ 	"net/http"
+ 	"os"
+ 	"path/filepath"
+-	"regexp"
+-	"sort"
+ 	"strconv"
+-	"strings"
+ 	"time"
+-	"unicode/utf16"
+ 
+ 	"github.com/MakeNowJust/heredoc"
+ 	"github.com/cli/cli/v2/api"
+@@ -116,13 +112,17 @@ func NewCmdView(f *cmdutil.Factory, runF func(*ViewOptions) error) *cobra.Comman
+ 		Long: heredoc.Docf(`
+ 			View a summary of a workflow run.
+ 
+-			This command does not support authenticating via fine grained PATs
+-			as it is not currently possible to create a PAT with the %[1]schecks:read%[1]s permission.
++			Due to platform limitations, %[1]sgh%[1]s may not always be able to associate jobs with their
++			corresponding logs when using the primary method of fetching logs in zip format.
+ 
+-			Due to platform limitations, %[1]sgh%[1]s may not always be able to associate log lines with a
+-			particular step in a job. In this case, the step name in the log output will be replaced with
+-			%[1]sUNKNOWN STEP%[1]s.
+-		`, "`"),
++			In such cases, %[1]sgh%[1]s will attempt to fetch logs for each job individually via the API.
++			This fallback is slower and more resource-intensive. If more than 25 job logs are missing,
++			the operation will fail with an error.
++
++			Additionally, due to similar platform constraints, some log lines may not be
++			associated with a specific step within a job. In these cases, the step name will
++			appear as %[1]sUNKNOWN STEP%[1]s in the log output.
++		`, "`", maxAPILogFetchers),
+ 		Args: cobra.MaximumNArgs(1),
+ 		Example: heredoc.Doc(`
+ 			# Interactively select a run to view, optionally selecting a single job
+@@ -322,9 +322,16 @@ func runView(opts *ViewOptions) error {
+ 		}
+ 		defer runLogZip.Close()
+ 
+-		attachRunLog(&runLogZip.Reader, jobs)
++		zlm := getZipLogMap(&runLogZip.Reader, jobs)
++		segments, err := populateLogSegments(httpClient, repo, jobs, zlm, opts.LogFailed)
++		if err != nil {
++			if errors.Is(err, errTooManyAPILogFetchers) {
++				return fmt.Errorf("too many API requests needed to fetch logs; try narrowing down to a specific job with the `--job` option")
++			}
++			return err
++		}
+ 
+-		return displayRunLog(opts.IO.Out, jobs, opts.LogFailed)
++		return displayLogSegments(opts.IO.Out, segments)
+ 	}
+ 
+ 	prNumber := ""
+@@ -535,212 +542,28 @@ func promptForJob(prompter shared.Prompter, cs *iostreams.ColorScheme, jobs []sh
+ 	return nil, nil
+ }
+ 
+-const JOB_NAME_MAX_LENGTH = 90
+-
+-func getJobNameForLogFilename(name string) string {
+-	// As described in https://github.com/cli/cli/issues/5011#issuecomment-1570713070, there are a number of steps
+-	// the server can take when producing the downloaded zip file that can result in a mismatch between the job name
+-	// and the filename in the zip including:
+-	//  * Removing characters in the job name that aren't allowed in file paths
+-	//  * Truncating names that are too long for zip files
+-	//  * Adding collision deduplicating numbers for jobs with the same name
+-	//
+-	// We are hesitant to duplicate all the server logic due to the fragility but it may be unavoidable. Currently, we:
+-	// * Strip `/` which occur when composite action job names are constructed of the form `<JOB_NAME`> / <ACTION_NAME>`
+-	// * Truncate long job names
+-	//
+-	sanitizedJobName := strings.ReplaceAll(name, "/", "")
+-	sanitizedJobName = strings.ReplaceAll(sanitizedJobName, ":", "")
+-	sanitizedJobName = truncateAsUTF16(sanitizedJobName, JOB_NAME_MAX_LENGTH)
+-	return sanitizedJobName
+-}
+-
+-// A job run log file is a top-level .txt file whose name starts with an ordinal
+-// number; e.g., "0_jobname.txt".
+-func jobLogFilenameRegexp(job shared.Job) *regexp.Regexp {
+-	sanitizedJobName := getJobNameForLogFilename(job.Name)
+-	re := fmt.Sprintf(`^\d+_%s\.txt$`, regexp.QuoteMeta(sanitizedJobName))
+-	return regexp.MustCompile(re)
+-}
+-
+-// A legacy job run log file is a top-level .txt file whose name starts with a
+-// negative number which is the ID of the run; e.g., "-2147483648_jobname.txt".
+-func legacyJobLogFilenameRegexp(job shared.Job) *regexp.Regexp {
+-	sanitizedJobName := getJobNameForLogFilename(job.Name)
+-	re := fmt.Sprintf(`^-\d+_%s\.txt$`, regexp.QuoteMeta(sanitizedJobName))
+-	return regexp.MustCompile(re)
+-}
+-
+-func stepLogFilenameRegexp(job shared.Job, step shared.Step) *regexp.Regexp {
+-	sanitizedJobName := getJobNameForLogFilename(job.Name)
+-	re := fmt.Sprintf(`^%s\/%d_.*\.txt$`, regexp.QuoteMeta(sanitizedJobName), step.Number)
+-	return regexp.MustCompile(re)
+-}
+-
+-/*
+-If you're reading this comment by necessity, I'm sorry and if you're reading it for fun, you're welcome, you weirdo.
+-
+-What is the length of this string "a😅😅"? If you said 9 you'd be right. If you said 3 or 5 you might also be right!
+-
+-Here's a summary:
+-
+-	"a" takes 1 byte (`\x61`)
+-	"😅" takes 4 `bytes` (`\xF0\x9F\x98\x85`)
+-	"a😅😅" therefore takes 9 `bytes`
+-	In Go `len("a😅😅")` is 9 because the `len` builtin counts `bytes`
+-	In Go `len([]rune("a😅😅"))` is 3 because each `rune` is 4 `bytes` so each character fits within a `rune`
+-	In C# `"a😅😅".Length` is 5 because `.Length` counts `Char` objects, `Chars` hold 2 bytes, and "😅" takes 2 Chars.
+-
+-But wait, what does C# have to do with anything? Well the server is running C#. Which server? The one that serves log
+-files to us in `.zip` format of course! When the server is constructing the zip file to avoid running afoul of a 260
+-byte zip file path length limitation, it applies transformations to various strings in order to limit their length.
+-In C#, the server truncates strings with this function:
+-
+-	public static string TruncateAfter(string str, int max)
+-	{
+-		string result = str.Length > max ? str.Substring(0, max) : str;
+-		result = result.Trim();
+-		return result;
+-	}
+-
+-This seems like it would be easy enough to replicate in Go but as we already discovered, the length of a string isn't
+-as obvious as it might seem. Since C# uses UTF-16 encoding for strings, and Go uses UTF-8 encoding and represents
+-characters by runes (which are an alias of int32) we cannot simply slice the string without any further consideration.
+-Instead, we need to encode the string as UTF-16 bytes, slice it and then decode it back to UTF-8.
+-
+-Interestingly, in C# length and substring both act on the Char type so it's possible to slice into the middle of
+-a visual, "representable" character. For example we know `"a😅😅".Length` = 5 (1+2+2) and therefore Substring(0,4)
+-results in the final character being cleaved in two, resulting in "a😅�". Since our int32 runes are being encoded as
+-2 uint16 elements, we also mimic this behaviour by slicing into the UTF-16 encoded string.
+-
+-Here's a program you can put into a dotnet playground to see how C# works:
+-
+-	using System;
+-	public class Program {
+-	  public static void Main() {
+-	    string s = "a😅😅";
+-	    Console.WriteLine("{0} {1}", s.Length, s);
+-	    string t = TruncateAfter(s, 4);
+-	    Console.WriteLine("{0} {1}", t.Length, t);
+-	  }
+-	  public static string TruncateAfter(string str, int max) {
+-	    string result = str.Length > max ? str.Substring(0, max) : str;
+-	    return result.Trim();
+-	  }
+-	}
+-
+-This will output:
+-5 a😅😅
+-4 a😅�
+-*/
+-func truncateAsUTF16(str string, max int) string {
+-	// Encode the string to UTF-16 to count code units
+-	utf16Encoded := utf16.Encode([]rune(str))
+-	if len(utf16Encoded) > max {
+-		// Decode back to UTF-8 up to the max length
+-		str = string(utf16.Decode(utf16Encoded[:max]))
+-	}
+-	return strings.TrimSpace(str)
+-}
+-
+-// This function takes a zip file of logs and a list of jobs.
+-// Structure of zip file
+-//
+-//	zip/
+-//	├── jobname1/
+-//	│   ├── 1_stepname.txt
+-//	│   ├── 2_anotherstepname.txt
+-//	│   ├── 3_stepstepname.txt
+-//	│   └── 4_laststepname.txt
+-//	├── jobname2/
+-//	|   ├── 1_stepname.txt
+-//	|   └── 2_somestepname.txt
+-//	├── 0_jobname1.txt
+-//	├── 1_jobname2.txt
+-//	└── -9999999999_jobname3.txt
+-//
+-// It iterates through the list of jobs and tries to find the matching
+-// log in the zip file. If the matching log is found it is attached
+-// to the job.
+-//
+-// The top-level .txt files include the logs for an entire job run. Note that
+-// the prefixed number is either:
+-//   - An ordinal and cannot be mapped to the corresponding job's ID.
+-//   - A negative integer which is the ID of the job in the old Actions service.
+-//     The service right now tries to get logs and use an ordinal in a loop.
+-//     However, if it doesn't get the logs, it falls back to an old service
+-//     where the ID can apparently be negative.
+-func attachRunLog(rlz *zip.Reader, jobs []shared.Job) {
+-	for i, job := range jobs {
+-		// As a highest priority, we try to use the step logs first. We have seen zips that surprisingly contain
+-		// step logs, normal job logs and legacy job logs. In this case, both job logs would be ignored. We have
+-		// never seen a zip containing both job logs and no step logs, however, it may be possible. In that case
+-		// let's prioritise the normal log over the legacy one.
+-		jobLog := matchFileInZIPArchive(rlz, jobLogFilenameRegexp(job))
+-		if jobLog == nil {
+-			jobLog = matchFileInZIPArchive(rlz, legacyJobLogFilenameRegexp(job))
++func displayLogSegments(w io.Writer, segments []logSegment) error {
++	for _, segment := range segments {
++		stepName := "UNKNOWN STEP"
++		if segment.step != nil {
++			stepName = segment.step.Name
+ 		}
+-		jobs[i].Log = jobLog
+-
+-		for j, step := range job.Steps {
+-			jobs[i].Steps[j].Log = matchFileInZIPArchive(rlz, stepLogFilenameRegexp(job, step))
+-		}
+-	}
+-}
+ 
+-func matchFileInZIPArchive(zr *zip.Reader, re *regexp.Regexp) *zip.File {
+-	for _, file := range zr.File {
+-		if re.MatchString(file.Name) {
+-			return file
++		rc, err := segment.fetcher.GetLog()
++		if err != nil {
++			return err
+ 		}
+-	}
+-	return nil
+-}
+ 
+-func displayRunLog(w io.Writer, jobs []shared.Job, failed bool) error {
+-	for _, job := range jobs {
+-		// To display a run log, we first try to compile it from individual step
+-		// logs, because this way we can prepend lines with the corresponding
+-		// step name. However, at the time of writing, logs are sometimes being
+-		// served by a service that doesn’t include the step logs (none of them),
+-		// in which case we fall back to print the entire job run log.
+-		var hasStepLogs bool
+-
+-		steps := job.Steps
+-		sort.Sort(steps)
+-		for _, step := range steps {
+-			if failed && !shared.IsFailureState(step.Conclusion) {
+-				continue
+-			}
+-			if step.Log == nil {
+-				continue
+-			}
+-			hasStepLogs = true
+-			prefix := fmt.Sprintf("%s\t%s\t", job.Name, step.Name)
+-			if err := printZIPFile(w, step.Log, prefix); err != nil {
++		err = func() error {
++			defer rc.Close()
++			prefix := fmt.Sprintf("%s\t%s\t", segment.job.Name, stepName)
++			if err := copyLogWithLinePrefix(w, rc, prefix); err != nil {
+ 				return err
+ 			}
+-		}
++			return nil
++		}()
+ 
+-		if hasStepLogs {
+-			continue
+-		}
+-
+-		if failed && !shared.IsFailureState(job.Conclusion) {
+-			continue
+-		}
+-
+-		if job.Log == nil {
+-			continue
+-		}
+-
+-		// Here, we fall back to the job run log, which means we do not know
+-		// the step name of lines. However, we want to keep the same line
+-		// formatting to avoid breaking any code or script that rely on the
+-		// tab-delimited formatting. So, an unknown-step placeholder is used
+-		// instead of the actual step name.
+-		prefix := fmt.Sprintf("%s\tUNKNOWN STEP\t", job.Name)
+-		if err := printZIPFile(w, job.Log, prefix); err != nil {
++		if err != nil {
+ 			return err
+ 		}
+ 	}
+@@ -748,14 +571,8 @@ func displayRunLog(w io.Writer, jobs []shared.Job, failed bool) error {
+ 	return nil
+ }
+ 
+-func printZIPFile(w io.Writer, file *zip.File, prefix string) error {
+-	f, err := file.Open()
+-	if err != nil {
+-		return err
+-	}
+-	defer f.Close()
+-
+-	scanner := bufio.NewScanner(f)
++func copyLogWithLinePrefix(w io.Writer, r io.Reader, prefix string) error {
++	scanner := bufio.NewScanner(r)
+ 	for scanner.Scan() {
+ 		fmt.Fprintf(w, "%s%s\n", prefix, scanner.Text())
+ 	}
+diff --git a/pkg/cmd/run/view/view_test.go b/pkg/cmd/run/view/view_test.go
+index 2d150934f..4c3a6a471 100644
+--- a/pkg/cmd/run/view/view_test.go
++++ b/pkg/cmd/run/view/view_test.go
+@@ -1,13 +1,12 @@
+ package view
+ 
+ import (
+-	"archive/zip"
+ 	"bytes"
+ 	"fmt"
+ 	"io"
+ 	"net/http"
+ 	"net/url"
+-	"os"
++	"slices"
+ 	"strings"
+ 	"testing"
+ 	"time"
+@@ -177,6 +176,65 @@ func TestNewCmdView(t *testing.T) {
+ }
+ 
+ func TestViewRun(t *testing.T) {
++	emptyZipArchive := createZipArchive(t, map[string]string{})
++	zipArchive := createZipArchive(t, map[string]string{
++		"0_cool job.txt": heredoc.Doc(`
++			log line 1
++			log line 2
++			log line 3
++			log line 1
++			log line 2
++			log line 3`),
++		"cool job/1_fob the barz.txt": heredoc.Doc(`
++			log line 1
++			log line 2
++			log line 3
++		`),
++		"cool job/2_barz the fob.txt": heredoc.Doc(`
++			log line 1
++			log line 2
++			log line 3
++		`),
++		"1_sad job.txt": heredoc.Doc(`
++			log line 1
++			log line 2
++			log line 3
++			log line 1
++			log line 2
++			log line 3
++		`),
++		"sad job/1_barf the quux.txt": heredoc.Doc(`
++			log line 1
++			log line 2
++			log line 3
++		`),
++		"sad job/2_quuz the barf.txt": heredoc.Doc(`
++			log line 1
++			log line 2
++			log line 3
++		`),
++		"2_cool job with no step logs.txt": heredoc.Doc(`
++			log line 1
++			log line 2
++			log line 3
++		`),
++		"3_sad job with no step logs.txt": heredoc.Doc(`
++			log line 1
++			log line 2
++			log line 3
++		`),
++		"-9999999999_legacy cool job with no step logs.txt": heredoc.Doc(`
++			log line 1
++			log line 2
++			log line 3
++		`),
++		"-9999999999_legacy sad job with no step logs.txt": heredoc.Doc(`
++			log line 1
++			log line 2
++			log line 3
++		`),
++	})
++
+ 	tests := []struct {
+ 		name        string
+ 		httpStubs   func(*httpmock.Registry)
+@@ -579,7 +637,7 @@ func TestViewRun(t *testing.T) {
+ 					}))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/logs"),
+-					httpmock.FileResponse("./fixtures/run_log.zip"))
++					httpmock.BinaryResponse(zipArchive))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
+ 					httpmock.JSONResponse(shared.TestWorkflow))
+@@ -632,7 +690,7 @@ func TestViewRun(t *testing.T) {
+ 					}))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/attempts/3/logs"),
+-					httpmock.FileResponse("./fixtures/run_log.zip"))
++					httpmock.BinaryResponse(zipArchive))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
+ 					httpmock.JSONResponse(shared.TestWorkflow))
+@@ -673,7 +731,7 @@ func TestViewRun(t *testing.T) {
+ 					httpmock.JSONResponse(shared.SuccessfulRun))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/logs"),
+-					httpmock.FileResponse("./fixtures/run_log.zip"))
++					httpmock.BinaryResponse(zipArchive))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
+ 					httpmock.JSONResponse(shared.TestWorkflow))
+@@ -696,7 +754,7 @@ func TestViewRun(t *testing.T) {
+ 					httpmock.JSONResponse(shared.SuccessfulRun))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/attempts/3/logs"),
+-					httpmock.FileResponse("./fixtures/run_log.zip"))
++					httpmock.BinaryResponse(zipArchive))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
+ 					httpmock.JSONResponse(shared.TestWorkflow))
+@@ -729,7 +787,7 @@ func TestViewRun(t *testing.T) {
+ 					}))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/logs"),
+-					httpmock.FileResponse("./fixtures/run_log.zip"))
++					httpmock.BinaryResponse(zipArchive))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
+ 					httpmock.JSONResponse(shared.TestWorkflow))
+@@ -776,7 +834,7 @@ func TestViewRun(t *testing.T) {
+ 					}))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/logs"),
+-					httpmock.FileResponse("./fixtures/run_log.zip"))
++					httpmock.BinaryResponse(zipArchive))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
+ 					httpmock.JSONResponse(shared.TestWorkflow))
+@@ -809,7 +867,7 @@ func TestViewRun(t *testing.T) {
+ 					}))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234/logs"),
+-					httpmock.FileResponse("./fixtures/run_log.zip"))
++					httpmock.BinaryResponse(zipArchive))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
+ 					httpmock.JSONResponse(shared.TestWorkflow))
+@@ -862,7 +920,7 @@ func TestViewRun(t *testing.T) {
+ 					}))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234/attempts/3/logs"),
+-					httpmock.FileResponse("./fixtures/run_log.zip"))
++					httpmock.BinaryResponse(zipArchive))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
+ 					httpmock.JSONResponse(shared.TestWorkflow))
+@@ -903,7 +961,7 @@ func TestViewRun(t *testing.T) {
+ 					httpmock.JSONResponse(shared.FailedRun))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234/logs"),
+-					httpmock.FileResponse("./fixtures/run_log.zip"))
++					httpmock.BinaryResponse(zipArchive))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
+ 					httpmock.JSONResponse(shared.TestWorkflow))
+@@ -936,7 +994,7 @@ func TestViewRun(t *testing.T) {
+ 					}))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234/logs"),
+-					httpmock.FileResponse("./fixtures/run_log.zip"))
++					httpmock.BinaryResponse(zipArchive))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows"),
+ 					httpmock.JSONResponse(workflowShared.WorkflowsPayload{
+@@ -983,7 +1041,7 @@ func TestViewRun(t *testing.T) {
+ 					}))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234/logs"),
+-					httpmock.FileResponse("./fixtures/run_log.zip"))
++					httpmock.BinaryResponse(zipArchive))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
+ 					httpmock.JSONResponse(shared.TestWorkflow))
+@@ -1016,7 +1074,7 @@ func TestViewRun(t *testing.T) {
+ 					}))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/logs"),
+-					httpmock.FileResponse("./fixtures/run_log.zip"))
++					httpmock.BinaryResponse(zipArchive))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
+ 					httpmock.JSONResponse(shared.TestWorkflow))
+@@ -1057,7 +1115,7 @@ func TestViewRun(t *testing.T) {
+ 					httpmock.JSONResponse(shared.SuccessfulRun))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/logs"),
+-					httpmock.FileResponse("./fixtures/run_log.zip"))
++					httpmock.BinaryResponse(zipArchive))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
+ 					httpmock.JSONResponse(shared.TestWorkflow))
+@@ -1090,7 +1148,7 @@ func TestViewRun(t *testing.T) {
+ 					}))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234/logs"),
+-					httpmock.FileResponse("./fixtures/run_log.zip"))
++					httpmock.BinaryResponse(zipArchive))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
+ 					httpmock.JSONResponse(shared.TestWorkflow))
+@@ -1131,7 +1189,7 @@ func TestViewRun(t *testing.T) {
+ 					httpmock.JSONResponse(shared.FailedRun))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234/logs"),
+-					httpmock.FileResponse("./fixtures/run_log.zip"))
++					httpmock.BinaryResponse(zipArchive))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
+ 					httpmock.JSONResponse(shared.TestWorkflow))
+@@ -1164,7 +1222,7 @@ func TestViewRun(t *testing.T) {
+ 					}))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/logs"),
+-					httpmock.FileResponse("./fixtures/run_log.zip"))
++					httpmock.BinaryResponse(zipArchive))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
+ 					httpmock.JSONResponse(shared.TestWorkflow))
+@@ -1210,7 +1268,7 @@ func TestViewRun(t *testing.T) {
+ 					}))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/logs"),
+-					httpmock.FileResponse("./fixtures/run_log.zip"))
++					httpmock.BinaryResponse(zipArchive))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
+ 					httpmock.JSONResponse(shared.TestWorkflow))
+@@ -1243,7 +1301,7 @@ func TestViewRun(t *testing.T) {
+ 					}))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234/logs"),
+-					httpmock.FileResponse("./fixtures/run_log.zip"))
++					httpmock.BinaryResponse(zipArchive))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
+ 					httpmock.JSONResponse(shared.TestWorkflow))
+@@ -1289,7 +1347,7 @@ func TestViewRun(t *testing.T) {
+ 					}))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234/logs"),
+-					httpmock.FileResponse("./fixtures/run_log.zip"))
++					httpmock.BinaryResponse(zipArchive))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
+ 					httpmock.JSONResponse(shared.TestWorkflow))
+@@ -1322,7 +1380,7 @@ func TestViewRun(t *testing.T) {
+ 					}))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/logs"),
+-					httpmock.FileResponse("./fixtures/run_log.zip"))
++					httpmock.BinaryResponse(zipArchive))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
+ 					httpmock.JSONResponse(shared.TestWorkflow))
+@@ -1363,7 +1421,7 @@ func TestViewRun(t *testing.T) {
+ 					httpmock.JSONResponse(shared.SuccessfulRun))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/logs"),
+-					httpmock.FileResponse("./fixtures/run_log.zip"))
++					httpmock.BinaryResponse(zipArchive))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
+ 					httpmock.JSONResponse(shared.TestWorkflow))
+@@ -1397,7 +1455,7 @@ func TestViewRun(t *testing.T) {
+ 					}))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234/logs"),
+-					httpmock.FileResponse("./fixtures/run_log.zip"))
++					httpmock.BinaryResponse(zipArchive))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
+ 					httpmock.JSONResponse(shared.TestWorkflow))
+@@ -1438,7 +1496,7 @@ func TestViewRun(t *testing.T) {
+ 					httpmock.JSONResponse(shared.FailedRun))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234/logs"),
+-					httpmock.FileResponse("./fixtures/run_log.zip"))
++					httpmock.BinaryResponse(zipArchive))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
+ 					httpmock.JSONResponse(shared.TestWorkflow))
+@@ -1471,7 +1529,7 @@ func TestViewRun(t *testing.T) {
+ 					}))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/logs"),
+-					httpmock.FileResponse("./fixtures/run_log.zip"))
++					httpmock.BinaryResponse(zipArchive))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
+ 					httpmock.JSONResponse(shared.TestWorkflow))
+@@ -1517,7 +1575,7 @@ func TestViewRun(t *testing.T) {
+ 					}))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/logs"),
+-					httpmock.FileResponse("./fixtures/run_log.zip"))
++					httpmock.BinaryResponse(zipArchive))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
+ 					httpmock.JSONResponse(shared.TestWorkflow))
+@@ -1550,7 +1608,7 @@ func TestViewRun(t *testing.T) {
+ 					}))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234/logs"),
+-					httpmock.FileResponse("./fixtures/run_log.zip"))
++					httpmock.BinaryResponse(zipArchive))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
+ 					httpmock.JSONResponse(shared.TestWorkflow))
+@@ -1596,13 +1654,558 @@ func TestViewRun(t *testing.T) {
+ 					}))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234/logs"),
+-					httpmock.FileResponse("./fixtures/run_log.zip"))
++					httpmock.BinaryResponse(zipArchive))
+ 				reg.Register(
+ 					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
+ 					httpmock.JSONResponse(shared.TestWorkflow))
+ 			},
+ 			wantOut: legacySadJobRunWithNoStepLogsLogOutput,
+ 		},
++		{
++			name: "interactive with log, fallback to retrieve job logs from API (#11169)",
++			tty:  true,
++			opts: &ViewOptions{
++				Prompt: true,
++				Log:    true,
++			},
++			httpStubs: func(reg *httpmock.Registry) {
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs"),
++					httpmock.JSONResponse(shared.RunsPayload{
++						WorkflowRuns: shared.TestRuns,
++					}))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3"),
++					httpmock.JSONResponse(shared.SuccessfulRun))
++				reg.Register(
++					httpmock.REST("GET", "runs/3/jobs"),
++					httpmock.JSONResponse(shared.JobsPayload{
++						Jobs: []shared.Job{
++							shared.SuccessfulJob,
++							shared.FailedJob,
++						},
++					}))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/logs"),
++					httpmock.BinaryResponse(emptyZipArchive))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
++					httpmock.JSONResponse(shared.TestWorkflow))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows"),
++					httpmock.JSONResponse(workflowShared.WorkflowsPayload{
++						Workflows: []workflowShared.Workflow{
++							shared.TestWorkflow,
++						},
++					}))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/jobs/10/logs"),
++					httpmock.StringResponse("blah blah"))
++			},
++			promptStubs: func(pm *prompter.MockPrompter) {
++				pm.RegisterSelect("Select a workflow run",
++					[]string{"X cool commit, CI [trunk] Feb 23, 2021", "* cool commit, CI [trunk] Feb 23, 2021", "✓ cool commit, CI [trunk] Feb 23, 2021", "X cool commit, CI [trunk] Feb 23, 2021", "X cool commit, CI [trunk] Feb 23, 2021", "- cool commit, CI [trunk] Feb 23, 2021", "- cool commit, CI [trunk] Feb 23, 2021", "* cool commit, CI [trunk] Feb 23, 2021", "* cool commit, CI [trunk] Feb 23, 2021", "X cool commit, CI [trunk] Feb 23, 2021"},
++					func(_, _ string, opts []string) (int, error) {
++						return prompter.IndexFor(opts, "✓ cool commit, CI [trunk] Feb 23, 2021")
++					})
++				pm.RegisterSelect("View a specific job in this run?",
++					[]string{"View all jobs in this run", "✓ cool job", "X sad job"},
++					func(_, _ string, opts []string) (int, error) {
++						return prompter.IndexFor(opts, "✓ cool job")
++					})
++			},
++			wantOut: "cool job\tUNKNOWN STEP\tblah blah\n",
++		},
++		{
++			name: "noninteractive with log, fallback to retrieve job logs from API (#11169)",
++			opts: &ViewOptions{
++				JobID: "10",
++				Log:   true,
++			},
++			httpStubs: func(reg *httpmock.Registry) {
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/jobs/10"),
++					httpmock.JSONResponse(shared.SuccessfulJob))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3"),
++					httpmock.JSONResponse(shared.SuccessfulRun))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/logs"),
++					httpmock.BinaryResponse(emptyZipArchive))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
++					httpmock.JSONResponse(shared.TestWorkflow))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/jobs/10/logs"),
++					httpmock.StringResponse("blah blah"))
++			},
++			wantOut: "cool job\tUNKNOWN STEP\tblah blah\n",
++		},
++		{
++			name: "interactive with run log, fallback to retrieve job logs from API (#11169)",
++			tty:  true,
++			opts: &ViewOptions{
++				Prompt: true,
++				Log:    true,
++			},
++			httpStubs: func(reg *httpmock.Registry) {
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs"),
++					httpmock.JSONResponse(shared.RunsPayload{
++						WorkflowRuns: shared.TestRuns,
++					}))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3"),
++					httpmock.JSONResponse(shared.SuccessfulRun))
++				reg.Register(
++					httpmock.REST("GET", "runs/3/jobs"),
++					httpmock.JSONResponse(shared.JobsPayload{
++						Jobs: []shared.Job{
++							shared.SuccessfulJob,
++							shared.FailedJob,
++						},
++					}))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/logs"),
++					httpmock.BinaryResponse(emptyZipArchive))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
++					httpmock.JSONResponse(shared.TestWorkflow))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows"),
++					httpmock.JSONResponse(workflowShared.WorkflowsPayload{
++						Workflows: []workflowShared.Workflow{
++							shared.TestWorkflow,
++						},
++					}))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/jobs/10/logs"),
++					httpmock.StringResponse("blah blah"))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/jobs/20/logs"),
++					httpmock.StringResponse("yo yo"))
++			},
++			promptStubs: func(pm *prompter.MockPrompter) {
++				pm.RegisterSelect("Select a workflow run",
++					[]string{"X cool commit, CI [trunk] Feb 23, 2021", "* cool commit, CI [trunk] Feb 23, 2021", "✓ cool commit, CI [trunk] Feb 23, 2021", "X cool commit, CI [trunk] Feb 23, 2021", "X cool commit, CI [trunk] Feb 23, 2021", "- cool commit, CI [trunk] Feb 23, 2021", "- cool commit, CI [trunk] Feb 23, 2021", "* cool commit, CI [trunk] Feb 23, 2021", "* cool commit, CI [trunk] Feb 23, 2021", "X cool commit, CI [trunk] Feb 23, 2021"},
++					func(_, _ string, opts []string) (int, error) {
++						return prompter.IndexFor(opts, "✓ cool commit, CI [trunk] Feb 23, 2021")
++					})
++				pm.RegisterSelect("View a specific job in this run?",
++					[]string{"View all jobs in this run", "✓ cool job", "X sad job"},
++					func(_, _ string, opts []string) (int, error) {
++						return prompter.IndexFor(opts, "View all jobs in this run")
++					})
++			},
++			wantOut: "cool job\tUNKNOWN STEP\tblah blah\nsad job\tUNKNOWN STEP\tyo yo\n",
++		},
++		{
++			name: "noninteractive with run log, fallback to retrieve job logs from API (#11169)",
++			opts: &ViewOptions{
++				RunID: "3",
++				Log:   true,
++			},
++			httpStubs: func(reg *httpmock.Registry) {
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3"),
++					httpmock.JSONResponse(shared.SuccessfulRun))
++				reg.Register(
++					httpmock.REST("GET", "runs/3/jobs"),
++					httpmock.JSONResponse(shared.JobsPayload{
++						Jobs: []shared.Job{
++							shared.SuccessfulJob,
++							shared.FailedJob,
++						},
++					}))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/logs"),
++					httpmock.BinaryResponse(emptyZipArchive))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
++					httpmock.JSONResponse(shared.TestWorkflow))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/jobs/10/logs"),
++					httpmock.StringResponse("blah blah"))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/jobs/20/logs"),
++					httpmock.StringResponse("yo yo"))
++			},
++			wantOut: "cool job\tUNKNOWN STEP\tblah blah\nsad job\tUNKNOWN STEP\tyo yo\n",
++		},
++		{
++			name: "interactive with log-failed, fallback to retrieve job logs from API (#11169)",
++			tty:  true,
++			opts: &ViewOptions{
++				Prompt:    true,
++				LogFailed: true,
++			},
++			httpStubs: func(reg *httpmock.Registry) {
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs"),
++					httpmock.JSONResponse(shared.RunsPayload{
++						WorkflowRuns: shared.TestRuns,
++					}))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3"),
++					httpmock.JSONResponse(shared.SuccessfulRun))
++				reg.Register(
++					httpmock.REST("GET", "runs/3/jobs"),
++					httpmock.JSONResponse(shared.JobsPayload{
++						Jobs: []shared.Job{
++							shared.SuccessfulJob,
++							shared.FailedJob,
++						},
++					}))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/logs"),
++					httpmock.BinaryResponse(emptyZipArchive))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
++					httpmock.JSONResponse(shared.TestWorkflow))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows"),
++					httpmock.JSONResponse(workflowShared.WorkflowsPayload{
++						Workflows: []workflowShared.Workflow{
++							shared.TestWorkflow,
++						},
++					}))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/jobs/20/logs"),
++					httpmock.StringResponse("yo yo"))
++			},
++			promptStubs: func(pm *prompter.MockPrompter) {
++				pm.RegisterSelect("Select a workflow run",
++					[]string{"X cool commit, CI [trunk] Feb 23, 2021", "* cool commit, CI [trunk] Feb 23, 2021", "✓ cool commit, CI [trunk] Feb 23, 2021", "X cool commit, CI [trunk] Feb 23, 2021", "X cool commit, CI [trunk] Feb 23, 2021", "- cool commit, CI [trunk] Feb 23, 2021", "- cool commit, CI [trunk] Feb 23, 2021", "* cool commit, CI [trunk] Feb 23, 2021", "* cool commit, CI [trunk] Feb 23, 2021", "X cool commit, CI [trunk] Feb 23, 2021"},
++					func(_, _ string, opts []string) (int, error) {
++						return prompter.IndexFor(opts, "✓ cool commit, CI [trunk] Feb 23, 2021")
++					})
++				pm.RegisterSelect("View a specific job in this run?",
++					[]string{"View all jobs in this run", "✓ cool job", "X sad job"},
++					func(_, _ string, opts []string) (int, error) {
++						return prompter.IndexFor(opts, "X sad job")
++					})
++			},
++			wantOut: "sad job\tUNKNOWN STEP\tyo yo\n",
++		},
++		{
++			name: "noninteractive with log-failed, fallback to retrieve job logs from API (#11169)",
++			opts: &ViewOptions{
++				JobID:     "20",
++				LogFailed: true,
++			},
++			httpStubs: func(reg *httpmock.Registry) {
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/jobs/20"),
++					httpmock.JSONResponse(shared.FailedJob))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234"),
++					httpmock.JSONResponse(shared.FailedRun))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234/logs"),
++					httpmock.BinaryResponse(emptyZipArchive))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
++					httpmock.JSONResponse(shared.TestWorkflow))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/jobs/20/logs"),
++					httpmock.StringResponse("yo yo"))
++			},
++			wantOut: "sad job\tUNKNOWN STEP\tyo yo\n",
++		},
++		{
++			name: "interactive with run log-failed, fallback to retrieve job logs from API (#11169)",
++			tty:  true,
++			opts: &ViewOptions{
++				Prompt:    true,
++				LogFailed: true,
++			},
++			httpStubs: func(reg *httpmock.Registry) {
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs"),
++					httpmock.JSONResponse(shared.RunsPayload{
++						WorkflowRuns: shared.TestRuns,
++					}))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234"),
++					httpmock.JSONResponse(shared.FailedRun))
++				reg.Register(
++					httpmock.REST("GET", "runs/1234/jobs"),
++					httpmock.JSONResponse(shared.JobsPayload{
++						Jobs: []shared.Job{
++							shared.SuccessfulJob,
++							shared.FailedJob,
++						},
++					}))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234/logs"),
++					httpmock.BinaryResponse(emptyZipArchive))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
++					httpmock.JSONResponse(shared.TestWorkflow))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows"),
++					httpmock.JSONResponse(workflowShared.WorkflowsPayload{
++						Workflows: []workflowShared.Workflow{
++							shared.TestWorkflow,
++						},
++					}))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/jobs/20/logs"),
++					httpmock.StringResponse("yo yo"))
++			},
++			promptStubs: func(pm *prompter.MockPrompter) {
++				pm.RegisterSelect("Select a workflow run",
++					[]string{"X cool commit, CI [trunk] Feb 23, 2021", "* cool commit, CI [trunk] Feb 23, 2021", "✓ cool commit, CI [trunk] Feb 23, 2021", "X cool commit, CI [trunk] Feb 23, 2021", "X cool commit, CI [trunk] Feb 23, 2021", "- cool commit, CI [trunk] Feb 23, 2021", "- cool commit, CI [trunk] Feb 23, 2021", "* cool commit, CI [trunk] Feb 23, 2021", "* cool commit, CI [trunk] Feb 23, 2021", "X cool commit, CI [trunk] Feb 23, 2021"},
++					func(_, _ string, opts []string) (int, error) {
++						return 4, nil
++					})
++				pm.RegisterSelect("View a specific job in this run?",
++					[]string{"View all jobs in this run", "✓ cool job", "X sad job"},
++					func(_, _ string, opts []string) (int, error) {
++						return prompter.IndexFor(opts, "View all jobs in this run")
++					})
++			},
++			wantOut: "sad job\tUNKNOWN STEP\tyo yo\n",
++		},
++		{
++			name: "noninteractive with run log-failed, fallback to retrieve job logs from API (#11169)",
++			opts: &ViewOptions{
++				RunID:     "1234",
++				LogFailed: true,
++			},
++			httpStubs: func(reg *httpmock.Registry) {
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234"),
++					httpmock.JSONResponse(shared.FailedRun))
++				reg.Register(
++					httpmock.REST("GET", "runs/1234/jobs"),
++					httpmock.JSONResponse(shared.JobsPayload{
++						Jobs: []shared.Job{
++							shared.SuccessfulJob,
++							shared.FailedJob,
++						},
++					}))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234/logs"),
++					httpmock.BinaryResponse(emptyZipArchive))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
++					httpmock.JSONResponse(shared.TestWorkflow))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/jobs/20/logs"),
++					httpmock.StringResponse("yo yo"))
++			},
++			wantOut: "sad job\tUNKNOWN STEP\tyo yo\n",
++		},
++		{
++			name: "interactive with run log, too many API calls required error (#11169)",
++			tty:  true,
++			opts: &ViewOptions{
++				Prompt: true,
++				Log:    true,
++			},
++			httpStubs: func(reg *httpmock.Registry) {
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs"),
++					httpmock.JSONResponse(shared.RunsPayload{
++						WorkflowRuns: shared.TestRuns,
++					}))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3"),
++					httpmock.JSONResponse(shared.SuccessfulRun))
++
++				tooManyJobs := make([]shared.Job, 1+maxAPILogFetchers)
++				for i := range tooManyJobs {
++					tooManyJobs[i] = shared.SuccessfulJob
++					tooManyJobs[i].ID = int64(i + 100)
++				}
++				reg.Register(
++					httpmock.REST("GET", "runs/3/jobs"),
++					httpmock.JSONResponse(shared.JobsPayload{
++						Jobs: tooManyJobs,
++					}))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/logs"),
++					httpmock.BinaryResponse(emptyZipArchive))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
++					httpmock.JSONResponse(shared.TestWorkflow))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows"),
++					httpmock.JSONResponse(workflowShared.WorkflowsPayload{
++						Workflows: []workflowShared.Workflow{
++							shared.TestWorkflow,
++						},
++					}))
++			},
++			promptStubs: func(pm *prompter.MockPrompter) {
++				pm.RegisterSelect("Select a workflow run",
++					[]string{"X cool commit, CI [trunk] Feb 23, 2021", "* cool commit, CI [trunk] Feb 23, 2021", "✓ cool commit, CI [trunk] Feb 23, 2021", "X cool commit, CI [trunk] Feb 23, 2021", "X cool commit, CI [trunk] Feb 23, 2021", "- cool commit, CI [trunk] Feb 23, 2021", "- cool commit, CI [trunk] Feb 23, 2021", "* cool commit, CI [trunk] Feb 23, 2021", "* cool commit, CI [trunk] Feb 23, 2021", "X cool commit, CI [trunk] Feb 23, 2021"},
++					func(_, _ string, opts []string) (int, error) {
++						return prompter.IndexFor(opts, "✓ cool commit, CI [trunk] Feb 23, 2021")
++					})
++				pm.RegisterSelect("View a specific job in this run?",
++					slices.Concat([]string{"View all jobs in this run"}, slices.Repeat([]string{"✓ cool job"}, 26)),
++					func(_, _ string, opts []string) (int, error) {
++						return prompter.IndexFor(opts, "View all jobs in this run")
++					})
++			},
++			wantErr: true,
++			errMsg:  "too many API requests needed to fetch logs; try narrowing down to a specific job with the `--job` option",
++		},
++		{
++			name: "noninteractive with run log, too many API calls required error (#11169)",
++			opts: &ViewOptions{
++				RunID: "3",
++				Log:   true,
++			},
++			httpStubs: func(reg *httpmock.Registry) {
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3"),
++					httpmock.JSONResponse(shared.SuccessfulRun))
++
++				tooManyJobs := make([]shared.Job, 1+maxAPILogFetchers)
++				for i := range tooManyJobs {
++					tooManyJobs[i] = shared.SuccessfulJob
++					tooManyJobs[i].ID = int64(i + 100)
++				}
++				reg.Register(
++					httpmock.REST("GET", "runs/3/jobs"),
++					httpmock.JSONResponse(shared.JobsPayload{
++						Jobs: tooManyJobs,
++					}))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/logs"),
++					httpmock.BinaryResponse(emptyZipArchive))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
++					httpmock.JSONResponse(shared.TestWorkflow))
++			},
++			wantErr: true,
++			errMsg:  "too many API requests needed to fetch logs; try narrowing down to a specific job with the `--job` option",
++		},
++		{
++			name: "interactive with run log-failed, too many API calls required error (#11169)",
++			tty:  true,
++			opts: &ViewOptions{
++				Prompt:    true,
++				LogFailed: true,
++			},
++			httpStubs: func(reg *httpmock.Registry) {
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs"),
++					httpmock.JSONResponse(shared.RunsPayload{
++						WorkflowRuns: shared.TestRuns,
++					}))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234"),
++					httpmock.JSONResponse(shared.FailedRun))
++
++				tooManyJobs := make([]shared.Job, 1+maxAPILogFetchers)
++				for i := range tooManyJobs {
++					tooManyJobs[i] = shared.FailedJob
++					tooManyJobs[i].ID = int64(i + 100)
++				}
++				reg.Register(
++					httpmock.REST("GET", "runs/1234/jobs"),
++					httpmock.JSONResponse(shared.JobsPayload{
++						Jobs: tooManyJobs,
++					}))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234/logs"),
++					httpmock.BinaryResponse(emptyZipArchive))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
++					httpmock.JSONResponse(shared.TestWorkflow))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows"),
++					httpmock.JSONResponse(workflowShared.WorkflowsPayload{
++						Workflows: []workflowShared.Workflow{
++							shared.TestWorkflow,
++						},
++					}))
++			},
++			promptStubs: func(pm *prompter.MockPrompter) {
++				pm.RegisterSelect("Select a workflow run",
++					[]string{"X cool commit, CI [trunk] Feb 23, 2021", "* cool commit, CI [trunk] Feb 23, 2021", "✓ cool commit, CI [trunk] Feb 23, 2021", "X cool commit, CI [trunk] Feb 23, 2021", "X cool commit, CI [trunk] Feb 23, 2021", "- cool commit, CI [trunk] Feb 23, 2021", "- cool commit, CI [trunk] Feb 23, 2021", "* cool commit, CI [trunk] Feb 23, 2021", "* cool commit, CI [trunk] Feb 23, 2021", "X cool commit, CI [trunk] Feb 23, 2021"},
++					func(_, _ string, opts []string) (int, error) {
++						return 4, nil
++					})
++				pm.RegisterSelect("View a specific job in this run?",
++					slices.Concat([]string{"View all jobs in this run"}, slices.Repeat([]string{"X sad job"}, 26)),
++					func(_, _ string, opts []string) (int, error) {
++						return prompter.IndexFor(opts, "View all jobs in this run")
++					})
++			},
++			wantErr: true,
++			errMsg:  "too many API requests needed to fetch logs; try narrowing down to a specific job with the `--job` option",
++		},
++		{
++			name: "noninteractive with run log-failed, too many API calls required error (#11169)",
++			opts: &ViewOptions{
++				RunID:     "1234",
++				LogFailed: true,
++			},
++			httpStubs: func(reg *httpmock.Registry) {
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234"),
++					httpmock.JSONResponse(shared.FailedRun))
++
++				tooManyJobs := make([]shared.Job, 1+maxAPILogFetchers)
++				for i := range tooManyJobs {
++					tooManyJobs[i] = shared.FailedJob
++					tooManyJobs[i].ID = int64(i + 100)
++				}
++				reg.Register(
++					httpmock.REST("GET", "runs/1234/jobs"),
++					httpmock.JSONResponse(shared.JobsPayload{
++						Jobs: tooManyJobs,
++					}))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234/logs"),
++					httpmock.BinaryResponse(emptyZipArchive))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
++					httpmock.JSONResponse(shared.TestWorkflow))
++			},
++			wantErr: true,
++			errMsg:  "too many API requests needed to fetch logs; try narrowing down to a specific job with the `--job` option",
++		},
++		{
++			name: "noninteractive with run log-failed, maximum API calls allowed (#11169)",
++			opts: &ViewOptions{
++				RunID:     "1234",
++				LogFailed: true,
++			},
++			httpStubs: func(reg *httpmock.Registry) {
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234"),
++					httpmock.JSONResponse(shared.FailedRun))
++
++				tooManyJobs := make([]shared.Job, maxAPILogFetchers)
++				for i := range tooManyJobs {
++					tooManyJobs[i] = shared.FailedJob
++					tooManyJobs[i].ID = int64(i + 100)
++				}
++				reg.Register(
++					httpmock.REST("GET", "runs/1234/jobs"),
++					httpmock.JSONResponse(shared.JobsPayload{
++						Jobs: tooManyJobs,
++					}))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234/logs"),
++					httpmock.BinaryResponse(emptyZipArchive))
++				reg.Register(
++					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
++					httpmock.JSONResponse(shared.TestWorkflow))
++				for i := range tooManyJobs {
++					reg.Register(
++						httpmock.REST("GET", fmt.Sprintf("repos/OWNER/REPO/actions/jobs/%d/logs", i+100)),
++						httpmock.StringResponse("yo yo"))
++				}
++			},
++			wantOut: strings.Repeat("sad job\tUNKNOWN STEP\tyo yo\n", maxAPILogFetchers),
++		},
+ 		{
+ 			name: "run log but run is not done",
+ 			tty:  true,
+@@ -2021,268 +2624,6 @@ func TestViewRun(t *testing.T) {
+ 	}
+ }
+ 
+-// Structure of fixture zip file
+-// To see the structure of fixture zip file, run:
+-// `❯ unzip -lv pkg/cmd/run/view/fixtures/run_log.zip`
+-//
+-//	run log/
+-//	├── cool job/
+-//	│   ├── 1_fob the barz.txt
+-//	│   └── 2_barz the fob.txt
+-//	├── sad job/
+-//	│   ├── 1_barf the quux.txt
+-//	│   └── 2_quux the barf.txt
+-//	├── ad job/
+-//	|   └── 1_barf the quux.txt
+-//	├── 0_cool job.txt
+-//	├── 1_sad job.txt
+-//	├── 2_cool job with no step logs.txt
+-//	├── 3_sad job with no step logs.txt
+-//	├── -9999999999_legacy cool job with no step logs.txt
+-//	├── -9999999999_legacy sad job with no step logs.txt
+-//	├── 4_cool job with both legacy and new logs.txt
+-//	└── -9999999999_cool job with both legacy and new logs.txt
+-func Test_attachRunLog(t *testing.T) {
+-	tests := []struct {
+-		name             string
+-		job              shared.Job
+-		wantJobMatch     bool
+-		wantJobFilename  string
+-		wantStepMatch    bool
+-		wantStepFilename string
+-	}{
+-		{
+-			name: "matching job name and step number 1",
+-			job: shared.Job{
+-				Name: "cool job",
+-				Steps: []shared.Step{{
+-					Name:   "fob the barz",
+-					Number: 1,
+-				}},
+-			},
+-			wantJobMatch:     true,
+-			wantJobFilename:  "0_cool job.txt",
+-			wantStepMatch:    true,
+-			wantStepFilename: "cool job/1_fob the barz.txt",
+-		},
+-		{
+-			name: "matching job name and step number 2",
+-			job: shared.Job{
+-				Name: "cool job",
+-				Steps: []shared.Step{{
+-					Name:   "barz the fob",
+-					Number: 2,
+-				}},
+-			},
+-			wantJobMatch:     true,
+-			wantJobFilename:  "0_cool job.txt",
+-			wantStepMatch:    true,
+-			wantStepFilename: "cool job/2_barz the fob.txt",
+-		},
+-		{
+-			name: "matching job name and step number and mismatch step name",
+-			job: shared.Job{
+-				Name: "cool job",
+-				Steps: []shared.Step{{
+-					Name:   "mismatch",
+-					Number: 1,
+-				}},
+-			},
+-			wantJobMatch:     true,
+-			wantJobFilename:  "0_cool job.txt",
+-			wantStepMatch:    true,
+-			wantStepFilename: "cool job/1_fob the barz.txt",
+-		},
+-		{
+-			name: "matching job name and mismatch step number",
+-			job: shared.Job{
+-				Name: "cool job",
+-				Steps: []shared.Step{{
+-					Name:   "fob the barz",
+-					Number: 3,
+-				}},
+-			},
+-			wantJobMatch:    true,
+-			wantJobFilename: "0_cool job.txt",
+-			wantStepMatch:   false,
+-		},
+-		{
+-			name: "matching job name with no step logs",
+-			job: shared.Job{
+-				Name: "cool job with no step logs",
+-				Steps: []shared.Step{{
+-					Name:   "fob the barz",
+-					Number: 1,
+-				}},
+-			},
+-			wantJobMatch:    true,
+-			wantJobFilename: "2_cool job with no step logs.txt",
+-			wantStepMatch:   false,
+-		},
+-		{
+-			name: "matching job name with no step data",
+-			job: shared.Job{
+-				Name: "cool job with no step logs",
+-			},
+-			wantJobMatch:    true,
+-			wantJobFilename: "2_cool job with no step logs.txt",
+-			wantStepMatch:   false,
+-		},
+-		{
+-			name: "matching job name with legacy filename and no step logs",
+-			job: shared.Job{
+-				Name: "legacy cool job with no step logs",
+-				Steps: []shared.Step{{
+-					Name:   "fob the barz",
+-					Number: 1,
+-				}},
+-			},
+-			wantJobMatch:    true,
+-			wantJobFilename: "-9999999999_legacy cool job with no step logs.txt",
+-			wantStepMatch:   false,
+-		},
+-		{
+-			name: "matching job name with legacy filename and no step data",
+-			job: shared.Job{
+-				Name: "legacy cool job with no step logs",
+-			},
+-			wantJobMatch:    true,
+-			wantJobFilename: "-9999999999_legacy cool job with no step logs.txt",
+-			wantStepMatch:   false,
+-		},
+-		{
+-			name: "matching job name with both normal and legacy filename",
+-			job: shared.Job{
+-				Name: "cool job with both legacy and new logs",
+-			},
+-			wantJobMatch:    true,
+-			wantJobFilename: "4_cool job with both legacy and new logs.txt",
+-			wantStepMatch:   false,
+-		},
+-		{
+-			name: "one job name is a suffix of another",
+-			job: shared.Job{
+-				Name: "ad job",
+-				Steps: []shared.Step{{
+-					Name:   "barf the quux",
+-					Number: 1,
+-				}},
+-			},
+-			wantStepMatch:    true,
+-			wantStepFilename: "ad job/1_barf the quux.txt",
+-		},
+-		{
+-			name: "escape metacharacters in job name",
+-			job: shared.Job{
+-				Name: "metacharacters .+*?()|[]{}^$ job",
+-				Steps: []shared.Step{{
+-					Name:   "fob the barz",
+-					Number: 0,
+-				}},
+-			},
+-			wantJobMatch:  false,
+-			wantStepMatch: false,
+-		},
+-		{
+-			name: "mismatching job name",
+-			job: shared.Job{
+-				Name: "mismatch",
+-				Steps: []shared.Step{{
+-					Name:   "fob the barz",
+-					Number: 1,
+-				}},
+-			},
+-			wantJobMatch:  false,
+-			wantStepMatch: false,
+-		},
+-		{
+-			name: "job name with forward slash matches dir with slash removed",
+-			job: shared.Job{
+-				Name: "cool job / with slash",
+-				Steps: []shared.Step{{
+-					Name:   "fob the barz",
+-					Number: 1,
+-				}},
+-			},
+-			wantJobMatch:  false,
+-			wantStepMatch: true,
+-			// not the double space in the dir name, as the slash has been removed
+-			wantStepFilename: "cool job  with slash/1_fob the barz.txt",
+-		},
+-		{
+-			name: "job name with colon matches dir with colon removed",
+-			job: shared.Job{
+-				Name: "cool job : with colon",
+-				Steps: []shared.Step{{
+-					Name:   "fob the barz",
+-					Number: 1,
+-				}},
+-			},
+-			wantJobMatch:     false,
+-			wantStepMatch:    true,
+-			wantStepFilename: "cool job  with colon/1_fob the barz.txt",
+-		},
+-		{
+-			name: "Job name with really long name (over the ZIP limit)",
+-			job: shared.Job{
+-				Name: "thisisnineteenchars_thisisnineteenchars_thisisnineteenchars_thisisnineteenchars_thisisnineteenchars_",
+-				Steps: []shared.Step{{
+-					Name:   "Long Name Job",
+-					Number: 1,
+-				}},
+-			},
+-			wantJobMatch:     false,
+-			wantStepMatch:    true,
+-			wantStepFilename: "thisisnineteenchars_thisisnineteenchars_thisisnineteenchars_thisisnineteenchars_thisisnine/1_Long Name Job.txt",
+-		},
+-		{
+-			name: "Job name that would be truncated by the C# server to split a grapheme",
+-			job: shared.Job{
+-				Name: "Emoji Test 😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅",
+-				Steps: []shared.Step{{
+-					Name:   "Emoji Job",
+-					Number: 1,
+-				}},
+-			},
+-			wantJobMatch:     false,
+-			wantStepMatch:    true,
+-			wantStepFilename: "Emoji Test 😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅😅�/1_Emoji Job.txt",
+-		},
+-	}
+-
+-	run_log_zip_reader, err := zip.OpenReader("./fixtures/run_log.zip")
+-	require.NoError(t, err)
+-	defer run_log_zip_reader.Close()
+-
+-	for _, tt := range tests {
+-		t.Run(tt.name, func(t *testing.T) {
+-			jobs := []shared.Job{tt.job}
+-
+-			attachRunLog(&run_log_zip_reader.Reader, jobs)
+-
+-			t.Logf("Job details: ")
+-
+-			job := jobs[0]
+-
+-			jobLog := job.Log
+-			jobLogPresent := jobLog != nil
+-			require.Equal(t, tt.wantJobMatch, jobLogPresent, "job log not present")
+-			if jobLogPresent {
+-				require.Equal(t, tt.wantJobFilename, jobLog.Name, "job log filename mismatch")
+-			}
+-
+-			for _, step := range job.Steps {
+-				stepLog := step.Log
+-				stepLogPresent := stepLog != nil
+-				require.Equal(t, tt.wantStepMatch, stepLogPresent, "step log not present")
+-				if stepLogPresent {
+-					require.Equal(t, tt.wantStepFilename, stepLog.Name, "step log filename mismatch")
+-				}
+-			}
+-		})
+-	}
+-}
+-
+ var barfTheFobLogOutput = heredoc.Doc(`
+ cool job	barz the fob	log line 1
+ cool job	barz the fob	log line 2
+@@ -2382,9 +2723,8 @@ func TestRunLog(t *testing.T) {
+ 		cacheDir := t.TempDir()
+ 		rlc := RunLogCache{cacheDir: cacheDir}
+ 
+-		f, err := os.Open("./fixtures/run_log.zip")
+-		require.NoError(t, err)
+-		defer f.Close()
++		raw := createZipArchive(t, map[string]string{"foo": "bar"})
++		f := bytes.NewReader(raw)
+ 
+ 		require.NoError(t, rlc.Create("key", f))
+ 
+@@ -2392,5 +2732,6 @@ func TestRunLog(t *testing.T) {
+ 		require.NoError(t, err)
+ 		defer zipReader.Close()
+ 		require.NotEmpty(t, zipReader.File)
++		require.Equal(t, "foo", zipReader.File[0].Name)
+ 	})
+ }
+diff --git a/pkg/httpmock/stub.go b/pkg/httpmock/stub.go
+index 3b03ae718..f15423c84 100644
+--- a/pkg/httpmock/stub.go
++++ b/pkg/httpmock/stub.go
+@@ -127,6 +127,12 @@ func StringResponse(body string) Responder {
+ 	}
+ }
+ 
++func BinaryResponse(body []byte) Responder {
++	return func(req *http.Request) (*http.Response, error) {
++		return httpResponse(200, req, bytes.NewBuffer(body)), nil
++	}
++}
++
+ func WithHost(matcher Matcher, host string) Matcher {
+ 	return func(req *http.Request) bool {
+ 		if !strings.EqualFold(req.Host, host) {

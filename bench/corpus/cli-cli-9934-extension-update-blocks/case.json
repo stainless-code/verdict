@@ -1,0 +1,35 @@
+{
+  "schema_version": "1",
+  "id": "cli-cli-9934-extension-update-blocks",
+  "kind": "real",
+  "language": "go",
+  "provenance": {
+    "kind": "real",
+    "repo": "cli/cli",
+    "pr": 9934,
+    "base_sha": "a50fc7079e574a68284e19ea7eaee2f8303e79f0",
+    "head_sha": "3ada5af872cdd4916649d2d33f0090951344d591",
+    "fix_commit": "https://github.com/cli/cli/commit/bc8c46b0b1c1fd411e286990b950aad254cfb78f",
+    "source": "PR #9934 extension update notices, merged 2025-01-13",
+    "note": "INTRODUCED: the PR replaced the select block whose time.After arm let the command exit while the release check was still running with a bare receive, so every extension invocation now waits for the check to finish before PostRun returns; the fix (Fixes #10235) restores a non-blocking select with a default arm"
+  },
+  "bugs": [
+    {
+      "path": "pkg/cmd/root/extension.go",
+      "line": 55,
+      "kind": "blocking-wait",
+      "severity": "important",
+      "keywords": [
+        "every extension invocation waits for the update check",
+        "the command hangs on the update check",
+        "a slow network delays the extension's exit",
+        "a slow lookup holds the command open",
+        "the update check is waited for instead of skipped",
+        "stall the cli",
+        "extension command blocks",
+        "holds the cli open"
+      ],
+      "note": "the goroutine that runs the check is started in PreRun and posts to the channel only when the lookup returns, so the bare receive waits exactly as long as the network takes"
+    }
+  ]
+}

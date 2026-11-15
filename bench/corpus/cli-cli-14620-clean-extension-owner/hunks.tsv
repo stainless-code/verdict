@@ -1,0 +1,6 @@
+pkg/cmd/root/extension.go	OLD	83	89
+pkg/cmd/root/extension.go	NEW	83	89
+pkg/extensions/official.go	OLD	41	53
+pkg/extensions/official.go	NEW	41	56
+pkg/extensions/official_test.go	OLD	73	79
+pkg/extensions/official_test.go	NEW	73	93
