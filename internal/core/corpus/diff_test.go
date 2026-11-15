@@ -16,23 +16,40 @@ import (
 	"github.com/stainless-code/verdict/internal/testenv"
 )
 
-// TestSeededDiffApplies proves each full.diff applies to its snapshots.
+// TestSeededDiffApplies proves each seeded full.diff applies to its
+// snapshots. A real case's diff is the merged PR's git diff over its base and
+// no snapshot tree is checked in for it, so the proof that it applies is the
+// repository it came from, named in the manifest.
 func TestSeededDiffApplies(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git unavailable: cannot prove full.diff applies")
 	}
 	for _, dir := range caseDirs(t) {
 		t.Run(filepath.Base(dir), func(t *testing.T) {
-			before, after := snapshots(t, dir)
-			diff := readSnapshot(t, filepath.Join(dir, "full.diff"))
-			_, touched := parseDiff(t, diff)
-			if len(touched) == 0 {
-				t.Fatalf("full.diff touches no file")
-			}
-			repo := applyDiff(t, before, diff)
-			checkPatchedTree(t, repo, after, touched)
+			checkSeededDiff(t, dir)
 		})
 	}
+}
+
+// checkSeededDiff proves one seeded case's diff applies to its before tree
+// and reproduces its after tree.
+func checkSeededDiff(t *testing.T, dir string) {
+	t.Helper()
+	c, ref := loadCase(t, filepath.Join(dir, "case.json"))
+	if ref != nil {
+		t.Fatalf("%v", ref)
+	}
+	if c.Provenance.Kind != kindSeeded {
+		t.Skip("real case: no snapshot tree is checked in")
+	}
+	before, after := snapshots(t, dir)
+	diff := readSnapshot(t, filepath.Join(dir, "full.diff"))
+	_, touched := parseDiff(t, diff)
+	if len(touched) == 0 {
+		t.Fatalf("full.diff touches no file")
+	}
+	repo := applyDiff(t, before, diff)
+	checkPatchedTree(t, repo, after, touched)
 }
 
 func applyDiff(t *testing.T, before map[string]string, diff string) string {

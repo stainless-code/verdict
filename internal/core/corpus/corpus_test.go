@@ -2,6 +2,8 @@ package corpuscore
 
 import (
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,7 +16,9 @@ import (
 
 // TestCheckedInCorpusCases validates every checked-in manifest and its fake
 // agent outputs: ids match directories, anchors sit inside the diff hunks,
-// and the review text stays unique per bundle (the sig join key).
+// and the review text stays unique per bundle (the sig join key). A real case
+// ships the reviewed diff and no fixtures, so the checks that need a fake
+// output are the seeded cases' own.
 func TestCheckedInCorpusCases(t *testing.T) {
 	root := filepath.Join("..", "..", "..", "bench", "corpus")
 	entries, err := os.ReadDir(root)
@@ -29,8 +33,8 @@ func TestCheckedInCorpusCases(t *testing.T) {
 		seen++
 		checkCase(t, root, entry.Name())
 	}
-	if seen < 6 || seen > 10 {
-		t.Errorf("checked-in corpus has %d cases, want 6-10", seen)
+	if seen < 6 || seen > 20 {
+		t.Errorf("checked-in corpus has %d cases, want 6-20", seen)
 	}
 }
 
@@ -49,19 +53,49 @@ func checkCase(t *testing.T, root, name string) {
 		t.Fatalf("%s: read full.diff: %v", name, err)
 	}
 	index := hunks.Parse(string(diff))
-	agents, err := os.ReadDir(filepath.Join(dir, "agents"))
+	checkHunksTSV(t, name, dir, c, index)
+	checkTolerance(t, name, c, index)
+	checkFixtures(t, name, dir, c, index)
+}
+
+// checkHunksTSV holds a real case's checked-in index to the producer that
+// writes one: hunks.tsv is what fetch records beside a diff, so a case that
+// ships one can become a bundle without a second fetch.
+func checkHunksTSV(t *testing.T, name, dir string, c *core.CorpusCase, index []hunks.Hunk) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(dir, "hunks.tsv"))
+	if errors.Is(err, fs.ErrNotExist) {
+		if c.Provenance.Kind == kindReal {
+			t.Errorf("%s: real case ships no hunks.tsv", name)
+		}
+		return
+	}
 	if err != nil {
+		t.Fatalf("%s: read hunks.tsv: %v", name, err)
+	}
+	if got, want := string(raw), hunks.Format(index); got != want {
+		t.Errorf("%s: hunks.tsv is not the index of full.diff, want:\n%s", name, want)
+	}
+}
+
+// checkFixtures validates the fake agent outputs a seeded case ships: a real
+// case ships none, so its entries are the live run's own.
+func checkFixtures(t *testing.T, name, dir string, c *core.CorpusCase, index []hunks.Hunk) {
+	t.Helper()
+	agents, err := os.ReadDir(filepath.Join(dir, "agents"))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("%s: read agents: %v", name, err)
 	}
-	if len(agents) == 0 {
+	if len(agents) == 0 && c.Provenance.Kind != kindReal {
 		t.Errorf("%s: no fake agent outputs", name)
 	}
 	var entries []any
 	for _, agent := range agents {
 		entries = append(entries, checkAgent(t, filepath.Join(dir, "agents", agent.Name()), index, c.Kind == "control")...)
 	}
-	checkTolerance(t, name, c, index)
-	checkNamedBugs(t, name, c, entries)
+	if len(entries) > 0 {
+		checkNamedBugs(t, name, c, entries)
+	}
 }
 
 // checkNamedBugs holds the corpus to its own rule: a fake output must name

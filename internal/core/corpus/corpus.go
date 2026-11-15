@@ -161,10 +161,22 @@ func validateProvenance(c *core.CorpusCase, path string) *core.RefusalError {
 			return invalid(path, "seeded cases need provenance.injected (what was injected)")
 		}
 	case kindReal:
-		if strings.TrimSpace(c.Provenance.Repo) == "" || c.Provenance.PR == nil ||
-			strings.TrimSpace(c.Provenance.FixCommit) == "" {
-			return invalid(path, "real cases need provenance.repo, provenance.pr, and provenance.fix_commit")
+		if ref := validateRealProvenance(c, path); ref != nil {
+			return ref
 		}
+	}
+	return nil
+}
+
+// validateRealProvenance requires the origin every real case names. The later
+// fix commit is required only where a defect was fixed: a clean control is a
+// merged PR nothing had to repair, so it has none to name.
+func validateRealProvenance(c *core.CorpusCase, path string) *core.RefusalError {
+	if strings.TrimSpace(c.Provenance.Repo) == "" || c.Provenance.PR == nil {
+		return invalid(path, "real cases need provenance.repo and provenance.pr")
+	}
+	if c.Kind != kindControl && strings.TrimSpace(c.Provenance.FixCommit) == "" {
+		return invalid(path, "real bug cases need provenance.fix_commit (the commit that fixed the defect)")
 	}
 	return nil
 }

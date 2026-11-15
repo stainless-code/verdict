@@ -1,0 +1,14 @@
+{
+  "schema_version": "1",
+  "id": "urfave-cli-2415-clean-textflag",
+  "kind": "control",
+  "language": "go",
+  "provenance": {
+    "kind": "real",
+    "repo": "urfave/cli",
+    "pr": 2415,
+    "source": "PR #2415 head d0d280f7f83d6a1d96afc8b4ff6d517032dc7f87 over base 1305a08200f7c4d873e28bd2bbad1ff257c6cfc4",
+    "note": "clean control: no commit after the reviewed head touches any line this PR added (the diff from the head to main overlaps none of its added line ranges), and no fix or revert names it"
+  },
+  "bugs": []
+}

@@ -116,7 +116,8 @@ One case, one manifest, published as
   commit (`provenance.repo`, `provenance.pr`, `provenance.fix_commit`), plus
   the reviewed head (`provenance.source` may carry the fetch command or
   URL). The ground truth is the defect fixed by that commit, at the line it
-  occupied in the reviewed head.
+  occupied in the reviewed head. A real clean control names the repository
+  and PR and omits `fix_commit`, which nothing could name.
 - At least one bug is required. Ground truth is file + line + kind +
   severity; `note` says why the line is a defect. A bug that cannot be
   pointed at a line is not a corpus case.
@@ -716,10 +717,13 @@ claim to cite; keep unmeasured equivalence wording softened or removed.
 
 `kind: "control"` records a clean change with `bugs: []`. Its provenance
 still identifies a `seeded` or `real` origin. Null or nonempty ground truth
-is refused for a control; bug cases still require at least one defect.
-Every finding on a control is a false positive. Recall has no denominator
+is refused for a control; bug cases still require at least one defect. A
+real control names `provenance.repo` and `provenance.pr` and carries no
+`fix_commit`: a clean change is one nothing had to repair. Every finding on
+a control is a false positive. Recall has no denominator
 and renders `null`. The two seeded clean cases, `control-comment` and
-`control-rename`, are **not a model-quality claim**.
+`control-rename`, are **not a model-quality claim**; a real control is the
+one that gives `control_fp_rate` a denominator.
 
 ## Ordered sampling
 

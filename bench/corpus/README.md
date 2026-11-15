@@ -69,6 +69,33 @@ narrower than every anchor's hunk or no fake output names a bug.
 5. Run `./evals/one.sh bench-corpus` and update the goldens if the new case
    changes the measured rates.
 
+## Adding a real case
+
+A real case is one merged PR at the head a review would have seen, plus the
+later commit that deleted its defect; a real control is the same without a
+defect. It carries no fixtures and no snapshot tree, because the repository
+at the recorded head is the tree:
+
+```
+bench/corpus/<repo>-<pr>-<slug>/
+  case.json                 # kind: real (or control), provenance.repo/.pr/.fix_commit
+  full.diff                 # git diff <base> <reviewed head>, verbatim
+  hunks.tsv                 # the fetch-time index of that diff
+```
+
+- `provenance.source` names the reviewed head and base SHA, `provenance.fix_commit`
+  is the full URL of the later fix, and a control omits it: it has no defect
+  that was fixed.
+- `bugs[]` ground truth is a line of the reviewed head inside one of the
+  diff's hunks (the added line itself, or the statement the fix deletes), with
+  `kind`, `severity`, and the `keywords` a reviewer would use. A fix that also
+  shows the call site lists it in `also_lines`.
+- No `snapshots/` and no `agents/`: `TestSeededDiffApplies` skips a real case
+  (its applied diff is proven by the repository it came from), and the
+  `bench-corpus` eval records bundles only for cases with fixture outputs, so a
+  real case never enters the hermetic rates. Real cases are scored by live runs
+  under `.verdict/state/`, as `docs/benchmark.md` §2 describes.
+
 Do not edit `skills/verdict/schemas/corpus.schema.json` by hand; run `make schemas`.
 
 The operator runbook for real PRs, real agents, cost estimates, and
