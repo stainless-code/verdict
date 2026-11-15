@@ -537,6 +537,7 @@ func TestCategoryVocabulary(t *testing.T) {
 		{"injection", core.CorpusBug{Kind: "injection"}, "Pass name as a query argument instead of formatting the SQL.", true},
 		{"kind text", core.CorpusBug{Kind: "off-by-one"}, "This is an off by one in the bound.", true},
 		{"case keyword", core.CorpusBug{Kind: "custom-kind", Keywords: []string{"cache key"}}, "Two requests share a cache key.", true},
+		{"sentence opens with the keyword", core.CorpusBug{Kind: "custom-kind", Keywords: []string{"empty positional"}}, "Empty positional: the loop breaks before the boundary check.", true},
 		{"wrong defect", core.CorpusBug{Kind: "off-by-one"}, "Consider renaming this loop variable.", false},
 		{"glued word", core.CorpusBug{Kind: "race"}, "This brace style is inconsistent.", false},
 		{"generic auth word", core.CorpusBug{Kind: "auth-bypass"}, "Rename the admin variable to match its role.", false},
@@ -547,7 +548,7 @@ func TestCategoryVocabulary(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := namesDefect(normalize(tc.text), &tc.bug); got != tc.want {
+			if got := namesDefect(tc.text, &tc.bug); got != tc.want {
 				t.Errorf("namesDefect(%q, %s) = %v, want %v", tc.text, tc.bug.Kind, got, tc.want)
 			}
 		})

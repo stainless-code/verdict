@@ -95,11 +95,13 @@ bench/corpus/<repo>-<pr>-<slug>/
   diff's hunks (the added line itself, or the statement the fix deletes), with
   `kind`, `severity`, and the `keywords` a reviewer would use. A fix that also
   shows the call site lists it in `also_lines`.
-- A keyword must name the defect in words. Validation refuses one that the
-  case's own `full.diff` spells (case-insensitively, as a whole identifier or
-  word), because grading on the patch's vocabulary is a free pass: a finding
-  that says "`StopOnNthArg` is a new field" names the change, not the bug, and
-  a keyword lifted from the diff grades it as a real report.
+- A keyword must name the defect in words. Validation refuses a phrase the
+  case's own `full.diff` spells (case-insensitively, at a word start,
+  including as the prefix of a longer identifier or one part of a split or
+  spaced selector), whether the phrase is a keyword, the bug's `kind`, or its
+  category vocabulary, because grading on the patch's vocabulary is a free
+  pass: a finding that says "`StopOnNthArg` is a new field" names the change,
+  not the bug, and a keyword lifted from the diff grades it as a real report.
 - The ground-truth `line` must be a line the diff **adds**. A context line is
   code the diff carries without marking: a tool-free reviewer reading only the
   added lines has no fair chance at it, so validation refuses an anchor the

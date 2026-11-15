@@ -22,9 +22,44 @@ const guardDiff = `diff --git a/help.go b/help.go
  	return nil
 `
 
+// selectorDiff is a patch whose only mention of the selector is the dotted
+// form, so a keyword that is one of its parts is spelled only as a part.
+const selectorDiff = `diff --git a/command.go b/command.go
+--- a/command.go
++++ b/command.go
+@@ -410,1 +410,4 @@ func run() error {
++	if cmd.Name == helpName {
++		return nil
++	}
+ 	return cmd.Run()
+`
+
+// nilCheckDiff carries a category phrase in a comment, the shape that let a
+// nil-deref case grade the diff's own words.
+const nilCheckDiff = `diff --git a/session.go b/session.go
+--- a/session.go
++++ b/session.go
+@@ -50,2 +50,3 @@ func load(id string) *Session {
++	// add a nil check before the lookup
++	s := lookup(id)
+ 	return s
+`
+
+// kindPhraseDiff carries a bug's kind in space form, which names the defect
+// without any of the case's keywords.
+const kindPhraseDiff = `diff --git a/parse.go b/parse.go
+--- a/parse.go
++++ b/parse.go
+@@ -10,1 +10,3 @@ func parse() {
++	// validation bypass: the required flag is never checked
++	run(name)
+ 	return
+`
+
 // TestCheckDiffRefusesDiffVocabulary pins the vocabulary guard from both
-// sides: a keyword the diff spells is refused, and a keyword that merely
-// shares letters with an identifier is kept.
+// sides: a phrase the diff spells as a word, a selector part, or a longer
+// identifier's prefix is refused, and a phrase that only shares letters inside
+// an identifier is kept.
 func TestCheckDiffRefusesDiffVocabulary(t *testing.T) {
 	for _, tc := range keywordGuardRows {
 		t.Run(tc.name, func(t *testing.T) { checkGuardRow(t, tc) })
@@ -43,7 +78,7 @@ func TestCheckDiffRefusesAContextAnchor(t *testing.T) {
 // and a kept one must survive untouched.
 func checkGuardRow(t *testing.T, tc *guardRow) {
 	t.Helper()
-	ref := CheckDiff(guardManifest(t, tc), []byte(guardDiff), "case.json")
+	ref := CheckDiff(guardManifest(t, tc), []byte(tc.diffText()), "case.json")
 	if tc.refuse == "" {
 		if ref != nil {
 			t.Fatalf("refused %v, want the case kept", ref)
@@ -62,18 +97,34 @@ func checkGuardRow(t *testing.T, tc *guardRow) {
 type guardRow struct {
 	name     string
 	kind     string
+	bugKind  string
+	diff     string
+	path     string
 	refuse   string
 	keywords []string
 	also     []int
 	line     int
 }
 
+func (r *guardRow) diffText() string {
+	if r.diff == "" {
+		return guardDiff
+	}
+	return r.diff
+}
+
 var keywordGuardRows = []*guardRow{
 	{name: "identifier, any case", refuse: "stoponntharg", keywords: []string{"early return", "stoponntharg"}, line: 93},
 	{name: "selector", refuse: "cmd.name", keywords: []string{"cmd.name", "on the boundary"}, line: 93},
+	{name: "split selector", refuse: "\"cmd\"", diff: selectorDiff, path: "command.go", keywords: []string{"cmd", "name"}, line: 410},
+	{name: "split selector field", refuse: "\"name\"", diff: selectorDiff, path: "command.go", keywords: []string{"name"}, line: 410},
+	{name: "spaced selector", refuse: "\"cmd .Name\"", keywords: []string{"cmd .Name"}, line: 93},
+	{name: "prefix of a longer identifier", refuse: "\"help\"", diff: selectorDiff, path: "command.go", keywords: []string{"help"}, line: 410},
+	{name: "inside a longer identifier", keywords: []string{"ntharg"}, line: 93},
 	{name: "a word the diff comments", refuse: "empty source", keywords: []string{"empty source", "thrown away"}, line: 93},
-	{name: "letters inside a longer identifier", keywords: []string{"help", "ntharg"}, line: 93},
 	{name: "prose the diff never spells", keywords: []string{"the check runs too late", "boundary check", "swallowed"}, line: 93},
+	{name: "category phrase the diff comments", refuse: "\"nil check\"", bugKind: "nil-deref", diff: nilCheckDiff, path: "session.go", keywords: []string{"dereference before the lookup"}, line: 50},
+	{name: "kind phrase the diff comments", refuse: "\"validation bypass\"", diff: kindPhraseDiff, path: "parse.go", keywords: []string{"the exemption ignores the required flag"}, line: 10},
 	{name: "seeded case, its own diff", kind: "seeded", keywords: []string{"stoponntharg"}, line: 93},
 	{name: "control, no bugs", kind: "control", keywords: []string{"stoponntharg"}, line: 93},
 }
@@ -113,6 +164,12 @@ func guardManifest(t *testing.T, row *guardRow) []byte {
 	bug := map[string]any{
 		"path": "help.go", "line": line, "kind": "validation-bypass",
 		"severity": "important", "keywords": row.keywords,
+	}
+	if row.path != "" {
+		bug["path"] = row.path
+	}
+	if row.bugKind != "" {
+		bug["kind"] = row.bugKind
 	}
 	if len(row.also) > 0 {
 		bug["also_lines"] = row.also

@@ -298,14 +298,18 @@ func CheckDiff(raw, diff []byte, path string) *core.RefusalError {
 	return unaddedAnchor(&c, diff, path)
 }
 
-// unusableKeyword names the first keyword the diff spells, if any.
+// unusableKeyword names the first defect phrase the diff spells, if any: a
+// keyword, the bug's kind, or a phrase from its published category. Each one
+// names the defect in grading, so each one lifted from the patch is the same
+// free pass.
 func unusableKeyword(c *core.CorpusCase, diff []byte, path string) *core.RefusalError {
+	text := normalize(string(diff))
 	for i := range c.Bugs {
-		for _, keyword := range c.Bugs[i].Keywords {
-			if keywordInDiff(diff, keyword) {
+		for _, phrase := range defectPhrases(&c.Bugs[i]) {
+			if containsPhrase(text, normalize(phrase)) {
 				return invalid(path, fmt.Sprintf(
-					"bug %d keyword %q is spelled by the case's own full.diff; "+
-						"name the defect in words instead of reusing the diff's identifiers", i+1, keyword))
+					"bug %d phrase %q is spelled by the case's own full.diff; "+
+						"name the defect in words instead of reusing the diff's words", i+1, phrase))
 			}
 		}
 	}
@@ -427,44 +431,6 @@ func atoi(s string) int {
 		n = n*decimalBase + int(s[i]-'0')
 	}
 	return n
-}
-
-// keywordInDiff reports whether one keyword occurs in the diff as a whole
-// identifier: no identifier byte may continue it on either side, so "help"
-// stays clear of "helpName" while "cmd.name" still finds "cmd.Name".
-func keywordInDiff(diff []byte, keyword string) bool {
-	return boundedOccurrence(strings.ToLower(string(diff)), strings.ToLower(strings.TrimSpace(keyword)))
-}
-
-// boundedOccurrence scans haystack for needle at an identifier boundary.
-func boundedOccurrence(haystack, needle string) bool {
-	if needle == "" {
-		return false
-	}
-	for from := 0; from <= len(haystack)-len(needle); {
-		i := strings.Index(haystack[from:], needle)
-		if i < 0 {
-			return false
-		}
-		at := from + i
-		if boundedAt(haystack, at, len(needle)) {
-			return true
-		}
-		from = at + 1
-	}
-	return false
-}
-
-// boundedAt reports whether the span at..at+n stands alone in s.
-func boundedAt(s string, at, n int) bool {
-	end := at + n
-	return (at == 0 || !identByte(s[at-1])) && (end == len(s) || !identByte(s[end]))
-}
-
-// identByte is a byte that could continue a Go identifier: a letter, a digit,
-// the underscore, and the dot that joins a selector.
-func identByte(b byte) bool {
-	return 'a' <= b && b <= 'z' || 'A' <= b && b <= 'Z' || '0' <= b && b <= '9' || b == '_' || b == '.'
 }
 
 // Tolerance reads the manifest's line window (default 1).
@@ -696,8 +662,10 @@ func missReason(window []int, text string, bugs []core.CorpusBug, used []bool) s
 
 // namesDefect reports whether text names the bug's defect: its kind in hyphen
 // or space form, a phrase the kind's category answers to, or a phrase the case
-// pins as a keyword.
+// pins as a keyword. The text is normalized like the phrases, so a phrase that
+// opens a sentence ("Empty positional: ...") still matches its lower-case form.
 func namesDefect(text string, b *core.CorpusBug) bool {
+	text = normalize(text)
 	for _, phrase := range defectPhrases(b) {
 		if containsPhrase(text, normalize(phrase)) {
 			return true
@@ -771,9 +739,19 @@ func containsPhrase(text, phrase string) bool {
 	return false
 }
 
-// normalize lowers and folds whitespace so a phrase matches across a wrap.
+// normalize lowers, folds whitespace, and trims the spaces a writer may put
+// around a selector dot, so "cmd .Name" and "cmd.Name" are one phrase.
 func normalize(s string) string {
-	return strings.Join(strings.Fields(strings.ToLower(s)), " ")
+	return foldDots(strings.Join(strings.Fields(strings.ToLower(s)), " "))
+}
+
+// foldDots trims the whitespace around each dot.
+func foldDots(s string) string {
+	parts := strings.Split(s, ".")
+	for i := range parts {
+		parts[i] = strings.TrimSpace(parts[i])
+	}
+	return strings.Join(parts, ".")
 }
 
 // wordByte is the lower-case letter or digit a phrase may not be glued to.

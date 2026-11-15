@@ -26,9 +26,10 @@ deliberately simple and published:
   and its text names that bug's defect. A defect is named by its `kind` in
   hyphen or space form (`off-by-one`, `off by one`), a phrase from the
   published category vocabulary for that kind (see below), or a phrase from
-  the bug's optional `keywords`. Matching is case-insensitive and
-  whitespace-folded, and a phrase must start a word, so `race` does not
-  match inside `trace`.
+  the bug's optional `keywords`. The finding text and every phrase are
+  normalized the same way — lower-cased, whitespace-folded, and with the
+  spaces around a selector dot removed — and a phrase must start a word, so
+  `race` does not match inside `trace`.
 - A finding that matches through an alternate anchor counts the same bug:
   one bug is one true positive no matter how many of its lines a review
   names, and the reported match keeps the primary line.
@@ -131,6 +132,11 @@ One case, one manifest, published as
   and line window, but a keyword nobody would write turns true positives
   into false ones. The bug's `kind` and its category vocabulary always name
   it too, so a case with no keywords is matched on `kind` and category.
+  Validation refuses any of those phrases — keyword, `kind`, or category —
+  that the case's own `full.diff` spells: at a word start, including as the
+  prefix of a longer identifier (`help` in `helpName`) and as one part of a
+  split or spaced selector (`cmd`, `name`, or `cmd .Name` against
+  `cmd.Name`). The patch's own vocabulary is not the reviewer's.
 - `line_tolerance` (optional, default 1) is the window in lines. Keep it
   short of the far end of the new-side hunk that shows the bug: the corpus
   test refuses a case whose window covers the whole hunk.
