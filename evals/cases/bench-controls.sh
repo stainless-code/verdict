@@ -35,4 +35,32 @@ else
   bad "Markdown render differs from the published artifact"
 fi
 
+# Adjudication recomputes the report from its own sigs: strict figures stay,
+# the one recorded finding moves adjudicated precision by exactly 1 of 9.
+sig="$(jq -r 'first(.bundles[] | select(.case=="off-by-one") | .calibrate.outcomes[]
+  | select(.result=="false-positive") | .sig)' "$report")"
+record="$EVAL_SANDBOX/adjudication.json"
+jq -n --arg run "$(jq -r .run_id "$report")" --arg sig "$sig" '{
+  schema_version: "1", run_id: $run,
+  entries: [{case: "off-by-one", sample: 1, sig: $sig, verdict: "real-unlisted",
+    adjudicator: "eval", rationale: "`renderRows` shadows the package rows slice the file still builds; the call site reads the wrong one."}]}' \
+  >"$record"
+adjudicated="$EVAL_SANDBOX/benchmark-adjudicated.json"
+if go run ./bench/runner -render "$report" -adjudication "$record" -out "$adjudicated" \
+  >"$EVAL_SANDBOX/benchmark-adjudicated.md" 2>"$EVAL_SANDBOX/adjudication.log"; then
+  good "an adjudication record recomputes the publication without a model"
+else
+  cat "$EVAL_SANDBOX/adjudication.log"
+  bail "adjudicated render failed"
+fi
+assert_json_field "strict precision is untouched by adjudication" "0.6667" '.trend_corpus.precision' "$adjudicated"
+assert_json_field "strict recall is untouched by adjudication" "1" '.trend_corpus.recall' "$adjudicated"
+assert_json_field "one real-unlisted finding raises adjudicated precision by 1/9" "0.7778" '.adjudication.precision_adjudicated' "$adjudicated"
+assert_json_field "adjudicated recall keeps the strict bug count" "1" '.adjudication.recall_adjudicated' "$adjudicated"
+assert_json_field "the record's digest is published" "64" '.adjudication.sha256 | length' "$adjudicated"
+assert_file_grep "the Markdown shows strict and adjudicated precision side by side" \
+  "$EVAL_SANDBOX/benchmark-adjudicated.md" '^| precision | 0.6667 | 0.7778 |$'
+assert_file_grep "the Markdown shows strict and adjudicated recall side by side" \
+  "$EVAL_SANDBOX/benchmark-adjudicated.md" '^| recall | 1.0000 | 1.0000 |$'
+assert_json_field "the strict publication carries no adjudication block" "absent" '.adjudication.precision_adjudicated // "absent"' "$report"
 eval_end

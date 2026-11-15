@@ -18,22 +18,57 @@ const (
 	jsonNullValue       = "null"
 )
 
-func renderFile(path string, w io.Writer) error {
-	raw, err := jq.CappedFile(path, maxPublicationBytes)
+// renderPublication re-renders a published report, applying one adjudication
+// record when the operator names it. Nothing here launches an agent: it reads
+// the JSON, reclassifies, and writes the Markdown (and, with -out, the
+// adjudicated report beside it).
+func renderPublication(cfg *Config, w io.Writer) error {
+	rep, err := readPublication(cfg.Render)
 	if err != nil {
-		return jq.NewErrf("publication: %s", err)
+		return err
 	}
-	var rep Report
-	if err := json.Unmarshal(raw, &rep); err != nil {
-		return jq.NewErrf("publication JSON: %s", err)
+	if err := applyRecord(rep, cfg.Adjudication); err != nil {
+		return err
 	}
-	if rep.SchemaVersion != "1" {
-		return jq.NewErr("publication schema_version must be 1")
+	if cfg.Out != "" {
+		if err := rep.write(cfg.Out); err != nil {
+			return err
+		}
 	}
-	if _, err := io.WriteString(w, renderMarkdown(&rep)); err != nil {
+	if _, err := io.WriteString(w, renderMarkdown(rep)); err != nil {
 		return jq.NewErrf("render: %s", err)
 	}
 	return nil
+}
+
+// applyRecord lifts one record onto the report; an empty path leaves the
+// publication strict-only.
+func applyRecord(rep *Report, path string) error {
+	if path == "" {
+		return nil
+	}
+	adj, err := loadAdjudication(path, rep)
+	if err != nil {
+		return err
+	}
+	rep.Adjudication = adj
+	return nil
+}
+
+// readPublication parses the JSON a run wrote.
+func readPublication(path string) (*Report, error) {
+	raw, err := jq.CappedFile(path, maxPublicationBytes)
+	if err != nil {
+		return nil, jq.NewErrf("publication: %s", err)
+	}
+	var rep Report
+	if err := json.Unmarshal(raw, &rep); err != nil {
+		return nil, jq.NewErrf("publication JSON: %s", err)
+	}
+	if rep.SchemaVersion != "1" {
+		return nil, jq.NewErr("publication schema_version must be 1")
+	}
+	return &rep, nil
 }
 
 func renderMarkdown(rep *Report) string {
@@ -50,6 +85,7 @@ func renderMarkdown(rep *Report) string {
 		rep.SeverityWeights.Critical, rep.SeverityWeights.Important, rep.SeverityWeights.Informational)
 	renderFailedSamples(&out, rep)
 	renderMetricTable(&out, rep)
+	renderAdjudication(&out, rep)
 	renderSampleSpreads(&out, rep.Cases)
 	out.WriteString("\n## Commands\n\nArgv arrays preserve argument boundaries.\n\n```json\n")
 	for _, command := range rep.Commands {
@@ -93,6 +129,50 @@ func renderMetricTable(out *strings.Builder, rep *Report) {
 	fmt.Fprintf(out, "\nIncomplete first-k cohorts: %d.\n\n", rep.IncompleteCohorts)
 	fmt.Fprintf(out, "Cost USD: %s (n=%d/%d samples).  \nLatency seconds: %s (n=%d/%d samples).\n",
 		recordedValue(m.CostUSD), m.CostN, m.Samples, recordedValue(m.LatencyS), m.LatencyN, m.Samples)
+}
+
+// renderAdjudication prints the two figures side by side: the strict rate the
+// run measured and the rate its record reclassifies to. Without a record the
+// section is absent, so a report never borrows the strict value for it.
+func renderAdjudication(out *strings.Builder, rep *Report) {
+	adj := rep.Adjudication
+	if adj == nil {
+		return
+	}
+	var strict trendRates
+	if json.Unmarshal(rep.TrendCorpus, &strict) != nil {
+		strict = trendRates{}
+	}
+	out.WriteString("\n## Adjudication\n\n")
+	fmt.Fprintf(out, "Record: `%s` (sha256 `%s`), run %s. %d %s: %d real-unlisted, %d matches-ground-truth, %d false-positive.\n\n",
+		cell(adj.Record), cell(adj.SHA256), cell(adj.RunID), adj.Entries, entryWord(adj.Entries),
+		adj.RealUnlisted, adj.MatchesGroundTruth, adj.FalsePositives)
+	out.WriteString("<!-- prettier-ignore -->\n| Metric | Strict | Adjudicated |\n| --- | ---: | ---: |\n")
+	fmt.Fprintf(out, "| precision | %s | %s |\n", metricValue(strict.Precision), metricValue(adj.PrecisionAdjudicated))
+	fmt.Fprintf(out, "| recall | %s | %s |\n", metricValue(strict.Recall), metricValue(adj.RecallAdjudicated))
+	renderKeywordMisses(out, adj.KeywordMisses)
+}
+
+// renderKeywordMisses lists every finding a record called the ground-truth
+// defect the keywords missed: the case whose vocabulary the next corpus
+// version widens.
+func renderKeywordMisses(out *strings.Builder, misses []KeywordMiss) {
+	fmt.Fprintf(out, "\n### Keyword misses\n\n%d finding(s) named a ground-truth bug the case's keywords missed.\n\n", len(misses))
+	if len(misses) == 0 {
+		return
+	}
+	out.WriteString("<!-- prettier-ignore -->\n| Case | Sample | Finding | Bug |\n| --- | ---: | --- | --- |\n")
+	for _, m := range misses {
+		fmt.Fprintf(out, "| %s | %d | %s %s | %d %s |\n", cell(m.Case), m.Sample,
+			cell(m.Sig), cell(locator(m.Path, m.Line)), m.Bug, cell(locator(m.BugPath, m.BugLine)))
+	}
+}
+
+func entryWord(n int) string {
+	if n == 1 {
+		return "entry"
+	}
+	return "entries"
 }
 
 func renderSampleSpreads(out *strings.Builder, cases []CaseSpread) {

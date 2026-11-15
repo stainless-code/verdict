@@ -114,6 +114,12 @@ Cause: the run's `mine.json` predates the seed `signal` field, is unreadable, or
 
 Fix: re-mine the run in place with the same `--run` and window, then replay and score it again. Deleting the run directory is never required.
 
+## `bad-adjudication`
+
+Cause: an adjudication record is not a versioned per-run file the report can apply: unreadable or multi-document JSON, a schema_version other than `"1"`, an unknown key or verdict, a missing case/sample/sig/adjudicator, a rationale under 30 characters, a verdict that raises a figure without quoting the code in backticks, a `matches-ground-truth` rationale that does not quote the ground-truth note, a bug index the case does not have, a bug the strict run already matched, a finding outside the bug's window, or one finding or bug adjudicated twice.
+
+Fix: correct the named entry in the record and re-run `bench/runner -render <report> -adjudication <record>`. The record is separate from `case.json`, which adjudication never edits.
+
 ## `bad-approve`
 
 Cause: `--approve` is not a boolean.
