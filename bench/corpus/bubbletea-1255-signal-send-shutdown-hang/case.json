@@ -21,15 +21,15 @@
       "severity": "important",
       "keywords": [
         "blocks forever",
-        "no receiver left to read it",
         "program never exits",
-        "shutdown waits for the handler",
-        "send has no context guard",
-        "stuck in the send",
-        "shutdown never completes",
         "hangs the program on exit",
-        "handler blocked",
-        "hung on exit"
+        "hung on exit",
+        "shutdown never completes",
+        "shutdown hangs waiting for the handler",
+        "stuck in the send",
+        "never returns from the send",
+        "deadlocks the shutdown",
+        "send has no context guard"
       ],
       "note": "the handler writes the interrupt message straight onto the program's message channel with no way out; once the event loop has stopped nothing reads that channel, so the handler never returns, and shutdown waits for the handlers it started",
       "also_lines": [291]

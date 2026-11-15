@@ -20,17 +20,13 @@
       "kind": "shared-line-count",
       "severity": "important",
       "keywords": [
-        "one line count for both screens",
-        "count is shared between the two screens",
         "moves the cursor up by the wrong number of lines",
-        "stale lines left on screen",
-        "inline section is repainted at the wrong row",
-        "does not track the alt screen separately",
-        "count from the alt screen is used inline",
         "wrong number of lines to move up",
+        "repainted at the wrong row",
         "stale lines are left on screen",
+        "stale lines left on screen",
         "the section is not returned to its start",
-        "left over from the alt screen"
+        "applies the alt screen's count to the inline section"
       ],
       "note": "flush stores the frame's line count in the one counter both render modes read; entering the alt screen saves the cursor and leaving it restores that position, so the count left behind by an alt-screen frame is then applied to the inline section and the cursor is moved by the wrong amount",
       "also_lines": [259]

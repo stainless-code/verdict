@@ -20,16 +20,15 @@
       "kind": "serialized-batch",
       "severity": "important",
       "keywords": [
-        "runs the commands in the event loop",
         "blocks the event loop",
-        "executed one after another",
+        "blocking the event loop",
         "no longer runs concurrently",
-        "waits for a sibling that cannot start",
         "deadlocks instead of running them together",
+        "waits for a sibling that cannot start",
         "stalls while the command runs",
-        "commands are not run in parallel",
-        "executed serially",
-        "handed to the command handler"
+        "serializes what the batch should start at once",
+        "stalls every update and frame",
+        "the batch cannot overlap"
       ],
       "note": "go evaluates p.Send(cmd())'s argument in the goroutine that runs the statement, so each batch command runs inside the event loop, one after another, instead of being started concurrently by the command handler: a batch whose commands depend on each other deadlocks, and a slow command stalls every update and every frame",
       "also_lines": []

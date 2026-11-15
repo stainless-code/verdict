@@ -98,6 +98,93 @@ var keywordCases = []keywordCase{
 			"`StopOnNthArg` is a new field generated per parse; the count is tracked on the flag set.",
 		},
 	},
+	// The bubbletea rows are the sentences the curation probe measured, plus the
+	// shape a finding at the same line takes when it says nothing about the
+	// defect at all: a tracing request (the review that prompted these rows was
+	// "Add tracing for commands handed to the command handler"), a note about
+	// the plumbing, or a suggestion. None of them may grade as a defect report,
+	// which is why no keyword names a location or a mechanism on its own.
+	{
+		id: "bubbletea-1233-alt-screen-line-count",
+		passes: []string{
+			"This keeps one line count for both screens, so the inline section is repainted at the wrong row.",
+			"The count is shared between the two screens, so leaving the alt screen applies the alt screen's count to the inline section.",
+			"After the alt screen is left, the renderer moves the cursor up by the wrong number of lines.",
+			"Stale lines are left on screen because the inline section is not returned to its start.",
+			"flush does not track the alt screen separately, so the inline frame is repainted at the wrong row.",
+			"This is a shared line count defect.",
+		},
+		fails: []string{
+			"The line-skipping comparison reads the wrong slice, so an unchanged line is painted again anyway.",
+			"EraseScreenBelow is emitted even when the terminal width is still unknown.",
+			"The render buffer is compared before it is reset, so every line is always repainted.",
+			"repaint() leaves the cached width in place, so truncation uses a stale terminal width.",
+			"The queued message lines are dumped before the frame is painted, so they scroll away.",
+			"This line stores the number of new lines in the renderer's counter.",
+			"Add a comment explaining why the alt screen and inline modes share one counter.",
+		},
+	},
+	{
+		id: "bubbletea-1255-signal-send-shutdown-hang",
+		passes: []string{
+			"The handler blocks forever because the interrupt is written with no receiver left.",
+			"Once the event loop has stopped, the handler is stuck in the send and the program never exits.",
+			"shutdown hangs waiting for the handler, so shutdown never completes.",
+			"This send has no context guard, unlike Program.Send, so it hangs the program on exit.",
+			"A signal arriving during shutdown leaves the handler blocked and the program hung on exit.",
+			"This is a deadlock.",
+		},
+		fails: []string{
+			"InterruptMsg is returned before the final view is rendered, so the last frame is missing.",
+			"The signal handler is registered twice, so two notifiers race for the same signal.",
+			"ignoreSignals is read with a plain load, so a concurrent write is lost.",
+			"ErrInterrupted is not wrapped in ErrProgramKilled, so errors.Is fails for callers.",
+			"The handler stops listening after the first signal, so a second interrupt is ignored.",
+			"The handler writes the interrupt message to the program's message channel.",
+			"Add a log line naming which signal the handler received.",
+		},
+	},
+	{
+		id: "bubbletea-1276-exec-renderer-reset",
+		passes: []string{
+			"The line count no longer matches the screen, so the next frame is painted at the wrong row.",
+			"This throws away the renderer's state while the subprocess output is still on screen.",
+			"The cursor ends up in the wrong place after the command, and the view is duplicated.",
+			"Zeroing the count while the lines are still on screen duplicates the view below the subprocess output.",
+			"The program's own output is drawn below the child's, so the previous frame is never overwritten.",
+			"This is a line count desync.",
+		},
+		fails: []string{
+			"The subprocess inherits stderr instead of the program output, so the child errors are lost.",
+			"The callback runs in a goroutine, so a message can arrive after the program stopped.",
+			"ReleaseTerminal is called on the error path as well, so the terminal is restored twice.",
+			"The exec callback error is discarded, so a failing command looks successful.",
+			"The command stdin is never connected, so an interactive program sees EOF.",
+			"The subprocess runs before the renderer is reset for the next frame.",
+			"Add tracing around the exec callback to see when the subprocess finishes.",
+		},
+	},
+	{
+		id: "bubbletea-1463-batch-executed-in-event-loop",
+		passes: []string{
+			"This runs the commands in the event loop, so a batch no longer runs concurrently.",
+			"Each command is executed one after another, blocking the event loop while it runs.",
+			"A batch command that waits for a sibling that cannot start deadlocks instead of running them together.",
+			"The event loop stalls while the command runs, so updates and rendering stop.",
+			"Executing them one at a time serializes what the batch should start at once.",
+			"This is a serialized batch.",
+		},
+		fails: []string{
+			"The nested batch in a sequence is waited for with a WaitGroup, so the sequence blocks forever.",
+			"The command value is evaluated before the nil check, so a nil command panics.",
+			"The send happens from a goroutine, so messages can be delivered out of order.",
+			"The program context is not checked, so a cancelled program still runs the queued commands.",
+			"The batch message is not compacted, so nil commands are still passed to the channel.",
+			"Add tracing for commands handed to the command handler.",
+			"This loop hands each non-nil batch command to p.Send in a new goroutine.",
+			"Add a comment explaining that the commands in a batch are run one at a time.",
+		},
+	},
 }
 
 // TestCheckedInCorpusKeywordsGradeBothWays proves the shipped vocabulary both
