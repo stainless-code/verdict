@@ -460,7 +460,7 @@ func (st *state) merge() *core.RefusalError {
 		Repo: st.req.Repo, Pr: st.req.Pr, Cmd: "post", Controls: st.controls,
 		RequireCoverage: st.flags.RequireCoverage,
 		Run:             rs, MinSeverity: st.flags.MinSeverity,
-		RequireRigor: st.flags.RequireRigor,
+		RequireRigor: st.req.RequireRigor,
 		// A host that advertises no inline anchors sends none: the merge keeps
 		// every finding in the body instead of an anchor the host would refuse.
 		BodyOnlyAnchors: !caps.InlineAnchors,

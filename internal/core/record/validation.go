@@ -2,6 +2,8 @@ package recordcore
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
@@ -11,28 +13,24 @@ import (
 	"github.com/stainless-code/verdict/internal/validation"
 )
 
-// ValidationResult is what the shared merge read and applied: the exact-file
-// hash (nil when the pass was skipped), the per-verdict tally, the policy the
-// gate used, and the findings below their floor. post refuses on Violations
-// in gate mode; record only warns, so the store keeps its receipt.
-type ValidationResult struct { //nolint:govet // field order is the published property order
+// ValidationResult is what the shared merge read and applied: the receipt both
+// verbs store, plus the violations post refuses on in gate mode.
+type ValidationResult struct {
 	Hash       *string
-	Counts     core.ValidationCounts
 	Floors     core.RigorFloors
 	Mode       string
 	Violations []validation.Violation
+	Counts     core.ValidationCounts
 }
 
-// applyValidation ingests the optional validation.json and the trusted-base
-// rigor policy, applies the verdicts and floors to the merged entries, and
-// returns the receipt both verbs store. Running it in the shared merge keeps
-// findings.json and post.json describing the same pass.
+// applyValidation applies the optional validation.json and the trusted-base
+// policy in the shared merge, so findings.json and post.json describe one pass.
 func (st *state) applyValidation(in *MergeParams) (*ValidationResult, *core.RefusalError) {
 	policy, ref := st.rigorPolicy()
 	if ref != nil {
 		return nil, ref
 	}
-	if policy, ref = policy.WithRequireRigor(in.RequireRigor); ref != nil {
+	if ref = policy.WithRequireRigor(in.RequireRigor); ref != nil {
 		return nil, ref
 	}
 	file, hash, ref := validation.Load(st.dir, st.headFull, panelcore.Findings(st.review))
@@ -50,10 +48,8 @@ func (st *state) applyValidation(in *MergeParams) (*ValidationResult, *core.Refu
 	return out, nil
 }
 
-// rigorPolicy reads the policy from the trusted-base configuration the D1
-// snapshot carries: a head edit never moves the gate, and an absent file
-// keeps the built-in floor. A malformed base configuration refuses through
-// the one strict parser, never a second dialect.
+// rigorPolicy reads the policy from the base snapshot the D1 capture wrote, so
+// a head edit cannot move the gate.
 func (st *state) rigorPolicy() (validation.Policy, *core.RefusalError) {
 	raw, present := st.controls.ReadFile(config.ConfigPath)
 	if !present {
@@ -66,15 +62,10 @@ func (st *state) rigorPolicy() (validation.Policy, *core.RefusalError) {
 	return validation.PolicyFromConfig(cfg), nil
 }
 
-// applyVerdicts indexes the artifact by sig and applies each verdict to its
-// open finding, returning the tally. A result for a terminal finding warns
-// and is ignored: the validator judges candidates, never the store's history.
+// applyVerdicts applies each verdict to its open finding and returns the tally.
 func (st *state) applyVerdicts(file *core.ValidationFile, mode string) core.ValidationCounts {
 	var counts core.ValidationCounts
-	index := make(map[string]core.ValidationResult, len(file.Results))
-	for _, result := range file.Results {
-		index[result.Sig] = result
-	}
+	index := indexResults(file.Results)
 	for _, entry := range st.entries {
 		m, ok := entry.(*jq.Obj)
 		if !ok || m == nil || suppressionString(m, fieldStatus) != statusOpen {
@@ -86,21 +77,31 @@ func (st *state) applyVerdicts(file *core.ValidationFile, mode string) core.Vali
 			continue
 		}
 		delete(index, result.Sig)
-		st.applyValidationVerdict(m, result, mode, &counts)
+		st.applyValidationVerdict(m, &result, mode, &counts)
 	}
-	for _, result := range file.Results {
-		if _, open := index[result.Sig]; open {
-			st.warn(fmt.Sprintf("validation result for %s ignored: no open finding carries it",
-				readcommon.ShortSHA(result.Sig)))
-		}
-	}
+	st.warnUnmatched(index)
 	return counts
 }
 
-// applyVerdict applies one judgement: a downgrade moves the severity exactly
-// one rank with a history event, a rejection withholds the finding in gate
-// mode (the D2 receipt, status untouched) and only warns in advisory mode.
-func (st *state) applyValidationVerdict(m *jq.Obj, result core.ValidationResult, mode string, counts *core.ValidationCounts) {
+func indexResults(results []core.ValidationResult) map[string]core.ValidationResult {
+	index := make(map[string]core.ValidationResult, len(results))
+	for _, result := range results {
+		index[result.Sig] = result
+	}
+	return index
+}
+
+// warnUnmatched names every result no open finding carried.
+func (st *state) warnUnmatched(index map[string]core.ValidationResult) {
+	for _, sig := range slices.Sorted(maps.Keys(index)) {
+		st.warn(fmt.Sprintf("validation result for %s ignored: no open finding carries it",
+			readcommon.ShortSHA(sig)))
+	}
+}
+
+// applyValidationVerdict applies one judgement: a downgrade moves the severity
+// one rank with a history event, and a rejection withholds only in gate mode.
+func (st *state) applyValidationVerdict(m *jq.Obj, result *core.ValidationResult, mode string, counts *core.ValidationCounts) {
 	short := readcommon.ShortSHA(result.Sig)
 	switch result.Verdict {
 	case core.ValidationConfirmed:
@@ -122,30 +123,16 @@ func (st *state) applyValidationVerdict(m *jq.Obj, result core.ValidationResult,
 	}
 }
 
-// applyFloors applies the policy: advisory mode only names what a gate would
-// do, because a downgrade moves a stored severity and can change whether a
-// trusted requirement blocks. Gate mode downgrades the critical findings whose
-// rung still clears the important floor and returns the rest for post to
-// refuse; record warns them, since it publishes nothing.
+// applyFloors applies the policy. Advisory mode only names what a gate would
+// do: a downgrade moves a stored severity, which can change whether a trusted
+// requirement blocks the post.
 func (st *state) applyFloors(policy validation.Policy) []validation.Violation {
 	downgrades, violations := validation.Floors(st.entries, policy)
 	if policy.Mode != core.ValidationGate {
-		for _, v := range append(downgrades, violations...) {
-			st.warn(fmt.Sprintf("rigor %s below %s floor %s on %s (advisory)%s",
-				v.Rigor, v.Severity, v.Floor, readcommon.ShortSHA(v.Sig), downgradeNote(v, downgrades)))
-		}
+		st.warnAdvisoryFloors(downgrades, violations)
 		return nil
 	}
-	for _, v := range downgrades {
-		if m := findEntry(st.entries, v.Sig); m != nil {
-			m.Set(fieldSeverity, "important")
-			m.Set(fieldHistory, appendHistory(m, jq.NewObj(fieldAt, st.now, fieldEvent, "validation",
-				fieldActor, "validator", "note", fmt.Sprintf(
-					"evidence %s below critical floor %s; downgraded to important", v.Rigor, v.Floor))))
-		}
-		st.warn(fmt.Sprintf("rigor %s below critical floor %s on %s; downgraded to important",
-			v.Rigor, v.Floor, readcommon.ShortSHA(v.Sig)))
-	}
+	st.applyFloorDowngrades(downgrades)
 	if st.cmd == "post" {
 		return violations
 	}
@@ -156,7 +143,30 @@ func (st *state) applyFloors(policy validation.Policy) []validation.Violation {
 	return nil
 }
 
-// downgradeNote marks an advisory line whose finding a gate would downgrade.
+// warnAdvisoryFloors reports what a gate would do, moving nothing.
+func (st *state) warnAdvisoryFloors(downgrades, violations []validation.Violation) {
+	for _, v := range append(downgrades, violations...) {
+		st.warn(fmt.Sprintf("rigor %s below %s floor %s on %s (advisory)%s",
+			v.Rigor, v.Severity, v.Floor, readcommon.ShortSHA(v.Sig), downgradeNote(v, downgrades)))
+	}
+}
+
+// applyFloorDowngrades moves each critical that still clears the important
+// floor down to important.
+func (st *state) applyFloorDowngrades(downgrades []validation.Violation) {
+	for _, v := range downgrades {
+		if m := findEntry(st.entries, v.Sig); m != nil {
+			m.Set(fieldSeverity, "important")
+			m.Set(fieldHistory, appendHistory(m, jq.NewObj(fieldAt, st.now, fieldEvent, "validation",
+				fieldActor, "validator", "note", fmt.Sprintf(
+					"evidence %s below critical floor %s; downgraded to important", v.Rigor, v.Floor))))
+		}
+		st.warn(fmt.Sprintf("rigor %s below critical floor %s on %s; downgraded to important",
+			v.Rigor, v.Floor, readcommon.ShortSHA(v.Sig)))
+	}
+}
+
+// downgradeNote marks an advisory line a gate would downgrade.
 func downgradeNote(v validation.Violation, downgrades []validation.Violation) string {
 	for _, d := range downgrades {
 		if d.Sig == v.Sig {
@@ -166,7 +176,7 @@ func downgradeNote(v validation.Violation, downgrades []validation.Violation) st
 	return ""
 }
 
-// openCount counts the findings a skipped validation pass would have judged.
+// openCount counts the findings a skipped pass would have judged.
 func openCount(entries []any) int {
 	n := 0
 	for _, entry := range entries {
@@ -177,8 +187,10 @@ func openCount(entries []any) int {
 	return n
 }
 
-// entryObj lifts one entry to its object, or nil.
 func entryObj(entry any) *jq.Obj {
-	m, _ := entry.(*jq.Obj)
+	m, ok := entry.(*jq.Obj)
+	if !ok {
+		return nil
+	}
 	return m
 }

@@ -3,10 +3,9 @@ package postcore
 import (
 	"strings"
 
-	"github.com/stainless-code/verdict/internal/readcommon"
-
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
+	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/validation"
 )
 

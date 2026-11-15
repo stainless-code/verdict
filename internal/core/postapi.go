@@ -26,10 +26,6 @@ type PostFlags struct {
 	// through.
 	AllowSecretValues bool
 	Provenance        bool
-	// RequireRigor names the per-tier evidence floors this invocation
-	// demands (`critical=walked`). A named tier also gates: below-floor
-	// findings refuse rigor-below-floor unless --force records the bypass.
-	RequireRigor []string
 }
 
 // PostSummary records the planned (on dry-run) or executed (on real post)
@@ -48,10 +44,14 @@ type PostSummary struct { //nolint:govet // field order is the published propert
 // flag, and the warnings the adapter already accumulated (prefs).
 type PostRequest struct { //nolint:govet // field grouping documents the request surface
 	ReadRequest
-	Flags     PostFlags
-	Effective Effective
-	JSONMode  bool
-	Warnings  []string
+	Flags PostFlags
+	// RequireRigor names the per-tier evidence floors this invocation
+	// demands (`critical=walked`). A named tier also gates: below-floor
+	// findings refuse rigor-below-floor unless --force records the bypass.
+	RequireRigor []string
+	Effective    Effective
+	JSONMode     bool
+	Warnings     []string
 }
 
 // PostResponse carries the post outcome: the envelope identity, the typed
@@ -93,7 +93,7 @@ type PostData struct { //nolint:govet // field order is the published property o
 	Coverage            *CoverageSummary         `anyOf:"null"            json:"coverage,omitempty"     optional:"true"`
 	Withheld            *WithheldSummary         `anyOf:"null"            json:"withheld,omitempty"     optional:"true"`
 	Summary             *PostSummary             `anyOf:"null"            json:"summary,omitempty"      optional:"true"`
-	Validation          *ValidationData          `anyOf:"null"            json:"validation,omitempty"  optional:"true"`
+	Validation          *ValidationData          `anyOf:"null"            json:"validation,omitempty"   optional:"true"`
 	ItemsRaw            []any                    `json:"-"`
 	ReviewRaw           any                      `json:"-"`
 	ProvenanceEnabled   bool                     `json:"-"`
@@ -107,7 +107,7 @@ type PostData struct { //nolint:govet // field order is the published property o
 type ValidationData struct { //nolint:govet // field order is the published property order
 	Hash   *string          `json:"hash"`
 	Counts ValidationCounts `json:"counts"`
-	Mode   string           `enum:"warn|gate"        json:"mode"`
+	Mode   string           `enum:"warn|gate" json:"mode"`
 	Floors RigorFloors      `json:"floors"`
 }
 
@@ -171,13 +171,13 @@ type Post struct { //nolint:govet // field order is the published property order
 	// ValidationHash is the SHA-256 of the validation.json this post applied,
 	// null when the pass was skipped; the counts, mode, and floors prove what
 	// the gate read.
-	ValidationHash   *string          `json:"validation_hash"                     optional:"true"`
-	ValidationCounts ValidationCounts `json:"validation_counts"                   optional:"true"`
-	ValidationMode   string           `enum:"warn|gate"        json:"validation_mode" optional:"true"`
-	RigorFloors      RigorFloors      `json:"rigor_floors"                        optional:"true"`
-	Coverage         *CoverageSummary `anyOf:"null"                            json:"coverage,omitempty"          optional:"true"`
-	ChunkCoverage    *ChunkCoverage   `anyOf:"null"                            json:"chunk_coverage,omitempty"    optional:"true"`
-	Summary          *PostSummary     `anyOf:"null"                            json:"summary,omitempty"           optional:"true"`
+	ValidationHash   *string          `json:"validation_hash"   optional:"true"`
+	ValidationCounts ValidationCounts `json:"validation_counts" optional:"true"`
+	ValidationMode   string           `enum:"warn|gate"         json:"validation_mode"          optional:"true"`
+	RigorFloors      RigorFloors      `json:"rigor_floors"      optional:"true"`
+	Coverage         *CoverageSummary `anyOf:"null"             json:"coverage,omitempty"       optional:"true"`
+	ChunkCoverage    *ChunkCoverage   `anyOf:"null"             json:"chunk_coverage,omitempty" optional:"true"`
+	Summary          *PostSummary     `anyOf:"null"             json:"summary,omitempty"        optional:"true"`
 	ReviewRaw        any              `json:"-"`
 }
 
@@ -191,10 +191,9 @@ type FloorScope struct {
 }
 
 // ForcedPost is one explicit --force bypass recorded in post.json: the fired
-// guard plus the prior bundle and head when a same-patch sibling refused.
-// Sigs names the findings a rigor floor refused, so the receipt proves which
-// claims the operator published anyway.
-type ForcedPost struct { //nolint:govet // field order is the published property order
+// guard plus the prior bundle and head when a same-patch sibling refused, and
+// the sigs a rigor floor refused.
+type ForcedPost struct {
 	Reason         string   `json:"reason"`
 	PatchID        *string  `json:"patch_id,omitempty"`
 	PreviousBundle *string  `json:"previous_bundle,omitempty"`

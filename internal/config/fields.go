@@ -24,7 +24,7 @@ var (
 		keyDisplayFloor, keyPostFloor,
 	}
 	kbPolicyFields     = []string{"min_judged", "max_fp_rate", "max_chars"}
-	rigorPolicyFields  = []string{"mode", "critical", "important", "informational"}
+	rigorPolicyFields  = append([]string{"mode"}, severityEnum...)
 	requirementsFields = []string{"block_clauses", "require_checks", "require_bind"}
 	clauseFields       = []string{"name", "threshold", "categories", "paths"}
 	scopeFields        = []string{"name", "include", "exclude", "profile", "defaults", "requirements"}

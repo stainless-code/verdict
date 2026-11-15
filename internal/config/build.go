@@ -149,12 +149,11 @@ func requiredString(obj map[string]any, key, path, code string) (string, *core.R
 	return val, nil
 }
 
-// rungEnum is the published evidence rung vocabulary, strongest last; a
-// floor names one of these and ranks by it.
+// rungEnum is the published evidence rung vocabulary, strongest last.
 var rungEnum = []string{"said", "pointed", "walked", "ran", "reproduced"}
 
-// buildRigorPolicy validates the repository's publication floor: the mode
-// and the per-tier evidence rungs. Absent keys keep the built-in policy.
+// buildRigorPolicy reads the publication floor; absent keys keep the
+// built-in policy.
 func buildRigorPolicy(raw any, path string) (*core.ConfigRigorPolicy, *core.RefusalError) {
 	obj, ref := asObject(raw, path)
 	if ref != nil {

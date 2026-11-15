@@ -145,6 +145,13 @@ const coverageSummaryType = "coverageSummary"
 // is published under on post and record.
 const chunkCoverageType = "chunkCoverage"
 
+// defsValidationCounts and defsRigorFloors are the $defs names the validation
+// receipt is published under on post, record, and the validation document.
+const (
+	defsValidationCounts = "validationCounts"
+	defsRigorFloors      = "rigorFloors"
+)
+
 // keyScopeDefaults is the scope property carrying inline defaults; the scope
 // presence rules name it more than once.
 const keyScopeDefaults = "defaults"
@@ -323,8 +330,8 @@ func documents() []document {
 				{typ: reflect.TypeFor[ChunkCoverage](), name: chunkCoverageType},
 				{typ: reflect.TypeFor[core.PostSummary](), name: "postSummary"},
 				{typ: reflect.TypeFor[core.RiskClaim](), name: defsRiskClaim},
-				{typ: reflect.TypeFor[ValidationCounts](), name: "validationCounts"},
-				{typ: reflect.TypeFor[RigorFloors](), name: "rigorFloors"},
+				{typ: reflect.TypeFor[ValidationCounts](), name: defsValidationCounts},
+				{typ: reflect.TypeFor[RigorFloors](), name: defsRigorFloors},
 			},
 			additionalProperties: true,
 		},
@@ -348,8 +355,8 @@ func documents() []document {
 				{typ: reflect.TypeFor[core.PanelSummary](), name: verificationSummaryType},
 				{typ: reflect.TypeFor[ChunkCoverage](), name: chunkCoverageType},
 				{typ: reflect.TypeFor[core.RiskClaim](), name: "riskClaim"},
-				{typ: reflect.TypeFor[ValidationCounts](), name: "validationCounts"},
-				{typ: reflect.TypeFor[RigorFloors](), name: "rigorFloors"},
+				{typ: reflect.TypeFor[ValidationCounts](), name: defsValidationCounts},
+				{typ: reflect.TypeFor[RigorFloors](), name: defsRigorFloors},
 			},
 			additionalProperties: true,
 		},
@@ -456,9 +463,9 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[GateDimension](), name: "gateDimension"},
 		{typ: reflect.TypeFor[core.RiskClaim](), name: "riskClaim"},
 		{typ: reflect.TypeFor[PostData](), name: "postData"},
-		{typ: reflect.TypeFor[ValidationData](), name: "validationData"},
-		{typ: reflect.TypeFor[ValidationCounts](), name: "validationCounts"},
-		{typ: reflect.TypeFor[RigorFloors](), name: "rigorFloors"},
+		{typ: reflect.TypeFor[ValidationData](), name: defsValidationData},
+		{typ: reflect.TypeFor[ValidationCounts](), name: defsValidationCounts},
+		{typ: reflect.TypeFor[RigorFloors](), name: defsRigorFloors},
 		{typ: reflect.TypeFor[core.PostSummary](), name: "postSummary"},
 		{typ: reflect.TypeFor[RecordData](), name: "recordData"},
 		{typ: reflect.TypeFor[Repair](), name: "repair"},
@@ -575,6 +582,10 @@ func envelopeDefs() []definition {
 }
 
 const defsRiskClaim = "riskClaim"
+
+// defsValidationData is the $defs name the envelope's pass projection is
+// published under on post and report.
+const defsValidationData = "validationData"
 
 func reviewDefs() []definition {
 	return []definition{

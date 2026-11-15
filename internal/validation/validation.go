@@ -1,11 +1,6 @@
 // Package validation owns the trusted validator pass: the `validation.json`
-// artifact a second prompt run writes, its strict reader, and the rigor
-// policy that floors each severity tier. It never invokes a model, fetches,
-// or writes: the invoker runs the pass and verdict reads the file.
-//
-// The policy lives in the typed configuration (`rigor_policy`) so the trusted
-// base snapshot is its only source; a head edit cannot move the gate. The
-// CLI's `--require-rigor` narrows it per invocation and implies gate mode.
+// artifact, its strict reader, and the rigor policy. It never invokes a model:
+// the invoker runs the pass and verdict reads the file.
 package validation
 
 import (
@@ -29,7 +24,7 @@ import (
 // FileName is the bundle artifact this package reads.
 const FileName = "validation.json"
 
-// MaxBytes caps the artifact: a validation pass writes one bounded object.
+// MaxBytes caps the artifact.
 const MaxBytes = 1 << 20
 
 // Refusal codes the artifact and the policy raise.
@@ -40,8 +35,18 @@ const (
 	CodeBelowFloor = "rigor-below-floor"
 )
 
-// publishedChecks is the closed check vocabulary the pass may name; an
-// unknown name is dropped with a warning, never refused.
+// The severity tiers the policy floors and the reason bounds it enforces.
+const (
+	severityCritical      = "critical"
+	severityImportant     = "important"
+	severityInformational = "informational"
+
+	minReasonLen = 10
+	maxReasonLen = 500
+)
+
+// publishedChecks is the closed check vocabulary; an unknown name is dropped,
+// never refused.
 var publishedChecks = []string{"hedge", "repro", "anchor", "rigor", "severity"}
 
 // Policy is the effective publication floor: the mode and the rung each
@@ -51,8 +56,8 @@ type Policy struct {
 	Mode   string
 }
 
-// PolicyFromConfig resolves the typed base configuration over the built-in
-// policy. Nil reads the built-ins: advisory, critical walked.
+// PolicyFromConfig resolves the typed base configuration over the built-ins,
+// which are advisory with critical walked.
 func PolicyFromConfig(cfg *core.Config) Policy {
 	out := Policy{Mode: core.ValidationWarn, Floors: core.RigorFloors{
 		Critical: core.RungWalked, Important: core.RungPointed, Informational: core.RungSaid,
@@ -79,31 +84,32 @@ func PolicyFromConfig(cfg *core.Config) Policy {
 	return out
 }
 
-// WithRequireRigor applies the repeatable `--require-rigor <tier>=<rung>`
-// flags over the policy: a named tier takes the flag's rung and the policy
-// gates for it, whatever the base file said.
-func (p Policy) WithRequireRigor(flags []string) (Policy, *core.RefusalError) {
+// WithRequireRigor narrows the policy for one invocation: a named tier takes
+// the flag's rung and the policy gates for it, whatever the base file said.
+func (p *Policy) WithRequireRigor(flags []string) *core.RefusalError {
 	for _, flag := range flags {
 		tier, rung, ok := strings.Cut(flag, "=")
-		dst := p.floorFor(tier)
+		dst := p.tierFloor(tier)
 		if !ok || dst == nil || !slices.Contains(core.RungValues, rung) {
-			return p, &core.RefusalError{Code: CodeBadPolicy, Message: fmt.Sprintf(
-				"--require-rigor: want critical|important|informational=<one of %s>, got %q",
+			return &core.RefusalError{Code: CodeBadPolicy, Message: fmt.Sprintf(
+				"--require-rigor: want %s|%s|%s=<one of %s>, got %q",
+				severityCritical, severityImportant, severityInformational,
 				strings.Join(core.RungValues, "|"), flag)}
 		}
 		*dst = rung
 		p.Mode = core.ValidationGate
 	}
-	return p, nil
+	return nil
 }
 
-func (p *Policy) floorFor(tier string) *string {
+// tierFloor points at one tier's floor, or nil for an unknown tier.
+func (p *Policy) tierFloor(tier string) *string {
 	switch tier {
-	case "critical":
+	case severityCritical:
 		return &p.Floors.Critical
-	case "important":
+	case severityImportant:
 		return &p.Floors.Important
-	case "informational":
+	case severityInformational:
 		return &p.Floors.Informational
 	default:
 		return nil
@@ -111,21 +117,14 @@ func (p *Policy) floorFor(tier string) *string {
 }
 
 // Floor returns the rung the severity tier must reach.
-func (p Policy) Floor(severity string) string {
-	switch severity {
-	case "critical":
-		return p.Floors.Critical
-	case "important":
-		return p.Floors.Important
-	case "informational":
-		return p.Floors.Informational
-	default:
-		return ""
+func (p *Policy) Floor(severity string) string {
+	if floor := p.tierFloor(severity); floor != nil {
+		return *floor
 	}
+	return ""
 }
 
-// Violation is one finding below its tier's floor: the finding the gate names
-// and the pair a reader needs to fix it.
+// Violation is one finding below its tier's floor.
 type Violation struct {
 	Sig      string
 	Severity string
@@ -133,47 +132,80 @@ type Violation struct {
 	Floor    string
 }
 
-// Detail renders one violation for a refusal or a warning: the short sig
-// plus `severity rigor < floor`.
+// Detail renders one violation as `short-sig (severity rigor < floor)`.
 func (v Violation) Detail() string {
 	return fmt.Sprintf("%s (%s %s < %s)", readcommon.ShortSHA(v.Sig), v.Severity, v.Rigor, v.Floor)
 }
 
-// Floors splits the posting findings that miss their tier's floor into the
-// critical ones that downgrade to important (their rung already clears the
-// important floor) and the rest the gate names. Withheld findings never reach
-// it, and an absent rigor reads as `said`, so a defaulted rung cannot satisfy
-// a `walked` floor.
+// Floors splits the posting findings below their tier's floor into the ones a
+// gate downgrades and the rest it names.
 func Floors(entries []any, p Policy) (downgrades, violations []Violation) {
 	for _, entry := range entries {
 		m, ok := entry.(*jq.Obj)
 		if !ok || m == nil || readcommon.WithheldSource(m) != "" {
 			continue
 		}
-		severity := jq.StrOf(readcommon.FieldOf(m, "severity"))
-		floor := p.Floor(severity)
-		if floor == "" {
-			continue
+		if v, below := underFloor(m, &p); below {
+			downgrades, violations = placeFloor(v, p, downgrades, violations)
 		}
-		rigor, _ := m.Get("rigor")
-		if core.RungRank(rigor) <= core.RungRank(floor) {
-			continue
-		}
-		v := Violation{
-			Sig: jq.StrOf(readcommon.FieldOf(m, "sig")), Severity: severity,
-			Rigor: core.RungOf(m), Floor: floor,
-		}
-		if severity == "critical" && core.RungRank(rigor) <= core.RungRank(p.Floors.Important) {
-			downgrades = append(downgrades, v)
-			continue
-		}
-		violations = append(violations, v)
 	}
 	return downgrades, violations
 }
 
-// BelowFloor refuses a gate-mode post: one line per finding under its tier's
-// floor, each naming the short sig and the pair to fix.
+// placeFloor files one violation: a critical that still clears the important
+// floor downgrades, everything else is refused.
+func placeFloor(v Violation, p Policy, downgrades, violations []Violation) ([]Violation, []Violation) {
+	if v.Severity == severityCritical && core.RungRank(v.Rigor) <= core.RungRank(p.Floors.Important) {
+		return append(downgrades, v), violations
+	}
+	return downgrades, append(violations, v)
+}
+
+// underFloor reports one entry's violation when its rung misses its tier's
+// floor; an absent rigor reads as `said`.
+func underFloor(m *jq.Obj, p *Policy) (Violation, bool) {
+	severity := jq.StrOf(readcommon.FieldOf(m, "severity"))
+	floor := p.Floor(severity)
+	if floor == "" || core.RungRank(readcommon.FieldOf(m, "rigor")) <= core.RungRank(floor) {
+		return Violation{}, false
+	}
+	return Violation{
+		Sig: jq.StrOf(readcommon.FieldOf(m, "sig")), Severity: severity,
+		Rigor: core.RungOf(m), Floor: floor,
+	}, true
+}
+
+// Tally counts one pass against the findings it judged, applying nothing.
+func Tally(file *core.ValidationFile, findings []any) core.ValidationCounts {
+	var counts core.ValidationCounts
+	judged := make(map[string]bool, len(file.Results))
+	for _, result := range file.Results {
+		judged[result.Sig] = true
+		switch result.Verdict {
+		case core.ValidationConfirmed:
+			counts.Confirmed++
+		case core.ValidationRejected:
+			counts.Rejected++
+		case core.ValidationDowngraded:
+			counts.Downgraded++
+		}
+	}
+	for _, finding := range findings {
+		sig := jq.StrOf(readcommon.FieldOf(finding, "sig"))
+		if !judged[sig] && isOpenUnwithheld(finding) {
+			counts.Unvalidated++
+		}
+	}
+	return counts
+}
+
+// isOpenUnwithheld reports a finding a pass would have judged.
+func isOpenUnwithheld(finding any) bool {
+	return jq.StrOf(readcommon.FieldOf(finding, "status")) == "open" &&
+		readcommon.WithheldSource(finding) == ""
+}
+
+// BelowFloor refuses a gate-mode post, naming every finding under its floor.
 func BelowFloor(violations []Violation) *core.RefusalError {
 	details := make([]string, 0, len(violations))
 	for _, violation := range violations {
@@ -183,8 +215,8 @@ func BelowFloor(violations []Violation) *core.RefusalError {
 		"%d finding(s) below the required evidence floor — %s", len(details), strings.Join(details, ", "))}
 }
 
-// Load reads the optional artifact at dir/validation.json and returns its
-// exact-bytes hash. Absent reads (nil, "", nil); present reads through Parse.
+// Load reads the optional artifact and its exact-bytes hash; absent is not an
+// error.
 func Load(dir, head string, findings []any) (*core.ValidationFile, string, *core.RefusalError) {
 	path := filepath.Join(dir, FileName)
 	raw, err := jq.CappedFile(path, MaxBytes)
@@ -207,10 +239,9 @@ func Hash(raw []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// Parse strictly decodes one artifact: unknown keys, an unpublished verdict,
-// a reason outside 10–500 characters, a downgrade that is not exactly one
-// rank, a duplicate sig, and a sig no finding resolves all refuse
-// bad-validation; a head that is not the bundle head refuses validation-stale.
+// Parse strictly decodes one artifact; every shape defect refuses
+// bad-validation, and a head that is not the bundle head refuses
+// validation-stale.
 func Parse(raw []byte, head string, findings []any) (*core.ValidationFile, *core.RefusalError) {
 	var file core.ValidationFile
 	dec := json.NewDecoder(bytes.NewReader(raw))
@@ -221,33 +252,50 @@ func Parse(raw []byte, head string, findings []any) (*core.ValidationFile, *core
 	if file.SchemaVersion != "1" {
 		return nil, bad("validation.json needs schema_version 1")
 	}
-	if file.HeadSHA != head {
-		return nil, &core.RefusalError{Code: CodeStale, Message: fmt.Sprintf(
-			"validation.json was written for head %s, not the bundle head %s",
-			readcommon.ShortSHA(file.HeadSHA), readcommon.ShortSHA(head))}
+	if ref := checkHead(file.HeadSHA, head); ref != nil {
+		return nil, ref
 	}
-	seen := make(map[string]bool, len(file.Results))
-	for i := range file.Results {
-		if ref := checkResult(&file.Results[i], findings); ref != nil {
-			return nil, ref
-		}
-		if seen[file.Results[i].Sig] {
-			return nil, bad("validation.json carries two results for sig %s", file.Results[i].Sig)
-		}
-		seen[file.Results[i].Sig] = true
+	if ref := checkResults(file.Results, findings); ref != nil {
+		return nil, ref
 	}
 	return &file, nil
 }
 
-// checkResult normalizes one result: the sig resolves to its full value, the
-// verdict and downgrade pair are legal, and unknown checks are dropped.
+// checkHead refuses an artifact the invoker wrote for another head.
+func checkHead(written, head string) *core.RefusalError {
+	if written == head {
+		return nil
+	}
+	return &core.RefusalError{Code: CodeStale, Message: fmt.Sprintf(
+		"validation.json was written for head %s, not the bundle head %s",
+		readcommon.ShortSHA(written), readcommon.ShortSHA(head))}
+}
+
+// checkResults normalizes each result and refuses a duplicate sig.
+func checkResults(results []core.ValidationResult, findings []any) *core.RefusalError {
+	seen := make(map[string]bool, len(results))
+	for i := range results {
+		if ref := checkResult(&results[i], findings); ref != nil {
+			return ref
+		}
+		if seen[results[i].Sig] {
+			return bad("validation.json carries two results for sig %s", results[i].Sig)
+		}
+		seen[results[i].Sig] = true
+	}
+	return nil
+}
+
+// checkResult normalizes one result: the sig resolves to its full value and
+// unknown checks are dropped.
 func checkResult(r *core.ValidationResult, findings []any) *core.RefusalError {
 	if !slices.Contains([]string{core.ValidationConfirmed, core.ValidationRejected, core.ValidationDowngraded}, r.Verdict) {
 		return bad("validation.json verdict %q is not CONFIRMED, REJECTED, or DOWNGRADED", r.Verdict)
 	}
 	reason := strings.TrimSpace(r.Reason)
-	if len(reason) < 10 || len(reason) > 500 {
-		return bad("validation.json result for %s needs a reason of 10–500 characters", r.Sig)
+	if len(reason) < minReasonLen || len(reason) > maxReasonLen {
+		return bad("validation.json result for %s needs a reason of %d–%d characters",
+			r.Sig, minReasonLen, maxReasonLen)
 	}
 	if ref := checkDowngrade(r); ref != nil {
 		return ref
@@ -261,8 +309,8 @@ func checkResult(r *core.ValidationResult, findings []any) *core.RefusalError {
 	return nil
 }
 
-// knownChecks keeps the published check names in order and drops the rest;
-// an empty result stays a non-nil list.
+// knownChecks keeps the published check names in order; the result is never
+// nil.
 func knownChecks(in []string) []string {
 	out := make([]string, 0, len(in))
 	for _, check := range in {
@@ -273,8 +321,8 @@ func knownChecks(in []string) []string {
 	return out
 }
 
-// checkDowngrade enforces exactly one rank down: critical→important and
-// important→informational only, informational never downgrades.
+// checkDowngrade enforces exactly one rank down, and that the pair rides only
+// a DOWNGRADED verdict.
 func checkDowngrade(r *core.ValidationResult) *core.RefusalError {
 	if r.Verdict != core.ValidationDowngraded {
 		if r.FromSeverity != "" || r.ToSeverity != "" {

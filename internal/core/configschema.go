@@ -26,9 +26,8 @@ type Config struct { //nolint:govet // field order is the published property ord
 	RigorPolicy     *ConfigRigorPolicy       `json:"rigor_policy,omitempty"     nonnull:"true"`
 }
 
-// ConfigRigorPolicy is the repository's publication floor: the mode
-// (advisory or gating) and the evidence rung each severity tier must reach
-// before it posts. Absent keys keep the built-in policy.
+// ConfigRigorPolicy is the repository's publication floor: the mode and the
+// rung each severity tier must reach before it posts.
 type ConfigRigorPolicy struct {
 	Mode          string `enum:"warn|gate"                          json:"mode,omitempty"`
 	Critical      string `enum:"said|pointed|walked|ran|reproduced" json:"critical,omitempty"`

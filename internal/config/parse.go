@@ -22,11 +22,19 @@ var CredentialKeys = []string{
 	"client_secret", "private_key", "auth_token", "session_token",
 }
 
+// The severity tiers, named once so the enum, the floor checks, and the
+// threshold ranks cannot drift apart.
+const (
+	severityCritical      = "critical"
+	severityImportant     = "important"
+	severityInformational = "informational"
+)
+
 // Closed vocabularies the semantic pass enforces.
 var (
 	categoryEnum = []string{"logic", "edge-case", "security", "performance", "accidental-commit", "style", "docs", "other"}
 	checkEnum    = []string{"no-open-above-block", "head-current", "no-live-threads"}
-	severityEnum = []string{"critical", "important", "informational"}
+	severityEnum = []string{severityCritical, severityImportant, severityInformational}
 	effortEnum   = []string{"cheap", "standard", "deep"}
 	depthEnum    = []string{"standard", "deep"}
 )

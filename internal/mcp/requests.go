@@ -309,6 +309,7 @@ func wireNext(ctx context.Context, b *bindings, req *core.NextRequest) error {
 func decodePost(req *core.PostRequest, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.str(argPr, &req.Pr)
+	a.strings("requireRigor", &req.RequireRigor)
 	a.flags(func(f *args) {
 		f.str("approve", &req.Flags.Approve)
 		f.str("reviewFile", &req.Flags.ReviewFile)
@@ -318,7 +319,6 @@ func decodePost(req *core.PostRequest, a *args) {
 		f.boolean("force", &req.Flags.Force)
 		f.boolean("dryRun", &req.Flags.DryRun)
 		f.boolean("requireCoverage", &req.Flags.RequireCoverage)
-		f.strings("requireRigor", &req.Flags.RequireRigor)
 		f.boolean("allowSecretValues", &req.Flags.AllowSecretValues)
 		f.boolean("provenance", &req.Flags.Provenance)
 		f.str("summary", &req.Flags.Summary)

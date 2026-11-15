@@ -17,13 +17,10 @@ const (
 	reasonOne = "Nil deref is reachable from the cited hunk."
 )
 
-// validationFixture is one well-formed validation.json: a confirmed and a
-// downgraded result at the bundle head.
 const validationFixture = `{"schema_version":"1","head_sha":"` + headSHA + `","results":[` +
 	`{"sig":"` + sigA + `","verdict":"CONFIRMED","reason":"Nil deref is reachable from the cited hunk.","checks":["hedge","repro"]},` +
 	`{"sig":"` + sigB + `","verdict":"DOWNGRADED","reason":"Real bug, local blast radius.","from_severity":"critical","to_severity":"important"}]}`
 
-// findingsFixture is the review's candidate set the sigs resolve against.
 func findingsFixture() []any {
 	return []any{jq.NewObj("sig", sigA), jq.NewObj("sig", sigB)}
 }
@@ -120,35 +117,31 @@ func TestParseResolvesPrefixAndDropsUnknownChecks(t *testing.T) {
 // of the file's exact bytes, so a whitespace edit moves it.
 func TestLoadHashesExactBytes(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct{ name, body, want string }{
-		{
-			name: "fixture",
-			body: `{"schema_version":"1","head_sha":"` + headSHA + `","results":[]}`,
-			want: "c8298e87eb0eac59def75e660b61da7b76052cdd2221cf8ee3c1fe7f14a7a8b8",
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			dir := t.TempDir()
-			if err := os.WriteFile(filepath.Join(dir, "validation.json"), []byte(tc.body), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			file, hash, ref := validation.Load(dir, headSHA, nil)
-			if ref != nil || file == nil {
-				t.Fatalf("Load = %v, %v; want the file", file, ref)
-			}
-			if hash != tc.want {
-				t.Fatalf("hash = %q, want %q", hash, tc.want)
-			}
-			// The hash covers the exact bytes: one trailing newline moves it.
-			if err := os.WriteFile(filepath.Join(dir, "validation.json"), []byte(tc.body+"\n"), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			if _, moved, _ := validation.Load(dir, headSHA, nil); moved == hash {
-				t.Fatal("a trailing newline left the hash unchanged")
-			}
-		})
+	dir := t.TempDir()
+	plantValidation(t, dir, validationFixture)
+	if got := loadHash(t, dir); got != "c12cc64d49b261fdcc7cb5daefdedb0db6370460cc7baf2b4669ef2af79b5b5e" {
+		t.Fatalf("hash = %q, want the fixture's SHA-256", got)
 	}
+	plantValidation(t, dir, validationFixture+"\n")
+	if got := loadHash(t, dir); got == "c12cc64d49b261fdcc7cb5daefdedb0db6370460cc7baf2b4669ef2af79b5b5e" {
+		t.Fatal("a trailing newline left the hash unchanged")
+	}
+}
+
+func plantValidation(t *testing.T, dir, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, validation.FileName), []byte(body), 0o600); err != nil {
+		t.Fatalf("write artifact: %v", err)
+	}
+}
+
+func loadHash(t *testing.T, dir string) string {
+	t.Helper()
+	file, hash, ref := validation.Load(dir, headSHA, findingsFixture())
+	if ref != nil || file == nil {
+		t.Fatalf("Load = %v, %v; want the file", file, ref)
+	}
+	return hash
 }
 
 // TestLoadAbsent pins the absent artifact: no file reads as no validation and
@@ -182,15 +175,16 @@ func TestPolicyDefaultsAndConfig(t *testing.T) {
 // gate mode for them, and refuses a tier or rung it does not know.
 func TestRequireRigorFlag(t *testing.T) {
 	t.Parallel()
-	policy, ref := validation.PolicyFromConfig(nil).WithRequireRigor([]string{"critical=walked"})
-	if ref != nil {
+	policy := validation.PolicyFromConfig(nil)
+	if ref := policy.WithRequireRigor([]string{"critical=walked"}); ref != nil {
 		t.Fatalf("WithRequireRigor: %v", ref)
 	}
 	if policy.Mode != core.ValidationGate || policy.Floors.Critical != core.RungWalked {
 		t.Fatalf("policy = %+v, want gate with critical walked", policy)
 	}
 	for _, bad := range []string{"critical=guessed", "minor=said", "critical"} {
-		if _, ref := validation.PolicyFromConfig(nil).WithRequireRigor([]string{bad}); ref == nil || ref.Code != "bad-rigor-policy" {
+		policy := validation.PolicyFromConfig(nil)
+		if ref := policy.WithRequireRigor([]string{bad}); ref == nil || ref.Code != "bad-rigor-policy" {
 			t.Errorf("%q refusal = %v, want bad-rigor-policy", bad, ref)
 		}
 	}
@@ -200,8 +194,8 @@ func TestRequireRigorFlag(t *testing.T) {
 // downgrade to important, and the tier whose rung already clears the floor.
 func TestFloors(t *testing.T) {
 	t.Parallel()
-	policy, ref := validation.PolicyFromConfig(nil).WithRequireRigor([]string{"critical=walked"})
-	if ref != nil {
+	policy := validation.PolicyFromConfig(nil)
+	if ref := policy.WithRequireRigor([]string{"critical=walked"}); ref != nil {
 		t.Fatalf("policy: %v", ref)
 	}
 	entries := []any{
