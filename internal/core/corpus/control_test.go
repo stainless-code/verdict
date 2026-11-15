@@ -36,8 +36,14 @@ func TestRealControlNeedsNoFixCommit(t *testing.T) {
 		SchemaVersion: "1",
 		ID:            "clean",
 		Kind:          "control",
-		Provenance:    core.CorpusProvenance{Kind: "real", Repo: "urfave/cli", PR: &pr},
-		Bugs:          []core.CorpusBug{},
+		Provenance: core.CorpusProvenance{
+			Kind:    "real",
+			Repo:    "urfave/cli",
+			PR:      &pr,
+			BaseSHA: "1305a08200f7c4d873e28bd2bbad1ff257c6cfc4",
+			HeadSHA: "d0d280f7f83d6a1d96afc8b4ff6d517032dc7f87",
+		},
+		Bugs: []core.CorpusBug{},
 	}
 	if ref := validate(c, "fixture"); ref != nil {
 		t.Fatalf("real control without a fix commit: %v", ref)

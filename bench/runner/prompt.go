@@ -201,12 +201,20 @@ func copyPrompts(root, destRoot string) error {
 // head and base to every reader downstream.
 const shaHexLen = 40
 
-// caseSource stamps a seeded case's provenance. The corpus has no commits, so
-// the shas derive from the case bytes: identical run to run, and never
-// mistakable for a real PR head.
-func caseSource(id string, diff []byte) []byte {
-	head := sha256.Sum256(append([]byte("head:"+id+":"), diff...))
-	base := sha256.Sum256([]byte("base:" + id))
+// caseSource stamps the commit pair a bundle records. A real case names the
+// two commits its diff spans, so the stamp is the manifest's own pair and a
+// reader can check the diff against the repository. A seeded case has no
+// commits, so its shas derive from the case bytes: identical run to run, and
+// never mistakable for a real PR head.
+//
+// The case's base_sha is what tells the two apart: no real case is loaded
+// without a pair (checkManifest), and no seeded manifest sets one.
+func caseSource(c *corpusCase) []byte {
+	if c.baseSHA != "" {
+		return fmt.Appendf(nil, "{%q:%q,%q:%q}\n", headSHAKey, c.headSHA, "base_sha", c.baseSHA)
+	}
+	head := sha256.Sum256(append([]byte("head:"+c.id+":"), c.diff...))
+	base := sha256.Sum256([]byte("base:" + c.id))
 	return fmt.Appendf(nil, "{%q:%q,%q:%q}\n", headSHAKey, hex.EncodeToString(head[:])[:shaHexLen],
 		"base_sha", hex.EncodeToString(base[:])[:shaHexLen])
 }

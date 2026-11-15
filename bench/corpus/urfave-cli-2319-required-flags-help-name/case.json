@@ -7,8 +7,10 @@
     "kind": "real",
     "repo": "urfave/cli",
     "pr": 2319,
+    "base_sha": "b79d76894ba609be305dbb458a95f1bad6ef7f2f",
+    "head_sha": "5af95006c1cb31cdeb4d9c90ef3303af10950eb6",
     "fix_commit": "https://github.com/urfave/cli/commit/4f2c8a73cbbba64b755fb59bc7686bb67b7c44b1",
-    "source": "PR #2319 head 5af95006c1cb31cdeb4d9c90ef3303af10950eb6 over base b79d76894ba609be305dbb458a95f1bad6ef7f2f",
+    "source": "PR #2319 fix/help-subcommand-flag-parsing, merged 2026-05-03",
     "note": "the required-flags exemption matches the built-in help command by name, so a user-defined command named help runs with its required flags never enforced"
   },
   "bugs": [

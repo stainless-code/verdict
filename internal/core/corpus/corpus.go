@@ -168,17 +168,43 @@ func validateProvenance(c *core.CorpusCase, path string) *core.RefusalError {
 	return nil
 }
 
-// validateRealProvenance requires the origin every real case names. The later
-// fix commit is required only where a defect was fixed: a clean control is a
-// merged PR nothing had to repair, so it has none to name.
+// validateRealProvenance requires the origin every real case names: the
+// repository, the PR, and the two commits its diff spans, which are the commits
+// a bundle stamps and a reader can check the diff against. The later fix
+// commit is required only where a defect was fixed: a clean control is a merged
+// PR nothing had to repair, so it has none to name.
 func validateRealProvenance(c *core.CorpusCase, path string) *core.RefusalError {
-	if strings.TrimSpace(c.Provenance.Repo) == "" || c.Provenance.PR == nil {
+	p := c.Provenance
+	if strings.TrimSpace(p.Repo) == "" || p.PR == nil {
 		return invalid(path, "real cases need provenance.repo and provenance.pr")
 	}
-	if c.Kind != kindControl && strings.TrimSpace(c.Provenance.FixCommit) == "" {
+	if !commitID(p.BaseSHA) {
+		return invalid(path, "provenance.base_sha "+strconv.Quote(p.BaseSHA)+" is not a 40-character lowercase hex commit id")
+	}
+	if !commitID(p.HeadSHA) {
+		return invalid(path, "provenance.head_sha "+strconv.Quote(p.HeadSHA)+" is not a 40-character lowercase hex commit id")
+	}
+	if c.Kind != kindControl && strings.TrimSpace(p.FixCommit) == "" {
 		return invalid(path, "real bug cases need provenance.fix_commit (the commit that fixed the defect)")
 	}
 	return nil
+}
+
+// commitIDLen is the length of a full lowercase hex git commit id.
+const commitIDLen = 40
+
+// commitID reports whether s is a 40-character lowercase hex commit id, the
+// shape a bundle's base_sha and head_sha take.
+func commitID(s string) bool {
+	if len(s) != commitIDLen {
+		return false
+	}
+	for _, r := range s {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 // validateBugs enforces at least one well-formed, unique ground-truth bug.

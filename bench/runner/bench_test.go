@@ -135,9 +135,9 @@ func TestAssemblePromptFencesTheMetaAndDiffInOrder(t *testing.T) {
 
 // TestCaseSourceIsDeterministicAndSynthetic pins the synthesized provenance.
 func TestCaseSourceIsDeterministicAndSynthetic(t *testing.T) {
-	first := caseSource("off-by-one", []byte("diff\n"))
-	again := caseSource("off-by-one", []byte("diff\n"))
-	other := caseSource("other", []byte("diff\n"))
+	first := caseSource(&corpusCase{id: "off-by-one", diff: []byte("diff\n")})
+	again := caseSource(&corpusCase{id: "off-by-one", diff: []byte("diff\n")})
+	other := caseSource(&corpusCase{id: "other", diff: []byte("diff\n")})
 	if !bytes.Equal(first, again) {
 		t.Errorf("caseSource is not deterministic: %q then %q", first, again)
 	}
@@ -153,6 +153,35 @@ func TestCaseSourceIsDeterministicAndSynthetic(t *testing.T) {
 	}
 	if len(meta.HeadSHA) != 40 || len(meta.BaseSHA) != 40 {
 		t.Errorf("shas are not 40 hex chars: head=%q base=%q", meta.HeadSHA, meta.BaseSHA)
+	}
+}
+
+// TestCaseSourceStampsTheReviewedPair pins a real case's stamp: the commits the
+// manifest names, not hashes of the case bytes, so a bundle's base_sha lands on
+// the repository the diff came from.
+func TestCaseSourceStampsTheReviewedPair(t *testing.T) {
+	got := string(caseSource(&corpusCase{
+		id:      "urfave-cli-2319-required-flags-help-name",
+		diff:    []byte("diff --git a/command.go b/command.go\n"),
+		baseSHA: "b79d76894ba609be305dbb458a95f1bad6ef7f2f",
+		headSHA: "5af95006c1cb31cdeb4d9c90ef3303af10950eb6",
+	}))
+	want := "{\"head_sha\":\"5af95006c1cb31cdeb4d9c90ef3303af10950eb6\"," +
+		"\"base_sha\":\"b79d76894ba609be305dbb458a95f1bad6ef7f2f\"}\n"
+	if got != want {
+		t.Errorf("caseSource = %q, want %q", got, want)
+	}
+}
+
+// TestReadCaseRefusesARealCaseWithoutCommits refuses a real manifest the
+// runner cannot stamp: its bundle would carry an empty base_sha.
+func TestReadCaseRefusesARealCaseWithoutCommits(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "case-a", caseManifestName),
+		[]byte(`{"schema_version":"1","id":"case-a","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1},"bugs":[{"path":"x","line":1}]}`))
+	writeFile(t, filepath.Join(dir, "case-a", fullDiffName), []byte("diff\n"))
+	if _, _, err := loadCases(dir, nil); err == nil || !strings.Contains(err.Error(), "no provenance.base_sha/head_sha") {
+		t.Fatalf("loadCases error = %v, want a missing-commit refusal", err)
 	}
 }
 

@@ -521,7 +521,12 @@ func TestLoadRejects(t *testing.T) {
 		body string
 	}{
 		{"missing schema version", `{"id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
-		{"real without fix commit", `{"schema_version":"1","id":"x","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
+		{"real without fix commit", `{"schema_version":"1","id":"x","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1,"base_sha":"2799fd43bd5cf6996cc5f1af206175b543c640e1","head_sha":"5e0af0c601e231050df9e8ef1752fb2eaf63f2a8"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
+		{"real without a base sha", `{"schema_version":"1","id":"x","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1,"head_sha":"5e0af0c601e231050df9e8ef1752fb2eaf63f2a8"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
+		{"real without a head sha", `{"schema_version":"1","id":"x","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1,"base_sha":"2799fd43bd5cf6996cc5f1af206175b543c640e1"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
+		{"real with an abbreviated base sha", `{"schema_version":"1","id":"x","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1,"base_sha":"2799fd43bd5cf6996cc5f1af206175b543c640e","head_sha":"5e0af0c601e231050df9e8ef1752fb2eaf63f2a8"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
+		{"real with an uppercase head sha", `{"schema_version":"1","id":"x","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1,"base_sha":"2799fd43bd5cf6996cc5f1af206175b543c640e1","head_sha":"5E0AF0C601E231050DF9E8EF1752FB2EAF63F2A8"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
+		{"real control without a base sha", `{"schema_version":"1","id":"x","kind":"control","provenance":{"kind":"real","repo":"o/r","pr":1,"head_sha":"5e0af0c601e231050df9e8ef1752fb2eaf63f2a8"},"bugs":[]}`},
 		{"seeded without injection", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}]}`},
 		{"no bugs", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[]}`},
 		{"unknown field", `{"schema_version":"1","id":"x","kind":"seeded","provenance":{"kind":"seeded","injected":"x"},"bugs":[{"path":"a","line":1,"kind":"k","severity":"critical"}],"typo":true}`},

@@ -7,8 +7,10 @@
     "kind": "real",
     "repo": "urfave/cli",
     "pr": 2451,
+    "base_sha": "f6f38ed82fab121276ac0feae94ad790fb0c5313",
+    "head_sha": "72a64664489afa54ae2cd86fb044ec8dd8fe2982",
     "fix_commit": "https://github.com/urfave/cli/commit/b60e7cbe4e1564384aeb96d79a51f6103f70745d",
-    "source": "PR #2451 head 72a64664489afa54ae2cd86fb044ec8dd8fe2982 over base f6f38ed82fab121276ac0feae94ad790fb0c5313",
+    "source": "PR #2451 fix/empty-env-source-not-set, merged 2026-10-02",
     "note": "an empty value from a bool flag's source is written through f.Set with the error discarded, so a validator that rejects the value never fails the flag; the later fix propagates that error instead"
   },
   "bugs": [

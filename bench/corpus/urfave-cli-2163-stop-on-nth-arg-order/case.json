@@ -7,8 +7,10 @@
     "kind": "real",
     "repo": "urfave/cli",
     "pr": 2163,
+    "base_sha": "2799fd43bd5cf6996cc5f1af206175b543c640e1",
+    "head_sha": "5e0af0c601e231050df9e8ef1752fb2eaf63f2a8",
     "fix_commit": "https://github.com/urfave/cli/commit/3ee50760b967a4d2f419912a9b34f723b28ae41e",
-    "source": "PR #2163 head 5e0af0c601e231050df9e8ef1752fb2eaf63f2a8 over base 2799fd43bd5cf6996cc5f1af206175b543c640e1",
+    "source": "PR #2163 feat/stop-on-nth-arg, merged 2025-08-16",
     "note": "the StopOnNthArg boundary check is placed after the empty-argument break and the double-dash early return, so an argument that lands on the boundary is consumed by those branches instead of ending flag parsing"
   },
   "bugs": [

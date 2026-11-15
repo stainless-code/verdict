@@ -112,12 +112,14 @@ One case, one manifest, published as
 
 - **Seeded** cases name what was injected (`provenance.injected`) and ship a
   deterministic `full.diff`; they are the hermetic starter corpus.
-- **Real** cases name the repository, PR number, and the later bug-fix
-  commit (`provenance.repo`, `provenance.pr`, `provenance.fix_commit`), plus
-  the reviewed head (`provenance.source` may carry the fetch command or
-  URL). The ground truth is the defect fixed by that commit, at the line it
-  occupied in the reviewed head. A real clean control names the repository
-  and PR and omits `fix_commit`, which nothing could name.
+- **Real** cases name the repository and PR number (`provenance.repo`,
+  `provenance.pr`), the two commits the diff spans (`provenance.base_sha`,
+  `provenance.head_sha`, 40-hex), and the later bug-fix commit
+  (`provenance.fix_commit`). The ground truth is the defect fixed by that
+  commit, at the line it occupied in the reviewed head. A bundle stamps the
+  manifest's base and head, so the reviewed diff names the commits it came
+  from. A real clean control names the same repository, PR, and commit pair
+  and omits `fix_commit`, which nothing could name.
 - At least one bug is required. Ground truth is file + line + kind +
   severity; `note` says why the line is a defect. A bug that cannot be
   pointed at a line is not a corpus case.
@@ -185,9 +187,10 @@ Pick merged PRs whose bug was fixed later, on the same repository:
 2. The later fix commit `F` must change a line that is a real defect at `H`
    — not a style cleanup, rename, or dependency bump. The hunk in `F` gives
    the file and line at `H`; record the exact line where the bad code sits.
-3. Record `repo`, `pr`, `fix_commit` (full URL), and the reviewed head SHA.
-   If the PR review cited the bug, keep the finding text out of the
-   manifest; ground truth stays independent of the reviewer.
+3. Record `repo`, `pr`, `base_sha`, `head_sha` (the commits the diff spans),
+   and `fix_commit` (full URL). If the PR review cited the bug, keep the
+   finding text out of the manifest; ground truth stays independent of the
+   reviewer.
 4. Prefer bugs an experienced reviewer would call real: off-by-one, nil
    dereference, injection, missing error check, path traversal, race,
    auth bypass, index panic. Exclude anything where "fixed" is debatable.
@@ -718,8 +721,9 @@ claim to cite; keep unmeasured equivalence wording softened or removed.
 `kind: "control"` records a clean change with `bugs: []`. Its provenance
 still identifies a `seeded` or `real` origin. Null or nonempty ground truth
 is refused for a control; bug cases still require at least one defect. A
-real control names `provenance.repo` and `provenance.pr` and carries no
-`fix_commit`: a clean change is one nothing had to repair. Every finding on
+real control names `provenance.repo`, `provenance.pr`, and the same
+`base_sha`/`head_sha` pair, and carries no `fix_commit`: a clean change is
+one nothing had to repair. Every finding on
 a control is a false positive. Recall has no denominator
 and renders `null`. The two seeded clean cases, `control-comment` and
 `control-rename`, are **not a model-quality claim**; a real control is the

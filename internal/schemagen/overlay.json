@@ -30,12 +30,14 @@
       "/properties/id": "Stable case id, matching the bench/corpus/<id> directory name.",
       "/properties/kind": "seeded for deterministic injected fixtures, real for a published PR with a later fix, control for a clean change with bugs: []. Control provenance independently records seeded or real origin.",
       "/properties/line_tolerance": "How many lines from a bug still count as the same defect (default 1). Keep it narrower than the new-side span of the hunk that shows the bug. A hit is one-to-one: a second finding on the same bug is a false positive.",
-      "/properties/provenance": "Where the case came from: injected text for seeded cases, or repo/PR/fix_commit for real ones. The validation test enforces the per-kind requirements the schema cannot express.",
+      "/properties/provenance": "Where the case came from: injected text for seeded cases, or repo, PR number, the two commits the diff spans (base_sha, head_sha), and fix_commit for real ones. The validation test enforces the per-kind requirements the schema cannot express.",
       "/properties/bugs": "Empty for a clean control; otherwise at least one known defect. path, line, kind, and severity are the published ground truth; matching uses path, the line window, and the defect the finding names, not severity.",
-      "/$defs/provenance": "Case origin. Seeded cases name what was injected; real cases name the repository, PR number, and the later commit that fixed the bug.",
+      "/$defs/provenance": "Case origin. Seeded cases name what was injected; real cases name the repository, PR number, the commits the PR was reviewed at, and the later commit that fixed the bug.",
       "/$defs/bug": "One known defect: the reviewed path, the line in the reviewed head, the defect kind (off-by-one, nil-deref, injection, missing-error-check, ...), and the severity a good review should assign.",
       "/$defs/bug/properties/keywords": "Optional phrases a finding may use to name this defect, matched case-insensitively at a word start. kind and the published category vocabulary always name it too, so a case with no keywords still matches.",
-      "/$defs/bug/properties/also_lines": "Optional alternate anchors for the same defect: each entry is a new-side line in the same hunk, matched with the same tolerance and defect-naming rule as the primary line. Matching any anchor counts the bug once and reports the primary line."
+      "/$defs/bug/properties/also_lines": "Optional alternate anchors for the same defect: each entry is a new-side line in the same hunk, matched with the same tolerance and defect-naming rule as the primary line. Matching any anchor counts the bug once and reports the primary line.",
+      "/$defs/provenance/properties/base_sha": "Merge base the reviewed head was diffed against, as a 40-character lowercase hex commit id. Real cases require it; it is the base_sha a bundle stamps.",
+      "/$defs/provenance/properties/head_sha": "Reviewed head commit, as a 40-character lowercase hex commit id. Real cases require it; it is the head_sha a bundle stamps."
     }
   },
   "envelope": {

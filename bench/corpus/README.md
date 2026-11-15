@@ -78,14 +78,16 @@ at the recorded head is the tree:
 
 ```
 bench/corpus/<repo>-<pr>-<slug>/
-  case.json                 # kind: real (or control), provenance.repo/.pr/.fix_commit
+  case.json                 # kind: real (or control), provenance.repo/.pr/.base_sha/.head_sha/.fix_commit
   full.diff                 # git diff <base> <reviewed head>, verbatim
   hunks.tsv                 # the fetch-time index of that diff
 ```
 
-- `provenance.source` names the reviewed head and base SHA, `provenance.fix_commit`
-  is the full URL of the later fix, and a control omits it: it has no defect
-  that was fixed.
+- `provenance.base_sha` and `provenance.head_sha` are the 40-hex commits the
+  `full.diff` spans; a bundle stamps them, so the diff a model reviews names the
+  two commits a reader can check it against. `provenance.fix_commit` is the full
+  URL of the later fix, and a control omits it: it has no defect that was
+  fixed.
 - `bugs[]` ground truth is a line of the reviewed head inside one of the
   diff's hunks (the added line itself, or the statement the fix deletes), with
   `kind`, `severity`, and the `keywords` a reviewer would use. A fix that also

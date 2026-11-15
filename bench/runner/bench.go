@@ -266,19 +266,31 @@ func slug(s string) string {
 }
 
 // corpusCase is one checked-in manifest plus the bytes every artifact copies
-// verbatim.
+// verbatim. A real case also carries the commit pair its bundle stamps, and an
+// empty pair is what tells a seeded case apart: nothing else sets it.
 type corpusCase struct {
 	id       string
+	baseSHA  string
+	headSHA  string
 	manifest []byte
 	diff     []byte
 }
 
 type manifest struct {
-	SchemaVersion string            `json:"schema_version"`
-	ID            string            `json:"id"`
-	Kind          string            `json:"kind"`
-	Bugs          []json.RawMessage `json:"bugs"`
-	LineTolerance int               `json:"line_tolerance"`
+	Provenance    manifestProvenance `json:"provenance"`
+	SchemaVersion string             `json:"schema_version"`
+	ID            string             `json:"id"`
+	Kind          string             `json:"kind"`
+	Bugs          []json.RawMessage  `json:"bugs"`
+	LineTolerance int                `json:"line_tolerance"`
+}
+
+// manifestProvenance is the origin a manifest names: seeded, or real with the
+// commits the reviewed diff spans.
+type manifestProvenance struct {
+	Kind    string `json:"kind"`
+	BaseSHA string `json:"base_sha"`
+	HeadSHA string `json:"head_sha"`
 }
 
 // loadCases reads the corpus and validates what the scoring path needs: a v1
@@ -344,21 +356,39 @@ func readCase(dir, id string) (corpusCase, error) {
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return corpusCase{}, jq.NewErrf("case %s: %s", id, err)
 	}
-	switch {
-	case m.SchemaVersion != "1":
-		return corpusCase{}, jq.NewErrf("case %s: schema_version %q, want \"1\"", id, m.SchemaVersion)
-	case m.ID != id:
-		return corpusCase{}, jq.NewErrf("case %s: manifest id %q does not match its directory", id, m.ID)
-	case m.Kind == "control" && (m.Bugs == nil || len(m.Bugs) != 0):
-		return corpusCase{}, jq.NewErrf("case %s: control requires bugs: []", id)
-	case len(m.Bugs) == 0 && m.Kind != "control":
-		return corpusCase{}, jq.NewErrf("case %s: manifest carries no ground-truth bug", id)
+	if err := checkManifest(&m, id); err != nil {
+		return corpusCase{}, err
 	}
 	diff, err := os.ReadFile(filepath.Join(dir, id, fullDiffName))
 	if err != nil {
 		return corpusCase{}, jq.NewErrf("case %s: %s", id, err)
 	}
-	return corpusCase{id: id, manifest: raw, diff: diff}, nil
+	return corpusCase{
+		manifest: raw,
+		diff:     diff,
+		id:       id,
+		baseSHA:  m.Provenance.BaseSHA,
+		headSHA:  m.Provenance.HeadSHA,
+	}, nil
+}
+
+// checkManifest refuses a manifest the scoring path cannot use: a v1 version,
+// an id matching its directory, a control without bugs, a bug case with at
+// least one, and the commit pair a real case's bundle stamps.
+func checkManifest(m *manifest, id string) error {
+	switch {
+	case m.SchemaVersion != "1":
+		return jq.NewErrf("case %s: schema_version %q, want \"1\"", id, m.SchemaVersion)
+	case m.ID != id:
+		return jq.NewErrf("case %s: manifest id %q does not match its directory", id, m.ID)
+	case m.Kind == "control" && (m.Bugs == nil || len(m.Bugs) != 0):
+		return jq.NewErrf("case %s: control requires bugs: []", id)
+	case len(m.Bugs) == 0 && m.Kind != "control":
+		return jq.NewErrf("case %s: manifest carries no ground-truth bug", id)
+	case m.Provenance.Kind == "real" && (m.Provenance.BaseSHA == "" || m.Provenance.HeadSHA == ""):
+		return jq.NewErrf("case %s: real case names no provenance.base_sha/head_sha", id)
+	}
+	return nil
 }
 
 func missingCases(only, known []string) []string {
@@ -406,9 +436,9 @@ func (r *runner) run(ctx context.Context) (*Report, error) {
 		return nil, err
 	}
 	rep := r.newReport()
-	for _, c := range r.cases {
+	for i := range r.cases {
 		for index := 1; index <= r.cfg.Runs; index++ {
-			r.sample(ctx, rep, c, index, prefix, nonce)
+			r.sample(ctx, rep, &r.cases[i], index, prefix, nonce)
 		}
 	}
 	if err := r.finish(ctx, rep); err != nil {
@@ -431,7 +461,7 @@ func failure(rep *Report) error {
 
 // caseRun is one sample's artifacts and its measurement.
 type caseRun struct {
-	corpus    corpusCase
+	corpus    *corpusCase
 	dir       string
 	slug      string
 	promptSHA string
@@ -440,14 +470,14 @@ type caseRun struct {
 	index     int
 }
 
-func (r *runner) paths(c corpusCase, index int) *caseRun {
+func (r *runner) paths(c *corpusCase, index int) *caseRun {
 	s := "corpus-" + c.id + "-" + slug(r.cfg.Model) + "-run" + strconv.Itoa(index)
 	return &caseRun{corpus: c, index: index, slug: s, dir: filepath.Join("runs", s)}
 }
 
 // sample produces one review, scores it with the shipped binary, and records
 // the outcome. A failure keeps the sample's evidence and moves on.
-func (r *runner) sample(ctx context.Context, rep *Report, c corpusCase, index int, prefix, nonce string) {
+func (r *runner) sample(ctx context.Context, rep *Report, c *corpusCase, index int, prefix, nonce string) {
 	cr := r.paths(c, index)
 	rep.Samples++
 	err := r.measure(ctx, cr, prefix, nonce)
@@ -468,7 +498,7 @@ func (r *runner) measure(ctx context.Context, cr *caseRun, prefix, nonce string)
 	if err := os.MkdirAll(cr.dir, dirPerm); err != nil {
 		return jq.NewErrf("sample dir: %s", err)
 	}
-	source := caseSource(cr.corpus.id, cr.corpus.diff)
+	source := caseSource(cr.corpus)
 	derived, err := toToolFreePrefix(prefix)
 	if err != nil {
 		return err
@@ -489,7 +519,7 @@ func (r *runner) measureLoop(ctx context.Context, cr *caseRun, prefix, nonce str
 	if err := os.MkdirAll(cr.dir, dirPerm); err != nil {
 		return jq.NewErrf("sample dir: %s", err)
 	}
-	source := caseSource(cr.corpus.id, cr.corpus.diff)
+	source := caseSource(cr.corpus)
 	lc := loopConfig(r.cfg.Timeout, r.cfg.Loop)
 	out, err := r.runLoop(ctx, cr, prefix, nonce, lc, source)
 	if err != nil {

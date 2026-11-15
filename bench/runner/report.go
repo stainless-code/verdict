@@ -362,7 +362,7 @@ func (r *runner) loopSummaries() []LoopSummary {
 	out := make([]LoopSummary, 0, len(r.loops))
 	for i := range r.loops {
 		rec := &r.loops[i]
-		cr := &caseRun{slug: rec.slug, corpus: corpusCase{id: rec.caseID}, index: rec.run}
+		cr := &caseRun{slug: rec.slug, corpus: &corpusCase{id: rec.caseID}, index: rec.run}
 		out = append(out, summarizeLoop(cr, &rec.out))
 	}
 	return out
