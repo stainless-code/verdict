@@ -21,10 +21,8 @@
       "severity": "important",
       "keywords": [
         "never schedules",
-        "referencing nodes are not reparsed",
         "not scheduled for reparsing",
         "does not reparse",
-        "not reparsed",
         "never reparsed",
         "keeps the old parse"
       ],

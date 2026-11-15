@@ -23,7 +23,6 @@
         "expression is never set",
         "missing expression",
         "expr is missing",
-        "left unset",
         "expression unset",
         "queries the dimension name",
         "the dimension name instead of the column",

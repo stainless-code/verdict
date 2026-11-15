@@ -124,7 +124,7 @@ var keywordCases = []keywordCase{
 			"Python models add config keys when their config is accessed, so this validation raises a spurious deprecation for keys the user never wrote.",
 			"The validation cannot tell a python model's internal properties apart from user config, so every python model gets a spurious deprecation.",
 			"The internal keys are not in the jsonschema, so validating them raises a false deprecation.",
-			"The validation reports the config keys a python model adds itself as user-written, so keys the user never wrote are flagged as custom.",
+			"It validates keys the user never wrote, because a python model's config access puts them in _config_call_dict.",
 			"The internal keys are treated as user config, so this warns on every python model.",
 			"A false deprecation is raised for keys the python model added itself.",
 			"This fires custom-key-in-config-deprecation and warns on every python model, even one the user configured correctly.",
@@ -132,6 +132,7 @@ var keywordCases = []keywordCase{
 		// Neutral or praising sentences at the same line, then findings about
 		// neighboring defects in the same file: none may name this one.
 		fails: []string{
+			"Check whether validate_model_config already ignores keys the user never wrote in _config_call_dict.",
 			"Document the python model's own config keys in the README.",
 			"Bookkeeping keys are stored in _config_call_dict.",
 			"Ensure internal keys are stripped before serializing the manifest.",
@@ -159,6 +160,7 @@ var keywordCases = []keywordCase{
 		// Neutral or praising sentences at the same line, then findings about
 		// neighboring defects in the same file: none may name this one.
 		fails: []string{
+			"Good that expr is left unset here per the comment on column-based dimensions.",
 			"Good: this now sets expr for column-based dimensions.",
 			"Consider a no mapping fallback log for unknown dimension types.",
 			"Good that no expression is needed for column-based dimensions per the comment.",
@@ -176,18 +178,17 @@ var keywordCases = []keywordCase{
 	{
 		id: "dbt-core-9421-partial-parse-versioning",
 		passes: []string{
-			"Adding a version to an existing model leaves the referencing nodes not reparsed, so they keep reading the old parse.",
 			"Adding a version to an existing model never schedules its referencing nodes for reparsing, so the dependents keep the parse they already had.",
-			"The condition only covers a changed latest version or a removed one, so a model that gains versioning is not reparsed.",
-			"A model that becomes versioned leaves its dependents not reparsed, so dbt fails with a node that was never parsed.",
 			"Because the gate reads the old node's flag, adding versioning does not reparse any referencing node.",
 			"Downstream models are never reparsed when a new version is added to the schema, so they keep the old parse.",
 			"Partial parsing misses the version-added case, so referencing nodes are never reparsed.",
-			"If an unversioned model gains versions, node.is_versioned is False so referencing models are not reparsed.",
+			"Dependents of a model that gains its first version are not scheduled for reparsing, so each one keeps the old parse.",
+			"A model that becomes versioned does not reparse its referencing nodes, so they keep the old parse.",
 		},
 		// Neutral or praising sentences at the same line, then findings about
 		// neighboring defects in the same file: none may name this one.
 		fails: []string{
+			"When a model is unversioned, referencing nodes are not reparsed, which avoids unnecessary work.",
 			"Newly versioned models are handled by the versions loop below.",
 			"Nice that a model that becomes versioned keeps its alias.",
 			"Good that this comment clarifies adding a version vs removing one.",

@@ -20,7 +20,7 @@
       "kind": "false-positive-warning",
       "severity": "important",
       "keywords": [
-        "keys the user never wrote",
+        "validates keys the user never wrote",
         "spurious deprecation",
         "false deprecation",
         "warns on every python model"
