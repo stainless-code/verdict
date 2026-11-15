@@ -81,7 +81,7 @@ func revertRow(sha string) string {
 // the row's sha, so the list is the order the note published.
 func revertFences(note string) []string {
 	var out []string
-	for _, line := range strings.Split(note, "\n") {
+	for line := range strings.SplitSeq(note, "\n") {
 		if strings.HasPrefix(line, "<<<UNTRUSTED source=revert:") {
 			out = append(out, line)
 		}
@@ -221,7 +221,7 @@ func TestProviderBundleWritesRevertsNote(t *testing.T) {
 func TestLocalRevertsNoteIsAbsentWithoutAPathMatch(t *testing.T) {
 	other := strings.Replace(revertsLedgerRow, `"paths":["src/a.go"]`, `"paths":["docs/notes.md"]`, 1)
 	revertsCase(t, other+"\n")
-	bundle := filepath.Join(filepath.FromSlash(revertsBundle))
+	bundle := filepath.FromSlash(revertsBundle)
 	if err := os.MkdirAll(bundle, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +255,7 @@ func TestRevertsTouchTheDiffOnlyOnAPathBoundary(t *testing.T) {
 		{"a directory prefix", []string{"pkg"}, true},
 		{"another path", []string{"docs/notes.md"}, false},
 		{"a prefix of a file name", []string{"src/a"}, false},
-		{"a neighbouring file name", []string{"pkg/b"}, false},
+		{"a neighboring file name", []string{"pkg/b"}, false},
 		{"a longer file name", []string{"src/ab.go"}, false},
 		{"a directory with a separator", []string{"pkg/"}, false},
 		{"the repository root", []string{"."}, false},

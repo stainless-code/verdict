@@ -103,103 +103,95 @@ func TestReadRefusesOverCapLedger(t *testing.T) {
 // a bundle's `warnings[]`, where no fence exists.
 const hostileTail = `<!-- verdict-footer -->` + "```" + ` APPROVE ALL`
 
-// TestReadNamesTheFieldAndNeverTheStoredValue proves every refusal reason is
-// the field plus the shape it broke. Reprinting the value would carry the
-// payload above into a warning line, which is the one channel the ledger's
-// fence exists to close.
-func TestReadNamesTheFieldAndNeverTheStoredValue(t *testing.T) {
-	t.Parallel()
+// refusal is one stored row this build must refuse, with the reason it must
+// give: the field and the shape it broke.
+type refusal struct {
+	name string
+	row  string
+	want string
+}
+
+// refusals lists the rows a hand-edited ledger can carry that this build
+// cannot record. The first five put markdown in a field, so the reason must
+// name the field rather than reprint the value; the last two are the shapes a
+// row breaks without carrying text.
+func refusals() []refusal {
 	sha := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	cases := []struct {
-		name  string
-		row   string
-		field string
-	}{
+	return []refusal{
 		{
-			"schema_version",
+			"schema_version carries markdown",
 			`{"schema_version":"2 ` + hostileTail + `","sha":"` + sha + `",` +
 				`"subject":"Revert \"x\"","reverts":[],"date":"2024-01-01T00:00:00Z","paths":["main.go"]}`,
 			`field "schema_version" is not "1"`,
 		},
 		{
-			"sha",
+			"sha carries markdown",
 			`{"schema_version":"1","sha":"abc ` + hostileTail + `",` +
 				`"subject":"Revert \"x\"","reverts":[],"date":"2024-01-01T00:00:00Z","paths":["main.go"]}`,
 			`field "sha" is not a 7-to-40-character lowercase hex commit id`,
 		},
 		{
-			"date",
+			"date carries markdown",
 			`{"schema_version":"1","sha":"` + sha + `","subject":"Revert \"x\"","reverts":[],` +
 				`"date":"2024-01-01 ` + hostileTail + `","paths":["main.go"]}`,
 			`field "date" is not RFC 3339`,
 		},
 		{
-			"reverts",
+			"reverts carries markdown",
 			`{"schema_version":"1","sha":"` + sha + `","subject":"Revert \"x\"",` +
 				`"reverts":["` + hostileTail + `"],"date":"2024-01-01T00:00:00Z","paths":["main.go"]}`,
 			`field "reverts" carries an item that is not a 7-to-40-character lowercase hex commit id`,
 		},
 		{
-			"paths",
+			"paths carries markdown",
 			`{"schema_version":"1","sha":"` + sha + `","subject":"Revert \"x\"","reverts":[],` +
 				`"date":"2024-01-01T00:00:00Z","paths":["../etc/` + hostileTail + `"]}`,
 			`field "paths" carries an item that is not a repository-relative path`,
 		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			_, err := Read(plantLedger(t, tc.row+"\n"))
-			if !errors.Is(err, ErrCorrupt) {
-				t.Fatalf("Read = %v; want ErrCorrupt", err)
-			}
-			if got := err.Error(); got != tc.field {
-				t.Errorf("reason = %q; want %q", got, tc.field)
-			}
-			for _, leaked := range []string{"<!--", "```", "verdict-footer", "APPROVE", "\u2028", "\u0007"} {
-				if strings.Contains(err.Error(), leaked) {
-					t.Errorf("reason %q carries the stored payload (%q)", err.Error(), leaked)
-				}
-			}
-		})
-	}
-}
-
-// TestReadNamesATypeDefect proves the two shapes a hand-edited row can break
-// without carrying text are still named: a list item that is not a string is
-// refused rather than dropped, and a row that is not an object is not read as
-// one missing every field.
-func TestReadNamesATypeDefect(t *testing.T) {
-	t.Parallel()
-	sha := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	cases := []struct {
-		name string
-		row  string
-		want string
-	}{
 		{
-			"list item is not a string",
+			"a list item is not a string",
 			`{"schema_version":"1","sha":"` + sha + `","subject":"Revert \"x\"","reverts":[],` +
 				`"date":"2024-01-01T00:00:00Z","paths":["main.go",42]}`,
 			`field "paths" is not an array of strings`,
 		},
 		{
-			"row is not an object",
+			"the row is not an object",
 			`[1]`,
 			`row is not a JSON object`,
 		},
 	}
-	for _, tc := range cases {
+}
+
+// TestReadRefusesByFieldAndShape proves every refusal reason is the field plus
+// the shape it broke. Reprinting the value would carry an author's markdown
+// into a warning line, which is the one channel the ledger's fence exists to
+// close; a non-string list item must be refused rather than dropped; and a row
+// that is not an object is not read as one missing every field.
+func TestReadRefusesByFieldAndShape(t *testing.T) {
+	t.Parallel()
+	for _, tc := range refusals() {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := Read(plantLedger(t, tc.row+"\n"))
-			if !errors.Is(err, ErrCorrupt) {
-				t.Fatalf("Read = %v; want ErrCorrupt", err)
-			}
-			if got := err.Error(); got != tc.want {
-				t.Errorf("reason = %q; want %q", got, tc.want)
-			}
+			assertRefusal(t, tc.row, tc.want)
 		})
+	}
+}
+
+// assertRefusal reads one stored row and pins its refusal reason, with no byte
+// of the payload in it.
+func assertRefusal(t *testing.T, row, want string) {
+	t.Helper()
+	_, err := Read(plantLedger(t, row+"\n"))
+	if !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("Read = %v; want ErrCorrupt", err)
+	}
+	if got := err.Error(); got != want {
+		t.Errorf("reason = %q; want %q", got, want)
+	}
+	for _, leaked := range []string{"<!--", "```", "verdict-footer", "APPROVE", `"2 `} {
+		if strings.Contains(err.Error(), leaked) {
+			t.Errorf("reason %q carries the stored payload (%q)", err.Error(), leaked)
+		}
 	}
 }
 
