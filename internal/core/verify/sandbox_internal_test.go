@@ -1,11 +1,14 @@
 package verifycore
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/stainless-code/verdict/internal/core"
 )
 
 // wantVarRunMount mirrors the host fact the wrapper reads, so a supported
@@ -117,5 +120,50 @@ func TestSandboxVarRunMountSkipsSymlinks(t *testing.T) {
 				t.Errorf("mount = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+type probeCommander struct {
+	res   core.Result
+	calls int
+}
+
+func (c *probeCommander) Run(_ context.Context, _ *core.Command) (core.Result, error) {
+	c.calls++
+	return c.res, nil
+}
+
+func TestProbeNamesTheLinuxNamespaceRemedy(t *testing.T) {
+	sb := &sandbox{tool: bwrapTool, prefix: []string{bwrapTool}}
+	cmdr := &probeCommander{res: core.Result{
+		ExitCode: 1,
+		Stdout:   "bwrap: No permissions to creating new namespace, likely because the kernel does not allow non-privileged user namespaces.",
+	}}
+	ref := sb.probe(context.Background(), cmdr, "", nil)
+	if ref == nil || ref.Code != codeSandboxUnavailable {
+		t.Fatalf("ref = %v, want sandbox-unavailable", ref)
+	}
+	want := "sandbox unavailable: bwrap could not create the sandbox (exit 1: bwrap: No permissions to creating new namespace, " +
+		"likely because the kernel does not allow non-privileged user namespaces.) — unprivileged user namespaces may be restricted"
+	if ref.Message != want {
+		t.Errorf("message = %q, want %q", ref.Message, want)
+	}
+	if cmdr.calls != 1 {
+		t.Errorf("spawns = %d, want the lone probe", cmdr.calls)
+	}
+}
+
+func TestProbeKeepsTheNamespaceRemedyOffMacOS(t *testing.T) {
+	sb := &sandbox{tool: sandboxExecTool, prefix: []string{sandboxExecPath}}
+	cmdr := &probeCommander{res: core.Result{ExitCode: 1, Stderr: "sandbox-exec: invalid profile"}}
+	ref := sb.probe(context.Background(), cmdr, "", nil)
+	if ref == nil || ref.Code != codeSandboxUnavailable {
+		t.Fatalf("ref = %v, want sandbox-unavailable", ref)
+	}
+	if strings.Contains(ref.Message, "unprivileged user namespaces") {
+		t.Errorf("message = %q, want no Linux namespace remedy on macOS", ref.Message)
+	}
+	if !strings.Contains(ref.Message, "invalid profile") {
+		t.Errorf("message = %q, want sandbox-exec's own diagnostic", ref.Message)
 	}
 }

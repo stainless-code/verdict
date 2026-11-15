@@ -215,9 +215,19 @@ func (sb *sandbox) probe(ctx context.Context, commander core.Commander, workDir 
 	}
 	if res.ExitCode != 0 {
 		return sandboxUnavailable(fmt.Sprintf(
-			"%s could not create the sandbox (exit %d: %s)", sb.tool, res.ExitCode, sandboxDetail(res)))
+			"%s could not create the sandbox (exit %d: %s)%s",
+			sb.tool, res.ExitCode, sandboxDetail(res), sb.probeRemedy()))
 	}
 	return nil
+}
+
+// probeRemedy is the cause a failed probe names, per mechanism: only bwrap
+// builds namespaces, so only its refusal points at the namespace sysctl.
+func (sb *sandbox) probeRemedy() string {
+	if sb.tool == bwrapTool {
+		return " — unprivileged user namespaces may be restricted"
+	}
+	return ""
 }
 
 // sandboxDetail trims bwrap's diagnostic to its first line for the refusal.

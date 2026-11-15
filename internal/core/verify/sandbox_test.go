@@ -269,33 +269,6 @@ func checkNothingWritten(t *testing.T, before []byte) {
 	}
 }
 
-// TestSandboxNamespaceFailureNamesTheCause proves a probe that starts but
-// cannot build its namespaces refuses with bwrap's own diagnostic.
-func TestSandboxNamespaceFailureNamesTheCause(t *testing.T) {
-	if runtime.GOOS != "linux" {
-		t.Skip("the diagnostic is bwrap's: namespaces are the Linux mount shape")
-	}
-	root := t.TempDir()
-	t.Chdir(root)
-	writeFile(t, ".verdict/state/5201/patch.json", `{"verifyCmd":"printf ok"}`)
-	cmdr := &sandboxCommander{results: []core.Result{{
-		Stdout:   "bwrap: No permissions to creating new namespace, likely because the kernel does not allow non-privileged user namespaces.",
-		ExitCode: 1,
-	}}}
-	req := sandboxRequest([]string{"PATH=/bin", "HOME=/home/eval"}, cmdr)
-	req.RepoRoot = root
-	_, ref := verifycore.Run(context.Background(), req)
-	if ref == nil || ref.Code != "sandbox-unavailable" {
-		t.Fatalf("ref = %v, want sandbox-unavailable", ref)
-	}
-	if !strings.Contains(ref.Message, "unprivileged user namespaces") {
-		t.Errorf("message = %q, want the namespace cause", ref.Message)
-	}
-	if len(cmdr.calls) != 1 {
-		t.Errorf("spawns = %d, want the lone probe", len(cmdr.calls))
-	}
-}
-
 // TestSandboxWithoutHomeRefuses proves the credential dirs are never left
 // exposed: no child HOME means no verified hiding place, so nothing spawns.
 func TestSandboxWithoutHomeRefuses(t *testing.T) {
