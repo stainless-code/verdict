@@ -2073,7 +2073,7 @@
       "additionalProperties": true
     },
     "fixData": {
-      "description": "fix --json data: one pass over the named finding, or the completion shape. The pass carries the finding identity, its anchors, the pass budget, and the open/fixed/stopped tallies; completion leaves those null and sets complete.",
+      "description": "fix --json data: one pass over the named finding, one --all batch, or the completion shape. The pass carries the finding identity, its anchors, the pass budget, and the open/fixed/stopped tallies; a batch leaves those null and fills min_severity, verify_cmd, and one batch row per selected sig; completion leaves them null and sets complete.",
       "type": "object",
       "properties": {
         "dir": { "type": "string" },
@@ -2092,7 +2092,23 @@
         "fixed": { "type": "integer", "minimum": 0 },
         "open": { "type": "integer", "minimum": 0 },
         "stopped": { "type": "integer", "minimum": 0 },
-        "complete": { "type": "boolean" }
+        "complete": { "type": "boolean" },
+        "min_severity": { "type": ["string", "null"] },
+        "verify_cmd": { "type": ["string", "null"] },
+        "patch": {
+          "description": "Path of fix.patch beside the ledger: the worktree's unified diff against HEAD, written before the pass consumes its budget and absent when the worktree is clean. Nothing is applied or pushed — the operator runs git apply.",
+          "type": ["string", "null"]
+        },
+        "paths": {
+          "description": "The --paths globs the batch selected with, in the order given. Absent when the batch read the whole store.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "batch": {
+          "description": "One row per open inline finding at or above min_severity, in rank order. Absent on a single pass and on a completion.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/fixBatchRow" }
+        }
       },
       "required": [
         "dir",
@@ -2124,6 +2140,24 @@
         "anchored": { "type": "string" }
       },
       "required": ["path", "line", "start_line", "side", "anchored"],
+      "additionalProperties": true
+    },
+    "fixBatchRow": {
+      "description": "One sig's outcome in a fix --all batch: the sig, its locator and severity, the pass the batch consumed (0 when it consumed none), the outcome word, and the reason a skipped row gives. A ceiling, scope-escape, or no-anchor row is reported rather than refused, so one stuck finding cannot block the batch.",
+      "type": "object",
+      "properties": {
+        "sig": { "type": "string" },
+        "locator": { "type": "string" },
+        "severity": {
+          "enum": ["critical", "important", "informational", "untagged"]
+        },
+        "pass": { "type": "integer", "minimum": 0 },
+        "outcome": {
+          "enum": ["ready", "ceiling", "scope-escape", "no-anchor"]
+        },
+        "reason": { "type": "string" }
+      },
+      "required": ["sig", "locator", "severity", "pass", "outcome", "reason"],
       "additionalProperties": true
     },
     "learnData": {

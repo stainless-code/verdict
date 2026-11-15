@@ -38,8 +38,9 @@ func fixRuntime(t *testing.T) *core.Runtime {
 	return &core.Runtime{
 		Now: fixedNow,
 		Commander: fixedCommander{t: t, out: map[string]string{
-			"git\x00ls-files\x00-u":              "",
-			"git\x00status\x00--porcelain\x00-z": "",
+			"git\x00ls-files\x00-u":                              "",
+			"git\x00status\x00--porcelain\x00-z":                 "",
+			"git\x00diff\x00HEAD\x00--no-color\x00--no-ext-diff": "",
 		}},
 	}
 }

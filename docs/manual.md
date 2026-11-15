@@ -2969,8 +2969,9 @@ and remove it when done — the working tree stays untouched throughout.
 
 ### Fix loops (bounded, verify-gated)
 
-`fix owner/repo local-<name> [--sig <s>] [--json]` runs one bounded pass over a
-local bundle: it picks the top open inline sig (severity `critical` above
+`fix owner/repo local-<name> [--sig <s> | --all [--min-severity <s>]
+[--verify-cmd <cmd>] [--paths <glob>]...] [--json]` runs one bounded pass over a local bundle: it
+picks the top open inline sig (severity `critical` above
 `important` above `informational`, then path) or the `--sig` prefix (must be open
 and inline; non-open, section, and unknown sigs refuse), prints the finding
 (plus its stored `brief` block when one is present and the full `kb.txt` context
@@ -2994,6 +2995,39 @@ constrain a cooperating driver, not an adversary (deleting `fix.json` restarts
 counts) — the ledger is an audit trail, not a lock. Verifying an untrusted
 worktree? `verify` refuses hostile shapes pre-exec, but the static gate cannot
 see everything — run the verify step under the Hostile-PR sandbox recipe below.
+
+`--all` is the batch form of the same loop: it selects every open inline finding
+at or above `--min-severity` (`critical`, `important`, `informational`, or `off`;
+default `important`, an untagged severity is never withheld) through the one
+selector `report`, `next`, and a recipe's path scope also read, takes one pass on
+each — the same 3-per-sig and one-file ceilings apply per sig — and names every
+sig's outcome in `data.batch`: `ready` (a pass was consumed, the block is
+printed), `ceiling` (already out of passes), `scope-escape` (the worktree left
+that sig's anchor), or `no-anchor` (nothing to scope). A stuck sig is reported,
+not refused: only `--all` having no verification command refuses (`no-verify-cmd`),
+because a batch that hands out passes nothing can prove spends agent runs for
+nothing. Pass `--verify-cmd <cmd>` or write `verifyCmd` in the bundle's
+`patch.json` — the same command `verify` runs. `--all` and `--sig` are mutually
+exclusive, and `--min-severity`/`--verify-cmd`/`--paths` belong to the batch.
+
+`--paths <glob>` (repeatable, portable globs as in `.verdict/config.json`) scopes
+a batch to the findings whose anchor path matches: two globs select the union,
+and a scoped batch with nothing above the floor says so with the globs in the
+message instead of claiming the store is empty. It is the batch's scope unit
+because a finding records no lens — a recipe declares lenses and model hints, not
+paths, so `--recipe` cannot select sigs until `record` stores per-finding lens
+provenance.
+
+Each pass also writes `fix.patch` beside the ledger: the worktree's unified
+diff against `HEAD`, captured before the pass consumes its budget, so the change
+set a pass extends is reviewable and reversible. `fix` never applies it and
+never pushes — an operator applies it with `git apply` — and untracked files
+stay out of it until `git add -N` puts them in the diff. An empty diff removes a
+stale patch instead of leaving a diff that no longer describes the tree. The
+diff is scanned for credential shapes before it lands: a private key, an AWS key
+id, or a GitHub, Slack, Stripe, Google, Anthropic, or OpenAI token refuses
+`fix-patch-secret` naming the shape, writes no patch, and records no pass, so a
+secret never reaches the bundle every later agent run reads.
 
 ## Hostile-PR sandbox recipe
 

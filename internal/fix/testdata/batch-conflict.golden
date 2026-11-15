@@ -1,0 +1,6 @@
+exit: 2
+--- stdout ---
+
+--- stderr ---
+fix takes --sig or --all, not both (--all selects every open inline finding)
+--- files ---

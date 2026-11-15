@@ -1,0 +1,36 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fix",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "lower --min-severity or fix one sig with --sig",
+  "warnings": [],
+  "data": {
+    "dir": ".verdict/state/local-low",
+    "ledger": ".verdict/state/local-low/fix.json",
+    "sig": null,
+    "locator": null,
+    "severity": null,
+    "body": null,
+    "brief": null,
+    "anchors": null,
+    "pass": null,
+    "max_passes": 3,
+    "kb": null,
+    "open_inline": 2,
+    "fixed": 0,
+    "open": 2,
+    "stopped": 0,
+    "complete": false,
+    "min_severity": "important",
+    "batch": []
+  },
+  "error": null
+}
+--- stderr ---
+» readiness: .verdict/state/local-low — findings 2 open (2 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
+fix --all: no open inline finding at or above important — lower --min-severity or fix one sig with --sig
+--- files ---

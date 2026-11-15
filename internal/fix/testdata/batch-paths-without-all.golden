@@ -1,0 +1,6 @@
+exit: 2
+--- stdout ---
+
+--- stderr ---
+--paths scopes a batch: pass it with --all
+--- files ---
