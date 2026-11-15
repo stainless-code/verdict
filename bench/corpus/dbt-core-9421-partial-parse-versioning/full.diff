@@ -1,0 +1,983 @@
+diff --git a/.changes/unreleased/Features-20240122-145854.yaml b/.changes/unreleased/Features-20240122-145854.yaml
+new file mode 100644
+index 000000000..db3c49d8a
+--- /dev/null
++++ b/.changes/unreleased/Features-20240122-145854.yaml
+@@ -0,0 +1,6 @@
++kind: Features
++body: Enable unit testing versioned models
++time: 2024-01-22T14:58:54.251484-05:00
++custom:
++  Author: gshank
++  Issue: "9344"
+diff --git a/core/dbt/contracts/graph/manifest.py b/core/dbt/contracts/graph/manifest.py
+index 4b7ed1825..ad981a041 100644
+--- a/core/dbt/contracts/graph/manifest.py
++++ b/core/dbt/contracts/graph/manifest.py
+@@ -980,6 +980,7 @@ class Manifest(MacroMethods, DataClassMessagePackMixin, dbtClassMixin):
+                 self.metrics.values(),
+                 self.semantic_models.values(),
+                 self.saved_queries.values(),
++                self.unit_tests.values(),
+             )
+         )
+         forward_edges, backward_edges = build_node_edges(edge_members)
+diff --git a/core/dbt/contracts/graph/nodes.py b/core/dbt/contracts/graph/nodes.py
+index 666affe38..006c4a876 100644
+--- a/core/dbt/contracts/graph/nodes.py
++++ b/core/dbt/contracts/graph/nodes.py
+@@ -42,6 +42,7 @@ from dbt.contracts.graph.unparsed import (
+     UnitTestOverrides,
+     UnitTestInputFixture,
+     UnitTestOutputFixture,
++    UnitTestNodeVersions,
+ )
+ from dbt.contracts.graph.node_args import ModelNodeArgs
+ from dbt.contracts.graph.semantic_layer_common import WhereFilterIntersection
+@@ -1067,6 +1068,9 @@ class UnitTestDefinition(NodeInfoMixin, GraphNode, UnitTestDefinitionMandatory):
+     config: UnitTestConfig = field(default_factory=UnitTestConfig)
+     checksum: Optional[str] = None
+     schema: Optional[str] = None
++    created_at: float = field(default_factory=lambda: time.time())
++    versions: Optional[UnitTestNodeVersions] = None
++    version: Optional[NodeVersion] = None
+ 
+     @property
+     def build_path(self):
+@@ -1089,7 +1093,7 @@ class UnitTestDefinition(NodeInfoMixin, GraphNode, UnitTestDefinitionMandatory):
+ 
+     def build_unit_test_checksum(self):
+         # everything except 'description'
+-        data = f"{self.model}-{self.given}-{self.expect}-{self.overrides}"
++        data = f"{self.model}-{self.versions}-{self.given}-{self.expect}-{self.overrides}"
+ 
+         # include underlying fixture data
+         for input in self.given:
+diff --git a/core/dbt/contracts/graph/unparsed.py b/core/dbt/contracts/graph/unparsed.py
+index 8e751e71a..0d3946711 100644
+--- a/core/dbt/contracts/graph/unparsed.py
++++ b/core/dbt/contracts/graph/unparsed.py
+@@ -803,6 +803,12 @@ class UnitTestOverrides(dbtClassMixin):
+     env_vars: Dict[str, Any] = field(default_factory=dict)
+ 
+ 
++@dataclass
++class UnitTestNodeVersions(dbtClassMixin):
++    include: Optional[List[NodeVersion]] = None
++    exclude: Optional[List[NodeVersion]] = None
++
++
+ @dataclass
+ class UnparsedUnitTest(dbtClassMixin):
+     name: str
+@@ -812,3 +818,11 @@ class UnparsedUnitTest(dbtClassMixin):
+     description: str = ""
+     overrides: Optional[UnitTestOverrides] = None
+     config: Dict[str, Any] = field(default_factory=dict)
++    versions: Optional[UnitTestNodeVersions] = None
++
++    @classmethod
++    def validate(cls, data):
++        super(UnparsedUnitTest, cls).validate(data)
++        if data.get("versions", None):
++            if data["versions"].get("include") and data["versions"].get("exclude"):
++                raise ValidationError("Unit tests can not both include and exclude versions.")
+diff --git a/core/dbt/parser/manifest.py b/core/dbt/parser/manifest.py
+index 96d1a9ac5..db3f5f22b 100644
+--- a/core/dbt/parser/manifest.py
++++ b/core/dbt/parser/manifest.py
+@@ -129,6 +129,7 @@ from dbt.parser.search import FileBlock
+ from dbt.parser.seeds import SeedParser
+ from dbt.parser.snapshots import SnapshotParser
+ from dbt.parser.sources import SourcePatcher
++from dbt.parser.unit_tests import process_models_for_unit_test
+ from dbt.version import __version__
+ 
+ from dbt_common.dataclass_schema import StrEnum, dbtClassMixin
+@@ -534,6 +535,7 @@ class ManifestLoader:
+             start_process = time.perf_counter()
+             self.process_sources(self.root_project.project_name)
+             self.process_refs(self.root_project.project_name, self.root_project.dependencies)
++            self.process_unit_tests(self.root_project.project_name)
+             self.process_docs(self.root_project)
+             self.process_metrics(self.root_project)
+             self.process_saved_queries(self.root_project)
+@@ -1227,6 +1229,27 @@ class ManifestLoader:
+                 continue
+             _process_sources_for_exposure(self.manifest, current_project, exposure)
+ 
++    # Loops through all nodes, for each element in
++    # 'unit_test' array finds the node and updates the
++    # 'depends_on.nodes' array with the unique id
++    def process_unit_tests(self, current_project: str):
++        models_to_versions = None
++        unit_test_unique_ids = list(self.manifest.unit_tests.keys())
++        for unit_test_unique_id in unit_test_unique_ids:
++            # This is because some unit tests will be removed when processing
++            # and the list of unit_test_unique_ids won't have changed
++            if unit_test_unique_id in self.manifest.unit_tests:
++                unit_test = self.manifest.unit_tests[unit_test_unique_id]
++            else:
++                continue
++            if unit_test.created_at < self.started_at:
++                continue
++            if not models_to_versions:
++                models_to_versions = _build_model_names_to_versions(self.manifest)
++            process_models_for_unit_test(
++                self.manifest, current_project, unit_test, models_to_versions
++            )
++
+     def cleanup_disabled(self):
+         # make sure the nodes are in the manifest.nodes or the disabled dict,
+         # correctly now that the schema files are also parsed
+@@ -1343,6 +1366,21 @@ def invalid_target_fail_unless_test(
+         )
+ 
+ 
++def _build_model_names_to_versions(manifest: Manifest) -> Dict[str, Dict]:
++    model_names_to_versions: Dict[str, Dict] = {}
++    for node in manifest.nodes.values():
++        if node.resource_type != NodeType.Model:
++            continue
++        if not node.is_versioned:
++            continue
++        if node.package_name not in model_names_to_versions:
++            model_names_to_versions[node.package_name] = {}
++        if node.name not in model_names_to_versions[node.package_name]:
++            model_names_to_versions[node.package_name][node.name] = []
++        model_names_to_versions[node.package_name][node.name].append(node.unique_id)
++    return model_names_to_versions
++
++
+ def _check_resource_uniqueness(
+     manifest: Manifest,
+     config: RuntimeConfig,
+@@ -1754,7 +1792,7 @@ def _process_sources_for_node(manifest: Manifest, current_project: str, node: Ma
+         )
+ 
+         if target_source is None or isinstance(target_source, Disabled):
+-            # this folows the same pattern as refs
++            # this follows the same pattern as refs
+             node.config.enabled = False
+             invalid_target_fail_unless_test(
+                 node=node,
+diff --git a/core/dbt/parser/partial.py b/core/dbt/parser/partial.py
+index f005037c8..2e79ce252 100644
+--- a/core/dbt/parser/partial.py
++++ b/core/dbt/parser/partial.py
+@@ -456,6 +456,11 @@ class PartialParsing:
+                     self.delete_macro_file(source_file)
+                     self.saved_files[file_id] = deepcopy(self.new_files[file_id])
+                     self.add_to_pp_files(self.saved_files[file_id])
++            elif unique_id in self.saved_manifest.unit_tests:
++                unit_test = self.saved_manifest.unit_tests[unique_id]
++                self._schedule_for_parsing(
++                    "unit_tests", unit_test, unit_test.name, self.delete_schema_unit_test
++                )
+ 
+     def _schedule_for_parsing(self, dict_key: str, element, name, delete: Callable) -> None:
+         file_id = element.file_id
+@@ -839,8 +844,9 @@ class PartialParsing:
+                     # if the node's group has changed - need to reparse all referencing nodes to ensure valid ref access
+                     if node.group != elem.get("group"):
+                         self.schedule_referencing_nodes_for_parsing(node.unique_id)
+-                    # if the node's latest version has changed - need to reparse all referencing nodes to ensure correct ref resolution
+-                    if node.is_versioned and node.latest_version != elem.get("latest_version"):
++                    # If the latest version has changed or a version has been removed we need to
++                    # reparse referencing nodes.
++                    if node.is_versioned:
+                         self.schedule_referencing_nodes_for_parsing(node.unique_id)
+             # remove from patches
+             schema_file.node_patches.remove(elem_unique_id)
+diff --git a/core/dbt/parser/unit_tests.py b/core/dbt/parser/unit_tests.py
+index aebabb81b..bb98fdb68 100644
+--- a/core/dbt/parser/unit_tests.py
++++ b/core/dbt/parser/unit_tests.py
+@@ -1,6 +1,7 @@
+ from csv import DictReader
++from copy import deepcopy
+ from pathlib import Path
+-from typing import List, Set, Dict, Any
++from typing import List, Set, Dict, Any, Optional
+ import os
+ from io import StringIO
+ import csv
+@@ -11,7 +12,7 @@ from dbt import utils
+ from dbt.config import RuntimeConfig
+ from dbt.context.context_config import ContextConfig
+ from dbt.context.providers import generate_parse_exposure, get_rendered
+-from dbt.contracts.files import FileHash
++from dbt.contracts.files import FileHash, SchemaSourceFile
+ from dbt.contracts.graph.manifest import Manifest
+ from dbt.contracts.graph.model_config import UnitTestNodeConfig, ModelConfig
+ from dbt.contracts.graph.nodes import (
+@@ -55,9 +56,9 @@ class UnitTestManifestLoader:
+ 
+     def parse_unit_test_case(self, test_case: UnitTestDefinition):
+         # Create unit test node based on the node being tested
+-        tested_node = self.manifest.ref_lookup.perform_lookup(
+-            f"model.{test_case.package_name}.{test_case.model}", self.manifest
+-        )
++        # The tested_node has already been resolved and is in depends_on.nodes
++        tested_node_unique_id = test_case.depends_on.nodes[0]
++        tested_node = self.manifest.nodes[tested_node_unique_id]
+         assert isinstance(tested_node, ModelNode)
+ 
+         # Create UnitTestNode based on model being tested. Since selection has
+@@ -65,6 +66,8 @@ class UnitTestManifestLoader:
+         # for selection.
+         # Note: no depends_on, that's added later using input nodes
+         name = test_case.name
++        if tested_node.is_versioned:
++            name = name + f"_v{tested_node.version}"
+         unit_test_node = UnitTestNode(
+             name=name,
+             resource_type=NodeType.Unit,
+@@ -74,7 +77,7 @@ class UnitTestManifestLoader:
+             unique_id=test_case.unique_id,
+             config=UnitTestNodeConfig(
+                 materialized="unit",
+-                expected_rows=test_case.expect.rows,  # type:ignore
++                expected_rows=deepcopy(test_case.expect.rows),  # type:ignore
+             ),
+             raw_code=tested_node.raw_code,
+             database=tested_node.database,
+@@ -114,7 +117,9 @@ class UnitTestManifestLoader:
+         # or view is created.
+         for given in test_case.given:
+             # extract the original_input_node from the ref in the "input" key of the given list
+-            original_input_node = self._get_original_input_node(given.input, tested_node)
++            original_input_node = self._get_original_input_node(
++                given.input, tested_node, test_case.name
++            )
+ 
+             common_fields = {
+                 "resource_type": NodeType.Model,
+@@ -141,6 +146,12 @@ class UnitTestManifestLoader:
+                     name=input_name,
+                     path=original_input_node.path or f"{input_name}.sql",
+                 )
++                if (
++                    original_input_node.resource_type == NodeType.Model
++                    and original_input_node.version
++                ):
++                    input_node.version = original_input_node.version
++
+             elif original_input_node.resource_type == NodeType.Source:
+                 # We are reusing the database/schema/identifier from the original source,
+                 # but that shouldn't matter since this acts as an ephemeral model which just
+@@ -174,7 +185,7 @@ class UnitTestManifestLoader:
+             rows=rows, column_name_to_data_types=column_name_to_data_types
+         )
+ 
+-    def _get_original_input_node(self, input: str, tested_node: ModelNode):
++    def _get_original_input_node(self, input: str, tested_node: ModelNode, test_case_name: str):
+         """
+         Returns the original input node as defined in the project given an input reference
+         and the node being tested.
+@@ -214,6 +225,10 @@ class UnitTestManifestLoader:
+             else:
+                 raise InvalidUnitTestGivenInput(input=input)
+ 
++        if not original_input_node:
++            msg = f"Unit test '{test_case_name}' had an input ({input}) which was not found in the manifest."
++            raise ParsingError(msg)
++
+         return original_input_node
+ 
+ 
+@@ -225,8 +240,10 @@ class UnitTestParser(YamlReader):
+ 
+     def parse(self) -> ParseResult:
+         for data in self.get_key_dicts():
+-            unit_test = self._get_unit_test(data)
+-            tested_model_node = self._find_tested_model_node(unit_test)
++            unit_test: UnparsedUnitTest = self._get_unit_test(data)
++            tested_model_node = find_tested_model_node(
++                self.manifest, self.project.project_name, unit_test.model
++            )
+             unit_test_case_unique_id = (
+                 f"{NodeType.Unit}.{self.project.project_name}.{unit_test.model}.{unit_test.name}"
+             )
+@@ -250,12 +267,16 @@ class UnitTestParser(YamlReader):
+                 expect=unit_test.expect,
+                 description=unit_test.description,
+                 overrides=unit_test.overrides,
+-                depends_on=DependsOn(nodes=[tested_model_node.unique_id]),
++                depends_on=DependsOn(),
+                 fqn=unit_test_fqn,
+                 config=unit_test_config,
+-                schema=tested_model_node.schema,
++                versions=unit_test.versions,
+             )
+ 
++            if tested_model_node:
++                unit_test_definition.depends_on.nodes.append(tested_model_node.unique_id)
++                unit_test_definition.schema = tested_model_node.schema
++
+             # Check that format and type of rows matches for each given input,
+             # convert rows to a list of dictionaries, and add the unique_id of
+             # the unit_test_definition to the fixture source_file for partial parsing.
+@@ -275,22 +296,6 @@ class UnitTestParser(YamlReader):
+         except (ValidationError, JSONValidationError) as exc:
+             raise YamlParseDictError(self.yaml.path, self.key, data, exc)
+ 
+-    def _find_tested_model_node(self, unit_test: UnparsedUnitTest) -> ModelNode:
+-        package_name = self.project.project_name
+-        model_name_split = unit_test.model.split()
+-        model_name = model_name_split[0]
+-        model_version = model_name_split[1] if len(model_name_split) == 2 else None
+-
+-        tested_node = self.manifest.ref_lookup.find(
+-            model_name, package_name, model_version, self.manifest
+-        )
+-        if not tested_node:
+-            raise ParsingError(
+-                f"Unable to find model '{package_name}.{unit_test.model}' for unit tests in {self.yaml.path.original_file_path}"
+-            )
+-
+-        return tested_node
+-
+     def _build_unit_test_config(
+         self, unit_test_fqn: List[str], config_dict: Dict[str, Any]
+     ) -> UnitTestConfig:
+@@ -397,3 +402,105 @@ class UnitTestParser(YamlReader):
+                 rows.append(row)
+ 
+         return rows
++
++
++def find_tested_model_node(
++    manifest: Manifest, current_project: str, unit_test_model: str
++) -> Optional[ModelNode]:
++    model_name_split = unit_test_model.split()
++    model_name = model_name_split[0]
++    model_version = model_name_split[1] if len(model_name_split) == 2 else None
++
++    tested_node = manifest.ref_lookup.find(model_name, current_project, model_version, manifest)
++    return tested_node
++
++
++# This is called by the ManifestLoader after other processing has been done,
++# so that model versions are available.
++def process_models_for_unit_test(
++    manifest: Manifest, current_project: str, unit_test_def: UnitTestDefinition, models_to_versions
++):
++
++    # If the unit tests doesn't have a depends_on.nodes[0] then we weren't able to resolve
++    # the model, either because versions hadn't been processed yet, or it's not a valid model name
++    if not unit_test_def.depends_on.nodes:
++        tested_node = find_tested_model_node(manifest, current_project, unit_test_def.model)
++        if not tested_node:
++            raise ParsingError(
++                f"Unable to find model '{current_project}.{unit_test_def.model}' for "
++                f"unit test '{unit_test_def.name}' in {unit_test_def.original_file_path}"
++            )
++        unit_test_def.depends_on.nodes.append(tested_node.unique_id)
++        unit_test_def.schema = tested_node.schema
++
++    # The UnitTestDefinition should only have one "depends_on" at this point,
++    # the one that's found by the "model" field.
++    target_model_id = unit_test_def.depends_on.nodes[0]
++    target_model = manifest.nodes[target_model_id]
++    assert isinstance(target_model, ModelNode)
++    # unit_test_versions = unit_test_def.versions
++    # We're setting up unit tests for versioned models, so if
++    # the model isn't versioned, we don't need to do anything
++    if not target_model.is_versioned:
++        if unit_test_def.versions and (
++            unit_test_def.versions.include or unit_test_def.versions.exclude
++        ):
++            # If model is  not versioned, we should not have an include or exclude
++            msg = (
++                f"Unit test '{unit_test_def.name}' should not have a versions include or exclude "
++                f"when referencing non-versioned model '{target_model.name}'"
++            )
++            raise ParsingError(msg)
++        else:
++            return
++    versioned_models = []
++    if (
++        target_model.package_name in models_to_versions
++        and target_model.name in models_to_versions[target_model.package_name]
++    ):
++        versioned_models = models_to_versions[target_model.package_name][target_model.name]
++
++    versions_to_test = []
++    if unit_test_def.versions is None:
++        versions_to_test = versioned_models
++    elif unit_test_def.versions.exclude:
++        for model_unique_id in versioned_models:
++            model = manifest.nodes[model_unique_id]
++            assert isinstance(model, ModelNode)
++            if model.version in unit_test_def.versions.exclude:
++                continue
++            else:
++                versions_to_test.append(model.unique_id)
++    elif unit_test_def.versions.include:
++        for model_unique_id in versioned_models:
++            model = manifest.nodes[model_unique_id]
++            assert isinstance(model, ModelNode)
++            if model.version in unit_test_def.versions.include:
++                versions_to_test.append(model.unique_id)
++            else:
++                continue
++
++    if not versions_to_test:
++        msg = (
++            f"Unit test '{unit_test_def.name}' referenced a version of '{target_model.name}' "
++            "which was not found."
++        )
++        raise ParsingError(msg)
++    else:
++        # Create unit test definitions that match the model versions
++        original_unit_test_def = manifest.unit_tests.pop(unit_test_def.unique_id)
++        original_unit_test_dict = original_unit_test_def.to_dict()
++        schema_file = manifest.files[original_unit_test_def.file_id]
++        assert isinstance(schema_file, SchemaSourceFile)
++        schema_file.unit_tests.remove(original_unit_test_def.unique_id)
++        for versioned_model_unique_id in versions_to_test:
++            versioned_model = manifest.nodes[versioned_model_unique_id]
++            assert isinstance(versioned_model, ModelNode)
++            versioned_unit_test_unique_id = f"{NodeType.Unit}.{unit_test_def.package_name}.{unit_test_def.model}.{unit_test_def.name}_v{versioned_model.version}"
++            new_unit_test_def = UnitTestDefinition.from_dict(original_unit_test_dict)
++            new_unit_test_def.unique_id = versioned_unit_test_unique_id
++            new_unit_test_def.depends_on.nodes[0] = versioned_model_unique_id
++            new_unit_test_def.version = versioned_model.version
++            schema_file.unit_tests.append(versioned_unit_test_unique_id)
++            # fqn?
++            manifest.unit_tests[versioned_unit_test_unique_id] = new_unit_test_def
+diff --git a/core/dbt/task/test.py b/core/dbt/task/test.py
+index 02ff16231..ea5b32f91 100644
+--- a/core/dbt/task/test.py
++++ b/core/dbt/task/test.py
+@@ -83,7 +83,10 @@ class TestRunner(CompileRunner):
+ 
+     def describe_node_name(self):
+         if self.node.resource_type == NodeType.Unit:
+-            return f"{self.node.model}::{self.node.name}"
++            name = f"{self.node.model}::{self.node.name}"
++            if self.node.version is not None:
++                name = name + f"_v{self.node.version}"
++            return name
+         else:
+             return self.node.name
+ 
+@@ -215,7 +218,8 @@ class TestRunner(CompileRunner):
+             macro_func()
+         except DbtBaseException as e:
+             raise DbtRuntimeError(
+-                f"During unit test execution of {self.describe_node_name()}, dbt could not build the 'actual' result for comparison against 'expected' given the unit test definition:\n {e}"
++                f"An error occurred during execution of unit test '{unit_test_def.name}'. "
++                f"There may be an error in the unit test definition: check the data types.\n {e}"
+             )
+ 
+         # load results from context
+diff --git a/tests/functional/unit_testing/fixtures.py b/tests/functional/unit_testing/fixtures.py
+index 345ea46ca..02af9b418 100644
+--- a/tests/functional/unit_testing/fixtures.py
++++ b/tests/functional/unit_testing/fixtures.py
+@@ -652,6 +652,279 @@ unit_tests:
+         - {c: 3}
+ """
+ 
++test_my_model_yml_invalid_ref = """
++unit_tests:
++  - name: test_my_model
++    model: my_model
++    given:
++      - input: ref('my_model_x')
++        rows:
++          - {id: 1, a: 1}
++      - input: ref('my_model_b')
++        rows:
++          - {id: 1, b: 2}
++          - {id: 2, b: 2}
++    expect:
++      rows:
++        - {c: 3}
++"""
++
++# -- unit testing versioned models
++my_model_v1_sql = """
++SELECT
++a,
++b,
++a+b as c,
++concat(string_a, string_b) as string_c,
++not_testing, date_a
++FROM {{ ref('my_model_a')}} my_model_a
++JOIN {{ ref('my_model_b' )}} my_model_b
++ON my_model_a.id = my_model_b.id
++"""
++
++my_model_v2_sql = """
++SELECT
++a,
++b,
++a+b as c,
++concat(string_a, string_b) as string_c,
++date_a
++FROM {{ ref('my_model_a')}} my_model_a
++JOIN {{ ref('my_model_b' )}} my_model_b
++ON my_model_a.id = my_model_b.id
++"""
++
++my_model_v3_sql = """
++SELECT
++a,
++b,
++a+b as c,
++concat(string_a, string_b) as string_c
++FROM {{ ref('my_model_a')}} my_model_a
++JOIN {{ ref('my_model_b' )}} my_model_b
++ON my_model_a.id = my_model_b.id
++"""
++
++my_model_versioned_yml = """
++models:
++  - name: my_model
++    latest_version: 1
++    access: public
++    config:
++      contract:
++        enforced: true
++    columns:
++      - name: a
++        data_type: integer
++      - name: b
++        data_type: integer
++      - name: c
++        data_type: integer
++      - name: string_c
++        data_type: string
++      - name: not_testing
++        data_type: integer
++      - name: date_a
++        data_type: date
++    versions:
++      - v: 1
++      - v: 2
++        columns:
++          # This means: use the 'columns' list from above, but exclude not_testing
++          - include: "all"
++            exclude:
++            - not_testing
++      - v: 3
++        # now exclude another column
++        columns:
++          - include: all
++            exclude:
++            - not_testing
++            - date_a
++"""
++
++my_model_versioned_no_2_yml = """
++models:
++  - name: my_model
++    latest_version: 1
++    access: public
++    config:
++      contract:
++        enforced: true
++    columns:
++      - name: a
++        data_type: integer
++      - name: b
++        data_type: integer
++      - name: c
++        data_type: integer
++      - name: string_c
++        data_type: string
++      - name: not_testing
++        data_type: integer
++      - name: date_a
++        data_type: date
++    versions:
++      - v: 1
++      - v: 3
++        # now exclude another column
++        columns:
++          - include: all
++            exclude:
++            - not_testing
++            - date_a
++"""
++
++test_my_model_all_versions_yml = """
++unit_tests:
++  - name: test_my_model
++    model: my_model
++    given:
++      - input: ref('my_model_a')
++        format: csv
++        rows: |
++          id,a
++          1,1
++          2,3
++      - input: ref('my_model_b')
++        format: csv
++        rows: |
++          id,b
++          1,2
++          2,2
++    expect:
++      format: csv
++      rows: |
++          a,b,c
++          1,2,3
++          3,2,5
++"""
++
++test_my_model_exclude_versions_yml = """
++unit_tests:
++  - name: test_my_model
++    model: my_model
++    versions:
++      exclude:
++        - 2
++    given:
++      - input: ref('my_model_a')
++        format: csv
++        rows: |
++          id,a
++          1,1
++          2,3
++      - input: ref('my_model_b')
++        format: csv
++        rows: |
++          id,b
++          1,2
++          2,2
++    expect:
++      format: csv
++      rows: |
++          a,b,c
++          1,2,3
++          3,2,5
++"""
++
++test_my_model_include_versions_yml = """
++unit_tests:
++  - name: test_my_model
++    model: my_model
++    versions:
++      include:
++        - 2
++    given:
++      - input: ref('my_model_a')
++        format: csv
++        rows: |
++          id,a
++          1,1
++          2,3
++      - input: ref('my_model_b')
++        format: csv
++        rows: |
++          id,b
++          1,2
++          2,2
++    expect:
++      format: csv
++      rows: |
++          a,b,c
++          1,2,3
++          3,2,5
++"""
++
++test_my_model_include_exclude_versions_yml = """
++unit_tests:
++  - name: test_my_model
++    model: my_model
++    versions:
++      include:
++        - 2
++      exclude:
++        - 3
++    given:
++      - input: ref('my_model_a')
++        format: csv
++        rows: |
++          id,a
++          1,1
++          2,3
++      - input: ref('my_model_b')
++        format: csv
++        rows: |
++          id,b
++          1,2
++          2,2
++    expect:
++      format: csv
++      rows: |
++          a,b,c
++          1,2,3
++          3,2,5
++"""
++
++test_my_model_include_unversioned_yml = """
++unit_tests:
++  - name: test_my_model
++    model: my_model
++    versions:
++      include:
++        - 2
++    given:
++      - input: ref('my_model_a')
++        rows:
++          - {id: 1, a: 1}
++      - input: ref('my_model_b')
++        rows:
++          - {id: 1, b: 2}
++          - {id: 2, b: 2}
++    expect:
++      rows:
++        - {c: 2}
++"""
++
++my_model_version_ref_sql = """
++   select * from {{ ref('my_model', version=2) }}
++"""
++
++test_my_model_version_ref_yml = """
++unit_tests:
++  - name: test_my_model_version_ref
++    model: my_model_version_ref
++    given:
++      - input: ref('my_model', version=2)
++        rows:
++          - {c: 2}
++    expect:
++      rows:
++        - {c: 2}
++"""
++
++
++# -- unit testing external models
+ top_level_domains_sql = """
+ SELECT 'example.com' AS tld
+ UNION ALL
+diff --git a/tests/functional/unit_testing/test_unit_testing.py b/tests/functional/unit_testing/test_unit_testing.py
+index 890af69a1..ffa3d0e34 100644
+--- a/tests/functional/unit_testing/test_unit_testing.py
++++ b/tests/functional/unit_testing/test_unit_testing.py
+@@ -20,6 +20,7 @@ from fixtures import (  # noqa: F401
+     event_sql,
+     test_my_model_incremental_yml,
+     test_my_model_yml_invalid,
++    test_my_model_yml_invalid_ref,
+     valid_emails_sql,
+     top_level_domains_sql,
+     external_package__accounts_seed_csv,
+@@ -262,8 +263,17 @@ class TestUnitTestInvalidInputConfiguration:
+         results = run_dbt(["run"])
+         assert len(results) == 3
+ 
++        # A data type in a given row is incorrect, and we'll get a runtime error
+         run_dbt(["test"], expect_pass=False)
+ 
++        # Test invalid model ref. Parsing error InvalidUnitTestGivenInput
++        write_file(
++            test_my_model_yml_invalid_ref, project.project_root, "models", "test_my_model.yml"
++        )
++        results = run_dbt(["test"], expect_pass=False)
++        result = results.results[0]
++        assert "not found in the manifest" in result.message
++
+ 
+ unit_test_ext_node_yml = """
+ unit_tests:
+diff --git a/tests/functional/unit_testing/test_ut_versions.py b/tests/functional/unit_testing/test_ut_versions.py
+new file mode 100644
+index 000000000..98afbcf28
+--- /dev/null
++++ b/tests/functional/unit_testing/test_ut_versions.py
+@@ -0,0 +1,165 @@
++import pytest
++from dbt.tests.util import run_dbt, get_unique_ids_in_results, write_file
++from dbt.exceptions import YamlParseDictError, ParsingError
++
++from tests.functional.unit_testing.fixtures import (
++    my_model_versioned_yml,
++    my_model_versioned_no_2_yml,
++    test_my_model_all_versions_yml,
++    test_my_model_exclude_versions_yml,
++    test_my_model_include_versions_yml,
++    test_my_model_include_exclude_versions_yml,
++    test_my_model_include_unversioned_yml,
++    test_my_model_version_ref_yml,
++    my_model_v1_sql,
++    my_model_v2_sql,
++    my_model_v3_sql,
++    my_model_a_sql,
++    my_model_b_sql,
++    my_model_sql,
++    my_model_version_ref_sql,
++)
++
++
++# test with no version specified, then add an exclude version, then switch
++# to include version and make sure the right unit tests are generated for each
++class TestVersions:
++    @pytest.fixture(scope="class")
++    def models(self):
++        return {
++            "my_model_a.sql": my_model_a_sql,
++            "my_model_b.sql": my_model_b_sql,
++            "my_model_v1.sql": my_model_v1_sql,
++            "my_model_v2.sql": my_model_v2_sql,
++            "my_model_v3.sql": my_model_v3_sql,
++            "schema.yml": my_model_versioned_yml,
++            "unit_tests.yml": test_my_model_all_versions_yml,
++        }
++
++    def test_versions(self, project):
++        results = run_dbt(["run"])
++        assert len(results) == 5
++
++        # "my_model" has three versions: 1, 2, 3
++        # There is a single unit_test which doesn't specify a version,
++        # so it should run for all versions.
++        results = run_dbt(["test"])
++        assert len(results) == 3
++        unique_ids = get_unique_ids_in_results(results)
++        expected_ids = [
++            "unit_test.test.my_model.test_my_model_v1",
++            "unit_test.test.my_model.test_my_model_v2",
++            "unit_test.test.my_model.test_my_model_v3",
++        ]
++        assert sorted(expected_ids) == sorted(unique_ids)
++
++        # Select tests for a single versioned model
++        results = run_dbt(["test", "--select", "my_model.v2"])
++        assert len(results) == 1
++        unique_ids = get_unique_ids_in_results(results)
++        assert unique_ids == ["unit_test.test.my_model.test_my_model_v2"]
++
++        # select tests for all my_models
++        results = run_dbt(["test", "--select", "my_model"])
++        assert len(results) == 3
++        unique_ids = get_unique_ids_in_results(results)
++        assert sorted(expected_ids) == sorted(unique_ids)
++
++        # with an exclude version specified, should create a separate unit test
++        # for each version except the excluded version (v2)
++        write_file(
++            test_my_model_exclude_versions_yml, project.project_root, "models", "unit_tests.yml"
++        )
++
++        results = run_dbt(["test"])
++        assert len(results) == 2
++        unique_ids = get_unique_ids_in_results(results)
++        # v2 model should be excluded
++        expected_ids = [
++            "unit_test.test.my_model.test_my_model_v1",
++            "unit_test.test.my_model.test_my_model_v3",
++        ]
++        assert sorted(expected_ids) == sorted(unique_ids)
++
++        # test with an include version specified, should create a single unit test for
++        # only the version specified (2)
++        write_file(
++            test_my_model_include_versions_yml, project.project_root, "models", "unit_tests.yml"
++        )
++
++        results = run_dbt(["test"])
++        assert len(results) == 1
++        unique_ids = get_unique_ids_in_results(results)
++        # v2 model should be only one included
++        expected_ids = [
++            "unit_test.test.my_model.test_my_model_v2",
++        ]
++        assert sorted(expected_ids) == sorted(unique_ids)
++
++        # Change to remove version 2 of model and get an error
++        write_file(my_model_versioned_no_2_yml, project.project_root, "models", "schema.yml")
++        with pytest.raises(ParsingError):
++            run_dbt(["test"])
++
++
++# test with an include and exclude version specified, should raise an error
++class TestIncludeExcludeSpecified:
++    @pytest.fixture(scope="class")
++    def models(self):
++        return {
++            "my_model_a.sql": my_model_a_sql,
++            "my_model_b.sql": my_model_b_sql,
++            "my_model_v1.sql": my_model_v1_sql,
++            "my_model_v2.sql": my_model_v2_sql,
++            "my_model_v3.sql": my_model_v3_sql,
++            "schema.yml": my_model_versioned_yml,
++            "unit_tests.yml": test_my_model_include_exclude_versions_yml,
++        }
++
++    def test_include_exclude_specified(self, project):
++        with pytest.raises(YamlParseDictError):
++            run_dbt(["parse"])
++
++
++# test with an include for an unversioned model, should error
++class TestIncludeUnversioned:
++    @pytest.fixture(scope="class")
++    def models(self):
++        return {
++            "my_model_a.sql": my_model_a_sql,
++            "my_model_b.sql": my_model_b_sql,
++            "my_model.sql": my_model_sql,
++            "unit_tests.yml": test_my_model_include_unversioned_yml,
++        }
++
++    def test_include_unversioned(self, project):
++        with pytest.raises(ParsingError):
++            run_dbt(["parse"])
++
++
++# test specifying the fixture version with {{ ref(name, version) }}
++class TestVersionedFixture:
++    @pytest.fixture(scope="class")
++    def models(self):
++        return {
++            "my_model_a.sql": my_model_a_sql,
++            "my_model_b.sql": my_model_b_sql,
++            "my_model_v1.sql": my_model_v1_sql,
++            "my_model_v2.sql": my_model_v2_sql,
++            "my_model_v3.sql": my_model_v3_sql,
++            "my_model_version_ref.sql": my_model_version_ref_sql,
++            "schema.yml": my_model_versioned_yml,
++            "unit_tests.yml": test_my_model_version_ref_yml,
++        }
++
++    def test_versioned_fixture(self, project):
++        results = run_dbt(["run"])
++        assert len(results) == 6
++
++        results = run_dbt(["test"])
++        assert len(results) == 1
++
++        unique_ids = get_unique_ids_in_results(results)
++        # v2 model should be only one included
++        expected_ids = ["unit_test.test.my_model_version_ref.test_my_model_version_ref"]
++        assert expected_ids == unique_ids
+diff --git a/tests/unit/test_unit_test_parser.py b/tests/unit/test_unit_test_parser.py
+index b0ad4a546..a2039e837 100644
+--- a/tests/unit/test_unit_test_parser.py
++++ b/tests/unit/test_unit_test_parser.py
+@@ -1,5 +1,4 @@
+ from dbt.contracts.graph.nodes import UnitTestDefinition, UnitTestConfig, DependsOn, NodeType
+-from dbt.exceptions import ParsingError
+ from dbt.parser import SchemaParser
+ from dbt.parser.unit_tests import UnitTestParser
+ 
+@@ -104,12 +103,6 @@ class UnitTestParserTest(SchemaParserTest):
+     def file_block_for(self, data, filename):
+         return super().file_block_for(data, filename, "unit_tests")
+ 
+-    def test_basic_model_not_found(self):
+-        block = self.yaml_block_for(UNIT_TEST_MODEL_NOT_FOUND_SOURCE, "test_my_model.yml")
+-
+-        with self.assertRaises(ParsingError):
+-            UnitTestParser(self.parser, block).parse()
+-
+     def test_basic(self):
+         block = self.yaml_block_for(UNIT_TEST_SOURCE, "test_my_model.yml")
+ 
