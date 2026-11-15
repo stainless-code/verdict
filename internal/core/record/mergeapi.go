@@ -129,6 +129,7 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 		hunkRows:        in.HunkRows,
 		inputChecked:    in.InputChecked,
 		requireCoverage: in.RequireCoverage,
+		requireRigor:    in.RequireRigor,
 		bodyOnlyAnchors: in.BodyOnlyAnchors,
 	}
 	panel, err := st.loadPanel(in)
@@ -138,10 +139,6 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 	curated, dstat, err := st.validateAndMerge(in.Body)
 	if err != nil {
 		return MergeResult{}, err
-	}
-	validated, ref := st.applyValidation(in)
-	if ref != nil {
-		return MergeResult{}, ref
 	}
 	verification := st.applyPanel(panel)
 	if err := st.persistMerged(); err != nil {
@@ -154,7 +151,7 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 	return MergeResult{
 		Body:         curated,
 		Verification: verification,
-		Validation:   validated,
+		Validation:   st.validation,
 		Diagram:      dstat,
 		Entries:      st.entries,
 		Kept:         st.kept,

@@ -235,4 +235,68 @@ run_review post acme/app "$PR" --dry-run --json
 assert_exit "a stale head refuses" 1
 assert_refusal "the stale artifact is typed" "validation-stale"
 
+# --- 10. a rejected finding the merge moved into the body stays out ------
+# The moved section is curated from the entries, so the pass has to stamp a
+# withheld entry before that section is built, not after.
+PR=6108
+MOVED="Out-of-hunk claim the validator rejects."
+printf '{"schema_version":"1","rigor_policy":{"mode":"gate"}}\n' >"$EVAL_SANDBOX/.verdict/config.json"
+eval_mk_bundle "$PR"
+eval_write_review "$PR" <<EOF
+{"schema_version":"1","body":"> [!IMPORTANT]\n> One finding outside the diff.","approved":false,"comments":[
+{"path":"notes.txt","line":99,"side":"RIGHT","body":"$MOVED","rigor":"walked","severity":"important"}]}
+EOF
+run_review post acme/app "$PR" --dry-run --json
+assert_exit "the moved finding merges outside the diff" 0
+SIG_MOVED="$(sig_of "$PR" "$MOVED")"
+write_validation "$PR" '[{"sig":"'"$SIG_MOVED"'","verdict":"REJECTED",
+  "reason":"The cited line sits outside the diff, so no hunk carries it."}]'
+install_canned_stub
+PAYLOAD="$EVAL_SANDBOX/posted-6108.json"
+rm -f "$PAYLOAD"
+export EVAL_SAVE_PAYLOAD="$PAYLOAD"
+run_review post acme/app "$PR" --json
+unset EVAL_SAVE_PAYLOAD || true
+assert_exit "gate mode withholds the moved finding (exit 0)" 0
+jq -r '.[] | select(.sig == "'"$SIG_MOVED"'") | [.status, .withheld.source] | @tsv' \
+  "$EVAL_SANDBOX/.verdict/state/$PR/findings.json" >"$EVAL_SANDBOX/moved-withheld.txt"
+assert_file_grep "the moved finding stays open under the validation source" \
+  "$EVAL_SANDBOX/moved-withheld.txt" '^open	validation'
+assert_file_nogrep "the moved finding never reaches the posted body" "$PAYLOAD" "Out-of-hunk claim"
+restore_stub
+
+# --- 11. a downgrade names the severity the finding carries --------------
+PR=6109
+mkvalid "$PR" none
+eval_write_review "$PR" <<EOF
+{"schema_version":"1","body":"> [!IMPORTANT]\n> One low finding.","approved":false,"comments":[
+{"path":"notes.txt","line":2,"side":"RIGHT","body":"$WALKED","rigor":"walked","severity":"informational"}]}
+EOF
+run_review post acme/app "$PR" --dry-run --json
+SIG_LOW="$(sig_of "$PR" "$WALKED")"
+write_validation "$PR" '[{"sig":"'"$SIG_LOW"'","verdict":"DOWNGRADED",
+  "reason":"Real bug, local blast radius; important, not critical.",
+  "from_severity":"critical","to_severity":"important"}]'
+run_review post acme/app "$PR" --dry-run --json
+assert_exit "a downgrade from a severity the finding lacks refuses" 1
+assert_refusal "the mismatched pair is typed" "bad-validation"
+assert_file_grep "the refusal names the pair the finding does not carry" "$EVAL_OUT" 'from_severity critical'
+
+# --- 12. a finding the floor already withheld is not unvalidated ---------
+PR=6110
+mkvalid "$PR" none
+eval_write_review "$PR" <<EOF
+{"schema_version":"1","body":"> [!IMPORTANT]\n> One posted finding.","approved":false,"comments":[
+{"path":"notes.txt","line":2,"side":"RIGHT","body":"$WALKED","rigor":"walked","severity":"important"},
+{"path":"notes.txt","line":2,"side":"RIGHT","body":"$POINTED","rigor":"pointed","severity":"informational"}]}
+EOF
+run_review post acme/app "$PR" --dry-run --json
+SIG_WALKED="$(sig_of "$PR" "$WALKED")"
+write_validation "$PR" '[{"sig":"'"$SIG_WALKED"'","verdict":"CONFIRMED",
+  "reason":"The cited hunk resets the counter on every pass."}]'
+run_review post acme/app "$PR" --dry-run --min-severity important --json
+assert_exit "the floor-withheld dry run merges" 0
+assert_json_field "the floor-withheld finding is outside the tally" 0 '.data.validation.counts.unvalidated'
+assert_json_field "the pass still counts its own confirmation" 1 '.data.validation.counts.confirmed'
+
 eval_end

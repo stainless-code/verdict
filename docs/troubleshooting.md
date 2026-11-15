@@ -416,7 +416,7 @@ Fix: fix the usage record named above to match the schema, then re-run.
 
 ## `bad-validation`
 
-Cause: `validation.json` is malformed: an unknown key, a verdict outside `CONFIRMED|REJECTED|DOWNGRADED`, a reason outside 10-500 characters, a `DOWNGRADED` pair that is not exactly one rank, a duplicate sig, or a sig that matches no single finding.
+Cause: `validation.json` is malformed: an unknown key, trailing data after the object, a verdict outside `CONFIRMED|REJECTED|DOWNGRADED`, a reason outside 10-500 characters, a `DOWNGRADED` pair that is not exactly one rank or that names a `from_severity` the finding does not carry, a duplicate sig, or a sig that matches no single finding.
 
 Fix: rewrite the artifact to match `schemas/validation.schema.json`, or delete it to post without a validation pass.
 

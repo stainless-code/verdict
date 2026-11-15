@@ -22,8 +22,6 @@ var CredentialKeys = []string{
 	"client_secret", "private_key", "auth_token", "session_token",
 }
 
-// The severity tiers, named once so the enum, the floor checks, and the
-// threshold ranks cannot drift apart.
 const (
 	severityCritical      = "critical"
 	severityImportant     = "important"

@@ -149,11 +149,8 @@ func requiredString(obj map[string]any, key, path, code string) (string, *core.R
 	return val, nil
 }
 
-// rungEnum is the published evidence rung vocabulary, strongest last.
 var rungEnum = []string{"said", "pointed", "walked", "ran", "reproduced"}
 
-// buildRigorPolicy reads the publication floor; absent keys keep the
-// built-in policy.
 func buildRigorPolicy(raw any, path string) (*core.ConfigRigorPolicy, *core.RefusalError) {
 	obj, ref := asObject(raw, path)
 	if ref != nil {
@@ -182,7 +179,6 @@ func buildRigorPolicy(raw any, path string) (*core.ConfigRigorPolicy, *core.Refu
 	return out, nil
 }
 
-// readEnumString reads one optional enum scalar, absent reading as "".
 func readEnumString(obj map[string]any, key, path string, vocab []string) (string, *core.RefusalError) {
 	value, ref := presentEnum(obj, key, path, vocab)
 	if ref != nil || value == nil {

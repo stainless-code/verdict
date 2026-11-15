@@ -94,7 +94,7 @@ other.txt	NEW	1	3
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "68830ec8d9b1e6f8015204d6ae59db610391b9f2fe8f92383ce6b3a2142b0153",
+  "prompts_hash": "4e52f483e0653b36ab29476d3f2f1fe402be0b0d57fd1e2208b8432716827b8e",
   "model": null,
   "validation_hash": null,
   "validation_counts": {"confirmed":0,"rejected":0,"downgraded":0,"unvalidated":1},

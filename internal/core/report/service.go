@@ -286,8 +286,6 @@ func loadStateRisk(st *state) {
 	}
 }
 
-// loadStateValidation projects the pass a post or record run stored, else a
-// tally of the artifact; either way it degrades to a warning, never a refusal.
 func loadStateValidation(st *state) {
 	if !st.flags.Validation {
 		return
@@ -311,27 +309,21 @@ func loadStateValidation(st *state) {
 	}
 }
 
-// receiptValidation mirrors the four receipt keys post and record store.
-type receiptValidation struct {
-	Hash   *string               `json:"validation_hash"`
-	Floors core.RigorFloors      `json:"rigor_floors"`
-	Mode   string                `json:"validation_mode"`
-	Counts core.ValidationCounts `json:"validation_counts"`
-}
-
-// storedValidation repeats what the gate applied rather than re-deriving it.
 func storedValidation(dir string) *core.ValidationData {
 	for _, suffix := range []string{readcommon.PostSuffix, readcommon.RecordSuffix} {
 		raw, err := jq.CappedFile(dir+suffix, jq.MaxPRBytes)
 		if err != nil {
 			continue
 		}
-		var receipt receiptValidation
-		if err := json.Unmarshal(raw, &receipt); err != nil || receipt.Mode == "" {
+		// record.json carries the same four keys under the same names, so one
+		// receipt type reads either file.
+		var receipt core.Record
+		if err := json.Unmarshal(raw, &receipt); err != nil || receipt.ValidationMode == "" {
 			continue
 		}
 		return &core.ValidationData{
-			Hash: receipt.Hash, Counts: receipt.Counts, Mode: receipt.Mode, Floors: receipt.Floors,
+			Hash: receipt.ValidationHash, Counts: receipt.ValidationCounts,
+			Mode: receipt.ValidationMode, Floors: receipt.RigorFloors,
 		}
 	}
 	return nil

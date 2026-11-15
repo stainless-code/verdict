@@ -64,7 +64,10 @@ type state struct { //nolint:govet // field grouping documents the merge dimensi
 	dryRun          bool
 	inputChecked    bool
 	requireCoverage bool
+	requireRigor    []string
 	bodyOnlyAnchors bool
+	judged          map[string]core.ValidationResult
+	validation      *ValidationResult
 	receiptLoaded   bool
 	warnings        []string
 }
@@ -140,7 +143,7 @@ func (st *state) validateAndMerge(body string) (string, diagram.Status, error) {
 	st.reportMoves()
 	st.buildEntries(body)
 	st.keptSigs = freshInlineSigs(st.entries, len(st.kept))
-	if err := st.mergeEntries(); err != nil {
+	if err := st.sealEntries(); err != nil {
 		return "", diagram.Status{}, err
 	}
 	body = st.hideWithheldSections(st.hideWithheldMoved(body))
@@ -148,10 +151,24 @@ func (st *state) validateAndMerge(body string) (string, diagram.Status, error) {
 	if err != nil {
 		return "", diagram.Status{}, err
 	}
+	st.settleValidation()
 	st.setMarker(curated)
 	st.countHunks()
 	removeDerivedSnapshot(st)
 	return curated, dstat, nil
+}
+
+// sealEntries merges the entries and runs the pass over them before any body
+// section is curated from them, so a rejected finding that moved out of the
+// diff is dropped by the same path as an inline one.
+func (st *state) sealEntries() error {
+	if err := st.mergeEntries(); err != nil {
+		return err
+	}
+	if ref := st.applyValidation(); ref != nil {
+		return ref
+	}
+	return nil
 }
 
 func (st *state) mergeEntries() error {

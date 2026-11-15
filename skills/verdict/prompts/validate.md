@@ -41,8 +41,11 @@ Answer with exactly one `validation.json` object, no prose around it:
 ```
 
 `verdict` is `CONFIRMED`, `REJECTED`, or `DOWNGRADED`. `DOWNGRADED` carries
-`from_severity` and `to_severity` exactly one rank apart (`critical` to
-`important`, `important` to `informational`; `informational` never downgrades).
+`from_severity` — the severity the finding carries in the bundle, not the one
+you think it should have had — and `to_severity` exactly one rank apart
+(`critical` to `important`, `important` to `informational`; `informational`
+never downgrades). A pair that names another severity is refused, so an
+upgrade cannot slip through as a downgrade.
 `sig` is a full finding sig or an unambiguous prefix. `checks` lists only
 `hedge`, `repro`, `anchor`, `rigor`, `severity`.
 

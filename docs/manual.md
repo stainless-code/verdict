@@ -985,11 +985,15 @@ which the invoker executes; `verdict` itself never calls a model, so a bundle
 validated outside this machine reads the same. `CONFIRMED` changes nothing, a
 `DOWNGRADED` result moves the severity exactly one rank (`critical` to
 `important`, `important` to `informational`; never up) and appends a
-`validation` history event, and a `REJECTED` result warns in advisory mode or
-withholds the finding in gate mode through the same receipt the host filter
-uses: `withheld.source: "validation"`, the validator's reason, and the finding
-still `open`. The reason is stored; it is never quoted as the finding's
-evidence and never posted.
+`validation` history event; it must name the severity the finding currently
+carries as `from_severity`, so a stale pair cannot raise a finding. A
+`REJECTED` result warns in advisory mode or withholds the finding in gate mode
+through the same receipt the host filter uses: `withheld.source: "validation"`,
+the validator's reason, and the finding still `open`. A rejected finding leaves
+the payload whether it anchored inline or moved out of the diff into the body,
+because the pass stamps its entries before the body is curated from them. The
+reason is stored; it is never quoted as the finding's evidence and never
+posted.
 
 The floor per tier lives in the trusted base, so a head edit cannot move it:
 
@@ -1018,7 +1022,8 @@ real bug with local blast radius keeps publishing.
 `post.json` and `record.json` carry `validation_hash` (SHA-256 of the exact
 artifact bytes, `null` when the pass was skipped), `validation_counts`
 (`confirmed`, `rejected`, `downgraded`, `unvalidated`), `validation_mode`, and
-`rigor_floors`. `post --json` reports the applied pass under `data.validation`
+`rigor_floors`. `unvalidated` counts the findings the pass owed a result: open
+and not already withheld, which is the set a skipped pass counts too. `post --json` reports the applied pass under `data.validation`
 only when one ran, and `report --json --validation` reads it back — the receipt
 a `post` or `record` run stored, or a tally of the artifact when none has. A
 `validation.json` written for another head refuses `validation-stale`; a

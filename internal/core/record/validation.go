@@ -7,7 +7,6 @@ import (
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
-	panelcore "github.com/stainless-code/verdict/internal/core/panel"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/validation"
@@ -23,33 +22,31 @@ type ValidationResult struct {
 	Counts     core.ValidationCounts
 }
 
-// applyValidation applies the optional validation.json and the trusted-base
-// policy in the shared merge, so findings.json and post.json describe one pass.
-func (st *state) applyValidation(in *MergeParams) (*ValidationResult, *core.RefusalError) {
+func (st *state) applyValidation() *core.RefusalError {
 	policy, ref := st.rigorPolicy()
 	if ref != nil {
-		return nil, ref
+		return ref
 	}
-	if ref = policy.WithRequireRigor(in.RequireRigor); ref != nil {
-		return nil, ref
+	if ref = policy.WithRequireRigor(st.requireRigor); ref != nil {
+		return ref
 	}
-	file, hash, ref := validation.Load(st.dir, st.headFull, panelcore.Findings(st.review))
+	file, hash, ref := validation.Load(st.dir, st.headFull, st.entries)
 	if ref != nil {
-		return nil, ref
+		return ref
 	}
 	out := &ValidationResult{Mode: policy.Mode, Floors: policy.Floors}
+	st.judged = map[string]core.ValidationResult{}
 	if file != nil {
 		out.Hash = &hash
-		out.Counts = st.applyVerdicts(file, policy.Mode)
-	} else {
-		out.Counts.Unvalidated = openCount(st.entries)
+		if out.Counts, ref = st.applyVerdicts(file, policy.Mode); ref != nil {
+			return ref
+		}
 	}
 	out.Violations = st.applyFloors(policy)
-	return out, nil
+	st.validation = out
+	return nil
 }
 
-// rigorPolicy reads the policy from the base snapshot the D1 capture wrote, so
-// a head edit cannot move the gate.
 func (st *state) rigorPolicy() (validation.Policy, *core.RefusalError) {
 	raw, present := st.controls.ReadFile(config.ConfigPath)
 	if !present {
@@ -62,25 +59,36 @@ func (st *state) rigorPolicy() (validation.Policy, *core.RefusalError) {
 	return validation.PolicyFromConfig(cfg), nil
 }
 
-// applyVerdicts applies each verdict to its open finding and returns the tally.
-func (st *state) applyVerdicts(file *core.ValidationFile, mode string) core.ValidationCounts {
+func (st *state) applyVerdicts(file *core.ValidationFile, mode string) (core.ValidationCounts, *core.RefusalError) {
 	var counts core.ValidationCounts
 	index := indexResults(file.Results)
+	st.judged = make(map[string]core.ValidationResult, len(index))
+	maps.Copy(st.judged, index)
 	for _, entry := range st.entries {
-		m, ok := entry.(*jq.Obj)
-		if !ok || m == nil || suppressionString(m, fieldStatus) != statusOpen {
+		m := candidateObj(entry)
+		if m == nil {
 			continue
 		}
 		result, validated := index[suppressionString(m, fieldSig)]
 		if !validated {
-			counts.Unvalidated++
 			continue
 		}
 		delete(index, result.Sig)
-		st.applyValidationVerdict(m, &result, mode, &counts)
+		if ref := st.applyValidationVerdict(m, &result, mode, &counts); ref != nil {
+			return counts, ref
+		}
 	}
 	st.warnUnmatched(index)
-	return counts
+	return counts, nil
+}
+
+// candidateObj lifts one entry a pass owes a result to, or nil.
+func candidateObj(entry any) *jq.Obj {
+	m, ok := entry.(*jq.Obj)
+	if !ok || m == nil || !validation.Candidate(m) {
+		return nil
+	}
+	return m
 }
 
 func indexResults(results []core.ValidationResult) map[string]core.ValidationResult {
@@ -91,7 +99,6 @@ func indexResults(results []core.ValidationResult) map[string]core.ValidationRes
 	return index
 }
 
-// warnUnmatched names every result no open finding carried.
 func (st *state) warnUnmatched(index map[string]core.ValidationResult) {
 	for _, sig := range slices.Sorted(maps.Keys(index)) {
 		st.warn(fmt.Sprintf("validation result for %s ignored: no open finding carries it",
@@ -99,14 +106,17 @@ func (st *state) warnUnmatched(index map[string]core.ValidationResult) {
 	}
 }
 
-// applyValidationVerdict applies one judgement: a downgrade moves the severity
-// one rank with a history event, and a rejection withholds only in gate mode.
-func (st *state) applyValidationVerdict(m *jq.Obj, result *core.ValidationResult, mode string, counts *core.ValidationCounts) {
+func (st *state) applyValidationVerdict(
+	m *jq.Obj, result *core.ValidationResult, mode string, counts *core.ValidationCounts,
+) *core.RefusalError {
 	short := readcommon.ShortSHA(result.Sig)
 	switch result.Verdict {
 	case core.ValidationConfirmed:
 		counts.Confirmed++
 	case core.ValidationDowngraded:
+		if ref := downgradeRefusal(m, result); ref != nil {
+			return ref
+		}
 		m.Set(fieldSeverity, result.ToSeverity)
 		m.Set(fieldHistory, appendHistory(m, jq.NewObj(fieldAt, st.now, fieldEvent, "validation",
 			fieldActor, "validator", "note", fmt.Sprintf("%s → %s: %s", result.FromSeverity, result.ToSeverity, result.Reason))))
@@ -117,15 +127,26 @@ func (st *state) applyValidationVerdict(m *jq.Obj, result *core.ValidationResult
 		if mode != core.ValidationGate {
 			st.warn(fmt.Sprintf("validation rejected %s: %s (advisory — posting anyway; set rigor_policy mode=gate to withhold)",
 				short, result.Reason))
-			return
+			return nil
 		}
 		st.stampSuppression(m, jq.NewObj(sourceKey, "validation", reasonKey, result.Reason))
 	}
+	return nil
 }
 
-// applyFloors applies the policy. Advisory mode only names what a gate would
-// do: a downgrade moves a stored severity, which can change whether a trusted
-// requirement blocks the post.
+// downgradeRefusal holds a downgrade to the rank it names: a verdict may not
+// move a finding from a severity it does not currently carry, which would
+// scrape an upgrade past the never-upgrade rule.
+func downgradeRefusal(m *jq.Obj, result *core.ValidationResult) *core.RefusalError {
+	current := suppressionString(m, fieldSeverity)
+	if current == result.FromSeverity {
+		return nil
+	}
+	return &core.RefusalError{Code: validation.CodeBad, Message: fmt.Sprintf(
+		"validation.json DOWNGRADED for %s names from_severity %s, but the finding is %s",
+		readcommon.ShortSHA(result.Sig), result.FromSeverity, current)}
+}
+
 func (st *state) applyFloors(policy validation.Policy) []validation.Violation {
 	downgrades, violations := validation.Floors(st.entries, policy)
 	if policy.Mode != core.ValidationGate {
@@ -143,7 +164,6 @@ func (st *state) applyFloors(policy validation.Policy) []validation.Violation {
 	return nil
 }
 
-// warnAdvisoryFloors reports what a gate would do, moving nothing.
 func (st *state) warnAdvisoryFloors(downgrades, violations []validation.Violation) {
 	for _, v := range append(downgrades, violations...) {
 		st.warn(fmt.Sprintf("rigor %s below %s floor %s on %s (advisory)%s",
@@ -151,8 +171,6 @@ func (st *state) warnAdvisoryFloors(downgrades, violations []validation.Violatio
 	}
 }
 
-// applyFloorDowngrades moves each critical that still clears the important
-// floor down to important.
 func (st *state) applyFloorDowngrades(downgrades []validation.Violation) {
 	for _, v := range downgrades {
 		if m := findEntry(st.entries, v.Sig); m != nil {
@@ -166,7 +184,6 @@ func (st *state) applyFloorDowngrades(downgrades []validation.Violation) {
 	}
 }
 
-// downgradeNote marks an advisory line a gate would downgrade.
 func downgradeNote(v validation.Violation, downgrades []validation.Violation) string {
 	for _, d := range downgrades {
 		if d.Sig == v.Sig {
@@ -176,21 +193,24 @@ func downgradeNote(v validation.Violation, downgrades []validation.Violation) st
 	return ""
 }
 
-// openCount counts the findings a skipped pass would have judged.
-func openCount(entries []any) int {
+// settleValidation counts the candidates no result named once triage has
+// settled the statuses the receipt is stored beside, so a finding this run
+// addressed is neither open nor unvalidated in the file that describes it.
+func (st *state) settleValidation() {
+	if st.validation == nil {
+		return
+	}
 	n := 0
-	for _, entry := range entries {
-		if suppressionString(entryObj(entry), fieldStatus) == statusOpen && readcommon.WithheldSource(entry) == "" {
+	for _, entry := range st.entries {
+		if validation.Candidate(entry) && !isJudged(st.judged, entry) {
 			n++
 		}
 	}
-	return n
+	st.validation.Counts.Unvalidated = n
 }
 
-func entryObj(entry any) *jq.Obj {
-	m, ok := entry.(*jq.Obj)
-	if !ok {
-		return nil
-	}
-	return m
+// isJudged reports whether one result named the entry.
+func isJudged(judged map[string]core.ValidationResult, entry any) bool {
+	_, named := judged[jq.StrOf(readcommon.FieldOf(entry, fieldSig))]
+	return named
 }

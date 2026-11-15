@@ -9,9 +9,6 @@ import (
 	"github.com/stainless-code/verdict/internal/validation"
 )
 
-// rigorGate enforces the evidence floor the trusted base and --require-rigor
-// set: gate mode refuses every posting finding below its tier, and --force
-// records the sigs it published anyway instead of skipping silently.
 func (st *state) rigorGate() *core.RefusalError {
 	receipt := st.merged.Validation
 	if receipt == nil || receipt.Mode != core.ValidationGate || len(receipt.Violations) == 0 {
@@ -32,8 +29,6 @@ func (st *state) rigorGate() *core.RefusalError {
 	return nil
 }
 
-// validationData is the envelope's view of the pass: the same hash, tally,
-// mode, and floors the receipt stores.
 func (st *state) validationData() *core.ValidationData {
 	receipt := st.validationReceipt()
 	return &core.ValidationData{
@@ -41,8 +36,6 @@ func (st *state) validationData() *core.ValidationData {
 	}
 }
 
-// validationReceipt is the pass the merge applied; a state built without one
-// reads the built-in policy, so a receipt never claims a gate that did not run.
 func (st *state) validationReceipt() *recordcore.ValidationResult {
 	if st.merged.Validation != nil {
 		return st.merged.Validation

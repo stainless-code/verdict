@@ -156,8 +156,6 @@ var postWants = map[string]string{
 	postRequireRigorFlag: "critical|important|informational=<said|pointed|walked|ran|reproduced>",
 }
 
-// postInvocation is one parsed post command line: the shared flags plus the
-// repeatable --require-rigor floors, which the request carries beside them.
 type postInvocation struct {
 	flags        core.PostFlags
 	requireRigor []string

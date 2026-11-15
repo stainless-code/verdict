@@ -38,6 +38,12 @@ func validationReview() string {
 		`{"path":"notes.txt","line":2,"side":"RIGHT","body":"` + walkedBody + `","rigor":"walked","severity":"important"}]}`
 }
 
+// movedBody is an out-of-hunk claim the merge moves into the body section.
+const (
+	movedBody = "Out-of-hunk claim the validator rejects."
+	movedSig  = "ea74dc2017832acaf11b2413f27a2dce9f562e19"
+)
+
 // rejectedFixture is one validation.json rejecting the hedged critical. Its
 // hash is pinned so the receipt proves the exact bytes it applied.
 const rejectedFixture = `{"schema_version":"1","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","results":[{"sig":"411fae6d1b4167cc3947b7bf235a680b33ed022f","verdict":"REJECTED","reason":"VALIDATOR-PRIVATE: the body hedges with 'might' and names no evidence in the cited hunk."}]}`
@@ -228,6 +234,92 @@ func assertAdvisoryReceipt(t *testing.T, receipt map[string]any) {
 	}
 	if receipt["validation_mode"] != "warn" {
 		t.Fatalf("validation_mode = %v, want warn", receipt["validation_mode"])
+	}
+}
+
+// TestRejectedMovedFindingStaysOutOfBody pins criterion 2 for a finding the
+// merge moved out of the diff: the pass stamps the entry before the moved
+// section is curated from it, so the same hide path drops it from the body.
+func TestRejectedMovedFindingStaysOutOfBody(t *testing.T) {
+	validationBundleWithReview(t, `{"schema_version":"1","rigor_policy":{"mode":"gate"}}`,
+		`{"schema_version":"1","body":"> [!IMPORTANT]\n> One finding outside the diff.","approved":false,"comments":[`+
+			`{"path":"notes.txt","line":99,"side":"RIGHT","body":"`+movedBody+`","rigor":"walked","severity":"important"}]}`)
+	writeValidation(t, `{"schema_version":"1","head_sha":"`+coverageHead+`","results":[{"sig":"`+movedSig+
+		`","verdict":"REJECTED","reason":"The cited line is outside the diff, so no hunk can carry it."}]}`)
+	_, ref, cmdr := runValidationPost(t, validationFlags())
+	if ref != nil {
+		t.Fatalf("gate post refused: %v (%s)", ref, ref.Message)
+	}
+	stored := findingEntry(t, movedSig)
+	if stored["status"] != "open" {
+		t.Fatalf("withheld finding status = %v, want open", stored["status"])
+	}
+	if withheld := receiptAt(t, stored, "withheld"); withheld["source"] != "validation" {
+		t.Fatalf("withheld = %v, want the validation source", stored["withheld"])
+	}
+	if strings.Contains(strings.Join(cmdr.payloads, "\n"), movedBody) {
+		t.Fatal("the moved finding reached the posted body")
+	}
+}
+
+// TestDowngradeRefusesMismatchedFrom pins the never-upgrade rule: a downgrade
+// names the severity the finding carries, so a stale pair cannot raise it.
+func TestDowngradeRefusesMismatchedFrom(t *testing.T) {
+	validationBundleWithReview(t, "", `{"schema_version":"1","body":"> [!IMPORTANT]\n> One low finding.","approved":false,"comments":[`+
+		`{"path":"notes.txt","line":2,"side":"RIGHT","body":"`+walkedBody+`","rigor":"walked","severity":"informational"}]}`)
+	writeValidation(t, `{"schema_version":"1","head_sha":"`+coverageHead+`","results":[{"sig":"`+walkedSig+
+		`","verdict":"DOWNGRADED","reason":"Real bug, local blast radius.","from_severity":"critical","to_severity":"important"}]}`)
+	_, ref, _ := runValidationPost(t, validationFlags())
+	if ref == nil || ref.Code != "bad-validation" {
+		t.Fatalf("refusal = %v, want bad-validation", ref)
+	}
+	if !strings.Contains(ref.Message, "from_severity critical") {
+		t.Fatalf("refusal = %q, want it to name the pair the finding does not carry", ref.Message)
+	}
+}
+
+// TestCarriedOverFindingValidated pins sig resolution against the merged store:
+// a finding carried from the prior findings.json is a candidate like any other.
+func TestCarriedOverFindingValidated(t *testing.T) {
+	validationBundleWithReview(t, `{"schema_version":"1","rigor_policy":{"mode":"gate"}}`,
+		`{"schema_version":"1","body":"> [!IMPORTANT]\n> One finding the next review drops.","approved":false,"comments":[`+
+			`{"path":"notes.txt","line":2,"side":"RIGHT","body":"`+walkedBody+`","rigor":"walked","severity":"important"}]}`)
+	if _, ref, _ := runValidationPost(t, validationFlags()); ref != nil {
+		t.Fatalf("first post refused: %v (%s)", ref, ref.Message)
+	}
+	writeFile(t, ".verdict/state/7/review.json", `{"schema_version":"1","body":"> [!IMPORTANT]\n> A later review.","approved":false,"comments":[`+
+		`{"path":"notes.txt","line":3,"side":"RIGHT","body":"A later claim with its own anchor.","rigor":"walked","severity":"important"}]}`)
+	writeValidation(t, `{"schema_version":"1","head_sha":"`+coverageHead+`","results":[{"sig":"`+walkedSig+
+		`","verdict":"REJECTED","reason":"The carried claim cites no evidence in the hunk it names."}]}`)
+	_, ref, cmdr := runValidationPost(t, validationFlags())
+	if ref != nil {
+		t.Fatalf("carried finding refused: %v (%s)", ref, ref.Message)
+	}
+	stored := findingEntry(t, walkedSig)
+	if withheld := receiptAt(t, stored, "withheld"); withheld["source"] != "validation" {
+		t.Fatalf("withheld = %v, want the validation source on the carried finding", stored["withheld"])
+	}
+	if strings.Join(cmdr.payloads, "\n") == "" {
+		t.Fatal("the second post sent no payload")
+	}
+}
+
+// TestWithheldFindingNotUnvalidated pins the tally: a finding the floor already
+// withheld is not a candidate, so no pass owes it a result.
+func TestWithheldFindingNotUnvalidated(t *testing.T) {
+	validationBundleWithReview(t, "", `{"schema_version":"1","body":"> [!IMPORTANT]\n> One posted finding.","approved":false,"comments":[`+
+		`{"path":"notes.txt","line":2,"side":"RIGHT","body":"`+walkedBody+`","rigor":"walked","severity":"important"},`+
+		`{"path":"notes.txt","line":2,"side":"RIGHT","body":"`+pointedBody+`","rigor":"pointed","severity":"informational"}]}`)
+	writeValidation(t, `{"schema_version":"1","head_sha":"`+coverageHead+`","results":[{"sig":"`+walkedSig+
+		`","verdict":"CONFIRMED","reason":"The cited hunk resets the counter on every pass."}]}`)
+	flags := validationFlags()
+	flags.MinSeverity = "important"
+	if _, ref, _ := runValidationPost(t, flags); ref != nil {
+		t.Fatalf("post refused: %v (%s)", ref, ref.Message)
+	}
+	counts := receiptAt(t, decodeObject(t, ".verdict/state/7/post.json"), "validation_counts")
+	if counts["unvalidated"] != 0.0 || counts["confirmed"] != 1.0 {
+		t.Fatalf("validation_counts = %v, want the withheld finding outside the tally", counts)
 	}
 }
 

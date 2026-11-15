@@ -28,7 +28,6 @@ exit: 0
     "ignoring unknown kb rule 'rec-rule' (no .verdict/kb.jsonl yet)",
     "ignoring unknown kb rule 'rec-rule' (no .verdict/kb.jsonl yet)",
     "ignoring unknown kb rule 'rec-rule' (no .verdict/kb.jsonl yet)",
-    "$.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)",
     "rigor pointed below critical floor walked on c84ffef (advisory); a gate would downgrade it to important",
     "rigor pointed below critical floor walked on afb9e47 (advisory); a gate would downgrade it to important",
     "rigor pointed below critical floor walked on a9d91e9 (advisory); a gate would downgrade it to important",
@@ -36,7 +35,8 @@ exit: 0
     "rigor said below critical floor walked on b280b3f (advisory)",
     "rigor said below critical floor walked on f8c039f (advisory)",
     "rigor said below critical floor walked on 2d784bc (advisory)",
-    "rigor said below important floor pointed on 99cd29f (advisory)"
+    "rigor said below important floor pointed on 99cd29f (advisory)",
+    "$.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)"
   ],
   "data": {
     "dir": ".verdict/state/local-mx",
@@ -401,7 +401,6 @@ warn: ignoring unknown kb rule 'rec-rule' (no .verdict/kb.jsonl yet)
 warn: ignoring unknown kb rule 'rec-rule' (no .verdict/kb.jsonl yet)
 warn: ignoring unknown kb rule 'rec-rule' (no .verdict/kb.jsonl yet)
 warn: ignoring unknown kb rule 'rec-rule' (no .verdict/kb.jsonl yet)
-warn: $.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)
 warn: rigor pointed below critical floor walked on c84ffef (advisory); a gate would downgrade it to important
 warn: rigor pointed below critical floor walked on afb9e47 (advisory); a gate would downgrade it to important
 warn: rigor pointed below critical floor walked on a9d91e9 (advisory); a gate would downgrade it to important
@@ -410,6 +409,7 @@ warn: rigor said below critical floor walked on b280b3f (advisory)
 warn: rigor said below critical floor walked on f8c039f (advisory)
 warn: rigor said below critical floor walked on 2d784bc (advisory)
 warn: rigor said below important floor pointed on 99cd29f (advisory)
+warn: $.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)
 » findings: 53 sigs -> .verdict/state/local-mx/findings.json
   c7bc06e4  open  true  notes.txt
   63b8aa5b  open  true  notes.txt
@@ -2290,7 +2290,7 @@ other.txt	NEW	1	3
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "68830ec8d9b1e6f8015204d6ae59db610391b9f2fe8f92383ce6b3a2142b0153",
+  "prompts_hash": "4e52f483e0653b36ab29476d3f2f1fe402be0b0d57fd1e2208b8432716827b8e",
   "model": null,
   "validation_hash": null,
   "validation_counts": {"confirmed":0,"rejected":0,"downgraded":0,"unvalidated":53},

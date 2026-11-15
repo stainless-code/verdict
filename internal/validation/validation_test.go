@@ -78,6 +78,11 @@ func TestParseRefusesBadValidation(t *testing.T) {
 			code: "bad-validation",
 		},
 		{
+			name: "trailing object",
+			body: `{"schema_version":"1","head_sha":"` + headSHA + `","results":[]}{"results":[]}`,
+			code: "bad-validation",
+		},
+		{
 			name: "stale head",
 			body: `{"schema_version":"1","head_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","results":[]}`,
 			code: "validation-stale",
