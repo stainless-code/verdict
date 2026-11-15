@@ -1,0 +1,34 @@
+{
+  "schema_version": "1",
+  "id": "axios-5707-getsetcookie-caseless-key",
+  "kind": "real",
+  "language": "javascript",
+  "provenance": {
+    "kind": "real",
+    "repo": "axios/axios",
+    "pr": 5707,
+    "base_sha": "fd1095838c04f20d0508dd3122c2d36630dea830",
+    "head_sha": "80ea756e72bcf53110fa792f5d7ab76e8b11c996",
+    "fix_commit": "https://github.com/axios/axios/commit/d4f7df4b304af8b373488fdf8e830793ff843eb9",
+    "source": "PR #5707 feat(AxiosHeaders): add getSetCookie method to retrieve set-cookie headers values, squash-merged 2025-03-25 as 80ea756e7",
+    "note": "Introduced by this PR: the accessor did not exist before, and it reads the object's own `set-cookie` property instead of going through the class's caseless `get()`. `AxiosHeaders.set()` stores a header it has not seen before under the name the caller passed (`self[key || _header]`), so `new AxiosHeaders({'Set-Cookie': ...})` and `set('Set-Cookie', ...)` both land on the mixed-case key while the accessor looks only at the lower-case one; the header is found only when it arrived already lower-cased (a parsed header string, or a Headers iteration). The later fix #6874 rewrites this one line to `this.get('set-cookie')` and adds no test, so the failing case is the caller-set header. Getter access, not the value, is what breaks: the values are present on the object under the original casing."
+  },
+  "bugs": [
+    {
+      "path": "lib/core/AxiosHeaders.js",
+      "line": 249,
+      "kind": "invalid-output",
+      "severity": "important",
+      "keywords": [
+        "bypasses the caseless accessor and reads one fixed key",
+        "misses a header stored under its original casing",
+        "silently drops the values for a mixed-case header name",
+        "the header is not found when its name is not lower case",
+        "returns nothing for a header the caller already set",
+        "silently loses the values when the name is not lower case"
+      ],
+      "note": "the accessor indexes the object with one fixed lower-case key, but a header set under a mixed-case name is stored under that name, so the documented method returns an empty array; the fix routes the read through the caseless getter",
+      "also_lines": []
+    }
+  ]
+}

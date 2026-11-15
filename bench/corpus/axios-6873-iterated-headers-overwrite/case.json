@@ -1,0 +1,34 @@
+{
+  "schema_version": "1",
+  "id": "axios-6873-iterated-headers-overwrite",
+  "kind": "real",
+  "language": "javascript",
+  "provenance": {
+    "kind": "real",
+    "repo": "axios/axios",
+    "pr": 6873,
+    "base_sha": "47a611f0846b9976e02327b01e0f7b4002a97808",
+    "head_sha": "1b1f9ccdc15f1ea745160ec9a5223de9db4673bc",
+    "fix_commit": "https://github.com/axios/axios/commit/f7a3b5e0f7e5e127b97defa92a132fbf1b55cf15",
+    "source": "PR #6873 fix(headers): allow iterable objects to be a data source for the set method, squash-merged 2025-04-14 as 1b1f9ccdc",
+    "note": "The PR widened the source branch from `utils.isHeaders` to any object with a Symbol.iterator and feeds each pair to the internal setter one at a time. Those calls pass the caller's rewrite flag, which is normally undefined, so for a name that already has a value the setter takes its overwrite branch: a repeated name keeps only the entry that came last. A native `Headers` carrying three `set-cookie` values therefore reaches the response/request path as one string instead of three. The later fix #6885 accumulates the pairs into a plain object, turning repeated keys into arrays, and hands that object to the bulk setter. Pre-existing: the collapse predates this PR \u2014 the isHeaders branch it replaces behaved the same way \u2014 so the reviewed hunk is the iterable source the fix rewrites, not the code that first lost the values."
+  },
+  "bugs": [
+    {
+      "path": "lib/core/AxiosHeaders.js",
+      "line": 108,
+      "kind": "data-loss",
+      "severity": "important",
+      "keywords": [
+        "each iteration overwrites the value stored before",
+        "duplicate values from a repeated key are dropped",
+        "only the last value of a repeated header survives",
+        "multiple values collapse into one",
+        "repeated values are overwritten instead of accumulated",
+        "repeated pairs lose every value but the last"
+      ],
+      "note": "one internal setter call per pair, with no accumulation, so a repeated name overwrites its earlier values instead of building the array a native Headers hands over; the fix gathers the pairs first and lets the bulk setter merge duplicates",
+      "also_lines": []
+    }
+  ]
+}
