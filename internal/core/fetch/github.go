@@ -172,6 +172,7 @@ func githubMiddle(ctx context.Context, ctx2 *fetchRunCtx, dir, repo, pr string) 
 		return ref
 	}
 	writeKBRecall(ctx2, dir, extra)
+	writeRevertsNote(ctx2, dir, extra)
 	writeLensBodies(ctx2)
 	if ref := githubReviews(ctx, r, dir, repo, pr); ref != nil {
 		return ref

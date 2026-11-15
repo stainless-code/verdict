@@ -274,6 +274,7 @@ func fetchData(
 		artifacts.Set("kb-recall.json", ctx2.dir+suffixKBRecall)
 	}
 	addArtifactIfPresent(artifacts, ctx2.dir, "lenses.txt", suffixLensesTxt)
+	addArtifactIfPresent(artifacts, ctx2.dir, "reverts.txt", suffixRevertsTxt)
 	impactArtifactRow(artifacts, ctx2.dir)
 	contextArtifacts(artifacts, ctx2.dir)
 	data := &core.FetchData{
@@ -420,6 +421,7 @@ func localArtifacts(dir string) *jq.Obj {
 	addArtifactIfPresent(artifacts, dir, "kb.txt", suffixKBTxt)
 	addArtifactIfPresent(artifacts, dir, "kb-recall.json", suffixKBRecall)
 	addArtifactIfPresent(artifacts, dir, "lenses.txt", suffixLensesTxt)
+	addArtifactIfPresent(artifacts, dir, "reverts.txt", suffixRevertsTxt)
 	impactArtifactRow(artifacts, dir)
 	contextArtifacts(artifacts, dir)
 	return artifacts

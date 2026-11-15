@@ -117,6 +117,7 @@ var facadeAllowedDeps = map[string]bool{
 	"internal/sig":            true,
 	"internal/storelock":      true,
 	"internal/strictjson":     true,
+	"internal/untrusted":      true,
 	"pkg/verdict":             true,
 }
 
