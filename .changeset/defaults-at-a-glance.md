@@ -2,9 +2,7 @@
 "@stainless-code/verdict": patch
 ---
 
-Publish "Defaults at a glance" in `docs/manual.md`: one row per default a bare
-run takes (the typed defaults floor and the flag postures `gate`, `post` and
-`run` start from), each naming its verb. The table is generated from the
-resolved built-in layer and the parsers' own constants, and `internal/archtest`
-fails when either moves without the docs, so it cannot drift into prose the
-binary does not follow.
+`docs/manual.md` gains a "Defaults at a glance" table: one row per default a
+bare run takes, naming the verb each one shapes. The table is generated from
+the typed defaults registry and the flag parsers, so it cannot drift from the
+shipped binary.

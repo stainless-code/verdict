@@ -121,16 +121,14 @@ func Builtins() Partial {
 	}
 }
 
-// BuiltinDefault is one row of the built-in floor: the published defaults key,
-// the value the resolver starts from (nil when the floor sets none), and the
-// verbs whose bare run that value shapes.
+// BuiltinDefault is one published defaults key, its built-in value, and the
+// verbs it shapes.
 type BuiltinDefault struct {
 	Key   string
 	Value any
 	Verbs []string
 }
 
-// Verb spellings a built-in default row names.
 const (
 	verbFetch      = "fetch"
 	verbFetchLocal = "fetch-local"
@@ -141,9 +139,7 @@ const (
 	verbLearn      = "learn"
 )
 
-// BuiltinDefaults lists the built-in floor in the evidence key order, one row
-// per recognized defaults key. A published defaults table renders this list, so
-// a value moved in Builtins moves the table with it.
+// BuiltinDefaults lists the built-in floor in the evidence key order.
 func BuiltinDefaults() []BuiltinDefault {
 	floor := Builtins()
 	return []BuiltinDefault{
@@ -160,8 +156,6 @@ func BuiltinDefaults() []BuiltinDefault {
 	}
 }
 
-// builtinValue lifts one optional floor value into a table cell: absent stays
-// absent instead of reading as a zero the floor never set.
 func builtinValue[T any](value *T) any {
 	if value == nil {
 		return nil

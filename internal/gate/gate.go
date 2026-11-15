@@ -45,12 +45,10 @@ const (
 		"chunk in chunks[] when the bundle is chunked), then re-record or re-post"
 )
 
-// DefaultLive is the --live posture a gate run starts from: the live thread
-// read is attempted and its absence is reported, never fatal.
+// DefaultLive is the --live posture a gate run starts from.
 const DefaultLive = "auto"
 
-// DefaultCoverage is the --coverage posture a gate run starts from: the stored
-// attestation is part of the gate unless the operator opts out.
+// DefaultCoverage is the --coverage posture a gate run starts from.
 const DefaultCoverage = "require"
 
 // Run executes `gate <owner/repo> <pr> [flags]`, returning the exit code.

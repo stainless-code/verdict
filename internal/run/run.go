@@ -40,8 +40,7 @@ type Request struct {
 // default verify gives the commands it spawns.
 const DefaultTimeoutS = "300"
 
-// DefaultRounds is the launch-to-check round count when --rounds is absent:
-// today's one-shot.
+// DefaultRounds is the launch-to-check round count when --rounds is absent.
 const DefaultRounds = "1"
 
 // roundsFlag, recipeFlag, and stageFlag are named once for the parser and the

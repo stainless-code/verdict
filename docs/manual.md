@@ -773,15 +773,12 @@ Track your controls once so the base commit carries them — in a repo whose
 
 ## Defaults at a glance
 
-A bare run takes the defaults below. Each is a floor: a matching flag, then the
-`REVIEW_*` environment, then `.verdict/config.json`, then the personal settings
-layer can replace it ("Typed repository configuration" below has the layer
-order), and `verdict config <owner/repo> <pr> --explain` prints the values one
-run actually resolved with the layer each came from. `unset` means the floor
-sets nothing, so the behavior stays off until a layer above turns it on. The
-table is generated from the definitions the binary uses — the typed defaults
-registry and the flag parsers — so it cannot describe a default the shipped run
-does not take.
+A bare run takes the defaults below; each is a floor that a matching flag, the
+`REVIEW_*` environment, `.verdict/config.json`, or the personal layer can
+replace, in that order ("Typed repository configuration" below has the detail).
+`verdict config <owner/repo> <pr> --explain` prints the values one run actually
+resolved and the layer each came from. `unset` means the floor sets nothing, so
+the behavior stays off until a layer above turns it on.
 
 <!-- defaults-at-a-glance:begin (generated; see internal/archtest/verbdefaults_test.go) -->
 

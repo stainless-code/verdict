@@ -16,22 +16,14 @@ import (
 	"github.com/stainless-code/verdict/internal/run"
 )
 
-// defaultsBegin and defaultsEnd fence the generated table in the manual, and
-// defaultsHeading is the section that owns it: the table may not migrate into
-// an unrelated section of the operator contract.
 const (
 	defaultsBegin   = "<!-- defaults-at-a-glance:begin (generated; see internal/archtest/verbdefaults_test.go) -->"
 	defaultsEnd     = "<!-- defaults-at-a-glance:end -->"
 	defaultsHeading = "## Defaults at a glance"
 )
 
-// updateDefaults regenerates the table in docs/manual.md instead of failing.
 var updateDefaults = flag.Bool("update", false, "regenerate the published defaults table")
 
-// TestPublishedDefaultsTable keeps the manual's "Defaults at a glance" table
-// generated: every row is read from the registry the resolver merges or from
-// the default the flag parser ships, so a default that moves fails here
-// instead of publishing a stale table.
 func TestPublishedDefaultsTable(t *testing.T) {
 	path := filepath.Join(moduleRoot(t), "docs", "manual.md")
 	raw, err := os.ReadFile(path)
@@ -57,8 +49,6 @@ func TestPublishedDefaultsTable(t *testing.T) {
 		doc[start:stop], want)
 }
 
-// defaultsBlock returns the span between the generated markers, which must sit
-// under the section that owns the table rather than in an unrelated one.
 func defaultsBlock(t *testing.T, doc string) (int, int) {
 	t.Helper()
 	begin := strings.Index(doc, defaultsBegin)
@@ -76,8 +66,6 @@ func defaultsBlock(t *testing.T, doc string) (int, int) {
 	return start, start + stop
 }
 
-// defaultsRows lists one row per published default: the config registry's
-// built-in floor, then the flag defaults the parsers start from.
 func defaultsRows() [][]string {
 	var rows [][]string
 	for _, builtin := range config.BuiltinDefaults() {
@@ -101,8 +89,6 @@ func defaultsRows() [][]string {
 	return rows
 }
 
-// defaultsTable renders the rows the way the manual shows them: a markdown
-// table with every cell padded to its column, which is what `bun fmt` leaves.
 func defaultsTable() string {
 	header := []string{"Verb", "Knob", "Built-in default"}
 	rows := defaultsRows()
@@ -123,7 +109,6 @@ func defaultsTable() string {
 	return strings.Join(lines, "\n")
 }
 
-// defaultsLine pads one row to the column widths.
 func defaultsLine(cells []string, widths []int) string {
 	var line strings.Builder
 	line.WriteString("|")
@@ -133,8 +118,6 @@ func defaultsLine(cells []string, widths []int) string {
 	return line.String()
 }
 
-// defaultsCell renders one default the way the table reads: "unset" for a floor
-// value the resolver never sets, on/off for a switch.
 func defaultsCell(value any) string {
 	switch typed := value.(type) {
 	case nil:

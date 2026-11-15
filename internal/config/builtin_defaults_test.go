@@ -5,11 +5,6 @@ import (
 	"testing"
 )
 
-// TestBuiltinDefaultsMatchFloor keeps the published row list and the built-in
-// layer in agreement: the rows are what a docs table renders, the layer is what
-// the resolver merges, and a default that moves in only one of them publishes a
-// table the binary does not follow. The keys are the published spelling, so a
-// renamed key fails here before it reaches a reader.
 func TestBuiltinDefaultsMatchFloor(t *testing.T) {
 	got := map[string]any{}
 	for _, row := range BuiltinDefaults() {
@@ -35,9 +30,6 @@ func TestBuiltinDefaultsMatchFloor(t *testing.T) {
 	}
 }
 
-// TestBuiltinDefaultsNameVerbs keeps every row attributable: a key added to the
-// floor without a verb renders an empty cell instead of telling a reader what a
-// bare run of that verb does.
 func TestBuiltinDefaultsNameVerbs(t *testing.T) {
 	for _, row := range BuiltinDefaults() {
 		if len(row.Verbs) == 0 {
