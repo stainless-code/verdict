@@ -39,6 +39,11 @@
         "kills in-flight requests",
         "tears down queued requests",
         "aborts pending work",
+        "aborts in-flight requests",
+        "error queued requests",
+        "errors queued requests",
+        "cancels pending requests",
+        "cancels queued requests",
         "drops requests that are still queued",
         "should be closed instead of destroyed",
         "destroys a dispatcher that still has work"

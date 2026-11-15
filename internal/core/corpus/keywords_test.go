@@ -134,6 +134,15 @@ var keywordCases = []keywordCase{
 			"Evicting with destroy() aborts pending work: a request queued right then fails with ClientDestroyedError.",
 			"The handler drops requests that are still queued, so it should be closed instead of destroyed.",
 			"The eviction destroys a dispatcher that still has work, erroring the queued request.",
+			// audit-6: the three natural paraphrases of this defect that the
+			// first board missed, starting with the finding that motivated the
+			// bug entry at all. They stay pinned so a shorter board cannot
+			// regress to grading them false.
+			"Calling result.dispatcher.destroy() here abruptly aborts in-flight requests instead of using close().",
+			"Using destroy() instead of close() will error queued requests with ClientDestroyedError.",
+			"Calling destroy() when active connections drop to zero cancels pending requests instead of draining them with close().",
+			"Evicting on disconnect errors queued requests instead of draining them.",
+			"The handler cancels queued requests as soon as the count reaches zero.",
 		},
 		fails: []string{
 			"The lookup is keyed on the URL the event carries while the map stores the origin string, so the count never moves.",
@@ -142,6 +151,12 @@ var keywordCases = []keywordCase{
 			"Rename result to entry so the shape is obvious.",
 			"destroy() is called once in this block, which matches the close path below.",
 			"Add a comment explaining why the eviction happens on disconnect.",
+			// audit-6's neutral remarks: they name destroy(), the dispatcher and
+			// the count, so a board that matched words instead of a direction
+			// would swallow them.
+			"Calling result.dispatcher.destroy() here cleans up the dispatcher once count reaches zero; consider adding a comment.",
+			"Calling destroy() here when count <= 0 ensures the dispatcher is disposed after eviction.",
+			"Note that result.dispatcher.destroy() tears down the dispatcher when count drops to zero.",
 		},
 	},
 }
