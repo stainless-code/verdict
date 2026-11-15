@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/author.schema.json",
+  "title": "author.json — advisory author fingerprint",
+  "description": "The advisory author fingerprint fetch detected in the bundle's PR text. It never blocks a review, never changes what is reviewed, and never pins a model; an unknown author writes no file at all rather than guessing, so absent means unknown, not human.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "description": "Format version; only \"1\" is published.",
+      "enum": ["1"]
+    },
+    "agent": {
+      "description": "The agent family the strongest signal names. A spoofable claim, recorded for routing and for the review/author pair trend groups, never a gate.",
+      "enum": ["claude", "codex", "cursor"]
+    },
+    "model": {
+      "description": "The model a Co-authored-by trailer names after the agent's own name, verbatim; null when the signal names none.",
+      "type": ["string", "null"]
+    },
+    "confidence": {
+      "description": "high means an explicit machine-written trailer or the 'Generated with Claude Code' line; medium means a naming convention (a [codex] title tag or a codex/ or cursor/ branch prefix). A contradiction in evidence leaves the strongest signal naming the agent.",
+      "enum": ["high", "medium"]
+    },
+    "evidence": {
+      "description": "Every signal that matched, in scan order (title, body, head ref, then each commit), so a reader can second-guess the verdict instead of trusting one string.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/evidence" }
+    }
+  },
+  "required": ["schema_version", "agent", "model", "confidence", "evidence"],
+  "additionalProperties": false,
+  "$defs": {
+    "evidence": {
+      "description": "One matched signal.",
+      "type": "object",
+      "properties": {
+        "field": {
+          "description": "Where the signal was found: the PR title, its body, its head ref, or a commit message.",
+          "enum": ["title", "body", "head_ref", "commits"]
+        },
+        "signal": {
+          "description": "The text that matched, exactly as the PR carried it.",
+          "type": "string"
+        }
+      },
+      "required": ["field", "signal"],
+      "additionalProperties": true
+    }
+  }
+}

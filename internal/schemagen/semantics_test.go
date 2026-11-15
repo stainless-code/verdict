@@ -18,6 +18,10 @@ import (
 // skill) re-pinned all ten hashes: only each $id URL moved; no property,
 // required key, enum, or type changed.
 var publishedSemantics = map[string]string{
+	// additive author.schema.json (new bundle document; the advisory author
+	// fingerprint fetch detects). No existing schema property, required key,
+	// enum, or type changed.
+	"author.schema.json":      "f7d48bf8cc56baf70899b6e02caceae111838bb7ee3ed707eb7e4a9e7b809a70",
 	"excluded.schema.json":    "da38e86c8f27bc41b8255f7fc12cbf0a81fa181eee2be172c46b4ae015b041ac",
 	"panel-plan.schema.json":  "c4ac13bb03fb5918bc5b60ff9eba10776f10b999fdc88049409792439b1c043a",
 	"panel.schema.json":       "60fee20b395837e41c0bb8044dcaed55fa7a38d8d8a504a9f228be95b28319ef",

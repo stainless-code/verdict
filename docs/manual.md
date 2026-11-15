@@ -321,6 +321,7 @@ A bundle dir holds these core/script artifacts (`PR.json`/`source.json`,
 `threads-resolve.json`,
 `panel`, `patch.json`, `verification.json`, `incremental.diff`, `kb.txt`,
 `lenses.txt`, `reverts.txt`, `sensitive.txt`, `kb-recall.json`, `cost.json`, `budget.json`, `fix.json`,
+`author.json`,
 `kb-grades.jsonl`, `controls.json`, `controls/`, `chunks/`
 (`chunk-NN.diff`, `chunk-NN.toc.txt`, `chunk-NN.roles.txt`, `manifest.json`
 with `schema_version: "1"`, per-chunk `<name>.cost.json`), plus dot-scratch
@@ -341,6 +342,26 @@ everything else in a bundle dir is script-owned.
 and `plan.txt` is the fence label for its rendered section in the
 `--show-prompts` dump, one line per group (see
 [Policy engine](#policy-engine-scopes-profiles-deep-validation)).
+
+`author.json` is the advisory author fingerprint `fetch` detects in the PR
+(`schemas/author.schema.json`): `{schema_version, agent, model, confidence,
+evidence[]}`. It reads five signals — a `Co-authored-by:` trailer whose name is
+an agent's (`claude`, `codex`, `cursor`, and `Claude Code` for the tool rather
+than a model called Code), the `Generated with Claude Code` line a harness
+appends to the PR body, the `[codex]` PR-title tag, and the `codex/` or
+`cursor/` branch prefixes. An explicit trailer or generated-with line is `high`
+confidence, a naming convention `medium`; the strongest signal names the
+`agent`, the earliest one breaks a tie, and every match stays in `evidence[]`
+as `{field, signal}` — `field` is `title`, `body`, `head_ref`, or `commits`, and
+`signal` is the matched text verbatim. `model` is whatever a trailer names after
+the agent's own name, null when no signal names one.
+
+It is data, never a decision: it never blocks, never changes what is reviewed,
+and never pins a model — a spoofable fingerprint is not authority. Nothing is
+written when no signal matches (and an earlier run's file is removed), so an
+absent `author.json` means unknown, never human. Commit messages reach it only
+where the provider payload carries them (GitHub's view answers with the commit
+list); the other providers contribute the title, body, and head ref.
 
 ### Lens packs
 
@@ -4256,6 +4277,7 @@ declared review pipelines `run --recipe` resolves, plus the resolved
 explicit usage handoff), `corpus.schema.json` (benchmark case manifests),
 `backtest.schema.json` (the backtest score report), `post.schema.json` and
 `record.schema.json` (completed post/record captures),
+`author.schema.json` (the advisory author fingerprint a fetch detects),
 `threads.schema.json` (the normalized PR conversation),
 `pack.schema.json` (the lens pack manifest),
 and `envelope.schema.json` (the `--json` envelope plus the stable per-verb

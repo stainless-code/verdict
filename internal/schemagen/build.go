@@ -153,6 +153,15 @@ const keyScopeDefaults = "defaults"
 func documents() []document {
 	return []document{
 		{
+			name:  "author",
+			title: "author.json — advisory author fingerprint",
+			root:  reflect.TypeFor[AuthorFile](),
+			defs: []definition{
+				{typ: reflect.TypeFor[AuthorEvidence](), name: "evidence"},
+			},
+			additionalProperties: false,
+		},
+		{
 			name:  "backtest",
 			title: "report.json — backtest score report",
 			root:  reflect.TypeFor[BacktestData](),

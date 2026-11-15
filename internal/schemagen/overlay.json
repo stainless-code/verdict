@@ -1,4 +1,17 @@
 {
+  "author": {
+    "descriptions": {
+      "": "The advisory author fingerprint fetch detected in the bundle's PR text. It never blocks a review, never changes what is reviewed, and never pins a model; an unknown author writes no file at all rather than guessing, so absent means unknown, not human.",
+      "/properties/schema_version": "Format version; only \"1\" is published.",
+      "/properties/agent": "The agent family the strongest signal names. A spoofable claim, recorded for routing and for the review/author pair trend groups, never a gate.",
+      "/properties/model": "The model a Co-authored-by trailer names after the agent's own name, verbatim; null when the signal names none.",
+      "/properties/confidence": "high means an explicit machine-written trailer or the 'Generated with Claude Code' line; medium means a naming convention (a [codex] title tag or a codex/ or cursor/ branch prefix). A contradiction in evidence leaves the strongest signal naming the agent.",
+      "/properties/evidence": "Every signal that matched, in scan order (title, body, head ref, then each commit), so a reader can second-guess the verdict instead of trusting one string.",
+      "/$defs/evidence": "One matched signal.",
+      "/$defs/evidence/properties/field": "Where the signal was found: the PR title, its body, its head ref, or a commit message.",
+      "/$defs/evidence/properties/signal": "The text that matched, exactly as the PR carried it."
+    }
+  },
   "config": {
     "descriptions": {
       "": "The typed repository configuration at .verdict/config.json: versioned shared defaults and review requirements with path scopes, named work profiles, and the default profile. Structural validation comes from this schema; the hand-written parser in internal/config owns the semantic checks the schema cannot express (duplicate keys, credential keys, glob portability, clause-name uniqueness, per-group clause coverage).",

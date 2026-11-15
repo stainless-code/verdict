@@ -42,6 +42,13 @@ type BacktestSpend = backtestcore.ScoreSpend
 // BacktestSignal is one row of the score's fix/revert catch table.
 type BacktestSignal = backtestcore.ScoreSignal
 
+// AuthorFile is the bundle's advisory author fingerprint, generated as
+// schemas/author.schema.json.
+type AuthorFile = core.AuthorFile
+
+// AuthorEvidence is one matched author signal and the PR field it came from.
+type AuthorEvidence = core.AuthorEvidence
+
 // CorpusCase is the benchmark corpus case manifest, generated as
 // schemas/corpus.schema.json.
 type CorpusCase = core.CorpusCase

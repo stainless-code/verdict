@@ -276,6 +276,7 @@ func fetchData(
 	addArtifactIfPresent(artifacts, ctx2.dir, "lenses.txt", suffixLensesTxt)
 	addRevertsArtifact(artifacts, ctx2.dir)
 	impactArtifactRow(artifacts, ctx2.dir)
+	addAuthorArtifact(artifacts, ctx2.dir)
 	contextArtifacts(artifacts, ctx2.dir)
 	data := &core.FetchData{
 		Receipt:      ctx2.runner.receipt,
@@ -493,6 +494,9 @@ func localDumpPtr(
 }
 
 func writeEvidence(ctx context.Context, ctx2 *fetchRunCtx, in impactInput, inputs []string, at string) error {
+	if err := writeAuthor(ctx2); err != nil {
+		return err
+	}
 	if err := writeImpact(ctx, ctx2, in); err != nil {
 		return err
 	}
