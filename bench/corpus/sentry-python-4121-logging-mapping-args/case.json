@@ -26,7 +26,10 @@
         "dict arguments are flattened into their keys",
         "the message renders with key names instead of the substituted values",
         "mapping-style interpolation receives the key names",
-        "the interpolated parameters collapse to the dictionary keys"
+        "the interpolated parameters collapse to the dictionary keys",
+        "keys instead of values",
+        "flattens a mapping",
+        "only keys survive"
       ],
       "note": "stdlib logging accepts a single mapping as record.args for %(name)s templates; the generator iterates it, so keys, not values, are sent. The generator also rewrites a None argument to the string \"None\", which was the PR's intent.",
       "also_lines": [251]

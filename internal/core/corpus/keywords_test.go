@@ -565,6 +565,14 @@ var keywordCases = []keywordCase{
 	// checked to be unspelled by the case's own full.diff, and every row below
 	// grades the same way against the filtered runtime vocabulary
 	// (usablePhrases), not only against the unfiltered pin here.
+	//
+	// audit-11 (cross-family): 4133 and 4281 lost the phrases that described
+	// the PR's intended mechanism (a neutral or approving comment could carry
+	// them), and each case gained 2-4 short directional phrases so a reviewer
+	// who words the defect differently still grades as a hit. The three
+	// sentences those phrases were written against are pinned as must-grade-
+	// false rows, and the audit's own paraphrases are pinned where a phrase
+	// covers them (4133 both, 6168 one; the rest are known misses).
 	{
 		id: "sentry-python-4121-logging-mapping-args",
 		passes: []string{
@@ -574,6 +582,9 @@ var keywordCases = []keywordCase{
 			"Dict arguments are flattened into their keys before they reach Sentry.",
 			"The interpolated parameters collapse to the dictionary keys, so the substitution never sees its value.",
 			"Mapping-style interpolation receives the key names, not the values, whenever the caller passes a single dict.",
+			"A dict argument is flattened into keys instead of values, so the placeholder cannot be interpolated.",
+			"The generator flattens a mapping before the event is built, so what ships is the key set.",
+			"Only keys survive the tuple conversion, so the substituted values never reach the report.",
 		},
 		fails: []string{
 			"Coercing the absent value into a string keeps the payload serializable, which is what the linked issue asked for.",
@@ -590,8 +601,9 @@ var keywordCases = []keywordCase{
 			"The library's diagnostics end up in the host application's log stream instead of its own sink.",
 			"The library prints nothing when the host has its own log configuration at INFO level.",
 			"A parent log setup decides whether anything is emitted, so the SDK's own switch no longer controls it.",
-			"Any existing root setup stops the library from installing its own output.",
-			"A configured root makes the library skip its own setup, so the diagnostics arrive in the application's format.",
+			"Checking the parent handlers skips the SDK's own setup, so debug=true fails to attach the stream the option promises.",
+			"If the application configures a root logger, the SDK's lines are leaked to the root and debug=true produces nothing.",
+			"With the host's root level above DEBUG, debug=true produces nothing at all.",
 		},
 		fails: []string{
 			"Using the public accessor makes the check consider inherited configuration, which is the documented behavior.",
@@ -600,6 +612,8 @@ var keywordCases = []keywordCase{
 			"A second call adds another output stream, duplicating every line.",
 			"The check runs before the filter is attached, so the first record escapes.",
 			"The warning about missing dependencies goes through the standard warnings module.",
+			"A configured root makes the library skip its own setup, avoiding duplicate log output.",
+			"Any existing root setup stops the library from installing its own output, which is the intent of checking parent handlers.",
 		},
 	},
 	{
@@ -612,6 +626,8 @@ var keywordCases = []keywordCase{
 			"The send is not guarded, so the first failure ends the flusher and the buffer keeps growing.",
 			"No exception handling means a single failure ends the periodic drain.",
 			"The buffer keeps accepting items that nothing will send.",
+			"With no try/except around the flush, one transient transport or serialization error kills the background thread.",
+			"A single failure kills the flusher, and the drain never resumes while items keep queueing.",
 		},
 		fails: []string{
 			"Flushing only the buckets that filled up is what the specification asks for.",
@@ -626,9 +642,10 @@ var keywordCases = []keywordCase{
 		id: "sentry-python-4281-threading-channels-version",
 		passes: []string{
 			"A lookalike package without a version attribute aborts the initialization.",
-			"The version read is assumed to exist on any module of that name, and a local channels module does not have it.",
+			"An unrelated channels module with no version attribute crashes the client during setup.",
 			"A shadowing module makes the attribute access raise instead of skipping the integration.",
 			"Initialization crashes instead of disabling the integration when the import resolves to an unrelated module.",
+			"A local channels module without a version attribute crashes init() before the integration is enabled.",
 			"The guard only covers a missing package, so a missing attribute crashes setup.",
 			"Bootstrapping the client fails when a local module of that name has no version.",
 		},
@@ -638,6 +655,7 @@ var keywordCases = []keywordCase{
 			"Threads started before the integration is set up never get the warning.",
 			"The integration is skipped when the client is not active.",
 			"The deprecation notice should be emitted once per process, not once per start.",
+			"The version read is assumed to exist on any module of that name, which matches how the other integrations detect versions.",
 		},
 	},
 }

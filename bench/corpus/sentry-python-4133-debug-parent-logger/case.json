@@ -24,8 +24,9 @@
         "the library's diagnostics end up in the host application's log stream instead of its own",
         "the library prints nothing when the host has its own log configuration",
         "a parent log setup decides whether anything is emitted",
-        "any existing root setup stops the library from installing its own output",
-        "a configured root makes the library skip its own setup"
+        "debug=true produces nothing",
+        "debug=true fails",
+        "leaked to the root"
       ],
       "note": "init_debug_support runs when the debug option is on; the inherited-handler walk makes it a no-op whenever the application has a root handler, so the SDK either emits nothing (host root level above DEBUG) or emits its diagnostics through the application's own handler and formatter. Both are observable; the keywords cover the suppression direction and the emission direction, and the revert cites the emission one."
     }

@@ -26,7 +26,10 @@
         "an unguarded failure stops the worker for good",
         "the send is not guarded, so the first failure ends the flusher",
         "the buffer keeps accepting items that nothing will send",
-        "no exception handling means a single failure ends the periodic drain"
+        "no exception handling means a single failure ends the periodic drain",
+        "kills the background thread",
+        "kills the flusher",
+        "the drain never resumes"
       ],
       "note": "the daemon loop calls _flush unguarded; the fix's body states the consequence: the thread ends, _ensure_thread still sees the same pid, items keep accumulating to MAX_BEFORE_DROP and are then dropped for the rest of the process lifetime.",
       "also_lines": [99, 100]
