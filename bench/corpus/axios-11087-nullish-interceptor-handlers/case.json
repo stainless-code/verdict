@@ -25,7 +25,10 @@
         "user code that nulls the public array crashes the next request",
         "crashes when the public collection is replaced with a falsy value",
         "does not tolerate a caller-assigned falsy collection",
-        "rejects a replaced collection instead of treating it as empty"
+        "rejects a replaced collection instead of treating it as empty",
+        "causing a typeerror",
+        "throws a typeerror",
+        "guard against nullish"
       ],
       "note": "the sync pass dereferences the public handler array before any existence check, so a caller that replaces it with a falsy value turns every later request into a TypeError; the fix counts through a helper that treats a nullish value as empty",
       "also_lines": [19]

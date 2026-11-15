@@ -25,7 +25,9 @@
         "only the last value of a repeated header survives",
         "multiple values collapse into one",
         "repeated values are overwritten instead of accumulated",
-        "repeated pairs lose every value but the last"
+        "repeated pairs lose every value but the last",
+        "overwrites earlier",
+        "clobber previous cookies"
       ],
       "note": "one internal setter call per pair, with no accumulation, so a repeated name overwrites its earlier values instead of building the array a native Headers hands over; the fix gathers the pairs first and lets the bulk setter merge duplicates",
       "also_lines": []
