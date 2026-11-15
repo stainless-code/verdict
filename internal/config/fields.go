@@ -17,13 +17,14 @@ const requirementsKey = "requirements"
 var (
 	topFields = []string{
 		"$schema", "schema_version", "defaults", "requirements", "scopes", "profiles", "default_profile",
-		"index", "severity_weights",
+		"index", "severity_weights", "rigor_policy",
 	}
 	defaultsFields = []string{
 		keyPanel, keyBudgetUSD, keyMaxBytes, keyChunk, keyKBPolicy, keyEffort,
 		keyDisplayFloor, keyPostFloor,
 	}
 	kbPolicyFields     = []string{"min_judged", "max_fp_rate", "max_chars"}
+	rigorPolicyFields  = append([]string{"mode"}, severityEnum...)
 	requirementsFields = []string{"block_clauses", "require_checks", "require_bind"}
 	clauseFields       = []string{"name", "threshold", "categories", "paths"}
 	scopeFields        = []string{"name", "include", "exclude", "profile", "defaults", "requirements"}
@@ -72,6 +73,7 @@ func checkUnknownFields(root map[string]any) *core.RefusalError {
 		{key: "profiles", check: checkProfilesKeys},
 		{key: "severity_weights", check: checkKeysSection(severityEnum)},
 		{key: "index", check: checkKeysSection(indexFields)},
+		{key: "rigor_policy", check: checkKeysSection(rigorPolicyFields)},
 	} {
 		if ref := checkSectionUnknown(root, section.key, section.check); ref != nil {
 			return ref

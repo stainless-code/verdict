@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/validation.schema.json",
+  "title": "validation.json — trusted validator pass results",
+  "description": "One trusted `prompts/validate.md` pass over a review's candidate findings, written beside review.json. The invoker runs the pass; verdict only reads the file, so a review never spawns a model. A CONFIRMED result changes nothing, a DOWNGRADED one moves the severity exactly one rank with a history event, and a REJECTED one warns in advisory mode or withholds the finding in gate mode. The validator's reason is stored and never quoted as a finding's evidence. post.json and record.json record the SHA-256 of these exact bytes.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "const": "1" },
+    "head_sha": {
+      "description": "The bundle HEAD the pass judged. A mismatch with the bundle refuses validation-stale: the validator reviewed a different tree.",
+      "type": "string",
+      "minLength": 1
+    },
+    "validator": {
+      "description": "Optional provenance of the pass: the model, the SHA-256 of the prompt file it read, and when it started.",
+      "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/validator" }]
+    },
+    "results": {
+      "description": "One result per judged finding. A sig no finding resolves refuses bad-validation.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/result" }
+    }
+  },
+  "required": ["schema_version", "head_sha", "results"],
+  "additionalProperties": false,
+  "$defs": {
+    "result": {
+      "type": "object",
+      "properties": {
+        "sig": { "type": "string" },
+        "verdict": {
+          "description": "CONFIRMED keeps the finding as written; DOWNGRADED moves it one severity rank and needs from_severity/to_severity; REJECTED withholds it in gate mode and warns in advisory mode.",
+          "enum": ["CONFIRMED", "REJECTED", "DOWNGRADED"]
+        },
+        "reason": {
+          "description": "The validator's evidence, 10-500 characters. Stored on the receipt and never posted as a finding's evidence.",
+          "type": "string",
+          "maxLength": 500,
+          "minLength": 10
+        },
+        "from_severity": { "enum": ["critical", "important", "informational"] },
+        "to_severity": { "enum": ["critical", "important", "informational"] },
+        "checks": {
+          "description": "Which checks the pass ran, in order. Unknown names are dropped with a warning.",
+          "type": "array",
+          "items": { "enum": ["hedge", "repro", "anchor", "rigor", "severity"] }
+        }
+      },
+      "required": ["sig", "verdict", "reason"],
+      "additionalProperties": false
+    },
+    "validator": {
+      "type": "object",
+      "properties": {
+        "model": { "type": "string" },
+        "prompt_sha256": { "type": "string" },
+        "started_at": { "type": "string" }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  }
+}

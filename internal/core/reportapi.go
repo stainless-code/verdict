@@ -25,6 +25,11 @@ type ReportFlags struct {
 	Completeness    bool
 	Provenance      bool
 	Risk            bool
+	// Validation projects the trusted pass: the receipt a post or record run
+	// stored, else a tally of validation.json. It stays out of the MCP tool
+	// schema (`json:"-"`), like Coverage, because the MCP report tool is the
+	// advisory read.
+	Validation bool `json:"-"`
 }
 
 // ReportRequest is the report service invocation: the read runtime and

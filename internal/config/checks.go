@@ -29,11 +29,11 @@ const (
 // or above the clause threshold blocks.
 func severityRank(severity string) int {
 	switch severity {
-	case "critical":
+	case severityCritical:
 		return rankCritical
-	case "important":
+	case severityImportant:
 		return rankImportant
-	case "informational":
+	case severityInformational:
 		return rankInformational
 	default:
 		return 0

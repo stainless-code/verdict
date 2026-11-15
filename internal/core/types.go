@@ -323,6 +323,7 @@ type ReportData struct { //nolint:govet // field order is the published property
 	Cost                *ReportCost              `json:"cost,omitempty"`
 	Completeness        *ReportCompleteness      `json:"completeness,omitempty"`
 	Compliance          *ReportCompliance        `json:"compliance,omitempty"`
+	Validation          *ValidationData          `json:"validation,omitempty"      optional:"true"`
 	Risk                *ReportRisk              `json:"risk,omitempty"`
 	Gate                *ReportGate              `json:"gate,omitempty"`
 	CostRaw             *jq.Obj                  `json:"-"`
@@ -340,6 +341,9 @@ func (d *ReportData) Wire() *jq.Obj {
 	}
 	if d.Verification != nil {
 		o.Set("verification", d.Verification)
+	}
+	if d.Validation != nil {
+		o.Set("validation", Wire(d.Validation))
 	}
 	out := d.Receipt.Apply(o)
 	applyProvenanceWire(out, d.ProvenanceEnabled, d.ProvenanceReceipt, d.ProvenanceTruncated)

@@ -49,6 +49,7 @@ bad-requirement	try: re-run with one of the valid values named above
 bad-review-input	try: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run
 bad-review-schema	try: set "schema_version": "1" in review.json
 bad-rigor	try: re-run with one of the valid values named above
+bad-rigor-policy	try: pass --require-rigor <tier>=<said|pointed|walked|ran|reproduced>, or fix rigor_policy in the trusted-base .verdict/config.json
 bad-root	try: pass --root <existing-directory>, or run serve inside a checkout
 bad-rule	try: re-run with one of the valid values named above
 bad-sarif	try: pass a valid UTF-8 SARIF 2.1.0 JSON file with repository-relative URIs
@@ -65,6 +66,7 @@ bad-timeout	try: pass --timeout <positive-seconds> (default 300)
 bad-triage-status	try: re-run with one of the valid values named above
 bad-until	try: pass --until <ref> that is an ancestor of HEAD
 bad-usage	try: fix the usage record named above to match schemas/usage.schema.json, then re-run
+bad-validation	try: fix validation.json to match schemas/validation.schema.json — a 10-500 character reason, one result per finding sig
 bind-required	try: address the cause above, then re-run the same command
 budget-exceeded	try: re-run with --consent-over-budget once the spend is approved, or raise REVIEW_BUDGET_USD/the typed budget_usd default
 budget-unknown	try: address the cause above, then re-run the same command
@@ -171,6 +173,7 @@ repair-exhausted	try: fix every error named in error.problems, then re-run (when
 report-failed	try: run the fetch/record step named above first, then re-run
 requirement-blocked	try: address the cause above, then re-run the same command
 requirement-unmet	try: address the cause above, then re-run the same command
+rigor-below-floor	try: deepen the evidence for the named findings, or re-run with --force to publish them and record the bypass
 rounds-path-unsafe	try: remove the named path from the bundle (verdict owns it as a plain directory), then re-run
 run-mismatch	try: pick another --run, or delete the existing run directory
 sandbox-unavailable	try: on Linux install bubblewrap and allow unprivileged user namespaces; on macOS sandbox-exec ships with the OS — or re-run without --sandbox on a command you trust
@@ -213,6 +216,7 @@ upgrade-skill-copy	try: address the cause above, then re-run the same command
 upgrade-unidentified	try: address the cause above, then re-run the same command
 upgrade-version-unsupported	try: address the cause above, then re-run the same command
 upstream-diff-too-large	try: re-fetch narrowed to a range via --base-sha/--since, or narrow with a paths filter, then re-run
+validation-stale	try: re-run the validation pass against the current head, or delete validation.json to post unreviewed
 verify-credential-read	try: rewrite verifyCmd without reading credential paths or piping env into the network, then re-run
 verify-destructive	try: rewrite verifyCmd to stay in-repo and non-destructive (run the test runner, not rm/mkfs/dd), then re-run
 verify-failed	try: address the cause above, then re-run the same command

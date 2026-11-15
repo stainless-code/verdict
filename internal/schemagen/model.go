@@ -60,6 +60,25 @@ type CorpusProvenance = core.CorpusProvenance
 // CorpusBug is one known defect in a corpus case.
 type CorpusBug = core.CorpusBug
 
+// ValidationFile is the .review/<bundle>/validation.json a trusted pass
+// writes, generated as schemas/validation.schema.json.
+type ValidationFile = core.ValidationFile
+
+// ValidationResult is one finding's verdict in that file.
+type ValidationResult = core.ValidationResult
+
+// ValidationValidator is the pass's provenance: model, prompt hash, start.
+type ValidationValidator = core.ValidationValidator
+
+// ValidationData is the applied pass a post envelope reports under data.
+type ValidationData = core.ValidationData
+
+// ValidationCounts is the per-verdict tally a receipt stores.
+type ValidationCounts = core.ValidationCounts
+
+// RigorFloors is the evidence rung each severity tier must reach.
+type RigorFloors = core.RigorFloors
+
 // ControlsFile is the bundle's resolved-controls snapshot manifest.
 type ControlsFile = core.ControlsFile
 
@@ -83,6 +102,10 @@ type ConfigSeverityWeights = core.ConfigSeverityWeights
 
 // ConfigIndex is the configuration's local code index caps.
 type ConfigIndex = core.ConfigIndex
+
+// ConfigRigorPolicy is the configuration's validator mode and per-tier
+// evidence floors.
+type ConfigRigorPolicy = core.ConfigRigorPolicy
 
 // ConfigRequirements is the configuration's conjunctive requirements.
 type ConfigRequirements = core.ConfigRequirements
@@ -195,6 +218,7 @@ type ReportData struct { //nolint:govet // field order is the published property
 	Completeness ReportCompleteness `json:"completeness" optional:"true"`
 	Compliance   *ReportCompliance  `anyOf:"null"        json:"compliance"             optional:"true"`
 	Risk         *ReportRisk        `anyOf:"null"        json:"risk"                   optional:"true"`
+	Validation   *ValidationData    `anyOf:"null"        json:"validation"             optional:"true"`
 	Gate         *ReportGate        `anyOf:"null"        json:"gate"                   optional:"true"`
 }
 

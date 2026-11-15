@@ -999,6 +999,63 @@ actually withheld a finding (`[{"path": "vendor/lib.go", "floor":
 "critical"}]`). Omitted keys mean no floor applied and nothing was withheld.
 `post.json` also records what the _host_ withheld — see § Providers below.
 
+### Rigor floors and the validation pass
+
+A severity says how bad a finding is; a rigor rung says how much proof stands
+behind it (`said` < `pointed` < `walked` < `ran` < `reproduced`). Both are
+recorded per finding, and both decide publication.
+
+A trusted pass over the candidates writes `validation.json` beside
+`review.json` — one `CONFIRMED`, `REJECTED`, or `DOWNGRADED` result per finding
+sig with a 10-500 character reason. The pass runs in `prompts/validate.md`,
+which the invoker executes; `verdict` itself never calls a model, so a bundle
+validated outside this machine reads the same. `CONFIRMED` changes nothing, a
+`DOWNGRADED` result moves the severity exactly one rank (`critical` to
+`important`, `important` to `informational`; never up) and appends a
+`validation` history event; it must name the severity the finding currently
+carries as `from_severity`, so a stale pair cannot raise a finding. A
+`REJECTED` result warns in advisory mode or withholds the finding in gate mode
+through the same receipt the host filter uses: `withheld.source: "validation"`,
+the validator's reason, and the finding still `open`. A rejected finding leaves
+the payload whether it anchored inline or moved out of the diff into the body,
+because the pass stamps its entries before the body is curated from them. The
+reason is stored; it is never quoted as the finding's evidence and never
+posted.
+
+The floor per tier lives in the trusted base, so a head edit cannot move it:
+
+```json
+{
+  "schema_version": "1",
+  "rigor_policy": {
+    "mode": "gate",
+    "critical": "walked",
+    "important": "pointed",
+    "informational": "said"
+  }
+}
+```
+
+`mode` is `warn` (the default: report what a gate would do) or `gate`. Absent
+keys keep the built-in floors above. `post --require-rigor <severity>=<rung>`,
+repeatable, narrows the policy for one invocation and implies gate mode for the
+tiers it names. A finding below its floor refuses `rigor-below-floor` in gate
+mode, naming every offending sig and its `severity rigor < floor`; `--force`
+publishes it and records `{"reason": "rigor-below-floor", "sigs": [...]}` in
+`post.json.forced[]`. A `critical` whose rung still clears the important floor
+is downgraded to `important` with a history event instead of refusing, so a
+real bug with local blast radius keeps publishing.
+
+`post.json` and `record.json` carry `validation_hash` (SHA-256 of the exact
+artifact bytes, `null` when the pass was skipped), `validation_counts`
+(`confirmed`, `rejected`, `downgraded`, `unvalidated`), `validation_mode`, and
+`rigor_floors`. `unvalidated` counts the findings the pass owed a result: open
+and not already withheld, which is the set a skipped pass counts too. `post --json` reports the applied pass under `data.validation`
+only when one ran, and `report --json --validation` reads it back — the receipt
+a `post` or `record` run stored, or a tally of the artifact when none has. A
+`validation.json` written for another head refuses `validation-stale`; a
+malformed one refuses `bad-validation`.
+
 ### Diff coverage (agent attestation)
 
 A non-chunked bundle has no built-in evidence that the agent read the diff it
