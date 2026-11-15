@@ -70,6 +70,8 @@ const (
 	kindControl = "control"
 	kindSeeded  = "seeded"
 	kindReal    = "real"
+	// decimalBase is the radix atoi folds a hunk header's digits in.
+	decimalBase = 10
 )
 
 // IsDir reports whether dir names a marked corpus bundle: the last
@@ -270,15 +272,15 @@ func validateKeywords(keywords []string, n int, path string) *core.RefusalError 
 	return nil
 }
 
-// CheckKeywords refuses a real case's keyword that the case's own diff spells
-// as an identifier. A vocabulary lifted from the patch is a free pass: the
-// sentence "StopOnNthArg is a new field, so the count is tracked on the flag
-// set" names the change, not the defect, and a keyword the diff itself prints
-// grades it as a defect report. The gate has to be satisfiable in the words a
-// reviewer uses without the diff open. Seeded cases are synthetic (their diff
-// is written for the bug) and controls carry no keywords, so the rule binds
-// real cases only.
-func CheckKeywords(raw, diff []byte, path string) *core.RefusalError {
+// CheckDiff refuses a real case whose ground truth its own diff contradicts: a
+// keyword the diff itself spells, or a bug line the PR did not add. Both are
+// free passes for a tool-free reviewer. A vocabulary lifted from the patch
+// grades "StopOnNthArg is a new field" as a defect report when it names the
+// change; a ground truth on a context line is code the diff carries without
+// marking, so a reviewer who reads only the added lines has no fair chance at
+// it. Seeded cases are synthetic (their diff is written for the bug) and
+// controls carry no bugs, so the rule binds real cases only.
+func CheckDiff(raw, diff []byte, path string) *core.RefusalError {
 	var c core.CorpusCase
 	if err := json.Unmarshal(raw, &c); err != nil {
 		return invalid(path, "not a corpus case manifest: "+err.Error())
@@ -286,7 +288,10 @@ func CheckKeywords(raw, diff []byte, path string) *core.RefusalError {
 	if c.Provenance.Kind != kindReal {
 		return nil
 	}
-	return unusableKeyword(&c, diff, path)
+	if ref := unusableKeyword(&c, diff, path); ref != nil {
+		return ref
+	}
+	return unaddedAnchor(&c, diff, path)
 }
 
 // unusableKeyword names the first keyword the diff spells, if any.
@@ -301,6 +306,102 @@ func unusableKeyword(c *core.CorpusCase, diff []byte, path string) *core.Refusal
 		}
 	}
 	return nil
+}
+
+// unaddedAnchor names the first bug whose line the diff does not add.
+func unaddedAnchor(c *core.CorpusCase, diff []byte, path string) *core.RefusalError {
+	added := addedLines(diff)
+	for i := range c.Bugs {
+		b := &c.Bugs[i]
+		if added[b.Path][b.Line] {
+			continue
+		}
+		return invalid(path, fmt.Sprintf(
+			"bug %d anchors %s:%d, a line this diff does not add; put the ground truth on the line "+
+				"the PR wrote, or the review is scored on code the diff only carries as context", i+1, b.Path, b.Line))
+	}
+	return nil
+}
+
+// addedLines indexes the new-side lines each path's hunks add.
+func addedLines(diff []byte) map[string]map[int]bool {
+	scan := &addScan{added: map[string]map[int]bool{}}
+	for line := range strings.SplitSeq(string(diff), "\n") {
+		scan.visit(line)
+	}
+	return scan.added
+}
+
+// addScan walks one unified diff, marking the new-side lines its hunks add.
+type addScan struct {
+	added   map[string]map[int]bool
+	path    string
+	newLine int
+}
+
+// visit reads one diff line: a header moves the path or the counter, an
+// addition marks its line, and context advances to the next new-side line.
+func (s *addScan) visit(line string) {
+	switch {
+	case strings.HasPrefix(line, "+++ "):
+		s.path = diffPath(line)
+	case strings.HasPrefix(line, "@@ "):
+		s.newLine, _ = hunkStart(line)
+	case s.path == "" || s.newLine == 0, strings.HasPrefix(line, "-"):
+	case strings.HasPrefix(line, "+"):
+		s.mark(s.newLine)
+		s.newLine++
+	default:
+		s.newLine++
+	}
+}
+
+// mark records one new-side line as added.
+func (s *addScan) mark(n int) {
+	if s.added[s.path] == nil {
+		s.added[s.path] = map[int]bool{}
+	}
+	s.added[s.path][n] = true
+}
+
+// diffPath reads the new-side path out of a "+++ " header, "" for /dev/null.
+func diffPath(line string) string {
+	path := strings.TrimPrefix(strings.TrimPrefix(line, "+++ "), "b/")
+	if path == "/dev/null" {
+		return ""
+	}
+	return path
+}
+
+// hunkStart reads a hunk header's new-side start and count: "@@ -a,b +c,d @@".
+func hunkStart(line string) (start, count int) {
+	_, rest, ok := strings.Cut(line, "+")
+	if !ok {
+		return 0, 0
+	}
+	fields := strings.Fields(rest)
+	if len(fields) == 0 {
+		return 0, 0
+	}
+	before, after, hasCount := strings.Cut(fields[0], ",")
+	start = atoi(before)
+	if !hasCount {
+		return start, 1
+	}
+	return start, atoi(after)
+}
+
+// atoi is the digits-only parse a hunk header needs; a malformed field reads 0,
+// which no added line can occupy.
+func atoi(s string) int {
+	n := 0
+	for i := range len(s) {
+		if s[i] < '0' || s[i] > '9' {
+			return 0
+		}
+		n = n*decimalBase + int(s[i]-'0')
+	}
+	return n
 }
 
 // keywordInDiff reports whether one keyword occurs in the diff as a whole

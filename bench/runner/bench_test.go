@@ -200,6 +200,22 @@ func TestReadCaseRefusesADiffSpelledKeyword(t *testing.T) {
 	}
 }
 
+// TestReadCaseRefusesAContextAnchor pins the anchor guard on the run path: a
+// real case whose ground truth is a context line never reaches an agent.
+func TestReadCaseRefusesAContextAnchor(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "case-a", caseManifestName), []byte(
+		`{"schema_version":"1","id":"case-a","kind":"real","provenance":{"kind":"real","repo":"o/r","pr":1,`+
+			`"base_sha":"`+strings.Repeat("a", 40)+`","head_sha":"`+strings.Repeat("b", 40)+`"},`+
+			`"bugs":[{"path":"command.go","line":4,"kind":"validation-bypass","keywords":["boundary check"]}]}`))
+	writeFile(t, filepath.Join(dir, "case-a", fullDiffName), []byte(
+		"diff --git a/command.go b/command.go\n--- a/command.go\n+++ b/command.go\n"+
+			"@@ -1,3 +1,4 @@\n \tfirst()\n \tsecond()\n+\tthird()\n \tfourth()\n"))
+	if _, _, err := loadCases(dir, nil); err == nil || !strings.Contains(err.Error(), "command.go:4") {
+		t.Fatalf("loadCases error = %v, want a context-anchor refusal naming the line", err)
+	}
+}
+
 // TestSlugKeepsBundleAlphabet pins the bundle-name alphabet.
 func TestSlugKeepsBundleAlphabet(t *testing.T) {
 	for _, tc := range []struct{ in, want string }{

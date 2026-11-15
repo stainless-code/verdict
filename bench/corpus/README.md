@@ -100,6 +100,10 @@ bench/corpus/<repo>-<pr>-<slug>/
   word), because grading on the patch's vocabulary is a free pass: a finding
   that says "`StopOnNthArg` is a new field" names the change, not the bug, and
   a keyword lifted from the diff grades it as a real report.
+- The ground-truth `line` must be a line the diff **adds**. A context line is
+  code the diff carries without marking: a tool-free reviewer reading only the
+  added lines has no fair chance at it, so validation refuses an anchor the
+  same diff does not add, and names the line.
 - No `snapshots/` and no `agents/`: `TestSeededDiffApplies` skips a real case
   (its applied diff is proven by the repository it came from), and the
   `bench-corpus` eval records bundles only for cases with fixture outputs, so a

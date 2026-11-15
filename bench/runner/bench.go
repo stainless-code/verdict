@@ -392,7 +392,7 @@ func readCase(dir, id string) (corpusCase, error) {
 		return corpusCase{}, jq.NewErrf("case %s: %s", id, err)
 	}
 	path := filepath.Join(dir, id, caseManifestName)
-	if ref := corpuscore.CheckKeywords(raw, diff, path); ref != nil {
+	if ref := corpuscore.CheckDiff(raw, diff, path); ref != nil {
 		return corpusCase{}, jq.NewErr(ref.Message)
 	}
 	return corpusCase{

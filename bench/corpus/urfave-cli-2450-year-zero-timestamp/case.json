@@ -1,0 +1,33 @@
+{
+  "schema_version": "1",
+  "id": "urfave-cli-2450-year-zero-timestamp",
+  "kind": "real",
+  "language": "go",
+  "provenance": {
+    "kind": "real",
+    "repo": "urfave/cli",
+    "pr": 2450,
+    "base_sha": "7389061eb0182169c496021a09729735ac2b797b",
+    "head_sha": "343114e9b82522760268eb83fe1bac744e14dc9a",
+    "fix_commit": "https://github.com/urfave/cli/commit/37ad84c48d434b095729ebc7cb6df701e80a6ed4",
+    "source": "PR #2450 fix/timestamp-time-only-timezone, merged 2026-10-01",
+    "note": "the reviewed head decides a timestamp has no year by testing the parsed value's year and day-of-year, so a year-only layout that parses a literal year zero takes the missing-year branch and the date is rewritten to today; the base behaves identically (the PR rewrote the same value-keyed test rather than introducing it), so the PR neither introduces nor repairs this defect, and the later fix adds layoutHasYear and gates both branches on yearMissing"
+  },
+  "bugs": [
+    {
+      "path": "flag_timestamp.go",
+      "line": 97,
+      "kind": "silent-overwrite",
+      "severity": "important",
+      "keywords": [
+        "overwritten with today's date",
+        "loses the year the caller wrote",
+        "never asks the layout",
+        "silently replaced",
+        "keys on the parsed value",
+        "explicit year zero"
+      ],
+      "note": "the reviewed head decides a timestamp has no year by testing the parsed value's year and day-of-year, so a year-only layout that parses a literal year zero takes the missing-year branch and the date is rewritten to today; the fix adds layoutHasYear and gates both branches on yearMissing"
+    }
+  ]
+}
