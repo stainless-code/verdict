@@ -1,0 +1,7 @@
+.changes/unreleased/Fixes-20260202-123453.yaml	NEW	1	6
+core/dbt/task/base.py	OLD	109	116
+core/dbt/task/base.py	NEW	109	117
+tests/functional/clean/test_clean.py	OLD	1	7
+tests/functional/clean/test_clean.py	NEW	1	10
+tests/functional/clean/test_clean.py	OLD	54	56
+tests/functional/clean/test_clean.py	NEW	57	66

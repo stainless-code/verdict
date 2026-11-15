@@ -21,7 +21,7 @@
       "severity": "important",
       "keywords": [
         "expression is never set",
-        "missing expression",
+        "expr is not set",
         "expr is missing",
         "expression unset",
         "queries the dimension name",

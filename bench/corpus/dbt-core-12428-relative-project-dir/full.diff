@@ -1,0 +1,54 @@
+diff --git a/.changes/unreleased/Fixes-20260202-123453.yaml b/.changes/unreleased/Fixes-20260202-123453.yaml
+new file mode 100644
+index 000000000..e6d8315b1
+--- /dev/null
++++ b/.changes/unreleased/Fixes-20260202-123453.yaml
+@@ -0,0 +1,6 @@
++kind: Fixes
++body: Return correctly resolved project path when changing dirs
++time: 2026-02-02T12:34:53.454501+05:30
++custom:
++    Author: ash2shukla
++    Issue: "9138"
+diff --git a/core/dbt/task/base.py b/core/dbt/task/base.py
+index 13ed26d38..1f3cdb85a 100644
+--- a/core/dbt/task/base.py
++++ b/core/dbt/task/base.py
+@@ -109,8 +109,9 @@ def get_nearest_project_dir(project_dir: Optional[str]) -> Path:
+ 
+ def move_to_nearest_project_dir(project_dir: Optional[str]) -> Path:
+     nearest_project_dir = get_nearest_project_dir(project_dir)
+-    os.chdir(nearest_project_dir)
+-    return nearest_project_dir
++    resolved_nearest_project_dir = nearest_project_dir.resolve()
++    os.chdir(resolved_nearest_project_dir)
++    return resolved_nearest_project_dir
+ 
+ 
+ # TODO: look into deprecating this class in favor of several small functions that
+diff --git a/tests/functional/clean/test_clean.py b/tests/functional/clean/test_clean.py
+index 5da8144f4..11fb13fbf 100644
+--- a/tests/functional/clean/test_clean.py
++++ b/tests/functional/clean/test_clean.py
+@@ -1,7 +1,10 @@
++from pathlib import Path
++
+ import pytest
+ 
+ from dbt.exceptions import DbtRuntimeError
+ from dbt.tests.util import run_dbt
++from tests.functional.utils import up_one
+ 
+ 
+ class TestCleanSourcePath:
+@@ -54,3 +57,10 @@ class TestCleanPathOutsideProjectWithFlag:
+             match="dbt will not clean the following directories outside the project",
+         ):
+             run_dbt(["clean", "--clean-project-files-only"])
++
++
++class TestCleanRelativeProjectDir:
++    def test_clean_relative_project_dir(self, project):
++        with up_one():
++            project_dir = Path(project.project_root).relative_to(Path.cwd())
++            run_dbt(["clean", "--project-dir", str(project_dir)])

@@ -1,0 +1,16 @@
+{
+  "schema_version": "1",
+  "id": "dbt-core-12428-relative-project-dir",
+  "kind": "control",
+  "language": "python",
+  "provenance": {
+    "kind": "real",
+    "repo": "dbt-labs/dbt-core",
+    "pr": 12428,
+    "base_sha": "c6f0490788393cb5d188baba71c6a17d7785d28e",
+    "head_sha": "847318ee60bf65a3edc9e18061e81067ea7e319f",
+    "source": "PR #12428 Return resolved nearest project dir before changing the current dir, merged 2026-02-06",
+    "note": "clean control: move_to_nearest_project_dir now resolves the path before chdir and returns the resolved path, with a functional test that runs clean against a relative --project-dir; no commit through the last python-era commit (07685a842) edits or removes any of the 16 non-blank lines the PR added in its three files, and no revert names the PR"
+  },
+  "bugs": []
+}

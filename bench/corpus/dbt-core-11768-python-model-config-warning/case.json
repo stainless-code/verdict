@@ -11,7 +11,7 @@
     "head_sha": "65598f3dc6bea57f63a7bd4b7b33d7193ed05ab0",
     "fix_commit": "https://github.com/dbt-labs/dbt-core/commit/116d5d120269c1e2f8db22aa6e9630735d74ca61",
     "source": "PR #11768 Validate model sql file provided config, merged 2025-06-25",
-    "note": "the PR adds the first config validation at parse time, but it validates every Model node's _config_call_dict without knowing whether the node is a python model; python models add config_keys_used, config_keys_defaults, meta_keys_used and meta_keys_defaults to that dict themselves, so every python model raised a custom-key-in-config deprecation for keys no user wrote (#12314) until the fix passed is_python_model and skipped them"
+    "note": "at this head parse_python_model records config_keys_used and config_keys_defaults in _config_call_dict only when the model calls dbt.config.get, and validate_model_config returns early unless DBT_ENV_PRIVATE_RUN_JSONSCHEMA_VALIDATIONS is set; when both hold, every key the model read is validated as user-written config and raises custom-key-in-config-deprecation (#12314), because those two bookkeeping keys are not in ModelPropertiesConfigs; the fix passes is_python_model and skips them"
   },
   "bugs": [
     {
@@ -23,9 +23,9 @@
         "validates keys the user never wrote",
         "spurious deprecation",
         "false deprecation",
-        "warns on every python model"
+        "warns for keys the model read"
       ],
-      "note": "validate_model_config sees a python model's own internal keys in _config_call_dict and validates them as user-written config, so a custom-key-in-config deprecation is raised for keys the user cannot write; the fix passes is_python_model and skips the four internal keys",
+      "note": "validate_model_config sees the keys a python model read with dbt.config.get in _config_call_dict and validates them as user config, so a custom-key-in-config deprecation is raised for keys the user never wrote; it only runs with DBT_ENV_PRIVATE_RUN_JSONSCHEMA_VALIDATIONS set, and the fix passes is_python_model and skips config_keys_used and config_keys_defaults",
       "also_lines": [413]
     }
   ]

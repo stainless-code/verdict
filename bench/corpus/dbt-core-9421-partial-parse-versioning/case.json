@@ -22,7 +22,7 @@
       "keywords": [
         "never schedules",
         "not scheduled for reparsing",
-        "does not reparse",
+        "does not reparse after a version is added",
         "never reparsed",
         "keeps the old parse"
       ],
