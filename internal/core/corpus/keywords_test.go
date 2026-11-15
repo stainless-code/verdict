@@ -154,6 +154,7 @@ var keywordCases = []keywordCase{
 			"The event loop stalls while the command runs, so updates and rendering stop.",
 			"Executing them one at a time serializes what the batch should start at once.",
 			"This is a serialized batch.",
+			"Go evaluates cmd() before starting the goroutine, so batch commands execute sequentially on the event loop and a slow command freezes rendering.",
 		},
 		fails: []string{
 			"The nested batch in a sequence is waited for with a WaitGroup, so the sequence blocks forever.",

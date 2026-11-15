@@ -28,7 +28,10 @@
         "stalls while the command runs",
         "serializes what the batch should start at once",
         "stalls every update and frame",
-        "the batch cannot overlap"
+        "the batch cannot overlap",
+        "execute sequentially",
+        "run sequentially on the event loop",
+        "freezes rendering"
       ],
       "note": "go evaluates p.Send(cmd())'s argument in the goroutine that runs the statement, so each batch command runs inside the event loop, one after another, instead of being started concurrently by the command handler: a batch whose commands depend on each other deadlocks, and a slow command stalls every update and every frame",
       "also_lines": []
