@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -218,6 +219,39 @@ func TestCostRollupCountsUnpricedRefusals(t *testing.T) {
 	}
 	if cost.Measured {
 		t.Error("measured = true, want false: one sample carries no est_usd")
+	}
+}
+
+// TestMaxUSDRefusesNonFiniteCaps pins the flag's domain: NaN passes every
+// comparison, so the old "< 0" test let it through and capReached then never
+// fired; +Inf ran the whole corpus and made the report unserializable, because
+// encoding/json refuses Inf.
+func TestMaxUSDRefusesNonFiniteCaps(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		limit  float64
+		refuse string
+	}{
+		{name: "NaN", limit: math.NaN(), refuse: "finite number"},
+		{name: "+Inf", limit: math.Inf(1), refuse: "finite number"},
+		{name: "-Inf", limit: math.Inf(-1), refuse: "finite number"},
+		{name: "negative", limit: -1, refuse: "zero (no cap) or positive"},
+		{name: "zero", limit: 0},
+		{name: "positive", limit: 0.05},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &Config{Runs: 1, Loop: 1, MaxUSD: tc.limit}
+			err := cfg.validateNumbers()
+			if tc.refuse == "" {
+				if err != nil {
+					t.Fatalf("validateNumbers(%v) = %v, want accepted", tc.limit, err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.refuse) {
+				t.Fatalf("validateNumbers(%v) = %v, want a refusal naming %q", tc.limit, err, tc.refuse)
+			}
+		})
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -112,6 +113,8 @@ func (cfg *Config) validateNumbers() error {
 		return jq.NewErrf("-loop must be at least 1, got %d", cfg.Loop)
 	case cfg.Loop > loopMaxRounds:
 		return jq.NewErrf("-loop must be at most %d, got %d", loopMaxRounds, cfg.Loop)
+	case math.IsNaN(cfg.MaxUSD) || math.IsInf(cfg.MaxUSD, 0):
+		return jq.NewErrf("-max-usd must be a finite number or zero (no cap), got %v", cfg.MaxUSD)
 	case cfg.MaxUSD < 0:
 		return jq.NewErrf("-max-usd must be zero (no cap) or positive, got %v", cfg.MaxUSD)
 	}
