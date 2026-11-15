@@ -108,7 +108,7 @@ var keywordCases = []keywordCase{
 			"The method returns nothing for a header the caller already set a line earlier.",
 			"It silently loses the values when the name is not lower case, because the key is hard-coded.",
 			"Direct property lookup this[\"set-cookie\"] is case-sensitive, so Set-Cookie headers stored with mixed casing return [].",
-			"Use this.get('set-cookie') instead of this['set-cookie'] so case-insensitive header lookup works.",
+			"The accessor misses the stored cookie when the name was set as Set-Cookie.",
 		},
 		fails: []string{
 			"The parser splits a header line on every colon, so a value containing a colon is truncated.",
@@ -121,6 +121,7 @@ var keywordCases = []keywordCase{
 			"Reading this['set-cookie'] directly avoids the overhead of calling this.get().",
 			"getSetCookie returns a mutable reference to the internal array, so later set calls mutate it.",
 			"getSetCookie should return undefined instead of an empty array when the header is absent.",
+			"Prefer this.get('set-cookie') instead of this['set-cookie'] for consistency with the other accessors.",
 		},
 	},
 	{
@@ -184,6 +185,7 @@ var keywordCases = []keywordCase{
 			"It rejects a replaced collection instead of treating it as empty.",
 			"syncHandlerEntries reads handlers.length without checking if handlers is null or undefined, causing a TypeError when user code sets interceptors.request.handlers = null.",
 			"If manager.handlers is set to null, handlers.length throws a TypeError in syncHandlerEntries; guard against nullish handlers.",
+			"The sync pass crashes on null handlers, so a caller that nulls the public field breaks every request.",
 		},
 		fails: []string{
 			"Ejecting a handler shifts the remaining indexes, so a later eject removes the wrong interceptor.",
@@ -197,6 +199,7 @@ var keywordCases = []keywordCase{
 			"Storing handlers.length in internals.handlersLength lets syncHandlerEntries detect in-place array mutations.",
 			"handlers.length is read inside syncHandlerEntries on every call instead of caching it on the instance.",
 			"Setting handlersLength here will cause an off-by-one error when a handler is ejected.",
+			"We already guard against nullish handlers upstream, so this check is redundant.",
 		},
 	},
 }

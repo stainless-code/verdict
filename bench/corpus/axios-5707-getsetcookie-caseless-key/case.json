@@ -27,7 +27,7 @@
         "returns nothing for a header the caller already set",
         "silently loses the values when the name is not lower case",
         "is case-sensitive",
-        "instead of this['set-cookie']"
+        "misses the stored cookie"
       ],
       "note": "the accessor indexes the object with one fixed lower-case key, but a header set under a mixed-case name is stored under that name, so the documented method returns an empty array; the fix routes the read through the caseless getter",
       "also_lines": []

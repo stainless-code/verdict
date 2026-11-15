@@ -28,7 +28,7 @@
         "rejects a replaced collection instead of treating it as empty",
         "causing a typeerror",
         "throws a typeerror",
-        "guard against nullish"
+        "crashes on null handlers"
       ],
       "note": "the sync pass dereferences the public handler array before any existence check, so a caller that replaces it with a falsy value turns every later request into a TypeError; the fix counts through a helper that treats a nullish value as empty",
       "also_lines": [19]
