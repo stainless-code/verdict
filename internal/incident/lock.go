@@ -10,8 +10,10 @@ import (
 // window. The holder is still running, so the caller may retry.
 var ErrBusy = storelock.ErrBusy
 
-// lockWait is the shared bounded wait for a concurrent writer.
-const lockWait = storelock.DefaultWait
+// lockWait is the shared bounded wait for a concurrent writer. The parallel
+// attach test raises it: sixteen waiters can starve one past a budget sized for
+// a single operator write while the machine is loaded.
+var lockWait = storelock.DefaultWait
 
 // lock takes the ledger's exclusive advisory lock, waiting up to wait for the
 // holder to finish. The kernel owns it: it is released when the holding process
