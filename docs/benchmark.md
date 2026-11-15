@@ -29,8 +29,8 @@ deliberately simple and published:
   the bug's optional `keywords`. The finding text and every phrase are
   normalized the same way — lower-cased, whitespace-folded, and a spaced
   selector dot folded — and a phrase must start a word, so `race` does not
-  match inside `trace`. A real case grades only with the built-in phrases its
-  own diff does not spell.
+  match inside `trace`. A real case drops the built-in phrases its own diff
+  spells before grading.
 - A finding that matches through an alternate anchor counts the same bug:
   one bug is one true positive no matter how many of its lines a review
   names, and the reported match keeps the primary line.

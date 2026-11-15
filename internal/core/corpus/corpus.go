@@ -494,15 +494,14 @@ type Report struct {
 // to the body is never a true positive: the line claim was withdrawn, so the
 // text is graded as the note it became. The tool-generated moved section is
 // skipped: it is record's own wording, and the comments it lists are graded
-// from the moved entries themselves. A real case drops the built-in phrases
-// its own diff spells, so the patch's vocabulary never names its defect.
+// from the moved entries themselves. Evaluate keeps the full vocabulary; use
+// EvaluateWithDiff or EvaluateDir when the reviewed diff is known.
 func Evaluate(c *core.CorpusCase, entries []any) *Report {
 	return evaluate(c, entries, nil)
 }
 
 // EvaluateWithDiff grades entries against a real case whose reviewed diff is
-// known; callers that have the manifest but not the diff keep the full
-// vocabulary.
+// known, dropping the built-in phrases the diff spells.
 func EvaluateWithDiff(c *core.CorpusCase, entries []any, diff []byte) *Report {
 	return evaluate(c, entries, diff)
 }
