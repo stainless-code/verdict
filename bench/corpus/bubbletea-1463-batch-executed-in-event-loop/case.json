@@ -1,0 +1,38 @@
+{
+  "schema_version": "1",
+  "id": "bubbletea-1463-batch-executed-in-event-loop",
+  "kind": "real",
+  "language": "go",
+  "provenance": {
+    "kind": "real",
+    "repo": "charmbracelet/bubbletea",
+    "pr": 1463,
+    "base_sha": "c76509a9d4974207cd66255707d14f4f938f7f52",
+    "head_sha": "f5da8d068af74764b271a197de54e2bc2bfedb38",
+    "fix_commit": "https://github.com/charmbracelet/bubbletea/commit/21eecd586367fd0cd78da6842c48f9c4b1185b6f",
+    "source": "PR #1463 fix: handle nested SequenceMsg in event loop and use sync.WaitGroup for batches, merged 2025-08-08",
+    "note": "the PR replaced the guarded hand-off to the command channel with go p.Send(cmd()), whose argument is evaluated in the event loop's own goroutine; the later fix puts the hand-off back and says the commands belong on the channel"
+  },
+  "bugs": [
+    {
+      "path": "tea.go",
+      "line": 478,
+      "kind": "serialized-batch",
+      "severity": "important",
+      "keywords": [
+        "runs the commands in the event loop",
+        "blocks the event loop",
+        "executed one after another",
+        "no longer runs concurrently",
+        "waits for a sibling that cannot start",
+        "deadlocks instead of running them together",
+        "stalls while the command runs",
+        "commands are not run in parallel",
+        "executed serially",
+        "handed to the command handler"
+      ],
+      "note": "go evaluates p.Send(cmd())'s argument in the goroutine that runs the statement, so each batch command runs inside the event loop, one after another, instead of being started concurrently by the command handler: a batch whose commands depend on each other deadlocks, and a slow command stalls every update and every frame",
+      "also_lines": []
+    }
+  ]
+}

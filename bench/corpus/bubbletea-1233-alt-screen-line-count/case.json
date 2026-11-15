@@ -1,0 +1,39 @@
+{
+  "schema_version": "1",
+  "id": "bubbletea-1233-alt-screen-line-count",
+  "kind": "real",
+  "language": "go",
+  "provenance": {
+    "kind": "real",
+    "repo": "charmbracelet/bubbletea",
+    "pr": 1233,
+    "base_sha": "1feb60b44b74d9a3a7dc54b90ffbecc8ffd6b40d",
+    "head_sha": "97fc4fada84eba82ccfce0ffcc1b9d6216fca05c",
+    "fix_commit": "https://github.com/charmbracelet/bubbletea/commit/ede8caa9d4f588a4a2c744d8e135a1b444bf2ce9",
+    "source": "PR #1233 fix: incorrect line skipping in renderer flush, merged 2024-11-12",
+    "note": "the base carries the same single line count, so the alt-screen half of this defect predates the PR: the reviewed lines rewrite the count without giving the alt screen one of its own, and the later fix is what separates them"
+  },
+  "bugs": [
+    {
+      "path": "standard_renderer.go",
+      "line": 263,
+      "kind": "shared-line-count",
+      "severity": "important",
+      "keywords": [
+        "one line count for both screens",
+        "count is shared between the two screens",
+        "moves the cursor up by the wrong number of lines",
+        "stale lines left on screen",
+        "inline section is repainted at the wrong row",
+        "does not track the alt screen separately",
+        "count from the alt screen is used inline",
+        "wrong number of lines to move up",
+        "stale lines are left on screen",
+        "the section is not returned to its start",
+        "left over from the alt screen"
+      ],
+      "note": "flush stores the frame's line count in the one counter both render modes read; entering the alt screen saves the cursor and leaving it restores that position, so the count left behind by an alt-screen frame is then applied to the inline section and the cursor is moved by the wrong amount",
+      "also_lines": [259]
+    }
+  ]
+}
