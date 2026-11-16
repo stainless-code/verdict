@@ -222,7 +222,7 @@ validation-stale	try: re-run the validation pass against the current head, or de
 verify-credential-read	try: rewrite verifyCmd without reading credential paths or piping env into the network, then re-run
 verify-destructive	try: rewrite verifyCmd to stay in-repo and non-destructive (run the test runner, not rm/mkfs/dd), then re-run
 verify-failed	try: address the cause above, then re-run the same command
-verify-indirection	try: write the tool word plainly instead of $VAR, or run the step under verify --sandbox, then re-run
+verify-indirection	try: write the tool word plainly instead of $VAR, then re-run
 verify-networked	try: rewrite verifyCmd without network fetches or pipe-to-shell (fetch fixtures first, run offline), then re-run
 verify-repo-escape	try: rewrite verifyCmd with repo-relative paths (/tmp for scratch), then re-run
 window-too-large	try: narrow --since (a shorter span or a later ref), then re-run

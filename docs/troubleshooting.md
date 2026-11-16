@@ -1421,12 +1421,17 @@ A wrapper's own option grammar decides which later word bash runs, so after
 `timeout`, or `xargs` any variable in that command refuses: `timeout 300 make
 test` stays clean, `timeout 300 make test $TARGET` does not. A shell counts
 the same way when it carries an inline command — any short-flag cluster with a
-`c` in it (`sh -c`, `bash -c`, `bash -ec`, `sh -cu`): `sh -c "$E pwned"` refuses. `eval` and `sudo` refuse earlier, as
-`verify-destructive`, whatever their arguments.
+`c` in it (`sh -c`, `bash -c`, `bash -ec`, `sh -cu`): the inline command string
+is judged as its own command, so `sh -c "$E pwned"` refuses while
+`sh -c "echo $E"` stays clean. `eval` and `sudo` refuse earlier, as
+`verify-destructive`, whatever their arguments. A quoted word stays one word:
+`LABEL="hello world" $E ok` and `>"out file" $E` refuse, because quote removal
+would otherwise put `world` in command position.
 
-The gate is a tripwire, not a boundary. A variable holding a whole command
-line (`sh -c "$V"`, a file written and then run) is a shape it has not
-learned. For a boundary, run the step under `verify --sandbox`.
+The gate is a tripwire, not a boundary, and it runs before the sandbox
+wrapper: `verify --sandbox` refuses an indirection the same way, so the remedy
+is to write the command plainly. A variable holding a whole command line
+(`sh "$V"`, a file written and then run) is a shape the gate has not learned.
 
 Fix: write the tool word plainly (`E=curl; $E -o ./f http://host/x` becomes
 `curl -o ./f http://host/x`, or the test runner directly) and keep variables

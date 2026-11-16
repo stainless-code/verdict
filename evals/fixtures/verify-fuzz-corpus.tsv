@@ -95,6 +95,8 @@ F-R62	verify-destructive	strict	E=echo; eval $E pwned
 F-R63	verify-destructive	strict	E=echo; sudo $E pwned
 F-R64	verify-indirection	strict	E=echo; sh -cu "$E pwned"
 F-R65	verify-indirection	strict	E=echo; echo $($E "(")
+F-R66	verify-indirection	strict	E=printf; LABEL="hello world" $E ok
+F-R67	verify-indirection	strict	E=printf; >"out file" $E ok
 F-X01	verify-networked	strict	wget --remote-name http://127.0.0.1:9/f
 F-X02	verify-networked	strict	curl -K /tmp/verify-fuzz-curlcfg http://127.0.0.1:9/
 F-X03	verify-networked	strict	wget -i /tmp/verify-fuzz-wgeturls http://127.0.0.1:9/f
@@ -160,3 +162,7 @@ F-P43	PASS	strict	diff <(sort fz-notes.txt) <(sort fz-notes.txt)
 F-P44	PASS	strict	bash ./fz-missing.sh $TARGET
 F-P45	PASS	strict	echo $(( $X + 1 ))
 F-P46	PASS	strict	echo $(printf "(%s)" x)
+F-P47	PASS	strict	awk '{print $($NF)}' fz-notes.txt
+F-P48	PASS	strict	LABEL="hello world" printf ok
+F-P49	PASS	strict	echo "hello $USER"
+F-P50	PASS	strict	sh -c 'echo $TARGET'

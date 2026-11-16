@@ -59,6 +59,10 @@ var variableCommandWords = []struct {
 	{"shell inline command clustered", `E=echo; bash -ec "$E pwned"`},
 	{"shell inline command clustered suffix", `E=echo; sh -cu "$E pwned"`},
 	{"quoted paren in substitution", `E=echo; echo $($E "(")`},
+	{"single-quoted paren in substitution", `E=printf; echo "$($E '(')"`},
+	{"continuation into command word", "E=rm; \\\n$E -rf ./target"},
+	{"quoted assignment value", `E=printf; LABEL="hello world" $E ok`},
+	{"quoted redirect target", `E=printf; >"out file" $E ok`},
 }
 
 func TestVerifyRefusesVariableCommandWord(t *testing.T) {
@@ -99,6 +103,10 @@ func TestCheckAllowsVariableArguments(t *testing.T) {
 		`echo $(date)`,
 		`echo $(printf "(%s)" x)`,
 		`echo $(( $X + 1 ))`,
+		"echo \\\n  \"$USER\"",
+		`awk '{print $($NF)}' fz-notes.txt`,
+		`LABEL="hello world" printf ok`,
+		`echo "hello $USER"`,
 		"echo `date`",
 		`diff <(sort a) <(sort b)`,
 		`builtin echo ok`,
@@ -126,6 +134,18 @@ func TestCheckRefusesGlobWordAfterNewline(t *testing.T) {
 			"into a hidden tool word — write the tool word plainly)")
 }
 
+func TestCheckRefusesCommandPositionAfterNewline(t *testing.T) {
+	wantRefusal(t, "echo ok\n$(echo rm) -rf ./fz-target", "verify-destructive",
+		"refusing verifyCmd: matched '$(echo rm)' (command substitution in command position "+
+			"builds a destructive tool word — write the tool word plainly)")
+	wantRefusal(t, "echo ok\n$(echo curl) -o ./f", "verify-networked",
+		"refusing verifyCmd: matched '$(echo curl)' (command substitution in command position "+
+			"builds a networked tool word — fetch fixtures first, run offline)")
+	if ref := verifycore.Check("echo ok\n$(echo date)"); ref != nil {
+		t.Fatalf("Check = %s: %q, want CLEAN", ref.Code, ref.Message)
+	}
+}
+
 func TestCheckRefusesEvalAndSudoBeforeTheWrapperRule(t *testing.T) {
 	wantRefusal(t, `E=echo; eval $E pwned`, "verify-destructive",
 		"refusing verifyCmd: matched ' eval ' (eval with non-literal args refuses — fail closed)")
@@ -139,7 +159,7 @@ func TestCheckVariableCommandWordMessage(t *testing.T) {
 		t.Fatal("Check = nil, want verify-indirection")
 	}
 	want := "refusing verifyCmd: matched '$E' (a command word built from a variable hides " +
-		"the tool — write the tool word plainly, or run the step under verify --sandbox)"
+		"the tool — write the tool word plainly)"
 	if ref.Message != want {
 		t.Fatalf("message = %q\nwant      %q", ref.Message, want)
 	}

@@ -189,6 +189,10 @@ func gateOnlyExtras() [][2]string {
 		"echo ok\n$E -rf ./target",
 		"E=rm\necho ok\n$E -rf ./target",
 		"echo ok\r\n$E -rf ./target",
+		"echo \\\n  \"$USER\"",
+		`awk '{print $($NF)}' notes.txt`,
+		"echo ok\n$(echo rm) -rf ./fz-target",
+		"echo ok\n$(echo curl) -o ./f",
 	}
 	var out [][2]string
 	for i, c := range cmds {

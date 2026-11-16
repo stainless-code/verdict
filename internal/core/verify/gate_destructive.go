@@ -31,27 +31,36 @@ func checkSentinel(g *gateText) *core.RefusalError {
 }
 
 func checkCommandPosition(g *gateText) *core.RefusalError {
-	if frag := grepO(reCmdPosDest, g.bare); frag != "" {
+	if frag := segmentFrag(reCmdPosDest, g.seg); frag != "" {
 		return refuse(codeDestructive, frag,
 			cmdPosBuilds+
 				"destructive tool word — write the tool word plainly")
 	}
-	if frag := grepO(reCmdPosNet, g.bare); frag != "" {
+	if frag := segmentFrag(reCmdPosNet, g.seg); frag != "" {
 		return refuse(codeNetworked, frag,
 			cmdPosBuilds+
 				"networked tool word — fetch fixtures first, run offline")
 	}
-	if frag := grepO(reCmdPosDestBt, g.scan); frag != "" {
+	if frag := segmentFrag(reCmdPosDestBt, g.qseg); frag != "" {
 		return refuse(codeDestructive, frag,
 			cmdPosBuilds+
 				"destructive tool word — write the tool word plainly")
 	}
-	if frag := grepO(reCmdPosNetBt, g.scan); frag != "" {
+	if frag := segmentFrag(reCmdPosNetBt, g.qseg); frag != "" {
 		return refuse(codeNetworked, frag,
 			cmdPosBuilds+
 				"networked tool word — fetch fixtures first, run offline")
 	}
 	return nil
+}
+
+func segmentFrag(re *regexp.Regexp, text string) string {
+	for _, seg := range segments(text) {
+		if frag := grepO(re, seg); frag != "" {
+			return frag
+		}
+	}
+	return ""
 }
 
 func checkGlobFragment(g *gateText) *core.RefusalError {

@@ -10,8 +10,7 @@ import (
 
 const codeIndirection = "verify-indirection"
 
-const msgIndirection = "a command word built from a variable hides the tool — write the tool " +
-	"word plainly, or run the step under verify --sandbox"
+const msgIndirection = "a command word built from a variable hides the tool — write the tool word plainly"
 
 var (
 	cmdKeywords = map[string]bool{
@@ -47,11 +46,11 @@ func indirectionIn(g *gateText, depth int) *core.RefusalError {
 }
 
 func indirectText(g *gateText) string {
-	word := indirectWord(g.seg)
+	word := indirectWord(g.qseg)
 	if word == "" {
 		return ""
 	}
-	if exact := indirectWord(g.segExact); exact != "" {
+	if exact := indirectWord(g.qsegExact); exact != "" {
 		return exact
 	}
 	return word
@@ -82,7 +81,7 @@ func commandIndex(words []string) int {
 }
 
 func segmentIndirection(seg string) string {
-	words := strings.Fields(seg)
+	words := shellFields(seg)
 	i := commandIndex(words)
 	if i >= len(words) {
 		return ""
@@ -91,7 +90,13 @@ func segmentIndirection(seg string) string {
 	word := strings.Trim(words[i], "()")
 	// A wrapper's own option grammar decides which later word bash runs, so
 	// after one every expansion refuses rather than being guessed apart.
-	if cmdWrappers[word] || cmdShells[word] && hasInlineCommand(rest) {
+	if cmdWrappers[word] {
+		return firstIndirect(rest)
+	}
+	if cmdShells[word] && hasInlineCommand(rest) {
+		if hidden := inlineCommandWord(rest); hidden != "" {
+			return hidden
+		}
 		return firstIndirect(rest)
 	}
 	if isIndirectWord(words[i]) {
@@ -100,10 +105,73 @@ func segmentIndirection(seg string) string {
 	return ""
 }
 
+func shellFields(text string) []string {
+	var out []string
+	var cur strings.Builder
+	inWord := false
+	for i := 0; i < len(text); {
+		next, breaking := shellStep(&cur, text, i)
+		if breaking && inWord {
+			out = append(out, cur.String())
+			cur.Reset()
+			inWord = false
+		} else if !breaking {
+			inWord = true
+		}
+		i = next
+	}
+	if inWord {
+		out = append(out, cur.String())
+	}
+	return out
+}
+
+func shellStep(cur *strings.Builder, text string, i int) (int, bool) {
+	switch text[i] {
+	case ' ', '\t', '\v', '\f':
+		return i + 1, true
+	case '$':
+		if i+1 < len(text) && (text[i+1] == '\'' || text[i+1] == '"') {
+			return appendQuoted(cur, text, i+1) + 1, false
+		}
+		cur.WriteByte(text[i])
+		return i + 1, false
+	case '\'', '"':
+		return appendQuoted(cur, text, i) + 1, false
+	}
+	cur.WriteByte(text[i])
+	return i + 1, false
+}
+
+func appendQuoted(cur *strings.Builder, text string, i int) int {
+	quote := text[i]
+	for j := i + 1; j < len(text); j++ {
+		if text[j] == '\\' && quote == '"' && j+1 < len(text) {
+			j++
+			cur.WriteByte(text[j])
+			continue
+		}
+		if text[j] == quote {
+			return j
+		}
+		cur.WriteByte(text[j])
+	}
+	return len(text)
+}
+
 func firstIndirect(words []string) string {
 	for _, word := range words {
 		if isIndirectWord(word) {
 			return word
+		}
+	}
+	return ""
+}
+
+func inlineCommandWord(words []string) string {
+	for i, word := range words {
+		if reInlineCommand.MatchString(word) && i+1 < len(words) {
+			return indirectWord(words[i+1])
 		}
 	}
 	return ""
@@ -149,8 +217,18 @@ func substitutionAt(raw string, i int) (string, int, bool) {
 		return processBody(raw, i)
 	case '`':
 		return backtickBody(raw, i)
+	case '\'':
+		return literalBody(raw, i)
 	}
 	return "", 0, false
+}
+
+func literalBody(raw string, i int) (string, int, bool) {
+	end, ok := quotedEnd(raw, i)
+	if !ok {
+		return "", 0, false
+	}
+	return "", end, true
 }
 
 func dollarBody(raw string, i int) (string, int, bool) {

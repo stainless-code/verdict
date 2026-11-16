@@ -3164,7 +3164,8 @@ substitution (`$(...)`, backticks, `<(...)`), and behind a wrapper (`builtin`,
 `command`, `env`, `exec`, `nice`, `nohup`, `stdbuf`, `time`, `timeout`,
 `xargs`, or a shell carrying `-c`) whose own option grammar decides which word
 runs. The boundary is
-the enforced sandbox below: `verify --sandbox`
+the enforced sandbox below, which runs after this gate — a refused spelling
+refuses with or without `--sandbox`: `verify --sandbox`
 runs the command under `bubblewrap` on Linux (the full mount and namespace
 shape) and under `sandbox-exec` on macOS (no network). A host that can
 enforce neither refuses `sandbox-unavailable` and runs nothing, so

@@ -16,6 +16,8 @@ type gateText struct {
 	csbare    string
 	seg       string
 	segExact  string
+	qseg      string
+	qsegExact string
 	adj       string
 	deepSubst bool
 	unreduced bool
@@ -32,13 +34,47 @@ func normalize(raw string) *gateText {
 	g.adj, g.deepSubst = adjOf(g.scan)
 	g.unreduced = gluedSpan(g.adj)
 	// The flattened texts lose the newline command separator, and the gate
-	// reads one command per line: keep an unflattened pair for segmentation.
+	// reads one command per line: keep unflattened texts for segmentation —
+	// a de-quoted pair for whole-text greps, a quote-preserving pair for the
+	// arms that must keep one shell word one word.
+	joined := joinContinuations(raw)
 	g.seg, g.segExact = g.bare, g.csbare
+	g.qseg, g.qsegExact = g.scan, scanOf(raw)
 	if strings.ContainsAny(raw, "\n\r") {
-		g.seg = bareOf(scanOf(readcommon.ASCIILower(raw)), false)
-		g.segExact = bareOf(scanOf(raw), true)
+		g.seg = bareOf(scanOf(readcommon.ASCIILower(joined)), false)
+		g.segExact = bareOf(scanOf(joined), true)
+		g.qseg = scanOf(readcommon.ASCIILower(joined))
+		g.qsegExact = scanOf(joined)
 	}
 	return g
+}
+
+// joinContinuations drops each unescaped backslash-newline pair: bash reads it
+// as a line continuation, not as a command separator.
+func joinContinuations(raw string) string {
+	if !strings.Contains(raw, "\\\n") {
+		return raw
+	}
+	var sb strings.Builder
+	sb.Grow(len(raw))
+	i := 0
+	for i < len(raw) {
+		if raw[i] == '\\' && i+1 < len(raw) && raw[i+1] == '\n' && !escapedBackslash(raw, i) {
+			i += 2
+			continue
+		}
+		sb.WriteByte(raw[i])
+		i++
+	}
+	return sb.String()
+}
+
+func escapedBackslash(raw string, i int) bool {
+	n := 0
+	for j := i - 1; j >= 0 && raw[j] == '\\'; j-- {
+		n++
+	}
+	return n%2 == 1
 }
 
 func segments(text string) []string {
