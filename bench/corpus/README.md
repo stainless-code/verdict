@@ -1,9 +1,9 @@
 # Benchmark corpus
 
-This directory is the checked-in half of the benchmark corpus: deterministic
-seeded cases plus fake agent outputs, used by the `bench-corpus` eval and as
-the template for the operator's real-PR corpus. Every case is a real-shaped
-review bundle with ground truth:
+This directory is the checked-in benchmark corpus: deterministic seeded cases
+with fake agent outputs for the `bench-corpus` eval, plus real-PR cases and
+clean controls copied from merged fixes. Every case is a real-shaped review
+bundle with ground truth:
 
 ```
 bench/corpus/<case-id>/
