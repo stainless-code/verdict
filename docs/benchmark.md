@@ -5,11 +5,12 @@ of real and seeded pull requests with known bugs, graded offline by
 `calibrate` and aggregated by `trend`. This page is the construction rule,
 the 06b operator runbook, and the citation contract for the comparison page.
 
-The checked-in starter corpus is [`bench/corpus/`](../bench/corpus/README.md):
-eight seeded bug cases, two seeded clean controls, and two fake agent outputs
-per case. It proves the
-reporting path with exact, reproducible numbers; it is not a model-quality
-claim.
+The checked-in corpus is [`bench/corpus/`](../bench/corpus/README.md): 50 case
+directories — eight seeded bug cases and two seeded clean controls, each with
+two fake agent outputs, plus 32 real-PR cases and eight real clean controls
+copied from merged fixes. The seeded cases prove the reporting path with
+exact, reproducible numbers; the real ones are scored by live runs. Neither is
+a model-quality claim.
 
 ## What the numbers mean
 

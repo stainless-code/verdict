@@ -86,7 +86,7 @@ verdict/
   scripts/verdict-complete.sh  # bash/zsh completion for verdict
   setup-verdict/      # GitHub Action that installs a pinned, verified binary
   release/            # contract.json: frozen artifact names
-  docs/manual.md      # full manual: store schema, verbs, doctrines, changelog
+  docs/manual.md      # full manual: store schema, verbs, doctrines
   docs/vision.md      # what it is and where its craft comes from
   apps/docs/          # Blume docs site (deploys to /verdict/)
   evals/              # hermetic eval suite (make evals)
@@ -159,8 +159,8 @@ comment-only merges ship none, and shipped work is never backfilled.
 Merging to `main` opens a `chore: version packages` PR. Merging that PR
 publishes to npm (OIDC trusted publishing, no tokens) and cuts the GitHub
 Release with your notes. Tags (`vX.Y.Z`) follow the releases. Store changes
-within a major are additive only from `1.0` onward. The changelog is at the bottom of
-[`docs/manual.md`](docs/manual.md).
+within a major are additive only from `1.0` onward. The changelog is
+[`CHANGELOG.md`](CHANGELOG.md), written by `changeset version`.
 
 ## Release train
 
