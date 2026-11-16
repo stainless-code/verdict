@@ -31,22 +31,22 @@ func checkSentinel(g *gateText) *core.RefusalError {
 }
 
 func checkCommandPosition(g *gateText) *core.RefusalError {
-	if frag := grepO(reCmdPosDest, g.bare); frag != "" {
+	if frag := segmentFrag(reCmdPosDest, g.seg); frag != "" {
 		return refuse(codeDestructive, frag,
 			cmdPosBuilds+
 				"destructive tool word — write the tool word plainly")
 	}
-	if frag := grepO(reCmdPosNet, g.bare); frag != "" {
+	if frag := segmentFrag(reCmdPosNet, g.seg); frag != "" {
 		return refuse(codeNetworked, frag,
 			cmdPosBuilds+
 				"networked tool word — fetch fixtures first, run offline")
 	}
-	if frag := grepO(reCmdPosDestBt, g.scan); frag != "" {
+	if frag := segmentFrag(reCmdPosDestBt, g.qseg); frag != "" {
 		return refuse(codeDestructive, frag,
 			cmdPosBuilds+
 				"destructive tool word — write the tool word plainly")
 	}
-	if frag := grepO(reCmdPosNetBt, g.scan); frag != "" {
+	if frag := segmentFrag(reCmdPosNetBt, g.qseg); frag != "" {
 		return refuse(codeNetworked, frag,
 			cmdPosBuilds+
 				"networked tool word — fetch fixtures first, run offline")
@@ -54,8 +54,17 @@ func checkCommandPosition(g *gateText) *core.RefusalError {
 	return nil
 }
 
+func segmentFrag(re *regexp.Regexp, text string) string {
+	for _, seg := range segments(text) {
+		if frag := grepO(re, seg); frag != "" {
+			return frag
+		}
+	}
+	return ""
+}
+
 func checkGlobFragment(g *gateText) *core.RefusalError {
-	segw := segWords(g.bare)
+	segw := segWords(g.seg)
 	if !hasGlobWord(segw) {
 		return nil
 	}
@@ -95,18 +104,10 @@ func isBareBracket(w string) bool {
 	return w == "[" || w == "[[" || w == "{"
 }
 
-func segWords(bare string) []string {
-	parts := strings.Split(bare, ";")
-	var segs []string
-	for _, p := range parts {
-		segs = append(segs, strings.Split(p, "|")...)
-	}
-	var amp []string
-	for _, s := range segs {
-		amp = append(amp, strings.Split(s, "&")...)
-	}
-	out := make([]string, 0, len(amp))
-	for _, seg := range amp {
+func segWords(text string) []string {
+	segs := segments(text)
+	out := make([]string, 0, len(segs))
+	for _, seg := range segs {
 		if m := reSegWord.FindStringSubmatch(seg); m != nil {
 			out = append(out, m[segWordIdx])
 			continue

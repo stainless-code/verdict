@@ -1404,6 +1404,39 @@ Cause: the verification command (or the receipt/head read around it) failed — 
 
 Fix: fix the command or the evidence named above, then re-run `verify`.
 
+## `verify-indirection`
+
+Cause: `verifyCmd` invokes a command word the gate cannot read — a plain
+variable (`E=curl; $E -o ./f http://host/x`), the braced (`${E}`) or quoted
+(`"$E"`) spelling, an `export`, an assignment prefix, a loop variable, the
+same spelling on its own line, after a leading redirection (`</dev/null $E`,
+`2>&1 $E`, `>> f $E`), or inside a substitution (`echo $($E pwned)`, backticks,
+`cat <($E pwned)`), whose body is judged as its own command — quotes included,
+so `$($E "(")` is read the way bash reads it. The value may
+come from the command's own environment, so the gate refuses the shape instead
+of guessing what the variable holds.
+
+A wrapper's own option grammar decides which later word bash runs, so after
+`builtin`, `command`, `env`, `exec`, `nice`, `nohup`, `stdbuf`, `time`,
+`timeout`, or `xargs` any variable in that command refuses: `timeout 300 make
+test` stays clean, `timeout 300 make test $TARGET` does not. A shell counts
+the same way when it carries an inline command — any short-flag cluster with a
+`c` in it (`sh -c`, `bash -c`, `bash -ec`, `sh -cu`): the inline command string
+is judged as its own command, so `sh -c "$E pwned"` refuses while
+`sh -c "echo $E"` stays clean. `eval` and `sudo` refuse earlier, as
+`verify-destructive`, whatever their arguments. A quoted word stays one word:
+`LABEL="hello world" $E ok` and `>"out file" $E` refuse, because quote removal
+would otherwise put `world` in command position.
+
+The gate is a tripwire, not a boundary, and it runs before the sandbox
+wrapper: `verify --sandbox` refuses an indirection the same way, so the remedy
+is to write the command plainly. A variable holding a whole command line
+(`sh "$V"`, a file written and then run) is a shape the gate has not learned.
+
+Fix: write the tool word plainly (`E=curl; $E -o ./f http://host/x` becomes
+`curl -o ./f http://host/x`, or the test runner directly) and keep variables
+for arguments of a command written plainly, then re-run.
+
 ## `verify-networked`
 
 Cause: `verifyCmd` fetches the network or pipes to a shell.

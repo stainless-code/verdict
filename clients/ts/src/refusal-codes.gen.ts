@@ -226,6 +226,7 @@ export type RefusalCode =
   | "verify-credential-read"
   | "verify-destructive"
   | "verify-failed"
+  | "verify-indirection"
   | "verify-networked"
   | "verify-repo-escape"
   | "window-too-large"

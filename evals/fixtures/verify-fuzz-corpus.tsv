@@ -7,7 +7,8 @@
 #
 #   id      stable case id (F-R* refuse, F-X* expected-fail, F-P* pass).
 #   expect  what the gate must do: one of verify-destructive,
-#           verify-networked, verify-credential-read, verify-repo-escape
+#           verify-networked, verify-credential-read, verify-repo-escape,
+#           verify-indirection
 #           (refuse with exactly this typed code), or PASS (execute).
 #           For xfail rows expect is aspirational: the code the gate SHOULD
 #           refuse with once the gap is closed.
@@ -66,6 +67,36 @@ F-R34	verify-destructive	strict	tar -Itouch-fz -cf /tmp/verify-fuzz-attached.tar
 F-R35	verify-destructive	strict	tar -cIf touch-fz /tmp/verify-fuzz-cluster.tar fz-notes.txt
 F-R36	verify-networked	strict	wget -i/tmp/verify-fuzz-wgeturls http://127.0.0.1:9/f
 F-R37	verify-networked	strict	wget -qi /tmp/verify-fuzz-wgeturls http://127.0.0.1:9/f
+F-R38	verify-indirection	strict	E=rm; $E -rf ./fz-target
+F-R39	verify-indirection	strict	E=curl; $E -o ./f http://127.0.0.1:9/x
+F-R40	verify-indirection	strict	E=curl; ${E} -o ./f http://127.0.0.1:9/x
+F-R41	verify-indirection	strict	E=curl; "$E" -o ./f http://127.0.0.1:9/x
+F-R42	verify-indirection	strict	export E=curl; $E -o ./f http://127.0.0.1:9/x
+F-R43	verify-indirection	strict	A=curl B=1; $A -o ./f http://127.0.0.1:9/x
+F-R44	verify-indirection	strict	for E in curl; do $E -o ./f http://127.0.0.1:9/x; done
+F-R45	verify-indirection	strict	A=cu B=rl; $A$B -o ./f http://127.0.0.1:9/x
+F-R46	verify-indirection	strict	env -u HOME $E -rf ./fz-target
+F-R47	verify-indirection	strict	timeout 5s $E -rf ./fz-target
+F-R48	verify-indirection	strict	timeout -s KILL 5 $E -rf ./fz-target
+F-R49	verify-indirection	strict	xargs -I {} $E -rf ./fz-target
+F-R50	verify-indirection	strict	command $E -rf ./fz-target
+F-R51	verify-indirection	strict	nice -n 5 $E -rf ./fz-target
+F-R52	verify-indirection	strict	E=echo; </dev/null $E pwned
+F-R53	verify-indirection	strict	E=echo; >/dev/null $E pwned
+F-R54	verify-indirection	strict	E=echo; 2>&1 $E pwned
+F-R55	verify-indirection	strict	E=echo; <<<x $E pwned
+F-R56	verify-indirection	strict	E=echo; >> fz-notes.txt $E pwned
+F-R57	verify-indirection	strict	E=echo; echo $($E pwned)
+F-R58	verify-indirection	strict	E=echo; echo `$E pwned`
+F-R59	verify-indirection	strict	E=echo; cat <($E pwned)
+F-R60	verify-indirection	strict	E=echo; builtin $E pwned
+F-R61	verify-indirection	strict	E=echo; sh -c "$E pwned"
+F-R62	verify-destructive	strict	E=echo; eval $E pwned
+F-R63	verify-destructive	strict	E=echo; sudo $E pwned
+F-R64	verify-indirection	strict	E=echo; sh -cu "$E pwned"
+F-R65	verify-indirection	strict	E=echo; echo $($E "(")
+F-R66	verify-indirection	strict	E=printf; LABEL="hello world" $E ok
+F-R67	verify-indirection	strict	E=printf; >"out file" $E ok
 F-X01	verify-networked	strict	wget --remote-name http://127.0.0.1:9/f
 F-X02	verify-networked	strict	curl -K /tmp/verify-fuzz-curlcfg http://127.0.0.1:9/
 F-X03	verify-networked	strict	wget -i /tmp/verify-fuzz-wgeturls http://127.0.0.1:9/f
@@ -114,3 +145,24 @@ F-P26	PASS	strict	git --exec-path
 F-P27	PASS	strict	tar -czf /tmp/verify-fuzz-ok.tar fz-notes.txt
 F-P28	PASS	strict	tar -cf /tmp/verify-fuzz-plain.tar fz-notes.txt
 F-P29	PASS	strict	wget -q --version
+F-P30	PASS	strict	printf '%s' $FOO
+F-P31	PASS	strict	$BIN/fz-tool --version
+F-P32	PASS	strict	printf ok --prefix=$FOO/x
+F-P33	PASS	strict	X=$(date); printf hi
+F-P34	PASS	strict	timeout 300 printf ok
+F-P35	PASS	strict	env CI=1 printf ok
+F-P36	PASS	strict	xargs -n1 echo ok
+F-P37	PASS	strict	{ echo $USER; }
+F-P38	PASS	strict	if true; then echo $USER; fi
+F-P39	PASS	strict	cat </dev/null
+F-P40	PASS	strict	echo $(date)
+F-P41	PASS	strict	echo `date`
+F-P42	PASS	strict	builtin echo ok
+F-P43	PASS	strict	diff <(sort fz-notes.txt) <(sort fz-notes.txt)
+F-P44	PASS	strict	bash ./fz-missing.sh $TARGET
+F-P45	PASS	strict	echo $(( $X + 1 ))
+F-P46	PASS	strict	echo $(printf "(%s)" x)
+F-P47	PASS	strict	awk '{print $($NF)}' fz-notes.txt
+F-P48	PASS	strict	LABEL="hello world" printf ok
+F-P49	PASS	strict	echo "hello $USER"
+F-P50	PASS	strict	sh -c 'echo $TARGET'

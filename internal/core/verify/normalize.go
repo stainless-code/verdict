@@ -8,11 +8,16 @@ import (
 )
 
 type gateText struct {
+	raw       string
 	flat      string
 	lc        string
 	scan      string
 	bare      string
 	csbare    string
+	seg       string
+	segExact  string
+	qseg      string
+	qsegExact string
 	adj       string
 	deepSubst bool
 	unreduced bool
@@ -20,6 +25,7 @@ type gateText struct {
 
 func normalize(raw string) *gateText {
 	g := &gateText{}
+	g.raw = raw
 	g.flat = flatOf(raw)
 	g.lc = readcommon.ASCIILower(g.flat)
 	g.scan = scanOf(g.lc)
@@ -27,7 +33,81 @@ func normalize(raw string) *gateText {
 	g.csbare = bareOf(g.flat, true)
 	g.adj, g.deepSubst = adjOf(g.scan)
 	g.unreduced = gluedSpan(g.adj)
+	// The flattened texts lose the newline command separator, and the gate
+	// reads one command per line: keep unflattened texts for segmentation —
+	// a de-quoted pair for whole-text greps, a quote-preserving pair for the
+	// arms that must keep one shell word one word.
+	joined := joinContinuations(raw)
+	g.seg, g.segExact = g.bare, g.csbare
+	g.qseg, g.qsegExact = g.scan, scanOf(raw)
+	if strings.ContainsAny(raw, "\n\r") {
+		g.seg = bareOf(scanOf(readcommon.ASCIILower(joined)), false)
+		g.segExact = bareOf(scanOf(joined), true)
+		g.qseg = scanOf(readcommon.ASCIILower(joined))
+		g.qsegExact = scanOf(joined)
+	}
 	return g
+}
+
+// joinContinuations drops each unescaped backslash-newline pair: bash reads it
+// as a line continuation, not as a command separator.
+func joinContinuations(raw string) string {
+	if !strings.Contains(raw, "\\\n") {
+		return raw
+	}
+	var sb strings.Builder
+	sb.Grow(len(raw))
+	i := 0
+	for i < len(raw) {
+		if raw[i] == '\\' && i+1 < len(raw) && raw[i+1] == '\n' && !escapedBackslash(raw, i) {
+			i += 2
+			continue
+		}
+		sb.WriteByte(raw[i])
+		i++
+	}
+	return sb.String()
+}
+
+func escapedBackslash(raw string, i int) bool {
+	n := 0
+	for j := i - 1; j >= 0 && raw[j] == '\\'; j-- {
+		n++
+	}
+	return n%2 == 1
+}
+
+func segments(text string) []string {
+	var out []string
+	start := 0
+	for i := range len(text) {
+		if !isSegmentBreak(text, i) {
+			continue
+		}
+		if seg := text[start:i]; seg != "" {
+			out = append(out, seg)
+		}
+		start = i + 1
+	}
+	if seg := text[start:]; seg != "" {
+		out = append(out, seg)
+	}
+	return out
+}
+
+// isSegmentBreak reports a command separator. The `&` of a fd-duplication
+// (`2>&1`) or a redirect (`&> f`) is not one: it belongs to its redirect.
+func isSegmentBreak(text string, i int) bool {
+	switch text[i] {
+	case ';', '|', '\n', '\r':
+		return true
+	case '&':
+		if i > 0 && (text[i-1] == '>' || text[i-1] == '<') {
+			return false
+		}
+		return i+1 >= len(text) || text[i+1] != '>'
+	}
+	return false
 }
 
 func flatOf(raw string) string {

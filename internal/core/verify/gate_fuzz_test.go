@@ -50,7 +50,8 @@ func sameRefusal(a, b *core.RefusalError) bool {
 
 func documentedGateCode(code string) bool {
 	switch code {
-	case "verify-destructive", "verify-networked", "verify-credential-read", "verify-repo-escape":
+	case "verify-destructive", "verify-networked", "verify-credential-read", "verify-repo-escape",
+		"verify-indirection":
 		return true
 	}
 	return false

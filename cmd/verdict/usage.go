@@ -205,7 +205,8 @@ func usageText() string {
 		"    Runs the agent's claimed proof — exit code becomes machine fact. No GitHub I/O.\n" +
 		"    Destructive, networked, credential-reading, and repo-escaping commands\n" +
 		"    refuse before execution as verify-destructive, verify-networked,\n" +
-		"    verify-credential-read, and verify-repo-escape.\n" +
+		"    verify-credential-read, and verify-repo-escape; a command word built from\n" +
+		"    a variable refuses as verify-indirection.\n" +
 		"  doctor [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] [--json]\n" +
 		"    preflight the configured host: its CLI and auth, plus .verdict storage\n" +
 		"    writability, hard-fail the run; scopes, git, ps, and API reachability warn\n" +
