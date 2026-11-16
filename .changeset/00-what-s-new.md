@@ -11,5 +11,5 @@ attestation, advisory risk scoring, and an optional validation pass that floors 
 evidence behind it, while the CI gate now checks coverage by default. Posting grows a secret guard, honest
 per-host capability reporting, and a summary-comment option, GitLab and Forgejo join GitHub as full publish
 targets, and lens packs, declared recipes, and reported verification make the review pipeline itself data.
-Thirteen pre-1.0 changes alter behaviour — each names the migration step below — and the known limits close
+Thirteen pre-1.0 changes alter behavior — each names the migration step below — and the known limits close
 the notes.
