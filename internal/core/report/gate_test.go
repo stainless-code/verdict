@@ -439,9 +439,19 @@ func TestRunReportLiveGate(t *testing.T) {
 	}
 }
 
+type liveProgress struct {
+	human    []string
+	warnings []string
+}
+
+func (p *liveProgress) Human(line string) { p.human = append(p.human, line) }
+func (p *liveProgress) Warn(msg string)   { p.warnings = append(p.warnings, msg) }
+func (p *liveProgress) Diag(_ string)     {}
+
 // TestRunReportLocalBundleLiveSkip pins the structural skip: a local bundle
-// has no live threads to verify, so every posture reads neutral with a warn
-// and zero network.
+// has no live threads to verify, so every posture reads neutral with zero
+// network and no warning — a step report always takes is not noise. The typed
+// gate dimension still records the skip.
 func TestRunReportLocalBundleLiveSkip(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -450,8 +460,9 @@ func TestRunReportLocalBundleLiveSkip(t *testing.T) {
 	writeFile(t, ".verdict/state/local-gate/findings.json", "["+
 		entryJSON("1111111111111111111111111111111111111111", "inline", "open", `"important"`, "true")+"]")
 	cmd := &threadCommander{stdout: threadsPage(4, 0)}
+	progress := &liveProgress{}
 	req := core.ReadRequest{
-		Runtime: &core.Runtime{Now: func() time.Time { return fixedNow }, Commander: cmd},
+		Runtime: &core.Runtime{Now: func() time.Time { return fixedNow }, Commander: cmd, Progress: progress},
 		Repo:    "acme/app", Pr: "local-gate",
 	}
 	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
@@ -464,12 +475,36 @@ func TestRunReportLocalBundleLiveSkip(t *testing.T) {
 	if cmd.calls != 0 {
 		t.Errorf("commander calls = %d; a local bundle pays zero network", cmd.calls)
 	}
-	if !containsLine(resp.Warnings, "live recheck skipped: local bundle threads unreadable here (gating on local dimensions only)") {
-		t.Errorf("Warnings = %q, want the local-bundle skip notice", resp.Warnings)
+	wantInfo := "info: live recheck skipped: local bundle threads unreadable here (gating on local dimensions only)"
+	if !containsLine(progress.human, wantInfo) {
+		t.Errorf("human stream = %q, want %q", progress.human, wantInfo)
+	}
+	if containsLine(resp.Warnings, "live recheck skipped") {
+		t.Errorf("Warnings = %q, want no warning for the structural local-bundle skip", resp.Warnings)
+	}
+	if containsLine(progress.warnings, "live recheck skipped") {
+		t.Errorf("warning stream = %q, want no structural skip warning", progress.warnings)
 	}
 	if containsLine(resp.CheckLines, "live open thread(s)") {
 		t.Errorf("CheckLines = %q, want no live-thread verdict line", resp.CheckLines)
 	}
+	if got := liveDimensionStatus(resp); got != "skip" {
+		t.Errorf("live dimension status = %q, want skip", got)
+	}
+}
+
+// liveDimensionStatus reads the typed live_threads dimension's status, empty
+// when the gate carries none.
+func liveDimensionStatus(resp *core.ReportResponse) string {
+	if resp.Data.Gate == nil {
+		return ""
+	}
+	for _, d := range resp.Data.Gate.Dimensions {
+		if d.ID == "live_threads" {
+			return d.Status
+		}
+	}
+	return ""
 }
 
 func containsLine(lines []string, want string) bool {

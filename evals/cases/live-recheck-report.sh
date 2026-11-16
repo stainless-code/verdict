@@ -273,7 +273,8 @@ if [ "$EVAL_STATUS" -eq 0 ]; then
 else
   bad "local skip exits $EVAL_STATUS, want 0"
 fi
-assert_file_grep "local run warn-skips" "$EVAL_ERR" "live recheck skipped"
+assert_file_grep "local run notes the skip on the human stream" "$EVAL_OUT" "info: live recheck skipped"
+assert_stream_nogrep "local run adds no skip warning" "$EVAL_ERR" "live recheck skipped"
 assert_stream_nogrep "local run prints no fetch-local noise" "$EVAL_ERR" "fetch-local" "-i"
 assert_stream_nogrep "local run prints no live open line" "$EVAL_ERR" "live open"
 assert_eq "local run makes zero recheck calls" "0" "$(graphql_since "$m")"

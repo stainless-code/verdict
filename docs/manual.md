@@ -1388,11 +1388,12 @@ a read that stopped before the host's last page, both leave the surface
 unread rather than clean: each warns (`live thread recheck unreachable`)
 and, under the default `--live auto` posture, leaves the dimension neutral:
 the gate reflects local dimensions only, and the run never exits 3 over the
-network. Only local bundles skip the lookup with a warn (`live recheck
-skipped: ...`), paying zero network; plain `report` without a gate flag
-never calls the network. There is no `--force` on report: fetch + triage +
-re-check is the recovery, and advisory `report` without `--check` is the
-escape hatch.
+network. Only local bundles skip the lookup, paying zero network; they say
+so with an `info: live recheck skipped: ...` line on the human stream, never
+a warning or a `--json` `warnings[]` entry. Plain `report` without a gate
+flag never calls the network. There is no `--force` on report: fetch +
+triage + re-check is the recovery, and advisory `report` without `--check`
+is the escape hatch.
 
 Offline posture (`--live auto|strict|skip`, gate runs only) is always an
 explicit operator choice — automation never inherits it silently. `auto`

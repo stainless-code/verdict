@@ -6,10 +6,9 @@ exit: 0
   "repo": "acme/app",
   "pr": null,
   "at": "0000-00-00T00:00:00Z",
-  "next": "address open threads",
+  "next": "merge — gate passes",
   "warnings": [
-    "run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors",
-    "live recheck skipped: local bundle threads unreadable here (gating on local dimensions only)"
+    "run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors"
   ],
   "data": {
     "generated_at": "0000-00-00T00:00:00Z",
@@ -105,6 +104,6 @@ exit: 0
 }
 --- stderr ---
 warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
-warn: live recheck skipped: local bundle threads unreadable here (gating on local dimensions only)
+info: live recheck skipped: local bundle threads unreadable here (gating on local dimensions only)
 check: no open findings at-or-above critical — gate passes
 --- files ---
