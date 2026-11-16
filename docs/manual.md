@@ -239,28 +239,30 @@ an unparsable or non-object document, a comment with no recoverable string
 coverage still refuses. `record --dry-run` adds `data.normalized` (the exact
 object the checker read) and `data.repairs`; verdict never rewrites
 `review.json` on disk. The CLI also owns the body's `> Basis:` line: it
-replaces a disagreeing line, or inserts a missing one, with the counts computed
-from the review and reports `basis-replaced`.
+replaces a disagreeing line, or inserts a missing one under the leading quote
+block's confidence lead, with the counts computed from the review and reports
+`basis-replaced`. A body with no leading quote block has no lead to insert
+under, so it stays byte-identical and reports nothing.
 
-| Code                   | Level   | Meaning                                                                                                                              |
-| ---------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `invalid-json`         | error   | The file is not one JSON document; the message carries line:col, and the fix is to emit only the object.                             |
-| `wrong-type`           | mixed   | Error for a wrong type; warning for a non-numeric line/start_line or a fenced suggestion.                                            |
-| `missing-field`        | mixed   | Error for a required field; warning for missing schema_version, comments, or line/start_line.                                        |
-| `bad-enum`             | mixed   | Error for an unknown closed-set value; warning for a malformed KB id or unknown chunk name.                                          |
-| `out-of-range`         | error   | A length or numeric bound is outside its published range (confidence, brief approach/question, caps).                                |
-| `path-not-in-diff`     | mixed   | Error for a comment path; warning for a brief site outside the diff.                                                                 |
-| `unknown-field`        | warning | A key is not in the published shape; the fix names the nearest known key.                                                            |
-| `risk-stale-head`      | warning | `review.json.risk.assessed_head` disagrees with the bundle's current HEAD SHA; the stored claim is marked `stale: true`.             |
-| `anchor-outside-hunk`  | warning | The line is provably outside every hunk; `record` moves the comment into the body.                                                   |
-| `rigor-unset`          | warning | A comment carries no evidence rung; it records as `said` with `rigor_source: default`.                                               |
-| `normalized-fence`     | warning | One whole-document code fence was unwrapped.                                                                                         |
-| `normalized-extracted` | warning | Prose around exactly one balanced JSON object was dropped.                                                                           |
-| `scalar-to-array`      | warning | A scalar where a string array belongs was wrapped in a one-element array.                                                            |
-| `key-alias`            | warning | A known alias (`inBounds`, `in_bounds`, `rung`, `file`) was renamed to its canonical key.                                            |
-| `enum-synonym`         | warning | A rigor synonym or a case-folded enum value was rewritten to the published value.                                                    |
-| `normalized-trivia`    | warning | A BOM, an explicit null on an optional key, or an exact-duplicate comment was removed.                                               |
-| `basis-replaced`       | warning | The body's `> Basis:` line disagreed with the computed counts, or was missing from the leading quote block, and the CLI replaced it. |
+| Code                   | Level   | Meaning                                                                                                                                       |
+| ---------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `invalid-json`         | error   | The file is not one JSON document; the message carries line:col, and the fix is to emit only the object.                                      |
+| `wrong-type`           | mixed   | Error for a wrong type; warning for a non-numeric line/start_line or a fenced suggestion.                                                     |
+| `missing-field`        | mixed   | Error for a required field; warning for missing comments or line/start_line.                                                                  |
+| `bad-enum`             | mixed   | Error for an unknown closed-set value; warning for a malformed KB id or unknown chunk name.                                                   |
+| `out-of-range`         | error   | A length or numeric bound is outside its published range (confidence, brief approach/question, caps).                                         |
+| `path-not-in-diff`     | mixed   | Error for a comment path; warning for a brief site outside the diff.                                                                          |
+| `unknown-field`        | warning | A key is not in the published shape; the fix names the nearest known key.                                                                     |
+| `risk-stale-head`      | warning | `review.json.risk.assessed_head` disagrees with the bundle's current HEAD SHA; the stored claim is marked `stale: true`.                      |
+| `anchor-outside-hunk`  | warning | The line is provably outside every hunk; `record` moves the comment into the body.                                                            |
+| `rigor-unset`          | warning | A comment carries no evidence rung; it records as `said` with `rigor_source: default`.                                                        |
+| `normalized-fence`     | warning | One whole-document code fence was unwrapped.                                                                                                  |
+| `normalized-extracted` | warning | Prose around exactly one balanced JSON object was dropped.                                                                                    |
+| `scalar-to-array`      | warning | A scalar where a string array belongs was wrapped in a one-element array.                                                                     |
+| `key-alias`            | warning | A known alias (`inBounds`, `in_bounds`, `rung`, `file`) was renamed to its canonical key.                                                     |
+| `enum-synonym`         | warning | A rigor synonym or a case-folded enum value was rewritten to the published value.                                                             |
+| `normalized-trivia`    | warning | A BOM, an explicit null on an optional key, or an exact-duplicate comment was removed.                                                        |
+| `basis-replaced`       | warning | The body's `> Basis:` line disagreed with the computed counts and was replaced, or was missing from the leading quote block and was inserted. |
 
 ### Sig contract (sig_version 1)
 
@@ -277,8 +279,9 @@ previous merge filled a missing rung with `pointed`, and every other recognized 
 reads as `model`. A review that explicitly wrote `pointed` is indistinguishable from
 a default-filled one, so those entries read as `default` either way. Changing the normalization orphans
 history — that ships as a new `sig_version`, never silently.
-`review.json` inputs stamp `schema_version: "1"` (`post`/`record` refuse unknown
-versions, warn-and-proceed when the stamp is missing); every bundle carries
+`review.json` inputs stamp `schema_version: "1"` (`post`/`record` refuse a
+present value other than `"1"`; an absent key reads as 1 without a warning);
+every bundle carries
 `.verdict/state/N/store.json` (`{"schema_version":"1"}`) marking the generation of the
 whole store — plugins read it instead of sniffing shapes. GitHub bundles keep
 `PR.json`/`reviews.json`/`inline.json` as raw API output (GitHub's schema,
@@ -1075,14 +1078,18 @@ the bundle's own hunk snapshot:
 a comma-separated list of 1-based inclusive source-line intervals, and it is
 side-agnostic — the evaluator unions the file's `OLD` and `NEW` hunk intervals,
 so one interval covers a hunk on either side. Duplicate `file` entries union
-rather than count twice. A malformed range warns and makes that entry count as
-unattested; it never silently attests the file.
+rather than count twice. A malformed range string warns and makes that entry
+count as unattested; it never silently attests the file. A `ranges` value that
+is neither a string nor `null` — an array, number, or object — refuses
+`bad-review-input` naming `$.coverage[N].ranges` on `record`, `post`, and
+`next --coverage`, so it can never measure as an unattested 0%.
 
 Coverage is computed from `hunks.tsv`, the snapshot `fetch` already writes —
 never from a second diff parse and never from `toc.txt` line counts. Paths the
 shared role heuristic classifies as generated or vendored are exempt
-automatically; no sentinel is required. `percent` is `null`, never `0`, when no
-changed line was measured.
+automatically — `*.pb.go`, `*.gen.*`, `zz_generated.*`, lockfiles, minified
+assets, and `dist/`, `build/`, or `vendor/` trees — so no sentinel is required.
+`percent` is `null`, never `0`, when no changed line was measured.
 
 The default posture is a warning plus one machine-built body line on a partial
 attestation. A partial one warns once and adds one machine-built body line;
@@ -1344,7 +1351,9 @@ esac
 
 Compose it after the expensive step: gate the merge on `--check critical`,
 keep `post`'s preflight as the fail-closed backstop — the gate advises,
-the human still merges.
+the human still merges. A passing gate names that merge in the envelope's
+`next` (`merge — gate passes`) and in the human footer, so open findings below
+the tier's floor never read as the next step.
 
 `report --category <cat>` filters the ranked findings to one finding kind
 (`logic`, `edge-case`, `security`, `performance`, `accidental-commit`,
@@ -1380,11 +1389,12 @@ a read that stopped before the host's last page, both leave the surface
 unread rather than clean: each warns (`live thread recheck unreachable`)
 and, under the default `--live auto` posture, leaves the dimension neutral:
 the gate reflects local dimensions only, and the run never exits 3 over the
-network. Only local bundles skip the lookup with a warn (`live recheck
-skipped: ...`), paying zero network; plain `report` without a gate flag
-never calls the network. There is no `--force` on report: fetch + triage +
-re-check is the recovery, and advisory `report` without `--check` is the
-escape hatch.
+network. Only local bundles skip the lookup, paying zero network; they say
+so with an `info: live recheck skipped: ...` line on the human stream, never
+a warning or a `--json` `warnings[]` entry. Plain `report` without a gate
+flag never calls the network. There is no `--force` on report: fetch +
+triage + re-check is the recovery, and advisory `report` without `--check`
+is the escape hatch.
 
 Offline posture (`--live auto|strict|skip`, gate runs only) is always an
 explicit operator choice — automation never inherits it silently. `auto`

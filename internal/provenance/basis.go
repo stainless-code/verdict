@@ -273,10 +273,11 @@ func replaceBasisLine(body string, lines []string, i int, computed, expected str
 	}
 }
 
-// insertBasisLine adds the computed Basis line under the confidence lead,
-// keeping a blank line before a following heading.
 func insertBasisLine(lines []string, computed string) (string, *core.Problem) {
 	at := leadEnd(lines)
+	if at == 0 {
+		return strings.Join(lines, newline), nil
+	}
 	insert := []string{computed}
 	if at < len(lines) {
 		if trimmed := strings.TrimSpace(lines[at]); trimmed != "" && strings.HasPrefix(trimmed, "#") {

@@ -92,6 +92,7 @@ type state struct { // field grouping documents the loaded dimensions; alignment
 	nOpen        int
 	nAllOpen     int
 	gate         bool
+	gatePassed   bool
 	liveGate     bool
 	compOK       bool
 }

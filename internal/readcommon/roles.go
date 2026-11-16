@@ -51,7 +51,7 @@ var (
 var generatedSubstrings = []string{
 	"package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock",
 	"Cargo.lock", "Gemfile.lock", "poetry.lock", ".min.js", ".min.css",
-	"__snapshots__/", ".snap", ".pb.go", ".g.dart", ".generated.",
+	"__snapshots__/", ".snap", ".pb.go", ".g.dart", ".generated.", ".gen.", "zz_generated.",
 }
 
 // isGeneratedPath owns the generated branch, including the start-anchored

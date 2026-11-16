@@ -20,6 +20,11 @@ const coverageDiff = "diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222
 const generatedDiff = "diff --git a/dist/app.min.js b/dist/app.min.js\nindex 3333333..4444444 100644\n" +
 	"--- a/dist/app.min.js\n+++ b/dist/app.min.js\n@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n"
 
+const generatedTypeScriptDiff = coverageDiff +
+	"diff --git a/clients/ts/src/refusal-codes.gen.ts b/clients/ts/src/refusal-codes.gen.ts\n" +
+	"index 3333333..4444444 100644\n--- a/clients/ts/src/refusal-codes.gen.ts\n" +
+	"+++ b/clients/ts/src/refusal-codes.gen.ts\n@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n"
+
 // coverageReview builds a review over path whose body clears the degenerate
 // floor, with extra as the top-level fragment carrying coverage[].
 func coverageReview(path, extra string) string {
@@ -110,6 +115,44 @@ func TestRunNextCoverageRefusesCorruptReview(t *testing.T) {
 	_, ref := reportcore.RunNextCoverage(coverageNextRequest(t, files))
 	if ref == nil || ref.Code != "report-failed" {
 		t.Fatalf("refusal = %v, want report-failed", ref)
+	}
+}
+
+func TestRunNextCoverageExemptsGeneratedTypeScript(t *testing.T) {
+	req := coverageNextRequest(t, map[string]string{
+		"full.diff":   generatedTypeScriptDiff,
+		"hunks.tsv":   hunks.Format(hunks.Parse(generatedTypeScriptDiff)),
+		"review.json": coverageReview("notes.txt", `"coverage":[{"file":"notes.txt","ranges":"all"}],`),
+	})
+	resp, ref := reportcore.RunNextCoverage(req)
+	if ref != nil {
+		t.Fatalf("RunNextCoverage refusal: %v", ref)
+	}
+	cov := resp.Coverage
+	if cov == nil || cov.Percent == nil || *cov.Percent != 100 || cov.Exempt != 1 || len(cov.Unattested) != 0 {
+		t.Fatalf("coverage = %+v, want 100%% with one generated exempt and no gaps", cov)
+	}
+}
+
+func TestRunNextCoverageRefusesArrayRanges(t *testing.T) {
+	req := coverageNextRequest(t, coverageFiles(coverageReview("notes.txt", `"coverage":[{"file":"notes.txt","ranges":["1-2"]}],`)))
+	resp, ref := reportcore.RunNextCoverage(req)
+	if ref == nil {
+		t.Fatalf("RunNextCoverage = %+v; want a bad-review-input refusal", resp.Coverage)
+	}
+	if ref.Code != "bad-review-input" {
+		t.Fatalf("refusal code = %q, want bad-review-input", ref.Code)
+	}
+	if want := "review.json has 1 problem(s); fix every one, then re-run"; ref.Message != want {
+		t.Errorf("refusal message = %q, want %q", ref.Message, want)
+	}
+	if len(ref.Problems) != 1 {
+		t.Fatalf("problems = %+v, want exactly one", ref.Problems)
+	}
+	p := ref.Problems[0]
+	if p.Path != "$.coverage[0].ranges" || p.Code != core.ProblemCodeWrongType ||
+		p.Message != "value must be a string" {
+		t.Errorf("problem = %+v, want the record checker's wrong-type problem", p)
 	}
 }
 

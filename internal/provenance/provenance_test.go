@@ -323,6 +323,14 @@ func TestApplyBasisLineInsertsBlankBeforeHeading(t *testing.T) {
 	}
 }
 
+func TestApplyBasisLineSkipsPlainBody(t *testing.T) {
+	t.Parallel()
+	const body = "A plain review body with no quote lead.\n\n## Summary\nReviewed."
+	if got, p := provenance.ApplyBasisLine("0 0 0 1 0 0 0", body); got != body || p != nil {
+		t.Fatalf("plain body = %q, %+v; want unchanged without a warning", got, p)
+	}
+}
+
 // TestPlainBasisBelowConfidence accepts matching plain Basis text.
 func TestPlainBasisBelowConfidence(t *testing.T) {
 	const body = "> Confidence: 3/5\nBasis: 0 0 0 1 0 0 0\n\n## Summary\nReviewed."

@@ -20,5 +20,4 @@ func ExampleCheckReview() {
 	// error missing-field $.comments[0].brief.outcome
 	// error wrong-type $.comments[0].brief.questions
 	// warning rigor-unset $.comments[0].rigor
-	// warning missing-field $.schema_version
 }

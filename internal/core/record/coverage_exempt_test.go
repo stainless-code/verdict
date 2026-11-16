@@ -5,6 +5,26 @@ import (
 	"testing"
 )
 
+const generatedTypeScriptDiff = "diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n" +
+	"--- a/notes.txt\n+++ b/notes.txt\n@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n" +
+	"diff --git a/clients/ts/src/refusal-codes.gen.ts b/clients/ts/src/refusal-codes.gen.ts\n" +
+	"index 3333333..4444444 100644\n--- a/clients/ts/src/refusal-codes.gen.ts\n" +
+	"+++ b/clients/ts/src/refusal-codes.gen.ts\n@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n"
+
+func TestMergeCoverageExemptsGeneratedTypeScript(t *testing.T) {
+	coverageBundle(t, generatedTypeScriptDiff, coverageReview("notes.txt", `"coverage":[{"file":"notes.txt","ranges":"all"}],`))
+	if ref := runCoverage(t, false, false); ref != nil {
+		t.Fatalf("record refused: %+v", ref)
+	}
+	cov, ok := decodeObject(t, ".verdict/state/"+coverageSlug+"/record.json")["coverage"].(map[string]any)
+	if !ok {
+		t.Fatalf("record.json carries no coverage receipt")
+	}
+	if cov["percent"] != float64(100) || cov["gaps"] != float64(0) || cov["exempt"] != float64(1) {
+		t.Errorf("coverage receipt = %+v, want percent 100, gaps 0, exempt 1", cov)
+	}
+}
+
 // A bundle whose every changed file is generated has nothing to attest, so
 // --require-coverage must pass rather than refuse on a 0/0 denominator: the
 // exemption is automatic and needs no sentinel. The gate is the one place the

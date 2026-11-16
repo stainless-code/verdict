@@ -273,6 +273,25 @@ func TestChunkedSkips(t *testing.T) {
 	assertChunkedSkipped(t, dir)
 }
 
+func TestChunkedArrayRangesRefuse(t *testing.T) {
+	dir := writeBundle(t, fixtureRows())
+	if err := mkdirAll(dir + "/chunks"); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, dir+"/chunks/manifest.json", `{"schema_version":"1","chunk_count":1,"chunks":[{"name":"chunks/01.diff"}]}`)
+	writeFile(t, dir+"/chunks/01.diff", "diff")
+	_, _, ref := Evaluate(dir, mustReview(t, `{"coverage":[{"file":"src/db.ts","ranges":["1-2"]}]}`), notGenerated)
+	if ref == nil {
+		t.Fatal("Evaluate refused nothing; want bad-review-input for array ranges on a chunked bundle")
+	}
+	if ref.Code != "bad-review-input" {
+		t.Errorf("refusal code = %q, want bad-review-input", ref.Code)
+	}
+	if len(ref.Problems) != 1 || ref.Problems[0].Path != "$.coverage[0].ranges" || ref.Problems[0].Code != "wrong-type" {
+		t.Fatalf("problems = %+v, want one wrong-type at $.coverage[0].ranges", ref.Problems)
+	}
+}
+
 // TestChunkedCountsTheManifest proves the count comes from the manifest and not
 // from the files beside it: an extra diff and a missing one leave the count
 // alone, which is the number a receipt reports.

@@ -36,7 +36,7 @@ func runLiveProbe(ctx context.Context, st *state) {
 		st.warn("live recheck skipped (--live skip requested — gating on local dimensions only)")
 		st.live.status = liveSkipExplicit
 	case isLocalDir(st.dir):
-		st.warn("live recheck skipped: local bundle threads unreadable here (gating on local dimensions only)")
+		st.req.Human("info: live recheck skipped: local bundle threads unreadable here (gating on local dimensions only)")
 		st.live.status = liveSkip
 	default:
 		probeLiveCount(ctx, st)

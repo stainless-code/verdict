@@ -138,7 +138,8 @@ if [ "$EVAL_STATUS" -eq 0 ]; then
 else
   bad "strict local exits $EVAL_STATUS, want 0"
 fi
-assert_file_grep "local skip warns structurally" "$EVAL_ERR" "live recheck skipped"
+assert_file_grep "local skip notes the structural skip on the human stream" "$EVAL_OUT" "info: live recheck skipped"
+assert_stream_nogrep "local skip adds no structural warning" "$EVAL_ERR" "live recheck skipped"
 assert_stream_nogrep "local skip prints no fail-closed line" "$EVAL_ERR" "offline posture is strict"
 assert_eq "local skip pays zero graphql calls" "0" "$(graphql_since "$m")"
 

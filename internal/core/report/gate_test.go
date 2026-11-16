@@ -91,6 +91,45 @@ func TestRunReportCheckTierGate(t *testing.T) {
 	}
 }
 
+func TestRunReportGatePassNextNamesMerge(t *testing.T) {
+	below := "[" + entryJSON("1111111111111111111111111111111111111111", "inline", "open", `"informational"`, "true") + "]"
+	atFloor := "[" + entryJSON("2222222222222222222222222222222222222222", "inline", "open", `"important"`, "true") + "]"
+	tests := []struct {
+		name       string
+		findings   string
+		wantNext   string
+		gateFailed bool
+	}{
+		{name: "pass", findings: below, wantNext: "merge — gate passes", gateFailed: false},
+		{name: "fail", findings: atFloor, wantNext: "address open threads", gateFailed: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+				ReadRequest: fixture(t, tc.findings),
+				Flags:       core.ReportFlags{Check: "important"},
+			})
+			if ref != nil {
+				t.Fatalf("Run refusal: %v", ref)
+			}
+			assertGateNext(t, resp, tc.gateFailed, tc.wantNext)
+		})
+	}
+}
+
+func assertGateNext(t *testing.T, resp *core.ReportResponse, gateFailed bool, wantNext string) {
+	t.Helper()
+	if resp.GateFailed != gateFailed {
+		t.Errorf("GateFailed = %v, want %v", resp.GateFailed, gateFailed)
+	}
+	if resp.Next != wantNext {
+		t.Errorf("Next = %q, want %q", resp.Next, wantNext)
+	}
+	if got, want := resp.Human[len(resp.Human)-1], "next: "+wantNext; got != want {
+		t.Errorf("human footer = %q, want %q", got, want)
+	}
+}
+
 // TestRunReportCompletenessGate pins the HEAD-reviewed dimension: a matching
 // post passes, and a missing, head-less, or stale post fails with its typed
 // line naming the re-fetch command. The combined case proves one run fails on
@@ -398,9 +437,15 @@ func TestRunReportLiveGate(t *testing.T) {
 	}
 }
 
-// TestRunReportLocalBundleLiveSkip pins the structural skip: a local bundle
-// has no live threads to verify, so every posture reads neutral with a warn
-// and zero network.
+type liveProgress struct {
+	human    []string
+	warnings []string
+}
+
+func (p *liveProgress) Human(line string) { p.human = append(p.human, line) }
+func (p *liveProgress) Warn(msg string)   { p.warnings = append(p.warnings, msg) }
+func (p *liveProgress) Diag(_ string)     {}
+
 func TestRunReportLocalBundleLiveSkip(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -409,8 +454,9 @@ func TestRunReportLocalBundleLiveSkip(t *testing.T) {
 	writeFile(t, ".verdict/state/local-gate/findings.json", "["+
 		entryJSON("1111111111111111111111111111111111111111", "inline", "open", `"important"`, "true")+"]")
 	cmd := &threadCommander{stdout: threadsPage(4, 0)}
+	progress := &liveProgress{}
 	req := core.ReadRequest{
-		Runtime: &core.Runtime{Now: func() time.Time { return fixedNow }, Commander: cmd},
+		Runtime: &core.Runtime{Now: func() time.Time { return fixedNow }, Commander: cmd, Progress: progress},
 		Repo:    "acme/app", Pr: "local-gate",
 	}
 	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
@@ -423,12 +469,34 @@ func TestRunReportLocalBundleLiveSkip(t *testing.T) {
 	if cmd.calls != 0 {
 		t.Errorf("commander calls = %d; a local bundle pays zero network", cmd.calls)
 	}
-	if !containsLine(resp.Warnings, "live recheck skipped: local bundle threads unreadable here (gating on local dimensions only)") {
-		t.Errorf("Warnings = %q, want the local-bundle skip notice", resp.Warnings)
+	wantInfo := "info: live recheck skipped: local bundle threads unreadable here (gating on local dimensions only)"
+	if !containsLine(progress.human, wantInfo) {
+		t.Errorf("human stream = %q, want %q", progress.human, wantInfo)
+	}
+	if containsLine(resp.Warnings, "live recheck skipped") {
+		t.Errorf("Warnings = %q, want no warning for the structural local-bundle skip", resp.Warnings)
+	}
+	if containsLine(progress.warnings, "live recheck skipped") {
+		t.Errorf("warning stream = %q, want no structural skip warning", progress.warnings)
 	}
 	if containsLine(resp.CheckLines, "live open thread(s)") {
 		t.Errorf("CheckLines = %q, want no live-thread verdict line", resp.CheckLines)
 	}
+	if got := liveDimensionStatus(resp); got != "skip" {
+		t.Errorf("live dimension status = %q, want skip", got)
+	}
+}
+
+func liveDimensionStatus(resp *core.ReportResponse) string {
+	if resp.Data.Gate == nil {
+		return ""
+	}
+	for _, d := range resp.Data.Gate.Dimensions {
+		if d.ID == "live_threads" {
+			return d.Status
+		}
+	}
+	return ""
 }
 
 func containsLine(lines []string, want string) bool {

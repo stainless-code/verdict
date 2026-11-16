@@ -421,7 +421,9 @@ var publishedSemantics = map[string]string{
 	// or type changed.
 	// risk score: additive optional nullable risk claim ($defs/riskClaim). No
 	// existing property, required key, enum, or type changed.
-	"review.schema.json": "58b8cafc67abfc6fe394f0cd7dff77182def6cd6652851e037ded38dc57defbe",
+	// schema_version optional: descriptions drop the missing-key warning. No
+	// property, required key, enum, or type changed.
+	"review.schema.json": "76232c7a9f815c81f2e2115778ebba6f55cc3bdfb9548b6f734effb0ef0cd768",
 	// additive selected.schema.json (new bundle document: the reaction-scoped
 	// fix selection fetch writes and fix --selected reads). A new document
 	// only: no existing schema property, required key, enum, or type changed.
