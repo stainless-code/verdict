@@ -2294,7 +2294,7 @@ any other model call.
 This kit uses whatever agent you invoke — your current model is the review model.
 Lenses can run cheaper: map each lens to a smaller sibling of the main model
 (e.g. flagship → sonnet-class) via the `lens:<label>` dispatch template, at most
-~12 files and 10 findings per lens. Formation is roles, never slugs: strongest reasoner
+~12 files per lens. Formation is roles, never slugs: strongest reasoner
 synthesizes, 2+ diverse cheaper models lens, different families when possible.
 
 For arena-style parallel runs, pin the panel outside the skill: `REVIEW_PANEL` env

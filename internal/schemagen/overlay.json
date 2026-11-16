@@ -374,7 +374,7 @@
       "/$defs/lens/properties/id": "Lowercase slug; the body is lenses/<id>.md and the file stem must equal the id.",
       "/$defs/lens/properties/globs": "Optional slash-path globs matched with the repository-config dialect; absent means every plan group.",
       "/$defs/lens/properties/max_files": "Dispatch scope cap, 1..24 files; the shipped reviewer contract states at most ~12.",
-      "/$defs/lens/properties/max_findings": "Dispatch return cap, 1..20 findings; the shipped reviewer contract states at most 10."
+      "/$defs/lens/properties/max_findings": "Optional dispatch return cap, 1..20 findings; the built-in pack declares none, so a shipped lens returns what its evidence supports."
     },
     "patterns": {
       "/properties/name": "^[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$",

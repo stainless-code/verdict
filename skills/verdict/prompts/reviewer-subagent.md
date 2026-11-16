@@ -45,6 +45,7 @@ if you cannot verify, say so rather than guess.
 ## Dispatch template (orchestrator → lens)
 
 ```text
+Domain: <the area this lens owns, e.g. billing lens>
 lens:<short-hypothesis-label>
 full.diff: <absolute path>   (+ incremental.diff: <path> when delta review)
 base: <base-branch> (fallback only)
@@ -55,7 +56,7 @@ Third-party contracts in scope? Verify via web search and quote source URLs. Unk
 the finding (mark `unproven`); only verified ground truth drops it — and only for
 load-bearing claims.
 Return: file paths + NEW line numbers + evidence for/against.
-Cap scope per lens: name at most ~12 files and return at most 10 findings.
+Cap scope per lens: name at most ~12 files.
 
 ## Panel formation (roles, never slugs)
 
