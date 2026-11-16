@@ -15,10 +15,12 @@ import (
 
 var selfPinSHA = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
-var actionSelfPins = []struct {
+type selfPinTarget struct {
 	path   string
 	prefix string
-}{
+}
+
+var actionSelfPins = []selfPinTarget{
 	{path: "action.yml", prefix: "stainless-code/verdict/setup-verdict@"},
 	{path: "examples/verdict-review.yml", prefix: "stainless-code/verdict@"},
 }
@@ -32,25 +34,46 @@ func TestActionPinsAtRelease(t *testing.T) {
 	wantComment := "# v" + version
 	var shas []string
 	for _, target := range actionSelfPins {
-		src := readRepoFile(t, root, target.path)
-		sha, problems := pinProblems(src, target.prefix, wantComment)
-		for _, problem := range problems {
-			t.Errorf("%s: %s", target.path, problem)
-		}
-		shas = append(shas, sha)
+		shas = append(shas, checkActionPin(t, root, target, wantComment))
 	}
-	if len(shas) == 2 && shas[0] != "" && shas[1] != "" && shas[0] != shas[1] {
+	checkReleaseTag(t, root, shas, version)
+}
+
+func checkActionPin(t *testing.T, root string, target selfPinTarget, wantComment string) string {
+	t.Helper()
+	src := readRepoFile(t, root, target.path)
+	sha, problems := pinProblems(src, target.prefix, wantComment)
+	for _, problem := range problems {
+		t.Errorf("%s: %s", target.path, problem)
+	}
+	return sha
+}
+
+func checkReleaseTag(t *testing.T, root string, shas []string, version string) {
+	t.Helper()
+	if len(shas) != 2 {
+		t.Fatalf("found %d self-pins; want 2", len(shas))
+	}
+	if shas[0] == "" || shas[1] == "" {
+		return
+	}
+	if shas[0] != shas[1] {
 		t.Errorf("self-pins disagree: action.yml is %s, examples/verdict-review.yml is %s", shas[0], shas[1])
 	}
 	t.Run("release tag points at the pin", func(t *testing.T) {
-		tags := tagsAt(t, root, shas[0])
-		if len(tags) == 0 {
-			t.Skip("no tags in this checkout: the SHA-to-version check needs a tagged clone")
-		}
-		if !slices.Contains(tags, "v"+version) {
-			t.Errorf("self-pin %s has tags %v; want tag v%s at that commit", shas[0], tags, version)
-		}
+		checkTagAtPin(t, root, shas[0], version)
 	})
+}
+
+func checkTagAtPin(t *testing.T, root, sha, version string) {
+	t.Helper()
+	tags := tagsAt(t, root, sha)
+	if len(tags) == 0 {
+		t.Skip("no tags in this checkout: the SHA-to-version check needs a tagged clone")
+	}
+	if !slices.Contains(tags, "v"+version) {
+		t.Errorf("self-pin %s has tags %v; want tag v%s at that commit", sha, tags, version)
+	}
 }
 
 func actionPackageVersion(t *testing.T, root string) string {
@@ -90,33 +113,47 @@ func tagsAt(t *testing.T, root, sha string) []string {
 }
 
 func pinProblems(src, prefix, wantComment string) (string, []string) {
-	var problems []string
-	for _, line := range strings.Split(src, "\n") {
-		start := strings.Index(line, prefix)
-		if start < 0 {
-			continue
+	for line := range strings.SplitSeq(src, "\n") {
+		if strings.Contains(line, prefix) {
+			return pinLineProblems(line, prefix, wantComment)
 		}
-		tail := strings.Fields(strings.TrimPrefix(line[start:], prefix))
-		sha := ""
-		if len(tail) > 0 {
-			sha = tail[0]
-		}
-		if !selfPinSHA.MatchString(sha) {
-			problems = append(problems, fmt.Sprintf("self-pin %q is not a full 40-hex commit SHA", sha))
-		}
-		gotComment := strings.Join(tail[min(len(tail), 1):], " ")
-		if gotComment != wantComment {
-			problems = append(problems, fmt.Sprintf("self-pin comment %q, want %q", gotComment, wantComment))
-		}
-		for _, marker := range []string{"re-pin", "repin", "as introduced", "todo"} {
-			if strings.Contains(strings.ToLower(line), marker) {
-				problems = append(problems, "self-pin still carries an open re-pin TODO")
-				break
-			}
-		}
-		return sha, problems
 	}
 	return "", []string{"no " + prefix + " self-pin found"}
+}
+
+func pinLineProblems(line, prefix, wantComment string) (string, []string) {
+	start := strings.Index(line, prefix)
+	tail := strings.Fields(line[start+len(prefix):])
+	sha := ""
+	if len(tail) > 0 {
+		sha = tail[0]
+	}
+	var problems []string
+	if !selfPinSHA.MatchString(sha) {
+		problems = append(problems, fmt.Sprintf("self-pin %q is not a full 40-hex commit SHA", sha))
+	}
+	gotComment := strings.Join(tail[min(len(tail), 1):], " ")
+	if gotComment != wantComment {
+		problems = append(problems, fmt.Sprintf("self-pin comment %q, want %q", gotComment, wantComment))
+	}
+	if hasRepinMarker(line) {
+		problems = append(problems, "self-pin still carries an open re-pin TODO")
+	}
+	return sha, problems
+}
+
+func hasRepinMarker(line string) bool {
+	lower := strings.ToLower(line)
+	markers := []string{"re-pin", "repin", "as introduced", "todo"}
+	return slices.ContainsFunc(markers, func(marker string) bool {
+		return strings.Contains(lower, marker)
+	})
+}
+
+type pinCase struct {
+	name string
+	line string
+	want []string
 }
 
 func TestPinProblems(t *testing.T) {
@@ -124,11 +161,7 @@ func TestPinProblems(t *testing.T) {
 	const prefix = "stainless-code/verdict/setup-verdict@"
 	const release = "b4c36344f03375985a8edf859b9092ba7d59f077"
 	const introduced = "471d2985b29060caa90036fefac565e97a12bb2c"
-	tests := []struct {
-		name string
-		line string
-		want []string
-	}{
+	tests := []pinCase{
 		{
 			name: "release pin",
 			line: "      uses: " + prefix + release + " # v0.7.0",
@@ -152,17 +185,22 @@ func TestPinProblems(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, problems := pinProblems(tc.line, prefix, "# v0.7.0")
-			for _, expected := range tc.want {
-				if !slices.ContainsFunc(problems, func(problem string) bool {
-					return strings.Contains(problem, expected)
-				}) {
-					t.Errorf("pinProblems() = %v; want a problem containing %q", problems, expected)
-				}
-			}
-			if len(tc.want) == 0 && len(problems) != 0 {
-				t.Errorf("pinProblems() = %v; want no problems", problems)
-			}
+			checkPinCase(t, tc, prefix)
 		})
+	}
+}
+
+func checkPinCase(t *testing.T, tc pinCase, prefix string) {
+	t.Helper()
+	_, problems := pinProblems(tc.line, prefix, "# v0.7.0")
+	if len(tc.want) == 0 && len(problems) != 0 {
+		t.Fatalf("pinProblems() = %v; want no problems", problems)
+	}
+	for _, expected := range tc.want {
+		if !slices.ContainsFunc(problems, func(problem string) bool {
+			return strings.Contains(problem, expected)
+		}) {
+			t.Errorf("pinProblems() = %v; want a problem containing %q", problems, expected)
+		}
 	}
 }
