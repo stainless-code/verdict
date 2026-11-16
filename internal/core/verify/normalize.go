@@ -13,6 +13,8 @@ type gateText struct {
 	scan      string
 	bare      string
 	csbare    string
+	seg       string
+	segExact  string
 	adj       string
 	deepSubst bool
 	unreduced bool
@@ -27,7 +29,21 @@ func normalize(raw string) *gateText {
 	g.csbare = bareOf(g.flat, true)
 	g.adj, g.deepSubst = adjOf(g.scan)
 	g.unreduced = gluedSpan(g.adj)
+	// The flattened texts lose the newline command separator, and the gate
+	// reads one command per line: keep an unflattened pair for segmentation.
+	g.seg, g.segExact = g.bare, g.csbare
+	if strings.ContainsAny(raw, "\n\r") {
+		g.seg = bareOf(scanOf(readcommon.ASCIILower(raw)), false)
+		g.segExact = bareOf(scanOf(raw), true)
+	}
 	return g
+}
+
+// segments splits a command text at the shell's command separators.
+func segments(text string) []string {
+	return strings.FieldsFunc(text, func(r rune) bool {
+		return r == ';' || r == '|' || r == '&' || r == '\n' || r == '\r'
+	})
 }
 
 func flatOf(raw string) string {

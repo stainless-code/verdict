@@ -12,59 +12,64 @@ const codeIndirection = "verify-indirection"
 const msgIndirection = "a command word built from a variable hides the tool — write the tool " +
 	"word plainly, or run the step under verify --sandbox"
 
-// indirectWrappers are the words a command word may follow without being the
-// invoked command: the shell keywords that open a command list, and the
-// wrappers that run the word after their flags.
-var indirectWrappers = map[string]bool{
-	"!": true, "(": true, "{": true, "command": true, "do": true, "elif": true,
-	"else": true, "env": true, "exec": true, "if": true, "nice": true,
-	"nohup": true, "stdbuf": true, "then": true, "time": true, "timeout": true,
-	"until": true, "while": true, "xargs": true,
-}
+var (
+	cmdKeywords = map[string]bool{
+		"!": true, "(": true, "{": true, "do": true, "then": true, "else": true,
+		"elif": true, "if": true, "while": true, "until": true,
+	}
+	cmdWrappers = map[string]bool{
+		"command": true, "env": true, "exec": true, "nice": true, "nohup": true,
+		"stdbuf": true, "time": true, "timeout": true, "xargs": true,
+	}
+)
 
-// checkIndirection refuses a command word the gate cannot read: with no tool
-// word in the text, every class below is blind to it, and resolving the
-// variable statically is unsound (the value can come from the environment or
-// a later assignment). Refusing the shape is the whole answer.
 func checkIndirection(g *gateText) *core.RefusalError {
-	word := indirectWord(g.bare)
+	word := indirectWord(g.seg)
 	if word == "" {
 		return nil
 	}
-	if exact := indirectWord(g.csbare); exact != "" {
+	if exact := indirectWord(g.segExact); exact != "" {
 		word = exact
 	}
 	return refuse(codeIndirection, word, msgIndirection)
 }
 
 func indirectWord(text string) string {
-	for _, seg := range commandSegments(text) {
-		if word := commandWord(seg); isIndirectWord(word) {
+	for _, seg := range segments(text) {
+		if word := segmentIndirection(seg); word != "" {
 			return word
 		}
 	}
 	return ""
 }
 
-func commandSegments(text string) []string {
-	return strings.FieldsFunc(text, func(r rune) bool {
-		return r == ';' || r == '|' || r == '&'
-	})
-}
-
-func commandWord(seg string) string {
-	for tok := range strings.FieldsSeq(seg) {
-		if isCommandPrefix(tok) {
-			continue
-		}
-		return tok
+func segmentIndirection(seg string) string {
+	words := strings.Fields(seg)
+	i := 0
+	for i < len(words) && (reAssignPrefix.MatchString(words[i]) || cmdKeywords[words[i]]) {
+		i++
+	}
+	if i == len(words) {
+		return ""
+	}
+	// A wrapper's own option grammar decides which later word bash runs, so
+	// after one every expansion refuses rather than being guessed apart.
+	if cmdWrappers[strings.Trim(words[i], "()")] {
+		return firstIndirect(words[i+1:])
+	}
+	if isIndirectWord(words[i]) {
+		return words[i]
 	}
 	return ""
 }
 
-func isCommandPrefix(tok string) bool {
-	return indirectWrappers[tok] || reAssignPrefix.MatchString(tok) ||
-		strings.HasPrefix(tok, "-") || reDigits.MatchString(tok)
+func firstIndirect(words []string) string {
+	for _, word := range words {
+		if isIndirectWord(word) {
+			return word
+		}
+	}
+	return ""
 }
 
 func isIndirectWord(word string) bool {
@@ -73,6 +78,5 @@ func isIndirectWord(word string) bool {
 
 var (
 	reAssignPrefix  = regexp.MustCompile(`^[A-Za-z0-9_]+=`)
-	reDigits        = regexp.MustCompile(`^[0-9]+$`)
 	rePureExpansion = regexp.MustCompile(`^(\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$[A-Za-z_][A-Za-z0-9_]*)+$`)
 )

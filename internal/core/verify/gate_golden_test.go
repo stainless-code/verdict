@@ -186,6 +186,9 @@ func gateOnlyExtras() [][2]string {
 		`curl http://127.0.0.1:9/fixture 2>/dev/null`,
 		`ping -c1 127.0.0.1 >/dev/null`,
 		`rsync -a notes.txt /tmp/verify-allowlist-rsync-probe`,
+		"echo ok\n$E -rf ./target",
+		"E=rm\necho ok\n$E -rf ./target",
+		"echo ok\r\n$E -rf ./target",
 	}
 	var out [][2]string
 	for i, c := range cmds {

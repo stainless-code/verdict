@@ -35,7 +35,16 @@ var variableCommandWords = []struct {
 	{"env wrapper", `E=curl; env E=$E $E -o ./f http://host/x`},
 	{"timeout wrapper", `E=rm; timeout 5 $E -rf ./target`},
 	{"subshell", `E=rm; ( $E -rf ./target )`},
+	{"subshell unspaced", `E=rm; ($E -rf ./target)`},
 	{"concatenated", `A=cu B=rl; $A$B -o ./f http://host/x`},
+	{"newline", "echo ok\n$E -rf ./target"},
+	{"newline after assignment", "E=rm\necho ok\n$E -rf ./target"},
+	{"crlf", "echo ok\r\n$E -rf ./target"},
+	{"env wrapper flag value", `env -u HOME $E -rf ./target`},
+	{"timeout duration suffix", `timeout 5s $E -rf ./target`},
+	{"timeout signal flag", `timeout -s KILL 5 $E -rf ./target`},
+	{"xargs replace flag", `xargs -I {} $E -rf ./target`},
+	{"command wrapper", `command $E -rf ./target`},
 }
 
 // TestVerifyRefusesVariableCommandWord pins STA-431: a plain assignment plus a
@@ -63,8 +72,6 @@ func wantIndirectionRefusal(t *testing.T, cmd string) {
 	}
 }
 
-// TestCheckAllowsVariableArguments pins the false-positive boundary: a variable
-// in argument position, an assignment prefix, or a path prefix stays clean.
 func TestCheckAllowsVariableArguments(t *testing.T) {
 	benign := []string{
 		`echo $USER`,
@@ -77,6 +84,13 @@ func TestCheckAllowsVariableArguments(t *testing.T) {
 		`printf ok --prefix=$FOO/x`,
 		`echo ${FOO:-nobody}`,
 		`sh -c 'printf ok'`,
+		`timeout 300 make test`,
+		`env CI=1 go test ./...`,
+		`xargs -n1 echo ok`,
+		`{ echo $USER; }`,
+		`! echo $USER`,
+		`if true; then echo $USER; fi`,
+		"echo ok\nprintf $FOO",
 	}
 	for _, cmd := range benign {
 		t.Run(cmd, func(t *testing.T) {
@@ -87,9 +101,12 @@ func TestCheckAllowsVariableArguments(t *testing.T) {
 	}
 }
 
-// TestCheckVariableCommandWordMessage pins the fragment the refusal quotes and
-// the remedy it names: the plain spelling, or --sandbox for a command word the
-// gate cannot read.
+func TestCheckRefusesGlobWordAfterNewline(t *testing.T) {
+	wantRefusal(t, "echo ok\nr? -rf x", "verify-destructive",
+		"refusing verifyCmd: matched 'r?' (glob metacharacters in command position expand "+
+			"into a hidden tool word — write the tool word plainly)")
+}
+
 func TestCheckVariableCommandWordMessage(t *testing.T) {
 	ref := verifycore.Check(`E=curl; $E -o ./f http://host/x`)
 	if ref == nil {

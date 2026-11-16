@@ -1408,9 +1408,14 @@ Fix: fix the command or the evidence named above, then re-run `verify`.
 
 Cause: `verifyCmd` invokes a command word the gate cannot read — a plain
 variable (`E=curl; $E -o ./f http://host/x`), the braced (`${E}`) or quoted
-(`"$E"`) spelling, an `export`, an assignment prefix, or a loop variable.
-The value may come from the command's own environment, so the gate refuses
-the shape instead of guessing what the variable holds.
+(`"$E"`) spelling, an `export`, an assignment prefix, a loop variable, or
+the same spelling on its own line or behind a wrapper (`env -u HOME $E`,
+`timeout 5s $E`, `xargs -I {} $E`). The value may come from the command's
+own environment, so the gate refuses the shape instead of guessing what the
+variable holds. A wrapper's own option grammar decides which later word bash
+runs, so after `env`/`timeout`/`xargs`/`nice`/`command` any variable in that
+command refuses: `timeout 300 make test` stays clean, `timeout 300 make test
+$TARGET` does not.
 
 The gate is a tripwire, not a boundary. A variable holding a whole command
 line (`sh -c "$V"`, a file written and then run) is a shape it has not
@@ -1418,7 +1423,7 @@ learned. For a boundary, run the step under `verify --sandbox`.
 
 Fix: write the tool word plainly (`E=curl; $E -o ./f http://host/x` becomes
 `curl -o ./f http://host/x`, or the test runner directly) and keep variables
-for arguments, then re-run.
+for arguments of a command written plainly, then re-run.
 
 ## `verify-networked`
 

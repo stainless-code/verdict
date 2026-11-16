@@ -3158,7 +3158,10 @@ replacement.
 The static gate is a tripwire, not a boundary. It matches the spellings it
 knows, on one command string at a time, and a shape it has not learned
 executes. It does not resolve variables, so it refuses a command word it
-cannot read rather than guessing what the variable holds. The boundary is
+cannot read rather than guessing what the variable holds — including on a
+later line of a multi-line `verifyCmd`, and behind a wrapper (`env`,
+`timeout`, `xargs`, `nice`, `command`) whose own option grammar decides
+which word runs. The boundary is
 the enforced sandbox below: `verify --sandbox`
 runs the command under `bubblewrap` on Linux (the full mount and namespace
 shape) and under `sandbox-exec` on macOS (no network). A host that can

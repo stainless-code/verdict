@@ -55,7 +55,7 @@ func checkCommandPosition(g *gateText) *core.RefusalError {
 }
 
 func checkGlobFragment(g *gateText) *core.RefusalError {
-	segw := segWords(g.bare)
+	segw := segWords(g.seg)
 	if !hasGlobWord(segw) {
 		return nil
 	}
@@ -95,18 +95,10 @@ func isBareBracket(w string) bool {
 	return w == "[" || w == "[[" || w == "{"
 }
 
-func segWords(bare string) []string {
-	parts := strings.Split(bare, ";")
-	var segs []string
-	for _, p := range parts {
-		segs = append(segs, strings.Split(p, "|")...)
-	}
-	var amp []string
-	for _, s := range segs {
-		amp = append(amp, strings.Split(s, "&")...)
-	}
-	out := make([]string, 0, len(amp))
-	for _, seg := range amp {
+func segWords(text string) []string {
+	segs := segments(text)
+	out := make([]string, 0, len(segs))
+	for _, seg := range segs {
 		if m := reSegWord.FindStringSubmatch(seg); m != nil {
 			out = append(out, m[segWordIdx])
 			continue

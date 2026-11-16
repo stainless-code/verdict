@@ -75,6 +75,12 @@ F-R42	verify-indirection	strict	export E=curl; $E -o ./f http://127.0.0.1:9/x
 F-R43	verify-indirection	strict	A=curl B=1; $A -o ./f http://127.0.0.1:9/x
 F-R44	verify-indirection	strict	for E in curl; do $E -o ./f http://127.0.0.1:9/x; done
 F-R45	verify-indirection	strict	A=cu B=rl; $A$B -o ./f http://127.0.0.1:9/x
+F-R46	verify-indirection	strict	env -u HOME $E -rf ./fz-target
+F-R47	verify-indirection	strict	timeout 5s $E -rf ./fz-target
+F-R48	verify-indirection	strict	timeout -s KILL 5 $E -rf ./fz-target
+F-R49	verify-indirection	strict	xargs -I {} $E -rf ./fz-target
+F-R50	verify-indirection	strict	command $E -rf ./fz-target
+F-R51	verify-indirection	strict	nice -n 5 $E -rf ./fz-target
 F-X01	verify-networked	strict	wget --remote-name http://127.0.0.1:9/f
 F-X02	verify-networked	strict	curl -K /tmp/verify-fuzz-curlcfg http://127.0.0.1:9/
 F-X03	verify-networked	strict	wget -i /tmp/verify-fuzz-wgeturls http://127.0.0.1:9/f
@@ -127,3 +133,8 @@ F-P30	PASS	strict	printf '%s' $FOO
 F-P31	PASS	strict	$BIN/fz-tool --version
 F-P32	PASS	strict	printf ok --prefix=$FOO/x
 F-P33	PASS	strict	X=$(date); printf hi
+F-P34	PASS	strict	timeout 300 printf ok
+F-P35	PASS	strict	env CI=1 printf ok
+F-P36	PASS	strict	xargs -n1 echo ok
+F-P37	PASS	strict	{ echo $USER; }
+F-P38	PASS	strict	if true; then echo $USER; fi
