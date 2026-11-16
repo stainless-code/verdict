@@ -3027,8 +3027,7 @@ and remove it when done — the working tree stays untouched throughout.
 ### Fix loops (bounded, verify-gated)
 
 `fix owner/repo local-<name> [--sig <s> | --all [--min-severity <s>]
-[--verify-cmd <cmd>] [--paths <glob>]...] [--json]` runs one bounded pass over a local bundle: it
-picks the top open inline sig (severity `critical` above
+[--verify-cmd <cmd>] [--paths <glob>]...] [--json]` runs one bounded pass over a local bundle: itpicks the top open inline sig (severity `critical` above
 `important` above `informational`, then path) or the `--sig` prefix (must be open
 and inline; non-open, section, and unknown sigs refuse), prints the finding
 (plus its stored `brief` block when one is present and the full `kb.txt` context
@@ -3045,7 +3044,8 @@ hard-coded, not configurable: max 3 passes per sig (the 4th refuses with
 grandfathered (only files changed since the first pass can trip the audit).
 `fix` never flips status or
 writes `findings.json` (credit still flows through the normal `record` flips);
-PR/provider bundles refuse with `not-local`. Cost note: every pass is another
+PR/provider bundles refuse with `not-local` unless the run is `--selected`. Cost
+note: every pass is another
 agent run over the bundle — loops multiply agent spend, so set
 `REVIEW_BUDGET_USD` (or the typed `budget_usd` default) before looping a large backlog. Ceilings
 constrain a cooperating driver, not an adversary (deleting `fix.json` restarts
@@ -3074,6 +3074,26 @@ message instead of claiming the store is empty. It is the batch's scope unit
 because a finding records no lens — a recipe declares lenses and model hints, not
 paths, so `--recipe` cannot select sigs until `record` stores per-finding lens
 provenance.
+
+`--selected` is the same batch over the sigs a human endorsed: it reads the
+`selected.json` a GitHub `fetch` wrote beside the bundle (see “Reaction-scoped
+selection” in the fetch section) and takes one pass on each of those sigs only,
+printing the selection path and sig count it read so the output names its scope
+(`data.selection` carries the path). Nothing else changes: the same 3-per-sig and
+one-file ceilings apply per sig, `data.batch` names each sig's outcome, and a
+`--verify-cmd` (or `patch.json`'s `verifyCmd`) still proves the passes.
+
+It differs from `--all` in three ways that matter. Its default floor is `off`, so
+a 👍 on an informational finding still buys a pass — the reaction is the
+endorsement a severity floor would otherwise re-judge — and `--min-severity`
+narrows it again. It refuses instead of printing an empty batch: no
+`selected.json` is `missing-selection` (re-run the bundle's fetch; hosts other
+than GitHub never write one) and a selection whose sigs are no longer open inline
+is `no-selected-findings` (re-fetch for current reactions, or triage them). And
+it is the one batch that runs on a PR bundle — `.verdict/state/<pr>` as readily
+as `local-<name>` — because that is where `selected.json` comes from: the
+instructions then say to push the fix, re-fetch, and land with `post`, since a PR
+bundle has no `record` path.
 
 Each pass also writes `fix.patch` beside the ledger: the worktree's unified
 diff against `HEAD`, captured before the pass consumes its budget, so the change
