@@ -3147,7 +3147,8 @@ step — not the whole review — inside a throwaway sandbox so a malicious
 command finds no credentials and no route out. The `verify` verb already
 refuses hostile shapes before spawning anything — destructive
 (`verify-destructive`), networked (`verify-networked`), credential-reading
-(`verify-credential-read`), repo-escaping (`verify-repo-escape`) — each
+(`verify-credential-read`), repo-escaping (`verify-repo-escape`), and a
+command word built from a variable (`verify-indirection`) — each
 typed refusal quoting the matched fragment with a `try:` rewrite hint, and
 the refusal leaves `patch.json` and `.verify.out` untouched. The sandbox
 below is the second layer for what the static gate cannot see (a plain
@@ -3156,7 +3157,9 @@ replacement.
 
 The static gate is a tripwire, not a boundary. It matches the spellings it
 knows, on one command string at a time, and a shape it has not learned
-executes. The boundary is the enforced sandbox below: `verify --sandbox`
+executes. It does not resolve variables, so it refuses a command word it
+cannot read rather than guessing what the variable holds. The boundary is
+the enforced sandbox below: `verify --sandbox`
 runs the command under `bubblewrap` on Linux (the full mount and namespace
 shape) and under `sandbox-exec` on macOS (no network). A host that can
 enforce neither refuses `sandbox-unavailable` and runs nothing, so
@@ -3283,7 +3286,8 @@ through any of these reopens the mandate discussion.
   `GEM_HOME`, `CARGO_HOME`, …) including innocent-command hijack;
 - env-directed fetch destinations (index/registry envs; registry _names_ have no URL
   to key on);
-- dynamic construction (`$'…'`-hex, base64, variable indirection, alias-`!`);
+- dynamic construction (`$'…'`-hex, base64, alias-`!`, a variable holding a whole
+  command line — a bare variable _command word_ refuses as `verify-indirection`);
 - interpreter-mediated execution (`python|perl|ruby|node|php …`, `curl | python3`);
 - fetch-then-exec splits across the `/tmp` carve-out (I3);
 - TOCTOU/meaning-change (symlink swaps, concurrent-run shared state);

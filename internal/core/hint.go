@@ -205,6 +205,8 @@ var hintRules = []HintRule{
 	{codes: []string{"verify-credential-read"}, hint: "try: rewrite verifyCmd without reading credential paths " +
 		"or piping env into the network, then re-run"},
 	{codes: []string{"verify-repo-escape"}, hint: "try: rewrite verifyCmd with repo-relative paths (/tmp for scratch), then re-run"},
+	{codes: []string{"verify-indirection"}, hint: "try: write the tool word plainly instead of " +
+		"$VAR, or run the step under verify --sandbox, then re-run"},
 	{codes: []string{"sandbox-unavailable"}, hint: "try: on Linux install bubblewrap and allow unprivileged " +
 		"user namespaces; on macOS sandbox-exec ships with the OS — or re-run without --sandbox on a command you trust"},
 	{codes: []string{"agent-missing"}, hint: "try: install the agent CLI (or put it on PATH), or re-run with " +

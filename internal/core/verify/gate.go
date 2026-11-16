@@ -15,33 +15,28 @@ import (
 // Check runs the pre-exec allowlist gate over the raw verifyCmd, returning
 // the typed refusal on the first hostile match and nil when clean. The arm
 // order is fixed: mid-word substitution, command-position
-// substitution, glob/brace fragmentation, then destructive, credential, and
-// networked classes, then repo escape. The normalized texts are built once
-// and shared by every section.
+// substitution, an unreadable command word, glob/brace fragmentation, then
+// destructive, credential, and networked classes, then repo escape. The
+// normalized texts are built once and shared by every section.
 func Check(raw string) *core.RefusalError {
 	g := normalize(raw)
-	if ref := checkSentinel(g); ref != nil {
-		return ref
-	}
-	if ref := checkCommandPosition(g); ref != nil {
-		return ref
-	}
-	if ref := checkGlobFragment(g); ref != nil {
-		return ref
-	}
-	if ref := checkDestructive(g); ref != nil {
-		return ref
-	}
-	if ref := checkCredential(g); ref != nil {
-		return ref
-	}
-	if ref := checkNetworked(g); ref != nil {
-		return ref
-	}
-	if ref := checkRepoEscape(g); ref != nil {
-		return ref
+	for _, arm := range gateArms {
+		if ref := arm(g); ref != nil {
+			return ref
+		}
 	}
 	return nil
+}
+
+var gateArms = []func(*gateText) *core.RefusalError{
+	checkSentinel,
+	checkCommandPosition,
+	checkIndirection,
+	checkGlobFragment,
+	checkDestructive,
+	checkCredential,
+	checkNetworked,
+	checkRepoEscape,
 }
 
 const (

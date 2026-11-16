@@ -30,11 +30,22 @@ before reporting: many findings are already fixed on the latest tag.
 
 In scope (highest priority first):
 
-- The `verify` gate: `verify` executes the agent's claimed proof
-  (`verifyCmd` via `bash -c`, 300s watchdog, tail recorded into the
-  patch record). Its pre-exec refusals (destructive, networked,
-  credential-reading, repo-escaping commands) are a security boundary;
-  any bypass is a vulnerability.
+- `verify --sandbox`, the enforced boundary: mount and namespace isolation
+  under `bubblewrap` on Linux, network denial under `sandbox-exec` on macOS,
+  the credential-path hiding, and the `sandbox-unavailable` refusal that never
+  degrades to an unwrapped run. An escape from that sandbox, or a run that
+  records `"sandboxed": true` without the enforcement, is a vulnerability.
+- The `verify` gate's own contract: `verify` executes the agent's claimed
+  proof (`verifyCmd` via `bash -c`, 300s watchdog, tail recorded into the
+  patch record). The pre-exec refusals are a **tripwire, not a boundary**: the
+  gate refuses the spellings it knows, and a `verifyCmd` spelling it does not
+  know executes inside whatever boundary you gave it — that ceiling is
+  documented in the [manual](docs/manual.md#hostile-pr-sandbox-recipe) and a
+  hit on it is a gate gap to report and arm, not a vulnerability. What is in
+  scope is the tripwire's own promise: a command that runs after the gate
+  refused it, a spawn that happens before the refusal, a refusal that names
+  the wrong reason, or a spelling the docs and the fuzz corpus claim refuses
+  while it executes.
 - The installers (`install.sh`, `install.ps1`): archive checksum, cosign
   verification pinned to the release's published build commit and to a
   push-triggered run, atomic replace, no execution before verification. A
@@ -59,7 +70,10 @@ In scope (highest priority first):
   head bytes steer a review without the recorded
   `--allow-head-controls` opt-out is a vulnerability.
 
-Out of scope: documentation typos (open a regular issue), missing
+Out of scope: a `verifyCmd` spelling the string gate does not know (the
+documented tripwire ceiling above — send it, it gets armed and added to
+`evals/fixtures/verify-fuzz-corpus.tsv`), documentation typos (open a regular
+issue), missing
 hardening wishes with no exploit path (open a feature request), and
 vulnerabilities in `apps/docs` build-time dependencies that never
 reach the published static site (still reportable, assessed by

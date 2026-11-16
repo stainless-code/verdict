@@ -7,7 +7,8 @@
 #
 #   id      stable case id (F-R* refuse, F-X* expected-fail, F-P* pass).
 #   expect  what the gate must do: one of verify-destructive,
-#           verify-networked, verify-credential-read, verify-repo-escape
+#           verify-networked, verify-credential-read, verify-repo-escape,
+#           verify-indirection
 #           (refuse with exactly this typed code), or PASS (execute).
 #           For xfail rows expect is aspirational: the code the gate SHOULD
 #           refuse with once the gap is closed.
@@ -66,6 +67,14 @@ F-R34	verify-destructive	strict	tar -Itouch-fz -cf /tmp/verify-fuzz-attached.tar
 F-R35	verify-destructive	strict	tar -cIf touch-fz /tmp/verify-fuzz-cluster.tar fz-notes.txt
 F-R36	verify-networked	strict	wget -i/tmp/verify-fuzz-wgeturls http://127.0.0.1:9/f
 F-R37	verify-networked	strict	wget -qi /tmp/verify-fuzz-wgeturls http://127.0.0.1:9/f
+F-R38	verify-indirection	strict	E=rm; $E -rf ./fz-target
+F-R39	verify-indirection	strict	E=curl; $E -o ./f http://127.0.0.1:9/x
+F-R40	verify-indirection	strict	E=curl; ${E} -o ./f http://127.0.0.1:9/x
+F-R41	verify-indirection	strict	E=curl; "$E" -o ./f http://127.0.0.1:9/x
+F-R42	verify-indirection	strict	export E=curl; $E -o ./f http://127.0.0.1:9/x
+F-R43	verify-indirection	strict	A=curl B=1; $A -o ./f http://127.0.0.1:9/x
+F-R44	verify-indirection	strict	for E in curl; do $E -o ./f http://127.0.0.1:9/x; done
+F-R45	verify-indirection	strict	A=cu B=rl; $A$B -o ./f http://127.0.0.1:9/x
 F-X01	verify-networked	strict	wget --remote-name http://127.0.0.1:9/f
 F-X02	verify-networked	strict	curl -K /tmp/verify-fuzz-curlcfg http://127.0.0.1:9/
 F-X03	verify-networked	strict	wget -i /tmp/verify-fuzz-wgeturls http://127.0.0.1:9/f
@@ -114,3 +123,7 @@ F-P26	PASS	strict	git --exec-path
 F-P27	PASS	strict	tar -czf /tmp/verify-fuzz-ok.tar fz-notes.txt
 F-P28	PASS	strict	tar -cf /tmp/verify-fuzz-plain.tar fz-notes.txt
 F-P29	PASS	strict	wget -q --version
+F-P30	PASS	strict	printf '%s' $FOO
+F-P31	PASS	strict	$BIN/fz-tool --version
+F-P32	PASS	strict	printf ok --prefix=$FOO/x
+F-P33	PASS	strict	X=$(date); printf hi
