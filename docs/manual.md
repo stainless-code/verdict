@@ -1084,8 +1084,9 @@ is neither a string nor `null` — an array, number, or object — refuses
 Coverage is computed from `hunks.tsv`, the snapshot `fetch` already writes —
 never from a second diff parse and never from `toc.txt` line counts. Paths the
 shared role heuristic classifies as generated or vendored are exempt
-automatically; no sentinel is required. `percent` is `null`, never `0`, when no
-changed line was measured.
+automatically — `*.pb.go`, `*.gen.*`, `zz_generated.*`, lockfiles, minified
+assets, and `dist/`, `build/`, or `vendor/` trees — so no sentinel is required.
+`percent` is `null`, never `0`, when no changed line was measured.
 
 The default posture is a warning plus one machine-built body line on a partial
 attestation. A partial one warns once and adds one machine-built body line;
