@@ -193,9 +193,6 @@ func TestVerifyRedaction(t *testing.T) {
 	}
 }
 
-// TestVerifyOutputOwnerOnly pins .verify.out's permission: the stream is raw,
-// so a command that prints a credential leaves the value in it, and the file is
-// the operator's to read and nobody else's, the way .run.out is.
 func TestVerifyOutputOwnerOnly(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("NTFS carries no POSIX mode bits")
