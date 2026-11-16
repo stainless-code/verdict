@@ -48,7 +48,7 @@ runs:
         [[ -n "$TOKEN" ]] || exit 2
     - name: Install verdict
       id: install
-      uses: stainless-code/verdict/setup-verdict@471d2985b29060caa90036fefac565e97a12bb2c # action as introduced; re-pin to a release commit
+      uses: stainless-code/verdict/setup-verdict@e4fc7112b5530dc1a2c77fe6fc8fd27569242b4c # action as introduced; re-pin to a release commit
       with:
         version: ${{ inputs.version }}
 
