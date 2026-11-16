@@ -10,27 +10,16 @@ import (
 	"testing"
 )
 
-// findingsCap matches prose or manifest data that bounds how many findings a
-// lens may return. The dispatch bounds scope by files; capping the return count
-// throws away evidence a lens already paid for, and aggregation is the place
-// that decides what survives.
 var findingsCap = regexp.MustCompile(`(?i)at most \d+ findings|no more than \d+ findings|"max_findings"\s*:\s*\d`)
 
-// builtinLensIDs is the shipped lens roster in manifest order.
 var builtinLensIDs = []string{"api-contract", "perf", "test"}
 
-// lensRow is one manifest lens row as the note header renders it: the id and
-// the dispatch caps it declares.
 type lensRow struct {
 	ID          string `json:"id"`
 	MaxFiles    int    `json:"max_files"`
 	MaxFindings int    `json:"max_findings"`
 }
 
-// TestBuiltinLensManifestCapsFilesNotFindings holds the shipped pack manifest
-// to the dispatch contract: every built-in lens keeps the ~12-file scope cap
-// and declares no findings cap, so the note header a lens reads carries only
-// the file cap.
 func TestBuiltinLensManifestCapsFilesNotFindings(t *testing.T) {
 	t.Parallel()
 	raw, err := os.ReadFile(filepath.Join(builtinPackDir(t), "pack.json"))
@@ -49,8 +38,6 @@ func TestBuiltinLensManifestCapsFilesNotFindings(t *testing.T) {
 	}
 }
 
-// TestBuiltinLensBodiesCapFilesNotFindings holds each shipped lens body to the
-// same contract.
 func TestBuiltinLensBodiesCapFilesNotFindings(t *testing.T) {
 	t.Parallel()
 	for _, id := range builtinLensIDs {
@@ -67,9 +54,6 @@ func TestBuiltinLensBodiesCapFilesNotFindings(t *testing.T) {
 	}
 }
 
-// TestReviewerDispatchLeadsWithDomain pins the shared dispatch template: the
-// lens is named by the domain it owns, before its hypothesis label and
-// question, and the dispatch caps files only.
 func TestReviewerDispatchLeadsWithDomain(t *testing.T) {
 	t.Parallel()
 	prompt := string(readSkillFile(t, "prompts/reviewer-subagent.md"))
@@ -88,7 +72,6 @@ func TestReviewerDispatchLeadsWithDomain(t *testing.T) {
 	}
 }
 
-// builtinPackDir names the shipped built-in pack.
 func builtinPackDir(t *testing.T) string {
 	t.Helper()
 	return filepath.Join(moduleRoot(t), "skills", "verdict", "packs", "builtin")
