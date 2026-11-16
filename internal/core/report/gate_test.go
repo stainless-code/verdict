@@ -94,6 +94,8 @@ func TestRunReportCheckTierGate(t *testing.T) {
 // TestRunReportGatePassNextNamesMerge pins item 6: a passing --check gate
 // names the merge as the next step instead of sending the reviewer to open
 // threads that sit below the gate's floor. A failing gate keeps the old line.
+//
+//nolint:revive // the pass and fail legs assert next and footer side by side
 func TestRunReportGatePassNextNamesMerge(t *testing.T) {
 	run := func(t *testing.T, findings, check string) *core.ReportResponse {
 		t.Helper()

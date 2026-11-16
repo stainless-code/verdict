@@ -246,6 +246,8 @@ func attestation(files map[string][]Range, claims []claim) map[string][]Range {
 
 // parseClaims reads coverage[] and reports whether the key was present. Every
 // malformed entry warns; none of them silently attests a file.
+//
+//nolint:revive // one pass reports every malformed entry without splitting the warning tally
 func parseClaims(review *jq.Obj, warns *[]string) ([]claim, bool, []core.Problem) {
 	if review == nil {
 		return nil, false, nil
