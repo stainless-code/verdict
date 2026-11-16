@@ -57,6 +57,8 @@ var variableCommandWords = []struct {
 	{"process substitution", `E=echo; cat <($E pwned)`},
 	{"shell inline command", `E=echo; sh -c "$E pwned"`},
 	{"shell inline command clustered", `E=echo; bash -ec "$E pwned"`},
+	{"shell inline command clustered suffix", `E=echo; sh -cu "$E pwned"`},
+	{"quoted paren in substitution", `E=echo; echo $($E "(")`},
 }
 
 func TestVerifyRefusesVariableCommandWord(t *testing.T) {
@@ -95,6 +97,8 @@ func TestCheckAllowsVariableArguments(t *testing.T) {
 		`cat </dev/null`,
 		`printf ok < fz-notes.txt`,
 		`echo $(date)`,
+		`echo $(printf "(%s)" x)`,
+		`echo $(( $X + 1 ))`,
 		"echo `date`",
 		`diff <(sort a) <(sort b)`,
 		`builtin echo ok`,

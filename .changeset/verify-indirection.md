@@ -24,14 +24,15 @@ which later word bash runs, so after `builtin`/`command`/`env`/`exec`/`nice`/
 `nohup`/`stdbuf`/`time`/`timeout`/`xargs` any variable in that command refuses:
 that is the deliberate cost of not modelling each wrapper's flags, so
 `timeout 300 make test` stays clean while `timeout 300 make test $TARGET`
-refuses. A shell carrying an inline command (`sh -c "$E pwned"`, `bash -ec`)
+refuses. A shell carrying an inline command (`sh -c "$E pwned"`, `bash -ec`, `sh -cu`)
 counts the same way; `eval` and `sudo` refuse earlier as `verify-destructive`.
 The segmentation the gate reads now also splits at newlines for every arm that
 reads a command word, so a glob or tool word on a later line (`echo ok\nr? -rf
 x`) refuses instead of joining the first command's segment. Leading
 redirections (`</dev/null`, `2>&1`, `>> f`) are skipped to reach the command
 word, and a substitution body (`$($E pwned)`, backticks, `cat <($E pwned)`) is
-judged as its own command position.
+judged as its own command position, read quote-aware (`$($E "(")` closes where
+bash closes it) with `$((…))` arithmetic left alone.
 
 `SECURITY.md` now says the same thing
 the README and the manual say: the refusals are a tripwire, `verify --sandbox`

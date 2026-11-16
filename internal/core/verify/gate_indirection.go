@@ -181,23 +181,64 @@ func parenAt(raw string, i int) bool {
 
 func parenBody(raw string, start int) (string, int, bool) {
 	depth := 1
-	for i := start; i < len(raw); i++ {
-		switch raw[i] {
-		case '(':
-			depth++
-		case ')':
-			depth--
-			if depth == 0 {
-				return raw[start:i], i, true
-			}
+	for i := start; i < len(raw); {
+		next, delta, ok := parenStep(raw, i)
+		if !ok {
+			return "", 0, false
+		}
+		depth += delta
+		i = next
+		if depth == 0 {
+			return raw[start : next-1], next - 1, true
 		}
 	}
 	return "", 0, false
+}
+
+func parenStep(raw string, i int) (int, int, bool) {
+	skip, ok := skipQuoted(raw, i)
+	if !ok {
+		return 0, 0, false
+	}
+	if skip > i {
+		return skip + 1, 0, true
+	}
+	switch raw[i] {
+	case '(':
+		return i + 1, 1, true
+	case ')':
+		return i + 1, -1, true
+	}
+	return i + 1, 0, true
+}
+
+func skipQuoted(raw string, i int) (int, bool) {
+	switch raw[i] {
+	case '\\':
+		return i + 1, true
+	case '\'', '"':
+		return quotedEnd(raw, i)
+	}
+	return i, true
+}
+
+func quotedEnd(raw string, i int) (int, bool) {
+	quote := raw[i]
+	for j := i + 1; j < len(raw); j++ {
+		if raw[j] == '\\' && quote == '"' {
+			j++
+			continue
+		}
+		if raw[j] == quote {
+			return j, true
+		}
+	}
+	return i, false
 }
 
 var (
 	reAssignPrefix  = regexp.MustCompile(`^[A-Za-z0-9_]+=`)
 	rePureExpansion = regexp.MustCompile(`^(\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$[A-Za-z_][A-Za-z0-9_]*)+$`)
 	reRedirect      = regexp.MustCompile(`^[0-9]*(<<<|<<|<>|>>|>\||>&|<&|&>>|&>|<|>)`)
-	reInlineCommand = regexp.MustCompile(`^-[a-z]*c$`)
+	reInlineCommand = regexp.MustCompile(`^-[a-z]*c[a-z]*$`)
 )

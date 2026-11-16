@@ -258,6 +258,8 @@ F-R60	verify-indirection
 F-R61	verify-indirection
 F-R62	verify-destructive
 F-R63	verify-destructive
+F-R64	verify-indirection
+F-R65	verify-indirection
 F-X01	verify-networked
 F-X02	verify-networked
 F-X03	verify-networked
@@ -321,6 +323,8 @@ F-P41	CLEAN
 F-P42	CLEAN
 F-P43	CLEAN
 F-P44	CLEAN
+F-P45	CLEAN
+F-P46	CLEAN
 G000	CLEAN
 G001	CLEAN
 G002	CLEAN
