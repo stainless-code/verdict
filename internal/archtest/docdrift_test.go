@@ -92,9 +92,62 @@ func hashedPromptFiles(t *testing.T, root string) []string {
 // matches a sentence however the paragraph is hard-wrapped.
 func flattenDoc(t *testing.T, path string) string {
 	t.Helper()
+	return strings.Join(strings.Fields(readDoc(t, path)), " ")
+}
+
+// readDoc reads one documentation file.
+func readDoc(t *testing.T, path string) string {
+	t.Helper()
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
 	}
-	return strings.Join(strings.Fields(string(raw)), " ")
+	return string(raw)
+}
+
+// TestRoadmapListsEveryShippedVerb holds the docs-site roadmap to the CLI
+// synopsis: its "Shipped today" table is the page's claim about what ships, so
+// a verb the binary offers and the table omits is a stale page, and a verb the
+// table names that the synopsis dropped is a stale row.
+func TestRoadmapListsEveryShippedVerb(t *testing.T) {
+	t.Parallel()
+	root := moduleRoot(t)
+	documented := roadmapCommands(t, readDoc(t, filepath.Join(root, filepath.FromSlash(roadmapPage))))
+	slices.Sort(documented)
+	offered := cliVerbs(t, root)
+	slices.Sort(offered)
+	if !slices.Equal(documented, offered) {
+		t.Errorf("the roadmap's Shipped today table lists %v; the CLI synopsis offers %v", documented, offered)
+	}
+}
+
+// roadmapPage is the docs-site page whose table claims what ships today.
+const roadmapPage = "apps/docs/content/04-roadmap/index.mdx"
+
+// backtickedVerb matches one command name a table cell names in backticks.
+var backtickedVerb = regexp.MustCompile("`([a-z][a-z-]*)`")
+
+// roadmapCommands reads the commands the roadmap's "Shipped today" table lists
+// in its Commands column.
+func roadmapCommands(t *testing.T, page string) []string {
+	t.Helper()
+	start := strings.Index(page, "\n## Shipped today\n")
+	end := strings.Index(page, "\n## Next\n")
+	if start < 0 || end < start {
+		t.Fatalf("%s has no \"## Shipped today\" section before \"## Next\"", roadmapPage)
+	}
+	var commands []string
+	for _, line := range strings.Split(page[start:end], "\n") {
+		columns := strings.Split(line, "|")
+		if !strings.HasPrefix(line, "|") || len(columns) < 4 {
+			continue
+		}
+		for _, match := range backtickedVerb.FindAllStringSubmatch(columns[2], -1) {
+			commands = append(commands, match[1])
+		}
+	}
+	if len(commands) == 0 {
+		t.Fatalf("%s: the Shipped today table lists no commands", roadmapPage)
+	}
+	return commands
 }
