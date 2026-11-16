@@ -246,8 +246,6 @@ func attestation(files map[string][]Range, claims []claim) map[string][]Range {
 
 // parseClaims reads coverage[] and reports whether the key was present. Every
 // malformed entry warns; none of them silently attests a file.
-//
-//nolint:revive // one pass reports every malformed entry without splitting the warning tally
 func parseClaims(review *jq.Obj, warns *[]string) ([]claim, bool, []core.Problem) {
 	if review == nil {
 		return nil, false, nil
@@ -261,6 +259,11 @@ func parseClaims(review *jq.Obj, warns *[]string) ([]claim, bool, []core.Problem
 		*warns = append(*warns, msgNotArray)
 		return nil, true, nil
 	}
+	out, problems := collectClaims(items, warns)
+	return out, true, problems
+}
+
+func collectClaims(items []any, warns *[]string) ([]claim, []core.Problem) {
 	out := make([]claim, 0, len(items))
 	var problems []core.Problem
 	for i, item := range items {
@@ -272,7 +275,7 @@ func parseClaims(review *jq.Obj, warns *[]string) ([]claim, bool, []core.Problem
 			out = append(out, c)
 		}
 	}
-	return out, true, problems
+	return out, problems
 }
 
 // claimAt reads one coverage[] entry, warning and reporting false for an entry
@@ -315,8 +318,6 @@ func claimRanges(obj *jq.Obj, file string, i int, warns *[]string) ([]Range, boo
 	}
 }
 
-// rangesWrongType is the problem record's checker reports for a ranges value
-// that is neither a string nor null: one shape, one refusal on every verb.
 func rangesWrongType(i int) *core.Problem {
 	return &core.Problem{
 		Path:    fmt.Sprintf("$.coverage[%d].ranges", i),
@@ -335,9 +336,10 @@ func fieldOf(o *jq.Obj, key string) any {
 
 func mustField(o *jq.Obj, key string) any { return fieldOf(o, key) }
 
-// rangeField reads ranges as a trimmed string. A key present as null stays a
-// malformed attestation warning; any other non-string refuses with record's
-// bad-review-input problem, so an array never measures as a silent 0%.
+// rangeField reads ranges as a trimmed string. A key that is present but not a
+// string — `null` included — is a malformed attestation, not a whole-file
+// claim: attesting more than was written is the one error this package must
+// never make, and a claim only widens by saying `all` or omitting the key.
 func rangeField(o *jq.Obj) (value string, present, wrongType bool) {
 	raw, ok := o.Get(FieldRanges)
 	if !ok {
