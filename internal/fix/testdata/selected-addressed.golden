@@ -1,0 +1,20 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fix",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "no-selected-findings",
+    "message": "fix --selected: .verdict/state/local-sold/selected.json names 1 reacted sig(s) and none is open inline in the store — re-fetch the PR for current reactions, or triage them\ntry: re-fetch the PR for current reactions, widen --min-severity/--paths, or triage the selected sigs, then re-run"
+  }
+}
+--- stderr ---
+» readiness: .verdict/state/local-sold — findings 0 open (0 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
+re-enter: verdict fix acme/app local-sold --selected --verify-cmd 'go test ./...' --json
+--- files ---

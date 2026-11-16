@@ -262,7 +262,10 @@ var publishedSemantics = map[string]string{
 	// validationData joins the envelope description's published data-profile
 	// list beside postData. No existing property, required key, enum, or type
 	// changed.
-	"envelope.schema.json": "312897e9b6bdf80aef54aeffa1d5397aff3fa80c9a62ff9c3769e0ca9a10b409",
+	// Reaction-scoped fix: additive optional fixData.selection (the
+	// fetch-written selected.json a --selected batch reads). No existing
+	// property, required key, enum, or type changed.
+	"envelope.schema.json": "27103488dcbcb9966b36d5f4f78241832b63f304d4710cb7d745afbbc20cc255",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

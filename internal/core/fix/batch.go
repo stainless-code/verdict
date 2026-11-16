@@ -40,8 +40,18 @@ const batchInstructionsFmt = "instructions: patch each anchor file (%s), run the
 	"[{sig, verdict, resultHead, verifyCmd}] with one claim per sig, verdict " +
 	"VERIFIED and resultHead matching HEAD (this script never runs it — the " +
 	"resultHead==HEAD match in the record/post verification gate is the " +
-	"freshness proof); land it with record %s %s; re-run fix %s %s --all for the " +
+	"freshness proof); land it with record %s %s; re-run fix %s %s %s for the " +
 	"next pass\n"
+
+// batchInstructionsPRFmt is the same block for a PR bundle, whose landing path
+// is a push and a re-fetch followed by post — record refuses a PR bundle.
+const batchInstructionsPRFmt = "instructions: patch each anchor file (%s), run the " +
+	"verify command yourself (%s), then write %s/verification.json " +
+	"[{sig, verdict, resultHead, verifyCmd}] with one claim per sig, verdict " +
+	"VERIFIED and resultHead matching HEAD (this script never runs it — the " +
+	"resultHead==HEAD match in the record/post verification gate is the " +
+	"freshness proof); push the fix, re-fetch with fetch %s %s, then land it with " +
+	"post %s %s; re-run fix %s %s %s for the next pass\n"
 
 type batchRow struct { //nolint:govet // the row reads in ledger order
 	pick     readcommon.Ranked
@@ -66,17 +76,13 @@ func (st *state) runBatch(
 	if ref != nil {
 		return ref
 	}
-	if fixOpenInline == 0 {
-		return st.completeRun(dir, ledgerPath, store, entries, fixOpen)
+	sel, ref := st.batchSelector(dir, floor)
+	if ref != nil {
+		return ref
 	}
-	picks := readcommon.Select(entries, &readcommon.Selector{
-		Status: readcommon.StatusOpen,
-		Kind:   readcommon.KindInline,
-		Floor:  floor,
-		Paths:  st.req.Paths,
-	})
+	picks := readcommon.Select(entries, sel)
 	if len(picks) == 0 {
-		return st.emptyBatch(dir, ledgerPath, store, entries, fixOpen, fixOpenInline, now)
+		return st.batchNothing(dir, ledgerPath, store, entries, fixOpen, fixOpenInline, now)
 	}
 	verify, ref := st.batchEnv(ctx, dir)
 	if ref != nil {
@@ -107,7 +113,7 @@ func (st *state) validateFloor() *core.RefusalError {
 
 func (st *state) batchFloor() (string, *core.RefusalError) {
 	if st.req.MinSeverity == "" {
-		st.req.MinSeverity = defaultBatchFloor
+		st.req.MinSeverity = st.defaultBatchFloor()
 	}
 	if ref := st.validateFloor(); ref != nil {
 		return "", ref
@@ -115,10 +121,20 @@ func (st *state) batchFloor() (string, *core.RefusalError) {
 	return st.req.MinSeverity, nil
 }
 
+// defaultBatchFloor is the implicit floor of an unflagged batch. --all keeps
+// the important floor; --selected reads every reacted sig, because a human
+// reacting to a finding is the endorsement a floor would otherwise re-judge.
+func (st *state) defaultBatchFloor() string {
+	if st.req.Selected {
+		return floorOff
+	}
+	return defaultBatchFloor
+}
+
 func (st *state) batchEnv(ctx context.Context, dir string) (string, *core.RefusalError) {
 	verify := st.batchVerifyCmd(dir)
 	if verify == "" {
-		return "", st.refuse(codeNoVerifyCmd, fmt.Sprintf(msgBatchNoVerify, dir))
+		return "", st.refuse(codeNoVerifyCmd, st.batchMsg(fmt.Sprintf(msgBatchNoVerify, dir)))
 	}
 	patch, ref := st.writePatch(ctx, dir)
 	if ref != nil {
@@ -126,6 +142,26 @@ func (st *state) batchEnv(ctx context.Context, dir string) (string, *core.Refusa
 	}
 	st.patch = patch
 	return verify, nil
+}
+
+// batchNothing explains a batch that selected no sig: --all over an empty store
+// completes, --all over a floor that withheld everything names the scope, and
+// --selected refuses, because a selection that names no open finding is a stale
+// claim rather than an empty store.
+func (st *state) batchNothing(
+	dir, ledgerPath string,
+	store *ledgerDoc,
+	entries []any,
+	fixOpen, fixOpenInline int,
+	now string,
+) *core.RefusalError {
+	if st.req.Selected {
+		return st.noSelected()
+	}
+	if fixOpenInline == 0 {
+		return st.completeRun(dir, ledgerPath, store, entries, fixOpen)
+	}
+	return st.emptyBatch(dir, ledgerPath, store, entries, fixOpen, fixOpenInline, now)
 }
 
 func (st *state) batchPick(
@@ -177,6 +213,7 @@ func batchSeverity(entry any) string {
 
 func (st *state) printBatch(dir, ledgerPath string, rows []batchRow, verify string) int {
 	ready, anchors := batchReady(rows)
+	st.printSelection()
 	st.humanf("» ledger: %s — batch of %d selected%s, %d pass(es)\n",
 		ledgerPath, len(rows), scopeSuffix(st.req.Paths), ready)
 	for i := range rows {
@@ -186,13 +223,64 @@ func (st *state) printBatch(dir, ledgerPath string, rows []batchRow, verify stri
 		return ready
 	}
 	st.printKB(dir)
-	st.humanf(batchInstructionsFmt, joinAnchors(anchors), verify, dir,
-		st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr)
+	st.printBatchInstructions(dir, verify, joinAnchors(anchors))
 	st.humanRaw(gateMsg)
 	st.humanRaw(budgetMsg)
 	st.humanf("next: patch %s with verify %q, write verification.json, "+
-		"run record to land it, then re-run fix --all\n", joinAnchors(anchors), verify)
+		"run %s to land it, then re-run fix %s\n", joinAnchors(anchors), verify,
+		st.landVerb(), st.batchMode())
 	return ready
+}
+
+// printSelection names the reacted scope a --selected batch works from, so the
+// output says what narrowed the batch instead of looking like an --all run.
+func (st *state) printSelection() {
+	if st.selection == nil {
+		return
+	}
+	st.humanf("» selection: %s — %d reacted sig(s)\n", st.selection.path, len(st.selection.sigs))
+}
+
+// batchMode renders the flag that re-runs this batch.
+func (st *state) batchMode() string {
+	if st.req.Selected {
+		return "--selected"
+	}
+	return "--all"
+}
+
+// landVerb names the command that lands a pass in this bundle: a local bundle
+// records, a PR bundle posts (it has no record path).
+func (st *state) landVerb() string {
+	if st.providerBundle() {
+		return "post"
+	}
+	return "record"
+}
+
+// printBatchInstructions prints the batch's land-and-re-run block: a PR bundle
+// lands through a re-fetch and post, a local bundle through record.
+func (st *state) printBatchInstructions(dir, verify, anchors string) {
+	if st.providerBundle() {
+		st.humanf(batchInstructionsPRFmt, anchors, verify, dir,
+			st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr, st.batchMode())
+		return
+	}
+	st.humanf(batchInstructionsFmt, anchors, verify, dir,
+		st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr, st.batchMode())
+}
+
+// providerBundle reports a PR bundle: the only bundle kind that carries no
+// record path, and the one --selected can read reactions for.
+func (st *state) providerBundle() bool {
+	return !readcommon.IsLocalBundleDir(st.dir)
+}
+
+func (st *state) selectionPath() *string {
+	if st.selection == nil {
+		return nil
+	}
+	return &st.selection.path
 }
 
 func batchReady(rows []batchRow) (int, []string) {
@@ -275,9 +363,9 @@ func (st *state) fillBatchData(
 		})
 	}
 	floor := st.req.MinSeverity
-	st.next = nextBatchPasses
+	st.next = st.batchNext(nextBatchPasses)
 	if ready == 0 {
-		st.next = nextBatchStopped
+		st.next = st.batchNext(nextBatchStopped)
 	}
 	st.data = &Data{
 		Dir:         dir,
@@ -292,6 +380,7 @@ func (st *state) fillBatchData(
 		MinSeverity: &floor,
 		Patch:       st.patch,
 		Paths:       st.req.Paths,
+		Selection:   st.selectionPath(),
 	}
 }
 
@@ -303,8 +392,8 @@ func (st *state) emptyBatch(
 	now string,
 ) *core.RefusalError {
 	st.at = now
-	st.humanf("%s\n", batchEmptyMsg(st.req.MinSeverity, st.req.Paths))
-	st.next = batchEmptyNext(st.req.Paths)
+	st.humanf("%s\n", st.batchMsg(batchEmptyMsg(st.req.MinSeverity, st.req.Paths)))
+	st.next = st.batchNext(batchEmptyNext(st.req.Paths))
 	st.data = &Data{
 		Dir:         dir,
 		Ledger:      ledgerPath,
@@ -318,6 +407,18 @@ func (st *state) emptyBatch(
 		Paths:       st.req.Paths,
 	}
 	return nil
+}
+
+// batchMsg and batchNext rewrite a shared hint for the mode this run used: the
+// --all wording stays byte for byte, while a --selected or PR-bundle run names
+// its own flag and the command that lands a pass there.
+func (st *state) batchMsg(msg string) string {
+	return strings.ReplaceAll(msg, "fix --all", "fix "+st.batchMode())
+}
+
+func (st *state) batchNext(next string) string {
+	out := st.batchMsg(next)
+	return strings.ReplaceAll(out, "land with record", "land with "+st.landVerb())
 }
 
 func batchEmptyMsg(floor string, paths []string) string {

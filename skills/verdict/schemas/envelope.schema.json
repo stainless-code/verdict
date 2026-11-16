@@ -2148,6 +2148,7 @@
           "type": "array",
           "items": { "type": "string" }
         },
+        "selection": { "type": ["string", "null"] },
         "batch": {
           "description": "One row per open inline finding at or above min_severity, in rank order. Absent on a single pass and on a completion.",
           "type": "array",

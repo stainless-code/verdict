@@ -177,9 +177,10 @@ func allTools(readOnly, operator bool) []*tool {
 		}, toolDeps{commander: fetchRunner}, decodeFetchLocal, wireFetchLocal, invokeFetchLocal),
 		dataTool(&toolSpec{
 			name: "fix",
-			description: "Run one bounded, verify-gated fix pass over an inline finding. " +
-				"Call after review to prepare one finding's patch; the ledger caps passes. " +
-				"Writes the fix ledger and runs the recorded verify command.",
+			description: "Run one bounded, verify-gated fix pass over an inline finding " +
+				"or a batch scope (all, or selected: the sigs a human reacted to). " +
+				"The ledger caps passes per sig. Writes the fix ledger and runs the " +
+				"recorded verify command.",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Prepare a fix", mutates: localWrites},
 		}, toolDeps{commander: fetchRunner}, decodeFix, wireFix, fixcore.Run,

@@ -24,6 +24,7 @@ type Request struct { //nolint:govet // the transport contract keeps its field o
 	core.ReadRequest
 	Sig         string
 	All         bool
+	Selected    bool
 	MinSeverity string
 	VerifyCmd   string
 	Paths       []string
@@ -61,6 +62,7 @@ type Data struct { //nolint:govet // field order is the published property order
 	VerifyCmd   *string
 	Patch       *string
 	Paths       []string
+	Selection   *string
 	Batch       []BatchRow
 }
 
@@ -113,23 +115,39 @@ func (d *Data) Wire() *jq.Obj {
 		"severity", d.Severity,
 		"body", d.Body,
 	)
+	d.wirePick(o)
+	d.wireCounts(o)
+	d.wireBatch(o)
+	return o
+}
+
+// wirePick renders the pass-level keys: the brief, the anchors, and the pass
+// number a single pass publishes (null on a completion).
+func (d *Data) wirePick(o *jq.Obj) {
 	if d.Brief == nil {
 		o.Set("brief", nil)
 	} else {
 		o.Set("brief", d.Brief.Wire())
 	}
-	if d.Anchors != nil {
-		o.Set("anchors", jq.NewObj(
-			"path", d.Anchors.Path,
-			"line", d.Anchors.Line,
-			"start_line", d.Anchors.StartLine,
-			"side", d.Anchors.Side,
-			"anchored", d.Anchors.Anchored,
-		))
-	} else {
-		o.Set("anchors", nil)
-	}
+	o.Set("anchors", wireAnchors(d.Anchors))
 	o.Set("pass", d.Pass)
+}
+
+func wireAnchors(a *Anchors) any {
+	if a == nil {
+		return nil
+	}
+	return jq.NewObj(
+		"path", a.Path,
+		"line", a.Line,
+		"start_line", a.StartLine,
+		"side", a.Side,
+		"anchored", a.Anchored,
+	)
+}
+
+// wireCounts renders the ceilings, the tallies, and the keys a batch adds.
+func (d *Data) wireCounts(o *jq.Obj) {
 	o.Set("max_passes", d.MaxPasses)
 	o.Set("kb", d.KB)
 	o.Set("open_inline", d.OpenInline)
@@ -137,31 +155,39 @@ func (d *Data) Wire() *jq.Obj {
 	o.Set("open", d.Open)
 	o.Set("stopped", d.Stopped)
 	o.Set("complete", d.Complete)
-	if d.MinSeverity != nil {
-		o.Set("min_severity", *d.MinSeverity)
-	}
-	if d.VerifyCmd != nil {
-		o.Set("verify_cmd", *d.VerifyCmd)
-	}
-	if d.Patch != nil {
-		o.Set("patch", *d.Patch)
-	}
-	if d.Paths != nil {
+	setString(o, "min_severity", d.MinSeverity)
+	setString(o, "verify_cmd", d.VerifyCmd)
+	setString(o, "patch", d.Patch)
+	if len(d.Paths) > 0 {
 		o.Set("paths", core.WireStrings(d.Paths))
 	}
+	setString(o, "selection", d.Selection)
+}
+
+// setString publishes an optional string key; absence is the contract for a
+// nil pointer, not a null value.
+func setString(o *jq.Obj, key string, val *string) {
+	if val != nil {
+		o.Set(key, *val)
+	}
+}
+
+// wireBatch renders the rows a batch names, absent on a single pass.
+func (d *Data) wireBatch(o *jq.Obj) {
 	if d.Batch != nil {
 		o.Set("batch", batchWire(d.Batch))
 	}
-	return o
 }
 
 type state struct { //nolint:govet // fix service state is allocated once per invocation
-	req      *Request
-	warnings []string
-	at       string
-	next     string
-	data     *Data
-	patch    *string
+	req       *Request
+	warnings  []string
+	at        string
+	next      string
+	data      *Data
+	patch     *string
+	selection *selection
+	dir       string
 }
 
 // Run executes one fix pass, one batch pass, or reports completion.
@@ -181,15 +207,32 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 }
 
 func (r *Request) comboFault() string {
+	if msg := r.modeFault(); msg != "" {
+		return msg
+	}
+	if r.All || r.Selected {
+		return ""
+	}
+	switch {
+	case r.MinSeverity != "":
+		return "--min-severity narrows a batch: pass it with --all or --selected"
+	case r.VerifyCmd != "":
+		return "--verify-cmd proves a batch: pass it with --all or --selected"
+	case len(r.Paths) > 0:
+		return "--paths scopes a batch: pass it with --all or --selected"
+	}
+	return ""
+}
+
+// modeFault refuses a pick that names two scopes at once.
+func (r *Request) modeFault() string {
 	switch {
 	case r.All && r.Sig != "":
 		return "fix takes --sig or --all, not both (--all selects every open inline finding)"
-	case !r.All && r.MinSeverity != "":
-		return "--min-severity narrows a batch: pass it with --all"
-	case !r.All && r.VerifyCmd != "":
-		return "--verify-cmd proves a batch: pass it with --all"
-	case !r.All && len(r.Paths) > 0:
-		return "--paths scopes a batch: pass it with --all"
+	case r.Selected && r.Sig != "":
+		return "fix takes --sig or --selected, not both (--selected addresses the sigs a human reacted 👍 to)"
+	case r.All && r.Selected:
+		return "fix takes --all or --selected, not both (--selected is a batch scoped by fetch's selected.json)"
 	}
 	return ""
 }
@@ -227,6 +270,7 @@ func (st *state) runFix(ctx context.Context) *core.RefusalError {
 	if ref != nil {
 		return ref
 	}
+	st.dir = dir
 	if ref := st.bundleGates(ctx, dir); ref != nil {
 		return ref
 	}
@@ -237,7 +281,7 @@ func (st *state) runFix(ctx context.Context) *core.RefusalError {
 	now, fixOpen, fixOpenInline := st.printReadiness(dir, entries)
 	ledgerPath := dir + suffixFixJSON
 	store := st.loadLedger(ledgerPath)
-	if st.req.All {
+	if st.req.All || st.req.Selected {
 		return st.runBatch(ctx, dir, ledgerPath, store, entries,
 			fixOpen, fixOpenInline, now)
 	}
@@ -257,7 +301,7 @@ func (st *state) fixBundleDir() (string, *core.RefusalError) {
 	if ref != nil {
 		return "", st.refuse(ref.Code, ref.Message)
 	}
-	if !readcommon.IsLocalBundleDir(dir) {
+	if !readcommon.IsLocalBundleDir(dir) && !st.req.Selected {
 		return "", st.refuse("not-local", "fix works on local bundles; fetch-local first")
 	}
 	return dir, nil
@@ -1160,9 +1204,12 @@ const (
 	// suffixFindings is the bundle findings file suffix.
 	suffixFindings = "/findings.json"
 	// suffixFixJSON is the ledger file suffix.
-	suffixFixJSON   = "/fix.json"
-	suffixFixPatch  = "/fix.patch"
+	suffixFixJSON  = "/fix.json"
+	suffixFixPatch = "/fix.patch"
+	// suffixPatchJSON is the bundle patch claim file suffix.
 	suffixPatchJSON = "/patch.json"
+	// suffixSelected is the fetch-written reaction selection suffix.
+	suffixSelected = "/selected.json"
 	// suffixKB is the kb recall file suffix.
 	suffixKB = "/kb.txt"
 	// suffixReviews is the stored reviews file suffix.

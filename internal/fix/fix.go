@@ -66,7 +66,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 
 func fixRequest(r *cli.Runner, req Request, f *flags) *fixcore.Request {
 	out := &fixcore.Request{
-		Sig: f.sig, All: f.all, MinSeverity: f.minSeverity,
+		Sig: f.sig, All: f.all, Selected: f.selected, MinSeverity: f.minSeverity,
 		VerifyCmd: f.verifyCmd, Paths: f.paths, Human: r.Human,
 	}
 	out.ReadRequest = core.ReadRequest{
@@ -85,6 +85,7 @@ type flags struct {
 	verifyCmd   string
 	paths       []string
 	all         bool
+	selected    bool
 }
 
 func (f *flags) rentry() string {
@@ -95,6 +96,7 @@ func (f *flags) rentry() string {
 	}{
 		{flagSep + sigFlag + flagSep + f.sig, f.sig != ""},
 		{flagSep + "--all", f.all},
+		{flagSep + "--selected", f.selected},
 		{flagSep + minSeverityFlag + flagSep + f.minSeverity, f.minSeverity != ""},
 		{flagSep + verifyCmdFlag + flagSep + shellquote.Arg(f.verifyCmd), f.verifyCmd != ""},
 		{pathEntry(f.paths), len(f.paths) > 0},
@@ -120,8 +122,10 @@ func parseFlags(r *cli.Runner, args []string) (*flags, int, bool) {
 			i = next
 		case "--all":
 			f.all = true
+		case "--selected":
+			f.selected = true
 		default:
-			msg := fmt.Sprintf("unknown flag '%s' for fix (want %s <sig>, --all "+
+			msg := fmt.Sprintf("unknown flag '%s' for fix (want %s <sig>, --all|--selected "+
 				"[%s <s>] [%s <cmd>] [%s <glob>], --json)",
 				a, sigFlag, minSeverityFlag, verifyCmdFlag, pathsFlag)
 			return f, r.ReportUsage(&cli.UsageError{Message: msg}), true

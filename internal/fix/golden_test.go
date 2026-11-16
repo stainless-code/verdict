@@ -249,6 +249,76 @@ func setupPatchStale(t *testing.T, dir, _ string) {
 	}
 }
 
+// setupSelected is the reaction-scoped batch fixture: the fetch-written
+// selection names two of three open inline findings.
+func setupSelected(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	mkLocal(t, dir, "sel", "["+
+		findingJSON(sigInfo, "open", "informational", "notes.txt", "Minor wording nit here.")+","+
+		findingJSON(sigCritical, "open", "critical", "app.txt", "Critical boundary bug here.")+","+
+		findingJSON(sigBatch, "open", "important", "other.txt", "Important scoping bug here.")+"]")
+	seedSelected(t, dir, "local-sel", sigInfo, sigBatch)
+}
+
+// setupSelectedAddressed is the selection whose sigs are all settled.
+func setupSelectedAddressed(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	mkLocal(t, dir, "sold", "["+
+		findingJSON(sigInfo, "addressed", "informational", "notes.txt", "Settled nit here.")+"]")
+	seedSelected(t, dir, "local-sold", sigInfo)
+}
+
+// setupSelectedCorrupt is the present-but-unreadable selection fixture.
+func setupSelectedCorrupt(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	mkLocal(t, dir, "sbad", "["+
+		findingJSON(sigInfo, "open", "informational", "notes.txt", "Minor nit here.")+"]")
+	writeSelected(t, dir, "local-sbad", `{"sigs":"nope"}`)
+}
+
+// setupSelectedEmpty is the selection that names no sig at all.
+func setupSelectedEmpty(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	mkLocal(t, dir, "snone", "["+
+		findingJSON(sigInfo, "open", "informational", "notes.txt", "Minor nit here.")+"]")
+	writeSelected(t, dir, "local-snone", `{"sigs":[]}`)
+}
+
+// setupSelectedPR is the PR-bundle fixture: --selected is the one batch that
+// reads a bundle fetch wrote, so it runs here and lands through post.
+func setupSelectedPR(t *testing.T, dir, _ string) {
+	t.Helper()
+	setupNotLocal(t, dir, "")
+	seedSelected(t, dir, "4291", sigInfo)
+}
+
+// seedSelected writes the selection a GitHub fetch records.
+func seedSelected(t *testing.T, dir, bundle string, sigs ...string) {
+	t.Helper()
+	rows := make([]string, 0, len(sigs))
+	for _, sig := range sigs {
+		rows = append(rows, `"`+sig+`"`)
+	}
+	writeSelected(t, dir, bundle, `{"schema_version":"1","repo":"acme/app","pr":"1",`+
+		`"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
+		`"selected_at":"2026-01-01T00:00:00Z","sigs":[`+strings.Join(rows, ",")+`]}`)
+}
+
+func writeSelected(t *testing.T, dir, bundle, doc string) {
+	t.Helper()
+	bdir := filepath.Join(dir, ".verdict", "state", bundle)
+	if err := os.MkdirAll(bdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bdir, "selected.json"), []byte(doc+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // setupNotLocal is the PR-bundle refusal fixture.
 func setupNotLocal(t *testing.T, dir, _ string) {
 	t.Helper()
@@ -281,6 +351,7 @@ func TestFixGolden(t *testing.T) {
 	t.Run("brief", testFixBrief)
 	t.Run("batch", testFixBatch)
 	t.Run("patch", testFixPatch)
+	t.Run("selected", testFixSelected)
 }
 
 func testFixPatch(t *testing.T) {
@@ -378,6 +449,33 @@ func testFixRefusals(t *testing.T) {
 		"fix", "acme/app", "local-empty", "--json")
 	golden.Pin(t, harness, "unknown-flag", setupPass, nil,
 		"fix", "acme/app", "local-pass", "--bogus")
+}
+
+// testFixSelected pins the reaction-scoped batch: fetch's selected.json is the
+// scope, the output says so, and every way it can fail to name work refuses.
+func testFixSelected(t *testing.T) {
+	t.Helper()
+	golden.Pin(t, harness, "selected-json", setupSelected, nil,
+		"fix", "acme/app", "local-sel", "--selected", "--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "selected-human", setupSelected, nil,
+		"fix", "acme/app", "local-sel", "--selected", "--verify-cmd", batchVerifyCmd)
+	golden.Pin(t, harness, "selected-pr", setupSelectedPR, nil,
+		"fix", "acme/app", "4291", "--selected", "--verify-cmd", batchVerifyCmd)
+	golden.Pin(t, harness, "selected-missing", setupBatch, nil,
+		"fix", "acme/app", "local-batch", "--selected", "--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "selected-addressed", setupSelectedAddressed, nil,
+		"fix", "acme/app", "local-sold", "--selected", "--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "selected-corrupt", setupSelectedCorrupt, nil,
+		"fix", "acme/app", "local-sbad", "--selected", "--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "selected-empty", setupSelectedEmpty, nil,
+		"fix", "acme/app", "local-snone", "--selected", "--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "selected-conflict", setupSelected, nil,
+		"fix", "acme/app", "local-sel", "--selected", "--sig", sigInfo)
+	golden.Pin(t, harness, "selected-and-all", setupSelected, nil,
+		"fix", "acme/app", "local-sel", "--selected", "--all", "--verify-cmd", batchVerifyCmd)
+	golden.Pin(t, harness, "selected-paths", setupSelected, nil,
+		"fix", "acme/app", "local-sel", "--selected", "--verify-cmd", batchVerifyCmd,
+		"--paths", "notes.txt", "--json")
 }
 
 // testFixGates covers the ceiling and scope-escape gate exits.
