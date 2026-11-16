@@ -896,10 +896,13 @@ Fix: re-fetch it before deep validation.
 ## `no-selected-findings`
 
 Cause: `selected.json` names sigs, and none of them is an open inline finding in
-the store — they were addressed, deferred, or re-sigged since the fetch.
+the store — they were addressed, deferred, or re-sigged since the fetch. An
+empty `sigs` list lands here too: it selects nothing, so it is never read as
+"every finding".
 
 Fix: re-fetch the PR to re-record the current reactions, or triage the sigs
-first. `--min-severity` and `--paths` also narrow a selection to nothing.
+first. `--min-severity` and `--paths` also narrow a selection to nothing, and a
+hand-edited bundle whose `sigs` is `[]` needs a re-fetch to name any.
 
 ## `no-threads`
 

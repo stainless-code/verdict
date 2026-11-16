@@ -3027,7 +3027,8 @@ and remove it when done — the working tree stays untouched throughout.
 ### Fix loops (bounded, verify-gated)
 
 `fix owner/repo local-<name> [--sig <s> | --all [--min-severity <s>]
-[--verify-cmd <cmd>] [--paths <glob>]...] [--json]` runs one bounded pass over a local bundle: itpicks the top open inline sig (severity `critical` above
+[--verify-cmd <cmd>] [--paths <glob>]...] [--json]` runs one bounded pass over a local bundle: it
+picks the top open inline sig (severity `critical` above
 `important` above `informational`, then path) or the `--sig` prefix (must be open
 and inline; non-open, section, and unknown sigs refuse), prints the finding
 (plus its stored `brief` block when one is present and the full `kb.txt` context

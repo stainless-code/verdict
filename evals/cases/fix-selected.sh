@@ -153,6 +153,25 @@ else
   bad "settled selection gave exit $EVAL_STATUS code '$code'"
 fi
 
+mk_local selempty
+mk_finding "$IMP" open important other.txt "Important scoping bug here." | jq -s '.' | write_findings selempty
+printf '{"schema_version":"1","repo":"acme/app","pr":"1","head_sha":"%s","selected_at":"2026-01-01T00:00:00Z","sigs":[]}\n' \
+  "$HEAD" >"$EVAL_SANDBOX/.verdict/state/local-selempty/selected.json"
+run_review fix acme/app local-selempty --selected --json
+code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
+if [ "$EVAL_STATUS" -ne 0 ] && [ "$code" = "no-selected-findings" ] \
+  && jq -e '.error.message | contains("names no sig")' <"$EVAL_OUT" >/dev/null 2>&1; then
+  good "an empty sigs list refuses no-selected-findings instead of widening to every finding"
+else
+  bad "empty selection gave exit $EVAL_STATUS code '$code'"
+fi
+if [ ! -e "$EVAL_SANDBOX/.verdict/state/local-selempty/fix.json" ] \
+  && [ ! -e "$EVAL_SANDBOX/.verdict/state/local-selempty/fix.patch" ]; then
+  good "an empty selection spends no pass and writes no ledger"
+else
+  bad "empty selection wrote a ledger: $(cat "$EVAL_SANDBOX/.verdict/state/local-selempty/fix.json" 2>/dev/null)"
+fi
+
 mk_local selbad
 mk_finding "$IMP" open important other.txt "Important scoping bug here." | jq -s '.' | write_findings selbad
 printf '{"sigs":"nope"}\n' >"$EVAL_SANDBOX/.verdict/state/local-selbad/selected.json"

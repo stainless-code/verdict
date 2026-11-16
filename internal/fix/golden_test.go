@@ -279,7 +279,8 @@ func setupSelectedCorrupt(t *testing.T, dir, _ string) {
 	writeSelected(t, dir, "local-sbad", `{"sigs":"nope"}`)
 }
 
-// setupSelectedEmpty is the selection that names no sig at all.
+// setupSelectedEmpty is the selection that names no sig at all: the empty list
+// must refuse, because Select reads an empty wanted set as "no filter".
 func setupSelectedEmpty(t *testing.T, dir, _ string) {
 	t.Helper()
 	mkRepo(t, dir)

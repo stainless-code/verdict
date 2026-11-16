@@ -10,8 +10,8 @@ exit: 1
   "warnings": [],
   "data": null,
   "error": {
-    "code": "corrupt-store",
-    "message": "selection .verdict/state/local-snone/selected.json is unreadable or carries no sig list (re-fetch the PR to rebuild it)\ntry: restore the file or directory the message names from backup (permissions included), or move it aside and rebuild the store, then re-run"
+    "code": "no-selected-findings",
+    "message": "fix --selected: .verdict/state/local-snone/selected.json names no sig — re-fetch the bundle (a GitHub fetch records the sigs a human reacted 👍 to), or triage them\ntry: re-fetch the PR for current reactions, widen --min-severity/--paths, or triage the selected sigs, then re-run"
   }
 }
 --- stderr ---

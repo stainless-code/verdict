@@ -19,6 +19,8 @@ const (
 		"(a GitHub fetch records the sigs a human reacted 👍 to)"
 	msgCorruptSelection = "selection %s is unreadable or carries no sig list " +
 		"(re-fetch the PR to rebuild it)"
+	msgEmptySelection = "fix --selected: %s names no sig — re-fetch the bundle " +
+		"(a GitHub fetch records the sigs a human reacted 👍 to), or triage them"
 	msgNoSelectedFinding = "fix --selected: %s names %d reacted sig(s) and none is " +
 		"open inline in the store — re-fetch the PR for current reactions, or triage them"
 )
@@ -29,9 +31,10 @@ type selection struct {
 	sigs []string
 }
 
-// readSelection loads the fetch-written selection beside the bundle. A
-// present-but-unreadable file refuses corruption the way every other store
-// does: starting from an empty scope would silently drop the operator's work.
+// readSelection loads the fetch-written selection beside the bundle. An empty
+// sig list is the one shape that must never reach the selector: Select reads an
+// empty wanted set as "no filter", so the run would widen to every open inline
+// finding instead of narrowing to none.
 func (st *state) readSelection(dir string) (*selection, *core.RefusalError) {
 	path := dir + suffixSelected
 	raw, err := os.ReadFile(path)
@@ -43,8 +46,11 @@ func (st *state) readSelection(dir string) (*selection, *core.RefusalError) {
 		return nil, st.refuse("corrupt-store", fmt.Sprintf(msgCorruptSelection, path))
 	}
 	sigs, ok := selectionSigs(raw)
-	if !ok || len(sigs) == 0 {
+	if !ok {
 		return nil, st.refuse("corrupt-store", fmt.Sprintf(msgCorruptSelection, path))
+	}
+	if len(sigs) == 0 {
+		return nil, st.refuse(codeNoSelectedFinding, fmt.Sprintf(msgEmptySelection, path))
 	}
 	return &selection{path: path, sigs: sigs}, nil
 }
