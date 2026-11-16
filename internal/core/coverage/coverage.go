@@ -154,13 +154,18 @@ type claim struct {
 
 // Evaluate reads the bundle's hunk snapshot and the review's attestation, and
 // returns the summary plus the warnings a caller should surface. A chunked
-// bundle is not evaluated: chunks[] is its attestation, and one gate per bundle
-// is the contract.
+// bundle is not evaluated line by line: chunks[] is its attestation, and one
+// gate per bundle is the contract.
 //
 // generated is the shared generated-path predicate; this package never owns a
 // second list.
 func Evaluate(dir string, review *jq.Obj, generated func(string) bool) (Summary, []string, *core.RefusalError) {
 	if attested, total, ok := chunked(dir, review); ok {
+		var warns []string
+		_, _, problems := parseClaims(review, &warns)
+		if len(problems) > 0 {
+			return Summary{}, warns, badReviewInput(problems)
+		}
 		return Summary{Chunked: true, Chunks: total, ChunksAttested: attested}, nil, nil
 	}
 	rows, ref := loadRows(dir)
@@ -171,16 +176,20 @@ func Evaluate(dir string, review *jq.Obj, generated func(string) bool) (Summary,
 	var warns []string
 	claims, present, problems := parseClaims(review, &warns)
 	if len(problems) > 0 {
-		return Summary{}, warns, &core.RefusalError{
-			Code:     CodeBadReviewInput,
-			Message:  fmt.Sprintf(msgReviewProblem, len(problems)),
-			Problems: problems,
-		}
+		return Summary{}, warns, badReviewInput(problems)
 	}
 	warns = append(warns, unknownClaims(claims, files)...)
 	sum := summarize(files, claims, generated)
 	sum.Present = present
 	return sum, warns, nil
+}
+
+func badReviewInput(problems []core.Problem) *core.RefusalError {
+	return &core.RefusalError{
+		Code:     CodeBadReviewInput,
+		Message:  fmt.Sprintf(msgReviewProblem, len(problems)),
+		Problems: problems,
+	}
 }
 
 // unknownClaims warns about entries naming a path the bundle has no hunks for:
