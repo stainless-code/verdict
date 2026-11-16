@@ -20,8 +20,6 @@ const coverageDiff = "diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222
 const generatedDiff = "diff --git a/dist/app.min.js b/dist/app.min.js\nindex 3333333..4444444 100644\n" +
 	"--- a/dist/app.min.js\n+++ b/dist/app.min.js\n@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n"
 
-// generatedTypeScriptDiff adds a `.gen.ts` path the review never attests: the
-// shared generated predicate must exempt it instead of scoring it unattested.
 const generatedTypeScriptDiff = coverageDiff +
 	"diff --git a/clients/ts/src/refusal-codes.gen.ts b/clients/ts/src/refusal-codes.gen.ts\n" +
 	"index 3333333..4444444 100644\n--- a/clients/ts/src/refusal-codes.gen.ts\n" +
@@ -120,9 +118,6 @@ func TestRunNextCoverageRefusesCorruptReview(t *testing.T) {
 	}
 }
 
-// TestRunNextCoverageExemptsGeneratedTypeScript pins the prompt's promise on
-// the read verb: a `.gen.ts` path omitted from coverage[] is exempt, so it
-// neither drags the percentage down nor appears in the unattested list.
 func TestRunNextCoverageExemptsGeneratedTypeScript(t *testing.T) {
 	req := coverageNextRequest(t, map[string]string{
 		"full.diff":   generatedTypeScriptDiff,
@@ -139,9 +134,6 @@ func TestRunNextCoverageExemptsGeneratedTypeScript(t *testing.T) {
 	}
 }
 
-// TestRunNextCoverageRefusesArrayRanges pins one input contract for
-// coverage[].ranges: an array is not a range string, and next must report the
-// same bad-review-input problem record does instead of measuring a silent 0%.
 func TestRunNextCoverageRefusesArrayRanges(t *testing.T) {
 	req := coverageNextRequest(t, coverageFiles(coverageReview("notes.txt", `"coverage":[{"file":"notes.txt","ranges":["1-2"]}],`)))
 	resp, ref := reportcore.RunNextCoverage(req)

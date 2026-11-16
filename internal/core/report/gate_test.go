@@ -446,10 +446,6 @@ func (p *liveProgress) Human(line string) { p.human = append(p.human, line) }
 func (p *liveProgress) Warn(msg string)   { p.warnings = append(p.warnings, msg) }
 func (p *liveProgress) Diag(_ string)     {}
 
-// TestRunReportLocalBundleLiveSkip pins the structural skip: a local bundle
-// has no live threads to verify, so every posture reads neutral with zero
-// network and no warning — a step report always takes is not noise. The typed
-// gate dimension still records the skip.
 func TestRunReportLocalBundleLiveSkip(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -491,8 +487,6 @@ func TestRunReportLocalBundleLiveSkip(t *testing.T) {
 	}
 }
 
-// liveDimensionStatus reads the typed live_threads dimension's status, empty
-// when the gate carries none.
 func liveDimensionStatus(resp *core.ReportResponse) string {
 	if resp.Data.Gate == nil {
 		return ""

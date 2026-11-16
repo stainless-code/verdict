@@ -8,9 +8,6 @@ import (
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 )
 
-// TestRecordPlainBodySkipsBasisWarning pins item 7: a body with no leading
-// quote block has no confidence lead to insert a Basis line under, so record
-// leaves the body alone and no warning claims an edit it did not make.
 func TestRecordPlainBodySkipsBasisWarning(t *testing.T) {
 	plain := `{"schema_version":"1","body":"A plain body with enough length to pass the guard, no quote lead.",` +
 		`"approved":false,"comments":[]}`

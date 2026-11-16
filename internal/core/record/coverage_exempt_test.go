@@ -5,18 +5,12 @@ import (
 	"testing"
 )
 
-// generatedTypeScriptDiff changes notes.txt plus a `.gen.ts` path the review
-// never names: the shared role heuristic must exempt the second file, so the
-// stored receipt risk reads carries no gap for it.
 const generatedTypeScriptDiff = "diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n" +
 	"--- a/notes.txt\n+++ b/notes.txt\n@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n" +
 	"diff --git a/clients/ts/src/refusal-codes.gen.ts b/clients/ts/src/refusal-codes.gen.ts\n" +
 	"index 3333333..4444444 100644\n--- a/clients/ts/src/refusal-codes.gen.ts\n" +
 	"+++ b/clients/ts/src/refusal-codes.gen.ts\n@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n"
 
-// TestMergeCoverageExemptsGeneratedTypeScript pins the receipt risk reads:
-// a `.gen.ts` file left out of coverage[] is exempt, not unattested, so the
-// stored gaps stay zero and `unreviewed-files` cannot raise the risk floor.
 func TestMergeCoverageExemptsGeneratedTypeScript(t *testing.T) {
 	coverageBundle(t, generatedTypeScriptDiff, coverageReview("notes.txt", `"coverage":[{"file":"notes.txt","ranges":"all"}],`))
 	if ref := runCoverage(t, false, false); ref != nil {

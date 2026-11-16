@@ -326,8 +326,6 @@ func TestCheckReviewCountsTruncatedLevels(t *testing.T) {
 	}
 }
 
-// TestCheckReviewAcceptsMissingSchemaVersion pins item 5: schema_version is
-// optional and assumed 1, so omitting it is not a warning.
 func TestCheckReviewAcceptsMissingSchemaVersion(t *testing.T) {
 	t.Parallel()
 	res := recordcore.CheckReview([]byte(`{"body":"`+checkBody+`","approved":false,"comments":[]}`), checkDiff)

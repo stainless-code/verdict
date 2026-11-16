@@ -273,10 +273,6 @@ func replaceBasisLine(body string, lines []string, i int, computed, expected str
 	}
 }
 
-// insertBasisLine adds the computed Basis line under the confidence lead,
-// keeping a blank line before a following heading. A body with no leading quote
-// block has no lead to insert under: it stays byte-identical, because a line
-// prepended above the verdict callout would break the marker the gate reads.
 func insertBasisLine(lines []string, computed string) (string, *core.Problem) {
 	at := leadEnd(lines)
 	if at == 0 {

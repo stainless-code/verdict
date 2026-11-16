@@ -256,8 +256,6 @@ func (c *checker) checkReview(obj *jq.Obj) {
 }
 
 func (c *checker) checkSchemaVersion(v any) {
-	// An absent key reads as 1, the assumption record already makes after the
-	// checker; a present value has to say 1 explicitly.
 	if v == nil {
 		return
 	}

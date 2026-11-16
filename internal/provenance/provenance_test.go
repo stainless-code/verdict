@@ -323,9 +323,6 @@ func TestApplyBasisLineInsertsBlankBeforeHeading(t *testing.T) {
 	}
 }
 
-// TestApplyBasisLineSkipsPlainBody pins item 7: with no leading quote block
-// there is no confidence lead to insert under, so the body stays byte-identical
-// and no warning claims an edit record did not make.
 func TestApplyBasisLineSkipsPlainBody(t *testing.T) {
 	t.Parallel()
 	const body = "A plain review body with no quote lead.\n\n## Summary\nReviewed."

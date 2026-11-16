@@ -16,8 +16,6 @@ import (
 )
 
 func buildResponse(st *state) *core.ReportResponse {
-	// The gate runs first: next and the human footer name the merge when the
-	// requested check passes, so both surfaces read the same result.
 	var gateFailed bool
 	var checkLines []string
 	var gate *core.ReportGate
@@ -46,9 +44,6 @@ func buildResponse(st *state) *core.ReportResponse {
 	return resp
 }
 
-// nextStep names the next action from the open count, overridden by a passing
-// --check gate: findings below the tier's floor do not stand between the run
-// and a merge.
 func nextStep(st *state, open int) string {
 	if st.flags.Check != "" && st.gatePassed {
 		return "merge — gate passes"

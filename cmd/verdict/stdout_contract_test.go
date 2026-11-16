@@ -11,10 +11,6 @@ import (
 	"testing"
 )
 
-// TestJSONVerbsWriteOneEnvelopeToStdout pins the --json contract on the three
-// verbs a dogfood loop pipes into jq: stdout carries exactly one JSON value and
-// every human line stays on stderr. The fixture is produced by fetch-local, so
-// the bundle is the shape record and report read in a real loop.
 func TestJSONVerbsWriteOneEnvelopeToStdout(t *testing.T) {
 	hermeticEnv(t)
 	root := t.TempDir()
@@ -37,8 +33,6 @@ func TestJSONVerbsWriteOneEnvelopeToStdout(t *testing.T) {
 	}
 }
 
-// assertOneJSONValue decodes stdout once and requires the rest to be
-// whitespace: a human line before or after the envelope leaves a second value.
 func assertOneJSONValue(t *testing.T, verb, out string) {
 	t.Helper()
 	dec := json.NewDecoder(strings.NewReader(out))
@@ -60,8 +54,6 @@ func writeReviewJSON(t *testing.T, path string) {
 	}
 }
 
-// gitRangeFixture seeds a two-commit repository and returns the range the
-// bundle covers.
 func gitRangeFixture(t *testing.T, dir string) (base, head string) {
 	t.Helper()
 	git := func(args ...string) string {
