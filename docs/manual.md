@@ -239,28 +239,30 @@ an unparsable or non-object document, a comment with no recoverable string
 coverage still refuses. `record --dry-run` adds `data.normalized` (the exact
 object the checker read) and `data.repairs`; verdict never rewrites
 `review.json` on disk. The CLI also owns the body's `> Basis:` line: it
-replaces a disagreeing line, or inserts a missing one, with the counts computed
-from the review and reports `basis-replaced`.
+replaces a disagreeing line, or inserts a missing one under the leading quote
+block's confidence lead, with the counts computed from the review and reports
+`basis-replaced`. A body with no leading quote block has no lead to insert
+under, so it stays byte-identical and reports nothing.
 
-| Code                   | Level   | Meaning                                                                                                                              |
-| ---------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `invalid-json`         | error   | The file is not one JSON document; the message carries line:col, and the fix is to emit only the object.                             |
-| `wrong-type`           | mixed   | Error for a wrong type; warning for a non-numeric line/start_line or a fenced suggestion.                                            |
-| `missing-field`        | mixed   | Error for a required field; warning for missing schema_version, comments, or line/start_line.                                        |
-| `bad-enum`             | mixed   | Error for an unknown closed-set value; warning for a malformed KB id or unknown chunk name.                                          |
-| `out-of-range`         | error   | A length or numeric bound is outside its published range (confidence, brief approach/question, caps).                                |
-| `path-not-in-diff`     | mixed   | Error for a comment path; warning for a brief site outside the diff.                                                                 |
-| `unknown-field`        | warning | A key is not in the published shape; the fix names the nearest known key.                                                            |
-| `risk-stale-head`      | warning | `review.json.risk.assessed_head` disagrees with the bundle's current HEAD SHA; the stored claim is marked `stale: true`.             |
-| `anchor-outside-hunk`  | warning | The line is provably outside every hunk; `record` moves the comment into the body.                                                   |
-| `rigor-unset`          | warning | A comment carries no evidence rung; it records as `said` with `rigor_source: default`.                                               |
-| `normalized-fence`     | warning | One whole-document code fence was unwrapped.                                                                                         |
-| `normalized-extracted` | warning | Prose around exactly one balanced JSON object was dropped.                                                                           |
-| `scalar-to-array`      | warning | A scalar where a string array belongs was wrapped in a one-element array.                                                            |
-| `key-alias`            | warning | A known alias (`inBounds`, `in_bounds`, `rung`, `file`) was renamed to its canonical key.                                            |
-| `enum-synonym`         | warning | A rigor synonym or a case-folded enum value was rewritten to the published value.                                                    |
-| `normalized-trivia`    | warning | A BOM, an explicit null on an optional key, or an exact-duplicate comment was removed.                                               |
-| `basis-replaced`       | warning | The body's `> Basis:` line disagreed with the computed counts, or was missing from the leading quote block, and the CLI replaced it. |
+| Code                   | Level   | Meaning                                                                                                                                       |
+| ---------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `invalid-json`         | error   | The file is not one JSON document; the message carries line:col, and the fix is to emit only the object.                                      |
+| `wrong-type`           | mixed   | Error for a wrong type; warning for a non-numeric line/start_line or a fenced suggestion.                                                     |
+| `missing-field`        | mixed   | Error for a required field; warning for missing schema_version, comments, or line/start_line.                                                 |
+| `bad-enum`             | mixed   | Error for an unknown closed-set value; warning for a malformed KB id or unknown chunk name.                                                   |
+| `out-of-range`         | error   | A length or numeric bound is outside its published range (confidence, brief approach/question, caps).                                         |
+| `path-not-in-diff`     | mixed   | Error for a comment path; warning for a brief site outside the diff.                                                                          |
+| `unknown-field`        | warning | A key is not in the published shape; the fix names the nearest known key.                                                                     |
+| `risk-stale-head`      | warning | `review.json.risk.assessed_head` disagrees with the bundle's current HEAD SHA; the stored claim is marked `stale: true`.                      |
+| `anchor-outside-hunk`  | warning | The line is provably outside every hunk; `record` moves the comment into the body.                                                            |
+| `rigor-unset`          | warning | A comment carries no evidence rung; it records as `said` with `rigor_source: default`.                                                        |
+| `normalized-fence`     | warning | One whole-document code fence was unwrapped.                                                                                                  |
+| `normalized-extracted` | warning | Prose around exactly one balanced JSON object was dropped.                                                                                    |
+| `scalar-to-array`      | warning | A scalar where a string array belongs was wrapped in a one-element array.                                                                     |
+| `key-alias`            | warning | A known alias (`inBounds`, `in_bounds`, `rung`, `file`) was renamed to its canonical key.                                                     |
+| `enum-synonym`         | warning | A rigor synonym or a case-folded enum value was rewritten to the published value.                                                             |
+| `normalized-trivia`    | warning | A BOM, an explicit null on an optional key, or an exact-duplicate comment was removed.                                                        |
+| `basis-replaced`       | warning | The body's `> Basis:` line disagreed with the computed counts and was replaced, or was missing from the leading quote block and was inserted. |
 
 ### Sig contract (sig_version 1)
 
