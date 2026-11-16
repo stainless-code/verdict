@@ -1,0 +1,6 @@
+exit: 2
+--- stdout ---
+
+--- stderr ---
+fix takes --sig or --selected, not both (--selected addresses the sigs a human reacted 👍 to)
+--- files ---

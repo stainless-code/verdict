@@ -131,6 +131,7 @@ missing-patch	try: run the fetch/record step named above first, then re-run
 missing-post	try: run the fetch/record step named above first, then re-run
 missing-review-file	try: run the fetch/record step named above first, then re-run
 missing-sarif	try: pass an existing SARIF 2.1.0 file with --sarif <file|->
+missing-selection	try: run the fetch/record step named above first, then re-run
 missing-sig	try: run the fetch/record step named above first, then re-run
 missing-source	try: run the fetch/record step named above first, then re-run
 missing-tool	try: run the fetch/record step named above first, then re-run
@@ -140,6 +141,7 @@ no-patch-match	try: pass --from <local-slug>, or re-fetch the target bundle so i
 no-pr-target	try: run the fetch/record step named above first, then re-run
 no-review-artifact	try: run the printed command yourself (--print) to see why no review.json appeared, then re-run
 no-run-bundle	try: address the cause above, then re-run the same command
+no-selected-findings	try: re-fetch the PR for current reactions, widen --min-severity/--paths, or triage the selected sigs, then re-run
 no-threads	try: run the fetch/record step named above first, then re-run
 no-verify-cmd	try: write verifyCmd in the bundle's patch.json (the command verify and fix --all hand back), or pass --verify-cmd <cmd> to a fix batch, then re-run
 not-a-repo	try: run the fetch/record step named above first, then re-run

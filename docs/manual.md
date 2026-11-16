@@ -318,7 +318,7 @@ refuses typed because its API has no documented resolve endpoint.
 A bundle dir holds these core/script artifacts (`PR.json`/`source.json`,
 `full.diff`, `toc.txt`, `roles.txt`, `review.json`, `findings.json`, `findings.dryrun.json`, `record.json`,
 `post.json`, `store.json`, `hunks.tsv`, `reviews.json`, `inline.json`, `threads.json`,
-`threads-resolve.json`,
+`threads-resolve.json`, `selected.json`,
 `panel`, `patch.json`, `verification.json`, `incremental.diff`, `kb.txt`,
 `lenses.txt`, `reverts.txt`, `sensitive.txt`, `kb-recall.json`, `cost.json`, `budget.json`, `fix.json`,
 `author.json`,
@@ -3045,7 +3045,8 @@ hard-coded, not configurable: max 3 passes per sig (the 4th refuses with
 grandfathered (only files changed since the first pass can trip the audit).
 `fix` never flips status or
 writes `findings.json` (credit still flows through the normal `record` flips);
-PR/provider bundles refuse with `not-local`. Cost note: every pass is another
+PR/provider bundles refuse with `not-local` unless the run is `--selected`. Cost
+note: every pass is another
 agent run over the bundle — loops multiply agent spend, so set
 `REVIEW_BUDGET_USD` (or the typed `budget_usd` default) before looping a large backlog. Ceilings
 constrain a cooperating driver, not an adversary (deleting `fix.json` restarts
@@ -3074,6 +3075,26 @@ message instead of claiming the store is empty. It is the batch's scope unit
 because a finding records no lens — a recipe declares lenses and model hints, not
 paths, so `--recipe` cannot select sigs until `record` stores per-finding lens
 provenance.
+
+`--selected` is the same batch over the sigs a human endorsed: it reads the
+`selected.json` a GitHub `fetch` wrote beside the bundle (see “Reaction-scoped
+selection” in the fetch section) and takes one pass on each of those sigs only,
+printing the selection path and sig count it read so the output names its scope
+(`data.selection` carries the path). Nothing else changes: the same 3-per-sig and
+one-file ceilings apply per sig, `data.batch` names each sig's outcome, and a
+`--verify-cmd` (or `patch.json`'s `verifyCmd`) still proves the passes.
+
+It differs from `--all` in three ways that matter. Its default floor is `off`, so
+a 👍 on an informational finding still buys a pass — the reaction is the
+endorsement a severity floor would otherwise re-judge — and `--min-severity`
+narrows it again. It refuses instead of printing an empty batch: no
+`selected.json` is `missing-selection` (re-run the bundle's fetch; hosts other
+than GitHub never write one) and a selection whose sigs are no longer open inline
+is `no-selected-findings` (re-fetch for current reactions, or triage them). And
+it is the one batch that runs on a PR bundle — `.verdict/state/<pr>` as readily
+as `local-<name>` — because that is where `selected.json` comes from: the
+instructions then say to push the fix, re-fetch, and land with `post`, since a PR
+bundle has no `record` path.
 
 Each pass also writes `fix.patch` beside the ledger: the worktree's unified
 diff against `HEAD`, captured before the pass consumes its budget, so the change
@@ -4473,6 +4494,8 @@ explicit usage handoff), `corpus.schema.json` (benchmark case manifests),
 `backtest.schema.json` (the backtest score report), `post.schema.json` and
 `record.schema.json` (completed post/record captures),
 `author.schema.json` (the advisory author fingerprint a fetch detects),
+`selected.schema.json` (the reaction-scoped fix selection a GitHub fetch
+records and `fix --selected` reads),
 `threads.schema.json` (the normalized PR conversation),
 `pack.schema.json` (the lens pack manifest),
 and `envelope.schema.json` (the `--json` envelope plus the stable per-verb
@@ -4712,6 +4735,23 @@ reactions remain eligible. Every proposal records `reactor` (the login) and
 `role`: `pr-author`, `reviewer` for a known review-comment author, or `other`.
 Roles describe the available evidence — they do not grant approval. Identity
 reads are paginated; failed reads refuse instead of falling back to totals.
+
+### Reaction-scoped selection (`selected.json`)
+
+A GitHub `fetch` also writes `.verdict/state/<bundle>/selected.json` —
+`schema_version`, `repo`, `pr`, `head_sha`, `selected_at`, and the sorted `sigs`
+(`schemas/selected.schema.json`) — naming the findings a human endorsed with a
+👍 `+1` on verdict's own root comment. It uses the same paginated reaction read
+the calibrate proposals use, with the same exclusions: a bot's 👍 and a comment's
+own poster's 👍 never count, and a reply is never the root, so only a comment
+verdict posted can select its sig. `fix --selected` addresses exactly these sigs.
+
+No 👍 leaves no file at all: an empty selection would claim a scope nobody
+asked for, and a re-fetch after the reactions were removed deletes the previous
+file. A reaction read that fails keeps the selection the last good fetch wrote
+and warns, so a flaky read never narrows the work an operator is doing. The
+selection is a GitHub-only read: other hosts write none, because verdict reads no
+reactions there.
 
 ### Proposed learnings
 

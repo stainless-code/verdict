@@ -1,0 +1,20 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fix",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "no-selected-findings",
+    "message": "fix --selected: .verdict/state/local-snone/selected.json names no sig — re-fetch the bundle (a GitHub fetch records the sigs a human reacted 👍 to), or triage them\ntry: re-fetch the PR for current reactions, widen --min-severity/--paths, or triage the selected sigs, then re-run"
+  }
+}
+--- stderr ---
+» readiness: .verdict/state/local-snone — findings 1 open (1 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
+re-enter: verdict fix acme/app local-snone --selected --verify-cmd 'go test ./...' --json
+--- files ---

@@ -65,6 +65,11 @@ var hintRules = []HintRule{
 	{codes: []string{"ingest-failed"}, hint: "try: confirm the bundle path and SARIF file readability, then re-run"},
 	{prefix: "missing-", hint: "try: run the fetch/record step named above first, then re-run"},
 	{
+		codes: []string{"no-selected-findings"},
+		hint: "try: re-fetch the PR for current reactions, widen --min-severity/--paths, " +
+			"or triage the selected sigs, then re-run",
+	},
+	{
 		codes: []string{"no-verify-cmd"},
 		hint: "try: write verifyCmd in the bundle's patch.json (the command verify and " +
 			"fix --all hand back), or pass --verify-cmd <cmd> to a fix batch, then re-run",

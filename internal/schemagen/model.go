@@ -513,6 +513,7 @@ type FixData struct { //nolint:govet // field order is the published property or
 	VerifyCmd   *string       `json:"verify_cmd"   optional:"true"`
 	Patch       *string       `json:"patch"        optional:"true"`
 	Paths       []string      `json:"paths"        optional:"true"`
+	Selection   *string       `json:"selection"    optional:"true"`
 	Batch       []FixBatchRow `json:"batch"        optional:"true"`
 }
 
@@ -963,6 +964,11 @@ type UsageTokens struct { //nolint:govet // field order is the published propert
 	CacheRead  *float64 `json:"cache_read,omitempty"  min:"0"`
 	CacheWrite *float64 `json:"cache_write,omitempty" min:"0"`
 }
+
+// SelectedFile is a bundle's reaction-scoped fix selection, published as
+// schemas/selected.schema.json: the finding sigs whose posted root review
+// comment carries a human 👍, written by fetch and read by fix --selected.
+type SelectedFile = core.SelectedFile
 
 // ThreadsFile is one provider bundle's normalized PR-conversation feed,
 // published as schemas/threads.schema.json. It is additive beside the raw

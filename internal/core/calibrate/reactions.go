@@ -42,43 +42,28 @@ func reactionsUnsupported(dir string) bool {
 	return isLocalDir(dir) || readcommon.ProviderOf(dir) != "" && readcommon.ProviderOf(dir) != providerGitHub
 }
 
-func (st *state) reactionRead(ctx context.Context, endpoint string) (any, *core.RefusalError) {
+func (st *state) reactionRead(ctx context.Context, endpoint string) ([]any, bool) {
 	stdout, _, ok := coreexec.Gh(ctx, st.commander(), "api", endpoint, "--paginate", "--slurp")
 	if !ok {
-		return nil, st.reactionReadFailed()
+		return nil, false
 	}
 	doc, err := jq.Decode([]byte(stdout))
 	if err != nil {
-		return nil, st.reactionReadFailed()
+		return nil, false
 	}
-	return doc, nil
+	return threadscore.ReactionPages(doc), true
 }
 
 func (st *state) reactionReadFailed() *core.RefusalError {
 	return st.withWarnings(&core.RefusalError{Code: codeThreadsFailed, Message: "could not read posted reaction identities"})
 }
 
-func reactionPages(doc any) []any {
-	pages, ok := doc.([]any)
-	if !ok {
-		return nil
-	}
-	var items []any
-	for _, page := range pages {
-		if rows, ok := page.([]any); ok {
-			items = append(items, rows...)
-		}
-	}
-	return items
-}
-
 func (st *state) readReactionComments(ctx context.Context, entries []any, reviewID string) ([]any, string, *core.RefusalError) {
 	base := "repos/" + st.req.Repo
-	doc, ref := st.reactionRead(ctx, base+"/pulls/"+st.req.Pr+"/comments")
-	if ref != nil {
-		return nil, "", ref
+	comments, ok := threadscore.ReviewComments(ctx, st.reactionRead, st.req.Repo, st.req.Pr)
+	if !ok {
+		return nil, "", st.reactionReadFailed()
 	}
-	comments := reactionPages(doc)
 	author, ref := st.reactionPRAuthor(ctx, base)
 	if ref != nil {
 		return nil, "", ref
@@ -91,19 +76,15 @@ func (st *state) readReactionComments(ctx context.Context, entries []any, review
 }
 
 func (st *state) reactionPRAuthor(ctx context.Context, base string) (string, *core.RefusalError) {
-	doc, ref := st.reactionRead(ctx, base+"/pulls/"+st.req.Pr)
-	if ref != nil {
-		return "", ref
-	}
-	pages, ok := doc.([]any)
-	if !ok || len(pages) != 1 {
+	rows, ok := st.reactionRead(ctx, base+"/pulls/"+st.req.Pr)
+	if !ok || len(rows) != 1 {
 		return "", st.reactionReadFailed()
 	}
-	pr, ok := pages[0].(map[string]any)
+	pr, ok := jq.AsMap(rows[0])
 	if !ok {
 		return "", st.reactionReadFailed()
 	}
-	author, _ := reactionUser(pr[reactionUserKey])
+	author, _ := threadscore.ReactionUser(pr[reactionUserKey])
 	if author == "" {
 		return "", st.reactionReadFailed()
 	}
@@ -111,16 +92,16 @@ func (st *state) reactionPRAuthor(ctx context.Context, base string) (string, *co
 }
 
 func (st *state) attachReactionUsers(ctx context.Context, base string, m map[string]any) *core.RefusalError {
-	author, _ := reactionUser(m[reactionUserKey])
+	author, _ := threadscore.ReactionUser(m[reactionUserKey])
 	id, ok := readcommon.NumVal(m["id"])
 	if author == "" || !ok || id <= 0 {
 		return st.reactionReadFailed()
 	}
-	doc, ref := st.reactionRead(ctx, fmt.Sprintf("%s/pulls/comments/%.0f/reactions", base, id))
-	if ref != nil {
-		return ref
+	reactions, ok := st.reactionRead(ctx, fmt.Sprintf("%s/pulls/comments/%.0f/reactions", base, id))
+	if !ok {
+		return st.reactionReadFailed()
 	}
-	m["reaction_users"] = reactionPages(doc)
+	threadscore.WithReactions(m, reactions)
 	return nil
 }
 
@@ -161,25 +142,16 @@ func reactionProposals(entries, comments []any, reviewID, reason, author string)
 func reactionReviewers(comments []any) map[string]bool {
 	reviewers := map[string]bool{}
 	for _, comment := range comments {
-		if m, ok := comment.(map[string]any); ok {
-			login, _ := reactionUser(m[reactionUserKey])
+		if m, ok := jq.AsMap(comment); ok {
+			login, _ := threadscore.ReactionUser(m[reactionUserKey])
 			reviewers[strings.ToLower(login)] = true
 		}
 	}
 	return reviewers
 }
 
-func reactionUser(raw any) (string, bool) {
-	user, ok := raw.(map[string]any)
-	if !ok {
-		return "", false
-	}
-	login := jq.StrOf(user["login"])
-	return login, user["type"] == "Bot" || strings.HasSuffix(strings.ToLower(login), "[bot]")
-}
-
 func (r *reactionSignals) addComment(m map[string]any, entry any, reason, author string, reviewers map[string]bool) {
-	poster, _ := reactionUser(m[reactionUserKey])
+	poster, _ := threadscore.ReactionUser(m[reactionUserKey])
 	users, ok := m["reaction_users"].([]any)
 	if !ok {
 		return
@@ -192,7 +164,7 @@ func (r *reactionSignals) addComment(m map[string]any, entry any, reason, author
 }
 
 func (r *reactionSignals) addReaction(reaction map[string]any, entry any, poster, reason, author string, reviewers map[string]bool) {
-	login, bot := reactionUser(reaction[reactionUserKey])
+	login, bot := threadscore.ReactionUser(reaction[reactionUserKey])
 	if bot {
 		r.bot++
 		return
@@ -251,7 +223,7 @@ func (st *state) attachMatchedReactions(ctx context.Context, base string, commen
 }
 
 func (r *reactionSignals) matchEntries(comment any, entries []any, reviewID, reason, author string, reviewers map[string]bool) {
-	m, ok := comment.(map[string]any)
+	m, ok := jq.AsMap(comment)
 	if !ok {
 		r.unmatched++
 		return

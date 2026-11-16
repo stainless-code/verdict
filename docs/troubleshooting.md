@@ -828,6 +828,14 @@ Cause: `ingest` was invoked without `--sarif <file|->` or with an empty SARIF pa
 
 Fix: pass `--sarif <file>` (or `--sarif -` to read stdin), then re-run `verdict ingest`.
 
+## `missing-selection`
+
+Cause: `fix --selected` found no `selected.json` in the bundle — nothing recorded
+which sigs a human reacted to.
+
+Fix: re-run the bundle's fetch. Only a GitHub fetch reads reactions, so a
+GitLab or Forgejo bundle never carries the file; use `--all` or `--sig` there.
+
 ## `missing-sig`
 
 Cause: `show` got no `--sig`.
@@ -885,6 +893,17 @@ Cause: the bundle has no verified `run.json`.
 
 Fix: re-fetch it before deep validation.
 
+## `no-selected-findings`
+
+Cause: `selected.json` names sigs, and none of them is an open inline finding in
+the store — they were addressed, deferred, or re-sigged since the fetch. An
+empty `sigs` list lands here too: it selects nothing, so it is never read as
+"every finding".
+
+Fix: re-fetch the PR to re-record the current reactions, or triage the sigs
+first. `--min-severity` and `--paths` also narrow a selection to nothing, and a
+hand-edited bundle whose `sigs` is `[]` needs a re-fetch to name any.
+
 ## `no-threads`
 
 Cause: `calibrate` joins live threads — nothing to settle on a local bundle.
@@ -905,9 +924,12 @@ Fix: run inside a git worktree, then re-run.
 
 ## `not-local`
 
-Cause: the verb got the wrong bundle kind (`record` on a GitHub PR, or `fix` on a PR bundle).
+Cause: the verb got the wrong bundle kind (`record` on a GitHub PR, or `fix` on a PR bundle
+without `--selected`).
 
 Fix: `fetch-local` for local work first; GitHub PRs use `post`, and local bundles use `record` and `report`.
+`fix --selected` is the one batch that reads a PR bundle, because that is where
+`selected.json` comes from.
 
 ## `not-retired`
 

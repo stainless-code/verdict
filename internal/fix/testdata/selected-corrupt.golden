@@ -1,0 +1,20 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fix",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "corrupt-store",
+    "message": "selection .verdict/state/local-sbad/selected.json is unreadable or carries no sig list (re-fetch the PR to rebuild it)\ntry: restore the file or directory the message names from backup (permissions included), or move it aside and rebuild the store, then re-run"
+  }
+}
+--- stderr ---
+» readiness: .verdict/state/local-sbad — findings 1 open (1 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
+re-enter: verdict fix acme/app local-sbad --selected --verify-cmd 'go test ./...' --json
+--- files ---

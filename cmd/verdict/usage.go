@@ -98,8 +98,8 @@ func usageText() string {
 		"    dedupe, hunk anchoring, and path-exclusion withholding paths. No network. Tool findings\n" +
 		"    carry said rigor with default provenance (never verified); results outside the diff stay\n" +
 		"    unanchored and never post inline.\n" +
-		"  fix <owner/repo> <local-slug> [--sig <s> | --all [--min-severity <s>] [--verify-cmd <cmd>]\n" +
-		"        [--paths <glob>]...] [--json]\n" +
+		"  fix <owner/repo> <local-slug|pr> [--sig <s> | --all|--selected [--min-severity <s>]\n" +
+		"        [--verify-cmd <cmd>] [--paths <glob>]...] [--json]\n" +
 		"    one bounded pass over a local bundle: picks the top open inline sig\n" +
 		"    (or --sig), prints finding + kb.txt context with verify/land/re-run\n" +
 		"    instructions. Max 3 passes per sig (ledger .verdict/state/<bundle>/fix.json);\n" +
@@ -109,6 +109,12 @@ func usageText() string {
 		"    ceiling, scope-escape, or no-anchor. It needs the command that proves the\n" +
 		"    passes: --verify-cmd <cmd>, or verifyCmd in the bundle's patch.json.\n" +
 		"    --paths <glob> (repeatable) scopes the batch to matching finding paths.\n" +
+		"    --selected takes the same batch shape over the sigs a github fetch recorded in\n" +
+		"    the bundle's selected.json — the root review comments a human reacted 👍 to —\n" +
+		"    and prints the selection it read. It is the one batch that runs on a PR bundle:\n" +
+		"    absent selected.json refuses missing-selection, and a selection that names no\n" +
+		"    open inline finding refuses no-selected-findings. Its default floor is off, so\n" +
+		"    the reaction, not the severity, decides; --min-severity narrows it.\n" +
 		"    Every pass writes fix.patch beside the ledger — the worktree's diff against HEAD,\n" +
 		"    never applied and never pushed — and refuses (fix-patch-secret) rather than write\n" +
 		"    a secret-shaped value into the bundle.\n" +

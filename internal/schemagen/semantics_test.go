@@ -262,7 +262,10 @@ var publishedSemantics = map[string]string{
 	// validationData joins the envelope description's published data-profile
 	// list beside postData. No existing property, required key, enum, or type
 	// changed.
-	"envelope.schema.json": "312897e9b6bdf80aef54aeffa1d5397aff3fa80c9a62ff9c3769e0ca9a10b409",
+	// Reaction-scoped fix: additive optional fixData.selection (the
+	// fetch-written selected.json a --selected batch reads). No existing
+	// property, required key, enum, or type changed.
+	"envelope.schema.json": "27103488dcbcb9966b36d5f4f78241832b63f304d4710cb7d745afbbc20cc255",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -419,6 +422,10 @@ var publishedSemantics = map[string]string{
 	// risk score: additive optional nullable risk claim ($defs/riskClaim). No
 	// existing property, required key, enum, or type changed.
 	"review.schema.json": "58b8cafc67abfc6fe394f0cd7dff77182def6cd6652851e037ded38dc57defbe",
+	// additive selected.schema.json (new bundle document: the reaction-scoped
+	// fix selection fetch writes and fix --selected reads). A new document
+	// only: no existing schema property, required key, enum, or type changed.
+	"selected.schema.json": "40bcc26a3e73ea2a17ad02cbba06548215f9ee5b1aad04d16885275842e88021",
 	// additive threads.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed). The PR-conversation
 	// contract extends the first cut with the thread's host id, PR/head/time

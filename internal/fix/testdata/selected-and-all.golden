@@ -1,0 +1,6 @@
+exit: 2
+--- stdout ---
+
+--- stderr ---
+fix takes --all or --selected, not both (--selected is a batch scoped by fetch's selected.json)
+--- files ---

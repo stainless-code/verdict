@@ -212,6 +212,7 @@ func decodeFix(req *fixcore.Request, a *args) {
 	a.str(argPr, &req.Pr)
 	a.str("sig", &req.Sig)
 	a.boolean("all", &req.All)
+	a.boolean("selected", &req.Selected)
 	a.str(argMinSeverity, &req.MinSeverity)
 	a.str("verifyCmd", &req.VerifyCmd)
 	a.strings(argPaths, &req.Paths)

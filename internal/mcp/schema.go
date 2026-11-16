@@ -287,6 +287,8 @@ var fieldDocs = map[string]string{
 	"Repo":     "Repository as owner/name.",
 	"Pr":       "Pull-request number or bundle slug (local-<name> for local bundles).",
 	"Sig":      "Finding signature or unique prefix.",
+	"All":      "Batch every open inline finding at or above the severity floor.",
+	"Selected": "Batch only the sigs a GitHub fetch recorded in selected.json as reacted to by a human.",
 	"Status":   "Status filter (all, open, addressed, wont-fix, false-positive, deferred).",
 	"Kind":     "Kind filter (inline, section, all).",
 	"Category": "Finding category filter; empty disables the filter.",
