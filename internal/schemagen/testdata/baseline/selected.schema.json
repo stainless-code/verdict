@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/selected.schema.json",
+  "title": "selected.json — reaction-scoped fix selection",
+  "description": "The reaction-scoped fix selection: the finding sigs whose posted root review comment carries at least one human 👍, written by a GitHub fetch (the only host whose reactions verdict reads) and read by fix --selected. No reaction leaves no file at all, because an empty selection would claim a scope nobody asked for.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "description": "Format version; only \"1\" is published.",
+      "enum": ["1"]
+    },
+    "repo": {
+      "description": "Repository whose review comments were read, owner/name.",
+      "type": "string"
+    },
+    "pr": {
+      "description": "Pull-request number the selected comments belong to.",
+      "type": "string"
+    },
+    "head_sha": {
+      "description": "The bundle head the selection was read at (the fetched head, not the live one).",
+      "type": "string"
+    },
+    "selected_at": {
+      "description": "UTC timestamp of the read, RFC 3339.",
+      "type": "string"
+    },
+    "sigs": {
+      "description": "Finding sigs (40-hex) whose root review comment carries at least one human 👍, sorted and deduplicated. Bots and a comment's own poster never count, and a reply is never the root, so only verdict's own posted finding comment can select a sig. fix --selected addresses exactly these sigs.",
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "required": [
+    "schema_version",
+    "repo",
+    "pr",
+    "head_sha",
+    "selected_at",
+    "sigs"
+  ],
+  "additionalProperties": false
+}

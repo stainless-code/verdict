@@ -964,6 +964,11 @@ type UsageTokens struct { //nolint:govet // field order is the published propert
 	CacheWrite *float64 `json:"cache_write,omitempty" min:"0"`
 }
 
+// SelectedFile is a bundle's reaction-scoped fix selection, published as
+// schemas/selected.schema.json: the finding sigs whose posted root review
+// comment carries a human 👍, written by fetch and read by fix --selected.
+type SelectedFile = core.SelectedFile
+
 // ThreadsFile is one provider bundle's normalized PR-conversation feed,
 // published as schemas/threads.schema.json. It is additive beside the raw
 // provider files: every host's payload is filtered and flattened to the same

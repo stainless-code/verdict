@@ -318,7 +318,7 @@ refuses typed because its API has no documented resolve endpoint.
 A bundle dir holds these core/script artifacts (`PR.json`/`source.json`,
 `full.diff`, `toc.txt`, `roles.txt`, `review.json`, `findings.json`, `findings.dryrun.json`, `record.json`,
 `post.json`, `store.json`, `hunks.tsv`, `reviews.json`, `inline.json`, `threads.json`,
-`threads-resolve.json`,
+`threads-resolve.json`, `selected.json`,
 `panel`, `patch.json`, `verification.json`, `incremental.diff`, `kb.txt`,
 `lenses.txt`, `reverts.txt`, `sensitive.txt`, `kb-recall.json`, `cost.json`, `budget.json`, `fix.json`,
 `author.json`,
@@ -4473,6 +4473,8 @@ explicit usage handoff), `corpus.schema.json` (benchmark case manifests),
 `backtest.schema.json` (the backtest score report), `post.schema.json` and
 `record.schema.json` (completed post/record captures),
 `author.schema.json` (the advisory author fingerprint a fetch detects),
+`selected.schema.json` (the reaction-scoped fix selection a GitHub fetch
+records and `fix --selected` reads),
 `threads.schema.json` (the normalized PR conversation),
 `pack.schema.json` (the lens pack manifest),
 and `envelope.schema.json` (the `--json` envelope plus the stable per-verb
@@ -4712,6 +4714,23 @@ reactions remain eligible. Every proposal records `reactor` (the login) and
 `role`: `pr-author`, `reviewer` for a known review-comment author, or `other`.
 Roles describe the available evidence — they do not grant approval. Identity
 reads are paginated; failed reads refuse instead of falling back to totals.
+
+### Reaction-scoped selection (`selected.json`)
+
+A GitHub `fetch` also writes `.verdict/state/<bundle>/selected.json` —
+`schema_version`, `repo`, `pr`, `head_sha`, `selected_at`, and the sorted `sigs`
+(`schemas/selected.schema.json`) — naming the findings a human endorsed with a
+👍 `+1` on verdict's own root comment. It uses the same paginated reaction read
+the calibrate proposals use, with the same exclusions: a bot's 👍 and a comment's
+own poster's 👍 never count, and a reply is never the root, so only a comment
+verdict posted can select its sig. `fix --selected` addresses exactly these sigs.
+
+No 👍 leaves no file at all: an empty selection would claim a scope nobody
+asked for, and a re-fetch after the reactions were removed deletes the previous
+file. A reaction read that fails keeps the selection the last good fetch wrote
+and warns, so a flaky read never narrows the work an operator is doing. The
+selection is a GitHub-only read: other hosts write none, because verdict reads no
+reactions there.
 
 ### Proposed learnings
 

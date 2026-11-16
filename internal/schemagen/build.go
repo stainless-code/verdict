@@ -399,6 +399,13 @@ func documents() []document {
 			additionalProperties: true,
 		},
 		{
+			name:                 "selected",
+			title:                "selected.json — reaction-scoped fix selection",
+			root:                 reflect.TypeFor[SelectedFile](),
+			defs:                 nil,
+			additionalProperties: false,
+		},
+		{
 			name:  "threads",
 			title: "threads.json — normalized provider review threads",
 			root:  reflect.TypeFor[ThreadsFile](),

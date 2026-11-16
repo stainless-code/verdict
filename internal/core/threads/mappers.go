@@ -17,6 +17,10 @@ const (
 	keyLine      = "line"
 	keyLogin     = "login"
 	keyPath      = "path"
+
+	// hostTypeBot is the host user type both reaction and thread reads
+	// classify as a bot.
+	hostTypeBot = "Bot"
 )
 
 // FromGitHubThreads maps GraphQL reviewThreads nodes. Resolution and
@@ -87,7 +91,7 @@ func gitHubComment(m map[string]any) Comment {
 	return Comment{
 		ID:         id,
 		Author:     login,
-		AuthorKind: AuthorKind(login, str(author, "__typename") == "Bot", body),
+		AuthorKind: AuthorKind(login, str(author, "__typename") == hostTypeBot, body),
 		Body:       body,
 		Truncated:  truncated,
 		CreatedAt:  str(m, "createdAt"),
@@ -133,7 +137,7 @@ func reviewThread(m map[string]any) (Thread, bool) {
 		Comments: []Comment{{
 			ID:         idStr(m[keyID]),
 			Author:     login,
-			AuthorKind: AuthorKind(login, str(author, "__typename") == "Bot", body),
+			AuthorKind: AuthorKind(login, str(author, "__typename") == hostTypeBot, body),
 			Body:       body,
 			Truncated:  truncated,
 			CreatedAt:  created,

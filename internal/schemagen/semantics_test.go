@@ -415,6 +415,10 @@ var publishedSemantics = map[string]string{
 	// risk score: additive optional nullable risk claim ($defs/riskClaim). No
 	// existing property, required key, enum, or type changed.
 	"review.schema.json": "58b8cafc67abfc6fe394f0cd7dff77182def6cd6652851e037ded38dc57defbe",
+	// additive selected.schema.json (new bundle document: the reaction-scoped
+	// fix selection fetch writes and fix --selected reads). A new document
+	// only: no existing schema property, required key, enum, or type changed.
+	"selected.schema.json": "40bcc26a3e73ea2a17ad02cbba06548215f9ee5b1aad04d16885275842e88021",
 	// additive threads.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed). The PR-conversation
 	// contract extends the first cut with the thread's host id, PR/head/time
