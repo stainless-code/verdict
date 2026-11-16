@@ -35,54 +35,135 @@ var actionSelfPins = []selfPinTarget{
 	{path: "examples/verdict-review.yml", prefix: "stainless-code/verdict@"},
 }
 
-// TestActionPinsAtRelease keeps both self-pins on the same tagged release at
-// or before package.json: a Version PR bumps the manifest before the matching
-// release commit exists, so equality would deadlock the next release.
+// TestActionPinsAtRelease allows pins behind package.json: Version PRs bump
+// the manifest before the matching release commit exists.
 func TestActionPinsAtRelease(t *testing.T) {
 	root := moduleRoot(t)
 	version := actionPackageVersion(t, root)
 	var pins []selfPin
 	for _, target := range actionSelfPins {
-		pins = append(pins, checkActionPin(t, root, target, version))
+		pins = append(pins, checkActionPin(t, root, target, version)...)
 	}
 	checkReleaseTag(t, root, pins)
 }
 
-func checkActionPin(t *testing.T, root string, target selfPinTarget, packageVersion string) selfPin {
+func checkActionPin(t *testing.T, root string, target selfPinTarget, packageVersion string) []selfPin {
 	t.Helper()
 	src := readRepoFile(t, root, target.path)
-	pin, problems := pinProblems(src, target.prefix, packageVersion)
+	pins, problems := pinProblems(src, target.prefix, packageVersion)
 	for _, problem := range problems {
 		t.Errorf("%s: %s", target.path, problem)
 	}
-	return pin
+	return pins
 }
 
 func checkReleaseTag(t *testing.T, root string, pins []selfPin) {
 	t.Helper()
-	if len(pins) != 2 {
-		t.Fatalf("found %d self-pins; want 2", len(pins))
+	if len(pins) < 2 {
+		t.Fatalf("found %d self-pins; want at least 2, one per shipped workflow", len(pins))
 	}
-	if pins[0].sha == "" || pins[1].sha == "" {
+	for _, problem := range pinDisagreements(pins) {
+		t.Error(problem)
+	}
+	if pins[0].sha == "" {
 		return
-	}
-	if pins[0] != pins[1] {
-		t.Errorf("self-pins disagree: action.yml is %s v%s, examples/verdict-review.yml is %s v%s",
-			pins[0].sha, pins[0].version, pins[1].sha, pins[1].version)
 	}
 	t.Run("release tag points at the pin", func(t *testing.T) {
 		checkTagAtPin(t, root, pins[0].sha, pins[0].version)
 	})
 }
 
+func pinDisagreements(pins []selfPin) []string {
+	var problems []string
+	for _, pin := range pins[1:] {
+		if pin != pins[0] {
+			problems = append(problems, fmt.Sprintf("self-pin %s v%s disagrees with %s v%s",
+				pin.sha, pin.version, pins[0].sha, pins[0].version))
+		}
+	}
+	return problems
+}
+
+type tagLookup func(sha string) []string
+
 func checkTagAtPin(t *testing.T, root, sha, pinVersion string) {
 	t.Helper()
-	tags := tagsAt(t, root, sha)
-	if len(tags) == 0 {
+	checkTagAtPinWith(t, repoTags(t, root), func(sha string) []string {
+		return tagsAt(t, root, sha)
+	}, sha, pinVersion)
+}
+
+type tagOutcome int
+
+const (
+	tagSkip tagOutcome = iota
+	tagOK
+	tagMismatch
+)
+
+func (outcome tagOutcome) String() string {
+	switch outcome {
+	case tagSkip:
+		return "skip"
+	case tagOK:
+		return "ok"
+	default:
+		return "mismatch"
+	}
+}
+
+func checkTagAtPinWith(t *testing.T, allTags []string, lookup tagLookup, sha, pinVersion string) {
+	t.Helper()
+	atPin := lookup(sha)
+	outcome := tagOutcomeFor(allTags, atPin, pinVersion)
+	if outcome == tagSkip {
 		t.Skip("no tags in this checkout: the SHA-to-version check needs a tagged clone")
 	}
-	if !slices.Contains(tags, "v"+pinVersion) {
-		t.Errorf("self-pin %s has tags %v; want tag v%s at that commit", sha, tags, pinVersion)
+	if outcome == tagMismatch {
+		t.Errorf("self-pin %s carries tags %v; want tag v%s at that commit", sha, atPin, pinVersion)
+	}
+}
+
+func tagOutcomeFor(allTags, atPin []string, pinVersion string) tagOutcome {
+	if len(allTags) == 0 {
+		return tagSkip
+	}
+	if slices.Contains(atPin, "v"+pinVersion) {
+		return tagOK
+	}
+	return tagMismatch
+}
+
+func TestTagOutcomeFor(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name           string
+		allTags, atPin []string
+		want           tagOutcome
+	}{
+		{
+			name:    "tagged checkout with an untagged pin",
+			allTags: []string{"v0.7.0"},
+			want:    tagMismatch,
+		},
+		{
+			name:    "tagged checkout with the pin's release tag",
+			allTags: []string{"v0.7.0", "v0.6.0"},
+			atPin:   []string{"v0.7.0"},
+			want:    tagOK,
+		},
+		{
+			name: "checkout with no tags",
+			want: tagSkip,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := tagOutcomeFor(tc.allTags, tc.atPin, "0.7.0"); got != tc.want {
+				t.Errorf("tagOutcomeFor(%v, %v) = %v; want %v", tc.allTags, tc.atPin, got, tc.want)
+			}
+		})
 	}
 }
 
@@ -104,16 +185,25 @@ func actionPackageVersion(t *testing.T, root string) string {
 	return pkg.Version
 }
 
-// A shallow CI checkout has no tags; the line checks still run there.
+func repoTags(t *testing.T, root string) []string {
+	t.Helper()
+	return gitTags(t, root, "-l")
+}
+
 func tagsAt(t *testing.T, root, sha string) []string {
 	t.Helper()
 	if !selfPinSHA.MatchString(sha) {
 		return nil
 	}
+	return gitTags(t, root, "--points-at", sha)
+}
+
+func gitTags(t *testing.T, root string, args ...string) []string {
+	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
 		return nil
 	}
-	cmd := exec.CommandContext(t.Context(), "git", "-C", root, "tag", "--points-at", sha)
+	cmd := exec.CommandContext(t.Context(), "git", append([]string{"-C", root, "tag"}, args...)...)
 	cmd.WaitDelay = 2 * time.Second
 	out, err := cmd.Output()
 	if err != nil {
@@ -122,13 +212,22 @@ func tagsAt(t *testing.T, root, sha string) []string {
 	return strings.Fields(string(out))
 }
 
-func pinProblems(src, prefix, packageVersion string) (selfPin, []string) {
+func pinProblems(src, prefix, packageVersion string) ([]selfPin, []string) {
+	var pins []selfPin
+	var problems []string
 	for line := range strings.SplitSeq(src, "\n") {
-		if strings.Contains(line, prefix) {
-			return pinLineProblems(line, prefix, packageVersion)
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") || !strings.Contains(trimmed, "uses:") || !strings.Contains(trimmed, prefix) {
+			continue
 		}
+		pin, lineProblems := pinLineProblems(line, prefix, packageVersion)
+		pins = append(pins, pin)
+		problems = append(problems, lineProblems...)
 	}
-	return selfPin{}, []string{"no " + prefix + " self-pin found"}
+	if len(pins) == 0 {
+		problems = append(problems, "no "+prefix+" self-pin found")
+	}
+	return pins, problems
 }
 
 func pinLineProblems(line, prefix, packageVersion string) (selfPin, []string) {
@@ -229,6 +328,7 @@ type pinCase struct {
 	line       string
 	pkgVersion string
 	want       []string
+	wantCount  int
 }
 
 func TestPinProblems(t *testing.T) {
@@ -276,23 +376,93 @@ func TestPinProblems(t *testing.T) {
 			line: "      uses: " + prefix + release + " # v0.07.0",
 			want: []string{"not X.Y.Z"},
 		},
+		{
+			name: "prefix in a comment before the real uses line",
+			line: "      # uses: " + prefix + introduced + " # action as introduced; re-pin to a release commit\n" +
+				"      uses: " + prefix + release + " # v0.7.0",
+		},
+		{
+			name:      "file with no self-pin",
+			line:      "      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7",
+			wantCount: -1,
+			want:      []string{"no " + prefix + " self-pin found"},
+		},
+		{
+			name: "every uses line is checked",
+			line: "      uses: " + prefix + release + " # v0.7.0\n" +
+				"      uses: " + prefix + release + " # v0.7.0",
+			wantCount: 2,
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			checkPinCase(t, tc, prefix)
+			checkPinCase(t, &tc, prefix)
 		})
 	}
 }
 
-func checkPinCase(t *testing.T, tc pinCase, prefix string) {
+func checkPinCase(t *testing.T, tc *pinCase, prefix string) {
 	t.Helper()
 	pkgVersion := tc.pkgVersion
 	if pkgVersion == "" {
 		pkgVersion = "0.7.0"
 	}
-	_, problems := pinProblems(tc.line, prefix, pkgVersion)
+	pins, problems := pinProblems(tc.line, prefix, pkgVersion)
+	wantPins := tc.wantCount
+	switch wantPins {
+	case -1:
+		wantPins = 0
+	case 0:
+		wantPins = 1
+	}
+	if len(pins) != wantPins {
+		t.Errorf("pinProblems() found %d pins; want %d", len(pins), wantPins)
+	}
 	assertPinProblems(t, problems, tc.want)
+}
+
+func TestPinDisagreements(t *testing.T) {
+	t.Parallel()
+	const release = "b4c36344f03375985a8edf859b9092ba7d59f077"
+	const introduced = "471d2985b29060caa90036fefac565e97a12bb2c"
+	tests := []struct {
+		name string
+		pins []selfPin
+		want int
+	}{
+		{
+			name: "equal pins",
+			pins: []selfPin{
+				{sha: release, version: "0.7.0"},
+				{sha: release, version: "0.7.0"},
+			},
+		},
+		{
+			name: "different commits",
+			pins: []selfPin{
+				{sha: release, version: "0.7.0"},
+				{sha: introduced, version: "0.7.0"},
+			},
+			want: 1,
+		},
+		{
+			name: "different versions on one commit",
+			pins: []selfPin{
+				{sha: release, version: "0.7.0"},
+				{sha: release, version: "0.6.1"},
+			},
+			want: 1,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := len(pinDisagreements(tc.pins)); got != tc.want {
+				t.Errorf("pinDisagreements() = %d problems; want %d", got, tc.want)
+			}
+		})
+	}
 }
 
 func assertPinProblems(t *testing.T, problems, want []string) {
