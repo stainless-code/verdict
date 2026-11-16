@@ -266,6 +266,7 @@ linters:
         - .NewErr(
         - .NewErrf(
         - .WriteFile(
+        - .WriteFileMode(
 
 formatters:
   enable:

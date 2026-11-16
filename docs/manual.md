@@ -3333,7 +3333,8 @@ environment, and the split is deliberate (the security rationale is in
   your secret-named variables and the argument secrets the argv redaction
   hides, so the argv and the tail agree about what a credential is. `.run.out`
   is the child's raw stream — it may hold a credential the child printed — so
-  it is written `0600` on Unix, the way `.verify.out` keeps its raw stream.
+  it is written `0600` on Unix, the permission `verify` gives `.verify.out`,
+  its raw stream beside `patch.json`.
   Windows has no mode bits for Go to set, so there it takes the directory's
   inherited ACL and the owner-only guarantee does not apply.
 

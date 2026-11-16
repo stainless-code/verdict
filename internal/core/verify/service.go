@@ -296,8 +296,11 @@ func recordOutcome(dir, now string, exit int, timedOut bool, tail string, sandbo
 	return nil
 }
 
+// raw output can carry a printed credential, so it is owner-only like .run.out.
+const verifyOutputMode = 0o600
+
 func writeOutputs(outPath, combined string) error {
-	return atomic.WriteFile(outPath, []byte(combined))
+	return atomic.WriteFileMode(outPath, []byte(combined), verifyOutputMode)
 }
 
 func recordTimeoutMarker(timeoutPath, marker string) *core.RefusalError {
