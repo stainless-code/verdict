@@ -3,7 +3,7 @@ exit: 0
 report: .verdict/state/5102 (1 shown) open=1 head=aaaaaaa
 1. [open] notes.txt:2 (a3333333)
 by category: untagged 1
-next: address open threads
+next: merge — gate passes
 --- stderr ---
 warn: patch identity unavailable — completeness compares heads
 warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
