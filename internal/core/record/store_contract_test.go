@@ -129,6 +129,7 @@ func TestRunRecordInputShapeRefusals(t *testing.T) {
 		{"triage-not-object", `,"triage":[42]`, "bad-review-input", "triage entry must be an object"},
 		{"sections-not-array", `,"sections":1`, "bad-review-input", "sections must be an array"},
 		{"section-not-object", `,"sections":[42]`, "bad-review-input", "section must be an object"},
+		{"coverage-ranges-array", `,"coverage":[{"file":"notes.txt","ranges":["1-2"]}]`, "bad-review-input", "value must be a string"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

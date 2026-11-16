@@ -1075,8 +1075,11 @@ the bundle's own hunk snapshot:
 a comma-separated list of 1-based inclusive source-line intervals, and it is
 side-agnostic — the evaluator unions the file's `OLD` and `NEW` hunk intervals,
 so one interval covers a hunk on either side. Duplicate `file` entries union
-rather than count twice. A malformed range warns and makes that entry count as
-unattested; it never silently attests the file.
+rather than count twice. A malformed range string warns and makes that entry
+count as unattested; it never silently attests the file. A `ranges` value that
+is neither a string nor `null` — an array, number, or object — refuses
+`bad-review-input` naming `$.coverage[N].ranges` on `record`, `post`, and
+`next --coverage`, so it can never measure as an unattested 0%.
 
 Coverage is computed from `hunks.tsv`, the snapshot `fetch` already writes —
 never from a second diff parse and never from `toc.txt` line counts. Paths the

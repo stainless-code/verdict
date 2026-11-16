@@ -54,8 +54,14 @@ const (
 
 // Codes and messages.
 const (
-	// CodeIncomplete is the one refusal this package raises.
+	// CodeIncomplete is the coverage gate's refusal.
 	CodeIncomplete = "coverage-incomplete"
+	// CodeBadReviewInput is the review-input refusal record's checker raises.
+	CodeBadReviewInput = "bad-review-input"
+
+	msgReviewProblem      = "review.json has %d problem(s); fix every one, then re-run"
+	msgRangesWrongType    = "value must be a string"
+	msgRangesWrongTypeFix = `use "1-240,300-320", "all", or omit it`
 
 	msgHunksUnreadable = "hunks.tsv unreadable: %v"
 	msgEntryNotObject  = "coverage: entry %d is not an object — ignored"
@@ -163,7 +169,14 @@ func Evaluate(dir string, review *jq.Obj, generated func(string) bool) (Summary,
 	}
 	files := intervalsByFile(rows)
 	var warns []string
-	claims, present := parseClaims(review, &warns)
+	claims, present, problems := parseClaims(review, &warns)
+	if len(problems) > 0 {
+		return Summary{}, warns, &core.RefusalError{
+			Code:     CodeBadReviewInput,
+			Message:  fmt.Sprintf(msgReviewProblem, len(problems)),
+			Problems: problems,
+		}
+	}
 	warns = append(warns, unknownClaims(claims, files)...)
 	sum := summarize(files, claims, generated)
 	sum.Present = present
@@ -233,63 +246,82 @@ func attestation(files map[string][]Range, claims []claim) map[string][]Range {
 
 // parseClaims reads coverage[] and reports whether the key was present. Every
 // malformed entry warns; none of them silently attests a file.
-func parseClaims(review *jq.Obj, warns *[]string) ([]claim, bool) {
+func parseClaims(review *jq.Obj, warns *[]string) ([]claim, bool, []core.Problem) {
 	if review == nil {
-		return nil, false
+		return nil, false, nil
 	}
 	raw, ok := review.Get(Field)
 	if !ok {
-		return nil, false
+		return nil, false, nil
 	}
 	items, isArr := raw.([]any)
 	if !isArr {
 		*warns = append(*warns, msgNotArray)
-		return nil, true
+		return nil, true, nil
 	}
 	out := make([]claim, 0, len(items))
+	var problems []core.Problem
 	for i, item := range items {
-		if c, ok := claimAt(item, i, warns); ok {
+		c, ok, p := claimAt(item, i, warns)
+		if p != nil {
+			problems = append(problems, *p)
+		}
+		if ok {
 			out = append(out, c)
 		}
 	}
-	return out, true
+	return out, true, problems
 }
 
 // claimAt reads one coverage[] entry, warning and reporting false for an entry
 // that cannot name a file. A malformed range still yields a claim, marked bad,
 // so the merge warns about it and never counts it as attested.
-func claimAt(item any, i int, warns *[]string) (claim, bool) {
+func claimAt(item any, i int, warns *[]string) (claim, bool, *core.Problem) {
 	obj, isObj := item.(*jq.Obj)
 	if !isObj || obj == nil {
 		*warns = append(*warns, fmt.Sprintf(msgEntryNotObject, i))
-		return claim{}, false
+		return claim{}, false, nil
 	}
 	file := strings.TrimSpace(jq.Str(fieldOf(obj, FieldFile)))
 	if file == "" {
 		*warns = append(*warns, fmt.Sprintf(msgEntryNoFile, i))
-		return claim{}, false
+		return claim{}, false, nil
 	}
-	ranges, whole, bad := claimRanges(obj, file, warns)
-	return claim{file: file, ranges: ranges, whole: whole, bad: bad}, true
+	ranges, whole, bad, problem := claimRanges(obj, file, i, warns)
+	return claim{file: file, ranges: ranges, whole: whole, bad: bad}, true, problem
 }
 
 // claimRanges resolves one entry's ranges field: a whole-file claim, a parsed
 // range list, or a claim marked bad when the field is present but unreadable.
-func claimRanges(obj *jq.Obj, file string, warns *[]string) ([]Range, bool, bool) {
-	ranges, ok := rangeField(obj)
+func claimRanges(obj *jq.Obj, file string, i int, warns *[]string) ([]Range, bool, bool, *core.Problem) {
+	ranges, present, wrongType := rangeField(obj)
 	switch {
-	case !ok:
+	case wrongType:
+		return nil, false, true, rangesWrongType(i)
+	case !present:
 		*warns = append(*warns, fmt.Sprintf(msgBadRanges, file, jq.Str(mustField(obj, FieldRanges))))
-		return nil, false, true
+		return nil, false, true, nil
 	case ranges == "" || ranges == RangesAll:
-		return nil, true, false
+		return nil, true, false, nil
 	default:
 		parsed, err := ParseRanges(ranges)
 		if err != nil {
 			*warns = append(*warns, fmt.Sprintf(msgBadRanges, file, ranges))
-			return nil, false, true
+			return nil, false, true, nil
 		}
-		return parsed, false, false
+		return parsed, false, false, nil
+	}
+}
+
+// rangesWrongType is the problem record's checker reports for a ranges value
+// that is neither a string nor null: one shape, one refusal on every verb.
+func rangesWrongType(i int) *core.Problem {
+	return &core.Problem{
+		Path:    fmt.Sprintf("$.coverage[%d].ranges", i),
+		Code:    core.ProblemCodeWrongType,
+		Level:   core.ProblemLevelError,
+		Message: msgRangesWrongType,
+		Fix:     msgRangesWrongTypeFix,
 	}
 }
 
@@ -301,20 +333,22 @@ func fieldOf(o *jq.Obj, key string) any {
 
 func mustField(o *jq.Obj, key string) any { return fieldOf(o, key) }
 
-// rangeField reads ranges as a trimmed string. A key that is present but not a
-// string — `null` included — is a malformed attestation, not a whole-file
-// claim: attesting more than was written is the one error this package must
-// never make, and a claim only widens by saying `all` or omitting the key.
-func rangeField(o *jq.Obj) (string, bool) {
+// rangeField reads ranges as a trimmed string. A key present as null stays a
+// malformed attestation warning; any other non-string refuses with record's
+// bad-review-input problem, so an array never measures as a silent 0%.
+func rangeField(o *jq.Obj) (value string, present, wrongType bool) {
 	raw, ok := o.Get(FieldRanges)
 	if !ok {
-		return "", true
+		return "", true, false
 	}
 	s, isStr := raw.(string)
 	if !isStr {
-		return "", false
+		if raw == nil {
+			return "", false, false
+		}
+		return "", true, true
 	}
-	return strings.TrimSpace(s), true
+	return strings.TrimSpace(s), true, false
 }
 
 // loadRows reads the fetch-time snapshot, rebuilding it in memory from

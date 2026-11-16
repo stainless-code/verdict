@@ -116,6 +116,31 @@ func TestRunNextCoverageRefusesCorruptReview(t *testing.T) {
 // TestRunNextCoverageChunked pins criterion 9's chunked leg: a chunked bundle
 // reports its chunk count and is not evaluated, because chunks[] is its
 // attestation.
+// TestRunNextCoverageRefusesArrayRanges pins one input contract for
+// coverage[].ranges: an array is not a range string, and next must report the
+// same bad-review-input problem record does instead of measuring a silent 0%.
+func TestRunNextCoverageRefusesArrayRanges(t *testing.T) {
+	req := coverageNextRequest(t, coverageFiles(coverageReview("notes.txt", `"coverage":[{"file":"notes.txt","ranges":["1-2"]}],`)))
+	resp, ref := reportcore.RunNextCoverage(req)
+	if ref == nil {
+		t.Fatalf("RunNextCoverage = %+v; want a bad-review-input refusal", resp.Coverage)
+	}
+	if ref.Code != "bad-review-input" {
+		t.Fatalf("refusal code = %q, want bad-review-input", ref.Code)
+	}
+	if want := "review.json has 1 problem(s); fix every one, then re-run"; ref.Message != want {
+		t.Errorf("refusal message = %q, want %q", ref.Message, want)
+	}
+	if len(ref.Problems) != 1 {
+		t.Fatalf("problems = %+v, want exactly one", ref.Problems)
+	}
+	p := ref.Problems[0]
+	if p.Path != "$.coverage[0].ranges" || p.Code != core.ProblemCodeWrongType ||
+		p.Message != "value must be a string" {
+		t.Errorf("problem = %+v, want the record checker's wrong-type problem", p)
+	}
+}
+
 func TestRunNextCoverageChunked(t *testing.T) {
 	files := coverageFiles(coverageReview("notes.txt", `"coverage":[{"file":"notes.txt","ranges":"all"}],`))
 	files["chunks/manifest.json"] = `{"chunks":[{"name":"chunks/01.diff"},{"name":"chunks/02.diff"}]}`
