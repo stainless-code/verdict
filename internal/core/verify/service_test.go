@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -189,6 +190,28 @@ func TestVerifyRedaction(t *testing.T) {
 	out, err := os.ReadFile(".verdict/state/5201/.verify.out")
 	if err != nil || !strings.Contains(string(out), "supersecretvalue123") {
 		t.Errorf(".verify.out scrubbed, want raw: %q", out)
+	}
+}
+
+// TestVerifyOutputOwnerOnly pins .verify.out's permission: the stream is raw,
+// so a command that prints a credential leaves the value in it, and the file is
+// the operator's to read and nobody else's, the way .run.out is.
+func TestVerifyOutputOwnerOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("NTFS carries no POSIX mode bits")
+	}
+	bundle(t, `{"verifyCmd":"printf tok"}`)
+	cmdr := &scriptCommander{res: core.Result{Stdout: "tok=leakedvalue123"}}
+	if _, ref := verifycore.Run(context.Background(),
+		verifyRequest(&collector{}, cmdr, "10", []string{"PATH=/bin"}, true)); ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	info, err := os.Stat(".verdict/state/5201/.verify.out")
+	if err != nil {
+		t.Fatalf("stat .verify.out: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Errorf(".verify.out mode = %#o, want 0o600", perm)
 	}
 }
 

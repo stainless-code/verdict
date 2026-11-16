@@ -296,8 +296,13 @@ func recordOutcome(dir, now string, exit int, timedOut bool, tail string, sandbo
 	return nil
 }
 
+// verifyOutputMode is .verify.out's permission: the stream is raw, so a command
+// that prints a credential leaves the value in it, and the file is the
+// operator's to read and nobody else's, unlike the 0644 store files beside it.
+const verifyOutputMode = 0o600
+
 func writeOutputs(outPath, combined string) error {
-	return atomic.WriteFile(outPath, []byte(combined))
+	return atomic.WriteFileMode(outPath, []byte(combined), verifyOutputMode)
 }
 
 func recordTimeoutMarker(timeoutPath, marker string) *core.RefusalError {
