@@ -16,6 +16,15 @@ import (
 )
 
 func buildResponse(st *state) *core.ReportResponse {
+	// The gate runs first: next and the human footer name the merge when the
+	// requested check passes, so both surfaces read the same result.
+	var gateFailed bool
+	var checkLines []string
+	var gate *core.ReportGate
+	if st.gate {
+		gateFailed, checkLines, gate = gateTail(st)
+		st.gatePassed = !gateFailed
+	}
 	resp := &core.ReportResponse{
 		Repo:     st.req.Repo,
 		Pr:       st.req.Pr,
@@ -32,19 +41,29 @@ func buildResponse(st *state) *core.ReportResponse {
 		resp.Data.ProvenanceTruncated = provenance.MergeTruncated(st.provenance, readcommon.BundleTruncation(st.dir))
 	}
 	if st.gate {
-		resp.GateFailed, resp.CheckLines, resp.Data.Gate = gateTail(st)
+		resp.GateFailed, resp.CheckLines, resp.Data.Gate = gateFailed, checkLines, gate
 	}
 	return resp
+}
+
+// nextStep names the next action from the open count, overridden by a passing
+// --check gate: findings below the tier's floor do not stand between the run
+// and a merge.
+func nextStep(st *state, open int) string {
+	if st.flags.Check != "" && st.gatePassed {
+		return "merge — gate passes"
+	}
+	if open > 0 {
+		return "address open threads"
+	}
+	return "none open — nothing to address"
 }
 
 func reportNext(st *state) string {
 	if st.flags.Output != "" {
 		return "wrote " + st.flags.Output
 	}
-	if viewOpen(viewRanked(st)) > 0 {
-		return "address open threads"
-	}
-	return "none open — nothing to address"
+	return nextStep(st, viewOpen(viewRanked(st)))
 }
 
 func buildData(st *state) *core.ReportData {
@@ -289,10 +308,7 @@ func finalizeHuman(st *state, view []readcommon.Ranked, lines []string) []string
 	// The footer follows the view the header reports: with a display floor the
 	// rendered list can be empty while the store still holds open findings, and
 	// "address open threads" beside "(0 shown) open=0" read as a contradiction.
-	if viewOpen(view) > 0 {
-		return append(lines, "next: address open threads")
-	}
-	return append(lines, "next: none open — nothing to address")
+	return append(lines, "next: "+nextStep(st, viewOpen(view)))
 }
 
 func appendHumanTail(st *state, lines []string) []string {

@@ -1348,7 +1348,9 @@ esac
 
 Compose it after the expensive step: gate the merge on `--check critical`,
 keep `post`'s preflight as the fail-closed backstop — the gate advises,
-the human still merges.
+the human still merges. A passing gate names that merge in the envelope's
+`next` (`merge — gate passes`) and in the human footer, so open findings below
+the tier's floor never read as the next step.
 
 `report --category <cat>` filters the ranked findings to one finding kind
 (`logic`, `edge-case`, `security`, `performance`, `accidental-commit`,

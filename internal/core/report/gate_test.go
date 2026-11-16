@@ -91,6 +91,47 @@ func TestRunReportCheckTierGate(t *testing.T) {
 	}
 }
 
+// TestRunReportGatePassNextNamesMerge pins item 6: a passing --check gate
+// names the merge as the next step instead of sending the reviewer to open
+// threads that sit below the gate's floor. A failing gate keeps the old line.
+func TestRunReportGatePassNextNamesMerge(t *testing.T) {
+	run := func(t *testing.T, findings, check string) *core.ReportResponse {
+		t.Helper()
+		resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+			ReadRequest: fixture(t, findings),
+			Flags:       core.ReportFlags{Check: check},
+		})
+		if ref != nil {
+			t.Fatalf("Run refusal: %v", ref)
+		}
+		return resp
+	}
+
+	below := "[" + entryJSON("1111111111111111111111111111111111111111", "inline", "open", `"informational"`, "true") + "]"
+	passed := run(t, below, "important")
+	if passed.GateFailed {
+		t.Fatalf("GateFailed = true, want a passing gate")
+	}
+	if want := "merge — gate passes"; passed.Next != want {
+		t.Errorf("Next = %q, want %q", passed.Next, want)
+	}
+	if got, want := passed.Human[len(passed.Human)-1], "next: merge — gate passes"; got != want {
+		t.Errorf("human footer = %q, want %q", got, want)
+	}
+
+	atFloor := "[" + entryJSON("2222222222222222222222222222222222222222", "inline", "open", `"important"`, "true") + "]"
+	failed := run(t, atFloor, "important")
+	if !failed.GateFailed {
+		t.Fatalf("GateFailed = false, want a failing gate")
+	}
+	if want := "address open threads"; failed.Next != want {
+		t.Errorf("Next = %q, want %q", failed.Next, want)
+	}
+	if got, want := failed.Human[len(failed.Human)-1], "next: address open threads"; got != want {
+		t.Errorf("human footer = %q, want %q", got, want)
+	}
+}
+
 // TestRunReportCompletenessGate pins the HEAD-reviewed dimension: a matching
 // post passes, and a missing, head-less, or stale post fails with its typed
 // line naming the re-fetch command. The combined case proves one run fails on
