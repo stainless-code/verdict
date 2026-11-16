@@ -12,22 +12,15 @@ import (
 	"testing"
 )
 
-// agentsPromptRule is the one AGENTS.md sentence that says how many skill files
-// PromptsHash covers and which ones: the count word, the entry point, and the
-// brace form naming the hashed prompts.
 var agentsPromptRule = regexp.MustCompile(
 	"Exactly ([a-z]+) skill files are hashed into goldens:\\*\\* " +
 		"`skills/verdict/SKILL\\.md` and `prompts/\\{([a-z,]+)\\}\\.md`")
 
-// countWords names the English numerals the contributor docs spell counts with.
 var countWords = map[string]int{
 	"one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
 	"six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
 }
 
-// TestAgentsHashedPromptSetMatchesProvenance holds the hand-written list in
-// AGENTS.md to the files PromptsHash hashes, so a prompt added to one cannot
-// leave the other naming the old set or the old count.
 func TestAgentsHashedPromptSetMatchesProvenance(t *testing.T) {
 	t.Parallel()
 	root := moduleRoot(t)
@@ -53,7 +46,6 @@ func TestAgentsHashedPromptSetMatchesProvenance(t *testing.T) {
 	}
 }
 
-// hashedPromptFiles reads the list PromptsHash walks from its declaration.
 // promptFiles is unexported, and a copy re-typed here would pass while the
 // hashed set moved.
 func hashedPromptFiles(t *testing.T, root string) []string {
@@ -72,7 +64,6 @@ func hashedPromptFiles(t *testing.T, root string) []string {
 	return names
 }
 
-// promptFilesLiteral finds the composite literal promptFiles is declared with.
 func promptFilesLiteral(t *testing.T, path string) *ast.CompositeLit {
 	t.Helper()
 	var lit *ast.CompositeLit
@@ -92,7 +83,6 @@ func promptFilesLiteral(t *testing.T, path string) *ast.CompositeLit {
 	return lit
 }
 
-// readDoc reads one documentation file.
 func readDoc(t *testing.T, path string) string {
 	t.Helper()
 	raw, err := os.ReadFile(path)
@@ -102,23 +92,15 @@ func readDoc(t *testing.T, path string) string {
 	return string(raw)
 }
 
-// flattenDoc reads one Markdown file with its wrapped lines joined, so a guard
-// matches a sentence however the paragraph is hard-wrapped.
 func flattenDoc(t *testing.T, path string) string {
 	t.Helper()
 	return strings.Join(strings.Fields(readDoc(t, path)), " ")
 }
 
-// roadmapPage is the docs-site page whose table claims what ships today.
 const roadmapPage = "apps/docs/content/04-roadmap/index.mdx"
 
-// backtickedVerb matches one command name a table cell names in backticks.
 var backtickedVerb = regexp.MustCompile("`([a-z][a-z-]*)`")
 
-// TestRoadmapListsEveryShippedVerb holds the docs-site roadmap to the CLI
-// synopsis: its "Shipped today" table is the page's claim about what ships, so
-// a verb the binary offers and the table omits is a stale page, and a verb the
-// table names that the synopsis dropped is a stale row.
 func TestRoadmapListsEveryShippedVerb(t *testing.T) {
 	t.Parallel()
 	root := moduleRoot(t)
@@ -131,8 +113,6 @@ func TestRoadmapListsEveryShippedVerb(t *testing.T) {
 	}
 }
 
-// roadmapCommands reads the commands the roadmap's "Shipped today" table lists
-// in its Commands column.
 func roadmapCommands(t *testing.T, page string) []string {
 	t.Helper()
 	commands := tableCommands(roadmapSection(t, page))
@@ -142,8 +122,6 @@ func roadmapCommands(t *testing.T, page string) []string {
 	return commands
 }
 
-// roadmapSection returns the roadmap page between "## Shipped today" and
-// "## Next".
 func roadmapSection(t *testing.T, page string) string {
 	t.Helper()
 	start := strings.Index(page, "\n## Shipped today\n")
@@ -154,8 +132,6 @@ func roadmapSection(t *testing.T, page string) string {
 	return page[start:end]
 }
 
-// tableCommands collects the backticked commands in the Commands column of
-// every table row in section.
 func tableCommands(section string) []string {
 	var commands []string
 	for line := range strings.SplitSeq(section, "\n") {
@@ -163,17 +139,14 @@ func tableCommands(section string) []string {
 		if !strings.HasPrefix(line, "|") || len(columns) < 4 {
 			continue
 		}
-		for _, match := range backtickedVerb.FindAllStringSubmatch(columns[2], -1) {
+		commandCell := columns[2]
+		for _, match := range backtickedVerb.FindAllStringSubmatch(commandCell, -1) {
 			commands = append(commands, match[1])
 		}
 	}
 	return commands
 }
 
-// TestBenchmarkCorpusCountMatchesTree holds docs/benchmark.md's case counts to
-// the case directories under bench/corpus/: the page describes the corpus an
-// operator and the evals both work from, so a case added without it leaves the
-// page describing a corpus that no longer exists.
 func TestBenchmarkCorpusCountMatchesTree(t *testing.T) {
 	t.Parallel()
 	root := moduleRoot(t)
@@ -195,7 +168,6 @@ func TestBenchmarkCorpusCountMatchesTree(t *testing.T) {
 	}
 }
 
-// corpusCaseDirs lists the case directories bench/corpus/ holds.
 func corpusCaseDirs(t *testing.T, root string) []string {
 	t.Helper()
 	corpus := filepath.Join(root, "bench", "corpus")
@@ -215,7 +187,6 @@ func corpusCaseDirs(t *testing.T, root string) []string {
 	return dirs
 }
 
-// caseKind reads the kind one corpus manifest declares.
 func caseKind(t *testing.T, path string) string {
 	t.Helper()
 	var manifest struct {
