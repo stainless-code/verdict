@@ -199,8 +199,14 @@ func TestCheckReviewCoversBundleInputs(t *testing.T) {
 		path  string
 	}{
 		{
-			name: "schema-missing", json: `{"body":"` + checkBody + `","approved":false}`,
-			code: core.ProblemCodeMissingField, level: core.ProblemLevelWarning, path: "$.schema_version",
+			name: "schema-version-wrong-type",
+			json: `{"schema_version":false,"body":"` + checkBody + `","approved":false,"comments":[]}`,
+			code: core.ProblemCodeWrongType, level: core.ProblemLevelError, path: "$.schema_version",
+		},
+		{
+			name: "schema-version-wrong-value",
+			json: `{"schema_version":"2","body":"` + checkBody + `","approved":false,"comments":[]}`,
+			code: core.ProblemCodeBadEnum, level: core.ProblemLevelError, path: "$.schema_version",
 		},
 		{
 			name: "brief-outcome-missing", json: comment(`,"brief":{"sites":[]}`),
@@ -317,6 +323,16 @@ func TestCheckReviewCountsTruncatedLevels(t *testing.T) {
 	}
 	if res.Warnings != 50 || res.Errors != 1 {
 		t.Errorf("levels errors=%d warnings=%d, want 1/50", res.Errors, res.Warnings)
+	}
+}
+
+// TestCheckReviewAcceptsMissingSchemaVersion pins item 5: schema_version is
+// optional and assumed 1, so omitting it is not a warning.
+func TestCheckReviewAcceptsMissingSchemaVersion(t *testing.T) {
+	t.Parallel()
+	res := recordcore.CheckReview([]byte(`{"body":"`+checkBody+`","approved":false,"comments":[]}`), checkDiff)
+	if len(res.Problems) != 0 || res.Warnings != 0 {
+		t.Fatalf("problems = %+v (warnings %d), want none for an omitted optional key", res.Problems, res.Warnings)
 	}
 }
 

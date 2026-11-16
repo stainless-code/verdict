@@ -248,7 +248,7 @@ under, so it stays byte-identical and reports nothing.
 | ---------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | `invalid-json`         | error   | The file is not one JSON document; the message carries line:col, and the fix is to emit only the object.                                      |
 | `wrong-type`           | mixed   | Error for a wrong type; warning for a non-numeric line/start_line or a fenced suggestion.                                                     |
-| `missing-field`        | mixed   | Error for a required field; warning for missing schema_version, comments, or line/start_line.                                                 |
+| `missing-field`        | mixed   | Error for a required field; warning for missing comments or line/start_line.                                                                  |
 | `bad-enum`             | mixed   | Error for an unknown closed-set value; warning for a malformed KB id or unknown chunk name.                                                   |
 | `out-of-range`         | error   | A length or numeric bound is outside its published range (confidence, brief approach/question, caps).                                         |
 | `path-not-in-diff`     | mixed   | Error for a comment path; warning for a brief site outside the diff.                                                                          |
@@ -279,8 +279,9 @@ previous merge filled a missing rung with `pointed`, and every other recognized 
 reads as `model`. A review that explicitly wrote `pointed` is indistinguishable from
 a default-filled one, so those entries read as `default` either way. Changing the normalization orphans
 history — that ships as a new `sig_version`, never silently.
-`review.json` inputs stamp `schema_version: "1"` (`post`/`record` refuse unknown
-versions, warn-and-proceed when the stamp is missing); every bundle carries
+`review.json` inputs stamp `schema_version: "1"` (`post`/`record` refuse a
+present value other than `"1"`; an absent key reads as 1 without a warning);
+every bundle carries
 `.verdict/state/N/store.json` (`{"schema_version":"1"}`) marking the generation of the
 whole store — plugins read it instead of sniffing shapes. GitHub bundles keep
 `PR.json`/`reviews.json`/`inline.json` as raw API output (GitHub's schema,

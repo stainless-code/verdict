@@ -248,11 +248,6 @@ func (c *checker) checkReview(obj *jq.Obj) {
 			"write \"comments\": []", []any{}))
 	}
 	c.checkBodyQuality(obj)
-	if _, ok := obj.Get("schema_version"); !ok {
-		c.add(c.problem(problemSchemaVersion, core.ProblemCodeMissingField, core.ProblemLevelWarning,
-			"schema_version is missing; assuming 1",
-			"write \"schema_version\": \"1\"", schemaVersion1))
-	}
 	if c.hasChunks {
 		if _, ok := obj.Get(fieldChunks); !ok {
 			c.unattestedChunks()
@@ -261,10 +256,9 @@ func (c *checker) checkReview(obj *jq.Obj) {
 }
 
 func (c *checker) checkSchemaVersion(v any) {
-	if v == nil || v == false {
-		c.add(c.problem(problemSchemaVersion, core.ProblemCodeMissingField, core.ProblemLevelWarning,
-			"schema_version is missing; assuming 1",
-			"write \"schema_version\": \"1\"", schemaVersion1))
+	// An absent key reads as 1, the assumption record already makes after the
+	// checker; a present value has to say 1 explicitly.
+	if v == nil {
 		return
 	}
 	s, ok := v.(string)

@@ -122,7 +122,7 @@ func (st *state) validateAndMerge(body string) (string, diagram.Status, error) {
 	st.loadKB()
 	readcommon.WarnContextSources(st.dir, st.review, st.warn)
 	st.kb.Staged = []map[string]any{}
-	if err := checkReviewSchema(st.warnInput, st.review); err != nil {
+	if err := checkReviewSchema(st.review); err != nil {
 		return "", diagram.Status{}, err
 	}
 	if err := st.validateInputs(); err != nil {
@@ -296,10 +296,12 @@ func validJSON(raw []byte) bool {
 	return err == nil
 }
 
-func checkReviewSchema(warn func(string), review *jq.Obj) error {
+func checkReviewSchema(review *jq.Obj) error {
+	if review == nil {
+		return nil
+	}
 	rv, has := review.Get("schema_version")
-	if review == nil || !has || rv == nil || rv == false {
-		warn("review.json carries no schema_version — assuming 1 (agents: write \"schema_version\":\"1\")")
+	if !has || rv == nil {
 		return nil
 	}
 	if s := jq.R(rv); s == schemaVersion1 {
