@@ -1,0 +1,25 @@
+---
+"@stainless-code/verdict": minor
+---
+
+**New commands and flags**
+
+- **`pr-wait`** — wait for a PR to merge, close, change checks, or change review state, with a bounded timeout and typed timeout data. [Bounded foreground waits](docs/manual.md#bounded-foreground-waits) <!-- changesets: bounded-foreground-waits.md -->
+- **`ingest`** — import SARIF 2.1.0 results into a bundle's findings store, sharing one dedupe and suppression path with model reviews. [Static-analysis ingestion](docs/manual.md#local-review-no-pr) <!-- changesets: ingest-sarif.md -->
+- **`threads resolve`** — close the review threads whose findings your store marks addressed, one receipt per run, with `--dry-run` and typed refusals for threads verdict did not author. [Guarded submission](docs/manual.md#guarded-submission-and-operator-surfaces) <!-- changesets: thread-resolve.md -->
+- **`risk`** — rank every local bundle into an advisory triage queue by band and 0–100 score, without a host call or an index build. [Triage risk queue](docs/manual.md#triage-risk-queue) <!-- changesets: risk-queue.md -->
+- **`report --html`** — export the six dashboard views as a static site, published through staging and backup siblings with rollback and symlink refusals. [Static dashboard export](docs/manual.md#static-dashboard-export) <!-- changesets: report-html.md -->
+- **`run --agent`** — run your own agent CLI against an existing bundle, assert exactly one fresh `review.json`, then hand off to the unchanged record/post validation. [Your agent, launched](docs/manual.md#your-agent-launched-run---agent) <!-- changesets: run-agent.md -->
+- **`panel`** — plan independent verifier dispatches locally; keep-biased results enrich findings and summaries without voting or dropping anything. [Panel verification](docs/manual.md#panel-verification) <!-- changesets: panel-verification.md -->
+- **Recipes** — `.verdict/recipes.json` declares a lens set, synthesizer hint, and budget as strict versioned data, read at the PR base and hashed into the bundle. [Recipes](docs/manual.md#recipes-declared-review-pipelines) <!-- changesets: recipes-format.md -->
+- **`skill show`, `skill status`, `skill uninstall`** — inspect one payload file byte-identically, gate on drift with an exit code, and remove only the files a receipt owns. [Install routes](docs/manual.md#install-routes-and-where-commands-run) <!-- changesets: skill-management.md -->
+- **`post --summary comment`** — maintain one separate PR-level summary comment, updated in place across all three publish hosts; the default `off` keeps output byte-identical. [Guarded submission](docs/manual.md#guarded-submission-and-operator-surfaces) <!-- changesets: post-summary-comment.md -->
+- **`fix --all`** — the batch form of the bounded fix loop: every open inline finding at or above `--min-severity`, one pass per sig under the same ceilings, per-sig outcomes in `data.batch`, and a `fix.patch` written beside the ledger. [Fix loops](docs/manual.md#fix-loops-bounded-verify-gated) <!-- changesets: fix-all-batch.md -->
+- **`fix --selected`** — address exactly the sigs a human 👍 selected on the root verdict comment, read through one shared reaction reader; a selection file is written only when something was reacted to. [Fix loops](docs/manual.md#fix-loops-bounded-verify-gated) <!-- changesets: reaction-scoped-fix.md -->
+- **`handoff`** — one markdown projection of the open inline findings `fix` would take, selecting through the same selector, with `--json`, `--format md`, and repeatable `--paths`; read-only, with no ledger and no host call. [Handoff](docs/manual.md#handoff-the-fix-brief-for-someone-else) <!-- changesets: handoff-verb.md -->
+- **`run --print --stage <n>`** — render one recipe stage at a time, so CI can dispatch the four stages under different models. [Recipes](docs/manual.md#recipes-declared-review-pipelines) <!-- changesets: run-print-stage.md -->
+- **`backtest reverts`** — record the reverts git already knows about into a sorted, byte-stable `.verdict/reverts.jsonl`, with `.verdict/reverts.md` as the fenced reading surface. [Reverts](docs/manual.md#reverts) <!-- changesets: backtest-reverts.md -->
+- **`backtest mine`** — mine SZZ candidates from a local clone with zero model calls and zero network, writing a timestamp-free `mine.json`. [Backtest](docs/manual.md#backtest-szz-candidates) <!-- changesets: backtest-mine.md -->
+- **`backtest replay`** — replay mined candidates against your own agent in a throwaway worktree per candidate, bounded by review count, projected budget, and timeout. [Replay](docs/manual.md#replay) <!-- changesets: backtest-replay.md -->
+- **`backtest score`** — grade a replay's findings against the candidate bug lines and report a catch rate, off-target findings per PR, and cost per review as a pure read. [Score](docs/manual.md#score) <!-- changesets: backtest-score.md -->
+- **`learn --incident`** — attach one revert or incident to a recorded bundle in a sorted, idempotent `.verdict/incidents.jsonl` ledger. [Knowledge base](docs/manual.md#knowledge-base-scoped-local-rules) <!-- changesets: incident-memory.md -->
