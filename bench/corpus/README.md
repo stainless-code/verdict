@@ -1,4 +1,4 @@
-# Seeded benchmark corpus
+# Benchmark corpus
 
 This directory is the checked-in half of the benchmark corpus: deterministic
 seeded cases plus fake agent outputs, used by the `bench-corpus` eval and as
