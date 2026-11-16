@@ -43,9 +43,9 @@ skip-token ban and test determinism. Read both before writing or reviewing Go.
   argv a case did not register (`evals/README.md`, `evals/lib/hoststub.sh`).
 - **No `/tmp` test dirs.** Use `t.TempDir()` for files and `internal/testenv`
   for child processes; a hardcoded path leaks across parallel runs.
-- **Exactly five skill files are hashed into goldens:** `skills/verdict/SKILL.md`
-  and `prompts/{system,review,diagrams,verifier}.md`. Changes must move only
-  `prompts_hash` lines in record goldens — prove it in the diff.
+- **Exactly six skill files are hashed into goldens:** `skills/verdict/SKILL.md`
+  and `prompts/{system,review,diagrams,verifier,validate}.md`; a change moves
+  only `prompts_hash` lines and the literal pin in `provenance/prompts_test.go`.
 
 ## Git and commits
 
