@@ -98,8 +98,8 @@ type Manifest struct {
 }
 
 // LensSpec is one manifest lens row. Globs absent means the lens is offered
-// for every plan group; max_files and max_findings are the dispatch caps the
-// reviewer-subagent contract states.
+// for every plan group; max_files and max_findings are the optional per-lens
+// dispatch caps a pack may declare.
 type LensSpec struct {
 	ID          string   `json:"id"`
 	Globs       []string `json:"globs,omitempty"`
