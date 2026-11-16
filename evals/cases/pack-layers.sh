@@ -45,7 +45,7 @@ assert_json_field "verb" "pack" '.verb'
 assert_json_field "three layers" 3 '.data.packs | length'
 assert_json_field "builtin row" "verdict/builtin" '.data.packs[0].name'
 assert_json_field "builtin layer" "builtin" '.data.packs[0].layer'
-assert_json_field "builtin hash" "06820abbd0a6d3c6090a3e82d0fbbbd9f658ca7fee7a67dd58e54785c72e125b" '.data.packs[0].hash'
+assert_json_field "builtin hash" "120173839a932dde740ff69014e9659669818dbedfc8f36124a26d90c624bc48" '.data.packs[0].hash'
 assert_json_field "builtin lenses" "api-contract,perf,test" '.data.packs[0].lenses | join(",")'
 assert_json_field "builtin drift is null" "null" '.data.packs[0].drift'
 assert_json_field "org row" "acme/org" '.data.packs[1].name'
@@ -61,7 +61,7 @@ assert_json_field "repo drift is missing until locked" "pack-lock-missing" '.dat
 
 run_review pack list
 assert_exit "human pack list exits 0" 0
-assert_file_grep "human line names the builtin layer" "$EVAL_OUT" '^builtin  verdict/builtin@1.0.0  source=builtin  sha256:06820abbd0a6  lenses=api-contract,perf,test  rules=-$'
+assert_file_grep "human line names the builtin layer" "$EVAL_OUT" '^builtin  verdict/builtin@1.0.0  source=builtin  sha256:120173839a93  lenses=api-contract,perf,test  rules=-$'
 assert_file_grep "human line names the org layer" "$EVAL_OUT" '^org      acme/org@2.0.0  source=dir:org-packs  sha256:eb88c75d4245  lenses=security  rules=no-secrets$'
 assert_file_grep "human line names the repo layer" "$EVAL_OUT" '^repo     acme/repo@0.1.0  source=.verdict/packs/repo  sha256:ae6c1dde5272  lenses=security,style  rules=repo-style  drift=pack-lock-missing$'
 

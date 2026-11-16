@@ -5,18 +5,15 @@
   "lenses": [
     {
       "id": "api-contract",
-      "max_files": 12,
-      "max_findings": 10
+      "max_files": 12
     },
     {
       "id": "perf",
-      "max_files": 12,
-      "max_findings": 10
+      "max_files": 12
     },
     {
       "id": "test",
-      "max_files": 12,
-      "max_findings": 10
+      "max_files": 12
     }
   ]
 }
