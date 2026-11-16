@@ -8,6 +8,7 @@ import (
 )
 
 type gateText struct {
+	raw       string
 	flat      string
 	lc        string
 	scan      string
@@ -22,6 +23,7 @@ type gateText struct {
 
 func normalize(raw string) *gateText {
 	g := &gateText{}
+	g.raw = raw
 	g.flat = flatOf(raw)
 	g.lc = readcommon.ASCIILower(g.flat)
 	g.scan = scanOf(g.lc)
@@ -39,11 +41,37 @@ func normalize(raw string) *gateText {
 	return g
 }
 
-// segments splits a command text at the shell's command separators.
 func segments(text string) []string {
-	return strings.FieldsFunc(text, func(r rune) bool {
-		return r == ';' || r == '|' || r == '&' || r == '\n' || r == '\r'
-	})
+	var out []string
+	start := 0
+	for i := range len(text) {
+		if !isSegmentBreak(text, i) {
+			continue
+		}
+		if seg := text[start:i]; seg != "" {
+			out = append(out, seg)
+		}
+		start = i + 1
+	}
+	if seg := text[start:]; seg != "" {
+		out = append(out, seg)
+	}
+	return out
+}
+
+// isSegmentBreak reports a command separator. The `&` of a fd-duplication
+// (`2>&1`) or a redirect (`&> f`) is not one: it belongs to its redirect.
+func isSegmentBreak(text string, i int) bool {
+	switch text[i] {
+	case ';', '|', '\n', '\r':
+		return true
+	case '&':
+		if i > 0 && (text[i-1] == '>' || text[i-1] == '<') {
+			return false
+		}
+		return i+1 >= len(text) || text[i+1] != '>'
+	}
+	return false
 }
 
 func flatOf(raw string) string {

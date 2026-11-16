@@ -81,6 +81,18 @@ F-R48	verify-indirection	strict	timeout -s KILL 5 $E -rf ./fz-target
 F-R49	verify-indirection	strict	xargs -I {} $E -rf ./fz-target
 F-R50	verify-indirection	strict	command $E -rf ./fz-target
 F-R51	verify-indirection	strict	nice -n 5 $E -rf ./fz-target
+F-R52	verify-indirection	strict	E=echo; </dev/null $E pwned
+F-R53	verify-indirection	strict	E=echo; >/dev/null $E pwned
+F-R54	verify-indirection	strict	E=echo; 2>&1 $E pwned
+F-R55	verify-indirection	strict	E=echo; <<<x $E pwned
+F-R56	verify-indirection	strict	E=echo; >> fz-notes.txt $E pwned
+F-R57	verify-indirection	strict	E=echo; echo $($E pwned)
+F-R58	verify-indirection	strict	E=echo; echo `$E pwned`
+F-R59	verify-indirection	strict	E=echo; cat <($E pwned)
+F-R60	verify-indirection	strict	E=echo; builtin $E pwned
+F-R61	verify-indirection	strict	E=echo; sh -c "$E pwned"
+F-R62	verify-destructive	strict	E=echo; eval $E pwned
+F-R63	verify-destructive	strict	E=echo; sudo $E pwned
 F-X01	verify-networked	strict	wget --remote-name http://127.0.0.1:9/f
 F-X02	verify-networked	strict	curl -K /tmp/verify-fuzz-curlcfg http://127.0.0.1:9/
 F-X03	verify-networked	strict	wget -i /tmp/verify-fuzz-wgeturls http://127.0.0.1:9/f
@@ -138,3 +150,9 @@ F-P35	PASS	strict	env CI=1 printf ok
 F-P36	PASS	strict	xargs -n1 echo ok
 F-P37	PASS	strict	{ echo $USER; }
 F-P38	PASS	strict	if true; then echo $USER; fi
+F-P39	PASS	strict	cat </dev/null
+F-P40	PASS	strict	echo $(date)
+F-P41	PASS	strict	echo `date`
+F-P42	PASS	strict	builtin echo ok
+F-P43	PASS	strict	diff <(sort fz-notes.txt) <(sort fz-notes.txt)
+F-P44	PASS	strict	bash ./fz-missing.sh $TARGET

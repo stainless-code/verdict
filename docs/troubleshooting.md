@@ -1408,14 +1408,20 @@ Fix: fix the command or the evidence named above, then re-run `verify`.
 
 Cause: `verifyCmd` invokes a command word the gate cannot read — a plain
 variable (`E=curl; $E -o ./f http://host/x`), the braced (`${E}`) or quoted
-(`"$E"`) spelling, an `export`, an assignment prefix, a loop variable, or
-the same spelling on its own line or behind a wrapper (`env -u HOME $E`,
-`timeout 5s $E`, `xargs -I {} $E`). The value may come from the command's
-own environment, so the gate refuses the shape instead of guessing what the
-variable holds. A wrapper's own option grammar decides which later word bash
-runs, so after `env`/`timeout`/`xargs`/`nice`/`command` any variable in that
-command refuses: `timeout 300 make test` stays clean, `timeout 300 make test
-$TARGET` does not.
+(`"$E"`) spelling, an `export`, an assignment prefix, a loop variable, the
+same spelling on its own line, after a leading redirection (`</dev/null $E`,
+`2>&1 $E`, `>> f $E`), or inside a substitution (`echo $($E pwned)`, backticks,
+`cat <($E pwned)`), whose body is judged as its own command. The value may
+come from the command's own environment, so the gate refuses the shape instead
+of guessing what the variable holds.
+
+A wrapper's own option grammar decides which later word bash runs, so after
+`builtin`, `command`, `env`, `exec`, `nice`, `nohup`, `stdbuf`, `time`,
+`timeout`, or `xargs` any variable in that command refuses: `timeout 300 make
+test` stays clean, `timeout 300 make test $TARGET` does not. A shell counts
+the same way when it carries an inline command (`sh -c`, `bash -c`, `bash -ec`):
+`sh -c "$E pwned"` refuses. `eval` and `sudo` refuse earlier, as
+`verify-destructive`, whatever their arguments.
 
 The gate is a tripwire, not a boundary. A variable holding a whole command
 line (`sh -c "$V"`, a file written and then run) is a shape it has not

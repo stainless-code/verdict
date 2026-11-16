@@ -45,12 +45,20 @@ var variableCommandWords = []struct {
 	{"timeout signal flag", `timeout -s KILL 5 $E -rf ./target`},
 	{"xargs replace flag", `xargs -I {} $E -rf ./target`},
 	{"command wrapper", `command $E -rf ./target`},
+	{"builtin wrapper", `E=echo; builtin $E pwned`},
+	{"redirect in", `E=echo; </dev/null $E pwned`},
+	{"redirect out", `E=echo; >/dev/null $E pwned`},
+	{"redirect fd dup", `E=echo; 2>&1 $E pwned`},
+	{"redirect here string", `E=echo; <<<x $E pwned`},
+	{"redirect separate target", `E=echo; >> fz-notes.txt $E pwned`},
+	{"command substitution", `E=echo; echo $($E pwned)`},
+	{"command substitution nested", `E=echo; echo $(echo $($E pwned))`},
+	{"backtick substitution", "E=echo; echo `$E pwned`"},
+	{"process substitution", `E=echo; cat <($E pwned)`},
+	{"shell inline command", `E=echo; sh -c "$E pwned"`},
+	{"shell inline command clustered", `E=echo; bash -ec "$E pwned"`},
 }
 
-// TestVerifyRefusesVariableCommandWord pins STA-431: a plain assignment plus a
-// bare `$VAR` in command position handed the real tool word to the commander.
-// The stub records the spawn, so the test fails with the argv a host would
-// have executed, and nothing here runs a real tool.
 func TestVerifyRefusesVariableCommandWord(t *testing.T) {
 	for _, tc := range variableCommandWords {
 		t.Run(tc.name, func(t *testing.T) { wantIndirectionRefusal(t, tc.cmd) })
@@ -84,6 +92,13 @@ func TestCheckAllowsVariableArguments(t *testing.T) {
 		`printf ok --prefix=$FOO/x`,
 		`echo ${FOO:-nobody}`,
 		`sh -c 'printf ok'`,
+		`cat </dev/null`,
+		`printf ok < fz-notes.txt`,
+		`echo $(date)`,
+		"echo `date`",
+		`diff <(sort a) <(sort b)`,
+		`builtin echo ok`,
+		`bash ./fz-missing.sh $TARGET`,
 		`timeout 300 make test`,
 		`env CI=1 go test ./...`,
 		`xargs -n1 echo ok`,
@@ -105,6 +120,13 @@ func TestCheckRefusesGlobWordAfterNewline(t *testing.T) {
 	wantRefusal(t, "echo ok\nr? -rf x", "verify-destructive",
 		"refusing verifyCmd: matched 'r?' (glob metacharacters in command position expand "+
 			"into a hidden tool word — write the tool word plainly)")
+}
+
+func TestCheckRefusesEvalAndSudoBeforeTheWrapperRule(t *testing.T) {
+	wantRefusal(t, `E=echo; eval $E pwned`, "verify-destructive",
+		"refusing verifyCmd: matched ' eval ' (eval with non-literal args refuses — fail closed)")
+	wantRefusal(t, `E=echo; sudo $E pwned`, "verify-destructive",
+		"refusing verifyCmd: matched ' sudo ' (privilege change refuses regardless of payload)")
 }
 
 func TestCheckVariableCommandWordMessage(t *testing.T) {
