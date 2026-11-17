@@ -27,7 +27,7 @@ _verdict_flags() { # $1 = verb
     index) printf '%s\n' build status prune callers tests-for co-changed owners blast-radius --from --at --depth --limit --commits --since --min-count --symbol --pr --paths --json;;
     backtest) printf '%s\n' mine replay score --since --until --run --agent --max-reviews --budget-usd --timeout --rounds --json;;
     threads) printf '%s\n' --provider --thread --dry-run --json;;
-    drain) printf '%s\n' --provider --max-threads --agent --timeout --json --;;
+    drain) printf '%s\n' --provider --max-threads --agent --timeout --post --json --;;
     fetch-local) printf '%s\n' --staged --range --base --stash --worktree --context --ignore --no-default-excludes --index --consent-over-budget --show-prompts --chunk --json;;
     run) printf '%s\n' --agent --recipe --stage --timeout --rounds --print --json --;;
     learn) printf '%s\n' --propose --from-bundle --accept --reject --dry-run --pack --incident --sha --path --note --url --at --rule --scope --id --provenance --rigor --status --retire --restore --reason --json;;

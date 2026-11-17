@@ -33,8 +33,10 @@ func postFixture(t *testing.T, bodies map[string]string) (*PostRequest, *[]postC
 		if custom, ok := bodies[id]; ok {
 			body = custom
 		}
-		replies = append(replies, Reply{ThreadID: id, WaitingCommentID: waiting[id],
-			Disposition: disposition, Body: body})
+		replies = append(replies, Reply{
+			ThreadID: id, WaitingCommentID: waiting[id],
+			Disposition: disposition, Body: body,
+		})
 		rootBody := "finding\n\n" + threadscore.ReplyMarker("root", "0")
 		threads = append(threads, threadscore.Thread{
 			ID: id, Kind: threadscore.KindReview, Author: "verdict-bot",
@@ -61,14 +63,12 @@ func postFixture(t *testing.T, bodies map[string]string) (*PostRequest, *[]postC
 			return "reply-" + thread, nil
 		},
 		Resolve:  func(string) error { return nil },
-		Append:   func(entry LedgerEntry) error { ledger = append(ledger, entry); return nil },
+		Append:   func(entry *LedgerEntry) error { ledger = append(ledger, *entry); return nil },
 		SaveFeed: func(*threadscore.File) error { return nil },
 	}
 	return req, &calls, &ledger
 }
 
-// TestPostMarksBodiesAndLedger pins the reply bytes and the order: each write
-// gets a locked ledger entry, and withdraw resolves only after the reply lands.
 func TestPostMarksBodiesAndLedger(t *testing.T) {
 	req, calls, ledger := postFixture(t, map[string]string{
 		"PRRT_1": "Ping @alice, see the note.",
@@ -79,26 +79,50 @@ func TestPostMarksBodiesAndLedger(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("Post refused: %+v", ref)
 	}
-	if len(*calls) != 3 || len(*ledger) != 3 {
-		t.Fatalf("calls = %d, ledger = %d, want 3 each", len(*calls), len(*ledger))
+	assertPostedCalls(t, *calls, *ledger, resolved, res)
+	assertWithdrawFeed(t, req.Feed)
+}
+
+func assertPostedCalls(t *testing.T, calls []postCall, ledger []LedgerEntry, resolved []string, res *PostResult) {
+	t.Helper()
+	if len(calls) != 3 || len(ledger) != 3 {
+		t.Fatalf("calls = %d, ledger = %d, want 3 each", len(calls), len(ledger))
 	}
-	first := (*calls)[0]
-	if want := threadscore.ReplyMarker("PRRT_1", "101"); !strings.HasSuffix(first.body, want) {
-		t.Errorf("body %q did not end with %q", first.body, want)
+	assertReplyBody(t, calls[0].body)
+	assertWithdrawLedger(t, &ledger[1])
+	assertWithdrawResult(t, resolved, res)
+}
+
+func assertReplyBody(t *testing.T, body string) {
+	t.Helper()
+	if want := threadscore.ReplyMarker("PRRT_1", "101"); !strings.HasSuffix(body, want) {
+		t.Errorf("body %q did not end with %q", body, want)
 	}
-	if !strings.Contains(first.body, "@\u200balice") || strings.Contains(first.body, "@alice") {
-		t.Errorf("mention was not neutralized: %q", first.body)
+	if !strings.Contains(body, "@\u200balice") || strings.Contains(body, "@alice") {
+		t.Errorf("mention was not neutralized: %q", body)
 	}
+}
+
+func assertWithdrawLedger(t *testing.T, entry *LedgerEntry) {
+	t.Helper()
+	if entry.InReplyTo != "201" || entry.By != ReplyBy || entry.ReplyID != "reply-PRRT_2" {
+		t.Errorf("withdraw ledger entry = %+v", entry)
+	}
+}
+
+func assertWithdrawResult(t *testing.T, resolved []string, res *PostResult) {
+	t.Helper()
 	if len(resolved) != 1 || resolved[0] != "PRRT_2" {
 		t.Errorf("resolved = %v, want PRRT_2", resolved)
-	}
-	if (*ledger)[1].InReplyTo != "201" || (*ledger)[1].By != ReplyBy || (*ledger)[1].ReplyID != "reply-PRRT_2" {
-		t.Errorf("withdraw ledger entry = %+v", (*ledger)[1])
 	}
 	if len(res.Posted) != 3 || !res.Posted[1].Resolved || res.Incomplete {
 		t.Errorf("result = %+v", res)
 	}
-	if req.Feed.Threads[1].Resolved != true || req.Feed.Threads[0].Resolved {
+}
+
+func assertWithdrawFeed(t *testing.T, feed *threadscore.File) {
+	t.Helper()
+	if len(feed.Threads) < 2 || !feed.Threads[1].Resolved || feed.Threads[0].Resolved {
 		t.Error("withdraw was not the only thread marked resolved in the feed")
 	}
 }
@@ -106,45 +130,70 @@ func TestPostMarksBodiesAndLedger(t *testing.T) {
 // TestPostPartialFailureRerunIsIdempotent fails write 2, then reruns with the
 // recorded ledger. The thread whose reply landed is never written twice.
 func TestPostPartialFailureRerunIsIdempotent(t *testing.T) {
+	f := failingPostFixture(t)
+	req := f.PostRequest
+	first, ref := Post(req)
+	if ref != nil || !first.Incomplete || len(first.Failed) != 1 || first.Failed[0].ThreadID != "PRRT_2" {
+		t.Fatalf("first result = %+v, refusal = %+v", first, ref)
+	}
+	if len(*f.ledger) != 2 {
+		t.Fatalf("ledger after failure = %+v", *f.ledger)
+	}
+	f.failSecond = false
+	markMarkedReplyVerdict(req)
+	*f.calls = nil
+	second, ref := Post(req)
+	if ref != nil || second.Incomplete || len(second.Posted) != 1 {
+		t.Fatalf("second result = %+v, refusal = %+v", second, ref)
+	}
+	assertRerunCalls(t, *f.calls, req.Plan.Skipped)
+}
+
+type rerunFixture struct {
+	*PostRequest
+	calls      *[]postCall
+	ledger     *[]LedgerEntry
+	failSecond bool
+}
+
+func failingPostFixture(t *testing.T) *rerunFixture {
+	t.Helper()
 	req, calls, ledger := postFixture(t, nil)
-	failSecond := true
+	f := &rerunFixture{PostRequest: req, calls: calls, ledger: ledger, failSecond: true}
 	req.Reply = func(root, thread, body string) (string, error) {
-		if thread == "PRRT_2" && failSecond {
+		if thread == "PRRT_2" && f.failSecond {
 			return "", errors.New("host rejected the reply")
 		}
 		*calls = append(*calls, postCall{root, thread, body})
 		return "reply-" + thread, nil
 	}
-	first, ref := Post(req)
-	if ref != nil || !first.Incomplete || len(first.Failed) != 1 || first.Failed[0].ThreadID != "PRRT_2" {
-		t.Fatalf("first result = %+v, refusal = %+v", first, ref)
-	}
-	if len(*ledger) != 2 {
-		t.Fatalf("ledger after failure = %+v", *ledger)
-	}
-	req.Ledger = append([]LedgerEntry{}, (*ledger)...)
-	// The live refresh reads the posted marker back as verdict-authored.
-	for i := range req.Feed.Threads {
-		if req.Feed.Threads[i].ID == "PRRT_1" {
-			last := &req.Feed.Threads[i].Comments[1]
-			last.Body += "\n\n" + threadscore.ReplyMarker("PRRT_1", last.ID)
-			last.AuthorKind = threadscore.AuthorVerdict
-		}
-	}
-	*calls = nil
-	failSecond = false
-	second, ref := Post(req)
-	if ref != nil || second.Incomplete || len(second.Posted) != 1 {
-		t.Fatalf("second result = %+v, refusal = %+v", second, ref)
-	}
-	for _, call := range *calls {
+	return f
+}
+
+func assertRerunCalls(t *testing.T, calls []postCall, skips []Skip) {
+	t.Helper()
+	for _, call := range calls {
 		if call.thread == "PRRT_1" {
 			t.Errorf("rerun double-posted %q", call.thread)
 		}
 	}
-	if !hasSkip(req.Plan.Skipped, "PRRT_1", ReasonAlreadyReplied) ||
-		!hasSkip(req.Plan.Skipped, "PRRT_3", ReasonAlreadyReplied) {
-		t.Errorf("rerun skips = %+v", req.Plan.Skipped)
+	if !hasSkip(skips, "PRRT_1", ReasonAlreadyReplied) ||
+		!hasSkip(skips, "PRRT_3", ReasonAlreadyReplied) {
+		t.Errorf("rerun skips = %+v", skips)
+	}
+}
+
+// markMarkedReplyVerdict is what a fresh threads refresh does with a posted
+// marker: the answer reads back as verdict-authored, not as a human question.
+func markMarkedReplyVerdict(req *PostRequest) {
+	req.Ledger = append([]LedgerEntry{}, req.Ledger...)
+	for i := range req.Feed.Threads {
+		if req.Feed.Threads[i].ID != "PRRT_1" {
+			continue
+		}
+		last := &req.Feed.Threads[i].Comments[1]
+		last.Body += "\n\n" + threadscore.ReplyMarker("PRRT_1", last.ID)
+		last.AuthorKind = threadscore.AuthorVerdict
 	}
 }
 
@@ -157,18 +206,27 @@ func hasSkip(skips []Skip, thread, reason string) bool {
 	return false
 }
 
-// TestPostStaleAndSecretRefusals pins the live checks before the first write:
-// a new comment makes a draft stale, and a credential body refuses the whole
-// run with no host call at all.
 func TestPostStaleAndSecretRefusals(t *testing.T) {
 	req, calls, ledger := postFixture(t, nil)
+	assertStaleSkip(t, req, calls, ledger)
+	secretReq, secretCalls, secretLedger := postFixture(t, map[string]string{
+		"PRRT_1": "key AKIAIOSFODNN7EXAMPLE here",
+	})
+	_, ref := Post(secretReq)
+	if ref == nil || ref.Code != "post-secret-shaped" {
+		t.Fatalf("secret refusal = %+v, want post-secret-shaped", ref)
+	}
+	if len(*secretCalls) != 0 || len(*secretLedger) != 0 {
+		t.Errorf("secret draft made %d call(s) and %d ledger entry/entries", len(*secretCalls), len(*secretLedger))
+	}
+}
+
+func assertStaleSkip(t *testing.T, req *PostRequest, calls *[]postCall, ledger *[]LedgerEntry) {
+	t.Helper()
 	req.Feed.Threads[0].Comments[1].ID = "999"
 	res, ref := Post(req)
-	if ref != nil || len(res.Posted) != 2 {
+	if ref != nil || len(res.Posted) != 2 || len(res.Failed) != 0 {
 		t.Fatalf("stale result = %+v, refusal = %+v", res, ref)
-	}
-	if len(res.Failed) != 0 {
-		t.Errorf("stale failures = %+v", res.Failed)
 	}
 	if !hasSkip(req.Plan.Skipped, "PRRT_1", ReasonStaleThread) {
 		t.Errorf("stale skip missing from %+v", req.Plan.Skipped)
@@ -180,17 +238,6 @@ func TestPostStaleAndSecretRefusals(t *testing.T) {
 	}
 	if len(*ledger) != 2 {
 		t.Errorf("stale run wrote %d ledger entries, want 2", len(*ledger))
-	}
-
-	secretReq, secretCalls, secretLedger := postFixture(t, map[string]string{
-		"PRRT_1": "key AKIAIOSFODNN7EXAMPLE here",
-	})
-	_, ref = Post(secretReq)
-	if ref == nil || ref.Code != "post-secret-shaped" {
-		t.Fatalf("secret refusal = %+v, want post-secret-shaped", ref)
-	}
-	if len(*secretCalls) != 0 || len(*secretLedger) != 0 {
-		t.Errorf("secret draft made %d call(s) and %d ledger entry/entries", len(*secretCalls), len(*secretLedger))
 	}
 }
 

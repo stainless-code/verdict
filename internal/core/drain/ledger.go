@@ -13,7 +13,7 @@ import (
 // AppendLedger records one successful reply under the store lock. A crash
 // after a host write but before this call is the only unrecorded window; once
 // the entry lands, the next drain reads it and makes no second host write.
-func AppendLedger(path string, entry LedgerEntry) error {
+func AppendLedger(path string, entry *LedgerEntry) error {
 	unlock, err := storelock.Acquire(path, storelock.DefaultWait)
 	if err != nil {
 		return jq.NewErrf("could not lock %s: %v", path, err)
@@ -23,7 +23,7 @@ func AppendLedger(path string, entry LedgerEntry) error {
 	if err != nil {
 		return err
 	}
-	entries = append(entries, entry)
+	entries = append(entries, *entry)
 	raw, err := json.MarshalIndent(entries, "", "  ")
 	if err != nil {
 		return jq.NewErrf("could not encode %s: %v", path, err)

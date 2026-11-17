@@ -100,6 +100,7 @@ export type RefusalCode =
   | "drafts-invalid"
   | "drafts-stale"
   | "drain-failed"
+  | "drain-incomplete"
   | "duplicate-payload"
   | "fetch-failed"
   | "filtered-out"

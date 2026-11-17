@@ -50,7 +50,9 @@
    not the numeric comment id), which closes only verdict-authored threads and writes
    `threads-resolve.json`. Log every posted reply `{thread, reply_id, at}` into
    `.verdict/state/N/replies.json` (creating it) and skip threads already logged — a crashed-and-rerun
-   pass must never double-reply. Reading works on all six hosts; on GitCafe, Bitbucket, and
+   pass must never double-reply. `verdict drain ... --post` writes the same file with two extra
+   fields (`in_reply_to`, `by: "drain"`) and skips entries it already recorded; a legacy entry
+   without `in_reply_to` answers comments at or before its `at`. Reading works on all six hosts; on GitCafe, Bitbucket, and
    Azure record the disposition in `replies.json` and the summary.
    Resolve only after the revalidator confirms fixed,
    user asked, or you withdraw your own bot finding. Leave discussion/partial/disagreement open.

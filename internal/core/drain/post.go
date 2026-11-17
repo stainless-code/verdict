@@ -20,17 +20,17 @@ const ReasonStaleThread = "stale-thread"
 // ordering and the idempotency rules can be tested without a host.
 type PostRequest struct {
 	Plan      *File
-	DraftsRaw []byte
 	Feed      *threadscore.File
-	Ledger    []LedgerEntry
+	Reply     func(rootID, threadID, body string) (string, error)
+	Resolve   func(threadID string) error
+	Append    func(*LedgerEntry) error
+	SaveFeed  func(*threadscore.File) error
 	Provider  string
 	Repo      string
 	PR        string
 	At        string
-	Reply     func(rootID, threadID, body string) (string, error)
-	Resolve   func(threadID string) error
-	Append    func(LedgerEntry) error
-	SaveFeed  func(*threadscore.File) error
+	DraftsRaw []byte
+	Ledger    []LedgerEntry
 }
 
 // PostResult is what the final receipt records.
@@ -44,6 +44,26 @@ type PostResult struct {
 // entry per successful write. A host failure is recorded and the remaining
 // drafts are still attempted; the caller turns Incomplete into a refusal.
 func Post(req *PostRequest) (*PostResult, *core.RefusalError) {
+	doc, ref := postDrafts(req)
+	if ref != nil {
+		return nil, ref
+	}
+	byID := postThreads(req.Feed)
+	res := &PostResult{Posted: []Posted{}, Failed: []Failed{}}
+	for _, reply := range doc.Replies {
+		postOne(req, byID, reply, res)
+	}
+	req.Plan.Posted = res.Posted
+	req.Plan.Failed = res.Failed
+	at := req.At
+	req.Plan.PostedAt = &at
+	saveFeed(req, res)
+	res.Incomplete = len(res.Failed) > 0
+	return res, nil
+}
+
+// postDrafts runs §6's first gates: drafts, capability, then secret scan.
+func postDrafts(req *PostRequest) (*RepliesFile, *core.RefusalError) {
 	if req.Plan == nil || req.Feed == nil {
 		return nil, &core.RefusalError{Code: CodeDrainFailed, Message: "drain-failed: no plan or thread feed to post against"}
 	}
@@ -68,26 +88,25 @@ func Post(req *PostRequest) (*PostResult, *core.RefusalError) {
 	if ref := secretGate(doc.Replies); ref != nil {
 		return nil, ref
 	}
-	byID := make(map[string]*threadscore.Thread, len(req.Feed.Threads))
-	for i := range req.Feed.Threads {
-		byID[req.Feed.Threads[i].ID] = &req.Feed.Threads[i]
+	return &doc, nil
+}
+
+func postThreads(feed *threadscore.File) map[string]*threadscore.Thread {
+	byID := make(map[string]*threadscore.Thread, len(feed.Threads))
+	for i := range feed.Threads {
+		byID[feed.Threads[i].ID] = &feed.Threads[i]
 	}
-	res := &PostResult{Posted: []Posted{}, Failed: []Failed{}}
-	for _, reply := range doc.Replies {
-		postOne(req, byID, reply, res)
+	return byID
+}
+
+func saveFeed(req *PostRequest, res *PostResult) {
+	if req.SaveFeed == nil {
+		return
 	}
-	req.Plan.Posted = res.Posted
-	req.Plan.Failed = res.Failed
-	at := req.At
-	req.Plan.PostedAt = &at
-	if req.SaveFeed != nil {
-		if err := req.SaveFeed(req.Feed); err != nil {
-			res.Failed = append(res.Failed, Failed{ThreadID: "", Reason: "could not update threads.json: " + err.Error()})
-			req.Plan.Failed = res.Failed
-		}
+	if err := req.SaveFeed(req.Feed); err != nil {
+		res.Failed = append(res.Failed, Failed{Reason: "could not update threads.json: " + err.Error()})
+		req.Plan.Failed = res.Failed
 	}
-	res.Incomplete = len(res.Failed) > 0
-	return res, nil
 }
 
 func postOne(req *PostRequest, byID map[string]*threadscore.Thread, reply Reply, res *PostResult) {
@@ -96,19 +115,9 @@ func postOne(req *PostRequest, byID map[string]*threadscore.Thread, reply Reply,
 		res.Failed = append(res.Failed, Failed{ThreadID: reply.ThreadID, Reason: "thread missing from refreshed feed"})
 		return
 	}
-	last := thread.Comments[len(thread.Comments)-1]
-	switch {
-	case thread.Resolved:
-		req.Plan.Skipped = append(req.Plan.Skipped, Skip{ThreadID: reply.ThreadID, Reason: ReasonResolved})
-		return
-	case last.ID != reply.WaitingCommentID:
-		req.Plan.Skipped = append(req.Plan.Skipped, Skip{ThreadID: reply.ThreadID, Reason: ReasonStaleThread})
-		return
-	case answered(req.Ledger, reply.ThreadID, &last):
-		req.Plan.Skipped = append(req.Plan.Skipped, Skip{ThreadID: reply.ThreadID, Reason: ReasonAlreadyReplied})
-		return
-	case reply.Disposition == DispositionDefer:
-		req.Plan.Skipped = append(req.Plan.Skipped, Skip{ThreadID: reply.ThreadID, Reason: "defer"})
+	last := &thread.Comments[len(thread.Comments)-1]
+	if reason := postSkipReason(req, reply, thread, last); reason != "" {
+		req.Plan.Skipped = append(req.Plan.Skipped, Skip{ThreadID: reply.ThreadID, Reason: reason})
 		return
 	}
 	body := recordcore.NeutralizeMentions(reply.Body) + "\n\n" +
@@ -118,23 +127,49 @@ func postOne(req *PostRequest, byID map[string]*threadscore.Thread, reply Reply,
 		res.Failed = append(res.Failed, Failed{ThreadID: reply.ThreadID, Reason: err.Error()})
 		return
 	}
-	entry := LedgerEntry{Thread: reply.ThreadID, ReplyID: id, At: req.At,
-		InReplyTo: reply.WaitingCommentID, By: ReplyBy}
-	if err := req.Append(entry); err != nil {
+	res.Posted = append(res.Posted, recordPost(req, thread, reply, id, res))
+}
+
+// recordPost appends the ledger entry immediately after one successful write,
+// then resolves a withdraw and marks the feed. A failure is recorded but never
+// rolls back the reply already on the host.
+func recordPost(req *PostRequest, thread *threadscore.Thread, reply Reply, id string, res *PostResult) Posted {
+	entry := LedgerEntry{
+		Thread: reply.ThreadID, ReplyID: id, At: req.At,
+		InReplyTo: reply.WaitingCommentID, By: ReplyBy,
+	}
+	if err := req.Append(&entry); err != nil {
 		res.Failed = append(res.Failed, Failed{ThreadID: reply.ThreadID, Reason: "could not record reply: " + err.Error()})
-		return
+		return Posted{}
 	}
 	req.Ledger = append(req.Ledger, entry)
 	posted := Posted{ThreadID: reply.ThreadID, ReplyID: id, Disposition: string(reply.Disposition)}
-	if reply.Disposition == DispositionWithdraw {
-		if err := req.Resolve(reply.ThreadID); err != nil {
-			res.Failed = append(res.Failed, Failed{ThreadID: reply.ThreadID, Reason: "could not resolve thread: " + err.Error()})
-		} else {
-			thread.Resolved = true
-			posted.Resolved = true
-		}
+	if reply.Disposition != DispositionWithdraw {
+		return posted
 	}
-	res.Posted = append(res.Posted, posted)
+	if err := req.Resolve(reply.ThreadID); err != nil {
+		res.Failed = append(res.Failed, Failed{ThreadID: reply.ThreadID, Reason: "could not resolve thread: " + err.Error()})
+		return posted
+	}
+	thread.Resolved = true
+	posted.Resolved = true
+	return posted
+}
+
+// postSkipReason returns the typed reason a refreshed thread must not post.
+func postSkipReason(req *PostRequest, reply Reply, thread *threadscore.Thread, last *threadscore.Comment) string {
+	switch {
+	case thread.Resolved:
+		return ReasonResolved
+	case last.ID != reply.WaitingCommentID:
+		return ReasonStaleThread
+	case answered(req.Ledger, reply.ThreadID, last):
+		return ReasonAlreadyReplied
+	case reply.Disposition == DispositionDefer:
+		return "defer"
+	default:
+		return ""
+	}
 }
 
 // secretGate scans every outbound body before the first write and names the

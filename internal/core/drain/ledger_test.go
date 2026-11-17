@@ -19,8 +19,8 @@ func TestAppendLedgerKeepsLegacyEntries(t *testing.T) {
 		{Thread: "PRRT_1", ReplyID: "77", At: "2026-11-05T00:00:00Z", InReplyTo: "102", By: ReplyBy},
 		{Thread: "PRRT_2", ReplyID: "88", At: "2026-11-05T00:01:00Z", InReplyTo: "202", By: ReplyBy},
 	}
-	for _, entry := range entries {
-		if err := AppendLedger(path, entry); err != nil {
+	for i := range entries {
+		if err := AppendLedger(path, &entries[i]); err != nil {
 			t.Fatalf("AppendLedger: %v", err)
 		}
 	}

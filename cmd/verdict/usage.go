@@ -277,14 +277,17 @@ func usageText() string {
 		"    makes one host write per thread and writes threads-resolve.json. GitHub and\n" +
 		"    GitLab carry it; Forgejo refuses typed (no documented resolve endpoint).\n" +
 		"  drain <owner/repo> <pr> [--provider <p>] [--max-threads <1-100>] [--json]\n" +
-		"        [--agent <name> [--timeout <secs>] [-- <agent args>...]]\n" +
+		"        [--agent <name> [--timeout <secs>] [-- <agent args>...]] [--post]\n" +
 		"    answer every review thread waiting on verdict: refresh threads, then write\n" +
 		"    .verdict/state/<pr>/drain.json with the pending list, typed skips, and a plan digest.\n" +
 		"    Zero pending is success and launches no agent. --max-threads defaults to 20;\n" +
 		"    older questions are taken first and the rest are deferred. --agent drafts one\n" +
-		"    drain.replies.json through the run launcher; no host write happens in this\n" +
-		"    build (there is no --post yet). A truncated feed or unreadable login refuses\n" +
-		"    drain-failed before the plan is written.\n" +
+		"    drain.replies.json through the run launcher. --post validates those drafts,\n" +
+		"    re-reads threads, posts one marked reply per draft, and appends replies.json\n" +
+		"    after each write; withdraw also resolves its thread. GitHub and GitLab carry\n" +
+		"    replies; other hosts refuse provider-unimplemented. A failed write records\n" +
+		"    failed[] and refuses drain-incomplete so a re-run finishes the rest. A\n" +
+		"    truncated feed or unreadable login refuses drain-failed before any write.\n" +
 		"  trend <owner/repo> [--rules] [--overlap] [--incidents] [--resolution] [--json]\n" +
 		"    portfolio rollup over existing bundle stores (no network, writes nothing):\n" +
 		"    findings opened/addressed/closed over time, broken down by severity tier\n" +

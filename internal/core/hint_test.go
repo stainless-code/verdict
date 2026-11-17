@@ -55,6 +55,13 @@ func TestHintForPackSources(t *testing.T) {
 // TestHintForPostSecretShaped proves the refusal's hint offers both ways out —
 // strip the value, or publish it on purpose — and prints nothing that could be
 // the value itself.
+// TestHintForDrainIncomplete names the command that retries only the replies
+// that did not land: the ledger makes the already posted ones no-ops.
+func TestHintForDrainIncomplete(t *testing.T) {
+	assertHintFragments(t, HintFor("drain-incomplete"), "drain-incomplete",
+		[]string{"drain --post", "ledger skips replies already posted"}, nil)
+}
+
 func TestHintForPostSecretShaped(t *testing.T) {
 	assertHintFragments(t, HintFor("post-secret-shaped"), "post-secret-shaped",
 		[]string{"remove the value", "--allow-secret-values"},
