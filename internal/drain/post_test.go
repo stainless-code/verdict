@@ -378,8 +378,8 @@ func assertSingleIncompleteEnvelope(t *testing.T, out string) {
 	if err := dec.Decode(&extra); err != io.EOF {
 		t.Fatalf("stdout contained more than one JSON value (err=%v, extra=%v):\n%s", err, extra, out)
 	}
-	if env.Error == nil || env.Error.Code != draincore.CodeDrainIncomplete {
-		t.Errorf("error = %+v, want %s", env.Error, draincore.CodeDrainIncomplete)
+	if env.Error == nil || env.Error.Code != "drain-incomplete" {
+		t.Errorf("error = %+v, want %s", env.Error, "drain-incomplete")
 	}
 	if env.Data == nil || len(env.Data.Posted) != 1 || len(env.Data.Failed) != 1 || env.Data.PostedAt == nil {
 		t.Errorf("data receipt = %+v, want 1 posted, 1 failed, non-nil posted_at", env.Data)

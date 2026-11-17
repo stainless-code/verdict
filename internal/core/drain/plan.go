@@ -27,9 +27,7 @@ const (
 	CodeDraftsInvalid = "drafts-invalid"
 	// CodeDraftsStale refuses a draft written against another plan.
 	CodeDraftsStale = "drafts-stale"
-	// CodeDrainIncomplete refuses a post run after some writes failed.
-	CodeDrainIncomplete = "drain-incomplete"
-	keyThreadID         = "thread_id"
+	keyThreadID     = "thread_id"
 )
 
 // Dispositions counts the draft verdicts the agent chose.
