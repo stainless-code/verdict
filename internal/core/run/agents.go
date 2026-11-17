@@ -110,8 +110,8 @@ var agentDefs = []agentDef{
 		Args:    []string{"-p"},
 		Install: "curl -fsSL https://claude.ai/install.sh | bash",
 	},
-	// The CLI reference confirms a positional prompt runs in yolo mode; -i opens the TUI.
-	// https://github.com/cline/cline/blob/main/docs/cli/cli-reference.mdx — read 2026-11-17
+	// One-shot: `cline "your prompt"` runs a single turn in yolo mode and exits.
+	// https://github.com/cline/cline/blob/main/apps/cli/README.md — read 2026-11-17
 	{
 		Name: "cline", Binary: "cline", ModelFlag: modelFlag,
 		Install: "npm install -g cline",
@@ -354,7 +354,7 @@ var agentDefs = []agentDef{
 	// --agent 'vibe' is the CLI name for Mistral Vibe.
 	// https://github.com/mistralai/mistral-vibe/blob/main/docs/programmatic-mode.md — read 2026-11-17
 	{
-		Name: "vibe", Binary: "vibe", ModelFlag: modelFlag, PromptFlag: "-p",
+		Name: "vibe", Binary: "vibe", ModelFlag: modelFlag, PromptFlag: "--prompt",
 		Install: "curl -LsSf https://mistral.ai/vibe/install.sh | bash",
 	},
 	// --agent 'zcode' is the product slug.

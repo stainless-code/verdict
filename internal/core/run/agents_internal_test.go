@@ -299,10 +299,10 @@ func builtinRows() []builtinRow {
 			wantPrintArgv: []string{"acli", "rovodev", "run", "--model", "M", "PROMPT"},
 		},
 		{
-			name: "vibe", binary: "vibe", args: []string{}, promptFlag: "-p",
+			name: "vibe", binary: "vibe", args: []string{}, promptFlag: "--prompt",
 			install:       "curl -LsSf https://mistral.ai/vibe/install.sh | bash",
-			wantArgv:      []string{"vibe", "--model", "M", "--x", "-p", "PROMPT"},
-			wantPrintArgv: []string{"vibe", "--model", "M", "-p", "PROMPT"},
+			wantArgv:      []string{"vibe", "--model", "M", "--x", "--prompt", "PROMPT"},
+			wantPrintArgv: []string{"vibe", "--model", "M", "--prompt", "PROMPT"},
 		},
 		{
 			name: "zcode", binary: "zcode", args: []string{}, promptFlag: "-p",
