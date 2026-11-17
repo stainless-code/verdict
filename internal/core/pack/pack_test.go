@@ -371,7 +371,7 @@ func TestPackNoteLabelsBodies(t *testing.T) {
 func TestRefusedManifestsFailPublishedSchema(t *testing.T) {
 	t.Parallel()
 	checker, err := schemacheck.Load(
-		filepath.Join("..", "..", "..", "skills", "verdict", "schemas", "pack.schema.json"), "")
+		filepath.Join("..", "..", "..", "schemas", "pack.schema.json"), "")
 	if err != nil {
 		t.Fatalf("load pack schema: %v", err)
 	}

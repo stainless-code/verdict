@@ -63,11 +63,21 @@ func readSkillFile(t *testing.T, name string) []byte {
 	return raw
 }
 
+// readSchemaFile reads one published schema from the repository root.
+func readSchemaFile(t *testing.T, name string) []byte {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(moduleRoot(t), "schemas", filepath.FromSlash(name)))
+	if err != nil {
+		t.Fatalf("read schemas/%s: %v", name, err)
+	}
+	return raw
+}
+
 // schemaBranch returns the schema object at path, failing on a missing branch.
 func schemaBranch(t *testing.T, path ...string) map[string]any {
 	t.Helper()
 	var doc any
-	if err := json.Unmarshal(readSkillFile(t, "schemas/review.schema.json"), &doc); err != nil {
+	if err := json.Unmarshal(readSchemaFile(t, "review.schema.json"), &doc); err != nil {
 		t.Fatalf("decode review.schema.json: %v", err)
 	}
 	node, ok := doc.(map[string]any)
@@ -87,7 +97,7 @@ func schemaBranch(t *testing.T, path ...string) map[string]any {
 func schemaHas(t *testing.T, path ...string) bool {
 	t.Helper()
 	var doc any
-	if err := json.Unmarshal(readSkillFile(t, "schemas/review.schema.json"), &doc); err != nil {
+	if err := json.Unmarshal(readSchemaFile(t, "review.schema.json"), &doc); err != nil {
 		t.Fatalf("decode review.schema.json: %v", err)
 	}
 	node := doc

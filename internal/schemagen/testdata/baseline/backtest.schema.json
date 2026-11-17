@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/backtest.schema.json",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/backtest.schema.json",
   "title": "report.json — backtest score report",
   "description": "The backtest score report, written to .verdict/backtest/<run>/report.json and echoed as the score envelope's data object: the same object, so one schema covers both. It grades each replayed PR's recorded findings against the bug lines the run's own SZZ candidate records, through the corpus matcher (+/-1 line, one finding per bug, text that names the defect kind). catch_rate is a match rate over blame-derived candidates, not a measured catch rate: a line a later fix deleted is a hypothesis about where a defect was, a deleted cleanup line beside the real bug is a candidate that was never defective, and an unmatched finding is not proven false.",
   "type": "object",

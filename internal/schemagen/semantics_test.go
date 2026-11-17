@@ -13,24 +13,23 @@ import (
 // hand-written files was a re-serialization: every key, type, required list,
 // enum and description had to stay identical. An intentional published-schema
 // change updates this map in its own change, with the reason recorded; a mere
-// reformat of schemas/*.schema.json must not change it. The relocation of the
-// schemas to skills/verdict/schemas/ (so the registry install ships only the
-// skill) re-pinned all ten hashes: only each $id URL moved; no property,
-// required key, enum, or type changed.
+// reformat of schemas/*.schema.json must not change it. Moving the schemas
+// out of the installed skill to schemas/ re-pinned every hash: only each $id
+// URL moved; no property, required key, enum, or type changed.
 var publishedSemantics = map[string]string{
 	// additive author.schema.json (new bundle document; the advisory author
 	// fingerprint fetch detects). No existing schema property, required key,
 	// enum, or type changed.
-	"author.schema.json":      "f7d48bf8cc56baf70899b6e02caceae111838bb7ee3ed707eb7e4a9e7b809a70",
-	"excluded.schema.json":    "da38e86c8f27bc41b8255f7fc12cbf0a81fa181eee2be172c46b4ae015b041ac",
-	"panel-plan.schema.json":  "c4ac13bb03fb5918bc5b60ff9eba10776f10b999fdc88049409792439b1c043a",
-	"panel.schema.json":       "60fee20b395837e41c0bb8044dcaed55fa7a38d8d8a504a9f228be95b28319ef",
-	"calibration.schema.json": "9e061b60ab7c2252b86146af16742a3e59c64a28e9f6441fd0f30f1f5e2f9581",
+	"author.schema.json":      "0773058075a17e2d53e2d8c6a1bdfad2150bcb41a64c76e24ef4cc88cf4ef6d9",
+	"excluded.schema.json":    "0d2646d108ddc5d13c2718b4e5d7f66084e5f5f2ee29883cf375d29ef8b112c4",
+	"panel-plan.schema.json":  "a1030d14b80c28e98003ec8f1cbaffc75c5588f19fd2e68c38a23d0547b4bcde",
+	"panel.schema.json":       "0899c9570bb2286c9375ba3af82f54caf457d2a9b95fdf2c48860cda5fa559c3",
+	"calibration.schema.json": "053bb6495d947663278044fa75308c89e0b72a93b8dbc0c0e84710cf17357f85",
 	// additive backtest.schema.json (new run-artifact document for the backtest
 	// score report; no existing schema property, required key, or type changed).
 	// The catch_rate description now calls the rate a match rate over
 	// blame-derived candidates instead of a lower bound on catch.
-	"backtest.schema.json": "23ea7e2b720c097bf41cdbebf9a4d828ec69d738c916deb475df1c1bc8216b89",
+	"backtest.schema.json": "9d61c62abb2d6cfc0310dd56bf266f1b7119d3c82a7077e034a0a712ff388d1c",
 	// additive config.schema.json (new typed-repository-configuration
 	// document; no existing schema property, required key, or type
 	// changed). The scope $def now carries the presence contract the
@@ -46,7 +45,7 @@ var publishedSemantics = map[string]string{
 	// recall character budget.
 	// trigger: additive optional top-level predicate object with seven closed
 	// optional keys; no existing property, required key, or type changed.
-	"config.schema.json": "cb41b8b05baa14d1236da1d8a3d69a06913dfac560c17a95b71e71b21a65af38",
+	"config.schema.json": "416293a853aeb457a2c20cd7b13b3fde7278f7537ce179c2c66278827159943f",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets
@@ -55,7 +54,7 @@ var publishedSemantics = map[string]string{
 	// typed state: the strict_input description names REVIEW_STRICT_INPUT
 	// as its only source and the inventory path description names
 	// .verdict/. Prose only; no property, required key, or type changed.
-	"controls.schema.json": "c98231d08509db237d0622839407995e50f74428a55c1cbad5d03f0d2fc1503e",
+	"controls.schema.json": "aedf565818ff8e7b5522a55cbf7a4087929b8637574d54c8435bea8d880f596b",
 	// additive corpus.schema.json (new document; no existing schema property,
 	// required key, or type changed).
 	// additive corpus bug keywords (optional string array naming the defect in
@@ -72,7 +71,7 @@ var publishedSemantics = map[string]string{
 	// additive corpus.schema.json: provenance gains base_sha and head_sha, the
 	// commits a real case's diff spans and its bundle stamps. Two new optional
 	// string properties; no existing property, required key, or type changed.
-	"corpus.schema.json": "e1206318dc186aa479ae702384edba263ce229f921e68858e142efb16b4e5785",
+	"corpus.schema.json": "2dadbf27e8e690bbe43ba60d0f38173aadb02773dc9c737f3e41818509c057e4",
 	// intentional pre-v1 break: lenses items become per-group
 	// {group,labels[]} entries (an empty labels list is that group's explicit
 	// zero) and schema_version pins 2. No other property, required key, or
@@ -92,7 +91,7 @@ var publishedSemantics = map[string]string{
 	// while the rollup sums one total. The models array accepts one shape
 	// only; the reader dropped its object-form coercion in the same change.
 	// No property, required key, enum, or type changed.
-	"cost.schema.json": "c6e712e91b587b6f0d5c5f74548f46f37f0ed996a8530f637e985576163507d6",
+	"cost.schema.json": "96a8b137f3294e790438a755331a2a7975f11cb1187352ae5151891cd38a0d17",
 	// additive fetchEstimate $defs entry (measured-usage basis fields).
 	// The additive showData/showFix/verifyHint $defs entries (show --json
 	// data.fix). Neither change touched an existing property, required key,
@@ -274,9 +273,9 @@ var publishedSemantics = map[string]string{
 	// additive drain-replies.schema.json (new bundle document; no existing
 	// schema property, required key, enum, or type changed). It pins the
 	// agent's single output: the plan digest and one disposition per reply.
-	"drain-replies.schema.json": "d9e8cc9410edc85da2d1380d67dfbcb415563a1c30f8b3901f2516a3a98135c5",
-	"drain.schema.json":         "189c041aab4f4d6f261dd62ceb9a225d36079874d9d0c521d189713d063173f4",
-	"envelope.schema.json":      "27103488dcbcb9966b36d5f4f78241832b63f304d4710cb7d745afbbc20cc255",
+	"drain-replies.schema.json": "601cfd36687dab68e858aed5484fa2f654c5d2265da944fc1428753029eb8362",
+	"drain.schema.json":         "1fcf8437ef91b1b130923e3600f489559be29ce9f3a5b1d2de52641db945af80",
+	"envelope.schema.json":      "b5f49f876d3f600ce6ced697b27a4bb343c516bbbaf21b698995cf8e3ac87cd7",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -288,7 +287,7 @@ var publishedSemantics = map[string]string{
 	// sarif ingest: additive optional entry.source enum (model|tool) and
 	// optional tool, rule_id, and fingerprint strings on findings entries. No
 	// existing property, required key, or type changed.
-	"findings.schema.json": "273c22cb1804ca71acc28ca2f7912d8ec60f9efeb5c3772feb8b33286f107207",
+	"findings.schema.json": "6cbc56ac84b2e3b957259589e512ab2acb2d515e6eb6814df49daeddf830a4f0",
 	// post_floor_scoped: additive optional per-path posting floor list with its
 	// $defs/floorScope entry (required path, enum floor). No existing
 	// property, required key, or type changed.
@@ -310,10 +309,10 @@ var publishedSemantics = map[string]string{
 	// comment. No existing property, required key, enum, or type changed.
 	// risk score: additive optional nullable risk claim ($defs/riskClaim). No
 	// existing property, required key, enum, or type changed.
-	"post.schema.json": "0e6fcf560007fd66da8605a73e5a2df912d5334d8b999341e850a7b9c1a1e0f2",
+	"post.schema.json": "33a2d4cb9ada3c553df93cf70df10fc85eac62811c223fc133135cd71e55ac1d",
 	// patch identity: additive $defs/identity root (new bundle document) —
 	// no existing property, required key, or type changed.
-	"identity.schema.json": "efe9a7b331e41715bc55b8824e95154add584c2d63f670811ef03c350d2e5bdb",
+	"identity.schema.json": "993b01b4c6891f2dc2e78454aac8bd2abaa8740c073bd5fc8124d4b47f7e68c9",
 	// additive pack.schema.json (new document; no existing schema property,
 	// required key, or type changed). The lens-pack manifest fetch resolves
 	// from skills/verdict/packs/builtin: a closed object plus one closed lens
@@ -327,7 +326,7 @@ var publishedSemantics = map[string]string{
 	// scanned languages: additive optional file.language enum, so a stored tree
 	// names the scanner that read each file. No existing property, required
 	// key, enum, or type changed.
-	"index.schema.json": "2104f9b00c2909f29e5cbd155931ba4765f4b6647f8bd602199a8761c57b9126",
+	"index.schema.json": "6a107567d0432b17571099abf1aad24b53d80581fa3fda357eca6ad0abd49ec7",
 	// rules and layering: additive replace[], severity map, rules[] with a
 	// closed $defs/rule. No existing property, required key, enum, or type
 	// changed; the loader's exact-key, regular-file, and bounded-read rules
@@ -366,12 +365,12 @@ var publishedSemantics = map[string]string{
 	// (the maxHostLabel cap the loader enforces) and refuses a "://" inside an
 	// scp path (the loader's scheme guard). One pattern narrowed to the
 	// loader's own grammar; no property, required key, enum, or type changed.
-	"lock.schema.json": "c88951e4ac18781f93881f6654493ad8a7345ea990fca44bbd1149c7eefc4714",
+	"lock.schema.json": "da19e41786cc9ff295a88a68929a8c76b5fbd44a7cbd9c5579fd57b316b16db2",
 	// findings cap: the lens max_findings description now says the built-in
 	// pack declares none, so a shipped lens states no return cap and returns
 	// what its evidence supports. Prose only; no property, required key, enum,
 	// or type changed.
-	"pack.schema.json": "c02a0dfcfc2355c5a4d61d91a662c73a6188e20ab5c36f725cde0e6768b69af3",
+	"pack.schema.json": "48ce9ee6123e74aa3dd2eab0a92b3998ecfb519d79b60b87827321735df75314",
 	// additive recipes.schema.json (new control document: the declared review
 	// pipelines a run resolves by name at the PR base). No existing schema
 	// property, required key, enum, or type changed.
@@ -398,7 +397,7 @@ var publishedSemantics = map[string]string{
 	// run --print --stage render fills, positioned into the plan's stages. A
 	// new definition only: no existing property, required key, enum, or type
 	// changed.
-	"recipes.schema.json": "4ccac4c5b2e8b92fdab6778870dcdfb1578b2fcaf83b86373bb9c43dfc6c7c4a",
+	"recipes.schema.json": "de52a643fb93073e167e9ee23d7bac3b113ce3e58c3e57a2378b9a850929f072",
 	// patch identity: additive optional patch_id/patch_id_kind plus the
 	// optional forced[] audit with $defs/forcedPost. No existing property,
 	// required key, or type changed.
@@ -417,7 +416,7 @@ var publishedSemantics = map[string]string{
 	// property, enum, or type changed; older stores simply carry neither key.
 	// The validation pass adds required-nullable validation_hash and required
 	// validation_counts/validation_mode/rigor_floors after chunk_coverage.
-	"record.schema.json": "37628cfde409c8b33bf7a9a23dba5f2875a4d43a63e0589b2134323385edd384",
+	"record.schema.json": "f9465a6e4607e2189c9344beeae95d9c99c274c6d1d4a6ff01855a95fb1b67a8",
 
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable comment.brief
 	// (optional; no existing property, required key, or type changed). The
@@ -434,31 +433,31 @@ var publishedSemantics = map[string]string{
 	// existing property, required key, enum, or type changed.
 	// schema_version optional: descriptions drop the missing-key warning. No
 	// property, required key, enum, or type changed.
-	"review.schema.json": "76232c7a9f815c81f2e2115778ebba6f55cc3bdfb9548b6f734effb0ef0cd768",
+	"review.schema.json": "6768f8c558f9f587cfdf82d75c10f6a463d2b10be6769b6ebc952878802cd004",
 	// additive selected.schema.json (new bundle document: the reaction-scoped
 	// fix selection fetch writes and fix --selected reads). A new document
 	// only: no existing schema property, required key, enum, or type changed.
-	"selected.schema.json": "40bcc26a3e73ea2a17ad02cbba06548215f9ee5b1aad04d16885275842e88021",
+	"selected.schema.json": "3a9edd147d5a55e19b6910a18deccb6147a8bef262bab0b109d4938746bdbfce",
 	// additive threads.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed). The PR-conversation
 	// contract extends the first cut with the thread's host id, PR/head/time
 	// envelope, root author kind, finding_sig, and the comments[] array: all
 	// additions to the new document, no previously published shape changed.
-	"threads.schema.json": "e24857002ee5c60fb38a3a2a0867eb453526dd35c075b4b4adde33f41ebe69dc",
+	"threads.schema.json": "bf08d8d1d0d0445dab86134f7128bd990a5d399c56155b664ca01289b20212a4",
 	// additive threads-resolve.schema.json (new bundle document; no existing
 	// schema property, required key, or type changed). The receipt proves the
 	// resolve mutation: provider, repo, pr, head, timestamp, dry_run, the
 	// closed ids, and the skipped candidates with their reasons.
-	"threads-resolve.schema.json": "e550441f9990bf2109f4f078b42e4a86728582e45f661745e725c8d06012c1d4",
+	"threads-resolve.schema.json": "fa2df4b546008c43a251c6eb480b2b6cf6b80d10785920286398426ad7343521",
 	// additive usage.schema.json (new handoff document; no existing schema
 	// property, required key, or type changed — the envelope fetchEstimate entry
 	// from f3a22047 is untouched).
-	"usage.schema.json": "143473d20d0e0d140432356d9254554b969b9c71290d61ec3f5ab821e2b6bc69",
+	"usage.schema.json": "95da162703b04193308f8c55cef95affefb4ecd278cc09e5ea3801e061be999e",
 	// additive validation.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed). It pins the trusted pass: one
 	// result per finding sig with its verdict, reason, optional one-rank
 	// downgrade pair, and checks.
-	"validation.schema.json": "c018104ce060fdaa7d45b5cc5a02d3b0046a4d5c5c121b7d5b64f8eb02bd58f0",
+	"validation.schema.json": "1a86ff6e84d7c0c9ef7b524f51105b50e1154feeb22e34cace42877bb87b41bb",
 }
 
 // TestGeneratedSchemasPreservePublishedSemantics proves the generated files

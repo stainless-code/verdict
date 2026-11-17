@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/pack.schema.json",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/pack.schema.json",
   "title": "pack.json — a lens pack manifest",
   "description": "A lens pack manifest at skills/verdict/packs/builtin/pack.json: the published format fetch resolves into the bundle. The schema closes the shape; the loader also enforces the caps (64 KiB/file, 1 MiB/pack, 256 files, 64 lenses) and the rule that every lens and rule id names its own markdown file. A file no manifest row names is counted but never loaded. Manifest keys must be spelled exactly as published: the loader refuses any other case.",
   "type": "object",

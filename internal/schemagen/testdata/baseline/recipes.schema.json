@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/recipes.schema.json",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/recipes.schema.json",
   "title": "recipes.json — declared review pipelines",
   "description": "The declared review pipelines a run resolves by name from .verdict/recipes.json at the PR base: lenses, synthesizer hint, and budget, compiled into the four-stage plan data.recipe and launcher.json record, whose shape is published here as $defs/plan. The file is a review control, read from the base snapshot and hash-gated like the typed configuration, so a head edit never steers the pipeline it is judged by. Positions are declarations, not selections: run launches one process and never chooses a model. Every key is spelled exactly as published; the loader refuses any other case, an unknown key, and a duplicate key with bad-recipe.",
   "type": "object",

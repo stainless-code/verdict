@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/panel.schema.json",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/panel.schema.json",
   "title": "verification/verdicts.json — independent verifier receipts",
   "description": "Invoker-written verification/verdicts.json: head-bound independent opinions. Duplicate (sig, model) and unknown or ambiguous signatures are refused by the runtime; a refutation never deletes a finding.",
   "type": "object",

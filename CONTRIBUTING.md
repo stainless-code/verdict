@@ -70,11 +70,11 @@ rename in the tree. The binary installs its own embedded skill copy with
 
 ```
 verdict/
-  skills/verdict/     # the skill payload, exactly what `verdict skill files` lists:
+  skills/verdict/     # the skill payload copied by `npx skills add`:
     SKILL.md          #   skill entry point (feed to any agent)
     prompts/          #   system, review, incremental, address, fix-ci, build, ci, grade, diagrams, subagent
-    schemas/          #   JSON Schemas for the envelope and store files
     scripts/verdict   #   POSIX skill shim: VERDICT_BIN, bundled bin, PATH, then bootstrap
+  schemas/            # published JSON Schemas, served by `verdict skill files` at schemas/
   install.sh          # verified binary installer (macOS/Linux release asset)
   install.ps1         # verified binary installer (Windows release asset)
   install-skill.sh    # doctor-gated symlink installer for checkouts

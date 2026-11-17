@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/config.schema.json",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/config.schema.json",
   "title": "config.json — typed repository configuration",
   "description": "The typed repository configuration at .verdict/config.json: versioned shared defaults and review requirements with path scopes, named work profiles, and the default profile. Structural validation comes from this schema; the hand-written parser in internal/config owns the semantic checks the schema cannot express (duplicate keys, credential keys, glob portability, clause-name uniqueness, per-group clause coverage).",
   "type": "object",

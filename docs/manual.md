@@ -288,7 +288,7 @@ whole store — plugins read it instead of sniffing shapes. GitHub bundles keep
 unversioned); the other hosts reshape `reviews.json`/`inline.json` per host
 and normalize `PR.json` to one schema. Every provider bundle also writes
 `threads.json` (`schema_version: "1"`, published as
-[`schemas/threads.schema.json`](https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/threads.schema.json)): the raw
+[`schemas/threads.schema.json`](https://github.com/stainless-code/verdict/blob/main/schemas/threads.schema.json)): the raw
 files stay as-is, and the feed is the authoritative PR conversation. Review
 threads come from each host's native source — GitHub GraphQL `reviewThreads`
 (REST has no resolution), GitLab discussions (`resolved`/`resolvable`), Azure
@@ -867,7 +867,7 @@ posture and never gate alone.
 ## Typed repository configuration
 
 `.verdict/config.json` is the only repository configuration file:
-one strict document (schema `skills/verdict/schemas/config.schema.json`) for
+one strict document (schema `schemas/config.schema.json`) for
 defaults (`panel`, `budget_usd`, `max_bytes`, `chunk`, `kb_policy`, `effort`,
 the two severity floors), the local `index` caps (`files`, `file_bytes`,
 `tree_bytes`, `shards_bytes`, `keep_trees`, `refs_per_file`), blocking
@@ -2767,12 +2767,12 @@ platform package. A plain `verdict` call consults neither variable.
   `install-skill.sh` refuses outside a git checkout. `hooks/pre-commit`
   wiring applies to the checkout only.
 - **Embedded skill** (`verdict skill`): the binary carries its own `SKILL.md`,
-  `prompts/`, `schemas/`, `packs/`, and `scripts/verdict`, so the served skill can
-  never skew from the binary. In the repository they are the one
-  `skills/verdict/` directory, which holds nothing else. The skills CLI
-  (`npx skills add stainless-code/verdict`) copies that directory and no
-  more, so the registry install and `verdict skill install` write the same
-  files. `verdict skill` prints `SKILL.md` (default
+  `prompts/`, `packs/`, and `scripts/verdict` from `skills/verdict/`, plus
+  `schemas/` from the repository root, so the served skill can never skew from
+  the binary. The skills CLI
+  (`npx skills add stainless-code/verdict`) copies only `skills/verdict/`;
+  `verdict skill install` writes that payload and the served `schemas/` files.
+  `verdict skill` prints `SKILL.md` (default
   `--format md`); `--format json` is one standard envelope with
   `name`/`version`/`files`; `verdict skill files` lists every embedded path.
   `verdict skill show <path>` prints one inventory file byte-identical (a
@@ -3122,7 +3122,7 @@ live ground truth.
 Static-analysis ingestion: `ingest owner/repo N --sarif <file|->` maps SARIF 2.1.0
 results into `.verdict/state/<bundle>/findings.json` with `source: "tool"`,
 sharing one store, one dedupe path, and one suppression/withheld path with model
-reviews. Severity is mapped via `skills/verdict/schemas/sarif-map.json`
+reviews. Severity is mapped via `schemas/sarif-map.json`
 (`security-severity` threshold or SARIF `level`), anchors are resolved against
 the bundle diff (`anchored: false` when outside hunks so out-of-diff results
 never fail inline posting), excluded paths land withheld with `source: "exclusion"`,
@@ -4641,7 +4641,7 @@ The metrics:
 `--json` `data` is `{schema_version, run, mode, prs, not_replayed, bugs,
 reported, matched, unclassified, catch_rate, off_target_per_pr,
 cost_per_review_usd, spend, signals}` — and `report.json` is that same object,
-so [`schemas/backtest.schema.json`](../skills/verdict/schemas/backtest.schema.json)
+so [`schemas/backtest.schema.json`](../schemas/backtest.schema.json)
 describes both. `spend` is `{usd, priced_reviews, unpriced_reviews}`; a signal
 row is `{signal, bugs, matched, catch_rate}`. Human output is the scope header,
 the catch rate, the off-target rate, the cost line, the unclassified count, one

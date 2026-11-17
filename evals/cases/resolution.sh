@@ -48,7 +48,7 @@ assert_json_field "fixed" 3 '.data.precision.fixed'
 assert_json_field "judged" 5 '.data.precision.judged'
 assert_json_field "sample size" 6 '.data.precision.sample_size'
 assert_json_field "resolution rate" 0.6 '.data.precision.resolution_rate'
-if "$EVAL_SKILL/schemas/validate.sh" "$EVAL_SKILL/schemas/calibration.schema.json" "$DIR/calibration.json" >/dev/null 2>&1; then
+if "$EVAL_ROOT/schemas/validate.sh" "$EVAL_ROOT/schemas/calibration.schema.json" "$DIR/calibration.json" >/dev/null 2>&1; then
   good "saved receipt validates"
 else
   bad "saved receipt fails calibration schema"
@@ -79,7 +79,7 @@ run_review calibrate acme/app 7 --json
 assert_exit "zero denominator calibration" 0
 assert_json_field "zero judged" 0 '.data.precision.judged'
 assert_json_field "zero denominator is null" null '.data.precision.resolution_rate'
-if "$EVAL_SKILL/schemas/validate.sh" "$EVAL_SKILL/schemas/calibration.schema.json" "$DIR/calibration.json" >/dev/null 2>&1; then
+if "$EVAL_ROOT/schemas/validate.sh" "$EVAL_ROOT/schemas/calibration.schema.json" "$DIR/calibration.json" >/dev/null 2>&1; then
   good "null resolution rate validates"
 else
   bad "null resolution rate fails calibration schema"

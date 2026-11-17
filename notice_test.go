@@ -174,11 +174,15 @@ func promptFiles(files []string) []string {
 	return prompts
 }
 
-// topLevel is the distinct first path segment of every shipped file, so a new
-// artifact cannot arrive without a notice line.
+// topLevel is the distinct first path segment of every shipped skill file,
+// so a new artifact cannot arrive without a notice line. The published
+// schemas are served from the repository root, not copied with the skill.
 func topLevel(files []string) []string {
 	var names []string
 	for _, file := range files {
+		if file == skillfs.SchemasDir || strings.HasPrefix(file, skillfs.SchemasDir+"/") {
+			continue
+		}
 		name, _, _ := strings.Cut(file, "/")
 		if !slices.Contains(names, name) {
 			names = append(names, name)

@@ -67,7 +67,7 @@ func lockSourceBody(source string) string {
 func TestLockSourceSchemaMatchesLoader(t *testing.T) {
 	t.Parallel()
 	checker, err := schemacheck.Load(
-		filepath.Join("..", "..", "..", "skills", "verdict", "schemas", "lock.schema.json"), "")
+		filepath.Join("..", "..", "..", "schemas", "lock.schema.json"), "")
 	if err != nil {
 		t.Fatalf("load lock schema: %v", err)
 	}

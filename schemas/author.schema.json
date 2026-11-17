@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/author.schema.json",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/author.schema.json",
   "title": "author.json — advisory author fingerprint",
   "description": "The advisory author fingerprint fetch detected in the bundle's PR text. It never blocks a review, never changes what is reviewed, and never pins a model; an unknown author writes no file at all rather than guessing, so absent means unknown, not human.",
   "type": "object",

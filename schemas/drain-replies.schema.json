@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/drain-replies.schema.json",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/drain-replies.schema.json",
   "title": "drain.replies.json — drafted thread replies",
   "description": "The single artifact the drafting agent writes: one answer per pending thread, pinned to the plan digest. Verdict validates every site before any later step reads it; there is no host write in this build.",
   "type": "object",

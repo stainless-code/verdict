@@ -276,7 +276,7 @@ func writeSchema(t *testing.T, dir, name, body string) {
 // and no fewer (a missing keyword reads as unsupported). One list, in
 // Subset(); the shim only spells it.
 func TestShippedShimListsTheSubset(t *testing.T) {
-	const shimPath = "../../skills/verdict/schemas/validate.sh"
+	const shimPath = "../../schemas/validate.sh"
 	raw, err := os.ReadFile(shimPath)
 	if err != nil {
 		t.Fatalf("read %s: %v", shimPath, err)

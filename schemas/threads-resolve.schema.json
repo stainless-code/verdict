@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/threads-resolve.schema.json",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/threads-resolve.schema.json",
   "title": "threads-resolve.json — thread-resolve receipt",
   "description": "The receipt `threads resolve` writes beside threads.json: the host, head, and timestamp of the mutation, the ids it closed, and the candidates it skipped with a machine-readable reason. A real run writes one host resolve call per id in resolved[]; a dry run writes no receipt and carries the plan in the envelope only. GitHub and GitLab carry the mutation; a host without a resolve endpoint refuses before this document is written.",
   "type": "object",

@@ -50,7 +50,7 @@ A verb served before argument parsing (`mcp`) belongs in `run` and in the
   (`model.go`, `overlay.json` descriptions) and pin it in
   `conformance_verbs_test.go`; the envelope's `data` stays free-form for a
   verb that adds no contract.
-- `make schemas` rewrites `skills/verdict/schemas/*.schema.json`;
+- `make schemas` rewrites `schemas/*.schema.json`;
   `make schemas-check` proves no drift. Any shape the generator emits, additive
   or breaking, also needs `make schemas-baseline` and a reviewed baseline diff.
 - `make tsgen` rewrites the Go-derived `clients/ts/src/refusal-codes.gen.ts`;

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/panel-plan.schema.json",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/panel-plan.schema.json",
   "title": "verification/plan.json — independent dispatch plan",
   "description": "Local planner output at verification/plan.json; verifiers follow the synthesizer in the pinned panel roster. No model or network call occurs.",
   "type": "object",

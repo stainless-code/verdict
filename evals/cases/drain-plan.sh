@@ -105,10 +105,10 @@ if jq -e --arg sig "$SIG" '
 else
   bad "P2 plan: $(jq -c '{pending,skipped,other_threads}' "$PLAN" 2>/dev/null | head -c 600)"
 fi
-if "$EVAL_SKILL/schemas/validate.sh" "$EVAL_SKILL/schemas/drain.schema.json" "$PLAN" >/dev/null 2>&1; then
+if "$EVAL_ROOT/schemas/validate.sh" "$EVAL_ROOT/schemas/drain.schema.json" "$PLAN" >/dev/null 2>&1; then
   good "P3 the plan validates against schemas/drain.schema.json"
 else
-  bad "P3 schema: $("$EVAL_SKILL/schemas/validate.sh" "$EVAL_SKILL/schemas/drain.schema.json" "$PLAN" 2>&1 | head -3)"
+  bad "P3 schema: $("$EVAL_ROOT/schemas/validate.sh" "$EVAL_ROOT/schemas/drain.schema.json" "$PLAN" 2>&1 | head -3)"
 fi
 assert_stream_nogrep "P4 zero host writes on the stub log" "$EVAL_STUBLOG" \
   'POST|PATCH|mutation|method[[:space:]]+:([[:space:]]*)?"(POST|PATCH|DELETE)' -Eqi

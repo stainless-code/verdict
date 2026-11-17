@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/index.schema.json",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/index.schema.json",
   "title": "index tree — .verdict/index/trees/<tree>.json",
   "description": "One stored per-tree index under .verdict/index/trees/<tree>.json. Files are sorted by path, declarations and references stay in source order, and no timestamp or commit id lands here, so the same tree always writes the same bytes.",
   "type": "object",
