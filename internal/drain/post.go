@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"path/filepath"
 
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
@@ -15,12 +16,15 @@ import (
 	threadscore "github.com/stainless-code/verdict/internal/core/threads"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/storelock"
 )
 
-// postMode runs §6's gates before a single host write: validate the drafts,
-// check the capability, refresh the feed, then hand the write order to the
-// pure post service. The plan and the feed it writes are the run's receipt.
 func postMode(ctx context.Context, r *cli.Runner, req Request, fl *flags) int {
+	if fl.provider != "" {
+		if ref := checkThreadReplyCap(fl.provider); ref != nil {
+			return r.Refuse(ref)
+		}
+	}
 	dir, plan, ref := postPlan(req, fl)
 	if ref != nil {
 		return r.Refuse(ref)
@@ -29,13 +33,22 @@ func postMode(ctx context.Context, r *cli.Runner, req Request, fl *flags) int {
 	if ref != nil {
 		return r.Refuse(ref)
 	}
+	if _, _, _, ref := draincore.ValidatePostDrafts(plan, drafts, plan.Provider); ref != nil {
+		return r.Refuse(ref)
+	}
+	unlock, err := storelock.Acquire(filepath.Join(dir, verbDrain), storelock.DefaultWait)
+	if err != nil {
+		return r.Refuse(drainFailed(fmt.Sprintf("could not lock %s: %v", dir, err)))
+	}
+	defer unlock()
+
 	resp, ref := fetchcore.RunThreads(ctx, refreshRequest(r, req, fl))
 	if ref != nil {
 		return r.Refuse(drainFailed(ref.Message))
 	}
-	in, code, done := readInputs(ctx, r, req, fl, resp)
-	if done {
-		return code
+	in, ref := readInputs(ctx, req, resp)
+	if ref != nil {
+		return r.Refuse(ref)
 	}
 	result, ref := postWrites(ctx, req, dir, plan, drafts, in)
 	if ref != nil {
@@ -44,7 +57,15 @@ func postMode(ctx context.Context, r *cli.Runner, req Request, fl *flags) int {
 	return postFinish(r, req, dir, plan, resp, result)
 }
 
-// postPlan reads the plan and checks the capability before any host read.
+func checkThreadReplyCap(provider string) *core.RefusalError {
+	caps := core.CapabilitiesFor(provider)
+	if !caps.ThreadReply {
+		return &core.RefusalError{Code: "provider-unimplemented", Message: fmt.Sprintf(
+			"thread replies on %s are not implemented (%s)", provider, caps.ThreadReplyReason())}
+	}
+	return nil
+}
+
 func postPlan(req Request, fl *flags) (string, *draincore.File, *core.RefusalError) {
 	dir, ref := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
 	if ref != nil {
@@ -56,11 +77,6 @@ func postPlan(req Request, fl *flags) (string, *draincore.File, *core.RefusalErr
 	}
 	if ref := planProvider(plan.Provider, fl.provider); ref != nil {
 		return "", nil, ref
-	}
-	caps := core.CapabilitiesFor(plan.Provider)
-	if !caps.ThreadReply {
-		return "", nil, &core.RefusalError{Code: "provider-unimplemented", Message: fmt.Sprintf(
-			"thread replies on %s are not implemented (%s)", plan.Provider, caps.ThreadReplyReason())}
 	}
 	return dir, plan, nil
 }
@@ -138,24 +154,39 @@ func saveFeedWriter(dir string) func(*threadscore.File) error {
 	}
 }
 
+func postSuccessNext(req Request) string {
+	return "refresh threads with verdict threads " + req.Repo + " " + req.Pr
+}
+
 func postFinish(r *cli.Runner, req Request, dir string, plan *draincore.File,
 	resp *fetchcore.ThreadsResponse, result *draincore.PostResult,
 ) int {
-	r.Warnings = append(r.Warnings, resp.Warnings...)
-	nextText := "refresh threads with verdict threads " + req.Repo + " " + req.Pr
+	r.Warnings = resp.Warnings
+	nextText := postSuccessNext(req)
 	if result.Incomplete {
 		nextText = "re-run verdict drain " + req.Repo + " " + req.Pr + " --post"
 	}
 	fmt.Fprintf(r.Human, "» %d posted, %d failed -> %s/%s\n",
 		len(result.Posted), len(result.Failed), dir, draincore.KeyPlanJSON)
+	if result.Incomplete {
+		ref := &core.RefusalError{Code: draincore.CodeDrainIncomplete, Message: fmt.Sprintf(
+			"%d thread(s) could not be posted; the ledger makes a re-run idempotent", len(result.Failed))}
+		if !r.JSONMode {
+			return r.Refuse(ref)
+		}
+		env := core.RenderEnvelope(verbDrain, req.Repo, req.Pr, cli.NowUTC(r.Now()), nextText,
+			r.Warnings, plan.Wire(), &core.SchemaError{
+				Code:    ref.Code,
+				Message: ref.Message + "\n" + cli.HintFor(ref.Code),
+			})
+		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+		r.WriteRentry()
+		return cli.ExitFor(ref, cli.ExitRefused)
+	}
 	if r.JSONMode {
-		env := core.RenderEnvelope(verbDrain, req.Repo, req.Pr, core.NowUTC(r.Now()), nextText,
+		env := core.RenderEnvelope(verbDrain, req.Repo, req.Pr, cli.NowUTC(r.Now()), nextText,
 			r.Warnings, plan.Wire(), nil)
 		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
-	}
-	if result.Incomplete {
-		return r.Refuse(&core.RefusalError{Code: "drain-incomplete", Message: fmt.Sprintf(
-			"%d thread(s) could not be posted; the ledger makes a re-run idempotent", len(result.Failed))})
 	}
 	return cli.ExitOK
 }
