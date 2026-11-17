@@ -139,15 +139,6 @@ func runDrainTest(t *testing.T, root string, cmdr core.Commander, args []string)
 	return out.String(), diag.String(), code
 }
 
-func onePendingPageJSON() string {
-	return `{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[
-		{"id":"PRRT_1","isResolved":false,"isOutdated":false,"path":"a.go","line":10,"startLine":null,"diffSide":"RIGHT","comments":{"totalCount":2,"nodes":[
-			{"id":"101","databaseId":101,"author":{"__typename":"Bot","login":"verdict-bot"},"body":"finding\n\n<!-- verdict-finding sig=6c3ee749e3d1f97870c9e8b5c1171fae2cb9ff4e -->","createdAt":"2026-11-01T00:00:00Z","url":"https://example.invalid/101"},
-			{"id":"102","databaseId":102,"author":{"__typename":"User","login":"alice"},"body":"why?","createdAt":"2026-11-02T00:00:00Z","url":"https://example.invalid/102"}
-		]}}
-	]}}}}}`
-}
-
 func twoPendingPageJSON() string {
 	return `{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[
 		{"id":"PRRT_1","isResolved":false,"isOutdated":false,"path":"a.go","line":10,"startLine":null,"diffSide":"RIGHT","comments":{"totalCount":2,"nodes":[
