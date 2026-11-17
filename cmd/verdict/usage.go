@@ -49,9 +49,9 @@ func usageText() string {
 		"    kb.txt/sensitive.txt/panel when present (one fence per file, in that order) —\n" +
 		"    to stdout (human; progress moves to stderr) or data.prompt_dump (--json).\n" +
 		"    No agent runs, no network beyond the fetch, no store writes beyond the bundle.\n" +
-		"  run <owner/repo> <pr|local-name> --agent <claude|codex|cursor|opencode> [--recipe <slug>]\n" +
-		"      [--stage <n>] [--timeout <secs, default 300>] [--rounds <n, default 1>] [--print]\n" +
-		"      [-- <agent args>...] [--json]\n" +
+		"  run <owner/repo> <pr|local-name> --agent <agy|amp|claude|codex|copilot|crush|cursor|droid|gemini|goose|kiro|opencode|pi|qwen>\n" +
+		"      [--recipe <slug>] [--stage <n>] [--timeout <secs, default 300>] [--rounds <n, default 1>]\n" +
+		"      [--print] [-- <agent args>...] [--json]\n" +
 		"    launch YOUR agent against an existing bundle: one process per round, one shot by default.\n" +
 		"    It requires exactly one fresh review.json (absent refuses no-review-artifact, older\n" +
 		"    than the launch refuses stale-review-artifact), names the next command, and by default never\n" +

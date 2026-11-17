@@ -1,6 +1,7 @@
 package run
 
 import (
+	"slices"
 	"strings"
 )
 
@@ -40,22 +41,78 @@ const modelFlag = "--model"
 
 // agentDefs is the shipped agent table, sorted by name. Every row is data: a
 // new agent is a new entry here, and nothing else in the launcher changes.
+// Permission and approval flags stay with the operator via `-- <args>`.
 var agentDefs = []agentDef{
+	// https://github.com/google-antigravity/antigravity-cli — read 2026-11-17
+	{
+		Name: "agy", Binary: "agy", ModelFlag: modelFlag, PromptFlag: "-p",
+		Install: "curl -fsSL https://antigravity.google/cli/install.sh | bash",
+	},
+	// https://ampcode.com/docs/markdown/cli/execute-mode — read 2026-11-17
+	{
+		Name: "amp", Binary: "amp", ModelFlag: modelFlag, PromptFlag: "-x",
+		Install: "npm install -g @ampcode/cli",
+	},
+	// https://code.claude.com/docs/en/cli-reference.md — read 2026-11-17
 	{
 		Name: "claude", Binary: "claude", ModelFlag: modelFlag, Args: []string{"-p"},
-		Install: "install claude using its official installer",
+		Install: "curl -fsSL https://claude.ai/install.sh | bash",
 	},
+	// https://github.com/openai/codex/blob/main/README.md — read 2026-11-17
 	{
 		Name: "codex", Binary: "codex", ModelFlag: modelFlag, Args: []string{"exec"},
 		Install: "npm install -g @openai/codex",
 	},
+	// https://docs.github.com/en/copilot/how-tos/copilot-cli/automate-copilot-cli/run-cli-programmatically — read 2026-11-17
+	{
+		Name: "copilot", Binary: "copilot", ModelFlag: modelFlag, PromptFlag: "-p",
+		Install: "npm install -g @github/copilot",
+	},
+	// https://github.com/charmbracelet/crush/blob/main/internal/cmd/run.go — read 2026-11-17
+	{
+		Name: "crush", Binary: "crush", ModelFlag: modelFlag, Args: []string{"run"},
+		Install: "brew install charmbracelet/tap/crush",
+	},
+	// https://cursor.com/docs/cli/headless — read 2026-11-17
 	{
 		Name: "cursor", Binary: "cursor-agent", ModelFlag: modelFlag, Args: []string{"-p"},
-		Install: "install cursor-agent using the Cursor CLI installer",
+		Install: "curl https://cursor.com/install -fsS | bash",
 	},
+	// https://docs.factory.com/droid-cli/cli-reference.md — read 2026-11-17
+	{
+		Name: "droid", Binary: "droid", ModelFlag: modelFlag, Args: []string{"exec"},
+		Install: "curl -fsSL https://app.factory.ai/cli | sh",
+	},
+	// https://github.com/google-gemini/gemini-cli/blob/main/README.md — read 2026-11-17
+	{
+		Name: "gemini", Binary: "gemini", ModelFlag: modelFlag, PromptFlag: "-p",
+		Install: "npm install -g @google/gemini-cli",
+	},
+	// https://github.com/aaif-goose/goose/blob/main/documentation/docs/guides/running-tasks.md — read 2026-11-17
+	{
+		Name: "goose", Binary: "goose", ModelFlag: modelFlag, PromptFlag: "-t", Args: []string{"run"},
+		Install: "brew install block-goose-cli",
+	},
+	// https://kiro.dev/docs/cli/headless.md — read 2026-11-17
+	{
+		Name: "kiro", Binary: "kiro-cli", ModelFlag: modelFlag,
+		Args:    []string{"chat", "--no-interactive"},
+		Install: "curl -fsSL https://cli.kiro.dev/install | bash",
+	},
+	// https://opencode.ai/docs/cli/ — read 2026-11-17
 	{
 		Name: "opencode", Binary: "opencode", ModelFlag: modelFlag, Args: []string{"run"},
-		Install: "npm install -g opencode-ai",
+		Install: "npm install -g @opencode/cli",
+	},
+	// https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/quickstart.md — read 2026-11-17
+	{
+		Name: "pi", Binary: "pi", ModelFlag: modelFlag, Args: []string{"-p"},
+		Install: "curl -fsSL https://pi.dev/install.sh | sh",
+	},
+	// https://github.com/QwenLM/qwen-code/blob/main/packages/cli/src/config/top-level-options.ts — read 2026-11-17
+	{
+		Name: "qwen", Binary: "qwen", ModelFlag: modelFlag,
+		Install: "npm install -g @qwen-code/qwen-code@latest",
 	},
 }
 
@@ -69,12 +126,22 @@ func lookupAgent(name string) (agentDef, bool) {
 	return agentDef{}, false
 }
 
-// AgentNames returns the known agent names in table order, for the
-// unknown-agent refusal and the usage block.
+// AgentNames returns the known agent names, for the unknown-agent refusal and
+// the other verbs that list them. The four rows shipped before STA-440 keep
+// their prefix, so a caller that matched that fragment still finds it; the rest
+// follow in table order.
 func AgentNames() []string {
+	first := []string{"claude", "codex", "cursor", "opencode"}
 	names := make([]string, 0, len(agentDefs))
+	for _, name := range first {
+		if _, ok := lookupAgent(name); ok {
+			names = append(names, name)
+		}
+	}
 	for _, def := range agentDefs {
-		names = append(names, def.Name)
+		if !slices.Contains(first, def.Name) {
+			names = append(names, def.Name)
+		}
 	}
 	return names
 }

@@ -249,17 +249,25 @@ func TestDirectiveKeepsAPercentPathLiteral(t *testing.T) {
 // TestAgentTableIsSortedAndUnique keeps the data table honest: duplicate or
 // unsorted rows would make the known-name list a lie.
 func TestAgentTableIsSortedAndUnique(t *testing.T) {
-	names := AgentNames()
-	if !slices.IsSorted(names) {
-		t.Errorf("agent table is not sorted: %v", names)
+	table := make([]string, 0, len(agentDefs))
+	for _, def := range agentDefs {
+		table = append(table, def.Name)
 	}
-	if len(slices.Compact(slices.Clone(names))) != len(names) {
-		t.Errorf("agent table repeats a name: %v", names)
+	if !slices.IsSorted(table) {
+		t.Errorf("agent table is not sorted: %v", table)
 	}
-	for _, name := range names {
+	if len(slices.Compact(slices.Clone(table))) != len(table) {
+		t.Errorf("agent table repeats a name: %v", table)
+	}
+	known := AgentNames()
+	slices.Sort(known)
+	if !slices.Equal(known, table) {
+		t.Errorf("known names %v do not enumerate the table %v", known, table)
+	}
+	for _, name := range table {
 		def, ok := lookupAgent(name)
-		if !ok || def.Binary == "" || len(def.Args) == 0 {
-			t.Errorf("agent %q has no binary or no non-interactive argument shape: %+v", name, def)
+		if !ok || def.Binary == "" || def.ModelFlag == "" || def.Install == "" {
+			t.Errorf("agent %q has no binary, model flag, or install hint: %+v", name, def)
 		}
 	}
 	if _, ok := lookupAgent("gpt"); ok {
