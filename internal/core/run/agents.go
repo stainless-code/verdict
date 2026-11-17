@@ -95,14 +95,7 @@ var agentDefs = []agentDef{
 		Name: "autohand", Binary: "autohand", ModelFlag: modelFlag,
 		Install: "curl -fsSL https://autohand.ai/install.sh | bash",
 	},
-	// brew info bob: neovim version manager; brew search --formula /^bob$/ -> bob (clash).
-	// https://bob.ibm.com/docs/shell/getting-started/start-bobshell-non-interactive — read 2026-11-17
-	{
-		Name: "bob", Binary: "bob",
-		Args:      []string{argsRun},
-		ProbeArgs: []string{argsRun, argsHelp}, ProbeMatch: argsRun,
-		Install: "curl -fsSL https://bob.ibm.com/download/bobshell.sh | bash",
-	},
+
 	// https://code.claude.com/docs/en/cli-reference.md — read 2026-11-17
 	{
 		Name: nameClaude, Binary: nameClaude, ModelFlag: modelFlag,
