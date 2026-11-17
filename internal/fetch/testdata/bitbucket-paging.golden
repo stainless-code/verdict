@@ -112,6 +112,7 @@ b.txt
   "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
   "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "author": "mate",
+  "labels": [],
   "url": "https://example.invalid/17",
   "state": "open",
   "draft": false,
@@ -386,8 +387,8 @@ rather than becoming ground truth.
       "kind": "bundle",
       "name": "PR.json",
       "status": "included",
-      "sha256": "28ce1e54108103f858db3c24cd9691a68347a8f1b01e671fd2f3498dbc956f5d",
-      "bytes": 668
+      "sha256": "aea63e20439ce8af3d9d1b333a667729e2cfed564f9d8471495436044cc40b92",
+      "bytes": 684
     },
     {
       "kind": "bundle",

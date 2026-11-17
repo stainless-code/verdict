@@ -213,7 +213,7 @@ func fetchTestDiff() string {
 func fetchHappyCommander(t *testing.T) *scriptCommander {
 	t.Helper()
 	view := "pr\x00view\x007\x00--repo\x00o/r\x00--json\x00" +
-		"number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,url,commits," +
+		"number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,labels,url,commits," +
 		"files,additions,deletions,isDraft,reviewDecision,state"
 	stat := "pr\x00view\x007\x00--repo\x00o/r\x00--json\x00files\x00--jq\x00" +
 		".files[] | \"\\(.path) (+\\(.additions)/-\\(.deletions))\""
@@ -266,7 +266,7 @@ func fetchHappyArgv() [][]string {
 	return [][]string{
 		{
 			"gh", "pr", "view", "7", "--repo", "o/r", "--json",
-			"number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,url,commits," +
+			"number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,labels,url,commits," +
 				"files,additions,deletions,isDraft,reviewDecision,state",
 		},
 		{"gh", "pr", "diff", "7", "--repo", "o/r"},
@@ -428,7 +428,7 @@ func TestRunDiffTooLarge(t *testing.T) {
 	big := "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n" +
 		strings.Repeat(" context line padding the diff past the cap\n", 20000)
 	view := "pr\x00view\x007\x00--repo\x00o/r\x00--json\x00" +
-		"number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,url,commits," +
+		"number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,labels,url,commits," +
 		"files,additions,deletions,isDraft,reviewDecision,state"
 	pr := strings.Replace(fetchTestPR(), `"files":[{"path":"a.txt","additions":1,"deletions":1}]`,
 		`"files":[{"path":"a.txt","additions":1,"deletions":1},{"path":"b.txt","additions":1,"deletions":1}]`, 1)

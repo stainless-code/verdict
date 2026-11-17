@@ -57,7 +57,7 @@ candidates (suggested scopes — re-run narrowed, nothing auto-narrowed):
 - [range] split the range in half (~416339 bytes each): fetch-local --range/--base, fetch --base-sha/--since
 --- files ---
 --- file C/.gh-calls.log ---
-CALL: pr view 4703 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,url,commits,files,additions,deletions,isDraft,reviewDecision,state
+CALL: pr view 4703 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,labels,url,commits,files,additions,deletions,isDraft,reviewDecision,state
 CALL: pr diff 4703 --repo acme/app
 --- file C/.verdict/.gitignore ---
 /state/

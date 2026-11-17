@@ -13,7 +13,7 @@ next: fit the diff under the cap with --ignore <glob> (repeatable on fetch and f
 try: split the range (--range/--base/--base-sha) or narrow with a paths filter, then re-fetch
 --- files ---
 --- file C/.gh-calls.log ---
-CALL: pr view 4703 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,url,commits,files,additions,deletions,isDraft,reviewDecision,state
+CALL: pr view 4703 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,labels,url,commits,files,additions,deletions,isDraft,reviewDecision,state
 CALL: pr diff 4703 --repo acme/app
 --- file C/.verdict/.gitignore ---
 /state/

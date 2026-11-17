@@ -27,6 +27,7 @@ const (
 	keyItems       = "items"
 	keyJSON        = "json"
 	keyKind        = "kind"
+	keyLabels      = "labels"
 	keyLogin       = "login"
 	keyNumber      = "number"
 	keyPath        = "path"

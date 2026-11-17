@@ -215,7 +215,7 @@ func testGitHubOmittedExcludes(t *testing.T) {
 	t.Chdir(t.TempDir())
 	cmdr := fetchHappyCommander(t)
 	view := "gh\x00pr\x00view\x007\x00--repo\x00o/r\x00--json\x00" +
-		"number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,url,commits," +
+		"number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,labels,url,commits," +
 		"files,additions,deletions,isDraft,reviewDecision,state"
 	cmdr.out[view] = scriptResult{stdout: `{"number":7,"title":"T","body":"B","baseRefName":"main","headRefName":"feat",` +
 		`"headRefOid":"` + fetchTestHead + `","baseRefOid":"` + fetchTestBase + `",` +

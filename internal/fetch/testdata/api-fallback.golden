@@ -22,7 +22,7 @@ gh pr diff failed, trying API diff
 evals-stub-gh: network disabled (api repos/acme/app/pulls/4701 -H Accept: application/vnd.github.diff)
 --- files ---
 --- file C/.gh-calls.log ---
-CALL: pr view 4701 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,url,commits,files,additions,deletions,isDraft,reviewDecision,state
+CALL: pr view 4701 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,labels,url,commits,files,additions,deletions,isDraft,reviewDecision,state
 CALL: pr diff 4701 --repo acme/app
 CALL: api repos/acme/app/pulls/4701 -H Accept: application/vnd.github.diff
 --- file C/.verdict/.gitignore ---

@@ -72,7 +72,7 @@ func githubFetch(ctx context.Context, ctx2 *fetchRunCtx, r *session, dir, repo, 
 func githubView(ctx context.Context, r *session, dir, repo, pr string) *core.RefusalError {
 	fmt.Fprintf(r.Human, "» gh pr view %s#%s\n", repo, pr)
 	viewRes, err := r.ghFetch(ctx, ghCmdPR, "view", pr, "--repo", repo,
-		flagJSON, "number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,url,commits,"+
+		flagJSON, "number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,labels,url,commits,"+
 			"files,additions,deletions,isDraft,reviewDecision,state")
 	fmt.Fprint(r.Human, viewRes.Stderr)
 	if err != nil {
