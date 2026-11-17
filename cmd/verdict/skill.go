@@ -42,8 +42,7 @@ func runSkill(ctx context.Context, r *cli.Runner, args []string, env map[string]
 	}
 }
 
-//
-//nolint:revive // the show route nests the path, inventory, and index arms
+// runSkillShow routes one show request to the path, inventory, or index arm.
 func runSkillShow(ctx context.Context, r *cli.Runner, args []string, env map[string]string, root string) int {
 	flags, code, done := parseSkillShowFlags(r, args)
 	if done {
@@ -51,25 +50,40 @@ func runSkillShow(ctx context.Context, r *cli.Runner, args []string, env map[str
 	}
 	req := &skill.Request{Runtime: skillRuntime(r, env), Version: skillVersion(root)}
 	if flags.path != "" {
-		body, ref := skill.ShowFile(ctx, req, flags.path)
-		if ref != nil {
-			return r.Refuse(ref)
-		}
-		if flags.format == formatJSONName {
-			writeSkillEnvelope(r, skillFileData(flags.path, body))
-			return cli.ExitOK
-		}
-		fmt.Fprint(r.Out, string(body))
-		return cli.ExitOK
+		return writeSkillPath(ctx, r, req, flags)
 	}
 	if flags.format == formatJSONName {
-		inv, ref := skill.List(ctx, req)
-		if ref != nil {
-			return r.Refuse(ref)
-		}
-		writeSkillEnvelope(r, skillInventoryData(&inv))
+		return writeSkillInventory(ctx, r, req)
+	}
+	return writeSkillIndex(ctx, r, req)
+}
+
+// writeSkillPath serves one inventory file as bytes or as a JSON envelope.
+func writeSkillPath(ctx context.Context, r *cli.Runner, req *skill.Request, flags skillShowFlags) int {
+	body, ref := skill.ShowFile(ctx, req, flags.path)
+	if ref != nil {
+		return r.Refuse(ref)
+	}
+	if flags.format == formatJSONName {
+		writeSkillEnvelope(r, skillFileData(flags.path, body))
 		return cli.ExitOK
 	}
+	fmt.Fprint(r.Out, string(body))
+	return cli.ExitOK
+}
+
+// writeSkillInventory serves the full served-path inventory as one envelope.
+func writeSkillInventory(ctx context.Context, r *cli.Runner, req *skill.Request) int {
+	inv, ref := skill.List(ctx, req)
+	if ref != nil {
+		return r.Refuse(ref)
+	}
+	writeSkillEnvelope(r, skillInventoryData(&inv))
+	return cli.ExitOK
+}
+
+// writeSkillIndex serves the Procedure index as the default show body.
+func writeSkillIndex(ctx context.Context, r *cli.Runner, req *skill.Request) int {
 	body, ref := skill.Show(ctx, req)
 	if ref != nil {
 		return r.Refuse(ref)

@@ -71,8 +71,6 @@ func TestShowAndList(t *testing.T) {
 
 // TestInstallWritesOnlyTheStub pins the split: an install carries the three
 // Bootstrap skill files and the receipt, never the Procedure payload.
-//
-//nolint:revive // the tree walk proves the install wrote exactly three files
 func TestInstallWritesOnlyTheStub(t *testing.T) {
 	t.Parallel()
 	req := newRequest(t)
@@ -86,25 +84,32 @@ func TestInstallWritesOnlyTheStub(t *testing.T) {
 		t.Fatalf("install files = %v, want %v", plan.Files, wantFiles)
 	}
 	wantTree := []string{".verdict-managed", "NOTICE.md", "SKILL.md", "scripts/verdict"}
-	var got []string
-	err := filepath.WalkDir(filepath.Join(req.Dir, "verdict"), func(path string, entry os.DirEntry, err error) error {
+	if got := installedTree(t, filepath.Join(req.Dir, "verdict")); !slices.Equal(got, wantTree) {
+		t.Fatalf("installed tree = %v, want %v", got, wantTree)
+	}
+}
+
+// installedTree lists every regular file under an installed skill, relative to
+// its root, so a test compares against a literal inventory.
+func installedTree(t *testing.T, root string) []string {
+	t.Helper()
+	var files []string
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil || entry.IsDir() {
 			return err
 		}
-		rel, err := filepath.Rel(filepath.Join(req.Dir, "verdict"), path)
+		rel, err := filepath.Rel(root, path)
 		if err != nil {
 			return err
 		}
-		got = append(got, filepath.ToSlash(rel))
+		files = append(files, filepath.ToSlash(rel))
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	slices.Sort(got)
-	if !slices.Equal(got, wantTree) {
-		t.Fatalf("installed tree = %v, want %v", got, wantTree)
-	}
+	slices.Sort(files)
+	return files
 }
 
 // TestInstallCreateDryRunApply covers the happy path: dry-run touches

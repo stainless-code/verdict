@@ -156,42 +156,10 @@ func TestProcedureLivesOutsideTheStub(t *testing.T) {
 
 // TestRootReadDirReportsEOF pins ReadDir's end-of-listing contract: reading
 // one entry at a time must end with [io.EOF], never an empty successful read.
-//
-//nolint:revive // the one-entry paging loop is the assertion
 func TestRootReadDirReportsEOF(t *testing.T) {
 	t.Parallel()
-	paths, err := skillfs.Paths()
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := map[string]bool{}
-	for _, path := range paths {
-		name, _, _ := strings.Cut(path, "/")
-		want[name] = true
-	}
-	f, err := skillfs.FS.Open(".")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	dir, ok := f.(fs.ReadDirFile)
-	if !ok {
-		t.Fatal("payload root is not a ReadDirFile")
-	}
-	got := map[string]bool{}
-	for {
-		entries, err := dir.ReadDir(1)
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(entries) != 1 {
-			t.Fatalf("ReadDir(1) returned %d entries and err %v, want one or io.EOF", len(entries), err)
-		}
-		got[entries[0].Name()] = true
-	}
+	want := rootTopNames(t)
+	got := readRootOneByOne(t, openPayloadRootDir(t))
 	if len(got) != len(want) {
 		t.Fatalf("root entries = %v, want the top-level names of %v", got, want)
 	}
@@ -205,78 +173,130 @@ func TestRootReadDirReportsEOF(t *testing.T) {
 // TestRootReadDirContract pins both halves of [fs.ReadDirFile]: a non-positive
 // n drains the directory without an end error, while a positive n that finds
 // no entries reports [io.EOF].
-//
-//nolint:cyclop,gocognit,revive // the table covers four distinct paging sequences
 func TestRootReadDirContract(t *testing.T) {
 	t.Parallel()
-	paths, err := skillfs.Paths()
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := map[string]bool{}
-	for _, path := range paths {
-		name, _, _ := strings.Cut(path, "/")
-		want[name] = true
-	}
-	var top []string
-	for name := range want {
-		top = append(top, name)
-	}
-	slices.Sort(top)
-
-	type step struct {
-		n    int
-		want int
-		eof  bool
-	}
-	for _, tc := range []struct {
-		name  string
-		steps []step
-	}{
-		{name: "drain twice", steps: []step{{n: -1, want: len(top)}, {n: -1, want: 0}}},
-		{name: "zero after exhaustion", steps: []step{{n: -1, want: len(top)}, {n: 0, want: 0}}},
-		{name: "page to end", steps: func() []step {
-			out := make([]step, 0, len(top)+1)
-			for range top {
-				out = append(out, step{n: 1, want: 1})
-			}
-			return append(out, step{n: 1, want: 0, eof: true})
-		}()},
-		{name: "mixed", steps: []step{{n: 1, want: 1}, {n: -1, want: len(top) - 1}, {n: 1, want: 0, eof: true}, {n: 0, want: 0}}},
-	} {
+	top := rootTopNamesSorted(t)
+	for _, tc := range rootReadDirCases(len(top)) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			f, err := skillfs.FS.Open(".")
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer f.Close()
-			dir, ok := f.(fs.ReadDirFile)
-			if !ok {
-				t.Fatal("payload root is not a ReadDirFile")
-			}
-			var seen []string
-			for i, call := range tc.steps {
-				entries, err := dir.ReadDir(call.n)
-				if call.eof != errors.Is(err, io.EOF) {
-					t.Fatalf("step %d ReadDir(%d) err = %v, want eof=%v", i, call.n, err, call.eof)
-				}
-				if !call.eof && err != nil {
-					t.Fatalf("step %d ReadDir(%d) = %v", i, call.n, err)
-				}
-				if len(entries) != call.want {
-					t.Fatalf("step %d ReadDir(%d) returned %d entries, want %d", i, call.n, len(entries), call.want)
-				}
-				for _, entry := range entries {
-					seen = append(seen, entry.Name())
-				}
-			}
+			seen := runReadDirSteps(t, openPayloadRootDir(t), tc.steps)
 			slices.Sort(seen)
 			if !slices.Equal(seen, top) {
 				t.Errorf("root entries = %v, want %v", seen, top)
 			}
 		})
 	}
+}
+
+func rootTopNames(t *testing.T) map[string]bool {
+	t.Helper()
+	paths, err := skillfs.Paths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := make(map[string]bool)
+	for _, path := range paths {
+		name, _, _ := strings.Cut(path, "/")
+		names[name] = true
+	}
+	return names
+}
+
+func rootTopNamesSorted(t *testing.T) []string {
+	t.Helper()
+	var names []string
+	for name := range rootTopNames(t) {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	return names
+}
+
+func openPayloadRootDir(t *testing.T) fs.ReadDirFile {
+	t.Helper()
+	f, err := skillfs.FS.Open(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = f.Close() })
+	dir, ok := f.(fs.ReadDirFile)
+	if !ok {
+		t.Fatal("payload root is not a ReadDirFile")
+	}
+	return dir
+}
+
+func readRootOneByOne(t *testing.T, dir fs.ReadDirFile) map[string]bool {
+	t.Helper()
+	got := make(map[string]bool)
+	for {
+		entries, err := dir.ReadDir(1)
+		if errors.Is(err, io.EOF) {
+			return got
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 1 {
+			t.Fatalf("ReadDir(1) returned %d entries and err %v, want one or io.EOF", len(entries), err)
+		}
+		got[entries[0].Name()] = true
+	}
+}
+
+type readDirStep struct {
+	n    int
+	want int
+	eof  bool
+}
+
+func rootReadDirCases(total int) []struct {
+	name  string
+	steps []readDirStep
+} {
+	return []struct {
+		name  string
+		steps []readDirStep
+	}{
+		{name: "drain twice", steps: []readDirStep{{n: -1, want: total}, {n: -1, want: 0}}},
+		{name: "zero after exhaustion", steps: []readDirStep{{n: -1, want: total}, {n: 0, want: 0}}},
+		{name: "page to end", steps: pagedReadDirSteps(total)},
+		{name: "mixed", steps: []readDirStep{{n: 1, want: 1}, {n: -1, want: total - 1}, {n: 1, want: 0, eof: true}, {n: 0, want: 0}}},
+	}
+}
+
+func pagedReadDirSteps(total int) []readDirStep {
+	steps := make([]readDirStep, 0, total+1)
+	for range total {
+		steps = append(steps, readDirStep{n: 1, want: 1})
+	}
+	return append(steps, readDirStep{n: 1, want: 0, eof: true})
+}
+
+func runReadDirSteps(t *testing.T, dir fs.ReadDirFile, steps []readDirStep) []string {
+	t.Helper()
+	var seen []string
+	for i, call := range steps {
+		for _, entry := range checkReadDirStep(t, dir, call, i) {
+			seen = append(seen, entry.Name())
+		}
+	}
+	return seen
+}
+
+func checkReadDirStep(t *testing.T, dir fs.ReadDirFile, call readDirStep, i int) []fs.DirEntry {
+	t.Helper()
+	entries, err := dir.ReadDir(call.n)
+	if call.eof != errors.Is(err, io.EOF) {
+		t.Fatalf("step %d ReadDir(%d) err = %v, want eof=%v", i, call.n, err, call.eof)
+	}
+	if !call.eof && err != nil {
+		t.Fatalf("step %d ReadDir(%d) = %v", i, call.n, err)
+	}
+	if len(entries) != call.want {
+		t.Fatalf("step %d ReadDir(%d) returned %d entries, want %d", i, call.n, len(entries), call.want)
+	}
+	return entries
 }
 
 // TestRegistryDiscovery pins the layout the skills CLI relies on. Its

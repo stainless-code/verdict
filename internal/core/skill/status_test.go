@@ -35,17 +35,15 @@ func TestStatusFreshInstallInSync(t *testing.T) {
 
 // TestStatusComparesStubVersion pins the version-based report: an unrelated
 // byte edit stays in sync, while a changed stub_version drifts with a diff.
-//
-//nolint:cyclop,revive // the two status legs prove byte edits and version edits differ
 func TestStatusComparesStubVersion(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	req := newRequest(t)
-	req.Dir = dir
-	target := filepath.Join(dir, "verdict")
-	if _, ref := skill.Install(context.Background(), req); ref != nil {
-		t.Fatalf("seed install: %v", ref)
-	}
+	t.Run("byte edit stays in sync", checkStatusByteEditInSync)
+	t.Run("version edit drifts", checkStatusVersionEditDrifts)
+}
+
+func checkStatusByteEditInSync(t *testing.T) {
+	t.Parallel()
+	req, target := seedStatusTarget(t)
 	if err := os.WriteFile(filepath.Join(target, "NOTICE.md"), []byte("hand edited\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -56,19 +54,13 @@ func TestStatusComparesStubVersion(t *testing.T) {
 	if !st.InSync || st.Plan.Status != skill.StatusKeep {
 		t.Fatalf("byte-only edit status = %+v, want an in-sync keep", st)
 	}
+}
 
-	body, err := os.ReadFile(filepath.Join(target, "SKILL.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	edited := strings.Replace(string(body), "stub_version: "+skillfs.StubVersion, "stub_version: 2", 1)
-	if edited == string(body) {
-		t.Fatal("installed stub has no stub_version to edit")
-	}
-	if err := os.WriteFile(filepath.Join(target, "SKILL.md"), []byte(edited), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	st, ref = skill.Status(context.Background(), req, true)
+func checkStatusVersionEditDrifts(t *testing.T) {
+	t.Parallel()
+	req, target := seedStatusTarget(t)
+	bumpStubVersion(t, target)
+	st, ref := skill.Status(context.Background(), req, true)
 	if ref != nil {
 		t.Fatalf("Status after version edit: %v", ref)
 	}
@@ -80,6 +72,34 @@ func TestStatusComparesStubVersion(t *testing.T) {
 	}
 	if len(st.Diffs) != 1 || !strings.Contains(st.Diffs[0].Body, "-stub_version: 2") {
 		t.Fatalf("version diff = %+v, want the installed value removed", st.Diffs)
+	}
+}
+
+// seedStatusTarget installs a fresh skill copy for one status leg.
+func seedStatusTarget(t *testing.T) (*skill.Request, string) {
+	t.Helper()
+	req := newRequest(t)
+	req.Dir = t.TempDir()
+	if _, ref := skill.Install(context.Background(), req); ref != nil {
+		t.Fatalf("seed install: %v", ref)
+	}
+	return req, filepath.Join(req.Dir, "verdict")
+}
+
+// bumpStubVersion changes the installed stub_version to a different integer.
+func bumpStubVersion(t *testing.T, target string) {
+	t.Helper()
+	path := filepath.Join(target, "SKILL.md")
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edited := strings.Replace(string(body), "stub_version: "+skillfs.StubVersion, "stub_version: 2", 1)
+	if edited == string(body) {
+		t.Fatal("installed stub has no stub_version to edit")
+	}
+	if err := os.WriteFile(path, []byte(edited), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 
