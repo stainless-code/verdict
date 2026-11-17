@@ -327,6 +327,9 @@ func (st *state) probe(ctx context.Context, args *launchArgs) *core.RefusalError
 		Stdin:     strings.NewReader(""),
 		OutputCap: coreexec.VerifyOutputCap,
 	})
+	if ctx.Err() != nil {
+		return st.refuse(codeCanceled, msgCanceled)
+	}
 	out := res.Stdout + res.Stderr
 	if len(out) > probeOutputCap {
 		out = out[:probeOutputCap]

@@ -208,6 +208,29 @@ func assertProbeMessage(t *testing.T, message, result string) {
 	}
 }
 
+// TestProbeKeepsParentCancellation pins the refusal precedence when the
+// caller cancels while the probe is running: the probe's own deadline still
+// classifies agent-mismatch, but a canceled parent outranks its result.
+func TestProbeKeepsParentCancellation(t *testing.T) {
+	root := fixtureRoot(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	cdr := &probeCdr{answer: func([]string) (core.Result, error) {
+		cancel()
+		return core.Result{Stdout: "a different agent"}, nil
+	}}
+	_, ref := WithAgents(ctx, probeRequest(root, cdr), []config.PersonalAgent{probeDef()})
+	if ref == nil || ref.Code != "canceled" {
+		t.Fatalf("ref = %+v, want canceled", ref)
+	}
+	if ref.Message != msgCanceled {
+		t.Errorf("message = %q, want %q", ref.Message, msgCanceled)
+	}
+	if cdr.launches() != 0 {
+		t.Errorf("launches = %d, want zero", cdr.launches())
+	}
+}
+
 // TestProbeSkippedUnderPrint proves a render spawns nothing at all: no probe
 // process, even when the row declares one.
 func TestProbeSkippedUnderPrint(t *testing.T) {
