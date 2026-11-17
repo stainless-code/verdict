@@ -333,15 +333,15 @@ rather than becoming ground truth.
 --- file C/.verdict/state/4717/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "ff0a9a58a6d123373d59520b8ea6826051ceaf6d4092d32f1793c69bd32e309f",
-  "prompts_hash": "0819c05a9f07bebd054279a4a998adfc9077a5cf5a12dc84d588205b917a893d",
+  "run_id": "2ab4bd8d49a1d7bc14d8609a030bca10edb77393fb2ab2a5cf0cc0740d9d9801",
+  "prompts_hash": "57708e26c0828084fa5ffc651af76a5f7b6d8c5dc404408c1806f4046a635cc9",
   "inputs": [
     {
       "kind": "prompt",
       "name": "SKILL.md",
       "status": "included",
-      "sha256": "56a5922897f1def73b571fd871ce3ea65798e595f54952aec380496e785797cb",
-      "bytes": 13140
+      "sha256": "6e55c5ebee9a13a25b8e95e9249ec909d7e92b6bfbcf6e3a2fb7a5c6236be01c",
+      "bytes": 13427
     },
     {
       "kind": "prompt",
