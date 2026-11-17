@@ -145,7 +145,13 @@ var agentDefs = []agentDef{
 		Name: "copilot", Binary: "copilot", ModelFlag: modelFlag, PromptFlag: "-p",
 		Install: "npm install -g @github/copilot",
 	},
-
+	// brew info cortex: Prometheus long-term storage; brew search --formula /^cortex$/ -> cortex (clash).
+	// https://docs.snowflake.com/en/user-guide/cortex-code/cli-reference — read 2026-11-17
+	{
+		Name: "cortex", Binary: "cortex", ModelFlag: modelFlag, PromptFlag: "-p",
+		ProbeArgs: []string{argsHelp}, ProbeMatch: "--print",
+		Install: "curl -qLsS https://ai.snowflake.com/static/cc-scripts/install.sh | sh",
+	},
 	// https://github.com/charmbracelet/crush/blob/main/internal/cmd/run.go — read 2026-11-17
 	{
 		Name: "crush", Binary: "crush", ModelFlag: modelFlag,
@@ -182,7 +188,21 @@ var agentDefs = []agentDef{
 		Args:    []string{argsExec},
 		Install: "curl -fsSL https://app.factory.ai/cli | sh",
 	},
-
+	// brew info forge: ArrayFire visualization; brew search --formula /^forge$/ -> forge (clash).
+	// https://github.com/tailcallhq/forgecode/blob/main/crates/forge_main/src/cli.rs — read 2026-11-17
+	{
+		Name: "forge", Binary: "forge", PromptFlag: "-p",
+		ProbeArgs: []string{argsHelp}, ProbeMatch: "--prompt",
+		Install: "curl -fsSL https://forgecode.dev/cli | sh",
+	},
+	// brew info fx: terminal JSON viewer; brew search --formula /^fx$/ -> fx (clash).
+	// https://fx.sh/docs/using-fx/fx-ask — read 2026-11-17
+	{
+		Name: "fx", Binary: "fx", ModelFlag: modelFlag,
+		Args:      []string{argsAsk},
+		ProbeArgs: []string{argsAsk, argsHelp}, ProbeMatch: argsAsk,
+		Install: "curl -fsSL https://fx.sh/setup.sh | bash",
+	},
 	// https://github.com/google-gemini/gemini-cli/blob/main/README.md — read 2026-11-17
 	{
 		Name: "gemini", Binary: "gemini", ModelFlag: modelFlag, PromptFlag: "-p",
@@ -194,7 +214,13 @@ var agentDefs = []agentDef{
 		Args:    []string{argsRun},
 		Install: "brew install block-goose-cli",
 	},
-
+	// brew info grok: regex tool; brew search --formula /^grok$/ -> grok (clash).
+	// https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/14-headless-mode.md — read 2026-11-17
+	{
+		Name: "grok", Binary: "grok", ModelFlag: modelFlag, PromptFlag: "-p",
+		ProbeArgs: []string{argsHelp}, ProbeMatch: "--single",
+		Install: "curl -fsSL https://x.ai/cli/install.sh | bash",
+	},
 	// --agent 'hermes' is the CLI name for Hermes Agent.
 	// https://github.com/NousResearch/hermes-agent/blob/main/hermes_cli/_parser.py — read 2026-11-17
 	{
@@ -215,7 +241,14 @@ var agentDefs = []agentDef{
 		Name: "junie", Binary: "junie", ModelFlag: modelFlag,
 		Install: "curl -fsSL https://junie.jetbrains.com/install.sh | bash",
 	},
-
+	// brew info kilo: no formula; brew search --formula /^kilo$/ -> none; antirez/kilo is a text editor (clash).
+	// https://github.com/Kilo-Org/kilocode/blob/main/packages/opencode/src/cli/cmd/run.ts — read 2026-11-17
+	{
+		Name: "kilo", Binary: "kilo", ModelFlag: modelFlag,
+		Args:      []string{argsRun},
+		ProbeArgs: []string{argsRun, argsHelp}, ProbeMatch: argsRun,
+		Install: "npm install -g @kilocode/cli",
+	},
 	// --agent 'kimchi' is the product slug.
 	// https://docs.kimchi.dev/docs/coding-headless.md — read 2026-11-17
 	{

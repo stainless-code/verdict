@@ -103,7 +103,13 @@ func builtinRows() []builtinRow {
 			wantArgv:      []string{"copilot", "--model", "M", "--x", "-p", "PROMPT"},
 			wantPrintArgv: []string{"copilot", "--model", "M", "-p", "PROMPT"},
 		},
-
+		{
+			name: "cortex", binary: "cortex", args: []string{}, promptFlag: "-p",
+			probeArgs: []string{"--help"}, probeMatch: "--print",
+			install:       "curl -qLsS https://ai.snowflake.com/static/cc-scripts/install.sh | sh",
+			wantArgv:      []string{"cortex", "--model", "M", "--x", "-p", "PROMPT"},
+			wantPrintArgv: []string{"cortex", "--model", "M", "-p", "PROMPT"},
+		},
 		{
 			name: "crush", binary: "crush", args: []string{"run"}, promptFlag: "",
 			install:       "brew install charmbracelet/tap/crush",
@@ -140,7 +146,21 @@ func builtinRows() []builtinRow {
 			wantArgv:      []string{"droid", "exec", "--model", "M", "--x", "PROMPT"},
 			wantPrintArgv: []string{"droid", "exec", "--model", "M", "PROMPT"},
 		},
-
+		{
+			name: "forge", binary: "forge", args: []string{}, promptFlag: "-p",
+			noModel:   true,
+			probeArgs: []string{"--help"}, probeMatch: "--prompt",
+			install:       "curl -fsSL https://forgecode.dev/cli | sh",
+			wantArgv:      []string{"forge", "--x", "-p", "PROMPT"},
+			wantPrintArgv: []string{"forge", "--model", "M", "-p", "PROMPT"},
+		},
+		{
+			name: "fx", binary: "fx", args: []string{"ask"}, promptFlag: "",
+			probeArgs: []string{"ask", "--help"}, probeMatch: "ask",
+			install:       "curl -fsSL https://fx.sh/setup.sh | bash",
+			wantArgv:      []string{"fx", "ask", "--model", "M", "--x", "PROMPT"},
+			wantPrintArgv: []string{"fx", "ask", "--model", "M", "PROMPT"},
+		},
 		{
 			name: "gemini", binary: "gemini", args: []string{}, promptFlag: "-p",
 			install:       "npm install -g @google/gemini-cli",
@@ -153,7 +173,13 @@ func builtinRows() []builtinRow {
 			wantArgv:      []string{"goose", "run", "--model", "M", "--x", "-t", "PROMPT"},
 			wantPrintArgv: []string{"goose", "run", "--model", "M", "-t", "PROMPT"},
 		},
-
+		{
+			name: "grok", binary: "grok", args: []string{}, promptFlag: "-p",
+			probeArgs: []string{"--help"}, probeMatch: "--single",
+			install:       "curl -fsSL https://x.ai/cli/install.sh | bash",
+			wantArgv:      []string{"grok", "--model", "M", "--x", "-p", "PROMPT"},
+			wantPrintArgv: []string{"grok", "--model", "M", "-p", "PROMPT"},
+		},
 		{
 			name: "hermes", binary: "hermes", args: []string{}, promptFlag: "-z",
 			install:       "curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash",
@@ -173,7 +199,13 @@ func builtinRows() []builtinRow {
 			wantArgv:      []string{"junie", "--model", "M", "--x", "PROMPT"},
 			wantPrintArgv: []string{"junie", "--model", "M", "PROMPT"},
 		},
-
+		{
+			name: "kilo", binary: "kilo", args: []string{"run"}, promptFlag: "",
+			probeArgs: []string{"run", "--help"}, probeMatch: "run",
+			install:       "npm install -g @kilocode/cli",
+			wantArgv:      []string{"kilo", "run", "--model", "M", "--x", "PROMPT"},
+			wantPrintArgv: []string{"kilo", "run", "--model", "M", "PROMPT"},
+		},
 		{
 			name: "kimchi", binary: "kimchi", args: []string{}, promptFlag: "-p",
 			install:       "curl -fsSL https://github.com/getkimchi/kimchi/releases/latest/download/install.sh | bash",
