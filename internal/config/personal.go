@@ -320,7 +320,7 @@ func presentBool(obj map[string]any, key, path string) (bool, *core.RefusalError
 // to it, so a new shipped row cannot become a silently shadowed operator name.
 func BuiltinAgentNames() []string {
 	return []string{
-		"adal", "agy", "amp", "auggie", "autohand", "claude",
+		"adal", "agy", "amp", "auggie", "autohand", "bob", "claude",
 		"cline", "codearts", "codebuddy", "codex", "commandcode", "continue",
 		"copilot", "cortex", "crush", "cursor", "dcode", "devin", "dexto",
 		"droid", "forge", "fx", "gemini", "goose", "grok", "hermes", "jazz",
