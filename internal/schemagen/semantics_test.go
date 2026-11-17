@@ -273,6 +273,10 @@ var publishedSemantics = map[string]string{
 	// additive drain-replies.schema.json (new bundle document; no existing
 	// schema property, required key, enum, or type changed). It pins the
 	// agent's single output: the plan digest and one disposition per reply.
+	// additive drain-dryrun.schema.json (new bundle document; no existing
+	// schema property, required key, enum, or type changed). It pins the
+	// preview --post --dry-run writes: planned marked bodies and typed skips.
+	"drain-dryrun.schema.json":  "1718a109cbe9f1e1f6401810ba90886655f8842194c496986d34fb6973a28032",
 	"drain-replies.schema.json": "601cfd36687dab68e858aed5484fa2f654c5d2265da944fc1428753029eb8362",
 	"drain.schema.json":         "1fcf8437ef91b1b130923e3600f489559be29ce9f3a5b1d2de52641db945af80",
 	"envelope.schema.json":      "b5f49f876d3f600ce6ced697b27a4bb343c516bbbaf21b698995cf8e3ac87cd7",

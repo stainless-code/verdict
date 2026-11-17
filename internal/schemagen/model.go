@@ -1002,6 +1002,13 @@ type DrainPosted = draincore.Posted
 // DrainFailed is one host reply that did not land.
 type DrainFailed = draincore.Failed
 
+// DrainDryRunFile is the preview drain --post --dry-run writes instead of a
+// posting receipt, published as schemas/drain-dryrun.schema.json.
+type DrainDryRunFile = draincore.DryRunFile
+
+// DrainPlanned is one reply a dry run would send, with its final marked body.
+type DrainPlanned = draincore.Planned
+
 // ThreadsFile is one provider bundle's normalized PR-conversation feed,
 // published as schemas/threads.schema.json. It is additive beside the raw
 // provider files: every host's payload is filtered and flattened to the same

@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/drain-dryrun.schema.json",
+  "title": "drain.dryrun.json — drain post preview",
+  "description": "The preview drain --post --dry-run writes beside the plan: the exact marked replies a real post would send and every thread it would skip. It is not a receipt: no reply ids, no host result, and no ledger change.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "description": "Preview format version; only \"1\" is published.",
+      "type": "string"
+    },
+    "provider": {
+      "description": "The host whose live thread feed the preview read.",
+      "enum": ["github", "gitlab", "gitcafe", "forgejo", "bitbucket", "azure"]
+    },
+    "head_sha": {
+      "description": "The bundle head the live feed was read at.",
+      "type": "string"
+    },
+    "planned_at": {
+      "description": "UTC time the preview was written, RFC 3339.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "planned": {
+      "description": "Replies a real --post would send, in draft order, with their final bodies.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/planned" }
+    },
+    "skipped": {
+      "description": "Threads a real --post would skip, each with a machine-readable reason.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/skip" }
+    },
+    "pr": {
+      "description": "Pull-request number the preview belongs to.",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "provider",
+    "head_sha",
+    "planned_at",
+    "planned",
+    "skipped",
+    "pr"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "planned": {
+      "description": "One reply that would be posted: its thread, root comment, disposition, and final body with the marker.",
+      "type": "object",
+      "properties": {
+        "thread_id": { "type": "string" },
+        "root_comment_id": { "type": "string" },
+        "disposition": { "type": "string" },
+        "body": { "type": "string" }
+      },
+      "required": ["thread_id", "root_comment_id", "disposition", "body"],
+      "additionalProperties": false
+    },
+    "skip": {
+      "description": "One thread left open and why: resolved, answered, stale-thread, already-replied, defer, no-draft, or a missing refreshed thread.",
+      "type": "object",
+      "properties": {
+        "thread_id": { "type": "string" },
+        "reason": { "type": "string" }
+      },
+      "required": ["thread_id", "reason"],
+      "additionalProperties": false
+    }
+  }
+}

@@ -1061,7 +1061,7 @@ Fix: narrow anchor drift or body size (see above), then re-run.
 
 Cause: a review draft carries a secret-shaped value — `review.json` for `post`, `drain.replies.json` for `drain --post`.
 
-Fix: remove the value from the draft and re-run. `post` can pass `--allow-secret-values` to publish it anyway; `drain --post` has no override.
+Fix: remove the value from the draft and re-run. `post` can pass `--allow-secret-values` to publish it anyway; `drain --post` has no override, and `drain --post --dry-run` refuses the same way before any write.
 
 ## `pr-not-open`
 

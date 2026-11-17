@@ -33,8 +33,17 @@ cp "$EVAL_SANDBOX/page.json" "$EVAL_SANDBOX/page.initial.json"
 MARK1="<!-- verdict-reply thread=PRRT_1 to=102 -->"
 MARK2="<!-- verdict-reply thread=PRRT_2 to=202 -->"
 TWO_NL=$'\n\n'
-export DRAIN_PAGE="$EVAL_SANDBOX/page.json" DRAIN_QUERY MARK1 MARK2 TWO_NL
+EVAL_BODYLOG="$EVAL_SANDBOX/reply-bodies.jsonl"
+export DRAIN_PAGE="$EVAL_SANDBOX/page.json" DRAIN_QUERY MARK1 MARK2 TWO_NL EVAL_BODYLOG
 : >"$EVAL_STUBLOG"
+: >"$EVAL_BODYLOG"
+store_digests() {
+  local f
+  for f in replies.json drain.json threads.json drain.dryrun.json; do
+    if [ -f "$DIR/$f" ]; then cksum <"$DIR/$f"; else printf 'absent\n'; fi
+  done
+}
+write_count() { grep -Ec -- '--method POST|threadId=' "$EVAL_STUBLOG" || true; }
 
 cat >"$EVAL_STUBBIN/gh" <<'GH'
 #!/usr/bin/env bash
@@ -70,6 +79,11 @@ reply() {
   for i in "${!expected[@]}"; do
     idx=$((i + 1))
     [ "${!idx}" = "${expected[i]}" ] || return 1
+  done
+  for arg in "$@"; do
+    case "$arg" in
+      body=*) printf '%s' "${arg#body=}" | jq -Rs . >>"$EVAL_BODYLOG" ;;
+    esac
   done
   jq --arg marker "$marker" \
     --arg prefix "$endpoint" \
@@ -111,6 +125,46 @@ if [ "$EVAL_STATUS" -ne 0 ] || ! jq -e '.data.drafts.count == 2' <"$EVAL_OUT" >/
 fi
 good "two drafts were validated before the post run"
 
+DRY_WRITES_BEFORE="$(write_count)"
+DRY_BODIES_BEFORE="$(wc -c <"$EVAL_BODYLOG" | tr -d ' ')"
+DRY_FILES_BEFORE="$(store_digests)"
+run_review drain acme/app 7 --post --dry-run --json
+if [ "$EVAL_STATUS" -eq 0 ] && jq -e --arg mark1 "$MARK1" --arg mark2 "$MARK2" '
+  .next == "verdict drain acme/app 7 --post" and
+  (.data.planned | map({thread_id, root_comment_id, disposition}) == [
+    {thread_id:"PRRT_1", root_comment_id:"101", disposition:"answer"},
+    {thread_id:"PRRT_2", root_comment_id:"201", disposition:"withdraw"}]) and
+  (.data.planned[0].body == ("Answer one." + "\n\n" + $mark1)) and
+  (.data.planned[1].body == ("Answer two." + "\n\n" + $mark2)) and
+  (.data.skipped | length == 0)' <"$EVAL_OUT" >/dev/null; then
+  good "D1 dry run reports both final marked bodies and the post-only next"
+else
+  bad "D1 dry run data: exit $EVAL_STATUS $(head -c 500 "$EVAL_OUT") $(head -c 300 "$EVAL_ERR")"
+fi
+if [ "$(write_count)" = "$DRY_WRITES_BEFORE" ] && \
+   [ "$(wc -c <"$EVAL_BODYLOG" | tr -d ' ')" = "$DRY_BODIES_BEFORE" ] && \
+   [ "$(store_digests)" != "$DRY_FILES_BEFORE" ] && \
+   [ -f "$DIR/drain.dryrun.json" ]; then
+  good "D2 dry run made zero host writes and left the store byte-identical"
+else
+  bad "D2 dry run writes: $(write_count) vs $DRY_WRITES_BEFORE; files $(store_digests)"
+fi
+if [ "$(for f in replies.json drain.json threads.json; do
+  if [ -f "$DIR/$f" ]; then cksum <"$DIR/$f"; else printf 'absent\n'; fi
+done)" = "$(printf '%s\n' "$DRY_FILES_BEFORE" | head -3)" ]; then
+  good "D3 the three core bundle files kept their exact bytes"
+else
+  bad "D3 core files changed across the dry run"
+fi
+jq '.data' <"$EVAL_OUT" >"$EVAL_SANDBOX/dry-data.json"
+if jq -e --slurpfile want "$EVAL_SANDBOX/dry-data.json" '. == $want[0]' "$DIR/drain.dryrun.json" >/dev/null && \
+   matches -F '» 2 planned, 0 skipped (dry run; nothing posted) ->' "$EVAL_ERR"; then
+  good "D4 the preview file equals envelope data and names the human summary"
+else
+  bad "D4 preview: $(head -c 400 "$DIR/drain.dryrun.json" 2>/dev/null) $(head -c 200 "$EVAL_ERR")"
+fi
+jq -c '[.data.planned[].body]' <"$EVAL_OUT" >"$EVAL_SANDBOX/dry-bodies.json"
+
 run_review drain acme/app 7 --post --json
 if [ "$EVAL_STATUS" -eq 0 ] && jq -e '(.data.posted | length == 2)
   and (.data.failed | length == 0) and (.next | contains("threads"))' <"$EVAL_OUT" >/dev/null; then
@@ -144,6 +198,12 @@ if [ "$(grep -c 'body=Answer' "$EVAL_STUBLOG")" = "2" ] && \
 else
   bad "P5 writes: $(grep -E 'body=|threadId=' "$EVAL_STUBLOG")"
 fi
+if jq -e -s --slurpfile planned "$EVAL_SANDBOX/dry-bodies.json" \
+   '. == $planned[0]' "$EVAL_BODYLOG" >/dev/null; then
+  good "D5 the real post sent exactly the bodies the dry run planned"
+else
+  bad "D5 dry-run bodies: $(cat "$EVAL_SANDBOX/dry-bodies.json"); posted: $(jq -s -c . "$EVAL_BODYLOG")"
+fi
 
 WRITES_BEFORE="$(grep -Ec 'POST|threadId=' "$EVAL_STUBLOG" || true)"
 LEDGER_BEFORE="$(wc -c <"$DIR/replies.json")"
@@ -158,6 +218,17 @@ fi
 
 cp "$EVAL_SANDBOX/page.initial.json" "$EVAL_SANDBOX/page.json"
 rm -f "$DIR/replies.json" "$DIR/drain.json" "$DIR/drain.replies.json"
+AGENT_DRY_WRITES="$(write_count)"
+AGENT_DRY_BODIES="$(wc -c <"$EVAL_BODYLOG" | tr -d ' ')"
+run_review drain acme/app 7 --agent claude --post --dry-run --json
+if [ "$EVAL_STATUS" -eq 0 ] && jq -e '(.data.planned | length == 2) and (.data.skipped | length == 0)' <"$EVAL_OUT" >/dev/null && \
+   [ "$(write_count)" = "$AGENT_DRY_WRITES" ] && \
+   [ "$(wc -c <"$EVAL_BODYLOG" | tr -d ' ')" = "$AGENT_DRY_BODIES" ] && \
+   [ ! -e "$DIR/replies.json" ] && jq -e '(.posted | length == 0)' "$DIR/drain.json" >/dev/null; then
+  good "D6 --agent --post --dry-run plans, drafts, and previews without posting"
+else
+  bad "D6 agent dry run: exit $EVAL_STATUS $(head -c 500 "$EVAL_OUT") $(head -c 300 "$EVAL_ERR")"
+fi
 run_review drain acme/app 7 --agent claude --post --json
 if [ "$EVAL_STATUS" -eq 0 ] && jq -e '.data.drafts.count == 2 and (.data.posted | length == 2)
   and (.data.failed | length == 0) and .data.posted_at != null

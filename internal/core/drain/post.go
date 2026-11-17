@@ -31,12 +31,14 @@ type PostRequest struct {
 	At        string
 	DraftsRaw []byte
 	Ledger    []LedgerEntry
+	DryRun    bool
 }
 
 // PostResult is what the final receipt records.
 type PostResult struct {
 	Posted     []Posted
 	Failed     []Failed
+	Planned    []Planned
 	Incomplete bool
 }
 
@@ -69,7 +71,8 @@ func ValidatePostDrafts(plan *File, draftsRaw []byte, provider string) (*Replies
 }
 
 // Post runs §6's gates in order, then posts each draft and records one ledger
-// entry per successful write. A host failure is recorded and the remaining
+// entry per successful write. A dry run stops after composing each marked body
+// and returns it in Planned. A host failure is recorded and the remaining
 // drafts are still attempted; the caller turns Incomplete into a refusal.
 func Post(req *PostRequest) (*PostResult, *core.RefusalError) {
 	doc, ref := postDrafts(req)
@@ -77,9 +80,12 @@ func Post(req *PostRequest) (*PostResult, *core.RefusalError) {
 		return nil, ref
 	}
 	byID := postThreads(req.Feed)
-	res := &PostResult{Posted: []Posted{}, Failed: []Failed{}}
+	res := &PostResult{Posted: []Posted{}, Failed: []Failed{}, Planned: []Planned{}}
 	for _, reply := range doc.Replies {
 		postOne(req, byID, reply, res)
+	}
+	if req.DryRun {
+		return res, nil
 	}
 	req.Plan.Posted = res.Posted
 	req.Plan.Failed = res.Failed
@@ -133,7 +139,7 @@ func saveFeed(req *PostRequest, res *PostResult) {
 func postOne(req *PostRequest, byID map[string]*threadscore.Thread, reply Reply, res *PostResult) {
 	thread, ok := byID[reply.ThreadID]
 	if !ok || len(thread.Comments) == 0 {
-		res.Failed = append(res.Failed, Failed{ThreadID: reply.ThreadID, Reason: "thread missing from refreshed feed"})
+		missingThread(req, reply, res)
 		return
 	}
 	last := &thread.Comments[len(thread.Comments)-1]
@@ -143,6 +149,10 @@ func postOne(req *PostRequest, byID map[string]*threadscore.Thread, reply Reply,
 	}
 	body := recordcore.NeutralizeMentions(reply.Body) + "\n\n" +
 		threadscore.ReplyMarker(reply.ThreadID, reply.WaitingCommentID)
+	if req.DryRun {
+		planReply(reply, thread, res, body)
+		return
+	}
 	id, err := req.Reply(thread.Comments[0].ID, reply.ThreadID, body)
 	if err != nil {
 		res.Failed = append(res.Failed, Failed{ThreadID: reply.ThreadID, Reason: err.Error()})
@@ -151,6 +161,22 @@ func postOne(req *PostRequest, byID map[string]*threadscore.Thread, reply Reply,
 	if posted, ok := recordPost(req, thread, reply, id, res); ok {
 		res.Posted = append(res.Posted, posted)
 	}
+}
+
+func missingThread(req *PostRequest, reply Reply, res *PostResult) {
+	reason := "thread missing from refreshed feed"
+	if req.DryRun {
+		req.Plan.Skipped = append(req.Plan.Skipped, Skip{ThreadID: reply.ThreadID, Reason: reason})
+		return
+	}
+	res.Failed = append(res.Failed, Failed{ThreadID: reply.ThreadID, Reason: reason})
+}
+
+func planReply(reply Reply, thread *threadscore.Thread, res *PostResult, body string) {
+	res.Planned = append(res.Planned, Planned{
+		ThreadID: reply.ThreadID, RootCommentID: thread.Comments[0].ID,
+		Disposition: string(reply.Disposition), Body: body,
+	})
 }
 
 func recordPost(req *PostRequest, thread *threadscore.Thread, reply Reply, id string, res *PostResult) (Posted, bool) {

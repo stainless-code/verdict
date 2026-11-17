@@ -486,6 +486,20 @@
       "/$defs/comment/properties/category": "Optional closed taxonomy: logic|edge-case|security|performance|accidental-commit|style|docs|other. Unknown or non-string values warn once and store null; never inferred from prose, path, severity, or rule. Explicit null clears a stored label on re-post; absent preserves it."
     }
   },
+  "drain-dryrun": {
+    "descriptions": {
+      "": "The preview drain --post --dry-run writes beside the plan: the exact marked replies a real post would send and every thread it would skip. It is not a receipt: no reply ids, no host result, and no ledger change.",
+      "/properties/schema_version": "Preview format version; only \"1\" is published.",
+      "/properties/provider": "The host whose live thread feed the preview read.",
+      "/properties/pr": "Pull-request number the preview belongs to.",
+      "/properties/head_sha": "The bundle head the live feed was read at.",
+      "/properties/planned_at": "UTC time the preview was written, RFC 3339.",
+      "/properties/planned": "Replies a real --post would send, in draft order, with their final bodies.",
+      "/$defs/planned": "One reply that would be posted: its thread, root comment, disposition, and final body with the marker.",
+      "/properties/skipped": "Threads a real --post would skip, each with a machine-readable reason.",
+      "/$defs/skip": "One thread left open and why: resolved, answered, stale-thread, already-replied, defer, no-draft, or a missing refreshed thread."
+    }
+  },
   "drain-replies": {
     "descriptions": {
       "": "The single artifact the drafting agent writes: one answer per pending thread, pinned to the plan digest. Verdict validates every site before any later step reads it; there is no host write in this build.",
