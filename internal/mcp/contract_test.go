@@ -226,3 +226,23 @@ func assertMutationDeclaration(t *testing.T, tool *tool, want mutationClass) {
 		t.Fatalf("mutates = %v, want %v", tool.mutates, want)
 	}
 }
+
+// TestDrainIsHiddenFromMCP proves the drain verb is declared hidden in every
+// server mode: it writes a local plan and can launch the operator's agent.
+func TestDrainIsHiddenFromMCP(t *testing.T) {
+	t.Parallel()
+	for _, cfg := range []struct{ readOnly, operator bool }{{}, {true, false}, {false, true}, {true, true}} {
+		got, ok := hiddenTools(cfg.readOnly, cfg.operator)["drain"]
+		if !ok || !got.cliOnly || got.requires != "the verdict CLI (verdict drain)" {
+			t.Errorf("hidden drain (readOnly=%v operator=%v) = %+v, want a CLI-only declaration",
+				cfg.readOnly, cfg.operator, got)
+		}
+	}
+	for _, tools := range [][]*tool{allTools(false, false), allTools(true, false), allTools(false, true)} {
+		for _, tool := range tools {
+			if tool.name == "drain" {
+				t.Error("drain is exposed as an MCP tool")
+			}
+		}
+	}
+}

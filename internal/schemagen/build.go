@@ -255,6 +255,20 @@ func documents() []document {
 			defs: []definition{{typ: reflect.TypeFor[ExcludedPath](), name: "excludedPath"}},
 		},
 		{
+			name:  "drain",
+			title: "drain.json — drain plan and receipt",
+			root:  reflect.TypeFor[DrainFile](),
+			defs: []definition{
+				{typ: reflect.TypeFor[DrainPending](), name: "pending"},
+				{typ: reflect.TypeFor[DrainSkip](), name: "skip"},
+				{typ: reflect.TypeFor[DrainDrafts](), name: "drafts"},
+				{typ: reflect.TypeFor[DrainDispositions](), name: "dispositions"},
+				{typ: reflect.TypeFor[DrainPosted](), name: "posted"},
+				{typ: reflect.TypeFor[DrainFailed](), name: "failed"},
+			},
+			additionalProperties: false,
+		},
+		{
 			name:  "findings",
 			title: "findings.json — merged findings store",
 			root:  reflect.TypeFor[[]FindingEntry](),

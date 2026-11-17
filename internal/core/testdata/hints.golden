@@ -93,6 +93,7 @@ degenerate-body	try: open with a verdict marker (see prompts/review.md), then re
 diff-failed	try: address the cause above, then re-run the same command
 diff-too-large	try: split the range (--range/--base/--base-sha) or narrow with a paths filter, then re-fetch
 download-failed	try: address the cause above, then re-run the same command
+drain-failed	try: refresh threads, confirm host auth, then re-run drain
 duplicate-payload	try: re-run with --force to repost the identical payload — re-fetch if the earlier review was deleted
 fetch-failed	try: run 'gh auth status', confirm the repo/PR spelling, then re-run
 filtered-out	try: remove --filter to review every PR, or change the trigger at the PR base and re-fetch

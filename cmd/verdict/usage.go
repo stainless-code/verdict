@@ -3,7 +3,7 @@ package main
 func usageText() string {
 	return "usage: verdict fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
 		"fetch-local|run|panel|record|adopt|ingest|fix|check-tree|ready|pr-wait|gate|threads|trend|risk|handoff|index|" +
-		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|config [opts]\n" +
+		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|config|drain [opts]\n" +
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
 		"[--index <ref|dir>] [--context <file|dir>] [--ignore <glob>] [--no-default-excludes] " +
 		"[--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
@@ -276,6 +276,15 @@ func usageText() string {
 		"    --dry-run lists what would be resolved and makes zero writes; a real run\n" +
 		"    makes one host write per thread and writes threads-resolve.json. GitHub and\n" +
 		"    GitLab carry it; Forgejo refuses typed (no documented resolve endpoint).\n" +
+		"  drain <owner/repo> <pr> [--provider <p>] [--max-threads <1-100>] [--json]\n" +
+		"        [--agent <name> [--timeout <secs>] [-- <agent args>...]]\n" +
+		"    answer every review thread waiting on verdict: refresh threads, then write\n" +
+		"    .verdict/state/<pr>/drain.json with the pending list, typed skips, and a plan digest.\n" +
+		"    Zero pending is success and launches no agent. --max-threads defaults to 20;\n" +
+		"    older questions are taken first and the rest are deferred. --agent drafts one\n" +
+		"    drain.replies.json through the run launcher; no host write happens in this\n" +
+		"    build (there is no --post yet). A truncated feed or unreadable login refuses\n" +
+		"    drain-failed before the plan is written.\n" +
 		"  trend <owner/repo> [--rules] [--overlap] [--incidents] [--resolution] [--json]\n" +
 		"    portfolio rollup over existing bundle stores (no network, writes nothing):\n" +
 		"    findings opened/addressed/closed over time, broken down by severity tier\n" +

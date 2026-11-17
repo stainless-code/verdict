@@ -585,6 +585,12 @@ Cause: the release download failed (bad version, no download directory, or a fet
 
 Fix: pass a concrete `X.Y.Z` (or `vX.Y.Z`) version with a writable download dir, then re-run `upgrade`.
 
+## `drain-failed`
+
+Cause: the bundle, `threads.json`, the login, or the reply ledger could not be read, or the refreshed feed is truncated.
+
+Fix: refresh threads and confirm host auth, then re-run `drain`.
+
 ## `duplicate-payload`
 
 Cause: every rendered summary part and comment is present in the live remote lists for this reviewed head.

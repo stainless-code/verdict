@@ -486,6 +486,31 @@
       "/$defs/comment/properties/category": "Optional closed taxonomy: logic|edge-case|security|performance|accidental-commit|style|docs|other. Unknown or non-string values warn once and store null; never inferred from prose, path, severity, or rule. Explicit null clears a stored label on re-post; absent preserves it."
     }
   },
+  "drain": {
+    "descriptions": {
+      "": "The plan a drain run writes before drafting and the receipt it updates after posting. The plan pins one canonical pending list with a digest, typed skips for threads verdict authored but did not draft, and a count of other people's threads. The agent writes drain.replies.json against that digest; no host write happens in this build.",
+      "/properties/schema_version": "Plan format version; only \"1\" is published.",
+      "/properties/provider": "The host whose thread feed was read.",
+      "/properties/pr": "Pull-request number the plan belongs to.",
+      "/properties/head_sha": "The bundle head the feed was read at.",
+      "/properties/planned_at": "UTC time the plan was written, RFC 3339.",
+      "/properties/self": "The authenticated login the feed's verdict-authored roots must match.",
+      "/properties/plan_digest": "sha256 over the canonical pending list; drafts name it to prove they answer this plan.",
+      "/properties/pending": "Threads waiting on a verdict reply, oldest waiting comment first, capped by --max-threads.",
+      "/$defs/pending": "One waiting thread joined to its finding anchor and the comment that needs an answer.",
+      "/properties/skipped": "Verdict-authored threads the plan did not draft, each with a machine-readable reason.",
+      "/$defs/skip": "One thread left open and why: resolved, answered, bot-reply, already-replied, not-review-comment, or deferred.",
+      "/properties/other_threads": "Threads verdict did not author; counted but never listed as skips.",
+      "/properties/drafts": "The validated draft summary, or null before an agent drafts.",
+      "/$defs/drafts": "What the agent wrote: the file name, entry count, and disposition tally.",
+      "/$defs/dispositions": "Counts of answer, withdraw, and defer drafts.",
+      "/properties/posted": "Successful host writes (PR B).",
+      "/$defs/posted": "One reply the host accepted and whether its thread was resolved.",
+      "/properties/failed": "Host writes that failed (PR B).",
+      "/$defs/failed": "One thread whose write failed and why.",
+      "/properties/posted_at": "UTC time posting finished, or null before post mode."
+    }
+  },
   "selected": {
     "descriptions": {
       "": "The reaction-scoped fix selection: the finding sigs whose posted root review comment carries at least one human \ud83d\udc4d, written by a GitHub fetch (the only host whose reactions verdict reads) and read by fix --selected. No reaction leaves no file at all, because an empty selection would claim a scope nobody asked for.",
