@@ -235,7 +235,7 @@ func usageText() string {
 		"    Foreground wait: timeout 1s–30m; interval >=1s. Exit 0 on condition,\n" +
 		"    exit 1 with wait-timeout or condition-unmet data; no local writes.\n" +
 		"\n" +
-		"  ready <owner/repo> <pr> [--json] [--check] [--wait-for build --timeout D]\n" +
+		"  ready <owner/repo> <pr> [--json] [--check] [--filter] [--wait-for build --timeout D]\n" +
 		"    advisory only (exit 0, never a gate): CI state, open threads, draft/conflict,\n" +
 		"    description completeness. Prints blockers with actions + recommendation\n" +
 		"    (review/wait/nudge-author). GitHub and GitLab PR bundles; local bundles refuse\n" +
@@ -243,6 +243,9 @@ func usageText() string {
 		"    --check opts into gating (same output, machine exits): 0 ready, 1 blockers\n" +
 		"    or wait, 2 usage, 3 tool error. Without --check the run stays advisory:\n" +
 		"    exit 0 with blockers listed (typed errors exit 1, usage exits 2).\n" +
+		"    --filter applies the closed trigger in .verdict/config.json at the PR base\n" +
+		"    before any live read: a non-matching PR refuses filtered-out naming the\n" +
+		"    predicate; both outcomes are recorded in the bundle's run.json.\n" +
 		"  gate <owner/repo> <pr> [--max-severity critical|important|informational] [--require-head]\n" +
 		"        [--live auto|strict|skip] [--coverage require|warn] [--json]\n" +
 		"    one composed local gate over the dimensions report already computes: open\n" +

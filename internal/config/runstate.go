@@ -37,9 +37,19 @@ type RunState struct {
 	Inventory        map[string]string  `json:"inventory,omitempty"`
 	Evidence         Evidence           `json:"evidence"`
 	Outcomes         []CheckObservation `json:"outcomes,omitempty"`
+	Trigger          *TriggerDecision   `json:"trigger,omitempty"`
 	Root             RequirementSet     `json:"root"`
 	Trusted          bool               `json:"trusted"`
 	RequiresEvidence bool               `json:"requires_evidence,omitempty"`
+}
+
+// TriggerDecision is the recorded local trigger outcome: whether the PR
+// entered review, the predicate that decided it, and the head it decided on.
+type TriggerDecision struct {
+	At     string `json:"at"`
+	Head   string `json:"head"`
+	Run    bool   `json:"run"`
+	Reason string `json:"reason"`
 }
 
 // StatusUsed marks a snapshot entry whose bytes were captured.
@@ -158,6 +168,29 @@ func AppendOutcome(dir string, obs *CheckObservation) (bool, error) {
 	return true, nil
 }
 
+// AppendTrigger records one trigger decision on an existing run bundle.
+// Like an outcome, it is an observation rather than a captured input, so the
+// inputs digest stays stable. Absent run state appends nothing.
+func AppendTrigger(dir string, decision *TriggerDecision) (bool, error) {
+	rs, found, serr := ReadRunState(dir)
+	if serr != nil {
+		return false, serr
+	}
+	if !found {
+		return false, nil
+	}
+	rs.Trigger = decision
+	raw, err := json.MarshalIndent(rs, "", "  ")
+	if err != nil {
+		return false, &stateError{msg: "could not encode run state for " + rs.Name, cause: err}
+	}
+	path := filepath.Join(dir, runStateFileName)
+	if werr := atomic.WriteFile(path, append(raw, '\n')); werr != nil {
+		return false, &stateError{msg: "could not write " + path, cause: werr}
+	}
+	return true, nil
+}
+
 // VerifyRunState loads the run bundle at dir/run.json and binds it to the
 // controls snapshot beside it, refusing controls-stale on any drift: a
 // deleted or corrupt bundle, edited captured inputs, or support bytes
@@ -261,6 +294,7 @@ func verifyInventory(dir string, rs *RunState, snap *controls.Snapshot) *core.Re
 func inputsDigest(rs *RunState) string {
 	cp := *rs
 	cp.Outcomes = nil
+	cp.Trigger = nil
 	cp.InputsSHA256 = ""
 	// The digest binds logical inputs, not volatile serialization:
 	// capture timestamps and temp paths vary run to run for the same

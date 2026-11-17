@@ -18,8 +18,8 @@ import (
 // Request wires a ready run.
 type Request = readcommon.Request
 
-// Run executes `ready <owner/repo> <pr> [--json, --check]`, returning the
-// exit code.
+// Run executes `ready <owner/repo> <pr> [--json, --check, --filter]`,
+// returning the exit code.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	q := readyRequest(r, req)
 	if err := parseFlags(args, q); err != nil {
@@ -68,8 +68,12 @@ func readyRequest(r *cli.Runner, req Request) *readycore.Request {
 func parseFlags(args []string, q *readycore.Request) *cli.UsageError {
 	for len(args) > 0 {
 		flag := args[0]
-		if flag == "--check" {
-			q.Check = true
+		if flag == "--check" || flag == "--filter" {
+			if flag == "--check" {
+				q.Check = true
+			} else {
+				q.Filter = true
+			}
 			args = args[1:]
 			continue
 		}

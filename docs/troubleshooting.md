@@ -600,6 +600,12 @@ Fix: for provider failures, run `gh auth status` and confirm the repo/PR spellin
 For context failures, hand over regular Markdown, JSON or `.txt` files — at most
 64 files, 1 MiB total and eight path levels — then re-run.
 
+## `filtered-out`
+
+Cause: `ready --filter` found a trigger predicate in `.verdict/config.json` at the PR base that the PR does not match; the refusal names the failing predicate.
+
+Fix: review the PR without `--filter`, or change the trigger at the base branch and re-fetch. The decision is recorded in `run.json`.
+
 ## `fix-ceiling`
 
 Cause: the fix loop hit its pass ceiling without clearing the sig.
@@ -1259,6 +1265,12 @@ Fix: run `gh auth status`, confirm the repo/PR spelling, then re-run.
 Cause: `triage` could not write `findings.json`.
 
 Fix: make the bundle directory writable, then re-run.
+
+## `trigger-failed`
+
+Cause: the trigger could not read its trusted-base policy or record the decision in `run.json`.
+
+Fix: re-fetch the bundle so its base snapshot is complete, then re-run `ready --filter`.
 
 ## `uninstall-foreign`
 
