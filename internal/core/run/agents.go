@@ -278,6 +278,7 @@ var agentDefs = []agentDef{
 	// https://github.com/shareAI-lab/Kode-CLI/blob/main/apps/cli/src/entrypoints/cli/cliParser/program.tsx — read 2026-11-17
 	{
 		Name: "kode", Binary: "kode", ModelFlag: modelFlag,
+		Args:    []string{"-p"},
 		Install: "npm install -g @shareai-lab/kode",
 	},
 	// --agent 'mcode' is the CLI name for MiniMax Code.
@@ -290,6 +291,7 @@ var agentDefs = []agentDef{
 	// https://github.com/neovateai/neovate-code/blob/master/src/index.ts — read 2026-11-17
 	{
 		Name: "neovate", Binary: "neovate", ModelFlag: modelFlag,
+		Args:    []string{"-q"},
 		Install: "npm install -g @neovate/code",
 	},
 	// --agent 'openclaw' is the product slug.
@@ -321,12 +323,14 @@ var agentDefs = []agentDef{
 	// https://docs.qoder.com/cli/run-in-scripts.md — read 2026-11-17
 	{
 		Name: "qoder", Binary: "qoder", ModelFlag: modelFlag,
+		Args:    []string{"-p"},
 		Install: "curl -fsSL https://qoder.com/install | bash",
 	},
 	// --agent 'qodercn' is the CLI name for Qoder CN.
 	// https://docs.qoder.cn/cli/run-in-scripts.md — read 2026-11-17
 	{
 		Name: "qodercn", Binary: "qodercn", ModelFlag: modelFlag,
+		Args:    []string{"-p"},
 		Install: "curl -fsSL https://static.qoder.com.cn/qoder-cli-cn/install.sh | bash",
 	},
 	// https://github.com/QwenLM/qwen-code/blob/main/packages/cli/src/config/top-level-options.ts — read 2026-11-17

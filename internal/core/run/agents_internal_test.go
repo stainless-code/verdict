@@ -234,8 +234,8 @@ func builtinRows() []builtinRow {
 		{
 			name: "kode", binary: "kode", args: []string{}, promptFlag: "",
 			install:       "npm install -g @shareai-lab/kode",
-			wantArgv:      []string{"kode", "--model", "M", "--x", "PROMPT"},
-			wantPrintArgv: []string{"kode", "--model", "M", "PROMPT"},
+			wantArgv:      []string{"kode", "-p", "--model", "M", "--x", "PROMPT"},
+			wantPrintArgv: []string{"kode", "-p", "--model", "M", "PROMPT"},
 		},
 		{
 			name: "mcode", binary: "mcode", args: []string{"exec"}, promptFlag: "",
@@ -246,8 +246,8 @@ func builtinRows() []builtinRow {
 		{
 			name: "neovate", binary: "neovate", args: []string{}, promptFlag: "",
 			install:       "npm install -g @neovate/code",
-			wantArgv:      []string{"neovate", "--model", "M", "--x", "PROMPT"},
-			wantPrintArgv: []string{"neovate", "--model", "M", "PROMPT"},
+			wantArgv:      []string{"neovate", "-q", "--model", "M", "--x", "PROMPT"},
+			wantPrintArgv: []string{"neovate", "-q", "--model", "M", "PROMPT"},
 		},
 		{
 			name: "openclaw", binary: "openclaw", args: []string{"agent", "exec"}, promptFlag: "",
@@ -276,14 +276,14 @@ func builtinRows() []builtinRow {
 		{
 			name: "qoder", binary: "qoder", args: []string{}, promptFlag: "",
 			install:       "curl -fsSL https://qoder.com/install | bash",
-			wantArgv:      []string{"qoder", "--model", "M", "--x", "PROMPT"},
-			wantPrintArgv: []string{"qoder", "--model", "M", "PROMPT"},
+			wantArgv:      []string{"qoder", "-p", "--model", "M", "--x", "PROMPT"},
+			wantPrintArgv: []string{"qoder", "-p", "--model", "M", "PROMPT"},
 		},
 		{
 			name: "qodercn", binary: "qodercn", args: []string{}, promptFlag: "",
 			install:       "curl -fsSL https://static.qoder.com.cn/qoder-cli-cn/install.sh | bash",
-			wantArgv:      []string{"qodercn", "--model", "M", "--x", "PROMPT"},
-			wantPrintArgv: []string{"qodercn", "--model", "M", "PROMPT"},
+			wantArgv:      []string{"qodercn", "-p", "--model", "M", "--x", "PROMPT"},
+			wantPrintArgv: []string{"qodercn", "-p", "--model", "M", "PROMPT"},
 		},
 		{
 			name: "qwen", binary: "qwen", args: []string{}, promptFlag: "",
