@@ -20,6 +20,9 @@ type HostCapabilities struct {
 	Approve          bool
 	RequestChanges   bool
 	ThreadResolution bool
+	// ThreadReply is drain's host reply call. It is internal to post mode in
+	// v1, so it is not published in data.capabilities and adds no fetch golden.
+	ThreadReply bool
 	// ReviewVerdicts is the compatibility sum of Approve and RequestChanges.
 	// CapabilitiesFor derives it, so no table row can claim a verdict pair it
 	// does not carry; new readers branch on the two split flags instead.
@@ -38,6 +41,8 @@ const (
 	CapabilityApprove          = "approve"
 	CapabilityRequestChanges   = "request_changes"
 	CapabilityThreadResolution = "thread_resolution"
+	// CapabilityThreadReply names the internal capability drain's reply gate.
+	CapabilityThreadReply = "thread_reply"
 )
 
 // capabilityTotal is how many capability names the table publishes. Unsupported
@@ -66,6 +71,8 @@ const (
 	// it has no documented resolve endpoint, so resolution stays a manual
 	// host/CLI step there.
 	reasonNoResolveMutation = "no-resolve-mutation"
+	// reasonNoThreadReply names a posting host with no reply endpoint.
+	reasonNoThreadReply = "no-thread-reply"
 )
 
 // CapabilityGap is one absent capability and the code that says why.
@@ -91,11 +98,11 @@ var hostCapabilities = map[string]HostCapabilities{
 	providerGitHub: {
 		Provider: providerGitHub, Fetch: true, Post: true,
 		InlineAnchors: true, Approve: true, RequestChanges: true,
-		ThreadResolution: true,
+		ThreadResolution: true, ThreadReply: true,
 	},
 	providerGitLab: {
 		Provider: providerGitLab, Fetch: true, Post: true, InlineAnchors: true,
-		Approve: true, ThreadResolution: true,
+		Approve: true, ThreadResolution: true, ThreadReply: true,
 	},
 	providerGitCafe: {Provider: providerGitCafe, Fetch: true},
 	providerForgejo: {
@@ -165,6 +172,18 @@ func (c HostCapabilities) ReasonFor(capability string) string {
 		}
 	}
 	return ""
+}
+
+// ThreadReplyReason returns the published cause for a host with no reply
+// call: a host with no submit path says so, and a posting host names the gap.
+func (c HostCapabilities) ThreadReplyReason() string {
+	if c.ThreadReply {
+		return ""
+	}
+	if !c.Post {
+		return c.submitReason(reasonNoThreadReply)
+	}
+	return reasonNoThreadReply
 }
 
 // submitReason names why one submit-side capability is absent: the host has no

@@ -311,6 +311,13 @@ const summaryMarkerFormat = "<!-- verdict-summary head=%s -->"
 // distinct from both finding and review markers.
 var summaryMarkerRe = regexp.MustCompile(`^<!-- verdict-summary head=[0-9a-f]{0,40} -->$`)
 
+// replyMarkerFormat is the hidden final line drain appends to a posted reply.
+// It binds the reply to the thread and the waiting comment it answers.
+const replyMarkerFormat = "<!-- verdict-reply thread=%s to=%s -->"
+
+// replyMarkerRe reads only a body's final line, and only ids without whitespace.
+var replyMarkerRe = regexp.MustCompile(`^<!-- verdict-reply thread=([^[:space:]]+) to=([^[:space:]]+) -->$`)
+
 // SummaryMarker renders the hidden final line of a PR-level summary comment.
 func SummaryMarker(head string) string {
 	return fmt.Sprintf(summaryMarkerFormat, head)
@@ -319,6 +326,20 @@ func SummaryMarker(head string) string {
 // HasSummaryMarker reports whether body ends with the verdict summary marker.
 func HasSummaryMarker(body string) bool {
 	return summaryMarkerRe.MatchString(finalLine(body))
+}
+
+// ReplyMarker renders the hidden final line of one drain reply.
+func ReplyMarker(threadID, waitingID string) string {
+	return fmt.Sprintf(replyMarkerFormat, threadID, waitingID)
+}
+
+// ReplyTarget reads the thread and waiting comment one drain reply answered.
+func ReplyTarget(body string) (threadID, waitingID string, ok bool) {
+	m := replyMarkerRe.FindStringSubmatch(finalLine(body))
+	if m == nil {
+		return "", "", false
+	}
+	return m[1], m[2], true
 }
 
 // FindingMarker renders the hidden final line carrying a finding sig.
@@ -336,11 +357,12 @@ func FindingSig(body string) (string, bool) {
 }
 
 // IsVerdictBody reports whether a body carries a verdict marker as its final
-// line: a finding marker on an inline comment, the review marker, or the
-// summary comment marker. Used only for the advisory author_kind label.
+// line: a finding, review, summary, or drain reply marker. Used only for the
+// advisory author_kind label.
 func IsVerdictBody(body string) bool {
 	last := finalLine(body)
-	return findingMarkerRe.MatchString(last) || reviewMarkerRe.MatchString(last) || summaryMarkerRe.MatchString(last)
+	return findingMarkerRe.MatchString(last) || reviewMarkerRe.MatchString(last) ||
+		summaryMarkerRe.MatchString(last) || replyMarkerRe.MatchString(last)
 }
 
 // AuthorKind classifies one comment author: verdict when its own marker is the
