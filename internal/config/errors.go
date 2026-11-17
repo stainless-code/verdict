@@ -14,6 +14,9 @@ const (
 	CodeTooLarge = "config-too-large"
 	// CodeBadConfig refuses malformed or semantically invalid configuration.
 	CodeBadConfig = "bad-config"
+	// CodeBadSettings refuses a malformed operator settings file. The agents
+	// section uses it so the settings loader's remediation covers a bad agent.
+	CodeBadSettings = "bad-settings"
 	// CodeBadCredentials refuses a configuration carrying a credential key.
 	CodeBadCredentials = "bad-config-credentials" //nolint:gosec // G101: refusal code, not a credential.
 	// CodeBadRequirement refuses an unsatisfiable or invalid requirement.

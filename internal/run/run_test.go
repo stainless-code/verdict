@@ -1,13 +1,25 @@
 package run
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/config"
 )
+
+func readFile(t *testing.T, path string) []byte {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
 
 // testRunner builds the run verb's runner around buffers the caller can
 // inspect. A test that drives another verb, or JSON mode, adjusts the runner.
@@ -344,5 +356,40 @@ func TestRentryKeepsStage(t *testing.T) {
 	plain := rentry(req, &flags{agent: "claude", timeout: DefaultTimeoutS, rounds: DefaultRounds}, false)
 	if strings.Contains(plain, "--stage") {
 		t.Fatalf("rentry named a stage nobody asked for: %q", plain)
+	}
+}
+
+// TestPersonalAgentsReadsPrefsOnly pins the adapter's source: definitions come
+// from the XDG/HOME settings file, and a repository config carrying the same
+// key cannot define one.
+func TestPersonalAgentsReadsPrefsOnly(t *testing.T) {
+	xdg := t.TempDir()
+	settings := filepath.Join(xdg, "verdict", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(settings), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	doc := `{"agents":{"local":{"binary":"local-agent","args":["exec"],"prompt_flag":"-p"}}}`
+	if err := os.WriteFile(settings, []byte(doc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	defs, ref := personalAgents(map[string]string{"XDG_CONFIG_HOME": xdg})
+	if ref != nil {
+		t.Fatalf("personalAgents: %v", ref)
+	}
+	assertSinglePrefsAgent(t, defs)
+	repo := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(repo, []byte(`{"schema_version":"1","agents":{"local":{"binary":"local"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, ref := config.Parse(readFile(t, repo)); ref == nil || ref.Code != config.CodeBadConfig {
+		t.Fatalf("repo config with agents = %v, want bad-config", ref)
+	}
+}
+
+func assertSinglePrefsAgent(t *testing.T, defs []config.PersonalAgent) {
+	t.Helper()
+	if len(defs) != 1 || defs[0].Name != "local" || defs[0].Binary != "local-agent" ||
+		!slices.Equal(defs[0].Args, []string{"exec"}) || defs[0].PromptFlag != "-p" {
+		t.Fatalf("definitions = %+v, want the prefs row", defs)
 	}
 }

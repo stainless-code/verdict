@@ -54,7 +54,7 @@ bad-root	try: pass --root <existing-directory>, or run serve inside a checkout
 bad-rule	try: re-run with one of the valid values named above
 bad-sarif	try: pass a valid UTF-8 SARIF 2.1.0 JSON file with repository-relative URIs
 bad-scope	try: re-run with one of the valid values named above
-bad-settings	try: keep only output/layout/color/publish/review/spend/privacy keys (see docs/manual.md), then re-run
+bad-settings	try: keep only $schema/output/layout/color/publish/review/spend/privacy/packs/agents keys (see docs/manual.md), then re-run
 bad-settings-credentials	try: remove the credential key from the settings file (credentials never live there), then re-run
 bad-sig	try: list open inline sigs with report --status open --kind inline, then re-run with the full prefix
 bad-since	try: pass --since <90d|12w|18mo|2y|ref> (a bare m is not a unit, and the ref must precede --until)

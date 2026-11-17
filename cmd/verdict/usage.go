@@ -49,9 +49,10 @@ func usageText() string {
 		"    kb.txt/sensitive.txt/panel when present (one fence per file, in that order) —\n" +
 		"    to stdout (human; progress moves to stderr) or data.prompt_dump (--json).\n" +
 		"    No agent runs, no network beyond the fetch, no store writes beyond the bundle.\n" +
-		"  run <owner/repo> <pr|local-name> --agent <claude|codex|cursor|opencode> [--recipe <slug>]\n" +
-		"      [--stage <n>] [--timeout <secs, default 300>] [--rounds <n, default 1>] [--print]\n" +
-		"      [-- <agent args>...] [--json]\n" +
+		"  run <owner/repo> <pr|local-name>\n" +
+		"      --agent <agy|amp|claude|codex|copilot|crush|cursor|droid|gemini|goose|kiro|opencode|pi|qwen>\n" +
+		"      [--recipe <slug>] [--stage <n>] [--timeout <secs, default 300>] [--rounds <n, default 1>]\n" +
+		"      [--print] [-- <agent args>...] [--json]\n" +
 		"    launch YOUR agent against an existing bundle: one process per round, one shot by default.\n" +
 		"    It requires exactly one fresh review.json (absent refuses no-review-artifact, older\n" +
 		"    than the launch refuses stale-review-artifact), names the next command, and by default never\n" +
@@ -59,6 +60,9 @@ func usageText() string {
 		"    invalid review.json re-prompts the agent with the shape checker's fix list, up to\n" +
 		"    N launch-to-check rounds; exhaustion refuses repair-exhausted. The agent inherits your\n" +
 		"    environment (your key) and may use the network; verdict itself makes no calls.\n" +
+		"    Operators can define more names under the 'agents' key of their own settings\n" +
+		"    file (XDG_CONFIG_HOME/verdict/settings.json); a repository config cannot.\n" +
+		"    A flag that takes the prompt places it immediately before the directive.\n" +
 		"    A non-zero agent exit is the process exit code (agent-failed); the watchdog\n" +
 		"    timeout (agent-timeout), a missing binary (agent-missing), and a spawn failure\n" +
 		"    (agent-spawn-failed) refuse typed with a hint. Provenance lands in\n" +

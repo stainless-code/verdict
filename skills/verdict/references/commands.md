@@ -59,6 +59,25 @@ GitHub and GitLab only; a write failure records `failed[]` and refuses
 `drain-incomplete`, after which the same `--post` command retries only the
 threads without a ledger entry.
 
+## `run --agent` — launch your own agent
+
+`verdict run owner/repo <pr|local-name> --agent <name> [--recipe <slug>]
+[--stage <n>] [--timeout <secs>] [--rounds <n>] [--print] [-- <agent args>...]`
+launches one agent process against an existing bundle and hands the reviewed
+artifact back to `record` or `post`. It never posts, and `run --print` renders
+the exact argv without spawning or writing. Everything after `--` reaches the
+agent first; a flag that takes the prompt as its value sits immediately before
+the directive, so your flags cannot be swallowed as that value.
+
+Names come from the shipped table (`agy`, `amp`, `claude`, `codex`, `copilot`,
+`crush`, `cursor`, `droid`, `gemini`, `goose`, `kiro`, `opencode`, `pi`, `qwen`)
+or from the `agents` key of your own `${XDG_CONFIG_HOME:-$HOME/.config}/verdict/settings.json`.
+The prefs shape is `{"agents": {"<name>": {"binary": "...", "args": [],
+"prompt_flag": "...", "model_flag": "...", "install": "..."}}}`; `binary` is
+required, `args` defaults to `[]`, and names cannot collide with a shipped row.
+A repository config cannot define one. `unknown-agent` lists both groups, and
+`launcher.json` marks prefs-defined rows with `agent_source: "prefs"`.
+
 ## Suppression receipts
 
 Read `excluded.json` and the TOC exclusion section before judging review coverage.

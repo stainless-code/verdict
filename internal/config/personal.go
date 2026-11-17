@@ -2,8 +2,13 @@ package config
 
 import (
 	"errors"
+	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
+	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
 )
@@ -40,9 +45,22 @@ type PersonalPrivacy struct {
 	Exclusions []string
 }
 
+// PersonalAgent is one operator-defined run agent from the prefs file. It has
+// the same launch fields as a shipped row; Source is set by the run service,
+// never by the document.
+type PersonalAgent struct {
+	Name       string
+	Binary     string
+	PromptFlag string
+	ModelFlag  string
+	Install    string
+	Args       []string
+}
+
 // PersonalSettings is the parsed personal layer: review defaults (every
 // defaults key except budget_usd, which lives in spend), the spend
-// constraint, the privacy constraint, and the explicit org pack paths.
+// constraint, the privacy constraint, the explicit org pack paths, and the
+// operator-defined run agents.
 //
 //nolint:govet // the sections read in resolver order
 type PersonalSettings struct {
@@ -50,6 +68,7 @@ type PersonalSettings struct {
 	Spend   PersonalSpend
 	Privacy PersonalPrivacy
 	Packs   []string
+	Agents  []PersonalAgent
 }
 
 // spendPath addresses the personal spend constraint section.
@@ -57,6 +76,23 @@ const spendPath = "$.spend"
 
 // packsPath addresses the explicit org pack list: directories, never a scan.
 const packsPath = "$.packs"
+
+// agentsPath addresses the operator-defined run agents: prefs only.
+const (
+	agentsPath = "$.agents"
+	pathDot    = "."
+)
+
+// Shared diagnostics for the closed agents shape.
+const (
+	wantObjectMsg = "want an object, got %s"
+	binaryField   = ".binary"
+	argsField     = ".args"
+)
+
+// agentNamePattern is the published name vocabulary: a lowercase slug that
+// starts with an alphanumeric byte.
+var agentNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
 // ParsePersonal reads the personal sections in the same fixed order as
 // the repository parser: size, JSON shape, credential scan, unknown
@@ -120,7 +156,34 @@ func checkPersonalSections(root map[string]any) *core.RefusalError {
 			return ref
 		}
 	}
+	return checkPresent(root, personalSectionAgents, checkAgentKeys)
+}
+
+// checkAgentKeys refuses unknown keys and wrong shapes inside the agents
+// section before the semantic pass reads any field.
+func checkAgentKeys(raw any) *core.RefusalError {
+	obj, ok := raw.(map[string]any)
+	if !ok {
+		return agentRefuse(agentsPath, wantObjectMsg, jsonKind(raw))
+	}
+	for _, name := range sortedObjectKeys(obj) {
+		value := obj[name]
+		path := agentsPath + pathDot + name
+		entry, ok := value.(map[string]any)
+		if !ok {
+			return agentRefuse(path, wantObjectMsg, jsonKind(value))
+		}
+		if ref := checkKeys(path, entry, personalAgentFields); ref != nil {
+			return refuse(CodeBadSettings, "%s", ref.Message)
+		}
+	}
 	return nil
+}
+
+// agentRefuse keeps every agents-section diagnostic in the settings refusal
+// family, with the JSON path the operator has to edit.
+func agentRefuse(path, format string, args ...any) *core.RefusalError {
+	return refuse(CodeBadSettings, "%s: %s", path, fmt.Sprintf(format, args...))
 }
 
 // checkPresent runs one section check when the key is present; absent reads
@@ -168,6 +231,10 @@ func buildPersonal(root map[string]any) (*PersonalSettings, *core.RefusalError) 
 		{key: personalSectionPacks, build: func(raw any) *core.RefusalError {
 			val, ref := buildPersonalPacks(raw)
 			return assignSection(&out.Packs, val, ref)
+		}},
+		{key: personalSectionAgents, build: func(raw any) *core.RefusalError {
+			val, ref := buildPersonalAgents(raw)
+			return assignSection(&out.Agents, val, ref)
 		}},
 	}
 	// The section order is fixed: it decides which refusal a document
@@ -247,6 +314,133 @@ func presentBool(obj map[string]any, key, path string) (bool, *core.RefusalError
 	return *val, nil
 }
 
+// BuiltinAgentNames lists the names a prefs-defined agent may not shadow.
+// The run table is the authority; a test in that package keeps this list equal
+// to it, so a new shipped row cannot become a silently shadowed operator name.
+func BuiltinAgentNames() []string {
+	return []string{
+		"agy", "amp", "claude", "codex", "copilot", "crush", "cursor",
+		"droid", "gemini", "goose", "kiro", "opencode", "pi", "qwen",
+	}
+}
+
+// buildPersonalAgents validates the closed operator-agent shape. Names are
+// read in sorted order so one malformed document always yields the same first
+// diagnostic. Every failure names the agents key and the offending field.
+func buildPersonalAgents(raw any) ([]PersonalAgent, *core.RefusalError) {
+	obj, ok := raw.(map[string]any)
+	if !ok {
+		return nil, agentRefuse(agentsPath, wantObjectMsg, jsonKind(raw))
+	}
+	builtins := BuiltinAgentNames()
+	out := make([]PersonalAgent, 0, len(obj))
+	for _, name := range slices.Sorted(maps.Keys(obj)) {
+		row, ref := buildAgentRow(name, obj[name], builtins)
+		if ref != nil {
+			return nil, ref
+		}
+		out = append(out, row)
+	}
+	return out, nil
+}
+
+// buildAgentRow validates one named row and fills its defaults.
+func buildAgentRow(name string, raw any, builtins []string) (PersonalAgent, *core.RefusalError) {
+	path := agentsPath + pathDot + name
+	if !agentNamePattern.MatchString(name) {
+		return PersonalAgent{}, agentRefuse(path, "want a name matching [a-z0-9][a-z0-9-]*")
+	}
+	if slices.Contains(builtins, name) {
+		return PersonalAgent{}, agentRefuse(path, "collides with a built-in agent; pick another name")
+	}
+	entry, ok := raw.(map[string]any)
+	if !ok {
+		return PersonalAgent{}, agentRefuse(path, wantObjectMsg, jsonKind(raw))
+	}
+	binary, ref := agentBinary(entry, path)
+	if ref != nil {
+		return PersonalAgent{}, ref
+	}
+	args, ref := agentArgs(entry, path)
+	if ref != nil {
+		return PersonalAgent{}, ref
+	}
+	prompt, model, install, ref := agentOptionalFields(entry, path)
+	if ref != nil {
+		return PersonalAgent{}, ref
+	}
+	return PersonalAgent{
+		Name: name, Binary: binary, Args: args, PromptFlag: prompt,
+		ModelFlag: model, Install: install,
+	}, nil
+}
+
+func agentOptionalFields(entry map[string]any, path string) (prompt, model, install string, ref *core.RefusalError) {
+	if prompt, ref = agentOptionalString(entry, "prompt_flag", path); ref != nil {
+		return "", "", "", ref
+	}
+	if model, ref = agentOptionalString(entry, "model_flag", path); ref != nil {
+		return "", "", "", ref
+	}
+	install, ref = agentOptionalString(entry, "install", path)
+	return prompt, model, install, ref
+}
+
+// agentBinary requires a non-blank name on PATH or an absolute path, so a
+// prefs file cannot name a relative executable the agent might resolve inside
+// a reviewed repository.
+func agentBinary(entry map[string]any, path string) (string, *core.RefusalError) {
+	raw, ok := entry["binary"]
+	if !ok {
+		return "", agentRefuse(path+binaryField, "is required")
+	}
+	binary, ok := raw.(string)
+	if !ok {
+		return "", agentRefuse(path+binaryField, "want a string, got %s", jsonKind(raw))
+	}
+	if strings.TrimSpace(binary) == "" {
+		return "", agentRefuse(path+binaryField, "want a non-blank string")
+	}
+	if strings.ContainsAny(binary, `/\`) && !filepath.IsAbs(binary) {
+		return "", agentRefuse(path+binaryField, "must be absolute when it names a path")
+	}
+	return binary, nil
+}
+
+// agentArgs reads the optional argument list, defaulting to an empty one.
+func agentArgs(entry map[string]any, path string) ([]string, *core.RefusalError) {
+	raw, ok := entry["args"]
+	if !ok {
+		return []string{}, nil
+	}
+	items, ok := raw.([]any)
+	if !ok {
+		return nil, agentRefuse(path+argsField, "want an array of strings, got %s", jsonKind(raw))
+	}
+	out := make([]string, 0, len(items))
+	for i, item := range items {
+		arg, ok := item.(string)
+		if !ok {
+			return nil, agentRefuse(arrayPath(path+argsField, i), "want a string, got %s", jsonKind(item))
+		}
+		out = append(out, arg)
+	}
+	return out, nil
+}
+
+// agentOptionalString reads one optional string field, defaulting to empty.
+func agentOptionalString(entry map[string]any, key, path string) (string, *core.RefusalError) {
+	raw, ok := entry[key]
+	if !ok {
+		return "", nil
+	}
+	value, ok := raw.(string)
+	if !ok {
+		return "", agentRefuse(path+"."+key, "want a string, got %s", jsonKind(raw))
+	}
+	return value, nil
+}
+
 // buildPersonalPacks validates the explicit org pack directory list. An
 // absent key reads as no org layer; there is no directory scan.
 func buildPersonalPacks(raw any) ([]string, *core.RefusalError) {
@@ -299,7 +493,8 @@ func LoadPersonal(path string) (*PersonalSettings, *core.RefusalError) {
 
 // personalSections are the settings sections this parser owns.
 var personalSections = []string{
-	personalSectionReview, personalSectionSpend, personalSectionPrivacy, personalSectionPacks,
+	personalSectionReview, personalSectionSpend, personalSectionPrivacy,
+	personalSectionPacks, personalSectionAgents,
 }
 
 // ValidatePersonalSections checks the four typed personal sections of an
@@ -322,14 +517,53 @@ func ValidatePersonalSections(doc map[string]any) *core.RefusalError {
 	return ref
 }
 
-// credentialScanPersonal runs the credential scan over a personal
-// document with no exemptions: settings carry no user-defined map keys.
+// credentialScanPersonal runs the credential scan over a personal document.
+// Agent names are user-defined keys: their direct keys are exempt, but each
+// definition still scans as a fixed-shape object.
 func credentialScanPersonal(root map[string]any) *core.RefusalError {
 	creds := make(map[string]bool, len(CredentialKeys))
 	for _, k := range CredentialKeys {
 		creds[k] = true
 	}
-	return scanCredentialObject(root, "$", creds, false)
+	for _, key := range sortedObjectKeys(root) {
+		if ref := scanPersonalCredentialKey(key, root[key], creds); ref != nil {
+			return ref
+		}
+	}
+	return nil
+}
+
+func scanPersonalCredentialKey(key string, value any, creds map[string]bool) *core.RefusalError {
+	path := "$" + pathDot + key
+	if creds[key] {
+		return refuse(CodeBadCredentials, "%s: credential key %q is never stored in configuration", path, key)
+	}
+	if key == personalSectionAgents {
+		return scanAgentCredentialDefinitions(value, path, creds)
+	}
+	return scanCredentialValue(value, path, creds, false)
+}
+
+func scanAgentCredentialDefinitions(raw any, path string, creds map[string]bool) *core.RefusalError {
+	defs, ok := raw.(map[string]any)
+	if !ok {
+		return scanCredentialValue(raw, path, creds, false)
+	}
+	for _, name := range sortedObjectKeys(defs) {
+		if ref := scanAgentDefinitionCredentials(name, defs[name], path, creds); ref != nil {
+			return ref
+		}
+	}
+	return nil
+}
+
+func scanAgentDefinitionCredentials(name string, raw any, path string, creds map[string]bool) *core.RefusalError {
+	childPath := path + pathDot + name
+	def, ok := raw.(map[string]any)
+	if !ok {
+		return scanCredentialValue(raw, childPath, creds, false)
+	}
+	return scanCredentialObject(def, childPath, creds, false)
 }
 
 // RegistryPath returns the derived discovery registry path.

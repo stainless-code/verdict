@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -39,6 +40,9 @@ const (
 	codeStaleArtifact    = "stale-review-artifact"
 	codeUnknownAgent     = "unknown-agent"
 	codeRecordFailed     = "agent-record-failed"
+	// codeBadSettings is reused from the settings vocabulary: a prefs-defined
+	// agent that collides with a shipped name is a bad settings file.
+	codeBadSettings = "bad-settings"
 )
 
 // Reused refusal codes: the shared vocabulary for "you canceled", "there is no
@@ -69,7 +73,33 @@ const (
 // Run launches the configured agent against the bundle, one shot by default
 // and up to --rounds launch-to-check rounds when the operator asks.
 func Run(ctx context.Context, req *core.RunRequest) (resp *core.RunResponse, ref *core.RefusalError) {
-	st := &state{req: req, warnings: append([]string{}, req.Warnings...)}
+	return WithAgents(ctx, req, nil)
+}
+
+// WithAgents adds the operator-defined rows read from the prefs file to the
+// shipped table for one invocation. Definitions are values: the caller owns
+// the slice, and the service never mutates it.
+func WithAgents(
+	ctx context.Context, req *core.RunRequest, agents []config.PersonalAgent,
+) (resp *core.RunResponse, ref *core.RefusalError) {
+	seen := make(map[string]bool, len(agents))
+	for _, def := range agents {
+		path := "$.agents." + def.Name
+		if _, ok := lookupAgent(def.Name); ok {
+			return nil, &core.RefusalError{
+				Code:    codeBadSettings,
+				Message: path + ": collides with a built-in agent; pick another name",
+			}
+		}
+		if seen[def.Name] {
+			return nil, &core.RefusalError{
+				Code:    codeBadSettings,
+				Message: path + ": defined twice; use one agent per name",
+			}
+		}
+		seen[def.Name] = true
+	}
+	st := &state{req: req, warnings: append([]string{}, req.Warnings...), defs: agents}
 	return execute(ctx, st)
 }
 
@@ -262,6 +292,7 @@ type state struct {
 	argSecrets  []string
 	drainDigest string
 	warnings    []string
+	defs        []config.PersonalAgent
 }
 
 // launchArgs is the resolved invocation one launch works from: the definition,
@@ -389,17 +420,55 @@ func (st *state) bundle() (string, *core.RefusalError) {
 		readcommon.DisplayPath(st.req.RepoRootPath(), dir), st.req.Repo, st.req.Pr))
 }
 
-// agent resolves the --agent value against the shipped definition table. An
-// absent or unknown name refuses with the known list: the table is data, so the
-// message is the only place an operator learns it can grow.
+// lookupAgent resolves one name against the shipped table, then the prefs
+// definitions read for this invocation. Collisions refuse before this point.
+func (st *state) lookupAgent(name string) (agentDef, bool) {
+	if def, ok := lookupAgent(name); ok {
+		return def, true
+	}
+	for _, def := range st.defs {
+		if def.Name == name {
+			return operatorAgent(&def), true
+		}
+	}
+	return agentDef{}, false
+}
+
+// operatorAgent projects one prefs row onto the same data shape as a shipped
+// row. The source marker travels to launcher.json so provenance can say where
+// the definition came from.
+func operatorAgent(def *config.PersonalAgent) agentDef {
+	return agentDef{
+		Name: def.Name, Binary: def.Binary, Install: def.Install,
+		ModelFlag: def.ModelFlag, PromptFlag: def.PromptFlag,
+		Args: slices.Clone(def.Args), Source: agentSourcePrefs,
+	}
+}
+
+// knownAgents labels both sources in the refusal and the missing-name hint.
+func (st *state) knownAgents() string {
+	message := "known: " + knownAgents() + "; operator-defined in prefs: "
+	if len(st.defs) == 0 {
+		return message + "none"
+	}
+	names := make([]string, 0, len(st.defs))
+	for _, def := range st.defs {
+		names = append(names, def.Name)
+	}
+	return message + strings.Join(names, ", ")
+}
+
+// agent resolves the --agent value against the shipped table and the operator
+// definitions. An absent or unknown name refuses with both sources labeled: the
+// message is the only place an operator learns the table can grow.
 func (st *state) agent() (agentDef, *core.RefusalError) {
 	if st.req.Agent == "" {
-		return agentDef{}, st.refuse(codeBadFlags, "run needs --agent <name> (known: "+knownAgents()+")")
+		return agentDef{}, st.refuse(codeBadFlags, "run needs --agent <name> ("+st.knownAgents()+")")
 	}
-	def, ok := lookupAgent(st.req.Agent)
+	def, ok := st.lookupAgent(st.req.Agent)
 	if !ok {
 		return agentDef{}, st.refuse(codeUnknownAgent, fmt.Sprintf(
-			"unknown agent '%s' (known: %s)", st.req.Agent, knownAgents()))
+			"unknown agent '%s' (%s)", st.req.Agent, st.knownAgents()))
 	}
 	return def, nil
 }
@@ -481,6 +550,7 @@ func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunRespons
 	rec := &launcher{
 		SchemaVersion: launcherSchema,
 		Agent:         args.def.Name,
+		AgentSource:   args.def.Source,
 		Binary:        bin,
 		Recipe:        args.plan,
 		Bundle:        args.bundle,
@@ -509,8 +579,13 @@ func (st *state) resolve(def *agentDef) (string, *core.RefusalError) {
 	}
 	bin, err := look(def.Binary)
 	if err != nil {
-		return "", st.refuse(codeAgentMissing, fmt.Sprintf(
-			"agent '%s' is not installed: no '%s' on PATH", def.Name, def.Binary)+"; "+def.Install)
+		message := fmt.Sprintf("agent '%s' is not installed: no '%s' on PATH", def.Name, def.Binary)
+		if def.Install != "" {
+			message += "; " + def.Install
+		} else {
+			message += "; put it on PATH"
+		}
+		return "", st.refuse(codeAgentMissing, message)
 	}
 	return bin, nil
 }
