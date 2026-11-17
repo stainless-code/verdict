@@ -232,11 +232,7 @@ func assertMutationDeclaration(t *testing.T, tool *tool, want mutationClass) {
 func TestDrainIsHiddenFromMCP(t *testing.T) {
 	t.Parallel()
 	for _, cfg := range []struct{ readOnly, operator bool }{{}, {true, false}, {false, true}, {true, true}} {
-		got, ok := hiddenTools(cfg.readOnly, cfg.operator)["drain"]
-		if !ok || !got.cliOnly || got.requires != "the verdict CLI (verdict drain)" {
-			t.Errorf("hidden drain (readOnly=%v operator=%v) = %+v, want a CLI-only declaration",
-				cfg.readOnly, cfg.operator, got)
-		}
+		checkHiddenDrain(t, cfg.readOnly, cfg.operator)
 	}
 	for _, tools := range [][]*tool{allTools(false, false), allTools(true, false), allTools(false, true)} {
 		for _, tool := range tools {
@@ -244,5 +240,14 @@ func TestDrainIsHiddenFromMCP(t *testing.T) {
 				t.Error("drain is exposed as an MCP tool")
 			}
 		}
+	}
+}
+
+func checkHiddenDrain(t *testing.T, readOnly, operator bool) {
+	t.Helper()
+	got, ok := hiddenTools(readOnly, operator)["drain"]
+	if !ok || !got.cliOnly || got.requires != "the verdict CLI (verdict drain)" {
+		t.Errorf("hidden drain (readOnly=%v operator=%v) = %+v, want a CLI-only declaration",
+			readOnly, operator, got)
 	}
 }

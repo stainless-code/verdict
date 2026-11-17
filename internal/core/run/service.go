@@ -55,6 +55,8 @@ const (
 	// reviewFile is the single artifact contract: record and post read this
 	// exact file from the bundle, and the launcher asserts nothing else.
 	reviewFile = "review.json"
+	// drainFile is the single artifact a drain draft writes.
+	drainFile = "drain.replies.json"
 	// msgCanceled is the frozen cancel text, matching every other verb.
 	msgCanceled = "canceled before run completed"
 	// runStateFile is the bundle's typed run record, which run reads only to
@@ -69,6 +71,13 @@ const (
 // and up to --rounds launch-to-check rounds when the operator asks.
 func Run(ctx context.Context, req *core.RunRequest) (resp *core.RunResponse, ref *core.RefusalError) {
 	st := &state{req: req, warnings: append([]string{}, req.Warnings...)}
+	return execute(ctx, st)
+}
+
+// execute carries one resolved launch from its context check through the
+// artifact assertion. Both run and drain use it; only the state's artifact and
+// directive differ.
+func execute(ctx context.Context, st *state) (resp *core.RunResponse, ref *core.RefusalError) {
 	defer func() { st.carry(resp, ref) }()
 	if err := ctx.Err(); err != nil {
 		return nil, st.refuse(codeCanceled, msgCanceled)
@@ -114,24 +123,27 @@ func (st *state) argsFor(def *agentDef, dir string, timeout int) (*launchArgs, *
 		plan:     plan,
 		staged:   at,
 		bundle:   readcommon.DisplayPath(st.req.RepoRootPath(), dir),
-		artifact: readcommon.DisplayPath(st.req.RepoRootPath(), filepath.Join(dir, reviewFile)),
-		abs:      filepath.Join(dir, reviewFile),
+		artifact: readcommon.DisplayPath(st.req.RepoRootPath(), filepath.Join(dir, st.artifactName())),
+		abs:      filepath.Join(dir, st.artifactName()),
 		timeout:  timeout,
 	}
 	if _, ref := st.resolve(&args.def); ref != nil {
 		return nil, ref
 	}
-	args.compose(st.req, st.promptBundle(dir), st.promptArtifact(dir), readcommon.IsLocalBundleDir(dir))
+	st.compose(args, st.req, st.promptBundle(dir), st.promptArtifact(dir), readcommon.IsLocalBundleDir(dir))
 	return args, nil
 }
 
 // compose builds the prompt and argv one invocation works from: the
 // whole-pipeline directive, or the one stage --stage asked to render, whose
 // declared model hint becomes the agent's model argument.
-func (a *launchArgs) compose(req *core.RunRequest, bundle, artifact string, local bool) {
-	if a.staged == nil {
+func (st *state) compose(a *launchArgs, req *core.RunRequest, bundle, artifact string, local bool) {
+	switch {
+	case st.drainDigest != "":
+		a.prompt = drainDirective(req.Repo, req.Pr, bundle, artifact, st.drainDigest)
+	case a.staged == nil:
 		a.prompt = directive(req.Repo, req.Pr, bundle, artifact, local, a.plan)
-	} else {
+	default:
 		a.prompt = stageDirective(req.Repo, req.Pr, bundle, artifact, local, a.plan, a.staged)
 	}
 	a.argv = argvFor(&a.def, a.model(), req.PassThrough, a.prompt)
@@ -251,10 +263,11 @@ func (st *state) invoke(ctx context.Context, args *launchArgs, rounds int) (*cor
 
 // state carries the accumulated warnings, the credential values the recorded
 // argv hid, and the request every step reads.
-type state struct {
-	req        *core.RunRequest
-	argSecrets []string
-	warnings   []string
+type state struct { //nolint:govet // the request leads; every launch step reads it
+	req         *core.RunRequest
+	argSecrets  []string
+	warnings    []string
+	drainDigest string
 }
 
 // launchArgs is the resolved invocation one launch works from: the definition,
@@ -282,6 +295,15 @@ func (st *state) carry(resp *core.RunResponse, ref *core.RefusalError) {
 	if resp != nil {
 		resp.Warnings = st.warnings
 	}
+}
+
+// artifactName is the one file this launch asserts: a drain draft writes its
+// replies file, every other launch writes the review.
+func (st *state) artifactName() string {
+	if st.drainDigest != "" {
+		return drainFile
+	}
+	return reviewFile
 }
 
 func (st *state) refuse(code, msg string) *core.RefusalError {
@@ -626,7 +648,7 @@ func (st *state) artifactRefusal(args *launchArgs, art artifactState) *core.Refu
 		return st.refuse(codeNoArtifact, fmt.Sprintf(
 			"%s exited 0 but wrote no %s", args.def.Name, args.artifact))
 	case !art.regular:
-		return st.refuse(codeNoArtifact, args.artifact+" is not a regular file — the review artifact must be one JSON file")
+		return st.refuse(codeNoArtifact, args.artifact+" is not a regular file — the artifact must be one JSON file")
 	case !art.fresh:
 		return st.refuse(codeStaleArtifact, fmt.Sprintf(
 			"%s predates this run (written %s, launched %s): the agent did not write it",
@@ -727,10 +749,13 @@ func (st *state) display(path string) string {
 // next names the operator's next step, unchanged: the launcher itself never
 // records or posts.
 func (st *state) next(dir string) string {
+	if st.drainDigest != "" {
+		return fmt.Sprintf("post the drafts with verdict drain %s %s --post", st.req.Repo, st.req.Pr)
+	}
 	if readcommon.IsLocalBundleDir(dir) {
 		return "record the review with verdict record " + st.req.Repo + " " + readcommon.BundleName(dir)
 	}
-	return "post the review with verdict post " + st.req.Repo + " " + st.req.Pr
+	return fmt.Sprintf("post the review with verdict post %s %s", st.req.Repo, st.req.Pr)
 }
 
 // artifactState is the one freshness assertion the launcher makes.

@@ -1,7 +1,6 @@
 package drain
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -15,58 +14,68 @@ func draftPlan() *File {
 	}
 }
 
-func draftDoc(t *testing.T, mutate func(map[string]any)) []byte {
-	t.Helper()
-	doc := map[string]any{
-		"schema_version": "1", "plan_digest": draftPlan().PlanDigest,
-		"replies": []any{map[string]any{
-			"thread_id": "t1", "waiting_comment_id": "w1", "disposition": "answer", "body": "a real answer",
-		}},
-	}
-	if mutate != nil {
-		mutate(doc)
-	}
-	raw, err := json.Marshal(doc)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return raw
+// validDraft is one complete draft document with the plan's digest.
+func validDraft() string {
+	return `{"schema_version":"1","plan_digest":"` + draftPlan().PlanDigest +
+		`","replies":[{"thread_id":"t1","waiting_comment_id":"w1","disposition":"answer","body":"a real answer"}]}`
 }
+
+// replace swaps one exact JSON fragment, so each case changes one site only.
+func replace(raw, from, to string) string {
+	if !strings.Contains(raw, from) {
+		return raw + "/* missing target */"
+	}
+	return strings.Replace(raw, from, to, 1)
+}
+
+const bodyField = `"body":"a real answer"`
 
 func TestCheckDraftsSites(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name, site, code string
-		mutate           func(map[string]any)
+		name, site, code, raw string
 	}{
-		{name: "unknown root key", site: "root.extra", code: "drafts-invalid", mutate: func(d map[string]any) { d["extra"] = true }},
-		{name: "unknown entry key", site: "replies[0].extra", code: "drafts-invalid", mutate: func(d map[string]any) {
-			d["replies"].([]any)[0].(map[string]any)["extra"] = true
-		}},
-		{name: "unknown thread", site: "replies[0].thread_id", code: "drafts-invalid", mutate: func(d map[string]any) {
-			d["replies"].([]any)[0].(map[string]any)["thread_id"] = "t9"
-		}},
-		{name: "unknown comment", site: "replies[0].waiting_comment_id", code: "drafts-invalid", mutate: func(d map[string]any) {
-			d["replies"].([]any)[0].(map[string]any)["waiting_comment_id"] = "w9"
-		}},
-		{name: "bad disposition", site: "replies[0].disposition", code: "drafts-invalid", mutate: func(d map[string]any) {
-			d["replies"].([]any)[0].(map[string]any)["disposition"] = "solve"
-		}},
-		{name: "empty body", site: "replies[0].body", code: "drafts-invalid", mutate: func(d map[string]any) {
-			d["replies"].([]any)[0].(map[string]any)["body"] = ""
-		}},
-		{name: "over-cap body", site: "replies[0].body", code: "drafts-invalid", mutate: func(d map[string]any) {
-			d["replies"].([]any)[0].(map[string]any)["body"] = strings.Repeat("é", MaxBodyRunes+1)
-		}},
-		{name: "marker body", site: "replies[0].body", code: "drafts-invalid", mutate: func(d map[string]any) {
-			d["replies"].([]any)[0].(map[string]any)["body"] = "answer <!-- verdict-finding sig=abc -->"
-		}},
-		{name: "stale digest", site: "", code: "drafts-stale", mutate: func(d map[string]any) { d["plan_digest"] = "stale" }},
+		{
+			name: "unknown root key", site: "root.extra", code: "drafts-invalid",
+			raw: replace(validDraft(), `{"schema_version"`, `{"extra":true,"schema_version"`),
+		},
+		{
+			name: "unknown entry key", site: "replies[0].extra", code: "drafts-invalid",
+			raw: replace(validDraft(), bodyField, bodyField+`,"extra":true`),
+		},
+		{
+			name: "unknown thread", site: "replies[0].thread_id", code: "drafts-invalid",
+			raw: replace(validDraft(), `"thread_id":"t1"`, `"thread_id":"t9"`),
+		},
+		{
+			name: "unknown comment", site: "replies[0].waiting_comment_id", code: "drafts-invalid",
+			raw: replace(validDraft(), `"waiting_comment_id":"w1"`, `"waiting_comment_id":"w9"`),
+		},
+		{
+			name: "bad disposition", site: "replies[0].disposition", code: "drafts-invalid",
+			raw: replace(validDraft(), `"disposition":"answer"`, `"disposition":"solve"`),
+		},
+		{
+			name: "empty body", site: "replies[0].body", code: "drafts-invalid",
+			raw: replace(validDraft(), bodyField, `"body":""`),
+		},
+		{
+			name: "over-cap body", site: "replies[0].body", code: "drafts-invalid",
+			raw: replace(validDraft(), `a real answer`, strings.Repeat("é", MaxBodyRunes+1)),
+		},
+		{
+			name: "marker body", site: "replies[0].body", code: "drafts-invalid",
+			raw: replace(validDraft(), `a real answer`, `answer <!-- verdict-finding sig=abc -->`),
+		},
+		{
+			name: "stale digest", site: "", code: "drafts-stale",
+			raw: replace(validDraft(), draftPlan().PlanDigest, "stale"),
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, _, ref := CheckDrafts(draftDoc(t, tc.mutate), draftPlan())
+			_, _, ref := CheckDrafts([]byte(tc.raw), draftPlan())
 			if ref == nil || ref.Code != tc.code || !strings.Contains(ref.Message, tc.site) {
 				t.Errorf("refusal = %+v, want %s naming %q", ref, tc.code, tc.site)
 			}
@@ -74,27 +83,26 @@ func TestCheckDraftsSites(t *testing.T) {
 	}
 }
 
-func TestCheckDraftsDuplicateAndGoodDraft(t *testing.T) {
+func TestCheckDraftsGoodAndMissing(t *testing.T) {
 	t.Parallel()
-	dup := draftDoc(t, func(d map[string]any) {
-		d["replies"] = append(d["replies"].([]any), d["replies"].([]any)[0])
-	})
-	_, _, ref := CheckDrafts(dup, draftPlan())
-	if ref == nil || ref.Code != "drafts-invalid" || !strings.Contains(ref.Message, "replies[1].thread_id") {
-		t.Errorf("duplicate refusal = %+v", ref)
-	}
-	good := draftDoc(t, func(d map[string]any) {
-		d["replies"] = []any{map[string]any{
-			"thread_id": "t1", "waiting_comment_id": "w1", "disposition": "defer", "body": "",
-		}}
-	})
-	summary, skipped, ref := CheckDrafts(good, draftPlan())
+	deferRaw := replace(replace(validDraft(), `"disposition":"answer"`, `"disposition":"defer"`), bodyField, `"body":""`)
+	summary, skipped, ref := CheckDrafts([]byte(deferRaw), draftPlan())
 	if ref != nil || summary == nil || summary.Count != 1 || summary.Dispositions.Defer != 1 || len(skipped) != 0 {
 		t.Errorf("good draft = %+v, skipped %+v, refusal %+v", summary, skipped, ref)
 	}
-	missing := draftDoc(t, func(d map[string]any) { d["replies"] = []any{} })
-	summary, skipped, ref = CheckDrafts(missing, draftPlan())
+	noReplies := `{"schema_version":"1","plan_digest":"` + draftPlan().PlanDigest + `","replies":[]}`
+	summary, skipped, ref = CheckDrafts([]byte(noReplies), draftPlan())
 	if ref != nil || summary == nil || summary.Count != 0 || len(skipped) != 1 || skipped[0].Reason != ReasonNoDraft {
 		t.Errorf("missing draft = %+v, skipped %+v, refusal %+v", summary, skipped, ref)
+	}
+}
+
+func TestCheckDraftsDuplicateThread(t *testing.T) {
+	t.Parallel()
+	one := `{"thread_id":"t1","waiting_comment_id":"w1","disposition":"answer","body":"a real answer"}`
+	dup := `{"schema_version":"1","plan_digest":"` + draftPlan().PlanDigest + `","replies":[` + one + `,` + one + `]}`
+	_, _, ref := CheckDrafts([]byte(dup), draftPlan())
+	if ref == nil || ref.Code != "drafts-invalid" || !strings.Contains(ref.Message, "replies[1].thread_id") {
+		t.Errorf("duplicate refusal = %+v", ref)
 	}
 }

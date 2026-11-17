@@ -92,11 +92,8 @@ if "$EVAL_SKILL/schemas/validate.sh" "$EVAL_SKILL/schemas/drain.schema.json" "$P
 else
   bad "P3 schema: $("$EVAL_SKILL/schemas/validate.sh" "$EVAL_SKILL/schemas/drain.schema.json" "$PLAN" 2>&1 | head -3)"
 fi
-if grep -Eqi 'POST|PATCH|mutation|method[[:space:]]+:([[:space:]]*)?"(POST|PATCH|DELETE)' "$EVAL_STUBLOG"; then
-  bad "P4 stub log shows a host write"
-else
-  good "P4 zero host writes on the stub log"
-fi
+assert_stream_nogrep "P4 zero host writes on the stub log" "$EVAL_STUBLOG" \
+  'POST|PATCH|mutation|method[[:space:]]+:([[:space:]]*)?"(POST|PATCH|DELETE)' -Eqi
 if [ "$(grep -c 'api graphql' "$EVAL_STUBLOG")" = "1" ] && [ "$(grep -c 'api user --jq .login' "$EVAL_STUBLOG")" = "1" ]; then
   good "P5 one thread refresh and one login read"
 else
@@ -110,4 +107,50 @@ else
   bad "P6 cap: exit $EVAL_STATUS $(head -c 300 "$EVAL_ERR")"
 fi
 
+cat >"$EVAL_STUBBIN/claude" <<'AGENT'
+#!/usr/bin/env bash
+echo "stub-agent $*" >>"$EVAL_STUBLOG"
+if [ "${DRAIN_AGENT_MODE:-good}" = good ]; then
+  digest="$(jq -r .plan_digest .verdict/state/7/drain.json)"
+  jq -n --arg digest "$digest" '{schema_version:"1",plan_digest:$digest,replies:[
+    {thread_id:"PRRT_human",waiting_comment_id:"102",disposition:"answer",body:"Here is the answer."}]}' \
+    >.verdict/state/7/drain.replies.json
+fi
+exit 0
+AGENT
+chmod +x "$EVAL_STUBBIN/claude"
+export DRAIN_AGENT_MODE=good
+run_review drain acme/app 7 --agent claude --json
+if [ "$EVAL_STATUS" -eq 0 ] && jq -e '.data.drafts.count == 1 and .data.drafts.dispositions.answer == 1
+  and (.next | contains("--post"))' <"$EVAL_OUT" >/dev/null; then
+  good "P7 a good stub draft validates and lands in the plan"
+else
+  bad "P7 draft: exit $EVAL_STATUS $(head -c 500 "$EVAL_ERR") $(head -c 500 "$EVAL_OUT")"
+fi
+rm -f "$DIR/drain.replies.json"
+DRAIN_AGENT_MODE=missing run_review drain acme/app 7 --agent claude --json
+if [ "$EVAL_STATUS" -eq 1 ] && jq -e '.error.code == "no-review-artifact"' <"$EVAL_OUT" >/dev/null; then
+  good "P8 a launch with no draft refuses no-review-artifact"
+else
+  bad "P8 missing artifact: exit $EVAL_STATUS $(head -c 300 "$EVAL_ERR")"
+fi
+printf '{"schema_version":"1"}' >"$DIR/drain.replies.json"
+touch -t 200001010000 "$DIR/drain.replies.json"
+DRAIN_AGENT_MODE=missing run_review drain acme/app 7 --agent claude --json
+if [ "$EVAL_STATUS" -eq 1 ] && jq -e '.error.code == "stale-review-artifact"' <"$EVAL_OUT" >/dev/null; then
+  good "P9 a draft older than the launch refuses stale-review-artifact"
+else
+  bad "P9 stale artifact: exit $EVAL_STATUS $(head -c 300 "$EVAL_ERR")"
+fi
+rm -f "$DIR/drain.replies.json"
+jq -n '{data:{repository:{pullRequest:{reviewThreads:{pageInfo:{hasNextPage:false,endCursor:null},nodes:[]}}}}}' >"$EVAL_SANDBOX/empty.json"
+export DRAIN_PAGE="$EVAL_SANDBOX/empty.json"
+rm -f "$DIR/threads.json"
+run_review drain acme/app 7 --agent claude --json
+if [ "$EVAL_STATUS" -eq 0 ] && jq -e '.data.pending | length == 0' <"$EVAL_OUT" >/dev/null \
+  && [ "$(grep -c 'stub-agent' "$EVAL_STUBLOG")" = "3" ]; then
+  good "P10 zero pending launches no agent"
+else
+  bad "P10 zero pending: exit $EVAL_STATUS $(head -c 300 "$EVAL_ERR")"
+fi
 eval_end

@@ -7,15 +7,13 @@ import (
 	threadscore "github.com/stainless-code/verdict/internal/core/threads"
 )
 
-func line(n int) *int { return &n }
-
-func sig(s string) *string { return &s }
-
 func thread(id, kind, author, authorKind string, resolved, outdated bool, comments ...threadscore.Comment) threadscore.Thread {
+	line := 10
+	finding := "abc"
 	return threadscore.Thread{
 		ID: id, Kind: kind, Author: author, AuthorKind: authorKind,
-		Resolved: resolved, Outdated: outdated, Path: "a.go", Line: line(10),
-		FindingSig: sig("abc"), Comments: comments,
+		Resolved: resolved, Outdated: outdated, Path: "a.go", Line: &line,
+		FindingSig: &finding, Comments: comments,
 	}
 }
 
@@ -23,8 +21,7 @@ func comment(id, author, authorKind, at string) threadscore.Comment {
 	return threadscore.Comment{ID: id, Author: author, AuthorKind: authorKind, CreatedAt: at}
 }
 
-func TestSelectWaitingRules(t *testing.T) {
-	t.Parallel()
+func waitingFeed() *threadscore.File {
 	feed := &threadscore.File{Threads: []threadscore.Thread{
 		thread("review", threadscore.KindReview, "verdict-bot", threadscore.AuthorVerdict, false, true,
 			comment("r1", "verdict-bot", threadscore.AuthorVerdict, "2026-11-01T00:00:00Z"),
@@ -52,10 +49,24 @@ func TestSelectWaitingRules(t *testing.T) {
 			comment("r8", "verdict-bot", threadscore.AuthorVerdict, "2026-11-01T00:00:00Z"),
 			comment("w8", "operator", threadscore.AuthorHuman, "2026-11-04T00:00:00Z")),
 	}}
+	return feed
+}
+
+func TestSelectWaitingRules(t *testing.T) {
+	t.Parallel()
+	feed := waitingFeed()
 	ledger := []LedgerEntry{
 		{Thread: "answered", ReplyID: "9", InReplyTo: "w4", At: "2026-11-03T00:00:00Z", By: ReplyBy},
 	}
 	pending, skipped, deferred := Select(feed, "verdict-bot", ledger, 20)
+	assertWaitingSelection(t, pending, skipped, deferred)
+	if got := OtherThreads(feed, "verdict-bot"); got != 1 {
+		t.Errorf("other_threads = %d, want 1", got)
+	}
+}
+
+func assertWaitingSelection(t *testing.T, pending []Pending, skipped []Skip, deferred []string) {
+	t.Helper()
 	wantPending := []string{"review", "solo"}
 	if got := ids(pending); !reflect.DeepEqual(got, wantPending) {
 		t.Errorf("pending = %v, want %v", got, wantPending)
@@ -73,13 +84,16 @@ func TestSelectWaitingRules(t *testing.T) {
 	if len(deferred) != 0 {
 		t.Errorf("deferred = %v, want none", deferred)
 	}
-	if got := OtherThreads(feed, "verdict-bot"); got != 1 {
-		t.Errorf("other_threads = %d, want 1", got)
+	assertPendingJoin(t, &pending[0])
+}
+
+func assertPendingJoin(t *testing.T, p *Pending) {
+	t.Helper()
+	if p.RootCommentID != "r1" || p.WaitingCommentID != "w1" || p.WaitingAuthor != "alice" {
+		t.Errorf("pending row lost a comment anchor: %+v", p)
 	}
-	if p := pending[0]; p.RootCommentID != "r1" || p.WaitingCommentID != "w1" ||
-		p.WaitingAuthor != "alice" || p.Path != "a.go" || !p.Outdated || p.FindingSig == nil ||
-		*p.FindingSig != "abc" || p.Line == nil || *p.Line != 10 {
-		t.Errorf("pending row lost a joined value: %+v", p)
+	if p.Path != "a.go" || !p.Outdated || p.FindingSig == nil || *p.FindingSig != "abc" || p.Line == nil || *p.Line != 10 {
+		t.Errorf("pending row lost a joined finding: %+v", p)
 	}
 }
 

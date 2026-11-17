@@ -13,13 +13,22 @@ import (
 )
 
 const (
-	SchemaVersion     = "1"
-	KeyPlanJSON       = "drain.json"
-	KeyDraftsJSON     = "drain.replies.json"
-	KeyLedgerJSON     = "replies.json"
-	CodeDrainFailed   = "drain-failed"
+	// SchemaVersion is the only drain JSON version published.
+	SchemaVersion = "1"
+	// KeyPlanJSON is the plan and receipt written into the bundle.
+	KeyPlanJSON = "drain.json"
+	// KeyDraftsJSON is the single artifact the drafting agent writes.
+	KeyDraftsJSON = "drain.replies.json"
+	// KeyLedgerJSON is the older replies ledger drain joins.
+	KeyLedgerJSON = "replies.json"
+	// CodeDrainFailed refuses a plan that cannot be built.
+	CodeDrainFailed = "drain-failed"
+	// CodeDraftsInvalid refuses a draft with a named bad site.
 	CodeDraftsInvalid = "drafts-invalid"
-	CodeDraftsStale   = "drafts-stale"
+	// CodeDraftsStale refuses a draft written against another plan.
+	CodeDraftsStale = "drafts-stale"
+	// keyThreadID is the repeated wire key in the plan's ordered rows.
+	keyThreadID = "thread_id"
 )
 
 // Dispositions counts the draft verdicts the agent chose.
@@ -37,7 +46,7 @@ type Drafts struct {
 }
 
 // Posted is one successful host write (PR B records these).
-type Posted struct { //nolint:govet // field order is the published property order
+type Posted struct {
 	ThreadID    string `json:"thread_id"`
 	ReplyID     string `json:"reply_id"`
 	Disposition string `json:"disposition"`
@@ -51,7 +60,7 @@ type Failed struct {
 }
 
 // File is one drain plan and, after posting, its receipt.
-type File struct { //nolint:govet // field order is the published property order
+type File struct { //nolint:govet // field order is the published JSON contract
 	SchemaVersion string    `const:"1"                                            json:"schema_version"`
 	Provider      string    `enum:"github|gitlab|gitcafe|forgejo|bitbucket|azure" json:"provider"`
 	PR            int       `json:"pr"`
@@ -65,27 +74,27 @@ type File struct { //nolint:govet // field order is the published property order
 	Drafts        *Drafts   `anyOf:"null"                                         json:"drafts"`
 	Posted        []Posted  `json:"posted"`
 	Failed        []Failed  `json:"failed"`
-	PostedAt      *string   `format:"date-time"                                       json:"posted_at"`
+	PostedAt      *string   `format:"date-time"                                   json:"posted_at"`
 }
 
 // Wire renders the plan in published key order, with empty lists as [].
 func (f *File) Wire() *jq.Obj {
 	pending := make([]any, 0, len(f.Pending))
 	for i := range f.Pending {
-		pending = append(pending, toObj(f.Pending[i]))
+		pending = append(pending, toObj(&f.Pending[i]))
 	}
 	skipped := make([]any, 0, len(f.Skipped))
 	for _, s := range f.Skipped {
-		skipped = append(skipped, jq.NewObj("thread_id", s.ThreadID, "reason", s.Reason))
+		skipped = append(skipped, jq.NewObj(keyThreadID, s.ThreadID, "reason", s.Reason))
 	}
 	posted := make([]any, 0, len(f.Posted))
 	for _, p := range f.Posted {
-		posted = append(posted, jq.NewObj("thread_id", p.ThreadID, "reply_id", p.ReplyID,
+		posted = append(posted, jq.NewObj(keyThreadID, p.ThreadID, "reply_id", p.ReplyID,
 			"disposition", p.Disposition, "resolved", p.Resolved))
 	}
 	failed := make([]any, 0, len(f.Failed))
 	for _, x := range f.Failed {
-		failed = append(failed, jq.NewObj("thread_id", x.ThreadID, "reason", x.Reason))
+		failed = append(failed, jq.NewObj(keyThreadID, x.ThreadID, "reason", x.Reason))
 	}
 	var drafts any
 	if f.Drafts != nil {
@@ -117,7 +126,7 @@ func (f *File) Wire() *jq.Obj {
 
 // toObj renders one pending row, with a null line or finding sig where the
 // host published none.
-func toObj(p Pending) *jq.Obj {
+func toObj(p *Pending) *jq.Obj {
 	var line, finding any
 	if p.Line != nil {
 		line = *p.Line
@@ -126,7 +135,7 @@ func toObj(p Pending) *jq.Obj {
 		finding = *p.FindingSig
 	}
 	return jq.NewObj(
-		"thread_id", p.ThreadID,
+		keyThreadID, p.ThreadID,
 		"root_comment_id", p.RootCommentID,
 		"waiting_comment_id", p.WaitingCommentID,
 		"waiting_author", p.WaitingAuthor,
@@ -139,8 +148,8 @@ func toObj(p Pending) *jq.Obj {
 }
 
 // NewPlan selects the work for one run and pins it with a digest.
-func NewPlan(provider string, pr int, head, at, self string, feed *threadscore.File, ledger []LedgerEntry, max int) (*File, []string) {
-	pending, skipped, deferred := Select(feed, self, ledger, max)
+func NewPlan(provider string, pr int, head, at, self string, feed *threadscore.File, ledger []LedgerEntry, limit int) (*File, []string) {
+	pending, skipped, deferred := Select(feed, self, ledger, limit)
 	return &File{
 		SchemaVersion: SchemaVersion, Provider: provider, PR: pr, HeadSHA: head,
 		PlannedAt: at, Self: self, PlanDigest: Digest(pending),
@@ -173,13 +182,14 @@ func WritePlan(path string, f *File) error {
 func ReadPlan(path string) (*File, error) {
 	raw, err := jq.CappedFile(path, jq.MaxPRBytes)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read plan: %w", err) //nolint:wrapcheck // names the local plan path
 	}
 	var f File
 	if err := json.Unmarshal(raw, &f); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decode plan: %w", err) //nolint:wrapcheck // names the local plan path
 	}
 	if f.SchemaVersion != SchemaVersion {
+		//nolint:wrapcheck // local version rejection
 		return nil, fmt.Errorf("plan schema_version %q, want %q", f.SchemaVersion, SchemaVersion)
 	}
 	return &f, nil
