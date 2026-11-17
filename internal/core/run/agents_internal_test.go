@@ -57,7 +57,7 @@ func builtinRows() []builtinRow {
 		{
 			name: "bob", binary: "bob", args: []string{"run"}, promptFlag: "",
 			noModel:   true,
-			probeArgs: []string{"run", "--help"}, probeMatch: "run",
+			probeArgs: []string{"run", "--help"}, probeMatch: "--disable-tool-groups",
 			install:       "curl -fsSL https://bob.ibm.com/download/bobshell.sh | bash",
 			wantArgv:      []string{"bob", "run", "--x", "PROMPT"},
 			wantPrintArgv: []string{"bob", "run", "--model", "M", "PROMPT"},
@@ -112,7 +112,7 @@ func builtinRows() []builtinRow {
 		},
 		{
 			name: "cortex", binary: "cortex", args: []string{}, promptFlag: "-p",
-			probeArgs: []string{"--help"}, probeMatch: "--print",
+			probeArgs: []string{"--help"}, probeMatch: "--dangerously-allow-all-tool-calls",
 			install:       "curl -qLsS https://ai.snowflake.com/static/cc-scripts/install.sh | sh",
 			wantArgv:      []string{"cortex", "--model", "M", "--x", "-p", "PROMPT"},
 			wantPrintArgv: []string{"cortex", "--model", "M", "-p", "PROMPT"},
@@ -156,14 +156,14 @@ func builtinRows() []builtinRow {
 		{
 			name: "forge", binary: "forge", args: []string{}, promptFlag: "-p",
 			noModel:   true,
-			probeArgs: []string{"--help"}, probeMatch: "--prompt",
+			probeArgs: []string{"--help"}, probeMatch: "--conversation-id",
 			install:       "curl -fsSL https://forgecode.dev/cli | sh",
 			wantArgv:      []string{"forge", "--x", "-p", "PROMPT"},
 			wantPrintArgv: []string{"forge", "--model", "M", "-p", "PROMPT"},
 		},
 		{
 			name: "fx", binary: "fx", args: []string{"ask"}, promptFlag: "",
-			probeArgs: []string{"ask", "--help"}, probeMatch: "ask",
+			probeArgs: []string{"ask", "--help"}, probeMatch: "--ultrafast",
 			install:       "curl -fsSL https://fx.sh/setup.sh | bash",
 			wantArgv:      []string{"fx", "ask", "--model", "M", "--x", "PROMPT"},
 			wantPrintArgv: []string{"fx", "ask", "--model", "M", "PROMPT"},
@@ -182,7 +182,7 @@ func builtinRows() []builtinRow {
 		},
 		{
 			name: "grok", binary: "grok", args: []string{}, promptFlag: "-p",
-			probeArgs: []string{"--help"}, probeMatch: "--single",
+			probeArgs: []string{"--help"}, probeMatch: "--prompt-json",
 			install:       "curl -fsSL https://x.ai/cli/install.sh | bash",
 			wantArgv:      []string{"grok", "--model", "M", "--x", "-p", "PROMPT"},
 			wantPrintArgv: []string{"grok", "--model", "M", "-p", "PROMPT"},
@@ -208,7 +208,7 @@ func builtinRows() []builtinRow {
 		},
 		{
 			name: "kilo", binary: "kilo", args: []string{"run"}, promptFlag: "",
-			probeArgs: []string{"run", "--help"}, probeMatch: "run",
+			probeArgs: []string{"run", "--help"}, probeMatch: "--cloud-fork",
 			install:       "npm install -g @kilocode/cli",
 			wantArgv:      []string{"kilo", "run", "--model", "M", "--x", "PROMPT"},
 			wantPrintArgv: []string{"kilo", "run", "--model", "M", "PROMPT"},
@@ -232,7 +232,7 @@ func builtinRows() []builtinRow {
 			wantPrintArgv: []string{"kiro-cli", "chat", "--no-interactive", "--model", "M", "PROMPT"},
 		},
 		{
-			name: "kode", binary: "kode", args: []string{}, promptFlag: "",
+			name: "kode", binary: "kode", args: []string{"-p"}, promptFlag: "",
 			install:       "npm install -g @shareai-lab/kode",
 			wantArgv:      []string{"kode", "-p", "--model", "M", "--x", "PROMPT"},
 			wantPrintArgv: []string{"kode", "-p", "--model", "M", "PROMPT"},
@@ -244,7 +244,7 @@ func builtinRows() []builtinRow {
 			wantPrintArgv: []string{"mcode", "exec", "--model", "M", "PROMPT"},
 		},
 		{
-			name: "neovate", binary: "neovate", args: []string{}, promptFlag: "",
+			name: "neovate", binary: "neovate", args: []string{"-q"}, promptFlag: "",
 			install:       "npm install -g @neovate/code",
 			wantArgv:      []string{"neovate", "-q", "--model", "M", "--x", "PROMPT"},
 			wantPrintArgv: []string{"neovate", "-q", "--model", "M", "PROMPT"},
@@ -274,13 +274,13 @@ func builtinRows() []builtinRow {
 			wantPrintArgv: []string{"pi", "-p", "--model", "M", "PROMPT"},
 		},
 		{
-			name: "qoder", binary: "qoder", args: []string{}, promptFlag: "",
+			name: "qoder", binary: "qoder", args: []string{"-p"}, promptFlag: "",
 			install:       "curl -fsSL https://qoder.com/install | bash",
 			wantArgv:      []string{"qoder", "-p", "--model", "M", "--x", "PROMPT"},
 			wantPrintArgv: []string{"qoder", "-p", "--model", "M", "PROMPT"},
 		},
 		{
-			name: "qodercn", binary: "qodercn", args: []string{}, promptFlag: "",
+			name: "qodercn", binary: "qodercn", args: []string{"-p"}, promptFlag: "",
 			install:       "curl -fsSL https://static.qoder.com.cn/qoder-cli-cn/install.sh | bash",
 			wantArgv:      []string{"qodercn", "-p", "--model", "M", "--x", "PROMPT"},
 			wantPrintArgv: []string{"qodercn", "-p", "--model", "M", "PROMPT"},
