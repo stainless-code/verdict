@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/identity.schema.json",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/identity.schema.json",
   "title": "identity.json — bundle patch identity",
   "description": "Bundle patch identity written by fetch/fetch-local beside the diff: the stable diff id (git patch-id --stable, labeled diff-sha256 fallback) with the head/base SHAs it was computed at. A patch id is a dedupe key, never an authorization token.",
   "type": "object",

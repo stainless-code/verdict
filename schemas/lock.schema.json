@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/lock.schema.json",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/lock.schema.json",
   "title": "verdict.lock — pinned repo lens packs",
   "description": "The repo layer's pin file at .verdict/verdict.lock: strict JSON with exactly one row per pack vendored under .verdict/packs/, sorted by name. The lock covers only the repo layer — the built-in pack is pinned by the binary and org packs live in per-operator settings. source is dir:<path as given> or git:<allowlisted url>@<40-hex sha>; hash is the pack's canonical tree hash; sig is sha256 over name, source, version, and hash, so a hand edit is caught. fetch, post, and record refuse pack-lock-missing or pack-lock-drift from the trusted-base snapshot, and the file joins the controls inventory so an edited snapshot copy refuses controls-stale.",
   "type": "object",

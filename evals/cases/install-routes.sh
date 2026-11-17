@@ -70,7 +70,11 @@ done
 for root in "$TARGET/.agents/skills" "$HOME/.agents/skills"; do
   while IFS= read -r rel; do
     [ -n "$rel" ] || continue
-    cmp -s "$PKG/skills/verdict/$rel" "$root/verdict/$rel" || copy_ok="false"
+    case "$rel" in
+      schemas/*) src="$PKG/$rel" ;;
+      *) src="$PKG/skills/verdict/$rel" ;;
+    esac
+    cmp -s "$src" "$root/verdict/$rel" || copy_ok="false"
   done <<<"$inventory"
   [ "$(jq -r '.tool // empty' "$root/verdict/.verdict-managed" 2>/dev/null)" = "verdict" ] || copy_ok="false"
   [ "$(jq -r '.version // empty' "$root/verdict/.verdict-managed" 2>/dev/null)" = "$(jq -r .version "$EVAL_ROOT/package.json")" ] || copy_ok="false"

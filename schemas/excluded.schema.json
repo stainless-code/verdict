@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/excluded.schema.json",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/excluded.schema.json",
   "title": "excluded.json — excluded diff bytes",
   "description": "Byte-accounted exclusion receipt. Paths and rule ids identify removed raw diff sections; both hashes bind the reviewed subset to its raw input.",
   "type": "object",

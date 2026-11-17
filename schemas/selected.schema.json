@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/selected.schema.json",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/selected.schema.json",
   "title": "selected.json — reaction-scoped fix selection",
   "description": "The reaction-scoped fix selection: the finding sigs whose posted root review comment carries at least one human 👍, written by a GitHub fetch (the only host whose reactions verdict reads) and read by fix --selected. No reaction leaves no file at all, because an empty selection would claim a scope nobody asked for.",
   "type": "object",

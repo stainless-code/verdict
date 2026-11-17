@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/validation.schema.json",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/validation.schema.json",
   "title": "validation.json — trusted validator pass results",
   "description": "One trusted `prompts/validate.md` pass over a review's candidate findings, written beside review.json. The invoker runs the pass; verdict only reads the file, so a review never spawns a model. A CONFIRMED result changes nothing, a DOWNGRADED one moves the severity exactly one rank with a history event, and a REJECTED one warns in advisory mode or withholds the finding in gate mode. The validator's reason is stored and never quoted as a finding's evidence. post.json and record.json record the SHA-256 of these exact bytes.",
   "type": "object",

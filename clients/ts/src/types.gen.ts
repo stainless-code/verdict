@@ -1,4 +1,4 @@
-// GENERATED from skills/verdict/schemas/envelope.schema.json ($defs) by clients/ts/scripts/gen-ts-types.mjs. Do not edit.
+// GENERATED from schemas/envelope.schema.json ($defs) by clients/ts/scripts/gen-ts-types.mjs. Do not edit.
 export interface Truncation {
   truncated: boolean;
   truncation_reason:

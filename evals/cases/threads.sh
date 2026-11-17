@@ -107,10 +107,10 @@ if jq -e --arg head "$HEAD" --arg sig "$SIG" '
 else
   bad "T2 feed shape: $(jq -c '.threads[0]' "$FEED" 2>/dev/null | head -c 400)"
 fi
-if "$EVAL_SKILL/schemas/validate.sh" "$EVAL_SKILL/schemas/threads.schema.json" "$FEED" >/dev/null 2>&1; then
+if "$EVAL_ROOT/schemas/validate.sh" "$EVAL_ROOT/schemas/threads.schema.json" "$FEED" >/dev/null 2>&1; then
   good "T3 feed validates against schemas/threads.schema.json"
 else
-  bad "T3 feed fails schema validation: $("$EVAL_SKILL/schemas/validate.sh" "$EVAL_SKILL/schemas/threads.schema.json" "$FEED" 2>&1 | head -3)"
+  bad "T3 feed fails schema validation: $("$EVAL_ROOT/schemas/validate.sh" "$EVAL_ROOT/schemas/threads.schema.json" "$FEED" 2>&1 | head -3)"
 fi
 
 run_review threads acme/app 7

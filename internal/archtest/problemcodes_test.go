@@ -48,7 +48,7 @@ func TestProblemCodesMatchPublishedEnum(t *testing.T) {
 // checkProblemSchemaEnum compares the generated schema enum with the registry.
 func checkProblemSchemaEnum(t *testing.T, root string, codes []string) {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(root, "skills", "verdict", "schemas", "envelope.schema.json"))
+	raw, err := os.ReadFile(filepath.Join(root, "schemas", "envelope.schema.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

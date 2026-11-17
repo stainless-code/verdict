@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/drain.schema.json",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/drain.schema.json",
   "title": "drain.json — drain plan and receipt",
   "description": "The plan a drain run writes before drafting and the receipt it updates after posting. The plan pins one canonical pending list with a digest, typed skips for threads verdict authored but did not draft, and a count of other people's threads. The agent writes drain.replies.json against that digest; no host write happens in this build.",
   "type": "object",

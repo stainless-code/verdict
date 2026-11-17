@@ -14,41 +14,40 @@ import (
 	skillfs "github.com/stainless-code/verdict"
 )
 
-// repoFiles lists every file the repository would ship under the skill
-// directory — tracked plus untracked-but-not-ignored, dotfiles included, no
-// matter whether it is embedded — as slash paths relative to it. This is what
-// the skills CLI copies to an agent from a clone, so it must equal the
-// embedded payload. Ignored dev state (a bootstrapped bin/) is not shipped
-// and not listed. Without git it falls back to every file on disk.
-func repoFiles(t *testing.T) []string {
+// repoFiles lists every file the repository would ship under dir — tracked
+// plus untracked-but-not-ignored, dotfiles included — as slash paths relative
+// to it. This is what a clone carries, so it must equal what is embedded.
+// Ignored dev state (a bootstrapped bin/) is not shipped and not listed.
+// Without git it falls back to every file on disk.
+func repoFiles(t *testing.T, dir string) []string {
 	t.Helper()
-	out, err := exec.CommandContext(t.Context(), "git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", skillfs.Dir).Output()
+	out, err := exec.CommandContext(t.Context(), "git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", dir).Output()
 	if err != nil {
-		return diskFiles(t)
+		return diskFiles(t, dir)
 	}
 	var files []string
 	for name := range strings.SplitSeq(string(out), "\x00") {
 		if name == "" {
 			continue
 		}
-		files = append(files, strings.TrimPrefix(name, skillfs.Dir+"/"))
+		files = append(files, strings.TrimPrefix(name, dir+"/"))
 	}
 	slices.Sort(files)
 	return files
 }
 
-// diskFiles lists every file under the skill directory, relative to it.
-func diskFiles(t *testing.T) []string {
+// diskFiles lists every file under dir, relative to it.
+func diskFiles(t *testing.T, dir string) []string {
 	t.Helper()
 	var files []string
-	err := filepath.WalkDir(filepath.FromSlash(skillfs.Dir), func(path string, entry fs.DirEntry, err error) error {
+	err := filepath.WalkDir(filepath.FromSlash(dir), func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if entry.IsDir() {
 			return nil
 		}
-		rel, err := filepath.Rel(filepath.FromSlash(skillfs.Dir), path)
+		rel, err := filepath.Rel(filepath.FromSlash(dir), path)
 		if err != nil {
 			return err
 		}
@@ -62,24 +61,39 @@ func diskFiles(t *testing.T) []string {
 	return files
 }
 
-// onDisk is the checkout path of one payload file.
+// servedFiles is the checkout files served under payload paths: the skill
+// directory plus the repository's published schemas.
+func servedFiles(t *testing.T) []string {
+	t.Helper()
+	files := repoFiles(t, skillfs.Dir)
+	for _, name := range repoFiles(t, skillfs.SchemasDir) {
+		files = append(files, skillfs.SchemasDir+"/"+name)
+	}
+	slices.Sort(files)
+	return files
+}
+
+// onDisk is the checkout path of one served payload file.
 func onDisk(path string) string {
+	if path == skillfs.SchemasDir || strings.HasPrefix(path, skillfs.SchemasDir+"/") {
+		return filepath.FromSlash(path)
+	}
 	return filepath.Join(filepath.FromSlash(skillfs.Dir), filepath.FromSlash(path))
 }
 
 // TestEmbedMatchesRepo is the drift guard: every embedded payload path has a
-// byte-identical checked-in file, every file in the skill directory is
-// embedded (so nothing else would reach `npx skills add`), and the
-// executable bits agree.
+// byte-identical checked-in file, every file in the skill directory and the
+// published schemas directory is embedded (so nothing else would reach
+// `npx skills add`), and the executable bits agree.
 func TestEmbedMatchesRepo(t *testing.T) {
 	t.Parallel()
-	want := repoFiles(t)
+	want := servedFiles(t)
 	got, err := skillfs.Paths()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Equal(got, want) {
-		t.Fatalf("embedded paths = %v, want the files in %s: %v", got, skillfs.Dir, want)
+		t.Fatalf("embedded paths = %v, want the files in %s and %s: %v", got, skillfs.Dir, skillfs.SchemasDir, want)
 	}
 	for _, path := range want {
 		assertEmbeddedFile(t, path)

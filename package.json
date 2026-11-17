@@ -26,7 +26,8 @@
     "README.md",
     "LICENSE",
     "CHANGELOG.md",
-    "scripts/"
+    "scripts/",
+    "schemas/"
   ],
   "scripts": {
     "changeset": "changeset",

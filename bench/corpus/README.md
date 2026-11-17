@@ -7,7 +7,7 @@ bundle with ground truth:
 
 ```
 bench/corpus/<case-id>/
-  case.json                 # ground truth + provenance (skills/verdict/schemas/corpus.schema.json)
+  case.json                 # ground truth + provenance (schemas/corpus.schema.json)
   full.diff                 # real git diff of the reviewed change, with the bug lines in hunks
   snapshots/<file>.before   # the reviewed base tree
   snapshots/<file>.after    # the reviewed head tree
@@ -124,7 +124,7 @@ bench/corpus/<repo>-<pr>-<slug>/
   real case never enters the hermetic rates. Real cases are scored by live runs
   under `.verdict/state/`, as `docs/benchmark.md` §2 describes.
 
-Do not edit `skills/verdict/schemas/corpus.schema.json` by hand; run `make schemas`.
+Do not edit `schemas/corpus.schema.json` by hand; run `make schemas`.
 
 The operator runbook for real PRs, real agents, cost estimates, and
 publishing measured rates lives in [`docs/benchmark.md`](../../docs/benchmark.md).

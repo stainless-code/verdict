@@ -1,6 +1,6 @@
 // Command schemagen writes (or checks) the published schemas from the Go
 // shape types in internal/schemagen. Run it through `make schemas` or
-// `go generate ./...`; never edit skills/verdict/schemas/*.schema.json by hand.
+// `go generate ./...`; never edit schemas/*.schema.json by hand.
 // In check mode it also re-checks the additivity baseline under
 // internal/schemagen/testdata/baseline byte for byte.
 package main
@@ -25,7 +25,7 @@ const storeDirMode = 0o755
 // schemas, relative to the repository root, each with the target that rewrites
 // it.
 const (
-	shippedDir   = "skills/verdict/schemas"
+	shippedDir   = "schemas"
 	baselineDir  = "internal/schemagen/testdata/baseline"
 	shippedHint  = "run `make schemas` from the repo root"
 	baselineHint = "run `make schemas-baseline` from the repo root"
@@ -141,8 +141,8 @@ func samePath(a, b string) bool {
 func parseFlags(args []string, stderr io.Writer) (options, error) {
 	flags := flag.NewFlagSet("schemagen", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	write := flags.Bool("write", false, "rewrite skills/verdict/schemas/*.schema.json instead of checking them")
-	dir := flags.String("dir", "", "schemas directory (default: <repo>/skills/verdict/schemas)")
+	write := flags.Bool("write", false, "rewrite schemas/*.schema.json instead of checking them")
+	dir := flags.String("dir", "", "schemas directory (default: <repo>/schemas)")
 	if err := flags.Parse(args); err != nil {
 		return options{}, wrapError("parse flags", err)
 	}

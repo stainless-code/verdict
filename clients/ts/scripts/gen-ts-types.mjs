@@ -195,10 +195,7 @@ function mapTS(node, defs) {
 
 function genTypes() {
   const schema = JSON.parse(
-    readFileSync(
-      join(REPO_ROOT, "skills", "verdict", "schemas", "envelope.schema.json"),
-      "utf8",
-    ),
+    readFileSync(join(REPO_ROOT, "schemas", "envelope.schema.json"), "utf8"),
   );
   const defs = hoist(schema.$defs ?? {});
   const chunks = [];
@@ -215,7 +212,7 @@ function genTypes() {
       );
     }
   }
-  return `${header("skills/verdict/schemas/envelope.schema.json ($defs)")}\n${chunks.join("\n\n")}\n`;
+  return `${header("schemas/envelope.schema.json ($defs)")}\n${chunks.join("\n\n")}\n`;
 }
 
 function genPlatforms() {

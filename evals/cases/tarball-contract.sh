@@ -45,7 +45,7 @@ fi
   echo "package.json"
   for f in "$EVAL_SKILL"/prompts/*.md; do echo "skills/verdict/prompts/$(basename "$f")"; done
   for f in "$EVAL_ROOT"/scripts/*.sh; do echo "scripts/$(basename "$f")"; done
-  for f in "$EVAL_SKILL"/schemas/*.schema.json; do echo "skills/verdict/schemas/$(basename "$f")"; done
+  for f in "$EVAL_ROOT"/schemas/*.schema.json; do echo "schemas/$(basename "$f")"; done
 } | LC_ALL=C sort -u > "$REQUIRED"
 
 missing_from() { # $1 = packed-list file; prints required entries absent there

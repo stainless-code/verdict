@@ -22,4 +22,6 @@
 # (VERDICT_BIN, the skill's bin/verdict, then PATH) and needs no jq.
 set -eu
 HERE=$(cd -- "$(dirname -- "$0")" && pwd -P)
-exec "$HERE/../scripts/verdict" __validate-schema "$@"
+BIN="$HERE/../scripts/verdict"
+[ -x "$BIN" ] || BIN="$HERE/../skills/verdict/scripts/verdict"
+exec "$BIN" __validate-schema "$@"
