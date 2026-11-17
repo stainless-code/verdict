@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/core/skill"
 )
 
@@ -32,9 +33,57 @@ func TestStatusFreshInstallInSync(t *testing.T) {
 	}
 }
 
-// TestStatusReportsDriftWritesNothing pins the read-only contract: a hand edit
-// reads update with the edit in its unified diff, and the tree is unchanged.
-// TestStatusReportsDriftWritesNothing pins the read-only drift report.
+// TestStatusComparesStubVersion pins the version-based report: an unrelated
+// byte edit stays in sync, while a changed stub_version drifts with a diff.
+func TestStatusComparesStubVersion(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	req := newRequest(t)
+	req.Dir = dir
+	target := filepath.Join(dir, "verdict")
+	if _, ref := skill.Install(context.Background(), req); ref != nil {
+		t.Fatalf("seed install: %v", ref)
+	}
+	if err := os.WriteFile(filepath.Join(target, "NOTICE.md"), []byte("hand edited\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st, ref := skill.Status(context.Background(), req, true)
+	if ref != nil {
+		t.Fatalf("Status after byte edit: %v", ref)
+	}
+	if !st.InSync || st.Plan.Status != skill.StatusKeep {
+		t.Fatalf("byte-only edit status = %+v, want an in-sync keep", st)
+	}
+
+	body, err := os.ReadFile(filepath.Join(target, "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	edited := strings.Replace(string(body), "stub_version: "+skillfs.StubVersion, "stub_version: 2", 1)
+	if edited == string(body) {
+		t.Fatal("installed stub has no stub_version to edit")
+	}
+	if err := os.WriteFile(filepath.Join(target, "SKILL.md"), []byte(edited), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st, ref = skill.Status(context.Background(), req, true)
+	if ref != nil {
+		t.Fatalf("Status after version edit: %v", ref)
+	}
+	if st.InSync || st.Plan.Status != skill.StatusUpdate {
+		t.Fatalf("version edit status = %+v, want drift", st)
+	}
+	if !slices.Equal(st.Plan.Changed, []string{"SKILL.md"}) {
+		t.Fatalf("changed = %v, want [SKILL.md]", st.Plan.Changed)
+	}
+	if len(st.Diffs) != 1 || !strings.Contains(st.Diffs[0].Body, "-stub_version: 2") {
+		t.Fatalf("version diff = %+v, want the installed value removed", st.Diffs)
+	}
+}
+
+// TestStatusReportsDriftWritesNothing pins the read-only contract: a changed
+// stub_version reads update with the edit in its unified diff, and the tree is
+// unchanged.
 //
 //nolint:cyclop,revive // the test walks the drift arm
 func TestStatusReportsDriftWritesNothing(t *testing.T) {
@@ -46,7 +95,15 @@ func TestStatusReportsDriftWritesNothing(t *testing.T) {
 	if _, ref := skill.Install(context.Background(), req); ref != nil {
 		t.Fatalf("seed install: %v", ref)
 	}
-	if err := os.WriteFile(filepath.Join(target, "SKILL.md"), []byte("hand edited\n"), 0o644); err != nil {
+	stub, err := os.ReadFile(filepath.Join(target, "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	edited := strings.Replace(string(stub), "stub_version: "+skillfs.StubVersion, "stub_version: 2", 1)
+	if edited == string(stub) {
+		t.Fatal("installed stub has no stub_version to edit")
+	}
+	if err := os.WriteFile(filepath.Join(target, "SKILL.md"), []byte(edited), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	before := treeSnapshot(t, target)
@@ -67,11 +124,11 @@ func TestStatusReportsDriftWritesNothing(t *testing.T) {
 	if len(st.Diffs) != 1 || st.Diffs[0].Path != "SKILL.md" {
 		t.Fatalf("diffs = %+v, want one for SKILL.md", st.Diffs)
 	}
-	if !strings.Contains(st.Diffs[0].Body, "-hand edited\n") {
-		t.Fatalf("diff does not show the removed hand edit:\n%s", st.Diffs[0].Body)
+	if !strings.Contains(st.Diffs[0].Body, "-stub_version: 2") {
+		t.Fatalf("diff does not show the installed stub_version:\n%s", st.Diffs[0].Body)
 	}
-	if !strings.Contains(st.Diffs[0].Body, "+---\n") {
-		t.Fatalf("diff does not show the embedded first line as an addition:\n%s", st.Diffs[0].Body)
+	if !strings.Contains(st.Diffs[0].Body, "+stub_version: "+skillfs.StubVersion) {
+		t.Fatalf("diff does not show the embedded stub_version as an addition:\n%s", st.Diffs[0].Body)
 	}
 	if st.Diffs[0].Truncated {
 		t.Fatal("small edit reported truncated")

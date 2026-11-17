@@ -2694,7 +2694,8 @@ you stand).
 The shipped `verdict` is one static Go binary (`make build` writes
 `bin/verdict`) that needs no shell wrapper. `VERDICT_BIN` is not the binary's:
 the skill shim and the TypeScript client both consult it. The shim
-(`skills/verdict/scripts/verdict`) resolves it first, then `<skill>/bin/verdict`,
+(`skills/verdict/scripts/verdict`) resolves it first, then the enclosing
+checkout's repo-pinned `./node_modules/.bin/verdict`, then `<skill>/bin/verdict`,
 then `verdict` on `PATH`; `resolveBin` in `clients/ts` takes it ahead of the
 platform package. A plain `verdict` call consults neither variable.
 
@@ -2766,8 +2767,9 @@ platform package. A plain `verdict` call consults neither variable.
   `rm -rf <skill dir>`, …). `--dry-run` and `--json` are supported.
 - **Registry** (`npx skills add stainless-code/verdict`): the primary path is
   the GLOBAL binary (curl/npm/brew above), which the skill copy resolves on
-  PATH through `scripts/verdict` (`VERDICT_BIN`, then `<skill>/bin/verdict`,
-  then `verdict`). `npx skills` is scoped to the skills dir and never
+  PATH through `scripts/verdict` (`VERDICT_BIN`, the checkout's pinned
+  `./node_modules/.bin/verdict`, then `<skill>/bin/verdict`, then `verdict`).
+  `npx skills` is scoped to the skills dir and never
   installs the binary; `install.sh` is not shipped in the npm tarball and
   never runs here. With no global binary, run the one-time verified
   `sh <skillsdir>/verdict/scripts/verdict bootstrap`: it fetches the pinned
@@ -2780,13 +2782,14 @@ platform package. A plain `verdict` call consults neither variable.
   `--detect`/`--all`, doctor-gated). Updates via `git pull`;
   `install-skill.sh` refuses outside a git checkout. `hooks/pre-commit`
   wiring applies to the checkout only.
-- **Embedded skill** (`verdict skill`): the binary carries its own `SKILL.md`,
-  `prompts/`, `packs/`, and `scripts/verdict` from `skills/verdict/`, plus
-  `schemas/` from the repository root, so the served skill can never skew from
-  the binary. The skills CLI
+- **Embedded skill** (`verdict skill`): the binary carries the Bootstrap stub
+  from `skills/verdict/` and the Procedure from `procedure/` (prompts, packs,
+  references, and `PROCEDURE.md`) plus `schemas/` from the repository root, so
+  every served file matches the binary that grades the review. The skills CLI
   (`npx skills add stainless-code/verdict`) copies only `skills/verdict/`;
-  `verdict skill install` writes that payload and the served `schemas/` files.
-  `verdict skill` prints `SKILL.md` (default
+  `verdict skill install` writes just the stub's three files — `SKILL.md`,
+  `NOTICE.md`, `scripts/verdict` — and a receipt, never the Procedure.
+  `verdict skill` prints `PROCEDURE.md` (default
   `--format md`); `--format json` is one standard envelope with
   `name`/`version`/`files`; `verdict skill files` lists every embedded path.
   `verdict skill show <path>` prints one inventory file byte-identical (a
@@ -2796,14 +2799,16 @@ platform package. A plain `verdict` call consults neither variable.
   `skill files`.
   `verdict skill status [--dir <skills-dir>|--agent <name>...|--detect] [--diff] [--json]`
   is the read-only drift check: it writes nothing and
-  reports each target's create/update/keep/blocked result plus the receipt
-  versus embedded version, reusing the install plan. It exits 0 when every
+  reports each target's create/update/keep/blocked result, comparing the
+  installed `stub_version` with the one served by this binary and the receipt
+  with the embedded version. An unrelated byte edit therefore stays in sync;
+  a changed `stub_version` is drift with a diff. It exits 0 when every
   target is in sync and 1 when drifted (a typed refusal still exits 1), so CI
   can gate on it without `install --dry-run`. `--diff` adds one unified diff
   per changed file, capped at 64 KiB overall with an explicit truncation
   marker and `truncated: true` in the JSON entry.
   `verdict skill install` (flags: `--dir <skills-dir>`, `--agent <name>`,
-  `--detect`, `--force`, `--dry-run`, `--json`) writes the payload plus a
+  `--detect`, `--force`, `--dry-run`, `--json`) writes the three stub files plus a
   `.verdict-managed` receipt (file-atomic, receipt last), previews
   create/update/keep/blocked (`--dry-run --json` stays a drift preview: `update`
   means the installed copy is stale, `keep` means current, `blocked` needs a
@@ -2830,7 +2835,7 @@ platform package. A plain `verdict` call consults neither variable.
   absent or empty.
   `verdict skill uninstall [--dir <skills-dir>|--agent <name>...] [--force] [--dry-run] [--json]`
   deletes only the inventory paths the receipt owns and
-  then the receipt, pruning the payload directories it empties; every foreign
+  then the receipt, pruning the stub directories it empties; every foreign
   file survives. A target that is a symlink refuses (`skill-target-file`), and
   an inventory path that escapes the target through a symlinked directory
   refuses (`skill-foreign-conflict`) before any file inside it is removed. A

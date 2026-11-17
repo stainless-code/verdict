@@ -469,16 +469,17 @@ func usageText() string {
 		"  skill [show [<path>]|files|status|install|uninstall] [--format md|json] [--dir <skills-dir>|--agent <name>...]\n" +
 		"        [--detect] [--diff] [--force] [--dry-run] [--json]\n" +
 		"    serve, inspect, or remove the skill embedded in this binary (never a skew):\n" +
-		"    show prints SKILL.md (default --format md), show <path> prints one\n" +
+		"    show prints PROCEDURE.md (default --format md), show <path> prints one\n" +
 		"    embedded file byte-identical, --format json emits one envelope with\n" +
 		"    name/version/files, files lists every embedded path.\n" +
 		"    status is a read-only drift report per target (create/update/keep/\n" +
-		"    blocked) with receipt vs embedded version; it exits 0 in sync and 1\n" +
-		"    when drifted. --diff adds a capped unified diff per changed file.\n" +
-		"    install atomically writes SKILL.md, prompts/, schemas/, and\n" +
-		"    scripts/verdict plus a .verdict-managed receipt; it previews\n" +
-		"    create/update/keep/blocked, never prompts, and refuses a foreign\n" +
-		"    target unless --force (foreign files are never touched).\n" +
+		"    blocked) comparing the installed stub_version and the receipt against\n" +
+		"    this binary; it exits 0 in sync and 1 when drifted. --diff adds a\n" +
+		"    capped unified diff per changed file.\n" +
+		"    install atomically writes SKILL.md, NOTICE.md, and scripts/verdict\n" +
+		"    plus a .verdict-managed receipt; the Procedure and schemas stay in the\n" +
+		"    binary. It previews create/update/keep/blocked, never prompts, and\n" +
+		"    refuses a foreign target unless --force (foreign files are untouched).\n" +
 		"    uninstall removes only the payload paths the receipt owns, then the\n" +
 		"    receipt; foreign files survive, a target without a receipt refuses\n" +
 		"    unless --force, and --dry-run deletes nothing.\n" +
@@ -486,9 +487,10 @@ func usageText() string {
 		"    and handled in argv order. --detect installs or reports every known\n" +
 		"    agent whose skills dir already exists and is non-empty; with none\n" +
 		"    present it refuses typed and asks for --agent <name>.\n" +
-		"    In a skill copy, scripts/verdict resolves VERDICT_BIN, then\n" +
-		"    <skill>/bin/verdict, then verdict on PATH; otherwise run the one-time\n" +
-		"    verified <skill>/scripts/verdict bootstrap (no review-time fetch).\n" +
+		"    In a skill copy, scripts/verdict resolves VERDICT_BIN, then the repo-\n" +
+		"    pinned ./node_modules/.bin/verdict, then <skill>/bin/verdict, then\n" +
+		"    verdict on PATH; otherwise run the one-time verified\n" +
+		"    <skill>/scripts/verdict bootstrap (no review-time fetch).\n" +
 		"  pack <list|add|test> [--json]\n" +
 		"    list: read-only lens-pack inventory in precedence order: built-in, org\n" +
 		"    (explicit packs[] paths in personal settings), and repo\n" +

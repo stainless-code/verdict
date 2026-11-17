@@ -74,10 +74,7 @@ func UninstallAgents(ctx context.Context, req *Request, agents []string) (Remova
 	if err := ctx.Err(); err != nil {
 		return RemovalSet{}, refuse(codeCanceled, "canceled before skill uninstall completed")
 	}
-	files, ref := List(ctx, req)
-	if ref != nil {
-		return RemovalSet{}, ref
-	}
+	files := InstallInventory(req)
 	agents = dedupeAgents(agents)
 	removals := make([]Removal, 0, len(agents))
 	kept := make([]string, 0, len(agents))
@@ -124,10 +121,10 @@ func UninstallAgents(ctx context.Context, req *Request, agents []string) (Remova
 }
 
 func planRemoval(ctx context.Context, req *Request) (Removal, *os.Root, *core.RefusalError) {
-	files, ref := List(ctx, req)
-	if ref != nil {
-		return Removal{}, nil, ref
+	if err := ctx.Err(); err != nil {
+		return Removal{}, nil, refuse(codeCanceled, "canceled before skill uninstall completed")
 	}
+	files := InstallInventory(req)
 	target, ref := req.target()
 	if ref != nil {
 		return Removal{}, nil, ref

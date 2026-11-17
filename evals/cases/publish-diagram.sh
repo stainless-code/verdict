@@ -72,7 +72,7 @@ else
 fi
 unset XDG_CONFIG_HOME || true
 
-frag="$EVAL_SKILL/prompts/diagrams.md"
+frag="$EVAL_PROCEDURE/prompts/diagrams.md"
 if [ -f "$frag" ] \
   && grep -Fq 'sequenceDiagram' "$frag" && grep -Fq 'stateDiagram' "$frag" \
   && grep -Fq 'gitGraph' "$frag" && grep -Fq 'quadrantChart' "$frag" \
@@ -93,8 +93,8 @@ if grep -Fq 'illustrative' "$frag" \
 else
   bad "contract clauses missing from prompts/diagrams.md"
 fi
-if grep -Fq 'prompts/diagrams.md' "$EVAL_SKILL/prompts/review.md" \
-  && grep -Fq 'publish.diagrams.behavioral' "$EVAL_SKILL/prompts/review.md"; then
+if grep -Fq 'prompts/diagrams.md' "$EVAL_PROCEDURE/prompts/review.md" \
+  && grep -Fq 'publish.diagrams.behavioral' "$EVAL_PROCEDURE/prompts/review.md"; then
   good "review.md references the fragment and the opt-in knob"
 else
   bad "review.md hook missing"

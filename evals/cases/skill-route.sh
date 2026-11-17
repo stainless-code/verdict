@@ -9,7 +9,7 @@ SKILLS="$EVAL_SANDBOX/skills"
 SKILL="$SKILLS/verdict"
 
 run_review skill
-if [ "$EVAL_STATUS" -eq 0 ] && cmp -s "$EVAL_OUT" "$EVAL_SKILL/SKILL.md"; then
+if [ "$EVAL_STATUS" -eq 0 ] && cmp -s "$EVAL_OUT" "$EVAL_PROCEDURE/PROCEDURE.md"; then
   good "skill prints the checked-in SKILL.md byte-for-byte"
 else
   bad "skill exits $EVAL_STATUS or differs from SKILL.md"
@@ -45,8 +45,10 @@ if [ "$EVAL_STATUS" -eq 0 ] \
   && [ "$(jq -r '.data.status' <"$EVAL_OUT")" = "create" ] \
   && [ "$(jq -r '.data.written' <"$EVAL_OUT")" -gt 0 ] \
   && cmp -s "$SKILL/SKILL.md" "$EVAL_SKILL/SKILL.md" \
-  && cmp -s "$SKILL/prompts/review.md" "$EVAL_SKILL/prompts/review.md" \
-  && [ -x "$SKILL/scripts/verdict" ] \
+  && cmp -s "$SKILL/NOTICE.md" "$EVAL_SKILL/NOTICE.md" \
+  && [ -x "$SKILL/scripts/verdict" ] && [ ! -e "$SKILL/prompts" ] \
+  && [ ! -e "$SKILL/PROCEDURE.md" ] \
+  && [ "$(find "$SKILL" -type f | wc -l | tr -d ' ')" = "4" ] \
   && [ "$(jq -r '.tool' "$SKILL/.verdict-managed")" = "verdict" ] \
   && [ "$(jq -r '.version' "$SKILL/.verdict-managed")" = "$(jq -r .version "$EVAL_ROOT/package.json")" ]; then
   good "install writes the payload atomically with an executable shim and receipt"
@@ -96,15 +98,15 @@ ESCAPE_INSTALL="$EVAL_SANDBOX/install-escape"
 ESCAPE_FRESH="$EVAL_SANDBOX/install-fresh"
 ESCAPE_OUTSIDE="$EVAL_SANDBOX/install-outside"
 mkdir -p "$ESCAPE_OUTSIDE" "$ESCAPE_FRESH/verdict"
-printf 'outside bytes\n' >"$ESCAPE_OUTSIDE/review.md"
+printf 'outside bytes\n' >"$ESCAPE_OUTSIDE/verdict"
 dir_hash() {
   (cd "$1" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do shasum "$f"; done | shasum)
 }
 run_review skill install --dir "$ESCAPE_INSTALL" --json
 assert_exit "seed an escaping install" 0
-rm -rf "$ESCAPE_INSTALL/verdict/prompts"
-ln -s "$ESCAPE_OUTSIDE" "$ESCAPE_INSTALL/verdict/prompts"
-ln -s "$ESCAPE_OUTSIDE" "$ESCAPE_FRESH/verdict/prompts"
+rm -rf "$ESCAPE_INSTALL/verdict/scripts"
+ln -s "$ESCAPE_OUTSIDE" "$ESCAPE_INSTALL/verdict/scripts"
+ln -s "$ESCAPE_OUTSIDE" "$ESCAPE_FRESH/verdict/scripts"
 outside_before="$(dir_hash "$ESCAPE_OUTSIDE")"
 
 run_review skill install --dir "$ESCAPE_INSTALL" --json
@@ -128,7 +130,7 @@ assert_json_field "status names the root escape" "true" '.error.message | contai
 outside_after="$(dir_hash "$ESCAPE_OUTSIDE")"
 if [ "$outside_before" = "$outside_after" ] \
   && [ "$(find "$ESCAPE_OUTSIDE" -name '.tmp-*' | wc -l | tr -d ' ')" = "0" ] \
-  && [ -f "$ESCAPE_OUTSIDE/review.md" ] && grep -qx 'outside bytes' "$ESCAPE_OUTSIDE/review.md" \
+  && [ -f "$ESCAPE_OUTSIDE/verdict" ] && grep -qx 'outside bytes' "$ESCAPE_OUTSIDE/verdict" \
   && cmp -s "$ESCAPE_INSTALL/verdict/SKILL.md" "$EVAL_SKILL/SKILL.md" \
   && [ -f "$ESCAPE_INSTALL/verdict/.verdict-managed" ] \
   && [ ! -e "$ESCAPE_FRESH/verdict/SKILL.md" ] && [ ! -e "$ESCAPE_FRESH/verdict/.verdict-managed" ]; then
@@ -185,6 +187,22 @@ if [ "$st" -eq 0 ] && [ "$(cat "$EVAL_OUT")" = "custom-verdict --version" ]; the
   good "shim prefers VERDICT_BIN over PATH"
 else
   bad "shim VERDICT_BIN resolution exits $st"
+fi
+PINNED="$EVAL_SANDBOX/pinned-checkout"
+mkdir -p "$PINNED/.git" "$PINNED/node_modules/.bin"
+cat >"$PINNED/node_modules/.bin/verdict" <<'EOF'
+#!/bin/sh
+printf 'pinned-verdict %s\n' "$*"
+EOF
+chmod +x "$PINNED/node_modules/.bin/verdict"
+set +e
+(cd "$PINNED" && PATH="$MISSBIN:/usr/bin:/bin" sh "$SHIM" --version >"$EVAL_OUT" 2>"$EVAL_ERR")
+st=$?
+set -e
+if [ "$st" -eq 0 ] && [ "$(cat "$EVAL_OUT")" = "pinned-verdict --version" ]; then
+  good "shim prefers the checkout-pinned node_modules binary over PATH"
+else
+  bad "shim pinned resolution exits $st: $(head -c 160 "$EVAL_ERR")"
 fi
 set +e
 PATH="$MISSBIN:/usr/bin:/bin" sh "$SHIM" fetch acme/app 1 >"$EVAL_OUT" 2>"$EVAL_ERR"

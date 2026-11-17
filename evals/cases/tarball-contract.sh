@@ -39,11 +39,11 @@ fi
 
 {
   echo "skills/verdict/SKILL.md"
+  echo "skills/verdict/NOTICE.md"
   echo "skills/verdict/scripts/verdict"
   echo "README.md"
   echo "LICENSE"
   echo "package.json"
-  for f in "$EVAL_SKILL"/prompts/*.md; do echo "skills/verdict/prompts/$(basename "$f")"; done
   for f in "$EVAL_ROOT"/scripts/*.sh; do echo "scripts/$(basename "$f")"; done
   for f in "$EVAL_ROOT"/schemas/*.schema.json; do echo "schemas/$(basename "$f")"; done
 } | LC_ALL=C sort -u > "$REQUIRED"
@@ -58,7 +58,7 @@ missing_from() { # $1 = packed-list file; prints required entries absent there
 }
 
 if gaps="$(missing_from "$PACKED")"; then
-  good "tarball holds the completion script, every prompt, every schema, SKILL.md, README.md, LICENSE ($(wc -l <"$REQUIRED" | tr -d ' ') files)"
+  good "tarball holds the stub, the completion script, every schema, README.md, LICENSE ($(wc -l <"$REQUIRED" | tr -d ' ') files)"
 else
   bad "tarball missing required file(s): $(printf '%s' "$gaps" | tr '\n' ' ')"
 fi
@@ -77,19 +77,19 @@ elif [ "$refs_seen" -eq 0 ]; then
   bad "SKILL.md names no scripts/ or prompts/ paths (reference parse broke?)"
 fi
 
-if offenders="$(grep -E -i -e '(^|/)\.env($|/)' -e '^\.verdict/' -e '(^|/)\.scratch($|/)' -e '^evals/results/' -e '\.tgz$' -e '^node_modules/' -e '^scripts/review\.sh$' "$PACKED" || true)" \
+if offenders="$(grep -E -i -e '(^|/)\.env($|/)' -e '^\.verdict/' -e '(^|/)\.scratch($|/)' -e '^evals/results/' -e '\.tgz$' -e '^node_modules/' -e '^procedure/' -e '^skills/verdict/prompts/' -e '^skills/verdict/packs/' -e '^skills/verdict/references/' -e '^scripts/review\.sh$' "$PACKED" || true)" \
   && [ -z "$offenders" ]; then
   good "tarball holds no .env, .verdict, .scratch, evals results, tgz, node_modules, or review.sh"
 else
   bad "tarball ships forbidden file(s): $(printf '%s' "$offenders" | tr '\n' ' ')"
 fi
 
-grep -v -x -F "skills/verdict/prompts/review.md" "$PACKED" > "$TAMPERED"
+grep -v -x -F "skills/verdict/SKILL.md" "$PACKED" > "$TAMPERED"
 if gaps="$(missing_from "$TAMPERED")"; then
-  bad "comparator passed a packed list missing skills/verdict/prompts/review.md (drift would ship)"
+  bad "comparator passed a packed list missing skills/verdict/SKILL.md (drift would ship)"
 else
   case "$gaps" in
-    *skills/verdict/prompts/review.md*) good "comparator flags a dropped file (skills/verdict/prompts/review.md) as missing" ;;
+    *skills/verdict/SKILL.md*) good "comparator flags a dropped file (skills/verdict/SKILL.md) as missing" ;;
     *) bad "comparator flagged wrong gap: $gaps" ;;
   esac
 fi

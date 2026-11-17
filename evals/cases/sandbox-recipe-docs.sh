@@ -6,7 +6,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/../lib/common.sh"
 
 MANUAL="$EVAL_ROOT/docs/manual.md"
-SYSTEM="$EVAL_SKILL/prompts/system.md"
+SYSTEM="$EVAL_PROCEDURE/prompts/system.md"
 
 if grep -q "bwrap" "$MANUAL" \
   && grep -q -- "--ro-bind / /" "$MANUAL" \

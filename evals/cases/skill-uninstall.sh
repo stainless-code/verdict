@@ -31,7 +31,7 @@ assert_json_field "uninstall removed the payload" "removed" '.data.status'
 assert_json_field "the receipt was removed" "true" '.data.receipt_removed'
 assert_json_field "the foreign file was kept" "keep.txt" '.data.kept[0]'
 if [ ! -e "$TARGET/SKILL.md" ] && [ ! -e "$TARGET/.verdict-managed" ] \
-  && [ -e "$TARGET/keep.txt" ] && [ ! -e "$TARGET/prompts" ]; then
+  && [ -e "$TARGET/keep.txt" ] && [ ! -e "$TARGET/scripts" ] && [ ! -e "$TARGET/PROCEDURE.md" ]; then
   good "uninstall removed only inventory paths and the receipt"
 else
   bad "uninstall left payload behind or removed the foreign file"
@@ -86,9 +86,9 @@ OUTSIDE="$EVAL_SANDBOX/outside"
 run_review skill install --dir "$ESCAPE" --json
 assert_exit "seed an escaping install" 0
 mkdir -p "$OUTSIDE"
-printf 'outside bytes\n' >"$OUTSIDE/review.md"
-rm -rf "$ESCAPE/verdict/prompts"
-ln -s "$OUTSIDE" "$ESCAPE/verdict/prompts"
+printf 'outside bytes\n' >"$OUTSIDE/verdict"
+rm -rf "$ESCAPE/verdict/scripts"
+ln -s "$OUTSIDE" "$ESCAPE/verdict/scripts"
 run_review skill uninstall --dir "$ESCAPE" --dry-run --json
 assert_exit "dry-run on an escaping payload dir refuses" 1
 assert_refusal "escaping payload dir (dry-run)" "skill-foreign-conflict"
@@ -99,7 +99,7 @@ assert_refusal "escaping payload dir (receipt-owned)" "skill-foreign-conflict"
 run_review skill uninstall --dir "$ESCAPE" --force --json
 assert_exit "uninstall --force on an escaping payload dir refuses" 1
 assert_refusal "escaping payload dir (--force)" "skill-foreign-conflict"
-if [ -f "$OUTSIDE/review.md" ] && grep -qx 'outside bytes' "$OUTSIDE/review.md" \
+if [ -f "$OUTSIDE/verdict" ] && grep -qx 'outside bytes' "$OUTSIDE/verdict" \
   && [ -f "$ESCAPE/verdict/SKILL.md" ] && [ -f "$ESCAPE/verdict/.verdict-managed" ]; then
   good "the escape removed nothing outside the target and no payload inside it"
 else

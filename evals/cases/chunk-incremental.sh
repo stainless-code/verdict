@@ -238,7 +238,7 @@ else
   bad "terminal-write discipline broke on the gate bundle"
 fi
 
-PROMPT="$EVAL_SKILL/prompts/incremental-review.md"
+PROMPT="$EVAL_PROCEDURE/prompts/incremental-review.md"
 if grep -q "chunks/manifest.json" "$PROMPT" \
   && grep -q "affected chunk" "$PROMPT"; then
   good "prompt scopes the delta to affected chunk diffs via the manifest"

@@ -5,18 +5,18 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-if grep -q "Exactly one terminal write" "$EVAL_SKILL/SKILL.md"; then
-  good "SKILL.md pins exactly-one terminal write"
+if grep -q "Exactly one terminal write" "$EVAL_PROCEDURE/PROCEDURE.md"; then
+  good "PROCEDURE.md pins exactly-one terminal write"
 else
-  bad "SKILL.md missing exactly-one-terminal-write doctrine"
+  bad "PROCEDURE.md missing exactly-one-terminal-write doctrine"
 fi
-if grep -q "one review OR no-review note" "$EVAL_SKILL/SKILL.md"; then
+if grep -q "one review OR no-review note" "$EVAL_PROCEDURE/PROCEDURE.md"; then
   good "router maps the delta row to one review OR no-review note"
 else
   bad "router delta row does not name the no-review-note terminal write"
 fi
-if [ -f "$EVAL_SKILL/prompts/incremental-review.md" ] \
-  && grep -qi "noreview\.md" "$EVAL_SKILL/prompts/incremental-review.md"; then
+if [ -f "$EVAL_PROCEDURE/prompts/incremental-review.md" ] \
+  && grep -qi "noreview\.md" "$EVAL_PROCEDURE/prompts/incremental-review.md"; then
   good "incremental mode defines the single noreview.md note"
 else
   bad "incremental mode missing the noreview.md terminal write"

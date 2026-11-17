@@ -12,7 +12,7 @@ import (
 )
 
 // TargetStatus is one target's read-only drift report. InSync means the
-// installed bytes and the receipt version both match the embedded payload.
+// installed stub_version and the receipt version both match this binary.
 type TargetStatus struct {
 	Diffs  []Diff
 	Plan   Plan
@@ -46,10 +46,7 @@ func StatusAgents(ctx context.Context, req *Request, agents []string, includeDif
 	if err := ctx.Err(); err != nil {
 		return StatusSet{}, refuse(codeCanceled, "canceled before skill status completed")
 	}
-	files, ref := List(ctx, req)
-	if ref != nil {
-		return StatusSet{}, ref
-	}
+	files := InstallInventory(req)
 	plans, agents, ref := planAgents(req, files, agents)
 	if ref != nil {
 		return StatusSet{}, ref
@@ -78,6 +75,9 @@ func StatusDetected(ctx context.Context, req *Request, includeDiff bool) (Status
 }
 
 func buildStatus(plan *Plan, includeDiff bool) (TargetStatus, *core.RefusalError) {
+	if ref := applyStubVersion(plan); ref != nil {
+		return TargetStatus{}, ref
+	}
 	st := TargetStatus{Plan: *plan, InSync: inSync(plan)}
 	if includeDiff {
 		diffs, ref := diffPlan(plan)
@@ -107,6 +107,55 @@ func buildStatusSet(files Inventory, agents []string, plans []Plan, includeDiff 
 
 func inSync(plan *Plan) bool {
 	return plan.Status == StatusKeep && plan.ReceiptVersion == plan.Version
+}
+
+// applyStubVersion replaces the install plan's byte comparison with the stub
+// contract: an installed SKILL.md is current when its frontmatter carries the
+// embedded stub_version, whatever else its bytes say. A missing or different
+// version reports the entry point as the changed file, so --diff shows it.
+func applyStubVersion(plan *Plan) *core.RefusalError {
+	if plan.Status != StatusKeep && plan.Status != StatusUpdate {
+		return nil
+	}
+	root, err := os.OpenRoot(plan.Target)
+	if err != nil {
+		return refuse(codeRead, fmt.Sprintf("cannot read %s: %s", plan.Target, err))
+	}
+	defer func() { _ = root.Close() }()
+	installed, ok := installedStubVersion(root)
+	if ok && installed == skillfs.StubVersion {
+		plan.Status = StatusKeep
+		plan.Changed = nil
+		return nil
+	}
+	plan.Status = StatusUpdate
+	plan.Changed = []string{skillfs.SkillMD}
+	return nil
+}
+
+// installedStubVersion reads stub_version from an installed SKILL.md's YAML
+// frontmatter. A missing, unquoted, or quoted value is still a literal match
+// against the version this binary serves.
+func installedStubVersion(root *os.Root) (string, bool) {
+	raw, err := root.ReadFile(filepath.FromSlash(skillfs.SkillMD))
+	if err != nil {
+		return "", false
+	}
+	body := string(raw)
+	if !strings.HasPrefix(body, "---\n") {
+		return "", false
+	}
+	frontmatter, _, ok := strings.Cut(body[len("---\n"):], "\n---")
+	if !ok {
+		return "", false
+	}
+	for line := range strings.SplitSeq(frontmatter, "\n") {
+		key, value, found := strings.Cut(line, ":")
+		if found && strings.TrimSpace(key) == "stub_version" {
+			return strings.Trim(strings.TrimSpace(value), "\"'"), true
+		}
+	}
+	return "", false
 }
 
 func diffPlan(plan *Plan) ([]Diff, *core.RefusalError) {

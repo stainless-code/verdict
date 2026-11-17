@@ -48,12 +48,12 @@ func TestShowAndList(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("Show: %v", ref)
 	}
-	want, err := skillfs.Read(skillfs.SkillMD)
+	want, err := skillfs.Read(skillfs.ProcedureMD)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(body, want) {
-		t.Fatal("Show did not return the embedded SKILL.md")
+		t.Fatal("Show did not return the embedded PROCEDURE.md")
 	}
 	inv := listFiles(t)
 	if inv.Name != "verdict" || inv.Version != "1.2.3" {
@@ -66,6 +66,42 @@ func TestShowAndList(t *testing.T) {
 		if !slices.Contains(inv.Files, path) {
 			t.Errorf("inventory misses %s", path)
 		}
+	}
+}
+
+// TestInstallWritesOnlyTheStub pins the split: an install carries the three
+// Bootstrap skill files and the receipt, never the Procedure payload.
+func TestInstallWritesOnlyTheStub(t *testing.T) {
+	t.Parallel()
+	req := newRequest(t)
+	req.Dir = t.TempDir()
+	plan, ref := skill.Install(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("install: %v", ref)
+	}
+	wantFiles := []string{"NOTICE.md", "SKILL.md", "scripts/verdict"}
+	if !slices.Equal(plan.Files, wantFiles) {
+		t.Fatalf("install files = %v, want %v", plan.Files, wantFiles)
+	}
+	wantTree := []string{".verdict-managed", "NOTICE.md", "SKILL.md", "scripts/verdict"}
+	var got []string
+	err := filepath.WalkDir(filepath.Join(req.Dir, "verdict"), func(path string, entry os.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return err
+		}
+		rel, err := filepath.Rel(filepath.Join(req.Dir, "verdict"), path)
+		if err != nil {
+			return err
+		}
+		got = append(got, filepath.ToSlash(rel))
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	slices.Sort(got)
+	if !slices.Equal(got, wantTree) {
+		t.Fatalf("installed tree = %v, want %v", got, wantTree)
 	}
 }
 
@@ -383,7 +419,7 @@ func TestInstallRefusesUnwritablePayloadDir(t *testing.T) {
 	if err := os.WriteFile(drifted, []byte("stale"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	readOnly(t, filepath.Join(target, "prompts"))
+	readOnly(t, filepath.Join(target, "scripts"))
 
 	_, ref := skill.Install(context.Background(), req)
 	if ref == nil || ref.Code != "skill-install-failed" {

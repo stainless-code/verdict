@@ -27,23 +27,29 @@ assert_eq "empty diff list" "0" "$(jq -r '.data.diff // [] | length' <"$EVAL_OUT
 after="$(tree_hash "$TARGET")"
 assert_eq "status wrote nothing (tree hash unchanged)" "$before" "$after"
 
-printf 'hand edited\n' >"$TARGET/SKILL.md"
+printf 'hand edited\n' >"$TARGET/NOTICE.md"
+run_review skill status --dir "$SKILLS" --json
+assert_exit "a byte-only edit stays in sync" 0
+assert_json_field "byte-only edit status" "keep" '.data.status'
+
+stub_version="$(sed -n 's/^stub_version: //p' "$EVAL_SKILL/SKILL.md" | head -n 1)"
+sed "s/^stub_version: $stub_version$/stub_version: 2/" "$EVAL_SKILL/SKILL.md" >"$TARGET/SKILL.md"
 before="$(tree_hash "$TARGET")"
 run_review skill status --dir "$SKILLS" --diff --json
-assert_exit "a hand edit drifts (non-zero exit)" 1
+assert_exit "a stub_version edit drifts (non-zero exit)" 1
 assert_json_field "edited status" "update" '.data.status'
 assert_json_field "edited install is not in sync" "false" '.data.in_sync'
 assert_json_field "edited file is listed" "SKILL.md" '.data.diff[0].path'
 assert_json_field "small diff is not truncated" "false" '.data.diff[0].truncated'
 jq -r '.data.diff[0].diff' <"$EVAL_OUT" >"$EVAL_SANDBOX/diff.txt"
-assert_file_grep "the diff shows the removed hand edit" "$EVAL_SANDBOX/diff.txt" "-hand edited" "-F"
+assert_file_grep "the diff shows the installed stub_version" "$EVAL_SANDBOX/diff.txt" "-stub_version: 2" "-F"
 after="$(tree_hash "$TARGET")"
 assert_eq "status --diff wrote nothing (tree hash unchanged)" "$before" "$after"
 
 run_review skill status --dir "$SKILLS" --diff
 assert_exit "human status drift exits 1" 1
 assert_file_grep "human status names the drift" "$EVAL_OUT" "status: drift" "-F"
-assert_file_grep "human diff shows the edit" "$EVAL_OUT" "-hand edited" "-F"
+assert_file_grep "human diff shows the version" "$EVAL_OUT" "-stub_version: 2" "-F"
 
 FOREIGN="$EVAL_SANDBOX/foreign"
 mkdir -p "$FOREIGN/verdict"
