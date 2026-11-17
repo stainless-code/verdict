@@ -344,9 +344,9 @@ Fix: pass a comma-separated glob list (e.g. `src/*.ts`) together with `--rule`, 
 
 ## `bad-settings`
 
-Cause: the settings file is malformed (or carries an unknown placeholder).
+Cause: the settings file is malformed, carries an unknown placeholder, or names an invalid operator-defined agent under `agents` — an unknown key, a blank or relative binary, a name outside `[a-z0-9][a-z0-9-]*`, or a collision with a shipped agent.
 
-Fix: keep only `output/layout/color/publish/review/spend/privacy` keys (see `docs/manual.md`), then re-run.
+Fix: keep only `output/layout/color/publish/review/spend/privacy/packs/agents` keys, fix the named `$.agents.*` field (or choose a non-colliding name), then re-run. Agent definitions belong only in the prefs file, never in `.verdict/config.json` (see `docs/manual.md`).
 
 ## `bad-settings-credentials`
 

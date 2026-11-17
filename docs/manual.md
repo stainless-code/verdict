@@ -2142,19 +2142,75 @@ bundle's `.run.rounds/` files.
 
 `run --print` accepts only `--model`, `-m`, `--max-budget-usd`, `--max-cost`, and `--max-turns` with simple model identifiers or numeric values. Other arguments refuse printing; launch them directly. Credentials belong in the environment. Provenance hides arguments outside this allowlist. Missing agent binaries are checked before directive assembly and report an install step.
 
-Agent definitions are data: a name, a binary, and the non-interactive argument
-shape (`claude -p`, `codex exec`, `cursor-agent -p`, `opencode run`). Adding an
-agent is a new table row, not a new code path; the launcher branches on none of
-it. The argv it builds is
-`<binary> <agent flags> [<your arguments>...] <directive>`.
+Agent definitions are data: a name, a binary, the non-interactive argument
+shape, and optionally a flag that takes the directive as its value. The launcher
+branches on none of it. With no prompt flag the argv is
+`<binary> <agent flags> [<your arguments>...] <directive>`; with one it is
+`<binary> <agent flags> [<your arguments>...] <prompt flag> <directive>`, so a
+pass-through flag can never be swallowed as the prompt flag's value.
+`--print` renders the same bytes a launch spawns.
 
-| Piece              | Meaning                                                                                                                                             |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--agent <name>`   | Required. An unknown name refuses `unknown-agent` and lists the known ones.                                                                         |
-| `--timeout <secs>` | Watchdog budget, default `300` (the same default `verify` uses). `--timeout` is per round.                                                          |
-| `--rounds <n>`     | Total launch→check rounds, default `1` (today's one-shot), range 1–5. `-- <args>` passes through every round.                                       |
-| `-- <args>`        | Everything after the bare `--` goes to the agent unchanged: its own model, cost, and turn flags are yours.                                          |
-| `--print`          | Renders the exact command (POSIX-quoted) and exits `0` without spawning or writing. The escape hatch for harnesses that build their own invocation. |
+| Name       | Binary and agent flags           | Prompt placement | Official install                                               | Flag that lets it write the artifact                                                           | Source                                                                                                                         |
+| ---------- | -------------------------------- | ---------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `agy`      | `agy`                            | `-p <directive>` | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | `--dangerously-skip-permissions`, or `--mode accept-edits`                                     | [Antigravity CLI](https://github.com/google-antigravity/antigravity-cli)                                                       |
+| `amp`      | `amp`                            | `-x <directive>` | `npm install -g @ampcode/cli`                                  | none: tools run without an approval prompt by default                                          | [Amp execute mode](https://ampcode.com/docs/markdown/cli/execute-mode)                                                         |
+| `claude`   | `claude -p`                      | last argument    | `curl -fsSL https://claude.ai/install.sh \| bash`              | `--permission-mode acceptEdits`, `--allowedTools`, or `--dangerously-skip-permissions`         | [Claude CLI reference](https://code.claude.com/docs/en/cli-reference.md)                                                       |
+| `codex`    | `codex exec`                     | last argument    | `npm install -g @openai/codex`                                 | `--sandbox workspace-write` (the default sandbox is read-only)                                 | [Codex README](https://github.com/openai/codex/blob/main/README.md)                                                            |
+| `copilot`  | `copilot`                        | `-p <directive>` | `npm install -g @github/copilot`                               | `--allow-tool=write` or `--allow-all-tools`                                                    | [Copilot CLI automation](https://docs.github.com/en/copilot/how-tos/copilot-cli/automate-copilot-cli/run-cli-programmatically) |
+| `crush`    | `crush run`                      | last argument    | `brew install charmbracelet/tap/crush`                         | none: `run` auto-approves permission requests                                                  | [Crush run command](https://github.com/charmbracelet/crush/blob/main/internal/cmd/run.go)                                      |
+| `cursor`   | `cursor-agent -p`                | last argument    | `curl https://cursor.com/install -fsS \| bash`                 | none for workspace writes; `--force` for shell or writes outside the workspace                 | [Cursor headless](https://cursor.com/docs/cli/headless)                                                                        |
+| `droid`    | `droid exec`                     | last argument    | `curl -fsSL https://app.factory.ai/cli \| sh`                  | `--auto <level>`                                                                               | [Droid CLI reference](https://docs.factory.com/droid-cli/cli-reference.md)                                                     |
+| `gemini`   | `gemini`                         | `-p <directive>` | `npm install -g @google/gemini-cli`                            | `--approval-mode=auto_edit`, plus `--skip-trust` for an untrusted folder                       | [Gemini CLI README](https://github.com/google-gemini/gemini-cli/blob/main/README.md)                                           |
+| `goose`    | `goose run`                      | `-t <directive>` | `brew install block-goose-cli`                                 | none: autonomous mode is the default; `--model` usually needs `--provider` or `GOOSE_PROVIDER` | [Goose running tasks](https://github.com/aaif-goose/goose/blob/main/documentation/docs/guides/running-tasks.md)                |
+| `kiro`     | `kiro-cli chat --no-interactive` | last argument    | `curl -fsSL https://cli.kiro.dev/install \| bash`              | `--trust-all-tools`; name `--v2` or `--v3` yourself so the harness stays explicit              | [Kiro headless](https://kiro.dev/docs/cli/headless.md)                                                                         |
+| `opencode` | `opencode run`                   | last argument    | `npm install -g @opencode/cli`                                 | `--auto` when custom ask rules or `.env` reads could block                                     | [OpenCode CLI](https://opencode.ai/docs/cli/)                                                                                  |
+| `pi`       | `pi -p`                          | last argument    | `curl -fsSL https://pi.dev/install.sh \| sh`                   | none: tools are enabled by default; `--tools` narrows the allowlist                            | [Pi quickstart](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/quickstart.md)                        |
+| `qwen`     | `qwen`                           | last argument    | `npm install -g @qwen-code/qwen-code@latest`                   | `--approval-mode=yolo` in a trusted folder                                                     | [Qwen top-level options](https://github.com/QwenLM/qwen-code/blob/main/packages/cli/src/config/top-level-options.ts)           |
+
+Permission and approval flags are yours to pass after `--`, never baked into a
+row. Gemini CLI's maintained scope is Enterprise and Code Assist; free, Pro,
+and Ultra subscriptions use `agy`. Qwen Code's positional prompt is the
+supported one-shot form (`-p` is deprecated). `cursor` keeps `cursor-agent`
+because that is the binary its installer still puts on `PATH`.
+
+Aider is deliberately absent. Its positional arguments are files to edit, not
+a prompt, so it cannot read a verdict bundle with its own tools; it also
+auto-commits by default. An operator can still define it below.
+
+#### Operator-defined agents
+
+Names can also come from your own settings file,
+`${XDG_CONFIG_HOME:-$HOME/.config}/verdict/settings.json`, under a ninth
+top-level key `agents`:
+
+```json
+{
+  "agents": {
+    "local": {
+      "binary": "local-agent",
+      "args": ["exec"],
+      "prompt_flag": "-p",
+      "model_flag": "--model",
+      "install": "brew install local-agent"
+    }
+  }
+}
+```
+
+`binary` is required and is either a name resolved on `PATH` or an absolute
+path; `args` defaults to `[]`, and the other three fields are optional strings.
+A name matches `[a-z0-9][a-z0-9-]*` and must not collide with a shipped row.
+Unknown keys at any level, a blank binary, a relative binary containing a path
+separator, a bad name, and a collision all refuse `bad-settings` naming the
+path. The file is prefs-only: a repository `.verdict/config.json` carrying an
+`agents` key refuses `bad-config` from the typed config parser, and a PR cannot
+define an agent. The settings parser owns the same closed shape.
+
+A defined agent behaves like any shipped row: its own flags come first, your
+`-- <args>` follow, and the directive comes last (or directly after its
+`prompt_flag`). `unknown-agent` lists both groups with labels. `launcher.json`
+records `agent_source: "prefs"` so provenance says where the definition came
+from.
 
 ### Recipes (declared review pipelines)
 
@@ -2504,8 +2560,10 @@ The prefs file ends env sprawl without forcing migration. Path:
 respected, `$schema` key carries a schema hint that is never fetched).
 The file carries the four presentation namespaces below plus the typed personal
 layer (`review`, `spend`, `privacy`) described under "Typed repository
-configuration" above, so it accepts eight top-level keys in total: `$schema`, `output`,
-`layout`, `color`, `publish`, `review`, `spend`, `privacy`. Anything else —
+configuration" above, operator-defined agents under `agents`, and the org pack
+list under `packs`, so it accepts ten top-level keys in total: `$schema`,
+`output`, `layout`, `color`, `publish`, `review`, `spend`, `privacy`, `packs`,
+`agents`. Anything else —
 server-shaped or `org.*` keys included — refuses typed `bad-settings`. The
 presentation sample:
 
