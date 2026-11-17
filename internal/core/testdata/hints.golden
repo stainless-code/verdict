@@ -166,7 +166,7 @@ panel-stale	try: re-run verification/dispatch.md against the current bundle head
 panel-too-large	try: narrow the review or roster (100 findings, 4 verifiers maximum), then re-run panel
 partial-clone	try: re-clone without --filter=blob:none, then re-run
 post-failed	try: narrow anchor drift or body size (see above), then re-run
-post-secret-shaped	try: remove the value from review.json and re-run, or pass --allow-secret-values to publish it anyway
+post-secret-shaped	try: remove the value from the draft and re-run; post can pass --allow-secret-values to publish it anyway
 pr-not-open	try: re-fetch the PR (bundle may be stale)
 pr-read-failed	try: run 'gh auth status', confirm the repo/PR spelling, then re-run
 privacy-unavailable	try: address the cause above, then re-run the same command
