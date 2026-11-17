@@ -20,7 +20,9 @@ case "$*" in
     printf '%s' '{"isDraft":false,"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","body":"A long enough description for the readiness check to pass without a blocker.","state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}' ;;
   *"pr checks"*) printf '%s' '[]' ;;
   *"graphql"*) printf '%s' '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}' ;;
-  *) echo "trigger-eval: unhandled gh call ($*)" >&2; exit 1 ;;
+  *) echo "trigger-eval: unhandled gh call ($*)" >&2
+     echo "unhandled gh call ($*)" >> "${EVAL_STUBLOG:-/dev/null}"
+     exit 1 ;;
 esac
 EOF
 chmod +x "$EVAL_STUBBIN/gh"
