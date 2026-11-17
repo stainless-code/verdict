@@ -10,9 +10,7 @@ import (
 	"github.com/stainless-code/verdict/internal/storelock"
 )
 
-// AppendLedger records one successful reply under the store lock. A crash
-// after a host write but before this call is the only unrecorded window; once
-// the entry lands, the next drain reads it and makes no second host write.
+// AppendLedger records one successful reply under the store lock.
 func AppendLedger(path string, entry *LedgerEntry) error {
 	unlock, err := storelock.Acquire(path, storelock.DefaultWait)
 	if err != nil {
@@ -34,8 +32,6 @@ func AppendLedger(path string, entry *LedgerEntry) error {
 	return nil
 }
 
-// readLedger reads the shared address-reviews ledger. An absent file is an
-// empty one; a corrupt file refuses instead of being read as nobody replied.
 func readLedger(path string) ([]LedgerEntry, error) {
 	raw, err := jq.CappedFile(path, jq.MaxPRBytes)
 	if err != nil {

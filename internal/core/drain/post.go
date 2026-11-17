@@ -16,8 +16,7 @@ import (
 // plan was made: the agent answered a question that is no longer the last one.
 const ReasonStaleThread = "stale-thread"
 
-// PostRequest carries one post run. The write callbacks are injected so the
-// ordering and the idempotency rules can be tested without a host.
+// PostRequest carries one post run.
 type PostRequest struct {
 	Plan      *File
 	Feed      *threadscore.File
@@ -38,6 +37,34 @@ type PostResult struct {
 	Posted     []Posted
 	Failed     []Failed
 	Incomplete bool
+}
+
+// ValidatePostDrafts runs the local §6 preflight gates without mutating plan:
+// missing/invalid/stale drafts, ThreadReply capability, and secret scan.
+func ValidatePostDrafts(plan *File, draftsRaw []byte, provider string) (*RepliesFile, *Drafts, []Skip, *core.RefusalError) {
+	if plan == nil {
+		return nil, nil, nil, &core.RefusalError{Code: CodeDrainFailed, Message: "drain-failed: no plan to post against"}
+	}
+	if len(bytes.TrimSpace(draftsRaw)) == 0 {
+		return nil, nil, nil, invalid("root", "no drafts; run drain --agent <name> first")
+	}
+	summary, noDraftsSkips, ref := CheckDrafts(draftsRaw, plan)
+	if ref != nil {
+		return nil, nil, nil, ref
+	}
+	caps := core.CapabilitiesFor(provider)
+	if !caps.ThreadReply {
+		return nil, nil, nil, &core.RefusalError{Code: "provider-unimplemented", Message: fmt.Sprintf(
+			"thread replies on %s are not implemented (%s)", provider, caps.ThreadReplyReason())}
+	}
+	var doc RepliesFile
+	if err := json.Unmarshal(draftsRaw, &doc); err != nil {
+		return nil, nil, nil, invalid("root", err.Error())
+	}
+	if ref := secretGate(doc.Replies); ref != nil {
+		return nil, nil, nil, ref
+	}
+	return &doc, summary, noDraftsSkips, nil
 }
 
 // Post runs §6's gates in order, then posts each draft and records one ledger
@@ -62,33 +89,33 @@ func Post(req *PostRequest) (*PostResult, *core.RefusalError) {
 	return res, nil
 }
 
-// postDrafts runs §6's first gates: drafts, capability, then secret scan.
 func postDrafts(req *PostRequest) (*RepliesFile, *core.RefusalError) {
 	if req.Plan == nil || req.Feed == nil {
 		return nil, &core.RefusalError{Code: CodeDrainFailed, Message: "drain-failed: no plan or thread feed to post against"}
 	}
-	if len(bytes.TrimSpace(req.DraftsRaw)) == 0 {
-		return nil, invalid("root", "no drafts; run drain --agent <name> first")
-	}
-	summary, noDraftsSkips, ref := CheckDrafts(req.DraftsRaw, req.Plan)
+	doc, summary, noDraftsSkips, ref := ValidatePostDrafts(req.Plan, req.DraftsRaw, req.Provider)
 	if ref != nil {
 		return nil, ref
 	}
 	req.Plan.Drafts = summary
-	req.Plan.Skipped = append(req.Plan.Skipped, noDraftsSkips...)
-	caps := core.CapabilitiesFor(req.Provider)
-	if !caps.ThreadReply {
-		return nil, &core.RefusalError{Code: "provider-unimplemented", Message: fmt.Sprintf(
-			"thread replies on %s are not implemented (%s)", req.Provider, caps.ThreadReplyReason())}
+	req.Plan.Skipped = appendUniqueSkips(req.Plan.Skipped, noDraftsSkips)
+	return doc, nil
+}
+
+func appendUniqueSkips(existing, extra []Skip) []Skip {
+	for _, s := range extra {
+		dup := false
+		for _, prev := range existing {
+			if prev.ThreadID == s.ThreadID && prev.Reason == s.Reason {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			existing = append(existing, s)
+		}
 	}
-	var doc RepliesFile
-	if err := json.Unmarshal(req.DraftsRaw, &doc); err != nil {
-		return nil, invalid("root", err.Error())
-	}
-	if ref := secretGate(doc.Replies); ref != nil {
-		return nil, ref
-	}
-	return &doc, nil
+	return existing
 }
 
 func postThreads(feed *threadscore.File) map[string]*threadscore.Thread {
@@ -127,36 +154,34 @@ func postOne(req *PostRequest, byID map[string]*threadscore.Thread, reply Reply,
 		res.Failed = append(res.Failed, Failed{ThreadID: reply.ThreadID, Reason: err.Error()})
 		return
 	}
-	res.Posted = append(res.Posted, recordPost(req, thread, reply, id, res))
+	if posted, ok := recordPost(req, thread, reply, id, res); ok {
+		res.Posted = append(res.Posted, posted)
+	}
 }
 
-// recordPost appends the ledger entry immediately after one successful write,
-// then resolves a withdraw and marks the feed. A failure is recorded but never
-// rolls back the reply already on the host.
-func recordPost(req *PostRequest, thread *threadscore.Thread, reply Reply, id string, res *PostResult) Posted {
+func recordPost(req *PostRequest, thread *threadscore.Thread, reply Reply, id string, res *PostResult) (Posted, bool) {
 	entry := LedgerEntry{
 		Thread: reply.ThreadID, ReplyID: id, At: req.At,
 		InReplyTo: reply.WaitingCommentID, By: ReplyBy,
 	}
 	if err := req.Append(&entry); err != nil {
 		res.Failed = append(res.Failed, Failed{ThreadID: reply.ThreadID, Reason: "could not record reply: " + err.Error()})
-		return Posted{}
+		return Posted{}, false
 	}
 	req.Ledger = append(req.Ledger, entry)
 	posted := Posted{ThreadID: reply.ThreadID, ReplyID: id, Disposition: string(reply.Disposition)}
 	if reply.Disposition != DispositionWithdraw {
-		return posted
+		return posted, true
 	}
 	if err := req.Resolve(reply.ThreadID); err != nil {
 		res.Failed = append(res.Failed, Failed{ThreadID: reply.ThreadID, Reason: "could not resolve thread: " + err.Error()})
-		return posted
+		return posted, true
 	}
 	thread.Resolved = true
 	posted.Resolved = true
-	return posted
+	return posted, true
 }
 
-// postSkipReason returns the typed reason a refreshed thread must not post.
 func postSkipReason(req *PostRequest, reply Reply, thread *threadscore.Thread, last *threadscore.Comment) string {
 	switch {
 	case thread.Resolved:
@@ -172,8 +197,6 @@ func postSkipReason(req *PostRequest, reply Reply, thread *threadscore.Thread, l
 	}
 }
 
-// secretGate scans every outbound body before the first write and names the
-// draft site. There is no override on drain: a posted reply cannot be unsent.
 func secretGate(replies []Reply) *core.RefusalError {
 	for i, reply := range replies {
 		if reply.Disposition == DispositionDefer {

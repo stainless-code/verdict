@@ -269,3 +269,67 @@ func TestPostRefusesUnsupportedHost(t *testing.T) {
 		t.Error("unsupported host made a write")
 	}
 }
+
+func TestPostAppendFailureRecordsFailedWithoutEmptyPosted(t *testing.T) {
+	req, calls, _ := postFixture(t, nil)
+	req.Append = func(entry *LedgerEntry) error {
+		if entry.Thread == "PRRT_2" {
+			return errors.New("disk full")
+		}
+		return nil
+	}
+	res, ref := Post(req)
+	if ref != nil {
+		t.Fatalf("Post refused: %+v", ref)
+	}
+	if !res.Incomplete || len(res.Posted) != 2 || len(res.Failed) != 1 {
+		t.Fatalf("result = %+v, want 2 posted, 1 failed, incomplete", res)
+	}
+	for _, p := range res.Posted {
+		if p.ThreadID == "" {
+			t.Errorf("empty Posted entry recorded on append failure: %+v", res.Posted)
+		}
+	}
+	if res.Failed[0].ThreadID != "PRRT_2" || !strings.Contains(res.Failed[0].Reason, "disk full") {
+		t.Errorf("failed = %+v, want PRRT_2 disk full", res.Failed)
+	}
+	if len(*calls) != 3 {
+		t.Errorf("calls = %d, want 3", len(*calls))
+	}
+}
+
+func TestValidatePostDraftsDoesNotMutatePlanOrDuplicateSkips(t *testing.T) {
+	req, _, _ := postFixture(t, nil)
+	raw, err := json.Marshal(RepliesFile{
+		SchemaVersion: SchemaVersion,
+		PlanDigest:    req.Plan.PlanDigest,
+		Replies: []Reply{
+			{ThreadID: "PRRT_1", WaitingCommentID: "101", Disposition: DispositionAnswer, Body: "Answer one."},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.DraftsRaw = raw
+	doc, summary, skips, ref := ValidatePostDrafts(req.Plan, req.DraftsRaw, "github")
+	if ref != nil || doc == nil || summary.Count != 1 || len(skips) != 2 {
+		t.Fatalf("ValidatePostDrafts = (%v, %+v, %+v, %+v)", doc, summary, skips, ref)
+	}
+	if req.Plan.Drafts != nil || len(req.Plan.Skipped) != 0 {
+		t.Fatalf("ValidatePostDrafts mutated plan: %+v", req.Plan)
+	}
+	req.Plan.Skipped = append(req.Plan.Skipped, skips...)
+	res, ref := Post(req)
+	if ref != nil || len(res.Posted) != 1 {
+		t.Fatalf("Post = (%+v, %+v)", res, ref)
+	}
+	noDraftCount := 0
+	for _, s := range req.Plan.Skipped {
+		if s.Reason == ReasonNoDraft {
+			noDraftCount++
+		}
+	}
+	if noDraftCount != 2 {
+		t.Errorf("no-draft skips = %d, want 2 (no duplicates): %+v", noDraftCount, req.Plan.Skipped)
+	}
+}
