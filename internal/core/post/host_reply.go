@@ -9,8 +9,6 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// replyThread posts one drain reply on GitHub as a direct reply to the root
-// comment. The body is one -f field, never part of a shell command.
 func (githubHost) replyThread(ctx context.Context, cmdr Commander, _ map[string]string,
 	repo, pr, rootID, _, body string,
 ) (string, error) {
@@ -30,9 +28,6 @@ func (githubHost) replyThread(ctx context.Context, cmdr Commander, _ map[string]
 	return replyID(res.Stdout)
 }
 
-// replyThread posts one drain reply as a GitLab discussion note. Like the
-// other GitLab writes, the JSON body arrives on stdin with the content type
-// pinned on argv.
 func (gitlabHost) replyThread(ctx context.Context, cmdr Commander, _ map[string]string,
 	repo, pr, _, threadID, body string,
 ) (string, error) {
@@ -53,8 +48,6 @@ func (gitlabHost) replyThread(ctx context.Context, cmdr Commander, _ map[string]
 	return replyID(res.Stdout)
 }
 
-// replyID reads the new note id from a host reply. Both hosts accept a number
-// or a string; a reply the host did not identify cannot enter the ledger.
 func replyID(stdout string) (string, error) {
 	doc, err := jq.Decode([]byte(stdout))
 	if err != nil {

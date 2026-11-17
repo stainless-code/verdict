@@ -311,11 +311,8 @@ const summaryMarkerFormat = "<!-- verdict-summary head=%s -->"
 // distinct from both finding and review markers.
 var summaryMarkerRe = regexp.MustCompile(`^<!-- verdict-summary head=[0-9a-f]{0,40} -->$`)
 
-// replyMarkerFormat is the hidden final line drain appends to a posted reply.
-// It binds the reply to the thread and the waiting comment it answers.
 const replyMarkerFormat = "<!-- verdict-reply thread=%s to=%s -->"
 
-// replyMarkerRe reads only a final line whose ids carry no whitespace.
 var replyMarkerRe = regexp.MustCompile(`^<!-- verdict-reply thread=([^[:space:]]+) to=([^[:space:]]+) -->$`)
 
 // SummaryMarker renders the hidden final line of a PR-level summary comment.

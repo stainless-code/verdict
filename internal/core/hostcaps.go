@@ -71,8 +71,7 @@ const (
 	// it has no documented resolve endpoint, so resolution stays a manual
 	// host/CLI step there.
 	reasonNoResolveMutation = "no-resolve-mutation"
-	// reasonNoThreadReply names a posting host with no reply endpoint.
-	reasonNoThreadReply = "no-thread-reply"
+	reasonNoThreadReply     = "no-thread-reply"
 )
 
 // CapabilityGap is one absent capability and the code that says why.

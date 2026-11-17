@@ -39,8 +39,6 @@ type hostResolver interface {
 		repo, pr, threadID string) error
 }
 
-// hostReplier is the reply half: the one call that answers a waiting comment
-// in a thread verdict authored. Only hosts with a reply endpoint get one.
 type hostReplier interface {
 	replyThread(ctx context.Context, cmdr Commander, env map[string]string,
 		repo, pr, rootID, threadID, body string) (string, error)
@@ -64,8 +62,6 @@ func hostFor(provider string) (hostWriter, hostReader, hostResolver) {
 	}
 }
 
-// replierFor is post mode's only reply-provider switch. A host with no reply
-// endpoint gets nil, and the capability gate refuses before a call is built.
 func replierFor(provider string) hostReplier {
 	switch provider {
 	case providerGitHub:
