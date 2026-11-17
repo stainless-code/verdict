@@ -66,6 +66,9 @@ case "${DRAIN_AGENT_MODE:-}" in
   bad-key) digest="$(jq -r .plan_digest "$DIR/drain.json")";
     jq -n --arg digest "$digest" '{schema_version:"1",plan_digest:$digest,replies:[{thread_id:"PRRT_1",waiting_comment_id:"102",disposition:"answer",body:"answer",extra:true}]}' >"$DIR/drain.replies.json";;
   stale) jq -n '{schema_version:"1",plan_digest:"old",replies:[]}' >"$DIR/drain.replies.json";;
+  secret) digest="$(jq -r .plan_digest "$DIR/drain.json")";
+    jq -n --arg digest "$digest" '{schema_version:"1",plan_digest:$digest,replies:[
+      {thread_id:"PRRT_1",waiting_comment_id:"102",disposition:"answer",body:"key AKIAIOSFODNN7EXAMPLE"}]}' >"$DIR/drain.replies.json";;
 esac
 exit 0
 AGENT
@@ -106,13 +109,28 @@ else
   bad "R3 truncated feed rewrote drain.json"
 fi
 
-STUBLOG_BEFORE="$(wc -c <"$EVAL_STUBLOG")"
+export DRAIN_PAGE="$EVAL_SANDBOX/page.json" DRAIN_CURSOR=
+rm -f "$DIR/drain.replies.json"
+DRAIN_AGENT_MODE=secret run_review drain acme/app 7 --agent claude --json
+WRITES_BEFORE="$(grep -Ec 'POST|mutation' "$EVAL_STUBLOG" || true)"
 run_review drain acme/app 7 --post --json
-if [ "$EVAL_STATUS" -eq 2 ] && grep -q "unknown flag '--post'" "$EVAL_ERR" \
-  && [ "$(wc -c <"$EVAL_STUBLOG")" = "$STUBLOG_BEFORE" ]; then
-  good "R4 --post is an unknown flag and touches no host before refusal"
+WRITES_AFTER="$(grep -Ec 'POST|mutation' "$EVAL_STUBLOG" || true)"
+if [ "$EVAL_STATUS" -eq 1 ] && jq -e '.error.code == "post-secret-shaped"' <"$EVAL_OUT" >/dev/null \
+  && [ "$WRITES_BEFORE" = "$WRITES_AFTER" ]; then
+  good "R4 a secret-shaped reply refuses post-secret-shaped with zero writes"
 else
-  bad "R4 --post: exit $EVAL_STATUS $(head -c 300 "$EVAL_ERR") log: $(cat "$EVAL_STUBLOG")"
+  bad "R4 secret body: exit $EVAL_STATUS $(head -c 400 "$EVAL_OUT") log: $(cat "$EVAL_STUBLOG")"
+fi
+
+jq '.provider = "forgejo"' "$DIR/drain.json" >"$EVAL_SANDBOX/forgejo-plan.json"
+cp "$EVAL_SANDBOX/forgejo-plan.json" "$DIR/drain.json"
+STUBLOG_BEFORE="$(wc -c <"$EVAL_STUBLOG")"
+run_review drain acme/app 7 --provider forgejo --post --json
+if [ "$EVAL_STATUS" -eq 1 ] && jq -e '.error.code == "provider-unimplemented"' <"$EVAL_OUT" >/dev/null \
+  && [ "$(wc -c <"$EVAL_STUBLOG")" = "$STUBLOG_BEFORE" ]; then
+  good "R5 Forgejo --post refuses provider-unimplemented before any read"
+else
+  bad "R5 Forgejo post: exit $EVAL_STATUS $(head -c 400 "$EVAL_OUT") log: $(cat "$EVAL_STUBLOG")"
 fi
 awk '/^stub-gh /' "$EVAL_STUBLOG" >"$EVAL_SANDBOX/gh-log"
 if matches 'unhandled gh call' "$EVAL_STUBLOG" || matches -Eqi 'mutation|POST|PATCH|DELETE' "$EVAL_SANDBOX/gh-log"; then

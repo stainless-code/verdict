@@ -96,6 +96,7 @@ download-failed	try: address the cause above, then re-run the same command
 drafts-invalid	try: fix the named site in drain.replies.json, then re-run drain --agent
 drafts-stale	try: re-run drain for a fresh plan, then draft against its new plan_digest
 drain-failed	try: refresh threads, confirm host auth, then re-run drain
+drain-incomplete	try: re-run the same drain --post command; the ledger skips replies already posted
 duplicate-payload	try: re-run with --force to repost the identical payload — re-fetch if the earlier review was deleted
 fetch-failed	try: run 'gh auth status', confirm the repo/PR spelling, then re-run
 filtered-out	try: remove --filter to review every PR, or change the trigger at the PR base and re-fetch
@@ -165,7 +166,7 @@ panel-stale	try: re-run verification/dispatch.md against the current bundle head
 panel-too-large	try: narrow the review or roster (100 findings, 4 verifiers maximum), then re-run panel
 partial-clone	try: re-clone without --filter=blob:none, then re-run
 post-failed	try: narrow anchor drift or body size (see above), then re-run
-post-secret-shaped	try: remove the value from review.json and re-run, or pass --allow-secret-values to publish it anyway
+post-secret-shaped	try: remove the value from the draft and re-run; post can pass --allow-secret-values to publish it anyway
 pr-not-open	try: re-fetch the PR (bundle may be stale)
 pr-read-failed	try: run 'gh auth status', confirm the repo/PR spelling, then re-run
 privacy-unavailable	try: address the cause above, then re-run the same command

@@ -14,11 +14,11 @@ func TestCapabilityTable(t *testing.T) {
 		"github": {
 			Provider: "github", Fetch: true, Post: true, InlineAnchors: true,
 			Approve: true, RequestChanges: true, ReviewVerdicts: true,
-			ThreadResolution: true,
+			ThreadResolution: true, ThreadReply: true,
 		},
 		"gitlab": {
 			Provider: "gitlab", Fetch: true, Post: true, InlineAnchors: true,
-			Approve: true, ThreadResolution: true,
+			Approve: true, ThreadResolution: true, ThreadReply: true,
 		},
 		"gitcafe": {Provider: "gitcafe", Fetch: true},
 		"forgejo": {
@@ -44,6 +44,29 @@ func TestCapabilityTable(t *testing.T) {
 	for provider, caps := range want {
 		if gotCaps := CapabilitiesFor(provider); gotCaps != caps {
 			t.Errorf("CapabilitiesFor(%q) = %+v, want %+v", provider, gotCaps, caps)
+		}
+	}
+}
+
+// TestThreadReplyCapability pins the two hosts that carry drain's reply call.
+// A third host advertising it would let post mode aim a write at a host with
+// no endpoint for it.
+func TestThreadReplyCapability(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		provider string
+		want     bool
+	}{
+		{provider: "github", want: true},
+		{provider: "gitlab", want: true},
+		{provider: "forgejo", want: false},
+		{provider: "gitcafe", want: false},
+		{provider: "bitbucket", want: false},
+		{provider: "azure", want: false},
+		{provider: "codeberg", want: false},
+	} {
+		if got := CapabilitiesFor(tc.provider).ThreadReply; got != tc.want {
+			t.Errorf("%s: ThreadReply = %v, want %v", tc.provider, got, tc.want)
 		}
 	}
 }

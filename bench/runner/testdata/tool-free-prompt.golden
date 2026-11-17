@@ -105,10 +105,11 @@ after 3 rounds, stop and report them rather than recording a partial review.
 PR fetch for posting. Downstream verbs address the bundle as `local-work`.
 
 Never call `triage` — propose status changes via `triage[]` in `review.json`.
-The operator's own reads between runs: `triage` (status changes), `report`
-(ranked read), `threads` (refresh the PR conversation feed), `calibrate`
-(predictions vs ground truth), and `fix` (one bounded verify-gated pass over a
-local bundle — prints the finding plus land instructions).
+The operator's own verbs between runs: `triage` (status changes), `report`
+(ranked read), `threads` (refresh the PR conversation feed), `drain` (plan and
+post replies to waiting threads), `calibrate` (predictions vs ground truth), and
+`fix` (one bounded verify-gated pass over a local bundle — prints the finding
+plus land instructions).
 
 Delta re-review: `verdict fetch owner/repo 123 --base-sha <prior-reviewed-sha>`,
 then load `prompts/incremental-review.md` instead of `prompts/review.md`.
@@ -117,17 +118,18 @@ and you fall back to the full diff.
 
 ## Mode router
 
-| Ask                                        | Load                                       | Terminal write                                           |
-| ------------------------------------------ | ------------------------------------------ | -------------------------------------------------------- |
-| Review a PR                                | `prompts/review.md`                        | one review                                               |
-| Review local changes (no PR)               | `prompts/review.md` + `source.json` bundle | `record`, then `report` — never `post`                   |
-| New commits landed                         | `prompts/incremental-review.md`            | one review OR no-review note                             |
-| Address review threads                     | `prompts/address-reviews.md`               | commit/push + one reply per thread                       |
-| Fix failing CI                             | `prompts/fix-ci.md`                        | commit/push + summary                                    |
-| Implement / build                          | `prompts/build.md`                         | commit/push + PR link                                    |
-| Draft a review report without posting      | `prompts/ci.md`                            | report markdown file, no post                            |
-| Grade closed findings (self-grading probe) | `prompts/grade.md`                         | grade rows + agent judgments (additive) + agreement rate |
-| Anything else                              | `prompts/system.md` + task text            | summary stdout                                           |
+| Ask                                        | Load                                       | Terminal write                                                  |
+| ------------------------------------------ | ------------------------------------------ | --------------------------------------------------------------- |
+| Review a PR                                | `prompts/review.md`                        | one review                                                      |
+| Review local changes (no PR)               | `prompts/review.md` + `source.json` bundle | `record`, then `report` — never `post`                          |
+| New commits landed                         | `prompts/incremental-review.md`            | one review OR no-review note                                    |
+| Address review threads                     | `prompts/address-reviews.md`               | commit/push + one reply per thread; reply-only passes use drain |
+| Answer pending review-thread replies       | `prompts/address-reviews.md`               | `verdict drain owner/repo N --agent <name> --post`              |
+| Fix failing CI                             | `prompts/fix-ci.md`                        | commit/push + summary                                           |
+| Implement / build                          | `prompts/build.md`                         | commit/push + PR link                                           |
+| Draft a review report without posting      | `prompts/ci.md`                            | report markdown file, no post                                   |
+| Grade closed findings (self-grading probe) | `prompts/grade.md`                         | grade rows + agent judgments (additive) + agreement rate        |
+| Anything else                              | `prompts/system.md` + task text            | summary stdout                                                  |
 
 `prompts/system.md` loads on every run. `prompts/reviewer-subagent.md` is the
 contract for lens subagents the Review modes dispatch — the orchestrator reads it

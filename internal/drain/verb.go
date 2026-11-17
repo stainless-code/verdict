@@ -28,7 +28,7 @@ import (
 
 const (
 	verbDrain  = "drain"
-	wantFlags  = "--provider <name>, --max-threads <1-100>, --agent <name>, --timeout <secs>, -- <agent args>, --json"
+	wantFlags  = "--provider <name>, --max-threads <1-100>, --agent <name>, --timeout <secs>, --post, -- <agent args>, --json"
 	defaultMax = "20"
 	pathSep    = "/"
 )
@@ -42,30 +42,136 @@ type flags struct {
 	agent    string
 	timeout  string
 	pass     []string
+	post     bool
 }
 
 // Run executes `drain <owner/repo> <pr> [--provider <p>] [--max-threads <n>]
-// [--agent <name> [--timeout <s>] [-- <agent args>]] [--json]`. It refreshes
-// threads through the same service the threads verb uses, then writes one
-// plan; there is no host write and no --post in this build.
+// [--agent <name> [--timeout <s>] [-- <agent args>]] [--post] [--json]`. Plan
+// and draft modes never write to the host; --agent --post plans, drafts,
+// validates, and posts in one run; --post alone validates existing drafts
+// locally before any host read.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
-	r.Repo, r.Pr = req.Repo, req.Pr
-	fl, code, done := parseFlags(r, args)
+	r.Cmd, r.Repo, r.Pr = verbDrain, req.Repo, req.Pr
+	fl, limit, code, done := parseRunArgs(ctx, r, args, req)
 	if done {
 		return code
 	}
+	if fl.agent != "" || !fl.post {
+		return runPlanAndMaybePost(ctx, r, req, fl, limit)
+	}
+	return postMode(ctx, r, req, fl)
+}
+
+func parseRunArgs(ctx context.Context, r *cli.Runner, args []string, req Request) (*flags, int, int, bool) {
+	fl, code, done := parseFlags(r, args)
+	if done {
+		return nil, 0, code, true
+	}
 	r.RouteHuman()
 	if code, done := r.Canceled(ctx, verbDrain); done {
-		return code
+		return nil, 0, code, true
 	}
 	if ref := preflight(req); ref != nil {
-		return r.Refuse(ref)
+		return nil, 0, r.Refuse(ref), true
 	}
+	limit, code, done := parseLimit(r, fl.max)
+	if done {
+		return nil, 0, code, true
+	}
+	if ref := checkPostProviderCap(fl); ref != nil {
+		return nil, 0, r.Refuse(ref), true
+	}
+	return fl, limit, 0, false
+}
+
+func checkPostProviderCap(fl *flags) *core.RefusalError {
+	if fl.post && fl.provider != "" {
+		return checkThreadReplyCap(fl.provider)
+	}
+	return nil
+}
+
+func runPlanAndMaybePost(ctx context.Context, r *cli.Runner, req Request, fl *flags, limit int) int {
+	dir, plan, code, done := buildPlan(ctx, r, req, fl, limit)
+	if done {
+		return code
+	}
+	if fl.agent != "" && len(plan.Pending) > 0 {
+		if code, done := draft(ctx, r, req, fl, dir, plan); done {
+			return code
+		}
+	}
+	if fl.post && len(plan.Pending) > 0 {
+		return postMode(ctx, r, req, fl)
+	}
+	return finishPlan(r, req, fl, dir, plan)
+}
+
+func buildPlan(ctx context.Context, r *cli.Runner, req Request, fl *flags, limit int) (string, *draincore.File, int, bool) {
 	resp, ref := fetchcore.RunThreads(ctx, refreshRequest(r, req, fl))
 	if ref != nil {
-		return r.Refuse(drainFailed(ref.Message))
+		return "", nil, r.Refuse(drainFailed(ref.Message)), true
 	}
-	return finish(ctx, r, req, fl, resp)
+	r.Warnings = resp.Warnings
+	if fl.post {
+		if ref := checkThreadReplyCap(resp.Data.Provider); ref != nil {
+			return "", nil, r.Refuse(ref), true
+		}
+	}
+	in, ref := readInputs(ctx, req, resp)
+	if ref != nil {
+		return "", nil, r.Refuse(ref), true
+	}
+	plan, _ := draincore.NewPlan(resp.Data.Provider, threadscore.PRNumber(req.Pr), resp.Data.HeadSHA,
+		req.TimeUTC(), in.self, in.feed, in.ledger, limit)
+	if err := draincore.WritePlan(in.dir+pathSep+draincore.KeyPlanJSON, plan); err != nil {
+		return "", nil, r.Refuse(drainFailed(fmt.Sprintf("could not write %s/%s: %v", in.dir, draincore.KeyPlanJSON, err))), true
+	}
+	return in.dir, plan, 0, false
+}
+
+func finishPlan(r *cli.Runner, req Request, fl *flags, dir string, plan *draincore.File) int {
+	nextText := next(req, fl)
+	if fl.post {
+		nextText = postSuccessNext(req)
+	}
+	fmt.Fprintf(r.Human, "» %d pending, %d skipped -> %s/%s\n", len(plan.Pending), len(plan.Skipped), dir, draincore.KeyPlanJSON)
+	if r.JSONMode {
+		env := core.RenderEnvelope(verbDrain, req.Repo, req.Pr, core.NowUTC(r.Now()), nextText,
+			r.Warnings, plan.Wire(), nil)
+		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+	}
+	return cli.ExitOK
+}
+
+type planInputs struct {
+	dir    string
+	feed   *threadscore.File
+	self   string
+	ledger []draincore.LedgerEntry
+}
+
+func readInputs(ctx context.Context, req Request, resp *fetchcore.ThreadsResponse) (*planInputs, *core.RefusalError) {
+	dir, ref := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
+	if ref != nil {
+		return nil, drainFailed(ref.Message)
+	}
+	feed, err := threadscore.ReadFile(dir + pathSep + threadscore.KeyThreadsJSON)
+	if err != nil {
+		return nil, drainFailed(fmt.Sprintf("unreadable %s/threads.json: %v", dir, err))
+	}
+	if resp.Data.Truncated || feed.Truncated {
+		return nil, drainFailed(dir + "/threads.json is truncated — refresh threads before draining")
+	}
+	self, ref := selfLogin(ctx, req, resp.Data.Provider)
+	if ref != nil {
+		return nil, ref
+	}
+	ledger, err := ReadLedger(dir + pathSep + draincore.KeyLedgerJSON)
+	if err != nil {
+		return nil, drainFailed(err.Error())
+	}
+	return &planInputs{dir: dir, feed: feed, self: self, ledger: ledger}, nil
 }
 
 func preflight(req Request) *core.RefusalError {
@@ -81,67 +187,6 @@ func preflight(req Request) *core.RefusalError {
 
 func drainFailed(msg string) *core.RefusalError {
 	return &core.RefusalError{Code: "drain-failed", Message: msg}
-}
-
-func finish(ctx context.Context, r *cli.Runner, req Request, fl *flags, resp *fetchcore.ThreadsResponse) int {
-	in, code, done := readInputs(ctx, r, req, fl, resp)
-	if done {
-		return code
-	}
-	plan, _ := draincore.NewPlan(resp.Data.Provider, threadscore.PRNumber(req.Pr), resp.Data.HeadSHA,
-		req.TimeUTC(), in.self, in.feed, in.ledger, in.limit)
-	if err := draincore.WritePlan(in.dir+pathSep+draincore.KeyPlanJSON, plan); err != nil {
-		return r.Refuse(drainFailed(fmt.Sprintf("could not write %s/%s: %v", in.dir, draincore.KeyPlanJSON, err)))
-	}
-	if fl.agent != "" && len(plan.Pending) > 0 {
-		code, done := draft(ctx, r, req, fl, in.dir, plan)
-		if done {
-			return code
-		}
-	}
-	r.Warnings = append(r.Warnings, resp.Warnings...)
-	fmt.Fprintf(r.Human, "» %d pending, %d skipped -> %s/%s\n", len(plan.Pending), len(plan.Skipped), in.dir, draincore.KeyPlanJSON)
-	if r.JSONMode {
-		env := core.RenderEnvelope(verbDrain, req.Repo, req.Pr, core.NowUTC(r.Now()), next(req, fl),
-			r.Warnings, plan.Wire(), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
-	}
-	return cli.ExitOK
-}
-
-type planInputs struct {
-	dir    string
-	feed   *threadscore.File
-	self   string
-	ledger []draincore.LedgerEntry
-	limit  int
-}
-
-func readInputs(ctx context.Context, r *cli.Runner, req Request, fl *flags, resp *fetchcore.ThreadsResponse) (*planInputs, int, bool) {
-	dir, ref := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
-	if ref != nil {
-		return nil, r.Refuse(drainFailed(ref.Message)), true
-	}
-	feed, err := threadscore.ReadFile(dir + pathSep + threadscore.KeyThreadsJSON)
-	if err != nil {
-		return nil, r.Refuse(drainFailed(fmt.Sprintf("unreadable %s/threads.json: %v", dir, err))), true
-	}
-	if resp.Data.Truncated || feed.Truncated {
-		return nil, r.Refuse(drainFailed(dir + "/threads.json is truncated — refresh threads before draining")), true
-	}
-	self, ref := selfLogin(ctx, req, resp.Data.Provider)
-	if ref != nil {
-		return nil, r.Refuse(ref), true
-	}
-	ledger, err := ReadLedger(dir + pathSep + draincore.KeyLedgerJSON)
-	if err != nil {
-		return nil, r.Refuse(drainFailed(err.Error())), true
-	}
-	limit, code, done := parseLimit(r, fl.max)
-	if done {
-		return nil, code, true
-	}
-	return &planInputs{dir: dir, feed: feed, self: self, ledger: ledger, limit: limit}, 0, false
 }
 
 func parseLimit(r *cli.Runner, text string) (int, int, bool) {
@@ -167,7 +212,7 @@ func selfLogin(ctx context.Context, req Request, provider string) (string, *core
 
 func next(req Request, fl *flags) string {
 	if fl.agent != "" {
-		return "inspect the drafts in " + draincore.KeyDraftsJSON + " in this bundle"
+		return "post replies with verdict drain " + req.Repo + " " + req.Pr + " --post"
 	}
 	return "draft replies with verdict drain " + req.Repo + " " + req.Pr + " --agent <name>"
 }
@@ -208,6 +253,9 @@ func parseFlags(r *cli.Runner, args []string) (*flags, int, bool) {
 func consumeFlag(r *cli.Runner, fl *flags, args []string, i int) (int, int, bool) {
 	a := args[i]
 	switch {
+	case a == "--post":
+		fl.post = true
+		return i, 0, false
 	case a == "--provider" || a == "--max-threads" || a == "--agent" || a == "--timeout":
 		v, nextIndex, u := cli.FlagValue(args, i, a, "<value>")
 		if u != nil {
@@ -288,7 +336,7 @@ func draft(ctx context.Context, r *cli.Runner, req Request, fl *flags, dir strin
 	if ref != nil {
 		return r.Refuse(ref), true
 	}
-	r.Warnings = append(r.Warnings, res.Warnings...)
+	r.Warnings = res.Warnings
 	raw, err := jq.CappedFile(dir+pathSep+draincore.KeyDraftsJSON, jq.MaxPRBytes)
 	if err != nil {
 		return r.Refuse(&core.RefusalError{Code: "no-review-artifact", Message: err.Error()}), true

@@ -39,6 +39,11 @@ type hostResolver interface {
 		repo, pr, threadID string) error
 }
 
+type hostReplier interface {
+	replyThread(ctx context.Context, cmdr Commander, env map[string]string,
+		repo, pr, rootID, threadID, body string) (string, error)
+}
+
 // hostFor is the post path's only provider switch: every host behavior a verb
 // reaches goes through the triple it returns. A provider outside the switch
 // gets GitHub's writer and reader, because checkBundle refuses a host it
@@ -55,6 +60,45 @@ func hostFor(provider string) (hostWriter, hostReader, hostResolver) {
 	default:
 		return githubHost{}, githubHost{}, nil
 	}
+}
+
+func replierFor(provider string) hostReplier {
+	switch provider {
+	case providerGitHub:
+		return githubHost{}
+	case providerGitLab:
+		return gitlabHost{}
+	default:
+		return nil
+	}
+}
+
+// ReplyThread answers one waiting comment through the host seam and returns
+// the host's id for the new reply. A host without the capability refuses typed
+// before any call; a failed call keeps the host's own reason where it has one.
+func ReplyThread(
+	ctx context.Context, cmdr Commander, provider string, env map[string]string,
+	repo, pr, rootID, threadID, body string,
+) (string, *core.RefusalError) {
+	caps := core.CapabilitiesFor(provider)
+	replier := replierFor(provider)
+	if !caps.ThreadReply || replier == nil {
+		return "", &core.RefusalError{Code: codeProviderUnimplemented, Message: fmt.Sprintf(
+			"thread replies on %s are not implemented (%s)",
+			provider, caps.ThreadReplyReason())}
+	}
+	if cmdr == nil {
+		return "", &core.RefusalError{Code: codeThreadsFailed, Message: "threads failed: no commander in runtime"}
+	}
+	id, err := replier.replyThread(ctx, cmdr, env, repo, pr, rootID, threadID, body)
+	if err != nil {
+		if ref, ok := errors.AsType[*core.RefusalError](err); ok {
+			return "", ref
+		}
+		return "", &core.RefusalError{Code: codeThreadsFailed, Message: fmt.Sprintf(
+			"could not reply to thread %s: %v", threadID, err)}
+	}
+	return id, nil
 }
 
 // SelfLogin reads the authenticated login the resolve identity gate compares

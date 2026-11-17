@@ -45,6 +45,20 @@ review history refuses `pr-read-failed`. A head that changes during a read is
 retried on the next interval inside a bounded wait, and one still changing when
 the timeout arrives refuses `pr-read-failed`.
 
+## `drain` — unattended thread replies
+
+`verdict drain owner/repo N [--provider p] [--max-threads 1-100] [--agent name]
+[--timeout s] [-- args...] [--post] [--json]` writes `drain.json` with the
+threads waiting on verdict, a `plan_digest`, and typed skips. `--agent` drafts
+`drain.replies.json` through the `run` launcher. `--post` validates those
+drafts, re-reads threads and the login, skips threads that resolved or changed,
+scans for secret-shaped bodies, neutralizes mentions, and appends a hidden
+`verdict-reply` marker so the next refresh labels the answer `verdict`. Each
+successful write appends `replies.json` under a lock; `withdraw` also resolves.
+GitHub and GitLab only; a write failure records `failed[]` and refuses
+`drain-incomplete`, after which the same `--post` command retries only the
+threads without a ledger entry.
+
 ## Suppression receipts
 
 Read `excluded.json` and the TOC exclusion section before judging review coverage.

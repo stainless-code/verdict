@@ -603,6 +603,12 @@ Cause: the bundle, `threads.json`, the login, or the reply ledger could not be r
 
 Fix: refresh threads and confirm host auth, then re-run `drain`.
 
+## `drain-incomplete`
+
+Cause: at least one `drain --post` host write failed; `drain.json` names the threads in `failed[]`. Replies that landed are already in `replies.json`.
+
+Fix: re-run the same `drain --post` command. The ledger skips replies already posted and only the failed threads are retried; check the host's own error in `failed[]` first.
+
 ## `duplicate-payload`
 
 Cause: every rendered summary part and comment is present in the live remote lists for this reviewed head.
@@ -1047,9 +1053,9 @@ Fix: narrow anchor drift or body size (see above), then re-run.
 
 ## `post-secret-shaped`
 
-Cause: `review.json` carries a secret-shaped value.
+Cause: a review draft carries a secret-shaped value — `review.json` for `post`, `drain.replies.json` for `drain --post`.
 
-Fix: remove the value from `review.json` and re-run, or pass `--allow-secret-values` to publish it anyway.
+Fix: remove the value from the draft and re-run. `post` can pass `--allow-secret-values` to publish it anyway; `drain --post` has no override.
 
 ## `pr-not-open`
 

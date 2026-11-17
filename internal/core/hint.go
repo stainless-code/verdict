@@ -45,10 +45,11 @@ var hintRules = []HintRule{
 	{codes: []string{"drafts-invalid"}, hint: "try: fix the named site in drain.replies.json, then re-run drain --agent"},
 	{codes: []string{"drafts-stale"}, hint: "try: re-run drain for a fresh plan, then draft against its new plan_digest"},
 	{codes: []string{"drain-failed"}, hint: "try: refresh threads, confirm host auth, then re-run drain"},
+	{codes: []string{"drain-incomplete"}, hint: "try: re-run the same drain --post command; the ledger skips replies already posted"},
 	{codes: []string{"prompt-dump-failed"}, hint: "try: run from a checkout carrying SKILL.md/prompts, then re-run"},
 	{codes: []string{"post-failed"}, hint: "try: narrow anchor drift or body size (see above), then re-run"},
-	{codes: []string{"post-secret-shaped"}, hint: "try: remove the value from review.json and re-run, " +
-		"or pass --allow-secret-values to publish it anyway"},
+	{codes: []string{"post-secret-shaped"}, hint: "try: remove the value from the draft and re-run; " +
+		"post can pass --allow-secret-values to publish it anyway"},
 	{codes: []string{"fix-patch-secret"}, hint: "try: remove the value from the worktree (rotate it " +
 		"if it was real), then re-run fix"},
 	{codes: []string{"filtered-out"}, hint: "try: remove --filter to review every PR, or change the trigger at the PR base and re-fetch"},
