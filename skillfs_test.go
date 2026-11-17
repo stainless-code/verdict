@@ -139,8 +139,10 @@ func assertEmbeddedFile(t *testing.T, path string) {
 // only the bootstrap files.
 func TestProcedureLivesOutsideTheStub(t *testing.T) {
 	t.Parallel()
-	for _, path := range []string{"PROCEDURE.md", filepath.Join("prompts", "review.md"),
-		filepath.Join("packs", "builtin", "pack.json"), filepath.Join("references", "commands.md")} {
+	for _, path := range []string{
+		"PROCEDURE.md", filepath.Join("prompts", "review.md"),
+		filepath.Join("packs", "builtin", "pack.json"), filepath.Join("references", "commands.md"),
+	} {
 		if _, err := os.Stat(filepath.Join(skillfs.ProcedureDir, path)); err != nil {
 			t.Errorf("procedure/%s: %v", path, err)
 		}
@@ -153,7 +155,9 @@ func TestProcedureLivesOutsideTheStub(t *testing.T) {
 }
 
 // TestRootReadDirReportsEOF pins ReadDir's end-of-listing contract: reading
-// one entry at a time must end with io.EOF, never an empty successful read.
+// one entry at a time must end with [io.EOF], never an empty successful read.
+//
+//nolint:revive // the one-entry paging loop is the assertion
 func TestRootReadDirReportsEOF(t *testing.T) {
 	t.Parallel()
 	paths, err := skillfs.Paths()
@@ -198,9 +202,11 @@ func TestRootReadDirReportsEOF(t *testing.T) {
 	}
 }
 
-// TestRootReadDirContract pins both halves of fs.ReadDirFile: a non-positive
+// TestRootReadDirContract pins both halves of [fs.ReadDirFile]: a non-positive
 // n drains the directory without an end error, while a positive n that finds
-// no entries reports io.EOF.
+// no entries reports [io.EOF].
+//
+//nolint:cyclop,gocognit,revive // the table covers four distinct paging sequences
 func TestRootReadDirContract(t *testing.T) {
 	t.Parallel()
 	paths, err := skillfs.Paths()

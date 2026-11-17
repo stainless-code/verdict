@@ -35,6 +35,8 @@ func TestStatusFreshInstallInSync(t *testing.T) {
 
 // TestStatusComparesStubVersion pins the version-based report: an unrelated
 // byte edit stays in sync, while a changed stub_version drifts with a diff.
+//
+//nolint:cyclop,revive // the two status legs prove byte edits and version edits differ
 func TestStatusComparesStubVersion(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

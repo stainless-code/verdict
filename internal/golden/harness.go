@@ -38,6 +38,8 @@ const (
 	filePerm = 0o600
 	// maxRootDepth bounds the walk-up search for the checkout root.
 	maxRootDepth = 10
+	// packageJSON names the manifest that marks a checkout root.
+	packageJSON = "package.json"
 	// stubPerm marks the gh stub executable; the stub must run first on
 	// PATH for the network-dead hermetic runs.
 	stubPerm = 0o755
@@ -131,8 +133,8 @@ func buildBinary(repoRoot, dir string) error {
 // the harness run from worktrees and MAIN alike).
 func copyProvenance(repoRoot, tmp string) error {
 	procedure := filepath.Join(repoRoot, "procedure")
-	src := filepath.Join(repoRoot, "package.json")
-	if err := copyFile(src, filepath.Join(tmp, "package.json")); err != nil {
+	src := filepath.Join(repoRoot, packageJSON)
+	if err := copyFile(src, filepath.Join(tmp, packageJSON)); err != nil {
 		return jq.Sealed("provenance package.json", err)
 	}
 	src = filepath.Join(procedure, "PROCEDURE.md")
@@ -285,7 +287,7 @@ func findRepoRoot() (string, error) {
 	}
 	dir := filepath.Dir(file)
 	for range maxRootDepth {
-		if _, err := os.Stat(filepath.Join(dir, "package.json")); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, packageJSON)); err == nil {
 			return dir, nil
 		}
 		dir = filepath.Dir(dir)
@@ -322,7 +324,7 @@ var curlMsRe = regexp.MustCompile(`(Failed to connect to \S+ port \d+ after )\d+
 // the version-source eval pins the real rendering through the binary).
 var versionScrub = sync.OnceValue(func() func(string) string {
 	version := ""
-	if raw, err := os.ReadFile(filepath.Join(repoRoot(), "package.json")); err == nil {
+	if raw, err := os.ReadFile(filepath.Join(repoRoot(), packageJSON)); err == nil {
 		var doc struct {
 			Version string `json:"version"`
 		}
@@ -347,7 +349,7 @@ func repoRoot() string {
 	}
 	dir := filepath.Dir(file)
 	for range maxRootDepth {
-		if _, err := os.Stat(filepath.Join(dir, "package.json")); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, packageJSON)); err == nil {
 			return dir
 		}
 		parent := filepath.Dir(dir)

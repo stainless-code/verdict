@@ -125,27 +125,12 @@ func openRoot(m multiFS) (fs.File, error) {
 	var info fs.FileInfo
 	var entries []fs.DirEntry
 	for i, root := range m.roots {
-		dir, err := root.Open(rootPath)
+		got, rootInfo, err := readRootEntries(root, rootName(i))
 		if err != nil {
-			return nil, wrapEmbedded(verbOpen, rootName(i), err)
-		}
-		rootInfo, err := dir.Stat()
-		if err != nil {
-			_ = dir.Close()
-			return nil, wrapEmbedded(verbStat, rootName(i), err)
+			return nil, err
 		}
 		if i == 0 {
 			info = rootInfo
-		}
-		readDir, ok := dir.(fs.ReadDirFile)
-		if !ok {
-			_ = dir.Close()
-			return nil, wrapEmbedded(verbOpen, rootName(i)+" is not a directory", fs.ErrInvalid)
-		}
-		got, err := readDir.ReadDir(-1)
-		_ = dir.Close()
-		if err != nil && !errors.Is(err, io.EOF) {
-			return nil, wrapEmbedded(verbRead, rootName(i), err)
 		}
 		entries = append(entries, got...)
 	}
@@ -153,6 +138,31 @@ func openRoot(m multiFS) (fs.File, error) {
 		return strings.Compare(a.Name(), b.Name())
 	})
 	return &rootDir{info: info, entries: entries}, nil
+}
+
+// readRootEntries opens one overlay root and drains its directory, closing
+// the handle before the merged root returns it to the caller.
+func readRootEntries(root fs.FS, name string) ([]fs.DirEntry, fs.FileInfo, error) {
+	dir, err := root.Open(rootPath)
+	if err != nil {
+		return nil, nil, wrapEmbedded(verbOpen, name, err)
+	}
+	info, err := dir.Stat()
+	if err != nil {
+		_ = dir.Close()
+		return nil, nil, wrapEmbedded(verbStat, name, err)
+	}
+	readDir, ok := dir.(fs.ReadDirFile)
+	if !ok {
+		_ = dir.Close()
+		return nil, nil, wrapEmbedded(verbOpen, name+" is not a directory", fs.ErrInvalid)
+	}
+	entries, err := readDir.ReadDir(-1)
+	_ = dir.Close()
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, nil, wrapEmbedded(verbRead, name, err)
+	}
+	return entries, info, nil
 }
 
 func rootName(i int) string {

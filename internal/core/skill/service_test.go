@@ -71,6 +71,8 @@ func TestShowAndList(t *testing.T) {
 
 // TestInstallWritesOnlyTheStub pins the split: an install carries the three
 // Bootstrap skill files and the receipt, never the Procedure payload.
+//
+//nolint:revive // the tree walk proves the install wrote exactly three files
 func TestInstallWritesOnlyTheStub(t *testing.T) {
 	t.Parallel()
 	req := newRequest(t)
