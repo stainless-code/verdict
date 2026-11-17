@@ -487,9 +487,9 @@ func usageText() string {
 		"    and handled in argv order. --detect installs or reports every known\n" +
 		"    agent whose skills dir already exists and is non-empty; with none\n" +
 		"    present it refuses typed and asks for --agent <name>.\n" +
-		"    In a skill copy, scripts/verdict resolves VERDICT_BIN, then the repo-\n" +
-		"    pinned ./node_modules/.bin/verdict, then <skill>/bin/verdict, then\n" +
-		"    verdict on PATH; otherwise run the one-time verified\n" +
+		"    In a skill copy, scripts/verdict resolves VERDICT_BIN, then\n" +
+		"    <skill>/bin/verdict, then verdict on PATH; otherwise run the\n" +
+		"    one-time verified\n" +
 		"    <skill>/scripts/verdict bootstrap (no review-time fetch).\n" +
 		"  pack <list|add|test> [--json]\n" +
 		"    list: read-only lens-pack inventory in precedence order: built-in, org\n" +

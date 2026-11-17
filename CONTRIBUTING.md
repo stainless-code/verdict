@@ -73,7 +73,7 @@ verdict/
   skills/verdict/     # the Bootstrap skill copied by `npx skills add`:
     SKILL.md          #   entry point: where the Procedure lives, how to reach the binary
     NOTICE.md         #   upstream license notice
-    scripts/verdict   #   POSIX shim: VERDICT_BIN, repo-pinned bin, skill bin, PATH
+    scripts/verdict   #   POSIX shim: VERDICT_BIN, skill bin, PATH
   procedure/          # the Procedure served only by the binary:
     PROCEDURE.md      #   index of the task-scoped instructions
     prompts/          #   system, review, incremental, address, fix-ci, build, ci, grade, diagrams, subagent

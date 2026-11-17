@@ -2694,10 +2694,10 @@ you stand).
 The shipped `verdict` is one static Go binary (`make build` writes
 `bin/verdict`) that needs no shell wrapper. `VERDICT_BIN` is not the binary's:
 the skill shim and the TypeScript client both consult it. The shim
-(`skills/verdict/scripts/verdict`) resolves it first, then the enclosing
-checkout's repo-pinned `./node_modules/.bin/verdict`, then `<skill>/bin/verdict`,
-then `verdict` on `PATH`; `resolveBin` in `clients/ts` takes it ahead of the
-platform package. A plain `verdict` call consults neither variable.
+(`skills/verdict/scripts/verdict`) resolves it first, then
+`<skill>/bin/verdict`, then `verdict` on `PATH`; `resolveBin` in `clients/ts`
+takes it ahead of the platform package. A plain `verdict` call consults neither
+variable.
 
 - **Binary** (`install.sh` / `install.ps1`, the default): the script fetches
   one release archive, `checksums.txt`, `commit.txt`, and
@@ -2767,8 +2767,8 @@ platform package. A plain `verdict` call consults neither variable.
   `rm -rf <skill dir>`, …). `--dry-run` and `--json` are supported.
 - **Registry** (`npx skills add stainless-code/verdict`): the primary path is
   the GLOBAL binary (curl/npm/brew above), which the skill copy resolves on
-  PATH through `scripts/verdict` (`VERDICT_BIN`, the checkout's pinned
-  `./node_modules/.bin/verdict`, then `<skill>/bin/verdict`, then `verdict`).
+  PATH through `scripts/verdict` (`VERDICT_BIN`, then
+  `<skill>/bin/verdict`, then `verdict`).
   `npx skills` is scoped to the skills dir and never
   installs the binary; `install.sh` is not shipped in the npm tarball and
   never runs here. With no global binary, run the one-time verified

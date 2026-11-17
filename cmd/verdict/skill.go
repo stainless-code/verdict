@@ -486,8 +486,8 @@ func skillUsageText() string {
 		"  agents: agents, claude, codex, cursor, opencode, copilot, gemini, goose, qwen, windsurf\n" +
 		"  The Procedure and the stub are embedded in this binary, so served bytes\n" +
 		"  cannot skew.\n" +
-		"  In a skill copy, scripts/verdict resolves VERDICT_BIN, the repo-pinned\n" +
-		"  ./node_modules/.bin/verdict, <skill>/bin/verdict, then verdict on PATH;\n" +
-		"  otherwise run <skill>/scripts/verdict bootstrap once (verified; never a\n" +
+		"  In a skill copy, scripts/verdict resolves VERDICT_BIN, then\n" +
+		"  <skill>/bin/verdict, then verdict on PATH; otherwise run\n" +
+		"  <skill>/scripts/verdict bootstrap once (verified; never a\n" +
 		"  review-time fetch).\n"
 }

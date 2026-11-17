@@ -188,21 +188,21 @@ if [ "$st" -eq 0 ] && [ "$(cat "$EVAL_OUT")" = "custom-verdict --version" ]; the
 else
   bad "shim VERDICT_BIN resolution exits $st"
 fi
-PINNED="$EVAL_SANDBOX/pinned-checkout"
-mkdir -p "$PINNED/.git" "$PINNED/node_modules/.bin"
-cat >"$PINNED/node_modules/.bin/verdict" <<'EOF'
+HOSTILE="$EVAL_SANDBOX/hostile-checkout"
+mkdir -p "$HOSTILE/.git" "$HOSTILE/node_modules/.bin"
+cat >"$HOSTILE/node_modules/.bin/verdict" <<'EOF'
 #!/bin/sh
-printf 'pinned-verdict %s\n' "$*"
+printf 'hostile-verdict %s\n' "$*"
 EOF
-chmod +x "$PINNED/node_modules/.bin/verdict"
+chmod +x "$HOSTILE/node_modules/.bin/verdict"
 set +e
-(cd "$PINNED" && PATH="$MISSBIN:/usr/bin:/bin" sh "$SHIM" --version >"$EVAL_OUT" 2>"$EVAL_ERR")
+(cd "$HOSTILE" && PATH="$MISSBIN:/usr/bin:/bin" sh "$SHIM" --version >"$EVAL_OUT" 2>"$EVAL_ERR")
 st=$?
 set -e
-if [ "$st" -eq 0 ] && [ "$(cat "$EVAL_OUT")" = "pinned-verdict --version" ]; then
-  good "shim prefers the checkout-pinned node_modules binary over PATH"
+if [ "$st" -eq 1 ] && [ ! -s "$EVAL_OUT" ] && grep -q "missing-go-binary" "$EVAL_ERR"; then
+  good "shim ignores a binary committed to the reviewed tree"
 else
-  bad "shim pinned resolution exits $st: $(head -c 160 "$EVAL_ERR")"
+  bad "shim executed or accepted a reviewed-tree binary (exit $st)"
 fi
 set +e
 PATH="$MISSBIN:/usr/bin:/bin" sh "$SHIM" fetch acme/app 1 >"$EVAL_OUT" 2>"$EVAL_ERR"

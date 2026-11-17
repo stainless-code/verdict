@@ -4,9 +4,8 @@
 #
 # Resolution order:
 #   1. VERDICT_BIN (set but not executable is a hard, typed error)
-#   2. the enclosing checkout's pinned ./node_modules/.bin/verdict
-#   3. <skill>/bin/verdict (written by `bootstrap`)
-#   4. verdict on PATH (the global install: curl / npm / brew)
+#   2. <skill>/bin/verdict (written by `bootstrap`)
+#   3. verdict on PATH (the global install: curl / npm / brew)
 # With none of those it exits typed `missing-go-binary` and names the one
 # explicit install step: `./scripts/verdict bootstrap`. That bootstrap fetches
 # the pinned release's install.sh once and lets the ticket-10 installer verify
@@ -39,34 +38,12 @@ receipt_version() {
   sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$RECEIPT" | head -n 1
 }
 
-# repo_pinned walks up from the working directory to its enclosing checkout
-# and prints that root. It never calls git: a stubbed, minimal PATH must still
-# resolve the checkout's pinned binary without a subprocess.
-repo_pinned() {
-  dir=$(pwd -P) || return 0
-  while :; do
-    if [ -d "$dir/.git" ] || [ -f "$dir/.git" ]; then
-      printf '%s\n' "$dir"
-      return 0
-    fi
-    parent=${dir%/*}
-    [ -n "$parent" ] || parent=/
-    [ "$parent" = "$dir" ] && return 0
-    dir=$parent
-  done
-}
-
 # resolve execs the first available binary.
 resolve() {
   if [ -n "${VERDICT_BIN:-}" ]; then
     [ -f "$VERDICT_BIN" ] && [ -x "$VERDICT_BIN" ] \
       || die "bad-verdict-bin: VERDICT_BIN=$VERDICT_BIN is not an executable file"
     exec "$VERDICT_BIN" "$@"
-  fi
-  root=$(repo_pinned)
-  if [ -n "$root" ] && [ -f "$root/node_modules/.bin/verdict" ] && \
-    [ -x "$root/node_modules/.bin/verdict" ]; then
-    exec "$root/node_modules/.bin/verdict" "$@"
   fi
   if [ -f "$BUNDLED" ] && [ -x "$BUNDLED" ]; then
     exec "$BUNDLED" "$@"
@@ -76,7 +53,7 @@ resolve() {
     # Never re-exec this shim when its own scripts/ dir is on PATH.
     [ "$found" = "$SELF" ] || exec "$found" "$@"
   fi
-  die "missing-go-binary: no verdict binary found; set VERDICT_BIN, install the checkout's ./node_modules/.bin/verdict, or run: $SKILL_DIR/scripts/verdict bootstrap (one time, verified)"
+  die "missing-go-binary: no verdict binary found; install the global binary or run: $SKILL_DIR/scripts/verdict bootstrap (one time, verified)"
 }
 
 # bootstrap fetches and verifies the pinned binary once, through install.sh.

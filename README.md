@@ -62,7 +62,7 @@ verdict skill install --detect
 ```
 
 `--detect` installs into every agent whose skills directory already exists and
-is non-empty. To target one agent, run `verdict skill install --agent claude`. The agent names are in `verdict skill --help`. The shim resolves `VERDICT_BIN`, then your checkout's pinned `./node_modules/.bin/verdict`, then the skill's own `bin/verdict`, then `verdict` on `PATH`; it never fetches during a review. You can also use the registry: `npx skills add stainless-code/verdict`. Use one route per machine, or the skill loads twice. The registry route installs only the skill, so install the binary first: `install.sh` is not shipped in the npm tarball. After `verdict upgrade`, re-run the install to refresh the copy.
+is non-empty. To target one agent, run `verdict skill install --agent claude`. The agent names are in `verdict skill --help`. The shim resolves `VERDICT_BIN`, then the skill's own `bin/verdict`, then `verdict` on `PATH`; it never fetches during a review. You can also use the registry: `npx skills add stainless-code/verdict`. Use one route per machine, or the skill loads twice. The registry route installs only the skill, so install the binary first: `install.sh` is not shipped in the npm tarball. After `verdict upgrade`, re-run the install to refresh the copy.
 
 ### 3. Review a PR
 

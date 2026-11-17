@@ -14,9 +14,9 @@ it matches the version that will check your work.
 ## Reach the binary
 
 Run `scripts/verdict <args>` from this skill directory. It resolves, in order:
-`VERDICT_BIN`, the repository's pinned `./node_modules/.bin/verdict`, this
-skill's `bin/verdict`, then `verdict` on PATH. If none exists it stops and
-prints the one install step. Never review without the binary.
+`VERDICT_BIN`, this skill's `bin/verdict`, then `verdict` on PATH. If none
+exists it stops and prints the one install step. Never review without the
+binary.
 
 ## Read the Procedure first
 
