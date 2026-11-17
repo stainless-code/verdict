@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
@@ -124,13 +125,23 @@ func plantStub(t *testing.T, name, script string) string {
 	return path
 }
 
+// fixtureProbeBudget keeps process fixtures clear of the shipped five-second
+// deadline; only TestProbeBudgetIsInjectable exercises a short one.
+const fixtureProbeBudget = 30 * time.Second
+
 // runWithStub resolves the shipped row's agent to the stand-in and runs the
 // real process commander, so the probe sees the script's own stdout.
 func runWithStub(t *testing.T, root, name, bin string) (*core.RunResponse, *core.RefusalError) {
 	t.Helper()
+	return runWithProbeBudget(t, root, name, bin, fixtureProbeBudget)
+}
+
+func runWithProbeBudget(t *testing.T, root, name, bin string, budget time.Duration) (*core.RunResponse, *core.RefusalError) {
+	t.Helper()
 	req := request(root, coreexec.Watchdog{})
 	req.Agent = name
 	req.LookPath = func(string) (string, error) { return bin, nil }
+	req.ProbeTimeout = budget
 	return Run(t.Context(), req)
 }
 
@@ -146,52 +157,91 @@ func shellLiteral(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }
 
+// TestProbeBudgetIsInjectable proves the probe's own deadline is the one that
+// produces the timeout classification, and that a test can shorten it.
+func TestProbeBudgetIsInjectable(t *testing.T) {
+	root := fixtureRoot(t)
+	bin := plantStub(t, "fx", "#!/bin/sh\n"+
+		"case \" $* \" in\n"+
+		"  *' --help '*) sleep 1; printf '%s\\n' "+shellLiteral("--ultrafast")+"; exit 0 ;;\n"+
+		"esac\n"+
+		"printf '%s' "+shellLiteral(reviewDoc)+" > .verdict/state/42/review.json\n")
+	_, ref := runWithProbeBudget(t, root, "fx", bin, 50*time.Millisecond)
+	if ref == nil || ref.Code != "agent-mismatch" {
+		t.Fatalf("ref = %+v, want agent-mismatch", ref)
+	}
+	if !strings.Contains(ref.Message, "timed out") {
+		t.Errorf("message = %q, want the probe timeout classification", ref.Message)
+	}
+	if _, err := os.Stat(filepath.Join(bundleDir(root), reviewFile)); !os.IsNotExist(err) {
+		t.Errorf("review file exists after a timed-out probe (err = %v); want no launch", err)
+	}
+}
+
 // TestProbeSearchesHeadOfCombinedOutput pins the capture window: help text
 // leads, so a match inside the first 64 KiB passes even if the child floods
 // afterwards, while a match past that window refuses.
+type probeCaptureCase struct {
+	name       string
+	flood      int
+	matchLeads bool
+	wantRefuse bool
+}
+
 func TestProbeSearchesHeadOfCombinedOutput(t *testing.T) {
-	const flag = "--ultrafast"
-	tests := []struct {
-		name       string
-		flood      int
-		matchLeads bool
-		wantRefuse bool
-	}{
+	tests := []probeCaptureCase{
 		{name: "match leads a flood", flood: probeOutputCap + 4096, matchLeads: true},
 		{name: "match fits after 60 KiB", flood: 60 * 1024},
 		{name: "match trails a flood", flood: probeOutputCap + 4096, wantRefuse: true},
 	}
 	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			root := fixtureRoot(t)
-			help := "printf '%s' " + shellLiteral(strings.Repeat("x", tc.flood)) + "\n" +
-				"printf '%s\\n' " + shellLiteral(flag) + "\n"
-			if tc.matchLeads {
-				help = "printf '%s\\n' " + shellLiteral(flag) + "\n" +
-					"printf '%s' " + shellLiteral(strings.Repeat("x", tc.flood)) + "\n"
-			}
-			bin := plantStub(t, "fx", "#!/bin/sh\n"+
-				"case \" $* \" in\n"+
-				"  *' --help '*) "+help+"exit 0 ;;\n"+
-				"esac\n"+
-				"printf '%s' "+shellLiteral(reviewDoc)+" > .verdict/state/42/review.json\n")
-			_, ref := runWithStub(t, root, "fx", bin)
-			_, err := os.Stat(filepath.Join(bundleDir(root), reviewFile))
-			if tc.wantRefuse {
-				if ref == nil || ref.Code != "agent-mismatch" {
-					t.Fatalf("ref = %+v, want agent-mismatch", ref)
-				}
-				if !os.IsNotExist(err) {
-					t.Errorf("review file exists after refusal (err = %v); want no launch", err)
-				}
-				return
-			}
-			if ref != nil {
-				t.Fatalf("launch refused: %v", ref)
-			}
-			if err != nil {
-				t.Errorf("review file missing after a passing probe: %v", err)
-			}
-		})
+		t.Run(tc.name, func(t *testing.T) { assertProbeCaptureCase(t, tc) })
+	}
+}
+
+func assertProbeCaptureCase(t *testing.T, tc probeCaptureCase) {
+	t.Helper()
+	root := fixtureRoot(t)
+	bin := plantStub(t, "fx", "#!/bin/sh\n"+
+		"case \" $* \" in\n"+
+		"  *' --help '*) "+probeFloodHelp(tc)+"exit 0 ;;\n"+
+		"esac\n"+
+		"printf '%s' "+shellLiteral(reviewDoc)+" > .verdict/state/42/review.json\n")
+	_, ref := runWithStub(t, root, "fx", bin)
+	_, err := os.Stat(filepath.Join(bundleDir(root), reviewFile))
+	assertProbeCaptureOutcome(t, ref, err, tc.wantRefuse)
+}
+
+func probeFloodHelp(tc probeCaptureCase) string {
+	const flag = "--ultrafast"
+	match := "printf '%s\\n' " + shellLiteral(flag) + "\n"
+	flood := "printf '%s' " + shellLiteral(strings.Repeat("x", tc.flood)) + "\n"
+	if tc.matchLeads {
+		return match + flood
+	}
+	return flood + match
+}
+
+func assertProbeCaptureOutcome(t *testing.T, ref *core.RefusalError, err error, wantRefuse bool) {
+	t.Helper()
+	if wantRefuse {
+		assertProbeCaptureRefusal(t, ref, err)
+		return
+	}
+	if ref != nil {
+		t.Fatalf("launch refused: %v", ref)
+	}
+	if err != nil {
+		t.Errorf("review file missing after a passing probe: %v", err)
+	}
+}
+
+func assertProbeCaptureRefusal(t *testing.T, ref *core.RefusalError, err error) {
+	t.Helper()
+	if ref == nil || ref.Code != "agent-mismatch" {
+		t.Fatalf("ref = %+v, want agent-mismatch", ref)
+	}
+	if !os.IsNotExist(err) {
+		t.Errorf("review file exists after refusal (err = %v); want no launch", err)
 	}
 }

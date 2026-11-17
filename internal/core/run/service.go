@@ -318,7 +318,7 @@ func (st *state) probe(ctx context.Context, args *launchArgs) *core.RefusalError
 		return st.refuse("agent-mismatch", fmt.Sprintf(
 			"agent '%s' at %s could not be probed: no commander in runtime", args.def.Name, args.bin))
 	}
-	pctx, cancel := context.WithTimeout(ctx, probeTimeout)
+	pctx, cancel := context.WithTimeout(ctx, st.probeBudget())
 	defer cancel()
 	res, err := commander.Run(pctx, &core.Command{
 		Argv:      append([]string{args.bin}, args.def.ProbeArgs...),
@@ -331,26 +331,38 @@ func (st *state) probe(ctx context.Context, args *launchArgs) *core.RefusalError
 	if len(out) > probeOutputCap {
 		out = out[:probeOutputCap]
 	}
-	result := ""
-	ok := false
-	switch {
-	case pctx.Err() != nil || res.TimedOut:
-		result = "timed out"
-	case err != nil:
-		result = fmt.Sprintf("could not run the probe: %v", err)
-	case res.ExitCode != 0:
-		result = fmt.Sprintf("exited %d", res.ExitCode)
-	case !strings.Contains(out, args.def.ProbeMatch):
-		result = fmt.Sprintf("probe output did not contain '%s'", args.def.ProbeMatch)
-	default:
-		ok = true
-	}
-	if !ok {
+	if result := probeFailure(pctx, out, res, err, args.def.ProbeMatch); result != "" {
 		return st.refuse("agent-mismatch", fmt.Sprintf(
 			"agent '%s' at %s failed its identity probe: %s", args.def.Name, args.bin, result))
 	}
 	args.probe = &launcherProbe{Args: slices.Clone(args.def.ProbeArgs), OK: true}
 	return nil
+}
+
+// probeBudget returns the shipped probe deadline unless a caller supplied its
+// own, so process fixtures never race the five-second product constant.
+func (st *state) probeBudget() time.Duration {
+	if st.req.ProbeTimeout > 0 {
+		return st.req.ProbeTimeout
+	}
+	return probeTimeout
+}
+
+// probeFailure names why an identity probe cannot vouch for the binary, and
+// stays empty when the match is present in the captured window.
+func probeFailure(pctx context.Context, out string, res core.Result, err error, match string) string {
+	switch {
+	case pctx.Err() != nil || res.TimedOut:
+		return "timed out"
+	case err != nil:
+		return fmt.Sprintf("could not run the probe: %v", err)
+	case res.ExitCode != 0:
+		return fmt.Sprintf("exited %d", res.ExitCode)
+	case !strings.Contains(out, match):
+		return fmt.Sprintf("probe output did not contain '%s'", match)
+	default:
+		return ""
+	}
 }
 
 type state struct {
