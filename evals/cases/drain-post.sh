@@ -28,6 +28,7 @@ HUMAN2="$(comment 202 bob User 2026-11-02T00:00:00Z 'is this wrong?')"
 jq -n --argjson a "$(node PRRT_1 a.go "[$ROOT1,$HUMAN1]")" \
   --argjson b "$(node PRRT_2 b.go "[$ROOT2,$HUMAN2]")" \
   '{data:{repository:{pullRequest:{reviewThreads:{pageInfo:{hasNextPage:false,endCursor:null},nodes:[$a,$b]}}}}}' >"$EVAL_SANDBOX/page.json"
+cp "$EVAL_SANDBOX/page.json" "$EVAL_SANDBOX/page.initial.json"
 
 MARK1="<!-- verdict-reply thread=PRRT_1 to=102 -->"
 MARK2="<!-- verdict-reply thread=PRRT_2 to=202 -->"
@@ -88,12 +89,18 @@ chmod +x "$EVAL_STUBBIN/gh"
 
 cat >"$EVAL_STUBBIN/claude" <<'AGENT'
 #!/usr/bin/env bash
+set -euo pipefail
 echo "stub-agent $*" >>"$EVAL_STUBLOG"
-digest="$(jq -r .plan_digest .verdict/state/7/drain.json)"
+prompt="${@: -1}"
+target="${prompt#*Write exactly one file, }"
+target="${target%%,*}"
+[ -n "$target" ] && [ "$target" != "$prompt" ]
+plan="$(dirname "$target")/drain.json"
+digest="$(jq -r .plan_digest "$plan")"
 jq -n --arg digest "$digest" '{schema_version:"1",plan_digest:$digest,replies:[
   {thread_id:"PRRT_1",waiting_comment_id:"102",disposition:"answer",body:"Answer one."},
   {thread_id:"PRRT_2",waiting_comment_id:"202",disposition:"withdraw",body:"Answer two."}]}' \
-  >.verdict/state/7/drain.replies.json
+  >"$target"
 AGENT
 chmod +x "$EVAL_STUBBIN/claude"
 
@@ -148,6 +155,19 @@ if [ "$EVAL_STATUS" -eq 0 ] && [ "$(grep -Ec 'POST|threadId=' "$EVAL_STUBLOG" ||
 else
   bad "P6 rerun: exit $EVAL_STATUS $(head -c 400 "$EVAL_OUT")"
 fi
+
+cp "$EVAL_SANDBOX/page.initial.json" "$EVAL_SANDBOX/page.json"
+rm -f "$DIR/replies.json" "$DIR/drain.json" "$DIR/drain.replies.json"
+run_review drain acme/app 7 --agent claude --post --json
+if [ "$EVAL_STATUS" -eq 0 ] && jq -e '.data.drafts.count == 2 and (.data.posted | length == 2)
+  and (.data.failed | length == 0) and .data.posted_at != null
+  and ((.data.posted | map(select(.disposition == "withdraw" and .resolved)) | length) == 1)' <"$EVAL_OUT" >/dev/null \
+  && jq -e 'length == 2 and (map(.by) | all(. == "drain"))' "$DIR/replies.json" >/dev/null; then
+  good "P7 --agent --post plans, drafts, validates, and posts in one run"
+else
+  bad "P7 one-run: exit $EVAL_STATUS $(head -c 500 "$EVAL_OUT") $(head -c 300 "$EVAL_ERR")"
+fi
+
 if matches 'unhandled gh call' "$EVAL_STUBLOG"; then
   bad "a later run made an unregistered gh call: $(cat "$EVAL_STUBLOG")"
 else

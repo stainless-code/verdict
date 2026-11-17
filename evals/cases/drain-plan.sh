@@ -140,7 +140,7 @@ chmod +x "$EVAL_STUBBIN/claude"
 export DRAIN_AGENT_MODE=good
 run_review drain acme/app 7 --agent claude --json
 if [ "$EVAL_STATUS" -eq 0 ] && jq -e '.data.drafts.count == 1 and .data.drafts.dispositions.answer == 1
-  and (.next | contains("drain.replies.json")) and (.next | contains("--post") | not)' <"$EVAL_OUT" >/dev/null; then
+  and (.next | contains("verdict drain acme/app 7 --post"))' <"$EVAL_OUT" >/dev/null; then
   good "P7 a good stub draft validates and lands in the plan"
 else
   bad "P7 draft: exit $EVAL_STATUS $(head -c 500 "$EVAL_ERR") $(head -c 500 "$EVAL_OUT")"
