@@ -167,7 +167,7 @@ func selfLogin(ctx context.Context, req Request, provider string) (string, *core
 
 func next(req Request, fl *flags) string {
 	if fl.agent != "" {
-		return "post the drafts with verdict drain " + req.Repo + " " + req.Pr + " --post"
+		return "inspect the drafts in " + draincore.KeyDraftsJSON + " in this bundle"
 	}
 	return "draft replies with verdict drain " + req.Repo + " " + req.Pr + " --agent <name>"
 }

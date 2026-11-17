@@ -7,6 +7,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 
 SIG="6c3ee749e3d1f97870c9e8b5c1171fae2cb9ff4e"
 HEAD="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+DRAIN_QUERY="$(awk '/QueryThreadsFull = `/{flag=1; sub(/^[^`]*`/, ""); print; next} flag && /`/{sub(/`.*/, ""); print; exit} flag{print}' "$EVAL_ROOT/internal/readcommon/gh.go")"
 DIR="$EVAL_SANDBOX/.verdict/state/7"
 mkdir -p "$DIR"
 jq -n --arg head "$HEAD" '{state:"OPEN",headRefOid:$head,baseRefOid:"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",author:{login:"teammate"}}' >"$DIR/PR.json"
@@ -51,16 +52,33 @@ jq -n \
 
 cat >"$EVAL_STUBBIN/gh" <<'GH'
 #!/usr/bin/env bash
+set -uo pipefail
 echo "stub-gh $*" >>"$EVAL_STUBLOG"
-case "$*" in
-  "api user --jq .login") printf 'verdict-bot\n'; exit 0;;
-  *"api graphql"*) cat "$DRAIN_PAGE"; exit 0;;
-esac
-echo "unexpected gh call: $*" >&2
-exit 1
+unhandled() {
+  echo "unhandled gh call ($*)" >>"$EVAL_STUBLOG"
+  echo "unregistered gh call: $*" >&2
+  exit 1
+}
+if [ "$#" -eq 4 ] && [ "$1" = api ] && [ "$2" = user ] && [ "$3" = --jq ] && [ "$4" = .login ]; then
+  printf 'verdict-bot\n'
+  exit 0
+fi
+expected=(api graphql -F owner=acme -F name=app -F pr=7 -f "query=$DRAIN_QUERY")
+if [ "$1" = api ] && [ "$2" = graphql ] && [ "$#" -eq "${#expected[@]}" ]; then
+  match=1
+  for i in "${!expected[@]}"; do
+    idx=$((i + 1))
+    if [ "${!idx}" != "${expected[i]}" ]; then match=0; break; fi
+  done
+  if [ "$match" -eq 1 ]; then
+    cat "$DRAIN_PAGE"
+    exit 0
+  fi
+fi
+unhandled "$@"
 GH
 chmod +x "$EVAL_STUBBIN/gh"
-export DRAIN_PAGE="$EVAL_SANDBOX/page.json"
+export DRAIN_PAGE="$EVAL_SANDBOX/page.json" DRAIN_QUERY
 : >"$EVAL_STUBLOG"
 
 run_review drain acme/app 7 --json
@@ -122,7 +140,7 @@ chmod +x "$EVAL_STUBBIN/claude"
 export DRAIN_AGENT_MODE=good
 run_review drain acme/app 7 --agent claude --json
 if [ "$EVAL_STATUS" -eq 0 ] && jq -e '.data.drafts.count == 1 and .data.drafts.dispositions.answer == 1
-  and (.next | contains("--post"))' <"$EVAL_OUT" >/dev/null; then
+  and (.next | contains("drain.replies.json")) and (.next | contains("--post") | not)' <"$EVAL_OUT" >/dev/null; then
   good "P7 a good stub draft validates and lands in the plan"
 else
   bad "P7 draft: exit $EVAL_STATUS $(head -c 500 "$EVAL_ERR") $(head -c 500 "$EVAL_OUT")"
@@ -152,5 +170,11 @@ if [ "$EVAL_STATUS" -eq 0 ] && jq -e '.data.pending | length == 0' <"$EVAL_OUT" 
   good "P10 zero pending launches no agent"
 else
   bad "P10 zero pending: exit $EVAL_STATUS $(head -c 300 "$EVAL_ERR")"
+fi
+awk '/^stub-gh /' "$EVAL_STUBLOG" >"$EVAL_SANDBOX/gh-log"
+if matches 'unhandled gh call' "$EVAL_STUBLOG" || matches -Eqi 'mutation|POST|PATCH|DELETE' "$EVAL_SANDBOX/gh-log"; then
+  bad "a later run made an unregistered or mutating gh call: $(cat "$EVAL_STUBLOG")"
+else
+  good "every run used only the registered read and no mutation"
 fi
 eval_end

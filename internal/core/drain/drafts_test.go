@@ -34,7 +34,7 @@ const bodyField = `"body":"a real answer"`
 func TestCheckDraftsSites(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name, site, code, raw string
+		name, site, code, reason, raw string
 	}{
 		{
 			name: "missing replies", site: "replies", code: "drafts-invalid",
@@ -51,6 +51,27 @@ func TestCheckDraftsSites(t *testing.T) {
 		{
 			name: "unknown entry key", site: "replies[0].extra", code: "drafts-invalid",
 			raw: replace(validDraft(), bodyField, bodyField+`,"extra":true`),
+		},
+		{
+			name: "missing thread id", site: "replies[0].thread_id", code: "drafts-invalid", reason: "missing key",
+			raw: replace(validDraft(), `"thread_id":"t1",`, ""),
+		},
+		{
+			name: "missing waiting comment id", site: "replies[0].waiting_comment_id", code: "drafts-invalid", reason: "missing key",
+			raw: replace(validDraft(), `,"waiting_comment_id":"w1"`, ""),
+		},
+		{
+			name: "missing disposition", site: "replies[0].disposition", code: "drafts-invalid", reason: "missing key",
+			raw: replace(validDraft(), `,"disposition":"answer"`, ""),
+		},
+		{
+			name: "missing body", site: "replies[0].body", code: "drafts-invalid", reason: "missing key",
+			raw: replace(validDraft(), `,"body":"a real answer"`, ""),
+		},
+		{
+			name: "missing defer body", site: "replies[0].body", code: "drafts-invalid", reason: "missing key",
+			raw: replace(replace(validDraft(), `"disposition":"answer"`, `"disposition":"defer"`),
+				`,"body":"a real answer"`, ""),
 		},
 		{
 			name: "unknown thread", site: "replies[0].thread_id", code: "drafts-invalid",
@@ -93,8 +114,9 @@ func TestCheckDraftsSites(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, _, ref := CheckDrafts([]byte(tc.raw), draftPlan())
-			if ref == nil || ref.Code != tc.code || !strings.Contains(ref.Message, tc.site) {
-				t.Errorf("refusal = %+v, want %s naming %q", ref, tc.code, tc.site)
+			if ref == nil || ref.Code != tc.code || !strings.Contains(ref.Message, tc.site) ||
+				(tc.reason != "" && !strings.Contains(ref.Message, tc.reason)) {
+				t.Errorf("refusal = %+v, want %s naming %q with %q", ref, tc.code, tc.site, tc.reason)
 			}
 		})
 	}

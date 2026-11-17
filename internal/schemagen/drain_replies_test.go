@@ -1,7 +1,6 @@
 package schemagen
 
 import (
-	"encoding/json"
 	"testing"
 )
 
@@ -25,14 +24,7 @@ func TestDrainRepliesReplyDefIsClosed(t *testing.T) {
 
 func replyDefIsClosed(t *testing.T, data []byte) bool {
 	t.Helper()
-	var doc map[string]any
-	if err := json.Unmarshal(data, &doc); err != nil {
-		t.Fatal(err)
-	}
-	defs, ok := doc["$defs"].(map[string]any)
-	if !ok {
-		t.Fatal(drainRepliesSchema + " has no $defs")
-	}
+	defs := schemaDefs(t, data, drainRepliesSchema)
 	reply, ok := defs["reply"].(map[string]any)
 	if !ok {
 		t.Fatal(drainRepliesSchema + " has no $defs.reply")

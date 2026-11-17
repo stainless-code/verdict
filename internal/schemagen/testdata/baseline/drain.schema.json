@@ -111,7 +111,7 @@
         "outdated",
         "finding_sig"
       ],
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "skip": {
       "description": "One thread left open and why: resolved, answered, bot-reply, already-replied, not-review-comment, or deferred.",
@@ -121,7 +121,7 @@
         "reason": { "type": "string" }
       },
       "required": ["thread_id", "reason"],
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "drafts": {
       "description": "What the agent wrote: the file name, entry count, and disposition tally.",
@@ -132,7 +132,7 @@
         "dispositions": { "$ref": "#/$defs/dispositions" }
       },
       "required": ["file", "count", "dispositions"],
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "dispositions": {
       "description": "Counts of answer, withdraw, and defer drafts.",
@@ -143,7 +143,7 @@
         "defer": { "type": "integer" }
       },
       "required": ["answer", "withdraw", "defer"],
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "posted": {
       "description": "One reply the host accepted and whether its thread was resolved.",
@@ -155,7 +155,7 @@
         "resolved": { "type": "boolean" }
       },
       "required": ["thread_id", "reply_id", "disposition", "resolved"],
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "failed": {
       "description": "One thread whose write failed and why.",
@@ -165,7 +165,7 @@
         "reason": { "type": "string" }
       },
       "required": ["thread_id", "reason"],
-      "additionalProperties": true
+      "additionalProperties": false
     }
   }
 }

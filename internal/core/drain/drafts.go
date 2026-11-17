@@ -29,6 +29,8 @@ const (
 	keyReplies   = "replies"
 )
 
+var replyFields = []string{"thread_id", "waiting_comment_id", "disposition", "body"}
+
 // Reply is one draft answer to a waiting comment.
 type Reply struct {
 	ThreadID         string      `json:"thread_id"`
@@ -68,10 +70,14 @@ func CheckDrafts(raw []byte, plan *File) (*Drafts, []Skip, *core.RefusalError) {
 }
 
 func checkReplies(replies []Reply, raw json.RawMessage, pending map[string]Pending, summary *Drafts) (map[string]bool, *core.RefusalError) {
+	fields, ref := decodeReplyFields(raw, len(replies))
+	if ref != nil {
+		return nil, ref
+	}
 	seen := make(map[string]bool, len(replies))
 	for i, reply := range replies {
 		site := fmt.Sprintf("replies[%d]", i)
-		if ref := validateFields(raw, i, site); ref != nil {
+		if ref := validateFields(fields[i], site); ref != nil {
 			return nil, ref
 		}
 		if ref := checkReply(reply, pending, seen, site, summary); ref != nil {
@@ -185,17 +191,26 @@ func countDisposition(d Disposition, summary *Drafts, site string) *core.Refusal
 	return nil
 }
 
-func validateFields(raw json.RawMessage, index int, site string) *core.RefusalError {
-	var replies []map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &replies); err != nil {
-		return invalid(site, err.Error())
+func decodeReplyFields(raw json.RawMessage, count int) ([]map[string]json.RawMessage, *core.RefusalError) {
+	var entries []map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		return nil, invalid(keyReplies, err.Error())
 	}
-	if index >= len(replies) {
-		return invalid(site, "missing entry")
+	if len(entries) != count {
+		return nil, invalid(keyReplies, "entry count mismatch")
 	}
-	for key := range replies[index] {
-		if !slices.Contains([]string{"thread_id", "waiting_comment_id", "disposition", "body"}, key) {
+	return entries, nil
+}
+
+func validateFields(fields map[string]json.RawMessage, site string) *core.RefusalError {
+	for key := range fields {
+		if !slices.Contains(replyFields, key) {
 			return invalid(site+"."+key, "unknown key")
+		}
+	}
+	for _, key := range replyFields {
+		if _, ok := fields[key]; !ok {
+			return invalid(site+"."+key, "missing key")
 		}
 	}
 	return nil

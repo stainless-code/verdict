@@ -223,7 +223,7 @@ func (st *state) promptBundle(dir string) string {
 
 // promptArtifact is the review path the directive names, resolved the same way.
 func (st *state) promptArtifact(dir string) string {
-	path := filepath.Join(dir, reviewFile)
+	path := filepath.Join(dir, st.artifactName())
 	return st.promptPath(path, readcommon.DisplayPath(st.req.RepoRootPath(), path))
 }
 
@@ -742,7 +742,7 @@ func (st *state) display(path string) string {
 // records or posts.
 func (st *state) next(dir string) string {
 	if st.drainDigest != "" {
-		return fmt.Sprintf("post the drafts with verdict drain %s %s --post", st.req.Repo, st.req.Pr)
+		return "inspect the drafts in " + st.display(filepath.Join(dir, drainFile))
 	}
 	if readcommon.IsLocalBundleDir(dir) {
 		return "record the review with verdict record " + st.req.Repo + " " + readcommon.BundleName(dir)

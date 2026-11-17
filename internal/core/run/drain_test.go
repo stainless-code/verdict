@@ -95,16 +95,53 @@ func drainRequest(root string, cmdr *scripted) *core.RunRequest {
 func TestDrainLaunchAssertsRepliesArtifact(t *testing.T) {
 	t.Parallel()
 	root, dir := drainBundle(t)
-	script := &scripted{res: core.Result{ExitCode: 0}, write: func() { writeDrainFile(t, filepath.Join(dir, drainFile)) }}
+	script := &scripted{res: core.Result{ExitCode: 0}}
+	script.write = func() {
+		name := promptedArtifact(t, script.cmd.Argv[len(script.cmd.Argv)-1])
+		writeDrainFile(t, filepath.Join(dir, name))
+	}
 	req := drainRequest(root, script)
 	res, ref := Drain(context.Background(), req, "digest")
 	if ref != nil || res == nil || res.Data.Artifact == "" || !res.Data.Fresh {
 		t.Fatalf("drain launch = %+v, refusal %+v", res, ref)
 	}
-	if filepath.Base(res.Data.Artifact) != drainFile || !strings.Contains(res.Next, "--post") {
+	if filepath.Base(res.Data.Artifact) != drainFile || !strings.Contains(res.Next, drainFile) || strings.Contains(res.Next, "--post") {
 		t.Errorf("artifact = %q, next = %q", res.Data.Artifact, res.Next)
 	}
 	assertMissingArtifact(t, req, script, dir)
+}
+
+func promptedArtifact(t *testing.T, prompt string) string {
+	t.Helper()
+	const prefix = "Write exactly one file, "
+	_, after, found := strings.Cut(prompt, prefix)
+	if !found {
+		t.Fatalf("prompt does not name an artifact:\n%s", prompt)
+	}
+	name, _, ok := strings.Cut(after, ",")
+	if !ok {
+		t.Fatalf("prompt does not delimit the artifact:\n%s", prompt)
+	}
+	return filepath.Base(strings.TrimSpace(name))
+}
+
+func TestRunDirectiveStillNamesReviewFile(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	start := time.Now().Add(-time.Second)
+	st := drainState(root, "7", "")
+	st.req.Now = func() time.Time { return start }
+	dir := filepath.Join(root, ".verdict", "state", "7")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	args, ref := st.argsFor(&agentDef{Name: "claude", Binary: "/bin/true"}, dir, 30)
+	if ref != nil {
+		t.Fatal(ref)
+	}
+	if !strings.Contains(args.prompt, reviewFile) || strings.Contains(args.prompt, drainFile) {
+		t.Errorf("run directive changed:\n%s", args.prompt)
+	}
 }
 
 func assertMissingArtifact(t *testing.T, req *core.RunRequest, script *scripted, dir string) {
