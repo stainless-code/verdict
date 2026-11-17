@@ -19,7 +19,7 @@ exit: 1
 » gh pr diff -> .verdict/state/4714/full.diff
 --- files ---
 --- file C/.gh-calls.log ---
-CALL: pr view 4714 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,url,commits,files,additions,deletions,isDraft,reviewDecision,state
+CALL: pr view 4714 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,labels,url,commits,files,additions,deletions,isDraft,reviewDecision,state
 CALL: pr diff 4714 --repo acme/app
 --- file C/.verdict/.gitignore ---
 /state/

@@ -579,7 +579,7 @@ the artifact, who writes it, and whether a verb gates on it.
 
 | Artifact                  | What it is                                                                                                                                                                                                                                                                                                                              | Who writes it                                                                                                                 | Gates?                                                                                                                                                                                                                                                                                                                                 |
 | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `run.json`                | The typed per-run capture: resolved defaults, per-file resolutions, plan, spend and privacy views, trusted-base inventory hashes, base SHA, the `inputs_sha256` digest, and appended check observations.                                                                                                                                | `fetch`/`fetch-local`; `post` appends observations                                                                            | Yes, except `config --preview` (see below). `post`, `record`, `triage`, `report`, `ready`, `config --explain`, and `verify --group` verify it; a run bundle deleted while its controls snapshot remains, or an edited captured input, refuses `controls-stale`; a bare bundle dir reads with a warning and no repository requirements. |
+| `run.json`                | The typed per-run capture: resolved defaults, per-file resolutions, plan, spend and privacy views, trusted-base inventory hashes, base SHA, the `inputs_sha256` digest, appended check observations, and the `trigger` decision from `ready --filter`.                                                                                  | `fetch`/`fetch-local`; `post` appends observations, `ready --filter` records the trigger decision                             | Yes, except `config --preview` (see below). `post`, `record`, `triage`, `report`, `ready`, `config --explain`, and `verify --group` verify it; a run bundle deleted while its controls snapshot remains, or an edited captured input, refuses `controls-stale`; a bare bundle dir reads with a warning and no repository requirements. |
 | `validation-<group>.json` | The deep-validation receipt for one plan group: run, inputs digest, group, reviewed and execution heads, canonical root, command, exit, timeout and sandbox flags, status, and a redacted output tail.                                                                                                                                  | `verify --group <id> --command <cmd>`                                                                                         | Yes. `post` refuses a binding approval while any `depth: "deep"` group lacks a current receipt; `ready` reports the gap as `profile-work`.                                                                                                                                                                                             |
 | `filesource.json`         | Provenance for the PR file list: `source` (`paged` or `cli`), `cli_cap` (100), `provider_ceiling` (3000), `count`, and `truncated` or `paging_error`.                                                                                                                                                                                   | GitHub `fetch`, when the CLI list arrives at its 100-file cap                                                                 | No. It is an advisory coverage note: a paging failure warns and the run proceeds with the CLI's first 100 files.                                                                                                                                                                                                                       |
 | `full.raw.diff`           | The raw pre-exclusion diff, kept as the patch-identity input when a filtered diff would otherwise replace it. No shipped verb writes it today: `fetch` writes the host diff to `full.diff` and records the filtered hash in `run.json` without writing filtered bytes.                                                                  | Nothing today (a future exclusion pass)                                                                                       | Partly. When present it feeds the identity, and `identity.json`'s `raw_diff_sha256` must reproduce it; a present-but-unreadable file refuses instead of falling back to `full.diff`. Absence is normal.                                                                                                                                |
@@ -973,6 +973,29 @@ missing or stale receipt as required work without executing anything.
 
 `ready` stays advisory (exit 0); `ready --check` turns the same list into the
 machine exits 0 ready, 1 blockers-or-wait, 2 usage, 3 tool error.
+
+### Base-branch trigger gate
+
+`verdict ready owner/repo 42 --filter` gates the readiness read on the `trigger`
+predicates in the trusted `.verdict/config.json` snapshot the bundle fetched,
+not the worktree's current config. A configured predicate must match: `authors`
+(exact login), `paths_include`, `paths_exclude`, `labels`, `base_branches`,
+`title_matches` (Go regular expression), or `draft`. Lists OR within a
+predicate and AND across predicates. Excluded paths are removed before
+`paths_include` is tested, so one generated file cannot hide a protected
+change. A truncated `filesource.json` skips the path predicates with a
+warning instead of filtering out on partial evidence. The decision lands in
+`run.json` as `trigger` (`run`, `reason`, `head`, `at`) and leaves the inputs
+digest alone.
+
+The gate runs before any live read or `--wait-for build` poll. A match runs
+the ordinary readiness read. A miss refuses `filtered-out` with exit code 1,
+naming the failing predicate before any host command runs; without `--filter`
+the same PR is unchanged. A head-policy snapshot, damaged snapshot, unreadable
+facts, corrupt run receipt, or malformed base policy refuses `trigger-failed`;
+an unknown key remains a `bad-config` parse error naming `trigger.<key>`. An
+absent base config means no trigger. `--filter` composes with `--check`
+(the typed miss keeps exit 1) and `--json`.
 
 On GitLab the same blockers read through `glab`: the merge request carries
 `draft`, `has_conflicts` (plus a `conflict` `detailed_merge_status`), and the
@@ -3433,7 +3456,7 @@ verdict fetch-local owner/repo slice-b -- <paths...>           # narrow to a fil
 
 `fetch --provider gitlab|gitcafe|forgejo|bitbucket|azure` builds the same bundle
 shape from another host (`PR.json` normalized to one schema: `provider`,
-`number/title/body`, `base_ref/head_ref`, `base_sha/head_sha`, `author`, `url`,
+`number/title/body`, `base_ref/head_ref`, `base_sha/head_sha`, `author`, `labels`, `url`,
 `state` as open|closed|merged, `draft`, per-file `additions/deletions`).
 `write_toc_roles` and the whole validate+merge path run unchanged — anchors
 validate against `full.diff` hunks regardless of host. `record`, `report`,

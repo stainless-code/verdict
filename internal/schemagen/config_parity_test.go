@@ -53,6 +53,7 @@ func TestSchemaParityValid(t *testing.T) {
 		`{"schema_version":"1","defaults":{},"requirements":{},"scopes":[],"profiles":{}}`,
 		`{"schema_version":"1","profiles":{"deep-review":{"depth":"deep","checks":["no-open-above-block"],"max_lenses":4}},"default_profile":"deep-review"}`,
 		`{"schema_version":"1","scopes":[{"name":"req-only","include":["payments/**"],"requirements":{"require_bind":true}}]}`,
+		`{"schema_version":"1","trigger":{"authors":["ana"],"paths_include":["src/**"],"title_matches":"^fix:","draft":true}}`,
 	}
 	for _, doc := range docs {
 		if violations := parityViolations(t, schema, doc); len(violations) != 0 {
@@ -82,6 +83,9 @@ func TestSchemaParityStructural(t *testing.T) {
 		{"profile non-object", `{"schema_version":"1","profiles":{"x":42}}`, config.CodeBadConfig, "profiles"},
 		{"profile extra key", `{"schema_version":"1","profiles":{"p":{"bogus":1}}}`, config.CodeBadConfig, "bogus"},
 		{"clause extra key", `{"schema_version":"1","requirements":{"block_clauses":[{"name":"c","threshold":"critical","bogus":1}]}}`, config.CodeBadConfig, "bogus"},
+		{"trigger extra key", `{"schema_version":"1","trigger":{"bogus":1}}`, config.CodeBadConfig, "bogus"},
+		{"trigger draft null", `{"schema_version":"1","trigger":{"draft":null}}`, config.CodeBadConfig, "draft"},
+		{"trigger empty labels", `{"schema_version":"1","trigger":{"labels":[]}}`, config.CodeBadConfig, "labels"},
 		{"wrong check enum", `{"schema_version":"1","requirements":{"require_checks":["nope"]}}`, config.CodeBadRequirement, "require_checks"},
 		{"wrong profile check", `{"schema_version":"1","profiles":{"p":{"checks":["nope"]}}}`, config.CodeBadConfig, "checks"},
 		{"wrong category enum", `{"schema_version":"1","requirements":{"block_clauses":[{"name":"c","threshold":"critical","categories":["ux"]}]}}`, config.CodeBadRequirement, "categories"},

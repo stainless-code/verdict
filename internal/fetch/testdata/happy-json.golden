@@ -74,7 +74,7 @@ done: .verdict/state/4701/PR.json .verdict/state/4701/full.diff .verdict/state/4
 next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4701/PR.json + .verdict/state/4701/full.diff (+ .verdict/state/4701/roles.txt) to any agent; ask it to write .verdict/state/4701/review.json; prior threads are in .verdict/state/4701/threads.json (run verdict threads to refresh)
 --- files ---
 --- file C/.gh-calls.log ---
-CALL: pr view 4701 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,url,commits,files,additions,deletions,isDraft,reviewDecision,state
+CALL: pr view 4701 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,labels,url,commits,files,additions,deletions,isDraft,reviewDecision,state
 CALL: pr diff 4701 --repo acme/app
 CALL: pr view 4701 --repo acme/app --json files --jq .files[] | "\(.path) (+\(.additions)/-\(.deletions))"
 CALL: api repos/acme/app/pulls/4701/reviews --paginate

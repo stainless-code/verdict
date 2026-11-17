@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"regexp"
 
 	"github.com/stainless-code/verdict/internal/core"
 )
@@ -27,26 +28,39 @@ func buildConfig(root map[string]any) (*core.Config, *core.RefusalError) {
 	if schemaRef, ok := root["$schema"].(string); ok {
 		cfg.SchemaRef = schemaRef
 	}
-	var ref *core.RefusalError
-	if cfg.Defaults, ref = presentNested(root, defaultsKey, rootLocation, buildDefaults); ref != nil {
+	if ref := buildConfigCore(cfg, root); ref != nil {
 		return nil, ref
 	}
-	if cfg.Requirements, ref = presentNested(root, requirementsKey, rootLocation, buildRequirements); ref != nil {
-		return nil, ref
-	}
-	if cfg.Index, ref = presentNested(root, "index", rootLocation, buildIndex); ref != nil {
-		return nil, ref
-	}
-	if cfg.SeverityWeights, ref = presentNested(root, "severity_weights", rootLocation, buildSeverityWeights); ref != nil {
-		return nil, ref
-	}
-	if cfg.RigorPolicy, ref = presentNested(root, "rigor_policy", rootLocation, buildRigorPolicy); ref != nil {
-		return nil, ref
-	}
-	if ref = buildConfigTail(cfg, root); ref != nil {
+	if ref := buildConfigViews(cfg, root); ref != nil {
 		return nil, ref
 	}
 	return cfg, nil
+}
+
+func buildConfigCore(cfg *core.Config, root map[string]any) *core.RefusalError {
+	var ref *core.RefusalError
+	if cfg.Defaults, ref = presentNested(root, defaultsKey, rootLocation, buildDefaults); ref != nil {
+		return ref
+	}
+	if cfg.Requirements, ref = presentNested(root, requirementsKey, rootLocation, buildRequirements); ref != nil {
+		return ref
+	}
+	cfg.Trigger, ref = presentNested(root, "trigger", rootLocation, buildTrigger)
+	return ref
+}
+
+func buildConfigViews(cfg *core.Config, root map[string]any) *core.RefusalError {
+	var ref *core.RefusalError
+	if cfg.Index, ref = presentNested(root, "index", rootLocation, buildIndex); ref != nil {
+		return ref
+	}
+	if cfg.SeverityWeights, ref = presentNested(root, "severity_weights", rootLocation, buildSeverityWeights); ref != nil {
+		return ref
+	}
+	if cfg.RigorPolicy, ref = presentNested(root, "rigor_policy", rootLocation, buildRigorPolicy); ref != nil {
+		return ref
+	}
+	return buildConfigTail(cfg, root)
 }
 
 // buildConfigTail validates scopes, profiles, the default profile, and
@@ -312,6 +326,65 @@ func buildRequirements(raw any, path string) (*core.ConfigRequirements, *core.Re
 		return nil, remap(obj["require_bind"], path+".require_bind", ref, CodeBadRequirement)
 	}
 	return out, nil
+}
+
+func triggerStrings(raw any, path string) ([]string, *core.RefusalError) {
+	return panelMembers(raw, path, 1)
+}
+
+func buildTrigger(raw any, path string) (*core.ConfigTrigger, *core.RefusalError) {
+	obj, ref := asObject(raw, path)
+	if ref != nil {
+		return nil, ref
+	}
+	out := &core.ConfigTrigger{}
+	if ref := buildTriggerStrings(obj, path, out); ref != nil {
+		return nil, ref
+	}
+	if ref := buildTriggerTail(obj, path, out); ref != nil {
+		return nil, ref
+	}
+	return out, nil
+}
+
+func buildTriggerStrings(obj map[string]any, path string, out *core.ConfigTrigger) *core.RefusalError {
+	var ref *core.RefusalError
+	if out.Authors, ref = presentStrings(obj, "authors", path, triggerStrings); ref != nil {
+		return ref
+	}
+	if out.PathsInclude, ref = presentStrings(obj, "paths_include", path, globArrayOfOne); ref != nil {
+		return ref
+	}
+	if out.PathsExclude, ref = presentStrings(obj, "paths_exclude", path, globArrayOfOne); ref != nil {
+		return ref
+	}
+	if out.Labels, ref = presentStrings(obj, "labels", path, triggerStrings); ref != nil {
+		return ref
+	}
+	out.BaseBranches, ref = presentStrings(obj, "base_branches", path, globArrayOfOne)
+	return ref
+}
+
+func globArrayOfOne(raw any, at string) ([]string, *core.RefusalError) {
+	return globArray(raw, at, 1)
+}
+
+func buildTriggerTail(obj map[string]any, path string, out *core.ConfigTrigger) *core.RefusalError {
+	title, ref := presentValue(obj, "title_matches", path, nonEmptyString)
+	if ref != nil {
+		return ref
+	}
+	if title != nil {
+		if ref := checkSingleLine(*title, path+".title_matches"); ref != nil {
+			return ref
+		}
+		if _, err := regexp.Compile(*title); err != nil {
+			return refuse(CodeBadConfig, "%s.title_matches: invalid regexp: %v", path, err)
+		}
+		out.TitleMatches = *title
+	}
+	out.Draft, ref = presentValue(obj, "draft", path, asBool)
+	return ref
 }
 
 // buildClauseList validates an optional non-empty clause array. Absent

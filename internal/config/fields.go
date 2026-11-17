@@ -1,6 +1,8 @@
 package config
 
 import (
+	"strings"
+
 	"github.com/stainless-code/verdict/internal/core"
 )
 
@@ -16,7 +18,7 @@ const requirementsKey = "requirements"
 
 var (
 	topFields = []string{
-		"$schema", "schema_version", "defaults", "requirements", "scopes", "profiles", "default_profile",
+		"$schema", "schema_version", "defaults", "requirements", "trigger", "scopes", "profiles", "default_profile",
 		"index", "severity_weights", "rigor_policy",
 	}
 	defaultsFields = []string{
@@ -26,6 +28,7 @@ var (
 	kbPolicyFields     = []string{"min_judged", "max_fp_rate", "max_chars"}
 	rigorPolicyFields  = append([]string{"mode"}, severityEnum...)
 	requirementsFields = []string{"block_clauses", "require_checks", "require_bind"}
+	triggerFields      = []string{"authors", "paths_include", "paths_exclude", "labels", "title_matches", "base_branches", "draft"}
 	clauseFields       = []string{"name", "threshold", "categories", "paths"}
 	scopeFields        = []string{"name", "include", "exclude", "profile", "defaults", "requirements"}
 	profileFields      = []string{"depth", "checks", "max_lenses"}
@@ -69,6 +72,7 @@ func checkUnknownFields(root map[string]any) *core.RefusalError {
 	}{
 		{key: defaultsKey, check: checkDefaultsKeys},
 		{key: requirementsKey, check: checkRequirementsKeys},
+		{key: "trigger", check: checkKeysSection(triggerFields)},
 		{key: "scopes", check: checkScopeListKeys},
 		{key: "profiles", check: checkProfilesKeys},
 		{key: "severity_weights", check: checkKeysSection(severityEnum)},
@@ -236,6 +240,15 @@ func checkProfileUnknown(raw any, path string) *core.RefusalError {
 	return checkKeys(path, prof, profileFields)
 }
 
+const unknownFieldSuffix = ": unknown field"
+
+// IsUnknownField reports whether ref is the strict parser's unknown-key
+// refusal. The trigger gate keeps that code verbatim and wraps every other
+// parse failure as a trigger failure.
+func IsUnknownField(ref *core.RefusalError) bool {
+	return ref != nil && ref.Code == CodeBadConfig && strings.HasSuffix(ref.Message, unknownFieldSuffix)
+}
+
 // checkKeys refuses the first key outside the allowed set, naming its path.
 func checkKeys(path string, obj map[string]any, allowed []string) *core.RefusalError {
 	keep := make(map[string]bool, len(allowed))
@@ -244,7 +257,7 @@ func checkKeys(path string, obj map[string]any, allowed []string) *core.RefusalE
 	}
 	for _, key := range sortedObjectKeys(obj) {
 		if !keep[key] {
-			return refuse(CodeBadConfig, "%s.%s: unknown field", path, key)
+			return refuse(CodeBadConfig, "%s.%s%s", path, key, unknownFieldSuffix)
 		}
 	}
 	return nil

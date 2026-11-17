@@ -31,6 +31,7 @@ type Request struct { //nolint:govet // field grouping documents the request sur
 	Timeout     string
 	PollRuntime PollRuntime `json:"-"`
 	Check       bool
+	Filter      bool `json:"-"`
 	Warnings    []string
 }
 
@@ -242,7 +243,7 @@ func loadState(ctx context.Context, st *state) *core.RefusalError {
 	}
 	if !isRegular(dir + "/PR.json") {
 		return st.withWarnings(&core.RefusalError{
-			Code:    "missing-bundle",
+			Code:    codeMissingBundle,
 			Message: "missing " + dir + "/PR.json (run fetch " + st.repo + " " + st.pr + " first)",
 		})
 	}

@@ -1887,18 +1887,23 @@ type prSpec struct {
 	BaseSHA  any
 	HeadSHA  any
 	Author   any
+	Labels   []any
 	URL      any
 	State    string
 	Draft    any
 	Files    []any
 }
 
-// buildPR builds the single PR.json record: a nil draft reads false and a
-// nil file slice reads [] so every provider emits both keys.
+// buildPR builds the single PR.json record: a nil draft reads false, while
+// nil label and file slices read [] so every provider emits the keys.
 func buildPR(spec *prSpec) *jq.Obj {
 	files := spec.Files
 	if files == nil {
 		files = []any{}
+	}
+	labels := spec.Labels
+	if labels == nil {
+		labels = []any{}
 	}
 	adds, dels := sumStats(files)
 	draft := spec.Draft
@@ -1916,6 +1921,7 @@ func buildPR(spec *prSpec) *jq.Obj {
 		keyBaseSHA, spec.BaseSHA,
 		keyHeadSHA, spec.HeadSHA,
 		keyAuthor, spec.Author,
+		keyLabels, labels,
 		keyURL, spec.URL,
 		keyState, spec.State,
 		keyDraft, draft,
@@ -1923,6 +1929,29 @@ func buildPR(spec *prSpec) *jq.Obj {
 		keyAdditions, renderStats(adds),
 		keyDeletions, renderStats(dels),
 	)
+}
+
+// prLabels normalizes host label rows: strings and objects carrying a name
+// both read as label names, so the trigger predicate sees one shape.
+func prLabels(raw any) []any {
+	var out []any
+	for _, entry := range jq.Elements(raw) {
+		if name, ok := hostLabel(entry); ok {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+func hostLabel(entry any) (string, bool) {
+	if name, ok := entry.(string); ok {
+		return name, name != ""
+	}
+	if m, ok := jq.AsMap(entry); ok {
+		name := normStr(m, keyName)
+		return name, name != ""
+	}
+	return "", false
 }
 
 func prFileRow(path string, status, additions, deletions any) *jq.Obj {
@@ -1987,7 +2016,8 @@ func normalizeGitLab(metaRaw, changesRaw string, ns map[string]map[string]int64)
 		Title: normStr(meta, keyTitle), Body: normStr(meta, keyDescription),
 		BaseRef: normStr(meta, "target_branch"), HeadRef: normStr(meta, "source_branch"),
 		BaseSHA: normStr(diffRefs, keyBaseSHA, "start_sha"), HeadSHA: headSHA,
-		Author: normStr(nestedMap(meta, keyAuthor), "username", "name"), URL: normStr(meta, "web_url"),
+		Author: normStr(nestedMap(meta, keyAuthor), "username", keyName),
+		Labels: prLabels(meta[keyLabels]), URL: normStr(meta, "web_url"),
 		State: providerState(providerGitLab, normStr(meta, keyState)), Draft: meta[keyDraft],
 		Files: gitlabFileRows(changesRaw, ns),
 	}), nil
@@ -2093,7 +2123,7 @@ func normalizeGitCafe(metaRaw, itemsRaw string) (*jq.Obj, error) {
 		Title: normStr(res, keyTitle), Body: normStr(res, keyDescription),
 		BaseRef: normStr(res, "targetBranch"), HeadRef: normStr(res, "sourceBranch"),
 		BaseSHA: firstPresent(res["observedBaseOid"], res["baseOid"]), HeadSHA: firstPresent(res["sourceOid"], res["headOid"]),
-		Author: cafeAuthor(res), URL: cafeURL(meta, res),
+		Author: cafeAuthor(res), Labels: prLabels(res[keyLabels]), URL: cafeURL(meta, res),
 		State: providerState(providerGitCafe, normStr(res, keyState)), Draft: res[keyDraft],
 		Files: fileRows(cafeItemsList(itemsRaw), func(m map[string]any) *jq.Obj { return entryFileRow(m, keyPath) }),
 	}), nil
@@ -2165,7 +2195,8 @@ func normalizeForgejo(metaRaw, filesRaw string) (*jq.Obj, error) {
 		Title: normStr(meta, keyTitle), Body: normStr(meta, keyBody),
 		BaseRef: normStr(base, "label"), HeadRef: normStr(head, "label"),
 		BaseSHA: normStr(base, "sha"), HeadSHA: normStr(head, "sha"),
-		Author: normStr(nestedMap(meta, "user"), keyLogin), URL: normStr(meta, "html_url"),
+		Author: normStr(nestedMap(meta, "user"), keyLogin),
+		Labels: prLabels(meta[keyLabels]), URL: normStr(meta, "html_url"),
 		State: forgejoState(meta), Draft: forgejoDraft(meta),
 		Files: fileRows(jsonArrayOrEmpty(filesRaw), func(m map[string]any) *jq.Obj { return entryFileRow(m, keyFilename) }),
 	}), nil
@@ -2189,14 +2220,14 @@ func normalizeBitbucket(metaRaw string, ds []any) (*jq.Obj, error) {
 	return buildPR(&prSpec{
 		Provider: providerBitbucket, Number: meta[keyID],
 		Title: normStr(meta, keyTitle), Body: body,
-		BaseRef: normStr(nestedMap(dest, modeBranch), "name"), HeadRef: normStr(nestedMap(src, modeBranch), "name"),
+		BaseRef: normStr(nestedMap(dest, modeBranch), keyName), HeadRef: normStr(nestedMap(src, modeBranch), keyName),
 		BaseSHA: normStr(nestedMap(dest, "commit"), "hash"), HeadSHA: normStr(nestedMap(src, "commit"), "hash"),
 		// The key chain stops at the first string (even ""), so nickname is
 		// authoritative and display_name never wins.
-		Author: normStr(nestedMap(meta, keyAuthor), "nickname"),
-		URL:    normStr(nestedMap(nestedMap(meta, "links"), "html"), "href"),
-		State:  providerState(providerBitbucket, normStr(meta, keyState)),
-		Draft:  meta[keyDraft], Files: fileRows(ds, bitbucketFileRow),
+		Author: normStr(nestedMap(meta, keyAuthor), "nickname"), Labels: prLabels(meta[keyLabels]),
+		URL:   normStr(nestedMap(nestedMap(meta, "links"), "html"), "href"),
+		State: providerState(providerBitbucket, normStr(meta, keyState)),
+		Draft: meta[keyDraft], Files: fileRows(ds, bitbucketFileRow),
 	}), nil
 }
 
@@ -2224,7 +2255,8 @@ func normalizeAzure(metaRaw, changesRaw string, ns map[string]map[string]int64) 
 		HeadSHA: normStr(nestedMap(meta, "lastMergeSourceCommit"), keyCommitID),
 		// The key chain stops at the first string (even ""), so uniqueName is
 		// authoritative and displayName never wins.
-		Author: normStr(nestedMap(meta, "createdBy"), "uniqueName"), URL: normStr(meta, keyURL),
+		Author: normStr(nestedMap(meta, "createdBy"), "uniqueName"),
+		Labels: prLabels(meta[keyLabels]), URL: normStr(meta, keyURL),
 		State: providerState(providerAzure, normStr(meta, keyStatus)),
 		Draft: meta["isDraft"], Files: files,
 	}), nil

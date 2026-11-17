@@ -20,7 +20,7 @@ exit: 1
 » estimate: tier standard ~$3/run from 2 comparable run(s) — OVER budget $0.50 (REVIEW_BUDGET_USD)
 --- files ---
 --- file C/.gh-calls.log ---
-CALL: pr view 4705 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,url,commits,files,additions,deletions,isDraft,reviewDecision,state
+CALL: pr view 4705 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,labels,url,commits,files,additions,deletions,isDraft,reviewDecision,state
 CALL: pr diff 4705 --repo acme/app
 --- file C/.verdict/.gitignore ---
 /state/

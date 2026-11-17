@@ -18,8 +18,8 @@ import (
 // Request wires a ready run.
 type Request = readcommon.Request
 
-// Run executes `ready <owner/repo> <pr> [--json, --check]`, returning the
-// exit code.
+// Run executes `ready <owner/repo> <pr> [--json, --check, --filter]`,
+// returning the exit code.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	q := readyRequest(r, req)
 	if err := parseFlags(args, q); err != nil {
@@ -30,10 +30,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	}
 	resp, ref := readycore.Run(ctx, q)
 	if ref != nil {
-		if q.Check {
-			return r.RefuseExit(ref, cli.ExitBroke)
-		}
-		return r.Refuse(ref)
+		return refuseReady(r, q, ref)
 	}
 	r.Warnings = resp.Warnings
 	if r.JSONMode {
@@ -65,27 +62,44 @@ func readyRequest(r *cli.Runner, req Request) *readycore.Request {
 	}
 }
 
+func refuseReady(r *cli.Runner, q *readycore.Request, ref *core.RefusalError) int {
+	if q.Check && ref.Code != "filtered-out" {
+		return r.RefuseExit(ref, cli.ExitBroke)
+	}
+	return r.Refuse(ref)
+}
+
 func parseFlags(args []string, q *readycore.Request) *cli.UsageError {
+	var usage *cli.UsageError
 	for len(args) > 0 {
 		flag := args[0]
-		if flag == "--check" {
+		switch flag {
+		case "--check":
 			q.Check = true
 			args = args[1:]
-			continue
-		}
-		if len(args) < 2 {
-			return &cli.UsageError{Message: "missing ready flag operand: " + flag}
-		}
-		value := args[1]
-		args = args[2:]
-		switch flag {
-		case "--wait-for":
-			q.WaitFor = value
-		case "--timeout":
-			q.Timeout = value
+		case "--filter":
+			q.Filter = true
+			args = args[1:]
+		case "--wait-for", "--timeout":
+			args, usage = valueFlag(args, flag, q)
+			if usage != nil {
+				return usage
+			}
 		default:
 			return &cli.UsageError{Message: "unknown ready flag: " + flag}
 		}
 	}
 	return nil
+}
+
+func valueFlag(args []string, flag string, q *readycore.Request) ([]string, *cli.UsageError) {
+	if len(args) < 2 {
+		return nil, &cli.UsageError{Message: "missing ready flag operand: " + flag}
+	}
+	if flag == "--wait-for" {
+		q.WaitFor = args[1]
+	} else {
+		q.Timeout = args[1]
+	}
+	return args[2:], nil
 }

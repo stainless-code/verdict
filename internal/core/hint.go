@@ -48,6 +48,8 @@ var hintRules = []HintRule{
 		"or pass --allow-secret-values to publish it anyway"},
 	{codes: []string{"fix-patch-secret"}, hint: "try: remove the value from the worktree (rotate it " +
 		"if it was real), then re-run fix"},
+	{codes: []string{"filtered-out"}, hint: "try: remove --filter to review every PR, or change the trigger at the PR base and re-fetch"},
+	{codes: []string{"trigger-failed"}, hint: "try: re-fetch the bundle so its base-snapshot policy is complete, then re-run"},
 	{
 		codes: []string{"diff-too-large"},
 		hint:  "try: split the range (--range/--base/--base-sha) or narrow with a paths filter, then re-fetch",

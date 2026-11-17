@@ -12,6 +12,7 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/storelock"
 )
 
 // RunState is the persisted per-run typed bundle: the fetch-time capture
@@ -37,9 +38,19 @@ type RunState struct {
 	Inventory        map[string]string  `json:"inventory,omitempty"`
 	Evidence         Evidence           `json:"evidence"`
 	Outcomes         []CheckObservation `json:"outcomes,omitempty"`
+	Trigger          *TriggerDecision   `json:"trigger,omitempty"`
 	Root             RequirementSet     `json:"root"`
 	Trusted          bool               `json:"trusted"`
 	RequiresEvidence bool               `json:"requires_evidence,omitempty"`
+}
+
+// TriggerDecision is the recorded local trigger outcome: whether the PR
+// entered review, the predicate that decided it, and the head it decided on.
+type TriggerDecision struct {
+	At     string `json:"at"`
+	Head   string `json:"head"`
+	Reason string `json:"reason"`
+	Run    bool   `json:"run"`
 }
 
 // StatusUsed marks a snapshot entry whose bytes were captured.
@@ -66,7 +77,7 @@ func WriteRunState(dir string, rs *RunState) *stateError {
 		return &stateError{msg: "could not encode run state for " + rs.Name, cause: err}
 	}
 	path := filepath.Join(dir, runStateFileName)
-	if _, serr := confineBundleDir(dir); serr != nil {
+	if serr := confineBundleDir(dir); serr != nil {
 		return serr
 	}
 	if err := os.MkdirAll(dir, stateDirPerm); err != nil {
@@ -81,10 +92,10 @@ func WriteRunState(dir string, rs *RunState) *stateError {
 // confineBundleDir proves the bundle directory stays under a repository
 // state area: the path must resolve inside a `.verdict/state` parent, so
 // a caller-supplied bundle path can never escape to an unrelated target.
-func confineBundleDir(dir string) (string, *stateError) {
+func confineBundleDir(dir string) *stateError {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
-		return "", &stateError{msg: "could not resolve bundle directory " + dir, cause: err}
+		return &stateError{msg: "could not resolve bundle directory " + dir, cause: err}
 	}
 	resolvedDir, err := filepath.EvalSymlinks(filepath.Dir(abs))
 	if err == nil {
@@ -94,9 +105,9 @@ func confineBundleDir(dir string) (string, *stateError) {
 	grandparent := filepath.Base(filepath.Dir(filepath.Dir(abs)))
 	if parent != StateDirName || grandparent != VerdictDir {
 		outside := filepath.Join(VerdictDir, StateDirName)
-		return "", &stateError{msg: "refuses to write run state outside " + outside + ": " + dir, operator: true}
+		return &stateError{msg: "refuses to write run state outside " + outside + ": " + dir, operator: true}
 	}
-	return abs, nil
+	return nil
 }
 
 // ifEmpty defaults an empty root to the working directory, matching
@@ -139,6 +150,14 @@ func ReadRunState(dir string) (*RunState, bool, *stateError) {
 // never captured. The error return is the sealed state error as an
 // error so verb packages can warn without naming the type.
 func AppendOutcome(dir string, obs *CheckObservation) (bool, error) {
+	if _, serr := os.Stat(dir); os.IsNotExist(serr) {
+		return false, nil
+	}
+	unlock, err := lockRunState(dir)
+	if err != nil {
+		return false, err
+	}
+	defer unlock()
 	rs, found, serr := ReadRunState(dir)
 	if serr != nil {
 		return false, serr
@@ -147,6 +166,50 @@ func AppendOutcome(dir string, obs *CheckObservation) (bool, error) {
 		return false, nil
 	}
 	rs.Outcomes = append(rs.Outcomes, *obs)
+	raw, err := json.MarshalIndent(rs, "", "  ")
+	if err != nil {
+		return false, &stateError{msg: "could not encode run state for " + rs.Name, cause: err}
+	}
+	path := filepath.Join(dir, runStateFileName)
+	if werr := atomic.WriteFile(path, append(raw, '\n')); werr != nil {
+		return false, &stateError{msg: "could not write " + path, cause: werr}
+	}
+	return true, nil
+}
+
+// lockRunState keeps concurrent ledger appends from overwriting each other.
+func lockRunState(dir string) (func(), error) {
+	if serr := confineBundleDir(dir); serr != nil {
+		return nil, serr
+	}
+	path := filepath.Join(dir, runStateFileName)
+	unlock, err := storelock.Acquire(path, storelock.DefaultWait)
+	if err != nil {
+		return nil, &stateError{msg: "could not lock " + path, cause: err}
+	}
+	return unlock, nil
+}
+
+// AppendTrigger records one trigger decision on an existing run bundle.
+// Like an outcome, it is an observation rather than a captured input, so the
+// inputs digest stays stable. Absent run state appends nothing.
+func AppendTrigger(dir string, decision *TriggerDecision) (bool, error) {
+	if _, serr := os.Stat(dir); os.IsNotExist(serr) {
+		return false, nil
+	}
+	unlock, err := lockRunState(dir)
+	if err != nil {
+		return false, err
+	}
+	defer unlock()
+	rs, found, serr := ReadRunState(dir)
+	if serr != nil {
+		return false, serr
+	}
+	if !found {
+		return false, nil
+	}
+	rs.Trigger = decision
 	raw, err := json.MarshalIndent(rs, "", "  ")
 	if err != nil {
 		return false, &stateError{msg: "could not encode run state for " + rs.Name, cause: err}
@@ -261,6 +324,7 @@ func verifyInventory(dir string, rs *RunState, snap *controls.Snapshot) *core.Re
 func inputsDigest(rs *RunState) string {
 	cp := *rs
 	cp.Outcomes = nil
+	cp.Trigger = nil
 	cp.InputsSHA256 = ""
 	// The digest binds logical inputs, not volatile serialization:
 	// capture timestamps and temp paths vary run to run for the same

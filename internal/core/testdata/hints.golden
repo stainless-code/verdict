@@ -95,6 +95,7 @@ diff-too-large	try: split the range (--range/--base/--base-sha) or narrow with a
 download-failed	try: address the cause above, then re-run the same command
 duplicate-payload	try: re-run with --force to repost the identical payload — re-fetch if the earlier review was deleted
 fetch-failed	try: run 'gh auth status', confirm the repo/PR spelling, then re-run
+filtered-out	try: remove --filter to review every PR, or change the trigger at the PR base and re-fetch
 fix-ceiling	try: triage the sig or split the fix — the 3-pass ceiling is hard-coded
 fix-failed	try: address the cause above, then re-run the same command
 fix-patch-secret	try: remove the value from the worktree (rotate it if it was real), then re-run fix
@@ -198,6 +199,7 @@ stale-review-artifact	try: delete the stale review.json (or let the agent overwr
 store-busy	try: wait for the write holding the store's lock (the OS drops the lock when its holder exits, so a retry after a crash succeeds), then re-run
 threads-failed	try: run 'gh auth status', confirm the repo/PR spelling, then re-run
 triage-failed	try: address the cause above, then re-run the same command
+trigger-failed	try: re-fetch the bundle so its base-snapshot policy is complete, then re-run
 uninstall-foreign	try: address the cause above, then re-run the same command
 uninstall-no-receipt	try: address the cause above, then re-run the same command
 unknown-agent	try: re-run with one of the known agent names listed above
